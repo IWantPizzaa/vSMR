@@ -817,7 +817,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		{ TAG_CITEM_RWY, TAG_ITEM_FUNCTION_ASSIGNED_RUNWAY },
 		{ TAG_CITEM_SID, TAG_ITEM_FUNCTION_ASSIGNED_SID },
 		{ TAG_CITEM_GATE, TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD },
-		{ TAG_CITEM_GROUNDSTATUS, TAG_ITEM_FUNCTION_SET_GROUND_STATUS }
+		{ TAG_CITEM_GROUNDSTATUS, TAG_ITEM_FUNCTION_SET_GROUND_STATUS },
+		{ TAG_CITEM_UKSTAND, 999999}
 	};
 
 	if (Button == BUTTON_LEFT) {
@@ -836,10 +837,17 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	}
 
 	if (Button == BUTTON_RIGHT && TagObjectRightTypes[ObjectType]) {
+		if (ObjectType == TAG_CITEM_UKSTAND) {
+			CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
+			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
+			StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), "RampAgent", 0, Pt, Area); //FIXME: check correct plugin name and function
+		}
+		else {
 		int TagMenu = TagObjectRightTypes[ObjectType];
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
 		StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), NULL, TagMenu, Pt, Area);
+	}
 	}
 
 	if (ObjectType == RIMCAS_DISTANCE_TOOL)

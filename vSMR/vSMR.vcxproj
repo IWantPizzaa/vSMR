@@ -20,7 +20,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
     <UseOfMfc>Static</UseOfMfc>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -28,7 +28,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
     <UseOfMfc>Static</UseOfMfc>
@@ -60,7 +60,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USRDLL;%(PreprocessorDefinitions);CURL_STATICLIB;CURL_STATIC;ASIO_STANDALONE</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>..\lib\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\lib\include</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -98,7 +98,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;%(PreprocessorDefinitions);CURL_STATICLIB;CURL_STATIC;ASIO_STANDALONE</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>..\lib\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\lib\include</AdditionalIncludeDirectories>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -144,6 +144,13 @@
     <ClCompile Include="vSMR.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\lib\include\rapidjson\document.h" />
+    <ClInclude Include="..\lib\include\rapidjson\filestream.h" />
+    <ClInclude Include="..\lib\include\rapidjson\prettywriter.h" />
+    <ClInclude Include="..\lib\include\rapidjson\rapidjson.h" />
+    <ClInclude Include="..\lib\include\rapidjson\reader.h" />
+    <ClInclude Include="..\lib\include\rapidjson\stringbuffer.h" />
+    <ClInclude Include="..\lib\include\rapidjson\writer.h" />
     <ClInclude Include="CallsignLookup.hpp" />
     <ClInclude Include="ColorManager.h" />
     <ClInclude Include="Config.hpp" />
@@ -153,13 +160,6 @@
     <ClInclude Include="HttpHelper.hpp" />
     <ClInclude Include="InsetWindow.h" />
     <ClInclude Include="Logger.h" />
-    <ClInclude Include="rapidjson\document.h" />
-    <ClInclude Include="rapidjson\filestream.h" />
-    <ClInclude Include="rapidjson\prettywriter.h" />
-    <ClInclude Include="rapidjson\rapidjson.h" />
-    <ClInclude Include="rapidjson\reader.h" />
-    <ClInclude Include="rapidjson\stringbuffer.h" />
-    <ClInclude Include="rapidjson\writer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="Rimcas.hpp" />
     <ClInclude Include="SMRPlugin.hpp" />
