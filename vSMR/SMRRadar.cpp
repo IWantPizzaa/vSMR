@@ -1272,7 +1272,7 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 	return false;
 }
 
-map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport)
+map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport)
 {
 	Logger::info(string(__FUNCSIG__));
 	// ----
@@ -1488,6 +1488,12 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	if (uk_stand.length() == 0)
 		uk_stand = "NoGate";
 
+	// ----- Ramp Agent Remark -------
+	string remark = fp.GetControllerAssignedData().GetFlightStripAnnotation(4);
+	if (remark.length() == 0)
+		remark = "";
+
+
 	// ----- Generating the replacing map -----
 	map<string, string> TagReplacingMap;
 
@@ -1546,6 +1552,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	TagReplacingMap["dest"] = dest;
 	TagReplacingMap["groundstatus"] = gstat;
 	TagReplacingMap["uk_stand"] = uk_stand;
+	TagReplacingMap["remark"] = remark;
 
 	return TagReplacingMap;
 }
@@ -2026,12 +2033,15 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 #pragma region tags
 	// Drawing the Tags
 	Logger::info("Tags loop");
+	CRadarTarget aselTarget = GetPlugIn()->RadarTargetSelectASEL();
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
 		rt = GetPlugIn()->RadarTargetSelectNext(rt))
 	{
 		if (!rt.IsValid())
 			continue;
+
+		bool isASEL = (aselTarget.IsValid() && strcmp(aselTarget.GetCallsign(), rt.GetCallsign()) == 0);
 
 		CRadarTargetPositionData RtPos = rt.GetPosition();
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
@@ -2104,7 +2114,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			ColorTagType = TagTypes::Uncorrelated;
 		}
 
-		map<string, string> TagReplacingMap = GenerateTagData(rt, fp, IsCorrelated(fp, rt), CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool(), GetPlugIn()->GetTransitionAltitude(), CurrentConfig->getActiveProfile()["labels"]["use_aspeed_for_gate"].GetBool(), getActiveAirport());
+
+		map<string, string> TagReplacingMap = GenerateTagData(rt, fp, isASEL, IsCorrelated(fp, rt), CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool(), GetPlugIn()->GetTransitionAltitude(), CurrentConfig->getActiveProfile()["labels"]["use_aspeed_for_gate"].GetBool(), getActiveAirport());
 
 		// ----- Generating the clickable map -----
 		map<string, int> TagClickableMap;
@@ -2129,6 +2140,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		TagClickableMap[TagReplacingMap["systemid"]] = TAG_CITEM_NO;
 		TagClickableMap[TagReplacingMap["groundstatus"]] = TAG_CITEM_GROUNDSTATUS;
 		TagClickableMap[TagReplacingMap["uk_stand"]] = TAG_CITEM_UKSTAND;
+		TagClickableMap[TagReplacingMap["remark"]] = TAG_CITEM_REMARK;
 
 		//
 		// ----- Now the hard part, drawing (using gdi+) -------
@@ -2157,6 +2169,36 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		{
 
 			const Value& line = LabelLines[i];
+
+
+			if(!mouseWithin({ TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2) }) &&
+				!IsTagBeingDragged(rt.GetCallsign()))
+			{
+				// If this line is only the 'remark' label and mouse is not on it skip it
+				if (line.Size() == 1) {
+					const char* firstToken = line[rapidjson::SizeType(0)].GetString(); // avoid [] ambiguity
+					std::string token = firstToken;
+					if (token == "remark") {
+						continue;
+					}
+				}
+			}
+			else {
+				// If this line is only the 'remark' label and it resolves to empty, skip it entirely
+				if (line.Size() == 1) {
+					const char* firstToken = line[rapidjson::SizeType(0)].GetString(); // avoid [] ambiguity
+					std::string token = firstToken;
+					if (token == "remark") {
+						const std::string& resolved = TagReplacingMap["remark"];
+						if (resolved.empty()) {
+							// Do not add height / width / render this line
+							continue;
+						}
+					}
+				}
+
+			}
+
 			vector<string> lineStringArray;
 
 			// Adds one line height
