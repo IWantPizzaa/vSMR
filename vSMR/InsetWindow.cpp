@@ -424,6 +424,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		TagClickableMap[TagReplacingMap["gstatus"]] = TAG_CITEM_GROUNDSTATUS;
 		TagClickableMap[TagReplacingMap["uk_stand"]] = TAG_CITEM_UKSTAND;
 		TagClickableMap[TagReplacingMap["remark"]] = TAG_CITEM_REMARK;
+		TagClickableMap[TagReplacingMap["scratchpad"]] = TAG_CITEM_SCRATCHPAD;
 
 
 		//
