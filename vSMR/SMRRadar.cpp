@@ -818,7 +818,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		{ TAG_CITEM_SID, TAG_ITEM_FUNCTION_ASSIGNED_SID },
 		{ TAG_CITEM_GATE, TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD },
 		{ TAG_CITEM_GROUNDSTATUS, TAG_ITEM_FUNCTION_SET_GROUND_STATUS },
-		{ TAG_CITEM_UKSTAND, 999999}
+		{ TAG_CITEM_UKSTAND, 999999},
+		{ TAG_CITEM_SCRATCHPAD, TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD },
 	};
 
 	if (Button == BUTTON_LEFT) {
@@ -840,7 +841,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		if (ObjectType == TAG_CITEM_UKSTAND) {
 			CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-			StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), "RampAgent", 0, Pt, Area); //FIXME: check correct plugin name and function
+			StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), "RampAgent", 0, Pt, Area);
 		}
 		else {
 		int TagMenu = TagObjectRightTypes[ObjectType];
@@ -1486,12 +1487,17 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string uk_stand;
 	uk_stand = fp.GetControllerAssignedData().GetFlightStripAnnotation(3);
 	if (uk_stand.length() == 0)
-		uk_stand = "NoGate";
+		uk_stand = "";
 
 	// ----- Ramp Agent Remark -------
 	string remark = fp.GetControllerAssignedData().GetFlightStripAnnotation(4);
 	if (remark.length() == 0)
 		remark = "";
+	
+	// ----- Scratchpad -------
+	string scratchpad = fp.GetControllerAssignedData().GetScratchPadString();
+	if (scratchpad.length() == 0)
+		scratchpad = "...";
 
 
 	// ----- Generating the replacing map -----
@@ -1553,6 +1559,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	TagReplacingMap["groundstatus"] = gstat;
 	TagReplacingMap["uk_stand"] = uk_stand;
 	TagReplacingMap["remark"] = remark;
+	TagReplacingMap["scratchpad"] = scratchpad;
 
 	return TagReplacingMap;
 }
@@ -2141,6 +2148,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		TagClickableMap[TagReplacingMap["groundstatus"]] = TAG_CITEM_GROUNDSTATUS;
 		TagClickableMap[TagReplacingMap["uk_stand"]] = TAG_CITEM_UKSTAND;
 		TagClickableMap[TagReplacingMap["remark"]] = TAG_CITEM_REMARK;
+		TagClickableMap[TagReplacingMap["scratchpad"]] = TAG_CITEM_SCRATCHPAD;
 
 		//
 		// ----- Now the hard part, drawing (using gdi+) -------
@@ -2173,7 +2181,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			if(!mouseWithin({ TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2) }) &&
 				!IsTagBeingDragged(rt.GetCallsign()))
-			{
+					{
 				// If this line is only the 'remark' label and mouse is not on it skip it
 				if (line.Size() == 1) {
 					const char* firstToken = line[rapidjson::SizeType(0)].GetString(); // avoid [] ambiguity
@@ -2186,7 +2194,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			else {
 				// If this line is only the 'remark' label and it resolves to empty, skip it entirely
 				if (line.Size() == 1) {
-					const char* firstToken = line[rapidjson::SizeType(0)].GetString(); // avoid [] ambiguity
+					const char* firstToken = line[rapidjson::SizeType(0)].GetString();
 					std::string token = firstToken;
 					if (token == "remark") {
 						const std::string& resolved = TagReplacingMap["remark"];
@@ -2196,7 +2204,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 						}
 					}
 				}
-
 			}
 
 			vector<string> lineStringArray;
@@ -2230,7 +2237,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			ReplacedLabelLines.push_back(lineStringArray);
 		}
-		TagHeight = TagHeight - 2;
 
 		Color definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color"]);
 		
