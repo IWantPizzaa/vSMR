@@ -397,7 +397,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		}
 	}
 
-	if (ObjectType == DRAWING_TAG || ObjectType == TAG_CITEM_MANUALCORRELATE ||ObjectType == TAG_CITEM_CALLSIGN || ObjectType == TAG_CITEM_FPBOX || ObjectType == TAG_CITEM_RWY || ObjectType == TAG_CITEM_SID || ObjectType == TAG_CITEM_GATE || ObjectType == TAG_CITEM_NO || ObjectType == TAG_CITEM_GROUNDSTATUS) {
+	if (ObjectType == DRAWING_TAG || ObjectType == TAG_CITEM_MANUALCORRELATE || ObjectType == TAG_CITEM_CALLSIGN || ObjectType == TAG_CITEM_FPBOX || ObjectType == TAG_CITEM_RWY || ObjectType == TAG_CITEM_SID || ObjectType == TAG_CITEM_GATE || ObjectType == TAG_CITEM_NO || ObjectType == TAG_CITEM_GROUNDSTATUS || TAG_CITEM_UKSTAND || TAG_CITEM_REMARK || TAG_CITEM_SCRATCHPAD) {
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 
 		if (!Released)
@@ -430,37 +430,67 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		}
 
 		if (rt.IsValid()) {
-			CRect Temp = Area;
-			POINT TagCenterPix = Temp.CenterPoint();
+			POINT TagCenterPix;
+
+			// First frame of drag: capture offset between tag center and grab point.
+			bool firstDragFrame = (!Released && TagBeingDragged != sObjectId);
+			if (firstDragFrame) {
+				POINT fullCenter{};
+				auto fullRectIt = tagAreas.find(sObjectId);
+				if (fullRectIt != tagAreas.end()) {
+					fullCenter = fullRectIt->second.CenterPoint();
+				}
+				else {
+					CRect tmp = Area;
+					fullCenter = tmp.CenterPoint();
+				}
+				POINT offset = { fullCenter.x - Pt.x, fullCenter.y - Pt.y };
+				TagDragOffsetFromCenter[sObjectId] = offset;
+			}
+
+			// Always apply stored offset if available (even on release) to avoid snap.
+			auto offIt = TagDragOffsetFromCenter.find(sObjectId);
+			if (offIt != TagDragOffsetFromCenter.end()) {
+				TagCenterPix.x = Pt.x + offIt->second.x;
+				TagCenterPix.y = Pt.y + offIt->second.y;
+			}
+			else {
+				// Fallbacks
+				CRect Temp = Area;
+				if (ObjectType == DRAWING_TAG)
+					TagCenterPix = Temp.CenterPoint();
+				else
+					TagCenterPix = Pt;
+			}
+
 			POINT AcPosPix = ConvertCoordFromPositionToPixel(GetPlugIn()->RadarTargetSelect(sObjectId).GetPosition().GetPosition());
 			POINT CustomTag = { TagCenterPix.x - AcPosPix.x, TagCenterPix.y - AcPosPix.y };
 
-			if (CurrentConfig->getActiveProfile()["labels"]["auto_deconfliction"].GetBool())
-			{
+			bool autoDef = CurrentConfig->getActiveProfile()["labels"]["auto_deconfliction"].GetBool();
+
+			if (autoDef && !Released) {
+				// During drag: live (unsnapped) angle to keep visual stability
 				double angle = RadToDeg(atan2(CustomTag.y, CustomTag.x));
-				angle = fmod(angle + 360, 360);
-				vector<double> angles;
-				for (double k = 0.0; k <= 360.0; k += 22.5)
-					angles.push_back(k);
-
-				TagAngles[sObjectId] = closest(angles, angle);
-				TagLeaderLineLength[sObjectId] = max(LeaderLineDefaultlenght, min(int(DistancePts(AcPosPix, TagCenterPix)), LeaderLineDefaultlenght * 2));
-
+				angle = fmod(angle + 360.0, 360.0);
+				TagAngles[sObjectId] = angle;
+				TagLeaderLineLength[sObjectId] = max(
+					LeaderLineDefaultlenght,
+					min(int(DistancePts(AcPosPix, TagCenterPix)), LeaderLineDefaultlenght * 2));
 			}
-			else
-			{
+			else {
+				// On release OR when auto deconfliction disabled: persist raw offset so it stays where dropped
 				TagsOffsets[sObjectId] = CustomTag;
+				TagAngles.erase(sObjectId);
+				TagLeaderLineLength.erase(sObjectId);
 			}
-
 
 			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
 
-			if (Released)
-			{
+			if (Released) {
 				TagBeingDragged = "";
+				TagDragOffsetFromCenter.erase(sObjectId);
 			}
-			else
-			{
+			else {
 				TagBeingDragged = sObjectId;
 			}
 
@@ -2173,22 +2203,41 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (!LabelLines.IsArray())
 			return;
 
+		CRect previousRect;
+		auto itPrev = previousTagSize.find(rt.GetCallsign());
+		if (itPrev != previousTagSize.end()) {
+			const int prevW = itPrev->second.Width();
+			const int prevH = itPrev->second.Height();
+			previousRect = CRect(TagCenter.x - (prevW / 2),
+				TagCenter.y - (prevH / 2),
+				TagCenter.x + (prevW / 2),
+				TagCenter.y + (prevH / 2));
+		}
+		else {
+			previousRect = CRect(TagCenter.x - (TagWidth / 2),
+				TagCenter.y - (TagHeight / 2),
+				TagCenter.x + (TagWidth / 2),
+				TagCenter.y + (TagHeight / 2));
+		}
+
 		for (unsigned int i = 0; i < LabelLines.Size(); i++)
 		{
 
 			const Value& line = LabelLines[i];
 
-
-			if(!mouseWithin({ TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2) }) &&
+			if(!mouseWithin(previousRect) &&
 				!IsTagBeingDragged(rt.GetCallsign()))
-					{
+			{
 				// If this line is only the 'remark' label and mouse is not on it skip it
 				if (line.Size() == 1) {
-					const char* firstToken = line[rapidjson::SizeType(0)].GetString(); // avoid [] ambiguity
+					const char* firstToken = line[rapidjson::SizeType(0)].GetString();
 					std::string token = firstToken;
 					if (token == "remark") {
 						continue;
 					}
+				}
+				if (TagReplacingMap["scratchpad"] == "...") {
+					TagReplacingMap["scratchpad"] = "";
 				}
 			}
 			else {
@@ -2205,6 +2254,18 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					}
 				}
 			}
+
+			// if all fields on this line are empty after replacement, skip it
+			bool allEmpty = true;
+			for (unsigned int j = 0; j < line.Size(); j++)
+			{
+				string element = line[j].GetString();
+				for (auto& kv : TagReplacingMap)
+					replaceAll(element, kv.first, kv.second);
+				if (!element.empty())
+					allEmpty = false;
+			}
+			if (allEmpty) continue;
 
 			vector<string> lineStringArray;
 
@@ -2235,8 +2296,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			TagWidth = max(TagWidth, TempTagWidth);
 
+
 			ReplacedLabelLines.push_back(lineStringArray);
 		}
+
+		previousTagSize[rt.GetCallsign()] = CRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
 
 		Color definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color"]);
 		
