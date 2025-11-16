@@ -92,6 +92,8 @@ public:
 	map<string, CRect> tagAreas;
 	map<string, double> TagAngles;
 	map<string, int> TagLeaderLineLength;
+	map<string, CRect> previousTagSize;
+	map<std::string, POINT> TagDragOffsetFromCenter;
 
 	bool QDMenabled = false;
 	bool QDMSelectEnabled = false;
