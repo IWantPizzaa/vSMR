@@ -2197,11 +2197,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		int oneLineHeight = (int)mesureRect.GetBottom();
 
 		const Value& LabelsSettings = CurrentConfig->getActiveProfile()["labels"];
-		const Value& LabelLines = LabelsSettings[Utils::getEnumString(TagType).c_str()]["definition"];
-		vector<vector<string>> ReplacedLabelLines;
-
-		if (!LabelLines.IsArray())
-			return;
 
 		CRect previousRect;
 		auto itPrev = previousTagSize.find(rt.GetCallsign());
@@ -2220,40 +2215,32 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				TagCenter.y + (TagHeight / 2));
 		}
 
+		bool isTagDetailled = mouseWithin(previousRect) || IsTagBeingDragged(rt.GetCallsign());
+
+		char* configKey = "definition";
+		if (LabelsSettings[Utils::getEnumString(TagType).c_str()].HasMember("definitionDetailled")) {
+			configKey = isTagDetailled ? "definitionDetailled" : "definition";
+		}
+
+		const Value& LabelLines = LabelsSettings[Utils::getEnumString(TagType).c_str()][configKey];
+
+		vector<vector<string>> ReplacedLabelLines;
+
+		if (!LabelLines.IsArray())
+			return;
+
 		for (unsigned int i = 0; i < LabelLines.Size(); i++)
 		{
 
 			const Value& line = LabelLines[i];
 
-			if(!mouseWithin(previousRect) &&
-				!IsTagBeingDragged(rt.GetCallsign()))
+			if(!isTagDetailled)
 			{
-				// If this line is only the 'remark' label and mouse is not on it skip it
-				if (line.Size() == 1) {
-					const char* firstToken = line[rapidjson::SizeType(0)].GetString();
-					std::string token = firstToken;
-					if (token == "remark") {
-						continue;
-					}
-				}
 				if (TagReplacingMap["scratchpad"] == "...") {
 					TagReplacingMap["scratchpad"] = "";
 				}
 			}
-			else {
-				// If this line is only the 'remark' label and it resolves to empty, skip it entirely
-				if (line.Size() == 1) {
-					const char* firstToken = line[rapidjson::SizeType(0)].GetString();
-					std::string token = firstToken;
-					if (token == "remark") {
-						const std::string& resolved = TagReplacingMap["remark"];
-						if (resolved.empty()) {
-							// Do not add height / width / render this line
-							continue;
-						}
-					}
-				}
-			}
+
 
 			// if all fields on this line are empty after replacement, skip it
 			bool allEmpty = true;
