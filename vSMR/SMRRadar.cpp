@@ -2429,7 +2429,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		int heightOffset = 0;
 		for (auto&& line : ReplacedLabelLines)
 		{
-			if (RimcasInstance->getMovementAlert(rt.GetCallsign()) != CRimcas::NONE)
+			if (RimcasInstance->getMovementAlert(rt.GetCallsign()) != CRimcas::NONE && TagType == TagTypes::Departure)
 			{
 				if (&line == &ReplacedLabelLines[0])
 				{
