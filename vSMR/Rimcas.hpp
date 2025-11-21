@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <unordered_set>
 #include <string>
 #include <algorithm>
 #define _USE_MATH_DEFINES
@@ -33,6 +34,7 @@ public:
 	COLORREF AlertColor = RGB(150, 0, 0);
 
 	enum RimcasAlertTypes { NoAlert, StageOne, StageTwo };
+	enum RimcasAlerts {NONE, XPDRSTDBY, NOPUSH, NOTAXI, NODEPA, STATRPA};
 
 	map<string, RunwayAreaType> RunwayAreas;
 	multimap<string, string> AcOnRunway;
@@ -40,6 +42,8 @@ public:
 	vector<int> CountdownDefinitionLVP;
 	multimap<string, string> ApproachingAircrafts;
 	map<string, map<int, string>> TimeTable;
+	unordered_set<string> inactiveAlerts;
+	map<string, RimcasAlerts> movementAlerts;
 	map<string, bool> MonitoredRunwayDep;
 	map<string, bool> MonitoredRunwayArr;
 	map<string, RimcasAlertTypes> AcColor;
@@ -110,6 +114,7 @@ public:
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor);
 
 	bool isAcOnRunway(string callsign);
+	void CheckForMovementAlert(CRadarTarget Rt);
 
 	vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
 
@@ -119,6 +124,7 @@ public:
 	void Reset();
 
 	RimcasAlertTypes getAlert(string callsign);
+	RimcasAlerts getMovementAlert(string callsign);
 
 	void setCountdownDefinition(vector<int> data, vector<int> dataLVP)
 	{
@@ -134,6 +140,13 @@ public:
 			ClosedRunway[runway] = true;
 		else
 			ClosedRunway[runway] = !ClosedRunway[runway];
+	}
+
+	void toggleActiveAlert(string alert) {
+		if (inactiveAlerts.find(alert) == inactiveAlerts.end())
+			inactiveAlerts.insert(alert);
+		else
+			inactiveAlerts.erase(alert);
 	}
 
 	void toggleMonitoredRunwayDep(string runway) {
