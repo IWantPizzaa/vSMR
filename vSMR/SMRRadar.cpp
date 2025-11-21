@@ -551,7 +551,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
-
+		
 		if (strcmp(sObjectId, "close") == 0)
 			appWindowDisplays[appWindowId] = false;
 		if (strcmp(sObjectId, "range") == 0) {
@@ -688,6 +688,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			GetPlugIn()->AddPopupListElement("Conflict Alert DEP", "", RIMCAS_OPEN_LIST);
 			GetPlugIn()->AddPopupListElement("Runway closed", "", RIMCAS_OPEN_LIST);
 			GetPlugIn()->AddPopupListElement("Visibility", "", RIMCAS_OPEN_LIST);
+			GetPlugIn()->AddPopupListElement("Active Alerts", "", RIMCAS_OPEN_LIST);
 			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		}
 
@@ -978,6 +979,12 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 
 		ShowLists["Colour Settings"] = true;
 
+		RequestRefresh();
+	}
+
+	if (FunctionId == RIMCAS_ALERTS_TOGGLE_FUNC) {
+		RimcasInstance->toggleActiveAlert(string(sItemString));
+		ShowLists["Active Alerts"] = true;
 		RequestRefresh();
 	}
 
@@ -2228,7 +2235,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (!LabelLines.IsArray())
 			return;
-
 		for (unsigned int i = 0; i < LabelLines.Size(); i++)
 		{
 
@@ -2287,6 +2293,32 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			ReplacedLabelLines.push_back(lineStringArray);
 		}
 
+		CRimcas::RimcasAlerts alert = RimcasInstance->getMovementAlert(rt.GetCallsign());
+		if (CRimcas::NONE != alert && TagType == TagTypes::Departure)
+		{
+			switch (alert)
+			{
+			case CRimcas::RimcasAlerts::XPDRSTDBY:
+				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "XPDR STDBY" });
+				break;
+			case CRimcas::RimcasAlerts::STATRPA:
+				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "STAT RPA" });
+				break;
+			case CRimcas::RimcasAlerts::NOPUSH:
+				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "NO PUSH" });
+				break;
+			case CRimcas::RimcasAlerts::NODEPA:
+				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "NO DEPA" });
+				break;
+			case CRimcas::RimcasAlerts::NOTAXI:
+				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "NO TAXI" });
+				break;
+			default:
+				break;
+			}
+			TagHeight += oneLineHeight;
+		}
+
 		previousTagSize[rt.GetCallsign()] = CRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
 
 		Color definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color"]);
@@ -2337,6 +2369,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		SolidBrush SquawkErrorColor(ColorManager->get_corrected_color("label",
 			CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
 		SolidBrush RimcasTextColor(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["alert_text_color"]));
+		SolidBrush AlertColorSoft(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["soft_alert_background_color"]));
+		SolidBrush AlertColorHard(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["hard_alert_background_color"]));
 		SolidBrush GroundPushColor(ColorManager->get_corrected_color("label",
 			CurrentConfig->getConfigColor(LabelsSettings["groundstatus_colors"]["push"])));
 		SolidBrush GroundTaxiColor(ColorManager->get_corrected_color("label",
@@ -2395,6 +2429,22 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		int heightOffset = 0;
 		for (auto&& line : ReplacedLabelLines)
 		{
+			if (RimcasInstance->getMovementAlert(rt.GetCallsign()) != CRimcas::NONE)
+			{
+				if (&line == &ReplacedLabelLines[0])
+				{
+					RectF mRect(0, 0, 0, 0);
+					wstring welement = wstring(line[0].begin(), line[0].end());
+					graphics.MeasureString(welement.c_str(), wcslen(welement.c_str()), customFonts[currentFontSize],
+						PointF(0, 0), &Gdiplus::StringFormat(), &mRect);
+					CRect ItemRect(TagBackgroundRect.left,
+						TagBackgroundRect.top + heightOffset,
+						TagBackgroundRect.left + TagWidth,
+						TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
+					SolidBrush& AlertColor = (welement == L"NO DEPA" || welement == L"STAT RPA" || welement == L"XPDR STDBY") ? AlertColorHard : AlertColorSoft;
+					graphics.FillRectangle(&AlertColor, CopyRect(ItemRect));
+				}
+			}
 			int widthOffset = 0;
 			for (auto&& element : line)
 			{
@@ -2505,6 +2555,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	Logger::info("Menu bar lists");
 
+
 	if (ShowLists["Conflict Alert ARR"]) {
 		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert ARR"], "CA Arrival", 1);
 		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
@@ -2541,6 +2592,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		GetPlugIn()->AddPopupListElement("Low", "", RIMCAS_UPDATE_LVP, false, int(isLVP));
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		ShowLists["Visibility"] = false;
+	}
+
+	if (ShowLists["Active Alerts"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Active Alerts"], "Active Alerts", 1);
+		GetPlugIn()->AddPopupListElement("XPDR STDBY", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("XPDR STDBY") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("No Push", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("No Push") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("No Taxi", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("No Taxi") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("No Depa", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("No Depa") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("STAT RPA", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("STAT RPA") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Active Alerts"] = false;
 	}
 
 	if (ShowLists["Profiles"]) {
