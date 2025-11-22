@@ -325,7 +325,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt)
 	bool isReversing = headingDiff >= 100;
 	// NO PUSH
 	if (inactiveAlerts.find("No Push") == inactiveAlerts.end()) {
-		if ("PUSH" != groundstate && 0 < pos.GetReportedGS() && isReversing) {
+		if ("PUSH" != groundstate && 2 < pos.GetReportedGS() && isReversing) {
 			movementAlerts[Rt.GetCallsign()] = NOPUSH;
 			return;
 		}
