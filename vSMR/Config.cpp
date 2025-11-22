@@ -2,12 +2,27 @@
 #include "Config.hpp"
 #include <algorithm>
 
-CConfig::CConfig(string configPath)
+CConfig::CConfig(string configPath, string mapPath)
 {
 	config_path = configPath;
+	map_path = mapPath;
 	loadConfig();
+	loadMap();
 
 	setActiveProfile("Default");
+}
+
+vector<string> CConfig::getMapElementsForZoomLevel(int zoomLevel)
+{
+	vector<string> out;
+	for (auto it = maps.begin(); it != maps.end(); ++it)
+	{
+		if (it->first <= zoomLevel)
+		{
+			out.insert(out.end(), it->second.begin(), it->second.end());
+		}
+	}
+	return out;
 }
 
 void CConfig::loadConfig() {
@@ -34,6 +49,32 @@ void CConfig::loadConfig() {
 		string profile_name = profile["name"].GetString();
 
 		profiles.insert(pair<string, rapidjson::SizeType>(profile_name, i));
+	}
+}
+
+void CConfig::loadMap()
+{
+	stringstream ss;
+	ifstream ifs(map_path.c_str(), std::ios::binary);
+	if (!ifs) {
+		return; // no map defined
+	}
+	ss << ifs.rdbuf();
+	ifs.close();
+
+	if (mapDocument.Parse<0>(ss.str().c_str()).HasParseError()) {
+		AfxMessageBox("An error parsing vSMR maps occurred.\nOnce fixed, reload the config by typing '.smr reload'", MB_OK);
+	
+		ASSERT(AfxGetMainWnd() != NULL);
+		AfxGetMainWnd()->SendMessage(WM_CLOSE);
+	}
+
+	assert(mapDocument.IsArray());
+	for (SizeType i = 0; i < mapDocument.Size(); i++) {
+		const Value& map = mapDocument[i];
+		int mapZoomLevel = map["zoomLevel"].GetInt();
+		string element = map["element"].GetString();
+		maps[mapZoomLevel].push_back(element);
 	}
 }
 

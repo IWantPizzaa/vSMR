@@ -59,6 +59,7 @@ CSMRRadar::CSMRRadar()
 	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
 	
 	ConfigPath = DllPath + "\\vSMR_Profiles.json";
+	mapsPath = DllPath + "\\vSMR_Maps.json";
 
 	Logger::info("Loading callsigns");
 
@@ -92,7 +93,7 @@ CSMRRadar::CSMRRadar()
 
 	// Loading up the config file
 	if (CurrentConfig == nullptr)
-		CurrentConfig = new CConfig(ConfigPath);
+		CurrentConfig = new CConfig(ConfigPath, mapsPath);
 
 	if (ColorManager == nullptr)
 		ColorManager = new CColorManager();
@@ -1296,7 +1297,7 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 {
 	Logger::info(string(__FUNCSIG__));
 	if (strcmp(sCommandLine, ".smr reload") == 0) {
-		CurrentConfig = new CConfig(ConfigPath);
+		CurrentConfig = new CConfig(ConfigPath, mapsPath);
 		LoadProfile(CurrentConfig->getActiveProfileName());
 		return true;
 	}
@@ -1716,6 +1717,48 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		BLINK = !BLINK;
 		RefreshAirportActivity();
 	}
+
+	// Calculate zoom level
+	CPosition radarDownLeft;
+	CPosition radarUpRight;
+	GetDisplayArea(&radarDownLeft, &radarUpRight);
+	double radarCrossDistance = Haversine(radarDownLeft, radarUpRight);
+	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
+	
+	if (NewRadarViewZoomLevel != RadarViewZoomLevel) {
+		RadarViewZoomLevel = NewRadarViewZoomLevel;
+		// Draw items based on asr config & zoom level
+		vector<string> allItems = CurrentConfig->getMapElementsForZoomLevel(14);
+		vector<string> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
+		map<string, bool> drawItemMap;
+		for (const auto& item : allItems) {
+			if (find(itemsToDraw.begin(), itemsToDraw.end(), item) != itemsToDraw.end()) {
+				drawItemMap[item] = true;
+			}
+			else {
+				drawItemMap[item] = false;
+			}
+		}
+
+		for (const auto& [elementName, toDraw] : drawItemMap) {
+			size_t slashPos = elementName.find("/");
+			if (slashPos == string::npos) continue;
+			string category = elementName.substr(0, slashPos);
+			string name = elementName.substr(slashPos + 1);
+
+			int elementCategory = getIntFromCategory(category);
+			if (elementCategory == -1) continue;
+			CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
+			while (element.IsValid()) {
+				if (strncmp(name.c_str(), element.GetName(), strlen(name.c_str())) == 0) {
+					ShowSectorFileElement(element,element.GetComponentName(0), toDraw);
+				}
+				element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
+			}
+		}
+		RefreshMapContent();
+	}
+
 
 	if (!QDMenabled && !QDMSelectEnabled)
 	{
