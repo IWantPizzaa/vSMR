@@ -33,11 +33,11 @@ void CRimcas::OnRefreshBegin(bool isLVP) {
 	movementAlerts.clear();
 }
 
-void CRimcas::OnRefresh(CRadarTarget Rt, CRadarScreen* instance, bool isCorrelated) {
+void CRimcas::OnRefresh(CRadarTarget Rt, CRadarScreen* instance, bool isCorrelated, bool isLVP) {
 	Logger::info(string(__FUNCSIG__));
 	GetAcInRunwayArea(Rt, instance);
 	GetAcInRunwayAreaSoon(Rt, instance, isCorrelated);
-	CheckForMovementAlert(Rt, instance);
+	CheckForMovementAlert(Rt, instance, isLVP);
 }
 
 void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string runway_name2, vector<CPosition> Definition) {
@@ -312,7 +312,7 @@ string CRimcas::AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance)
 	return string();
 }
 
-void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance)
+void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, bool isLVP)
 {
 	CFlightPlan fp = Rt.GetCorrelatedFlightPlan();
 	CRadarTargetPositionData pos = Rt.GetPosition();
@@ -383,7 +383,8 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance)
 
 	// HIGHS SPD
 	if (inactiveAlerts.find("HIGH SPD") == inactiveAlerts.end()) {
-		if ("DEPA" != groundstate && 35 < pos.GetReportedGS() && rwyOn == "") {
+		int speedThreashold = isLVP ? 25 : 35;
+		if ("DEPA" != groundstate && speedThreashold < pos.GetReportedGS() && rwyOn == "") {
 			movementAlerts[Rt.GetCallsign()] = HIGHSPD;
 			return;
 		}
