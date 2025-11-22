@@ -120,12 +120,12 @@ public:
 
 	bool isAcOnRunway(string callsign);
 	string AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance);
-	void CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance);
+	void CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, bool isLVP);
 
 	vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
 
 	void OnRefreshBegin(bool isLVP);
-	void OnRefresh(CRadarTarget Rt, CRadarScreen *instance, bool isCorrelated);
+	void OnRefresh(CRadarTarget Rt, CRadarScreen *instance, bool isCorrelated, bool isLVP);
 	void OnRefreshEnd(CRadarScreen *instance, int threshold);
 	void Reset();
 
