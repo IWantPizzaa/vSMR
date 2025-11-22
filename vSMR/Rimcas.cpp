@@ -13,6 +13,7 @@ CRimcas::~CRimcas()
 void CRimcas::Reset() {
 	Logger::info(string(__FUNCSIG__));
 	RunwayAreas.clear();
+	RunwayStatuses.clear();
 	AcColor.clear();
 	AcOnRunway.clear();
 	TimeTable.clear();
@@ -36,7 +37,7 @@ void CRimcas::OnRefresh(CRadarTarget Rt, CRadarScreen* instance, bool isCorrelat
 	Logger::info(string(__FUNCSIG__));
 	GetAcInRunwayArea(Rt, instance);
 	GetAcInRunwayAreaSoon(Rt, instance, isCorrelated);
-	CheckForMovementAlert(Rt);
+	CheckForMovementAlert(Rt, instance);
 }
 
 void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string runway_name2, vector<CPosition> Definition) {
@@ -199,11 +200,13 @@ vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float 
 	vector<CPosition> out;
 
 	double RunwayBearing = RadToDeg(TrueBearing(Left, Right));
-
-	out.push_back(BetterHarversine(Left, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Left
-	out.push_back(BetterHarversine(Right, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Right
-	out.push_back(BetterHarversine(Right, fmod(RunwayBearing - 90, 360), hwidth)); // Top Right
-	out.push_back(BetterHarversine(Left, fmod(RunwayBearing - 90, 360), hwidth)); // Top Left
+	float padding = hwidth * 4;
+	CPosition leftPadded = BetterHarversine(Left, fmod(RunwayBearing + 180, 360), padding);
+	CPosition rightPadded = BetterHarversine(Right, fmod(RunwayBearing, 360), padding);
+	out.push_back(BetterHarversine(leftPadded, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Left
+	out.push_back(BetterHarversine(rightPadded, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Right
+	out.push_back(BetterHarversine(rightPadded, fmod(RunwayBearing - 90, 360), hwidth)); // Top Right
+	out.push_back(BetterHarversine(leftPadded, fmod(RunwayBearing - 90, 360), hwidth)); // Top Left
 
 	return out;
 }
@@ -293,15 +296,62 @@ bool CRimcas::isAcOnRunway(string callsign) {
 	return false;
 }
 
-void CRimcas::CheckForMovementAlert(CRadarTarget Rt)
+string CRimcas::AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance)
+{
+	Logger::info(string(__FUNCSIG__));
+	for (const auto rwy : RunwayAreas) {
+		POINT acPosPix = instance->ConvertCoordFromPositionToPixel(Rt.GetPosition().GetPosition());
+		vector<POINT> runwayOnScreen;
+		for (const auto& point : rwy.second.Definition) {
+			runwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(point));
+		}
+		if (Is_Inside(acPosPix, runwayOnScreen)) {
+			return rwy.first;
+		}
+	}
+	return string();
+}
+
+void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance)
 {
 	CFlightPlan fp = Rt.GetCorrelatedFlightPlan();
 	CRadarTargetPositionData pos = Rt.GetPosition();
 	if (false == fp.IsValid() || false == pos.IsValid()) {
-		movementAlerts[Rt.GetCallsign()] = NONE;
+		movementAlerts[Rt.GetCallsign()] = CRimcas::RimcasAlerts::NONE;
 		return;
 	}
 	std::string groundstate = fp.GetGroundState();
+	string rwyOn = AcOnRunwayFunc(Rt, instance);
+
+	// RWY CLSD
+	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
+		if (rwyOn != "") {
+			if (RunwayStatuses[rwyOn] == CLSD) {
+				movementAlerts[Rt.GetCallsign()] = RWYCLSD;
+				return;
+			}
+		}
+	}
+	
+	// RWY TYPE
+	if (inactiveAlerts.find("RWY TYPE") == inactiveAlerts.end()) {
+		if (rwyOn != "") {
+			if (RunwayStatuses[rwyOn] == ARR) {
+				movementAlerts[Rt.GetCallsign()] = RWYTYPE;
+				return;
+			}
+		}
+	}
+
+	// RWY INCURSION
+	if (inactiveAlerts.find("RWY INC") == inactiveAlerts.end()) {
+		if ("DEPA" != groundstate) {
+			if (rwyOn != "") {
+				movementAlerts[Rt.GetCallsign()] = RWYINC;
+				return;
+			}
+		}
+	}
 
 	// XPDR STDBY
 	if (inactiveAlerts.find("XPDR STDBY") == inactiveAlerts.end()) {
@@ -324,31 +374,46 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt)
 	if (headingDiff > 180) headingDiff = 360 - headingDiff;
 	bool isReversing = headingDiff >= 100;
 	// NO PUSH
-	if (inactiveAlerts.find("No Push") == inactiveAlerts.end()) {
+	if (inactiveAlerts.find("NO PUSH") == inactiveAlerts.end()) {
 		if ("PUSH" != groundstate && 2 < pos.GetReportedGS() && isReversing) {
 			movementAlerts[Rt.GetCallsign()] = NOPUSH;
 			return;
 		}
 	}
 
-	// NO DEPA
-	if (inactiveAlerts.find("No Depa") == inactiveAlerts.end()) {
-		if ("DEPA" != groundstate && 35 < pos.GetReportedGS()) {
-			movementAlerts[Rt.GetCallsign()] = NODEPA;
+	// HIGHS SPD
+	if (inactiveAlerts.find("HIGH SPD") == inactiveAlerts.end()) {
+		if ("DEPA" != groundstate && 35 < pos.GetReportedGS() && rwyOn == "") {
+			movementAlerts[Rt.GetCallsign()] = HIGHSPD;
+			return;
+		}
+	}
+
+	// NO TKOF
+	if (inactiveAlerts.find("NO TKOF") == inactiveAlerts.end()) {
+		if ("DEPA" != groundstate && 35 < pos.GetReportedGS() && rwyOn != "") {
+			movementAlerts[Rt.GetCallsign()] = NOTKOF;
 			return;
 		}
 	}
 
 	// NO TAXI
-	if (inactiveAlerts.find("No Taxi") == inactiveAlerts.end()) {
-		if (true == fp.IsValid()) {
-			if ("TAXI" != groundstate && 5 < pos.GetReportedGS() && !isReversing) {
-				movementAlerts[Rt.GetCallsign()] = NOTAXI;
-				return;
-			}
+	if (inactiveAlerts.find("NO TAXI") == inactiveAlerts.end()) {
+		if ("TAXI" != groundstate && 5 < pos.GetReportedGS() && !isReversing) {
+			movementAlerts[Rt.GetCallsign()] = NOTAXI;
+			return;
 		}
 	}
-	movementAlerts[Rt.GetCallsign()] = NONE;
+
+	// EMERG
+	if (inactiveAlerts.find("EMERG") == inactiveAlerts.end()) {
+		if (strcmp(Rt.GetPosition().GetSquawk(), "7700") == 0) {
+			movementAlerts[Rt.GetCallsign()] = EMERG;
+			return;
+		}
+	}
+
+	movementAlerts[Rt.GetCallsign()] = CRimcas::RimcasAlerts::NONE;
 }
 
 CRimcas::RimcasAlertTypes CRimcas::getAlert(string callsign)
@@ -364,9 +429,49 @@ CRimcas::RimcasAlerts CRimcas::getMovementAlert(string callsign)
 {
 	Logger::info(string(__FUNCSIG__));
 	if (movementAlerts.find(callsign) == movementAlerts.end())
-		return NONE;
+		return CRimcas::RimcasAlerts::NONE;
 
 	return movementAlerts[callsign];
+}
+
+CRimcas::RimcasAlertSeverity CRimcas::getAlertSeverity(RimcasAlerts alert)
+{
+	switch (alert)
+	{
+	case CRimcas::XPDRSTDBY:
+		return RimcasAlertSeverity::WARNING;
+		break;
+	case CRimcas::NOPUSH:
+		return RimcasAlertSeverity::CAUTION;
+		break;
+	case CRimcas::NOTAXI:
+		return RimcasAlertSeverity::CAUTION;
+		break;
+	case CRimcas::NOTKOF:
+		return RimcasAlertSeverity::WARNING;
+		break;
+	case CRimcas::STATRPA:
+		return RimcasAlertSeverity::WARNING;
+		break;
+	case CRimcas::RWYINC:
+		return RimcasAlertSeverity::WARNING;
+		break;
+	case CRimcas::HIGHSPD:
+		return RimcasAlertSeverity::CAUTION;
+		break;
+	case CRimcas::RWYTYPE:
+		return RimcasAlertSeverity::CAUTION;
+		break;
+	case CRimcas::RWYCLSD:
+		return RimcasAlertSeverity::WARNING;
+		break;
+	case CRimcas::EMERG:
+		return RimcasAlertSeverity::WARNING;
+		break;
+	default:
+		return RimcasAlertSeverity::CAUTION;
+		break;
+	}
 }
 
 Color CRimcas::GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo) {

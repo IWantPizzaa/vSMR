@@ -50,7 +50,7 @@ public:
 	static map<string, string> vStripsStands;
 
 	bool BLINK = false;
-
+	bool drawRunways = false;
 	map<string, POINT> TagsOffsets;
 
 	vector<string> Active_Arrivals;

@@ -34,9 +34,12 @@ public:
 	COLORREF AlertColor = RGB(150, 0, 0);
 
 	enum RimcasAlertTypes { NoAlert, StageOne, StageTwo };
-	enum RimcasAlerts {NONE, XPDRSTDBY, NOPUSH, NOTAXI, NODEPA, STATRPA};
+	enum RimcasAlerts {NONE, XPDRSTDBY, NOPUSH, NOTAXI, NOTKOF, STATRPA, RWYINC, HIGHSPD, RWYCLSD, RWYTYPE, EMERG};
+	enum RimcasAlertSeverity { WARNING, CAUTION };
+	enum RunwayStatus { DEP, ARR, BOTH, CLSD};
 
 	map<string, RunwayAreaType> RunwayAreas;
+	map<string, RunwayStatus> RunwayStatuses;
 	multimap<string, string> AcOnRunway;
 	vector<int> CountdownDefinition;
 	vector<int> CountdownDefinitionLVP;
@@ -110,12 +113,14 @@ public:
 	string GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen *instance);
 	string GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen *instance, bool isCorrelated);
 	void AddRunwayArea(CRadarScreen *instance, string runway_name1, string runway_name2, vector<CPosition> Definition);
+	void SetRunwayStatus(string runway, RunwayStatus status) { RunwayStatuses[runway] = status; }
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor);
 	const unordered_set<string> GetInactiveAlerts() { return inactiveAlerts; }
 
 	bool isAcOnRunway(string callsign);
-	void CheckForMovementAlert(CRadarTarget Rt);
+	string AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance);
+	void CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance);
 
 	vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
 
@@ -126,6 +131,7 @@ public:
 
 	RimcasAlertTypes getAlert(string callsign);
 	RimcasAlerts getMovementAlert(string callsign);
+	RimcasAlertSeverity getAlertSeverity(RimcasAlerts alert);
 
 	void setInactiveAlerts(unordered_set<string> alerts) {
 		inactiveAlerts = alerts;

@@ -476,7 +476,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			
 			TagsOffsets[sObjectId] = CustomTag;
 			TagAngles[sObjectId] = fmod(atan2(double(CustomTag.y), double(CustomTag.x)) * 180.0 / PI, 360);
-			TagLeaderLineLength[sObjectId] = sqrt(double(CustomTag.x * CustomTag.x + CustomTag.y * CustomTag.y));
+			TagLeaderLineLength[sObjectId] = static_cast<int>(sqrt(double(CustomTag.x * CustomTag.x + CustomTag.y * CustomTag.y)));
 
 			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
 
@@ -1300,6 +1300,12 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		LoadProfile(CurrentConfig->getActiveProfileName());
 		return true;
 	}
+	if (strcmp(sCommandLine, ".smr draw") == 0) {
+		// Draw runways areas on radar screen
+		drawRunways = !drawRunways;
+		RequestRefresh();
+		return true;
+	}
 
 	return false;
 }
@@ -1799,7 +1805,43 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			RimcasInstance->AddRunwayArea(this, runway_name, runway_name2, def);
 
+			// Check runway statuses
+			bool isDepartureRwy = rwy.IsElementActive(true);
+			bool isArrivalRwy = rwy.IsElementActive(false);
+			if (isDepartureRwy) {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::BOTH);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::DEP);
+				}
+			}
+			else {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::ARR);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::CLSD);
+				}
+
+			}
+
 			string RwName = runway_name + " / " + runway_name2;
+
+			if (drawRunways) {
+
+				PointF lpPoints[5000];
+				int w = 0;
+				for (auto& Point : def)
+				{
+					POINT toDraw = ConvertCoordFromPositionToPixel(Point);
+
+					lpPoints[w] = { REAL(toDraw.x), REAL(toDraw.y) };
+					w++;
+				}
+				Pen pw(ColorManager->get_corrected_color("label", Color::White));
+				graphics.DrawPolygon( &pw, lpPoints, w);
+			}
 
 			if (RimcasInstance->ClosedRunway.find(RwName) != RimcasInstance->ClosedRunway.end()) {
 				if (RimcasInstance->ClosedRunway[RwName]) {
@@ -1846,11 +1888,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 					}
 					else {
-						vector<CPosition> Area = RimcasInstance->GetRunwayArea(Left, Right);
-
 						PointF lpPoints[5000];
 						int w = 0;
-						for(auto &Point : Area)
+						for(auto &Point : def)
 						{
 							POINT toDraw = ConvertCoordFromPositionToPixel(Point);
 
@@ -2287,29 +2327,52 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			ReplacedLabelLines.push_back(lineStringArray);
 		}
 
+		string alertStr;
 		CRimcas::RimcasAlerts alert = RimcasInstance->getMovementAlert(rt.GetCallsign());
 		if (CRimcas::NONE != alert && TagType == TagTypes::Departure)
 		{
 			switch (alert)
 			{
 			case CRimcas::RimcasAlerts::XPDRSTDBY:
-				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "XPDR STDBY" });
+				alertStr = "XPDR STDBY";
 				break;
 			case CRimcas::RimcasAlerts::STATRPA:
-				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "STAT RPA" });
+				alertStr = "STAT RPA";
 				break;
 			case CRimcas::RimcasAlerts::NOPUSH:
-				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "NO PUSH" });
+				alertStr = "NO PUSH CLR";
 				break;
-			case CRimcas::RimcasAlerts::NODEPA:
-				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "NO DEPA" });
+			case CRimcas::RimcasAlerts::NOTKOF:
+				alertStr = "NO TKOF CLR";
 				break;
 			case CRimcas::RimcasAlerts::NOTAXI:
-				ReplacedLabelLines.insert(ReplacedLabelLines.begin(), { "NO TAXI" });
+				alertStr = "NO TAXI CLR";
+				break;
+			case CRimcas::RimcasAlerts::RWYINC:
+				alertStr = "RWY INCURSION";
+				break;
+			case CRimcas::RimcasAlerts::RWYTYPE:
+				alertStr = "RWY TYPE";
+				break;
+			case CRimcas::RimcasAlerts::RWYCLSD:
+				alertStr = "RWY CLOSED";
+				break;
+			case CRimcas::RimcasAlerts::HIGHSPD:
+				alertStr = "HIGH SPEED";
+				break;
+			case CRimcas::RimcasAlerts::EMERG:
+				alertStr = "EMERG";
 				break;
 			default:
 				break;
 			}
+			
+			wstring wstr = wstring(alertStr.begin(), alertStr.end());
+			graphics.MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
+				customFonts[currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+
+			int TempTagWidth = (int)mesureRect.GetRight();
+			TagWidth = max(TagWidth, TempTagWidth);
 			TagHeight += oneLineHeight;
 		}
 
@@ -2362,9 +2425,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["text_color"])));
 		SolidBrush SquawkErrorColor(ColorManager->get_corrected_color("label",
 			CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
-		SolidBrush RimcasTextColor(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["alert_text_color"]));
-		SolidBrush AlertColorSoft(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["soft_alert_background_color"]));
-		SolidBrush AlertColorHard(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["hard_alert_background_color"]));
+		SolidBrush AlertTextColorCaution(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["cauton_alert_text_color"]));
+		SolidBrush AlertTextColorWarning(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["warning_alert_text_color"]));
+		SolidBrush AlertColorCaution(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["caution_alert_background_color"]));
+		SolidBrush AlertColorWarning(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["warning_alert_background_color"]));
 
 
 		// Drawing the leader line
@@ -2376,37 +2440,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		// If we use a RIMCAS label only, we display it, and adapt the rectangle
 		CRect oldCrectSave = TagBackgroundRect;
 
-		if (rimcasLabelOnly) {
-			Color RimcasLabelColor = RimcasInstance->GetAircraftColor(rt.GetCallsign(), Color::AliceBlue, Color::AliceBlue,
-				CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
-				CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"]));
-
-			if (RimcasLabelColor.ToCOLORREF() != Color(Color::AliceBlue).ToCOLORREF()) {
-				RimcasLabelColor = ColorManager->get_corrected_color("label", RimcasLabelColor);
-				int rimcas_height = 0;
-
-				wstring wrimcas_height = wstring(L"ALERT");
-
-				RectF RectRimcas_height;
-
-				graphics.MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), customFonts[currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &RectRimcas_height);
-				rimcas_height = int(RectRimcas_height.GetBottom());
-
-				// Drawing the rectangle
-
-				CRect RimcasLabelRect(TagBackgroundRect.left, TagBackgroundRect.top - rimcas_height, TagBackgroundRect.right, TagBackgroundRect.top);
-				graphics.FillRectangle(&SolidBrush(RimcasLabelColor), CopyRect(RimcasLabelRect));
-				TagBackgroundRect.top -= rimcas_height;
-
-				// Drawing the text
-
-				wstring rimcasw = wstring(L"ALERT");
-				StringFormat stformat = new StringFormat();
-				stformat.SetAlignment(StringAlignment::StringAlignmentCenter);
-				graphics.DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), customFonts[currentFontSize], PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, &RimcasTextColor);
-			}
-		}
-
 		// Adding the tag screen object
 		tagAreas[rt.GetCallsign()] = TagBackgroundRect;
 		AddScreenObject(DRAWING_TAG, rt.GetCallsign(), TagBackgroundRect, true, GetBottomLine(rt.GetCallsign()).c_str());
@@ -2415,33 +2448,47 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		// Clickable zones
 		int heightOffset = 0;
+		// Drawing Alert
+		if (RimcasInstance->getMovementAlert(rt.GetCallsign()) != CRimcas::NONE && TagType == TagTypes::Departure)
+		{
+			RectF mRect(0, 0, 0, 0);
+			wstring welement = wstring(alertStr.begin(), alertStr.end());
+			graphics.MeasureString(welement.c_str(), wcslen(welement.c_str()), customFonts[currentFontSize],
+				PointF(0, 0), &Gdiplus::StringFormat(), &mRect);
+			CRect ItemRect(TagBackgroundRect.left,
+				TagBackgroundRect.top + heightOffset,
+				TagBackgroundRect.left + TagWidth,
+				TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
+			CRimcas::RimcasAlertSeverity severity = RimcasInstance->getAlertSeverity(RimcasInstance->getMovementAlert(rt.GetCallsign()));
+			SolidBrush& AlertColor = severity == CRimcas::RimcasAlertSeverity::WARNING ? AlertColorWarning : AlertColorCaution;
+			SolidBrush* RimcasTextColor = severity ? &AlertTextColorWarning : &AlertTextColorCaution;
+			graphics.FillRectangle(&AlertColor, CopyRect(ItemRect));
+
+			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
+
+			graphics.DrawString(walertStr.c_str(), wcslen(walertStr.c_str()), customFonts[currentFontSize],
+				PointF(Gdiplus::REAL(TagBackgroundRect.left), Gdiplus::REAL(TagBackgroundRect.top + heightOffset)),
+				&Gdiplus::StringFormat(), RimcasTextColor);
+
+
+			graphics.MeasureString(walertStr.c_str(), wcslen(walertStr.c_str()), customFonts[currentFontSize],
+				PointF(0, 0), &Gdiplus::StringFormat(), &mRect);
+
+			CRect alertRect(TagBackgroundRect.left, TagBackgroundRect.top + heightOffset,
+				TagBackgroundRect.left + (int)mRect.GetRight(), TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
+
+			AddScreenObject(TagClickableMap[alertStr], rt.GetCallsign(), alertRect, true, GetBottomLine(rt.GetCallsign()).c_str());
+			heightOffset += oneLineHeight;
+		}
 		for (auto&& line : ReplacedLabelLines)
 		{
-			if (RimcasInstance->getMovementAlert(rt.GetCallsign()) != CRimcas::NONE && TagType == TagTypes::Departure)
-			{
-				if (&line == &ReplacedLabelLines[0])
-				{
-					RectF mRect(0, 0, 0, 0);
-					wstring welement = wstring(line[0].begin(), line[0].end());
-					graphics.MeasureString(welement.c_str(), wcslen(welement.c_str()), customFonts[currentFontSize],
-						PointF(0, 0), &Gdiplus::StringFormat(), &mRect);
-					CRect ItemRect(TagBackgroundRect.left,
-						TagBackgroundRect.top + heightOffset,
-						TagBackgroundRect.left + TagWidth,
-						TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
-					SolidBrush& AlertColor = (welement == L"NO DEPA" || welement == L"STAT RPA" || welement == L"XPDR STDBY") ? AlertColorHard : AlertColorSoft;
-					graphics.FillRectangle(&AlertColor, CopyRect(ItemRect));
-				}
-			}
+
 			int widthOffset = 0;
 			for (auto&& element : line)
 			{
 				SolidBrush* color = &FontColor;
 				if (TagReplacingMap["sqerror"].size() > 0 && strcmp(element.c_str(), TagReplacingMap["sqerror"].c_str()) == 0)
 					color = &SquawkErrorColor;
-
-				if (RimcasInstance->getAlert(rt.GetCallsign()) != CRimcas::NoAlert)
-					color = &RimcasTextColor;
 
 				RectF mRect(0, 0, 0, 0);
 
@@ -2577,10 +2624,15 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (ShowLists["Active Alerts"]) {
 		GetPlugIn()->OpenPopupList(ListAreas["Active Alerts"], "Active Alerts", 1);
 		GetPlugIn()->AddPopupListElement("XPDR STDBY", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("XPDR STDBY") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("No Push", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("No Push") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("No Taxi", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("No Taxi") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("No Depa", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("No Depa") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("NO PUSH", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO PUSH") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("NO TAXI", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO TAXI") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("NO TKOF", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO TKOF") == RimcasInstance->inactiveAlerts.end());
 		GetPlugIn()->AddPopupListElement("STAT RPA", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("STAT RPA") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("RWY INC", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY INC") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("RWY TYPE", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY TYPE") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("RWY CLSD", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY CLSD") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("HIGH SPD", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("HIGH SPD") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("EMERG", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("EMERG") == RimcasInstance->inactiveAlerts.end());
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		ShowLists["Active Alerts"] = false;
 	}
