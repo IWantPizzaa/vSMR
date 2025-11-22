@@ -12,9 +12,9 @@ CConfig::CConfig(string configPath, string mapPath)
 	setActiveProfile("Default");
 }
 
-vector<string> CConfig::getMapElementsForZoomLevel(int zoomLevel)
+vector<CConfig::mapData> CConfig::getMapElementsForZoomLevel(int zoomLevel)
 {
-	vector<string> out;
+	vector<CConfig::mapData> out;
 	for (auto it = maps.begin(); it != maps.end(); ++it)
 	{
 		if (it->first <= zoomLevel)
@@ -74,7 +74,12 @@ void CConfig::loadMap()
 		const Value& map = mapDocument[i];
 		int mapZoomLevel = map["zoomLevel"].GetInt();
 		string element = map["element"].GetString();
-		maps[mapZoomLevel].push_back(element);
+		string active;
+		if (map.HasMember("active"))
+			active = map["active"].GetString();
+
+		mapData data = { element, active };
+		maps[mapZoomLevel].push_back(data);
 	}
 }
 
