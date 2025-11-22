@@ -112,6 +112,7 @@ public:
 	void AddRunwayArea(CRadarScreen *instance, string runway_name1, string runway_name2, vector<CPosition> Definition);
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor);
+	const unordered_set<string> GetInactiveAlerts() { return inactiveAlerts; }
 
 	bool isAcOnRunway(string callsign);
 	void CheckForMovementAlert(CRadarTarget Rt);
@@ -125,6 +126,10 @@ public:
 
 	RimcasAlertTypes getAlert(string callsign);
 	RimcasAlerts getMovementAlert(string callsign);
+
+	void setInactiveAlerts(unordered_set<string> alerts) {
+		inactiveAlerts = alerts;
+	}
 
 	void setCountdownDefinition(vector<int> data, vector<int> dataLVP)
 	{

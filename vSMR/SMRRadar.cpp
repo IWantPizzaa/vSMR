@@ -187,12 +187,19 @@ void CSMRRadar::LoadCustomFont() {
 
 void CSMRRadar::LoadProfile(string profileName) {
 	Logger::info(string(__FUNCSIG__));
+	// Saving old profile data
+	CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+
 	// Loading the new profile
 	CurrentConfig->setActiveProfile(profileName);
 
 	// Loading all the new data
 	const Value &RimcasTimer = CurrentConfig->getActiveProfile()["rimcas"]["timer"];
 	const Value &RimcasTimerLVP = CurrentConfig->getActiveProfile()["rimcas"]["timer_lvp"];
+
+	// Inactive alerts
+	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
+	RimcasInstance->setInactiveAlerts(inactiveAlerts);
 
 	vector<int> RimcasNorm;
 	for (SizeType i = 0; i < RimcasTimer.Size(); i++) {
@@ -466,23 +473,9 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			POINT AcPosPix = ConvertCoordFromPositionToPixel(GetPlugIn()->RadarTargetSelect(sObjectId).GetPosition().GetPosition());
 			POINT CustomTag = { TagCenterPix.x - AcPosPix.x, TagCenterPix.y - AcPosPix.y };
 
-			bool autoDef = CurrentConfig->getActiveProfile()["labels"]["auto_deconfliction"].GetBool();
-
-			if (autoDef && !Released) {
-				// During drag: live (unsnapped) angle to keep visual stability
-				double angle = RadToDeg(atan2(CustomTag.y, CustomTag.x));
-				angle = fmod(angle + 360.0, 360.0);
-				TagAngles[sObjectId] = angle;
-				TagLeaderLineLength[sObjectId] = max(
-					LeaderLineDefaultlenght,
-					min(int(DistancePts(AcPosPix, TagCenterPix)), LeaderLineDefaultlenght * 2));
-			}
-			else {
-				// On release OR when auto deconfliction disabled: persist raw offset so it stays where dropped
-				TagsOffsets[sObjectId] = CustomTag;
-				TagAngles.erase(sObjectId);
-				TagLeaderLineLength.erase(sObjectId);
-			}
+			
+			TagsOffsets[sObjectId] = CustomTag;
+			TagAngles[sObjectId] = fmod(atan2(double(CustomTag.y), double(CustomTag.x)) * 180.0 / PI, 360);
 
 			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
 
