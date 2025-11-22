@@ -76,11 +76,14 @@ public:
 
 	map<const char *, Patatoide_Points> Patatoides;
 
+	int RadarViewZoomLevel = 0;
+
 	map<string, bool> ClosedRunway;
 
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
 	string ConfigPath;
+	string mapsPath;
 	CCallsignLookup * Callsigns = nullptr;
 	CColorManager * ColorManager;
 
@@ -311,8 +314,89 @@ public:
 		return newPos;
 	}
 
+	inline virtual double Haversine(CPosition origin, CPosition dest) {
+		double haversine;
+		double temp;
+
+		double earthRadius = 6372797.56085;
+
+		origin.m_Latitude = DegToRad(origin.m_Latitude);
+		origin.m_Longitude = DegToRad(origin.m_Longitude);
+		dest.m_Latitude = DegToRad(dest.m_Latitude);
+		dest.m_Longitude = DegToRad(dest.m_Longitude);
+
+		haversine = (pow(sin((1.0 / 2) * (dest.m_Latitude - origin.m_Latitude)), 2)) + ((cos(origin.m_Latitude)) * (cos(dest.m_Latitude)) * (pow(sin((1.0 / 2) * (dest.m_Longitude - origin.m_Longitude)), 2)));
+		temp = 2 * asin(min(1.0, sqrt(haversine)));
+		return earthRadius * temp;
+	}
+
+	//---GetZoomLevelFromCrossDistance-----------------------------
+	inline virtual int getZoomLevelFromCrossDistance(double crossDistance) {
+		int d = (int)crossDistance;
+
+		if (d <= 2000)
+			return 14;
+		if (d <= 2500)
+			return 13;
+		if (d <= 3000)
+			return 12;
+		if (d <= 4000)
+			return 11;
+		if (d <= 5000)
+			return 10;
+		if (d <= 6000)
+			return 9;
+		if (d <= 8000)
+			return 8;
+		if (d <= 9500)
+			return 7;
+		if (d <= 12000)
+			return 6;
+		if (d <= 14000)
+			return 5;
+		if (d <= 18000)
+			return 4;
+		if (d <= 22000)
+			return 3;
+		if (d <= 28000)
+			return 2;
+		if (d <= 34000)
+			return 1;
+		return 0;
+	}
+
 	inline virtual float randomizeHeading(float originHead) {
 		return float(fmod(originHead + float((rand() % 5) - 2), 360));
+	}
+
+	//---GetBottomLine---------------------------------------------
+	inline virtual int getIntFromCategory(string category) {
+		if (category == "FREETEXT")
+			return SECTOR_ELEMENT_FREE_TEXT;
+		else if (category == "RUNWAY")
+			return SECTOR_ELEMENT_RUNWAY;
+		else if (category == "VOR")
+			return SECTOR_ELEMENT_VOR;
+		else if (category == "NDB")
+			return SECTOR_ELEMENT_NDB;
+		else if (category == "FIX")
+			return SECTOR_ELEMENT_FIX;
+		else if (category == "AIRPORT")
+			return SECTOR_ELEMENT_AIRPORT;
+		else if (category == "STAR")
+			return  SECTOR_ELEMENT_STAR;
+		else if (category == "SID")
+			return SECTOR_ELEMENT_SID;
+		else if (category == "ARTC")
+			return SECTOR_ELEMENT_ARTC;
+		else if (category == "GEO")
+			return SECTOR_ELEMENT_GEO;
+		else if (category == "AIRSPACE")
+			return SECTOR_ELEMENT_AIRSPACE;
+		else if (category == "REGIONS")
+			return SECTOR_ELEMENT_REGIONS;
+		else
+			return -1;
 	}
 
 	//---GetBottomLine---------------------------------------------
