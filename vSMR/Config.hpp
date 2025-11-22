@@ -19,7 +19,7 @@ using namespace rapidjson;
 class CConfig
 {
 public:
-	CConfig(string configPath);
+	CConfig(string configPath, string mapsPath);
 	virtual ~CConfig();
 
 	const Value& getActiveProfile();
@@ -62,12 +62,18 @@ public:
 		return name;
 	};
 
+	vector<string> getMapElementsForZoomLevel(int zoomLevel);
+
 	Document document;
+	Document mapDocument;
 
 protected:
 	string config_path;
+	string map_path;
 	rapidjson::SizeType active_profile;
 	map<string, rapidjson::SizeType> profiles;
+	map<int, vector<string>> maps;
 
 	void loadConfig();
+	void loadMap();
 };
