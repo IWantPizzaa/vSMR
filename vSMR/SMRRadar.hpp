@@ -400,6 +400,36 @@ public:
 	}
 
 	//---GetBottomLine---------------------------------------------
+	inline virtual int getIntFromCategory(string category) {
+		if (category == "FREETEXT")
+			return SECTOR_ELEMENT_FREE_TEXT;
+		else if (category == "RUNWAY")
+			return SECTOR_ELEMENT_RUNWAY;
+		else if (category == "VOR")
+			return SECTOR_ELEMENT_VOR;
+		else if (category == "NDB")
+			return SECTOR_ELEMENT_NDB;
+		else if (category == "FIX")
+			return SECTOR_ELEMENT_FIX;
+		else if (category == "AIRPORT")
+			return SECTOR_ELEMENT_AIRPORT;
+		else if (category == "STAR")
+			return  SECTOR_ELEMENT_STAR;
+		else if (category == "SID")
+			return SECTOR_ELEMENT_SID;
+		else if (category == "ARTC")
+			return SECTOR_ELEMENT_ARTC;
+		else if (category == "GEO")
+			return SECTOR_ELEMENT_GEO;
+		else if (category == "AIRSPACE")
+			return SECTOR_ELEMENT_AIRSPACE;
+		else if (category == "REGIONS")
+			return SECTOR_ELEMENT_REGIONS;
+		else
+			return -1;
+	}
+
+	//---GetBottomLine---------------------------------------------
 
 	virtual string GetBottomLine(const char * Callsign);
 
