@@ -327,7 +327,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// RWY CLSD
 	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
 		if (rwyOn != "") {
-			if (RunwayStatuses[rwyOn] == CLSD) {
+			if (RunwayStatuses[rwyOn] == CLSD && 3 < groundspeed) {
 				movementAlerts[Rt.GetCallsign()] = RWYCLSD;
 				return;
 			}
@@ -337,7 +337,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// RWY TYPE
 	if (inactiveAlerts.find("RWY TYPE") == inactiveAlerts.end()) {
 		if (rwyOn != "") {
-			if (RunwayStatuses[rwyOn] == ARR && 0 == groundspeed) {
+			if (RunwayStatuses[rwyOn] == ARR && 3 < groundspeed) {
 				movementAlerts[Rt.GetCallsign()] = RWYTYPE;
 				return;
 			}
@@ -376,7 +376,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	bool isReversing = headingDiff >= 100;
 	// NO PUSH
 	if (inactiveAlerts.find("NO PUSH") == inactiveAlerts.end()) {
-		if ("PUSH" != groundstate && 2 < groundspeed && isReversing) {
+		if ("PUSH" != groundstate && "TAXI" != groundstate && 2 < groundspeed && isReversing) {
 			movementAlerts[Rt.GetCallsign()] = NOPUSH;
 			return;
 		}
@@ -401,7 +401,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 
 	// NO TAXI
 	if (inactiveAlerts.find("NO TAXI") == inactiveAlerts.end()) {
-		if ("TAXI" != groundstate && 5 < groundspeed && !isReversing) {
+		if ("TAXI" != groundstate && "DEPA" != groundstate && 5 < groundspeed && !isReversing) {
 			movementAlerts[Rt.GetCallsign()] = NOTAXI;
 			return;
 		}
