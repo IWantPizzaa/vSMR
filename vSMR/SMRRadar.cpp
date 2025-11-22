@@ -2440,7 +2440,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["text_color"])));
 		SolidBrush SquawkErrorColor(ColorManager->get_corrected_color("label",
 			CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
-		SolidBrush AlertTextColorCaution(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["cauton_alert_text_color"]));
+		SolidBrush AlertTextColorCaution(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["caution_alert_text_color"]));
 		SolidBrush AlertTextColorWarning(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["warning_alert_text_color"]));
 		SolidBrush AlertColorCaution(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["caution_alert_background_color"]));
 		SolidBrush AlertColorWarning(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["warning_alert_background_color"]));
