@@ -19,6 +19,19 @@ using namespace rapidjson;
 class CConfig
 {
 public:
+	struct mapData
+	{
+		string element;
+		string active; //ACTIVE:RWY:ARR:08R:DEP:08L
+
+		bool operator==(const mapData& other) const noexcept {
+			return element == other.element && active == other.active;
+		}
+		bool operator!=(const mapData& other) const noexcept {
+			return !(*this == other);
+		}
+	};
+
 	CConfig(string configPath, string mapsPath);
 	virtual ~CConfig();
 
@@ -62,7 +75,7 @@ public:
 		return name;
 	};
 
-	vector<string> getMapElementsForZoomLevel(int zoomLevel);
+	vector<mapData> getMapElementsForZoomLevel(int zoomLevel);
 
 	Document document;
 	Document mapDocument;
@@ -72,7 +85,7 @@ protected:
 	string map_path;
 	rapidjson::SizeType active_profile;
 	map<string, rapidjson::SizeType> profiles;
-	map<int, vector<string>> maps;
+	map<int, vector<mapData>> maps;
 
 	void loadConfig();
 	void loadMap();

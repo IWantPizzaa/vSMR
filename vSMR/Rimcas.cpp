@@ -327,7 +327,9 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// RWY CLSD
 	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
 		if (rwyOn != "") {
-			if (RunwayStatuses[rwyOn] == CLSD && 3 < groundspeed) {
+			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
+			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
+			if (RunwayStatuses[rwy1] == CLSD && RunwayStatuses[rwy2] == CLSD && 3 < groundspeed) {
 				movementAlerts[Rt.GetCallsign()] = RWYCLSD;
 				return;
 			}
@@ -337,7 +339,9 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// RWY TYPE
 	if (inactiveAlerts.find("RWY TYPE") == inactiveAlerts.end()) {
 		if (rwyOn != "") {
-			if (RunwayStatuses[rwyOn] == ARR && 3 < groundspeed) {
+			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
+			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
+			if ((RunwayStatuses[rwy1] == ARR || RunwayStatuses[rwy2] == ARR) && 3 < groundspeed) {
 				movementAlerts[Rt.GetCallsign()] = RWYTYPE;
 				return;
 			}

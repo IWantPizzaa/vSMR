@@ -1707,6 +1707,18 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				return "uncorrelated";
 			return "airborne";
 		}
+		static vector<string> getVectorFromCommaList(const string& list) {
+			vector<string> result;
+			size_t start = 0;
+			size_t end = list.find(',');
+			while (end != string::npos) {
+				result.push_back(list.substr(start, end - start));
+				start = end + 1;
+				end = list.find(',', start);
+			}
+			result.push_back(list.substr(start));
+			return result;
+		}
 	};
 
 	// Timer each seconds
@@ -1718,7 +1730,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RefreshAirportActivity();
 	}
 
-	// Calculate zoom level
+	// Draw map elements based on zoom level
 	CPosition radarDownLeft;
 	CPosition radarUpRight;
 	GetDisplayArea(&radarDownLeft, &radarUpRight);
@@ -1728,18 +1740,77 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (NewRadarViewZoomLevel != RadarViewZoomLevel) {
 		RadarViewZoomLevel = NewRadarViewZoomLevel;
 		// Draw items based on asr config & zoom level
-		vector<string> allItems = CurrentConfig->getMapElementsForZoomLevel(14);
-		vector<string> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
+		vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
+		vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
 		map<string, bool> drawItemMap;
+
+		auto tokenDataStart = [](const string& s, const string& token) -> size_t {
+			// Find token like "DEP" or "ARR" and return the index right after the token and the following separator (eg. "DEP:")
+			size_t pos = s.find(token);
+			if (pos == string::npos) return string::npos;
+			// token length +1 for separator (':') -> matches previous code's +4 for "DEP" (3) + ':'
+			return pos + token.length() + 1;
+			};
+
 		for (const auto& item : allItems) {
-			if (find(itemsToDraw.begin(), itemsToDraw.end(), item) != itemsToDraw.end()) {
-				drawItemMap[item] = true;
+			// Consider element present if any map entry has the same element name (compare element only).
+			bool present = std::any_of(itemsToDraw.begin(), itemsToDraw.end(),
+				[&](const CConfig::mapData& m) { return m.element == item.element; });
+
+			bool shouldDraw = present;
+
+			// If the item has an "active" definition we need to evaluate DEP/ARR conditions
+			if (present && item.active.size() > 4) {
+				if (item.active.substr(0, 4) != ActiveAirport) {
+					shouldDraw = false;
+				}
+
+				auto runwayStatuses = RimcasInstance->GetRunwayStatuses();
+
+				// airport prefix (first 4 chars) must match active airport
+				
+				if (shouldDraw) {
+					size_t depPos = tokenDataStart(item.active, "DEP");
+					size_t arrPos = tokenDataStart(item.active, "ARR");
+					// If DEP present, extract substring between DEP: and ARR: (or end) and check runways
+					if (depPos != string::npos) {
+						size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
+						string depList = item.active.substr(depPos, depEnd - depPos);
+						vector<string> depRunways = Utils::getVectorFromCommaList(depList);
+						for (const auto& rwy : depRunways) {
+							auto it = runwayStatuses.find(rwy);
+							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
+								shouldDraw = false;
+								break;
+							}
+						}
+					}
+
+					// If ARR present, extract substring after ARR: and check runways
+					if (arrPos != string::npos && shouldDraw) {
+						string arrList = item.active.substr(arrPos);
+						vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
+						string msg = "Checking runway status for " + item.active.substr(0, 4) + " with runways: ";
+						for (const auto& rwy : arrRunways) {
+							msg += rwy + " ";
+						}
+						GetPlugIn()->DisplayUserMessage("vSMR", "", msg.c_str(), true, true, false, false, false);
+						for (const auto& rwy : arrRunways) {
+							auto it = runwayStatuses.find(rwy);
+							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
+								shouldDraw = false;
+								break;
+							}
+						}
+					}
+				}
 			}
-			else {
-				drawItemMap[item] = false;
-			}
+
+			// Always set an entry for this element (avoids missing keys and an empty draw map).
+			drawItemMap[item.element] = shouldDraw;
 		}
 
+		// Now apply the map
 		for (const auto& [elementName, toDraw] : drawItemMap) {
 			size_t slashPos = elementName.find("/");
 			if (slashPos == string::npos) continue;
@@ -1751,11 +1822,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
 			while (element.IsValid()) {
 				if (strncmp(name.c_str(), element.GetName(), strlen(name.c_str())) == 0) {
-					ShowSectorFileElement(element,element.GetComponentName(0), toDraw);
+					ShowSectorFileElement(element, element.GetComponentName(0), toDraw);
 				}
 				element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
 			}
 		}
+
 		RefreshMapContent();
 	}
 
@@ -1864,24 +1936,42 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			RimcasInstance->AddRunwayArea(this, runway_name, runway_name2, def);
 
 			// Check runway statuses
-			bool isDepartureRwy = rwy.IsElementActive(true, 1);
-			bool isArrivalRwy = rwy.IsElementActive(false, 1);
+			bool isDepartureRwy = rwy.IsElementActive(true, 0);
+			bool isArrivalRwy = rwy.IsElementActive(false, 0);
 			if (isDepartureRwy) {
 				if (isArrivalRwy) {
-					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::BOTH);
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::BOTH);
 				}
 				else {
-					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::DEP);
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::DEP);
 				}
 			}
 			else {
 				if (isArrivalRwy) {
-					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::ARR);
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::ARR);
 				}
 				else {
-					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::CLSD);
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::CLSD);
 				}
 
+			}
+			isDepartureRwy = rwy.IsElementActive(true, 1);
+			isArrivalRwy = rwy.IsElementActive(false, 1);
+			if (isDepartureRwy) {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::BOTH);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::DEP);
+				}
+			}
+			else {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::ARR);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::CLSD);
+				}
 			}
 
 			string RwName = runway_name + " / " + runway_name2;

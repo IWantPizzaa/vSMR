@@ -114,6 +114,7 @@ public:
 	string GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen *instance, bool isCorrelated);
 	void AddRunwayArea(CRadarScreen *instance, string runway_name1, string runway_name2, vector<CPosition> Definition);
 	void SetRunwayStatus(string runway, RunwayStatus status) { RunwayStatuses[runway] = status; }
+	map<string, RunwayStatus> GetRunwayStatuses() const { return RunwayStatuses; }
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor);
 	const unordered_set<string> GetInactiveAlerts() { return inactiveAlerts; }
