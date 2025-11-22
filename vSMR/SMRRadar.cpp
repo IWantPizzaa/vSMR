@@ -2365,12 +2365,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		SolidBrush RimcasTextColor(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["alert_text_color"]));
 		SolidBrush AlertColorSoft(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["soft_alert_background_color"]));
 		SolidBrush AlertColorHard(CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["hard_alert_background_color"]));
-		SolidBrush GroundPushColor(ColorManager->get_corrected_color("label",
-			CurrentConfig->getConfigColor(LabelsSettings["groundstatus_colors"]["push"])));
-		SolidBrush GroundTaxiColor(ColorManager->get_corrected_color("label",
-			CurrentConfig->getConfigColor(LabelsSettings["groundstatus_colors"]["taxi"])));
-		SolidBrush GroundDepaColor(ColorManager->get_corrected_color("label",
-			CurrentConfig->getConfigColor(LabelsSettings["groundstatus_colors"]["depa"])));
 
 
 		// Drawing the leader line
@@ -2448,14 +2442,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 				if (RimcasInstance->getAlert(rt.GetCallsign()) != CRimcas::NoAlert)
 					color = &RimcasTextColor;
-
-				// Ground tag colors
-				if (strcmp(element.c_str(), "PUSH") == 0)
-					color = &GroundPushColor;
-				if (strcmp(element.c_str(), "TAXI") == 0)
-					color = &GroundTaxiColor;
-				if (strcmp(element.c_str(), "DEPA") == 0)
-					color = &GroundDepaColor;
 
 				RectF mRect(0, 0, 0, 0);
 
