@@ -171,6 +171,49 @@ vector<string> CConfig::getAllProfiles() {
 	return toR;
 }
 
+bool CConfig::saveConfig()
+{
+	FILE* fp = nullptr;
+	if (fopen_s(&fp, config_path.c_str(), "wb") != 0 || !fp)
+		return false;
+
+	rapidjson::FileStream os(fp);
+	rapidjson::PrettyWriter<rapidjson::FileStream> writer(os);
+
+	document.Accept(writer);
+
+	fclose(fp);
+	return true;
+}
+
+unordered_set<string> CConfig::getInactiveAlert()
+{
+	if (getActiveProfile()["rimcas"].HasMember("inactive_alerts")) {
+		unordered_set<string> toR;
+		const Value& inactiveAlerts = getActiveProfile()["rimcas"]["inactive_alerts"];
+		for (SizeType i = 0; i < inactiveAlerts.Size(); i++) {
+			toR.insert(inactiveAlerts[i].GetString());
+		}
+		return toR;
+	}
+	return unordered_set<string>();
+}
+
+bool CConfig::setInactiveAlert(unordered_set<string> inactiveAlerts)
+{
+	// Modify the document in memory
+	Value& rimcas = const_cast<Value&>(getActiveProfile()["rimcas"]);
+	Value inactiveAlertArray(rapidjson::kArrayType);
+	for (const string& alert : inactiveAlerts) {
+		Value alertValue;
+		alertValue.SetString(alert.c_str(), static_cast<SizeType>(alert.length()), document.GetAllocator());
+		inactiveAlertArray.PushBack(alertValue, document.GetAllocator());
+	}
+	rimcas.RemoveMember("inactive_alerts");
+	rimcas.AddMember("inactive_alerts", inactiveAlertArray, document.GetAllocator());
+	return true;
+}
+
 CConfig::~CConfig()
 {
 }

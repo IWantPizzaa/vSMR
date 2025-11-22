@@ -4,9 +4,12 @@
 #include <sstream>
 #include <iostream>
 #include <map>
+#include <unordered_set>
 #include <vector>
 #include <Gdiplus.h>
 #include "rapidjson/document.h"
+#include "rapidjson/prettywriter.h"
+#include "rapidjson/filestream.h"
 #include "rapidjson/stringbuffer.h"
 #include "Constant.hpp"
 
@@ -31,6 +34,11 @@ public:
 	COLORREF getConfigColorRef(const Value& config_path);
 
 	vector<string> getAllProfiles();
+
+	bool saveConfig();
+
+	unordered_set<string> getInactiveAlert();
+	bool setInactiveAlert(unordered_set<string> inactiveAlerts);
 
 	inline int isItActiveProfile(string toTest) {
 		if (active_profile == profiles[toTest])

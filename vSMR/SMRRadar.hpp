@@ -358,8 +358,9 @@ public:
 	// -> we can't delete CurrentConfig just yet otherwise we can't save the active profile
 	inline virtual void OnAsrContentToBeClosed(void)
 	{
+		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+		CurrentConfig->saveConfig();
 		delete RimcasInstance;
-		//delete CurrentConfig;
 		delete this;
 	};
 };
