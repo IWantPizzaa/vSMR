@@ -1306,6 +1306,21 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		RequestRefresh();
 		return true;
 	}
+	if (strcmp(sCommandLine, ".smr status") == 0) {
+		// Print runway status
+		string msg;
+		for (const auto& [runway, status] : RimcasInstance->RunwayStatuses) {
+			string rwyStatus;
+			if (status == CRimcas::RunwayStatus::ARR) rwyStatus = "ARR";
+			else if (status == CRimcas::RunwayStatus::DEP) rwyStatus = "DEP";
+			else if (status == CRimcas::RunwayStatus::BOTH) rwyStatus = "BOTH";
+			else if (status == CRimcas::RunwayStatus::CLSD) rwyStatus = "CLSD";
+			msg += " Runway " + runway + ": " + rwyStatus + "\n";
+		}
+		GetPlugIn()->DisplayUserMessage("vSMR", "", msg.c_str(), true, true, false, false, false);
+		return true;
+	}
+
 
 	return false;
 }
@@ -1806,8 +1821,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			RimcasInstance->AddRunwayArea(this, runway_name, runway_name2, def);
 
 			// Check runway statuses
-			bool isDepartureRwy = rwy.IsElementActive(true);
-			bool isArrivalRwy = rwy.IsElementActive(false);
+			bool isDepartureRwy = rwy.IsElementActive(true, 1);
+			bool isArrivalRwy = rwy.IsElementActive(false, 1);
 			if (isDepartureRwy) {
 				if (isArrivalRwy) {
 					RimcasInstance->SetRunwayStatus(runway_name + " / " + runway_name2, CRimcas::RunwayStatus::BOTH);
@@ -2460,9 +2475,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				TagBackgroundRect.left + TagWidth,
 				TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
 			CRimcas::RimcasAlertSeverity severity = RimcasInstance->getAlertSeverity(RimcasInstance->getMovementAlert(rt.GetCallsign()));
-			SolidBrush& AlertColor = severity == CRimcas::RimcasAlertSeverity::WARNING ? AlertColorWarning : AlertColorCaution;
-			SolidBrush* RimcasTextColor = severity ? &AlertTextColorWarning : &AlertTextColorCaution;
-			graphics.FillRectangle(&AlertColor, CopyRect(ItemRect));
+			SolidBrush* AlertColor = (severity == CRimcas::RimcasAlertSeverity::WARNING) ? &AlertColorWarning : &AlertColorCaution;
+			SolidBrush* RimcasTextColor = (severity == CRimcas::RimcasAlertSeverity::WARNING) ? &AlertTextColorWarning : &AlertTextColorCaution;
+			graphics.FillRectangle(AlertColor, CopyRect(ItemRect));
 
 			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
 
