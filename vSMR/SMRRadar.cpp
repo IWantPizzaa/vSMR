@@ -476,6 +476,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			
 			TagsOffsets[sObjectId] = CustomTag;
 			TagAngles[sObjectId] = fmod(atan2(double(CustomTag.y), double(CustomTag.x)) * 180.0 / PI, 360);
+			TagLeaderLineLength[sObjectId] = sqrt(double(CustomTag.x * CustomTag.x + CustomTag.y * CustomTag.y));
 
 			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
 
@@ -2870,15 +2871,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (!CurrentConfig->getActiveProfile()["labels"]["auto_deconfliction"].GetBool())
 			break;
 
-		if (TagsOffsets.find(areas.first) != TagsOffsets.end())
-			continue;
-
 		if (IsTagBeingDragged(areas.first))
 			continue;
 
 		if (RecentlyAutoMovedTags.find(areas.first) != RecentlyAutoMovedTags.end())
 		{
-			double t = (double)clock() - RecentlyAutoMovedTags[areas.first] / ((double)CLOCKS_PER_SEC);
+			double t = ((double)clock() - RecentlyAutoMovedTags[areas.first]) / ((double)CLOCKS_PER_SEC);
 			if (t >= 0.8) {
 				RecentlyAutoMovedTags.erase(areas.first);
 			} else
@@ -2957,7 +2955,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			if (!isTagConflicing)
 			{
-				TagAngles[areas.first] = fmod(TagAngles[areas.first] + rotated, 360);
+				double finalAngle = fmod(TagAngles[areas.first] + rotated, 360.0f);
+				TagAngles[areas.first] = finalAngle;
+
+				POINT newCenter = NewRectangle.CenterPoint();
+				POINT newOffset = { newCenter.x - acPosPix.x, newCenter.y - acPosPix.y };
+				TagsOffsets[areas.first] = newOffset;
+
 				tagAreas[areas.first] = NewRectangle;
 				RecentlyAutoMovedTags[areas.first] = clock();
 				break;
