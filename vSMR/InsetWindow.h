@@ -39,7 +39,7 @@ public:
 		static RECT drawToolbarButton(CDC* dc, string letter, CRect TopBar, int left, POINT mouseLocation, COLORREF textColor, COLORREF buttonColor)
 		{
 			POINT TopLeft = { TopBar.right - left, TopBar.top + 2 };
-			POINT BottomRight = { TopBar.right - (left - 11), TopBar.bottom - 2 };
+			POINT BottomRight = { TopBar.right - (left - 13), TopBar.bottom - 2 };
 			CRect Rect(TopLeft, BottomRight);
 			Rect.NormalizeRect();
 			CBrush ButtonBrush(buttonColor);
@@ -57,7 +57,7 @@ public:
 	};
 
 	// Definition
-	int m_Id = -1, m_Scale = 15, m_Filter = 5500;
+	int m_Id = -1, m_Scale = 15, m_Filter = 5500; // Make it APW window specific later
 	RECT m_Area = { 200, 200, 600, 500 };
 	POINT m_Offset = { 0, 0 }, m_OffsetInit = { 0, 0 }, m_OffsetDrag = { 0, 0 };
 	bool m_Grip = false;
