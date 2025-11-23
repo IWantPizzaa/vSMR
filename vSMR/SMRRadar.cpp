@@ -1790,11 +1790,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					if (arrPos != string::npos && shouldDraw) {
 						string arrList = item.active.substr(arrPos);
 						vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
-						string msg = "Checking runway status for " + item.active.substr(0, 4) + " with runways: ";
-						for (const auto& rwy : arrRunways) {
-							msg += rwy + " ";
-						}
-						GetPlugIn()->DisplayUserMessage("vSMR", "", msg.c_str(), true, true, false, false, false);
 						for (const auto& rwy : arrRunways) {
 							auto it = runwayStatuses.find(rwy);
 							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
