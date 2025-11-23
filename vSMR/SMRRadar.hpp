@@ -90,7 +90,8 @@ public:
 	map<string, bool> ShowLists;
 	map<string, RECT> ListAreas;
 
-	map<int, bool> appWindowDisplays;
+	enum PluginWindows { AppWindow1 = 1, AppWindow2 = 2, DEPList = 3, TTTList = 4};
+	map<int, bool> pluginWindowDisplays;
 
 	map<string, CRect> tagAreas;
 	map<string, double> TagAngles;
