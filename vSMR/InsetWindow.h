@@ -17,7 +17,7 @@ class CSMRRadar;
 class CInsetWindow
 {
 public:
-	CInsetWindow(int Id, int minHeight = 100, int minWidth = 300, string windowTitle = "");
+	CInsetWindow(int Id, int minHeight = 100, int minWidth = 300, string windowTitle = "", bool resizable = true, bool pannable = true);
 	virtual ~CInsetWindow();
 
 	struct Utils
@@ -69,9 +69,14 @@ public:
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button) = 0;
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released) = 0;
 	
+	const bool isResizable() { return m_resizable; }
+	const bool isPannable() { return m_pannable; }
+
 protected:
 	string icao;
 	string m_window_title;
+	bool m_resizable;
+	bool m_pannable;
 };
 
 class CApproachWindow : public CInsetWindow
@@ -94,7 +99,7 @@ private:
 
 class CListWindow : public CInsetWindow {
 public:
-	CListWindow(int Id, string listTitle, bool resizable = false, int minHeight = 50, int minWidth = 150) : CInsetWindow(Id, minHeight, minWidth, listTitle), m_resizable(resizable) {}
+	CListWindow(int Id, string listTitle, bool resizable = false, bool pannable = false, int minHeight = 50, int minWidth = 150) : CInsetWindow(Id, minHeight, minWidth, listTitle, resizable, pannable) {}
 	virtual ~CListWindow() {}
 
 	void render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools) override;
@@ -104,5 +109,5 @@ public:
 	void renderContent(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation);
 
 private:
-	bool m_resizable;
+
 };
