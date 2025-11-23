@@ -351,7 +351,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 		if (rwyOn != "" && "DEPA" == groundstate) {
 			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
 			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
-			if (((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] == CLSD) && (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] == CLSD)) && 3 > groundspeed) {
+			if (((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] == CLSD) && (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] == CLSD))) {
 				movementAlerts[Rt.GetCallsign()] = RWYCLSD;
 				return;
 			}
@@ -363,7 +363,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 		if (rwyOn != "" && "DEPA" == groundstate) {
 			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
 			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
-			if (((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] == ARR) || (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] == ARR)) && 3 > groundspeed) {
+			if (((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] == ARR) || (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] == ARR))) {
 				movementAlerts[Rt.GetCallsign()] = RWYTYPE;
 				return;
 			}
@@ -387,10 +387,10 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 				clock_t currentTime = clock();
 				double elapsedSeconds = double(currentTime - statRPAtimer[Rt.GetCallsign()]) / CLOCKS_PER_SEC;
 				if (elapsedSeconds >= STATRPA_ALERT_MAXTIME) {
-			movementAlerts[Rt.GetCallsign()] = STATRPA;
-			return;
-		}
-	}
+					movementAlerts[Rt.GetCallsign()] = STATRPA;
+					return;
+				}
+			}
 		}
 	}
 
