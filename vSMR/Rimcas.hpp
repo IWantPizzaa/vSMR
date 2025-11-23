@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <string>
 #include <algorithm>
+#include <chrono>
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "Constant.hpp"
@@ -23,7 +24,8 @@ public:
 	virtual ~CRimcas();
 
 	const string string_false = "!NO";
-
+	const int STATRPA_ALERT_MAXTIME = 30; // seconds
+	const int STATRPA_ALERT_TIMEOUT = 300; // seconds
 	struct RunwayAreaType {
 		string Name = "";
 		vector<CPosition> Definition;
@@ -47,6 +49,7 @@ public:
 	map<string, map<int, string>> TimeTable;
 	unordered_set<string> inactiveAlerts;
 	map<string, RimcasAlerts> movementAlerts;
+	map<string, clock_t> statRPAtimer;
 	map<string, bool> MonitoredRunwayDep;
 	map<string, bool> MonitoredRunwayArr;
 	map<string, RimcasAlertTypes> AcColor;
@@ -122,6 +125,7 @@ public:
 	bool isAcOnRunway(string callsign);
 	string AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance);
 	void CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, bool isLVP);
+	void statRPAtimerCleanUp();
 
 	vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
 
