@@ -82,11 +82,11 @@ public:
 
 	map<string, double> m_TagAngles;
 
-	void render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);
+	void render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools) override;
 	void setAirport(string icao);
 	POINT projectPoint(CPosition pos);
-	void OnClickScreenObject(const char* sItemString, POINT Pt, int Button);
-	bool OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released);
+	void OnClickScreenObject(const char* sItemString, POINT Pt, int Button) override;
+	bool OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released) override;
 
 private:
 	map<string, CPosition> AptPositions;
@@ -97,9 +97,11 @@ public:
 	CListWindow(int Id, string listTitle, bool resizable = false, int minHeight = 50, int minWidth = 150) : CInsetWindow(Id, minHeight, minWidth, listTitle), m_resizable(resizable) {}
 	virtual ~CListWindow() {}
 
-	void render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);
-	void OnClickScreenObject(const char* sItemString, POINT Pt, int Button);
-	bool OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released);
+	void render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools) override;
+	void OnClickScreenObject(const char* sItemString, POINT Pt, int Button) override;
+	bool OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released) override;
+	void renderWindow(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation);
+	void renderContent(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation);
 
 private:
 	bool m_resizable;

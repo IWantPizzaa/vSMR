@@ -740,88 +740,14 @@ void CApproachWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, P
 
 void CListWindow::render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
 {
-	CDC dc;
-	dc.Attach(Hdc);
-
 	if (this->m_Id == -1)
 		return;
-
+	
 	icao = radar_screen->ActiveAirport;
 
-	COLORREF qBackgroundColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["lists"]["background_color"]);
-	CRect windowAreaCRect(m_Area);
-	windowAreaCRect.NormalizeRect();
+	renderWindow(Hdc, radar_screen, gdi, mouseLocation);
 
-	// We create the radar
-	dc.FillSolidRect(windowAreaCRect, qBackgroundColor);
-	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
-
-	auto scale = m_Scale;
-
-	POINT refPt = windowAreaCRect.CenterPoint();
-	refPt.x += m_Offset.x;
-	refPt.y += m_Offset.y;
-
-	//TODO: Draw What I want here
-	//
-	//
-	//
-	//
-
-	// Resize square
-	POINT BottomRight = { m_Area.right, m_Area.bottom };
-	POINT TopLeft = { BottomRight.x - 10, BottomRight.y - 10 };
-	CRect ResizeArea = { TopLeft, BottomRight };
-	if (m_resizable) {
-		qBackgroundColor = RGB(60, 60, 60);
-		ResizeArea.NormalizeRect();
-		dc.FillSolidRect(ResizeArea, qBackgroundColor);
-		radar_screen->AddScreenObject(m_Id, "resize", ResizeArea, true, "");
-
-		dc.Draw3dRect(ResizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
-	}
-
-	// Sides
-	CBrush FrameBrush = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["frame_color"]);
-	COLORREF HeaderTextColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["header_text_color"]);
-	COLORREF buttonColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["button_color"]);
-	dc.FrameRect(windowAreaCRect, &FrameBrush);
-
-	// Topbar
-	TopLeft = windowAreaCRect.TopLeft();
-	TopLeft.y = TopLeft.y - 15;
-	BottomRight = { windowAreaCRect.right, windowAreaCRect.top };
-	CRect TopBar(TopLeft, BottomRight);
-	TopBar.NormalizeRect();
-	dc.FillRect(TopBar, &FrameBrush);
-	POINT TopLeftText = { TopBar.left + 5, TopBar.bottom - dc.GetTextExtent(m_window_title.c_str()).cy };
-	COLORREF oldTextColorC = dc.SetTextColor(HeaderTextColor);
-
-	radar_screen->AddScreenObject(m_Id, "topbar", TopBar, true, "");
-
-	dc.TextOutA(TopLeftText.x + (TopBar.right - TopBar.left) / 2 - dc.GetTextExtent(m_window_title.c_str()).cx, TopLeftText.y, m_window_title.c_str());
-
-	// TODO: Adjust buttons as needed
-	// Range button
-	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation, HeaderTextColor, buttonColor);
-	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
-
-	// Filter button
-	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, 42, mouseLocation, HeaderTextColor, buttonColor);
-	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
-
-	// Rotate button
-	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, 55, mouseLocation, HeaderTextColor, buttonColor);
-	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
-
-	// Close
-	CRect CloseRect = Utils::drawToolbarButton(&dc, "X", TopBar, 16, mouseLocation, HeaderTextColor, buttonColor);
-	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
-
-
-	dc.SetTextColor(oldTextColorC);
-
-	dc.Detach();
+	renderContent(Hdc, radar_screen, gdi, mouseLocation);
 }
 
 void CListWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Button)
@@ -893,4 +819,87 @@ bool CListWindow::OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area,
 	}
 
 	return true;
+}
+
+void CListWindow::renderWindow(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation)
+{
+	CDC dc;
+	dc.Attach(Hdc);
+
+	COLORREF qBackgroundColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["lists"]["background_color"]);
+	CRect windowAreaCRect(m_Area);
+	windowAreaCRect.NormalizeRect();
+
+	// We create the radar
+	dc.FillSolidRect(windowAreaCRect, qBackgroundColor);
+	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
+
+	auto scale = m_Scale;
+
+	POINT refPt = windowAreaCRect.CenterPoint();
+	refPt.x += m_Offset.x;
+	refPt.y += m_Offset.y;
+
+	// Resize square
+	POINT BottomRight = { m_Area.right, m_Area.bottom };
+	POINT TopLeft = { BottomRight.x - 10, BottomRight.y - 10 };
+	CRect ResizeArea = { TopLeft, BottomRight };
+	if (m_resizable) {
+		qBackgroundColor = RGB(60, 60, 60);
+		ResizeArea.NormalizeRect();
+		dc.FillSolidRect(ResizeArea, qBackgroundColor);
+		radar_screen->AddScreenObject(m_Id, "resize", ResizeArea, true, "");
+
+		dc.Draw3dRect(ResizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
+	}
+
+	// Sides
+	CBrush FrameBrush = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["frame_color"]);
+	COLORREF HeaderTextColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["header_text_color"]);
+	COLORREF buttonColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["button_color"]);
+	dc.FrameRect(windowAreaCRect, &FrameBrush);
+
+	// Topbar
+	TopLeft = windowAreaCRect.TopLeft();
+	TopLeft.y = TopLeft.y - 15;
+	BottomRight = { windowAreaCRect.right, windowAreaCRect.top };
+	CRect TopBar(TopLeft, BottomRight);
+	TopBar.NormalizeRect();
+	dc.FillRect(TopBar, &FrameBrush);
+	POINT TopLeftText = { TopBar.left + 5, TopBar.bottom - dc.GetTextExtent(m_window_title.c_str()).cy };
+	COLORREF oldTextColorC = dc.SetTextColor(HeaderTextColor);
+
+	radar_screen->AddScreenObject(m_Id, "topbar", TopBar, true, "");
+
+	dc.TextOutA(TopLeftText.x + (TopBar.right - TopBar.left) / 2 - dc.GetTextExtent(m_window_title.c_str()).cx, TopLeftText.y, m_window_title.c_str());
+
+	// TODO: Adjust buttons as needed
+	// Range button
+	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation, HeaderTextColor, buttonColor);
+	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
+
+	// Filter button
+	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, 42, mouseLocation, HeaderTextColor, buttonColor);
+	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
+
+	// Rotate button
+	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, 55, mouseLocation, HeaderTextColor, buttonColor);
+	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
+
+	// Close
+	CRect CloseRect = Utils::drawToolbarButton(&dc, "X", TopBar, 16, mouseLocation, HeaderTextColor, buttonColor);
+	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
+	
+	dc.Detach();
+}
+
+void CListWindow::renderContent(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation)
+{
+	CDC dc;
+	dc.Attach(Hdc);
+
+	//TODO: Draw What I want here
+
+
+	dc.Detach();
 }
