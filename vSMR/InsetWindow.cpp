@@ -701,7 +701,7 @@ void CApproachWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, P
 
 	// Topbar
 	TopLeft = windowAreaCRect.TopLeft();
-	TopLeft.y = TopLeft.y - 15;
+	TopLeft.y = TopLeft.y - 20;
 	BottomRight = { windowAreaCRect.right, windowAreaCRect.top };
 	CRect TopBar(TopLeft, BottomRight);
 	TopBar.NormalizeRect();
@@ -861,7 +861,7 @@ void CListWindow::renderWindow(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, 
 
 	// Topbar
 	TopLeft = windowAreaCRect.TopLeft();
-	TopLeft.y = TopLeft.y - 15;
+	TopLeft.y = TopLeft.y - 20;
 	BottomRight = { windowAreaCRect.right, windowAreaCRect.top };
 	CRect TopBar(TopLeft, BottomRight);
 	TopBar.NormalizeRect();
