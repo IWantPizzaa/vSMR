@@ -12,6 +12,7 @@
 #include "CallsignLookup.hpp"
 #include "Config.hpp"
 #include "Rimcas.hpp"
+#include "SMRTagTypes.hpp"
 #include "InsetWindow.h"
 #include <memory>
 #include <asio/io_service.hpp>
@@ -47,6 +48,7 @@ public:
 	CSMRRadar();
 	virtual ~CSMRRadar();
 
+	using TagTypes = SMRTagType;
 	static map<string, string> vStripsStands;
 
 	bool BLINK = false;
@@ -146,9 +148,6 @@ public:
 	//----
 	// Tag types
 	//---
-
-	enum TagTypes { Departure, Arrival, Airborne, Uncorrelated };
-
 
 	string ActiveAirport = "EGKK";
 

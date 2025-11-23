@@ -101,11 +101,15 @@ CSMRRadar::CSMRRadar()
 	standardCursor = true;	
 	ActiveAirport = "EGKK";
 
-	// Setting up the data for the 2 approach windows
-	appWindowDisplays[1] = false;
-	appWindowDisplays[2] = false;
-	appWindows[1] = new CInsetWindow(APPWINDOW_ONE);
-	appWindows[2] = new CInsetWindow(APPWINDOW_TWO);
+	// Setting up the data for the 2 approach windows and lists
+	pluginWindowDisplays[AppWindow1] = false;
+	pluginWindowDisplays[AppWindow2] = false;
+	pluginWindowDisplays[DEPList] = false;
+	pluginWindowDisplays[TTTList] = false;
+	appWindows[AppWindow1] = new CApproachWindow(APPWINDOW_ONE);
+	appWindows[AppWindow2] = new CApproachWindow(APPWINDOW_TWO);
+	appWindows[DEPList] = new CListWindow(DEP_LIST, "DEP LIST");
+	appWindows[TTTList] = new CListWindow(TTT_LIST, "TTT LIST");
 
 	Logger::info("Loading profile");
 
@@ -282,7 +286,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 			appWindows[i]->m_Rotation = atoi(p_value);
 
 		if ((p_value = GetDataFromAsr(string(prefix + "Display").c_str())) != NULL)
-			appWindowDisplays[i] = atoi(p_value) == 1 ? true : false;
+			pluginWindowDisplays[i] = atoi(p_value) == 1 ? true : false;
 	}
 
 	// Auto load the airport config on ASR opened.
@@ -358,7 +362,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 		SaveDataToAsr(string(prefix + "Rotation").c_str(), "SRW rotation", temp.c_str());
 
 		string to_save = "0";
-		if (appWindowDisplays[i])
+		if (pluginWindowDisplays[i])
 			to_save = "1";
 		SaveDataToAsr(string(prefix + "Display").c_str(), "Display Secondary Radar Window", to_save.c_str());
 	}	
@@ -367,7 +371,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
 	Logger::info(string(__FUNCSIG__));
 
-	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
+	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO || ObjectType == DEP_LIST ||ObjectType == TTT_LIST) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 
 		bool toggleCursor = appWindows[appWindowId]->OnMoveScreenObject(sObjectId, Pt, Area, Released);
@@ -544,11 +548,11 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
 
-	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
+	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO || ObjectType == DEP_LIST || ObjectType == TTT_LIST) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		
 		if (strcmp(sObjectId, "close") == 0)
-			appWindowDisplays[appWindowId] = false;
+			pluginWindowDisplays[appWindowId] = false;
 		if (strcmp(sObjectId, "range") == 0) {
 			GetPlugIn()->OpenPopupList(Area, "SRW Zoom", 1);
 			GetPlugIn()->AddPopupListElement("55", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindows[appWindowId]->m_Scale == 55));
@@ -633,8 +637,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			GetPlugIn()->OpenPopupList(Area, "Display Menu", 1);
 			GetPlugIn()->AddPopupListElement("QDR Fixed Reference", "", RIMCAS_QDM_TOGGLE);
 			GetPlugIn()->AddPopupListElement("QDR Select Reference", "", RIMCAS_QDM_SELECT_TOGGLE);
-			GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowDisplays[1]));
-			GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowDisplays[2]));
+			GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(pluginWindowDisplays[AppWindow1]));
+			GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(pluginWindowDisplays[AppWindow2]));
+			GetPlugIn()->AddPopupListElement("DEP Timer List", "", DEP_LIST, false, int(pluginWindowDisplays[DEPList]));
+			GetPlugIn()->AddPopupListElement("TTT List", "", TTT_LIST, false, int(pluginWindowDisplays[TTTList]));
 			GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
 			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		}
@@ -901,9 +907,9 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
-	if (FunctionId == APPWINDOW_ONE || FunctionId == APPWINDOW_TWO) {
+	if (FunctionId == APPWINDOW_ONE || FunctionId == APPWINDOW_TWO || FunctionId == DEP_LIST || FunctionId == TTT_LIST) {
 		int id = FunctionId - APPWINDOW_BASE;
-		appWindowDisplays[id] = !appWindowDisplays[id];
+		pluginWindowDisplays[id] = !pluginWindowDisplays[id];
 	}
 
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {
@@ -3161,7 +3167,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	Logger::info("App window rendering");
 
-	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
+	for (std::map<int, bool>::iterator it = pluginWindowDisplays.begin(); it != pluginWindowDisplays.end(); ++it)
 	{
 		if (!it->second)
 			continue;
