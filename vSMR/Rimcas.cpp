@@ -38,6 +38,7 @@ void CRimcas::OnRefresh(CRadarTarget Rt, CRadarScreen* instance, bool isCorrelat
 	GetAcInRunwayArea(Rt, instance);
 	GetAcInRunwayAreaSoon(Rt, instance, isCorrelated);
 	CheckForMovementAlert(Rt, instance, isLVP);
+	statRPAtimerCleanUp();
 }
 
 void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string runway_name2, vector<CPosition> Definition) {
@@ -324,12 +325,33 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	string rwyOn = AcOnRunwayFunc(Rt, instance);
 	int groundspeed = pos.GetReportedGS();
 
+	if (groundspeed > 0) {
+		// Reset STAT RPA timer if moving
+		if (statRPAtimer.find(Rt.GetCallsign()) != statRPAtimer.end()) {
+			statRPAtimer.erase(Rt.GetCallsign());
+		}
+	}
+
+	// RWY INCURSION
+	if (inactiveAlerts.find("RWY INC") == inactiveAlerts.end()) {
+		if ("DEPA" != groundstate && 3 > groundspeed) {
+			if (rwyOn != "") {
+				string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
+				string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
+				if ((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] != CLSD) || (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] != CLSD)) {
+					movementAlerts[Rt.GetCallsign()] = RWYINC;
+					return;
+				}
+			}
+		}
+	}
+
 	// RWY CLSD
 	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
-		if (rwyOn != "") {
+		if (rwyOn != "" && "DEPA" == groundstate) {
 			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
 			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
-			if (RunwayStatuses[rwy1] == CLSD && RunwayStatuses[rwy2] == CLSD && 3 < groundspeed) {
+			if (((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] == CLSD) && (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] == CLSD)) && 3 > groundspeed) {
 				movementAlerts[Rt.GetCallsign()] = RWYCLSD;
 				return;
 			}
@@ -338,21 +360,11 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	
 	// RWY TYPE
 	if (inactiveAlerts.find("RWY TYPE") == inactiveAlerts.end()) {
-		if (rwyOn != "") {
+		if (rwyOn != "" && "DEPA" == groundstate) {
 			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
 			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
-			if ((RunwayStatuses[rwy1] == ARR || RunwayStatuses[rwy2] == ARR) && 3 < groundspeed) {
+			if (((RunwayStatuses.find(rwy1) != RunwayStatuses.end() && RunwayStatuses[rwy1] == ARR) || (RunwayStatuses.find(rwy2) != RunwayStatuses.end() && RunwayStatuses[rwy2] == ARR)) && 3 > groundspeed) {
 				movementAlerts[Rt.GetCallsign()] = RWYTYPE;
-				return;
-			}
-		}
-	}
-
-	// RWY INCURSION
-	if (inactiveAlerts.find("RWY INC") == inactiveAlerts.end()) {
-		if ("DEPA" != groundstate) {
-			if (rwyOn != "") {
-				movementAlerts[Rt.GetCallsign()] = RWYINC;
 				return;
 			}
 		}
@@ -369,8 +381,16 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// STAT RPA
 	if (inactiveAlerts.find("STAT RPA") == inactiveAlerts.end()) {
 		if ("DEPA" == groundstate && 0 == groundspeed) {
+			if (statRPAtimer.find(Rt.GetCallsign()) == statRPAtimer.end()) {
+				statRPAtimer[Rt.GetCallsign()] = clock();
+			} else {
+				clock_t currentTime = clock();
+				double elapsedSeconds = double(currentTime - statRPAtimer[Rt.GetCallsign()]) / CLOCKS_PER_SEC;
+				if (elapsedSeconds >= STATRPA_ALERT_MAXTIME) {
 			movementAlerts[Rt.GetCallsign()] = STATRPA;
 			return;
+		}
+	}
 		}
 	}
 
@@ -420,6 +440,19 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	}
 
 	movementAlerts[Rt.GetCallsign()] = CRimcas::RimcasAlerts::NONE;
+}
+
+void CRimcas::statRPAtimerCleanUp()
+{
+	Logger::info(string(__FUNCSIG__));
+	// Remove timers for aircraft when airborn
+	for (const auto& timer : statRPAtimer) {
+		clock_t currentTime = clock();
+		double elapsedSeconds = double(currentTime - timer.second) / CLOCKS_PER_SEC;
+		if (elapsedSeconds > STATRPA_ALERT_TIMEOUT) {
+			statRPAtimer.erase(timer.first);
+		}
+	}
 }
 
 CRimcas::RimcasAlertTypes CRimcas::getAlert(string callsign)
