@@ -108,7 +108,7 @@ CSMRRadar::CSMRRadar()
 	pluginWindowDisplays[TTTList] = false;
 	appWindows[AppWindow1] = new CApproachWindow(APPWINDOW_ONE);
 	appWindows[AppWindow2] = new CApproachWindow(APPWINDOW_TWO);
-	appWindows[DEPList] = new CListWindow(DEP_LIST, "DEP LIST");
+	appWindows[DEPList] = new CListWindow(DEP_LIST, "DEP LIST", true);
 	appWindows[TTTList] = new CListWindow(TTT_LIST, "TTT LIST");
 
 	Logger::info("Loading profile");

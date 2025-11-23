@@ -36,15 +36,15 @@ public:
 			return Area;
 		}
 
-		static RECT drawToolbarButton(CDC* dc, string letter, CRect TopBar, int left, POINT mouseLocation)
+		static RECT drawToolbarButton(CDC* dc, string letter, CRect TopBar, int left, POINT mouseLocation, COLORREF textColor, COLORREF buttonColor)
 		{
 			POINT TopLeft = { TopBar.right - left, TopBar.top + 2 };
 			POINT BottomRight = { TopBar.right - (left - 11), TopBar.bottom - 2 };
 			CRect Rect(TopLeft, BottomRight);
 			Rect.NormalizeRect();
-			CBrush ButtonBrush(RGB(60, 60, 60));
+			CBrush ButtonBrush(buttonColor);
 			dc->FillRect(Rect, &ButtonBrush);
-			dc->SetTextColor(RGB(0, 0, 0));
+			dc->SetTextColor(textColor);
 			dc->TextOutA(Rect.left + 2, Rect.top, letter.c_str());
 
 			if (mouseWithin(mouseLocation, Rect))
@@ -94,7 +94,7 @@ private:
 
 class CListWindow : public CInsetWindow {
 public:
-	CListWindow(int Id, string listTitle, int minHeight = 50, int minWidth = 150) : CInsetWindow(Id, minHeight, minWidth, listTitle) {}
+	CListWindow(int Id, string listTitle, bool resizable = false, int minHeight = 50, int minWidth = 150) : CInsetWindow(Id, minHeight, minWidth, listTitle), m_resizable(resizable) {}
 	virtual ~CListWindow() {}
 
 	void render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);
@@ -102,5 +102,5 @@ public:
 	bool OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released);
 
 private:
-
+	bool m_resizable;
 };
