@@ -332,6 +332,8 @@ const int RIMCAS_UPDATEROTATE2 = 6027;
 const int APPWINDOW_BASE = 8887;
 const int APPWINDOW_ONE = 8888;
 const int APPWINDOW_TWO = 8889;
+const int DEP_LIST = 8890;
+const int TTT_LIST= 8891;
 
 // Brightness update
 const int RIMCAS_BRIGHTNESS_LABEL = 301;

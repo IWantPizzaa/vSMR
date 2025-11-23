@@ -1,29 +1,34 @@
 #include "stdafx.h"
 #include "InsetWindow.h"
+#include "SMRRadar.hpp"
 
+CInsetWindow::CInsetWindow(int Id, int minHeight, int minWidth, string windowTitle) : m_Id(Id), m_window_min_height(minHeight), m_window_min_width(minWidth), m_window_title(windowTitle) {}
 
-CInsetWindow::CInsetWindow(int Id)
+CInsetWindow::~CInsetWindow() {}
+
+// ----------------- Approach Window -----------------
+
+CApproachWindow::CApproachWindow(int Id) : CInsetWindow(Id)
 {
-	m_Id = Id;
+	m_window_title = "SRW " + std::to_string(m_Id - APPWINDOW_BASE);
 }
 
-CInsetWindow::~CInsetWindow()
-{
-}
+CApproachWindow::~CApproachWindow() {}
 
-void CInsetWindow::setAirport(string icao)
+void CApproachWindow::setAirport(string icao)
 {
 	this->icao = icao;
 }
 
-void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int Button)
+void CApproachWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Button)
 {
 	if (Button == EuroScopePlugIn::BUTTON_RIGHT)
 	{
 		if (m_TagAngles.find(sItemString) != m_TagAngles.end())
 		{
 			m_TagAngles[sItemString] = fmod(m_TagAngles[sItemString] + 45.0, 360.0);
-		} else
+		}
+		else
 		{
 			m_TagAngles[sItemString] = 45.0;
 		}
@@ -42,7 +47,7 @@ void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int B
 	}
 }
 
-bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool Released)
+bool CApproachWindow::OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool Released)
 {
 	if (strcmp(sObjectId, "window") == 0) {
 		if (!this->m_Grip)
@@ -68,12 +73,12 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		CRect newSize(TopLeft, BottomRight);
 		newSize.NormalizeRect();
 
-		if (newSize.Height() < 100) {
+		if (newSize.Height() < m_window_min_height) {
 			newSize.top = m_Area.top;
 			newSize.bottom = m_Area.bottom;
 		}
 
-		if (newSize.Width() < 300) {
+		if (newSize.Width() < m_window_min_width) {
 			newSize.left = m_Area.left;
 			newSize.right = m_Area.right;
 		}
@@ -100,7 +105,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	return true;
 }
 
-POINT CInsetWindow::projectPoint(CPosition pos)
+POINT CApproachWindow::projectPoint(CPosition pos)
 {
 	CRect areaRect(m_Area);
 	areaRect.NormalizeRect();
@@ -109,7 +114,7 @@ POINT CInsetWindow::projectPoint(CPosition pos)
 	refPt.x += m_Offset.x;
 	refPt.y += m_Offset.y;
 
-	POINT out = {0, 0};
+	POINT out = { 0, 0 };
 
 	double dist = AptPositions[icao].DistanceTo(pos);
 	double dir = TrueBearing(AptPositions[icao], pos);
@@ -121,55 +126,20 @@ POINT CInsetWindow::projectPoint(CPosition pos)
 	if (m_Rotation != 0)
 	{
 		return rotate_point(out, m_Rotation, refPt);
-	} else
+	}
+	else
 	{
 		return out;
 	}
 }
 
-void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
+void CApproachWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
 {
 	CDC dc;
 	dc.Attach(hDC);
 
 	if (this->m_Id == -1)
 		return;
-
-	struct Utils
-	{
-		static string getEnumString(CSMRRadar::TagTypes type) {
-			if (type == CSMRRadar::TagTypes::Departure)
-				return "departure";
-			if (type == CSMRRadar::TagTypes::Arrival)
-				return "arrival";
-			if (type == CSMRRadar::TagTypes::Uncorrelated)
-				return "uncorrelated";
-			return "airborne";
-		}
-		static RECT GetAreaFromText(CDC * dc, string text, POINT Pos) {
-			RECT Area = { Pos.x, Pos.y, Pos.x + dc->GetTextExtent(text.c_str()).cx, Pos.y + dc->GetTextExtent(text.c_str()).cy };
-			return Area;
-		}
-
-		static RECT drawToolbarButton(CDC * dc, string letter, CRect TopBar, int left, POINT mouseLocation)
-		{
-			POINT TopLeft = { TopBar.right - left, TopBar.top + 2 };
-			POINT BottomRight = { TopBar.right - (left - 11), TopBar.bottom - 2 };
-			CRect Rect(TopLeft, BottomRight);
-			Rect.NormalizeRect();
-			CBrush ButtonBrush(RGB(60, 60, 60));
-			dc->FillRect(Rect, &ButtonBrush);
-			dc->SetTextColor(RGB(0, 0, 0));
-			dc->TextOutA(Rect.left + 2, Rect.top, letter.c_str());
-
-			if (mouseWithin(mouseLocation, Rect))
-				dc->Draw3dRect(Rect, RGB(45, 45, 45), RGB(75, 75, 75));
-			else
-				dc->Draw3dRect(Rect, RGB(75, 75, 75), RGB(45, 45, 45));
-
-			return Rect;
-		}
-	};
 
 	icao = radar_screen->ActiveAirport;
 	AptPositions = radar_screen->AirportPositions;
@@ -741,8 +711,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 	radar_screen->AddScreenObject(m_Id, "topbar", TopBar, true, "");
 
-	string Toptext = "SRW " + std::to_string(m_Id - APPWINDOW_BASE);
-	dc.TextOutA(TopLeftText.x + (TopBar.right-TopBar.left) / 2 - dc.GetTextExtent("SRW 1").cx , TopLeftText.y, Toptext.c_str());
+	dc.TextOutA(TopLeftText.x + (TopBar.right-TopBar.left) / 2 - dc.GetTextExtent("SRW 1").cx , TopLeftText.y, m_window_title.c_str());
 
 	// Range button
 	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation);
@@ -780,4 +749,178 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
 
 	dc.Detach();
+}
+
+
+// ----------------- List Window -----------------
+
+void CListWindow::render(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
+{
+	CDC dc;
+	dc.Attach(Hdc);
+
+	if (this->m_Id == -1)
+		return;
+
+	icao = radar_screen->ActiveAirport;
+
+	COLORREF qBackgroundColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["lists"]["background_color"]);
+	CRect windowAreaCRect(m_Area);
+	windowAreaCRect.NormalizeRect();
+
+	// We create the radar
+	dc.FillSolidRect(windowAreaCRect, qBackgroundColor);
+	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
+
+	auto scale = m_Scale;
+
+	POINT refPt = windowAreaCRect.CenterPoint();
+	refPt.x += m_Offset.x;
+	refPt.y += m_Offset.y;
+
+	//TODO: Draw What I want here
+	//
+	//
+	//
+	//
+
+	// Resize square
+	qBackgroundColor = RGB(60, 60, 60);
+	POINT BottomRight = { m_Area.right, m_Area.bottom };
+	POINT TopLeft = { BottomRight.x - 10, BottomRight.y - 10 };
+	CRect ResizeArea = { TopLeft, BottomRight };
+	ResizeArea.NormalizeRect();
+	dc.FillSolidRect(ResizeArea, qBackgroundColor);
+	radar_screen->AddScreenObject(m_Id, "resize", ResizeArea, true, "");
+
+	dc.Draw3dRect(ResizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
+
+	// Sides
+	//CBrush FrameBrush(RGB(35, 35, 35));
+	CBrush FrameBrush(RGB(127, 122, 122));
+	COLORREF TopBarTextColor(RGB(35, 35, 35));
+	dc.FrameRect(windowAreaCRect, &FrameBrush);
+
+	// Topbar
+	TopLeft = windowAreaCRect.TopLeft();
+	TopLeft.y = TopLeft.y - 15;
+	BottomRight = { windowAreaCRect.right, windowAreaCRect.top };
+	CRect TopBar(TopLeft, BottomRight);
+	TopBar.NormalizeRect();
+	dc.FillRect(TopBar, &FrameBrush);
+	POINT TopLeftText = { TopBar.left + 5, TopBar.bottom - dc.GetTextExtent("SRW 1").cy };
+	COLORREF oldTextColorC = dc.SetTextColor(TopBarTextColor);
+
+	radar_screen->AddScreenObject(m_Id, "topbar", TopBar, true, "");
+
+	dc.TextOutA(TopLeftText.x + (TopBar.right - TopBar.left) / 2 - dc.GetTextExtent("SRW 1").cx, TopLeftText.y, m_window_title.c_str());
+
+	// TODO: Adjust buttons as needed
+	// Range button
+	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation);
+	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
+
+	// Filter button
+	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, 42, mouseLocation);
+	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
+
+	// Rotate button
+	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, 55, mouseLocation);
+	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
+
+	dc.SetTextColor(oldTextColorC);
+
+	// Close
+	POINT TopLeftClose = { TopBar.right - 16, TopBar.top + 2 };
+	POINT BottomRightClose = { TopBar.right - 5, TopBar.bottom - 2 };
+	CRect CloseRect(TopLeftClose, BottomRightClose);
+	CloseRect.NormalizeRect();
+	CBrush CloseBrush(RGB(60, 60, 60));
+	dc.FillRect(CloseRect, &CloseBrush);
+	CPen BlackPen(PS_SOLID, 1, RGB(0, 0, 0));
+	dc.SelectObject(BlackPen);
+	dc.MoveTo(CloseRect.TopLeft());
+	dc.LineTo(CloseRect.BottomRight());
+	dc.MoveTo({ CloseRect.right - 1, CloseRect.top });
+	dc.LineTo({ CloseRect.left - 1, CloseRect.bottom });
+
+	if (mouseWithin(mouseLocation, CloseRect))
+		dc.Draw3dRect(CloseRect, RGB(45, 45, 45), RGB(75, 75, 75));
+	else
+		dc.Draw3dRect(CloseRect, RGB(75, 75, 75), RGB(45, 45, 45));
+
+	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
+
+	dc.Detach();
+}
+
+void CListWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int Button)
+{
+	if (Button == EuroScopePlugIn::BUTTON_RIGHT)
+	{
+		// Do Something
+	}
+
+	if (Button == EuroScopePlugIn::BUTTON_LEFT)
+	{
+		// Do something else
+	}
+}
+
+bool CListWindow::OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released)
+{
+	if (strcmp(sObjectId, "window") == 0) {
+		if (!this->m_Grip)
+		{
+			m_OffsetInit = m_Offset;
+			m_OffsetDrag = Pt;
+			m_Grip = true;
+		}
+
+		POINT maxoffset = { (m_Area.right - m_Area.left) / 2, (m_Area.bottom - (m_Area.top + 15)) / 2 };
+		m_Offset.x = max(-maxoffset.x, min(maxoffset.x, m_OffsetInit.x + (Pt.x - m_OffsetDrag.x)));
+		m_Offset.y = max(-maxoffset.y, min(maxoffset.y, m_OffsetInit.y + (Pt.y - m_OffsetDrag.y)));
+
+		if (released)
+		{
+			m_Grip = false;
+		}
+	}
+	if (strcmp(sObjectId, "resize") == 0) {
+		POINT TopLeft = { m_Area.left, m_Area.top };
+		POINT BottomRight = { Area.right, Area.bottom };
+
+		CRect newSize(TopLeft, BottomRight);
+		newSize.NormalizeRect();
+
+		if (newSize.Height() < m_window_min_height) {
+			newSize.top = m_Area.top;
+			newSize.bottom = m_Area.bottom;
+		}
+
+		if (newSize.Width() < m_window_min_width) {
+			newSize.left = m_Area.left;
+			newSize.right = m_Area.right;
+		}
+
+		m_Area = newSize;
+
+		return released;
+	}
+	if (strcmp(sObjectId, "topbar") == 0) {
+
+		CRect appWindowRect(m_Area);
+		appWindowRect.NormalizeRect();
+
+		POINT TopLeft = { Area.left, Area.bottom + 1 };
+		POINT BottomRight = { TopLeft.x + appWindowRect.Width(), TopLeft.y + appWindowRect.Height() };
+		CRect newPos(TopLeft, BottomRight);
+		newPos.NormalizeRect();
+
+		m_Area = newPos;
+
+		return released;
+	}
+
+	return true;
 }
