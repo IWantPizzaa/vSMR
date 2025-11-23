@@ -2,7 +2,7 @@
 #include "InsetWindow.h"
 #include "SMRRadar.hpp"
 
-CInsetWindow::CInsetWindow(int Id, int minHeight, int minWidth, string windowTitle) : m_Id(Id), m_window_min_height(minHeight), m_window_min_width(minWidth), m_window_title(windowTitle) {}
+CInsetWindow::CInsetWindow(int Id, int minHeight, int minWidth, string windowTitle, bool resizable, bool pannable) : m_Id(Id), m_window_min_height(minHeight), m_window_min_width(minWidth), m_window_title(windowTitle), m_resizable(resizable), m_pannable(pannable) {}
 
 CInsetWindow::~CInsetWindow() {}
 
@@ -713,21 +713,24 @@ void CApproachWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, P
 
 	dc.TextOutA(TopLeftText.x + (TopBar.right-TopBar.left) / 2 - dc.GetTextExtent(m_window_title.c_str()).cx , TopLeftText.y, m_window_title.c_str());
 
+	// Buttons
+	int buttonWidth = 13;
+	int baseOffset = 3;
+	// Close
+	CRect CloseRect = Utils::drawToolbarButton(&dc, "X", TopBar, buttonWidth + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
+	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
+
 	// Range button
-	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation, HeaderTextColor, buttonColor);
+	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, buttonWidth * 2 + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
 	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
 
 	// Filter button
-	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, 42, mouseLocation, HeaderTextColor, buttonColor);
+	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, buttonWidth * 3 + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
 	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
 
 	// Rotate button
-	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, 55, mouseLocation, HeaderTextColor, buttonColor);
+	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, buttonWidth * 4 + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
 	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
-
-	// Close
-	CRect CloseRect = Utils::drawToolbarButton(&dc, "X", TopBar, 16, mouseLocation, HeaderTextColor, buttonColor);
-	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
 
 
 	dc.SetTextColor(oldTextColorC);
@@ -766,20 +769,22 @@ void CListWindow::OnClickScreenObject(const char* sItemString, POINT Pt, int But
 bool CListWindow::OnMoveScreenObject(const char* sObjectId, POINT Pt, RECT Area, bool released)
 {
 	if (strcmp(sObjectId, "window") == 0) {
-		if (!this->m_Grip)
-		{
-			m_OffsetInit = m_Offset;
-			m_OffsetDrag = Pt;
-			m_Grip = true;
-		}
+		if (m_pannable) {
+			if (!this->m_Grip)
+			{
+				m_OffsetInit = m_Offset;
+				m_OffsetDrag = Pt;
+				m_Grip = true;
+			}
 
-		POINT maxoffset = { (m_Area.right - m_Area.left) / 2, (m_Area.bottom - (m_Area.top + 15)) / 2 };
-		m_Offset.x = max(-maxoffset.x, min(maxoffset.x, m_OffsetInit.x + (Pt.x - m_OffsetDrag.x)));
-		m_Offset.y = max(-maxoffset.y, min(maxoffset.y, m_OffsetInit.y + (Pt.y - m_OffsetDrag.y)));
+			POINT maxoffset = { (m_Area.right - m_Area.left) / 2, (m_Area.bottom - (m_Area.top + 15)) / 2 };
+			m_Offset.x = max(-maxoffset.x, min(maxoffset.x, m_OffsetInit.x + (Pt.x - m_OffsetDrag.x)));
+			m_Offset.y = max(-maxoffset.y, min(maxoffset.y, m_OffsetInit.y + (Pt.y - m_OffsetDrag.y)));
 
-		if (released)
-		{
-			m_Grip = false;
+			if (released)
+			{
+				m_Grip = false;
+			}
 		}
 	}
 	if (strcmp(sObjectId, "resize") == 0) {
@@ -874,21 +879,24 @@ void CListWindow::renderWindow(HDC Hdc, CSMRRadar* radar_screen, Graphics* gdi, 
 	dc.TextOutA(TopLeftText.x + (TopBar.right - TopBar.left) / 2 - dc.GetTextExtent(m_window_title.c_str()).cx, TopLeftText.y, m_window_title.c_str());
 
 	// TODO: Adjust buttons as needed
+	int buttonWidth = 13;
+	int baseOffset = 3;
+	// Close
+	CRect CloseRect = Utils::drawToolbarButton(&dc, "X", TopBar, buttonWidth + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
+	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
+	
 	// Range button
-	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation, HeaderTextColor, buttonColor);
+	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, buttonWidth * 2 + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
 	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
 
 	// Filter button
-	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, 42, mouseLocation, HeaderTextColor, buttonColor);
+	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, buttonWidth * 3 + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
 	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
 
 	// Rotate button
-	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, 55, mouseLocation, HeaderTextColor, buttonColor);
+	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, buttonWidth * 4 + baseOffset, mouseLocation, HeaderTextColor, buttonColor);
 	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
 
-	// Close
-	CRect CloseRect = Utils::drawToolbarButton(&dc, "X", TopBar, 16, mouseLocation, HeaderTextColor, buttonColor);
-	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
 	
 	dc.Detach();
 }
