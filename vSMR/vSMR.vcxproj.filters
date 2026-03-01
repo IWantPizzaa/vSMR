@@ -104,6 +104,9 @@
     <ClInclude Include="SMRRadar.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SMRRadar_TagShared.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="vSMR.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>

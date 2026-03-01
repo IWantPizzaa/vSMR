@@ -1,3 +1,5 @@
+#pragma once
+
 enum class GroundStateCategory { Unknown, Gate, Push, Stup, Taxi, Nsts, Depa, Arr };
 
 static GroundStateCategory classifyGroundState(const std::string& rawState, int reportedGs, bool onRunway)
