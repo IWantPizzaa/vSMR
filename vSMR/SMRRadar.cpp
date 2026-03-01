@@ -1,0 +1,4125 @@
+#include "stdafx.h"
+#include "Resource.h"
+#include "SMRRadar.hpp"
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
+#include <cctype>
+#include "rapidjson/document.h"
+#include "SMRRadar_TagShared.hpp"
+
+ULONG_PTR m_gdiplusToken;
+CPoint mouseLocation(0, 0);
+string TagBeingDragged;
+int LeaderLineDefaultlenght = 50;
+
+//
+// Cursor Things
+//
+
+bool initCursor = true;
+HCURSOR smrCursor = NULL;
+bool standardCursor; // switches between mouse cursor and pointer cursor when moving tags
+bool customCursor; // use SMR version or default windows mouse symbol
+WNDPROC gSourceProc;
+HWND pluginWindow;
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+map<string, string> CSMRRadar::vStripsStands;
+
+map<int, CInsetWindow *> appWindows;
+
+#if defined(_DEBUG)
+#define VSMR_REFRESH_LOG(message) Logger::info(message)
+#else
+#define VSMR_REFRESH_LOG(message) do { } while (0)
+#endif
+
+inline double closest(std::vector<double> const& vec, double value) {
+	auto const it = std::lower_bound(vec.begin(), vec.end(), value);
+	if (it == vec.end()) { return -1; }
+
+	return *it;
+};
+inline bool IsTagBeingDragged(string c)
+{
+	return TagBeingDragged == c;
+}
+bool mouseWithin(CRect rect) {
+	if (mouseLocation.x >= rect.left + 1 && mouseLocation.x <= rect.right - 1 && mouseLocation.y >= rect.top + 1 && mouseLocation.y <= rect.bottom - 1)
+		return true;
+	return false;
+}
+
+// ReSharper disable CppMsExtAddressOfClassRValue
+
+CSMRRadar::CSMRRadar()
+{
+
+	Logger::info("CSMRRadar::CSMRRadar()");
+
+	// Initializing randomizer
+	srand(static_cast<unsigned>(time(nullptr)));
+
+	// Initialize GDI+
+	GdiplusStartupInput gdiplusStartupInput;
+	GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, nullptr);
+
+	// Getting the DLL file folder
+	GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
+	DllPath = DllPathFile;
+	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
+	
+	ConfigPath = DllPath + "\\vSMR_Profiles.json";
+	mapsPath = DllPath + "\\vSMR_Maps.json";
+	IconsPath = DllPath + "\\aircraft_icons";
+	LoadAircraftSpecs();
+
+	Logger::info("Loading callsigns");
+
+	// Creating the RIMCAS instance
+	if (Callsigns == nullptr)
+		Callsigns = new CCallsignLookup();
+
+	// We can look in three places for this file:
+	// 1. Within the plugin directory
+	// 2. In the ICAO folder of a GNG package
+	// 3. In the working directory of EuroScope
+	std::vector<fs::path> possible_paths;
+	possible_paths.push_back(fs::path(DllPath) / "ICAO_Airlines.txt");
+	possible_paths.push_back(fs::path(DllPath).parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
+	possible_paths.push_back(fs::path(DllPath).parent_path().parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
+
+	for (auto p : possible_paths) {
+		Logger::info("Trying to read callsigns from: " + p.string());
+		if (fs::exists(p)) {
+			Logger::info("Found callsign file!");
+			Callsigns->readFile(p.string());
+
+			break;
+		}
+	};
+
+	Logger::info("Loading RIMCAS & Config");
+	// Creating the RIMCAS instance
+	if (RimcasInstance == nullptr)
+		RimcasInstance = new CRimcas();
+
+	// Loading up the config file
+	if (CurrentConfig == nullptr)
+		CurrentConfig = new CConfig(ConfigPath, mapsPath);
+
+	if (ColorManager == nullptr)
+		ColorManager = new CColorManager();
+
+	standardCursor = true;	
+	ActiveAirport = "EGKK";
+
+	// Setting up the data for the 2 approach windows
+	appWindowDisplays[1] = false;
+	appWindowDisplays[2] = false;
+	appWindows[1] = new CInsetWindow(APPWINDOW_ONE);
+	appWindows[2] = new CInsetWindow(APPWINDOW_TWO);
+
+	Logger::info("Loading profile");
+
+	this->CSMRRadar::LoadProfile("Default");
+
+	this->CSMRRadar::LoadCustomFont();
+
+	this->CSMRRadar::RefreshAirportActivity();
+}
+
+CSMRRadar::~CSMRRadar()
+{
+	Logger::info(string(__FUNCSIG__));
+	try {
+		//this->OnAsrContentToBeSaved();
+		//this->EuroScopePlugInExitCustom();
+	}
+	catch (exception &e) {
+		stringstream s;
+		s << e.what() << endl;
+		AfxMessageBox(string("Error occurred " + s.str()).c_str());
+	}
+	// Shutting down GDI+
+	GdiplusShutdown(m_gdiplusToken);
+	delete CurrentConfig;
+}
+
+void CSMRRadar::CorrelateCursor() {
+	if (NeedCorrelateCursor)
+	{
+		if (standardCursor)
+		{
+			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCORRELATE), IMAGE_CURSOR, 0, 0, LR_SHARED));
+
+			AFX_MANAGE_STATE(AfxGetStaticModuleState());
+			ASSERT(smrCursor);
+			SetCursor(smrCursor);
+			standardCursor = false;
+		}
+	}
+	else
+	{
+	if (!standardCursor)
+	{
+		if (customCursor) {
+			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
+		}
+			else {
+				smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
+			}
+
+			AFX_MANAGE_STATE(AfxGetStaticModuleState());
+			ASSERT(smrCursor);
+			SetCursor(smrCursor);
+			standardCursor = true;
+		}
+	}
+}
+
+void CSMRRadar::LoadCustomFont() {
+	Logger::info(string(__FUNCSIG__));
+	// Loading the custom font if there is one in use
+	customFonts.clear();
+
+	std::string fontName = GetActiveTagFontName();
+	if (fontName.empty())
+		fontName = "EuroScope";
+
+	const Value& profile = CurrentConfig->getActiveProfile();
+	const Value* sizeConfig = nullptr;
+	const Value* weightConfig = nullptr;
+	if (profile.IsObject() && profile.HasMember("font") && profile["font"].IsObject())
+	{
+		const Value& font = profile["font"];
+		if (font.HasMember("sizes") && font["sizes"].IsObject())
+			sizeConfig = &font["sizes"];
+		if (font.HasMember("weight") && font["weight"].IsString())
+			weightConfig = &font["weight"];
+	}
+
+	auto getFontSize = [&](const char* key, int fallback) -> int
+	{
+		if (sizeConfig && sizeConfig->HasMember(key) && (*sizeConfig)[key].IsInt())
+		{
+			int configured = (*sizeConfig)[key].GetInt();
+			return (configured < 6) ? 6 : configured;
+		}
+		return fallback;
+	};
+
+	const int sizeOne = getFontSize("one", 10);
+	const int sizeTwo = getFontSize("two", 11);
+	const int sizeThree = getFontSize("three", 12);
+	const int sizeFour = getFontSize("four", 13);
+	const int sizeFive = getFontSize("five", 14);
+
+	std::wstring buffer = std::wstring(fontName.begin(), fontName.end());
+	Gdiplus::FontStyle fontStyle = Gdiplus::FontStyleRegular;
+	if (weightConfig && strcmp(weightConfig->GetString(), "Bold") == 0)
+		fontStyle = Gdiplus::FontStyleBold;
+	if (weightConfig && strcmp(weightConfig->GetString(), "Italic") == 0)
+		fontStyle = Gdiplus::FontStyleItalic;
+
+	auto createFont = [&](int size) -> Gdiplus::Font*
+	{
+		Gdiplus::Font* font = new Gdiplus::Font(buffer.c_str(), Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+		if (font->GetLastStatus() != Gdiplus::Ok)
+		{
+			delete font;
+			font = new Gdiplus::Font(L"Arial", Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+		}
+		return font;
+	};
+
+	customFonts[1] = createFont(sizeOne);
+	customFonts[2] = createFont(sizeTwo);
+	customFonts[3] = createFont(sizeThree);
+	customFonts[4] = createFont(sizeFour);
+	customFonts[5] = createFont(sizeFive);
+}
+
+void CSMRRadar::ReloadConfig() {
+	Logger::info("CSMRRadar::ReloadConfig()");
+	std::string activeProfile = CurrentConfig ? CurrentConfig->getActiveProfileName() : "Default";
+	if (!CurrentConfig)
+		CurrentConfig = new CConfig(ConfigPath, mapsPath);
+	else {
+		CurrentConfig->reload();
+	}
+	if (activeProfile.empty())
+		activeProfile = "Default";
+	if (CurrentConfig->isItActiveProfile(activeProfile) == 0 && !CurrentConfig->getAllProfiles().empty()) {
+		activeProfile = CurrentConfig->getAllProfiles().front();
+	}
+	this->LoadProfile(activeProfile);
+	this->RefreshAirportActivity();
+}
+
+void CSMRRadar::LoadProfile(string profileName) {
+	Logger::info(string(__FUNCSIG__));
+	// Saving old profile data
+	CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+
+	// Loading the new profile
+	CurrentConfig->setActiveProfile(profileName);
+	EnsureTargetGroundStatusColorEntries();
+
+	// Loading all the new data
+	const Value &RimcasTimer = CurrentConfig->getActiveProfile()["rimcas"]["timer"];
+	const Value &RimcasTimerLVP = CurrentConfig->getActiveProfile()["rimcas"]["timer_lvp"];
+
+	// Inactive alerts
+	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
+	RimcasInstance->setInactiveAlerts(inactiveAlerts);
+
+	vector<int> RimcasNorm;
+	for (SizeType i = 0; i < RimcasTimer.Size(); i++) {
+		RimcasNorm.push_back(RimcasTimer[i].GetInt());
+	}
+
+	vector<int> RimcasLVP;
+	for (SizeType i = 0; i < RimcasTimerLVP.Size(); i++) {
+		RimcasLVP.push_back(RimcasTimerLVP[i].GetInt());
+	}
+	RimcasInstance->setCountdownDefinition(RimcasNorm, RimcasLVP);
+	LeaderLineDefaultlenght = CurrentConfig->getActiveProfile()["labels"]["leader_line_length"].GetInt();
+
+	customCursor = CurrentConfig->isCustomCursorUsed();
+	currentFontSize = GetActiveLabelFontSize();
+
+	// Reloading the fonts
+	this->LoadCustomFont();
+
+	ProfileColorPaths.clear();
+	ProfileColorPathHasAlpha.clear();
+	SelectedProfileColorPath.clear();
+	ShowProfileColorPicker = false;
+	ProfileColorPickerHasAlpha = false;
+	ProfileColorPickerDirty = false;
+	ProfileColorPickerDragWheel = false;
+	ProfileColorPickerDragValue = false;
+	ProfileColorPickerDragAlpha = false;
+	ShowTagDefinitionEditor = false;
+	TagDefinitionEditorType = "departure";
+	TagDefinitionEditorDetailed = false;
+	TagDefinitionEditorDepartureStatus = "default";
+	TagDefinitionEditorSelectedLine = 0;
+}
+
+void CSMRRadar::EnsureTargetGroundStatusColorEntries()
+{
+	if (!CurrentConfig)
+		return;
+
+	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
+	if (!profile.IsObject())
+		return;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	bool changed = false;
+
+	auto ensureObjectMember = [&](Value& parent, const char* key) -> Value&
+	{
+		if (!parent.HasMember(key) || !parent[key].IsObject())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			Value keyValue;
+			keyValue.SetString(key, allocator);
+			Value newObject(kObjectType);
+			parent.AddMember(keyValue, newObject, allocator);
+			changed = true;
+		}
+
+		return parent[key];
+	};
+
+	auto ensureColorMember = [&](Value& parent, const char* key, int r, int g, int b, int a)
+	{
+		if (!parent.HasMember(key) || !parent[key].IsObject())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			Value keyValue;
+			keyValue.SetString(key, allocator);
+			Value colorObject(kObjectType);
+			colorObject.AddMember("r", r, allocator);
+			colorObject.AddMember("g", g, allocator);
+			colorObject.AddMember("b", b, allocator);
+			colorObject.AddMember("a", a, allocator);
+			parent.AddMember(keyValue, colorObject, allocator);
+			changed = true;
+			return;
+		}
+
+		Value& colorObject = parent[key];
+		auto ensureComponent = [&](const char* component, int value)
+		{
+			if (!colorObject.HasMember(component))
+			{
+				Value componentKey;
+				componentKey.SetString(component, allocator);
+				Value componentValue;
+				componentValue.SetInt(value);
+				colorObject.AddMember(componentKey, componentValue, allocator);
+				changed = true;
+				return;
+			}
+
+			if (!colorObject[component].IsInt() || colorObject[component].GetInt() < 0 || colorObject[component].GetInt() > 255)
+			{
+				colorObject[component].SetInt(value);
+				changed = true;
+			}
+		};
+
+		ensureComponent("r", r);
+		ensureComponent("g", g);
+		ensureComponent("b", b);
+		ensureComponent("a", a);
+	};
+
+	auto ensureBoolMember = [&](Value& parent, const char* key, bool defaultValue)
+	{
+		if (parent.HasMember(key) && parent[key].IsBool())
+			return;
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value boolValue;
+		boolValue.SetBool(defaultValue);
+		parent.AddMember(keyValue, boolValue, allocator);
+		changed = true;
+	};
+
+	auto ensureIntMember = [&](Value& parent, const char* key, int defaultValue, int minValue, int maxValue)
+	{
+		defaultValue = std::clamp(defaultValue, minValue, maxValue);
+		if (parent.HasMember(key) && parent[key].IsInt())
+		{
+			const int current = parent[key].GetInt();
+			const int bounded = std::clamp(current, minValue, maxValue);
+			if (current != bounded)
+			{
+				parent[key].SetInt(bounded);
+				changed = true;
+			}
+			return;
+		}
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value intValue;
+		intValue.SetInt(defaultValue);
+		parent.AddMember(keyValue, intValue, allocator);
+		changed = true;
+	};
+
+	auto ensureDoubleMember = [&](Value& parent, const char* key, double defaultValue, double minValue, double maxValue)
+	{
+		defaultValue = std::clamp(defaultValue, minValue, maxValue);
+		if (parent.HasMember(key) && parent[key].IsNumber())
+		{
+			double currentValue = parent[key].GetDouble();
+			double boundedValue = std::clamp(currentValue, minValue, maxValue);
+			if (fabs(currentValue - boundedValue) > 0.0001)
+			{
+				parent[key].SetDouble(boundedValue);
+				changed = true;
+			}
+			return;
+		}
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value numberValue;
+		numberValue.SetDouble(defaultValue);
+		parent.AddMember(keyValue, numberValue, allocator);
+		changed = true;
+	};
+
+	auto ensureResolutionPresetMember = [&](Value& parent, const char* key, const char* defaultValue)
+	{
+		auto normalizePreset = [](const std::string& raw) -> std::string
+		{
+			std::string lowered = raw;
+			std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			if (lowered.find("4k") != std::string::npos || lowered.find("2160") != std::string::npos || lowered.find("uhd") != std::string::npos)
+				return "4k";
+			if (lowered.find("2k") != std::string::npos || lowered.find("1440") != std::string::npos || lowered.find("qhd") != std::string::npos)
+				return "2k";
+			return "1080p";
+		};
+
+		if (parent.HasMember(key) && parent[key].IsString())
+		{
+			const std::string normalized = normalizePreset(parent[key].GetString());
+			if (normalized != parent[key].GetString())
+			{
+				parent[key].SetString(normalized.c_str(), static_cast<rapidjson::SizeType>(normalized.size()), allocator);
+				changed = true;
+			}
+			return;
+		}
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		const std::string normalizedDefault = normalizePreset(defaultValue ? defaultValue : "1080p");
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value presetValue;
+		presetValue.SetString(normalizedDefault.c_str(), static_cast<rapidjson::SizeType>(normalizedDefault.size()), allocator);
+		parent.AddMember(keyValue, presetValue, allocator);
+		changed = true;
+	};
+
+	auto appendCopiedDefinition = [&](Value& targetArray, const Value& sourceArray)
+	{
+		if (!sourceArray.IsArray())
+			return;
+
+		for (rapidjson::SizeType i = 0; i < sourceArray.Size(); ++i)
+		{
+			const Value& sourceLine = sourceArray[i];
+			Value copiedLine(kArrayType);
+			if (sourceLine.IsArray())
+			{
+				for (rapidjson::SizeType j = 0; j < sourceLine.Size(); ++j)
+				{
+					if (sourceLine[j].IsString())
+					{
+						Value tokenValue;
+						tokenValue.SetString(sourceLine[j].GetString(), static_cast<rapidjson::SizeType>(strlen(sourceLine[j].GetString())), allocator);
+						copiedLine.PushBack(tokenValue, allocator);
+					}
+				}
+			}
+			else if (sourceLine.IsString())
+			{
+				Value tokenValue;
+				tokenValue.SetString(sourceLine.GetString(), static_cast<rapidjson::SizeType>(strlen(sourceLine.GetString())), allocator);
+				copiedLine.PushBack(tokenValue, allocator);
+			}
+
+			targetArray.PushBack(copiedLine, allocator);
+		}
+	};
+
+	auto ensureDefinitionArrayMember = [&](Value& parent, const char* key, const Value* fallbackSource)
+	{
+		if (parent.HasMember(key) && parent[key].IsArray())
+			return;
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value definitionArray(kArrayType);
+		if (fallbackSource != nullptr)
+			appendCopiedDefinition(definitionArray, *fallbackSource);
+
+		if (definitionArray.Size() == 0)
+		{
+			Value fallbackLine(kArrayType);
+			Value fallbackToken;
+			fallbackToken.SetString("callsign", allocator);
+			fallbackLine.PushBack(fallbackToken, allocator);
+			definitionArray.PushBack(fallbackLine, allocator);
+		}
+
+		parent.AddMember(keyValue, definitionArray, allocator);
+		changed = true;
+	};
+
+	const std::vector<std::string> defaultTagFonts = {
+		"EuroScope",
+		"Consolas",
+		"Lucida Console",
+		"Courier New",
+		"Segoe UI",
+		"Tahoma",
+		"Arial",
+		"ods",
+		"Deesse Medium"
+	};
+
+	Value& font = ensureObjectMember(profile, "font");
+	if (!font.HasMember("font_name") || !font["font_name"].IsString() || strlen(font["font_name"].GetString()) == 0)
+	{
+		if (font.HasMember("font_name"))
+			font.RemoveMember("font_name");
+
+		Value keyValue;
+		keyValue.SetString("font_name", allocator);
+		Value fontNameValue;
+		fontNameValue.SetString("EuroScope", allocator);
+		font.AddMember(keyValue, fontNameValue, allocator);
+		changed = true;
+	}
+
+	if (!font.HasMember("weight") || !font["weight"].IsString())
+	{
+		if (font.HasMember("weight"))
+			font.RemoveMember("weight");
+
+		Value keyValue;
+		keyValue.SetString("weight", allocator);
+		Value weightValue;
+		weightValue.SetString("Regular", allocator);
+		font.AddMember(keyValue, weightValue, allocator);
+		changed = true;
+	}
+
+	Value& fontSizes = ensureObjectMember(font, "sizes");
+	auto ensureFontSizeMember = [&](Value& parent, const char* key, int fallback)
+	{
+		if (parent.HasMember(key) && parent[key].IsInt())
+		{
+			const int current = parent[key].GetInt();
+			const int bounded = (current < 6) ? 6 : current;
+			if (current != bounded)
+			{
+				parent[key].SetInt(bounded);
+				changed = true;
+			}
+			return;
+		}
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value value;
+		value.SetInt((fallback < 6) ? 6 : fallback);
+		parent.AddMember(keyValue, value, allocator);
+		changed = true;
+	};
+
+	ensureFontSizeMember(fontSizes, "one", 10);
+	ensureFontSizeMember(fontSizes, "two", 11);
+	ensureFontSizeMember(fontSizes, "three", 12);
+	ensureFontSizeMember(fontSizes, "four", 13);
+	ensureFontSizeMember(fontSizes, "five", 14);
+
+	auto ensureAvailableFontList = [&](Value& fontObject, const char* key)
+	{
+		bool rebuild = false;
+		if (!fontObject.HasMember(key) || !fontObject[key].IsArray())
+		{
+			rebuild = true;
+		}
+		else
+		{
+			Value& existingArray = fontObject[key];
+			for (rapidjson::SizeType i = 0; i < existingArray.Size(); ++i)
+			{
+				if (!existingArray[i].IsString())
+				{
+					rebuild = true;
+					break;
+				}
+			}
+		}
+
+		if (rebuild)
+		{
+			if (fontObject.HasMember(key))
+				fontObject.RemoveMember(key);
+
+			Value keyValue;
+			keyValue.SetString(key, allocator);
+			Value fontArray(kArrayType);
+			for (const std::string& fontName : defaultTagFonts)
+			{
+				Value fontValue;
+				fontValue.SetString(fontName.c_str(), static_cast<rapidjson::SizeType>(fontName.size()), allocator);
+				fontArray.PushBack(fontValue, allocator);
+			}
+			fontObject.AddMember(keyValue, fontArray, allocator);
+			changed = true;
+			return;
+		}
+	};
+
+	ensureAvailableFontList(font, "available_fonts");
+	ensureIntMember(font, "label_font_size", 1, 1, 5);
+
+	Value& targets = ensureObjectMember(profile, "targets");
+	if (!targets.HasMember("icon_style") || !targets["icon_style"].IsString())
+	{
+		if (targets.HasMember("icon_style"))
+			targets.RemoveMember("icon_style");
+
+		Value keyValue;
+		keyValue.SetString("icon_style", allocator);
+		Value value;
+		value.SetString("realistic", allocator);
+		targets.AddMember(keyValue, value, allocator);
+		changed = true;
+	}
+	else
+	{
+		const std::string normalizedIconStyle = NormalizeTargetIconStyle(targets["icon_style"].GetString());
+		if (normalizedIconStyle != targets["icon_style"].GetString())
+		{
+			targets["icon_style"].SetString(normalizedIconStyle.c_str(), static_cast<rapidjson::SizeType>(normalizedIconStyle.size()), allocator);
+			changed = true;
+		}
+	}
+	ensureBoolMember(targets, "small_icon_boost", false);
+	ensureDoubleMember(targets, "small_icon_boost_factor", 1.0, 0.5, 4.0);
+	ensureResolutionPresetMember(targets, "small_icon_boost_resolution", "1080p");
+	ensureBoolMember(targets, "fixed_pixel_icon_size", false);
+	ensureDoubleMember(targets, "fixed_pixel_triangle_scale", 1.0, 0.1, 3.0);
+
+	Value& groundIcons = ensureObjectMember(targets, "ground_icons");
+
+	ensureColorMember(groundIcons, "gate", 165, 165, 165, 255);
+	ensureColorMember(groundIcons, "departure_gate", 165, 165, 165, 255);
+	ensureColorMember(groundIcons, "arrival_gate", 165, 165, 165, 255);
+	ensureColorMember(groundIcons, "push", 253, 218, 13, 255);
+	ensureColorMember(groundIcons, "stup", 253, 218, 13, 255);
+	ensureColorMember(groundIcons, "taxi", 240, 240, 240, 255);
+	ensureColorMember(groundIcons, "depa", 240, 240, 240, 255);
+	ensureColorMember(groundIcons, "arr", 165, 165, 165, 255);
+	ensureColorMember(groundIcons, "airborne_departure", 240, 240, 240, 255);
+	ensureColorMember(groundIcons, "airborne_arrival", 120, 190, 240, 255);
+	ensureColorMember(groundIcons, "arrival_taxi", 70, 195, 120, 255);
+	ensureColorMember(groundIcons, "nsts", 165, 165, 165, 255);
+	ensureColorMember(groundIcons, "nofpl", 128, 128, 128, 255);
+
+	if (!profile.HasMember("sid_text_colors") || !profile["sid_text_colors"].IsArray())
+	{
+		if (profile.HasMember("sid_text_colors"))
+			profile.RemoveMember("sid_text_colors");
+
+		Value sidTextColorsKey;
+		sidTextColorsKey.SetString("sid_text_colors", allocator);
+		Value sidTextColorsArray(kArrayType);
+		profile.AddMember(sidTextColorsKey, sidTextColorsArray, allocator);
+		changed = true;
+	}
+
+	Value& labels = ensureObjectMember(profile, "labels");
+	if (labels.HasMember("sid_text_colors"))
+	{
+		labels.RemoveMember("sid_text_colors");
+		changed = true;
+	}
+
+	Value& departureLabel = ensureObjectMember(labels, "departure");
+	ensureColorMember(departureLabel, "nofpl_color", 128, 128, 128, 255);
+	Value& departureStatusColors = ensureObjectMember(departureLabel, "status_background_colors");
+	ensureColorMember(departureStatusColors, "push", 253, 218, 13, 255);
+	ensureColorMember(departureStatusColors, "stup", 253, 218, 13, 255);
+	ensureColorMember(departureStatusColors, "taxi", 240, 240, 240, 255);
+	ensureColorMember(departureStatusColors, "nsts", 165, 165, 165, 255);
+	ensureColorMember(departureStatusColors, "depa", 240, 240, 240, 255);
+
+	Value& arrivalLabel = ensureObjectMember(labels, "arrival");
+	ensureColorMember(arrivalLabel, "nofpl_color", 128, 128, 128, 255);
+	Value& arrivalStatusColors = ensureObjectMember(arrivalLabel, "status_background_colors");
+	ensureColorMember(arrivalStatusColors, "arr", 165, 165, 165, 255);
+	ensureColorMember(arrivalStatusColors, "taxi", 70, 195, 120, 255);
+
+	Value& airborneLabel = ensureObjectMember(labels, "airborne");
+	ensureColorMember(airborneLabel, "departure_background_color", 53, 126, 187, 255);
+	ensureColorMember(airborneLabel, "arrival_background_color", 191, 87, 91, 255);
+	ensureColorMember(airborneLabel, "departure_background_color_on_runway", 40, 50, 200, 255);
+	ensureColorMember(airborneLabel, "arrival_background_color_on_runway", 170, 50, 50, 255);
+	ensureColorMember(airborneLabel, "departure_text_color", 255, 255, 255, 255);
+	ensureColorMember(airborneLabel, "arrival_text_color", 255, 255, 255, 255);
+
+	ensureDefinitionArrayMember(departureLabel, "definition", nullptr);
+	const Value* baseDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;
+	ensureDefinitionArrayMember(departureLabel, "definitionDetailled", baseDefinition);
+	Value& departureStatusDefinitions = ensureObjectMember(departureLabel, "status_definitions");
+
+	auto ensureStatusDefinitionEntries = [&](const char* statusKey)
+	{
+		Value& statusSection = ensureObjectMember(departureStatusDefinitions, statusKey);
+		const Value* defaultDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;
+		const Value* defaultDetailedDefinition = (departureLabel.HasMember("definitionDetailled") && departureLabel["definitionDetailled"].IsArray()) ? &departureLabel["definitionDetailled"] : defaultDefinition;
+		ensureDefinitionArrayMember(statusSection, "definition", defaultDefinition);
+		ensureDefinitionArrayMember(statusSection, "definitionDetailled", defaultDetailedDefinition);
+	};
+
+	ensureStatusDefinitionEntries("taxi");
+	ensureStatusDefinitionEntries("push");
+	ensureStatusDefinitionEntries("stup");
+	ensureStatusDefinitionEntries("nsts");
+	ensureStatusDefinitionEntries("depa");
+	ensureStatusDefinitionEntries("nofpl");
+
+	ensureDefinitionArrayMember(arrivalLabel, "definition", nullptr);
+	const Value* arrivalBaseDefinition = (arrivalLabel.HasMember("definition") && arrivalLabel["definition"].IsArray()) ? &arrivalLabel["definition"] : nullptr;
+	ensureDefinitionArrayMember(arrivalLabel, "definitionDetailled", arrivalBaseDefinition);
+	Value& arrivalStatusDefinitions = ensureObjectMember(arrivalLabel, "status_definitions");
+	auto ensureArrivalStatusDefinitionEntries = [&](const char* statusKey)
+	{
+		Value& statusSection = ensureObjectMember(arrivalStatusDefinitions, statusKey);
+		const Value* defaultDefinition = (arrivalLabel.HasMember("definition") && arrivalLabel["definition"].IsArray()) ? &arrivalLabel["definition"] : nullptr;
+		const Value* defaultDetailedDefinition = (arrivalLabel.HasMember("definitionDetailled") && arrivalLabel["definitionDetailled"].IsArray()) ? &arrivalLabel["definitionDetailled"] : defaultDefinition;
+		ensureDefinitionArrayMember(statusSection, "definition", defaultDefinition);
+		ensureDefinitionArrayMember(statusSection, "definitionDetailled", defaultDetailedDefinition);
+	};
+
+	ensureArrivalStatusDefinitionEntries("arr");
+	ensureArrivalStatusDefinitionEntries("taxi");
+	ensureArrivalStatusDefinitionEntries("nofpl");
+
+	if (changed && !CurrentConfig->saveConfig())
+	{
+		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save status settings to vSMR_Profiles.json", true, true, false, false, false);
+	}
+}
+
+void CSMRRadar::RebuildProfileColorEntries()
+{
+	ProfileColorPaths.clear();
+	ProfileColorPathHasAlpha.clear();
+
+	if (!CurrentConfig)
+		return;
+
+	const rapidjson::Value& activeProfile = CurrentConfig->getActiveProfile();
+	CollectProfileColorPaths(activeProfile, "", ProfileColorPaths, ProfileColorPathHasAlpha);
+	std::sort(ProfileColorPaths.begin(), ProfileColorPaths.end());
+}
+
+bool CSMRRadar::IsProfileColorPathValid(const std::string& path, bool* hasAlpha)
+{
+	if (hasAlpha)
+		*hasAlpha = false;
+
+	if (!CurrentConfig || path.empty())
+		return false;
+
+	std::vector<ProfileColorPathToken> tokens = ParseProfileColorPath(path);
+	if (tokens.empty())
+		return false;
+
+	rapidjson::Value& activeProfile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	rapidjson::Value* colorValue = ResolveProfilePath(activeProfile, tokens);
+	if (!colorValue)
+		return false;
+
+	return IsColorConfigObject(*colorValue, hasAlpha);
+}
+
+int CSMRRadar::GetProfileColorComponentValue(const std::string& path, char component, int fallback)
+{
+	if (!CurrentConfig || path.empty())
+		return fallback;
+
+	const char* componentKey = ColorComponentKey(component);
+	if (!componentKey)
+		return fallback;
+
+	std::vector<ProfileColorPathToken> tokens = ParseProfileColorPath(path);
+	if (tokens.empty())
+		return fallback;
+
+	rapidjson::Value& activeProfile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	rapidjson::Value* colorValue = ResolveProfilePath(activeProfile, tokens);
+	if (!colorValue)
+		return fallback;
+
+	bool hasAlpha = false;
+	if (!IsColorConfigObject(*colorValue, &hasAlpha))
+		return fallback;
+
+	const char normalized = NormalizeProfileColorComponent(component);
+	if (normalized == 'a' && !hasAlpha)
+		return fallback;
+
+	if (!colorValue->HasMember(componentKey) || !(*colorValue)[componentKey].IsInt())
+		return fallback;
+
+	return (*colorValue)[componentKey].GetInt();
+}
+
+bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char component, int value)
+{
+	if (!CurrentConfig || path.empty())
+		return false;
+
+	const char* componentKey = ColorComponentKey(component);
+	if (!componentKey)
+		return false;
+
+	std::vector<ProfileColorPathToken> tokens = ParseProfileColorPath(path);
+	if (tokens.empty())
+		return false;
+
+	rapidjson::Value& activeProfile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	rapidjson::Value* colorValue = ResolveProfilePath(activeProfile, tokens);
+	if (!colorValue)
+		return false;
+
+	bool hasAlpha = false;
+	if (!IsColorConfigObject(*colorValue, &hasAlpha))
+		return false;
+
+	const char normalized = NormalizeProfileColorComponent(component);
+	const int clamped = (value < 0) ? 0 : ((value > 255) ? 255 : value);
+	if (normalized == 'a' && !hasAlpha)
+	{
+		rapidjson::Value key;
+		key.SetString("a", CurrentConfig->document.GetAllocator());
+		rapidjson::Value alphaValue;
+		alphaValue.SetInt(clamped);
+		colorValue->AddMember(key, alphaValue, CurrentConfig->document.GetAllocator());
+		return true;
+	}
+
+	if (!colorValue->HasMember(componentKey) || !(*colorValue)[componentKey].IsInt())
+		return false;
+
+	(*colorValue)[componentKey].SetInt(clamped);
+	return true;
+}
+
+void CSMRRadar::OpenProfileColorPicker(const std::string& path, bool keepTagDefinitionEditorOpen)
+{
+	bool hasAlpha = false;
+	if (!IsProfileColorPathValid(path, &hasAlpha))
+		return;
+
+	SelectedProfileColorPath = path;
+	ProfileColorPickerHasAlpha = hasAlpha;
+
+	const int r = GetProfileColorComponentValue(path, 'r', 255);
+	const int g = GetProfileColorComponentValue(path, 'g', 255);
+	const int b = GetProfileColorComponentValue(path, 'b', 255);
+	const int a = GetProfileColorComponentValue(path, 'a', 255);
+
+	RgbToHsv(r, g, b, ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue);
+	ProfileColorPickerAlpha = ClampInt(a, 0, 255);
+	ShowProfileColorPicker = true;
+	if (!keepTagDefinitionEditorOpen)
+		ShowTagDefinitionEditor = false;
+	ProfileColorPickerDirty = false;
+	ProfileColorPickerDragWheel = false;
+	ProfileColorPickerDragValue = false;
+	ProfileColorPickerDragAlpha = false;
+
+	RequestRefresh();
+}
+
+void CSMRRadar::ApplyProfileColorPicker(bool persistToDisk)
+{
+	if (SelectedProfileColorPath.empty())
+		return;
+
+	bool hasAlpha = false;
+	if (!IsProfileColorPathValid(SelectedProfileColorPath, &hasAlpha))
+		return;
+
+	Gdiplus::Color rgb = HsvToColor(ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue, 255);
+
+	const bool okR = UpdateProfileColorComponent(SelectedProfileColorPath, 'r', rgb.GetR());
+	const bool okG = UpdateProfileColorComponent(SelectedProfileColorPath, 'g', rgb.GetG());
+	const bool okB = UpdateProfileColorComponent(SelectedProfileColorPath, 'b', rgb.GetB());
+
+	bool okA = true;
+	if (hasAlpha || ProfileColorPickerHasAlpha || ProfileColorPickerAlpha != 255)
+	{
+		okA = UpdateProfileColorComponent(SelectedProfileColorPath, 'a', ProfileColorPickerAlpha);
+		ProfileColorPickerHasAlpha = ProfileColorPickerHasAlpha || okA;
+	}
+
+	if (!(okR && okG && okB && okA))
+		return;
+
+	ProfileColorPickerDirty = true;
+
+	if (persistToDisk)
+	{
+		if (!CurrentConfig->saveConfig())
+		{
+			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save profile color to vSMR_Profiles.json", true, true, false, false, false);
+		}
+		else
+		{
+			ProfileColorPickerDirty = false;
+		}
+		RebuildProfileColorEntries();
+	}
+
+	RequestRefresh();
+}
+
+void CSMRRadar::UpdateProfileColorPickerFromPoint(const std::string& controlId, POINT pt, bool persistToDisk)
+{
+	if (!ShowProfileColorPicker)
+		return;
+
+	if (controlId == "picker_wheel")
+	{
+		int radius = min(ProfileColorPickerWheelRect.Width(), ProfileColorPickerWheelRect.Height()) / 2;
+		if (radius <= 0)
+			return;
+
+		double cx = ProfileColorPickerWheelRect.left + ProfileColorPickerWheelRect.Width() / 2.0;
+		double cy = ProfileColorPickerWheelRect.top + ProfileColorPickerWheelRect.Height() / 2.0;
+		double dx = pt.x - cx;
+		double dy = pt.y - cy;
+		double distance = sqrt(dx * dx + dy * dy);
+
+		if (distance > radius && distance > 1e-9)
+		{
+			double scale = static_cast<double>(radius) / distance;
+			dx *= scale;
+			dy *= scale;
+			distance = radius;
+		}
+
+		double angle = atan2(dy, dx) * 180.0 / PI;
+		if (angle < 0.0)
+			angle += 360.0;
+
+		ProfileColorPickerHue = angle;
+		ProfileColorPickerSaturation = ClampDouble(distance / radius, 0.0, 1.0);
+		ApplyProfileColorPicker(persistToDisk);
+		return;
+	}
+
+	if (controlId == "picker_value")
+	{
+		int height = max(1, ProfileColorPickerValueRect.Height());
+		double t = static_cast<double>(pt.y - ProfileColorPickerValueRect.top) / static_cast<double>(height);
+		t = ClampDouble(t, 0.0, 1.0);
+		ProfileColorPickerValue = 1.0 - t;
+		ApplyProfileColorPicker(persistToDisk);
+		return;
+	}
+
+	if (controlId == "picker_alpha")
+	{
+		int height = max(1, ProfileColorPickerAlphaRect.Height());
+		double t = static_cast<double>(pt.y - ProfileColorPickerAlphaRect.top) / static_cast<double>(height);
+		t = ClampDouble(t, 0.0, 1.0);
+		ProfileColorPickerAlpha = ClampInt(static_cast<int>((1.0 - t) * 255.0 + 0.5), 0, 255);
+		ApplyProfileColorPicker(persistToDisk);
+		return;
+	}
+}
+
+void CSMRRadar::EnsureProfileColorWheelBitmap(int diameter)
+{
+	if (diameter <= 0)
+		return;
+
+	if (ProfileColorWheelBitmap && ProfileColorWheelBitmapSize == diameter)
+		return;
+
+	std::unique_ptr<Gdiplus::Bitmap> bitmap(new Gdiplus::Bitmap(diameter, diameter, PixelFormat32bppARGB));
+	const double radius = diameter / 2.0;
+	const double cx = radius;
+	const double cy = radius;
+
+	for (int y = 0; y < diameter; ++y)
+	{
+		for (int x = 0; x < diameter; ++x)
+		{
+			double dx = (x + 0.5) - cx;
+			double dy = (y + 0.5) - cy;
+			double dist = sqrt(dx * dx + dy * dy);
+
+			if (dist > radius)
+			{
+				bitmap->SetPixel(x, y, Gdiplus::Color(0, 0, 0, 0));
+				continue;
+			}
+
+			double hue = atan2(dy, dx) * 180.0 / PI;
+			if (hue < 0.0)
+				hue += 360.0;
+
+			double sat = ClampDouble(dist / radius, 0.0, 1.0);
+			bitmap->SetPixel(x, y, HsvToColor(hue, sat, 1.0, 255));
+		}
+	}
+
+	ProfileColorWheelBitmap = std::move(bitmap);
+	ProfileColorWheelBitmapSize = diameter;
+}
+
+
+map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport)
+{
+	Logger::info(string(__FUNCSIG__));
+	// ----
+	// Tag items available
+	// callsign: Callsign with freq state and comm *
+	// actype: Aircraft type *
+	// sctype: Aircraft type that changes for squawk error *
+	// sqerror: Squawk error if there is one, or empty *
+	// deprwy: Departure runway *
+	// seprwy: Departure runway that changes to speed if speed > 25kts *
+	// arvrwy: Arrival runway *
+	// srvrwy: Speed that changes to arrival runway if speed < 25kts *
+	// gate: Gate, from speed or scratchpad *
+	// sate: Gate, from speed or scratchpad that changes to speed if speed > 25kts *
+	// flightlevel: Flightlevel/Pressure altitude of the ac *
+	// gs: Ground speed of the ac *
+	// tobt: VACDM TOBT (HHMM)
+	// tsat: VACDM TSAT (HHMM)
+	// ttot: VACDM TTOT (HHMM)
+	// asat: VACDM ASAT (HHMM)
+	// aobt: VACDM AOBT (HHMM)
+	// atot: VACDM ATOT (HHMM)
+	// asrt: VACDM ASRT (HHMM)
+	// aort: VACDM AORT (HHMM)
+	// ctot: VACDM CTOT (HHMM)
+	// event_booking: VACDM event booking flag ("B")
+	// tendency: Climbing or descending symbol *
+	// wake: Wake turbulance cat *
+	// groundstatus: Current status *
+	// ssr: the current squawk of the ac
+	// asid: the assigned SID
+	// csid: assigned SID (meant for colorized SID token in tag definitions)
+	// ssid: a short version of the SID
+	// origin: origin aerodrome
+	// dest: destination aerodrome
+	// clearance: departure/startup clearance flag ([ ] / [x]), clickable toggle
+	// ----
+
+	bool IsPrimary = !rt.GetPosition().GetTransponderC();
+	bool isAirborne = rt.GetPosition().GetReportedGS() > 50;
+
+	// ----- Callsign -------
+	string callsign = rt.GetCallsign();
+	if (fp.IsValid()) {
+		if (fp.GetControllerAssignedData().GetCommunicationType() == 't' ||
+			fp.GetControllerAssignedData().GetCommunicationType() == 'T' ||
+			fp.GetControllerAssignedData().GetCommunicationType() == 'r' ||
+			fp.GetControllerAssignedData().GetCommunicationType() == 'R' ||
+			fp.GetControllerAssignedData().GetCommunicationType() == 'v' ||
+			fp.GetControllerAssignedData().GetCommunicationType() == 'V')
+		{
+			if (fp.GetControllerAssignedData().GetCommunicationType() != 'v' &&
+				fp.GetControllerAssignedData().GetCommunicationType() != 'V') {
+				callsign.append("/");
+				callsign += fp.GetControllerAssignedData().GetCommunicationType();
+			}
+		}
+		else if (fp.GetFlightPlanData().GetCommunicationType() == 't' ||
+			fp.GetFlightPlanData().GetCommunicationType() == 'r' ||
+			fp.GetFlightPlanData().GetCommunicationType() == 'T' ||
+			fp.GetFlightPlanData().GetCommunicationType() == 'R')
+		{
+			callsign.append("/");
+			callsign += fp.GetFlightPlanData().GetCommunicationType();
+		}
+
+		switch (fp.GetState()) {
+
+		case FLIGHT_PLAN_STATE_TRANSFER_TO_ME_INITIATED:
+			callsign = ">>" + callsign;
+			break;
+
+		case FLIGHT_PLAN_STATE_TRANSFER_FROM_ME_INITIATED:
+			callsign = callsign + ">>";
+			break;
+
+		case FLIGHT_PLAN_STATE_ASSUMED:
+			callsign = "[" + callsign + "]";
+			break;
+
+		}
+	}
+
+	// ----- Squawk error -------
+	string sqerror = "";
+	const char * assr = fp.GetControllerAssignedData().GetSquawk();
+	const char * ssr = rt.GetPosition().GetSquawk();
+	bool has_squawk_error = false;
+	if (strlen(assr) != 0 && !startsWith(ssr, assr)) {
+		has_squawk_error = true;
+		sqerror = "A";
+		sqerror.append(assr);
+	}
+
+	// ----- Aircraft type -------
+
+	string actype = "NoFPL";
+	if (fp.IsValid() && fp.GetFlightPlanData().IsReceived())
+		actype = fp.GetFlightPlanData().GetAircraftFPType();
+	if (actype.size() > 4 && actype != "NoFPL")
+		actype = actype.substr(0, 4);
+
+	// ----- Aircraft type that changes to squawk error -------
+	string sctype = actype;
+	if (has_squawk_error)
+		sctype = sqerror;
+
+	// ----- Groundspeed -------
+	string speed = std::to_string(rt.GetPosition().GetReportedGS());
+
+	// ----- Departure runway -------
+	string deprwy = fp.GetFlightPlanData().GetDepartureRwy();
+	if (deprwy.length() == 0)
+		deprwy = "RWY";
+
+	// ----- Departure runway that changes for overspeed -------
+	string seprwy = deprwy;
+	if (rt.GetPosition().GetReportedGS() > 25)
+		seprwy = std::to_string(rt.GetPosition().GetReportedGS());
+
+	// ----- Arrival runway -------
+	string arvrwy = fp.GetFlightPlanData().GetArrivalRwy();
+	if (arvrwy.length() == 0)
+		arvrwy = "RWY";
+
+	// ----- Speed that changes to arrival runway -----
+	string srvrwy = speed;
+	if (rt.GetPosition().GetReportedGS() < 25)
+		srvrwy = arvrwy;
+
+	// ----- Gate -------
+	string gate;
+	if (useSpeedForGates)
+		gate = std::to_string(fp.GetControllerAssignedData().GetAssignedSpeed());
+	else
+		gate = fp.GetControllerAssignedData().GetScratchPadString();
+
+	replaceAll(gate, "STAND=", "");
+	gate = gate.substr(0, 4);
+
+	if (gate.size() == 0 || gate == "0" || !isAcCorrelated)
+		gate = "NoGate";
+
+	// ----- Gate that changes to speed -------
+	string sate = gate;
+	if (rt.GetPosition().GetReportedGS() > 25)
+		sate = speed;
+
+	// ----- Flightlevel -------
+	int fl = rt.GetPosition().GetFlightLevel();
+	int padding = 5;
+	string pfls = "";
+	if (fl <= TransitionAltitude) {
+		fl = rt.GetPosition().GetPressureAltitude();
+		pfls = "A";
+		padding = 4;
+	}
+	string flightlevel = (pfls + padWithZeros(padding, fl)).substr(0, 3);
+
+	// ----- Tendency -------
+	string tendency = "-";
+	int delta_fl = rt.GetPosition().GetFlightLevel() - rt.GetPreviousPosition(rt.GetPosition()).GetFlightLevel();
+	if (abs(delta_fl) >= 50) {
+		if (delta_fl < 0) {
+			tendency = "|";
+		}
+		else {
+			tendency = "^";
+		}
+	}
+
+	// ----- Wake cat -------
+	string wake = "?";
+	if (fp.IsValid() && isAcCorrelated) {
+		wake = "";
+		wake += fp.GetFlightPlanData().GetAircraftWtc();
+	}
+
+	// ----- SSR -------
+	string tssr = "";
+	if (rt.IsValid())
+	{
+		tssr = rt.GetPosition().GetSquawk();
+	}
+
+	// ----- SID -------
+	string dep = "SID";
+	if (fp.IsValid() && isAcCorrelated)
+	{
+		dep = fp.GetFlightPlanData().GetSidName();
+	}
+
+	// ----- Short SID -------
+	string ssid = dep;
+	if (fp.IsValid() && ssid.size() > 5 && isAcCorrelated)
+	{
+		ssid = dep.substr(0, 3);
+		ssid += dep.substr(dep.size() - 2, dep.size());
+	}
+
+	// ------- Origin aerodrome -------
+	string origin = "????";
+	if (isAcCorrelated)
+	{
+		origin = fp.GetFlightPlanData().GetOrigin();
+	}
+
+	// ------- Destination aerodrome -------
+	string dest = "????";
+	if (isAcCorrelated)
+	{
+		dest = fp.GetFlightPlanData().GetDestination();
+	}
+
+	// ----- GSTAT -------
+	string gstat = "STS";
+	if (fp.IsValid() && isAcCorrelated) {
+		if (strlen(fp.GetGroundState()) != 0)
+			gstat = fp.GetGroundState();
+	}
+
+	// ----- Clearance flag -------
+	string clearance = "";
+	if (fp.IsValid() && isAcCorrelated)
+		clearance = fp.GetClearenceFlag() ? "[x]" : "[ ]";
+
+	// ----- UK Controller Plugin / Assigned Stand -------
+	string uk_stand;
+	uk_stand = fp.GetControllerAssignedData().GetFlightStripAnnotation(3);
+	if (uk_stand.length() == 0)
+		uk_stand = "";
+
+	// ----- Ramp Agent Remark -------
+	string remark = fp.GetControllerAssignedData().GetFlightStripAnnotation(4);
+	if (remark.length() == 0)
+		remark = "";
+	
+	// ----- Scratchpad -------
+	string scratchpad = fp.GetControllerAssignedData().GetScratchPadString();
+	if (scratchpad.length() == 0)
+		scratchpad = "...";
+
+	// ----- VACDM fields -------
+	string tobt = "";
+	string tsat = "";
+	string ttot = "";
+	string asat = "";
+	string aobt = "";
+	string atot = "";
+	string asrt = "";
+	string aort = "";
+	string ctot = "";
+	string eventBooking = "";
+	VacdmPilotData vacdmPilot;
+	if (TryGetVacdmPilotDataForTarget(rt, fp, vacdmPilot))
+	{
+		if (vacdmPilot.hasTobt)
+			tobt = FormatVacdmTimeToken(vacdmPilot.tobtUtc);
+		if (vacdmPilot.hasTsat)
+			tsat = FormatVacdmTimeToken(vacdmPilot.tsatUtc);
+		if (vacdmPilot.hasTtot)
+			ttot = FormatVacdmTimeToken(vacdmPilot.ttotUtc);
+		if (vacdmPilot.hasAsat)
+			asat = FormatVacdmTimeToken(vacdmPilot.asatUtc);
+		if (vacdmPilot.hasAobt)
+			aobt = FormatVacdmTimeToken(vacdmPilot.aobtUtc);
+		if (vacdmPilot.hasAtot)
+			atot = FormatVacdmTimeToken(vacdmPilot.atotUtc);
+		if (vacdmPilot.hasAsrt)
+			asrt = FormatVacdmTimeToken(vacdmPilot.asrtUtc);
+		if (vacdmPilot.hasAort)
+			aort = FormatVacdmTimeToken(vacdmPilot.aortUtc);
+		if (vacdmPilot.hasCtot)
+			ctot = FormatVacdmTimeToken(vacdmPilot.ctotUtc);
+		eventBooking = vacdmPilot.hasBooking ? "B" : "";
+	}
+
+	// VACDM fallback: when backend has no entry, use FPL EOBT as TOBT baseline (matches VACDM plugin bootstrap behavior).
+	if (tobt.empty() && fp.IsValid() && isAcCorrelated)
+		tobt = NormalizeHhmmToken(fp.GetFlightPlanData().GetEstimatedDepartureTime());
+
+
+	// ----- Generating the replacing map -----
+	map<string, string> TagReplacingMap;
+
+	// System ID for uncorrelated
+	TagReplacingMap["systemid"] = "T:";
+	string tpss = rt.GetSystemID();
+	TagReplacingMap["systemid"].append(tpss.substr(1, 6));
+
+	// Pro mode data here
+	if (isProMode)
+	{
+
+		if (isAirborne && !isAcCorrelated)
+		{
+			callsign = tssr;
+		}
+
+		if (!isAcCorrelated)
+		{
+			actype = "NoFPL";
+		}
+
+		// Is a primary target
+
+		if (isAirborne && !isAcCorrelated && IsPrimary)
+		{
+			flightlevel = "NoALT";
+			tendency = "?";
+			speed = std::to_string(rt.GetGS());
+		}
+
+		if (isAirborne && !isAcCorrelated && IsPrimary)
+		{
+			callsign = TagReplacingMap["systemid"];
+		}
+	}
+
+	TagReplacingMap["callsign"] = callsign;
+	TagReplacingMap["actype"] = actype;
+	TagReplacingMap["sctype"] = sctype;
+	TagReplacingMap["sqerror"] = sqerror;
+	TagReplacingMap["deprwy"] = deprwy;
+	TagReplacingMap["seprwy"] = seprwy;
+	TagReplacingMap["arvrwy"] = arvrwy;
+	TagReplacingMap["srvrwy"] = srvrwy;
+	TagReplacingMap["gate"] = gate;
+	TagReplacingMap["sate"] = sate;
+	TagReplacingMap["flightlevel"] = flightlevel;
+	TagReplacingMap["gs"] = speed;
+	TagReplacingMap["tobt"] = tobt;
+	TagReplacingMap["tsat"] = tsat;
+	TagReplacingMap["ttot"] = ttot;
+	TagReplacingMap["asat"] = asat;
+	TagReplacingMap["aobt"] = aobt;
+	TagReplacingMap["atot"] = atot;
+	TagReplacingMap["asrt"] = asrt;
+	TagReplacingMap["aort"] = aort;
+	TagReplacingMap["ctot"] = ctot;
+	TagReplacingMap["event_booking"] = eventBooking;
+	TagReplacingMap["tendency"] = tendency;
+	TagReplacingMap["wake"] = wake;
+	TagReplacingMap["ssr"] = tssr;
+	TagReplacingMap["asid"] = dep;
+	TagReplacingMap["csid"] = dep;
+	TagReplacingMap["ssid"] = ssid;
+	TagReplacingMap["origin"] = origin;
+	TagReplacingMap["dest"] = dest;
+	TagReplacingMap["groundstatus"] = gstat;
+	TagReplacingMap["clearance"] = clearance;
+	TagReplacingMap["uk_stand"] = uk_stand;
+	TagReplacingMap["remark"] = remark;
+	TagReplacingMap["scratchpad"] = scratchpad;
+
+	return TagReplacingMap;
+}
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	switch (uMsg)
+	{
+	case WM_SETCURSOR:
+		SetCursor(smrCursor);
+		return true;
+	default:
+		return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
+	}
+}
+
+void CSMRRadar::OnRefresh(HDC hDC, int Phase)
+{
+	VSMR_REFRESH_LOG(string(__FUNCSIG__));
+	// Changing the mouse cursor
+	if (initCursor)
+	{
+		if (customCursor) {
+			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
+			// This got broken because of threading as far as I can tell
+			// The cursor does change for some milliseconds but gets reset almost instantly by external MFC code
+
+		}
+		else {
+			smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
+		}
+
+		if (smrCursor != nullptr)
+		{		
+			pluginWindow = GetActiveWindow();
+			gSourceProc = (WNDPROC)SetWindowLong(pluginWindow, GWL_WNDPROC, (LONG)WindowProc);
+		}
+		initCursor = false;
+	}
+
+	if (Phase == REFRESH_PHASE_AFTER_LISTS) {
+		VSMR_REFRESH_LOG("Phase == REFRESH_PHASE_AFTER_LISTS");
+		if (!ColorSettingsDay) {
+			// Creating the gdi+ graphics
+			Graphics graphics(hDC);
+			graphics.SetPageUnit(Gdiplus::UnitPixel);
+
+			graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+
+			SolidBrush AlphaBrush(Color(CurrentConfig->getActiveProfile()["filters"]["night_alpha_setting"].GetInt(), 0, 0, 0));
+
+			CRect RadarArea(GetRadarArea());
+			RadarArea.top = RadarArea.top - 1;
+			RadarArea.bottom = GetChatArea().bottom;
+
+			graphics.FillRectangle(&AlphaBrush, CopyRect(CRect(RadarArea)));
+
+			graphics.ReleaseHDC(hDC);
+		}
+
+		VSMR_REFRESH_LOG("break Phase == REFRESH_PHASE_AFTER_LISTS");
+		return;
+	}
+
+	if (Phase != REFRESH_PHASE_BEFORE_TAGS)
+		return;
+
+	VSMR_REFRESH_LOG("Phase != REFRESH_PHASE_BEFORE_TAGS");
+
+	struct Utils {
+		static RECT GetAreaFromText(CDC * dc, string text, POINT Pos) {
+			RECT Area = { Pos.x, Pos.y, Pos.x + dc->GetTextExtent(text.c_str()).cx, Pos.y + dc->GetTextExtent(text.c_str()).cy };
+			return Area;
+		}
+		static string getEnumString(TagTypes type) {
+			if (type == TagTypes::Departure)
+				return "departure";
+			if (type == TagTypes::Arrival)
+				return "arrival";
+			if (type == TagTypes::Uncorrelated)
+				return "uncorrelated";
+			return "airborne";
+		}
+		static vector<string> getVectorFromCommaList(const string& list) {
+			vector<string> result;
+			size_t start = 0;
+			size_t end = list.find(',');
+			while (end != string::npos) {
+				result.push_back(list.substr(start, end - start));
+				start = end + 1;
+				end = list.find(',', start);
+			}
+			result.push_back(list.substr(start));
+			return result;
+		}
+	};
+
+	// Timer each seconds
+	clock_final = clock() - clock_init;
+	double delta_t = (double)clock_final / ((double)CLOCKS_PER_SEC);
+	if (delta_t >= 1) {
+		clock_init = clock();
+		BLINK = !BLINK;
+		RefreshAirportActivity();
+	}
+
+	// Draw map elements based on zoom level
+	CPosition radarDownLeft;
+	CPosition radarUpRight;
+	GetDisplayArea(&radarDownLeft, &radarUpRight);
+	double radarCrossDistance = Haversine(radarDownLeft, radarUpRight);
+	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
+	
+	if (NewRadarViewZoomLevel != RadarViewZoomLevel) {
+		RadarViewZoomLevel = NewRadarViewZoomLevel;
+		// Draw items based on asr config & zoom level
+		vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
+		vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
+		map<string, bool> drawItemMap;
+
+		auto tokenDataStart = [](const string& s, const string& token) -> size_t {
+			// Find token like "DEP" or "ARR" and return the index right after the token and the following separator (eg. "DEP:")
+			size_t pos = s.find(token);
+			if (pos == string::npos) return string::npos;
+			// token length +1 for separator (':') -> matches previous code's +4 for "DEP" (3) + ':'
+			return pos + token.length() + 1;
+			};
+
+		for (const auto& item : allItems) {
+			// Consider element present if any map entry has the same element name (compare element only).
+			bool present = std::any_of(itemsToDraw.begin(), itemsToDraw.end(),
+				[&](const CConfig::mapData& m) { return m.element == item.element; });
+
+			bool shouldDraw = present;
+
+			// If the item has an "active" definition we need to evaluate DEP/ARR conditions
+			if (present && item.active.size() > 4) {
+				if (item.active.substr(0, 4) != ActiveAirport) {
+					shouldDraw = false;
+				}
+
+				auto runwayStatuses = RimcasInstance->GetRunwayStatuses();
+
+				// airport prefix (first 4 chars) must match active airport
+				
+				if (shouldDraw) {
+					size_t depPos = tokenDataStart(item.active, "DEP");
+					size_t arrPos = tokenDataStart(item.active, "ARR");
+					// If DEP present, extract substring between DEP: and ARR: (or end) and check runways
+					if (depPos != string::npos) {
+						size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
+						string depList = item.active.substr(depPos, depEnd - depPos);
+						vector<string> depRunways = Utils::getVectorFromCommaList(depList);
+						for (const auto& rwy : depRunways) {
+							auto it = runwayStatuses.find(rwy);
+							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
+								shouldDraw = false;
+								break;
+							}
+						}
+					}
+
+					// If ARR present, extract substring after ARR: and check runways
+					if (arrPos != string::npos && shouldDraw) {
+						string arrList = item.active.substr(arrPos);
+						vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
+						for (const auto& rwy : arrRunways) {
+							auto it = runwayStatuses.find(rwy);
+							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
+								shouldDraw = false;
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			// Always set an entry for this element (avoids missing keys and an empty draw map).
+			drawItemMap[item.element] = shouldDraw;
+		}
+
+		// Now apply the map
+		for (const auto& [elementName, toDraw] : drawItemMap) {
+			size_t slashPos = elementName.find("/");
+			if (slashPos == string::npos) continue;
+			string category = elementName.substr(0, slashPos);
+			string name = elementName.substr(slashPos + 1);
+
+			int elementCategory = getIntFromCategory(category);
+			if (elementCategory == -1) continue;
+			CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
+			while (element.IsValid()) {
+				if (strncmp(name.c_str(), element.GetName(), strlen(name.c_str())) == 0) {
+					ShowSectorFileElement(element, element.GetComponentName(0), toDraw);
+				}
+				element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
+			}
+		}
+
+		RefreshMapContent();
+	}
+
+
+	if (!QDMenabled && !QDMSelectEnabled)
+	{
+		POINT p;
+		if (GetCursorPos(&p)) {
+			if (ScreenToClient(GetActiveWindow(), &p)) {
+				mouseLocation = p;
+			}
+		}
+	}
+
+	VSMR_REFRESH_LOG("Graphics set up");
+	CDC dc;
+	dc.Attach(hDC);
+
+	// Creating the gdi+ graphics
+	Graphics graphics(hDC);
+	graphics.SetPageUnit(Gdiplus::UnitPixel);
+
+	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+
+	RECT RadarArea = GetRadarArea();
+	RECT ChatArea = GetChatArea();
+	RadarArea.bottom = ChatArea.top;
+
+	AirportPositions.clear();
+
+
+	CSectorElement apt;
+	for (apt = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
+		apt.IsValid();
+		apt = GetPlugIn()->SectorFileElementSelectNext(apt, SECTOR_ELEMENT_AIRPORT))
+	{
+		CPosition Pos;
+		apt.GetPosition(&Pos, 0);
+		AirportPositions[string(apt.GetName())] = Pos;
+	}
+
+	RimcasInstance->RunwayAreas.clear();
+
+	if (QDMSelectEnabled || QDMenabled)
+	{
+		CRect R(GetRadarArea());
+		R.top += 20;
+		R.bottom = GetChatArea().top;
+
+		R.NormalizeRect();
+		AddScreenObject(DRAWING_BACKGROUND_CLICK, "", R, false, "");
+	}
+
+	VSMR_REFRESH_LOG("Runway loop");
+	CSectorElement rwy;
+	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
+		rwy.IsValid();
+		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
+	{
+		if (startsWith(getActiveAirport().c_str(), rwy.GetAirportName())) {
+
+			CPosition Left;
+			rwy.GetPosition(&Left, 1);
+			CPosition Right;
+			rwy.GetPosition(&Right, 0);
+
+			string runway_name = rwy.GetRunwayName(0);
+			string runway_name2 = rwy.GetRunwayName(1);
+
+			double bearing1 = TrueBearing(Left, Right);
+			double bearing2 = TrueBearing(Right, Left);
+
+			const Value& CustomMap = CurrentConfig->getAirportMapIfAny(getActiveAirport());
+
+			vector<CPosition> def;
+// Rimcas now ignores the defined runway polygon to ensure that the correct detection area is used, defined runway is now only used for closed runway
+//			if (CurrentConfig->isCustomRunwayAvail(getActiveAirport(), runway_name, runway_name2)) {
+			//	const Value& Runways = CustomMap["runways"];
+			//
+			//		if (Runways.IsArray()) {
+			//		for (SizeType i = 0; i < Runways.Size(); i++) {
+			//			if (startsWith(runway_name.c_str(), Runways[i]["runway_name"].GetString()) ||
+			//				startsWith(runway_name2.c_str(), Runways[i]["runway_name"].GetString())) {
+			//
+			//				string path_name = "path";
+			//
+			//				if (isLVP)
+			//					path_name = "path_lvp";
+			//
+			//				const Value& Path = Runways[i][path_name.c_str()];
+			//				for (SizeType j = 0; j < Path.Size(); j++) {
+			//					CPosition position;
+			//					position.LoadFromStrings(Path[j][(SizeType)1].GetString(), Path[j][(SizeType)0].GetString());
+			//
+			//					def.push_back(position);
+			//				}
+			//	
+			//			}
+			//		}
+			//	}
+			//}
+			//else {
+				def = RimcasInstance->GetRunwayArea(Left, Right);
+			//}
+
+			RimcasInstance->AddRunwayArea(this, runway_name, runway_name2, def);
+
+			// Check runway statuses
+			bool isDepartureRwy = rwy.IsElementActive(true, 0);
+			bool isArrivalRwy = rwy.IsElementActive(false, 0);
+			if (isDepartureRwy) {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::BOTH);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::DEP);
+				}
+			}
+			else {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::ARR);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::CLSD);
+				}
+
+			}
+			isDepartureRwy = rwy.IsElementActive(true, 1);
+			isArrivalRwy = rwy.IsElementActive(false, 1);
+			if (isDepartureRwy) {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::BOTH);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::DEP);
+				}
+			}
+			else {
+				if (isArrivalRwy) {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::ARR);
+				}
+				else {
+					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::CLSD);
+				}
+			}
+
+			string RwName = runway_name + " / " + runway_name2;
+
+			if (drawRunways) {
+
+				PointF lpPoints[5000];
+				int w = 0;
+				for (auto& Point : def)
+				{
+					POINT toDraw = ConvertCoordFromPositionToPixel(Point);
+
+					lpPoints[w] = { REAL(toDraw.x), REAL(toDraw.y) };
+					w++;
+				}
+				Pen pw(ColorManager->get_corrected_color("label", Color::White));
+				graphics.DrawPolygon( &pw, lpPoints, w);
+			}
+
+			if (RimcasInstance->ClosedRunway.find(RwName) != RimcasInstance->ClosedRunway.end()) {
+				if (RimcasInstance->ClosedRunway[RwName]) {
+
+					CPen RedPen(PS_SOLID, 2, RGB(150, 0, 0));
+					CPen * oldPen = dc.SelectObject(&RedPen);
+
+					if (CurrentConfig->isCustomRunwayAvail(getActiveAirport(), runway_name, runway_name2)) {
+						const Value& Runways = CustomMap["runways"];
+
+						if (Runways.IsArray()) {
+							for (SizeType i = 0; i < Runways.Size(); i++) {
+								if (startsWith(runway_name.c_str(), Runways[i]["runway_name"].GetString()) ||
+									startsWith(runway_name2.c_str(), Runways[i]["runway_name"].GetString())) {
+
+									string path_name = "path";
+
+									if (isLVP)
+										path_name = "path_lvp";
+
+									const Value& Path = Runways[i][path_name.c_str()];
+
+									PointF lpPoints[5000];
+
+									int k = 1;
+									int l = 0;
+									for (SizeType w = 0; w < Path.Size(); w++) {
+										CPosition position;
+										position.LoadFromStrings(Path[w][static_cast<SizeType>(1)].GetString(), Path[w][static_cast<SizeType>(0)].GetString());
+
+										POINT cv = ConvertCoordFromPositionToPixel(position);
+										lpPoints[l] = { REAL(cv.x), REAL(cv.y) };
+
+										k++;
+										l++;
+									}
+
+									graphics.FillPolygon(&SolidBrush(Color(150, 0, 0)), lpPoints, k - 1);
+
+									break;
+								}
+							}
+						}
+
+					}
+					else {
+						PointF lpPoints[5000];
+						int w = 0;
+						for(auto &Point : def)
+						{
+							POINT toDraw = ConvertCoordFromPositionToPixel(Point);
+
+							lpPoints[w] = { REAL(toDraw.x), REAL(toDraw.y) };
+							w++;
+						}
+
+						graphics.FillPolygon(&SolidBrush(Color(150, 0, 0)), lpPoints, w);
+					}
+
+					dc.SelectObject(oldPen);
+				}
+			}
+		}
+	}
+
+	RimcasInstance->OnRefreshBegin(isLVP);
+
+#pragma region symbols
+	// Drawing the symbols
+	VSMR_REFRESH_LOG("Symbols loop");
+
+	// Cache current view scaling once per frame; reused by trail and icon sizing.
+	double framePixPerMeter = 0.0;
+	{
+		RECT radarArea = GetRadarArea();
+		RECT chatArea = GetChatArea();
+		radarArea.bottom = chatArea.top;
+		double pxW = (radarArea.right - radarArea.left > 0) ? double(radarArea.right - radarArea.left) : 1.0;
+		double pxH = (radarArea.bottom - radarArea.top > 0) ? double(radarArea.bottom - radarArea.top) : 1.0;
+
+		CPosition dispSW, dispNE;
+		GetDisplayArea(&dispSW, &dispNE);
+		double centerLat = (dispSW.m_Latitude + dispNE.m_Latitude) / 2.0;
+		double centerLon = (dispSW.m_Longitude + dispNE.m_Longitude) / 2.0;
+
+		CPosition leftMid; leftMid.m_Latitude = centerLat; leftMid.m_Longitude = dispSW.m_Longitude;
+		CPosition rightMid; rightMid.m_Latitude = centerLat; rightMid.m_Longitude = dispNE.m_Longitude;
+		CPosition bottomMid; bottomMid.m_Latitude = dispSW.m_Latitude; bottomMid.m_Longitude = centerLon;
+		CPosition topMid; topMid.m_Latitude = dispNE.m_Latitude; topMid.m_Longitude = centerLon;
+
+		double widthMeters = Haversine(leftMid, rightMid);
+		double heightMeters = Haversine(bottomMid, topMid);
+
+		double pixPerMeterX = (widthMeters > 1.0) ? (pxW / widthMeters) : 0.0;
+		double pixPerMeterY = (heightMeters > 1.0) ? (pxH / heightMeters) : 0.0;
+
+		if (pixPerMeterX > 0.0 && pixPerMeterY > 0.0)
+			framePixPerMeter = (pixPerMeterX < pixPerMeterY) ? pixPerMeterX : pixPerMeterY;
+		else if (pixPerMeterX > 0.0)
+			framePixPerMeter = pixPerMeterX;
+		else
+			framePixPerMeter = pixPerMeterY;
+	}
+
+	const std::string frameIconStyle = GetActiveTargetIconStyle();
+	const bool frameUseDiamondIconStyle = (frameIconStyle == "diamond");
+	const bool frameUseRealisticIconStyle = (frameIconStyle == "realistic");
+	const bool frameSmallIconBoostEnabled = GetSmallTargetIconBoostEnabled();
+	const bool frameFixedPixelIconSize = GetFixedPixelTargetIconSizeEnabled();
+	const double frameSmallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
+	const double frameSmallIconBoostResolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
+	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
+	const bool frameProModeEnabled = CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool();
+	EuroScopePlugIn::CRadarTarget rt;
+	for (rt = GetPlugIn()->RadarTargetSelectFirst();
+		rt.IsValid();
+		rt = GetPlugIn()->RadarTargetSelectNext(rt))
+	{
+		if (!rt.IsValid() || !rt.GetPosition().IsValid())
+			continue;
+
+		int reportedGs = rt.GetPosition().GetReportedGS();
+		bool isAcDisplayed = isVisible(rt);
+
+		if (!isAcDisplayed)
+			continue;
+
+		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rt.GetCallsign());
+		bool AcisCorrelated = IsCorrelated(iconFp, rt);
+		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
+
+		CRadarTargetPositionData RtPos = rt.GetPosition();
+
+		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
+
+		if (rt.GetGS() > 5) {
+			POINT oldacPosPix;
+			CRadarTargetPositionData pAcPos = rt.GetPosition();
+
+			for (int i = 1; i <= 2; i++) {
+				oldacPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
+				pAcPos = rt.GetPreviousPosition(pAcPos);
+				acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
+
+				// Afterglow polygons disabled (remove comet-like trail)
+			}
+
+			// Trails as shrinking bubbles
+			int TrailNumber = Trail_Gnd;
+			if (reportedGs > 50)
+				TrailNumber = Trail_App;
+
+			const double pixPerMeter = framePixPerMeter;
+
+			CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
+			for (int j = 1; j <= TrailNumber; j++) {
+				POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
+
+				// Bubble diameter is fixed in meters so it scales with zoom
+				double metersPerBubble = 10.0; // base diameter in meters
+				int diameterPx = 6;
+				if (pixPerMeter > 0.0) {
+					diameterPx = int(pixPerMeter * metersPerBubble + 0.5);
+				}
+				if (diameterPx < 2) diameterPx = 2;
+				if (diameterPx > 50) diameterPx = 50;
+
+				// Shrink size with age (more aggressive for visibility)
+				double shrink = 1.0 - 0.15 * (j - 1);
+				if (shrink < 0.2) shrink = 0.2;
+				diameterPx = int(diameterPx * shrink + 0.5);
+				if (diameterPx < 2) diameterPx = 2;
+				int radius = diameterPx / 2;
+
+				// Gradient from transparent white (new) to gray-blue (older) with fading alpha
+				double t = (TrailNumber > 1) ? double(j - 1) / double(TrailNumber - 1) : 0.0;
+				auto lerp = [](double a, double b, double tt) { return a + (b - a) * tt; };
+				int r = int(lerp(255.0, 120.0, t) + 0.5);
+				int g = int(lerp(255.0, 150.0, t) + 0.5);
+				int b = int(lerp(255.0, 190.0, t) + 0.5);
+				int a = int(lerp(200.0, 40.0, t) + 0.5); // fade alpha
+				if (r < 0) r = 0; if (r > 255) r = 255;
+				if (g < 0) g = 0; if (g > 255) g = 255;
+				if (b < 0) b = 0; if (b > 255) b = 255;
+				if (a < 0) a = 0; if (a > 255) a = 255;
+
+				Color bubbleColor(static_cast<BYTE>(a), static_cast<BYTE>(r), static_cast<BYTE>(g), static_cast<BYTE>(b));
+				// Slightly thicker ring to balance visibility and hole size
+				Gdiplus::Pen ringPen(bubbleColor, Gdiplus::REAL(1.5f));
+				graphics.DrawEllipse(&ringPen, pCoord.x - radius, pCoord.y - radius, diameterPx, diameterPx);
+
+				previousPos = rt.GetPreviousPosition(previousPos);
+			}
+		}
+
+
+		// Disable legacy basic (yellow) aircraft symbol when using PNG icons
+		const bool drawLegacyPrimarySymbol = false;
+		if (drawLegacyPrimarySymbol && CurrentConfig->getActiveProfile()["targets"]["show_primary_target"].GetBool()) {
+
+			SolidBrush H_Brush(ColorManager->get_corrected_color("afterglow",
+				CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["targets"]["target_color"])));
+
+			PointF lpPoints[100];
+			for (unsigned int i = 0; i < Patatoides[rt.GetCallsign()].points.size(); i++)
+			{
+				CPosition pos;
+				pos.m_Latitude = Patatoides[rt.GetCallsign()].points[i].x;
+				pos.m_Longitude = Patatoides[rt.GetCallsign()].points[i].y;
+
+				lpPoints[i] = { REAL(ConvertCoordFromPositionToPixel(pos).x), REAL(ConvertCoordFromPositionToPixel(pos).y) };
+			}
+
+			graphics.FillPolygon(&H_Brush, lpPoints, Patatoides[rt.GetCallsign()].points.size());
+		}
+		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
+
+		const bool proModeEnabled = frameProModeEnabled;
+		const bool isReleasedTrack = (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end());
+		const bool hasAssignedSquawk = iconFp.IsValid() && strlen(iconFp.GetControllerAssignedData().GetSquawk()) != 0;
+		const bool isWrongSquawk = hasAssignedSquawk &&
+			strcmp(iconFp.GetControllerAssignedData().GetSquawk(), rt.GetPosition().GetSquawk()) != 0;
+		if (proModeEnabled && !hasAssignedSquawk)
+			AcisCorrelated = false;
+
+		const bool keepIconForSquawkMismatch = proModeEnabled && (isWrongSquawk || !hasAssignedSquawk) && !isReleasedTrack;
+
+		if (!AcisCorrelated && reportedGs < 1 && !ReleaseInProgress && !AcquireInProgress && !keepIconForSquawkMismatch)
+			continue;
+
+		// Prefer the aircraft-reported heading to keep icon orientation aligned with the nose (even when moving backwards)
+		double headingDeg = double(RtPos.GetReportedHeadingTrueNorth());
+		if (headingDeg < 0.0 || headingDeg >= 360.0)
+			headingDeg = rt.GetTrackHeading();
+
+		// Icon sizing based on real dimensions and zoom
+		int iconSize = 40;
+		const bool useDiamondIconStyle = frameUseDiamondIconStyle;
+		const bool useRealisticIconStyle = frameUseRealisticIconStyle;
+		char wtc = iconFp.IsValid() ? iconFp.GetFlightPlanData().GetAircraftWtc() : '\0';
+		std::string acType = iconFp.IsValid() ? iconFp.GetFlightPlanData().GetAircraftFPType() : "";
+		if (acType.size() > 4)
+			acType = acType.substr(0, 4);
+		std::string acTypeLower = acType;
+		std::transform(acTypeLower.begin(), acTypeLower.end(), acTypeLower.begin(), ::tolower);
+
+		auto fallbackTypeForWtc = [](char wtcChar) {
+			switch (std::toupper(static_cast<unsigned char>(wtcChar))) {
+			case 'L': return std::string("c172");
+			case 'M': return std::string("a320");
+			case 'H': return std::string("b77w");
+			case 'J': return std::string("a388"); // super / heavy
+			default: return std::string("a320");  // sensible large default
+			}
+		};
+
+		// Pick an icon type, first the actual FP type, then WTC fallback if missing
+		std::string iconType = acTypeLower;
+		Bitmap* iconBmp = GetAircraftIcon(iconType);
+		if (iconBmp == nullptr) {
+			iconType = fallbackTypeForWtc(wtc);
+			iconBmp = GetAircraftIcon(iconType);
+		}
+
+		// Pick specs for sizing: prefer actual type, else icon type, else WTC fallback
+		auto specIt = AircraftSpecs.find(acTypeLower);
+		if (specIt == AircraftSpecs.end()) {
+			specIt = AircraftSpecs.find(iconType);
+		}
+		if (specIt == AircraftSpecs.end()) {
+			std::string specFallback = fallbackTypeForWtc(wtc);
+			specIt = AircraftSpecs.find(specFallback);
+		}
+
+		bool isOnRunway = RimcasInstance->isAcOnRunway(rt.GetCallsign());
+		GroundStateCategory groundStateCat = GroundStateCategory::Unknown;
+		if (iconFp.IsValid()) {
+			groundStateCat = classifyGroundState(iconFp.GetGroundState(), reportedGs, isOnRunway);
+		}
+
+		bool isDepartureTarget = false;
+		if (iconFp.IsValid() && AcisCorrelated)
+		{
+			std::string originAirport = iconFp.GetFlightPlanData().GetOrigin();
+			std::string activeAirport = getActiveAirport();
+			if (!originAirport.empty() && !activeAirport.empty())
+			{
+				std::transform(originAirport.begin(), originAirport.end(), originAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+				std::transform(activeAirport.begin(), activeAirport.end(), activeAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+				isDepartureTarget = (originAirport == activeAirport);
+			}
+		}
+		const bool hasNoFlightPlan = !iconFp.IsValid();
+		const bool isAirborneTarget = (reportedGs > 50);
+
+		std::string vacdmRuleType = "departure";
+		if (!AcisCorrelated && reportedGs >= 3)
+			vacdmRuleType = "uncorrelated";
+		else if (isAirborneTarget)
+			vacdmRuleType = "airborne";
+		else if (!isDepartureTarget)
+			vacdmRuleType = "arrival";
+
+		std::string vacdmRuleStatus = "default";
+		if ((vacdmRuleType == "departure" || vacdmRuleType == "arrival") && hasNoFlightPlan)
+		{
+			vacdmRuleStatus = "nofpl";
+		}
+		else if (vacdmRuleType == "airborne")
+		{
+			if (isDepartureTarget)
+				vacdmRuleStatus = isOnRunway ? "airdep_onrunway" : "airdep";
+			else
+				vacdmRuleStatus = isOnRunway ? "airarr_onrunway" : "airarr";
+		}
+		else if (vacdmRuleType == "departure" || vacdmRuleType == "arrival")
+		{
+			switch (groundStateCat)
+			{
+			case GroundStateCategory::Taxi:
+				vacdmRuleStatus = "taxi";
+				break;
+			case GroundStateCategory::Push:
+				if (vacdmRuleType == "departure")
+					vacdmRuleStatus = "push";
+				break;
+			case GroundStateCategory::Stup:
+				if (vacdmRuleType == "departure")
+					vacdmRuleStatus = "stup";
+				break;
+			case GroundStateCategory::Nsts:
+				if (vacdmRuleType == "departure")
+					vacdmRuleStatus = "nsts";
+				break;
+			case GroundStateCategory::Depa:
+				if (vacdmRuleType == "departure")
+					vacdmRuleStatus = "depa";
+				break;
+			case GroundStateCategory::Arr:
+				if (vacdmRuleType == "arrival")
+					vacdmRuleStatus = "arr";
+				break;
+			default:
+				break;
+			}
+		}
+
+		VacdmPilotData vacdmRulePilotData;
+		const bool hasVacdmRulePilotData = TryGetVacdmPilotDataForTarget(rt, iconFp, vacdmRulePilotData);
+		std::vector<std::string> vacdmRuleDefinitionLines =
+			GetTagDefinitionLineStrings(vacdmRuleType, false, TagDefinitionEditorMaxLines, false, vacdmRuleStatus);
+		std::vector<VacdmColorRuleDefinition> vacdmColorRules;
+		CollectVacdmColorRulesFromLineTexts(vacdmRuleDefinitionLines, vacdmColorRules);
+		VacdmColorRuleOverrides vacdmColorRuleOverrides =
+			EvaluateVacdmColorRules(vacdmColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+
+		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
+		const bool fixedPixelIconSize = frameFixedPixelIconSize;
+
+		if (useRealisticIconStyle && iconBmp != nullptr) {
+			auto getGroundIconColor = [&](const char* key, Color fallback) -> Color {
+				const Value& profile = CurrentConfig->getActiveProfile();
+				if (profile.HasMember("targets")) {
+					const Value& targets = profile["targets"];
+					if (targets.HasMember("ground_icons") && targets["ground_icons"].HasMember(key)) {
+						return CurrentConfig->getConfigColor(targets["ground_icons"][key]);
+					}
+				}
+				return fallback;
+			};
+
+			// Compute on-screen size that scales with zoom (uniform for all aircraft)
+			double drawW = iconSize;
+			double drawH = iconSize;
+			const double pixPerMeter = framePixPerMeter;
+
+			// Use real-world dimensions when available; otherwise WTC defaults (no generic fallback)
+			double lengthMeters = 0.0;
+			double spanMeters = 0.0;
+
+			auto wtcFallbackDims = [](char w, double& lenOut, double& spanOut) {
+				switch (std::toupper(static_cast<unsigned char>(w))) {
+				case 'L': lenOut = 28.0; spanOut = 28.0; break;
+				case 'M': lenOut = 40.0; spanOut = 36.0; break;
+				case 'H': lenOut = 60.0; spanOut = 60.0; break;
+				case 'J': lenOut = 72.0; spanOut = 80.0; break;
+				default: lenOut = 40.0; spanOut = 36.0; break;
+				}
+			};
+
+			if (specIt != AircraftSpecs.end()) {
+				if (specIt->second.length > 0)
+					lengthMeters = specIt->second.length;
+				if (specIt->second.wingspan > 0)
+					spanMeters = specIt->second.wingspan;
+			}
+
+#if 0
+#endif
+
+			// Hardcoded overrides for specific types when JSON is not loaded or missing (compact)
+			if (lengthMeters <= 0 || spanMeters <= 0) {
+				static const std::unordered_map<std::string, std::pair<double, double>> hardcodedDims = {
+					{ "a10", {16.3, 17.5} }, { "a124", {69.1, 73.3} }, { "a139", {13.5, 13.8} },
+					{ "a20n", {37.6, 35.8} }, { "a225", {84.0, 88.4} }, { "a310", {46.7, 43.9} },
+					{ "a318", {31.4, 34.1} }, { "a319", {33.8, 35.8} }, { "a320", {37.6, 35.8} },
+					{ "a321", {44.5, 35.8} }, { "a332", {58.8, 60.3} }, { "a333", {63.6, 60.3} },
+					{ "a338", {58.8, 64.0} }, { "a339", {63.7, 64.0} }, { "a342", {59.4, 60.3} },
+					{ "a343", {63.6, 60.3} }, { "a359", {66.9, 64.8} }, { "a35k", {73.8, 64.8} },
+					{ "a388", {73.0, 79.8} }, { "a400", {42.4, 45.1} }, { "a748", {20.4, 30.0} },
+					{ "an2", {12.7, 18.2} }, { "an24", {23.5, 29.2} }, { "as32", {16.8, 16.2} },
+					{ "as50", {12.9, 10.7} }, { "atp", {26.0, 30.6} }, { "b06", {12.1, 10.2} },
+					{ "b1", {44.8, 41.7} }, { "b190", {17.6, 17.7} }, { "b350", {14.2, 17.7} },
+					{ "b37m", {35.6, 35.9} }, { "b38m", {39.5, 35.9} }, { "b39m", {42.2, 35.9} },
+					{ "b407", {12.7, 10.7} }, { "b461", {26.2, 26.2} }, { "b462", {28.6, 26.3} },
+					{ "b463", {31.0, 26.3} }, { "b703", {46.6, 44.4} }, { "b712", {37.8, 28.5} },
+					{ "b720", {41.3, 39.9} }, { "b721", {40.6, 32.9} }, { "b722", {46.7, 32.9} },
+					{ "b731", {28.7, 28.3} }, { "b732", {30.5, 28.3} }, { "b733", {33.4, 31.1} },
+					{ "b734", {36.4, 28.9} }, { "b735", {31.0, 31.1} }, { "b736", {31.2, 34.3} },
+					{ "b737", {33.6, 35.8} }, { "b738", {39.5, 35.8} }, { "b739", {42.1, 35.8} },
+					{ "b741", {70.6, 59.6} }, { "b744", {70.6, 64.4} }, { "b748", {76.3, 68.4} },
+					{ "b74s", {56.3, 59.6} }, { "b752", {47.3, 41.1} }, { "b753", {54.5, 41.1} },
+					{ "b762", {48.5, 47.6} }, { "b763", {54.9, 50.9} }, { "b764", {61.4, 51.9} },
+					{ "b772", {63.7, 60.9} }, { "b773", {73.9, 60.9} }, { "b77l", {63.7, 64.8} },
+					{ "b77w", {73.9, 64.8} }, { "b788", {56.7, 60.1} }, { "b789", {62.8, 60.1} },
+					{ "b78x", {68.3, 60.1} }, { "bcs1", {35.0, 35.1} }, { "bcs3", {38.7, 35.1} },
+					{ "be20", {13.4, 16.6} }, { "be35", {8.1, 8.4} }, { "be36", {8.1, 8.4} },
+					{ "be58", {9.1, 11.5} }, { "be60", {10.3, 12.0} }, { "be9l", {10.8, 15.3} },
+					{ "blcf", {71.7, 64.4} }, { "bn2p", {10.9, 14.9} }, { "bt7", {14.2, 10.0} },
+					{ "c130", {29.8, 40.4} }, { "c152", {7.3, 10.2} }, { "c160", {32.4, 40.0} },
+					{ "c17", {53.0, 51.7} }, { "c172", {8.2, 10.9} }, { "c2", {17.6, 24.6} },
+					{ "c206", {8.6, 10.9} }, { "c208", {11.5, 15.9} }, { "c25b", {15.6, 16.3} },
+					{ "c25c", {16.3, 15.5} }, { "c310", {9.7, 11.3} }, { "c402", {11.1, 13.5} },
+					{ "c414", {10.3, 12.5} }, { "c510", {12.4, 13.2} }, { "c525", {13.0, 14.3} },
+					{ "c5m", {75.3, 67.9} }, { "c68a", {19.0, 22.1} }, { "c700", {22.3, 21.0} },
+					{ "c750", {22.0, 19.5} }, { "c919", {38.9, 35.8} }, { "cl30", {20.9, 19.5} },
+					{ "cl60", {20.9, 19.6} }, { "conc", {61.7, 25.6} }, { "cp10", {7.2, 8.1} },
+					{ "crj2", {26.8, 21.2} }, { "crj7", {32.5, 23.2} }, { "crj9", {36.2, 24.9} },
+					{ "crjx", {39.1, 26.2} }, { "da40", {8.0, 11.9} }, { "da42", {8.6, 13.4} },
+					{ "da62", {9.2, 14.6} }, { "dc10", {55.0, 50.4} }, { "dc3", {19.7, 29.0} },
+					{ "dc6", {32.2, 35.8} }, { "dc86", {57.1, 43.4} }, { "dh8a", {22.3, 25.9} },
+					{ "dh8c", {25.7, 27.4} }, { "dh8d", {32.8, 28.4} }, { "dhc2", {9.2, 14.6} },
+					{ "dhc6", {15.1, 19.8} }, { "dhc7", {24.6, 28.4} }, { "dimo", {7.1, 16.5} },
+					{ "dr40", {7.0, 8.7} }, { "dv20", {7.2, 10.9} }, { "e135", {26.3, 20.0} },
+					{ "e145", {29.8, 20.0} }, { "e170", {29.9, 26.0} }, { "e190", {36.2, 28.7} },
+					{ "e195", {38.6, 28.7} }, { "e290", {36.2, 33.7} }, { "e295", {41.5, 35.1} },
+					{ "e3cf", {46.6, 44.4} }, { "e50p", {12.8, 12.3} }, { "e55p", {15.9, 16.2} },
+					{ "e75s", {31.7, 26.0} }, { "eufi", {16.0, 10.9} }, { "evot", {9.1, 11.0} },
+					{ "f100", {35.5, 28.1} }, { "f104", {16.7, 7.0} }, { "f14", {19.1, 19.5} },
+					{ "f15", {19.4, 13.0} }, { "f16", {15.0, 10.0} }, { "f22", {18.9, 13.6} },
+					{ "f27", {23.1, 29.0} }, { "f28", {27.4, 27.1} }, { "f2th", {20.2, 19.3} },
+					{ "f35", {15.7, 11.0} }, { "f4", {17.8, 11.7} }, { "f70", {30.9, 29.1} },
+					{ "f900", {20.2, 19.3} }, { "fa10", {13.9, 13.1} }, { "fa20", {17.2, 16.3} },
+					{ "fa50", {18.5, 18.9} }, { "fa6x", {25.7, 25.9} }, { "fa7x", {23.2, 26.2} },
+					{ "fa8x", {24.5, 26.3} }, { "g109", {8.1, 17.4} }, { "gl5t", {29.5, 28.6} },
+					{ "gl7t", {33.9, 31.7} }, { "glex", {30.3, 28.6} }, { "glf5", {29.4, 28.5} },
+					{ "glf6", {30.4, 30.4} }, { "h25b", {14.8, 15.7} }, { "h25c", {17.7, 15.7} },
+					{ "k35e", {42.6, 40.4} }, { "k35r", {42.6, 40.4} }, { "md11", {61.2, 51.7} },
+					{ "md80", {45.1, 32.9} }, { "md81", {40.0, 32.9} }, { "md82", {45.1, 32.9} },
+					{ "md83", {45.1, 32.9} }, { "md87", {40.6, 32.9} }, { "md88", {45.1, 32.9} },
+					{ "md90", {45.1, 35.1} }, { "mi38", {19.9, 21.3} }, { "n262", {25.4, 27.4} },
+					{ "p06t", {10.9, 11.5} }, { "p28a", {7.2, 9.2} }, { "p28r", {7.2, 11.0} },
+					{ "p46t", {11.5, 12.8} }, { "p68", {11.2, 12.0} }, { "pa31", {10.3, 12.8} },
+					{ "pa34", {10.4, 11.8} }, { "pa44", {8.6, 11.9} }, { "pa46", {10.3, 13.1} },
+					{ "pc12", {14.4, 16.3} }, { "pc6t", {10.2, 15.0} }, { "r44", {11.7, 10.1} },
+					{ "s22t", {7.9, 11.7} }, { "s92", {20.8, 22.0} }, { "sb20", {27.3, 24.7} },
+					{ "sf34", {24.7, 20.7} }, { "sr20", {8.1, 11.7} }, { "sr22", {7.9, 11.7} },
+					{ "sw4", {19.8, 17.3} }, { "t134", {37.1, 29.0} }, { "t154", {47.0, 37.6} },
+					{ "y12", {14.9, 17.3} }
+				};
+				auto itHard = hardcodedDims.find(acTypeLower);
+				if (itHard != hardcodedDims.end()) {
+					lengthMeters = itHard->second.first;
+					spanMeters = itHard->second.second;
+				}
+			}
+
+			// If still missing, fill from WTC defaults
+			if (lengthMeters <= 0 || spanMeters <= 0) {
+				wtcFallbackDims(wtc, lengthMeters, spanMeters);
+			}
+
+			if (fixedPixelIconSize)
+			{
+				const double configuredFactor = smallIconBoostEnabled ? frameSmallIconBoostFactor : 1.0;
+				const double resolutionScale = frameSmallIconBoostResolutionScale;
+				const double referenceAircraftMeters = 40.0; // medium-jet baseline
+				const double referencePixels = 18.0 * resolutionScale;
+				const double pxPerMeterFixed = referencePixels / referenceAircraftMeters;
+				drawW = spanMeters * pxPerMeterFixed * configuredFactor;
+				drawH = lengthMeters * pxPerMeterFixed * configuredFactor;
+			}
+			else
+			{
+				if (pixPerMeter > 0.0) {
+					drawW = spanMeters * pixPerMeter;
+					drawH = lengthMeters * pixPerMeter;
+				}
+
+				// Optional readability boost (realistic icons only):
+				// apply one zoom-based factor for all aircraft so relative real-size differences stay intact.
+				if (smallIconBoostEnabled && pixPerMeter > 0.0)
+				{
+					const double configuredFactor = frameSmallIconBoostFactor;
+					const double resolutionScale = frameSmallIconBoostResolutionScale;
+					const double referenceAircraftMeters = 40.0; // medium-jet baseline for zoom trigger
+					const double referenceScreenSize = referenceAircraftMeters * pixPerMeter;
+					const double boostStartSize = 14.0 * resolutionScale;
+					const double boostedReferenceSize = 18.0 * configuredFactor * resolutionScale;
+					if (referenceScreenSize < boostStartSize)
+					{
+						const double safeRefSize = max(0.01, referenceScreenSize);
+						const double zoomBoostScale = std::clamp(boostedReferenceSize / safeRefSize, 1.0, 6.0 * configuredFactor * resolutionScale);
+						drawW *= zoomBoostScale;
+						drawH *= zoomBoostScale;
+					}
+				}
+			}
+
+			// Clamp sizes to keep visible but not giant
+			double minSize = 4.0;
+			double maxSize = 1200.0;
+			drawW = std::clamp(drawW, minSize, maxSize);
+			drawH = std::clamp(drawH, minSize, maxSize);
+
+			Color tintColor;
+			bool applyTint = false;
+			if (hasNoFlightPlan)
+			{
+				tintColor = ColorManager->get_corrected_color("symbol",
+					getGroundIconColor("nofpl", getGroundIconColor("gate", Color(255, 128, 128, 128))));
+				applyTint = true;
+			}
+			else if (isAirborneTarget)
+			{
+				if (isDepartureTarget)
+				{
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("airborne_departure", getGroundIconColor("depa", Color(255, 240, 240, 240))));
+				}
+				else
+				{
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("airborne_arrival", getGroundIconColor("arr", Color(255, 120, 190, 240))));
+				}
+				applyTint = true;
+			}
+			else if (isDepartureTarget)
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Gate:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Push:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 253, 218, 13)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Stup:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("stup", Color(255, 253, 218, 13)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Taxi:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("taxi", Color(255, 240, 240, 240)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Depa:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Nsts:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("nsts", getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
+					applyTint = true;
+					break;
+				default:
+					break;
+				}
+			}
+			else
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Gate:
+				case GroundStateCategory::Nsts:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Arr:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Push:
+				case GroundStateCategory::Stup:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 90, 150, 235)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Taxi:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("arrival_taxi", getGroundIconColor("taxi", Color(255, 70, 195, 120))));
+					applyTint = true;
+					break;
+				default:
+					break;
+				}
+			}
+
+			if (vacdmColorRuleOverrides.hasTargetColor)
+			{
+				tintColor = ColorManager->get_corrected_color("symbol",
+					Color(255, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
+				applyTint = true;
+			}
+
+			// Screen-relative heading from pixel forward vector (handles rotated display)
+			CPosition nosePosDraw = Haversine(RtPos.GetPosition(), headingDeg, 50.0);
+			POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
+			double fx = double(nosePixDraw.x - acPosPix.x);
+			double fy = double(nosePixDraw.y - acPosPix.y);
+			double screenHeadingDeg = atan2(fy, fx) * 180.0 / M_PI;
+			// Adjust because SVG nose is up; rotate so north = 0, east = 90, etc.
+			// GDI+ uses screen coords (Y grows down); negate to align with screen vector and SVG nose-up.
+			double rotationDeg = screenHeadingDeg + 90.0;
+
+			GraphicsState state = graphics.Save();
+			Gdiplus::Matrix m;
+			m.Translate(Gdiplus::REAL(acPosPix.x), Gdiplus::REAL(acPosPix.y));
+			m.Rotate(Gdiplus::REAL(rotationDeg));
+			m.Translate(Gdiplus::REAL(-drawW / 2.0), Gdiplus::REAL(-drawH / 2.0));
+			graphics.SetTransform(&m);
+
+			if (applyTint) {
+				Gdiplus::ColorMatrix cm = {
+					{
+						{ static_cast<REAL>(tintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+						{ 0.0f, static_cast<REAL>(tintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
+						{ 0.0f, 0.0f, static_cast<REAL>(tintColor.GetB()) / 255.0f, 0.0f, 0.0f },
+						{ 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+						{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
+					}
+				};
+				Gdiplus::ImageAttributes attrs;
+				attrs.SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
+				RectF dest(0.0f, 0.0f, static_cast<REAL>(drawW), static_cast<REAL>(drawH));
+				graphics.DrawImage(iconBmp, dest, 0, 0, static_cast<INT>(iconBmp->GetWidth()), static_cast<INT>(iconBmp->GetHeight()), UnitPixel, &attrs);
+			}
+			else {
+				graphics.DrawImage(iconBmp, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(drawW), Gdiplus::REAL(drawH));
+			}
+			graphics.Restore(state);
+			iconSize = int(max(drawW, drawH));
+		}
+		else
+		{
+			auto getGroundIconColor = [&](const char* key, Color fallback) -> Color {
+				const Value& profile = CurrentConfig->getActiveProfile();
+				if (profile.HasMember("targets")) {
+					const Value& targets = profile["targets"];
+					if (targets.HasMember("ground_icons") && targets["ground_icons"].HasMember(key)) {
+						return CurrentConfig->getConfigColor(targets["ground_icons"][key]);
+					}
+				}
+				return fallback;
+			};
+
+			Color tintColor;
+			bool applyTint = false;
+			if (hasNoFlightPlan)
+			{
+				tintColor = ColorManager->get_corrected_color("symbol",
+					getGroundIconColor("nofpl", getGroundIconColor("gate", Color(255, 128, 128, 128))));
+				applyTint = true;
+			}
+			else if (isAirborneTarget)
+			{
+				if (isDepartureTarget)
+				{
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("airborne_departure", getGroundIconColor("depa", Color(255, 240, 240, 240))));
+				}
+				else
+				{
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("airborne_arrival", getGroundIconColor("arr", Color(255, 120, 190, 240))));
+				}
+				applyTint = true;
+			}
+			else if (isDepartureTarget)
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Gate:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Push:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 253, 218, 13)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Stup:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("stup", Color(255, 253, 218, 13)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Taxi:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("taxi", Color(255, 240, 240, 240)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Depa:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Nsts:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("nsts", getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
+					applyTint = true;
+					break;
+				default:
+					break;
+				}
+			}
+			else
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Gate:
+				case GroundStateCategory::Nsts:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Arr:
+					tintColor = ColorManager->get_corrected_color("symbol",
+						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Push:
+				case GroundStateCategory::Stup:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 90, 150, 235)));
+					applyTint = true;
+					break;
+				case GroundStateCategory::Taxi:
+					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("arrival_taxi", getGroundIconColor("taxi", Color(255, 70, 195, 120))));
+					applyTint = true;
+					break;
+				default:
+					break;
+				}
+			}
+
+			if (vacdmColorRuleOverrides.hasTargetColor)
+			{
+				tintColor = ColorManager->get_corrected_color("symbol",
+					Color(255, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
+				applyTint = true;
+			}
+
+			const double pixPerMeter = framePixPerMeter;
+
+			const double lenMetersBase = 20.0;
+			const double halfWidthMetersBase = 12.0;
+			const double symbolSizeScale = frameFixedTriangleScale;
+			double lenPx = 20.0;
+			double halfWidthPx = 12.0;
+			double lenMetersUsed = lenMetersBase;
+			double halfWidthMetersUsed = halfWidthMetersBase;
+
+			if (fixedPixelIconSize)
+			{
+				const double configuredFactor = smallIconBoostEnabled ? frameSmallIconBoostFactor : 1.0;
+				const double resolutionScale = frameSmallIconBoostResolutionScale;
+				const double fixedScale = configuredFactor * resolutionScale;
+				lenPx = std::clamp(lenPx * fixedScale, 6.0, 160.0);
+				halfWidthPx = std::clamp(halfWidthPx * fixedScale, 3.0, 80.0);
+				if (pixPerMeter > 0.0)
+				{
+					lenMetersUsed = lenPx / pixPerMeter;
+					halfWidthMetersUsed = halfWidthPx / pixPerMeter;
+				}
+			}
+			else
+			{
+				if (pixPerMeter > 0.0) {
+					lenPx = std::clamp(pixPerMeter * lenMetersBase, 6.0, 120.0);
+					halfWidthPx = std::clamp(pixPerMeter * halfWidthMetersBase, 3.0, 60.0);
+					lenMetersUsed = lenPx / pixPerMeter;
+					halfWidthMetersUsed = halfWidthPx / pixPerMeter;
+				}
+
+				// Optional readability boost for tiny triangle symbols when zoomed out.
+				if (smallIconBoostEnabled)
+				{
+					const double configuredFactor = frameSmallIconBoostFactor;
+					const double resolutionScale = frameSmallIconBoostResolutionScale;
+					const double currentExtent = lenPx + halfWidthPx;
+					if (currentExtent > 0.0)
+					{
+						const double targetMinExtent = 14.0 * configuredFactor * resolutionScale;
+						const double boostScale = std::clamp(targetMinExtent / currentExtent, 1.0, 2.0 * configuredFactor * resolutionScale);
+						lenPx *= boostScale;
+						halfWidthPx *= boostScale;
+						if (pixPerMeter > 0.0)
+						{
+							lenMetersUsed = lenPx / pixPerMeter;
+							halfWidthMetersUsed = halfWidthPx / pixPerMeter;
+						}
+					}
+				}
+			}
+
+			// Fixed Size scale always applies to arrow/diamond symbols, regardless of fixed-pixel mode.
+			lenPx = std::clamp(lenPx * symbolSizeScale, 1.0, 220.0);
+			halfWidthPx = std::clamp(halfWidthPx * symbolSizeScale, 1.0, 110.0);
+			if (pixPerMeter > 0.0)
+			{
+				lenMetersUsed = lenPx / pixPerMeter;
+				halfWidthMetersUsed = halfWidthPx / pixPerMeter;
+			}
+
+			auto wrap360 = [](double deg) {
+				double wrapped = fmod(deg, 360.0);
+				return wrapped < 0.0 ? wrapped + 360.0 : wrapped;
+			};
+
+			const Color drawColor = applyTint ? tintColor : ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
+			if (useDiamondIconStyle)
+			{
+				// Rounded square rendered as a 45-degree rotated diamond.
+				const double diagonalPx = std::clamp(lenPx + halfWidthPx, 10.0, 220.0);
+				const double sidePx = diagonalPx / std::sqrt(2.0);
+				const double halfSide = sidePx / 2.0;
+				const Gdiplus::REAL rectX = static_cast<Gdiplus::REAL>(acPosPix.x - halfSide);
+				const Gdiplus::REAL rectY = static_cast<Gdiplus::REAL>(acPosPix.y - halfSide);
+				const Gdiplus::REAL rectW = static_cast<Gdiplus::REAL>(sidePx);
+				const Gdiplus::REAL rectH = static_cast<Gdiplus::REAL>(sidePx);
+				Gdiplus::REAL radius = std::clamp(static_cast<Gdiplus::REAL>(sidePx * 0.22), 2.0f, static_cast<Gdiplus::REAL>(sidePx / 2.0));
+
+				Gdiplus::GraphicsPath diamondPath;
+				const Gdiplus::REAL d = radius * 2.0f;
+				diamondPath.AddArc(rectX, rectY, d, d, 180, 90);
+				diamondPath.AddArc(rectX + rectW - d, rectY, d, d, 270, 90);
+				diamondPath.AddArc(rectX + rectW - d, rectY + rectH - d, d, d, 0, 90);
+				diamondPath.AddArc(rectX, rectY + rectH - d, d, d, 90, 90);
+				diamondPath.CloseFigure();
+
+				CPosition nosePosDraw = Haversine(RtPos.GetPosition(), headingDeg, 50.0);
+				POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
+				double fx = double(nosePixDraw.x - acPosPix.x);
+				double fy = double(nosePixDraw.y - acPosPix.y);
+				double screenHeadingDeg = atan2(fy, fx) * 180.0 / M_PI;
+				double rotationDeg = screenHeadingDeg + 45.0;
+
+				GraphicsState diamondState = graphics.Save();
+				Gdiplus::Matrix diamondTransform;
+				diamondTransform.RotateAt(static_cast<Gdiplus::REAL>(rotationDeg), PointF(static_cast<Gdiplus::REAL>(acPosPix.x), static_cast<Gdiplus::REAL>(acPosPix.y)));
+				graphics.MultiplyTransform(&diamondTransform);
+				SolidBrush diamondBrush(drawColor);
+				graphics.FillPath(&diamondBrush, &diamondPath);
+				graphics.Restore(diamondState);
+				iconSize = int(max(12.0, diagonalPx));
+			}
+			else
+			{
+				auto move = [&](const CPosition& start, double bearingDeg, double distanceMeters) {
+					return BetterHarversine(start, wrap360(bearingDeg), distanceMeters);
+				};
+
+				CPosition acPos = RtPos.GetPosition();
+				CPosition tipPos = move(acPos, headingDeg, lenMetersUsed);
+				CPosition basePos = move(acPos, headingDeg + 180.0, lenMetersUsed * 0.33);
+				CPosition notchPos = move(acPos, headingDeg + 180.0, lenMetersUsed * 0.05);
+				CPosition rightPos = move(basePos, headingDeg + 90.0, halfWidthMetersUsed);
+				CPosition leftPos = move(basePos, headingDeg - 90.0, halfWidthMetersUsed);
+
+				POINT tip = ConvertCoordFromPositionToPixel(tipPos);
+				POINT right = ConvertCoordFromPositionToPixel(rightPos);
+				POINT notch = ConvertCoordFromPositionToPixel(notchPos);
+				POINT left = ConvertCoordFromPositionToPixel(leftPos);
+
+				PointF tri[4] = {
+					PointF(Gdiplus::REAL(tip.x), Gdiplus::REAL(tip.y)),
+					PointF(Gdiplus::REAL(right.x), Gdiplus::REAL(right.y)),
+					PointF(Gdiplus::REAL(notch.x), Gdiplus::REAL(notch.y)),
+					PointF(Gdiplus::REAL(left.x), Gdiplus::REAL(left.y))
+				};
+
+				SolidBrush arrowBrush(drawColor);
+				graphics.FillPolygon(&arrowBrush, tri, 4);
+				iconSize = int(max(12.0, lenPx + halfWidthPx));
+			}
+		}
+
+		// Predicted Track Line
+		// It starts 20 seconds away from the ac
+		if (reportedGs > 50 && PredictedLength > 0)
+		{
+			double d = double(rt.GetPosition().GetReportedGS()*0.514444) * 10;
+			CPosition AwayBase = BetterHarversine(rt.GetPosition().GetPosition(), rt.GetTrackHeading(), d);
+
+			d = double(rt.GetPosition().GetReportedGS()*0.514444) * (PredictedLength * 60) - 10;
+			CPosition PredictedEnd = BetterHarversine(AwayBase, rt.GetTrackHeading(), d);
+
+			dc.MoveTo(ConvertCoordFromPositionToPixel(AwayBase));
+			dc.LineTo(ConvertCoordFromPositionToPixel(PredictedEnd));
+		}
+
+		if (mouseWithin({ acPosPix.x - 5, acPosPix.y - 5, acPosPix.x + 5, acPosPix.y + 5 })) {
+			dc.MoveTo(acPosPix.x, acPosPix.y - 8);
+			dc.LineTo(acPosPix.x - 6, acPosPix.y - 12);
+			dc.MoveTo(acPosPix.x, acPosPix.y - 8);
+			dc.LineTo(acPosPix.x + 6, acPosPix.y - 12);
+
+			dc.MoveTo(acPosPix.x, acPosPix.y + 8);
+			dc.LineTo(acPosPix.x - 6, acPosPix.y + 12);
+			dc.MoveTo(acPosPix.x, acPosPix.y + 8);
+			dc.LineTo(acPosPix.x + 6, acPosPix.y + 12);
+
+			dc.MoveTo(acPosPix.x - 8, acPosPix.y );
+			dc.LineTo(acPosPix.x - 12, acPosPix.y -6);
+			dc.MoveTo(acPosPix.x - 8, acPosPix.y);
+			dc.LineTo(acPosPix.x - 12 , acPosPix.y + 6);
+
+			dc.MoveTo(acPosPix.x + 8, acPosPix.y);
+			dc.LineTo(acPosPix.x + 12, acPosPix.y - 6);
+			dc.MoveTo(acPosPix.x + 8, acPosPix.y);
+			dc.LineTo(acPosPix.x + 12, acPosPix.y + 6);
+		}
+
+		int hitSize = max(iconSize, 12);
+		AddScreenObject(DRAWING_AC_SYMBOL, rt.GetCallsign(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, AcisCorrelated ? GetBottomLine(rt.GetCallsign()).c_str() : rt.GetSystemID());
+	}
+
+#pragma endregion Drawing of the symbols
+
+	TimePopupData.clear();
+	AcOnRunway.clear();
+	ColorAC.clear();
+	tagAreas.clear();
+	tagCollisionAreas.clear();
+
+	RimcasInstance->OnRefreshEnd(this, CurrentConfig->getActiveProfile()["rimcas"]["rimcas_stage_two_speed_threshold"].GetInt());
+
+	graphics.SetSmoothingMode(SmoothingModeDefault);
+
+	RenderTags(graphics, dc, frameProModeEnabled);
+
+	// Releasing the hDC after the drawing
+	graphics.ReleaseHDC(hDC);
+
+	CBrush BrushGrey(RGB(150, 150, 150));
+	COLORREF oldColor = dc.SetTextColor(RGB(33, 33, 33));
+
+	int TextHeight = dc.GetTextExtent("60").cy;
+	VSMR_REFRESH_LOG("RIMCAS Loop");
+	for (std::map<string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
+	{
+		if (!it->second || RimcasInstance->TimeTable[it->first].empty())
+			continue;
+
+		vector<int> TimeDefinition = RimcasInstance->CountdownDefinition;
+		if (isLVP)
+			TimeDefinition = RimcasInstance->CountdownDefinitionLVP;
+
+		if (TimePopupAreas.find(it->first) == TimePopupAreas.end())
+			TimePopupAreas[it->first] = { 300, 300, 430, 300+LONG(TextHeight*(TimeDefinition.size()+1)) };
+
+		CRect CRectTime = TimePopupAreas[it->first];
+		CRectTime.NormalizeRect();
+
+		dc.FillRect(CRectTime, &BrushGrey);
+
+		// Drawing the runway name
+		string tempS = it->first;
+		dc.TextOutA(CRectTime.left + CRectTime.Width() / 2 - dc.GetTextExtent(tempS.c_str()).cx / 2, CRectTime.top, tempS.c_str());
+
+		int TopOffset = TextHeight;
+		// Drawing the times
+		for (auto &Time : TimeDefinition)
+		{
+			dc.SetTextColor(RGB(33, 33, 33));
+
+			tempS = std::to_string(Time) + ": " + RimcasInstance->TimeTable[it->first][Time];
+			if (RimcasInstance->AcColor.find(RimcasInstance->TimeTable[it->first][Time]) != RimcasInstance->AcColor.end())
+			{
+				CBrush RimcasBrush(RimcasInstance->GetAircraftColor(RimcasInstance->TimeTable[it->first][Time],
+					Color::Black,
+					Color::Black,
+					CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
+					CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"])).ToCOLORREF()
+					);
+
+				CRect TempRect = { CRectTime.left, CRectTime.top + TopOffset, CRectTime.right, CRectTime.top + TopOffset + TextHeight };
+				TempRect.NormalizeRect();
+
+				dc.FillRect(TempRect, &RimcasBrush);
+				dc.SetTextColor(RGB(238, 238, 208));
+			}
+
+			dc.TextOutA(CRectTime.left, CRectTime.top + TopOffset, tempS.c_str());
+
+			TopOffset += TextHeight;
+		}
+
+		AddScreenObject(RIMCAS_IAW, it->first.c_str(), CRectTime, true, "");
+
+	}
+
+	VSMR_REFRESH_LOG("Menu bar lists");
+
+
+	if (ShowLists["Conflict Alert ARR"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert ARR"], "CA Arrival", 1);
+		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
+		{
+			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_ARRIVAL_FUNC, false, RimcasInstance->MonitoredRunwayArr[it->first.c_str()]);
+		}
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Conflict Alert ARR"] = false;
+	}
+
+	if (ShowLists["Conflict Alert DEP"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert DEP"], "CA Departure", 1);
+		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
+		{
+			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_MONITOR_FUNC, false, RimcasInstance->MonitoredRunwayDep[it->first.c_str()]);
+		}
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Conflict Alert DEP"] = false;
+	}
+
+	if (ShowLists["Runway closed"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Runway closed"], "Runway Closed", 1);
+		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
+		{
+			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CLOSED_RUNWAYS_FUNC, false, RimcasInstance->ClosedRunway[it->first.c_str()]);
+		}
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Runway closed"] = false;
+	}
+
+	if (ShowLists["Visibility"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Visibility"], "Visibility", 1);
+		GetPlugIn()->AddPopupListElement("Normal", "", RIMCAS_UPDATE_LVP, false, int(!isLVP));
+		GetPlugIn()->AddPopupListElement("Low", "", RIMCAS_UPDATE_LVP, false, int(isLVP));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Visibility"] = false;
+	}
+
+	if (ShowLists["Active Alerts"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Active Alerts"], "Active Alerts", 1);
+		GetPlugIn()->AddPopupListElement("NO PUSH", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO PUSH") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("NO TAXI", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO TAXI") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("NO TKOF", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO TKOF") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("STAT RPA", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("STAT RPA") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("RWY INC", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY INC") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("RWY TYPE", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY TYPE") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("RWY CLSD", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY CLSD") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("HIGH SPD", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("HIGH SPD") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("EMERG", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("EMERG") == RimcasInstance->inactiveAlerts.end());
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Active Alerts"] = false;
+	}
+
+	if (ShowLists["Profiles"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Profiles"], "Profiles", 1);
+		vector<string> allProfiles = CurrentConfig->getAllProfiles();
+		for (std::vector<string>::iterator it = allProfiles.begin(); it != allProfiles.end(); ++it) {
+			GetPlugIn()->AddPopupListElement(it->c_str(), "", RIMCAS_UPDATE_PROFILE, false, int(CurrentConfig->isItActiveProfile(it->c_str())));
+		}
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Profiles"] = false;
+	}
+
+	if (ShowLists["Icons"])
+	{
+		const std::string style = GetActiveTargetIconStyle();
+		GetPlugIn()->OpenPopupList(ListAreas["Icons"], "Icons", 1);
+		GetPlugIn()->AddPopupListElement("Arrow", "", RIMCAS_UPDATE_ICON_STYLE, false, int(style == "triangle"));
+		GetPlugIn()->AddPopupListElement("Diamond", "", RIMCAS_UPDATE_ICON_STYLE, false, int(style == "diamond"));
+		GetPlugIn()->AddPopupListElement("Realistic", "", RIMCAS_UPDATE_ICON_STYLE, false, int(style == "realistic"));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Icons"] = false;
+	}
+
+	if (ShowLists["Icon Size"] || ShowLists["Size"])
+	{
+		const bool fixedPixelIconSize = GetFixedPixelTargetIconSizeEnabled();
+		RECT iconSizeArea = ListAreas["Icon Size"];
+		if (iconSizeArea.right == 0 && iconSizeArea.bottom == 0)
+			iconSizeArea = ListAreas["Size"];
+		GetPlugIn()->OpenPopupList(iconSizeArea, "Icon Size", 1);
+		GetPlugIn()->AddPopupListElement("Fixed Pixel", "", RIMCAS_TOGGLE_FIXED_PIXEL_ICON_SIZE, false, int(fixedPixelIconSize));
+		GetPlugIn()->AddPopupListElement("Fixed Size", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Boost", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Icon Size"] = false;
+		ShowLists["Size"] = false;
+	}
+
+	if (ShowLists["Fixed Size"] || ShowLists["Fixed Arrow Size"])
+	{
+		const double fixedArrowScale = GetFixedPixelTriangleIconScale();
+		auto isScaleSelected = [&](double value) -> int
+		{
+			return int(fabs(fixedArrowScale - value) < 0.001);
+		};
+		RECT fixedSizeArea = ListAreas["Fixed Size"];
+		if (fixedSizeArea.right == 0 && fixedSizeArea.bottom == 0)
+			fixedSizeArea = ListAreas["Fixed Arrow Size"];
+		GetPlugIn()->OpenPopupList(fixedSizeArea, "Fixed Size", 1);
+		GetPlugIn()->AddPopupListElement("0.10x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.10));
+		GetPlugIn()->AddPopupListElement("0.25x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.25));
+		GetPlugIn()->AddPopupListElement("0.50x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.50));
+		GetPlugIn()->AddPopupListElement("0.65x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.65));
+		GetPlugIn()->AddPopupListElement("0.80x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.80));
+		GetPlugIn()->AddPopupListElement("1.00x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(1.00));
+		GetPlugIn()->AddPopupListElement("1.25x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(1.25));
+		GetPlugIn()->AddPopupListElement("1.50x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(1.50));
+		GetPlugIn()->AddPopupListElement("2.00x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(2.00));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Fixed Size"] = false;
+		ShowLists["Fixed Arrow Size"] = false;
+	}
+
+	if (ShowLists["Boost"])
+	{
+		const bool smallIconBoost = GetSmallTargetIconBoostEnabled();
+		GetPlugIn()->OpenPopupList(ListAreas["Boost"], "Boost", 1);
+		GetPlugIn()->AddPopupListElement("Increment", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Small Icon Boost", "", RIMCAS_TOGGLE_SMALL_ICON_BOOST, false, int(smallIconBoost));
+		GetPlugIn()->AddPopupListElement("Resolution", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Boost"] = false;
+	}
+
+	if (ShowLists["Boost Increment"] || ShowLists["Increment"])
+	{
+		const double smallIconBoostFactor = GetSmallTargetIconBoostFactor();
+		auto isFactorSelected = [&](double value) -> int
+		{
+			return int(fabs(smallIconBoostFactor - value) < 0.001);
+		};
+		RECT boostIncrementArea = ListAreas["Increment"];
+		if (boostIncrementArea.right == 0 && boostIncrementArea.bottom == 0)
+			boostIncrementArea = ListAreas["Boost Increment"];
+		GetPlugIn()->OpenPopupList(boostIncrementArea, "Increment", 1);
+		GetPlugIn()->AddPopupListElement("0.75x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(0.75));
+		GetPlugIn()->AddPopupListElement("1.00x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(1.00));
+		GetPlugIn()->AddPopupListElement("1.25x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(1.25));
+		GetPlugIn()->AddPopupListElement("1.50x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(1.50));
+		GetPlugIn()->AddPopupListElement("2.00x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(2.00));
+		GetPlugIn()->AddPopupListElement("2.50x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(2.50));
+		GetPlugIn()->AddPopupListElement("3.00x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(3.00));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Increment"] = false;
+		ShowLists["Boost Increment"] = false;
+	}
+
+	if (ShowLists["Boost Resolution"] || ShowLists["Resolution"])
+	{
+		const std::string preset = GetSmallTargetIconBoostResolutionPreset();
+		RECT boostResolutionArea = ListAreas["Resolution"];
+		if (boostResolutionArea.right == 0 && boostResolutionArea.bottom == 0)
+			boostResolutionArea = ListAreas["Boost Resolution"];
+		GetPlugIn()->OpenPopupList(boostResolutionArea, "Resolution", 1);
+		GetPlugIn()->AddPopupListElement("1080p", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_RESOLUTION, false, int(preset == "1080p"));
+		GetPlugIn()->AddPopupListElement("2K", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_RESOLUTION, false, int(preset == "2k"));
+		GetPlugIn()->AddPopupListElement("4K", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_RESOLUTION, false, int(preset == "4k"));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Resolution"] = false;
+		ShowLists["Boost Resolution"] = false;
+	}
+
+	if (ShowLists["Colour Settings"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Colour Settings"], "Colour Settings", 1);
+		GetPlugIn()->AddPopupListElement("Day", "", RIMCAS_UPDATE_BRIGHNESS, false, int(ColorSettingsDay));
+		GetPlugIn()->AddPopupListElement("Night", "", RIMCAS_UPDATE_BRIGHNESS, false, int(!ColorSettingsDay));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Colour Settings"] = false;
+	}
+
+	if (ShowLists["Label Font Size"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Label Font Size"], "Label Font Size", 1);
+		GetPlugIn()->AddPopupListElement("Size 1", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 1)));
+		GetPlugIn()->AddPopupListElement("Size 2", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 2)));
+		GetPlugIn()->AddPopupListElement("Size 3", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 3)));
+		GetPlugIn()->AddPopupListElement("Size 4", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 4)));
+		GetPlugIn()->AddPopupListElement("Size 5", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 5)));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Label Font Size"] = false;
+	}
+
+	if (ShowLists["Tag Font"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Tag Font"], "Tag Font", 1);
+
+		auto toLowerCopy = [](std::string value) {
+			std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			return value;
+		};
+
+		const std::string currentFontName = GetActiveTagFontName();
+		const std::string currentFontNameLower = toLowerCopy(currentFontName);
+		std::vector<std::string> availableFonts = GetAvailableTagFonts();
+
+		bool containsCurrentFont = false;
+		for (const std::string& fontName : availableFonts)
+		{
+			if (toLowerCopy(fontName) == currentFontNameLower)
+			{
+				containsCurrentFont = true;
+				break;
+			}
+		}
+
+		if (!currentFontName.empty() && !containsCurrentFont)
+			availableFonts.insert(availableFonts.begin(), currentFontName);
+
+		for (const std::string& fontName : availableFonts)
+		{
+			GetPlugIn()->AddPopupListElement(fontName.c_str(), "", RIMCAS_UPDATE_TAG_FONT, false, int(bool(toLowerCopy(fontName) == currentFontNameLower)));
+		}
+
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Tag Font"] = false;
+	}
+
+	if (ShowLists["GRND Trail Dots"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["GRND Trail Dots"], "GRND Trail Dots", 1);
+		GetPlugIn()->AddPopupListElement("0", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 0)));
+		GetPlugIn()->AddPopupListElement("2", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 2)));
+		GetPlugIn()->AddPopupListElement("4", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 4)));
+		GetPlugIn()->AddPopupListElement("8", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 8)));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["GRND Trail Dots"] = false;
+	}
+
+	if (ShowLists["APPR Trail Dots"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["APPR Trail Dots"], "APPR Trail Dots", 1);
+		GetPlugIn()->AddPopupListElement("0", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 0)));
+		GetPlugIn()->AddPopupListElement("4", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 4)));
+		GetPlugIn()->AddPopupListElement("8", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 8)));
+		GetPlugIn()->AddPopupListElement("12", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 12)));
+		GetPlugIn()->AddPopupListElement("16", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 16)));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["APPR Trail Dots"] = false;
+	}
+
+	if (ShowLists["Predicted Track Line"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Predicted Track Line"], "Predicted Track Line", 1);
+		GetPlugIn()->AddPopupListElement("0", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 0)));
+		GetPlugIn()->AddPopupListElement("1", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 1)));
+		GetPlugIn()->AddPopupListElement("2", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 2)));
+		GetPlugIn()->AddPopupListElement("3", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 3)));
+		GetPlugIn()->AddPopupListElement("4", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 4)));
+		GetPlugIn()->AddPopupListElement("5", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 5)));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Predicted Track Line"] = false;
+	}
+
+	if (ShowLists["Brightness"])
+	{
+		GetPlugIn()->OpenPopupList(ListAreas["Brightness"], "Brightness", 1);
+		GetPlugIn()->AddPopupListElement("Label", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Symbol", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_OPEN_LIST, false);
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Brightness"] = false;
+	}
+
+	if (ShowLists["Profile Colors"])
+	{
+		RebuildProfileColorEntries();
+
+		GetPlugIn()->OpenPopupList(ListAreas["Profile Colors"], "Profile Colors", 1);
+		for (const std::string& colorPath : ProfileColorPaths)
+		{
+			GetPlugIn()->AddPopupListElement(colorPath.c_str(), "", RIMCAS_PROFILE_COLOR_SELECT, false, int(colorPath == SelectedProfileColorPath));
+		}
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Profile Colors"] = false;
+	}
+
+	if (ShowLists["Label"])
+	{
+		GetPlugIn()->OpenPopupList(ListAreas["Label"], "Label Brightness", 1);
+		for(int i = CColorManager::bounds_low(); i <= CColorManager::bounds_high(); i +=10)
+			GetPlugIn()->AddPopupListElement(std::to_string(i).c_str(), "", RIMCAS_BRIGHTNESS_LABEL, false, int(bool(i == ColorManager->get_brightness("label"))));
+
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Label"] = false;
+	}
+
+	if (ShowLists["Symbol"])
+	{
+		GetPlugIn()->OpenPopupList(ListAreas["Symbol"], "Symbol Brightness", 1);
+		for (int i = CColorManager::bounds_low(); i <= CColorManager::bounds_high(); i += 10)
+			GetPlugIn()->AddPopupListElement(std::to_string(i).c_str(), "", RIMCAS_BRIGHTNESS_SYMBOL, false, int(bool(i == ColorManager->get_brightness("symbol"))));
+
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Symbol"] = false;
+	}
+
+	if (ShowLists["Afterglow"])
+	{
+		GetPlugIn()->OpenPopupList(ListAreas["Afterglow"], "Afterglow Brightness", 1);
+		for (int i = CColorManager::bounds_low(); i <= CColorManager::bounds_high(); i += 10)
+			GetPlugIn()->AddPopupListElement(std::to_string(i).c_str(), "", RIMCAS_BRIGHTNESS_AFTERGLOW, false, int(bool(i == ColorManager->get_brightness("afterglow"))));
+
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Afterglow"] = false;
+	}
+
+	VSMR_REFRESH_LOG("QRD");
+
+	//---------------------------------
+	// QRD
+	//---------------------------------
+
+	if (QDMenabled || QDMSelectEnabled || (DistanceToolActive && ActiveDistance.first != "")) {
+		CPen Pen(PS_SOLID, 1, RGB(255, 255, 255));
+		CPen *oldPen = dc.SelectObject(&Pen);
+
+		POINT AirportPos = ConvertCoordFromPositionToPixel(AirportPositions[getActiveAirport()]);
+		CPosition AirportCPos = AirportPositions[getActiveAirport()];
+		if (QDMSelectEnabled)
+		{
+			AirportPos = QDMSelectPt;
+			AirportCPos = ConvertCoordFromPixelToPosition(QDMSelectPt);
+		}
+		if (DistanceToolActive)
+		{
+			CPosition r = GetPlugIn()->RadarTargetSelect(ActiveDistance.first.c_str()).GetPosition().GetPosition();
+			AirportPos = ConvertCoordFromPositionToPixel(r);
+			AirportCPos = r;
+		}
+		dc.MoveTo(AirportPos);
+		POINT point = mouseLocation;
+		dc.LineTo(point);
+
+		CPosition CursorPos = ConvertCoordFromPixelToPosition(point);
+		double Distance = AirportCPos.DistanceTo(CursorPos);
+		double Bearing = AirportCPos.DirectionTo(CursorPos);
+	
+		Gdiplus::Pen WhitePen(Color::White);
+		graphics.DrawEllipse(&WhitePen, point.x - 5, point.y - 5, 10, 10);
+
+		Distance = Distance / 0.00053996f;
+
+		Distance = round(Distance * 10) / 10;
+
+		Bearing = round(Bearing * 10) / 10;
+
+		POINT TextPos = { point.x + 20, point.y };
+
+		if (!DistanceToolActive)
+		{
+			string distances = std::to_string(Distance);
+			size_t decimal_pos = distances.find(".");
+			distances = distances.substr(0, decimal_pos + 2);
+
+			string bearings = std::to_string(Bearing);
+			decimal_pos = bearings.find(".");
+			bearings = bearings.substr(0, decimal_pos + 2);
+
+			string text = bearings;
+			text += "° / ";
+			text += distances;
+			text += "m";
+			COLORREF old_color = dc.SetTextColor(RGB(255, 255, 255));
+			dc.TextOutA(TextPos.x, TextPos.y, text.c_str());
+			dc.SetTextColor(old_color);
+		}
+
+		dc.SelectObject(oldPen);
+		RequestRefresh();
+	}
+
+	// Distance tools here
+	for (auto&& kv : DistanceTools)
+	{
+		CRadarTarget one = GetPlugIn()->RadarTargetSelect(kv.first.c_str());
+		CRadarTarget two = GetPlugIn()->RadarTargetSelect(kv.second.c_str());
+
+		if (!isVisible(one) || !isVisible(two))
+			continue;
+
+		CPen Pen(PS_SOLID, 1, RGB(255, 255, 255));
+		CPen *oldPen = dc.SelectObject(&Pen);
+
+		POINT onePoint = ConvertCoordFromPositionToPixel(one.GetPosition().GetPosition());
+		POINT twoPoint = ConvertCoordFromPositionToPixel(two.GetPosition().GetPosition());
+
+		dc.MoveTo(onePoint);
+		dc.LineTo(twoPoint);
+
+		POINT TextPos = { twoPoint.x + 20, twoPoint.y };
+
+		double Distance = one.GetPosition().GetPosition().DistanceTo(two.GetPosition().GetPosition());
+		double Bearing = one.GetPosition().GetPosition().DirectionTo(two.GetPosition().GetPosition());
+
+		string distances = std::to_string(Distance);
+		size_t decimal_pos = distances.find(".");
+		distances = distances.substr(0, decimal_pos + 2);
+
+		string bearings = std::to_string(Bearing);
+		decimal_pos = bearings.find(".");
+		bearings = bearings.substr(0, decimal_pos + 2);
+
+		string text = bearings;
+		text += "° / ";
+		text += distances;
+		text += "nm";
+		COLORREF old_color = dc.SetTextColor(RGB(0, 0, 0));
+
+		CRect ClickableRect = { TextPos.x - 2, TextPos.y, TextPos.x + dc.GetTextExtent(text.c_str()).cx + 2, TextPos.y + dc.GetTextExtent(text.c_str()).cy };
+		graphics.FillRectangle(&SolidBrush(Color(127, 122, 122)), CopyRect(ClickableRect));
+		dc.Draw3dRect(ClickableRect, RGB(75, 75, 75), RGB(45, 45, 45));
+		dc.TextOutA(TextPos.x, TextPos.y, text.c_str());
+
+		AddScreenObject(RIMCAS_DISTANCE_TOOL, string(kv.first+","+kv.second).c_str(), ClickableRect, false, "");
+
+		dc.SetTextColor(old_color);
+
+		dc.SelectObject(oldPen);
+	}
+
+	//---------------------------------
+	// Drawing the toolbar
+	//---------------------------------
+
+	VSMR_REFRESH_LOG("Menu Bar");
+
+	COLORREF qToolBarColor = RGB(127, 122, 122);
+
+	// Drawing the toolbar on the top
+	CRect ToolBarAreaTop(RadarArea.left, RadarArea.top, RadarArea.right, RadarArea.top + 20);
+	dc.FillSolidRect(ToolBarAreaTop, qToolBarColor);
+
+	COLORREF oldTextColor = dc.SetTextColor(RGB(0, 0, 0));
+
+	int offset = 2;
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, getActiveAirport().c_str());
+	AddScreenObject(RIMCAS_ACTIVE_AIRPORT, "ActiveAirport", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(getActiveAirport().c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(getActiveAirport().c_str()).cy }, false, "Active Airport");
+
+	offset += dc.GetTextExtent(getActiveAirport().c_str()).cx + 10;
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Display");
+	AddScreenObject(RIMCAS_MENU, "DisplayMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Display").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Display").cy }, false, "Display menu");
+
+	offset += dc.GetTextExtent("Display").cx + 10;
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Target");
+	AddScreenObject(RIMCAS_MENU, "TargetMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Target").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Target").cy }, false, "Target menu");
+
+	offset += dc.GetTextExtent("Target").cx + 10;
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Colours");
+	AddScreenObject(RIMCAS_MENU, "ColourMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Colour").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Colour").cy }, false, "Colour menu");
+
+	offset += dc.GetTextExtent("Colours").cx + 10;
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Alerts");
+	AddScreenObject(RIMCAS_MENU, "RIMCASMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Alerts").cx, ToolBarAreaTop.top + 4 + +dc.GetTextExtent("Alerts").cy }, false, "RIMCAS menu");
+
+	offset += dc.GetTextExtent("Alerts").cx + 10;
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "/");
+	CRect barDistanceRect = { ToolBarAreaTop.left + offset - 2, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("/").cx, ToolBarAreaTop.top + 4 + +dc.GetTextExtent("/").cy };
+	if (DistanceToolActive)
+	{
+		graphics.DrawRectangle(&Pen(Color::White), CopyRect(barDistanceRect));
+	}
+	AddScreenObject(RIMCAS_MENU, "/", barDistanceRect, false, "Distance tool");
+
+	dc.SetTextColor(oldTextColor);
+
+	if (ShowProfileColorPicker && !SelectedProfileColorPath.empty())
+	{
+		bool hasAlphaInJson = false;
+		if (!IsProfileColorPathValid(SelectedProfileColorPath, &hasAlphaInJson))
+		{
+			ShowProfileColorPicker = false;
+		}
+		else
+		{
+			ProfileColorPickerHasAlpha = ProfileColorPickerHasAlpha || hasAlphaInJson || ProfileColorPickerAlpha != 255;
+			const int checkerSize = 8;
+
+			const int availableWidth = max(320, RadarArea.right - RadarArea.left - 20);
+			const int availableHeight = max(240, RadarArea.bottom - RadarArea.top - 40);
+			const int panelWidth = min(430, availableWidth);
+			const int panelHeight = min(272, availableHeight);
+			const int sliderWidth = checkerSize * 3;
+			const int wheelRawSize = max(120, min(176, panelWidth - 208));
+			const int wheelSize = max(120, (wheelRawSize / checkerSize) * checkerSize);
+			int panelLeft = max(RadarArea.left + 10, RadarArea.right - panelWidth - 10);
+			int panelTop = RadarArea.top + 28;
+			if (panelTop + panelHeight > RadarArea.bottom - 10)
+				panelTop = max(RadarArea.top + 22, RadarArea.bottom - panelHeight - 10);
+
+			ProfileColorPickerPanelRect = CRect(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight);
+			ProfileColorPickerWheelRect = CRect(panelLeft + 14, panelTop + 36, panelLeft + 14 + wheelSize, panelTop + 36 + wheelSize);
+			ProfileColorPickerValueRect = CRect(ProfileColorPickerWheelRect.right + 18, ProfileColorPickerWheelRect.top, ProfileColorPickerWheelRect.right + 18 + sliderWidth, ProfileColorPickerWheelRect.bottom);
+			ProfileColorPickerAlphaRect = CRect(ProfileColorPickerValueRect.right + 12, ProfileColorPickerWheelRect.top, ProfileColorPickerValueRect.right + 12 + sliderWidth, ProfileColorPickerWheelRect.bottom);
+			const int previewLeft = ProfileColorPickerAlphaRect.right + 16;
+			const int previewMaxWidth = max(checkerSize * 6, (ProfileColorPickerPanelRect.right - 14) - previewLeft);
+			const int previewWidth = max(checkerSize * 6, (previewMaxWidth / checkerSize) * checkerSize);
+			const int previewHeight = checkerSize * 8;
+			ProfileColorPickerPreviewRect = CRect(previewLeft, ProfileColorPickerWheelRect.top, previewLeft + previewWidth, ProfileColorPickerWheelRect.top + previewHeight);
+			ProfileColorPickerRgbTextRect = CRect(ProfileColorPickerPreviewRect.left, ProfileColorPickerPreviewRect.bottom + 10, ProfileColorPickerPreviewRect.right, ProfileColorPickerPreviewRect.bottom + 34);
+			ProfileColorPickerAlphaTextRect = CRect(ProfileColorPickerPreviewRect.left, ProfileColorPickerPreviewRect.bottom + 40, ProfileColorPickerPreviewRect.right, ProfileColorPickerPreviewRect.bottom + 64);
+			ProfileColorPickerHexTextRect = CRect(ProfileColorPickerPreviewRect.left, ProfileColorPickerPreviewRect.bottom + 70, ProfileColorPickerPreviewRect.right, ProfileColorPickerPreviewRect.bottom + 94);
+			ProfileColorPickerSelectRect = CRect(ProfileColorPickerPanelRect.right - 170, ProfileColorPickerPanelRect.top + 6, ProfileColorPickerPanelRect.right - 34, ProfileColorPickerPanelRect.top + 26);
+			ProfileColorPickerCloseRect = CRect(ProfileColorPickerPanelRect.right - 28, ProfileColorPickerPanelRect.top + 6, ProfileColorPickerPanelRect.right - 8, ProfileColorPickerPanelRect.top + 26);
+
+			graphics.FillRectangle(&SolidBrush(Color(255, 32, 35, 42)), CopyRect(ProfileColorPickerPanelRect));
+			graphics.DrawRectangle(&Pen(Color(255, 220, 220, 220), 1.0f), CopyRect(ProfileColorPickerPanelRect));
+
+			std::string title = "Profile Color";
+			std::string pathLabel = SelectedProfileColorPath;
+			if (pathLabel.size() > 42)
+				pathLabel = pathLabel.substr(0, 39) + "...";
+			COLORREF pickerTextColor = dc.SetTextColor(RGB(240, 240, 240));
+			dc.TextOutA(ProfileColorPickerPanelRect.left + 10, ProfileColorPickerPanelRect.top + 8, title.c_str());
+			dc.TextOutA(ProfileColorPickerPanelRect.left + 10, ProfileColorPickerPanelRect.top + 20, pathLabel.c_str());
+			dc.SetTextColor(pickerTextColor);
+
+			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerSelectRect));
+			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180)), CopyRect(ProfileColorPickerSelectRect));
+			COLORREF pickerSelectColor = dc.SetTextColor(RGB(240, 240, 240));
+			dc.TextOutA(ProfileColorPickerSelectRect.left + 6, ProfileColorPickerSelectRect.top + 3, "Change Color...");
+			dc.SetTextColor(pickerSelectColor);
+
+			graphics.FillRectangle(&SolidBrush(Color(255, 70, 70, 70)), CopyRect(ProfileColorPickerCloseRect));
+			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180)), CopyRect(ProfileColorPickerCloseRect));
+			COLORREF pickerCloseColor = dc.SetTextColor(RGB(255, 255, 255));
+			dc.TextOutA(ProfileColorPickerCloseRect.left + 5, ProfileColorPickerCloseRect.top + 3, "X");
+			dc.SetTextColor(pickerCloseColor);
+
+			EnsureProfileColorWheelBitmap(ProfileColorPickerWheelRect.Width());
+			if (ProfileColorWheelBitmap)
+			{
+				graphics.DrawImage(ProfileColorWheelBitmap.get(),
+					ProfileColorPickerWheelRect.left,
+					ProfileColorPickerWheelRect.top,
+					ProfileColorPickerWheelRect.Width(),
+					ProfileColorPickerWheelRect.Height());
+			}
+			graphics.DrawEllipse(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerWheelRect));
+
+			const int valueHeight = max(1, ProfileColorPickerValueRect.Height());
+			const int valueDen = max(1, valueHeight - 1);
+			for (int i = 0; i < valueHeight; ++i)
+			{
+				double t = static_cast<double>(i) / static_cast<double>(valueDen);
+				Color rowColor = HsvToColor(ProfileColorPickerHue, ProfileColorPickerSaturation, 1.0 - t, 255);
+				graphics.DrawLine(&Pen(rowColor), ProfileColorPickerValueRect.left, ProfileColorPickerValueRect.top + i, ProfileColorPickerValueRect.right, ProfileColorPickerValueRect.top + i);
+			}
+			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerValueRect));
+
+			for (int y = ProfileColorPickerAlphaRect.top; y < ProfileColorPickerAlphaRect.bottom; y += checkerSize)
+			{
+				for (int x = ProfileColorPickerAlphaRect.left; x < ProfileColorPickerAlphaRect.right; x += checkerSize)
+				{
+					bool dark = (((x - ProfileColorPickerAlphaRect.left) / checkerSize) + ((y - ProfileColorPickerAlphaRect.top) / checkerSize)) % 2 == 0;
+					Color checker = dark ? Color(255, 120, 120, 120) : Color(255, 170, 170, 170);
+					graphics.FillRectangle(&SolidBrush(checker), x, y, checkerSize, checkerSize);
+				}
+			}
+
+			Color opaqueColor = HsvToColor(ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue, 255);
+			const int alphaHeight = max(1, ProfileColorPickerAlphaRect.Height());
+			const int alphaDen = max(1, alphaHeight - 1);
+			for (int i = 0; i < alphaHeight; ++i)
+			{
+				double t = static_cast<double>(i) / static_cast<double>(alphaDen);
+				int alpha = ClampInt(static_cast<int>((1.0 - t) * 255.0 + 0.5), 0, 255);
+				Color rowColor(alpha, opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB());
+				graphics.DrawLine(&Pen(rowColor), ProfileColorPickerAlphaRect.left, ProfileColorPickerAlphaRect.top + i, ProfileColorPickerAlphaRect.right, ProfileColorPickerAlphaRect.top + i);
+			}
+			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerAlphaRect));
+
+			// Preview swatch over checkerboard.
+			for (int y = ProfileColorPickerPreviewRect.top; y < ProfileColorPickerPreviewRect.bottom; y += checkerSize)
+			{
+				for (int x = ProfileColorPickerPreviewRect.left; x < ProfileColorPickerPreviewRect.right; x += checkerSize)
+				{
+					bool dark = (((x - ProfileColorPickerPreviewRect.left) / checkerSize) + ((y - ProfileColorPickerPreviewRect.top) / checkerSize)) % 2 == 0;
+					Color checker = dark ? Color(255, 120, 120, 120) : Color(255, 170, 170, 170);
+					graphics.FillRectangle(&SolidBrush(checker), x, y, checkerSize, checkerSize);
+				}
+			}
+			Color previewColor(ProfileColorPickerAlpha, opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB());
+			graphics.FillRectangle(&SolidBrush(previewColor), CopyRect(ProfileColorPickerPreviewRect));
+			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerPreviewRect));
+
+			const double angle = DegToRad(ProfileColorPickerHue);
+			const double radius = min(ProfileColorPickerWheelRect.Width(), ProfileColorPickerWheelRect.Height()) / 2.0;
+			const double markerRadius = ClampDouble(ProfileColorPickerSaturation, 0.0, 1.0) * radius;
+			const double centerX = ProfileColorPickerWheelRect.left + ProfileColorPickerWheelRect.Width() / 2.0;
+			const double centerY = ProfileColorPickerWheelRect.top + ProfileColorPickerWheelRect.Height() / 2.0;
+			const int markerX = static_cast<int>(centerX + cos(angle) * markerRadius);
+			const int markerY = static_cast<int>(centerY + sin(angle) * markerRadius);
+			graphics.DrawEllipse(&Pen(Color(255, 255, 255, 255), 2.0f), markerX - 5, markerY - 5, 10, 10);
+			graphics.DrawEllipse(&Pen(Color(255, 0, 0, 0), 1.0f), markerX - 6, markerY - 6, 12, 12);
+
+			int valueMarkerY = ProfileColorPickerValueRect.top + static_cast<int>((1.0 - ProfileColorPickerValue) * ProfileColorPickerValueRect.Height());
+			valueMarkerY = ClampInt(valueMarkerY, ProfileColorPickerValueRect.top, ProfileColorPickerValueRect.bottom - 1);
+			CRect valueMarkerRect(ProfileColorPickerValueRect.left - 3, valueMarkerY - 2, ProfileColorPickerValueRect.right + 3, valueMarkerY + 2);
+			graphics.FillRectangle(&SolidBrush(Color(255, 255, 255, 255)), CopyRect(valueMarkerRect));
+			graphics.DrawRectangle(&Pen(Color(255, 30, 30, 30), 1.0f), CopyRect(valueMarkerRect));
+
+			int alphaMarkerY = ProfileColorPickerAlphaRect.top + static_cast<int>((1.0 - (ProfileColorPickerAlpha / 255.0)) * ProfileColorPickerAlphaRect.Height());
+			alphaMarkerY = ClampInt(alphaMarkerY, ProfileColorPickerAlphaRect.top, ProfileColorPickerAlphaRect.bottom - 1);
+			CRect alphaMarkerRect(ProfileColorPickerAlphaRect.left - 3, alphaMarkerY - 2, ProfileColorPickerAlphaRect.right + 3, alphaMarkerY + 2);
+			graphics.FillRectangle(&SolidBrush(Color(255, 255, 255, 255)), CopyRect(alphaMarkerRect));
+			graphics.DrawRectangle(&Pen(Color(255, 30, 30, 30), 1.0f), CopyRect(alphaMarkerRect));
+
+			std::string rgbLabel = "RGB " + std::to_string(opaqueColor.GetR()) + "," + std::to_string(opaqueColor.GetG()) + "," + std::to_string(opaqueColor.GetB());
+			std::string alphaLabel = "A " + std::to_string(ProfileColorPickerAlpha);
+			const bool includeHexAlpha = ProfileColorPickerHasAlpha || ProfileColorPickerAlpha != 255;
+			char hexBuffer[16] = { 0 };
+			if (includeHexAlpha)
+				sprintf_s(hexBuffer, sizeof(hexBuffer), "#%02X%02X%02X%02X", opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB(), ProfileColorPickerAlpha);
+			else
+				sprintf_s(hexBuffer, sizeof(hexBuffer), "#%02X%02X%02X", opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB());
+			std::string hexLabel = std::string("HEX ") + hexBuffer;
+			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerRgbTextRect));
+			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(ProfileColorPickerRgbTextRect));
+			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerAlphaTextRect));
+			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(ProfileColorPickerAlphaTextRect));
+			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerHexTextRect));
+			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(ProfileColorPickerHexTextRect));
+			COLORREF pickerInfoColor = dc.SetTextColor(RGB(240, 240, 240));
+			dc.TextOutA(ProfileColorPickerRgbTextRect.left + 6, ProfileColorPickerRgbTextRect.top + 4, rgbLabel.c_str());
+			dc.TextOutA(ProfileColorPickerAlphaTextRect.left + 6, ProfileColorPickerAlphaTextRect.top + 4, alphaLabel.c_str());
+			dc.TextOutA(ProfileColorPickerHexTextRect.left + 6, ProfileColorPickerHexTextRect.top + 4, hexLabel.c_str());
+			dc.SetTextColor(pickerInfoColor);
+
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_wheel", ProfileColorPickerWheelRect, true, "Hue and saturation");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_value", ProfileColorPickerValueRect, true, "Value");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_alpha", ProfileColorPickerAlphaRect, true, "Opacity");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_rgb_text", ProfileColorPickerRgbTextRect, false, "Edit RGB");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_alpha_text", ProfileColorPickerAlphaTextRect, false, "Edit opacity");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_hex_text", ProfileColorPickerHexTextRect, false, "Edit HEX");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_select_color", ProfileColorPickerSelectRect, false, "Choose another color");
+			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_close", ProfileColorPickerCloseRect, false, "Close");
+		}
+	}
+
+	if (ShowTagDefinitionEditor && !ShowProfileColorPicker)
+	{
+		const int availableWidth = max(520, RadarArea.right - RadarArea.left - 20);
+		const int availableHeight = max(320, RadarArea.bottom - RadarArea.top - 40);
+		const int panelPadding = 8;
+		const int headerHeight = 26;
+		const int controlHeight = 22;
+		const int controlGap = 4;
+		const int splitGap = 8;
+		const int lineHeight = 22;
+		const int lineGap = 4;
+		const int leftRowsHeight = (controlHeight + controlGap) + (controlHeight + controlGap) + (controlHeight + controlGap + 2);
+		const int lineRowsHeight = (TagDefinitionEditorMaxLines * lineHeight) + (max(0, TagDefinitionEditorMaxLines - 1) * lineGap);
+		const int contentHeightNeeded = leftRowsHeight + lineRowsHeight + controlGap + controlHeight;
+		const int desiredPanelHeight = headerHeight + (panelPadding * 2) - 2 + contentHeightNeeded;
+
+		const int panelWidth = min(700, availableWidth);
+		const int panelHeight = min(availableHeight, max(246, desiredPanelHeight));
+		int panelLeft = max(RadarArea.left + 10, RadarArea.right - panelWidth - 10);
+		int panelTop = RadarArea.top + 28;
+		if (panelTop + panelHeight > RadarArea.bottom - 10)
+			panelTop = max(RadarArea.top + 22, RadarArea.bottom - panelHeight - 10);
+
+		TagDefinitionEditorPanelRect = CRect(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight);
+		TagDefinitionEditorCloseRect = CRect(TagDefinitionEditorPanelRect.right - 24, TagDefinitionEditorPanelRect.top + 4, TagDefinitionEditorPanelRect.right - 6, TagDefinitionEditorPanelRect.top + 22);
+
+		CRect contentRect(
+			TagDefinitionEditorPanelRect.left + panelPadding,
+			TagDefinitionEditorPanelRect.top + headerHeight + panelPadding - 2,
+			TagDefinitionEditorPanelRect.right - panelPadding,
+			TagDefinitionEditorPanelRect.bottom - panelPadding);
+
+		const int leftColumnWidth = max(300, min(430, (contentRect.Width() * 62) / 100));
+		CRect leftColumnRect(contentRect.left, contentRect.top, contentRect.left + leftColumnWidth, contentRect.bottom);
+		CRect rightColumnRect(leftColumnRect.right + splitGap, contentRect.top, contentRect.right, contentRect.bottom);
+
+		const int dualGap = 8;
+		const int halfControlWidth = max(120, (leftColumnRect.Width() - dualGap) / 2);
+		int controlY = leftColumnRect.top;
+
+		TagDefinitionEditorTypeRect = CRect(leftColumnRect.left, controlY, leftColumnRect.left + halfControlWidth, controlY + controlHeight);
+		TagDefinitionEditorStatusRect = CRect(TagDefinitionEditorTypeRect.right + dualGap, controlY, leftColumnRect.right, controlY + controlHeight);
+		controlY += controlHeight + controlGap;
+
+		TagDefinitionEditorModeRect = CRect(leftColumnRect.left, controlY, leftColumnRect.right, controlY + controlHeight);
+		controlY += controlHeight + controlGap;
+
+		TagDefinitionEditorTargetColorRect = CRect(leftColumnRect.left, controlY, leftColumnRect.left + halfControlWidth, controlY + controlHeight);
+		TagDefinitionEditorLabelColorRect = CRect(TagDefinitionEditorTargetColorRect.right + dualGap, controlY, leftColumnRect.right, controlY + controlHeight);
+		controlY += controlHeight + controlGap + 2;
+
+		for (int i = 0; i < TagDefinitionEditorMaxLines; ++i)
+		{
+			int y0 = controlY + i * (lineHeight + lineGap);
+			TagDefinitionEditorLineRects[i] = CRect(leftColumnRect.left, y0, leftColumnRect.right, y0 + lineHeight);
+		}
+
+		const int linesBottom = TagDefinitionEditorLineRects[TagDefinitionEditorMaxLines - 1].bottom;
+		int tokenTop = linesBottom + controlGap;
+		if (tokenTop + controlHeight > leftColumnRect.bottom)
+			tokenTop = leftColumnRect.bottom - controlHeight;
+		const int tokenButtonGap = 8;
+		const int tokenButtonHalfWidth = max(120, (leftColumnRect.Width() - tokenButtonGap) / 2);
+		TagDefinitionEditorTokenButtonRect = CRect(leftColumnRect.left, tokenTop, leftColumnRect.left + tokenButtonHalfWidth, tokenTop + controlHeight);
+		TagDefinitionEditorBoldTokenButtonRect = CRect(TagDefinitionEditorTokenButtonRect.right + tokenButtonGap, tokenTop, leftColumnRect.right, tokenTop + controlHeight);
+		int previewBottom = max(rightColumnRect.top + 132, TagDefinitionEditorBoldTokenButtonRect.bottom);
+		if (previewBottom > rightColumnRect.bottom)
+			previewBottom = rightColumnRect.bottom;
+		TagDefinitionEditorPreviewRect = CRect(rightColumnRect.left, rightColumnRect.top, rightColumnRect.right, previewBottom);
+		TagDefinitionEditorTokenListRect = CRect(0, 0, 0, 0);
+
+		CRect headerRect(TagDefinitionEditorPanelRect.left + 1, TagDefinitionEditorPanelRect.top + 1, TagDefinitionEditorPanelRect.right - 1, TagDefinitionEditorPanelRect.top + headerHeight);
+		graphics.FillRectangle(&SolidBrush(Color(255, 26, 31, 40)), CopyRect(TagDefinitionEditorPanelRect));
+		graphics.FillRectangle(&SolidBrush(Color(255, 31, 38, 50)), CopyRect(headerRect));
+		graphics.DrawRectangle(&Pen(Color(255, 220, 220, 220), 1.0f), CopyRect(TagDefinitionEditorPanelRect));
+		graphics.DrawLine(&Pen(Color(255, 70, 78, 96), 1.0f), headerRect.left, headerRect.bottom, headerRect.right, headerRect.bottom);
+
+		graphics.FillRectangle(&SolidBrush(Color(255, 70, 70, 70)), CopyRect(TagDefinitionEditorCloseRect));
+		graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(TagDefinitionEditorCloseRect));
+
+		COLORREF editorHeaderColor = dc.SetTextColor(RGB(240, 240, 240));
+		dc.TextOutA(TagDefinitionEditorPanelRect.left + 10, TagDefinitionEditorPanelRect.top + 7, "Profile Editor");
+		dc.TextOutA(TagDefinitionEditorCloseRect.left + 5, TagDefinitionEditorCloseRect.top + 2, "X");
+		dc.SetTextColor(editorHeaderColor);
+
+		auto drawControlField = [&](const CRect& rect, const std::string& text, bool isDisabled)
+		{
+			CRect drawRect(rect);
+			Color fillColor = isDisabled ? Color(255, 45, 50, 60) : Color(255, 55, 62, 79);
+			Color borderColor = isDisabled ? Color(255, 100, 108, 124) : Color(255, 170, 176, 190);
+			graphics.FillRectangle(&SolidBrush(fillColor), CopyRect(drawRect));
+			graphics.DrawRectangle(&Pen(borderColor, 1.0f), CopyRect(drawRect));
+			COLORREF txt = dc.SetTextColor(isDisabled ? RGB(175, 175, 175) : RGB(235, 235, 235));
+			dc.TextOutA(drawRect.left + 6, drawRect.top + 3, text.c_str());
+			dc.SetTextColor(txt);
+		};
+
+		const std::string normalizedEditorType = NormalizeTagDefinitionType(TagDefinitionEditorType);
+		const bool hasStatusVariants = (normalizedEditorType == "departure" || normalizedEditorType == "arrival" || normalizedEditorType == "airborne");
+		drawControlField(TagDefinitionEditorTypeRect, "Type: " + TagDefinitionTypeLabel(TagDefinitionEditorType), false);
+		drawControlField(TagDefinitionEditorModeRect, std::string("Mode: ") + (TagDefinitionEditorDetailed ? "definitionDetailled" : "definition"), false);
+		drawControlField(TagDefinitionEditorStatusRect, std::string("Status: ") + (hasStatusVariants ? TagDefinitionDepartureStatusLabel(TagDefinitionEditorDepartureStatus) : "Default"), !hasStatusVariants);
+
+		const std::string targetColorPath = GetTagEditorTargetColorPath();
+		const std::string labelColorPath = GetTagEditorLabelColorPath();
+		auto drawColorSelector = [&](const CRect& rect, const std::string& caption, const std::string& colorPath)
+		{
+			const bool validPath = !colorPath.empty() && IsProfileColorPathValid(colorPath);
+			CRect drawRect(rect);
+			graphics.FillRectangle(&SolidBrush(validPath ? Color(255, 55, 62, 79) : Color(255, 45, 50, 60)), CopyRect(drawRect));
+			graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(drawRect));
+
+			std::string suffix = "n/a";
+			if (validPath)
+			{
+				size_t dotPos = colorPath.find_last_of('.');
+				suffix = (dotPos != std::string::npos && dotPos + 1 < colorPath.size()) ? colorPath.substr(dotPos + 1) : colorPath;
+			}
+
+			std::string buttonText = caption + ": " + suffix;
+			COLORREF colorLabelColor = dc.SetTextColor(validPath ? RGB(235, 235, 235) : RGB(175, 175, 175));
+			dc.TextOutA(drawRect.left + 6, drawRect.top + 3, buttonText.c_str());
+			dc.SetTextColor(colorLabelColor);
+
+			CRect swatchRect(drawRect.right - 24, drawRect.top + 4, drawRect.right - 6, drawRect.bottom - 4);
+			if (!validPath)
+				return;
+
+			const int checkerSize = 4;
+			for (int y = swatchRect.top; y < swatchRect.bottom; y += checkerSize)
+			{
+				for (int x = swatchRect.left; x < swatchRect.right; x += checkerSize)
+				{
+					bool dark = (((x - swatchRect.left) / checkerSize) + ((y - swatchRect.top) / checkerSize)) % 2 == 0;
+					graphics.FillRectangle(&SolidBrush(dark ? Color(255, 120, 120, 120) : Color(255, 170, 170, 170)), x, y, checkerSize, checkerSize);
+				}
+			}
+
+			int r = GetProfileColorComponentValue(colorPath, 'r', 255);
+			int g = GetProfileColorComponentValue(colorPath, 'g', 255);
+			int b = GetProfileColorComponentValue(colorPath, 'b', 255);
+			int a = GetProfileColorComponentValue(colorPath, 'a', 255);
+			graphics.FillRectangle(&SolidBrush(Color(a, r, g, b)), CopyRect(swatchRect));
+			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(swatchRect));
+		};
+		drawColorSelector(TagDefinitionEditorTargetColorRect, "Target", targetColorPath);
+		drawColorSelector(TagDefinitionEditorLabelColorRect, "Label BG", labelColorPath);
+
+		std::vector<std::string> definitionLines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
+		const char* lineObjectIds[TagDefinitionEditorMaxLines] = {
+			"tagdef_line_0",
+			"tagdef_line_1",
+			"tagdef_line_2",
+			"tagdef_line_3"
+		};
+		for (int i = 0; i < TagDefinitionEditorMaxLines; ++i)
+		{
+			const bool isSelected = (i == TagDefinitionEditorSelectedLine);
+			Color fill = isSelected ? Color(255, 77, 90, 116) : Color(255, 50, 58, 72);
+			CRect lineRect = TagDefinitionEditorLineRects[i];
+			graphics.FillRectangle(&SolidBrush(fill), CopyRect(lineRect));
+			graphics.DrawRectangle(&Pen(Color(255, 170, 170, 170), 1.0f), CopyRect(lineRect));
+
+			std::string lineLabel = "L" + std::to_string(i + 1) + ": " + definitionLines[i];
+			COLORREF lineColor = dc.SetTextColor(RGB(235, 235, 235));
+			dc.TextOutA(lineRect.left + 6, lineRect.top + 3, lineLabel.c_str());
+			dc.SetTextColor(lineColor);
+
+			AddScreenObject(DRAWING_TAGDEF_EDITOR, lineObjectIds[i], lineRect, false, "Edit definition line");
+		}
+
+		graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(TagDefinitionEditorTokenButtonRect));
+		graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(TagDefinitionEditorTokenButtonRect));
+		graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(TagDefinitionEditorBoldTokenButtonRect));
+		graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(TagDefinitionEditorBoldTokenButtonRect));
+		COLORREF tokenBtnColor = dc.SetTextColor(RGB(235, 235, 235));
+		dc.TextOutA(TagDefinitionEditorTokenButtonRect.left + 6, TagDefinitionEditorTokenButtonRect.top + 3, "Insert Token...");
+		dc.TextOutA(TagDefinitionEditorBoldTokenButtonRect.left + 6, TagDefinitionEditorBoldTokenButtonRect.top + 3, "Insert Bold...");
+		dc.SetTextColor(tokenBtnColor);
+
+		std::vector<std::string> sourcePreviewLines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
+		std::map<std::string, std::string> previewMap = BuildTagDefinitionPreviewMap(TagDefinitionEditorType);
+		struct PreviewRenderedToken
+		{
+			std::string text;
+			bool bold = false;
+			bool hasCustomColor = false;
+			int colorR = 255;
+			int colorG = 255;
+			int colorB = 255;
+		};
+		std::vector<std::vector<PreviewRenderedToken>> previewLines;
+		for (const std::string& line : sourcePreviewLines)
+		{
+			std::vector<std::string> tokens = SplitDefinitionTokens(line);
+			if (tokens.empty())
+				continue;
+
+			std::vector<PreviewRenderedToken> renderedLine;
+			bool allEmpty = true;
+			for (const std::string& rawToken : tokens)
+			{
+				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawToken);
+				std::string lookupToken = styledToken.token.empty() ? rawToken : styledToken.token;
+				VacdmColorRuleDefinition vacdmRuleToken;
+				if (TryParseVacdmColorRuleToken(lookupToken, vacdmRuleToken))
+					continue;
+				RunwayColorRuleDefinition runwayRuleToken;
+				if (TryParseRunwayColorRuleToken(lookupToken, runwayRuleToken))
+					continue;
+				std::string value;
+
+				std::string clearanceNotClearedText;
+				std::string clearanceClearedText;
+				if (TryParseClearanceTokenDisplay(lookupToken, clearanceNotClearedText, clearanceClearedText))
+				{
+					// Preview starts in "not received" state.
+					value = clearanceNotClearedText;
+				}
+				else
+				{
+					value = lookupToken;
+					auto it = previewMap.find(lookupToken);
+					if (it != previewMap.end())
+						value = it->second;
+				}
+
+				PreviewRenderedToken renderedToken;
+				renderedToken.text = value;
+				renderedToken.bold = styledToken.bold;
+				renderedToken.hasCustomColor = styledToken.hasCustomColor;
+				renderedToken.colorR = styledToken.colorR;
+				renderedToken.colorG = styledToken.colorG;
+				renderedToken.colorB = styledToken.colorB;
+				renderedLine.push_back(renderedToken);
+				if (!value.empty())
+					allEmpty = false;
+			}
+
+			if (!allEmpty)
+				previewLines.push_back(renderedLine);
+		}
+		if (previewLines.empty())
+		{
+			std::vector<PreviewRenderedToken> fallbackLine;
+			PreviewRenderedToken fallbackToken;
+			fallbackToken.text = "AFR1386 A5714";
+			fallbackToken.bold = false;
+			fallbackToken.hasCustomColor = false;
+			fallbackLine.push_back(fallbackToken);
+			previewLines.push_back(fallbackLine);
+		}
+		Color previewBackground(255, 70, 90, 140);
+		Color previewText(255, 255, 255, 255);
+		Color previewTargetColor = ColorManager->get_corrected_color("symbol", Color::White);
+		const rapidjson::Value& labelsSettings = CurrentConfig->getActiveProfile()["labels"];
+		std::string normalizedType = NormalizeTagDefinitionType(TagDefinitionEditorType);
+		if (labelsSettings.HasMember(normalizedType.c_str()) && labelsSettings[normalizedType.c_str()].IsObject())
+		{
+			const rapidjson::Value& section = labelsSettings[normalizedType.c_str()];
+			if (section.HasMember("background_color"))
+				previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["background_color"]));
+			if (section.HasMember("text_color"))
+				previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["text_color"]));
+
+			const std::string previewStatus = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
+			if ((normalizedType == "departure" || normalizedType == "arrival") &&
+				previewStatus == "nofpl" &&
+				section.HasMember("nofpl_color") &&
+				section["nofpl_color"].IsObject())
+			{
+				previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["nofpl_color"]));
+			}
+			else if ((normalizedType == "departure" || normalizedType == "arrival") &&
+				previewStatus != "default" &&
+				section.HasMember("status_background_colors") &&
+				section["status_background_colors"].IsObject() &&
+				section["status_background_colors"].HasMember(previewStatus.c_str()) &&
+				section["status_background_colors"][previewStatus.c_str()].IsObject())
+			{
+				previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["status_background_colors"][previewStatus.c_str()]));
+			}
+			else if (normalizedType == "airborne")
+			{
+				if (previewStatus == "airdep")
+				{
+					if (section.HasMember("departure_background_color") && section["departure_background_color"].IsObject())
+						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_background_color"]));
+					if (section.HasMember("departure_text_color") && section["departure_text_color"].IsObject())
+						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_text_color"]));
+				}
+				else if (previewStatus == "airarr")
+				{
+					if (section.HasMember("arrival_background_color") && section["arrival_background_color"].IsObject())
+						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_background_color"]));
+					if (section.HasMember("arrival_text_color") && section["arrival_text_color"].IsObject())
+						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_text_color"]));
+				}
+				else if (previewStatus == "airdep_onrunway")
+				{
+					if (section.HasMember("departure_background_color_on_runway") && section["departure_background_color_on_runway"].IsObject())
+						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_background_color_on_runway"]));
+					if (section.HasMember("departure_text_color") && section["departure_text_color"].IsObject())
+						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_text_color"]));
+				}
+				else if (previewStatus == "airarr_onrunway")
+				{
+					if (section.HasMember("arrival_background_color_on_runway") && section["arrival_background_color_on_runway"].IsObject())
+						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_background_color_on_runway"]));
+					if (section.HasMember("arrival_text_color") && section["arrival_text_color"].IsObject())
+						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_text_color"]));
+				}
+			}
+		}
+		if (!targetColorPath.empty() && IsProfileColorPathValid(targetColorPath))
+		{
+			const int tr = GetProfileColorComponentValue(targetColorPath, 'r', 255);
+			const int tg = GetProfileColorComponentValue(targetColorPath, 'g', 255);
+			const int tb = GetProfileColorComponentValue(targetColorPath, 'b', 255);
+			const int ta = GetProfileColorComponentValue(targetColorPath, 'a', 255);
+			previewTargetColor = ColorManager->get_corrected_color("symbol", Color(ta, tr, tg, tb));
+		}
+
+		graphics.FillRectangle(&SolidBrush(Color(255, 36, 41, 54)), CopyRect(TagDefinitionEditorPreviewRect));
+		graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(TagDefinitionEditorPreviewRect));
+		COLORREF previewTitleColor = dc.SetTextColor(RGB(230, 230, 230));
+		dc.TextOutA(TagDefinitionEditorPreviewRect.left + 6, TagDefinitionEditorPreviewRect.top + 4, "Live Preview");
+		dc.SetTextColor(previewTitleColor);
+
+		CRect previewSceneRect(TagDefinitionEditorPreviewRect.left + 8, TagDefinitionEditorPreviewRect.top + 22, TagDefinitionEditorPreviewRect.right - 8, TagDefinitionEditorPreviewRect.bottom - 8);
+		const int maxPreviewSceneWidth = 220;
+		if (previewSceneRect.Width() > maxPreviewSceneWidth)
+		{
+			int inset = (previewSceneRect.Width() - maxPreviewSceneWidth) / 2;
+			previewSceneRect.left += inset;
+			previewSceneRect.right = previewSceneRect.left + maxPreviewSceneWidth;
+		}
+		graphics.FillRectangle(&SolidBrush(Color(255, 47, 69, 103)), CopyRect(previewSceneRect));
+		graphics.DrawRectangle(&Pen(Color(90, 230, 230, 230), 1.0f), CopyRect(previewSceneRect));
+
+		POINT acPreview;
+		acPreview.x = previewSceneRect.left + max(26, previewSceneRect.Width() / 6);
+		acPreview.y = previewSceneRect.bottom - max(22, previewSceneRect.Height() / 4);
+
+		const std::string previewIconStyle = GetActiveTargetIconStyle();
+		const bool previewDiamondStyle = (previewIconStyle == "diamond");
+		const bool previewRealisticStyle = (previewIconStyle == "realistic");
+		bool iconDrawn = false;
+		if (previewRealisticStyle)
+		{
+			Bitmap* previewIcon = GetAircraftIcon("a320");
+			if (previewIcon != nullptr)
+			{
+				const double drawW = 44.0;
+				const double drawH = 44.0;
+				GraphicsState state = graphics.Save();
+				Gdiplus::Matrix m;
+				m.Translate(Gdiplus::REAL(acPreview.x), Gdiplus::REAL(acPreview.y));
+				m.Rotate(Gdiplus::REAL(-22.0f));
+				m.Translate(Gdiplus::REAL(-drawW / 2.0), Gdiplus::REAL(-drawH / 2.0));
+				graphics.SetTransform(&m);
+
+				Gdiplus::ColorMatrix cm = {
+					{
+						{ static_cast<REAL>(previewTargetColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+						{ 0.0f, static_cast<REAL>(previewTargetColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
+						{ 0.0f, 0.0f, static_cast<REAL>(previewTargetColor.GetB()) / 255.0f, 0.0f, 0.0f },
+						{ 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+						{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
+					}
+				};
+				Gdiplus::ImageAttributes attrs;
+				attrs.SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
+				RectF dest(0.0f, 0.0f, static_cast<REAL>(drawW), static_cast<REAL>(drawH));
+				graphics.DrawImage(previewIcon, dest,
+					static_cast<Gdiplus::REAL>(0.0f), static_cast<Gdiplus::REAL>(0.0f),
+					static_cast<Gdiplus::REAL>(previewIcon->GetWidth()), static_cast<Gdiplus::REAL>(previewIcon->GetHeight()),
+					UnitPixel, &attrs);
+				graphics.Restore(state);
+				iconDrawn = true;
+			}
+		}
+		if (!iconDrawn)
+		{
+			if (previewDiamondStyle)
+			{
+				const Gdiplus::REAL sidePx = 23.0f;
+				const Gdiplus::REAL halfSide = sidePx / 2.0f;
+				const Gdiplus::REAL rectX = static_cast<Gdiplus::REAL>(acPreview.x) - halfSide;
+				const Gdiplus::REAL rectY = static_cast<Gdiplus::REAL>(acPreview.y) - halfSide;
+				const Gdiplus::REAL radius = 5.0f;
+				const Gdiplus::REAL d = radius * 2.0f;
+
+				Gdiplus::GraphicsPath diamondPath;
+				diamondPath.AddArc(rectX, rectY, d, d, 180, 90);
+				diamondPath.AddArc(rectX + sidePx - d, rectY, d, d, 270, 90);
+				diamondPath.AddArc(rectX + sidePx - d, rectY + sidePx - d, d, d, 0, 90);
+				diamondPath.AddArc(rectX, rectY + sidePx - d, d, d, 90, 90);
+				diamondPath.CloseFigure();
+
+				GraphicsState diamondState = graphics.Save();
+				Gdiplus::Matrix diamondTransform;
+				diamondTransform.RotateAt(45.0f, PointF(static_cast<Gdiplus::REAL>(acPreview.x), static_cast<Gdiplus::REAL>(acPreview.y)));
+				graphics.MultiplyTransform(&diamondTransform);
+				SolidBrush diamondBrush(previewTargetColor);
+				graphics.FillPath(&diamondBrush, &diamondPath);
+				graphics.DrawPath(&Pen(Color(180, 20, 20, 20), 1.0f), &diamondPath);
+				graphics.Restore(diamondState);
+			}
+			else
+			{
+				const double angle = DegToRad(-25.0);
+				auto rotateAndMove = [&](double x, double y) -> PointF
+				{
+					double xr = x * cos(angle) - y * sin(angle);
+					double yr = x * sin(angle) + y * cos(angle);
+					return PointF(static_cast<Gdiplus::REAL>(acPreview.x + xr), static_cast<Gdiplus::REAL>(acPreview.y + yr));
+				};
+
+				PointF arrowShape[4] = {
+					rotateAndMove(15.0, 0.0),
+					rotateAndMove(-8.0, 7.0),
+					rotateAndMove(-4.0, 0.0),
+					rotateAndMove(-8.0, -7.0)
+				};
+				SolidBrush arrowBrush(previewTargetColor);
+				graphics.FillPolygon(&arrowBrush, arrowShape, 4);
+				graphics.DrawPolygon(&Pen(Color(180, 20, 20, 20), 1.0f), arrowShape, 4);
+			}
+		}
+
+		Gdiplus::Font* previewRegularFont = customFonts[currentFontSize];
+		Gdiplus::Font* previewBoldFont = previewRegularFont;
+		std::unique_ptr<Gdiplus::Font> previewBoldFontOwned;
+		if (previewRegularFont != nullptr)
+		{
+			Gdiplus::FontFamily baseFamily;
+			if (previewRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
+			{
+				INT boldStyle = previewRegularFont->GetStyle() | Gdiplus::FontStyleBold;
+				previewBoldFontOwned.reset(new Gdiplus::Font(&baseFamily, previewRegularFont->GetSize(), boldStyle, Gdiplus::UnitPixel));
+				if (previewBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
+					previewBoldFont = previewBoldFontOwned.get();
+			}
+		}
+
+		RectF oneLineMeasure(0, 0, 0, 0);
+		graphics.MeasureString(L"AZERTY", 6, previewRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &oneLineMeasure);
+		int previewLineHeight = max(12, static_cast<int>(oneLineMeasure.GetBottom()));
+		if (previewBoldFont != nullptr && previewBoldFont != previewRegularFont)
+		{
+			RectF boldMeasure(0, 0, 0, 0);
+			graphics.MeasureString(L"AZERTY", 6, previewBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasure);
+			previewLineHeight = max(previewLineHeight, static_cast<int>(boldMeasure.GetBottom()));
+		}
+		RectF blankMeasure(0, 0, 0, 0);
+		graphics.MeasureString(L" ", 1, previewRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &blankMeasure);
+		int previewBlankWidth = max(2, static_cast<int>(blankMeasure.GetRight()));
+
+		int previewTextPaddingX = 6;
+		int previewTextPaddingY = 4;
+		int previewTagWidth = 90;
+		int previewTagHeight = previewTextPaddingY * 2;
+		for (const std::vector<PreviewRenderedToken>& line : previewLines)
+		{
+			int lineWidth = 0;
+			for (size_t i = 0; i < line.size(); ++i)
+			{
+				const PreviewRenderedToken& renderedToken = line[i];
+				std::wstring wline(renderedToken.text.begin(), renderedToken.text.end());
+				RectF measure(0, 0, 0, 0);
+				Gdiplus::Font* measureFont = renderedToken.bold ? previewBoldFont : previewRegularFont;
+				graphics.MeasureString(wline.c_str(), static_cast<int>(wline.size()), measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &measure);
+				lineWidth += static_cast<int>(measure.GetRight());
+				if (i + 1 < line.size())
+					lineWidth += previewBlankWidth;
+			}
+
+			previewTagWidth = max(previewTagWidth, lineWidth + previewTextPaddingX * 2);
+			previewTagHeight += previewLineHeight;
+		}
+
+		previewTagWidth = min(previewTagWidth, max(100, previewSceneRect.Width() - 40));
+		previewTagHeight = min(previewTagHeight, max(26, previewSceneRect.Height() - 18));
+		CRect previewTagRect(
+			previewSceneRect.right - previewTagWidth - 10,
+			previewSceneRect.top + 10,
+			previewSceneRect.right - 10,
+			previewSceneRect.top + 10 + previewTagHeight);
+
+		POINT leaderStart = { acPreview.x + 10, acPreview.y - 8 };
+		POINT leaderEnd = { previewTagRect.left + 10, previewTagRect.top + min(16, previewTagRect.Height() / 2) };
+		graphics.DrawLine(&Pen(ColorManager->get_corrected_color("symbol", Color::White), 1.3f),
+			static_cast<Gdiplus::REAL>(leaderStart.x), static_cast<Gdiplus::REAL>(leaderStart.y),
+			static_cast<Gdiplus::REAL>(leaderEnd.x), static_cast<Gdiplus::REAL>(leaderEnd.y));
+
+		graphics.FillRectangle(&SolidBrush(previewBackground), CopyRect(previewTagRect));
+		graphics.DrawRectangle(&Pen(Color(255, 240, 240, 240), 1.0f), CopyRect(previewTagRect));
+
+		int previewTextY = previewTagRect.top + previewTextPaddingY;
+		SolidBrush previewTextBrush(previewText);
+		for (const std::vector<PreviewRenderedToken>& line : previewLines)
+		{
+			if (previewTextY + previewLineHeight > previewTagRect.bottom - previewTextPaddingY)
+				break;
+
+			int previewTextX = previewTagRect.left + previewTextPaddingX;
+			for (size_t i = 0; i < line.size(); ++i)
+			{
+				const PreviewRenderedToken& renderedToken = line[i];
+				std::wstring wline(renderedToken.text.begin(), renderedToken.text.end());
+				Gdiplus::Font* drawFont = renderedToken.bold ? previewBoldFont : previewRegularFont;
+				SolidBrush* drawBrush = &previewTextBrush;
+				std::unique_ptr<SolidBrush> customPreviewBrush;
+				if (renderedToken.hasCustomColor)
+				{
+					Color customPreviewColor = ColorManager->get_corrected_color("label",
+						Color(255, renderedToken.colorR, renderedToken.colorG, renderedToken.colorB));
+					customPreviewBrush.reset(new SolidBrush(customPreviewColor));
+					drawBrush = customPreviewBrush.get();
+				}
+				graphics.DrawString(wline.c_str(), static_cast<int>(wline.size()), drawFont,
+					PointF(static_cast<Gdiplus::REAL>(previewTextX), static_cast<Gdiplus::REAL>(previewTextY)),
+					&Gdiplus::StringFormat(), drawBrush);
+
+				RectF tokenMeasure(0, 0, 0, 0);
+				graphics.MeasureString(wline.c_str(), static_cast<int>(wline.size()), drawFont, PointF(0, 0), &Gdiplus::StringFormat(), &tokenMeasure);
+				previewTextX += static_cast<int>(tokenMeasure.GetRight());
+				if (i + 1 < line.size())
+					previewTextX += previewBlankWidth;
+			}
+
+			previewTextY += previewLineHeight;
+		}
+
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_close", TagDefinitionEditorCloseRect, false, "Close definition editor");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_type", TagDefinitionEditorTypeRect, false, "Select tag type");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_mode", TagDefinitionEditorModeRect, false, "Select definition mode");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_status", TagDefinitionEditorStatusRect, false, "Select status");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_target_color", TagDefinitionEditorTargetColorRect, false, "Edit target color");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_label_color", TagDefinitionEditorLabelColorRect, false, "Edit label background color");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_insert_token", TagDefinitionEditorTokenButtonRect, false, "Insert token");
+		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_insert_token_bold", TagDefinitionEditorBoldTokenButtonRect, false, "Insert bold token");
+	}
+
+	//
+	// Tag deconflicting
+	//
+
+	VSMR_REFRESH_LOG("Tag deconfliction loop");
+
+	for (const auto areas : tagCollisionAreas)
+	{
+		if (!CurrentConfig->getActiveProfile()["labels"]["auto_deconfliction"].GetBool())
+			break;
+
+		if (IsTagBeingDragged(areas.first))
+			continue;
+
+		if (RecentlyAutoMovedTags.find(areas.first) != RecentlyAutoMovedTags.end())
+		{
+			double t = ((double)clock() - RecentlyAutoMovedTags[areas.first]) / ((double)CLOCKS_PER_SEC);
+			if (t >= 0.8) {
+				RecentlyAutoMovedTags.erase(areas.first);
+			} else
+			{
+				continue;
+			}
+		}
+
+		// We need to see wether the rotation will be clockwise or anti-clockwise
+
+		bool isAntiClockwise = false;
+
+		for (const auto area2 : tagCollisionAreas)
+		{
+			if (areas.first == area2.first)
+				continue;
+
+			if (IsTagBeingDragged(area2.first))
+				continue;
+
+			CRect h;
+
+			if (h.IntersectRect(tagCollisionAreas[areas.first], area2.second))
+			{
+				if (areas.second.left <= area2.second.left)
+				{
+					isAntiClockwise = true;
+				}
+
+				break;
+			}
+		}
+
+		// We then rotate the tags until we did a 360 or there is no more conflicts
+
+		POINT acPosPix = ConvertCoordFromPositionToPixel(GetPlugIn()->RadarTargetSelect(areas.first.c_str()).GetPosition().GetPosition());
+		int lenght = LeaderLineDefaultlenght;
+		if (TagLeaderLineLength.find(areas.first) != TagLeaderLineLength.end())
+			lenght = TagLeaderLineLength[areas.first];
+
+		int width = areas.second.Width();
+		int height = areas.second.Height();
+
+		for (double rotated = 0.0; abs(rotated) <= 360.0;)
+		{
+			// We first rotate the tag
+			double newangle = fmod(TagAngles[areas.first] + rotated, 360.0f);
+
+			POINT TagCenter;
+			TagCenter.x = long(acPosPix.x + float(lenght * cos(DegToRad(newangle))));
+			TagCenter.y = long(acPosPix.y + float(lenght * sin(DegToRad(newangle))));
+
+			CRect NewRectangle(TagCenter.x - (width / 2), TagCenter.y - (height / 2), TagCenter.x + (width / 2), TagCenter.y + (height / 2));
+			NewRectangle.NormalizeRect();
+
+			// Assume there is no conflict, then try again
+
+			bool isTagConflicing = false;
+
+			for (const auto area2 : tagCollisionAreas)
+			{
+				if (areas.first == area2.first)
+					continue;
+
+				if (IsTagBeingDragged(area2.first))
+					continue;
+
+				CRect h;
+
+				if (h.IntersectRect(NewRectangle, area2.second))
+				{
+					isTagConflicing = true;
+					break;
+				}
+			}
+
+			if (!isTagConflicing)
+			{
+				double finalAngle = fmod(TagAngles[areas.first] + rotated, 360.0f);
+				TagAngles[areas.first] = finalAngle;
+
+				POINT newCenter = NewRectangle.CenterPoint();
+				POINT newOffset = { newCenter.x - acPosPix.x, newCenter.y - acPosPix.y };
+				TagsOffsets[areas.first] = newOffset;
+
+				tagCollisionAreas[areas.first] = NewRectangle;
+				RecentlyAutoMovedTags[areas.first] = clock();
+				break;
+			}
+
+			if (isAntiClockwise)
+				rotated -= 22.5f;
+			else
+				rotated += 22.5f;
+		}
+	}
+
+	//
+	// App windows
+	//
+
+	VSMR_REFRESH_LOG("App window rendering");
+
+	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
+	{
+		if (!it->second)
+			continue;
+
+		int appWindowId = it->first;
+		appWindows[appWindowId]->render(hDC, this, &graphics, mouseLocation, DistanceTools);
+	}
+
+	dc.Detach();
+
+	VSMR_REFRESH_LOG("END "+ string(__FUNCSIG__));
+
+}
+
+// ReSharper restore CppMsExtAddressOfClassRValue
+
+//---EuroScopePlugInExitCustom-----------------------------------------------
+
+void CSMRRadar::EuroScopePlugInExitCustom()
+{
+	AFX_MANAGE_STATE(AfxGetStaticModuleState())
+
+		if (smrCursor != nullptr && smrCursor != NULL)
+		{
+			SetWindowLong(pluginWindow, GWL_WNDPROC, (LONG)gSourceProc);
+		}
+}
+
+

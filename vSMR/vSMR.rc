@@ -1,0 +1,251 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#ifndef APSTUDIO_INVOKED
+#include "targetver.h"
+#endif
+#include "afxres.h"
+#include "verrsrc.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// Neutral (Default) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_NEUD)
+LANGUAGE LANG_NEUTRAL, SUBLANG_DEFAULT
+#pragma code_page(1252)
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Cursor
+//
+
+IDC_SMRMOVETAG          CURSOR                  "cursor1.cur"
+
+IDC_SMRCURSOR           CURSOR                  "arrow.cur"
+
+IDC_SMRRESIZE           CURSOR                  "POINTER1.cur"
+
+IDC_SMRCORRELATE        CURSOR                  "..\\ml_blau_link.cur"
+
+IDC_SMRMOVEWINDOW       CURSOR                  "..\\move.cur"
+
+#endif    // Neutral (Default) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 0,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x2L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040004b0"
+        BEGIN
+            VALUE "FileDescription", "vSMR Plugin for EuroScope"
+            VALUE "FileVersion", "@appveyor_build"
+            VALUE "InternalName", "vSMR.dll"
+            VALUE "LegalCopyright", "GNU GENERAL PUBLIC LICENSE"
+            VALUE "OriginalFilename", "vSMR.dll"
+            VALUE "ProductName", "vSMR"
+            VALUE "ProductVersion", "@appveyor_build"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x400, 1200
+    END
+END
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+// French (France) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_FRA)
+LANGUAGE LANG_FRENCH, SUBLANG_FRENCH
+#pragma code_page(1252)
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#ifndef APSTUDIO_INVOKED\r\n"
+    "#include ""targetver.h""\r\n"
+    "#endif\r\n"
+    "#include ""afxres.h""\r\n"
+    "#include ""verrsrc.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#include ""res\\vSMR.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""      // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DIALOG1 DIALOGEX 0, 0, 268, 184
+STYLE DS_SYSMODAL | DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "CPDLC Flightplan"
+FONT 10, "Microsoft Sans Serif", 400, 0, 0x0
+BEGIN
+    DEFPUSHBUTTON   "Send",IDOK,211,163,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,163,50,14
+    CTEXT           "CALLSIGN",IDC_STATIC,33,7,34,11
+    EDITTEXT        IDC_CALLSIGN,20,19,58,14,ES_CENTER | ES_UPPERCASE | WS_DISABLED
+    CTEXT           "FROM",IDC_STATIC,102,7,21,8
+    EDITTEXT        IDC_FROM,96,19,30,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+    CTEXT           "TO",IDC_STATIC,142,7,11,8
+    EDITTEXT        IDC_DEST,133,19,30,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+    CTEXT           "CTOT",IDC_STATIC,193,7,20,8
+    EDITTEXT        IDC_CTOT,192,19,22,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | ES_NUMBER
+    CTEXT           "TSAT",IDC_STATIC,227,7,19,8
+    EDITTEXT        IDC_TSAT,226,19,22,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | ES_NUMBER
+    CTEXT           "A/C TYPE",IDC_STATIC,19,42,32,8
+    EDITTEXT        IDC_ACT,20,52,30,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+    CTEXT           "RWY",IDC_STATIC,63,42,17,8
+    EDITTEXT        IDC_RWY,63,52,18,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+    CTEXT           "DEPARTURE",IDC_STATIC,89,42,44,8
+    EDITTEXT        IDC_SID,90,52,42,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+    CTEXT           "SSR",IDC_STATIC,183,42,15,8
+    EDITTEXT        IDC_SSR,177,52,29,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+    CTEXT           "NEXT FREQ",IDC_STATIC,214,42,39,8
+    EDITTEXT        IDC_FREQ,214,52,38,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL
+    EDITTEXT        IDC_MESSAGE,7,78,254,23,ES_MULTILINE | ES_UPPERCASE | ES_AUTOHSCROLL | WS_VSCROLL
+    CTEXT           "CUSTOM MESSAGE",IDC_STATIC,103,69,65,8
+    EDITTEXT        IDC_ORIG,7,110,254,49,ES_MULTILINE | ES_UPPERCASE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+    CTEXT           "PILOT REQUEST",IDC_STATIC,105,101,55,8
+    CTEXT           "INIT CLB",IDC_STATIC,142,42,28,8
+    EDITTEXT        IDC_CLB,141,52,29,14,ES_CENTER | ES_UPPERCASE | ES_AUTOHSCROLL | WS_DISABLED
+END
+
+IDD_DIALOG2 DIALOGEX 0, 0, 142, 105
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "CPDLC Settings"
+FONT 10, "Microsoft Sans Serif", 400, 0, 0x0
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,85,84,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,84,50,14
+    EDITTEXT        IDC_LOGON,61,15,74,14,ES_AUTOHSCROLL
+    LTEXT           "Logon Callsign",IDC_STATIC,7,18,46,8
+    EDITTEXT        IDC_PASSWORD,61,43,74,14,ES_PASSWORD | ES_AUTOHSCROLL
+    LTEXT           "Logon Password",IDC_STATIC,7,46,52,8
+    CONTROL         "Play sound on clearance request",IDC_SOUND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,65,128,10
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 261
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 177
+    END
+
+    IDD_DIALOG2, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 135
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 98
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// WAVE
+//
+
+IDR_WAVE1               WAVE                    "..\\Ding.wav"
+
+#endif    // French (France) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE 9, 1
+#include "res\vSMR.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"      // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
