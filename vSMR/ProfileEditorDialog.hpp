@@ -86,7 +86,7 @@ private:
 		IDC_PE_RULE_TOKEN_LABEL = 9131,
 		IDC_PE_RULE_TOKEN_COMBO = 9132,
 		IDC_PE_RULE_CONDITION_LABEL = 9133,
-		IDC_PE_RULE_CONDITION_EDIT = 9134,
+		IDC_PE_RULE_CONDITION_COMBO = 9134,
 		IDC_PE_RULE_TYPE_LABEL = 9135,
 		IDC_PE_RULE_TYPE_COMBO = 9136,
 		IDC_PE_RULE_STATUS_LABEL = 9137,
@@ -143,7 +143,7 @@ private:
 	CStatic RuleTokenLabel;
 	CComboBox RuleTokenCombo;
 	CStatic RuleConditionLabel;
-	CEdit RuleConditionEdit;
+	CComboBox RuleConditionCombo;
 	CStatic RuleTypeLabel;
 	CComboBox RuleTypeCombo;
 	CStatic RuleStatusLabel;
@@ -171,6 +171,7 @@ private:
 	void PopulateIconCombos();
 	void PopulateRuleCombos();
 	void PopulateRuleTokenCombo(const std::string& source, const std::string& selectedToken);
+	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
 	void RebuildRulesList();
 	void RefreshRuleControls();
 	bool TryReadEditInt(CEdit& edit, int& outValue) const;

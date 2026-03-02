@@ -4,45 +4,11 @@
 
 namespace
 {
-	double ClampDouble(double value, double minValue, double maxValue)
-	{
-		if (value < minValue) return minValue;
-		if (value > maxValue) return maxValue;
-		return value;
-	}
-
 	int ClampInt(int value, int minValue, int maxValue)
 	{
 		if (value < minValue) return minValue;
 		if (value > maxValue) return maxValue;
 		return value;
-	}
-
-	void RgbToHsv(int r, int g, int b, double& h, double& s, double& v)
-	{
-		const double rf = ClampDouble(r / 255.0, 0.0, 1.0);
-		const double gf = ClampDouble(g / 255.0, 0.0, 1.0);
-		const double bf = ClampDouble(b / 255.0, 0.0, 1.0);
-
-		const double cmax = max(rf, max(gf, bf));
-		const double cmin = min(rf, min(gf, bf));
-		const double delta = cmax - cmin;
-
-		h = 0.0;
-		if (delta > 1e-9)
-		{
-			if (cmax == rf)
-				h = 60.0 * fmod(((gf - bf) / delta), 6.0);
-			else if (cmax == gf)
-				h = 60.0 * (((bf - rf) / delta) + 2.0);
-			else
-				h = 60.0 * (((rf - gf) / delta) + 4.0);
-		}
-		if (h < 0.0)
-			h += 360.0;
-
-		s = (cmax <= 1e-9) ? 0.0 : (delta / cmax);
-		v = cmax;
 	}
 
 	CRect BuildDefaultProfileEditorWindowRect()
@@ -99,13 +65,9 @@ bool CSMRRadar::IsProfileEditorWindowVisible() const
 
 void CSMRRadar::OpenProfileEditorWindow()
 {
-	ShowTagDefinitionEditor = false;
-	ShowProfileColorPicker = false;
-
 	if (!EnsureProfileEditorWindowCreated())
 	{
-		GetPlugIn()->DisplayUserMessage("vSMR", "Profile Editor", "Failed to open detached Profile Editor window. Using legacy editor.", true, true, false, false, false);
-		ShowTagDefinitionEditor = true;
+		GetPlugIn()->DisplayUserMessage("vSMR", "Profile Editor", "Failed to open detached Profile Editor window.", true, true, false, false, false);
 		RequestRefresh();
 		return;
 	}
@@ -306,8 +268,7 @@ bool CSMRRadar::SelectProfileColorPathForEditor(const std::string& path)
 	if (!IsProfileColorPathValid(path))
 		return false;
 
-	OpenProfileColorPicker(path, true);
-	ShowProfileColorPicker = false;
+	SelectedProfileColorPath = path;
 	RequestRefresh();
 	return true;
 }
@@ -340,16 +301,32 @@ bool CSMRRadar::SetSelectedProfileColorForEditor(int r, int g, int b, int a, boo
 	if (SelectedProfileColorPath.empty())
 		return false;
 
+	bool hasAlphaInPath = false;
+	if (!IsProfileColorPathValid(SelectedProfileColorPath, &hasAlphaInPath))
+		return false;
+
 	r = ClampInt(r, 0, 255);
 	g = ClampInt(g, 0, 255);
 	b = ClampInt(b, 0, 255);
 	a = ClampInt(a, 0, 255);
 
-	RgbToHsv(r, g, b, ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue);
-	ProfileColorPickerAlpha = a;
-	ProfileColorPickerHasAlpha = useAlpha || (a != 255);
-	ApplyProfileColorPicker(persistToDisk);
-	ShowProfileColorPicker = false;
+	const bool okR = UpdateProfileColorComponent(SelectedProfileColorPath, 'r', r);
+	const bool okG = UpdateProfileColorComponent(SelectedProfileColorPath, 'g', g);
+	const bool okB = UpdateProfileColorComponent(SelectedProfileColorPath, 'b', b);
+	bool okA = true;
+	if (useAlpha || hasAlphaInPath || a != 255)
+		okA = UpdateProfileColorComponent(SelectedProfileColorPath, 'a', a);
+
+	if (!(okR && okG && okB && okA))
+		return false;
+
+	if (persistToDisk && !CurrentConfig->saveConfig())
+	{
+		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save profile color to vSMR_Profiles.json", true, true, false, false, false);
+		return false;
+	}
+
+	RebuildProfileColorEntries();
 	RequestRefresh();
 	return true;
 }
