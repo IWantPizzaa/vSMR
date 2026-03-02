@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <set>
 
 IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
 
@@ -38,6 +39,7 @@ BOOL CProfileEditorDialog::OnInitDialog()
 	CreateEditorControls();
 	Initialized = true;
 	SyncFromRadar();
+	ForceChildRepaint();
 	NotifyWindowRectChanged();
 	return TRUE;
 }
@@ -54,6 +56,7 @@ void CProfileEditorDialog::SyncFromRadar()
 	RefreshRuleControls();
 	SyncTagEditorControlsFromRadar();
 	UpdatePageVisibility();
+	ForceChildRepaint();
 }
 
 void CProfileEditorDialog::HideAndNotifyOwner()
@@ -98,8 +101,35 @@ void CProfileEditorDialog::OnSize(UINT nType, int cx, int cy)
 {
 	CDialogEx::OnSize(nType, cx, cy);
 	LayoutControls();
-	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+	ForceChildRepaint();
 	NotifyWindowRectChanged();
+}
+
+void CProfileEditorDialog::OnShowWindow(BOOL bShow, UINT nStatus)
+{
+	CDialogEx::OnShowWindow(bShow, nStatus);
+	if (bShow && ControlsCreated)
+	{
+		LayoutControls();
+		UpdatePageVisibility();
+		ForceChildRepaint();
+	}
+}
+
+void CProfileEditorDialog::ForceChildRepaint()
+{
+	if (!::IsWindow(GetSafeHwnd()))
+		return;
+
+	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+	for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
+	{
+		if (::IsWindow(child->GetSafeHwnd()))
+		{
+			child->Invalidate(FALSE);
+			child->UpdateWindow();
+		}
+	}
 }
 
 void CProfileEditorDialog::CreateEditorControls()
@@ -116,7 +146,15 @@ void CProfileEditorDialog::CreateEditorControls()
 	PageTabs.InsertItem(3, "Tags");
 
 	ColorPathList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | LBS_NOTIFY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LIST);
+	ColorPathLabel.Create("Path", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_LABEL);
+	ColorPathLevel1.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L1);
+	ColorPathLevel2.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L2);
+	ColorPathLevel3.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L3);
+	ColorPathLevel4.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L4);
+	ColorPathLevel5.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L5);
 	SelectedPathText.Create("Selected: ", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
+	LabelRgba.Create("RGBA", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_RGBA);
+	EditRgba.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_RGBA);
 	LabelR.Create("R", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_R);
 	LabelG.Create("G", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_G);
 	LabelB.Create("B", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_B);
@@ -371,34 +409,35 @@ void CProfileEditorDialog::LayoutControls()
 	PageTabs.AdjustRect(FALSE, &pageRect);
 
 	const int innerPad = 10;
-	const int colorListWidth = max(180, (pageRect.Width() / 2) - (innerPad * 2));
-	const int colorListHeight = max(120, pageRect.Height() - (innerPad * 2));
+	const int colorLeftWidth = max(230, (pageRect.Width() / 2) - (innerPad * 2));
 	const int colorLeft = pageRect.left + innerPad;
 	const int colorTop = pageRect.top + innerPad;
-	const int rightLeft = colorLeft + colorListWidth + innerPad;
+	const int rightLeft = colorLeft + colorLeftWidth + innerPad;
 	const int rightWidth = max(170, pageRect.right - rightLeft - innerPad);
 
-	ColorPathList.MoveWindow(colorLeft, colorTop, colorListWidth, colorListHeight, TRUE);
-
 	const int rowHeight = 22;
-	const int labelWidth = 22;
-	const int editWidth = 58;
-	const int controlGap = 8;
 	const int buttonHeight = 24;
+	const int pathComboHeight = rowHeight + 220;
+
+	int pathY = colorTop;
+	ColorPathLabel.MoveWindow(colorLeft, pathY + 4, colorLeftWidth, rowHeight, TRUE);
+	pathY += rowHeight + 2;
+	ColorPathLevel1.MoveWindow(colorLeft, pathY, colorLeftWidth, pathComboHeight, TRUE);
+	pathY += rowHeight + 4;
+	ColorPathLevel2.MoveWindow(colorLeft, pathY, colorLeftWidth, pathComboHeight, TRUE);
+	pathY += rowHeight + 4;
+	ColorPathLevel3.MoveWindow(colorLeft, pathY, colorLeftWidth, pathComboHeight, TRUE);
+	pathY += rowHeight + 4;
+	ColorPathLevel4.MoveWindow(colorLeft, pathY, colorLeftWidth, pathComboHeight, TRUE);
+	pathY += rowHeight + 4;
+	ColorPathLevel5.MoveWindow(colorLeft, pathY, colorLeftWidth, pathComboHeight, TRUE);
+	pathY += rowHeight + 8;
+	SelectedPathText.MoveWindow(colorLeft, pathY, colorLeftWidth, 36, TRUE);
+
 	int y = colorTop;
-
-	SelectedPathText.MoveWindow(rightLeft, y, rightWidth, 34, TRUE);
-	y += 38;
-	LabelR.MoveWindow(rightLeft, y + 4, labelWidth, rowHeight, TRUE);
-	EditR.MoveWindow(rightLeft + labelWidth, y, editWidth, rowHeight, TRUE);
-	LabelG.MoveWindow(rightLeft + labelWidth + editWidth + controlGap, y + 4, labelWidth, rowHeight, TRUE);
-	EditG.MoveWindow(rightLeft + labelWidth + editWidth + controlGap + labelWidth, y, editWidth, rowHeight, TRUE);
-	y += rowHeight + 6;
-
-	LabelB.MoveWindow(rightLeft, y + 4, labelWidth, rowHeight, TRUE);
-	EditB.MoveWindow(rightLeft + labelWidth, y, editWidth, rowHeight, TRUE);
-	LabelA.MoveWindow(rightLeft + labelWidth + editWidth + controlGap, y + 4, labelWidth, rowHeight, TRUE);
-	EditA.MoveWindow(rightLeft + labelWidth + editWidth + controlGap + labelWidth, y, editWidth, rowHeight, TRUE);
+	const int rgbaLabelWidth = 42;
+	LabelRgba.MoveWindow(rightLeft, y + 4, rgbaLabelWidth, rowHeight, TRUE);
+	EditRgba.MoveWindow(rightLeft + rgbaLabelWidth, y, max(120, rightWidth - rgbaLabelWidth), rowHeight, TRUE);
 	y += rowHeight + 6;
 
 	LabelHex.MoveWindow(rightLeft, y + 4, 34, rowHeight, TRUE);
@@ -407,6 +446,17 @@ void CProfileEditorDialog::LayoutControls()
 
 	PickColorButton.MoveWindow(rightLeft, y, 78, buttonHeight, TRUE);
 	RefreshButton.MoveWindow(rightLeft + 86, y, 78, buttonHeight, TRUE);
+
+	// Keep legacy controls off-screen; they are no longer part of the color editor UI.
+	ColorPathList.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	LabelR.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	LabelG.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	LabelB.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	LabelA.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	EditR.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	EditG.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	EditB.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	EditA.MoveWindow(-5000, -5000, 10, 10, TRUE);
 
 	int iconY = pageRect.top + innerPad;
 	const int iconLeft = pageRect.left + innerPad;
@@ -575,17 +625,25 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	const int tagShowMode = showTagEditor ? SW_SHOW : SW_HIDE;
 	const int detailedTagShowMode = showDetailedTag ? SW_SHOW : SW_HIDE;
 
-	ColorPathList.ShowWindow(colorShowMode);
+	ColorPathList.ShowWindow(SW_HIDE);
+	ColorPathLabel.ShowWindow(colorShowMode);
+	ColorPathLevel1.ShowWindow(colorShowMode);
+	ColorPathLevel2.ShowWindow(colorShowMode);
+	ColorPathLevel3.ShowWindow(colorShowMode);
+	ColorPathLevel4.ShowWindow(colorShowMode);
+	ColorPathLevel5.ShowWindow(colorShowMode);
 	SelectedPathText.ShowWindow(colorShowMode);
-	LabelR.ShowWindow(colorShowMode);
-	LabelG.ShowWindow(colorShowMode);
-	LabelB.ShowWindow(colorShowMode);
-	LabelA.ShowWindow(colorShowMode);
+	LabelRgba.ShowWindow(colorShowMode);
+	EditRgba.ShowWindow(colorShowMode);
+	LabelR.ShowWindow(SW_HIDE);
+	LabelG.ShowWindow(SW_HIDE);
+	LabelB.ShowWindow(SW_HIDE);
+	LabelA.ShowWindow(SW_HIDE);
 	LabelHex.ShowWindow(colorShowMode);
-	EditR.ShowWindow(colorShowMode);
-	EditG.ShowWindow(colorShowMode);
-	EditB.ShowWindow(colorShowMode);
-	EditA.ShowWindow(colorShowMode);
+	EditR.ShowWindow(SW_HIDE);
+	EditG.ShowWindow(SW_HIDE);
+	EditB.ShowWindow(SW_HIDE);
+	EditA.ShowWindow(SW_HIDE);
 	EditHex.ShowWindow(colorShowMode);
 	PickColorButton.ShowWindow(colorShowMode);
 	RefreshButton.ShowWindow(colorShowMode);
@@ -660,27 +718,217 @@ void CProfileEditorDialog::RebuildColorPathList()
 		return;
 
 	std::string previousSelection = Owner->GetSelectedProfileColorPathForEditor();
-	const std::vector<std::string> paths = Owner->GetProfileColorPathsForEditor();
+	ColorPathEntries = Owner->GetProfileColorPathsForEditor();
 
+	if (ColorPathEntries.empty())
+	{
+		UpdatingControls = true;
+		ColorPathList.ResetContent();
+		ColorPathLevel1.ResetContent();
+		ColorPathLevel2.ResetContent();
+		ColorPathLevel3.ResetContent();
+		ColorPathLevel4.ResetContent();
+		ColorPathLevel5.ResetContent();
+		UpdatingControls = false;
+		return;
+	}
+
+	auto findPath = [&](const std::string& path) -> bool
+	{
+		return std::find(ColorPathEntries.begin(), ColorPathEntries.end(), path) != ColorPathEntries.end();
+	};
+
+	if (previousSelection.empty() || !findPath(previousSelection))
+		previousSelection = ColorPathEntries.front();
+
+	ApplyColorPathSelection(previousSelection);
+
+	// Keep legacy list in sync for backward compatibility with existing selection handler.
 	UpdatingControls = true;
 	ColorPathList.ResetContent();
-	for (const std::string& path : paths)
+	for (const std::string& path : ColorPathEntries)
 		ColorPathList.AddString(path.c_str());
-
-	int selectedIndex = LB_ERR;
-	if (!previousSelection.empty())
-		selectedIndex = ColorPathList.FindStringExact(-1, previousSelection.c_str());
-	if (selectedIndex == LB_ERR && ColorPathList.GetCount() > 0)
-		selectedIndex = 0;
-
+	const int selectedIndex = ColorPathList.FindStringExact(-1, previousSelection.c_str());
 	if (selectedIndex != LB_ERR)
-	{
 		ColorPathList.SetCurSel(selectedIndex);
-		CString selectedText;
-		ColorPathList.GetText(selectedIndex, selectedText);
-		Owner->SelectProfileColorPathForEditor(std::string(selectedText.GetString()));
-	}
 	UpdatingControls = false;
+}
+
+void CProfileEditorDialog::ApplyColorPathSelection(const std::string& selectedPath)
+{
+	if (Owner == nullptr)
+		return;
+
+	std::vector<std::string> selectedSegments = SplitPathSegments(selectedPath);
+	std::vector<std::string> prefix;
+
+	UpdatingControls = true;
+	PopulateColorPathLevelCombo(ColorPathLevel1, 0, prefix, selectedSegments.size() > 0 ? selectedSegments[0] : "");
+	if (ColorPathLevel1.GetCurSel() != CB_ERR)
+	{
+		CString text;
+		ColorPathLevel1.GetLBText(ColorPathLevel1.GetCurSel(), text);
+		prefix.push_back(text.GetString());
+	}
+	PopulateColorPathLevelCombo(ColorPathLevel2, 1, prefix, selectedSegments.size() > 1 ? selectedSegments[1] : "");
+	if (ColorPathLevel2.GetCurSel() != CB_ERR)
+	{
+		CString text;
+		ColorPathLevel2.GetLBText(ColorPathLevel2.GetCurSel(), text);
+		prefix.push_back(text.GetString());
+	}
+	PopulateColorPathLevelCombo(ColorPathLevel3, 2, prefix, selectedSegments.size() > 2 ? selectedSegments[2] : "");
+	if (ColorPathLevel3.GetCurSel() != CB_ERR)
+	{
+		CString text;
+		ColorPathLevel3.GetLBText(ColorPathLevel3.GetCurSel(), text);
+		prefix.push_back(text.GetString());
+	}
+	PopulateColorPathLevelCombo(ColorPathLevel4, 3, prefix, selectedSegments.size() > 3 ? selectedSegments[3] : "");
+	if (ColorPathLevel4.GetCurSel() != CB_ERR)
+	{
+		CString text;
+		ColorPathLevel4.GetLBText(ColorPathLevel4.GetCurSel(), text);
+		prefix.push_back(text.GetString());
+	}
+	PopulateColorPathLevelCombo(ColorPathLevel5, 4, prefix, selectedSegments.size() > 4 ? selectedSegments[4] : "");
+	UpdatingControls = false;
+
+	Owner->SelectProfileColorPathForEditor(selectedPath);
+}
+
+void CProfileEditorDialog::PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment)
+{
+	std::set<std::string> options;
+	for (const std::string& path : ColorPathEntries)
+	{
+		const std::vector<std::string> segments = SplitPathSegments(path);
+		if (segments.size() <= static_cast<size_t>(level))
+			continue;
+
+		bool matchesPrefix = true;
+		for (size_t i = 0; i < prefix.size(); ++i)
+		{
+			if (segments.size() <= i || _stricmp(segments[i].c_str(), prefix[i].c_str()) != 0)
+			{
+				matchesPrefix = false;
+				break;
+			}
+		}
+		if (matchesPrefix)
+			options.insert(segments[level]);
+	}
+
+	combo.ResetContent();
+	if (options.empty())
+		return;
+
+	int selectedIndex = 0;
+	int index = 0;
+	for (const std::string& option : options)
+	{
+		combo.AddString(option.c_str());
+		if (!selectedSegment.empty() && _stricmp(option.c_str(), selectedSegment.c_str()) == 0)
+			selectedIndex = index;
+		++index;
+	}
+	combo.SetCurSel(selectedIndex);
+}
+
+std::vector<std::string> CProfileEditorDialog::SplitPathSegments(const std::string& path) const
+{
+	std::vector<std::string> segments;
+	std::string current;
+	current.reserve(path.size());
+
+	for (char ch : path)
+	{
+		if (ch == '.')
+		{
+			if (!current.empty())
+			{
+				segments.push_back(current);
+				current.clear();
+			}
+			continue;
+		}
+		current.push_back(ch);
+	}
+	if (!current.empty())
+		segments.push_back(current);
+
+	return segments;
+}
+
+std::string CProfileEditorDialog::JoinPathSegments(const std::vector<std::string>& segments, size_t count) const
+{
+	if (segments.empty() || count == 0)
+		return "";
+
+	std::string result;
+	const size_t limit = min(count, segments.size());
+	for (size_t i = 0; i < limit; ++i)
+	{
+		if (i != 0)
+			result.push_back('.');
+		result += segments[i];
+	}
+	return result;
+}
+
+std::string CProfileEditorDialog::ResolveColorPathFromLevelSelection() const
+{
+	std::vector<std::string> selectedSegments;
+	auto appendSegment = [&](const CComboBox& combo)
+	{
+		const int index = combo.GetCurSel();
+		if (index == CB_ERR)
+			return;
+		CString value;
+		const_cast<CComboBox&>(combo).GetLBText(index, value);
+		if (!value.IsEmpty())
+			selectedSegments.push_back(value.GetString());
+	};
+
+	appendSegment(ColorPathLevel1);
+	appendSegment(ColorPathLevel2);
+	appendSegment(ColorPathLevel3);
+	appendSegment(ColorPathLevel4);
+	appendSegment(ColorPathLevel5);
+
+	if (selectedSegments.empty())
+		return "";
+
+	const std::string exact = JoinPathSegments(selectedSegments, selectedSegments.size());
+	for (const std::string& path : ColorPathEntries)
+	{
+		if (_stricmp(path.c_str(), exact.c_str()) == 0)
+			return path;
+	}
+
+	std::string bestPath;
+	size_t bestPrefixLength = 0;
+	for (const std::string& path : ColorPathEntries)
+	{
+		const std::vector<std::string> segments = SplitPathSegments(path);
+		size_t prefixLength = 0;
+		while (prefixLength < selectedSegments.size() &&
+			prefixLength < segments.size() &&
+			_stricmp(selectedSegments[prefixLength].c_str(), segments[prefixLength].c_str()) == 0)
+		{
+			++prefixLength;
+		}
+
+		if (prefixLength > bestPrefixLength)
+		{
+			bestPrefixLength = prefixLength;
+			bestPath = path;
+		}
+	}
+
+	if (bestPath.empty() && !ColorPathEntries.empty())
+		bestPath = ColorPathEntries.front();
+	return bestPath;
 }
 
 void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
@@ -695,9 +943,11 @@ void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
 		Owner->GetSelectedProfileColorForEditor(r, g, b, a, hasAlpha);
 
 	char rgbBuffer[32] = {};
+	char rgbaBuffer[48] = {};
 	char alphaBuffer[16] = {};
 	char hexBuffer[16] = {};
 	sprintf_s(rgbBuffer, sizeof(rgbBuffer), "%d", r);
+	sprintf_s(rgbaBuffer, sizeof(rgbaBuffer), "%d,%d,%d,%d", r, g, b, a);
 	sprintf_s(alphaBuffer, sizeof(alphaBuffer), "%d", a);
 	if (hasAlpha || a != 255)
 		sprintf_s(hexBuffer, sizeof(hexBuffer), "#%02X%02X%02X%02X", r, g, b, a);
@@ -709,6 +959,7 @@ void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
 
 	UpdatingControls = true;
 	SelectedPathText.SetWindowTextA(selectedLabel);
+	EditRgba.SetWindowTextA(rgbaBuffer);
 	EditR.SetWindowTextA(rgbBuffer);
 	sprintf_s(rgbBuffer, sizeof(rgbBuffer), "%d", g);
 	EditG.SetWindowTextA(rgbBuffer);
@@ -736,6 +987,55 @@ bool CProfileEditorDialog::TryReadEditInt(CEdit& edit, int& outValue) const
 		return false;
 
 	outValue = static_cast<int>(parsed);
+	return true;
+}
+
+bool CProfileEditorDialog::TryParseRgbaQuad(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const
+{
+	std::vector<int> values;
+	values.reserve(4);
+	int current = 0;
+	bool inNumber = false;
+
+	auto flushNumber = [&]()
+	{
+		if (!inNumber)
+			return;
+		values.push_back(current);
+		current = 0;
+		inNumber = false;
+	};
+
+	for (char ch : text)
+	{
+		if (std::isdigit(static_cast<unsigned char>(ch)))
+		{
+			inNumber = true;
+			current = (current * 10) + (ch - '0');
+			continue;
+		}
+		if (ch == ',' || std::isspace(static_cast<unsigned char>(ch)))
+		{
+			flushNumber();
+			continue;
+		}
+		return false;
+	}
+	flushNumber();
+
+	if (values.size() != 3 && values.size() != 4)
+		return false;
+	for (int value : values)
+	{
+		if (value < 0 || value > 255)
+			return false;
+	}
+
+	r = values[0];
+	g = values[1];
+	b = values[2];
+	a = values.size() >= 4 ? values[3] : 255;
+	hasAlpha = (values.size() >= 4);
 	return true;
 }
 
@@ -1660,7 +1960,23 @@ void CProfileEditorDialog::OnColorPathSelectionChanged()
 
 	CString selectedText;
 	ColorPathList.GetText(selectedIndex, selectedText);
-	if (Owner->SelectProfileColorPathForEditor(std::string(selectedText.GetString())))
+	const std::string selectedPath = selectedText.GetString();
+	ApplyColorPathSelection(selectedPath);
+	if (Owner->SelectProfileColorPathForEditor(selectedPath))
+		RefreshEditorFieldsFromSelection();
+}
+
+void CProfileEditorDialog::OnColorPathLevelChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const std::string resolvedPath = ResolveColorPathFromLevelSelection();
+	if (resolvedPath.empty())
+		return;
+
+	ApplyColorPathSelection(resolvedPath);
+	if (Owner->SelectProfileColorPathForEditor(resolvedPath))
 		RefreshEditorFieldsFromSelection();
 }
 
@@ -1713,6 +2029,33 @@ void CProfileEditorDialog::OnRgbEditChanged()
 		RefreshEditorFieldsFromSelection();
 }
 
+void CProfileEditorDialog::OnRgbaEditChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	CString rgbaText;
+	EditRgba.GetWindowText(rgbaText);
+	rgbaText.Trim();
+	if (rgbaText.IsEmpty())
+		return;
+
+	int r = 0, g = 0, b = 0, a = 255;
+	bool hasAlpha = false;
+	if (!TryParseRgbaQuad(std::string(rgbaText.GetString()), r, g, b, a, hasAlpha))
+		return;
+
+	int currentR = 0, currentG = 0, currentB = 0, currentA = 255;
+	bool currentHasAlpha = false;
+	Owner->GetSelectedProfileColorForEditor(currentR, currentG, currentB, currentA, currentHasAlpha);
+	if (!hasAlpha && currentHasAlpha)
+		a = currentA;
+
+	const bool includeAlpha = hasAlpha || currentHasAlpha;
+	if (Owner->SetSelectedProfileColorForEditor(r, g, b, a, includeAlpha, true))
+		RefreshEditorFieldsFromSelection();
+}
+
 void CProfileEditorDialog::OnHexEditChanged()
 {
 	if (UpdatingControls || Owner == nullptr)
@@ -1739,6 +2082,7 @@ void CProfileEditorDialog::OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult
 	if (PageTabs.GetCurSel() == 3)
 		SyncTagEditorControlsFromRadar();
 	UpdatePageVisibility();
+	ForceChildRepaint();
 	if (pResult != nullptr)
 		*pResult = 0;
 }
@@ -1820,9 +2164,16 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_WM_CLOSE()
 	ON_WM_MOVE()
 	ON_WM_SIZE()
+	ON_WM_SHOWWINDOW()
 	ON_LBN_SELCHANGE(IDC_PE_COLOR_LIST, &CProfileEditorDialog::OnColorPathSelectionChanged)
+	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L1, &CProfileEditorDialog::OnColorPathLevelChanged)
+	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L2, &CProfileEditorDialog::OnColorPathLevelChanged)
+	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L3, &CProfileEditorDialog::OnColorPathLevelChanged)
+	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L4, &CProfileEditorDialog::OnColorPathLevelChanged)
+	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L5, &CProfileEditorDialog::OnColorPathLevelChanged)
 	ON_BN_CLICKED(IDC_PE_PICK_BUTTON, &CProfileEditorDialog::OnPickColorClicked)
 	ON_BN_CLICKED(IDC_PE_REFRESH_BUTTON, &CProfileEditorDialog::OnRefreshColorsClicked)
+	ON_EN_CHANGE(IDC_PE_EDIT_RGBA, &CProfileEditorDialog::OnRgbaEditChanged)
 	ON_EN_CHANGE(IDC_PE_EDIT_R, &CProfileEditorDialog::OnRgbEditChanged)
 	ON_EN_CHANGE(IDC_PE_EDIT_G, &CProfileEditorDialog::OnRgbEditChanged)
 	ON_EN_CHANGE(IDC_PE_EDIT_B, &CProfileEditorDialog::OnRgbEditChanged)

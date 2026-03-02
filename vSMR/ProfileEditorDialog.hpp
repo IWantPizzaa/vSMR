@@ -29,10 +29,13 @@ protected:
 	afx_msg void OnClose();
 	afx_msg void OnMove(int x, int y);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnColorPathSelectionChanged();
+	afx_msg void OnColorPathLevelChanged();
 	afx_msg void OnPickColorClicked();
 	afx_msg void OnRefreshColorsClicked();
 	afx_msg void OnRgbEditChanged();
+	afx_msg void OnRgbaEditChanged();
 	afx_msg void OnHexEditChanged();
 	afx_msg void OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnIconStyleChanged();
@@ -132,7 +135,15 @@ private:
 		IDC_PE_TAG_PREVIEW_EDIT = 9173,
 		IDC_PE_TAG_TOKEN_LABEL = 9174,
 		IDC_PE_TAG_TOKEN_COMBO = 9175,
-		IDC_PE_TAG_TOKEN_ADD_BUTTON = 9176
+		IDC_PE_TAG_TOKEN_ADD_BUTTON = 9176,
+		IDC_PE_COLOR_PATH_LABEL = 9177,
+		IDC_PE_COLOR_PATH_L1 = 9178,
+		IDC_PE_COLOR_PATH_L2 = 9179,
+		IDC_PE_COLOR_PATH_L3 = 9180,
+		IDC_PE_COLOR_PATH_L4 = 9181,
+		IDC_PE_COLOR_PATH_L5 = 9182,
+		IDC_PE_LABEL_RGBA = 9183,
+		IDC_PE_EDIT_RGBA = 9184
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -143,7 +154,15 @@ private:
 	CTabCtrl PageTabs;
 
 	CListBox ColorPathList;
+	CStatic ColorPathLabel;
+	CComboBox ColorPathLevel1;
+	CComboBox ColorPathLevel2;
+	CComboBox ColorPathLevel3;
+	CComboBox ColorPathLevel4;
+	CComboBox ColorPathLevel5;
 	CStatic SelectedPathText;
+	CStatic LabelRgba;
+	CEdit EditRgba;
 	CStatic LabelR;
 	CStatic LabelG;
 	CStatic LabelB;
@@ -228,13 +247,20 @@ private:
 
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	int SelectedRuleIndex = -1;
+	std::vector<std::string> ColorPathEntries;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
+	void ForceChildRepaint();
 	void CreateEditorControls();
 	void LayoutControls();
 	void UpdatePageVisibility();
 	void RebuildColorPathList();
+	void ApplyColorPathSelection(const std::string& selectedPath);
+	void PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment);
+	std::vector<std::string> SplitPathSegments(const std::string& path) const;
+	std::string JoinPathSegments(const std::vector<std::string>& segments, size_t count) const;
+	std::string ResolveColorPathFromLevelSelection() const;
 	void RefreshEditorFieldsFromSelection();
 	void SyncIconControlsFromRadar();
 	void PopulateIconCombos();
@@ -249,6 +275,7 @@ private:
 	void RefreshTagDefinitionLines();
 	void RefreshTagPreview();
 	bool TryReadEditInt(CEdit& edit, int& outValue) const;
+	bool TryParseRgbaQuad(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool TryParseHexColor(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const;
 	std::string FormatRgbTriplet(int r, int g, int b) const;
