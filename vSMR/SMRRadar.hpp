@@ -323,6 +323,8 @@ public:
 	std::string TagDefinitionDepartureStatusLabel(const std::string& status) const;
 	std::vector<std::string> GetTagDefinitionStatusesForType(const std::string& type) const;
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
+	bool GetTagDefinitionDetailedSameAsDefinition() const;
+	bool SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk);
 	void GetTagDefinitionEditorContext(std::string& type, bool& detailed, std::string& status) const;
 	void SetTagDefinitionEditorContext(const std::string& type, bool detailed, const std::string& status);
 	std::string GetTagEditorTargetColorPath() const;

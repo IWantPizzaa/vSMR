@@ -525,6 +525,83 @@ bool CSMRRadar::IsTagDefinitionStatusAllowedForType(const std::string& type, con
 	return std::find(allowedStatuses.begin(), allowedStatuses.end(), normalizedStatus) != allowedStatuses.end();
 }
 
+bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition() const
+{
+	if (!CurrentConfig)
+		return false;
+
+	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject())
+		return false;
+
+	const rapidjson::Value& labels = profile["labels"];
+	if (!labels.HasMember("definition_detailed_same_as_definition") ||
+		!labels["definition_detailed_same_as_definition"].IsBool())
+	{
+		return false;
+	}
+
+	return labels["definition_detailed_same_as_definition"].GetBool();
+}
+
+bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk)
+{
+	if (!CurrentConfig)
+		return false;
+
+	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	auto ensureObjectMember = [&](rapidjson::Value& parent, const char* key) -> rapidjson::Value&
+	{
+		if (!parent.HasMember(key) || !parent[key].IsObject())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			rapidjson::Value keyValue;
+			keyValue.SetString(key, allocator);
+			rapidjson::Value objectValue(rapidjson::kObjectType);
+			parent.AddMember(keyValue, objectValue, allocator);
+		}
+		return parent[key];
+	};
+
+	rapidjson::Value& labels = ensureObjectMember(profile, "labels");
+	bool changed = false;
+	if (!labels.HasMember("definition_detailed_same_as_definition") ||
+		!labels["definition_detailed_same_as_definition"].IsBool())
+	{
+		if (labels.HasMember("definition_detailed_same_as_definition"))
+			labels.RemoveMember("definition_detailed_same_as_definition");
+
+		rapidjson::Value keyValue;
+		keyValue.SetString("definition_detailed_same_as_definition", allocator);
+		rapidjson::Value value(sameAsDefinition);
+		labels.AddMember(keyValue, value, allocator);
+		changed = true;
+	}
+	else if (labels["definition_detailed_same_as_definition"].GetBool() != sameAsDefinition)
+	{
+		labels["definition_detailed_same_as_definition"].SetBool(sameAsDefinition);
+		changed = true;
+	}
+
+	if (changed)
+	{
+		RequestRefresh();
+		if (persistToDisk && !CurrentConfig->saveConfig())
+		{
+			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save detailed-definition mode to vSMR_Profiles.json", true, true, false, false, false);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void CSMRRadar::GetTagDefinitionEditorContext(std::string& type, bool& detailed, std::string& status) const
 {
 	type = NormalizeTagDefinitionType(TagDefinitionEditorType);

@@ -118,6 +118,10 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	const int transitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const Value& activeProfile = CurrentConfig->getActiveProfile();
 	const Value& LabelsSettings = activeProfile["labels"];
+	const bool tagDetailedSameAsDefinition =
+		LabelsSettings.HasMember("definition_detailed_same_as_definition") &&
+		LabelsSettings["definition_detailed_same_as_definition"].IsBool() &&
+		LabelsSettings["definition_detailed_same_as_definition"].GetBool();
 	const bool useAspeedForGate = LabelsSettings["use_aspeed_for_gate"].GetBool();
 	const bool airborneUseDepartureArrivalColoring =
 		LabelsSettings.HasMember("airborne") &&
@@ -272,7 +276,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 
 		const Value& labelSection = LabelsSettings[tagTypeKey.c_str()];
-		const char* configKey = (isTagDetailled && labelSection.HasMember("definitionDetailled")) ? "definitionDetailled" : "definition";
+		const bool useDetailedDefinition =
+			isTagDetailled &&
+			!tagDetailedSameAsDefinition &&
+			labelSection.HasMember("definitionDetailled");
+		const char* configKey = useDetailedDefinition ? "definitionDetailled" : "definition";
 		auto resolveLabelLines = [&](const char* definitionKey) -> const Value*
 		{
 			if (statusDefinitionKey != nullptr &&

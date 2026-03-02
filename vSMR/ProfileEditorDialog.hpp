@@ -50,6 +50,8 @@ protected:
 	afx_msg void OnTagStatusChanged();
 	afx_msg void OnTagLinkToggleChanged();
 	afx_msg void OnTagLineChanged();
+	afx_msg void OnTagLineFocus();
+	afx_msg void OnTagAddTokenClicked();
 
 	DECLARE_MESSAGE_MAP()
 
@@ -127,7 +129,10 @@ private:
 		IDC_PE_TAG_D_LINE4_LABEL = 9170,
 		IDC_PE_TAG_D_LINE4_EDIT = 9171,
 		IDC_PE_TAG_PREVIEW_LABEL = 9172,
-		IDC_PE_TAG_PREVIEW_EDIT = 9173
+		IDC_PE_TAG_PREVIEW_EDIT = 9173,
+		IDC_PE_TAG_TOKEN_LABEL = 9174,
+		IDC_PE_TAG_TOKEN_COMBO = 9175,
+		IDC_PE_TAG_TOKEN_ADD_BUTTON = 9176
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -190,6 +195,9 @@ private:
 	CComboBox TagTypeCombo;
 	CStatic TagStatusLabel;
 	CComboBox TagStatusCombo;
+	CStatic TagTokenLabel;
+	CComboBox TagTokenCombo;
+	CButton TagAddTokenButton;
 	CStatic TagDefinitionHeader;
 	CStatic TagLine1Label;
 	CEdit TagLine1Edit;
@@ -215,6 +223,8 @@ private:
 	std::string TagEditorType = "departure";
 	bool TagEditorSeparateDetailed = false;
 	std::string TagEditorStatus = "default";
+	int TagEditorSelectedLine = 0;
+	bool TagEditorSelectedLineDetailed = false;
 
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	int SelectedRuleIndex = -1;
@@ -234,7 +244,7 @@ private:
 	void RebuildRulesList();
 	void RefreshRuleControls();
 	void SyncTagEditorControlsFromRadar();
-	void SyncDetailedTagLinesFromDefinition();
+	void PopulateTagTokenCombo();
 	void RefreshTagStatusOptions();
 	void RefreshTagDefinitionLines();
 	void RefreshTagPreview();

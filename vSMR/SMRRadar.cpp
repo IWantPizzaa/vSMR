@@ -298,7 +298,7 @@ void CSMRRadar::LoadProfile(string profileName) {
 	ProfileColorPathHasAlpha.clear();
 	SelectedProfileColorPath.clear();
 	TagDefinitionEditorType = "departure";
-	TagDefinitionEditorDetailed = false;
+	TagDefinitionEditorDetailed = !GetTagDefinitionDetailedSameAsDefinition();
 	TagDefinitionEditorDepartureStatus = "default";
 	TagDefinitionEditorSelectedLine = 0;
 
@@ -715,6 +715,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	}
 
 	Value& labels = ensureObjectMember(profile, "labels");
+	ensureBoolMember(labels, "definition_detailed_same_as_definition", false);
 	if (labels.HasMember("sid_text_colors"))
 	{
 		labels.RemoveMember("sid_text_colors");
