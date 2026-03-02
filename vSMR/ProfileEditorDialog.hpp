@@ -174,7 +174,13 @@ private:
 		IDC_PE_FIXED_SCALE_TICK_MAX = 9204,
 		IDC_PE_BOOST_FACTOR_TICK_MIN = 9205,
 		IDC_PE_BOOST_FACTOR_TICK_MID = 9206,
-		IDC_PE_BOOST_FACTOR_TICK_MAX = 9207
+		IDC_PE_BOOST_FACTOR_TICK_MAX = 9207,
+		IDC_PE_RULE_LEFT_PANEL = 9208,
+		IDC_PE_RULE_RIGHT_PANEL = 9209,
+		IDC_PE_RULE_LEFT_HEADER = 9210,
+		IDC_PE_RULE_RIGHT_HEADER = 9211,
+		IDC_PE_TAG_PANEL = 9212,
+		IDC_PE_TAG_HEADER_PANEL = 9213
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -243,6 +249,10 @@ private:
 	CComboBox BoostResolutionCombo;
 
 	CListBox RulesList;
+	CStatic RuleLeftPanel;
+	CStatic RuleRightPanel;
+	CStatic RuleLeftHeader;
+	CStatic RuleRightHeader;
 	CButton RuleAddButton;
 	CButton RuleRemoveButton;
 	CStatic RuleSourceLabel;
@@ -265,6 +275,8 @@ private:
 	CEdit RuleTextEdit;
 
 	CStatic TagTypeLabel;
+	CStatic TagPanel;
+	CStatic TagHeaderPanel;
 	CComboBox TagTypeCombo;
 	CStatic TagStatusLabel;
 	CComboBox TagStatusCombo;
@@ -326,7 +338,7 @@ private:
 	void RebuildColorPathTree(const std::string& selectedPath);
 	bool SelectColorPathInTree(const std::string& path);
 	std::string GetSelectedTreePath() const;
-	void UpdateDraftColorControls();
+	void UpdateDraftColorControls(bool updateRgba = true, bool updateHex = true);
 	void LoadDraftColorFromSelection();
 	void ApplyColorPathSelection(const std::string& selectedPath);
 	void PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment);
@@ -339,6 +351,7 @@ private:
 	void PopulateRuleCombos();
 	void PopulateRuleTokenCombo(const std::string& source, const std::string& selectedToken);
 	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
+	std::string ReadComboText(CComboBox& combo) const;
 	void RebuildRulesList();
 	void RefreshRuleControls();
 	void SyncTagEditorControlsFromRadar();
@@ -358,4 +371,7 @@ private:
 	int ScaleToSliderPos(double scale) const;
 	void UpdateIconScaleValueLabels();
 	void SelectComboEntryByText(CComboBox& combo, const std::string& text);
+	void ApplyThemedEditBorders();
+	void SetEditTextPreserveCaret(CEdit& edit, const std::string& text);
+	void UpdateRulesListItemLabel(int index);
 };

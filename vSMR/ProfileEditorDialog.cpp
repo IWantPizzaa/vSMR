@@ -7,9 +7,71 @@
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <map>
 #include <set>
 
 IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
+
+namespace
+{
+	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
+	std::map<HWND, WNDPROC> gThemedEditOldProcs;
+
+	void DrawThemedBorder(HWND hwnd)
+	{
+		if (!::IsWindow(hwnd))
+			return;
+
+		HDC hdc = ::GetWindowDC(hwnd);
+		if (hdc == nullptr)
+			return;
+
+		RECT bounds = {};
+		::GetWindowRect(hwnd, &bounds);
+		::OffsetRect(&bounds, -bounds.left, -bounds.top);
+		::InflateRect(&bounds, -1, -1);
+
+		HPEN borderPen = ::CreatePen(PS_SOLID, 1, kEditorBorderColor);
+		HGDIOBJ oldPen = ::SelectObject(hdc, borderPen);
+		HGDIOBJ oldBrush = ::SelectObject(hdc, ::GetStockObject(HOLLOW_BRUSH));
+		::Rectangle(hdc, bounds.left, bounds.top, bounds.right, bounds.bottom);
+		::SelectObject(hdc, oldBrush);
+		::SelectObject(hdc, oldPen);
+		::DeleteObject(borderPen);
+		::ReleaseDC(hwnd, hdc);
+	}
+
+	LRESULT CALLBACK ThemedEditWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		auto it = gThemedEditOldProcs.find(hwnd);
+		WNDPROC oldProc = (it != gThemedEditOldProcs.end()) ? it->second : DefWindowProc;
+
+		if (message == WM_NCDESTROY)
+		{
+			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+			gThemedEditOldProcs.erase(hwnd);
+			return result;
+		}
+
+		const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+
+		switch (message)
+		{
+		case WM_PAINT:
+		case WM_NCPAINT:
+		case WM_ENABLE:
+		case WM_SETFOCUS:
+		case WM_KILLFOCUS:
+		case WM_SETTEXT:
+			DrawThemedBorder(hwnd);
+			break;
+		default:
+			break;
+		}
+
+		return result;
+	}
+}
 
 CProfileEditorDialog::CProfileEditorDialog(CSMRRadar* owner, CWnd* pParent /*=NULL*/)
 	: CDialogEx(CProfileEditorDialog::IDD, pParent)
@@ -198,7 +260,37 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		(controlId == IDC_PE_ICON_STYLE_DIAMOND) ||
 		(controlId == IDC_PE_ICON_STYLE_REALISTIC) ||
 		(controlId == IDC_PE_FIXED_PIXEL_CHECK) ||
-		(controlId == IDC_PE_SMALL_BOOST_CHECK);
+		(controlId == IDC_PE_SMALL_BOOST_CHECK) ||
+		(controlId == IDC_PE_RULE_LEFT_PANEL) ||
+		(controlId == IDC_PE_RULE_RIGHT_PANEL) ||
+		(controlId == IDC_PE_RULE_LEFT_HEADER) ||
+		(controlId == IDC_PE_RULE_RIGHT_HEADER) ||
+		(controlId == IDC_PE_RULE_SOURCE_LABEL) ||
+		(controlId == IDC_PE_RULE_TOKEN_LABEL) ||
+		(controlId == IDC_PE_RULE_CONDITION_LABEL) ||
+		(controlId == IDC_PE_RULE_TYPE_LABEL) ||
+		(controlId == IDC_PE_RULE_STATUS_LABEL) ||
+		(controlId == IDC_PE_RULE_DETAIL_LABEL) ||
+		(controlId == IDC_PE_RULE_TARGET_CHECK) ||
+		(controlId == IDC_PE_RULE_TAG_CHECK) ||
+		(controlId == IDC_PE_RULE_TEXT_CHECK) ||
+		(controlId == IDC_PE_TAG_PANEL) ||
+		(controlId == IDC_PE_TAG_HEADER_PANEL) ||
+		(controlId == IDC_PE_TAG_TYPE_LABEL) ||
+		(controlId == IDC_PE_TAG_STATUS_LABEL) ||
+		(controlId == IDC_PE_TAG_TOKEN_LABEL) ||
+		(controlId == IDC_PE_TAG_DEF_HEADER) ||
+		(controlId == IDC_PE_TAG_LINE1_LABEL) ||
+		(controlId == IDC_PE_TAG_LINE2_LABEL) ||
+		(controlId == IDC_PE_TAG_LINE3_LABEL) ||
+		(controlId == IDC_PE_TAG_LINE4_LABEL) ||
+		(controlId == IDC_PE_TAG_LINK_DETAILED) ||
+		(controlId == IDC_PE_TAG_DETAILED_HEADER) ||
+		(controlId == IDC_PE_TAG_D_LINE1_LABEL) ||
+		(controlId == IDC_PE_TAG_D_LINE2_LABEL) ||
+		(controlId == IDC_PE_TAG_D_LINE3_LABEL) ||
+		(controlId == IDC_PE_TAG_D_LINE4_LABEL) ||
+		(controlId == IDC_PE_TAG_PREVIEW_LABEL);
 	if (useColorThemeBackground && HeaderBarBrush.GetSafeHandle() != nullptr)
 	{
 		pDC->SetBkColor(RGB(249, 249, 249));
@@ -334,7 +426,11 @@ void CProfileEditorDialog::CreateEditorControls()
 	BoostResolutionCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_RES_COMBO);
 	IconPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
-	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | LBS_NOTIFY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
+	RuleLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_PANEL);
+	RuleRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_PANEL);
+	RuleLeftHeader.Create("Rules", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
+	RuleRightHeader.Create("Rule Details", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
+	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
 	RuleAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
 	RuleRemoveButton.Create("Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RULE_REMOVE_BUTTON);
 	RuleSourceLabel.Create("Source", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_SOURCE_LABEL);
@@ -342,7 +438,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleTokenLabel.Create("Token", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TOKEN_LABEL);
 	RuleTokenCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TOKEN_COMBO);
 	RuleConditionLabel.Create("Condition", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_CONDITION_LABEL);
-	RuleConditionCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_CONDITION_COMBO);
+	RuleConditionCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWN, CRect(0, 0, 0, 0), this, IDC_PE_RULE_CONDITION_COMBO);
 	RuleTypeLabel.Create("Tag Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TYPE_LABEL);
 	RuleTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TYPE_COMBO);
 	RuleStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_STATUS_LABEL);
@@ -356,6 +452,8 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleTextCheck.Create("Text color", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_CHECK);
 	RuleTextEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_EDIT);
 
+	TagPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PANEL);
+	TagHeaderPanel.Create("Tag Editor", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
 	TagTypeLabel.Create("Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_LABEL);
 	TagTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_COMBO);
 	TagStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_LABEL);
@@ -363,7 +461,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagTokenLabel.Create("Add", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_LABEL);
 	TagTokenCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_COMBO);
 	TagAddTokenButton.Create("Insert", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_ADD_BUTTON);
-	TagDefinitionHeader.Create("Definition", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DEF_HEADER);
+	TagDefinitionHeader.Create("Definition", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DEF_HEADER);
 	TagLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE1_LABEL);
 	TagLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE1_EDIT);
 	TagLine2Label.Create("L2", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE2_LABEL);
@@ -414,26 +512,81 @@ void CProfileEditorDialog::CreateEditorControls()
 		LOGFONT monoLf = lf;
 		strcpy_s(monoLf.lfFaceName, LF_FACESIZE, "Consolas");
 		MonoFont.CreateFontIndirect(&monoLf);
-		ColorPathTree.SetFont(&MonoFont);
-		EditHex.SetFont(&MonoFont);
-		EditRgba.SetFont(&MonoFont);
-		FixedScaleValueLabel.SetFont(&MonoFont);
-		BoostFactorValueLabel.SetFont(&MonoFont);
-		FixedScaleTickMinLabel.SetFont(&MonoFont);
-		FixedScaleTickMidLabel.SetFont(&MonoFont);
-		FixedScaleTickMaxLabel.SetFont(&MonoFont);
-		BoostFactorTickMinLabel.SetFont(&MonoFont);
-		BoostFactorTickMidLabel.SetFont(&MonoFont);
-		BoostFactorTickMaxLabel.SetFont(&MonoFont);
 
-		LOGFONT headerLf = lf;
-		headerLf.lfWeight = FW_BOLD;
-		HeaderFont.CreateFontIndirect(&headerLf);
-		ColorPathLabel.SetFont(&HeaderFont);
-		SelectedPathText.SetFont(&HeaderFont);
+		// Apply a unified font to all editor controls.
+		for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
+		{
+			if (::IsWindow(child->GetSafeHwnd()))
+				child->SetFont(&MonoFont, TRUE);
+		}
 	}
+	ApplyThemedEditBorders();
 	ControlsCreated = true;
 	LayoutControls();
+}
+
+void CProfileEditorDialog::ApplyThemedEditBorders()
+{
+	auto attachBorder = [](CEdit& edit)
+	{
+		const HWND hwnd = edit.GetSafeHwnd();
+		if (!::IsWindow(hwnd))
+			return;
+		if (gThemedEditOldProcs.find(hwnd) != gThemedEditOldProcs.end())
+		{
+			DrawThemedBorder(hwnd);
+			return;
+		}
+
+		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ThemedEditWndProc)));
+		if (oldProc == nullptr)
+			return;
+
+		gThemedEditOldProcs[hwnd] = oldProc;
+		DrawThemedBorder(hwnd);
+	};
+
+	attachBorder(EditRgba);
+	attachBorder(EditHex);
+	attachBorder(RuleTargetEdit);
+	attachBorder(RuleTagEdit);
+	attachBorder(RuleTextEdit);
+	attachBorder(TagLine1Edit);
+	attachBorder(TagLine2Edit);
+	attachBorder(TagLine3Edit);
+	attachBorder(TagLine4Edit);
+	attachBorder(TagDetailedLine1Edit);
+	attachBorder(TagDetailedLine2Edit);
+	attachBorder(TagDetailedLine3Edit);
+	attachBorder(TagDetailedLine4Edit);
+}
+
+void CProfileEditorDialog::SetEditTextPreserveCaret(CEdit& edit, const std::string& text)
+{
+	if (!::IsWindow(edit.GetSafeHwnd()))
+		return;
+
+	CString currentText;
+	edit.GetWindowText(currentText);
+	if (currentText.Compare(text.c_str()) == 0)
+		return;
+
+	const CWnd* focused = GetFocus();
+	const bool keepCaret = (focused != nullptr && focused->GetSafeHwnd() == edit.GetSafeHwnd());
+	int selStart = 0;
+	int selEnd = 0;
+	if (keepCaret)
+		edit.GetSel(selStart, selEnd);
+
+	edit.SetWindowTextA(text.c_str());
+
+	if (keepCaret)
+	{
+		const int length = max(0, edit.GetWindowTextLength());
+		const int newSelStart = min(selStart, length);
+		const int newSelEnd = min(selEnd, length);
+		edit.SetSel(newSelStart, newSelEnd);
+	}
 }
 
 void CProfileEditorDialog::PopulateIconCombos()
@@ -537,15 +690,24 @@ void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source,
 		conditions = { "any", "set", "missing", "future", "past" };
 	}
 
-	int selectedIndex = 0;
+	std::string normalizedSelectedCondition = selectedCondition;
+	normalizedSelectedCondition.erase(normalizedSelectedCondition.begin(), std::find_if(normalizedSelectedCondition.begin(), normalizedSelectedCondition.end(), [](unsigned char c) { return std::isspace(c) == 0; }));
+	normalizedSelectedCondition.erase(std::find_if(normalizedSelectedCondition.rbegin(), normalizedSelectedCondition.rend(), [](unsigned char c) { return std::isspace(c) == 0; }).base(), normalizedSelectedCondition.end());
+
+	int selectedIndex = CB_ERR;
 	for (size_t i = 0; i < conditions.size(); ++i)
 	{
 		RuleConditionCombo.AddString(conditions[i].c_str());
-		if (!selectedCondition.empty() && _stricmp(conditions[i].c_str(), selectedCondition.c_str()) == 0)
+		if (!normalizedSelectedCondition.empty() && _stricmp(conditions[i].c_str(), normalizedSelectedCondition.c_str()) == 0)
 			selectedIndex = static_cast<int>(i);
 	}
-	if (RuleConditionCombo.GetCount() > 0)
+
+	if (selectedIndex != CB_ERR)
 		RuleConditionCombo.SetCurSel(selectedIndex);
+	else if (!normalizedSelectedCondition.empty())
+		RuleConditionCombo.SetWindowTextA(normalizedSelectedCondition.c_str());
+	else if (RuleConditionCombo.GetCount() > 0)
+		RuleConditionCombo.SetCurSel(0);
 }
 
 void CProfileEditorDialog::PopulateTagTokenCombo()
@@ -718,123 +880,142 @@ void CProfileEditorDialog::LayoutControls()
 	FixedScaleCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
 	BoostFactorCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
 
-	const int rulesLeft = pageRect.left + innerPad;
 	const int rulesTop = pageRect.top + innerPad;
-	const int rulesListWidth = max(190, (pageRect.Width() / 2) - (innerPad * 2));
-	const int rulesListHeight = max(120, pageRect.Height() - (innerPad * 2) - buttonHeight - 6);
-	const int rulesRightLeft = rulesLeft + rulesListWidth + innerPad;
-	const int rulesRightWidth = max(180, pageRect.right - rulesRightLeft - innerPad);
+	const int rulesPanelHeight = max(120, pageRect.Height() - (innerPad * 2));
+	const int rulesGap = 12;
+	const int rulesAvailableWidth = max(220, pageRect.Width() - (innerPad * 2) - rulesGap);
+	const int rulesLeftWidth = max(220, static_cast<int>(rulesAvailableWidth * 0.50));
+	const int rulesRightWidth = max(220, rulesAvailableWidth - rulesLeftWidth);
+	const int rulesLeft = pageRect.left + innerPad;
+	const int rulesRightLeft = rulesLeft + rulesLeftWidth + rulesGap;
 
-	RulesList.MoveWindow(rulesLeft, rulesTop, rulesListWidth, rulesListHeight, TRUE);
-	RuleAddButton.MoveWindow(rulesLeft, rulesTop + rulesListHeight + 6, 68, buttonHeight, TRUE);
-	RuleRemoveButton.MoveWindow(rulesLeft + 76, rulesTop + rulesListHeight + 6, 68, buttonHeight, TRUE);
+	RuleLeftPanel.MoveWindow(rulesLeft, rulesTop, rulesLeftWidth, rulesPanelHeight, TRUE);
+	RuleRightPanel.MoveWindow(rulesRightLeft, rulesTop, rulesRightWidth, rulesPanelHeight, TRUE);
+	RuleLeftHeader.MoveWindow(rulesLeft + 1, rulesTop + 1, max(60, rulesLeftWidth - 2), 30, TRUE);
+	RuleRightHeader.MoveWindow(rulesRightLeft + 1, rulesTop + 1, max(60, rulesRightWidth - 2), 30, TRUE);
 
-	int rulesY = rulesTop;
-	const int rulesLabelWidth = 62;
-	const int rulesFieldWidth = max(120, rulesRightWidth - rulesLabelWidth - 4);
+	const int ruleListTop = rulesTop + 36;
+	const int ruleButtonAreaHeight = 44;
+	const int ruleListHeight = max(80, rulesPanelHeight - 36 - ruleButtonAreaHeight - 8);
+	RulesList.MoveWindow(rulesLeft + 8, ruleListTop, max(90, rulesLeftWidth - 16), ruleListHeight, TRUE);
+	const int ruleButtonsY = rulesTop + rulesPanelHeight - 38;
+	RuleAddButton.MoveWindow(rulesLeft + 12, ruleButtonsY, 50, buttonHeight, TRUE);
+	RuleRemoveButton.MoveWindow(rulesLeft + 70, ruleButtonsY, 74, buttonHeight, TRUE);
 
-	RuleSourceLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleSourceCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
-	rulesY += rowHeight + 6;
+	int rulesY = rulesTop + 44;
+	const int rulesLabelWidth = 120;
+	const int rulesFieldLeft = rulesRightLeft + 14 + rulesLabelWidth + 10;
+	const int rulesLabelLeft = rulesRightLeft + 14;
+	const int rulesFieldWidth = max(90, rulesRightWidth - (rulesFieldLeft - rulesRightLeft) - 14);
 
-	RuleTokenLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleTokenCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
-	rulesY += rowHeight + 6;
-
-	RuleConditionLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleConditionCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
-	rulesY += rowHeight + 6;
-
-	RuleTypeLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleTypeCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
-	rulesY += rowHeight + 6;
-
-	RuleStatusLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleStatusCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
-	rulesY += rowHeight + 6;
-
-	RuleDetailLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleDetailCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
+	RuleSourceLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleSourceCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
 	rulesY += rowHeight + 10;
 
-	RuleTargetCheck.MoveWindow(rulesRightLeft, rulesY, 95, rowHeight, TRUE);
-	RuleTargetEdit.MoveWindow(rulesRightLeft + 96, rulesY, max(80, rulesRightWidth - 96), rowHeight, TRUE);
-	rulesY += rowHeight + 6;
+	RuleTokenLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleTokenCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
+	rulesY += rowHeight + 10;
 
-	RuleTagCheck.MoveWindow(rulesRightLeft, rulesY, 95, rowHeight, TRUE);
-	RuleTagEdit.MoveWindow(rulesRightLeft + 96, rulesY, max(80, rulesRightWidth - 96), rowHeight, TRUE);
-	rulesY += rowHeight + 6;
+	RuleConditionLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleConditionCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
+	rulesY += rowHeight + 10;
 
-	RuleTextCheck.MoveWindow(rulesRightLeft, rulesY, 95, rowHeight, TRUE);
-	RuleTextEdit.MoveWindow(rulesRightLeft + 96, rulesY, max(80, rulesRightWidth - 96), rowHeight, TRUE);
+	RuleTypeLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleTypeCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
+	rulesY += rowHeight + 10;
+
+	RuleStatusLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleStatusCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
+	rulesY += rowHeight + 10;
+
+	RuleDetailLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleDetailCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
+	rulesY += rowHeight + 14;
+
+	RuleTargetCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
+	RuleTargetEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
+	rulesY += rowHeight + 8;
+
+	RuleTagCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
+	RuleTagEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
+	rulesY += rowHeight + 8;
+
+	RuleTextCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
+	RuleTextEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
 
 	const int tagLeft = pageRect.left + innerPad;
 	const int tagTop = pageRect.top + innerPad;
-	const int tagColumnGap = 10;
-	const int tagLeftWidth = max(220, (pageRect.Width() / 2) - (innerPad * 2));
-	const int tagRightLeft = tagLeft + tagLeftWidth + tagColumnGap;
-	const int tagRightWidth = max(180, pageRect.right - tagRightLeft - innerPad);
-	const int tagLabelWidth = 56;
-	const int tagFieldWidth = max(120, tagLeftWidth - tagLabelWidth - 4);
+	const int tagWidth = max(240, pageRect.Width() - (innerPad * 2));
+	const int tagHeight = max(120, pageRect.Height() - (innerPad * 2));
+	TagPanel.MoveWindow(tagLeft, tagTop, tagWidth, tagHeight, TRUE);
+	TagHeaderPanel.MoveWindow(tagLeft + 1, tagTop + 1, max(60, tagWidth - 2), 30, TRUE);
 
-	int tagY = tagTop;
-	TagTypeLabel.MoveWindow(tagLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
-	TagTypeCombo.MoveWindow(tagLeft + tagLabelWidth, tagY, tagFieldWidth, rowHeight + 180, TRUE);
-	tagY += rowHeight + 6;
+	const int tagPad = 12;
+	const int tagLabelWidth = 52;
+	const int tagContentLeft = tagLeft + tagPad;
+	const int tagFieldLeft = tagContentLeft + tagLabelWidth + 10;
+	const int tagRight = tagLeft + tagWidth - tagPad;
+	const int baseFieldWidth = max(110, tagRight - tagFieldLeft);
+	const int tokenButtonWidth = 62;
+	const int tokenComboWidth = max(90, baseFieldWidth - tokenButtonWidth - 8);
 
-	TagStatusLabel.MoveWindow(tagLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
-	TagStatusCombo.MoveWindow(tagLeft + tagLabelWidth, tagY, tagFieldWidth, rowHeight + 180, TRUE);
+	int tagY = tagTop + 42;
+	TagTypeLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagTypeCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
 	tagY += rowHeight + 10;
 
-	const int tokenButtonWidth = 64;
-	const int tokenComboWidth = max(80, tagFieldWidth - tokenButtonWidth - 4);
-	TagTokenLabel.MoveWindow(tagLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
-	TagTokenCombo.MoveWindow(tagLeft + tagLabelWidth, tagY, tokenComboWidth, rowHeight + 220, TRUE);
-	TagAddTokenButton.MoveWindow(tagLeft + tagLabelWidth + tokenComboWidth + 4, tagY, tokenButtonWidth, rowHeight, TRUE);
+	TagStatusLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagStatusCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
 	tagY += rowHeight + 10;
 
-	TagDefinitionHeader.MoveWindow(tagLeft, tagY + 2, max(120, tagLeftWidth), rowHeight, TRUE);
-	tagY += rowHeight;
+	TagTokenLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagTokenCombo.MoveWindow(tagFieldLeft, tagY, tokenComboWidth, rowHeight + 220, TRUE);
+	TagAddTokenButton.MoveWindow(tagFieldLeft + tokenComboWidth + 8, tagY, tokenButtonWidth, rowHeight, TRUE);
+	tagY += rowHeight + 12;
 
-	TagLine1Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagLine1Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
-	tagY += rowHeight + 4;
-
-	TagLine2Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagLine2Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
-	tagY += rowHeight + 4;
-
-	TagLine3Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagLine3Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
-	tagY += rowHeight + 4;
-
-	TagLine4Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagLine4Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	TagDefinitionHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
 	tagY += rowHeight + 8;
 
-	TagLinkDetailedToggle.MoveWindow(tagLeft, tagY, max(180, tagLeftWidth), rowHeight, TRUE);
-	tagY += rowHeight + 4;
+	TagLine1Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine1Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 8;
 
-	TagDetailedHeader.MoveWindow(tagLeft, tagY + 2, max(120, tagLeftWidth), rowHeight, TRUE);
-	tagY += rowHeight;
+	TagLine2Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine2Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 8;
 
-	TagDetailedLine1Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagDetailedLine1Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
-	tagY += rowHeight + 4;
+	TagLine3Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine3Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 8;
 
-	TagDetailedLine2Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagDetailedLine2Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
-	tagY += rowHeight + 4;
+	TagLine4Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 10;
 
-	TagDetailedLine3Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagDetailedLine3Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
-	tagY += rowHeight + 4;
+	TagLinkDetailedToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+	tagY += rowHeight + 8;
 
-	TagDetailedLine4Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
-	TagDetailedLine4Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	TagDetailedHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+	tagY += rowHeight + 6;
 
-	TagPreviewLabel.MoveWindow(tagRightLeft, tagTop + 2, tagRightWidth, rowHeight, TRUE);
-	TagPreviewEdit.MoveWindow(tagRightLeft, tagTop + 20, tagRightWidth, max(100, pageRect.Height() - (innerPad * 2) - 20), TRUE);
+	TagDetailedLine1Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine1Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine2Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine2Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine3Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine3Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine4Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+
+	// Keep live preview generated, but hidden to match the compact editor layout.
+	TagPreviewLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	TagPreviewEdit.MoveWindow(-5000, -5000, 10, 10, TRUE);
 
 	UpdatePageVisibility();
 }
@@ -915,6 +1096,10 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	BoostResolutionCombo.ShowWindow(iconShowMode);
 
 	RulesList.ShowWindow(ruleShowMode);
+	RuleLeftPanel.ShowWindow(ruleShowMode);
+	RuleRightPanel.ShowWindow(ruleShowMode);
+	RuleLeftHeader.ShowWindow(ruleShowMode);
+	RuleRightHeader.ShowWindow(ruleShowMode);
 	RuleAddButton.ShowWindow(ruleShowMode);
 	RuleRemoveButton.ShowWindow(ruleShowMode);
 	RuleSourceLabel.ShowWindow(ruleShowMode);
@@ -936,6 +1121,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleTextCheck.ShowWindow(ruleShowMode);
 	RuleTextEdit.ShowWindow(ruleShowMode);
 
+	TagPanel.ShowWindow(tagShowMode);
+	TagHeaderPanel.ShowWindow(tagShowMode);
 	TagTypeLabel.ShowWindow(tagShowMode);
 	TagTypeCombo.ShowWindow(tagShowMode);
 	TagStatusLabel.ShowWindow(tagShowMode);
@@ -962,8 +1149,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	TagDetailedLine3Edit.ShowWindow(detailedTagShowMode);
 	TagDetailedLine4Label.ShowWindow(detailedTagShowMode);
 	TagDetailedLine4Edit.ShowWindow(detailedTagShowMode);
-	TagPreviewLabel.ShowWindow(tagShowMode);
-	TagPreviewEdit.ShowWindow(tagShowMode);
+	TagPreviewLabel.ShowWindow(SW_HIDE);
+	TagPreviewEdit.ShowWindow(SW_HIDE);
 }
 
 void CProfileEditorDialog::RebuildColorPathList()
@@ -1127,7 +1314,7 @@ void CProfileEditorDialog::LoadDraftColorFromSelection()
 	DraftColorA = a;
 	DraftColorHasAlpha = hasAlpha;
 	DraftColorValid = true;
-	UpdateDraftColorControls();
+	UpdateDraftColorControls(false, true);
 }
 
 void CProfileEditorDialog::RefreshColorSwatchBrushes()
@@ -1141,7 +1328,7 @@ void CProfileEditorDialog::RefreshColorSwatchBrushes()
 	ColorPreviewBrush.CreateSolidBrush(RGB(DraftColorR, DraftColorG, DraftColorB));
 }
 
-void CProfileEditorDialog::UpdateDraftColorControls()
+void CProfileEditorDialog::UpdateDraftColorControls(bool updateRgba, bool updateHex)
 {
 	if (!DraftColorValid)
 		return;
@@ -1155,8 +1342,10 @@ void CProfileEditorDialog::UpdateDraftColorControls()
 		sprintf_s(hexBuffer, sizeof(hexBuffer), "#%02X%02X%02X", DraftColorR, DraftColorG, DraftColorB);
 
 	UpdatingControls = true;
-	EditRgba.SetWindowTextA(rgbaBuffer);
-	EditHex.SetWindowTextA(hexBuffer);
+	if (updateRgba)
+		SetEditTextPreserveCaret(EditRgba, rgbaBuffer);
+	if (updateHex)
+		SetEditTextPreserveCaret(EditHex, hexBuffer);
 	UpdatingControls = false;
 
 	RefreshColorSwatchBrushes();
@@ -1619,6 +1808,24 @@ void CProfileEditorDialog::RebuildRulesList()
 	UpdatingControls = false;
 }
 
+void CProfileEditorDialog::UpdateRulesListItemLabel(int index)
+{
+	if (index < 0 || index >= static_cast<int>(RuleBuffer.size()) || index >= RulesList.GetCount())
+		return;
+
+	const StructuredTagColorRule& rule = RuleBuffer[index];
+	CString label;
+	label.Format("%02d  %s.%s = %s", index + 1, rule.source.c_str(), rule.token.c_str(), rule.condition.c_str());
+
+	UpdatingControls = true;
+	const int topIndex = RulesList.GetTopIndex();
+	RulesList.DeleteString(index);
+	RulesList.InsertString(index, label);
+	RulesList.SetCurSel(index);
+	RulesList.SetTopIndex(topIndex);
+	UpdatingControls = false;
+}
+
 void CProfileEditorDialog::RefreshRuleControls()
 {
 	UpdatingControls = true;
@@ -1649,9 +1856,9 @@ void CProfileEditorDialog::RefreshRuleControls()
 		RuleTargetCheck.SetCheck(BST_UNCHECKED);
 		RuleTagCheck.SetCheck(BST_UNCHECKED);
 		RuleTextCheck.SetCheck(BST_UNCHECKED);
-		RuleTargetEdit.SetWindowTextA("255,255,255");
-		RuleTagEdit.SetWindowTextA("255,255,255");
-		RuleTextEdit.SetWindowTextA("255,255,255");
+		SetEditTextPreserveCaret(RuleTargetEdit, "255,255,255");
+		SetEditTextPreserveCaret(RuleTagEdit, "255,255,255");
+		SetEditTextPreserveCaret(RuleTextEdit, "255,255,255");
 		UpdatingControls = false;
 		return;
 	}
@@ -1666,9 +1873,9 @@ void CProfileEditorDialog::RefreshRuleControls()
 	RuleTargetCheck.SetCheck(rule.applyTarget ? BST_CHECKED : BST_UNCHECKED);
 	RuleTagCheck.SetCheck(rule.applyTag ? BST_CHECKED : BST_UNCHECKED);
 	RuleTextCheck.SetCheck(rule.applyText ? BST_CHECKED : BST_UNCHECKED);
-	RuleTargetEdit.SetWindowTextA(FormatRgbTriplet(rule.targetR, rule.targetG, rule.targetB).c_str());
-	RuleTagEdit.SetWindowTextA(FormatRgbTriplet(rule.tagR, rule.tagG, rule.tagB).c_str());
-	RuleTextEdit.SetWindowTextA(FormatRgbTriplet(rule.textR, rule.textG, rule.textB).c_str());
+	SetEditTextPreserveCaret(RuleTargetEdit, FormatRgbTriplet(rule.targetR, rule.targetG, rule.targetB));
+	SetEditTextPreserveCaret(RuleTagEdit, FormatRgbTriplet(rule.tagR, rule.tagG, rule.tagB));
+	SetEditTextPreserveCaret(RuleTextEdit, FormatRgbTriplet(rule.textR, rule.textG, rule.textB));
 	RuleTargetEdit.EnableWindow(rule.applyTarget ? TRUE : FALSE);
 	RuleTagEdit.EnableWindow(rule.applyTag ? TRUE : FALSE);
 	RuleTextEdit.EnableWindow(rule.applyText ? TRUE : FALSE);
@@ -1751,14 +1958,14 @@ void CProfileEditorDialog::RefreshTagDefinitionLines()
 		TagEditorStatus);
 
 	UpdatingControls = true;
-	TagLine1Edit.SetWindowTextA(lines.size() > 0 ? lines[0].c_str() : "");
-	TagLine2Edit.SetWindowTextA(lines.size() > 1 ? lines[1].c_str() : "");
-	TagLine3Edit.SetWindowTextA(lines.size() > 2 ? lines[2].c_str() : "");
-	TagLine4Edit.SetWindowTextA(lines.size() > 3 ? lines[3].c_str() : "");
-	TagDetailedLine1Edit.SetWindowTextA(detailedLines.size() > 0 ? detailedLines[0].c_str() : "");
-	TagDetailedLine2Edit.SetWindowTextA(detailedLines.size() > 1 ? detailedLines[1].c_str() : "");
-	TagDetailedLine3Edit.SetWindowTextA(detailedLines.size() > 2 ? detailedLines[2].c_str() : "");
-	TagDetailedLine4Edit.SetWindowTextA(detailedLines.size() > 3 ? detailedLines[3].c_str() : "");
+	SetEditTextPreserveCaret(TagLine1Edit, lines.size() > 0 ? lines[0] : "");
+	SetEditTextPreserveCaret(TagLine2Edit, lines.size() > 1 ? lines[1] : "");
+	SetEditTextPreserveCaret(TagLine3Edit, lines.size() > 2 ? lines[2] : "");
+	SetEditTextPreserveCaret(TagLine4Edit, lines.size() > 3 ? lines[3] : "");
+	SetEditTextPreserveCaret(TagDetailedLine1Edit, detailedLines.size() > 0 ? detailedLines[0] : "");
+	SetEditTextPreserveCaret(TagDetailedLine2Edit, detailedLines.size() > 1 ? detailedLines[1] : "");
+	SetEditTextPreserveCaret(TagDetailedLine3Edit, detailedLines.size() > 2 ? detailedLines[2] : "");
+	SetEditTextPreserveCaret(TagDetailedLine4Edit, detailedLines.size() > 3 ? detailedLines[3] : "");
 	UpdatingControls = false;
 }
 
@@ -1856,31 +2063,37 @@ std::string CProfileEditorDialog::FormatRgbTriplet(int r, int g, int b) const
 	return std::string(buffer);
 }
 
+std::string CProfileEditorDialog::ReadComboText(CComboBox& combo) const
+{
+	CString text;
+	combo.GetWindowText(text);
+	text.Trim();
+	if (!text.IsEmpty())
+		return std::string(text.GetString());
+
+	const int index = combo.GetCurSel();
+	if (index == CB_ERR)
+		return "";
+
+	combo.GetLBText(index, text);
+	return std::string(text.GetString());
+}
+
 bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule) const
 {
 	if (Owner == nullptr)
 		return false;
 
-	auto readComboText = [](CComboBox& combo) -> std::string
-	{
-		const int index = combo.GetCurSel();
-		if (index == CB_ERR)
-			return "";
-		CString text;
-		combo.GetLBText(index, text);
-		return std::string(text.GetString());
-	};
-
 	StructuredTagColorRule rule;
-	rule.source = Owner->NormalizeStructuredRuleSource(readComboText(const_cast<CComboBox&>(RuleSourceCombo)));
-	rule.token = Owner->NormalizeStructuredRuleToken(rule.source, readComboText(const_cast<CComboBox&>(RuleTokenCombo)));
+	rule.source = Owner->NormalizeStructuredRuleSource(ReadComboText(const_cast<CComboBox&>(RuleSourceCombo)));
+	rule.token = Owner->NormalizeStructuredRuleToken(rule.source, ReadComboText(const_cast<CComboBox&>(RuleTokenCombo)));
 	if (rule.token.empty())
 		return false;
 
-	rule.condition = Owner->NormalizeStructuredRuleCondition(rule.source, readComboText(const_cast<CComboBox&>(RuleConditionCombo)));
-	rule.tagType = Owner->NormalizeStructuredRuleTagType(readComboText(const_cast<CComboBox&>(RuleTypeCombo)));
-	rule.status = Owner->NormalizeStructuredRuleStatus(readComboText(const_cast<CComboBox&>(RuleStatusCombo)));
-	rule.detail = Owner->NormalizeStructuredRuleDetail(readComboText(const_cast<CComboBox&>(RuleDetailCombo)));
+	rule.condition = Owner->NormalizeStructuredRuleCondition(rule.source, ReadComboText(const_cast<CComboBox&>(RuleConditionCombo)));
+	rule.tagType = Owner->NormalizeStructuredRuleTagType(ReadComboText(const_cast<CComboBox&>(RuleTypeCombo)));
+	rule.status = Owner->NormalizeStructuredRuleStatus(ReadComboText(const_cast<CComboBox&>(RuleStatusCombo)));
+	rule.detail = Owner->NormalizeStructuredRuleDetail(ReadComboText(const_cast<CComboBox&>(RuleDetailCombo)));
 
 	rule.applyTarget = (RuleTargetCheck.GetCheck() == BST_CHECKED);
 	rule.applyTag = (RuleTagCheck.GetCheck() == BST_CHECKED);
@@ -1929,7 +2142,13 @@ void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 		return;
 
 	Owner->RequestRefresh();
-	const int preservedSelection = keepSelection ? SelectedRuleIndex : -1;
+	if (keepSelection)
+	{
+		UpdateRulesListItemLabel(SelectedRuleIndex);
+		return;
+	}
+
+	const int preservedSelection = SelectedRuleIndex;
 	RebuildRulesList();
 	if (preservedSelection >= 0 && preservedSelection < RulesList.GetCount())
 	{
@@ -2003,19 +2222,14 @@ void CProfileEditorDialog::OnRuleSourceChanged()
 	if (UpdatingControls)
 		return;
 
-	const int sourceIndex = RuleSourceCombo.GetCurSel();
-	if (sourceIndex == CB_ERR)
+	const std::string sourceText = ReadComboText(RuleSourceCombo);
+	if (sourceText.empty())
 		return;
 
-	CString sourceText;
-	RuleSourceCombo.GetLBText(sourceIndex, sourceText);
 	UpdatingControls = true;
-	PopulateRuleTokenCombo(std::string(sourceText.GetString()), "");
-	CString tokenText;
-	const int tokenIndex = RuleTokenCombo.GetCurSel();
-	if (tokenIndex != CB_ERR)
-		RuleTokenCombo.GetLBText(tokenIndex, tokenText);
-	PopulateRuleConditionCombo(std::string(sourceText.GetString()), std::string(tokenText.GetString()), "any");
+	PopulateRuleTokenCombo(sourceText, "");
+	const std::string tokenText = ReadComboText(RuleTokenCombo);
+	PopulateRuleConditionCombo(sourceText, tokenText, "any");
 	UpdatingControls = false;
 	ApplyRuleControlChanges(true);
 }
@@ -2025,22 +2239,24 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 	if (UpdatingControls)
 		return;
 
+	int focusedId = 0;
+	if (CWnd* focused = GetFocus())
+		focusedId = focused->GetDlgCtrlID();
+
+	const bool shouldRefreshConditionChoices =
+		(focusedId == IDC_PE_RULE_SOURCE_COMBO) ||
+		(focusedId == IDC_PE_RULE_TOKEN_COMBO);
+
 	{
-		CString sourceText;
-		CString tokenText;
-		CString selectedCondition;
-		const int sourceIndex = RuleSourceCombo.GetCurSel();
-		const int tokenIndex = RuleTokenCombo.GetCurSel();
-		const int conditionIndex = RuleConditionCombo.GetCurSel();
-		if (sourceIndex != CB_ERR)
-			RuleSourceCombo.GetLBText(sourceIndex, sourceText);
-		if (tokenIndex != CB_ERR)
-			RuleTokenCombo.GetLBText(tokenIndex, tokenText);
-		if (conditionIndex != CB_ERR)
-			RuleConditionCombo.GetLBText(conditionIndex, selectedCondition);
-		UpdatingControls = true;
-		PopulateRuleConditionCombo(std::string(sourceText.GetString()), std::string(tokenText.GetString()), std::string(selectedCondition.GetString()));
-		UpdatingControls = false;
+		if (shouldRefreshConditionChoices)
+		{
+			const std::string sourceText = ReadComboText(RuleSourceCombo);
+			const std::string tokenText = ReadComboText(RuleTokenCombo);
+			const std::string selectedCondition = ReadComboText(RuleConditionCombo);
+			UpdatingControls = true;
+			PopulateRuleConditionCombo(sourceText, tokenText, selectedCondition);
+			UpdatingControls = false;
+		}
 	}
 
 	RuleTargetEdit.EnableWindow(RuleTargetCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
@@ -2552,8 +2768,13 @@ void CProfileEditorDialog::OnHexEditChanged()
 		DraftColorA = a;
 		DraftColorHasAlpha = true;
 	}
+	else
+	{
+		DraftColorA = 255;
+		DraftColorHasAlpha = false;
+	}
 	DraftColorValid = true;
-	UpdateDraftColorControls();
+	UpdateDraftColorControls(true, false);
 }
 
 void CProfileEditorDialog::OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult)
@@ -2686,6 +2907,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_SOURCE_COMBO, &CProfileEditorDialog::OnRuleSourceChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_TOKEN_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_CONDITION_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
+	ON_CBN_EDITCHANGE(IDC_PE_RULE_CONDITION_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_TYPE_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_STATUS_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_DETAIL_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)

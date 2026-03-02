@@ -1638,34 +1638,63 @@ namespace
 
 	bool RunwayRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualRunwayRaw)
 	{
-		const std::string expectedCondition = NormalizeRunwayRuleConditionName(expectedConditionRaw);
-		const std::string expectedLower = ToLowerAsciiCopy(expectedCondition);
 		const std::string actualRunwayNormalized = NormalizeRunwayMatchText(actualRunwayRaw);
-
-		if (expectedLower == "any" || expectedLower == "*")
-			return !actualRunwayNormalized.empty();
-		if (expectedLower == "set" || expectedLower == "present" || expectedLower == "available")
-			return !actualRunwayNormalized.empty();
-		if (expectedLower == "missing" || expectedLower == "unset" || expectedLower == "none" || expectedLower == "empty")
-			return actualRunwayNormalized.empty();
-
-		std::string expectedRunwayNormalized = NormalizeRunwayMatchText(expectedCondition);
-		if (expectedRunwayNormalized.empty() || actualRunwayNormalized.empty())
-			return false;
-
-		if (expectedRunwayNormalized == "*" || expectedRunwayNormalized == "ANY" || expectedRunwayNormalized == "ALL")
-			return true;
-
-		if (actualRunwayNormalized == expectedRunwayNormalized)
-			return true;
-
-		if (actualRunwayNormalized.size() >= expectedRunwayNormalized.size() &&
-			actualRunwayNormalized.compare(0, expectedRunwayNormalized.size(), expectedRunwayNormalized) == 0)
+		auto matchesSingleCondition = [&](const std::string& conditionRaw) -> bool
 		{
-			return true;
+			const std::string expectedCondition = NormalizeRunwayRuleConditionName(conditionRaw);
+			const std::string expectedLower = ToLowerAsciiCopy(expectedCondition);
+
+			if (expectedLower == "any" || expectedLower == "*" || expectedLower == "all")
+				return !actualRunwayNormalized.empty();
+			if (expectedLower == "set" || expectedLower == "present" || expectedLower == "available")
+				return !actualRunwayNormalized.empty();
+			if (expectedLower == "missing" || expectedLower == "unset" || expectedLower == "none" || expectedLower == "empty")
+				return actualRunwayNormalized.empty();
+
+			std::string expectedRunwayNormalized = NormalizeRunwayMatchText(expectedCondition);
+			if (expectedRunwayNormalized.empty() || actualRunwayNormalized.empty())
+				return false;
+
+			if (actualRunwayNormalized == expectedRunwayNormalized)
+				return true;
+
+			if (actualRunwayNormalized.size() >= expectedRunwayNormalized.size() &&
+				actualRunwayNormalized.compare(0, expectedRunwayNormalized.size(), expectedRunwayNormalized) == 0)
+			{
+				return true;
+			}
+
+			return false;
+		};
+
+		if (expectedConditionRaw.find(',') == std::string::npos &&
+			expectedConditionRaw.find(';') == std::string::npos &&
+			expectedConditionRaw.find('|') == std::string::npos)
+		{
+			return matchesSingleCondition(expectedConditionRaw);
 		}
 
-		return false;
+		std::string token;
+		bool hasToken = false;
+		for (size_t i = 0; i <= expectedConditionRaw.size(); ++i)
+		{
+			const char ch = (i < expectedConditionRaw.size()) ? expectedConditionRaw[i] : ',';
+			if (ch == ',' || ch == ';' || ch == '|')
+			{
+				const std::string condition = NormalizeRunwayRuleConditionName(token);
+				token.clear();
+				if (condition.empty())
+					continue;
+				hasToken = true;
+				if (matchesSingleCondition(condition))
+					return true;
+				continue;
+			}
+
+			token.push_back(ch);
+		}
+
+		return !hasToken ? matchesSingleCondition(expectedConditionRaw) : false;
 	}
 
 	void CollectRunwayColorRulesFromLineTexts(const std::vector<std::string>& lineTexts, std::vector<RunwayColorRuleDefinition>& outRules)
