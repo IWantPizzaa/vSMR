@@ -30,6 +30,84 @@ std::string TagTypeToConfigKey(CSMRRadar::TagTypes type)
         return "uncorrelated";
     return "airborne";
 }
+
+bool StructuredRuleContextMatches(const StructuredTagColorRule& rule, const std::string& tagTypeKey, const char* statusDefinitionKey, bool isTagDetailed)
+{
+	const std::string currentType = ToLowerAsciiCopy(tagTypeKey);
+	const std::string currentStatus = statusDefinitionKey != nullptr ? ToLowerAsciiCopy(statusDefinitionKey) : "default";
+	const std::string currentDetail = isTagDetailed ? "detailed" : "normal";
+
+	auto matchesField = [](const std::string& value, const std::string& current) -> bool
+	{
+		const std::string normalized = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(value));
+		if (normalized.empty() || normalized == "any" || normalized == "all" || normalized == "*")
+			return true;
+		return normalized == current;
+	};
+
+	return matchesField(rule.tagType, currentType) &&
+		matchesField(rule.status, currentStatus) &&
+		matchesField(rule.detail, currentDetail);
+}
+
+VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
+	const std::vector<StructuredTagColorRule>& rules,
+	const std::string& tagTypeKey,
+	const char* statusDefinitionKey,
+	bool isTagDetailed,
+	const std::map<std::string, std::string>& replacingMap,
+	const VacdmPilotData* pilotData)
+{
+	VacdmColorRuleOverrides overrides;
+	for (const StructuredTagColorRule& rule : rules)
+	{
+		if (!StructuredRuleContextMatches(rule, tagTypeKey, statusDefinitionKey, isTagDetailed))
+			continue;
+
+		const std::string source = ToLowerAsciiCopy(rule.source);
+		bool ruleMatches = false;
+		if (source == "runway")
+		{
+			std::string actualRunway;
+			auto it = replacingMap.find(rule.token);
+			if (it != replacingMap.end())
+				actualRunway = it->second;
+			ruleMatches = RunwayRuleConditionMatches(rule.condition, actualRunway);
+		}
+		else
+		{
+			const std::string actualState = ResolveVacdmRuleStateName(rule.token, pilotData);
+			ruleMatches = VacdmRuleStateMatches(rule.condition, actualState);
+		}
+
+		if (!ruleMatches)
+			continue;
+
+		if (rule.applyTarget)
+		{
+			overrides.hasTargetColor = true;
+			overrides.targetR = rule.targetR;
+			overrides.targetG = rule.targetG;
+			overrides.targetB = rule.targetB;
+		}
+		if (rule.applyTag)
+		{
+			overrides.hasTagColor = true;
+			overrides.tagR = rule.tagR;
+			overrides.tagG = rule.tagG;
+			overrides.tagB = rule.tagB;
+		}
+		if (rule.applyText)
+		{
+			overrides.hasTextColor = true;
+			overrides.textR = rule.textR;
+			overrides.textG = rule.textG;
+			overrides.textB = rule.textB;
+		}
+	}
+
+	return overrides;
+}
 }
 
 void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled)
@@ -114,6 +192,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		bool valid = false;
 	};
 	std::unordered_map<std::string, TagDefinitionCacheEntry> tagDefinitionCache;
+	const std::vector<StructuredTagColorRule> structuredTagRules = GetStructuredTagColorRules();
 
 	auto buildParsedTagTemplates = [&](const Value& labelLines) -> std::vector<ParsedTagLineTemplate>
 	{
@@ -494,6 +573,35 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.textR = runwayTagColorOverrides.textR;
 			vacdmTagColorOverrides.textG = runwayTagColorOverrides.textG;
 			vacdmTagColorOverrides.textB = runwayTagColorOverrides.textB;
+		}
+		const VacdmColorRuleOverrides structuredTagColorOverrides =
+			EvaluateStructuredTagColorRules(
+				structuredTagRules,
+				tagTypeKey,
+				statusDefinitionKey,
+				isTagDetailled,
+				TagReplacingMap,
+				hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+		if (structuredTagColorOverrides.hasTargetColor)
+		{
+			vacdmTagColorOverrides.hasTargetColor = true;
+			vacdmTagColorOverrides.targetR = structuredTagColorOverrides.targetR;
+			vacdmTagColorOverrides.targetG = structuredTagColorOverrides.targetG;
+			vacdmTagColorOverrides.targetB = structuredTagColorOverrides.targetB;
+		}
+		if (structuredTagColorOverrides.hasTagColor)
+		{
+			vacdmTagColorOverrides.hasTagColor = true;
+			vacdmTagColorOverrides.tagR = structuredTagColorOverrides.tagR;
+			vacdmTagColorOverrides.tagG = structuredTagColorOverrides.tagG;
+			vacdmTagColorOverrides.tagB = structuredTagColorOverrides.tagB;
+		}
+		if (structuredTagColorOverrides.hasTextColor)
+		{
+			vacdmTagColorOverrides.hasTextColor = true;
+			vacdmTagColorOverrides.textR = structuredTagColorOverrides.textR;
+			vacdmTagColorOverrides.textG = structuredTagColorOverrides.textG;
+			vacdmTagColorOverrides.textB = structuredTagColorOverrides.textB;
 		}
 
 		struct RenderedTagElement
