@@ -392,9 +392,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (sItemString != nullptr &&
 			(strcmp(sItemString, "Tag Definitions") == 0 || strcmp(sItemString, "Profile Editor") == 0))
 		{
-			ShowTagDefinitionEditor = true;
-			ShowProfileColorPicker = false;
-			RequestRefresh();
+			OpenProfileEditorWindow();
 			return;
 		}
 
