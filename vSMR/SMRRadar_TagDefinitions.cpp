@@ -1039,3 +1039,408 @@ std::vector<std::string> CSMRRadar::BuildTagDefinitionPreviewLines()
 	return previewLines;
 }
 
+namespace
+{
+	int ClampRuleColorComponent(int value)
+	{
+		return std::clamp(value, 0, 255);
+	}
+
+	bool TryReadRuleColor(const rapidjson::Value& item, const char* key, bool& outApply, int& outR, int& outG, int& outB)
+	{
+		outApply = false;
+		outR = 255;
+		outG = 255;
+		outB = 255;
+
+		if (!item.IsObject() || !item.HasMember(key) || !item[key].IsObject())
+			return false;
+
+		const rapidjson::Value& color = item[key];
+		if (!color.HasMember("r") || !color["r"].IsInt() ||
+			!color.HasMember("g") || !color["g"].IsInt() ||
+			!color.HasMember("b") || !color["b"].IsInt())
+		{
+			return false;
+		}
+
+		outApply = true;
+		outR = ClampRuleColorComponent(color["r"].GetInt());
+		outG = ClampRuleColorComponent(color["g"].GetInt());
+		outB = ClampRuleColorComponent(color["b"].GetInt());
+		return true;
+	}
+
+	void AppendRuleColor(rapidjson::Value& parent, const char* key, bool apply, int r, int g, int b, rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!apply)
+			return;
+
+		rapidjson::Value colorObject(rapidjson::kObjectType);
+		colorObject.AddMember("r", ClampRuleColorComponent(r), allocator);
+		colorObject.AddMember("g", ClampRuleColorComponent(g), allocator);
+		colorObject.AddMember("b", ClampRuleColorComponent(b), allocator);
+
+		rapidjson::Value keyValue;
+		keyValue.SetString(key, allocator);
+		parent.AddMember(keyValue, colorObject, allocator);
+	}
+
+	bool StructuredRulesEqual(const StructuredTagColorRule& a, const StructuredTagColorRule& b)
+	{
+		return a.source == b.source &&
+			a.token == b.token &&
+			a.condition == b.condition &&
+			a.tagType == b.tagType &&
+			a.status == b.status &&
+			a.detail == b.detail &&
+			a.applyTarget == b.applyTarget &&
+			a.targetR == b.targetR &&
+			a.targetG == b.targetG &&
+			a.targetB == b.targetB &&
+			a.applyTag == b.applyTag &&
+			a.tagR == b.tagR &&
+			a.tagG == b.tagG &&
+			a.tagB == b.tagB &&
+			a.applyText == b.applyText &&
+			a.textR == b.textR &&
+			a.textG == b.textG &&
+			a.textB == b.textB;
+	}
+}
+
+std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) const
+{
+	std::string lowered = TrimAsciiWhitespace(source);
+	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
+		return "runway";
+	return "vacdm";
+}
+
+std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, const std::string& token) const
+{
+	std::string normalizedToken = TrimAsciiWhitespace(token);
+	std::transform(normalizedToken.begin(), normalizedToken.end(), normalizedToken.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalizedToken.empty())
+		return "";
+
+	const std::string normalizedSource = NormalizeStructuredRuleSource(source);
+	if (normalizedSource == "runway")
+	{
+		if (normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
+			return normalizedToken;
+		return "";
+	}
+
+	if (normalizedToken == "tobt" || normalizedToken == "tsat" || normalizedToken == "ttot" ||
+		normalizedToken == "asat" || normalizedToken == "aobt" || normalizedToken == "atot" ||
+		normalizedToken == "asrt" || normalizedToken == "aort" || normalizedToken == "ctot")
+	{
+		return normalizedToken;
+	}
+
+	return "";
+}
+
+std::string CSMRRadar::NormalizeStructuredRuleCondition(const std::string& source, const std::string& condition) const
+{
+	const std::string normalizedSource = NormalizeStructuredRuleSource(source);
+	std::string text = TrimAsciiWhitespace(condition);
+	if (text.empty())
+		return "any";
+
+	if (normalizedSource == "runway")
+		return text;
+
+	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	for (char& c : text)
+	{
+		if (c == ' ' || c == '-')
+			c = '_';
+	}
+	if (text.rfind("state_", 0) == 0)
+		text = text.substr(6);
+	if (text.empty())
+		return "any";
+	return text;
+}
+
+std::string CSMRRadar::NormalizeStructuredRuleTagType(const std::string& tagType) const
+{
+	std::string normalized = TrimAsciiWhitespace(tagType);
+	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalized.empty() || normalized == "all" || normalized == "*")
+		return "any";
+	if (normalized == "dep")
+		return "departure";
+	if (normalized == "arr")
+		return "arrival";
+	if (normalized == "air")
+		return "airborne";
+	if (normalized == "uncorr" || normalized == "uncor")
+		return "uncorrelated";
+	if (normalized == "departure" || normalized == "arrival" || normalized == "airborne" || normalized == "uncorrelated")
+		return normalized;
+	return "any";
+}
+
+std::string CSMRRadar::NormalizeStructuredRuleStatus(const std::string& status) const
+{
+	std::string normalized = TrimAsciiWhitespace(status);
+	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalized.empty() || normalized == "all" || normalized == "*")
+		return "any";
+	if (normalized == "def")
+		return "default";
+	return NormalizeTagDefinitionDepartureStatus(normalized);
+}
+
+std::string CSMRRadar::NormalizeStructuredRuleDetail(const std::string& detail) const
+{
+	std::string normalized = TrimAsciiWhitespace(detail);
+	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalized.empty() || normalized == "all" || normalized == "*")
+		return "any";
+	if (normalized == "normal" || normalized == "basic" || normalized == "simple")
+		return "normal";
+	if (normalized == "detailed" || normalized == "detail" || normalized == "expanded")
+		return "detailed";
+	return "any";
+}
+
+std::vector<StructuredTagColorRule> CSMRRadar::GetStructuredTagColorRules() const
+{
+	std::vector<StructuredTagColorRule> rules;
+	if (!CurrentConfig)
+		return rules;
+
+	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject())
+		return rules;
+
+	const rapidjson::Value& labels = profile["labels"];
+	if (!labels.HasMember("rules") || !labels["rules"].IsObject())
+		return rules;
+
+	const rapidjson::Value& rulesObject = labels["rules"];
+	if (!rulesObject.HasMember("items") || !rulesObject["items"].IsArray())
+		return rules;
+
+	const rapidjson::Value& items = rulesObject["items"];
+	for (rapidjson::SizeType i = 0; i < items.Size(); ++i)
+	{
+		if (!items[i].IsObject())
+			continue;
+
+		const rapidjson::Value& item = items[i];
+		StructuredTagColorRule rule;
+
+		std::string source = "vacdm";
+		if (item.HasMember("source") && item["source"].IsString())
+			source = item["source"].GetString();
+		else if (item.HasMember("kind") && item["kind"].IsString())
+			source = item["kind"].GetString();
+		rule.source = NormalizeStructuredRuleSource(source);
+
+		std::string token;
+		if (item.HasMember("token") && item["token"].IsString())
+			token = item["token"].GetString();
+		rule.token = NormalizeStructuredRuleToken(rule.source, token);
+		if (rule.token.empty())
+			continue;
+
+		std::string condition;
+		if (item.HasMember("condition") && item["condition"].IsString())
+			condition = item["condition"].GetString();
+		else if (rule.source == "runway" && item.HasMember("runway") && item["runway"].IsString())
+			condition = item["runway"].GetString();
+		else if (rule.source != "runway" && item.HasMember("state") && item["state"].IsString())
+			condition = item["state"].GetString();
+		rule.condition = NormalizeStructuredRuleCondition(rule.source, condition);
+
+		std::string tagType = "any";
+		if (item.HasMember("tag_type") && item["tag_type"].IsString())
+			tagType = item["tag_type"].GetString();
+		rule.tagType = NormalizeStructuredRuleTagType(tagType);
+
+		std::string status = "any";
+		if (item.HasMember("status") && item["status"].IsString())
+			status = item["status"].GetString();
+		rule.status = NormalizeStructuredRuleStatus(status);
+
+		std::string detail = "any";
+		if (item.HasMember("detail") && item["detail"].IsString())
+			detail = item["detail"].GetString();
+		rule.detail = NormalizeStructuredRuleDetail(detail);
+
+		TryReadRuleColor(item, "target_color", rule.applyTarget, rule.targetR, rule.targetG, rule.targetB);
+		TryReadRuleColor(item, "tag_color", rule.applyTag, rule.tagR, rule.tagG, rule.tagB);
+		TryReadRuleColor(item, "text_color", rule.applyText, rule.textR, rule.textG, rule.textB);
+
+		if (!rule.applyTarget && !rule.applyTag && !rule.applyText)
+			continue;
+
+		rules.push_back(rule);
+	}
+
+	return rules;
+}
+
+bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorRule>& rules, bool persistToDisk)
+{
+	if (!CurrentConfig)
+		return false;
+
+	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	bool changed = false;
+
+	auto ensureObjectMember = [&](rapidjson::Value& parent, const char* key) -> rapidjson::Value&
+	{
+		if (!parent.HasMember(key) || !parent[key].IsObject())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			rapidjson::Value keyValue;
+			keyValue.SetString(key, allocator);
+			rapidjson::Value objectValue(rapidjson::kObjectType);
+			parent.AddMember(keyValue, objectValue, allocator);
+			changed = true;
+		}
+
+		return parent[key];
+	};
+
+	rapidjson::Value& labels = ensureObjectMember(profile, "labels");
+	rapidjson::Value& rulesObject = ensureObjectMember(labels, "rules");
+
+	if (!rulesObject.HasMember("version") || !rulesObject["version"].IsInt() || rulesObject["version"].GetInt() != 1)
+	{
+		if (rulesObject.HasMember("version"))
+			rulesObject.RemoveMember("version");
+		rapidjson::Value keyValue;
+		keyValue.SetString("version", allocator);
+		rapidjson::Value versionValue;
+		versionValue.SetInt(1);
+		rulesObject.AddMember(keyValue, versionValue, allocator);
+		changed = true;
+	}
+
+	std::vector<StructuredTagColorRule> normalizedRules;
+	normalizedRules.reserve(rules.size());
+	for (const StructuredTagColorRule& rawRule : rules)
+	{
+		StructuredTagColorRule normalizedRule = rawRule;
+		normalizedRule.source = NormalizeStructuredRuleSource(rawRule.source);
+		normalizedRule.token = NormalizeStructuredRuleToken(normalizedRule.source, rawRule.token);
+		normalizedRule.condition = NormalizeStructuredRuleCondition(normalizedRule.source, rawRule.condition);
+		normalizedRule.tagType = NormalizeStructuredRuleTagType(rawRule.tagType);
+		normalizedRule.status = NormalizeStructuredRuleStatus(rawRule.status);
+		normalizedRule.detail = NormalizeStructuredRuleDetail(rawRule.detail);
+		normalizedRule.targetR = ClampRuleColorComponent(rawRule.targetR);
+		normalizedRule.targetG = ClampRuleColorComponent(rawRule.targetG);
+		normalizedRule.targetB = ClampRuleColorComponent(rawRule.targetB);
+		normalizedRule.tagR = ClampRuleColorComponent(rawRule.tagR);
+		normalizedRule.tagG = ClampRuleColorComponent(rawRule.tagG);
+		normalizedRule.tagB = ClampRuleColorComponent(rawRule.tagB);
+		normalizedRule.textR = ClampRuleColorComponent(rawRule.textR);
+		normalizedRule.textG = ClampRuleColorComponent(rawRule.textG);
+		normalizedRule.textB = ClampRuleColorComponent(rawRule.textB);
+
+		if (normalizedRule.token.empty())
+			continue;
+		if (!normalizedRule.applyTarget && !normalizedRule.applyTag && !normalizedRule.applyText)
+			continue;
+
+		normalizedRules.push_back(normalizedRule);
+	}
+
+	const std::vector<StructuredTagColorRule> existingRules = GetStructuredTagColorRules();
+	if (existingRules.size() != normalizedRules.size())
+	{
+		changed = true;
+	}
+	else
+	{
+		for (size_t i = 0; i < existingRules.size(); ++i)
+		{
+			if (!StructuredRulesEqual(existingRules[i], normalizedRules[i]))
+			{
+				changed = true;
+				break;
+			}
+		}
+	}
+
+	if (changed)
+	{
+		if (rulesObject.HasMember("items"))
+			rulesObject.RemoveMember("items");
+
+		rapidjson::Value rulesKey;
+		rulesKey.SetString("items", allocator);
+		rapidjson::Value rulesArray(rapidjson::kArrayType);
+		for (const StructuredTagColorRule& rule : normalizedRules)
+		{
+			rapidjson::Value ruleObject(rapidjson::kObjectType);
+
+			rapidjson::Value sourceKey;
+			sourceKey.SetString("source", allocator);
+			rapidjson::Value sourceValue;
+			sourceValue.SetString(rule.source.c_str(), static_cast<rapidjson::SizeType>(rule.source.size()), allocator);
+			ruleObject.AddMember(sourceKey, sourceValue, allocator);
+
+			rapidjson::Value tokenKey;
+			tokenKey.SetString("token", allocator);
+			rapidjson::Value tokenValue;
+			tokenValue.SetString(rule.token.c_str(), static_cast<rapidjson::SizeType>(rule.token.size()), allocator);
+			ruleObject.AddMember(tokenKey, tokenValue, allocator);
+
+			rapidjson::Value conditionKey;
+			conditionKey.SetString("condition", allocator);
+			rapidjson::Value conditionValue;
+			conditionValue.SetString(rule.condition.c_str(), static_cast<rapidjson::SizeType>(rule.condition.size()), allocator);
+			ruleObject.AddMember(conditionKey, conditionValue, allocator);
+
+			rapidjson::Value tagTypeKey;
+			tagTypeKey.SetString("tag_type", allocator);
+			rapidjson::Value tagTypeValue;
+			tagTypeValue.SetString(rule.tagType.c_str(), static_cast<rapidjson::SizeType>(rule.tagType.size()), allocator);
+			ruleObject.AddMember(tagTypeKey, tagTypeValue, allocator);
+
+			rapidjson::Value statusKey;
+			statusKey.SetString("status", allocator);
+			rapidjson::Value statusValue;
+			statusValue.SetString(rule.status.c_str(), static_cast<rapidjson::SizeType>(rule.status.size()), allocator);
+			ruleObject.AddMember(statusKey, statusValue, allocator);
+
+			rapidjson::Value detailKey;
+			detailKey.SetString("detail", allocator);
+			rapidjson::Value detailValue;
+			detailValue.SetString(rule.detail.c_str(), static_cast<rapidjson::SizeType>(rule.detail.size()), allocator);
+			ruleObject.AddMember(detailKey, detailValue, allocator);
+
+			AppendRuleColor(ruleObject, "target_color", rule.applyTarget, rule.targetR, rule.targetG, rule.targetB, allocator);
+			AppendRuleColor(ruleObject, "tag_color", rule.applyTag, rule.tagR, rule.tagG, rule.tagB, allocator);
+			AppendRuleColor(ruleObject, "text_color", rule.applyText, rule.textR, rule.textG, rule.textB, allocator);
+
+			rulesArray.PushBack(ruleObject, allocator);
+		}
+
+		rulesObject.AddMember(rulesKey, rulesArray, allocator);
+	}
+
+	if (!changed)
+		return true;
+
+	if (!persistToDisk)
+		return true;
+
+	return CurrentConfig->saveConfig();
+}
+

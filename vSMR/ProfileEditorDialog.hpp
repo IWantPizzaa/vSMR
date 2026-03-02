@@ -2,8 +2,10 @@
 
 #include "resource.h"
 #include <string>
+#include <vector>
 
 class CSMRRadar;
+struct StructuredTagColorRule;
 
 class CProfileEditorDialog : public CDialogEx
 {
@@ -39,6 +41,11 @@ protected:
 	afx_msg void OnSmallBoostToggled();
 	afx_msg void OnBoostFactorChanged();
 	afx_msg void OnBoostResolutionChanged();
+	afx_msg void OnRuleSelectionChanged();
+	afx_msg void OnRuleAddClicked();
+	afx_msg void OnRuleRemoveClicked();
+	afx_msg void OnRuleSourceChanged();
+	afx_msg void OnRuleFieldChanged();
 
 	DECLARE_MESSAGE_MAP()
 
@@ -70,7 +77,28 @@ private:
 		IDC_PE_BOOST_FACTOR_LABEL = 9122,
 		IDC_PE_BOOST_FACTOR_COMBO = 9123,
 		IDC_PE_BOOST_RES_LABEL = 9124,
-		IDC_PE_BOOST_RES_COMBO = 9125
+		IDC_PE_BOOST_RES_COMBO = 9125,
+		IDC_PE_RULE_LIST = 9126,
+		IDC_PE_RULE_ADD_BUTTON = 9127,
+		IDC_PE_RULE_REMOVE_BUTTON = 9128,
+		IDC_PE_RULE_SOURCE_LABEL = 9129,
+		IDC_PE_RULE_SOURCE_COMBO = 9130,
+		IDC_PE_RULE_TOKEN_LABEL = 9131,
+		IDC_PE_RULE_TOKEN_COMBO = 9132,
+		IDC_PE_RULE_CONDITION_LABEL = 9133,
+		IDC_PE_RULE_CONDITION_EDIT = 9134,
+		IDC_PE_RULE_TYPE_LABEL = 9135,
+		IDC_PE_RULE_TYPE_COMBO = 9136,
+		IDC_PE_RULE_STATUS_LABEL = 9137,
+		IDC_PE_RULE_STATUS_COMBO = 9138,
+		IDC_PE_RULE_DETAIL_LABEL = 9139,
+		IDC_PE_RULE_DETAIL_COMBO = 9140,
+		IDC_PE_RULE_TARGET_CHECK = 9141,
+		IDC_PE_RULE_TARGET_EDIT = 9142,
+		IDC_PE_RULE_TAG_CHECK = 9143,
+		IDC_PE_RULE_TAG_EDIT = 9144,
+		IDC_PE_RULE_TEXT_CHECK = 9145,
+		IDC_PE_RULE_TEXT_EDIT = 9146
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -107,6 +135,31 @@ private:
 	CStatic BoostResolutionLabel;
 	CComboBox BoostResolutionCombo;
 
+	CListBox RulesList;
+	CButton RuleAddButton;
+	CButton RuleRemoveButton;
+	CStatic RuleSourceLabel;
+	CComboBox RuleSourceCombo;
+	CStatic RuleTokenLabel;
+	CComboBox RuleTokenCombo;
+	CStatic RuleConditionLabel;
+	CEdit RuleConditionEdit;
+	CStatic RuleTypeLabel;
+	CComboBox RuleTypeCombo;
+	CStatic RuleStatusLabel;
+	CComboBox RuleStatusCombo;
+	CStatic RuleDetailLabel;
+	CComboBox RuleDetailCombo;
+	CButton RuleTargetCheck;
+	CEdit RuleTargetEdit;
+	CButton RuleTagCheck;
+	CEdit RuleTagEdit;
+	CButton RuleTextCheck;
+	CEdit RuleTextEdit;
+
+	std::vector<StructuredTagColorRule> RuleBuffer;
+	int SelectedRuleIndex = -1;
+
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
 	void CreateEditorControls();
@@ -116,8 +169,16 @@ private:
 	void RefreshEditorFieldsFromSelection();
 	void SyncIconControlsFromRadar();
 	void PopulateIconCombos();
+	void PopulateRuleCombos();
+	void PopulateRuleTokenCombo(const std::string& source, const std::string& selectedToken);
+	void RebuildRulesList();
+	void RefreshRuleControls();
 	bool TryReadEditInt(CEdit& edit, int& outValue) const;
 	bool TryParseHexColor(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
+	bool TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const;
+	std::string FormatRgbTriplet(int r, int g, int b) const;
+	bool ReadRuleFromControls(StructuredTagColorRule& outRule) const;
+	void ApplyRuleControlChanges(bool keepSelection);
 	double ParseComboScaleSelection(CComboBox& combo, double fallback) const;
 	void SelectComboEntryByText(CComboBox& combo, const std::string& text);
 };

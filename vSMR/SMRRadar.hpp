@@ -69,6 +69,28 @@ struct VacdmPilotData
 	bool hasBooking = false;
 };
 
+struct StructuredTagColorRule
+{
+	std::string source = "vacdm";
+	std::string token;
+	std::string condition;
+	std::string tagType = "any";
+	std::string status = "any";
+	std::string detail = "any";
+	bool applyTarget = false;
+	int targetR = 255;
+	int targetG = 255;
+	int targetB = 255;
+	bool applyTag = false;
+	int tagR = 255;
+	int tagG = 255;
+	int tagB = 255;
+	bool applyText = false;
+	int textR = 255;
+	int textG = 255;
+	int textB = 255;
+};
+
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);
 class CProfileEditorDialog;
 
@@ -369,6 +391,14 @@ public:
 	bool SetActiveLabelFontSize(int size, bool persistToDisk);
 	std::string GetActiveTagFontName() const;
 	bool SetActiveTagFontName(const std::string& fontName, bool persistToDisk);
+	std::string NormalizeStructuredRuleSource(const std::string& source) const;
+	std::string NormalizeStructuredRuleToken(const std::string& source, const std::string& token) const;
+	std::string NormalizeStructuredRuleCondition(const std::string& source, const std::string& condition) const;
+	std::string NormalizeStructuredRuleTagType(const std::string& tagType) const;
+	std::string NormalizeStructuredRuleStatus(const std::string& status) const;
+	std::string NormalizeStructuredRuleDetail(const std::string& detail) const;
+	std::vector<StructuredTagColorRule> GetStructuredTagColorRules() const;
+	bool SetStructuredTagColorRules(const std::vector<StructuredTagColorRule>& rules, bool persistToDisk);
 	Gdiplus::Bitmap* GetAircraftIcon(const std::string& acType);
 	void LoadAircraftSpecs();
 
