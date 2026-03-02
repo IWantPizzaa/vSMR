@@ -181,7 +181,7 @@
 
 **Delivery Slices TODO**
 
-1. [ ] Slice 1: modeless editor shell + window persistence + open/close wiring.
+1. [X] Slice 1: modeless editor shell + window persistence + open/close wiring.
 2. [ ] Slice 2: move existing profile color editor into shell, keep live updates.
 3. [ ] Slice 3: icon page redesign and remove old icon pseudo-menu.
 4. [ ] Slice 4: structured rules engine + migration + rules UI.

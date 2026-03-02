@@ -4,6 +4,47 @@
 
 namespace
 {
+	double ClampDouble(double value, double minValue, double maxValue)
+	{
+		if (value < minValue) return minValue;
+		if (value > maxValue) return maxValue;
+		return value;
+	}
+
+	int ClampInt(int value, int minValue, int maxValue)
+	{
+		if (value < minValue) return minValue;
+		if (value > maxValue) return maxValue;
+		return value;
+	}
+
+	void RgbToHsv(int r, int g, int b, double& h, double& s, double& v)
+	{
+		const double rf = ClampDouble(r / 255.0, 0.0, 1.0);
+		const double gf = ClampDouble(g / 255.0, 0.0, 1.0);
+		const double bf = ClampDouble(b / 255.0, 0.0, 1.0);
+
+		const double cmax = max(rf, max(gf, bf));
+		const double cmin = min(rf, min(gf, bf));
+		const double delta = cmax - cmin;
+
+		h = 0.0;
+		if (delta > 1e-9)
+		{
+			if (cmax == rf)
+				h = 60.0 * fmod(((gf - bf) / delta), 6.0);
+			else if (cmax == gf)
+				h = 60.0 * (((bf - rf) / delta) + 2.0);
+			else
+				h = 60.0 * (((rf - gf) / delta) + 4.0);
+		}
+		if (h < 0.0)
+			h += 360.0;
+
+		s = (cmax <= 1e-9) ? 0.0 : (delta / cmax);
+		v = cmax;
+	}
+
 	CRect BuildDefaultProfileEditorWindowRect()
 	{
 		const int defaultWidth = 640;
@@ -79,6 +120,7 @@ void CSMRRadar::OpenProfileEditorWindow()
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	ProfileEditorDialog->ShowWindow(SW_SHOW);
 	ProfileEditorDialog->BringWindowToTop();
+	ProfileEditorDialog->SyncFromRadar();
 
 	PersistProfileEditorWindowLayout(windowRect, true, true);
 	RequestRefresh();
@@ -245,5 +287,69 @@ bool CSMRRadar::PersistProfileEditorWindowLayout(const CRect& windowRect, bool v
 		return false;
 	}
 
+	return true;
+}
+
+std::vector<std::string> CSMRRadar::GetProfileColorPathsForEditor()
+{
+	RebuildProfileColorEntries();
+	return ProfileColorPaths;
+}
+
+std::string CSMRRadar::GetSelectedProfileColorPathForEditor() const
+{
+	return SelectedProfileColorPath;
+}
+
+bool CSMRRadar::SelectProfileColorPathForEditor(const std::string& path)
+{
+	if (!IsProfileColorPathValid(path))
+		return false;
+
+	OpenProfileColorPicker(path, true);
+	ShowProfileColorPicker = false;
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::GetSelectedProfileColorForEditor(int& r, int& g, int& b, int& a, bool& hasAlpha) const
+{
+	r = 0;
+	g = 0;
+	b = 0;
+	a = 255;
+	hasAlpha = false;
+
+	if (SelectedProfileColorPath.empty())
+		return false;
+
+	bool colorHasAlpha = false;
+	if (!const_cast<CSMRRadar*>(this)->IsProfileColorPathValid(SelectedProfileColorPath, &colorHasAlpha))
+		return false;
+
+	r = const_cast<CSMRRadar*>(this)->GetProfileColorComponentValue(SelectedProfileColorPath, 'r', 0);
+	g = const_cast<CSMRRadar*>(this)->GetProfileColorComponentValue(SelectedProfileColorPath, 'g', 0);
+	b = const_cast<CSMRRadar*>(this)->GetProfileColorComponentValue(SelectedProfileColorPath, 'b', 0);
+	a = const_cast<CSMRRadar*>(this)->GetProfileColorComponentValue(SelectedProfileColorPath, 'a', 255);
+	hasAlpha = colorHasAlpha;
+	return true;
+}
+
+bool CSMRRadar::SetSelectedProfileColorForEditor(int r, int g, int b, int a, bool useAlpha, bool persistToDisk)
+{
+	if (SelectedProfileColorPath.empty())
+		return false;
+
+	r = ClampInt(r, 0, 255);
+	g = ClampInt(g, 0, 255);
+	b = ClampInt(b, 0, 255);
+	a = ClampInt(a, 0, 255);
+
+	RgbToHsv(r, g, b, ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue);
+	ProfileColorPickerAlpha = a;
+	ProfileColorPickerHasAlpha = useAlpha || (a != 255);
+	ApplyProfileColorPicker(persistToDisk);
+	ShowProfileColorPicker = false;
+	RequestRefresh();
 	return true;
 }
