@@ -1,6 +1,7 @@
 #pragma once
 
 #include "resource.h"
+#include <map>
 #include <string>
 #include <vector>
 
@@ -29,10 +30,16 @@ protected:
 	afx_msg void OnClose();
 	afx_msg void OnMove(int x, int y);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
+	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	afx_msg void OnColorPathSelectionChanged();
 	afx_msg void OnColorPathLevelChanged();
+	afx_msg void OnColorTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnPickColorClicked();
+	afx_msg void OnApplyColorClicked();
+	afx_msg void OnResetColorClicked();
 	afx_msg void OnRefreshColorsClicked();
 	afx_msg void OnRgbEditChanged();
 	afx_msg void OnRgbaEditChanged();
@@ -55,6 +62,7 @@ protected:
 	afx_msg void OnTagLineChanged();
 	afx_msg void OnTagLineFocus();
 	afx_msg void OnTagAddTokenClicked();
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 
 	DECLARE_MESSAGE_MAP()
 
@@ -143,7 +151,30 @@ private:
 		IDC_PE_COLOR_PATH_L4 = 9181,
 		IDC_PE_COLOR_PATH_L5 = 9182,
 		IDC_PE_LABEL_RGBA = 9183,
-		IDC_PE_EDIT_RGBA = 9184
+		IDC_PE_EDIT_RGBA = 9184,
+		IDC_PE_COLOR_TREE = 9185,
+		IDC_PE_COLOR_PICKER_LABEL = 9186,
+		IDC_PE_COLOR_PICKER_SWATCH = 9187,
+		IDC_PE_COLOR_PREVIEW_LABEL = 9188,
+		IDC_PE_COLOR_PREVIEW_SWATCH = 9189,
+		IDC_PE_APPLY_BUTTON = 9190,
+		IDC_PE_RESET_BUTTON = 9191,
+		IDC_PE_COLOR_LEFT_PANEL = 9192,
+		IDC_PE_COLOR_RIGHT_PANEL = 9193,
+		IDC_PE_ICON_PANEL = 9194,
+		IDC_PE_ICON_SEPARATOR1 = 9195,
+		IDC_PE_ICON_SEPARATOR2 = 9196,
+		IDC_PE_ICON_SEPARATOR3 = 9197,
+		IDC_PE_FIXED_SCALE_SLIDER = 9198,
+		IDC_PE_BOOST_FACTOR_SLIDER = 9199,
+		IDC_PE_FIXED_SCALE_VALUE = 9200,
+		IDC_PE_BOOST_FACTOR_VALUE = 9201,
+		IDC_PE_FIXED_SCALE_TICK_MIN = 9202,
+		IDC_PE_FIXED_SCALE_TICK_MID = 9203,
+		IDC_PE_FIXED_SCALE_TICK_MAX = 9204,
+		IDC_PE_BOOST_FACTOR_TICK_MIN = 9205,
+		IDC_PE_BOOST_FACTOR_TICK_MID = 9206,
+		IDC_PE_BOOST_FACTOR_TICK_MAX = 9207
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -154,6 +185,9 @@ private:
 	CTabCtrl PageTabs;
 
 	CListBox ColorPathList;
+	CStatic ColorLeftPanel;
+	CStatic ColorRightPanel;
+	CTreeCtrl ColorPathTree;
 	CStatic ColorPathLabel;
 	CComboBox ColorPathLevel1;
 	CComboBox ColorPathLevel2;
@@ -161,6 +195,10 @@ private:
 	CComboBox ColorPathLevel4;
 	CComboBox ColorPathLevel5;
 	CStatic SelectedPathText;
+	CStatic ColorPickerLabel;
+	CStatic ColorPickerSwatch;
+	CStatic ColorPreviewLabel;
+	CStatic ColorPreviewSwatch;
 	CStatic LabelRgba;
 	CEdit EditRgba;
 	CStatic LabelR;
@@ -175,15 +213,31 @@ private:
 	CEdit EditHex;
 	CButton PickColorButton;
 	CButton RefreshButton;
+	CButton ApplyColorButton;
+	CButton ResetColorButton;
 
 	CButton IconStyleArrow;
 	CButton IconStyleDiamond;
 	CButton IconStyleRealistic;
+	CStatic IconPanel;
+	CStatic IconSeparator1;
+	CStatic IconSeparator2;
+	CStatic IconSeparator3;
 	CButton FixedPixelCheck;
 	CStatic FixedScaleLabel;
+	CStatic FixedScaleValueLabel;
+	CSliderCtrl FixedScaleSlider;
+	CStatic FixedScaleTickMinLabel;
+	CStatic FixedScaleTickMidLabel;
+	CStatic FixedScaleTickMaxLabel;
 	CComboBox FixedScaleCombo;
 	CButton SmallBoostCheck;
 	CStatic BoostFactorLabel;
+	CStatic BoostFactorValueLabel;
+	CSliderCtrl BoostFactorSlider;
+	CStatic BoostFactorTickMinLabel;
+	CStatic BoostFactorTickMidLabel;
+	CStatic BoostFactorTickMaxLabel;
 	CComboBox BoostFactorCombo;
 	CStatic BoostResolutionLabel;
 	CComboBox BoostResolutionCombo;
@@ -248,14 +302,32 @@ private:
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	int SelectedRuleIndex = -1;
 	std::vector<std::string> ColorPathEntries;
+	std::map<HTREEITEM, std::string> ColorTreeItemPaths;
+	int DraftColorR = 255;
+	int DraftColorG = 255;
+	int DraftColorB = 255;
+	int DraftColorA = 255;
+	bool DraftColorHasAlpha = false;
+	bool DraftColorValid = false;
+	CBrush ColorPickerBrush;
+	CBrush ColorPreviewBrush;
+	CBrush HeaderBarBrush;
+	CFont MonoFont;
+	CFont HeaderFont;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
 	void ForceChildRepaint();
+	void RefreshColorSwatchBrushes();
 	void CreateEditorControls();
 	void LayoutControls();
 	void UpdatePageVisibility();
 	void RebuildColorPathList();
+	void RebuildColorPathTree(const std::string& selectedPath);
+	bool SelectColorPathInTree(const std::string& path);
+	std::string GetSelectedTreePath() const;
+	void UpdateDraftColorControls();
+	void LoadDraftColorFromSelection();
 	void ApplyColorPathSelection(const std::string& selectedPath);
 	void PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment);
 	std::vector<std::string> SplitPathSegments(const std::string& path) const;
@@ -282,5 +354,8 @@ private:
 	bool ReadRuleFromControls(StructuredTagColorRule& outRule) const;
 	void ApplyRuleControlChanges(bool keepSelection);
 	double ParseComboScaleSelection(CComboBox& combo, double fallback) const;
+	double SliderPosToScale(int pos) const;
+	int ScaleToSliderPos(double scale) const;
+	void UpdateIconScaleValueLabels();
 	void SelectComboEntryByText(CComboBox& combo, const std::string& text);
 };
