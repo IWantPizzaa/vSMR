@@ -297,13 +297,6 @@ void CSMRRadar::LoadProfile(string profileName) {
 	ProfileColorPaths.clear();
 	ProfileColorPathHasAlpha.clear();
 	SelectedProfileColorPath.clear();
-	ShowProfileColorPicker = false;
-	ProfileColorPickerHasAlpha = false;
-	ProfileColorPickerDirty = false;
-	ProfileColorPickerDragWheel = false;
-	ProfileColorPickerDragValue = false;
-	ProfileColorPickerDragAlpha = false;
-	ShowTagDefinitionEditor = false;
 	TagDefinitionEditorType = "departure";
 	TagDefinitionEditorDetailed = false;
 	TagDefinitionEditorDepartureStatus = "default";
@@ -1236,173 +1229,6 @@ bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char compon
 	return true;
 }
 
-void CSMRRadar::OpenProfileColorPicker(const std::string& path, bool keepTagDefinitionEditorOpen)
-{
-	bool hasAlpha = false;
-	if (!IsProfileColorPathValid(path, &hasAlpha))
-		return;
-
-	SelectedProfileColorPath = path;
-	ProfileColorPickerHasAlpha = hasAlpha;
-
-	const int r = GetProfileColorComponentValue(path, 'r', 255);
-	const int g = GetProfileColorComponentValue(path, 'g', 255);
-	const int b = GetProfileColorComponentValue(path, 'b', 255);
-	const int a = GetProfileColorComponentValue(path, 'a', 255);
-
-	RgbToHsv(r, g, b, ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue);
-	ProfileColorPickerAlpha = ClampInt(a, 0, 255);
-	ShowProfileColorPicker = true;
-	if (!keepTagDefinitionEditorOpen)
-		ShowTagDefinitionEditor = false;
-	ProfileColorPickerDirty = false;
-	ProfileColorPickerDragWheel = false;
-	ProfileColorPickerDragValue = false;
-	ProfileColorPickerDragAlpha = false;
-
-	RequestRefresh();
-}
-
-void CSMRRadar::ApplyProfileColorPicker(bool persistToDisk)
-{
-	if (SelectedProfileColorPath.empty())
-		return;
-
-	bool hasAlpha = false;
-	if (!IsProfileColorPathValid(SelectedProfileColorPath, &hasAlpha))
-		return;
-
-	Gdiplus::Color rgb = HsvToColor(ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue, 255);
-
-	const bool okR = UpdateProfileColorComponent(SelectedProfileColorPath, 'r', rgb.GetR());
-	const bool okG = UpdateProfileColorComponent(SelectedProfileColorPath, 'g', rgb.GetG());
-	const bool okB = UpdateProfileColorComponent(SelectedProfileColorPath, 'b', rgb.GetB());
-
-	bool okA = true;
-	if (hasAlpha || ProfileColorPickerHasAlpha || ProfileColorPickerAlpha != 255)
-	{
-		okA = UpdateProfileColorComponent(SelectedProfileColorPath, 'a', ProfileColorPickerAlpha);
-		ProfileColorPickerHasAlpha = ProfileColorPickerHasAlpha || okA;
-	}
-
-	if (!(okR && okG && okB && okA))
-		return;
-
-	ProfileColorPickerDirty = true;
-
-	if (persistToDisk)
-	{
-		if (!CurrentConfig->saveConfig())
-		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save profile color to vSMR_Profiles.json", true, true, false, false, false);
-		}
-		else
-		{
-			ProfileColorPickerDirty = false;
-		}
-		RebuildProfileColorEntries();
-	}
-
-	RequestRefresh();
-}
-
-void CSMRRadar::UpdateProfileColorPickerFromPoint(const std::string& controlId, POINT pt, bool persistToDisk)
-{
-	if (!ShowProfileColorPicker)
-		return;
-
-	if (controlId == "picker_wheel")
-	{
-		int radius = min(ProfileColorPickerWheelRect.Width(), ProfileColorPickerWheelRect.Height()) / 2;
-		if (radius <= 0)
-			return;
-
-		double cx = ProfileColorPickerWheelRect.left + ProfileColorPickerWheelRect.Width() / 2.0;
-		double cy = ProfileColorPickerWheelRect.top + ProfileColorPickerWheelRect.Height() / 2.0;
-		double dx = pt.x - cx;
-		double dy = pt.y - cy;
-		double distance = sqrt(dx * dx + dy * dy);
-
-		if (distance > radius && distance > 1e-9)
-		{
-			double scale = static_cast<double>(radius) / distance;
-			dx *= scale;
-			dy *= scale;
-			distance = radius;
-		}
-
-		double angle = atan2(dy, dx) * 180.0 / PI;
-		if (angle < 0.0)
-			angle += 360.0;
-
-		ProfileColorPickerHue = angle;
-		ProfileColorPickerSaturation = ClampDouble(distance / radius, 0.0, 1.0);
-		ApplyProfileColorPicker(persistToDisk);
-		return;
-	}
-
-	if (controlId == "picker_value")
-	{
-		int height = max(1, ProfileColorPickerValueRect.Height());
-		double t = static_cast<double>(pt.y - ProfileColorPickerValueRect.top) / static_cast<double>(height);
-		t = ClampDouble(t, 0.0, 1.0);
-		ProfileColorPickerValue = 1.0 - t;
-		ApplyProfileColorPicker(persistToDisk);
-		return;
-	}
-
-	if (controlId == "picker_alpha")
-	{
-		int height = max(1, ProfileColorPickerAlphaRect.Height());
-		double t = static_cast<double>(pt.y - ProfileColorPickerAlphaRect.top) / static_cast<double>(height);
-		t = ClampDouble(t, 0.0, 1.0);
-		ProfileColorPickerAlpha = ClampInt(static_cast<int>((1.0 - t) * 255.0 + 0.5), 0, 255);
-		ApplyProfileColorPicker(persistToDisk);
-		return;
-	}
-}
-
-void CSMRRadar::EnsureProfileColorWheelBitmap(int diameter)
-{
-	if (diameter <= 0)
-		return;
-
-	if (ProfileColorWheelBitmap && ProfileColorWheelBitmapSize == diameter)
-		return;
-
-	std::unique_ptr<Gdiplus::Bitmap> bitmap(new Gdiplus::Bitmap(diameter, diameter, PixelFormat32bppARGB));
-	const double radius = diameter / 2.0;
-	const double cx = radius;
-	const double cy = radius;
-
-	for (int y = 0; y < diameter; ++y)
-	{
-		for (int x = 0; x < diameter; ++x)
-		{
-			double dx = (x + 0.5) - cx;
-			double dy = (y + 0.5) - cy;
-			double dist = sqrt(dx * dx + dy * dy);
-
-			if (dist > radius)
-			{
-				bitmap->SetPixel(x, y, Gdiplus::Color(0, 0, 0, 0));
-				continue;
-			}
-
-			double hue = atan2(dy, dx) * 180.0 / PI;
-			if (hue < 0.0)
-				hue += 360.0;
-
-			double sat = ClampDouble(dist / radius, 0.0, 1.0);
-			bitmap->SetPixel(x, y, HsvToColor(hue, sat, 1.0, 255));
-		}
-	}
-
-	ProfileColorWheelBitmap = std::move(bitmap);
-	ProfileColorWheelBitmapSize = diameter;
-}
-
-
 map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport)
 {
 	Logger::info(string(__FUNCSIG__));
@@ -2232,6 +2058,82 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double frameSmallIconBoostResolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 	const bool frameProModeEnabled = CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool();
+	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
+	const bool frameUseAspeedForGate = CurrentConfig->getActiveProfile()["labels"]["use_aspeed_for_gate"].GetBool();
+	const std::vector<StructuredTagColorRule> frameStructuredTagRules = GetStructuredTagColorRules();
+	CRadarTarget frameAselTarget = GetPlugIn()->RadarTargetSelectASEL();
+	auto structuredRuleContextMatches = [](const StructuredTagColorRule& rule, const std::string& type, const std::string& status, const std::string& detail) -> bool
+	{
+		auto normalize = [](const std::string& text) -> std::string
+		{
+			return ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(text));
+		};
+
+		auto fieldMatches = [&](const std::string& expectedRaw, const std::string& currentRaw) -> bool
+		{
+			const std::string expected = normalize(expectedRaw);
+			const std::string current = normalize(currentRaw);
+			if (expected.empty() || expected == "any" || expected == "all" || expected == "*")
+				return true;
+			return expected == current;
+		};
+
+		return fieldMatches(rule.tagType, type) &&
+			fieldMatches(rule.status, status) &&
+			fieldMatches(rule.detail, detail);
+	};
+	auto evaluateStructuredColorRules = [&](const std::string& type, const std::string& status, const std::string& detail,
+		const std::map<std::string, std::string>& replacingMap, const VacdmPilotData* pilotData) -> VacdmColorRuleOverrides
+	{
+		VacdmColorRuleOverrides overrides;
+		for (const StructuredTagColorRule& rule : frameStructuredTagRules)
+		{
+			if (!structuredRuleContextMatches(rule, type, status, detail))
+				continue;
+
+			const std::string source = ToLowerAsciiCopy(rule.source);
+			bool matches = false;
+			if (source == "runway")
+			{
+				std::string actualRunway;
+				auto itRunway = replacingMap.find(rule.token);
+				if (itRunway != replacingMap.end())
+					actualRunway = itRunway->second;
+				matches = RunwayRuleConditionMatches(rule.condition, actualRunway);
+			}
+			else
+			{
+				const std::string actualState = ResolveVacdmRuleStateName(rule.token, pilotData);
+				matches = VacdmRuleStateMatches(rule.condition, actualState);
+			}
+
+			if (!matches)
+				continue;
+
+			if (rule.applyTarget)
+			{
+				overrides.hasTargetColor = true;
+				overrides.targetR = rule.targetR;
+				overrides.targetG = rule.targetG;
+				overrides.targetB = rule.targetB;
+			}
+			if (rule.applyTag)
+			{
+				overrides.hasTagColor = true;
+				overrides.tagR = rule.tagR;
+				overrides.tagG = rule.tagG;
+				overrides.tagB = rule.tagB;
+			}
+			if (rule.applyText)
+			{
+				overrides.hasTextColor = true;
+				overrides.textR = rule.textR;
+				overrides.textG = rule.textG;
+				overrides.textB = rule.textB;
+			}
+		}
+		return overrides;
+	};
 	EuroScopePlugIn::CRadarTarget rt;
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
@@ -2474,6 +2376,29 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		CollectVacdmColorRulesFromLineTexts(vacdmRuleDefinitionLines, vacdmColorRules);
 		VacdmColorRuleOverrides vacdmColorRuleOverrides =
 			EvaluateVacdmColorRules(vacdmColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+		const bool iconIsAseL = (frameAselTarget.IsValid() && strcmp(frameAselTarget.GetCallsign(), rt.GetCallsign()) == 0);
+		const std::map<std::string, std::string> iconReplacingMap = GenerateTagData(
+			rt,
+			iconFp,
+			iconIsAseL,
+			AcisCorrelated,
+			proModeEnabled,
+			frameTransitionAltitude,
+			frameUseAspeedForGate,
+			getActiveAirport());
+		const VacdmColorRuleOverrides structuredIconColorRuleOverrides = evaluateStructuredColorRules(
+			vacdmRuleType,
+			vacdmRuleStatus,
+			"normal",
+			iconReplacingMap,
+			hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+		if (structuredIconColorRuleOverrides.hasTargetColor)
+		{
+			vacdmColorRuleOverrides.hasTargetColor = true;
+			vacdmColorRuleOverrides.targetR = structuredIconColorRuleOverrides.targetR;
+			vacdmColorRuleOverrides.targetG = structuredIconColorRuleOverrides.targetG;
+			vacdmColorRuleOverrides.targetB = structuredIconColorRuleOverrides.targetB;
+		}
 
 		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
 		const bool fixedPixelIconSize = frameFixedPixelIconSize;
@@ -3291,19 +3216,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		ShowLists["Brightness"] = false;
 	}
 
-	if (ShowLists["Profile Colors"])
-	{
-		RebuildProfileColorEntries();
-
-		GetPlugIn()->OpenPopupList(ListAreas["Profile Colors"], "Profile Colors", 1);
-		for (const std::string& colorPath : ProfileColorPaths)
-		{
-			GetPlugIn()->AddPopupListElement(colorPath.c_str(), "", RIMCAS_PROFILE_COLOR_SELECT, false, int(colorPath == SelectedProfileColorPath));
-		}
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Profile Colors"] = false;
-	}
-
 	if (ShowLists["Label"])
 	{
 		GetPlugIn()->OpenPopupList(ListAreas["Label"], "Label Brightness", 1);
@@ -3493,725 +3405,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	dc.SetTextColor(oldTextColor);
 
-	if (ShowProfileColorPicker && !SelectedProfileColorPath.empty() && !IsProfileEditorWindowVisible())
-	{
-		bool hasAlphaInJson = false;
-		if (!IsProfileColorPathValid(SelectedProfileColorPath, &hasAlphaInJson))
-		{
-			ShowProfileColorPicker = false;
-		}
-		else
-		{
-			ProfileColorPickerHasAlpha = ProfileColorPickerHasAlpha || hasAlphaInJson || ProfileColorPickerAlpha != 255;
-			const int checkerSize = 8;
-
-			const int availableWidth = max(320, RadarArea.right - RadarArea.left - 20);
-			const int availableHeight = max(240, RadarArea.bottom - RadarArea.top - 40);
-			const int panelWidth = min(430, availableWidth);
-			const int panelHeight = min(272, availableHeight);
-			const int sliderWidth = checkerSize * 3;
-			const int wheelRawSize = max(120, min(176, panelWidth - 208));
-			const int wheelSize = max(120, (wheelRawSize / checkerSize) * checkerSize);
-			int panelLeft = max(RadarArea.left + 10, RadarArea.right - panelWidth - 10);
-			int panelTop = RadarArea.top + 28;
-			if (panelTop + panelHeight > RadarArea.bottom - 10)
-				panelTop = max(RadarArea.top + 22, RadarArea.bottom - panelHeight - 10);
-
-			ProfileColorPickerPanelRect = CRect(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight);
-			ProfileColorPickerWheelRect = CRect(panelLeft + 14, panelTop + 36, panelLeft + 14 + wheelSize, panelTop + 36 + wheelSize);
-			ProfileColorPickerValueRect = CRect(ProfileColorPickerWheelRect.right + 18, ProfileColorPickerWheelRect.top, ProfileColorPickerWheelRect.right + 18 + sliderWidth, ProfileColorPickerWheelRect.bottom);
-			ProfileColorPickerAlphaRect = CRect(ProfileColorPickerValueRect.right + 12, ProfileColorPickerWheelRect.top, ProfileColorPickerValueRect.right + 12 + sliderWidth, ProfileColorPickerWheelRect.bottom);
-			const int previewLeft = ProfileColorPickerAlphaRect.right + 16;
-			const int previewMaxWidth = max(checkerSize * 6, (ProfileColorPickerPanelRect.right - 14) - previewLeft);
-			const int previewWidth = max(checkerSize * 6, (previewMaxWidth / checkerSize) * checkerSize);
-			const int previewHeight = checkerSize * 8;
-			ProfileColorPickerPreviewRect = CRect(previewLeft, ProfileColorPickerWheelRect.top, previewLeft + previewWidth, ProfileColorPickerWheelRect.top + previewHeight);
-			ProfileColorPickerRgbTextRect = CRect(ProfileColorPickerPreviewRect.left, ProfileColorPickerPreviewRect.bottom + 10, ProfileColorPickerPreviewRect.right, ProfileColorPickerPreviewRect.bottom + 34);
-			ProfileColorPickerAlphaTextRect = CRect(ProfileColorPickerPreviewRect.left, ProfileColorPickerPreviewRect.bottom + 40, ProfileColorPickerPreviewRect.right, ProfileColorPickerPreviewRect.bottom + 64);
-			ProfileColorPickerHexTextRect = CRect(ProfileColorPickerPreviewRect.left, ProfileColorPickerPreviewRect.bottom + 70, ProfileColorPickerPreviewRect.right, ProfileColorPickerPreviewRect.bottom + 94);
-			ProfileColorPickerSelectRect = CRect(ProfileColorPickerPanelRect.right - 170, ProfileColorPickerPanelRect.top + 6, ProfileColorPickerPanelRect.right - 34, ProfileColorPickerPanelRect.top + 26);
-			ProfileColorPickerCloseRect = CRect(ProfileColorPickerPanelRect.right - 28, ProfileColorPickerPanelRect.top + 6, ProfileColorPickerPanelRect.right - 8, ProfileColorPickerPanelRect.top + 26);
-
-			graphics.FillRectangle(&SolidBrush(Color(255, 32, 35, 42)), CopyRect(ProfileColorPickerPanelRect));
-			graphics.DrawRectangle(&Pen(Color(255, 220, 220, 220), 1.0f), CopyRect(ProfileColorPickerPanelRect));
-
-			std::string title = "Profile Color";
-			std::string pathLabel = SelectedProfileColorPath;
-			if (pathLabel.size() > 42)
-				pathLabel = pathLabel.substr(0, 39) + "...";
-			COLORREF pickerTextColor = dc.SetTextColor(RGB(240, 240, 240));
-			dc.TextOutA(ProfileColorPickerPanelRect.left + 10, ProfileColorPickerPanelRect.top + 8, title.c_str());
-			dc.TextOutA(ProfileColorPickerPanelRect.left + 10, ProfileColorPickerPanelRect.top + 20, pathLabel.c_str());
-			dc.SetTextColor(pickerTextColor);
-
-			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerSelectRect));
-			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180)), CopyRect(ProfileColorPickerSelectRect));
-			COLORREF pickerSelectColor = dc.SetTextColor(RGB(240, 240, 240));
-			dc.TextOutA(ProfileColorPickerSelectRect.left + 6, ProfileColorPickerSelectRect.top + 3, "Change Color...");
-			dc.SetTextColor(pickerSelectColor);
-
-			graphics.FillRectangle(&SolidBrush(Color(255, 70, 70, 70)), CopyRect(ProfileColorPickerCloseRect));
-			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180)), CopyRect(ProfileColorPickerCloseRect));
-			COLORREF pickerCloseColor = dc.SetTextColor(RGB(255, 255, 255));
-			dc.TextOutA(ProfileColorPickerCloseRect.left + 5, ProfileColorPickerCloseRect.top + 3, "X");
-			dc.SetTextColor(pickerCloseColor);
-
-			EnsureProfileColorWheelBitmap(ProfileColorPickerWheelRect.Width());
-			if (ProfileColorWheelBitmap)
-			{
-				graphics.DrawImage(ProfileColorWheelBitmap.get(),
-					ProfileColorPickerWheelRect.left,
-					ProfileColorPickerWheelRect.top,
-					ProfileColorPickerWheelRect.Width(),
-					ProfileColorPickerWheelRect.Height());
-			}
-			graphics.DrawEllipse(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerWheelRect));
-
-			const int valueHeight = max(1, ProfileColorPickerValueRect.Height());
-			const int valueDen = max(1, valueHeight - 1);
-			for (int i = 0; i < valueHeight; ++i)
-			{
-				double t = static_cast<double>(i) / static_cast<double>(valueDen);
-				Color rowColor = HsvToColor(ProfileColorPickerHue, ProfileColorPickerSaturation, 1.0 - t, 255);
-				graphics.DrawLine(&Pen(rowColor), ProfileColorPickerValueRect.left, ProfileColorPickerValueRect.top + i, ProfileColorPickerValueRect.right, ProfileColorPickerValueRect.top + i);
-			}
-			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerValueRect));
-
-			for (int y = ProfileColorPickerAlphaRect.top; y < ProfileColorPickerAlphaRect.bottom; y += checkerSize)
-			{
-				for (int x = ProfileColorPickerAlphaRect.left; x < ProfileColorPickerAlphaRect.right; x += checkerSize)
-				{
-					bool dark = (((x - ProfileColorPickerAlphaRect.left) / checkerSize) + ((y - ProfileColorPickerAlphaRect.top) / checkerSize)) % 2 == 0;
-					Color checker = dark ? Color(255, 120, 120, 120) : Color(255, 170, 170, 170);
-					graphics.FillRectangle(&SolidBrush(checker), x, y, checkerSize, checkerSize);
-				}
-			}
-
-			Color opaqueColor = HsvToColor(ProfileColorPickerHue, ProfileColorPickerSaturation, ProfileColorPickerValue, 255);
-			const int alphaHeight = max(1, ProfileColorPickerAlphaRect.Height());
-			const int alphaDen = max(1, alphaHeight - 1);
-			for (int i = 0; i < alphaHeight; ++i)
-			{
-				double t = static_cast<double>(i) / static_cast<double>(alphaDen);
-				int alpha = ClampInt(static_cast<int>((1.0 - t) * 255.0 + 0.5), 0, 255);
-				Color rowColor(alpha, opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB());
-				graphics.DrawLine(&Pen(rowColor), ProfileColorPickerAlphaRect.left, ProfileColorPickerAlphaRect.top + i, ProfileColorPickerAlphaRect.right, ProfileColorPickerAlphaRect.top + i);
-			}
-			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerAlphaRect));
-
-			// Preview swatch over checkerboard.
-			for (int y = ProfileColorPickerPreviewRect.top; y < ProfileColorPickerPreviewRect.bottom; y += checkerSize)
-			{
-				for (int x = ProfileColorPickerPreviewRect.left; x < ProfileColorPickerPreviewRect.right; x += checkerSize)
-				{
-					bool dark = (((x - ProfileColorPickerPreviewRect.left) / checkerSize) + ((y - ProfileColorPickerPreviewRect.top) / checkerSize)) % 2 == 0;
-					Color checker = dark ? Color(255, 120, 120, 120) : Color(255, 170, 170, 170);
-					graphics.FillRectangle(&SolidBrush(checker), x, y, checkerSize, checkerSize);
-				}
-			}
-			Color previewColor(ProfileColorPickerAlpha, opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB());
-			graphics.FillRectangle(&SolidBrush(previewColor), CopyRect(ProfileColorPickerPreviewRect));
-			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(ProfileColorPickerPreviewRect));
-
-			const double angle = DegToRad(ProfileColorPickerHue);
-			const double radius = min(ProfileColorPickerWheelRect.Width(), ProfileColorPickerWheelRect.Height()) / 2.0;
-			const double markerRadius = ClampDouble(ProfileColorPickerSaturation, 0.0, 1.0) * radius;
-			const double centerX = ProfileColorPickerWheelRect.left + ProfileColorPickerWheelRect.Width() / 2.0;
-			const double centerY = ProfileColorPickerWheelRect.top + ProfileColorPickerWheelRect.Height() / 2.0;
-			const int markerX = static_cast<int>(centerX + cos(angle) * markerRadius);
-			const int markerY = static_cast<int>(centerY + sin(angle) * markerRadius);
-			graphics.DrawEllipse(&Pen(Color(255, 255, 255, 255), 2.0f), markerX - 5, markerY - 5, 10, 10);
-			graphics.DrawEllipse(&Pen(Color(255, 0, 0, 0), 1.0f), markerX - 6, markerY - 6, 12, 12);
-
-			int valueMarkerY = ProfileColorPickerValueRect.top + static_cast<int>((1.0 - ProfileColorPickerValue) * ProfileColorPickerValueRect.Height());
-			valueMarkerY = ClampInt(valueMarkerY, ProfileColorPickerValueRect.top, ProfileColorPickerValueRect.bottom - 1);
-			CRect valueMarkerRect(ProfileColorPickerValueRect.left - 3, valueMarkerY - 2, ProfileColorPickerValueRect.right + 3, valueMarkerY + 2);
-			graphics.FillRectangle(&SolidBrush(Color(255, 255, 255, 255)), CopyRect(valueMarkerRect));
-			graphics.DrawRectangle(&Pen(Color(255, 30, 30, 30), 1.0f), CopyRect(valueMarkerRect));
-
-			int alphaMarkerY = ProfileColorPickerAlphaRect.top + static_cast<int>((1.0 - (ProfileColorPickerAlpha / 255.0)) * ProfileColorPickerAlphaRect.Height());
-			alphaMarkerY = ClampInt(alphaMarkerY, ProfileColorPickerAlphaRect.top, ProfileColorPickerAlphaRect.bottom - 1);
-			CRect alphaMarkerRect(ProfileColorPickerAlphaRect.left - 3, alphaMarkerY - 2, ProfileColorPickerAlphaRect.right + 3, alphaMarkerY + 2);
-			graphics.FillRectangle(&SolidBrush(Color(255, 255, 255, 255)), CopyRect(alphaMarkerRect));
-			graphics.DrawRectangle(&Pen(Color(255, 30, 30, 30), 1.0f), CopyRect(alphaMarkerRect));
-
-			std::string rgbLabel = "RGB " + std::to_string(opaqueColor.GetR()) + "," + std::to_string(opaqueColor.GetG()) + "," + std::to_string(opaqueColor.GetB());
-			std::string alphaLabel = "A " + std::to_string(ProfileColorPickerAlpha);
-			const bool includeHexAlpha = ProfileColorPickerHasAlpha || ProfileColorPickerAlpha != 255;
-			char hexBuffer[16] = { 0 };
-			if (includeHexAlpha)
-				sprintf_s(hexBuffer, sizeof(hexBuffer), "#%02X%02X%02X%02X", opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB(), ProfileColorPickerAlpha);
-			else
-				sprintf_s(hexBuffer, sizeof(hexBuffer), "#%02X%02X%02X", opaqueColor.GetR(), opaqueColor.GetG(), opaqueColor.GetB());
-			std::string hexLabel = std::string("HEX ") + hexBuffer;
-			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerRgbTextRect));
-			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(ProfileColorPickerRgbTextRect));
-			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerAlphaTextRect));
-			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(ProfileColorPickerAlphaTextRect));
-			graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(ProfileColorPickerHexTextRect));
-			graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(ProfileColorPickerHexTextRect));
-			COLORREF pickerInfoColor = dc.SetTextColor(RGB(240, 240, 240));
-			dc.TextOutA(ProfileColorPickerRgbTextRect.left + 6, ProfileColorPickerRgbTextRect.top + 4, rgbLabel.c_str());
-			dc.TextOutA(ProfileColorPickerAlphaTextRect.left + 6, ProfileColorPickerAlphaTextRect.top + 4, alphaLabel.c_str());
-			dc.TextOutA(ProfileColorPickerHexTextRect.left + 6, ProfileColorPickerHexTextRect.top + 4, hexLabel.c_str());
-			dc.SetTextColor(pickerInfoColor);
-
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_wheel", ProfileColorPickerWheelRect, true, "Hue and saturation");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_value", ProfileColorPickerValueRect, true, "Value");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_alpha", ProfileColorPickerAlphaRect, true, "Opacity");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_rgb_text", ProfileColorPickerRgbTextRect, false, "Edit RGB");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_alpha_text", ProfileColorPickerAlphaTextRect, false, "Edit opacity");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_hex_text", ProfileColorPickerHexTextRect, false, "Edit HEX");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_select_color", ProfileColorPickerSelectRect, false, "Choose another color");
-			AddScreenObject(RIMCAS_PROFILE_COLOR_PICKER, "picker_close", ProfileColorPickerCloseRect, false, "Close");
-		}
-	}
-
-	if (ShowTagDefinitionEditor && !ShowProfileColorPicker && !IsProfileEditorWindowVisible())
-	{
-		const int availableWidth = max(520, RadarArea.right - RadarArea.left - 20);
-		const int availableHeight = max(320, RadarArea.bottom - RadarArea.top - 40);
-		const int panelPadding = 8;
-		const int headerHeight = 26;
-		const int controlHeight = 22;
-		const int controlGap = 4;
-		const int splitGap = 8;
-		const int lineHeight = 22;
-		const int lineGap = 4;
-		const int leftRowsHeight = (controlHeight + controlGap) + (controlHeight + controlGap) + (controlHeight + controlGap + 2);
-		const int lineRowsHeight = (TagDefinitionEditorMaxLines * lineHeight) + (max(0, TagDefinitionEditorMaxLines - 1) * lineGap);
-		const int contentHeightNeeded = leftRowsHeight + lineRowsHeight + controlGap + controlHeight;
-		const int desiredPanelHeight = headerHeight + (panelPadding * 2) - 2 + contentHeightNeeded;
-
-		const int panelWidth = min(700, availableWidth);
-		const int panelHeight = min(availableHeight, max(246, desiredPanelHeight));
-		int panelLeft = max(RadarArea.left + 10, RadarArea.right - panelWidth - 10);
-		int panelTop = RadarArea.top + 28;
-		if (panelTop + panelHeight > RadarArea.bottom - 10)
-			panelTop = max(RadarArea.top + 22, RadarArea.bottom - panelHeight - 10);
-
-		TagDefinitionEditorPanelRect = CRect(panelLeft, panelTop, panelLeft + panelWidth, panelTop + panelHeight);
-		TagDefinitionEditorCloseRect = CRect(TagDefinitionEditorPanelRect.right - 24, TagDefinitionEditorPanelRect.top + 4, TagDefinitionEditorPanelRect.right - 6, TagDefinitionEditorPanelRect.top + 22);
-
-		CRect contentRect(
-			TagDefinitionEditorPanelRect.left + panelPadding,
-			TagDefinitionEditorPanelRect.top + headerHeight + panelPadding - 2,
-			TagDefinitionEditorPanelRect.right - panelPadding,
-			TagDefinitionEditorPanelRect.bottom - panelPadding);
-
-		const int leftColumnWidth = max(300, min(430, (contentRect.Width() * 62) / 100));
-		CRect leftColumnRect(contentRect.left, contentRect.top, contentRect.left + leftColumnWidth, contentRect.bottom);
-		CRect rightColumnRect(leftColumnRect.right + splitGap, contentRect.top, contentRect.right, contentRect.bottom);
-
-		const int dualGap = 8;
-		const int halfControlWidth = max(120, (leftColumnRect.Width() - dualGap) / 2);
-		int controlY = leftColumnRect.top;
-
-		TagDefinitionEditorTypeRect = CRect(leftColumnRect.left, controlY, leftColumnRect.left + halfControlWidth, controlY + controlHeight);
-		TagDefinitionEditorStatusRect = CRect(TagDefinitionEditorTypeRect.right + dualGap, controlY, leftColumnRect.right, controlY + controlHeight);
-		controlY += controlHeight + controlGap;
-
-		TagDefinitionEditorModeRect = CRect(leftColumnRect.left, controlY, leftColumnRect.right, controlY + controlHeight);
-		controlY += controlHeight + controlGap;
-
-		TagDefinitionEditorTargetColorRect = CRect(leftColumnRect.left, controlY, leftColumnRect.left + halfControlWidth, controlY + controlHeight);
-		TagDefinitionEditorLabelColorRect = CRect(TagDefinitionEditorTargetColorRect.right + dualGap, controlY, leftColumnRect.right, controlY + controlHeight);
-		controlY += controlHeight + controlGap + 2;
-
-		for (int i = 0; i < TagDefinitionEditorMaxLines; ++i)
-		{
-			int y0 = controlY + i * (lineHeight + lineGap);
-			TagDefinitionEditorLineRects[i] = CRect(leftColumnRect.left, y0, leftColumnRect.right, y0 + lineHeight);
-		}
-
-		const int linesBottom = TagDefinitionEditorLineRects[TagDefinitionEditorMaxLines - 1].bottom;
-		int tokenTop = linesBottom + controlGap;
-		if (tokenTop + controlHeight > leftColumnRect.bottom)
-			tokenTop = leftColumnRect.bottom - controlHeight;
-		const int tokenButtonGap = 8;
-		const int tokenButtonHalfWidth = max(120, (leftColumnRect.Width() - tokenButtonGap) / 2);
-		TagDefinitionEditorTokenButtonRect = CRect(leftColumnRect.left, tokenTop, leftColumnRect.left + tokenButtonHalfWidth, tokenTop + controlHeight);
-		TagDefinitionEditorBoldTokenButtonRect = CRect(TagDefinitionEditorTokenButtonRect.right + tokenButtonGap, tokenTop, leftColumnRect.right, tokenTop + controlHeight);
-		int previewBottom = max(rightColumnRect.top + 132, TagDefinitionEditorBoldTokenButtonRect.bottom);
-		if (previewBottom > rightColumnRect.bottom)
-			previewBottom = rightColumnRect.bottom;
-		TagDefinitionEditorPreviewRect = CRect(rightColumnRect.left, rightColumnRect.top, rightColumnRect.right, previewBottom);
-		TagDefinitionEditorTokenListRect = CRect(0, 0, 0, 0);
-
-		CRect headerRect(TagDefinitionEditorPanelRect.left + 1, TagDefinitionEditorPanelRect.top + 1, TagDefinitionEditorPanelRect.right - 1, TagDefinitionEditorPanelRect.top + headerHeight);
-		graphics.FillRectangle(&SolidBrush(Color(255, 26, 31, 40)), CopyRect(TagDefinitionEditorPanelRect));
-		graphics.FillRectangle(&SolidBrush(Color(255, 31, 38, 50)), CopyRect(headerRect));
-		graphics.DrawRectangle(&Pen(Color(255, 220, 220, 220), 1.0f), CopyRect(TagDefinitionEditorPanelRect));
-		graphics.DrawLine(&Pen(Color(255, 70, 78, 96), 1.0f), headerRect.left, headerRect.bottom, headerRect.right, headerRect.bottom);
-
-		graphics.FillRectangle(&SolidBrush(Color(255, 70, 70, 70)), CopyRect(TagDefinitionEditorCloseRect));
-		graphics.DrawRectangle(&Pen(Color(255, 180, 180, 180), 1.0f), CopyRect(TagDefinitionEditorCloseRect));
-
-		COLORREF editorHeaderColor = dc.SetTextColor(RGB(240, 240, 240));
-		dc.TextOutA(TagDefinitionEditorPanelRect.left + 10, TagDefinitionEditorPanelRect.top + 7, "Profile Editor");
-		dc.TextOutA(TagDefinitionEditorCloseRect.left + 5, TagDefinitionEditorCloseRect.top + 2, "X");
-		dc.SetTextColor(editorHeaderColor);
-
-		auto drawControlField = [&](const CRect& rect, const std::string& text, bool isDisabled)
-		{
-			CRect drawRect(rect);
-			Color fillColor = isDisabled ? Color(255, 45, 50, 60) : Color(255, 55, 62, 79);
-			Color borderColor = isDisabled ? Color(255, 100, 108, 124) : Color(255, 170, 176, 190);
-			graphics.FillRectangle(&SolidBrush(fillColor), CopyRect(drawRect));
-			graphics.DrawRectangle(&Pen(borderColor, 1.0f), CopyRect(drawRect));
-			COLORREF txt = dc.SetTextColor(isDisabled ? RGB(175, 175, 175) : RGB(235, 235, 235));
-			dc.TextOutA(drawRect.left + 6, drawRect.top + 3, text.c_str());
-			dc.SetTextColor(txt);
-		};
-
-		const std::string normalizedEditorType = NormalizeTagDefinitionType(TagDefinitionEditorType);
-		const bool hasStatusVariants = (normalizedEditorType == "departure" || normalizedEditorType == "arrival" || normalizedEditorType == "airborne");
-		drawControlField(TagDefinitionEditorTypeRect, "Type: " + TagDefinitionTypeLabel(TagDefinitionEditorType), false);
-		drawControlField(TagDefinitionEditorModeRect, std::string("Mode: ") + (TagDefinitionEditorDetailed ? "definitionDetailled" : "definition"), false);
-		drawControlField(TagDefinitionEditorStatusRect, std::string("Status: ") + (hasStatusVariants ? TagDefinitionDepartureStatusLabel(TagDefinitionEditorDepartureStatus) : "Default"), !hasStatusVariants);
-
-		const std::string targetColorPath = GetTagEditorTargetColorPath();
-		const std::string labelColorPath = GetTagEditorLabelColorPath();
-		auto drawColorSelector = [&](const CRect& rect, const std::string& caption, const std::string& colorPath)
-		{
-			const bool validPath = !colorPath.empty() && IsProfileColorPathValid(colorPath);
-			CRect drawRect(rect);
-			graphics.FillRectangle(&SolidBrush(validPath ? Color(255, 55, 62, 79) : Color(255, 45, 50, 60)), CopyRect(drawRect));
-			graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(drawRect));
-
-			std::string suffix = "n/a";
-			if (validPath)
-			{
-				size_t dotPos = colorPath.find_last_of('.');
-				suffix = (dotPos != std::string::npos && dotPos + 1 < colorPath.size()) ? colorPath.substr(dotPos + 1) : colorPath;
-			}
-
-			std::string buttonText = caption + ": " + suffix;
-			COLORREF colorLabelColor = dc.SetTextColor(validPath ? RGB(235, 235, 235) : RGB(175, 175, 175));
-			dc.TextOutA(drawRect.left + 6, drawRect.top + 3, buttonText.c_str());
-			dc.SetTextColor(colorLabelColor);
-
-			CRect swatchRect(drawRect.right - 24, drawRect.top + 4, drawRect.right - 6, drawRect.bottom - 4);
-			if (!validPath)
-				return;
-
-			const int checkerSize = 4;
-			for (int y = swatchRect.top; y < swatchRect.bottom; y += checkerSize)
-			{
-				for (int x = swatchRect.left; x < swatchRect.right; x += checkerSize)
-				{
-					bool dark = (((x - swatchRect.left) / checkerSize) + ((y - swatchRect.top) / checkerSize)) % 2 == 0;
-					graphics.FillRectangle(&SolidBrush(dark ? Color(255, 120, 120, 120) : Color(255, 170, 170, 170)), x, y, checkerSize, checkerSize);
-				}
-			}
-
-			int r = GetProfileColorComponentValue(colorPath, 'r', 255);
-			int g = GetProfileColorComponentValue(colorPath, 'g', 255);
-			int b = GetProfileColorComponentValue(colorPath, 'b', 255);
-			int a = GetProfileColorComponentValue(colorPath, 'a', 255);
-			graphics.FillRectangle(&SolidBrush(Color(a, r, g, b)), CopyRect(swatchRect));
-			graphics.DrawRectangle(&Pen(Color(255, 210, 210, 210), 1.0f), CopyRect(swatchRect));
-		};
-		drawColorSelector(TagDefinitionEditorTargetColorRect, "Target", targetColorPath);
-		drawColorSelector(TagDefinitionEditorLabelColorRect, "Label BG", labelColorPath);
-
-		std::vector<std::string> definitionLines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
-		const char* lineObjectIds[TagDefinitionEditorMaxLines] = {
-			"tagdef_line_0",
-			"tagdef_line_1",
-			"tagdef_line_2",
-			"tagdef_line_3"
-		};
-		for (int i = 0; i < TagDefinitionEditorMaxLines; ++i)
-		{
-			const bool isSelected = (i == TagDefinitionEditorSelectedLine);
-			Color fill = isSelected ? Color(255, 77, 90, 116) : Color(255, 50, 58, 72);
-			CRect lineRect = TagDefinitionEditorLineRects[i];
-			graphics.FillRectangle(&SolidBrush(fill), CopyRect(lineRect));
-			graphics.DrawRectangle(&Pen(Color(255, 170, 170, 170), 1.0f), CopyRect(lineRect));
-
-			std::string lineLabel = "L" + std::to_string(i + 1) + ": " + definitionLines[i];
-			COLORREF lineColor = dc.SetTextColor(RGB(235, 235, 235));
-			dc.TextOutA(lineRect.left + 6, lineRect.top + 3, lineLabel.c_str());
-			dc.SetTextColor(lineColor);
-
-			AddScreenObject(DRAWING_TAGDEF_EDITOR, lineObjectIds[i], lineRect, false, "Edit definition line");
-		}
-
-		graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(TagDefinitionEditorTokenButtonRect));
-		graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(TagDefinitionEditorTokenButtonRect));
-		graphics.FillRectangle(&SolidBrush(Color(255, 55, 62, 79)), CopyRect(TagDefinitionEditorBoldTokenButtonRect));
-		graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(TagDefinitionEditorBoldTokenButtonRect));
-		COLORREF tokenBtnColor = dc.SetTextColor(RGB(235, 235, 235));
-		dc.TextOutA(TagDefinitionEditorTokenButtonRect.left + 6, TagDefinitionEditorTokenButtonRect.top + 3, "Insert Token...");
-		dc.TextOutA(TagDefinitionEditorBoldTokenButtonRect.left + 6, TagDefinitionEditorBoldTokenButtonRect.top + 3, "Insert Bold...");
-		dc.SetTextColor(tokenBtnColor);
-
-		std::vector<std::string> sourcePreviewLines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
-		std::map<std::string, std::string> previewMap = BuildTagDefinitionPreviewMap(TagDefinitionEditorType);
-		struct PreviewRenderedToken
-		{
-			std::string text;
-			bool bold = false;
-			bool hasCustomColor = false;
-			int colorR = 255;
-			int colorG = 255;
-			int colorB = 255;
-		};
-		std::vector<std::vector<PreviewRenderedToken>> previewLines;
-		for (const std::string& line : sourcePreviewLines)
-		{
-			std::vector<std::string> tokens = SplitDefinitionTokens(line);
-			if (tokens.empty())
-				continue;
-
-			std::vector<PreviewRenderedToken> renderedLine;
-			bool allEmpty = true;
-			for (const std::string& rawToken : tokens)
-			{
-				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawToken);
-				std::string lookupToken = styledToken.token.empty() ? rawToken : styledToken.token;
-				VacdmColorRuleDefinition vacdmRuleToken;
-				if (TryParseVacdmColorRuleToken(lookupToken, vacdmRuleToken))
-					continue;
-				RunwayColorRuleDefinition runwayRuleToken;
-				if (TryParseRunwayColorRuleToken(lookupToken, runwayRuleToken))
-					continue;
-				std::string value;
-
-				std::string clearanceNotClearedText;
-				std::string clearanceClearedText;
-				if (TryParseClearanceTokenDisplay(lookupToken, clearanceNotClearedText, clearanceClearedText))
-				{
-					// Preview starts in "not received" state.
-					value = clearanceNotClearedText;
-				}
-				else
-				{
-					value = lookupToken;
-					auto it = previewMap.find(lookupToken);
-					if (it != previewMap.end())
-						value = it->second;
-				}
-
-				PreviewRenderedToken renderedToken;
-				renderedToken.text = value;
-				renderedToken.bold = styledToken.bold;
-				renderedToken.hasCustomColor = styledToken.hasCustomColor;
-				renderedToken.colorR = styledToken.colorR;
-				renderedToken.colorG = styledToken.colorG;
-				renderedToken.colorB = styledToken.colorB;
-				renderedLine.push_back(renderedToken);
-				if (!value.empty())
-					allEmpty = false;
-			}
-
-			if (!allEmpty)
-				previewLines.push_back(renderedLine);
-		}
-		if (previewLines.empty())
-		{
-			std::vector<PreviewRenderedToken> fallbackLine;
-			PreviewRenderedToken fallbackToken;
-			fallbackToken.text = "AFR1386 A5714";
-			fallbackToken.bold = false;
-			fallbackToken.hasCustomColor = false;
-			fallbackLine.push_back(fallbackToken);
-			previewLines.push_back(fallbackLine);
-		}
-		Color previewBackground(255, 70, 90, 140);
-		Color previewText(255, 255, 255, 255);
-		Color previewTargetColor = ColorManager->get_corrected_color("symbol", Color::White);
-		const rapidjson::Value& labelsSettings = CurrentConfig->getActiveProfile()["labels"];
-		std::string normalizedType = NormalizeTagDefinitionType(TagDefinitionEditorType);
-		if (labelsSettings.HasMember(normalizedType.c_str()) && labelsSettings[normalizedType.c_str()].IsObject())
-		{
-			const rapidjson::Value& section = labelsSettings[normalizedType.c_str()];
-			if (section.HasMember("background_color"))
-				previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["background_color"]));
-			if (section.HasMember("text_color"))
-				previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["text_color"]));
-
-			const std::string previewStatus = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
-			if ((normalizedType == "departure" || normalizedType == "arrival") &&
-				previewStatus == "nofpl" &&
-				section.HasMember("nofpl_color") &&
-				section["nofpl_color"].IsObject())
-			{
-				previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["nofpl_color"]));
-			}
-			else if ((normalizedType == "departure" || normalizedType == "arrival") &&
-				previewStatus != "default" &&
-				section.HasMember("status_background_colors") &&
-				section["status_background_colors"].IsObject() &&
-				section["status_background_colors"].HasMember(previewStatus.c_str()) &&
-				section["status_background_colors"][previewStatus.c_str()].IsObject())
-			{
-				previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["status_background_colors"][previewStatus.c_str()]));
-			}
-			else if (normalizedType == "airborne")
-			{
-				if (previewStatus == "airdep")
-				{
-					if (section.HasMember("departure_background_color") && section["departure_background_color"].IsObject())
-						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_background_color"]));
-					if (section.HasMember("departure_text_color") && section["departure_text_color"].IsObject())
-						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_text_color"]));
-				}
-				else if (previewStatus == "airarr")
-				{
-					if (section.HasMember("arrival_background_color") && section["arrival_background_color"].IsObject())
-						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_background_color"]));
-					if (section.HasMember("arrival_text_color") && section["arrival_text_color"].IsObject())
-						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_text_color"]));
-				}
-				else if (previewStatus == "airdep_onrunway")
-				{
-					if (section.HasMember("departure_background_color_on_runway") && section["departure_background_color_on_runway"].IsObject())
-						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_background_color_on_runway"]));
-					if (section.HasMember("departure_text_color") && section["departure_text_color"].IsObject())
-						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["departure_text_color"]));
-				}
-				else if (previewStatus == "airarr_onrunway")
-				{
-					if (section.HasMember("arrival_background_color_on_runway") && section["arrival_background_color_on_runway"].IsObject())
-						previewBackground = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_background_color_on_runway"]));
-					if (section.HasMember("arrival_text_color") && section["arrival_text_color"].IsObject())
-						previewText = ColorManager->get_corrected_color("label", CurrentConfig->getConfigColor(section["arrival_text_color"]));
-				}
-			}
-		}
-		if (!targetColorPath.empty() && IsProfileColorPathValid(targetColorPath))
-		{
-			const int tr = GetProfileColorComponentValue(targetColorPath, 'r', 255);
-			const int tg = GetProfileColorComponentValue(targetColorPath, 'g', 255);
-			const int tb = GetProfileColorComponentValue(targetColorPath, 'b', 255);
-			const int ta = GetProfileColorComponentValue(targetColorPath, 'a', 255);
-			previewTargetColor = ColorManager->get_corrected_color("symbol", Color(ta, tr, tg, tb));
-		}
-
-		graphics.FillRectangle(&SolidBrush(Color(255, 36, 41, 54)), CopyRect(TagDefinitionEditorPreviewRect));
-		graphics.DrawRectangle(&Pen(Color(255, 170, 176, 190), 1.0f), CopyRect(TagDefinitionEditorPreviewRect));
-		COLORREF previewTitleColor = dc.SetTextColor(RGB(230, 230, 230));
-		dc.TextOutA(TagDefinitionEditorPreviewRect.left + 6, TagDefinitionEditorPreviewRect.top + 4, "Live Preview");
-		dc.SetTextColor(previewTitleColor);
-
-		CRect previewSceneRect(TagDefinitionEditorPreviewRect.left + 8, TagDefinitionEditorPreviewRect.top + 22, TagDefinitionEditorPreviewRect.right - 8, TagDefinitionEditorPreviewRect.bottom - 8);
-		const int maxPreviewSceneWidth = 220;
-		if (previewSceneRect.Width() > maxPreviewSceneWidth)
-		{
-			int inset = (previewSceneRect.Width() - maxPreviewSceneWidth) / 2;
-			previewSceneRect.left += inset;
-			previewSceneRect.right = previewSceneRect.left + maxPreviewSceneWidth;
-		}
-		graphics.FillRectangle(&SolidBrush(Color(255, 47, 69, 103)), CopyRect(previewSceneRect));
-		graphics.DrawRectangle(&Pen(Color(90, 230, 230, 230), 1.0f), CopyRect(previewSceneRect));
-
-		POINT acPreview;
-		acPreview.x = previewSceneRect.left + max(26, previewSceneRect.Width() / 6);
-		acPreview.y = previewSceneRect.bottom - max(22, previewSceneRect.Height() / 4);
-
-		const std::string previewIconStyle = GetActiveTargetIconStyle();
-		const bool previewDiamondStyle = (previewIconStyle == "diamond");
-		const bool previewRealisticStyle = (previewIconStyle == "realistic");
-		bool iconDrawn = false;
-		if (previewRealisticStyle)
-		{
-			Bitmap* previewIcon = GetAircraftIcon("a320");
-			if (previewIcon != nullptr)
-			{
-				const double drawW = 44.0;
-				const double drawH = 44.0;
-				GraphicsState state = graphics.Save();
-				Gdiplus::Matrix m;
-				m.Translate(Gdiplus::REAL(acPreview.x), Gdiplus::REAL(acPreview.y));
-				m.Rotate(Gdiplus::REAL(-22.0f));
-				m.Translate(Gdiplus::REAL(-drawW / 2.0), Gdiplus::REAL(-drawH / 2.0));
-				graphics.SetTransform(&m);
-
-				Gdiplus::ColorMatrix cm = {
-					{
-						{ static_cast<REAL>(previewTargetColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-						{ 0.0f, static_cast<REAL>(previewTargetColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
-						{ 0.0f, 0.0f, static_cast<REAL>(previewTargetColor.GetB()) / 255.0f, 0.0f, 0.0f },
-						{ 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
-						{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
-					}
-				};
-				Gdiplus::ImageAttributes attrs;
-				attrs.SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
-				RectF dest(0.0f, 0.0f, static_cast<REAL>(drawW), static_cast<REAL>(drawH));
-				graphics.DrawImage(previewIcon, dest,
-					static_cast<Gdiplus::REAL>(0.0f), static_cast<Gdiplus::REAL>(0.0f),
-					static_cast<Gdiplus::REAL>(previewIcon->GetWidth()), static_cast<Gdiplus::REAL>(previewIcon->GetHeight()),
-					UnitPixel, &attrs);
-				graphics.Restore(state);
-				iconDrawn = true;
-			}
-		}
-		if (!iconDrawn)
-		{
-			if (previewDiamondStyle)
-			{
-				const Gdiplus::REAL sidePx = 23.0f;
-				const Gdiplus::REAL halfSide = sidePx / 2.0f;
-				const Gdiplus::REAL rectX = static_cast<Gdiplus::REAL>(acPreview.x) - halfSide;
-				const Gdiplus::REAL rectY = static_cast<Gdiplus::REAL>(acPreview.y) - halfSide;
-				const Gdiplus::REAL radius = 5.0f;
-				const Gdiplus::REAL d = radius * 2.0f;
-
-				Gdiplus::GraphicsPath diamondPath;
-				diamondPath.AddArc(rectX, rectY, d, d, 180, 90);
-				diamondPath.AddArc(rectX + sidePx - d, rectY, d, d, 270, 90);
-				diamondPath.AddArc(rectX + sidePx - d, rectY + sidePx - d, d, d, 0, 90);
-				diamondPath.AddArc(rectX, rectY + sidePx - d, d, d, 90, 90);
-				diamondPath.CloseFigure();
-
-				GraphicsState diamondState = graphics.Save();
-				Gdiplus::Matrix diamondTransform;
-				diamondTransform.RotateAt(45.0f, PointF(static_cast<Gdiplus::REAL>(acPreview.x), static_cast<Gdiplus::REAL>(acPreview.y)));
-				graphics.MultiplyTransform(&diamondTransform);
-				SolidBrush diamondBrush(previewTargetColor);
-				graphics.FillPath(&diamondBrush, &diamondPath);
-				graphics.DrawPath(&Pen(Color(180, 20, 20, 20), 1.0f), &diamondPath);
-				graphics.Restore(diamondState);
-			}
-			else
-			{
-				const double angle = DegToRad(-25.0);
-				auto rotateAndMove = [&](double x, double y) -> PointF
-				{
-					double xr = x * cos(angle) - y * sin(angle);
-					double yr = x * sin(angle) + y * cos(angle);
-					return PointF(static_cast<Gdiplus::REAL>(acPreview.x + xr), static_cast<Gdiplus::REAL>(acPreview.y + yr));
-				};
-
-				PointF arrowShape[4] = {
-					rotateAndMove(15.0, 0.0),
-					rotateAndMove(-8.0, 7.0),
-					rotateAndMove(-4.0, 0.0),
-					rotateAndMove(-8.0, -7.0)
-				};
-				SolidBrush arrowBrush(previewTargetColor);
-				graphics.FillPolygon(&arrowBrush, arrowShape, 4);
-				graphics.DrawPolygon(&Pen(Color(180, 20, 20, 20), 1.0f), arrowShape, 4);
-			}
-		}
-
-		Gdiplus::Font* previewRegularFont = customFonts[currentFontSize];
-		Gdiplus::Font* previewBoldFont = previewRegularFont;
-		std::unique_ptr<Gdiplus::Font> previewBoldFontOwned;
-		if (previewRegularFont != nullptr)
-		{
-			Gdiplus::FontFamily baseFamily;
-			if (previewRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
-			{
-				INT boldStyle = previewRegularFont->GetStyle() | Gdiplus::FontStyleBold;
-				previewBoldFontOwned.reset(new Gdiplus::Font(&baseFamily, previewRegularFont->GetSize(), boldStyle, Gdiplus::UnitPixel));
-				if (previewBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
-					previewBoldFont = previewBoldFontOwned.get();
-			}
-		}
-
-		RectF oneLineMeasure(0, 0, 0, 0);
-		graphics.MeasureString(L"AZERTY", 6, previewRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &oneLineMeasure);
-		int previewLineHeight = max(12, static_cast<int>(oneLineMeasure.GetBottom()));
-		if (previewBoldFont != nullptr && previewBoldFont != previewRegularFont)
-		{
-			RectF boldMeasure(0, 0, 0, 0);
-			graphics.MeasureString(L"AZERTY", 6, previewBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasure);
-			previewLineHeight = max(previewLineHeight, static_cast<int>(boldMeasure.GetBottom()));
-		}
-		RectF blankMeasure(0, 0, 0, 0);
-		graphics.MeasureString(L" ", 1, previewRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &blankMeasure);
-		int previewBlankWidth = max(2, static_cast<int>(blankMeasure.GetRight()));
-
-		int previewTextPaddingX = 6;
-		int previewTextPaddingY = 4;
-		int previewTagWidth = 90;
-		int previewTagHeight = previewTextPaddingY * 2;
-		for (const std::vector<PreviewRenderedToken>& line : previewLines)
-		{
-			int lineWidth = 0;
-			for (size_t i = 0; i < line.size(); ++i)
-			{
-				const PreviewRenderedToken& renderedToken = line[i];
-				std::wstring wline(renderedToken.text.begin(), renderedToken.text.end());
-				RectF measure(0, 0, 0, 0);
-				Gdiplus::Font* measureFont = renderedToken.bold ? previewBoldFont : previewRegularFont;
-				graphics.MeasureString(wline.c_str(), static_cast<int>(wline.size()), measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &measure);
-				lineWidth += static_cast<int>(measure.GetRight());
-				if (i + 1 < line.size())
-					lineWidth += previewBlankWidth;
-			}
-
-			previewTagWidth = max(previewTagWidth, lineWidth + previewTextPaddingX * 2);
-			previewTagHeight += previewLineHeight;
-		}
-
-		previewTagWidth = min(previewTagWidth, max(100, previewSceneRect.Width() - 40));
-		previewTagHeight = min(previewTagHeight, max(26, previewSceneRect.Height() - 18));
-		CRect previewTagRect(
-			previewSceneRect.right - previewTagWidth - 10,
-			previewSceneRect.top + 10,
-			previewSceneRect.right - 10,
-			previewSceneRect.top + 10 + previewTagHeight);
-
-		POINT leaderStart = { acPreview.x + 10, acPreview.y - 8 };
-		POINT leaderEnd = { previewTagRect.left + 10, previewTagRect.top + min(16, previewTagRect.Height() / 2) };
-		graphics.DrawLine(&Pen(ColorManager->get_corrected_color("symbol", Color::White), 1.3f),
-			static_cast<Gdiplus::REAL>(leaderStart.x), static_cast<Gdiplus::REAL>(leaderStart.y),
-			static_cast<Gdiplus::REAL>(leaderEnd.x), static_cast<Gdiplus::REAL>(leaderEnd.y));
-
-		graphics.FillRectangle(&SolidBrush(previewBackground), CopyRect(previewTagRect));
-		graphics.DrawRectangle(&Pen(Color(255, 240, 240, 240), 1.0f), CopyRect(previewTagRect));
-
-		int previewTextY = previewTagRect.top + previewTextPaddingY;
-		SolidBrush previewTextBrush(previewText);
-		for (const std::vector<PreviewRenderedToken>& line : previewLines)
-		{
-			if (previewTextY + previewLineHeight > previewTagRect.bottom - previewTextPaddingY)
-				break;
-
-			int previewTextX = previewTagRect.left + previewTextPaddingX;
-			for (size_t i = 0; i < line.size(); ++i)
-			{
-				const PreviewRenderedToken& renderedToken = line[i];
-				std::wstring wline(renderedToken.text.begin(), renderedToken.text.end());
-				Gdiplus::Font* drawFont = renderedToken.bold ? previewBoldFont : previewRegularFont;
-				SolidBrush* drawBrush = &previewTextBrush;
-				std::unique_ptr<SolidBrush> customPreviewBrush;
-				if (renderedToken.hasCustomColor)
-				{
-					Color customPreviewColor = ColorManager->get_corrected_color("label",
-						Color(255, renderedToken.colorR, renderedToken.colorG, renderedToken.colorB));
-					customPreviewBrush.reset(new SolidBrush(customPreviewColor));
-					drawBrush = customPreviewBrush.get();
-				}
-				graphics.DrawString(wline.c_str(), static_cast<int>(wline.size()), drawFont,
-					PointF(static_cast<Gdiplus::REAL>(previewTextX), static_cast<Gdiplus::REAL>(previewTextY)),
-					&Gdiplus::StringFormat(), drawBrush);
-
-				RectF tokenMeasure(0, 0, 0, 0);
-				graphics.MeasureString(wline.c_str(), static_cast<int>(wline.size()), drawFont, PointF(0, 0), &Gdiplus::StringFormat(), &tokenMeasure);
-				previewTextX += static_cast<int>(tokenMeasure.GetRight());
-				if (i + 1 < line.size())
-					previewTextX += previewBlankWidth;
-			}
-
-			previewTextY += previewLineHeight;
-		}
-
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_close", TagDefinitionEditorCloseRect, false, "Close definition editor");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_type", TagDefinitionEditorTypeRect, false, "Select tag type");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_mode", TagDefinitionEditorModeRect, false, "Select definition mode");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_status", TagDefinitionEditorStatusRect, false, "Select status");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_target_color", TagDefinitionEditorTargetColorRect, false, "Edit target color");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_label_color", TagDefinitionEditorLabelColorRect, false, "Edit label background color");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_insert_token", TagDefinitionEditorTokenButtonRect, false, "Insert token");
-		AddScreenObject(DRAWING_TAGDEF_EDITOR, "tagdef_insert_token_bold", TagDefinitionEditorBoldTokenButtonRect, false, "Insert bold token");
-	}
-
 	//
 	// Tag deconflicting
 	//
@@ -4360,5 +3553,6 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 			SetWindowLong(pluginWindow, GWL_WNDPROC, (LONG)gSourceProc);
 		}
 }
+
 
 

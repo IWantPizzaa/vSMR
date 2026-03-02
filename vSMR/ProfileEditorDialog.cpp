@@ -147,7 +147,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleTokenLabel.Create("Token", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TOKEN_LABEL);
 	RuleTokenCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TOKEN_COMBO);
 	RuleConditionLabel.Create("Condition", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_CONDITION_LABEL);
-	RuleConditionEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_CONDITION_EDIT);
+	RuleConditionCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_CONDITION_COMBO);
 	RuleTypeLabel.Create("Tag Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TYPE_LABEL);
 	RuleTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TYPE_COMBO);
 	RuleStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_STATUS_LABEL);
@@ -238,6 +238,45 @@ void CProfileEditorDialog::PopulateRuleCombos()
 	RuleDetailCombo.SetCurSel(0);
 
 	PopulateRuleTokenCombo("vacdm", "tobt");
+	PopulateRuleConditionCombo("vacdm", "tobt", "any");
+}
+
+void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition)
+{
+	RuleConditionCombo.ResetContent();
+
+	std::string normalizedSource = source;
+	std::transform(normalizedSource.begin(), normalizedSource.end(), normalizedSource.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	std::string normalizedToken = token;
+	std::transform(normalizedToken.begin(), normalizedToken.end(), normalizedToken.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+	std::vector<std::string> conditions;
+	if (normalizedSource == "runway")
+	{
+		conditions = { "any", "set", "missing" };
+	}
+	else if (normalizedToken == "tobt")
+	{
+		conditions = { "any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired" };
+	}
+	else if (normalizedToken == "tsat")
+	{
+		conditions = { "any", "set", "missing", "inactive", "future", "valid", "expired", "future_ctot", "valid_ctot", "expired_ctot" };
+	}
+	else
+	{
+		conditions = { "any", "set", "missing", "future", "past" };
+	}
+
+	int selectedIndex = 0;
+	for (size_t i = 0; i < conditions.size(); ++i)
+	{
+		RuleConditionCombo.AddString(conditions[i].c_str());
+		if (!selectedCondition.empty() && _stricmp(conditions[i].c_str(), selectedCondition.c_str()) == 0)
+			selectedIndex = static_cast<int>(i);
+	}
+	if (RuleConditionCombo.GetCount() > 0)
+		RuleConditionCombo.SetCurSel(selectedIndex);
 }
 
 void CProfileEditorDialog::LayoutControls()
@@ -355,7 +394,7 @@ void CProfileEditorDialog::LayoutControls()
 	rulesY += rowHeight + 6;
 
 	RuleConditionLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-	RuleConditionEdit.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight, TRUE);
+	RuleConditionCombo.MoveWindow(rulesRightLeft + rulesLabelWidth, rulesY, rulesFieldWidth, rowHeight + 180, TRUE);
 	rulesY += rowHeight + 6;
 
 	RuleTypeLabel.MoveWindow(rulesRightLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
@@ -432,7 +471,7 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleTokenLabel.ShowWindow(ruleShowMode);
 	RuleTokenCombo.ShowWindow(ruleShowMode);
 	RuleConditionLabel.ShowWindow(ruleShowMode);
-	RuleConditionEdit.ShowWindow(ruleShowMode);
+	RuleConditionCombo.ShowWindow(ruleShowMode);
 	RuleTypeLabel.ShowWindow(ruleShowMode);
 	RuleTypeCombo.ShowWindow(ruleShowMode);
 	RuleStatusLabel.ShowWindow(ruleShowMode);
@@ -726,7 +765,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 	RuleRemoveButton.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleSourceCombo.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleTokenCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleConditionEdit.EnableWindow(hasSelection ? TRUE : FALSE);
+	RuleConditionCombo.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleTypeCombo.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleStatusCombo.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleDetailCombo.EnableWindow(hasSelection ? TRUE : FALSE);
@@ -741,7 +780,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 	{
 		SelectComboEntryByText(RuleSourceCombo, "vacdm");
 		PopulateRuleTokenCombo("vacdm", "tobt");
-		RuleConditionEdit.SetWindowTextA("any");
+		PopulateRuleConditionCombo("vacdm", "tobt", "any");
 		SelectComboEntryByText(RuleTypeCombo, "any");
 		SelectComboEntryByText(RuleStatusCombo, "any");
 		SelectComboEntryByText(RuleDetailCombo, "any");
@@ -758,7 +797,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 	const StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
 	SelectComboEntryByText(RuleSourceCombo, rule.source);
 	PopulateRuleTokenCombo(rule.source, rule.token);
-	RuleConditionEdit.SetWindowTextA(rule.condition.c_str());
+	PopulateRuleConditionCombo(rule.source, rule.token, rule.condition);
 	SelectComboEntryByText(RuleTypeCombo, rule.tagType);
 	SelectComboEntryByText(RuleStatusCombo, rule.status);
 	SelectComboEntryByText(RuleDetailCombo, rule.detail);
@@ -850,9 +889,7 @@ bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule)
 	if (rule.token.empty())
 		return false;
 
-	CString conditionText;
-	const_cast<CEdit&>(RuleConditionEdit).GetWindowText(conditionText);
-	rule.condition = Owner->NormalizeStructuredRuleCondition(rule.source, std::string(conditionText.GetString()));
+	rule.condition = Owner->NormalizeStructuredRuleCondition(rule.source, readComboText(const_cast<CComboBox&>(RuleConditionCombo)));
 	rule.tagType = Owner->NormalizeStructuredRuleTagType(readComboText(const_cast<CComboBox&>(RuleTypeCombo)));
 	rule.status = Owner->NormalizeStructuredRuleStatus(readComboText(const_cast<CComboBox&>(RuleStatusCombo)));
 	rule.detail = Owner->NormalizeStructuredRuleDetail(readComboText(const_cast<CComboBox&>(RuleDetailCombo)));
@@ -986,6 +1023,11 @@ void CProfileEditorDialog::OnRuleSourceChanged()
 	RuleSourceCombo.GetLBText(sourceIndex, sourceText);
 	UpdatingControls = true;
 	PopulateRuleTokenCombo(std::string(sourceText.GetString()), "");
+	CString tokenText;
+	const int tokenIndex = RuleTokenCombo.GetCurSel();
+	if (tokenIndex != CB_ERR)
+		RuleTokenCombo.GetLBText(tokenIndex, tokenText);
+	PopulateRuleConditionCombo(std::string(sourceText.GetString()), std::string(tokenText.GetString()), "any");
 	UpdatingControls = false;
 	ApplyRuleControlChanges(true);
 }
@@ -994,6 +1036,24 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 {
 	if (UpdatingControls)
 		return;
+
+	{
+		CString sourceText;
+		CString tokenText;
+		CString selectedCondition;
+		const int sourceIndex = RuleSourceCombo.GetCurSel();
+		const int tokenIndex = RuleTokenCombo.GetCurSel();
+		const int conditionIndex = RuleConditionCombo.GetCurSel();
+		if (sourceIndex != CB_ERR)
+			RuleSourceCombo.GetLBText(sourceIndex, sourceText);
+		if (tokenIndex != CB_ERR)
+			RuleTokenCombo.GetLBText(tokenIndex, tokenText);
+		if (conditionIndex != CB_ERR)
+			RuleConditionCombo.GetLBText(conditionIndex, selectedCondition);
+		UpdatingControls = true;
+		PopulateRuleConditionCombo(std::string(sourceText.GetString()), std::string(tokenText.GetString()), std::string(selectedCondition.GetString()));
+		UpdatingControls = false;
+	}
 
 	RuleTargetEdit.EnableWindow(RuleTargetCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
 	RuleTagEdit.EnableWindow(RuleTagCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
@@ -1192,7 +1252,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_RULE_REMOVE_BUTTON, &CProfileEditorDialog::OnRuleRemoveClicked)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_SOURCE_COMBO, &CProfileEditorDialog::OnRuleSourceChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_TOKEN_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
-	ON_EN_CHANGE(IDC_PE_RULE_CONDITION_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
+	ON_CBN_SELCHANGE(IDC_PE_RULE_CONDITION_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_TYPE_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_STATUS_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_DETAIL_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
