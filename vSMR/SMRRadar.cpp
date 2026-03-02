@@ -3554,6 +3554,3 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 			SetWindowLong(pluginWindow, GWL_WNDPROC, (LONG)gSourceProc);
 		}
 }
-
-
-
