@@ -308,6 +308,9 @@ void CSMRRadar::LoadProfile(string profileName) {
 	TagDefinitionEditorDetailed = false;
 	TagDefinitionEditorDepartureStatus = "default";
 	TagDefinitionEditorSelectedLine = 0;
+
+	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
+		ProfileEditorDialog->SyncFromRadar();
 }
 
 void CSMRRadar::EnsureTargetGroundStatusColorEntries()
@@ -2865,106 +2868,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		ShowLists["Profiles"] = false;
 	}
 
-	if (ShowLists["Icons"])
-	{
-		const std::string style = GetActiveTargetIconStyle();
-		GetPlugIn()->OpenPopupList(ListAreas["Icons"], "Icons", 1);
-		GetPlugIn()->AddPopupListElement("Arrow", "", RIMCAS_UPDATE_ICON_STYLE, false, int(style == "triangle"));
-		GetPlugIn()->AddPopupListElement("Diamond", "", RIMCAS_UPDATE_ICON_STYLE, false, int(style == "diamond"));
-		GetPlugIn()->AddPopupListElement("Realistic", "", RIMCAS_UPDATE_ICON_STYLE, false, int(style == "realistic"));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Icons"] = false;
-	}
-
-	if (ShowLists["Icon Size"] || ShowLists["Size"])
-	{
-		const bool fixedPixelIconSize = GetFixedPixelTargetIconSizeEnabled();
-		RECT iconSizeArea = ListAreas["Icon Size"];
-		if (iconSizeArea.right == 0 && iconSizeArea.bottom == 0)
-			iconSizeArea = ListAreas["Size"];
-		GetPlugIn()->OpenPopupList(iconSizeArea, "Icon Size", 1);
-		GetPlugIn()->AddPopupListElement("Fixed Pixel", "", RIMCAS_TOGGLE_FIXED_PIXEL_ICON_SIZE, false, int(fixedPixelIconSize));
-		GetPlugIn()->AddPopupListElement("Fixed Size", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Boost", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Icon Size"] = false;
-		ShowLists["Size"] = false;
-	}
-
-	if (ShowLists["Fixed Size"] || ShowLists["Fixed Arrow Size"])
-	{
-		const double fixedArrowScale = GetFixedPixelTriangleIconScale();
-		auto isScaleSelected = [&](double value) -> int
-		{
-			return int(fabs(fixedArrowScale - value) < 0.001);
-		};
-		RECT fixedSizeArea = ListAreas["Fixed Size"];
-		if (fixedSizeArea.right == 0 && fixedSizeArea.bottom == 0)
-			fixedSizeArea = ListAreas["Fixed Arrow Size"];
-		GetPlugIn()->OpenPopupList(fixedSizeArea, "Fixed Size", 1);
-		GetPlugIn()->AddPopupListElement("0.10x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.10));
-		GetPlugIn()->AddPopupListElement("0.25x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.25));
-		GetPlugIn()->AddPopupListElement("0.50x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.50));
-		GetPlugIn()->AddPopupListElement("0.65x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.65));
-		GetPlugIn()->AddPopupListElement("0.80x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(0.80));
-		GetPlugIn()->AddPopupListElement("1.00x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(1.00));
-		GetPlugIn()->AddPopupListElement("1.25x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(1.25));
-		GetPlugIn()->AddPopupListElement("1.50x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(1.50));
-		GetPlugIn()->AddPopupListElement("2.00x", "", RIMCAS_UPDATE_FIXED_PIXEL_TRIANGLE_SCALE, false, isScaleSelected(2.00));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Fixed Size"] = false;
-		ShowLists["Fixed Arrow Size"] = false;
-	}
-
-	if (ShowLists["Boost"])
-	{
-		const bool smallIconBoost = GetSmallTargetIconBoostEnabled();
-		GetPlugIn()->OpenPopupList(ListAreas["Boost"], "Boost", 1);
-		GetPlugIn()->AddPopupListElement("Increment", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Small Icon Boost", "", RIMCAS_TOGGLE_SMALL_ICON_BOOST, false, int(smallIconBoost));
-		GetPlugIn()->AddPopupListElement("Resolution", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Boost"] = false;
-	}
-
-	if (ShowLists["Boost Increment"] || ShowLists["Increment"])
-	{
-		const double smallIconBoostFactor = GetSmallTargetIconBoostFactor();
-		auto isFactorSelected = [&](double value) -> int
-		{
-			return int(fabs(smallIconBoostFactor - value) < 0.001);
-		};
-		RECT boostIncrementArea = ListAreas["Increment"];
-		if (boostIncrementArea.right == 0 && boostIncrementArea.bottom == 0)
-			boostIncrementArea = ListAreas["Boost Increment"];
-		GetPlugIn()->OpenPopupList(boostIncrementArea, "Increment", 1);
-		GetPlugIn()->AddPopupListElement("0.75x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(0.75));
-		GetPlugIn()->AddPopupListElement("1.00x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(1.00));
-		GetPlugIn()->AddPopupListElement("1.25x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(1.25));
-		GetPlugIn()->AddPopupListElement("1.50x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(1.50));
-		GetPlugIn()->AddPopupListElement("2.00x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(2.00));
-		GetPlugIn()->AddPopupListElement("2.50x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(2.50));
-		GetPlugIn()->AddPopupListElement("3.00x", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_FACTOR, false, isFactorSelected(3.00));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Increment"] = false;
-		ShowLists["Boost Increment"] = false;
-	}
-
-	if (ShowLists["Boost Resolution"] || ShowLists["Resolution"])
-	{
-		const std::string preset = GetSmallTargetIconBoostResolutionPreset();
-		RECT boostResolutionArea = ListAreas["Resolution"];
-		if (boostResolutionArea.right == 0 && boostResolutionArea.bottom == 0)
-			boostResolutionArea = ListAreas["Boost Resolution"];
-		GetPlugIn()->OpenPopupList(boostResolutionArea, "Resolution", 1);
-		GetPlugIn()->AddPopupListElement("1080p", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_RESOLUTION, false, int(preset == "1080p"));
-		GetPlugIn()->AddPopupListElement("2K", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_RESOLUTION, false, int(preset == "2k"));
-		GetPlugIn()->AddPopupListElement("4K", "", RIMCAS_UPDATE_SMALL_ICON_BOOST_RESOLUTION, false, int(preset == "4k"));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Resolution"] = false;
-		ShowLists["Boost Resolution"] = false;
-	}
-
 	if (ShowLists["Colour Settings"]) {
 		GetPlugIn()->OpenPopupList(ListAreas["Colour Settings"], "Colour Settings", 1);
 		GetPlugIn()->AddPopupListElement("Day", "", RIMCAS_UPDATE_BRIGHNESS, false, int(ColorSettingsDay));
@@ -3263,7 +3166,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	dc.SetTextColor(oldTextColor);
 
-	if (ShowProfileColorPicker && !SelectedProfileColorPath.empty())
+	if (ShowProfileColorPicker && !SelectedProfileColorPath.empty() && !IsProfileEditorWindowVisible())
 	{
 		bool hasAlphaInJson = false;
 		if (!IsProfileColorPathValid(SelectedProfileColorPath, &hasAlphaInJson))

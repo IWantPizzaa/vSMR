@@ -195,11 +195,7 @@ STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICK
 CAPTION "vSMR Profile Editor"
 FONT 9, "Segoe UI", 400, 0, 0x0
 BEGIN
-    LTEXT           "Slice 1 foundation: detachable modeless window is active.",IDC_PROFILE_EDITOR_STATUS,9,9,343,12
-    GROUPBOX        "Migration Status",IDC_STATIC,7,27,346,85
-    LTEXT           "The legacy in-radar editor is still available as fallback.",IDC_STATIC,16,43,325,10
-    LTEXT           "Next slices will move tokens, color rules and icon settings here.",IDC_STATIC,16,57,325,20
-    LTEXT           "Window position and size are saved per profile in vSMR_Profiles.json.",IDC_STATIC,16,81,325,20
+    LTEXT           "",IDC_PROFILE_EDITOR_STATUS,9,9,343,12
 END
 
 

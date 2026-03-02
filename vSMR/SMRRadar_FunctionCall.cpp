@@ -249,8 +249,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			{
 				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save icon style to vSMR_Profiles.json", true, true, false, false, false);
 			}
-
-			ShowLists["Icons"] = true;
 			RequestRefresh();
 		}
 	}
@@ -262,8 +260,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		{
 			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save fixed pixel icon size to vSMR_Profiles.json", true, true, false, false, false);
 		}
-
-		ShowLists["Icon Size"] = true;
 		RequestRefresh();
 	}
 
@@ -278,8 +274,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save fixed size to vSMR_Profiles.json", true, true, false, false, false);
 			}
 		}
-
-		ShowLists["Fixed Size"] = true;
 		RequestRefresh();
 	}
 
@@ -290,8 +284,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		{
 			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save small icon boost to vSMR_Profiles.json", true, true, false, false, false);
 		}
-
-		ShowLists["Boost"] = true;
 		RequestRefresh();
 	}
 
@@ -306,8 +298,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save icon boost factor to vSMR_Profiles.json", true, true, false, false, false);
 			}
 		}
-
-		ShowLists["Increment"] = true;
 		RequestRefresh();
 	}
 
@@ -320,8 +310,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save icon boost resolution to vSMR_Profiles.json", true, true, false, false, false);
 			}
 		}
-
-		ShowLists["Resolution"] = true;
 		RequestRefresh();
 	}
 

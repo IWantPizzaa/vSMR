@@ -328,6 +328,11 @@ public:
 	bool EnsureProfileEditorWindowCreated();
 	bool PersistProfileEditorWindowLayout(const CRect& windowRect, bool visible, bool persistToDisk);
 	CRect GetProfileEditorWindowRectFromConfig() const;
+	std::vector<std::string> GetProfileColorPathsForEditor();
+	std::string GetSelectedProfileColorPathForEditor() const;
+	bool SelectProfileColorPathForEditor(const std::string& path);
+	bool GetSelectedProfileColorForEditor(int& r, int& g, int& b, int& a, bool& hasAlpha) const;
+	bool SetSelectedProfileColorForEditor(int r, int g, int b, int a, bool useAlpha, bool persistToDisk);
 	std::vector<std::string> GetTagDefinitionTokens() const;
 	std::string NormalizeTagDefinitionType(const std::string& type) const;
 	std::string TagDefinitionTypeLabel(const std::string& type) const;
