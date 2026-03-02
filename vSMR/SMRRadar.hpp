@@ -70,6 +70,7 @@ struct VacdmPilotData
 };
 
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);
+class CProfileEditorDialog;
 
 class CSMRRadar :
 	public EuroScopePlugIn::CRadarScreen
@@ -168,6 +169,7 @@ public:
 	std::unique_ptr<Gdiplus::Bitmap> ProfileColorWheelBitmap;
 	int ProfileColorWheelBitmapSize = 0;
 	bool ShowTagDefinitionEditor = false;
+	std::unique_ptr<CProfileEditorDialog> ProfileEditorDialog;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
 	std::string TagDefinitionEditorDepartureStatus = "default";
@@ -317,6 +319,15 @@ public:
 	void ApplyProfileColorPicker(bool persistToDisk);
 	void UpdateProfileColorPickerFromPoint(const std::string& controlId, POINT pt, bool persistToDisk);
 	void EnsureProfileColorWheelBitmap(int diameter);
+	void OpenProfileEditorWindow();
+	void CloseProfileEditorWindow(bool persistVisibility);
+	void DestroyProfileEditorWindow();
+	void OnProfileEditorWindowClosed();
+	void OnProfileEditorWindowLayoutChanged(const CRect& windowRect);
+	bool IsProfileEditorWindowVisible() const;
+	bool EnsureProfileEditorWindowCreated();
+	bool PersistProfileEditorWindowLayout(const CRect& windowRect, bool visible, bool persistToDisk);
+	CRect GetProfileEditorWindowRectFromConfig() const;
 	std::vector<std::string> GetTagDefinitionTokens() const;
 	std::string NormalizeTagDefinitionType(const std::string& type) const;
 	std::string TagDefinitionTypeLabel(const std::string& type) const;
@@ -572,6 +583,8 @@ public:
 	// -> we can't delete CurrentConfig just yet otherwise we can't save the active profile
 	inline virtual void OnAsrContentToBeClosed(void)
 	{
+		CloseProfileEditorWindow(false);
+		DestroyProfileEditorWindow();
 		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
 		CurrentConfig->saveConfig();
 		delete RimcasInstance;

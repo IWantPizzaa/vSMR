@@ -190,6 +190,18 @@ BEGIN
     CONTROL         "Play sound on clearance request",IDC_SOUND,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,65,128,10
 END
 
+IDD_PROFILE_EDITOR_DIALOG DIALOGEX 0, 0, 360, 230
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX
+CAPTION "vSMR Profile Editor"
+FONT 9, "Segoe UI", 400, 0, 0x0
+BEGIN
+    LTEXT           "Slice 1 foundation: detachable modeless window is active.",IDC_PROFILE_EDITOR_STATUS,9,9,343,12
+    GROUPBOX        "Migration Status",IDC_STATIC,7,27,346,85
+    LTEXT           "The legacy in-radar editor is still available as fallback.",IDC_STATIC,16,43,325,10
+    LTEXT           "Next slices will move tokens, color rules and icon settings here.",IDC_STATIC,16,57,325,20
+    LTEXT           "Window position and size are saved per profile in vSMR_Profiles.json.",IDC_STATIC,16,81,325,20
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -213,6 +225,14 @@ BEGIN
         RIGHTMARGIN, 135
         TOPMARGIN, 7
         BOTTOMMARGIN, 98
+    END
+
+    IDD_PROFILE_EDITOR_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 353
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 223
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -248,4 +268,3 @@ LANGUAGE 9, 1
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-

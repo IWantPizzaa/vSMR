@@ -7,6 +7,7 @@
 #include <cctype>
 #include "rapidjson/document.h"
 #include "SMRRadar_TagShared.hpp"
+#include "ProfileEditorDialog.hpp"
 
 ULONG_PTR m_gdiplusToken;
 CPoint mouseLocation(0, 0);
@@ -784,6 +785,14 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureArrivalStatusDefinitionEntries("arr");
 	ensureArrivalStatusDefinitionEntries("taxi");
 	ensureArrivalStatusDefinitionEntries("nofpl");
+
+	Value& uiLayout = ensureObjectMember(profile, "ui_layout");
+	Value& profileEditorWindow = ensureObjectMember(uiLayout, "profile_editor_window");
+	ensureIntMember(profileEditorWindow, "x", 120, -32768, 32767);
+	ensureIntMember(profileEditorWindow, "y", 120, -32768, 32767);
+	ensureIntMember(profileEditorWindow, "width", 640, 320, 4096);
+	ensureIntMember(profileEditorWindow, "height", 520, 220, 2160);
+	ensureBoolMember(profileEditorWindow, "visible", false);
 
 	if (changed && !CurrentConfig->saveConfig())
 	{
@@ -3428,7 +3437,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 	}
 
-	if (ShowTagDefinitionEditor && !ShowProfileColorPicker)
+	if (ShowTagDefinitionEditor && !ShowProfileColorPicker && !IsProfileEditorWindowVisible())
 	{
 		const int availableWidth = max(520, RadarArea.right - RadarArea.left - 20);
 		const int availableHeight = max(320, RadarArea.bottom - RadarArea.top - 40);
