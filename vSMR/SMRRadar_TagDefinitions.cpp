@@ -525,6 +525,24 @@ bool CSMRRadar::IsTagDefinitionStatusAllowedForType(const std::string& type, con
 	return std::find(allowedStatuses.begin(), allowedStatuses.end(), normalizedStatus) != allowedStatuses.end();
 }
 
+void CSMRRadar::GetTagDefinitionEditorContext(std::string& type, bool& detailed, std::string& status) const
+{
+	type = NormalizeTagDefinitionType(TagDefinitionEditorType);
+	detailed = TagDefinitionEditorDetailed;
+	status = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
+	if (!IsTagDefinitionStatusAllowedForType(type, status))
+		status = "default";
+}
+
+void CSMRRadar::SetTagDefinitionEditorContext(const std::string& type, bool detailed, const std::string& status)
+{
+	TagDefinitionEditorType = NormalizeTagDefinitionType(type);
+	TagDefinitionEditorDetailed = detailed;
+	TagDefinitionEditorDepartureStatus = NormalizeTagDefinitionDepartureStatus(status);
+	if (!IsTagDefinitionStatusAllowedForType(TagDefinitionEditorType, TagDefinitionEditorDepartureStatus))
+		TagDefinitionEditorDepartureStatus = "default";
+}
+
 std::string CSMRRadar::GetTagEditorTargetColorPath() const
 {
 	const std::string normalizedType = NormalizeTagDefinitionType(TagDefinitionEditorType);
@@ -1036,6 +1054,21 @@ std::vector<std::string> CSMRRadar::BuildTagDefinitionPreviewLines()
 	if (previewLines.empty())
 		previewLines.push_back("(empty definition)");
 
+	return previewLines;
+}
+
+std::vector<std::string> CSMRRadar::BuildTagDefinitionPreviewLinesForContext(const std::string& type, bool detailed, const std::string& departureStatus)
+{
+	const std::string previousType = TagDefinitionEditorType;
+	const bool previousDetailed = TagDefinitionEditorDetailed;
+	const std::string previousStatus = TagDefinitionEditorDepartureStatus;
+
+	SetTagDefinitionEditorContext(type, detailed, departureStatus);
+	std::vector<std::string> previewLines = BuildTagDefinitionPreviewLines();
+
+	TagDefinitionEditorType = previousType;
+	TagDefinitionEditorDetailed = previousDetailed;
+	TagDefinitionEditorDepartureStatus = previousStatus;
 	return previewLines;
 }
 

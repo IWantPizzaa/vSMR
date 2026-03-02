@@ -33,7 +33,7 @@ BOOL CProfileEditorDialog::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	SetDlgItemTextA(IDC_PROFILE_EDITOR_STATUS, "Profile editor detached window: Colors / Icons / Rules with live updates.");
+	SetDlgItemTextA(IDC_PROFILE_EDITOR_STATUS, "Profile editor detached window: Colors / Icons / Rules / Tag Editor with live updates.");
 
 	CreateEditorControls();
 	Initialized = true;
@@ -52,6 +52,7 @@ void CProfileEditorDialog::SyncFromRadar()
 	SyncIconControlsFromRadar();
 	RebuildRulesList();
 	RefreshRuleControls();
+	SyncTagEditorControlsFromRadar();
 	UpdatePageVisibility();
 }
 
@@ -111,6 +112,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	PageTabs.InsertItem(0, "Colors");
 	PageTabs.InsertItem(1, "Icons");
 	PageTabs.InsertItem(2, "Rules");
+	PageTabs.InsertItem(3, "Tag Editor");
 
 	ColorPathList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | LBS_NOTIFY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LIST);
 	SelectedPathText.Create("Selected: ", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
@@ -160,6 +162,39 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleTagEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_EDIT);
 	RuleTextCheck.Create("Text color", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_CHECK);
 	RuleTextEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_EDIT);
+
+	TagTypeLabel.Create("Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_LABEL);
+	TagTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_COMBO);
+	TagStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_LABEL);
+	TagStatusCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_COMBO);
+	TagDefinitionHeader.Create("Definition", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DEF_HEADER);
+	TagLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE1_LABEL);
+	TagLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE1_EDIT);
+	TagLine2Label.Create("L2", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE2_LABEL);
+	TagLine2Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE2_EDIT);
+	TagLine3Label.Create("L3", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE3_LABEL);
+	TagLine3Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE3_EDIT);
+	TagLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_LABEL);
+	TagLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_EDIT);
+	TagLinkDetailedToggle.Create("Edit detailed separately", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
+	TagDetailedHeader.Create("Definition Detailed", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_HEADER);
+	TagDetailedLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_LABEL);
+	TagDetailedLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_EDIT);
+	TagDetailedLine2Label.Create("L2", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE2_LABEL);
+	TagDetailedLine2Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE2_EDIT);
+	TagDetailedLine3Label.Create("L3", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE3_LABEL);
+	TagDetailedLine3Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE3_EDIT);
+	TagDetailedLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE4_LABEL);
+	TagDetailedLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE4_EDIT);
+	TagPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PREVIEW_LABEL);
+	TagPreviewEdit.Create(WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PREVIEW_EDIT);
+
+	TagTypeCombo.ResetContent();
+	TagTypeCombo.AddString("departure");
+	TagTypeCombo.AddString("arrival");
+	TagTypeCombo.AddString("airborne");
+	TagTypeCombo.SetCurSel(0);
+	TagLinkDetailedToggle.SetCheck(BST_UNCHECKED);
 
 	PopulateIconCombos();
 	PopulateRuleCombos();
@@ -420,6 +455,67 @@ void CProfileEditorDialog::LayoutControls()
 	RuleTextCheck.MoveWindow(rulesRightLeft, rulesY, 95, rowHeight, TRUE);
 	RuleTextEdit.MoveWindow(rulesRightLeft + 96, rulesY, max(80, rulesRightWidth - 96), rowHeight, TRUE);
 
+	const int tagLeft = pageRect.left + innerPad;
+	const int tagTop = pageRect.top + innerPad;
+	const int tagColumnGap = 10;
+	const int tagLeftWidth = max(220, (pageRect.Width() / 2) - (innerPad * 2));
+	const int tagRightLeft = tagLeft + tagLeftWidth + tagColumnGap;
+	const int tagRightWidth = max(180, pageRect.right - tagRightLeft - innerPad);
+	const int tagLabelWidth = 56;
+	const int tagFieldWidth = max(120, tagLeftWidth - tagLabelWidth - 4);
+
+	int tagY = tagTop;
+	TagTypeLabel.MoveWindow(tagLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagTypeCombo.MoveWindow(tagLeft + tagLabelWidth, tagY, tagFieldWidth, rowHeight + 180, TRUE);
+	tagY += rowHeight + 6;
+
+	TagStatusLabel.MoveWindow(tagLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagStatusCombo.MoveWindow(tagLeft + tagLabelWidth, tagY, tagFieldWidth, rowHeight + 180, TRUE);
+	tagY += rowHeight + 10;
+
+	TagDefinitionHeader.MoveWindow(tagLeft, tagY + 2, max(120, tagLeftWidth), rowHeight, TRUE);
+	tagY += rowHeight;
+
+	TagLine1Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagLine1Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagLine2Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagLine2Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagLine3Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagLine3Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagLine4Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagLine4Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 8;
+
+	TagLinkDetailedToggle.MoveWindow(tagLeft, tagY, max(180, tagLeftWidth), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagDetailedHeader.MoveWindow(tagLeft, tagY + 2, max(120, tagLeftWidth), rowHeight, TRUE);
+	tagY += rowHeight;
+
+	TagDetailedLine1Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagDetailedLine1Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagDetailedLine2Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagDetailedLine2Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagDetailedLine3Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagDetailedLine3Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+	tagY += rowHeight + 4;
+
+	TagDetailedLine4Label.MoveWindow(tagLeft, tagY + 4, 24, rowHeight, TRUE);
+	TagDetailedLine4Edit.MoveWindow(tagLeft + 26, tagY, max(120, tagLeftWidth - 26), rowHeight, TRUE);
+
+	TagPreviewLabel.MoveWindow(tagRightLeft, tagTop + 2, tagRightWidth, rowHeight, TRUE);
+	TagPreviewEdit.MoveWindow(tagRightLeft, tagTop + 20, tagRightWidth, max(100, pageRect.Height() - (innerPad * 2) - 20), TRUE);
+
 	UpdatePageVisibility();
 }
 
@@ -432,9 +528,13 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	const bool showColors = (selectedTab == 0);
 	const bool showIcons = (selectedTab == 1);
 	const bool showRules = (selectedTab == 2);
+	const bool showTagEditor = (selectedTab == 3);
+	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
 	const int colorShowMode = showColors ? SW_SHOW : SW_HIDE;
 	const int iconShowMode = showIcons ? SW_SHOW : SW_HIDE;
 	const int ruleShowMode = showRules ? SW_SHOW : SW_HIDE;
+	const int tagShowMode = showTagEditor ? SW_SHOW : SW_HIDE;
+	const int detailedTagShowMode = showDetailedTag ? SW_SHOW : SW_HIDE;
 
 	ColorPathList.ShowWindow(colorShowMode);
 	SelectedPathText.ShowWindow(colorShowMode);
@@ -484,6 +584,32 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleTagEdit.ShowWindow(ruleShowMode);
 	RuleTextCheck.ShowWindow(ruleShowMode);
 	RuleTextEdit.ShowWindow(ruleShowMode);
+
+	TagTypeLabel.ShowWindow(tagShowMode);
+	TagTypeCombo.ShowWindow(tagShowMode);
+	TagStatusLabel.ShowWindow(tagShowMode);
+	TagStatusCombo.ShowWindow(tagShowMode);
+	TagDefinitionHeader.ShowWindow(tagShowMode);
+	TagLine1Label.ShowWindow(tagShowMode);
+	TagLine1Edit.ShowWindow(tagShowMode);
+	TagLine2Label.ShowWindow(tagShowMode);
+	TagLine2Edit.ShowWindow(tagShowMode);
+	TagLine3Label.ShowWindow(tagShowMode);
+	TagLine3Edit.ShowWindow(tagShowMode);
+	TagLine4Label.ShowWindow(tagShowMode);
+	TagLine4Edit.ShowWindow(tagShowMode);
+	TagLinkDetailedToggle.ShowWindow(tagShowMode);
+	TagDetailedHeader.ShowWindow(detailedTagShowMode);
+	TagDetailedLine1Label.ShowWindow(detailedTagShowMode);
+	TagDetailedLine1Edit.ShowWindow(detailedTagShowMode);
+	TagDetailedLine2Label.ShowWindow(detailedTagShowMode);
+	TagDetailedLine2Edit.ShowWindow(detailedTagShowMode);
+	TagDetailedLine3Label.ShowWindow(detailedTagShowMode);
+	TagDetailedLine3Edit.ShowWindow(detailedTagShowMode);
+	TagDetailedLine4Label.ShowWindow(detailedTagShowMode);
+	TagDetailedLine4Edit.ShowWindow(detailedTagShowMode);
+	TagPreviewLabel.ShowWindow(tagShowMode);
+	TagPreviewEdit.ShowWindow(tagShowMode);
 }
 
 void CProfileEditorDialog::RebuildColorPathList()
@@ -814,6 +940,166 @@ void CProfileEditorDialog::RefreshRuleControls()
 	UpdatingControls = false;
 }
 
+void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
+{
+	if (Owner == nullptr)
+		return;
+
+	bool contextDetailed = false;
+	Owner->GetTagDefinitionEditorContext(TagEditorType, contextDetailed, TagEditorStatus);
+
+	const std::vector<std::string> definitionLines = Owner->GetTagDefinitionLineStrings(TagEditorType, false, 4, true, TagEditorStatus);
+	const std::vector<std::string> detailedLines = Owner->GetTagDefinitionLineStrings(TagEditorType, true, 4, true, TagEditorStatus);
+	TagEditorSeparateDetailed = contextDetailed || (definitionLines != detailedLines);
+
+	UpdatingControls = true;
+	SelectComboEntryByText(TagTypeCombo, TagEditorType);
+	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
+	UpdatingControls = false;
+
+	RefreshTagStatusOptions();
+	RefreshTagDefinitionLines();
+	RefreshTagPreview();
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::SyncDetailedTagLinesFromDefinition()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::vector<std::string> definitionLines = Owner->GetTagDefinitionLineStrings(
+		TagEditorType,
+		false,
+		4,
+		true,
+		TagEditorStatus);
+	const std::vector<std::string> detailedLines = Owner->GetTagDefinitionLineStrings(
+		TagEditorType,
+		true,
+		4,
+		true,
+		TagEditorStatus);
+
+	for (int i = 0; i < 4; ++i)
+	{
+		const std::string wanted = (i < static_cast<int>(definitionLines.size())) ? definitionLines[i] : "";
+		const std::string current = (i < static_cast<int>(detailedLines.size())) ? detailedLines[i] : "";
+		if (wanted != current)
+		{
+			Owner->SetTagDefinitionLineString(
+				TagEditorType,
+				true,
+				i,
+				wanted,
+				TagEditorStatus);
+		}
+	}
+}
+
+void CProfileEditorDialog::RefreshTagStatusOptions()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::vector<std::string> statuses = Owner->GetTagDefinitionStatusesForType(TagEditorType);
+	const std::string normalizedStatus = Owner->NormalizeTagDefinitionDepartureStatus(TagEditorStatus);
+
+	UpdatingControls = true;
+	TagStatusCombo.ResetContent();
+	int selectedIndex = 0;
+	for (size_t i = 0; i < statuses.size(); ++i)
+	{
+		TagStatusCombo.AddString(statuses[i].c_str());
+		if (_stricmp(statuses[i].c_str(), normalizedStatus.c_str()) == 0)
+			selectedIndex = static_cast<int>(i);
+	}
+	if (TagStatusCombo.GetCount() > 0)
+		TagStatusCombo.SetCurSel(selectedIndex);
+	UpdatingControls = false;
+
+	if (TagStatusCombo.GetCount() > 0)
+	{
+		CString selectedStatus;
+		TagStatusCombo.GetLBText(TagStatusCombo.GetCurSel(), selectedStatus);
+		TagEditorStatus = Owner->NormalizeTagDefinitionDepartureStatus(std::string(selectedStatus.GetString()));
+	}
+	else
+	{
+		TagEditorStatus = "default";
+	}
+}
+
+void CProfileEditorDialog::RefreshTagDefinitionLines()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::vector<std::string> lines = Owner->GetTagDefinitionLineStrings(
+		TagEditorType,
+		false,
+		4,
+		true,
+		TagEditorStatus);
+	const std::vector<std::string> detailedLines = Owner->GetTagDefinitionLineStrings(
+		TagEditorType,
+		true,
+		4,
+		true,
+		TagEditorStatus);
+
+	UpdatingControls = true;
+	TagLine1Edit.SetWindowTextA(lines.size() > 0 ? lines[0].c_str() : "");
+	TagLine2Edit.SetWindowTextA(lines.size() > 1 ? lines[1].c_str() : "");
+	TagLine3Edit.SetWindowTextA(lines.size() > 2 ? lines[2].c_str() : "");
+	TagLine4Edit.SetWindowTextA(lines.size() > 3 ? lines[3].c_str() : "");
+	TagDetailedLine1Edit.SetWindowTextA(detailedLines.size() > 0 ? detailedLines[0].c_str() : "");
+	TagDetailedLine2Edit.SetWindowTextA(detailedLines.size() > 1 ? detailedLines[1].c_str() : "");
+	TagDetailedLine3Edit.SetWindowTextA(detailedLines.size() > 2 ? detailedLines[2].c_str() : "");
+	TagDetailedLine4Edit.SetWindowTextA(detailedLines.size() > 3 ? detailedLines[3].c_str() : "");
+	UpdatingControls = false;
+}
+
+void CProfileEditorDialog::RefreshTagPreview()
+{
+	if (Owner == nullptr)
+		return;
+
+	Owner->SetTagDefinitionEditorContext(TagEditorType, false, TagEditorStatus);
+	const std::vector<std::string> definitionPreviewLines = Owner->BuildTagDefinitionPreviewLinesForContext(
+		TagEditorType,
+		false,
+		TagEditorStatus);
+
+	std::string previewText;
+	previewText += "Definition";
+	previewText += "\r\n";
+	for (size_t i = 0; i < definitionPreviewLines.size(); ++i)
+	{
+		previewText += definitionPreviewLines[i];
+		if (i + 1 < definitionPreviewLines.size())
+			previewText += "\r\n";
+	}
+
+	if (TagEditorSeparateDetailed)
+	{
+		const std::vector<std::string> detailedPreviewLines = Owner->BuildTagDefinitionPreviewLinesForContext(
+			TagEditorType,
+			true,
+			TagEditorStatus);
+		previewText += "\r\n\r\nDefinition Detailed";
+		previewText += "\r\n";
+		for (size_t i = 0; i < detailedPreviewLines.size(); ++i)
+		{
+			previewText += detailedPreviewLines[i];
+			if (i + 1 < detailedPreviewLines.size())
+				previewText += "\r\n";
+		}
+	}
+
+	TagPreviewEdit.SetWindowTextA(previewText.c_str());
+}
+
 bool CProfileEditorDialog::TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const
 {
 	std::vector<int> values;
@@ -1061,6 +1347,154 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 	ApplyRuleControlChanges(true);
 }
 
+void CProfileEditorDialog::OnTagTypeChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const int selected = TagTypeCombo.GetCurSel();
+	if (selected == CB_ERR)
+		return;
+
+	CString selectedType;
+	TagTypeCombo.GetLBText(selected, selectedType);
+	TagEditorType = Owner->NormalizeTagDefinitionType(std::string(selectedType.GetString()));
+	RefreshTagStatusOptions();
+
+	Owner->SetTagDefinitionEditorContext(TagEditorType, false, TagEditorStatus);
+	if (!TagEditorSeparateDetailed)
+		SyncDetailedTagLinesFromDefinition();
+	RefreshTagDefinitionLines();
+	RefreshTagPreview();
+	Owner->RequestRefresh();
+}
+
+void CProfileEditorDialog::OnTagLinkToggleChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	TagEditorSeparateDetailed = (TagLinkDetailedToggle.GetCheck() == BST_CHECKED);
+	if (!TagEditorSeparateDetailed)
+		SyncDetailedTagLinesFromDefinition();
+
+	Owner->SetTagDefinitionEditorContext(TagEditorType, false, TagEditorStatus);
+	RefreshTagDefinitionLines();
+	RefreshTagPreview();
+	UpdatePageVisibility();
+	Owner->RequestRefresh();
+}
+
+void CProfileEditorDialog::OnTagStatusChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const int selected = TagStatusCombo.GetCurSel();
+	if (selected == CB_ERR)
+		return;
+
+	CString selectedStatus;
+	TagStatusCombo.GetLBText(selected, selectedStatus);
+	TagEditorStatus = Owner->NormalizeTagDefinitionDepartureStatus(std::string(selectedStatus.GetString()));
+	Owner->SetTagDefinitionEditorContext(TagEditorType, false, TagEditorStatus);
+	if (!TagEditorSeparateDetailed)
+		SyncDetailedTagLinesFromDefinition();
+	RefreshTagDefinitionLines();
+	RefreshTagPreview();
+	Owner->RequestRefresh();
+}
+
+void CProfileEditorDialog::OnTagLineChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	CWnd* focused = GetFocus();
+	if (focused == nullptr)
+		return;
+
+	int lineIndex = -1;
+	bool editingDetailed = false;
+	CEdit* sourceEdit = nullptr;
+	switch (focused->GetDlgCtrlID())
+	{
+	case IDC_PE_TAG_LINE1_EDIT:
+		lineIndex = 0;
+		sourceEdit = &TagLine1Edit;
+		break;
+	case IDC_PE_TAG_LINE2_EDIT:
+		lineIndex = 1;
+		sourceEdit = &TagLine2Edit;
+		break;
+	case IDC_PE_TAG_LINE3_EDIT:
+		lineIndex = 2;
+		sourceEdit = &TagLine3Edit;
+		break;
+	case IDC_PE_TAG_LINE4_EDIT:
+		lineIndex = 3;
+		sourceEdit = &TagLine4Edit;
+		break;
+	case IDC_PE_TAG_D_LINE1_EDIT:
+		lineIndex = 0;
+		editingDetailed = true;
+		sourceEdit = &TagDetailedLine1Edit;
+		break;
+	case IDC_PE_TAG_D_LINE2_EDIT:
+		lineIndex = 1;
+		editingDetailed = true;
+		sourceEdit = &TagDetailedLine2Edit;
+		break;
+	case IDC_PE_TAG_D_LINE3_EDIT:
+		lineIndex = 2;
+		editingDetailed = true;
+		sourceEdit = &TagDetailedLine3Edit;
+		break;
+	case IDC_PE_TAG_D_LINE4_EDIT:
+		lineIndex = 3;
+		editingDetailed = true;
+		sourceEdit = &TagDetailedLine4Edit;
+		break;
+	default:
+		return;
+	}
+
+	if (editingDetailed && !TagEditorSeparateDetailed)
+		return;
+
+	CString lineText;
+	sourceEdit->GetWindowText(lineText);
+	const std::string newValue = lineText.GetString();
+
+	const std::vector<std::string> existingLines = Owner->GetTagDefinitionLineStrings(
+		TagEditorType,
+		editingDetailed,
+		4,
+		true,
+		TagEditorStatus);
+	if (lineIndex < static_cast<int>(existingLines.size()) && existingLines[lineIndex] == newValue)
+		return;
+
+	Owner->SetTagDefinitionEditorContext(TagEditorType, false, TagEditorStatus);
+	Owner->SetTagDefinitionLineString(
+		TagEditorType,
+		editingDetailed,
+		lineIndex,
+		newValue,
+		TagEditorStatus);
+
+	if (!editingDetailed && !TagEditorSeparateDetailed)
+	{
+		Owner->SetTagDefinitionLineString(
+			TagEditorType,
+			true,
+			lineIndex,
+			newValue,
+			TagEditorStatus);
+	}
+	RefreshTagPreview();
+}
+
 void CProfileEditorDialog::OnColorPathSelectionChanged()
 {
 	if (UpdatingControls || Owner == nullptr)
@@ -1148,6 +1582,8 @@ void CProfileEditorDialog::OnHexEditChanged()
 void CProfileEditorDialog::OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	(void)pNMHDR;
+	if (PageTabs.GetCurSel() == 3)
+		SyncTagEditorControlsFromRadar();
 	UpdatePageVisibility();
 	if (pResult != nullptr)
 		*pResult = 0;
@@ -1262,4 +1698,15 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_EN_CHANGE(IDC_PE_RULE_TAG_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_BN_CLICKED(IDC_PE_RULE_TEXT_CHECK, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_EN_CHANGE(IDC_PE_RULE_TEXT_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
+	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)
+	ON_CBN_SELCHANGE(IDC_PE_TAG_STATUS_COMBO, &CProfileEditorDialog::OnTagStatusChanged)
+	ON_BN_CLICKED(IDC_PE_TAG_LINK_DETAILED, &CProfileEditorDialog::OnTagLinkToggleChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_LINE1_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_LINE2_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_LINE3_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_LINE4_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_D_LINE1_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_D_LINE2_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_D_LINE3_EDIT, &CProfileEditorDialog::OnTagLineChanged)
+	ON_EN_CHANGE(IDC_PE_TAG_D_LINE4_EDIT, &CProfileEditorDialog::OnTagLineChanged)
 END_MESSAGE_MAP()

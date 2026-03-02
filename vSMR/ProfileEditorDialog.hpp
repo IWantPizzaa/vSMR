@@ -46,6 +46,10 @@ protected:
 	afx_msg void OnRuleRemoveClicked();
 	afx_msg void OnRuleSourceChanged();
 	afx_msg void OnRuleFieldChanged();
+	afx_msg void OnTagTypeChanged();
+	afx_msg void OnTagStatusChanged();
+	afx_msg void OnTagLinkToggleChanged();
+	afx_msg void OnTagLineChanged();
 
 	DECLARE_MESSAGE_MAP()
 
@@ -98,7 +102,32 @@ private:
 		IDC_PE_RULE_TAG_CHECK = 9143,
 		IDC_PE_RULE_TAG_EDIT = 9144,
 		IDC_PE_RULE_TEXT_CHECK = 9145,
-		IDC_PE_RULE_TEXT_EDIT = 9146
+		IDC_PE_RULE_TEXT_EDIT = 9146,
+		IDC_PE_TAG_TYPE_LABEL = 9147,
+		IDC_PE_TAG_TYPE_COMBO = 9148,
+		IDC_PE_TAG_STATUS_LABEL = 9151,
+		IDC_PE_TAG_STATUS_COMBO = 9152,
+		IDC_PE_TAG_DEF_HEADER = 9153,
+		IDC_PE_TAG_LINE1_LABEL = 9154,
+		IDC_PE_TAG_LINE1_EDIT = 9155,
+		IDC_PE_TAG_LINE2_LABEL = 9156,
+		IDC_PE_TAG_LINE2_EDIT = 9157,
+		IDC_PE_TAG_LINE3_LABEL = 9158,
+		IDC_PE_TAG_LINE3_EDIT = 9159,
+		IDC_PE_TAG_LINE4_LABEL = 9160,
+		IDC_PE_TAG_LINE4_EDIT = 9161,
+		IDC_PE_TAG_LINK_DETAILED = 9162,
+		IDC_PE_TAG_DETAILED_HEADER = 9163,
+		IDC_PE_TAG_D_LINE1_LABEL = 9164,
+		IDC_PE_TAG_D_LINE1_EDIT = 9165,
+		IDC_PE_TAG_D_LINE2_LABEL = 9166,
+		IDC_PE_TAG_D_LINE2_EDIT = 9167,
+		IDC_PE_TAG_D_LINE3_LABEL = 9168,
+		IDC_PE_TAG_D_LINE3_EDIT = 9169,
+		IDC_PE_TAG_D_LINE4_LABEL = 9170,
+		IDC_PE_TAG_D_LINE4_EDIT = 9171,
+		IDC_PE_TAG_PREVIEW_LABEL = 9172,
+		IDC_PE_TAG_PREVIEW_EDIT = 9173
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -157,6 +186,36 @@ private:
 	CButton RuleTextCheck;
 	CEdit RuleTextEdit;
 
+	CStatic TagTypeLabel;
+	CComboBox TagTypeCombo;
+	CStatic TagStatusLabel;
+	CComboBox TagStatusCombo;
+	CStatic TagDefinitionHeader;
+	CStatic TagLine1Label;
+	CEdit TagLine1Edit;
+	CStatic TagLine2Label;
+	CEdit TagLine2Edit;
+	CStatic TagLine3Label;
+	CEdit TagLine3Edit;
+	CStatic TagLine4Label;
+	CEdit TagLine4Edit;
+	CButton TagLinkDetailedToggle;
+	CStatic TagDetailedHeader;
+	CStatic TagDetailedLine1Label;
+	CEdit TagDetailedLine1Edit;
+	CStatic TagDetailedLine2Label;
+	CEdit TagDetailedLine2Edit;
+	CStatic TagDetailedLine3Label;
+	CEdit TagDetailedLine3Edit;
+	CStatic TagDetailedLine4Label;
+	CEdit TagDetailedLine4Edit;
+	CStatic TagPreviewLabel;
+	CEdit TagPreviewEdit;
+
+	std::string TagEditorType = "departure";
+	bool TagEditorSeparateDetailed = false;
+	std::string TagEditorStatus = "default";
+
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	int SelectedRuleIndex = -1;
 
@@ -174,6 +233,11 @@ private:
 	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
 	void RebuildRulesList();
 	void RefreshRuleControls();
+	void SyncTagEditorControlsFromRadar();
+	void SyncDetailedTagLinesFromDefinition();
+	void RefreshTagStatusOptions();
+	void RefreshTagDefinitionLines();
+	void RefreshTagPreview();
 	bool TryReadEditInt(CEdit& edit, int& outValue) const;
 	bool TryParseHexColor(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const;
