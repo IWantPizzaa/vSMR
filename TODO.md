@@ -185,4 +185,4 @@
 2. [X] Slice 2: move existing profile color editor into shell, keep live updates.
 3. [X] Slice 3: icon page redesign and remove old icon pseudo-menu.
 4. [X] Slice 4: structured rules engine + migration + rules UI.
-5. [ ] Slice 5: remove old drawn editor code and final cleanup.
+5. [X] Slice 5: remove old drawn editor code and final cleanup.

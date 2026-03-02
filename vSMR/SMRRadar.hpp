@@ -323,6 +323,8 @@ public:
 	std::string TagDefinitionDepartureStatusLabel(const std::string& status) const;
 	std::vector<std::string> GetTagDefinitionStatusesForType(const std::string& type) const;
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
+	void GetTagDefinitionEditorContext(std::string& type, bool& detailed, std::string& status) const;
+	void SetTagDefinitionEditorContext(const std::string& type, bool detailed, const std::string& status);
 	std::string GetTagEditorTargetColorPath() const;
 	std::string GetTagEditorLabelColorPath() const;
 	bool GetTagDefinitionArray(std::string type, bool detailed, rapidjson::Value*& outArray, bool createIfMissing, const std::string& departureStatus = "default");
@@ -331,6 +333,7 @@ public:
 	void InsertTagDefinitionTokenIntoLine(const std::string& token, bool makeBold = false);
 	std::map<std::string, std::string> BuildTagDefinitionPreviewMap(const std::string& type);
 	std::vector<std::string> BuildTagDefinitionPreviewLines();
+	std::vector<std::string> BuildTagDefinitionPreviewLinesForContext(const std::string& type, bool detailed, const std::string& departureStatus);
 	void SaveTagDefinitionConfig();
 	std::string NormalizeTargetIconStyle(const std::string& style) const;
 	std::string GetActiveTargetIconStyle() const;
