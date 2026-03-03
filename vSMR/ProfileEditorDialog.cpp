@@ -14,8 +14,118 @@ IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
 
 namespace
 {
+	const UINT WM_PE_COLOR_WHEEL_TRACK = WM_APP + 417;
 	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
 	std::map<HWND, WNDPROC> gThemedEditOldProcs;
+	std::map<HWND, WNDPROC> gColorWheelOldProcs;
+	std::map<HWND, HWND> gColorWheelOwnerWindows;
+
+	void HsvToRgb(double hue, double saturation, double value, int& outR, int& outG, int& outB)
+	{
+		const double h = fmod(fmod(hue, 360.0) + 360.0, 360.0);
+		const double s = min(1.0, max(0.0, saturation));
+		const double v = min(1.0, max(0.0, value));
+
+		const double c = v * s;
+		const double x = c * (1.0 - fabs(fmod(h / 60.0, 2.0) - 1.0));
+		const double m = v - c;
+
+		double rr = 0.0;
+		double gg = 0.0;
+		double bb = 0.0;
+		if (h < 60.0) { rr = c; gg = x; bb = 0.0; }
+		else if (h < 120.0) { rr = x; gg = c; bb = 0.0; }
+		else if (h < 180.0) { rr = 0.0; gg = c; bb = x; }
+		else if (h < 240.0) { rr = 0.0; gg = x; bb = c; }
+		else if (h < 300.0) { rr = x; gg = 0.0; bb = c; }
+		else { rr = c; gg = 0.0; bb = x; }
+
+		outR = static_cast<int>(round((rr + m) * 255.0));
+		outG = static_cast<int>(round((gg + m) * 255.0));
+		outB = static_cast<int>(round((bb + m) * 255.0));
+	}
+
+	void RgbToHsv(int r, int g, int b, double& outHue, double& outSaturation, double& outValue)
+	{
+		const double rf = min(1.0, max(0.0, r / 255.0));
+		const double gf = min(1.0, max(0.0, g / 255.0));
+		const double bf = min(1.0, max(0.0, b / 255.0));
+
+		const double maxValue = max(rf, max(gf, bf));
+		const double minValue = min(rf, min(gf, bf));
+		const double delta = maxValue - minValue;
+
+		outValue = maxValue;
+		outSaturation = (maxValue <= 0.0) ? 0.0 : (delta / maxValue);
+
+		if (delta <= 0.0)
+		{
+			outHue = 0.0;
+			return;
+		}
+
+		double hue = 0.0;
+		if (maxValue == rf)
+			hue = 60.0 * fmod(((gf - bf) / delta), 6.0);
+		else if (maxValue == gf)
+			hue = 60.0 * (((bf - rf) / delta) + 2.0);
+		else
+			hue = 60.0 * (((rf - gf) / delta) + 4.0);
+
+		if (hue < 0.0)
+			hue += 360.0;
+		outHue = hue;
+	}
+
+	LRESULT CALLBACK ColorWheelWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		auto oldIt = gColorWheelOldProcs.find(hwnd);
+		WNDPROC oldProc = (oldIt != gColorWheelOldProcs.end()) ? oldIt->second : DefWindowProc;
+
+		auto sendTrackMessage = [&](int x, int y)
+		{
+			auto ownerIt = gColorWheelOwnerWindows.find(hwnd);
+			if (ownerIt == gColorWheelOwnerWindows.end() || !::IsWindow(ownerIt->second))
+				return;
+
+			POINT screenPoint = { x, y };
+			::ClientToScreen(hwnd, &screenPoint);
+			::SendMessage(ownerIt->second, WM_PE_COLOR_WHEEL_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
+		};
+
+		switch (message)
+		{
+		case WM_LBUTTONDOWN:
+			::SetCapture(hwnd);
+			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+			return 0;
+		case WM_MOUSEMOVE:
+			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
+			{
+				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+				return 0;
+			}
+			break;
+		case WM_LBUTTONUP:
+			if (::GetCapture() == hwnd)
+				::ReleaseCapture();
+			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+			return 0;
+		case WM_CAPTURECHANGED:
+			break;
+		case WM_NCDESTROY:
+		{
+			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+			gColorWheelOldProcs.erase(hwnd);
+			gColorWheelOwnerWindows.erase(hwnd);
+			return result;
+		}
+		default:
+			break;
+		}
+
+		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+	}
 
 	void DrawThemedBorder(HWND hwnd)
 	{
@@ -195,6 +305,25 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 					Owner->RequestRefresh();
 			}
 		}
+		else if (sourceHwnd == ColorValueSlider.GetSafeHwnd())
+		{
+			if (!UpdatingControls && DraftColorValid)
+			{
+				double hue = 0.0;
+				double saturation = 0.0;
+				double value = 1.0;
+				RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+				const double sliderValue = min(1.0, max(0.0, static_cast<double>(ColorValueSlider.GetPos()) / 100.0));
+				int r = 255;
+				int g = 255;
+				int b = 255;
+				HsvToRgb(hue, saturation, sliderValue, r, g, b);
+				DraftColorR = r;
+				DraftColorG = g;
+				DraftColorB = b;
+				UpdateDraftColorControls();
+			}
+		}
 	}
 
 	CDialogEx::OnHScroll(nSBCode, nPos, pScrollBar);
@@ -242,6 +371,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		(controlId == IDC_PE_SELECTED_PATH) ||
 		(controlId == IDC_PE_COLOR_PICKER_LABEL) ||
 		(controlId == IDC_PE_COLOR_PREVIEW_LABEL) ||
+		(controlId == IDC_PE_COLOR_VALUE_LABEL) ||
 		(controlId == IDC_PE_LABEL_RGBA) ||
 		(controlId == IDC_PE_LABEL_HEX) ||
 		(controlId == IDC_PE_ICON_PANEL) ||
@@ -321,7 +451,76 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	}
 
 	const UINT controlId = lpDrawItemStruct->CtlID;
-	if (controlId != IDC_PE_COLOR_PICKER_SWATCH && controlId != IDC_PE_COLOR_PREVIEW_SWATCH)
+	if (controlId == IDC_PE_COLOR_WHEEL)
+	{
+		CDC dc;
+		dc.Attach(lpDrawItemStruct->hDC);
+		CRect outerRect(lpDrawItemStruct->rcItem);
+		dc.FillSolidRect(&outerRect, RGB(249, 249, 249));
+
+		CRect wheelRect = outerRect;
+		wheelRect.DeflateRect(2, 2);
+		const int diameter = min(wheelRect.Width(), wheelRect.Height());
+		const int radius = max(1, (diameter / 2) - 2);
+		const int centerX = wheelRect.left + (wheelRect.Width() / 2);
+		const int centerY = wheelRect.top + (wheelRect.Height() / 2);
+
+		for (int y = wheelRect.top; y < wheelRect.bottom; ++y)
+		{
+			for (int x = wheelRect.left; x < wheelRect.right; ++x)
+			{
+				const double dx = static_cast<double>(x - centerX);
+				const double dy = static_cast<double>(centerY - y);
+				const double distance = sqrt((dx * dx) + (dy * dy));
+				if (distance > static_cast<double>(radius))
+					continue;
+
+				double hue = atan2(dy, dx) * (180.0 / 3.14159265358979323846);
+				if (hue < 0.0)
+					hue += 360.0;
+				const double saturation = min(1.0, max(0.0, distance / static_cast<double>(radius)));
+				int r = 255;
+				int g = 255;
+				int b = 255;
+				HsvToRgb(hue, saturation, 1.0, r, g, b);
+				dc.SetPixelV(x, y, RGB(r, g, b));
+			}
+		}
+
+		CPen borderPen(PS_SOLID, 1, RGB(186, 186, 186));
+		CPen* oldPen = dc.SelectObject(&borderPen);
+		CBrush* oldBrush = static_cast<CBrush*>(dc.SelectStockObject(HOLLOW_BRUSH));
+		dc.Ellipse(centerX - radius, centerY - radius, centerX + radius + 1, centerY + radius + 1);
+		dc.SelectObject(oldBrush);
+
+		if (DraftColorValid)
+		{
+			double hue = 0.0;
+			double saturation = 0.0;
+			double value = 1.0;
+			RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+			const double angleRad = hue * (3.14159265358979323846 / 180.0);
+			const int markerX = centerX + static_cast<int>(round(cos(angleRad) * saturation * radius));
+			const int markerY = centerY - static_cast<int>(round(sin(angleRad) * saturation * radius));
+			CPen markerOuter(PS_SOLID, 2, RGB(255, 255, 255));
+			CPen markerInner(PS_SOLID, 1, RGB(17, 24, 39));
+			dc.SelectObject(&markerOuter);
+			dc.Ellipse(markerX - 4, markerY - 4, markerX + 5, markerY + 5);
+			dc.SelectObject(&markerInner);
+			dc.Ellipse(markerX - 3, markerY - 3, markerX + 4, markerY + 4);
+		}
+
+		dc.SelectObject(oldPen);
+		dc.Detach();
+		return;
+	}
+
+	const bool isColorTabSwatch = (controlId == IDC_PE_COLOR_PICKER_SWATCH || controlId == IDC_PE_COLOR_PREVIEW_SWATCH);
+	const bool isRuleSwatch =
+		(controlId == IDC_PE_RULE_TARGET_SWATCH) ||
+		(controlId == IDC_PE_RULE_TAG_SWATCH) ||
+		(controlId == IDC_PE_RULE_TEXT_SWATCH);
+	if (!isColorTabSwatch && !isRuleSwatch)
 	{
 		CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
 		return;
@@ -334,17 +533,27 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 
 	CRect roundedRect = outerRect;
 	roundedRect.DeflateRect(1, 1);
-	const COLORREF fillColor = DraftColorValid ? RGB(DraftColorR, DraftColorG, DraftColorB) : RGB(255, 255, 255);
+	COLORREF fillColor = DraftColorValid ? RGB(DraftColorR, DraftColorG, DraftColorB) : RGB(255, 255, 255);
+	bool swatchEnabled = true;
+	if (isRuleSwatch)
+	{
+		COLORREF ruleColor = RGB(240, 240, 240);
+		if (ResolveRuleSwatchColor(controlId, ruleColor, swatchEnabled))
+			fillColor = ruleColor;
+		else
+			swatchEnabled = false;
+	}
 
 	CBrush fillBrush(fillColor);
-	CPen borderPen(PS_SOLID, 1, RGB(186, 186, 186));
+	CPen borderPen(PS_SOLID, 1, swatchEnabled ? RGB(186, 186, 186) : RGB(200, 200, 200));
 	CBrush* oldBrush = dc.SelectObject(&fillBrush);
 	CPen* oldPen = dc.SelectObject(&borderPen);
 	dc.RoundRect(&roundedRect, CPoint(10, 10));
 	dc.SelectObject(oldPen);
 	dc.SelectObject(oldBrush);
 
-	if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 && controlId == IDC_PE_COLOR_PICKER_SWATCH)
+	if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 &&
+		(controlId == IDC_PE_COLOR_PICKER_SWATCH || isRuleSwatch))
 	{
 		CRect focusRect(lpDrawItemStruct->rcItem);
 		focusRect.DeflateRect(3, 3);
@@ -365,7 +574,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	PageTabs.InsertItem(0, "Colors");
 	PageTabs.InsertItem(1, "Icons");
 	PageTabs.InsertItem(2, "Rules");
-	PageTabs.InsertItem(3, "Tag Editor");
+	PageTabs.InsertItem(3, "Tags");
 
 	ColorLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LEFT_PANEL);
 	ColorRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_RIGHT_PANEL);
@@ -378,10 +587,13 @@ void CProfileEditorDialog::CreateEditorControls()
 	ColorPathLevel4.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L4);
 	ColorPathLevel5.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L5);
 	SelectedPathText.Create("Selected:", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
-	ColorPickerLabel.Create("Color Picker", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_LABEL);
+	ColorPickerLabel.Create("Color Wheel", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_LABEL);
 	ColorPickerSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_SWATCH);
 	ColorPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PREVIEW_LABEL);
 	ColorPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PREVIEW_SWATCH);
+	ColorWheel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_WHEEL);
+	ColorValueLabel.Create("Value", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_VALUE_LABEL);
+	ColorValueSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_AUTOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_VALUE_SLIDER);
 	LabelRgba.Create("RGBA", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_RGBA);
 	EditRgba.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_RGBA);
 	LabelR.Create("R", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_R);
@@ -446,14 +658,17 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleDetailLabel.Create("Detail", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_DETAIL_LABEL);
 	RuleDetailCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_DETAIL_COMBO);
 	RuleTargetCheck.Create("Target color", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_CHECK);
+	RuleTargetSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_SWATCH);
 	RuleTargetEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_EDIT);
 	RuleTagCheck.Create("Tag color", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_CHECK);
+	RuleTagSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_SWATCH);
 	RuleTagEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_EDIT);
 	RuleTextCheck.Create("Text color", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_CHECK);
+	RuleTextSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_SWATCH);
 	RuleTextEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_EDIT);
 
 	TagPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PANEL);
-	TagHeaderPanel.Create("Tag Editor", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
+	TagHeaderPanel.Create("Tags", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
 	TagTypeLabel.Create("Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_LABEL);
 	TagTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_COMBO);
 	TagStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_LABEL);
@@ -470,7 +685,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagLine3Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE3_EDIT);
 	TagLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_LABEL);
 	TagLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_EDIT);
-	TagLinkDetailedToggle.Create("Edit detailed separately", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
+	TagLinkDetailedToggle.Create("Custom Hover Detailes", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
 	TagDetailedHeader.Create("Definition Detailed", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_HEADER);
 	TagDetailedLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_LABEL);
 	TagDetailedLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_EDIT);
@@ -502,6 +717,22 @@ void CProfileEditorDialog::CreateEditorControls()
 	BoostFactorSlider.SetTicFreq(5);
 	BoostFactorSlider.SetLineSize(1);
 	BoostFactorSlider.SetPageSize(10);
+	ColorValueSlider.SetRange(0, 100, TRUE);
+	ColorValueSlider.SetTicFreq(10);
+	ColorValueSlider.SetLineSize(1);
+	ColorValueSlider.SetPageSize(10);
+	ColorValueSlider.SetPos(100);
+
+	if (::IsWindow(ColorWheel.GetSafeHwnd()))
+	{
+		const HWND wheelHwnd = ColorWheel.GetSafeHwnd();
+		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(wheelHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ColorWheelWndProc)));
+		if (oldProc != nullptr)
+		{
+			gColorWheelOldProcs[wheelHwnd] = oldProc;
+			gColorWheelOwnerWindows[wheelHwnd] = GetSafeHwnd();
+		}
+	}
 	ColorPathTree.SetIndent(16);
 	ColorPathTree.SetBkColor(RGB(249, 249, 249));
 	ColorPathTree.SetTextColor(RGB(17, 24, 39));
@@ -779,22 +1010,33 @@ void CProfileEditorDialog::LayoutControls()
 	SelectedPathText.MoveWindow(rightLeft + 1, colorTop + 1, max(60, colorRightWidth - 2), 30, TRUE);
 
 	int y = colorTop + 40;
-	const int pickerColumnWidth = 104;
-	ColorPickerLabel.MoveWindow(rightLeft + 14, y, pickerColumnWidth, rowHeight, TRUE);
-	ColorPreviewLabel.MoveWindow(rightLeft + 14 + pickerColumnWidth + 10, y, max(120, colorRightWidth - pickerColumnWidth - 34), rowHeight, TRUE);
+	const int previewWidth = max(120, colorRightWidth - 28);
+	ColorPreviewLabel.MoveWindow(rightLeft + 14, y, previewWidth, rowHeight, TRUE);
 	y += rowHeight + 4;
 
-	ColorPickerSwatch.MoveWindow(rightLeft + 14, y, 56, 40, TRUE);
-	ColorPreviewSwatch.MoveWindow(rightLeft + 14 + pickerColumnWidth + 10, y, max(120, colorRightWidth - pickerColumnWidth - 34), 40, TRUE);
-	y += 48 + 8;
+	ColorPreviewSwatch.MoveWindow(rightLeft + 14, y, previewWidth, 52, TRUE);
+	ColorPickerSwatch.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	y += 52 + 10;
+
+	ColorPickerLabel.MoveWindow(rightLeft + 14, y, previewWidth, rowHeight, TRUE);
+	y += rowHeight + 4;
+
+	const int wheelSize = min(170, max(92, previewWidth));
+	ColorWheel.MoveWindow(rightLeft + 14, y, wheelSize, wheelSize, TRUE);
+	y += wheelSize + 10;
+
+	const int valueLabelWidth = 56;
+	ColorValueLabel.MoveWindow(rightLeft + 14, y + 3, valueLabelWidth, rowHeight, TRUE);
+	ColorValueSlider.MoveWindow(rightLeft + 14 + valueLabelWidth + 6, y, max(120, previewWidth - valueLabelWidth - 6), rowHeight, TRUE);
+	y += rowHeight + 10;
 
 	const int rgbaLabelWidth = 56;
 	LabelRgba.MoveWindow(rightLeft + 14, y + 3, rgbaLabelWidth, rowHeight, TRUE);
-	EditRgba.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, colorRightWidth - rgbaLabelWidth - 34), rowHeight, TRUE);
+	EditRgba.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, previewWidth - rgbaLabelWidth - 6), rowHeight, TRUE);
 	y += rowHeight + 10;
 
 	LabelHex.MoveWindow(rightLeft + 14, y + 3, rgbaLabelWidth, rowHeight, TRUE);
-	EditHex.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, colorRightWidth - rgbaLabelWidth - 34), rowHeight, TRUE);
+	EditHex.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, previewWidth - rgbaLabelWidth - 6), rowHeight, TRUE);
 	y += rowHeight + 14;
 
 	ApplyColorButton.MoveWindow(rightLeft + 14, y, 60, buttonHeight, TRUE);
@@ -932,16 +1174,24 @@ void CProfileEditorDialog::LayoutControls()
 	RuleDetailCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
 	rulesY += rowHeight + 14;
 
+	const int ruleSwatchSize = rowHeight;
+	const int ruleSwatchGap = 8;
+	const int ruleEditLeft = rulesFieldLeft + ruleSwatchSize + ruleSwatchGap;
+	const int ruleEditWidth = max(60, rulesFieldWidth - ruleSwatchSize - ruleSwatchGap);
+
 	RuleTargetCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
-	RuleTargetEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
+	RuleTargetSwatch.MoveWindow(rulesFieldLeft, rulesY, ruleSwatchSize, ruleSwatchSize, TRUE);
+	RuleTargetEdit.MoveWindow(ruleEditLeft, rulesY, ruleEditWidth, rowHeight, TRUE);
 	rulesY += rowHeight + 8;
 
 	RuleTagCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
-	RuleTagEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
+	RuleTagSwatch.MoveWindow(rulesFieldLeft, rulesY, ruleSwatchSize, ruleSwatchSize, TRUE);
+	RuleTagEdit.MoveWindow(ruleEditLeft, rulesY, ruleEditWidth, rowHeight, TRUE);
 	rulesY += rowHeight + 8;
 
 	RuleTextCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
-	RuleTextEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
+	RuleTextSwatch.MoveWindow(rulesFieldLeft, rulesY, ruleSwatchSize, ruleSwatchSize, TRUE);
+	RuleTextEdit.MoveWindow(ruleEditLeft, rulesY, ruleEditWidth, rowHeight, TRUE);
 
 	const int tagLeft = pageRect.left + innerPad;
 	const int tagTop = pageRect.top + innerPad;
@@ -1049,9 +1299,12 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	ColorPathLevel5.ShowWindow(SW_HIDE);
 	SelectedPathText.ShowWindow(colorShowMode);
 	ColorPickerLabel.ShowWindow(colorShowMode);
-	ColorPickerSwatch.ShowWindow(colorShowMode);
+	ColorPickerSwatch.ShowWindow(SW_HIDE);
 	ColorPreviewLabel.ShowWindow(colorShowMode);
 	ColorPreviewSwatch.ShowWindow(colorShowMode);
+	ColorWheel.ShowWindow(colorShowMode);
+	ColorValueLabel.ShowWindow(colorShowMode);
+	ColorValueSlider.ShowWindow(colorShowMode);
 	LabelRgba.ShowWindow(colorShowMode);
 	EditRgba.ShowWindow(colorShowMode);
 	LabelR.ShowWindow(SW_HIDE);
@@ -1115,10 +1368,13 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleDetailLabel.ShowWindow(ruleShowMode);
 	RuleDetailCombo.ShowWindow(ruleShowMode);
 	RuleTargetCheck.ShowWindow(ruleShowMode);
+	RuleTargetSwatch.ShowWindow(ruleShowMode);
 	RuleTargetEdit.ShowWindow(ruleShowMode);
 	RuleTagCheck.ShowWindow(ruleShowMode);
+	RuleTagSwatch.ShowWindow(ruleShowMode);
 	RuleTagEdit.ShowWindow(ruleShowMode);
 	RuleTextCheck.ShowWindow(ruleShowMode);
+	RuleTextSwatch.ShowWindow(ruleShowMode);
 	RuleTextEdit.ShowWindow(ruleShowMode);
 
 	TagPanel.ShowWindow(tagShowMode);
@@ -1328,6 +1584,22 @@ void CProfileEditorDialog::RefreshColorSwatchBrushes()
 	ColorPreviewBrush.CreateSolidBrush(RGB(DraftColorR, DraftColorG, DraftColorB));
 }
 
+void CProfileEditorDialog::SyncColorValueSliderFromDraft()
+{
+	if (!DraftColorValid || !::IsWindow(ColorValueSlider.GetSafeHwnd()))
+		return;
+
+	double hue = 0.0;
+	double saturation = 0.0;
+	double value = 1.0;
+	RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+	const int position = min(100, max(0, static_cast<int>(round(value * 100.0))));
+
+	UpdatingControls = true;
+	ColorValueSlider.SetPos(position);
+	UpdatingControls = false;
+}
+
 void CProfileEditorDialog::UpdateDraftColorControls(bool updateRgba, bool updateHex)
 {
 	if (!DraftColorValid)
@@ -1349,8 +1621,10 @@ void CProfileEditorDialog::UpdateDraftColorControls(bool updateRgba, bool update
 	UpdatingControls = false;
 
 	RefreshColorSwatchBrushes();
+	SyncColorValueSliderFromDraft();
 	ColorPickerSwatch.Invalidate(FALSE);
 	ColorPreviewSwatch.Invalidate(FALSE);
+	ColorWheel.Invalidate(FALSE);
 	ColorPathTree.Invalidate(FALSE);
 }
 
@@ -1826,6 +2100,41 @@ void CProfileEditorDialog::UpdateRulesListItemLabel(int index)
 	UpdatingControls = false;
 }
 
+void CProfileEditorDialog::InvalidateRuleColorSwatches()
+{
+	RuleTargetSwatch.Invalidate(FALSE);
+	RuleTagSwatch.Invalidate(FALSE);
+	RuleTextSwatch.Invalidate(FALSE);
+}
+
+bool CProfileEditorDialog::ResolveRuleSwatchColor(UINT controlId, COLORREF& outColor, bool& outEnabled) const
+{
+	outColor = RGB(240, 240, 240);
+	outEnabled = false;
+
+	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
+		return false;
+
+	const StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
+	switch (controlId)
+	{
+	case IDC_PE_RULE_TARGET_SWATCH:
+		outEnabled = true;
+		outColor = rule.applyTarget ? RGB(rule.targetR, rule.targetG, rule.targetB) : RGB(240, 240, 240);
+		return true;
+	case IDC_PE_RULE_TAG_SWATCH:
+		outEnabled = true;
+		outColor = rule.applyTag ? RGB(rule.tagR, rule.tagG, rule.tagB) : RGB(240, 240, 240);
+		return true;
+	case IDC_PE_RULE_TEXT_SWATCH:
+		outEnabled = true;
+		outColor = rule.applyText ? RGB(rule.textR, rule.textG, rule.textB) : RGB(240, 240, 240);
+		return true;
+	default:
+		return false;
+	}
+}
+
 void CProfileEditorDialog::RefreshRuleControls()
 {
 	UpdatingControls = true;
@@ -1841,6 +2150,9 @@ void CProfileEditorDialog::RefreshRuleControls()
 	RuleTargetCheck.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleTagCheck.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleTextCheck.EnableWindow(hasSelection ? TRUE : FALSE);
+	RuleTargetSwatch.EnableWindow(FALSE);
+	RuleTagSwatch.EnableWindow(FALSE);
+	RuleTextSwatch.EnableWindow(FALSE);
 	RuleTargetEdit.EnableWindow(FALSE);
 	RuleTagEdit.EnableWindow(FALSE);
 	RuleTextEdit.EnableWindow(FALSE);
@@ -1859,6 +2171,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 		SetEditTextPreserveCaret(RuleTargetEdit, "255,255,255");
 		SetEditTextPreserveCaret(RuleTagEdit, "255,255,255");
 		SetEditTextPreserveCaret(RuleTextEdit, "255,255,255");
+		InvalidateRuleColorSwatches();
 		UpdatingControls = false;
 		return;
 	}
@@ -1876,9 +2189,13 @@ void CProfileEditorDialog::RefreshRuleControls()
 	SetEditTextPreserveCaret(RuleTargetEdit, FormatRgbTriplet(rule.targetR, rule.targetG, rule.targetB));
 	SetEditTextPreserveCaret(RuleTagEdit, FormatRgbTriplet(rule.tagR, rule.tagG, rule.tagB));
 	SetEditTextPreserveCaret(RuleTextEdit, FormatRgbTriplet(rule.textR, rule.textG, rule.textB));
+	RuleTargetSwatch.EnableWindow(TRUE);
+	RuleTagSwatch.EnableWindow(TRUE);
+	RuleTextSwatch.EnableWindow(TRUE);
 	RuleTargetEdit.EnableWindow(rule.applyTarget ? TRUE : FALSE);
 	RuleTagEdit.EnableWindow(rule.applyTag ? TRUE : FALSE);
 	RuleTextEdit.EnableWindow(rule.applyText ? TRUE : FALSE);
+	InvalidateRuleColorSwatches();
 
 	UpdatingControls = false;
 }
@@ -2142,6 +2459,7 @@ void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 		return;
 
 	Owner->RequestRefresh();
+	InvalidateRuleColorSwatches();
 	if (keepSelection)
 	{
 		UpdateRulesListItemLabel(SelectedRuleIndex);
@@ -2259,10 +2577,79 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 		}
 	}
 
-	RuleTargetEdit.EnableWindow(RuleTargetCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
-	RuleTagEdit.EnableWindow(RuleTagCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
-	RuleTextEdit.EnableWindow(RuleTextCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
+	const BOOL targetEnabled = (RuleTargetCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
+	const BOOL tagEnabled = (RuleTagCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
+	const BOOL textEnabled = (RuleTextCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
+	RuleTargetSwatch.EnableWindow(TRUE);
+	RuleTagSwatch.EnableWindow(TRUE);
+	RuleTextSwatch.EnableWindow(TRUE);
+	RuleTargetEdit.EnableWindow(targetEnabled);
+	RuleTagEdit.EnableWindow(tagEnabled);
+	RuleTextEdit.EnableWindow(textEnabled);
+	InvalidateRuleColorSwatches();
 	ApplyRuleControlChanges(true);
+}
+
+void CProfileEditorDialog::OpenRuleColorPicker(UINT swatchControlId)
+{
+	if (Owner == nullptr)
+		return;
+	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
+		return;
+
+	CButton* checkBox = nullptr;
+	CEdit* edit = nullptr;
+	switch (swatchControlId)
+	{
+	case IDC_PE_RULE_TARGET_SWATCH:
+		checkBox = &RuleTargetCheck;
+		edit = &RuleTargetEdit;
+		break;
+	case IDC_PE_RULE_TAG_SWATCH:
+		checkBox = &RuleTagCheck;
+		edit = &RuleTagEdit;
+		break;
+	case IDC_PE_RULE_TEXT_SWATCH:
+		checkBox = &RuleTextCheck;
+		edit = &RuleTextEdit;
+		break;
+	default:
+		return;
+	}
+
+	int r = 255;
+	int g = 255;
+	int b = 255;
+	CString currentText;
+	edit->GetWindowText(currentText);
+	TryParseRgbTriplet(std::string(currentText.GetString()), r, g, b);
+
+	CColorDialog picker(RGB(r, g, b), CC_FULLOPEN | CC_RGBINIT, this);
+	if (picker.DoModal() != IDOK)
+		return;
+
+	const COLORREF selected = picker.GetColor();
+	UpdatingControls = true;
+	checkBox->SetCheck(BST_CHECKED);
+	SetEditTextPreserveCaret(*edit, FormatRgbTriplet(GetRValue(selected), GetGValue(selected), GetBValue(selected)));
+	UpdatingControls = false;
+
+	OnRuleFieldChanged();
+}
+
+void CProfileEditorDialog::OnRuleTargetSwatchClicked()
+{
+	OpenRuleColorPicker(IDC_PE_RULE_TARGET_SWATCH);
+}
+
+void CProfileEditorDialog::OnRuleTagSwatchClicked()
+{
+	OpenRuleColorPicker(IDC_PE_RULE_TAG_SWATCH);
+}
+
+void CProfileEditorDialog::OnRuleTextSwatchClicked()
+{
+	OpenRuleColorPicker(IDC_PE_RULE_TEXT_SWATCH);
 }
 
 void CProfileEditorDialog::OnTagTypeChanged()
@@ -2655,6 +3042,68 @@ void CProfileEditorDialog::OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult
 	}
 }
 
+bool CProfileEditorDialog::TryApplyColorWheelPoint(const CPoint& screenPoint)
+{
+	if (Owner == nullptr || !::IsWindow(ColorWheel.GetSafeHwnd()))
+		return false;
+
+	CRect wheelRectScreen;
+	ColorWheel.GetWindowRect(&wheelRectScreen);
+	if (!wheelRectScreen.PtInRect(screenPoint))
+		return false;
+
+	const int localX = screenPoint.x - wheelRectScreen.left;
+	const int localY = screenPoint.y - wheelRectScreen.top;
+	const int width = wheelRectScreen.Width();
+	const int height = wheelRectScreen.Height();
+
+	const int diameter = min(width, height);
+	const int radius = max(1, (diameter / 2) - 4);
+	const double centerX = static_cast<double>(width) * 0.5;
+	const double centerY = static_cast<double>(height) * 0.5;
+	const double dx = static_cast<double>(localX) - centerX;
+	const double dy = centerY - static_cast<double>(localY);
+	const double distance = sqrt((dx * dx) + (dy * dy));
+	if (distance > static_cast<double>(radius))
+		return false;
+
+	double hue = atan2(dy, dx) * (180.0 / 3.14159265358979323846);
+	if (hue < 0.0)
+		hue += 360.0;
+	const double saturation = min(1.0, max(0.0, distance / static_cast<double>(radius)));
+	const double value = ::IsWindow(ColorValueSlider.GetSafeHwnd())
+		? min(1.0, max(0.0, static_cast<double>(ColorValueSlider.GetPos()) / 100.0))
+		: 1.0;
+
+	int r = 255;
+	int g = 255;
+	int b = 255;
+	HsvToRgb(hue, saturation, value, r, g, b);
+
+	DraftColorR = r;
+	DraftColorG = g;
+	DraftColorB = b;
+	DraftColorValid = true;
+	UpdateDraftColorControls();
+	return true;
+}
+
+LRESULT CProfileEditorDialog::OnColorWheelTrack(WPARAM wParam, LPARAM lParam)
+{
+	const CPoint screenPoint(static_cast<int>(wParam), static_cast<int>(lParam));
+	TryApplyColorWheelPoint(screenPoint);
+	return 0;
+}
+
+void CProfileEditorDialog::OnColorWheelClicked()
+{
+	CPoint cursorScreen;
+	if (!::GetCursorPos(&cursorScreen))
+		return;
+
+	TryApplyColorWheelPoint(cursorScreen);
+}
+
 void CProfileEditorDialog::OnPickColorClicked()
 {
 	if (Owner == nullptr)
@@ -2873,6 +3322,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_WM_SHOWWINDOW()
 	ON_WM_DRAWITEM()
 	ON_WM_CTLCOLOR()
+	ON_MESSAGE(WM_PE_COLOR_WHEEL_TRACK, &CProfileEditorDialog::OnColorWheelTrack)
 	ON_LBN_SELCHANGE(IDC_PE_COLOR_LIST, &CProfileEditorDialog::OnColorPathSelectionChanged)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeCustomDraw)
@@ -2881,10 +3331,9 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L3, &CProfileEditorDialog::OnColorPathLevelChanged)
 	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L4, &CProfileEditorDialog::OnColorPathLevelChanged)
 	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L5, &CProfileEditorDialog::OnColorPathLevelChanged)
-	ON_STN_CLICKED(IDC_PE_COLOR_PICKER_SWATCH, &CProfileEditorDialog::OnPickColorClicked)
+	ON_STN_CLICKED(IDC_PE_COLOR_WHEEL, &CProfileEditorDialog::OnColorWheelClicked)
 	ON_BN_CLICKED(IDC_PE_APPLY_BUTTON, &CProfileEditorDialog::OnApplyColorClicked)
 	ON_BN_CLICKED(IDC_PE_RESET_BUTTON, &CProfileEditorDialog::OnResetColorClicked)
-	ON_BN_CLICKED(IDC_PE_PICK_BUTTON, &CProfileEditorDialog::OnPickColorClicked)
 	ON_BN_CLICKED(IDC_PE_REFRESH_BUTTON, &CProfileEditorDialog::OnRefreshColorsClicked)
 	ON_EN_CHANGE(IDC_PE_EDIT_RGBA, &CProfileEditorDialog::OnRgbaEditChanged)
 	ON_EN_CHANGE(IDC_PE_EDIT_R, &CProfileEditorDialog::OnRgbEditChanged)
@@ -2912,10 +3361,13 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_STATUS_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_DETAIL_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_BN_CLICKED(IDC_PE_RULE_TARGET_CHECK, &CProfileEditorDialog::OnRuleFieldChanged)
+	ON_STN_CLICKED(IDC_PE_RULE_TARGET_SWATCH, &CProfileEditorDialog::OnRuleTargetSwatchClicked)
 	ON_EN_CHANGE(IDC_PE_RULE_TARGET_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_BN_CLICKED(IDC_PE_RULE_TAG_CHECK, &CProfileEditorDialog::OnRuleFieldChanged)
+	ON_STN_CLICKED(IDC_PE_RULE_TAG_SWATCH, &CProfileEditorDialog::OnRuleTagSwatchClicked)
 	ON_EN_CHANGE(IDC_PE_RULE_TAG_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_BN_CLICKED(IDC_PE_RULE_TEXT_CHECK, &CProfileEditorDialog::OnRuleFieldChanged)
+	ON_STN_CLICKED(IDC_PE_RULE_TEXT_SWATCH, &CProfileEditorDialog::OnRuleTextSwatchClicked)
 	ON_EN_CHANGE(IDC_PE_RULE_TEXT_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_STATUS_COMBO, &CProfileEditorDialog::OnTagStatusChanged)

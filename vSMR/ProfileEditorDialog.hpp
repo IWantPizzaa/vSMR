@@ -37,6 +37,8 @@ protected:
 	afx_msg void OnColorPathLevelChanged();
 	afx_msg void OnColorTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg LRESULT OnColorWheelTrack(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnColorWheelClicked();
 	afx_msg void OnPickColorClicked();
 	afx_msg void OnApplyColorClicked();
 	afx_msg void OnResetColorClicked();
@@ -56,6 +58,9 @@ protected:
 	afx_msg void OnRuleRemoveClicked();
 	afx_msg void OnRuleSourceChanged();
 	afx_msg void OnRuleFieldChanged();
+	afx_msg void OnRuleTargetSwatchClicked();
+	afx_msg void OnRuleTagSwatchClicked();
+	afx_msg void OnRuleTextSwatchClicked();
 	afx_msg void OnTagTypeChanged();
 	afx_msg void OnTagStatusChanged();
 	afx_msg void OnTagLinkToggleChanged();
@@ -180,7 +185,13 @@ private:
 		IDC_PE_RULE_LEFT_HEADER = 9210,
 		IDC_PE_RULE_RIGHT_HEADER = 9211,
 		IDC_PE_TAG_PANEL = 9212,
-		IDC_PE_TAG_HEADER_PANEL = 9213
+		IDC_PE_TAG_HEADER_PANEL = 9213,
+		IDC_PE_RULE_TARGET_SWATCH = 9214,
+		IDC_PE_RULE_TAG_SWATCH = 9215,
+		IDC_PE_RULE_TEXT_SWATCH = 9216
+		, IDC_PE_COLOR_WHEEL = 9217
+		, IDC_PE_COLOR_VALUE_LABEL = 9218
+		, IDC_PE_COLOR_VALUE_SLIDER = 9219
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -205,6 +216,9 @@ private:
 	CStatic ColorPickerSwatch;
 	CStatic ColorPreviewLabel;
 	CStatic ColorPreviewSwatch;
+	CStatic ColorWheel;
+	CStatic ColorValueLabel;
+	CSliderCtrl ColorValueSlider;
 	CStatic LabelRgba;
 	CEdit EditRgba;
 	CStatic LabelR;
@@ -268,10 +282,13 @@ private:
 	CStatic RuleDetailLabel;
 	CComboBox RuleDetailCombo;
 	CButton RuleTargetCheck;
+	CStatic RuleTargetSwatch;
 	CEdit RuleTargetEdit;
 	CButton RuleTagCheck;
+	CStatic RuleTagSwatch;
 	CEdit RuleTagEdit;
 	CButton RuleTextCheck;
+	CStatic RuleTextSwatch;
 	CEdit RuleTextEdit;
 
 	CStatic TagTypeLabel;
@@ -321,6 +338,7 @@ private:
 	int DraftColorA = 255;
 	bool DraftColorHasAlpha = false;
 	bool DraftColorValid = false;
+	bool ColorWheelReady = false;
 	CBrush ColorPickerBrush;
 	CBrush ColorPreviewBrush;
 	CBrush HeaderBarBrush;
@@ -374,4 +392,9 @@ private:
 	void ApplyThemedEditBorders();
 	void SetEditTextPreserveCaret(CEdit& edit, const std::string& text);
 	void UpdateRulesListItemLabel(int index);
+	void InvalidateRuleColorSwatches();
+	bool ResolveRuleSwatchColor(UINT controlId, COLORREF& outColor, bool& outEnabled) const;
+	void OpenRuleColorPicker(UINT swatchControlId);
+	bool TryApplyColorWheelPoint(const CPoint& screenPoint);
+	void SyncColorValueSliderFromDraft();
 };
