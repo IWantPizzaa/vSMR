@@ -18,6 +18,7 @@ namespace
 	const UINT WM_PE_RULE_COLOR_WHEEL_TRACK = WM_APP + 420;
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
 	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
+	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
 	std::map<HWND, WNDPROC> gThemedEditOldProcs;
 	std::map<HWND, WNDPROC> gColorWheelOldProcs;
 	std::map<HWND, HWND> gColorWheelOwnerWindows;
@@ -199,6 +200,58 @@ namespace
 		dc.SelectObject(&thumbInnerPen);
 		dc.SelectObject(&thumbInnerBrush);
 		dc.RoundRect(&thumbInner, CPoint(8, 8));
+
+		dc.SelectObject(oldBrush);
+		dc.SelectObject(oldPen);
+	}
+
+	void DrawHorizontalModernSlider(CDC& dc, const CRect& clientRect, CSliderCtrl& sliderControl)
+	{
+		dc.FillSolidRect(&clientRect, kEditorThemeBackgroundColor);
+
+		CRect channelRect(
+			clientRect.left + 10,
+			clientRect.top + (clientRect.Height() / 2) - 3,
+			clientRect.right - 10,
+			clientRect.top + (clientRect.Height() / 2) + 3);
+		if (channelRect.Width() < 10)
+			return;
+
+		const int rangeMin = sliderControl.GetRangeMin();
+		const int rangeMax = sliderControl.GetRangeMax();
+		const int rangeSpan = max(1, rangeMax - rangeMin);
+		const int clampedPos = min(rangeMax, max(rangeMin, sliderControl.GetPos()));
+		const double t = static_cast<double>(clampedPos - rangeMin) / static_cast<double>(rangeSpan);
+		const int fillRight = channelRect.left + static_cast<int>(round(t * static_cast<double>(max(1, channelRect.Width() - 1))));
+
+		CBrush baseBrush(RGB(204, 213, 224));
+		CPen baseBorder(PS_SOLID, 1, RGB(184, 194, 206));
+		CPen* oldPen = dc.SelectObject(&baseBorder);
+		CBrush* oldBrush = dc.SelectObject(&baseBrush);
+		dc.RoundRect(&channelRect, CPoint(6, 6));
+
+		CRect fillRect(channelRect.left, channelRect.top, max(channelRect.left + 1, fillRight + 1), channelRect.bottom);
+		CBrush fillBrush(RGB(63, 120, 208));
+		CPen fillBorder(PS_SOLID, 1, RGB(63, 120, 208));
+		dc.SelectObject(&fillBorder);
+		dc.SelectObject(&fillBrush);
+		dc.RoundRect(&fillRect, CPoint(6, 6));
+
+		const int thumbCenterX = min(channelRect.right, max(channelRect.left, fillRight));
+		const int thumbCenterY = channelRect.top + (channelRect.Height() / 2);
+		CRect thumbOuter(thumbCenterX - 8, thumbCenterY - 8, thumbCenterX + 9, thumbCenterY + 9);
+		CBrush thumbOuterBrush(RGB(255, 255, 255));
+		CPen thumbOuterPen(PS_SOLID, 1, RGB(188, 198, 210));
+		dc.SelectObject(&thumbOuterPen);
+		dc.SelectObject(&thumbOuterBrush);
+		dc.Ellipse(&thumbOuter);
+
+		CRect thumbInner(thumbCenterX - 4, thumbCenterY - 4, thumbCenterX + 5, thumbCenterY + 5);
+		CBrush thumbInnerBrush(RGB(63, 120, 208));
+		CPen thumbInnerPen(PS_SOLID, 1, RGB(63, 120, 208));
+		dc.SelectObject(&thumbInnerPen);
+		dc.SelectObject(&thumbInnerBrush);
+		dc.Ellipse(&thumbInner);
 
 		dc.SelectObject(oldBrush);
 		dc.SelectObject(oldPen);
@@ -580,6 +633,13 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 	if (pWnd == nullptr)
 		return hbr;
 
+	if (nCtlColor == CTLCOLOR_LISTBOX && HeaderBarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorThemeBackgroundColor);
+		pDC->SetTextColor(RGB(17, 24, 39));
+		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+	}
+
 	const int controlId = pWnd->GetDlgCtrlID();
 	const bool useColorThemeBackground = [&]()
 	{
@@ -653,7 +713,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 	}();
 	if (useColorThemeBackground && HeaderBarBrush.GetSafeHandle() != nullptr)
 	{
-		pDC->SetBkColor(RGB(249, 249, 249));
+		pDC->SetBkColor(kEditorThemeBackgroundColor);
 		pDC->SetTextColor(RGB(17, 24, 39));
 		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
 	}
@@ -669,6 +729,153 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	}
 
 	const UINT controlId = lpDrawItemStruct->CtlID;
+	if (controlId == IDC_PE_RULE_LIST)
+	{
+		CDC dc;
+		dc.Attach(lpDrawItemStruct->hDC);
+		CRect outerRect(lpDrawItemStruct->rcItem);
+		CRect localOuter(0, 0, outerRect.Width(), outerRect.Height());
+
+		CDC memDc;
+		memDc.CreateCompatibleDC(&dc);
+		CBitmap frameBitmap;
+		frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
+		CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
+		memDc.FillSolidRect(&localOuter, kEditorThemeBackgroundColor);
+
+		if (lpDrawItemStruct->itemID != static_cast<UINT>(-1))
+		{
+			const bool isSelected = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
+			CRect itemRect(localOuter);
+			itemRect.DeflateRect(4, 2);
+
+			if (isSelected)
+			{
+				CBrush selectedBrush(RGB(37, 120, 209));
+				CPen selectedPen(PS_SOLID, 1, RGB(37, 120, 209));
+				CPen* oldPen = memDc.SelectObject(&selectedPen);
+				CBrush* oldBrush = memDc.SelectObject(&selectedBrush);
+				memDc.RoundRect(&itemRect, CPoint(8, 8));
+				memDc.SelectObject(oldBrush);
+				memDc.SelectObject(oldPen);
+			}
+
+			CString itemText;
+			RulesList.GetText(static_cast<int>(lpDrawItemStruct->itemID), itemText);
+
+			CFont* oldFont = nullptr;
+			if (RulesList.GetFont() != nullptr)
+				oldFont = memDc.SelectObject(RulesList.GetFont());
+
+			memDc.SetBkMode(TRANSPARENT);
+			memDc.SetTextColor(isSelected ? RGB(255, 255, 255) : RGB(17, 24, 39));
+			CRect textRect(itemRect);
+			textRect.DeflateRect(8, 0);
+			memDc.DrawText(itemText, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+			if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0)
+			{
+				CRect focusRect(itemRect);
+				focusRect.DeflateRect(3, 2);
+				memDc.DrawFocusRect(&focusRect);
+			}
+
+			if (oldFont != nullptr)
+				memDc.SelectObject(oldFont);
+		}
+
+		dc.BitBlt(outerRect.left, outerRect.top, localOuter.Width(), localOuter.Height(), &memDc, 0, 0, SRCCOPY);
+		memDc.SelectObject(oldFrameBitmap);
+		dc.Detach();
+		return;
+	}
+
+	const bool isModernPushButton =
+		(controlId == IDC_PE_APPLY_BUTTON) ||
+		(controlId == IDC_PE_RESET_BUTTON) ||
+		(controlId == IDC_PE_RULE_ADD_BUTTON) ||
+		(controlId == IDC_PE_RULE_REMOVE_BUTTON) ||
+		(controlId == IDC_PE_RULE_COLOR_APPLY_BUTTON) ||
+		(controlId == IDC_PE_RULE_COLOR_RESET_BUTTON) ||
+		(controlId == IDC_PE_TAG_TOKEN_ADD_BUTTON);
+	if (isModernPushButton)
+	{
+		CDC dc;
+		dc.Attach(lpDrawItemStruct->hDC);
+		CRect outerRect(lpDrawItemStruct->rcItem);
+		CRect localOuter(0, 0, outerRect.Width(), outerRect.Height());
+
+		CDC memDc;
+		memDc.CreateCompatibleDC(&dc);
+		CBitmap frameBitmap;
+		frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
+		CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
+		memDc.FillSolidRect(&localOuter, kEditorThemeBackgroundColor);
+
+		const bool isDisabled = (lpDrawItemStruct->itemState & ODS_DISABLED) != 0;
+		const bool isPressed = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
+		const bool isHot = (lpDrawItemStruct->itemState & ODS_HOTLIGHT) != 0;
+
+		COLORREF fillColor = RGB(247, 248, 250);
+		COLORREF borderColor = RGB(171, 180, 190);
+		COLORREF textColor = RGB(17, 24, 39);
+		if (isDisabled)
+		{
+			fillColor = RGB(232, 232, 232);
+			borderColor = RGB(194, 194, 194);
+			textColor = RGB(138, 138, 138);
+		}
+		else if (isPressed)
+		{
+			fillColor = RGB(221, 236, 255);
+			borderColor = RGB(63, 120, 208);
+		}
+		else if (isHot)
+		{
+			fillColor = RGB(236, 245, 255);
+			borderColor = RGB(102, 153, 224);
+		}
+
+		CRect buttonRect(localOuter);
+		buttonRect.DeflateRect(1, 1);
+		CBrush fillBrush(fillColor);
+		CPen borderPen(PS_SOLID, 1, borderColor);
+		CBrush* oldBrush = memDc.SelectObject(&fillBrush);
+		CPen* oldPen = memDc.SelectObject(&borderPen);
+		memDc.RoundRect(&buttonRect, CPoint(10, 10));
+		memDc.SelectObject(oldPen);
+		memDc.SelectObject(oldBrush);
+
+		CString buttonText;
+		if (CWnd* button = GetDlgItem(controlId))
+			button->GetWindowText(buttonText);
+		CFont* oldFont = nullptr;
+		if (CWnd* button = GetDlgItem(controlId))
+		{
+			CFont* font = button->GetFont();
+			if (font != nullptr)
+				oldFont = memDc.SelectObject(font);
+		}
+		memDc.SetBkMode(TRANSPARENT);
+		memDc.SetTextColor(textColor);
+		CRect textRect(buttonRect);
+		memDc.DrawText(buttonText, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+		if (oldFont != nullptr)
+			memDc.SelectObject(oldFont);
+
+		if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0)
+		{
+			CRect focusRect(buttonRect);
+			focusRect.DeflateRect(4, 3);
+			memDc.DrawFocusRect(&focusRect);
+		}
+
+		dc.BitBlt(outerRect.left, outerRect.top, localOuter.Width(), localOuter.Height(), &memDc, 0, 0, SRCCOPY);
+		memDc.SelectObject(oldFrameBitmap);
+		dc.Detach();
+		return;
+	}
+
 	if (controlId == IDC_PE_COLOR_WHEEL || controlId == IDC_PE_RULE_COLOR_WHEEL)
 	{
 		CDC dc;
@@ -682,7 +889,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
 		CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
 
-		memDc.FillSolidRect(&localOuter, RGB(249, 249, 249));
+		memDc.FillSolidRect(&localOuter, kEditorThemeBackgroundColor);
 
 		CRect wheelRect = localOuter;
 		wheelRect.DeflateRect(2, 2);
@@ -759,7 +966,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
 	CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
 
-	memDc.FillSolidRect(&localOuter, RGB(249, 249, 249));
+	memDc.FillSolidRect(&localOuter, kEditorThemeBackgroundColor);
 
 	CRect roundedRect = localOuter;
 	roundedRect.DeflateRect(1, 1);
@@ -870,17 +1077,17 @@ void CProfileEditorDialog::CreateEditorControls()
 	EditRgba.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_RGBA);
 	LabelHex.Create("HEX", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_HEX);
 	EditHex.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_HEX);
-	ApplyColorButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_APPLY_BUTTON);
-	ResetColorButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RESET_BUTTON);
+	ApplyColorButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_APPLY_BUTTON);
+	ResetColorButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RESET_BUTTON);
 
-	IconStyleArrow.Create("Arrow", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_ARROW);
-	IconStyleDiamond.Create("Diamond", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_DIAMOND);
-	IconStyleRealistic.Create("Realistic", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_REALISTIC);
+	IconStyleArrow.Create("Arrow", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_ARROW);
+	IconStyleDiamond.Create("Diamond", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_DIAMOND);
+	IconStyleRealistic.Create("Realistic", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_REALISTIC);
 	IconPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PANEL);
 	IconSeparator1.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SEPARATOR1);
 	IconSeparator2.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SEPARATOR2);
 	IconSeparator3.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SEPARATOR3);
-	FixedPixelCheck.Create("Fixed Pixel", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_PIXEL_CHECK);
+	FixedPixelCheck.Create("Fixed Pixel", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_PIXEL_CHECK);
 	FixedScaleLabel.Create("Fixed Size", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_LABEL);
 	FixedScaleValueLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_VALUE);
 	FixedScaleSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_AUTOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_SLIDER);
@@ -888,7 +1095,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	FixedScaleTickMidLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_TICK_MID);
 	FixedScaleTickMaxLabel.Create("2.00x", WS_CHILD | WS_VISIBLE | SS_RIGHT, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_TICK_MAX);
 	FixedScaleCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_COMBO);
-	SmallBoostCheck.Create("Small Icon Boost", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_SMALL_BOOST_CHECK);
+	SmallBoostCheck.Create("Small Icon Boost", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_SMALL_BOOST_CHECK);
 	BoostFactorLabel.Create("Boost Factor", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_LABEL);
 	BoostFactorValueLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_VALUE);
 	BoostFactorSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_AUTOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_SLIDER);
@@ -904,9 +1111,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_PANEL);
 	RuleLeftHeader.Create("Rules", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
 	RuleRightHeader.Create("Rule Details", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
-	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
-	RuleAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
-	RuleRemoveButton.Create("Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RULE_REMOVE_BUTTON);
+	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
+	RuleAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
+	RuleRemoveButton.Create("Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_REMOVE_BUTTON);
 	RuleSourceLabel.Create("Source", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_SOURCE_LABEL);
 	RuleSourceCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_SOURCE_COMBO);
 	RuleTokenLabel.Create("Token", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TOKEN_LABEL);
@@ -919,13 +1126,13 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleStatusCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_STATUS_COMBO);
 	RuleDetailLabel.Create("Detail", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_DETAIL_LABEL);
 	RuleDetailCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_DETAIL_COMBO);
-	RuleTargetCheck.Create("Icons", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_CHECK);
+	RuleTargetCheck.Create("Icons", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_CHECK);
 	RuleTargetSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_SWATCH);
 	RuleTargetEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TARGET_EDIT);
-	RuleTagCheck.Create("Tag", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_CHECK);
+	RuleTagCheck.Create("Tag", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_CHECK);
 	RuleTagSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_SWATCH);
 	RuleTagEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TAG_EDIT);
-	RuleTextCheck.Create("Text", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_CHECK);
+	RuleTextCheck.Create("Text", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_CHECK);
 	RuleTextSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_SWATCH);
 	RuleTextEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TEXT_EDIT);
 	RuleColorWheelLabel.Create("Color Wheel", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_WHEEL_LABEL);
@@ -934,8 +1141,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorValueSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_VERT | TBS_NOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_VALUE_SLIDER);
 	RuleColorPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_PREVIEW_LABEL);
 	RuleColorPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_PREVIEW_SWATCH);
-	RuleColorApplyButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_APPLY_BUTTON);
-	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
+	RuleColorApplyButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_APPLY_BUTTON);
+	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
+	RulesList.SetItemHeight(0, 24);
 
 	TagPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PANEL);
 	TagHeaderPanel.Create("Tags", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
@@ -945,8 +1153,8 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagStatusCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_COMBO);
 	TagTokenLabel.Create("Add", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_LABEL);
 	TagTokenCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_COMBO);
-	TagAddTokenButton.Create("Insert", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_ADD_BUTTON);
-	TagDefinitionHeader.Create("Definition", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DEF_HEADER);
+	TagAddTokenButton.Create("Insert", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TOKEN_ADD_BUTTON);
+	TagDefinitionHeader.Create("Definition", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DEF_HEADER);
 	TagLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE1_LABEL);
 	TagLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE1_EDIT);
 	TagLine2Label.Create("L2", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE2_LABEL);
@@ -955,7 +1163,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagLine3Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE3_EDIT);
 	TagLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_LABEL);
 	TagLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_EDIT);
-	TagLinkDetailedToggle.Create("Custom Hover Detailes", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
+	TagLinkDetailedToggle.Create("Custom Hover Detailes", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
 	TagDetailedHeader.Create("Definition Detailed", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_HEADER);
 	TagDetailedLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_LABEL);
 	TagDetailedLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_EDIT);
@@ -978,7 +1186,7 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	PopulateIconCombos();
 	PopulateRuleCombos();
-	HeaderBarBrush.CreateSolidBrush(RGB(249, 249, 249));
+	HeaderBarBrush.CreateSolidBrush(kEditorThemeBackgroundColor);
 	FixedScaleSlider.SetRange(10, 200, TRUE);
 	FixedScaleSlider.SetTicFreq(5);
 	FixedScaleSlider.SetLineSize(1);
@@ -1059,7 +1267,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		}
 	}
 	ColorPathTree.SetIndent(16);
-	ColorPathTree.SetBkColor(RGB(249, 249, 249));
+	ColorPathTree.SetBkColor(kEditorThemeBackgroundColor);
 	ColorPathTree.SetTextColor(RGB(17, 24, 39));
 	if (GetFont() != nullptr)
 	{
@@ -1166,7 +1374,7 @@ void CProfileEditorDialog::EnsureColorWheelBitmap(const CRect& wheelRect)
 		return;
 
 	CBitmap* oldBitmap = memDc.SelectObject(&ColorWheelBitmap);
-	memDc.FillSolidRect(0, 0, width, height, RGB(249, 249, 249));
+	memDc.FillSolidRect(0, 0, width, height, kEditorThemeBackgroundColor);
 
 	const int diameter = min(width, height);
 	const int radius = max(1, (diameter / 2) - 2);
@@ -3452,6 +3660,52 @@ void CProfileEditorDialog::OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult
 	}
 }
 
+void CProfileEditorDialog::OnFixedScaleSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	if (pResult == nullptr)
+		return;
+
+	NMCUSTOMDRAW* customDraw = reinterpret_cast<NMCUSTOMDRAW*>(pNMHDR);
+	if (customDraw->dwDrawStage != CDDS_PREPAINT)
+	{
+		*pResult = CDRF_DODEFAULT;
+		return;
+	}
+
+	CDC dc;
+	dc.Attach(customDraw->hdc);
+
+	CRect clientRect;
+	FixedScaleSlider.GetClientRect(&clientRect);
+	DrawHorizontalModernSlider(dc, clientRect, FixedScaleSlider);
+	dc.Detach();
+
+	*pResult = CDRF_SKIPDEFAULT;
+}
+
+void CProfileEditorDialog::OnBoostFactorSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	if (pResult == nullptr)
+		return;
+
+	NMCUSTOMDRAW* customDraw = reinterpret_cast<NMCUSTOMDRAW*>(pNMHDR);
+	if (customDraw->dwDrawStage != CDDS_PREPAINT)
+	{
+		*pResult = CDRF_DODEFAULT;
+		return;
+	}
+
+	CDC dc;
+	dc.Attach(customDraw->hdc);
+
+	CRect clientRect;
+	BoostFactorSlider.GetClientRect(&clientRect);
+	DrawHorizontalModernSlider(dc, clientRect, BoostFactorSlider);
+	dc.Detach();
+
+	*pResult = CDRF_SKIPDEFAULT;
+}
+
 void CProfileEditorDialog::OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	if (pResult == nullptr)
@@ -3469,7 +3723,7 @@ void CProfileEditorDialog::OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* 
 
 	CRect clientRect;
 	ColorValueSlider.GetClientRect(&clientRect);
-	dc.FillSolidRect(&clientRect, RGB(249, 249, 249));
+	dc.FillSolidRect(&clientRect, kEditorThemeBackgroundColor);
 
 	double hue = 0.0;
 	double saturation = 0.0;
@@ -3503,7 +3757,7 @@ void CProfileEditorDialog::OnColorOpacitySliderCustomDraw(NMHDR* pNMHDR, LRESULT
 
 	CRect clientRect;
 	ColorOpacitySlider.GetClientRect(&clientRect);
-	dc.FillSolidRect(&clientRect, RGB(249, 249, 249));
+	dc.FillSolidRect(&clientRect, kEditorThemeBackgroundColor);
 
 	const int channelWidth = max(10, min(16, clientRect.Width() - 8));
 	const int channelLeft = clientRect.left + ((clientRect.Width() - channelWidth) / 2);
@@ -3535,9 +3789,9 @@ void CProfileEditorDialog::OnColorOpacitySliderCustomDraw(NMHDR* pNMHDR, LRESULT
 	{
 		const double t = min(1.0, max(0.0, static_cast<double>(y) / static_cast<double>(max(1, gradientHeight - 1))));
 		const double alpha = 1.0 - t;
-		const int r = static_cast<int>(round((static_cast<double>(DraftColorR) * alpha) + (249.0 * (1.0 - alpha))));
-		const int g = static_cast<int>(round((static_cast<double>(DraftColorG) * alpha) + (249.0 * (1.0 - alpha))));
-		const int b = static_cast<int>(round((static_cast<double>(DraftColorB) * alpha) + (249.0 * (1.0 - alpha))));
+		const int r = static_cast<int>(round((static_cast<double>(DraftColorR) * alpha) + (240.0 * (1.0 - alpha))));
+		const int g = static_cast<int>(round((static_cast<double>(DraftColorG) * alpha) + (240.0 * (1.0 - alpha))));
+		const int b = static_cast<int>(round((static_cast<double>(DraftColorB) * alpha) + (240.0 * (1.0 - alpha))));
 		dc.FillSolidRect(channelRect.left, channelRect.top + y, channelRect.Width(), 1, RGB(r, g, b));
 	}
 	dc.RestoreDC(savedDc);
@@ -3596,7 +3850,7 @@ void CProfileEditorDialog::OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESU
 
 	CRect clientRect;
 	RuleColorValueSlider.GetClientRect(&clientRect);
-	dc.FillSolidRect(&clientRect, RGB(249, 249, 249));
+	dc.FillSolidRect(&clientRect, kEditorThemeBackgroundColor);
 
 	double hue = 0.0;
 	double saturation = 0.0;
@@ -3939,6 +4193,8 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_MESSAGE(WM_PE_RULE_COLOR_VALUE_TRACK, &CProfileEditorDialog::OnRuleColorValueSliderTrack)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeCustomDraw)
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_FIXED_SCALE_SLIDER, &CProfileEditorDialog::OnFixedScaleSliderCustomDraw)
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_BOOST_FACTOR_SLIDER, &CProfileEditorDialog::OnBoostFactorSliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_VALUE_SLIDER, &CProfileEditorDialog::OnColorValueSliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_OPACITY_SLIDER, &CProfileEditorDialog::OnColorOpacitySliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_RULE_COLOR_VALUE_SLIDER, &CProfileEditorDialog::OnRuleColorValueSliderCustomDraw)
