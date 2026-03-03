@@ -31,12 +31,14 @@ protected:
 	afx_msg void OnMove(int x, int y);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
+	afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	afx_msg void OnColorPathSelectionChanged();
 	afx_msg void OnColorPathLevelChanged();
 	afx_msg void OnColorTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnColorWheelTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnColorWheelClicked();
 	afx_msg void OnPickColorClicked();
@@ -356,7 +358,7 @@ private:
 	void RebuildColorPathTree(const std::string& selectedPath);
 	bool SelectColorPathInTree(const std::string& path);
 	std::string GetSelectedTreePath() const;
-	void UpdateDraftColorControls(bool updateRgba = true, bool updateHex = true);
+	void UpdateDraftColorControls(bool updateRgba = true, bool updateHex = true, bool invalidateWheel = true);
 	void LoadDraftColorFromSelection();
 	void ApplyColorPathSelection(const std::string& selectedPath);
 	void PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment);
@@ -397,4 +399,8 @@ private:
 	void OpenRuleColorPicker(UINT swatchControlId);
 	bool TryApplyColorWheelPoint(const CPoint& screenPoint);
 	void SyncColorValueSliderFromDraft();
+	void ApplyDraftColorValueFromSlider();
+	void EnsureColorWheelBitmap(const CRect& wheelRect);
+	CBitmap ColorWheelBitmap;
+	CSize ColorWheelBitmapSize = CSize(0, 0);
 };
