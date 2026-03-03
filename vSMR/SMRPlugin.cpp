@@ -983,8 +983,11 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
-	for each (auto var in RadarScreensOpened)
+	const std::vector<CSMRRadar*> radarScreens = RadarScreensOpened;
+	RadarScreensOpened.clear();
+	for (auto* var : radarScreens)
 	{
-		var->EuroScopePlugInExitCustom();
+		if (var != nullptr)
+			var->EuroScopePlugInExitCustom();
 	}
 }

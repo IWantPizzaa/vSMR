@@ -436,6 +436,8 @@ CProfileEditorDialog::CProfileEditorDialog(CSMRRadar* owner, CWnd* pParent /*=NU
 
 CProfileEditorDialog::~CProfileEditorDialog()
 {
+	UnsubclassEditorControls();
+	Owner = nullptr;
 }
 
 void CProfileEditorDialog::SetOwner(CSMRRadar* owner)
@@ -573,6 +575,7 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 				if (Owner->SetFixedPixelTriangleIconScale(scale, true))
 					Owner->RequestRefresh();
 			}
+			FixedScaleSlider.RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 		}
 		else if (sourceHwnd == BoostFactorSlider.GetSafeHwnd())
 		{
@@ -583,6 +586,7 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 				if (Owner->SetSmallTargetIconBoostFactor(scale, true))
 					Owner->RequestRefresh();
 			}
+			BoostFactorSlider.RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
 		}
 		else
 		{
@@ -611,6 +615,12 @@ void CProfileEditorDialog::OnShowWindow(BOOL bShow, UINT nStatus)
 	}
 }
 
+void CProfileEditorDialog::OnDestroy()
+{
+	UnsubclassEditorControls();
+	CDialogEx::OnDestroy();
+}
+
 void CProfileEditorDialog::ForceChildRepaint()
 {
 	if (!::IsWindow(GetSafeHwnd()))
@@ -625,6 +635,67 @@ void CProfileEditorDialog::ForceChildRepaint()
 			child->UpdateWindow();
 		}
 	}
+}
+
+void CProfileEditorDialog::UnsubclassEditorControls()
+{
+	auto restoreThemedEditProc = [](HWND hwnd)
+	{
+		if (hwnd == nullptr)
+			return;
+
+		auto it = gThemedEditOldProcs.find(hwnd);
+		if (it == gThemedEditOldProcs.end())
+			return;
+
+		if (::IsWindow(hwnd) && it->second != nullptr)
+			::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(it->second));
+		gThemedEditOldProcs.erase(it);
+	};
+
+	auto restoreTrackingProcMap = [&](std::map<HWND, WNDPROC>& procMap, std::map<HWND, HWND>& ownerMap)
+	{
+		const HWND ownerHwnd = GetSafeHwnd();
+		std::vector<HWND> trackedHwnds;
+		trackedHwnds.reserve(ownerMap.size());
+		for (const auto& entry : ownerMap)
+		{
+			if (entry.second == ownerHwnd)
+				trackedHwnds.push_back(entry.first);
+		}
+
+		for (HWND trackedHwnd : trackedHwnds)
+		{
+			auto procIt = procMap.find(trackedHwnd);
+			if (procIt != procMap.end())
+			{
+				if (::IsWindow(trackedHwnd) && procIt->second != nullptr)
+					::SetWindowLongPtr(trackedHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(procIt->second));
+				procMap.erase(procIt);
+			}
+			ownerMap.erase(trackedHwnd);
+		}
+	};
+
+	restoreThemedEditProc(EditRgba.GetSafeHwnd());
+	restoreThemedEditProc(EditHex.GetSafeHwnd());
+	restoreThemedEditProc(RuleTargetEdit.GetSafeHwnd());
+	restoreThemedEditProc(RuleTagEdit.GetSafeHwnd());
+	restoreThemedEditProc(RuleTextEdit.GetSafeHwnd());
+	restoreThemedEditProc(TagLine1Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagLine2Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagLine3Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagLine4Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagDetailedLine1Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagDetailedLine2Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagDetailedLine3Edit.GetSafeHwnd());
+	restoreThemedEditProc(TagDetailedLine4Edit.GetSafeHwnd());
+
+	restoreTrackingProcMap(gColorWheelOldProcs, gColorWheelOwnerWindows);
+	restoreTrackingProcMap(gColorValueSliderOldProcs, gColorValueSliderOwnerWindows);
+	restoreTrackingProcMap(gColorOpacitySliderOldProcs, gColorOpacitySliderOwnerWindows);
+	restoreTrackingProcMap(gRuleColorWheelOldProcs, gRuleColorWheelOwnerWindows);
+	restoreTrackingProcMap(gRuleColorValueSliderOldProcs, gRuleColorValueSliderOwnerWindows);
 }
 
 HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
@@ -4184,6 +4255,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_WM_HSCROLL()
 	ON_WM_VSCROLL()
 	ON_WM_SHOWWINDOW()
+	ON_WM_DESTROY()
 	ON_WM_DRAWITEM()
 	ON_WM_CTLCOLOR()
 	ON_MESSAGE(WM_PE_COLOR_WHEEL_TRACK, &CProfileEditorDialog::OnColorWheelTrack)
