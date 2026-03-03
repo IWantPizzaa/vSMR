@@ -34,8 +34,6 @@ protected:
 	afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
-	afx_msg void OnColorPathSelectionChanged();
-	afx_msg void OnColorPathLevelChanged();
 	afx_msg void OnColorTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
@@ -44,11 +42,8 @@ protected:
 	afx_msg LRESULT OnColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnColorOpacitySliderTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnColorWheelClicked();
-	afx_msg void OnPickColorClicked();
 	afx_msg void OnApplyColorClicked();
 	afx_msg void OnResetColorClicked();
-	afx_msg void OnRefreshColorsClicked();
-	afx_msg void OnRgbEditChanged();
 	afx_msg void OnRgbaEditChanged();
 	afx_msg void OnHexEditChanged();
 	afx_msg void OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
@@ -221,16 +216,10 @@ private:
 
 	CTabCtrl PageTabs;
 
-	CListBox ColorPathList;
 	CStatic ColorLeftPanel;
 	CStatic ColorRightPanel;
 	CTreeCtrl ColorPathTree;
 	CStatic ColorPathLabel;
-	CComboBox ColorPathLevel1;
-	CComboBox ColorPathLevel2;
-	CComboBox ColorPathLevel3;
-	CComboBox ColorPathLevel4;
-	CComboBox ColorPathLevel5;
 	CStatic SelectedPathText;
 	CStatic ColorPickerLabel;
 	CStatic ColorPickerSwatch;
@@ -243,18 +232,8 @@ private:
 	CSliderCtrl ColorOpacitySlider;
 	CStatic LabelRgba;
 	CEdit EditRgba;
-	CStatic LabelR;
-	CStatic LabelG;
-	CStatic LabelB;
-	CStatic LabelA;
 	CStatic LabelHex;
-	CEdit EditR;
-	CEdit EditG;
-	CEdit EditB;
-	CEdit EditA;
 	CEdit EditHex;
-	CButton PickColorButton;
-	CButton RefreshButton;
 	CButton ApplyColorButton;
 	CButton ResetColorButton;
 
@@ -374,12 +353,10 @@ private:
 	int DraftColorA = 255;
 	bool DraftColorHasAlpha = false;
 	bool DraftColorValid = false;
-	bool ColorWheelReady = false;
 	CBrush ColorPickerBrush;
 	CBrush ColorPreviewBrush;
 	CBrush HeaderBarBrush;
 	CFont MonoFont;
-	CFont HeaderFont;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
@@ -394,11 +371,7 @@ private:
 	std::string GetSelectedTreePath() const;
 	void UpdateDraftColorControls(bool updateRgba = true, bool updateHex = true, bool invalidateWheel = true);
 	void LoadDraftColorFromSelection();
-	void ApplyColorPathSelection(const std::string& selectedPath);
-	void PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment);
 	std::vector<std::string> SplitPathSegments(const std::string& path) const;
-	std::string JoinPathSegments(const std::vector<std::string>& segments, size_t count) const;
-	std::string ResolveColorPathFromLevelSelection() const;
 	void RefreshEditorFieldsFromSelection();
 	void SyncIconControlsFromRadar();
 	void PopulateIconCombos();
@@ -413,7 +386,6 @@ private:
 	void RefreshTagStatusOptions();
 	void RefreshTagDefinitionLines();
 	void RefreshTagPreview();
-	bool TryReadEditInt(CEdit& edit, int& outValue) const;
 	bool TryParseRgbaQuad(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool TryParseHexColor(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const;
@@ -430,7 +402,7 @@ private:
 	void UpdateRulesListItemLabel(int index);
 	void InvalidateRuleColorSwatches();
 	bool ResolveRuleSwatchColor(UINT controlId, COLORREF& outColor, bool& outEnabled) const;
-	void OpenRuleColorPicker(UINT swatchControlId);
+	void SelectRuleColorEditorTarget(UINT swatchControlId);
 	bool GetRuleColorEditorTargetControls(UINT swatchControlId, CButton*& outCheck, CEdit*& outEdit) const;
 	void SyncRuleColorEditorFromActiveControl();
 	void SyncRuleColorValueSliderFromDraft();
