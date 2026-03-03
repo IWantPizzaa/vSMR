@@ -39,8 +39,10 @@ protected:
 	afx_msg void OnColorTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnColorOpacitySliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnColorWheelTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnColorOpacitySliderTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnColorWheelClicked();
 	afx_msg void OnPickColorClicked();
 	afx_msg void OnApplyColorClicked();
@@ -195,6 +197,8 @@ private:
 		, IDC_PE_COLOR_WHEEL = 9217
 		, IDC_PE_COLOR_VALUE_LABEL = 9218
 		, IDC_PE_COLOR_VALUE_SLIDER = 9219
+		, IDC_PE_COLOR_OPACITY_LABEL = 9220
+		, IDC_PE_COLOR_OPACITY_SLIDER = 9221
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -222,6 +226,8 @@ private:
 	CStatic ColorWheel;
 	CStatic ColorValueLabel;
 	CSliderCtrl ColorValueSlider;
+	CStatic ColorOpacityLabel;
+	CSliderCtrl ColorOpacitySlider;
 	CStatic LabelRgba;
 	CEdit EditRgba;
 	CStatic LabelR;
@@ -400,8 +406,11 @@ private:
 	void OpenRuleColorPicker(UINT swatchControlId);
 	bool TryApplyColorWheelPoint(const CPoint& screenPoint);
 	bool TryApplyColorValueSliderPoint(const CPoint& screenPoint);
+	bool TryApplyColorOpacitySliderPoint(const CPoint& screenPoint);
 	void SyncColorValueSliderFromDraft();
+	void SyncColorOpacitySliderFromDraft();
 	void ApplyDraftColorValueFromSlider();
+	void ApplyDraftColorOpacityFromSlider();
 	void EnsureColorWheelBitmap(const CRect& wheelRect);
 	CBitmap ColorWheelBitmap;
 	CSize ColorWheelBitmapSize = CSize(0, 0);
