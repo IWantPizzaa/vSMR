@@ -15,10 +15,13 @@ IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
 namespace
 {
 	const UINT WM_PE_COLOR_WHEEL_TRACK = WM_APP + 417;
+	const UINT WM_PE_COLOR_VALUE_TRACK = WM_APP + 418;
 	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
 	std::map<HWND, WNDPROC> gThemedEditOldProcs;
 	std::map<HWND, WNDPROC> gColorWheelOldProcs;
 	std::map<HWND, HWND> gColorWheelOwnerWindows;
+	std::map<HWND, WNDPROC> gColorValueSliderOldProcs;
+	std::map<HWND, HWND> gColorValueSliderOwnerWindows;
 
 	void HsvToRgb(double hue, double saturation, double value, int& outR, int& outG, int& outB)
 	{
@@ -118,6 +121,54 @@ namespace
 			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
 			gColorWheelOldProcs.erase(hwnd);
 			gColorWheelOwnerWindows.erase(hwnd);
+			return result;
+		}
+		default:
+			break;
+		}
+
+		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+	}
+
+	LRESULT CALLBACK ColorValueSliderWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		auto oldIt = gColorValueSliderOldProcs.find(hwnd);
+		WNDPROC oldProc = (oldIt != gColorValueSliderOldProcs.end()) ? oldIt->second : DefWindowProc;
+
+		auto sendTrackMessage = [&](int x, int y)
+		{
+			auto ownerIt = gColorValueSliderOwnerWindows.find(hwnd);
+			if (ownerIt == gColorValueSliderOwnerWindows.end() || !::IsWindow(ownerIt->second))
+				return;
+
+			POINT screenPoint = { x, y };
+			::ClientToScreen(hwnd, &screenPoint);
+			::SendMessage(ownerIt->second, WM_PE_COLOR_VALUE_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
+		};
+
+		switch (message)
+		{
+		case WM_LBUTTONDOWN:
+			::SetCapture(hwnd);
+			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+			return 0;
+		case WM_MOUSEMOVE:
+			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
+			{
+				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+				return 0;
+			}
+			break;
+		case WM_LBUTTONUP:
+			if (::GetCapture() == hwnd)
+				::ReleaseCapture();
+			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+			return 0;
+		case WM_NCDESTROY:
+		{
+			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+			gColorValueSliderOldProcs.erase(hwnd);
+			gColorValueSliderOwnerWindows.erase(hwnd);
 			return result;
 		}
 		default:
@@ -307,6 +358,8 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 		}
 		else if (sourceHwnd == ColorValueSlider.GetSafeHwnd())
 		{
+			if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
+				ColorValueSlider.SetPos(static_cast<int>(nPos));
 			ApplyDraftColorValueFromSlider();
 		}
 	}
@@ -317,7 +370,11 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 void CProfileEditorDialog::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 {
 	if (pScrollBar != nullptr && pScrollBar->GetSafeHwnd() == ColorValueSlider.GetSafeHwnd())
+	{
+		if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
+			ColorValueSlider.SetPos(static_cast<int>(nPos));
 		ApplyDraftColorValueFromSlider();
+	}
 
 	CDialogEx::OnVScroll(nSBCode, nPos, pScrollBar);
 }
@@ -722,6 +779,17 @@ void CProfileEditorDialog::CreateEditorControls()
 		{
 			gColorWheelOldProcs[wheelHwnd] = oldProc;
 			gColorWheelOwnerWindows[wheelHwnd] = GetSafeHwnd();
+		}
+	}
+
+	if (::IsWindow(ColorValueSlider.GetSafeHwnd()))
+	{
+		const HWND sliderHwnd = ColorValueSlider.GetSafeHwnd();
+		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(sliderHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ColorValueSliderWndProc)));
+		if (oldProc != nullptr)
+		{
+			gColorValueSliderOldProcs[sliderHwnd] = oldProc;
+			gColorValueSliderOwnerWindows[sliderHwnd] = GetSafeHwnd();
 		}
 	}
 	ColorPathTree.SetIndent(16);
@@ -3252,10 +3320,44 @@ bool CProfileEditorDialog::TryApplyColorWheelPoint(const CPoint& screenPoint)
 	return true;
 }
 
+bool CProfileEditorDialog::TryApplyColorValueSliderPoint(const CPoint& screenPoint)
+{
+	if (!DraftColorValid || !::IsWindow(ColorValueSlider.GetSafeHwnd()))
+		return false;
+
+	CRect sliderRectScreen;
+	ColorValueSlider.GetWindowRect(&sliderRectScreen);
+
+	CRect clientRect;
+	ColorValueSlider.GetClientRect(&clientRect);
+	if (clientRect.Height() <= 0)
+		return false;
+
+	const int channelTop = clientRect.top + 4;
+	const int channelBottomExclusive = max(channelTop + 1, clientRect.bottom - 4);
+	const int channelHeight = channelBottomExclusive - channelTop;
+	const int localY = screenPoint.y - sliderRectScreen.top;
+	const int clampedY = min(channelBottomExclusive - 1, max(channelTop, localY));
+	const double t = 1.0 - (static_cast<double>(clampedY - channelTop) / static_cast<double>(max(1, channelHeight - 1)));
+	const int newPos = min(100, max(0, static_cast<int>(round(t * 100.0))));
+
+	if (ColorValueSlider.GetPos() != newPos)
+		ColorValueSlider.SetPos(newPos);
+	ApplyDraftColorValueFromSlider();
+	return true;
+}
+
 LRESULT CProfileEditorDialog::OnColorWheelTrack(WPARAM wParam, LPARAM lParam)
 {
 	const CPoint screenPoint(static_cast<int>(wParam), static_cast<int>(lParam));
 	TryApplyColorWheelPoint(screenPoint);
+	return 0;
+}
+
+LRESULT CProfileEditorDialog::OnColorValueSliderTrack(WPARAM wParam, LPARAM lParam)
+{
+	const CPoint screenPoint(static_cast<int>(wParam), static_cast<int>(lParam));
+	TryApplyColorValueSliderPoint(screenPoint);
 	return 0;
 }
 
@@ -3488,6 +3590,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_WM_DRAWITEM()
 	ON_WM_CTLCOLOR()
 	ON_MESSAGE(WM_PE_COLOR_WHEEL_TRACK, &CProfileEditorDialog::OnColorWheelTrack)
+	ON_MESSAGE(WM_PE_COLOR_VALUE_TRACK, &CProfileEditorDialog::OnColorValueSliderTrack)
 	ON_LBN_SELCHANGE(IDC_PE_COLOR_LIST, &CProfileEditorDialog::OnColorPathSelectionChanged)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeCustomDraw)
