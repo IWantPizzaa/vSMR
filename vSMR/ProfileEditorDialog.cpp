@@ -30,6 +30,7 @@ namespace
 	std::map<HWND, WNDPROC> gRuleColorValueSliderOldProcs;
 	std::map<HWND, HWND> gRuleColorValueSliderOwnerWindows;
 
+
 	void HsvToRgb(double hue, double saturation, double value, int& outR, int& outG, int& outB)
 	{
 		const double h = fmod(fmod(hue, 360.0) + 360.0, 360.0);
@@ -598,6 +599,40 @@ void CProfileEditorDialog::OnSize(UINT nType, int cx, int cy)
 	NotifyWindowRectChanged();
 }
 
+bool CProfileEditorDialog::HandleColorSliderScroll(CScrollBar* pScrollBar, UINT nSBCode, UINT nPos)
+{
+	if (pScrollBar == nullptr)
+		return false;
+
+	const HWND sourceHwnd = pScrollBar->GetSafeHwnd();
+	auto applyThumbPosition = [&](CSliderCtrl& slider)
+	{
+		if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
+			slider.SetPos(static_cast<int>(nPos));
+	};
+
+	if (sourceHwnd == ColorValueSlider.GetSafeHwnd())
+	{
+		applyThumbPosition(ColorValueSlider);
+		ApplyDraftColorValueFromSlider();
+		return true;
+	}
+	if (sourceHwnd == ColorOpacitySlider.GetSafeHwnd())
+	{
+		applyThumbPosition(ColorOpacitySlider);
+		ApplyDraftColorOpacityFromSlider();
+		return true;
+	}
+	if (sourceHwnd == RuleColorValueSlider.GetSafeHwnd())
+	{
+		applyThumbPosition(RuleColorValueSlider);
+		ApplyRuleColorValueFromSlider();
+		return true;
+	}
+
+	return false;
+}
+
 void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 {
 	if (pScrollBar != nullptr)
@@ -623,23 +658,9 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 					Owner->RequestRefresh();
 			}
 		}
-		else if (sourceHwnd == ColorValueSlider.GetSafeHwnd())
+		else
 		{
-			if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
-				ColorValueSlider.SetPos(static_cast<int>(nPos));
-			ApplyDraftColorValueFromSlider();
-		}
-		else if (sourceHwnd == ColorOpacitySlider.GetSafeHwnd())
-		{
-			if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
-				ColorOpacitySlider.SetPos(static_cast<int>(nPos));
-			ApplyDraftColorOpacityFromSlider();
-		}
-		else if (sourceHwnd == RuleColorValueSlider.GetSafeHwnd())
-		{
-			if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
-				RuleColorValueSlider.SetPos(static_cast<int>(nPos));
-			ApplyRuleColorValueFromSlider();
+			HandleColorSliderScroll(pScrollBar, nSBCode, nPos);
 		}
 	}
 
@@ -648,24 +669,7 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 
 void CProfileEditorDialog::OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 {
-	if (pScrollBar != nullptr && pScrollBar->GetSafeHwnd() == ColorValueSlider.GetSafeHwnd())
-	{
-		if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
-			ColorValueSlider.SetPos(static_cast<int>(nPos));
-		ApplyDraftColorValueFromSlider();
-	}
-	else if (pScrollBar != nullptr && pScrollBar->GetSafeHwnd() == ColorOpacitySlider.GetSafeHwnd())
-	{
-		if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
-			ColorOpacitySlider.SetPos(static_cast<int>(nPos));
-		ApplyDraftColorOpacityFromSlider();
-	}
-	else if (pScrollBar != nullptr && pScrollBar->GetSafeHwnd() == RuleColorValueSlider.GetSafeHwnd())
-	{
-		if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
-			RuleColorValueSlider.SetPos(static_cast<int>(nPos));
-		ApplyRuleColorValueFromSlider();
-	}
+	HandleColorSliderScroll(pScrollBar, nSBCode, nPos);
 
 	CDialogEx::OnVScroll(nSBCode, nPos, pScrollBar);
 }
@@ -704,85 +708,81 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		return hbr;
 
 	const int controlId = pWnd->GetDlgCtrlID();
-	const bool useColorThemeBackground =
-		(controlId == IDC_PE_COLOR_LEFT_PANEL) ||
-		(controlId == IDC_PE_COLOR_RIGHT_PANEL) ||
-		(controlId == IDC_PE_COLOR_TREE) ||
-		(controlId == IDC_PE_COLOR_PATH_LABEL) ||
-		(controlId == IDC_PE_SELECTED_PATH) ||
-		(controlId == IDC_PE_COLOR_PICKER_LABEL) ||
-		(controlId == IDC_PE_COLOR_PREVIEW_LABEL) ||
-		(controlId == IDC_PE_COLOR_VALUE_LABEL) ||
-		(controlId == IDC_PE_COLOR_OPACITY_LABEL) ||
-		(controlId == IDC_PE_LABEL_RGBA) ||
-		(controlId == IDC_PE_LABEL_HEX) ||
-		(controlId == IDC_PE_ICON_PANEL) ||
-		(controlId == IDC_PE_FIXED_SCALE_LABEL) ||
-		(controlId == IDC_PE_FIXED_SCALE_VALUE) ||
-		(controlId == IDC_PE_BOOST_FACTOR_LABEL) ||
-		(controlId == IDC_PE_BOOST_FACTOR_VALUE) ||
-		(controlId == IDC_PE_BOOST_RES_LABEL) ||
-		(controlId == IDC_PE_FIXED_SCALE_TICK_MIN) ||
-		(controlId == IDC_PE_FIXED_SCALE_TICK_MID) ||
-		(controlId == IDC_PE_FIXED_SCALE_TICK_MAX) ||
-		(controlId == IDC_PE_BOOST_FACTOR_TICK_MIN) ||
-		(controlId == IDC_PE_BOOST_FACTOR_TICK_MID) ||
-		(controlId == IDC_PE_BOOST_FACTOR_TICK_MAX) ||
-		(controlId == IDC_PE_ICON_STYLE_ARROW) ||
-		(controlId == IDC_PE_ICON_STYLE_DIAMOND) ||
-		(controlId == IDC_PE_ICON_STYLE_REALISTIC) ||
-		(controlId == IDC_PE_FIXED_PIXEL_CHECK) ||
-		(controlId == IDC_PE_SMALL_BOOST_CHECK) ||
-		(controlId == IDC_PE_RULE_LEFT_PANEL) ||
-		(controlId == IDC_PE_RULE_RIGHT_PANEL) ||
-		(controlId == IDC_PE_RULE_LEFT_HEADER) ||
-		(controlId == IDC_PE_RULE_RIGHT_HEADER) ||
-		(controlId == IDC_PE_RULE_SOURCE_LABEL) ||
-		(controlId == IDC_PE_RULE_TOKEN_LABEL) ||
-		(controlId == IDC_PE_RULE_CONDITION_LABEL) ||
-		(controlId == IDC_PE_RULE_TYPE_LABEL) ||
-		(controlId == IDC_PE_RULE_STATUS_LABEL) ||
-		(controlId == IDC_PE_RULE_DETAIL_LABEL) ||
-		(controlId == IDC_PE_RULE_TARGET_CHECK) ||
-		(controlId == IDC_PE_RULE_TAG_CHECK) ||
-		(controlId == IDC_PE_RULE_TEXT_CHECK) ||
-		(controlId == IDC_PE_RULE_COLOR_WHEEL_LABEL) ||
-		(controlId == IDC_PE_RULE_COLOR_VALUE_LABEL) ||
-		(controlId == IDC_PE_RULE_COLOR_PREVIEW_LABEL) ||
-		(controlId == IDC_PE_TAG_PANEL) ||
-		(controlId == IDC_PE_TAG_HEADER_PANEL) ||
-		(controlId == IDC_PE_TAG_TYPE_LABEL) ||
-		(controlId == IDC_PE_TAG_STATUS_LABEL) ||
-		(controlId == IDC_PE_TAG_TOKEN_LABEL) ||
-		(controlId == IDC_PE_TAG_DEF_HEADER) ||
-		(controlId == IDC_PE_TAG_LINE1_LABEL) ||
-		(controlId == IDC_PE_TAG_LINE2_LABEL) ||
-		(controlId == IDC_PE_TAG_LINE3_LABEL) ||
-		(controlId == IDC_PE_TAG_LINE4_LABEL) ||
-		(controlId == IDC_PE_TAG_LINK_DETAILED) ||
-		(controlId == IDC_PE_TAG_DETAILED_HEADER) ||
-		(controlId == IDC_PE_TAG_D_LINE1_LABEL) ||
-		(controlId == IDC_PE_TAG_D_LINE2_LABEL) ||
-		(controlId == IDC_PE_TAG_D_LINE3_LABEL) ||
-		(controlId == IDC_PE_TAG_D_LINE4_LABEL) ||
-		(controlId == IDC_PE_TAG_PREVIEW_LABEL);
+	const bool useColorThemeBackground = [&]()
+	{
+		switch (controlId)
+		{
+		case IDC_PE_COLOR_LEFT_PANEL:
+		case IDC_PE_COLOR_RIGHT_PANEL:
+		case IDC_PE_COLOR_TREE:
+		case IDC_PE_COLOR_PATH_LABEL:
+		case IDC_PE_SELECTED_PATH:
+		case IDC_PE_COLOR_PICKER_LABEL:
+		case IDC_PE_COLOR_PREVIEW_LABEL:
+		case IDC_PE_COLOR_VALUE_LABEL:
+		case IDC_PE_COLOR_OPACITY_LABEL:
+		case IDC_PE_LABEL_RGBA:
+		case IDC_PE_LABEL_HEX:
+		case IDC_PE_ICON_PANEL:
+		case IDC_PE_FIXED_SCALE_LABEL:
+		case IDC_PE_FIXED_SCALE_VALUE:
+		case IDC_PE_BOOST_FACTOR_LABEL:
+		case IDC_PE_BOOST_FACTOR_VALUE:
+		case IDC_PE_BOOST_RES_LABEL:
+		case IDC_PE_FIXED_SCALE_TICK_MIN:
+		case IDC_PE_FIXED_SCALE_TICK_MID:
+		case IDC_PE_FIXED_SCALE_TICK_MAX:
+		case IDC_PE_BOOST_FACTOR_TICK_MIN:
+		case IDC_PE_BOOST_FACTOR_TICK_MID:
+		case IDC_PE_BOOST_FACTOR_TICK_MAX:
+		case IDC_PE_ICON_STYLE_ARROW:
+		case IDC_PE_ICON_STYLE_DIAMOND:
+		case IDC_PE_ICON_STYLE_REALISTIC:
+		case IDC_PE_FIXED_PIXEL_CHECK:
+		case IDC_PE_SMALL_BOOST_CHECK:
+		case IDC_PE_RULE_LEFT_PANEL:
+		case IDC_PE_RULE_RIGHT_PANEL:
+		case IDC_PE_RULE_LEFT_HEADER:
+		case IDC_PE_RULE_RIGHT_HEADER:
+		case IDC_PE_RULE_SOURCE_LABEL:
+		case IDC_PE_RULE_TOKEN_LABEL:
+		case IDC_PE_RULE_CONDITION_LABEL:
+		case IDC_PE_RULE_TYPE_LABEL:
+		case IDC_PE_RULE_STATUS_LABEL:
+		case IDC_PE_RULE_DETAIL_LABEL:
+		case IDC_PE_RULE_TARGET_CHECK:
+		case IDC_PE_RULE_TAG_CHECK:
+		case IDC_PE_RULE_TEXT_CHECK:
+		case IDC_PE_RULE_COLOR_WHEEL_LABEL:
+		case IDC_PE_RULE_COLOR_VALUE_LABEL:
+		case IDC_PE_RULE_COLOR_PREVIEW_LABEL:
+		case IDC_PE_TAG_PANEL:
+		case IDC_PE_TAG_HEADER_PANEL:
+		case IDC_PE_TAG_TYPE_LABEL:
+		case IDC_PE_TAG_STATUS_LABEL:
+		case IDC_PE_TAG_TOKEN_LABEL:
+		case IDC_PE_TAG_DEF_HEADER:
+		case IDC_PE_TAG_LINE1_LABEL:
+		case IDC_PE_TAG_LINE2_LABEL:
+		case IDC_PE_TAG_LINE3_LABEL:
+		case IDC_PE_TAG_LINE4_LABEL:
+		case IDC_PE_TAG_LINK_DETAILED:
+		case IDC_PE_TAG_DETAILED_HEADER:
+		case IDC_PE_TAG_D_LINE1_LABEL:
+		case IDC_PE_TAG_D_LINE2_LABEL:
+		case IDC_PE_TAG_D_LINE3_LABEL:
+		case IDC_PE_TAG_D_LINE4_LABEL:
+		case IDC_PE_TAG_PREVIEW_LABEL:
+			return true;
+		default:
+			return false;
+		}
+	}();
 	if (useColorThemeBackground && HeaderBarBrush.GetSafeHandle() != nullptr)
 	{
 		pDC->SetBkColor(RGB(249, 249, 249));
 		pDC->SetTextColor(RGB(17, 24, 39));
 		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
-	}
-	if (!DraftColorValid)
-		return hbr;
-	if (controlId == IDC_PE_COLOR_PICKER_SWATCH)
-	{
-		pDC->SetBkColor(RGB(DraftColorR, DraftColorG, DraftColorB));
-		return static_cast<HBRUSH>(ColorPickerBrush.GetSafeHandle());
-	}
-	if (controlId == IDC_PE_COLOR_PREVIEW_SWATCH)
-	{
-		pDC->SetBkColor(RGB(DraftColorR, DraftColorG, DraftColorB));
-		return static_cast<HBRUSH>(ColorPreviewBrush.GetSafeHandle());
 	}
 	return hbr;
 }
@@ -863,7 +863,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		return;
 	}
 
-	const bool isColorTabSwatch = (controlId == IDC_PE_COLOR_PICKER_SWATCH || controlId == IDC_PE_COLOR_PREVIEW_SWATCH);
+	const bool isColorTabSwatch = (controlId == IDC_PE_COLOR_PREVIEW_SWATCH);
 	const bool isRuleSwatch =
 		(controlId == IDC_PE_RULE_TARGET_SWATCH) ||
 		(controlId == IDC_PE_RULE_TAG_SWATCH) ||
@@ -955,8 +955,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		memDc.SelectObject(oldPreviewPen);
 	}
 
-	if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 &&
-		(controlId == IDC_PE_COLOR_PICKER_SWATCH || isRuleSwatch))
+	if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 && isRuleSwatch)
 	{
 		CRect focusRect(localOuter);
 		focusRect.DeflateRect(3, 3);
@@ -987,7 +986,6 @@ void CProfileEditorDialog::CreateEditorControls()
 	ColorPathLabel.Create("Colors", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_LABEL);
 	SelectedPathText.Create("Selected:", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
 	ColorPickerLabel.Create("Color Wheel", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_LABEL);
-	ColorPickerSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_SWATCH);
 	ColorPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PREVIEW_LABEL);
 	ColorPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PREVIEW_SWATCH);
 	ColorWheel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_WHEEL);
@@ -1522,7 +1520,6 @@ void CProfileEditorDialog::LayoutControls()
 	y += rowHeight + 4;
 
 	ColorPreviewSwatch.MoveWindow(rightLeft + 14, y, previewWidth, 52, TRUE);
-	ColorPickerSwatch.MoveWindow(-5000, -5000, 10, 10, TRUE);
 	y += 52 + 10;
 
 	const int sliderGap = 16;
@@ -1817,6 +1814,10 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	const bool showRules = (selectedTab == 2);
 	const bool showTagEditor = (selectedTab == 3);
 	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
+	if (selectedTab == LastVisibilityTab && showDetailedTag == LastVisibilityDetailedTag)
+		return;
+	LastVisibilityTab = selectedTab;
+	LastVisibilityDetailedTag = showDetailedTag;
 	const int colorShowMode = showColors ? SW_SHOW : SW_HIDE;
 	const int iconShowMode = showIcons ? SW_SHOW : SW_HIDE;
 	const int ruleShowMode = showRules ? SW_SHOW : SW_HIDE;
@@ -1829,7 +1830,6 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	ColorPathLabel.ShowWindow(colorShowMode);
 	SelectedPathText.ShowWindow(colorShowMode);
 	ColorPickerLabel.ShowWindow(colorShowMode);
-	ColorPickerSwatch.ShowWindow(SW_HIDE);
 	ColorPreviewLabel.ShowWindow(colorShowMode);
 	ColorPreviewSwatch.ShowWindow(colorShowMode);
 	ColorWheel.ShowWindow(colorShowMode);
@@ -2092,17 +2092,6 @@ void CProfileEditorDialog::LoadDraftColorFromSelection()
 	UpdateDraftColorControls(false, true);
 }
 
-void CProfileEditorDialog::RefreshColorSwatchBrushes()
-{
-	if (ColorPickerBrush.GetSafeHandle() != nullptr)
-		ColorPickerBrush.DeleteObject();
-	if (ColorPreviewBrush.GetSafeHandle() != nullptr)
-		ColorPreviewBrush.DeleteObject();
-
-	ColorPickerBrush.CreateSolidBrush(RGB(DraftColorR, DraftColorG, DraftColorB));
-	ColorPreviewBrush.CreateSolidBrush(RGB(DraftColorR, DraftColorG, DraftColorB));
-}
-
 void CProfileEditorDialog::SyncColorValueSliderFromDraft()
 {
 	if (!DraftColorValid || !::IsWindow(ColorValueSlider.GetSafeHwnd()))
@@ -2191,7 +2180,6 @@ void CProfileEditorDialog::UpdateDraftColorControls(bool updateRgba, bool update
 		SetEditTextPreserveCaret(EditHex, hexBuffer);
 	UpdatingControls = false;
 
-	RefreshColorSwatchBrushes();
 	SyncColorValueSliderFromDraft();
 	SyncColorOpacitySliderFromDraft();
 	ColorPreviewSwatch.Invalidate(FALSE);
