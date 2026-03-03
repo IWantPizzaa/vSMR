@@ -63,6 +63,9 @@ protected:
 	afx_msg void OnRuleRemoveClicked();
 	afx_msg void OnRuleSourceChanged();
 	afx_msg void OnRuleFieldChanged();
+	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg LRESULT OnRuleColorWheelTrack(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnRuleColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnRuleTargetSwatchClicked();
 	afx_msg void OnRuleTagSwatchClicked();
 	afx_msg void OnRuleTextSwatchClicked();
@@ -199,6 +202,10 @@ private:
 		, IDC_PE_COLOR_VALUE_SLIDER = 9219
 		, IDC_PE_COLOR_OPACITY_LABEL = 9220
 		, IDC_PE_COLOR_OPACITY_SLIDER = 9221
+		, IDC_PE_RULE_COLOR_WHEEL_LABEL = 9222
+		, IDC_PE_RULE_COLOR_WHEEL = 9223
+		, IDC_PE_RULE_COLOR_VALUE_LABEL = 9224
+		, IDC_PE_RULE_COLOR_VALUE_SLIDER = 9225
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -299,6 +306,10 @@ private:
 	CButton RuleTextCheck;
 	CStatic RuleTextSwatch;
 	CEdit RuleTextEdit;
+	CStatic RuleColorWheelLabel;
+	CStatic RuleColorWheel;
+	CStatic RuleColorValueLabel;
+	CSliderCtrl RuleColorValueSlider;
 
 	CStatic TagTypeLabel;
 	CStatic TagPanel;
@@ -339,6 +350,11 @@ private:
 
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	int SelectedRuleIndex = -1;
+	UINT RuleColorActiveSwatchId = 0;
+	int RuleColorDraftR = 255;
+	int RuleColorDraftG = 255;
+	int RuleColorDraftB = 255;
+	bool RuleColorDraftValid = false;
 	std::vector<std::string> ColorPathEntries;
 	std::map<HTREEITEM, std::string> ColorTreeItemPaths;
 	int DraftColorR = 255;
@@ -404,6 +420,13 @@ private:
 	void InvalidateRuleColorSwatches();
 	bool ResolveRuleSwatchColor(UINT controlId, COLORREF& outColor, bool& outEnabled) const;
 	void OpenRuleColorPicker(UINT swatchControlId);
+	bool GetRuleColorEditorTargetControls(UINT swatchControlId, CButton*& outCheck, CEdit*& outEdit) const;
+	void SyncRuleColorEditorFromActiveControl();
+	void SyncRuleColorValueSliderFromDraft();
+	void ApplyRuleColorValueFromSlider();
+	void ApplyRuleColorDraftToActiveControl();
+	bool TryApplyRuleColorWheelPoint(const CPoint& screenPoint);
+	bool TryApplyRuleColorValueSliderPoint(const CPoint& screenPoint);
 	bool TryApplyColorWheelPoint(const CPoint& screenPoint);
 	bool TryApplyColorValueSliderPoint(const CPoint& screenPoint);
 	bool TryApplyColorOpacitySliderPoint(const CPoint& screenPoint);
