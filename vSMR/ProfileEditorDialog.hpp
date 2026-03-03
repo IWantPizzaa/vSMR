@@ -164,7 +164,6 @@ private:
 		IDC_PE_EDIT_RGBA = 9184,
 		IDC_PE_COLOR_TREE = 9185,
 		IDC_PE_COLOR_PICKER_LABEL = 9186,
-		IDC_PE_COLOR_PICKER_SWATCH = 9187,
 		IDC_PE_COLOR_PREVIEW_LABEL = 9188,
 		IDC_PE_COLOR_PREVIEW_SWATCH = 9189,
 		IDC_PE_APPLY_BUTTON = 9190,
@@ -213,6 +212,8 @@ private:
 	bool Initialized = false;
 	bool UpdatingControls = false;
 	bool ControlsCreated = false;
+	int LastVisibilityTab = -1;
+	bool LastVisibilityDetailedTag = false;
 
 	CTabCtrl PageTabs;
 
@@ -222,7 +223,6 @@ private:
 	CStatic ColorPathLabel;
 	CStatic SelectedPathText;
 	CStatic ColorPickerLabel;
-	CStatic ColorPickerSwatch;
 	CStatic ColorPreviewLabel;
 	CStatic ColorPreviewSwatch;
 	CStatic ColorWheel;
@@ -353,15 +353,13 @@ private:
 	int DraftColorA = 255;
 	bool DraftColorHasAlpha = false;
 	bool DraftColorValid = false;
-	CBrush ColorPickerBrush;
-	CBrush ColorPreviewBrush;
 	CBrush HeaderBarBrush;
 	CFont MonoFont;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
 	void ForceChildRepaint();
-	void RefreshColorSwatchBrushes();
+	bool HandleColorSliderScroll(CScrollBar* pScrollBar, UINT nSBCode, UINT nPos);
 	void CreateEditorControls();
 	void LayoutControls();
 	void UpdatePageVisibility();
