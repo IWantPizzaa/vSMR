@@ -204,20 +204,27 @@ namespace
 		dc.SelectObject(oldPen);
 	}
 
-	LRESULT CALLBACK ColorWheelWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	LRESULT HandleTrackingControlWndProc(
+		HWND hwnd,
+		UINT message,
+		WPARAM wParam,
+		LPARAM lParam,
+		std::map<HWND, WNDPROC>& oldProcMap,
+		std::map<HWND, HWND>& ownerMap,
+		UINT trackMessage)
 	{
-		auto oldIt = gColorWheelOldProcs.find(hwnd);
-		WNDPROC oldProc = (oldIt != gColorWheelOldProcs.end()) ? oldIt->second : DefWindowProc;
+		auto oldIt = oldProcMap.find(hwnd);
+		WNDPROC oldProc = (oldIt != oldProcMap.end()) ? oldIt->second : DefWindowProc;
 
 		auto sendTrackMessage = [&](int x, int y)
 		{
-			auto ownerIt = gColorWheelOwnerWindows.find(hwnd);
-			if (ownerIt == gColorWheelOwnerWindows.end() || !::IsWindow(ownerIt->second))
+			auto ownerIt = ownerMap.find(hwnd);
+			if (ownerIt == ownerMap.end() || !::IsWindow(ownerIt->second))
 				return;
 
 			POINT screenPoint = { x, y };
 			::ClientToScreen(hwnd, &screenPoint);
-			::SendMessage(ownerIt->second, WM_PE_COLOR_WHEEL_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
+			::SendMessage(ownerIt->second, trackMessage, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
 		};
 
 		switch (message)
@@ -238,13 +245,11 @@ namespace
 				::ReleaseCapture();
 			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
 			return 0;
-		case WM_CAPTURECHANGED:
-			break;
 		case WM_NCDESTROY:
 		{
 			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
-			gColorWheelOldProcs.erase(hwnd);
-			gColorWheelOwnerWindows.erase(hwnd);
+			oldProcMap.erase(hwnd);
+			ownerMap.erase(hwnd);
 			return result;
 		}
 		default:
@@ -252,198 +257,66 @@ namespace
 		}
 
 		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+	}
+
+	LRESULT CALLBACK ColorWheelWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		return HandleTrackingControlWndProc(
+			hwnd,
+			message,
+			wParam,
+			lParam,
+			gColorWheelOldProcs,
+			gColorWheelOwnerWindows,
+			WM_PE_COLOR_WHEEL_TRACK);
 	}
 
 	LRESULT CALLBACK ColorValueSliderWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
-		auto oldIt = gColorValueSliderOldProcs.find(hwnd);
-		WNDPROC oldProc = (oldIt != gColorValueSliderOldProcs.end()) ? oldIt->second : DefWindowProc;
-
-		auto sendTrackMessage = [&](int x, int y)
-		{
-			auto ownerIt = gColorValueSliderOwnerWindows.find(hwnd);
-			if (ownerIt == gColorValueSliderOwnerWindows.end() || !::IsWindow(ownerIt->second))
-				return;
-
-			POINT screenPoint = { x, y };
-			::ClientToScreen(hwnd, &screenPoint);
-			::SendMessage(ownerIt->second, WM_PE_COLOR_VALUE_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
-		};
-
-		switch (message)
-		{
-		case WM_LBUTTONDOWN:
-			::SetCapture(hwnd);
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_MOUSEMOVE:
-			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
-			{
-				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-				return 0;
-			}
-			break;
-		case WM_LBUTTONUP:
-			if (::GetCapture() == hwnd)
-				::ReleaseCapture();
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_NCDESTROY:
-		{
-			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
-			gColorValueSliderOldProcs.erase(hwnd);
-			gColorValueSliderOwnerWindows.erase(hwnd);
-			return result;
-		}
-		default:
-			break;
-		}
-
-		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+		return HandleTrackingControlWndProc(
+			hwnd,
+			message,
+			wParam,
+			lParam,
+			gColorValueSliderOldProcs,
+			gColorValueSliderOwnerWindows,
+			WM_PE_COLOR_VALUE_TRACK);
 	}
 
 	LRESULT CALLBACK ColorOpacitySliderWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
-		auto oldIt = gColorOpacitySliderOldProcs.find(hwnd);
-		WNDPROC oldProc = (oldIt != gColorOpacitySliderOldProcs.end()) ? oldIt->second : DefWindowProc;
-
-		auto sendTrackMessage = [&](int x, int y)
-		{
-			auto ownerIt = gColorOpacitySliderOwnerWindows.find(hwnd);
-			if (ownerIt == gColorOpacitySliderOwnerWindows.end() || !::IsWindow(ownerIt->second))
-				return;
-
-			POINT screenPoint = { x, y };
-			::ClientToScreen(hwnd, &screenPoint);
-			::SendMessage(ownerIt->second, WM_PE_COLOR_OPACITY_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
-		};
-
-		switch (message)
-		{
-		case WM_LBUTTONDOWN:
-			::SetCapture(hwnd);
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_MOUSEMOVE:
-			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
-			{
-				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-				return 0;
-			}
-			break;
-		case WM_LBUTTONUP:
-			if (::GetCapture() == hwnd)
-				::ReleaseCapture();
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_NCDESTROY:
-		{
-			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
-			gColorOpacitySliderOldProcs.erase(hwnd);
-			gColorOpacitySliderOwnerWindows.erase(hwnd);
-			return result;
-		}
-		default:
-			break;
-		}
-
-		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+		return HandleTrackingControlWndProc(
+			hwnd,
+			message,
+			wParam,
+			lParam,
+			gColorOpacitySliderOldProcs,
+			gColorOpacitySliderOwnerWindows,
+			WM_PE_COLOR_OPACITY_TRACK);
 	}
 
 	LRESULT CALLBACK RuleColorWheelWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
-		auto oldIt = gRuleColorWheelOldProcs.find(hwnd);
-		WNDPROC oldProc = (oldIt != gRuleColorWheelOldProcs.end()) ? oldIt->second : DefWindowProc;
-
-		auto sendTrackMessage = [&](int x, int y)
-		{
-			auto ownerIt = gRuleColorWheelOwnerWindows.find(hwnd);
-			if (ownerIt == gRuleColorWheelOwnerWindows.end() || !::IsWindow(ownerIt->second))
-				return;
-
-			POINT screenPoint = { x, y };
-			::ClientToScreen(hwnd, &screenPoint);
-			::SendMessage(ownerIt->second, WM_PE_RULE_COLOR_WHEEL_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
-		};
-
-		switch (message)
-		{
-		case WM_LBUTTONDOWN:
-			::SetCapture(hwnd);
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_MOUSEMOVE:
-			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
-			{
-				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-				return 0;
-			}
-			break;
-		case WM_LBUTTONUP:
-			if (::GetCapture() == hwnd)
-				::ReleaseCapture();
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_NCDESTROY:
-		{
-			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
-			gRuleColorWheelOldProcs.erase(hwnd);
-			gRuleColorWheelOwnerWindows.erase(hwnd);
-			return result;
-		}
-		default:
-			break;
-		}
-
-		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+		return HandleTrackingControlWndProc(
+			hwnd,
+			message,
+			wParam,
+			lParam,
+			gRuleColorWheelOldProcs,
+			gRuleColorWheelOwnerWindows,
+			WM_PE_RULE_COLOR_WHEEL_TRACK);
 	}
 
 	LRESULT CALLBACK RuleColorValueSliderWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
-		auto oldIt = gRuleColorValueSliderOldProcs.find(hwnd);
-		WNDPROC oldProc = (oldIt != gRuleColorValueSliderOldProcs.end()) ? oldIt->second : DefWindowProc;
-
-		auto sendTrackMessage = [&](int x, int y)
-		{
-			auto ownerIt = gRuleColorValueSliderOwnerWindows.find(hwnd);
-			if (ownerIt == gRuleColorValueSliderOwnerWindows.end() || !::IsWindow(ownerIt->second))
-				return;
-
-			POINT screenPoint = { x, y };
-			::ClientToScreen(hwnd, &screenPoint);
-			::SendMessage(ownerIt->second, WM_PE_RULE_COLOR_VALUE_TRACK, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
-		};
-
-		switch (message)
-		{
-		case WM_LBUTTONDOWN:
-			::SetCapture(hwnd);
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_MOUSEMOVE:
-			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
-			{
-				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-				return 0;
-			}
-			break;
-		case WM_LBUTTONUP:
-			if (::GetCapture() == hwnd)
-				::ReleaseCapture();
-			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-			return 0;
-		case WM_NCDESTROY:
-		{
-			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
-			gRuleColorValueSliderOldProcs.erase(hwnd);
-			gRuleColorValueSliderOwnerWindows.erase(hwnd);
-			return result;
-		}
-		default:
-			break;
-		}
-
-		return ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+		return HandleTrackingControlWndProc(
+			hwnd,
+			message,
+			wParam,
+			lParam,
+			gRuleColorValueSliderOldProcs,
+			gRuleColorValueSliderOwnerWindows,
+			WM_PE_RULE_COLOR_VALUE_TRACK);
 	}
 
 	void DrawThemedBorder(HWND hwnd)

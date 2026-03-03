@@ -2692,7 +2692,15 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				Gdiplus::ImageAttributes attrs;
 				attrs.SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
 				RectF dest(0.0f, 0.0f, static_cast<REAL>(drawW), static_cast<REAL>(drawH));
-				graphics.DrawImage(iconBmp, dest, 0, 0, static_cast<INT>(iconBmp->GetWidth()), static_cast<INT>(iconBmp->GetHeight()), UnitPixel, &attrs);
+				graphics.DrawImage(
+					iconBmp,
+					dest,
+					0.0f,
+					0.0f,
+					static_cast<Gdiplus::REAL>(iconBmp->GetWidth()),
+					static_cast<Gdiplus::REAL>(iconBmp->GetHeight()),
+					UnitPixel,
+					&attrs);
 			}
 			else {
 				graphics.DrawImage(iconBmp, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(drawW), Gdiplus::REAL(drawH));
