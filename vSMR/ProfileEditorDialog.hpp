@@ -40,6 +40,7 @@ protected:
 	afx_msg void OnColorTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnColorWheelTrack(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnColorWheelClicked();
 	afx_msg void OnPickColorClicked();
 	afx_msg void OnApplyColorClicked();
@@ -398,6 +399,7 @@ private:
 	bool ResolveRuleSwatchColor(UINT controlId, COLORREF& outColor, bool& outEnabled) const;
 	void OpenRuleColorPicker(UINT swatchControlId);
 	bool TryApplyColorWheelPoint(const CPoint& screenPoint);
+	bool TryApplyColorValueSliderPoint(const CPoint& screenPoint);
 	void SyncColorValueSliderFromDraft();
 	void ApplyDraftColorValueFromSlider();
 	void EnsureColorWheelBitmap(const CRect& wheelRect);
