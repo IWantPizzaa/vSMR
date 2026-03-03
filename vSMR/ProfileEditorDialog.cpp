@@ -641,9 +641,17 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	CDC dc;
 	dc.Attach(lpDrawItemStruct->hDC);
 	CRect outerRect(lpDrawItemStruct->rcItem);
-	dc.FillSolidRect(&outerRect, RGB(249, 249, 249));
+	CRect localOuter(0, 0, outerRect.Width(), outerRect.Height());
 
-	CRect roundedRect = outerRect;
+	CDC memDc;
+	memDc.CreateCompatibleDC(&dc);
+	CBitmap frameBitmap;
+	frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
+	CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
+
+	memDc.FillSolidRect(&localOuter, RGB(249, 249, 249));
+
+	CRect roundedRect = localOuter;
 	roundedRect.DeflateRect(1, 1);
 	COLORREF fillColor = DraftColorValid ? RGB(DraftColorR, DraftColorG, DraftColorB) : RGB(255, 255, 255);
 	bool swatchEnabled = true;
@@ -658,20 +666,22 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 
 	CBrush fillBrush(fillColor);
 	CPen borderPen(PS_SOLID, 1, swatchEnabled ? RGB(186, 186, 186) : RGB(200, 200, 200));
-	CBrush* oldBrush = dc.SelectObject(&fillBrush);
-	CPen* oldPen = dc.SelectObject(&borderPen);
-	dc.RoundRect(&roundedRect, CPoint(10, 10));
-	dc.SelectObject(oldPen);
-	dc.SelectObject(oldBrush);
+	CBrush* oldBrush = memDc.SelectObject(&fillBrush);
+	CPen* oldPen = memDc.SelectObject(&borderPen);
+	memDc.RoundRect(&roundedRect, CPoint(10, 10));
+	memDc.SelectObject(oldPen);
+	memDc.SelectObject(oldBrush);
 
 	if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 &&
 		(controlId == IDC_PE_COLOR_PICKER_SWATCH || isRuleSwatch))
 	{
-		CRect focusRect(lpDrawItemStruct->rcItem);
+		CRect focusRect(localOuter);
 		focusRect.DeflateRect(3, 3);
-		dc.DrawFocusRect(&focusRect);
+		memDc.DrawFocusRect(&focusRect);
 	}
 
+	dc.BitBlt(outerRect.left, outerRect.top, localOuter.Width(), localOuter.Height(), &memDc, 0, 0, SRCCOPY);
+	memDc.SelectObject(oldFrameBitmap);
 	dc.Detach();
 }
 
@@ -1887,13 +1897,11 @@ void CProfileEditorDialog::UpdateDraftColorControls(bool updateRgba, bool update
 	RefreshColorSwatchBrushes();
 	SyncColorValueSliderFromDraft();
 	SyncColorOpacitySliderFromDraft();
-	ColorPickerSwatch.Invalidate(FALSE);
 	ColorPreviewSwatch.Invalidate(FALSE);
 	if (invalidateWheel)
 		ColorWheel.Invalidate(FALSE);
 	ColorValueSlider.Invalidate(FALSE);
 	ColorOpacitySlider.Invalidate(FALSE);
-	ColorPathTree.Invalidate(FALSE);
 }
 
 void CProfileEditorDialog::ApplyColorPathSelection(const std::string& selectedPath)
