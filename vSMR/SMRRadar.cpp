@@ -9,6 +9,8 @@
 #include "SMRRadar_TagShared.hpp"
 #include "ProfileEditorDialog.hpp"
 
+extern std::vector<CSMRRadar*> RadarScreensOpened;
+
 ULONG_PTR m_gdiplusToken;
 CPoint mouseLocation(0, 0);
 string TagBeingDragged;
@@ -134,6 +136,8 @@ CSMRRadar::CSMRRadar()
 CSMRRadar::~CSMRRadar()
 {
 	Logger::info(string(__FUNCSIG__));
+	CloseProfileEditorWindow(false);
+	DestroyProfileEditorWindow();
 	try {
 		//this->OnAsrContentToBeSaved();
 		//this->EuroScopePlugInExitCustom();
@@ -143,6 +147,7 @@ CSMRRadar::~CSMRRadar()
 		s << e.what() << endl;
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
+	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
 	// Shutting down GDI+
 	GdiplusShutdown(m_gdiplusToken);
 	delete CurrentConfig;
@@ -3556,6 +3561,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 void CSMRRadar::EuroScopePlugInExitCustom()
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState())
+
+		CloseProfileEditorWindow(false);
+		DestroyProfileEditorWindow();
 
 		if (smrCursor != nullptr && smrCursor != NULL)
 		{
