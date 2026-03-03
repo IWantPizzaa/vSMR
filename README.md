@@ -1,8 +1,10 @@
 # Custom vSMR for EuroScope
 
-vSMR is a EuroScope plugin that simulates the NOVA 9000 A-SMGCS and provides an advanced surface movement radar (SMR) display, realistic tags, and an integrated profile editor.
+vSMR is a EuroScope plugin that provides an advanced surface movement radar (SMR) display, realistic tags, and an integrated profile editor.
 
 This README is both a user guide and a quick developer reference.
+
+This project was initially forked from https://github.com/AlexisBalzano/vSMR, which was itself forked from https://github.com/pierr3/vSMR.
 
 ## Features
 
@@ -125,8 +127,4 @@ GPL v3. See `LICENSE` for details.
 
 ## Credits
 
-Special thanks to Daniel Lange, Even Rognlien, Juha Holopainen, Lionel Bischof, Wenjun Zhou, Sam White, Theo Bearman, and Jonas Kuster.
-
-## Project Lineage
-
-This project was initially forked from https://github.com/AlexisBalzano/vSMR/tree/v1.0.6, which was itself forked from https://github.com/pierr3/vSMR.
+Special thanks to Baptise.C and Steve.A.
