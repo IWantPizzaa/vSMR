@@ -5,10 +5,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdlib>
 #include <functional>
 #include <map>
-#include <set>
 
 IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
 
@@ -87,6 +85,122 @@ namespace
 		if (hue < 0.0)
 			hue += 360.0;
 		outHue = hue;
+	}
+
+	bool TryReadHueSaturationFromWheel(CStatic& wheelControl, const CPoint& screenPoint, double& outHue, double& outSaturation)
+	{
+		if (!::IsWindow(wheelControl.GetSafeHwnd()))
+			return false;
+
+		CRect wheelRectScreen;
+		wheelControl.GetWindowRect(&wheelRectScreen);
+		if (!wheelRectScreen.PtInRect(screenPoint))
+			return false;
+
+		const int localX = screenPoint.x - wheelRectScreen.left;
+		const int localY = screenPoint.y - wheelRectScreen.top;
+		const int width = wheelRectScreen.Width();
+		const int height = wheelRectScreen.Height();
+		const int innerLeft = 2;
+		const int innerTop = 2;
+		const int innerWidth = max(1, width - (innerLeft * 2));
+		const int innerHeight = max(1, height - (innerTop * 2));
+		const int diameter = min(innerWidth, innerHeight);
+		const int radius = max(1, (diameter / 2) - 2);
+		const double centerX = static_cast<double>(innerLeft + (innerWidth / 2));
+		const double centerY = static_cast<double>(innerTop + (innerHeight / 2));
+		const double dx = static_cast<double>(localX) - centerX;
+		const double dy = centerY - static_cast<double>(localY);
+		const double distance = sqrt((dx * dx) + (dy * dy));
+		if (distance > static_cast<double>(radius))
+			return false;
+
+		double hue = atan2(dy, dx) * (180.0 / 3.14159265358979323846);
+		if (hue < 0.0)
+			hue += 360.0;
+		outHue = hue;
+		outSaturation = min(1.0, max(0.0, distance / static_cast<double>(radius)));
+		return true;
+	}
+
+	bool TryReadVerticalSliderPosFromPoint(CSliderCtrl& sliderControl, const CPoint& screenPoint, int& outPos)
+	{
+		if (!::IsWindow(sliderControl.GetSafeHwnd()))
+			return false;
+
+		CRect sliderRectScreen;
+		sliderControl.GetWindowRect(&sliderRectScreen);
+
+		CRect clientRect;
+		sliderControl.GetClientRect(&clientRect);
+		if (clientRect.Height() <= 0)
+			return false;
+
+		const int channelTop = clientRect.top + 4;
+		const int channelBottomExclusive = max(channelTop + 1, clientRect.bottom - 4);
+		const int channelHeight = channelBottomExclusive - channelTop;
+		const int localY = screenPoint.y - sliderRectScreen.top;
+		const int clampedY = min(channelBottomExclusive - 1, max(channelTop, localY));
+		const double t = 1.0 - (static_cast<double>(clampedY - channelTop) / static_cast<double>(max(1, channelHeight - 1)));
+		outPos = min(100, max(0, static_cast<int>(round(t * 100.0))));
+		return true;
+	}
+
+	void DrawVerticalValueSlider(CDC& dc, const CRect& clientRect, int sliderPos, int topR, int topG, int topB)
+	{
+		const int channelWidth = max(10, min(16, clientRect.Width() - 8));
+		const int channelLeft = clientRect.left + ((clientRect.Width() - channelWidth) / 2);
+		const int channelTop = clientRect.top + 4;
+		const int channelBottom = clientRect.bottom - 4;
+		CRect channelRect(channelLeft, channelTop, channelLeft + channelWidth, channelBottom);
+
+		CRgn clipRegion;
+		clipRegion.CreateRoundRectRgn(channelRect.left, channelRect.top, channelRect.right + 1, channelRect.bottom + 1, 8, 8);
+		const int savedDc = dc.SaveDC();
+		dc.SelectClipRgn(&clipRegion);
+		const int gradientHeight = max(1, channelRect.Height());
+		for (int y = 0; y < gradientHeight; ++y)
+		{
+			const double t = min(1.0, max(0.0, static_cast<double>(y) / static_cast<double>(max(1, gradientHeight - 1))));
+			const int r = static_cast<int>(round(static_cast<double>(topR) * (1.0 - t)));
+			const int g = static_cast<int>(round(static_cast<double>(topG) * (1.0 - t)));
+			const int b = static_cast<int>(round(static_cast<double>(topB) * (1.0 - t)));
+			dc.FillSolidRect(channelRect.left, channelRect.top + y, channelRect.Width(), 1, RGB(r, g, b));
+		}
+		dc.RestoreDC(savedDc);
+
+		CPen channelBorder(PS_SOLID, 1, RGB(186, 186, 186));
+		CPen* oldPen = dc.SelectObject(&channelBorder);
+		CBrush* oldBrush = static_cast<CBrush*>(dc.SelectStockObject(HOLLOW_BRUSH));
+		dc.RoundRect(&channelRect, CPoint(8, 8));
+
+		const int clampedSliderPos = min(100, max(0, sliderPos));
+		const double sliderT = static_cast<double>(clampedSliderPos) / 100.0;
+		const int thumbHeight = 14;
+		const int thumbHalf = thumbHeight / 2;
+		const int centerY = channelRect.top + static_cast<int>(round((1.0 - sliderT) * static_cast<double>(max(1, channelRect.Height() - 1))));
+		const int thumbLeft = max(clientRect.left + 1, channelRect.left - 3);
+		const int thumbRight = min(clientRect.right - 1, channelRect.right + 3);
+		const int thumbTop = max(clientRect.top + 1, centerY - thumbHalf);
+		const int thumbBottom = min(clientRect.bottom - 1, centerY + thumbHalf + 1);
+		CRect thumbRect(thumbLeft, thumbTop, thumbRight, thumbBottom);
+		thumbRect.DeflateRect(1, 1);
+		CBrush thumbOuterBrush(RGB(255, 255, 255));
+		CPen thumbOuterPen(PS_SOLID, 1, RGB(212, 212, 212));
+		dc.SelectObject(&thumbOuterPen);
+		dc.SelectObject(&thumbOuterBrush);
+		dc.RoundRect(&thumbRect, CPoint(10, 10));
+
+		CRect thumbInner = thumbRect;
+		thumbInner.DeflateRect(3, 3);
+		CBrush thumbInnerBrush(RGB(64, 182, 227));
+		CPen thumbInnerPen(PS_SOLID, 1, RGB(64, 182, 227));
+		dc.SelectObject(&thumbInnerPen);
+		dc.SelectObject(&thumbInnerBrush);
+		dc.RoundRect(&thumbInner, CPoint(8, 8));
+
+		dc.SelectObject(oldBrush);
+		dc.SelectObject(oldPen);
 	}
 
 	LRESULT CALLBACK ColorWheelWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -869,14 +983,8 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	ColorLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LEFT_PANEL);
 	ColorRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_RIGHT_PANEL);
-	ColorPathList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | LBS_NOTIFY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LIST);
 	ColorPathTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_FULLROWSELECT | TVS_NOHSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_TREE);
 	ColorPathLabel.Create("Colors", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_LABEL);
-	ColorPathLevel1.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L1);
-	ColorPathLevel2.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L2);
-	ColorPathLevel3.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L3);
-	ColorPathLevel4.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L4);
-	ColorPathLevel5.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_L5);
 	SelectedPathText.Create("Selected:", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
 	ColorPickerLabel.Create("Color Wheel", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_LABEL);
 	ColorPickerSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_SWATCH);
@@ -889,18 +997,8 @@ void CProfileEditorDialog::CreateEditorControls()
 	ColorOpacitySlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_VERT | TBS_NOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_OPACITY_SLIDER);
 	LabelRgba.Create("RGBA", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_RGBA);
 	EditRgba.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_RGBA);
-	LabelR.Create("R", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_R);
-	LabelG.Create("G", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_G);
-	LabelB.Create("B", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_B);
-	LabelA.Create("A", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_A);
 	LabelHex.Create("HEX", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_LABEL_HEX);
-	EditR.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_R);
-	EditG.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_G);
-	EditB.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_B);
-	EditA.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_A);
 	EditHex.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_EDIT_HEX);
-	PickColorButton.Create("Pick...", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_PICK_BUTTON);
-	RefreshButton.Create("Refresh", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_REFRESH_BUTTON);
 	ApplyColorButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_APPLY_BUTTON);
 	ResetColorButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_RESET_BUTTON);
 
@@ -1467,24 +1565,6 @@ void CProfileEditorDialog::LayoutControls()
 	ApplyColorButton.MoveWindow(rightLeft + 14, y, 60, buttonHeight, TRUE);
 	ResetColorButton.MoveWindow(rightLeft + 82, y, 60, buttonHeight, TRUE);
 
-	// Legacy color controls are hidden.
-	ColorPathList.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	ColorPathLevel1.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	ColorPathLevel2.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	ColorPathLevel3.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	ColorPathLevel4.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	ColorPathLevel5.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	LabelR.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	LabelG.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	LabelB.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	LabelA.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	EditR.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	EditG.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	EditB.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	EditA.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	PickColorButton.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	RefreshButton.MoveWindow(-5000, -5000, 10, 10, TRUE);
-
 	const int iconLeft = pageRect.left + innerPad;
 	const int iconTop = pageRect.top + innerPad;
 	const int iconWidth = max(220, pageRect.Width() - (innerPad * 2));
@@ -1745,14 +1825,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 
 	ColorLeftPanel.ShowWindow(colorShowMode);
 	ColorRightPanel.ShowWindow(colorShowMode);
-	ColorPathList.ShowWindow(SW_HIDE);
 	ColorPathTree.ShowWindow(colorShowMode);
 	ColorPathLabel.ShowWindow(colorShowMode);
-	ColorPathLevel1.ShowWindow(SW_HIDE);
-	ColorPathLevel2.ShowWindow(SW_HIDE);
-	ColorPathLevel3.ShowWindow(SW_HIDE);
-	ColorPathLevel4.ShowWindow(SW_HIDE);
-	ColorPathLevel5.ShowWindow(SW_HIDE);
 	SelectedPathText.ShowWindow(colorShowMode);
 	ColorPickerLabel.ShowWindow(colorShowMode);
 	ColorPickerSwatch.ShowWindow(SW_HIDE);
@@ -1765,18 +1839,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	ColorOpacitySlider.ShowWindow(colorShowMode);
 	LabelRgba.ShowWindow(colorShowMode);
 	EditRgba.ShowWindow(colorShowMode);
-	LabelR.ShowWindow(SW_HIDE);
-	LabelG.ShowWindow(SW_HIDE);
-	LabelB.ShowWindow(SW_HIDE);
-	LabelA.ShowWindow(SW_HIDE);
 	LabelHex.ShowWindow(colorShowMode);
-	EditR.ShowWindow(SW_HIDE);
-	EditG.ShowWindow(SW_HIDE);
-	EditB.ShowWindow(SW_HIDE);
-	EditA.ShowWindow(SW_HIDE);
 	EditHex.ShowWindow(colorShowMode);
-	PickColorButton.ShowWindow(SW_HIDE);
-	RefreshButton.ShowWindow(SW_HIDE);
 	ApplyColorButton.ShowWindow(colorShowMode);
 	ResetColorButton.ShowWindow(colorShowMode);
 
@@ -1886,7 +1950,6 @@ void CProfileEditorDialog::RebuildColorPathList()
 	if (ColorPathEntries.empty())
 	{
 		UpdatingControls = true;
-		ColorPathList.ResetContent();
 		ColorPathTree.DeleteAllItems();
 		UpdatingControls = false;
 		return;
@@ -1901,16 +1964,6 @@ void CProfileEditorDialog::RebuildColorPathList()
 		previousSelection = ColorPathEntries.front();
 
 	RebuildColorPathTree(previousSelection);
-
-	// Keep legacy list in sync for backward compatibility with existing selection handler.
-	UpdatingControls = true;
-	ColorPathList.ResetContent();
-	for (const std::string& path : ColorPathEntries)
-		ColorPathList.AddString(path.c_str());
-	const int selectedIndex = ColorPathList.FindStringExact(-1, previousSelection.c_str());
-	if (selectedIndex != LB_ERR)
-		ColorPathList.SetCurSel(selectedIndex);
-	UpdatingControls = false;
 
 	Owner->SelectProfileColorPathForEditor(previousSelection);
 	LoadDraftColorFromSelection();
@@ -2148,56 +2201,6 @@ void CProfileEditorDialog::UpdateDraftColorControls(bool updateRgba, bool update
 	ColorOpacitySlider.Invalidate(FALSE);
 }
 
-void CProfileEditorDialog::ApplyColorPathSelection(const std::string& selectedPath)
-{
-	if (Owner == nullptr)
-		return;
-	if (Owner->SelectProfileColorPathForEditor(selectedPath))
-	{
-		SelectColorPathInTree(selectedPath);
-		LoadDraftColorFromSelection();
-		RefreshEditorFieldsFromSelection();
-	}
-}
-
-void CProfileEditorDialog::PopulateColorPathLevelCombo(CComboBox& combo, int level, const std::vector<std::string>& prefix, const std::string& selectedSegment)
-{
-	std::set<std::string> options;
-	for (const std::string& path : ColorPathEntries)
-	{
-		const std::vector<std::string> segments = SplitPathSegments(path);
-		if (segments.size() <= static_cast<size_t>(level))
-			continue;
-
-		bool matchesPrefix = true;
-		for (size_t i = 0; i < prefix.size(); ++i)
-		{
-			if (segments.size() <= i || _stricmp(segments[i].c_str(), prefix[i].c_str()) != 0)
-			{
-				matchesPrefix = false;
-				break;
-			}
-		}
-		if (matchesPrefix)
-			options.insert(segments[level]);
-	}
-
-	combo.ResetContent();
-	if (options.empty())
-		return;
-
-	int selectedIndex = 0;
-	int index = 0;
-	for (const std::string& option : options)
-	{
-		combo.AddString(option.c_str());
-		if (!selectedSegment.empty() && _stricmp(option.c_str(), selectedSegment.c_str()) == 0)
-			selectedIndex = index;
-		++index;
-	}
-	combo.SetCurSel(selectedIndex);
-}
-
 std::vector<std::string> CProfileEditorDialog::SplitPathSegments(const std::string& path) const
 {
 	std::vector<std::string> segments;
@@ -2223,77 +2226,6 @@ std::vector<std::string> CProfileEditorDialog::SplitPathSegments(const std::stri
 	return segments;
 }
 
-std::string CProfileEditorDialog::JoinPathSegments(const std::vector<std::string>& segments, size_t count) const
-{
-	if (segments.empty() || count == 0)
-		return "";
-
-	std::string result;
-	const size_t limit = min(count, segments.size());
-	for (size_t i = 0; i < limit; ++i)
-	{
-		if (i != 0)
-			result.push_back('.');
-		result += segments[i];
-	}
-	return result;
-}
-
-std::string CProfileEditorDialog::ResolveColorPathFromLevelSelection() const
-{
-	std::vector<std::string> selectedSegments;
-	auto appendSegment = [&](const CComboBox& combo)
-	{
-		const int index = combo.GetCurSel();
-		if (index == CB_ERR)
-			return;
-		CString value;
-		const_cast<CComboBox&>(combo).GetLBText(index, value);
-		if (!value.IsEmpty())
-			selectedSegments.push_back(value.GetString());
-	};
-
-	appendSegment(ColorPathLevel1);
-	appendSegment(ColorPathLevel2);
-	appendSegment(ColorPathLevel3);
-	appendSegment(ColorPathLevel4);
-	appendSegment(ColorPathLevel5);
-
-	if (selectedSegments.empty())
-		return "";
-
-	const std::string exact = JoinPathSegments(selectedSegments, selectedSegments.size());
-	for (const std::string& path : ColorPathEntries)
-	{
-		if (_stricmp(path.c_str(), exact.c_str()) == 0)
-			return path;
-	}
-
-	std::string bestPath;
-	size_t bestPrefixLength = 0;
-	for (const std::string& path : ColorPathEntries)
-	{
-		const std::vector<std::string> segments = SplitPathSegments(path);
-		size_t prefixLength = 0;
-		while (prefixLength < selectedSegments.size() &&
-			prefixLength < segments.size() &&
-			_stricmp(selectedSegments[prefixLength].c_str(), segments[prefixLength].c_str()) == 0)
-		{
-			++prefixLength;
-		}
-
-		if (prefixLength > bestPrefixLength)
-		{
-			bestPrefixLength = prefixLength;
-			bestPath = path;
-		}
-	}
-
-	if (bestPath.empty() && !ColorPathEntries.empty())
-		bestPath = ColorPathEntries.front();
-	return bestPath;
-}
-
 void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
 {
 	if (Owner == nullptr)
@@ -2310,26 +2242,6 @@ void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
 	if (!DraftColorValid)
 		LoadDraftColorFromSelection();
 	UpdateDraftColorControls();
-}
-
-bool CProfileEditorDialog::TryReadEditInt(CEdit& edit, int& outValue) const
-{
-	CString text;
-	edit.GetWindowText(text);
-	text.Trim();
-	if (text.IsEmpty())
-		return false;
-
-	const char* raw = text.GetString();
-	char* endPtr = nullptr;
-	long parsed = std::strtol(raw, &endPtr, 10);
-	if (endPtr == raw || *endPtr != '\0')
-		return false;
-	if (parsed < 0 || parsed > 255)
-		return false;
-
-	outValue = static_cast<int>(parsed);
-	return true;
 }
 
 bool CProfileEditorDialog::TryParseRgbaQuad(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const
@@ -3268,7 +3180,7 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 	SyncRuleColorEditorFromActiveControl();
 }
 
-void CProfileEditorDialog::OpenRuleColorPicker(UINT swatchControlId)
+void CProfileEditorDialog::SelectRuleColorEditorTarget(UINT swatchControlId)
 {
 	CButton* checkBox = nullptr;
 	CEdit* edit = nullptr;
@@ -3285,17 +3197,17 @@ void CProfileEditorDialog::OpenRuleColorPicker(UINT swatchControlId)
 
 void CProfileEditorDialog::OnRuleTargetSwatchClicked()
 {
-	OpenRuleColorPicker(IDC_PE_RULE_TARGET_SWATCH);
+	SelectRuleColorEditorTarget(IDC_PE_RULE_TARGET_SWATCH);
 }
 
 void CProfileEditorDialog::OnRuleTagSwatchClicked()
 {
-	OpenRuleColorPicker(IDC_PE_RULE_TAG_SWATCH);
+	SelectRuleColorEditorTarget(IDC_PE_RULE_TAG_SWATCH);
 }
 
 void CProfileEditorDialog::OnRuleTextSwatchClicked()
 {
-	OpenRuleColorPicker(IDC_PE_RULE_TEXT_SWATCH);
+	SelectRuleColorEditorTarget(IDC_PE_RULE_TEXT_SWATCH);
 }
 
 void CProfileEditorDialog::OnRuleColorApplyClicked()
@@ -3605,28 +3517,6 @@ void CProfileEditorDialog::OnTagAddTokenClicked()
 	Owner->RequestRefresh();
 }
 
-void CProfileEditorDialog::OnColorPathSelectionChanged()
-{
-	if (UpdatingControls || Owner == nullptr)
-		return;
-
-	const int selectedIndex = ColorPathList.GetCurSel();
-	if (selectedIndex == LB_ERR)
-		return;
-
-	CString selectedText;
-	ColorPathList.GetText(selectedIndex, selectedText);
-	const std::string selectedPath = selectedText.GetString();
-	ApplyColorPathSelection(selectedPath);
-	if (Owner->SelectProfileColorPathForEditor(selectedPath))
-		RefreshEditorFieldsFromSelection();
-}
-
-void CProfileEditorDialog::OnColorPathLevelChanged()
-{
-	// Legacy handler kept for compatibility; tree selection drives color-path selection now.
-}
-
 void CProfileEditorDialog::OnColorTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	(void)pNMHDR;
@@ -3720,12 +3610,6 @@ void CProfileEditorDialog::OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* 
 	ColorValueSlider.GetClientRect(&clientRect);
 	dc.FillSolidRect(&clientRect, RGB(249, 249, 249));
 
-	const int channelWidth = max(10, min(16, clientRect.Width() - 8));
-	const int channelLeft = clientRect.left + ((clientRect.Width() - channelWidth) / 2);
-	const int channelTop = clientRect.top + 4;
-	const int channelBottom = clientRect.bottom - 4;
-	CRect channelRect(channelLeft, channelTop, channelLeft + channelWidth, channelBottom);
-
 	double hue = 0.0;
 	double saturation = 0.0;
 	double value = 1.0;
@@ -3735,54 +3619,7 @@ void CProfileEditorDialog::OnColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* 
 	int topG = 255;
 	int topB = 255;
 	HsvToRgb(hue, saturation, 1.0, topR, topG, topB);
-
-	CRgn clipRegion;
-	clipRegion.CreateRoundRectRgn(channelRect.left, channelRect.top, channelRect.right + 1, channelRect.bottom + 1, 8, 8);
-	const int savedDc = dc.SaveDC();
-	dc.SelectClipRgn(&clipRegion);
-	const int gradientHeight = max(1, channelRect.Height());
-	for (int y = 0; y < gradientHeight; ++y)
-	{
-		const double t = min(1.0, max(0.0, static_cast<double>(y) / static_cast<double>(max(1, gradientHeight - 1))));
-		const int r = static_cast<int>(round(static_cast<double>(topR) * (1.0 - t)));
-		const int g = static_cast<int>(round(static_cast<double>(topG) * (1.0 - t)));
-		const int b = static_cast<int>(round(static_cast<double>(topB) * (1.0 - t)));
-		dc.FillSolidRect(channelRect.left, channelRect.top + y, channelRect.Width(), 1, RGB(r, g, b));
-	}
-	dc.RestoreDC(savedDc);
-
-	CPen channelBorder(PS_SOLID, 1, RGB(186, 186, 186));
-	CPen* oldPen = dc.SelectObject(&channelBorder);
-	CBrush* oldBrush = static_cast<CBrush*>(dc.SelectStockObject(HOLLOW_BRUSH));
-	dc.RoundRect(&channelRect, CPoint(8, 8));
-
-	const int sliderPos = min(100, max(0, ColorValueSlider.GetPos()));
-	const double sliderT = static_cast<double>(sliderPos) / 100.0;
-	const int thumbHeight = 14;
-	const int thumbHalf = thumbHeight / 2;
-	const int centerY = channelRect.top + static_cast<int>(round((1.0 - sliderT) * static_cast<double>(max(1, channelRect.Height() - 1))));
-	const int thumbLeft = max(clientRect.left + 1, channelRect.left - 3);
-	const int thumbRight = min(clientRect.right - 1, channelRect.right + 3);
-	const int thumbTop = max(clientRect.top + 1, centerY - thumbHalf);
-	const int thumbBottom = min(clientRect.bottom - 1, centerY + thumbHalf + 1);
-	CRect thumbRect(thumbLeft, thumbTop, thumbRight, thumbBottom);
-	thumbRect.DeflateRect(1, 1);
-	CBrush thumbOuterBrush(RGB(255, 255, 255));
-	CPen thumbOuterPen(PS_SOLID, 1, RGB(212, 212, 212));
-	dc.SelectObject(&thumbOuterPen);
-	dc.SelectObject(&thumbOuterBrush);
-	dc.RoundRect(&thumbRect, CPoint(10, 10));
-
-	CRect thumbInner = thumbRect;
-	thumbInner.DeflateRect(3, 3);
-	CBrush thumbInnerBrush(RGB(64, 182, 227));
-	CPen thumbInnerPen(PS_SOLID, 1, RGB(64, 182, 227));
-	dc.SelectObject(&thumbInnerPen);
-	dc.SelectObject(&thumbInnerBrush);
-	dc.RoundRect(&thumbInner, CPoint(8, 8));
-
-	dc.SelectObject(oldBrush);
-	dc.SelectObject(oldPen);
+	DrawVerticalValueSlider(dc, clientRect, ColorValueSlider.GetPos(), topR, topG, topB);
 	dc.Detach();
 
 	*pResult = CDRF_SKIPDEFAULT;
@@ -3900,12 +3737,6 @@ void CProfileEditorDialog::OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESU
 	RuleColorValueSlider.GetClientRect(&clientRect);
 	dc.FillSolidRect(&clientRect, RGB(249, 249, 249));
 
-	const int channelWidth = max(10, min(16, clientRect.Width() - 8));
-	const int channelLeft = clientRect.left + ((clientRect.Width() - channelWidth) / 2);
-	const int channelTop = clientRect.top + 4;
-	const int channelBottom = clientRect.bottom - 4;
-	CRect channelRect(channelLeft, channelTop, channelLeft + channelWidth, channelBottom);
-
 	double hue = 0.0;
 	double saturation = 0.0;
 	double value = 1.0;
@@ -3915,54 +3746,7 @@ void CProfileEditorDialog::OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESU
 	int topG = 255;
 	int topB = 255;
 	HsvToRgb(hue, saturation, 1.0, topR, topG, topB);
-
-	CRgn clipRegion;
-	clipRegion.CreateRoundRectRgn(channelRect.left, channelRect.top, channelRect.right + 1, channelRect.bottom + 1, 8, 8);
-	const int savedDc = dc.SaveDC();
-	dc.SelectClipRgn(&clipRegion);
-	const int gradientHeight = max(1, channelRect.Height());
-	for (int y = 0; y < gradientHeight; ++y)
-	{
-		const double t = min(1.0, max(0.0, static_cast<double>(y) / static_cast<double>(max(1, gradientHeight - 1))));
-		const int r = static_cast<int>(round(static_cast<double>(topR) * (1.0 - t)));
-		const int g = static_cast<int>(round(static_cast<double>(topG) * (1.0 - t)));
-		const int b = static_cast<int>(round(static_cast<double>(topB) * (1.0 - t)));
-		dc.FillSolidRect(channelRect.left, channelRect.top + y, channelRect.Width(), 1, RGB(r, g, b));
-	}
-	dc.RestoreDC(savedDc);
-
-	CPen channelBorder(PS_SOLID, 1, RGB(186, 186, 186));
-	CPen* oldPen = dc.SelectObject(&channelBorder);
-	CBrush* oldBrush = static_cast<CBrush*>(dc.SelectStockObject(HOLLOW_BRUSH));
-	dc.RoundRect(&channelRect, CPoint(8, 8));
-
-	const int sliderPos = min(100, max(0, RuleColorValueSlider.GetPos()));
-	const double sliderT = static_cast<double>(sliderPos) / 100.0;
-	const int thumbHeight = 14;
-	const int thumbHalf = thumbHeight / 2;
-	const int centerY = channelRect.top + static_cast<int>(round((1.0 - sliderT) * static_cast<double>(max(1, channelRect.Height() - 1))));
-	const int thumbLeft = max(clientRect.left + 1, channelRect.left - 3);
-	const int thumbRight = min(clientRect.right - 1, channelRect.right + 3);
-	const int thumbTop = max(clientRect.top + 1, centerY - thumbHalf);
-	const int thumbBottom = min(clientRect.bottom - 1, centerY + thumbHalf + 1);
-	CRect thumbRect(thumbLeft, thumbTop, thumbRight, thumbBottom);
-	thumbRect.DeflateRect(1, 1);
-	CBrush thumbOuterBrush(RGB(255, 255, 255));
-	CPen thumbOuterPen(PS_SOLID, 1, RGB(212, 212, 212));
-	dc.SelectObject(&thumbOuterPen);
-	dc.SelectObject(&thumbOuterBrush);
-	dc.RoundRect(&thumbRect, CPoint(10, 10));
-
-	CRect thumbInner = thumbRect;
-	thumbInner.DeflateRect(3, 3);
-	CBrush thumbInnerBrush(RGB(64, 182, 227));
-	CPen thumbInnerPen(PS_SOLID, 1, RGB(64, 182, 227));
-	dc.SelectObject(&thumbInnerPen);
-	dc.SelectObject(&thumbInnerBrush);
-	dc.RoundRect(&thumbInner, CPoint(8, 8));
-
-	dc.SelectObject(oldBrush);
-	dc.SelectObject(oldPen);
+	DrawVerticalValueSlider(dc, clientRect, RuleColorValueSlider.GetPos(), topR, topG, topB);
 	dc.Detach();
 
 	*pResult = CDRF_SKIPDEFAULT;
@@ -3970,37 +3754,14 @@ void CProfileEditorDialog::OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESU
 
 bool CProfileEditorDialog::TryApplyColorWheelPoint(const CPoint& screenPoint)
 {
-	if (Owner == nullptr || !::IsWindow(ColorWheel.GetSafeHwnd()))
+	if (Owner == nullptr)
 		return false;
 
-	CRect wheelRectScreen;
-	ColorWheel.GetWindowRect(&wheelRectScreen);
-	if (!wheelRectScreen.PtInRect(screenPoint))
+	double hue = 0.0;
+	double saturation = 0.0;
+	if (!TryReadHueSaturationFromWheel(ColorWheel, screenPoint, hue, saturation))
 		return false;
 
-	const int localX = screenPoint.x - wheelRectScreen.left;
-	const int localY = screenPoint.y - wheelRectScreen.top;
-	const int width = wheelRectScreen.Width();
-	const int height = wheelRectScreen.Height();
-
-	const int innerLeft = 2;
-	const int innerTop = 2;
-	const int innerWidth = max(1, width - (innerLeft * 2));
-	const int innerHeight = max(1, height - (innerTop * 2));
-	const int diameter = min(innerWidth, innerHeight);
-	const int radius = max(1, (diameter / 2) - 2);
-	const double centerX = static_cast<double>(innerLeft + (innerWidth / 2));
-	const double centerY = static_cast<double>(innerTop + (innerHeight / 2));
-	const double dx = static_cast<double>(localX) - centerX;
-	const double dy = centerY - static_cast<double>(localY);
-	const double distance = sqrt((dx * dx) + (dy * dy));
-	if (distance > static_cast<double>(radius))
-		return false;
-
-	double hue = atan2(dy, dx) * (180.0 / 3.14159265358979323846);
-	if (hue < 0.0)
-		hue += 360.0;
-	const double saturation = min(1.0, max(0.0, distance / static_cast<double>(radius)));
 	const double value = ::IsWindow(ColorValueSlider.GetSafeHwnd())
 		? min(1.0, max(0.0, static_cast<double>(ColorValueSlider.GetPos()) / 100.0))
 		: 1.0;
@@ -4023,21 +3784,9 @@ bool CProfileEditorDialog::TryApplyColorValueSliderPoint(const CPoint& screenPoi
 	if (!DraftColorValid || !::IsWindow(ColorValueSlider.GetSafeHwnd()))
 		return false;
 
-	CRect sliderRectScreen;
-	ColorValueSlider.GetWindowRect(&sliderRectScreen);
-
-	CRect clientRect;
-	ColorValueSlider.GetClientRect(&clientRect);
-	if (clientRect.Height() <= 0)
+	int newPos = ColorValueSlider.GetPos();
+	if (!TryReadVerticalSliderPosFromPoint(ColorValueSlider, screenPoint, newPos))
 		return false;
-
-	const int channelTop = clientRect.top + 4;
-	const int channelBottomExclusive = max(channelTop + 1, clientRect.bottom - 4);
-	const int channelHeight = channelBottomExclusive - channelTop;
-	const int localY = screenPoint.y - sliderRectScreen.top;
-	const int clampedY = min(channelBottomExclusive - 1, max(channelTop, localY));
-	const double t = 1.0 - (static_cast<double>(clampedY - channelTop) / static_cast<double>(max(1, channelHeight - 1)));
-	const int newPos = min(100, max(0, static_cast<int>(round(t * 100.0))));
 
 	if (ColorValueSlider.GetPos() != newPos)
 		ColorValueSlider.SetPos(newPos);
@@ -4050,21 +3799,9 @@ bool CProfileEditorDialog::TryApplyColorOpacitySliderPoint(const CPoint& screenP
 	if (!DraftColorValid || !::IsWindow(ColorOpacitySlider.GetSafeHwnd()))
 		return false;
 
-	CRect sliderRectScreen;
-	ColorOpacitySlider.GetWindowRect(&sliderRectScreen);
-
-	CRect clientRect;
-	ColorOpacitySlider.GetClientRect(&clientRect);
-	if (clientRect.Height() <= 0)
+	int newPos = ColorOpacitySlider.GetPos();
+	if (!TryReadVerticalSliderPosFromPoint(ColorOpacitySlider, screenPoint, newPos))
 		return false;
-
-	const int channelTop = clientRect.top + 4;
-	const int channelBottomExclusive = max(channelTop + 1, clientRect.bottom - 4);
-	const int channelHeight = channelBottomExclusive - channelTop;
-	const int localY = screenPoint.y - sliderRectScreen.top;
-	const int clampedY = min(channelBottomExclusive - 1, max(channelTop, localY));
-	const double t = 1.0 - (static_cast<double>(clampedY - channelTop) / static_cast<double>(max(1, channelHeight - 1)));
-	const int newPos = min(100, max(0, static_cast<int>(round(t * 100.0))));
 
 	if (ColorOpacitySlider.GetPos() != newPos)
 		ColorOpacitySlider.SetPos(newPos);
@@ -4076,36 +3813,11 @@ bool CProfileEditorDialog::TryApplyRuleColorWheelPoint(const CPoint& screenPoint
 {
 	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
 		return false;
-	if (!::IsWindow(RuleColorWheel.GetSafeHwnd()))
-		return false;
 
-	CRect wheelRectScreen;
-	RuleColorWheel.GetWindowRect(&wheelRectScreen);
-	if (!wheelRectScreen.PtInRect(screenPoint))
+	double hue = 0.0;
+	double saturation = 0.0;
+	if (!TryReadHueSaturationFromWheel(RuleColorWheel, screenPoint, hue, saturation))
 		return false;
-
-	const int localX = screenPoint.x - wheelRectScreen.left;
-	const int localY = screenPoint.y - wheelRectScreen.top;
-	const int width = wheelRectScreen.Width();
-	const int height = wheelRectScreen.Height();
-	const int innerLeft = 2;
-	const int innerTop = 2;
-	const int innerWidth = max(1, width - (innerLeft * 2));
-	const int innerHeight = max(1, height - (innerTop * 2));
-	const int diameter = min(innerWidth, innerHeight);
-	const int radius = max(1, (diameter / 2) - 2);
-	const double centerX = static_cast<double>(innerLeft + (innerWidth / 2));
-	const double centerY = static_cast<double>(innerTop + (innerHeight / 2));
-	const double dx = static_cast<double>(localX) - centerX;
-	const double dy = centerY - static_cast<double>(localY);
-	const double distance = sqrt((dx * dx) + (dy * dy));
-	if (distance > static_cast<double>(radius))
-		return false;
-
-	double hue = atan2(dy, dx) * (180.0 / 3.14159265358979323846);
-	if (hue < 0.0)
-		hue += 360.0;
-	const double saturation = min(1.0, max(0.0, distance / static_cast<double>(radius)));
 	const double value = ::IsWindow(RuleColorValueSlider.GetSafeHwnd())
 		? min(1.0, max(0.0, static_cast<double>(RuleColorValueSlider.GetPos()) / 100.0))
 		: 1.0;
@@ -4129,21 +3841,9 @@ bool CProfileEditorDialog::TryApplyRuleColorValueSliderPoint(const CPoint& scree
 	if (!RuleColorDraftValid || !::IsWindow(RuleColorValueSlider.GetSafeHwnd()))
 		return false;
 
-	CRect sliderRectScreen;
-	RuleColorValueSlider.GetWindowRect(&sliderRectScreen);
-
-	CRect clientRect;
-	RuleColorValueSlider.GetClientRect(&clientRect);
-	if (clientRect.Height() <= 0)
+	int newPos = RuleColorValueSlider.GetPos();
+	if (!TryReadVerticalSliderPosFromPoint(RuleColorValueSlider, screenPoint, newPos))
 		return false;
-
-	const int channelTop = clientRect.top + 4;
-	const int channelBottomExclusive = max(channelTop + 1, clientRect.bottom - 4);
-	const int channelHeight = channelBottomExclusive - channelTop;
-	const int localY = screenPoint.y - sliderRectScreen.top;
-	const int clampedY = min(channelBottomExclusive - 1, max(channelTop, localY));
-	const double t = 1.0 - (static_cast<double>(clampedY - channelTop) / static_cast<double>(max(1, channelHeight - 1)));
-	const int newPos = min(100, max(0, static_cast<int>(round(t * 100.0))));
 
 	if (RuleColorValueSlider.GetPos() != newPos)
 		RuleColorValueSlider.SetPos(newPos);
@@ -4195,26 +3895,6 @@ void CProfileEditorDialog::OnColorWheelClicked()
 	TryApplyColorWheelPoint(cursorScreen);
 }
 
-void CProfileEditorDialog::OnPickColorClicked()
-{
-	if (Owner == nullptr)
-		return;
-
-	if (!DraftColorValid)
-		LoadDraftColorFromSelection();
-
-	CColorDialog picker(RGB(DraftColorR, DraftColorG, DraftColorB), CC_FULLOPEN | CC_RGBINIT, this);
-	if (picker.DoModal() != IDOK)
-		return;
-
-	COLORREF selected = picker.GetColor();
-	DraftColorR = GetRValue(selected);
-	DraftColorG = GetGValue(selected);
-	DraftColorB = GetBValue(selected);
-	DraftColorValid = true;
-	UpdateDraftColorControls();
-}
-
 void CProfileEditorDialog::OnApplyColorClicked()
 {
 	if (Owner == nullptr || !DraftColorValid)
@@ -4234,29 +3914,6 @@ void CProfileEditorDialog::OnResetColorClicked()
 		return;
 	LoadDraftColorFromSelection();
 	UpdateDraftColorControls();
-}
-
-void CProfileEditorDialog::OnRefreshColorsClicked()
-{
-	SyncFromRadar();
-}
-
-void CProfileEditorDialog::OnRgbEditChanged()
-{
-	if (UpdatingControls || Owner == nullptr)
-		return;
-
-	int r = 0, g = 0, b = 0, a = 255;
-	if (!TryReadEditInt(EditR, r) || !TryReadEditInt(EditG, g) || !TryReadEditInt(EditB, b))
-		return;
-
-	int parsedAlpha = 255;
-	if (TryReadEditInt(EditA, parsedAlpha))
-		a = parsedAlpha;
-
-	const bool includeAlpha = (a != 255);
-	if (Owner->SetSelectedProfileColorForEditor(r, g, b, a, includeAlpha, true))
-		RefreshEditorFieldsFromSelection();
 }
 
 void CProfileEditorDialog::OnRgbaEditChanged()
@@ -4419,26 +4076,15 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_MESSAGE(WM_PE_COLOR_OPACITY_TRACK, &CProfileEditorDialog::OnColorOpacitySliderTrack)
 	ON_MESSAGE(WM_PE_RULE_COLOR_WHEEL_TRACK, &CProfileEditorDialog::OnRuleColorWheelTrack)
 	ON_MESSAGE(WM_PE_RULE_COLOR_VALUE_TRACK, &CProfileEditorDialog::OnRuleColorValueSliderTrack)
-	ON_LBN_SELCHANGE(IDC_PE_COLOR_LIST, &CProfileEditorDialog::OnColorPathSelectionChanged)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_VALUE_SLIDER, &CProfileEditorDialog::OnColorValueSliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_OPACITY_SLIDER, &CProfileEditorDialog::OnColorOpacitySliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_RULE_COLOR_VALUE_SLIDER, &CProfileEditorDialog::OnRuleColorValueSliderCustomDraw)
-	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L1, &CProfileEditorDialog::OnColorPathLevelChanged)
-	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L2, &CProfileEditorDialog::OnColorPathLevelChanged)
-	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L3, &CProfileEditorDialog::OnColorPathLevelChanged)
-	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L4, &CProfileEditorDialog::OnColorPathLevelChanged)
-	ON_CBN_SELCHANGE(IDC_PE_COLOR_PATH_L5, &CProfileEditorDialog::OnColorPathLevelChanged)
 	ON_STN_CLICKED(IDC_PE_COLOR_WHEEL, &CProfileEditorDialog::OnColorWheelClicked)
 	ON_BN_CLICKED(IDC_PE_APPLY_BUTTON, &CProfileEditorDialog::OnApplyColorClicked)
 	ON_BN_CLICKED(IDC_PE_RESET_BUTTON, &CProfileEditorDialog::OnResetColorClicked)
-	ON_BN_CLICKED(IDC_PE_REFRESH_BUTTON, &CProfileEditorDialog::OnRefreshColorsClicked)
 	ON_EN_CHANGE(IDC_PE_EDIT_RGBA, &CProfileEditorDialog::OnRgbaEditChanged)
-	ON_EN_CHANGE(IDC_PE_EDIT_R, &CProfileEditorDialog::OnRgbEditChanged)
-	ON_EN_CHANGE(IDC_PE_EDIT_G, &CProfileEditorDialog::OnRgbEditChanged)
-	ON_EN_CHANGE(IDC_PE_EDIT_B, &CProfileEditorDialog::OnRgbEditChanged)
-	ON_EN_CHANGE(IDC_PE_EDIT_A, &CProfileEditorDialog::OnRgbEditChanged)
 	ON_EN_CHANGE(IDC_PE_EDIT_HEX, &CProfileEditorDialog::OnHexEditChanged)
 	ON_NOTIFY(TCN_SELCHANGE, IDC_PE_TAB, &CProfileEditorDialog::OnTabSelectionChanged)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_ARROW, &CProfileEditorDialog::OnIconStyleChanged)
