@@ -66,6 +66,8 @@ protected:
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnRuleColorWheelTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRuleColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnRuleColorApplyClicked();
+	afx_msg void OnRuleColorResetClicked();
 	afx_msg void OnRuleTargetSwatchClicked();
 	afx_msg void OnRuleTagSwatchClicked();
 	afx_msg void OnRuleTextSwatchClicked();
@@ -206,6 +208,10 @@ private:
 		, IDC_PE_RULE_COLOR_WHEEL = 9223
 		, IDC_PE_RULE_COLOR_VALUE_LABEL = 9224
 		, IDC_PE_RULE_COLOR_VALUE_SLIDER = 9225
+		, IDC_PE_RULE_COLOR_PREVIEW_LABEL = 9226
+		, IDC_PE_RULE_COLOR_PREVIEW_SWATCH = 9227
+		, IDC_PE_RULE_COLOR_APPLY_BUTTON = 9228
+		, IDC_PE_RULE_COLOR_RESET_BUTTON = 9229
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -310,6 +316,10 @@ private:
 	CStatic RuleColorWheel;
 	CStatic RuleColorValueLabel;
 	CSliderCtrl RuleColorValueSlider;
+	CStatic RuleColorPreviewLabel;
+	CStatic RuleColorPreviewSwatch;
+	CButton RuleColorApplyButton;
+	CButton RuleColorResetButton;
 
 	CStatic TagTypeLabel;
 	CStatic TagPanel;
@@ -355,6 +365,7 @@ private:
 	int RuleColorDraftG = 255;
 	int RuleColorDraftB = 255;
 	bool RuleColorDraftValid = false;
+	bool RuleColorDraftDirty = false;
 	std::vector<std::string> ColorPathEntries;
 	std::map<HTREEITEM, std::string> ColorTreeItemPaths;
 	int DraftColorR = 255;
