@@ -1,4 +1,4 @@
-# vSMR for EuroScope
+# Custom vSMR for EuroScope
 
 vSMR is a EuroScope plugin that simulates the NOVA 9000 A-SMGCS and provides an advanced surface movement radar (SMR) display, realistic tags, and an integrated profile editor.
 
@@ -23,7 +23,7 @@ This README is both a user guide and a quick developer reference.
 ## Installation (Users)
 
 1. Build or download `vSMR.dll` and place it in your EuroScope plugin folder.
-2. In EuroScope: `Other Settings ? Plugins` and add `vSMR.dll`.
+2. In EuroScope: `Other Settings -> Plugins` and add `vSMR.dll`.
 3. Start EuroScope and open the vSMR radar display.
 4. The plugin will generate `vSMR_Profiles.json` and `vSMR_Maps.json` in the same folder as the DLL on first run.
 
@@ -40,13 +40,13 @@ Place `ICAO_Airlines.txt` next to `vSMR.dll`. The plugin will also search:
 
 Open the EuroScope command line and use:
 
-- `.smr reload` — reloads `vSMR_Profiles.json` in all open SMR screens.
-- `.smr draw` — toggle runway drawing.
-- `.smr status` — prints runway status from RIMCAS.
-- `.smr log` — toggles vSMR logging.
-- `.smr connect` — connect/disconnect to Hoppie CPDLC.
-- `.smr poll` — manual CPDLC message poll.
-- `.smr` — opens the CPDLC settings dialog.
+- `.smr reload`   reloads `vSMR_Profiles.json` in all open SMR screens.
+- `.smr draw`   toggle runway drawing.
+- `.smr status`   prints runway status from RIMCAS.
+- `.smr log`   toggles vSMR logging.
+- `.smr connect`   connect/disconnect to Hoppie CPDLC.
+- `.smr poll`   manual CPDLC message poll.
+- `.smr`   opens the CPDLC settings dialog.
 
 ### Profile Editor
 
@@ -75,9 +75,9 @@ Rules let you color targets, tag backgrounds, and text based on token states.
 
 #### Tags Tab
 
-- Define L1–L4 tag lines for each type/status.
+- Define L1-L4 tag lines for each type/status.
 - Insert tokens from the dropdown.
-- Toggle **Custom Hover Details** to define separate L1–L4 for hover.
+- Toggle **Custom Hover Details** to define separate L1-L4 for hover.
 - Live preview updates immediately.
 
 ### VACDM Tokens
@@ -126,3 +126,7 @@ GPL v3. See `LICENSE` for details.
 ## Credits
 
 Special thanks to Daniel Lange, Even Rognlien, Juha Holopainen, Lionel Bischof, Wenjun Zhou, Sam White, Theo Bearman, and Jonas Kuster.
+
+## Project Lineage
+
+This project was initially forked from https://github.com/AlexisBalzano/vSMR/tree/v1.0.6, which was itself forked from https://github.com/pierr3/vSMR.
