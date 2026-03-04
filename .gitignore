@@ -204,7 +204,6 @@ package/
 /vSMR/SectorFileProviderDescriptor.txt
 /vSMR/ipaddr.txt
 /vSMR/euroscope_sector_providers.txt
-
 ALL_BUILD.vcxproj
 ALL_BUILD.vcxproj.filters
 CMakeCache.txt
