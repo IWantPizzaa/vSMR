@@ -204,4 +204,14 @@ package/
 /vSMR/SectorFileProviderDescriptor.txt
 /vSMR/ipaddr.txt
 /vSMR/euroscope_sector_providers.txt
-vSMR/vSMR.vcxproj
+
+ALL_BUILD.vcxproj
+ALL_BUILD.vcxproj.filters
+CMakeCache.txt
+vSID.sln
+vSID.vcxproj
+vSID.vcxproj.filters
+ZERO_CHECK.vcxproj
+ZERO_CHECK.vcxproj.filters
+core.html
+
