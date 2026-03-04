@@ -2,7 +2,7 @@
     {
         "name": "Default",
         "font": {
-            "font_name": "EuroScope",
+            "font_name": "Arial",
             "available_fonts": [
                 "EuroScope",
                 "Consolas",
@@ -21,7 +21,8 @@
                 "three": 12,
                 "four": 13,
                 "five": 14
-            }
+            },
+            "label_font_size": 1
         },
         "filters": {
             "hide_above_alt": 5500,
@@ -522,32 +523,16 @@
                         "definition": [
                             [
                                 "callsign",
-                                "sctype",
-                                "wake"
-                            ],
-                            [
-                                "flightlevel",
-                                "tendency",
-                                "gs"
-                            ],
-                            [
-                                "asid"
+                                "uk_stand"
                             ]
                         ],
                         "definitionDetailled": [
                             [
                                 "callsign",
-                                "sctype",
-                                "wake"
+                                "actype"
                             ],
                             [
-                                "flightlevel",
-                                "tendency",
-                                "gs"
-                            ],
-                            [
-                                "asid",
-                                "groundstatus"
+                                "uk_stand"
                             ]
                         ]
                     },
@@ -588,32 +573,16 @@
                         "definition": [
                             [
                                 "callsign",
-                                "sctype",
-                                "wake"
-                            ],
-                            [
-                                "flightlevel",
-                                "tendency",
-                                "gs"
-                            ],
-                            [
-                                "asid"
+                                "uk_stand"
                             ]
                         ],
                         "definitionDetailled": [
                             [
                                 "callsign",
-                                "sctype",
-                                "wake"
+                                "actype"
                             ],
                             [
-                                "flightlevel",
-                                "tendency",
-                                "gs"
-                            ],
-                            [
-                                "asid",
-                                "groundstatus"
+                                "uk_stand"
                             ]
                         ]
                     }
@@ -648,15 +617,15 @@
                     "a": 255
                 },
                 "departure_background_color_on_runway": {
-                    "r": 40,
-                    "g": 50,
-                    "b": 200,
+                    "r": 53,
+                    "g": 126,
+                    "b": 187,
                     "a": 255
                 },
                 "arrival_background_color_on_runway": {
-                    "r": 170,
-                    "g": 50,
-                    "b": 50,
+                    "r": 191,
+                    "g": 87,
+                    "b": 91,
                     "a": 255
                 },
                 "departure_text_color": {
@@ -700,7 +669,12 @@
                     "g": 255,
                     "b": 255
                 }
-            }
+            },
+            "rules": {
+                "version": 1,
+                "items": []
+            },
+            "definition_detailed_same_as_definition": false
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -848,15 +822,15 @@
                     "a": 255
                 },
                 "airborne_departure": {
-                    "r": 240,
-                    "g": 240,
-                    "b": 240,
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "airborne_arrival": {
-                    "r": 120,
-                    "g": 190,
-                    "b": 240,
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 }
             },
@@ -886,7 +860,16 @@
                 "b": 75
             }
         },
-        "maps": {}
+        "maps": {},
+        "ui_layout": {
+            "profile_editor_window": {
+                "x": 705,
+                "y": 157,
+                "width": 662,
+                "height": 780,
+                "visible": false
+            }
+        }
     },
     {
         "name": "Default Pro",
@@ -910,7 +893,8 @@
                 "three": 13,
                 "four": 14,
                 "five": 16
-            }
+            },
+            "label_font_size": 1
         },
         "filters": {
             "hide_above_alt": 5500,
@@ -1480,12 +1464,14 @@
                 "departure_text_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
                 "arrival_text_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 }
             },
             "uncorrelated": {
@@ -1679,7 +1665,9 @@
             "icon_style": "realistic",
             "small_icon_boost": false,
             "small_icon_boost_factor": 1,
-            "small_icon_boost_resolution": "1080p"
+            "small_icon_boost_resolution": "1080p",
+            "fixed_pixel_icon_size": false,
+            "fixed_pixel_triangle_scale": 1
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -1777,8 +1765,9 @@
     {
         "name": "Custom 1",
         "font": {
-            "font_name": "EuroScope",
+            "font_name": "Deesse Medium",
             "available_fonts": [
+                "Comic Sans",
                 "EuroScope",
                 "Consolas",
                 "Lucida Console",
@@ -1796,7 +1785,8 @@
                 "three": 12,
                 "four": 13,
                 "five": 14
-            }
+            },
+            "label_font_size": 1
         },
         "filters": {
             "hide_above_alt": 5500,
@@ -1820,30 +1810,25 @@
             "leader_line_length": 50,
             "use_aspeed_for_gate": false,
             "squawk_error_color": {
-                "r": 255,
-                "g": 0,
-                "b": 0
+                "r": 235,
+                "g": 70,
+                "b": 70
             },
             "departure": {
                 "definition": [
                     [
-                        "callsign",
-                        "sctype",
-                        "b:clearance(X)"
+                        "b:callsign",
+                        "sctype"
                     ]
                 ],
                 "definitionDetailled": [
                     [
-                        "callsign",
-                        "sctype",
-                        "b:clearance(X)"
+                        "b:callsign",
+                        "sctype"
                     ],
                     [
-                        "asid",
+                        "csid",
                         "deprwy"
-                    ],
-                    [
-                        "remark"
                     ]
                 ],
                 "background_color": {
@@ -1853,9 +1838,9 @@
                     "a": 255
                 },
                 "background_color_on_runway": {
-                    "r": 40,
-                    "g": 50,
-                    "b": 200,
+                    "r": 240,
+                    "g": 131,
+                    "b": 198,
                     "a": 255
                 },
                 "nofpl_color": {
@@ -1911,130 +1896,111 @@
                     "taxi": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "deprwy"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ],
                             [
                                 "asid",
                                 "deprwy"
-                            ],
-                            [
-                                "remark"
                             ]
                         ]
                     },
                     "push": {
                         "definition": [
                             [
-                                "callsign",
-                                "sctype"
+                                "b:callsign",
+                                "deprwy"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ],
                             [
                                 "asid",
                                 "deprwy"
-                            ],
-                            [
-                                "remark"
                             ]
                         ]
                     },
                     "stup": {
                         "definition": [
                             [
-                                "callsign",
-                                "sctype"
+                                "b:callsign",
+                                "deprwy"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ],
                             [
                                 "asid",
                                 "deprwy"
-                            ],
-                            [
-                                "remark"
                             ]
                         ]
                     },
                     "nsts": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ],
                             [
                                 "asid",
                                 "deprwy"
-                            ],
-                            [
-                                "remark"
                             ]
                         ]
                     },
                     "depa": {
                         "definition": [
                             [
-                                "callsign",
-                                "sctype"
+                                "b:callsign",
+                                "deprwy"
                             ],
                             [
-                                "asid",
-                                "deprwy"
+                                "asid"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ],
                             [
                                 "asid",
                                 "deprwy"
-                            ],
-                            [
-                                "remark"
                             ]
                         ]
                     },
                     "nofpl": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype"
                             ],
                             [
                                 "asid",
                                 "deprwy"
-                            ],
-                            [
-                                "remark"
                             ]
                         ]
                     }
@@ -2043,14 +2009,14 @@
             "arrival": {
                 "definition": [
                     [
-                        "callsign",
+                        "b:callsign",
                         "uk_stand"
                     ]
                 ],
                 "definitionDetailled": [
                     [
-                        "callsign",
-                        "actype"
+                        "b:callsign",
+                        "actyp"
                     ],
                     [
                         "uk_stand"
@@ -2064,8 +2030,8 @@
                 },
                 "background_color_on_runway": {
                     "r": 170,
-                    "g": 50,
-                    "b": 50,
+                    "g": 71,
+                    "b": 90,
                     "a": 255
                 },
                 "status_background_colors": {
@@ -2091,13 +2057,13 @@
                     "arr": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "uk_stand"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "actype"
                             ],
                             [
@@ -2108,13 +2074,13 @@
                     "taxi": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "uk_stand"
                             ]
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "actype"
                             ],
                             [
@@ -2125,7 +2091,7 @@
                     "nofpl": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "actype"
                             ],
                             [
@@ -2134,7 +2100,7 @@
                         ],
                         "definitionDetailled": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "actype"
                             ],
                             [
@@ -2187,17 +2153,8 @@
                     "airdep": {
                         "definition": [
                             [
-                                "callsign",
-                                "sctype",
-                                "wake"
-                            ],
-                            [
-                                "flightlevel",
-                                "tendency",
-                                "gs"
-                            ],
-                            [
-                                "asid"
+                                "b:callsign",
+                                "flightlevel"
                             ]
                         ],
                         "definitionDetailled": [
@@ -2220,7 +2177,7 @@
                     "airarr": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype",
                                 "wake"
                             ],
@@ -2253,17 +2210,8 @@
                     "airdep_onrunway": {
                         "definition": [
                             [
-                                "callsign",
-                                "sctype",
-                                "wake"
-                            ],
-                            [
-                                "flightlevel",
-                                "tendency",
-                                "gs"
-                            ],
-                            [
-                                "asid"
+                                "b:callsign",
+                                "flightlevel"
                             ]
                         ],
                         "definitionDetailled": [
@@ -2286,7 +2234,7 @@
                     "airarr_onrunway": {
                         "definition": [
                             [
-                                "callsign",
+                                "b:callsign",
                                 "sctype",
                                 "wake"
                             ],
@@ -2335,9 +2283,9 @@
                     "b": 255
                 },
                 "departure_background_color": {
-                    "r": 53,
-                    "g": 126,
-                    "b": 187,
+                    "r": 240,
+                    "g": 131,
+                    "b": 198,
                     "a": 255
                 },
                 "arrival_background_color": {
@@ -2347,15 +2295,15 @@
                     "a": 255
                 },
                 "departure_background_color_on_runway": {
-                    "r": 40,
-                    "g": 50,
-                    "b": 200,
+                    "r": 240,
+                    "g": 131,
+                    "b": 198,
                     "a": 255
                 },
                 "arrival_background_color_on_runway": {
                     "r": 170,
-                    "g": 50,
-                    "b": 50,
+                    "g": 71,
+                    "b": 90,
                     "a": 255
                 },
                 "departure_text_color": {
@@ -2399,7 +2347,39 @@
                     "g": 255,
                     "b": 255
                 }
-            }
+            },
+            "rules": {
+                "version": 1,
+                "items": [
+                    {
+                        "source": "vacdm",
+                        "token": "tsat",
+                        "condition": "expired",
+                        "tag_type": "departure",
+                        "status": "default",
+                        "detail": "any",
+                        "target_color": {
+                            "r": 255,
+                            "g": 95,
+                            "b": 76
+                        }
+                    },
+                    {
+                        "source": "vacdm",
+                        "token": "tsat",
+                        "condition": "valid",
+                        "tag_type": "departure",
+                        "status": "default",
+                        "detail": "any",
+                        "target_color": {
+                            "r": 0,
+                            "g": 170,
+                            "b": 0
+                        }
+                    }
+                ]
+            },
+            "definition_detailed_same_as_definition": false
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -2451,7 +2431,9 @@
                 "g": 0,
                 "b": 0
             },
-            "inactive_alerts": []
+            "inactive_alerts": [
+                "STAT RPA"
+            ]
         },
         "targets": {
             "show_primary_target": true,
@@ -2553,14 +2535,14 @@
                     "a": 255
                 },
                 "airborne_arrival": {
-                    "r": 120,
-                    "g": 190,
-                    "b": 240,
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 }
             },
             "icon_style": "realistic",
-            "small_icon_boost": true,
+            "small_icon_boost": false,
             "small_icon_boost_factor": 1,
             "small_icon_boost_resolution": "1080p",
             "fixed_pixel_icon_size": false,
@@ -2582,10 +2564,20 @@
             "background_color": {
                 "r": 75,
                 "g": 75,
-                "b": 75
+                "b": 75,
+                "a": 255
             }
         },
-        "maps": {}
+        "maps": {},
+        "ui_layout": {
+            "profile_editor_window": {
+                "x": 565,
+                "y": 196,
+                "width": 875,
+                "height": 754,
+                "visible": false
+            }
+        }
     },
     {
         "name": "Custom 2",

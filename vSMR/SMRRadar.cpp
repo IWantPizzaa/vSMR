@@ -1267,7 +1267,6 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// groundstatus: Current status *
 	// ssr: the current squawk of the ac
 	// asid: the assigned SID
-	// csid: assigned SID (meant for colorized SID token in tag definitions)
 	// ssid: a short version of the SID
 	// origin: origin aerodrome
 	// dest: destination aerodrome
@@ -1581,7 +1580,6 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	TagReplacingMap["wake"] = wake;
 	TagReplacingMap["ssr"] = tssr;
 	TagReplacingMap["asid"] = dep;
-	TagReplacingMap["csid"] = dep;
 	TagReplacingMap["ssid"] = ssid;
 	TagReplacingMap["origin"] = origin;
 	TagReplacingMap["dest"] = dest;
@@ -2106,6 +2104,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				if (itRunway != replacingMap.end())
 					actualRunway = itRunway->second;
 				matches = RunwayRuleConditionMatches(rule.condition, actualRunway);
+			}
+			else if (source == "custom")
+			{
+				std::string actualValue;
+				auto itValue = replacingMap.find(rule.token);
+				if (itValue != replacingMap.end())
+					actualValue = itValue->second;
+				matches = RunwayRuleConditionMatches(rule.condition, actualValue);
 			}
 			else
 			{
@@ -3313,7 +3319,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			bearings = bearings.substr(0, decimal_pos + 2);
 
 			string text = bearings;
-			text += "° / ";
+			text += "Ãƒâ€šÃ‚Â° / ";
 			text += distances;
 			text += "m";
 			COLORREF old_color = dc.SetTextColor(RGB(255, 255, 255));
@@ -3357,7 +3363,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		bearings = bearings.substr(0, decimal_pos + 2);
 
 		string text = bearings;
-		text += "° / ";
+		text += "Ãƒâ€šÃ‚Â° / ";
 		text += distances;
 		text += "nm";
 		COLORREF old_color = dc.SetTextColor(RGB(0, 0, 0));

@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "SMRRadar.hpp"
 
 namespace
@@ -398,7 +398,6 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"wake",
 		"ssr",
 		"asid",
-		"csid",
 		"ssid",
 		"origin",
 		"dest",
@@ -1009,7 +1008,6 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["wake"] = "M";
 	previewMap["ssr"] = "1234";
 	previewMap["asid"] = "LAM1X";
-	previewMap["csid"] = "LAM1X";
 	previewMap["ssid"] = "LAM1";
 	previewMap["origin"] = "LFPG";
 	previewMap["dest"] = "EGKK";
@@ -1223,6 +1221,8 @@ std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) 
 {
 	std::string lowered = TrimAsciiWhitespace(source);
 	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist")
+		return "custom";
 	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
 		return "runway";
 	return "vacdm";
@@ -1240,6 +1240,17 @@ std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, c
 	{
 		if (normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
 			return normalizedToken;
+		return "";
+	}
+	if (normalizedSource == "custom")
+	{
+		if (normalizedToken == "sid")
+			return "asid";
+		if (normalizedToken == "asid" || normalizedToken == "ssid" ||
+			normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
+		{
+			return normalizedToken;
+		}
 		return "";
 	}
 
@@ -1260,7 +1271,7 @@ std::string CSMRRadar::NormalizeStructuredRuleCondition(const std::string& sourc
 	if (text.empty())
 		return "any";
 
-	if (normalizedSource == "runway")
+	if (normalizedSource == "runway" || normalizedSource == "custom")
 		return text;
 
 	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -1551,6 +1562,5 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 	if (!persistToDisk)
 		return true;
 
-	return CurrentConfig->saveConfig();
+return CurrentConfig->saveConfig();
 }
-

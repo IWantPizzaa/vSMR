@@ -50,6 +50,95 @@ bool StructuredRuleContextMatches(const StructuredTagColorRule& rule, const std:
 		matchesField(rule.detail, currentDetail);
 }
 
+bool CustomRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualValueRaw)
+{
+	const std::string actualNormalized = NormalizeSidMatchText(actualValueRaw);
+	const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
+	const std::string expectedLower = ToLowerAsciiCopy(expectedTrimmed);
+
+	if (expectedLower.empty() || expectedLower == "any" || expectedLower == "*" || expectedLower == "all")
+		return !actualNormalized.empty();
+	if (expectedLower == "set" || expectedLower == "present" || expectedLower == "available")
+		return !actualNormalized.empty();
+	if (expectedLower == "missing" || expectedLower == "unset" || expectedLower == "none" || expectedLower == "empty")
+		return actualNormalized.empty();
+
+	bool invert = false;
+	std::string listText = expectedTrimmed;
+	if (expectedLower.rfind("not_in:", 0) == 0)
+	{
+		invert = true;
+		listText = expectedTrimmed.substr(7);
+	}
+	else if (expectedLower.rfind("notin:", 0) == 0)
+	{
+		invert = true;
+		listText = expectedTrimmed.substr(6);
+	}
+	else if (expectedLower.rfind("not:", 0) == 0)
+	{
+		invert = true;
+		listText = expectedTrimmed.substr(4);
+	}
+	else if (expectedLower.rfind("in:", 0) == 0)
+	{
+		listText = expectedTrimmed.substr(3);
+	}
+	else if (expectedLower.rfind("list:", 0) == 0)
+	{
+		listText = expectedTrimmed.substr(5);
+	}
+	else if (expectedLower.rfind("sid:", 0) == 0)
+	{
+		listText = expectedTrimmed.substr(4);
+	}
+
+	auto matchesSinglePattern = [&](const std::string& rawPattern) -> bool
+	{
+		const std::string pattern = NormalizeSidMatchText(rawPattern);
+		if (pattern.empty() || actualNormalized.empty())
+			return false;
+		if (actualNormalized == pattern)
+			return true;
+		if (actualNormalized.size() >= pattern.size() && actualNormalized.compare(0, pattern.size(), pattern) == 0)
+			return true;
+		return false;
+	};
+
+	bool anyPattern = false;
+	bool anyMatch = false;
+	std::string token;
+	for (size_t i = 0; i <= listText.size(); ++i)
+	{
+		const char ch = (i < listText.size()) ? listText[i] : ',';
+		if (ch == ',' || ch == ';' || ch == '|')
+		{
+			const std::string trimmedToken = TrimAsciiWhitespaceCopy(token);
+			token.clear();
+			if (trimmedToken.empty())
+				continue;
+			anyPattern = true;
+			if (matchesSinglePattern(trimmedToken))
+			{
+				anyMatch = true;
+				if (!invert)
+					return true;
+			}
+			continue;
+		}
+		token.push_back(ch);
+	}
+
+	if (!anyPattern)
+		anyMatch = matchesSinglePattern(listText);
+
+	if (!invert)
+		return anyMatch;
+	if (actualNormalized.empty())
+		return false;
+	return !anyMatch;
+}
+
 VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 	const std::vector<StructuredTagColorRule>& rules,
 	const std::string& tagTypeKey,
@@ -73,6 +162,14 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 			if (it != replacingMap.end())
 				actualRunway = it->second;
 			ruleMatches = RunwayRuleConditionMatches(rule.condition, actualRunway);
+		}
+		else if (source == "custom")
+		{
+			std::string actualValue;
+			auto itValue = replacingMap.find(rule.token);
+			if (itValue != replacingMap.end())
+				actualValue = itValue->second;
+			ruleMatches = CustomRuleConditionMatches(rule.condition, actualValue);
 		}
 		else
 		{
@@ -454,7 +551,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		addClickableToken("wake", TAG_CITEM_FPBOX);
 		addClickableToken("tssr", TAG_CITEM_NO);
 		addClickableToken("asid", TAG_CITEM_SID);
-		addClickableToken("csid", TAG_CITEM_SID);
 		addClickableToken("ssid", TAG_CITEM_SID);
 		addClickableToken("origin", TAG_CITEM_FPBOX);
 		addClickableToken("dest", TAG_CITEM_FPBOX);
@@ -969,24 +1065,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		SolidBrush AlertColorCaution(Color(230, 255, 215, 0)); // yellow-ish with alpha
 		SolidBrush AlertColorWarning(Color(230, 200, 40, 40));  // red-ish with alpha
 		const bool isClearanceReceived = (fp.IsValid() && fp.GetClearenceFlag());
-		std::unique_ptr<SolidBrush> ColoredSidTextBrush;
 		std::unique_ptr<SolidBrush> VacdmTobtTextBrush;
 		std::unique_ptr<SolidBrush> VacdmTsatTextBrush;
-		{
-			const std::string csid = TagReplacingMap["csid"];
-			const std::string departureRunway = TagReplacingMap["deprwy"];
-			bool hasColoredSid = false;
-			Color coloredSidText;
-			if (!csid.empty() && csid != "SID")
-			{
-				hasColoredSid = TryResolveColoredSidTextColor(activeProfile, csid, departureRunway, CurrentConfig, coloredSidText);
-			}
 
-			if (hasColoredSid)
-			{
-				ColoredSidTextBrush = std::make_unique<SolidBrush>(ColorManager->get_corrected_color("label", coloredSidText));
-			}
-		}
 		if (hasVacdmRulePilotData && !vacdmTagColorOverrides.hasTextColor)
 		{
 			int tobtR = 255;
@@ -1069,8 +1150,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				SolidBrush* color = &FontColor;
 				if (sqErrorText != nullptr && !sqErrorText->empty() && element == *sqErrorText)
 					color = &SquawkErrorColor;
-				else if (rawToken == "csid" && ColoredSidTextBrush)
-					color = ColoredSidTextBrush.get();
 				else if (rawToken == "tobt" && VacdmTobtTextBrush)
 					color = VacdmTobtTextBrush.get();
 				else if (rawToken == "tsat" && VacdmTsatTextBrush)
