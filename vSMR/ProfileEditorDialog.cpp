@@ -1506,6 +1506,10 @@ void CProfileEditorDialog::PopulateRuleTokenCombo(const std::string& source, con
 	{
 		tokens = { "deprwy", "seprwy", "arvrwy", "srvrwy" };
 	}
+	else if (normalizedSource == "custom")
+	{
+		tokens = { "asid", "ssid", "deprwy", "seprwy", "arvrwy", "srvrwy" };
+	}
 	else
 	{
 		tokens = { "tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot" };
@@ -1527,6 +1531,7 @@ void CProfileEditorDialog::PopulateRuleCombos()
 	RuleSourceCombo.ResetContent();
 	RuleSourceCombo.AddString("vacdm");
 	RuleSourceCombo.AddString("runway");
+	RuleSourceCombo.AddString("custom");
 	RuleSourceCombo.SetCurSel(0);
 
 	RuleTypeCombo.ResetContent();
@@ -1564,6 +1569,10 @@ void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source,
 	if (normalizedSource == "runway")
 	{
 		conditions = { "any", "set", "missing" };
+	}
+	else if (normalizedSource == "custom")
+	{
+		conditions = { "any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A" };
 	}
 	else if (normalizedToken == "tobt")
 	{

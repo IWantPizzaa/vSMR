@@ -127,4 +127,4 @@ GPL v3. See `LICENSE` for details.
 
 ## Credits
 
-Special thanks to Baptise.C and Steve.A.
+Special thanks to Baptiste.C and Steve.A.
