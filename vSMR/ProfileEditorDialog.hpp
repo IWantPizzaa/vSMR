@@ -56,6 +56,8 @@ protected:
 	afx_msg void OnBoostResolutionChanged();
 	afx_msg void OnRuleSelectionChanged();
 	afx_msg void OnRuleTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnRuleTreeClick(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnRuleAddClicked();
 	afx_msg void OnRuleAddParameterClicked();
 	afx_msg void OnRuleRemoveClicked();
@@ -374,6 +376,7 @@ private:
 	void RebuildRulesList();
 	void SelectRuleNodeInTree(int ruleIndex, int criterionIndex);
 	bool ResolveRuleSelectionFromTree(int& outRuleIndex, int& outCriterionIndex) const;
+	bool GetRuleTreeActionRects(HTREEITEM item, CRect& addRect, CRect& deleteRect, bool& showAdd, bool& showDelete) const;
 	void RefreshRuleControls();
 	void SyncTagEditorControlsFromRadar();
 	void PopulateTagTokenCombo();
