@@ -1978,121 +1978,74 @@ void CProfileEditorDialog::LayoutControls()
 	const int rulesFieldLeft = rulesContentLeft + rulesLabelWidth + 10;
 	const int rulesLabelLeft = rulesContentLeft;
 	const int rulesFieldWidth = max(90, rulesRightWidth - (rulesFieldLeft - rulesRightLeft) - 14);
-	const bool hasRuleSelection = (SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size()));
-	const bool isParameterSelection = hasRuleSelection && (SelectedRuleCriterionIndex >= 0);
-	if (isParameterSelection)
-	{
-		RuleNameLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleNameEdit.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	int paramY = rulesY;
+	RuleSourceLabel.MoveWindow(rulesLabelLeft, paramY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleSourceCombo.MoveWindow(rulesFieldLeft, paramY, rulesFieldWidth, rowHeight + 220, TRUE);
+	paramY += rowHeight + 10;
+	RuleTokenLabel.MoveWindow(rulesLabelLeft, paramY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleTokenCombo.MoveWindow(rulesFieldLeft, paramY, rulesFieldWidth, rowHeight + 220, TRUE);
+	paramY += rowHeight + 10;
+	RuleConditionLabel.MoveWindow(rulesLabelLeft, paramY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleConditionCombo.MoveWindow(rulesFieldLeft, paramY, rulesFieldWidth, rowHeight + 220, TRUE);
 
-		RuleSourceLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleSourceCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
-		rulesY += rowHeight + 10;
+	int effectY = rulesY;
+	RuleNameLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleNameEdit.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight, TRUE);
+	effectY += rowHeight + 10;
+	RuleTypeLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleTypeCombo.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight + 220, TRUE);
+	effectY += rowHeight + 10;
+	RuleStatusLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleStatusCombo.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight + 220, TRUE);
+	effectY += rowHeight + 10;
+	RuleDetailLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
+	RuleDetailCombo.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight + 220, TRUE);
+	effectY += rowHeight + 14;
 
-		RuleTokenLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleTokenCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
-		rulesY += rowHeight + 10;
+	const int ruleSwatchSize = rowHeight;
+	const int ruleSwatchGap = 8;
+	const int ruleEditLeft = rulesFieldLeft + ruleSwatchSize + ruleSwatchGap;
+	const int ruleEditWidth = max(60, rulesFieldWidth - ruleSwatchSize - ruleSwatchGap);
+	RuleTargetCheck.MoveWindow(rulesLabelLeft, effectY, 120, rowHeight, TRUE);
+	RuleTargetSwatch.MoveWindow(rulesFieldLeft, effectY, ruleSwatchSize, ruleSwatchSize, TRUE);
+	RuleTargetEdit.MoveWindow(ruleEditLeft, effectY, ruleEditWidth, rowHeight, TRUE);
+	effectY += rowHeight + 8;
+	RuleTagCheck.MoveWindow(rulesLabelLeft, effectY, 120, rowHeight, TRUE);
+	RuleTagSwatch.MoveWindow(rulesFieldLeft, effectY, ruleSwatchSize, ruleSwatchSize, TRUE);
+	RuleTagEdit.MoveWindow(ruleEditLeft, effectY, ruleEditWidth, rowHeight, TRUE);
+	effectY += rowHeight + 8;
+	RuleTextCheck.MoveWindow(rulesLabelLeft, effectY, 120, rowHeight, TRUE);
+	RuleTextSwatch.MoveWindow(rulesFieldLeft, effectY, ruleSwatchSize, ruleSwatchSize, TRUE);
+	RuleTextEdit.MoveWindow(ruleEditLeft, effectY, ruleEditWidth, rowHeight, TRUE);
+	effectY += rowHeight + 10;
 
-		RuleConditionLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleConditionCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
+	const int ruleWheelLabelTop = effectY;
+	const int ruleWheelSliderGap = 8;
+	const int ruleWheelSliderWidth = 20;
+	const int ruleWheelSize = max(78, min(140, rulesContentWidth - ruleWheelSliderWidth - ruleWheelSliderGap));
+	const int ruleWheelGroupWidth = ruleWheelSize + ruleWheelSliderGap + ruleWheelSliderWidth;
+	const int ruleWheelLeft = rulesContentLeft + max(0, (rulesContentWidth - ruleWheelGroupWidth) / 2);
+	const int ruleWheelTop = ruleWheelLabelTop + rowHeight + 2;
+	const int ruleWheelSliderLeft = ruleWheelLeft + ruleWheelSize + ruleWheelSliderGap;
+	const int ruleValueLabelWidth = 40;
+	const int ruleValueLabelLeft = ruleWheelSliderLeft - ((ruleValueLabelWidth - ruleWheelSliderWidth) / 2);
+	RuleColorWheelLabel.MoveWindow(ruleWheelLeft, ruleWheelLabelTop, max(60, ruleWheelSize), rowHeight, TRUE);
+	RuleColorWheel.MoveWindow(ruleWheelLeft, ruleWheelTop, ruleWheelSize, ruleWheelSize, TRUE);
+	RuleColorValueLabel.MoveWindow(ruleValueLabelLeft, ruleWheelLabelTop, ruleValueLabelWidth, rowHeight, TRUE);
+	RuleColorValueSlider.MoveWindow(ruleWheelSliderLeft, ruleWheelTop, ruleWheelSliderWidth, ruleWheelSize, TRUE);
+	effectY = ruleWheelTop + ruleWheelSize + 10;
 
-		RuleTypeLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTypeCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleStatusLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleStatusCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleDetailLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleDetailCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTargetCheck.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTargetSwatch.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTargetEdit.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTagCheck.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTagSwatch.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTagEdit.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTextCheck.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTextSwatch.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTextEdit.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorWheelLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorWheel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorValueLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorValueSlider.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorPreviewLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorPreviewSwatch.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorApplyButton.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleColorResetButton.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	}
-	else
-	{
-		RuleNameLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleNameEdit.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight, TRUE);
-		rulesY += rowHeight + 10;
+	const int rulePreviewWidth = max(130, min(rulesContentWidth, 220));
+	const int rulePreviewLeft = rulesContentLeft + max(0, (rulesContentWidth - rulePreviewWidth) / 2);
+	RuleColorPreviewLabel.MoveWindow(rulePreviewLeft, effectY, rulePreviewWidth, rowHeight, TRUE);
+	effectY += rowHeight + 4;
+	RuleColorPreviewSwatch.MoveWindow(rulePreviewLeft, effectY, rulePreviewWidth, 44, TRUE);
+	effectY += 44 + 10;
 
-		RuleSourceLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleSourceCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTokenLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleTokenCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleConditionLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-		RuleConditionCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-
-		RuleTypeLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleTypeCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
-		rulesY += rowHeight + 10;
-
-		RuleStatusLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleStatusCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
-		rulesY += rowHeight + 10;
-
-		RuleDetailLabel.MoveWindow(rulesLabelLeft, rulesY + 4, rulesLabelWidth, rowHeight, TRUE);
-		RuleDetailCombo.MoveWindow(rulesFieldLeft, rulesY, rulesFieldWidth, rowHeight + 220, TRUE);
-		rulesY += rowHeight + 14;
-
-		const int ruleSwatchSize = rowHeight;
-		const int ruleSwatchGap = 8;
-		const int ruleEditLeft = rulesFieldLeft + ruleSwatchSize + ruleSwatchGap;
-		const int ruleEditWidth = max(60, rulesFieldWidth - ruleSwatchSize - ruleSwatchGap);
-
-		RuleTargetCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
-		RuleTargetSwatch.MoveWindow(rulesFieldLeft, rulesY, ruleSwatchSize, ruleSwatchSize, TRUE);
-		RuleTargetEdit.MoveWindow(ruleEditLeft, rulesY, ruleEditWidth, rowHeight, TRUE);
-		rulesY += rowHeight + 8;
-
-		RuleTagCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
-		RuleTagSwatch.MoveWindow(rulesFieldLeft, rulesY, ruleSwatchSize, ruleSwatchSize, TRUE);
-		RuleTagEdit.MoveWindow(ruleEditLeft, rulesY, ruleEditWidth, rowHeight, TRUE);
-		rulesY += rowHeight + 8;
-
-		RuleTextCheck.MoveWindow(rulesLabelLeft, rulesY, 120, rowHeight, TRUE);
-		RuleTextSwatch.MoveWindow(rulesFieldLeft, rulesY, ruleSwatchSize, ruleSwatchSize, TRUE);
-		RuleTextEdit.MoveWindow(ruleEditLeft, rulesY, ruleEditWidth, rowHeight, TRUE);
-		rulesY += rowHeight + 10;
-
-		const int ruleWheelLabelTop = rulesY;
-		const int ruleWheelSliderGap = 8;
-		const int ruleWheelSliderWidth = 20;
-		const int ruleWheelSize = max(78, min(140, rulesContentWidth - ruleWheelSliderWidth - ruleWheelSliderGap));
-		const int ruleWheelGroupWidth = ruleWheelSize + ruleWheelSliderGap + ruleWheelSliderWidth;
-		const int ruleWheelLeft = rulesContentLeft + max(0, (rulesContentWidth - ruleWheelGroupWidth) / 2);
-		const int ruleWheelTop = ruleWheelLabelTop + rowHeight + 2;
-		const int ruleWheelSliderLeft = ruleWheelLeft + ruleWheelSize + ruleWheelSliderGap;
-		const int ruleValueLabelWidth = 40;
-		const int ruleValueLabelLeft = ruleWheelSliderLeft - ((ruleValueLabelWidth - ruleWheelSliderWidth) / 2);
-		RuleColorWheelLabel.MoveWindow(ruleWheelLeft, ruleWheelLabelTop, max(60, ruleWheelSize), rowHeight, TRUE);
-		RuleColorWheel.MoveWindow(ruleWheelLeft, ruleWheelTop, ruleWheelSize, ruleWheelSize, TRUE);
-		RuleColorValueLabel.MoveWindow(ruleValueLabelLeft, ruleWheelLabelTop, ruleValueLabelWidth, rowHeight, TRUE);
-		RuleColorValueSlider.MoveWindow(ruleWheelSliderLeft, ruleWheelTop, ruleWheelSliderWidth, ruleWheelSize, TRUE);
-		rulesY = ruleWheelTop + ruleWheelSize + 10;
-
-		const int rulePreviewWidth = max(130, min(rulesContentWidth, 220));
-		const int rulePreviewLeft = rulesContentLeft + max(0, (rulesContentWidth - rulePreviewWidth) / 2);
-		RuleColorPreviewLabel.MoveWindow(rulePreviewLeft, rulesY, rulePreviewWidth, rowHeight, TRUE);
-		rulesY += rowHeight + 4;
-		RuleColorPreviewSwatch.MoveWindow(rulePreviewLeft, rulesY, rulePreviewWidth, 44, TRUE);
-		rulesY += 44 + 10;
-
-		const int ruleActionButtonsWidth = 60 + 8 + 60;
-		const int ruleActionLeft = rulesContentLeft + max(0, (rulesContentWidth - ruleActionButtonsWidth) / 2);
-		RuleColorApplyButton.MoveWindow(ruleActionLeft, rulesY, 60, buttonHeight, TRUE);
-		RuleColorResetButton.MoveWindow(ruleActionLeft + 68, rulesY, 60, buttonHeight, TRUE);
-	}
+	const int ruleActionButtonsWidth = 60 + 8 + 60;
+	const int ruleActionLeft = rulesContentLeft + max(0, (rulesContentWidth - ruleActionButtonsWidth) / 2);
+	RuleColorApplyButton.MoveWindow(ruleActionLeft, effectY, 60, buttonHeight, TRUE);
+	RuleColorResetButton.MoveWindow(ruleActionLeft + 68, effectY, 60, buttonHeight, TRUE);
 
 	const int tagLeft = pageRect.left + innerPad;
 	const int tagTop = pageRect.top + innerPad;
@@ -2941,12 +2894,35 @@ bool CProfileEditorDialog::ResolveRuleSelectionFromTree(int& outRuleIndex, int& 
 		return false;
 
 	const auto it = RuleTreeSelectionMap.find(selected);
-	if (it == RuleTreeSelectionMap.end())
-		return false;
+	if (it != RuleTreeSelectionMap.end())
+	{
+		outRuleIndex = it->second.first;
+		outCriterionIndex = it->second.second;
+		return true;
+	}
 
-	outRuleIndex = it->second.first;
-	outCriterionIndex = it->second.second;
-	return true;
+	// Fallback: derive indices from current tree position when map lookup misses.
+	auto siblingIndexOf = [&](HTREEITEM node) -> int
+	{
+		if (node == nullptr)
+			return -1;
+		int index = 0;
+		for (HTREEITEM cur = node; cur != nullptr; cur = RuleTree.GetPrevSiblingItem(cur))
+			++index;
+		return index - 1;
+	};
+
+	const HTREEITEM parent = RuleTree.GetParentItem(selected);
+	if (parent == nullptr)
+	{
+		outRuleIndex = siblingIndexOf(selected);
+		outCriterionIndex = -1;
+		return (outRuleIndex >= 0);
+	}
+
+	outRuleIndex = siblingIndexOf(parent);
+	outCriterionIndex = siblingIndexOf(selected);
+	return (outRuleIndex >= 0 && outCriterionIndex >= 0);
 }
 
 bool CProfileEditorDialog::GetRuleTreeActionRects(HTREEITEM item, CRect& addRect, CRect& deleteRect, bool& showAdd, bool& showDelete) const
@@ -3670,9 +3646,12 @@ void CProfileEditorDialog::OnRuleSelectionChanged()
 		SelectedRuleCriterionIndex = selectedCriterion;
 	}
 
+	SetRedraw(FALSE);
 	RefreshRuleControls();
 	LayoutControls();
 	UpdatePageVisibility();
+	SetRedraw(TRUE);
+	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
 }
 
 void CProfileEditorDialog::OnRuleTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult)
