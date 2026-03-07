@@ -3668,6 +3668,9 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 	case CDDS_PREPAINT:
 		*pResult = CDRF_NOTIFYITEMDRAW;
 		return;
+	case CDDS_ITEMPREPAINT:
+		*pResult = CDRF_NOTIFYPOSTPAINT;
+		return;
 	case CDDS_ITEMPOSTPAINT:
 	{
 		CDC* dc = CDC::FromHandle(pTreeCd->nmcd.hdc);
