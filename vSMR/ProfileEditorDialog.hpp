@@ -62,6 +62,7 @@ protected:
 	afx_msg void OnRuleAddParameterClicked();
 	afx_msg void OnRuleRemoveClicked();
 	afx_msg void OnRuleSourceChanged();
+	afx_msg void OnRuleNameChanged();
 	afx_msg void OnRuleFieldChanged();
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnRuleColorWheelTrack(WPARAM wParam, LPARAM lParam);
@@ -197,6 +198,8 @@ private:
 		, IDC_PE_RULE_COLOR_RESET_BUTTON = 9229
 		, IDC_PE_RULE_TREE = 9230
 		, IDC_PE_RULE_ADD_PARAM_BUTTON = 9231
+		, IDC_PE_RULE_NAME_LABEL = 9232
+		, IDC_PE_RULE_NAME_EDIT = 9233
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -263,6 +266,8 @@ private:
 	CButton RuleAddButton;
 	CButton RuleAddParameterButton;
 	CButton RuleRemoveButton;
+	CStatic RuleNameLabel;
+	CEdit RuleNameEdit;
 	CStatic RuleSourceLabel;
 	CComboBox RuleSourceCombo;
 	CStatic RuleTokenLabel;

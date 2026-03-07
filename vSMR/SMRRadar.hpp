@@ -82,6 +82,7 @@ struct StructuredTagColorRule
 	std::string token;
 	std::string condition;
 	std::vector<Criterion> criteria;
+	std::string name;
 	std::string tagType = "any";
 	std::string status = "any";
 	std::string detail = "any";
