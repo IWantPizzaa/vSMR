@@ -1211,6 +1211,7 @@ namespace
 		return a.source == b.source &&
 			a.token == b.token &&
 			a.condition == b.condition &&
+			a.name == b.name &&
 			a.tagType == b.tagType &&
 			a.status == b.status &&
 			a.detail == b.detail &&
@@ -1441,6 +1442,8 @@ std::vector<StructuredTagColorRule> CSMRRadar::GetStructuredTagColorRules() cons
 		rule.source = rule.criteria.front().source;
 		rule.token = rule.criteria.front().token;
 		rule.condition = rule.criteria.front().condition;
+		if (item.HasMember("name") && item["name"].IsString())
+			rule.name = TrimAsciiWhitespace(item["name"].GetString());
 
 		std::string tagType = "any";
 		if (item.HasMember("tag_type") && item["tag_type"].IsString())
@@ -1548,6 +1551,7 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		normalizedRule.source = normalizedRule.criteria.front().source;
 		normalizedRule.token = normalizedRule.criteria.front().token;
 		normalizedRule.condition = normalizedRule.criteria.front().condition;
+		normalizedRule.name = TrimAsciiWhitespace(rawRule.name);
 		normalizedRule.tagType = NormalizeStructuredRuleTagType(rawRule.tagType);
 		normalizedRule.status = NormalizeStructuredRuleStatus(rawRule.status);
 		normalizedRule.detail = NormalizeStructuredRuleDetail(rawRule.detail);
@@ -1613,6 +1617,15 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 			rapidjson::Value conditionValue;
 			conditionValue.SetString(rule.condition.c_str(), static_cast<rapidjson::SizeType>(rule.condition.size()), allocator);
 			ruleObject.AddMember(conditionKey, conditionValue, allocator);
+
+			if (!rule.name.empty())
+			{
+				rapidjson::Value nameKey;
+				nameKey.SetString("name", allocator);
+				rapidjson::Value nameValue;
+				nameValue.SetString(rule.name.c_str(), static_cast<rapidjson::SizeType>(rule.name.size()), allocator);
+				ruleObject.AddMember(nameKey, nameValue, allocator);
+			}
 
 			rapidjson::Value criteriaKey;
 			criteriaKey.SetString("criteria", allocator);
