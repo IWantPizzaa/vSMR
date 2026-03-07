@@ -1,12 +1,10 @@
 #pragma once
 
 #include "resource.h"
+#include "SMRRadar.hpp"
 #include <map>
 #include <string>
 #include <vector>
-
-class CSMRRadar;
-struct StructuredTagColorRule;
 
 class CProfileEditorDialog : public CDialogEx
 {
@@ -57,7 +55,9 @@ protected:
 	afx_msg void OnBoostFactorChanged();
 	afx_msg void OnBoostResolutionChanged();
 	afx_msg void OnRuleSelectionChanged();
+	afx_msg void OnRuleTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnRuleAddClicked();
+	afx_msg void OnRuleAddParameterClicked();
 	afx_msg void OnRuleRemoveClicked();
 	afx_msg void OnRuleSourceChanged();
 	afx_msg void OnRuleFieldChanged();
@@ -193,6 +193,8 @@ private:
 		, IDC_PE_RULE_COLOR_PREVIEW_SWATCH = 9227
 		, IDC_PE_RULE_COLOR_APPLY_BUTTON = 9228
 		, IDC_PE_RULE_COLOR_RESET_BUTTON = 9229
+		, IDC_PE_RULE_TREE = 9230
+		, IDC_PE_RULE_ADD_PARAM_BUTTON = 9231
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -251,11 +253,13 @@ private:
 	CComboBox BoostResolutionCombo;
 
 	CListBox RulesList;
+	CTreeCtrl RuleTree;
 	CStatic RuleLeftPanel;
 	CStatic RuleRightPanel;
 	CStatic RuleLeftHeader;
 	CStatic RuleRightHeader;
 	CButton RuleAddButton;
+	CButton RuleAddParameterButton;
 	CButton RuleRemoveButton;
 	CStatic RuleSourceLabel;
 	CComboBox RuleSourceCombo;
@@ -326,6 +330,8 @@ private:
 
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	int SelectedRuleIndex = -1;
+	int SelectedRuleCriterionIndex = -1;
+	std::map<HTREEITEM, std::pair<int, int>> RuleTreeSelectionMap;
 	UINT RuleColorActiveSwatchId = 0;
 	int RuleColorDraftR = 255;
 	int RuleColorDraftG = 255;
@@ -366,6 +372,8 @@ private:
 	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
 	std::string ReadComboText(CComboBox& combo) const;
 	void RebuildRulesList();
+	void SelectRuleNodeInTree(int ruleIndex, int criterionIndex);
+	bool ResolveRuleSelectionFromTree(int& outRuleIndex, int& outCriterionIndex) const;
 	void RefreshRuleControls();
 	void SyncTagEditorControlsFromRadar();
 	void PopulateTagTokenCombo();
@@ -377,7 +385,9 @@ private:
 	bool TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const;
 	std::string FormatRgbTriplet(int r, int g, int b) const;
 	bool ReadRuleFromControls(StructuredTagColorRule& outRule) const;
+	bool ReadRuleCriterionFromControls(StructuredTagColorRule::Criterion& outCriterion) const;
 	void ApplyRuleControlChanges(bool keepSelection);
+	void ApplyRuleCriterionControlChanges(bool keepSelection);
 	double ParseComboScaleSelection(CComboBox& combo, double fallback) const;
 	double SliderPosToScale(int pos) const;
 	int ScaleToSliderPos(double scale) const;

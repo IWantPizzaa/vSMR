@@ -1017,6 +1017,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		(controlId == IDC_PE_APPLY_BUTTON) ||
 		(controlId == IDC_PE_RESET_BUTTON) ||
 		(controlId == IDC_PE_RULE_ADD_BUTTON) ||
+		(controlId == IDC_PE_RULE_ADD_PARAM_BUTTON) ||
 		(controlId == IDC_PE_RULE_REMOVE_BUTTON) ||
 		(controlId == IDC_PE_RULE_COLOR_APPLY_BUTTON) ||
 		(controlId == IDC_PE_RULE_COLOR_RESET_BUTTON) ||
@@ -1335,7 +1336,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleLeftHeader.Create("Rules", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
 	RuleRightHeader.Create("Rule Details", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
 	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
+	RuleTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TREE);
 	RuleAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
+	RuleAddParameterButton.Create("+ Param", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_PARAM_BUTTON);
 	RuleRemoveButton.Create("Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_REMOVE_BUTTON);
 	RuleSourceLabel.Create("Source", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_SOURCE_LABEL);
 	RuleSourceCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_RULE_SOURCE_COMBO);
@@ -1367,6 +1370,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorApplyButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_APPLY_BUTTON);
 	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
 	RulesList.SetItemHeight(0, 24);
+	RuleTree.SetIndent(16);
 
 	TagPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PANEL);
 	TagHeaderPanel.Create("Tags", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
@@ -1724,7 +1728,7 @@ void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source,
 	}
 	else if (normalizedSource == "custom")
 	{
-		conditions = { "any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A", "in: SID1X,SID2A && runway.deprwy=26L" };
+		conditions = { "any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A" };
 	}
 	else if (normalizedToken == "tobt")
 	{
@@ -1954,10 +1958,13 @@ void CProfileEditorDialog::LayoutControls()
 	const int ruleListTop = rulesTop + 36;
 	const int ruleButtonAreaHeight = 44;
 	const int ruleListHeight = max(80, rulesPanelHeight - 36 - ruleButtonAreaHeight - 8);
-	RulesList.MoveWindow(rulesLeft + 8, ruleListTop, max(90, rulesLeftWidth - 16), ruleListHeight, TRUE);
+	const int ruleListWidth = max(90, rulesLeftWidth - 16);
+	RulesList.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	RuleTree.MoveWindow(rulesLeft + 8, ruleListTop, ruleListWidth, ruleListHeight, TRUE);
 	const int ruleButtonsY = rulesTop + rulesPanelHeight - 38;
 	RuleAddButton.MoveWindow(rulesLeft + 12, ruleButtonsY, 50, buttonHeight, TRUE);
-	RuleRemoveButton.MoveWindow(rulesLeft + 70, ruleButtonsY, 74, buttonHeight, TRUE);
+	RuleAddParameterButton.MoveWindow(rulesLeft + 66, ruleButtonsY, 68, buttonHeight, TRUE);
+	RuleRemoveButton.MoveWindow(rulesLeft + 138, ruleButtonsY, 74, buttonHeight, TRUE);
 
 	int rulesY = rulesTop + 44;
 	const int rulesLabelWidth = 120;
@@ -2127,13 +2134,15 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	const bool showRules = (selectedTab == 2);
 	const bool showTagEditor = (selectedTab == 3);
 	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
-	if (selectedTab == LastVisibilityTab && showDetailedTag == LastVisibilityDetailedTag)
-		return;
 	LastVisibilityTab = selectedTab;
 	LastVisibilityDetailedTag = showDetailedTag;
 	const int colorShowMode = showColors ? SW_SHOW : SW_HIDE;
 	const int iconShowMode = showIcons ? SW_SHOW : SW_HIDE;
 	const int ruleShowMode = showRules ? SW_SHOW : SW_HIDE;
+	const bool hasRuleSelection = (SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size()));
+	const bool isParameterSelection = hasRuleSelection && SelectedRuleCriterionIndex >= 0;
+	const int ruleParameterShowMode = (showRules && isParameterSelection) ? SW_SHOW : SW_HIDE;
+	const int ruleEffectShowMode = (showRules && !isParameterSelection) ? SW_SHOW : SW_HIDE;
 	const int tagShowMode = showTagEditor ? SW_SHOW : SW_HIDE;
 	const int detailedTagShowMode = showDetailedTag ? SW_SHOW : SW_HIDE;
 
@@ -2183,42 +2192,44 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	BoostResolutionLabel.ShowWindow(iconShowMode);
 	BoostResolutionCombo.ShowWindow(iconShowMode);
 
-	RulesList.ShowWindow(ruleShowMode);
+	RulesList.ShowWindow(SW_HIDE);
+	RuleTree.ShowWindow(ruleShowMode);
 	RuleLeftPanel.ShowWindow(ruleShowMode);
 	RuleRightPanel.ShowWindow(ruleShowMode);
 	RuleLeftHeader.ShowWindow(ruleShowMode);
 	RuleRightHeader.ShowWindow(ruleShowMode);
 	RuleAddButton.ShowWindow(ruleShowMode);
+	RuleAddParameterButton.ShowWindow(ruleShowMode);
 	RuleRemoveButton.ShowWindow(ruleShowMode);
-	RuleSourceLabel.ShowWindow(ruleShowMode);
-	RuleSourceCombo.ShowWindow(ruleShowMode);
-	RuleTokenLabel.ShowWindow(ruleShowMode);
-	RuleTokenCombo.ShowWindow(ruleShowMode);
-	RuleConditionLabel.ShowWindow(ruleShowMode);
-	RuleConditionCombo.ShowWindow(ruleShowMode);
-	RuleTypeLabel.ShowWindow(ruleShowMode);
-	RuleTypeCombo.ShowWindow(ruleShowMode);
-	RuleStatusLabel.ShowWindow(ruleShowMode);
-	RuleStatusCombo.ShowWindow(ruleShowMode);
-	RuleDetailLabel.ShowWindow(ruleShowMode);
-	RuleDetailCombo.ShowWindow(ruleShowMode);
-	RuleTargetCheck.ShowWindow(ruleShowMode);
-	RuleTargetSwatch.ShowWindow(ruleShowMode);
-	RuleTargetEdit.ShowWindow(ruleShowMode);
-	RuleTagCheck.ShowWindow(ruleShowMode);
-	RuleTagSwatch.ShowWindow(ruleShowMode);
-	RuleTagEdit.ShowWindow(ruleShowMode);
-	RuleTextCheck.ShowWindow(ruleShowMode);
-	RuleTextSwatch.ShowWindow(ruleShowMode);
-	RuleTextEdit.ShowWindow(ruleShowMode);
-	RuleColorWheelLabel.ShowWindow(ruleShowMode);
-	RuleColorWheel.ShowWindow(ruleShowMode);
-	RuleColorValueLabel.ShowWindow(ruleShowMode);
-	RuleColorValueSlider.ShowWindow(ruleShowMode);
-	RuleColorPreviewLabel.ShowWindow(ruleShowMode);
-	RuleColorPreviewSwatch.ShowWindow(ruleShowMode);
-	RuleColorApplyButton.ShowWindow(ruleShowMode);
-	RuleColorResetButton.ShowWindow(ruleShowMode);
+	RuleSourceLabel.ShowWindow(ruleParameterShowMode);
+	RuleSourceCombo.ShowWindow(ruleParameterShowMode);
+	RuleTokenLabel.ShowWindow(ruleParameterShowMode);
+	RuleTokenCombo.ShowWindow(ruleParameterShowMode);
+	RuleConditionLabel.ShowWindow(ruleParameterShowMode);
+	RuleConditionCombo.ShowWindow(ruleParameterShowMode);
+	RuleTypeLabel.ShowWindow(ruleEffectShowMode);
+	RuleTypeCombo.ShowWindow(ruleEffectShowMode);
+	RuleStatusLabel.ShowWindow(ruleEffectShowMode);
+	RuleStatusCombo.ShowWindow(ruleEffectShowMode);
+	RuleDetailLabel.ShowWindow(ruleEffectShowMode);
+	RuleDetailCombo.ShowWindow(ruleEffectShowMode);
+	RuleTargetCheck.ShowWindow(ruleEffectShowMode);
+	RuleTargetSwatch.ShowWindow(ruleEffectShowMode);
+	RuleTargetEdit.ShowWindow(ruleEffectShowMode);
+	RuleTagCheck.ShowWindow(ruleEffectShowMode);
+	RuleTagSwatch.ShowWindow(ruleEffectShowMode);
+	RuleTagEdit.ShowWindow(ruleEffectShowMode);
+	RuleTextCheck.ShowWindow(ruleEffectShowMode);
+	RuleTextSwatch.ShowWindow(ruleEffectShowMode);
+	RuleTextEdit.ShowWindow(ruleEffectShowMode);
+	RuleColorWheelLabel.ShowWindow(ruleEffectShowMode);
+	RuleColorWheel.ShowWindow(ruleEffectShowMode);
+	RuleColorValueLabel.ShowWindow(ruleEffectShowMode);
+	RuleColorValueSlider.ShowWindow(ruleEffectShowMode);
+	RuleColorPreviewLabel.ShowWindow(ruleEffectShowMode);
+	RuleColorPreviewSwatch.ShowWindow(ruleEffectShowMode);
+	RuleColorApplyButton.ShowWindow(ruleEffectShowMode);
+	RuleColorResetButton.ShowWindow(ruleEffectShowMode);
 
 	TagPanel.ShowWindow(tagShowMode);
 	TagHeaderPanel.ShowWindow(tagShowMode);
@@ -2790,51 +2801,101 @@ void CProfileEditorDialog::RebuildRulesList()
 
 	RuleBuffer = Owner->GetStructuredTagColorRules();
 	const int previousSelection = SelectedRuleIndex;
+	const int previousCriterionSelection = SelectedRuleCriterionIndex;
 
 	UpdatingControls = true;
-	RulesList.ResetContent();
+	RuleTree.DeleteAllItems();
+	RuleTreeSelectionMap.clear();
 	for (size_t i = 0; i < RuleBuffer.size(); ++i)
 	{
 		const StructuredTagColorRule& rule = RuleBuffer[i];
-		const StructuredTagColorRule::Criterion primary = !rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
-		const std::string conditionText = SerializeRuleConditionText(rule);
-		CString label;
-		label.Format("%02d  %s.%s = %s", static_cast<int>(i + 1), primary.source.c_str(), primary.token.c_str(), conditionText.c_str());
-		RulesList.AddString(label);
+		CString ruleLabel;
+		const int conditionCount = rule.criteria.empty() ? 1 : static_cast<int>(rule.criteria.size());
+		ruleLabel.Format("Rule %02d (%d conditions)", static_cast<int>(i + 1), conditionCount);
+		const HTREEITEM ruleItem = RuleTree.InsertItem(ruleLabel);
+		RuleTreeSelectionMap[ruleItem] = std::make_pair(static_cast<int>(i), -1);
+
+		std::vector<StructuredTagColorRule::Criterion> criteria = rule.criteria;
+		if (criteria.empty())
+			criteria.push_back(StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition });
+
+		for (size_t c = 0; c < criteria.size(); ++c)
+		{
+			const StructuredTagColorRule::Criterion& criterion = criteria[c];
+			CString criterionLabel;
+			criterionLabel.Format("%s.%s = %s", criterion.source.c_str(), criterion.token.c_str(), criterion.condition.c_str());
+			const HTREEITEM criterionItem = RuleTree.InsertItem(criterionLabel, ruleItem);
+			RuleTreeSelectionMap[criterionItem] = std::make_pair(static_cast<int>(i), static_cast<int>(c));
+		}
+		RuleTree.Expand(ruleItem, TVE_EXPAND);
 	}
 
 	if (RuleBuffer.empty())
 	{
 		SelectedRuleIndex = -1;
+		SelectedRuleCriterionIndex = -1;
 	}
 	else
 	{
 		SelectedRuleIndex = previousSelection;
+		SelectedRuleCriterionIndex = previousCriterionSelection;
 		if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
 			SelectedRuleIndex = 0;
-		RulesList.SetCurSel(SelectedRuleIndex);
+		if (SelectedRuleCriterionIndex >= static_cast<int>(RuleBuffer[SelectedRuleIndex].criteria.size()))
+			SelectedRuleCriterionIndex = -1;
+		SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
 	}
 	UpdatingControls = false;
 }
 
 void CProfileEditorDialog::UpdateRulesListItemLabel(int index)
 {
-	if (index < 0 || index >= static_cast<int>(RuleBuffer.size()) || index >= RulesList.GetCount())
+	(void)index;
+	RebuildRulesList();
+}
+
+void CProfileEditorDialog::SelectRuleNodeInTree(int ruleIndex, int criterionIndex)
+{
+	if (!::IsWindow(RuleTree.GetSafeHwnd()))
 		return;
 
-	const StructuredTagColorRule& rule = RuleBuffer[index];
-	const StructuredTagColorRule::Criterion primary = !rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
-	const std::string conditionText = SerializeRuleConditionText(rule);
-	CString label;
-	label.Format("%02d  %s.%s = %s", index + 1, primary.source.c_str(), primary.token.c_str(), conditionText.c_str());
+	for (const auto& entry : RuleTreeSelectionMap)
+	{
+		if (entry.second.first == ruleIndex && entry.second.second == criterionIndex)
+		{
+			RuleTree.SelectItem(entry.first);
+			return;
+		}
+	}
 
-	UpdatingControls = true;
-	const int topIndex = RulesList.GetTopIndex();
-	RulesList.DeleteString(index);
-	RulesList.InsertString(index, label);
-	RulesList.SetCurSel(index);
-	RulesList.SetTopIndex(topIndex);
-	UpdatingControls = false;
+	for (const auto& entry : RuleTreeSelectionMap)
+	{
+		if (entry.second.first == ruleIndex && entry.second.second == -1)
+		{
+			RuleTree.SelectItem(entry.first);
+			return;
+		}
+	}
+}
+
+bool CProfileEditorDialog::ResolveRuleSelectionFromTree(int& outRuleIndex, int& outCriterionIndex) const
+{
+	outRuleIndex = -1;
+	outCriterionIndex = -1;
+	if (!::IsWindow(RuleTree.GetSafeHwnd()))
+		return false;
+
+	const HTREEITEM selected = RuleTree.GetSelectedItem();
+	if (selected == nullptr)
+		return false;
+
+	const auto it = RuleTreeSelectionMap.find(selected);
+	if (it == RuleTreeSelectionMap.end())
+		return false;
+
+	outRuleIndex = it->second.first;
+	outCriterionIndex = it->second.second;
+	return true;
 }
 
 void CProfileEditorDialog::InvalidateRuleColorSwatches()
@@ -3019,30 +3080,34 @@ void CProfileEditorDialog::RefreshRuleControls()
 {
 	UpdatingControls = true;
 	const bool hasSelection = (SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size()));
+	const bool isParameterSelection = hasSelection && SelectedRuleCriterionIndex >= 0;
 
+	RuleAddParameterButton.EnableWindow(hasSelection ? TRUE : FALSE);
 	RuleRemoveButton.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleSourceCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleTokenCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleConditionCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleTypeCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleStatusCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleDetailCombo.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleTargetCheck.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleTagCheck.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleTextCheck.EnableWindow(hasSelection ? TRUE : FALSE);
+	RuleSourceCombo.EnableWindow(isParameterSelection ? TRUE : FALSE);
+	RuleTokenCombo.EnableWindow(isParameterSelection ? TRUE : FALSE);
+	RuleConditionCombo.EnableWindow(isParameterSelection ? TRUE : FALSE);
+	RuleTypeCombo.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleStatusCombo.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleDetailCombo.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleTargetCheck.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleTagCheck.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleTextCheck.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
 	RuleTargetSwatch.EnableWindow(FALSE);
 	RuleTagSwatch.EnableWindow(FALSE);
 	RuleTextSwatch.EnableWindow(FALSE);
 	RuleTargetEdit.EnableWindow(FALSE);
 	RuleTagEdit.EnableWindow(FALSE);
 	RuleTextEdit.EnableWindow(FALSE);
-	RuleColorWheel.EnableWindow(hasSelection ? TRUE : FALSE);
-	RuleColorValueSlider.EnableWindow(hasSelection ? TRUE : FALSE);
+	RuleColorWheel.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleColorValueSlider.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
 	RuleColorApplyButton.EnableWindow(FALSE);
-	RuleColorResetButton.EnableWindow(hasSelection ? TRUE : FALSE);
+	RuleColorResetButton.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
 
 	if (!hasSelection)
 	{
+		RuleRightHeader.SetWindowTextA("Rule Details");
+		RuleRemoveButton.SetWindowTextA("Remove");
 		SelectComboEntryByText(RuleSourceCombo, "vacdm");
 		PopulateRuleTokenCombo("vacdm", "tobt");
 		PopulateRuleConditionCombo("vacdm", "tobt", "any");
@@ -3067,33 +3132,79 @@ void CProfileEditorDialog::RefreshRuleControls()
 	}
 
 	const StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
-	const StructuredTagColorRule::Criterion primary = !rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
-	const std::string conditionText = SerializeRuleConditionText(rule);
-	SelectComboEntryByText(RuleSourceCombo, primary.source);
-	PopulateRuleTokenCombo(primary.source, primary.token);
-	PopulateRuleConditionCombo(primary.source, primary.token, conditionText);
-	SelectComboEntryByText(RuleTypeCombo, rule.tagType);
-	SelectComboEntryByText(RuleStatusCombo, rule.status);
-	SelectComboEntryByText(RuleDetailCombo, rule.detail);
-	RuleTargetCheck.SetCheck(rule.applyTarget ? BST_CHECKED : BST_UNCHECKED);
-	RuleTagCheck.SetCheck(rule.applyTag ? BST_CHECKED : BST_UNCHECKED);
-	RuleTextCheck.SetCheck(rule.applyText ? BST_CHECKED : BST_UNCHECKED);
-	SetEditTextPreserveCaret(RuleTargetEdit, FormatRgbTriplet(rule.targetR, rule.targetG, rule.targetB));
-	SetEditTextPreserveCaret(RuleTagEdit, FormatRgbTriplet(rule.tagR, rule.tagG, rule.tagB));
-	SetEditTextPreserveCaret(RuleTextEdit, FormatRgbTriplet(rule.textR, rule.textG, rule.textB));
-	RuleTargetSwatch.EnableWindow(TRUE);
-	RuleTagSwatch.EnableWindow(TRUE);
-	RuleTextSwatch.EnableWindow(TRUE);
-	RuleTargetEdit.EnableWindow(rule.applyTarget ? TRUE : FALSE);
-	RuleTagEdit.EnableWindow(rule.applyTag ? TRUE : FALSE);
-	RuleTextEdit.EnableWindow(rule.applyText ? TRUE : FALSE);
-	RuleColorWheel.EnableWindow(TRUE);
-	RuleColorValueSlider.EnableWindow(TRUE);
-	RuleColorApplyButton.EnableWindow(FALSE);
-	RuleColorResetButton.EnableWindow(TRUE);
+	RuleRemoveButton.SetWindowTextA(isParameterSelection ? "Del Param" : "Remove");
+	if (isParameterSelection)
+	{
+		RuleRightHeader.SetWindowTextA("Parameter");
+		const bool hasCriteria = !rule.criteria.empty();
+		int criterionIndex = 0;
+		if (hasCriteria)
+		{
+			criterionIndex = SelectedRuleCriterionIndex;
+			const int maxIndex = static_cast<int>(rule.criteria.size()) - 1;
+			if (criterionIndex > maxIndex)
+				criterionIndex = maxIndex;
+		}
+		const StructuredTagColorRule::Criterion criterion =
+			hasCriteria ? rule.criteria[criterionIndex] : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
+
+		SelectComboEntryByText(RuleSourceCombo, criterion.source);
+		PopulateRuleTokenCombo(criterion.source, criterion.token);
+		PopulateRuleConditionCombo(criterion.source, criterion.token, criterion.condition);
+
+		RuleTargetCheck.SetCheck(BST_UNCHECKED);
+		RuleTagCheck.SetCheck(BST_UNCHECKED);
+		RuleTextCheck.SetCheck(BST_UNCHECKED);
+		RuleTargetSwatch.EnableWindow(FALSE);
+		RuleTagSwatch.EnableWindow(FALSE);
+		RuleTextSwatch.EnableWindow(FALSE);
+		RuleTargetEdit.EnableWindow(FALSE);
+		RuleTagEdit.EnableWindow(FALSE);
+		RuleTextEdit.EnableWindow(FALSE);
+		RuleColorWheel.EnableWindow(FALSE);
+		RuleColorValueSlider.EnableWindow(FALSE);
+		RuleColorApplyButton.EnableWindow(FALSE);
+		RuleColorResetButton.EnableWindow(FALSE);
+	}
+	else
+	{
+		RuleRightHeader.SetWindowTextA("Rule Effects");
+		const StructuredTagColorRule::Criterion primary =
+			!rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
+		SelectComboEntryByText(RuleSourceCombo, primary.source);
+		PopulateRuleTokenCombo(primary.source, primary.token);
+		PopulateRuleConditionCombo(primary.source, primary.token, SerializeRuleConditionText(rule));
+		SelectComboEntryByText(RuleTypeCombo, rule.tagType);
+		SelectComboEntryByText(RuleStatusCombo, rule.status);
+		SelectComboEntryByText(RuleDetailCombo, rule.detail);
+		RuleTargetCheck.SetCheck(rule.applyTarget ? BST_CHECKED : BST_UNCHECKED);
+		RuleTagCheck.SetCheck(rule.applyTag ? BST_CHECKED : BST_UNCHECKED);
+		RuleTextCheck.SetCheck(rule.applyText ? BST_CHECKED : BST_UNCHECKED);
+		SetEditTextPreserveCaret(RuleTargetEdit, FormatRgbTriplet(rule.targetR, rule.targetG, rule.targetB));
+		SetEditTextPreserveCaret(RuleTagEdit, FormatRgbTriplet(rule.tagR, rule.tagG, rule.tagB));
+		SetEditTextPreserveCaret(RuleTextEdit, FormatRgbTriplet(rule.textR, rule.textG, rule.textB));
+		RuleTargetSwatch.EnableWindow(TRUE);
+		RuleTagSwatch.EnableWindow(TRUE);
+		RuleTextSwatch.EnableWindow(TRUE);
+		RuleTargetEdit.EnableWindow(rule.applyTarget ? TRUE : FALSE);
+		RuleTagEdit.EnableWindow(rule.applyTag ? TRUE : FALSE);
+		RuleTextEdit.EnableWindow(rule.applyText ? TRUE : FALSE);
+		RuleColorWheel.EnableWindow(TRUE);
+		RuleColorValueSlider.EnableWindow(TRUE);
+		RuleColorApplyButton.EnableWindow(FALSE);
+		RuleColorResetButton.EnableWindow(TRUE);
+	}
 
 	UpdatingControls = false;
-	SyncRuleColorEditorFromActiveControl();
+	if (isParameterSelection)
+	{
+		RuleColorDraftValid = false;
+		RuleColorDraftDirty = false;
+	}
+	else
+	{
+		SyncRuleColorEditorFromActiveControl();
+	}
 }
 
 void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
@@ -3298,18 +3409,19 @@ bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule)
 		return false;
 
 	StructuredTagColorRule rule;
-	rule.source = Owner->NormalizeStructuredRuleSource(ReadComboText(const_cast<CComboBox&>(RuleSourceCombo)));
-	rule.token = Owner->NormalizeStructuredRuleToken(rule.source, ReadComboText(const_cast<CComboBox&>(RuleTokenCombo)));
-	if (rule.token.empty())
-		return false;
-	if (!TryBuildRuleCriteriaFromConditionField(
-		Owner,
-		rule.source,
-		rule.token,
-		ReadComboText(const_cast<CComboBox&>(RuleConditionCombo)),
-		rule.criteria))
+	if (SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size()))
 	{
-		return false;
+		rule.criteria = RuleBuffer[SelectedRuleIndex].criteria;
+	}
+	if (rule.criteria.empty())
+	{
+		StructuredTagColorRule::Criterion defaultCriterion;
+		defaultCriterion.source = Owner->NormalizeStructuredRuleSource(ReadComboText(const_cast<CComboBox&>(RuleSourceCombo)));
+		defaultCriterion.token = Owner->NormalizeStructuredRuleToken(defaultCriterion.source, ReadComboText(const_cast<CComboBox&>(RuleTokenCombo)));
+		if (defaultCriterion.token.empty())
+			return false;
+		defaultCriterion.condition = Owner->NormalizeStructuredRuleCondition(defaultCriterion.source, ReadComboText(const_cast<CComboBox&>(RuleConditionCombo)));
+		rule.criteria.push_back(defaultCriterion);
 	}
 	rule.source = rule.criteria.front().source;
 	rule.token = rule.criteria.front().token;
@@ -3349,11 +3461,28 @@ bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule)
 	return true;
 }
 
+bool CProfileEditorDialog::ReadRuleCriterionFromControls(StructuredTagColorRule::Criterion& outCriterion) const
+{
+	if (Owner == nullptr)
+		return false;
+
+	StructuredTagColorRule::Criterion criterion;
+	criterion.source = Owner->NormalizeStructuredRuleSource(ReadComboText(const_cast<CComboBox&>(RuleSourceCombo)));
+	criterion.token = Owner->NormalizeStructuredRuleToken(criterion.source, ReadComboText(const_cast<CComboBox&>(RuleTokenCombo)));
+	if (criterion.token.empty())
+		return false;
+	criterion.condition = Owner->NormalizeStructuredRuleCondition(criterion.source, ReadComboText(const_cast<CComboBox&>(RuleConditionCombo)));
+	outCriterion = criterion;
+	return true;
+}
+
 void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 {
 	if (UpdatingControls || Owner == nullptr)
 		return;
 	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
+		return;
+	if (SelectedRuleCriterionIndex >= 0)
 		return;
 
 	StructuredTagColorRule updatedRule;
@@ -3369,16 +3498,56 @@ void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 	if (keepSelection)
 	{
 		UpdateRulesListItemLabel(SelectedRuleIndex);
+		SelectRuleNodeInTree(SelectedRuleIndex, -1);
+		RefreshRuleControls();
 		return;
 	}
 
 	const int preservedSelection = SelectedRuleIndex;
+	SelectedRuleCriterionIndex = -1;
 	RebuildRulesList();
-	if (preservedSelection >= 0 && preservedSelection < RulesList.GetCount())
+	SelectedRuleIndex = preservedSelection;
+	SelectRuleNodeInTree(SelectedRuleIndex, -1);
+	RefreshRuleControls();
+}
+
+void CProfileEditorDialog::ApplyRuleCriterionControlChanges(bool keepSelection)
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
+		return;
+	if (SelectedRuleCriterionIndex < 0)
+		return;
+
+	StructuredTagColorRule::Criterion updatedCriterion;
+	if (!ReadRuleCriterionFromControls(updatedCriterion))
+		return;
+
+	StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
+	if (rule.criteria.empty())
+		rule.criteria.push_back(StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition });
+	if (SelectedRuleCriterionIndex >= static_cast<int>(rule.criteria.size()))
+		return;
+
+	rule.criteria[SelectedRuleCriterionIndex] = updatedCriterion;
+	rule.source = rule.criteria.front().source;
+	rule.token = rule.criteria.front().token;
+	rule.condition = rule.criteria.front().condition;
+
+	if (!Owner->SetStructuredTagColorRules(RuleBuffer, true))
+		return;
+
+	Owner->RequestRefresh();
+	if (keepSelection)
 	{
-		SelectedRuleIndex = preservedSelection;
-		RulesList.SetCurSel(SelectedRuleIndex);
+		RebuildRulesList();
+		SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
+		RefreshRuleControls();
+		return;
 	}
+
+	RebuildRulesList();
 	RefreshRuleControls();
 }
 
@@ -3387,9 +3556,29 @@ void CProfileEditorDialog::OnRuleSelectionChanged()
 	if (UpdatingControls)
 		return;
 
-	const int selectedIndex = RulesList.GetCurSel();
-	SelectedRuleIndex = (selectedIndex == LB_ERR) ? -1 : selectedIndex;
+	int selectedRule = -1;
+	int selectedCriterion = -1;
+	if (!ResolveRuleSelectionFromTree(selectedRule, selectedCriterion))
+	{
+		SelectedRuleIndex = -1;
+		SelectedRuleCriterionIndex = -1;
+	}
+	else
+	{
+		SelectedRuleIndex = selectedRule;
+		SelectedRuleCriterionIndex = selectedCriterion;
+	}
+
 	RefreshRuleControls();
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnRuleTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	(void)pNMHDR;
+	OnRuleSelectionChanged();
+	if (pResult != nullptr)
+		*pResult = 0;
 }
 
 void CProfileEditorDialog::OnRuleAddClicked()
@@ -3415,10 +3604,58 @@ void CProfileEditorDialog::OnRuleAddClicked()
 
 	Owner->RequestRefresh();
 	SelectedRuleIndex = static_cast<int>(RuleBuffer.size()) - 1;
+	SelectedRuleCriterionIndex = -1;
 	RebuildRulesList();
-	if (SelectedRuleIndex >= 0 && SelectedRuleIndex < RulesList.GetCount())
-		RulesList.SetCurSel(SelectedRuleIndex);
+	SelectRuleNodeInTree(SelectedRuleIndex, -1);
 	RefreshRuleControls();
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnRuleAddParameterClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
+	{
+		OnRuleAddClicked();
+		SelectedRuleCriterionIndex = 0;
+		RebuildRulesList();
+		SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
+		RefreshRuleControls();
+		UpdatePageVisibility();
+		return;
+	}
+
+	StructuredTagColorRule::Criterion criterion;
+	if (!ReadRuleCriterionFromControls(criterion))
+	{
+		criterion.source = "vacdm";
+		criterion.token = "tsat";
+		criterion.condition = "any";
+	}
+
+	StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
+	if (rule.criteria.empty())
+		rule.criteria.push_back(StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition });
+
+	int insertIndex = static_cast<int>(rule.criteria.size());
+	if (SelectedRuleCriterionIndex >= 0 && SelectedRuleCriterionIndex < static_cast<int>(rule.criteria.size()))
+		insertIndex = SelectedRuleCriterionIndex + 1;
+	rule.criteria.insert(rule.criteria.begin() + insertIndex, criterion);
+	rule.source = rule.criteria.front().source;
+	rule.token = rule.criteria.front().token;
+	rule.condition = rule.criteria.front().condition;
+
+	if (!Owner->SetStructuredTagColorRules(RuleBuffer, true))
+		return;
+
+	Owner->RequestRefresh();
+	SelectedRuleCriterionIndex = insertIndex;
+	RebuildRulesList();
+	SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
+	RefreshRuleControls();
+	UpdatePageVisibility();
 }
 
 void CProfileEditorDialog::OnRuleRemoveClicked()
@@ -3428,22 +3665,54 @@ void CProfileEditorDialog::OnRuleRemoveClicked()
 	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
 		return;
 
-	RuleBuffer.erase(RuleBuffer.begin() + SelectedRuleIndex);
+	if (SelectedRuleCriterionIndex >= 0)
+	{
+		StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
+		if (rule.criteria.empty())
+			rule.criteria.push_back(StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition });
+
+		if (SelectedRuleCriterionIndex < static_cast<int>(rule.criteria.size()))
+		{
+			rule.criteria.erase(rule.criteria.begin() + SelectedRuleCriterionIndex);
+			if (rule.criteria.empty())
+			{
+				RuleBuffer.erase(RuleBuffer.begin() + SelectedRuleIndex);
+				SelectedRuleCriterionIndex = -1;
+			}
+			else
+			{
+				if (SelectedRuleCriterionIndex >= static_cast<int>(rule.criteria.size()))
+					SelectedRuleCriterionIndex = static_cast<int>(rule.criteria.size()) - 1;
+				rule.source = rule.criteria.front().source;
+				rule.token = rule.criteria.front().token;
+				rule.condition = rule.criteria.front().condition;
+			}
+		}
+	}
+	else
+	{
+		RuleBuffer.erase(RuleBuffer.begin() + SelectedRuleIndex);
+	}
+
 	if (!Owner->SetStructuredTagColorRules(RuleBuffer, true))
 		return;
 
 	Owner->RequestRefresh();
 	if (SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
 		SelectedRuleIndex = static_cast<int>(RuleBuffer.size()) - 1;
+	if (SelectedRuleIndex < 0)
+		SelectedRuleCriterionIndex = -1;
 	RebuildRulesList();
-	if (SelectedRuleIndex >= 0 && SelectedRuleIndex < RulesList.GetCount())
-		RulesList.SetCurSel(SelectedRuleIndex);
+	SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
 	RefreshRuleControls();
+	UpdatePageVisibility();
 }
 
 void CProfileEditorDialog::OnRuleSourceChanged()
 {
 	if (UpdatingControls)
+		return;
+	if (SelectedRuleCriterionIndex < 0)
 		return;
 
 	const std::string sourceText = ReadComboText(RuleSourceCombo);
@@ -3455,13 +3724,14 @@ void CProfileEditorDialog::OnRuleSourceChanged()
 	const std::string tokenText = ReadComboText(RuleTokenCombo);
 	PopulateRuleConditionCombo(sourceText, tokenText, "any");
 	UpdatingControls = false;
-	ApplyRuleControlChanges(true);
+	ApplyRuleCriterionControlChanges(true);
 }
 
 void CProfileEditorDialog::OnRuleFieldChanged()
 {
 	if (UpdatingControls)
 		return;
+	const bool isParameterSelection = (SelectedRuleCriterionIndex >= 0);
 
 	int focusedId = 0;
 	if (CWnd* focused = GetFocus())
@@ -3471,16 +3741,20 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 		(focusedId == IDC_PE_RULE_SOURCE_COMBO) ||
 		(focusedId == IDC_PE_RULE_TOKEN_COMBO);
 
+	if (shouldRefreshConditionChoices)
 	{
-		if (shouldRefreshConditionChoices)
-		{
-			const std::string sourceText = ReadComboText(RuleSourceCombo);
-			const std::string tokenText = ReadComboText(RuleTokenCombo);
-			const std::string selectedCondition = ReadComboText(RuleConditionCombo);
-			UpdatingControls = true;
-			PopulateRuleConditionCombo(sourceText, tokenText, selectedCondition);
-			UpdatingControls = false;
-		}
+		const std::string sourceText = ReadComboText(RuleSourceCombo);
+		const std::string tokenText = ReadComboText(RuleTokenCombo);
+		const std::string selectedCondition = ReadComboText(RuleConditionCombo);
+		UpdatingControls = true;
+		PopulateRuleConditionCombo(sourceText, tokenText, selectedCondition);
+		UpdatingControls = false;
+	}
+
+	if (isParameterSelection)
+	{
+		ApplyRuleCriterionControlChanges(true);
+		return;
 	}
 
 	const BOOL targetEnabled = (RuleTargetCheck.GetCheck() == BST_CHECKED ? TRUE : FALSE);
@@ -4461,8 +4735,9 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_SMALL_BOOST_CHECK, &CProfileEditorDialog::OnSmallBoostToggled)
 	ON_CBN_SELCHANGE(IDC_PE_BOOST_FACTOR_COMBO, &CProfileEditorDialog::OnBoostFactorChanged)
 	ON_CBN_SELCHANGE(IDC_PE_BOOST_RES_COMBO, &CProfileEditorDialog::OnBoostResolutionChanged)
-	ON_LBN_SELCHANGE(IDC_PE_RULE_LIST, &CProfileEditorDialog::OnRuleSelectionChanged)
+	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_RULE_TREE, &CProfileEditorDialog::OnRuleTreeSelectionChanged)
 	ON_BN_CLICKED(IDC_PE_RULE_ADD_BUTTON, &CProfileEditorDialog::OnRuleAddClicked)
+	ON_BN_CLICKED(IDC_PE_RULE_ADD_PARAM_BUTTON, &CProfileEditorDialog::OnRuleAddParameterClicked)
 	ON_BN_CLICKED(IDC_PE_RULE_REMOVE_BUTTON, &CProfileEditorDialog::OnRuleRemoveClicked)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_SOURCE_COMBO, &CProfileEditorDialog::OnRuleSourceChanged)
 	ON_CBN_SELCHANGE(IDC_PE_RULE_TOKEN_COMBO, &CProfileEditorDialog::OnRuleFieldChanged)
