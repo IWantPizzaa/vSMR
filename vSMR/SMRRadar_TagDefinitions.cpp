@@ -1196,6 +1196,18 @@ namespace
 
 	bool StructuredRulesEqual(const StructuredTagColorRule& a, const StructuredTagColorRule& b)
 	{
+		if (a.criteria.size() != b.criteria.size())
+			return false;
+		for (size_t i = 0; i < a.criteria.size(); ++i)
+		{
+			if (a.criteria[i].source != b.criteria[i].source ||
+				a.criteria[i].token != b.criteria[i].token ||
+				a.criteria[i].condition != b.criteria[i].condition)
+			{
+				return false;
+			}
+		}
+
 		return a.source == b.source &&
 			a.token == b.token &&
 			a.condition == b.condition &&
@@ -1357,28 +1369,78 @@ std::vector<StructuredTagColorRule> CSMRRadar::GetStructuredTagColorRules() cons
 		const rapidjson::Value& item = items[i];
 		StructuredTagColorRule rule;
 
-		std::string source = "vacdm";
-		if (item.HasMember("source") && item["source"].IsString())
-			source = item["source"].GetString();
-		else if (item.HasMember("kind") && item["kind"].IsString())
-			source = item["kind"].GetString();
-		rule.source = NormalizeStructuredRuleSource(source);
+		auto appendCriterion = [&](const std::string& rawSource, const std::string& rawToken, const std::string& rawCondition) {
+			const std::string normalizedSource = NormalizeStructuredRuleSource(rawSource);
+			const std::string normalizedToken = NormalizeStructuredRuleToken(normalizedSource, rawToken);
+			if (normalizedToken.empty())
+				return;
 
-		std::string token;
-		if (item.HasMember("token") && item["token"].IsString())
-			token = item["token"].GetString();
-		rule.token = NormalizeStructuredRuleToken(rule.source, token);
-		if (rule.token.empty())
+			StructuredTagColorRule::Criterion criterion;
+			criterion.source = normalizedSource;
+			criterion.token = normalizedToken;
+			criterion.condition = NormalizeStructuredRuleCondition(normalizedSource, rawCondition);
+			rule.criteria.push_back(criterion);
+			};
+
+		if (item.HasMember("criteria") && item["criteria"].IsArray())
+		{
+			const rapidjson::Value& criteria = item["criteria"];
+			for (rapidjson::SizeType c = 0; c < criteria.Size(); ++c)
+			{
+				if (!criteria[c].IsObject())
+					continue;
+
+				const rapidjson::Value& criterionObject = criteria[c];
+				std::string source = "vacdm";
+				if (criterionObject.HasMember("source") && criterionObject["source"].IsString())
+					source = criterionObject["source"].GetString();
+				else if (criterionObject.HasMember("kind") && criterionObject["kind"].IsString())
+					source = criterionObject["kind"].GetString();
+
+				std::string token;
+				if (criterionObject.HasMember("token") && criterionObject["token"].IsString())
+					token = criterionObject["token"].GetString();
+
+				std::string condition;
+				if (criterionObject.HasMember("condition") && criterionObject["condition"].IsString())
+					condition = criterionObject["condition"].GetString();
+				else if (NormalizeStructuredRuleSource(source) == "runway" && criterionObject.HasMember("runway") && criterionObject["runway"].IsString())
+					condition = criterionObject["runway"].GetString();
+				else if (NormalizeStructuredRuleSource(source) != "runway" && criterionObject.HasMember("state") && criterionObject["state"].IsString())
+					condition = criterionObject["state"].GetString();
+
+				appendCriterion(source, token, condition);
+			}
+		}
+
+		if (rule.criteria.empty())
+		{
+			std::string source = "vacdm";
+			if (item.HasMember("source") && item["source"].IsString())
+				source = item["source"].GetString();
+			else if (item.HasMember("kind") && item["kind"].IsString())
+				source = item["kind"].GetString();
+
+			std::string token;
+			if (item.HasMember("token") && item["token"].IsString())
+				token = item["token"].GetString();
+
+			std::string condition;
+			if (item.HasMember("condition") && item["condition"].IsString())
+				condition = item["condition"].GetString();
+			else if (NormalizeStructuredRuleSource(source) == "runway" && item.HasMember("runway") && item["runway"].IsString())
+				condition = item["runway"].GetString();
+			else if (NormalizeStructuredRuleSource(source) != "runway" && item.HasMember("state") && item["state"].IsString())
+				condition = item["state"].GetString();
+
+			appendCriterion(source, token, condition);
+		}
+
+		if (rule.criteria.empty())
 			continue;
-
-		std::string condition;
-		if (item.HasMember("condition") && item["condition"].IsString())
-			condition = item["condition"].GetString();
-		else if (rule.source == "runway" && item.HasMember("runway") && item["runway"].IsString())
-			condition = item["runway"].GetString();
-		else if (rule.source != "runway" && item.HasMember("state") && item["state"].IsString())
-			condition = item["state"].GetString();
-		rule.condition = NormalizeStructuredRuleCondition(rule.source, condition);
+		rule.source = rule.criteria.front().source;
+		rule.token = rule.criteria.front().token;
+		rule.condition = rule.criteria.front().condition;
 
 		std::string tagType = "any";
 		if (item.HasMember("tag_type") && item["tag_type"].IsString())
@@ -1457,9 +1519,35 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 	for (const StructuredTagColorRule& rawRule : rules)
 	{
 		StructuredTagColorRule normalizedRule = rawRule;
-		normalizedRule.source = NormalizeStructuredRuleSource(rawRule.source);
-		normalizedRule.token = NormalizeStructuredRuleToken(normalizedRule.source, rawRule.token);
-		normalizedRule.condition = NormalizeStructuredRuleCondition(normalizedRule.source, rawRule.condition);
+		normalizedRule.criteria.clear();
+		auto appendNormalizedCriterion = [&](const std::string& rawSource, const std::string& rawToken, const std::string& rawCondition) {
+			const std::string normalizedSource = NormalizeStructuredRuleSource(rawSource);
+			const std::string normalizedToken = NormalizeStructuredRuleToken(normalizedSource, rawToken);
+			if (normalizedToken.empty())
+				return;
+			StructuredTagColorRule::Criterion criterion;
+			criterion.source = normalizedSource;
+			criterion.token = normalizedToken;
+			criterion.condition = NormalizeStructuredRuleCondition(normalizedSource, rawCondition);
+			normalizedRule.criteria.push_back(criterion);
+			};
+
+		if (!rawRule.criteria.empty())
+		{
+			for (const StructuredTagColorRule::Criterion& rawCriterion : rawRule.criteria)
+				appendNormalizedCriterion(rawCriterion.source, rawCriterion.token, rawCriterion.condition);
+		}
+		else
+		{
+			appendNormalizedCriterion(rawRule.source, rawRule.token, rawRule.condition);
+		}
+
+		if (normalizedRule.criteria.empty())
+			continue;
+
+		normalizedRule.source = normalizedRule.criteria.front().source;
+		normalizedRule.token = normalizedRule.criteria.front().token;
+		normalizedRule.condition = normalizedRule.criteria.front().condition;
 		normalizedRule.tagType = NormalizeStructuredRuleTagType(rawRule.tagType);
 		normalizedRule.status = NormalizeStructuredRuleStatus(rawRule.status);
 		normalizedRule.detail = NormalizeStructuredRuleDetail(rawRule.detail);
@@ -1473,8 +1561,6 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		normalizedRule.textG = ClampRuleColorComponent(rawRule.textG);
 		normalizedRule.textB = ClampRuleColorComponent(rawRule.textB);
 
-		if (normalizedRule.token.empty())
-			continue;
 		if (!normalizedRule.applyTarget && !normalizedRule.applyTag && !normalizedRule.applyText)
 			continue;
 
@@ -1527,6 +1613,35 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 			rapidjson::Value conditionValue;
 			conditionValue.SetString(rule.condition.c_str(), static_cast<rapidjson::SizeType>(rule.condition.size()), allocator);
 			ruleObject.AddMember(conditionKey, conditionValue, allocator);
+
+			rapidjson::Value criteriaKey;
+			criteriaKey.SetString("criteria", allocator);
+			rapidjson::Value criteriaArray(rapidjson::kArrayType);
+			for (const StructuredTagColorRule::Criterion& criterion : rule.criteria)
+			{
+				rapidjson::Value criterionObject(rapidjson::kObjectType);
+
+				rapidjson::Value criterionSourceKey;
+				criterionSourceKey.SetString("source", allocator);
+				rapidjson::Value criterionSourceValue;
+				criterionSourceValue.SetString(criterion.source.c_str(), static_cast<rapidjson::SizeType>(criterion.source.size()), allocator);
+				criterionObject.AddMember(criterionSourceKey, criterionSourceValue, allocator);
+
+				rapidjson::Value criterionTokenKey;
+				criterionTokenKey.SetString("token", allocator);
+				rapidjson::Value criterionTokenValue;
+				criterionTokenValue.SetString(criterion.token.c_str(), static_cast<rapidjson::SizeType>(criterion.token.size()), allocator);
+				criterionObject.AddMember(criterionTokenKey, criterionTokenValue, allocator);
+
+				rapidjson::Value criterionConditionKey;
+				criterionConditionKey.SetString("condition", allocator);
+				rapidjson::Value criterionConditionValue;
+				criterionConditionValue.SetString(criterion.condition.c_str(), static_cast<rapidjson::SizeType>(criterion.condition.size()), allocator);
+				criterionObject.AddMember(criterionConditionKey, criterionConditionValue, allocator);
+
+				criteriaArray.PushBack(criterionObject, allocator);
+			}
+			ruleObject.AddMember(criteriaKey, criteriaArray, allocator);
 
 			rapidjson::Value tagTypeKey;
 			tagTypeKey.SetString("tag_type", allocator);

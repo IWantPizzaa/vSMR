@@ -31,6 +31,158 @@ namespace
 	std::map<HWND, WNDPROC> gRuleColorValueSliderOldProcs;
 	std::map<HWND, HWND> gRuleColorValueSliderOwnerWindows;
 
+	std::string TrimAsciiWhitespaceCopy(const std::string& text)
+	{
+		size_t start = 0;
+		while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
+			++start;
+		size_t end = text.size();
+		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
+			--end;
+		return text.substr(start, end - start);
+	}
+
+	std::vector<std::string> SplitRuleConditionClauses(const std::string& text)
+	{
+		std::vector<std::string> clauses;
+		std::string current;
+		for (size_t i = 0; i < text.size(); ++i)
+		{
+			if (i + 1 < text.size() && text[i] == '&' && text[i + 1] == '&')
+			{
+				const std::string trimmed = TrimAsciiWhitespaceCopy(current);
+				if (!trimmed.empty())
+					clauses.push_back(trimmed);
+				current.clear();
+				++i;
+				continue;
+			}
+			current.push_back(text[i]);
+		}
+
+		const std::string trimmed = TrimAsciiWhitespaceCopy(current);
+		if (!trimmed.empty())
+			clauses.push_back(trimmed);
+		return clauses;
+	}
+
+	std::string SerializeRuleConditionText(const StructuredTagColorRule& rule)
+	{
+		if (rule.criteria.empty())
+			return rule.condition;
+
+		std::string text = rule.criteria[0].condition;
+		for (size_t i = 1; i < rule.criteria.size(); ++i)
+		{
+			const StructuredTagColorRule::Criterion& criterion = rule.criteria[i];
+			text += " && ";
+			text += criterion.source;
+			text += ".";
+			text += criterion.token;
+			text += "=";
+			text += criterion.condition;
+		}
+		return text;
+	}
+
+	bool TryParseExplicitRuleClause(
+		const std::string& rawClause,
+		CSMRRadar* owner,
+		const std::string& defaultSource,
+		StructuredTagColorRule::Criterion& outCriterion)
+	{
+		if (owner == nullptr)
+			return false;
+
+		const std::string clause = TrimAsciiWhitespaceCopy(rawClause);
+		const size_t equalsPos = clause.find('=');
+		if (equalsPos == std::string::npos)
+			return false;
+
+		const std::string selector = TrimAsciiWhitespaceCopy(clause.substr(0, equalsPos));
+		const std::string conditionPart = TrimAsciiWhitespaceCopy(clause.substr(equalsPos + 1));
+		if (selector.empty())
+			return false;
+
+		std::string sourcePart;
+		std::string tokenPart = selector;
+		const size_t dotPos = selector.find('.');
+		if (dotPos != std::string::npos)
+		{
+			sourcePart = TrimAsciiWhitespaceCopy(selector.substr(0, dotPos));
+			tokenPart = TrimAsciiWhitespaceCopy(selector.substr(dotPos + 1));
+		}
+		if (tokenPart.empty())
+			return false;
+
+		auto tryBuildFromSource = [&](const std::string& sourceCandidate) -> bool
+		{
+			const std::string normalizedSource = owner->NormalizeStructuredRuleSource(sourceCandidate);
+			const std::string normalizedToken = owner->NormalizeStructuredRuleToken(normalizedSource, tokenPart);
+			if (normalizedToken.empty())
+				return false;
+			outCriterion.source = normalizedSource;
+			outCriterion.token = normalizedToken;
+			outCriterion.condition = owner->NormalizeStructuredRuleCondition(normalizedSource, conditionPart.empty() ? "any" : conditionPart);
+			return true;
+			};
+
+		if (!sourcePart.empty())
+			return tryBuildFromSource(sourcePart);
+
+		if (tryBuildFromSource(defaultSource))
+			return true;
+		if (tryBuildFromSource("runway"))
+			return true;
+		if (tryBuildFromSource("custom"))
+			return true;
+		if (tryBuildFromSource("vacdm"))
+			return true;
+		return false;
+	}
+
+	bool TryBuildRuleCriteriaFromConditionField(
+		CSMRRadar* owner,
+		const std::string& selectedSource,
+		const std::string& selectedToken,
+		const std::string& conditionText,
+		std::vector<StructuredTagColorRule::Criterion>& outCriteria)
+	{
+		outCriteria.clear();
+		if (owner == nullptr)
+			return false;
+
+		const std::string normalizedSource = owner->NormalizeStructuredRuleSource(selectedSource);
+		const std::string normalizedToken = owner->NormalizeStructuredRuleToken(normalizedSource, selectedToken);
+		if (normalizedToken.empty())
+			return false;
+
+		std::vector<std::string> clauses = SplitRuleConditionClauses(conditionText);
+		if (clauses.empty())
+			clauses.push_back("any");
+
+		for (size_t i = 0; i < clauses.size(); ++i)
+		{
+			const std::string clause = TrimAsciiWhitespaceCopy(clauses[i]);
+			if (clause.empty())
+				continue;
+
+			StructuredTagColorRule::Criterion criterion;
+			if (TryParseExplicitRuleClause(clause, owner, normalizedSource, criterion))
+			{
+				outCriteria.push_back(criterion);
+				continue;
+			}
+
+			criterion.source = normalizedSource;
+			criterion.token = normalizedToken;
+			criterion.condition = owner->NormalizeStructuredRuleCondition(normalizedSource, clause);
+			outCriteria.push_back(criterion);
+		}
+
+		return !outCriteria.empty();
+	}
+
 
 	void HsvToRgb(double hue, double saturation, double value, int& outR, int& outG, int& outB)
 	{
@@ -1572,7 +1724,7 @@ void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source,
 	}
 	else if (normalizedSource == "custom")
 	{
-		conditions = { "any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A" };
+		conditions = { "any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A", "in: SID1X,SID2A && runway.deprwy=26L" };
 	}
 	else if (normalizedToken == "tobt")
 	{
@@ -2644,8 +2796,10 @@ void CProfileEditorDialog::RebuildRulesList()
 	for (size_t i = 0; i < RuleBuffer.size(); ++i)
 	{
 		const StructuredTagColorRule& rule = RuleBuffer[i];
+		const StructuredTagColorRule::Criterion primary = !rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
+		const std::string conditionText = SerializeRuleConditionText(rule);
 		CString label;
-		label.Format("%02d  %s.%s = %s", static_cast<int>(i + 1), rule.source.c_str(), rule.token.c_str(), rule.condition.c_str());
+		label.Format("%02d  %s.%s = %s", static_cast<int>(i + 1), primary.source.c_str(), primary.token.c_str(), conditionText.c_str());
 		RulesList.AddString(label);
 	}
 
@@ -2669,8 +2823,10 @@ void CProfileEditorDialog::UpdateRulesListItemLabel(int index)
 		return;
 
 	const StructuredTagColorRule& rule = RuleBuffer[index];
+	const StructuredTagColorRule::Criterion primary = !rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
+	const std::string conditionText = SerializeRuleConditionText(rule);
 	CString label;
-	label.Format("%02d  %s.%s = %s", index + 1, rule.source.c_str(), rule.token.c_str(), rule.condition.c_str());
+	label.Format("%02d  %s.%s = %s", index + 1, primary.source.c_str(), primary.token.c_str(), conditionText.c_str());
 
 	UpdatingControls = true;
 	const int topIndex = RulesList.GetTopIndex();
@@ -2911,9 +3067,11 @@ void CProfileEditorDialog::RefreshRuleControls()
 	}
 
 	const StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
-	SelectComboEntryByText(RuleSourceCombo, rule.source);
-	PopulateRuleTokenCombo(rule.source, rule.token);
-	PopulateRuleConditionCombo(rule.source, rule.token, rule.condition);
+	const StructuredTagColorRule::Criterion primary = !rule.criteria.empty() ? rule.criteria.front() : StructuredTagColorRule::Criterion{ rule.source, rule.token, rule.condition };
+	const std::string conditionText = SerializeRuleConditionText(rule);
+	SelectComboEntryByText(RuleSourceCombo, primary.source);
+	PopulateRuleTokenCombo(primary.source, primary.token);
+	PopulateRuleConditionCombo(primary.source, primary.token, conditionText);
 	SelectComboEntryByText(RuleTypeCombo, rule.tagType);
 	SelectComboEntryByText(RuleStatusCombo, rule.status);
 	SelectComboEntryByText(RuleDetailCombo, rule.detail);
@@ -3144,8 +3302,18 @@ bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule)
 	rule.token = Owner->NormalizeStructuredRuleToken(rule.source, ReadComboText(const_cast<CComboBox&>(RuleTokenCombo)));
 	if (rule.token.empty())
 		return false;
-
-	rule.condition = Owner->NormalizeStructuredRuleCondition(rule.source, ReadComboText(const_cast<CComboBox&>(RuleConditionCombo)));
+	if (!TryBuildRuleCriteriaFromConditionField(
+		Owner,
+		rule.source,
+		rule.token,
+		ReadComboText(const_cast<CComboBox&>(RuleConditionCombo)),
+		rule.criteria))
+	{
+		return false;
+	}
+	rule.source = rule.criteria.front().source;
+	rule.token = rule.criteria.front().token;
+	rule.condition = rule.criteria.front().condition;
 	rule.tagType = Owner->NormalizeStructuredRuleTagType(ReadComboText(const_cast<CComboBox&>(RuleTypeCombo)));
 	rule.status = Owner->NormalizeStructuredRuleStatus(ReadComboText(const_cast<CComboBox&>(RuleStatusCombo)));
 	rule.detail = Owner->NormalizeStructuredRuleDetail(ReadComboText(const_cast<CComboBox&>(RuleDetailCombo)));
