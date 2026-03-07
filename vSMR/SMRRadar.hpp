@@ -71,9 +71,17 @@ struct VacdmPilotData
 
 struct StructuredTagColorRule
 {
+	struct Criterion
+	{
+		std::string source = "vacdm";
+		std::string token;
+		std::string condition;
+	};
+
 	std::string source = "vacdm";
 	std::string token;
 	std::string condition;
+	std::vector<Criterion> criteria;
 	std::string tagType = "any";
 	std::string status = "any";
 	std::string detail = "any";

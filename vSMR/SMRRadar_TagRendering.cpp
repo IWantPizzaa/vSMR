@@ -153,28 +153,45 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 		if (!StructuredRuleContextMatches(rule, tagTypeKey, statusDefinitionKey, isTagDetailed))
 			continue;
 
-		const std::string source = ToLowerAsciiCopy(rule.source);
-		bool ruleMatches = false;
-		if (source == "runway")
+		auto criterionMatches = [&](const std::string& sourceText, const std::string& token, const std::string& condition) -> bool
 		{
-			std::string actualRunway;
-			auto it = replacingMap.find(rule.token);
-			if (it != replacingMap.end())
-				actualRunway = it->second;
-			ruleMatches = RunwayRuleConditionMatches(rule.condition, actualRunway);
-		}
-		else if (source == "custom")
+			const std::string source = ToLowerAsciiCopy(sourceText);
+			if (source == "runway")
+			{
+				std::string actualRunway;
+				auto it = replacingMap.find(token);
+				if (it != replacingMap.end())
+					actualRunway = it->second;
+				return RunwayRuleConditionMatches(condition, actualRunway);
+			}
+			if (source == "custom")
+			{
+				std::string actualValue;
+				auto itValue = replacingMap.find(token);
+				if (itValue != replacingMap.end())
+					actualValue = itValue->second;
+				return CustomRuleConditionMatches(condition, actualValue);
+			}
+
+			const std::string actualState = ResolveVacdmRuleStateName(token, pilotData);
+			return VacdmRuleStateMatches(condition, actualState);
+		};
+
+		bool ruleMatches = true;
+		if (!rule.criteria.empty())
 		{
-			std::string actualValue;
-			auto itValue = replacingMap.find(rule.token);
-			if (itValue != replacingMap.end())
-				actualValue = itValue->second;
-			ruleMatches = CustomRuleConditionMatches(rule.condition, actualValue);
+			for (const StructuredTagColorRule::Criterion& criterion : rule.criteria)
+			{
+				if (!criterionMatches(criterion.source, criterion.token, criterion.condition))
+				{
+					ruleMatches = false;
+					break;
+				}
+			}
 		}
 		else
 		{
-			const std::string actualState = ResolveVacdmRuleStateName(rule.token, pilotData);
-			ruleMatches = VacdmRuleStateMatches(rule.condition, actualState);
+			ruleMatches = criterionMatches(rule.source, rule.token, rule.condition);
 		}
 
 		if (!ruleMatches)
