@@ -613,7 +613,19 @@ CSMRPlugin::~CSMRPlugin()
 }
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
-	if (startsWith(".smr connect", sCommandLine))
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	const std::string command = TrimAsciiWhitespaceCopy(sCommandLine == nullptr ? "" : std::string(sCommandLine));
+	std::string commandLower = command;
+	std::transform(commandLower.begin(), commandLower.end(), commandLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	const auto startsWithCommand = [&](const char* prefix) -> bool
+	{
+		if (prefix == nullptr)
+			return false;
+		const std::string p(prefix);
+		return commandLower.rfind(p, 0) == 0;
+	};
+
+	if (startsWithCommand(".smr connect"))
 	{
 		if (ControllerMyself().IsController()) {
 			if (!HoppieConnected) {
@@ -630,14 +642,14 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 		return true;
 	}
-	else if (startsWith(".smr poll", sCommandLine))
+	else if (startsWithCommand(".smr poll"))
 	{
 		if (HoppieConnected) {
 			_beginthread(pollMessages, 0, NULL);
 		}
 		return true;
 	}
-	else if (strcmp(sCommandLine, ".smr reload") == 0) {
+	else if (commandLower == ".smr reload") {
 		for (auto rd : RadarScreensOpened) {
 			if (rd != nullptr)
 				rd->ReloadConfig();
@@ -645,29 +657,76 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json", true, true, false, true, false);
 		return true;
 	}
-	else if (strcmp(sCommandLine, ".smr log") == 0) {
+	else if (commandLower == ".smr log") {
 		Logger::ENABLED = !Logger::ENABLED;
 		return true;
 	}
-	else if (startsWith(".smr", sCommandLine))
+	else if (commandLower == ".smr profile" || commandLower == ".smr editor" || commandLower == ".smr config")
 	{
-		CCPDLCSettingsDialog dia;
+		bool opened = false;
+		for (auto* rd : RadarScreensOpened)
+		{
+			if (rd == nullptr)
+				continue;
+			rd->OpenProfileEditorWindow();
+			opened = true;
+			break;
+		}
+
+		if (!opened)
+		{
+			DisplayUserMessage("vSMR", "Config", "No active SMR radar screen found to open the config window.", true, true, false, true, false);
+		}
+		return true;
+	}
+	else if (startsWithCommand(".smr"))
+	{
+		auto applyCpdlcDialogValues = [&](const CCPDLCSettingsDialog& dialog)
+		{
+			logonCallsign = dialog.m_Logon;
+			logonCode = dialog.m_Password;
+			PlaySoundClr = (dialog.m_Sound != 0);
+		};
+
+		CCPDLCSettingsDialog dia(AfxGetMainWnd());
 		dia.m_Logon = logonCallsign.c_str();
 		dia.m_Password = logonCode.c_str();
 		dia.m_Sound = int(PlaySoundClr);
 
-		if (dia.DoModal() != IDOK)
+		INT_PTR dialogResult = dia.DoModal();
+		if (dialogResult == -1)
+		{
+			CCPDLCSettingsDialog diaNoParent(nullptr);
+			diaNoParent.m_Logon = logonCallsign.c_str();
+			diaNoParent.m_Password = logonCode.c_str();
+			diaNoParent.m_Sound = int(PlaySoundClr);
+			dialogResult = diaNoParent.DoModal();
+			if (dialogResult == IDOK)
+			{
+				applyCpdlcDialogValues(diaNoParent);
+			}
+		}
+		else if (dialogResult == IDOK)
+		{
+			applyCpdlcDialogValues(dia);
+		}
+
+		if (dialogResult == -1)
+		{
+			const DWORD lastError = ::GetLastError();
+			const HRSRC dlgResource = ::FindResource(AfxGetResourceHandle(), MAKEINTRESOURCE(CCPDLCSettingsDialog::IDD), RT_DIALOG);
+			std::string detail = "Failed to open CPDLC settings window";
+			detail += " (GetLastError=" + std::to_string(static_cast<unsigned long>(lastError));
+			detail += ", resource=" + std::string(dlgResource != nullptr ? "ok" : "missing") + ")";
+			DisplayUserMessage("CPDLC", "Error", detail.c_str(), true, true, false, true, false);
+			return true;
+		}
+		if (dialogResult != IDOK)
 			return true;
 
-		logonCallsign = dia.m_Logon;
-		logonCode = dia.m_Password;
-		PlaySoundClr = bool(!!dia.m_Sound);
 		SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", logonCallsign.c_str());
 		SaveDataToSettings("cpdlc_password", "The CPDLC logon password", logonCode.c_str());
-		int temp = 0;
-		if (PlaySoundClr)
-			temp = 1;
-		SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", std::to_string(temp).c_str());
+		SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", std::to_string(PlaySoundClr ? 1 : 0).c_str());
 
 		return true;
 	}
