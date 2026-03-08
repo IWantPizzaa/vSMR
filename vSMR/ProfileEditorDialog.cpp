@@ -2,6 +2,7 @@
 #include "ProfileEditorDialog.hpp"
 #include "SMRRadar.hpp"
 #include "afxdialogex.h"
+#include "Logger.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -13,6 +14,13 @@ IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
 
 namespace
 {
+	void LogProfileEditorInitStep(const char* step)
+	{
+		if (step == nullptr)
+			return;
+		Logger::info(std::string("ProfileEditor: ") + step);
+	}
+
 	const UINT WM_PE_COLOR_WHEEL_TRACK = WM_APP + 417;
 	const UINT WM_PE_COLOR_VALUE_TRACK = WM_APP + 418;
 	const UINT WM_PE_COLOR_OPACITY_TRACK = WM_APP + 419;
@@ -669,35 +677,75 @@ void CProfileEditorDialog::DoDataExchange(CDataExchange* pDX)
 
 BOOL CProfileEditorDialog::OnInitDialog()
 {
+	LogProfileEditorInitStep("OnInitDialog: begin");
 	CDialogEx::OnInitDialog();
+	LogProfileEditorInitStep("OnInitDialog: after CDialogEx::OnInitDialog");
 
 	CWnd* statusWnd = GetDlgItem(IDC_PROFILE_EDITOR_STATUS);
 	if (statusWnd != nullptr && ::IsWindow(statusWnd->GetSafeHwnd()))
+	{
+		LogProfileEditorInitStep("OnInitDialog: hiding legacy status control");
 		statusWnd->ShowWindow(SW_HIDE);
+	}
 
+	LogProfileEditorInitStep("OnInitDialog: before CreateEditorControls");
 	CreateEditorControls();
+	LogProfileEditorInitStep("OnInitDialog: after CreateEditorControls");
 	Initialized = true;
+	LogProfileEditorInitStep("OnInitDialog: Initialized=true");
+	LogProfileEditorInitStep("OnInitDialog: before SyncFromRadar");
 	SyncFromRadar();
+	LogProfileEditorInitStep("OnInitDialog: after SyncFromRadar");
+	LogProfileEditorInitStep("OnInitDialog: before ForceChildRepaint");
 	ForceChildRepaint();
+	LogProfileEditorInitStep("OnInitDialog: after ForceChildRepaint");
+	LogProfileEditorInitStep("OnInitDialog: before NotifyWindowRectChanged");
 	NotifyWindowRectChanged();
+	LogProfileEditorInitStep("OnInitDialog: after NotifyWindowRectChanged");
+	LogProfileEditorInitStep("OnInitDialog: end");
 	return TRUE;
 }
 
 void CProfileEditorDialog::SyncFromRadar()
 {
+	LogProfileEditorInitStep("SyncFromRadar: begin");
 	if (!ControlsCreated || Owner == nullptr)
+	{
+		LogProfileEditorInitStep("SyncFromRadar: early return (controls missing or owner null)");
 		return;
+	}
 
+	LogProfileEditorInitStep("SyncFromRadar: before RebuildColorPathList");
 	RebuildColorPathList();
+	LogProfileEditorInitStep("SyncFromRadar: after RebuildColorPathList");
+	LogProfileEditorInitStep("SyncFromRadar: before RefreshEditorFieldsFromSelection");
 	RefreshEditorFieldsFromSelection();
+	LogProfileEditorInitStep("SyncFromRadar: after RefreshEditorFieldsFromSelection");
+	LogProfileEditorInitStep("SyncFromRadar: before SyncIconControlsFromRadar");
 	SyncIconControlsFromRadar();
+	LogProfileEditorInitStep("SyncFromRadar: after SyncIconControlsFromRadar");
+	LogProfileEditorInitStep("SyncFromRadar: before RebuildRulesList");
 	RebuildRulesList();
+	LogProfileEditorInitStep("SyncFromRadar: after RebuildRulesList");
+	LogProfileEditorInitStep("SyncFromRadar: before RefreshRuleControls");
 	RefreshRuleControls();
+	LogProfileEditorInitStep("SyncFromRadar: after RefreshRuleControls");
+	LogProfileEditorInitStep("SyncFromRadar: before RebuildProfileList");
 	RebuildProfileList();
+	LogProfileEditorInitStep("SyncFromRadar: after RebuildProfileList");
+	LogProfileEditorInitStep("SyncFromRadar: before RefreshProfileControls");
 	RefreshProfileControls();
+	LogProfileEditorInitStep("SyncFromRadar: after RefreshProfileControls");
+	LogProfileEditorInitStep("SyncFromRadar: before SyncTagEditorControlsFromRadar");
 	SyncTagEditorControlsFromRadar();
+	LogProfileEditorInitStep("SyncFromRadar: after SyncTagEditorControlsFromRadar");
+	LogProfileEditorInitStep("SyncFromRadar: before UpdatePageVisibility");
 	UpdatePageVisibility();
+	LogProfileEditorInitStep("SyncFromRadar: after UpdatePageVisibility");
+	LogProfileEditorInitStep("SyncFromRadar: before ForceChildRepaint");
 	ForceChildRepaint();
+	LogProfileEditorInitStep("SyncFromRadar: after ForceChildRepaint");
+	LogProfileEditorInitStep("SyncFromRadar: end");
 }
 
 void CProfileEditorDialog::HideAndNotifyOwner()
@@ -3522,25 +3570,50 @@ void CProfileEditorDialog::RefreshRuleControls()
 
 void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
 {
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: begin");
 	if (Owner == nullptr)
+	{
+		LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: early return (owner null)");
 		return;
+	}
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before PopulateTagTokenCombo");
 	PopulateTagTokenCombo();
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after PopulateTagTokenCombo");
 
 	bool contextDetailed = false;
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before GetTagDefinitionEditorContext");
 	Owner->GetTagDefinitionEditorContext(TagEditorType, contextDetailed, TagEditorStatus);
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after GetTagDefinitionEditorContext");
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before GetTagDefinitionDetailedSameAsDefinition");
 	TagEditorSeparateDetailed = !Owner->GetTagDefinitionDetailedSameAsDefinition();
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after GetTagDefinitionDetailedSameAsDefinition");
 	if (contextDetailed != TagEditorSeparateDetailed)
+	{
+		LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before SetTagDefinitionEditorContext(sync detailed)");
 		Owner->SetTagDefinitionEditorContext(TagEditorType, TagEditorSeparateDetailed, TagEditorStatus);
+		LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after SetTagDefinitionEditorContext(sync detailed)");
+	}
 
 	UpdatingControls = true;
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before SelectComboEntryByText(TagTypeCombo)");
 	SelectComboEntryByText(TagTypeCombo, TagEditorType);
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after SelectComboEntryByText(TagTypeCombo)");
 	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
 	UpdatingControls = false;
 
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before RefreshTagStatusOptions");
 	RefreshTagStatusOptions();
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after RefreshTagStatusOptions");
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before RefreshTagDefinitionLines");
 	RefreshTagDefinitionLines();
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after RefreshTagDefinitionLines");
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before RefreshTagPreview");
 	RefreshTagPreview();
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after RefreshTagPreview");
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before UpdatePageVisibility");
 	UpdatePageVisibility();
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after UpdatePageVisibility");
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: end");
 }
 
 void CProfileEditorDialog::RefreshTagStatusOptions()
@@ -3611,11 +3684,16 @@ void CProfileEditorDialog::RefreshTagPreview()
 	if (Owner == nullptr)
 		return;
 
+	LogProfileEditorInitStep("RefreshTagPreview: begin");
+	LogProfileEditorInitStep("RefreshTagPreview: before SetTagDefinitionEditorContext");
 	Owner->SetTagDefinitionEditorContext(TagEditorType, TagEditorSeparateDetailed, TagEditorStatus);
+	LogProfileEditorInitStep("RefreshTagPreview: after SetTagDefinitionEditorContext");
+	LogProfileEditorInitStep("RefreshTagPreview: before BuildTagDefinitionPreviewLinesForContext(definition)");
 	const std::vector<std::string> definitionPreviewLines = Owner->BuildTagDefinitionPreviewLinesForContext(
 		TagEditorType,
 		false,
 		TagEditorStatus);
+	LogProfileEditorInitStep("RefreshTagPreview: after BuildTagDefinitionPreviewLinesForContext(definition)");
 
 	std::string previewText;
 	previewText += "Definition";
@@ -3629,10 +3707,12 @@ void CProfileEditorDialog::RefreshTagPreview()
 
 	if (TagEditorSeparateDetailed)
 	{
+		LogProfileEditorInitStep("RefreshTagPreview: before BuildTagDefinitionPreviewLinesForContext(detailed)");
 		const std::vector<std::string> detailedPreviewLines = Owner->BuildTagDefinitionPreviewLinesForContext(
 			TagEditorType,
 			true,
 			TagEditorStatus);
+		LogProfileEditorInitStep("RefreshTagPreview: after BuildTagDefinitionPreviewLinesForContext(detailed)");
 		previewText += "\r\n\r\nDefinition Detailed";
 		previewText += "\r\n";
 		for (size_t i = 0; i < detailedPreviewLines.size(); ++i)
@@ -3643,7 +3723,10 @@ void CProfileEditorDialog::RefreshTagPreview()
 		}
 	}
 
+	LogProfileEditorInitStep("RefreshTagPreview: before SetWindowTextA");
 	TagPreviewEdit.SetWindowTextA(previewText.c_str());
+	LogProfileEditorInitStep("RefreshTagPreview: after SetWindowTextA");
+	LogProfileEditorInitStep("RefreshTagPreview: end");
 }
 
 bool CProfileEditorDialog::TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const
@@ -3702,18 +3785,23 @@ std::string CProfileEditorDialog::FormatRgbTriplet(int r, int g, int b) const
 
 std::string CProfileEditorDialog::ReadComboText(CComboBox& combo) const
 {
+	const int index = combo.GetCurSel();
+	if (index != CB_ERR)
+	{
+		CString selectedText;
+		combo.GetLBText(index, selectedText);
+		selectedText.Trim();
+		if (!selectedText.IsEmpty())
+			return std::string(selectedText.GetString());
+	}
+
 	CString text;
 	combo.GetWindowText(text);
 	text.Trim();
 	if (!text.IsEmpty())
 		return std::string(text.GetString());
 
-	const int index = combo.GetCurSel();
-	if (index == CB_ERR)
-		return "";
-
-	combo.GetLBText(index, text);
-	return std::string(text.GetString());
+	return "";
 }
 
 bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule) const
@@ -3815,7 +3903,6 @@ void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 	{
 		UpdateRulesListItemLabel(SelectedRuleIndex);
 		SelectRuleNodeInTree(SelectedRuleIndex, -1);
-		RefreshRuleControls();
 		return;
 	}
 
@@ -3859,7 +3946,6 @@ void CProfileEditorDialog::ApplyRuleCriterionControlChanges(bool keepSelection)
 	{
 		RebuildRulesList();
 		SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
-		RefreshRuleControls();
 		return;
 	}
 
