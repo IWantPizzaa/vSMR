@@ -183,6 +183,28 @@ namespace
 		return !outCriteria.empty();
 	}
 
+	std::string CleanRuleDisplayName(const std::string& rawName, int fallbackIndex)
+	{
+		std::string text = TrimAsciiWhitespaceCopy(rawName);
+		while (!text.empty())
+		{
+			const char c = text.front();
+			if (c == '.' || c == '-' || c == '_' || c == ':' || c == ';' || std::isspace(static_cast<unsigned char>(c)) != 0)
+			{
+				text.erase(text.begin());
+				continue;
+			}
+			break;
+		}
+
+		if (text.empty())
+		{
+			text = "Rule ";
+			text += std::to_string(fallbackIndex);
+		}
+		return text;
+	}
+
 
 	void HsvToRgb(double hue, double saturation, double value, int& outR, int& outG, int& outB)
 	{
@@ -1336,7 +1358,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleLeftHeader.Create("Rules", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
 	RuleRightHeader.Create("Rule Details", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
 	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
-	RuleTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TREE);
+	RuleTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TREE);
 	RuleAddButton.Create("Add Rule", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
 	RuleAddParameterButton.Create("+ Param", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_PARAM_BUTTON);
 	RuleRemoveButton.Create("Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_REMOVE_BUTTON);
@@ -1373,6 +1395,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
 	RulesList.SetItemHeight(0, 24);
 	RuleTree.SetIndent(16);
+	RuleTree.SendMessage(TVM_SETITEMHEIGHT, 22, 0);
 	RuleTree.SetBkColor(kEditorThemeBackgroundColor);
 	RuleTree.SetTextColor(RGB(17, 24, 39));
 
@@ -2812,10 +2835,10 @@ void CProfileEditorDialog::RebuildRulesList()
 	for (size_t i = 0; i < RuleBuffer.size(); ++i)
 	{
 		const StructuredTagColorRule& rule = RuleBuffer[i];
-		const std::string ruleName = !rule.name.empty() ? rule.name : ("Rule " + std::to_string(static_cast<int>(i + 1)));
+		const std::string ruleName = CleanRuleDisplayName(rule.name, static_cast<int>(i + 1));
 		CString ruleLabel;
 		const int conditionCount = rule.criteria.empty() ? 1 : static_cast<int>(rule.criteria.size());
-		ruleLabel.Format("%s (%d conditions)", ruleName.c_str(), conditionCount);
+		ruleLabel.Format("%s  (%d)", ruleName.c_str(), conditionCount);
 		const HTREEITEM ruleItem = RuleTree.InsertItem(ruleLabel);
 		RuleTreeSelectionMap[ruleItem] = std::make_pair(static_cast<int>(i), -1);
 
@@ -2827,7 +2850,7 @@ void CProfileEditorDialog::RebuildRulesList()
 		{
 			const StructuredTagColorRule::Criterion& criterion = criteria[c];
 			CString criterionLabel;
-			criterionLabel.Format("%s.%s = %s", criterion.source.c_str(), criterion.token.c_str(), criterion.condition.c_str());
+			criterionLabel.Format("-- %s.%s  =  %s", criterion.source.c_str(), criterion.token.c_str(), criterion.condition.c_str());
 			const HTREEITEM criterionItem = RuleTree.InsertItem(criterionLabel, ruleItem);
 			RuleTreeSelectionMap[criterionItem] = std::make_pair(static_cast<int>(i), static_cast<int>(c));
 		}
@@ -2948,10 +2971,10 @@ bool CProfileEditorDialog::GetRuleTreeActionRects(HTREEITEM item, CRect& addRect
 
 	CRect treeRect;
 	RuleTree.GetClientRect(&treeRect);
-	const int btnSize = 16;
-	const int gap = 4;
+	const int btnSize = 14;
+	const int gap = 6;
 	const int y = itemRect.top + max(0, ((itemRect.Height() - btnSize) / 2));
-	int right = treeRect.right - 6;
+	int right = treeRect.right - 8;
 
 	deleteRect = CRect(right - btnSize, y, right, y + btnSize);
 	right -= (btnSize + gap);
@@ -3569,8 +3592,6 @@ void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 		UpdateRulesListItemLabel(SelectedRuleIndex);
 		SelectRuleNodeInTree(SelectedRuleIndex, -1);
 		RefreshRuleControls();
-		LayoutControls();
-		UpdatePageVisibility();
 		return;
 	}
 
@@ -3580,8 +3601,6 @@ void CProfileEditorDialog::ApplyRuleControlChanges(bool keepSelection)
 	SelectedRuleIndex = preservedSelection;
 	SelectRuleNodeInTree(SelectedRuleIndex, -1);
 	RefreshRuleControls();
-	LayoutControls();
-	UpdatePageVisibility();
 }
 
 void CProfileEditorDialog::ApplyRuleCriterionControlChanges(bool keepSelection)
@@ -3617,15 +3636,11 @@ void CProfileEditorDialog::ApplyRuleCriterionControlChanges(bool keepSelection)
 		RebuildRulesList();
 		SelectRuleNodeInTree(SelectedRuleIndex, SelectedRuleCriterionIndex);
 		RefreshRuleControls();
-		LayoutControls();
-		UpdatePageVisibility();
 		return;
 	}
 
 	RebuildRulesList();
 	RefreshRuleControls();
-	LayoutControls();
-	UpdatePageVisibility();
 }
 
 void CProfileEditorDialog::OnRuleSelectionChanged()
@@ -3677,8 +3692,14 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 		*pResult = CDRF_NOTIFYITEMDRAW;
 		return;
 	case CDDS_ITEMPREPAINT:
+	{
+		const HTREEITEM item = reinterpret_cast<HTREEITEM>(pTreeCd->nmcd.dwItemSpec);
+		const bool selected = (::IsWindow(RuleTree.GetSafeHwnd()) && RuleTree.GetSelectedItem() == item);
+		pTreeCd->clrText = RGB(17, 24, 39);
+		pTreeCd->clrTextBk = selected ? RGB(238, 245, 255) : kEditorThemeBackgroundColor;
 		*pResult = CDRF_NOTIFYPOSTPAINT;
 		return;
+	}
 	case CDDS_ITEMPOSTPAINT:
 	{
 		CDC* dc = CDC::FromHandle(pTreeCd->nmcd.hdc);
