@@ -223,6 +223,16 @@ namespace
 		return "VACDM";
 	}
 
+	COLORREF BlendColorOverBackground(COLORREF foreground, int alpha, COLORREF background)
+	{
+		const int clampedAlpha = min(255, max(0, alpha));
+		const double a = static_cast<double>(clampedAlpha) / 255.0;
+		const int r = static_cast<int>(round((GetRValue(foreground) * a) + (GetRValue(background) * (1.0 - a))));
+		const int g = static_cast<int>(round((GetGValue(foreground) * a) + (GetGValue(background) * (1.0 - a))));
+		const int b = static_cast<int>(round((GetBValue(foreground) * a) + (GetBValue(background) * (1.0 - a))));
+		return RGB(r, g, b);
+	}
+
 	void MoveControlOffscreen(CWnd& control)
 	{
 		control.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
@@ -969,6 +979,9 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_RULE_COLOR_WHEEL_LABEL:
 		case IDC_PE_RULE_COLOR_VALUE_LABEL:
 		case IDC_PE_RULE_COLOR_PREVIEW_LABEL:
+		case IDC_PE_PROFILE_PANEL:
+		case IDC_PE_PROFILE_HEADER:
+		case IDC_PE_PROFILE_NAME_LABEL:
 		case IDC_PE_TAG_PANEL:
 		case IDC_PE_TAG_HEADER_PANEL:
 		case IDC_PE_TAG_TYPE_LABEL:
@@ -1009,8 +1022,9 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	}
 
 	const UINT controlId = lpDrawItemStruct->CtlID;
-	if (controlId == IDC_PE_RULE_LIST)
+	if (controlId == IDC_PE_RULE_LIST || controlId == IDC_PE_PROFILE_LIST)
 	{
+		CListBox* listBox = (controlId == IDC_PE_PROFILE_LIST) ? &ProfileList : &RulesList;
 		CDC dc;
 		dc.Attach(lpDrawItemStruct->hDC);
 		CRect outerRect(lpDrawItemStruct->rcItem);
@@ -1031,8 +1045,8 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 
 			if (isSelected)
 			{
-				CBrush selectedBrush(RGB(37, 120, 209));
-				CPen selectedPen(PS_SOLID, 1, RGB(37, 120, 209));
+				CBrush selectedBrush(RGB(226, 238, 255));
+				CPen selectedPen(PS_SOLID, 1, RGB(64, 132, 230));
 				CPen* oldPen = memDc.SelectObject(&selectedPen);
 				CBrush* oldBrush = memDc.SelectObject(&selectedBrush);
 				memDc.RoundRect(&itemRect, CPoint(8, 8));
@@ -1041,14 +1055,14 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 			}
 
 			CString itemText;
-			RulesList.GetText(static_cast<int>(lpDrawItemStruct->itemID), itemText);
+			listBox->GetText(static_cast<int>(lpDrawItemStruct->itemID), itemText);
 
 			CFont* oldFont = nullptr;
-			if (RulesList.GetFont() != nullptr)
-				oldFont = memDc.SelectObject(RulesList.GetFont());
+			if (listBox->GetFont() != nullptr)
+				oldFont = memDc.SelectObject(listBox->GetFont());
 
 			memDc.SetBkMode(TRANSPARENT);
-			memDc.SetTextColor(isSelected ? RGB(255, 255, 255) : RGB(17, 24, 39));
+			memDc.SetTextColor(isSelected ? RGB(16, 66, 132) : RGB(17, 24, 39));
 			CRect textRect(itemRect);
 			textRect.DeflateRect(8, 0);
 			memDc.DrawText(itemText, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -1256,12 +1270,41 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	CRect roundedRect = localOuter;
 	roundedRect.DeflateRect(1, 1);
 	COLORREF fillColor = DraftColorValid ? RGB(DraftColorR, DraftColorG, DraftColorB) : RGB(255, 255, 255);
+	int fillAlpha = (DraftColorValid ? DraftColorA : 255);
 	bool swatchEnabled = true;
+
+	auto tryReadRuleSwatchAlpha = [&](UINT swatchId, int& outAlpha) -> bool
+	{
+		outAlpha = 255;
+		CButton* check = nullptr;
+		CEdit* edit = nullptr;
+		if (!GetRuleColorEditorTargetControls(swatchId, check, edit) || edit == nullptr)
+			return false;
+
+		CString rawText;
+		edit->GetWindowText(rawText);
+		const std::string text = std::string(rawText.GetString());
+		int r = 0, g = 0, b = 0, a = 255;
+		bool hasAlpha = false;
+		if (TryParseRgbaQuad(text, r, g, b, a, hasAlpha))
+		{
+			outAlpha = hasAlpha ? a : 255;
+			return true;
+		}
+		if (TryParseRgbTriplet(text, r, g, b))
+		{
+			outAlpha = 255;
+			return true;
+		}
+		return false;
+	};
+
 	if (isRulePreviewSwatch)
 	{
 		if (RuleColorDraftValid)
 		{
 			fillColor = RGB(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB);
+			(void)tryReadRuleSwatchAlpha(RuleColorActiveSwatchId, fillAlpha);
 			swatchEnabled = true;
 		}
 		else
@@ -1271,11 +1314,13 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 			if (ResolveRuleSwatchColor(RuleColorActiveSwatchId, activeColor, activeEnabled))
 			{
 				fillColor = activeColor;
+				(void)tryReadRuleSwatchAlpha(RuleColorActiveSwatchId, fillAlpha);
 				swatchEnabled = true;
 			}
 			else
 			{
 				fillColor = RGB(240, 240, 240);
+				fillAlpha = 255;
 				swatchEnabled = false;
 			}
 		}
@@ -1284,12 +1329,19 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	{
 		COLORREF ruleColor = RGB(240, 240, 240);
 		if (ResolveRuleSwatchColor(controlId, ruleColor, swatchEnabled))
+		{
 			fillColor = ruleColor;
+			(void)tryReadRuleSwatchAlpha(controlId, fillAlpha);
+		}
 		else
+		{
+			fillAlpha = 255;
 			swatchEnabled = false;
+		}
 	}
 
-	CBrush fillBrush(fillColor);
+	const COLORREF previewColor = BlendColorOverBackground(fillColor, fillAlpha, kEditorThemeBackgroundColor);
+	CBrush fillBrush(previewColor);
 	CPen borderPen(PS_SOLID, 1, swatchEnabled ? RGB(186, 186, 186) : RGB(200, 200, 200));
 	CBrush* oldBrush = memDc.SelectObject(&fillBrush);
 	CPen* oldPen = memDc.SelectObject(&borderPen);
@@ -1435,7 +1487,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
 	ProfilePanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_PANEL);
 	ProfileHeader.Create("Profiles", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_HEADER);
-	ProfileList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_LIST);
+	ProfileList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_LIST);
 	ProfileNameLabel.Create("Name", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_LABEL);
 	ProfileNameEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_EDIT);
 	ProfileAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_ADD_BUTTON);
@@ -1443,6 +1495,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_RENAME_BUTTON);
 	ProfileDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DELETE_BUTTON);
 	RulesList.SetItemHeight(0, 24);
+	ProfileList.SetItemHeight(0, 22);
 	RuleTree.SetIndent(16);
 	RuleTree.SendMessage(TVM_SETITEMHEIGHT, 22, 0);
 	RuleTree.SetBkColor(kEditorThemeBackgroundColor);
@@ -1580,12 +1633,25 @@ void CProfileEditorDialog::CreateEditorControls()
 		strcpy_s(monoLf.lfFaceName, LF_FACESIZE, "Consolas");
 		MonoFont.CreateFontIndirect(&monoLf);
 
-		// Apply a unified font to all editor controls.
-		for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
-		{
-			if (::IsWindow(child->GetSafeHwnd()))
-				child->SetFont(&MonoFont, TRUE);
-		}
+		// Keep the OS default UI font for general controls, and use monospace only
+		// for value-heavy fields where alignment/readability matters.
+		ColorPathTree.SetFont(&MonoFont, TRUE);
+		RuleTree.SetFont(&MonoFont, TRUE);
+		ProfileList.SetFont(&MonoFont, TRUE);
+		EditRgba.SetFont(&MonoFont, TRUE);
+		EditHex.SetFont(&MonoFont, TRUE);
+		RuleTargetEdit.SetFont(&MonoFont, TRUE);
+		RuleTagEdit.SetFont(&MonoFont, TRUE);
+		RuleTextEdit.SetFont(&MonoFont, TRUE);
+		TagLine1Edit.SetFont(&MonoFont, TRUE);
+		TagLine2Edit.SetFont(&MonoFont, TRUE);
+		TagLine3Edit.SetFont(&MonoFont, TRUE);
+		TagLine4Edit.SetFont(&MonoFont, TRUE);
+		TagDetailedLine1Edit.SetFont(&MonoFont, TRUE);
+		TagDetailedLine2Edit.SetFont(&MonoFont, TRUE);
+		TagDetailedLine3Edit.SetFont(&MonoFont, TRUE);
+		TagDetailedLine4Edit.SetFont(&MonoFont, TRUE);
+		TagPreviewEdit.SetFont(&MonoFont, TRUE);
 	}
 	ApplyThemedEditBorders();
 	ControlsCreated = true;
