@@ -325,6 +325,12 @@ public:
 	bool SelectProfileColorPathForEditor(const std::string& path);
 	bool GetSelectedProfileColorForEditor(int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool SetSelectedProfileColorForEditor(int r, int g, int b, int a, bool useAlpha, bool persistToDisk);
+	std::vector<std::string> GetProfileNamesForEditor() const;
+	std::string GetActiveProfileNameForEditor() const;
+	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);
+	bool AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName = nullptr);
+	bool RenameProfileForEditor(const std::string& oldName, const std::string& newName);
+	bool DeleteProfileForEditor(const std::string& name);
 	std::vector<std::string> GetTagDefinitionTokens() const;
 	std::string NormalizeTagDefinitionType(const std::string& type) const;
 	std::string TagDefinitionTypeLabel(const std::string& type) const;

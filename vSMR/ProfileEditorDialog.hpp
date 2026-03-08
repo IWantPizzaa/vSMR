@@ -64,6 +64,11 @@ protected:
 	afx_msg void OnRuleSourceChanged();
 	afx_msg void OnRuleNameChanged();
 	afx_msg void OnRuleFieldChanged();
+	afx_msg void OnProfileSelectionChanged();
+	afx_msg void OnProfileAddClicked();
+	afx_msg void OnProfileDuplicateClicked();
+	afx_msg void OnProfileRenameClicked();
+	afx_msg void OnProfileDeleteClicked();
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnRuleColorWheelTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRuleColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
@@ -200,6 +205,15 @@ private:
 		, IDC_PE_RULE_ADD_PARAM_BUTTON = 9231
 		, IDC_PE_RULE_NAME_LABEL = 9232
 		, IDC_PE_RULE_NAME_EDIT = 9233
+		, IDC_PE_PROFILE_PANEL = 9234
+		, IDC_PE_PROFILE_HEADER = 9235
+		, IDC_PE_PROFILE_LIST = 9236
+		, IDC_PE_PROFILE_NAME_LABEL = 9237
+		, IDC_PE_PROFILE_NAME_EDIT = 9238
+		, IDC_PE_PROFILE_ADD_BUTTON = 9239
+		, IDC_PE_PROFILE_DUPLICATE_BUTTON = 9240
+		, IDC_PE_PROFILE_RENAME_BUTTON = 9241
+		, IDC_PE_PROFILE_DELETE_BUTTON = 9242
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -297,6 +311,15 @@ private:
 	CStatic RuleColorPreviewSwatch;
 	CButton RuleColorApplyButton;
 	CButton RuleColorResetButton;
+	CStatic ProfilePanel;
+	CStatic ProfileHeader;
+	CListBox ProfileList;
+	CStatic ProfileNameLabel;
+	CEdit ProfileNameEdit;
+	CButton ProfileAddButton;
+	CButton ProfileDuplicateButton;
+	CButton ProfileRenameButton;
+	CButton ProfileDeleteButton;
 
 	CStatic TagTypeLabel;
 	CStatic TagPanel;
@@ -336,6 +359,8 @@ private:
 	bool TagEditorSelectedLineDetailed = false;
 
 	std::vector<StructuredTagColorRule> RuleBuffer;
+	std::vector<std::string> ProfileNames;
+	int SelectedProfileListIndex = -1;
 	int SelectedRuleIndex = -1;
 	int SelectedRuleCriterionIndex = -1;
 	std::map<HTREEITEM, std::pair<int, int>> RuleTreeSelectionMap;
@@ -377,6 +402,9 @@ private:
 	void PopulateRuleCombos();
 	void PopulateRuleTokenCombo(const std::string& source, const std::string& selectedToken);
 	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
+	void RebuildProfileList();
+	void RefreshProfileControls();
+	std::string GetSelectedProfileName() const;
 	std::string ReadComboText(CComboBox& combo) const;
 	void RebuildRulesList();
 	void SelectRuleNodeInTree(int ruleIndex, int criterionIndex);

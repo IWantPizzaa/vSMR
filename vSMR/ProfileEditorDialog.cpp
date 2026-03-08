@@ -19,6 +19,11 @@ namespace
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
 	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
 	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
+	const int kTabColors = 0;
+	const int kTabIcons = 1;
+	const int kTabTags = 2;
+	const int kTabRules = 3;
+	const int kTabProfile = 4;
 	std::map<HWND, WNDPROC> gThemedEditOldProcs;
 	std::map<HWND, WNDPROC> gColorWheelOldProcs;
 	std::map<HWND, HWND> gColorWheelOwnerWindows;
@@ -203,6 +208,17 @@ namespace
 			text += std::to_string(fallbackIndex);
 		}
 		return text;
+	}
+
+	std::string RuleSourceUiLabel(const std::string& source)
+	{
+		std::string lowered = TrimAsciiWhitespaceCopy(source);
+		std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (lowered == "runway")
+			return "Runway";
+		if (lowered == "custom" || lowered == "sid")
+			return "SID";
+		return "VACDM";
 	}
 
 
@@ -650,6 +666,8 @@ void CProfileEditorDialog::SyncFromRadar()
 	SyncIconControlsFromRadar();
 	RebuildRulesList();
 	RefreshRuleControls();
+	RebuildProfileList();
+	RefreshProfileControls();
 	SyncTagEditorControlsFromRadar();
 	UpdatePageVisibility();
 	ForceChildRepaint();
@@ -1043,6 +1061,10 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		(controlId == IDC_PE_RULE_REMOVE_BUTTON) ||
 		(controlId == IDC_PE_RULE_COLOR_APPLY_BUTTON) ||
 		(controlId == IDC_PE_RULE_COLOR_RESET_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_ADD_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_DUPLICATE_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_RENAME_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_DELETE_BUTTON) ||
 		(controlId == IDC_PE_TAG_TOKEN_ADD_BUTTON);
 	if (isModernPushButton)
 	{
@@ -1302,9 +1324,10 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	PageTabs.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP, CRect(0, 0, 0, 0), this, IDC_PE_TAB);
 	PageTabs.InsertItem(0, "Colors");
-	PageTabs.InsertItem(1, "Icons");
-	PageTabs.InsertItem(2, "Rules");
-	PageTabs.InsertItem(3, "Tags");
+	PageTabs.InsertItem(1, "Icon");
+	PageTabs.InsertItem(2, "Tags");
+	PageTabs.InsertItem(3, "Rules");
+	PageTabs.InsertItem(4, "Profile");
 
 	ColorLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LEFT_PANEL);
 	ColorRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_RIGHT_PANEL);
@@ -1358,7 +1381,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleLeftHeader.Create("Rules", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
 	RuleRightHeader.Create("Rule Details", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
 	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
-	RuleTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TREE);
+	RuleTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TREE);
 	RuleAddButton.Create("Add Rule", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
 	RuleAddParameterButton.Create("+ Param", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_PARAM_BUTTON);
 	RuleRemoveButton.Create("Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_REMOVE_BUTTON);
@@ -1393,6 +1416,15 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_PREVIEW_SWATCH);
 	RuleColorApplyButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_APPLY_BUTTON);
 	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
+	ProfilePanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_PANEL);
+	ProfileHeader.Create("Profiles", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_HEADER);
+	ProfileList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_LIST);
+	ProfileNameLabel.Create("Name", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_LABEL);
+	ProfileNameEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_EDIT);
+	ProfileAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_ADD_BUTTON);
+	ProfileDuplicateButton.Create("Duplicate", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DUPLICATE_BUTTON);
+	ProfileRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_RENAME_BUTTON);
+	ProfileDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DELETE_BUTTON);
 	RulesList.SetItemHeight(0, 24);
 	RuleTree.SetIndent(16);
 	RuleTree.SendMessage(TVM_SETITEMHEIGHT, 22, 0);
@@ -1713,9 +1745,9 @@ void CProfileEditorDialog::PopulateRuleTokenCombo(const std::string& source, con
 void CProfileEditorDialog::PopulateRuleCombos()
 {
 	RuleSourceCombo.ResetContent();
-	RuleSourceCombo.AddString("vacdm");
-	RuleSourceCombo.AddString("runway");
-	RuleSourceCombo.AddString("custom");
+	RuleSourceCombo.AddString("VACDM");
+	RuleSourceCombo.AddString("Runway");
+	RuleSourceCombo.AddString("SID");
 	RuleSourceCombo.SetCurSel(0);
 
 	RuleTypeCombo.ResetContent();
@@ -1816,6 +1848,76 @@ void CProfileEditorDialog::PopulateTagTokenCombo()
 	}
 	if (TagTokenCombo.GetCount() > 0)
 		TagTokenCombo.SetCurSel(selectedIndex);
+}
+
+void CProfileEditorDialog::RebuildProfileList()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string previousSelected = GetSelectedProfileName();
+	const std::string activeProfile = Owner->GetActiveProfileNameForEditor();
+	ProfileNames = Owner->GetProfileNamesForEditor();
+
+	UpdatingControls = true;
+	ProfileList.ResetContent();
+	int selectedIndex = -1;
+	for (size_t i = 0; i < ProfileNames.size(); ++i)
+	{
+		ProfileList.AddString(ProfileNames[i].c_str());
+		if (!previousSelected.empty() && _stricmp(ProfileNames[i].c_str(), previousSelected.c_str()) == 0)
+			selectedIndex = static_cast<int>(i);
+	}
+
+	if (selectedIndex < 0)
+	{
+		for (size_t i = 0; i < ProfileNames.size(); ++i)
+		{
+			if (_stricmp(ProfileNames[i].c_str(), activeProfile.c_str()) == 0)
+			{
+				selectedIndex = static_cast<int>(i);
+				break;
+			}
+		}
+	}
+	if (selectedIndex < 0 && !ProfileNames.empty())
+		selectedIndex = 0;
+
+	SelectedProfileListIndex = selectedIndex;
+	if (selectedIndex >= 0)
+	{
+		ProfileList.SetCurSel(selectedIndex);
+		SetEditTextPreserveCaret(ProfileNameEdit, ProfileNames[selectedIndex]);
+	}
+	else
+	{
+		SetEditTextPreserveCaret(ProfileNameEdit, "");
+	}
+	UpdatingControls = false;
+}
+
+std::string CProfileEditorDialog::GetSelectedProfileName() const
+{
+	const int selected = ProfileList.GetCurSel();
+	if (selected == LB_ERR || selected < 0 || selected >= static_cast<int>(ProfileNames.size()))
+		return "";
+	return ProfileNames[selected];
+}
+
+void CProfileEditorDialog::RefreshProfileControls()
+{
+	bool hasSelection = (!GetSelectedProfileName().empty());
+	if (!hasSelection && ProfileList.GetCount() > 0)
+	{
+		ProfileList.SetCurSel(0);
+		if (!ProfileNames.empty())
+			SetEditTextPreserveCaret(ProfileNameEdit, ProfileNames[0]);
+		hasSelection = (!GetSelectedProfileName().empty());
+	}
+	ProfileNameEdit.EnableWindow(hasSelection ? TRUE : FALSE);
+	ProfileDuplicateButton.EnableWindow(hasSelection ? TRUE : FALSE);
+	ProfileRenameButton.EnableWindow(hasSelection ? TRUE : FALSE);
+	ProfileDeleteButton.EnableWindow(hasSelection ? TRUE : FALSE);
 }
 
 void CProfileEditorDialog::LayoutControls()
@@ -2070,6 +2172,37 @@ void CProfileEditorDialog::LayoutControls()
 	RuleColorApplyButton.MoveWindow(ruleActionLeft, effectY, 60, buttonHeight, TRUE);
 	RuleColorResetButton.MoveWindow(ruleActionLeft + 68, effectY, 60, buttonHeight, TRUE);
 
+	const int profileLeft = pageRect.left + innerPad;
+	const int profileTop = pageRect.top + innerPad;
+	const int profileWidth = max(240, pageRect.Width() - (innerPad * 2));
+	const int profileHeight = max(140, pageRect.Height() - (innerPad * 2));
+	ProfilePanel.MoveWindow(profileLeft, profileTop, profileWidth, profileHeight, TRUE);
+	ProfileHeader.MoveWindow(profileLeft + 1, profileTop + 1, max(60, profileWidth - 2), 30, TRUE);
+
+	const int profileContentLeft = profileLeft + 12;
+	const int profileContentTop = profileTop + 40;
+	const int profileContentWidth = max(140, profileWidth - 24);
+	const int profileNameRowHeight = rowHeight;
+	const int profileBottomAreaHeight = profileNameRowHeight + 10 + buttonHeight + 10;
+	const int profileListHeight = max(80, profileHeight - 40 - profileBottomAreaHeight - 12);
+	ProfileList.MoveWindow(profileContentLeft, profileContentTop, profileContentWidth, profileListHeight, TRUE);
+
+	const int profileBottomTop = profileTop + profileHeight - profileBottomAreaHeight - 8;
+	int profileY = profileBottomTop;
+	ProfileNameLabel.MoveWindow(profileContentLeft, profileY + 4, 56, rowHeight, TRUE);
+	const int profileNameEditWidth = max(120, profileContentWidth - 56 - 10);
+	ProfileNameEdit.MoveWindow(profileContentLeft + 56 + 10, profileY, profileNameEditWidth, rowHeight, TRUE);
+	profileY += rowHeight + 10;
+
+	const int profileButtonGap = 8;
+	const int profileButtonWidth = max(72, min(94, (profileContentWidth - (profileButtonGap * 3)) / 4));
+	const int profileButtonsTotalWidth = (profileButtonWidth * 4) + (profileButtonGap * 3);
+	const int profileButtonsLeft = profileContentLeft + max(0, (profileContentWidth - profileButtonsTotalWidth) / 2);
+	ProfileAddButton.MoveWindow(profileButtonsLeft, profileY, profileButtonWidth, buttonHeight, TRUE);
+	ProfileDuplicateButton.MoveWindow(profileButtonsLeft + profileButtonWidth + profileButtonGap, profileY, profileButtonWidth, buttonHeight, TRUE);
+	ProfileRenameButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + profileButtonGap) * 2, profileY, profileButtonWidth, buttonHeight, TRUE);
+	ProfileDeleteButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + profileButtonGap) * 3, profileY, profileButtonWidth, buttonHeight, TRUE);
+
 	const int tagLeft = pageRect.left + innerPad;
 	const int tagTop = pageRect.top + innerPad;
 	const int tagWidth = max(240, pageRect.Width() - (innerPad * 2));
@@ -2153,10 +2286,11 @@ void CProfileEditorDialog::UpdatePageVisibility()
 		return;
 
 	const int selectedTab = PageTabs.GetCurSel();
-	const bool showColors = (selectedTab == 0);
-	const bool showIcons = (selectedTab == 1);
-	const bool showRules = (selectedTab == 2);
-	const bool showTagEditor = (selectedTab == 3);
+	const bool showColors = (selectedTab == kTabColors);
+	const bool showIcons = (selectedTab == kTabIcons);
+	const bool showRules = (selectedTab == kTabRules);
+	const bool showProfile = (selectedTab == kTabProfile);
+	const bool showTagEditor = (selectedTab == kTabTags);
 	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
 	LastVisibilityTab = selectedTab;
 	LastVisibilityDetailedTag = showDetailedTag;
@@ -2256,6 +2390,15 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleColorPreviewSwatch.ShowWindow(ruleEffectShowMode);
 	RuleColorApplyButton.ShowWindow(ruleEffectShowMode);
 	RuleColorResetButton.ShowWindow(ruleEffectShowMode);
+	ProfilePanel.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileHeader.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileList.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileNameLabel.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileNameEdit.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileAddButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileDuplicateButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileRenameButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ProfileDeleteButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
 
 	TagPanel.ShowWindow(tagShowMode);
 	TagHeaderPanel.ShowWindow(tagShowMode);
@@ -2850,7 +2993,8 @@ void CProfileEditorDialog::RebuildRulesList()
 		{
 			const StructuredTagColorRule::Criterion& criterion = criteria[c];
 			CString criterionLabel;
-			criterionLabel.Format("-- %s.%s  =  %s", criterion.source.c_str(), criterion.token.c_str(), criterion.condition.c_str());
+			const std::string sourceLabel = RuleSourceUiLabel(criterion.source);
+			criterionLabel.Format("-- %s.%s  =  %s", sourceLabel.c_str(), criterion.token.c_str(), criterion.condition.c_str());
 			const HTREEITEM criterionItem = RuleTree.InsertItem(criterionLabel, ruleItem);
 			RuleTreeSelectionMap[criterionItem] = std::make_pair(static_cast<int>(i), static_cast<int>(c));
 		}
@@ -3695,8 +3839,29 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 	{
 		const HTREEITEM item = reinterpret_cast<HTREEITEM>(pTreeCd->nmcd.dwItemSpec);
 		const bool selected = (::IsWindow(RuleTree.GetSafeHwnd()) && RuleTree.GetSelectedItem() == item);
-		pTreeCd->clrText = RGB(17, 24, 39);
-		pTreeCd->clrTextBk = selected ? RGB(238, 245, 255) : kEditorThemeBackgroundColor;
+		CRect itemRowRect;
+		if (RuleTree.GetItemRect(item, &itemRowRect, FALSE))
+		{
+			CRect treeClientRect;
+			RuleTree.GetClientRect(&treeClientRect);
+			itemRowRect.left = max(2, itemRowRect.left - 2);
+			itemRowRect.right = max(itemRowRect.left + 8, treeClientRect.right - 2);
+			itemRowRect.DeflateRect(0, 1);
+
+			CDC* dc = CDC::FromHandle(pTreeCd->nmcd.hdc);
+			if (dc != nullptr)
+			{
+				CBrush rowBrush(selected ? RGB(226, 238, 255) : RGB(243, 245, 248));
+				CPen rowPen(PS_SOLID, 1, selected ? RGB(64, 132, 230) : RGB(214, 220, 228));
+				CBrush* oldBrush = dc->SelectObject(&rowBrush);
+				CPen* oldPen = dc->SelectObject(&rowPen);
+				dc->RoundRect(&itemRowRect, CPoint(8, 8));
+				dc->SelectObject(oldPen);
+				dc->SelectObject(oldBrush);
+			}
+		}
+		pTreeCd->clrText = selected ? RGB(16, 66, 132) : RGB(17, 24, 39);
+		pTreeCd->clrTextBk = selected ? RGB(226, 238, 255) : RGB(243, 245, 248);
 		*pResult = CDRF_NOTIFYPOSTPAINT;
 		return;
 	}
@@ -4016,6 +4181,115 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 	InvalidateRuleColorSwatches();
 	ApplyRuleControlChanges(true);
 	SyncRuleColorEditorFromActiveControl();
+}
+
+void CProfileEditorDialog::OnProfileSelectionChanged()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const std::string selectedName = GetSelectedProfileName();
+	if (selectedName.empty())
+	{
+		RefreshProfileControls();
+		return;
+	}
+
+	SetEditTextPreserveCaret(ProfileNameEdit, selectedName);
+	if (!Owner->SetActiveProfileForEditor(selectedName, false))
+		return;
+
+	SyncFromRadar();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileAddClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	CString requestedNameText;
+	ProfileNameEdit.GetWindowText(requestedNameText);
+	std::string requestedName = TrimAsciiWhitespaceCopy(std::string(requestedNameText.GetString()));
+	if (requestedName.empty())
+		requestedName = "Profile";
+
+	std::string createdName;
+	if (!Owner->AddProfileForEditor(requestedName, false, &createdName))
+		return;
+
+	SyncFromRadar();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileDuplicateClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	CString requestedNameText;
+	ProfileNameEdit.GetWindowText(requestedNameText);
+	std::string requestedName = TrimAsciiWhitespaceCopy(std::string(requestedNameText.GetString()));
+	if (requestedName.empty())
+	{
+		const std::string currentName = GetSelectedProfileName();
+		requestedName = currentName.empty() ? "Profile Copy" : (currentName + " Copy");
+	}
+
+	std::string createdName;
+	if (!Owner->AddProfileForEditor(requestedName, true, &createdName))
+		return;
+
+	SyncFromRadar();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileRenameClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string oldName = GetSelectedProfileName();
+	if (oldName.empty())
+		return;
+
+	CString newNameText;
+	ProfileNameEdit.GetWindowText(newNameText);
+	const std::string newName = TrimAsciiWhitespaceCopy(std::string(newNameText.GetString()));
+	if (newName.empty())
+		return;
+
+	if (!Owner->RenameProfileForEditor(oldName, newName))
+		return;
+
+	SyncFromRadar();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileDeleteClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string selectedName = GetSelectedProfileName();
+	if (selectedName.empty())
+		return;
+
+	CString confirmText;
+	confirmText.Format("Delete profile '%s'?", selectedName.c_str());
+	if (AfxMessageBox(confirmText, MB_ICONQUESTION | MB_YESNO) != IDYES)
+		return;
+
+	if (!Owner->DeleteProfileForEditor(selectedName))
+		return;
+
+	SyncFromRadar();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
 }
 
 void CProfileEditorDialog::SelectRuleColorEditorTarget(UINT swatchControlId)
@@ -4861,8 +5135,14 @@ void CProfileEditorDialog::OnHexEditChanged()
 void CProfileEditorDialog::OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	(void)pNMHDR;
-	if (PageTabs.GetCurSel() == 3)
+	const int tab = PageTabs.GetCurSel();
+	if (tab == kTabTags)
 		SyncTagEditorControlsFromRadar();
+	else if (tab == kTabProfile)
+	{
+		RebuildProfileList();
+		RefreshProfileControls();
+	}
 	UpdatePageVisibility();
 	ForceChildRepaint();
 	if (pResult != nullptr)
@@ -5007,6 +5287,11 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_EN_CHANGE(IDC_PE_RULE_TEXT_EDIT, &CProfileEditorDialog::OnRuleFieldChanged)
 	ON_BN_CLICKED(IDC_PE_RULE_COLOR_APPLY_BUTTON, &CProfileEditorDialog::OnRuleColorApplyClicked)
 	ON_BN_CLICKED(IDC_PE_RULE_COLOR_RESET_BUTTON, &CProfileEditorDialog::OnRuleColorResetClicked)
+	ON_LBN_SELCHANGE(IDC_PE_PROFILE_LIST, &CProfileEditorDialog::OnProfileSelectionChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_ADD_BUTTON, &CProfileEditorDialog::OnProfileAddClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_DUPLICATE_BUTTON, &CProfileEditorDialog::OnProfileDuplicateClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_RENAME_BUTTON, &CProfileEditorDialog::OnProfileRenameClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_DELETE_BUTTON, &CProfileEditorDialog::OnProfileDeleteClicked)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_STATUS_COMBO, &CProfileEditorDialog::OnTagStatusChanged)
 	ON_BN_CLICKED(IDC_PE_TAG_TOKEN_ADD_BUTTON, &CProfileEditorDialog::OnTagAddTokenClicked)

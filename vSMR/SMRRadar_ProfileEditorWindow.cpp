@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "ProfileEditorDialog.hpp"
+#include <cctype>
 
 namespace
 {
@@ -26,6 +27,99 @@ namespace
 			top = (screenHeight - defaultHeight) / 2;
 
 		return CRect(left, top, left + defaultWidth, top + defaultHeight);
+	}
+
+	std::string TrimAsciiWhitespaceCopy(const std::string& text)
+	{
+		size_t start = 0;
+		while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
+			++start;
+
+		size_t end = text.size();
+		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
+			--end;
+		return text.substr(start, end - start);
+	}
+
+	bool EqualsNoCase(const std::string& a, const std::string& b)
+	{
+		if (a.size() != b.size())
+			return false;
+		for (size_t i = 0; i < a.size(); ++i)
+		{
+			if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i])))
+				return false;
+		}
+		return true;
+	}
+
+	bool ContainsProfileNameNoCase(const std::vector<std::string>& names, const std::string& candidate)
+	{
+		for (const std::string& name : names)
+		{
+			if (EqualsNoCase(name, candidate))
+				return true;
+		}
+		return false;
+	}
+
+	std::string MakeUniqueProfileName(const std::vector<std::string>& existingNames, const std::string& requestedName)
+	{
+		std::string baseName = TrimAsciiWhitespaceCopy(requestedName);
+		if (baseName.empty())
+			baseName = "Profile";
+
+		if (!ContainsProfileNameNoCase(existingNames, baseName))
+			return baseName;
+
+		for (int i = 2; i < 1000; ++i)
+		{
+			const std::string candidate = baseName + " (" + std::to_string(i) + ")";
+			if (!ContainsProfileNameNoCase(existingNames, candidate))
+				return candidate;
+		}
+
+		return baseName + " Copy";
+	}
+
+	void CloneJsonValue(const rapidjson::Value& source, rapidjson::Value& out, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+		if (source.IsObject())
+		{
+			out.SetObject();
+			for (Value::ConstMemberIterator it = source.MemberBegin(); it != source.MemberEnd(); ++it)
+			{
+				Value key(it->name.GetString(), static_cast<rapidjson::SizeType>(it->name.GetStringLength()), allocator);
+				Value val;
+				CloneJsonValue(it->value, val, allocator);
+				out.AddMember(key, val, allocator);
+			}
+			return;
+		}
+		if (source.IsArray())
+		{
+			out.SetArray();
+			for (rapidjson::SizeType i = 0; i < source.Size(); ++i)
+			{
+				Value entry;
+				CloneJsonValue(source[i], entry, allocator);
+				out.PushBack(entry, allocator);
+			}
+			return;
+		}
+		if (source.IsString())
+		{
+			out.SetString(source.GetString(), static_cast<rapidjson::SizeType>(source.GetStringLength()), allocator);
+			return;
+		}
+		if (source.IsBool()) { out.SetBool(source.GetBool()); return; }
+		if (source.IsInt()) { out.SetInt(source.GetInt()); return; }
+		if (source.IsUint()) { out.SetUint(source.GetUint()); return; }
+		if (source.IsInt64()) { out.SetInt64(source.GetInt64()); return; }
+		if (source.IsUint64()) { out.SetUint64(source.GetUint64()); return; }
+		if (source.IsDouble()) { out.SetDouble(source.GetDouble()); return; }
+		out.SetNull();
 	}
 }
 
@@ -327,6 +421,181 @@ bool CSMRRadar::SetSelectedProfileColorForEditor(int r, int g, int b, int a, boo
 	}
 
 	RebuildProfileColorEntries();
+	RequestRefresh();
+	return true;
+}
+
+std::vector<std::string> CSMRRadar::GetProfileNamesForEditor() const
+{
+	if (!CurrentConfig)
+		return {};
+	return CurrentConfig->getAllProfiles();
+}
+
+std::string CSMRRadar::GetActiveProfileNameForEditor() const
+{
+	if (!CurrentConfig)
+		return "";
+	return const_cast<CConfig*>(CurrentConfig)->getActiveProfileName();
+}
+
+bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistToDisk)
+{
+	if (!CurrentConfig)
+		return false;
+
+	const std::vector<std::string> names = CurrentConfig->getAllProfiles();
+	std::string canonicalName;
+	for (const std::string& profileName : names)
+	{
+		if (EqualsNoCase(profileName, name))
+		{
+			canonicalName = profileName;
+			break;
+		}
+	}
+	if (canonicalName.empty())
+		return false;
+
+	LoadProfile(canonicalName);
+	if (persistToDisk)
+		CurrentConfig->saveConfig();
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName)
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	std::vector<std::string> existingNames = CurrentConfig->getAllProfiles();
+	const std::string createdName = MakeUniqueProfileName(existingNames, requestedName);
+
+	rapidjson::Value newProfile(rapidjson::kObjectType);
+	if (duplicateActiveProfile && CurrentConfig->getActiveProfile().IsObject())
+	{
+		CloneJsonValue(CurrentConfig->getActiveProfile(), newProfile, CurrentConfig->document.GetAllocator());
+	}
+	else if (CurrentConfig->document.Size() > 0 && CurrentConfig->document[static_cast<rapidjson::SizeType>(0)].IsObject())
+	{
+		CloneJsonValue(CurrentConfig->document[static_cast<rapidjson::SizeType>(0)], newProfile, CurrentConfig->document.GetAllocator());
+	}
+	else
+	{
+		newProfile.SetObject();
+	}
+
+	rapidjson::Value profileNameValue;
+	profileNameValue.SetString(createdName.c_str(), static_cast<rapidjson::SizeType>(createdName.size()), CurrentConfig->document.GetAllocator());
+	if (newProfile.HasMember("name"))
+		newProfile["name"].SetString(createdName.c_str(), static_cast<rapidjson::SizeType>(createdName.size()), CurrentConfig->document.GetAllocator());
+	else
+		newProfile.AddMember("name", profileNameValue, CurrentConfig->document.GetAllocator());
+
+	CurrentConfig->document.PushBack(newProfile, CurrentConfig->document.GetAllocator());
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	CurrentConfig->reload();
+	LoadProfile(createdName);
+	RequestRefresh();
+	if (outCreatedName != nullptr)
+		*outCreatedName = createdName;
+	return true;
+}
+
+bool CSMRRadar::RenameProfileForEditor(const std::string& oldName, const std::string& newName)
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const std::string trimmedNewName = TrimAsciiWhitespaceCopy(newName);
+	if (trimmedNewName.empty())
+		return false;
+
+	const std::vector<std::string> existingNames = CurrentConfig->getAllProfiles();
+	for (const std::string& existing : existingNames)
+	{
+		if (EqualsNoCase(existing, oldName))
+			continue;
+		if (EqualsNoCase(existing, trimmedNewName))
+			return false;
+	}
+
+	rapidjson::Value* target = nullptr;
+	for (rapidjson::SizeType i = 0; i < CurrentConfig->document.Size(); ++i)
+	{
+		rapidjson::Value& profile = CurrentConfig->document[i];
+		if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
+			continue;
+		if (EqualsNoCase(profile["name"].GetString(), oldName))
+		{
+			target = &profile;
+			break;
+		}
+	}
+	if (target == nullptr)
+		return false;
+
+	(*target)["name"].SetString(trimmedNewName.c_str(), static_cast<rapidjson::SizeType>(trimmedNewName.size()), CurrentConfig->document.GetAllocator());
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	CurrentConfig->reload();
+	if (EqualsNoCase(activeBefore, oldName))
+		LoadProfile(trimmedNewName);
+	else
+	{
+		std::string fallbackActive = activeBefore;
+		const std::vector<std::string> names = CurrentConfig->getAllProfiles();
+		if (fallbackActive.empty() || !ContainsProfileNameNoCase(names, fallbackActive))
+			fallbackActive = names.empty() ? "Default" : names.front();
+		LoadProfile(fallbackActive);
+	}
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+	if (CurrentConfig->document.Size() <= 1)
+		return false;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	rapidjson::SizeType removeIndex = CurrentConfig->document.Size();
+	for (rapidjson::SizeType i = 0; i < CurrentConfig->document.Size(); ++i)
+	{
+		const rapidjson::Value& profile = CurrentConfig->document[i];
+		if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
+			continue;
+		if (EqualsNoCase(profile["name"].GetString(), name))
+		{
+			removeIndex = i;
+			break;
+		}
+	}
+	if (removeIndex >= CurrentConfig->document.Size())
+		return false;
+
+	for (rapidjson::SizeType i = removeIndex; (i + 1) < CurrentConfig->document.Size(); ++i)
+		CurrentConfig->document[i] = CurrentConfig->document[i + 1];
+	CurrentConfig->document.PopBack();
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	CurrentConfig->reload();
+	std::string nextActive = activeBefore;
+	if (EqualsNoCase(activeBefore, name))
+	{
+		const std::vector<std::string> names = CurrentConfig->getAllProfiles();
+		nextActive = names.empty() ? "Default" : names.front();
+	}
+
+	LoadProfile(nextActive);
 	RequestRefresh();
 	return true;
 }
