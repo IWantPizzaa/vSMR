@@ -1234,7 +1234,7 @@ std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) 
 {
 	std::string lowered = TrimAsciiWhitespace(source);
 	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist")
+	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist" || lowered == "sid")
 		return "custom";
 	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
 		return "runway";
