@@ -26,8 +26,9 @@ namespace
 	const UINT WM_PE_COLOR_OPACITY_TRACK = WM_APP + 419;
 	const UINT WM_PE_RULE_COLOR_WHEEL_TRACK = WM_APP + 420;
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
-	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
+	const COLORREF kEditorBorderColor = RGB(198, 204, 214);
 	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
+	const COLORREF kEditorSidebarBackgroundColor = RGB(250, 250, 251);
 	const int kOffscreenPos = -5000;
 	const int kTabColors = 0;
 	const int kTabIcons = 1;
@@ -614,7 +615,7 @@ namespace
 		HPEN borderPen = ::CreatePen(PS_SOLID, 1, kEditorBorderColor);
 		HGDIOBJ oldPen = ::SelectObject(hdc, borderPen);
 		HGDIOBJ oldBrush = ::SelectObject(hdc, ::GetStockObject(HOLLOW_BRUSH));
-		::Rectangle(hdc, bounds.left, bounds.top, bounds.right, bounds.bottom);
+		::RoundRect(hdc, bounds.left, bounds.top, bounds.right, bounds.bottom, 10, 10);
 		::SelectObject(hdc, oldBrush);
 		::SelectObject(hdc, oldPen);
 		::DeleteObject(borderPen);
@@ -970,6 +971,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 	HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
 	if (pWnd == nullptr)
 		return hbr;
+	const int controlId = pWnd->GetDlgCtrlID();
 
 	if (nCtlColor == CTLCOLOR_LISTBOX && HeaderBarBrush.GetSafeHandle() != nullptr)
 	{
@@ -977,13 +979,21 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		pDC->SetTextColor(RGB(17, 24, 39));
 		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
 	}
-
-	const int controlId = pWnd->GetDlgCtrlID();
+	if ((controlId == IDC_PE_SIDEBAR_PANEL || controlId == IDC_PE_SIDEBAR_TITLE) && SidebarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorSidebarBackgroundColor);
+		pDC->SetTextColor(controlId == IDC_PE_SIDEBAR_TITLE ? RGB(92, 101, 116) : RGB(17, 24, 39));
+		return static_cast<HBRUSH>(SidebarBrush.GetSafeHandle());
+	}
 	const bool useColorThemeBackground = [&]()
 	{
 		switch (controlId)
 		{
 		case IDC_PE_COLOR_LEFT_PANEL:
+		case IDC_PE_SIDEBAR_PANEL:
+		case IDC_PE_SIDEBAR_TITLE:
+		case IDC_PE_PAGE_TITLE:
+		case IDC_PE_PAGE_SUBTITLE:
 		case IDC_PE_COLOR_RIGHT_PANEL:
 		case IDC_PE_COLOR_TREE:
 		case IDC_PE_COLOR_PATH_LABEL:
@@ -995,6 +1005,15 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_LABEL_RGBA:
 		case IDC_PE_LABEL_HEX:
 		case IDC_PE_ICON_PANEL:
+		case IDC_PE_ICON_SHAPE_PANEL:
+		case IDC_PE_ICON_SHAPE_HEADER:
+		case IDC_PE_ICON_SIZE_HEADER:
+		case IDC_PE_ICON_DISPLAY_PANEL:
+		case IDC_PE_ICON_DISPLAY_HEADER:
+		case IDC_PE_ICON_PREVIEW_PANEL:
+		case IDC_PE_ICON_PREVIEW_HEADER:
+		case IDC_PE_ICON_PREVIEW_SWATCH:
+		case IDC_PE_ICON_PREVIEW_HINT:
 		case IDC_PE_FIXED_SCALE_LABEL:
 		case IDC_PE_FIXED_SCALE_VALUE:
 		case IDC_PE_BOOST_FACTOR_LABEL:
@@ -1055,7 +1074,10 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 	if (useColorThemeBackground && HeaderBarBrush.GetSafeHandle() != nullptr)
 	{
 		pDC->SetBkColor(kEditorThemeBackgroundColor);
-		pDC->SetTextColor(RGB(17, 24, 39));
+		if (controlId == IDC_PE_SIDEBAR_TITLE || controlId == IDC_PE_PAGE_SUBTITLE || controlId == IDC_PE_ICON_PREVIEW_HINT)
+			pDC->SetTextColor(RGB(107, 114, 128));
+		else
+			pDC->SetTextColor(RGB(17, 24, 39));
 		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
 	}
 	return hbr;
@@ -1070,6 +1092,41 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	}
 
 	const UINT controlId = lpDrawItemStruct->CtlID;
+	const bool isRoundedPanel =
+		(controlId == IDC_PE_ICON_PANEL) ||
+		(controlId == IDC_PE_ICON_SHAPE_PANEL) ||
+		(controlId == IDC_PE_ICON_DISPLAY_PANEL) ||
+		(controlId == IDC_PE_ICON_PREVIEW_PANEL) ||
+		(controlId == IDC_PE_ICON_PREVIEW_SWATCH);
+	if (isRoundedPanel)
+	{
+		CDC dc;
+		dc.Attach(lpDrawItemStruct->hDC);
+		CRect outerRect(lpDrawItemStruct->rcItem);
+		CRect localOuter(0, 0, outerRect.Width(), outerRect.Height());
+		CDC memDc;
+		memDc.CreateCompatibleDC(&dc);
+		CBitmap frameBitmap;
+		frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
+		CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
+		memDc.FillSolidRect(&localOuter, kEditorThemeBackgroundColor);
+
+		CRect panelRect(localOuter);
+		panelRect.DeflateRect(1, 1);
+		const COLORREF fill = (controlId == IDC_PE_ICON_PREVIEW_SWATCH) ? RGB(232, 235, 240) : kEditorThemeBackgroundColor;
+		CBrush fillBrush(fill);
+		CPen borderPen(PS_SOLID, 1, RGB(198, 204, 214));
+		CBrush* oldBrush = memDc.SelectObject(&fillBrush);
+		CPen* oldPen = memDc.SelectObject(&borderPen);
+		memDc.RoundRect(&panelRect, CPoint(12, 12));
+		memDc.SelectObject(oldPen);
+		memDc.SelectObject(oldBrush);
+
+		dc.BitBlt(outerRect.left, outerRect.top, localOuter.Width(), localOuter.Height(), &memDc, 0, 0, SRCCOPY);
+		memDc.SelectObject(oldFrameBitmap);
+		dc.Detach();
+		return;
+	}
 	if (controlId == IDC_PE_RULE_LIST || controlId == IDC_PE_PROFILE_LIST)
 	{
 		CListBox* listBox = (controlId == IDC_PE_PROFILE_LIST) ? &ProfileList : &RulesList;
@@ -1144,7 +1201,12 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		(controlId == IDC_PE_PROFILE_DUPLICATE_BUTTON) ||
 		(controlId == IDC_PE_PROFILE_RENAME_BUTTON) ||
 		(controlId == IDC_PE_PROFILE_DELETE_BUTTON) ||
-		(controlId == IDC_PE_TAG_TOKEN_ADD_BUTTON);
+		(controlId == IDC_PE_TAG_TOKEN_ADD_BUTTON) ||
+		(controlId == IDC_PE_NAV_COLORS) ||
+		(controlId == IDC_PE_NAV_ICON) ||
+		(controlId == IDC_PE_NAV_TAGS) ||
+		(controlId == IDC_PE_NAV_RULES) ||
+		(controlId == IDC_PE_NAV_PROFILE);
 	if (isModernPushButton)
 	{
 		CDC dc;
@@ -1157,7 +1219,13 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		CBitmap frameBitmap;
 		frameBitmap.CreateCompatibleBitmap(&dc, max(1, localOuter.Width()), max(1, localOuter.Height()));
 		CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
-		memDc.FillSolidRect(&localOuter, kEditorThemeBackgroundColor);
+		const bool isSidebarNavButton =
+			(controlId == IDC_PE_NAV_COLORS) ||
+			(controlId == IDC_PE_NAV_ICON) ||
+			(controlId == IDC_PE_NAV_TAGS) ||
+			(controlId == IDC_PE_NAV_RULES) ||
+			(controlId == IDC_PE_NAV_PROFILE);
+		memDc.FillSolidRect(&localOuter, isSidebarNavButton ? kEditorSidebarBackgroundColor : kEditorThemeBackgroundColor);
 
 		const bool isDisabled = (lpDrawItemStruct->itemState & ODS_DISABLED) != 0;
 		const bool isPressed = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
@@ -1166,6 +1234,37 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		COLORREF fillColor = RGB(247, 248, 250);
 		COLORREF borderColor = RGB(171, 180, 190);
 		COLORREF textColor = RGB(17, 24, 39);
+		if (isSidebarNavButton)
+		{
+			const int selectedTab = PageTabs.GetCurSel();
+			bool isActive = false;
+			if (controlId == IDC_PE_NAV_COLORS) isActive = (selectedTab == kTabColors);
+			if (controlId == IDC_PE_NAV_ICON) isActive = (selectedTab == kTabIcons);
+			if (controlId == IDC_PE_NAV_TAGS) isActive = (selectedTab == kTabTags);
+			if (controlId == IDC_PE_NAV_RULES) isActive = (selectedTab == kTabRules);
+			if (controlId == IDC_PE_NAV_PROFILE) isActive = (selectedTab == kTabProfile);
+			if (isActive)
+			{
+				fillColor = RGB(232, 240, 255);
+				borderColor = RGB(181, 207, 252);
+				textColor = RGB(29, 78, 216);
+			}
+			else
+			{
+				fillColor = kEditorSidebarBackgroundColor;
+				borderColor = kEditorSidebarBackgroundColor;
+				textColor = RGB(31, 41, 55);
+			}
+		}
+		const bool isPrimaryButton =
+			(controlId == IDC_PE_APPLY_BUTTON) ||
+			(controlId == IDC_PE_RULE_COLOR_APPLY_BUTTON);
+		if (isPrimaryButton && !isDisabled)
+		{
+			fillColor = isPressed ? RGB(47, 118, 234) : RGB(59, 130, 246);
+			borderColor = RGB(37, 99, 235);
+			textColor = RGB(255, 255, 255);
+		}
 		if (isDisabled)
 		{
 			fillColor = RGB(232, 232, 232);
@@ -1210,7 +1309,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		if (oldFont != nullptr)
 			memDc.SelectObject(oldFont);
 
-		if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0)
+		if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 && !isSidebarNavButton)
 		{
 			CRect focusRect(buttonRect);
 			focusRect.DeflateRect(4, 3);
@@ -1445,12 +1544,22 @@ void CProfileEditorDialog::CreateEditorControls()
 	PageTabs.InsertItem(2, "Tags");
 	PageTabs.InsertItem(3, "Rules");
 	PageTabs.InsertItem(4, "Profile");
+	SidebarPanel.Create("", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_PANEL);
+	SidebarTitle.Create("SECTIONS", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_TITLE);
+	SidebarDivider.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDVERT, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_DIVIDER);
+	NavColorsButton.Create("Colors", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_COLORS);
+	NavIconButton.Create("Icon", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_ICON);
+	NavTagsButton.Create("Tags", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_TAGS);
+	NavRulesButton.Create("Rules", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_RULES);
+	NavProfileButton.Create("Profile", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_PROFILE);
+	PageTitleLabel.Create("Colors", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PAGE_TITLE);
+	PageSubtitleLabel.Create("Select a color entry on the left and edit it on the right.", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PAGE_SUBTITLE);
 
 	ColorLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LEFT_PANEL);
 	ColorRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_RIGHT_PANEL);
 	ColorPathTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_FULLROWSELECT | TVS_NOHSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_TREE);
-	ColorPathLabel.Create("Colors", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_LABEL);
-	SelectedPathText.Create("Selected:", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
+	ColorPathLabel.Create("Color List", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_LABEL);
+	SelectedPathText.Create("Preview", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
 	ColorPickerLabel.Create("Color Wheel", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_LABEL);
 	ColorPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PREVIEW_LABEL);
 	ColorPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PREVIEW_SWATCH);
@@ -1469,7 +1578,16 @@ void CProfileEditorDialog::CreateEditorControls()
 	IconStyleArrow.Create("Arrow", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_ARROW);
 	IconStyleDiamond.Create("Diamond", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_DIAMOND);
 	IconStyleRealistic.Create("Realistic", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_REALISTIC);
-	IconPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PANEL);
+	IconPanel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PANEL);
+	IconShapePanel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SHAPE_PANEL);
+	IconShapeHeader.Create("Shape", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SHAPE_HEADER);
+	IconSizeHeader.Create("Size", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SIZE_HEADER);
+	IconDisplayPanel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_ICON_DISPLAY_PANEL);
+	IconDisplayHeader.Create("Display", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_ICON_DISPLAY_HEADER);
+	IconPreviewPanel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PREVIEW_PANEL);
+	IconPreviewHeader.Create("Preview", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PREVIEW_HEADER);
+	IconPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PREVIEW_SWATCH);
+	IconPreviewHint.Create("Simple split layout: controls on the left, preview on the right.", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PREVIEW_HINT);
 	IconSeparator1.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SEPARATOR1);
 	IconSeparator2.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SEPARATOR2);
 	IconSeparator3.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SEPARATOR3);
@@ -1492,11 +1610,14 @@ void CProfileEditorDialog::CreateEditorControls()
 	BoostResolutionLabel.Create("Resolution", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_RES_LABEL);
 	BoostResolutionCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_RES_COMBO);
 	IconPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	IconShapePanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	IconDisplayPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	IconPreviewPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
 	RuleLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_PANEL);
 	RuleRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_PANEL);
-	RuleLeftHeader.Create("Rules", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
-	RuleRightHeader.Create("Rule Details", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
+	RuleLeftHeader.Create("Rule List", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LEFT_HEADER);
+	RuleRightHeader.Create("Selected Rule", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_RULE_RIGHT_HEADER);
 	RulesList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_LIST);
 	RuleTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TVS_HASBUTTONS | TVS_SHOWSELALWAYS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_TREE);
 	RuleAddButton.Create("Add Rule", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_ADD_BUTTON);
@@ -1534,7 +1655,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorApplyButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_APPLY_BUTTON);
 	RuleColorResetButton.Create("Reset", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_RESET_BUTTON);
 	ProfilePanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_PANEL);
-	ProfileHeader.Create("Profiles", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_HEADER);
+	ProfileHeader.Create("Profiles", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_HEADER);
 	ProfileList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_LIST);
 	ProfileNameLabel.Create("Name", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_LABEL);
 	ProfileNameEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_EDIT);
@@ -1550,7 +1671,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleTree.SetTextColor(RGB(17, 24, 39));
 
 	TagPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PANEL);
-	TagHeaderPanel.Create("Tags", WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
+	TagHeaderPanel.Create("Options", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
 	TagTypeLabel.Create("Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_LABEL);
 	TagTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_COMBO);
 	TagStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_LABEL);
@@ -1580,6 +1701,24 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PREVIEW_LABEL);
 	TagPreviewEdit.Create(WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PREVIEW_EDIT);
 
+	auto softenPanelBorder = [](CStatic& panel)
+	{
+		if (!::IsWindow(panel.GetSafeHwnd()))
+			return;
+		panel.ModifyStyle(SS_ETCHEDFRAME, WS_BORDER);
+	};
+	softenPanelBorder(SidebarPanel);
+	softenPanelBorder(ColorLeftPanel);
+	softenPanelBorder(ColorRightPanel);
+	softenPanelBorder(IconPanel);
+	softenPanelBorder(IconShapePanel);
+	softenPanelBorder(IconDisplayPanel);
+	softenPanelBorder(IconPreviewPanel);
+	softenPanelBorder(RuleLeftPanel);
+	softenPanelBorder(RuleRightPanel);
+	softenPanelBorder(ProfilePanel);
+	softenPanelBorder(TagPanel);
+
 	TagTypeCombo.ResetContent();
 	TagTypeCombo.AddString("departure");
 	TagTypeCombo.AddString("arrival");
@@ -1591,6 +1730,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	PopulateIconCombos();
 	PopulateRuleCombos();
 	HeaderBarBrush.CreateSolidBrush(kEditorThemeBackgroundColor);
+	SidebarBrush.CreateSolidBrush(kEditorSidebarBackgroundColor);
 	FixedScaleSlider.SetRange(10, 200, TRUE);
 	FixedScaleSlider.SetTicFreq(5);
 	FixedScaleSlider.SetLineSize(1);
@@ -1677,6 +1817,13 @@ void CProfileEditorDialog::CreateEditorControls()
 	{
 		LOGFONT lf = {};
 		GetFont()->GetLogFont(&lf);
+		LOGFONT titleLf = lf;
+		titleLf.lfHeight = max(18, lf.lfHeight + 8);
+		titleLf.lfWeight = FW_BOLD;
+		TitleFont.CreateFontIndirect(&titleLf);
+		LOGFONT sectionLf = lf;
+		sectionLf.lfWeight = FW_BOLD;
+		SectionHeaderFont.CreateFontIndirect(&sectionLf);
 		LOGFONT monoLf = lf;
 		strcpy_s(monoLf.lfFaceName, LF_FACESIZE, "Consolas");
 		MonoFont.CreateFontIndirect(&monoLf);
@@ -1700,6 +1847,19 @@ void CProfileEditorDialog::CreateEditorControls()
 		TagDetailedLine3Edit.SetFont(&MonoFont, TRUE);
 		TagDetailedLine4Edit.SetFont(&MonoFont, TRUE);
 		TagPreviewEdit.SetFont(&MonoFont, TRUE);
+		PageTitleLabel.SetFont(&TitleFont, TRUE);
+		PageSubtitleLabel.SetFont(GetFont(), TRUE);
+		SidebarTitle.SetFont(&SectionHeaderFont, TRUE);
+		ColorPathLabel.SetFont(&SectionHeaderFont, TRUE);
+		SelectedPathText.SetFont(&SectionHeaderFont, TRUE);
+		RuleLeftHeader.SetFont(&SectionHeaderFont, TRUE);
+		RuleRightHeader.SetFont(&SectionHeaderFont, TRUE);
+		ProfileHeader.SetFont(&SectionHeaderFont, TRUE);
+		TagHeaderPanel.SetFont(&SectionHeaderFont, TRUE);
+		IconShapeHeader.SetFont(&SectionHeaderFont, TRUE);
+		IconSizeHeader.SetFont(&SectionHeaderFont, TRUE);
+		IconDisplayHeader.SetFont(&SectionHeaderFont, TRUE);
+		IconPreviewHeader.SetFont(&SectionHeaderFont, TRUE);
 	}
 	ApplyThemedEditBorders();
 	ControlsCreated = true;
@@ -2059,18 +2219,43 @@ void CProfileEditorDialog::LayoutControls()
 	CRect clientRect;
 	GetClientRect(&clientRect);
 
-	const int pad = 8;
-	const int tabsTop = pad;
+	const int sidebarWidth = 120;
+	const int sidebarPad = 16;
+	const int navButtonHeight = 38;
+	const int navGap = 8;
+	const int mainPad = 18;
+	const int topBarHeight = 70;
 
-	PageTabs.MoveWindow(pad, tabsTop, max(120, clientRect.Width() - (pad * 2)), max(120, clientRect.Height() - tabsTop - pad), TRUE);
+	PageTabs.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
 
-	CRect pageRect;
-	PageTabs.GetWindowRect(&pageRect);
-	ScreenToClient(&pageRect);
-	PageTabs.AdjustRect(FALSE, &pageRect);
+	SidebarPanel.MoveWindow(clientRect.left, clientRect.top, sidebarWidth, max(120, clientRect.Height()), TRUE);
+	SidebarTitle.MoveWindow(clientRect.left + sidebarPad, clientRect.top + 18, sidebarWidth - (sidebarPad * 2), 20, TRUE);
+	SidebarDivider.MoveWindow(clientRect.left + sidebarWidth - 1, clientRect.top, 2, max(120, clientRect.Height()), TRUE);
+	int navY = clientRect.top + 46;
+	const int navWidth = sidebarWidth - (sidebarPad * 2);
+	NavColorsButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
+	navY += navButtonHeight + navGap;
+	NavIconButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
+	navY += navButtonHeight + navGap;
+	NavTagsButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
+	navY += navButtonHeight + navGap;
+	NavRulesButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
+	navY += navButtonHeight + navGap;
+	NavProfileButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
 
-	const int innerPad = 10;
-	const int colorGap = 12;
+	const int mainLeft = clientRect.left + sidebarWidth + mainPad;
+	const int mainTop = clientRect.top + mainPad;
+	const int mainWidth = max(220, clientRect.Width() - sidebarWidth - (mainPad * 2));
+	const int mainHeight = max(140, clientRect.Height() - (mainPad * 2));
+	PageTitleLabel.MoveWindow(mainLeft, mainTop, max(200, mainWidth - 220), 34, TRUE);
+	PageSubtitleLabel.MoveWindow(mainLeft, mainTop + 34, max(200, mainWidth - 220), 24, TRUE);
+	ApplyColorButton.MoveWindow(mainLeft + mainWidth - 174, mainTop, 82, 38, TRUE);
+	ResetColorButton.MoveWindow(mainLeft + mainWidth - 84, mainTop, 82, 38, TRUE);
+
+	CRect pageRect(mainLeft, mainTop + topBarHeight, mainLeft + mainWidth, mainTop + mainHeight);
+
+	const int innerPad = 16;
+	const int colorGap = 16;
 	const int availableWidth = max(200, pageRect.Width() - (innerPad * 2) - colorGap);
 	const int colorLeftWidth = max(230, static_cast<int>(availableWidth * 0.46));
 	const int colorRightWidth = max(170, availableWidth - colorLeftWidth);
@@ -2080,7 +2265,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int rightLeft = colorLeft + colorLeftWidth + colorGap;
 
 	const int rowHeight = 24;
-	const int buttonHeight = 28;
+	const int buttonHeight = 38;
 
 	// Colors: left tree panel + right editor panel
 	ColorLeftPanel.MoveWindow(colorLeft, colorTop, colorLeftWidth, panelHeight, TRUE);
@@ -2092,18 +2277,18 @@ void CProfileEditorDialog::LayoutControls()
 
 	SelectedPathText.MoveWindow(rightLeft + 1, colorTop + 1, max(60, colorRightWidth - 2), 30, TRUE);
 
-	int y = colorTop + 40;
+	int y = colorTop + 16;
 	const int previewWidth = max(120, colorRightWidth - 28);
 	ColorPreviewLabel.MoveWindow(rightLeft + 14, y, previewWidth, rowHeight, TRUE);
-	y += rowHeight + 4;
+	y += rowHeight + 8;
 
 	ColorPreviewSwatch.MoveWindow(rightLeft + 14, y, previewWidth, 52, TRUE);
-	y += 52 + 10;
+	y += 52 + 16;
 
 	const int sliderGap = 16;
 	const int sliderWidth = 24;
 	const int sliderColumnsWidth = (sliderWidth * 2) + sliderGap;
-	const int wheelToSliderGap = 10;
+	const int wheelToSliderGap = 16;
 	const int wheelAreaWidth = max(88, previewWidth - wheelToSliderGap - sliderColumnsWidth);
 	const int wheelSize = min(170, wheelAreaWidth);
 	const int wheelLeft = rightLeft + 14;
@@ -2126,49 +2311,61 @@ void CProfileEditorDialog::LayoutControls()
 	ColorValueSlider.MoveWindow(valueSliderLeft, wheelTop, sliderWidth, wheelSize, TRUE);
 	ColorOpacityLabel.MoveWindow(opacityLabelLeft, sliderLabelTop, opacityLabelWidth, rowHeight, TRUE);
 	ColorOpacitySlider.MoveWindow(opacitySliderLeft, wheelTop, sliderWidth, wheelSize, TRUE);
-	y = wheelTop + wheelSize + 10;
+	y = wheelTop + wheelSize + 16;
 
 	const int rgbaLabelWidth = 56;
 	LabelRgba.MoveWindow(rightLeft + 14, y + 3, rgbaLabelWidth, rowHeight, TRUE);
 	EditRgba.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, previewWidth - rgbaLabelWidth - 6), rowHeight, TRUE);
-	y += rowHeight + 10;
+	y += rowHeight + 8;
 
 	LabelHex.MoveWindow(rightLeft + 14, y + 3, rgbaLabelWidth, rowHeight, TRUE);
 	EditHex.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, previewWidth - rgbaLabelWidth - 6), rowHeight, TRUE);
-	y += rowHeight + 14;
+	y += rowHeight + 16;
 
-	ApplyColorButton.MoveWindow(rightLeft + 14, y, 60, buttonHeight, TRUE);
-	ResetColorButton.MoveWindow(rightLeft + 82, y, 60, buttonHeight, TRUE);
+	// Top-bar actions are laid out globally above page content.
 
-	const int iconLeft = pageRect.left + innerPad;
 	const int iconTop = pageRect.top + innerPad;
-	const int iconWidth = max(220, pageRect.Width() - (innerPad * 2));
-	const int iconHeight = max(140, pageRect.Height() - (innerPad * 2));
-	IconPanel.MoveWindow(iconLeft, iconTop, iconWidth, iconHeight, TRUE);
+	const int iconHeight = max(120, pageRect.Height() - (innerPad * 2));
+	const int iconGap = 16;
+	const int iconLeftWidth = max(280, static_cast<int>((pageRect.Width() - (innerPad * 2) - iconGap) * 0.5));
+	const int iconRightWidth = max(240, pageRect.Width() - (innerPad * 2) - iconGap - iconLeftWidth);
+	const int iconLeft = pageRect.left + innerPad;
+	const int iconRightLeft = iconLeft + iconLeftWidth + iconGap;
+	const int iconSmallCardHeight = 80;
+	const int iconBottomCardHeight = max(120, iconHeight - iconSmallCardHeight - iconGap);
+	const int iconPreviewCardHeight = max(170, iconHeight - 180 - iconGap);
 
-	const int iconPad = 12;
+	IconShapePanel.MoveWindow(iconLeft, iconTop, iconLeftWidth, iconSmallCardHeight, TRUE);
+	IconPanel.MoveWindow(iconLeft, iconTop + iconSmallCardHeight + iconGap, iconLeftWidth, iconBottomCardHeight, TRUE);
+	IconDisplayPanel.MoveWindow(iconRightLeft, iconTop, iconRightWidth, 160, TRUE);
+	IconPreviewPanel.MoveWindow(iconRightLeft, iconTop + 160 + iconGap, iconRightWidth, iconPreviewCardHeight, TRUE);
+
+	const int iconPad = 16;
 	const int iconContentLeft = iconLeft + iconPad;
-	const int iconContentRight = iconLeft + iconWidth - iconPad;
+	const int iconContentRight = iconLeft + iconLeftWidth - iconPad;
 	const int iconContentWidth = max(120, iconContentRight - iconContentLeft);
 	const int iconCheckboxHeight = 22;
 	const int iconSliderHeight = 24;
 	const int iconTickHeight = 16;
 	const int iconTickWidth = 54;
 
-	int iconY = iconTop + 12;
-	IconStyleArrow.MoveWindow(iconContentLeft, iconY, 76, iconCheckboxHeight, TRUE);
-	IconStyleDiamond.MoveWindow(iconContentLeft + 84, iconY, 92, iconCheckboxHeight, TRUE);
-	IconStyleRealistic.MoveWindow(iconContentLeft + 186, iconY, 96, iconCheckboxHeight, TRUE);
-	iconY += iconCheckboxHeight + 10;
+	IconShapeHeader.MoveWindow(iconContentLeft, iconTop + 14, 100, rowHeight, TRUE);
+	const int shapeRowY = iconTop + 44;
+	IconStyleArrow.MoveWindow(iconContentLeft, shapeRowY, 76, iconCheckboxHeight, TRUE);
+	IconStyleDiamond.MoveWindow(iconContentLeft + 84, shapeRowY, 92, iconCheckboxHeight, TRUE);
+	IconStyleRealistic.MoveWindow(iconContentLeft + 186, shapeRowY, 96, iconCheckboxHeight, TRUE);
 
-	IconSeparator1.MoveWindow(iconLeft + 1, iconY, max(50, iconWidth - 2), 2, TRUE);
-	iconY += 12;
+	int iconY = iconTop + iconSmallCardHeight + iconGap + 14;
+	IconSizeHeader.MoveWindow(iconContentLeft, iconY, 120, rowHeight, TRUE);
+	iconY += rowHeight + 8;
 
 	FixedPixelCheck.MoveWindow(iconContentLeft, iconY, 140, iconCheckboxHeight, TRUE);
 	iconY += iconCheckboxHeight + 6;
+	IconSeparator1.MoveWindow(iconLeft + 12, iconY, max(50, iconLeftWidth - 24), 2, TRUE);
+	iconY += 12;
 
 	FixedScaleLabel.MoveWindow(iconContentLeft, iconY + 2, 110, rowHeight, TRUE);
-	FixedScaleValueLabel.MoveWindow(iconContentLeft + 110, iconY + 2, 70, rowHeight, TRUE);
+	FixedScaleValueLabel.MoveWindow(iconContentRight - 70, iconY + 2, 70, rowHeight, TRUE);
 	iconY += rowHeight + 2;
 	FixedScaleSlider.MoveWindow(iconContentLeft, iconY, iconContentWidth, iconSliderHeight, TRUE);
 	iconY += iconSliderHeight + 2;
@@ -2177,34 +2374,39 @@ void CProfileEditorDialog::LayoutControls()
 	FixedScaleTickMaxLabel.MoveWindow(iconContentRight - iconTickWidth, iconY, iconTickWidth, iconTickHeight, TRUE);
 	iconY += iconTickHeight + 8;
 
-	IconSeparator2.MoveWindow(iconLeft + 1, iconY, max(50, iconWidth - 2), 2, TRUE);
+	IconSeparator2.MoveWindow(iconLeft + 12, iconY, max(50, iconLeftWidth - 24), 2, TRUE);
 	iconY += 12;
-
 	SmallBoostCheck.MoveWindow(iconContentLeft, iconY, 160, iconCheckboxHeight, TRUE);
 	iconY += iconCheckboxHeight + 6;
+	IconSeparator3.MoveWindow(iconLeft + 12, iconY, max(50, iconLeftWidth - 24), 2, TRUE);
+	iconY += 12;
 
 	BoostFactorLabel.MoveWindow(iconContentLeft, iconY + 2, 110, rowHeight, TRUE);
-	BoostFactorValueLabel.MoveWindow(iconContentLeft + 110, iconY + 2, 70, rowHeight, TRUE);
+	BoostFactorValueLabel.MoveWindow(iconContentRight - 70, iconY + 2, 70, rowHeight, TRUE);
 	iconY += rowHeight + 2;
 	BoostFactorSlider.MoveWindow(iconContentLeft, iconY, iconContentWidth, iconSliderHeight, TRUE);
 	iconY += iconSliderHeight + 2;
 	BoostFactorTickMinLabel.MoveWindow(iconContentLeft, iconY, iconTickWidth, iconTickHeight, TRUE);
 	BoostFactorTickMidLabel.MoveWindow(iconContentLeft + (iconContentWidth / 2) - (iconTickWidth / 2), iconY, iconTickWidth, iconTickHeight, TRUE);
 	BoostFactorTickMaxLabel.MoveWindow(iconContentRight - iconTickWidth, iconY, iconTickWidth, iconTickHeight, TRUE);
-	iconY += iconTickHeight + 8;
 
-	IconSeparator3.MoveWindow(iconLeft + 1, iconY, max(50, iconWidth - 2), 2, TRUE);
-	iconY += 12;
+	const int rightPad = 16;
+	const int rightContentLeft = iconRightLeft + rightPad;
+	const int rightContentWidth = max(120, iconRightWidth - (rightPad * 2));
+	IconDisplayHeader.MoveWindow(rightContentLeft, iconTop + 14, 100, rowHeight, TRUE);
+	BoostResolutionLabel.MoveWindow(rightContentLeft, iconTop + 48, 100, rowHeight, TRUE);
+	BoostResolutionCombo.MoveWindow(rightContentLeft + 102, iconTop + 44, max(120, rightContentWidth - 102), rowHeight + 220, TRUE);
 
-	BoostResolutionLabel.MoveWindow(iconContentLeft, iconY + 2, 100, rowHeight, TRUE);
-	iconY += rowHeight + 4;
-	BoostResolutionCombo.MoveWindow(iconContentLeft, iconY, iconContentWidth, rowHeight + 220, TRUE);
+	const int previewTop = iconTop + 160 + iconGap;
+	IconPreviewHeader.MoveWindow(rightContentLeft, previewTop + 14, 100, rowHeight, TRUE);
+	IconPreviewSwatch.MoveWindow(rightContentLeft, previewTop + 46, rightContentWidth, 84, TRUE);
+	IconPreviewHint.MoveWindow(rightContentLeft, previewTop + 140, rightContentWidth, 42, TRUE);
 	MoveControlOffscreen(FixedScaleCombo);
 	MoveControlOffscreen(BoostFactorCombo);
 
 	const int rulesTop = pageRect.top + innerPad;
 	const int rulesPanelHeight = max(120, pageRect.Height() - (innerPad * 2));
-	const int rulesGap = 12;
+	const int rulesGap = 16;
 	const int rulesAvailableWidth = max(220, pageRect.Width() - (innerPad * 2) - rulesGap);
 	const int rulesLeftWidth = max(220, static_cast<int>(rulesAvailableWidth * 0.50));
 	const int rulesRightWidth = max(220, rulesAvailableWidth - rulesLeftWidth);
@@ -2228,35 +2430,35 @@ void CProfileEditorDialog::LayoutControls()
 	MoveControlOffscreen(RuleRemoveButton);
 
 	int rulesY = rulesTop + 44;
-	const int rulesLabelWidth = 120;
+	const int rulesLabelWidth = 110;
 	const int rulesContentLeft = rulesRightLeft + 14;
 	const int rulesContentWidth = max(120, rulesRightWidth - 28);
-	const int rulesFieldLeft = rulesContentLeft + rulesLabelWidth + 10;
+	const int rulesFieldLeft = rulesContentLeft + rulesLabelWidth + 12;
 	const int rulesLabelLeft = rulesContentLeft;
 	const int rulesFieldWidth = max(90, rulesRightWidth - (rulesFieldLeft - rulesRightLeft) - 14);
 	int paramY = rulesY;
 	RuleSourceLabel.MoveWindow(rulesLabelLeft, paramY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleSourceCombo.MoveWindow(rulesFieldLeft, paramY, rulesFieldWidth, rowHeight + 220, TRUE);
-	paramY += rowHeight + 10;
+	paramY += rowHeight + 8;
 	RuleTokenLabel.MoveWindow(rulesLabelLeft, paramY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleTokenCombo.MoveWindow(rulesFieldLeft, paramY, rulesFieldWidth, rowHeight + 220, TRUE);
-	paramY += rowHeight + 10;
+	paramY += rowHeight + 8;
 	RuleConditionLabel.MoveWindow(rulesLabelLeft, paramY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleConditionCombo.MoveWindow(rulesFieldLeft, paramY, rulesFieldWidth, rowHeight + 220, TRUE);
 
 	int effectY = rulesY;
 	RuleNameLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleNameEdit.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight, TRUE);
-	effectY += rowHeight + 10;
+	effectY += rowHeight + 8;
 	RuleTypeLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleTypeCombo.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight + 220, TRUE);
-	effectY += rowHeight + 10;
+	effectY += rowHeight + 8;
 	RuleStatusLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleStatusCombo.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight + 220, TRUE);
-	effectY += rowHeight + 10;
+	effectY += rowHeight + 8;
 	RuleDetailLabel.MoveWindow(rulesLabelLeft, effectY + 4, rulesLabelWidth, rowHeight, TRUE);
 	RuleDetailCombo.MoveWindow(rulesFieldLeft, effectY, rulesFieldWidth, rowHeight + 220, TRUE);
-	effectY += rowHeight + 14;
+	effectY += rowHeight + 16;
 
 	const int ruleSwatchSize = rowHeight;
 	const int ruleSwatchGap = 8;
@@ -2417,6 +2619,33 @@ void CProfileEditorDialog::UpdatePageVisibility()
 		return;
 
 	const int selectedTab = PageTabs.GetCurSel();
+	switch (selectedTab)
+	{
+	case kTabColors:
+		PageTitleLabel.SetWindowTextA("Colors");
+		PageSubtitleLabel.SetWindowTextA("Select a color entry on the left and edit it on the right.");
+		break;
+	case kTabIcons:
+		PageTitleLabel.SetWindowTextA("Icon");
+		PageSubtitleLabel.SetWindowTextA("Choose a shape and adjust scale settings.");
+		break;
+	case kTabTags:
+		PageTitleLabel.SetWindowTextA("Tags");
+		PageSubtitleLabel.SetWindowTextA("General settings first, then text definitions below.");
+		break;
+	case kTabRules:
+		PageTitleLabel.SetWindowTextA("Rules");
+		PageSubtitleLabel.SetWindowTextA("Rule groups on the left, selected rule settings on the right.");
+		break;
+	case kTabProfile:
+		PageTitleLabel.SetWindowTextA("Profile");
+		PageSubtitleLabel.SetWindowTextA("Profiles on the left, actions and name on the right.");
+		break;
+	default:
+		PageTitleLabel.SetWindowTextA("Profile Editor");
+		PageSubtitleLabel.SetWindowTextA("");
+		break;
+	}
 	const bool showColors = (selectedTab == kTabColors);
 	const bool showIcons = (selectedTab == kTabIcons);
 	const bool showRules = (selectedTab == kTabRules);
@@ -2434,6 +2663,23 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	const int ruleEffectShowMode = (showRules && !isParameterSelection) ? SW_SHOW : SW_HIDE;
 	const int tagShowMode = showTagEditor ? SW_SHOW : SW_HIDE;
 	const int detailedTagShowMode = showDetailedTag ? SW_SHOW : SW_HIDE;
+
+	SidebarPanel.ShowWindow(SW_SHOW);
+	SidebarTitle.ShowWindow(SW_SHOW);
+	SidebarDivider.ShowWindow(SW_SHOW);
+	NavColorsButton.ShowWindow(SW_SHOW);
+	NavIconButton.ShowWindow(SW_SHOW);
+	NavTagsButton.ShowWindow(SW_SHOW);
+	NavRulesButton.ShowWindow(SW_SHOW);
+	NavProfileButton.ShowWindow(SW_SHOW);
+	PageTitleLabel.ShowWindow(SW_SHOW);
+	PageSubtitleLabel.ShowWindow(SW_SHOW);
+	NavColorsButton.Invalidate(FALSE);
+	NavIconButton.Invalidate(FALSE);
+	NavTagsButton.Invalidate(FALSE);
+	NavRulesButton.Invalidate(FALSE);
+	NavProfileButton.Invalidate(FALSE);
+	PageTabs.ShowWindow(SW_HIDE);
 
 	ColorLeftPanel.ShowWindow(colorShowMode);
 	ColorRightPanel.ShowWindow(colorShowMode);
@@ -2459,6 +2705,15 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	IconStyleDiamond.ShowWindow(iconShowMode);
 	IconStyleRealistic.ShowWindow(iconShowMode);
 	IconPanel.ShowWindow(iconShowMode);
+	IconShapePanel.ShowWindow(iconShowMode);
+	IconShapeHeader.ShowWindow(iconShowMode);
+	IconSizeHeader.ShowWindow(iconShowMode);
+	IconDisplayPanel.ShowWindow(iconShowMode);
+	IconDisplayHeader.ShowWindow(iconShowMode);
+	IconPreviewPanel.ShowWindow(iconShowMode);
+	IconPreviewHeader.ShowWindow(iconShowMode);
+	IconPreviewSwatch.ShowWindow(iconShowMode);
+	IconPreviewHint.ShowWindow(iconShowMode);
 	IconSeparator1.ShowWindow(iconShowMode);
 	IconSeparator2.ShowWindow(iconShowMode);
 	IconSeparator3.ShowWindow(iconShowMode);
@@ -5315,6 +5570,44 @@ void CProfileEditorDialog::OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult
 		*pResult = 0;
 }
 
+void CProfileEditorDialog::OnNavColorsClicked()
+{
+	PageTabs.SetCurSel(kTabColors);
+	UpdatePageVisibility();
+	ForceChildRepaint();
+}
+
+void CProfileEditorDialog::OnNavIconClicked()
+{
+	PageTabs.SetCurSel(kTabIcons);
+	UpdatePageVisibility();
+	ForceChildRepaint();
+}
+
+void CProfileEditorDialog::OnNavTagsClicked()
+{
+	PageTabs.SetCurSel(kTabTags);
+	SyncTagEditorControlsFromRadar();
+	UpdatePageVisibility();
+	ForceChildRepaint();
+}
+
+void CProfileEditorDialog::OnNavRulesClicked()
+{
+	PageTabs.SetCurSel(kTabRules);
+	UpdatePageVisibility();
+	ForceChildRepaint();
+}
+
+void CProfileEditorDialog::OnNavProfileClicked()
+{
+	PageTabs.SetCurSel(kTabProfile);
+	RebuildProfileList();
+	RefreshProfileControls();
+	UpdatePageVisibility();
+	ForceChildRepaint();
+}
+
 void CProfileEditorDialog::OnIconStyleChanged()
 {
 	if (UpdatingControls || Owner == nullptr)
@@ -5420,6 +5713,11 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_EN_CHANGE(IDC_PE_EDIT_RGBA, &CProfileEditorDialog::OnRgbaEditChanged)
 	ON_EN_CHANGE(IDC_PE_EDIT_HEX, &CProfileEditorDialog::OnHexEditChanged)
 	ON_NOTIFY(TCN_SELCHANGE, IDC_PE_TAB, &CProfileEditorDialog::OnTabSelectionChanged)
+	ON_BN_CLICKED(IDC_PE_NAV_COLORS, &CProfileEditorDialog::OnNavColorsClicked)
+	ON_BN_CLICKED(IDC_PE_NAV_ICON, &CProfileEditorDialog::OnNavIconClicked)
+	ON_BN_CLICKED(IDC_PE_NAV_TAGS, &CProfileEditorDialog::OnNavTagsClicked)
+	ON_BN_CLICKED(IDC_PE_NAV_RULES, &CProfileEditorDialog::OnNavRulesClicked)
+	ON_BN_CLICKED(IDC_PE_NAV_PROFILE, &CProfileEditorDialog::OnNavProfileClicked)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_ARROW, &CProfileEditorDialog::OnIconStyleChanged)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_DIAMOND, &CProfileEditorDialog::OnIconStyleChanged)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_REALISTIC, &CProfileEditorDialog::OnIconStyleChanged)

@@ -48,6 +48,11 @@ protected:
 	afx_msg void OnRgbaEditChanged();
 	afx_msg void OnHexEditChanged();
 	afx_msg void OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnNavColorsClicked();
+	afx_msg void OnNavIconClicked();
+	afx_msg void OnNavTagsClicked();
+	afx_msg void OnNavRulesClicked();
+	afx_msg void OnNavProfileClicked();
 	afx_msg void OnIconStyleChanged();
 	afx_msg void OnFixedPixelToggled();
 	afx_msg void OnFixedScaleChanged();
@@ -214,6 +219,25 @@ private:
 		, IDC_PE_PROFILE_DUPLICATE_BUTTON = 9240
 		, IDC_PE_PROFILE_RENAME_BUTTON = 9241
 		, IDC_PE_PROFILE_DELETE_BUTTON = 9242
+		, IDC_PE_SIDEBAR_PANEL = 9243
+		, IDC_PE_SIDEBAR_TITLE = 9244
+		, IDC_PE_NAV_COLORS = 9245
+		, IDC_PE_NAV_ICON = 9246
+		, IDC_PE_NAV_TAGS = 9247
+		, IDC_PE_NAV_RULES = 9248
+		, IDC_PE_NAV_PROFILE = 9249
+		, IDC_PE_PAGE_TITLE = 9250
+		, IDC_PE_PAGE_SUBTITLE = 9251
+		, IDC_PE_ICON_SHAPE_PANEL = 9252
+		, IDC_PE_ICON_SHAPE_HEADER = 9253
+		, IDC_PE_ICON_SIZE_HEADER = 9254
+		, IDC_PE_ICON_DISPLAY_PANEL = 9255
+		, IDC_PE_ICON_DISPLAY_HEADER = 9256
+		, IDC_PE_ICON_PREVIEW_PANEL = 9257
+		, IDC_PE_ICON_PREVIEW_HEADER = 9258
+		, IDC_PE_ICON_PREVIEW_SWATCH = 9259
+		, IDC_PE_ICON_PREVIEW_HINT = 9260
+		, IDC_PE_SIDEBAR_DIVIDER = 9261
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -224,6 +248,16 @@ private:
 	bool LastVisibilityDetailedTag = false;
 
 	CTabCtrl PageTabs;
+	CStatic SidebarPanel;
+	CStatic SidebarTitle;
+	CStatic SidebarDivider;
+	CButton NavColorsButton;
+	CButton NavIconButton;
+	CButton NavTagsButton;
+	CButton NavRulesButton;
+	CButton NavProfileButton;
+	CStatic PageTitleLabel;
+	CStatic PageSubtitleLabel;
 
 	CStatic ColorLeftPanel;
 	CStatic ColorRightPanel;
@@ -249,6 +283,15 @@ private:
 	CButton IconStyleDiamond;
 	CButton IconStyleRealistic;
 	CStatic IconPanel;
+	CStatic IconShapePanel;
+	CStatic IconShapeHeader;
+	CStatic IconSizeHeader;
+	CStatic IconDisplayPanel;
+	CStatic IconDisplayHeader;
+	CStatic IconPreviewPanel;
+	CStatic IconPreviewHeader;
+	CStatic IconPreviewSwatch;
+	CStatic IconPreviewHint;
 	CStatic IconSeparator1;
 	CStatic IconSeparator2;
 	CStatic IconSeparator3;
@@ -379,7 +422,10 @@ private:
 	bool DraftColorHasAlpha = false;
 	bool DraftColorValid = false;
 	CBrush HeaderBarBrush;
+	CBrush SidebarBrush;
 	CFont MonoFont;
+	CFont TitleFont;
+	CFont SectionHeaderFont;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
