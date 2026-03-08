@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vSMR Profile Editor</title>
+  <style>
+    :root {
+      --bg: #f3f4f6;
+      --window: #ffffff;
+      --surface: #fafafa;
+      --panel: #ffffff;
+      --panel-alt: #f7f7f8;
+      --field: #ffffff;
+      --field-alt: #f3f4f6;
+      --border: #d8dbe1;
+      --border-strong: #c8ccd4;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #3b82f6;
+      --accent-soft: #e8f0ff;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius-xl: 16px;
+      --radius-lg: 12px;
+      --radius-md: 10px;
+      --radius-sm: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      color: var(--text);
+    }
+
+    body {
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .window {
+      width: 1080px;
+      background: var(--window);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .titlebar {
+      height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .title-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .circle {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #d1d5db;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      min-height: 760px;
+    }
+
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+    }
+
+    .sidebar-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav-btn {
+      height: 38px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      text-align: left;
+      padding: 0 12px;
+      cursor: pointer;
+    }
+
+    .nav-btn:hover {
+      background: #f4f6f8;
+      border-color: var(--border);
+    }
+
+    .nav-btn.active {
+      background: var(--accent-soft);
+      border-color: #cdddfd;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+
+    .main {
+      padding: 18px;
+      background: #ffffff;
+    }
+
+    .page {
+      display: none;
+      gap: 16px;
+    }
+
+    .page.active {
+      display: grid;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .page-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 16px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .list-box,
+    .tree,
+    .rules-list,
+    .profile-list {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      min-height: 420px;
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .search {
+      margin-bottom: 12px;
+    }
+
+    .row,
+    .node,
+    .profile-item,
+    .rule-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 36px;
+      padding: 0 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .node-group {
+      padding: 8px 10px 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .node:hover,
+    .profile-item:hover,
+    .rule-item:hover,
+    .row:hover {
+      background: #f7f8fa;
+    }
+
+    .selected {
+      background: var(--accent-soft);
+      outline: 1px solid #cdddfd;
+    }
+
+    .swatch {
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      flex: 0 0 auto;
+    }
+
+    .name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .indent {
+      padding-left: 18px;
+    }
+
+    .preview {
+      height: 84px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #4b4b4b;
+    }
+
+    .color-layout {
+      display: grid;
+      grid-template-columns: 240px 36px 36px;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .wheel {
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background:
+        radial-gradient(circle at center, #fff 0 12%, transparent 13%),
+        conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+      position: relative;
+      margin: 0 auto;
+    }
+
+    .wheel::after {
+      content: "";
+      position: absolute;
+      inset: 28%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,255,255,0));
+    }
+
+    .pick {
+      position: absolute;
+      left: 49%;
+      top: 47%;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 1px solid #555;
+      z-index: 1;
+    }
+
+    .slider-vert {
+      width: 24px;
+      height: 220px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .slider-vert.value { background: linear-gradient(#ffffff, #000000); }
+    .slider-vert.opacity { background: linear-gradient(#e5e7eb, #9ca3af); }
+
+    .thumb {
+      position: absolute;
+      left: -2px;
+      width: 28px;
+      height: 12px;
+      border-radius: 999px;
+      background: var(--accent);
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    }
+
+    .thumb.mid { top: 132px; }
+    .thumb.top { top: 8px; }
+
+    .labels-top {
+      display: grid;
+      grid-template-columns: 240px 36px 36px;
+      gap: 16px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .fields {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field-row,
+    .simple-grid,
+    .bottom-name {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 12px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .field-row label,
+    .simple-grid label,
+    .bottom-name label,
+    .line-table label,
+    .form-grid label {
+      color: var(--muted);
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--field);
+      color: var(--text);
+      font: inherit;
+      padding: 0 10px;
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      border-color: #9ec2ff;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+
+    button {
+      height: 38px;
+      min-width: 82px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      font: inherit;
+      padding: 0 12px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #f7f8fa;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: white;
+      border-color: #2563eb;
+    }
+
+    button.primary:hover {
+      background: #2f76ea;
+    }
+
+    .btn-row,
+    .button-row-large {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .radio-row,
+    .check-row {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .radio,
+    .checkbox {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .dot,
+    .box {
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--border-strong);
+      background: white;
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .dot { border-radius: 50%; }
+    .box { border-radius: 4px; }
+
+    .radio.active .dot::after {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .checkbox.checked .box::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 5px;
+      height: 9px;
+      border: solid var(--accent);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .section-divider {
+      border-top: 1px solid var(--border);
+      margin: 14px 0;
+    }
+
+    .hslider-wrap {
+      display: grid;
+      gap: 8px;
+    }
+
+    .slider-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .slider-value {
+      color: var(--muted);
+    }
+
+    .hslider {
+      height: 24px;
+      position: relative;
+    }
+
+    .track {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 9px;
+      height: 6px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      border: 1px solid var(--border);
+    }
+
+    .knob {
+      position: absolute;
+      top: 3px;
+      left: 46%;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    }
+
+    .scale {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 90px 1fr 90px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .line-table {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 10px 12px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .rules-layout,
+    .profile-layout,
+    .icon-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .rule-group {
+      margin-bottom: 14px;
+    }
+
+    .rule-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 0 2px;
+    }
+
+    .rule-header strong {
+      flex: 1;
+      font-size: 13px;
+    }
+
+    .iconbtn {
+      min-width: 28px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+    }
+
+    .rule-pill {
+      flex: 1;
+      display: block;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .rule-pill.selected {
+      background: var(--accent-soft);
+      border-color: #cdddfd;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1100px) {
+      body { padding: 12px; }
+      .window { width: 100%; }
+      .layout,
+      .grid-2,
+      .rules-layout,
+      .profile-layout,
+      .icon-layout {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .labels-top,
+      .color-layout {
+        grid-template-columns: 1fr 36px 36px;
+      }
+      .wheel {
+        width: 200px;
+        height: 200px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <div class="title">vSMR Profile Editor</div>
+      <div class="title-actions">
+        <div class="circle"></div>
+        <div class="circle"></div>
+        <div class="circle"></div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-title">Sections</div>
+        <div class="nav">
+          <button class="nav-btn active" data-tab="colors">Colors</button>
+          <button class="nav-btn" data-tab="icon">Icon</button>
+          <button class="nav-btn" data-tab="tags">Tags</button>
+          <button class="nav-btn" data-tab="rules">Rules</button>
+          <button class="nav-btn" data-tab="profile">Profile</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="page active" id="colors">
+          <div class="topbar">
+            <div>
+              <div class="page-title">Colors</div>
+              <div class="page-subtitle">Select a color entry on the left and edit it on the right.</div>
+            </div>
+            <div class="actions">
+              <button class="primary">Apply</button>
+              <button>Reset</button>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-title">Color List</div>
+              <div class="search"><input type="text" placeholder="Search" /></div>
+              <div class="tree">
+                <div class="node-group">approach_insets</div>
+                <div class="node selected indent"><div class="name">background_color</div><div class="swatch" style="background:#4b4b4b"></div></div>
+                <div class="node indent"><div class="name">extended_lines_color</div><div class="swatch" style="background:#ffffff"></div></div>
+                <div class="node indent"><div class="name">runway_color</div><div class="swatch" style="background:#000000"></div></div>
+                <div class="node-group">labels</div>
+                <div class="node-group">rimcas</div>
+                <div class="node-group">targets</div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-title">Preview</div>
+                <div class="preview"></div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-title">Picker</div>
+                <div class="labels-top">
+                  <div>Color</div>
+                  <div>Value</div>
+                  <div>Opacity</div>
+                </div>
+                <div class="color-layout">
+                  <div class="wheel"><div class="pick"></div></div>
+                  <div class="slider-vert value"><div class="thumb mid"></div></div>
+                  <div class="slider-vert opacity"><div class="thumb top"></div></div>
+                </div>
+              </div>
+
+              <div class="panel fields">
+                <div class="field-row"><label>RGBA</label><input type="text" value="75,75,75,255" /></div>
+                <div class="field-row"><label>HEX</label><input type="text" value="#4B4B4BFF" /></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="icon">
+          <div class="topbar">
+            <div>
+              <div class="page-title">Icon</div>
+              <div class="page-subtitle">Choose a shape and adjust scale settings.</div>
+            </div>
+          </div>
+
+          <div class="icon-layout">
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-title">Shape</div>
+                <div class="radio-row">
+                  <span class="radio"><span class="dot"></span>Arrow</span>
+                  <span class="radio"><span class="dot"></span>Diamond</span>
+                  <span class="radio active"><span class="dot"></span>Realistic</span>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-title">Size</div>
+                <div class="checkbox"><span class="box"></span>Fixed Pixel</div>
+                <div class="section-divider"></div>
+                <div class="hslider-wrap">
+                  <div class="slider-label"><span>Fixed Size</span><span class="slider-value">1.00x</span></div>
+                  <div class="hslider"><div class="track"></div><div class="knob"></div></div>
+                  <div class="scale"><span>0.10x</span><span>1.00x</span><span>2.00x</span></div>
+                </div>
+                <div class="section-divider"></div>
+                <div class="checkbox"><span class="box"></span>Small Icon Boost</div>
+                <div class="section-divider"></div>
+                <div class="hslider-wrap">
+                  <div class="slider-label"><span>Boost Factor</span><span class="slider-value">1.00x</span></div>
+                  <div class="hslider"><div class="track"></div><div class="knob"></div></div>
+                  <div class="scale"><span>0.10x</span><span>1.00x</span><span>2.00x</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-title">Display</div>
+                <div class="simple-grid"><label>Resolution</label><select><option selected>1080p</option><option>1440p</option><option>4K</option></select></div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-title">Preview</div>
+                <div class="preview" style="background:#e5e7eb"></div>
+                <div class="hint">Simple split layout: controls on the left, preview on the right.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="tags">
+          <div class="topbar">
+            <div>
+              <div class="page-title">Tags</div>
+              <div class="page-subtitle">General settings first, then text definitions below.</div>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="panel">
+              <div class="panel-title">Options</div>
+              <div class="simple-grid"><label>Type</label><select><option selected>departure</option></select></div>
+              <div class="simple-grid" style="margin-top:10px"><label>Status</label><select><option selected>default</option></select></div>
+              <div class="form-grid" style="margin-top:10px">
+                <label>Add</label>
+                <select><option selected>callsign</option></select>
+                <button>Insert</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Definition</div>
+              <div class="line-table">
+                <label>L1</label><input type="text" value="b:callsign sctype" />
+                <label>L2</label><input type="text" value="" />
+                <label>L3</label><input type="text" value="" />
+                <label>L4</label><input type="text" value="" />
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Hover Details</div>
+              <div class="checkbox checked"><span class="box"></span>Custom Hover Details</div>
+              <div class="section-divider"></div>
+              <div class="line-table">
+                <label>L1</label><input type="text" value="b:callsign sctype" />
+                <label>L2</label><input type="text" value="asid deprwy" />
+                <label>L3</label><input type="text" value="" />
+                <label>L4</label><input type="text" value="" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="rules">
+          <div class="topbar">
+            <div>
+              <div class="page-title">Rules</div>
+              <div class="page-subtitle">Rule groups on the left, selected rule settings on the right.</div>
+            </div>
+            <div class="actions"><button>Add Rule</button></div>
+          </div>
+
+          <div class="rules-layout">
+            <div class="panel">
+              <div class="panel-title">Rule List</div>
+              <div class="rules-list">
+                <div class="rule-group">
+                  <div class="rule-header">
+                    <strong>CDM (2)</strong>
+                    <button class="iconbtn">+</button>
+                    <button class="iconbtn">×</button>
+                  </div>
+                  <div class="rule-item"><div class="rule-pill selected">SID.asid = any</div><button class="iconbtn">×</button></div>
+                  <div class="rule-item"><div class="rule-pill">VACDM.atot = any</div><button class="iconbtn">×</button></div>
+                </div>
+                <div class="rule-group">
+                  <div class="rule-header">
+                    <strong>Rule 2 (1)</strong>
+                    <button class="iconbtn">+</button>
+                    <button class="iconbtn">×</button>
+                  </div>
+                  <div class="rule-item"><div class="rule-pill">VACDM.tobt = any</div><button class="iconbtn">×</button></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel stack">
+              <div>
+                <div class="panel-title">Selected Rule</div>
+                <div class="hint">Edit the source, token and condition for the highlighted rule.</div>
+              </div>
+              <div class="simple-grid"><label>Source</label><select><option selected>SID</option></select></div>
+              <div class="simple-grid"><label>Token</label><select><option selected>asid</option></select></div>
+              <div class="simple-grid"><label>Condition</label><select><option selected>any</option></select></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="profile">
+          <div class="topbar">
+            <div>
+              <div class="page-title">Profile</div>
+              <div class="page-subtitle">Profiles on the left, actions and name on the right.</div>
+            </div>
+          </div>
+
+          <div class="profile-layout">
+            <div class="panel">
+              <div class="panel-title">Profiles</div>
+              <div class="profile-list">
+                <div class="profile-item">Default</div>
+                <div class="profile-item">Default Pro</div>
+                <div class="profile-item selected">Custom 1</div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-title">Name</div>
+                <div class="bottom-name">
+                  <label>Name</label>
+                  <input type="text" value="Custom 1" />
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-title">Actions</div>
+                <div class="button-row-large">
+                  <button class="primary">Add</button>
+                  <button>Duplicate</button>
+                  <button>Rename</button>
+                  <button>Delete</button>
+                </div>
+                <div class="hint">This layout is flatter and easier to rebuild in C++ using simple group boxes and split panels.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.nav-btn');
+    const pages = document.querySelectorAll('.page');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        pages.forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
