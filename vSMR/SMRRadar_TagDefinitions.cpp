@@ -1018,10 +1018,46 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["remark"] = "RMK";
 	previewMap["scratchpad"] = "...";
 
-	CRadarTarget sampleTarget = GetPlugIn()->RadarTargetSelectASEL();
+	auto readProfileBool = [&](const char* sectionKey, const char* fieldKey, bool defaultValue) -> bool
+	{
+		if (!CurrentConfig)
+			return defaultValue;
+
+		const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+		if (!profile.IsObject() || !profile.HasMember(sectionKey) || !profile[sectionKey].IsObject())
+			return defaultValue;
+
+		const rapidjson::Value& section = profile[sectionKey];
+		if (!section.HasMember(fieldKey) || !section[fieldKey].IsBool())
+			return defaultValue;
+
+		return section[fieldKey].GetBool();
+	};
+	auto readNestedProfileBool = [&](const char* sectionKey, const char* nestedObjectKey, const char* fieldKey, bool defaultValue) -> bool
+	{
+		if (!CurrentConfig)
+			return defaultValue;
+
+		const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+		if (!profile.IsObject() || !profile.HasMember(sectionKey) || !profile[sectionKey].IsObject())
+			return defaultValue;
+		const rapidjson::Value& section = profile[sectionKey];
+		if (!section.HasMember(nestedObjectKey) || !section[nestedObjectKey].IsObject())
+			return defaultValue;
+		const rapidjson::Value& nested = section[nestedObjectKey];
+		if (!nested.HasMember(fieldKey) || !nested[fieldKey].IsBool())
+			return defaultValue;
+		return nested[fieldKey].GetBool();
+	};
+
+	auto* plugin = GetPlugIn();
+	if (plugin == nullptr)
+		return previewMap;
+
+	CRadarTarget sampleTarget = plugin->RadarTargetSelectASEL();
 	if (!sampleTarget.IsValid())
 	{
-		for (CRadarTarget rt = GetPlugIn()->RadarTargetSelectFirst(); rt.IsValid(); rt = GetPlugIn()->RadarTargetSelectNext(rt))
+		for (CRadarTarget rt = plugin->RadarTargetSelectFirst(); rt.IsValid(); rt = plugin->RadarTargetSelectNext(rt))
 		{
 			sampleTarget = rt;
 			break;
@@ -1030,17 +1066,18 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 
 	if (sampleTarget.IsValid())
 	{
-		CFlightPlan fp = GetPlugIn()->FlightPlanSelect(sampleTarget.GetCallsign());
-		bool isAseL = (GetPlugIn()->RadarTargetSelectASEL().IsValid() && strcmp(GetPlugIn()->RadarTargetSelectASEL().GetCallsign(), sampleTarget.GetCallsign()) == 0);
+		CFlightPlan fp = plugin->FlightPlanSelect(sampleTarget.GetCallsign());
+		CRadarTarget aselTarget = plugin->RadarTargetSelectASEL();
+		bool isAseL = (aselTarget.IsValid() && strcmp(aselTarget.GetCallsign(), sampleTarget.GetCallsign()) == 0);
 		bool isCorrelated = IsCorrelated(fp, sampleTarget);
 		std::map<std::string, std::string> generated = GenerateTagData(
 			sampleTarget,
 			fp,
 			isAseL,
 			isCorrelated,
-			CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool(),
-			GetPlugIn()->GetTransitionAltitude(),
-			CurrentConfig->getActiveProfile()["labels"]["use_aspeed_for_gate"].GetBool(),
+			readNestedProfileBool("filters", "pro_mode", "enable", false),
+			plugin->GetTransitionAltitude(),
+			readProfileBool("labels", "use_aspeed_for_gate", false),
 			getActiveAirport());
 
 		for (const auto& kv : generated)
