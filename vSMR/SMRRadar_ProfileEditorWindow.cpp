@@ -63,6 +63,16 @@ namespace
 		return false;
 	}
 
+	std::string FindCanonicalProfileNameNoCase(const std::vector<std::string>& names, const std::string& name)
+	{
+		for (const std::string& profileName : names)
+		{
+			if (EqualsNoCase(profileName, name))
+				return profileName;
+		}
+		return "";
+	}
+
 	std::string MakeUniqueProfileName(const std::vector<std::string>& existingNames, const std::string& requestedName)
 	{
 		std::string baseName = TrimAsciiWhitespaceCopy(requestedName);
@@ -120,6 +130,23 @@ namespace
 		if (source.IsUint64()) { out.SetUint64(source.GetUint64()); return; }
 		if (source.IsDouble()) { out.SetDouble(source.GetDouble()); return; }
 		out.SetNull();
+	}
+
+	rapidjson::SizeType FindProfileIndexNoCase(const rapidjson::Document& document, const std::string& name)
+	{
+		const rapidjson::SizeType invalidIndex = static_cast<rapidjson::SizeType>(-1);
+		if (!document.IsArray())
+			return invalidIndex;
+
+		for (rapidjson::SizeType i = 0; i < document.Size(); ++i)
+		{
+			const rapidjson::Value& profile = document[i];
+			if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
+				continue;
+			if (EqualsNoCase(profile["name"].GetString(), name))
+				return i;
+		}
+		return invalidIndex;
 	}
 }
 
@@ -445,15 +472,7 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 		return false;
 
 	const std::vector<std::string> names = CurrentConfig->getAllProfiles();
-	std::string canonicalName;
-	for (const std::string& profileName : names)
-	{
-		if (EqualsNoCase(profileName, name))
-		{
-			canonicalName = profileName;
-			break;
-		}
-	}
+	const std::string canonicalName = FindCanonicalProfileNameNoCase(names, name);
 	if (canonicalName.empty())
 		return false;
 
@@ -523,22 +542,14 @@ bool CSMRRadar::RenameProfileForEditor(const std::string& oldName, const std::st
 			return false;
 	}
 
-	rapidjson::Value* target = nullptr;
-	for (rapidjson::SizeType i = 0; i < CurrentConfig->document.Size(); ++i)
-	{
-		rapidjson::Value& profile = CurrentConfig->document[i];
-		if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
-			continue;
-		if (EqualsNoCase(profile["name"].GetString(), oldName))
-		{
-			target = &profile;
-			break;
-		}
-	}
-	if (target == nullptr)
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, oldName);
+	if (targetIndex >= CurrentConfig->document.Size())
 		return false;
 
-	(*target)["name"].SetString(trimmedNewName.c_str(), static_cast<rapidjson::SizeType>(trimmedNewName.size()), CurrentConfig->document.GetAllocator());
+	CurrentConfig->document[targetIndex]["name"].SetString(
+		trimmedNewName.c_str(),
+		static_cast<rapidjson::SizeType>(trimmedNewName.size()),
+		CurrentConfig->document.GetAllocator());
 	if (!CurrentConfig->saveConfig())
 		return false;
 
@@ -566,18 +577,7 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 		return false;
 
 	const std::string activeBefore = CurrentConfig->getActiveProfileName();
-	rapidjson::SizeType removeIndex = CurrentConfig->document.Size();
-	for (rapidjson::SizeType i = 0; i < CurrentConfig->document.Size(); ++i)
-	{
-		const rapidjson::Value& profile = CurrentConfig->document[i];
-		if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
-			continue;
-		if (EqualsNoCase(profile["name"].GetString(), name))
-		{
-			removeIndex = i;
-			break;
-		}
-	}
+	const rapidjson::SizeType removeIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
 	if (removeIndex >= CurrentConfig->document.Size())
 		return false;
 
