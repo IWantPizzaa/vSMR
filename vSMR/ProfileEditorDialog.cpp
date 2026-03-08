@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <map>
 
 IMPLEMENT_DYNAMIC(CProfileEditorDialog, CDialogEx)
@@ -19,6 +20,7 @@ namespace
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
 	const COLORREF kEditorBorderColor = RGB(160, 160, 160);
 	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
+	const int kOffscreenPos = -5000;
 	const int kTabColors = 0;
 	const int kTabIcons = 1;
 	const int kTabTags = 2;
@@ -220,6 +222,21 @@ namespace
 			return "SID";
 		return "VACDM";
 	}
+
+	void MoveControlOffscreen(CWnd& control)
+	{
+		control.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	}
+
+	void ShowControls(const std::initializer_list<CWnd*>& controls, int showMode)
+	{
+		for (CWnd* control : controls)
+		{
+			if (control != nullptr && ::IsWindow(control->GetSafeHwnd()))
+				control->ShowWindow(showMode);
+		}
+	}
+
 
 
 	void HsvToRgb(double hue, double saturation, double value, int& outR, int& outG, int& outB)
@@ -1722,9 +1739,9 @@ void CProfileEditorDialog::PopulateRuleTokenCombo(const std::string& source, con
 	{
 		tokens = { "deprwy", "seprwy", "arvrwy", "srvrwy" };
 	}
-	else if (normalizedSource == "custom")
+	else if (normalizedSource == "custom" || normalizedSource == "sid")
 	{
-		tokens = { "asid", "ssid", "deprwy", "seprwy", "arvrwy", "srvrwy" };
+		tokens = { "asid", "ssid" };
 	}
 	else
 	{
@@ -1786,7 +1803,7 @@ void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source,
 	{
 		conditions = { "any", "set", "missing" };
 	}
-	else if (normalizedSource == "custom")
+	else if (normalizedSource == "custom" || normalizedSource == "sid")
 	{
 		conditions = { "any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A" };
 	}
@@ -2068,8 +2085,8 @@ void CProfileEditorDialog::LayoutControls()
 	BoostResolutionLabel.MoveWindow(iconContentLeft, iconY + 2, 100, rowHeight, TRUE);
 	iconY += rowHeight + 4;
 	BoostResolutionCombo.MoveWindow(iconContentLeft, iconY, iconContentWidth, rowHeight + 220, TRUE);
-	FixedScaleCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	BoostFactorCombo.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	MoveControlOffscreen(FixedScaleCombo);
+	MoveControlOffscreen(BoostFactorCombo);
 
 	const int rulesTop = pageRect.top + innerPad;
 	const int rulesPanelHeight = max(120, pageRect.Height() - (innerPad * 2));
@@ -2089,12 +2106,12 @@ void CProfileEditorDialog::LayoutControls()
 	const int ruleButtonAreaHeight = 44;
 	const int ruleListHeight = max(80, rulesPanelHeight - 36 - ruleButtonAreaHeight - 8);
 	const int ruleListWidth = max(90, rulesLeftWidth - 16);
-	RulesList.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	MoveControlOffscreen(RulesList);
 	RuleTree.MoveWindow(rulesLeft + 8, ruleListTop, ruleListWidth, ruleListHeight, TRUE);
 	const int ruleButtonsY = rulesTop + rulesPanelHeight - 38;
 	RuleAddButton.MoveWindow(rulesLeft + 12, ruleButtonsY, 84, buttonHeight, TRUE);
-	RuleAddParameterButton.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	RuleRemoveButton.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	MoveControlOffscreen(RuleAddParameterButton);
+	MoveControlOffscreen(RuleRemoveButton);
 
 	int rulesY = rulesTop + 44;
 	const int rulesLabelWidth = 120;
@@ -2274,8 +2291,8 @@ void CProfileEditorDialog::LayoutControls()
 	TagDetailedLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
 
 	// Keep live preview generated, but hidden to match the compact editor layout.
-	TagPreviewLabel.MoveWindow(-5000, -5000, 10, 10, TRUE);
-	TagPreviewEdit.MoveWindow(-5000, -5000, 10, 10, TRUE);
+	MoveControlOffscreen(TagPreviewLabel);
+	MoveControlOffscreen(TagPreviewEdit);
 
 	UpdatePageVisibility();
 }
@@ -2390,15 +2407,12 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleColorPreviewSwatch.ShowWindow(ruleEffectShowMode);
 	RuleColorApplyButton.ShowWindow(ruleEffectShowMode);
 	RuleColorResetButton.ShowWindow(ruleEffectShowMode);
-	ProfilePanel.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileHeader.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileList.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileNameLabel.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileNameEdit.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileAddButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileDuplicateButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileRenameButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
-	ProfileDeleteButton.ShowWindow(showProfile ? SW_SHOW : SW_HIDE);
+	ShowControls(
+	{
+		&ProfilePanel, &ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit,
+		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton
+	},
+	showProfile ? SW_SHOW : SW_HIDE);
 
 	TagPanel.ShowWindow(tagShowMode);
 	TagHeaderPanel.ShowWindow(tagShowMode);
