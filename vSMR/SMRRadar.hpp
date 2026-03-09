@@ -340,6 +340,8 @@ public:
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
 	bool GetTagDefinitionDetailedSameAsDefinition() const;
 	bool SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk);
+	bool GetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status) const;
+	bool SetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status, bool sameAsDefinition, bool persistToDisk);
 	void GetTagDefinitionEditorContext(std::string& type, bool& detailed, std::string& status) const;
 	void SetTagDefinitionEditorContext(const std::string& type, bool detailed, const std::string& status);
 	std::string GetTagEditorTargetColorPath() const;

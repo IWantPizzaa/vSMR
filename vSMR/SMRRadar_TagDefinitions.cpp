@@ -601,6 +601,119 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, 
 	return true;
 }
 
+bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status) const
+{
+	if (!CurrentConfig)
+		return GetTagDefinitionDetailedSameAsDefinition();
+
+	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject())
+		return GetTagDefinitionDetailedSameAsDefinition();
+
+	const rapidjson::Value& labels = profile["labels"];
+	const std::string normalizedType = NormalizeTagDefinitionType(type);
+	std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(status);
+	if (!IsTagDefinitionStatusAllowedForType(normalizedType, normalizedStatus))
+		normalizedStatus = "default";
+
+	if (!labels.HasMember(normalizedType.c_str()) || !labels[normalizedType.c_str()].IsObject())
+		return GetTagDefinitionDetailedSameAsDefinition();
+
+	const rapidjson::Value& section = labels[normalizedType.c_str()];
+	const char* key = "definition_detailed_same_as_definition";
+	if (normalizedStatus != "default")
+	{
+		if (section.HasMember("status_definitions") &&
+			section["status_definitions"].IsObject() &&
+			section["status_definitions"].HasMember(normalizedStatus.c_str()) &&
+			section["status_definitions"][normalizedStatus.c_str()].IsObject())
+		{
+			const rapidjson::Value& statusSection = section["status_definitions"][normalizedStatus.c_str()];
+			if (statusSection.HasMember(key) && statusSection[key].IsBool())
+				return statusSection[key].GetBool();
+		}
+	}
+
+	if (section.HasMember(key) && section[key].IsBool())
+		return section[key].GetBool();
+
+	return GetTagDefinitionDetailedSameAsDefinition();
+}
+
+bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(
+	const std::string& type,
+	const std::string& status,
+	bool sameAsDefinition,
+	bool persistToDisk)
+{
+	if (!CurrentConfig)
+		return false;
+
+	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	auto ensureObjectMember = [&](rapidjson::Value& parent, const char* key) -> rapidjson::Value&
+	{
+		if (!parent.HasMember(key) || !parent[key].IsObject())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			rapidjson::Value keyValue;
+			keyValue.SetString(key, allocator);
+			rapidjson::Value objectValue(rapidjson::kObjectType);
+			parent.AddMember(keyValue, objectValue, allocator);
+		}
+		return parent[key];
+	};
+
+	rapidjson::Value& labels = ensureObjectMember(profile, "labels");
+	const std::string normalizedType = NormalizeTagDefinitionType(type);
+	std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(status);
+	if (!IsTagDefinitionStatusAllowedForType(normalizedType, normalizedStatus))
+		normalizedStatus = "default";
+
+	rapidjson::Value& section = ensureObjectMember(labels, normalizedType.c_str());
+	rapidjson::Value* targetSection = &section;
+	if (normalizedStatus != "default")
+	{
+		rapidjson::Value& statusDefs = ensureObjectMember(section, "status_definitions");
+		targetSection = &ensureObjectMember(statusDefs, normalizedStatus.c_str());
+	}
+
+	const char* key = "definition_detailed_same_as_definition";
+	bool changed = false;
+	if (!targetSection->HasMember(key) || !(*targetSection)[key].IsBool())
+	{
+		if (targetSection->HasMember(key))
+			targetSection->RemoveMember(key);
+		rapidjson::Value keyValue;
+		keyValue.SetString(key, allocator);
+		rapidjson::Value value(sameAsDefinition);
+		targetSection->AddMember(keyValue, value, allocator);
+		changed = true;
+	}
+	else if ((*targetSection)[key].GetBool() != sameAsDefinition)
+	{
+		(*targetSection)[key].SetBool(sameAsDefinition);
+		changed = true;
+	}
+
+	if (changed)
+	{
+		RequestRefresh();
+		if (persistToDisk && !CurrentConfig->saveConfig())
+		{
+			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save detailed-definition mode to vSMR_Profiles.json", true, true, false, false, false);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 void CSMRRadar::GetTagDefinitionEditorContext(std::string& type, bool& detailed, std::string& status) const
 {
 	type = NormalizeTagDefinitionType(TagDefinitionEditorType);

@@ -236,6 +236,34 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		LabelsSettings.HasMember("definition_detailed_same_as_definition") &&
 		LabelsSettings["definition_detailed_same_as_definition"].IsBool() &&
 		LabelsSettings["definition_detailed_same_as_definition"].GetBool();
+	const auto isDetailedSameAsDefinitionForContext = [&](const std::string& tagTypeKey, const char* statusDefinitionKey) -> bool
+	{
+		if (!LabelsSettings.IsObject() ||
+			!LabelsSettings.HasMember(tagTypeKey.c_str()) ||
+			!LabelsSettings[tagTypeKey.c_str()].IsObject())
+		{
+			return tagDetailedSameAsDefinition;
+		}
+
+		const Value& labelSection = LabelsSettings[tagTypeKey.c_str()];
+		const char* key = "definition_detailed_same_as_definition";
+
+		if (statusDefinitionKey != nullptr &&
+			labelSection.HasMember("status_definitions") &&
+			labelSection["status_definitions"].IsObject() &&
+			labelSection["status_definitions"].HasMember(statusDefinitionKey) &&
+			labelSection["status_definitions"][statusDefinitionKey].IsObject())
+		{
+			const Value& statusSection = labelSection["status_definitions"][statusDefinitionKey];
+			if (statusSection.HasMember(key) && statusSection[key].IsBool())
+				return statusSection[key].GetBool();
+		}
+
+		if (labelSection.HasMember(key) && labelSection[key].IsBool())
+			return labelSection[key].GetBool();
+
+		return tagDetailedSameAsDefinition;
+	};
 	const bool useAspeedForGate = LabelsSettings["use_aspeed_for_gate"].GetBool();
 	const bool airborneUseDepartureArrivalColoring =
 		LabelsSettings.HasMember("airborne") &&
@@ -392,7 +420,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		const Value& labelSection = LabelsSettings[tagTypeKey.c_str()];
 		const bool useDetailedDefinition =
 			isTagDetailled &&
-			!tagDetailedSameAsDefinition &&
+			!isDetailedSameAsDefinitionForContext(tagTypeKey, statusDefinitionKey) &&
 			labelSection.HasMember("definitionDetailled");
 		const char* configKey = useDetailedDefinition ? "definitionDetailled" : "definition";
 		auto resolveLabelLines = [&](const char* definitionKey) -> const Value*
