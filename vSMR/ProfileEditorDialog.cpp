@@ -3,6 +3,7 @@
 #include "SMRRadar.hpp"
 #include "afxdialogex.h"
 #include "Logger.h"
+#include <shellapi.h>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -323,6 +324,26 @@ namespace
 			if (control != nullptr && ::IsWindow(control->GetSafeHwnd()))
 				control->ShowWindow(showMode);
 		}
+	}
+
+	int MeasureWrappedStaticHeight(CWnd& control, int width)
+	{
+		if (!::IsWindow(control.GetSafeHwnd()))
+			return 0;
+
+		CString text;
+		control.GetWindowText(text);
+		if (text.IsEmpty())
+			return 0;
+
+		CClientDC dc(&control);
+		CFont* font = control.GetFont();
+		CFont* oldFont = (font != nullptr) ? dc.SelectObject(font) : nullptr;
+		CRect textRect(0, 0, max(1, width), 0);
+		dc.DrawText(text, &textRect, DT_LEFT | DT_WORDBREAK | DT_CALCRECT);
+		if (oldFont != nullptr)
+			dc.SelectObject(oldFont);
+		return textRect.Height();
 	}
 
 
@@ -1196,6 +1217,12 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		pDC->SetTextColor(controlId == IDC_PE_SIDEBAR_TITLE ? RGB(92, 101, 116) : RGB(17, 24, 39));
 		return static_cast<HBRUSH>(SidebarBrush.GetSafeHandle());
 	}
+	if ((controlId == IDC_PE_PROFILE_REPO_LINK || controlId == IDC_PE_PROFILE_COFFEE_LINK) && HeaderBarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorThemeBackgroundColor);
+		pDC->SetTextColor(RGB(47, 94, 182));
+		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+	}
 	const bool useColorThemeBackground = [&]()
 	{
 		switch (controlId)
@@ -1260,6 +1287,9 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_PROFILE_PANEL:
 		case IDC_PE_PROFILE_HEADER:
 		case IDC_PE_PROFILE_NAME_LABEL:
+		case IDC_PE_PROFILE_INFO_PANEL:
+		case IDC_PE_PROFILE_INFO_HEADER:
+		case IDC_PE_PROFILE_INFO_BODY:
 		case IDC_PE_TAG_PANEL:
 		case IDC_PE_TAG_HEADER_PANEL:
 		case IDC_PE_TAG_TYPE_LABEL:
@@ -1820,41 +1850,10 @@ void CProfileEditorDialog::OnPaint()
 	}
 	else if (selectedTab == kTabProfile)
 	{
-		if (::IsWindow(ProfileHeader.GetSafeHwnd()) && ::IsWindow(ProfileList.GetSafeHwnd()))
-		{
-			CRect leftTop;
-			ProfileHeader.GetWindowRect(&leftTop);
-			ScreenToClient(&leftTop);
-			CRect leftBottom;
-			ProfileList.GetWindowRect(&leftBottom);
-			ScreenToClient(&leftBottom);
-			CRect leftCard(
-				leftTop.left - 1,
-				leftTop.top - 6,
-				leftTop.right + 1,
-				leftBottom.bottom + 14);
-			drawCardRect(leftCard, false);
-		}
-
-		if (::IsWindow(ProfileList.GetSafeHwnd()) && ::IsWindow(ProfileNameLabel.GetSafeHwnd()) && ::IsWindow(ProfileDeleteButton.GetSafeHwnd()))
-		{
-			CRect contentRect;
-			ProfileList.GetWindowRect(&contentRect);
-			ScreenToClient(&contentRect);
-			CRect nameRect;
-			ProfileNameLabel.GetWindowRect(&nameRect);
-			ScreenToClient(&nameRect);
-			CRect buttonsRect;
-			ProfileDeleteButton.GetWindowRect(&buttonsRect);
-			ScreenToClient(&buttonsRect);
-			CRect mergedCard(
-				contentRect.left - 1,
-				nameRect.top - 14,
-				contentRect.right + 1,
-				buttonsRect.bottom + 14);
-			drawCardRect(mergedCard, false);
-		}
+		drawCard(ProfilePanel, false);
+		drawCard(ProfileInfoPanel, false);
 		maskHeaderTextBackground(ProfileHeader);
+		maskHeaderTextBackground(ProfileInfoHeader);
 		drawEditShell(ProfileNameEdit);
 	}
 
@@ -2003,6 +2002,26 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileDuplicateButton.Create("Duplicate", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DUPLICATE_BUTTON);
 	ProfileRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_RENAME_BUTTON);
 	ProfileDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DELETE_BUTTON);
+	ProfileInfoPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_PANEL);
+	ProfileInfoHeader.Create("About", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_HEADER);
+	ProfileInfoBody.Create(
+		"Thank you for using this plugin.\r\n\r\nIf you notice a bug or issue, please report it on the repository.\r\nIf you want to support the project, you can also use the link below.",
+		WS_CHILD | WS_VISIBLE,
+		CRect(0, 0, 0, 0),
+		this,
+		IDC_PE_PROFILE_INFO_BODY);
+	ProfileRepoLink.Create(
+		"https://github.com/IWantPizzaa/vSMR",
+		WS_CHILD | WS_VISIBLE | SS_NOTIFY,
+		CRect(0, 0, 0, 0),
+		this,
+		IDC_PE_PROFILE_REPO_LINK);
+	ProfileCoffeeLink.Create(
+		"https://buymeacoffee.com/i_want_pizzaa",
+		WS_CHILD | WS_VISIBLE | SS_NOTIFY,
+		CRect(0, 0, 0, 0),
+		this,
+		IDC_PE_PROFILE_COFFEE_LINK);
 	RulesList.SetItemHeight(0, 28);
 	ProfileList.SetItemHeight(0, 26);
 	RuleTree.SetIndent(16);
@@ -2062,6 +2081,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	softenPanelBorder(RuleLeftPanel);
 	softenPanelBorder(RuleRightPanel);
 	softenPanelBorder(ProfilePanel);
+	softenPanelBorder(ProfileInfoPanel);
 	softenPanelBorder(TagPanel);
 
 	auto removeNativeBorder = [](CEdit& edit)
@@ -2193,6 +2213,9 @@ void CProfileEditorDialog::CreateEditorControls()
 		LOGFONT uniformLf = lf;
 		uniformLf.lfHeight = lf.lfHeight - 2;
 		UniformUiFont.CreateFontIndirect(&uniformLf);
+		LOGFONT linkLf = uniformLf;
+		linkLf.lfUnderline = TRUE;
+		LinkFont.CreateFontIndirect(&linkLf);
 		LOGFONT monoLf = lf;
 		strcpy_s(monoLf.lfFaceName, LF_FACESIZE, "Consolas");
 		MonoFont.CreateFontIndirect(&monoLf);
@@ -2226,6 +2249,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		RuleLeftHeader.SetFont(&SectionHeaderFont, TRUE);
 		RuleRightHeader.SetFont(&SectionHeaderFont, TRUE);
 		ProfileHeader.SetFont(&SectionHeaderFont, TRUE);
+		ProfileInfoHeader.SetFont(&SectionHeaderFont, TRUE);
 		TagHeaderPanel.SetFont(&SectionHeaderFont, TRUE);
 		IconShapeHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconSizeHeader.SetFont(&SectionHeaderFont, TRUE);
@@ -2242,6 +2266,11 @@ void CProfileEditorDialog::CreateEditorControls()
 				if (::IsWindow(child->GetSafeHwnd()))
 					child->SetFont(uniformFont, TRUE);
 			}
+		}
+		if (LinkFont.GetSafeHandle() != nullptr)
+		{
+			ProfileRepoLink.SetFont(&LinkFont, TRUE);
+			ProfileCoffeeLink.SetFont(&LinkFont, TRUE);
 		}
 	}
 	ApplyThemedEditBorders();
@@ -3015,32 +3044,46 @@ void CProfileEditorDialog::LayoutControls()
 	RuleColorApplyButton.MoveWindow(ruleActionLeft, effectY, actionButtonWidth, buttonHeight, TRUE);
 	RuleColorResetButton.MoveWindow(ruleActionLeft + actionButtonWidth + actionButtonGap, effectY, actionButtonWidth, buttonHeight, TRUE);
 
-	const int profileLeft = pageRect.left + innerPad;
+	const int profilePageLeft = pageRect.left + innerPad;
 	const int profileTop = pageRect.top + innerPad;
-	const int profileWidth = max(240, pageRect.Width() - (innerPad * 2));
-	const int profileHeight = max(140, pageRect.Height() - (innerPad * 2));
-	ProfilePanel.MoveWindow(profileLeft, profileTop, profileWidth, profileHeight, TRUE);
+	const int profileGap = 18;
+	const int profilePageWidth = max(240, pageRect.Width() - (innerPad * 2));
+	const int profileHeight = max(180, pageRect.Height() - (innerPad * 2));
+	const int profileLeftWidth = max(180, (profilePageWidth - profileGap) / 2);
+	const int profileRightWidth = max(180, profilePageWidth - profileLeftWidth - profileGap);
+	const int profileInfoLeft = profilePageLeft + profileLeftWidth + profileGap;
+	ProfilePanel.MoveWindow(profilePageLeft, profileTop, profileLeftWidth, profileHeight, TRUE);
+	ProfileInfoPanel.MoveWindow(profileInfoLeft, profileTop, profileRightWidth, profileHeight, TRUE);
 
-	ProfileHeader.MoveWindow(profileLeft + 10, profileTop + 14, max(60, profileWidth - 20), 24, TRUE);
-	const int profileLeftContentLeft = profileLeft + 12;
+	ProfileHeader.MoveWindow(profilePageLeft + 10, profileTop + 14, max(60, profileLeftWidth - 20), 24, TRUE);
+	const int profileLeftContentLeft = profilePageLeft + 12;
 	const int profileLeftContentTop = profileTop + 46;
-	const int profileLeftContentWidth = max(180, profileWidth - 24);
-	const int profileDetailCardHeight = 132;
-	const int profileListHeight = max(80, profileHeight - 52 - profileDetailCardHeight - 16);
+	const int profileLeftContentWidth = max(180, profileLeftWidth - 24);
+	const int profileFooterHeight = buttonHeight + rowHeight + 48;
+	const int profileListHeight = max(100, profileHeight - 52 - profileFooterHeight);
 	ProfileList.MoveWindow(profileLeftContentLeft, profileLeftContentTop, profileLeftContentWidth, profileListHeight, TRUE);
 
 	const int profileDetailsTop = profileLeftContentTop + profileListHeight + 18;
-	ProfileNameLabel.MoveWindow(profileLeftContentLeft + 12, profileDetailsTop + 14, 56, rowHeight, TRUE);
-	ProfileNameEdit.MoveWindow(profileLeftContentLeft + 12 + 56 + 10, profileDetailsTop + 10, max(140, profileLeftContentWidth - 90), rowHeight, TRUE);
+	ProfileNameLabel.MoveWindow(profileLeftContentLeft + 12, profileDetailsTop + 10, 56, rowHeight, TRUE);
+	ProfileNameEdit.MoveWindow(profileLeftContentLeft + 12 + 56 + 10, profileDetailsTop + 6, max(140, profileLeftContentWidth - 90), rowHeight, TRUE);
 
 	const int profileButtonWidth = max(78, min(actionButtonWidth, (profileLeftContentWidth - (actionButtonGap * 3)) / 4));
 	const int profileButtonsTotalWidth = (profileButtonWidth * 4) + (actionButtonGap * 3);
 	const int profileButtonsLeft = profileLeftContentLeft + max(0, (profileLeftContentWidth - profileButtonsTotalWidth) / 2);
-	const int profileButtonsTop = profileDetailsTop + 58;
+	const int profileButtonsTop = profileDetailsTop + 48;
 	ProfileAddButton.MoveWindow(profileButtonsLeft, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 	ProfileDuplicateButton.MoveWindow(profileButtonsLeft + profileButtonWidth + actionButtonGap, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 	ProfileRenameButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 2, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 	ProfileDeleteButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 3, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
+
+	const int profileInfoContentLeft = profileInfoLeft + 14;
+	const int profileInfoContentWidth = max(140, profileRightWidth - 28);
+	ProfileInfoHeader.MoveWindow(profileInfoContentLeft, profileTop + 14, profileInfoContentWidth, rowHeight, TRUE);
+	const int profileInfoBodyHeight = max(rowHeight * 4, MeasureWrappedStaticHeight(ProfileInfoBody, profileInfoContentWidth));
+	ProfileInfoBody.MoveWindow(profileInfoContentLeft, profileTop + 46, profileInfoContentWidth, profileInfoBodyHeight + 4, TRUE);
+	const int profileLinksTop = profileTop + 46 + profileInfoBodyHeight + 12;
+	ProfileRepoLink.MoveWindow(profileInfoContentLeft, profileLinksTop, profileInfoContentWidth, rowHeight, TRUE);
+	ProfileCoffeeLink.MoveWindow(profileInfoContentLeft, profileLinksTop + 28, profileInfoContentWidth, rowHeight, TRUE);
 
 	// Keep live preview generated, but hidden to match the compact editor layout.
 	MoveControlOffscreen(TagPreviewLabel);
@@ -3072,7 +3115,7 @@ void CProfileEditorDialog::UpdatePageVisibility()
 		break;
 	case kTabProfile:
 		PageTitleLabel.SetWindowTextA("Profiles");
-		PageSubtitleLabel.SetWindowTextA("Profiles on top, name and actions below.");
+		PageSubtitleLabel.SetWindowTextA("Manage profiles on the left and find support info on the right.");
 		break;
 	default:
 		PageTitleLabel.SetWindowTextA("Profile Editor");
@@ -3214,10 +3257,12 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	ShowControls(
 	{
 		&ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit,
-		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton
+		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton,
+		&ProfileInfoHeader, &ProfileInfoBody, &ProfileRepoLink, &ProfileCoffeeLink
 	},
 	showProfile ? SW_SHOW : SW_HIDE);
 	ProfilePanel.ShowWindow(SW_HIDE);
+	ProfileInfoPanel.ShowWindow(SW_HIDE);
 
 	TagPanel.ShowWindow(SW_HIDE);
 	TagHeaderPanel.ShowWindow(tagShowMode);
@@ -5154,6 +5199,32 @@ void CProfileEditorDialog::OnProfileDeleteClicked()
 	UpdatePageVisibility();
 }
 
+void CProfileEditorDialog::OnProfileRepoLinkClicked()
+{
+	const HINSTANCE result = ::ShellExecuteA(
+		GetSafeHwnd(),
+		"open",
+		"https://github.com/IWantPizzaa/vSMR",
+		nullptr,
+		nullptr,
+		SW_SHOWNORMAL);
+	if (reinterpret_cast<INT_PTR>(result) <= 32)
+		AfxMessageBox("Unable to open the repository link.", MB_ICONWARNING | MB_OK);
+}
+
+void CProfileEditorDialog::OnProfileCoffeeLinkClicked()
+{
+	const HINSTANCE result = ::ShellExecuteA(
+		GetSafeHwnd(),
+		"open",
+		"https://buymeacoffee.com/i_want_pizzaa",
+		nullptr,
+		nullptr,
+		SW_SHOWNORMAL);
+	if (reinterpret_cast<INT_PTR>(result) <= 32)
+		AfxMessageBox("Unable to open the support link.", MB_ICONWARNING | MB_OK);
+}
+
 void CProfileEditorDialog::SelectRuleColorEditorTarget(UINT swatchControlId)
 {
 	CButton* checkBox = nullptr;
@@ -6149,6 +6220,8 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_PROFILE_DUPLICATE_BUTTON, &CProfileEditorDialog::OnProfileDuplicateClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_RENAME_BUTTON, &CProfileEditorDialog::OnProfileRenameClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_DELETE_BUTTON, &CProfileEditorDialog::OnProfileDeleteClicked)
+	ON_STN_CLICKED(IDC_PE_PROFILE_REPO_LINK, &CProfileEditorDialog::OnProfileRepoLinkClicked)
+	ON_STN_CLICKED(IDC_PE_PROFILE_COFFEE_LINK, &CProfileEditorDialog::OnProfileCoffeeLinkClicked)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_STATUS_COMBO, &CProfileEditorDialog::OnTagStatusChanged)
 	ON_BN_CLICKED(IDC_PE_TAG_TOKEN_ADD_BUTTON, &CProfileEditorDialog::OnTagAddTokenClicked)

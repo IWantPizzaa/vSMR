@@ -76,6 +76,8 @@ protected:
 	afx_msg void OnProfileDuplicateClicked();
 	afx_msg void OnProfileRenameClicked();
 	afx_msg void OnProfileDeleteClicked();
+	afx_msg void OnProfileRepoLinkClicked();
+	afx_msg void OnProfileCoffeeLinkClicked();
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnRuleColorWheelTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRuleColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
@@ -245,6 +247,11 @@ private:
 		, IDC_PE_ICON_RES_4K = 9264
 		, IDC_PE_TAG_DEFINITION_EDIT = 9265
 		, IDC_PE_TAG_DETAILED_EDIT = 9266
+		, IDC_PE_PROFILE_INFO_PANEL = 9267
+		, IDC_PE_PROFILE_INFO_HEADER = 9268
+		, IDC_PE_PROFILE_INFO_BODY = 9269
+		, IDC_PE_PROFILE_REPO_LINK = 9270
+		, IDC_PE_PROFILE_COFFEE_LINK = 9271
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -372,6 +379,11 @@ private:
 	CButton ProfileDuplicateButton;
 	CButton ProfileRenameButton;
 	CButton ProfileDeleteButton;
+	CStatic ProfileInfoPanel;
+	CStatic ProfileInfoHeader;
+	CStatic ProfileInfoBody;
+	CStatic ProfileRepoLink;
+	CStatic ProfileCoffeeLink;
 
 	CStatic TagTypeLabel;
 	CStatic TagPanel;
@@ -438,6 +450,7 @@ private:
 	CFont TitleFont;
 	CFont SectionHeaderFont;
 	CFont UniformUiFont;
+	CFont LinkFont;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
