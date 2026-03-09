@@ -3658,7 +3658,7 @@ void CProfileEditorDialog::RebuildRulesList()
 		const std::string ruleName = CleanRuleDisplayName(rule.name, static_cast<int>(i + 1));
 		CString ruleLabel;
 		const int conditionCount = rule.criteria.empty() ? 1 : static_cast<int>(rule.criteria.size());
-		ruleLabel.Format("%s  (%d)", ruleName.c_str(), conditionCount);
+		ruleLabel.Format("  %s  (%d)", ruleName.c_str(), conditionCount);
 		const HTREEITEM ruleItem = RuleTree.InsertItem(ruleLabel);
 		RuleTreeSelectionMap[ruleItem] = std::make_pair(static_cast<int>(i), -1);
 
