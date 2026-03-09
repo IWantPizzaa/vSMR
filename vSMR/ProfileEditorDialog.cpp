@@ -1988,6 +1988,9 @@ void CProfileEditorDialog::CreateEditorControls()
 		LOGFONT sectionLf = lf;
 		sectionLf.lfWeight = FW_BOLD;
 		SectionHeaderFont.CreateFontIndirect(&sectionLf);
+		LOGFONT uniformLf = lf;
+		uniformLf.lfHeight = lf.lfHeight - 2;
+		UniformUiFont.CreateFontIndirect(&uniformLf);
 		LOGFONT monoLf = lf;
 		strcpy_s(monoLf.lfFaceName, LF_FACESIZE, "Consolas");
 		MonoFont.CreateFontIndirect(&monoLf);
@@ -2026,6 +2029,18 @@ void CProfileEditorDialog::CreateEditorControls()
 		IconSizeHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconDisplayHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconPreviewHeader.SetFont(&SectionHeaderFont, TRUE);
+
+		// Use one consistent font everywhere in the profile editor:
+		// match the font used by text editor fields.
+		CFont* uniformFont = (UniformUiFont.GetSafeHandle() != nullptr) ? &UniformUiFont : GetFont();
+		if (uniformFont != nullptr)
+		{
+			for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
+			{
+				if (::IsWindow(child->GetSafeHwnd()))
+					child->SetFont(uniformFont, TRUE);
+			}
+		}
 	}
 	ApplyThemedEditBorders();
 	ControlsCreated = true;
