@@ -2164,43 +2164,8 @@ void CProfileEditorDialog::ApplyThemedEditBorders()
 
 void CProfileEditorDialog::ApplyThemedComboBorders()
 {
-	auto attachBorder = [](CComboBox& combo)
-	{
-		const HWND hwnd = combo.GetSafeHwnd();
-		if (!::IsWindow(hwnd))
-			return;
-
-		combo.ModifyStyle(WS_BORDER, 0);
-		combo.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
-		combo.SetWindowPos(nullptr, 0, 0, 0, 0,
-			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-
-		if (gThemedComboOldProcs.find(hwnd) != gThemedComboOldProcs.end())
-		{
-			DrawThemedBorder(hwnd);
-			return;
-		}
-
-		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ThemedComboWndProc)));
-		if (oldProc == nullptr)
-			return;
-
-		gThemedComboOldProcs[hwnd] = oldProc;
-		DrawThemedBorder(hwnd);
-	};
-
-	attachBorder(FixedScaleCombo);
-	attachBorder(BoostFactorCombo);
-	attachBorder(BoostResolutionCombo);
-	attachBorder(RuleSourceCombo);
-	attachBorder(RuleTokenCombo);
-	attachBorder(RuleConditionCombo);
-	attachBorder(RuleTypeCombo);
-	attachBorder(RuleStatusCombo);
-	attachBorder(RuleDetailCombo);
-	attachBorder(TagTypeCombo);
-	attachBorder(TagStatusCombo);
-	attachBorder(TagTokenCombo);
+	// Keep native combo rendering. The custom border subclass causes
+	// paint artifacts in the closed state for dropdown controls.
 }
 
 void CProfileEditorDialog::SetEditTextPreserveCaret(CEdit& edit, const std::string& text)
