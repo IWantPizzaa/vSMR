@@ -52,7 +52,6 @@ protected:
 	afx_msg void OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnNavColorsClicked();
 	afx_msg void OnNavIconClicked();
-	afx_msg void OnNavTagsClicked();
 	afx_msg void OnNavRulesClicked();
 	afx_msg void OnNavProfileClicked();
 	afx_msg void OnIconStyleChanged();
@@ -259,7 +258,6 @@ private:
 	CStatic SidebarDivider;
 	CButton NavColorsButton;
 	CButton NavIconButton;
-	CButton NavTagsButton;
 	CButton NavRulesButton;
 	CButton NavProfileButton;
 	CStatic PageTitleLabel;

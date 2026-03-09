@@ -33,9 +33,8 @@ namespace
 	const int kOffscreenPos = -5000;
 	const int kTabColors = 0;
 	const int kTabIcons = 1;
-	const int kTabTags = 2;
-	const int kTabRules = 3;
-	const int kTabProfile = 4;
+	const int kTabRules = 2;
+	const int kTabProfile = 3;
 	std::map<HWND, WNDPROC> gThemedEditOldProcs;
 	std::map<HWND, WNDPROC> gThemedComboOldProcs;
 	std::map<HWND, WNDPROC> gColorWheelOldProcs;
@@ -842,7 +841,12 @@ void CProfileEditorDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 	if (lpMMI == nullptr)
 		return;
 
-	lpMMI->ptMinTrackSize.x = 920;
+	const int sidebarWidth = 108;
+	const int mainPad = 18;
+	const int innerPad = 16;
+	const int splitGap = 16;
+	const int minIconsColumnWidth = 280;
+	lpMMI->ptMinTrackSize.x = sidebarWidth + (mainPad * 2) + (innerPad * 2) + splitGap + (minIconsColumnWidth * 2);
 	lpMMI->ptMinTrackSize.y = 700;
 }
 
@@ -1285,7 +1289,6 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		(controlId == IDC_PE_TAG_TOKEN_ADD_BUTTON) ||
 		(controlId == IDC_PE_NAV_COLORS) ||
 		(controlId == IDC_PE_NAV_ICON) ||
-		(controlId == IDC_PE_NAV_TAGS) ||
 		(controlId == IDC_PE_NAV_RULES) ||
 		(controlId == IDC_PE_NAV_PROFILE);
 	if (isModernPushButton)
@@ -1303,7 +1306,6 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		const bool isSidebarNavButton =
 			(controlId == IDC_PE_NAV_COLORS) ||
 			(controlId == IDC_PE_NAV_ICON) ||
-			(controlId == IDC_PE_NAV_TAGS) ||
 			(controlId == IDC_PE_NAV_RULES) ||
 			(controlId == IDC_PE_NAV_PROFILE);
 		memDc.FillSolidRect(&localOuter, isSidebarNavButton ? kEditorSidebarBackgroundColor : kEditorThemeBackgroundColor);
@@ -1321,7 +1323,6 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 			bool isActive = false;
 			if (controlId == IDC_PE_NAV_COLORS) isActive = (selectedTab == kTabColors);
 			if (controlId == IDC_PE_NAV_ICON) isActive = (selectedTab == kTabIcons);
-			if (controlId == IDC_PE_NAV_TAGS) isActive = (selectedTab == kTabTags);
 			if (controlId == IDC_PE_NAV_RULES) isActive = (selectedTab == kTabRules);
 			if (controlId == IDC_PE_NAV_PROFILE) isActive = (selectedTab == kTabProfile);
 			if (isActive)
@@ -1674,17 +1675,12 @@ void CProfileEditorDialog::OnPaint()
 		drawCard(IconShapePanel, false);
 		drawCard(IconPanel, false);
 		drawCard(IconDisplayPanel, false);
-		drawCard(IconPreviewPanel, false);
-		drawCard(IconPreviewSwatch, true);
+		drawCard(TagPanel, false);
 	}
 	else if (selectedTab == kTabColors)
 	{
 		drawCard(ColorLeftPanel, false);
 		drawCard(ColorRightPanel, false);
-	}
-	else if (selectedTab == kTabTags)
-	{
-		drawCard(TagPanel, false);
 	}
 	else if (selectedTab == kTabRules)
 	{
@@ -1736,16 +1732,14 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	PageTabs.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP, CRect(0, 0, 0, 0), this, IDC_PE_TAB);
 	PageTabs.InsertItem(0, "Colors");
-	PageTabs.InsertItem(1, "Icon");
-	PageTabs.InsertItem(2, "Tags");
-	PageTabs.InsertItem(3, "Rules");
-	PageTabs.InsertItem(4, "Profile");
+	PageTabs.InsertItem(1, "Icons Tags");
+	PageTabs.InsertItem(2, "Rules");
+	PageTabs.InsertItem(3, "Profile");
 	SidebarPanel.Create("", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_PANEL);
 	SidebarTitle.Create("SECTIONS", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_TITLE);
 	SidebarDivider.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDVERT, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_DIVIDER);
 	NavColorsButton.Create("Colors", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_COLORS);
-	NavIconButton.Create("Icon", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_ICON);
-	NavTagsButton.Create("Tags", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_TAGS);
+	NavIconButton.Create("Icons & Tags", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_ICON);
 	NavRulesButton.Create("Rules", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_RULES);
 	NavProfileButton.Create("Profile", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_PROFILE);
 	PageTitleLabel.Create("Colors", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PAGE_TITLE);
@@ -2496,8 +2490,6 @@ void CProfileEditorDialog::LayoutControls()
 	navY += navButtonHeight + navGap;
 	NavIconButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
 	navY += navButtonHeight + navGap;
-	NavTagsButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
-	navY += navButtonHeight + navGap;
 	NavRulesButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
 	navY += navButtonHeight + navGap;
 	NavProfileButton.MoveWindow(clientRect.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
@@ -2588,10 +2580,14 @@ void CProfileEditorDialog::LayoutControls()
 	const int iconTop = pageRect.top + innerPad;
 	const int iconHeight = max(120, pageRect.Height() - (innerPad * 2));
 	const int iconGap = 16;
-	const int iconLeftWidth = max(280, static_cast<int>((pageRect.Width() - (innerPad * 2) - iconGap) * 0.5));
-	const int iconRightWidth = max(240, pageRect.Width() - (innerPad * 2) - iconGap - iconLeftWidth);
+	const int iconLeftWidth = max(280, static_cast<int>((pageRect.Width() - (innerPad * 2) - iconGap) * 0.43));
+	const int iconRightWidth = max(280, pageRect.Width() - (innerPad * 2) - iconGap - iconLeftWidth);
 	const int iconLeft = pageRect.left + innerPad;
 	const int iconRightLeft = iconLeft + iconLeftWidth + iconGap;
+	const int tagLeft = iconRightLeft;
+	const int tagTop = iconTop;
+	const int tagWidth = iconRightWidth;
+	const int tagHeight = iconHeight;
 	const int iconShapeCardHeight = 80;
 	const int iconDisplayCardHeight = 96;
 	const int iconSizeCardHeight = max(120, iconHeight - iconShapeCardHeight - iconDisplayCardHeight - (iconGap * 2));
@@ -2599,7 +2595,7 @@ void CProfileEditorDialog::LayoutControls()
 	IconShapePanel.MoveWindow(iconLeft, iconTop, iconLeftWidth, iconShapeCardHeight, TRUE);
 	IconPanel.MoveWindow(iconLeft, iconTop + iconShapeCardHeight + iconGap, iconLeftWidth, iconSizeCardHeight, TRUE);
 	IconDisplayPanel.MoveWindow(iconLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap, iconLeftWidth, iconDisplayCardHeight, TRUE);
-	IconPreviewPanel.MoveWindow(iconRightLeft, iconTop, iconRightWidth, iconHeight, TRUE);
+	TagPanel.MoveWindow(tagLeft, tagTop, tagWidth, tagHeight, TRUE);
 
 	const int iconPad = 16;
 	const int iconContentLeft = iconLeft + iconPad;
@@ -2660,13 +2656,75 @@ void CProfileEditorDialog::LayoutControls()
 	BoostResolution4KButton.MoveWindow(displayContentLeft + 230, resButtonsTop, 52, 22, TRUE);
 	MoveControlOffscreen(BoostResolutionCombo);
 
-	const int rightPad = 16;
-	const int rightContentLeft = iconRightLeft + rightPad;
-	const int rightContentWidth = max(120, iconRightWidth - (rightPad * 2));
-	const int previewTop = iconTop;
-	IconPreviewHeader.MoveWindow(rightContentLeft, previewTop + 14, 100, rowHeight, TRUE);
-	IconPreviewSwatch.MoveWindow(rightContentLeft, previewTop + 46, rightContentWidth, 84, TRUE);
-	IconPreviewHint.MoveWindow(rightContentLeft, previewTop + 140, rightContentWidth, 42, TRUE);
+	TagHeaderPanel.MoveWindow(tagLeft + 10, tagTop + 10, max(60, tagWidth - 20), 24, TRUE);
+
+	const int tagPad = 12;
+	const int tagLabelWidth = 52;
+	const int tagContentLeft = tagLeft + tagPad;
+	const int tagFieldLeft = tagContentLeft + tagLabelWidth + 10;
+	const int tagRight = tagLeft + tagWidth - tagPad;
+	const int baseFieldWidth = max(110, tagRight - tagFieldLeft);
+	const int tokenButtonWidth = actionButtonWidth;
+	const int tokenComboWidth = max(90, baseFieldWidth - tokenButtonWidth - 8);
+
+	int tagY = tagTop + 44;
+	TagTypeLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagTypeCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
+	tagY += rowHeight + 10;
+
+	TagStatusLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagStatusCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
+	tagY += rowHeight + 10;
+
+	TagTokenLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
+	TagTokenCombo.MoveWindow(tagFieldLeft, tagY, tokenComboWidth, rowHeight + 220, TRUE);
+	TagAddTokenButton.MoveWindow(tagFieldLeft + tokenComboWidth + 8, tagY, tokenButtonWidth, rowHeight, TRUE);
+	tagY += rowHeight + 12;
+
+	TagDefinitionHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+	tagY += rowHeight + 8;
+
+	TagLine1Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine1Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 8;
+
+	TagLine2Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine2Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 8;
+
+	TagLine3Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine3Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 8;
+
+	TagLine4Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 10;
+
+	TagLinkDetailedToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+	tagY += rowHeight + 8;
+
+	TagDetailedHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine1Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine1Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine2Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine2Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine3Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine3Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+	tagY += rowHeight + 6;
+
+	TagDetailedLine4Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
+	TagDetailedLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
+
+	MoveControlOffscreen(IconPreviewPanel);
+	MoveControlOffscreen(IconPreviewHeader);
+	MoveControlOffscreen(IconPreviewSwatch);
+	MoveControlOffscreen(IconPreviewHint);
 	MoveControlOffscreen(FixedScaleCombo);
 	MoveControlOffscreen(BoostFactorCombo);
 
@@ -2677,8 +2735,15 @@ void CProfileEditorDialog::LayoutControls()
 		IDC_PE_FIXED_SCALE_TICK_MIN, IDC_PE_FIXED_SCALE_TICK_MID, IDC_PE_FIXED_SCALE_TICK_MAX,
 		IDC_PE_SMALL_BOOST_CHECK, IDC_PE_BOOST_FACTOR_LABEL, IDC_PE_BOOST_FACTOR_VALUE, IDC_PE_BOOST_FACTOR_SLIDER,
 		IDC_PE_BOOST_FACTOR_TICK_MIN, IDC_PE_BOOST_FACTOR_TICK_MID, IDC_PE_BOOST_FACTOR_TICK_MAX,
-		IDC_PE_BOOST_RES_LABEL, IDC_PE_BOOST_RES_COMBO, IDC_PE_ICON_RES_1080, IDC_PE_ICON_RES_2K, IDC_PE_ICON_RES_4K, IDC_PE_ICON_PREVIEW_HINT,
-		IDC_PE_ICON_SHAPE_HEADER, IDC_PE_ICON_SIZE_HEADER, IDC_PE_ICON_DISPLAY_HEADER, IDC_PE_ICON_PREVIEW_HEADER
+		IDC_PE_BOOST_RES_LABEL, IDC_PE_BOOST_RES_COMBO, IDC_PE_ICON_RES_1080, IDC_PE_ICON_RES_2K, IDC_PE_ICON_RES_4K,
+		IDC_PE_ICON_SHAPE_HEADER, IDC_PE_ICON_SIZE_HEADER, IDC_PE_ICON_DISPLAY_HEADER,
+		IDC_PE_TAG_HEADER_PANEL, IDC_PE_TAG_TYPE_LABEL, IDC_PE_TAG_TYPE_COMBO, IDC_PE_TAG_STATUS_LABEL,
+		IDC_PE_TAG_STATUS_COMBO, IDC_PE_TAG_TOKEN_LABEL, IDC_PE_TAG_TOKEN_COMBO, IDC_PE_TAG_TOKEN_ADD_BUTTON,
+		IDC_PE_TAG_DEF_HEADER, IDC_PE_TAG_LINE1_LABEL, IDC_PE_TAG_LINE1_EDIT, IDC_PE_TAG_LINE2_LABEL,
+		IDC_PE_TAG_LINE2_EDIT, IDC_PE_TAG_LINE3_LABEL, IDC_PE_TAG_LINE3_EDIT, IDC_PE_TAG_LINE4_LABEL,
+		IDC_PE_TAG_LINE4_EDIT, IDC_PE_TAG_LINK_DETAILED, IDC_PE_TAG_DETAILED_HEADER, IDC_PE_TAG_D_LINE1_LABEL,
+		IDC_PE_TAG_D_LINE1_EDIT, IDC_PE_TAG_D_LINE2_LABEL, IDC_PE_TAG_D_LINE2_EDIT, IDC_PE_TAG_D_LINE3_LABEL,
+		IDC_PE_TAG_D_LINE3_EDIT, IDC_PE_TAG_D_LINE4_LABEL, IDC_PE_TAG_D_LINE4_EDIT
 	};
 	for (UINT controlId : iconContentIds)
 	{
@@ -2822,76 +2887,6 @@ void CProfileEditorDialog::LayoutControls()
 	ProfileRenameButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 2, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 	ProfileDeleteButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 3, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 
-	const int tagLeft = pageRect.left + innerPad;
-	const int tagTop = pageRect.top + innerPad;
-	const int tagWidth = max(240, pageRect.Width() - (innerPad * 2));
-	const int tagHeight = max(120, pageRect.Height() - (innerPad * 2));
-	TagPanel.MoveWindow(tagLeft, tagTop, tagWidth, tagHeight, TRUE);
-	TagHeaderPanel.MoveWindow(tagLeft + 10, tagTop + 10, max(60, tagWidth - 20), 24, TRUE);
-
-	const int tagPad = 12;
-	const int tagLabelWidth = 52;
-	const int tagContentLeft = tagLeft + tagPad;
-	const int tagFieldLeft = tagContentLeft + tagLabelWidth + 10;
-	const int tagRight = tagLeft + tagWidth - tagPad;
-	const int baseFieldWidth = max(110, tagRight - tagFieldLeft);
-	const int tokenButtonWidth = actionButtonWidth;
-	const int tokenComboWidth = max(90, baseFieldWidth - tokenButtonWidth - 8);
-
-	int tagY = tagTop + 44;
-	TagTypeLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
-	TagTypeCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
-	tagY += rowHeight + 10;
-
-	TagStatusLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
-	TagStatusCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
-	tagY += rowHeight + 10;
-
-	TagTokenLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
-	TagTokenCombo.MoveWindow(tagFieldLeft, tagY, tokenComboWidth, rowHeight + 220, TRUE);
-	TagAddTokenButton.MoveWindow(tagFieldLeft + tokenComboWidth + 8, tagY, tokenButtonWidth, rowHeight, TRUE);
-	tagY += rowHeight + 12;
-
-	TagDefinitionHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
-	tagY += rowHeight + 8;
-
-	TagLine1Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagLine1Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 8;
-
-	TagLine2Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagLine2Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 8;
-
-	TagLine3Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagLine3Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 8;
-
-	TagLine4Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 10;
-
-	TagLinkDetailedToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
-	tagY += rowHeight + 8;
-
-	TagDetailedHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
-	tagY += rowHeight + 6;
-
-	TagDetailedLine1Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagDetailedLine1Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 6;
-
-	TagDetailedLine2Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagDetailedLine2Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 6;
-
-	TagDetailedLine3Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagDetailedLine3Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-	tagY += rowHeight + 6;
-
-	TagDetailedLine4Label.MoveWindow(tagContentLeft, tagY + 4, 26, rowHeight, TRUE);
-	TagDetailedLine4Edit.MoveWindow(tagContentLeft + 34, tagY, max(120, tagWidth - (tagPad * 2) - 34), rowHeight, TRUE);
-
 	// Keep live preview generated, but hidden to match the compact editor layout.
 	MoveControlOffscreen(TagPreviewLabel);
 	MoveControlOffscreen(TagPreviewEdit);
@@ -2912,12 +2907,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 		PageSubtitleLabel.SetWindowTextA("Select a color entry on the left and edit it on the right.");
 		break;
 	case kTabIcons:
-		PageTitleLabel.SetWindowTextA("Icon");
-		PageSubtitleLabel.SetWindowTextA("Choose a shape and adjust scale settings.");
-		break;
-	case kTabTags:
-		PageTitleLabel.SetWindowTextA("Tags");
-		PageSubtitleLabel.SetWindowTextA("General settings first, then text definitions below.");
+		PageTitleLabel.SetWindowTextA("Icons & Tags");
+		PageSubtitleLabel.SetWindowTextA("Icon settings on the left, tag definitions on the right.");
 		break;
 	case kTabRules:
 		PageTitleLabel.SetWindowTextA("Rules");
@@ -2936,7 +2927,7 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	const bool showIcons = (selectedTab == kTabIcons);
 	const bool showRules = (selectedTab == kTabRules);
 	const bool showProfile = (selectedTab == kTabProfile);
-	const bool showTagEditor = (selectedTab == kTabTags);
+	const bool showTagEditor = showIcons;
 	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
 	LastVisibilityTab = selectedTab;
 	LastVisibilityDetailedTag = showDetailedTag;
@@ -2955,14 +2946,12 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	SidebarDivider.ShowWindow(SW_HIDE);
 	NavColorsButton.ShowWindow(SW_SHOW);
 	NavIconButton.ShowWindow(SW_SHOW);
-	NavTagsButton.ShowWindow(SW_SHOW);
 	NavRulesButton.ShowWindow(SW_SHOW);
 	NavProfileButton.ShowWindow(SW_SHOW);
 	PageTitleLabel.ShowWindow(SW_HIDE);
 	PageSubtitleLabel.ShowWindow(SW_HIDE);
 	NavColorsButton.Invalidate(FALSE);
 	NavIconButton.Invalidate(FALSE);
-	NavTagsButton.Invalidate(FALSE);
 	NavRulesButton.Invalidate(FALSE);
 	NavProfileButton.Invalidate(FALSE);
 	PageTabs.ShowWindow(SW_HIDE);
@@ -2992,15 +2981,15 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	IconShapePanel.ShowWindow(SW_HIDE);
 	IconDisplayPanel.ShowWindow(SW_HIDE);
 	IconPreviewPanel.ShowWindow(SW_HIDE);
-	IconPreviewSwatch.ShowWindow(iconShowMode);
 	IconStyleArrow.ShowWindow(iconShowMode);
 	IconStyleDiamond.ShowWindow(iconShowMode);
 	IconStyleRealistic.ShowWindow(iconShowMode);
 	IconShapeHeader.ShowWindow(iconShowMode);
 	IconSizeHeader.ShowWindow(iconShowMode);
 	IconDisplayHeader.ShowWindow(iconShowMode);
-	IconPreviewHeader.ShowWindow(iconShowMode);
-	IconPreviewHint.ShowWindow(iconShowMode);
+	IconPreviewHeader.ShowWindow(SW_HIDE);
+	IconPreviewSwatch.ShowWindow(SW_HIDE);
+	IconPreviewHint.ShowWindow(SW_HIDE);
 	IconSeparator1.ShowWindow(iconShowMode);
 	IconSeparator2.ShowWindow(iconShowMode);
 	IconSeparator3.ShowWindow(iconShowMode);
@@ -5867,7 +5856,7 @@ void CProfileEditorDialog::OnTabSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult
 {
 	(void)pNMHDR;
 	const int tab = PageTabs.GetCurSel();
-	if (tab == kTabTags)
+	if (tab == kTabIcons)
 		SyncTagEditorControlsFromRadar();
 	else if (tab == kTabProfile)
 	{
@@ -5890,13 +5879,6 @@ void CProfileEditorDialog::OnNavColorsClicked()
 void CProfileEditorDialog::OnNavIconClicked()
 {
 	PageTabs.SetCurSel(kTabIcons);
-	UpdatePageVisibility();
-	ForceChildRepaint();
-}
-
-void CProfileEditorDialog::OnNavTagsClicked()
-{
-	PageTabs.SetCurSel(kTabTags);
 	SyncTagEditorControlsFromRadar();
 	UpdatePageVisibility();
 	ForceChildRepaint();
@@ -6042,7 +6024,6 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_NOTIFY(TCN_SELCHANGE, IDC_PE_TAB, &CProfileEditorDialog::OnTabSelectionChanged)
 	ON_BN_CLICKED(IDC_PE_NAV_COLORS, &CProfileEditorDialog::OnNavColorsClicked)
 	ON_BN_CLICKED(IDC_PE_NAV_ICON, &CProfileEditorDialog::OnNavIconClicked)
-	ON_BN_CLICKED(IDC_PE_NAV_TAGS, &CProfileEditorDialog::OnNavTagsClicked)
 	ON_BN_CLICKED(IDC_PE_NAV_RULES, &CProfileEditorDialog::OnNavRulesClicked)
 	ON_BN_CLICKED(IDC_PE_NAV_PROFILE, &CProfileEditorDialog::OnNavProfileClicked)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_ARROW, &CProfileEditorDialog::OnIconStyleChanged)
