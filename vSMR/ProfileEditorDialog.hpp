@@ -32,6 +32,7 @@ protected:
 	afx_msg void OnVScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar);
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnDestroy();
+	afx_msg void OnPaint();
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	afx_msg void OnFixedScaleSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnBoostFactorSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
