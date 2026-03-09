@@ -836,6 +836,16 @@ void CProfileEditorDialog::OnSize(UINT nType, int cx, int cy)
 	NotifyWindowRectChanged();
 }
 
+void CProfileEditorDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
+{
+	CDialogEx::OnGetMinMaxInfo(lpMMI);
+	if (lpMMI == nullptr)
+		return;
+
+	lpMMI->ptMinTrackSize.x = 920;
+	lpMMI->ptMinTrackSize.y = 700;
+}
+
 bool CProfileEditorDialog::HandleColorSliderScroll(CScrollBar* pScrollBar, UINT nSBCode, UINT nPos)
 {
 	if (pScrollBar == nullptr)
@@ -1699,36 +1709,20 @@ void CProfileEditorDialog::OnPaint()
 			drawCardRect(leftCard, false);
 		}
 
-		if (::IsWindow(ProfileNameLabel.GetSafeHwnd()) && ::IsWindow(ProfileNameEdit.GetSafeHwnd()))
+		if (::IsWindow(ProfileNameLabel.GetSafeHwnd()) && ::IsWindow(ProfileDeleteButton.GetSafeHwnd()))
 		{
-			CRect nameTop;
-			ProfileNameLabel.GetWindowRect(&nameTop);
-			ScreenToClient(&nameTop);
-			CRect nameBottom;
-			ProfileNameEdit.GetWindowRect(&nameBottom);
-			ScreenToClient(&nameBottom);
-			CRect nameCard(
-				nameTop.left - 12,
-				nameTop.top - 14,
-				nameBottom.right + 12,
-				nameBottom.bottom + 14);
-			drawCardRect(nameCard, false);
-		}
-
-		if (::IsWindow(ProfileAddButton.GetSafeHwnd()) && ::IsWindow(ProfileDeleteButton.GetSafeHwnd()))
-		{
-			CRect actionsTop;
-			ProfileAddButton.GetWindowRect(&actionsTop);
-			ScreenToClient(&actionsTop);
-			CRect actionsBottom;
-			ProfileDeleteButton.GetWindowRect(&actionsBottom);
-			ScreenToClient(&actionsBottom);
-			CRect actionsCard(
-				actionsTop.left - 12,
-				actionsTop.top - 42,
-				actionsBottom.right + 12,
-				actionsBottom.bottom + 14);
-			drawCardRect(actionsCard, false);
+			CRect mergedTop;
+			ProfileNameLabel.GetWindowRect(&mergedTop);
+			ScreenToClient(&mergedTop);
+			CRect mergedBottom;
+			ProfileDeleteButton.GetWindowRect(&mergedBottom);
+			ScreenToClient(&mergedBottom);
+			CRect mergedCard(
+				mergedTop.left - 12,
+				mergedTop.top - 14,
+				mergedBottom.right + 12,
+				mergedBottom.bottom + 14);
+			drawCardRect(mergedCard, false);
 		}
 	}
 }
@@ -2512,10 +2506,12 @@ void CProfileEditorDialog::LayoutControls()
 	const int mainTop = clientRect.top + mainPad;
 	const int mainWidth = max(220, clientRect.Width() - sidebarWidth - (mainPad * 2));
 	const int mainHeight = max(140, clientRect.Height() - (mainPad * 2));
+	const int actionButtonWidth = 96;
+	const int actionButtonGap = 10;
 	MoveControlOffscreen(PageTitleLabel);
 	MoveControlOffscreen(PageSubtitleLabel);
-	ApplyColorButton.MoveWindow(mainLeft + mainWidth - 174, mainTop, 82, 38, TRUE);
-	ResetColorButton.MoveWindow(mainLeft + mainWidth - 84, mainTop, 82, 38, TRUE);
+	ResetColorButton.MoveWindow(mainLeft + mainWidth - actionButtonWidth, mainTop, actionButtonWidth, 38, TRUE);
+	ApplyColorButton.MoveWindow(mainLeft + mainWidth - (actionButtonWidth * 2) - actionButtonGap, mainTop, actionButtonWidth, 38, TRUE);
 
 	CRect pageRect(mainLeft, mainTop + topBarHeight, mainLeft + mainWidth, mainTop + mainHeight);
 
@@ -2717,9 +2713,11 @@ void CProfileEditorDialog::LayoutControls()
 	MoveControlOffscreen(RulesList);
 	RuleTree.MoveWindow(rulesLeft + 8, ruleListTop, ruleListWidth, ruleListHeight, TRUE);
 	const int ruleButtonsY = rulesTop + rulesPanelHeight - 46;
-	RuleAddButton.MoveWindow(rulesLeft + 12, ruleButtonsY, 84, buttonHeight, TRUE);
+	const int ruleButtonsTotalWidth = (actionButtonWidth * 2) + actionButtonGap;
+	const int ruleButtonsLeft = rulesLeft + max(12, ((ruleListWidth - ruleButtonsTotalWidth) / 2));
+	RuleAddButton.MoveWindow(ruleButtonsLeft, ruleButtonsY, actionButtonWidth, buttonHeight, TRUE);
+	RuleRemoveButton.MoveWindow(ruleButtonsLeft + actionButtonWidth + actionButtonGap, ruleButtonsY, actionButtonWidth, buttonHeight, TRUE);
 	MoveControlOffscreen(RuleAddParameterButton);
-	MoveControlOffscreen(RuleRemoveButton);
 
 	int rulesY = rulesTop + 44;
 	const int rulesLabelWidth = 110;
@@ -2792,45 +2790,37 @@ void CProfileEditorDialog::LayoutControls()
 	RuleColorPreviewSwatch.MoveWindow(rulePreviewLeft, effectY, rulePreviewWidth, 44, TRUE);
 	effectY += 44 + 10;
 
-	const int ruleActionButtonsWidth = 60 + 8 + 60;
+	const int ruleActionButtonsWidth = (actionButtonWidth * 2) + actionButtonGap;
 	const int ruleActionLeft = rulesContentLeft + max(0, (rulesContentWidth - ruleActionButtonsWidth) / 2);
-	RuleColorApplyButton.MoveWindow(ruleActionLeft, effectY, 60, buttonHeight, TRUE);
-	RuleColorResetButton.MoveWindow(ruleActionLeft + 68, effectY, 60, buttonHeight, TRUE);
+	RuleColorApplyButton.MoveWindow(ruleActionLeft, effectY, actionButtonWidth, buttonHeight, TRUE);
+	RuleColorResetButton.MoveWindow(ruleActionLeft + actionButtonWidth + actionButtonGap, effectY, actionButtonWidth, buttonHeight, TRUE);
 
 	const int profileLeft = pageRect.left + innerPad;
 	const int profileTop = pageRect.top + innerPad;
 	const int profileWidth = max(240, pageRect.Width() - (innerPad * 2));
 	const int profileHeight = max(140, pageRect.Height() - (innerPad * 2));
-	const int profileGap = 16;
-	const int profileLeftCardWidth = max(220, static_cast<int>((profileWidth - profileGap) * 0.52));
-	const int profileRightCardWidth = max(180, profileWidth - profileGap - profileLeftCardWidth);
-	const int profileRightLeft = profileLeft + profileLeftCardWidth + profileGap;
-	const int profileNameCardHeight = 110;
-	const int profileActionsCardHeight = 140;
 	ProfilePanel.MoveWindow(profileLeft, profileTop, profileWidth, profileHeight, TRUE);
 
-	ProfileHeader.MoveWindow(profileLeft + 10, profileTop + 14, max(60, profileLeftCardWidth - 20), 24, TRUE);
+	ProfileHeader.MoveWindow(profileLeft + 10, profileTop + 14, max(60, profileWidth - 20), 24, TRUE);
 	const int profileLeftContentLeft = profileLeft + 12;
 	const int profileLeftContentTop = profileTop + 46;
-	const int profileLeftContentWidth = max(120, profileLeftCardWidth - 24);
-	const int profileListHeight = max(80, profileHeight - 52);
+	const int profileLeftContentWidth = max(180, profileWidth - 24);
+	const int profileDetailCardHeight = 132;
+	const int profileListHeight = max(80, profileHeight - 52 - profileDetailCardHeight - 16);
 	ProfileList.MoveWindow(profileLeftContentLeft, profileLeftContentTop, profileLeftContentWidth, profileListHeight, TRUE);
 
-	const int profileRightContentLeft = profileRightLeft + 12;
-	const int profileRightContentWidth = max(120, profileRightCardWidth - 24);
-	const int nameCardTop = profileTop;
-	ProfileNameLabel.MoveWindow(profileRightContentLeft, nameCardTop + 46, 56, rowHeight, TRUE);
-	ProfileNameEdit.MoveWindow(profileRightContentLeft + 56 + 10, nameCardTop + 42, max(100, profileRightContentWidth - 66), rowHeight, TRUE);
+	const int profileDetailsTop = profileLeftContentTop + profileListHeight + 18;
+	ProfileNameLabel.MoveWindow(profileLeftContentLeft + 12, profileDetailsTop + 14, 56, rowHeight, TRUE);
+	ProfileNameEdit.MoveWindow(profileLeftContentLeft + 12 + 56 + 10, profileDetailsTop + 10, max(140, profileLeftContentWidth - 90), rowHeight, TRUE);
 
-	const int actionsTop = nameCardTop + profileNameCardHeight + profileGap;
-	const int profileButtonGap = 8;
-	const int profileButtonWidth = max(70, min(92, (profileRightContentWidth - (profileButtonGap * 3)) / 4));
-	const int profileButtonsTotalWidth = (profileButtonWidth * 4) + (profileButtonGap * 3);
-	const int profileButtonsLeft = profileRightContentLeft + max(0, (profileRightContentWidth - profileButtonsTotalWidth) / 2);
-	ProfileAddButton.MoveWindow(profileButtonsLeft, actionsTop + 46, profileButtonWidth, buttonHeight, TRUE);
-	ProfileDuplicateButton.MoveWindow(profileButtonsLeft + profileButtonWidth + profileButtonGap, actionsTop + 46, profileButtonWidth, buttonHeight, TRUE);
-	ProfileRenameButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + profileButtonGap) * 2, actionsTop + 46, profileButtonWidth, buttonHeight, TRUE);
-	ProfileDeleteButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + profileButtonGap) * 3, actionsTop + 46, profileButtonWidth, buttonHeight, TRUE);
+	const int profileButtonWidth = max(78, min(actionButtonWidth, (profileLeftContentWidth - (actionButtonGap * 3)) / 4));
+	const int profileButtonsTotalWidth = (profileButtonWidth * 4) + (actionButtonGap * 3);
+	const int profileButtonsLeft = profileLeftContentLeft + max(0, (profileLeftContentWidth - profileButtonsTotalWidth) / 2);
+	const int profileButtonsTop = profileDetailsTop + 58;
+	ProfileAddButton.MoveWindow(profileButtonsLeft, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
+	ProfileDuplicateButton.MoveWindow(profileButtonsLeft + profileButtonWidth + actionButtonGap, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
+	ProfileRenameButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 2, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
+	ProfileDeleteButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 3, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 
 	const int tagLeft = pageRect.left + innerPad;
 	const int tagTop = pageRect.top + innerPad;
@@ -2845,7 +2835,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int tagFieldLeft = tagContentLeft + tagLabelWidth + 10;
 	const int tagRight = tagLeft + tagWidth - tagPad;
 	const int baseFieldWidth = max(110, tagRight - tagFieldLeft);
-	const int tokenButtonWidth = 62;
+	const int tokenButtonWidth = actionButtonWidth;
 	const int tokenComboWidth = max(90, baseFieldWidth - tokenButtonWidth - 8);
 
 	int tagY = tagTop + 44;
@@ -3044,7 +3034,7 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleRightHeader.ShowWindow(ruleShowMode);
 	RuleAddButton.ShowWindow(ruleShowMode);
 	RuleAddParameterButton.ShowWindow(SW_HIDE);
-	RuleRemoveButton.ShowWindow(SW_HIDE);
+	RuleRemoveButton.ShowWindow(ruleShowMode);
 	RuleNameLabel.ShowWindow(ruleEffectShowMode);
 	RuleNameEdit.ShowWindow(ruleEffectShowMode);
 	RuleSourceLabel.ShowWindow(ruleParameterShowMode);
@@ -3808,7 +3798,7 @@ bool CProfileEditorDialog::GetRuleTreeActionRects(HTREEITEM item, CRect& addRect
 
 	const bool isRuleNode = (it->second.second < 0);
 	showAdd = isRuleNode;
-	showDelete = true;
+	showDelete = false;
 
 	CRect itemRect;
 	if (!RuleTree.GetItemRect(item, &itemRect, TRUE))
@@ -3821,10 +3811,10 @@ bool CProfileEditorDialog::GetRuleTreeActionRects(HTREEITEM item, CRect& addRect
 	const int y = itemRect.top + max(0, ((itemRect.Height() - btnSize) / 2));
 	int right = treeRect.right - 8;
 
-	deleteRect = CRect(right - btnSize, y, right, y + btnSize);
-	right -= (btnSize + gap);
 	if (showAdd)
 		addRect = CRect(right - btnSize, y, right, y + btnSize);
+	right -= (btnSize + gap);
+	deleteRect = CRect(right - btnSize, y, right, y + btnSize);
 
 	return true;
 }
@@ -4577,21 +4567,25 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 	case CDDS_ITEMPREPAINT:
 	{
 		const HTREEITEM item = reinterpret_cast<HTREEITEM>(pTreeCd->nmcd.dwItemSpec);
+		const auto selectionIt = RuleTreeSelectionMap.find(item);
+		const bool isRuleNode = (selectionIt != RuleTreeSelectionMap.end() && selectionIt->second.second < 0);
 		const bool selected = (::IsWindow(RuleTree.GetSafeHwnd()) && RuleTree.GetSelectedItem() == item);
 		CRect itemRowRect;
 		if (RuleTree.GetItemRect(item, &itemRowRect, FALSE))
 		{
 			CRect treeClientRect;
 			RuleTree.GetClientRect(&treeClientRect);
-			itemRowRect.left = max(2, itemRowRect.left - 2);
+			itemRowRect.left = max(2, itemRowRect.left - (isRuleNode ? 10 : 6));
 			itemRowRect.right = max(itemRowRect.left + 8, treeClientRect.right - 2);
 			itemRowRect.DeflateRect(0, 2);
 
 			CDC* dc = CDC::FromHandle(pTreeCd->nmcd.hdc);
 			if (dc != nullptr)
 			{
-				CBrush rowBrush(selected ? RGB(226, 238, 255) : RGB(243, 245, 248));
-				CPen rowPen(PS_SOLID, 1, selected ? RGB(64, 132, 230) : RGB(214, 220, 228));
+				const COLORREF normalFill = isRuleNode ? RGB(235, 238, 242) : RGB(243, 245, 248);
+				const COLORREF normalBorder = isRuleNode ? RGB(204, 210, 218) : RGB(214, 220, 228);
+				CBrush rowBrush(selected ? RGB(226, 238, 255) : normalFill);
+				CPen rowPen(PS_SOLID, 1, selected ? RGB(64, 132, 230) : normalBorder);
 				CBrush* oldBrush = dc->SelectObject(&rowBrush);
 				CPen* oldPen = dc->SelectObject(&rowPen);
 				dc->RoundRect(&itemRowRect, CPoint(8, 8));
@@ -4600,7 +4594,7 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 			}
 		}
 		pTreeCd->clrText = selected ? RGB(16, 66, 132) : RGB(17, 24, 39);
-		pTreeCd->clrTextBk = selected ? RGB(226, 238, 255) : RGB(243, 245, 248);
+		pTreeCd->clrTextBk = selected ? RGB(226, 238, 255) : (isRuleNode ? RGB(235, 238, 242) : RGB(243, 245, 248));
 		*pResult = CDRF_NOTIFYPOSTPAINT;
 		return;
 	}
@@ -4614,16 +4608,18 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 		}
 
 		const HTREEITEM item = reinterpret_cast<HTREEITEM>(pTreeCd->nmcd.dwItemSpec);
+		const auto selectionIt = RuleTreeSelectionMap.find(item);
+		const bool isRuleNode = (selectionIt != RuleTreeSelectionMap.end() && selectionIt->second.second < 0);
 		CRect itemRowRect;
 		if (RuleTree.GetItemRect(item, &itemRowRect, FALSE))
 		{
 			CRect treeClientRect;
 			RuleTree.GetClientRect(&treeClientRect);
-			itemRowRect.left = max(2, itemRowRect.left - 2);
+			itemRowRect.left = max(2, itemRowRect.left - (isRuleNode ? 10 : 6));
 			itemRowRect.right = max(itemRowRect.left + 8, treeClientRect.right - 2);
 			itemRowRect.DeflateRect(0, 2);
 			const bool selected = (RuleTree.GetSelectedItem() == item);
-			CPen rowPen(PS_SOLID, 1, selected ? RGB(88, 137, 214) : RGB(214, 220, 228));
+			CPen rowPen(PS_SOLID, 1, selected ? RGB(88, 137, 214) : (isRuleNode ? RGB(204, 210, 218) : RGB(214, 220, 228)));
 			CBrush* oldBrush = static_cast<CBrush*>(dc->SelectStockObject(HOLLOW_BRUSH));
 			CPen* oldPen = dc->SelectObject(&rowPen);
 			dc->RoundRect(&itemRowRect, CPoint(8, 8));
@@ -4660,8 +4656,6 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 
 		if (showAdd)
 			drawActionButton(addRect, "+");
-		if (showDelete)
-			drawActionButton(deleteRect, "X");
 		*pResult = CDRF_DODEFAULT;
 		return;
 	}
@@ -4703,18 +4697,6 @@ void CProfileEditorDialog::OnRuleTreeClick(NMHDR* pNMHDR, LRESULT* pResult)
 			SelectedRuleIndex = it->second.first;
 			SelectedRuleCriterionIndex = it->second.second;
 			OnRuleAddParameterClicked();
-		}
-		return;
-	}
-
-	if (showDelete && deleteRect.PtInRect(clickPoint))
-	{
-		const auto it = RuleTreeSelectionMap.find(item);
-		if (it != RuleTreeSelectionMap.end())
-		{
-			SelectedRuleIndex = it->second.first;
-			SelectedRuleCriterionIndex = it->second.second;
-			OnRuleRemoveClicked();
 		}
 		return;
 	}
@@ -6032,6 +6014,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_WM_CLOSE()
 	ON_WM_MOVE()
 	ON_WM_SIZE()
+	ON_WM_GETMINMAXINFO()
 	ON_WM_HSCROLL()
 	ON_WM_VSCROLL()
 	ON_WM_SHOWWINDOW()
