@@ -1092,9 +1092,9 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		}();
 		if (isThemedEditControl)
 		{
-			pDC->SetBkColor(kEditorThemeBackgroundColor);
+			pDC->SetBkColor(RGB(255, 255, 255));
 			pDC->SetTextColor(RGB(17, 24, 39));
-			return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+			return ::GetSysColorBrush(COLOR_WINDOW);
 		}
 	}
 	if ((controlId == IDC_PE_SIDEBAR_PANEL || controlId == IDC_PE_SIDEBAR_TITLE) && SidebarBrush.GetSafeHandle() != nullptr)
@@ -1705,19 +1705,22 @@ void CProfileEditorDialog::OnPaint()
 			drawCardRect(leftCard, false);
 		}
 
-		if (::IsWindow(ProfileNameLabel.GetSafeHwnd()) && ::IsWindow(ProfileDeleteButton.GetSafeHwnd()))
+		if (::IsWindow(ProfileList.GetSafeHwnd()) && ::IsWindow(ProfileNameLabel.GetSafeHwnd()) && ::IsWindow(ProfileDeleteButton.GetSafeHwnd()))
 		{
-			CRect mergedTop;
-			ProfileNameLabel.GetWindowRect(&mergedTop);
-			ScreenToClient(&mergedTop);
-			CRect mergedBottom;
-			ProfileDeleteButton.GetWindowRect(&mergedBottom);
-			ScreenToClient(&mergedBottom);
+			CRect contentRect;
+			ProfileList.GetWindowRect(&contentRect);
+			ScreenToClient(&contentRect);
+			CRect nameRect;
+			ProfileNameLabel.GetWindowRect(&nameRect);
+			ScreenToClient(&nameRect);
+			CRect buttonsRect;
+			ProfileDeleteButton.GetWindowRect(&buttonsRect);
+			ScreenToClient(&buttonsRect);
 			CRect mergedCard(
-				mergedTop.left - 12,
-				mergedTop.top - 14,
-				mergedBottom.right + 12,
-				mergedBottom.bottom + 14);
+				contentRect.left - 1,
+				nameRect.top - 14,
+				contentRect.right + 1,
+				buttonsRect.bottom + 14);
 			drawCardRect(mergedCard, false);
 		}
 	}
@@ -1734,14 +1737,14 @@ void CProfileEditorDialog::CreateEditorControls()
 	PageTabs.InsertItem(0, "Colors");
 	PageTabs.InsertItem(1, "Icons & Tags");
 	PageTabs.InsertItem(2, "Rules");
-	PageTabs.InsertItem(3, "Profile");
+	PageTabs.InsertItem(3, "Profiles");
 	SidebarPanel.Create("", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_PANEL);
 	SidebarTitle.Create("SECTIONS", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_TITLE);
 	SidebarDivider.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDVERT, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_DIVIDER);
 	NavColorsButton.Create("Colors", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_COLORS);
 	NavIconButton.Create("Icons & Tags", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_ICON);
 	NavRulesButton.Create("Rules", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_RULES);
-	NavProfileButton.Create("Profile", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_PROFILE);
+	NavProfileButton.Create("Profiles", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_PROFILE);
 	PageTitleLabel.Create("Colors", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PAGE_TITLE);
 	PageSubtitleLabel.Create("Select a color entry on the left and edit it on the right.", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PAGE_SUBTITLE);
 
@@ -2105,32 +2108,25 @@ void CProfileEditorDialog::CreateEditorControls()
 
 void CProfileEditorDialog::ApplyThemedEditBorders()
 {
-		auto attachBorder = [](CEdit& edit)
-		{
-			const HWND hwnd = edit.GetSafeHwnd();
-			if (!::IsWindow(hwnd))
-				return;
+	auto attachBorder = [](CEdit& edit)
+	{
+		const HWND hwnd = edit.GetSafeHwnd();
+		if (!::IsWindow(hwnd))
+			return;
 
-		// Remove native edit frame first (WS_BORDER/WS_EX_CLIENTEDGE),
-		// then paint only the custom rounded themed border.
-		edit.ModifyStyle(WS_BORDER, 0);
+		auto it = gThemedEditOldProcs.find(hwnd);
+		if (it != gThemedEditOldProcs.end())
+		{
+			if (it->second != nullptr)
+				::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(it->second));
+			gThemedEditOldProcs.erase(it);
+		}
+
+		edit.ModifyStyle(0, WS_BORDER);
 		edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
 		edit.SetWindowPos(nullptr, 0, 0, 0, 0,
 			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-		edit.SendMessage(EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(6, 6));
-
-		if (gThemedEditOldProcs.find(hwnd) != gThemedEditOldProcs.end())
-		{
-			DrawThemedBorder(hwnd);
-			return;
-		}
-
-		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ThemedEditWndProc)));
-		if (oldProc == nullptr)
-			return;
-
-		gThemedEditOldProcs[hwnd] = oldProc;
-		DrawThemedBorder(hwnd);
+		edit.SendMessage(EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(4, 4));
 	};
 
 	attachBorder(EditRgba);
@@ -2580,8 +2576,9 @@ void CProfileEditorDialog::LayoutControls()
 	const int iconTop = pageRect.top + innerPad;
 	const int iconHeight = max(120, pageRect.Height() - (innerPad * 2));
 	const int iconGap = 16;
-	const int iconLeftWidth = max(280, static_cast<int>((pageRect.Width() - (innerPad * 2) - iconGap) * 0.43));
-	const int iconRightWidth = max(280, pageRect.Width() - (innerPad * 2) - iconGap - iconLeftWidth);
+	const int iconAvailableWidth = max(560, pageRect.Width() - (innerPad * 2) - iconGap);
+	const int iconLeftWidth = iconAvailableWidth / 2;
+	const int iconRightWidth = iconAvailableWidth - iconLeftWidth;
 	const int iconLeft = pageRect.left + innerPad;
 	const int iconRightLeft = iconLeft + iconLeftWidth + iconGap;
 	const int tagLeft = iconRightLeft;
@@ -2915,8 +2912,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 		PageSubtitleLabel.SetWindowTextA("Rule groups on the left, selected rule settings on the right.");
 		break;
 	case kTabProfile:
-		PageTitleLabel.SetWindowTextA("Profile");
-		PageSubtitleLabel.SetWindowTextA("Profiles on the left, actions and name on the right.");
+		PageTitleLabel.SetWindowTextA("Profiles");
+		PageSubtitleLabel.SetWindowTextA("Profiles on top, name and actions below.");
 		break;
 	default:
 		PageTitleLabel.SetWindowTextA("Profile Editor");
