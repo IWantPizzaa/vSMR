@@ -243,6 +243,8 @@ private:
 		, IDC_PE_ICON_RES_1080 = 9262
 		, IDC_PE_ICON_RES_2K = 9263
 		, IDC_PE_ICON_RES_4K = 9264
+		, IDC_PE_TAG_DEFINITION_EDIT = 9265
+		, IDC_PE_TAG_DETAILED_EDIT = 9266
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -381,6 +383,7 @@ private:
 	CComboBox TagTokenCombo;
 	CButton TagAddTokenButton;
 	CStatic TagDefinitionHeader;
+	CEdit TagDefinitionEdit;
 	CStatic TagLine1Label;
 	CEdit TagLine1Edit;
 	CStatic TagLine2Label;
@@ -391,6 +394,7 @@ private:
 	CEdit TagLine4Edit;
 	CButton TagLinkDetailedToggle;
 	CStatic TagDetailedHeader;
+	CEdit TagDetailedDefinitionEdit;
 	CStatic TagDetailedLine1Label;
 	CEdit TagDetailedLine1Edit;
 	CStatic TagDetailedLine2Label;
