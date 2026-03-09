@@ -195,6 +195,9 @@ FakesAssemblies/
 # Visual Studio 6 workspace options file
 *.opt
 
+# html ui preview
+.html
+
 #Custom
 
 curl-7.41.0/

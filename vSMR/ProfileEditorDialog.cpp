@@ -1574,37 +1574,7 @@ void CProfileEditorDialog::OnPaint()
 	}
 	else if (selectedTab == kTabTags)
 	{
-		if (::IsWindow(TagHeaderPanel.GetSafeHwnd()) && ::IsWindow(TagAddTokenButton.GetSafeHwnd()))
-		{
-			CRect optionsTop;
-			TagHeaderPanel.GetWindowRect(&optionsTop);
-			ScreenToClient(&optionsTop);
-			CRect optionsBottom;
-			TagAddTokenButton.GetWindowRect(&optionsBottom);
-			ScreenToClient(&optionsBottom);
-			CRect optionsCard(
-				optionsTop.left - 1,
-				optionsTop.top - 1,
-				optionsTop.right + 1,
-				optionsBottom.bottom + 14);
-			drawCardRect(optionsCard, false);
-		}
-
-		if (::IsWindow(TagDefinitionHeader.GetSafeHwnd()) && ::IsWindow(TagDetailedLine4Edit.GetSafeHwnd()))
-		{
-			CRect defTop;
-			TagDefinitionHeader.GetWindowRect(&defTop);
-			ScreenToClient(&defTop);
-			CRect defBottom;
-			TagDetailedLine4Edit.GetWindowRect(&defBottom);
-			ScreenToClient(&defBottom);
-			CRect defCard(
-				defTop.left - 1,
-				defTop.top - 1,
-				defTop.right + 1,
-				defBottom.bottom + 14);
-			drawCardRect(defCard, false);
-		}
+		drawCard(TagPanel, false);
 	}
 	else if (selectedTab == kTabRules)
 	{
@@ -1623,7 +1593,7 @@ void CProfileEditorDialog::OnPaint()
 			ScreenToClient(&leftBottom);
 			CRect leftCard(
 				leftTop.left - 1,
-				leftTop.top - 1,
+				leftTop.top - 6,
 				leftTop.right + 1,
 				leftBottom.bottom + 14);
 			drawCardRect(leftCard, false);
@@ -1689,7 +1659,7 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	ColorLeftPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_LEFT_PANEL);
 	ColorRightPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_RIGHT_PANEL);
-	ColorPathTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_FULLROWSELECT | TVS_NOHSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_TREE);
+	ColorPathTree.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_FULLROWSELECT | TVS_NOHSCROLL, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_TREE);
 	ColorPathLabel.Create("Color List", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PATH_LABEL);
 	SelectedPathText.Create("Preview", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SELECTED_PATH);
 	ColorPickerLabel.Create("Color Wheel", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_COLOR_PICKER_LABEL);
@@ -1745,6 +1715,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	BoostFactorCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_COMBO);
 	BoostResolutionLabel.Create("Resolution", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_RES_LABEL);
 	BoostResolutionCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_RES_COMBO);
+	BoostResolution1080Button.Create("1080p", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_RES_1080);
+	BoostResolution2KButton.Create("2K", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_RES_2K);
+	BoostResolution4KButton.Create("4K", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_RES_4K);
 	IconPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 	IconShapePanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 	IconDisplayPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -1857,6 +1830,25 @@ void CProfileEditorDialog::CreateEditorControls()
 	softenPanelBorder(RuleRightPanel);
 	softenPanelBorder(ProfilePanel);
 	softenPanelBorder(TagPanel);
+
+	auto removeNativeBorder = [](CEdit& edit)
+	{
+		if (!::IsWindow(edit.GetSafeHwnd()))
+			return;
+		edit.ModifyStyle(WS_BORDER, 0);
+		edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		edit.SetWindowPos(nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+	};
+	removeNativeBorder(EditRgba);
+	removeNativeBorder(EditHex);
+	removeNativeBorder(TagLine1Edit);
+	removeNativeBorder(TagLine2Edit);
+	removeNativeBorder(TagLine3Edit);
+	removeNativeBorder(TagLine4Edit);
+	removeNativeBorder(TagDetailedLine1Edit);
+	removeNativeBorder(TagDetailedLine2Edit);
+	removeNativeBorder(TagDetailedLine3Edit);
+	removeNativeBorder(TagDetailedLine4Edit);
 
 	TagTypeCombo.ResetContent();
 	TagTypeCombo.AddString("departure");
@@ -2363,7 +2355,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int navButtonHeight = 38;
 	const int navGap = 8;
 	const int mainPad = 18;
-	const int topBarHeight = 70;
+	const int topBarHeight = 10;
 
 	PageTabs.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
 
@@ -2386,8 +2378,8 @@ void CProfileEditorDialog::LayoutControls()
 	const int mainTop = clientRect.top + mainPad;
 	const int mainWidth = max(220, clientRect.Width() - sidebarWidth - (mainPad * 2));
 	const int mainHeight = max(140, clientRect.Height() - (mainPad * 2));
-	PageTitleLabel.MoveWindow(mainLeft, mainTop, max(200, mainWidth - 220), 34, TRUE);
-	PageSubtitleLabel.MoveWindow(mainLeft, mainTop + 34, max(200, mainWidth - 220), 24, TRUE);
+	MoveControlOffscreen(PageTitleLabel);
+	MoveControlOffscreen(PageSubtitleLabel);
 	ApplyColorButton.MoveWindow(mainLeft + mainWidth - 174, mainTop, 82, 38, TRUE);
 	ResetColorButton.MoveWindow(mainLeft + mainWidth - 84, mainTop, 82, 38, TRUE);
 
@@ -2409,14 +2401,14 @@ void CProfileEditorDialog::LayoutControls()
 	// Colors: left tree panel + right editor panel
 	ColorLeftPanel.MoveWindow(colorLeft, colorTop, colorLeftWidth, panelHeight, TRUE);
 	ColorRightPanel.MoveWindow(rightLeft, colorTop, colorRightWidth, panelHeight, TRUE);
-	ColorPathLabel.MoveWindow(colorLeft + 1, colorTop + 1, max(60, colorLeftWidth - 2), 30, TRUE);
-	const int colorTreeTop = colorTop + 32;
+	ColorPathLabel.MoveWindow(colorLeft + 10, colorTop + 10, max(60, colorLeftWidth - 20), 24, TRUE);
+	const int colorTreeTop = colorTop + 36;
 	const int colorTreeHeight = max(80, panelHeight - 34);
 	ColorPathTree.MoveWindow(colorLeft + 8, colorTreeTop + 4, max(80, colorLeftWidth - 16), max(60, colorTreeHeight - 12), TRUE);
 
-	SelectedPathText.MoveWindow(rightLeft + 1, colorTop + 1, max(60, colorRightWidth - 2), 30, TRUE);
+	SelectedPathText.MoveWindow(rightLeft + 10, colorTop + 10, max(60, colorRightWidth - 20), 24, TRUE);
 
-	int y = colorTop + 16;
+	int y = colorTop + 40;
 	const int previewWidth = max(120, colorRightWidth - 28);
 	ColorPreviewLabel.MoveWindow(rightLeft + 14, y, previewWidth, rowHeight, TRUE);
 	y += rowHeight + 8;
@@ -2459,9 +2451,9 @@ void CProfileEditorDialog::LayoutControls()
 
 	LabelHex.MoveWindow(rightLeft + 14, y + 3, rgbaLabelWidth, rowHeight, TRUE);
 	EditHex.MoveWindow(rightLeft + 14 + rgbaLabelWidth + 6, y, max(120, previewWidth - rgbaLabelWidth - 6), rowHeight, TRUE);
-	y += rowHeight + 16;
-
-	// Top-bar actions are laid out globally above page content.
+	y += rowHeight + 12;
+	ApplyColorButton.MoveWindow(rightLeft + 14, y, 82, 34, TRUE);
+	ResetColorButton.MoveWindow(rightLeft + 106, y, 82, 34, TRUE);
 
 	const int iconTop = pageRect.top + innerPad;
 	const int iconHeight = max(120, pageRect.Height() - (innerPad * 2));
@@ -2470,14 +2462,14 @@ void CProfileEditorDialog::LayoutControls()
 	const int iconRightWidth = max(240, pageRect.Width() - (innerPad * 2) - iconGap - iconLeftWidth);
 	const int iconLeft = pageRect.left + innerPad;
 	const int iconRightLeft = iconLeft + iconLeftWidth + iconGap;
-	const int iconSmallCardHeight = 80;
-	const int iconBottomCardHeight = max(120, iconHeight - iconSmallCardHeight - iconGap);
-	const int iconPreviewCardHeight = max(170, iconHeight - 180 - iconGap);
+	const int iconShapeCardHeight = 80;
+	const int iconDisplayCardHeight = 96;
+	const int iconSizeCardHeight = max(120, iconHeight - iconShapeCardHeight - iconDisplayCardHeight - (iconGap * 2));
 
-	IconShapePanel.MoveWindow(iconLeft, iconTop, iconLeftWidth, iconSmallCardHeight, TRUE);
-	IconPanel.MoveWindow(iconLeft, iconTop + iconSmallCardHeight + iconGap, iconLeftWidth, iconBottomCardHeight, TRUE);
-	IconDisplayPanel.MoveWindow(iconRightLeft, iconTop, iconRightWidth, 160, TRUE);
-	IconPreviewPanel.MoveWindow(iconRightLeft, iconTop + 160 + iconGap, iconRightWidth, iconPreviewCardHeight, TRUE);
+	IconShapePanel.MoveWindow(iconLeft, iconTop, iconLeftWidth, iconShapeCardHeight, TRUE);
+	IconPanel.MoveWindow(iconLeft, iconTop + iconShapeCardHeight + iconGap, iconLeftWidth, iconSizeCardHeight, TRUE);
+	IconDisplayPanel.MoveWindow(iconLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap, iconLeftWidth, iconDisplayCardHeight, TRUE);
+	IconPreviewPanel.MoveWindow(iconRightLeft, iconTop, iconRightWidth, iconHeight, TRUE);
 
 	const int iconPad = 16;
 	const int iconContentLeft = iconLeft + iconPad;
@@ -2494,7 +2486,7 @@ void CProfileEditorDialog::LayoutControls()
 	IconStyleDiamond.MoveWindow(iconContentLeft + 84, shapeRowY, 92, iconCheckboxHeight, TRUE);
 	IconStyleRealistic.MoveWindow(iconContentLeft + 186, shapeRowY, 96, iconCheckboxHeight, TRUE);
 
-	int iconY = iconTop + iconSmallCardHeight + iconGap + 14;
+	int iconY = iconTop + iconShapeCardHeight + iconGap + 14;
 	IconSizeHeader.MoveWindow(iconContentLeft, iconY, 120, rowHeight, TRUE);
 	iconY += rowHeight + 8;
 
@@ -2529,14 +2521,19 @@ void CProfileEditorDialog::LayoutControls()
 	BoostFactorTickMidLabel.MoveWindow(iconContentLeft + (iconContentWidth / 2) - (iconTickWidth / 2), iconY, iconTickWidth, iconTickHeight, TRUE);
 	BoostFactorTickMaxLabel.MoveWindow(iconContentRight - iconTickWidth, iconY, iconTickWidth, iconTickHeight, TRUE);
 
+	const int displayContentLeft = iconLeft + iconPad;
+	IconDisplayHeader.MoveWindow(displayContentLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 12, 100, rowHeight, TRUE);
+	BoostResolutionLabel.MoveWindow(displayContentLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 44, 90, rowHeight, TRUE);
+	const int resButtonsTop = iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 44;
+	BoostResolution1080Button.MoveWindow(displayContentLeft + 92, resButtonsTop, 74, 22, TRUE);
+	BoostResolution2KButton.MoveWindow(displayContentLeft + 172, resButtonsTop, 52, 22, TRUE);
+	BoostResolution4KButton.MoveWindow(displayContentLeft + 230, resButtonsTop, 52, 22, TRUE);
+	MoveControlOffscreen(BoostResolutionCombo);
+
 	const int rightPad = 16;
 	const int rightContentLeft = iconRightLeft + rightPad;
 	const int rightContentWidth = max(120, iconRightWidth - (rightPad * 2));
-	IconDisplayHeader.MoveWindow(rightContentLeft, iconTop + 14, 100, rowHeight, TRUE);
-	BoostResolutionLabel.MoveWindow(rightContentLeft, iconTop + 48, 100, rowHeight, TRUE);
-	BoostResolutionCombo.MoveWindow(rightContentLeft + 102, iconTop + 44, max(120, rightContentWidth - 102), rowHeight + 220, TRUE);
-
-	const int previewTop = iconTop + 160 + iconGap;
+	const int previewTop = iconTop;
 	IconPreviewHeader.MoveWindow(rightContentLeft, previewTop + 14, 100, rowHeight, TRUE);
 	IconPreviewSwatch.MoveWindow(rightContentLeft, previewTop + 46, rightContentWidth, 84, TRUE);
 	IconPreviewHint.MoveWindow(rightContentLeft, previewTop + 140, rightContentWidth, 42, TRUE);
@@ -2550,7 +2547,7 @@ void CProfileEditorDialog::LayoutControls()
 		IDC_PE_FIXED_SCALE_TICK_MIN, IDC_PE_FIXED_SCALE_TICK_MID, IDC_PE_FIXED_SCALE_TICK_MAX,
 		IDC_PE_SMALL_BOOST_CHECK, IDC_PE_BOOST_FACTOR_LABEL, IDC_PE_BOOST_FACTOR_VALUE, IDC_PE_BOOST_FACTOR_SLIDER,
 		IDC_PE_BOOST_FACTOR_TICK_MIN, IDC_PE_BOOST_FACTOR_TICK_MID, IDC_PE_BOOST_FACTOR_TICK_MAX,
-		IDC_PE_BOOST_RES_LABEL, IDC_PE_BOOST_RES_COMBO, IDC_PE_ICON_PREVIEW_HINT,
+		IDC_PE_BOOST_RES_LABEL, IDC_PE_BOOST_RES_COMBO, IDC_PE_ICON_RES_1080, IDC_PE_ICON_RES_2K, IDC_PE_ICON_RES_4K, IDC_PE_ICON_PREVIEW_HINT,
 		IDC_PE_ICON_SHAPE_HEADER, IDC_PE_ICON_SIZE_HEADER, IDC_PE_ICON_DISPLAY_HEADER, IDC_PE_ICON_PREVIEW_HEADER
 	};
 	for (UINT controlId : iconContentIds)
@@ -2576,16 +2573,16 @@ void CProfileEditorDialog::LayoutControls()
 
 	RuleLeftPanel.MoveWindow(rulesLeft, rulesTop, rulesLeftWidth, rulesPanelHeight, TRUE);
 	RuleRightPanel.MoveWindow(rulesRightLeft, rulesTop, rulesRightWidth, rulesPanelHeight, TRUE);
-	RuleLeftHeader.MoveWindow(rulesLeft + 1, rulesTop + 1, max(60, rulesLeftWidth - 2), 30, TRUE);
-	RuleRightHeader.MoveWindow(rulesRightLeft + 1, rulesTop + 1, max(60, rulesRightWidth - 2), 30, TRUE);
+	RuleLeftHeader.MoveWindow(rulesLeft + 10, rulesTop + 10, max(60, rulesLeftWidth - 20), 24, TRUE);
+	RuleRightHeader.MoveWindow(rulesRightLeft + 10, rulesTop + 10, max(60, rulesRightWidth - 20), 24, TRUE);
 
-	const int ruleListTop = rulesTop + 36;
+	const int ruleListTop = rulesTop + 38;
 	const int ruleButtonAreaHeight = 44;
 	const int ruleListHeight = max(80, rulesPanelHeight - 36 - ruleButtonAreaHeight - 8);
 	const int ruleListWidth = max(90, rulesLeftWidth - 16);
 	MoveControlOffscreen(RulesList);
 	RuleTree.MoveWindow(rulesLeft + 8, ruleListTop, ruleListWidth, ruleListHeight, TRUE);
-	const int ruleButtonsY = rulesTop + rulesPanelHeight - 38;
+	const int ruleButtonsY = rulesTop + rulesPanelHeight - 46;
 	RuleAddButton.MoveWindow(rulesLeft + 12, ruleButtonsY, 84, buttonHeight, TRUE);
 	MoveControlOffscreen(RuleAddParameterButton);
 	MoveControlOffscreen(RuleRemoveButton);
@@ -2678,9 +2675,9 @@ void CProfileEditorDialog::LayoutControls()
 	const int profileActionsCardHeight = 140;
 	ProfilePanel.MoveWindow(profileLeft, profileTop, profileWidth, profileHeight, TRUE);
 
-	ProfileHeader.MoveWindow(profileLeft + 1, profileTop + 1, max(60, profileLeftCardWidth - 2), 30, TRUE);
+	ProfileHeader.MoveWindow(profileLeft + 10, profileTop + 14, max(60, profileLeftCardWidth - 20), 24, TRUE);
 	const int profileLeftContentLeft = profileLeft + 12;
-	const int profileLeftContentTop = profileTop + 40;
+	const int profileLeftContentTop = profileTop + 46;
 	const int profileLeftContentWidth = max(120, profileLeftCardWidth - 24);
 	const int profileListHeight = max(80, profileHeight - 52);
 	ProfileList.MoveWindow(profileLeftContentLeft, profileLeftContentTop, profileLeftContentWidth, profileListHeight, TRUE);
@@ -2706,7 +2703,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int tagWidth = max(240, pageRect.Width() - (innerPad * 2));
 	const int tagHeight = max(120, pageRect.Height() - (innerPad * 2));
 	TagPanel.MoveWindow(tagLeft, tagTop, tagWidth, tagHeight, TRUE);
-	TagHeaderPanel.MoveWindow(tagLeft + 1, tagTop + 1, max(60, tagWidth - 2), 30, TRUE);
+	TagHeaderPanel.MoveWindow(tagLeft + 10, tagTop + 10, max(60, tagWidth - 20), 24, TRUE);
 
 	const int tagPad = 12;
 	const int tagLabelWidth = 52;
@@ -2717,7 +2714,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int tokenButtonWidth = 62;
 	const int tokenComboWidth = max(90, baseFieldWidth - tokenButtonWidth - 8);
 
-	int tagY = tagTop + 42;
+	int tagY = tagTop + 44;
 	TagTypeLabel.MoveWindow(tagContentLeft, tagY + 4, tagLabelWidth, rowHeight, TRUE);
 	TagTypeCombo.MoveWindow(tagFieldLeft, tagY, baseFieldWidth, rowHeight + 220, TRUE);
 	tagY += rowHeight + 10;
@@ -2837,8 +2834,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	NavTagsButton.ShowWindow(SW_SHOW);
 	NavRulesButton.ShowWindow(SW_SHOW);
 	NavProfileButton.ShowWindow(SW_SHOW);
-	PageTitleLabel.ShowWindow(SW_SHOW);
-	PageSubtitleLabel.ShowWindow(SW_SHOW);
+	PageTitleLabel.ShowWindow(SW_HIDE);
+	PageSubtitleLabel.ShowWindow(SW_HIDE);
 	NavColorsButton.Invalidate(FALSE);
 	NavIconButton.Invalidate(FALSE);
 	NavTagsButton.Invalidate(FALSE);
@@ -2900,7 +2897,10 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	BoostFactorTickMaxLabel.ShowWindow(iconShowMode);
 	BoostFactorCombo.ShowWindow(SW_HIDE);
 	BoostResolutionLabel.ShowWindow(iconShowMode);
-	BoostResolutionCombo.ShowWindow(iconShowMode);
+	BoostResolutionCombo.ShowWindow(SW_HIDE);
+	BoostResolution1080Button.ShowWindow(iconShowMode);
+	BoostResolution2KButton.ShowWindow(iconShowMode);
+	BoostResolution4KButton.ShowWindow(iconShowMode);
 
 	RulesList.ShowWindow(SW_HIDE);
 	RuleTree.ShowWindow(ruleShowMode);
@@ -3504,11 +3504,26 @@ void CProfileEditorDialog::SyncIconControlsFromRadar()
 
 	const std::string preset = Owner->GetSmallTargetIconBoostResolutionPreset();
 	if (preset == "2k")
+	{
 		SelectComboEntryByText(BoostResolutionCombo, "2K");
+		BoostResolution1080Button.SetCheck(BST_UNCHECKED);
+		BoostResolution2KButton.SetCheck(BST_CHECKED);
+		BoostResolution4KButton.SetCheck(BST_UNCHECKED);
+	}
 	else if (preset == "4k")
+	{
 		SelectComboEntryByText(BoostResolutionCombo, "4K");
+		BoostResolution1080Button.SetCheck(BST_UNCHECKED);
+		BoostResolution2KButton.SetCheck(BST_UNCHECKED);
+		BoostResolution4KButton.SetCheck(BST_CHECKED);
+	}
 	else
+	{
 		SelectComboEntryByText(BoostResolutionCombo, "1080p");
+		BoostResolution1080Button.SetCheck(BST_CHECKED);
+		BoostResolution2KButton.SetCheck(BST_UNCHECKED);
+		BoostResolution4KButton.SetCheck(BST_UNCHECKED);
+	}
 
 	UpdateIconScaleValueLabels();
 
@@ -5854,6 +5869,21 @@ void CProfileEditorDialog::OnBoostResolutionChanged()
 		Owner->RequestRefresh();
 }
 
+void CProfileEditorDialog::OnBoostResolutionPresetChanged()
+{
+	if (UpdatingControls)
+		return;
+
+	if (BoostResolution1080Button.GetCheck() == BST_CHECKED)
+		SelectComboEntryByText(BoostResolutionCombo, "1080p");
+	else if (BoostResolution2KButton.GetCheck() == BST_CHECKED)
+		SelectComboEntryByText(BoostResolutionCombo, "2K");
+	else if (BoostResolution4KButton.GetCheck() == BST_CHECKED)
+		SelectComboEntryByText(BoostResolutionCombo, "4K");
+
+	OnBoostResolutionChanged();
+}
+
 BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_WM_CLOSE()
 	ON_WM_MOVE()
@@ -5896,6 +5926,9 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_SMALL_BOOST_CHECK, &CProfileEditorDialog::OnSmallBoostToggled)
 	ON_CBN_SELCHANGE(IDC_PE_BOOST_FACTOR_COMBO, &CProfileEditorDialog::OnBoostFactorChanged)
 	ON_CBN_SELCHANGE(IDC_PE_BOOST_RES_COMBO, &CProfileEditorDialog::OnBoostResolutionChanged)
+	ON_BN_CLICKED(IDC_PE_ICON_RES_1080, &CProfileEditorDialog::OnBoostResolutionPresetChanged)
+	ON_BN_CLICKED(IDC_PE_ICON_RES_2K, &CProfileEditorDialog::OnBoostResolutionPresetChanged)
+	ON_BN_CLICKED(IDC_PE_ICON_RES_4K, &CProfileEditorDialog::OnBoostResolutionPresetChanged)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_RULE_TREE, &CProfileEditorDialog::OnRuleTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_RULE_TREE, &CProfileEditorDialog::OnRuleTreeCustomDraw)
 	ON_NOTIFY(NM_CLICK, IDC_PE_RULE_TREE, &CProfileEditorDialog::OnRuleTreeClick)
