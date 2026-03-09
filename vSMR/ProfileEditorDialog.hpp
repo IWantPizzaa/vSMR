@@ -60,6 +60,7 @@ protected:
 	afx_msg void OnSmallBoostToggled();
 	afx_msg void OnBoostFactorChanged();
 	afx_msg void OnBoostResolutionChanged();
+	afx_msg void OnBoostResolutionPresetChanged();
 	afx_msg void OnRuleSelectionChanged();
 	afx_msg void OnRuleTreeSelectionChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
@@ -239,6 +240,9 @@ private:
 		, IDC_PE_ICON_PREVIEW_SWATCH = 9259
 		, IDC_PE_ICON_PREVIEW_HINT = 9260
 		, IDC_PE_SIDEBAR_DIVIDER = 9261
+		, IDC_PE_ICON_RES_1080 = 9262
+		, IDC_PE_ICON_RES_2K = 9263
+		, IDC_PE_ICON_RES_4K = 9264
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -314,6 +318,9 @@ private:
 	CComboBox BoostFactorCombo;
 	CStatic BoostResolutionLabel;
 	CComboBox BoostResolutionCombo;
+	CButton BoostResolution1080Button;
+	CButton BoostResolution2KButton;
+	CButton BoostResolution4KButton;
 
 	CListBox RulesList;
 	CTreeCtrl RuleTree;
