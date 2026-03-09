@@ -622,49 +622,6 @@ namespace
 		::ReleaseDC(hwnd, hdc);
 	}
 
-	void ApplyThemedEditTextInsets(HWND hwnd)
-	{
-		if (!::IsWindow(hwnd))
-			return;
-
-		RECT client = {};
-		::GetClientRect(hwnd, &client);
-		RECT textRect = client;
-		textRect.left += 6;
-		textRect.right -= 6;
-
-		int topInset = 3;
-		HDC hdc = ::GetDC(hwnd);
-		if (hdc != nullptr)
-		{
-			HFONT font = reinterpret_cast<HFONT>(::SendMessage(hwnd, WM_GETFONT, 0, 0));
-			HGDIOBJ oldFont = nullptr;
-			if (font != nullptr)
-				oldFont = ::SelectObject(hdc, font);
-
-			TEXTMETRIC tm = {};
-			if (::GetTextMetrics(hdc, &tm) != 0)
-			{
-				const int clientHeight = max(1, client.bottom - client.top);
-				const int lineHeight = max(1, tm.tmHeight);
-				topInset = max(2, (clientHeight - lineHeight) / 2);
-			}
-
-			if (oldFont != nullptr)
-				::SelectObject(hdc, oldFont);
-			::ReleaseDC(hwnd, hdc);
-		}
-
-		textRect.top += topInset;
-		textRect.bottom -= topInset;
-		if (textRect.bottom <= textRect.top + 2)
-		{
-			textRect.top = client.top + 2;
-			textRect.bottom = client.bottom - 2;
-		}
-		::SendMessage(hwnd, EM_SETRECTNP, 0, reinterpret_cast<LPARAM>(&textRect));
-	}
-
 	LRESULT CALLBACK ThemedEditWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		auto it = gThemedEditOldProcs.find(hwnd);
@@ -677,9 +634,6 @@ namespace
 			return result;
 		}
 
-		if (message == WM_CHAR && wParam == VK_RETURN)
-			return 0;
-
 		const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
 
 		switch (message)
@@ -690,9 +644,6 @@ namespace
 		case WM_SETFOCUS:
 		case WM_KILLFOCUS:
 		case WM_SETTEXT:
-		case WM_SIZE:
-		case WM_SETFONT:
-			ApplyThemedEditTextInsets(hwnd);
 			DrawThemedBorder(hwnd);
 			break;
 		default:
@@ -2089,15 +2040,13 @@ void CProfileEditorDialog::CreateEditorControls()
 			if (!::IsWindow(hwnd))
 				return;
 
-			// Remove native edit frame first (WS_BORDER/WS_EX_CLIENTEDGE),
-			// then paint only the custom rounded themed border.
-			edit.ModifyStyle(0, ES_MULTILINE | ES_AUTOVSCROLL);
-			edit.ModifyStyle(WS_BORDER, 0);
-			edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
-			edit.SetWindowPos(nullptr, 0, 0, 0, 0,
-				SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-			edit.SendMessage(EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(6, 6));
-		ApplyThemedEditTextInsets(hwnd);
+		// Remove native edit frame first (WS_BORDER/WS_EX_CLIENTEDGE),
+		// then paint only the custom rounded themed border.
+		edit.ModifyStyle(WS_BORDER, 0);
+		edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		edit.SetWindowPos(nullptr, 0, 0, 0, 0,
+			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+		edit.SendMessage(EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(6, 6));
 
 		if (gThemedEditOldProcs.find(hwnd) != gThemedEditOldProcs.end())
 		{
