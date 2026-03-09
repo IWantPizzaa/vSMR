@@ -622,6 +622,49 @@ namespace
 		::ReleaseDC(hwnd, hdc);
 	}
 
+	void ApplyThemedEditTextInsets(HWND hwnd)
+	{
+		if (!::IsWindow(hwnd))
+			return;
+
+		RECT client = {};
+		::GetClientRect(hwnd, &client);
+		RECT textRect = client;
+		textRect.left += 6;
+		textRect.right -= 6;
+
+		int topInset = 3;
+		HDC hdc = ::GetDC(hwnd);
+		if (hdc != nullptr)
+		{
+			HFONT font = reinterpret_cast<HFONT>(::SendMessage(hwnd, WM_GETFONT, 0, 0));
+			HGDIOBJ oldFont = nullptr;
+			if (font != nullptr)
+				oldFont = ::SelectObject(hdc, font);
+
+			TEXTMETRIC tm = {};
+			if (::GetTextMetrics(hdc, &tm) != 0)
+			{
+				const int clientHeight = max(1, client.bottom - client.top);
+				const int lineHeight = max(1, tm.tmHeight);
+				topInset = max(2, (clientHeight - lineHeight) / 2);
+			}
+
+			if (oldFont != nullptr)
+				::SelectObject(hdc, oldFont);
+			::ReleaseDC(hwnd, hdc);
+		}
+
+		textRect.top += topInset;
+		textRect.bottom -= topInset;
+		if (textRect.bottom <= textRect.top + 2)
+		{
+			textRect.top = client.top + 2;
+			textRect.bottom = client.bottom - 2;
+		}
+		::SendMessage(hwnd, EM_SETRECTNP, 0, reinterpret_cast<LPARAM>(&textRect));
+	}
+
 	LRESULT CALLBACK ThemedEditWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		auto it = gThemedEditOldProcs.find(hwnd);
@@ -634,6 +677,9 @@ namespace
 			return result;
 		}
 
+		if (message == WM_CHAR && wParam == VK_RETURN)
+			return 0;
+
 		const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
 
 		switch (message)
@@ -644,6 +690,9 @@ namespace
 		case WM_SETFOCUS:
 		case WM_KILLFOCUS:
 		case WM_SETTEXT:
+		case WM_SIZE:
+		case WM_SETFONT:
+			ApplyThemedEditTextInsets(hwnd);
 			DrawThemedBorder(hwnd);
 			break;
 		default:
@@ -982,6 +1031,39 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		pDC->SetBkColor(kEditorThemeBackgroundColor);
 		pDC->SetTextColor(RGB(17, 24, 39));
 		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+	}
+	if (nCtlColor == CTLCOLOR_EDIT && HeaderBarBrush.GetSafeHandle() != nullptr)
+	{
+		const bool isThemedEditControl = [&]()
+		{
+			switch (controlId)
+			{
+			case IDC_PE_EDIT_RGBA:
+			case IDC_PE_EDIT_HEX:
+			case IDC_PE_RULE_NAME_EDIT:
+			case IDC_PE_RULE_TARGET_EDIT:
+			case IDC_PE_RULE_TAG_EDIT:
+			case IDC_PE_RULE_TEXT_EDIT:
+			case IDC_PE_PROFILE_NAME_EDIT:
+			case IDC_PE_TAG_LINE1_EDIT:
+			case IDC_PE_TAG_LINE2_EDIT:
+			case IDC_PE_TAG_LINE3_EDIT:
+			case IDC_PE_TAG_LINE4_EDIT:
+			case IDC_PE_TAG_D_LINE1_EDIT:
+			case IDC_PE_TAG_D_LINE2_EDIT:
+			case IDC_PE_TAG_D_LINE3_EDIT:
+			case IDC_PE_TAG_D_LINE4_EDIT:
+				return true;
+			default:
+				return false;
+			}
+		}();
+		if (isThemedEditControl)
+		{
+			pDC->SetBkColor(kEditorThemeBackgroundColor);
+			pDC->SetTextColor(RGB(17, 24, 39));
+			return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+		}
 	}
 	if ((controlId == IDC_PE_SIDEBAR_PANEL || controlId == IDC_PE_SIDEBAR_TITLE) && SidebarBrush.GetSafeHandle() != nullptr)
 	{
@@ -1638,7 +1720,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	if (ControlsCreated)
 		return;
 
-	const DWORD commonEditStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL;
+	const DWORD commonEditStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL;
 
 	PageTabs.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP, CRect(0, 0, 0, 0), this, IDC_PE_TAB);
 	PageTabs.InsertItem(0, "Colors");
@@ -1964,19 +2046,21 @@ void CProfileEditorDialog::CreateEditorControls()
 		ColorPathTree.SetFont(&MonoFont, TRUE);
 		RuleTree.SetFont(&MonoFont, TRUE);
 		ProfileList.SetFont(&MonoFont, TRUE);
-		EditRgba.SetFont(&MonoFont, TRUE);
-		EditHex.SetFont(&MonoFont, TRUE);
-		RuleTargetEdit.SetFont(&MonoFont, TRUE);
-		RuleTagEdit.SetFont(&MonoFont, TRUE);
-		RuleTextEdit.SetFont(&MonoFont, TRUE);
-		TagLine1Edit.SetFont(&MonoFont, TRUE);
-		TagLine2Edit.SetFont(&MonoFont, TRUE);
-		TagLine3Edit.SetFont(&MonoFont, TRUE);
-		TagLine4Edit.SetFont(&MonoFont, TRUE);
-		TagDetailedLine1Edit.SetFont(&MonoFont, TRUE);
-		TagDetailedLine2Edit.SetFont(&MonoFont, TRUE);
-		TagDetailedLine3Edit.SetFont(&MonoFont, TRUE);
-		TagDetailedLine4Edit.SetFont(&MonoFont, TRUE);
+		EditRgba.SetFont(GetFont(), TRUE);
+		EditHex.SetFont(GetFont(), TRUE);
+		RuleNameEdit.SetFont(GetFont(), TRUE);
+		RuleTargetEdit.SetFont(GetFont(), TRUE);
+		RuleTagEdit.SetFont(GetFont(), TRUE);
+		RuleTextEdit.SetFont(GetFont(), TRUE);
+		ProfileNameEdit.SetFont(GetFont(), TRUE);
+		TagLine1Edit.SetFont(GetFont(), TRUE);
+		TagLine2Edit.SetFont(GetFont(), TRUE);
+		TagLine3Edit.SetFont(GetFont(), TRUE);
+		TagLine4Edit.SetFont(GetFont(), TRUE);
+		TagDetailedLine1Edit.SetFont(GetFont(), TRUE);
+		TagDetailedLine2Edit.SetFont(GetFont(), TRUE);
+		TagDetailedLine3Edit.SetFont(GetFont(), TRUE);
+		TagDetailedLine4Edit.SetFont(GetFont(), TRUE);
 		TagPreviewEdit.SetFont(&MonoFont, TRUE);
 		PageTitleLabel.SetFont(&TitleFont, TRUE);
 		PageSubtitleLabel.SetFont(GetFont(), TRUE);
@@ -1997,13 +2081,24 @@ void CProfileEditorDialog::CreateEditorControls()
 	LayoutControls();
 }
 
-void CProfileEditorDialog::ApplyThemedEditBorders()
-{
-	auto attachBorder = [](CEdit& edit)
+	void CProfileEditorDialog::ApplyThemedEditBorders()
 	{
-		const HWND hwnd = edit.GetSafeHwnd();
-		if (!::IsWindow(hwnd))
-			return;
+		auto attachBorder = [](CEdit& edit)
+		{
+			const HWND hwnd = edit.GetSafeHwnd();
+			if (!::IsWindow(hwnd))
+				return;
+
+			// Remove native edit frame first (WS_BORDER/WS_EX_CLIENTEDGE),
+			// then paint only the custom rounded themed border.
+			edit.ModifyStyle(0, ES_MULTILINE | ES_AUTOVSCROLL);
+			edit.ModifyStyle(WS_BORDER, 0);
+			edit.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+			edit.SetWindowPos(nullptr, 0, 0, 0, 0,
+				SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+			edit.SendMessage(EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(6, 6));
+		ApplyThemedEditTextInsets(hwnd);
+
 		if (gThemedEditOldProcs.find(hwnd) != gThemedEditOldProcs.end())
 		{
 			DrawThemedBorder(hwnd);
@@ -2032,6 +2127,7 @@ void CProfileEditorDialog::ApplyThemedEditBorders()
 	attachBorder(TagDetailedLine2Edit);
 	attachBorder(TagDetailedLine3Edit);
 	attachBorder(TagDetailedLine4Edit);
+	attachBorder(ProfileNameEdit);
 }
 
 void CProfileEditorDialog::SetEditTextPreserveCaret(CEdit& edit, const std::string& text)
