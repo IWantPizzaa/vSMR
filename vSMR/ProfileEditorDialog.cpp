@@ -523,13 +523,8 @@ namespace
 		const int tickBottom = min(clientRect.bottom - 2, tickTop + 5);
 		CPen tickPen(PS_SOLID, 1, RGB(172, 181, 193));
 		CPen* oldTickPen = dc.SelectObject(&tickPen);
-		const int tickCount = sliderControl.GetNumTics();
-		for (int tickIndex = 0; tickIndex < tickCount; ++tickIndex)
+		for (int tickValue = rangeMin; tickValue <= rangeMax; ++tickValue)
 		{
-			const int tickValue = sliderControl.GetTic(tickIndex);
-			if (tickValue < rangeMin || tickValue > rangeMax)
-				continue;
-
 			const double tickT = static_cast<double>(tickValue - rangeMin) / static_cast<double>(rangeSpan);
 			const int tickX = channelRect.left + static_cast<int>(round(tickT * static_cast<double>(max(1, channelRect.Width() - 1))));
 			dc.MoveTo(tickX, tickTop);
@@ -977,10 +972,15 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 		const HWND sourceHwnd = pScrollBar->GetSafeHwnd();
 		if (sourceHwnd == FixedScaleSlider.GetSafeHwnd())
 		{
+			int snappedPos = FixedScaleSlider.GetPos();
+			if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
+				snappedPos = static_cast<int>(nPos);
+			snappedPos = min(FixedScaleSlider.GetRangeMax(), max(FixedScaleSlider.GetRangeMin(), snappedPos));
+			FixedScaleSlider.SetPos(snappedPos);
 			UpdateIconScaleValueLabels();
 			if (!UpdatingControls && Owner != nullptr)
 			{
-				const double scale = SliderPosToScale(FixedScaleSlider.GetPos());
+				const double scale = SliderPosToScale(snappedPos);
 				if (Owner->SetFixedPixelTriangleIconScale(scale, true))
 					Owner->RequestRefresh();
 			}
@@ -988,10 +988,15 @@ void CProfileEditorDialog::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrol
 		}
 		else if (sourceHwnd == BoostFactorSlider.GetSafeHwnd())
 		{
+			int snappedPos = BoostFactorSlider.GetPos();
+			if (nSBCode == TB_THUMBTRACK || nSBCode == TB_THUMBPOSITION)
+				snappedPos = static_cast<int>(nPos);
+			snappedPos = min(BoostFactorSlider.GetRangeMax(), max(BoostFactorSlider.GetRangeMin(), snappedPos));
+			BoostFactorSlider.SetPos(snappedPos);
 			UpdateIconScaleValueLabels();
 			if (!UpdatingControls && Owner != nullptr)
 			{
-				const double scale = SliderPosToScale(BoostFactorSlider.GetPos());
+				const double scale = SliderPosToScale(snappedPos);
 				if (Owner->SetSmallTargetIconBoostFactor(scale, true))
 					Owner->RequestRefresh();
 			}
@@ -1926,7 +1931,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	FixedPixelCheck.Create("Fixed Pixel", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_PIXEL_CHECK);
 	FixedScaleLabel.Create("Fixed Size", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_LABEL);
 	FixedScaleValueLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_VALUE);
-	FixedScaleSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_AUTOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_SLIDER);
+	FixedScaleSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_SLIDER);
 	FixedScaleTickMinLabel.Create("0.10x", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_TICK_MIN);
 	FixedScaleTickMidLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_TICK_MID);
 	FixedScaleTickMaxLabel.Create("2.00x", WS_CHILD | WS_VISIBLE | SS_RIGHT, CRect(0, 0, 0, 0), this, IDC_PE_FIXED_SCALE_TICK_MAX);
@@ -1934,7 +1939,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	SmallBoostCheck.Create("Small Icon Boost", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_PE_SMALL_BOOST_CHECK);
 	BoostFactorLabel.Create("Boost Factor", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_LABEL);
 	BoostFactorValueLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_VALUE);
-	BoostFactorSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_AUTOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_SLIDER);
+	BoostFactorSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_HORZ | TBS_NOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_SLIDER);
 	BoostFactorTickMinLabel.Create("0.10x", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_TICK_MIN);
 	BoostFactorTickMidLabel.Create("1.00x", WS_CHILD | WS_VISIBLE | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_TICK_MID);
 	BoostFactorTickMaxLabel.Create("2.00x", WS_CHILD | WS_VISIBLE | SS_RIGHT, CRect(0, 0, 0, 0), this, IDC_PE_BOOST_FACTOR_TICK_MAX);
@@ -2092,14 +2097,14 @@ void CProfileEditorDialog::CreateEditorControls()
 	PopulateRuleCombos();
 	HeaderBarBrush.CreateSolidBrush(kEditorThemeBackgroundColor);
 	SidebarBrush.CreateSolidBrush(kEditorSidebarBackgroundColor);
-	FixedScaleSlider.SetRange(10, 200, TRUE);
-	FixedScaleSlider.SetTicFreq(10);
+	FixedScaleSlider.SetRange(1, 20, TRUE);
+	FixedScaleSlider.SetTicFreq(1);
 	FixedScaleSlider.SetLineSize(1);
-	FixedScaleSlider.SetPageSize(10);
-	BoostFactorSlider.SetRange(10, 200, TRUE);
-	BoostFactorSlider.SetTicFreq(10);
+	FixedScaleSlider.SetPageSize(1);
+	BoostFactorSlider.SetRange(1, 20, TRUE);
+	BoostFactorSlider.SetTicFreq(1);
 	BoostFactorSlider.SetLineSize(1);
-	BoostFactorSlider.SetPageSize(10);
+	BoostFactorSlider.SetPageSize(1);
 	ColorValueSlider.SetRange(0, 100, TRUE);
 	ColorValueSlider.SetTicFreq(10);
 	ColorValueSlider.SetLineSize(1);
@@ -3666,20 +3671,20 @@ double CProfileEditorDialog::ParseComboScaleSelection(CComboBox& combo, double f
 
 double CProfileEditorDialog::SliderPosToScale(int pos) const
 {
-	if (pos < 10)
-		pos = 10;
-	if (pos > 200)
-		pos = 200;
-	return static_cast<double>(pos) / 100.0;
+	if (pos < 1)
+		pos = 1;
+	if (pos > 20)
+		pos = 20;
+	return static_cast<double>(pos) / 10.0;
 }
 
 int CProfileEditorDialog::ScaleToSliderPos(double scale) const
 {
-	int pos = static_cast<int>(std::lround(scale * 100.0));
-	if (pos < 10)
-		pos = 10;
-	if (pos > 200)
-		pos = 200;
+	int pos = static_cast<int>(std::lround(scale * 10.0));
+	if (pos < 1)
+		pos = 1;
+	if (pos > 20)
+		pos = 20;
 	return pos;
 }
 
