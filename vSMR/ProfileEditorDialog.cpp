@@ -1857,6 +1857,10 @@ void CProfileEditorDialog::OnPaint()
 		drawCard(IconPanel, false);
 		drawCard(IconDisplayPanel, false);
 		drawCard(TagPanel, false);
+		drawSectionDivider(IconShapeHeader, IconShapePanel);
+		drawSectionDivider(IconSizeHeader, IconPanel);
+		drawSectionDivider(IconDisplayHeader, IconDisplayPanel);
+		drawSectionDivider(TagHeaderPanel, TagPanel);
 	}
 	else if (selectedTab == kTabColors)
 	{
@@ -1910,7 +1914,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	PageTabs.InsertItem(2, "Rules");
 	PageTabs.InsertItem(3, "Profiles");
 	SidebarPanel.Create("", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_PANEL);
-	SidebarTitle.Create("SECTIONS", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_TITLE);
+	SidebarTitle.Create("SECTIONS", WS_CHILD | WS_VISIBLE | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_TITLE);
 	SidebarDivider.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDVERT, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_DIVIDER);
 	NavColorsButton.Create("Colors", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_COLORS);
 	NavIconButton.Create("Icons && Tags", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_NAV_ICON);
@@ -2852,9 +2856,7 @@ void CProfileEditorDialog::LayoutControls()
 	iconY += rowHeight + 8;
 
 	FixedPixelCheck.MoveWindow(iconContentLeft, iconY, 140, iconCheckboxHeight, TRUE);
-	iconY += iconCheckboxHeight + 6;
-	IconSeparator1.MoveWindow(iconLeft + 12, iconY, max(50, iconLeftWidth - 24), 2, TRUE);
-	iconY += 12;
+	iconY += iconCheckboxHeight + 12;
 
 	FixedScaleLabel.MoveWindow(iconContentLeft, iconY + 2, 110, rowHeight, TRUE);
 	FixedScaleValueLabel.MoveWindow(iconContentRight - 70, iconY + 2, 70, rowHeight, TRUE);
@@ -2864,14 +2866,10 @@ void CProfileEditorDialog::LayoutControls()
 	FixedScaleTickMinLabel.MoveWindow(iconContentLeft, iconY, iconTickWidth, iconTickHeight, TRUE);
 	FixedScaleTickMidLabel.MoveWindow(iconContentLeft + (iconContentWidth / 2) - (iconTickWidth / 2), iconY, iconTickWidth, iconTickHeight, TRUE);
 	FixedScaleTickMaxLabel.MoveWindow(iconContentRight - iconTickWidth, iconY, iconTickWidth, iconTickHeight, TRUE);
-	iconY += iconTickHeight + 8;
+	iconY += iconTickHeight + 14;
 
-	IconSeparator2.MoveWindow(iconLeft + 12, iconY, max(50, iconLeftWidth - 24), 2, TRUE);
-	iconY += 12;
 	SmallBoostCheck.MoveWindow(iconContentLeft, iconY, 160, iconCheckboxHeight, TRUE);
-	iconY += iconCheckboxHeight + 6;
-	IconSeparator3.MoveWindow(iconLeft + 12, iconY, max(50, iconLeftWidth - 24), 2, TRUE);
-	iconY += 12;
+	iconY += iconCheckboxHeight + 12;
 
 	BoostFactorLabel.MoveWindow(iconContentLeft, iconY + 2, 110, rowHeight, TRUE);
 	BoostFactorValueLabel.MoveWindow(iconContentRight - 70, iconY + 2, 70, rowHeight, TRUE);
@@ -2897,6 +2895,9 @@ void CProfileEditorDialog::LayoutControls()
 	BoostResolution2KButton.MoveWindow(resolutionButtonsLeft + resolution1080Width + resolutionRadioGap, resButtonsTop, resolution2kWidth, 22, TRUE);
 	BoostResolution4KButton.MoveWindow(resolutionButtonsLeft + resolution1080Width + resolutionRadioGap + resolution2kWidth + resolutionRadioGap, resButtonsTop, resolution4kWidth, 22, TRUE);
 	MoveControlOffscreen(BoostResolutionCombo);
+	MoveControlOffscreen(IconSeparator1);
+	MoveControlOffscreen(IconSeparator2);
+	MoveControlOffscreen(IconSeparator3);
 
 	TagHeaderPanel.MoveWindow(tagLeft + 10, tagTop + 10, max(60, tagWidth - 20), 24, TRUE);
 
@@ -3247,9 +3248,9 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	IconPreviewHeader.ShowWindow(SW_HIDE);
 	IconPreviewSwatch.ShowWindow(SW_HIDE);
 	IconPreviewHint.ShowWindow(SW_HIDE);
-	IconSeparator1.ShowWindow(iconShowMode);
-	IconSeparator2.ShowWindow(iconShowMode);
-	IconSeparator3.ShowWindow(iconShowMode);
+	IconSeparator1.ShowWindow(SW_HIDE);
+	IconSeparator2.ShowWindow(SW_HIDE);
+	IconSeparator3.ShowWindow(SW_HIDE);
 	FixedPixelCheck.ShowWindow(iconShowMode);
 	FixedScaleLabel.ShowWindow(iconShowMode);
 	FixedScaleValueLabel.ShowWindow(iconShowMode);
