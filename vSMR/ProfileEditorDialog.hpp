@@ -485,6 +485,7 @@ private:
 	void UpdateIconScaleValueLabels();
 	void SelectComboEntryByText(CComboBox& combo, const std::string& text);
 	void ApplyThemedEditBorders();
+	void ApplyThemedComboBorders();
 	void SetEditTextPreserveCaret(CEdit& edit, const std::string& text);
 	void UpdateRulesListItemLabel(int index);
 	void InvalidateRuleColorSwatches();
