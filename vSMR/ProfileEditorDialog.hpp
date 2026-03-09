@@ -434,6 +434,7 @@ private:
 	CFont MonoFont;
 	CFont TitleFont;
 	CFont SectionHeaderFont;
+	CFont UniformUiFont;
 
 	void HideAndNotifyOwner();
 	void NotifyWindowRectChanged();
