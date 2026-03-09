@@ -1802,6 +1802,32 @@ void CProfileEditorDialog::OnPaint()
 		dc.FillSolidRect(&rect, fillColor);
 	};
 
+	const auto drawSectionDivider = [&](CWnd& header, CWnd& panel)
+	{
+		if (!::IsWindow(header.GetSafeHwnd()) || !header.IsWindowVisible() || !::IsWindow(panel.GetSafeHwnd()))
+			return;
+
+		CRect headerRect;
+		header.GetWindowRect(&headerRect);
+		ScreenToClient(&headerRect);
+
+		CRect panelRect;
+		panel.GetWindowRect(&panelRect);
+		ScreenToClient(&panelRect);
+
+		const int lineY = min(panelRect.bottom - 12, headerRect.bottom + 3);
+		const int lineLeft = panelRect.left + 12;
+		const int lineRight = panelRect.right - 12;
+		if (lineRight <= lineLeft)
+			return;
+
+		CPen dividerPen(PS_SOLID, 1, RGB(210, 215, 223));
+		CPen* oldPen = dc.SelectObject(&dividerPen);
+		dc.MoveTo(lineLeft, lineY);
+		dc.LineTo(lineRight, lineY);
+		dc.SelectObject(oldPen);
+	};
+
 	CRect sidebarRect;
 	if (::IsWindow(NavColorsButton.GetSafeHwnd()) && ::IsWindow(SidebarTitle.GetSafeHwnd()))
 	{
@@ -1836,6 +1862,8 @@ void CProfileEditorDialog::OnPaint()
 	{
 		drawCard(ColorLeftPanel, false);
 		drawCard(ColorRightPanel, false);
+		drawSectionDivider(ColorPathLabel, ColorLeftPanel);
+		drawSectionDivider(SelectedPathText, ColorRightPanel);
 		drawEditShell(EditRgba);
 		drawEditShell(EditHex);
 	}
@@ -1843,6 +1871,8 @@ void CProfileEditorDialog::OnPaint()
 	{
 		drawCard(RuleLeftPanel, false);
 		drawCard(RuleRightPanel, false);
+		drawSectionDivider(RuleLeftHeader, RuleLeftPanel);
+		drawSectionDivider(RuleRightHeader, RuleRightPanel);
 		drawEditShell(RuleNameEdit);
 		drawEditShell(RuleTargetEdit);
 		drawEditShell(RuleTagEdit);
@@ -1852,6 +1882,8 @@ void CProfileEditorDialog::OnPaint()
 	{
 		drawCard(ProfilePanel, false);
 		drawCard(ProfileInfoPanel, false);
+		drawSectionDivider(ProfileHeader, ProfilePanel);
+		drawSectionDivider(ProfileInfoHeader, ProfileInfoPanel);
 		maskHeaderTextBackground(ProfileHeader);
 		maskHeaderTextBackground(ProfileInfoHeader);
 		drawEditShell(ProfileNameEdit);
@@ -2005,7 +2037,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileInfoPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_PANEL);
 	ProfileInfoHeader.Create("About", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_HEADER);
 	ProfileInfoBody.Create(
-		"Thank you for using this plugin.\r\n\r\nIf you notice a bug or issue, please report it on the repository.\r\nIf you want to support the project, you can also use the link below.",
+		"Feedback, bug reports, or suggestions are always welcome! If you encounter an issue or have ideas to improve the plugin, feel free to open an issue or send feedback on the GitHub repository.\r\n\r\nThis plugin is completely free and always will be. Nothing is required from you to use it.\r\n\r\nIf you enjoy the project and would like to support its development, you can buy me a coffee using the link below.",
 		WS_CHILD | WS_VISIBLE,
 		CRect(0, 0, 0, 0),
 		this,
@@ -2703,6 +2735,18 @@ void CProfileEditorDialog::LayoutControls()
 
 	const int rowHeight = 24;
 	const int buttonHeight = 38;
+	auto measureRadioWidth = [&](CButton& button, int minWidth)
+	{
+		CString text;
+		button.GetWindowText(text);
+		CClientDC dc(this);
+		CFont* font = button.GetFont();
+		CFont* oldFont = (font != nullptr) ? dc.SelectObject(font) : nullptr;
+		const CSize textSize = dc.GetTextExtent(text);
+		if (oldFont != nullptr)
+			dc.SelectObject(oldFont);
+		return max(minWidth, textSize.cx + 28);
+	};
 
 	// Colors: left tree panel + right editor panel
 	ColorLeftPanel.MoveWindow(colorLeft, colorTop, colorLeftWidth, panelHeight, TRUE);
@@ -2793,9 +2837,15 @@ void CProfileEditorDialog::LayoutControls()
 
 	IconShapeHeader.MoveWindow(iconContentLeft, iconTop + 14, 100, rowHeight, TRUE);
 	const int shapeRowY = iconTop + 44;
-	IconStyleArrow.MoveWindow(iconContentLeft, shapeRowY, 76, iconCheckboxHeight, TRUE);
-	IconStyleDiamond.MoveWindow(iconContentLeft + 84, shapeRowY, 92, iconCheckboxHeight, TRUE);
-	IconStyleRealistic.MoveWindow(iconContentLeft + 186, shapeRowY, 96, iconCheckboxHeight, TRUE);
+	const int iconRadioGap = 12;
+	const int arrowWidth = measureRadioWidth(IconStyleArrow, 72);
+	const int diamondWidth = measureRadioWidth(IconStyleDiamond, 84);
+	const int realisticWidth = measureRadioWidth(IconStyleRealistic, 92);
+	const int shapeRowWidth = arrowWidth + iconRadioGap + diamondWidth + iconRadioGap + realisticWidth;
+	const int shapeRowLeft = iconContentLeft + max(0, (iconContentWidth - shapeRowWidth) / 2);
+	IconStyleArrow.MoveWindow(shapeRowLeft, shapeRowY, arrowWidth, iconCheckboxHeight, TRUE);
+	IconStyleDiamond.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap, shapeRowY, diamondWidth, iconCheckboxHeight, TRUE);
+	IconStyleRealistic.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap + diamondWidth + iconRadioGap, shapeRowY, realisticWidth, iconCheckboxHeight, TRUE);
 
 	int iconY = iconTop + iconShapeCardHeight + iconGap + 14;
 	IconSizeHeader.MoveWindow(iconContentLeft, iconY, 120, rowHeight, TRUE);
@@ -2836,9 +2886,16 @@ void CProfileEditorDialog::LayoutControls()
 	IconDisplayHeader.MoveWindow(displayContentLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 12, 100, rowHeight, TRUE);
 	BoostResolutionLabel.MoveWindow(displayContentLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 44, 90, rowHeight, TRUE);
 	const int resButtonsTop = iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 44;
-	BoostResolution1080Button.MoveWindow(displayContentLeft + 92, resButtonsTop, 74, 22, TRUE);
-	BoostResolution2KButton.MoveWindow(displayContentLeft + 172, resButtonsTop, 52, 22, TRUE);
-	BoostResolution4KButton.MoveWindow(displayContentLeft + 230, resButtonsTop, 52, 22, TRUE);
+	const int resolutionLabelWidth = 88;
+	const int resolutionRadioGap = 10;
+	const int resolution1080Width = measureRadioWidth(BoostResolution1080Button, 66);
+	const int resolution2kWidth = measureRadioWidth(BoostResolution2KButton, 44);
+	const int resolution4kWidth = measureRadioWidth(BoostResolution4KButton, 44);
+	const int resolutionRowWidth = resolution1080Width + resolutionRadioGap + resolution2kWidth + resolutionRadioGap + resolution4kWidth;
+	const int resolutionButtonsLeft = displayContentLeft + resolutionLabelWidth + max(8, (max(0, iconContentWidth - resolutionLabelWidth) - resolutionRowWidth) / 2);
+	BoostResolution1080Button.MoveWindow(resolutionButtonsLeft, resButtonsTop, resolution1080Width, 22, TRUE);
+	BoostResolution2KButton.MoveWindow(resolutionButtonsLeft + resolution1080Width + resolutionRadioGap, resButtonsTop, resolution2kWidth, 22, TRUE);
+	BoostResolution4KButton.MoveWindow(resolutionButtonsLeft + resolution1080Width + resolutionRadioGap + resolution2kWidth + resolutionRadioGap, resButtonsTop, resolution4kWidth, 22, TRUE);
 	MoveControlOffscreen(BoostResolutionCombo);
 
 	TagHeaderPanel.MoveWindow(tagLeft + 10, tagTop + 10, max(60, tagWidth - 20), 24, TRUE);
@@ -3059,7 +3116,8 @@ void CProfileEditorDialog::LayoutControls()
 	const int profileLeftContentLeft = profilePageLeft + 12;
 	const int profileLeftContentTop = profileTop + 46;
 	const int profileLeftContentWidth = max(180, profileLeftWidth - 24);
-	const int profileFooterHeight = buttonHeight + rowHeight + 48;
+	const int profileButtonsRowGap = 12;
+	const int profileFooterHeight = (buttonHeight * 2) + rowHeight + profileButtonsRowGap + 60;
 	const int profileListHeight = max(100, profileHeight - 52 - profileFooterHeight);
 	ProfileList.MoveWindow(profileLeftContentLeft, profileLeftContentTop, profileLeftContentWidth, profileListHeight, TRUE);
 
@@ -3067,14 +3125,14 @@ void CProfileEditorDialog::LayoutControls()
 	ProfileNameLabel.MoveWindow(profileLeftContentLeft + 12, profileDetailsTop + 10, 56, rowHeight, TRUE);
 	ProfileNameEdit.MoveWindow(profileLeftContentLeft + 12 + 56 + 10, profileDetailsTop + 6, max(140, profileLeftContentWidth - 90), rowHeight, TRUE);
 
-	const int profileButtonWidth = max(78, min(actionButtonWidth, (profileLeftContentWidth - (actionButtonGap * 3)) / 4));
-	const int profileButtonsTotalWidth = (profileButtonWidth * 4) + (actionButtonGap * 3);
-	const int profileButtonsLeft = profileLeftContentLeft + max(0, (profileLeftContentWidth - profileButtonsTotalWidth) / 2);
+	const int profileButtonWidth = max(78, min(actionButtonWidth, (profileLeftContentWidth - actionButtonGap) / 2));
+	const int profileButtonsRowWidth = (profileButtonWidth * 2) + actionButtonGap;
+	const int profileButtonsLeft = profileLeftContentLeft + max(0, (profileLeftContentWidth - profileButtonsRowWidth) / 2);
 	const int profileButtonsTop = profileDetailsTop + 48;
 	ProfileAddButton.MoveWindow(profileButtonsLeft, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
 	ProfileDuplicateButton.MoveWindow(profileButtonsLeft + profileButtonWidth + actionButtonGap, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
-	ProfileRenameButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 2, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
-	ProfileDeleteButton.MoveWindow(profileButtonsLeft + (profileButtonWidth + actionButtonGap) * 3, profileButtonsTop, profileButtonWidth, buttonHeight, TRUE);
+	ProfileRenameButton.MoveWindow(profileButtonsLeft, profileButtonsTop + buttonHeight + profileButtonsRowGap, profileButtonWidth, buttonHeight, TRUE);
+	ProfileDeleteButton.MoveWindow(profileButtonsLeft + profileButtonWidth + actionButtonGap, profileButtonsTop + buttonHeight + profileButtonsRowGap, profileButtonWidth, buttonHeight, TRUE);
 
 	const int profileInfoContentLeft = profileInfoLeft + 14;
 	const int profileInfoContentWidth = max(140, profileRightWidth - 28);
