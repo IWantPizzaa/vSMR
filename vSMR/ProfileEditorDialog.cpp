@@ -27,6 +27,7 @@ namespace
 	const UINT WM_PE_RULE_COLOR_WHEEL_TRACK = WM_APP + 420;
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
 	const COLORREF kEditorBorderColor = RGB(198, 204, 214);
+	const COLORREF kEditorFocusBorderColor = RGB(64, 132, 230);
 	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
 	const COLORREF kEditorSidebarBackgroundColor = RGB(250, 250, 251);
 	const int kOffscreenPos = -5000;
@@ -36,6 +37,7 @@ namespace
 	const int kTabRules = 3;
 	const int kTabProfile = 4;
 	std::map<HWND, WNDPROC> gThemedEditOldProcs;
+	std::map<HWND, WNDPROC> gThemedComboOldProcs;
 	std::map<HWND, WNDPROC> gColorWheelOldProcs;
 	std::map<HWND, HWND> gColorWheelOwnerWindows;
 	std::map<HWND, WNDPROC> gColorValueSliderOldProcs;
@@ -612,7 +614,11 @@ namespace
 		::OffsetRect(&bounds, -bounds.left, -bounds.top);
 		::InflateRect(&bounds, -1, -1);
 
-		HPEN borderPen = ::CreatePen(PS_SOLID, 1, kEditorBorderColor);
+		HWND focusedWindow = ::GetFocus();
+		const bool isFocused = (focusedWindow == hwnd) ||
+			(focusedWindow != nullptr && (::IsChild(hwnd, focusedWindow) != FALSE));
+		const COLORREF borderColor = isFocused ? kEditorFocusBorderColor : kEditorBorderColor;
+		HPEN borderPen = ::CreatePen(PS_SOLID, 1, borderColor);
 		HGDIOBJ oldPen = ::SelectObject(hdc, borderPen);
 		HGDIOBJ oldBrush = ::SelectObject(hdc, ::GetStockObject(HOLLOW_BRUSH));
 		::RoundRect(hdc, bounds.left, bounds.top, bounds.right, bounds.bottom, 10, 10);
@@ -640,11 +646,46 @@ namespace
 		{
 		case WM_PAINT:
 		case WM_NCPAINT:
+		case WM_PRINTCLIENT:
 		case WM_ENABLE:
 		case WM_SETFOCUS:
 		case WM_KILLFOCUS:
 		case WM_SETTEXT:
+		case WM_WINDOWPOSCHANGED:
 			DrawThemedBorder(hwnd);
+			break;
+		default:
+			break;
+		}
+
+		return result;
+	}
+
+	LRESULT CALLBACK ThemedComboWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		auto it = gThemedComboOldProcs.find(hwnd);
+		WNDPROC oldProc = (it != gThemedComboOldProcs.end()) ? it->second : DefWindowProc;
+
+		if (message == WM_NCDESTROY)
+		{
+			const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+			gThemedComboOldProcs.erase(hwnd);
+			return result;
+		}
+
+		const LRESULT result = ::CallWindowProc(oldProc, hwnd, message, wParam, lParam);
+
+		switch (message)
+		{
+		case WM_PAINT:
+		case WM_NCPAINT:
+		case WM_PRINTCLIENT:
+		case WM_ENABLE:
+		case WM_SETFOCUS:
+		case WM_KILLFOCUS:
+		case WM_SIZE:
+		case WM_WINDOWPOSCHANGED:
+		DrawThemedBorder(hwnd);
 			break;
 		default:
 			break;
@@ -921,6 +962,20 @@ void CProfileEditorDialog::UnsubclassEditorControls()
 		gThemedEditOldProcs.erase(it);
 	};
 
+	auto restoreThemedComboProc = [](HWND hwnd)
+	{
+		if (hwnd == nullptr)
+			return;
+
+		auto it = gThemedComboOldProcs.find(hwnd);
+		if (it == gThemedComboOldProcs.end())
+			return;
+
+		if (::IsWindow(hwnd) && it->second != nullptr)
+			::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(it->second));
+		gThemedComboOldProcs.erase(it);
+	};
+
 	auto restoreTrackingProcMap = [&](std::map<HWND, WNDPROC>& procMap, std::map<HWND, HWND>& ownerMap)
 	{
 		const HWND ownerHwnd = GetSafeHwnd();
@@ -958,6 +1013,18 @@ void CProfileEditorDialog::UnsubclassEditorControls()
 	restoreThemedEditProc(TagDetailedLine2Edit.GetSafeHwnd());
 	restoreThemedEditProc(TagDetailedLine3Edit.GetSafeHwnd());
 	restoreThemedEditProc(TagDetailedLine4Edit.GetSafeHwnd());
+	restoreThemedComboProc(FixedScaleCombo.GetSafeHwnd());
+	restoreThemedComboProc(BoostFactorCombo.GetSafeHwnd());
+	restoreThemedComboProc(RuleSourceCombo.GetSafeHwnd());
+	restoreThemedComboProc(RuleTokenCombo.GetSafeHwnd());
+	restoreThemedComboProc(RuleConditionCombo.GetSafeHwnd());
+	restoreThemedComboProc(RuleTypeCombo.GetSafeHwnd());
+	restoreThemedComboProc(RuleStatusCombo.GetSafeHwnd());
+	restoreThemedComboProc(RuleDetailCombo.GetSafeHwnd());
+	restoreThemedComboProc(TagTypeCombo.GetSafeHwnd());
+	restoreThemedComboProc(TagStatusCombo.GetSafeHwnd());
+	restoreThemedComboProc(TagTokenCombo.GetSafeHwnd());
+	restoreThemedComboProc(BoostResolutionCombo.GetSafeHwnd());
 
 	restoreTrackingProcMap(gColorWheelOldProcs, gColorWheelOwnerWindows);
 	restoreTrackingProcMap(gColorValueSliderOldProcs, gColorValueSliderOwnerWindows);
@@ -1805,10 +1872,10 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileDuplicateButton.Create("Duplicate", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DUPLICATE_BUTTON);
 	ProfileRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_RENAME_BUTTON);
 	ProfileDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DELETE_BUTTON);
-	RulesList.SetItemHeight(0, 24);
-	ProfileList.SetItemHeight(0, 22);
+	RulesList.SetItemHeight(0, 28);
+	ProfileList.SetItemHeight(0, 26);
 	RuleTree.SetIndent(16);
-	RuleTree.SendMessage(TVM_SETITEMHEIGHT, 22, 0);
+	RuleTree.SendMessage(TVM_SETITEMHEIGHT, 32, 0);
 	RuleTree.SetBkColor(kEditorThemeBackgroundColor);
 	RuleTree.SetTextColor(RGB(17, 24, 39));
 
@@ -2043,12 +2110,13 @@ void CProfileEditorDialog::CreateEditorControls()
 		}
 	}
 	ApplyThemedEditBorders();
+	ApplyThemedComboBorders();
 	ControlsCreated = true;
 	LayoutControls();
 }
 
-	void CProfileEditorDialog::ApplyThemedEditBorders()
-	{
+void CProfileEditorDialog::ApplyThemedEditBorders()
+{
 		auto attachBorder = [](CEdit& edit)
 		{
 			const HWND hwnd = edit.GetSafeHwnd();
@@ -2092,6 +2160,47 @@ void CProfileEditorDialog::CreateEditorControls()
 	attachBorder(TagDetailedLine3Edit);
 	attachBorder(TagDetailedLine4Edit);
 	attachBorder(ProfileNameEdit);
+}
+
+void CProfileEditorDialog::ApplyThemedComboBorders()
+{
+	auto attachBorder = [](CComboBox& combo)
+	{
+		const HWND hwnd = combo.GetSafeHwnd();
+		if (!::IsWindow(hwnd))
+			return;
+
+		combo.ModifyStyle(WS_BORDER, 0);
+		combo.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		combo.SetWindowPos(nullptr, 0, 0, 0, 0,
+			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+		if (gThemedComboOldProcs.find(hwnd) != gThemedComboOldProcs.end())
+		{
+			DrawThemedBorder(hwnd);
+			return;
+		}
+
+		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ThemedComboWndProc)));
+		if (oldProc == nullptr)
+			return;
+
+		gThemedComboOldProcs[hwnd] = oldProc;
+		DrawThemedBorder(hwnd);
+	};
+
+	attachBorder(FixedScaleCombo);
+	attachBorder(BoostFactorCombo);
+	attachBorder(BoostResolutionCombo);
+	attachBorder(RuleSourceCombo);
+	attachBorder(RuleTokenCombo);
+	attachBorder(RuleConditionCombo);
+	attachBorder(RuleTypeCombo);
+	attachBorder(RuleStatusCombo);
+	attachBorder(RuleDetailCombo);
+	attachBorder(TagTypeCombo);
+	attachBorder(TagStatusCombo);
+	attachBorder(TagTokenCombo);
 }
 
 void CProfileEditorDialog::SetEditTextPreserveCaret(CEdit& edit, const std::string& text)
@@ -3742,8 +3851,8 @@ bool CProfileEditorDialog::GetRuleTreeActionRects(HTREEITEM item, CRect& addRect
 
 	CRect treeRect;
 	RuleTree.GetClientRect(&treeRect);
-	const int btnSize = 14;
-	const int gap = 6;
+	const int btnSize = 16;
+	const int gap = 8;
 	const int y = itemRect.top + max(0, ((itemRect.Height() - btnSize) / 2));
 	int right = treeRect.right - 8;
 
@@ -4511,7 +4620,7 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 			RuleTree.GetClientRect(&treeClientRect);
 			itemRowRect.left = max(2, itemRowRect.left - 2);
 			itemRowRect.right = max(itemRowRect.left + 8, treeClientRect.right - 2);
-			itemRowRect.DeflateRect(0, 1);
+			itemRowRect.DeflateRect(0, 2);
 
 			CDC* dc = CDC::FromHandle(pTreeCd->nmcd.hdc);
 			if (dc != nullptr)
@@ -4547,7 +4656,7 @@ void CProfileEditorDialog::OnRuleTreeCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
 			RuleTree.GetClientRect(&treeClientRect);
 			itemRowRect.left = max(2, itemRowRect.left - 2);
 			itemRowRect.right = max(itemRowRect.left + 8, treeClientRect.right - 2);
-			itemRowRect.DeflateRect(0, 1);
+			itemRowRect.DeflateRect(0, 2);
 			const bool selected = (RuleTree.GetSelectedItem() == item);
 			CPen rowPen(PS_SOLID, 1, selected ? RGB(88, 137, 214) : RGB(214, 220, 228));
 			CBrush* oldBrush = static_cast<CBrush*>(dc->SelectStockObject(HOLLOW_BRUSH));
