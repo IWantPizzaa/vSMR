@@ -1732,7 +1732,7 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	PageTabs.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP, CRect(0, 0, 0, 0), this, IDC_PE_TAB);
 	PageTabs.InsertItem(0, "Colors");
-	PageTabs.InsertItem(1, "Icons Tags");
+	PageTabs.InsertItem(1, "Icons & Tags");
 	PageTabs.InsertItem(2, "Rules");
 	PageTabs.InsertItem(3, "Profile");
 	SidebarPanel.Create("", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_SIDEBAR_PANEL);
