@@ -78,7 +78,6 @@ EuroScope\Plugins\
   vSMR_Profiles.json
   vSMR_Maps.json
   ICAO_Aircraft.json
-  ICAO_Airlines.txt
   vacdm.txt
   aircraft_icons\
     a320.png
@@ -90,19 +89,19 @@ EuroScope\Plugins\
 
 ### Required
 
-| File | Location | Purpose |
-| --- | --- | --- |
+| File                   | Location                    | Purpose                                                                                                    |
+| ---------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `vSMR_Profiles.json` | Same folder as `vSMR.dll` | Main profile database: fonts, labels, rules, colors, alerts, icon settings, editor window layout, and more |
 
 ### Optional
 
-| File | Search location(s) | Purpose |
-| --- | --- | --- |
-| `vSMR_Maps.json` | Same folder as `vSMR.dll` | Map element visibility by zoom level and optional active runway/airport conditions |
-| `vacdm.txt` | Same folder as `vSMR.dll` | Overrides the VACDM base server URL |
-| `ICAO_Airlines.txt` | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt` | Airline/callsign lookup for bottom-line text and related displays |
-| `ICAO_Aircraft.json` | `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder | Aircraft length and wingspan data used by realistic icons |
-| `aircraft_icons\*.png` | `<dll folder>\aircraft_icons\` | Optional per-aircraft realistic icon silhouettes |
+| File                     | Search location(s)                                                                          | Purpose                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `vSMR_Maps.json`       | Same folder as `vSMR.dll`                                                                 | Map element visibility by zoom level and optional active runway/airport conditions |
+| `vacdm.txt`            | Same folder as `vSMR.dll`                                                                 | Overrides the VACDM base server URL                                                |
+| `ICAO_Airlines.txt`    | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt` | Airline/callsign lookup for bottom-line text and related displays                  |
+| `ICAO_Aircraft.json`   | `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder               | Aircraft length and wingspan data used by realistic icons                          |
+| `aircraft_icons\*.png` | `<dll folder>\aircraft_icons\`                                                            | Optional per-aircraft realistic icon silhouettes                                   |
 
 ### `vacdm.txt` format
 
@@ -124,18 +123,18 @@ https://app.vacdm.net/api/v1/pilots
 
 The plugin responds to the following EuroScope command-line commands:
 
-| Command | Scope | Effect |
-| --- | --- | --- |
-| `.smr` | Plugin | Opens the CPDLC settings dialog |
-| `.smr connect` | Plugin | Connects or disconnects Hoppie CPDLC |
-| `.smr poll` | Plugin | Manually polls CPDLC messages when connected |
-| `.smr reload` | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens |
-| `.smr log` | Plugin | Toggles plugin logging |
-| `.smr profile` | Plugin | Opens the detached profile editor on the first active SMR radar screen |
-| `.smr editor` | Plugin | Alias for `.smr profile` |
-| `.smr config` | Plugin | Alias for `.smr profile` |
-| `.smr draw` | Radar screen | Toggles runway-area drawing |
-| `.smr status` | Radar screen | Prints current runway status information from RIMCAS |
+| Command          | Scope            | Effect                                                                 |
+| ---------------- | ---------------- | ---------------------------------------------------------------------- |
+| `.smr`         | Plugin           | Opens the CPDLC settings dialog                                        |
+| `.smr connect` | Plugin           | Connects or disconnects Hoppie CPDLC                                   |
+| `.smr poll`    | Plugin           | Manually polls CPDLC messages when connected                           |
+| `.smr reload`  | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens              |
+| `.smr log`     | Plugin           | Toggles plugin logging                                                 |
+| `.smr profile` | Plugin           | Opens the detached profile editor on the first active SMR radar screen |
+| `.smr editor`  | Plugin           | Alias for `.smr profile`                                             |
+| `.smr config`  | Plugin           | Alias for `.smr profile`                                             |
+| `.smr draw`    | Radar screen     | Toggles runway-area drawing                                            |
+| `.smr status`  | Radar screen     | Prints current runway status information from RIMCAS                   |
 
 ## Radar Screen Behavior
 
@@ -355,11 +354,11 @@ Each rule can define:
 
 ### Rule sources and tokens
 
-| Source | Tokens |
-| --- | --- |
-| `vacdm` | `tobt`, `tsat`, `ttot`, `asat`, `aobt`, `atot`, `asrt`, `aort`, `ctot` |
-| `runway` | `deprwy`, `seprwy`, `arvrwy`, `srvrwy` |
-| `custom` | `asid`, `ssid`, `deprwy`, `seprwy`, `arvrwy`, `srvrwy` |
+| Source     | Tokens                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `vacdm`  | `tobt`, `tsat`, `ttot`, `asat`, `aobt`, `atot`, `asrt`, `aort`, `ctot` |
+| `runway` | `deprwy`, `seprwy`, `arvrwy`, `srvrwy`                                           |
+| `custom` | `asid`, `ssid`, `deprwy`, `seprwy`, `arvrwy`, `srvrwy`                       |
 
 ### Rule conditions
 
@@ -566,27 +565,27 @@ Release\vSMR.dll
 
 This is the quickest code map for new contributors:
 
-| Path | Responsibility |
-| --- | --- |
-| `vSMR/vSMR.cpp` | DLL entry point and EuroScope plugin export |
-| `vSMR/SMRPlugin.*` | Main plugin object, commands, CPDLC, VACDM polling, tag item registration |
-| `vSMR/SMRRadar.cpp` | Core radar screen lifecycle, rendering, menus, toolbar, target drawing |
-| `vSMR/SMRRadar_RadarAndCommands.cpp` | Radar-side command handling and some target geometry logic |
-| `vSMR/SMRRadar_ScreenInteraction.cpp` | Click handling, popup menus, dragging, tag interaction |
-| `vSMR/SMRRadar_FunctionCall.cpp` | Popup function handlers and profile-backed menu actions |
-| `vSMR/SMRRadar_TagDefinitions.cpp` | Tag token handling, type/status normalization, structured rule parsing and persistence |
-| `vSMR/SMRRadar_TagRendering.cpp` | Tag drawing logic |
-| `vSMR/SMRRadar_TargetsAndFonts.cpp` | Target display and font handling helpers |
-| `vSMR/SMRRadar_AircraftAndAsr.cpp` | Aircraft dimensions, realistic icon data, ASR persistence |
-| `vSMR/Config.*` | JSON config and map loading/saving |
-| `vSMR/Rimcas.*` | RIMCAS alerting and runway monitoring |
-| `vSMR/ProfileEditorDialog.*` | Detached profile editor UI |
-| `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Profile editor window creation, persistence, and lifecycle |
-| `vSMR/InsetWindow.*` | Approach/surface inset windows |
-| `vSMR/CallsignLookup.*` | Airline/callsign lookup from `ICAO_Airlines.txt` |
-| `vSMR/HttpHelper.*` | HTTP downloading via libcurl with WinHTTP fallback |
-| `vSMR/DataLinkDialog.*` | CPDLC datalink dialog |
-| `vSMR/CPDLCSettingsDialog.*` | CPDLC settings dialog |
+| Path                                      | Responsibility                                                                         |
+| ----------------------------------------- | -------------------------------------------------------------------------------------- |
+| `vSMR/vSMR.cpp`                         | DLL entry point and EuroScope plugin export                                            |
+| `vSMR/SMRPlugin.*`                      | Main plugin object, commands, CPDLC, VACDM polling, tag item registration              |
+| `vSMR/SMRRadar.cpp`                     | Core radar screen lifecycle, rendering, menus, toolbar, target drawing                 |
+| `vSMR/SMRRadar_RadarAndCommands.cpp`    | Radar-side command handling and some target geometry logic                             |
+| `vSMR/SMRRadar_ScreenInteraction.cpp`   | Click handling, popup menus, dragging, tag interaction                                 |
+| `vSMR/SMRRadar_FunctionCall.cpp`        | Popup function handlers and profile-backed menu actions                                |
+| `vSMR/SMRRadar_TagDefinitions.cpp`      | Tag token handling, type/status normalization, structured rule parsing and persistence |
+| `vSMR/SMRRadar_TagRendering.cpp`        | Tag drawing logic                                                                      |
+| `vSMR/SMRRadar_TargetsAndFonts.cpp`     | Target display and font handling helpers                                               |
+| `vSMR/SMRRadar_AircraftAndAsr.cpp`      | Aircraft dimensions, realistic icon data, ASR persistence                              |
+| `vSMR/Config.*`                         | JSON config and map loading/saving                                                     |
+| `vSMR/Rimcas.*`                         | RIMCAS alerting and runway monitoring                                                  |
+| `vSMR/ProfileEditorDialog.*`            | Detached profile editor UI                                                             |
+| `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Profile editor window creation, persistence, and lifecycle                             |
+| `vSMR/InsetWindow.*`                    | Approach/surface inset windows                                                         |
+| `vSMR/CallsignLookup.*`                 | Airline/callsign lookup from `ICAO_Airlines.txt`                                     |
+| `vSMR/HttpHelper.*`                     | HTTP downloading via libcurl with WinHTTP fallback                                     |
+| `vSMR/DataLinkDialog.*`                 | CPDLC datalink dialog                                                                  |
+| `vSMR/CPDLCSettingsDialog.*`            | CPDLC settings dialog                                                                  |
 
 ## Troubleshooting
 
