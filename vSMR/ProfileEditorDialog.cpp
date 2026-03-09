@@ -1830,7 +1830,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagLine3Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE3_EDIT);
 	TagLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_LABEL);
 	TagLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_EDIT);
-	TagLinkDetailedToggle.Create("Custom Hover Detailes", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
+	TagLinkDetailedToggle.Create("Custom Hover Details", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
 	TagDetailedHeader.Create("Definition Detailed", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_HEADER);
 	TagDetailedLine1Label.Create("L1", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_LABEL);
 	TagDetailedLine1Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_D_LINE1_EDIT);
@@ -4068,9 +4068,9 @@ void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before GetTagDefinitionEditorContext");
 	Owner->GetTagDefinitionEditorContext(TagEditorType, contextDetailed, TagEditorStatus);
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after GetTagDefinitionEditorContext");
-	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before GetTagDefinitionDetailedSameAsDefinition");
-	TagEditorSeparateDetailed = !Owner->GetTagDefinitionDetailedSameAsDefinition();
-	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after GetTagDefinitionDetailedSameAsDefinition");
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before GetTagDefinitionDetailedSameAsDefinition(context)");
+	TagEditorSeparateDetailed = !Owner->GetTagDefinitionDetailedSameAsDefinition(TagEditorType, TagEditorStatus);
+	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after GetTagDefinitionDetailedSameAsDefinition(context)");
 	if (contextDetailed != TagEditorSeparateDetailed)
 	{
 		LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before SetTagDefinitionEditorContext(sync detailed)");
@@ -4998,10 +4998,15 @@ void CProfileEditorDialog::OnTagTypeChanged()
 	TagTypeCombo.GetLBText(selected, selectedType);
 	TagEditorType = Owner->NormalizeTagDefinitionType(std::string(selectedType.GetString()));
 	RefreshTagStatusOptions();
+	TagEditorSeparateDetailed = !Owner->GetTagDefinitionDetailedSameAsDefinition(TagEditorType, TagEditorStatus);
+	UpdatingControls = true;
+	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
+	UpdatingControls = false;
 
 	Owner->SetTagDefinitionEditorContext(TagEditorType, TagEditorSeparateDetailed, TagEditorStatus);
 	RefreshTagDefinitionLines();
 	RefreshTagPreview();
+	UpdatePageVisibility();
 	Owner->RequestRefresh();
 }
 
@@ -5011,7 +5016,7 @@ void CProfileEditorDialog::OnTagLinkToggleChanged()
 		return;
 
 	TagEditorSeparateDetailed = (TagLinkDetailedToggle.GetCheck() == BST_CHECKED);
-	Owner->SetTagDefinitionDetailedSameAsDefinition(!TagEditorSeparateDetailed, true);
+	Owner->SetTagDefinitionDetailedSameAsDefinition(TagEditorType, TagEditorStatus, !TagEditorSeparateDetailed, true);
 
 	Owner->SetTagDefinitionEditorContext(TagEditorType, TagEditorSeparateDetailed, TagEditorStatus);
 	RefreshTagDefinitionLines();
@@ -5032,9 +5037,14 @@ void CProfileEditorDialog::OnTagStatusChanged()
 	CString selectedStatus;
 	TagStatusCombo.GetLBText(selected, selectedStatus);
 	TagEditorStatus = Owner->NormalizeTagDefinitionDepartureStatus(std::string(selectedStatus.GetString()));
+	TagEditorSeparateDetailed = !Owner->GetTagDefinitionDetailedSameAsDefinition(TagEditorType, TagEditorStatus);
+	UpdatingControls = true;
+	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
+	UpdatingControls = false;
 	Owner->SetTagDefinitionEditorContext(TagEditorType, TagEditorSeparateDetailed, TagEditorStatus);
 	RefreshTagDefinitionLines();
 	RefreshTagPreview();
+	UpdatePageVisibility();
 	Owner->RequestRefresh();
 }
 
