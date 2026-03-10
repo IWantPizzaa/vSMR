@@ -4573,7 +4573,7 @@ void CProfileEditorDialog::RefreshTagStatusOptions()
 	int selectedIndex = 0;
 	for (size_t i = 0; i < statuses.size(); ++i)
 	{
-		TagStatusCombo.AddString(statuses[i].c_str());
+		TagStatusCombo.AddString(Owner->TagDefinitionDepartureStatusLabel(statuses[i]).c_str());
 		if (_stricmp(statuses[i].c_str(), normalizedStatus.c_str()) == 0)
 			selectedIndex = static_cast<int>(i);
 	}

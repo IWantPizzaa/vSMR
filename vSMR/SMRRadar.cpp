@@ -798,6 +798,16 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	const Value* arrivalBaseDefinition = (arrivalLabel.HasMember("definition") && arrivalLabel["definition"].IsArray()) ? &arrivalLabel["definition"] : nullptr;
 	ensureDefinitionArrayMember(arrivalLabel, "definitionDetailled", arrivalBaseDefinition);
 	Value& arrivalStatusDefinitions = ensureObjectMember(arrivalLabel, "status_definitions");
+	if (arrivalStatusDefinitions.HasMember("arr"))
+	{
+		arrivalStatusDefinitions.RemoveMember("arr");
+		changed = true;
+	}
+	if (arrivalStatusDefinitions.HasMember("taxi"))
+	{
+		arrivalStatusDefinitions.RemoveMember("taxi");
+		changed = true;
+	}
 	auto ensureArrivalStatusDefinitionEntries = [&](const char* statusKey)
 	{
 		Value& statusSection = ensureObjectMember(arrivalStatusDefinitions, statusKey);
