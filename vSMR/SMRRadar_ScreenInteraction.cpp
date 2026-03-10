@@ -50,7 +50,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		}
 	}
 
-	if (ObjectType == DRAWING_TAG || ObjectType == TAG_CITEM_MANUALCORRELATE || ObjectType == TAG_CITEM_CALLSIGN || ObjectType == TAG_CITEM_FPBOX || ObjectType == TAG_CITEM_RWY || ObjectType == TAG_CITEM_SID || ObjectType == TAG_CITEM_GATE || ObjectType == TAG_CITEM_NO || ObjectType == TAG_CITEM_GROUNDSTATUS || ObjectType == TAG_CITEM_CLEARANCE || TAG_CITEM_UKSTAND || TAG_CITEM_REMARK || TAG_CITEM_SCRATCHPAD) {
+	if (ObjectType == DRAWING_TAG || ObjectType == TAG_CITEM_MANUALCORRELATE || ObjectType == TAG_CITEM_CALLSIGN || ObjectType == TAG_CITEM_FPBOX || ObjectType == TAG_CITEM_RWY || ObjectType == TAG_CITEM_SID || ObjectType == TAG_CITEM_GATE || ObjectType == TAG_CITEM_NO || ObjectType == TAG_CITEM_GROUNDSTATUS || ObjectType == TAG_CITEM_CLEARANCE || ObjectType == TAG_CITEM_UKSTAND || ObjectType == TAG_CITEM_REMARK || ObjectType == TAG_CITEM_SCRATCHPAD) {
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 
 		if (!Released)
@@ -384,35 +384,50 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (ObjectType == DRAWING_TAG || ObjectType == DRAWING_AC_SYMBOL) {		
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
+		if (!rt.IsValid())
+			return;
+
+		const char* rtCallsign = rt.GetCallsign();
+		const bool hasCallsign = (rtCallsign != nullptr && rtCallsign[0] != '\0');
 		//GetPlugIn()->SetASELAircraft(rt); // NOTE: This does NOT work eventhough the api says it should?
 		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));  // make sure the correct aircraft is selected before calling 'StartTagFunction'
 		
-		if (rt.GetCorrelatedFlightPlan().IsValid()) {
-			StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_FUNCTION_NO, Pt, Area);
+		if (rt.GetCorrelatedFlightPlan().IsValid() && hasCallsign) {
+			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_FUNCTION_NO, Pt, Area);
 		}		
 
 		// Release & correlate actions
 
 		if (ReleaseInProgress || AcquireInProgress)
 		{
+			const char* systemIdRaw = rt.GetSystemID();
+			if (systemIdRaw == nullptr || systemIdRaw[0] == '\0')
+			{
+				ReleaseInProgress = NeedCorrelateCursor = false;
+				AcquireInProgress = NeedCorrelateCursor = false;
+				CorrelateCursor();
+				return;
+			}
+
+			const std::string systemId = systemIdRaw;
 			if (ReleaseInProgress)
 			{
 				ReleaseInProgress = NeedCorrelateCursor = false;
 
-				ReleasedTracks.push_back(rt.GetSystemID());
+				ReleasedTracks.push_back(systemId);
 
-				if (std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), rt.GetSystemID()) != ManuallyCorrelated.end())
-					ManuallyCorrelated.erase(std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), rt.GetSystemID()));
+				if (std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId) != ManuallyCorrelated.end())
+					ManuallyCorrelated.erase(std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId));
 			}
 
 			if (AcquireInProgress)
 			{
 				AcquireInProgress = NeedCorrelateCursor = false;
 
-				ManuallyCorrelated.push_back(rt.GetSystemID());
+				ManuallyCorrelated.push_back(systemId);
 
-				if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end())
-					ReleasedTracks.erase(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()));
+				if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
+					ReleasedTracks.erase(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId));
 			}
 
 
@@ -521,39 +536,49 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (Button == BUTTON_LEFT) {
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
+		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
+		const bool hasCallsign = (rtCallsign != nullptr && rtCallsign[0] != '\0');
 		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-		if (rt.GetCorrelatedFlightPlan().IsValid()) {
+		if (rt.IsValid() && rt.GetCorrelatedFlightPlan().IsValid() && hasCallsign) {
 			if (ObjectType == TAG_CITEM_CALLSIGN) {
 				// Shortcut: open ground status popup (clearance/push/taxi/depa) on callsign left-click.
-				StartTagFunction(rt.GetCallsign(), NULL, TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), NULL, TAG_ITEM_FUNCTION_SET_GROUND_STATUS, Pt, Area);
+				StartTagFunction(rtCallsign, NULL, TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TAG_ITEM_FUNCTION_SET_GROUND_STATUS, Pt, Area);
 			}
 			else if (ObjectType == TAG_CITEM_CLEARANCE) {
-				StartTagFunction(rt.GetCallsign(), NULL, TAG_ITEM_TYPE_CLEARENCE, rt.GetCallsign(), NULL, TAG_ITEM_FUNCTION_SET_CLEARED_FLAG, Pt, Area);
+				StartTagFunction(rtCallsign, NULL, TAG_ITEM_TYPE_CLEARENCE, rtCallsign, NULL, TAG_ITEM_FUNCTION_SET_CLEARED_FLAG, Pt, Area);
 			}
 			else {
-				StartTagFunction(rt.GetCallsign(), NULL, TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), NULL, TAG_ITEM_FUNCTION_NO, Pt, Area);
+				StartTagFunction(rtCallsign, NULL, TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TAG_ITEM_FUNCTION_NO, Pt, Area);
 			}
 		}
 	}
 
-	if (Button == BUTTON_MIDDLE && TagObjectMiddleTypes[ObjectType]) {
-		int TagMenu = TagObjectMiddleTypes[ObjectType];
+	auto middleTypeIt = TagObjectMiddleTypes.find(ObjectType);
+	if (Button == BUTTON_MIDDLE && middleTypeIt != TagObjectMiddleTypes.end() && middleTypeIt->second != 0) {
+		int TagMenu = middleTypeIt->second;
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-		StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), NULL, TagMenu, Pt, Area);
+		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
+		if (rtCallsign != nullptr && rtCallsign[0] != '\0')
+			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TagMenu, Pt, Area);
 	}
 
-	if (Button == BUTTON_RIGHT && TagObjectRightTypes[ObjectType]) {
+	auto rightTypeIt = TagObjectRightTypes.find(ObjectType);
+	if (Button == BUTTON_RIGHT && rightTypeIt != TagObjectRightTypes.end() && rightTypeIt->second != 0) {
 		if (ObjectType == TAG_CITEM_UKSTAND) {
 			CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-			StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), "RampAgent", 0, Pt, Area);
+			const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
+			if (rtCallsign != nullptr && rtCallsign[0] != '\0')
+				StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, "RampAgent", 0, Pt, Area);
 		}
 		else {
-		int TagMenu = TagObjectRightTypes[ObjectType];
+		int TagMenu = rightTypeIt->second;
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-		StartTagFunction(rt.GetCallsign(), NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rt.GetCallsign(), NULL, TagMenu, Pt, Area);
+		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
+		if (rtCallsign != nullptr && rtCallsign[0] != '\0')
+			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TagMenu, Pt, Area);
 	}
 	}
 
