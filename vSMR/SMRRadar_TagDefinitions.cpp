@@ -511,7 +511,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionStatusesForType(const std::s
 	if (normalizedType == "departure")
 		return { "default", "nofpl", "nsts", "push", "stup", "taxi", "depa" };
 	if (normalizedType == "arrival")
-		return { "default", "nofpl", "arr", "taxi" };
+		return { "default", "nofpl" };
 	if (normalizedType == "airborne")
 		return { "default", "airdep", "airarr", "airdep_onrunway", "airarr_onrunway" };
 	return { "default" };
@@ -750,10 +750,6 @@ std::string CSMRRadar::GetTagEditorTargetColorPath() const
 	{
 		if (normalizedStatus == "nofpl")
 			return "targets.ground_icons.nofpl";
-		if (normalizedStatus == "arr")
-			return "targets.ground_icons.arr";
-		if (normalizedStatus == "taxi")
-			return "targets.ground_icons.arrival_taxi";
 		return "targets.ground_icons.arrival_gate";
 	}
 
@@ -785,8 +781,6 @@ std::string CSMRRadar::GetTagEditorLabelColorPath() const
 	{
 		if (normalizedStatus == "nofpl")
 			return "labels.arrival.nofpl_color";
-		if (normalizedStatus == "arr" || normalizedStatus == "taxi")
-			return std::string("labels.arrival.status_background_colors.") + normalizedStatus;
 		return "labels.arrival.background_color";
 	}
 
@@ -824,7 +818,9 @@ bool CSMRRadar::GetTagDefinitionArray(std::string type, bool detailed, rapidjson
 	rapidjson::Value& section = labels[type.c_str()];
 	rapidjson::Value* targetSection = &section;
 	const char* key = detailed ? "definitionDetailled" : "definition";
-	const std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(departureStatus);
+	std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(departureStatus);
+	if (!IsTagDefinitionStatusAllowedForType(type, normalizedStatus))
+		normalizedStatus = "default";
 
 	auto appendCopiedDefinition = [&](rapidjson::Value& targetArray, const rapidjson::Value& sourceArray)
 	{
@@ -1162,7 +1158,9 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 
 	if (requestedType == TagTypes::Departure || requestedType == TagTypes::Arrival || requestedType == TagTypes::Airborne)
 	{
-		const std::string status = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
+		std::string status = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
+		if (!IsTagDefinitionStatusAllowedForType(normalizedType, status))
+			status = "default";
 		if ((requestedType == TagTypes::Departure || requestedType == TagTypes::Arrival) && status == "nofpl")
 		{
 			previewMap["actype"] = "NoFPL";

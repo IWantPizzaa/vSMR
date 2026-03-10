@@ -672,7 +672,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			switch (targetStatus)
 			{
 			case GroundStateCategory::Taxi:
-				if (TagType == TagTypes::Departure || TagType == TagTypes::Arrival)
+				if (TagType == TagTypes::Departure)
 					statusDefinitionKey = "taxi";
 				break;
 			case GroundStateCategory::Push:
@@ -692,8 +692,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 					statusDefinitionKey = "depa";
 				break;
 			case GroundStateCategory::Arr:
-				if (TagType == TagTypes::Arrival)
-					statusDefinitionKey = "arr";
 				break;
 			default:
 				break;
