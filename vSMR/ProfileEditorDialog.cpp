@@ -3654,43 +3654,46 @@ void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
 
 bool CProfileEditorDialog::TryParseRgbaQuad(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const
 {
-	std::vector<int> values;
-	values.reserve(4);
-	int current = 0;
-	bool inNumber = false;
-
-	auto flushNumber = [&]()
-	{
-		if (!inNumber)
-			return;
-		values.push_back(current);
-		current = 0;
-		inNumber = false;
-	};
+	std::vector<std::string> parts;
+	parts.reserve(4);
+	std::string current;
+	bool sawComma = false;
 
 	for (char ch : text)
 	{
 		if (std::isdigit(static_cast<unsigned char>(ch)))
 		{
-			inNumber = true;
-			current = (current * 10) + (ch - '0');
+			current.push_back(ch);
 			continue;
 		}
-		if (ch == ',' || std::isspace(static_cast<unsigned char>(ch)))
+		if (ch == ',')
 		{
-			flushNumber();
+			parts.push_back(current);
+			current.clear();
+			sawComma = true;
 			continue;
 		}
+		if (std::isspace(static_cast<unsigned char>(ch)))
+			continue;
 		return false;
 	}
-	flushNumber();
 
-	if (values.size() != 3 && values.size() != 4)
+	if (!current.empty() || sawComma)
+		parts.push_back(current);
+
+	if (parts.size() != 3 && parts.size() != 4)
 		return false;
-	for (int value : values)
+
+	std::vector<int> values;
+	values.reserve(parts.size());
+	for (const std::string& part : parts)
 	{
+		if (part.empty())
+			return false;
+		int value = atoi(part.c_str());
 		if (value < 0 || value > 255)
 			return false;
+		values.push_back(value);
 	}
 
 	r = values[0];
@@ -4539,43 +4542,46 @@ void CProfileEditorDialog::RefreshTagPreview()
 
 bool CProfileEditorDialog::TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const
 {
-	std::vector<int> values;
-	values.reserve(3);
-	int current = 0;
-	bool inNumber = false;
-
-	auto flushNumber = [&]()
-	{
-		if (!inNumber)
-			return;
-		values.push_back(current);
-		current = 0;
-		inNumber = false;
-	};
+	std::vector<std::string> parts;
+	parts.reserve(3);
+	std::string current;
+	bool sawComma = false;
 
 	for (char ch : text)
 	{
 		if (std::isdigit(static_cast<unsigned char>(ch)))
 		{
-			inNumber = true;
-			current = (current * 10) + (ch - '0');
+			current.push_back(ch);
 			continue;
 		}
-		if (ch == ',' || std::isspace(static_cast<unsigned char>(ch)))
+		if (ch == ',')
 		{
-			flushNumber();
+			parts.push_back(current);
+			current.clear();
+			sawComma = true;
 			continue;
 		}
+		if (std::isspace(static_cast<unsigned char>(ch)))
+			continue;
 		return false;
 	}
-	flushNumber();
 
-	if (values.size() != 3)
+	if (!current.empty() || sawComma)
+		parts.push_back(current);
+
+	if (parts.size() != 3)
 		return false;
-	for (int value : values)
+
+	std::vector<int> values;
+	values.reserve(3);
+	for (const std::string& part : parts)
 	{
+		if (part.empty())
+			return false;
+		int value = atoi(part.c_str());
 		if (value < 0 || value > 255)
 			return false;
+		values.push_back(value);
 	}
 
 	r = values[0];
@@ -6118,7 +6124,20 @@ void CProfileEditorDialog::OnIconStyleChanged()
 		return;
 
 	std::string style = "realistic";
-	if (IconStyleArrow.GetCheck() == BST_CHECKED)
+	UINT clickedControlId = 0;
+	if (const MSG* currentMessage = GetCurrentMessage())
+	{
+		if (currentMessage->message == WM_COMMAND)
+			clickedControlId = LOWORD(currentMessage->wParam);
+	}
+
+	if (clickedControlId == IDC_PE_ICON_STYLE_ARROW)
+		style = "triangle";
+	else if (clickedControlId == IDC_PE_ICON_STYLE_DIAMOND)
+		style = "diamond";
+	else if (clickedControlId == IDC_PE_ICON_STYLE_REALISTIC)
+		style = "realistic";
+	else if (IconStyleArrow.GetCheck() == BST_CHECKED)
 		style = "triangle";
 	else if (IconStyleDiamond.GetCheck() == BST_CHECKED)
 		style = "diamond";
@@ -6185,6 +6204,25 @@ void CProfileEditorDialog::OnBoostResolutionChanged()
 
 	CString selectedText;
 	BoostResolutionCombo.GetLBText(selected, selectedText);
+	if (_stricmp(selectedText.GetString(), "2K") == 0)
+	{
+		BoostResolution1080Button.SetCheck(BST_UNCHECKED);
+		BoostResolution2KButton.SetCheck(BST_CHECKED);
+		BoostResolution4KButton.SetCheck(BST_UNCHECKED);
+	}
+	else if (_stricmp(selectedText.GetString(), "4K") == 0)
+	{
+		BoostResolution1080Button.SetCheck(BST_UNCHECKED);
+		BoostResolution2KButton.SetCheck(BST_UNCHECKED);
+		BoostResolution4KButton.SetCheck(BST_CHECKED);
+	}
+	else
+	{
+		BoostResolution1080Button.SetCheck(BST_CHECKED);
+		BoostResolution2KButton.SetCheck(BST_UNCHECKED);
+		BoostResolution4KButton.SetCheck(BST_UNCHECKED);
+	}
+
 	if (Owner->SetSmallTargetIconBoostResolutionPreset(std::string(selectedText.GetString()), true))
 		Owner->RequestRefresh();
 }
@@ -6194,12 +6232,34 @@ void CProfileEditorDialog::OnBoostResolutionPresetChanged()
 	if (UpdatingControls)
 		return;
 
-	if (BoostResolution1080Button.GetCheck() == BST_CHECKED)
-		SelectComboEntryByText(BoostResolutionCombo, "1080p");
-	else if (BoostResolution2KButton.GetCheck() == BST_CHECKED)
+	UINT clickedControlId = 0;
+	if (const MSG* currentMessage = GetCurrentMessage())
+	{
+		if (currentMessage->message == WM_COMMAND)
+			clickedControlId = LOWORD(currentMessage->wParam);
+	}
+
+	if (clickedControlId == IDC_PE_ICON_RES_2K)
+	{
+		BoostResolution1080Button.SetCheck(BST_UNCHECKED);
+		BoostResolution2KButton.SetCheck(BST_CHECKED);
+		BoostResolution4KButton.SetCheck(BST_UNCHECKED);
 		SelectComboEntryByText(BoostResolutionCombo, "2K");
-	else if (BoostResolution4KButton.GetCheck() == BST_CHECKED)
+	}
+	else if (clickedControlId == IDC_PE_ICON_RES_4K)
+	{
+		BoostResolution1080Button.SetCheck(BST_UNCHECKED);
+		BoostResolution2KButton.SetCheck(BST_UNCHECKED);
+		BoostResolution4KButton.SetCheck(BST_CHECKED);
 		SelectComboEntryByText(BoostResolutionCombo, "4K");
+	}
+	else
+	{
+		BoostResolution1080Button.SetCheck(BST_CHECKED);
+		BoostResolution2KButton.SetCheck(BST_UNCHECKED);
+		BoostResolution4KButton.SetCheck(BST_UNCHECKED);
+		SelectComboEntryByText(BoostResolutionCombo, "1080p");
+	}
 
 	OnBoostResolutionChanged();
 }

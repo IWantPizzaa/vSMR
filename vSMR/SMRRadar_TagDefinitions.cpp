@@ -1131,101 +1131,46 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["remark"] = "RMK";
 	previewMap["scratchpad"] = "...";
 
-	auto readProfileBool = [&](const char* sectionKey, const char* fieldKey, bool defaultValue) -> bool
+	// Keep the preview self-contained. Older EuroScope builds can crash when
+	// radar-target APIs are queried during detached dialog initialization.
+	TagTypes requestedType = TagTypes::Departure;
+	std::string normalizedType = NormalizeTagDefinitionType(type);
+	if (normalizedType == "arrival")
+		requestedType = TagTypes::Arrival;
+	else if (normalizedType == "airborne")
+		requestedType = TagTypes::Airborne;
+	else if (normalizedType == "uncorrelated")
+		requestedType = TagTypes::Uncorrelated;
+
+	if (requestedType == TagTypes::Arrival)
 	{
-		if (!CurrentConfig)
-			return defaultValue;
-
-		const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
-		if (!profile.IsObject() || !profile.HasMember(sectionKey) || !profile[sectionKey].IsObject())
-			return defaultValue;
-
-		const rapidjson::Value& section = profile[sectionKey];
-		if (!section.HasMember(fieldKey) || !section[fieldKey].IsBool())
-			return defaultValue;
-
-		return section[fieldKey].GetBool();
-	};
-	auto readNestedProfileBool = [&](const char* sectionKey, const char* nestedObjectKey, const char* fieldKey, bool defaultValue) -> bool
+		const std::string activeAirport = getActiveAirport();
+		if (!activeAirport.empty())
+			previewMap["dest"] = activeAirport;
+		if (previewMap["origin"] == previewMap["dest"])
+			previewMap["origin"] = "LFPG";
+	}
+	else if (requestedType == TagTypes::Uncorrelated)
 	{
-		if (!CurrentConfig)
-			return defaultValue;
-
-		const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
-		if (!profile.IsObject() || !profile.HasMember(sectionKey) || !profile[sectionKey].IsObject())
-			return defaultValue;
-		const rapidjson::Value& section = profile[sectionKey];
-		if (!section.HasMember(nestedObjectKey) || !section[nestedObjectKey].IsObject())
-			return defaultValue;
-		const rapidjson::Value& nested = section[nestedObjectKey];
-		if (!nested.HasMember(fieldKey) || !nested[fieldKey].IsBool())
-			return defaultValue;
-		return nested[fieldKey].GetBool();
-	};
-
-	auto* plugin = GetPlugIn();
-	if (plugin == nullptr)
-		return previewMap;
-
-	CRadarTarget sampleTarget = plugin->RadarTargetSelectASEL();
-	if (!sampleTarget.IsValid())
-	{
-		for (CRadarTarget rt = plugin->RadarTargetSelectFirst(); rt.IsValid(); rt = plugin->RadarTargetSelectNext(rt))
-		{
-			sampleTarget = rt;
-			break;
-		}
+		previewMap["systemid"] = "PSR:123456";
+		previewMap["callsign"] = "";
+		previewMap["actype"] = "";
+		previewMap["sctype"] = "";
+		previewMap["asid"] = "";
+		previewMap["ssid"] = "";
 	}
 
-	if (sampleTarget.IsValid())
+	if (requestedType == TagTypes::Departure || requestedType == TagTypes::Arrival || requestedType == TagTypes::Airborne)
 	{
-		CFlightPlan fp = plugin->FlightPlanSelect(sampleTarget.GetCallsign());
-		CRadarTarget aselTarget = plugin->RadarTargetSelectASEL();
-		bool isAseL = (aselTarget.IsValid() && strcmp(aselTarget.GetCallsign(), sampleTarget.GetCallsign()) == 0);
-		bool isCorrelated = IsCorrelated(fp, sampleTarget);
-		std::map<std::string, std::string> generated = GenerateTagData(
-			sampleTarget,
-			fp,
-			isAseL,
-			isCorrelated,
-			readNestedProfileBool("filters", "pro_mode", "enable", false),
-			plugin->GetTransitionAltitude(),
-			readProfileBool("labels", "use_aspeed_for_gate", false),
-			getActiveAirport());
-
-		for (const auto& kv : generated)
+		const std::string status = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
+		if ((requestedType == TagTypes::Departure || requestedType == TagTypes::Arrival) && status == "nofpl")
 		{
-			if (!kv.second.empty())
-				previewMap[kv.first] = kv.second;
+			previewMap["actype"] = "NoFPL";
+			previewMap["sctype"] = "NoFPL";
 		}
-
-		TagTypes requestedType = TagTypes::Departure;
-		std::string normalizedType = NormalizeTagDefinitionType(type);
-		if (normalizedType == "arrival")
-			requestedType = TagTypes::Arrival;
-		else if (normalizedType == "airborne")
-			requestedType = TagTypes::Airborne;
-		else if (normalizedType == "uncorrelated")
-			requestedType = TagTypes::Uncorrelated;
-
-		if (requestedType == TagTypes::Arrival)
+		else if (status != "default")
 		{
-			previewMap["dest"] = getActiveAirport();
-			if (previewMap["origin"] == previewMap["dest"])
-				previewMap["origin"] = "LFPG";
-		}
-
-		if (requestedType == TagTypes::Departure || requestedType == TagTypes::Arrival || requestedType == TagTypes::Airborne)
-		{
-			const std::string status = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
-			if ((requestedType == TagTypes::Departure || requestedType == TagTypes::Arrival) && status == "nofpl")
-			{
-				previewMap["actype"] = "NoFPL";
-			}
-			else if (status != "default")
-			{
-				previewMap["groundstatus"] = TagDefinitionDepartureStatusLabel(status);
-			}
+			previewMap["groundstatus"] = TagDefinitionDepartureStatusLabel(status);
 		}
 	}
 
@@ -1493,23 +1438,38 @@ std::string CSMRRadar::NormalizeStructuredRuleDetail(const std::string& detail) 
 	return "any";
 }
 
-std::vector<StructuredTagColorRule> CSMRRadar::GetStructuredTagColorRules() const
+const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules() const
 {
-	std::vector<StructuredTagColorRule> rules;
+	if (StructuredTagRulesCacheValid)
+		return StructuredTagRulesCache;
+
+	StructuredTagRulesCache.clear();
 	if (!CurrentConfig)
-		return rules;
+	{
+		StructuredTagRulesCacheValid = true;
+		return StructuredTagRulesCache;
+	}
 
 	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
 	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject())
-		return rules;
+	{
+		StructuredTagRulesCacheValid = true;
+		return StructuredTagRulesCache;
+	}
 
 	const rapidjson::Value& labels = profile["labels"];
 	if (!labels.HasMember("rules") || !labels["rules"].IsObject())
-		return rules;
+	{
+		StructuredTagRulesCacheValid = true;
+		return StructuredTagRulesCache;
+	}
 
 	const rapidjson::Value& rulesObject = labels["rules"];
 	if (!rulesObject.HasMember("items") || !rulesObject["items"].IsArray())
-		return rules;
+	{
+		StructuredTagRulesCacheValid = true;
+		return StructuredTagRulesCache;
+	}
 
 	const rapidjson::Value& items = rulesObject["items"];
 	for (rapidjson::SizeType i = 0; i < items.Size(); ++i)
@@ -1617,10 +1577,11 @@ std::vector<StructuredTagColorRule> CSMRRadar::GetStructuredTagColorRules() cons
 		if (!rule.applyTarget && !rule.applyTag && !rule.applyText)
 			continue;
 
-		rules.push_back(rule);
+		StructuredTagRulesCache.push_back(rule);
 	}
 
-	return rules;
+	StructuredTagRulesCacheValid = true;
+	return StructuredTagRulesCache;
 }
 
 bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorRule>& rules, bool persistToDisk)
@@ -1721,7 +1682,7 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		normalizedRules.push_back(normalizedRule);
 	}
 
-	const std::vector<StructuredTagColorRule> existingRules = GetStructuredTagColorRules();
+	const std::vector<StructuredTagColorRule>& existingRules = GetStructuredTagColorRules();
 	if (existingRules.size() != normalizedRules.size())
 	{
 		changed = true;
@@ -1835,10 +1796,17 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 	}
 
 	if (!changed)
+	{
+		StructuredTagRulesCache = existingRules;
+		StructuredTagRulesCacheValid = true;
 		return true;
+	}
+
+	StructuredTagRulesCache = normalizedRules;
+	StructuredTagRulesCacheValid = true;
 
 	if (!persistToDisk)
 		return true;
 
-return CurrentConfig->saveConfig();
+	return CurrentConfig->saveConfig();
 }

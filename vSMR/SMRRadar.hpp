@@ -5,6 +5,7 @@
 #include <array>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <algorithm>
 #include <time.h>
 #include <GdiPlus.h>
@@ -67,6 +68,12 @@ struct VacdmPilotData
 	bool hasAort = false;
 	bool hasCtot = false;
 	bool hasBooking = false;
+};
+
+struct FrameVacdmLookupResult
+{
+	bool hasData = false;
+	VacdmPilotData data;
 };
 
 struct StructuredTagColorRule
@@ -155,6 +162,8 @@ public:
 	std::string IconsPath;
 	struct AircraftSpec { double length = 0.0; double wingspan = 0.0; };
 	std::map<std::string, AircraftSpec> AircraftSpecs;
+	mutable bool StructuredTagRulesCacheValid = false;
+	mutable std::vector<StructuredTagColorRule> StructuredTagRulesCache;
 
 	map<string, bool> ShowLists;
 	map<string, RECT> ListAreas;
@@ -241,6 +250,9 @@ public:
 	//---GenerateTagData--------------------------------------------
 
 	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport);
+	using TagReplacingMap = std::map<std::string, std::string>;
+	using FrameTagDataCache = std::unordered_map<std::string, TagReplacingMap>;
+	using FrameVacdmLookupCache = std::unordered_map<std::string, FrameVacdmLookupResult>;
 
 	//---IsCorrelatedFuncs---------------------------------------------
 
@@ -380,10 +392,11 @@ public:
 	std::string NormalizeStructuredRuleTagType(const std::string& tagType) const;
 	std::string NormalizeStructuredRuleStatus(const std::string& status) const;
 	std::string NormalizeStructuredRuleDetail(const std::string& detail) const;
-	std::vector<StructuredTagColorRule> GetStructuredTagColorRules() const;
+	const std::vector<StructuredTagColorRule>& GetStructuredTagColorRules() const;
 	bool SetStructuredTagColorRules(const std::vector<StructuredTagColorRule>& rules, bool persistToDisk);
 	Gdiplus::Bitmap* GetAircraftIcon(const std::string& acType);
 	void LoadAircraftSpecs();
+	void InvalidateStructuredTagRuleCache();
 
 	//---OnAsrContentLoaded--------------------------------------------
 
@@ -396,7 +409,7 @@ public:
 	//---OnRefresh------------------------------------------------------
 
 	virtual void OnRefresh(HDC hDC, int Phase);
-	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled);
+	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
 
 	//---OnClickScreenObject-----------------------------------------
 
