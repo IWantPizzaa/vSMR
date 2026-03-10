@@ -271,6 +271,7 @@ void CSMRRadar::LoadProfile(string profileName) {
 
 	// Loading the new profile
 	CurrentConfig->setActiveProfile(profileName);
+	InvalidateStructuredTagRuleCache();
 	EnsureTargetGroundStatusColorEntries();
 
 	// Loading all the new data
@@ -309,6 +310,12 @@ void CSMRRadar::LoadProfile(string profileName) {
 
 	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
 		ProfileEditorDialog->SyncFromRadar();
+}
+
+void CSMRRadar::InvalidateStructuredTagRuleCache()
+{
+	StructuredTagRulesCache.clear();
+	StructuredTagRulesCacheValid = false;
 }
 
 void CSMRRadar::EnsureTargetGroundStatusColorEntries()
@@ -2063,9 +2070,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 	const bool frameProModeEnabled = CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool();
 	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
+	const std::string frameActiveAirport = getActiveAirport();
 	const bool frameUseAspeedForGate = CurrentConfig->getActiveProfile()["labels"]["use_aspeed_for_gate"].GetBool();
-	const std::vector<StructuredTagColorRule> frameStructuredTagRules = GetStructuredTagColorRules();
+	const std::vector<StructuredTagColorRule>& frameStructuredTagRules = GetStructuredTagColorRules();
 	CRadarTarget frameAselTarget = GetPlugIn()->RadarTargetSelectASEL();
+	FrameTagDataCache frameTagDataCache;
+	FrameVacdmLookupCache frameVacdmLookupCache;
+	std::unordered_map<std::string, std::vector<VacdmColorRuleDefinition>> frameIconVacdmRuleCache;
 	auto structuredRuleContextMatches = [](const StructuredTagColorRule& rule, const std::string& type, const std::string& status, const std::string& detail) -> bool
 	{
 		auto normalize = [](const std::string& text) -> std::string
@@ -2145,6 +2156,42 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 		}
 		return overrides;
+	};
+	auto getCachedVacdmLookup = [&](CRadarTarget radarTarget, CFlightPlan flightPlan, VacdmPilotData& outData) -> bool
+	{
+		const std::string callsign = radarTarget.IsValid() && radarTarget.GetCallsign() != nullptr
+			? ToUpperAsciiCopy(radarTarget.GetCallsign())
+			: std::string();
+		if (callsign.empty())
+			return false;
+
+		auto it = frameVacdmLookupCache.find(callsign);
+		if (it == frameVacdmLookupCache.end())
+		{
+			FrameVacdmLookupResult lookup;
+			lookup.hasData = TryGetVacdmPilotDataForTarget(radarTarget, flightPlan, lookup.data);
+			it = frameVacdmLookupCache.emplace(callsign, std::move(lookup)).first;
+		}
+
+		if (!it->second.hasData)
+			return false;
+
+		outData = it->second.data;
+		return true;
+	};
+	auto getCachedIconVacdmColorRules = [&](const std::string& type, const std::string& status) -> const std::vector<VacdmColorRuleDefinition>&
+	{
+		const std::string cacheKey = type + "|" + status;
+		auto it = frameIconVacdmRuleCache.find(cacheKey);
+		if (it == frameIconVacdmRuleCache.end())
+		{
+			std::vector<VacdmColorRuleDefinition> rules;
+			const std::vector<std::string> definitionLines =
+				GetTagDefinitionLineStrings(type, false, TagDefinitionEditorMaxLines, false, status);
+			CollectVacdmColorRulesFromLineTexts(definitionLines, rules);
+			it = frameIconVacdmRuleCache.emplace(cacheKey, std::move(rules)).first;
+		}
+		return it->second;
 	};
 	EuroScopePlugIn::CRadarTarget rt;
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
@@ -2317,10 +2364,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (iconFp.IsValid() && AcisCorrelated)
 		{
 			std::string originAirport = iconFp.GetFlightPlanData().GetOrigin();
-			std::string activeAirport = getActiveAirport();
-			if (!originAirport.empty() && !activeAirport.empty())
+			if (!originAirport.empty() && !frameActiveAirport.empty())
 			{
 				std::transform(originAirport.begin(), originAirport.end(), originAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+				std::string activeAirport = frameActiveAirport;
 				std::transform(activeAirport.begin(), activeAirport.end(), activeAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 				isDepartureTarget = (originAirport == activeAirport);
 			}
@@ -2381,23 +2428,28 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 
 		VacdmPilotData vacdmRulePilotData;
-		const bool hasVacdmRulePilotData = TryGetVacdmPilotDataForTarget(rt, iconFp, vacdmRulePilotData);
-		std::vector<std::string> vacdmRuleDefinitionLines =
-			GetTagDefinitionLineStrings(vacdmRuleType, false, TagDefinitionEditorMaxLines, false, vacdmRuleStatus);
-		std::vector<VacdmColorRuleDefinition> vacdmColorRules;
-		CollectVacdmColorRulesFromLineTexts(vacdmRuleDefinitionLines, vacdmColorRules);
+		const bool hasVacdmRulePilotData = getCachedVacdmLookup(rt, iconFp, vacdmRulePilotData);
+		const std::vector<VacdmColorRuleDefinition>& vacdmColorRules =
+			getCachedIconVacdmColorRules(vacdmRuleType, vacdmRuleStatus);
 		VacdmColorRuleOverrides vacdmColorRuleOverrides =
 			EvaluateVacdmColorRules(vacdmColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
 		const bool iconIsAseL = (frameAselTarget.IsValid() && strcmp(frameAselTarget.GetCallsign(), rt.GetCallsign()) == 0);
-		const std::map<std::string, std::string> iconReplacingMap = GenerateTagData(
-			rt,
-			iconFp,
-			iconIsAseL,
-			AcisCorrelated,
-			proModeEnabled,
-			frameTransitionAltitude,
-			frameUseAspeedForGate,
-			getActiveAirport());
+		const std::string targetCallsign = rt.GetCallsign() != nullptr ? ToUpperAsciiCopy(rt.GetCallsign()) : std::string();
+		auto tagDataIt = frameTagDataCache.find(targetCallsign);
+		if (tagDataIt == frameTagDataCache.end())
+		{
+			TagReplacingMap generatedTagData = GenerateTagData(
+				rt,
+				iconFp,
+				iconIsAseL,
+				AcisCorrelated,
+				proModeEnabled,
+				frameTransitionAltitude,
+				frameUseAspeedForGate,
+				frameActiveAirport);
+			tagDataIt = frameTagDataCache.emplace(targetCallsign, std::move(generatedTagData)).first;
+		}
+		const TagReplacingMap& iconReplacingMap = tagDataIt->second;
 		const VacdmColorRuleOverrides structuredIconColorRuleOverrides = evaluateStructuredColorRules(
 			vacdmRuleType,
 			vacdmRuleStatus,
@@ -3011,7 +3063,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	graphics.SetSmoothingMode(SmoothingModeDefault);
 
-	RenderTags(graphics, dc, frameProModeEnabled);
+	RenderTags(graphics, dc, frameProModeEnabled, frameTagDataCache, frameVacdmLookupCache);
 
 	// Releasing the hDC after the drawing
 	graphics.ReleaseHDC(hDC);

@@ -224,7 +224,7 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 }
 }
 
-void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled)
+void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache)
 {
 	// Drawing the Tags
 	VSMR_REFRESH_LOG("Tags loop");
@@ -338,7 +338,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		bool valid = false;
 	};
 	std::unordered_map<std::string, TagDefinitionCacheEntry> tagDefinitionCache;
-	const std::vector<StructuredTagColorRule> structuredTagRules = GetStructuredTagColorRules();
+	const std::vector<StructuredTagColorRule>& structuredTagRules = GetStructuredTagColorRules();
 
 	auto buildParsedTagTemplates = [&](const Value& labelLines) -> std::vector<ParsedTagLineTemplate>
 	{
@@ -557,7 +557,13 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 
 
-		map<string, string> TagReplacingMap = GenerateTagData(rt, fp, isASEL, AcisCorrelated, tagProModeEnabled, transitionAltitude, useAspeedForGate, activeAirport);
+		const std::string targetCallsign = rt.GetCallsign() != nullptr ? ToUpperAsciiCopy(rt.GetCallsign()) : std::string();
+		map<string, string> TagReplacingMap;
+		auto cachedTagData = frameTagDataCache.find(targetCallsign);
+		if (cachedTagData != frameTagDataCache.end())
+			TagReplacingMap = cachedTagData->second;
+		else
+			TagReplacingMap = GenerateTagData(rt, fp, isASEL, AcisCorrelated, tagProModeEnabled, transitionAltitude, useAspeedForGate, activeAirport);
 		const auto sqErrorIt = TagReplacingMap.find("sqerror");
 		const std::string* sqErrorText = (sqErrorIt != TagReplacingMap.end()) ? &sqErrorIt->second : nullptr;
 
@@ -639,7 +645,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rt.GetCallsign());
 		const char* statusDefinitionKey = nullptr;
-		if (TagReplacingMap["actype"] == "NoFPL" && (TagType == TagTypes::Departure || TagType == TagTypes::Arrival))
+		const auto actypeIt = TagReplacingMap.find("actype");
+		const bool isNoFplTag = (actypeIt != TagReplacingMap.end() && actypeIt->second == "NoFPL");
+		if (isNoFplTag && (TagType == TagTypes::Departure || TagType == TagTypes::Arrival))
 		{
 			statusDefinitionKey = "nofpl";
 		}
@@ -697,7 +705,18 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			continue;
 
 		VacdmPilotData vacdmRulePilotData;
-		const bool hasVacdmRulePilotData = TryGetVacdmPilotDataForTarget(rt, fp, vacdmRulePilotData);
+		bool hasVacdmRulePilotData = false;
+		auto cachedVacdmLookup = frameVacdmLookupCache.find(targetCallsign);
+		if (cachedVacdmLookup != frameVacdmLookupCache.end())
+		{
+			hasVacdmRulePilotData = cachedVacdmLookup->second.hasData;
+			if (hasVacdmRulePilotData)
+				vacdmRulePilotData = cachedVacdmLookup->second.data;
+		}
+		else
+		{
+			hasVacdmRulePilotData = TryGetVacdmPilotDataForTarget(rt, fp, vacdmRulePilotData);
+		}
 		VacdmColorRuleOverrides vacdmTagColorOverrides =
 			EvaluateVacdmColorRules(cachedTagDefinition->vacdmTagColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
 		const VacdmColorRuleOverrides runwayTagColorOverrides =
