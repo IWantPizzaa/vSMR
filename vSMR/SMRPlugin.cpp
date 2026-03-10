@@ -10,6 +10,7 @@
 
 bool Logger::ENABLED;
 string Logger::DLL_PATH;
+Logger::Mode Logger::CURRENT_MODE = Logger::Mode::Normal;
 
 bool HoppieConnected = false;
 bool ConnectionMessage = false;
@@ -556,6 +557,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 	Logger::DLL_PATH = "";
 	Logger::ENABLED = false;
+	Logger::set_mode(Logger::Mode::Normal);
 
 	//
 	// Adding the SMR Display type
@@ -657,11 +659,82 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json", true, true, false, true, false);
 		return true;
 	}
-	else if (commandLower == ".smr log") {
-		Logger::ENABLED = !Logger::ENABLED;
-		const std::string state = Logger::ENABLED ? "enabled" : "disabled";
-		const std::string detail = "vsmr.log " + state + " at " + Logger::DLL_PATH + "\\vsmr.log";
-		DisplayUserMessage("vSMR", "Log", detail.c_str(), true, true, false, true, false);
+	else if (startsWithCommand(".smr log")) {
+		const std::string prefix = ".smr log";
+		std::string argument = "";
+		if (commandLower.size() > prefix.size())
+			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
+
+		auto publishLogStatus = [&](const std::string& action)
+		{
+			std::string detail = action + " - vsmr.log ";
+			detail += Logger::ENABLED ? "enabled" : "disabled";
+			if (Logger::ENABLED)
+			{
+				detail += " (";
+				detail += Logger::mode_name(Logger::get_mode());
+				detail += ")";
+			}
+			detail += " at ";
+			detail += Logger::DLL_PATH;
+			detail += "\\vsmr.log";
+			DisplayUserMessage("vSMR", "Log", detail.c_str(), true, true, false, true, false);
+		};
+
+		if (argument.empty())
+		{
+			if (Logger::ENABLED)
+			{
+				Logger::ENABLED = false;
+			}
+			else
+			{
+				Logger::ENABLED = true;
+				Logger::set_mode(Logger::Mode::Normal);
+			}
+			publishLogStatus("Updated");
+			return true;
+		}
+
+		if (argument == "status")
+		{
+			publishLogStatus("Status");
+			return true;
+		}
+
+		if (argument == "off" || argument == "disable" || argument == "0")
+		{
+			Logger::ENABLED = false;
+			publishLogStatus("Updated");
+			return true;
+		}
+
+		if (argument == "on" || argument == "enable" || argument == "1" ||
+			argument == "normal" || argument == "n")
+		{
+			Logger::ENABLED = true;
+			Logger::set_mode(Logger::Mode::Normal);
+			publishLogStatus("Updated");
+			return true;
+		}
+
+		if (argument == "verbose" || argument == "v")
+		{
+			Logger::ENABLED = true;
+			Logger::set_mode(Logger::Mode::Verbose);
+			publishLogStatus("Updated");
+			return true;
+		}
+
+		DisplayUserMessage(
+			"vSMR",
+			"Log",
+			"Usage: .smr log [normal|verbose|off|status]",
+			true,
+			true,
+			false,
+			true,
+			false);
 		return true;
 	}
 	else if (commandLower == ".smr profile" || commandLower == ".smr editor" || commandLower == ".smr config")

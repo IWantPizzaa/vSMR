@@ -129,12 +129,22 @@ The plugin responds to the following EuroScope command-line commands:
 | `.smr connect` | Plugin           | Connects or disconnects Hoppie CPDLC                                   |
 | `.smr poll`    | Plugin           | Manually polls CPDLC messages when connected                           |
 | `.smr reload`  | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens              |
-| `.smr log`     | Plugin           | Toggles plugin logging                                                 |
+| `.smr log`     | Plugin           | Toggles logging off/on (when enabled this defaults to `normal` mode)  |
+| `.smr log normal`  | Plugin      | Enables concise logging                                                |
+| `.smr log verbose` | Plugin      | Enables detailed logging                                               |
+| `.smr log off`     | Plugin      | Disables logging                                                       |
+| `.smr log status`  | Plugin      | Prints current logging status and mode                                 |
 | `.smr profile` | Plugin           | Opens the detached profile editor on the first active SMR radar screen |
 | `.smr editor`  | Plugin           | Alias for `.smr profile`                                             |
 | `.smr config`  | Plugin           | Alias for `.smr profile`                                             |
 | `.smr draw`    | Radar screen     | Toggles runway-area drawing                                            |
 | `.smr status`  | Radar screen     | Prints current runway status information from RIMCAS                   |
+
+### Logging Modes
+
+- `normal`: concise logs for routine troubleshooting; suppresses function-signature traces and profile-editor step spam.
+- `verbose`: detailed logs for deep debugging; still suppresses known hot-loop trace spam.
+- The log file is `vsmr.log` in the same folder as `vSMR.dll`.
 
 ## Radar Screen Behavior
 
