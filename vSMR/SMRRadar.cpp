@@ -2743,12 +2743,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			graphics.SetTransform(&m);
 
 			if (applyTint) {
+				const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(tintColor.GetAlpha()) / 255.0f;
 				Gdiplus::ColorMatrix cm = {
 					{
 						{ static_cast<REAL>(tintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
 						{ 0.0f, static_cast<REAL>(tintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
 						{ 0.0f, 0.0f, static_cast<REAL>(tintColor.GetB()) / 255.0f, 0.0f, 0.0f },
-						{ 0.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+						{ 0.0f, 0.0f, 0.0f, tintAlpha, 0.0f },
 						{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
 					}
 				};

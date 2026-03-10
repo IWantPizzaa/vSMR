@@ -593,15 +593,26 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			SolidBrush TagBackgroundBrush(TagBackgroundColor);
 			gdi->FillPath(&TagBackgroundBrush, &roundedPath);
 
+			auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
+			{
+				const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
+				if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+				{
+					const Value& rimcas = activeProfile["rimcas"];
+					if (rimcas.HasMember(key) && rimcas[key].IsObject())
+						return radar_screen->CurrentConfig->getConfigColor(rimcas[key]);
+				}
+				return fallback;
+			};
+
 			SolidBrush FontColor(radar_screen->ColorManager->get_corrected_color("label",
 				radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["text_color"])));
 			SolidBrush SquawkErrorColor(radar_screen->ColorManager->get_corrected_color("label",
 				radar_screen->CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
-			SolidBrush RimcasTextColor(radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["alert_text_color"]));
-			SolidBrush AlertTextColorCaution(Color(255, 30, 30, 30));
-			SolidBrush AlertTextColorWarning(Color(255, 255, 255, 255));
-			SolidBrush AlertColorCaution(Color(230, 255, 215, 0));
-			SolidBrush AlertColorWarning(Color(230, 200, 40, 40));
+			SolidBrush AlertTextColorCaution(radar_screen->ColorManager->get_corrected_color("label",
+				getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30))));
+			SolidBrush AlertTextColorWarning(radar_screen->ColorManager->get_corrected_color("label",
+				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
@@ -613,8 +624,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					if (TagReplacingMap["sqerror"].size() > 0 && strcmp(element.c_str(), TagReplacingMap["sqerror"].c_str()) == 0)
 						color = &SquawkErrorColor;
 
-					if (radar_screen->RimcasInstance->getAlert(rt.GetCallsign()) != CRimcas::NoAlert)
-						color = &RimcasTextColor;
+					CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance->getAlert(rt.GetCallsign());
+					if (rimcasStage != CRimcas::NoAlert)
+						color = (rimcasStage == CRimcas::StageTwo) ? &AlertTextColorWarning : &AlertTextColorCaution;
 
 					RectF mRect(0, 0, 0, 0);
 
@@ -675,7 +687,10 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					wstring rimcasw = wstring(L"ALERT");
 					StringFormat stformat = new StringFormat();
 					stformat.SetAlignment(StringAlignment::StringAlignmentCenter);
-					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), radar_screen->customFonts[radar_screen->currentFontSize], PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, &RimcasTextColor);
+					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rt.GetCallsign()) == CRimcas::StageTwo)
+						? &AlertTextColorWarning
+						: &AlertTextColorCaution;
+					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), radar_screen->customFonts[radar_screen->currentFontSize], PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, rimcasTextBrush);
 
 				}
 			}

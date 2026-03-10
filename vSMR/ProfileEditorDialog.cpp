@@ -609,17 +609,43 @@ namespace
 			::SendMessage(ownerIt->second, trackMessage, static_cast<WPARAM>(screenPoint.x), static_cast<LPARAM>(screenPoint.y));
 		};
 
-		switch (message)
+	switch (message)
+	{
+	case WM_LBUTTONDOWN:
+		::SetCapture(hwnd);
+		sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+		return 0;
+	case WM_MOUSEWHEEL:
+		if (trackMessage == WM_PE_COLOR_VALUE_TRACK ||
+			trackMessage == WM_PE_COLOR_OPACITY_TRACK ||
+			trackMessage == WM_PE_RULE_COLOR_VALUE_TRACK)
 		{
-		case WM_LBUTTONDOWN:
-			::SetCapture(hwnd);
+			auto ownerIt = ownerMap.find(hwnd);
+			if (ownerIt != ownerMap.end() && ::IsWindow(ownerIt->second))
+			{
+				const int rangeMin = static_cast<int>(::SendMessage(hwnd, TBM_GETRANGEMIN, 0, 0));
+				const int rangeMax = static_cast<int>(::SendMessage(hwnd, TBM_GETRANGEMAX, 0, 0));
+				const int currentPos = static_cast<int>(::SendMessage(hwnd, TBM_GETPOS, 0, 0));
+				const int wheelDelta = GET_WHEEL_DELTA_WPARAM(wParam);
+				int wheelSteps = wheelDelta / WHEEL_DELTA;
+				if (wheelSteps == 0)
+					wheelSteps = (wheelDelta > 0) ? 1 : -1;
+
+				const int newPos = min(rangeMax, max(rangeMin, currentPos + wheelSteps));
+				if (newPos != currentPos)
+				{
+					::SendMessage(hwnd, TBM_SETPOS, TRUE, static_cast<LPARAM>(newPos));
+					::SendMessage(ownerIt->second, WM_VSCROLL, MAKEWPARAM(TB_THUMBPOSITION, newPos), reinterpret_cast<LPARAM>(hwnd));
+				}
+				return 0;
+			}
+		}
+		break;
+	case WM_MOUSEMOVE:
+		if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
+		{
 			sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
 			return 0;
-		case WM_MOUSEMOVE:
-			if ((wParam & MK_LBUTTON) != 0 && ::GetCapture() == hwnd)
-			{
-				sendTrackMessage(static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
-				return 0;
 			}
 			break;
 		case WM_LBUTTONUP:
