@@ -865,53 +865,62 @@ namespace
 	{
 		std::string token;
 		std::string expectedState;
-		bool hasTargetColor = false;
-		int targetR = 255;
-		int targetG = 255;
-		int targetB = 255;
-		bool hasTagColor = false;
-		int tagR = 255;
-		int tagG = 255;
-		int tagB = 255;
-		bool hasTextColor = false;
-		int textR = 255;
-		int textG = 255;
-		int textB = 255;
-	};
+	bool hasTargetColor = false;
+	int targetR = 255;
+	int targetG = 255;
+	int targetB = 255;
+	int targetA = 255;
+	bool hasTagColor = false;
+	int tagR = 255;
+	int tagG = 255;
+	int tagB = 255;
+	int tagA = 255;
+	bool hasTextColor = false;
+	int textR = 255;
+	int textG = 255;
+	int textB = 255;
+	int textA = 255;
+};
 
 	struct VacdmColorRuleOverrides
 	{
-		bool hasTargetColor = false;
-		int targetR = 255;
-		int targetG = 255;
-		int targetB = 255;
-		bool hasTagColor = false;
-		int tagR = 255;
-		int tagG = 255;
-		int tagB = 255;
-		bool hasTextColor = false;
-		int textR = 255;
-		int textG = 255;
-		int textB = 255;
-	};
+	bool hasTargetColor = false;
+	int targetR = 255;
+	int targetG = 255;
+	int targetB = 255;
+	int targetA = 255;
+	bool hasTagColor = false;
+	int tagR = 255;
+	int tagG = 255;
+	int tagB = 255;
+	int tagA = 255;
+	bool hasTextColor = false;
+	int textR = 255;
+	int textG = 255;
+	int textB = 255;
+	int textA = 255;
+};
 
 	struct RunwayColorRuleDefinition
 	{
 		std::string token;
 		std::string expectedRunway;
-		bool hasTargetColor = false;
-		int targetR = 255;
-		int targetG = 255;
-		int targetB = 255;
-		bool hasTagColor = false;
-		int tagR = 255;
-		int tagG = 255;
-		int tagB = 255;
-		bool hasTextColor = false;
-		int textR = 255;
-		int textG = 255;
-		int textB = 255;
-	};
+	bool hasTargetColor = false;
+	int targetR = 255;
+	int targetG = 255;
+	int targetB = 255;
+	int targetA = 255;
+	bool hasTagColor = false;
+	int tagR = 255;
+	int tagG = 255;
+	int tagB = 255;
+	int tagA = 255;
+	bool hasTextColor = false;
+	int textR = 255;
+	int textG = 255;
+	int textB = 255;
+	int textA = 255;
+};
 
 	bool IsVacdmRuleTokenName(const std::string& tokenName)
 	{
@@ -1427,6 +1436,7 @@ namespace
 				overrides.targetR = rule.targetR;
 				overrides.targetG = rule.targetG;
 				overrides.targetB = rule.targetB;
+				overrides.targetA = rule.targetA;
 			}
 			if (rule.hasTagColor)
 			{
@@ -1434,6 +1444,7 @@ namespace
 				overrides.tagR = rule.tagR;
 				overrides.tagG = rule.tagG;
 				overrides.tagB = rule.tagB;
+				overrides.tagA = rule.tagA;
 			}
 			if (rule.hasTextColor)
 			{
@@ -1441,6 +1452,7 @@ namespace
 				overrides.textR = rule.textR;
 				overrides.textG = rule.textG;
 				overrides.textB = rule.textB;
+				overrides.textA = rule.textA;
 			}
 		}
 		return overrides;
@@ -1739,6 +1751,7 @@ namespace
 				overrides.targetR = rule.targetR;
 				overrides.targetG = rule.targetG;
 				overrides.targetB = rule.targetB;
+				overrides.targetA = rule.targetA;
 			}
 			if (rule.hasTagColor)
 			{
@@ -1746,6 +1759,7 @@ namespace
 				overrides.tagR = rule.tagR;
 				overrides.tagG = rule.tagG;
 				overrides.tagB = rule.tagB;
+				overrides.tagA = rule.tagA;
 			}
 			if (rule.hasTextColor)
 			{
@@ -1753,6 +1767,7 @@ namespace
 				overrides.textR = rule.textR;
 				overrides.textG = rule.textG;
 				overrides.textB = rule.textB;
+				overrides.textA = rule.textA;
 			}
 		}
 		return overrides;

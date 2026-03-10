@@ -80,8 +80,10 @@ protected:
 	afx_msg void OnProfileRepoLinkClicked();
 	afx_msg void OnProfileCoffeeLinkClicked();
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnRuleColorOpacitySliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg LRESULT OnRuleColorWheelTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRuleColorValueSliderTrack(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnRuleColorOpacitySliderTrack(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnRuleColorApplyClicked();
 	afx_msg void OnRuleColorResetClicked();
 	afx_msg void OnRuleTargetSwatchClicked();
@@ -254,6 +256,8 @@ private:
 		, IDC_PE_PROFILE_INFO_BODY = 9269
 		, IDC_PE_PROFILE_REPO_LINK = 9270
 		, IDC_PE_PROFILE_COFFEE_LINK = 9271
+		, IDC_PE_RULE_COLOR_OPACITY_LABEL = 9273
+		, IDC_PE_RULE_COLOR_OPACITY_SLIDER = 9274
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -368,6 +372,8 @@ private:
 	CStatic RuleColorWheel;
 	CStatic RuleColorValueLabel;
 	CSliderCtrl RuleColorValueSlider;
+	CStatic RuleColorOpacityLabel;
+	CSliderCtrl RuleColorOpacitySlider;
 	CStatic RuleColorPreviewLabel;
 	CStatic RuleColorPreviewSwatch;
 	CButton RuleColorApplyButton;
@@ -437,6 +443,7 @@ private:
 	int RuleColorDraftR = 255;
 	int RuleColorDraftG = 255;
 	int RuleColorDraftB = 255;
+	int RuleColorDraftA = 255;
 	bool RuleColorDraftValid = false;
 	bool RuleColorDraftDirty = false;
 	std::vector<std::string> ColorPathEntries;
@@ -494,6 +501,7 @@ private:
 	bool TryParseHexColor(const std::string& text, int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool TryParseRgbTriplet(const std::string& text, int& r, int& g, int& b) const;
 	std::string FormatRgbTriplet(int r, int g, int b) const;
+	std::string FormatRgbaQuad(int r, int g, int b, int a) const;
 	bool ReadRuleFromControls(StructuredTagColorRule& outRule) const;
 	bool ReadRuleCriterionFromControls(StructuredTagColorRule::Criterion& outCriterion) const;
 	void ApplyRuleControlChanges(bool keepSelection);
@@ -513,10 +521,13 @@ private:
 	bool GetRuleColorEditorTargetControls(UINT swatchControlId, CButton*& outCheck, CEdit*& outEdit) const;
 	void SyncRuleColorEditorFromActiveControl();
 	void SyncRuleColorValueSliderFromDraft();
+	void SyncRuleColorOpacitySliderFromDraft();
 	void ApplyRuleColorValueFromSlider();
+	void ApplyRuleColorOpacityFromSlider();
 	void ApplyRuleColorDraftToActiveControl();
 	bool TryApplyRuleColorWheelPoint(const CPoint& screenPoint);
 	bool TryApplyRuleColorValueSliderPoint(const CPoint& screenPoint);
+	bool TryApplyRuleColorOpacitySliderPoint(const CPoint& screenPoint);
 	bool TryApplyColorWheelPoint(const CPoint& screenPoint);
 	bool TryApplyColorValueSliderPoint(const CPoint& screenPoint);
 	bool TryApplyColorOpacitySliderPoint(const CPoint& screenPoint);

@@ -203,6 +203,7 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 			overrides.targetR = rule.targetR;
 			overrides.targetG = rule.targetG;
 			overrides.targetB = rule.targetB;
+			overrides.targetA = rule.targetA;
 		}
 		if (rule.applyTag)
 		{
@@ -210,6 +211,7 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 			overrides.tagR = rule.tagR;
 			overrides.tagG = rule.tagG;
 			overrides.tagB = rule.tagB;
+			overrides.tagA = rule.tagA;
 		}
 		if (rule.applyText)
 		{
@@ -217,6 +219,7 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 			overrides.textR = rule.textR;
 			overrides.textG = rule.textG;
 			overrides.textB = rule.textB;
+			overrides.textA = rule.textA;
 		}
 	}
 
@@ -725,6 +728,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.targetR = runwayTagColorOverrides.targetR;
 			vacdmTagColorOverrides.targetG = runwayTagColorOverrides.targetG;
 			vacdmTagColorOverrides.targetB = runwayTagColorOverrides.targetB;
+			vacdmTagColorOverrides.targetA = runwayTagColorOverrides.targetA;
 		}
 		if (runwayTagColorOverrides.hasTagColor)
 		{
@@ -732,6 +736,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.tagR = runwayTagColorOverrides.tagR;
 			vacdmTagColorOverrides.tagG = runwayTagColorOverrides.tagG;
 			vacdmTagColorOverrides.tagB = runwayTagColorOverrides.tagB;
+			vacdmTagColorOverrides.tagA = runwayTagColorOverrides.tagA;
 		}
 		if (runwayTagColorOverrides.hasTextColor)
 		{
@@ -739,6 +744,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.textR = runwayTagColorOverrides.textR;
 			vacdmTagColorOverrides.textG = runwayTagColorOverrides.textG;
 			vacdmTagColorOverrides.textB = runwayTagColorOverrides.textB;
+			vacdmTagColorOverrides.textA = runwayTagColorOverrides.textA;
 		}
 		const VacdmColorRuleOverrides structuredTagColorOverrides =
 			EvaluateStructuredTagColorRules(
@@ -754,6 +760,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.targetR = structuredTagColorOverrides.targetR;
 			vacdmTagColorOverrides.targetG = structuredTagColorOverrides.targetG;
 			vacdmTagColorOverrides.targetB = structuredTagColorOverrides.targetB;
+			vacdmTagColorOverrides.targetA = structuredTagColorOverrides.targetA;
 		}
 		if (structuredTagColorOverrides.hasTagColor)
 		{
@@ -761,6 +768,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.tagR = structuredTagColorOverrides.tagR;
 			vacdmTagColorOverrides.tagG = structuredTagColorOverrides.tagG;
 			vacdmTagColorOverrides.tagB = structuredTagColorOverrides.tagB;
+			vacdmTagColorOverrides.tagA = structuredTagColorOverrides.tagA;
 		}
 		if (structuredTagColorOverrides.hasTextColor)
 		{
@@ -768,6 +776,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			vacdmTagColorOverrides.textR = structuredTagColorOverrides.textR;
 			vacdmTagColorOverrides.textG = structuredTagColorOverrides.textG;
 			vacdmTagColorOverrides.textB = structuredTagColorOverrides.textB;
+			vacdmTagColorOverrides.textA = structuredTagColorOverrides.textA;
 		}
 
 		struct RenderedTagElement
@@ -1032,12 +1041,12 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		if (vacdmTagColorOverrides.hasTagColor)
 		{
-			definedBackgroundColor = Color(255, vacdmTagColorOverrides.tagR, vacdmTagColorOverrides.tagG, vacdmTagColorOverrides.tagB);
+			definedBackgroundColor = Color(vacdmTagColorOverrides.tagA, vacdmTagColorOverrides.tagR, vacdmTagColorOverrides.tagG, vacdmTagColorOverrides.tagB);
 			definedBackgroundOnRunwayColor = definedBackgroundColor;
 		}
 		if (vacdmTagColorOverrides.hasTextColor)
 		{
-			definedTextColor = Color(255, vacdmTagColorOverrides.textR, vacdmTagColorOverrides.textG, vacdmTagColorOverrides.textB);
+			definedTextColor = Color(vacdmTagColorOverrides.textA, vacdmTagColorOverrides.textR, vacdmTagColorOverrides.textG, vacdmTagColorOverrides.textB);
 		}
 
 		Color TagBackgroundColor = RimcasInstance->GetAircraftColor(rt.GetCallsign(),

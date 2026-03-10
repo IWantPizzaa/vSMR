@@ -1251,12 +1251,13 @@ namespace
 		return std::clamp(value, 0, 255);
 	}
 
-	bool TryReadRuleColor(const rapidjson::Value& item, const char* key, bool& outApply, int& outR, int& outG, int& outB)
+	bool TryReadRuleColor(const rapidjson::Value& item, const char* key, bool& outApply, int& outR, int& outG, int& outB, int& outA)
 	{
 		outApply = false;
 		outR = 255;
 		outG = 255;
 		outB = 255;
+		outA = 255;
 
 		if (!item.IsObject() || !item.HasMember(key) || !item[key].IsObject())
 			return false;
@@ -1273,10 +1274,12 @@ namespace
 		outR = ClampRuleColorComponent(color["r"].GetInt());
 		outG = ClampRuleColorComponent(color["g"].GetInt());
 		outB = ClampRuleColorComponent(color["b"].GetInt());
+		if (color.HasMember("a") && color["a"].IsInt())
+			outA = ClampRuleColorComponent(color["a"].GetInt());
 		return true;
 	}
 
-	void AppendRuleColor(rapidjson::Value& parent, const char* key, bool apply, int r, int g, int b, rapidjson::Document::AllocatorType& allocator)
+	void AppendRuleColor(rapidjson::Value& parent, const char* key, bool apply, int r, int g, int b, int a, rapidjson::Document::AllocatorType& allocator)
 	{
 		if (!apply)
 			return;
@@ -1285,6 +1288,7 @@ namespace
 		colorObject.AddMember("r", ClampRuleColorComponent(r), allocator);
 		colorObject.AddMember("g", ClampRuleColorComponent(g), allocator);
 		colorObject.AddMember("b", ClampRuleColorComponent(b), allocator);
+		colorObject.AddMember("a", ClampRuleColorComponent(a), allocator);
 
 		rapidjson::Value keyValue;
 		keyValue.SetString(key, allocator);
@@ -1316,14 +1320,17 @@ namespace
 			a.targetR == b.targetR &&
 			a.targetG == b.targetG &&
 			a.targetB == b.targetB &&
+			a.targetA == b.targetA &&
 			a.applyTag == b.applyTag &&
 			a.tagR == b.tagR &&
 			a.tagG == b.tagG &&
 			a.tagB == b.tagB &&
+			a.tagA == b.tagA &&
 			a.applyText == b.applyText &&
 			a.textR == b.textR &&
 			a.textG == b.textG &&
-			a.textB == b.textB;
+			a.textB == b.textB &&
+			a.textA == b.textA;
 	}
 }
 
@@ -1581,9 +1588,9 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 			detail = item["detail"].GetString();
 		rule.detail = NormalizeStructuredRuleDetail(detail);
 
-		TryReadRuleColor(item, "target_color", rule.applyTarget, rule.targetR, rule.targetG, rule.targetB);
-		TryReadRuleColor(item, "tag_color", rule.applyTag, rule.tagR, rule.tagG, rule.tagB);
-		TryReadRuleColor(item, "text_color", rule.applyText, rule.textR, rule.textG, rule.textB);
+		TryReadRuleColor(item, "target_color", rule.applyTarget, rule.targetR, rule.targetG, rule.targetB, rule.targetA);
+		TryReadRuleColor(item, "tag_color", rule.applyTag, rule.tagR, rule.tagG, rule.tagB, rule.tagA);
+		TryReadRuleColor(item, "text_color", rule.applyText, rule.textR, rule.textG, rule.textB, rule.textA);
 
 		if (!rule.applyTarget && !rule.applyTag && !rule.applyText)
 			continue;
@@ -1685,12 +1692,15 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		normalizedRule.targetR = ClampRuleColorComponent(rawRule.targetR);
 		normalizedRule.targetG = ClampRuleColorComponent(rawRule.targetG);
 		normalizedRule.targetB = ClampRuleColorComponent(rawRule.targetB);
+		normalizedRule.targetA = ClampRuleColorComponent(rawRule.targetA);
 		normalizedRule.tagR = ClampRuleColorComponent(rawRule.tagR);
 		normalizedRule.tagG = ClampRuleColorComponent(rawRule.tagG);
 		normalizedRule.tagB = ClampRuleColorComponent(rawRule.tagB);
+		normalizedRule.tagA = ClampRuleColorComponent(rawRule.tagA);
 		normalizedRule.textR = ClampRuleColorComponent(rawRule.textR);
 		normalizedRule.textG = ClampRuleColorComponent(rawRule.textG);
 		normalizedRule.textB = ClampRuleColorComponent(rawRule.textB);
+		normalizedRule.textA = ClampRuleColorComponent(rawRule.textA);
 
 		if (!normalizedRule.applyTarget && !normalizedRule.applyTag && !normalizedRule.applyText)
 			continue;
@@ -1801,9 +1811,9 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 			detailValue.SetString(rule.detail.c_str(), static_cast<rapidjson::SizeType>(rule.detail.size()), allocator);
 			ruleObject.AddMember(detailKey, detailValue, allocator);
 
-			AppendRuleColor(ruleObject, "target_color", rule.applyTarget, rule.targetR, rule.targetG, rule.targetB, allocator);
-			AppendRuleColor(ruleObject, "tag_color", rule.applyTag, rule.tagR, rule.tagG, rule.tagB, allocator);
-			AppendRuleColor(ruleObject, "text_color", rule.applyText, rule.textR, rule.textG, rule.textB, allocator);
+			AppendRuleColor(ruleObject, "target_color", rule.applyTarget, rule.targetR, rule.targetG, rule.targetB, rule.targetA, allocator);
+			AppendRuleColor(ruleObject, "tag_color", rule.applyTag, rule.tagR, rule.tagG, rule.tagB, rule.tagA, allocator);
+			AppendRuleColor(ruleObject, "text_color", rule.applyText, rule.textR, rule.textG, rule.textB, rule.textA, allocator);
 
 			rulesArray.PushBack(ruleObject, allocator);
 		}

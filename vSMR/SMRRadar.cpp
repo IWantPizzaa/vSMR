@@ -2349,6 +2349,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				overrides.targetR = rule.targetR;
 				overrides.targetG = rule.targetG;
 				overrides.targetB = rule.targetB;
+				overrides.targetA = rule.targetA;
 			}
 			if (rule.applyTag)
 			{
@@ -2356,6 +2357,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				overrides.tagR = rule.tagR;
 				overrides.tagG = rule.tagG;
 				overrides.tagB = rule.tagB;
+				overrides.tagA = rule.tagA;
 			}
 			if (rule.applyText)
 			{
@@ -2363,6 +2365,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				overrides.textR = rule.textR;
 				overrides.textG = rule.textG;
 				overrides.textB = rule.textB;
+				overrides.textA = rule.textA;
 			}
 		}
 		return overrides;
@@ -2677,6 +2680,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			vacdmColorRuleOverrides.targetR = structuredIconColorRuleOverrides.targetR;
 			vacdmColorRuleOverrides.targetG = structuredIconColorRuleOverrides.targetG;
 			vacdmColorRuleOverrides.targetB = structuredIconColorRuleOverrides.targetB;
+			vacdmColorRuleOverrides.targetA = structuredIconColorRuleOverrides.targetA;
 		}
 
 		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
@@ -2936,7 +2940,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (vacdmColorRuleOverrides.hasTargetColor)
 			{
 				tintColor = ColorManager->get_corrected_color("symbol",
-					Color(255, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
+					Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
 				applyTint = true;
 			}
 
@@ -3088,7 +3092,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (vacdmColorRuleOverrides.hasTargetColor)
 			{
 				tintColor = ColorManager->get_corrected_color("symbol",
-					Color(255, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
+					Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
 				applyTint = true;
 			}
 
