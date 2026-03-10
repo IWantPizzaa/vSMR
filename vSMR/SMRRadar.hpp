@@ -453,13 +453,23 @@ public:
 
 	virtual bool isVisible(CRadarTarget rt)
 	{
+		if (!rt.IsValid())
+			return false;
+
 		CRadarTargetPositionData RtPos = rt.GetPosition();
+		if (!RtPos.IsValid())
+			return false;
+
+		auto airportIt = AirportPositions.find(getActiveAirport());
+		if (airportIt == AirportPositions.end())
+			return false;
+
 		int radarRange = CurrentConfig->getActiveProfile()["filters"]["radar_range_nm"].GetInt();
 		int altitudeFilter = CurrentConfig->getActiveProfile()["filters"]["hide_above_alt"].GetInt();
 		int speedFilter = CurrentConfig->getActiveProfile()["filters"]["hide_above_spd"].GetInt();
 		bool isAcDisplayed = true;
 
-		if (AirportPositions[getActiveAirport()].DistanceTo(RtPos.GetPosition()) > radarRange)
+		if (airportIt->second.DistanceTo(RtPos.GetPosition()) > radarRange)
 			isAcDisplayed = false;
 
 		if (altitudeFilter != 0) {

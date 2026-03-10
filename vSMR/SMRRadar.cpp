@@ -3618,7 +3618,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		if (DistanceToolActive)
 		{
-			CPosition r = GetPlugIn()->RadarTargetSelect(ActiveDistance.first.c_str()).GetPosition().GetPosition();
+			CRadarTarget activeDistanceTarget = GetPlugIn()->RadarTargetSelect(ActiveDistance.first.c_str());
+			if (!activeDistanceTarget.IsValid() || !activeDistanceTarget.GetPosition().IsValid())
+			{
+				DistanceToolActive = false;
+				ActiveDistance = pair<string, string>("", "");
+				dc.SelectObject(oldPen);
+				RequestRefresh();
+				return;
+			}
+			CPosition r = activeDistanceTarget.GetPosition().GetPosition();
 			AirportPos = ConvertCoordFromPositionToPixel(r);
 			AirportCPos = r;
 		}

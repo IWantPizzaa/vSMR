@@ -317,7 +317,11 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		rt.IsValid();
 		rt = radar_screen->GetPlugIn()->RadarTargetSelectNext(rt))
 	{
-		bool isASEL = (aselTarget.IsValid() && strcmp(aselTarget.GetCallsign(), rt.GetCallsign()) == 0);
+		const char* rtCallsign = rt.GetCallsign();
+		if (rtCallsign == nullptr || rtCallsign[0] == '\0')
+			continue;
+		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
+		bool isASEL = (aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign) == 0);
 		int radarRange = radar_screen->CurrentConfig->getActiveProfile()["filters"]["radar_range_nm"].GetInt();
 
 		if (rt.GetGS() < 60 ||
@@ -329,7 +333,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 		CPosition RtPos2 = rt.GetPosition().GetPosition();
 		CRadarTargetPositionData RtPos = rt.GetPosition();
-		auto fp = radar_screen->GetPlugIn()->FlightPlanSelect(rt.GetCallsign());
+		auto fp = radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign);
 		auto reportedGs = RtPos.GetReportedGS();
 
 		// Filtering the targets
