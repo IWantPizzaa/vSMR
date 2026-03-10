@@ -97,14 +97,17 @@ struct StructuredTagColorRule
 	int targetR = 255;
 	int targetG = 255;
 	int targetB = 255;
+	int targetA = 255;
 	bool applyTag = false;
 	int tagR = 255;
 	int tagG = 255;
 	int tagB = 255;
+	int tagA = 255;
 	bool applyText = false;
 	int textR = 255;
 	int textG = 255;
 	int textB = 255;
+	int textA = 255;
 };
 
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);

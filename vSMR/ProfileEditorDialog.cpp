@@ -27,6 +27,7 @@ namespace
 	const UINT WM_PE_COLOR_OPACITY_TRACK = WM_APP + 419;
 	const UINT WM_PE_RULE_COLOR_WHEEL_TRACK = WM_APP + 420;
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
+	const UINT WM_PE_RULE_COLOR_OPACITY_TRACK = WM_APP + 422;
 	const COLORREF kEditorBorderColor = RGB(198, 204, 214);
 	const COLORREF kEditorFocusBorderColor = RGB(64, 132, 230);
 	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
@@ -48,6 +49,8 @@ namespace
 	std::map<HWND, HWND> gRuleColorWheelOwnerWindows;
 	std::map<HWND, WNDPROC> gRuleColorValueSliderOldProcs;
 	std::map<HWND, HWND> gRuleColorValueSliderOwnerWindows;
+	std::map<HWND, WNDPROC> gRuleColorOpacitySliderOldProcs;
+	std::map<HWND, HWND> gRuleColorOpacitySliderOwnerWindows;
 
 	std::string TrimAsciiWhitespaceCopy(const std::string& text)
 	{
@@ -701,7 +704,8 @@ namespace
 	case WM_MOUSEWHEEL:
 		if (trackMessage == WM_PE_COLOR_VALUE_TRACK ||
 			trackMessage == WM_PE_COLOR_OPACITY_TRACK ||
-			trackMessage == WM_PE_RULE_COLOR_VALUE_TRACK)
+			trackMessage == WM_PE_RULE_COLOR_VALUE_TRACK ||
+			trackMessage == WM_PE_RULE_COLOR_OPACITY_TRACK)
 		{
 			auto ownerIt = ownerMap.find(hwnd);
 			if (ownerIt != ownerMap.end() && ::IsWindow(ownerIt->second))
@@ -808,6 +812,18 @@ namespace
 			gRuleColorValueSliderOldProcs,
 			gRuleColorValueSliderOwnerWindows,
 			WM_PE_RULE_COLOR_VALUE_TRACK);
+	}
+
+	LRESULT CALLBACK RuleColorOpacitySliderWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+	{
+		return HandleTrackingControlWndProc(
+			hwnd,
+			message,
+			wParam,
+			lParam,
+			gRuleColorOpacitySliderOldProcs,
+			gRuleColorOpacitySliderOwnerWindows,
+			WM_PE_RULE_COLOR_OPACITY_TRACK);
 	}
 
 	void DrawThemedBorder(HWND hwnd)
@@ -1091,6 +1107,12 @@ bool CProfileEditorDialog::HandleColorSliderScroll(CScrollBar* pScrollBar, UINT 
 		ApplyRuleColorValueFromSlider();
 		return true;
 	}
+	if (sourceHwnd == RuleColorOpacitySlider.GetSafeHwnd())
+	{
+		applyThumbPosition(RuleColorOpacitySlider);
+		ApplyRuleColorOpacityFromSlider();
+		return true;
+	}
 
 	return false;
 }
@@ -1266,6 +1288,7 @@ void CProfileEditorDialog::UnsubclassEditorControls()
 	restoreTrackingProcMap(gColorOpacitySliderOldProcs, gColorOpacitySliderOwnerWindows);
 	restoreTrackingProcMap(gRuleColorWheelOldProcs, gRuleColorWheelOwnerWindows);
 	restoreTrackingProcMap(gRuleColorValueSliderOldProcs, gRuleColorValueSliderOwnerWindows);
+	restoreTrackingProcMap(gRuleColorOpacitySliderOldProcs, gRuleColorOpacitySliderOwnerWindows);
 }
 
 HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
@@ -1765,7 +1788,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		if (RuleColorDraftValid)
 		{
 			fillColor = RGB(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB);
-			(void)tryReadRuleSwatchAlpha(RuleColorActiveSwatchId, fillAlpha);
+			fillAlpha = RuleColorDraftA;
 			swatchEnabled = true;
 		}
 		else
@@ -1775,7 +1798,8 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 			if (ResolveRuleSwatchColor(RuleColorActiveSwatchId, activeColor, activeEnabled))
 			{
 				fillColor = activeColor;
-				(void)tryReadRuleSwatchAlpha(RuleColorActiveSwatchId, fillAlpha);
+				if (!tryReadRuleSwatchAlpha(RuleColorActiveSwatchId, fillAlpha))
+					fillAlpha = 255;
 				swatchEnabled = true;
 			}
 			else
@@ -1792,7 +1816,8 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		if (ResolveRuleSwatchColor(controlId, ruleColor, swatchEnabled))
 		{
 			fillColor = ruleColor;
-			(void)tryReadRuleSwatchAlpha(controlId, fillAlpha);
+			if (!tryReadRuleSwatchAlpha(controlId, fillAlpha))
+				fillAlpha = 255;
 		}
 		else
 		{
@@ -2134,6 +2159,8 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorWheel.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW | SS_NOTIFY, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_WHEEL);
 	RuleColorValueLabel.Create("Value", WS_CHILD | WS_VISIBLE | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_VALUE_LABEL);
 	RuleColorValueSlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_VERT | TBS_NOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_VALUE_SLIDER);
+	RuleColorOpacityLabel.Create("Opacity", WS_CHILD | WS_VISIBLE | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_OPACITY_LABEL);
+	RuleColorOpacitySlider.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_VERT | TBS_NOTICKS, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_OPACITY_SLIDER);
 	RuleColorPreviewLabel.Create("Live Preview", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_PREVIEW_LABEL);
 	RuleColorPreviewSwatch.Create("", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_PREVIEW_SWATCH);
 	RuleColorApplyButton.Create("Apply", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_RULE_COLOR_APPLY_BUTTON);
@@ -2286,6 +2313,11 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleColorValueSlider.SetLineSize(1);
 	RuleColorValueSlider.SetPageSize(10);
 	RuleColorValueSlider.SetPos(100);
+	RuleColorOpacitySlider.SetRange(0, 100, TRUE);
+	RuleColorOpacitySlider.SetTicFreq(10);
+	RuleColorOpacitySlider.SetLineSize(1);
+	RuleColorOpacitySlider.SetPageSize(10);
+	RuleColorOpacitySlider.SetPos(100);
 	RuleColorActiveSwatchId = IDC_PE_RULE_TARGET_SWATCH;
 
 	if (::IsWindow(ColorWheel.GetSafeHwnd()))
@@ -2340,6 +2372,17 @@ void CProfileEditorDialog::CreateEditorControls()
 		{
 			gRuleColorValueSliderOldProcs[sliderHwnd] = oldProc;
 			gRuleColorValueSliderOwnerWindows[sliderHwnd] = GetSafeHwnd();
+		}
+	}
+
+	if (::IsWindow(RuleColorOpacitySlider.GetSafeHwnd()))
+	{
+		const HWND sliderHwnd = RuleColorOpacitySlider.GetSafeHwnd();
+		WNDPROC oldProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(sliderHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(RuleColorOpacitySliderWndProc)));
+		if (oldProc != nullptr)
+		{
+			gRuleColorOpacitySliderOldProcs[sliderHwnd] = oldProc;
+			gRuleColorOpacitySliderOwnerWindows[sliderHwnd] = GetSafeHwnd();
 		}
 	}
 	ColorPathTree.SetIndent(16);
@@ -3199,17 +3242,22 @@ void CProfileEditorDialog::LayoutControls()
 	const int ruleWheelLabelTop = effectY;
 	const int ruleWheelSliderGap = 8;
 	const int ruleWheelSliderWidth = 20;
-	const int ruleWheelSize = max(78, min(140, rulesContentWidth - ruleWheelSliderWidth - ruleWheelSliderGap));
-	const int ruleWheelGroupWidth = ruleWheelSize + ruleWheelSliderGap + ruleWheelSliderWidth;
+	const int ruleWheelSize = max(72, min(140, rulesContentWidth - (ruleWheelSliderWidth * 2) - (ruleWheelSliderGap * 2)));
+	const int ruleWheelGroupWidth = ruleWheelSize + ruleWheelSliderGap + ruleWheelSliderWidth + ruleWheelSliderGap + ruleWheelSliderWidth;
 	const int ruleWheelLeft = rulesContentLeft + max(0, (rulesContentWidth - ruleWheelGroupWidth) / 2);
 	const int ruleWheelTop = ruleWheelLabelTop + rowHeight + 2;
-	const int ruleWheelSliderLeft = ruleWheelLeft + ruleWheelSize + ruleWheelSliderGap;
+	const int ruleValueSliderLeft = ruleWheelLeft + ruleWheelSize + ruleWheelSliderGap;
+	const int ruleOpacitySliderLeft = ruleValueSliderLeft + ruleWheelSliderWidth + ruleWheelSliderGap;
 	const int ruleValueLabelWidth = 40;
-	const int ruleValueLabelLeft = ruleWheelSliderLeft - ((ruleValueLabelWidth - ruleWheelSliderWidth) / 2);
+	const int ruleValueLabelLeft = ruleValueSliderLeft - ((ruleValueLabelWidth - ruleWheelSliderWidth) / 2);
+	const int ruleOpacityLabelWidth = 52;
+	const int ruleOpacityLabelLeft = ruleOpacitySliderLeft - ((ruleOpacityLabelWidth - ruleWheelSliderWidth) / 2);
 	RuleColorWheelLabel.MoveWindow(ruleWheelLeft, ruleWheelLabelTop, max(60, ruleWheelSize), rowHeight, TRUE);
 	RuleColorWheel.MoveWindow(ruleWheelLeft, ruleWheelTop, ruleWheelSize, ruleWheelSize, TRUE);
 	RuleColorValueLabel.MoveWindow(ruleValueLabelLeft, ruleWheelLabelTop, ruleValueLabelWidth, rowHeight, TRUE);
-	RuleColorValueSlider.MoveWindow(ruleWheelSliderLeft, ruleWheelTop, ruleWheelSliderWidth, ruleWheelSize, TRUE);
+	RuleColorValueSlider.MoveWindow(ruleValueSliderLeft, ruleWheelTop, ruleWheelSliderWidth, ruleWheelSize, TRUE);
+	RuleColorOpacityLabel.MoveWindow(ruleOpacityLabelLeft, ruleWheelLabelTop, ruleOpacityLabelWidth, rowHeight, TRUE);
+	RuleColorOpacitySlider.MoveWindow(ruleOpacitySliderLeft, ruleWheelTop, ruleWheelSliderWidth, ruleWheelSize, TRUE);
 	effectY = ruleWheelTop + ruleWheelSize + 10;
 
 	const int rulePreviewWidth = max(130, min(rulesContentWidth, 220));
@@ -3437,6 +3485,8 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	RuleColorWheel.ShowWindow(ruleEffectShowMode);
 	RuleColorValueLabel.ShowWindow(ruleEffectShowMode);
 	RuleColorValueSlider.ShowWindow(ruleEffectShowMode);
+	RuleColorOpacityLabel.ShowWindow(ruleEffectShowMode);
+	RuleColorOpacitySlider.ShowWindow(ruleEffectShowMode);
 	RuleColorPreviewLabel.ShowWindow(ruleEffectShowMode);
 	RuleColorPreviewSwatch.ShowWindow(ruleEffectShowMode);
 	RuleColorApplyButton.ShowWindow(ruleEffectShowMode);
@@ -4214,6 +4264,7 @@ void CProfileEditorDialog::InvalidateRuleColorSwatches()
 	RuleColorPreviewSwatch.Invalidate(FALSE);
 	RuleColorWheel.Invalidate(FALSE);
 	RuleColorValueSlider.Invalidate(FALSE);
+	RuleColorOpacitySlider.Invalidate(FALSE);
 }
 
 bool CProfileEditorDialog::ResolveRuleSwatchColor(UINT controlId, COLORREF& outColor, bool& outEnabled) const
@@ -4283,6 +4334,19 @@ void CProfileEditorDialog::SyncRuleColorValueSliderFromDraft()
 	UpdatingControls = false;
 }
 
+void CProfileEditorDialog::SyncRuleColorOpacitySliderFromDraft()
+{
+	if (!RuleColorDraftValid || !::IsWindow(RuleColorOpacitySlider.GetSafeHwnd()))
+		return;
+
+	const int alpha = min(255, max(0, RuleColorDraftA));
+	const int position = min(100, max(0, static_cast<int>(round((static_cast<double>(alpha) / 255.0) * 100.0))));
+
+	UpdatingControls = true;
+	RuleColorOpacitySlider.SetPos(position);
+	UpdatingControls = false;
+}
+
 void CProfileEditorDialog::SyncRuleColorEditorFromActiveControl()
 {
 	RuleColorDraftValid = false;
@@ -4310,31 +4374,39 @@ void CProfileEditorDialog::SyncRuleColorEditorFromActiveControl()
 	int r = 255;
 	int g = 255;
 	int b = 255;
+	int a = 255;
+	bool hasAlpha = false;
 	CString colorText;
 	edit->GetWindowText(colorText);
-	if (!TryParseRgbTriplet(std::string(colorText.GetString()), r, g, b))
+	if (!TryParseRgbaQuad(std::string(colorText.GetString()), r, g, b, a, hasAlpha))
 	{
 		const StructuredTagColorRule& rule = RuleBuffer[SelectedRuleIndex];
 		if (RuleColorActiveSwatchId == IDC_PE_RULE_TARGET_SWATCH)
 		{
-			r = rule.targetR; g = rule.targetG; b = rule.targetB;
+			r = rule.targetR; g = rule.targetG; b = rule.targetB; a = rule.targetA;
 		}
 		else if (RuleColorActiveSwatchId == IDC_PE_RULE_TAG_SWATCH)
 		{
-			r = rule.tagR; g = rule.tagG; b = rule.tagB;
+			r = rule.tagR; g = rule.tagG; b = rule.tagB; a = rule.tagA;
 		}
 		else
 		{
-			r = rule.textR; g = rule.textG; b = rule.textB;
+			r = rule.textR; g = rule.textG; b = rule.textB; a = rule.textA;
 		}
+	}
+	else if (!hasAlpha)
+	{
+		a = 255;
 	}
 
 	RuleColorDraftR = r;
 	RuleColorDraftG = g;
 	RuleColorDraftB = b;
+	RuleColorDraftA = a;
 	RuleColorDraftValid = true;
 	RuleColorDraftDirty = false;
 	SyncRuleColorValueSliderFromDraft();
+	SyncRuleColorOpacitySliderFromDraft();
 	InvalidateRuleColorSwatches();
 }
 
@@ -4363,6 +4435,20 @@ void CProfileEditorDialog::ApplyRuleColorValueFromSlider()
 	InvalidateRuleColorSwatches();
 }
 
+void CProfileEditorDialog::ApplyRuleColorOpacityFromSlider()
+{
+	if (UpdatingControls || !RuleColorDraftValid)
+		return;
+	if (!::IsWindow(RuleColorOpacitySlider.GetSafeHwnd()))
+		return;
+
+	const double sliderAlpha = min(1.0, max(0.0, static_cast<double>(RuleColorOpacitySlider.GetPos()) / 100.0));
+	RuleColorDraftA = min(255, max(0, static_cast<int>(round(sliderAlpha * 255.0))));
+	RuleColorDraftDirty = true;
+	RuleColorApplyButton.EnableWindow(TRUE);
+	InvalidateRuleColorSwatches();
+}
+
 void CProfileEditorDialog::ApplyRuleColorDraftToActiveControl()
 {
 	if (UpdatingControls || !RuleColorDraftValid)
@@ -4377,7 +4463,7 @@ void CProfileEditorDialog::ApplyRuleColorDraftToActiveControl()
 
 	UpdatingControls = true;
 	check->SetCheck(BST_CHECKED);
-	SetEditTextPreserveCaret(*edit, FormatRgbTriplet(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB));
+	SetEditTextPreserveCaret(*edit, FormatRgbaQuad(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, RuleColorDraftA));
 	UpdatingControls = false;
 
 	OnRuleFieldChanged();
@@ -4410,6 +4496,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 	RuleTextEdit.EnableWindow(FALSE);
 	RuleColorWheel.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
 	RuleColorValueSlider.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
+	RuleColorOpacitySlider.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
 	RuleColorApplyButton.EnableWindow(FALSE);
 	RuleColorResetButton.EnableWindow((hasSelection && !isParameterSelection) ? TRUE : FALSE);
 
@@ -4427,13 +4514,15 @@ void CProfileEditorDialog::RefreshRuleControls()
 		RuleTargetCheck.SetCheck(BST_UNCHECKED);
 		RuleTagCheck.SetCheck(BST_UNCHECKED);
 		RuleTextCheck.SetCheck(BST_UNCHECKED);
-		SetEditTextPreserveCaret(RuleTargetEdit, "255,255,255");
-		SetEditTextPreserveCaret(RuleTagEdit, "255,255,255");
-		SetEditTextPreserveCaret(RuleTextEdit, "255,255,255");
+		SetEditTextPreserveCaret(RuleTargetEdit, "255,255,255,255");
+		SetEditTextPreserveCaret(RuleTagEdit, "255,255,255,255");
+		SetEditTextPreserveCaret(RuleTextEdit, "255,255,255,255");
 		RuleColorDraftValid = false;
 		RuleColorDraftDirty = false;
+		RuleColorDraftA = 255;
 		RuleColorActiveSwatchId = IDC_PE_RULE_TARGET_SWATCH;
 		RuleColorValueSlider.SetPos(100);
+		RuleColorOpacitySlider.SetPos(100);
 		RuleColorApplyButton.EnableWindow(FALSE);
 		RuleColorResetButton.EnableWindow(FALSE);
 		InvalidateRuleColorSwatches();
@@ -4473,6 +4562,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 		RuleTextEdit.EnableWindow(FALSE);
 		RuleColorWheel.EnableWindow(FALSE);
 		RuleColorValueSlider.EnableWindow(FALSE);
+		RuleColorOpacitySlider.EnableWindow(FALSE);
 		RuleColorApplyButton.EnableWindow(FALSE);
 		RuleColorResetButton.EnableWindow(FALSE);
 	}
@@ -4491,9 +4581,9 @@ void CProfileEditorDialog::RefreshRuleControls()
 		RuleTargetCheck.SetCheck(rule.applyTarget ? BST_CHECKED : BST_UNCHECKED);
 		RuleTagCheck.SetCheck(rule.applyTag ? BST_CHECKED : BST_UNCHECKED);
 		RuleTextCheck.SetCheck(rule.applyText ? BST_CHECKED : BST_UNCHECKED);
-		SetEditTextPreserveCaret(RuleTargetEdit, FormatRgbTriplet(rule.targetR, rule.targetG, rule.targetB));
-		SetEditTextPreserveCaret(RuleTagEdit, FormatRgbTriplet(rule.tagR, rule.tagG, rule.tagB));
-		SetEditTextPreserveCaret(RuleTextEdit, FormatRgbTriplet(rule.textR, rule.textG, rule.textB));
+		SetEditTextPreserveCaret(RuleTargetEdit, FormatRgbaQuad(rule.targetR, rule.targetG, rule.targetB, rule.targetA));
+		SetEditTextPreserveCaret(RuleTagEdit, FormatRgbaQuad(rule.tagR, rule.tagG, rule.tagB, rule.tagA));
+		SetEditTextPreserveCaret(RuleTextEdit, FormatRgbaQuad(rule.textR, rule.textG, rule.textB, rule.textA));
 		RuleTargetSwatch.EnableWindow(TRUE);
 		RuleTagSwatch.EnableWindow(TRUE);
 		RuleTextSwatch.EnableWindow(TRUE);
@@ -4502,6 +4592,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 		RuleTextEdit.EnableWindow(rule.applyText ? TRUE : FALSE);
 		RuleColorWheel.EnableWindow(TRUE);
 		RuleColorValueSlider.EnableWindow(TRUE);
+		RuleColorOpacitySlider.EnableWindow(TRUE);
 		RuleColorApplyButton.EnableWindow(FALSE);
 		RuleColorResetButton.EnableWindow(TRUE);
 	}
@@ -4511,6 +4602,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 	{
 		RuleColorDraftValid = false;
 		RuleColorDraftDirty = false;
+		RuleColorDraftA = 255;
 	}
 	else
 	{
@@ -4742,6 +4834,13 @@ std::string CProfileEditorDialog::FormatRgbTriplet(int r, int g, int b) const
 	return std::string(buffer);
 }
 
+std::string CProfileEditorDialog::FormatRgbaQuad(int r, int g, int b, int a) const
+{
+	char buffer[40] = {};
+	sprintf_s(buffer, sizeof(buffer), "%d,%d,%d,%d", r, g, b, a);
+	return std::string(buffer);
+}
+
 std::string CProfileEditorDialog::ReadComboText(CComboBox& combo) const
 {
 	const int index = combo.GetCurSel();
@@ -4797,23 +4896,26 @@ bool CProfileEditorDialog::ReadRuleFromControls(StructuredTagColorRule& outRule)
 	rule.applyTag = (RuleTagCheck.GetCheck() == BST_CHECKED);
 	rule.applyText = (RuleTextCheck.GetCheck() == BST_CHECKED);
 
-	CString rgbText;
+	CString rgbaText;
 	if (rule.applyTarget)
 	{
-		const_cast<CEdit&>(RuleTargetEdit).GetWindowText(rgbText);
-		if (!TryParseRgbTriplet(std::string(rgbText.GetString()), rule.targetR, rule.targetG, rule.targetB))
+		const_cast<CEdit&>(RuleTargetEdit).GetWindowText(rgbaText);
+		bool hasAlpha = false;
+		if (!TryParseRgbaQuad(std::string(rgbaText.GetString()), rule.targetR, rule.targetG, rule.targetB, rule.targetA, hasAlpha))
 			return false;
 	}
 	if (rule.applyTag)
 	{
-		const_cast<CEdit&>(RuleTagEdit).GetWindowText(rgbText);
-		if (!TryParseRgbTriplet(std::string(rgbText.GetString()), rule.tagR, rule.tagG, rule.tagB))
+		const_cast<CEdit&>(RuleTagEdit).GetWindowText(rgbaText);
+		bool hasAlpha = false;
+		if (!TryParseRgbaQuad(std::string(rgbaText.GetString()), rule.tagR, rule.tagG, rule.tagB, rule.tagA, hasAlpha))
 			return false;
 	}
 	if (rule.applyText)
 	{
-		const_cast<CEdit&>(RuleTextEdit).GetWindowText(rgbText);
-		if (!TryParseRgbTriplet(std::string(rgbText.GetString()), rule.textR, rule.textG, rule.textB))
+		const_cast<CEdit&>(RuleTextEdit).GetWindowText(rgbaText);
+		bool hasAlpha = false;
+		if (!TryParseRgbaQuad(std::string(rgbaText.GetString()), rule.textR, rule.textG, rule.textB, rule.textA, hasAlpha))
 			return false;
 	}
 
@@ -6013,6 +6115,98 @@ void CProfileEditorDialog::OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESU
 	*pResult = CDRF_SKIPDEFAULT;
 }
 
+void CProfileEditorDialog::OnRuleColorOpacitySliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	if (pResult == nullptr)
+		return;
+
+	NMCUSTOMDRAW* customDraw = reinterpret_cast<NMCUSTOMDRAW*>(pNMHDR);
+	if (customDraw->dwDrawStage != CDDS_PREPAINT)
+	{
+		*pResult = CDRF_DODEFAULT;
+		return;
+	}
+
+	CDC dc;
+	dc.Attach(customDraw->hdc);
+
+	CRect clientRect;
+	RuleColorOpacitySlider.GetClientRect(&clientRect);
+	dc.FillSolidRect(&clientRect, kEditorThemeBackgroundColor);
+
+	const int channelWidth = max(10, min(16, clientRect.Width() - 8));
+	const int channelLeft = clientRect.left + ((clientRect.Width() - channelWidth) / 2);
+	const int channelTop = clientRect.top + 4;
+	const int channelBottom = clientRect.bottom - 4;
+	CRect channelRect(channelLeft, channelTop, channelLeft + channelWidth, channelBottom);
+
+	CRgn clipRegion;
+	clipRegion.CreateRoundRectRgn(channelRect.left, channelRect.top, channelRect.right + 1, channelRect.bottom + 1, 8, 8);
+	const int savedDc = dc.SaveDC();
+	dc.SelectClipRgn(&clipRegion);
+
+	const int checkerSize = 4;
+	for (int y = channelRect.top; y < channelRect.bottom; y += checkerSize)
+	{
+		for (int x = channelRect.left; x < channelRect.right; x += checkerSize)
+		{
+			const bool lightCell = (((x - channelRect.left) / checkerSize) + ((y - channelRect.top) / checkerSize)) % 2 == 0;
+			const COLORREF checkerColor = lightCell ? RGB(244, 244, 244) : RGB(226, 226, 226);
+			const int w = min(checkerSize, channelRect.right - x);
+			const int h = min(checkerSize, channelRect.bottom - y);
+			dc.FillSolidRect(x, y, w, h, checkerColor);
+		}
+	}
+
+	const int gradientHeight = max(1, channelRect.Height());
+	for (int y = 0; y < gradientHeight; ++y)
+	{
+		const double t = min(1.0, max(0.0, static_cast<double>(y) / static_cast<double>(max(1, gradientHeight - 1))));
+		const double alpha = 1.0 - t;
+		const int r = static_cast<int>(round((static_cast<double>(RuleColorDraftR) * alpha) + (240.0 * (1.0 - alpha))));
+		const int g = static_cast<int>(round((static_cast<double>(RuleColorDraftG) * alpha) + (240.0 * (1.0 - alpha))));
+		const int b = static_cast<int>(round((static_cast<double>(RuleColorDraftB) * alpha) + (240.0 * (1.0 - alpha))));
+		dc.FillSolidRect(channelRect.left, channelRect.top + y, channelRect.Width(), 1, RGB(r, g, b));
+	}
+	dc.RestoreDC(savedDc);
+
+	CPen channelBorder(PS_SOLID, 1, RGB(186, 186, 186));
+	CPen* oldPen = dc.SelectObject(&channelBorder);
+	CBrush* oldBrush = static_cast<CBrush*>(dc.SelectStockObject(HOLLOW_BRUSH));
+	dc.RoundRect(&channelRect, CPoint(8, 8));
+
+	const int sliderPos = min(100, max(0, RuleColorOpacitySlider.GetPos()));
+	const double sliderT = static_cast<double>(sliderPos) / 100.0;
+	const int thumbHeight = 14;
+	const int thumbHalf = thumbHeight / 2;
+	const int centerY = channelRect.top + static_cast<int>(round((1.0 - sliderT) * static_cast<double>(max(1, channelRect.Height() - 1))));
+	const int thumbLeft = max(clientRect.left + 1, channelRect.left - 3);
+	const int thumbRight = min(clientRect.right - 1, channelRect.right + 3);
+	const int thumbTop = max(clientRect.top + 1, centerY - thumbHalf);
+	const int thumbBottom = min(clientRect.bottom - 1, centerY + thumbHalf + 1);
+	CRect thumbRect(thumbLeft, thumbTop, thumbRight, thumbBottom);
+	thumbRect.DeflateRect(1, 1);
+	CBrush thumbOuterBrush(RGB(255, 255, 255));
+	CPen thumbOuterPen(PS_SOLID, 1, RGB(212, 212, 212));
+	dc.SelectObject(&thumbOuterPen);
+	dc.SelectObject(&thumbOuterBrush);
+	dc.RoundRect(&thumbRect, CPoint(10, 10));
+
+	CRect thumbInner = thumbRect;
+	thumbInner.DeflateRect(3, 3);
+	CBrush thumbInnerBrush(RGB(64, 182, 227));
+	CPen thumbInnerPen(PS_SOLID, 1, RGB(64, 182, 227));
+	dc.SelectObject(&thumbInnerPen);
+	dc.SelectObject(&thumbInnerBrush);
+	dc.RoundRect(&thumbInner, CPoint(8, 8));
+
+	dc.SelectObject(oldBrush);
+	dc.SelectObject(oldPen);
+	dc.Detach();
+
+	*pResult = CDRF_SKIPDEFAULT;
+}
+
 bool CProfileEditorDialog::TryApplyColorWheelPoint(const CPoint& screenPoint)
 {
 	if (Owner == nullptr)
@@ -6112,6 +6306,21 @@ bool CProfileEditorDialog::TryApplyRuleColorValueSliderPoint(const CPoint& scree
 	return true;
 }
 
+bool CProfileEditorDialog::TryApplyRuleColorOpacitySliderPoint(const CPoint& screenPoint)
+{
+	if (!RuleColorDraftValid || !::IsWindow(RuleColorOpacitySlider.GetSafeHwnd()))
+		return false;
+
+	int newPos = RuleColorOpacitySlider.GetPos();
+	if (!TryReadVerticalSliderPosFromPoint(RuleColorOpacitySlider, screenPoint, newPos))
+		return false;
+
+	if (RuleColorOpacitySlider.GetPos() != newPos)
+		RuleColorOpacitySlider.SetPos(newPos);
+	ApplyRuleColorOpacityFromSlider();
+	return true;
+}
+
 LRESULT CProfileEditorDialog::OnColorWheelTrack(WPARAM wParam, LPARAM lParam)
 {
 	const CPoint screenPoint(static_cast<int>(wParam), static_cast<int>(lParam));
@@ -6144,6 +6353,13 @@ LRESULT CProfileEditorDialog::OnRuleColorValueSliderTrack(WPARAM wParam, LPARAM 
 {
 	const CPoint screenPoint(static_cast<int>(wParam), static_cast<int>(lParam));
 	TryApplyRuleColorValueSliderPoint(screenPoint);
+	return 0;
+}
+
+LRESULT CProfileEditorDialog::OnRuleColorOpacitySliderTrack(WPARAM wParam, LPARAM lParam)
+{
+	const CPoint screenPoint(static_cast<int>(wParam), static_cast<int>(lParam));
+	TryApplyRuleColorOpacitySliderPoint(screenPoint);
 	return 0;
 }
 
@@ -6446,6 +6662,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_MESSAGE(WM_PE_COLOR_OPACITY_TRACK, &CProfileEditorDialog::OnColorOpacitySliderTrack)
 	ON_MESSAGE(WM_PE_RULE_COLOR_WHEEL_TRACK, &CProfileEditorDialog::OnRuleColorWheelTrack)
 	ON_MESSAGE(WM_PE_RULE_COLOR_VALUE_TRACK, &CProfileEditorDialog::OnRuleColorValueSliderTrack)
+	ON_MESSAGE(WM_PE_RULE_COLOR_OPACITY_TRACK, &CProfileEditorDialog::OnRuleColorOpacitySliderTrack)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_FIXED_SCALE_SLIDER, &CProfileEditorDialog::OnFixedScaleSliderCustomDraw)
@@ -6453,6 +6670,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_VALUE_SLIDER, &CProfileEditorDialog::OnColorValueSliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_OPACITY_SLIDER, &CProfileEditorDialog::OnColorOpacitySliderCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_RULE_COLOR_VALUE_SLIDER, &CProfileEditorDialog::OnRuleColorValueSliderCustomDraw)
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_RULE_COLOR_OPACITY_SLIDER, &CProfileEditorDialog::OnRuleColorOpacitySliderCustomDraw)
 	ON_STN_CLICKED(IDC_PE_COLOR_WHEEL, &CProfileEditorDialog::OnColorWheelClicked)
 	ON_BN_CLICKED(IDC_PE_APPLY_BUTTON, &CProfileEditorDialog::OnApplyColorClicked)
 	ON_BN_CLICKED(IDC_PE_RESET_BUTTON, &CProfileEditorDialog::OnResetColorClicked)
