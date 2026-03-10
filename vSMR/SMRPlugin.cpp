@@ -659,6 +659,9 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	}
 	else if (commandLower == ".smr log") {
 		Logger::ENABLED = !Logger::ENABLED;
+		const std::string state = Logger::ENABLED ? "enabled" : "disabled";
+		const std::string detail = "vsmr.log " + state + " at " + Logger::DLL_PATH + "\\vsmr.log";
+		DisplayUserMessage("vSMR", "Log", detail.c_str(), true, true, false, true, false);
 		return true;
 	}
 	else if (commandLower == ".smr profile" || commandLower == ".smr editor" || commandLower == ".smr config")

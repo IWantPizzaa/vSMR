@@ -1484,12 +1484,22 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// clearance: departure/startup clearance flag ([ ] / [x]), clickable toggle
 	// ----
 
+	auto safeCString = [](const char* text) -> const char*
+	{
+		return text != nullptr ? text : "";
+	};
+	auto safeString = [&](const char* text) -> std::string
+	{
+		return text != nullptr ? std::string(text) : std::string();
+	};
+
+	const bool hasFlightPlan = fp.IsValid();
 	bool IsPrimary = !rt.GetPosition().GetTransponderC();
 	bool isAirborne = rt.GetPosition().GetReportedGS() > 50;
 
 	// ----- Callsign -------
-	string callsign = rt.GetCallsign();
-	if (fp.IsValid()) {
+	string callsign = safeString(rt.GetCallsign());
+	if (hasFlightPlan) {
 		if (fp.GetControllerAssignedData().GetCommunicationType() == 't' ||
 			fp.GetControllerAssignedData().GetCommunicationType() == 'T' ||
 			fp.GetControllerAssignedData().GetCommunicationType() == 'r' ||
@@ -1531,10 +1541,10 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ----- Squawk error -------
 	string sqerror = "";
-	const char * assr = fp.GetControllerAssignedData().GetSquawk();
-	const char * ssr = rt.GetPosition().GetSquawk();
+	const char* assr = hasFlightPlan ? safeCString(fp.GetControllerAssignedData().GetSquawk()) : "";
+	const char* ssr = safeCString(rt.GetPosition().GetSquawk());
 	bool has_squawk_error = false;
-	if (strlen(assr) != 0 && !startsWith(ssr, assr)) {
+	if (strlen(assr) != 0 && strlen(ssr) != 0 && !startsWith(ssr, assr)) {
 		has_squawk_error = true;
 		sqerror = "A";
 		sqerror.append(assr);
@@ -1543,7 +1553,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ----- Aircraft type -------
 
 	string actype = "NoFPL";
-	if (fp.IsValid() && fp.GetFlightPlanData().IsReceived())
+	if (hasFlightPlan && fp.GetFlightPlanData().IsReceived())
 		actype = fp.GetFlightPlanData().GetAircraftFPType();
 	if (actype.size() > 4 && actype != "NoFPL")
 		actype = actype.substr(0, 4);
@@ -1557,7 +1567,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string speed = std::to_string(rt.GetPosition().GetReportedGS());
 
 	// ----- Departure runway -------
-	string deprwy = fp.GetFlightPlanData().GetDepartureRwy();
+	string deprwy = hasFlightPlan ? fp.GetFlightPlanData().GetDepartureRwy() : "";
 	if (deprwy.length() == 0)
 		deprwy = "RWY";
 
@@ -1567,7 +1577,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		seprwy = std::to_string(rt.GetPosition().GetReportedGS());
 
 	// ----- Arrival runway -------
-	string arvrwy = fp.GetFlightPlanData().GetArrivalRwy();
+	string arvrwy = hasFlightPlan ? fp.GetFlightPlanData().GetArrivalRwy() : "";
 	if (arvrwy.length() == 0)
 		arvrwy = "RWY";
 
@@ -1578,13 +1588,17 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ----- Gate -------
 	string gate;
-	if (useSpeedForGates)
-		gate = std::to_string(fp.GetControllerAssignedData().GetAssignedSpeed());
-	else
-		gate = fp.GetControllerAssignedData().GetScratchPadString();
+	if (hasFlightPlan)
+	{
+		if (useSpeedForGates)
+			gate = std::to_string(fp.GetControllerAssignedData().GetAssignedSpeed());
+		else
+			gate = fp.GetControllerAssignedData().GetScratchPadString();
+	}
 
 	replaceAll(gate, "STAND=", "");
-	gate = gate.substr(0, 4);
+	if (gate.size() > 4)
+		gate = gate.substr(0, 4);
 
 	if (gate.size() == 0 || gate == "0" || !isAcCorrelated)
 		gate = "NoGate";
@@ -1625,28 +1639,24 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ----- Wake cat -------
 	string wake = "?";
-	if (fp.IsValid() && isAcCorrelated) {
+	if (hasFlightPlan && isAcCorrelated) {
 		wake = "";
 		wake += fp.GetFlightPlanData().GetAircraftWtc();
 	}
 
 	// ----- SSR -------
-	string tssr = "";
-	if (rt.IsValid())
-	{
-		tssr = rt.GetPosition().GetSquawk();
-	}
+	string tssr = safeCString(rt.GetPosition().GetSquawk());
 
 	// ----- SID -------
 	string dep = "SID";
-	if (fp.IsValid() && isAcCorrelated)
+	if (hasFlightPlan && isAcCorrelated)
 	{
 		dep = fp.GetFlightPlanData().GetSidName();
 	}
 
 	// ----- Short SID -------
 	string ssid = dep;
-	if (fp.IsValid() && ssid.size() > 5 && isAcCorrelated)
+	if (hasFlightPlan && ssid.size() > 5 && isAcCorrelated)
 	{
 		ssid = dep.substr(0, 3);
 		ssid += dep.substr(dep.size() - 2, dep.size());
@@ -1654,43 +1664,49 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ------- Origin aerodrome -------
 	string origin = "????";
-	if (isAcCorrelated)
+	if (hasFlightPlan && isAcCorrelated)
 	{
 		origin = fp.GetFlightPlanData().GetOrigin();
 	}
 
 	// ------- Destination aerodrome -------
 	string dest = "????";
-	if (isAcCorrelated)
+	if (hasFlightPlan && isAcCorrelated)
 	{
 		dest = fp.GetFlightPlanData().GetDestination();
 	}
 
 	// ----- GSTAT -------
 	string gstat = "STS";
-	if (fp.IsValid() && isAcCorrelated) {
-		if (strlen(fp.GetGroundState()) != 0)
-			gstat = fp.GetGroundState();
+	if (hasFlightPlan && isAcCorrelated) {
+		const char* groundState = safeCString(fp.GetGroundState());
+		if (strlen(groundState) != 0)
+			gstat = groundState;
 	}
 
 	// ----- Clearance flag -------
 	string clearance = "";
-	if (fp.IsValid() && isAcCorrelated)
+	if (hasFlightPlan && isAcCorrelated)
 		clearance = fp.GetClearenceFlag() ? "[x]" : "[ ]";
 
 	// ----- UK Controller Plugin / Assigned Stand -------
 	string uk_stand;
-	uk_stand = fp.GetControllerAssignedData().GetFlightStripAnnotation(3);
+	if (hasFlightPlan)
+		uk_stand = fp.GetControllerAssignedData().GetFlightStripAnnotation(3);
 	if (uk_stand.length() == 0)
 		uk_stand = "";
 
 	// ----- Ramp Agent Remark -------
-	string remark = fp.GetControllerAssignedData().GetFlightStripAnnotation(4);
+	string remark;
+	if (hasFlightPlan)
+		remark = fp.GetControllerAssignedData().GetFlightStripAnnotation(4);
 	if (remark.length() == 0)
 		remark = "";
 	
 	// ----- Scratchpad -------
-	string scratchpad = fp.GetControllerAssignedData().GetScratchPadString();
+	string scratchpad;
+	if (hasFlightPlan)
+		scratchpad = fp.GetControllerAssignedData().GetScratchPadString();
 	if (scratchpad.length() == 0)
 		scratchpad = "...";
 
@@ -1730,7 +1746,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	}
 
 	// VACDM fallback: when backend has no entry, use FPL EOBT as TOBT baseline (matches VACDM plugin bootstrap behavior).
-	if (tobt.empty() && fp.IsValid() && isAcCorrelated)
+	if (tobt.empty() && hasFlightPlan && isAcCorrelated)
 		tobt = NormalizeHhmmToken(fp.GetFlightPlanData().GetEstimatedDepartureTime());
 
 
@@ -1739,8 +1755,13 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// System ID for uncorrelated
 	TagReplacingMap["systemid"] = "T:";
-	string tpss = rt.GetSystemID();
-	TagReplacingMap["systemid"].append(tpss.substr(1, 6));
+	string tpss = safeString(rt.GetSystemID());
+	if (tpss.size() > 1)
+		TagReplacingMap["systemid"].append(tpss.substr(1, min<size_t>(6, tpss.size() - 1)));
+	else if (!tpss.empty())
+		TagReplacingMap["systemid"].append(tpss.substr(0, min<size_t>(6, tpss.size())));
+	else
+		TagReplacingMap["systemid"].append("000000");
 
 	// Pro mode data here
 	if (isProMode)

@@ -2,9 +2,10 @@
 #include "stdafx.h"
 #include <string>
 #include <sstream>
-#include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <mutex>
+#include <ctime>
 
 using namespace std;
 
@@ -12,6 +13,27 @@ class Logger {
 public:
 	static bool ENABLED;
 	static string DLL_PATH;
+
+	static std::string build_local_timestamp() {
+		std::time_t now = std::time(nullptr);
+		if (now <= 0)
+			return "";
+
+		std::tm localTime = {};
+		if (localtime_s(&localTime, &now) != 0)
+			return "";
+
+		char buffer[20] = {};
+		if (std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &localTime) == 0)
+			return "";
+
+		return std::string(buffer);
+	}
+
+	static std::mutex& log_write_mutex() {
+		static std::mutex mutex;
+		return mutex;
+	}
 
 	static bool is_compiler_signature_trace(const string& message) {
 		return message.find("__cdecl") != string::npos ||
@@ -58,9 +80,6 @@ public:
 		if (is_compiler_signature_trace(message) && is_high_volume_trace_message(message))
 			return true;
 
-		if (message.rfind("ProfileEditor: ", 0) == 0)
-			return true;
-
 		return false;
 	}
 
@@ -68,11 +87,17 @@ public:
 		if (Logger::should_skip_info_message(message))
 			return;
 
-		if (Logger::ENABLED && Logger::DLL_PATH.length() > 0) {
-			std::ofstream file;
-			file.open(Logger::DLL_PATH + "\\vsmr.log", std::ofstream::out | std::ofstream::app);
-			file << "INFO: " << message << endl;
-			file.close();
-		}
+		if (!Logger::ENABLED || Logger::DLL_PATH.length() == 0)
+			return;
+
+		std::lock_guard<std::mutex> guard(Logger::log_write_mutex());
+		std::ofstream file(Logger::DLL_PATH + "\\vsmr.log", std::ofstream::out | std::ofstream::app);
+		if (!file.is_open())
+			return;
+
+		const std::string timestamp = Logger::build_local_timestamp();
+		if (!timestamp.empty())
+			file << timestamp << " ";
+		file << "INFO: " << message << endl;
 	}
 };
