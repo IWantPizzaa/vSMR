@@ -11,8 +11,35 @@ using namespace std;
 
 class Logger {
 public:
+	enum class Mode
+	{
+		Normal,
+		Verbose
+	};
+
 	static bool ENABLED;
 	static string DLL_PATH;
+	static Mode CURRENT_MODE;
+
+	static void set_mode(Mode mode)
+	{
+		CURRENT_MODE = mode;
+	}
+
+	static Mode get_mode()
+	{
+		return CURRENT_MODE;
+	}
+
+	static bool is_verbose_mode()
+	{
+		return CURRENT_MODE == Mode::Verbose;
+	}
+
+	static const char* mode_name(Mode mode)
+	{
+		return mode == Mode::Verbose ? "verbose" : "normal";
+	}
 
 	static std::string build_local_timestamp() {
 		std::time_t now = std::time(nullptr);
@@ -79,8 +106,17 @@ public:
 		if (message.empty())
 			return true;
 
-		// Keep rare function-trace lines for crash diagnosis, but still drop the
-		// known hot-loop traces that would flood vsmr.log during normal sessions.
+		// In normal mode we keep the log concise by dropping function-signature
+		// traces and profile-editor step-by-step instrumentation.
+		if (!is_verbose_mode())
+		{
+			if (is_compiler_signature_trace(message))
+				return true;
+			if (message.rfind("ProfileEditor: ", 0) == 0)
+				return true;
+		}
+
+		// Even in verbose mode, skip known hot loops that can flood logs.
 		if (is_compiler_signature_trace(message) && is_high_volume_trace_message(message))
 			return true;
 
