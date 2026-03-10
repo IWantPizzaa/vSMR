@@ -1189,11 +1189,13 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		// If we use a RIMCAS label only, we display it, and adapt the rectangle
 		CRect oldCrectSave = TagBackgroundRect;
+		const std::string tagBottomLine = GetBottomLine(rtCallsign);
+		const char* tagBottomLineText = tagBottomLine.c_str();
 
 		// Adding the tag screen object
 		tagAreas[rtCallsign] = TagBackgroundRect;
 		tagCollisionAreas[rtCallsign] = TagCollisionRect;
-		AddScreenObject(DRAWING_TAG, rtCallsign, TagBackgroundRect, true, GetBottomLine(rtCallsign).c_str());
+		AddScreenObject(DRAWING_TAG, rtCallsign, TagBackgroundRect, true, tagBottomLineText);
 
 		TagBackgroundRect = oldCrectSave;
 
@@ -1228,7 +1230,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			CRect alertRect(TagBackgroundRect.left, TagBackgroundRect.top + heightOffset,
 				TagBackgroundRect.left + alertTextWidth, TagBackgroundRect.top + heightOffset + max(alertTextHeight, oneLineHeight));
 
-			AddScreenObject(TagClickableMap[alertStr], rtCallsign, alertRect, true, GetBottomLine(rtCallsign).c_str());
+			AddScreenObject(TagClickableMap[alertStr], rtCallsign, alertRect, true, tagBottomLineText);
 			heightOffset += oneLineHeight;
 		}
 			for (auto&& line : ReplacedLabelLines)
@@ -1286,7 +1288,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				CRect ItemRect(textLeft + widthOffset, textTop + heightOffset,
 					textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
 
-				AddScreenObject(clickItemType, rtCallsign, ItemRect, true, GetBottomLine(rtCallsign).c_str());
+				AddScreenObject(clickItemType, rtCallsign, ItemRect, true, tagBottomLineText);
 
 				widthOffset += renderedElement.measuredWidth;
 				widthOffset += blankWidth;

@@ -335,6 +335,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		CRadarTargetPositionData RtPos = rt.GetPosition();
 		auto fp = radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign);
 		auto reportedGs = RtPos.GetReportedGS();
+		const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
+		const char* fpOrigin = fp.IsValid() ? fp.GetFlightPlanData().GetOrigin() : nullptr;
+		const char* fpPlanType = fp.IsValid() ? fp.GetFlightPlanData().GetPlanType() : nullptr;
 
 		// Filtering the targets
 
@@ -379,7 +382,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 			CRect TargetArea(RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4);
 			TargetArea.NormalizeRect();
-			radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rt.GetCallsign(), TargetArea, false, radar_screen->GetBottomLine(rt.GetCallsign()).c_str());
+			radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign, TargetArea, false, radar_screen->GetBottomLine(rtCallsign).c_str());
 		}
 
 		// Predicted Track Line
@@ -426,8 +429,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		int lenght = 50;
 
 		POINT TagCenter;
-		m_TargetPoints[rt.GetCallsign()] = RtPoint;
-		auto customTagOffsetIt = m_TagOffsets.find(rt.GetCallsign());
+		m_TargetPoints[rtCallsign] = RtPoint;
+		auto customTagOffsetIt = m_TagOffsets.find(rtCallsign);
 		if (customTagOffsetIt != m_TagOffsets.end())
 		{
 			TagCenter.x = RtPoint.x + customTagOffsetIt->second.x;
@@ -435,13 +438,13 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		}
 		else
 		{
-			if (m_TagAngles.find(rt.GetCallsign()) == m_TagAngles.end())
+			if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
 			{
-				m_TagAngles[rt.GetCallsign()] = 45.0; // TODO: Not the best, ah well
+				m_TagAngles[rtCallsign] = 45.0; // TODO: Not the best, ah well
 			}
 
-			TagCenter.x = long(RtPoint.x + float(lenght * cos(DegToRad(m_TagAngles[rt.GetCallsign()]))));
-			TagCenter.y = long(RtPoint.y + float(lenght * sin(DegToRad(m_TagAngles[rt.GetCallsign()]))));
+			TagCenter.x = long(RtPoint.x + float(lenght * cos(DegToRad(m_TagAngles[rtCallsign]))));
+			TagCenter.y = long(RtPoint.y + float(lenght * sin(DegToRad(m_TagAngles[rtCallsign]))));
 		}
 		// Drawing the tags, what a mess
 
@@ -482,7 +485,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		CSMRRadar::TagTypes TagType = CSMRRadar::TagTypes::Departure;
 		CSMRRadar::TagTypes ColorTagType = CSMRRadar::TagTypes::Departure;
 
-		if (fp.IsValid() && strcmp(fp.GetFlightPlanData().GetDestination(), radar_screen->getActiveAirport().c_str()) == 0) {
+		if (fpDestination != nullptr && strcmp(fpDestination, radar_screen->getActiveAirport().c_str()) == 0) {
 				TagType = CSMRRadar::TagTypes::Arrival;
 				ColorTagType = CSMRRadar::TagTypes::Arrival;
 		}
@@ -497,7 +500,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			}
 		}
 
-		bool AcisCorrelated = radar_screen->IsCorrelated(radar_screen->GetPlugIn()->FlightPlanSelect(rt.GetCallsign()), rt);
+		bool AcisCorrelated = radar_screen->IsCorrelated(radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign), rt);
 		if (!AcisCorrelated && reportedGs >= 3)
 		{
 			TagType = CSMRRadar::TagTypes::Uncorrelated;
@@ -573,7 +576,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 				definedBackgroundColor = radar_screen->CurrentConfig->getSidColor(TagReplacingMap["sid"], radar_screen->getActiveAirport());
 			}
 
-			if (fp.GetFlightPlanData().GetPlanType()[0] == 'I' && TagReplacingMap["asid"].empty() && LabelsSettings[Utils::getEnumString(ColorTagType).c_str()].HasMember("nosid_color")) {
+			if (fpPlanType != nullptr && fpPlanType[0] == 'I' && TagReplacingMap["asid"].empty() && LabelsSettings[Utils::getEnumString(ColorTagType).c_str()].HasMember("nosid_color")) {
 				definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["nosid_color"]);
 			}
 		}
@@ -588,7 +591,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			LabelsSettings["airborne"].IsObject())
 		{
 			bool isAirborneDeparture = true;
-			std::string originAirport = fp.GetFlightPlanData().GetOrigin();
+			std::string originAirport = fpOrigin != nullptr ? fpOrigin : "";
 			std::string activeAirportUpper = radar_screen->getActiveAirport();
 			if (!originAirport.empty() && !activeAirportUpper.empty())
 			{
@@ -610,14 +613,14 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 				definedTextColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[textKey]);
 		}
 
-		Color TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rt.GetCallsign(),
+		Color TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign,
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor,
 			radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
 			radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"]));
 
 		if (rimcasLabelOnly)
-			TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rt.GetCallsign(),
+			TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign,
 				definedBackgroundColor,
 				definedBackgroundOnRunwayColor);
 
@@ -633,7 +636,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			int textTop = TagBackgroundRect.top + padding;
 
 			// Semi-transparent background to reduce clutter while keeping arrival/departure color coding (unless RIMCAS alert overrides the color).
-			if (radar_screen->RimcasInstance->getAlert(rt.GetCallsign()) == CRimcas::NoAlert) {
+			if (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::NoAlert) {
 				auto blend = [](Color a, Color b, float t) {
 					auto mix = [t](BYTE c1, BYTE c2) -> BYTE {
 						return static_cast<BYTE>(c1 * t + c2 * (1.0f - t));
@@ -692,7 +695,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			SolidBrush AlertTextColorWarning(radar_screen->ColorManager->get_corrected_color("label",
 				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
 
-			radar_screen->AddScreenObject(m_Id, rt.GetCallsign(), TagBackgroundRect, true, radar_screen->GetBottomLine(rt.GetCallsign()).c_str());
+			radar_screen->AddScreenObject(m_Id, rtCallsign, TagBackgroundRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
@@ -704,7 +707,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					if (TagReplacingMap["sqerror"].size() > 0 && strcmp(element.c_str(), TagReplacingMap["sqerror"].c_str()) == 0)
 						color = &SquawkErrorColor;
 
-					CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance->getAlert(rt.GetCallsign());
+					CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance->getAlert(rtCallsign);
 					if (rimcasStage != CRimcas::NoAlert)
 						color = (rimcasStage == CRimcas::StageTwo) ? &AlertTextColorWarning : &AlertTextColorCaution;
 
@@ -723,7 +726,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					CRect ItemRect(TagBackgroundRect.left + widthOffset, TagBackgroundRect.top + heightOffset,
 						TagBackgroundRect.left + widthOffset + (int)mRect.GetRight(), TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
 
-					radar_screen->AddScreenObject(TagClickableMap[element], rt.GetCallsign(), ItemRect, false, radar_screen->GetBottomLine(rt.GetCallsign()).c_str());
+					radar_screen->AddScreenObject(TagClickableMap[element], rtCallsign, ItemRect, false, radar_screen->GetBottomLine(rtCallsign).c_str());
 
 					widthOffset += (int)mRect.GetRight();
 					widthOffset += blankWidth;
@@ -742,7 +745,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			CRect oldCrectSave = TagBackgroundRect;
 
 			if (rimcasLabelOnly) {
-				Color RimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(rt.GetCallsign(), Color::AliceBlue, Color::AliceBlue,
+				Color RimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign, Color::AliceBlue, Color::AliceBlue,
 					radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
 					radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"]));
 
@@ -765,9 +768,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					// Drawing the text
 
 					wstring rimcasw = wstring(L"ALERT");
-					StringFormat stformat = new StringFormat();
+					StringFormat stformat;
 					stformat.SetAlignment(StringAlignment::StringAlignmentCenter);
-					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rt.GetCallsign()) == CRimcas::StageTwo)
+					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::StageTwo)
 						? &AlertTextColorWarning
 						: &AlertTextColorCaution;
 					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), radar_screen->customFonts[radar_screen->currentFontSize], PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, rimcasTextBrush);
