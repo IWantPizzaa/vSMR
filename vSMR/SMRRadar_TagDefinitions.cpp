@@ -1429,6 +1429,8 @@ std::string CSMRRadar::NormalizeStructuredRuleStatus(const std::string& status) 
 	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 	if (normalized.empty() || normalized == "all" || normalized == "*")
 		return "any";
+	if (normalized == "any")
+		return "any";
 	if (normalized == "def")
 		return "default";
 	return NormalizeTagDefinitionDepartureStatus(normalized);
