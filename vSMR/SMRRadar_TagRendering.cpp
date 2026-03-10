@@ -649,16 +649,20 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		if (itPrev != previousTagSize.end()) {
 			const int prevW = itPrev->second.Width();
 			const int prevH = itPrev->second.Height();
-			previousRect = CRect(TagCenter.x - (prevW / 2),
-				TagCenter.y - (prevH / 2),
-				TagCenter.x + (prevW / 2),
-				TagCenter.y + (prevH / 2));
+			const int prevLeft = TagCenter.x - (prevW / 2);
+			const int prevTop = TagCenter.y - (prevH / 2);
+			previousRect = CRect(prevLeft,
+				prevTop,
+				prevLeft + prevW,
+				prevTop + prevH);
 		}
 		else {
-			previousRect = CRect(TagCenter.x - (TagWidth / 2),
-				TagCenter.y - (TagHeight / 2),
-				TagCenter.x + (TagWidth / 2),
-				TagCenter.y + (TagHeight / 2));
+			const int prevLeft = TagCenter.x - (TagWidth / 2);
+			const int prevTop = TagCenter.y - (TagHeight / 2);
+			previousRect = CRect(prevLeft,
+				prevTop,
+				prevLeft + TagWidth,
+				prevTop + TagHeight);
 		}
 
 		bool isTagDetailled = isMouseWithin(previousRect) || isTagBeingDragged(rtCallsign);
@@ -980,7 +984,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			}
 		}
 
-		previousTagSize[rtCallsign] = CRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
+		const int tagRectLeft = TagCenter.x - (TagWidth / 2);
+		const int tagRectTop = TagCenter.y - (TagHeight / 2);
+		previousTagSize[rtCallsign] = CRect(tagRectLeft, tagRectTop, tagRectLeft + TagWidth, tagRectTop + TagHeight);
 
 		Color definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["background_color"]);
 		Color definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["background_color_on_runway"]);
@@ -1092,8 +1098,12 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		// Slightly enlarge tag hitbox, center it, and draw rounded background.
 		const int padding = 3;
-		CRect TagBackgroundRect(TagCenter.x - (TagWidth / 2) - padding, TagCenter.y - (TagHeight / 2) - padding, TagCenter.x + (TagWidth / 2) + padding, TagCenter.y + (TagHeight / 2) + padding);
-		CRect TagCollisionRect(TagCenter.x - (CollisionTagWidth / 2) - padding, TagCenter.y - (CollisionTagHeight / 2) - padding, TagCenter.x + (CollisionTagWidth / 2) + padding, TagCenter.y + (CollisionTagHeight / 2) + padding);
+		const int tagBackgroundLeft = TagCenter.x - (TagWidth / 2) - padding;
+		const int tagBackgroundTop = TagCenter.y - (TagHeight / 2) - padding;
+		CRect TagBackgroundRect(tagBackgroundLeft, tagBackgroundTop, tagBackgroundLeft + TagWidth + (padding * 2), tagBackgroundTop + TagHeight + (padding * 2));
+		const int tagCollisionLeft = TagCenter.x - (CollisionTagWidth / 2) - padding;
+		const int tagCollisionTop = TagCenter.y - (CollisionTagHeight / 2) - padding;
+		CRect TagCollisionRect(tagCollisionLeft, tagCollisionTop, tagCollisionLeft + CollisionTagWidth + (padding * 2), tagCollisionTop + CollisionTagHeight + (padding * 2));
 		int textLeft = TagBackgroundRect.left + padding;
 		int textTop = TagBackgroundRect.top + padding;
 		auto MakeRoundedRect = [](GraphicsPath &path, Rect r, int radius) {
@@ -1210,7 +1220,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			graphics.ResetClip();
 
 			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
-			const int alertTextOffsetY = max(0, (alertLineHeight - alertTextHeight) / 2);
+			const int alertTextOffsetY = max(0, (alertLineHeight - alertTextHeight + 1) / 2);
 			graphics.DrawString(walertStr.c_str(), wcslen(walertStr.c_str()), customFonts[currentFontSize],
 				PointF(Gdiplus::REAL(textLeft), Gdiplus::REAL(textTop + heightOffset + alertTextOffsetY)),
 				&Gdiplus::StringFormat(), RimcasTextColor);
@@ -1251,7 +1261,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				}
 
 				wstring welement = wstring(element.begin(), element.end());
-				const int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight) / 2);
+				const int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
 				graphics.DrawString(welement.c_str(), wcslen(welement.c_str()), drawFont,
 					PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
 					&Gdiplus::StringFormat(), color);
