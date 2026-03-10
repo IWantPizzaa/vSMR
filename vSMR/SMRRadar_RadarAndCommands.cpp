@@ -147,25 +147,32 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 
 string CSMRRadar::GetBottomLine(const char * Callsign) {
 	Logger::info(string(__FUNCSIG__));
+	auto safeCString = [](const char* text) -> const char*
+	{
+		return text != nullptr ? text : "";
+	};
 
 	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(Callsign);
 	string to_render = "";
 	if (fp.IsValid()) {
-		to_render += fp.GetCallsign();
+		to_render += safeCString(fp.GetCallsign());
 
-		string callsign_code = fp.GetCallsign();
+		string callsign_code = safeCString(fp.GetCallsign());
 		callsign_code = callsign_code.substr(0, 3);
 		to_render += " (" + Callsigns->getCallsign(callsign_code) + ")";
 
 		to_render += " (";
-		to_render += fp.GetPilotName();
+		to_render += safeCString(fp.GetPilotName());
 		to_render += "): ";
-		to_render += fp.GetFlightPlanData().GetAircraftFPType();
+		to_render += safeCString(fp.GetFlightPlanData().GetAircraftFPType());
 		to_render += " ";
 
 		if (fp.GetFlightPlanData().IsReceived()) {
-			const char * assr = fp.GetControllerAssignedData().GetSquawk();
-			const char * ssr = GetPlugIn()->RadarTargetSelect(fp.GetCallsign()).GetPosition().GetSquawk();
+			const char * assr = safeCString(fp.GetControllerAssignedData().GetSquawk());
+			CRadarTarget rt = GetPlugIn()->RadarTargetSelect(fp.GetCallsign());
+			const char * ssr = "----";
+			if (rt.IsValid() && rt.GetPosition().IsValid())
+				ssr = safeCString(rt.GetPosition().GetSquawk());
 			if (strlen(assr) != 0 && !startsWith(ssr, assr)) {
 				to_render += assr;
 				to_render += ":";
@@ -177,11 +184,11 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 			}
 
 			to_render += " ";
-			to_render += fp.GetFlightPlanData().GetOrigin();
+			to_render += safeCString(fp.GetFlightPlanData().GetOrigin());
 			to_render += "==>";
-			to_render += fp.GetFlightPlanData().GetDestination();
+			to_render += safeCString(fp.GetFlightPlanData().GetDestination());
 			to_render += " (";
-			to_render += fp.GetFlightPlanData().GetAlternate();
+			to_render += safeCString(fp.GetFlightPlanData().GetAlternate());
 			to_render += ")";
 
 			to_render += " at ";
@@ -196,7 +203,7 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 
 			to_render += rfl_s;
 			to_render += " Route: ";
-			to_render += fp.GetFlightPlanData().GetRoute();
+			to_render += safeCString(fp.GetFlightPlanData().GetRoute());
 		}
 	}
 
@@ -239,11 +246,15 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
 	Logger::info(string(__FUNCSIG__));
-	string callsign = string(FlightPlan.GetCallsign());
+	if (!FlightPlan.IsValid() || FlightPlan.GetCallsign() == nullptr || FlightPlan.GetCallsign()[0] == '\0')
+		return;
 
-	for (multimap<string, string>::iterator itr = DistanceTools.begin(); itr != DistanceTools.end(); ++itr) {
+	const string callsign = FlightPlan.GetCallsign();
+	for (auto itr = DistanceTools.begin(); itr != DistanceTools.end(); )
+	{
 		if (itr->first == callsign || itr->second == callsign)
 			itr = DistanceTools.erase(itr);
+		else
+			++itr;
 	}
 }
-

@@ -425,7 +425,8 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 
 	// EMERG
 	if (inactiveAlerts.find("EMERG") == inactiveAlerts.end()) {
-		if (strcmp(Rt.GetPosition().GetSquawk(), "7700") == 0) {
+		const char* squawk = Rt.GetPosition().GetSquawk();
+		if (squawk != nullptr && strcmp(squawk, "7700") == 0) {
 			movementAlerts[Rt.GetCallsign()] = EMERG;
 			return;
 		}

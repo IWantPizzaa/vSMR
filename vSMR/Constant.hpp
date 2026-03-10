@@ -28,6 +28,9 @@ const int TAG_FUNC_DATALINK_MESSAGE = 549;
 
 inline static bool startsWith(const char *pre, const char *str)
 {
+	if (pre == nullptr || str == nullptr)
+		return false;
+
 	size_t lenpre = strlen(pre), lenstr = strlen(str);
 	return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
 };

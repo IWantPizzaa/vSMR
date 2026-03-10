@@ -261,13 +261,19 @@ public:
 
 	inline virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt)
 	{
+		auto hasText = [](const char* text) -> bool
+		{
+			return text != nullptr && text[0] != '\0';
+		};
 
 		if (CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool())
 		{
 			if (fp.IsValid())
 			{
 				bool isCorr = false;
-				if (strcmp(fp.GetControllerAssignedData().GetSquawk(), rt.GetPosition().GetSquawk()) == 0)
+				const char* assignedSquawk = fp.GetControllerAssignedData().GetSquawk();
+				const char* reportedSquawk = (rt.IsValid() && rt.GetPosition().IsValid()) ? rt.GetPosition().GetSquawk() : nullptr;
+				if (hasText(assignedSquawk) && hasText(reportedSquawk) && strcmp(assignedSquawk, reportedSquawk) == 0)
 				{
 					isCorr = true;
 				}
@@ -281,7 +287,7 @@ public:
 				{
 					const Value& sqs = CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["do_not_autocorrelate_squawks"];
 					for (SizeType i = 0; i < sqs.Size(); i++) {
-						if (strcmp(rt.GetPosition().GetSquawk(), sqs[i].GetString()) == 0)
+						if (hasText(reportedSquawk) && sqs[i].IsString() && strcmp(reportedSquawk, sqs[i].GetString()) == 0)
 						{
 							isCorr = false;
 							break;
@@ -289,12 +295,13 @@ public:
 					}
 				}
 
-				if (std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), rt.GetSystemID()) != ManuallyCorrelated.end())
+				const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
+				if (hasText(systemId) && std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId) != ManuallyCorrelated.end())
 				{
 					isCorr = true;
 				}
 
-				if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end())
+				if (hasText(systemId) && std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
 				{
 					isCorr = false;
 				}
