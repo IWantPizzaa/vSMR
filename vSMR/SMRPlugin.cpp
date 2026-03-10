@@ -817,19 +817,27 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 	Logger::info(string(__FUNCSIG__));
 	if (ItemCode == TAG_ITEM_DATALINK_STS) {
 		if (FlightPlan.IsValid()) {
-			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()) != AircraftDemandingClearance.end()) {
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+			{
+				*pColorCode = TAG_COLOR_RGB_DEFINED;
+				*pRGB = RGB(130, 130, 130);
+				strcpy_s(sItemString, 16, "-");
+				return;
+			}
+			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), fpCallsign) != AircraftDemandingClearance.end()) {
 				*pColorCode = TAG_COLOR_RGB_DEFINED;
 				if (BLINK)
 					*pRGB = RGB(130, 130, 130);
 				else
 					*pRGB = RGB(255, 255, 0);
 
-				if (std::find(AircraftStandby.begin(), AircraftStandby.end(), FlightPlan.GetCallsign()) != AircraftStandby.end())
+				if (std::find(AircraftStandby.begin(), AircraftStandby.end(), fpCallsign) != AircraftStandby.end())
 					strcpy_s(sItemString, 16, "S");
 				else
 					strcpy_s(sItemString, 16, "R");
 			}
-			else if (std::find(AircraftMessage.begin(), AircraftMessage.end(), FlightPlan.GetCallsign()) != AircraftMessage.end()) {
+			else if (std::find(AircraftMessage.begin(), AircraftMessage.end(), fpCallsign) != AircraftMessage.end()) {
 				*pColorCode = TAG_COLOR_RGB_DEFINED;
 				if (BLINK)
 					*pRGB = RGB(130, 130, 130);
@@ -837,12 +845,12 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 					*pRGB = RGB(255, 255, 0);
 				strcpy_s(sItemString, 16, "T");
 			}
-			else if (std::find(AircraftWilco.begin(), AircraftWilco.end(), FlightPlan.GetCallsign()) != AircraftWilco.end()) {
+			else if (std::find(AircraftWilco.begin(), AircraftWilco.end(), fpCallsign) != AircraftWilco.end()) {
 				*pColorCode = TAG_COLOR_RGB_DEFINED;
 				*pRGB = RGB(0, 176, 0);
 				strcpy_s(sItemString, 16, "V");
 			}
-			else if (std::find(AircraftMessageSent.begin(), AircraftMessageSent.end(), FlightPlan.GetCallsign()) != AircraftMessageSent.end()) {
+			else if (std::find(AircraftMessageSent.begin(), AircraftMessageSent.end(), fpCallsign) != AircraftMessageSent.end()) {
 				*pColorCode = TAG_COLOR_RGB_DEFINED;
 				*pRGB = RGB(255, 255, 0);
 				strcpy_s(sItemString, 16, "V");
@@ -1063,6 +1071,13 @@ void CSMRPlugin::OnTimer(int Counter)
 {
 	Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
+	static int lastConnectionType = -999;
+	const int currentConnectionType = GetConnectionType();
+	if (currentConnectionType != lastConnectionType)
+	{
+		Logger::info("EuroScope connection_type=" + std::to_string(currentConnectionType));
+		lastConnectionType = currentConnectionType;
+	}
 
 	{
 		std::string aselCallsign;

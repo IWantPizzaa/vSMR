@@ -477,14 +477,28 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		rt.IsValid();
 		rt = GetPlugIn()->RadarTargetSelectNext(rt))
 	{
-		if (!rt.IsValid())
+		if (!rt.IsValid() || !rt.GetPosition().IsValid())
 			continue;
+		const char* rtCallsign = rt.GetCallsign();
+		if (rtCallsign == nullptr || rtCallsign[0] == '\0')
+		{
+			static bool loggedMissingTagCallsign = false;
+			if (!loggedMissingTagCallsign)
+			{
+				Logger::info("RenderTags: skipped target with missing callsign");
+				loggedMissingTagCallsign = true;
+			}
+			continue;
+		}
 
-		bool isASEL = (aselTarget.IsValid() && strcmp(aselTarget.GetCallsign(), rt.GetCallsign()) == 0);
+		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
+		bool isASEL = (aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign) == 0);
 
 		CRadarTargetPositionData RtPos = rt.GetPosition();
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
-		CFlightPlan fp = GetPlugIn()->FlightPlanSelect(rt.GetCallsign());
+		CFlightPlan fp = GetPlugIn()->FlightPlanSelect(rtCallsign);
+		const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
+		const char* fpOrigin = fp.IsValid() ? fp.GetFlightPlanData().GetOrigin() : nullptr;
 		int reportedGs = RtPos.GetReportedGS();
 
 		// Filtering the targets
@@ -520,30 +534,30 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		// Getting the tag center/offset
 
 		POINT TagCenter;
-		map<string, POINT>::iterator it = TagsOffsets.find(rt.GetCallsign());
+		map<string, POINT>::iterator it = TagsOffsets.find(rtCallsign);
 		if (it != TagsOffsets.end()) {
 			TagCenter = { acPosPix.x + it->second.x, acPosPix.y + it->second.y };
 		}
 		else {
 			// Use angle:
 
-			if (TagAngles.find(rt.GetCallsign()) == TagAngles.end())
-				TagAngles[rt.GetCallsign()] = 270.0f;
+			if (TagAngles.find(rtCallsign) == TagAngles.end())
+				TagAngles[rtCallsign] = 270.0f;
 
 			int lenght = LeaderLineDefaultlenght;
-			if (TagLeaderLineLength.find(rt.GetCallsign()) != TagLeaderLineLength.end())
-				lenght = TagLeaderLineLength[rt.GetCallsign()];
+			if (TagLeaderLineLength.find(rtCallsign) != TagLeaderLineLength.end())
+				lenght = TagLeaderLineLength[rtCallsign];
 
-			TagCenter.x = long(acPosPix.x + float(lenght * cos(DegToRad(TagAngles[rt.GetCallsign()]))));
-			TagCenter.y = long(acPosPix.y + float(lenght * sin(DegToRad(TagAngles[rt.GetCallsign()]))));
+			TagCenter.x = long(acPosPix.x + float(lenght * cos(DegToRad(TagAngles[rtCallsign]))));
+			TagCenter.y = long(acPosPix.y + float(lenght * sin(DegToRad(TagAngles[rtCallsign]))));
 		}
 
 		TagTypes TagType = TagTypes::Departure;		
 		TagTypes ColorTagType = TagTypes::Departure;
 
-		if (fp.IsValid() && strcmp(fp.GetFlightPlanData().GetDestination(), activeAirport.c_str()) == 0) {
+		if (fpDestination != nullptr && strcmp(fpDestination, activeAirport.c_str()) == 0) {
 			// Circuit aircraft are treated as departures; not arrivals
-			if (strcmp(fp.GetFlightPlanData().GetOrigin(), activeAirport.c_str()) != 0) {
+			if (fpOrigin == nullptr || strcmp(fpOrigin, activeAirport.c_str()) != 0) {
 				TagType = TagTypes::Arrival;
 				ColorTagType = TagTypes::Arrival;
 			}
@@ -565,7 +579,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 
 
-		const std::string targetCallsign = rt.GetCallsign() != nullptr ? ToUpperAsciiCopy(rt.GetCallsign()) : std::string();
+		const std::string targetCallsign = ToUpperAsciiCopy(rtCallsign);
 		map<string, string> TagReplacingMap;
 		auto cachedTagData = frameTagDataCache.find(targetCallsign);
 		if (cachedTagData != frameTagDataCache.end())
@@ -631,7 +645,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		RectF mesureRect;
 
 		CRect previousRect;
-		auto itPrev = previousTagSize.find(rt.GetCallsign());
+		auto itPrev = previousTagSize.find(rtCallsign);
 		if (itPrev != previousTagSize.end()) {
 			const int prevW = itPrev->second.Width();
 			const int prevH = itPrev->second.Height();
@@ -647,11 +661,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				TagCenter.y + (TagHeight / 2));
 		}
 
-		bool isTagDetailled = isMouseWithin(previousRect) || isTagBeingDragged(rt.GetCallsign());
+		bool isTagDetailled = isMouseWithin(previousRect) || isTagBeingDragged(rtCallsign);
 
 		const std::string tagTypeKey = TagTypeToConfigKey(TagType);
 
-		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rt.GetCallsign());
+		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
 		const char* statusDefinitionKey = nullptr;
 		const auto actypeIt = TagReplacingMap.find("actype");
 		const bool isNoFplTag = (actypeIt != TagReplacingMap.end() && actypeIt->second == "NoFPL");
@@ -662,9 +676,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		else if (TagType == TagTypes::Airborne)
 		{
 			bool isAirborneArrival = false;
-			if (fp.IsValid() &&
-				strcmp(fp.GetFlightPlanData().GetDestination(), activeAirport.c_str()) == 0 &&
-				strcmp(fp.GetFlightPlanData().GetOrigin(), activeAirport.c_str()) != 0)
+			if (fpDestination != nullptr &&
+				strcmp(fpDestination, activeAirport.c_str()) == 0 &&
+				(fpOrigin == nullptr || strcmp(fpOrigin, activeAirport.c_str()) != 0))
 			{
 				isAirborneArrival = true;
 			}
@@ -914,7 +928,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		string alertStr;
 		int alertTextWidth = 0;
 		int alertTextHeight = 0;
-		CRimcas::RimcasAlerts alert = RimcasInstance->getMovementAlert(rt.GetCallsign());
+		CRimcas::RimcasAlerts alert = RimcasInstance->getMovementAlert(rtCallsign);
 		if (CRimcas::NONE != alert && TagType == TagTypes::Departure)
 		{
 			switch (alert)
@@ -966,7 +980,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			}
 		}
 
-		previousTagSize[rt.GetCallsign()] = CRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
+		previousTagSize[rtCallsign] = CRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
 
 		Color definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["background_color"]);
 		Color definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["background_color_on_runway"]);
@@ -1026,7 +1040,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			LabelsSettings["airborne"].IsObject())
 		{
 			bool isAirborneDeparture = true;
-			std::string originAirport = fp.GetFlightPlanData().GetOrigin();
+			std::string originAirport = fpOrigin != nullptr ? fpOrigin : "";
 			std::string activeAirportUpper = activeAirport;
 			if (!originAirport.empty() && !activeAirportUpper.empty())
 			{
@@ -1058,7 +1072,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			definedTextColor = Color(vacdmTagColorOverrides.textA, vacdmTagColorOverrides.textR, vacdmTagColorOverrides.textG, vacdmTagColorOverrides.textB);
 		}
 
-		Color TagBackgroundColor = RimcasInstance->GetAircraftColor(rt.GetCallsign(),
+		Color TagBackgroundColor = RimcasInstance->GetAircraftColor(rtCallsign,
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor,
 			CurrentConfig->getConfigColor(activeProfile["rimcas"]["background_color_stage_one"]),
@@ -1068,7 +1082,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		bool rimcasLabelOnly = activeProfile["rimcas"]["rimcas_label_only"].GetBool();
 
 		if (rimcasLabelOnly)
-			TagBackgroundColor = RimcasInstance->GetAircraftColor(rt.GetCallsign(),
+			TagBackgroundColor = RimcasInstance->GetAircraftColor(rtCallsign,
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor);
 
@@ -1098,7 +1112,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		SolidBrush TagBackgroundBrush(TagBackgroundColor);
 		graphics.FillPath(&TagBackgroundBrush, &roundedPath);
-		if (isMouseWithin(TagBackgroundRect) || isTagBeingDragged(rt.GetCallsign()))
+		if (isMouseWithin(TagBackgroundRect) || isTagBeingDragged(rtCallsign))
 		{
 			Pen pw(ColorManager->get_corrected_color("label", Color::White));
 			graphics.DrawPath(&pw, &roundedPath);
@@ -1167,9 +1181,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		CRect oldCrectSave = TagBackgroundRect;
 
 		// Adding the tag screen object
-		tagAreas[rt.GetCallsign()] = TagBackgroundRect;
-		tagCollisionAreas[rt.GetCallsign()] = TagCollisionRect;
-		AddScreenObject(DRAWING_TAG, rt.GetCallsign(), TagBackgroundRect, true, GetBottomLine(rt.GetCallsign()).c_str());
+		tagAreas[rtCallsign] = TagBackgroundRect;
+		tagCollisionAreas[rtCallsign] = TagCollisionRect;
+		AddScreenObject(DRAWING_TAG, rtCallsign, TagBackgroundRect, true, GetBottomLine(rtCallsign).c_str());
 
 		TagBackgroundRect = oldCrectSave;
 
@@ -1181,14 +1195,19 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			!alertStr.empty())
 		{
 			wstring welement = wstring(alertStr.begin(), alertStr.end());
-			CRect ItemRect(textLeft,
-				textTop + heightOffset,
-				textLeft + TagWidth,
-				textTop + heightOffset + max(alertTextHeight, oneLineHeight));
+			const int alertLineHeight = max(alertTextHeight, oneLineHeight);
+			const int alertTop = TagBackgroundRect.top + heightOffset;
+			const int alertBottom = TagBackgroundRect.top + padding + heightOffset + alertLineHeight;
+			CRect ItemRect(TagBackgroundRect.left,
+				alertTop,
+				TagBackgroundRect.right,
+				alertBottom);
 			CRimcas::RimcasAlertSeverity severity = RimcasInstance->getAlertSeverity(alert);
 			SolidBrush* AlertColor = (severity == CRimcas::RimcasAlertSeverity::WARNING) ? &AlertColorWarning : &AlertColorCaution;
 			SolidBrush* RimcasTextColor = (severity == CRimcas::RimcasAlertSeverity::WARNING) ? &AlertTextColorWarning : &AlertTextColorCaution;
+			graphics.SetClip(&roundedPath, CombineModeReplace);
 			graphics.FillRectangle(AlertColor, CopyRect(ItemRect));
+			graphics.ResetClip();
 
 			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
 
@@ -1199,7 +1218,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			CRect alertRect(TagBackgroundRect.left, TagBackgroundRect.top + heightOffset,
 				TagBackgroundRect.left + alertTextWidth, TagBackgroundRect.top + heightOffset + max(alertTextHeight, oneLineHeight));
 
-			AddScreenObject(TagClickableMap[alertStr], rt.GetCallsign(), alertRect, true, GetBottomLine(rt.GetCallsign()).c_str());
+			AddScreenObject(TagClickableMap[alertStr], rtCallsign, alertRect, true, GetBottomLine(rtCallsign).c_str());
 			heightOffset += oneLineHeight;
 		}
 			for (auto&& line : ReplacedLabelLines)
@@ -1257,7 +1276,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				CRect ItemRect(textLeft + widthOffset, textTop + heightOffset,
 					textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
 
-				AddScreenObject(clickItemType, rt.GetCallsign(), ItemRect, true, GetBottomLine(rt.GetCallsign()).c_str());
+				AddScreenObject(clickItemType, rtCallsign, ItemRect, true, GetBottomLine(rtCallsign).c_str());
 
 				widthOffset += renderedElement.measuredWidth;
 				widthOffset += blankWidth;
