@@ -1403,7 +1403,13 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ----- Tendency -------
 	string tendency = "-";
-	int delta_fl = rt.GetPosition().GetFlightLevel() - rt.GetPreviousPosition(rt.GetPosition()).GetFlightLevel();
+	int delta_fl = 0;
+	{
+		CRadarTargetPositionData currentPos = rt.GetPosition();
+		CRadarTargetPositionData previousPos = rt.GetPreviousPosition(currentPos);
+		if (currentPos.IsValid() && previousPos.IsValid())
+			delta_fl = currentPos.GetFlightLevel() - previousPos.GetFlightLevel();
+	}
 	if (abs(delta_fl) >= 50) {
 		if (delta_fl < 0) {
 			tendency = "|";
@@ -2216,12 +2222,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
 		if (rt.GetGS() > 5) {
-			POINT oldacPosPix;
 			CRadarTargetPositionData pAcPos = rt.GetPosition();
 
 			for (int i = 1; i <= 2; i++) {
-				oldacPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
-				pAcPos = rt.GetPreviousPosition(pAcPos);
+				CRadarTargetPositionData previousTrailPos = rt.GetPreviousPosition(pAcPos);
+				if (!previousTrailPos.IsValid())
+					break;
+
+				pAcPos = previousTrailPos;
 				acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
 
 				// Afterglow polygons disabled (remove comet-like trail)
@@ -2236,6 +2244,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
 			for (int j = 1; j <= TrailNumber; j++) {
+				if (!previousPos.IsValid())
+					break;
+
 				POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
 
 				// Bubble diameter is fixed in meters so it scales with zoom

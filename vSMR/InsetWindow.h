@@ -22,6 +22,10 @@ public:
 	double m_Rotation = 0;
 
 	map<string, double> m_TagAngles;
+	map<string, POINT> m_TagOffsets;
+	map<string, POINT> m_TagDragOffsetFromCenter;
+	map<string, POINT> m_TargetPoints;
+	string m_TagBeingDragged;
 
 	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);
 	virtual void setAirport(string icao);
@@ -33,4 +37,3 @@ private:
 	string icao;
 	map<string, CPosition> AptPositions;
 };
-

@@ -53,14 +53,22 @@ void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string 
 
 string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 	Logger::info(string(__FUNCSIG__));
-	int AltitudeDif = Ac.GetPosition().GetFlightLevel() - Ac.GetPreviousPosition(Ac.GetPosition()).GetFlightLevel();
-	if (!Ac.GetPosition().GetTransponderC())
-		AltitudeDif = 0;
+	CRadarTargetPositionData currentPos = Ac.GetPosition();
+	if (!currentPos.IsValid())
+		return string_false;
+
+	int AltitudeDif = 0;
+	if (currentPos.GetTransponderC())
+	{
+		CRadarTargetPositionData previousPos = Ac.GetPreviousPosition(currentPos);
+		if (previousPos.IsValid())
+			AltitudeDif = currentPos.GetFlightLevel() - previousPos.GetFlightLevel();
+	}
 
 	if (Ac.GetGS() > 160 || AltitudeDif > 200)
 		return string_false;
 
-	POINT AcPosPix = instance->ConvertCoordFromPositionToPixel(Ac.GetPosition().GetPosition());
+	POINT AcPosPix = instance->ConvertCoordFromPositionToPixel(currentPos.GetPosition());
 
 	for (std::map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
@@ -85,21 +93,29 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 
 string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, bool isCorrelated) {
 	Logger::info(string(__FUNCSIG__));
-	int AltitudeDif = Ac.GetPosition().GetFlightLevel() - Ac.GetPreviousPosition(Ac.GetPosition()).GetFlightLevel();
-	if (!Ac.GetPosition().GetTransponderC())
-		AltitudeDif = 0;
+	CRadarTargetPositionData currentPos = Ac.GetPosition();
+	if (!currentPos.IsValid())
+		return string_false;
+
+	int AltitudeDif = 0;
+	if (currentPos.GetTransponderC())
+	{
+		CRadarTargetPositionData previousPos = Ac.GetPreviousPosition(currentPos);
+		if (previousPos.IsValid())
+			AltitudeDif = currentPos.GetFlightLevel() - previousPos.GetFlightLevel();
+	}
 
 	// Making sure the AC is airborne and not climbing, but below transition
 	if (Ac.GetGS() < 50 ||
 		AltitudeDif > 50 ||
-		Ac.GetPosition().GetPressureAltitude() > instance->GetPlugIn()->GetTransitionAltitude())
+		currentPos.GetPressureAltitude() > instance->GetPlugIn()->GetTransitionAltitude())
 		return string_false;
 
 	// If the AC is already on the runway, then there is no point in this step
 	if (isAcOnRunway(Ac.GetCallsign()))
 		return string_false;
 
-	POINT AcPosPix = instance->ConvertCoordFromPositionToPixel(Ac.GetPosition().GetPosition());
+	POINT AcPosPix = instance->ConvertCoordFromPositionToPixel(currentPos.GetPosition());
 
 	for (std::map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
@@ -115,13 +131,13 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 			RunwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(Point));
 		}
 
-		double AcSpeed = Ac.GetPosition().GetReportedGS();
-		if (!Ac.GetPosition().GetTransponderC())
+		double AcSpeed = currentPos.GetReportedGS();
+		if (!currentPos.GetTransponderC())
 			AcSpeed = Ac.GetGS();
 
 		for (int t = 5; t <= 300; t += 5)
 		{
-			double distance = Ac.GetPosition().GetReportedGS() * 0.514444 * t;
+			double distance = currentPos.GetReportedGS() * 0.514444 * t;
 
 			// We tolerate up 2 degree variations to the runway at long range (> 120 s)
 			// And 3 degrees after (<= 120 t)
@@ -138,7 +154,7 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 			for (int a = AngleMin; a <= AngleMax; a++)
 			{
 				POINT PredictedPosition = instance->ConvertCoordFromPositionToPixel(
-					BetterHarversine(Ac.GetPosition().GetPosition(), fmod(Ac.GetTrackHeading() + a, 360), distance));
+					BetterHarversine(currentPos.GetPosition(), fmod(Ac.GetTrackHeading() + a, 360), distance));
 				isGoingToLand = Is_Inside(PredictedPosition, RunwayOnScreen);
 
 				if (isGoingToLand)
@@ -249,10 +265,14 @@ void CRimcas::OnRefreshEnd(CRadarScreen* instance, int threshold) {
 						for (map<string, string>::iterator it3 = AcOnRunwayRange.first; it3 != AcOnRunwayRange.second; ++it3)
 						{
 							CRadarTarget rd2 = instance->GetPlugIn()->RadarTargetSelect(it3->second.c_str());
+							CRadarTargetPositionData currentRd2 = rd2.GetPosition();
+							CRadarTargetPositionData previousRd1 = rd1.GetPreviousPosition(currentRd1);
+							CRadarTargetPositionData previousRd2 = rd2.GetPreviousPosition(currentRd2);
+							if (!currentRd1.IsValid() || !currentRd2.IsValid() || !previousRd1.IsValid() || !previousRd2.IsValid())
+								continue;
 
-							double currentDist = currentRd1.GetPosition().DistanceTo(rd2.GetPosition().GetPosition());
-							double oldDist = rd1.GetPreviousPosition(currentRd1).GetPosition()
-								.DistanceTo(rd2.GetPreviousPosition(rd2.GetPosition()).GetPosition());
+							double currentDist = currentRd1.GetPosition().DistanceTo(currentRd2.GetPosition());
+							double oldDist = previousRd1.GetPosition().DistanceTo(previousRd2.GetPosition());
 
 							if (currentDist < oldDist)
 							{

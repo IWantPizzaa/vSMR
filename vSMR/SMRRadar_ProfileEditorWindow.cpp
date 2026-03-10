@@ -2,6 +2,7 @@
 #include "SMRRadar.hpp"
 #include "ProfileEditorDialog.hpp"
 #include <cctype>
+#include <cstring>
 
 namespace
 {
@@ -147,6 +148,59 @@ namespace
 				return i;
 		}
 		return invalidIndex;
+	}
+
+	void EnsureProfileProModeDefaults(rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+
+		if (!profile.IsObject())
+			return;
+
+		if (!profile.HasMember("filters") || !profile["filters"].IsObject())
+		{
+			if (profile.HasMember("filters"))
+				profile.RemoveMember("filters");
+			Value filters(rapidjson::kObjectType);
+			profile.AddMember("filters", filters, allocator);
+		}
+
+		Value& filters = profile["filters"];
+		if (!filters.HasMember("pro_mode") || !filters["pro_mode"].IsObject())
+		{
+			if (filters.HasMember("pro_mode"))
+				filters.RemoveMember("pro_mode");
+			Value proMode(rapidjson::kObjectType);
+			filters.AddMember("pro_mode", proMode, allocator);
+		}
+
+		Value& proMode = filters["pro_mode"];
+		if (!proMode.HasMember("enable") || !proMode["enable"].IsBool())
+		{
+			if (proMode.HasMember("enable"))
+				proMode.RemoveMember("enable");
+			proMode.AddMember("enable", false, allocator);
+		}
+		if (!proMode.HasMember("accept_pilot_squawk") || !proMode["accept_pilot_squawk"].IsBool())
+		{
+			if (proMode.HasMember("accept_pilot_squawk"))
+				proMode.RemoveMember("accept_pilot_squawk");
+			proMode.AddMember("accept_pilot_squawk", true, allocator);
+		}
+		if (!proMode.HasMember("do_not_autocorrelate_squawks") || !proMode["do_not_autocorrelate_squawks"].IsArray())
+		{
+			if (proMode.HasMember("do_not_autocorrelate_squawks"))
+				proMode.RemoveMember("do_not_autocorrelate_squawks");
+			Value squawks(rapidjson::kArrayType);
+			static const char* const defaultSquawks[] = { "2000", "2200", "1200", "7000" };
+			for (const char* squawk : defaultSquawks)
+			{
+				Value squawkValue;
+				squawkValue.SetString(squawk, static_cast<rapidjson::SizeType>(std::strlen(squawk)), allocator);
+				squawks.PushBack(squawkValue, allocator);
+			}
+			proMode.AddMember("do_not_autocorrelate_squawks", squawks, allocator);
+		}
 	}
 }
 
@@ -479,6 +533,56 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 	LoadProfile(canonicalName);
 	if (persistToDisk)
 		CurrentConfig->saveConfig();
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const
+{
+	outEnabled = false;
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	const rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject() || !profile.HasMember("filters") || !profile["filters"].IsObject())
+		return true;
+
+	const rapidjson::Value& filters = profile["filters"];
+	if (!filters.HasMember("pro_mode") || !filters["pro_mode"].IsObject())
+		return true;
+
+	const rapidjson::Value& proMode = filters["pro_mode"];
+	if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+		outEnabled = proMode["enable"].GetBool();
+
+	return true;
+}
+
+bool CSMRRadar::SetProfileProModeEnabledForEditor(const std::string& name, bool enabled)
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject())
+		return false;
+
+	EnsureProfileProModeDefaults(profile, CurrentConfig->document.GetAllocator());
+	profile["filters"]["pro_mode"]["enable"].SetBool(enabled);
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	CurrentConfig->reload();
+	LoadProfile(activeBefore.empty() ? name : activeBefore);
 	RequestRefresh();
 	return true;
 }

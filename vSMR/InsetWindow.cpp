@@ -18,28 +18,9 @@ void CInsetWindow::setAirport(string icao)
 
 void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int Button)
 {
-	if (Button == EuroScopePlugIn::BUTTON_RIGHT)
-	{
-		if (m_TagAngles.find(sItemString) != m_TagAngles.end())
-		{
-			m_TagAngles[sItemString] = fmod(m_TagAngles[sItemString] + 45.0, 360.0);
-		} else
-		{
-			m_TagAngles[sItemString] = 45.0;
-		}
-	}
-
-	if (Button == EuroScopePlugIn::BUTTON_LEFT)
-	{
-		if (m_TagAngles.find(sItemString) != m_TagAngles.end())
-		{
-			m_TagAngles[sItemString] = fmod(m_TagAngles[sItemString] - 45.0, 360.0);
-		}
-		else
-		{
-			m_TagAngles[sItemString] = 45.0;
-		}
-	}
+	UNREFERENCED_PARAMETER(sItemString);
+	UNREFERENCED_PARAMETER(Pt);
+	UNREFERENCED_PARAMETER(Button);
 }
 
 bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool Released)
@@ -95,6 +76,59 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		m_Area = newPos;
 
 		return Released;
+	}
+
+	if (sObjectId != nullptr && strcmp(sObjectId, "window") != 0 && strcmp(sObjectId, "resize") != 0 && strcmp(sObjectId, "topbar") != 0)
+	{
+		string callsign = sObjectId;
+		if (!callsign.empty())
+		{
+			POINT tagCenter{};
+			const bool firstDragFrame = (!Released && m_TagBeingDragged != callsign);
+			if (firstDragFrame)
+			{
+				CRect tagRect(Area);
+				tagRect.NormalizeRect();
+				POINT rectCenter = tagRect.CenterPoint();
+				POINT offset = { rectCenter.x - Pt.x, rectCenter.y - Pt.y };
+				m_TagDragOffsetFromCenter[callsign] = offset;
+			}
+
+			auto offsetIt = m_TagDragOffsetFromCenter.find(callsign);
+			if (offsetIt != m_TagDragOffsetFromCenter.end())
+			{
+				tagCenter.x = Pt.x + offsetIt->second.x;
+				tagCenter.y = Pt.y + offsetIt->second.y;
+			}
+			else
+			{
+				CRect tagRect(Area);
+				tagRect.NormalizeRect();
+				tagCenter = tagRect.CenterPoint();
+			}
+
+			auto targetIt = m_TargetPoints.find(callsign);
+			if (targetIt != m_TargetPoints.end())
+			{
+				POINT customTag = { tagCenter.x - targetIt->second.x, tagCenter.y - targetIt->second.y };
+				m_TagOffsets[callsign] = customTag;
+
+				double angle = fmod(atan2(double(customTag.y), double(customTag.x)) * 180.0 / 3.14159265358979323846, 360.0);
+				if (angle < 0.0)
+					angle += 360.0;
+				m_TagAngles[callsign] = angle;
+			}
+
+			if (Released)
+			{
+				m_TagBeingDragged.clear();
+				m_TagDragOffsetFromCenter.erase(callsign);
+			}
+			else
+			{
+				m_TagBeingDragged = callsign;
+			}
+		}
 	}
 
 	return true;
@@ -388,13 +422,23 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		int lenght = 50;
 
 		POINT TagCenter;
-		if (m_TagAngles.find(rt.GetCallsign()) == m_TagAngles.end())
+		m_TargetPoints[rt.GetCallsign()] = RtPoint;
+		auto customTagOffsetIt = m_TagOffsets.find(rt.GetCallsign());
+		if (customTagOffsetIt != m_TagOffsets.end())
 		{
-			m_TagAngles[rt.GetCallsign()] = 45.0; // TODO: Not the best, ah well
+			TagCenter.x = RtPoint.x + customTagOffsetIt->second.x;
+			TagCenter.y = RtPoint.y + customTagOffsetIt->second.y;
 		}
+		else
+		{
+			if (m_TagAngles.find(rt.GetCallsign()) == m_TagAngles.end())
+			{
+				m_TagAngles[rt.GetCallsign()] = 45.0; // TODO: Not the best, ah well
+			}
 
-		TagCenter.x = long(RtPoint.x + float(lenght * cos(DegToRad(m_TagAngles[rt.GetCallsign()]))));
-		TagCenter.y = long(RtPoint.y + float(lenght * sin(DegToRad(m_TagAngles[rt.GetCallsign()]))));
+			TagCenter.x = long(RtPoint.x + float(lenght * cos(DegToRad(m_TagAngles[rt.GetCallsign()]))));
+			TagCenter.y = long(RtPoint.y + float(lenght * sin(DegToRad(m_TagAngles[rt.GetCallsign()]))));
+		}
 		// Drawing the tags, what a mess
 
 		// ----- Generating the replacing map -----
@@ -518,6 +562,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		bool rimcasLabelOnly = radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["rimcas_label_only"].GetBool();
 
 		Color definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color"]);
+		Color definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color_on_runway"]);
+		Color definedTextColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["text_color"]);
 		if (TagType == CSMRRadar::TagTypes::Departure) {
 			if (!TagReplacingMap["sid"].empty() && radar_screen->CurrentConfig->isSidColorAvail(TagReplacingMap["sid"], radar_screen->getActiveAirport())) {
 				definedBackgroundColor = radar_screen->CurrentConfig->getSidColor(TagReplacingMap["sid"], radar_screen->getActiveAirport());
@@ -531,16 +577,45 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 				definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["nofpl_color"]);
 		}
 
+		if (TagType == CSMRRadar::TagTypes::Airborne &&
+			fp.IsValid() &&
+			AcisCorrelated &&
+			LabelsSettings.HasMember("airborne") &&
+			LabelsSettings["airborne"].IsObject())
+		{
+			bool isAirborneDeparture = true;
+			std::string originAirport = fp.GetFlightPlanData().GetOrigin();
+			std::string activeAirportUpper = radar_screen->getActiveAirport();
+			if (!originAirport.empty() && !activeAirportUpper.empty())
+			{
+				std::transform(originAirport.begin(), originAirport.end(), originAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+				std::transform(activeAirportUpper.begin(), activeAirportUpper.end(), activeAirportUpper.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+				isAirborneDeparture = (originAirport == activeAirportUpper);
+			}
+
+			const Value& airborneLabel = LabelsSettings["airborne"];
+			const char* bgKey = isAirborneDeparture ? "departure_background_color" : "arrival_background_color";
+			const char* bgOnRunwayKey = isAirborneDeparture ? "departure_background_color_on_runway" : "arrival_background_color_on_runway";
+			const char* textKey = isAirborneDeparture ? "departure_text_color" : "arrival_text_color";
+
+			if (airborneLabel.HasMember(bgKey) && airborneLabel[bgKey].IsObject())
+				definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[bgKey]);
+			if (airborneLabel.HasMember(bgOnRunwayKey) && airborneLabel[bgOnRunwayKey].IsObject())
+				definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[bgOnRunwayKey]);
+			if (airborneLabel.HasMember(textKey) && airborneLabel[textKey].IsObject())
+				definedTextColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[textKey]);
+		}
+
 		Color TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rt.GetCallsign(),
 			definedBackgroundColor,
-			radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color_on_runway"]),
+			definedBackgroundOnRunwayColor,
 			radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
 			radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"]));
 
 		if (rimcasLabelOnly)
 			TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rt.GetCallsign(),
 				definedBackgroundColor,
-				radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color_on_runway"]));
+				definedBackgroundOnRunwayColor);
 
 		CRect TagBackgroundRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
 
@@ -605,14 +680,15 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 				return fallback;
 			};
 
-			SolidBrush FontColor(radar_screen->ColorManager->get_corrected_color("label",
-				radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["text_color"])));
+			SolidBrush FontColor(radar_screen->ColorManager->get_corrected_color("label", definedTextColor));
 			SolidBrush SquawkErrorColor(radar_screen->ColorManager->get_corrected_color("label",
 				radar_screen->CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
 			SolidBrush AlertTextColorCaution(radar_screen->ColorManager->get_corrected_color("label",
 				getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30))));
 			SolidBrush AlertTextColorWarning(radar_screen->ColorManager->get_corrected_color("label",
 				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
+
+			radar_screen->AddScreenObject(m_Id, rt.GetCallsign(), TagBackgroundRect, true, radar_screen->GetBottomLine(rt.GetCallsign()).c_str());
 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
