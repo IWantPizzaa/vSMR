@@ -1002,32 +1002,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 					definedBackgroundColor = CurrentConfig->getConfigColor(statusBackgroundColors[statusColorKey]);
 			}
 		}
-		else if (ColorTagType == TagTypes::Arrival) {
-			const Value& arrivalLabel = LabelsSettings["arrival"];
-			if (arrivalLabel.HasMember("status_background_colors") && arrivalLabel["status_background_colors"].IsObject())
-			{
-				const Value& statusBackgroundColors = arrivalLabel["status_background_colors"];
-				GroundStateCategory arrivalStatus = GroundStateCategory::Unknown;
-				if (fp.IsValid())
-					arrivalStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
-
-				const char* statusColorKey = nullptr;
-				switch (arrivalStatus)
-				{
-				case GroundStateCategory::Arr:
-					statusColorKey = "arr";
-					break;
-				case GroundStateCategory::Taxi:
-					statusColorKey = "taxi";
-					break;
-				default:
-					break;
-				}
-
-				if (statusColorKey != nullptr && statusBackgroundColors.HasMember(statusColorKey) && statusBackgroundColors[statusColorKey].IsObject())
-					definedBackgroundColor = CurrentConfig->getConfigColor(statusBackgroundColors[statusColorKey]);
-			}
-		}
 			if (TagReplacingMap["actype"] == "NoFPL" && LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()].HasMember("nofpl_color")) {
 				definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["nofpl_color"]);
 		}

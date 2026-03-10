@@ -234,6 +234,86 @@ namespace
 		return "VACDM";
 	}
 
+	std::vector<std::string> SplitColorPathForDisplay(const std::string& path)
+	{
+		std::vector<std::string> segments;
+		std::string current;
+		current.reserve(path.size());
+		for (char ch : path)
+		{
+			if (ch == '.')
+			{
+				if (!current.empty())
+				{
+					segments.push_back(current);
+					current.clear();
+				}
+				continue;
+			}
+			current.push_back(ch);
+		}
+		if (!current.empty())
+			segments.push_back(current);
+		return segments;
+	}
+
+	std::string FormatColorPathSegmentForDisplay(const std::string& segment)
+	{
+		if (_stricmp(segment.c_str(), "targets") == 0)
+			return "Icons";
+		if (_stricmp(segment.c_str(), "labels") == 0)
+			return "Tags";
+		if (_stricmp(segment.c_str(), "rimcas") == 0)
+			return "RIMCAS";
+		if (_stricmp(segment.c_str(), "ui_layout") == 0)
+			return "UI Layout";
+		if (_stricmp(segment.c_str(), "pro_mode") == 0)
+			return "Pro Mode";
+		if (_stricmp(segment.c_str(), "ground_icons") == 0)
+			return "Ground Icons";
+		if (_stricmp(segment.c_str(), "status_background_colors") == 0)
+			return "Status Background Colors";
+		if (_stricmp(segment.c_str(), "sid_text_colors") == 0)
+			return "SID Text Colors";
+		if (_stricmp(segment.c_str(), "nofpl_color") == 0)
+			return "NoFPL Color";
+
+		std::string display = segment;
+		bool capitalizeNext = true;
+		for (char& ch : display)
+		{
+			if (ch == '_')
+			{
+				ch = ' ';
+				capitalizeNext = true;
+				continue;
+			}
+			if (capitalizeNext && std::isalpha(static_cast<unsigned char>(ch)) != 0)
+			{
+				ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+				capitalizeNext = false;
+			}
+			else
+			{
+				capitalizeNext = (ch == ' ');
+			}
+		}
+		return display;
+	}
+
+	std::string FormatColorPathForDisplay(const std::string& path)
+	{
+		const std::vector<std::string> segments = SplitColorPathForDisplay(path);
+		std::string display;
+		for (size_t i = 0; i < segments.size(); ++i)
+		{
+			if (!display.empty())
+				display += " > ";
+			display += FormatColorPathSegmentForDisplay(segments[i]);
+		}
+		return display;
+	}
+
 	COLORREF BlendColorOverBackground(COLORREF foreground, int alpha, COLORREF background)
 	{
 		const int clampedAlpha = min(255, max(0, alpha));
@@ -3483,7 +3563,8 @@ void CProfileEditorDialog::RebuildColorPathTree(const std::string& selectedPath)
 			auto itNode = nodeByPrefix.find(prefix);
 			if (itNode == nodeByPrefix.end())
 			{
-				HTREEITEM item = ColorPathTree.InsertItem(segments[i].c_str(), parent);
+				const std::string displaySegment = FormatColorPathSegmentForDisplay(segments[i]);
+				HTREEITEM item = ColorPathTree.InsertItem(displaySegment.c_str(), parent);
 				nodeByPrefix.insert(std::make_pair(prefix, item));
 				itNode = nodeByPrefix.find(prefix);
 			}
@@ -3688,8 +3769,9 @@ void CProfileEditorDialog::RefreshEditorFieldsFromSelection()
 	if (!selectedPath.empty())
 		SelectColorPathInTree(selectedPath);
 
+	const std::string selectedDisplay = selectedPath.empty() ? "(none)" : FormatColorPathForDisplay(selectedPath);
 	CString selectedLabel;
-	selectedLabel.Format("Selected: %s", selectedPath.empty() ? "(none)" : selectedPath.c_str());
+	selectedLabel.Format("Selected: %s", selectedDisplay.c_str());
 	SelectedPathText.SetWindowTextA(selectedLabel);
 
 	if (!DraftColorValid)

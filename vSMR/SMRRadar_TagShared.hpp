@@ -282,10 +282,16 @@ namespace
 		return true;
 	}
 
+	bool ShouldExposeProfileColorPath(const std::string& path)
+	{
+		return path != "labels.arrival.status_background_colors.arr" &&
+			path != "labels.arrival.status_background_colors.taxi";
+	}
+
 	void CollectProfileColorPaths(const rapidjson::Value& value, const std::string& path, std::vector<std::string>& outPaths, std::map<std::string, bool>& outHasAlpha)
 	{
 		bool hasAlpha = false;
-		if (!path.empty() && IsColorConfigObject(value, &hasAlpha))
+		if (!path.empty() && IsColorConfigObject(value, &hasAlpha) && ShouldExposeProfileColorPath(path))
 		{
 			outPaths.push_back(path);
 			outHasAlpha[path] = hasAlpha;

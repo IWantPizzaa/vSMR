@@ -17,6 +17,38 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		SaveDataToAsr("Airport", "Active airport", getActiveAirport().c_str());
 	}
 
+	if (FunctionId == RIMCAS_ACTIVE_PROFILE_FUNC) {
+		if (sItemString != nullptr)
+		{
+			auto trimAsciiWhitespace = [](const std::string& text) -> std::string
+			{
+				size_t start = 0;
+				while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
+					++start;
+
+				size_t end = text.size();
+				while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
+					--end;
+				return text.substr(start, end - start);
+			};
+
+			const std::string oldName = GetActiveProfileNameForEditor();
+			const std::string newName = trimAsciiWhitespace(std::string(sItemString));
+			if (!oldName.empty() && !newName.empty() && newName != oldName)
+			{
+				if (!RenameProfileForEditor(oldName, newName))
+				{
+					GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to rename active profile in vSMR_Profiles.json", true, true, false, false, false);
+				}
+				else
+				{
+					LoadCustomFont();
+					SaveDataToAsr("ActiveProfile", "vSMR active profile", newName.c_str());
+				}
+			}
+		}
+	}
+
 	if (FunctionId == RIMCAS_UPDATE_FONTS) {
 		if (strcmp(sItemString, "Size 1") == 0)
 			currentFontSize = 1;
