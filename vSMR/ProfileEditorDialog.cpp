@@ -4022,9 +4022,12 @@ void CProfileEditorDialog::SyncIconControlsFromRadar()
 	UpdatingControls = true;
 
 	const std::string style = Owner->GetActiveTargetIconStyle();
-	IconStyleArrow.SetCheck(style == "triangle" ? BST_CHECKED : BST_UNCHECKED);
-	IconStyleDiamond.SetCheck(style == "diamond" ? BST_CHECKED : BST_UNCHECKED);
-	IconStyleRealistic.SetCheck(style == "realistic" ? BST_CHECKED : BST_UNCHECKED);
+	const bool triangleSelected = (style == "triangle");
+	const bool diamondSelected = (style == "diamond");
+	const bool realisticSelected = (!triangleSelected && !diamondSelected) || (style == "realistic");
+	IconStyleArrow.SetCheck(triangleSelected ? BST_CHECKED : BST_UNCHECKED);
+	IconStyleDiamond.SetCheck(diamondSelected ? BST_CHECKED : BST_UNCHECKED);
+	IconStyleRealistic.SetCheck(realisticSelected ? BST_CHECKED : BST_UNCHECKED);
 
 	FixedPixelCheck.SetCheck(Owner->GetFixedPixelTargetIconSizeEnabled() ? BST_CHECKED : BST_UNCHECKED);
 	SmallBoostCheck.SetCheck(Owner->GetSmallTargetIconBoostEnabled() ? BST_CHECKED : BST_UNCHECKED);
@@ -4433,6 +4436,15 @@ void CProfileEditorDialog::ApplyRuleColorValueFromSlider()
 	RuleColorDraftDirty = true;
 	RuleColorApplyButton.EnableWindow(TRUE);
 	InvalidateRuleColorSwatches();
+
+	CButton* check = nullptr;
+	CEdit* edit = nullptr;
+	if (GetRuleColorEditorTargetControls(RuleColorActiveSwatchId, check, edit) && edit != nullptr)
+	{
+		UpdatingControls = true;
+		SetEditTextPreserveCaret(*edit, FormatRgbaQuad(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, RuleColorDraftA));
+		UpdatingControls = false;
+	}
 }
 
 void CProfileEditorDialog::ApplyRuleColorOpacityFromSlider()
@@ -4447,6 +4459,15 @@ void CProfileEditorDialog::ApplyRuleColorOpacityFromSlider()
 	RuleColorDraftDirty = true;
 	RuleColorApplyButton.EnableWindow(TRUE);
 	InvalidateRuleColorSwatches();
+
+	CButton* check = nullptr;
+	CEdit* edit = nullptr;
+	if (GetRuleColorEditorTargetControls(RuleColorActiveSwatchId, check, edit) && edit != nullptr)
+	{
+		UpdatingControls = true;
+		SetEditTextPreserveCaret(*edit, FormatRgbaQuad(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, RuleColorDraftA));
+		UpdatingControls = false;
+	}
 }
 
 void CProfileEditorDialog::ApplyRuleColorDraftToActiveControl()
@@ -5368,6 +5389,58 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 	if (CWnd* focused = GetFocus())
 		focusedId = focused->GetDlgCtrlID();
 
+	if (!isParameterSelection)
+	{
+		if (focusedId == IDC_PE_RULE_TARGET_EDIT || focusedId == IDC_PE_RULE_TARGET_CHECK || focusedId == IDC_PE_RULE_TARGET_SWATCH)
+			RuleColorActiveSwatchId = IDC_PE_RULE_TARGET_SWATCH;
+		else if (focusedId == IDC_PE_RULE_TAG_EDIT || focusedId == IDC_PE_RULE_TAG_CHECK || focusedId == IDC_PE_RULE_TAG_SWATCH)
+			RuleColorActiveSwatchId = IDC_PE_RULE_TAG_SWATCH;
+		else if (focusedId == IDC_PE_RULE_TEXT_EDIT || focusedId == IDC_PE_RULE_TEXT_CHECK || focusedId == IDC_PE_RULE_TEXT_SWATCH)
+			RuleColorActiveSwatchId = IDC_PE_RULE_TEXT_SWATCH;
+	}
+
+	const bool isRuleColorTextEditChange =
+		!isParameterSelection &&
+		(focusedId == IDC_PE_RULE_TARGET_EDIT ||
+		 focusedId == IDC_PE_RULE_TAG_EDIT ||
+		 focusedId == IDC_PE_RULE_TEXT_EDIT);
+
+	if (isRuleColorTextEditChange)
+	{
+		CEdit* activeEdit = nullptr;
+		if (focusedId == IDC_PE_RULE_TARGET_EDIT)
+			activeEdit = &RuleTargetEdit;
+		else if (focusedId == IDC_PE_RULE_TAG_EDIT)
+			activeEdit = &RuleTagEdit;
+		else if (focusedId == IDC_PE_RULE_TEXT_EDIT)
+			activeEdit = &RuleTextEdit;
+
+		if (activeEdit != nullptr)
+		{
+			CString rgbaText;
+			activeEdit->GetWindowText(rgbaText);
+			int r = 255;
+			int g = 255;
+			int b = 255;
+			int a = 255;
+			bool hasAlpha = false;
+			if (TryParseRgbaQuad(std::string(rgbaText.GetString()), r, g, b, a, hasAlpha))
+			{
+				RuleColorDraftR = r;
+				RuleColorDraftG = g;
+				RuleColorDraftB = b;
+				RuleColorDraftA = hasAlpha ? a : 255;
+				RuleColorDraftValid = true;
+				RuleColorDraftDirty = true;
+				SyncRuleColorValueSliderFromDraft();
+				SyncRuleColorOpacitySliderFromDraft();
+				RuleColorApplyButton.EnableWindow(TRUE);
+				InvalidateRuleColorSwatches();
+			}
+		}
+		return;
+	}
+
 	const bool shouldRefreshConditionChoices =
 		(focusedId == IDC_PE_RULE_SOURCE_COMBO) ||
 		(focusedId == IDC_PE_RULE_TOKEN_COMBO);
@@ -5594,7 +5667,12 @@ void CProfileEditorDialog::OnRuleColorApplyClicked()
 
 void CProfileEditorDialog::OnRuleColorResetClicked()
 {
-	SyncRuleColorEditorFromActiveControl();
+	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
+		return;
+
+	// Reset must restore the editor from the saved rule state, not from the
+	// current draft text/value controls.
+	RefreshRuleControls();
 	RuleColorApplyButton.EnableWindow(FALSE);
 }
 
@@ -6288,6 +6366,15 @@ bool CProfileEditorDialog::TryApplyRuleColorWheelPoint(const CPoint& screenPoint
 	RuleColorDraftDirty = true;
 	RuleColorApplyButton.EnableWindow(TRUE);
 	InvalidateRuleColorSwatches();
+
+	CButton* check = nullptr;
+	CEdit* edit = nullptr;
+	if (GetRuleColorEditorTargetControls(RuleColorActiveSwatchId, check, edit) && edit != nullptr)
+	{
+		UpdatingControls = true;
+		SetEditTextPreserveCaret(*edit, FormatRgbaQuad(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, RuleColorDraftA));
+		UpdatingControls = false;
+	}
 	return true;
 }
 
@@ -6606,6 +6693,9 @@ void CProfileEditorDialog::OnBoostResolutionChanged()
 
 	if (Owner->SetSmallTargetIconBoostResolutionPreset(std::string(selectedText.GetString()), true))
 		Owner->RequestRefresh();
+
+	// Keep icon-shape radio state consistent after preset toggles.
+	SyncIconControlsFromRadar();
 }
 
 void CProfileEditorDialog::OnBoostResolutionPresetChanged()
