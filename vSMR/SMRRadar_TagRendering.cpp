@@ -971,7 +971,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			if (!TagReplacingMap["asid"].empty() && CurrentConfig->isSidColorAvail(TagReplacingMap["asid"], activeAirport)) {
 				definedBackgroundColor = CurrentConfig->getSidColor(TagReplacingMap["asid"], activeAirport);
 			}
-			if (fp.GetFlightPlanData().GetPlanType()[0] == 'I' && TagReplacingMap["asid"].empty() && LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()].HasMember("nosid_color")) {
+			if (fp.IsValid() &&
+				fp.GetFlightPlanData().GetPlanType() != nullptr &&
+				fp.GetFlightPlanData().GetPlanType()[0] == 'I' &&
+				TagReplacingMap["asid"].empty() &&
+				LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()].HasMember("nosid_color")) {
 				definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["nosid_color"]);
 			}
 
