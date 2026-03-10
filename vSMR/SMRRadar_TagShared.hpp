@@ -39,6 +39,11 @@ static GroundStateCategory classifyGroundState(const std::string& rawState, int 
 	return GroundStateCategory::Unknown;
 }
 
+static GroundStateCategory classifyGroundState(const char* rawState, int reportedGs, bool onRunway)
+{
+	return classifyGroundState(rawState != nullptr ? std::string(rawState) : std::string(), reportedGs, onRunway);
+}
+
 namespace
 {
 	std::string ToUpperAsciiCopy(const std::string& value)

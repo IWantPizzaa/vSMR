@@ -1,6 +1,14 @@
 #include "stdafx.h"
 #include "Rimcas.hpp"
 
+namespace
+{
+	std::string SafeString(const char* text)
+	{
+		return text != nullptr ? std::string(text) : std::string();
+	}
+}
+
 CRimcas::CRimcas()
 {
 }
@@ -53,6 +61,10 @@ void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string 
 
 string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 	Logger::info(string(__FUNCSIG__));
+	const char* acCallsign = Ac.GetCallsign();
+	if (acCallsign == nullptr || acCallsign[0] == '\0')
+		return string_false;
+
 	CRadarTargetPositionData currentPos = Ac.GetPosition();
 	if (!currentPos.IsValid())
 		return string_false;
@@ -83,7 +95,7 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 		}
 
 		if (Is_Inside(AcPosPix, RunwayOnScreen)) {
-			AcOnRunway.insert(std::pair<string, string>(it->first, Ac.GetCallsign()));
+			AcOnRunway.insert(std::pair<string, string>(it->first, acCallsign));
 			return string(it->first);
 		}
 	}
@@ -93,6 +105,10 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 
 string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, bool isCorrelated) {
 	Logger::info(string(__FUNCSIG__));
+	const char* acCallsign = Ac.GetCallsign();
+	if (acCallsign == nullptr || acCallsign[0] == '\0')
+		return string_false;
+
 	CRadarTargetPositionData currentPos = Ac.GetPosition();
 	if (!currentPos.IsValid())
 		return string_false;
@@ -112,7 +128,7 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 		return string_false;
 
 	// If the AC is already on the runway, then there is no point in this step
-	if (isAcOnRunway(Ac.GetCallsign()))
+	if (isAcOnRunway(acCallsign))
 		return string_false;
 
 	POINT AcPosPix = instance->ConvertCoordFromPositionToPixel(currentPos.GetPosition());
@@ -184,7 +200,7 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 					}
 					if (t < PreviousTime && t >= Time)
 					{
-						TimeTable[it->first][Time] = Ac.GetCallsign();
+						TimeTable[it->first][Time] = acCallsign;
 						break;
 					}
 				}
@@ -196,14 +212,14 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 					StageTwoTrigger = 30;
 
 				if (t <= StageTwoTrigger)
-					AcOnRunway.insert(std::pair<string, string>(it->first, Ac.GetCallsign()));
+					AcOnRunway.insert(std::pair<string, string>(it->first, acCallsign));
 
 				// If the AC is 45 seconds away from the runway, we consider him approaching
 
 				if (t > StageTwoTrigger && t <= 45)
-					ApproachingAircrafts.insert(std::pair<string, string>(it->first, Ac.GetCallsign()));
+					ApproachingAircrafts.insert(std::pair<string, string>(it->first, acCallsign));
 
-				return Ac.GetCallsign();
+				return acCallsign;
 			}
 		}
 	}
@@ -229,6 +245,9 @@ vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float 
 
 void CRimcas::OnRefreshEnd(CRadarScreen* instance, int threshold) {
 	Logger::info(string(__FUNCSIG__));
+	if (instance == nullptr)
+		return;
+
 	for (map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
 
@@ -249,22 +268,33 @@ void CRimcas::OnRefreshEnd(CRadarScreen* instance, int threshold) {
 
 			for (map<string, string>::iterator it2 = AcOnRunwayRange.first; it2 != AcOnRunwayRange.second; ++it2)
 			{
+				if (it2->second.empty())
+					continue;
+
 				if (isOnClosedRunway) {
 					AcColor[it2->second] = StageTwo;
 				}
 				else
 				{
-					if (instance->GetPlugIn()->RadarTargetSelect(it2->second.c_str()).GetGS() > threshold)
+					CRadarTarget rd1 = instance->GetPlugIn()->RadarTargetSelect(it2->second.c_str());
+					if (!rd1.IsValid())
+						continue;
+
+					if (rd1.GetGS() > threshold)
 					{
 						// If the aircraft is on the runway and stage two, we check if 
 						// the aircraft is going towards any aircraft thats on the runway
 						// if not, we don't display the warning
 						bool triggerStageTwo = false;
-						CRadarTarget rd1 = instance->GetPlugIn()->RadarTargetSelect(it2->second.c_str());
 						CRadarTargetPositionData currentRd1 = rd1.GetPosition();
 						for (map<string, string>::iterator it3 = AcOnRunwayRange.first; it3 != AcOnRunwayRange.second; ++it3)
 						{
+							if (it3->second.empty())
+								continue;
+
 							CRadarTarget rd2 = instance->GetPlugIn()->RadarTargetSelect(it3->second.c_str());
+							if (!rd2.IsValid())
+								continue;
 							CRadarTargetPositionData currentRd2 = rd2.GetPosition();
 							CRadarTargetPositionData previousRd1 = rd1.GetPreviousPosition(currentRd1);
 							CRadarTargetPositionData previousRd2 = rd2.GetPreviousPosition(currentRd2);
@@ -334,13 +364,17 @@ string CRimcas::AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance)
 
 void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, bool isLVP)
 {
+	const char* rtCallsign = Rt.GetCallsign();
+	if (rtCallsign == nullptr || rtCallsign[0] == '\0')
+		return;
+
 	CFlightPlan fp = Rt.GetCorrelatedFlightPlan();
 	CRadarTargetPositionData pos = Rt.GetPosition();
 	if (false == fp.IsValid() || false == pos.IsValid()) {
-		movementAlerts[Rt.GetCallsign()] = CRimcas::RimcasAlerts::NONE;
+		movementAlerts[rtCallsign] = CRimcas::RimcasAlerts::NONE;
 		return;
 	}
-	std::string groundstate = fp.GetGroundState();
+	std::string groundstate = SafeString(fp.GetGroundState());
 	string rwyOn = AcOnRunwayFunc(Rt, instance);
 	int groundspeed = pos.GetReportedGS();
 
@@ -350,7 +384,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
 			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
 			if (RunwayStatuses[rwy1] == CLSD && RunwayStatuses[rwy2] == CLSD && 3 < groundspeed) {
-				movementAlerts[Rt.GetCallsign()] = RWYCLSD;
+				movementAlerts[rtCallsign] = RWYCLSD;
 				return;
 			}
 		}
@@ -362,7 +396,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
 			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
 			if ((RunwayStatuses[rwy1] == ARR || RunwayStatuses[rwy2] == ARR) && 3 < groundspeed) {
-				movementAlerts[Rt.GetCallsign()] = RWYTYPE;
+				movementAlerts[rtCallsign] = RWYTYPE;
 				return;
 			}
 		}
@@ -372,7 +406,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	if (inactiveAlerts.find("RWY INC") == inactiveAlerts.end()) {
 		if ("DEPA" != groundstate) {
 			if (rwyOn != "") {
-				movementAlerts[Rt.GetCallsign()] = RWYINC;
+				movementAlerts[rtCallsign] = RWYINC;
 				return;
 			}
 		}
@@ -381,7 +415,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// STAT RPA
 	if (inactiveAlerts.find("STAT RPA") == inactiveAlerts.end()) {
 		if ("DEPA" == groundstate && 0 == groundspeed) {
-			movementAlerts[Rt.GetCallsign()] = STATRPA;
+			movementAlerts[rtCallsign] = STATRPA;
 			return;
 		}
 	}
@@ -393,7 +427,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// NO PUSH
 	if (inactiveAlerts.find("NO PUSH") == inactiveAlerts.end()) {
 		if ("PUSH" != groundstate && "TAXI" != groundstate && 2 < groundspeed && isReversing) {
-			movementAlerts[Rt.GetCallsign()] = NOPUSH;
+			movementAlerts[rtCallsign] = NOPUSH;
 			return;
 		}
 	}
@@ -402,7 +436,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	if (inactiveAlerts.find("HIGH SPD") == inactiveAlerts.end()) {
 		int speedThreashold = isLVP ? 25 : 35;
 		if ("DEPA" != groundstate && speedThreashold < groundspeed && rwyOn == "") {
-			movementAlerts[Rt.GetCallsign()] = HIGHSPD;
+			movementAlerts[rtCallsign] = HIGHSPD;
 			return;
 		}
 	}
@@ -410,7 +444,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// NO TKOF
 	if (inactiveAlerts.find("NO TKOF") == inactiveAlerts.end()) {
 		if ("DEPA" != groundstate && 35 < groundspeed && rwyOn != "") {
-			movementAlerts[Rt.GetCallsign()] = NOTKOF;
+			movementAlerts[rtCallsign] = NOTKOF;
 			return;
 		}
 	}
@@ -418,21 +452,21 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// NO TAXI
 	if (inactiveAlerts.find("NO TAXI") == inactiveAlerts.end()) {
 		if ("TAXI" != groundstate && "DEPA" != groundstate && 5 < groundspeed && !isReversing) {
-			movementAlerts[Rt.GetCallsign()] = NOTAXI;
+			movementAlerts[rtCallsign] = NOTAXI;
 			return;
 		}
 	}
 
 	// EMERG
 	if (inactiveAlerts.find("EMERG") == inactiveAlerts.end()) {
-		const char* squawk = Rt.GetPosition().GetSquawk();
+		const char* squawk = pos.GetSquawk();
 		if (squawk != nullptr && strcmp(squawk, "7700") == 0) {
-			movementAlerts[Rt.GetCallsign()] = EMERG;
+			movementAlerts[rtCallsign] = EMERG;
 			return;
 		}
 	}
 
-	movementAlerts[Rt.GetCallsign()] = CRimcas::RimcasAlerts::NONE;
+	movementAlerts[rtCallsign] = CRimcas::RimcasAlerts::NONE;
 }
 
 CRimcas::RimcasAlertTypes CRimcas::getAlert(string callsign)
