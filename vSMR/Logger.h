@@ -57,9 +57,13 @@ public:
 			"CRimcas::GetAircraftColor(",
 			"CSMRPlugin::OnTimer(",
 			"CSMRPlugin::OnGetTagItem(",
+			"CSMRPlugin::OnFlightPlanDisconnect(",
 			"CSMRRadar::OnOverScreenObject(",
 			"CSMRRadar::OnRadarTargetPositionUpdate(",
-			"CSMRRadar::RefreshAirportActivity("
+			"CSMRRadar::RefreshAirportActivity(",
+			"CSMRRadar::GenerateTagData(",
+			"CSMRRadar::GetBottomLine(",
+			"CSMRRadar::OnFlightPlanDisconnect("
 		};
 
 		for (const char* marker : hotTraceMarkers)
