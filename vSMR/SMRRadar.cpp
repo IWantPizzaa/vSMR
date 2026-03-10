@@ -994,7 +994,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	if (hasLegacyLabelRules)
 	{
-		labels.RemoveMember("rules");
+		Value& labelsForRulesCleanup = profile["labels"];
+		labelsForRulesCleanup.RemoveMember("rules");
 		changed = true;
 	}
 
@@ -1293,10 +1294,11 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	auto migrateTypeDefinitions = [&](const char* typeKey)
 	{
-		if (!labels.HasMember(typeKey) || !labels[typeKey].IsObject())
+		Value& labelsForMigration = profile["labels"];
+		if (!labelsForMigration.HasMember(typeKey) || !labelsForMigration[typeKey].IsObject())
 			return;
 
-		Value& section = labels[typeKey];
+		Value& section = labelsForMigration[typeKey];
 		if (section.HasMember("definition") && section["definition"].IsArray())
 			migrateDefinitionArray(section["definition"], typeKey, "default", "normal");
 		if (section.HasMember("definitionDetailled") && section["definitionDetailled"].IsArray())
