@@ -1492,10 +1492,11 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	{
 		return text != nullptr ? std::string(text) : std::string();
 	};
+	const bool hasRadarTarget = rt.IsValid() && rt.GetPosition().IsValid();
 
 	const bool hasFlightPlan = fp.IsValid();
-	bool IsPrimary = !rt.GetPosition().GetTransponderC();
-	bool isAirborne = rt.GetPosition().GetReportedGS() > 50;
+	bool IsPrimary = hasRadarTarget ? !rt.GetPosition().GetTransponderC() : true;
+	bool isAirborne = hasRadarTarget ? (rt.GetPosition().GetReportedGS() > 50) : false;
 
 	// ----- Callsign -------
 	string callsign = safeString(rt.GetCallsign());
@@ -1542,7 +1543,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ----- Squawk error -------
 	string sqerror = "";
 	const char* assr = hasFlightPlan ? safeCString(fp.GetControllerAssignedData().GetSquawk()) : "";
-	const char* ssr = safeCString(rt.GetPosition().GetSquawk());
+	const char* ssr = hasRadarTarget ? safeCString(rt.GetPosition().GetSquawk()) : "";
 	bool has_squawk_error = false;
 	if (strlen(assr) != 0 && strlen(ssr) != 0 && !startsWith(ssr, assr)) {
 		has_squawk_error = true;
@@ -1554,7 +1555,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	string actype = "NoFPL";
 	if (hasFlightPlan && fp.GetFlightPlanData().IsReceived())
-		actype = fp.GetFlightPlanData().GetAircraftFPType();
+		actype = safeString(fp.GetFlightPlanData().GetAircraftFPType());
 	if (actype.size() > 4 && actype != "NoFPL")
 		actype = actype.substr(0, 4);
 
@@ -1564,26 +1565,26 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		sctype = sqerror;
 
 	// ----- Groundspeed -------
-	string speed = std::to_string(rt.GetPosition().GetReportedGS());
+	string speed = std::to_string(hasRadarTarget ? rt.GetPosition().GetReportedGS() : 0);
 
 	// ----- Departure runway -------
-	string deprwy = hasFlightPlan ? fp.GetFlightPlanData().GetDepartureRwy() : "";
+	string deprwy = hasFlightPlan ? safeString(fp.GetFlightPlanData().GetDepartureRwy()) : "";
 	if (deprwy.length() == 0)
 		deprwy = "RWY";
 
 	// ----- Departure runway that changes for overspeed -------
 	string seprwy = deprwy;
-	if (rt.GetPosition().GetReportedGS() > 25)
+	if (hasRadarTarget && rt.GetPosition().GetReportedGS() > 25)
 		seprwy = std::to_string(rt.GetPosition().GetReportedGS());
 
 	// ----- Arrival runway -------
-	string arvrwy = hasFlightPlan ? fp.GetFlightPlanData().GetArrivalRwy() : "";
+	string arvrwy = hasFlightPlan ? safeString(fp.GetFlightPlanData().GetArrivalRwy()) : "";
 	if (arvrwy.length() == 0)
 		arvrwy = "RWY";
 
 	// ----- Speed that changes to arrival runway -----
 	string srvrwy = speed;
-	if (rt.GetPosition().GetReportedGS() < 25)
+	if (hasRadarTarget && rt.GetPosition().GetReportedGS() < 25)
 		srvrwy = arvrwy;
 
 	// ----- Gate -------
@@ -1593,7 +1594,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		if (useSpeedForGates)
 			gate = std::to_string(fp.GetControllerAssignedData().GetAssignedSpeed());
 		else
-			gate = fp.GetControllerAssignedData().GetScratchPadString();
+			gate = safeString(fp.GetControllerAssignedData().GetScratchPadString());
 	}
 
 	replaceAll(gate, "STAND=", "");
@@ -1605,15 +1606,15 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ----- Gate that changes to speed -------
 	string sate = gate;
-	if (rt.GetPosition().GetReportedGS() > 25)
+	if (hasRadarTarget && rt.GetPosition().GetReportedGS() > 25)
 		sate = speed;
 
 	// ----- Flightlevel -------
-	int fl = rt.GetPosition().GetFlightLevel();
+	int fl = hasRadarTarget ? rt.GetPosition().GetFlightLevel() : 0;
 	int padding = 5;
 	string pfls = "";
 	if (fl <= TransitionAltitude) {
-		fl = rt.GetPosition().GetPressureAltitude();
+		fl = hasRadarTarget ? rt.GetPosition().GetPressureAltitude() : 0;
 		pfls = "A";
 		padding = 4;
 	}
@@ -1623,10 +1624,13 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string tendency = "-";
 	int delta_fl = 0;
 	{
-		CRadarTargetPositionData currentPos = rt.GetPosition();
-		CRadarTargetPositionData previousPos = rt.GetPreviousPosition(currentPos);
-		if (currentPos.IsValid() && previousPos.IsValid())
-			delta_fl = currentPos.GetFlightLevel() - previousPos.GetFlightLevel();
+		if (hasRadarTarget)
+		{
+			CRadarTargetPositionData currentPos = rt.GetPosition();
+			CRadarTargetPositionData previousPos = rt.GetPreviousPosition(currentPos);
+			if (currentPos.IsValid() && previousPos.IsValid())
+				delta_fl = currentPos.GetFlightLevel() - previousPos.GetFlightLevel();
+		}
 	}
 	if (abs(delta_fl) >= 50) {
 		if (delta_fl < 0) {
@@ -1645,13 +1649,13 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	}
 
 	// ----- SSR -------
-	string tssr = safeCString(rt.GetPosition().GetSquawk());
+	string tssr = hasRadarTarget ? safeCString(rt.GetPosition().GetSquawk()) : "";
 
 	// ----- SID -------
 	string dep = "SID";
 	if (hasFlightPlan && isAcCorrelated)
 	{
-		dep = fp.GetFlightPlanData().GetSidName();
+		dep = safeString(fp.GetFlightPlanData().GetSidName());
 	}
 
 	// ----- Short SID -------
@@ -1666,14 +1670,14 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string origin = "????";
 	if (hasFlightPlan && isAcCorrelated)
 	{
-		origin = fp.GetFlightPlanData().GetOrigin();
+		origin = safeString(fp.GetFlightPlanData().GetOrigin());
 	}
 
 	// ------- Destination aerodrome -------
 	string dest = "????";
 	if (hasFlightPlan && isAcCorrelated)
 	{
-		dest = fp.GetFlightPlanData().GetDestination();
+		dest = safeString(fp.GetFlightPlanData().GetDestination());
 	}
 
 	// ----- GSTAT -------
@@ -1692,21 +1696,21 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ----- UK Controller Plugin / Assigned Stand -------
 	string uk_stand;
 	if (hasFlightPlan)
-		uk_stand = fp.GetControllerAssignedData().GetFlightStripAnnotation(3);
+		uk_stand = safeString(fp.GetControllerAssignedData().GetFlightStripAnnotation(3));
 	if (uk_stand.length() == 0)
 		uk_stand = "";
 
 	// ----- Ramp Agent Remark -------
 	string remark;
 	if (hasFlightPlan)
-		remark = fp.GetControllerAssignedData().GetFlightStripAnnotation(4);
+		remark = safeString(fp.GetControllerAssignedData().GetFlightStripAnnotation(4));
 	if (remark.length() == 0)
 		remark = "";
 	
 	// ----- Scratchpad -------
 	string scratchpad;
 	if (hasFlightPlan)
-		scratchpad = fp.GetControllerAssignedData().GetScratchPadString();
+		scratchpad = safeString(fp.GetControllerAssignedData().GetScratchPadString());
 	if (scratchpad.length() == 0)
 		scratchpad = "...";
 
@@ -1747,7 +1751,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// VACDM fallback: when backend has no entry, use FPL EOBT as TOBT baseline (matches VACDM plugin bootstrap behavior).
 	if (tobt.empty() && hasFlightPlan && isAcCorrelated)
-		tobt = NormalizeHhmmToken(fp.GetFlightPlanData().GetEstimatedDepartureTime());
+		tobt = NormalizeHhmmToken(safeCString(fp.GetFlightPlanData().GetEstimatedDepartureTime()));
 
 
 	// ----- Generating the replacing map -----
@@ -2434,6 +2438,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	{
 		if (!rt.IsValid() || !rt.GetPosition().IsValid())
 			continue;
+		const char* rtCallsign = rt.GetCallsign();
+		if (rtCallsign == nullptr || rtCallsign[0] == '\0')
+		{
+			static bool loggedMissingRefreshCallsign = false;
+			if (!loggedMissingRefreshCallsign)
+			{
+				Logger::info("OnRefresh: skipped target with missing callsign");
+				loggedMissingRefreshCallsign = true;
+			}
+			continue;
+		}
 
 		int reportedGs = rt.GetPosition().GetReportedGS();
 		bool isAcDisplayed = isVisible(rt);
@@ -2441,7 +2456,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (!isAcDisplayed)
 			continue;
 
-		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rt.GetCallsign());
+		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign);
 		bool AcisCorrelated = IsCorrelated(iconFp, rt);
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
 
@@ -2523,16 +2538,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["targets"]["target_color"])));
 
 			PointF lpPoints[100];
-			for (unsigned int i = 0; i < Patatoides[rt.GetCallsign()].points.size(); i++)
+			for (unsigned int i = 0; i < Patatoides[rtCallsign].points.size(); i++)
 			{
 				CPosition pos;
-				pos.m_Latitude = Patatoides[rt.GetCallsign()].points[i].x;
-				pos.m_Longitude = Patatoides[rt.GetCallsign()].points[i].y;
+				pos.m_Latitude = Patatoides[rtCallsign].points[i].x;
+				pos.m_Longitude = Patatoides[rtCallsign].points[i].y;
 
 				lpPoints[i] = { REAL(ConvertCoordFromPositionToPixel(pos).x), REAL(ConvertCoordFromPositionToPixel(pos).y) };
 			}
 
-			graphics.FillPolygon(&H_Brush, lpPoints, Patatoides[rt.GetCallsign()].points.size());
+			graphics.FillPolygon(&H_Brush, lpPoints, Patatoides[rtCallsign].points.size());
 		}
 		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
@@ -2565,7 +2580,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		const bool useDiamondIconStyle = frameUseDiamondIconStyle;
 		const bool useRealisticIconStyle = frameUseRealisticIconStyle;
 		char wtc = iconFp.IsValid() ? iconFp.GetFlightPlanData().GetAircraftWtc() : '\0';
-		std::string acType = iconFp.IsValid() ? iconFp.GetFlightPlanData().GetAircraftFPType() : "";
+		std::string acType;
+		if (iconFp.IsValid())
+		{
+			const char* acTypeRaw = iconFp.GetFlightPlanData().GetAircraftFPType();
+			acType = (acTypeRaw != nullptr) ? acTypeRaw : "";
+		}
 		if (acType.size() > 4)
 			acType = acType.substr(0, 4);
 		std::string acTypeLower = acType;
@@ -2599,7 +2619,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			specIt = AircraftSpecs.find(specFallback);
 		}
 
-		bool isOnRunway = RimcasInstance->isAcOnRunway(rt.GetCallsign());
+		bool isOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
 		GroundStateCategory groundStateCat = GroundStateCategory::Unknown;
 		if (iconFp.IsValid()) {
 			groundStateCat = classifyGroundState(iconFp.GetGroundState(), reportedGs, isOnRunway);
@@ -2608,7 +2628,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		bool isDepartureTarget = false;
 		if (iconFp.IsValid() && AcisCorrelated)
 		{
-			std::string originAirport = iconFp.GetFlightPlanData().GetOrigin();
+			const char* originRaw = iconFp.GetFlightPlanData().GetOrigin();
+			std::string originAirport = (originRaw != nullptr) ? originRaw : "";
 			if (!originAirport.empty() && !frameActiveAirport.empty())
 			{
 				std::transform(originAirport.begin(), originAirport.end(), originAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
@@ -2678,8 +2699,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			getCachedIconVacdmColorRules(vacdmRuleType, vacdmRuleStatus);
 		VacdmColorRuleOverrides vacdmColorRuleOverrides =
 			EvaluateVacdmColorRules(vacdmColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
-		const bool iconIsAseL = (frameAselTarget.IsValid() && strcmp(frameAselTarget.GetCallsign(), rt.GetCallsign()) == 0);
-		const std::string targetCallsign = rt.GetCallsign() != nullptr ? ToUpperAsciiCopy(rt.GetCallsign()) : std::string();
+		const char* frameAselCallsign = frameAselTarget.IsValid() ? frameAselTarget.GetCallsign() : nullptr;
+		const bool iconIsAseL = (frameAselCallsign != nullptr && strcmp(frameAselCallsign, rtCallsign) == 0);
+		const std::string targetCallsign = ToUpperAsciiCopy(rtCallsign);
 		auto tagDataIt = frameTagDataCache.find(targetCallsign);
 		if (tagDataIt == frameTagDataCache.end())
 		{
@@ -3295,7 +3317,19 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 
 		int hitSize = max(iconSize, 12);
-		AddScreenObject(DRAWING_AC_SYMBOL, rt.GetCallsign(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, AcisCorrelated ? GetBottomLine(rt.GetCallsign()).c_str() : rt.GetSystemID());
+		std::string hoverTextStorage;
+		const char* hoverText = "";
+		if (AcisCorrelated)
+		{
+			hoverTextStorage = GetBottomLine(rtCallsign);
+			hoverText = hoverTextStorage.c_str();
+		}
+		else
+		{
+			const char* systemIdText = rt.GetSystemID();
+			hoverText = (systemIdText != nullptr) ? systemIdText : "";
+		}
+		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign, { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
 	}
 
 #pragma endregion Drawing of the symbols

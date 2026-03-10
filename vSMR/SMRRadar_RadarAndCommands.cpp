@@ -27,16 +27,27 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 	Logger::info(string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
 		return;
+	const char* callsign = RadarTarget.GetCallsign();
+	if (callsign == nullptr || callsign[0] == '\0')
+	{
+		static bool loggedMissingCallsign = false;
+		if (!loggedMissingCallsign)
+		{
+			Logger::info("OnRadarTargetPositionUpdate: skipped target with missing callsign");
+			loggedMissingCallsign = true;
+		}
+		return;
+	}
 
 	CRadarTargetPositionData RtPos = RadarTarget.GetPosition();
 
-	Patatoides[RadarTarget.GetCallsign()].History_three_points = Patatoides[RadarTarget.GetCallsign()].History_two_points;
-	Patatoides[RadarTarget.GetCallsign()].History_two_points = Patatoides[RadarTarget.GetCallsign()].History_one_points;
-	Patatoides[RadarTarget.GetCallsign()].History_one_points = Patatoides[RadarTarget.GetCallsign()].points;
+	Patatoides[callsign].History_three_points = Patatoides[callsign].History_two_points;
+	Patatoides[callsign].History_two_points = Patatoides[callsign].History_one_points;
+	Patatoides[callsign].History_one_points = Patatoides[callsign].points;
 
-	Patatoides[RadarTarget.GetCallsign()].points.clear();
+	Patatoides[callsign].points.clear();
 
-	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(RadarTarget.GetCallsign());
+	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(callsign);
 
 	// All units in M
 	float width = 34.0f;
@@ -132,14 +143,14 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 		double dist, rndHeading;
 		dist = startPoint.DistanceTo(endPoint);
 
-		Patatoides[RadarTarget.GetCallsign()].points[i * 7] = { startPoint.m_Latitude, startPoint.m_Longitude };
+		Patatoides[callsign].points[i * 7] = { startPoint.m_Latitude, startPoint.m_Longitude };
 		lastPoint = startPoint;
 
 		for (int k = 1; k < 7; k++){
 
 			rndHeading = float(fmod(lastPoint.DirectionTo(endPoint) + (-25.0 + (rand() % 50 + 1)), 360));
 			newPoint = Haversine(lastPoint, rndHeading, dist * 200);
-			Patatoides[RadarTarget.GetCallsign()].points[(i * 7) + k] = { newPoint.m_Latitude, newPoint.m_Longitude };
+			Patatoides[callsign].points[(i * 7) + k] = { newPoint.m_Latitude, newPoint.m_Longitude };
 			lastPoint = newPoint;
 		}
 	}
