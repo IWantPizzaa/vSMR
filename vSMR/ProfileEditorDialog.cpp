@@ -2895,8 +2895,8 @@ void CProfileEditorDialog::LayoutControls()
 	const int innerPad = 16;
 	const int colorGap = 16;
 	const int availableWidth = max(200, pageRect.Width() - (innerPad * 2) - colorGap);
-	const int colorLeftWidth = max(230, static_cast<int>(availableWidth * 0.46));
-	const int colorRightWidth = max(170, availableWidth - colorLeftWidth);
+	const int colorLeftWidth = availableWidth / 2;
+	const int colorRightWidth = availableWidth - colorLeftWidth;
 	const int colorTop = pageRect.top + innerPad;
 	const int panelHeight = max(120, pageRect.Height() - (innerPad * 2));
 	const int colorLeft = pageRect.left + innerPad;
