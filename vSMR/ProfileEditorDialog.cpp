@@ -303,6 +303,9 @@ namespace
 
 	std::string FormatColorPathForDisplay(const std::string& path)
 	{
+		if (_stricmp(path.c_str(), "labels.departure.background_color") == 0)
+			return "Tags > Departure > NSTS";
+
 		const std::vector<std::string> segments = SplitColorPathForDisplay(path);
 		std::string display;
 		for (size_t i = 0; i < segments.size(); ++i)
@@ -3563,7 +3566,10 @@ void CProfileEditorDialog::RebuildColorPathTree(const std::string& selectedPath)
 			auto itNode = nodeByPrefix.find(prefix);
 			if (itNode == nodeByPrefix.end())
 			{
-				const std::string displaySegment = FormatColorPathSegmentForDisplay(segments[i]);
+				std::string displaySegment = FormatColorPathSegmentForDisplay(segments[i]);
+				if (i + 1 == segments.size() && _stricmp(path.c_str(), "labels.departure.background_color") == 0)
+					displaySegment = "NSTS";
+
 				HTREEITEM item = ColorPathTree.InsertItem(displaySegment.c_str(), parent);
 				nodeByPrefix.insert(std::make_pair(prefix, item));
 				itNode = nodeByPrefix.find(prefix);
@@ -4567,15 +4573,25 @@ void CProfileEditorDialog::RefreshTagStatusOptions()
 
 	const std::vector<std::string> statuses = Owner->GetTagDefinitionStatusesForType(TagEditorType);
 	const std::string normalizedStatus = Owner->NormalizeTagDefinitionDepartureStatus(TagEditorStatus);
+	const bool departureUsesNstsAsDefault = (_stricmp(Owner->NormalizeTagDefinitionType(TagEditorType).c_str(), "departure") == 0);
 
 	UpdatingControls = true;
 	TagStatusCombo.ResetContent();
 	int selectedIndex = 0;
 	for (size_t i = 0; i < statuses.size(); ++i)
 	{
-		TagStatusCombo.AddString(Owner->TagDefinitionDepartureStatusLabel(statuses[i]).c_str());
-		if (_stricmp(statuses[i].c_str(), normalizedStatus.c_str()) == 0)
+		std::string label = Owner->TagDefinitionDepartureStatusLabel(statuses[i]);
+		if (departureUsesNstsAsDefault && _stricmp(statuses[i].c_str(), "default") == 0)
+			label = "NSTS";
+
+		TagStatusCombo.AddString(label.c_str());
+		if (_stricmp(statuses[i].c_str(), normalizedStatus.c_str()) == 0 ||
+			(departureUsesNstsAsDefault &&
+			 _stricmp(statuses[i].c_str(), "default") == 0 &&
+			 _stricmp(normalizedStatus.c_str(), "nsts") == 0))
+		{
 			selectedIndex = static_cast<int>(i);
+		}
 	}
 	if (TagStatusCombo.GetCount() > 0)
 		TagStatusCombo.SetCurSel(selectedIndex);
@@ -4583,9 +4599,11 @@ void CProfileEditorDialog::RefreshTagStatusOptions()
 
 	if (TagStatusCombo.GetCount() > 0)
 	{
-		CString selectedStatus;
-		TagStatusCombo.GetLBText(TagStatusCombo.GetCurSel(), selectedStatus);
-		TagEditorStatus = Owner->NormalizeTagDefinitionDepartureStatus(std::string(selectedStatus.GetString()));
+		const int selected = TagStatusCombo.GetCurSel();
+		if (selected != CB_ERR && selected >= 0 && selected < static_cast<int>(statuses.size()))
+			TagEditorStatus = statuses[static_cast<size_t>(selected)];
+		else
+			TagEditorStatus = "default";
 	}
 	else
 	{
@@ -5527,9 +5545,11 @@ void CProfileEditorDialog::OnTagStatusChanged()
 	if (selected == CB_ERR)
 		return;
 
-	CString selectedStatus;
-	TagStatusCombo.GetLBText(selected, selectedStatus);
-	TagEditorStatus = Owner->NormalizeTagDefinitionDepartureStatus(std::string(selectedStatus.GetString()));
+	const std::vector<std::string> statuses = Owner->GetTagDefinitionStatusesForType(TagEditorType);
+	if (selected < 0 || selected >= static_cast<int>(statuses.size()))
+		return;
+
+	TagEditorStatus = statuses[static_cast<size_t>(selected)];
 	TagEditorSeparateDetailed = !Owner->GetTagDefinitionDetailedSameAsDefinition(TagEditorType, TagEditorStatus);
 	UpdatingControls = true;
 	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);

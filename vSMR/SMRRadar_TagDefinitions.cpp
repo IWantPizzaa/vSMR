@@ -509,7 +509,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionStatusesForType(const std::s
 {
 	const std::string normalizedType = NormalizeTagDefinitionType(type);
 	if (normalizedType == "departure")
-		return { "default", "nofpl", "nsts", "push", "stup", "taxi", "depa" };
+		return { "default", "nofpl", "push", "stup", "taxi", "depa" };
 	if (normalizedType == "arrival")
 		return { "default", "nofpl" };
 	if (normalizedType == "airborne")
@@ -1166,6 +1166,10 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 			previewMap["actype"] = "NoFPL";
 			previewMap["sctype"] = "NoFPL";
 		}
+		else if (requestedType == TagTypes::Departure && status == "default")
+		{
+			previewMap["groundstatus"] = "NSTS";
+		}
 		else if (status != "default")
 		{
 			previewMap["groundstatus"] = TagDefinitionDepartureStatusLabel(status);
@@ -1449,27 +1453,36 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 	}
 
 	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
-	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject())
+	if (!profile.IsObject())
 	{
 		StructuredTagRulesCacheValid = true;
 		return StructuredTagRulesCache;
 	}
 
-	const rapidjson::Value& labels = profile["labels"];
-	if (!labels.HasMember("rules") || !labels["rules"].IsObject())
+	const rapidjson::Value* rulesObject = nullptr;
+	if (profile.HasMember("rules") && profile["rules"].IsObject())
+	{
+		rulesObject = &profile["rules"];
+	}
+	else if (profile.HasMember("labels") && profile["labels"].IsObject() &&
+		profile["labels"].HasMember("rules") && profile["labels"]["rules"].IsObject())
+	{
+		rulesObject = &profile["labels"]["rules"];
+	}
+
+	if (rulesObject == nullptr)
 	{
 		StructuredTagRulesCacheValid = true;
 		return StructuredTagRulesCache;
 	}
 
-	const rapidjson::Value& rulesObject = labels["rules"];
-	if (!rulesObject.HasMember("items") || !rulesObject["items"].IsArray())
+	if (!rulesObject->HasMember("items") || !(*rulesObject)["items"].IsArray())
 	{
 		StructuredTagRulesCacheValid = true;
 		return StructuredTagRulesCache;
 	}
 
-	const rapidjson::Value& items = rulesObject["items"];
+	const rapidjson::Value& items = (*rulesObject)["items"];
 	for (rapidjson::SizeType i = 0; i < items.Size(); ++i)
 	{
 		if (!items[i].IsObject())
@@ -1611,8 +1624,13 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		return parent[key];
 	};
 
-	rapidjson::Value& labels = ensureObjectMember(profile, "labels");
-	rapidjson::Value& rulesObject = ensureObjectMember(labels, "rules");
+	if (profile.HasMember("labels") && profile["labels"].IsObject() && profile["labels"].HasMember("rules"))
+	{
+		profile["labels"].RemoveMember("rules");
+		changed = true;
+	}
+
+	rapidjson::Value& rulesObject = ensureObjectMember(profile, "rules");
 
 	if (!rulesObject.HasMember("version") || !rulesObject["version"].IsInt() || rulesObject["version"].GetInt() != 1)
 	{

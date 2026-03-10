@@ -986,9 +986,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				case GroundStateCategory::Stup:
 					statusColorKey = "stup";
 					break;
-				case GroundStateCategory::Nsts:
-					statusColorKey = "nsts";
-					break;
 				case GroundStateCategory::Depa:
 					statusColorKey = "depa";
 					break;

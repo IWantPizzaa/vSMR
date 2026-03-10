@@ -393,6 +393,32 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		ensureComponent("a", a);
 	};
 
+	auto replaceColorMember = [&](Value& parent, const char* key, const Value& sourceColor)
+	{
+		if (!sourceColor.IsObject())
+			return;
+
+		auto readColorComponent = [&](const char* component, int fallback) -> int
+		{
+			if (sourceColor.HasMember(component) && sourceColor[component].IsInt())
+				return min(255, max(0, sourceColor[component].GetInt()));
+			return fallback;
+		};
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value colorObject(kObjectType);
+		colorObject.AddMember("r", readColorComponent("r", 0), allocator);
+		colorObject.AddMember("g", readColorComponent("g", 0), allocator);
+		colorObject.AddMember("b", readColorComponent("b", 0), allocator);
+		colorObject.AddMember("a", readColorComponent("a", 255), allocator);
+		parent.AddMember(keyValue, colorObject, allocator);
+		changed = true;
+	};
+
 	auto ensureBoolMember = [&](Value& parent, const char* key, bool defaultValue)
 	{
 		if (parent.HasMember(key) && parent[key].IsBool())
@@ -554,6 +580,121 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 		parent.AddMember(keyValue, definitionArray, allocator);
 		changed = true;
+	};
+
+	auto replaceDefinitionArrayMember = [&](Value& parent, const char* key, const Value& sourceArray)
+	{
+		if (!sourceArray.IsArray())
+			return;
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value definitionArray(kArrayType);
+		appendCopiedDefinition(definitionArray, sourceArray);
+		parent.AddMember(keyValue, definitionArray, allocator);
+		changed = true;
+	};
+
+	auto cloneJsonValue = [&](Value& destination, const Value& source, const auto& cloneRef) -> void
+	{
+		if (source.IsObject())
+		{
+			destination.SetObject();
+			for (auto member = source.MemberBegin(); member != source.MemberEnd(); ++member)
+			{
+				Value keyValue;
+				keyValue.SetString(member->name.GetString(), static_cast<rapidjson::SizeType>(strlen(member->name.GetString())), allocator);
+				Value childValue;
+				cloneRef(childValue, member->value, cloneRef);
+				destination.AddMember(keyValue, childValue, allocator);
+			}
+			return;
+		}
+
+		if (source.IsArray())
+		{
+			destination.SetArray();
+			for (rapidjson::SizeType i = 0; i < source.Size(); ++i)
+			{
+				Value childValue;
+				cloneRef(childValue, source[i], cloneRef);
+				destination.PushBack(childValue, allocator);
+			}
+			return;
+		}
+
+		if (source.IsString())
+		{
+			destination.SetString(source.GetString(), static_cast<rapidjson::SizeType>(strlen(source.GetString())), allocator);
+			return;
+		}
+
+		if (source.IsBool())
+		{
+			destination.SetBool(source.GetBool());
+			return;
+		}
+		if (source.IsInt())
+		{
+			destination.SetInt(source.GetInt());
+			return;
+		}
+		if (source.IsUint())
+		{
+			destination.SetUint(source.GetUint());
+			return;
+		}
+		if (source.IsInt64())
+		{
+			destination.SetInt64(source.GetInt64());
+			return;
+		}
+		if (source.IsUint64())
+		{
+			destination.SetUint64(source.GetUint64());
+			return;
+		}
+		if (source.IsDouble())
+		{
+			destination.SetDouble(source.GetDouble());
+			return;
+		}
+		if (source.IsNull())
+		{
+			destination.SetNull();
+			return;
+		}
+
+		destination.SetNull();
+	};
+
+	auto copyBoolMemberIfPresent = [&](Value& parent, const char* key, const Value& sourceObject)
+	{
+		if (!sourceObject.IsObject() || !sourceObject.HasMember(key) || !sourceObject[key].IsBool())
+			return;
+
+		const bool sourceValue = sourceObject[key].GetBool();
+		if (!parent.HasMember(key) || !parent[key].IsBool())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			Value keyValue;
+			keyValue.SetString(key, allocator);
+			Value boolValue(sourceValue);
+			parent.AddMember(keyValue, boolValue, allocator);
+			changed = true;
+			return;
+		}
+
+		if (parent[key].GetBool() != sourceValue)
+		{
+			parent[key].SetBool(sourceValue);
+			changed = true;
+		}
 	};
 
 	const std::vector<std::string> defaultTagFonts = {
@@ -737,10 +878,15 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	Value& departureLabel = ensureObjectMember(labels, "departure");
 	ensureColorMember(departureLabel, "nofpl_color", 128, 128, 128, 255);
 	Value& departureStatusColors = ensureObjectMember(departureLabel, "status_background_colors");
+	if (departureStatusColors.HasMember("nsts") && departureStatusColors["nsts"].IsObject())
+	{
+		replaceColorMember(departureLabel, "background_color", departureStatusColors["nsts"]);
+		departureStatusColors.RemoveMember("nsts");
+		changed = true;
+	}
 	ensureColorMember(departureStatusColors, "push", 253, 218, 13, 255);
 	ensureColorMember(departureStatusColors, "stup", 253, 218, 13, 255);
 	ensureColorMember(departureStatusColors, "taxi", 240, 240, 240, 255);
-	ensureColorMember(departureStatusColors, "nsts", 165, 165, 165, 255);
 	ensureColorMember(departureStatusColors, "depa", 240, 240, 240, 255);
 
 	Value& arrivalLabel = ensureObjectMember(labels, "arrival");
@@ -777,6 +923,17 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	const Value* baseDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;
 	ensureDefinitionArrayMember(departureLabel, "definitionDetailled", baseDefinition);
 	Value& departureStatusDefinitions = ensureObjectMember(departureLabel, "status_definitions");
+	if (departureStatusDefinitions.HasMember("nsts") && departureStatusDefinitions["nsts"].IsObject())
+	{
+		Value& departureNstsSection = departureStatusDefinitions["nsts"];
+		if (departureNstsSection.HasMember("definition") && departureNstsSection["definition"].IsArray())
+			replaceDefinitionArrayMember(departureLabel, "definition", departureNstsSection["definition"]);
+		if (departureNstsSection.HasMember("definitionDetailled") && departureNstsSection["definitionDetailled"].IsArray())
+			replaceDefinitionArrayMember(departureLabel, "definitionDetailled", departureNstsSection["definitionDetailled"]);
+		copyBoolMemberIfPresent(departureLabel, "definition_detailed_same_as_definition", departureNstsSection);
+		departureStatusDefinitions.RemoveMember("nsts");
+		changed = true;
+	}
 
 	auto ensureStatusDefinitionEntries = [&](const char* statusKey)
 	{
@@ -790,7 +947,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureStatusDefinitionEntries("taxi");
 	ensureStatusDefinitionEntries("push");
 	ensureStatusDefinitionEntries("stup");
-	ensureStatusDefinitionEntries("nsts");
 	ensureStatusDefinitionEntries("depa");
 	ensureStatusDefinitionEntries("nofpl");
 
@@ -819,19 +975,41 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	ensureArrivalStatusDefinitionEntries("nofpl");
 
-	Value& labelRules = ensureObjectMember(labels, "rules");
-	ensureIntMember(labelRules, "version", 1, 1, 1000);
-	if (!labelRules.HasMember("items") || !labelRules["items"].IsArray())
+	Value legacyLabelRules(kObjectType);
+	bool hasLegacyLabelRules = false;
+	if (labels.HasMember("rules") && labels["rules"].IsObject())
 	{
-		if (labelRules.HasMember("items"))
-			labelRules.RemoveMember("items");
+		cloneJsonValue(legacyLabelRules, labels["rules"], cloneJsonValue);
+		hasLegacyLabelRules = true;
+	}
+
+	Value& structuredRules = ensureObjectMember(profile, "rules");
+	const bool structuredRulesHasItems = structuredRules.HasMember("items") && structuredRules["items"].IsArray();
+	if (!structuredRulesHasItems && hasLegacyLabelRules &&
+		legacyLabelRules.HasMember("items") && legacyLabelRules["items"].IsArray())
+	{
+		cloneJsonValue(structuredRules, legacyLabelRules, cloneJsonValue);
+		changed = true;
+	}
+
+	if (hasLegacyLabelRules)
+	{
+		labels.RemoveMember("rules");
+		changed = true;
+	}
+
+	ensureIntMember(structuredRules, "version", 1, 1, 1000);
+	if (!structuredRules.HasMember("items") || !structuredRules["items"].IsArray())
+	{
+		if (structuredRules.HasMember("items"))
+			structuredRules.RemoveMember("items");
 		Value itemsKey;
 		itemsKey.SetString("items", allocator);
 		Value itemsArray(kArrayType);
-		labelRules.AddMember(itemsKey, itemsArray, allocator);
+		structuredRules.AddMember(itemsKey, itemsArray, allocator);
 		changed = true;
 	}
-	Value& labelRuleItems = labelRules["items"];
+	Value& structuredRuleItems = structuredRules["items"];
 
 	auto parseRuleColor = [&](const Value& item, const char* key, bool& outApply, int& outR, int& outG, int& outB)
 	{
@@ -877,12 +1055,12 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	};
 
 	std::set<std::string> existingRuleSignatures;
-	for (rapidjson::SizeType i = 0; i < labelRuleItems.Size(); ++i)
+	for (rapidjson::SizeType i = 0; i < structuredRuleItems.Size(); ++i)
 	{
-		if (!labelRuleItems[i].IsObject())
+		if (!structuredRuleItems[i].IsObject())
 			continue;
 
-		const Value& item = labelRuleItems[i];
+		const Value& item = structuredRuleItems[i];
 		std::string source = "vacdm";
 		if (item.HasMember("source") && item["source"].IsString())
 			source = item["source"].GetString();
@@ -1030,7 +1208,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		appendRuleColor("tag_color", applyTag, tagR, tagG, tagB);
 		appendRuleColor("text_color", applyText, textR, textG, textB);
 
-		labelRuleItems.PushBack(ruleObject, allocator);
+		structuredRuleItems.PushBack(ruleObject, allocator);
 		changed = true;
 	};
 
