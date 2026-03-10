@@ -1144,6 +1144,10 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		SolidBrush AlertColorWarning(ColorManager->get_corrected_color("label",
 			getRimcasEditorColor("warning_alert_background_color", Color(230, 200, 40, 40))));
 		const bool isClearanceReceived = (fp.IsValid() && fp.GetClearenceFlag());
+		Gdiplus::StringFormat tagTextFormat;
+		tagTextFormat.SetAlignment(Gdiplus::StringAlignmentNear);
+		tagTextFormat.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+		tagTextFormat.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
 		std::unique_ptr<SolidBrush> VacdmTobtTextBrush;
 		std::unique_ptr<SolidBrush> VacdmTsatTextBrush;
 
@@ -1211,9 +1215,14 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
 
+			RectF alertTextRect(
+				Gdiplus::REAL(textLeft),
+				Gdiplus::REAL(textTop + heightOffset),
+				Gdiplus::REAL(max(1, TagWidth)),
+				Gdiplus::REAL(alertLineHeight));
 			graphics.DrawString(walertStr.c_str(), wcslen(walertStr.c_str()), customFonts[currentFontSize],
-				PointF(Gdiplus::REAL(textLeft), Gdiplus::REAL(textTop + heightOffset)),
-				&Gdiplus::StringFormat(), RimcasTextColor);
+				alertTextRect,
+				&tagTextFormat, RimcasTextColor);
 
 			CRect alertRect(TagBackgroundRect.left, TagBackgroundRect.top + heightOffset,
 				TagBackgroundRect.left + alertTextWidth, TagBackgroundRect.top + heightOffset + max(alertTextHeight, oneLineHeight));
@@ -1252,9 +1261,14 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 				wstring welement = wstring(element.begin(), element.end());
 
+				RectF elementTextRect(
+					Gdiplus::REAL(textLeft + widthOffset),
+					Gdiplus::REAL(textTop + heightOffset),
+					Gdiplus::REAL(max(1, renderedElement.measuredWidth)),
+					Gdiplus::REAL(oneLineHeight));
 				graphics.DrawString(welement.c_str(), wcslen(welement.c_str()), drawFont,
-					PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset)),
-					&Gdiplus::StringFormat(), color);
+					elementTextRect,
+					&tagTextFormat, color);
 
 				int clickItemType = TAG_CITEM_NO;
 				auto clickItemIt = TagClickableMap.find(element);
