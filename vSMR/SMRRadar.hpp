@@ -340,6 +340,8 @@ public:
 	std::vector<std::string> GetProfileNamesForEditor() const;
 	std::string GetActiveProfileNameForEditor() const;
 	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);
+	bool GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const;
+	bool SetProfileProModeEnabledForEditor(const std::string& name, bool enabled);
 	bool AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName = nullptr);
 	bool RenameProfileForEditor(const std::string& oldName, const std::string& newName);
 	bool DeleteProfileForEditor(const std::string& name);

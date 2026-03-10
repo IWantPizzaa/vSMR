@@ -76,6 +76,7 @@ protected:
 	afx_msg void OnProfileDuplicateClicked();
 	afx_msg void OnProfileRenameClicked();
 	afx_msg void OnProfileDeleteClicked();
+	afx_msg void OnProfileProModeToggled();
 	afx_msg void OnProfileRepoLinkClicked();
 	afx_msg void OnProfileCoffeeLinkClicked();
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
@@ -223,6 +224,7 @@ private:
 		, IDC_PE_PROFILE_DUPLICATE_BUTTON = 9240
 		, IDC_PE_PROFILE_RENAME_BUTTON = 9241
 		, IDC_PE_PROFILE_DELETE_BUTTON = 9242
+		, IDC_PE_PROFILE_PRO_MODE_CHECK = 9272
 		, IDC_PE_SIDEBAR_PANEL = 9243
 		, IDC_PE_SIDEBAR_TITLE = 9244
 		, IDC_PE_NAV_COLORS = 9245
@@ -375,6 +377,7 @@ private:
 	CListBox ProfileList;
 	CStatic ProfileNameLabel;
 	CEdit ProfileNameEdit;
+	CButton ProfileProModeCheck;
 	CButton ProfileAddButton;
 	CButton ProfileDuplicateButton;
 	CButton ProfileRenameButton;
