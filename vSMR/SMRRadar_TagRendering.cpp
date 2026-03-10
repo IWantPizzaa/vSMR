@@ -1124,10 +1124,24 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
 		SolidBrush ClearanceNotReceivedColor(ColorManager->get_corrected_color("label", Color(255, 235, 70, 70)));
 		SolidBrush ClearanceReceivedColor(ColorManager->get_corrected_color("label", Color(255, 95, 225, 120)));
-		SolidBrush AlertTextColorCaution(Color(255, 30, 30, 30)); // dark text
-		SolidBrush AlertTextColorWarning(Color(255, 255, 255, 255)); // bright text
-		SolidBrush AlertColorCaution(Color(230, 255, 215, 0)); // yellow-ish with alpha
-		SolidBrush AlertColorWarning(Color(230, 200, 40, 40));  // red-ish with alpha
+		auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
+		{
+			if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+			{
+				const Value& rimcas = activeProfile["rimcas"];
+				if (rimcas.HasMember(key) && rimcas[key].IsObject())
+					return CurrentConfig->getConfigColor(rimcas[key]);
+			}
+			return fallback;
+		};
+		SolidBrush AlertTextColorCaution(ColorManager->get_corrected_color("label",
+			getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30))));
+		SolidBrush AlertTextColorWarning(ColorManager->get_corrected_color("label",
+			getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
+		SolidBrush AlertColorCaution(ColorManager->get_corrected_color("label",
+			getRimcasEditorColor("caution_alert_background_color", Color(230, 255, 215, 0))));
+		SolidBrush AlertColorWarning(ColorManager->get_corrected_color("label",
+			getRimcasEditorColor("warning_alert_background_color", Color(230, 200, 40, 40))));
 		const bool isClearanceReceived = (fp.IsValid() && fp.GetClearenceFlag());
 		std::unique_ptr<SolidBrush> VacdmTobtTextBrush;
 		std::unique_ptr<SolidBrush> VacdmTsatTextBrush;
