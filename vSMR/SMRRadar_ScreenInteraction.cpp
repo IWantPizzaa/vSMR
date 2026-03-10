@@ -242,6 +242,21 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		GetPlugIn()->OpenPopupEdit(Area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
 	}
 
+	if (ObjectType == RIMCAS_ACTIVE_PROFILE) {
+		if (Button == BUTTON_LEFT)
+		{
+			Area.top += 30;
+			Area.bottom += 30;
+			ShowLists["Profiles"] = true;
+			ListAreas["Profiles"] = Area;
+			RequestRefresh();
+		}
+		else if (Button == BUTTON_RIGHT)
+		{
+			OpenProfileEditorWindow();
+		}
+	}
+
 	if (ObjectType == DRAWING_BACKGROUND_CLICK)
 	{
 		if (QDMSelectEnabled)

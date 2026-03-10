@@ -745,9 +745,25 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	Value& arrivalLabel = ensureObjectMember(labels, "arrival");
 	ensureColorMember(arrivalLabel, "nofpl_color", 128, 128, 128, 255);
-	Value& arrivalStatusColors = ensureObjectMember(arrivalLabel, "status_background_colors");
-	ensureColorMember(arrivalStatusColors, "arr", 165, 165, 165, 255);
-	ensureColorMember(arrivalStatusColors, "taxi", 70, 195, 120, 255);
+	if (arrivalLabel.HasMember("status_background_colors") && arrivalLabel["status_background_colors"].IsObject())
+	{
+		Value& arrivalStatusColors = arrivalLabel["status_background_colors"];
+		if (arrivalStatusColors.HasMember("arr"))
+		{
+			arrivalStatusColors.RemoveMember("arr");
+			changed = true;
+		}
+		if (arrivalStatusColors.HasMember("taxi"))
+		{
+			arrivalStatusColors.RemoveMember("taxi");
+			changed = true;
+		}
+		if (arrivalStatusColors.MemberBegin() == arrivalStatusColors.MemberEnd())
+		{
+			arrivalLabel.RemoveMember("status_background_colors");
+			changed = true;
+		}
+	}
 
 	Value& airborneLabel = ensureObjectMember(labels, "airborne");
 	ensureColorMember(airborneLabel, "departure_background_color", 53, 126, 187, 255);
@@ -791,8 +807,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		ensureDefinitionArrayMember(statusSection, "definitionDetailled", defaultDetailedDefinition);
 	};
 
-	ensureArrivalStatusDefinitionEntries("arr");
-	ensureArrivalStatusDefinitionEntries("taxi");
 	ensureArrivalStatusDefinitionEntries("nofpl");
 
 	Value& labelRules = ensureObjectMember(labels, "rules");
@@ -3463,6 +3477,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	AddScreenObject(RIMCAS_ACTIVE_AIRPORT, "ActiveAirport", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(getActiveAirport().c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(getActiveAirport().c_str()).cy }, false, "Active Airport");
 
 	offset += dc.GetTextExtent(getActiveAirport().c_str()).cx + 10;
+	std::string activeProfileName = GetActiveProfileNameForEditor();
+	if (activeProfileName.empty())
+		activeProfileName = "Default";
+	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, activeProfileName.c_str());
+	AddScreenObject(RIMCAS_ACTIVE_PROFILE, "ActiveProfile", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(activeProfileName.c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(activeProfileName.c_str()).cy }, false, "Active profile");
+
+	offset += dc.GetTextExtent(activeProfileName.c_str()).cx + 10;
 	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Display");
 	AddScreenObject(RIMCAS_MENU, "DisplayMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Display").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Display").cy }, false, "Display menu");
 
