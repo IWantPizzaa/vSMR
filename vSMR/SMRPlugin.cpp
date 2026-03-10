@@ -12,9 +12,9 @@ bool Logger::ENABLED;
 string Logger::DLL_PATH;
 Logger::Mode Logger::CURRENT_MODE = Logger::Mode::Normal;
 
-bool HoppieConnected = false;
-bool ConnectionMessage = false;
-bool FailedToConnectMessage = false;
+std::atomic<bool> HoppieConnected(false);
+std::atomic<bool> ConnectionMessage(false);
+std::atomic<bool> FailedToConnectMessage(false);
 
 string logonCode = "";
 string logonCallsign = "EGKK";
@@ -54,12 +54,13 @@ vector<string> AircraftMessage;
 vector<string> AircraftWilco;
 vector<string> AircraftStandby;
 map<string, AcarsMessage> PendingMessages;
+std::mutex DatalinkStateMutex;
 
 string tmessage;
 string tdest;
 string ttype;
 
-int messageId = 0;
+std::atomic<int> messageId(0);
 
 clock_t timer;
 
@@ -148,6 +149,22 @@ namespace
 			pushUnique(trimmed.substr(0, slashPos));
 
 		return candidates;
+	}
+
+	bool ContainsCallsignUnlocked(const std::vector<std::string>& collection, const std::string& callsign)
+	{
+		return std::find(collection.begin(), collection.end(), callsign) != collection.end();
+	}
+
+	void AddCallsignUniqueUnlocked(std::vector<std::string>& collection, const std::string& callsign)
+	{
+		if (!ContainsCallsignUnlocked(collection, callsign))
+			collection.push_back(callsign);
+	}
+
+	void RemoveCallsignUnlocked(std::vector<std::string>& collection, const std::string& callsign)
+	{
+		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
 	}
 
 	bool TryReadVacdmServerUrl(std::string& outServerUrl)
@@ -370,15 +387,27 @@ void datalinkLogin(void * arg) {
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
-		HoppieConnected = true;
-		ConnectionMessage = true;
+		HoppieConnected.store(true);
+		ConnectionMessage.store(true);
 	}
 	else {
-		FailedToConnectMessage = true;
+		FailedToConnectMessage.store(true);
 	}
 };
 
 void sendDatalinkMessage(void * arg) {
+	std::string localDest;
+	std::string localType;
+	std::string localMessage;
+	std::string localCallsign;
+
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		localDest = tdest;
+		localType = ttype;
+		localMessage = tmessage;
+		localCallsign = DatalinkToSend.callsign;
+	}
 
 	string raw;
 	string url = baseUrlDatalink;
@@ -387,11 +416,11 @@ void sendDatalinkMessage(void * arg) {
 	url += "&from=";
 	url += logonCallsign;
 	url += "&to=";
-	url += tdest;
+	url += localDest;
 	url += "&type=";
-	url += ttype;
+	url += localType;
 	url += "&packet=";
-	url += tmessage;
+	url += localMessage;
 
 	size_t start_pos = 0;
 	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
@@ -402,12 +431,10 @@ void sendDatalinkMessage(void * arg) {
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
-		if (PendingMessages.find(DatalinkToSend.callsign) != PendingMessages.end())
-			PendingMessages.erase(DatalinkToSend.callsign);
-		if (std::find(AircraftMessage.begin(), AircraftMessage.end(), DatalinkToSend.callsign.c_str()) != AircraftMessage.end()) {
-			AircraftMessage.erase(std::remove(AircraftMessage.begin(), AircraftMessage.end(), DatalinkToSend.callsign.c_str()), AircraftMessage.end());
-		}
-		AircraftMessageSent.push_back(DatalinkToSend.callsign.c_str());
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		PendingMessages.erase(localCallsign);
+		RemoveCallsignUnlocked(AircraftMessage, localCallsign);
+		AddCallsignUniqueUnlocked(AircraftMessageSent, localCallsign);
 	}
 };
 
@@ -454,27 +481,36 @@ void pollMessages(void * arg) {
 		if (message.type.find("telex") != std::string::npos || message.type.find("cpdlc") != std::string::npos) {
 			if (message.message.find("REQ") != std::string::npos || message.message.find("CLR") != std::string::npos || message.message.find("PDC") != std::string::npos || message.message.find("PREDEP") != std::string::npos || message.message.find("REQUEST") != std::string::npos) {
 				if (message.message.find("LOGON") != std::string::npos) {
-					tmessage = "UNABLE";
-					ttype = "CPDLC";
-					tdest = DatalinkToSend.callsign;
+					{
+						std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+						tmessage = "UNABLE";
+						ttype = "CPDLC";
+						tdest = message.from;
+					}
 					_beginthread(sendDatalinkMessage, 0, NULL);
 				} else {
 					if (PlaySoundClr) {
 						AFX_MANAGE_STATE(AfxGetStaticModuleState());
 						PlaySound(MAKEINTRESOURCE(IDR_WAVE1), AfxGetInstanceHandle(), SND_RESOURCE | SND_ASYNC);
 					}
-					AircraftDemandingClearance.push_back(message.from);
+					std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+					AddCallsignUniqueUnlocked(AircraftDemandingClearance, message.from);
 				}
 			}
 			else if (message.message.find("WILCO") != std::string::npos || message.message.find("ROGER") != std::string::npos || message.message.find("RGR") != std::string::npos) {
-				if (std::find(AircraftMessageSent.begin(), AircraftMessageSent.end(), message.from) != AircraftMessageSent.end()) {
-					AircraftWilco.push_back(message.from);
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				if (ContainsCallsignUnlocked(AircraftMessageSent, message.from)) {
+					AddCallsignUniqueUnlocked(AircraftWilco, message.from);
 				}
 			}
 			else if (message.message.length() != 0 ){
-				AircraftMessage.push_back(message.from);
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				AddCallsignUniqueUnlocked(AircraftMessage, message.from);
 			}
-			PendingMessages[message.from] = message;
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				PendingMessages[message.from] = message;
+			}
 		}
 
 		raw.erase(0, pos + delimiter.length());
@@ -484,6 +520,14 @@ void pollMessages(void * arg) {
 };
 
 void sendDatalinkClearance(void * arg) {
+	DatalinkPacket packet;
+	std::string localFrequency;
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		packet = DatalinkToSend;
+		localFrequency = myfrequency;
+	}
+
 	string raw;
 	string url = baseUrlDatalink;
 	url += "?logon=";
@@ -491,45 +535,45 @@ void sendDatalinkClearance(void * arg) {
 	url += "&from=";
 	url += logonCallsign;
 	url += "&to=";
-	url += DatalinkToSend.callsign;
+	url += packet.callsign;
 	url += "&type=CPDLC&packet=/data2/";
-	messageId++;
-	url += std::to_string(messageId);
+	const int messageSequence = messageId.fetch_add(1) + 1;
+	url += std::to_string(messageSequence);
 	url += "//R/";
 	url += "CLR TO @";
-	url += DatalinkToSend.destination;
+	url += packet.destination;
 	url += "@ RWY @";
-	url += DatalinkToSend.rwy;
+	url += packet.rwy;
 	url += "@ DEP @";
-	url += DatalinkToSend.sid;
+	url += packet.sid;
 	url += "@ INIT CLB @";
-	url += DatalinkToSend.climb;
+	url += packet.climb;
 	url += "@ SQUAWK @";
-	url += DatalinkToSend.squawk;
+	url += packet.squawk;
 	url += "@ ";
-	if (DatalinkToSend.ctot != "no" && DatalinkToSend.ctot.size() > 3) {
+	if (packet.ctot != "no" && packet.ctot.size() > 3) {
 		url += "CTOT @";
-		url += DatalinkToSend.ctot;
+		url += packet.ctot;
 		url += "@ ";
 	}
-	if (DatalinkToSend.asat != "no" && DatalinkToSend.asat.size() > 3) {
+	if (packet.asat != "no" && packet.asat.size() > 3) {
 		url += "TSAT @";
-		url += DatalinkToSend.asat;
+		url += packet.asat;
 		url += "@ ";
 	}
-	if (DatalinkToSend.freq != "no" && DatalinkToSend.freq.size() > 5) {
+	if (packet.freq != "no" && packet.freq.size() > 5) {
 		url += "WHEN RDY CALL FREQ @";
-		url += DatalinkToSend.freq;
+		url += packet.freq;
 		url += "@";
 	}
 	else {
 		url += "WHEN RDY CALL @";
-		url += myfrequency;
+		url += localFrequency;
 		url += "@";
 	}
 	url += " IF UNABLE CALL VOICE ";
-	if (DatalinkToSend.message != "no" && DatalinkToSend.message.size() > 1)
-		url += DatalinkToSend.message;
+	if (packet.message != "no" && packet.message.size() > 1)
+		url += packet.message;
 
 	size_t start_pos = 0;
 	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
@@ -540,15 +584,11 @@ void sendDatalinkClearance(void * arg) {
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
-		if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), DatalinkToSend.callsign.c_str()) != AircraftDemandingClearance.end()) {
-			AircraftDemandingClearance.erase(std::remove(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), DatalinkToSend.callsign.c_str()), AircraftDemandingClearance.end());
-		}
-		if (std::find(AircraftStandby.begin(), AircraftStandby.end(), DatalinkToSend.callsign.c_str()) != AircraftStandby.end()) {
-			AircraftStandby.erase(std::remove(AircraftStandby.begin(), AircraftStandby.end(), DatalinkToSend.callsign.c_str()), AircraftStandby.end());
-		}
-		if (PendingMessages.find(DatalinkToSend.callsign) != PendingMessages.end())
-			PendingMessages.erase(DatalinkToSend.callsign);
-		AircraftMessageSent.push_back(DatalinkToSend.callsign.c_str());
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		RemoveCallsignUnlocked(AircraftDemandingClearance, packet.callsign);
+		RemoveCallsignUnlocked(AircraftStandby, packet.callsign);
+		PendingMessages.erase(packet.callsign);
+		AddCallsignUniqueUnlocked(AircraftMessageSent, packet.callsign);
 	}
 };
 
@@ -567,7 +607,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	RegisterTagItemType("Datalink clearance", TAG_ITEM_DATALINK_STS);
 	RegisterTagItemFunction("Datalink menu", TAG_FUNC_DATALINK_MENU);
 
-	messageId = rand() % 10000 + 1789;
+	messageId.store(rand() % 10000 + 1789);
 
 	timer = clock();
 	VacdmLastFetchClock = 0;
@@ -630,11 +670,11 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	if (startsWithCommand(".smr connect"))
 	{
 		if (ControllerMyself().IsController()) {
-			if (!HoppieConnected) {
+			if (!HoppieConnected.load()) {
 				_beginthread(datalinkLogin, 0, NULL);
 			}
 			else {
-				HoppieConnected = false;
+				HoppieConnected.store(false);
 				DisplayUserMessage("CPDLC", "Server", "Logged off!", true, true, false, true, false);
 			}
 		}
@@ -646,7 +686,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	}
 	else if (startsWithCommand(".smr poll"))
 	{
-		if (HoppieConnected) {
+		if (HoppieConnected.load()) {
 			_beginthread(pollMessages, 0, NULL);
 		}
 		return true;
@@ -815,53 +855,59 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
 	Logger::info(string(__FUNCSIG__));
-	if (ItemCode == TAG_ITEM_DATALINK_STS) {
-		if (FlightPlan.IsValid()) {
-			const char* fpCallsign = FlightPlan.GetCallsign();
-			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
-			{
-				*pColorCode = TAG_COLOR_RGB_DEFINED;
-				*pRGB = RGB(130, 130, 130);
-				strcpy_s(sItemString, 16, "-");
-				return;
-			}
-			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), fpCallsign) != AircraftDemandingClearance.end()) {
-				*pColorCode = TAG_COLOR_RGB_DEFINED;
-				if (BLINK)
-					*pRGB = RGB(130, 130, 130);
-				else
-					*pRGB = RGB(255, 255, 0);
+	if (ItemCode != TAG_ITEM_DATALINK_STS)
+		return;
 
-				if (std::find(AircraftStandby.begin(), AircraftStandby.end(), fpCallsign) != AircraftStandby.end())
-					strcpy_s(sItemString, 16, "S");
-				else
-					strcpy_s(sItemString, 16, "R");
-			}
-			else if (std::find(AircraftMessage.begin(), AircraftMessage.end(), fpCallsign) != AircraftMessage.end()) {
-				*pColorCode = TAG_COLOR_RGB_DEFINED;
-				if (BLINK)
-					*pRGB = RGB(130, 130, 130);
-				else
-					*pRGB = RGB(255, 255, 0);
-				strcpy_s(sItemString, 16, "T");
-			}
-			else if (std::find(AircraftWilco.begin(), AircraftWilco.end(), fpCallsign) != AircraftWilco.end()) {
-				*pColorCode = TAG_COLOR_RGB_DEFINED;
-				*pRGB = RGB(0, 176, 0);
-				strcpy_s(sItemString, 16, "V");
-			}
-			else if (std::find(AircraftMessageSent.begin(), AircraftMessageSent.end(), fpCallsign) != AircraftMessageSent.end()) {
-				*pColorCode = TAG_COLOR_RGB_DEFINED;
-				*pRGB = RGB(255, 255, 0);
-				strcpy_s(sItemString, 16, "V");
-			}
-			else {
-				*pColorCode = TAG_COLOR_RGB_DEFINED;
-				*pRGB = RGB(130, 130, 130);
+	*pColorCode = TAG_COLOR_RGB_DEFINED;
+	*pRGB = RGB(130, 130, 130);
+	strcpy_s(sItemString, 16, "-");
 
-				strcpy_s(sItemString, 16, "-");
-			}
-		}
+	if (!FlightPlan.IsValid())
+		return;
+
+	const char* fpCallsign = FlightPlan.GetCallsign();
+	if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+		return;
+
+	const std::string callsign = fpCallsign;
+	bool isDemanding = false;
+	bool isStandby = false;
+	bool hasMessage = false;
+	bool isWilco = false;
+	bool isMessageSent = false;
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		isDemanding = ContainsCallsignUnlocked(AircraftDemandingClearance, callsign);
+		isStandby = ContainsCallsignUnlocked(AircraftStandby, callsign);
+		hasMessage = ContainsCallsignUnlocked(AircraftMessage, callsign);
+		isWilco = ContainsCallsignUnlocked(AircraftWilco, callsign);
+		isMessageSent = ContainsCallsignUnlocked(AircraftMessageSent, callsign);
+	}
+
+	if (isDemanding) {
+		if (!BLINK)
+			*pRGB = RGB(255, 255, 0);
+		strcpy_s(sItemString, 16, isStandby ? "S" : "R");
+		return;
+	}
+
+	if (hasMessage) {
+		if (!BLINK)
+			*pRGB = RGB(255, 255, 0);
+		strcpy_s(sItemString, 16, "T");
+		return;
+	}
+
+	if (isWilco) {
+		*pRGB = RGB(0, 176, 0);
+		strcpy_s(sItemString, 16, "V");
+		return;
+	}
+
+	if (isMessageSent) {
+		*pRGB = RGB(255, 255, 0);
+		strcpy_s(sItemString, 16, "V");
+		return;
 	}
 }
 
@@ -874,8 +920,12 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		bool menu_is_datalink = true;
 
 		if (FlightPlan.IsValid()) {
-			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()) != AircraftDemandingClearance.end()) {
-				menu_is_datalink = false;
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign != nullptr && fpCallsign[0] != '\0')
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				if (ContainsCallsignUnlocked(AircraftDemandingClearance, fpCallsign))
+					menu_is_datalink = false;
 			}
 		}
 
@@ -892,24 +942,17 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
 		if (FlightPlan.IsValid()) {
-			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()) != AircraftDemandingClearance.end()) {
-				AircraftDemandingClearance.erase(std::remove(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()), AircraftDemandingClearance.end());
-			}
-			if (std::find(AircraftStandby.begin(), AircraftStandby.end(), FlightPlan.GetCallsign()) != AircraftStandby.end()) {
-				AircraftStandby.erase(std::remove(AircraftStandby.begin(), AircraftStandby.end(), FlightPlan.GetCallsign()), AircraftStandby.end());
-			}
-			if (std::find(AircraftMessageSent.begin(), AircraftMessageSent.end(), FlightPlan.GetCallsign()) != AircraftMessageSent.end()) {
-				AircraftMessageSent.erase(std::remove(AircraftMessageSent.begin(), AircraftMessageSent.end(), FlightPlan.GetCallsign()), AircraftMessageSent.end());
-			}
-			if (std::find(AircraftWilco.begin(), AircraftWilco.end(), FlightPlan.GetCallsign()) != AircraftWilco.end()) {
-				AircraftWilco.erase(std::remove(AircraftWilco.begin(), AircraftWilco.end(), FlightPlan.GetCallsign()), AircraftWilco.end());
-			}
-			if (std::find(AircraftMessage.begin(), AircraftMessage.end(), FlightPlan.GetCallsign()) != AircraftMessage.end()) {
-				AircraftMessage.erase(std::remove(AircraftMessage.begin(), AircraftMessage.end(), FlightPlan.GetCallsign()), AircraftMessage.end());
-			}
-			if (PendingMessages.find(FlightPlan.GetCallsign()) != PendingMessages.end()) {
-				PendingMessages.erase(FlightPlan.GetCallsign());
-			}
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+				return;
+
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			RemoveCallsignUnlocked(AircraftDemandingClearance, fpCallsign);
+			RemoveCallsignUnlocked(AircraftStandby, fpCallsign);
+			RemoveCallsignUnlocked(AircraftMessageSent, fpCallsign);
+			RemoveCallsignUnlocked(AircraftWilco, fpCallsign);
+			RemoveCallsignUnlocked(AircraftMessage, fpCallsign);
+			PendingMessages.erase(fpCallsign);
 		}
 	}
 
@@ -917,10 +960,18 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
 		if (FlightPlan.IsValid()) {
-			AircraftStandby.push_back(FlightPlan.GetCallsign());
-			tmessage = "STANDBY";
-			ttype = "CPDLC";
-			tdest = FlightPlan.GetCallsign();
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+				return;
+
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				AddCallsignUniqueUnlocked(AircraftStandby, fpCallsign);
+				DatalinkToSend.callsign = fpCallsign;
+				tmessage = "STANDBY";
+				ttype = "CPDLC";
+				tdest = fpCallsign;
+			}
 			_beginthread(sendDatalinkMessage, 0, NULL);
 		}
 	}
@@ -929,15 +980,25 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
 		if (FlightPlan.IsValid()) {
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+				return;
+
 			AFX_MANAGE_STATE(AfxGetStaticModuleState());
 
 			CDataLinkDialog dia;
-			dia.m_Callsign = FlightPlan.GetCallsign();
+			dia.m_Callsign = fpCallsign;
 			dia.m_Aircraft = FlightPlan.GetFlightPlanData().GetAircraftFPType();
 			dia.m_Dest = FlightPlan.GetFlightPlanData().GetDestination();
 			dia.m_From = FlightPlan.GetFlightPlanData().GetOrigin();
 
-			AcarsMessage msg = PendingMessages[FlightPlan.GetCallsign()];
+			AcarsMessage msg;
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				auto msgIt = PendingMessages.find(fpCallsign);
+				if (msgIt != PendingMessages.end())
+					msg = msgIt->second;
+			}
 			dia.m_Req = msg.message.c_str();
 
 			string toReturn = "";
@@ -945,9 +1006,13 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			if (dia.DoModal() != IDOK)
 				return;
 
-			tmessage = dia.m_Message;
-			ttype = "TELEX";
-			tdest = FlightPlan.GetCallsign();
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				DatalinkToSend.callsign = fpCallsign;
+				tmessage = dia.m_Message;
+				ttype = "TELEX";
+				tdest = fpCallsign;
+			}
 			_beginthread(sendDatalinkMessage, 0, NULL);
 		}
 	}
@@ -956,17 +1021,21 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
 		if (FlightPlan.IsValid()) {
-			tmessage = "UNABLE CALL ON FREQ";
-			ttype = "CPDLC";
-			tdest = FlightPlan.GetCallsign();
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+				return;
 
-			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), DatalinkToSend.callsign.c_str()) != AircraftDemandingClearance.end()) {
-				AircraftDemandingClearance.erase(std::remove(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()), AircraftDemandingClearance.end());
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				DatalinkToSend.callsign = fpCallsign;
+				tmessage = "UNABLE CALL ON FREQ";
+				ttype = "CPDLC";
+				tdest = fpCallsign;
+
+				RemoveCallsignUnlocked(AircraftDemandingClearance, fpCallsign);
+				RemoveCallsignUnlocked(AircraftStandby, fpCallsign);
+				PendingMessages.erase(fpCallsign);
 			}
-			if (std::find(AircraftStandby.begin(), AircraftStandby.end(), DatalinkToSend.callsign.c_str()) != AircraftStandby.end()) {
-				AircraftStandby.erase(std::remove(AircraftStandby.begin(), AircraftStandby.end(), FlightPlan.GetCallsign()), AircraftDemandingClearance.end());
-			}
-			PendingMessages.erase(DatalinkToSend.callsign);
 
 			_beginthread(sendDatalinkMessage, 0, NULL);
 		}
@@ -977,11 +1046,14 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
 		if (FlightPlan.IsValid()) {
+			const char* fpCallsign = FlightPlan.GetCallsign();
+			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
+				return;
 
 			AFX_MANAGE_STATE(AfxGetStaticModuleState());
 
 			CDataLinkDialog dia;
-			dia.m_Callsign = FlightPlan.GetCallsign();
+			dia.m_Callsign = fpCallsign;
 			dia.m_Aircraft = FlightPlan.GetFlightPlanData().GetAircraftFPType();
 			dia.m_Dest = FlightPlan.GetFlightPlanData().GetDestination();
 			dia.m_From = FlightPlan.GetFlightPlanData().GetOrigin();
@@ -990,10 +1062,16 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			dia.m_SSR = FlightPlan.GetControllerAssignedData().GetSquawk();
 			string freq = std::to_string(ControllerMyself().GetPrimaryFrequency());
 			if (ControllerSelect(FlightPlan.GetCoordinatedNextController()).GetPrimaryFrequency() != 0)
-				string freq = std::to_string(ControllerSelect(FlightPlan.GetCoordinatedNextController()).GetPrimaryFrequency());
+				freq = std::to_string(ControllerSelect(FlightPlan.GetCoordinatedNextController()).GetPrimaryFrequency());
 			freq = freq.substr(0, 7);
 			dia.m_Freq = freq.c_str();
-			AcarsMessage msg = PendingMessages[FlightPlan.GetCallsign()];
+			AcarsMessage msg;
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				auto msgIt = PendingMessages.find(fpCallsign);
+				if (msgIt != PendingMessages.end())
+					msg = msgIt->second;
+			}
 			dia.m_Req = msg.message.c_str();
 
 			string toReturn = "";
@@ -1023,18 +1101,21 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			if (dia.DoModal() != IDOK)
 				return;
 
-			DatalinkToSend.callsign = FlightPlan.GetCallsign();
-			DatalinkToSend.destination = FlightPlan.GetFlightPlanData().GetDestination();
-			DatalinkToSend.rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
-			DatalinkToSend.sid = FlightPlan.GetFlightPlanData().GetSidName();
-			DatalinkToSend.asat = dia.m_TSAT;
-			DatalinkToSend.ctot = dia.m_CTOT;
-			DatalinkToSend.freq = dia.m_Freq;
-			DatalinkToSend.message = dia.m_Message;
-			DatalinkToSend.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
-			DatalinkToSend.climb = toReturn;
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				DatalinkToSend.callsign = fpCallsign;
+				DatalinkToSend.destination = FlightPlan.GetFlightPlanData().GetDestination();
+				DatalinkToSend.rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
+				DatalinkToSend.sid = FlightPlan.GetFlightPlanData().GetSidName();
+				DatalinkToSend.asat = dia.m_TSAT;
+				DatalinkToSend.ctot = dia.m_CTOT;
+				DatalinkToSend.freq = dia.m_Freq;
+				DatalinkToSend.message = dia.m_Message;
+				DatalinkToSend.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
+				DatalinkToSend.climb = toReturn;
 
-			myfrequency = std::to_string(ControllerMyself().GetPrimaryFrequency()).substr(0, 7);
+				myfrequency = std::to_string(ControllerMyself().GetPrimaryFrequency()).substr(0, 7);
+			}
 
 			_beginthread(sendDatalinkClearance, 0, NULL);
 
@@ -1093,22 +1174,22 @@ void CSMRPlugin::OnTimer(int Counter)
 		VacdmDebugAselCallsign = aselCallsign;
 	}
 
-	if (HoppieConnected && ConnectionMessage) {
+	if (HoppieConnected.load() && ConnectionMessage.load()) {
 		DisplayUserMessage("CPDLC", "Server", "Logged in!", true, true, false, true, false);
-		ConnectionMessage = false;
+		ConnectionMessage.store(false);
 	}
 
-	if (FailedToConnectMessage) {
+	if (FailedToConnectMessage.load()) {
 		DisplayUserMessage("CPDLC", "Server", "Could not login! Callsign probably in use.", true, true, false, true, false);
-		FailedToConnectMessage = false;
+		FailedToConnectMessage.store(false);
 	}
 
-	if (HoppieConnected && GetConnectionType() == CONNECTION_TYPE_NO) {
+	if (HoppieConnected.load() && GetConnectionType() == CONNECTION_TYPE_NO) {
 		DisplayUserMessage("CPDLC", "Server", "Automatically logged off!", true, true, false, true, false);
-		HoppieConnected = false;
+		HoppieConnected.store(false);
 	}
 
-	if (((clock() - timer) / CLOCKS_PER_SEC) > 10 && HoppieConnected) {
+	if (((clock() - timer) / CLOCKS_PER_SEC) > 10 && HoppieConnected.load()) {
 		_beginthread(pollMessages, 0, NULL);
 		timer = clock();
 	}
@@ -1121,16 +1202,19 @@ void CSMRPlugin::OnTimer(int Counter)
 			_beginthread(refreshVacdmData, 0, NULL);
 	}
 
-	AircraftWilco.erase(
-		std::remove_if(
-			AircraftWilco.begin(),
-			AircraftWilco.end(),
-			[&](const std::string& callsign)
-			{
-				CRadarTarget radarTarget = RadarTargetSelect(callsign.c_str());
-				return radarTarget.IsValid() && radarTarget.GetGS() > 160;
-			}),
-		AircraftWilco.end());
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		AircraftWilco.erase(
+			std::remove_if(
+				AircraftWilco.begin(),
+				AircraftWilco.end(),
+				[&](const std::string& callsign)
+				{
+					CRadarTarget radarTarget = RadarTargetSelect(callsign.c_str());
+					return radarTarget.IsValid() && radarTarget.GetGS() > 160;
+				}),
+			AircraftWilco.end());
+	}
 };
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
