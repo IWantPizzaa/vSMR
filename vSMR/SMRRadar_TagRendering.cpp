@@ -492,9 +492,12 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		bool isAcDisplayed = isVisible(rt);
 
 		bool AcisCorrelated = IsCorrelated(fp, rt);
-		const bool hasAssignedSquawk = fp.IsValid() && strlen(fp.GetControllerAssignedData().GetSquawk()) != 0;
-		const bool hasWrongAssignedSquawk = hasAssignedSquawk &&
-			strcmp(fp.GetControllerAssignedData().GetSquawk(), RtPos.GetSquawk()) != 0;
+		const char* assignedSquawk = fp.IsValid() ? fp.GetControllerAssignedData().GetSquawk() : nullptr;
+		const char* reportedSquawk = RtPos.GetSquawk();
+		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');
+		const bool hasReportedSquawk = (reportedSquawk != nullptr && reportedSquawk[0] != '\0');
+		const bool hasWrongAssignedSquawk = hasAssignedSquawk && hasReportedSquawk &&
+			strcmp(assignedSquawk, reportedSquawk) != 0;
 
 		if (tagProModeEnabled && (!hasAssignedSquawk || hasWrongAssignedSquawk))
 		{
@@ -506,7 +509,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		if (!AcisCorrelated && reportedGs < 3)
 			isAcDisplayed = false;
 
-		if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end())
+		const char* systemId = rt.GetSystemID();
+		if (systemId != nullptr && systemId[0] != '\0' &&
+			std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
 			isAcDisplayed = false;
 
 		if (!isAcDisplayed)

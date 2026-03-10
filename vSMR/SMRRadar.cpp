@@ -2537,10 +2537,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
 		const bool proModeEnabled = frameProModeEnabled;
-		const bool isReleasedTrack = (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end());
-		const bool hasAssignedSquawk = iconFp.IsValid() && strlen(iconFp.GetControllerAssignedData().GetSquawk()) != 0;
-		const bool isWrongSquawk = hasAssignedSquawk &&
-			strcmp(iconFp.GetControllerAssignedData().GetSquawk(), rt.GetPosition().GetSquawk()) != 0;
+		const char* systemId = rt.GetSystemID();
+		const bool hasSystemId = (systemId != nullptr && systemId[0] != '\0');
+		const bool isReleasedTrack = hasSystemId &&
+			(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end());
+		const char* assignedSquawk = iconFp.IsValid() ? iconFp.GetControllerAssignedData().GetSquawk() : nullptr;
+		const char* reportedSquawk = rt.GetPosition().GetSquawk();
+		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');
+		const bool hasReportedSquawk = (reportedSquawk != nullptr && reportedSquawk[0] != '\0');
+		const bool isWrongSquawk = hasAssignedSquawk && hasReportedSquawk &&
+			strcmp(assignedSquawk, reportedSquawk) != 0;
 		if (proModeEnabled && !hasAssignedSquawk)
 			AcisCorrelated = false;
 

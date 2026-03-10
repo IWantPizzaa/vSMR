@@ -679,6 +679,10 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			detail += Logger::DLL_PATH;
 			detail += "\\vsmr.log";
 			DisplayUserMessage("vSMR", "Log", detail.c_str(), true, true, false, true, false);
+			if (Logger::ENABLED)
+			{
+				Logger::info("Logging active mode=" + std::string(Logger::mode_name(Logger::get_mode())));
+			}
 		};
 
 		if (argument.empty())
@@ -1034,13 +1038,25 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
 	Logger::info(string(__FUNCSIG__));
-	CRadarTarget rt = RadarTargetSelect(FlightPlan.GetCallsign());
+	if (!FlightPlan.IsValid())
+		return;
 
-	if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end())
-		ReleasedTracks.erase(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()));
+	const char* callsign = FlightPlan.GetCallsign();
+	if (callsign == nullptr || callsign[0] == '\0')
+		return;
 
-	if (std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), rt.GetSystemID()) != ManuallyCorrelated.end())
-		ManuallyCorrelated.erase(std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), rt.GetSystemID()));
+	CRadarTarget rt = RadarTargetSelect(callsign);
+	const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
+	if (systemId == nullptr || systemId[0] == '\0')
+		return;
+
+	auto releasedIt = std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId);
+	if (releasedIt != ReleasedTracks.end())
+		ReleasedTracks.erase(releasedIt);
+
+	auto correlatedIt = std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId);
+	if (correlatedIt != ManuallyCorrelated.end())
+		ManuallyCorrelated.erase(correlatedIt);
 }
 
 void CSMRPlugin::OnTimer(int Counter)
@@ -1090,16 +1106,16 @@ void CSMRPlugin::OnTimer(int Counter)
 			_beginthread(refreshVacdmData, 0, NULL);
 	}
 
-	for (auto &ac : AircraftWilco)
-	{
-		CRadarTarget RadarTarget = RadarTargetSelect(ac.c_str());
-
-		if (RadarTarget.IsValid()) {
-			if (RadarTarget.GetGS() > 160) {
-				AircraftWilco.erase(std::remove(AircraftWilco.begin(), AircraftWilco.end(), ac), AircraftWilco.end());
-			}
-		}
-	}
+	AircraftWilco.erase(
+		std::remove_if(
+			AircraftWilco.begin(),
+			AircraftWilco.end(),
+			[&](const std::string& callsign)
+			{
+				CRadarTarget radarTarget = RadarTargetSelect(callsign.c_str());
+				return radarTarget.IsValid() && radarTarget.GetGS() > 160;
+			}),
+		AircraftWilco.end());
 };
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
