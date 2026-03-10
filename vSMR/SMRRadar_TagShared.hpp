@@ -285,7 +285,8 @@ namespace
 	bool ShouldExposeProfileColorPath(const std::string& path)
 	{
 		return path != "labels.arrival.status_background_colors.arr" &&
-			path != "labels.arrival.status_background_colors.taxi";
+			path != "labels.arrival.status_background_colors.taxi" &&
+			path != "labels.departure.status_background_colors.nsts";
 	}
 
 	void CollectProfileColorPaths(const rapidjson::Value& value, const std::string& path, std::vector<std::string>& outPaths, std::map<std::string, bool>& outHasAlpha)
