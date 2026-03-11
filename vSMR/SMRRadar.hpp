@@ -252,7 +252,7 @@ public:
 
 	//---GenerateTagData--------------------------------------------
 
-	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport);
+	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign = "");
 	using TagReplacingMap = std::map<std::string, std::string>;
 	using FrameTagDataCache = std::unordered_map<std::string, TagReplacingMap>;
 	using FrameVacdmLookupCache = std::unordered_map<std::string, FrameVacdmLookupResult>;
