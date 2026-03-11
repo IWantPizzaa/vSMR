@@ -16,14 +16,12 @@ CPoint mouseLocation(0, 0);
 string TagBeingDragged;
 int LeaderLineDefaultlenght = 50;
 
-//
-// Cursor Things
-//
+// Cursor state shared by radar screen instances (managed on the UI thread).
 
 bool initCursor = true;
 HCURSOR smrCursor = NULL;
-bool standardCursor; // switches between mouse cursor and pointer cursor when moving tags
-bool customCursor; // use SMR version or default windows mouse symbol
+bool standardCursor; // True when the default arrow cursor is active.
+bool customCursor; // True when the plugin-specific cursor theme is enabled.
 WNDPROC gSourceProc;
 HWND pluginWindow;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -320,6 +318,8 @@ void CSMRRadar::InvalidateStructuredTagRuleCache()
 
 void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 {
+	// Backward-compatible profile migration and normalization:
+	// ensure required nested objects, color entries and editor settings exist.
 	if (!CurrentConfig)
 		return;
 
@@ -1215,6 +1215,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	auto migrateDefinitionArray = [&](Value& definitionArray, const std::string& tagType, const std::string& status, const std::string& detail)
 	{
+		// Move legacy inline color-rule tokens into structured rules and keep display tokens intact.
 		if (!definitionArray.IsArray())
 			return;
 
@@ -1851,13 +1852,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
-	// Changing the mouse cursor
+	// Refresh pipeline is phase-driven by EuroScope. Cursor/theme work is kept here on the UI thread.
 	if (initCursor)
 	{
 		if (customCursor) {
 			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
-			// This got broken because of threading as far as I can tell
-			// The cursor does change for some milliseconds but gets reset almost instantly by external MFC code
+			// EuroScope/MFC can still override the cursor occasionally; we therefore reapply it via window proc hook.
 
 		}
 		else {
