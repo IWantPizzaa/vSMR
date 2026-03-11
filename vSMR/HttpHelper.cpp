@@ -9,6 +9,7 @@
 // HttpHelper Class by Even Rognlien, used with permission
 //
 
+std::string HttpHelper::downloadedContents;
 std::mutex HttpHelper::downloadMutex;
 
 namespace
@@ -113,6 +114,19 @@ namespace
 HttpHelper::HttpHelper()  {
 
 }
+
+// Used for downloading strings from web:
+size_t HttpHelper::handle_data(void *ptr, size_t size, size_t nmemb, void *stream) {
+	int numbytes = size*nmemb;
+	// The data is not null-terminated, so get the last character, and replace it with '\0'. 
+	char lastchar = *((char *)ptr + numbytes - 1);
+	*((char *)ptr + numbytes - 1) = '\0';
+	downloadedContents.append((char *)ptr);
+	downloadedContents.append(1, lastchar);
+	*((char *)ptr + numbytes - 1) = lastchar;  // Might not be necessary. 
+	return size*nmemb;
+}
+
 
 std::string HttpHelper::downloadStringFromURL(std::string url) {
 	std::lock_guard<std::mutex> guard(downloadMutex);

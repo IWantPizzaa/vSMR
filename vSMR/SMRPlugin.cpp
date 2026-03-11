@@ -283,14 +283,14 @@ void refreshVacdmData(void* arg)
 	{
 		~ResetFetchFlag()
 		{
-			VacdmLastFetchClock.store(clock());
+			VacdmLastFetchClock = clock();
 			VacdmFetchInProgress.store(false);
 		}
 	} reset;
 
 	try
 	{
-		if (httpHelper == nullptr)
+		if (httpHelper == NULL)
 			return;
 
 		const std::string pilotsUrl = ResolveVacdmPilotsUrl();
@@ -621,18 +621,18 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	messageId.store(rand() % 10000 + 1789);
 
 	timer = clock();
-	VacdmLastFetchClock.store(0);
+	VacdmLastFetchClock = 0;
 
-	if (httpHelper == nullptr)
+	if (httpHelper == NULL)
 		httpHelper = new HttpHelper();
 
 	const char * p_value;
 
-	if ((p_value = GetDataFromSettings("cpdlc_logon")) != nullptr)
+	if ((p_value = GetDataFromSettings("cpdlc_logon")) != NULL)
 		logonCallsign = p_value;
-	if ((p_value = GetDataFromSettings("cpdlc_password")) != nullptr)
+	if ((p_value = GetDataFromSettings("cpdlc_password")) != NULL)
 		logonCode = p_value;
-	if ((p_value = GetDataFromSettings("cpdlc_sound")) != nullptr)
+	if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
 		PlaySoundClr = bool(!!atoi(p_value));
 
 	char DllPathFile[_MAX_PATH];
@@ -1179,7 +1179,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		if (aselFlightPlan.IsValid())
 		{
 			const char* callsign = aselFlightPlan.GetCallsign();
-			if (callsign != nullptr)
+			if (callsign != NULL)
 				aselCallsign = ToUpperAsciiCopy(callsign);
 		}
 
