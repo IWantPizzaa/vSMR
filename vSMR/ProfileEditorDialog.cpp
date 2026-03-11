@@ -1706,8 +1706,21 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		{
 			double hue = 0.0;
 			double saturation = 0.0;
-			double value = 1.0;
-			RgbToHsv(drawR, drawG, drawB, hue, saturation, value);
+			if (isRuleWheel && RuleColorDraftHueSaturationValid)
+			{
+				hue = RuleColorDraftHue;
+				saturation = RuleColorDraftSaturation;
+			}
+			else if (!isRuleWheel && DraftColorHueSaturationValid)
+			{
+				hue = DraftColorHue;
+				saturation = DraftColorSaturation;
+			}
+			else
+			{
+				double value = 1.0;
+				RgbToHsv(drawR, drawG, drawB, hue, saturation, value);
+			}
 			const double angleRad = hue * (3.14159265358979323846 / 180.0);
 			const int markerX = centerX + static_cast<int>(round(cos(angleRad) * saturation * radius));
 			const int markerY = centerY - static_cast<int>(round(sin(angleRad) * saturation * radius));
@@ -1837,14 +1850,24 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 
 	if (isRuleSwatch && controlId == RuleColorActiveSwatchId)
 	{
-		CRect activeRect(localOuter);
-		activeRect.DeflateRect(1, 1);
-		CPen activePen(PS_SOLID, 1, RGB(64, 132, 230));
-		CPen* oldActivePen = memDc.SelectObject(&activePen);
-		CBrush* oldActiveBrush = static_cast<CBrush*>(memDc.SelectStockObject(HOLLOW_BRUSH));
-		memDc.RoundRect(&activeRect, CPoint(10, 10));
-		memDc.SelectObject(oldActiveBrush);
-		memDc.SelectObject(oldActivePen);
+		// Use a double-ring indicator to make the selected swatch unambiguous.
+		CRect activeOuterRect(localOuter);
+		activeOuterRect.DeflateRect(1, 1);
+		CPen activeOuterPen(PS_SOLID, 3, RGB(44, 116, 220));
+		CPen* oldActiveOuterPen = memDc.SelectObject(&activeOuterPen);
+		CBrush* oldActiveOuterBrush = static_cast<CBrush*>(memDc.SelectStockObject(HOLLOW_BRUSH));
+		memDc.RoundRect(&activeOuterRect, CPoint(10, 10));
+		memDc.SelectObject(oldActiveOuterBrush);
+		memDc.SelectObject(oldActiveOuterPen);
+
+		CRect activeInnerRect(activeOuterRect);
+		activeInnerRect.DeflateRect(4, 4);
+		CPen activeInnerPen(PS_SOLID, 1, RGB(255, 255, 255));
+		CPen* oldActiveInnerPen = memDc.SelectObject(&activeInnerPen);
+		CBrush* oldActiveInnerBrush = static_cast<CBrush*>(memDc.SelectStockObject(HOLLOW_BRUSH));
+		memDc.RoundRect(&activeInnerRect, CPoint(8, 8));
+		memDc.SelectObject(oldActiveInnerBrush);
+		memDc.SelectObject(oldActiveInnerPen);
 	}
 	else if (isRulePreviewSwatch)
 	{
@@ -3691,6 +3714,13 @@ void CProfileEditorDialog::LoadDraftColorFromSelection()
 	DraftColorA = a;
 	DraftColorHasAlpha = hasAlpha;
 	DraftColorValid = true;
+	double hue = 0.0;
+	double saturation = 0.0;
+	double value = 1.0;
+	RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+	DraftColorHue = hue;
+	DraftColorSaturation = saturation;
+	DraftColorHueSaturationValid = true;
 	UpdateDraftColorControls(false, true);
 }
 
@@ -3730,10 +3760,16 @@ void CProfileEditorDialog::ApplyDraftColorValueFromSlider()
 	if (!::IsWindow(ColorValueSlider.GetSafeHwnd()))
 		return;
 
-	double hue = 0.0;
-	double saturation = 0.0;
-	double value = 1.0;
-	RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+	double hue = DraftColorHue;
+	double saturation = DraftColorSaturation;
+	if (!DraftColorHueSaturationValid)
+	{
+		double value = 1.0;
+		RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+		DraftColorHue = hue;
+		DraftColorSaturation = saturation;
+		DraftColorHueSaturationValid = true;
+	}
 
 	const double sliderValue = min(1.0, max(0.0, static_cast<double>(ColorValueSlider.GetPos()) / 100.0));
 	int r = 255;
@@ -4354,6 +4390,7 @@ void CProfileEditorDialog::SyncRuleColorEditorFromActiveControl()
 {
 	RuleColorDraftValid = false;
 	RuleColorDraftDirty = false;
+	RuleColorDraftHueSaturationValid = false;
 	RuleColorApplyButton.EnableWindow(FALSE);
 	RuleColorResetButton.EnableWindow((SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size())) ? TRUE : FALSE);
 	if (SelectedRuleIndex < 0 || SelectedRuleIndex >= static_cast<int>(RuleBuffer.size()))
@@ -4408,6 +4445,13 @@ void CProfileEditorDialog::SyncRuleColorEditorFromActiveControl()
 	RuleColorDraftA = a;
 	RuleColorDraftValid = true;
 	RuleColorDraftDirty = false;
+	double hue = 0.0;
+	double saturation = 0.0;
+	double value = 1.0;
+	RgbToHsv(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, hue, saturation, value);
+	RuleColorDraftHue = hue;
+	RuleColorDraftSaturation = saturation;
+	RuleColorDraftHueSaturationValid = true;
 	SyncRuleColorValueSliderFromDraft();
 	SyncRuleColorOpacitySliderFromDraft();
 	InvalidateRuleColorSwatches();
@@ -4420,10 +4464,16 @@ void CProfileEditorDialog::ApplyRuleColorValueFromSlider()
 	if (!::IsWindow(RuleColorValueSlider.GetSafeHwnd()))
 		return;
 
-	double hue = 0.0;
-	double saturation = 0.0;
-	double value = 1.0;
-	RgbToHsv(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, hue, saturation, value);
+	double hue = RuleColorDraftHue;
+	double saturation = RuleColorDraftSaturation;
+	if (!RuleColorDraftHueSaturationValid)
+	{
+		double value = 1.0;
+		RgbToHsv(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, hue, saturation, value);
+		RuleColorDraftHue = hue;
+		RuleColorDraftSaturation = saturation;
+		RuleColorDraftHueSaturationValid = true;
+	}
 	const double sliderValue = min(1.0, max(0.0, static_cast<double>(RuleColorValueSlider.GetPos()) / 100.0));
 
 	int r = 255;
@@ -4540,6 +4590,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 		SetEditTextPreserveCaret(RuleTextEdit, "255,255,255,255");
 		RuleColorDraftValid = false;
 		RuleColorDraftDirty = false;
+		RuleColorDraftHueSaturationValid = false;
 		RuleColorDraftA = 255;
 		RuleColorActiveSwatchId = IDC_PE_RULE_TARGET_SWATCH;
 		RuleColorValueSlider.SetPos(100);
@@ -4623,6 +4674,7 @@ void CProfileEditorDialog::RefreshRuleControls()
 	{
 		RuleColorDraftValid = false;
 		RuleColorDraftDirty = false;
+		RuleColorDraftHueSaturationValid = false;
 		RuleColorDraftA = 255;
 	}
 	else
@@ -5432,6 +5484,13 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 				RuleColorDraftA = hasAlpha ? a : 255;
 				RuleColorDraftValid = true;
 				RuleColorDraftDirty = true;
+				double hue = 0.0;
+				double saturation = 0.0;
+				double value = 1.0;
+				RgbToHsv(RuleColorDraftR, RuleColorDraftG, RuleColorDraftB, hue, saturation, value);
+				RuleColorDraftHue = hue;
+				RuleColorDraftSaturation = saturation;
+				RuleColorDraftHueSaturationValid = true;
 				SyncRuleColorValueSliderFromDraft();
 				SyncRuleColorOpacitySliderFromDraft();
 				RuleColorApplyButton.EnableWindow(TRUE);
@@ -5635,10 +5694,70 @@ void CProfileEditorDialog::SelectRuleColorEditorTarget(UINT swatchControlId)
 	if (!GetRuleColorEditorTargetControls(swatchControlId, checkBox, edit) || checkBox == nullptr || edit == nullptr)
 		return;
 
+	const UINT previousSwatchId = RuleColorActiveSwatchId;
+	if (RuleColorDraftDirty &&
+		previousSwatchId != swatchControlId &&
+		SelectedRuleIndex >= 0 &&
+		SelectedRuleIndex < static_cast<int>(RuleBuffer.size()))
+	{
+		const StructuredTagColorRule& savedRule = RuleBuffer[SelectedRuleIndex];
+		CButton* previousCheck = nullptr;
+		CEdit* previousEdit = nullptr;
+		if (GetRuleColorEditorTargetControls(previousSwatchId, previousCheck, previousEdit) && previousEdit != nullptr)
+		{
+			bool applySaved = false;
+			int savedR = 255;
+			int savedG = 255;
+			int savedB = 255;
+			int savedA = 255;
+			switch (previousSwatchId)
+			{
+			case IDC_PE_RULE_TARGET_SWATCH:
+				applySaved = savedRule.applyTarget;
+				savedR = savedRule.targetR;
+				savedG = savedRule.targetG;
+				savedB = savedRule.targetB;
+				savedA = savedRule.targetA;
+				break;
+			case IDC_PE_RULE_TAG_SWATCH:
+				applySaved = savedRule.applyTag;
+				savedR = savedRule.tagR;
+				savedG = savedRule.tagG;
+				savedB = savedRule.tagB;
+				savedA = savedRule.tagA;
+				break;
+			case IDC_PE_RULE_TEXT_SWATCH:
+				applySaved = savedRule.applyText;
+				savedR = savedRule.textR;
+				savedG = savedRule.textG;
+				savedB = savedRule.textB;
+				savedA = savedRule.textA;
+				break;
+			default:
+				break;
+			}
+
+			UpdatingControls = true;
+			if (previousCheck != nullptr)
+				previousCheck->SetCheck(applySaved ? BST_CHECKED : BST_UNCHECKED);
+			SetEditTextPreserveCaret(*previousEdit, FormatRgbaQuad(savedR, savedG, savedB, savedA));
+			UpdatingControls = false;
+		}
+
+		RuleColorDraftDirty = false;
+		RuleColorApplyButton.EnableWindow(FALSE);
+	}
+
 	RuleColorActiveSwatchId = swatchControlId;
 	UpdatingControls = true;
 	checkBox->SetCheck(BST_CHECKED);
 	UpdatingControls = false;
+
+	// Keep focus aligned with the selected target so OnRuleFieldChanged does not
+	// immediately infer the previous edit as the active swatch.
+	if (::IsWindow(checkBox->GetSafeHwnd()) && checkBox->IsWindowEnabled())
+		checkBox->SetFocus();
+
 	OnRuleFieldChanged();
 	SyncRuleColorEditorFromActiveControl();
 }
@@ -6308,6 +6427,9 @@ bool CProfileEditorDialog::TryApplyColorWheelPoint(const CPoint& screenPoint)
 	DraftColorG = g;
 	DraftColorB = b;
 	DraftColorValid = true;
+	DraftColorHue = hue;
+	DraftColorSaturation = saturation;
+	DraftColorHueSaturationValid = true;
 	UpdateDraftColorControls();
 	return true;
 }
@@ -6364,6 +6486,9 @@ bool CProfileEditorDialog::TryApplyRuleColorWheelPoint(const CPoint& screenPoint
 	RuleColorDraftB = b;
 	RuleColorDraftValid = true;
 	RuleColorDraftDirty = true;
+	RuleColorDraftHue = hue;
+	RuleColorDraftSaturation = saturation;
+	RuleColorDraftHueSaturationValid = true;
 	RuleColorApplyButton.EnableWindow(TRUE);
 	InvalidateRuleColorSwatches();
 
@@ -6502,6 +6627,13 @@ void CProfileEditorDialog::OnRgbaEditChanged()
 	DraftColorA = a;
 	DraftColorHasAlpha = hasAlpha;
 	DraftColorValid = true;
+	double hue = 0.0;
+	double saturation = 0.0;
+	double value = 1.0;
+	RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+	DraftColorHue = hue;
+	DraftColorSaturation = saturation;
+	DraftColorHueSaturationValid = true;
 	UpdateDraftColorControls();
 }
 
@@ -6535,6 +6667,13 @@ void CProfileEditorDialog::OnHexEditChanged()
 		DraftColorHasAlpha = false;
 	}
 	DraftColorValid = true;
+	double hue = 0.0;
+	double saturation = 0.0;
+	double value = 1.0;
+	RgbToHsv(DraftColorR, DraftColorG, DraftColorB, hue, saturation, value);
+	DraftColorHue = hue;
+	DraftColorSaturation = saturation;
+	DraftColorHueSaturationValid = true;
 	UpdateDraftColorControls(true, false);
 }
 

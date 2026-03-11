@@ -446,6 +446,9 @@ private:
 	int RuleColorDraftA = 255;
 	bool RuleColorDraftValid = false;
 	bool RuleColorDraftDirty = false;
+	double RuleColorDraftHue = 0.0;
+	double RuleColorDraftSaturation = 0.0;
+	bool RuleColorDraftHueSaturationValid = false;
 	std::vector<std::string> ColorPathEntries;
 	std::map<HTREEITEM, std::string> ColorTreeItemPaths;
 	int DraftColorR = 255;
@@ -454,6 +457,9 @@ private:
 	int DraftColorA = 255;
 	bool DraftColorHasAlpha = false;
 	bool DraftColorValid = false;
+	double DraftColorHue = 0.0;
+	double DraftColorSaturation = 0.0;
+	bool DraftColorHueSaturationValid = false;
 	CBrush HeaderBarBrush;
 	CBrush SidebarBrush;
 	CFont MonoFont;
