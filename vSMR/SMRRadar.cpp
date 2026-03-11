@@ -3035,6 +3035,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			return CurrentConfig->getConfigColor(iconColor);
 		};
+		auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
+		{
+			if (!std::isfinite(value))
+				return fallback;
+			if (value < minValue)
+				return minValue;
+			if (value > maxValue)
+				return maxValue;
+			return value;
+		};
 		bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
 		if (canUseRealisticIcon)
 		{
@@ -3050,13 +3060,18 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				canUseRealisticIcon = false;
 			}
 		}
+		if (Logger::is_verbose_mode())
+		{
+			std::string iconDrawMode = canUseRealisticIcon ? "realistic" : "symbol";
+			Logger::info("IconRender: " + rtCallsign + " mode=" + iconDrawMode + " icon_type=" + iconType);
+		}
 
 		if (canUseRealisticIcon) {
 
 			// Compute on-screen size that scales with zoom (uniform for all aircraft)
 			double drawW = iconSize;
 			double drawH = iconSize;
-			const double pixPerMeter = framePixPerMeter;
+			const double pixPerMeter = std::isfinite(framePixPerMeter) ? framePixPerMeter : 0.0;
 
 			// Use real-world dimensions when available; otherwise WTC defaults (no generic fallback)
 			double lengthMeters = 0.0;
@@ -3204,8 +3219,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			// Clamp sizes to keep visible but not giant
 			double minSize = 4.0;
 			double maxSize = 1200.0;
-			drawW = std::clamp(drawW, minSize, maxSize);
-			drawH = std::clamp(drawH, minSize, maxSize);
+			drawW = sanitizeFinitePositive(drawW, 24.0, minSize, maxSize);
+			drawH = sanitizeFinitePositive(drawH, 24.0, minSize, maxSize);
 
 			Color tintColor;
 			bool applyTint = false;
@@ -3308,6 +3323,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			// Adjust because SVG nose is up; rotate so north = 0, east = 90, etc.
 			// GDI+ uses screen coords (Y grows down); negate to align with screen vector and SVG nose-up.
 			double rotationDeg = screenHeadingDeg + 90.0;
+			if (!std::isfinite(rotationDeg))
+				rotationDeg = 0.0;
 
 			GraphicsState state = graphics.Save();
 			Gdiplus::Matrix m;
@@ -3317,6 +3334,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			graphics.SetTransform(&m);
 
 			if (applyTint) {
+				iconVerboseStep("before_realistic_draw_tinted");
 				const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(tintColor.GetAlpha()) / 255.0f;
 				Gdiplus::ColorMatrix cm = {
 					{
@@ -3339,9 +3357,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					static_cast<Gdiplus::REAL>(iconBmp->GetHeight()),
 					UnitPixel,
 					&attrs);
+				iconVerboseStep("after_realistic_draw_tinted");
 			}
 			else {
+				iconVerboseStep("before_realistic_draw_plain");
 				graphics.DrawImage(iconBmp, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(drawW), Gdiplus::REAL(drawH));
+				iconVerboseStep("after_realistic_draw_plain");
 			}
 			graphics.Restore(state);
 			iconSize = int(max(drawW, drawH));
@@ -3440,7 +3461,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				applyTint = true;
 			}
 
-			const double pixPerMeter = framePixPerMeter;
+			const double pixPerMeter = std::isfinite(framePixPerMeter) ? framePixPerMeter : 0.0;
 
 			const double lenMetersBase = 20.0;
 			const double halfWidthMetersBase = 12.0;
@@ -3494,8 +3515,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 
 			// Fixed Size scale always applies to arrow/diamond symbols, regardless of fixed-pixel mode.
-			lenPx = std::clamp(lenPx * symbolSizeScale, 1.0, 220.0);
-			halfWidthPx = std::clamp(halfWidthPx * symbolSizeScale, 1.0, 110.0);
+			lenPx = sanitizeFinitePositive(lenPx * symbolSizeScale, 20.0, 1.0, 220.0);
+			halfWidthPx = sanitizeFinitePositive(halfWidthPx * symbolSizeScale, 12.0, 1.0, 110.0);
 			if (pixPerMeter > 0.0)
 			{
 				lenMetersUsed = lenPx / pixPerMeter;
@@ -3510,6 +3531,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			const Color drawColor = applyTint ? tintColor : ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
 			if (useDiamondIconStyle)
 			{
+				iconVerboseStep("before_symbol_diamond_draw");
 				// Rounded square rendered as a 45-degree rotated diamond.
 				const double diagonalPx = std::clamp(lenPx + halfWidthPx, 10.0, 220.0);
 				const double sidePx = diagonalPx / std::sqrt(2.0);
@@ -3542,10 +3564,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				SolidBrush diamondBrush(drawColor);
 				graphics.FillPath(&diamondBrush, &diamondPath);
 				graphics.Restore(diamondState);
+				iconVerboseStep("after_symbol_diamond_draw");
 				iconSize = int(max(12.0, diagonalPx));
 			}
 			else
 			{
+				iconVerboseStep("before_symbol_arrow_draw");
 				auto move = [&](const CPosition& start, double bearingDeg, double distanceMeters) {
 					return BetterHarversine(start, wrap360(bearingDeg), distanceMeters);
 				};
@@ -3571,6 +3595,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 				SolidBrush arrowBrush(drawColor);
 				graphics.FillPolygon(&arrowBrush, tri, 4);
+				iconVerboseStep("after_symbol_arrow_draw");
 				iconSize = int(max(12.0, lenPx + halfWidthPx));
 			}
 		}
