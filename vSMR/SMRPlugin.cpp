@@ -85,6 +85,7 @@ std::atomic<bool> VacdmFetchInProgress(false);
 std::atomic<clock_t> VacdmLastFetchClock(0);
 const int VacdmFetchIntervalSeconds = 15;
 const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
+std::string VacdmConfiguredServerUrl;
 std::atomic<bool> VacdmPollingEnabled(false);
 std::atomic<unsigned long> VacdmFetchCounter(0);
 std::atomic<unsigned long> VacdmLastSehCode(0);
@@ -227,10 +228,13 @@ namespace
 
 	std::string ResolveVacdmPilotsUrl()
 	{
+		if (!VacdmConfiguredServerUrl.empty())
+			return VacdmConfiguredServerUrl + "/api/v1/pilots";
+
 		std::string serverUrl;
-		if (!TryReadVacdmServerUrl(serverUrl))
-			return VacdmPilotsUrlDefault;
-		return serverUrl + "/api/v1/pilots";
+		if (TryReadVacdmServerUrl(serverUrl))
+			return serverUrl + "/api/v1/pilots";
+		return VacdmPilotsUrlDefault;
 	}
 
 	bool TryParseIsoUtcTimestamp(const std::string& iso, std::time_t& outUtc)
@@ -682,6 +686,20 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	DllPath = DllPathFile;
 	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
 	Logger::DLL_PATH = DllPath;
+
+	std::string configuredVacdmServerUrl;
+	if (TryReadVacdmServerUrl(configuredVacdmServerUrl))
+	{
+		VacdmConfiguredServerUrl = configuredVacdmServerUrl;
+		VacdmPollingEnabled.store(true, std::memory_order_relaxed);
+		Logger::info("VACDM polling enabled server_url=" + VacdmConfiguredServerUrl);
+	}
+	else
+	{
+		VacdmConfiguredServerUrl.clear();
+		VacdmPollingEnabled.store(false, std::memory_order_relaxed);
+		Logger::info("VACDM polling disabled (no SERVER_URL in vacdm.txt)");
+	}
 }
 
 CSMRPlugin::~CSMRPlugin()
@@ -1253,17 +1271,27 @@ void CSMRPlugin::OnTimer(int Counter)
 	}
 
 	const bool networkConnectionActive = (currentConnectionType != CONNECTION_TYPE_NO);
+	const bool vacdmPollingEnabled = VacdmPollingEnabled.load(std::memory_order_relaxed);
 	const bool connectionStableForVacdm = networkConnectionActive &&
 		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= 20);
 
 	const clock_t lastVacdmFetchClock = VacdmLastFetchClock.load();
-	if (connectionStableForVacdm &&
+	if (vacdmPollingEnabled &&
+		connectionStableForVacdm &&
 		(lastVacdmFetchClock == 0 || ((clock() - lastVacdmFetchClock) / CLOCKS_PER_SEC) >= VacdmFetchIntervalSeconds) &&
 		!VacdmFetchInProgress.load())
 	{
 		bool expected = false;
 		if (VacdmFetchInProgress.compare_exchange_strong(expected, true))
-			_beginthread(refreshVacdmData, 0, NULL);
+		{
+			const uintptr_t threadHandle = _beginthread(refreshVacdmData, 0, NULL);
+			if (threadHandle == static_cast<uintptr_t>(-1L))
+			{
+				VacdmFetchInProgress.store(false);
+				VacdmLastFetchClock = clock();
+				Logger::info("VACDM refresh thread start failed errno=" + std::to_string(errno));
+			}
+		}
 	}
 
 	{
