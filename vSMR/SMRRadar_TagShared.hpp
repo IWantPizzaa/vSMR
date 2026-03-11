@@ -91,6 +91,8 @@ namespace
 		return ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
 	}
 
+	// Resolve pilot data by trying both correlated flight plan and radar target callsigns.
+	// This keeps tag rendering resilient when one side has not correlated yet.
 	bool TryGetVacdmPilotDataForTarget(const CRadarTarget& rt, const CFlightPlan& fp, VacdmPilotData& outData)
 	{
 		const std::string fpCallsign = NormalizeVacdmLookupCallsign(fp.IsValid() ? fp.GetCallsign() : NULL);
@@ -104,6 +106,7 @@ namespace
 		return false;
 	}
 
+	// Render UTC timestamps in HHMM format for tag tokens.
 	std::string FormatVacdmTimeToken(std::time_t utcTime)
 	{
 		if (utcTime <= 0)
@@ -1010,6 +1013,8 @@ namespace
 		return true;
 	}
 
+	// Parse color-rule token syntax:
+	// token(state_<name>=[target|tag|text, color=(r,g,b), color_target=(r,g,b), ...]).
 	bool TryParseVacdmColorRuleToken(const std::string& rawToken, VacdmColorRuleDefinition& outRule)
 	{
 		outRule = VacdmColorRuleDefinition();
@@ -1225,6 +1230,8 @@ namespace
 		return false;
 	}
 
+	// Resolve a canonical runtime state name for a vACDM token.
+	// These states are consumed by both legacy inline rules and structured rules.
 	std::string ResolveVacdmRuleStateName(const std::string& token, const VacdmPilotData* pilotData)
 	{
 		const std::string lowered = ToLowerAsciiCopy(token);
@@ -1302,6 +1309,7 @@ namespace
 		return normalized;
 	}
 
+	// Map aliases and legacy labels to one canonical set so profile rules remain backward-compatible.
 	std::string CanonicalVacdmStateName(const std::string& rawState)
 	{
 		const std::string state = NormalizeVacdmStateName(rawState);
@@ -1348,6 +1356,7 @@ namespace
 		return state;
 	}
 
+	// Evaluate profile rule predicates against canonical state names.
 	bool VacdmRuleStateMatches(const std::string& expectedStateRaw, const std::string& actualStateRaw)
 	{
 		const std::string expected = CanonicalVacdmStateName(expectedStateRaw);
@@ -1377,6 +1386,7 @@ namespace
 		return false;
 	}
 
+	// Collect only vACDM color-rule tokens from tag definition lines.
 	void CollectVacdmColorRulesFromLineTexts(const std::vector<std::string>& lineTexts, std::vector<VacdmColorRuleDefinition>& outRules)
 	{
 		for (const std::string& line : lineTexts)
