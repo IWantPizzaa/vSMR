@@ -2701,6 +2701,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			continue;
 		}
 		const std::string rtCallsign = rtCallsignRaw;
+		auto iconVerboseStep = [&](const std::string& step)
+		{
+			if (!Logger::is_verbose_mode())
+				return;
+			Logger::info("IconRender: " + rtCallsign + " " + step);
+		};
 
 		CRadarTargetPositionData RtPos = rt.GetPosition();
 		if (!RtPos.IsValid())
@@ -2711,6 +2717,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (!isAcDisplayed)
 			continue;
+		iconVerboseStep("begin");
 
 		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
 		bool AcisCorrelated = IsCorrelated(iconFp, rt);
@@ -2971,6 +2978,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				rtCallsign);
 			tagDataIt = frameTagDataCache.emplace(targetCallsign, std::move(generatedTagData)).first;
 		}
+		iconVerboseStep("after_tag_data");
 		const TagReplacingMap& iconReplacingMap = tagDataIt->second;
 		const VacdmColorRuleOverrides structuredIconColorRuleOverrides = evaluateStructuredColorRules(
 			vacdmRuleType,
@@ -2978,6 +2986,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			"normal",
 			iconReplacingMap,
 			hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+		iconVerboseStep("after_structured_rules");
 		if (structuredIconColorRuleOverrides.hasTargetColor)
 		{
 			vacdmColorRuleOverrides.hasTargetColor = true;
@@ -2989,18 +2998,60 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
 		const bool fixedPixelIconSize = frameFixedPixelIconSize;
-
-		if (useRealisticIconStyle && iconBmp != nullptr) {
-			auto getGroundIconColor = [&](const char* key, Color fallback) -> Color {
-				const Value& profile = CurrentConfig->getActiveProfile();
-				if (profile.HasMember("targets")) {
-					const Value& targets = profile["targets"];
-					if (targets.HasMember("ground_icons") && targets["ground_icons"].HasMember(key)) {
-						return CurrentConfig->getConfigColor(targets["ground_icons"][key]);
-					}
-				}
+		auto isValidColorObject = [](const Value& colorValue) -> bool
+		{
+			if (!colorValue.IsObject())
+				return false;
+			if (!colorValue.HasMember("r") || !colorValue["r"].IsInt())
+				return false;
+			if (!colorValue.HasMember("g") || !colorValue["g"].IsInt())
+				return false;
+			if (!colorValue.HasMember("b") || !colorValue["b"].IsInt())
+				return false;
+			if (colorValue.HasMember("a") && !colorValue["a"].IsInt())
+				return false;
+			return true;
+		};
+		auto getGroundIconColor = [&](const char* key, Color fallback) -> Color
+		{
+			if (CurrentConfig == nullptr || key == nullptr || key[0] == '\0')
 				return fallback;
-			};
+
+			const Value& profile = CurrentConfig->getActiveProfile();
+			if (!profile.IsObject() || !profile.HasMember("targets") || !profile["targets"].IsObject())
+				return fallback;
+
+			const Value& targets = profile["targets"];
+			if (!targets.HasMember("ground_icons") || !targets["ground_icons"].IsObject())
+				return fallback;
+
+			const Value& groundIcons = targets["ground_icons"];
+			if (!groundIcons.HasMember(key))
+				return fallback;
+
+			const Value& iconColor = groundIcons[key];
+			if (!isValidColorObject(iconColor))
+				return fallback;
+
+			return CurrentConfig->getConfigColor(iconColor);
+		};
+		bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
+		if (canUseRealisticIcon)
+		{
+			const Gdiplus::Status bmpStatus = iconBmp->GetLastStatus();
+			const UINT bmpWidth = iconBmp->GetWidth();
+			const UINT bmpHeight = iconBmp->GetHeight();
+			if (bmpStatus != Gdiplus::Ok || bmpWidth == 0 || bmpHeight == 0)
+			{
+				iconVerboseStep(
+					"realistic_icon_disabled status=" + std::to_string(static_cast<int>(bmpStatus)) +
+					" w=" + std::to_string(static_cast<unsigned long long>(bmpWidth)) +
+					" h=" + std::to_string(static_cast<unsigned long long>(bmpHeight)));
+				canUseRealisticIcon = false;
+			}
+		}
+
+		if (canUseRealisticIcon) {
 
 			// Compute on-screen size that scales with zoom (uniform for all aircraft)
 			double drawW = iconSize;
@@ -3297,17 +3348,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		else
 		{
-			auto getGroundIconColor = [&](const char* key, Color fallback) -> Color {
-				const Value& profile = CurrentConfig->getActiveProfile();
-				if (profile.HasMember("targets")) {
-					const Value& targets = profile["targets"];
-					if (targets.HasMember("ground_icons") && targets["ground_icons"].HasMember(key)) {
-						return CurrentConfig->getConfigColor(targets["ground_icons"][key]);
-					}
-				}
-				return fallback;
-			};
-
 			Color tintColor;
 			bool applyTint = false;
 			if (hasNoFlightPlan)
@@ -3534,6 +3574,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				iconSize = int(max(12.0, lenPx + halfWidthPx));
 			}
 		}
+		iconVerboseStep("after_icon_draw");
 
 		// Predicted Track Line
 		// It starts 20 seconds away from the ac
@@ -3584,7 +3625,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			const char* systemIdText = rt.GetSystemID();
 			hoverText = (systemIdText != nullptr) ? systemIdText : "";
 		}
+		iconVerboseStep("before_add_screen_object");
 		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
+		iconVerboseStep("after_add_screen_object");
 	}
 
 #pragma endregion Drawing of the symbols
