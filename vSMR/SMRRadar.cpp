@@ -36,6 +36,7 @@ map<int, CInsetWindow *> appWindows;
 #define VSMR_REFRESH_LOG(message) do { } while (0)
 #endif
 
+// Utility functions 
 inline double closest(std::vector<double> const& vec, double value) {
 	auto const it = std::lower_bound(vec.begin(), vec.end(), value);
 	if (it == vec.end()) { return -1; }
