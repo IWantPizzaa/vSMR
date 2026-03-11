@@ -51,6 +51,48 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	}
 
 	if (ObjectType == DRAWING_TAG || ObjectType == TAG_CITEM_MANUALCORRELATE || ObjectType == TAG_CITEM_CALLSIGN || ObjectType == TAG_CITEM_FPBOX || ObjectType == TAG_CITEM_RWY || ObjectType == TAG_CITEM_SID || ObjectType == TAG_CITEM_GATE || ObjectType == TAG_CITEM_NO || ObjectType == TAG_CITEM_GROUNDSTATUS || ObjectType == TAG_CITEM_CLEARANCE || ObjectType == TAG_CITEM_UKSTAND || ObjectType == TAG_CITEM_REMARK || ObjectType == TAG_CITEM_SCRATCHPAD) {
+		auto routeMoveToInsetWindow = [&]() -> bool
+		{
+			if (sObjectId == nullptr || sObjectId[0] == '\0')
+				return false;
+
+			for (auto& kv : appWindows)
+			{
+				CInsetWindow* insetWindow = kv.second;
+				if (insetWindow == nullptr)
+					continue;
+
+				const bool draggingThisWindowTag =
+					!insetWindow->m_TagBeingDragged.empty() &&
+					insetWindow->m_TagBeingDragged == sObjectId;
+				auto insetTagAreaIt = insetWindow->m_TagAreas.find(sObjectId);
+				const bool windowHasTag = insetTagAreaIt != insetWindow->m_TagAreas.end();
+
+				CRect windowRect(insetWindow->m_Area);
+				windowRect.NormalizeRect();
+				const bool pointerInWindow =
+					Pt.x >= windowRect.left && Pt.x <= windowRect.right &&
+					Pt.y >= windowRect.top && Pt.y <= windowRect.bottom;
+
+				if (!draggingThisWindowTag)
+				{
+					if (!windowHasTag || !pointerInWindow)
+						continue;
+				}
+
+				insetWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released);
+				return true;
+			}
+
+			return false;
+		};
+		if (routeMoveToInsetWindow())
+		{
+			mouseLocation = Pt;
+			RequestRefresh();
+			return;
+		}
+
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
 
 		if (!Released)
