@@ -78,7 +78,7 @@ vector<CSMRRadar*> RadarScreensOpened;
 std::mutex VacdmPilotsMutex;
 std::map<std::string, VacdmPilotData> VacdmPilots;
 std::atomic<bool> VacdmFetchInProgress(false);
-clock_t VacdmLastFetchClock = 0;
+std::atomic<clock_t> VacdmLastFetchClock(0);
 const int VacdmFetchIntervalSeconds = 15;
 const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
 std::atomic<unsigned long> VacdmFetchCounter(0);
@@ -283,97 +283,108 @@ void refreshVacdmData(void* arg)
 	{
 		~ResetFetchFlag()
 		{
-			VacdmLastFetchClock = clock();
+			VacdmLastFetchClock.store(clock());
 			VacdmFetchInProgress.store(false);
 		}
 	} reset;
 
-	if (httpHelper == NULL)
-		return;
-
-	const std::string pilotsUrl = ResolveVacdmPilotsUrl();
-	std::string raw = httpHelper->downloadStringFromURL(pilotsUrl);
-	if (raw.empty())
+	try
 	{
-		Logger::info("VACDM refresh failed: empty response url=" + pilotsUrl);
-		return;
-	}
+		if (httpHelper == nullptr)
+			return;
 
-	rapidjson::Document doc;
-	if (doc.Parse<0>(raw.c_str()).HasParseError() || !doc.IsArray())
+		const std::string pilotsUrl = ResolveVacdmPilotsUrl();
+		std::string raw = httpHelper->downloadStringFromURL(pilotsUrl);
+		if (raw.empty())
+		{
+			Logger::info("VACDM refresh failed: empty response url=" + pilotsUrl);
+			return;
+		}
+
+		rapidjson::Document doc;
+		if (doc.Parse<0>(raw.c_str()).HasParseError() || !doc.IsArray())
+		{
+			Logger::info("VACDM refresh failed: invalid JSON array url=" + pilotsUrl);
+			return;
+		}
+
+		std::map<std::string, VacdmPilotData> parsedData;
+
+		for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
+		{
+			const rapidjson::Value& pilot = doc[i];
+			if (!pilot.IsObject() || !pilot.HasMember("callsign") || !pilot["callsign"].IsString())
+				continue;
+
+			VacdmPilotData data;
+			data.callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(pilot["callsign"].GetString()));
+
+			const rapidjson::Value* vacdm = nullptr;
+			if (pilot.HasMember("vacdm") && pilot["vacdm"].IsObject())
+				vacdm = &pilot["vacdm"];
+
+			auto readTime = [&](const char* key, std::time_t& outTime, bool& outHas) {
+				outTime = 0;
+				outHas = false;
+				if (vacdm == nullptr || !vacdm->HasMember(key) || !(*vacdm)[key].IsString())
+					return;
+				std::time_t parsed = 0;
+				if (TryParseIsoUtcTimestamp((*vacdm)[key].GetString(), parsed))
+				{
+					outTime = parsed;
+					outHas = true;
+				}
+				};
+
+			readTime("tobt", data.tobtUtc, data.hasTobt);
+			readTime("tsat", data.tsatUtc, data.hasTsat);
+			readTime("ttot", data.ttotUtc, data.hasTtot);
+			readTime("asat", data.asatUtc, data.hasAsat);
+			readTime("aobt", data.aobtUtc, data.hasAobt);
+			readTime("atot", data.atotUtc, data.hasAtot);
+			readTime("asrt", data.asrtUtc, data.hasAsrt);
+			readTime("aort", data.aortUtc, data.hasAort);
+			readTime("ctot", data.ctotUtc, data.hasCtot);
+
+			if (vacdm != nullptr && vacdm->HasMember("tobt_state") && (*vacdm)["tobt_state"].IsString())
+				data.tobtState = (*vacdm)["tobt_state"].GetString();
+
+			if (pilot.HasMember("hasBooking") && pilot["hasBooking"].IsBool())
+				data.hasBooking = pilot["hasBooking"].GetBool();
+
+			parsedData[data.callsign] = data;
+		}
+
+		std::string aselCallsign;
+		{
+			std::lock_guard<std::mutex> stateGuard(VacdmDebugStateMutex);
+			aselCallsign = VacdmDebugAselCallsign;
+		}
+		const size_t parsedPilotCount = parsedData.size();
+		const bool aselFound = !aselCallsign.empty() && parsedData.find(aselCallsign) != parsedData.end();
+
+		{
+			std::lock_guard<std::mutex> guard(VacdmPilotsMutex);
+			VacdmPilots.swap(parsedData);
+		}
+
+		const unsigned long fetchIndex = ++VacdmFetchCounter;
+		Logger::info(
+			"VACDM refresh #" + std::to_string(fetchIndex) +
+			" pilots=" + std::to_string(parsedPilotCount) +
+			" asel=" + (aselCallsign.empty() ? std::string("<none>") : aselCallsign) +
+			" asel_present=" + std::string(aselFound ? "1" : "0") +
+			" url=" + pilotsUrl
+		);
+	}
+	catch (const std::exception& ex)
 	{
-		Logger::info("VACDM refresh failed: invalid JSON array url=" + pilotsUrl);
-		return;
+		Logger::info("VACDM refresh exception: " + std::string(ex.what()));
 	}
-
-	std::map<std::string, VacdmPilotData> parsedData;
-
-	for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
+	catch (...)
 	{
-		const rapidjson::Value& pilot = doc[i];
-		if (!pilot.IsObject() || !pilot.HasMember("callsign") || !pilot["callsign"].IsString())
-			continue;
-
-		VacdmPilotData data;
-		data.callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(pilot["callsign"].GetString()));
-
-		const rapidjson::Value* vacdm = nullptr;
-		if (pilot.HasMember("vacdm") && pilot["vacdm"].IsObject())
-			vacdm = &pilot["vacdm"];
-
-		auto readTime = [&](const char* key, std::time_t& outTime, bool& outHas) {
-			outTime = 0;
-			outHas = false;
-			if (vacdm == nullptr || !vacdm->HasMember(key) || !(*vacdm)[key].IsString())
-				return;
-			std::time_t parsed = 0;
-			if (TryParseIsoUtcTimestamp((*vacdm)[key].GetString(), parsed))
-			{
-				outTime = parsed;
-				outHas = true;
-			}
-			};
-
-		readTime("tobt", data.tobtUtc, data.hasTobt);
-		readTime("tsat", data.tsatUtc, data.hasTsat);
-		readTime("ttot", data.ttotUtc, data.hasTtot);
-		readTime("asat", data.asatUtc, data.hasAsat);
-		readTime("aobt", data.aobtUtc, data.hasAobt);
-		readTime("atot", data.atotUtc, data.hasAtot);
-		readTime("asrt", data.asrtUtc, data.hasAsrt);
-		readTime("aort", data.aortUtc, data.hasAort);
-		readTime("ctot", data.ctotUtc, data.hasCtot);
-
-		if (vacdm != nullptr && vacdm->HasMember("tobt_state") && (*vacdm)["tobt_state"].IsString())
-			data.tobtState = (*vacdm)["tobt_state"].GetString();
-
-		if (pilot.HasMember("hasBooking") && pilot["hasBooking"].IsBool())
-			data.hasBooking = pilot["hasBooking"].GetBool();
-
-		parsedData[data.callsign] = data;
+		Logger::info("VACDM refresh exception: unknown");
 	}
-
-	std::string aselCallsign;
-	{
-		std::lock_guard<std::mutex> stateGuard(VacdmDebugStateMutex);
-		aselCallsign = VacdmDebugAselCallsign;
-	}
-	const size_t parsedPilotCount = parsedData.size();
-	const bool aselFound = !aselCallsign.empty() && parsedData.find(aselCallsign) != parsedData.end();
-
-	{
-		std::lock_guard<std::mutex> guard(VacdmPilotsMutex);
-		VacdmPilots.swap(parsedData);
-	}
-
-	const unsigned long fetchIndex = ++VacdmFetchCounter;
-	Logger::info(
-		"VACDM refresh #" + std::to_string(fetchIndex) +
-		" pilots=" + std::to_string(parsedPilotCount) +
-		" asel=" + (aselCallsign.empty() ? std::string("<none>") : aselCallsign) +
-		" asel_present=" + std::string(aselFound ? "1" : "0") +
-		" url=" + pilotsUrl
-	);
 }
 
 void datalinkLogin(void * arg) {
@@ -610,18 +621,18 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	messageId.store(rand() % 10000 + 1789);
 
 	timer = clock();
-	VacdmLastFetchClock = 0;
+	VacdmLastFetchClock.store(0);
 
-	if (httpHelper == NULL)
+	if (httpHelper == nullptr)
 		httpHelper = new HttpHelper();
 
 	const char * p_value;
 
-	if ((p_value = GetDataFromSettings("cpdlc_logon")) != NULL)
+	if ((p_value = GetDataFromSettings("cpdlc_logon")) != nullptr)
 		logonCallsign = p_value;
-	if ((p_value = GetDataFromSettings("cpdlc_password")) != NULL)
+	if ((p_value = GetDataFromSettings("cpdlc_password")) != nullptr)
 		logonCode = p_value;
-	if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
+	if ((p_value = GetDataFromSettings("cpdlc_sound")) != nullptr)
 		PlaySoundClr = bool(!!atoi(p_value));
 
 	char DllPathFile[_MAX_PATH];
@@ -1153,11 +1164,13 @@ void CSMRPlugin::OnTimer(int Counter)
 	Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	static int lastConnectionType = -999;
+	static clock_t lastConnectionTypeChangeClock = 0;
 	const int currentConnectionType = GetConnectionType();
 	if (currentConnectionType != lastConnectionType)
 	{
 		Logger::info("EuroScope connection_type=" + std::to_string(currentConnectionType));
 		lastConnectionType = currentConnectionType;
+		lastConnectionTypeChangeClock = clock();
 	}
 
 	{
@@ -1166,7 +1179,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		if (aselFlightPlan.IsValid())
 		{
 			const char* callsign = aselFlightPlan.GetCallsign();
-			if (callsign != NULL)
+			if (callsign != nullptr)
 				aselCallsign = ToUpperAsciiCopy(callsign);
 		}
 
@@ -1194,7 +1207,13 @@ void CSMRPlugin::OnTimer(int Counter)
 		timer = clock();
 	}
 
-	if ((VacdmLastFetchClock == 0 || ((clock() - VacdmLastFetchClock) / CLOCKS_PER_SEC) >= VacdmFetchIntervalSeconds) &&
+	const bool networkConnectionActive = (currentConnectionType != CONNECTION_TYPE_NO);
+	const bool connectionStableForVacdm = networkConnectionActive &&
+		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= 20);
+
+	const clock_t lastVacdmFetchClock = VacdmLastFetchClock.load();
+	if (connectionStableForVacdm &&
+		(lastVacdmFetchClock == 0 || ((clock() - lastVacdmFetchClock) / CLOCKS_PER_SEC) >= VacdmFetchIntervalSeconds) &&
 		!VacdmFetchInProgress.load())
 	{
 		bool expected = false;
@@ -1220,7 +1239,7 @@ void CSMRPlugin::OnTimer(int Counter)
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
 	Logger::info(string(__FUNCSIG__));
-	if (!strcmp(sDisplayName, MY_PLUGIN_VIEW_AVISO)) {
+	if (sDisplayName != nullptr && !strcmp(sDisplayName, MY_PLUGIN_VIEW_AVISO)) {
 		CSMRRadar* rd = new CSMRRadar();
 		RadarScreensOpened.push_back(rd);
 		return rd;

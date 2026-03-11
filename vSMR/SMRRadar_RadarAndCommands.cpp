@@ -14,7 +14,10 @@ void CSMRRadar::RefreshAirportActivity(void) {
 		airport = GetPlugIn()->SectorFileElementSelectNext(airport, SECTOR_ELEMENT_AIRPORT))
 	{
 		if (airport.IsElementActive(false)) {
-			string s = airport.GetName();
+			const char* airportName = airport.GetName();
+			if (airportName == nullptr || airportName[0] == '\0')
+				continue;
+			string s = airportName;
 			s = s.substr(0, 4);
 			transform(s.begin(), s.end(), s.begin(), ::toupper);
 			Active_Arrivals.push_back(s);
@@ -27,8 +30,8 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 	Logger::info(string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
 		return;
-	const char* callsign = RadarTarget.GetCallsign();
-	if (callsign == nullptr || callsign[0] == '\0')
+	const char* callsignRaw = RadarTarget.GetCallsign();
+	if (callsignRaw == nullptr || callsignRaw[0] == '\0')
 	{
 		static bool loggedMissingCallsign = false;
 		if (!loggedMissingCallsign)
@@ -38,6 +41,7 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 		}
 		return;
 	}
+	const std::string callsign = callsignRaw;
 
 	CRadarTargetPositionData RtPos = RadarTarget.GetPosition();
 
@@ -47,7 +51,7 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 
 	Patatoides[callsign].points.clear();
 
-	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(callsign);
+	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(callsign.c_str());
 
 	// All units in M
 	float width = 34.0f;
@@ -224,6 +228,9 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 {
 	Logger::info(string(__FUNCSIG__));
+	if (sCommandLine == nullptr)
+		return false;
+
 	if (strcmp(sCommandLine, ".smr reload") == 0) {
 		CurrentConfig = new CConfig(ConfigPath, mapsPath);
 		LoadProfile(CurrentConfig->getActiveProfileName());
@@ -261,6 +268,14 @@ void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		return;
 
 	const string callsign = FlightPlan.GetCallsign();
+	Patatoides.erase(callsign);
+	TagsOffsets.erase(callsign);
+	TagAngles.erase(callsign);
+	TagLeaderLineLength.erase(callsign);
+	tagAreas.erase(callsign);
+	tagCollisionAreas.erase(callsign);
+	TagDragOffsetFromCenter.erase(callsign);
+
 	for (auto itr = DistanceTools.begin(); itr != DistanceTools.end(); )
 	{
 		if (itr->first == callsign || itr->second == callsign)

@@ -479,8 +479,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	{
 		if (!rt.IsValid() || !rt.GetPosition().IsValid())
 			continue;
-		const char* rtCallsign = rt.GetCallsign();
-		if (rtCallsign == nullptr || rtCallsign[0] == '\0')
+		const char* rtCallsignRaw = rt.GetCallsign();
+		if (rtCallsignRaw == nullptr || rtCallsignRaw[0] == '\0')
 		{
 			static bool loggedMissingTagCallsign = false;
 			if (!loggedMissingTagCallsign)
@@ -490,13 +490,14 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			}
 			continue;
 		}
+		const std::string rtCallsign = rtCallsignRaw;
 
 		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
-		bool isASEL = (aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign) == 0);
+		bool isASEL = (aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign.c_str()) == 0);
 
 		CRadarTargetPositionData RtPos = rt.GetPosition();
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
-		CFlightPlan fp = GetPlugIn()->FlightPlanSelect(rtCallsign);
+		CFlightPlan fp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
 		const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
 		const char* fpOrigin = fp.IsValid() ? fp.GetFlightPlanData().GetOrigin() : nullptr;
 		int reportedGs = RtPos.GetReportedGS();
@@ -1189,13 +1190,13 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		// If we use a RIMCAS label only, we display it, and adapt the rectangle
 		CRect oldCrectSave = TagBackgroundRect;
-		const std::string tagBottomLine = GetBottomLine(rtCallsign);
+		const std::string tagBottomLine = GetBottomLine(rtCallsign.c_str());
 		const char* tagBottomLineText = tagBottomLine.c_str();
 
 		// Adding the tag screen object
 		tagAreas[rtCallsign] = TagBackgroundRect;
 		tagCollisionAreas[rtCallsign] = TagCollisionRect;
-		AddScreenObject(DRAWING_TAG, rtCallsign, TagBackgroundRect, true, tagBottomLineText);
+		AddScreenObject(DRAWING_TAG, rtCallsign.c_str(), TagBackgroundRect, true, tagBottomLineText);
 
 		TagBackgroundRect = oldCrectSave;
 
@@ -1230,7 +1231,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			CRect alertRect(TagBackgroundRect.left, TagBackgroundRect.top + heightOffset,
 				TagBackgroundRect.left + alertTextWidth, TagBackgroundRect.top + heightOffset + max(alertTextHeight, oneLineHeight));
 
-			AddScreenObject(TagClickableMap[alertStr], rtCallsign, alertRect, true, tagBottomLineText);
+			AddScreenObject(TagClickableMap[alertStr], rtCallsign.c_str(), alertRect, true, tagBottomLineText);
 			heightOffset += oneLineHeight;
 		}
 			for (auto&& line : ReplacedLabelLines)
@@ -1288,7 +1289,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				CRect ItemRect(textLeft + widthOffset, textTop + heightOffset,
 					textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
 
-				AddScreenObject(clickItemType, rtCallsign, ItemRect, true, tagBottomLineText);
+				AddScreenObject(clickItemType, rtCallsign.c_str(), ItemRect, true, tagBottomLineText);
 
 				widthOffset += renderedElement.measuredWidth;
 				widthOffset += blankWidth;

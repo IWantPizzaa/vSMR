@@ -1842,7 +1842,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		SetCursor(smrCursor);
 		return true;
 	default:
-		return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
+		if (gSourceProc != nullptr)
+			return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
+		return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
 }
 
@@ -1863,9 +1865,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 
 		if (smrCursor != nullptr)
-		{		
+		{
 			pluginWindow = GetActiveWindow();
-			gSourceProc = (WNDPROC)SetWindowLong(pluginWindow, GWL_WNDPROC, (LONG)WindowProc);
+			if (pluginWindow != nullptr && ::IsWindow(pluginWindow))
+			{
+				WNDPROC previousProc = reinterpret_cast<WNDPROC>(
+					::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
+				if (previousProc != nullptr)
+					gSourceProc = previousProc;
+				else
+					pluginWindow = nullptr;
+			}
 		}
 		initCursor = false;
 	}
@@ -2022,8 +2032,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (elementCategory == -1) continue;
 			CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
 			while (element.IsValid()) {
-				if (strncmp(name.c_str(), element.GetName(), strlen(name.c_str())) == 0) {
-					ShowSectorFileElement(element, element.GetComponentName(0), toDraw);
+				const char* elementNameRaw = element.GetName();
+				if (elementNameRaw == nullptr || elementNameRaw[0] == '\0')
+				{
+					element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
+					continue;
+				}
+
+				if (strncmp(name.c_str(), elementNameRaw, strlen(name.c_str())) == 0) {
+					const char* componentName = element.GetComponentName(0);
+					if (componentName != nullptr)
+						ShowSectorFileElement(element, componentName, toDraw);
 				}
 				element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
 			}
@@ -2037,7 +2056,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	{
 		POINT p;
 		if (GetCursorPos(&p)) {
-			if (ScreenToClient(GetActiveWindow(), &p)) {
+			HWND activeWindow = GetActiveWindow();
+			if (activeWindow != nullptr && ScreenToClient(activeWindow, &p)) {
 				mouseLocation = p;
 			}
 		}
@@ -2065,9 +2085,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		apt.IsValid();
 		apt = GetPlugIn()->SectorFileElementSelectNext(apt, SECTOR_ELEMENT_AIRPORT))
 	{
+		const char* airportName = apt.GetName();
+		if (airportName == nullptr || airportName[0] == '\0')
+			continue;
+
 		CPosition Pos;
 		apt.GetPosition(&Pos, 0);
-		AirportPositions[string(apt.GetName())] = Pos;
+		AirportPositions[string(airportName)] = Pos;
 	}
 
 	RimcasInstance->RunwayAreas.clear();
@@ -2088,15 +2112,24 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		rwy.IsValid();
 		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
 	{
-		if (startsWith(getActiveAirport().c_str(), rwy.GetAirportName())) {
+		const char* runwayAirportName = rwy.GetAirportName();
+		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+			continue;
+
+		if (startsWith(getActiveAirport().c_str(), runwayAirportName)) {
+
+			const char* runwayNameA = rwy.GetRunwayName(0);
+			const char* runwayNameB = rwy.GetRunwayName(1);
+			if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
+				continue;
 
 			CPosition Left;
 			rwy.GetPosition(&Left, 1);
 			CPosition Right;
 			rwy.GetPosition(&Right, 0);
 
-			string runway_name = rwy.GetRunwayName(0);
-			string runway_name2 = rwy.GetRunwayName(1);
+			string runway_name = runwayNameA;
+			string runway_name2 = runwayNameB;
 
 			double bearing1 = TrueBearing(Left, Right);
 			double bearing2 = TrueBearing(Right, Left);
@@ -2438,8 +2471,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	{
 		if (!rt.IsValid() || !rt.GetPosition().IsValid())
 			continue;
-		const char* rtCallsign = rt.GetCallsign();
-		if (rtCallsign == nullptr || rtCallsign[0] == '\0')
+		const char* rtCallsignRaw = rt.GetCallsign();
+		if (rtCallsignRaw == nullptr || rtCallsignRaw[0] == '\0')
 		{
 			static bool loggedMissingRefreshCallsign = false;
 			if (!loggedMissingRefreshCallsign)
@@ -2449,18 +2482,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 			continue;
 		}
+		const std::string rtCallsign = rtCallsignRaw;
 
-		int reportedGs = rt.GetPosition().GetReportedGS();
+		CRadarTargetPositionData RtPos = rt.GetPosition();
+		if (!RtPos.IsValid())
+			continue;
+
+		int reportedGs = RtPos.GetReportedGS();
 		bool isAcDisplayed = isVisible(rt);
 
 		if (!isAcDisplayed)
 			continue;
 
-		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign);
+		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
 		bool AcisCorrelated = IsCorrelated(iconFp, rt);
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
-
-		CRadarTargetPositionData RtPos = rt.GetPosition();
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
@@ -2557,7 +2593,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		const bool isReleasedTrack = hasSystemId &&
 			(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end());
 		const char* assignedSquawk = iconFp.IsValid() ? iconFp.GetControllerAssignedData().GetSquawk() : nullptr;
-		const char* reportedSquawk = rt.GetPosition().GetSquawk();
+		const char* reportedSquawk = RtPos.GetSquawk();
 		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');
 		const bool hasReportedSquawk = (reportedSquawk != nullptr && reportedSquawk[0] != '\0');
 		const bool isWrongSquawk = hasAssignedSquawk && hasReportedSquawk &&
@@ -2700,7 +2736,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		VacdmColorRuleOverrides vacdmColorRuleOverrides =
 			EvaluateVacdmColorRules(vacdmColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
 		const char* frameAselCallsign = frameAselTarget.IsValid() ? frameAselTarget.GetCallsign() : nullptr;
-		const bool iconIsAseL = (frameAselCallsign != nullptr && strcmp(frameAselCallsign, rtCallsign) == 0);
+		const bool iconIsAseL = (frameAselCallsign != nullptr && strcmp(frameAselCallsign, rtCallsign.c_str()) == 0);
 		const std::string targetCallsign = ToUpperAsciiCopy(rtCallsign);
 		auto tagDataIt = frameTagDataCache.find(targetCallsign);
 		if (tagDataIt == frameTagDataCache.end())
@@ -3321,7 +3357,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		const char* hoverText = "";
 		if (AcisCorrelated)
 		{
-			hoverTextStorage = GetBottomLine(rtCallsign);
+			hoverTextStorage = GetBottomLine(rtCallsign.c_str());
 			hoverText = hoverTextStorage.c_str();
 		}
 		else
@@ -3329,7 +3365,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			const char* systemIdText = rt.GetSystemID();
 			hoverText = (systemIdText != nullptr) ? systemIdText : "";
 		}
-		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign, { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
+		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
 	}
 
 #pragma endregion Drawing of the symbols
@@ -3920,8 +3956,9 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
 
-		if (smrCursor != nullptr && smrCursor != NULL)
-		{
-			SetWindowLong(pluginWindow, GWL_WNDPROC, (LONG)gSourceProc);
-		}
+		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
+			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
+
+		pluginWindow = nullptr;
+		gSourceProc = nullptr;
 }
