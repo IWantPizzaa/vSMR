@@ -170,30 +170,6 @@ namespace
 		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
 	}
 
-	std::string BuildHoppieQueryPrefix(const std::string& destination, const std::string& type)
-	{
-		std::string url = baseUrlDatalink;
-		url += "?logon=";
-		url += logonCode;
-		url += "&from=";
-		url += logonCallsign;
-		url += "&to=";
-		url += destination;
-		url += "&type=";
-		url += type;
-		return url;
-	}
-
-	void EncodeSpacesAsPercent20(std::string& text)
-	{
-		size_t startPos = 0;
-		while ((startPos = text.find(' ', startPos)) != std::string::npos)
-		{
-			text.replace(startPos, 1, "%20");
-			startPos += 3;
-		}
-	}
-
 	bool TryReadVacdmServerUrl(std::string& outServerUrl)
 	{
 		outServerUrl.clear();
@@ -419,7 +395,12 @@ void refreshVacdmData(void* arg)
 void datalinkLogin(void * arg) {
 	(void)arg;
 	string raw;
-	string url = BuildHoppieQueryPrefix("SERVER", "PING");
+	string url = baseUrlDatalink;
+	url += "?logon=";
+	url += logonCode;
+	url += "&from=";
+	url += logonCallsign;
+	url += "&to=SERVER&type=PING";
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
@@ -447,11 +428,23 @@ void sendDatalinkMessage(void * arg) {
 	}
 
 	string raw;
-	string url = BuildHoppieQueryPrefix(localDest, localType);
+	string url = baseUrlDatalink;
+	url += "?logon=";
+	url += logonCode;
+	url += "&from=";
+	url += logonCallsign;
+	url += "&to=";
+	url += localDest;
+	url += "&type=";
+	url += localType;
 	url += "&packet=";
 	url += localMessage;
 
-	EncodeSpacesAsPercent20(url);
+	size_t start_pos = 0;
+	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
+		url.replace(start_pos, string(" ").length(), "%20");
+		start_pos += string("%20").length();
+	}
 
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
@@ -466,7 +459,12 @@ void sendDatalinkMessage(void * arg) {
 void pollMessages(void * arg) {
 	(void)arg;
 	string raw = "";
-	string url = BuildHoppieQueryPrefix("SERVER", "POLL");
+	string url = baseUrlDatalink;
+	url += "?logon=";
+	url += logonCode;
+	url += "&from=";
+	url += logonCallsign;
+	url += "&to=SERVER&type=POLL";
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (!startsWith("ok", raw.c_str()) || raw.size() <= 3)
@@ -551,8 +549,14 @@ void sendDatalinkClearance(void * arg) {
 	}
 
 	string raw;
-	string url = BuildHoppieQueryPrefix(packet.callsign, "CPDLC");
-	url += "&packet=/data2/";
+	string url = baseUrlDatalink;
+	url += "?logon=";
+	url += logonCode;
+	url += "&from=";
+	url += logonCallsign;
+	url += "&to=";
+	url += packet.callsign;
+	url += "&type=CPDLC&packet=/data2/";
 	const int messageSequence = messageId.fetch_add(1) + 1;
 	url += std::to_string(messageSequence);
 	url += "//R/";
@@ -591,7 +595,11 @@ void sendDatalinkClearance(void * arg) {
 	if (packet.message != "no" && packet.message.size() > 1)
 		url += packet.message;
 
-	EncodeSpacesAsPercent20(url);
+	size_t start_pos = 0;
+	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
+		url.replace(start_pos, string(" ").length(), "%20");
+		start_pos += string("%20").length();
+	}
 
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
@@ -1202,17 +1210,14 @@ void CSMRPlugin::OnTimer(int Counter)
 		HoppieConnected.store(false);
 	}
 
-	const int cpdlcPollIntervalSeconds = 10;
-	if (((clock() - timer) / CLOCKS_PER_SEC) > cpdlcPollIntervalSeconds && HoppieConnected.load()) {
+	if (((clock() - timer) / CLOCKS_PER_SEC) > 10 && HoppieConnected.load()) {
 		_beginthread(pollMessages, 0, NULL);
 		timer = clock();
 	}
 
-	// Avoid scheduling fetches while the connection state is still settling.
-	const int vacdmConnectionSettleSeconds = 20;
 	const bool networkConnectionActive = (currentConnectionType != CONNECTION_TYPE_NO);
 	const bool connectionStableForVacdm = networkConnectionActive &&
-		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= vacdmConnectionSettleSeconds);
+		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= 20);
 
 	const clock_t lastVacdmFetchClock = VacdmLastFetchClock.load();
 	if (connectionStableForVacdm &&
