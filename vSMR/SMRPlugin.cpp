@@ -5,6 +5,7 @@
 #include <ctime>
 #include <cctype>
 #include <cstdio>
+#include <cerrno>
 #include <fstream>
 #include "rapidjson/document.h"
 
@@ -84,6 +85,7 @@ std::atomic<bool> VacdmFetchInProgress(false);
 std::atomic<clock_t> VacdmLastFetchClock(0);
 const int VacdmFetchIntervalSeconds = 15;
 const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
+std::atomic<bool> VacdmPollingEnabled(false);
 std::atomic<unsigned long> VacdmFetchCounter(0);
 std::atomic<unsigned long> VacdmLastSehCode(0);
 std::mutex VacdmDebugStateMutex;
