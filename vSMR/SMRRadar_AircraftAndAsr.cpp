@@ -287,8 +287,17 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		rwy.IsValid();
 		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
 	{
-		if (startsWith(getActiveAirport().c_str(), rwy.GetAirportName())) {
-			string name = rwy.GetRunwayName(0) + string(" / ") + rwy.GetRunwayName(1);
+		const char* runwayAirportName = rwy.GetAirportName();
+		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+			continue;
+
+		const char* runwayNameA = rwy.GetRunwayName(0);
+		const char* runwayNameB = rwy.GetRunwayName(1);
+		if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
+			continue;
+
+		if (startsWith(getActiveAirport().c_str(), runwayAirportName)) {
+			string name = string(runwayNameA) + " / " + string(runwayNameB);
 
 			if (rwy.IsElementActive(true, 0) || rwy.IsElementActive(true, 1) || rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
 				RimcasInstance->toggleMonitoredRunwayDep(name);

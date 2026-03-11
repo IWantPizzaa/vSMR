@@ -9,7 +9,6 @@
 // HttpHelper Class by Even Rognlien, used with permission
 //
 
-std::string HttpHelper::downloadedContents;
 std::mutex HttpHelper::downloadMutex;
 
 namespace
@@ -115,50 +114,8 @@ HttpHelper::HttpHelper()  {
 
 }
 
-// Used for downloading strings from web:
-size_t HttpHelper::handle_data(void *ptr, size_t size, size_t nmemb, void *stream) {
-	int numbytes = size*nmemb;
-	// The data is not null-terminated, so get the last character, and replace it with '\0'. 
-	char lastchar = *((char *)ptr + numbytes - 1);
-	*((char *)ptr + numbytes - 1) = '\0';
-	downloadedContents.append((char *)ptr);
-	downloadedContents.append(1, lastchar);
-	*((char *)ptr + numbytes - 1) = lastchar;  // Might not be necessary. 
-	return size*nmemb;
-}
-
 std::string HttpHelper::downloadStringFromURL(std::string url) {
 	std::lock_guard<std::mutex> guard(downloadMutex);
-	CURL *curl = curl_easy_init();
-	if (curl)
-	{
-		downloadedContents = "";
-		char errorBuffer[CURL_ERROR_SIZE] = {};
-		// Tell libcurl the URL 
-		curl_easy_setopt(curl, CURLOPT_URL, url);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-		curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-		curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
-		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-		// Tell libcurl what function to call when it has data 
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HttpHelper::handle_data);
-		// Do it! 
-		CURLcode res = curl_easy_perform(curl);
-		long httpCode = 0;
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-		curl_easy_cleanup(curl);
-
-		if (res == CURLE_OK && httpCode >= 200 && httpCode < 400 && !downloadedContents.empty())
-			return downloadedContents;
-
-		const std::string winHttpContent = DownloadStringWithWinHttp(url);
-		if (!winHttpContent.empty())
-			return winHttpContent;
-
-		return downloadedContents;
-	}
 	return DownloadStringWithWinHttp(url);
 }
 

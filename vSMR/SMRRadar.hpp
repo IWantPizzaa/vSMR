@@ -149,7 +149,7 @@ public:
 		map<int, POINT2> History_three_points;
 	};
 
-	map<const char *, Patatoide_Points> Patatoides;
+	map<string, Patatoide_Points> Patatoides;
 
 	int RadarViewZoomLevel = 0;
 
