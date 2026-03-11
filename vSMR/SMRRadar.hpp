@@ -130,7 +130,8 @@ public:
 
 	vector<string> Active_Arrivals;
 
-	clock_t clock_init, clock_final;
+	clock_t clock_init = 0;
+	clock_t clock_final = 0;
 
 	COLORREF SMR_TARGET_COLOR = RGB(255, 242, 73);
 	COLORREF SMR_H1_COLOR = RGB(0, 255, 255);
@@ -160,7 +161,7 @@ public:
 	string ConfigPath;
 	string mapsPath;
 	CCallsignLookup * Callsigns = nullptr;
-	CColorManager * ColorManager;
+	CColorManager * ColorManager = nullptr;
 	std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> AircraftIcons;
 	std::string IconsPath;
 	struct AircraftSpec { double length = 0.0; double wingspan = 0.0; };

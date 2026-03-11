@@ -62,6 +62,8 @@ CSMRRadar::CSMRRadar()
 
 	// Initializing randomizer
 	srand(static_cast<unsigned>(time(nullptr)));
+	clock_init = clock();
+	clock_final = clock_init;
 
 	// Initialize GDI+
 	GdiplusStartupInput gdiplusStartupInput;
@@ -147,9 +149,25 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
+	for (auto& fontEntry : customFonts)
+	{
+		delete fontEntry.second;
+	}
+	customFonts.clear();
+
+	delete ColorManager;
+	ColorManager = nullptr;
+
+	delete RimcasInstance;
+	RimcasInstance = nullptr;
+
+	delete Callsigns;
+	Callsigns = nullptr;
+
 	// Shutting down GDI+
 	GdiplusShutdown(m_gdiplusToken);
 	delete CurrentConfig;
+	CurrentConfig = nullptr;
 }
 
 void CSMRRadar::CorrelateCursor() {
@@ -2030,7 +2048,26 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			"OnRefresh begin phase=" + std::to_string(Phase) +
 			" tag_collision_count=" + std::to_string(tagCollisionAreas.size()) +
 			" tag_offset_count=" + std::to_string(TagsOffsets.size()) +
-			" active_airport=" + getActiveAirport());
+				" active_airport=" + getActiveAirport());
+	}
+
+	if (CurrentConfig == nullptr || RimcasInstance == nullptr)
+	{
+		static bool loggedMissingCoreObjects = false;
+		if (!loggedMissingCoreObjects)
+		{
+			Logger::info("OnRefresh: skipped frame because core objects are not initialized");
+			loggedMissingCoreObjects = true;
+		}
+		return;
+	}
+
+	if (ColorManager == nullptr)
+	{
+		Logger::info("OnRefresh: ColorManager was null; recreating");
+		ColorManager = new CColorManager();
+		if (ColorManager == nullptr)
+			return;
 	}
 	// Refresh pipeline is phase-driven by EuroScope. Cursor/theme work is kept here on the UI thread.
 	if (initCursor)
