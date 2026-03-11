@@ -25,6 +25,7 @@ public:
 	map<string, POINT> m_TagOffsets;
 	map<string, POINT> m_TagDragOffsetFromCenter;
 	map<string, POINT> m_TargetPoints;
+	map<string, CRect> m_TagAreas;
 	string m_TagBeingDragged;
 
 	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);

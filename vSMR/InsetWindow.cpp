@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "InsetWindow.h"
+#include "SMRRadar_TagShared.hpp"
 
 
 CInsetWindow::CInsetWindow(int Id)
@@ -87,9 +88,20 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 			const bool firstDragFrame = (!Released && m_TagBeingDragged != callsign);
 			if (firstDragFrame)
 			{
-				CRect tagRect(Area);
-				tagRect.NormalizeRect();
-				POINT rectCenter = tagRect.CenterPoint();
+				POINT rectCenter{};
+				auto fullRectIt = m_TagAreas.find(callsign);
+				if (fullRectIt != m_TagAreas.end())
+				{
+					CRect fullRect = fullRectIt->second;
+					fullRect.NormalizeRect();
+					rectCenter = fullRect.CenterPoint();
+				}
+				else
+				{
+					CRect tagRect(Area);
+					tagRect.NormalizeRect();
+					rectCenter = tagRect.CenterPoint();
+				}
 				POINT offset = { rectCenter.x - Pt.x, rectCenter.y - Pt.y };
 				m_TagDragOffsetFromCenter[callsign] = offset;
 			}
@@ -102,9 +114,19 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 			}
 			else
 			{
-				CRect tagRect(Area);
-				tagRect.NormalizeRect();
-				tagCenter = tagRect.CenterPoint();
+				auto fullRectIt = m_TagAreas.find(callsign);
+				if (fullRectIt != m_TagAreas.end())
+				{
+					CRect fullRect = fullRectIt->second;
+					fullRect.NormalizeRect();
+					tagCenter = fullRect.CenterPoint();
+				}
+				else
+				{
+					CRect tagRect(Area);
+					tagRect.NormalizeRect();
+					tagCenter = tagRect.CenterPoint();
+				}
 			}
 
 			auto targetIt = m_TargetPoints.find(callsign);
@@ -207,6 +229,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 	icao = radar_screen->ActiveAirport;
 	AptPositions = radar_screen->AirportPositions;
+	m_TargetPoints.clear();
+	m_TagAreas.clear();
 
 	COLORREF qBackgroundColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["background_color"]);
 	CRect windowAreaCRect(m_Area);
@@ -511,57 +535,154 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 		int TagWidth = 0, TagHeight = 0;
 		RectF mesureRect;
-		gdi->MeasureString(L" ", wcslen(L" "), radar_screen->customFonts[radar_screen->currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+		Gdiplus::Font* tagRegularFont = radar_screen->customFonts[radar_screen->currentFontSize];
+		if (tagRegularFont == nullptr)
+			continue;
+		Gdiplus::Font* tagBoldFont = tagRegularFont;
+		std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
+		Gdiplus::FontFamily baseFamily;
+		if (tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
+		{
+			INT boldStyle = tagRegularFont->GetStyle() | Gdiplus::FontStyleBold;
+			tagBoldFontOwned.reset(new Gdiplus::Font(&baseFamily, tagRegularFont->GetSize(), boldStyle, Gdiplus::UnitPixel));
+			if (tagBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
+				tagBoldFont = tagBoldFontOwned.get();
+		}
+
+		gdi->MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
 		int blankWidth = (int)mesureRect.GetRight();
 
 		mesureRect = RectF(0, 0, 0, 0);
 		gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-			radar_screen->customFonts[radar_screen->currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+			tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
 		int oneLineHeight = (int)mesureRect.GetBottom();
+		if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
+		{
+			RectF boldMeasureRect;
+			gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
+				tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasureRect);
+			oneLineHeight = max(oneLineHeight, (int)boldMeasureRect.GetBottom());
+		}
 
 		const Value& LabelsSettings = radar_screen->CurrentConfig->getActiveProfile()["labels"];
 		const Value& LabelLines = LabelsSettings[Utils::getEnumString(TagType).c_str()]["definition"];
-		vector<vector<string>> ReplacedLabelLines;
+		struct RenderedTagElement
+		{
+			std::string token;
+			std::string text;
+			bool bold = false;
+			bool hasCustomColor = false;
+			int colorR = 255;
+			int colorG = 255;
+			int colorB = 255;
+			int measuredWidth = 0;
+			int measuredHeight = 0;
+			bool isClearanceToken = false;
+		};
+		vector<vector<RenderedTagElement>> ReplacedLabelLines;
 
 		if (!LabelLines.IsArray())
 			return;
 
 		for (unsigned int i = 0; i < LabelLines.Size(); i++)
 		{
-
 			const Value& line = LabelLines[i];
-			vector<string> lineStringArray;
+			vector<string> rawElements;
+			if (line.IsArray())
+			{
+				for (unsigned int j = 0; j < line.Size(); j++)
+				{
+					if (line[j].IsString())
+						rawElements.push_back(line[j].GetString());
+				}
+			}
+			else if (line.IsString())
+			{
+				rawElements.push_back(line.GetString());
+			}
 
-			// Adds one line height
-			TagHeight += oneLineHeight;
+			if (rawElements.empty())
+				continue;
+
+			vector<RenderedTagElement> renderedLine;
+			renderedLine.reserve(rawElements.size());
+			bool allEmpty = true;
 
 			int TempTagWidth = 0;
 
-			for (unsigned int j = 0; j < line.Size(); j++)
+			for (const std::string& rawElement : rawElements)
 			{
 				mesureRect = RectF(0, 0, 0, 0);
-				string element = line[j].GetString();
+				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawElement);
+				const std::string baseToken = styledToken.token.empty() ? rawElement : styledToken.token;
+				string element;
+				string clearanceNotClearedText;
+				string clearanceClearedText;
+				const bool isClearanceToken = TryParseClearanceTokenDisplay(baseToken, clearanceNotClearedText, clearanceClearedText);
+				if (isClearanceToken)
+				{
+					if (fp.IsValid() && AcisCorrelated)
+						element = fp.GetClearenceFlag() ? clearanceClearedText : clearanceNotClearedText;
+					else
+						element = "";
+				}
+				else
+				{
+					auto exactMatch = TagReplacingMap.find(baseToken);
+					if (exactMatch != TagReplacingMap.end())
+						element = exactMatch->second;
+					else
+					{
+						element = baseToken;
+						for (const auto& kv : TagReplacingMap)
+						{
+							if (element.find(kv.first) == std::string::npos)
+								continue;
+							replaceAll(element, kv.first, kv.second);
+						}
+					}
+				}
 
-				for (auto& kv : TagReplacingMap)
-					replaceAll(element, kv.first, kv.second);
+				RenderedTagElement renderedElement;
+				renderedElement.token = baseToken;
+				renderedElement.text = element;
+				renderedElement.bold = styledToken.bold;
+				renderedElement.hasCustomColor = styledToken.hasCustomColor;
+				renderedElement.colorR = styledToken.colorR;
+				renderedElement.colorG = styledToken.colorG;
+				renderedElement.colorB = styledToken.colorB;
+				renderedElement.isClearanceToken = isClearanceToken;
 
-				lineStringArray.push_back(element);
+				if (!element.empty())
+				{
+					allEmpty = false;
+					wstring wstr = wstring(element.begin(), element.end());
+					Gdiplus::Font* measureFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
+					if (measureFont == nullptr)
+						measureFont = tagRegularFont;
+					gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
+						measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
 
-				wstring wstr = wstring(element.begin(), element.end());
-				gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
-					radar_screen->customFonts[radar_screen->currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+					renderedElement.measuredWidth = (int)mesureRect.GetRight();
+					renderedElement.measuredHeight = (int)mesureRect.GetBottom();
+					TempTagWidth += renderedElement.measuredWidth;
+				}
 
-				TempTagWidth += (int) mesureRect.GetRight();
-
-				if (j != line.Size() - 1)
-					TempTagWidth += (int) blankWidth;
+				renderedLine.push_back(std::move(renderedElement));
 			}
 
-			TagWidth = max(TagWidth, TempTagWidth);
+			if (allEmpty)
+				continue;
 
-			ReplacedLabelLines.push_back(lineStringArray);
+			if (!renderedLine.empty())
+				TempTagWidth += (int)blankWidth * (int(renderedLine.size()) - 1);
+
+			TagHeight += oneLineHeight;
+			TagWidth = max(TagWidth, TempTagWidth);
+			ReplacedLabelLines.push_back(std::move(renderedLine));
 		}
-		TagHeight = TagHeight - 2;
+		if (TagHeight > 0)
+			TagHeight = TagHeight - 2;
 
 		// Pfiou, done with that, now we can draw the actual rectangle.
 
@@ -634,6 +755,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			TagBackgroundRect = CRect(TagBackgroundRect.left - padding, TagBackgroundRect.top - padding, TagBackgroundRect.right + padding, TagBackgroundRect.bottom + padding);
 			int textLeft = TagBackgroundRect.left + padding;
 			int textTop = TagBackgroundRect.top + padding;
+			int textWidth = max(0, TagBackgroundRect.Width() - (padding * 2));
 
 			// Semi-transparent background to reduce clutter while keeping arrival/departure color coding (unless RIMCAS alert overrides the color).
 			if (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::NoAlert) {
@@ -695,14 +817,27 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 			SolidBrush AlertTextColorWarning(radar_screen->ColorManager->get_corrected_color("label",
 				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
 
+			m_TagAreas[rtCallsign] = TagBackgroundRect;
 			radar_screen->AddScreenObject(m_Id, rtCallsign, TagBackgroundRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
 			{
-				int widthOffset = 0;
-				for (auto&& element : line)
+				int lineWidth = 0;
+				for (auto&& renderedElement : line)
+					lineWidth += renderedElement.measuredWidth;
+				if (!line.empty())
+					lineWidth += blankWidth * (int(line.size()) - 1);
+
+				int widthOffset = max(0, (textWidth - lineWidth) / 2);
+				for (auto&& renderedElement : line)
 				{
+					const std::string& element = renderedElement.text;
+					const std::string& rawToken = renderedElement.token;
+					Gdiplus::Font* drawFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
+					if (drawFont == nullptr)
+						drawFont = tagRegularFont;
+
 					SolidBrush* color = &FontColor;
 					if (TagReplacingMap["sqerror"].size() > 0 && strcmp(element.c_str(), TagReplacingMap["sqerror"].c_str()) == 0)
 						color = &SquawkErrorColor;
@@ -711,24 +846,38 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					if (rimcasStage != CRimcas::NoAlert)
 						color = (rimcasStage == CRimcas::StageTwo) ? &AlertTextColorWarning : &AlertTextColorCaution;
 
-					RectF mRect(0, 0, 0, 0);
+					std::unique_ptr<SolidBrush> tokenCustomColorBrush;
+					if (renderedElement.hasCustomColor)
+					{
+						Color customColor = radar_screen->ColorManager->get_corrected_color("label",
+							Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB));
+						tokenCustomColorBrush.reset(new SolidBrush(customColor));
+						color = tokenCustomColorBrush.get();
+					}
 
 					wstring welement = wstring(element.begin(), element.end());
-
-					gdi->DrawString(welement.c_str(), wcslen(welement.c_str()), radar_screen->customFonts[radar_screen->currentFontSize],
-						PointF(Gdiplus::REAL(TagBackgroundRect.left + widthOffset), Gdiplus::REAL(TagBackgroundRect.top + heightOffset)),
+					int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
+					gdi->DrawString(welement.c_str(), wcslen(welement.c_str()), drawFont,
+						PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
 						&Gdiplus::StringFormat(), color);
 
+					int clickItemType = TAG_CITEM_NO;
+					auto clickItemIt = TagClickableMap.find(element);
+					if (clickItemIt != TagClickableMap.end())
+						clickItemType = clickItemIt->second;
+					if (renderedElement.isClearanceToken || IsClearanceDefinitionToken(rawToken))
+						clickItemType = TAG_CITEM_CLEARANCE;
 
-					gdi->MeasureString(welement.c_str(), wcslen(welement.c_str()),
-						radar_screen->customFonts[radar_screen->currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &mRect);
+					int itemWidth = renderedElement.measuredWidth;
+					int itemHeight = max(renderedElement.measuredHeight, oneLineHeight);
+					if (itemWidth > 0 && itemHeight > 0)
+					{
+						CRect ItemRect(textLeft + widthOffset, textTop + heightOffset,
+							textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
+						radar_screen->AddScreenObject(clickItemType, rtCallsign, ItemRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
+					}
 
-					CRect ItemRect(TagBackgroundRect.left + widthOffset, TagBackgroundRect.top + heightOffset,
-						TagBackgroundRect.left + widthOffset + (int)mRect.GetRight(), TagBackgroundRect.top + heightOffset + (int)mRect.GetBottom());
-
-					radar_screen->AddScreenObject(TagClickableMap[element], rtCallsign, ItemRect, false, radar_screen->GetBottomLine(rtCallsign).c_str());
-
-					widthOffset += (int)mRect.GetRight();
+					widthOffset += renderedElement.measuredWidth;
 					widthOffset += blankWidth;
 				}
 
@@ -836,7 +985,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		bearings = bearings.substr(0, decimal_pos + 2);
 
 		string text = bearings;
-		text += "° / ";
+		text += "Â° / ";
 		text += distances;
 		text += "nm";
 		COLORREF old_color = dc.SetTextColor(RGB(0, 0, 0));
@@ -925,3 +1074,4 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 	dc.Detach();
 }
+
