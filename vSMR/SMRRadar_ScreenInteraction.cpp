@@ -82,7 +82,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			}
 		}
 
-		if (rt.IsValid()) {
+		if (rt.IsValid() && rt.GetPosition().IsValid()) {
 			POINT TagCenterPix;
 
 			// First frame of drag: capture offset between tag center and grab point.
@@ -116,7 +116,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 					TagCenterPix = Pt;
 			}
 
-			POINT AcPosPix = ConvertCoordFromPositionToPixel(GetPlugIn()->RadarTargetSelect(sObjectId).GetPosition().GetPosition());
+			POINT AcPosPix = ConvertCoordFromPositionToPixel(rt.GetPosition().GetPosition());
 			POINT CustomTag = { TagCenterPix.x - AcPosPix.x, TagCenterPix.y - AcPosPix.y };
 
 			
@@ -135,7 +135,14 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			}
 
 			RequestRefresh();
-		}		
+		}
+		else if (Logger::is_verbose_mode())
+		{
+			Logger::info(
+				"OnMoveScreenObject: skipped tag move update callsign=" +
+				std::string(sObjectId != nullptr ? sObjectId : "<null>") +
+				" target_valid=" + std::string(rt.IsValid() ? "1" : "0"));
+		}
 	}
 
 	if (ObjectType == RIMCAS_IAW) {
