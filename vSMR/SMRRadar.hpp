@@ -266,55 +266,67 @@ public:
 			return text != nullptr && text[0] != '\0';
 		};
 
-		if (CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool())
+		bool proModeEnabled = false;
+		bool acceptPilotSquawk = true;
+		const Value* doNotAutocorrelateSquawks = nullptr;
+		if (CurrentConfig != nullptr)
 		{
-			if (fp.IsValid())
+			const Value& profile = CurrentConfig->getActiveProfile();
+			if (profile.IsObject() && profile.HasMember("filters") && profile["filters"].IsObject())
 			{
-				bool isCorr = false;
-				const char* assignedSquawk = fp.GetControllerAssignedData().GetSquawk();
-				const char* reportedSquawk = (rt.IsValid() && rt.GetPosition().IsValid()) ? rt.GetPosition().GetSquawk() : nullptr;
-				if (hasText(assignedSquawk) && hasText(reportedSquawk) && strcmp(assignedSquawk, reportedSquawk) == 0)
+				const Value& filters = profile["filters"];
+				if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
 				{
-					isCorr = true;
+					const Value& proMode = filters["pro_mode"];
+					if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+						proModeEnabled = proMode["enable"].GetBool();
+					if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
+						acceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
+					if (proMode.HasMember("do_not_autocorrelate_squawks"))
+						doNotAutocorrelateSquawks = &proMode["do_not_autocorrelate_squawks"];
 				}
-
-				if (CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["accept_pilot_squawk"].GetBool())
-				{
-					isCorr = true;
-				}
-
-				if (isCorr)
-				{
-					const Value& sqs = CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["do_not_autocorrelate_squawks"];
-					for (SizeType i = 0; i < sqs.Size(); i++) {
-						if (hasText(reportedSquawk) && sqs[i].IsString() && strcmp(reportedSquawk, sqs[i].GetString()) == 0)
-						{
-							isCorr = false;
-							break;
-						}
-					}
-				}
-
-				const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
-				if (hasText(systemId) && std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId) != ManuallyCorrelated.end())
-				{
-					isCorr = true;
-				}
-
-				if (hasText(systemId) && std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
-				{
-					isCorr = false;
-				}
-
-				return isCorr;
 			}
+		}
 
-			return false;
-		} else
+		if (!proModeEnabled)
 		{
-			// If the pro mode is not used, then the AC is always correlated
+			// If pro mode is disabled, all targets are considered correlated.
 			return true;
 		}
+
+		if (!fp.IsValid())
+			return false;
+
+		bool isCorr = false;
+		const char* assignedSquawk = fp.GetControllerAssignedData().GetSquawk();
+		const char* reportedSquawk = (rt.IsValid() && rt.GetPosition().IsValid()) ? rt.GetPosition().GetSquawk() : nullptr;
+		if (hasText(assignedSquawk) && hasText(reportedSquawk) && strcmp(assignedSquawk, reportedSquawk) == 0)
+			isCorr = true;
+
+		if (acceptPilotSquawk)
+			isCorr = true;
+
+		if (isCorr && doNotAutocorrelateSquawks != nullptr && doNotAutocorrelateSquawks->IsArray())
+		{
+			for (SizeType i = 0; i < doNotAutocorrelateSquawks->Size(); i++)
+			{
+				const Value& blockedSquawk = (*doNotAutocorrelateSquawks)[i];
+				if (hasText(reportedSquawk) && blockedSquawk.IsString() && strcmp(reportedSquawk, blockedSquawk.GetString()) == 0)
+				{
+					isCorr = false;
+					break;
+				}
+			}
+		}
+
+		const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
+		if (hasText(systemId) && std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId) != ManuallyCorrelated.end())
+			isCorr = true;
+
+		if (hasText(systemId) && std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
+			isCorr = false;
+
+		return isCorr;
 	};
 
 	//---CorrelateCursor--------------------------------------------
@@ -464,9 +476,24 @@ public:
 		if (airportIt == AirportPositions.end())
 			return false;
 
-		int radarRange = CurrentConfig->getActiveProfile()["filters"]["radar_range_nm"].GetInt();
-		int altitudeFilter = CurrentConfig->getActiveProfile()["filters"]["hide_above_alt"].GetInt();
-		int speedFilter = CurrentConfig->getActiveProfile()["filters"]["hide_above_spd"].GetInt();
+		int radarRange = 999;
+		int altitudeFilter = 5500;
+		int speedFilter = 250;
+		if (CurrentConfig != nullptr)
+		{
+			const Value& profile = CurrentConfig->getActiveProfile();
+			if (profile.IsObject() && profile.HasMember("filters") && profile["filters"].IsObject())
+			{
+				const Value& filters = profile["filters"];
+				if (filters.HasMember("radar_range_nm") && filters["radar_range_nm"].IsInt())
+					radarRange = filters["radar_range_nm"].GetInt();
+				if (filters.HasMember("hide_above_alt") && filters["hide_above_alt"].IsInt())
+					altitudeFilter = filters["hide_above_alt"].GetInt();
+				if (filters.HasMember("hide_above_spd") && filters["hide_above_spd"].IsInt())
+					speedFilter = filters["hide_above_spd"].GetInt();
+			}
+		}
+		radarRange = max(1, radarRange);
 		bool isAcDisplayed = true;
 
 		if (airportIt->second.DistanceTo(RtPos.GetPosition()) > radarRange)

@@ -273,24 +273,49 @@ void CSMRRadar::LoadProfile(string profileName) {
 	EnsureTargetGroundStatusColorEntries();
 
 	// Loading all the new data
-	const Value &RimcasTimer = CurrentConfig->getActiveProfile()["rimcas"]["timer"];
-	const Value &RimcasTimerLVP = CurrentConfig->getActiveProfile()["rimcas"]["timer_lvp"];
+	const Value& activeProfile = CurrentConfig->getActiveProfile();
+	const Value* rimcasConfig = nullptr;
+	if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+		rimcasConfig = &activeProfile["rimcas"];
 
 	// Inactive alerts
 	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
 	RimcasInstance->setInactiveAlerts(inactiveAlerts);
 
-	vector<int> RimcasNorm;
-	for (SizeType i = 0; i < RimcasTimer.Size(); i++) {
-		RimcasNorm.push_back(RimcasTimer[i].GetInt());
-	}
+	auto readCountdownDefinition = [&](const Value* arrayValue, const std::vector<int>& fallback) -> std::vector<int>
+	{
+		std::vector<int> values;
+		if (arrayValue != nullptr && arrayValue->IsArray())
+		{
+			for (SizeType i = 0; i < arrayValue->Size(); ++i)
+			{
+				if ((*arrayValue)[i].IsInt())
+					values.push_back((*arrayValue)[i].GetInt());
+			}
+		}
+		if (values.empty())
+			values = fallback;
+		return values;
+	};
 
-	vector<int> RimcasLVP;
-	for (SizeType i = 0; i < RimcasTimerLVP.Size(); i++) {
-		RimcasLVP.push_back(RimcasTimerLVP[i].GetInt());
-	}
+	const std::vector<int> defaultRimcasTimer = { 60, 45, 30, 15, 0 };
+	const std::vector<int> defaultRimcasTimerLvp = { 120, 90, 60, 30, 0 };
+	const Value* rimcasTimer = (rimcasConfig != nullptr && rimcasConfig->HasMember("timer")) ? &(*rimcasConfig)["timer"] : nullptr;
+	const Value* rimcasTimerLvp = (rimcasConfig != nullptr && rimcasConfig->HasMember("timer_lvp")) ? &(*rimcasConfig)["timer_lvp"] : nullptr;
+	const std::vector<int> RimcasNorm = readCountdownDefinition(rimcasTimer, defaultRimcasTimer);
+	const std::vector<int> RimcasLVP = readCountdownDefinition(rimcasTimerLvp, defaultRimcasTimerLvp);
 	RimcasInstance->setCountdownDefinition(RimcasNorm, RimcasLVP);
-	LeaderLineDefaultlenght = CurrentConfig->getActiveProfile()["labels"]["leader_line_length"].GetInt();
+
+	int leaderLineLength = 50;
+	if (activeProfile.IsObject() &&
+		activeProfile.HasMember("labels") &&
+		activeProfile["labels"].IsObject() &&
+		activeProfile["labels"].HasMember("leader_line_length") &&
+		activeProfile["labels"]["leader_line_length"].IsInt())
+	{
+		leaderLineLength = activeProfile["labels"]["leader_line_length"].GetInt();
+	}
+	LeaderLineDefaultlenght = std::clamp(leaderLineLength, 0, 500);
 
 	customCursor = CurrentConfig->isCustomCursorUsed();
 	currentFontSize = GetActiveLabelFontSize();
@@ -697,6 +722,115 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		}
 	};
 
+	auto ensureStringArrayMember = [&](Value& parent, const char* key, const std::vector<std::string>& defaults)
+	{
+		bool rebuild = false;
+		if (!parent.HasMember(key) || !parent[key].IsArray())
+		{
+			rebuild = true;
+		}
+		else
+		{
+			const Value& existingArray = parent[key];
+			for (rapidjson::SizeType i = 0; i < existingArray.Size(); ++i)
+			{
+				if (!existingArray[i].IsString())
+				{
+					rebuild = true;
+					break;
+				}
+			}
+		}
+
+		if (!rebuild)
+			return;
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value outputArray(kArrayType);
+		for (const std::string& item : defaults)
+		{
+			Value itemValue;
+			itemValue.SetString(item.c_str(), static_cast<rapidjson::SizeType>(item.size()), allocator);
+			outputArray.PushBack(itemValue, allocator);
+		}
+		parent.AddMember(keyValue, outputArray, allocator);
+		changed = true;
+	};
+
+	auto ensureIntArrayMember = [&](Value& parent, const char* key, const std::vector<int>& defaults)
+	{
+		bool rebuild = false;
+		if (!parent.HasMember(key) || !parent[key].IsArray())
+		{
+			rebuild = true;
+		}
+		else
+		{
+			const Value& existingArray = parent[key];
+			if (existingArray.Size() == 0)
+			{
+				rebuild = true;
+			}
+			else
+			{
+				for (rapidjson::SizeType i = 0; i < existingArray.Size(); ++i)
+				{
+					if (!existingArray[i].IsInt())
+					{
+						rebuild = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!rebuild)
+			return;
+
+		if (parent.HasMember(key))
+			parent.RemoveMember(key);
+
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value outputArray(kArrayType);
+		for (int value : defaults)
+			outputArray.PushBack(value, allocator);
+		parent.AddMember(keyValue, outputArray, allocator);
+		changed = true;
+	};
+
+	const std::vector<std::string> defaultDoNotAutocorrelateSquawks = {
+		"2000", "2200", "1200", "7000"
+	};
+
+	Value& filters = ensureObjectMember(profile, "filters");
+	ensureIntMember(filters, "hide_above_alt", 5500, 0, 80000);
+	ensureIntMember(filters, "hide_above_spd", 250, 0, 2000);
+	ensureIntMember(filters, "radar_range_nm", 999, 1, 9999);
+	ensureIntMember(filters, "night_alpha_setting", 110, 0, 255);
+	Value& proMode = ensureObjectMember(filters, "pro_mode");
+	ensureBoolMember(proMode, "enable", false);
+	ensureBoolMember(proMode, "accept_pilot_squawk", true);
+	ensureStringArrayMember(proMode, "do_not_autocorrelate_squawks", defaultDoNotAutocorrelateSquawks);
+
+	Value& rimcas = ensureObjectMember(profile, "rimcas");
+	ensureBoolMember(rimcas, "rimcas_label_only", true);
+	ensureBoolMember(rimcas, "use_red_symbol_for_emergencies", true);
+	ensureIntArrayMember(rimcas, "timer", { 60, 45, 30, 15, 0 });
+	ensureIntArrayMember(rimcas, "timer_lvp", { 120, 90, 60, 30, 0 });
+	ensureIntMember(rimcas, "rimcas_stage_two_speed_threshold", 25, 0, 250);
+	ensureColorMember(rimcas, "background_color_stage_one", 160, 90, 30, 255);
+	ensureColorMember(rimcas, "background_color_stage_two", 150, 0, 0, 255);
+	ensureColorMember(rimcas, "caution_alert_text_color", 0, 0, 0, 255);
+	ensureColorMember(rimcas, "warning_alert_text_color", 255, 255, 255, 255);
+	ensureColorMember(rimcas, "caution_alert_background_color", 255, 255, 0, 255);
+	ensureColorMember(rimcas, "warning_alert_background_color", 255, 0, 0, 255);
+	ensureStringArrayMember(rimcas, "inactive_alerts", {});
+
 	const std::vector<std::string> defaultTagFonts = {
 		"EuroScope",
 		"Consolas",
@@ -868,6 +1002,9 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	}
 
 	Value& labels = ensureObjectMember(profile, "labels");
+	ensureBoolMember(labels, "auto_deconfliction", true);
+	ensureBoolMember(labels, "use_aspeed_for_gate", false);
+	ensureIntMember(labels, "leader_line_length", 50, 0, 500);
 	ensureBoolMember(labels, "definition_detailed_same_as_definition", false);
 	if (labels.HasMember("sid_text_colors"))
 	{
@@ -1889,7 +2026,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			graphics.SetSmoothingMode(SmoothingModeAntiAlias);
 
-			SolidBrush AlphaBrush(Color(CurrentConfig->getActiveProfile()["filters"]["night_alpha_setting"].GetInt(), 0, 0, 0));
+			int nightAlpha = 110;
+			if (CurrentConfig != nullptr)
+			{
+				const Value& profile = CurrentConfig->getActiveProfile();
+				if (profile.IsObject() &&
+					profile.HasMember("filters") &&
+					profile["filters"].IsObject() &&
+					profile["filters"].HasMember("night_alpha_setting") &&
+					profile["filters"]["night_alpha_setting"].IsInt())
+				{
+					nightAlpha = profile["filters"]["night_alpha_setting"].GetInt();
+				}
+			}
+			nightAlpha = std::clamp(nightAlpha, 0, 255);
+			SolidBrush AlphaBrush(Color(nightAlpha, 0, 0, 0));
 
 			CRect RadarArea(GetRadarArea());
 			RadarArea.top = RadarArea.top - 1;
@@ -2336,10 +2487,34 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double frameSmallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
 	const double frameSmallIconBoostResolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
-	const bool frameProModeEnabled = CurrentConfig->getActiveProfile()["filters"]["pro_mode"]["enable"].GetBool();
+	bool frameProModeEnabled = false;
+	bool frameUseAspeedForGate = false;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject())
+		{
+			if (profile.HasMember("filters") &&
+				profile["filters"].IsObject() &&
+				profile["filters"].HasMember("pro_mode") &&
+				profile["filters"]["pro_mode"].IsObject() &&
+				profile["filters"]["pro_mode"].HasMember("enable") &&
+				profile["filters"]["pro_mode"]["enable"].IsBool())
+			{
+				frameProModeEnabled = profile["filters"]["pro_mode"]["enable"].GetBool();
+			}
+
+			if (profile.HasMember("labels") &&
+				profile["labels"].IsObject() &&
+				profile["labels"].HasMember("use_aspeed_for_gate") &&
+				profile["labels"]["use_aspeed_for_gate"].IsBool())
+			{
+				frameUseAspeedForGate = profile["labels"]["use_aspeed_for_gate"].GetBool();
+			}
+		}
+	}
 	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const std::string frameActiveAirport = getActiveAirport();
-	const bool frameUseAspeedForGate = CurrentConfig->getActiveProfile()["labels"]["use_aspeed_for_gate"].GetBool();
 	const std::vector<StructuredTagColorRule>& frameStructuredTagRules = GetStructuredTagColorRules();
 	CRadarTarget frameAselTarget = GetPlugIn()->RadarTargetSelectASEL();
 	FrameTagDataCache frameTagDataCache;
@@ -3376,7 +3551,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	tagAreas.clear();
 	tagCollisionAreas.clear();
 
-	RimcasInstance->OnRefreshEnd(this, CurrentConfig->getActiveProfile()["rimcas"]["rimcas_stage_two_speed_threshold"].GetInt());
+	int rimcasStageTwoSpeedThreshold = 25;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject() &&
+			profile.HasMember("rimcas") &&
+			profile["rimcas"].IsObject() &&
+			profile["rimcas"].HasMember("rimcas_stage_two_speed_threshold") &&
+			profile["rimcas"]["rimcas_stage_two_speed_threshold"].IsInt())
+		{
+			rimcasStageTwoSpeedThreshold = profile["rimcas"]["rimcas_stage_two_speed_threshold"].GetInt();
+		}
+	}
+	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
+	RimcasInstance->OnRefreshEnd(this, rimcasStageTwoSpeedThreshold);
 
 	graphics.SetSmoothingMode(SmoothingModeDefault);
 
@@ -3815,10 +4004,23 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	//
 
 	VSMR_REFRESH_LOG("Tag deconfliction loop");
+	bool autoDeconflictionEnabled = true;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject() &&
+			profile.HasMember("labels") &&
+			profile["labels"].IsObject() &&
+			profile["labels"].HasMember("auto_deconfliction") &&
+			profile["labels"]["auto_deconfliction"].IsBool())
+		{
+			autoDeconflictionEnabled = profile["labels"]["auto_deconfliction"].GetBool();
+		}
+	}
 
 	for (const auto areas : tagCollisionAreas)
 	{
-		if (!CurrentConfig->getActiveProfile()["labels"]["auto_deconfliction"].GetBool())
+		if (!autoDeconflictionEnabled)
 			break;
 
 		if (IsTagBeingDragged(areas.first))
