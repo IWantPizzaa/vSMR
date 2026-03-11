@@ -106,18 +106,15 @@ public:
 		if (message.empty())
 			return true;
 
+		// Verbose mode is intentionally chatty for crash forensics.
+		if (is_verbose_mode())
+			return false;
+
 		// In normal mode we keep the log concise by dropping function-signature
 		// traces and profile-editor step-by-step instrumentation.
-		if (!is_verbose_mode())
-		{
-			if (is_compiler_signature_trace(message))
-				return true;
-			if (message.rfind("ProfileEditor: ", 0) == 0)
-				return true;
-		}
-
-		// Even in verbose mode, skip known hot loops that can flood logs.
-		if (is_compiler_signature_trace(message) && is_high_volume_trace_message(message))
+		if (is_compiler_signature_trace(message))
+			return true;
+		if (message.rfind("ProfileEditor: ", 0) == 0)
 			return true;
 
 		return false;

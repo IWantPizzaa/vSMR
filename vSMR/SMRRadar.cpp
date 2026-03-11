@@ -1990,6 +1990,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+	{
+		Logger::info(
+			"OnRefresh begin phase=" + std::to_string(Phase) +
+			" tag_collision_count=" + std::to_string(tagCollisionAreas.size()) +
+			" tag_offset_count=" + std::to_string(TagsOffsets.size()) +
+			" active_airport=" + getActiveAirport());
+	}
 	// Refresh pipeline is phase-driven by EuroScope. Cursor/theme work is kept here on the UI thread.
 	if (initCursor)
 	{
@@ -4019,7 +4027,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 	}
 
-	for (const auto areas : tagCollisionAreas)
+	std::vector<std::string> staleTagCallsigns;
+	for (const auto& areas : tagCollisionAreas)
 	{
 		if (!autoDeconflictionEnabled)
 			break;
@@ -4065,7 +4074,23 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		// We then rotate the tags until we did a 360 or there is no more conflicts
 
-		POINT acPosPix = ConvertCoordFromPositionToPixel(GetPlugIn()->RadarTargetSelect(areas.first.c_str()).GetPosition().GetPosition());
+		CRadarTarget deconflictTarget = GetPlugIn()->RadarTargetSelect(areas.first.c_str());
+		if (!deconflictTarget.IsValid() || !deconflictTarget.GetPosition().IsValid())
+		{
+			staleTagCallsigns.push_back(areas.first);
+			if (Logger::is_verbose_mode())
+			{
+				Logger::info(
+					"OnRefresh deconfliction: pruned stale tag state callsign=" + areas.first +
+					" target_valid=" + std::string(deconflictTarget.IsValid() ? "1" : "0"));
+			}
+			continue;
+		}
+
+		if (TagAngles.find(areas.first) == TagAngles.end())
+			TagAngles[areas.first] = 270.0f;
+
+		POINT acPosPix = ConvertCoordFromPositionToPixel(deconflictTarget.GetPosition().GetPosition());
 		int lenght = LeaderLineDefaultlenght;
 		if (TagLeaderLineLength.find(areas.first) != TagLeaderLineLength.end())
 			lenght = TagLeaderLineLength[areas.first];
@@ -4124,6 +4149,28 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				rotated -= 22.5f;
 			else
 				rotated += 22.5f;
+		}
+	}
+	if (!staleTagCallsigns.empty())
+	{
+		for (const std::string& callsign : staleTagCallsigns)
+		{
+			TagsOffsets.erase(callsign);
+			TagAngles.erase(callsign);
+			TagLeaderLineLength.erase(callsign);
+			tagAreas.erase(callsign);
+			tagCollisionAreas.erase(callsign);
+			previousTagSize.erase(callsign);
+			TagDragOffsetFromCenter.erase(callsign);
+			RecentlyAutoMovedTags.erase(callsign);
+			Patatoides.erase(callsign);
+		}
+
+		if (Logger::is_verbose_mode())
+		{
+			Logger::info(
+				"OnRefresh deconfliction: removed stale entries count=" +
+				std::to_string(staleTagCallsigns.size()));
 		}
 	}
 
