@@ -12,6 +12,7 @@ bool Logger::ENABLED;
 string Logger::DLL_PATH;
 Logger::Mode Logger::CURRENT_MODE = Logger::Mode::Normal;
 
+// CPDLC/Hoppie connection state shared between timer and worker threads.
 std::atomic<bool> HoppieConnected(false);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
@@ -54,6 +55,7 @@ vector<string> AircraftMessage;
 vector<string> AircraftWilco;
 vector<string> AircraftStandby;
 map<string, AcarsMessage> PendingMessages;
+// Guards all mutable CPDLC message state used by worker threads.
 std::mutex DatalinkStateMutex;
 
 string tmessage;
@@ -75,6 +77,7 @@ char recv_buf[1024];
 
 vector<CSMRRadar*> RadarScreensOpened;
 
+// Snapshot cache of the latest vACDM pilot data keyed by normalized callsign.
 std::mutex VacdmPilotsMutex;
 std::map<std::string, VacdmPilotData> VacdmPilots;
 std::atomic<bool> VacdmFetchInProgress(false);
@@ -165,6 +168,30 @@ namespace
 	void RemoveCallsignUnlocked(std::vector<std::string>& collection, const std::string& callsign)
 	{
 		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
+	}
+
+	std::string BuildHoppieQueryPrefix(const std::string& destination, const std::string& type)
+	{
+		std::string url = baseUrlDatalink;
+		url += "?logon=";
+		url += logonCode;
+		url += "&from=";
+		url += logonCallsign;
+		url += "&to=";
+		url += destination;
+		url += "&type=";
+		url += type;
+		return url;
+	}
+
+	void EncodeSpacesAsPercent20(std::string& text)
+	{
+		size_t startPos = 0;
+		while ((startPos = text.find(' ', startPos)) != std::string::npos)
+		{
+			text.replace(startPos, 1, "%20");
+			startPos += 3;
+		}
 	}
 
 	bool TryReadVacdmServerUrl(std::string& outServerUrl)
@@ -262,6 +289,7 @@ namespace
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
 {
 	std::lock_guard<std::mutex> guard(VacdmPilotsMutex);
+	// Match with the same normalization strategy used during ingest.
 	const std::vector<std::string> candidates = BuildVacdmLookupCandidates(callsign);
 	for (const auto& candidate : candidates)
 	{
@@ -308,6 +336,7 @@ void refreshVacdmData(void* arg)
 			return;
 		}
 
+		// Parse into a temporary map so readers never observe a partially refreshed cache.
 		std::map<std::string, VacdmPilotData> parsedData;
 
 		for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
@@ -388,13 +417,9 @@ void refreshVacdmData(void* arg)
 }
 
 void datalinkLogin(void * arg) {
+	(void)arg;
 	string raw;
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=SERVER&type=PING";
+	string url = BuildHoppieQueryPrefix("SERVER", "PING");
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
@@ -407,6 +432,7 @@ void datalinkLogin(void * arg) {
 };
 
 void sendDatalinkMessage(void * arg) {
+	(void)arg;
 	std::string localDest;
 	std::string localType;
 	std::string localMessage;
@@ -421,23 +447,11 @@ void sendDatalinkMessage(void * arg) {
 	}
 
 	string raw;
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=";
-	url += localDest;
-	url += "&type=";
-	url += localType;
+	string url = BuildHoppieQueryPrefix(localDest, localType);
 	url += "&packet=";
 	url += localMessage;
 
-	size_t start_pos = 0;
-	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
-		url.replace(start_pos, string(" ").length(), "%20");
-		start_pos += string("%20").length();
-	}
+	EncodeSpacesAsPercent20(url);
 
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
@@ -450,13 +464,9 @@ void sendDatalinkMessage(void * arg) {
 };
 
 void pollMessages(void * arg) {
+	(void)arg;
 	string raw = "";
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=SERVER&type=POLL";
+	string url = BuildHoppieQueryPrefix("SERVER", "POLL");
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
 	if (!startsWith("ok", raw.c_str()) || raw.size() <= 3)
@@ -531,6 +541,7 @@ void pollMessages(void * arg) {
 };
 
 void sendDatalinkClearance(void * arg) {
+	(void)arg;
 	DatalinkPacket packet;
 	std::string localFrequency;
 	{
@@ -540,14 +551,8 @@ void sendDatalinkClearance(void * arg) {
 	}
 
 	string raw;
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=";
-	url += packet.callsign;
-	url += "&type=CPDLC&packet=/data2/";
+	string url = BuildHoppieQueryPrefix(packet.callsign, "CPDLC");
+	url += "&packet=/data2/";
 	const int messageSequence = messageId.fetch_add(1) + 1;
 	url += std::to_string(messageSequence);
 	url += "//R/";
@@ -586,11 +591,7 @@ void sendDatalinkClearance(void * arg) {
 	if (packet.message != "no" && packet.message.size() > 1)
 		url += packet.message;
 
-	size_t start_pos = 0;
-	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
-		url.replace(start_pos, string(" ").length(), "%20");
-		start_pos += string("%20").length();
-	}
+	EncodeSpacesAsPercent20(url);
 
 	raw.assign(httpHelper->downloadStringFromURL(url));
 
@@ -610,9 +611,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	Logger::ENABLED = false;
 	Logger::set_mode(Logger::Mode::Normal);
 
-	//
-	// Adding the SMR Display type
-	//
+	// Register the plugin radar screen type.
 	RegisterDisplayType(MY_PLUGIN_VIEW_AVISO, false, true, true, true);
 
 	RegisterTagItemType("Datalink clearance", TAG_ITEM_DATALINK_STS);
@@ -646,7 +645,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 CSMRPlugin::~CSMRPlugin()
 {
-	// NOTE: 'SaveDataToSettings()' doesn't actually write data anywhere in a file, contrary to what the name freaking suggests.
+	// Persist CPDLC settings via EuroScope's plugin settings storage.
 	SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", logonCallsign.c_str());
 	SaveDataToSettings("cpdlc_password", "The CPDLC logon password", logonCode.c_str());
 	int temp = 0;
@@ -1161,6 +1160,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 
 void CSMRPlugin::OnTimer(int Counter)
 {
+	(void)Counter;
 	Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	static int lastConnectionType = -999;
@@ -1202,14 +1202,17 @@ void CSMRPlugin::OnTimer(int Counter)
 		HoppieConnected.store(false);
 	}
 
-	if (((clock() - timer) / CLOCKS_PER_SEC) > 10 && HoppieConnected.load()) {
+	const int cpdlcPollIntervalSeconds = 10;
+	if (((clock() - timer) / CLOCKS_PER_SEC) > cpdlcPollIntervalSeconds && HoppieConnected.load()) {
 		_beginthread(pollMessages, 0, NULL);
 		timer = clock();
 	}
 
+	// Avoid scheduling fetches while the connection state is still settling.
+	const int vacdmConnectionSettleSeconds = 20;
 	const bool networkConnectionActive = (currentConnectionType != CONNECTION_TYPE_NO);
 	const bool connectionStableForVacdm = networkConnectionActive &&
-		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= 20);
+		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= vacdmConnectionSettleSeconds);
 
 	const clock_t lastVacdmFetchClock = VacdmLastFetchClock.load();
 	if (connectionStableForVacdm &&
