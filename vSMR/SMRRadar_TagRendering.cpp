@@ -231,14 +231,36 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 {
 	// Drawing the Tags
 	VSMR_REFRESH_LOG("Tags loop");
+	if (CurrentConfig == nullptr || ColorManager == nullptr || RimcasInstance == nullptr)
+	{
+		if (Logger::is_verbose_mode())
+			Logger::info("RenderTags: skipped (missing config/color/rimcas dependency)");
+		return;
+	}
+
 	const bool tagProModeEnabled = frameProModeEnabled;
 	const int transitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const Value& activeProfile = CurrentConfig->getActiveProfile();
+	if (!activeProfile.IsObject() ||
+		!activeProfile.HasMember("labels") ||
+		!activeProfile["labels"].IsObject())
+	{
+		if (Logger::is_verbose_mode())
+			Logger::info("RenderTags: active profile has no valid labels object");
+		return;
+	}
+
 	const Value& LabelsSettings = activeProfile["labels"];
 	const bool tagDetailedSameAsDefinition =
 		LabelsSettings.HasMember("definition_detailed_same_as_definition") &&
 		LabelsSettings["definition_detailed_same_as_definition"].IsBool() &&
 		LabelsSettings["definition_detailed_same_as_definition"].GetBool();
+	const auto verboseTargetStep = [&](const std::string& callsign, const std::string& step)
+	{
+		if (!Logger::is_verbose_mode())
+			return;
+		Logger::info("RenderTags: " + callsign + " " + step);
+	};
 	const auto isDetailedSameAsDefinitionForContext = [&](const std::string& tagTypeKey, const char* statusDefinitionKey) -> bool
 	{
 		if (!LabelsSettings.IsObject() ||
@@ -267,7 +289,10 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		return tagDetailedSameAsDefinition;
 	};
-	const bool useAspeedForGate = LabelsSettings["use_aspeed_for_gate"].GetBool();
+	const bool useAspeedForGate =
+		LabelsSettings.HasMember("use_aspeed_for_gate") &&
+		LabelsSettings["use_aspeed_for_gate"].IsBool() &&
+		LabelsSettings["use_aspeed_for_gate"].GetBool();
 	const bool airborneUseDepartureArrivalColoring =
 		LabelsSettings.HasMember("airborne") &&
 		LabelsSettings["airborne"].IsObject() &&
@@ -287,7 +312,15 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			mouseLocation.y <= rect.bottom - 1;
 	};
 
-	Gdiplus::Font* tagRegularFont = customFonts[currentFontSize];
+	auto fontIt = customFonts.find(currentFontSize);
+	Gdiplus::Font* tagRegularFont = (fontIt != customFonts.end()) ? fontIt->second : nullptr;
+	if (tagRegularFont == nullptr)
+	{
+		if (Logger::is_verbose_mode())
+			Logger::info("RenderTags: no font loaded for size=" + std::to_string(currentFontSize));
+		return;
+	}
+
 	Gdiplus::Font* tagBoldFont = tagRegularFont;
 	std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
 	if (tagRegularFont != nullptr)
@@ -587,6 +620,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			TagReplacingMap = cachedTagData->second;
 		else
 			TagReplacingMap = GenerateTagData(rt, fp, isASEL, AcisCorrelated, tagProModeEnabled, transitionAltitude, useAspeedForGate, activeAirport, rtCallsign);
+		verboseTargetStep(rtCallsign, "after_tag_data");
 		const auto sqErrorIt = TagReplacingMap.find("sqerror");
 		const std::string* sqErrorText = (sqErrorIt != TagReplacingMap.end()) ? &sqErrorIt->second : nullptr;
 
@@ -634,6 +668,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		addClickableToken("uk_stand", TAG_CITEM_UKSTAND);
 		addClickableToken("remark", TAG_CITEM_REMARK);
 		addClickableToken("scratchpad", TAG_CITEM_SCRATCHPAD);
+		verboseTargetStep(rtCallsign, "after_clickable_map");
 
 		//
 		// ----- Now the hard part, drawing (using gdi+) -------
@@ -667,10 +702,13 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 
 		bool isTagDetailled = isMouseWithin(previousRect) || isTagBeingDragged(rtCallsign);
+		verboseTargetStep(rtCallsign, std::string("detail_mode=") + (isTagDetailled ? "1" : "0"));
 
 		const std::string tagTypeKey = TagTypeToConfigKey(TagType);
+		verboseTargetStep(rtCallsign, "before_onrunway_lookup");
 
 		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
+		verboseTargetStep(rtCallsign, "after_onrunway_lookup");
 		const char* statusDefinitionKey = nullptr;
 		const auto actypeIt = TagReplacingMap.find("actype");
 		const bool isNoFplTag = (actypeIt != TagReplacingMap.end() && actypeIt->second == "NoFPL");
@@ -728,6 +766,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		const TagDefinitionCacheEntry* cachedTagDefinition = getCachedTagDefinition(tagTypeKey, isTagDetailled, statusDefinitionKey);
 		if (cachedTagDefinition == nullptr)
 			continue;
+		verboseTargetStep(rtCallsign, "after_tag_definition");
 
 		VacdmPilotData vacdmRulePilotData;
 		bool hasVacdmRulePilotData = false;
@@ -918,6 +957,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		if (!measureTagDefinitionLines(cachedTagDefinition->drawLineTemplates, isTagDetailled, TagWidth, TagHeight, &ReplacedLabelLines))
 			continue;
+		verboseTargetStep(rtCallsign, "after_tag_measurement");
 
 		if (!measureTagDefinitionLines(cachedTagDefinition->collisionLineTemplates, false, CollisionTagWidth, CollisionTagHeight, nullptr))
 		{
@@ -973,7 +1013,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			{
 				wstring wstr = wstring(alertStr.begin(), alertStr.end());
 				graphics.MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
-					customFonts[currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+					tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
 
 				alertTextWidth = static_cast<int>(mesureRect.GetRight());
 				alertTextHeight = static_cast<int>(mesureRect.GetBottom());
@@ -989,9 +1029,28 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		const int tagRectTop = TagCenter.y - (TagHeight / 2);
 		previousTagSize[rtCallsign] = CRect(tagRectLeft, tagRectTop, tagRectLeft + TagWidth, tagRectTop + TagHeight);
 
-		Color definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["background_color"]);
-		Color definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["background_color_on_runway"]);
-		Color definedTextColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["text_color"]);
+		const std::string colorTagTypeKey = TagTypeToConfigKey(ColorTagType);
+		const Value* colorTagLabelSection = nullptr;
+		if (LabelsSettings.HasMember(colorTagTypeKey.c_str()) && LabelsSettings[colorTagTypeKey.c_str()].IsObject())
+			colorTagLabelSection = &LabelsSettings[colorTagTypeKey.c_str()];
+
+		auto getTagColorFromConfigOrDefault = [&](const char* key, const Color& fallback) -> Color
+		{
+			if (colorTagLabelSection != nullptr &&
+				colorTagLabelSection->HasMember(key) &&
+				(*colorTagLabelSection)[key].IsObject())
+			{
+				return CurrentConfig->getConfigColor((*colorTagLabelSection)[key]);
+			}
+
+			if (Logger::is_verbose_mode())
+				Logger::info("RenderTags: missing color key=" + std::string(key) + " for type=" + colorTagTypeKey);
+			return fallback;
+		};
+
+		Color definedBackgroundColor = getTagColorFromConfigOrDefault("background_color", Color(255, 53, 126, 187));
+		Color definedBackgroundOnRunwayColor = getTagColorFromConfigOrDefault("background_color_on_runway", definedBackgroundColor);
+		Color definedTextColor = getTagColorFromConfigOrDefault("text_color", Color::White);
 		
 		if (ColorTagType == TagTypes::Departure) {
 			if (!TagReplacingMap["asid"].empty() && CurrentConfig->isSidColorAvail(TagReplacingMap["asid"], activeAirport)) {
@@ -1001,43 +1060,51 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				fp.GetFlightPlanData().GetPlanType() != nullptr &&
 				fp.GetFlightPlanData().GetPlanType()[0] == 'I' &&
 				TagReplacingMap["asid"].empty() &&
-				LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()].HasMember("nosid_color")) {
-				definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["nosid_color"]);
+				colorTagLabelSection != nullptr &&
+				colorTagLabelSection->HasMember("nosid_color") &&
+				(*colorTagLabelSection)["nosid_color"].IsObject()) {
+				definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["nosid_color"]);
 			}
 
-			const Value& departureLabel = LabelsSettings["departure"];
-			if (departureLabel.HasMember("status_background_colors") && departureLabel["status_background_colors"].IsObject())
+			if (LabelsSettings.HasMember("departure") && LabelsSettings["departure"].IsObject())
 			{
-				const Value& statusBackgroundColors = departureLabel["status_background_colors"];
-				GroundStateCategory departureStatus = GroundStateCategory::Unknown;
-				if (fp.IsValid())
-					departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
-
-				const char* statusColorKey = nullptr;
-				switch (departureStatus)
+				const Value& departureLabel = LabelsSettings["departure"];
+				if (departureLabel.HasMember("status_background_colors") && departureLabel["status_background_colors"].IsObject())
 				{
-				case GroundStateCategory::Taxi:
-					statusColorKey = "taxi";
-					break;
-				case GroundStateCategory::Push:
-					statusColorKey = "push";
-					break;
-				case GroundStateCategory::Stup:
-					statusColorKey = "stup";
-					break;
-				case GroundStateCategory::Depa:
-					statusColorKey = "depa";
-					break;
-				default:
-					break;
-				}
+					const Value& statusBackgroundColors = departureLabel["status_background_colors"];
+					GroundStateCategory departureStatus = GroundStateCategory::Unknown;
+					if (fp.IsValid())
+						departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
 
-				if (statusColorKey != nullptr && statusBackgroundColors.HasMember(statusColorKey) && statusBackgroundColors[statusColorKey].IsObject())
-					definedBackgroundColor = CurrentConfig->getConfigColor(statusBackgroundColors[statusColorKey]);
+					const char* statusColorKey = nullptr;
+					switch (departureStatus)
+					{
+					case GroundStateCategory::Taxi:
+						statusColorKey = "taxi";
+						break;
+					case GroundStateCategory::Push:
+						statusColorKey = "push";
+						break;
+					case GroundStateCategory::Stup:
+						statusColorKey = "stup";
+						break;
+					case GroundStateCategory::Depa:
+						statusColorKey = "depa";
+						break;
+					default:
+						break;
+					}
+
+					if (statusColorKey != nullptr && statusBackgroundColors.HasMember(statusColorKey) && statusBackgroundColors[statusColorKey].IsObject())
+						definedBackgroundColor = CurrentConfig->getConfigColor(statusBackgroundColors[statusColorKey]);
+				}
 			}
 		}
-			if (TagReplacingMap["actype"] == "NoFPL" && LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()].HasMember("nofpl_color")) {
-				definedBackgroundColor = CurrentConfig->getConfigColor(LabelsSettings[TagTypeToConfigKey(ColorTagType).c_str()]["nofpl_color"]);
+		if (TagReplacingMap["actype"] == "NoFPL" &&
+			colorTagLabelSection != nullptr &&
+			colorTagLabelSection->HasMember("nofpl_color") &&
+			(*colorTagLabelSection)["nofpl_color"].IsObject()) {
+			definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["nofpl_color"]);
 		}
 
 		if (TagType == TagTypes::Airborne &&
@@ -1078,22 +1145,36 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		{
 			definedTextColor = Color(vacdmTagColorOverrides.textA, vacdmTagColorOverrides.textR, vacdmTagColorOverrides.textG, vacdmTagColorOverrides.textB);
 		}
+		verboseTargetStep(rtCallsign, "after_color_resolution");
+
+		Color rimcasStageOneColor(255, 160, 90, 30);
+		Color rimcasStageTwoColor(255, 150, 0, 0);
+		bool rimcasLabelOnly = true;
+		if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+		{
+			const Value& rimcasSection = activeProfile["rimcas"];
+			if (rimcasSection.HasMember("background_color_stage_one") && rimcasSection["background_color_stage_one"].IsObject())
+				rimcasStageOneColor = CurrentConfig->getConfigColor(rimcasSection["background_color_stage_one"]);
+			if (rimcasSection.HasMember("background_color_stage_two") && rimcasSection["background_color_stage_two"].IsObject())
+				rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasSection["background_color_stage_two"]);
+			if (rimcasSection.HasMember("rimcas_label_only") && rimcasSection["rimcas_label_only"].IsBool())
+				rimcasLabelOnly = rimcasSection["rimcas_label_only"].GetBool();
+		}
 
 		Color TagBackgroundColor = RimcasInstance->GetAircraftColor(rtCallsign,
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor,
-			CurrentConfig->getConfigColor(activeProfile["rimcas"]["background_color_stage_one"]),
-			CurrentConfig->getConfigColor(activeProfile["rimcas"]["background_color_stage_two"]));
+			rimcasStageOneColor,
+			rimcasStageTwoColor);
 
 		// We need to figure out if the tag color changes according to RIMCAS alerts, or not
-		bool rimcasLabelOnly = activeProfile["rimcas"]["rimcas_label_only"].GetBool();
-
 		if (rimcasLabelOnly)
 			TagBackgroundColor = RimcasInstance->GetAircraftColor(rtCallsign,
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor);
 
 		TagBackgroundColor = ColorManager->get_corrected_color("label", TagBackgroundColor);
+		verboseTargetStep(rtCallsign, "after_background_color");
 
 		// Drawing the tag background
 
@@ -1132,8 +1213,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		// Drawing the tag text
 
 		SolidBrush FontColor(ColorManager->get_corrected_color("label", definedTextColor));
+		Color squawkErrorColorValue(255, 255, 0, 0);
+		if (LabelsSettings.HasMember("squawk_error_color") && LabelsSettings["squawk_error_color"].IsObject())
+			squawkErrorColorValue = CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"]);
 		SolidBrush SquawkErrorColor(ColorManager->get_corrected_color("label",
-			CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
+			squawkErrorColorValue));
 		SolidBrush ClearanceNotReceivedColor(ColorManager->get_corrected_color("label", Color(255, 235, 70, 70)));
 		SolidBrush ClearanceReceivedColor(ColorManager->get_corrected_color("label", Color(255, 95, 225, 120)));
 		auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
@@ -1224,7 +1308,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
 			const int alertTextOffsetY = max(0, (alertLineHeight - alertTextHeight + 1) / 2);
-			graphics.DrawString(walertStr.c_str(), wcslen(walertStr.c_str()), customFonts[currentFontSize],
+			graphics.DrawString(walertStr.c_str(), wcslen(walertStr.c_str()), tagRegularFont,
 				PointF(Gdiplus::REAL(textLeft), Gdiplus::REAL(textTop + heightOffset + alertTextOffsetY)),
 				&Gdiplus::StringFormat(), RimcasTextColor);
 

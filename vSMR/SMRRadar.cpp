@@ -3613,7 +3613,18 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	graphics.SetSmoothingMode(SmoothingModeDefault);
 
-	RenderTags(graphics, dc, frameProModeEnabled, frameTagDataCache, frameVacdmLookupCache);
+	try
+	{
+		RenderTags(graphics, dc, frameProModeEnabled, frameTagDataCache, frameVacdmLookupCache);
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info(std::string("RenderTags: std::exception caught: ") + ex.what());
+	}
+	catch (...)
+	{
+		Logger::info("RenderTags: unknown C++ exception caught");
+	}
 
 	// Releasing the hDC after the drawing
 	graphics.ReleaseHDC(hDC);
