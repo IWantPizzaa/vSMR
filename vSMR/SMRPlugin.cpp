@@ -85,6 +85,7 @@ std::atomic<clock_t> VacdmLastFetchClock(0);
 const int VacdmFetchIntervalSeconds = 15;
 const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
 std::atomic<unsigned long> VacdmFetchCounter(0);
+std::atomic<unsigned long> VacdmLastSehCode(0);
 std::mutex VacdmDebugStateMutex;
 std::string VacdmDebugAselCallsign;
 
@@ -260,6 +261,19 @@ namespace
 		outUtc = parsed;
 		return true;
 	}
+
+	std::string FormatSehCode(unsigned long code)
+	{
+		char buffer[16] = {};
+		sprintf_s(buffer, "0x%08lX", code);
+		return std::string(buffer);
+	}
+
+	int CaptureVacdmSehCode(unsigned long sehCode)
+	{
+		VacdmLastSehCode.store(sehCode, std::memory_order_relaxed);
+		return EXCEPTION_EXECUTE_HANDLER;
+	}
 }
 
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
@@ -279,7 +293,7 @@ bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
 	return false;
 }
 
-void refreshVacdmData(void* arg)
+void refreshVacdmDataImpl(void* arg)
 {
 	(void)arg;
 
@@ -390,6 +404,23 @@ void refreshVacdmData(void* arg)
 	{
 		Logger::info("VACDM refresh exception: unknown");
 	}
+}
+
+void refreshVacdmData(void* arg)
+{
+#if defined(_MSC_VER)
+	__try
+	{
+		refreshVacdmDataImpl(arg);
+	}
+	__except (CaptureVacdmSehCode(static_cast<unsigned long>(GetExceptionCode())))
+	{
+		VacdmLastFetchClock = clock();
+		VacdmFetchInProgress.store(false);
+	}
+#else
+	refreshVacdmDataImpl(arg);
+#endif
 }
 
 void datalinkLogin(void * arg) {
@@ -1180,6 +1211,10 @@ void CSMRPlugin::OnTimer(int Counter)
 		lastConnectionType = currentConnectionType;
 		lastConnectionTypeChangeClock = clock();
 	}
+
+	const unsigned long pendingVacdmSehCode = VacdmLastSehCode.exchange(0, std::memory_order_relaxed);
+	if (pendingVacdmSehCode != 0)
+		Logger::info("VACDM refresh SEH exception code=" + FormatSehCode(pendingVacdmSehCode));
 
 	{
 		std::string aselCallsign;
