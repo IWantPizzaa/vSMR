@@ -1069,54 +1069,88 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	Value& departureLabel = ensureObjectMember(labels, "departure");
 	renameMemberIfPresent(departureLabel, "definitionDetailled", "definition_detailed");
 	renameMemberIfPresent(departureLabel, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
-	renameMemberIfPresent(departureLabel, "background_color", "gate_color");
-	renameMemberIfPresent(departureLabel, "background_color_on_runway", "on_runway_color");
-	ensureColorMember(departureLabel, "nofpl_color", 128, 128, 128, 255);
+	renameMemberIfPresent(departureLabel, "background_color", "background_no_status_color");
+	renameMemberIfPresent(departureLabel, "gate_color", "background_no_status_color");
+	renameMemberIfPresent(departureLabel, "background_color_on_runway", "background_on_runway_color");
+	renameMemberIfPresent(departureLabel, "on_runway_color", "background_on_runway_color");
+	renameMemberIfPresent(departureLabel, "text_color", "text_on_ground_color");
+	renameMemberIfPresent(departureLabel, "nofpl_color", "background_no_fpl_color");
+	renameMemberIfPresent(departureLabel, "nosid_color", "background_no_sid_color");
+	renameMemberIfPresent(departureLabel, "push_color", "background_push_color");
+	renameMemberIfPresent(departureLabel, "startup_color", "background_startup_color");
+	renameMemberIfPresent(departureLabel, "taxi_color", "background_taxi_color");
+	renameMemberIfPresent(departureLabel, "departure_color", "background_departure_color");
 	if (departureLabel.HasMember("status_background_colors") && departureLabel["status_background_colors"].IsObject())
 	{
 		Value& departureStatusColors = departureLabel["status_background_colors"];
 		if (departureStatusColors.HasMember("nsts") && departureStatusColors["nsts"].IsObject())
-			replaceColorMember(departureLabel, "gate_color", departureStatusColors["nsts"]);
+			replaceColorMember(departureLabel, "background_no_status_color", departureStatusColors["nsts"]);
 		if (departureStatusColors.HasMember("push") && departureStatusColors["push"].IsObject())
-			replaceColorMember(departureLabel, "push_color", departureStatusColors["push"]);
+			replaceColorMember(departureLabel, "background_push_color", departureStatusColors["push"]);
 		if (departureStatusColors.HasMember("stup") && departureStatusColors["stup"].IsObject())
-			replaceColorMember(departureLabel, "startup_color", departureStatusColors["stup"]);
+			replaceColorMember(departureLabel, "background_startup_color", departureStatusColors["stup"]);
 		if (departureStatusColors.HasMember("taxi") && departureStatusColors["taxi"].IsObject())
-			replaceColorMember(departureLabel, "taxi_color", departureStatusColors["taxi"]);
+			replaceColorMember(departureLabel, "background_taxi_color", departureStatusColors["taxi"]);
 		if (departureStatusColors.HasMember("depa") && departureStatusColors["depa"].IsObject())
-			replaceColorMember(departureLabel, "departure_color", departureStatusColors["depa"]);
+			replaceColorMember(departureLabel, "background_departure_color", departureStatusColors["depa"]);
 		departureLabel.RemoveMember("status_background_colors");
 		changed = true;
 	}
-	ensureColorMember(departureLabel, "gate_color", 53, 126, 187, 255);
-	ensureColorMember(departureLabel, "on_runway_color", 40, 50, 200, 255);
-	ensureColorMember(departureLabel, "text_color", 255, 255, 255, 255);
-	ensureColorMember(departureLabel, "push_color", 253, 218, 13, 255);
-	ensureColorMember(departureLabel, "startup_color", 253, 218, 13, 255);
-	ensureColorMember(departureLabel, "taxi_color", 240, 240, 240, 255);
-	ensureColorMember(departureLabel, "departure_color", 240, 240, 240, 255);
+	ensureColorMember(departureLabel, "background_no_status_color", 53, 126, 187, 255);
+	ensureColorMember(departureLabel, "background_on_runway_color", 40, 50, 200, 255);
+	ensureColorMember(departureLabel, "text_on_ground_color", 255, 255, 255, 255);
+	ensureColorMember(departureLabel, "background_push_color", 253, 218, 13, 255);
+	ensureColorMember(departureLabel, "background_startup_color", 253, 218, 13, 255);
+	ensureColorMember(departureLabel, "background_taxi_color", 240, 240, 240, 255);
+	ensureColorMember(departureLabel, "background_departure_color", 240, 240, 240, 255);
+	ensureColorMember(departureLabel, "background_no_fpl_color", 128, 128, 128, 255);
+	ensureColorMember(departureLabel, "background_no_sid_color", 53, 126, 187, 255);
 
 	Value& arrivalLabel = ensureObjectMember(labels, "arrival");
 	renameMemberIfPresent(arrivalLabel, "definitionDetailled", "definition_detailed");
 	renameMemberIfPresent(arrivalLabel, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
-	ensureColorMember(arrivalLabel, "background_color", 191, 87, 91, 255);
-	ensureColorMember(arrivalLabel, "background_color_on_runway", 170, 50, 50, 255);
-	ensureColorMember(arrivalLabel, "text_color", 255, 255, 255, 255);
-	ensureColorMember(arrivalLabel, "nofpl_color", 128, 128, 128, 255);
+	renameMemberIfPresent(arrivalLabel, "background_color", "background_on_ground_color");
+	renameMemberIfPresent(arrivalLabel, "background_color_on_runway", "background_on_runway_color");
+	renameMemberIfPresent(arrivalLabel, "text_color", "text_on_ground_color");
+	renameMemberIfPresent(arrivalLabel, "nofpl_color", "background_no_fpl_color");
+	ensureColorMember(arrivalLabel, "background_on_ground_color", 191, 87, 91, 255);
+	ensureColorMember(arrivalLabel, "background_on_runway_color", 170, 50, 50, 255);
+	ensureColorMember(arrivalLabel, "text_on_ground_color", 255, 255, 255, 255);
+	ensureColorMember(arrivalLabel, "background_no_fpl_color", 128, 128, 128, 255);
 	if (arrivalLabel.HasMember("status_background_colors") && arrivalLabel["status_background_colors"].IsObject())
 	{
 		Value& arrivalStatusColors = arrivalLabel["status_background_colors"];
 		if (arrivalStatusColors.HasMember("arr") && arrivalStatusColors["arr"].IsObject())
-			replaceColorMember(arrivalLabel, "background_color", arrivalStatusColors["arr"]);
+			replaceColorMember(arrivalLabel, "background_on_ground_color", arrivalStatusColors["arr"]);
 		arrivalLabel.RemoveMember("status_background_colors");
 		changed = true;
 	}
 
 	Value& airborneLabel = ensureObjectMember(labels, "airborne");
-	ensureColorMember(airborneLabel, "departure_background_color", 53, 126, 187, 255);
-	ensureColorMember(airborneLabel, "arrival_background_color", 191, 87, 91, 255);
-	ensureColorMember(airborneLabel, "departure_text_color", 255, 255, 255, 255);
-	ensureColorMember(airborneLabel, "arrival_text_color", 255, 255, 255, 255);
+	if ((!labels.HasMember("use_departure_arrival_coloring") || !labels["use_departure_arrival_coloring"].IsBool()) &&
+		airborneLabel.HasMember("use_departure_arrival_coloring") &&
+		airborneLabel["use_departure_arrival_coloring"].IsBool())
+	{
+		if (labels.HasMember("use_departure_arrival_coloring"))
+			labels.RemoveMember("use_departure_arrival_coloring");
+		Value keyValue;
+		keyValue.SetString("use_departure_arrival_coloring", allocator);
+		Value boolValue(airborneLabel["use_departure_arrival_coloring"].GetBool());
+		labels.AddMember(keyValue, boolValue, allocator);
+		changed = true;
+	}
+	if (airborneLabel.HasMember("departure_background_color") && airborneLabel["departure_background_color"].IsObject())
+		replaceColorMember(departureLabel, "background_airborne_color", airborneLabel["departure_background_color"]);
+	if (airborneLabel.HasMember("departure_text_color") && airborneLabel["departure_text_color"].IsObject())
+		replaceColorMember(departureLabel, "text_airborne_color", airborneLabel["departure_text_color"]);
+	if (airborneLabel.HasMember("arrival_background_color") && airborneLabel["arrival_background_color"].IsObject())
+		replaceColorMember(arrivalLabel, "background_airborne_color", airborneLabel["arrival_background_color"]);
+	if (airborneLabel.HasMember("arrival_text_color") && airborneLabel["arrival_text_color"].IsObject())
+		replaceColorMember(arrivalLabel, "text_airborne_color", airborneLabel["arrival_text_color"]);
+	ensureColorMember(departureLabel, "background_airborne_color", 53, 126, 187, 255);
+	ensureColorMember(departureLabel, "text_airborne_color", 255, 255, 255, 255);
+	ensureColorMember(arrivalLabel, "background_airborne_color", 191, 87, 91, 255);
+	ensureColorMember(arrivalLabel, "text_airborne_color", 255, 255, 255, 255);
 	if (airborneLabel.HasMember("background_color"))
 	{
 		airborneLabel.RemoveMember("background_color");
@@ -1142,6 +1176,38 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		airborneLabel.RemoveMember("arrival_background_color_on_runway");
 		changed = true;
 	}
+	if (airborneLabel.HasMember("departure_background_color"))
+	{
+		airborneLabel.RemoveMember("departure_background_color");
+		changed = true;
+	}
+	if (airborneLabel.HasMember("arrival_background_color"))
+	{
+		airborneLabel.RemoveMember("arrival_background_color");
+		changed = true;
+	}
+	if (airborneLabel.HasMember("departure_text_color"))
+	{
+		airborneLabel.RemoveMember("departure_text_color");
+		changed = true;
+	}
+	if (airborneLabel.HasMember("arrival_text_color"))
+	{
+		airborneLabel.RemoveMember("arrival_text_color");
+		changed = true;
+	}
+	if (airborneLabel.HasMember("use_departure_arrival_coloring"))
+	{
+		airborneLabel.RemoveMember("use_departure_arrival_coloring");
+		changed = true;
+	}
+	ensureBoolMember(labels, "use_departure_arrival_coloring", false);
+
+	Value& uncorrelatedLabel = ensureObjectMember(labels, "uncorrelated");
+	renameMemberIfPresent(uncorrelatedLabel, "background_color", "background_on_ground_color");
+	renameMemberIfPresent(uncorrelatedLabel, "background_color_on_runway", "background_on_runway_color");
+	ensureColorMember(uncorrelatedLabel, "background_on_ground_color", 150, 22, 135, 255);
+	ensureColorMember(uncorrelatedLabel, "background_on_runway_color", 150, 22, 135, 50);
 
 	ensureDefinitionArrayMember(departureLabel, "definition", nullptr);
 	const Value* baseDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;

@@ -305,11 +305,14 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			LabelsSettings["use_aspeed_for_gate"].IsBool() &&
 			LabelsSettings["use_aspeed_for_gate"].GetBool());
 	const bool airborneUseDepartureArrivalColoring =
-		LabelsSettings.HasMember("airborne") &&
-		LabelsSettings["airborne"].IsObject() &&
-		LabelsSettings["airborne"].HasMember("use_departure_arrival_coloring") &&
-		LabelsSettings["airborne"]["use_departure_arrival_coloring"].IsBool() &&
-		LabelsSettings["airborne"]["use_departure_arrival_coloring"].GetBool();
+		(LabelsSettings.HasMember("use_departure_arrival_coloring") &&
+			LabelsSettings["use_departure_arrival_coloring"].IsBool() &&
+			LabelsSettings["use_departure_arrival_coloring"].GetBool()) ||
+		(LabelsSettings.HasMember("airborne") &&
+			LabelsSettings["airborne"].IsObject() &&
+			LabelsSettings["airborne"].HasMember("use_departure_arrival_coloring") &&
+			LabelsSettings["airborne"]["use_departure_arrival_coloring"].IsBool() &&
+			LabelsSettings["airborne"]["use_departure_arrival_coloring"].GetBool());
 	const std::string activeAirport = getActiveAirport();
 	const auto isTagBeingDragged = [](const string& callsign) -> bool
 	{
@@ -1075,24 +1078,53 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				Logger::info("RenderTags: missing color key=" + std::string(key) + " for type=" + colorTagTypeKey);
 			return fallback;
 		};
-
-		const char* baseBackgroundKey = (ColorTagType == TagTypes::Departure) ? "gate_color" : "background_color";
-		const char* baseOnRunwayKey = (ColorTagType == TagTypes::Departure) ? "on_runway_color" : "background_color_on_runway";
-		Color definedBackgroundColor = getTagColorFromConfigOrDefault(baseBackgroundKey, Color(255, 53, 126, 187));
-		Color definedBackgroundOnRunwayColor = getTagColorFromConfigOrDefault(baseOnRunwayKey, definedBackgroundColor);
-		Color definedTextColor = getTagColorFromConfigOrDefault("text_color", Color::White);
-		
-		if (ColorTagType == TagTypes::Departure) {
-			if (colorTagLabelSection != nullptr)
+		auto getTagColorWithLegacy = [&](const char* preferredKey, const char* legacyKey, const Color& fallback) -> Color
+		{
+			if (colorTagLabelSection != nullptr &&
+				colorTagLabelSection->HasMember(preferredKey) &&
+				(*colorTagLabelSection)[preferredKey].IsObject())
 			{
-				if (colorTagLabelSection->HasMember("gate_color") && (*colorTagLabelSection)["gate_color"].IsObject())
-					definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["gate_color"]);
-				if (colorTagLabelSection->HasMember("on_runway_color") && (*colorTagLabelSection)["on_runway_color"].IsObject())
-					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["on_runway_color"]);
-				if (colorTagLabelSection->HasMember("text_color") && (*colorTagLabelSection)["text_color"].IsObject())
-					definedTextColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["text_color"]);
+				return CurrentConfig->getConfigColor((*colorTagLabelSection)[preferredKey]);
 			}
+			if (legacyKey != nullptr &&
+				colorTagLabelSection != nullptr &&
+				colorTagLabelSection->HasMember(legacyKey) &&
+				(*colorTagLabelSection)[legacyKey].IsObject())
+			{
+				return CurrentConfig->getConfigColor((*colorTagLabelSection)[legacyKey]);
+			}
+			return fallback;
+		};
 
+		Color definedBackgroundColor = Color(255, 53, 126, 187);
+		Color definedBackgroundOnRunwayColor = definedBackgroundColor;
+		Color definedTextColor = Color::White;
+		if (ColorTagType == TagTypes::Departure)
+		{
+			definedBackgroundColor = getTagColorWithLegacy("background_no_status_color", "gate_color", Color(255, 53, 126, 187));
+			definedBackgroundOnRunwayColor = getTagColorWithLegacy("background_on_runway_color", "on_runway_color", definedBackgroundColor);
+			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+		}
+		else if (ColorTagType == TagTypes::Arrival)
+		{
+			definedBackgroundColor = getTagColorWithLegacy("background_on_ground_color", "background_color", Color(255, 191, 87, 91));
+			definedBackgroundOnRunwayColor = getTagColorWithLegacy("background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
+			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+		}
+		else if (ColorTagType == TagTypes::Uncorrelated)
+		{
+			definedBackgroundColor = getTagColorWithLegacy("background_on_ground_color", "background_color", Color(255, 150, 22, 135));
+			definedBackgroundOnRunwayColor = getTagColorWithLegacy("background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
+			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+		}
+		else
+		{
+			definedBackgroundColor = getTagColorFromConfigOrDefault("background_color", Color(255, 53, 126, 187));
+			definedBackgroundOnRunwayColor = getTagColorFromConfigOrDefault("background_color_on_runway", definedBackgroundColor);
+			definedTextColor = getTagColorFromConfigOrDefault("text_color", Color::White);
+		}
+
+		if (ColorTagType == TagTypes::Departure) {
 			if (!TagReplacingMap["asid"].empty() && CurrentConfig->isSidColorAvail(TagReplacingMap["asid"], activeAirport)) {
 				definedBackgroundColor = CurrentConfig->getSidColor(TagReplacingMap["asid"], activeAirport);
 			}
@@ -1100,10 +1132,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				fp.GetFlightPlanData().GetPlanType() != nullptr &&
 				fp.GetFlightPlanData().GetPlanType()[0] == 'I' &&
 				TagReplacingMap["asid"].empty() &&
-				colorTagLabelSection != nullptr &&
-				colorTagLabelSection->HasMember("nosid_color") &&
-				(*colorTagLabelSection)["nosid_color"].IsObject()) {
-				definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["nosid_color"]);
+				colorTagLabelSection != nullptr) {
+				if (colorTagLabelSection->HasMember("background_no_sid_color") && (*colorTagLabelSection)["background_no_sid_color"].IsObject())
+					definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["background_no_sid_color"]);
+				else if (colorTagLabelSection->HasMember("nosid_color") && (*colorTagLabelSection)["nosid_color"].IsObject())
+					definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["nosid_color"]);
 			}
 
 			if (LabelsSettings.HasMember("departure") && LabelsSettings["departure"].IsObject())
@@ -1118,23 +1151,23 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				switch (departureStatus)
 				{
 				case GroundStateCategory::Taxi:
-					statusColorKey = "taxi_color";
+					statusColorKey = "background_taxi_color";
 					legacyStatusColorKey = "taxi";
 					break;
 				case GroundStateCategory::Push:
-					statusColorKey = "push_color";
+					statusColorKey = "background_push_color";
 					legacyStatusColorKey = "push";
 					break;
 				case GroundStateCategory::Stup:
-					statusColorKey = "startup_color";
+					statusColorKey = "background_startup_color";
 					legacyStatusColorKey = "stup";
 					break;
 				case GroundStateCategory::Depa:
-					statusColorKey = "departure_color";
+					statusColorKey = "background_departure_color";
 					legacyStatusColorKey = "depa";
 					break;
 				default:
-					statusColorKey = "gate_color";
+					statusColorKey = "background_no_status_color";
 					legacyStatusColorKey = "nsts";
 					break;
 				}
@@ -1156,17 +1189,16 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			}
 		}
 		if (TagReplacingMap["actype"] == "NoFPL" &&
-			colorTagLabelSection != nullptr &&
-			colorTagLabelSection->HasMember("nofpl_color") &&
-			(*colorTagLabelSection)["nofpl_color"].IsObject()) {
-			definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["nofpl_color"]);
+			colorTagLabelSection != nullptr) {
+			if (colorTagLabelSection->HasMember("background_no_fpl_color") && (*colorTagLabelSection)["background_no_fpl_color"].IsObject())
+				definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["background_no_fpl_color"]);
+			else if (colorTagLabelSection->HasMember("nofpl_color") && (*colorTagLabelSection)["nofpl_color"].IsObject())
+				definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["nofpl_color"]);
 		}
 
 		if (TagType == TagTypes::Airborne &&
 			fp.IsValid() &&
-			AcisCorrelated &&
-			LabelsSettings.HasMember("airborne") &&
-			LabelsSettings["airborne"].IsObject())
+			AcisCorrelated)
 		{
 			bool isAirborneDeparture = true;
 			std::string originAirport = fpOrigin != nullptr ? fpOrigin : "";
@@ -1178,30 +1210,44 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				isAirborneDeparture = (originAirport == activeAirportUpper);
 			}
 
-			const Value& airborneLabel = LabelsSettings["airborne"];
-			const char* bgKey = isAirborneDeparture ? "departure_background_color" : "arrival_background_color";
-			const char* textKey = isAirborneDeparture ? "departure_text_color" : "arrival_text_color";
-
-			if (airborneLabel.HasMember(bgKey) && airborneLabel[bgKey].IsObject())
-				definedBackgroundColor = CurrentConfig->getConfigColor(airborneLabel[bgKey]);
-			if (airborneLabel.HasMember(textKey) && airborneLabel[textKey].IsObject())
-				definedTextColor = CurrentConfig->getConfigColor(airborneLabel[textKey]);
-
 			const char* runwaySectionKey = isAirborneDeparture ? "departure" : "arrival";
 			if (LabelsSettings.HasMember(runwaySectionKey) && LabelsSettings[runwaySectionKey].IsObject())
 			{
 				const Value& runwaySection = LabelsSettings[runwaySectionKey];
-				const char* runwayColorKey = isAirborneDeparture ? "on_runway_color" : "background_color_on_runway";
+				if (runwaySection.HasMember("background_airborne_color") && runwaySection["background_airborne_color"].IsObject())
+					definedBackgroundColor = CurrentConfig->getConfigColor(runwaySection["background_airborne_color"]);
+				if (runwaySection.HasMember("text_airborne_color") && runwaySection["text_airborne_color"].IsObject())
+					definedTextColor = CurrentConfig->getConfigColor(runwaySection["text_airborne_color"]);
+
+				const char* runwayColorKey = "background_on_runway_color";
 				if (runwaySection.HasMember(runwayColorKey) && runwaySection[runwayColorKey].IsObject())
 				{
 					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(runwaySection[runwayColorKey]);
 				}
 				else if (isAirborneDeparture &&
-					runwaySection.HasMember("background_color_on_runway") &&
+					runwaySection.HasMember("on_runway_color") &&
+					runwaySection["on_runway_color"].IsObject())
+				{
+					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(runwaySection["on_runway_color"]);
+				}
+				else if (runwaySection.HasMember("background_color_on_runway") &&
 					runwaySection["background_color_on_runway"].IsObject())
 				{
 					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(runwaySection["background_color_on_runway"]);
 				}
+			}
+			else if (LabelsSettings.HasMember("airborne") && LabelsSettings["airborne"].IsObject())
+			{
+				const Value& airborneLabel = LabelsSettings["airborne"];
+				const char* bgKey = isAirborneDeparture ? "departure_background_color" : "arrival_background_color";
+				const char* textKey = isAirborneDeparture ? "departure_text_color" : "arrival_text_color";
+				if (airborneLabel.HasMember(bgKey) && airborneLabel[bgKey].IsObject())
+					definedBackgroundColor = CurrentConfig->getConfigColor(airborneLabel[bgKey]);
+				if (airborneLabel.HasMember(textKey) && airborneLabel[textKey].IsObject())
+					definedTextColor = CurrentConfig->getConfigColor(airborneLabel[textKey]);
+				const char* bgOnRunwayKey = isAirborneDeparture ? "departure_background_color_on_runway" : "arrival_background_color_on_runway";
+				if (airborneLabel.HasMember(bgOnRunwayKey) && airborneLabel[bgOnRunwayKey].IsObject())
+					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(airborneLabel[bgOnRunwayKey]);
 			}
 		}
 

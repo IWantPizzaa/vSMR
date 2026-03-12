@@ -45,6 +45,7 @@
             "auto_deconfliction": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
+            "use_departure_arrival_coloring": false,
             "definition_detailed_inherits_normal": false,
             "squawk_error_color": {
                 "r": 255,
@@ -52,51 +53,70 @@
                 "b": 0
             },
             "departure": {
-                "gate_color": {
+                "background_no_status_color": {
                     "r": 53,
                     "g": 126,
                     "b": 187,
                     "a": 255
                 },
-                "on_runway_color": {
+                "background_on_runway_color": {
                     "r": 40,
                     "g": 50,
                     "b": 200,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 128,
                     "g": 128,
                     "b": 128,
                     "a": 255
                 },
-                "push_color": {
+                "background_no_sid_color": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "background_push_color": {
                     "r": 53,
                     "g": 126,
                     "b": 187,
                     "a": 255
                 },
-                "startup_color": {
+                "background_startup_color": {
                     "r": 53,
                     "g": 126,
                     "b": 187,
                     "a": 255
                 },
-                "taxi_color": {
+                "background_taxi_color": {
                     "r": 53,
                     "g": 126,
                     "b": 187,
                     "a": 255
                 },
-                "departure_color": {
+                "background_departure_color": {
                     "r": 53,
                     "g": 126,
                     "b": 187,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 53,
+                    "g": 126,
+                    "b": 187,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -248,36 +268,43 @@
                             ]
                         ]
                     }
-                },
-                "nosid_color": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
                 }
             },
             "arrival": {
-                "background_color": {
+                "background_on_ground_color": {
                     "r": 191,
                     "g": 87,
                     "b": 91,
                     "a": 255
                 },
-                "background_color_on_runway": {
+                "background_on_runway_color": {
                     "r": 170,
                     "g": 50,
                     "b": 50,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 128,
                     "g": 128,
                     "b": 128,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 191,
+                    "g": 87,
+                    "b": 91,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -316,6 +343,35 @@
                         ]
                     }
                 }
+            },
+            "uncorrelated": {
+                "background_on_ground_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 255
+                },
+                "background_on_runway_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 50
+                },
+                "text_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255
+                },
+                "definition": [
+                    [
+                        "systemid"
+                    ]
+                ],
+                "definition_detailed": [
+                    [
+                        "systemid"
+                    ]
+                ]
             },
             "airborne": {
                 "definition": [
@@ -450,61 +506,7 @@
                             ]
                         ]
                     }
-                },
-                "use_departure_arrival_coloring": false,
-                "departure_background_color": {
-                    "r": 53,
-                    "g": 126,
-                    "b": 187,
-                    "a": 255
-                },
-                "arrival_background_color": {
-                    "r": 191,
-                    "g": 87,
-                    "b": 91,
-                    "a": 255
-                },
-                "departure_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
                 }
-            },
-            "uncorrelated": {
-                "background_color": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 255
-                },
-                "background_color_on_runway": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 50
-                },
-                "text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255
-                },
-                "definition": [
-                    [
-                        "systemid"
-                    ]
-                ],
-                "definition_detailed": [
-                    [
-                        "systemid"
-                    ]
-                ]
             }
         },
         "rimcas": {
@@ -674,39 +676,18 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 629,
-                "y": 177,
+                "x": 164,
+                "y": 234,
                 "width": 876,
                 "height": 700,
-                "visible": false
+                "visible": true
             }
         },
         "rules": {
             "version": 1,
-            "items": [
-                {
-                    "source": "vacdm",
-                    "token": "tobt",
-                    "condition": "any",
-                    "criteria": [
-                        {
-                            "source": "vacdm",
-                            "token": "tobt",
-                            "condition": "any"
-                        }
-                    ],
-                    "tag_type": "any",
-                    "status": "default",
-                    "detail": "any",
-                    "tag_color": {
-                        "r": 0,
-                        "g": 170,
-                        "b": 0
-                    },
-                    "name": "Rule 1"
-                }
-            ]
-        }
+            "items": []
+        },
+        "sid_text_colors": []
     },
     {
         "name": "Custom 2",
@@ -754,6 +735,7 @@
             "auto_deconfliction": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
+            "use_departure_arrival_coloring": false,
             "definition_detailed_inherits_normal": false,
             "squawk_error_color": {
                 "r": 255,
@@ -761,52 +743,71 @@
                 "b": 0
             },
             "departure": {
-                "gate_color": {
+                "background_no_status_color": {
                     "r": 2,
                     "g": 124,
                     "b": 255,
                     "a": 100
                 },
-                "on_runway_color": {
+                "background_on_runway_color": {
                     "r": 2,
                     "g": 124,
                     "b": 255,
                     "a": 50
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 50,
                     "g": 50,
                     "b": 50,
                     "a": 75
                 },
-                "push_color": {
+                "background_no_sid_color": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 0,
+                    "a": 150
+                },
+                "background_push_color": {
                     "r": 2,
                     "g": 124,
                     "b": 255,
                     "a": 100
                 },
-                "startup_color": {
+                "background_startup_color": {
                     "r": 2,
                     "g": 124,
                     "b": 255,
                     "a": 100
                 },
-                "taxi_color": {
+                "background_taxi_color": {
                     "r": 2,
                     "g": 124,
                     "b": 255,
                     "a": 100
                 },
-                "departure_color": {
+                "background_departure_color": {
                     "r": 2,
                     "g": 124,
                     "b": 255,
                     "a": 100
+                },
+                "background_airborne_color": {
+                    "r": 2,
+                    "g": 124,
+                    "b": 255,
+                    "a": 25
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
                 },
                 "definition": [
                     [
@@ -973,36 +974,43 @@
                             ]
                         ]
                     }
-                },
-                "nosid_color": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 0,
-                    "a": 150
                 }
             },
             "arrival": {
-                "background_color": {
+                "background_on_ground_color": {
                     "r": 255,
                     "g": 2,
                     "b": 2,
                     "a": 0
                 },
-                "background_color_on_runway": {
+                "background_on_runway_color": {
                     "r": 255,
                     "g": 2,
                     "b": 2,
                     "a": 25
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 2,
-                    "b": 2
+                    "b": 2,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 128,
                     "g": 128,
                     "b": 128,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 255,
+                    "g": 2,
+                    "b": 2,
+                    "a": 25
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -1051,6 +1059,35 @@
                         ]
                     }
                 }
+            },
+            "uncorrelated": {
+                "background_on_ground_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 255
+                },
+                "background_on_runway_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 50
+                },
+                "text_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255
+                },
+                "definition": [
+                    [
+                        "systemid"
+                    ]
+                ],
+                "definition_detailed": [
+                    [
+                        "systemid"
+                    ]
+                ]
             },
             "airborne": {
                 "definition": [
@@ -1199,61 +1236,7 @@
                             ]
                         ]
                     }
-                },
-                "use_departure_arrival_coloring": false,
-                "departure_background_color": {
-                    "r": 2,
-                    "g": 124,
-                    "b": 255,
-                    "a": 25
-                },
-                "arrival_background_color": {
-                    "r": 255,
-                    "g": 2,
-                    "b": 2,
-                    "a": 25
-                },
-                "departure_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
                 }
-            },
-            "uncorrelated": {
-                "background_color": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 255
-                },
-                "background_color_on_runway": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 50
-                },
-                "text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255
-                },
-                "definition": [
-                    [
-                        "systemid"
-                    ]
-                ],
-                "definition_detailed": [
-                    [
-                        "systemid"
-                    ]
-                ]
             }
         },
         "rimcas": {
@@ -1399,13 +1382,7 @@
             "small_icon_boost_factor": 1,
             "small_icon_boost_resolution_preset": "2k",
             "fixed_pixel_icon_size": false,
-            "fixed_pixel_icon_scale": 1,
-            "target_color": {
-                "r": 255,
-                "g": 255,
-                "b": 128,
-                "a": 255
-            }
+            "fixed_pixel_icon_scale": 1
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -1429,9 +1406,9 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 501,
-                "y": 231,
-                "width": 830,
+                "x": 164,
+                "y": 234,
+                "width": 876,
                 "height": 700,
                 "visible": false
             }
@@ -1484,7 +1461,8 @@
                     "name": "CDG"
                 }
             ]
-        }
+        },
+        "sid_text_colors": []
     },
     {
         "name": "Custom LFPG",
@@ -1533,6 +1511,7 @@
             "auto_deconfliction": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
+            "use_departure_arrival_coloring": false,
             "definition_detailed_inherits_normal": false,
             "squawk_error_color": {
                 "r": 255,
@@ -1540,51 +1519,70 @@
                 "b": 0
             },
             "departure": {
-                "gate_color": {
+                "background_no_status_color": {
                     "r": 110,
                     "g": 180,
                     "b": 255,
                     "a": 255
                 },
-                "on_runway_color": {
+                "background_on_runway_color": {
                     "r": 40,
                     "g": 50,
                     "b": 200,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 255,
                     "g": 0,
                     "b": 0,
                     "a": 255
                 },
-                "push_color": {
+                "background_no_sid_color": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "background_push_color": {
                     "r": 132,
                     "g": 97,
                     "b": 29,
                     "a": 255
                 },
-                "startup_color": {
+                "background_startup_color": {
                     "r": 90,
                     "g": 66,
                     "b": 20,
                     "a": 255
                 },
-                "taxi_color": {
+                "background_taxi_color": {
                     "r": 13,
                     "g": 101,
                     "b": 142,
                     "a": 255
                 },
-                "departure_color": {
+                "background_departure_color": {
                     "r": 7,
                     "g": 189,
                     "b": 196,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 7,
+                    "g": 189,
+                    "b": 196,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -1757,36 +1755,43 @@
                         ],
                         "definition_detailed_inherits_normal": true
                     }
-                },
-                "nosid_color": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
                 }
             },
             "arrival": {
-                "background_color": {
+                "background_on_ground_color": {
                     "r": 124,
                     "g": 8,
                     "b": 8,
                     "a": 255
                 },
-                "background_color_on_runway": {
+                "background_on_runway_color": {
                     "r": 170,
                     "g": 50,
                     "b": 50,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 128,
                     "g": 128,
                     "b": 128,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 191,
+                    "g": 87,
+                    "b": 91,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -1838,6 +1843,35 @@
                         ]
                     }
                 }
+            },
+            "uncorrelated": {
+                "background_on_ground_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 255
+                },
+                "background_on_runway_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 50
+                },
+                "text_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255
+                },
+                "definition": [
+                    [
+                        "systemid"
+                    ]
+                ],
+                "definition_detailed": [
+                    [
+                        "systemid"
+                    ]
+                ]
             },
             "airborne": {
                 "definition": [
@@ -2003,61 +2037,7 @@
                         ],
                         "definition_detailed_inherits_normal": true
                     }
-                },
-                "use_departure_arrival_coloring": false,
-                "departure_background_color": {
-                    "r": 7,
-                    "g": 189,
-                    "b": 196,
-                    "a": 255
-                },
-                "arrival_background_color": {
-                    "r": 191,
-                    "g": 87,
-                    "b": 91,
-                    "a": 255
-                },
-                "departure_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
                 }
-            },
-            "uncorrelated": {
-                "background_color": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 255
-                },
-                "background_color_on_runway": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 50
-                },
-                "text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255
-                },
-                "definition": [
-                    [
-                        "systemid"
-                    ]
-                ],
-                "definition_detailed": [
-                    [
-                        "systemid"
-                    ]
-                ]
             }
         },
         "rimcas": {
@@ -2203,13 +2183,7 @@
             "small_icon_boost_factor": 0.75,
             "small_icon_boost_resolution_preset": "4k",
             "fixed_pixel_icon_size": true,
-            "fixed_pixel_icon_scale": 1,
-            "target_color": {
-                "r": 255,
-                "g": 242,
-                "b": 73,
-                "a": 255
-            }
+            "fixed_pixel_icon_scale": 1
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -2233,9 +2207,9 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 1019,
-                "y": 737,
-                "width": 1255,
+                "x": 405,
+                "y": 204,
+                "width": 835,
                 "height": 700,
                 "visible": false
             }
@@ -2364,7 +2338,8 @@
                     }
                 }
             ]
-        }
+        },
+        "sid_text_colors": []
     },
     {
         "name": "Custom LFMN",
@@ -2412,6 +2387,7 @@
             "auto_deconfliction": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
+            "use_departure_arrival_coloring": false,
             "definition_detailed_inherits_normal": false,
             "squawk_error_color": {
                 "r": 218,
@@ -2420,51 +2396,69 @@
                 "a": 255
             },
             "departure": {
-                "gate_color": {
+                "background_no_status_color": {
                     "r": 2,
                     "g": 101,
                     "b": 171,
                     "a": 255
                 },
-                "on_runway_color": {
+                "background_on_runway_color": {
                     "r": 40,
                     "g": 50,
                     "b": 200,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
                     "b": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 33,
                     "g": 109,
                     "b": 51,
                     "a": 255
                 },
-                "push_color": {
+                "background_no_sid_color": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "background_push_color": {
                     "r": 2,
                     "g": 101,
                     "b": 171,
                     "a": 255
                 },
-                "startup_color": {
+                "background_startup_color": {
                     "r": 2,
                     "g": 101,
                     "b": 171,
                     "a": 255
                 },
-                "taxi_color": {
+                "background_taxi_color": {
                     "r": 2,
                     "g": 101,
                     "b": 171,
                     "a": 255
                 },
-                "departure_color": {
+                "background_departure_color": {
                     "r": 2,
                     "g": 101,
                     "b": 171,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 53,
+                    "g": 126,
+                    "b": 187,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -2629,36 +2623,42 @@
                             ]
                         ]
                     }
-                },
-                "nosid_color": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
                 }
             },
             "arrival": {
-                "background_color": {
+                "background_on_ground_color": {
                     "r": 178,
                     "g": 44,
                     "b": 33,
                     "a": 255
                 },
-                "background_color_on_runway": {
+                "background_on_runway_color": {
                     "r": 170,
                     "g": 50,
                     "b": 50,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
                     "b": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 178,
                     "g": 44,
                     "b": 33,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 191,
+                    "g": 87,
+                    "b": 91,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -2707,6 +2707,35 @@
                     }
                 }
             },
+            "uncorrelated": {
+                "background_on_ground_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 255
+                },
+                "background_on_runway_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 50
+                },
+                "text_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255
+                },
+                "definition": [
+                    [
+                        "systemid"
+                    ]
+                ],
+                "definition_detailed": [
+                    [
+                        "systemid"
+                    ]
+                ]
+            },
             "airborne": {
                 "definition": [
                     [
@@ -2737,60 +2766,6 @@
                     [
                         "asid",
                         "groundstatus"
-                    ]
-                ],
-                "use_departure_arrival_coloring": false,
-                "departure_background_color": {
-                    "r": 53,
-                    "g": 126,
-                    "b": 187,
-                    "a": 255
-                },
-                "arrival_background_color": {
-                    "r": 191,
-                    "g": 87,
-                    "b": 91,
-                    "a": 255
-                },
-                "departure_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                }
-            },
-            "uncorrelated": {
-                "background_color": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 255
-                },
-                "background_color_on_runway": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 50
-                },
-                "text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255
-                },
-                "definition": [
-                    [
-                        "systemid"
-                    ]
-                ],
-                "definition_detailed": [
-                    [
-                        "systemid"
                     ]
                 ]
             }
@@ -3021,6 +2996,7 @@
             "auto_deconfliction": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
+            "use_departure_arrival_coloring": false,
             "definition_detailed_inherits_normal": false,
             "squawk_error_color": {
                 "r": 235,
@@ -3028,51 +3004,70 @@
                 "b": 70
             },
             "departure": {
-                "gate_color": {
+                "background_no_status_color": {
                     "r": 44,
                     "g": 68,
                     "b": 100,
                     "a": 255
                 },
-                "on_runway_color": {
+                "background_on_runway_color": {
                     "r": 240,
                     "g": 131,
                     "b": 198,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 128,
                     "g": 128,
                     "b": 128,
                     "a": 255
                 },
-                "push_color": {
+                "background_no_sid_color": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "background_push_color": {
                     "r": 69,
                     "g": 116,
                     "b": 193,
                     "a": 255
                 },
-                "startup_color": {
+                "background_startup_color": {
                     "r": 69,
                     "g": 116,
                     "b": 193,
                     "a": 255
                 },
-                "taxi_color": {
+                "background_taxi_color": {
                     "r": 105,
                     "g": 102,
                     "b": 225,
                     "a": 255
                 },
-                "departure_color": {
+                "background_departure_color": {
                     "r": 240,
                     "g": 131,
                     "b": 198,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 240,
+                    "g": 131,
+                    "b": 198,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -3190,36 +3185,43 @@
                             ]
                         ]
                     }
-                },
-                "nosid_color": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
                 }
             },
             "arrival": {
-                "background_color": {
+                "background_on_ground_color": {
                     "r": 170,
                     "g": 71,
                     "b": 90,
                     "a": 255
                 },
-                "background_color_on_runway": {
+                "background_on_runway_color": {
                     "r": 170,
                     "g": 71,
                     "b": 90,
                     "a": 255
                 },
-                "text_color": {
+                "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
-                "nofpl_color": {
+                "background_no_fpl_color": {
                     "r": 128,
                     "g": 128,
                     "b": 128,
+                    "a": 255
+                },
+                "background_airborne_color": {
+                    "r": 191,
+                    "g": 87,
+                    "b": 91,
+                    "a": 255
+                },
+                "text_airborne_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 },
                 "definition": [
@@ -3259,6 +3261,35 @@
                         ]
                     }
                 }
+            },
+            "uncorrelated": {
+                "background_on_ground_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 255
+                },
+                "background_on_runway_color": {
+                    "r": 150,
+                    "g": 22,
+                    "b": 135,
+                    "a": 50
+                },
+                "text_color": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255
+                },
+                "definition": [
+                    [
+                        "systemid"
+                    ]
+                ],
+                "definition_detailed": [
+                    [
+                        "systemid"
+                    ]
+                ]
             },
             "airborne": {
                 "definition": [
@@ -3391,61 +3422,7 @@
                         ],
                         "definition_detailed_inherits_normal": true
                     }
-                },
-                "use_departure_arrival_coloring": false,
-                "departure_background_color": {
-                    "r": 240,
-                    "g": 131,
-                    "b": 198,
-                    "a": 255
-                },
-                "arrival_background_color": {
-                    "r": 191,
-                    "g": 87,
-                    "b": 91,
-                    "a": 255
-                },
-                "departure_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
                 }
-            },
-            "uncorrelated": {
-                "background_color": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 255
-                },
-                "background_color_on_runway": {
-                    "r": 150,
-                    "g": 22,
-                    "b": 135,
-                    "a": 50
-                },
-                "text_color": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255
-                },
-                "definition": [
-                    [
-                        "systemid"
-                    ]
-                ],
-                "definition_detailed": [
-                    [
-                        "systemid"
-                    ]
-                ]
             }
         },
         "rimcas": {
@@ -3671,6 +3648,7 @@
                     "name": "TSAT expired"
                 }
             ]
-        }
+        },
+        "sid_text_colors": []
     }
 ]
