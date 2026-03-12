@@ -7,7 +7,18 @@ This repository is a maintained fork of:
 - https://github.com/AlexisBalzano/vSMR
 - https://github.com/pierr3/vSMR
 
-The plugin name reported to EuroScope is `vSMR`. The version string is defined in `vSMR/SMRPlugin.hpp` as `MY_PLUGIN_VERSION` (currently `v1.1.1`).
+## What's New In v1.1.1
+
+- Major profile JSON cleanup and normalization for `tags`, `icons`, and structured `rules`
+- Automatic migration from older profile keys to the new layout
+- Tags editor model simplified around `Departure` and `Arrival` statuses (airborne states redistributed)
+- Rules editor `Type` and `Status` lists aligned with tag classification
+- Arrival icon-state handling improved:
+  - `Gate` stays separate
+  - all other on-ground arrival movement states use `On Ground`
+- Profile lists now use one consistent ordering across UI:
+  - `Default` first (if present), then alphabetical
+- Profile editor selection sync fix when profile is changed from radar menus
 
 ## Overview
 
@@ -295,19 +306,20 @@ Tag definitions are profile-backed and depend on:
 - target status
 - whether the tag is shown in normal or detailed mode
 
-Supported target types:
+Profile editor target types:
 
 - `departure`
 - `arrival`
-- `airborne`
-- `uncorrelated`
+
+Compatibility notes:
+
+- legacy `airborne` and `uncorrelated` sections are still read and migrated for backward compatibility
+- airborne statuses are normalized into `departure`/`arrival` status definitions
 
 Supported statuses by type:
 
-- `departure`: `default`, `nofpl`, `nsts`, `push`, `stup`, `taxi`, `depa`
-- `arrival`: `default`, `nofpl`, `arr`, `taxi`
-- `airborne`: `default`, `airdep`, `airarr`, `airdep_onrunway`, `airarr_onrunway`
-- `uncorrelated`: `default`
+- `departure`: `default`, `nofpl`, `push`, `stup`, `taxi`, `depa`, `airdep`, `airdep_onrunway`
+- `arrival`: `default`, `nofpl`, `airarr`, `airarr_onrunway`
 
 ### Tag tokens
 
@@ -351,7 +363,8 @@ Supported tag-definition tokens in code:
 
 ## Structured Rules
 
-Structured rules are stored under `labels.rules.items` in the active profile.
+Structured rules are stored under `rules.items` in the active profile.
+Older `labels.rules.items` layouts are still read/migrated for compatibility.
 
 Each rule can define:
 
@@ -383,9 +396,11 @@ The condition dropdown is dynamic:
 
 Context filters:
 
-- tag type: `any`, `departure`, `arrival`, `airborne`, `uncorrelated`
+- tag type (editor): `any`, `departure`, `arrival`
 - detail: `any`, `normal`, `detailed`
-- status: `any` or one of the normalized tag statuses
+- status (editor):
+  - departure: `Any`, `No Status`, `No FPL`, `Push`, `Startup`, `Taxi`, `Departure`, `Airborne`, `On Runway`
+  - arrival: `Any`, `On Ground`, `No FPL`, `Airborne`, `On Runway`
 
 ## VACDM Integration
 
