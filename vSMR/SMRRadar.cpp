@@ -3160,7 +3160,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			switch (groundStateCat)
 			{
 			case GroundStateCategory::Taxi:
-				vacdmRuleStatus = "taxi";
+				if (vacdmRuleType == "departure")
+					vacdmRuleStatus = "taxi";
+				else if (vacdmRuleType == "arrival")
+					vacdmRuleStatus = "default";
 				break;
 			case GroundStateCategory::Push:
 				if (vacdmRuleType == "departure")
@@ -3172,7 +3175,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				break;
 			case GroundStateCategory::Nsts:
 				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = "nsts";
+					vacdmRuleStatus = "default";
 				break;
 			case GroundStateCategory::Depa:
 				if (vacdmRuleType == "departure")
@@ -3180,7 +3183,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				break;
 			case GroundStateCategory::Arr:
 				if (vacdmRuleType == "arrival")
-					vacdmRuleStatus = "arr";
+					vacdmRuleStatus = "default";
 				break;
 			default:
 				break;

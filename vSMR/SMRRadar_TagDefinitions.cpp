@@ -481,9 +481,9 @@ std::string CSMRRadar::TagDefinitionDepartureStatusLabel(const std::string& stat
 {
 	std::string normalized = NormalizeTagDefinitionDepartureStatus(status);
 	if (normalized == "depa")
-		return "DEPA";
+		return "Departure";
 	if (normalized == "arr")
-		return "ARR";
+		return "On Ground";
 	if (normalized == "airdep")
 		return "Airborne Departure";
 	if (normalized == "airarr")
@@ -493,13 +493,13 @@ std::string CSMRRadar::TagDefinitionDepartureStatusLabel(const std::string& stat
 	if (normalized == "airarr_onrunway")
 		return "Airborne Arrival On Runway";
 	if (normalized == "taxi")
-		return "TAXI";
+		return "Taxi";
 	if (normalized == "push")
-		return "PUSH";
+		return "Push";
 	if (normalized == "stup")
-		return "STUP";
+		return "Startup";
 	if (normalized == "nsts")
-		return "NSTS";
+		return "No Status";
 	if (normalized == "nofpl")
 		return "No FPL";
 	return "Default";
@@ -1474,13 +1474,31 @@ std::string CSMRRadar::NormalizeStructuredRuleStatus(const std::string& status) 
 {
 	std::string normalized = TrimAsciiWhitespace(status);
 	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	std::string compact;
+	compact.reserve(normalized.size());
+	for (char c : normalized)
+	{
+		if (c == ' ' || c == '_' || c == '-')
+			continue;
+		compact.push_back(c);
+	}
+
 	if (normalized.empty() || normalized == "all" || normalized == "*")
 		return "any";
 	if (normalized == "any")
 		return "any";
-	if (normalized == "def")
+	if (normalized == "def" || compact == "default" || compact == "nostatus" || compact == "onground")
 		return "default";
-	return NormalizeTagDefinitionDepartureStatus(normalized);
+
+	if (compact == "departure")
+		return "depa";
+	if (compact == "startup")
+		return "stup";
+
+	const std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(normalized);
+	if (normalizedStatus == "nsts" || normalizedStatus == "arr")
+		return "default";
+	return normalizedStatus;
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleDetail(const std::string& detail) const
