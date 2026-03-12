@@ -3623,18 +3623,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 						getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
 					applyTint = true;
 					break;
-				case GroundStateCategory::Arr:
-				case GroundStateCategory::Taxi:
+				default:
+					// All other arrival on-ground states (taxi/arr/push/startup/unknown) use On Ground.
 					tintColor = ColorManager->get_corrected_color("symbol",
 						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
 					applyTint = true;
-					break;
-				case GroundStateCategory::Push:
-				case GroundStateCategory::Stup:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 90, 150, 235)));
-					applyTint = true;
-					break;
-				default:
 					break;
 				}
 			}
@@ -3768,18 +3761,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 						getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
 					applyTint = true;
 					break;
-				case GroundStateCategory::Arr:
-				case GroundStateCategory::Taxi:
+				default:
+					// All other arrival on-ground states (taxi/arr/push/startup/unknown) use On Ground.
 					tintColor = ColorManager->get_corrected_color("symbol",
 						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
 					applyTint = true;
-					break;
-				case GroundStateCategory::Push:
-				case GroundStateCategory::Stup:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 90, 150, 235)));
-					applyTint = true;
-					break;
-				default:
 					break;
 				}
 			}
