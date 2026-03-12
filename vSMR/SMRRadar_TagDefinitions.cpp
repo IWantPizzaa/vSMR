@@ -509,11 +509,11 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionStatusesForType(const std::s
 {
 	const std::string normalizedType = NormalizeTagDefinitionType(type);
 	if (normalizedType == "departure")
-		return { "default", "nofpl", "push", "stup", "taxi", "depa" };
+		return { "default", "nofpl", "push", "stup", "taxi", "depa", "airdep", "airdep_onrunway" };
 	if (normalizedType == "arrival")
-		return { "default", "nofpl" };
+		return { "default", "nofpl", "airarr", "airarr_onrunway" };
 	if (normalizedType == "airborne")
-		return { "default", "airdep", "airarr", "airdep_onrunway", "airarr_onrunway" };
+		return { "airdep", "airarr", "airdep_onrunway", "airarr_onrunway" };
 	return { "default" };
 }
 
@@ -739,15 +739,24 @@ void CSMRRadar::GetTagDefinitionEditorContext(std::string& type, bool& detailed,
 	type = NormalizeTagDefinitionType(TagDefinitionEditorType);
 	detailed = TagDefinitionEditorDetailed;
 	status = NormalizeTagDefinitionDepartureStatus(TagDefinitionEditorDepartureStatus);
+	if (type == "airborne")
+	{
+		type = (status == "airarr" || status == "airarr_onrunway") ? "arrival" : "departure";
+	}
 	if (!IsTagDefinitionStatusAllowedForType(type, status))
 		status = "default";
 }
 
 void CSMRRadar::SetTagDefinitionEditorContext(const std::string& type, bool detailed, const std::string& status)
 {
+	const std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(status);
 	TagDefinitionEditorType = NormalizeTagDefinitionType(type);
+	if (TagDefinitionEditorType == "airborne")
+	{
+		TagDefinitionEditorType = (normalizedStatus == "airarr" || normalizedStatus == "airarr_onrunway") ? "arrival" : "departure";
+	}
 	TagDefinitionEditorDetailed = detailed;
-	TagDefinitionEditorDepartureStatus = NormalizeTagDefinitionDepartureStatus(status);
+	TagDefinitionEditorDepartureStatus = normalizedStatus;
 	if (!IsTagDefinitionStatusAllowedForType(TagDefinitionEditorType, TagDefinitionEditorDepartureStatus))
 		TagDefinitionEditorDepartureStatus = "default";
 }
@@ -769,6 +778,8 @@ std::string CSMRRadar::GetTagEditorTargetColorPath() const
 			return "targets.departure.taxi";
 		if (normalizedStatus == "depa")
 			return "targets.departure.departure";
+		if (normalizedStatus == "airdep" || normalizedStatus == "airdep_onrunway")
+			return "targets.departure.airborne";
 		if (normalizedStatus == "nsts")
 			return "targets.departure.no_status";
 		return "targets.departure.gate";
@@ -778,6 +789,8 @@ std::string CSMRRadar::GetTagEditorTargetColorPath() const
 	{
 		if (normalizedStatus == "nofpl")
 			return "targets.departure.no_fpl";
+		if (normalizedStatus == "airarr" || normalizedStatus == "airarr_onrunway")
+			return "targets.arrival.airborne";
 		if (normalizedStatus == "arr" || normalizedStatus == "taxi")
 			return "targets.arrival.on_ground";
 		return "targets.arrival.gate";
@@ -810,6 +823,10 @@ std::string CSMRRadar::GetTagEditorLabelColorPath() const
 			return "labels.departure.background_taxi_color";
 		if (normalizedStatus == "depa")
 			return "labels.departure.background_departure_color";
+		if (normalizedStatus == "airdep")
+			return "labels.departure.background_airborne_color";
+		if (normalizedStatus == "airdep_onrunway")
+			return "labels.departure.background_on_runway_color";
 		return "labels.departure.background_no_status_color";
 	}
 
@@ -817,6 +834,10 @@ std::string CSMRRadar::GetTagEditorLabelColorPath() const
 	{
 		if (normalizedStatus == "nofpl")
 			return "labels.arrival.background_no_fpl_color";
+		if (normalizedStatus == "airarr")
+			return "labels.arrival.background_airborne_color";
+		if (normalizedStatus == "airarr_onrunway")
+			return "labels.arrival.background_on_runway_color";
 		return "labels.arrival.background_on_ground_color";
 	}
 

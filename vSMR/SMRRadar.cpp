@@ -1280,6 +1280,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureStatusDefinitionEntries("stup");
 	ensureStatusDefinitionEntries("depa");
 	ensureStatusDefinitionEntries("nofpl");
+	ensureStatusDefinitionEntries("airdep");
+	ensureStatusDefinitionEntries("airdep_onrunway");
 
 	ensureDefinitionArrayMember(arrivalLabel, "definition", nullptr);
 	const Value* arrivalBaseDefinition = (arrivalLabel.HasMember("definition") && arrivalLabel["definition"].IsArray()) ? &arrivalLabel["definition"] : nullptr;
@@ -1307,6 +1309,63 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	};
 
 	ensureArrivalStatusDefinitionEntries("nofpl");
+	ensureArrivalStatusDefinitionEntries("airarr");
+	ensureArrivalStatusDefinitionEntries("airarr_onrunway");
+
+	auto copyStatusDefinitionFromSource = [&](Value& destinationStatusDefinitions, const char* destinationStatusKey, const Value* sourceSection)
+	{
+		if (destinationStatusKey == nullptr || sourceSection == nullptr || !sourceSection->IsObject())
+			return;
+
+		Value& destinationSection = ensureObjectMember(destinationStatusDefinitions, destinationStatusKey);
+		renameMemberIfPresent(destinationSection, "definitionDetailled", "definition_detailed");
+		renameMemberIfPresent(destinationSection, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
+
+		if (sourceSection->HasMember("definition") && (*sourceSection)["definition"].IsArray())
+			replaceDefinitionArrayMember(destinationSection, "definition", (*sourceSection)["definition"]);
+		if (sourceSection->HasMember("definition_detailed") && (*sourceSection)["definition_detailed"].IsArray())
+			replaceDefinitionArrayMember(destinationSection, "definition_detailed", (*sourceSection)["definition_detailed"]);
+		else if (sourceSection->HasMember("definitionDetailled") && (*sourceSection)["definitionDetailled"].IsArray())
+			replaceDefinitionArrayMember(destinationSection, "definition_detailed", (*sourceSection)["definitionDetailled"]);
+
+		copyBoolMemberIfPresent(destinationSection, "definition_detailed_inherits_normal", *sourceSection);
+	};
+
+	const Value* airborneDefinition = nullptr;
+	if (airborneLabel.HasMember("definition") && airborneLabel["definition"].IsArray())
+		airborneDefinition = &airborneLabel["definition"];
+
+	auto findAirborneStatusSection = [&](const char* statusKey) -> const Value*
+	{
+		if (statusKey == nullptr)
+			return nullptr;
+		if (!airborneLabel.HasMember("status_definitions") || !airborneLabel["status_definitions"].IsObject())
+			return nullptr;
+		const Value& airborneStatusDefinitions = airborneLabel["status_definitions"];
+		if (!airborneStatusDefinitions.HasMember(statusKey) || !airborneStatusDefinitions[statusKey].IsObject())
+			return nullptr;
+		return &airborneStatusDefinitions[statusKey];
+	};
+
+	const Value* sourceDepartureAirborne = findAirborneStatusSection("airdep");
+	if (sourceDepartureAirborne == nullptr && airborneDefinition != nullptr)
+		sourceDepartureAirborne = &airborneLabel;
+	copyStatusDefinitionFromSource(departureStatusDefinitions, "airdep", sourceDepartureAirborne);
+
+	const Value* sourceDepartureOnRunway = findAirborneStatusSection("airdep_onrunway");
+	if (sourceDepartureOnRunway == nullptr)
+		sourceDepartureOnRunway = sourceDepartureAirborne;
+	copyStatusDefinitionFromSource(departureStatusDefinitions, "airdep_onrunway", sourceDepartureOnRunway);
+
+	const Value* sourceArrivalAirborne = findAirborneStatusSection("airarr");
+	if (sourceArrivalAirborne == nullptr && airborneDefinition != nullptr)
+		sourceArrivalAirborne = &airborneLabel;
+	copyStatusDefinitionFromSource(arrivalStatusDefinitions, "airarr", sourceArrivalAirborne);
+
+	const Value* sourceArrivalOnRunway = findAirborneStatusSection("airarr_onrunway");
+	if (sourceArrivalOnRunway == nullptr)
+		sourceArrivalOnRunway = sourceArrivalAirborne;
+	copyStatusDefinitionFromSource(arrivalStatusDefinitions, "airarr_onrunway", sourceArrivalOnRunway);
 
 	Value legacyLabelRules(kObjectType);
 	bool hasLegacyLabelRules = false;
@@ -3138,55 +3197,56 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		std::string vacdmRuleType = "departure";
 		if (!AcisCorrelated && reportedGs >= 3)
 			vacdmRuleType = "uncorrelated";
-		else if (isAirborneTarget)
-			vacdmRuleType = "airborne";
 		else if (!isDepartureTarget)
 			vacdmRuleType = "arrival";
 
 		std::string vacdmRuleStatus = "default";
-		if ((vacdmRuleType == "departure" || vacdmRuleType == "arrival") && hasNoFlightPlan)
+		if (vacdmRuleType == "departure" || vacdmRuleType == "arrival")
 		{
-			vacdmRuleStatus = "nofpl";
-		}
-		else if (vacdmRuleType == "airborne")
-		{
-			if (isDepartureTarget)
-				vacdmRuleStatus = isOnRunway ? "airdep_onrunway" : "airdep";
-			else
-				vacdmRuleStatus = isOnRunway ? "airarr_onrunway" : "airarr";
-		}
-		else if (vacdmRuleType == "departure" || vacdmRuleType == "arrival")
-		{
-			switch (groundStateCat)
+			if (isAirborneTarget)
 			{
-			case GroundStateCategory::Taxi:
 				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = "taxi";
-				else if (vacdmRuleType == "arrival")
-					vacdmRuleStatus = "default";
-				break;
-			case GroundStateCategory::Push:
-				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = "push";
-				break;
-			case GroundStateCategory::Stup:
-				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = "stup";
-				break;
-			case GroundStateCategory::Nsts:
-				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = "default";
-				break;
-			case GroundStateCategory::Depa:
-				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = "depa";
-				break;
-			case GroundStateCategory::Arr:
-				if (vacdmRuleType == "arrival")
-					vacdmRuleStatus = "default";
-				break;
-			default:
-				break;
+					vacdmRuleStatus = isOnRunway ? "airdep_onrunway" : "airdep";
+				else
+					vacdmRuleStatus = isOnRunway ? "airarr_onrunway" : "airarr";
+			}
+			else if (hasNoFlightPlan)
+			{
+				vacdmRuleStatus = "nofpl";
+			}
+			else
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Taxi:
+					if (vacdmRuleType == "departure")
+						vacdmRuleStatus = "taxi";
+					else if (vacdmRuleType == "arrival")
+						vacdmRuleStatus = "default";
+					break;
+				case GroundStateCategory::Push:
+					if (vacdmRuleType == "departure")
+						vacdmRuleStatus = "push";
+					break;
+				case GroundStateCategory::Stup:
+					if (vacdmRuleType == "departure")
+						vacdmRuleStatus = "stup";
+					break;
+				case GroundStateCategory::Nsts:
+					if (vacdmRuleType == "departure")
+						vacdmRuleStatus = "default";
+					break;
+				case GroundStateCategory::Depa:
+					if (vacdmRuleType == "departure")
+						vacdmRuleStatus = "depa";
+					break;
+				case GroundStateCategory::Arr:
+					if (vacdmRuleType == "arrival")
+						vacdmRuleStatus = "default";
+					break;
+				default:
+					break;
+				}
 			}
 		}
 
