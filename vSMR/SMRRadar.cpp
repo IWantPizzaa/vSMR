@@ -391,29 +391,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		return parent[key];
 	};
 
-	auto renameMemberIfPresent = [&](Value& parent, const char* oldKey, const char* newKey)
-	{
-		if (!parent.IsObject() || oldKey == nullptr || newKey == nullptr || strcmp(oldKey, newKey) == 0)
-			return;
-		if (!parent.HasMember(oldKey))
-			return;
-
-		if (parent.HasMember(newKey))
-		{
-			parent.RemoveMember(oldKey);
-			changed = true;
-			return;
-		}
-
-		Value keyValue;
-		keyValue.SetString(newKey, allocator);
-		Value copiedValue;
-		copiedValue.CopyFrom(parent[oldKey], allocator);
-		parent.AddMember(keyValue, copiedValue, allocator);
-		parent.RemoveMember(oldKey);
-		changed = true;
-	};
-
 	auto ensureColorMember = [&](Value& parent, const char* key, int r, int g, int b, int a)
 	{
 		if (!parent.HasMember(key) || !parent[key].IsObject())
@@ -736,6 +713,29 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		}
 
 		destination.SetNull();
+	};
+
+	auto renameMemberIfPresent = [&](Value& parent, const char* oldKey, const char* newKey)
+	{
+		if (!parent.IsObject() || oldKey == nullptr || newKey == nullptr || strcmp(oldKey, newKey) == 0)
+			return;
+		if (!parent.HasMember(oldKey))
+			return;
+
+		if (parent.HasMember(newKey))
+		{
+			parent.RemoveMember(oldKey);
+			changed = true;
+			return;
+		}
+
+		Value keyValue;
+		keyValue.SetString(newKey, allocator);
+		Value copiedValue;
+		cloneJsonValue(copiedValue, parent[oldKey], cloneJsonValue);
+		parent.AddMember(keyValue, copiedValue, allocator);
+		parent.RemoveMember(oldKey);
+		changed = true;
 	};
 
 	auto copyBoolMemberIfPresent = [&](Value& parent, const char* key, const Value& sourceObject)
