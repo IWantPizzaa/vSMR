@@ -1076,11 +1076,23 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			return fallback;
 		};
 
-		Color definedBackgroundColor = getTagColorFromConfigOrDefault("background_color", Color(255, 53, 126, 187));
-		Color definedBackgroundOnRunwayColor = getTagColorFromConfigOrDefault("background_color_on_runway", definedBackgroundColor);
+		const char* baseBackgroundKey = (ColorTagType == TagTypes::Departure) ? "gate_color" : "background_color";
+		const char* baseOnRunwayKey = (ColorTagType == TagTypes::Departure) ? "on_runway_color" : "background_color_on_runway";
+		Color definedBackgroundColor = getTagColorFromConfigOrDefault(baseBackgroundKey, Color(255, 53, 126, 187));
+		Color definedBackgroundOnRunwayColor = getTagColorFromConfigOrDefault(baseOnRunwayKey, definedBackgroundColor);
 		Color definedTextColor = getTagColorFromConfigOrDefault("text_color", Color::White);
 		
 		if (ColorTagType == TagTypes::Departure) {
+			if (colorTagLabelSection != nullptr)
+			{
+				if (colorTagLabelSection->HasMember("gate_color") && (*colorTagLabelSection)["gate_color"].IsObject())
+					definedBackgroundColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["gate_color"]);
+				if (colorTagLabelSection->HasMember("on_runway_color") && (*colorTagLabelSection)["on_runway_color"].IsObject())
+					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["on_runway_color"]);
+				if (colorTagLabelSection->HasMember("text_color") && (*colorTagLabelSection)["text_color"].IsObject())
+					definedTextColor = CurrentConfig->getConfigColor((*colorTagLabelSection)["text_color"]);
+			}
+
 			if (!TagReplacingMap["asid"].empty() && CurrentConfig->isSidColorAvail(TagReplacingMap["asid"], activeAirport)) {
 				definedBackgroundColor = CurrentConfig->getSidColor(TagReplacingMap["asid"], activeAirport);
 			}
@@ -1097,34 +1109,49 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			if (LabelsSettings.HasMember("departure") && LabelsSettings["departure"].IsObject())
 			{
 				const Value& departureLabel = LabelsSettings["departure"];
-				if (departureLabel.HasMember("status_background_colors") && departureLabel["status_background_colors"].IsObject())
+				GroundStateCategory departureStatus = GroundStateCategory::Unknown;
+				if (fp.IsValid())
+					departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
+
+				const char* statusColorKey = nullptr;
+				const char* legacyStatusColorKey = nullptr;
+				switch (departureStatus)
 				{
-					const Value& statusBackgroundColors = departureLabel["status_background_colors"];
-					GroundStateCategory departureStatus = GroundStateCategory::Unknown;
-					if (fp.IsValid())
-						departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
+				case GroundStateCategory::Taxi:
+					statusColorKey = "taxi_color";
+					legacyStatusColorKey = "taxi";
+					break;
+				case GroundStateCategory::Push:
+					statusColorKey = "push_color";
+					legacyStatusColorKey = "push";
+					break;
+				case GroundStateCategory::Stup:
+					statusColorKey = "startup_color";
+					legacyStatusColorKey = "stup";
+					break;
+				case GroundStateCategory::Depa:
+					statusColorKey = "departure_color";
+					legacyStatusColorKey = "depa";
+					break;
+				default:
+					statusColorKey = "gate_color";
+					legacyStatusColorKey = "nsts";
+					break;
+				}
 
-					const char* statusColorKey = nullptr;
-					switch (departureStatus)
-					{
-					case GroundStateCategory::Taxi:
-						statusColorKey = "taxi";
-						break;
-					case GroundStateCategory::Push:
-						statusColorKey = "push";
-						break;
-					case GroundStateCategory::Stup:
-						statusColorKey = "stup";
-						break;
-					case GroundStateCategory::Depa:
-						statusColorKey = "depa";
-						break;
-					default:
-						break;
-					}
-
-					if (statusColorKey != nullptr && statusBackgroundColors.HasMember(statusColorKey) && statusBackgroundColors[statusColorKey].IsObject())
-						definedBackgroundColor = CurrentConfig->getConfigColor(statusBackgroundColors[statusColorKey]);
+				if (statusColorKey != nullptr &&
+					departureLabel.HasMember(statusColorKey) &&
+					departureLabel[statusColorKey].IsObject())
+				{
+					definedBackgroundColor = CurrentConfig->getConfigColor(departureLabel[statusColorKey]);
+				}
+				else if (legacyStatusColorKey != nullptr &&
+					departureLabel.HasMember("status_background_colors") &&
+					departureLabel["status_background_colors"].IsObject() &&
+					departureLabel["status_background_colors"].HasMember(legacyStatusColorKey) &&
+					departureLabel["status_background_colors"][legacyStatusColorKey].IsObject())
+				{
+					definedBackgroundColor = CurrentConfig->getConfigColor(departureLabel["status_background_colors"][legacyStatusColorKey]);
 				}
 			}
 		}
@@ -1153,15 +1180,29 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 			const Value& airborneLabel = LabelsSettings["airborne"];
 			const char* bgKey = isAirborneDeparture ? "departure_background_color" : "arrival_background_color";
-			const char* bgOnRunwayKey = isAirborneDeparture ? "departure_background_color_on_runway" : "arrival_background_color_on_runway";
 			const char* textKey = isAirborneDeparture ? "departure_text_color" : "arrival_text_color";
 
 			if (airborneLabel.HasMember(bgKey) && airborneLabel[bgKey].IsObject())
 				definedBackgroundColor = CurrentConfig->getConfigColor(airborneLabel[bgKey]);
-			if (airborneLabel.HasMember(bgOnRunwayKey) && airborneLabel[bgOnRunwayKey].IsObject())
-				definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(airborneLabel[bgOnRunwayKey]);
 			if (airborneLabel.HasMember(textKey) && airborneLabel[textKey].IsObject())
 				definedTextColor = CurrentConfig->getConfigColor(airborneLabel[textKey]);
+
+			const char* runwaySectionKey = isAirborneDeparture ? "departure" : "arrival";
+			if (LabelsSettings.HasMember(runwaySectionKey) && LabelsSettings[runwaySectionKey].IsObject())
+			{
+				const Value& runwaySection = LabelsSettings[runwaySectionKey];
+				const char* runwayColorKey = isAirborneDeparture ? "on_runway_color" : "background_color_on_runway";
+				if (runwaySection.HasMember(runwayColorKey) && runwaySection[runwayColorKey].IsObject())
+				{
+					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(runwaySection[runwayColorKey]);
+				}
+				else if (isAirborneDeparture &&
+					runwaySection.HasMember("background_color_on_runway") &&
+					runwaySection["background_color_on_runway"].IsObject())
+				{
+					definedBackgroundOnRunwayColor = CurrentConfig->getConfigColor(runwaySection["background_color_on_runway"]);
+				}
+			}
 		}
 
 		if (vacdmTagColorOverrides.hasTagColor)

@@ -280,6 +280,20 @@ namespace
 			return "SID Text Colors";
 		if (_stricmp(segment.c_str(), "nofpl_color") == 0)
 			return "NoFPL Color";
+		if (_stricmp(segment.c_str(), "gate_color") == 0)
+			return "Gate";
+		if (_stricmp(segment.c_str(), "on_runway_color") == 0 || _stricmp(segment.c_str(), "background_color_on_runway") == 0)
+			return "On Runway";
+		if (_stricmp(segment.c_str(), "departure_color") == 0)
+			return "Departure";
+		if (_stricmp(segment.c_str(), "push_color") == 0)
+			return "Push";
+		if (_stricmp(segment.c_str(), "startup_color") == 0)
+			return "Startup";
+		if (_stricmp(segment.c_str(), "taxi_color") == 0)
+			return "Taxi";
+		if (_stricmp(segment.c_str(), "text_color") == 0)
+			return "Text";
 
 		std::string display = segment;
 		bool capitalizeNext = true;
@@ -306,8 +320,11 @@ namespace
 
 	std::string FormatColorPathForDisplay(const std::string& path)
 	{
-		if (_stricmp(path.c_str(), "labels.departure.background_color") == 0)
-			return "Tags > Departure > NSTS";
+		if (_stricmp(path.c_str(), "labels.departure.gate_color") == 0 ||
+			_stricmp(path.c_str(), "labels.departure.background_color") == 0)
+		{
+			return "Tags > Departure > Gate";
+		}
 
 		const std::vector<std::string> segments = SplitColorPathForDisplay(path);
 		std::string display;
@@ -3640,8 +3657,12 @@ void CProfileEditorDialog::RebuildColorPathTree(const std::string& selectedPath)
 			if (itNode == nodeByPrefix.end())
 			{
 				std::string displaySegment = FormatColorPathSegmentForDisplay(segments[i]);
-				if (i + 1 == segments.size() && _stricmp(path.c_str(), "labels.departure.background_color") == 0)
-					displaySegment = "NSTS";
+				if (i + 1 == segments.size() &&
+					(_stricmp(path.c_str(), "labels.departure.gate_color") == 0 ||
+					 _stricmp(path.c_str(), "labels.departure.background_color") == 0))
+				{
+					displaySegment = "Gate";
+				}
 
 				HTREEITEM item = ColorPathTree.InsertItem(displaySegment.c_str(), parent);
 				nodeByPrefix.insert(std::make_pair(prefix, item));

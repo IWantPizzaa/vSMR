@@ -292,9 +292,18 @@ namespace
 
 	bool ShouldExposeProfileColorPath(const std::string& path)
 	{
-		return path != "labels.arrival.status_background_colors.arr" &&
-			path != "labels.arrival.status_background_colors.taxi" &&
-			path != "labels.departure.status_background_colors.nsts";
+		auto startsWith = [&](const char* prefix) -> bool
+		{
+			const std::string prefixStr = prefix;
+			return path.rfind(prefixStr, 0) == 0;
+		};
+
+		if (startsWith("labels.departure.status_background_colors."))
+			return false;
+		if (startsWith("labels.arrival.status_background_colors."))
+			return false;
+
+		return true;
 	}
 
 	void CollectProfileColorPaths(const rapidjson::Value& value, const std::string& path, std::vector<std::string>& outPaths, std::map<std::string, bool>& outHasAlpha)
