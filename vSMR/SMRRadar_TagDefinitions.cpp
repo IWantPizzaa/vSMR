@@ -791,36 +791,36 @@ std::string CSMRRadar::GetTagEditorLabelColorPath() const
 	if (normalizedType == "departure")
 	{
 		if (normalizedStatus == "nofpl")
-			return "labels.departure.nofpl_color";
+			return "labels.departure.background_no_fpl_color";
 		if (normalizedStatus == "push")
-			return "labels.departure.push_color";
+			return "labels.departure.background_push_color";
 		if (normalizedStatus == "stup")
-			return "labels.departure.startup_color";
+			return "labels.departure.background_startup_color";
 		if (normalizedStatus == "taxi")
-			return "labels.departure.taxi_color";
+			return "labels.departure.background_taxi_color";
 		if (normalizedStatus == "depa")
-			return "labels.departure.departure_color";
-		return "labels.departure.gate_color";
+			return "labels.departure.background_departure_color";
+		return "labels.departure.background_no_status_color";
 	}
 
 	if (normalizedType == "arrival")
 	{
 		if (normalizedStatus == "nofpl")
-			return "labels.arrival.nofpl_color";
-		return "labels.arrival.background_color";
+			return "labels.arrival.background_no_fpl_color";
+		return "labels.arrival.background_on_ground_color";
 	}
 
 	if (normalizedType == "airborne")
 	{
 		if (normalizedStatus == "airdep")
-			return "labels.airborne.departure_background_color";
+			return "labels.departure.background_airborne_color";
 		if (normalizedStatus == "airarr")
-			return "labels.airborne.arrival_background_color";
+			return "labels.arrival.background_airborne_color";
 		if (normalizedStatus == "airdep_onrunway")
-			return "labels.departure.on_runway_color";
+			return "labels.departure.background_on_runway_color";
 		if (normalizedStatus == "airarr_onrunway")
-			return "labels.arrival.background_color_on_runway";
-		return "labels.airborne.departure_background_color";
+			return "labels.arrival.background_on_runway_color";
+		return "labels.departure.background_airborne_color";
 	}
 
 	return "";

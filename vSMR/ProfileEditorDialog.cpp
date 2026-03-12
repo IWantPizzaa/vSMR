@@ -278,22 +278,30 @@ namespace
 			return "Status Background Colors";
 		if (_stricmp(segment.c_str(), "sid_text_colors") == 0)
 			return "SID Text Colors";
-		if (_stricmp(segment.c_str(), "nofpl_color") == 0)
-			return "NoFPL Color";
-		if (_stricmp(segment.c_str(), "gate_color") == 0)
-			return "Gate";
-		if (_stricmp(segment.c_str(), "on_runway_color") == 0 || _stricmp(segment.c_str(), "background_color_on_runway") == 0)
-			return "On Runway";
-		if (_stricmp(segment.c_str(), "departure_color") == 0)
-			return "Departure";
-		if (_stricmp(segment.c_str(), "push_color") == 0)
-			return "Push";
-		if (_stricmp(segment.c_str(), "startup_color") == 0)
-			return "Startup";
-		if (_stricmp(segment.c_str(), "taxi_color") == 0)
-			return "Taxi";
-		if (_stricmp(segment.c_str(), "text_color") == 0)
-			return "Text";
+		if (_stricmp(segment.c_str(), "background_on_ground_color") == 0)
+			return "Background On Ground";
+		if (_stricmp(segment.c_str(), "background_on_runway_color") == 0 || _stricmp(segment.c_str(), "on_runway_color") == 0 || _stricmp(segment.c_str(), "background_color_on_runway") == 0)
+			return "Background On Runway";
+		if (_stricmp(segment.c_str(), "background_no_fpl_color") == 0 || _stricmp(segment.c_str(), "nofpl_color") == 0)
+			return "Background No FPL";
+		if (_stricmp(segment.c_str(), "text_on_ground_color") == 0 || _stricmp(segment.c_str(), "text_color") == 0)
+			return "Text On Ground";
+		if (_stricmp(segment.c_str(), "background_no_status_color") == 0 || _stricmp(segment.c_str(), "gate_color") == 0)
+			return "Background No Status";
+		if (_stricmp(segment.c_str(), "background_no_sid_color") == 0 || _stricmp(segment.c_str(), "nosid_color") == 0)
+			return "Background No SID";
+		if (_stricmp(segment.c_str(), "background_departure_color") == 0 || _stricmp(segment.c_str(), "departure_color") == 0)
+			return "Background Departure";
+		if (_stricmp(segment.c_str(), "background_push_color") == 0 || _stricmp(segment.c_str(), "push_color") == 0)
+			return "Background Push";
+		if (_stricmp(segment.c_str(), "background_startup_color") == 0 || _stricmp(segment.c_str(), "startup_color") == 0)
+			return "Background Startup";
+		if (_stricmp(segment.c_str(), "background_taxi_color") == 0 || _stricmp(segment.c_str(), "taxi_color") == 0)
+			return "Background Taxi";
+		if (_stricmp(segment.c_str(), "background_airborne_color") == 0)
+			return "Background Airborne";
+		if (_stricmp(segment.c_str(), "text_airborne_color") == 0)
+			return "Text Airborne";
 
 		std::string display = segment;
 		bool capitalizeNext = true;
@@ -320,10 +328,15 @@ namespace
 
 	std::string FormatColorPathForDisplay(const std::string& path)
 	{
-		if (_stricmp(path.c_str(), "labels.departure.gate_color") == 0 ||
+		if (_stricmp(path.c_str(), "labels.departure.background_no_status_color") == 0 ||
+			_stricmp(path.c_str(), "labels.departure.gate_color") == 0 ||
 			_stricmp(path.c_str(), "labels.departure.background_color") == 0)
 		{
-			return "Tags > Departure > Gate";
+			return "Tags > Departure > Background No Status";
+		}
+		if (_stricmp(path.c_str(), "labels.uncorrelated.background_on_runway_color") == 0)
+		{
+			return "Tags > Uncorrelated > Background On Runways";
 		}
 
 		const std::vector<std::string> segments = SplitColorPathForDisplay(path);
@@ -3658,10 +3671,16 @@ void CProfileEditorDialog::RebuildColorPathTree(const std::string& selectedPath)
 			{
 				std::string displaySegment = FormatColorPathSegmentForDisplay(segments[i]);
 				if (i + 1 == segments.size() &&
-					(_stricmp(path.c_str(), "labels.departure.gate_color") == 0 ||
+					(_stricmp(path.c_str(), "labels.departure.background_no_status_color") == 0 ||
+					 _stricmp(path.c_str(), "labels.departure.gate_color") == 0 ||
 					 _stricmp(path.c_str(), "labels.departure.background_color") == 0))
 				{
-					displaySegment = "Gate";
+					displaySegment = "Background No Status";
+				}
+				else if (i + 1 == segments.size() &&
+					_stricmp(path.c_str(), "labels.uncorrelated.background_on_runway_color") == 0)
+				{
+					displaySegment = "Background On Runways";
 				}
 
 				HTREEITEM item = ColorPathTree.InsertItem(displaySegment.c_str(), parent);
