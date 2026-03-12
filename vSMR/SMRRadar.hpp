@@ -364,6 +364,7 @@ public:
 	bool SelectProfileColorPathForEditor(const std::string& path);
 	bool GetSelectedProfileColorForEditor(int& r, int& g, int& b, int& a, bool& hasAlpha) const;
 	bool SetSelectedProfileColorForEditor(int r, int g, int b, int a, bool useAlpha, bool persistToDisk);
+	std::vector<std::string> GetOrderedProfileNamesForUi() const;
 	std::vector<std::string> GetProfileNamesForEditor() const;
 	std::string GetActiveProfileNameForEditor() const;
 	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);

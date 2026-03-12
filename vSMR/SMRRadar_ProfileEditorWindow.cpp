@@ -542,9 +542,31 @@ bool CSMRRadar::SetSelectedProfileColorForEditor(int r, int g, int b, int a, boo
 
 std::vector<std::string> CSMRRadar::GetProfileNamesForEditor() const
 {
+	return GetOrderedProfileNamesForUi();
+}
+
+std::vector<std::string> CSMRRadar::GetOrderedProfileNamesForUi() const
+{
 	if (!CurrentConfig)
 		return {};
-	return CurrentConfig->getAllProfiles();
+
+	std::vector<std::string> names = CurrentConfig->getAllProfiles();
+	std::stable_sort(names.begin(), names.end(), [](const std::string& a, const std::string& b)
+	{
+		const bool aIsDefault = EqualsNoCase(a, "Default");
+		const bool bIsDefault = EqualsNoCase(b, "Default");
+		if (aIsDefault != bIsDefault)
+			return aIsDefault;
+
+		std::string lowerA = a;
+		std::string lowerB = b;
+		std::transform(lowerA.begin(), lowerA.end(), lowerA.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		std::transform(lowerB.begin(), lowerB.end(), lowerB.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (lowerA != lowerB)
+			return lowerA < lowerB;
+		return a < b;
+	});
+	return names;
 }
 
 std::string CSMRRadar::GetActiveProfileNameForEditor() const

@@ -4149,7 +4149,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	if (ShowLists["Profiles"]) {
 		GetPlugIn()->OpenPopupList(ListAreas["Profiles"], "Profiles", 1);
-		vector<string> allProfiles = CurrentConfig->getAllProfiles();
+		vector<string> allProfiles = GetOrderedProfileNamesForUi();
 		for (std::vector<string>::iterator it = allProfiles.begin(); it != allProfiles.end(); ++it) {
 			GetPlugIn()->AddPopupListElement(it->c_str(), "", RIMCAS_UPDATE_PROFILE, false, int(CurrentConfig->isItActiveProfile(it->c_str())));
 		}
