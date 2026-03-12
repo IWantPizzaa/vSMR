@@ -487,6 +487,7 @@ private:
 	void SyncIconControlsFromRadar();
 	void PopulateIconCombos();
 	void PopulateRuleCombos();
+	void PopulateRuleStatusCombo(const std::string& selectedType, const std::string& selectedStatus);
 	void PopulateRuleTokenCombo(const std::string& source, const std::string& selectedToken);
 	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
 	void RebuildProfileList();

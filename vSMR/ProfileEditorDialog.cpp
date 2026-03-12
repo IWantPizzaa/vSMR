@@ -237,6 +237,191 @@ namespace
 		return "VACDM";
 	}
 
+	std::string NormalizeRuleTypeUiValue(CSMRRadar* owner, const std::string& type)
+	{
+		if (owner != nullptr)
+			return owner->NormalizeStructuredRuleTagType(type);
+
+		std::string lowered = TrimAsciiWhitespaceCopy(type);
+		std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (lowered.empty() || lowered == "all" || lowered == "*")
+			return "any";
+		if (lowered == "dep")
+			return "departure";
+		if (lowered == "arr")
+			return "arrival";
+		if (lowered == "air")
+			return "airborne";
+		if (lowered == "uncorr" || lowered == "uncor")
+			return "uncorrelated";
+		if (lowered == "departure" || lowered == "arrival" || lowered == "airborne" || lowered == "uncorrelated" || lowered == "any")
+			return lowered;
+		return "any";
+	}
+
+	std::string RuleTypeUiLabel(CSMRRadar* owner, const std::string& type)
+	{
+		const std::string normalizedType = NormalizeRuleTypeUiValue(owner, type);
+		if (normalizedType == "any")
+			return "Any";
+		if (owner != nullptr)
+			return owner->TagDefinitionTypeLabel(normalizedType);
+		if (normalizedType == "departure")
+			return "Departure";
+		if (normalizedType == "arrival")
+			return "Arrival";
+		if (normalizedType == "airborne")
+			return "Airborne";
+		if (normalizedType == "uncorrelated")
+			return "Uncorrelated";
+		return "Any";
+	}
+
+	std::string RuleStatusUiLabel(CSMRRadar* owner, const std::string& type, const std::string& status)
+	{
+		const std::string normalizedType = NormalizeRuleTypeUiValue(owner, type);
+		std::string normalizedStatus = status;
+		if (owner != nullptr)
+			normalizedStatus = owner->NormalizeStructuredRuleStatus(status);
+		else
+		{
+			normalizedStatus = TrimAsciiWhitespaceCopy(status);
+			std::transform(normalizedStatus.begin(), normalizedStatus.end(), normalizedStatus.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		}
+
+		if (normalizedStatus.empty() || normalizedStatus == "any")
+			return "Any";
+		if (normalizedStatus == "default")
+		{
+			if (normalizedType == "arrival")
+				return "On Ground";
+			if (normalizedType == "departure")
+				return "No Status";
+			return "Default";
+		}
+		if (normalizedStatus == "nofpl")
+			return "No FPL";
+		if (normalizedStatus == "push")
+			return "Push";
+		if (normalizedStatus == "stup")
+			return "Startup";
+		if (normalizedStatus == "taxi")
+			return "Taxi";
+		if (normalizedStatus == "depa")
+			return "Departure";
+		if (normalizedStatus == "airdep")
+			return "Airborne Departure";
+		if (normalizedStatus == "airarr")
+			return "Airborne Arrival";
+		if (normalizedStatus == "airdep_onrunway")
+			return "Airborne Departure On Runway";
+		if (normalizedStatus == "airarr_onrunway")
+			return "Airborne Arrival On Runway";
+
+		if (owner != nullptr)
+			return owner->TagDefinitionDepartureStatusLabel(normalizedStatus);
+		return status;
+	}
+
+	std::vector<std::string> RuleStatusUiOptions(CSMRRadar* owner, const std::string& type)
+	{
+		const std::string normalizedType = NormalizeRuleTypeUiValue(owner, type);
+		if (normalizedType == "departure")
+			return { "Any", "No Status", "No FPL", "Push", "Startup", "Taxi", "Departure" };
+		if (normalizedType == "arrival")
+			return { "Any", "On Ground", "No FPL" };
+		if (normalizedType == "airborne")
+			return { "Any", "Airborne Departure", "Airborne Arrival", "Airborne Departure On Runway", "Airborne Arrival On Runway" };
+		if (normalizedType == "uncorrelated")
+			return { "Any" };
+		return { "Any", "No Status", "On Ground", "No FPL", "Push", "Startup", "Taxi", "Departure", "Airborne Departure", "Airborne Arrival", "Airborne Departure On Runway", "Airborne Arrival On Runway" };
+	}
+
+	std::string NormalizeTagTypeUiValue(CSMRRadar* owner, const std::string& type)
+	{
+		if (owner != nullptr)
+			return owner->NormalizeTagDefinitionType(type);
+
+		std::string lowered = TrimAsciiWhitespaceCopy(type);
+		std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (lowered == "dep")
+			return "departure";
+		if (lowered == "arr")
+			return "arrival";
+		if (lowered == "air")
+			return "airborne";
+		if (lowered == "departure" || lowered == "arrival" || lowered == "airborne" || lowered == "uncorrelated")
+			return lowered;
+		return "departure";
+	}
+
+	std::string TagTypeUiLabel(CSMRRadar* owner, const std::string& type)
+	{
+		const std::string normalizedType = NormalizeTagTypeUiValue(owner, type);
+		if (owner != nullptr)
+			return owner->TagDefinitionTypeLabel(normalizedType);
+		if (normalizedType == "arrival")
+			return "Arrival";
+		if (normalizedType == "airborne")
+			return "Airborne";
+		if (normalizedType == "uncorrelated")
+			return "Uncorrelated";
+		return "Departure";
+	}
+
+	std::string TagStatusUiLabel(CSMRRadar* owner, const std::string& type, const std::string& status)
+	{
+		const std::string normalizedType = NormalizeTagTypeUiValue(owner, type);
+		std::string normalizedStatus = status;
+		if (owner != nullptr)
+			normalizedStatus = owner->NormalizeTagDefinitionDepartureStatus(status);
+		else
+		{
+			normalizedStatus = TrimAsciiWhitespaceCopy(status);
+			std::transform(normalizedStatus.begin(), normalizedStatus.end(), normalizedStatus.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		}
+
+		if (normalizedType == "departure")
+		{
+			if (normalizedStatus == "default" || normalizedStatus == "nsts")
+				return "No Status";
+			if (normalizedStatus == "nofpl")
+				return "No FPL";
+			if (normalizedStatus == "push")
+				return "Push";
+			if (normalizedStatus == "stup")
+				return "Startup";
+			if (normalizedStatus == "taxi")
+				return "Taxi";
+			if (normalizedStatus == "depa")
+				return "Departure";
+		}
+		else if (normalizedType == "arrival")
+		{
+			if (normalizedStatus == "default" || normalizedStatus == "arr" || normalizedStatus == "taxi")
+				return "On Ground";
+			if (normalizedStatus == "nofpl")
+				return "No FPL";
+		}
+		else if (normalizedType == "airborne")
+		{
+			if (normalizedStatus == "default")
+				return "Airborne";
+			if (normalizedStatus == "airdep")
+				return "Departure Airborne";
+			if (normalizedStatus == "airarr")
+				return "Arrival Airborne";
+			if (normalizedStatus == "airdep_onrunway")
+				return "Departure On Runway";
+			if (normalizedStatus == "airarr_onrunway")
+				return "Arrival On Runway";
+		}
+
+		if (owner != nullptr)
+			return owner->TagDefinitionDepartureStatusLabel(normalizedStatus);
+		return status;
+	}
+
 	std::vector<std::string> SplitColorPathForDisplay(const std::string& path)
 	{
 		std::vector<std::string> segments;
@@ -2338,9 +2523,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	removeNativeBorder(TagDetailedLine4Edit);
 
 	TagTypeCombo.ResetContent();
-	TagTypeCombo.AddString("departure");
-	TagTypeCombo.AddString("arrival");
-	TagTypeCombo.AddString("airborne");
+	TagTypeCombo.AddString(TagTypeUiLabel(Owner, "departure").c_str());
+	TagTypeCombo.AddString(TagTypeUiLabel(Owner, "arrival").c_str());
+	TagTypeCombo.AddString(TagTypeUiLabel(Owner, "airborne").c_str());
 	TagTypeCombo.SetCurSel(0);
 	TagLinkDetailedToggle.SetCheck(BST_UNCHECKED);
 	PopulateTagTokenCombo();
@@ -2728,16 +2913,18 @@ void CProfileEditorDialog::PopulateRuleCombos()
 	RuleSourceCombo.SetCurSel(0);
 
 	RuleTypeCombo.ResetContent();
-	const char* typeOptions[] = { "any", "departure", "arrival", "airborne", "uncorrelated" };
-	for (const char* value : typeOptions)
-		RuleTypeCombo.AddString(value);
-	RuleTypeCombo.SetCurSel(0);
+	const std::vector<std::string> typeOptions = {
+		"Any",
+		RuleTypeUiLabel(Owner, "departure"),
+		RuleTypeUiLabel(Owner, "arrival"),
+		RuleTypeUiLabel(Owner, "airborne"),
+		RuleTypeUiLabel(Owner, "uncorrelated")
+	};
+	for (const std::string& value : typeOptions)
+		RuleTypeCombo.AddString(value.c_str());
+	SelectComboEntryByText(RuleTypeCombo, "Any");
 
-	RuleStatusCombo.ResetContent();
-	const char* statusOptions[] = { "any", "default", "nofpl", "nsts", "push", "stup", "taxi", "depa", "arr", "airdep", "airarr", "airdep_onrunway", "airarr_onrunway" };
-	for (const char* value : statusOptions)
-		RuleStatusCombo.AddString(value);
-	RuleStatusCombo.SetCurSel(0);
+	PopulateRuleStatusCombo("Any", "Any");
 
 	RuleDetailCombo.ResetContent();
 	RuleDetailCombo.AddString("any");
@@ -2747,6 +2934,19 @@ void CProfileEditorDialog::PopulateRuleCombos()
 
 	PopulateRuleTokenCombo("vacdm", "tobt");
 	PopulateRuleConditionCombo("vacdm", "tobt", "any");
+}
+
+void CProfileEditorDialog::PopulateRuleStatusCombo(const std::string& selectedType, const std::string& selectedStatus)
+{
+	RuleStatusCombo.ResetContent();
+	const std::vector<std::string> statusOptions = RuleStatusUiOptions(Owner, selectedType);
+	for (const std::string& value : statusOptions)
+		RuleStatusCombo.AddString(value.c_str());
+
+	const std::string desiredStatus = RuleStatusUiLabel(Owner, selectedType, selectedStatus.empty() ? "any" : selectedStatus);
+	SelectComboEntryByText(RuleStatusCombo, desiredStatus);
+	if (RuleStatusCombo.GetCurSel() == CB_ERR && RuleStatusCombo.GetCount() > 0)
+		RuleStatusCombo.SetCurSel(0);
 }
 
 void CProfileEditorDialog::PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition)
@@ -4625,8 +4825,8 @@ void CProfileEditorDialog::RefreshRuleControls()
 		SelectComboEntryByText(RuleSourceCombo, "vacdm");
 		PopulateRuleTokenCombo("vacdm", "tobt");
 		PopulateRuleConditionCombo("vacdm", "tobt", "any");
-		SelectComboEntryByText(RuleTypeCombo, "any");
-		SelectComboEntryByText(RuleStatusCombo, "any");
+		SelectComboEntryByText(RuleTypeCombo, RuleTypeUiLabel(Owner, "any"));
+		PopulateRuleStatusCombo("any", "any");
 		SelectComboEntryByText(RuleDetailCombo, "any");
 		RuleTargetCheck.SetCheck(BST_UNCHECKED);
 		RuleTagCheck.SetCheck(BST_UNCHECKED);
@@ -4693,8 +4893,8 @@ void CProfileEditorDialog::RefreshRuleControls()
 		SelectComboEntryByText(RuleSourceCombo, primary.source);
 		PopulateRuleTokenCombo(primary.source, primary.token);
 		PopulateRuleConditionCombo(primary.source, primary.token, SerializeRuleConditionText(rule));
-		SelectComboEntryByText(RuleTypeCombo, rule.tagType);
-		SelectComboEntryByText(RuleStatusCombo, rule.status);
+		SelectComboEntryByText(RuleTypeCombo, RuleTypeUiLabel(Owner, rule.tagType));
+		PopulateRuleStatusCombo(rule.tagType, rule.status);
 		SelectComboEntryByText(RuleDetailCombo, rule.detail);
 		RuleTargetCheck.SetCheck(rule.applyTarget ? BST_CHECKED : BST_UNCHECKED);
 		RuleTagCheck.SetCheck(rule.applyTag ? BST_CHECKED : BST_UNCHECKED);
@@ -4757,7 +4957,7 @@ void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
 
 	UpdatingControls = true;
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before SelectComboEntryByText(TagTypeCombo)");
-	SelectComboEntryByText(TagTypeCombo, TagEditorType);
+	SelectComboEntryByText(TagTypeCombo, TagTypeUiLabel(Owner, TagEditorType));
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after SelectComboEntryByText(TagTypeCombo)");
 	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
 	UpdatingControls = false;
@@ -4782,24 +4982,20 @@ void CProfileEditorDialog::RefreshTagStatusOptions()
 	if (Owner == nullptr)
 		return;
 
+	const std::string normalizedType = Owner->NormalizeTagDefinitionType(TagEditorType);
 	const std::vector<std::string> statuses = Owner->GetTagDefinitionStatusesForType(TagEditorType);
 	const std::string normalizedStatus = Owner->NormalizeTagDefinitionDepartureStatus(TagEditorStatus);
-	const bool departureUsesNstsAsDefault = (_stricmp(Owner->NormalizeTagDefinitionType(TagEditorType).c_str(), "departure") == 0);
 
 	UpdatingControls = true;
 	TagStatusCombo.ResetContent();
 	int selectedIndex = 0;
 	for (size_t i = 0; i < statuses.size(); ++i)
 	{
-		std::string label = Owner->TagDefinitionDepartureStatusLabel(statuses[i]);
-		if (departureUsesNstsAsDefault && _stricmp(statuses[i].c_str(), "default") == 0)
-			label = "NSTS";
-
+		const std::string label = TagStatusUiLabel(Owner, normalizedType, statuses[i]);
 		TagStatusCombo.AddString(label.c_str());
 		if (_stricmp(statuses[i].c_str(), normalizedStatus.c_str()) == 0 ||
-			(departureUsesNstsAsDefault &&
-			 _stricmp(statuses[i].c_str(), "default") == 0 &&
-			 _stricmp(normalizedStatus.c_str(), "nsts") == 0))
+			(_stricmp(statuses[i].c_str(), "default") == 0 &&
+			 (normalizedStatus == "nsts" || normalizedStatus == "arr" || normalizedStatus == "taxi")))
 		{
 			selectedIndex = static_cast<int>(i);
 		}
@@ -5557,6 +5753,19 @@ void CProfileEditorDialog::OnRuleFieldChanged()
 		const std::string selectedCondition = ReadComboText(RuleConditionCombo);
 		UpdatingControls = true;
 		PopulateRuleConditionCombo(sourceText, tokenText, selectedCondition);
+		UpdatingControls = false;
+	}
+
+	const bool shouldRefreshStatusChoices =
+		!isParameterSelection &&
+		(focusedId == IDC_PE_RULE_TYPE_COMBO);
+
+	if (shouldRefreshStatusChoices)
+	{
+		const std::string selectedType = ReadComboText(RuleTypeCombo);
+		const std::string selectedStatus = ReadComboText(RuleStatusCombo);
+		UpdatingControls = true;
+		PopulateRuleStatusCombo(selectedType, selectedStatus);
 		UpdatingControls = false;
 	}
 
