@@ -620,10 +620,6 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 - If VACDM fields stay empty, verify that `vacdm.txt` exists with `SERVER_URL=...`, then check callsign matching and backend data availability.
 - If `.smr profile` does nothing, make sure at least one SMR radar screen is open.
 
-## License
-
-GPL v3. See [LICENSE](LICENSE).
-
 ## Credits
 
-Special thanks to Baptiste.C and Steve.A.
+Special thanks to Baptiste.C, Steve.A and Yohannes.

@@ -751,10 +751,32 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		// We need to figure out if the tag color changes according to RIMCAS alerts, or not
 		bool rimcasLabelOnly = radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["rimcas_label_only"].GetBool();
 
-		Color definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color"]);
-		Color definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["background_color_on_runway"]);
-		Color definedTextColor = radar_screen->CurrentConfig->getConfigColor(LabelsSettings[Utils::getEnumString(ColorTagType).c_str()]["text_color"]);
+		const std::string colorTagTypeKey = Utils::getEnumString(ColorTagType);
+		const Value* colorTagLabelSection = nullptr;
+		if (LabelsSettings.HasMember(colorTagTypeKey.c_str()) && LabelsSettings[colorTagTypeKey.c_str()].IsObject())
+			colorTagLabelSection = &LabelsSettings[colorTagTypeKey.c_str()];
+
+		auto getColorFromSectionOrDefault = [&](const Value* section, const char* key, const Color& fallback) -> Color
+		{
+			if (section != nullptr && section->HasMember(key) && (*section)[key].IsObject())
+				return radar_screen->CurrentConfig->getConfigColor((*section)[key]);
+			return fallback;
+		};
+
+		Color definedBackgroundColor = getColorFromSectionOrDefault(colorTagLabelSection, "background_color", Color(255, 53, 126, 187));
+		Color definedBackgroundOnRunwayColor = getColorFromSectionOrDefault(colorTagLabelSection, "background_color_on_runway", definedBackgroundColor);
+		Color definedTextColor = getColorFromSectionOrDefault(colorTagLabelSection, "text_color", Color::White);
 		if (TagType == CSMRRadar::TagTypes::Departure) {
+			if (colorTagLabelSection != nullptr)
+			{
+				if (colorTagLabelSection->HasMember("gate_color") && (*colorTagLabelSection)["gate_color"].IsObject())
+					definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor((*colorTagLabelSection)["gate_color"]);
+				if (colorTagLabelSection->HasMember("on_runway_color") && (*colorTagLabelSection)["on_runway_color"].IsObject())
+					definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor((*colorTagLabelSection)["on_runway_color"]);
+				if (colorTagLabelSection->HasMember("text_color") && (*colorTagLabelSection)["text_color"].IsObject())
+					definedTextColor = radar_screen->CurrentConfig->getConfigColor((*colorTagLabelSection)["text_color"]);
+			}
+
 			if (!TagReplacingMap["sid"].empty() && radar_screen->CurrentConfig->isSidColorAvail(TagReplacingMap["sid"], radar_screen->getActiveAirport())) {
 				definedBackgroundColor = radar_screen->CurrentConfig->getSidColor(TagReplacingMap["sid"], radar_screen->getActiveAirport());
 			}
@@ -785,15 +807,29 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 			const Value& airborneLabel = LabelsSettings["airborne"];
 			const char* bgKey = isAirborneDeparture ? "departure_background_color" : "arrival_background_color";
-			const char* bgOnRunwayKey = isAirborneDeparture ? "departure_background_color_on_runway" : "arrival_background_color_on_runway";
 			const char* textKey = isAirborneDeparture ? "departure_text_color" : "arrival_text_color";
 
 			if (airborneLabel.HasMember(bgKey) && airborneLabel[bgKey].IsObject())
 				definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[bgKey]);
-			if (airborneLabel.HasMember(bgOnRunwayKey) && airborneLabel[bgOnRunwayKey].IsObject())
-				definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[bgOnRunwayKey]);
 			if (airborneLabel.HasMember(textKey) && airborneLabel[textKey].IsObject())
 				definedTextColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[textKey]);
+
+			const char* runwaySectionKey = isAirborneDeparture ? "departure" : "arrival";
+			if (LabelsSettings.HasMember(runwaySectionKey) && LabelsSettings[runwaySectionKey].IsObject())
+			{
+				const Value& runwaySection = LabelsSettings[runwaySectionKey];
+				const char* runwayColorKey = isAirborneDeparture ? "on_runway_color" : "background_color_on_runway";
+				if (runwaySection.HasMember(runwayColorKey) && runwaySection[runwayColorKey].IsObject())
+				{
+					definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(runwaySection[runwayColorKey]);
+				}
+				else if (isAirborneDeparture &&
+					runwaySection.HasMember("background_color_on_runway") &&
+					runwaySection["background_color_on_runway"].IsObject())
+				{
+					definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(runwaySection["background_color_on_runway"]);
+				}
+			}
 		}
 
 		Color TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign,
