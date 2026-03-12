@@ -279,11 +279,15 @@ public:
 				if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
 				{
 					const Value& proMode = filters["pro_mode"];
-					if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+					if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+						proModeEnabled = proMode["enabled"].GetBool();
+					else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
 						proModeEnabled = proMode["enable"].GetBool();
 					if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
 						acceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
-					if (proMode.HasMember("do_not_autocorrelate_squawks"))
+					if (proMode.HasMember("blocked_auto_correlate_squawks"))
+						doNotAutocorrelateSquawks = &proMode["blocked_auto_correlate_squawks"];
+					else if (proMode.HasMember("do_not_autocorrelate_squawks"))
 						doNotAutocorrelateSquawks = &proMode["do_not_autocorrelate_squawks"];
 				}
 			}
@@ -488,9 +492,13 @@ public:
 				const Value& filters = profile["filters"];
 				if (filters.HasMember("radar_range_nm") && filters["radar_range_nm"].IsInt())
 					radarRange = filters["radar_range_nm"].GetInt();
-				if (filters.HasMember("hide_above_alt") && filters["hide_above_alt"].IsInt())
+				if (filters.HasMember("max_altitude_ft") && filters["max_altitude_ft"].IsInt())
+					altitudeFilter = filters["max_altitude_ft"].GetInt();
+				else if (filters.HasMember("hide_above_alt") && filters["hide_above_alt"].IsInt())
 					altitudeFilter = filters["hide_above_alt"].GetInt();
-				if (filters.HasMember("hide_above_spd") && filters["hide_above_spd"].IsInt())
+				if (filters.HasMember("max_speed_kt") && filters["max_speed_kt"].IsInt())
+					speedFilter = filters["max_speed_kt"].GetInt();
+				else if (filters.HasMember("hide_above_spd") && filters["hide_above_spd"].IsInt())
 					speedFilter = filters["hide_above_spd"].GetInt();
 			}
 		}

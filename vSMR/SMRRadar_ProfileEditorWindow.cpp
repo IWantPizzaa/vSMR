@@ -175,11 +175,18 @@ namespace
 		}
 
 		Value& proMode = filters["pro_mode"];
-		if (!proMode.HasMember("enable") || !proMode["enable"].IsBool())
+		bool enabledValue = false;
+		if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+			enabledValue = proMode["enabled"].GetBool();
+		else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+			enabledValue = proMode["enable"].GetBool();
+		if (proMode.HasMember("enable"))
+			proMode.RemoveMember("enable");
+		if (!proMode.HasMember("enabled") || !proMode["enabled"].IsBool())
 		{
-			if (proMode.HasMember("enable"))
-				proMode.RemoveMember("enable");
-			proMode.AddMember("enable", false, allocator);
+			if (proMode.HasMember("enabled"))
+				proMode.RemoveMember("enabled");
+			proMode.AddMember("enabled", enabledValue, allocator);
 		}
 		if (!proMode.HasMember("accept_pilot_squawk") || !proMode["accept_pilot_squawk"].IsBool())
 		{
@@ -187,20 +194,47 @@ namespace
 				proMode.RemoveMember("accept_pilot_squawk");
 			proMode.AddMember("accept_pilot_squawk", true, allocator);
 		}
-		if (!proMode.HasMember("do_not_autocorrelate_squawks") || !proMode["do_not_autocorrelate_squawks"].IsArray())
+
+		const Value* blockedSource = nullptr;
+		if (proMode.HasMember("blocked_auto_correlate_squawks") && proMode["blocked_auto_correlate_squawks"].IsArray())
+			blockedSource = &proMode["blocked_auto_correlate_squawks"];
+		else if (proMode.HasMember("do_not_autocorrelate_squawks") && proMode["do_not_autocorrelate_squawks"].IsArray())
+			blockedSource = &proMode["do_not_autocorrelate_squawks"];
+
+		if (!proMode.HasMember("blocked_auto_correlate_squawks") || !proMode["blocked_auto_correlate_squawks"].IsArray())
 		{
-			if (proMode.HasMember("do_not_autocorrelate_squawks"))
-				proMode.RemoveMember("do_not_autocorrelate_squawks");
+			if (proMode.HasMember("blocked_auto_correlate_squawks"))
+				proMode.RemoveMember("blocked_auto_correlate_squawks");
 			Value squawks(rapidjson::kArrayType);
-			static const char* const defaultSquawks[] = { "2000", "2200", "1200", "7000" };
-			for (const char* squawk : defaultSquawks)
+
+			if (blockedSource != nullptr)
 			{
-				Value squawkValue;
-				squawkValue.SetString(squawk, static_cast<rapidjson::SizeType>(std::strlen(squawk)), allocator);
-				squawks.PushBack(squawkValue, allocator);
+				for (rapidjson::SizeType i = 0; i < blockedSource->Size(); ++i)
+				{
+					if (!(*blockedSource)[i].IsString())
+						continue;
+
+					Value squawkValue;
+					squawkValue.SetString((*blockedSource)[i].GetString(), static_cast<rapidjson::SizeType>(std::strlen((*blockedSource)[i].GetString())), allocator);
+					squawks.PushBack(squawkValue, allocator);
+				}
 			}
-			proMode.AddMember("do_not_autocorrelate_squawks", squawks, allocator);
+
+			if (squawks.Empty())
+			{
+				static const char* const defaultSquawks[] = { "2000", "2200", "1200", "7000" };
+				for (const char* squawk : defaultSquawks)
+				{
+					Value squawkValue;
+					squawkValue.SetString(squawk, static_cast<rapidjson::SizeType>(std::strlen(squawk)), allocator);
+					squawks.PushBack(squawkValue, allocator);
+				}
+			}
+
+			proMode.AddMember("blocked_auto_correlate_squawks", squawks, allocator);
 		}
+		if (proMode.HasMember("do_not_autocorrelate_squawks"))
+			proMode.RemoveMember("do_not_autocorrelate_squawks");
 	}
 }
 
@@ -556,7 +590,9 @@ bool CSMRRadar::GetProfileProModeEnabledForEditor(const std::string& name, bool&
 		return true;
 
 	const rapidjson::Value& proMode = filters["pro_mode"];
-	if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+	if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+		outEnabled = proMode["enabled"].GetBool();
+	else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
 		outEnabled = proMode["enable"].GetBool();
 
 	return true;
@@ -576,7 +612,7 @@ bool CSMRRadar::SetProfileProModeEnabledForEditor(const std::string& name, bool 
 		return false;
 
 	EnsureProfileProModeDefaults(profile, CurrentConfig->document.GetAllocator());
-	profile["filters"]["pro_mode"]["enable"].SetBool(enabled);
+	profile["filters"]["pro_mode"]["enabled"].SetBool(enabled);
 	if (!CurrentConfig->saveConfig())
 		return false;
 

@@ -252,9 +252,12 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 	const Value& LabelsSettings = activeProfile["labels"];
 	const bool tagDetailedSameAsDefinition =
-		LabelsSettings.HasMember("definition_detailed_same_as_definition") &&
-		LabelsSettings["definition_detailed_same_as_definition"].IsBool() &&
-		LabelsSettings["definition_detailed_same_as_definition"].GetBool();
+		(LabelsSettings.HasMember("definition_detailed_inherits_normal") &&
+			LabelsSettings["definition_detailed_inherits_normal"].IsBool() &&
+			LabelsSettings["definition_detailed_inherits_normal"].GetBool()) ||
+		(LabelsSettings.HasMember("definition_detailed_same_as_definition") &&
+			LabelsSettings["definition_detailed_same_as_definition"].IsBool() &&
+			LabelsSettings["definition_detailed_same_as_definition"].GetBool());
 	const auto verboseTargetStep = [&](const std::string& callsign, const std::string& step)
 	{
 		if (!Logger::is_verbose_mode())
@@ -271,7 +274,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 
 		const Value& labelSection = LabelsSettings[tagTypeKey.c_str()];
-		const char* key = "definition_detailed_same_as_definition";
+		const char* key = "definition_detailed_inherits_normal";
+		const char* legacyKey = "definition_detailed_same_as_definition";
 
 		if (statusDefinitionKey != nullptr &&
 			labelSection.HasMember("status_definitions") &&
@@ -282,17 +286,24 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			const Value& statusSection = labelSection["status_definitions"][statusDefinitionKey];
 			if (statusSection.HasMember(key) && statusSection[key].IsBool())
 				return statusSection[key].GetBool();
+			if (statusSection.HasMember(legacyKey) && statusSection[legacyKey].IsBool())
+				return statusSection[legacyKey].GetBool();
 		}
 
 		if (labelSection.HasMember(key) && labelSection[key].IsBool())
 			return labelSection[key].GetBool();
+		if (labelSection.HasMember(legacyKey) && labelSection[legacyKey].IsBool())
+			return labelSection[legacyKey].GetBool();
 
 		return tagDetailedSameAsDefinition;
 	};
 	const bool useAspeedForGate =
-		LabelsSettings.HasMember("use_aspeed_for_gate") &&
-		LabelsSettings["use_aspeed_for_gate"].IsBool() &&
-		LabelsSettings["use_aspeed_for_gate"].GetBool();
+		(LabelsSettings.HasMember("use_speed_for_gate") &&
+			LabelsSettings["use_speed_for_gate"].IsBool() &&
+			LabelsSettings["use_speed_for_gate"].GetBool()) ||
+		(LabelsSettings.HasMember("use_aspeed_for_gate") &&
+			LabelsSettings["use_aspeed_for_gate"].IsBool() &&
+			LabelsSettings["use_aspeed_for_gate"].GetBool());
 	const bool airborneUseDepartureArrivalColoring =
 		LabelsSettings.HasMember("airborne") &&
 		LabelsSettings["airborne"].IsObject() &&
@@ -457,8 +468,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		const bool useDetailedDefinition =
 			isTagDetailled &&
 			!isDetailedSameAsDefinitionForContext(tagTypeKey, statusDefinitionKey) &&
-			labelSection.HasMember("definitionDetailled");
-		const char* configKey = useDetailedDefinition ? "definitionDetailled" : "definition";
+			(labelSection.HasMember("definition_detailed") || labelSection.HasMember("definitionDetailled"));
+		const char* configKey = useDetailedDefinition ? "definition_detailed" : "definition";
 		auto resolveLabelLines = [&](const char* definitionKey) -> const Value*
 		{
 			if (statusDefinitionKey != nullptr &&
@@ -472,8 +483,25 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				return &labelSection["status_definitions"][statusDefinitionKey][definitionKey];
 			}
 
+			if (strcmp(definitionKey, "definition_detailed") == 0 &&
+				statusDefinitionKey != nullptr &&
+				labelSection.HasMember("status_definitions") &&
+				labelSection["status_definitions"].IsObject() &&
+				labelSection["status_definitions"].HasMember(statusDefinitionKey) &&
+				labelSection["status_definitions"][statusDefinitionKey].IsObject() &&
+				labelSection["status_definitions"][statusDefinitionKey].HasMember("definitionDetailled") &&
+				labelSection["status_definitions"][statusDefinitionKey]["definitionDetailled"].IsArray())
+			{
+				return &labelSection["status_definitions"][statusDefinitionKey]["definitionDetailled"];
+			}
+
 			if (labelSection.HasMember(definitionKey) && labelSection[definitionKey].IsArray())
 				return &labelSection[definitionKey];
+			if (strcmp(definitionKey, "definition_detailed") == 0 &&
+				labelSection.HasMember("definitionDetailled") && labelSection["definitionDetailled"].IsArray())
+			{
+				return &labelSection["definitionDetailled"];
+			}
 
 			return nullptr;
 		};

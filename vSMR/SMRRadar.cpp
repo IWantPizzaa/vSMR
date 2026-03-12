@@ -391,6 +391,29 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		return parent[key];
 	};
 
+	auto renameMemberIfPresent = [&](Value& parent, const char* oldKey, const char* newKey)
+	{
+		if (!parent.IsObject() || oldKey == nullptr || newKey == nullptr || strcmp(oldKey, newKey) == 0)
+			return;
+		if (!parent.HasMember(oldKey))
+			return;
+
+		if (parent.HasMember(newKey))
+		{
+			parent.RemoveMember(oldKey);
+			changed = true;
+			return;
+		}
+
+		Value keyValue;
+		keyValue.SetString(newKey, allocator);
+		Value copiedValue;
+		copiedValue.CopyFrom(parent[oldKey], allocator);
+		parent.AddMember(keyValue, copiedValue, allocator);
+		parent.RemoveMember(oldKey);
+		changed = true;
+	};
+
 	auto ensureColorMember = [&](Value& parent, const char* key, int r, int g, int b, int a)
 	{
 		if (!parent.HasMember(key) || !parent[key].IsObject())
@@ -826,22 +849,30 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		"2000", "2200", "1200", "7000"
 	};
 
+	ensureIntMember(profile, "schema_version", 2, 2, 9999);
+
 	Value& filters = ensureObjectMember(profile, "filters");
-	ensureIntMember(filters, "hide_above_alt", 5500, 0, 80000);
-	ensureIntMember(filters, "hide_above_spd", 250, 0, 2000);
+	renameMemberIfPresent(filters, "hide_above_alt", "max_altitude_ft");
+	renameMemberIfPresent(filters, "hide_above_spd", "max_speed_kt");
+	renameMemberIfPresent(filters, "night_alpha_setting", "night_overlay_alpha");
+	ensureIntMember(filters, "max_altitude_ft", 5500, 0, 80000);
+	ensureIntMember(filters, "max_speed_kt", 250, 0, 2000);
 	ensureIntMember(filters, "radar_range_nm", 999, 1, 9999);
-	ensureIntMember(filters, "night_alpha_setting", 110, 0, 255);
+	ensureIntMember(filters, "night_overlay_alpha", 110, 0, 255);
 	Value& proMode = ensureObjectMember(filters, "pro_mode");
-	ensureBoolMember(proMode, "enable", false);
+	renameMemberIfPresent(proMode, "enable", "enabled");
+	renameMemberIfPresent(proMode, "do_not_autocorrelate_squawks", "blocked_auto_correlate_squawks");
+	ensureBoolMember(proMode, "enabled", false);
 	ensureBoolMember(proMode, "accept_pilot_squawk", true);
-	ensureStringArrayMember(proMode, "do_not_autocorrelate_squawks", defaultDoNotAutocorrelateSquawks);
+	ensureStringArrayMember(proMode, "blocked_auto_correlate_squawks", defaultDoNotAutocorrelateSquawks);
 
 	Value& rimcas = ensureObjectMember(profile, "rimcas");
+	renameMemberIfPresent(rimcas, "rimcas_stage_two_speed_threshold", "stage_two_speed_threshold_kt");
 	ensureBoolMember(rimcas, "rimcas_label_only", true);
 	ensureBoolMember(rimcas, "use_red_symbol_for_emergencies", true);
 	ensureIntArrayMember(rimcas, "timer", { 60, 45, 30, 15, 0 });
 	ensureIntArrayMember(rimcas, "timer_lvp", { 120, 90, 60, 30, 0 });
-	ensureIntMember(rimcas, "rimcas_stage_two_speed_threshold", 25, 0, 250);
+	ensureIntMember(rimcas, "stage_two_speed_threshold_kt", 25, 0, 250);
 	ensureColorMember(rimcas, "background_color_stage_one", 160, 90, 30, 255);
 	ensureColorMember(rimcas, "background_color_stage_two", 150, 0, 0, 255);
 	ensureColorMember(rimcas, "caution_alert_text_color", 0, 0, 0, 255);
@@ -965,6 +996,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureIntMember(font, "label_font_size", 1, 1, 5);
 
 	Value& targets = ensureObjectMember(profile, "targets");
+	renameMemberIfPresent(targets, "small_icon_boost_resolution", "small_icon_boost_resolution_preset");
+	renameMemberIfPresent(targets, "fixed_pixel_triangle_scale", "fixed_pixel_icon_scale");
 	if (!targets.HasMember("icon_style") || !targets["icon_style"].IsString())
 	{
 		if (targets.HasMember("icon_style"))
@@ -988,9 +1021,9 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	}
 	ensureBoolMember(targets, "small_icon_boost", false);
 	ensureDoubleMember(targets, "small_icon_boost_factor", 1.0, 0.5, 4.0);
-	ensureResolutionPresetMember(targets, "small_icon_boost_resolution", "1080p");
+	ensureResolutionPresetMember(targets, "small_icon_boost_resolution_preset", "1080p");
 	ensureBoolMember(targets, "fixed_pixel_icon_size", false);
-	ensureDoubleMember(targets, "fixed_pixel_triangle_scale", 1.0, 0.1, 3.0);
+	ensureDoubleMember(targets, "fixed_pixel_icon_scale", 1.0, 0.1, 3.0);
 
 	Value& groundIcons = ensureObjectMember(targets, "ground_icons");
 
@@ -1021,10 +1054,12 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	}
 
 	Value& labels = ensureObjectMember(profile, "labels");
+	renameMemberIfPresent(labels, "use_aspeed_for_gate", "use_speed_for_gate");
+	renameMemberIfPresent(labels, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 	ensureBoolMember(labels, "auto_deconfliction", true);
-	ensureBoolMember(labels, "use_aspeed_for_gate", false);
+	ensureBoolMember(labels, "use_speed_for_gate", false);
 	ensureIntMember(labels, "leader_line_length", 50, 0, 500);
-	ensureBoolMember(labels, "definition_detailed_same_as_definition", false);
+	ensureBoolMember(labels, "definition_detailed_inherits_normal", false);
 	if (labels.HasMember("sid_text_colors"))
 	{
 		labels.RemoveMember("sid_text_colors");
@@ -1032,6 +1067,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	}
 
 	Value& departureLabel = ensureObjectMember(labels, "departure");
+	renameMemberIfPresent(departureLabel, "definitionDetailled", "definition_detailed");
+	renameMemberIfPresent(departureLabel, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 	ensureColorMember(departureLabel, "nofpl_color", 128, 128, 128, 255);
 	Value& departureStatusColors = ensureObjectMember(departureLabel, "status_background_colors");
 	if (departureStatusColors.HasMember("nsts") && departureStatusColors["nsts"].IsObject())
@@ -1046,6 +1083,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureColorMember(departureStatusColors, "depa", 240, 240, 240, 255);
 
 	Value& arrivalLabel = ensureObjectMember(labels, "arrival");
+	renameMemberIfPresent(arrivalLabel, "definitionDetailled", "definition_detailed");
+	renameMemberIfPresent(arrivalLabel, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 	ensureColorMember(arrivalLabel, "nofpl_color", 128, 128, 128, 255);
 	if (arrivalLabel.HasMember("status_background_colors") && arrivalLabel["status_background_colors"].IsObject())
 	{
@@ -1077,16 +1116,18 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	ensureDefinitionArrayMember(departureLabel, "definition", nullptr);
 	const Value* baseDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;
-	ensureDefinitionArrayMember(departureLabel, "definitionDetailled", baseDefinition);
+	ensureDefinitionArrayMember(departureLabel, "definition_detailed", baseDefinition);
 	Value& departureStatusDefinitions = ensureObjectMember(departureLabel, "status_definitions");
 	if (departureStatusDefinitions.HasMember("nsts") && departureStatusDefinitions["nsts"].IsObject())
 	{
 		Value& departureNstsSection = departureStatusDefinitions["nsts"];
+		renameMemberIfPresent(departureNstsSection, "definitionDetailled", "definition_detailed");
+		renameMemberIfPresent(departureNstsSection, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 		if (departureNstsSection.HasMember("definition") && departureNstsSection["definition"].IsArray())
 			replaceDefinitionArrayMember(departureLabel, "definition", departureNstsSection["definition"]);
-		if (departureNstsSection.HasMember("definitionDetailled") && departureNstsSection["definitionDetailled"].IsArray())
-			replaceDefinitionArrayMember(departureLabel, "definitionDetailled", departureNstsSection["definitionDetailled"]);
-		copyBoolMemberIfPresent(departureLabel, "definition_detailed_same_as_definition", departureNstsSection);
+		if (departureNstsSection.HasMember("definition_detailed") && departureNstsSection["definition_detailed"].IsArray())
+			replaceDefinitionArrayMember(departureLabel, "definition_detailed", departureNstsSection["definition_detailed"]);
+		copyBoolMemberIfPresent(departureLabel, "definition_detailed_inherits_normal", departureNstsSection);
 		departureStatusDefinitions.RemoveMember("nsts");
 		changed = true;
 	}
@@ -1094,10 +1135,12 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	auto ensureStatusDefinitionEntries = [&](const char* statusKey)
 	{
 		Value& statusSection = ensureObjectMember(departureStatusDefinitions, statusKey);
+		renameMemberIfPresent(statusSection, "definitionDetailled", "definition_detailed");
+		renameMemberIfPresent(statusSection, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 		const Value* defaultDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;
-		const Value* defaultDetailedDefinition = (departureLabel.HasMember("definitionDetailled") && departureLabel["definitionDetailled"].IsArray()) ? &departureLabel["definitionDetailled"] : defaultDefinition;
+		const Value* defaultDetailedDefinition = (departureLabel.HasMember("definition_detailed") && departureLabel["definition_detailed"].IsArray()) ? &departureLabel["definition_detailed"] : defaultDefinition;
 		ensureDefinitionArrayMember(statusSection, "definition", defaultDefinition);
-		ensureDefinitionArrayMember(statusSection, "definitionDetailled", defaultDetailedDefinition);
+		ensureDefinitionArrayMember(statusSection, "definition_detailed", defaultDetailedDefinition);
 	};
 
 	ensureStatusDefinitionEntries("taxi");
@@ -1108,7 +1151,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 
 	ensureDefinitionArrayMember(arrivalLabel, "definition", nullptr);
 	const Value* arrivalBaseDefinition = (arrivalLabel.HasMember("definition") && arrivalLabel["definition"].IsArray()) ? &arrivalLabel["definition"] : nullptr;
-	ensureDefinitionArrayMember(arrivalLabel, "definitionDetailled", arrivalBaseDefinition);
+	ensureDefinitionArrayMember(arrivalLabel, "definition_detailed", arrivalBaseDefinition);
 	Value& arrivalStatusDefinitions = ensureObjectMember(arrivalLabel, "status_definitions");
 	if (arrivalStatusDefinitions.HasMember("arr"))
 	{
@@ -1123,10 +1166,12 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	auto ensureArrivalStatusDefinitionEntries = [&](const char* statusKey)
 	{
 		Value& statusSection = ensureObjectMember(arrivalStatusDefinitions, statusKey);
+		renameMemberIfPresent(statusSection, "definitionDetailled", "definition_detailed");
+		renameMemberIfPresent(statusSection, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 		const Value* defaultDefinition = (arrivalLabel.HasMember("definition") && arrivalLabel["definition"].IsArray()) ? &arrivalLabel["definition"] : nullptr;
-		const Value* defaultDetailedDefinition = (arrivalLabel.HasMember("definitionDetailled") && arrivalLabel["definitionDetailled"].IsArray()) ? &arrivalLabel["definitionDetailled"] : defaultDefinition;
+		const Value* defaultDetailedDefinition = (arrivalLabel.HasMember("definition_detailed") && arrivalLabel["definition_detailed"].IsArray()) ? &arrivalLabel["definition_detailed"] : defaultDefinition;
 		ensureDefinitionArrayMember(statusSection, "definition", defaultDefinition);
-		ensureDefinitionArrayMember(statusSection, "definitionDetailled", defaultDetailedDefinition);
+		ensureDefinitionArrayMember(statusSection, "definition_detailed", defaultDetailedDefinition);
 	};
 
 	ensureArrivalStatusDefinitionEntries("nofpl");
@@ -1458,8 +1503,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		Value& section = labelsForMigration[typeKey];
 		if (section.HasMember("definition") && section["definition"].IsArray())
 			migrateDefinitionArray(section["definition"], typeKey, "default", "normal");
-		if (section.HasMember("definitionDetailled") && section["definitionDetailled"].IsArray())
-			migrateDefinitionArray(section["definitionDetailled"], typeKey, "default", "detailed");
+		if (section.HasMember("definition_detailed") && section["definition_detailed"].IsArray())
+			migrateDefinitionArray(section["definition_detailed"], typeKey, "default", "detailed");
 
 		if (!section.HasMember("status_definitions") || !section["status_definitions"].IsObject())
 			return;
@@ -1473,8 +1518,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 			Value& statusSection = statusIt->value;
 			if (statusSection.HasMember("definition") && statusSection["definition"].IsArray())
 				migrateDefinitionArray(statusSection["definition"], typeKey, statusKey, "normal");
-			if (statusSection.HasMember("definitionDetailled") && statusSection["definitionDetailled"].IsArray())
-				migrateDefinitionArray(statusSection["definitionDetailled"], typeKey, statusKey, "detailed");
+			if (statusSection.HasMember("definition_detailed") && statusSection["definition_detailed"].IsArray())
+				migrateDefinitionArray(statusSection["definition_detailed"], typeKey, statusKey, "detailed");
 		}
 	};
 
@@ -2112,11 +2157,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				const Value& profile = CurrentConfig->getActiveProfile();
 				if (profile.IsObject() &&
 					profile.HasMember("filters") &&
-					profile["filters"].IsObject() &&
-					profile["filters"].HasMember("night_alpha_setting") &&
-					profile["filters"]["night_alpha_setting"].IsInt())
+					profile["filters"].IsObject())
 				{
-					nightAlpha = profile["filters"]["night_alpha_setting"].GetInt();
+					const Value& filters = profile["filters"];
+					if (filters.HasMember("night_overlay_alpha") && filters["night_overlay_alpha"].IsInt())
+					{
+						nightAlpha = filters["night_overlay_alpha"].GetInt();
+					}
+					else if (filters.HasMember("night_alpha_setting") && filters["night_alpha_setting"].IsInt())
+					{
+						nightAlpha = filters["night_alpha_setting"].GetInt();
+					}
 				}
 			}
 			nightAlpha = std::clamp(nightAlpha, 0, 255);
@@ -2577,14 +2628,27 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (profile.HasMember("filters") &&
 				profile["filters"].IsObject() &&
 				profile["filters"].HasMember("pro_mode") &&
-				profile["filters"]["pro_mode"].IsObject() &&
-				profile["filters"]["pro_mode"].HasMember("enable") &&
-				profile["filters"]["pro_mode"]["enable"].IsBool())
+				profile["filters"]["pro_mode"].IsObject())
 			{
-				frameProModeEnabled = profile["filters"]["pro_mode"]["enable"].GetBool();
+				const Value& proMode = profile["filters"]["pro_mode"];
+				if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+				{
+					frameProModeEnabled = proMode["enabled"].GetBool();
+				}
+				else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+				{
+					frameProModeEnabled = proMode["enable"].GetBool();
+				}
 			}
 
 			if (profile.HasMember("labels") &&
+				profile["labels"].IsObject() &&
+				profile["labels"].HasMember("use_speed_for_gate") &&
+				profile["labels"]["use_speed_for_gate"].IsBool())
+			{
+				frameUseAspeedForGate = profile["labels"]["use_speed_for_gate"].GetBool();
+			}
+			else if (profile.HasMember("labels") &&
 				profile["labels"].IsObject() &&
 				profile["labels"].HasMember("use_aspeed_for_gate") &&
 				profile["labels"]["use_aspeed_for_gate"].IsBool())
@@ -3655,11 +3719,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		const Value& profile = CurrentConfig->getActiveProfile();
 		if (profile.IsObject() &&
 			profile.HasMember("rimcas") &&
-			profile["rimcas"].IsObject() &&
-			profile["rimcas"].HasMember("rimcas_stage_two_speed_threshold") &&
-			profile["rimcas"]["rimcas_stage_two_speed_threshold"].IsInt())
+			profile["rimcas"].IsObject())
 		{
-			rimcasStageTwoSpeedThreshold = profile["rimcas"]["rimcas_stage_two_speed_threshold"].GetInt();
+			const Value& rimcas = profile["rimcas"];
+			if (rimcas.HasMember("stage_two_speed_threshold_kt") && rimcas["stage_two_speed_threshold_kt"].IsInt())
+			{
+				rimcasStageTwoSpeedThreshold = rimcas["stage_two_speed_threshold_kt"].GetInt();
+			}
+			else if (rimcas.HasMember("rimcas_stage_two_speed_threshold") && rimcas["rimcas_stage_two_speed_threshold"].IsInt())
+			{
+				rimcasStageTwoSpeedThreshold = rimcas["rimcas_stage_two_speed_threshold"].GetInt();
+			}
 		}
 	}
 	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
