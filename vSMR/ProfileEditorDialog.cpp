@@ -1697,6 +1697,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_TAG_LINE2_LABEL:
 		case IDC_PE_TAG_LINE3_LABEL:
 		case IDC_PE_TAG_LINE4_LABEL:
+		case IDC_PE_TAG_AUTO_DECONFLICTION:
 		case IDC_PE_TAG_LINK_DETAILED:
 		case IDC_PE_TAG_DETAILED_HEADER:
 		case IDC_PE_TAG_D_LINE1_LABEL:
@@ -2509,6 +2510,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagLine3Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE3_EDIT);
 	TagLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_LABEL);
 	TagLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_EDIT);
+	TagAutoDeconflictionToggle.Create("Auto Deconfliction", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_AUTO_DECONFLICTION);
 	TagLinkDetailedToggle.Create("Custom Hover Details", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
 	TagDetailedHeader.Create("Definition Detailed", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_HEADER);
 	TagDetailedDefinitionEdit.Create(commonMultilineEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_EDIT);
@@ -2571,6 +2573,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagTypeCombo.AddString(TagTypeUiLabel(Owner, "arrival").c_str());
 	TagTypeCombo.SetCurSel(0);
 	TagLinkDetailedToggle.SetCheck(BST_UNCHECKED);
+	TagAutoDeconflictionToggle.SetCheck(BST_CHECKED);
 	PopulateTagTokenCombo();
 
 	PopulateIconCombos();
@@ -2709,6 +2712,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		RuleTextEdit.SetFont(GetFont(), TRUE);
 		ProfileNameEdit.SetFont(GetFont(), TRUE);
 		ProfileProModeCheck.SetFont(GetFont(), TRUE);
+		TagAutoDeconflictionToggle.SetFont(GetFont(), TRUE);
 		TagLine1Edit.SetFont(GetFont(), TRUE);
 		TagLine2Edit.SetFont(GetFont(), TRUE);
 		TagLine3Edit.SetFont(GetFont(), TRUE);
@@ -3410,9 +3414,21 @@ void CProfileEditorDialog::LayoutControls()
 	TagLinkDetailedToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
 	tagY += rowHeight + 8;
 
-	TagDetailedHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
-	tagY += rowHeight + 6;
-	TagDetailedDefinitionEdit.MoveWindow(tagContentLeft, tagY, definitionEditWidth, definitionEditHeight, TRUE);
+	if (TagEditorSeparateDetailed)
+	{
+		TagDetailedHeader.MoveWindow(tagContentLeft, tagY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+		tagY += rowHeight + 6;
+		TagDetailedDefinitionEdit.MoveWindow(tagContentLeft, tagY, definitionEditWidth, definitionEditHeight, TRUE);
+		tagY += definitionEditHeight + 10;
+		TagAutoDeconflictionToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+	}
+	else
+	{
+		TagAutoDeconflictionToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+		const int hiddenDetailedY = tagY + rowHeight + 8;
+		TagDetailedHeader.MoveWindow(tagContentLeft, hiddenDetailedY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
+		TagDetailedDefinitionEdit.MoveWindow(tagContentLeft, hiddenDetailedY + rowHeight + 6, definitionEditWidth, definitionEditHeight, TRUE);
+	}
 
 	MoveControlOffscreen(TagLine1Label);
 	MoveControlOffscreen(TagLine1Edit);
@@ -3449,7 +3465,7 @@ void CProfileEditorDialog::LayoutControls()
 		IDC_PE_ICON_SHAPE_HEADER, IDC_PE_ICON_SIZE_HEADER, IDC_PE_ICON_DISPLAY_HEADER,
 		IDC_PE_TAG_HEADER_PANEL, IDC_PE_TAG_TYPE_LABEL, IDC_PE_TAG_TYPE_COMBO, IDC_PE_TAG_STATUS_LABEL,
 		IDC_PE_TAG_STATUS_COMBO, IDC_PE_TAG_TOKEN_LABEL, IDC_PE_TAG_TOKEN_COMBO, IDC_PE_TAG_TOKEN_ADD_BUTTON,
-		IDC_PE_TAG_DEF_HEADER, IDC_PE_TAG_DEFINITION_EDIT, IDC_PE_TAG_LINK_DETAILED, IDC_PE_TAG_DETAILED_HEADER,
+		IDC_PE_TAG_DEF_HEADER, IDC_PE_TAG_DEFINITION_EDIT, IDC_PE_TAG_AUTO_DECONFLICTION, IDC_PE_TAG_LINK_DETAILED, IDC_PE_TAG_DETAILED_HEADER,
 		IDC_PE_TAG_DETAILED_EDIT
 	};
 	for (UINT controlId : iconContentIds)
@@ -3820,6 +3836,7 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	TagLine3Edit.ShowWindow(SW_HIDE);
 	TagLine4Label.ShowWindow(SW_HIDE);
 	TagLine4Edit.ShowWindow(SW_HIDE);
+	TagAutoDeconflictionToggle.ShowWindow(tagShowMode);
 	TagLinkDetailedToggle.ShowWindow(tagShowMode);
 	TagDetailedHeader.ShowWindow(detailedTagShowMode);
 	TagDetailedDefinitionEdit.ShowWindow(detailedTagShowMode);
@@ -5011,6 +5028,7 @@ void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: before SelectComboEntryByText(TagTypeCombo)");
 	SelectComboEntryByText(TagTypeCombo, TagTypeUiLabel(Owner, TagEditorType));
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after SelectComboEntryByText(TagTypeCombo)");
+	TagAutoDeconflictionToggle.SetCheck(Owner->GetTagAutoDeconflictionEnabledForEditor() ? BST_CHECKED : BST_UNCHECKED);
 	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
 	UpdatingControls = false;
 
@@ -6144,6 +6162,20 @@ void CProfileEditorDialog::OnTagLinkToggleChanged()
 	Owner->RequestRefresh();
 }
 
+void CProfileEditorDialog::OnTagAutoDeconflictionToggled()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const bool enabled = (TagAutoDeconflictionToggle.GetCheck() == BST_CHECKED);
+	if (!Owner->SetTagAutoDeconflictionEnabledForEditor(enabled, true))
+	{
+		UpdatingControls = true;
+		TagAutoDeconflictionToggle.SetCheck(Owner->GetTagAutoDeconflictionEnabledForEditor() ? BST_CHECKED : BST_UNCHECKED);
+		UpdatingControls = false;
+	}
+}
+
 void CProfileEditorDialog::OnTagStatusChanged()
 {
 	if (UpdatingControls || Owner == nullptr)
@@ -7266,6 +7298,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_STATUS_COMBO, &CProfileEditorDialog::OnTagStatusChanged)
 	ON_BN_CLICKED(IDC_PE_TAG_TOKEN_ADD_BUTTON, &CProfileEditorDialog::OnTagAddTokenClicked)
+	ON_BN_CLICKED(IDC_PE_TAG_AUTO_DECONFLICTION, &CProfileEditorDialog::OnTagAutoDeconflictionToggled)
 	ON_BN_CLICKED(IDC_PE_TAG_LINK_DETAILED, &CProfileEditorDialog::OnTagLinkToggleChanged)
 	ON_EN_CHANGE(IDC_PE_TAG_DEFINITION_EDIT, &CProfileEditorDialog::OnTagLineChanged)
 	ON_EN_CHANGE(IDC_PE_TAG_LINE1_EDIT, &CProfileEditorDialog::OnTagLineChanged)

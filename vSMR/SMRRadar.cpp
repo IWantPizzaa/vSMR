@@ -30,6 +30,26 @@ map<string, string> CSMRRadar::vStripsStands;
 
 map<int, CInsetWindow *> appWindows;
 
+namespace
+{
+	std::mutex gSessionActiveProfileMutex;
+	std::string gSessionActiveProfileName;
+
+	std::string BuildLastActiveProfilePath(const std::string& configPath)
+	{
+		try
+		{
+			const fs::path cfgPath(configPath);
+			const fs::path directory = cfgPath.has_parent_path() ? cfgPath.parent_path() : fs::path(".");
+			return (directory / "vSMR_LastActiveProfile.txt").string();
+		}
+		catch (...)
+		{
+			return "vSMR_LastActiveProfile.txt";
+		}
+	}
+}
+
 #if defined(_DEBUG)
 #define VSMR_REFRESH_LOG(message) Logger::info(message)
 #else
@@ -168,6 +188,62 @@ CSMRRadar::~CSMRRadar()
 	GdiplusShutdown(m_gdiplusToken);
 	delete CurrentConfig;
 	CurrentConfig = nullptr;
+}
+
+void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
+{
+	const std::string trimmed = TrimAsciiWhitespaceCopy(profileName);
+	if (trimmed.empty())
+		return;
+
+	std::lock_guard<std::mutex> guard(gSessionActiveProfileMutex);
+	gSessionActiveProfileName = trimmed;
+}
+
+std::string CSMRRadar::GetSessionActiveProfile(const std::string& fallbackProfile)
+{
+	std::lock_guard<std::mutex> guard(gSessionActiveProfileMutex);
+	if (!gSessionActiveProfileName.empty())
+		return gSessionActiveProfileName;
+	return fallbackProfile;
+}
+
+std::string CSMRRadar::ReadLastActiveProfileFromDisk() const
+{
+	try
+	{
+		const std::string statePath = BuildLastActiveProfilePath(ConfigPath);
+		std::ifstream input(statePath, std::ios::binary);
+		if (!input.is_open())
+			return "";
+
+		std::string profileName;
+		std::getline(input, profileName);
+		return TrimAsciiWhitespaceCopy(profileName);
+	}
+	catch (...)
+	{
+		return "";
+	}
+}
+
+void CSMRRadar::WriteLastActiveProfileToDisk(const std::string& profileName) const
+{
+	const std::string trimmedName = TrimAsciiWhitespaceCopy(profileName);
+	if (trimmedName.empty())
+		return;
+
+	try
+	{
+		const std::string statePath = BuildLastActiveProfilePath(ConfigPath);
+		std::ofstream output(statePath, std::ios::binary | std::ios::trunc);
+		if (!output.is_open())
+			return;
+		output << trimmedName;
+	}
+	catch (...)
+	{
+	}
 }
 
 void CSMRRadar::CorrelateCursor() {

@@ -267,6 +267,72 @@
                                 "scratchpad"
                             ]
                         ]
+                    },
+                    "airdep": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airdep_onrunway": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
                     }
                 }
             },
@@ -339,6 +405,40 @@
                             [
                                 "uk_stand",
                                 "scratchpad"
+                            ]
+                        ]
+                    },
+                    "airarr": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "uk_stand"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "actype"
+                            ],
+                            [
+                                "uk_stand"
+                            ]
+                        ]
+                    },
+                    "airarr_onrunway": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "uk_stand"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "actype"
+                            ],
+                            [
+                                "uk_stand"
                             ]
                         ]
                     }
@@ -666,11 +766,11 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 164,
-                "y": 234,
-                "width": 876,
+                "x": 798,
+                "y": 207,
+                "width": 839,
                 "height": 700,
-                "visible": true
+                "visible": false
             }
         },
         "rules": {
@@ -963,6 +1063,75 @@
                                 "scratchpad"
                             ]
                         ]
+                    },
+                    "airdep": {
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "dest"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "b:callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airdep_onrunway": {
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "dest"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "b:callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "dest",
+                                "groundstatus"
+                            ]
+                        ]
                     }
                 }
             },
@@ -1044,6 +1213,50 @@
                             [
                                 "b:uk_stand",
                                 "scratchpad",
+                                "origin"
+                            ]
+                        ]
+                    },
+                    "airarr": {
+                        "definition_detailed_inherits_normal": false,
+                        "definition": [
+                            [
+                                "callsign",
+                                "actype"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "b:callsign",
+                                "actype"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "b:uk_stand"
+                            ]
+                        ]
+                    },
+                    "airarr_onrunway": {
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "actype"
+                            ],
+                            [
+                                "b:uk_stand"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "b:callsign",
+                                "actype"
+                            ],
+                            [
+                                "b:uk_stand",
                                 "origin"
                             ]
                         ]
@@ -1386,8 +1599,8 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 164,
-                "y": 234,
+                "x": 512,
+                "y": 223,
                 "width": 876,
                 "height": 700,
                 "visible": false
@@ -1734,6 +1947,76 @@
                             ]
                         ],
                         "definition_detailed_inherits_normal": true
+                    },
+                    "airdep": {
+                        "definition_detailed_inherits_normal": true,
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "gs",
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airdep_onrunway": {
+                        "definition_detailed_inherits_normal": true,
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "gs",
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
                     }
                 }
             },
@@ -1819,6 +2102,68 @@
                             [
                                 "uk_stand",
                                 "scratchpad"
+                            ]
+                        ]
+                    },
+                    "airarr": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "gs",
+                                "flightlevel",
+                                "tendency",
+                                "uk_stand"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airarr_onrunway": {
+                        "definition_detailed_inherits_normal": true,
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "groundstatus"
+                            ],
+                            [
+                                "gs",
+                                "flightlevel",
+                                "uk_stand"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
                             ]
                         ]
                     }
@@ -2177,9 +2522,9 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 405,
-                "y": 204,
-                "width": 835,
+                "x": 699,
+                "y": 210,
+                "width": 839,
                 "height": 700,
                 "visible": false
             }
@@ -2593,6 +2938,72 @@
                                 "scratchpad"
                             ]
                         ]
+                    },
+                    "airdep": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airdep_onrunway": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
                     }
                 }
             },
@@ -2674,6 +3085,72 @@
                             ],
                             [
                                 "scratchpad"
+                            ]
+                        ]
+                    },
+                    "airarr": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airarr_onrunway": {
+                        "definition": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
                             ]
                         ]
                     }
@@ -2909,7 +3386,8 @@
         "rules": {
             "version": 1,
             "items": []
-        }
+        },
+        "sid_text_colors": []
     },
     {
         "name": "Custom 1",
@@ -3146,6 +3624,54 @@
                                 "deprwy"
                             ]
                         ]
+                    },
+                    "airdep": {
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "flightlevel"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
+                    },
+                    "airdep_onrunway": {
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "flightlevel"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
+                            ]
+                        ]
                     }
                 }
             },
@@ -3219,6 +3745,64 @@
                             ],
                             [
                                 "uk_stand"
+                            ]
+                        ]
+                    },
+                    "airarr": {
+                        "definition_detailed_inherits_normal": true,
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ]
+                        ]
+                    },
+                    "airarr_onrunway": {
+                        "definition_detailed_inherits_normal": true,
+                        "definition": [
+                            [
+                                "b:callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ]
+                        ],
+                        "definition_detailed": [
+                            [
+                                "callsign",
+                                "sctype",
+                                "wake"
+                            ],
+                            [
+                                "flightlevel",
+                                "tendency",
+                                "gs"
+                            ],
+                            [
+                                "asid",
+                                "groundstatus"
                             ]
                         ]
                     }
@@ -3515,9 +4099,9 @@
                     "a": 255
                 },
                 "on_ground": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
                     "a": 255
                 }
             }
@@ -3545,8 +4129,8 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 456,
-                "y": 263,
+                "x": 659,
+                "y": 189,
                 "width": 839,
                 "height": 700,
                 "visible": false
@@ -3559,6 +4143,7 @@
                     "source": "vacdm",
                     "token": "tsat",
                     "condition": "valid",
+                    "name": "TSAT Valid",
                     "criteria": [
                         {
                             "source": "vacdm",
@@ -3574,13 +4159,13 @@
                         "g": 255,
                         "b": 62,
                         "a": 255
-                    },
-                    "name": "TSAT Valid"
+                    }
                 },
                 {
                     "source": "vacdm",
                     "token": "tsat",
                     "condition": "expired",
+                    "name": "TSAT expired",
                     "criteria": [
                         {
                             "source": "vacdm",
@@ -3596,8 +4181,7 @@
                         "g": 122,
                         "b": 2,
                         "a": 255
-                    },
-                    "name": "TSAT expired"
+                    }
                 }
             ]
         },

@@ -43,7 +43,10 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 				else
 				{
 					LoadCustomFont();
-					SaveDataToAsr("ActiveProfile", "vSMR active profile", newName.c_str());
+					const std::string activeProfile = GetActiveProfileNameForEditor();
+					RememberSessionActiveProfile(activeProfile);
+					WriteLastActiveProfileToDisk(activeProfile);
+					SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 				}
 			}
 		}
@@ -113,9 +116,11 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_PROFILE) {
-		this->CSMRRadar::LoadProfile(sItemString);
-		LoadCustomFont();
-		SaveDataToAsr("ActiveProfile", "vSMR active profile", sItemString);
+		const std::string requestedProfile = (sItemString != nullptr) ? std::string(sItemString) : "";
+		if (!SetActiveProfileForEditor(requestedProfile, false))
+		{
+			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to switch active profile", true, true, false, false, false);
+		}
 
 		ShowLists["Profiles"] = true;
 	}
