@@ -91,6 +91,7 @@ protected:
 	afx_msg void OnRuleTextSwatchClicked();
 	afx_msg void OnTagTypeChanged();
 	afx_msg void OnTagStatusChanged();
+	afx_msg void OnTagAutoDeconflictionToggled();
 	afx_msg void OnTagLinkToggleChanged();
 	afx_msg void OnTagLineChanged();
 	afx_msg void OnTagLineFocus();
@@ -258,6 +259,7 @@ private:
 		, IDC_PE_PROFILE_COFFEE_LINK = 9271
 		, IDC_PE_RULE_COLOR_OPACITY_LABEL = 9273
 		, IDC_PE_RULE_COLOR_OPACITY_SLIDER = 9274
+		, IDC_PE_TAG_AUTO_DECONFLICTION = 9275
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -413,6 +415,7 @@ private:
 	CEdit TagLine3Edit;
 	CStatic TagLine4Label;
 	CEdit TagLine4Edit;
+	CButton TagAutoDeconflictionToggle;
 	CButton TagLinkDetailedToggle;
 	CStatic TagDetailedHeader;
 	CEdit TagDetailedDefinitionEdit;

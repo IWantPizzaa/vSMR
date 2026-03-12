@@ -524,6 +524,81 @@ bool CSMRRadar::IsTagDefinitionStatusAllowedForType(const std::string& type, con
 	return std::find(allowedStatuses.begin(), allowedStatuses.end(), normalizedStatus) != allowedStatuses.end();
 }
 
+bool CSMRRadar::GetTagAutoDeconflictionEnabledForEditor() const
+{
+	if (!CurrentConfig)
+		return true;
+
+	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject())
+		return true;
+
+	const rapidjson::Value& labels = profile["labels"];
+	if (labels.HasMember("auto_deconfliction") && labels["auto_deconfliction"].IsBool())
+		return labels["auto_deconfliction"].GetBool();
+
+	return true;
+}
+
+bool CSMRRadar::SetTagAutoDeconflictionEnabledForEditor(bool enabled, bool persistToDisk)
+{
+	if (!CurrentConfig)
+		return false;
+
+	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	bool changed = false;
+
+	auto ensureObjectMember = [&](rapidjson::Value& parent, const char* key) -> rapidjson::Value&
+	{
+		if (!parent.HasMember(key) || !parent[key].IsObject())
+		{
+			if (parent.HasMember(key))
+				parent.RemoveMember(key);
+
+			rapidjson::Value keyValue;
+			keyValue.SetString(key, allocator);
+			rapidjson::Value objectValue(rapidjson::kObjectType);
+			parent.AddMember(keyValue, objectValue, allocator);
+			changed = true;
+		}
+
+		return parent[key];
+	};
+
+	rapidjson::Value& labels = ensureObjectMember(profile, "labels");
+	if (!labels.HasMember("auto_deconfliction") || !labels["auto_deconfliction"].IsBool())
+	{
+		if (labels.HasMember("auto_deconfliction"))
+			labels.RemoveMember("auto_deconfliction");
+
+		rapidjson::Value keyValue;
+		keyValue.SetString("auto_deconfliction", allocator);
+		rapidjson::Value boolValue;
+		boolValue.SetBool(enabled);
+		labels.AddMember(keyValue, boolValue, allocator);
+		changed = true;
+	}
+	else if (labels["auto_deconfliction"].GetBool() != enabled)
+	{
+		labels["auto_deconfliction"].SetBool(enabled);
+		changed = true;
+	}
+
+	if (changed && persistToDisk && !CurrentConfig->saveConfig())
+	{
+		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save auto-deconfliction setting to vSMR_Profiles.json", true, true, false, false, false);
+		return false;
+	}
+
+	if (changed)
+		RequestRefresh();
+	return true;
+}
+
 bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition() const
 {
 	if (!CurrentConfig)

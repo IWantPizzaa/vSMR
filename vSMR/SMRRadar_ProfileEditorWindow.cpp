@@ -4,6 +4,8 @@
 #include <cctype>
 #include <cstring>
 
+extern std::vector<CSMRRadar*> RadarScreensOpened;
+
 namespace
 {
 	int ClampInt(int value, int minValue, int maxValue)
@@ -581,15 +583,41 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 	if (!CurrentConfig)
 		return false;
 
-	const std::vector<std::string> names = CurrentConfig->getAllProfiles();
-	const std::string canonicalName = FindCanonicalProfileNameNoCase(names, name);
-	if (canonicalName.empty())
+	bool appliedToAnyRadar = false;
+	auto applyProfileToRadar = [&](CSMRRadar* radar) -> bool
+	{
+		if (radar == nullptr || radar->CurrentConfig == nullptr)
+			return false;
+
+		const std::vector<std::string> radarProfileNames = radar->CurrentConfig->getAllProfiles();
+		const std::string canonicalName = FindCanonicalProfileNameNoCase(radarProfileNames, name);
+		if (canonicalName.empty())
+			return false;
+
+		radar->LoadProfile(canonicalName);
+		radar->LoadCustomFont();
+		const std::string activeProfile = radar->CurrentConfig->getActiveProfileName();
+		RememberSessionActiveProfile(activeProfile);
+		radar->WriteLastActiveProfileToDisk(activeProfile);
+		radar->SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
+		radar->RequestRefresh();
+		return true;
+	};
+
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (applyProfileToRadar(radar))
+			appliedToAnyRadar = true;
+	}
+
+	if (!appliedToAnyRadar)
+		appliedToAnyRadar = applyProfileToRadar(this);
+
+	if (!appliedToAnyRadar)
 		return false;
 
-	LoadProfile(canonicalName);
 	if (persistToDisk)
 		CurrentConfig->saveConfig();
-	RequestRefresh();
 	return true;
 }
 
@@ -680,6 +708,11 @@ bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool dupli
 
 	CurrentConfig->reload();
 	LoadProfile(createdName);
+	LoadCustomFont();
+	const std::string activeProfile = CurrentConfig->getActiveProfileName();
+	RememberSessionActiveProfile(activeProfile);
+	WriteLastActiveProfileToDisk(activeProfile);
+	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 	RequestRefresh();
 	if (outCreatedName != nullptr)
 		*outCreatedName = createdName;
@@ -727,6 +760,11 @@ bool CSMRRadar::RenameProfileForEditor(const std::string& oldName, const std::st
 			fallbackActive = names.empty() ? "Default" : names.front();
 		LoadProfile(fallbackActive);
 	}
+	LoadCustomFont();
+	const std::string activeProfile = CurrentConfig->getActiveProfileName();
+	RememberSessionActiveProfile(activeProfile);
+	WriteLastActiveProfileToDisk(activeProfile);
+	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 	RequestRefresh();
 	return true;
 }
@@ -758,6 +796,11 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 	}
 
 	LoadProfile(nextActive);
+	LoadCustomFont();
+	const std::string activeProfile = CurrentConfig->getActiveProfileName();
+	RememberSessionActiveProfile(activeProfile);
+	WriteLastActiveProfileToDisk(activeProfile);
+	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 	RequestRefresh();
 	return true;
 }

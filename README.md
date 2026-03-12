@@ -637,4 +637,4 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 
 ## Credits
 
-Special thanks to Baptiste.C, Steve.A and Yohannes.
+Special thanks to Baptiste.C, Steve.A and Yohannes.D.

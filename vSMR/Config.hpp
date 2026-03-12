@@ -6,6 +6,7 @@
 #include <map>
 #include <unordered_set>
 #include <vector>
+#include <cctype>
 #include <Gdiplus.h>
 #include "rapidjson/document.h"
 #include "rapidjson/prettywriter.h"
@@ -54,13 +55,80 @@ public:
 	bool setInactiveAlert(unordered_set<string> inactiveAlerts);
 
 	inline int isItActiveProfile(string toTest) {
-		if (active_profile == profiles[toTest])
-			return 1;
+		auto it = profiles.find(toTest);
+		if (it != profiles.end())
+			return active_profile == it->second ? 1 : 0;
+
+		auto equalsNoCase = [](const std::string& a, const std::string& b) -> bool
+		{
+			if (a.size() != b.size())
+				return false;
+			for (size_t i = 0; i < a.size(); ++i)
+			{
+				const unsigned char ac = static_cast<unsigned char>(a[i]);
+				const unsigned char bc = static_cast<unsigned char>(b[i]);
+				if (std::tolower(ac) != std::tolower(bc))
+					return false;
+			}
+			return true;
+		};
+
+		for (const auto& profileEntry : profiles)
+		{
+			if (equalsNoCase(profileEntry.first, toTest))
+				return active_profile == profileEntry.second ? 1 : 0;
+		}
+
 		return 0;
 	};
 
 	inline void setActiveProfile(string newProfile) {
-		active_profile = profiles[newProfile];
+		auto trimAsciiWhitespace = [](const std::string& text) -> std::string
+		{
+			size_t start = 0;
+			while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
+				++start;
+
+			size_t end = text.size();
+			while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
+				--end;
+
+			return text.substr(start, end - start);
+		};
+		auto equalsNoCase = [](const std::string& a, const std::string& b) -> bool
+		{
+			if (a.size() != b.size())
+				return false;
+			for (size_t i = 0; i < a.size(); ++i)
+			{
+				const unsigned char ac = static_cast<unsigned char>(a[i]);
+				const unsigned char bc = static_cast<unsigned char>(b[i]);
+				if (std::tolower(ac) != std::tolower(bc))
+					return false;
+			}
+			return true;
+		};
+
+		const std::string trimmedProfile = trimAsciiWhitespace(newProfile);
+
+		auto it = profiles.find(trimmedProfile);
+		if (it != profiles.end())
+		{
+			active_profile = it->second;
+			return;
+		}
+
+		for (const auto& profileEntry : profiles)
+		{
+			if (equalsNoCase(profileEntry.first, trimmedProfile))
+			{
+				active_profile = profileEntry.second;
+				return;
+			}
+		}
+
+		if (!profiles.empty())
+			active_profile = profiles.begin()->second;
 	};
 
 	inline string getActiveProfileName() {

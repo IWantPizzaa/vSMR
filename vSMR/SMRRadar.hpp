@@ -368,6 +368,10 @@ public:
 	std::vector<std::string> GetProfileNamesForEditor() const;
 	std::string GetActiveProfileNameForEditor() const;
 	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);
+	std::string ReadLastActiveProfileFromDisk() const;
+	void WriteLastActiveProfileToDisk(const std::string& profileName) const;
+	static void RememberSessionActiveProfile(const std::string& profileName);
+	static std::string GetSessionActiveProfile(const std::string& fallbackProfile);
 	bool GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const;
 	bool SetProfileProModeEnabledForEditor(const std::string& name, bool enabled);
 	bool AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName = nullptr);
@@ -380,6 +384,8 @@ public:
 	std::string TagDefinitionDepartureStatusLabel(const std::string& status) const;
 	std::vector<std::string> GetTagDefinitionStatusesForType(const std::string& type) const;
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
+	bool GetTagAutoDeconflictionEnabledForEditor() const;
+	bool SetTagAutoDeconflictionEnabledForEditor(bool enabled, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition() const;
 	bool SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status) const;
