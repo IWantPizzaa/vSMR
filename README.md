@@ -7,7 +7,7 @@ This repository is a maintained fork of:
 - https://github.com/AlexisBalzano/vSMR
 - https://github.com/pierr3/vSMR
 
-The plugin name reported to EuroScope is `vSMR`, version `v1.1.0`.
+The plugin name reported to EuroScope is `vSMR`. The version string is defined in `vSMR/SMRPlugin.hpp` as `MY_PLUGIN_VERSION` (currently `v1.1.1`).
 
 ## Overview
 
@@ -98,7 +98,7 @@ EuroScope\Plugins\
 | File                     | Search location(s)                                                                          | Purpose                                                                            |
 | ------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `vSMR_Maps.json`       | Same folder as `vSMR.dll`                                                                 | Map element visibility by zoom level and optional active runway/airport conditions |
-| `vacdm.txt`            | Same folder as `vSMR.dll`                                                                 | Overrides the VACDM base server URL                                                |
+| `vacdm.txt`            | Same folder as `vSMR.dll`                                                                 | Enables VACDM polling and sets the VACDM base server URL                           |
 | `ICAO_Airlines.txt`    | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt` | Airline/callsign lookup for bottom-line text and related displays                  |
 | `ICAO_Aircraft.json`   | `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder               | Aircraft length and wingspan data used by realistic icons                          |
 | `aircraft_icons\*.png` | `<dll folder>\aircraft_icons\`                                                            | Optional per-aircraft realistic icon silhouettes                                   |
@@ -111,40 +111,41 @@ If present, the file is parsed as simple `key=value` text. The supported key is:
 SERVER_URL=https://your-server.example
 ```
 
-vSMR appends `/api/v1/pilots` internally.
+Notes:
 
-If `vacdm.txt` is missing, the default endpoint is:
-
-```text
-https://app.vacdm.net/api/v1/pilots
-```
+- vSMR appends `/api/v1/pilots` internally.
+- VACDM polling is currently enabled only when `SERVER_URL` is present in `vacdm.txt`.
+- Lines beginning with `#` or `;` are ignored.
+- Quoted values are accepted, and trailing `/` is trimmed.
 
 ## Commands
 
 The plugin responds to the following EuroScope command-line commands:
 
-| Command          | Scope            | Effect                                                                 |
-| ---------------- | ---------------- | ---------------------------------------------------------------------- |
-| `.smr`         | Plugin           | Opens the CPDLC settings dialog                                        |
-| `.smr connect` | Plugin           | Connects or disconnects Hoppie CPDLC                                   |
-| `.smr poll`    | Plugin           | Manually polls CPDLC messages when connected                           |
-| `.smr reload`  | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens              |
-| `.smr log`     | Plugin           | Toggles logging off/on (when enabled this defaults to `normal` mode)  |
-| `.smr log normal`  | Plugin      | Enables concise logging                                                |
-| `.smr log verbose` | Plugin      | Enables detailed logging                                               |
-| `.smr log off`     | Plugin      | Disables logging                                                       |
-| `.smr log status`  | Plugin      | Prints current logging status and mode                                 |
-| `.smr profile` | Plugin           | Opens the detached profile editor on the first active SMR radar screen |
-| `.smr editor`  | Plugin           | Alias for `.smr profile`                                             |
-| `.smr config`  | Plugin           | Alias for `.smr profile`                                             |
-| `.smr draw`    | Radar screen     | Toggles runway-area drawing                                            |
-| `.smr status`  | Radar screen     | Prints current runway status information from RIMCAS                   |
+| Command              | Scope            | Effect                                                                 |
+| -------------------- | ---------------- | ---------------------------------------------------------------------- |
+| `.smr`             | Plugin           | Opens the CPDLC settings dialog                                        |
+| `.smr connect`     | Plugin           | Connects or disconnects Hoppie CPDLC                                   |
+| `.smr poll`        | Plugin           | Manually polls CPDLC messages when connected                           |
+| `.smr reload`      | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens              |
+| `.smr log`         | Plugin           | Toggles logging off/on (when enabled this defaults to `normal` mode) |
+| `.smr log normal`  | Plugin           | Enables concise logging                                                |
+| `.smr log verbose` | Plugin           | Enables detailed logging                                               |
+| `.smr log off`     | Plugin           | Disables logging                                                       |
+| `.smr log status`  | Plugin           | Prints current logging status and mode                                 |
+| `.smr profile`     | Plugin           | Opens the detached profile editor on the first active SMR radar screen |
+| `.smr editor`      | Plugin           | Alias for `.smr profile`                                             |
+| `.smr config`      | Plugin           | Alias for `.smr profile`                                             |
+| `.smr draw`        | Radar screen     | Toggles runway-area drawing                                            |
+| `.smr status`      | Radar screen     | Prints current runway status information from RIMCAS                   |
 
 ### Logging Modes
 
 - `normal`: concise logs for routine troubleshooting; suppresses function-signature traces and profile-editor step spam.
 - `verbose`: detailed logs for deep debugging; still suppresses known hot-loop trace spam.
 - The log file is `vsmr.log` in the same folder as `vSMR.dll`.
+- `.smr log on`, `.smr log enable`, and `.smr log 1` are accepted aliases for `normal`.
+- `.smr log disable` and `.smr log 0` are accepted aliases for `off`.
 
 ## Radar Screen Behavior
 
@@ -392,9 +393,10 @@ VACDM pilot data is polled in the plugin and exposed to tag rendering and rule e
 
 Behavior visible in code:
 
-- default pilots URL: `https://app.vacdm.net/api/v1/pilots`
-- optional override through `vacdm.txt`
+- polling is opt-in and starts only when `vacdm.txt` contains `SERVER_URL=...`
+- URL used by polling is `<SERVER_URL>/api/v1/pilots`
 - polling interval: 15 seconds
+- polling waits for a stable EuroScope network connection before fetching
 - callsign matching uses multiple normalized candidates
 - `TOBT` falls back to flight plan `EOBT` when backend data is missing
 
@@ -556,7 +558,8 @@ When `Realistic` icon style is active, vSMR can combine:
 - EuroScope support is Win32 only here
 - The project uses MFC
 - The project links against `EuroScopePlugInDll.lib`
-- Networking uses `libcurl` with WinHTTP fallback
+- HTTP downloading is currently performed through WinHTTP (`HttpHelper.cpp`)
+- `libcurl` headers/libs are still referenced in project settings for compatibility
 - `winmm.lib` is linked for sound-related functionality
 
 ### Build command
@@ -593,9 +596,20 @@ This is the quickest code map for new contributors:
 | `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Profile editor window creation, persistence, and lifecycle                             |
 | `vSMR/InsetWindow.*`                    | Approach/surface inset windows                                                         |
 | `vSMR/CallsignLookup.*`                 | Airline/callsign lookup from `ICAO_Airlines.txt`                                     |
-| `vSMR/HttpHelper.*`                     | HTTP downloading via libcurl with WinHTTP fallback                                     |
+| `vSMR/HttpHelper.*`                     | HTTP downloading helper (WinHTTP path used in current implementation)                  |
 | `vSMR/DataLinkDialog.*`                 | CPDLC datalink dialog                                                                  |
 | `vSMR/CPDLCSettingsDialog.*`            | CPDLC settings dialog                                                                  |
+
+## Runtime Flow (Developer Quick Map)
+
+This is the high-level execution flow when EuroScope loads and runs the plugin:
+
+1. `SMRPlugin` is created, registers display/tag extensions, loads CPDLC settings, and initializes VACDM polling configuration.
+2. EuroScope creates one `SMRRadar` instance per opened vSMR display window.
+3. `SMRRadar` loads profiles/maps/resources, then drives drawing and interaction in `OnRefresh`.
+4. `SMRPlugin::OnTimer` handles periodic tasks (CPDLC polling, VACDM fetch scheduling, status blinking, and cleanup).
+5. Radar/profile state is persisted through profile JSON and ASR keys (`Airport`, `ActiveProfile`, SRW window geometry, trail options).
+6. `.smr reload` reloads JSON config and reapplies profiles across currently opened radar windows.
 
 ## Troubleshooting
 
@@ -603,7 +617,7 @@ This is the quickest code map for new contributors:
 - If the profile editor opens off-screen, remove or correct `ui_layout.profile_editor_window`.
 - If realistic icons do not appear, verify `targets.icon_style`, `ICAO_Aircraft.json`, and `aircraft_icons\`.
 - If airline names are missing, verify `ICAO_Airlines.txt` in one of the supported search paths.
-- If VACDM fields stay empty, verify the server URL, callsign matching, and backend data availability.
+- If VACDM fields stay empty, verify that `vacdm.txt` exists with `SERVER_URL=...`, then check callsign matching and backend data availability.
 - If `.smr profile` does nothing, make sure at least one SMR radar screen is open.
 
 ## License
