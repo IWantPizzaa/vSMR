@@ -760,24 +760,34 @@ std::string CSMRRadar::GetTagEditorTargetColorPath() const
 	if (normalizedType == "departure")
 	{
 		if (normalizedStatus == "nofpl")
-			return "targets.ground_icons.nofpl";
-		if (normalizedStatus == "push" || normalizedStatus == "stup" || normalizedStatus == "taxi" || normalizedStatus == "nsts" || normalizedStatus == "depa")
-			return std::string("targets.ground_icons.") + normalizedStatus;
-		return "targets.ground_icons.departure_gate";
+			return "targets.departure.no_fpl";
+		if (normalizedStatus == "push")
+			return "targets.departure.push";
+		if (normalizedStatus == "stup")
+			return "targets.departure.startup";
+		if (normalizedStatus == "taxi")
+			return "targets.departure.taxi";
+		if (normalizedStatus == "depa")
+			return "targets.departure.departure";
+		if (normalizedStatus == "nsts")
+			return "targets.departure.no_status";
+		return "targets.departure.gate";
 	}
 
 	if (normalizedType == "arrival")
 	{
 		if (normalizedStatus == "nofpl")
-			return "targets.ground_icons.nofpl";
-		return "targets.ground_icons.arrival_gate";
+			return "targets.departure.no_fpl";
+		if (normalizedStatus == "arr" || normalizedStatus == "taxi")
+			return "targets.arrival.on_ground";
+		return "targets.arrival.gate";
 	}
 
 	if (normalizedType == "airborne")
 	{
 		if (normalizedStatus == "airarr" || normalizedStatus == "airarr_onrunway")
-			return "targets.ground_icons.airborne_arrival";
-		return "targets.ground_icons.airborne_departure";
+			return "targets.arrival.airborne";
+		return "targets.departure.airborne";
 	}
 
 	return "";

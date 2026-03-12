@@ -567,74 +567,20 @@
         },
         "targets": {
             "show_primary_target": true,
-            "ground_icons": {
-                "push": {
+            "icon_style": "realistic",
+            "small_icon_boost": true,
+            "small_icon_boost_factor": 1,
+            "small_icon_boost_resolution_preset": "1080p",
+            "fixed_pixel_icon_size": false,
+            "fixed_pixel_icon_scale": 1,
+            "departure": {
+                "airborne": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
                     "a": 255
                 },
-                "stup": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "taxi": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "depa": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arr": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_taxi": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "nsts": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "nofpl": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
-                },
-                "departure_gate": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "arrival_gate": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "airborne_departure": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "airborne_arrival": {
+                "departure": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
@@ -645,14 +591,58 @@
                     "g": 165,
                     "b": 165,
                     "a": 255
+                },
+                "no_fpl": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "no_status": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "push": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "startup": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "taxi": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
                 }
             },
-            "icon_style": "realistic",
-            "small_icon_boost": true,
-            "small_icon_boost_factor": 1,
-            "small_icon_boost_resolution_preset": "1080p",
-            "fixed_pixel_icon_size": false,
-            "fixed_pixel_icon_scale": 1
+            "arrival": {
+                "airborne": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "gate": {
+                    "r": 165,
+                    "g": 165,
+                    "b": 165,
+                    "a": 255
+                },
+                "on_ground": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                }
+            }
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -1297,8 +1287,38 @@
         },
         "targets": {
             "show_primary_target": true,
-            "ground_icons": {
+            "icon_style": "realistic",
+            "small_icon_boost": true,
+            "small_icon_boost_factor": 1,
+            "small_icon_boost_resolution_preset": "2k",
+            "fixed_pixel_icon_size": false,
+            "fixed_pixel_icon_scale": 1,
+            "departure": {
+                "airborne": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "departure": {
+                    "r": 214,
+                    "g": 255,
+                    "b": 160,
+                    "a": 255
+                },
                 "gate": {
+                    "r": 80,
+                    "g": 102,
+                    "b": 0,
+                    "a": 255
+                },
+                "no_fpl": {
+                    "r": 80,
+                    "g": 102,
+                    "b": 0,
+                    "a": 255
+                },
+                "no_status": {
                     "r": 80,
                     "g": 102,
                     "b": 0,
@@ -1310,7 +1330,7 @@
                     "b": 0,
                     "a": 255
                 },
-                "stup": {
+                "startup": {
                     "r": 120,
                     "g": 153,
                     "b": 0,
@@ -1321,68 +1341,28 @@
                     "g": 255,
                     "b": 0,
                     "a": 255
-                },
-                "depa": {
-                    "r": 214,
+                }
+            },
+            "arrival": {
+                "airborne": {
+                    "r": 255,
                     "g": 255,
-                    "b": 160,
+                    "b": 255,
                     "a": 255
                 },
-                "arr": {
-                    "r": 255,
-                    "g": 222,
-                    "b": 167,
-                    "a": 225
-                },
-                "arrival_taxi": {
-                    "r": 255,
-                    "g": 200,
-                    "b": 1,
-                    "a": 225
-                },
-                "nsts": {
-                    "r": 80,
-                    "g": 102,
-                    "b": 0,
-                    "a": 255
-                },
-                "nofpl": {
-                    "r": 80,
-                    "g": 102,
-                    "b": 0,
-                    "a": 255
-                },
-                "departure_gate": {
-                    "r": 80,
-                    "g": 102,
-                    "b": 0,
-                    "a": 255
-                },
-                "arrival_gate": {
+                "gate": {
                     "r": 168,
                     "g": 109,
                     "b": 0,
                     "a": 225
                 },
-                "airborne_departure": {
+                "on_ground": {
                     "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "airborne_arrival": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
+                    "g": 222,
+                    "b": 167,
+                    "a": 225
                 }
-            },
-            "icon_style": "realistic",
-            "small_icon_boost": true,
-            "small_icon_boost_factor": 1,
-            "small_icon_boost_resolution_preset": "2k",
-            "fixed_pixel_icon_size": false,
-            "fixed_pixel_icon_scale": 1
+            }
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -2098,11 +2078,41 @@
         },
         "targets": {
             "show_primary_target": true,
-            "ground_icons": {
+            "icon_style": "realistic",
+            "small_icon_boost": true,
+            "small_icon_boost_factor": 0.75,
+            "small_icon_boost_resolution_preset": "4k",
+            "fixed_pixel_icon_size": true,
+            "fixed_pixel_icon_scale": 1,
+            "departure": {
+                "airborne": {
+                    "r": 240,
+                    "g": 240,
+                    "b": 240,
+                    "a": 255
+                },
+                "departure": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
                 "gate": {
-                    "r": 48,
-                    "g": 68,
-                    "b": 96,
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "no_fpl": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "no_status": {
+                    "r": 255,
+                    "g": 0,
+                    "b": 0,
                     "a": 255
                 },
                 "push": {
@@ -2111,7 +2121,7 @@
                     "b": 255,
                     "a": 255
                 },
-                "stup": {
+                "startup": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
@@ -2122,68 +2132,28 @@
                     "g": 255,
                     "b": 255,
                     "a": 255
-                },
-                "depa": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arr": {
-                    "r": 195,
-                    "g": 193,
-                    "b": 206,
-                    "a": 255
-                },
-                "arrival_taxi": {
-                    "r": 195,
-                    "g": 193,
-                    "b": 206,
-                    "a": 255
-                },
-                "nsts": {
-                    "r": 255,
-                    "g": 0,
-                    "b": 0,
-                    "a": 255
-                },
-                "departure_gate": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arrival_gate": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "airborne_departure": {
-                    "r": 240,
-                    "g": 240,
-                    "b": 240,
-                    "a": 255
-                },
-                "airborne_arrival": {
+                }
+            },
+            "arrival": {
+                "airborne": {
                     "r": 120,
                     "g": 190,
                     "b": 240,
                     "a": 255
                 },
-                "nofpl": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
+                "gate": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "on_ground": {
+                    "r": 195,
+                    "g": 193,
+                    "b": 206,
                     "a": 255
                 }
-            },
-            "icon_style": "realistic",
-            "small_icon_boost": true,
-            "small_icon_boost_factor": 0.75,
-            "small_icon_boost_resolution_preset": "4k",
-            "fixed_pixel_icon_size": true,
-            "fixed_pixel_icon_scale": 1
+            }
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -2411,7 +2381,8 @@
                 "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
                 "background_no_fpl_color": {
                     "r": 33,
@@ -2641,7 +2612,8 @@
                 "text_on_ground_color": {
                     "r": 255,
                     "g": 255,
-                    "b": 255
+                    "b": 255,
+                    "a": 255
                 },
                 "background_no_fpl_color": {
                     "r": 178,
@@ -2828,14 +2800,50 @@
         },
         "targets": {
             "show_primary_target": true,
-            "ground_icons": {
+            "icon_style": "triangle",
+            "small_icon_boost": false,
+            "small_icon_boost_factor": 1,
+            "small_icon_boost_resolution_preset": "1080p",
+            "fixed_pixel_icon_size": true,
+            "fixed_pixel_icon_scale": 0.5,
+            "departure": {
+                "airborne": {
+                    "r": 240,
+                    "g": 240,
+                    "b": 240,
+                    "a": 255
+                },
+                "departure": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "gate": {
+                    "r": 249,
+                    "g": 249,
+                    "b": 255,
+                    "a": 216
+                },
+                "no_fpl": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "no_status": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
                 "push": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
                     "a": 255
                 },
-                "stup": {
+                "startup": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
@@ -2846,74 +2854,28 @@
                     "g": 255,
                     "b": 255,
                     "a": 255
-                },
-                "depa": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arr": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 200
-                },
-                "arrival_taxi": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 200
-                },
-                "nsts": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "departure_gate": {
-                    "r": 249,
-                    "g": 249,
-                    "b": 255,
-                    "a": 216
-                },
-                "arrival_gate": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 200
-                },
-                "gate": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "airborne_departure": {
-                    "r": 240,
-                    "g": 240,
-                    "b": 240,
-                    "a": 255
-                },
-                "airborne_arrival": {
+                }
+            },
+            "arrival": {
+                "airborne": {
                     "r": 120,
                     "g": 190,
                     "b": 240,
                     "a": 255
                 },
-                "nofpl": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
+                "gate": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 200
+                },
+                "on_ground": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 200
                 }
-            },
-            "icon_style": "triangle",
-            "small_icon_boost": false,
-            "small_icon_boost_factor": 1,
-            "small_icon_boost_resolution_preset": "1080p",
-            "fixed_pixel_icon_size": true,
-            "fixed_pixel_icon_scale": 0.5
+            }
         },
         "approach_insets": {
             "extended_lines_length": 15,
@@ -3483,14 +3445,50 @@
         },
         "targets": {
             "show_primary_target": true,
-            "ground_icons": {
+            "icon_style": "realistic",
+            "small_icon_boost": false,
+            "small_icon_boost_factor": 1,
+            "small_icon_boost_resolution_preset": "1080p",
+            "fixed_pixel_icon_size": false,
+            "fixed_pixel_icon_scale": 1,
+            "departure": {
+                "airborne": {
+                    "r": 240,
+                    "g": 240,
+                    "b": 240,
+                    "a": 255
+                },
+                "departure": {
+                    "r": 255,
+                    "g": 255,
+                    "b": 255,
+                    "a": 255
+                },
+                "gate": {
+                    "r": 44,
+                    "g": 68,
+                    "b": 100,
+                    "a": 255
+                },
+                "no_fpl": {
+                    "r": 128,
+                    "g": 128,
+                    "b": 128,
+                    "a": 255
+                },
+                "no_status": {
+                    "r": 165,
+                    "g": 165,
+                    "b": 165,
+                    "a": 255
+                },
                 "push": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
                     "a": 255
                 },
-                "stup": {
+                "startup": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
@@ -3501,56 +3499,10 @@
                     "g": 255,
                     "b": 255,
                     "a": 255
-                },
-                "depa": {
-                    "r": 255,
-                    "g": 255,
-                    "b": 255,
-                    "a": 255
-                },
-                "arr": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "arrival_taxi": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "nsts": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "nofpl": {
-                    "r": 128,
-                    "g": 128,
-                    "b": 128,
-                    "a": 255
-                },
-                "departure_gate": {
-                    "r": 44,
-                    "g": 68,
-                    "b": 100,
-                    "a": 255
-                },
-                "arrival_gate": {
-                    "r": 165,
-                    "g": 165,
-                    "b": 165,
-                    "a": 255
-                },
-                "airborne_departure": {
-                    "r": 240,
-                    "g": 240,
-                    "b": 240,
-                    "a": 255
-                },
-                "airborne_arrival": {
+                }
+            },
+            "arrival": {
+                "airborne": {
                     "r": 255,
                     "g": 255,
                     "b": 255,
@@ -3561,14 +3513,14 @@
                     "g": 165,
                     "b": 165,
                     "a": 255
+                },
+                "on_ground": {
+                    "r": 165,
+                    "g": 165,
+                    "b": 165,
+                    "a": 255
                 }
-            },
-            "icon_style": "realistic",
-            "small_icon_boost": false,
-            "small_icon_boost_factor": 1,
-            "small_icon_boost_resolution_preset": "1080p",
-            "fixed_pixel_icon_size": false,
-            "fixed_pixel_icon_scale": 1
+            }
         },
         "approach_insets": {
             "extended_lines_length": 15,

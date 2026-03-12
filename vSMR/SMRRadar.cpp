@@ -1025,21 +1025,58 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureBoolMember(targets, "fixed_pixel_icon_size", false);
 	ensureDoubleMember(targets, "fixed_pixel_icon_scale", 1.0, 0.1, 3.0);
 
-	Value& groundIcons = ensureObjectMember(targets, "ground_icons");
+	Value* legacyGroundIcons = nullptr;
+	if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject())
+		legacyGroundIcons = &targets["ground_icons"];
 
-	ensureColorMember(groundIcons, "gate", 165, 165, 165, 255);
-	ensureColorMember(groundIcons, "departure_gate", 165, 165, 165, 255);
-	ensureColorMember(groundIcons, "arrival_gate", 165, 165, 165, 255);
-	ensureColorMember(groundIcons, "push", 253, 218, 13, 255);
-	ensureColorMember(groundIcons, "stup", 253, 218, 13, 255);
-	ensureColorMember(groundIcons, "taxi", 240, 240, 240, 255);
-	ensureColorMember(groundIcons, "depa", 240, 240, 240, 255);
-	ensureColorMember(groundIcons, "arr", 165, 165, 165, 255);
-	ensureColorMember(groundIcons, "airborne_departure", 240, 240, 240, 255);
-	ensureColorMember(groundIcons, "airborne_arrival", 120, 190, 240, 255);
-	ensureColorMember(groundIcons, "arrival_taxi", 70, 195, 120, 255);
-	ensureColorMember(groundIcons, "nsts", 165, 165, 165, 255);
-	ensureColorMember(groundIcons, "nofpl", 128, 128, 128, 255);
+	Value& departureIcons = ensureObjectMember(targets, "departure");
+	Value& arrivalIcons = ensureObjectMember(targets, "arrival");
+
+	auto migrateTargetIconColor = [&](Value& destination, const char* destinationKey, int r, int g, int b, int a, const char* legacyPrimary, const char* legacySecondary = nullptr, const char* legacyTertiary = nullptr)
+	{
+		if ((!destination.HasMember(destinationKey) || !destination[destinationKey].IsObject()) && legacyGroundIcons != nullptr)
+		{
+			const Value* sourceColor = nullptr;
+			auto pickLegacyColor = [&](const char* legacyKey) -> bool
+			{
+				if (legacyKey == nullptr || !legacyGroundIcons->HasMember(legacyKey))
+					return false;
+				const Value& candidate = (*legacyGroundIcons)[legacyKey];
+				if (!candidate.IsObject())
+					return false;
+				sourceColor = &candidate;
+				return true;
+			};
+
+			if (!pickLegacyColor(legacyPrimary))
+				if (!pickLegacyColor(legacySecondary))
+					pickLegacyColor(legacyTertiary);
+
+			if (sourceColor != nullptr)
+				replaceColorMember(destination, destinationKey, *sourceColor);
+		}
+
+		ensureColorMember(destination, destinationKey, r, g, b, a);
+	};
+
+	migrateTargetIconColor(departureIcons, "airborne", 240, 240, 240, 255, "airborne_departure");
+	migrateTargetIconColor(departureIcons, "departure", 240, 240, 240, 255, "depa");
+	migrateTargetIconColor(departureIcons, "gate", 165, 165, 165, 255, "departure_gate", "gate");
+	migrateTargetIconColor(departureIcons, "no_fpl", 128, 128, 128, 255, "nofpl");
+	migrateTargetIconColor(departureIcons, "no_status", 165, 165, 165, 255, "nsts");
+	migrateTargetIconColor(departureIcons, "push", 253, 218, 13, 255, "push");
+	migrateTargetIconColor(departureIcons, "startup", 253, 218, 13, 255, "stup");
+	migrateTargetIconColor(departureIcons, "taxi", 240, 240, 240, 255, "taxi");
+
+	migrateTargetIconColor(arrivalIcons, "airborne", 120, 190, 240, 255, "airborne_arrival");
+	migrateTargetIconColor(arrivalIcons, "gate", 165, 165, 165, 255, "arrival_gate", "gate");
+	migrateTargetIconColor(arrivalIcons, "on_ground", 165, 165, 165, 255, "arr", "arrival_taxi");
+
+	if (targets.HasMember("ground_icons"))
+	{
+		targets.RemoveMember("ground_icons");
+		changed = true;
+	}
 
 	if (!profile.HasMember("sid_text_colors") || !profile["sid_text_colors"].IsArray())
 	{
@@ -3208,28 +3245,119 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				return false;
 			return true;
 		};
+		const Value* targetsConfig = nullptr;
+		if (CurrentConfig != nullptr)
+		{
+			const Value& profile = CurrentConfig->getActiveProfile();
+			if (profile.IsObject() && profile.HasMember("targets") && profile["targets"].IsObject())
+				targetsConfig = &profile["targets"];
+		}
+		auto tryReadColorFromObject = [&](const Value& parentObject, const char* key, Color& outColor) -> bool
+		{
+			if (key == nullptr || key[0] == '\0')
+				return false;
+			if (!parentObject.HasMember(key))
+				return false;
+			const Value& iconColor = parentObject[key];
+			if (!isValidColorObject(iconColor))
+				return false;
+			outColor = CurrentConfig->getConfigColor(iconColor);
+			return true;
+		};
 		auto getGroundIconColor = [&](const char* key, Color fallback) -> Color
 		{
-			if (CurrentConfig == nullptr || key == nullptr || key[0] == '\0')
+			if (targetsConfig == nullptr || key == nullptr || key[0] == '\0')
 				return fallback;
 
-			const Value& profile = CurrentConfig->getActiveProfile();
-			if (!profile.IsObject() || !profile.HasMember("targets") || !profile["targets"].IsObject())
-				return fallback;
+			const Value& targets = *targetsConfig;
+			Color resolvedColor;
+			auto tryGetFromSection = [&](const char* sectionKey, const char* sectionColorKey) -> bool
+			{
+				if (sectionKey == nullptr || sectionColorKey == nullptr)
+					return false;
+				if (!targets.HasMember(sectionKey) || !targets[sectionKey].IsObject())
+					return false;
+				return tryReadColorFromObject(targets[sectionKey], sectionColorKey, resolvedColor);
+			};
 
-			const Value& targets = profile["targets"];
-			if (!targets.HasMember("ground_icons") || !targets["ground_icons"].IsObject())
-				return fallback;
+			if (_stricmp(key, "airborne_departure") == 0 || _stricmp(key, "departure_airborne") == 0)
+			{
+				if (tryGetFromSection("departure", "airborne"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0)
+			{
+				if (tryGetFromSection("departure", "departure"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "departure_gate") == 0)
+			{
+				if (tryGetFromSection("departure", "gate"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "nofpl") == 0 || _stricmp(key, "no_fpl") == 0)
+			{
+				if (tryGetFromSection("departure", "no_fpl"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "nsts") == 0 || _stricmp(key, "no_status") == 0)
+			{
+				if (tryGetFromSection("departure", "no_status"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "push") == 0)
+			{
+				if (tryGetFromSection("departure", "push"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "stup") == 0 || _stricmp(key, "startup") == 0)
+			{
+				if (tryGetFromSection("departure", "startup"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "taxi") == 0)
+			{
+				if (tryGetFromSection("departure", "taxi"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "airborne_arrival") == 0 || _stricmp(key, "arrival_airborne") == 0)
+			{
+				if (tryGetFromSection("arrival", "airborne"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "arrival_gate") == 0)
+			{
+				if (tryGetFromSection("arrival", "gate"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "arr") == 0 || _stricmp(key, "arrival_taxi") == 0 || _stricmp(key, "on_ground") == 0)
+			{
+				if (tryGetFromSection("arrival", "on_ground"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "gate") == 0)
+			{
+				if (tryGetFromSection("departure", "gate"))
+					return resolvedColor;
+				if (tryGetFromSection("arrival", "gate"))
+					return resolvedColor;
+			}
+			else
+			{
+				// Also support direct access to already-migrated section keys when used internally.
+				if (tryGetFromSection("departure", key))
+					return resolvedColor;
+				if (tryGetFromSection("arrival", key))
+					return resolvedColor;
+			}
 
-			const Value& groundIcons = targets["ground_icons"];
-			if (!groundIcons.HasMember(key))
-				return fallback;
+			if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject() &&
+				tryReadColorFromObject(targets["ground_icons"], key, resolvedColor))
+			{
+				return resolvedColor;
+			}
 
-			const Value& iconColor = groundIcons[key];
-			if (!isValidColorObject(iconColor))
-				return fallback;
-
-			return CurrentConfig->getConfigColor(iconColor);
+			return fallback;
 		};
 		auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
 		{
@@ -3433,6 +3561,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					applyTint = true;
 					break;
 				case GroundStateCategory::Arr:
+				case GroundStateCategory::Taxi:
 					tintColor = ColorManager->get_corrected_color("symbol",
 						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
 					applyTint = true;
@@ -3440,10 +3569,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				case GroundStateCategory::Push:
 				case GroundStateCategory::Stup:
 					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 90, 150, 235)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Taxi:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("arrival_taxi", getGroundIconColor("taxi", Color(255, 70, 195, 120))));
 					applyTint = true;
 					break;
 				default:
@@ -3581,6 +3706,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					applyTint = true;
 					break;
 				case GroundStateCategory::Arr:
+				case GroundStateCategory::Taxi:
 					tintColor = ColorManager->get_corrected_color("symbol",
 						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
 					applyTint = true;
@@ -3588,10 +3714,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				case GroundStateCategory::Push:
 				case GroundStateCategory::Stup:
 					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 90, 150, 235)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Taxi:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("arrival_taxi", getGroundIconColor("taxi", Color(255, 70, 195, 120))));
 					applyTint = true;
 					break;
 				default:
