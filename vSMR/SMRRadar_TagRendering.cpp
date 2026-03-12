@@ -534,6 +534,18 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		auto inserted = tagDefinitionCache.emplace(cacheKey, std::move(entry));
 		return &inserted.first->second;
 	};
+	auto hasStatusDefinition = [&](const std::string& tagTypeKey, const char* statusDefinitionKey) -> bool
+	{
+		if (statusDefinitionKey == nullptr || statusDefinitionKey[0] == '\0')
+			return false;
+		if (!LabelsSettings.HasMember(tagTypeKey.c_str()) || !LabelsSettings[tagTypeKey.c_str()].IsObject())
+			return false;
+		const Value& labelSection = LabelsSettings[tagTypeKey.c_str()];
+		if (!labelSection.HasMember("status_definitions") || !labelSection["status_definitions"].IsObject())
+			return false;
+		return labelSection["status_definitions"].HasMember(statusDefinitionKey) &&
+			labelSection["status_definitions"][statusDefinitionKey].IsObject();
+	};
 
 	CRadarTarget rt;
 	CRadarTarget aselTarget = GetPlugIn()->RadarTargetSelectASEL();
@@ -735,7 +747,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		bool isTagDetailled = isMouseWithin(previousRect) || isTagBeingDragged(rtCallsign);
 		verboseTargetStep(rtCallsign, std::string("detail_mode=") + (isTagDetailled ? "1" : "0"));
 
-		const std::string tagTypeKey = TagTypeToConfigKey(TagType);
+		std::string ruleTagTypeKey = TagTypeToConfigKey(TagType);
+		std::string definitionTagTypeKey = ruleTagTypeKey;
 		verboseTargetStep(rtCallsign, "before_onrunway_lookup");
 
 		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
@@ -757,10 +770,14 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				isAirborneArrival = true;
 			}
 
-			if (isAirborneArrival)
-				statusDefinitionKey = targetOnRunway ? "airarr_onrunway" : "airarr";
+			definitionTagTypeKey = isAirborneArrival ? "arrival" : "departure";
+			ruleTagTypeKey = definitionTagTypeKey;
+			const char* airborneStatusKey = isAirborneArrival ? "airarr" : "airdep";
+			const char* onRunwayStatusKey = isAirborneArrival ? "airarr_onrunway" : "airdep_onrunway";
+			if (targetOnRunway && hasStatusDefinition(definitionTagTypeKey, onRunwayStatusKey))
+				statusDefinitionKey = onRunwayStatusKey;
 			else
-				statusDefinitionKey = targetOnRunway ? "airdep_onrunway" : "airdep";
+				statusDefinitionKey = airborneStatusKey;
 		}
 		else if (fp.IsValid())
 		{
@@ -794,7 +811,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			}
 		}
 
-		const TagDefinitionCacheEntry* cachedTagDefinition = getCachedTagDefinition(tagTypeKey, isTagDetailled, statusDefinitionKey);
+		const TagDefinitionCacheEntry* cachedTagDefinition = getCachedTagDefinition(definitionTagTypeKey, isTagDetailled, statusDefinitionKey);
 		if (cachedTagDefinition == nullptr)
 			continue;
 		verboseTargetStep(rtCallsign, "after_tag_definition");
@@ -843,7 +860,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		const VacdmColorRuleOverrides structuredTagColorOverrides =
 			EvaluateStructuredTagColorRules(
 				structuredTagRules,
-				tagTypeKey,
+				ruleTagTypeKey,
 				statusDefinitionKey,
 				isTagDetailled,
 				TagReplacingMap,

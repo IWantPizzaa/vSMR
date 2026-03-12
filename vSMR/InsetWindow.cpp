@@ -634,7 +634,67 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		}
 
 		const Value& LabelsSettings = radar_screen->CurrentConfig->getActiveProfile()["labels"];
-		const Value& LabelLines = LabelsSettings[Utils::getEnumString(TagType).c_str()]["definition"];
+		auto hasStatusDefinition = [&](const std::string& typeKey, const char* statusKey) -> bool
+		{
+			if (statusKey == nullptr || statusKey[0] == '\0')
+				return false;
+			if (!LabelsSettings.HasMember(typeKey.c_str()) || !LabelsSettings[typeKey.c_str()].IsObject())
+				return false;
+			const Value& section = LabelsSettings[typeKey.c_str()];
+			if (!section.HasMember("status_definitions") || !section["status_definitions"].IsObject())
+				return false;
+			return section["status_definitions"].HasMember(statusKey) && section["status_definitions"][statusKey].IsObject();
+		};
+		auto resolveDefinitionLines = [&](const std::string& typeKey, const char* statusKey) -> const Value*
+		{
+			if (!LabelsSettings.HasMember(typeKey.c_str()) || !LabelsSettings[typeKey.c_str()].IsObject())
+				return nullptr;
+
+			const Value& section = LabelsSettings[typeKey.c_str()];
+			if (statusKey != nullptr &&
+				section.HasMember("status_definitions") &&
+				section["status_definitions"].IsObject() &&
+				section["status_definitions"].HasMember(statusKey) &&
+				section["status_definitions"][statusKey].IsObject() &&
+				section["status_definitions"][statusKey].HasMember("definition") &&
+				section["status_definitions"][statusKey]["definition"].IsArray())
+			{
+				return &section["status_definitions"][statusKey]["definition"];
+			}
+
+			if (section.HasMember("definition") && section["definition"].IsArray())
+				return &section["definition"];
+			return nullptr;
+		};
+
+		std::string definitionTypeKey = Utils::getEnumString(TagType);
+		const char* definitionStatusKey = nullptr;
+		if (TagReplacingMap["actype"] == "NoFPL" && (TagType == CSMRRadar::TagTypes::Departure || TagType == CSMRRadar::TagTypes::Arrival))
+		{
+			definitionStatusKey = "nofpl";
+		}
+		else if (TagType == CSMRRadar::TagTypes::Airborne)
+		{
+			bool isAirborneArrival = false;
+			if (fpDestination != nullptr &&
+				strcmp(fpDestination, radar_screen->getActiveAirport().c_str()) == 0)
+			{
+				isAirborneArrival = true;
+			}
+			definitionTypeKey = isAirborneArrival ? "arrival" : "departure";
+			const char* airborneStatusKey = isAirborneArrival ? "airarr" : "airdep";
+			const char* onRunwayStatusKey = isAirborneArrival ? "airarr_onrunway" : "airdep_onrunway";
+			const bool targetOnRunway = radar_screen->RimcasInstance->isAcOnRunway(rtCallsign);
+			if (targetOnRunway && hasStatusDefinition(definitionTypeKey, onRunwayStatusKey))
+				definitionStatusKey = onRunwayStatusKey;
+			else
+				definitionStatusKey = airborneStatusKey;
+		}
+
+		const Value* labelLinesPtr = resolveDefinitionLines(definitionTypeKey, definitionStatusKey);
+		if (labelLinesPtr == nullptr)
+			continue;
+		const Value& LabelLines = *labelLinesPtr;
 		struct RenderedTagElement
 		{
 			std::string token;
@@ -651,7 +711,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 		vector<vector<RenderedTagElement>> ReplacedLabelLines;
 
 		if (!LabelLines.IsArray())
-			return;
+			continue;
 
 		for (unsigned int i = 0; i < LabelLines.Size(); i++)
 		{
