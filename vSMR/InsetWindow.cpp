@@ -482,14 +482,27 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					if (profile.HasMember("filters") &&
 						profile["filters"].IsObject() &&
 						profile["filters"].HasMember("pro_mode") &&
-						profile["filters"]["pro_mode"].IsObject() &&
-						profile["filters"]["pro_mode"].HasMember("enable") &&
-						profile["filters"]["pro_mode"]["enable"].IsBool())
+						profile["filters"]["pro_mode"].IsObject())
 					{
-						tagProModeEnabled = profile["filters"]["pro_mode"]["enable"].GetBool();
+						const Value& proMode = profile["filters"]["pro_mode"];
+						if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+						{
+							tagProModeEnabled = proMode["enabled"].GetBool();
+						}
+						else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+						{
+							tagProModeEnabled = proMode["enable"].GetBool();
+						}
 					}
 
 					if (profile.HasMember("labels") &&
+						profile["labels"].IsObject() &&
+						profile["labels"].HasMember("use_speed_for_gate") &&
+						profile["labels"]["use_speed_for_gate"].IsBool())
+					{
+						useAspeedForGate = profile["labels"]["use_speed_for_gate"].GetBool();
+					}
+					else if (profile.HasMember("labels") &&
 						profile["labels"].IsObject() &&
 						profile["labels"].HasMember("use_aspeed_for_gate") &&
 						profile["labels"]["use_aspeed_for_gate"].IsBool())

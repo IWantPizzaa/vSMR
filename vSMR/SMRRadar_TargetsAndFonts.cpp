@@ -167,10 +167,11 @@ double CSMRRadar::GetFixedPixelTriangleIconScale() const
 		return 1.0;
 
 	const Value& targets = profile["targets"];
-	if (!targets.HasMember("fixed_pixel_triangle_scale") || !targets["fixed_pixel_triangle_scale"].IsNumber())
-		return 1.0;
-
-	return std::clamp(targets["fixed_pixel_triangle_scale"].GetDouble(), 0.1, 3.0);
+	if (targets.HasMember("fixed_pixel_icon_scale") && targets["fixed_pixel_icon_scale"].IsNumber())
+		return std::clamp(targets["fixed_pixel_icon_scale"].GetDouble(), 0.1, 3.0);
+	if (targets.HasMember("fixed_pixel_triangle_scale") && targets["fixed_pixel_triangle_scale"].IsNumber())
+		return std::clamp(targets["fixed_pixel_triangle_scale"].GetDouble(), 0.1, 3.0);
+	return 1.0;
 }
 
 bool CSMRRadar::SetFixedPixelTriangleIconScale(double scale, bool persistToDisk)
@@ -200,21 +201,27 @@ bool CSMRRadar::SetFixedPixelTriangleIconScale(double scale, bool persistToDisk)
 	}
 
 	Value& targets = profile["targets"];
-	if (!targets.HasMember("fixed_pixel_triangle_scale") || !targets["fixed_pixel_triangle_scale"].IsNumber())
+	if (targets.HasMember("fixed_pixel_triangle_scale"))
 	{
-		if (targets.HasMember("fixed_pixel_triangle_scale"))
-			targets.RemoveMember("fixed_pixel_triangle_scale");
+		targets.RemoveMember("fixed_pixel_triangle_scale");
+		changed = true;
+	}
+
+	if (!targets.HasMember("fixed_pixel_icon_scale") || !targets["fixed_pixel_icon_scale"].IsNumber())
+	{
+		if (targets.HasMember("fixed_pixel_icon_scale"))
+			targets.RemoveMember("fixed_pixel_icon_scale");
 
 		Value key;
-		key.SetString("fixed_pixel_triangle_scale", allocator);
+		key.SetString("fixed_pixel_icon_scale", allocator);
 		Value numberValue;
 		numberValue.SetDouble(scale);
 		targets.AddMember(key, numberValue, allocator);
 		changed = true;
 	}
-	else if (fabs(targets["fixed_pixel_triangle_scale"].GetDouble() - scale) > 0.0001)
+	else if (fabs(targets["fixed_pixel_icon_scale"].GetDouble() - scale) > 0.0001)
 	{
-		targets["fixed_pixel_triangle_scale"].SetDouble(scale);
+		targets["fixed_pixel_icon_scale"].SetDouble(scale);
 		changed = true;
 	}
 
@@ -387,10 +394,11 @@ std::string CSMRRadar::GetSmallTargetIconBoostResolutionPreset() const
 		return "1080p";
 
 	const Value& targets = profile["targets"];
-	if (!targets.HasMember("small_icon_boost_resolution") || !targets["small_icon_boost_resolution"].IsString())
-		return "1080p";
-
-	return NormalizeSmallTargetIconBoostResolutionPreset(targets["small_icon_boost_resolution"].GetString());
+	if (targets.HasMember("small_icon_boost_resolution_preset") && targets["small_icon_boost_resolution_preset"].IsString())
+		return NormalizeSmallTargetIconBoostResolutionPreset(targets["small_icon_boost_resolution_preset"].GetString());
+	if (targets.HasMember("small_icon_boost_resolution") && targets["small_icon_boost_resolution"].IsString())
+		return NormalizeSmallTargetIconBoostResolutionPreset(targets["small_icon_boost_resolution"].GetString());
+	return "1080p";
 }
 
 bool CSMRRadar::SetSmallTargetIconBoostResolutionPreset(const std::string& preset, bool persistToDisk)
@@ -420,21 +428,27 @@ bool CSMRRadar::SetSmallTargetIconBoostResolutionPreset(const std::string& prese
 	}
 
 	Value& targets = profile["targets"];
-	if (!targets.HasMember("small_icon_boost_resolution") || !targets["small_icon_boost_resolution"].IsString())
+	if (targets.HasMember("small_icon_boost_resolution"))
 	{
-		if (targets.HasMember("small_icon_boost_resolution"))
-			targets.RemoveMember("small_icon_boost_resolution");
+		targets.RemoveMember("small_icon_boost_resolution");
+		changed = true;
+	}
+
+	if (!targets.HasMember("small_icon_boost_resolution_preset") || !targets["small_icon_boost_resolution_preset"].IsString())
+	{
+		if (targets.HasMember("small_icon_boost_resolution_preset"))
+			targets.RemoveMember("small_icon_boost_resolution_preset");
 
 		Value key;
-		key.SetString("small_icon_boost_resolution", allocator);
+		key.SetString("small_icon_boost_resolution_preset", allocator);
 		Value presetValue;
 		presetValue.SetString(normalizedPreset.c_str(), static_cast<rapidjson::SizeType>(normalizedPreset.size()), allocator);
 		targets.AddMember(key, presetValue, allocator);
 		changed = true;
 	}
-	else if (normalizedPreset != targets["small_icon_boost_resolution"].GetString())
+	else if (normalizedPreset != targets["small_icon_boost_resolution_preset"].GetString())
 	{
-		targets["small_icon_boost_resolution"].SetString(normalizedPreset.c_str(), static_cast<rapidjson::SizeType>(normalizedPreset.size()), allocator);
+		targets["small_icon_boost_resolution_preset"].SetString(normalizedPreset.c_str(), static_cast<rapidjson::SizeType>(normalizedPreset.size()), allocator);
 		changed = true;
 	}
 

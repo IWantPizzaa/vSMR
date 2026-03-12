@@ -534,13 +534,17 @@ bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition() const
 		return false;
 
 	const rapidjson::Value& labels = profile["labels"];
-	if (!labels.HasMember("definition_detailed_same_as_definition") ||
-		!labels["definition_detailed_same_as_definition"].IsBool())
+	if (labels.HasMember("definition_detailed_inherits_normal") &&
+		labels["definition_detailed_inherits_normal"].IsBool())
 	{
-		return false;
+		return labels["definition_detailed_inherits_normal"].GetBool();
 	}
-
-	return labels["definition_detailed_same_as_definition"].GetBool();
+	if (labels.HasMember("definition_detailed_same_as_definition") &&
+		labels["definition_detailed_same_as_definition"].IsBool())
+	{
+		return labels["definition_detailed_same_as_definition"].GetBool();
+	}
+	return false;
 }
 
 bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk)
@@ -570,21 +574,26 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, 
 
 	rapidjson::Value& labels = ensureObjectMember(profile, "labels");
 	bool changed = false;
-	if (!labels.HasMember("definition_detailed_same_as_definition") ||
-		!labels["definition_detailed_same_as_definition"].IsBool())
+	if (labels.HasMember("definition_detailed_same_as_definition"))
 	{
-		if (labels.HasMember("definition_detailed_same_as_definition"))
-			labels.RemoveMember("definition_detailed_same_as_definition");
+		labels.RemoveMember("definition_detailed_same_as_definition");
+		changed = true;
+	}
+	if (!labels.HasMember("definition_detailed_inherits_normal") ||
+		!labels["definition_detailed_inherits_normal"].IsBool())
+	{
+		if (labels.HasMember("definition_detailed_inherits_normal"))
+			labels.RemoveMember("definition_detailed_inherits_normal");
 
 		rapidjson::Value keyValue;
-		keyValue.SetString("definition_detailed_same_as_definition", allocator);
+		keyValue.SetString("definition_detailed_inherits_normal", allocator);
 		rapidjson::Value value(sameAsDefinition);
 		labels.AddMember(keyValue, value, allocator);
 		changed = true;
 	}
-	else if (labels["definition_detailed_same_as_definition"].GetBool() != sameAsDefinition)
+	else if (labels["definition_detailed_inherits_normal"].GetBool() != sameAsDefinition)
 	{
-		labels["definition_detailed_same_as_definition"].SetBool(sameAsDefinition);
+		labels["definition_detailed_inherits_normal"].SetBool(sameAsDefinition);
 		changed = true;
 	}
 
@@ -620,7 +629,8 @@ bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition(const std::string& type
 		return GetTagDefinitionDetailedSameAsDefinition();
 
 	const rapidjson::Value& section = labels[normalizedType.c_str()];
-	const char* key = "definition_detailed_same_as_definition";
+	const char* key = "definition_detailed_inherits_normal";
+	const char* legacyKey = "definition_detailed_same_as_definition";
 	if (normalizedStatus != "default")
 	{
 		if (section.HasMember("status_definitions") &&
@@ -631,11 +641,15 @@ bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition(const std::string& type
 			const rapidjson::Value& statusSection = section["status_definitions"][normalizedStatus.c_str()];
 			if (statusSection.HasMember(key) && statusSection[key].IsBool())
 				return statusSection[key].GetBool();
+			if (statusSection.HasMember(legacyKey) && statusSection[legacyKey].IsBool())
+				return statusSection[legacyKey].GetBool();
 		}
 	}
 
 	if (section.HasMember(key) && section[key].IsBool())
 		return section[key].GetBool();
+	if (section.HasMember(legacyKey) && section[legacyKey].IsBool())
+		return section[legacyKey].GetBool();
 
 	return GetTagDefinitionDetailedSameAsDefinition();
 }
@@ -683,8 +697,14 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(
 		targetSection = &ensureObjectMember(statusDefs, normalizedStatus.c_str());
 	}
 
-	const char* key = "definition_detailed_same_as_definition";
+	const char* key = "definition_detailed_inherits_normal";
+	const char* legacyKey = "definition_detailed_same_as_definition";
 	bool changed = false;
+	if (targetSection->HasMember(legacyKey))
+	{
+		targetSection->RemoveMember(legacyKey);
+		changed = true;
+	}
 	if (!targetSection->HasMember(key) || !(*targetSection)[key].IsBool())
 	{
 		if (targetSection->HasMember(key))
@@ -817,7 +837,8 @@ bool CSMRRadar::GetTagDefinitionArray(std::string type, bool detailed, rapidjson
 
 	rapidjson::Value& section = labels[type.c_str()];
 	rapidjson::Value* targetSection = &section;
-	const char* key = detailed ? "definitionDetailled" : "definition";
+	const char* key = detailed ? "definition_detailed" : "definition";
+	const char* legacyDetailedKey = "definitionDetailled";
 	std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(departureStatus);
 	if (!IsTagDefinitionStatusAllowedForType(type, normalizedStatus))
 		normalizedStatus = "default";
@@ -891,13 +912,23 @@ bool CSMRRadar::GetTagDefinitionArray(std::string type, bool detailed, rapidjson
 
 	if (!targetSection->HasMember(key))
 	{
+		if (detailed && targetSection->HasMember(legacyDetailedKey) && (*targetSection)[legacyDetailedKey].IsArray())
+		{
+			outArray = &(*targetSection)[legacyDetailedKey];
+			return true;
+		}
+
 		if (!createIfMissing)
 			return false;
 
 		rapidjson::Value newArray(rapidjson::kArrayType);
-		if (detailed && targetSection != &section && section.HasMember("definitionDetailled") && section["definitionDetailled"].IsArray())
+		if (detailed && targetSection != &section && section.HasMember("definition_detailed") && section["definition_detailed"].IsArray())
 		{
-			appendCopiedDefinition(newArray, section["definitionDetailled"]);
+			appendCopiedDefinition(newArray, section["definition_detailed"]);
+		}
+		else if (detailed && targetSection != &section && section.HasMember(legacyDetailedKey) && section[legacyDetailedKey].IsArray())
+		{
+			appendCopiedDefinition(newArray, section[legacyDetailedKey]);
 		}
 		else if (targetSection != &section && section.HasMember("definition") && section["definition"].IsArray())
 		{
