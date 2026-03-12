@@ -3083,7 +3083,7 @@ void CProfileEditorDialog::RebuildProfileList()
 	for (size_t i = 0; i < ProfileNames.size(); ++i)
 	{
 		ProfileList.AddString(ProfileNames[i].c_str());
-		if (!previousSelected.empty() && _stricmp(ProfileNames[i].c_str(), previousSelected.c_str()) == 0)
+		if (!activeProfile.empty() && _stricmp(ProfileNames[i].c_str(), activeProfile.c_str()) == 0)
 			selectedIndex = static_cast<int>(i);
 	}
 
@@ -3091,7 +3091,7 @@ void CProfileEditorDialog::RebuildProfileList()
 	{
 		for (size_t i = 0; i < ProfileNames.size(); ++i)
 		{
-			if (_stricmp(ProfileNames[i].c_str(), activeProfile.c_str()) == 0)
+			if (!previousSelected.empty() && _stricmp(ProfileNames[i].c_str(), previousSelected.c_str()) == 0)
 			{
 				selectedIndex = static_cast<int>(i);
 				break;
