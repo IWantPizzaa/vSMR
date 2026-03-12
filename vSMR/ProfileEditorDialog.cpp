@@ -278,6 +278,12 @@ namespace
 			return "Status Background Colors";
 		if (_stricmp(segment.c_str(), "sid_text_colors") == 0)
 			return "SID Text Colors";
+		if (_stricmp(segment.c_str(), "no_fpl") == 0)
+			return "No FPL";
+		if (_stricmp(segment.c_str(), "no_status") == 0)
+			return "No Status";
+		if (_stricmp(segment.c_str(), "on_ground") == 0)
+			return "On Ground";
 		if (_stricmp(segment.c_str(), "background_on_ground_color") == 0)
 			return "Background On Ground";
 		if (_stricmp(segment.c_str(), "background_on_runway_color") == 0 || _stricmp(segment.c_str(), "on_runway_color") == 0 || _stricmp(segment.c_str(), "background_color_on_runway") == 0)
