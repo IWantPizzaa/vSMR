@@ -681,9 +681,22 @@ public:
 	{
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
-		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
-		CurrentConfig->saveConfig();
-		delete RimcasInstance;
+
+		const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
+		const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
+		WriteLastActiveProfileToDisk(profileToPersist);
+		SaveDataToAsr("ActiveProfile", "vSMR active profile", profileToPersist.c_str());
+
+		if (CurrentConfig != nullptr)
+		{
+			// Reload before writing shutdown state so stale radar instances do not overwrite
+			// edits already saved by another screen during the session.
+			CurrentConfig->reload();
+			if (RimcasInstance != nullptr)
+				CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+			CurrentConfig->saveConfig();
+		}
+
 		delete this;
 	};
 };
