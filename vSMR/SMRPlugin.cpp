@@ -55,6 +55,7 @@ vector<string> AircraftMessageSent;
 vector<string> AircraftMessage;
 vector<string> AircraftWilco;
 vector<string> AircraftStandby;
+vector<string> AircraftCdmTobtReminderSent;
 map<string, AcarsMessage> PendingMessages;
 // Guards all mutable CPDLC message state used by worker threads.
 std::mutex DatalinkStateMutex;
@@ -280,6 +281,51 @@ namespace
 		VacdmLastSehCode.store(sehCode, std::memory_order_relaxed);
 		return EXCEPTION_EXECUTE_HANDLER;
 	}
+
+	bool HasConfirmedTobtState(const VacdmPilotData& pilotData)
+	{
+		const std::string state = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(pilotData.tobtState));
+		return state == "CONFIRMED";
+	}
+
+	bool SendDatalinkPacketMessage(const std::string& destination, const std::string& type, const std::string& packet, const std::string& callsign)
+	{
+		if (httpHelper == NULL)
+			return false;
+
+		string raw;
+		string url = baseUrlDatalink;
+		url += "?logon=";
+		url += logonCode;
+		url += "&from=";
+		url += logonCallsign;
+		url += "&to=";
+		url += destination;
+		url += "&type=";
+		url += type;
+		url += "&packet=";
+		url += packet;
+
+		size_t start_pos = 0;
+		while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
+			url.replace(start_pos, string(" ").length(), "%20");
+			start_pos += string("%20").length();
+		}
+
+		raw.assign(httpHelper->downloadStringFromURL(url));
+		if (!startsWith("ok", raw.c_str()))
+			return false;
+
+		if (!callsign.empty())
+		{
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			PendingMessages.erase(callsign);
+			RemoveCallsignUnlocked(AircraftMessage, callsign);
+			AddCallsignUniqueUnlocked(AircraftMessageSent, callsign);
+		}
+
+		return true;
+	}
 }
 
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
@@ -464,33 +510,7 @@ void sendDatalinkMessage(void * arg) {
 		localCallsign = DatalinkToSend.callsign;
 	}
 
-	string raw;
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=";
-	url += localDest;
-	url += "&type=";
-	url += localType;
-	url += "&packet=";
-	url += localMessage;
-
-	size_t start_pos = 0;
-	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
-		url.replace(start_pos, string(" ").length(), "%20");
-		start_pos += string("%20").length();
-	}
-
-	raw.assign(httpHelper->downloadStringFromURL(url));
-
-	if (startsWith("ok", raw.c_str())) {
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		PendingMessages.erase(localCallsign);
-		RemoveCallsignUnlocked(AircraftMessage, localCallsign);
-		AddCallsignUniqueUnlocked(AircraftMessageSent, localCallsign);
-	}
+	(void)SendDatalinkPacketMessage(localDest, localType, localMessage, localCallsign);
 };
 
 void pollMessages(void * arg) {
@@ -766,6 +786,107 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 				rd->ReloadConfig();
 		}
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json", true, true, false, true, false);
+		return true;
+	}
+	else if (commandLower == ".smr cdm")
+	{
+		if (!HoppieConnected.load())
+		{
+			DisplayUserMessage("vSMR", "CDM", "CPDLC connection is required (.smr connect).", true, true, false, true, false);
+			return true;
+		}
+
+		std::string activeAirportFilter;
+		for (auto* rd : RadarScreensOpened)
+		{
+			if (rd == nullptr)
+				continue;
+			activeAirportFilter = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rd->getActiveAirport()));
+			if (activeAirportFilter.size() > 4)
+				activeAirportFilter = activeAirportFilter.substr(0, 4);
+			break;
+		}
+
+		const std::string reminderPacket = "PLEASE CONFIRM YOUR TOBT IN VACDM";
+		std::vector<std::string> candidateCallsigns;
+		candidateCallsigns.reserve(256);
+
+		auto addUniqueCallsign = [&](const std::string& rawCallsign)
+		{
+			const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawCallsign));
+			if (callsign.empty())
+				return;
+			if (std::find(candidateCallsigns.begin(), candidateCallsigns.end(), callsign) == candidateCallsigns.end())
+				candidateCallsigns.push_back(callsign);
+		};
+
+		for (CRadarTarget rt = RadarTargetSelectFirst(); rt.IsValid(); rt = RadarTargetSelectNext(rt))
+		{
+			const char* radarCallsignRaw = rt.GetCallsign();
+			if (radarCallsignRaw == nullptr || radarCallsignRaw[0] == '\0')
+				continue;
+
+			CFlightPlan fp = FlightPlanSelect(radarCallsignRaw);
+			if (!fp.IsValid())
+				continue;
+
+			const char* originRaw = fp.GetFlightPlanData().GetOrigin();
+			const std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
+			if (!activeAirportFilter.empty() && origin != activeAirportFilter)
+				continue;
+
+			const char* fpCallsignRaw = fp.GetCallsign();
+			addUniqueCallsign(fpCallsignRaw != nullptr ? fpCallsignRaw : radarCallsignRaw);
+		}
+
+		int alreadyNotifiedCount = 0;
+		int confirmedCount = 0;
+		int sentCount = 0;
+		int failedCount = 0;
+		int missingVacdmCount = 0;
+
+		for (const std::string& callsign : candidateCallsigns)
+		{
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				if (ContainsCallsignUnlocked(AircraftCdmTobtReminderSent, callsign))
+				{
+					++alreadyNotifiedCount;
+					continue;
+				}
+			}
+
+			VacdmPilotData pilotData;
+			const bool hasVacdmData = TryGetVacdmPilotData(callsign, pilotData);
+			if (hasVacdmData && HasConfirmedTobtState(pilotData))
+			{
+				++confirmedCount;
+				continue;
+			}
+			if (!hasVacdmData)
+				++missingVacdmCount;
+
+			if (SendDatalinkPacketMessage(callsign, "TELEX", reminderPacket, callsign))
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				AddCallsignUniqueUnlocked(AircraftCdmTobtReminderSent, callsign);
+				++sentCount;
+			}
+			else
+			{
+				++failedCount;
+			}
+		}
+
+		const int checkedCount = static_cast<int>(candidateCallsigns.size());
+		std::string summary = "CDM check: ";
+		summary += std::to_string(checkedCount) + " checked, ";
+		summary += std::to_string(sentCount) + " messaged, ";
+		summary += std::to_string(confirmedCount) + " already confirmed, ";
+		summary += std::to_string(alreadyNotifiedCount) + " already notified, ";
+		summary += std::to_string(missingVacdmCount) + " missing VACDM, ";
+		summary += std::to_string(failedCount) + " failed.";
+		DisplayUserMessage("vSMR", "CDM", summary.c_str(), true, true, false, true, false);
 		return true;
 	}
 	else if (startsWithCommand(".smr log")) {
@@ -1202,6 +1323,11 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	const char* callsign = FlightPlan.GetCallsign();
 	if (callsign == nullptr || callsign[0] == '\0')
 		return;
+
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		RemoveCallsignUnlocked(AircraftCdmTobtReminderSent, callsign);
+	}
 
 	CRadarTarget rt = RadarTargetSelect(callsign);
 	const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
