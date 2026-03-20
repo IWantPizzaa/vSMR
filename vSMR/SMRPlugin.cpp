@@ -5,6 +5,7 @@
 #include <ctime>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cerrno>
 #include <fstream>
 #include "rapidjson/document.h"
@@ -56,6 +57,26 @@ vector<string> AircraftMessage;
 vector<string> AircraftWilco;
 vector<string> AircraftStandby;
 vector<string> AircraftCdmTobtReminderSent;
+
+std::atomic<bool> CdmAutoModeEnabled(false);
+std::atomic<int> CdmAutoDelayMinutes(5);
+
+enum class CdmAutoEligibility
+{
+	Pending = 0,
+	SuppressValidAtConnect,
+	NotifyAfterDelay,
+	NotifyImmediateExpiredAtConnect
+};
+
+struct CdmAutoTrackedAircraftState
+{
+	std::time_t connectedAtUtc = 0;
+	std::time_t dueAtUtc = 0;
+	CdmAutoEligibility eligibility = CdmAutoEligibility::Pending;
+};
+
+map<string, CdmAutoTrackedAircraftState> AircraftCdmAutoTracked;
 map<string, AcarsMessage> PendingMessages;
 // Guards all mutable CPDLC message state used by worker threads.
 std::mutex DatalinkStateMutex;
@@ -157,6 +178,106 @@ namespace
 			pushUnique(trimmed.substr(0, slashPos));
 
 		return candidates;
+	}
+
+	bool TryParseNonNegativeInt(const std::string& text, int& outValue)
+	{
+		outValue = 0;
+		const std::string trimmed = TrimAsciiWhitespaceCopy(text);
+		if (trimmed.empty())
+			return false;
+
+		char* end = nullptr;
+		const long parsed = std::strtol(trimmed.c_str(), &end, 10);
+		if (end == trimmed.c_str() || parsed < 0 || parsed > 24 * 60)
+			return false;
+
+		const std::string trailing = TrimAsciiWhitespaceCopy(end != nullptr ? std::string(end) : std::string());
+		if (!trailing.empty())
+			return false;
+
+		outValue = static_cast<int>(parsed);
+		return true;
+	}
+
+	bool IsNoStatusGroundState(const char* rawGroundState)
+	{
+		const std::string raw = rawGroundState != nullptr ? rawGroundState : "";
+		const std::string trimmed = TrimAsciiWhitespaceCopy(raw);
+		if (trimmed.empty())
+			return true;
+
+		std::string normalized;
+		normalized.reserve(trimmed.size());
+		for (char c : trimmed)
+		{
+			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
+				normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+		}
+
+		return normalized.empty() || normalized == "NSTS" || normalized == "NOSTATUS";
+	}
+
+	bool IsGroundTargetForCdm(const CFlightPlan& fp)
+	{
+		CRadarTarget correlatedTarget = fp.GetCorrelatedRadarTarget();
+		if (!correlatedTarget.IsValid())
+			return false;
+		return correlatedTarget.GetGS() <= 60;
+	}
+
+	std::string ResolveActiveAirportFilterUpper()
+	{
+		for (auto* rd : RadarScreensOpened)
+		{
+			if (rd == nullptr)
+				continue;
+			std::string airport = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rd->getActiveAirport()));
+			if (airport.size() > 4)
+				airport = airport.substr(0, 4);
+			return airport;
+		}
+
+		return "";
+	}
+
+	std::vector<std::string> CollectFlightPlanCandidateCallsignsForActiveAirport(EuroScopePlugIn::CPlugIn* plugIn)
+	{
+		std::vector<std::string> candidateCallsigns;
+		if (plugIn == nullptr)
+			return candidateCallsigns;
+
+		const std::string activeAirportFilter = ResolveActiveAirportFilterUpper();
+		candidateCallsigns.reserve(256);
+
+		auto addUniqueCallsign = [&](const std::string& rawCallsign)
+		{
+			const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawCallsign));
+			if (callsign.empty())
+				return;
+			if (std::find(candidateCallsigns.begin(), candidateCallsigns.end(), callsign) == candidateCallsigns.end())
+				candidateCallsigns.push_back(callsign);
+		};
+
+		for (CFlightPlan fp = plugIn->FlightPlanSelectFirst(); fp.IsValid(); fp = plugIn->FlightPlanSelectNext(fp))
+		{
+			const char* fpCallsignRaw = fp.GetCallsign();
+			if (fpCallsignRaw == nullptr || fpCallsignRaw[0] == '\0')
+				continue;
+
+			const char* originRaw = fp.GetFlightPlanData().GetOrigin();
+			const std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
+			if (!activeAirportFilter.empty() && origin != activeAirportFilter)
+				continue;
+			if (!IsGroundTargetForCdm(fp))
+				continue;
+			if (!IsNoStatusGroundState(fp.GetGroundState()))
+				continue;
+
+			addUniqueCallsign(fpCallsignRaw);
+		}
+
+		return candidateCallsigns;
 	}
 
 	bool ContainsCallsignUnlocked(const std::vector<std::string>& collection, const std::string& callsign)
@@ -288,6 +409,41 @@ namespace
 		return state == "CONFIRMED";
 	}
 
+	bool IsExpiredTobtAtConnectTime(const VacdmPilotData& pilotData, std::time_t connectedAtUtc)
+	{
+		if (!pilotData.hasTobt)
+			return false;
+		return std::difftime(connectedAtUtc, pilotData.tobtUtc) >= 0.0;
+	}
+
+	bool IsValidConfirmedTobtAtConnectTime(const VacdmPilotData& pilotData, std::time_t connectedAtUtc)
+	{
+		if (!HasConfirmedTobtState(pilotData) || !pilotData.hasTobt)
+			return false;
+		return std::difftime(pilotData.tobtUtc, connectedAtUtc) > 0.0;
+	}
+
+	const std::string CdmTobtReminderMessage =
+		"Hello, this is an automatic message.\n\n"
+		"CDM procedures are currently in use. As indicated in the ATIS, you must enter and confirm your TOBT "
+		"(Target Off-Block Time : the time you expect to be ready for pushback) at: https://cdm.vatsim.fr/ "
+		"This action is mandatory to receive clearance.\n\n"
+		"If any questions, please visit the briefing at : https://vats.im/cdm-brief ";
+
+	bool SendPrivateChatMessageLikeDotMsg(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign, const std::string& message)
+	{
+		if (plugIn == nullptr)
+			return false;
+
+		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
+		if (normalizedCallsign.empty() || message.empty())
+			return false;
+
+		// Use the aircraft callsign as chat handler and empty sender to render as controller-sent text.
+		plugIn->DisplayUserMessage(normalizedCallsign.c_str(), "", message.c_str(), true, true, false, true, false);
+		return true;
+	}
+
 	bool SendDatalinkPacketMessage(const std::string& destination, const std::string& type, const std::string& packet, const std::string& callsign)
 	{
 		if (httpHelper == NULL)
@@ -343,6 +499,113 @@ bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
 		}
 	}
 	return false;
+}
+
+void ProcessCdmAutoMode(CSMRPlugin* plugIn)
+{
+	if (plugIn == nullptr || !CdmAutoModeEnabled.load(std::memory_order_relaxed))
+		return;
+
+	int delayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
+	if (delayMinutes < 0)
+		delayMinutes = 0;
+	const std::time_t nowUtc = std::time(nullptr);
+	if (nowUtc <= 0)
+		return;
+
+	const std::vector<std::string> connectedCallsigns = CollectFlightPlanCandidateCallsignsForActiveAirport(plugIn);
+	std::vector<std::string> callsignsToMessage;
+	callsignsToMessage.reserve(connectedCallsigns.size());
+
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+
+		for (auto it = AircraftCdmAutoTracked.begin(); it != AircraftCdmAutoTracked.end();)
+		{
+			if (std::find(connectedCallsigns.begin(), connectedCallsigns.end(), it->first) == connectedCallsigns.end())
+				it = AircraftCdmAutoTracked.erase(it);
+			else
+				++it;
+		}
+
+		for (const std::string& callsign : connectedCallsigns)
+		{
+			auto trackedIt = AircraftCdmAutoTracked.find(callsign);
+			if (trackedIt == AircraftCdmAutoTracked.end())
+			{
+				CdmAutoTrackedAircraftState state;
+				state.connectedAtUtc = nowUtc;
+				state.dueAtUtc = nowUtc + static_cast<std::time_t>(delayMinutes) * 60;
+				state.eligibility = CdmAutoEligibility::Pending;
+				AircraftCdmAutoTracked.emplace(callsign, state);
+			}
+		}
+
+		for (const std::string& callsign : connectedCallsigns)
+		{
+			if (ContainsCallsignUnlocked(AircraftCdmTobtReminderSent, callsign))
+				continue;
+
+			auto trackedIt = AircraftCdmAutoTracked.find(callsign);
+			if (trackedIt == AircraftCdmAutoTracked.end())
+				continue;
+
+			CdmAutoTrackedAircraftState& tracked = trackedIt->second;
+			if (tracked.eligibility == CdmAutoEligibility::SuppressValidAtConnect)
+				continue;
+
+			if (tracked.eligibility == CdmAutoEligibility::Pending)
+			{
+				VacdmPilotData pilotData;
+				const bool hasVacdmData = TryGetVacdmPilotData(callsign, pilotData);
+				if (hasVacdmData)
+				{
+					if (IsExpiredTobtAtConnectTime(pilotData, tracked.connectedAtUtc))
+					{
+						tracked.eligibility = CdmAutoEligibility::NotifyImmediateExpiredAtConnect;
+						tracked.dueAtUtc = nowUtc;
+					}
+					else if (IsValidConfirmedTobtAtConnectTime(pilotData, tracked.connectedAtUtc))
+					{
+						tracked.eligibility = CdmAutoEligibility::SuppressValidAtConnect;
+					}
+					else
+					{
+						tracked.eligibility = CdmAutoEligibility::NotifyAfterDelay;
+						tracked.dueAtUtc = tracked.connectedAtUtc + static_cast<std::time_t>(delayMinutes) * 60;
+					}
+				}
+				else if (nowUtc >= tracked.connectedAtUtc + static_cast<std::time_t>(delayMinutes) * 60)
+				{
+					tracked.eligibility = CdmAutoEligibility::NotifyAfterDelay;
+					tracked.dueAtUtc = tracked.connectedAtUtc + static_cast<std::time_t>(delayMinutes) * 60;
+				}
+			}
+
+			if ((tracked.eligibility == CdmAutoEligibility::NotifyAfterDelay ||
+				tracked.eligibility == CdmAutoEligibility::NotifyImmediateExpiredAtConnect) &&
+				nowUtc >= tracked.dueAtUtc)
+			{
+				callsignsToMessage.push_back(callsign);
+			}
+		}
+	}
+
+	int sentCount = 0;
+	for (const std::string& callsign : callsignsToMessage)
+	{
+		if (!SendPrivateChatMessageLikeDotMsg(plugIn, callsign, CdmTobtReminderMessage))
+			continue;
+
+		{
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			AddCallsignUniqueUnlocked(AircraftCdmTobtReminderSent, callsign);
+		}
+		++sentCount;
+	}
+
+	if (sentCount > 0)
+		Logger::info("CDM auto reminder sent count=" + std::to_string(sentCount) + " delay_min=" + std::to_string(delayMinutes));
 }
 
 void refreshVacdmDataImpl(void* arg)
@@ -698,6 +961,14 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 		logonCode = p_value;
 	if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
 		PlaySoundClr = bool(!!atoi(p_value));
+	if ((p_value = GetDataFromSettings("cdm_auto_enabled")) != NULL)
+		CdmAutoModeEnabled.store(bool(!!atoi(p_value)), std::memory_order_relaxed);
+	if ((p_value = GetDataFromSettings("cdm_auto_delay_min")) != NULL)
+	{
+		int parsedDelayMinutes = 0;
+		if (TryParseNonNegativeInt(p_value, parsedDelayMinutes))
+			CdmAutoDelayMinutes.store(parsedDelayMinutes, std::memory_order_relaxed);
+	}
 
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
@@ -731,6 +1002,11 @@ CSMRPlugin::~CSMRPlugin()
 	if (PlaySoundClr)
 		temp = 1;
 	SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", std::to_string(temp).c_str());
+	SaveDataToSettings("cdm_auto_enabled", "Enable automatic CDM reminder messaging", CdmAutoModeEnabled.load(std::memory_order_relaxed) ? "1" : "0");
+	int cdmAutoDelayToPersist = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
+	if (cdmAutoDelayToPersist < 0)
+		cdmAutoDelayToPersist = 0;
+	SaveDataToSettings("cdm_auto_delay_min", "CDM auto reminder delay in minutes", std::to_string(cdmAutoDelayToPersist).c_str());
 
 	try
 	{
@@ -788,56 +1064,86 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json", true, true, false, true, false);
 		return true;
 	}
-	else if (commandLower == ".smr cdm")
+	else if (startsWithCommand(".smr cdm auto"))
 	{
-		if (!HoppieConnected.load())
+		const std::string prefix = ".smr cdm auto";
+		std::string argument = "";
+		if (commandLower.size() > prefix.size())
+			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
+
+		const auto publishCdmAutoStatus = [&](const char* action)
 		{
-			DisplayUserMessage("vSMR", "CDM", "CPDLC connection is required (.smr connect).", true, true, false, true, false);
+			const bool enabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
+			int delayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
+			if (delayMinutes < 0)
+				delayMinutes = 0;
+
+			std::string message = std::string(action) + " CDM auto mode: ";
+			message += enabled ? "enabled" : "disabled";
+			message += ", delay=" + std::to_string(delayMinutes) + " minute";
+			if (delayMinutes != 1)
+				message += "s";
+			if (enabled && delayMinutes == 0)
+				message += " (immediate)";
+
+			DisplayUserMessage("vSMR", "CDM", message.c_str(), true, true, false, true, false);
+		};
+
+		if (argument.empty() || argument == "status")
+		{
+			publishCdmAutoStatus("Status");
 			return true;
 		}
 
-		std::string activeAirportFilter;
-		for (auto* rd : RadarScreensOpened)
+		if (argument == "off" || argument == "disable")
 		{
-			if (rd == nullptr)
-				continue;
-			activeAirportFilter = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rd->getActiveAirport()));
-			if (activeAirportFilter.size() > 4)
-				activeAirportFilter = activeAirportFilter.substr(0, 4);
-			break;
+			CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				AircraftCdmAutoTracked.clear();
+			}
+			publishCdmAutoStatus("Updated");
+			return true;
 		}
 
-		const std::string reminderPacket = "PLEASE CONFIRM YOUR TOBT IN VACDM";
-		std::vector<std::string> candidateCallsigns;
-		candidateCallsigns.reserve(256);
-
-		auto addUniqueCallsign = [&](const std::string& rawCallsign)
+		if (argument == "on" || argument == "enable")
 		{
-			const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawCallsign));
-			if (callsign.empty())
-				return;
-			if (std::find(candidateCallsigns.begin(), candidateCallsigns.end(), callsign) == candidateCallsigns.end())
-				candidateCallsigns.push_back(callsign);
-		};
-
-		for (CRadarTarget rt = RadarTargetSelectFirst(); rt.IsValid(); rt = RadarTargetSelectNext(rt))
-		{
-			const char* radarCallsignRaw = rt.GetCallsign();
-			if (radarCallsignRaw == nullptr || radarCallsignRaw[0] == '\0')
-				continue;
-
-			CFlightPlan fp = FlightPlanSelect(radarCallsignRaw);
-			if (!fp.IsValid())
-				continue;
-
-			const char* originRaw = fp.GetFlightPlanData().GetOrigin();
-			const std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
-			if (!activeAirportFilter.empty() && origin != activeAirportFilter)
-				continue;
-
-			const char* fpCallsignRaw = fp.GetCallsign();
-			addUniqueCallsign(fpCallsignRaw != nullptr ? fpCallsignRaw : radarCallsignRaw);
+			CdmAutoModeEnabled.store(true, std::memory_order_relaxed);
+			{
+				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+				AircraftCdmAutoTracked.clear();
+			}
+			publishCdmAutoStatus("Updated");
+			return true;
 		}
+
+		int parsedDelayMinutes = 0;
+		if (!TryParseNonNegativeInt(argument, parsedDelayMinutes))
+		{
+			DisplayUserMessage(
+				"vSMR",
+				"CDM",
+				"Usage: .smr cdm auto <minutes|on|off>. Example: .smr cdm auto 5",
+				true,
+				true,
+				false,
+				true,
+				false);
+			return true;
+		}
+
+		CdmAutoDelayMinutes.store(parsedDelayMinutes, std::memory_order_relaxed);
+		CdmAutoModeEnabled.store(true, std::memory_order_relaxed);
+		{
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			AircraftCdmAutoTracked.clear();
+		}
+		publishCdmAutoStatus("Updated");
+		return true;
+	}
+	else if (commandLower == ".smr cdm")
+	{
+		const std::vector<std::string> candidateCallsigns = CollectFlightPlanCandidateCallsignsForActiveAirport(this);
 
 		int alreadyNotifiedCount = 0;
 		int confirmedCount = 0;
@@ -866,7 +1172,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			if (!hasVacdmData)
 				++missingVacdmCount;
 
-			if (SendDatalinkPacketMessage(callsign, "TELEX", reminderPacket, callsign))
+			if (SendPrivateChatMessageLikeDotMsg(this, callsign, CdmTobtReminderMessage))
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 				AddCallsignUniqueUnlocked(AircraftCdmTobtReminderSent, callsign);
@@ -1323,13 +1629,17 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	const char* callsign = FlightPlan.GetCallsign();
 	if (callsign == nullptr || callsign[0] == '\0')
 		return;
+	const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
+	if (normalizedCallsign.empty())
+		return;
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		RemoveCallsignUnlocked(AircraftCdmTobtReminderSent, callsign);
+		RemoveCallsignUnlocked(AircraftCdmTobtReminderSent, normalizedCallsign);
+		AircraftCdmAutoTracked.erase(normalizedCallsign);
 	}
 
-	CRadarTarget rt = RadarTargetSelect(callsign);
+	CRadarTarget rt = RadarTargetSelect(normalizedCallsign.c_str());
 	const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
 	if (systemId == nullptr || systemId[0] == '\0')
 		return;
@@ -1419,6 +1729,8 @@ void CSMRPlugin::OnTimer(int Counter)
 			}
 		}
 	}
+
+	ProcessCdmAutoMode(this);
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
