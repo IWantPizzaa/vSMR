@@ -2,10 +2,8 @@
 #include "SMRPlugin.hpp"
 #include <atomic>
 #include <mutex>
-#include <set>
 #include <ctime>
 #include <cctype>
-#include <cstdlib>
 
 bool Logger::ENABLED;
 string Logger::DLL_PATH;
@@ -52,13 +50,11 @@ vector<string> AircraftMessage;
 vector<string> AircraftWilco;
 vector<string> AircraftStandby;
 map<string, AcarsMessage> PendingMessages;
-std::set<std::string> AircraftDatalinkClearedCallsigns;
 std::map<std::string, std::time_t> AircraftCdmReminderSentUtc;
 std::map<std::string, std::time_t> AircraftCdmAutoTrackedUtc;
-std::atomic<bool> CdmAutoModeEnabled(false);
 std::atomic<int> CdmAutoDelayMinutes(5);
 std::atomic<int> CdmReminderCooldownMinutes(60);
-std::mutex CdmStateMutex;
+std::mutex CdmAutoStateMutex;
 
 string tmessage;
 string tdest;
@@ -88,16 +84,7 @@ namespace
 		std::string normalized = text;
 		std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
 			return static_cast<char>(std::toupper(c));
-		});
-		return normalized;
-	}
-
-	std::string ToLowerAsciiCopy(const std::string& text)
-	{
-		std::string normalized = text;
-		std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
-			return static_cast<char>(std::tolower(c));
-		});
+			});
 		return normalized;
 	}
 
@@ -115,52 +102,6 @@ namespace
 	std::string NormalizeCallsign(const std::string& callsign)
 	{
 		return ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-	}
-
-	bool StartsWithCommand(const std::string& commandLower, const std::string& prefixLower)
-	{
-		if (commandLower.rfind(prefixLower, 0) != 0)
-			return false;
-		if (commandLower.size() == prefixLower.size())
-			return true;
-		return std::isspace(static_cast<unsigned char>(commandLower[prefixLower.size()])) != 0;
-	}
-
-	bool TryParseNonNegativeInt(const std::string& text, int& outValue)
-	{
-		outValue = 0;
-		const std::string trimmed = TrimAsciiWhitespaceCopy(text);
-		if (trimmed.empty())
-			return false;
-
-		char* end = nullptr;
-		const long parsed = std::strtol(trimmed.c_str(), &end, 10);
-		if (end == trimmed.c_str() || parsed < 0 || parsed > 24 * 60)
-			return false;
-
-		const std::string trailing = TrimAsciiWhitespaceCopy(end != nullptr ? std::string(end) : std::string());
-		if (!trailing.empty())
-			return false;
-
-		outValue = static_cast<int>(parsed);
-		return true;
-	}
-
-	bool ContainsCallsign(const std::vector<std::string>& collection, const std::string& callsign)
-	{
-		return std::find(collection.begin(), collection.end(), callsign) != collection.end();
-	}
-
-	void AddCallsignUnique(std::vector<std::string>& collection, const std::string& callsign)
-	{
-		if (callsign.empty() || ContainsCallsign(collection, callsign))
-			return;
-		collection.push_back(callsign);
-	}
-
-	void RemoveCallsign(std::vector<std::string>& collection, const std::string& callsign)
-	{
-		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
 	}
 
 	bool IsNoStatusGroundState(const char* rawGroundState)
@@ -200,11 +141,10 @@ namespace
 				airport = airport.substr(0, 4);
 			return airport;
 		}
-
 		return "";
 	}
 
-	std::vector<std::string> CollectFlightPlanCandidateCallsignsForActiveAirport(EuroScopePlugIn::CPlugIn* plugIn)
+	std::vector<std::string> CollectCdmReminderCandidatesForActiveAirport(EuroScopePlugIn::CPlugIn* plugIn)
 	{
 		std::vector<std::string> candidateCallsigns;
 		if (plugIn == nullptr)
@@ -228,19 +168,23 @@ namespace
 			if (!IsNoStatusGroundState(fp.GetGroundState()))
 				continue;
 
-			AddCallsignUnique(candidateCallsigns, NormalizeCallsign(fpCallsignRaw));
+			const std::string callsign = NormalizeCallsign(fpCallsignRaw);
+			if (callsign.empty())
+				continue;
+			if (std::find(candidateCallsigns.begin(), candidateCallsigns.end(), callsign) == candidateCallsigns.end())
+				candidateCallsigns.push_back(callsign);
 		}
 
 		return candidateCallsigns;
 	}
 
-	void PruneCdmReminderHistoryUnlocked(std::time_t nowUtc)
+	void PruneReminderHistoryUnlocked(std::time_t nowUtc)
 	{
 		int cooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
 		if (cooldownMinutes < 0)
 			cooldownMinutes = 0;
-
 		const std::time_t cooldownSeconds = static_cast<std::time_t>(cooldownMinutes) * 60;
+
 		for (auto it = AircraftCdmReminderSentUtc.begin(); it != AircraftCdmReminderSentUtc.end();)
 		{
 			if (std::difftime(nowUtc, it->second) >= static_cast<double>(cooldownSeconds))
@@ -250,7 +194,7 @@ namespace
 		}
 	}
 
-	bool HasRecentCdmReminderUnlocked(const std::string& callsign, std::time_t nowUtc)
+	bool HasRecentReminderUnlocked(const std::string& callsign, std::time_t nowUtc)
 	{
 		const auto it = AircraftCdmReminderSentUtc.find(callsign);
 		if (it == AircraftCdmReminderSentUtc.end())
@@ -263,31 +207,24 @@ namespace
 		return std::difftime(nowUtc, it->second) < static_cast<double>(cooldownSeconds);
 	}
 
-	void MarkCdmReminderSentUnlocked(const std::string& callsign, std::time_t nowUtc)
+	void MarkReminderSentUnlocked(const std::string& callsign, std::time_t nowUtc)
 	{
 		AircraftCdmReminderSentUtc[callsign] = nowUtc;
 	}
 
-	bool HasDatalinkClearanceSentUnlocked(const std::string& callsign)
-	{
-		return AircraftDatalinkClearedCallsigns.find(callsign) != AircraftDatalinkClearedCallsigns.end();
-	}
-
-	void MarkDatalinkClearanceSentUnlocked(const std::string& callsign)
-	{
-		AircraftDatalinkClearedCallsigns.insert(callsign);
-	}
-
-	void ClearCdmStateForCallsignUnlocked(const std::string& callsign)
+	void ClearCdmTrackingStateForCallsignUnlocked(const std::string& callsign)
 	{
 		AircraftCdmReminderSentUtc.erase(callsign);
 		AircraftCdmAutoTrackedUtc.erase(callsign);
-		AircraftDatalinkClearedCallsigns.erase(callsign);
 	}
 
-	bool SendDatalinkPacketMessage(const std::string& destination, const std::string& type, const std::string& packet, const std::string& callsign)
+	bool SendCdmReminderTelex(const std::string& callsign)
 	{
 		if (httpHelper == NULL)
+			return false;
+
+		const std::string normalizedCallsign = NormalizeCallsign(callsign);
+		if (normalizedCallsign.empty())
 			return false;
 
 		string raw;
@@ -297,11 +234,9 @@ namespace
 		url += "&from=";
 		url += logonCallsign;
 		url += "&to=";
-		url += destination;
-		url += "&type=";
-		url += type;
-		url += "&packet=";
-		url += packet;
+		url += normalizedCallsign;
+		url += "&type=TELEX&packet=";
+		url += CdmTobtReminderPacket;
 
 		size_t start_pos = 0;
 		while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
@@ -310,38 +245,29 @@ namespace
 		}
 
 		raw.assign(httpHelper->downloadStringFromURL(url));
-
 		if (!startsWith("ok", raw.c_str()))
 			return false;
-
-		const std::string normalizedCallsign = NormalizeCallsign(callsign);
-		if (!normalizedCallsign.empty()) {
-			if (PendingMessages.find(normalizedCallsign) != PendingMessages.end())
-				PendingMessages.erase(normalizedCallsign);
-			RemoveCallsign(AircraftMessage, normalizedCallsign);
-			AddCallsignUnique(AircraftMessageSent, normalizedCallsign);
-		}
 
 		return true;
 	}
 
-	void ProcessCdmAutoMode(CSMRPlugin* plugIn)
+	void ProcessAutomaticCdmReminder(CSMRPlugin* plugIn)
 	{
-		if (plugIn == nullptr || !HoppieConnected || !CdmAutoModeEnabled.load(std::memory_order_relaxed))
+		if (plugIn == nullptr || !HoppieConnected)
+			return;
+
+		const std::time_t nowUtc = std::time(nullptr);
+		if (nowUtc <= 0)
 			return;
 
 		int delayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
 		if (delayMinutes < 0)
 			delayMinutes = 0;
 
-		const std::time_t nowUtc = std::time(nullptr);
-		if (nowUtc <= 0)
-			return;
-
-		const std::vector<std::string> connectedCallsigns = CollectFlightPlanCandidateCallsignsForActiveAirport(plugIn);
+		const std::vector<std::string> connectedCallsigns = CollectCdmReminderCandidatesForActiveAirport(plugIn);
 		{
-			std::lock_guard<std::mutex> guard(CdmStateMutex);
-			PruneCdmReminderHistoryUnlocked(nowUtc);
+			std::lock_guard<std::mutex> guard(CdmAutoStateMutex);
+			PruneReminderHistoryUnlocked(nowUtc);
 
 			for (auto it = AircraftCdmAutoTrackedUtc.begin(); it != AircraftCdmAutoTrackedUtc.end();)
 			{
@@ -358,17 +284,13 @@ namespace
 			}
 		}
 
-		int sentCount = 0;
 		for (const std::string& callsign : connectedCallsigns)
 		{
 			bool shouldSend = false;
 			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				if (HasDatalinkClearanceSentUnlocked(callsign))
+				std::lock_guard<std::mutex> guard(CdmAutoStateMutex);
+				if (HasRecentReminderUnlocked(callsign, nowUtc))
 					continue;
-				if (HasRecentCdmReminderUnlocked(callsign, nowUtc))
-					continue;
-
 				auto trackedIt = AircraftCdmAutoTrackedUtc.find(callsign);
 				if (trackedIt == AircraftCdmAutoTrackedUtc.end())
 					continue;
@@ -379,21 +301,11 @@ namespace
 			if (!shouldSend)
 				continue;
 
-			if (SendDatalinkPacketMessage(callsign, "TELEX", CdmTobtReminderPacket, callsign))
+			if (SendCdmReminderTelex(callsign))
 			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				MarkCdmReminderSentUnlocked(callsign, nowUtc);
-				++sentCount;
+				std::lock_guard<std::mutex> guard(CdmAutoStateMutex);
+				MarkReminderSentUnlocked(callsign, nowUtc);
 			}
-		}
-
-		if (sentCount > 0)
-		{
-			std::string summary = "CDM auto: sent " + std::to_string(sentCount) + " reminder";
-			if (sentCount != 1)
-				summary += "s";
-			summary += ".";
-			plugIn->DisplayUserMessage("vSMR", "CDM", summary.c_str(), true, true, false, true, false);
 		}
 	}
 }
@@ -418,11 +330,36 @@ void datalinkLogin(void * arg) {
 };
 
 void sendDatalinkMessage(void * arg) {
-	std::string localDest = tdest;
-	std::string localType = ttype;
-	std::string localMessage = tmessage;
-	std::string localCallsign = NormalizeCallsign(DatalinkToSend.callsign);
-	(void)SendDatalinkPacketMessage(localDest, localType, localMessage, localCallsign);
+
+	string raw;
+	string url = baseUrlDatalink;
+	url += "?logon=";
+	url += logonCode;
+	url += "&from=";
+	url += logonCallsign;
+	url += "&to=";
+	url += tdest;
+	url += "&type=";
+	url += ttype;
+	url += "&packet=";
+	url += tmessage;
+
+	size_t start_pos = 0;
+	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
+		url.replace(start_pos, string(" ").length(), "%20");
+		start_pos += string("%20").length();
+	}
+
+	raw.assign(httpHelper->downloadStringFromURL(url));
+
+	if (startsWith("ok", raw.c_str())) {
+		if (PendingMessages.find(DatalinkToSend.callsign) != PendingMessages.end())
+			PendingMessages.erase(DatalinkToSend.callsign);
+		if (std::find(AircraftMessage.begin(), AircraftMessage.end(), DatalinkToSend.callsign.c_str()) != AircraftMessage.end()) {
+			AircraftMessage.erase(std::remove(AircraftMessage.begin(), AircraftMessage.end(), DatalinkToSend.callsign.c_str()), AircraftMessage.end());
+		}
+		AircraftMessageSent.push_back(DatalinkToSend.callsign.c_str());
+	}
 };
 
 void pollMessages(void * arg) {
@@ -563,12 +500,6 @@ void sendDatalinkClearance(void * arg) {
 		if (PendingMessages.find(DatalinkToSend.callsign) != PendingMessages.end())
 			PendingMessages.erase(DatalinkToSend.callsign);
 		AircraftMessageSent.push_back(DatalinkToSend.callsign.c_str());
-		{
-			const std::string normalizedCallsign = NormalizeCallsign(DatalinkToSend.callsign);
-			std::lock_guard<std::mutex> guard(CdmStateMutex);
-			if (!normalizedCallsign.empty())
-				MarkDatalinkClearanceSentUnlocked(normalizedCallsign);
-		}
 	}
 };
 
@@ -601,20 +532,6 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 		logonCode = p_value;
 	if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
 		PlaySoundClr = bool(!!atoi(p_value));
-	if ((p_value = GetDataFromSettings("cdm_auto_enabled")) != NULL)
-		CdmAutoModeEnabled.store(bool(!!atoi(p_value)), std::memory_order_relaxed);
-	if ((p_value = GetDataFromSettings("cdm_auto_delay_min")) != NULL)
-	{
-		int parsedDelay = 0;
-		if (TryParseNonNegativeInt(p_value, parsedDelay))
-			CdmAutoDelayMinutes.store(parsedDelay, std::memory_order_relaxed);
-	}
-	if ((p_value = GetDataFromSettings("cdm_cooldown_min")) != NULL)
-	{
-		int parsedCooldown = 0;
-		if (TryParseNonNegativeInt(p_value, parsedCooldown))
-			CdmReminderCooldownMinutes.store(parsedCooldown, std::memory_order_relaxed);
-	}
 
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
@@ -634,15 +551,6 @@ CSMRPlugin::~CSMRPlugin()
 	if (PlaySoundClr)
 		temp = 1;
 	SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", std::to_string(temp).c_str());
-	SaveDataToSettings("cdm_auto_enabled", "Enable automatic CDM reminder messaging", CdmAutoModeEnabled.load(std::memory_order_relaxed) ? "1" : "0");
-	int cdmAutoDelayToPersist = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-	if (cdmAutoDelayToPersist < 0)
-		cdmAutoDelayToPersist = 0;
-	SaveDataToSettings("cdm_auto_delay_min", "CDM auto reminder delay in minutes", std::to_string(cdmAutoDelayToPersist).c_str());
-	int cdmCooldownToPersist = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
-	if (cdmCooldownToPersist < 0)
-		cdmCooldownToPersist = 0;
-	SaveDataToSettings("cdm_cooldown_min", "CDM reminder resend cooldown in minutes", std::to_string(cdmCooldownToPersist).c_str());
 
 	try
 	{
@@ -656,10 +564,7 @@ CSMRPlugin::~CSMRPlugin()
 }
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
-	const char* rawCommand = sCommandLine != NULL ? sCommandLine : "";
-	const std::string commandLower = ToLowerAsciiCopy(rawCommand);
-
-	if (startsWith(".smr connect", rawCommand))
+	if (startsWith(".smr connect", sCommandLine))
 	{
 		if (ControllerMyself().IsController()) {
 			if (!HoppieConnected) {
@@ -676,203 +581,18 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 		return true;
 	}
-	else if (startsWith(".smr poll", rawCommand))
+	else if (startsWith(".smr poll", sCommandLine))
 	{
 		if (HoppieConnected) {
 			_beginthread(pollMessages, 0, NULL);
 		}
 		return true;
 	}
-	else if (strcmp(rawCommand, ".smr log") == 0) {
+	else if (strcmp(sCommandLine, ".smr log") == 0) {
 		Logger::ENABLED = !Logger::ENABLED;
 		return true;
 	}
-	else if (StartsWithCommand(commandLower, ".smr cdm cooldown"))
-	{
-		const std::string prefix = ".smr cdm cooldown";
-		std::string argument = "";
-		if (commandLower.size() > prefix.size())
-			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
-
-		if (argument.empty() || argument == "status")
-		{
-			int cooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
-			if (cooldownMinutes < 0)
-				cooldownMinutes = 0;
-			std::string message = "Status CDM reminder cooldown: " + std::to_string(cooldownMinutes) + " minute";
-			if (cooldownMinutes != 1)
-				message += "s";
-			DisplayUserMessage("vSMR", "CDM", message.c_str(), true, true, false, true, false);
-			return true;
-		}
-
-		int parsedCooldown = 0;
-		if (!TryParseNonNegativeInt(argument, parsedCooldown))
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"CDM",
-				"Usage: .smr cdm cooldown <minutes>. Example: .smr cdm cooldown 60",
-				true,
-				true,
-				false,
-				true,
-				false);
-			return true;
-		}
-
-		CdmReminderCooldownMinutes.store(parsedCooldown, std::memory_order_relaxed);
-		std::string message = "Updated CDM reminder cooldown: " + std::to_string(parsedCooldown) + " minute";
-		if (parsedCooldown != 1)
-			message += "s";
-		DisplayUserMessage("vSMR", "CDM", message.c_str(), true, true, false, true, false);
-		return true;
-	}
-	else if (StartsWithCommand(commandLower, ".smr cdm auto"))
-	{
-		const std::string prefix = ".smr cdm auto";
-		std::string argument = "";
-		if (commandLower.size() > prefix.size())
-			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
-
-		auto publishStatus = [&](const char* action) {
-			const bool enabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
-			int delayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-			if (delayMinutes < 0)
-				delayMinutes = 0;
-
-			std::string message = std::string(action) + " CDM auto mode: ";
-			message += enabled ? "enabled" : "disabled";
-			message += ", delay=" + std::to_string(delayMinutes) + " minute";
-			if (delayMinutes != 1)
-				message += "s";
-			if (enabled && delayMinutes == 0)
-				message += " (immediate)";
-			DisplayUserMessage("vSMR", "CDM", message.c_str(), true, true, false, true, false);
-		};
-
-		if (argument.empty() || argument == "status")
-		{
-			publishStatus("Status");
-			return true;
-		}
-
-		if (argument == "off" || argument == "disable")
-		{
-			CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
-			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				AircraftCdmAutoTrackedUtc.clear();
-			}
-			publishStatus("Updated");
-			return true;
-		}
-
-		if (argument == "on" || argument == "enable")
-		{
-			CdmAutoModeEnabled.store(true, std::memory_order_relaxed);
-			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				AircraftCdmAutoTrackedUtc.clear();
-			}
-			publishStatus("Updated");
-			return true;
-		}
-
-		int parsedDelayMinutes = 0;
-		if (!TryParseNonNegativeInt(argument, parsedDelayMinutes))
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"CDM",
-				"Usage: .smr cdm auto <minutes|on|off>. Example: .smr cdm auto 5",
-				true,
-				true,
-				false,
-				true,
-				false);
-			return true;
-		}
-
-		CdmAutoDelayMinutes.store(parsedDelayMinutes, std::memory_order_relaxed);
-		CdmAutoModeEnabled.store(true, std::memory_order_relaxed);
-		{
-			std::lock_guard<std::mutex> guard(CdmStateMutex);
-			AircraftCdmAutoTrackedUtc.clear();
-		}
-		publishStatus("Updated");
-		return true;
-	}
-	else if (TrimAsciiWhitespaceCopy(commandLower) == ".smr cdm")
-	{
-		if (!HoppieConnected)
-		{
-			DisplayUserMessage("vSMR", "CDM", "CPDLC connection is required (.smr connect).", true, true, false, true, false);
-			return true;
-		}
-
-		const std::time_t nowUtc = std::time(nullptr);
-		if (nowUtc <= 0)
-		{
-			DisplayUserMessage("vSMR", "CDM", "Unable to evaluate current UTC time for CDM command.", true, true, false, true, false);
-			return true;
-		}
-
-		const std::vector<std::string> candidateCallsigns = CollectFlightPlanCandidateCallsignsForActiveAirport(this);
-		{
-			std::lock_guard<std::mutex> guard(CdmStateMutex);
-			PruneCdmReminderHistoryUnlocked(nowUtc);
-		}
-
-		int alreadyNotifiedCount = 0;
-		int alreadyClearedCount = 0;
-		int sentCount = 0;
-		int failedCount = 0;
-
-		for (const std::string& callsign : candidateCallsigns)
-		{
-			bool alreadyNotified = false;
-			bool alreadyCleared = false;
-			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				alreadyNotified = HasRecentCdmReminderUnlocked(callsign, nowUtc);
-				alreadyCleared = HasDatalinkClearanceSentUnlocked(callsign);
-			}
-
-			if (alreadyNotified)
-			{
-				++alreadyNotifiedCount;
-				continue;
-			}
-			if (alreadyCleared)
-			{
-				++alreadyClearedCount;
-				continue;
-			}
-
-			if (SendDatalinkPacketMessage(callsign, "TELEX", CdmTobtReminderPacket, callsign))
-			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				MarkCdmReminderSentUnlocked(callsign, nowUtc);
-				++sentCount;
-			}
-			else
-			{
-				++failedCount;
-			}
-		}
-
-		const int checkedCount = static_cast<int>(candidateCallsigns.size());
-		std::string summary = "CDM check: ";
-		summary += std::to_string(checkedCount) + " checked, ";
-		summary += std::to_string(sentCount) + " messaged, ";
-		summary += std::to_string(alreadyNotifiedCount) + " already notified, ";
-		summary += std::to_string(alreadyClearedCount) + " already cleared, ";
-		summary += std::to_string(failedCount) + " failed.";
-		DisplayUserMessage("vSMR", "CDM", summary.c_str(), true, true, false, true, false);
-		return true;
-	}
-	else if (startsWith(".smr", rawCommand))
+	else if (startsWith(".smr", sCommandLine))
 	{
 		CCPDLCSettingsDialog dia;
 		dia.m_Logon = logonCallsign.c_str();
@@ -968,7 +688,6 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
 		if (FlightPlan.IsValid()) {
-			const std::string normalizedCallsign = NormalizeCallsign(FlightPlan.GetCallsign());
 			if (std::find(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()) != AircraftDemandingClearance.end()) {
 				AircraftDemandingClearance.erase(std::remove(AircraftDemandingClearance.begin(), AircraftDemandingClearance.end(), FlightPlan.GetCallsign()), AircraftDemandingClearance.end());
 			}
@@ -986,11 +705,6 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			}
 			if (PendingMessages.find(FlightPlan.GetCallsign()) != PendingMessages.end()) {
 				PendingMessages.erase(FlightPlan.GetCallsign());
-			}
-			{
-				std::lock_guard<std::mutex> guard(CdmStateMutex);
-				if (!normalizedCallsign.empty())
-					ClearCdmStateForCallsignUnlocked(normalizedCallsign);
 			}
 		}
 	}
@@ -1129,16 +843,14 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
 	Logger::info(string(__FUNCSIG__));
 	const char* callsignRaw = FlightPlan.GetCallsign();
-	if (callsignRaw == nullptr || callsignRaw[0] == '\0')
-		return;
-
-	const std::string normalizedCallsign = NormalizeCallsign(callsignRaw);
+	if (callsignRaw != nullptr && callsignRaw[0] != '\0')
 	{
-		std::lock_guard<std::mutex> guard(CdmStateMutex);
-		ClearCdmStateForCallsignUnlocked(normalizedCallsign);
+		const std::string callsign = NormalizeCallsign(callsignRaw);
+		std::lock_guard<std::mutex> guard(CdmAutoStateMutex);
+		ClearCdmTrackingStateForCallsignUnlocked(callsign);
 	}
 
-	CRadarTarget rt = RadarTargetSelect(normalizedCallsign.c_str());
+	CRadarTarget rt = RadarTargetSelect(FlightPlan.GetCallsign());
 
 	if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()) != ReleasedTracks.end())
 		ReleasedTracks.erase(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), rt.GetSystemID()));
@@ -1183,7 +895,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		}
 	}
 
-	ProcessCdmAutoMode(this);
+	ProcessAutomaticCdmReminder(this);
 };
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
