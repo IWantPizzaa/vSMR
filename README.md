@@ -1,29 +1,19 @@
-# vSMR Plugin [![Build status](https://ci.appveyor.com/api/projects/status/0ebifm90mrmmatew?svg=true)](https://ci.appveyor.com/project/pierr3/vsmr)
+# vSMR - Guide CDM automatique
 
-vSMR is a plugin for EuroScope that simulates the NOVA 9000 A-SMGCS system on VATSIM.
+Ce README explique uniquement le fonctionnement de l'envoi automatique de message CDM et des commandes associees. Le module lit le texte du rappel depuis l'alias `.cdm`, surveille les avions au sol qui correspondent a l'aeroport actif, puis prepare des envois prives via la commande EuroScope `.msg`.
 
-Features:
-* Custom aircraft polygons with history trails.
-* Realistic aircraft tags.
-* RIMCAS simulation.
-* Approach view window.
-* Hoppie CPDLC clearance system integration.
+Le systeme integre une logique anti-spam. Un appareil deja notifie reste bloque pendant la duree de cooldown, un appareil deja en file d'attente n'est pas ajoute une deuxieme fois, et un appareil deja traite par envoi de clairance datalink n'est plus cible par le rappel CDM. Cette logique protege la frequence et evite les doublons meme quand la commande manuelle et le mode automatique sont utilises en meme temps.
 
-Find out all you need to know on the wiki: <https://github.com/pierr3/vSMR/wiki>
+Le contenu du message est extrait de `Alias/alias.txt` a partir de la ligne `.cdm`. Le plugin accepte une forme simple `.cdm <texte>`, ainsi que les formes `.cdm .msg <texte>` et `.cdm .msg $aircraft <texte>`. Si l'alias est absent ou invalide, un avertissement est affiche dans EuroScope.
 
-### Release
+| Commande | Fonctionnement | Exemple |
+| --- | --- | --- |
+| `.smr cdm` | Lance un controle immediat des appareils eligibles, alimente la file d'attente et affiche un resume du traitement (queued, deja notifie, deja en file, deja traite, echec). | `.smr cdm` |
+| `.smr cdm auto` ou `.smr cdm auto status` | Affiche l'etat du mode automatique et le delai courant avant envoi du rappel. | `.smr cdm auto status` |
+| `.smr cdm auto on` ou `.smr cdm auto enable` | Active le mode automatique avec le delai deja configure. | `.smr cdm auto on` |
+| `.smr cdm auto off` ou `.smr cdm auto disable` | Desactive le mode automatique et reinitialise le suivi temporel des appareils surveilles. | `.smr cdm auto off` |
+| `.smr cdm auto <minutes>` | Active le mode automatique et fixe le delai d'attente avant rappel pour un appareil nouvellement detecte. `0` signifie envoi immediat des eligibles. | `.smr cdm auto 5` |
+| `.smr cdm cooldown` ou `.smr cdm cooldown status` | Affiche la valeur de cooldown anti-spam appliquee entre deux rappels d'un meme callsign. | `.smr cdm cooldown` |
+| `.smr cdm cooldown <minutes>` | Definit le cooldown anti-spam entre deux envois vers le meme appareil. | `.smr cdm cooldown 60` |
 
-This is the latest stable release, which has been tested and the one you should use for day to day use.
-
-Download the latest release here: <https://github.com/pierr3/vSMR/releases>
-
-### Nightly build
-
-vSMR now has a nightly build courtersey of Appveyor, available at <https://ci.appveyor.com/api/projects/pierr3/vSMR/artifacts/vSMR-nightly.zip>
-
-The nightly build is always up to date with the latest commit, however it may be very unstable and may crash EuroScope. **Don't forget to add the ICAO_Airlines.txt file to the vSMR dll folder when using this build.**
-
-
-### Thanks
-
-Special thanks to Daniel Lange, Even Rognlien, Juha Holopainen, Lionel Bischof and Wenjun Zhou for their help with the code, thanks to Sam White and Theo Bearman for their help on the wiki, and thanks to Jonas Kuster for the countless bug hunts and help on issue tracking!
+Le flux d'envoi utilise la commande `.msg` d'EuroScope, pas le telex Hoppie, afin de conserver le comportement attendu des messages prives vers les avions sans modifier les fonctions CPDLC existantes.
