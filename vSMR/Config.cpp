@@ -127,26 +127,35 @@ const Value& CConfig::getActiveProfile() {
 }
 
 bool CConfig::isSidColorAvail(string sid, string airport) {
-	if (getActiveProfile().HasMember("maps"))
+	const Value& activeProfile = getActiveProfile();
+	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+		return false;
+
+	const Value& maps = activeProfile["maps"];
+	if (!maps.HasMember(airport.c_str()) || !maps[airport.c_str()].IsObject())
+		return false;
+
+	const Value& airportMap = maps[airport.c_str()];
+	if (!airportMap.HasMember("sids") || !airportMap["sids"].IsArray())
+		return false;
+
+	const Value& sidDefinitions = airportMap["sids"];
+	for (SizeType i = 0; i < sidDefinitions.Size(); i++)
 	{
-		if (getActiveProfile()["maps"].HasMember(airport.c_str()))
-		{
-			if (getActiveProfile()["maps"][airport.c_str()].HasMember("sids") && getActiveProfile()["maps"][airport.c_str()]["sids"].IsArray())
-			{
-				const Value& SIDs = getActiveProfile()["maps"][airport.c_str()]["sids"];
-				for (SizeType i = 0; i < SIDs.Size(); i++)
-				{
-					const Value& SIDNames = SIDs[i]["names"];
-					for (SizeType s = 0; s < SIDNames.Size(); s++) {
-						string currentsid = SIDNames[s].GetString();
-						std::transform(currentsid.begin(), currentsid.end(), currentsid.begin(), ::toupper);
-						if (startsWith(sid.c_str(), currentsid.c_str()))
-						{
-							return true;
-						}
-					}
-				}
-			}
+		const Value& sidDefinition = sidDefinitions[i];
+		if (!sidDefinition.IsObject() || !sidDefinition.HasMember("names") || !sidDefinition["names"].IsArray())
+			continue;
+
+		const Value& sidNames = sidDefinition["names"];
+		for (SizeType s = 0; s < sidNames.Size(); s++) {
+			if (!sidNames[s].IsString())
+				continue;
+			string currentsid = sidNames[s].GetString();
+			std::transform(currentsid.begin(), currentsid.end(), currentsid.begin(), [](unsigned char c) {
+				return static_cast<char>(std::toupper(c));
+			});
+			if (startsWith(sid.c_str(), currentsid.c_str()))
+				return true;
 		}
 	}
 	return false;
@@ -154,25 +163,38 @@ bool CConfig::isSidColorAvail(string sid, string airport) {
 
 Gdiplus::Color CConfig::getSidColor(string sid, string airport)
 {
-	if (getActiveProfile().HasMember("maps"))
+	const Value& activeProfile = getActiveProfile();
+	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+		return Gdiplus::Color(0, 0, 0);
+
+	const Value& maps = activeProfile["maps"];
+	if (!maps.HasMember(airport.c_str()) || !maps[airport.c_str()].IsObject())
+		return Gdiplus::Color(0, 0, 0);
+
+	const Value& airportMap = maps[airport.c_str()];
+	if (!airportMap.HasMember("sids") || !airportMap["sids"].IsArray())
+		return Gdiplus::Color(0, 0, 0);
+
+	const Value& sidDefinitions = airportMap["sids"];
+	for (SizeType i = 0; i < sidDefinitions.Size(); i++)
 	{
-		if (getActiveProfile()["maps"].HasMember(airport.c_str()))
-		{
-			if (getActiveProfile()["maps"][airport.c_str()].HasMember("sids") && getActiveProfile()["maps"][airport.c_str()]["sids"].IsArray())
+		const Value& sidDefinition = sidDefinitions[i];
+		if (!sidDefinition.IsObject() || !sidDefinition.HasMember("names") || !sidDefinition["names"].IsArray())
+			continue;
+
+		const Value& sidNames = sidDefinition["names"];
+		for (SizeType s = 0; s < sidNames.Size(); s++) {
+			if (!sidNames[s].IsString())
+				continue;
+			string currentsid = sidNames[s].GetString();
+			std::transform(currentsid.begin(), currentsid.end(), currentsid.begin(), [](unsigned char c) {
+				return static_cast<char>(std::toupper(c));
+			});
+			if (startsWith(sid.c_str(), currentsid.c_str()))
 			{
-				const Value& SIDs = getActiveProfile()["maps"][airport.c_str()]["sids"];
-				for (SizeType i = 0; i < SIDs.Size(); i++)
-				{
-					const Value& SIDNames = SIDs[i]["names"];
-					for (SizeType s = 0; s < SIDNames.Size(); s++) {
-						string currentsid = SIDNames[s].GetString();
-						std::transform(currentsid.begin(), currentsid.end(), currentsid.begin(), ::toupper);
-						if (startsWith(sid.c_str(), currentsid.c_str()))
-						{
-							return getConfigColor(SIDs[i]["color"]);
-						}
-					}
-				}
+				if (sidDefinition.HasMember("color") && sidDefinition["color"].IsObject())
+					return getConfigColor(sidDefinition["color"]);
+				return Gdiplus::Color(0, 0, 0);
 			}
 		}
 	}
@@ -180,69 +202,88 @@ Gdiplus::Color CConfig::getSidColor(string sid, string airport)
 }
 
 Gdiplus::Color CConfig::getConfigColor(const Value& config_path) {
-	int r = config_path["r"].GetInt();
-	int g = config_path["g"].GetInt();
-	int b = config_path["b"].GetInt();
+	if (!config_path.IsObject())
+		return Gdiplus::Color(255, 0, 0, 0);
+
+	int r = (config_path.HasMember("r") && config_path["r"].IsInt()) ? config_path["r"].GetInt() : 0;
+	int g = (config_path.HasMember("g") && config_path["g"].IsInt()) ? config_path["g"].GetInt() : 0;
+	int b = (config_path.HasMember("b") && config_path["b"].IsInt()) ? config_path["b"].GetInt() : 0;
 	int a = 255;
-	if (config_path.HasMember("a"))
+	if (config_path.HasMember("a") && config_path["a"].IsInt())
 		a = config_path["a"].GetInt();
+
+	r = std::clamp(r, 0, 255);
+	g = std::clamp(g, 0, 255);
+	b = std::clamp(b, 0, 255);
+	a = std::clamp(a, 0, 255);
 
 	Gdiplus::Color Color(a, r, g, b);
 	return Color;
 }
 
 COLORREF CConfig::getConfigColorRef(const Value& config_path) {
-	int r = config_path["r"].GetInt();
-	int g = config_path["g"].GetInt();
-	int b = config_path["b"].GetInt();
+	if (!config_path.IsObject())
+		return RGB(0, 0, 0);
+
+	int r = (config_path.HasMember("r") && config_path["r"].IsInt()) ? config_path["r"].GetInt() : 0;
+	int g = (config_path.HasMember("g") && config_path["g"].IsInt()) ? config_path["g"].GetInt() : 0;
+	int b = (config_path.HasMember("b") && config_path["b"].IsInt()) ? config_path["b"].GetInt() : 0;
+
+	r = std::clamp(r, 0, 255);
+	g = std::clamp(g, 0, 255);
+	b = std::clamp(b, 0, 255);
 
 	COLORREF Color(RGB(r, g, b));
 	return Color;
 }
 
 const Value& CConfig::getAirportMapIfAny(string airport) {
-	if (getActiveProfile().HasMember("maps")) {
-		const Value& map_data = getActiveProfile()["maps"];
-		if (map_data.HasMember(airport.c_str())) {
-			const Value& airport_map = map_data[airport.c_str()];
-			return airport_map;
-		}
-	}
-	return getActiveProfile();
+	const Value& activeProfile = getActiveProfile();
+	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+		return activeProfile;
+
+	const Value& mapData = activeProfile["maps"];
+	if (mapData.HasMember(airport.c_str()) && mapData[airport.c_str()].IsObject())
+		return mapData[airport.c_str()];
+
+	return activeProfile;
 }
 
 bool CConfig::isAirportMapAvail(string airport) {
-	if (getActiveProfile().HasMember("maps")) {
-		if (getActiveProfile()["maps"].HasMember(airport.c_str())) {
-			return true;
-		}
-	}
+	const Value& activeProfile = getActiveProfile();
+	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+		return false;
+	if (activeProfile["maps"].HasMember(airport.c_str()) && activeProfile["maps"][airport.c_str()].IsObject())
+		return true;
 	return false;
 }
 
 bool CConfig::isCustomCursorUsed() {
-	if (getActiveProfile().HasMember("cursor")) {		
-		if (strcmp(getActiveProfile()["cursor"].GetString(), "Default") == 0) {
-			return false;
-		}
-	}
+	const Value& activeProfile = getActiveProfile();
+	if (activeProfile.IsObject() && activeProfile.HasMember("cursor") && activeProfile["cursor"].IsString())
+		return strcmp(activeProfile["cursor"].GetString(), "Default") != 0;
 	return true; // by default use custom one so we don't break compatibility for old json settings that don't have the entry
 }
 
 bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
-	if (getActiveProfile().HasMember("maps")) {
-		if (getActiveProfile()["maps"].HasMember(airport.c_str())) {
-			if (getActiveProfile()["maps"][airport.c_str()].HasMember("runways") 
-				&& getActiveProfile()["maps"][airport.c_str()]["runways"].IsArray()) {
-				const Value& Runways = getActiveProfile()["maps"][airport.c_str()]["runways"];
-				for (SizeType i = 0; i < Runways.Size(); i++) {
-					if (startsWith(name1.c_str(), Runways[i]["runway_name"].GetString()) ||
-						startsWith(name2.c_str(), Runways[i]["runway_name"].GetString())) {
-						return true;
-					}
-				}
-			}
-		}
+	const Value& activeProfile = getActiveProfile();
+	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+		return false;
+	const Value& maps = activeProfile["maps"];
+	if (!maps.HasMember(airport.c_str()) || !maps[airport.c_str()].IsObject())
+		return false;
+	const Value& airportMap = maps[airport.c_str()];
+	if (!airportMap.HasMember("runways") || !airportMap["runways"].IsArray())
+		return false;
+
+	const Value& runways = airportMap["runways"];
+	for (SizeType i = 0; i < runways.Size(); i++) {
+		const Value& runway = runways[i];
+		if (!runway.IsObject() || !runway.HasMember("runway_name") || !runway["runway_name"].IsString())
+			continue;
+		const char* runwayName = runway["runway_name"].GetString();
+		if (startsWith(name1.c_str(), runwayName) || startsWith(name2.c_str(), runwayName))
+			return true;
 	}
 	return false;
 }
