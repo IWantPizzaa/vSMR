@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Resource.h"
 #include "SMRRadar.hpp"
+#include "InsetWindow.h"
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -11,7 +12,6 @@
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
-ULONG_PTR m_gdiplusToken;
 CPoint mouseLocation(0, 0);
 string TagBeingDragged;
 int LeaderLineDefaultlenght = 50;
@@ -27,8 +27,6 @@ HWND pluginWindow;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 map<string, string> CSMRRadar::vStripsStands;
-
-map<int, CInsetWindow *> appWindows;
 
 namespace
 {
@@ -87,7 +85,12 @@ CSMRRadar::CSMRRadar()
 
 	// Initialize GDI+
 	GdiplusStartupInput gdiplusStartupInput;
-	GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, nullptr);
+	const Gdiplus::Status gdiplusStatus = GdiplusStartup(&m_gdiplusToken, &gdiplusStartupInput, nullptr);
+	if (gdiplusStatus != Gdiplus::Ok)
+	{
+		m_gdiplusToken = 0;
+		Logger::info("CSMRRadar::CSMRRadar() GdiplusStartup failed status=" + std::to_string(static_cast<int>(gdiplusStatus)));
+	}
 
 	// Getting the DLL file folder
 	GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
@@ -103,7 +106,7 @@ CSMRRadar::CSMRRadar()
 
 	// Creating the RIMCAS instance
 	if (Callsigns == nullptr)
-		Callsigns = new CCallsignLookup();
+		Callsigns = std::make_unique<CCallsignLookup>();
 
 	// We can look in three places for this file:
 	// 1. Within the plugin directory
@@ -127,14 +130,14 @@ CSMRRadar::CSMRRadar()
 	Logger::info("Loading RIMCAS & Config");
 	// Creating the RIMCAS instance
 	if (RimcasInstance == nullptr)
-		RimcasInstance = new CRimcas();
+		RimcasInstance = std::make_unique<CRimcas>();
 
 	// Loading up the config file
 	if (CurrentConfig == nullptr)
-		CurrentConfig = new CConfig(ConfigPath, mapsPath);
+		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
 
 	if (ColorManager == nullptr)
-		ColorManager = new CColorManager();
+		ColorManager = std::make_unique<CColorManager>();
 
 	standardCursor = true;	
 	ActiveAirport = "EGKK";
@@ -142,8 +145,8 @@ CSMRRadar::CSMRRadar()
 	// Setting up the data for the 2 approach windows
 	appWindowDisplays[1] = false;
 	appWindowDisplays[2] = false;
-	appWindows[1] = new CInsetWindow(APPWINDOW_ONE);
-	appWindows[2] = new CInsetWindow(APPWINDOW_TWO);
+	appWindows[1] = std::make_unique<CInsetWindow>(APPWINDOW_ONE);
+	appWindows[2] = std::make_unique<CInsetWindow>(APPWINDOW_TWO);
 
 	Logger::info("Loading profile");
 
@@ -169,25 +172,12 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
-	for (auto& fontEntry : customFonts)
-	{
-		delete fontEntry.second;
-	}
 	customFonts.clear();
-
-	delete ColorManager;
-	ColorManager = nullptr;
-
-	delete RimcasInstance;
-	RimcasInstance = nullptr;
-
-	delete Callsigns;
-	Callsigns = nullptr;
+	appWindows.clear();
 
 	// Shutting down GDI+
-	GdiplusShutdown(m_gdiplusToken);
-	delete CurrentConfig;
-	CurrentConfig = nullptr;
+	if (m_gdiplusToken != 0)
+		GdiplusShutdown(m_gdiplusToken);
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
@@ -322,13 +312,12 @@ void CSMRRadar::LoadCustomFont() {
 	if (weightConfig && strcmp(weightConfig->GetString(), "Italic") == 0)
 		fontStyle = Gdiplus::FontStyleItalic;
 
-	auto createFont = [&](int size) -> Gdiplus::Font*
+	auto createFont = [&](int size) -> std::unique_ptr<Gdiplus::Font>
 	{
-		Gdiplus::Font* font = new Gdiplus::Font(buffer.c_str(), Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+		std::unique_ptr<Gdiplus::Font> font = std::make_unique<Gdiplus::Font>(buffer.c_str(), Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
 		if (font->GetLastStatus() != Gdiplus::Ok)
 		{
-			delete font;
-			font = new Gdiplus::Font(L"Arial", Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+			font = std::make_unique<Gdiplus::Font>(L"Arial", Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
 		}
 		return font;
 	};
@@ -344,7 +333,7 @@ void CSMRRadar::ReloadConfig() {
 	Logger::info("CSMRRadar::ReloadConfig()");
 	std::string activeProfile = CurrentConfig ? CurrentConfig->getActiveProfileName() : "Default";
 	if (!CurrentConfig)
-		CurrentConfig = new CConfig(ConfigPath, mapsPath);
+		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
 	else {
 		CurrentConfig->reload();
 	}
@@ -2377,9 +2366,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (ColorManager == nullptr)
 	{
 		Logger::info("OnRefresh: ColorManager was null; recreating");
-		ColorManager = new CColorManager();
-		if (ColorManager == nullptr)
-			return;
+		ColorManager = std::make_unique<CColorManager>();
 	}
 	// Refresh pipeline is phase-driven by EuroScope. Cursor/theme work is kept here on the UI thread.
 	if (initCursor)
@@ -4698,7 +4685,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			continue;
 
 		int appWindowId = it->first;
-		appWindows[appWindowId]->render(hDC, this, &graphics, mouseLocation, DistanceTools);
+		auto appWindowIt = appWindows.find(appWindowId);
+		if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
+			continue;
+		appWindowIt->second->render(hDC, this, &graphics, mouseLocation, DistanceTools);
 	}
 
 	dc.Detach();

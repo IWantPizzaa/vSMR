@@ -1,8 +1,8 @@
 ﻿#include "stdafx.h"
 #include "SMRRadar.hpp"
+#include "InsetWindow.h"
 
 extern CPoint mouseLocation;
-extern map<int, CInsetWindow *> appWindows;
 
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
 	Logger::info(string(__FUNCSIG__));

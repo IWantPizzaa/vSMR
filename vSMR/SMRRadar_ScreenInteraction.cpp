@@ -1,13 +1,13 @@
 ﻿#include "stdafx.h"
 #include "Resource.h"
 #include "SMRRadar.hpp"
+#include "InsetWindow.h"
 
 extern CPoint mouseLocation;
 extern string TagBeingDragged;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
-extern map<int, CInsetWindow*> appWindows;
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
 	Logger::info(string(__FUNCSIG__));
@@ -58,7 +58,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 			for (auto& kv : appWindows)
 			{
-				CInsetWindow* insetWindow = kv.second;
+				CInsetWindow* insetWindow = kv.second.get();
 				if (insetWindow == nullptr)
 					continue;
 

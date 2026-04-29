@@ -575,7 +575,7 @@ std::string CSMRRadar::GetActiveProfileNameForEditor() const
 {
 	if (!CurrentConfig)
 		return "";
-	return const_cast<CConfig*>(CurrentConfig)->getActiveProfileName();
+	return const_cast<CConfig*>(CurrentConfig.get())->getActiveProfileName();
 }
 
 bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistToDisk)

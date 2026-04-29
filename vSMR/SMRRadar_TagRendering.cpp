@@ -327,7 +327,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	};
 
 	auto fontIt = customFonts.find(currentFontSize);
-	Gdiplus::Font* tagRegularFont = (fontIt != customFonts.end()) ? fontIt->second : nullptr;
+	Gdiplus::Font* tagRegularFont = (fontIt != customFonts.end()) ? fontIt->second.get() : nullptr;
 	if (tagRegularFont == nullptr)
 	{
 		if (Logger::is_verbose_mode())
