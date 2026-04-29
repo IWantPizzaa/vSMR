@@ -2774,7 +2774,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 
 			if (RimcasInstance->ClosedRunway.find(RwName) != RimcasInstance->ClosedRunway.end()) {
-				if (RimcasInstance->ClosedRunway[RwName]) {
+				const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(RwName);
+				if (closedRunwayIt != RimcasInstance->ClosedRunway.end() && closedRunwayIt->second) {
 
 					CPen RedPen(PS_SOLID, 2, RGB(150, 0, 0));
 					CPen * oldPen = dc.SelectObject(&RedPen);
@@ -4117,8 +4118,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	VSMR_REFRESH_LOG("RIMCAS Loop");
 	for (std::map<string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
 	{
-		if (!it->second || RimcasInstance->TimeTable[it->first].empty())
+		const auto timeTableIt = RimcasInstance->TimeTable.find(it->first);
+		if (!it->second || timeTableIt == RimcasInstance->TimeTable.end() || timeTableIt->second.empty())
 			continue;
+		const auto& runwayTimeTable = timeTableIt->second;
 
 		vector<int> TimeDefinition = RimcasInstance->CountdownDefinition;
 		if (isLVP)
@@ -4135,10 +4138,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_two"]);
 		}
 
-		if (TimePopupAreas.find(it->first) == TimePopupAreas.end())
-			TimePopupAreas[it->first] = { 300, 300, 430, 300+LONG(TextHeight*(TimeDefinition.size()+1)) };
+		auto timePopupAreaIt = TimePopupAreas.find(it->first);
+		if (timePopupAreaIt == TimePopupAreas.end())
+		{
+			auto emplaceResult = TimePopupAreas.emplace(it->first, RECT{ 300, 300, 430, 300 + LONG(TextHeight * (TimeDefinition.size() + 1)) });
+			timePopupAreaIt = emplaceResult.first;
+		}
 
-		CRect CRectTime = TimePopupAreas[it->first];
+		CRect CRectTime = timePopupAreaIt->second;
 		CRectTime.NormalizeRect();
 
 		dc.FillRect(CRectTime, &BrushGrey);
@@ -4153,10 +4160,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		{
 			dc.SetTextColor(RGB(33, 33, 33));
 
-			tempS = std::to_string(Time) + ": " + RimcasInstance->TimeTable[it->first][Time];
-			if (RimcasInstance->AcColor.find(RimcasInstance->TimeTable[it->first][Time]) != RimcasInstance->AcColor.end())
+			const auto timeEntryIt = runwayTimeTable.find(Time);
+			const std::string acCallsign = (timeEntryIt != runwayTimeTable.end()) ? timeEntryIt->second : "";
+			tempS = std::to_string(Time) + ": " + acCallsign;
+			if (!acCallsign.empty() && RimcasInstance->AcColor.find(acCallsign) != RimcasInstance->AcColor.end())
 			{
-				CBrush RimcasBrush(RimcasInstance->GetAircraftColor(RimcasInstance->TimeTable[it->first][Time],
+				CBrush RimcasBrush(RimcasInstance->GetAircraftColor(acCallsign,
 					Color::Black,
 					Color::Black,
 					rimcasStageOneColor,
@@ -4186,7 +4195,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert ARR"], "CA Arrival", 1);
 		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
 		{
-			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_ARRIVAL_FUNC, false, RimcasInstance->MonitoredRunwayArr[it->first.c_str()]);
+			const auto monitoredArrIt = RimcasInstance->MonitoredRunwayArr.find(it->first);
+			const bool monitoredArr = (monitoredArrIt != RimcasInstance->MonitoredRunwayArr.end()) && monitoredArrIt->second;
+			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_ARRIVAL_FUNC, false, monitoredArr);
 		}
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		ShowLists["Conflict Alert ARR"] = false;
@@ -4196,7 +4207,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert DEP"], "CA Departure", 1);
 		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
 		{
-			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_MONITOR_FUNC, false, RimcasInstance->MonitoredRunwayDep[it->first.c_str()]);
+			const auto monitoredDepIt = RimcasInstance->MonitoredRunwayDep.find(it->first);
+			const bool monitoredDep = (monitoredDepIt != RimcasInstance->MonitoredRunwayDep.end()) && monitoredDepIt->second;
+			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_MONITOR_FUNC, false, monitoredDep);
 		}
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		ShowLists["Conflict Alert DEP"] = false;
@@ -4206,7 +4219,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		GetPlugIn()->OpenPopupList(ListAreas["Runway closed"], "Runway Closed", 1);
 		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
 		{
-			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CLOSED_RUNWAYS_FUNC, false, RimcasInstance->ClosedRunway[it->first.c_str()]);
+			const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(it->first);
+			const bool isClosedRunway = (closedRunwayIt != RimcasInstance->ClosedRunway.end()) && closedRunwayIt->second;
+			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CLOSED_RUNWAYS_FUNC, false, isClosedRunway);
 		}
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		ShowLists["Runway closed"] = false;
