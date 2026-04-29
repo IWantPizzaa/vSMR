@@ -16,7 +16,9 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	};
 	if (FunctionId == APPWINDOW_ONE || FunctionId == APPWINDOW_TWO) {
 		int id = FunctionId - APPWINDOW_BASE;
-		appWindowDisplays[id] = !appWindowDisplays[id];
+		auto appWindowDisplayIt = appWindowDisplays.find(id);
+		if (appWindowDisplayIt != appWindowDisplays.end())
+			appWindowDisplayIt->second = !appWindowDisplayIt->second;
 	}
 
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {
