@@ -344,6 +344,10 @@ void CSMRRadar::ReloadConfig() {
 	}
 	this->LoadProfile(activeProfile);
 	this->RefreshAirportActivity();
+
+	// Force map visibility recomputation on next frame even when zoom level is unchanged.
+	RadarViewZoomLevel = -1;
+	RequestRefresh();
 }
 
 void CSMRRadar::LoadProfile(string profileName) {

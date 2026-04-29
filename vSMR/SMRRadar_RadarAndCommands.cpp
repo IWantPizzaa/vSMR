@@ -232,8 +232,7 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		return false;
 
 	if (strcmp(sCommandLine, ".smr reload") == 0) {
-		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
-		LoadProfile(CurrentConfig->getActiveProfileName());
+		ReloadConfig();
 		return true;
 	}
 	if (strcmp(sCommandLine, ".smr draw") == 0) {
