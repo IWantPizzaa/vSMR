@@ -7,6 +7,8 @@ extern CPoint mouseLocation;
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
+	const bool hasItemString = (sItemString != nullptr && sItemString[0] != '\0');
+	const char* itemString = hasItemString ? sItemString : "";
 	auto getAppWindowById = [&](int id) -> CInsetWindow*
 	{
 		auto appWindowIt = appWindows.find(id);
@@ -22,8 +24,11 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {
-		setActiveAirport(sItemString);
-		SaveDataToAsr("Airport", "Active airport", getActiveAirport().c_str());
+		if (hasItemString)
+		{
+			setActiveAirport(itemString);
+			SaveDataToAsr("Airport", "Active airport", getActiveAirport().c_str());
+		}
 	}
 
 	if (FunctionId == RIMCAS_ACTIVE_PROFILE_FUNC) {
@@ -62,15 +67,15 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_FONTS) {
-		if (strcmp(sItemString, "Size 1") == 0)
+		if (strcmp(itemString, "Size 1") == 0)
 			currentFontSize = 1;
-		if (strcmp(sItemString, "Size 2") == 0)
+		if (strcmp(itemString, "Size 2") == 0)
 			currentFontSize = 2;
-		if (strcmp(sItemString, "Size 3") == 0)
+		if (strcmp(itemString, "Size 3") == 0)
 			currentFontSize = 3;
-		if (strcmp(sItemString, "Size 4") == 0)
+		if (strcmp(itemString, "Size 4") == 0)
 			currentFontSize = 4;
-		if (strcmp(sItemString, "Size 5") == 0)
+		if (strcmp(itemString, "Size 5") == 0)
 			currentFontSize = 5;
 
 		// Persist profile label font size even when selecting the currently active size.
@@ -212,29 +217,30 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 
 	if (FunctionId == RIMCAS_UPDATEFILTER1 || FunctionId == RIMCAS_UPDATEFILTER2) {
 		int id = FunctionId - RIMCAS_UPDATEFILTER;
-		if (startsWith("UNL", sItemString))
-			sItemString = "66000";
+		const char* filterValue = itemString;
+		if (startsWith("UNL", filterValue))
+			filterValue = "66000";
 		CInsetWindow* appWindow = getAppWindowById(id);
 		if (appWindow != nullptr)
-			appWindow->m_Filter = atoi(sItemString);
+			appWindow->m_Filter = atoi(filterValue);
 	}
 
 	if (FunctionId == RIMCAS_UPDATERANGE1 || FunctionId == RIMCAS_UPDATERANGE2) {
 		int id = FunctionId - RIMCAS_UPDATERANGE;
 		CInsetWindow* appWindow = getAppWindowById(id);
 		if (appWindow != nullptr)
-			appWindow->m_Scale = atoi(sItemString);
+			appWindow->m_Scale = atoi(itemString);
 	}
 
 	if (FunctionId == RIMCAS_UPDATEROTATE1 || FunctionId == RIMCAS_UPDATEROTATE2) {
 		int id = FunctionId - RIMCAS_UPDATEROTATE;
 		CInsetWindow* appWindow = getAppWindowById(id);
 		if (appWindow != nullptr)
-			appWindow->m_Rotation = atoi(sItemString);
+			appWindow->m_Rotation = atoi(itemString);
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_BRIGHNESS) {
-		if (strcmp(sItemString, "Day") == 0)
+		if (strcmp(itemString, "Day") == 0)
 			ColorSettingsDay = true;
 		else
 			ColorSettingsDay = false;
@@ -245,18 +251,22 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_ALERTS_TOGGLE_FUNC) {
-		RimcasInstance->toggleActiveAlert(string(sItemString));
-		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
-		if (!CurrentConfig->saveConfig())
+		if (hasItemString)
 		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save active alerts to vSMR_Profiles.json", true, true, false, false, false);
+			RimcasInstance->toggleActiveAlert(string(itemString));
+			CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+			if (!CurrentConfig->saveConfig())
+			{
+				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save active alerts to vSMR_Profiles.json", true, true, false, false, false);
+			}
 		}
 		ShowLists["Active Alerts"] = true;
 		RequestRefresh();
 	}
 
 	if (FunctionId == RIMCAS_CA_ARRIVAL_FUNC) {
-		RimcasInstance->toggleMonitoredRunwayArr(string(sItemString));
+		if (hasItemString)
+			RimcasInstance->toggleMonitoredRunwayArr(string(itemString));
 
 		ShowLists["Conflict Alert ARR"] = true;
 
@@ -264,7 +274,8 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_CA_MONITOR_FUNC) {
-		RimcasInstance->toggleMonitoredRunwayDep(string(sItemString));
+		if (hasItemString)
+			RimcasInstance->toggleMonitoredRunwayDep(string(itemString));
 
 		ShowLists["Conflict Alert DEP"] = true;
 
@@ -272,7 +283,8 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_CLOSED_RUNWAYS_FUNC) {
-		RimcasInstance->toggleClosedRunway(string(sItemString));
+		if (hasItemString)
+			RimcasInstance->toggleClosedRunway(string(itemString));
 
 		ShowLists["Runway closed"] = true;
 
@@ -280,23 +292,25 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_OPEN_LIST) {
-		if (sItemString != nullptr &&
-			(strcmp(sItemString, "Tag Definitions") == 0 || strcmp(sItemString, "Profile Editor") == 0))
+		if (hasItemString &&
+			(strcmp(itemString, "Tag Definitions") == 0 || strcmp(itemString, "Profile Editor") == 0))
 		{
 			OpenProfileEditorWindow();
 			return;
 		}
+		if (!hasItemString)
+			return;
 
-		ShowLists[string(sItemString)] = true;
-		ListAreas[string(sItemString)] = Area;
+		ShowLists[string(itemString)] = true;
+		ListAreas[string(itemString)] = Area;
 
 		RequestRefresh();
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_LVP) {
-		if (strcmp(sItemString, "Normal") == 0)
+		if (strcmp(itemString, "Normal") == 0)
 			isLVP = false;
-		if (strcmp(sItemString, "Low") == 0)
+		if (strcmp(itemString, "Low") == 0)
 			isLVP = true;
 
 		ShowLists["Visibility"] = true;
@@ -311,40 +325,46 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 
 	if (FunctionId == RIMCAS_UPDATE_GND_TRAIL)
 	{
-		Trail_Gnd = atoi(sItemString);
+		if (hasItemString)
+			Trail_Gnd = atoi(itemString);
 
 		ShowLists["GRND Trail Dots"] = true;
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_APP_TRAIL)
 	{
-		Trail_App = atoi(sItemString);
+		if (hasItemString)
+			Trail_App = atoi(itemString);
 
 		ShowLists["APPR Trail Dots"] = true;
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_PTL)
 	{
-		PredictedLength = atoi(sItemString);
+		if (hasItemString)
+			PredictedLength = atoi(itemString);
 
 		ShowLists["Predicted Track Line"] = true;
 	}
 
 	if (FunctionId == RIMCAS_BRIGHTNESS_LABEL)
 	{
-		ColorManager->update_brightness("label", std::atoi(sItemString));
+		if (hasItemString)
+			ColorManager->update_brightness("label", std::atoi(itemString));
 		ShowLists["Label"] = true;
 	}
 
 	if (FunctionId == RIMCAS_BRIGHTNESS_AFTERGLOW)
 	{
-		ColorManager->update_brightness("afterglow", std::atoi(sItemString));
+		if (hasItemString)
+			ColorManager->update_brightness("afterglow", std::atoi(itemString));
 		ShowLists["Afterglow"] = true;
 	}
 
 	if (FunctionId == RIMCAS_BRIGHTNESS_SYMBOL)
 	{
-		ColorManager->update_brightness("symbol", std::atoi(sItemString));
+		if (hasItemString)
+			ColorManager->update_brightness("symbol", std::atoi(itemString));
 		ShowLists["Symbol"] = true;
 	}
 
