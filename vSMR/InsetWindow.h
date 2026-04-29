@@ -1,12 +1,14 @@
 #pragma once
-#include "SMRRadar.hpp"
 #include "EuroScopePlugIn.h"
 #include <string>
 #include <map>
+#include <GdiPlus.h>
 #include "Logger.h"
 
 using namespace std;
 using namespace EuroScopePlugIn;
+
+class CSMRRadar;
 
 class CInsetWindow
 {
@@ -28,7 +30,7 @@ public:
 	map<string, CRect> m_TagAreas;
 	string m_TagBeingDragged;
 
-	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);
+	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools);
 	virtual void setAirport(string icao);
 	virtual POINT projectPoint(CPosition pos);
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);

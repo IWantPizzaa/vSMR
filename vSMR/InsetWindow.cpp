@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "InsetWindow.h"
+#include "SMRRadar.hpp"
 #include "SMRRadar_TagShared.hpp"
 
 
@@ -183,7 +184,7 @@ POINT CInsetWindow::projectPoint(CPosition pos)
 	}
 }
 
-void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
+void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
 {
 	CDC dc;
 	dc.Attach(hDC);
@@ -604,7 +605,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 		int TagWidth = 0, TagHeight = 0;
 		RectF mesureRect;
-		Gdiplus::Font* tagRegularFont = radar_screen->customFonts[radar_screen->currentFontSize];
+		auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
+		Gdiplus::Font* tagRegularFont = (fontIt != radar_screen->customFonts.end()) ? fontIt->second.get() : nullptr;
 		if (tagRegularFont == nullptr)
 			continue;
 		Gdiplus::Font* tagBoldFont = tagRegularFont;
@@ -1119,7 +1121,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 
 					RectF RectRimcas_height;
 
-					gdi->MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), radar_screen->customFonts[radar_screen->currentFontSize], PointF(0, 0), &Gdiplus::StringFormat(), &RectRimcas_height);
+					gdi->MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &RectRimcas_height);
 					rimcas_height = int(RectRimcas_height.GetBottom());
 
 					// Drawing the rectangle
@@ -1136,7 +1138,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Graphics* gdi, POIN
 					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::StageTwo)
 						? &AlertTextColorWarning
 						: &AlertTextColorCaution;
-					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), radar_screen->customFonts[radar_screen->currentFontSize], PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, rimcasTextBrush);
+					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), tagRegularFont, PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, rimcasTextBrush);
 
 				}
 			}

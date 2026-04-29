@@ -1,7 +1,6 @@
 ﻿#include "stdafx.h"
 #include "SMRRadar.hpp"
-
-extern map<int, CInsetWindow*> appWindows;
+#include "InsetWindow.h"
 
 Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw) {
 	std::string ac = acTypeRaw;

@@ -15,7 +15,6 @@
 #include "CallsignLookup.hpp"
 #include "Config.hpp"
 #include "Rimcas.hpp"
-#include "InsetWindow.h"
 #include <memory>
 #include <asio/io_service.hpp>
 #include <thread>
@@ -112,6 +111,7 @@ struct StructuredTagColorRule
 
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);
 class CProfileEditorDialog;
+class CInsetWindow;
 
 class CSMRRadar :
 	public EuroScopePlugIn::CRadarScreen
@@ -160,8 +160,8 @@ public:
 	string DllPath;
 	string ConfigPath;
 	string mapsPath;
-	CCallsignLookup * Callsigns = nullptr;
-	CColorManager * ColorManager = nullptr;
+	std::unique_ptr<CCallsignLookup> Callsigns;
+	std::unique_ptr<CColorManager> ColorManager;
 	std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> AircraftIcons;
 	std::string IconsPath;
 	struct AircraftSpec { double length = 0.0; double wingspan = 0.0; };
@@ -212,10 +212,12 @@ public:
 
 	map<string, clock_t> RecentlyAutoMovedTags;
 
-	CRimcas * RimcasInstance = nullptr;
-	CConfig * CurrentConfig = nullptr;
+	std::unique_ptr<CRimcas> RimcasInstance;
+	std::unique_ptr<CConfig> CurrentConfig;
 
-	map<int, Gdiplus::Font *> customFonts;
+	std::map<int, std::unique_ptr<Gdiplus::Font>> customFonts;
+	std::map<int, std::unique_ptr<CInsetWindow>> appWindows;
+	ULONG_PTR m_gdiplusToken = 0;
 	int currentFontSize = 1;
 
 	map<string, CPosition> AirportPositions;

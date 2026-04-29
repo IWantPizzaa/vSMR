@@ -232,7 +232,7 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		return false;
 
 	if (strcmp(sCommandLine, ".smr reload") == 0) {
-		CurrentConfig = new CConfig(ConfigPath, mapsPath);
+		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
 		LoadProfile(CurrentConfig->getActiveProfileName());
 		return true;
 	}
