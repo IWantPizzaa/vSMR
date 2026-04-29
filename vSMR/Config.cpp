@@ -41,6 +41,12 @@ void CConfig::loadConfig() {
 	stringstream ss;
 	ifstream ifs;
 	ifs.open(config_path.c_str(), std::ios::binary);
+	if (!ifs.is_open()) {
+		document.SetArray();
+		profiles.clear();
+		active_profile = 0;
+		return;
+	}
 	ss << ifs.rdbuf();
 	ifs.close();
 
@@ -49,16 +55,25 @@ void CConfig::loadConfig() {
 	
 		ASSERT(AfxGetMainWnd() != NULL);
 		AfxGetMainWnd()->SendMessage(WM_CLOSE);
+		document.SetArray();
+		profiles.clear();
+		active_profile = 0;
+		return;
 	}
 	
 	profiles.clear();
 
-	assert(document.IsArray());
+	if (!document.IsArray()) {
+		document.SetArray();
+		active_profile = 0;
+		return;
+	}
 
 	for (SizeType i = 0; i < document.Size(); i++) {
 		const Value& profile = document[i];
+		if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
+			continue;
 		string profile_name = profile["name"].GetString();
-
 		profiles.insert(pair<string, rapidjson::SizeType>(profile_name, i));
 	}
 }
@@ -100,7 +115,15 @@ void CConfig::loadMap()
 }
 
 const Value& CConfig::getActiveProfile() {
-	return document[active_profile];
+	if (document.IsArray() && !document.Empty())
+	{
+		if (active_profile < document.Size())
+			return document[active_profile];
+		return document[static_cast<SizeType>(0)];
+	}
+
+	static const Value emptyProfile(kObjectType);
+	return emptyProfile;
 }
 
 bool CConfig::isSidColorAvail(string sid, string airport) {
@@ -263,9 +286,14 @@ bool CConfig::saveConfig()
 
 unordered_set<string> CConfig::getInactiveAlert()
 {
-	if (getActiveProfile()["rimcas"].HasMember("inactive_alerts")) {
+	const Value& activeProfile = getActiveProfile();
+	if (!activeProfile.IsObject() || !activeProfile.HasMember("rimcas") || !activeProfile["rimcas"].IsObject())
+		return unordered_set<string>();
+
+	const Value& rimcas = activeProfile["rimcas"];
+	if (rimcas.HasMember("inactive_alerts") && rimcas["inactive_alerts"].IsArray()) {
 		unordered_set<string> toR;
-		const Value& inactiveAlerts = getActiveProfile()["rimcas"]["inactive_alerts"];
+		const Value& inactiveAlerts = rimcas["inactive_alerts"];
 		for (SizeType i = 0; i < inactiveAlerts.Size(); i++) {
 			toR.insert(inactiveAlerts[i].GetString());
 		}
@@ -276,8 +304,19 @@ unordered_set<string> CConfig::getInactiveAlert()
 
 bool CConfig::setInactiveAlert(unordered_set<string> inactiveAlerts)
 {
+	if (!document.IsArray() || document.Empty() || active_profile >= document.Size() || !document[active_profile].IsObject())
+		return false;
+
+	Value& activeProfile = document[active_profile];
+	if (!activeProfile.HasMember("rimcas") || !activeProfile["rimcas"].IsObject())
+	{
+		Value rimcasObject(kObjectType);
+		activeProfile.RemoveMember("rimcas");
+		activeProfile.AddMember("rimcas", rimcasObject, document.GetAllocator());
+	}
+
 	// Modify the document in memory
-	Value& rimcas = const_cast<Value&>(getActiveProfile()["rimcas"]);
+	Value& rimcas = activeProfile["rimcas"];
 	Value inactiveAlertArray(rapidjson::kArrayType);
 	for (const string& alert : inactiveAlerts) {
 		Value alertValue;

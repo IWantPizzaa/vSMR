@@ -152,7 +152,7 @@ public:
 protected:
 	string config_path;
 	string map_path;
-	rapidjson::SizeType active_profile;
+	rapidjson::SizeType active_profile = 0;
 	map<string, rapidjson::SizeType> profiles;
 	map<int, vector<mapData>> maps;
 
