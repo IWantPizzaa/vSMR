@@ -343,7 +343,7 @@ unordered_set<string> CConfig::getInactiveAlert()
 	return unordered_set<string>();
 }
 
-bool CConfig::setInactiveAlert(unordered_set<string> inactiveAlerts)
+bool CConfig::setInactiveAlert(const unordered_set<string>& inactiveAlerts)
 {
 	if (!document.IsArray() || document.Empty() || active_profile >= document.Size() || !document[active_profile].IsObject())
 		return false;

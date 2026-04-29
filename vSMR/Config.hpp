@@ -52,7 +52,7 @@ public:
 	bool saveConfig();
 
 	unordered_set<string> getInactiveAlert();
-	bool setInactiveAlert(unordered_set<string> inactiveAlerts);
+	bool setInactiveAlert(const unordered_set<string>& inactiveAlerts);
 
 	inline int isItActiveProfile(string toTest) {
 		auto it = profiles.find(toTest);
