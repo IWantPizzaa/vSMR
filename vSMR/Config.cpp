@@ -65,9 +65,12 @@ void CConfig::loadConfig() {
 
 void CConfig::loadMap()
 {
+	maps.clear();
+
 	stringstream ss;
 	ifstream ifs(map_path.c_str(), std::ios::binary);
 	if (!ifs) {
+		mapDocument.SetArray();
 		return; // no map defined
 	}
 	ss << ifs.rdbuf();
@@ -78,9 +81,11 @@ void CConfig::loadMap()
 	
 		ASSERT(AfxGetMainWnd() != NULL);
 		AfxGetMainWnd()->SendMessage(WM_CLOSE);
+		return;
 	}
 
-	assert(mapDocument.IsArray());
+	if (!mapDocument.IsArray())
+		return;
 	for (SizeType i = 0; i < mapDocument.Size(); i++) {
 		const Value& map = mapDocument[i];
 		int mapZoomLevel = map["zoomLevel"].GetInt();

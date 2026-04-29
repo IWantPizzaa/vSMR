@@ -1615,7 +1615,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			if (rd != nullptr)
 				rd->ReloadConfig();
 		}
-		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json", true, true, false, true, false);
+		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json and vSMR_Maps.json", true, true, false, true, false);
 		return true;
 	}
 	else if (startsWithCommand(".smr cdm cooldown"))
