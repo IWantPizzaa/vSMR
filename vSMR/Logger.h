@@ -114,6 +114,8 @@ public:
 		// traces and profile-editor step-by-step instrumentation.
 		if (is_compiler_signature_trace(message))
 			return true;
+		if (is_high_volume_trace_message(message))
+			return true;
 		if (message.rfind("ProfileEditor: ", 0) == 0)
 			return true;
 
@@ -121,10 +123,9 @@ public:
 	}
 
 	static void info(string message) {
-		if (Logger::should_skip_info_message(message))
-			return;
-
 		if (!Logger::ENABLED || Logger::DLL_PATH.length() == 0)
+			return;
+		if (Logger::should_skip_info_message(message))
 			return;
 
 		std::lock_guard<std::mutex> guard(Logger::log_write_mutex());
