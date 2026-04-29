@@ -255,6 +255,15 @@ public:
 		return ActiveAirport = value;
 	}
 
+	inline bool TryGetActiveAirportPosition(CPosition& outPosition) const
+	{
+		auto airportIt = AirportPositions.find(ActiveAirport);
+		if (airportIt == AirportPositions.end())
+			return false;
+		outPosition = airportIt->second;
+		return true;
+	}
+
 	//---GenerateTagData--------------------------------------------
 
 	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign = "");

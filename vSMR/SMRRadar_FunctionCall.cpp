@@ -116,7 +116,11 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	{
 		if (!QDMSelectEnabled)
 		{
-			QDMSelectPt = ConvertCoordFromPositionToPixel(AirportPositions[getActiveAirport()]);
+			CPosition activeAirportPosition;
+			if (TryGetActiveAirportPosition(activeAirportPosition))
+				QDMSelectPt = ConvertCoordFromPositionToPixel(activeAirportPosition);
+			else
+				QDMSelectPt = Pt;
 		}
 		QDMSelectEnabled = !QDMSelectEnabled;
 		QDMenabled = false;
