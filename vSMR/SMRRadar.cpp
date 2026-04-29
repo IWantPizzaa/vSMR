@@ -2495,7 +2495,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	double radarCrossDistance = Haversine(radarDownLeft, radarUpRight);
 	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
 	const std::string currentMapAirport = getActiveAirport();
-	const std::map<std::string, CRimcas::RunwayStatus> currentRunwayStatuses = RimcasInstance->GetRunwayStatuses();
+	const auto& currentRunwayStatuses = RimcasInstance->GetRunwayStatuses();
 	const bool needsMapRefresh =
 		(NewRadarViewZoomLevel != RadarViewZoomLevel) ||
 		(currentMapAirport != LastMapActiveAirport) ||
