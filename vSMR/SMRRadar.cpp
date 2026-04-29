@@ -4396,12 +4396,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		CPen Pen(PS_SOLID, 1, RGB(255, 255, 255));
 		CPen *oldPen = dc.SelectObject(&Pen);
 
-		POINT AirportPos = ConvertCoordFromPositionToPixel(AirportPositions[getActiveAirport()]);
-		CPosition AirportCPos = AirportPositions[getActiveAirport()];
+		POINT AirportPos = mouseLocation;
+		CPosition AirportCPos = ConvertCoordFromPixelToPosition(mouseLocation);
 		if (QDMSelectEnabled)
 		{
 			AirportPos = QDMSelectPt;
 			AirportCPos = ConvertCoordFromPixelToPosition(QDMSelectPt);
+		}
+		else
+		{
+			CPosition activeAirportPosition;
+			if (TryGetActiveAirportPosition(activeAirportPosition))
+			{
+				AirportPos = ConvertCoordFromPositionToPixel(activeAirportPosition);
+				AirportCPos = activeAirportPosition;
+			}
 		}
 		if (DistanceToolActive)
 		{
