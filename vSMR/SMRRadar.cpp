@@ -3160,10 +3160,26 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		// Disable legacy basic (yellow) aircraft symbol when using PNG icons
 		const bool drawLegacyPrimarySymbol = false;
-		if (drawLegacyPrimarySymbol && CurrentConfig->getActiveProfile()["targets"]["show_primary_target"].GetBool()) {
+		const Value& symbolProfile = CurrentConfig->getActiveProfile();
+		const Value* symbolTargets = (symbolProfile.IsObject() &&
+			symbolProfile.HasMember("targets") &&
+			symbolProfile["targets"].IsObject())
+			? &symbolProfile["targets"]
+			: nullptr;
+		const bool showLegacyPrimaryTarget = (symbolTargets != nullptr &&
+			symbolTargets->HasMember("show_primary_target") &&
+			(*symbolTargets)["show_primary_target"].IsBool())
+			? (*symbolTargets)["show_primary_target"].GetBool()
+			: false;
+		if (drawLegacyPrimarySymbol && showLegacyPrimaryTarget) {
+			const Color legacyTargetColor = (symbolTargets != nullptr &&
+				symbolTargets->HasMember("target_color") &&
+				(*symbolTargets)["target_color"].IsObject())
+				? CurrentConfig->getConfigColor((*symbolTargets)["target_color"])
+				: Color(255, 255, 242, 73);
 
 			SolidBrush H_Brush(ColorManager->get_corrected_color("afterglow",
-				CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["targets"]["target_color"])));
+				legacyTargetColor));
 
 			PointF lpPoints[100];
 			for (unsigned int i = 0; i < Patatoides[rtCallsign].points.size(); i++)
