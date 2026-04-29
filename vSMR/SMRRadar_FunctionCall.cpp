@@ -7,6 +7,13 @@ extern CPoint mouseLocation;
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
+	auto getAppWindowById = [&](int id) -> CInsetWindow*
+	{
+		auto appWindowIt = appWindows.find(id);
+		if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
+			return nullptr;
+		return appWindowIt->second.get();
+	};
 	if (FunctionId == APPWINDOW_ONE || FunctionId == APPWINDOW_TWO) {
 		int id = FunctionId - APPWINDOW_BASE;
 		appWindowDisplays[id] = !appWindowDisplays[id];
@@ -201,17 +208,23 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		int id = FunctionId - RIMCAS_UPDATEFILTER;
 		if (startsWith("UNL", sItemString))
 			sItemString = "66000";
-		appWindows[id]->m_Filter = atoi(sItemString);
+		CInsetWindow* appWindow = getAppWindowById(id);
+		if (appWindow != nullptr)
+			appWindow->m_Filter = atoi(sItemString);
 	}
 
 	if (FunctionId == RIMCAS_UPDATERANGE1 || FunctionId == RIMCAS_UPDATERANGE2) {
 		int id = FunctionId - RIMCAS_UPDATERANGE;
-		appWindows[id]->m_Scale = atoi(sItemString);
+		CInsetWindow* appWindow = getAppWindowById(id);
+		if (appWindow != nullptr)
+			appWindow->m_Scale = atoi(sItemString);
 	}
 
 	if (FunctionId == RIMCAS_UPDATEROTATE1 || FunctionId == RIMCAS_UPDATEROTATE2) {
 		int id = FunctionId - RIMCAS_UPDATEROTATE;
-		appWindows[id]->m_Rotation = atoi(sItemString);
+		CInsetWindow* appWindow = getAppWindowById(id);
+		if (appWindow != nullptr)
+			appWindow->m_Rotation = atoi(sItemString);
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_BRIGHNESS) {
