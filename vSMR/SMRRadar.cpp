@@ -4107,6 +4107,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		vector<int> TimeDefinition = RimcasInstance->CountdownDefinition;
 		if (isLVP)
 			TimeDefinition = RimcasInstance->CountdownDefinitionLVP;
+		Color rimcasStageOneColor(255, 160, 90, 30);
+		Color rimcasStageTwoColor(255, 150, 0, 0);
+		const Value& activeProfile = CurrentConfig->getActiveProfile();
+		if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+		{
+			const Value& rimcasConfig = activeProfile["rimcas"];
+			if (rimcasConfig.HasMember("background_color_stage_one") && rimcasConfig["background_color_stage_one"].IsObject())
+				rimcasStageOneColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_one"]);
+			if (rimcasConfig.HasMember("background_color_stage_two") && rimcasConfig["background_color_stage_two"].IsObject())
+				rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_two"]);
+		}
 
 		if (TimePopupAreas.find(it->first) == TimePopupAreas.end())
 			TimePopupAreas[it->first] = { 300, 300, 430, 300+LONG(TextHeight*(TimeDefinition.size()+1)) };
@@ -4132,8 +4143,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				CBrush RimcasBrush(RimcasInstance->GetAircraftColor(RimcasInstance->TimeTable[it->first][Time],
 					Color::Black,
 					Color::Black,
-					CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
-					CurrentConfig->getConfigColor(CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"])).ToCOLORREF()
+					rimcasStageOneColor,
+					rimcasStageTwoColor).ToCOLORREF()
 					);
 
 				CRect TempRect = { CRectTime.left, CRectTime.top + TopOffset, CRectTime.right, CRectTime.top + TopOffset + TextHeight };
