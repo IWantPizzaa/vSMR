@@ -347,6 +347,8 @@ void CSMRRadar::ReloadConfig() {
 
 	// Force map visibility recomputation on next frame even when zoom level is unchanged.
 	RadarViewZoomLevel = -1;
+	LastMapRunwayStatuses.clear();
+	LastMapActiveAirport.clear();
 	RequestRefresh();
 }
 
@@ -2492,8 +2494,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	GetDisplayArea(&radarDownLeft, &radarUpRight);
 	double radarCrossDistance = Haversine(radarDownLeft, radarUpRight);
 	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
-	
-	if (NewRadarViewZoomLevel != RadarViewZoomLevel) {
+	const std::string currentMapAirport = getActiveAirport();
+	const std::map<std::string, CRimcas::RunwayStatus> currentRunwayStatuses = RimcasInstance->GetRunwayStatuses();
+	const bool needsMapRefresh =
+		(NewRadarViewZoomLevel != RadarViewZoomLevel) ||
+		(currentMapAirport != LastMapActiveAirport) ||
+		(currentRunwayStatuses != LastMapRunwayStatuses);
+
+	if (needsMapRefresh) {
 		RadarViewZoomLevel = NewRadarViewZoomLevel;
 		// Draw items based on asr config & zoom level
 		vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
@@ -2517,11 +2525,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			// If the item has an "active" definition we need to evaluate DEP/ARR conditions
 			if (present && item.active.size() > 4) {
-				if (item.active.substr(0, 4) != ActiveAirport) {
+				if (item.active.substr(0, 4) != currentMapAirport) {
 					shouldDraw = false;
 				}
-
-				auto runwayStatuses = RimcasInstance->GetRunwayStatuses();
 
 				// airport prefix (first 4 chars) must match active airport
 				
@@ -2534,8 +2540,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 						string depList = item.active.substr(depPos, depEnd - depPos);
 						vector<string> depRunways = Utils::getVectorFromCommaList(depList);
 						for (const auto& rwy : depRunways) {
-							auto it = runwayStatuses.find(rwy);
-							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
+							auto it = currentRunwayStatuses.find(rwy);
+							if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
 								shouldDraw = false;
 								break;
 							}
@@ -2547,8 +2553,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 						string arrList = item.active.substr(arrPos);
 						vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
 						for (const auto& rwy : arrRunways) {
-							auto it = runwayStatuses.find(rwy);
-							if (it == runwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
+							auto it = currentRunwayStatuses.find(rwy);
+							if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
 								shouldDraw = false;
 								break;
 							}
@@ -2589,6 +2595,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 
 		RefreshMapContent();
+		LastMapRunwayStatuses = currentRunwayStatuses;
+		LastMapActiveAirport = currentMapAirport;
 	}
 
 
