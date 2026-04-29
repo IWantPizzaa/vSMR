@@ -233,7 +233,60 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	m_TargetPoints.clear();
 	m_TagAreas.clear();
 
-	COLORREF qBackgroundColor = radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["background_color"]);
+	const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
+	const auto getProfileObjectSection = [&](const char* key) -> const Value*
+	{
+		if (!activeProfile.IsObject() || !activeProfile.HasMember(key) || !activeProfile[key].IsObject())
+			return nullptr;
+		return &activeProfile[key];
+	};
+	const auto getSectionInt = [&](const Value* section, const char* key, int fallback) -> int
+	{
+		if (section != nullptr && section->HasMember(key) && (*section)[key].IsInt())
+			return (*section)[key].GetInt();
+		return fallback;
+	};
+	const auto getSectionDouble = [&](const Value* section, const char* key, double fallback) -> double
+	{
+		if (section != nullptr && section->HasMember(key) && (*section)[key].IsNumber())
+			return (*section)[key].GetDouble();
+		return fallback;
+	};
+	const auto getSectionBool = [&](const Value* section, const char* key, bool fallback) -> bool
+	{
+		if (section != nullptr && section->HasMember(key) && (*section)[key].IsBool())
+			return (*section)[key].GetBool();
+		return fallback;
+	};
+	const auto getSectionColorRef = [&](const Value* section, const char* key, const COLORREF fallback) -> COLORREF
+	{
+		if (section != nullptr && section->HasMember(key) && (*section)[key].IsObject())
+			return radar_screen->CurrentConfig->getConfigColorRef((*section)[key]);
+		return fallback;
+	};
+	const auto getSectionColor = [&](const Value* section, const char* key, const Color& fallback) -> Color
+	{
+		if (section != nullptr && section->HasMember(key) && (*section)[key].IsObject())
+			return radar_screen->CurrentConfig->getConfigColor((*section)[key]);
+		return fallback;
+	};
+
+	const Value* approachInsetSection = getProfileObjectSection("approach_insets");
+	const Value* filterSection = getProfileObjectSection("filters");
+	const Value* rimcasSection = getProfileObjectSection("rimcas");
+	const Value* labelsSection = getProfileObjectSection("labels");
+
+	const COLORREF qBackgroundColor = getSectionColorRef(approachInsetSection, "background_color", RGB(30, 30, 30));
+	const COLORREF approachRunwayColor = getSectionColorRef(approachInsetSection, "runway_color", RGB(255, 255, 255));
+	const COLORREF approachExtendedLineColor = getSectionColorRef(approachInsetSection, "extended_lines_color", RGB(180, 180, 180));
+	const double approachExtendedLineLengthNm = max(0.1, getSectionDouble(approachInsetSection, "extended_lines_length", 15.0));
+	const int approachExtendedLineTickSpacingNm = max(1, getSectionInt(approachInsetSection, "extended_lines_ticks_spacing", 1));
+	const int radarRangeNm = max(1, getSectionInt(filterSection, "radar_range_nm", 999));
+	const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
+	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
+	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
+	const Color squawkErrorLabelColor = getSectionColor(labelsSection, "squawk_error_color", Color(255, 255, 0, 0));
+
 	CRect windowAreaCRect(m_Area);
 	windowAreaCRect.NormalizeRect();
 
@@ -257,8 +310,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		if (startsWith(icao.c_str(), rwy.GetAirportName()))
 		{
 
-			CPen RunwayPen(PS_SOLID, 1, radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["runway_color"]));
-			CPen ExtendedCentreLinePen(PS_SOLID, 1, radar_screen->CurrentConfig->getConfigColorRef(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["extended_lines_color"]));
+			CPen RunwayPen(PS_SOLID, 1, approachRunwayColor);
+			CPen ExtendedCentreLinePen(PS_SOLID, 1, approachExtendedLineColor);
 			CPen* oldPen = dc.SelectObject(&RunwayPen);
 
 			CPosition EndOne, EndTwo;
@@ -291,7 +344,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					
 
 				double reverseHeading = RadToDeg(TrueBearing(OtherEnd, Threshold));
-				double lenght = double(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["extended_lines_length"].GetDouble()) * 1852.0;
+				double lenght = approachExtendedLineLengthNm * 1852.0;
 
 				// Drawing the extended centreline
 				CPosition endExtended = BetterHarversine(Threshold, reverseHeading, lenght);
@@ -306,9 +359,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				}
 
 				// Drawing the ticks
-				int increment = radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["extended_lines_ticks_spacing"].GetInt() * 1852;
+				int increment = approachExtendedLineTickSpacingNm * 1852;
 
-				for (int j = increment; j <= int(radar_screen->CurrentConfig->getActiveProfile()["approach_insets"]["extended_lines_length"].GetInt() * 1852); j += increment) {
+				for (int j = increment; j <= int(approachExtendedLineLengthNm * 1852); j += increment) {
 
 					CPosition tickPosition = BetterHarversine(Threshold, reverseHeading, j);
 					CPosition tickBottom = BetterHarversine(tickPosition, fmod(reverseHeading - 90, 360), 500);
@@ -347,7 +400,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			continue;
 		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
 		bool isASEL = (aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign) == 0);
-		int radarRange = radar_screen->CurrentConfig->getActiveProfile()["filters"]["radar_range_nm"].GetInt();
+		int radarRange = radarRangeNm;
 
 		if (rt.GetGS() < 60 ||
 			rt.GetPosition().GetPressureAltitude() > m_Filter ||
@@ -635,7 +688,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			oneLineHeight = max(oneLineHeight, (int)boldMeasureRect.GetBottom());
 		}
 
-		const Value& LabelsSettings = radar_screen->CurrentConfig->getActiveProfile()["labels"];
+		static const Value emptyObject(kObjectType);
+		const Value& LabelsSettings = (labelsSection != nullptr) ? *labelsSection : emptyObject;
 		auto hasStatusDefinition = [&](const std::string& typeKey, const char* statusKey) -> bool
 		{
 			if (statusKey == nullptr || statusKey[0] == '\0')
@@ -818,7 +872,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		// Pfiou, done with that, now we can draw the actual rectangle.
 
 		// We need to figure out if the tag color changes according to RIMCAS alerts, or not
-		bool rimcasLabelOnly = radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["rimcas_label_only"].GetBool();
+		bool rimcasLabelOnly = rimcasLabelOnlySetting;
 
 		const std::string colorTagTypeKey = Utils::getEnumString(ColorTagType);
 		const Value* colorTagLabelSection = nullptr;
@@ -953,8 +1007,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		Color TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign,
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor,
-			radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
-			radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"]));
+			rimcasStageOneColor,
+			rimcasStageTwoColor);
 
 		if (rimcasLabelOnly)
 			TagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign,
@@ -1027,7 +1081,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 			SolidBrush FontColor(radar_screen->ColorManager->get_corrected_color("label", definedTextColor));
 			SolidBrush SquawkErrorColor(radar_screen->ColorManager->get_corrected_color("label",
-				radar_screen->CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"])));
+				squawkErrorLabelColor));
 			SolidBrush AlertTextColorCaution(radar_screen->ColorManager->get_corrected_color("label",
 				getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30))));
 			SolidBrush AlertTextColorWarning(radar_screen->ColorManager->get_corrected_color("label",
@@ -1111,8 +1165,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 			if (rimcasLabelOnly) {
 				Color RimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign, Color::AliceBlue, Color::AliceBlue,
-					radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_one"]),
-					radar_screen->CurrentConfig->getConfigColor(radar_screen->CurrentConfig->getActiveProfile()["rimcas"]["background_color_stage_two"]));
+					rimcasStageOneColor,
+					rimcasStageTwoColor);
 
 				if (RimcasLabelColor.ToCOLORREF() != Color(Color::AliceBlue).ToCOLORREF()) {
 					int rimcas_height = 0;
@@ -1159,7 +1213,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		CRadarTarget one = radar_screen->GetPlugIn()->RadarTargetSelect(kv.first.c_str());
 		CRadarTarget two = radar_screen->GetPlugIn()->RadarTargetSelect(kv.second.c_str());
 
-		int radarRange = radar_screen->CurrentConfig->getActiveProfile()["filters"]["radar_range_nm"].GetInt();
+		int radarRange = radarRangeNm;
 
 		if (one.GetGS() < 60 ||
 			one.GetPosition().GetPressureAltitude() > m_Filter ||
@@ -1222,12 +1276,12 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	}
 
 	// Resize square
-	qBackgroundColor = RGB(60, 60, 60);
+	COLORREF resizeBackgroundColor = RGB(60, 60, 60);
 	POINT BottomRight = { m_Area.right, m_Area.bottom };
 	POINT TopLeft = { BottomRight.x - 10, BottomRight.y - 10 };
 	CRect ResizeArea = { TopLeft, BottomRight };
 	ResizeArea.NormalizeRect();
-	dc.FillSolidRect(ResizeArea, qBackgroundColor);
+	dc.FillSolidRect(ResizeArea, resizeBackgroundColor);
 	radar_screen->AddScreenObject(m_Id, "resize", ResizeArea, true, "");
 
 	dc.Draw3dRect(ResizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
