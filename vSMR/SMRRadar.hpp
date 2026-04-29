@@ -153,6 +153,8 @@ public:
 	map<string, Patatoide_Points> Patatoides;
 
 	int RadarViewZoomLevel = 0;
+	std::map<std::string, CRimcas::RunwayStatus> LastMapRunwayStatuses;
+	std::string LastMapActiveAirport;
 
 	map<string, bool> ClosedRunway;
 
