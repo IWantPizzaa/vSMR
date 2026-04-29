@@ -26,8 +26,6 @@ std::atomic<bool> FailedToConnectMessage(false);
 string logonCode = "";
 string logonCallsign = "EGKK";
 
-HttpHelper * httpHelper = NULL;
-
 bool BLINK = false;
 
 bool PlaySoundClr = false;
@@ -132,6 +130,12 @@ namespace
 {
 	const std::time_t CdmWarningCooldownSeconds = 60;
 	const int CdmReminderQueueMaxSendAttempts = 20;
+
+	HttpHelper& GetHttpHelper()
+	{
+		static HttpHelper helper;
+		return helper;
+	}
 
 	enum class CdmQueueReminderOutcome
 	{
@@ -918,9 +922,6 @@ namespace
 
 	bool SendDatalinkPacketMessage(const std::string& destination, const std::string& type, const std::string& packet, const std::string& callsign)
 	{
-		if (httpHelper == NULL)
-			return false;
-
 		string raw;
 		string url = baseUrlDatalink;
 		url += "?logon=";
@@ -940,7 +941,7 @@ namespace
 			start_pos += string("%20").length();
 		}
 
-		raw.assign(httpHelper->downloadStringFromURL(url));
+		raw.assign(GetHttpHelper().downloadStringFromURL(url));
 		if (!startsWith("ok", raw.c_str()))
 			return false;
 
@@ -1166,11 +1167,8 @@ void refreshVacdmDataImpl(void* arg)
 
 	try
 	{
-		if (httpHelper == NULL)
-			return;
-
 		const std::string pilotsUrl = ResolveVacdmPilotsUrl();
-		std::string raw = httpHelper->downloadStringFromURL(pilotsUrl);
+		std::string raw = GetHttpHelper().downloadStringFromURL(pilotsUrl);
 		if (raw.empty())
 		{
 			Logger::info("VACDM refresh failed: empty response url=" + pilotsUrl);
@@ -1290,7 +1288,7 @@ void datalinkLogin(void * arg) {
 	url += "&from=";
 	url += logonCallsign;
 	url += "&to=SERVER&type=PING";
-	raw.assign(httpHelper->downloadStringFromURL(url));
+	raw.assign(GetHttpHelper().downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
 		HoppieConnected.store(true);
@@ -1328,7 +1326,7 @@ void pollMessages(void * arg) {
 	url += "&from=";
 	url += logonCallsign;
 	url += "&to=SERVER&type=POLL";
-	raw.assign(httpHelper->downloadStringFromURL(url));
+	raw.assign(GetHttpHelper().downloadStringFromURL(url));
 
 	if (!startsWith("ok", raw.c_str()) || raw.size() <= 3)
 		return;
@@ -1464,7 +1462,7 @@ void sendDatalinkClearance(void * arg) {
 		start_pos += string("%20").length();
 	}
 
-	raw.assign(httpHelper->downloadStringFromURL(url));
+	raw.assign(GetHttpHelper().downloadStringFromURL(url));
 
 	if (startsWith("ok", raw.c_str())) {
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -1493,9 +1491,6 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 	timer = clock();
 	VacdmLastFetchClock = 0;
-
-	if (httpHelper == NULL)
-		httpHelper = new HttpHelper();
 
 	const char * p_value;
 
