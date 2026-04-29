@@ -248,7 +248,11 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
 		if (strcmp(sObjectId, "close") == 0)
-			appWindowDisplays[appWindowId] = false;
+		{
+			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
+			if (appWindowDisplayIt != appWindowDisplays.end())
+				appWindowDisplayIt->second = false;
+		}
 		if (strcmp(sObjectId, "range") == 0) {
 			if (appWindow == nullptr)
 				return;
@@ -354,8 +358,12 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			GetPlugIn()->OpenPopupList(Area, "Display Menu", 1);
 			GetPlugIn()->AddPopupListElement("QDR Fixed Reference", "", RIMCAS_QDM_TOGGLE);
 			GetPlugIn()->AddPopupListElement("QDR Select Reference", "", RIMCAS_QDM_SELECT_TOGGLE);
-			GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowDisplays[1]));
-			GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowDisplays[2]));
+			const auto appWindowOneDisplayIt = appWindowDisplays.find(1);
+			const bool appWindowOneVisible = (appWindowOneDisplayIt != appWindowDisplays.end()) && appWindowOneDisplayIt->second;
+			const auto appWindowTwoDisplayIt = appWindowDisplays.find(2);
+			const bool appWindowTwoVisible = (appWindowTwoDisplayIt != appWindowDisplays.end()) && appWindowTwoDisplayIt->second;
+			GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
+			GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
 			GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
 			GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
 			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
