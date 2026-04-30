@@ -4590,127 +4590,113 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	std::vector<std::string> staleTagCallsigns;
-	for (const auto& areas : tagCollisionAreas)
+	auto isTagCoolingDown = [&](const std::string& callsign) -> bool
 	{
-		if (!autoDeconflictionEnabled)
-			break;
+		auto recentMoveIt = RecentlyAutoMovedTags.find(callsign);
+		if (recentMoveIt == RecentlyAutoMovedTags.end())
+			return false;
 
-		if (IsTagBeingDragged(areas.first))
-			continue;
-
-		if (RecentlyAutoMovedTags.find(areas.first) != RecentlyAutoMovedTags.end())
+		const double elapsedSeconds = ((double)clock() - recentMoveIt->second) / ((double)CLOCKS_PER_SEC);
+		if (elapsedSeconds >= 0.8)
 		{
-			double t = ((double)clock() - RecentlyAutoMovedTags[areas.first]) / ((double)CLOCKS_PER_SEC);
-			if (t >= 0.8) {
-				RecentlyAutoMovedTags.erase(areas.first);
-			} else
-			{
-				continue;
-			}
+			RecentlyAutoMovedTags.erase(recentMoveIt);
+			return false;
 		}
-
-		// We need to see wether the rotation will be clockwise or anti-clockwise
-
-		bool isAntiClockwise = false;
-
-		for (const auto area2 : tagCollisionAreas)
+		return true;
+	};
+	auto intersectsAnyOtherTag = [&](const std::string& callsign, const CRect& rect, bool* outRotateAntiClockwise) -> bool
+	{
+		for (const auto& otherArea : tagCollisionAreas)
 		{
-			if (areas.first == area2.first)
+			if (callsign == otherArea.first)
+				continue;
+			if (IsTagBeingDragged(otherArea.first))
 				continue;
 
-			if (IsTagBeingDragged(area2.first))
+			CRect intersection;
+			if (!intersection.IntersectRect(rect, otherArea.second))
 				continue;
 
-			CRect h;
+			if (outRotateAntiClockwise != nullptr)
+				*outRotateAntiClockwise = (rect.left <= otherArea.second.left);
+			return true;
+		}
+		return false;
+	};
 
-			if (h.IntersectRect(tagCollisionAreas[areas.first], area2.second))
+	if (autoDeconflictionEnabled)
+	{
+		for (const auto& areaEntry : tagCollisionAreas)
+		{
+			const std::string& callsign = areaEntry.first;
+			const CRect& currentRect = areaEntry.second;
+
+			if (IsTagBeingDragged(callsign))
+				continue;
+			if (isTagCoolingDown(callsign))
+				continue;
+
+			// Decide the preferred rotation direction from current overlaps.
+			bool rotateAntiClockwise = false;
+			(void)intersectsAnyOtherTag(callsign, currentRect, &rotateAntiClockwise);
+
+			CRadarTarget deconflictTarget = GetPlugIn()->RadarTargetSelect(callsign.c_str());
+			if (!deconflictTarget.IsValid() || !deconflictTarget.GetPosition().IsValid())
 			{
-				if (areas.second.left <= area2.second.left)
+				staleTagCallsigns.push_back(callsign);
+				if (Logger::is_verbose_mode())
 				{
-					isAntiClockwise = true;
+					Logger::info(
+						"OnRefresh deconfliction: pruned stale tag state callsign=" + callsign +
+						" target_valid=" + std::string(deconflictTarget.IsValid() ? "1" : "0"));
 				}
-
-				break;
+				continue;
 			}
-		}
 
-		// We then rotate the tags until we did a 360 or there is no more conflicts
+			auto angleIt = TagAngles.find(callsign);
+			if (angleIt == TagAngles.end())
+				angleIt = TagAngles.emplace(callsign, 270.0f).first;
+			const double baseAngle = angleIt->second;
 
-		CRadarTarget deconflictTarget = GetPlugIn()->RadarTargetSelect(areas.first.c_str());
-		if (!deconflictTarget.IsValid() || !deconflictTarget.GetPosition().IsValid())
-		{
-			staleTagCallsigns.push_back(areas.first);
-			if (Logger::is_verbose_mode())
+			int leaderLength = LeaderLineDefaultlenght;
+			auto leaderLengthIt = TagLeaderLineLength.find(callsign);
+			if (leaderLengthIt != TagLeaderLineLength.end())
+				leaderLength = leaderLengthIt->second;
+
+			const POINT acPosPix = ConvertCoordFromPositionToPixel(deconflictTarget.GetPosition().GetPosition());
+			const int width = currentRect.Width();
+			const int height = currentRect.Height();
+
+			for (double rotated = 0.0; abs(rotated) <= 360.0;)
 			{
-				Logger::info(
-					"OnRefresh deconfliction: pruned stale tag state callsign=" + areas.first +
-					" target_valid=" + std::string(deconflictTarget.IsValid() ? "1" : "0"));
-			}
-			continue;
-		}
+				const double candidateAngle = fmod(baseAngle + rotated, 360.0f);
+				POINT tagCenter;
+				tagCenter.x = long(acPosPix.x + float(leaderLength * cos(DegToRad(candidateAngle))));
+				tagCenter.y = long(acPosPix.y + float(leaderLength * sin(DegToRad(candidateAngle))));
 
-		if (TagAngles.find(areas.first) == TagAngles.end())
-			TagAngles[areas.first] = 270.0f;
+				CRect newRectangle(
+					tagCenter.x - (width / 2),
+					tagCenter.y - (height / 2),
+					tagCenter.x + (width / 2),
+					tagCenter.y + (height / 2));
+				newRectangle.NormalizeRect();
 
-		POINT acPosPix = ConvertCoordFromPositionToPixel(deconflictTarget.GetPosition().GetPosition());
-		int lenght = LeaderLineDefaultlenght;
-		if (TagLeaderLineLength.find(areas.first) != TagLeaderLineLength.end())
-			lenght = TagLeaderLineLength[areas.first];
-
-		int width = areas.second.Width();
-		int height = areas.second.Height();
-
-		for (double rotated = 0.0; abs(rotated) <= 360.0;)
-		{
-			// We first rotate the tag
-			double newangle = fmod(TagAngles[areas.first] + rotated, 360.0f);
-
-			POINT TagCenter;
-			TagCenter.x = long(acPosPix.x + float(lenght * cos(DegToRad(newangle))));
-			TagCenter.y = long(acPosPix.y + float(lenght * sin(DegToRad(newangle))));
-
-			CRect NewRectangle(TagCenter.x - (width / 2), TagCenter.y - (height / 2), TagCenter.x + (width / 2), TagCenter.y + (height / 2));
-			NewRectangle.NormalizeRect();
-
-			// Assume there is no conflict, then try again
-
-			bool isTagConflicing = false;
-
-			for (const auto area2 : tagCollisionAreas)
-			{
-				if (areas.first == area2.first)
-					continue;
-
-				if (IsTagBeingDragged(area2.first))
-					continue;
-
-				CRect h;
-
-				if (h.IntersectRect(NewRectangle, area2.second))
+				const bool hasConflict = intersectsAnyOtherTag(callsign, newRectangle, nullptr);
+				if (!hasConflict)
 				{
-					isTagConflicing = true;
+					angleIt->second = fmod(baseAngle + rotated, 360.0f);
+
+					const POINT newCenter = newRectangle.CenterPoint();
+					const POINT newOffset = { newCenter.x - acPosPix.x, newCenter.y - acPosPix.y };
+					TagsOffsets[callsign] = newOffset;
+
+					tagCollisionAreas[callsign] = newRectangle;
+					RecentlyAutoMovedTags[callsign] = clock();
 					break;
 				}
+
+				rotated += rotateAntiClockwise ? -22.5f : 22.5f;
 			}
-
-			if (!isTagConflicing)
-			{
-				double finalAngle = fmod(TagAngles[areas.first] + rotated, 360.0f);
-				TagAngles[areas.first] = finalAngle;
-
-				POINT newCenter = NewRectangle.CenterPoint();
-				POINT newOffset = { newCenter.x - acPosPix.x, newCenter.y - acPosPix.y };
-				TagsOffsets[areas.first] = newOffset;
-
-				tagCollisionAreas[areas.first] = NewRectangle;
-				RecentlyAutoMovedTags[areas.first] = clock();
-				break;
-			}
-
-			if (isAntiClockwise)
-				rotated -= 22.5f;
-			else
-				rotated += 22.5f;
 		}
 	}
 	if (!staleTagCallsigns.empty())
