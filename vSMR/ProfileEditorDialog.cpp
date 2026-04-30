@@ -2369,7 +2369,7 @@ void CProfileEditorDialog::CreateEditorControls()
 
 	IconStyleArrow.Create("Arrow", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_ARROW);
 	IconStyleDiamond.Create("Diamond", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_DIAMOND);
-	IconStyleRealistic.Create("Realistic", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_REALISTIC);
+	IconStyleRealistic.Create("Icons", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_REALISTIC);
 	IconStyleNova.Create("NOVA", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_NOVA);
 	IconPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PANEL);
 	IconShapePanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SHAPE_PANEL);
@@ -3293,7 +3293,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int tagTop = iconTop;
 	const int tagWidth = iconRightWidth;
 	const int tagHeight = iconHeight;
-	const int iconShapeCardHeight = 80;
+	const int iconShapeCardHeight = 112;
 	const int iconDisplayCardHeight = 96;
 	const int iconSizeCardHeight = max(120, iconHeight - iconShapeCardHeight - iconDisplayCardHeight - (iconGap * 2));
 
@@ -3312,18 +3312,21 @@ void CProfileEditorDialog::LayoutControls()
 	const int iconTickWidth = 54;
 
 	IconShapeHeader.MoveWindow(iconContentLeft, iconTop + 14, 100, rowHeight, TRUE);
-	const int shapeRowY = iconTop + 44;
+	const int shapeTopRowY = iconTop + 44;
+	const int shapeBottomRowY = shapeTopRowY + iconCheckboxHeight + 8;
 	const int iconRadioGap = 12;
 	const int arrowWidth = measureRadioWidth(IconStyleArrow, 72);
 	const int diamondWidth = measureRadioWidth(IconStyleDiamond, 84);
-	const int realisticWidth = measureRadioWidth(IconStyleRealistic, 92);
+	const int realisticWidth = measureRadioWidth(IconStyleRealistic, 64);
 	const int novaWidth = measureRadioWidth(IconStyleNova, 68);
-	const int shapeRowWidth = arrowWidth + iconRadioGap + diamondWidth + iconRadioGap + realisticWidth + iconRadioGap + novaWidth;
-	const int shapeRowLeft = iconContentLeft + max(0, (iconContentWidth - shapeRowWidth) / 2);
-	IconStyleArrow.MoveWindow(shapeRowLeft, shapeRowY, arrowWidth, iconCheckboxHeight, TRUE);
-	IconStyleDiamond.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap, shapeRowY, diamondWidth, iconCheckboxHeight, TRUE);
-	IconStyleRealistic.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap + diamondWidth + iconRadioGap, shapeRowY, realisticWidth, iconCheckboxHeight, TRUE);
-	IconStyleNova.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap + diamondWidth + iconRadioGap + realisticWidth + iconRadioGap, shapeRowY, novaWidth, iconCheckboxHeight, TRUE);
+	const int shapeTopRowWidth = realisticWidth + iconRadioGap + novaWidth;
+	const int shapeBottomRowWidth = arrowWidth + iconRadioGap + diamondWidth;
+	const int shapeTopRowLeft = iconContentLeft + max(0, (iconContentWidth - shapeTopRowWidth) / 2);
+	const int shapeBottomRowLeft = iconContentLeft + max(0, (iconContentWidth - shapeBottomRowWidth) / 2);
+	IconStyleRealistic.MoveWindow(shapeTopRowLeft, shapeTopRowY, realisticWidth, iconCheckboxHeight, TRUE);
+	IconStyleNova.MoveWindow(shapeTopRowLeft + realisticWidth + iconRadioGap, shapeTopRowY, novaWidth, iconCheckboxHeight, TRUE);
+	IconStyleArrow.MoveWindow(shapeBottomRowLeft, shapeBottomRowY, arrowWidth, iconCheckboxHeight, TRUE);
+	IconStyleDiamond.MoveWindow(shapeBottomRowLeft + arrowWidth + iconRadioGap, shapeBottomRowY, diamondWidth, iconCheckboxHeight, TRUE);
 
 	int iconY = iconTop + iconShapeCardHeight + iconGap + 14;
 	IconSizeHeader.MoveWindow(iconContentLeft, iconY, 120, rowHeight, TRUE);
@@ -3355,16 +3358,29 @@ void CProfileEditorDialog::LayoutControls()
 	BoostFactorTickMaxLabel.MoveWindow(iconContentRight - iconTickWidth, iconY, iconTickWidth, iconTickHeight, TRUE);
 
 	const int displayContentLeft = iconLeft + iconPad;
+	const int displayContentRight = iconLeft + iconLeftWidth - iconPad;
 	IconDisplayHeader.MoveWindow(displayContentLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 12, 100, rowHeight, TRUE);
 	BoostResolutionLabel.MoveWindow(displayContentLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 44, 90, rowHeight, TRUE);
 	const int resButtonsTop = iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap + 44;
 	const int resolutionLabelWidth = 88;
-	const int resolutionRadioGap = 10;
+	const int resolutionPreferredGap = 10;
+	const int resolutionMinGap = 4;
 	const int resolution1080Width = measureRadioWidth(BoostResolution1080Button, 66);
 	const int resolution2kWidth = measureRadioWidth(BoostResolution2KButton, 44);
 	const int resolution4kWidth = measureRadioWidth(BoostResolution4KButton, 44);
-	const int resolutionRowWidth = resolution1080Width + resolutionRadioGap + resolution2kWidth + resolutionRadioGap + resolution4kWidth;
-	const int resolutionButtonsLeft = displayContentLeft + resolutionLabelWidth + max(8, (max(0, iconContentWidth - resolutionLabelWidth) - resolutionRowWidth) / 2);
+	const int resolutionBaseWidth = resolution1080Width + resolution2kWidth + resolution4kWidth;
+	const int resolutionButtonsAreaLeft = displayContentLeft + resolutionLabelWidth + 8;
+	const int resolutionButtonsAreaWidth = max(0, displayContentRight - resolutionButtonsAreaLeft);
+	int resolutionRadioGap = resolutionPreferredGap;
+	if (resolutionButtonsAreaWidth < resolutionBaseWidth + (resolutionPreferredGap * 2))
+	{
+		const int maxGapThatFits = (resolutionButtonsAreaWidth - resolutionBaseWidth) / 2;
+		resolutionRadioGap = max(resolutionMinGap, maxGapThatFits);
+	}
+	const int resolutionRowWidth = resolutionBaseWidth + (resolutionRadioGap * 2);
+	int resolutionButtonsLeft = displayContentRight - resolutionRowWidth;
+	if (resolutionButtonsLeft < resolutionButtonsAreaLeft)
+		resolutionButtonsLeft = resolutionButtonsAreaLeft;
 	BoostResolution1080Button.MoveWindow(resolutionButtonsLeft, resButtonsTop, resolution1080Width, 22, TRUE);
 	BoostResolution2KButton.MoveWindow(resolutionButtonsLeft + resolution1080Width + resolutionRadioGap, resButtonsTop, resolution2kWidth, 22, TRUE);
 	BoostResolution4KButton.MoveWindow(resolutionButtonsLeft + resolution1080Width + resolutionRadioGap + resolution2kWidth + resolutionRadioGap, resButtonsTop, resolution4kWidth, 22, TRUE);
