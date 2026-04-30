@@ -110,6 +110,7 @@ private:
 		IDC_PE_ICON_STYLE_ARROW = 9115,
 		IDC_PE_ICON_STYLE_DIAMOND = 9116,
 		IDC_PE_ICON_STYLE_REALISTIC = 9117,
+		IDC_PE_ICON_STYLE_NOVA = 9276,
 		IDC_PE_FIXED_PIXEL_CHECK = 9118,
 		IDC_PE_FIXED_SCALE_LABEL = 9119,
 		IDC_PE_FIXED_SCALE_COMBO = 9120,
@@ -303,6 +304,7 @@ private:
 	CButton IconStyleArrow;
 	CButton IconStyleDiamond;
 	CButton IconStyleRealistic;
+	CButton IconStyleNova;
 	CStatic IconPanel;
 	CStatic IconShapePanel;
 	CStatic IconShapeHeader;

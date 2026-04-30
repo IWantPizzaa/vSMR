@@ -6,6 +6,9 @@ std::string CSMRRadar::NormalizeTargetIconStyle(const std::string& style) const
 	std::string lowered = style;
 	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
+	if (lowered.find("nova") != std::string::npos)
+		return "nova";
+
 	if (lowered.find("diamond") != std::string::npos ||
 		lowered.find("square") != std::string::npos ||
 		lowered.find("rhomb") != std::string::npos)
