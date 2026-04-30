@@ -2930,6 +2930,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 		}
 	}
+	const CorrelationSettings frameCorrelationSettings = BuildCorrelationSettings();
 	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const std::string frameActiveAirport = getActiveAirport();
 	const std::string frameActiveAirportUpper = ToUpperAsciiCopy(frameActiveAirport);
@@ -3274,7 +3275,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		iconVerboseStep("begin");
 
 		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
-		bool AcisCorrelated = IsCorrelated(iconFp, rt);
+		bool AcisCorrelated = IsCorrelatedWithSettings(iconFp, rt, frameCorrelationSettings);
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
