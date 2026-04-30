@@ -2932,6 +2932,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const std::string frameActiveAirport = getActiveAirport();
+	const std::string frameActiveAirportUpper = ToUpperAsciiCopy(frameActiveAirport);
 	const std::vector<StructuredTagColorRule>& frameStructuredTagRules = GetStructuredTagColorRules();
 	CRadarTarget frameAselTarget = GetPlugIn()->RadarTargetSelectASEL();
 	FrameTagDataCache frameTagDataCache;
@@ -3098,6 +3099,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
+		const Color symbolWhiteColor = ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
 		const Value& symbolProfile = CurrentConfig->getActiveProfile();
 		const Value* symbolTargets = (symbolProfile.IsObject() &&
 			symbolProfile.HasMember("targets") &&
@@ -3186,12 +3188,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					trailNumber = Trail_App;
 
 				CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
+				SolidBrush trailBrush(symbolWhiteColor);
 				for (int j = 1; j <= trailNumber; j++) {
 					if (!previousPos.IsValid())
 						break;
 
 					POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
-					SolidBrush trailBrush(ColorManager->get_corrected_color("symbol", Gdiplus::Color::White));
 					graphics.FillRectangle(&trailBrush, pCoord.x - 1, pCoord.y - 1, 2, 2);
 
 					previousPos = rt.GetPreviousPosition(previousPos);
@@ -3352,14 +3354,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (iconFp.IsValid() && AcisCorrelated)
 		{
 			const char* originRaw = iconFp.GetFlightPlanData().GetOrigin();
-			std::string originAirport = (originRaw != nullptr) ? originRaw : "";
-			if (!originAirport.empty() && !frameActiveAirport.empty())
-			{
-				std::transform(originAirport.begin(), originAirport.end(), originAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-				std::string activeAirport = frameActiveAirport;
-				std::transform(activeAirport.begin(), activeAirport.end(), activeAirport.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-				isDepartureTarget = (originAirport == activeAirport);
-			}
+			if (originRaw != nullptr && originRaw[0] != '\0' && !frameActiveAirportUpper.empty())
+				isDepartureTarget = (_stricmp(originRaw, frameActiveAirportUpper.c_str()) == 0);
 		}
 		const bool hasNoFlightPlan = !iconFp.IsValid();
 		const bool isAirborneTarget = (reportedGs > 50);
@@ -3622,10 +3618,73 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			std::string iconDrawMode = useNovaIconStyle ? "nova" : (canUseRealisticIcon ? "realistic" : "symbol");
 			Logger::info("IconRender: " + rtCallsign + " mode=" + iconDrawMode + " icon_type=" + iconType);
 		}
+		Color targetTintColor = symbolWhiteColor;
+		bool applyTargetTintColor = false;
+		auto applyTargetTint = [&](const Color& color)
+		{
+			targetTintColor = ColorManager->get_corrected_color("symbol", color);
+			applyTargetTintColor = true;
+		};
+		if (hasNoFlightPlan)
+		{
+			applyTargetTint(getGroundIconColor("nofpl", getGroundIconColor("gate", Color(255, 128, 128, 128))));
+		}
+		else if (isAirborneTarget)
+		{
+			if (isDepartureTarget)
+				applyTargetTint(getGroundIconColor("airborne_departure", getGroundIconColor("depa", Color(255, 240, 240, 240))));
+			else
+				applyTargetTint(getGroundIconColor("airborne_arrival", getGroundIconColor("arr", Color(255, 120, 190, 240))));
+		}
+		else if (isDepartureTarget)
+		{
+			switch (groundStateCat)
+			{
+			case GroundStateCategory::Gate:
+				applyTargetTint(getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
+				break;
+			case GroundStateCategory::Push:
+				applyTargetTint(getGroundIconColor("push", Color(255, 253, 218, 13)));
+				break;
+			case GroundStateCategory::Stup:
+				applyTargetTint(getGroundIconColor("stup", Color(255, 253, 218, 13)));
+				break;
+			case GroundStateCategory::Taxi:
+				applyTargetTint(getGroundIconColor("taxi", Color(255, 240, 240, 240)));
+				break;
+			case GroundStateCategory::Depa:
+				applyTargetTint(getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
+				break;
+			case GroundStateCategory::Nsts:
+				applyTargetTint(getGroundIconColor("nsts", getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
+				break;
+			default:
+				break;
+			}
+		}
+		else
+		{
+			switch (groundStateCat)
+			{
+			case GroundStateCategory::Gate:
+			case GroundStateCategory::Nsts:
+				applyTargetTint(getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
+				break;
+			default:
+				// All other arrival on-ground states (taxi/arr/push/startup/unknown) use On Ground.
+				applyTargetTint(getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
+				break;
+			}
+		}
+
+		if (vacdmColorRuleOverrides.hasTargetColor)
+		{
+			applyTargetTint(Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
+		}
 
 		if (useNovaIconStyle)
 		{
-			CPen qTrailPen(PS_SOLID, 1, ColorManager->get_corrected_color("symbol", Gdiplus::Color::White).ToCOLORREF());
+			CPen qTrailPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
 			CPen* pqOrigPen = dc.SelectObject(&qTrailPen);
 			if (RtPos.GetTransponderC()) {
 				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
@@ -3751,88 +3810,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				"realistic_size w=" + std::to_string(drawW) +
 				" h=" + std::to_string(drawH));
 
-			Color tintColor;
-			bool applyTint = false;
-			if (hasNoFlightPlan)
-			{
-				tintColor = ColorManager->get_corrected_color("symbol",
-					getGroundIconColor("nofpl", getGroundIconColor("gate", Color(255, 128, 128, 128))));
-				applyTint = true;
-			}
-			else if (isAirborneTarget)
-			{
-				if (isDepartureTarget)
-				{
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("airborne_departure", getGroundIconColor("depa", Color(255, 240, 240, 240))));
-				}
-				else
-				{
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("airborne_arrival", getGroundIconColor("arr", Color(255, 120, 190, 240))));
-				}
-				applyTint = true;
-			}
-			else if (isDepartureTarget)
-			{
-				switch (groundStateCat)
-				{
-				case GroundStateCategory::Gate:
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Push:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 253, 218, 13)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Stup:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("stup", Color(255, 253, 218, 13)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Taxi:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("taxi", Color(255, 240, 240, 240)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Depa:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Nsts:
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("nsts", getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
-					applyTint = true;
-					break;
-				default:
-					break;
-				}
-			}
-			else
-			{
-				switch (groundStateCat)
-				{
-				case GroundStateCategory::Gate:
-				case GroundStateCategory::Nsts:
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
-					applyTint = true;
-					break;
-				default:
-					// All other arrival on-ground states (taxi/arr/push/startup/unknown) use On Ground.
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
-					applyTint = true;
-					break;
-				}
-			}
-
-			if (vacdmColorRuleOverrides.hasTargetColor)
-			{
-				tintColor = ColorManager->get_corrected_color("symbol",
-					Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
-				applyTint = true;
-			}
-
 			// Screen-relative heading from pixel forward vector (handles rotated display)
 			CPosition nosePosDraw = Haversine(RtPos.GetPosition(), headingDeg, 50.0);
 			POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
@@ -3853,14 +3830,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			m.Translate(Gdiplus::REAL(-drawW / 2.0), Gdiplus::REAL(-drawH / 2.0));
 			graphics.SetTransform(&m);
 
-			if (applyTint) {
+			if (applyTargetTintColor) {
 				iconVerboseStep("before_realistic_draw_tinted");
-				const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(tintColor.GetAlpha()) / 255.0f;
+				const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(targetTintColor.GetAlpha()) / 255.0f;
 				Gdiplus::ColorMatrix cm = {
 					{
-						{ static_cast<REAL>(tintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-						{ 0.0f, static_cast<REAL>(tintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
-						{ 0.0f, 0.0f, static_cast<REAL>(tintColor.GetB()) / 255.0f, 0.0f, 0.0f },
+						{ static_cast<REAL>(targetTintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+						{ 0.0f, static_cast<REAL>(targetTintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
+						{ 0.0f, 0.0f, static_cast<REAL>(targetTintColor.GetB()) / 255.0f, 0.0f, 0.0f },
 						{ 0.0f, 0.0f, 0.0f, tintAlpha, 0.0f },
 						{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
 					}
@@ -3889,88 +3866,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		else
 		{
-			Color tintColor;
-			bool applyTint = false;
-			if (hasNoFlightPlan)
-			{
-				tintColor = ColorManager->get_corrected_color("symbol",
-					getGroundIconColor("nofpl", getGroundIconColor("gate", Color(255, 128, 128, 128))));
-				applyTint = true;
-			}
-			else if (isAirborneTarget)
-			{
-				if (isDepartureTarget)
-				{
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("airborne_departure", getGroundIconColor("depa", Color(255, 240, 240, 240))));
-				}
-				else
-				{
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("airborne_arrival", getGroundIconColor("arr", Color(255, 120, 190, 240))));
-				}
-				applyTint = true;
-			}
-			else if (isDepartureTarget)
-			{
-				switch (groundStateCat)
-				{
-				case GroundStateCategory::Gate:
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Push:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("push", Color(255, 253, 218, 13)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Stup:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("stup", Color(255, 253, 218, 13)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Taxi:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("taxi", Color(255, 240, 240, 240)));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Depa:
-					tintColor = ColorManager->get_corrected_color("symbol", getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
-					applyTint = true;
-					break;
-				case GroundStateCategory::Nsts:
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("nsts", getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
-					applyTint = true;
-					break;
-				default:
-					break;
-				}
-			}
-			else
-			{
-				switch (groundStateCat)
-				{
-				case GroundStateCategory::Gate:
-				case GroundStateCategory::Nsts:
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
-					applyTint = true;
-					break;
-				default:
-					// All other arrival on-ground states (taxi/arr/push/startup/unknown) use On Ground.
-					tintColor = ColorManager->get_corrected_color("symbol",
-						getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
-					applyTint = true;
-					break;
-				}
-			}
-
-			if (vacdmColorRuleOverrides.hasTargetColor)
-			{
-				tintColor = ColorManager->get_corrected_color("symbol",
-					Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
-				applyTint = true;
-			}
-
 			const double pixPerMeter = std::isfinite(framePixPerMeter) ? framePixPerMeter : 0.0;
 
 			const double lenMetersBase = 20.0;
@@ -4038,7 +3933,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				return wrapped < 0.0 ? wrapped + 360.0 : wrapped;
 			};
 
-			const Color drawColor = applyTint ? tintColor : ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
+			const Color drawColor = applyTargetTintColor ? targetTintColor : symbolWhiteColor;
 			if (useDiamondIconStyle)
 			{
 				iconVerboseStep("before_symbol_diamond_draw");
