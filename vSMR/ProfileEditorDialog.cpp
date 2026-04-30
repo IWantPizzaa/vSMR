@@ -1142,7 +1142,6 @@ namespace
 		case WM_SETFOCUS:
 		case WM_KILLFOCUS:
 		case WM_SETTEXT:
-		case WM_WINDOWPOSCHANGED:
 			DrawThemedBorder(hwnd);
 			break;
 		default:
@@ -1174,9 +1173,7 @@ namespace
 		case WM_ENABLE:
 		case WM_SETFOCUS:
 		case WM_KILLFOCUS:
-		case WM_SIZE:
-		case WM_WINDOWPOSCHANGED:
-		DrawThemedBorder(hwnd);
+			DrawThemedBorder(hwnd);
 			break;
 		default:
 			break;
@@ -1322,9 +1319,24 @@ void CProfileEditorDialog::OnMove(int x, int y)
 void CProfileEditorDialog::OnSize(UINT nType, int cx, int cy)
 {
 	CDialogEx::OnSize(nType, cx, cy);
+	if (!ControlsCreated || !::IsWindow(GetSafeHwnd()))
+		return;
+
+	if (nType == SIZE_MINIMIZED || cx <= 0 || cy <= 0)
+		return;
+
+	if (LastLayoutWidth == cx && LastLayoutHeight == cy)
+		return;
+
+	LastLayoutWidth = cx;
+	LastLayoutHeight = cy;
+
+	SetRedraw(FALSE);
 	LayoutControls();
-	ForceChildRepaint();
-	NotifyWindowRectChanged();
+	SetRedraw(TRUE);
+
+	// Resize should stay asynchronous; synchronous redraws here cause heavy UI lag.
+	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 void CProfileEditorDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -1457,15 +1469,7 @@ void CProfileEditorDialog::ForceChildRepaint()
 	if (!::IsWindow(GetSafeHwnd()))
 		return;
 
-	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
-	for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
-	{
-		if (::IsWindow(child->GetSafeHwnd()))
-		{
-			child->Invalidate(FALSE);
-			child->UpdateWindow();
-		}
-	}
+	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 void CProfileEditorDialog::UnsubclassEditorControls()

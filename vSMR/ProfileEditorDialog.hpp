@@ -269,6 +269,8 @@ private:
 	bool ControlsCreated = false;
 	int LastVisibilityTab = -1;
 	bool LastVisibilityDetailedTag = false;
+	int LastLayoutWidth = -1;
+	int LastLayoutHeight = -1;
 
 	CTabCtrl PageTabs;
 	CStatic SidebarPanel;
