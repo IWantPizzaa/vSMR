@@ -2302,10 +2302,12 @@ void CProfileEditorDialog::OnPaint()
 		drawCard(IconPanel, false);
 		drawCard(IconDisplayPanel, false);
 		drawCard(TagPanel, false);
+		drawCard(TagOptionsPanel, false);
 		drawSectionDivider(IconShapeHeader, IconShapePanel);
 		drawSectionDivider(IconSizeHeader, IconPanel);
 		drawSectionDivider(IconDisplayHeader, IconDisplayPanel);
 		drawSectionDivider(TagHeaderPanel, TagPanel);
+		drawSectionDivider(TagOptionsHeader, TagOptionsPanel);
 	}
 	else if (selectedTab == kTabColors)
 	{
@@ -2516,7 +2518,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	RuleTree.SetTextColor(RGB(17, 24, 39));
 
 	TagPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_PANEL);
-	TagHeaderPanel.Create("Options", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
+	TagHeaderPanel.Create("Tags", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_HEADER_PANEL);
+	TagOptionsPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_TAG_OPTIONS_PANEL);
+	TagOptionsHeader.Create("Behavior", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_OPTIONS_HEADER);
 	TagTypeLabel.Create("Type", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_LABEL);
 	TagTypeCombo.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST, CRect(0, 0, 0, 0), this, IDC_PE_TAG_TYPE_COMBO);
 	TagStatusLabel.Create("Status", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_STATUS_LABEL);
@@ -2535,6 +2539,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagLine4Label.Create("L4", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_LABEL);
 	TagLine4Edit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINE4_EDIT);
 	TagAutoDeconflictionToggle.Create("Auto Deconfliction", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_AUTO_DECONFLICTION);
+	TagRoundedCornersToggle.Create("Rounded Corners", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_ROUNDED_CORNERS);
 	TagLinkDetailedToggle.Create("Custom Hover Details", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_TAG_LINK_DETAILED);
 	TagDetailedHeader.Create("Definition Detailed", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_HEADER);
 	TagDetailedDefinitionEdit.Create(commonMultilineEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_TAG_DETAILED_EDIT);
@@ -2570,6 +2575,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	softenPanelBorder(ProfilePanel);
 	softenPanelBorder(ProfileInfoPanel);
 	softenPanelBorder(TagPanel);
+	softenPanelBorder(TagOptionsPanel);
 
 	auto removeNativeBorder = [](CEdit& edit)
 	{
@@ -2598,6 +2604,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	TagTypeCombo.SetCurSel(0);
 	TagLinkDetailedToggle.SetCheck(BST_UNCHECKED);
 	TagAutoDeconflictionToggle.SetCheck(BST_CHECKED);
+	TagRoundedCornersToggle.SetCheck(BST_CHECKED);
 	PopulateTagTokenCombo();
 
 	PopulateIconCombos();
@@ -2737,6 +2744,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		ProfileNameEdit.SetFont(GetFont(), TRUE);
 		ProfileProModeCheck.SetFont(GetFont(), TRUE);
 		TagAutoDeconflictionToggle.SetFont(GetFont(), TRUE);
+		TagRoundedCornersToggle.SetFont(GetFont(), TRUE);
 		TagLine1Edit.SetFont(GetFont(), TRUE);
 		TagLine2Edit.SetFont(GetFont(), TRUE);
 		TagLine3Edit.SetFont(GetFont(), TRUE);
@@ -2756,6 +2764,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		ProfileHeader.SetFont(&SectionHeaderFont, TRUE);
 		ProfileInfoHeader.SetFont(&SectionHeaderFont, TRUE);
 		TagHeaderPanel.SetFont(&SectionHeaderFont, TRUE);
+		TagOptionsHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconShapeHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconSizeHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconDisplayHeader.SetFont(&SectionHeaderFont, TRUE);
@@ -3313,7 +3322,9 @@ void CProfileEditorDialog::LayoutControls()
 	const int tagLeft = iconRightLeft;
 	const int tagTop = iconTop;
 	const int tagWidth = iconRightWidth;
-	const int tagHeight = iconHeight;
+	const int tagOptionsCardHeight = 96;
+	const int tagHeight = max(120, iconHeight - tagOptionsCardHeight - iconGap);
+	const int tagOptionsTop = tagTop + tagHeight + iconGap;
 	const int iconShapeCardHeight = 112;
 	const int iconDisplayCardHeight = 96;
 	const int iconSizeCardHeight = max(120, iconHeight - iconShapeCardHeight - iconDisplayCardHeight - (iconGap * 2));
@@ -3322,6 +3333,7 @@ void CProfileEditorDialog::LayoutControls()
 	IconPanel.MoveWindow(iconLeft, iconTop + iconShapeCardHeight + iconGap, iconLeftWidth, iconSizeCardHeight, TRUE);
 	IconDisplayPanel.MoveWindow(iconLeft, iconTop + iconShapeCardHeight + iconGap + iconSizeCardHeight + iconGap, iconLeftWidth, iconDisplayCardHeight, TRUE);
 	TagPanel.MoveWindow(tagLeft, tagTop, tagWidth, tagHeight, TRUE);
+	TagOptionsPanel.MoveWindow(tagLeft, tagOptionsTop, tagWidth, tagOptionsCardHeight, TRUE);
 
 	const int iconPad = 16;
 	const int iconContentLeft = iconLeft + iconPad;
@@ -3462,15 +3474,22 @@ void CProfileEditorDialog::LayoutControls()
 		tagY += rowHeight + 6;
 		TagDetailedDefinitionEdit.MoveWindow(tagContentLeft, tagY, definitionEditWidth, definitionEditHeight, TRUE);
 		tagY += definitionEditHeight + 10;
-		TagAutoDeconflictionToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
 	}
 	else
 	{
-		TagAutoDeconflictionToggle.MoveWindow(tagContentLeft, tagY, max(180, tagWidth - (tagPad * 2)), rowHeight, TRUE);
 		const int hiddenDetailedY = tagY + rowHeight + 8;
 		TagDetailedHeader.MoveWindow(tagContentLeft, hiddenDetailedY, max(100, tagWidth - (tagPad * 2)), rowHeight, TRUE);
 		TagDetailedDefinitionEdit.MoveWindow(tagContentLeft, hiddenDetailedY + rowHeight + 6, definitionEditWidth, definitionEditHeight, TRUE);
 	}
+
+	const int tagOptionsPad = 12;
+	const int tagOptionsLeft = tagLeft + tagOptionsPad;
+	const int tagOptionsWidth = max(140, tagWidth - (tagOptionsPad * 2));
+	TagOptionsHeader.MoveWindow(tagOptionsLeft, tagOptionsTop + 10, tagOptionsWidth, 24, TRUE);
+	int tagOptionsY = tagOptionsTop + 42;
+	TagAutoDeconflictionToggle.MoveWindow(tagOptionsLeft, tagOptionsY, tagOptionsWidth, rowHeight, TRUE);
+	tagOptionsY += rowHeight + 8;
+	TagRoundedCornersToggle.MoveWindow(tagOptionsLeft, tagOptionsY, tagOptionsWidth, rowHeight, TRUE);
 
 	MoveControlOffscreen(TagLine1Label);
 	MoveControlOffscreen(TagLine1Edit);
@@ -3507,7 +3526,8 @@ void CProfileEditorDialog::LayoutControls()
 		IDC_PE_ICON_SHAPE_HEADER, IDC_PE_ICON_SIZE_HEADER, IDC_PE_ICON_DISPLAY_HEADER,
 		IDC_PE_TAG_HEADER_PANEL, IDC_PE_TAG_TYPE_LABEL, IDC_PE_TAG_TYPE_COMBO, IDC_PE_TAG_STATUS_LABEL,
 		IDC_PE_TAG_STATUS_COMBO, IDC_PE_TAG_TOKEN_LABEL, IDC_PE_TAG_TOKEN_COMBO, IDC_PE_TAG_TOKEN_ADD_BUTTON,
-		IDC_PE_TAG_DEF_HEADER, IDC_PE_TAG_DEFINITION_EDIT, IDC_PE_TAG_AUTO_DECONFLICTION, IDC_PE_TAG_LINK_DETAILED, IDC_PE_TAG_DETAILED_HEADER,
+		IDC_PE_TAG_DEF_HEADER, IDC_PE_TAG_DEFINITION_EDIT, IDC_PE_TAG_OPTIONS_HEADER, IDC_PE_TAG_AUTO_DECONFLICTION, IDC_PE_TAG_ROUNDED_CORNERS,
+		IDC_PE_TAG_LINK_DETAILED, IDC_PE_TAG_DETAILED_HEADER,
 		IDC_PE_TAG_DETAILED_EDIT
 	};
 	for (UINT controlId : iconContentIds)
@@ -3870,7 +3890,9 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 	ProfileInfoPanel.ShowWindow(SW_HIDE);
 
 	TagPanel.ShowWindow(SW_HIDE);
+	TagOptionsPanel.ShowWindow(SW_HIDE);
 	TagHeaderPanel.ShowWindow(tagShowMode);
+	TagOptionsHeader.ShowWindow(tagShowMode);
 	TagTypeLabel.ShowWindow(tagShowMode);
 	TagTypeCombo.ShowWindow(tagShowMode);
 	TagStatusLabel.ShowWindow(tagShowMode);
@@ -3889,6 +3911,7 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 	TagLine4Label.ShowWindow(SW_HIDE);
 	TagLine4Edit.ShowWindow(SW_HIDE);
 	TagAutoDeconflictionToggle.ShowWindow(tagShowMode);
+	TagRoundedCornersToggle.ShowWindow(tagShowMode);
 	TagLinkDetailedToggle.ShowWindow(tagShowMode);
 	TagDetailedHeader.ShowWindow(detailedTagShowMode);
 	TagDetailedDefinitionEdit.ShowWindow(detailedTagShowMode);
@@ -5083,6 +5106,7 @@ void CProfileEditorDialog::SyncTagEditorControlsFromRadar()
 	SelectComboEntryByText(TagTypeCombo, TagTypeUiLabel(Owner, TagEditorType));
 	LogProfileEditorInitStep("SyncTagEditorControlsFromRadar: after SelectComboEntryByText(TagTypeCombo)");
 	TagAutoDeconflictionToggle.SetCheck(Owner->GetTagAutoDeconflictionEnabledForEditor() ? BST_CHECKED : BST_UNCHECKED);
+	TagRoundedCornersToggle.SetCheck(Owner->GetTagRoundedCornersEnabledForEditor() ? BST_CHECKED : BST_UNCHECKED);
 	TagLinkDetailedToggle.SetCheck(TagEditorSeparateDetailed ? BST_CHECKED : BST_UNCHECKED);
 	UpdatingControls = false;
 
@@ -6230,6 +6254,20 @@ void CProfileEditorDialog::OnTagAutoDeconflictionToggled()
 	}
 }
 
+void CProfileEditorDialog::OnTagRoundedCornersToggled()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const bool enabled = (TagRoundedCornersToggle.GetCheck() == BST_CHECKED);
+	if (!Owner->SetTagRoundedCornersEnabledForEditor(enabled, true))
+	{
+		UpdatingControls = true;
+		TagRoundedCornersToggle.SetCheck(Owner->GetTagRoundedCornersEnabledForEditor() ? BST_CHECKED : BST_UNCHECKED);
+		UpdatingControls = false;
+	}
+}
+
 void CProfileEditorDialog::OnTagStatusChanged()
 {
 	if (UpdatingControls || Owner == nullptr)
@@ -7359,6 +7397,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_STATUS_COMBO, &CProfileEditorDialog::OnTagStatusChanged)
 	ON_BN_CLICKED(IDC_PE_TAG_TOKEN_ADD_BUTTON, &CProfileEditorDialog::OnTagAddTokenClicked)
 	ON_BN_CLICKED(IDC_PE_TAG_AUTO_DECONFLICTION, &CProfileEditorDialog::OnTagAutoDeconflictionToggled)
+	ON_BN_CLICKED(IDC_PE_TAG_ROUNDED_CORNERS, &CProfileEditorDialog::OnTagRoundedCornersToggled)
 	ON_BN_CLICKED(IDC_PE_TAG_LINK_DETAILED, &CProfileEditorDialog::OnTagLinkToggleChanged)
 	ON_EN_CHANGE(IDC_PE_TAG_DEFINITION_EDIT, &CProfileEditorDialog::OnTagLineChanged)
 	ON_EN_CHANGE(IDC_PE_TAG_LINE1_EDIT, &CProfileEditorDialog::OnTagLineChanged)

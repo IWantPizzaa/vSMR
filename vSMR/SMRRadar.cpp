@@ -1170,6 +1170,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	renameMemberIfPresent(labels, "use_aspeed_for_gate", "use_speed_for_gate");
 	renameMemberIfPresent(labels, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 	ensureBoolMember(labels, "auto_deconfliction", true);
+	ensureBoolMember(labels, "rounded_corners", true);
 	ensureBoolMember(labels, "use_speed_for_gate", false);
 	ensureIntMember(labels, "leader_line_length", 50, 0, 500);
 	ensureBoolMember(labels, "definition_detailed_inherits_normal", false);
