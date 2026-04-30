@@ -241,65 +241,109 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
+	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
+	const char* objectId = hasObjectId ? sObjectId : "";
+	auto isObjectId = [&](const char* expected) -> bool
+	{
+		return expected != nullptr && strcmp(objectId, expected) == 0;
+	};
+	auto shiftPopupAreaDown = [&](int pixels)
+	{
+		Area.top += pixels;
+		Area.bottom += pixels;
+	};
+	auto addPopupCloseItem = [&]()
+	{
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+	};
+	auto openPopupListWithClose = [&](const char* title, const auto& addItems)
+	{
+		GetPlugIn()->OpenPopupList(Area, title, 1);
+		addItems();
+		addPopupCloseItem();
+	};
+	auto selectDistanceToolTarget = [&](const char* targetId) -> bool
+	{
+		if (!DistanceToolActive || targetId == nullptr || targetId[0] == '\0')
+			return false;
+
+		if (ActiveDistance.first.empty())
+		{
+			ActiveDistance.first = targetId;
+		}
+		else if (ActiveDistance.second.empty())
+		{
+			ActiveDistance.second = targetId;
+			DistanceTools.insert(ActiveDistance);
+			ActiveDistance = pair<string, string>("", "");
+			DistanceToolActive = false;
+		}
+
+		RequestRefresh();
+		return true;
+	};
 
 	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
-		if (strcmp(sObjectId, "close") == 0)
+		if (isObjectId("close"))
 		{
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
 			if (appWindowDisplayIt != appWindowDisplays.end())
 				appWindowDisplayIt->second = false;
 		}
-		if (strcmp(sObjectId, "range") == 0) {
+		if (isObjectId("range")) {
 			if (appWindow == nullptr)
 				return;
-			GetPlugIn()->OpenPopupList(Area, "SRW Zoom", 1);
-			GetPlugIn()->AddPopupListElement("55", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 55));
-			GetPlugIn()->AddPopupListElement("50", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 50));
-			GetPlugIn()->AddPopupListElement("45", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 45));
-			GetPlugIn()->AddPopupListElement("40", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 40));
-			GetPlugIn()->AddPopupListElement("35", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 35));
-			GetPlugIn()->AddPopupListElement("30", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 30));
-			GetPlugIn()->AddPopupListElement("25", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 25));
-			GetPlugIn()->AddPopupListElement("20", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 20));
-			GetPlugIn()->AddPopupListElement("15", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 15));
-			GetPlugIn()->AddPopupListElement("10", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 10));
-			GetPlugIn()->AddPopupListElement("5", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 5));
-			GetPlugIn()->AddPopupListElement("1", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 1));
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		}
-		if (strcmp(sObjectId, "filter") == 0) {
-			if (appWindow == nullptr)
-				return;
-			GetPlugIn()->OpenPopupList(Area, "SRW Filter (ft)", 1);
-			GetPlugIn()->AddPopupListElement("UNL", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 66000));
-			GetPlugIn()->AddPopupListElement("9500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 9500));
-			GetPlugIn()->AddPopupListElement("8500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 8500));
-			GetPlugIn()->AddPopupListElement("7500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 7500));
-			GetPlugIn()->AddPopupListElement("6500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 6500));
-			GetPlugIn()->AddPopupListElement("5500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 5500));
-			GetPlugIn()->AddPopupListElement("4500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 4500));
-			GetPlugIn()->AddPopupListElement("3500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 3500));
-			GetPlugIn()->AddPopupListElement("2500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 2500));
-			GetPlugIn()->AddPopupListElement("1500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 1500));
-			GetPlugIn()->AddPopupListElement("500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 500));
-			string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
-			GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEFILTER + appWindowId, false, 2, false, true);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		}
-		if (strcmp(sObjectId, "rotate") == 0) {
-			if (appWindow == nullptr)
-				return;
-			GetPlugIn()->OpenPopupList(Area, "SRW Rotate (deg)", 1);
-			for (int k = 0; k <= 360; k++)
+			openPopupListWithClose("SRW Zoom", [&]()
 			{
-				string tmp = std::to_string(k);
-				GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEROTATE + appWindowId, false, int(appWindow->m_Rotation == k));
-			}
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+				GetPlugIn()->AddPopupListElement("55", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 55));
+				GetPlugIn()->AddPopupListElement("50", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 50));
+				GetPlugIn()->AddPopupListElement("45", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 45));
+				GetPlugIn()->AddPopupListElement("40", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 40));
+				GetPlugIn()->AddPopupListElement("35", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 35));
+				GetPlugIn()->AddPopupListElement("30", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 30));
+				GetPlugIn()->AddPopupListElement("25", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 25));
+				GetPlugIn()->AddPopupListElement("20", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 20));
+				GetPlugIn()->AddPopupListElement("15", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 15));
+				GetPlugIn()->AddPopupListElement("10", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 10));
+				GetPlugIn()->AddPopupListElement("5", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 5));
+				GetPlugIn()->AddPopupListElement("1", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 1));
+			});
+		}
+		if (isObjectId("filter")) {
+			if (appWindow == nullptr)
+				return;
+			openPopupListWithClose("SRW Filter (ft)", [&]()
+			{
+				GetPlugIn()->AddPopupListElement("UNL", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 66000));
+				GetPlugIn()->AddPopupListElement("9500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 9500));
+				GetPlugIn()->AddPopupListElement("8500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 8500));
+				GetPlugIn()->AddPopupListElement("7500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 7500));
+				GetPlugIn()->AddPopupListElement("6500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 6500));
+				GetPlugIn()->AddPopupListElement("5500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 5500));
+				GetPlugIn()->AddPopupListElement("4500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 4500));
+				GetPlugIn()->AddPopupListElement("3500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 3500));
+				GetPlugIn()->AddPopupListElement("2500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 2500));
+				GetPlugIn()->AddPopupListElement("1500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 1500));
+				GetPlugIn()->AddPopupListElement("500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 500));
+				string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
+				GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEFILTER + appWindowId, false, 2, false, true);
+			});
+		}
+		if (isObjectId("rotate")) {
+			if (appWindow == nullptr)
+				return;
+			openPopupListWithClose("SRW Rotate (deg)", [&]()
+			{
+				for (int k = 0; k <= 360; k++)
+				{
+					string tmp = std::to_string(k);
+					GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEROTATE + appWindowId, false, int(appWindow->m_Rotation == k));
+				}
+			});
 		}
 	}
 
@@ -351,82 +395,74 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (ObjectType == RIMCAS_MENU) {
 
-		if (strcmp(sObjectId, "DisplayMenu") == 0) {
-			Area.top = Area.top + 30;
-			Area.bottom = Area.bottom + 30;
-
-			GetPlugIn()->OpenPopupList(Area, "Display Menu", 1);
-			GetPlugIn()->AddPopupListElement("QDR Fixed Reference", "", RIMCAS_QDM_TOGGLE);
-			GetPlugIn()->AddPopupListElement("QDR Select Reference", "", RIMCAS_QDM_SELECT_TOGGLE);
-			const auto appWindowOneDisplayIt = appWindowDisplays.find(1);
-			const bool appWindowOneVisible = (appWindowOneDisplayIt != appWindowDisplays.end()) && appWindowOneDisplayIt->second;
-			const auto appWindowTwoDisplayIt = appWindowDisplays.find(2);
-			const bool appWindowTwoVisible = (appWindowTwoDisplayIt != appWindowDisplays.end()) && appWindowTwoDisplayIt->second;
-			GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
-			GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
-			GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		if (isObjectId("DisplayMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Display Menu", [&]()
+			{
+				GetPlugIn()->AddPopupListElement("QDR Fixed Reference", "", RIMCAS_QDM_TOGGLE);
+				GetPlugIn()->AddPopupListElement("QDR Select Reference", "", RIMCAS_QDM_SELECT_TOGGLE);
+				const auto appWindowOneDisplayIt = appWindowDisplays.find(1);
+				const bool appWindowOneVisible = (appWindowOneDisplayIt != appWindowDisplays.end()) && appWindowOneDisplayIt->second;
+				const auto appWindowTwoDisplayIt = appWindowDisplays.find(2);
+				const bool appWindowTwoVisible = (appWindowTwoDisplayIt != appWindowDisplays.end()) && appWindowTwoDisplayIt->second;
+				GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
+				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
+				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
+			});
 		}
 
-		if (strcmp(sObjectId, "TargetMenu") == 0) {
-			Area.top = Area.top + 30;
-			Area.bottom = Area.bottom + 30;
-
-			GetPlugIn()->OpenPopupList(Area, "Target", 1);
-			GetPlugIn()->AddPopupListElement("Label Font Size", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Tag Font", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_UPDATE_AFTERGLOW, false, int(Afterglow));
-			GetPlugIn()->AddPopupListElement("GRND Trail Dots", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("APPR Trail Dots", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Predicted Track Line", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Acquire", "", RIMCAS_UPDATE_ACQUIRE);
-			GetPlugIn()->AddPopupListElement("Release", "", RIMCAS_UPDATE_RELEASE);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		if (isObjectId("TargetMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Target", [&]()
+			{
+				GetPlugIn()->AddPopupListElement("Label Font Size", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Tag Font", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_UPDATE_AFTERGLOW, false, int(Afterglow));
+				GetPlugIn()->AddPopupListElement("GRND Trail Dots", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("APPR Trail Dots", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Predicted Track Line", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Acquire", "", RIMCAS_UPDATE_ACQUIRE);
+				GetPlugIn()->AddPopupListElement("Release", "", RIMCAS_UPDATE_RELEASE);
+			});
 		}
 
-		if (strcmp(sObjectId, "DefinitionMenu") == 0) {
-			Area.top = Area.top + 30;
-			Area.bottom = Area.bottom + 30;
-
-			GetPlugIn()->OpenPopupList(Area, "Definitions", 1);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		if (isObjectId("DefinitionMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Definitions", [&]() {});
 		}
 
-		if (strcmp(sObjectId, "MapMenu") == 0) {
-			Area.top = Area.top + 30;
-			Area.bottom = Area.bottom + 30;
-
-			GetPlugIn()->OpenPopupList(Area, "Maps", 1);
-			GetPlugIn()->AddPopupListElement("Airport Maps", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Custom Maps", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		if (isObjectId("MapMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Maps", [&]()
+			{
+				GetPlugIn()->AddPopupListElement("Airport Maps", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Custom Maps", "", RIMCAS_OPEN_LIST);
+			});
 		}
 
-		if (strcmp(sObjectId, "ColourMenu") == 0) {
-			Area.top = Area.top + 30;
-			Area.bottom = Area.bottom + 30;
-
-			GetPlugIn()->OpenPopupList(Area, "Colours", 1);
-			GetPlugIn()->AddPopupListElement("Colour Settings", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Brightness", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		if (isObjectId("ColourMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Colours", [&]()
+			{
+				GetPlugIn()->AddPopupListElement("Colour Settings", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Brightness", "", RIMCAS_OPEN_LIST);
+			});
 		}
 
-		if (strcmp(sObjectId, "RIMCASMenu") == 0) {
-			Area.top = Area.top + 30;
-			Area.bottom = Area.bottom + 30;
-
-			GetPlugIn()->OpenPopupList(Area, "Alerts", 1);
-			GetPlugIn()->AddPopupListElement("Conflict Alert ARR", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Conflict Alert DEP", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Runway closed", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Visibility", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Active Alerts", "", RIMCAS_OPEN_LIST);
-			GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		if (isObjectId("RIMCASMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Alerts", [&]()
+			{
+				GetPlugIn()->AddPopupListElement("Conflict Alert ARR", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Conflict Alert DEP", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Runway closed", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Visibility", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Active Alerts", "", RIMCAS_OPEN_LIST);
+			});
 		}
 
-		if (strcmp(sObjectId, "/") == 0)
+		if (isObjectId("/"))
 		{
 			if (Button == BUTTON_LEFT)
 			{
@@ -515,19 +551,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 					RequestRefresh();
 				}
 			}
-			else if (DistanceToolActive) {
-				if (ActiveDistance.first == "")
-				{
-					ActiveDistance.first = sObjectId;
-				}
-				else if (ActiveDistance.second == "")
-				{
-					ActiveDistance.second = sObjectId;
-					DistanceTools.insert(ActiveDistance);
-					ActiveDistance = pair<string, string>("", "");
-					DistanceToolActive = false;
-				}
-				RequestRefresh();
+			else if (selectDistanceToolTarget(sObjectId)) {
 			}
 			else
 			{
@@ -564,19 +588,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1 || ObjectType == DRAWING_AC_SYMBOL_APPWINDOW2)
 	{
-		if (DistanceToolActive) {
-			if (ActiveDistance.first == "")
-			{
-				ActiveDistance.first = sObjectId;
-			}
-			else if (ActiveDistance.second == "")
-			{
-				ActiveDistance.second = sObjectId;
-				DistanceTools.insert(ActiveDistance);
-				ActiveDistance = pair<string, string>("", "");
-				DistanceToolActive = false;
-			}
-			RequestRefresh();
+		if (selectDistanceToolTarget(sObjectId)) {
 		} else
 		{
 			const int appWindowId = (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1) ? 1 : 2;
