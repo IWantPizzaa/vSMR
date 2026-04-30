@@ -414,6 +414,8 @@ public:
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
 	bool GetTagAutoDeconflictionEnabledForEditor() const;
 	bool SetTagAutoDeconflictionEnabledForEditor(bool enabled, bool persistToDisk);
+	bool GetTagRoundedCornersEnabledForEditor() const;
+	bool SetTagRoundedCornersEnabledForEditor(bool enabled, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition() const;
 	bool SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status) const;

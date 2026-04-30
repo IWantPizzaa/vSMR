@@ -305,6 +305,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		(LabelsSettings.HasMember("use_aspeed_for_gate") &&
 			LabelsSettings["use_aspeed_for_gate"].IsBool() &&
 			LabelsSettings["use_aspeed_for_gate"].GetBool());
+	const bool roundedTagCornersEnabled =
+		(!LabelsSettings.HasMember("rounded_corners") || !LabelsSettings["rounded_corners"].IsBool()) ||
+		LabelsSettings["rounded_corners"].GetBool();
 	const bool airborneUseDepartureArrivalColoring =
 		(LabelsSettings.HasMember("use_departure_arrival_coloring") &&
 			LabelsSettings["use_departure_arrival_coloring"].IsBool() &&
@@ -1337,16 +1340,27 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		};
 
 		Rect RoundedRect = CopyRect(TagBackgroundRect);
-		GraphicsPath roundedPath;
-		MakeRoundedRect(roundedPath, RoundedRect, 4);
-
 		SolidBrush TagBackgroundBrush(TagBackgroundColor);
-		graphics.FillPath(&TagBackgroundBrush, &roundedPath);
 		const bool pointerInTagRect = isMouseWithinRect(TagBackgroundRect);
-		if (pointerInTagRect || hoverState.isDragged)
+		if (roundedTagCornersEnabled)
 		{
-			Pen pw(ColorManager->get_corrected_color("label", Color::White));
-			graphics.DrawPath(&pw, &roundedPath);
+			GraphicsPath roundedPath;
+			MakeRoundedRect(roundedPath, RoundedRect, 4);
+			graphics.FillPath(&TagBackgroundBrush, &roundedPath);
+			if (pointerInTagRect || hoverState.isDragged)
+			{
+				Pen pw(ColorManager->get_corrected_color("label", Color::White));
+				graphics.DrawPath(&pw, &roundedPath);
+			}
+		}
+		else
+		{
+			graphics.FillRectangle(&TagBackgroundBrush, RoundedRect);
+			if (pointerInTagRect || hoverState.isDragged)
+			{
+				Pen pw(ColorManager->get_corrected_color("label", Color::White));
+				graphics.DrawRectangle(&pw, RoundedRect);
+			}
 		}
 
 		// Drawing the tag text

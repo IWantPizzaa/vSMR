@@ -93,6 +93,7 @@ protected:
 	afx_msg void OnTagTypeChanged();
 	afx_msg void OnTagStatusChanged();
 	afx_msg void OnTagAutoDeconflictionToggled();
+	afx_msg void OnTagRoundedCornersToggled();
 	afx_msg void OnTagLinkToggleChanged();
 	afx_msg void OnTagLineChanged();
 	afx_msg void OnTagLineFocus();
@@ -262,6 +263,9 @@ private:
 		, IDC_PE_RULE_COLOR_OPACITY_LABEL = 9273
 		, IDC_PE_RULE_COLOR_OPACITY_SLIDER = 9274
 		, IDC_PE_TAG_AUTO_DECONFLICTION = 9275
+		, IDC_PE_TAG_OPTIONS_PANEL = 9277
+		, IDC_PE_TAG_OPTIONS_HEADER = 9278
+		, IDC_PE_TAG_ROUNDED_CORNERS = 9279
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -406,6 +410,8 @@ private:
 	CStatic TagTypeLabel;
 	CStatic TagPanel;
 	CStatic TagHeaderPanel;
+	CStatic TagOptionsPanel;
+	CStatic TagOptionsHeader;
 	CComboBox TagTypeCombo;
 	CStatic TagStatusLabel;
 	CComboBox TagStatusCombo;
@@ -423,6 +429,7 @@ private:
 	CStatic TagLine4Label;
 	CEdit TagLine4Edit;
 	CButton TagAutoDeconflictionToggle;
+	CButton TagRoundedCornersToggle;
 	CButton TagLinkDetailedToggle;
 	CStatic TagDetailedHeader;
 	CEdit TagDetailedDefinitionEdit;
