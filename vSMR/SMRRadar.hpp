@@ -274,16 +274,16 @@ public:
 
 	//---IsCorrelatedFuncs---------------------------------------------
 
-	inline virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt)
+	struct CorrelationSettings
 	{
-		auto hasText = [](const char* text) -> bool
-		{
-			return text != nullptr && text[0] != '\0';
-		};
-
 		bool proModeEnabled = false;
 		bool acceptPilotSquawk = true;
-		const Value* doNotAutocorrelateSquawks = nullptr;
+		const Value* blockedAutoCorrelateSquawks = nullptr;
+	};
+
+	inline CorrelationSettings BuildCorrelationSettings() const
+	{
+		CorrelationSettings settings;
 		if (CurrentConfig != nullptr)
 		{
 			const Value& profile = CurrentConfig->getActiveProfile();
@@ -294,20 +294,29 @@ public:
 				{
 					const Value& proMode = filters["pro_mode"];
 					if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-						proModeEnabled = proMode["enabled"].GetBool();
+						settings.proModeEnabled = proMode["enabled"].GetBool();
 					else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-						proModeEnabled = proMode["enable"].GetBool();
+						settings.proModeEnabled = proMode["enable"].GetBool();
 					if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
-						acceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
+						settings.acceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
 					if (proMode.HasMember("blocked_auto_correlate_squawks"))
-						doNotAutocorrelateSquawks = &proMode["blocked_auto_correlate_squawks"];
+						settings.blockedAutoCorrelateSquawks = &proMode["blocked_auto_correlate_squawks"];
 					else if (proMode.HasMember("do_not_autocorrelate_squawks"))
-						doNotAutocorrelateSquawks = &proMode["do_not_autocorrelate_squawks"];
+						settings.blockedAutoCorrelateSquawks = &proMode["do_not_autocorrelate_squawks"];
 				}
 			}
 		}
+		return settings;
+	}
 
-		if (!proModeEnabled)
+	inline bool IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const CorrelationSettings& settings) const
+	{
+		auto hasText = [](const char* text) -> bool
+		{
+			return text != nullptr && text[0] != '\0';
+		};
+
+		if (!settings.proModeEnabled)
 		{
 			// If pro mode is disabled, all targets are considered correlated.
 			return true;
@@ -322,14 +331,14 @@ public:
 		if (hasText(assignedSquawk) && hasText(reportedSquawk) && strcmp(assignedSquawk, reportedSquawk) == 0)
 			isCorr = true;
 
-		if (acceptPilotSquawk)
+		if (settings.acceptPilotSquawk)
 			isCorr = true;
 
-		if (isCorr && doNotAutocorrelateSquawks != nullptr && doNotAutocorrelateSquawks->IsArray())
+		if (isCorr && settings.blockedAutoCorrelateSquawks != nullptr && settings.blockedAutoCorrelateSquawks->IsArray())
 		{
-			for (SizeType i = 0; i < doNotAutocorrelateSquawks->Size(); i++)
+			for (SizeType i = 0; i < settings.blockedAutoCorrelateSquawks->Size(); i++)
 			{
-				const Value& blockedSquawk = (*doNotAutocorrelateSquawks)[i];
+				const Value& blockedSquawk = (*settings.blockedAutoCorrelateSquawks)[i];
 				if (hasText(reportedSquawk) && blockedSquawk.IsString() && strcmp(reportedSquawk, blockedSquawk.GetString()) == 0)
 				{
 					isCorr = false;
@@ -347,6 +356,11 @@ public:
 
 		return isCorr;
 	};
+
+	inline virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt)
+	{
+		return IsCorrelatedWithSettings(fp, rt, BuildCorrelationSettings());
+	}
 
 	//---CorrelateCursor--------------------------------------------
 

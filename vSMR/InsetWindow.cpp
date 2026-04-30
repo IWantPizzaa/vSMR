@@ -388,6 +388,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 	vector<POINT> appAreaVect = { windowAreaCRect.TopLeft(),{ windowAreaCRect.right, windowAreaCRect.top }, windowAreaCRect.BottomRight(),{ windowAreaCRect.left, windowAreaCRect.bottom } };
 	CPen WhitePen(PS_SOLID, 1, radar_screen->ColorManager->get_corrected_color("symbol", Color::White).ToCOLORREF());
+	const CSMRRadar::CorrelationSettings insetCorrelationSettings = radar_screen->BuildCorrelationSettings();
 
 	CRadarTarget aselTarget = radar_screen->GetPlugIn()->RadarTargetSelectASEL();
 	CRadarTarget rt;
@@ -571,7 +572,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				rt,
 				fp,
 				isASEL,
-				radar_screen->IsCorrelated(fp, rt),
+				radar_screen->IsCorrelatedWithSettings(fp, rt, insetCorrelationSettings),
 				tagProModeEnabled,
 				radar_screen->GetPlugIn()->GetTransitionAltitude(),
 				useAspeedForGate,
@@ -647,7 +648,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				}
 			}
 
-		bool AcisCorrelated = radar_screen->IsCorrelated(radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign), rt);
+		bool AcisCorrelated = radar_screen->IsCorrelatedWithSettings(radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign), rt, insetCorrelationSettings);
 		if (!AcisCorrelated && reportedGs >= 3)
 		{
 			TagType = CSMRRadar::TagTypes::Uncorrelated;

@@ -239,6 +239,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	}
 
 	const bool tagProModeEnabled = frameProModeEnabled;
+	const CorrelationSettings frameCorrelationSettings = BuildCorrelationSettings();
 	const int transitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const Value& activeProfile = CurrentConfig->getActiveProfile();
 	if (!activeProfile.IsObject() ||
@@ -607,7 +608,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		bool isAcDisplayed = isVisible(rt);
 
-		bool AcisCorrelated = IsCorrelated(fp, rt);
+		bool AcisCorrelated = IsCorrelatedWithSettings(fp, rt, frameCorrelationSettings);
 		const char* assignedSquawk = fp.IsValid() ? fp.GetControllerAssignedData().GetSquawk() : nullptr;
 		const char* reportedSquawk = RtPos.GetSquawk();
 		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');
