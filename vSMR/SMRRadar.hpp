@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <time.h>
 #include <GdiPlus.h>
@@ -32,8 +33,8 @@ namespace fs = std::filesystem;
 
 namespace SMRSharedData
 {
-	static vector<string> ReleasedTracks;
-	static vector<string> ManuallyCorrelated;
+	static unordered_set<string> ReleasedTracks;
+	static unordered_set<string> ManuallyCorrelated;
 };
 
 
@@ -338,10 +339,10 @@ public:
 		}
 
 		const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
-		if (hasText(systemId) && std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId) != ManuallyCorrelated.end())
+		if (hasText(systemId) && ManuallyCorrelated.find(systemId) != ManuallyCorrelated.end())
 			isCorr = true;
 
-		if (hasText(systemId) && std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
+		if (hasText(systemId) && ReleasedTracks.find(systemId) != ReleasedTracks.end())
 			isCorr = false;
 
 		return isCorr;

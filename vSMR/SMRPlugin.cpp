@@ -2247,13 +2247,8 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	if (systemId == nullptr || systemId[0] == '\0')
 		return;
 
-	auto releasedIt = std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId);
-	if (releasedIt != ReleasedTracks.end())
-		ReleasedTracks.erase(releasedIt);
-
-	auto correlatedIt = std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId);
-	if (correlatedIt != ManuallyCorrelated.end())
-		ManuallyCorrelated.erase(correlatedIt);
+	ReleasedTracks.erase(systemId);
+	ManuallyCorrelated.erase(systemId);
 }
 
 void CSMRPlugin::OnTimer(int Counter)
