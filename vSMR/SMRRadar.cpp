@@ -3057,6 +3057,145 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		return it->second;
 	};
+	const Color frameSymbolWhiteColor = ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
+	auto isValidColorObject = [](const Value& colorValue) -> bool
+	{
+		if (!colorValue.IsObject())
+			return false;
+		if (!colorValue.HasMember("r") || !colorValue["r"].IsInt())
+			return false;
+		if (!colorValue.HasMember("g") || !colorValue["g"].IsInt())
+			return false;
+		if (!colorValue.HasMember("b") || !colorValue["b"].IsInt())
+			return false;
+		if (colorValue.HasMember("a") && !colorValue["a"].IsInt())
+			return false;
+		return true;
+	};
+	const Value* targetsConfig = nullptr;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject() && profile.HasMember("targets") && profile["targets"].IsObject())
+			targetsConfig = &profile["targets"];
+	}
+	auto tryReadColorFromObject = [&](const Value& parentObject, const char* key, Color& outColor) -> bool
+	{
+		if (key == nullptr || key[0] == '\0')
+			return false;
+		if (!parentObject.HasMember(key))
+			return false;
+		const Value& iconColor = parentObject[key];
+		if (!isValidColorObject(iconColor))
+			return false;
+		outColor = CurrentConfig->getConfigColor(iconColor);
+		return true;
+	};
+	auto getGroundIconColor = [&](const char* key, Color fallback) -> Color
+	{
+		if (targetsConfig == nullptr || key == nullptr || key[0] == '\0')
+			return fallback;
+
+		const Value& targets = *targetsConfig;
+		Color resolvedColor;
+		auto tryGetFromSection = [&](const char* sectionKey, const char* sectionColorKey) -> bool
+		{
+			if (sectionKey == nullptr || sectionColorKey == nullptr)
+				return false;
+			if (!targets.HasMember(sectionKey) || !targets[sectionKey].IsObject())
+				return false;
+			return tryReadColorFromObject(targets[sectionKey], sectionColorKey, resolvedColor);
+		};
+
+		if (_stricmp(key, "airborne_departure") == 0 || _stricmp(key, "departure_airborne") == 0)
+		{
+			if (tryGetFromSection("departure", "airborne"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0)
+		{
+			if (tryGetFromSection("departure", "departure"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "departure_gate") == 0)
+		{
+			if (tryGetFromSection("departure", "gate"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "nofpl") == 0 || _stricmp(key, "no_fpl") == 0)
+		{
+			if (tryGetFromSection("departure", "no_fpl"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "nsts") == 0 || _stricmp(key, "no_status") == 0)
+		{
+			if (tryGetFromSection("departure", "no_status"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "push") == 0)
+		{
+			if (tryGetFromSection("departure", "push"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "stup") == 0 || _stricmp(key, "startup") == 0)
+		{
+			if (tryGetFromSection("departure", "startup"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "taxi") == 0)
+		{
+			if (tryGetFromSection("departure", "taxi"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "airborne_arrival") == 0 || _stricmp(key, "arrival_airborne") == 0)
+		{
+			if (tryGetFromSection("arrival", "airborne"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "arrival_gate") == 0)
+		{
+			if (tryGetFromSection("arrival", "gate"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "arr") == 0 || _stricmp(key, "arrival_taxi") == 0 || _stricmp(key, "on_ground") == 0)
+		{
+			if (tryGetFromSection("arrival", "on_ground"))
+				return resolvedColor;
+		}
+		else if (_stricmp(key, "gate") == 0)
+		{
+			if (tryGetFromSection("departure", "gate"))
+				return resolvedColor;
+			if (tryGetFromSection("arrival", "gate"))
+				return resolvedColor;
+		}
+		else
+		{
+			// Also support direct access to already-migrated section keys when used internally.
+			if (tryGetFromSection("departure", key))
+				return resolvedColor;
+			if (tryGetFromSection("arrival", key))
+				return resolvedColor;
+		}
+
+		if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject() &&
+			tryReadColorFromObject(targets["ground_icons"], key, resolvedColor))
+		{
+			return resolvedColor;
+		}
+
+		return fallback;
+	};
+	auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
+	{
+		if (!std::isfinite(value))
+			return fallback;
+		if (value < minValue)
+			return minValue;
+		if (value > maxValue)
+			return maxValue;
+		return value;
+	};
 	EuroScopePlugIn::CRadarTarget rt;
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
@@ -3099,7 +3238,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
-		const Color symbolWhiteColor = ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
 		const Value& symbolProfile = CurrentConfig->getActiveProfile();
 		const Value* symbolTargets = (symbolProfile.IsObject() &&
 			symbolProfile.HasMember("targets") &&
@@ -3188,7 +3326,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					trailNumber = Trail_App;
 
 				CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
-				SolidBrush trailBrush(symbolWhiteColor);
+				SolidBrush trailBrush(frameSymbolWhiteColor);
 				for (int j = 1; j <= trailNumber; j++) {
 					if (!previousPos.IsValid())
 						break;
@@ -3460,144 +3598,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
 		const bool fixedPixelIconSize = frameFixedPixelIconSize;
-		auto isValidColorObject = [](const Value& colorValue) -> bool
-		{
-			if (!colorValue.IsObject())
-				return false;
-			if (!colorValue.HasMember("r") || !colorValue["r"].IsInt())
-				return false;
-			if (!colorValue.HasMember("g") || !colorValue["g"].IsInt())
-				return false;
-			if (!colorValue.HasMember("b") || !colorValue["b"].IsInt())
-				return false;
-			if (colorValue.HasMember("a") && !colorValue["a"].IsInt())
-				return false;
-			return true;
-		};
-		const Value* targetsConfig = nullptr;
-		if (CurrentConfig != nullptr)
-		{
-			const Value& profile = CurrentConfig->getActiveProfile();
-			if (profile.IsObject() && profile.HasMember("targets") && profile["targets"].IsObject())
-				targetsConfig = &profile["targets"];
-		}
-		auto tryReadColorFromObject = [&](const Value& parentObject, const char* key, Color& outColor) -> bool
-		{
-			if (key == nullptr || key[0] == '\0')
-				return false;
-			if (!parentObject.HasMember(key))
-				return false;
-			const Value& iconColor = parentObject[key];
-			if (!isValidColorObject(iconColor))
-				return false;
-			outColor = CurrentConfig->getConfigColor(iconColor);
-			return true;
-		};
-		auto getGroundIconColor = [&](const char* key, Color fallback) -> Color
-		{
-			if (targetsConfig == nullptr || key == nullptr || key[0] == '\0')
-				return fallback;
-
-			const Value& targets = *targetsConfig;
-			Color resolvedColor;
-			auto tryGetFromSection = [&](const char* sectionKey, const char* sectionColorKey) -> bool
-			{
-				if (sectionKey == nullptr || sectionColorKey == nullptr)
-					return false;
-				if (!targets.HasMember(sectionKey) || !targets[sectionKey].IsObject())
-					return false;
-				return tryReadColorFromObject(targets[sectionKey], sectionColorKey, resolvedColor);
-			};
-
-			if (_stricmp(key, "airborne_departure") == 0 || _stricmp(key, "departure_airborne") == 0)
-			{
-				if (tryGetFromSection("departure", "airborne"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0)
-			{
-				if (tryGetFromSection("departure", "departure"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "departure_gate") == 0)
-			{
-				if (tryGetFromSection("departure", "gate"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "nofpl") == 0 || _stricmp(key, "no_fpl") == 0)
-			{
-				if (tryGetFromSection("departure", "no_fpl"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "nsts") == 0 || _stricmp(key, "no_status") == 0)
-			{
-				if (tryGetFromSection("departure", "no_status"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "push") == 0)
-			{
-				if (tryGetFromSection("departure", "push"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "stup") == 0 || _stricmp(key, "startup") == 0)
-			{
-				if (tryGetFromSection("departure", "startup"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "taxi") == 0)
-			{
-				if (tryGetFromSection("departure", "taxi"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "airborne_arrival") == 0 || _stricmp(key, "arrival_airborne") == 0)
-			{
-				if (tryGetFromSection("arrival", "airborne"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "arrival_gate") == 0)
-			{
-				if (tryGetFromSection("arrival", "gate"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "arr") == 0 || _stricmp(key, "arrival_taxi") == 0 || _stricmp(key, "on_ground") == 0)
-			{
-				if (tryGetFromSection("arrival", "on_ground"))
-					return resolvedColor;
-			}
-			else if (_stricmp(key, "gate") == 0)
-			{
-				if (tryGetFromSection("departure", "gate"))
-					return resolvedColor;
-				if (tryGetFromSection("arrival", "gate"))
-					return resolvedColor;
-			}
-			else
-			{
-				// Also support direct access to already-migrated section keys when used internally.
-				if (tryGetFromSection("departure", key))
-					return resolvedColor;
-				if (tryGetFromSection("arrival", key))
-					return resolvedColor;
-			}
-
-			if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject() &&
-				tryReadColorFromObject(targets["ground_icons"], key, resolvedColor))
-			{
-				return resolvedColor;
-			}
-
-			return fallback;
-		};
-		auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
-		{
-			if (!std::isfinite(value))
-				return fallback;
-			if (value < minValue)
-				return minValue;
-			if (value > maxValue)
-				return maxValue;
-			return value;
-		};
 		bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
 		if (canUseRealisticIcon)
 		{
@@ -3618,7 +3618,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			std::string iconDrawMode = useNovaIconStyle ? "nova" : (canUseRealisticIcon ? "realistic" : "symbol");
 			Logger::info("IconRender: " + rtCallsign + " mode=" + iconDrawMode + " icon_type=" + iconType);
 		}
-		Color targetTintColor = symbolWhiteColor;
+		Color targetTintColor = frameSymbolWhiteColor;
 		bool applyTargetTintColor = false;
 		auto applyTargetTint = [&](const Color& color)
 		{
@@ -3684,7 +3684,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (useNovaIconStyle)
 		{
-			CPen qTrailPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
+			CPen qTrailPen(PS_SOLID, 1, frameSymbolWhiteColor.ToCOLORREF());
 			CPen* pqOrigPen = dc.SelectObject(&qTrailPen);
 			if (RtPos.GetTransponderC()) {
 				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
@@ -3933,7 +3933,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				return wrapped < 0.0 ? wrapped + 360.0 : wrapped;
 			};
 
-			const Color drawColor = applyTargetTintColor ? targetTintColor : symbolWhiteColor;
+			const Color drawColor = applyTargetTintColor ? targetTintColor : frameSymbolWhiteColor;
 			if (useDiamondIconStyle)
 			{
 				iconVerboseStep("before_symbol_diamond_draw");
