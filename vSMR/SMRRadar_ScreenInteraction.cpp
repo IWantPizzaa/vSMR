@@ -281,6 +281,86 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		RequestRefresh();
 		return true;
 	};
+	auto selectAseAndGetTarget = [&]() -> CRadarTarget
+	{
+		if (!hasObjectId)
+			return CRadarTarget();
+
+		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(objectId);
+		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(objectId));
+		return rt;
+	};
+	auto startTagFunctionForObject = [&](int tagItemType, int tagMenu, const char* menuContext, bool requireCorrelatedFlightPlan) -> bool
+	{
+		CRadarTarget rt = selectAseAndGetTarget();
+		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
+		const bool hasCallsign = (rtCallsign != nullptr && rtCallsign[0] != '\0');
+		if (!hasCallsign)
+			return false;
+		if (requireCorrelatedFlightPlan && !rt.GetCorrelatedFlightPlan().IsValid())
+			return false;
+
+		StartTagFunction(rtCallsign, NULL, tagItemType, rtCallsign, menuContext, tagMenu, Pt, Area);
+		return true;
+	};
+	auto getMiddleTagMenu = [&](int objectType) -> int
+	{
+		switch (objectType)
+		{
+		case TAG_CITEM_CALLSIGN:
+			return TAG_ITEM_FUNCTION_COMMUNICATION_POPUP;
+		default:
+			return 0;
+		}
+	};
+	auto getRightTagMenu = [&](int objectType) -> int
+	{
+		switch (objectType)
+		{
+		case TAG_CITEM_CALLSIGN:
+			return TAG_ITEM_FUNCTION_HANDOFF_POPUP_MENU;
+		case TAG_CITEM_FPBOX:
+			return TAG_ITEM_FUNCTION_OPEN_FP_DIALOG;
+		case TAG_CITEM_RWY:
+			return TAG_ITEM_FUNCTION_ASSIGNED_RUNWAY;
+		case TAG_CITEM_SID:
+			return TAG_ITEM_FUNCTION_ASSIGNED_SID;
+		case TAG_CITEM_GATE:
+			return TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD;
+		case TAG_CITEM_GROUNDSTATUS:
+			return TAG_ITEM_FUNCTION_SET_GROUND_STATUS;
+		case TAG_CITEM_CLEARANCE:
+			return TAG_ITEM_FUNCTION_SET_CLEARED_FLAG;
+		case TAG_CITEM_UKSTAND:
+			return 999999;
+		case TAG_CITEM_SCRATCHPAD:
+			return TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD;
+		default:
+			return 0;
+		}
+	};
+	auto removeDistanceToolPair = [&](const char* distanceToolId)
+	{
+		if (distanceToolId == nullptr || distanceToolId[0] == '\0')
+			return;
+
+		vector<string> parts = split(distanceToolId, ',');
+		if (parts.size() < 2)
+			return;
+
+		pair<string, string> toRemove(parts.front(), parts.back());
+		typedef multimap<string, string>::iterator iterator;
+		std::pair<iterator, iterator> iterpair = DistanceTools.equal_range(toRemove.first);
+		iterator it = iterpair.first;
+		for (; it != iterpair.second; ++it)
+		{
+			if (it->second == toRemove.second)
+			{
+				DistanceTools.erase(it);
+				break;
+			}
+		}
+	};
 
 	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
@@ -487,14 +567,14 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	}
 
 	if (ObjectType == DRAWING_TAG || ObjectType == DRAWING_AC_SYMBOL) {		
-		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
+		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(objectId);
 		if (!rt.IsValid())
 			return;
 
 		const char* rtCallsign = rt.GetCallsign();
 		const bool hasCallsign = (rtCallsign != nullptr && rtCallsign[0] != '\0');
 		//GetPlugIn()->SetASELAircraft(rt); // NOTE: This does NOT work eventhough the api says it should?
-		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));  // make sure the correct aircraft is selected before calling 'StartTagFunction'
+		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(objectId));  // make sure the correct aircraft is selected before calling 'StartTagFunction'
 		
 		if (rt.GetCorrelatedFlightPlan().IsValid() && hasCallsign) {
 			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_FUNCTION_NO, Pt, Area);
@@ -550,33 +630,33 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 					RequestRefresh();
 				}
 			}
-			else if (selectDistanceToolTarget(sObjectId)) {
+			else if (selectDistanceToolTarget(objectId)) {
 			}
 			else
 			{
-				if (TagsOffsets.find(sObjectId) != TagsOffsets.end())
-					TagsOffsets.erase(sObjectId);
+				if (TagsOffsets.find(objectId) != TagsOffsets.end())
+					TagsOffsets.erase(objectId);
 
 				if (Button == BUTTON_LEFT)
 				{
-					if (TagAngles.find(sObjectId) == TagAngles.end())
+					if (TagAngles.find(objectId) == TagAngles.end())
 					{
-						TagAngles[sObjectId] = 0;
+						TagAngles[objectId] = 0;
 					} else
 					{
-						TagAngles[sObjectId] = fmod(TagAngles[sObjectId] - 22.5, 360);
+						TagAngles[objectId] = fmod(TagAngles[objectId] - 22.5, 360);
 					}
 				}
 
 				if (Button == BUTTON_RIGHT)
 				{
-					if (TagAngles.find(sObjectId) == TagAngles.end())
+					if (TagAngles.find(objectId) == TagAngles.end())
 					{
-						TagAngles[sObjectId] = 0;
+						TagAngles[objectId] = 0;
 					}
 					else
 					{
-						TagAngles[sObjectId] = fmod(TagAngles[sObjectId] + 22.5, 360);
+						TagAngles[objectId] = fmod(TagAngles[objectId] + 22.5, 360);
 					}
 				}
 
@@ -587,96 +667,47 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1 || ObjectType == DRAWING_AC_SYMBOL_APPWINDOW2)
 	{
-		if (selectDistanceToolTarget(sObjectId)) {
+		if (selectDistanceToolTarget(objectId)) {
 		} else
 		{
 			const int appWindowId = (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1) ? 1 : 2;
 			auto appWindowIt = appWindows.find(appWindowId);
 			if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr)
-				appWindowIt->second->OnClickScreenObject(sObjectId, Pt, Button);
+				appWindowIt->second->OnClickScreenObject(objectId, Pt, Button);
 		}
 	}
-
-	map <const int, const int> TagObjectMiddleTypes = {
-		{ TAG_CITEM_CALLSIGN, TAG_ITEM_FUNCTION_COMMUNICATION_POPUP },
-	};
-
-	map <const int, const int> TagObjectRightTypes = {
-		{ TAG_CITEM_CALLSIGN, TAG_ITEM_FUNCTION_HANDOFF_POPUP_MENU },
-		{ TAG_CITEM_FPBOX, TAG_ITEM_FUNCTION_OPEN_FP_DIALOG },
-		{ TAG_CITEM_RWY, TAG_ITEM_FUNCTION_ASSIGNED_RUNWAY },
-		{ TAG_CITEM_SID, TAG_ITEM_FUNCTION_ASSIGNED_SID },
-		{ TAG_CITEM_GATE, TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD },
-		{ TAG_CITEM_GROUNDSTATUS, TAG_ITEM_FUNCTION_SET_GROUND_STATUS },
-		{ TAG_CITEM_CLEARANCE, TAG_ITEM_FUNCTION_SET_CLEARED_FLAG },
-		{ TAG_CITEM_UKSTAND, 999999},
-		{ TAG_CITEM_SCRATCHPAD, TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD },
-	};
 
 	if (Button == BUTTON_LEFT) {
-		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
-		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
-		const bool hasCallsign = (rtCallsign != nullptr && rtCallsign[0] != '\0');
-		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-		if (rt.IsValid() && rt.GetCorrelatedFlightPlan().IsValid() && hasCallsign) {
-			if (ObjectType == TAG_CITEM_CALLSIGN) {
+		if (ObjectType == TAG_CITEM_CALLSIGN) {
 				// Shortcut: open ground status popup (clearance/push/taxi/depa) on callsign left-click.
-				StartTagFunction(rtCallsign, NULL, TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TAG_ITEM_FUNCTION_SET_GROUND_STATUS, Pt, Area);
-			}
-			else if (ObjectType == TAG_CITEM_CLEARANCE) {
-				StartTagFunction(rtCallsign, NULL, TAG_ITEM_TYPE_CLEARENCE, rtCallsign, NULL, TAG_ITEM_FUNCTION_SET_CLEARED_FLAG, Pt, Area);
-			}
-			else {
-				StartTagFunction(rtCallsign, NULL, TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TAG_ITEM_FUNCTION_NO, Pt, Area);
-			}
+			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, TAG_ITEM_FUNCTION_SET_GROUND_STATUS, NULL, true);
 		}
-	}
-
-	auto middleTypeIt = TagObjectMiddleTypes.find(ObjectType);
-	if (Button == BUTTON_MIDDLE && middleTypeIt != TagObjectMiddleTypes.end() && middleTypeIt->second != 0) {
-		int TagMenu = middleTypeIt->second;
-		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
-		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
-		if (rtCallsign != nullptr && rtCallsign[0] != '\0')
-			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TagMenu, Pt, Area);
-	}
-
-	auto rightTypeIt = TagObjectRightTypes.find(ObjectType);
-	if (Button == BUTTON_RIGHT && rightTypeIt != TagObjectRightTypes.end() && rightTypeIt->second != 0) {
-		if (ObjectType == TAG_CITEM_UKSTAND) {
-			CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
-			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-			const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
-			if (rtCallsign != nullptr && rtCallsign[0] != '\0')
-				StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, "RampAgent", 0, Pt, Area);
+		else if (ObjectType == TAG_CITEM_CLEARANCE) {
+			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CLEARENCE, TAG_ITEM_FUNCTION_SET_CLEARED_FLAG, NULL, true);
 		}
 		else {
-		int TagMenu = rightTypeIt->second;
-		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
-		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
-		const char* rtCallsign = rt.IsValid() ? rt.GetCallsign() : nullptr;
-		if (rtCallsign != nullptr && rtCallsign[0] != '\0')
-			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, TagMenu, Pt, Area);
+			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, TAG_ITEM_FUNCTION_NO, NULL, true);
+		}
 	}
+
+	const int middleTagMenu = getMiddleTagMenu(ObjectType);
+	if (Button == BUTTON_MIDDLE && middleTagMenu != 0) {
+		(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, middleTagMenu, NULL, false);
+	}
+
+	const int rightTagMenu = getRightTagMenu(ObjectType);
+	if (Button == BUTTON_RIGHT && rightTagMenu != 0) {
+		if (ObjectType == TAG_CITEM_UKSTAND) {
+			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, 0, "RampAgent", false);
+		}
+		else {
+			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, rightTagMenu, NULL, false);
+		}
 	}
 
 	if (ObjectType == RIMCAS_DISTANCE_TOOL)
 	{
-		vector<string> s = split(sObjectId, ',');
-		pair<string, string> toRemove = pair<string, string>(s.front(), s.back());
-
-		typedef multimap<string, string>::iterator iterator;
-		std::pair<iterator, iterator> iterpair = DistanceTools.equal_range(toRemove.first);
-
-		iterator it = iterpair.first;
-		for (; it != iterpair.second; ++it) {
-			if (it->second == toRemove.second) {
-				it = DistanceTools.erase(it);
-				break;
-			}
-		}
-
+		removeDistanceToolPair(objectId);
 	}
 
 	RequestRefresh();
