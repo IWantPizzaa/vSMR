@@ -28,6 +28,7 @@ namespace
 	const UINT WM_PE_RULE_COLOR_WHEEL_TRACK = WM_APP + 420;
 	const UINT WM_PE_RULE_COLOR_VALUE_TRACK = WM_APP + 421;
 	const UINT WM_PE_RULE_COLOR_OPACITY_TRACK = WM_APP + 422;
+	const UINT WM_PE_DEFERRED_LAYOUT = WM_APP + 423;
 	const COLORREF kEditorBorderColor = RGB(198, 204, 214);
 	const COLORREF kEditorFocusBorderColor = RGB(64, 132, 230);
 	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
@@ -1331,12 +1332,28 @@ void CProfileEditorDialog::OnSize(UINT nType, int cx, int cy)
 	LastLayoutWidth = cx;
 	LastLayoutHeight = cy;
 
+	if (!LayoutUpdatePending)
+	{
+		LayoutUpdatePending = true;
+		PostMessage(WM_PE_DEFERRED_LAYOUT, 0, 0);
+	}
+}
+
+LRESULT CProfileEditorDialog::OnDeferredLayout(WPARAM wParam, LPARAM lParam)
+{
+	(void)wParam;
+	(void)lParam;
+	LayoutUpdatePending = false;
+	if (!ControlsCreated || !::IsWindow(GetSafeHwnd()))
+		return 0;
+
 	SetRedraw(FALSE);
 	LayoutControls();
 	SetRedraw(TRUE);
 
-	// Resize should stay asynchronous; synchronous redraws here cause heavy UI lag.
+	// Keep asynchronous invalidation to avoid synchronous resize jank.
 	RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+	return 0;
 }
 
 void CProfileEditorDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -2761,10 +2778,10 @@ void CProfileEditorDialog::CreateEditorControls()
 			ProfileCoffeeLink.SetFont(&LinkFont, TRUE);
 		}
 	}
-	ApplyThemedEditBorders();
 	ApplyThemedComboBorders();
 	ControlsCreated = true;
 	LayoutControls();
+	ApplyThemedEditBorders();
 }
 
 void CProfileEditorDialog::ApplyThemedEditBorders()
@@ -3665,16 +3682,28 @@ void CProfileEditorDialog::LayoutControls()
 	MoveControlOffscreen(TagPreviewLabel);
 	MoveControlOffscreen(TagPreviewEdit);
 
-	ApplyThemedEditBorders();
 	UpdatePageVisibility();
 }
 
-void CProfileEditorDialog::UpdatePageVisibility()
+void CProfileEditorDialog::UpdatePageVisibility(bool force)
 {
 	if (!ControlsCreated)
 		return;
 
 	const int selectedTab = PageTabs.GetCurSel();
+	const bool showRules = (selectedTab == kTabRules);
+	const bool showTagEditor = (selectedTab == kTabIcons);
+	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
+	const bool hasRuleSelection = (SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size()));
+	const bool isParameterSelection = hasRuleSelection && SelectedRuleCriterionIndex >= 0;
+	if (!force &&
+		selectedTab == LastVisibilityTab &&
+		showDetailedTag == LastVisibilityDetailedTag &&
+		(!showRules || isParameterSelection == LastVisibilityRuleParameterMode))
+	{
+		return;
+	}
+
 	switch (selectedTab)
 	{
 	case kTabColors:
@@ -3700,17 +3729,13 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	}
 	const bool showColors = (selectedTab == kTabColors);
 	const bool showIcons = (selectedTab == kTabIcons);
-	const bool showRules = (selectedTab == kTabRules);
 	const bool showProfile = (selectedTab == kTabProfile);
-	const bool showTagEditor = showIcons;
-	const bool showDetailedTag = showTagEditor && TagEditorSeparateDetailed;
 	LastVisibilityTab = selectedTab;
 	LastVisibilityDetailedTag = showDetailedTag;
+	LastVisibilityRuleParameterMode = isParameterSelection;
 	const int colorShowMode = showColors ? SW_SHOW : SW_HIDE;
 	const int iconShowMode = showIcons ? SW_SHOW : SW_HIDE;
 	const int ruleShowMode = showRules ? SW_SHOW : SW_HIDE;
-	const bool hasRuleSelection = (SelectedRuleIndex >= 0 && SelectedRuleIndex < static_cast<int>(RuleBuffer.size()));
-	const bool isParameterSelection = hasRuleSelection && SelectedRuleCriterionIndex >= 0;
 	const int ruleParameterShowMode = (showRules && isParameterSelection) ? SW_SHOW : SW_HIDE;
 	const int ruleEffectShowMode = (showRules && !isParameterSelection) ? SW_SHOW : SW_HIDE;
 	const int tagShowMode = showTagEditor ? SW_SHOW : SW_HIDE;
@@ -7265,6 +7290,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_MESSAGE(WM_PE_RULE_COLOR_WHEEL_TRACK, &CProfileEditorDialog::OnRuleColorWheelTrack)
 	ON_MESSAGE(WM_PE_RULE_COLOR_VALUE_TRACK, &CProfileEditorDialog::OnRuleColorValueSliderTrack)
 	ON_MESSAGE(WM_PE_RULE_COLOR_OPACITY_TRACK, &CProfileEditorDialog::OnRuleColorOpacitySliderTrack)
+	ON_MESSAGE(WM_PE_DEFERRED_LAYOUT, &CProfileEditorDialog::OnDeferredLayout)
 	ON_NOTIFY(TVN_SELCHANGED, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeSelectionChanged)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_COLOR_TREE, &CProfileEditorDialog::OnColorTreeCustomDraw)
 	ON_NOTIFY(NM_CUSTOMDRAW, IDC_PE_FIXED_SCALE_SLIDER, &CProfileEditorDialog::OnFixedScaleSliderCustomDraw)
