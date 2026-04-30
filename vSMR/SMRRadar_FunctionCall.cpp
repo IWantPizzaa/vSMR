@@ -16,6 +16,40 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			return nullptr;
 		return appWindowIt->second.get();
 	};
+	auto showConfigError = [&](const char* message) {
+		GetPlugIn()->DisplayUserMessage("vSMR", "Config", message, true, true, false, false, false);
+	};
+	auto persistProfileUpdate = [&](bool updateResult, const char* message) -> bool
+	{
+		if (!updateResult || !CurrentConfig->saveConfig())
+		{
+			showConfigError(message);
+			return false;
+		}
+		return true;
+	};
+	auto reopenList = [&](const std::string& listName, bool refreshAfterOpen = false)
+	{
+		ShowLists[listName] = true;
+		if (refreshAfterOpen)
+			RequestRefresh();
+	};
+	auto parseFontSizeSelection = [&](const char* selection, int fallback) -> int
+	{
+		if (selection == nullptr)
+			return fallback;
+		if (strcmp(selection, "Size 1") == 0)
+			return 1;
+		if (strcmp(selection, "Size 2") == 0)
+			return 2;
+		if (strcmp(selection, "Size 3") == 0)
+			return 3;
+		if (strcmp(selection, "Size 4") == 0)
+			return 4;
+		if (strcmp(selection, "Size 5") == 0)
+			return 5;
+		return fallback;
+	};
 	if (FunctionId == APPWINDOW_ONE || FunctionId == APPWINDOW_TWO) {
 		int id = FunctionId - APPWINDOW_BASE;
 		auto appWindowDisplayIt = appWindowDisplays.find(id);
@@ -52,7 +86,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			{
 				if (!RenameProfileForEditor(oldName, newName))
 				{
-					GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to rename active profile in vSMR_Profiles.json", true, true, false, false, false);
+					showConfigError("Failed to rename active profile in vSMR_Profiles.json");
 				}
 				else
 				{
@@ -67,28 +101,11 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_FONTS) {
-		if (strcmp(itemString, "Size 1") == 0)
-			currentFontSize = 1;
-		if (strcmp(itemString, "Size 2") == 0)
-			currentFontSize = 2;
-		if (strcmp(itemString, "Size 3") == 0)
-			currentFontSize = 3;
-		if (strcmp(itemString, "Size 4") == 0)
-			currentFontSize = 4;
-		if (strcmp(itemString, "Size 5") == 0)
-			currentFontSize = 5;
+		currentFontSize = parseFontSizeSelection(itemString, currentFontSize);
 
 		// Persist profile label font size even when selecting the currently active size.
-		if (!SetActiveLabelFontSize(currentFontSize, false))
-		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save label font size to vSMR_Profiles.json", true, true, false, false, false);
-		}
-		else if (!CurrentConfig->saveConfig())
-		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save label font size to vSMR_Profiles.json", true, true, false, false, false);
-		}
-
-		ShowLists["Label Font Size"] = true;
+		persistProfileUpdate(SetActiveLabelFontSize(currentFontSize, false), "Failed to save label font size to vSMR_Profiles.json");
+		reopenList("Label Font Size");
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_TAG_FONT)
@@ -96,22 +113,13 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (sItemString != nullptr)
 		{
 			// Keep font selection persisted in profile JSON even when selecting the current value again.
-			if (!SetActiveTagFontName(sItemString, false))
-			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save tag font to vSMR_Profiles.json", true, true, false, false, false);
-			}
-			else if (!CurrentConfig->saveConfig())
-			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save tag font to vSMR_Profiles.json", true, true, false, false, false);
-			}
-			else
+			if (persistProfileUpdate(SetActiveTagFontName(sItemString, false), "Failed to save tag font to vSMR_Profiles.json"))
 			{
 				LoadCustomFont();
 			}
 		}
 
-		ShowLists["Tag Font"] = true;
-		RequestRefresh();
+		reopenList("Tag Font", true);
 	}
 
 	if (FunctionId == RIMCAS_QDM_TOGGLE) {
@@ -137,10 +145,10 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		const std::string requestedProfile = (sItemString != nullptr) ? std::string(sItemString) : "";
 		if (!SetActiveProfileForEditor(requestedProfile, false))
 		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to switch active profile", true, true, false, false, false);
+			showConfigError("Failed to switch active profile");
 		}
 
-		ShowLists["Profiles"] = true;
+		reopenList("Profiles");
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_ICON_STYLE)
@@ -149,7 +157,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		{
 			if (!SetActiveTargetIconStyle(sItemString, true))
 			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save icon style to vSMR_Profiles.json", true, true, false, false, false);
+				showConfigError("Failed to save icon style to vSMR_Profiles.json");
 			}
 			RequestRefresh();
 		}
@@ -160,7 +168,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		const bool nextEnabled = !GetFixedPixelTargetIconSizeEnabled();
 		if (!SetFixedPixelTargetIconSizeEnabled(nextEnabled, true))
 		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save fixed pixel icon size to vSMR_Profiles.json", true, true, false, false, false);
+			showConfigError("Failed to save fixed pixel icon size to vSMR_Profiles.json");
 		}
 		RequestRefresh();
 	}
@@ -173,7 +181,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			scale = std::clamp(scale, 0.1, 3.0);
 			if (!SetFixedPixelTriangleIconScale(scale, true))
 			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save fixed size to vSMR_Profiles.json", true, true, false, false, false);
+				showConfigError("Failed to save fixed size to vSMR_Profiles.json");
 			}
 		}
 		RequestRefresh();
@@ -184,7 +192,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		const bool nextEnabled = !GetSmallTargetIconBoostEnabled();
 		if (!SetSmallTargetIconBoostEnabled(nextEnabled, true))
 		{
-			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save small icon boost to vSMR_Profiles.json", true, true, false, false, false);
+			showConfigError("Failed to save small icon boost to vSMR_Profiles.json");
 		}
 		RequestRefresh();
 	}
@@ -197,7 +205,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			factor = std::clamp(factor, 0.5, 4.0);
 			if (!SetSmallTargetIconBoostFactor(factor, true))
 			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save icon boost factor to vSMR_Profiles.json", true, true, false, false, false);
+				showConfigError("Failed to save icon boost factor to vSMR_Profiles.json");
 			}
 		}
 		RequestRefresh();
@@ -209,7 +217,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		{
 			if (!SetSmallTargetIconBoostResolutionPreset(sItemString, true))
 			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save icon boost resolution to vSMR_Profiles.json", true, true, false, false, false);
+				showConfigError("Failed to save icon boost resolution to vSMR_Profiles.json");
 			}
 		}
 		RequestRefresh();
@@ -245,9 +253,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		else
 			ColorSettingsDay = false;
 
-		ShowLists["Colour Settings"] = true;
-
-		RequestRefresh();
+		reopenList("Colour Settings", true);
 	}
 
 	if (FunctionId == RIMCAS_ALERTS_TOGGLE_FUNC) {
@@ -257,38 +263,31 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
 			if (!CurrentConfig->saveConfig())
 			{
-				GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save active alerts to vSMR_Profiles.json", true, true, false, false, false);
+				showConfigError("Failed to save active alerts to vSMR_Profiles.json");
 			}
 		}
-		ShowLists["Active Alerts"] = true;
-		RequestRefresh();
+		reopenList("Active Alerts", true);
 	}
 
 	if (FunctionId == RIMCAS_CA_ARRIVAL_FUNC) {
 		if (hasItemString)
 			RimcasInstance->toggleMonitoredRunwayArr(string(itemString));
 
-		ShowLists["Conflict Alert ARR"] = true;
-
-		RequestRefresh();
+		reopenList("Conflict Alert ARR", true);
 	}
 
 	if (FunctionId == RIMCAS_CA_MONITOR_FUNC) {
 		if (hasItemString)
 			RimcasInstance->toggleMonitoredRunwayDep(string(itemString));
 
-		ShowLists["Conflict Alert DEP"] = true;
-
-		RequestRefresh();
+		reopenList("Conflict Alert DEP", true);
 	}
 
 	if (FunctionId == RIMCAS_CLOSED_RUNWAYS_FUNC) {
 		if (hasItemString)
 			RimcasInstance->toggleClosedRunway(string(itemString));
 
-		ShowLists["Runway closed"] = true;
-
-		RequestRefresh();
+		reopenList("Runway closed", true);
 	}
 
 	if (FunctionId == RIMCAS_OPEN_LIST) {
@@ -301,7 +300,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (!hasItemString)
 			return;
 
-		ShowLists[string(itemString)] = true;
+		reopenList(itemString);
 		ListAreas[string(itemString)] = Area;
 
 		RequestRefresh();
@@ -313,9 +312,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (strcmp(itemString, "Low") == 0)
 			isLVP = true;
 
-		ShowLists["Visibility"] = true;
-
-		RequestRefresh();
+		reopenList("Visibility", true);
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_AFTERGLOW)
@@ -328,7 +325,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (hasItemString)
 			Trail_Gnd = atoi(itemString);
 
-		ShowLists["GRND Trail Dots"] = true;
+		reopenList("GRND Trail Dots");
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_APP_TRAIL)
@@ -336,7 +333,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (hasItemString)
 			Trail_App = atoi(itemString);
 
-		ShowLists["APPR Trail Dots"] = true;
+		reopenList("APPR Trail Dots");
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_PTL)
@@ -344,28 +341,28 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (hasItemString)
 			PredictedLength = atoi(itemString);
 
-		ShowLists["Predicted Track Line"] = true;
+		reopenList("Predicted Track Line");
 	}
 
 	if (FunctionId == RIMCAS_BRIGHTNESS_LABEL)
 	{
 		if (hasItemString)
 			ColorManager->update_brightness("label", std::atoi(itemString));
-		ShowLists["Label"] = true;
+		reopenList("Label");
 	}
 
 	if (FunctionId == RIMCAS_BRIGHTNESS_AFTERGLOW)
 	{
 		if (hasItemString)
 			ColorManager->update_brightness("afterglow", std::atoi(itemString));
-		ShowLists["Afterglow"] = true;
+		reopenList("Afterglow");
 	}
 
 	if (FunctionId == RIMCAS_BRIGHTNESS_SYMBOL)
 	{
 		if (hasItemString)
 			ColorManager->update_brightness("symbol", std::atoi(itemString));
-		ShowLists["Symbol"] = true;
+		reopenList("Symbol");
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_RELEASE)
