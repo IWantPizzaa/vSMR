@@ -318,12 +318,37 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	{
 		return TagBeingDragged == callsign;
 	};
-	const auto isMouseWithin = [](CRect rect) -> bool
+	const auto isMouseWithinRect = [](const CRect& rect) -> bool
 	{
 		return mouseLocation.x >= rect.left + 1 &&
 			mouseLocation.x <= rect.right - 1 &&
 			mouseLocation.y >= rect.top + 1 &&
 			mouseLocation.y <= rect.bottom - 1;
+	};
+	struct TagHoverState
+	{
+		CRect probeRect;
+		bool isDragged = false;
+		bool pointerInProbe = false;
+		bool useDetailedLayout = false;
+	};
+	const auto buildHoverProbeRect = [&](const std::string& callsign, const POINT& tagCenter) -> CRect
+	{
+		auto previousSizeIt = previousTagSize.find(callsign);
+		const int probeWidth = (previousSizeIt != previousTagSize.end()) ? previousSizeIt->second.Width() : 0;
+		const int probeHeight = (previousSizeIt != previousTagSize.end()) ? previousSizeIt->second.Height() : 0;
+		const int probeLeft = tagCenter.x - (probeWidth / 2);
+		const int probeTop = tagCenter.y - (probeHeight / 2);
+		return CRect(probeLeft, probeTop, probeLeft + probeWidth, probeTop + probeHeight);
+	};
+	const auto resolveTagHoverState = [&](const std::string& callsign, const POINT& tagCenter) -> TagHoverState
+	{
+		TagHoverState hoverState;
+		hoverState.probeRect = buildHoverProbeRect(callsign, tagCenter);
+		hoverState.isDragged = isTagBeingDragged(callsign);
+		hoverState.pointerInProbe = isMouseWithinRect(hoverState.probeRect);
+		hoverState.useDetailedLayout = hoverState.isDragged || hoverState.pointerInProbe;
+		return hoverState;
 	};
 
 	auto fontIt = customFonts.find(currentFontSize);
@@ -723,28 +748,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		const int oneLineHeight = tagOneLineHeight;
 		RectF mesureRect;
 
-		CRect previousRect;
-		auto itPrev = previousTagSize.find(rtCallsign);
-		if (itPrev != previousTagSize.end()) {
-			const int prevW = itPrev->second.Width();
-			const int prevH = itPrev->second.Height();
-			const int prevLeft = TagCenter.x - (prevW / 2);
-			const int prevTop = TagCenter.y - (prevH / 2);
-			previousRect = CRect(prevLeft,
-				prevTop,
-				prevLeft + prevW,
-				prevTop + prevH);
-		}
-		else {
-			const int prevLeft = TagCenter.x - (TagWidth / 2);
-			const int prevTop = TagCenter.y - (TagHeight / 2);
-			previousRect = CRect(prevLeft,
-				prevTop,
-				prevLeft + TagWidth,
-				prevTop + TagHeight);
-		}
-
-		bool isTagDetailled = isMouseWithin(previousRect) || isTagBeingDragged(rtCallsign);
+		const TagHoverState hoverState = resolveTagHoverState(rtCallsign, TagCenter);
+		bool isTagDetailled = hoverState.useDetailedLayout;
 		verboseTargetStep(rtCallsign, std::string("detail_mode=") + (isTagDetailled ? "1" : "0"));
 
 		std::string ruleTagTypeKey = TagTypeToConfigKey(TagType);
@@ -1336,7 +1341,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		SolidBrush TagBackgroundBrush(TagBackgroundColor);
 		graphics.FillPath(&TagBackgroundBrush, &roundedPath);
-		if (isMouseWithin(TagBackgroundRect) || isTagBeingDragged(rtCallsign))
+		const bool pointerInTagRect = isMouseWithinRect(TagBackgroundRect);
+		if (pointerInTagRect || hoverState.isDragged)
 		{
 			Pen pw(ColorManager->get_corrected_color("label", Color::White));
 			graphics.DrawPath(&pw, &roundedPath);
