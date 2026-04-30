@@ -2491,7 +2491,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileInfoPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_PANEL);
 	ProfileInfoHeader.Create("About", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_HEADER);
 	ProfileInfoBody.Create(
-		"Feedback, bug reports, or suggestions are always welcome! If you encounter an issue or have ideas to improve the plugin, feel free to open an issue or send feedback on the GitHub repository.\r\n\r\nThis plugin is completely free and always will be. Nothing is required from you to use it.\r\n\r\nIf you enjoy the project and would like to support its development, you can buy me a coffee using the link below.",
+		"vSMR is a EuroScope SMR plugin maintained as a fork of AlexisBalzano/vSMR and pierr3/vSMR.\r\n\r\nCredits: Alexis.B, Baptiste.C, Steve.A and Yohannes.D.",
 		WS_CHILD | WS_VISIBLE,
 		CRect(0, 0, 0, 0),
 		this,
@@ -3676,7 +3676,7 @@ void CProfileEditorDialog::LayoutControls()
 	ProfileInfoBody.MoveWindow(profileInfoContentLeft, profileTop + 46, profileInfoContentWidth, profileInfoBodyHeight + 4, TRUE);
 	const int profileLinksTop = profileTop + 46 + profileInfoBodyHeight + 12;
 	ProfileRepoLink.MoveWindow(profileInfoContentLeft, profileLinksTop, profileInfoContentWidth, rowHeight, TRUE);
-	ProfileCoffeeLink.MoveWindow(profileInfoContentLeft, profileLinksTop + 28, profileInfoContentWidth, rowHeight, TRUE);
+	MoveControlOffscreen(ProfileCoffeeLink);
 
 	// Keep live preview generated, but hidden to match the compact editor layout.
 	MoveControlOffscreen(TagPreviewLabel);
@@ -3720,7 +3720,7 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 		break;
 	case kTabProfile:
 		PageTitleLabel.SetWindowTextA("Profiles");
-		PageSubtitleLabel.SetWindowTextA("Manage profiles on the left and find support info on the right.");
+		PageSubtitleLabel.SetWindowTextA("Manage profiles on the left and find project info on the right.");
 		break;
 	default:
 		PageTitleLabel.SetWindowTextA("Profile Editor");
@@ -3862,9 +3862,10 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 	{
 		&ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit, &ProfileProModeCheck,
 		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton,
-		&ProfileInfoHeader, &ProfileInfoBody, &ProfileRepoLink, &ProfileCoffeeLink
+		&ProfileInfoHeader, &ProfileInfoBody, &ProfileRepoLink
 	},
 	showProfile ? SW_SHOW : SW_HIDE);
+	ProfileCoffeeLink.ShowWindow(SW_HIDE);
 	ProfilePanel.ShowWindow(SW_HIDE);
 	ProfileInfoPanel.ShowWindow(SW_HIDE);
 
