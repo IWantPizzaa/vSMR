@@ -627,7 +627,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		const char* systemId = rt.GetSystemID();
 		if (systemId != nullptr && systemId[0] != '\0' &&
-			std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
+			ReleasedTracks.find(systemId) != ReleasedTracks.end())
 			isAcDisplayed = false;
 
 		if (!isAcDisplayed)

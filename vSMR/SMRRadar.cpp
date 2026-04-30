@@ -3417,7 +3417,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		const char* systemId = rt.GetSystemID();
 		const bool hasSystemId = (systemId != nullptr && systemId[0] != '\0');
 		const bool isReleasedTrack = hasSystemId &&
-			(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end());
+			(ReleasedTracks.find(systemId) != ReleasedTracks.end());
 		const char* assignedSquawk = iconFp.IsValid() ? iconFp.GetControllerAssignedData().GetSquawk() : nullptr;
 		const char* reportedSquawk = RtPos.GetSquawk();
 		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');

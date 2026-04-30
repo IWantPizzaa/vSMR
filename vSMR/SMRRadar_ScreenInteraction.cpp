@@ -599,20 +599,16 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			{
 				ReleaseInProgress = NeedCorrelateCursor = false;
 
-				ReleasedTracks.push_back(systemId);
-
-				if (std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId) != ManuallyCorrelated.end())
-					ManuallyCorrelated.erase(std::find(ManuallyCorrelated.begin(), ManuallyCorrelated.end(), systemId));
+				ReleasedTracks.insert(systemId);
+				ManuallyCorrelated.erase(systemId);
 			}
 
 			if (AcquireInProgress)
 			{
 				AcquireInProgress = NeedCorrelateCursor = false;
 
-				ManuallyCorrelated.push_back(systemId);
-
-				if (std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId) != ReleasedTracks.end())
-					ReleasedTracks.erase(std::find(ReleasedTracks.begin(), ReleasedTracks.end(), systemId));
+				ManuallyCorrelated.insert(systemId);
+				ReleasedTracks.erase(systemId);
 			}
 
 
