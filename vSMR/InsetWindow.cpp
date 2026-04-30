@@ -389,6 +389,59 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	vector<POINT> appAreaVect = { windowAreaCRect.TopLeft(),{ windowAreaCRect.right, windowAreaCRect.top }, windowAreaCRect.BottomRight(),{ windowAreaCRect.left, windowAreaCRect.bottom } };
 	CPen WhitePen(PS_SOLID, 1, radar_screen->ColorManager->get_corrected_color("symbol", Color::White).ToCOLORREF());
 	const CSMRRadar::CorrelationSettings insetCorrelationSettings = radar_screen->BuildCorrelationSettings();
+	const int insetTransitionAltitude = radar_screen->GetPlugIn()->GetTransitionAltitude();
+	const std::string insetActiveAirport = radar_screen->getActiveAirport();
+	bool insetTagProModeEnabled = false;
+	bool insetUseAspeedForGate = false;
+	bool insetAirborneUseDepartureArrivalColoring = false;
+	if (radar_screen->CurrentConfig != nullptr)
+	{
+		const Value& profile = radar_screen->CurrentConfig->getActiveProfile();
+		if (profile.IsObject())
+		{
+			if (profile.HasMember("filters") &&
+				profile["filters"].IsObject() &&
+				profile["filters"].HasMember("pro_mode") &&
+				profile["filters"]["pro_mode"].IsObject())
+			{
+				const Value& proMode = profile["filters"]["pro_mode"];
+				if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+				{
+					insetTagProModeEnabled = proMode["enabled"].GetBool();
+				}
+				else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+				{
+					insetTagProModeEnabled = proMode["enable"].GetBool();
+				}
+			}
+
+			if (profile.HasMember("labels") &&
+				profile["labels"].IsObject())
+			{
+				const Value& labels = profile["labels"];
+				if (labels.HasMember("use_speed_for_gate") && labels["use_speed_for_gate"].IsBool())
+				{
+					insetUseAspeedForGate = labels["use_speed_for_gate"].GetBool();
+				}
+				else if (labels.HasMember("use_aspeed_for_gate") && labels["use_aspeed_for_gate"].IsBool())
+				{
+					insetUseAspeedForGate = labels["use_aspeed_for_gate"].GetBool();
+				}
+
+				if (labels.HasMember("use_departure_arrival_coloring") && labels["use_departure_arrival_coloring"].IsBool())
+				{
+					insetAirborneUseDepartureArrivalColoring = labels["use_departure_arrival_coloring"].GetBool();
+				}
+				else if (labels.HasMember("airborne") &&
+					labels["airborne"].IsObject() &&
+					labels["airborne"].HasMember("use_departure_arrival_coloring") &&
+					labels["airborne"]["use_departure_arrival_coloring"].IsBool())
+				{
+					insetAirborneUseDepartureArrivalColoring = labels["airborne"]["use_departure_arrival_coloring"].GetBool();
+				}
+			}
+		}
+	}
 
 	CRadarTarget aselTarget = radar_screen->GetPlugIn()->RadarTargetSelectASEL();
 	CRadarTarget rt;
@@ -527,55 +580,15 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 		// Drawing the tags, what a mess
 
-			bool tagProModeEnabled = false;
-			bool useAspeedForGate = false;
-			if (radar_screen->CurrentConfig != nullptr)
-			{
-				const Value& profile = radar_screen->CurrentConfig->getActiveProfile();
-				if (profile.IsObject())
-				{
-					if (profile.HasMember("filters") &&
-						profile["filters"].IsObject() &&
-						profile["filters"].HasMember("pro_mode") &&
-						profile["filters"]["pro_mode"].IsObject())
-					{
-						const Value& proMode = profile["filters"]["pro_mode"];
-						if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-						{
-							tagProModeEnabled = proMode["enabled"].GetBool();
-						}
-						else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-						{
-							tagProModeEnabled = proMode["enable"].GetBool();
-						}
-					}
-
-					if (profile.HasMember("labels") &&
-						profile["labels"].IsObject() &&
-						profile["labels"].HasMember("use_speed_for_gate") &&
-						profile["labels"]["use_speed_for_gate"].IsBool())
-					{
-						useAspeedForGate = profile["labels"]["use_speed_for_gate"].GetBool();
-					}
-					else if (profile.HasMember("labels") &&
-						profile["labels"].IsObject() &&
-						profile["labels"].HasMember("use_aspeed_for_gate") &&
-						profile["labels"]["use_aspeed_for_gate"].IsBool())
-					{
-						useAspeedForGate = profile["labels"]["use_aspeed_for_gate"].GetBool();
-					}
-				}
-			}
-
 			// ----- Generating the replacing map -----
 			map<string, string> TagReplacingMap = CSMRRadar::GenerateTagData(
 				rt,
 				fp,
 				isASEL,
 				radar_screen->IsCorrelatedWithSettings(fp, rt, insetCorrelationSettings),
-				tagProModeEnabled,
-				radar_screen->GetPlugIn()->GetTransitionAltitude(),
-				useAspeedForGate,
+				insetTagProModeEnabled,
+				insetTransitionAltitude,
+				insetUseAspeedForGate,
 				icao);
 
 		// ----- Generating the clickable map -----
@@ -612,7 +625,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		CSMRRadar::TagTypes TagType = CSMRRadar::TagTypes::Departure;
 		CSMRRadar::TagTypes ColorTagType = CSMRRadar::TagTypes::Departure;
 
-		if (fpDestination != nullptr && strcmp(fpDestination, radar_screen->getActiveAirport().c_str()) == 0) {
+		if (fpDestination != nullptr && strcmp(fpDestination, insetActiveAirport.c_str()) == 0) {
 				TagType = CSMRRadar::TagTypes::Arrival;
 				ColorTagType = CSMRRadar::TagTypes::Arrival;
 		}
@@ -621,28 +634,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				TagType = CSMRRadar::TagTypes::Airborne;
 
 				// Is "use_departure_arrival_coloring" enabled? if not, then use the airborne colors
-				bool useDepArrColors = false;
-				if (radar_screen->CurrentConfig != nullptr)
-				{
-					const Value& profile = radar_screen->CurrentConfig->getActiveProfile();
-					if (profile.IsObject() &&
-						profile.HasMember("labels") &&
-						profile["labels"].IsObject())
-					{
-						const Value& labels = profile["labels"];
-						if (labels.HasMember("use_departure_arrival_coloring") && labels["use_departure_arrival_coloring"].IsBool())
-						{
-							useDepArrColors = labels["use_departure_arrival_coloring"].GetBool();
-						}
-						else if (labels.HasMember("airborne") &&
-							labels["airborne"].IsObject() &&
-							labels["airborne"].HasMember("use_departure_arrival_coloring") &&
-							labels["airborne"]["use_departure_arrival_coloring"].IsBool())
-						{
-							useDepArrColors = labels["airborne"]["use_departure_arrival_coloring"].GetBool();
-						}
-					}
-				}
+				const bool useDepArrColors = insetAirborneUseDepartureArrivalColoring;
 				if (!useDepArrColors) {
 					ColorTagType = CSMRRadar::TagTypes::Airborne;
 				}
