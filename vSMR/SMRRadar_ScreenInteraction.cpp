@@ -495,7 +495,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			shiftPopupAreaDown(30);
 			openPopupListWithClose("Target", [&]()
 			{
-				GetPlugIn()->AddPopupListElement("Icon Style", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Label Font Size", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Tag Font", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_UPDATE_AFTERGLOW, false, int(Afterglow));
