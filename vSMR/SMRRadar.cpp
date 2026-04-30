@@ -4308,17 +4308,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		ShowLists["Label Font Size"] = false;
 	}
 
-	if (ShowLists["Icon Style"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Icon Style"], "Icon Style", 1);
-		const std::string activeStyle = GetActiveTargetIconStyle();
-		GetPlugIn()->AddPopupListElement("Arrow", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "triangle")));
-		GetPlugIn()->AddPopupListElement("Diamond", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "diamond")));
-		GetPlugIn()->AddPopupListElement("Realistic", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "realistic")));
-		GetPlugIn()->AddPopupListElement("NOVA", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "nova")));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Icon Style"] = false;
-	}
-
 	if (ShowLists["Tag Font"]) {
 		GetPlugIn()->OpenPopupList(ListAreas["Tag Font"], "Tag Font", 1);
 
