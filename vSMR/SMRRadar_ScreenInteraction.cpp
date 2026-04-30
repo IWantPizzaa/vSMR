@@ -11,6 +11,57 @@ extern bool customCursor;
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
 	Logger::info(string(__FUNCSIG__));
+	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
+	const char* objectId = hasObjectId ? sObjectId : "";
+	auto isObjectId = [&](const char* expected) -> bool
+	{
+		return expected != nullptr && strcmp(objectId, expected) == 0;
+	};
+	auto setCursorState = [&](HCURSOR cursor, bool keepStandardCursor)
+	{
+		AFX_MANAGE_STATE(AfxGetStaticModuleState());
+		ASSERT(cursor);
+		SetCursor(cursor);
+		standardCursor = keepStandardCursor;
+	};
+	auto setInteractionCursorIfNeeded = [&](int resourceId)
+	{
+		if (!standardCursor)
+			return;
+		HCURSOR cursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(resourceId), IMAGE_CURSOR, 0, 0, LR_SHARED));
+		setCursorState(cursor, false);
+	};
+	auto setDefaultCursorIfNeeded = [&]()
+	{
+		if (standardCursor)
+			return;
+		HCURSOR cursor = customCursor
+			? CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED))
+			: (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
+		setCursorState(cursor, true);
+	};
+	auto isTagObjectType = [&](int objectType) -> bool
+	{
+		switch (objectType)
+		{
+		case DRAWING_TAG:
+		case TAG_CITEM_MANUALCORRELATE:
+		case TAG_CITEM_CALLSIGN:
+		case TAG_CITEM_FPBOX:
+		case TAG_CITEM_RWY:
+		case TAG_CITEM_SID:
+		case TAG_CITEM_GATE:
+		case TAG_CITEM_NO:
+		case TAG_CITEM_GROUNDSTATUS:
+		case TAG_CITEM_CLEARANCE:
+		case TAG_CITEM_UKSTAND:
+		case TAG_CITEM_REMARK:
+		case TAG_CITEM_SCRATCHPAD:
+			return true;
+		default:
+			return false;
+		}
+	};
 
 	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
@@ -23,41 +74,21 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 		if (!toggleCursor)
 		{
-			if (standardCursor)
-			{
-				if (strcmp(sObjectId, "topbar") == 0)
-					smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRMOVEWINDOW), IMAGE_CURSOR, 0, 0, LR_SHARED));
-				else if (strcmp(sObjectId, "resize") == 0)
-					smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRRESIZE), IMAGE_CURSOR, 0, 0, LR_SHARED));
-
-				AFX_MANAGE_STATE(AfxGetStaticModuleState());
-				ASSERT(smrCursor);
-				SetCursor(smrCursor);
-				standardCursor = false;
-			}
-		} else
+			if (isObjectId("topbar"))
+				setInteractionCursorIfNeeded(IDC_SMRMOVEWINDOW);
+			else if (isObjectId("resize"))
+				setInteractionCursorIfNeeded(IDC_SMRRESIZE);
+		}
+		else
 		{
-			if (!standardCursor)
-			{
-				if (customCursor) {
-					smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
-				}
-				else {
-					smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
-				}
-
-				AFX_MANAGE_STATE(AfxGetStaticModuleState());
-				ASSERT(smrCursor);
-				SetCursor(smrCursor);
-				standardCursor = true;
-			}
+			setDefaultCursorIfNeeded();
 		}
 	}
 
-	if (ObjectType == DRAWING_TAG || ObjectType == TAG_CITEM_MANUALCORRELATE || ObjectType == TAG_CITEM_CALLSIGN || ObjectType == TAG_CITEM_FPBOX || ObjectType == TAG_CITEM_RWY || ObjectType == TAG_CITEM_SID || ObjectType == TAG_CITEM_GATE || ObjectType == TAG_CITEM_NO || ObjectType == TAG_CITEM_GROUNDSTATUS || ObjectType == TAG_CITEM_CLEARANCE || ObjectType == TAG_CITEM_UKSTAND || ObjectType == TAG_CITEM_REMARK || ObjectType == TAG_CITEM_SCRATCHPAD) {
+	if (isTagObjectType(ObjectType)) {
 		auto routeMoveToInsetWindow = [&]() -> bool
 		{
-			if (sObjectId == nullptr || sObjectId[0] == '\0')
+			if (!hasObjectId)
 				return false;
 
 			for (auto& kv : appWindows)
@@ -68,8 +99,8 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 				const bool draggingThisWindowTag =
 					!insetWindow->m_TagBeingDragged.empty() &&
-					insetWindow->m_TagBeingDragged == sObjectId;
-				auto insetTagAreaIt = insetWindow->m_TagAreas.find(sObjectId);
+					insetWindow->m_TagBeingDragged == objectId;
+				auto insetTagAreaIt = insetWindow->m_TagAreas.find(objectId);
 				const bool windowHasTag = insetTagAreaIt != insetWindow->m_TagAreas.end();
 
 				CRect windowRect(insetWindow->m_Area);
@@ -84,7 +115,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 						continue;
 				}
 
-				insetWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released);
+				insetWindow->OnMoveScreenObject(objectId, Pt, Area, Released);
 				return true;
 			}
 
@@ -96,46 +127,34 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			RequestRefresh();
 			return;
 		}
+		if (!hasObjectId)
+		{
+			if (Logger::is_verbose_mode())
+				Logger::info("OnMoveScreenObject: missing tag object id");
+			mouseLocation = Pt;
+			RequestRefresh();
+			return;
+		}
 
-		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(sObjectId);
+		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(objectId);
 
 		if (!Released)
 		{
-			if (standardCursor)
-			{
-				smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRMOVETAG), IMAGE_CURSOR, 0, 0, LR_SHARED));
-				AFX_MANAGE_STATE(AfxGetStaticModuleState());
-				ASSERT(smrCursor);
-				SetCursor(smrCursor);
-				standardCursor = false;
-			}
+			setInteractionCursorIfNeeded(IDC_SMRMOVETAG);
 		}
 		else
 		{
-			if (!standardCursor)
-			{
-				if (customCursor) {
-					smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
-				}
-				else {
-					smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
-				}
-
-				AFX_MANAGE_STATE(AfxGetStaticModuleState());
-				ASSERT(smrCursor);
-				SetCursor(smrCursor);
-				standardCursor = true;
-			}
+			setDefaultCursorIfNeeded();
 		}
 
 		if (rt.IsValid() && rt.GetPosition().IsValid()) {
 			POINT TagCenterPix;
 
 			// First frame of drag: capture offset between tag center and grab point.
-			bool firstDragFrame = (!Released && TagBeingDragged != sObjectId);
+			bool firstDragFrame = (!Released && TagBeingDragged != objectId);
 			if (firstDragFrame) {
 				POINT fullCenter{};
-				auto fullRectIt = tagAreas.find(sObjectId);
+				auto fullRectIt = tagAreas.find(objectId);
 				if (fullRectIt != tagAreas.end()) {
 					fullCenter = fullRectIt->second.CenterPoint();
 				}
@@ -144,11 +163,11 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 					fullCenter = tmp.CenterPoint();
 				}
 				POINT offset = { fullCenter.x - Pt.x, fullCenter.y - Pt.y };
-				TagDragOffsetFromCenter[sObjectId] = offset;
+				TagDragOffsetFromCenter[objectId] = offset;
 			}
 
 			// Always apply stored offset if available (even on release) to avoid snap.
-			auto offIt = TagDragOffsetFromCenter.find(sObjectId);
+			auto offIt = TagDragOffsetFromCenter.find(objectId);
 			if (offIt != TagDragOffsetFromCenter.end()) {
 				TagCenterPix.x = Pt.x + offIt->second.x;
 				TagCenterPix.y = Pt.y + offIt->second.y;
@@ -166,18 +185,18 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			POINT CustomTag = { TagCenterPix.x - AcPosPix.x, TagCenterPix.y - AcPosPix.y };
 
 			
-			TagsOffsets[sObjectId] = CustomTag;
-			TagAngles[sObjectId] = fmod(atan2(double(CustomTag.y), double(CustomTag.x)) * 180.0 / PI, 360);
-			TagLeaderLineLength[sObjectId] = static_cast<int>(sqrt(double(CustomTag.x * CustomTag.x + CustomTag.y * CustomTag.y)));
+			TagsOffsets[objectId] = CustomTag;
+			TagAngles[objectId] = fmod(atan2(double(CustomTag.y), double(CustomTag.x)) * 180.0 / PI, 360);
+			TagLeaderLineLength[objectId] = static_cast<int>(sqrt(double(CustomTag.x * CustomTag.x + CustomTag.y * CustomTag.y)));
 
-			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(sObjectId));
+			GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(objectId));
 
 			if (Released) {
 				TagBeingDragged = "";
-				TagDragOffsetFromCenter.erase(sObjectId);
+				TagDragOffsetFromCenter.erase(objectId);
 			}
 			else {
-				TagBeingDragged = sObjectId;
+				TagBeingDragged = objectId;
 			}
 
 			RequestRefresh();
@@ -186,42 +205,22 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		{
 			Logger::info(
 				"OnMoveScreenObject: skipped tag move update callsign=" +
-				std::string(sObjectId != nullptr ? sObjectId : "<null>") +
+				std::string(objectId) +
 				" target_valid=" + std::string(rt.IsValid() ? "1" : "0"));
 		}
 	}
 
 	if (ObjectType == RIMCAS_IAW) {
-		TimePopupAreas[sObjectId] = Area;
+		if (hasObjectId)
+			TimePopupAreas[objectId] = Area;
 
 		if (!Released)
 		{
-			if (standardCursor)
-			{
-				smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRMOVEWINDOW), IMAGE_CURSOR, 0, 0, LR_SHARED));
-
-				AFX_MANAGE_STATE(AfxGetStaticModuleState());
-				ASSERT(smrCursor);
-				SetCursor(smrCursor);
-				standardCursor = false;
-			}
+			setInteractionCursorIfNeeded(IDC_SMRMOVEWINDOW);
 		}
 		else
 		{
-			if (!standardCursor)
-			{
-				if (customCursor) {
-					smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));					
-				}
-				else {
-					smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
-				}
-
-				AFX_MANAGE_STATE(AfxGetStaticModuleState());
-				ASSERT(smrCursor);
-				SetCursor(smrCursor);
-				standardCursor = true;
-			}
+			setDefaultCursorIfNeeded();
 		}
 	}
 
