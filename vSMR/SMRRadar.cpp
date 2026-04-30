@@ -1095,6 +1095,11 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureResolutionPresetMember(targets, "small_icon_boost_resolution_preset", "1080p");
 	ensureBoolMember(targets, "fixed_pixel_icon_size", false);
 	ensureDoubleMember(targets, "fixed_pixel_icon_scale", 1.0, 0.1, 3.0);
+	ensureBoolMember(targets, "show_primary_target", true);
+	ensureColorMember(targets, "target_color", 255, 242, 73, 255);
+	ensureColorMember(targets, "history_one_color", 0, 255, 255, 255);
+	ensureColorMember(targets, "history_two_color", 0, 219, 219, 255);
+	ensureColorMember(targets, "history_three_color", 0, 183, 183, 255);
 
 	Value* legacyGroundIcons = nullptr;
 	if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject())
@@ -2878,6 +2883,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	const std::string frameIconStyle = GetActiveTargetIconStyle();
+	const bool frameUseNovaIconStyle = (frameIconStyle == "nova");
 	const bool frameUseDiamondIconStyle = (frameIconStyle == "diamond");
 	const bool frameUseRealisticIconStyle = (frameIconStyle == "realistic");
 	const bool frameSmallIconBoostEnabled = GetSmallTargetIconBoostEnabled();
@@ -3092,75 +3098,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
-
-		if (rt.GetGS() > 5) {
-			CRadarTargetPositionData pAcPos = rt.GetPosition();
-
-			for (int i = 1; i <= 2; i++) {
-				CRadarTargetPositionData previousTrailPos = rt.GetPreviousPosition(pAcPos);
-				if (!previousTrailPos.IsValid())
-					break;
-
-				pAcPos = previousTrailPos;
-				acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
-
-				// Afterglow polygons disabled (remove comet-like trail)
-			}
-
-			// Trails as shrinking bubbles
-			int TrailNumber = Trail_Gnd;
-			if (reportedGs > 50)
-				TrailNumber = Trail_App;
-
-			const double pixPerMeter = framePixPerMeter;
-
-			CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
-			for (int j = 1; j <= TrailNumber; j++) {
-				if (!previousPos.IsValid())
-					break;
-
-				POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
-
-				// Bubble diameter is fixed in meters so it scales with zoom
-				double metersPerBubble = 10.0; // base diameter in meters
-				int diameterPx = 6;
-				if (pixPerMeter > 0.0) {
-					diameterPx = int(pixPerMeter * metersPerBubble + 0.5);
-				}
-				if (diameterPx < 2) diameterPx = 2;
-				if (diameterPx > 50) diameterPx = 50;
-
-				// Shrink size with age (more aggressive for visibility)
-				double shrink = 1.0 - 0.15 * (j - 1);
-				if (shrink < 0.2) shrink = 0.2;
-				diameterPx = int(diameterPx * shrink + 0.5);
-				if (diameterPx < 2) diameterPx = 2;
-				int radius = diameterPx / 2;
-
-				// Gradient from transparent white (new) to gray-blue (older) with fading alpha
-				double t = (TrailNumber > 1) ? double(j - 1) / double(TrailNumber - 1) : 0.0;
-				auto lerp = [](double a, double b, double tt) { return a + (b - a) * tt; };
-				int r = int(lerp(255.0, 120.0, t) + 0.5);
-				int g = int(lerp(255.0, 150.0, t) + 0.5);
-				int b = int(lerp(255.0, 190.0, t) + 0.5);
-				int a = int(lerp(200.0, 40.0, t) + 0.5); // fade alpha
-				if (r < 0) r = 0; if (r > 255) r = 255;
-				if (g < 0) g = 0; if (g > 255) g = 255;
-				if (b < 0) b = 0; if (b > 255) b = 255;
-				if (a < 0) a = 0; if (a > 255) a = 255;
-
-				Color bubbleColor(static_cast<BYTE>(a), static_cast<BYTE>(r), static_cast<BYTE>(g), static_cast<BYTE>(b));
-				// Slightly thicker ring to balance visibility and hole size
-				Gdiplus::Pen ringPen(bubbleColor, Gdiplus::REAL(1.5f));
-				graphics.DrawEllipse(&ringPen, pCoord.x - radius, pCoord.y - radius, diameterPx, diameterPx);
-
-				previousPos = rt.GetPreviousPosition(previousPos);
-			}
-		}
-
-
-		// Disable legacy basic (yellow) aircraft symbol when using PNG icons
-		const bool drawLegacyPrimarySymbol = false;
 		const Value& symbolProfile = CurrentConfig->getActiveProfile();
 		const Value* symbolTargets = (symbolProfile.IsObject() &&
 			symbolProfile.HasMember("targets") &&
@@ -3172,27 +3109,167 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			(*symbolTargets)["show_primary_target"].IsBool())
 			? (*symbolTargets)["show_primary_target"].GetBool()
 			: false;
-		if (drawLegacyPrimarySymbol && showLegacyPrimaryTarget) {
-			const Color legacyTargetColor = (symbolTargets != nullptr &&
-				symbolTargets->HasMember("target_color") &&
-				(*symbolTargets)["target_color"].IsObject())
-				? CurrentConfig->getConfigColor((*symbolTargets)["target_color"])
-				: Color(255, 255, 242, 73);
+		auto getLegacyTargetColor = [&](const char* key, const Color& fallbackColor) -> Color
+		{
+			if (symbolTargets != nullptr &&
+				symbolTargets->HasMember(key) &&
+				(*symbolTargets)[key].IsObject())
+			{
+				return CurrentConfig->getConfigColor((*symbolTargets)[key]);
+			}
+			return fallbackColor;
+		};
+		auto drawPatatoidePolygon = [&](const std::map<int, POINT2>& sourcePoints, const Color& fillColor)
+		{
+			if (sourcePoints.empty())
+				return;
 
-			SolidBrush H_Brush(ColorManager->get_corrected_color("afterglow",
-				legacyTargetColor));
-
-			PointF lpPoints[100];
-			for (unsigned int i = 0; i < Patatoides[rtCallsign].points.size(); i++)
+			std::vector<PointF> polygonPoints;
+			polygonPoints.reserve(sourcePoints.size());
+			for (const auto& sourcePoint : sourcePoints)
 			{
 				CPosition pos;
-				pos.m_Latitude = Patatoides[rtCallsign].points[i].x;
-				pos.m_Longitude = Patatoides[rtCallsign].points[i].y;
-
-				lpPoints[i] = { REAL(ConvertCoordFromPositionToPixel(pos).x), REAL(ConvertCoordFromPositionToPixel(pos).y) };
+				pos.m_Latitude = sourcePoint.second.x;
+				pos.m_Longitude = sourcePoint.second.y;
+				POINT point = ConvertCoordFromPositionToPixel(pos);
+				polygonPoints.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
 			}
 
-			graphics.FillPolygon(&H_Brush, lpPoints, Patatoides[rtCallsign].points.size());
+			if (polygonPoints.size() < 3)
+				return;
+
+			SolidBrush polygonBrush(ColorManager->get_corrected_color("afterglow", fillColor));
+			graphics.FillPolygon(&polygonBrush, polygonPoints.data(), static_cast<INT>(polygonPoints.size()));
+		};
+
+		if (rt.GetGS() > 5) {
+			if (frameUseNovaIconStyle)
+			{
+				auto& patatoide = Patatoides[rtCallsign];
+				CRadarTargetPositionData pAcPos = rt.GetPosition();
+
+				for (int i = 1; i <= 2; i++) {
+					CRadarTargetPositionData previousTrailPos = rt.GetPreviousPosition(pAcPos);
+					if (!previousTrailPos.IsValid())
+						break;
+
+					pAcPos = previousTrailPos;
+					acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
+
+					if (!Afterglow || !showLegacyPrimaryTarget)
+						continue;
+
+					if (i == 1 && !patatoide.History_one_points.empty())
+					{
+						drawPatatoidePolygon(
+							patatoide.History_one_points,
+							getLegacyTargetColor("history_one_color", Color(255, 0, 255, 255)));
+					}
+
+					if (i != 2 && !patatoide.History_two_points.empty())
+					{
+						drawPatatoidePolygon(
+							patatoide.History_two_points,
+							getLegacyTargetColor("history_two_color", Color(255, 0, 219, 219)));
+					}
+
+					if (i == 2 && !patatoide.History_three_points.empty())
+					{
+						drawPatatoidePolygon(
+							patatoide.History_three_points,
+							getLegacyTargetColor("history_three_color", Color(255, 0, 183, 183)));
+					}
+				}
+
+				int trailNumber = Trail_Gnd;
+				if (reportedGs > 50)
+					trailNumber = Trail_App;
+
+				CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
+				for (int j = 1; j <= trailNumber; j++) {
+					if (!previousPos.IsValid())
+						break;
+
+					POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
+					SolidBrush trailBrush(ColorManager->get_corrected_color("symbol", Gdiplus::Color::White));
+					graphics.FillRectangle(&trailBrush, pCoord.x - 1, pCoord.y - 1, 2, 2);
+
+					previousPos = rt.GetPreviousPosition(previousPos);
+				}
+			}
+			else
+			{
+				CRadarTargetPositionData pAcPos = rt.GetPosition();
+
+				for (int i = 1; i <= 2; i++) {
+					CRadarTargetPositionData previousTrailPos = rt.GetPreviousPosition(pAcPos);
+					if (!previousTrailPos.IsValid())
+						break;
+
+					pAcPos = previousTrailPos;
+					acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
+
+					// Afterglow polygons disabled (remove comet-like trail)
+				}
+
+				// Trails as shrinking bubbles
+				int TrailNumber = Trail_Gnd;
+				if (reportedGs > 50)
+					TrailNumber = Trail_App;
+
+				const double pixPerMeter = framePixPerMeter;
+
+				CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
+				for (int j = 1; j <= TrailNumber; j++) {
+					if (!previousPos.IsValid())
+						break;
+
+					POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
+
+					// Bubble diameter is fixed in meters so it scales with zoom
+					double metersPerBubble = 10.0; // base diameter in meters
+					int diameterPx = 6;
+					if (pixPerMeter > 0.0) {
+						diameterPx = int(pixPerMeter * metersPerBubble + 0.5);
+					}
+					if (diameterPx < 2) diameterPx = 2;
+					if (diameterPx > 50) diameterPx = 50;
+
+					// Shrink size with age (more aggressive for visibility)
+					double shrink = 1.0 - 0.15 * (j - 1);
+					if (shrink < 0.2) shrink = 0.2;
+					diameterPx = int(diameterPx * shrink + 0.5);
+					if (diameterPx < 2) diameterPx = 2;
+					int radius = diameterPx / 2;
+
+					// Gradient from transparent white (new) to gray-blue (older) with fading alpha
+					double t = (TrailNumber > 1) ? double(j - 1) / double(TrailNumber - 1) : 0.0;
+					auto lerp = [](double a, double b, double tt) { return a + (b - a) * tt; };
+					int r = int(lerp(255.0, 120.0, t) + 0.5);
+					int g = int(lerp(255.0, 150.0, t) + 0.5);
+					int b = int(lerp(255.0, 190.0, t) + 0.5);
+					int a = int(lerp(200.0, 40.0, t) + 0.5); // fade alpha
+					if (r < 0) r = 0; if (r > 255) r = 255;
+					if (g < 0) g = 0; if (g > 255) g = 255;
+					if (b < 0) b = 0; if (b > 255) b = 255;
+					if (a < 0) a = 0; if (a > 255) a = 255;
+
+					Color bubbleColor(static_cast<BYTE>(a), static_cast<BYTE>(r), static_cast<BYTE>(g), static_cast<BYTE>(b));
+					// Slightly thicker ring to balance visibility and hole size
+					Gdiplus::Pen ringPen(bubbleColor, Gdiplus::REAL(1.5f));
+					graphics.DrawEllipse(&ringPen, pCoord.x - radius, pCoord.y - radius, diameterPx, diameterPx);
+
+					previousPos = rt.GetPreviousPosition(previousPos);
+				}
+			}
+		}
+
+
+		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
+		if (drawLegacyPrimarySymbol && showLegacyPrimaryTarget) {
+			drawPatatoidePolygon(
+				Patatoides[rtCallsign].points,
+				getLegacyTargetColor("target_color", Color(255, 255, 242, 73)));
 		}
 		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
@@ -3222,6 +3299,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		// Icon sizing based on real dimensions and zoom
 		int iconSize = 40;
+		const bool useNovaIconStyle = frameUseNovaIconStyle;
 		const bool useDiamondIconStyle = frameUseDiamondIconStyle;
 		const bool useRealisticIconStyle = frameUseRealisticIconStyle;
 		char wtc = iconFp.IsValid() ? iconFp.GetFlightPlanData().GetAircraftWtc() : '\0';
@@ -3541,11 +3619,35 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		if (Logger::is_verbose_mode())
 		{
-			std::string iconDrawMode = canUseRealisticIcon ? "realistic" : "symbol";
+			std::string iconDrawMode = useNovaIconStyle ? "nova" : (canUseRealisticIcon ? "realistic" : "symbol");
 			Logger::info("IconRender: " + rtCallsign + " mode=" + iconDrawMode + " icon_type=" + iconType);
 		}
 
-		if (canUseRealisticIcon) {
+		if (useNovaIconStyle)
+		{
+			CPen qTrailPen(PS_SOLID, 1, ColorManager->get_corrected_color("symbol", Gdiplus::Color::White).ToCOLORREF());
+			CPen* pqOrigPen = dc.SelectObject(&qTrailPen);
+			if (RtPos.GetTransponderC()) {
+				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
+				dc.LineTo({ acPosPix.x - 6, acPosPix.y });
+				dc.LineTo({ acPosPix.x, acPosPix.y + 6 });
+				dc.LineTo({ acPosPix.x + 6, acPosPix.y });
+				dc.LineTo({ acPosPix.x, acPosPix.y - 6 });
+			}
+			else {
+				dc.MoveTo(acPosPix.x, acPosPix.y);
+				dc.LineTo(acPosPix.x - 4, acPosPix.y - 4);
+				dc.MoveTo(acPosPix.x, acPosPix.y);
+				dc.LineTo(acPosPix.x + 4, acPosPix.y - 4);
+				dc.MoveTo(acPosPix.x, acPosPix.y);
+				dc.LineTo(acPosPix.x - 4, acPosPix.y + 4);
+				dc.MoveTo(acPosPix.x, acPosPix.y);
+				dc.LineTo(acPosPix.x + 4, acPosPix.y + 4);
+			}
+			dc.SelectObject(pqOrigPen);
+			iconSize = 12;
+		}
+		else if (canUseRealisticIcon) {
 
 			// Compute on-screen size that scales with zoom (uniform for all aircraft)
 			double drawW = iconSize;
@@ -4277,6 +4379,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		GetPlugIn()->AddPopupListElement("Size 5", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 5)));
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
 		ShowLists["Label Font Size"] = false;
+	}
+
+	if (ShowLists["Icon Style"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Icon Style"], "Icon Style", 1);
+		const std::string activeStyle = GetActiveTargetIconStyle();
+		GetPlugIn()->AddPopupListElement("Arrow", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "triangle")));
+		GetPlugIn()->AddPopupListElement("Diamond", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "diamond")));
+		GetPlugIn()->AddPopupListElement("Realistic", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "realistic")));
+		GetPlugIn()->AddPopupListElement("NOVA", "", RIMCAS_UPDATE_ICON_STYLE, false, int(bool(activeStyle == "nova")));
+		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
+		ShowLists["Icon Style"] = false;
 	}
 
 	if (ShowLists["Tag Font"]) {

@@ -1663,6 +1663,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_ICON_STYLE_ARROW:
 		case IDC_PE_ICON_STYLE_DIAMOND:
 		case IDC_PE_ICON_STYLE_REALISTIC:
+		case IDC_PE_ICON_STYLE_NOVA:
 		case IDC_PE_FIXED_PIXEL_CHECK:
 		case IDC_PE_SMALL_BOOST_CHECK:
 		case IDC_PE_RULE_LEFT_PANEL:
@@ -2369,6 +2370,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	IconStyleArrow.Create("Arrow", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_GROUP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_ARROW);
 	IconStyleDiamond.Create("Diamond", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_DIAMOND);
 	IconStyleRealistic.Create("Realistic", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_REALISTIC);
+	IconStyleNova.Create("NOVA", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTORADIOBUTTON, CRect(0, 0, 0, 0), this, IDC_PE_ICON_STYLE_NOVA);
 	IconPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_ICON_PANEL);
 	IconShapePanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SHAPE_PANEL);
 	IconShapeHeader.Create("Shape", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_ICON_SHAPE_HEADER);
@@ -3315,11 +3317,13 @@ void CProfileEditorDialog::LayoutControls()
 	const int arrowWidth = measureRadioWidth(IconStyleArrow, 72);
 	const int diamondWidth = measureRadioWidth(IconStyleDiamond, 84);
 	const int realisticWidth = measureRadioWidth(IconStyleRealistic, 92);
-	const int shapeRowWidth = arrowWidth + iconRadioGap + diamondWidth + iconRadioGap + realisticWidth;
+	const int novaWidth = measureRadioWidth(IconStyleNova, 68);
+	const int shapeRowWidth = arrowWidth + iconRadioGap + diamondWidth + iconRadioGap + realisticWidth + iconRadioGap + novaWidth;
 	const int shapeRowLeft = iconContentLeft + max(0, (iconContentWidth - shapeRowWidth) / 2);
 	IconStyleArrow.MoveWindow(shapeRowLeft, shapeRowY, arrowWidth, iconCheckboxHeight, TRUE);
 	IconStyleDiamond.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap, shapeRowY, diamondWidth, iconCheckboxHeight, TRUE);
 	IconStyleRealistic.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap + diamondWidth + iconRadioGap, shapeRowY, realisticWidth, iconCheckboxHeight, TRUE);
+	IconStyleNova.MoveWindow(shapeRowLeft + arrowWidth + iconRadioGap + diamondWidth + iconRadioGap + realisticWidth + iconRadioGap, shapeRowY, novaWidth, iconCheckboxHeight, TRUE);
 
 	int iconY = iconTop + iconShapeCardHeight + iconGap + 14;
 	IconSizeHeader.MoveWindow(iconContentLeft, iconY, 120, rowHeight, TRUE);
@@ -3457,7 +3461,7 @@ void CProfileEditorDialog::LayoutControls()
 
 	// Keep interactive Icon controls above decorative card panels.
 	const UINT iconContentIds[] = {
-		IDC_PE_ICON_STYLE_ARROW, IDC_PE_ICON_STYLE_DIAMOND, IDC_PE_ICON_STYLE_REALISTIC,
+		IDC_PE_ICON_STYLE_ARROW, IDC_PE_ICON_STYLE_DIAMOND, IDC_PE_ICON_STYLE_REALISTIC, IDC_PE_ICON_STYLE_NOVA,
 		IDC_PE_FIXED_PIXEL_CHECK, IDC_PE_FIXED_SCALE_LABEL, IDC_PE_FIXED_SCALE_VALUE, IDC_PE_FIXED_SCALE_SLIDER,
 		IDC_PE_FIXED_SCALE_TICK_MIN, IDC_PE_FIXED_SCALE_TICK_MID, IDC_PE_FIXED_SCALE_TICK_MAX,
 		IDC_PE_SMALL_BOOST_CHECK, IDC_PE_BOOST_FACTOR_LABEL, IDC_PE_BOOST_FACTOR_VALUE, IDC_PE_BOOST_FACTOR_SLIDER,
@@ -3735,6 +3739,7 @@ void CProfileEditorDialog::UpdatePageVisibility()
 	IconStyleArrow.ShowWindow(iconShowMode);
 	IconStyleDiamond.ShowWindow(iconShowMode);
 	IconStyleRealistic.ShowWindow(iconShowMode);
+	IconStyleNova.ShowWindow(iconShowMode);
 	IconShapeHeader.ShowWindow(iconShowMode);
 	IconSizeHeader.ShowWindow(iconShowMode);
 	IconDisplayHeader.ShowWindow(iconShowMode);
@@ -4365,10 +4370,12 @@ void CProfileEditorDialog::SyncIconControlsFromRadar()
 	const std::string style = Owner->GetActiveTargetIconStyle();
 	const bool triangleSelected = (style == "triangle");
 	const bool diamondSelected = (style == "diamond");
-	const bool realisticSelected = (!triangleSelected && !diamondSelected) || (style == "realistic");
+	const bool novaSelected = (style == "nova");
+	const bool realisticSelected = (!triangleSelected && !diamondSelected && !novaSelected) || (style == "realistic");
 	IconStyleArrow.SetCheck(triangleSelected ? BST_CHECKED : BST_UNCHECKED);
 	IconStyleDiamond.SetCheck(diamondSelected ? BST_CHECKED : BST_UNCHECKED);
 	IconStyleRealistic.SetCheck(realisticSelected ? BST_CHECKED : BST_UNCHECKED);
+	IconStyleNova.SetCheck(novaSelected ? BST_CHECKED : BST_UNCHECKED);
 
 	FixedPixelCheck.SetCheck(Owner->GetFixedPixelTargetIconSizeEnabled() ? BST_CHECKED : BST_UNCHECKED);
 	SmallBoostCheck.SetCheck(Owner->GetSmallTargetIconBoostEnabled() ? BST_CHECKED : BST_UNCHECKED);
@@ -7086,10 +7093,14 @@ void CProfileEditorDialog::OnIconStyleChanged()
 		style = "diamond";
 	else if (clickedControlId == IDC_PE_ICON_STYLE_REALISTIC)
 		style = "realistic";
+	else if (clickedControlId == IDC_PE_ICON_STYLE_NOVA)
+		style = "nova";
 	else if (IconStyleArrow.GetCheck() == BST_CHECKED)
 		style = "triangle";
 	else if (IconStyleDiamond.GetCheck() == BST_CHECKED)
 		style = "diamond";
+	else if (IconStyleNova.GetCheck() == BST_CHECKED)
+		style = "nova";
 
 	if (Owner->SetActiveTargetIconStyle(style, true))
 	{
@@ -7255,6 +7266,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_ARROW, &CProfileEditorDialog::OnIconStyleChanged)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_DIAMOND, &CProfileEditorDialog::OnIconStyleChanged)
 	ON_BN_CLICKED(IDC_PE_ICON_STYLE_REALISTIC, &CProfileEditorDialog::OnIconStyleChanged)
+	ON_BN_CLICKED(IDC_PE_ICON_STYLE_NOVA, &CProfileEditorDialog::OnIconStyleChanged)
 	ON_BN_CLICKED(IDC_PE_FIXED_PIXEL_CHECK, &CProfileEditorDialog::OnFixedPixelToggled)
 	ON_CBN_SELCHANGE(IDC_PE_FIXED_SCALE_COMBO, &CProfileEditorDialog::OnFixedScaleChanged)
 	ON_BN_CLICKED(IDC_PE_SMALL_BOOST_CHECK, &CProfileEditorDialog::OnSmallBoostToggled)
