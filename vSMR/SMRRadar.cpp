@@ -2886,6 +2886,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const bool frameUseNovaIconStyle = (frameIconStyle == "nova");
 	const bool frameUseDiamondIconStyle = (frameIconStyle == "diamond");
 	const bool frameUseRealisticIconStyle = (frameIconStyle == "realistic");
+	const bool frameUseFastRealisticBitmapRendering = frameUseRealisticIconStyle;
 	const bool frameSmallIconBoostEnabled = GetSmallTargetIconBoostEnabled();
 	const bool frameFixedPixelIconSize = GetFixedPixelTargetIconSizeEnabled();
 	const double frameSmallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
@@ -3237,6 +3238,42 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		SolidBrush polygonBrush(ColorManager->get_corrected_color("afterglow", fillColor));
 		graphics.FillPolygon(&polygonBrush, framePatatoidePolygonPoints.data(), static_cast<INT>(framePatatoidePolygonPoints.size()));
 	};
+	std::unordered_map<unsigned int, std::unique_ptr<Gdiplus::ImageAttributes>> frameTintAttributesCache;
+	auto getCachedTintAttributes = [&](const Color& tintColor) -> Gdiplus::ImageAttributes*
+	{
+		const unsigned int tintKey =
+			(static_cast<unsigned int>(tintColor.GetAlpha()) << 24) |
+			(static_cast<unsigned int>(tintColor.GetR()) << 16) |
+			(static_cast<unsigned int>(tintColor.GetG()) << 8) |
+			static_cast<unsigned int>(tintColor.GetB());
+		auto itTint = frameTintAttributesCache.find(tintKey);
+		if (itTint != frameTintAttributesCache.end())
+			return itTint->second.get();
+
+		auto attrs = std::make_unique<Gdiplus::ImageAttributes>();
+		const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(tintColor.GetAlpha()) / 255.0f;
+		Gdiplus::ColorMatrix cm = {
+			{
+				{ static_cast<Gdiplus::REAL>(tintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+				{ 0.0f, static_cast<Gdiplus::REAL>(tintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
+				{ 0.0f, 0.0f, static_cast<Gdiplus::REAL>(tintColor.GetB()) / 255.0f, 0.0f, 0.0f },
+				{ 0.0f, 0.0f, 0.0f, tintAlpha, 0.0f },
+				{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
+			}
+		};
+		attrs->SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
+		auto inserted = frameTintAttributesCache.emplace(tintKey, std::move(attrs));
+		return inserted.first->second.get();
+	};
+	const Gdiplus::InterpolationMode frameSavedInterpolationMode = graphics.GetInterpolationMode();
+	const Gdiplus::PixelOffsetMode frameSavedPixelOffsetMode = graphics.GetPixelOffsetMode();
+	const Gdiplus::CompositingQuality frameSavedCompositingQuality = graphics.GetCompositingQuality();
+	if (frameUseFastRealisticBitmapRendering)
+	{
+		graphics.SetInterpolationMode(Gdiplus::InterpolationModeLowQuality);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
+		graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
+	}
 	EuroScopePlugIn::CRadarTarget rt;
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
@@ -3596,18 +3633,20 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
 		const bool fixedPixelIconSize = frameFixedPixelIconSize;
+		UINT iconBmpWidth = 0;
+		UINT iconBmpHeight = 0;
 		bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
 		if (canUseRealisticIcon)
 		{
 			const Gdiplus::Status bmpStatus = iconBmp->GetLastStatus();
-			const UINT bmpWidth = iconBmp->GetWidth();
-			const UINT bmpHeight = iconBmp->GetHeight();
-			if (bmpStatus != Gdiplus::Ok || bmpWidth == 0 || bmpHeight == 0)
+			iconBmpWidth = iconBmp->GetWidth();
+			iconBmpHeight = iconBmp->GetHeight();
+			if (bmpStatus != Gdiplus::Ok || iconBmpWidth == 0 || iconBmpHeight == 0)
 			{
 				iconVerboseStep(
 					"realistic_icon_disabled status=" + std::to_string(static_cast<int>(bmpStatus)) +
-					" w=" + std::to_string(static_cast<unsigned long long>(bmpWidth)) +
-					" h=" + std::to_string(static_cast<unsigned long long>(bmpHeight)));
+					" w=" + std::to_string(static_cast<unsigned long long>(iconBmpWidth)) +
+					" h=" + std::to_string(static_cast<unsigned long long>(iconBmpHeight)));
 				canUseRealisticIcon = false;
 			}
 		}
@@ -3830,28 +3869,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			if (applyTargetTintColor) {
 				iconVerboseStep("before_realistic_draw_tinted");
-				const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(targetTintColor.GetAlpha()) / 255.0f;
-				Gdiplus::ColorMatrix cm = {
-					{
-						{ static_cast<REAL>(targetTintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-						{ 0.0f, static_cast<REAL>(targetTintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
-						{ 0.0f, 0.0f, static_cast<REAL>(targetTintColor.GetB()) / 255.0f, 0.0f, 0.0f },
-						{ 0.0f, 0.0f, 0.0f, tintAlpha, 0.0f },
-						{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
-					}
-				};
-				Gdiplus::ImageAttributes attrs;
-				attrs.SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
+				Gdiplus::ImageAttributes* attrs = getCachedTintAttributes(targetTintColor);
 				RectF dest(0.0f, 0.0f, static_cast<REAL>(drawW), static_cast<REAL>(drawH));
 				graphics.DrawImage(
 					iconBmp,
 					dest,
 					0.0f,
 					0.0f,
-					static_cast<Gdiplus::REAL>(iconBmp->GetWidth()),
-					static_cast<Gdiplus::REAL>(iconBmp->GetHeight()),
+					static_cast<Gdiplus::REAL>(iconBmpWidth),
+					static_cast<Gdiplus::REAL>(iconBmpHeight),
 					UnitPixel,
-					&attrs);
+					attrs);
 				iconVerboseStep("after_realistic_draw_tinted");
 			}
 			else {
@@ -4056,6 +4084,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		iconVerboseStep("before_add_screen_object");
 		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
 		iconVerboseStep("after_add_screen_object");
+	}
+	if (frameUseFastRealisticBitmapRendering)
+	{
+		graphics.SetInterpolationMode(frameSavedInterpolationMode);
+		graphics.SetPixelOffsetMode(frameSavedPixelOffsetMode);
+		graphics.SetCompositingQuality(frameSavedCompositingQuality);
 	}
 
 #pragma endregion Drawing of the symbols
