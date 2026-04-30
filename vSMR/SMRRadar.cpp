@@ -3196,6 +3196,46 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			return maxValue;
 		return value;
 	};
+	const bool frameShowLegacyPrimaryTarget = (targetsConfig != nullptr &&
+		targetsConfig->HasMember("show_primary_target") &&
+		(*targetsConfig)["show_primary_target"].IsBool())
+		? (*targetsConfig)["show_primary_target"].GetBool()
+		: false;
+	auto getLegacyTargetColor = [&](const char* key, const Color& fallbackColor) -> Color
+	{
+		if (targetsConfig != nullptr &&
+			key != nullptr &&
+			key[0] != '\0' &&
+			targetsConfig->HasMember(key) &&
+			(*targetsConfig)[key].IsObject())
+		{
+			return CurrentConfig->getConfigColor((*targetsConfig)[key]);
+		}
+		return fallbackColor;
+	};
+	std::vector<PointF> framePatatoidePolygonPoints;
+	auto drawPatatoidePolygon = [&](const std::map<int, POINT2>& sourcePoints, const Color& fillColor)
+	{
+		if (sourcePoints.empty())
+			return;
+
+		framePatatoidePolygonPoints.clear();
+		framePatatoidePolygonPoints.reserve(sourcePoints.size());
+		for (const auto& sourcePoint : sourcePoints)
+		{
+			CPosition pos;
+			pos.m_Latitude = sourcePoint.second.x;
+			pos.m_Longitude = sourcePoint.second.y;
+			POINT point = ConvertCoordFromPositionToPixel(pos);
+			framePatatoidePolygonPoints.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
+		}
+
+		if (framePatatoidePolygonPoints.size() < 3)
+			return;
+
+		SolidBrush polygonBrush(ColorManager->get_corrected_color("afterglow", fillColor));
+		graphics.FillPolygon(&polygonBrush, framePatatoidePolygonPoints.data(), static_cast<INT>(framePatatoidePolygonPoints.size()));
+	};
 	EuroScopePlugIn::CRadarTarget rt;
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
@@ -3238,49 +3278,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
-		const Value& symbolProfile = CurrentConfig->getActiveProfile();
-		const Value* symbolTargets = (symbolProfile.IsObject() &&
-			symbolProfile.HasMember("targets") &&
-			symbolProfile["targets"].IsObject())
-			? &symbolProfile["targets"]
-			: nullptr;
-		const bool showLegacyPrimaryTarget = (symbolTargets != nullptr &&
-			symbolTargets->HasMember("show_primary_target") &&
-			(*symbolTargets)["show_primary_target"].IsBool())
-			? (*symbolTargets)["show_primary_target"].GetBool()
-			: false;
-		auto getLegacyTargetColor = [&](const char* key, const Color& fallbackColor) -> Color
-		{
-			if (symbolTargets != nullptr &&
-				symbolTargets->HasMember(key) &&
-				(*symbolTargets)[key].IsObject())
-			{
-				return CurrentConfig->getConfigColor((*symbolTargets)[key]);
-			}
-			return fallbackColor;
-		};
-		auto drawPatatoidePolygon = [&](const std::map<int, POINT2>& sourcePoints, const Color& fillColor)
-		{
-			if (sourcePoints.empty())
-				return;
-
-			std::vector<PointF> polygonPoints;
-			polygonPoints.reserve(sourcePoints.size());
-			for (const auto& sourcePoint : sourcePoints)
-			{
-				CPosition pos;
-				pos.m_Latitude = sourcePoint.second.x;
-				pos.m_Longitude = sourcePoint.second.y;
-				POINT point = ConvertCoordFromPositionToPixel(pos);
-				polygonPoints.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
-			}
-
-			if (polygonPoints.size() < 3)
-				return;
-
-			SolidBrush polygonBrush(ColorManager->get_corrected_color("afterglow", fillColor));
-			graphics.FillPolygon(&polygonBrush, polygonPoints.data(), static_cast<INT>(polygonPoints.size()));
-		};
 
 		if (rt.GetGS() > 5) {
 			if (frameUseNovaIconStyle)
@@ -3296,7 +3293,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					pAcPos = previousTrailPos;
 					acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
 
-					if (!Afterglow || !showLegacyPrimaryTarget)
+					if (!Afterglow || !frameShowLegacyPrimaryTarget)
 						continue;
 
 					if (i == 1 && !patatoide.History_one_points.empty())
@@ -3406,7 +3403,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 
 		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
-		if (drawLegacyPrimarySymbol && showLegacyPrimaryTarget) {
+		if (drawLegacyPrimarySymbol && frameShowLegacyPrimaryTarget) {
 			drawPatatoidePolygon(
 				Patatoides[rtCallsign].points,
 				getLegacyTargetColor("target_color", Color(255, 255, 242, 73)));
