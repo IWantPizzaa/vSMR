@@ -34,6 +34,7 @@ protected:
 	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
 	afx_msg void OnDestroy();
 	afx_msg void OnPaint();
+	afx_msg LRESULT OnDeferredLayout(WPARAM wParam, LPARAM lParam);
 	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 	afx_msg void OnFixedScaleSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnBoostFactorSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
@@ -269,8 +270,10 @@ private:
 	bool ControlsCreated = false;
 	int LastVisibilityTab = -1;
 	bool LastVisibilityDetailedTag = false;
+	bool LastVisibilityRuleParameterMode = false;
 	int LastLayoutWidth = -1;
 	int LastLayoutHeight = -1;
+	bool LayoutUpdatePending = false;
 
 	CTabCtrl PageTabs;
 	CStatic SidebarPanel;
@@ -482,7 +485,7 @@ private:
 	bool HandleColorSliderScroll(CScrollBar* pScrollBar, UINT nSBCode, UINT nPos);
 	void CreateEditorControls();
 	void LayoutControls();
-	void UpdatePageVisibility();
+	void UpdatePageVisibility(bool force = false);
 	void RebuildColorPathList();
 	void RebuildColorPathTree(const std::string& selectedPath);
 	bool SelectColorPathInTree(const std::string& path);
