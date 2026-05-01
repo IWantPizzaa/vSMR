@@ -3485,11 +3485,12 @@ void CProfileEditorDialog::LayoutControls()
 	const int tagOptionsPad = 12;
 	const int tagOptionsLeft = tagLeft + tagOptionsPad;
 	const int tagOptionsWidth = max(140, tagWidth - (tagOptionsPad * 2));
+	const int tagOptionsControlWidth = max(120, tagOptionsWidth - 12);
 	TagOptionsHeader.MoveWindow(tagOptionsLeft, tagOptionsTop + 10, tagOptionsWidth, 24, TRUE);
-	int tagOptionsY = tagOptionsTop + 42;
-	TagAutoDeconflictionToggle.MoveWindow(tagOptionsLeft, tagOptionsY, tagOptionsWidth, rowHeight, TRUE);
-	tagOptionsY += rowHeight + 8;
-	TagRoundedCornersToggle.MoveWindow(tagOptionsLeft, tagOptionsY, tagOptionsWidth, rowHeight, TRUE);
+	int tagOptionsY = tagOptionsTop + 40;
+	TagAutoDeconflictionToggle.MoveWindow(tagOptionsLeft, tagOptionsY, tagOptionsControlWidth, rowHeight, TRUE);
+	tagOptionsY += rowHeight + 6;
+	TagRoundedCornersToggle.MoveWindow(tagOptionsLeft, tagOptionsY, tagOptionsControlWidth, rowHeight, TRUE);
 
 	MoveControlOffscreen(TagLine1Label);
 	MoveControlOffscreen(TagLine1Edit);

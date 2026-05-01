@@ -1342,10 +1342,12 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		Rect RoundedRect = CopyRect(TagBackgroundRect);
 		SolidBrush TagBackgroundBrush(TagBackgroundColor);
 		const bool pointerInTagRect = isMouseWithinRect(TagBackgroundRect);
+		GraphicsPath roundedPath;
+		bool hasRoundedTagClipPath = false;
 		if (roundedTagCornersEnabled)
 		{
-			GraphicsPath roundedPath;
 			MakeRoundedRect(roundedPath, RoundedRect, 4);
+			hasRoundedTagClipPath = true;
 			graphics.FillPath(&TagBackgroundBrush, &roundedPath);
 			if (pointerInTagRect || hoverState.isDragged)
 			{
@@ -1455,9 +1457,15 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			CRimcas::RimcasAlertSeverity severity = RimcasInstance->getAlertSeverity(alert);
 			SolidBrush* AlertColor = (severity == CRimcas::RimcasAlertSeverity::WARNING) ? &AlertColorWarning : &AlertColorCaution;
 			SolidBrush* RimcasTextColor = (severity == CRimcas::RimcasAlertSeverity::WARNING) ? &AlertTextColorWarning : &AlertTextColorCaution;
-			graphics.SetClip(&roundedPath, CombineModeReplace);
+			if (roundedTagCornersEnabled && hasRoundedTagClipPath)
+			{
+				graphics.SetClip(&roundedPath, CombineModeReplace);
+			}
 			graphics.FillRectangle(AlertColor, CopyRect(ItemRect));
-			graphics.ResetClip();
+			if (roundedTagCornersEnabled && hasRoundedTagClipPath)
+			{
+				graphics.ResetClip();
+			}
 
 			wstring walertStr = wstring(alertStr.begin(), alertStr.end());
 			const int alertTextOffsetY = max(0, (alertLineHeight - alertTextHeight + 1) / 2);
