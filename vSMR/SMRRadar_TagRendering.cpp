@@ -874,29 +874,67 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				isTagDetailled,
 				TagReplacingMap,
 				hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
-		if (structuredTagColorOverrides.hasTargetColor)
+		VacdmColorRuleOverrides effectiveStructuredTagColorOverrides = structuredTagColorOverrides;
+		if (isTagDetailled)
+		{
+			// Keep hover/detailed tags consistent by inheriting normal-detail color rules
+			// when a detailed-specific rule does not provide that color channel.
+			const VacdmColorRuleOverrides normalStructuredTagColorOverrides =
+				EvaluateStructuredTagColorRules(
+					structuredTagRules,
+					ruleTagTypeKey,
+					statusDefinitionKey,
+					false,
+					TagReplacingMap,
+					hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+			if (!effectiveStructuredTagColorOverrides.hasTargetColor && normalStructuredTagColorOverrides.hasTargetColor)
+			{
+				effectiveStructuredTagColorOverrides.hasTargetColor = true;
+				effectiveStructuredTagColorOverrides.targetR = normalStructuredTagColorOverrides.targetR;
+				effectiveStructuredTagColorOverrides.targetG = normalStructuredTagColorOverrides.targetG;
+				effectiveStructuredTagColorOverrides.targetB = normalStructuredTagColorOverrides.targetB;
+				effectiveStructuredTagColorOverrides.targetA = normalStructuredTagColorOverrides.targetA;
+			}
+			if (!effectiveStructuredTagColorOverrides.hasTagColor && normalStructuredTagColorOverrides.hasTagColor)
+			{
+				effectiveStructuredTagColorOverrides.hasTagColor = true;
+				effectiveStructuredTagColorOverrides.tagR = normalStructuredTagColorOverrides.tagR;
+				effectiveStructuredTagColorOverrides.tagG = normalStructuredTagColorOverrides.tagG;
+				effectiveStructuredTagColorOverrides.tagB = normalStructuredTagColorOverrides.tagB;
+				effectiveStructuredTagColorOverrides.tagA = normalStructuredTagColorOverrides.tagA;
+			}
+			if (!effectiveStructuredTagColorOverrides.hasTextColor && normalStructuredTagColorOverrides.hasTextColor)
+			{
+				effectiveStructuredTagColorOverrides.hasTextColor = true;
+				effectiveStructuredTagColorOverrides.textR = normalStructuredTagColorOverrides.textR;
+				effectiveStructuredTagColorOverrides.textG = normalStructuredTagColorOverrides.textG;
+				effectiveStructuredTagColorOverrides.textB = normalStructuredTagColorOverrides.textB;
+				effectiveStructuredTagColorOverrides.textA = normalStructuredTagColorOverrides.textA;
+			}
+		}
+		if (effectiveStructuredTagColorOverrides.hasTargetColor)
 		{
 			vacdmTagColorOverrides.hasTargetColor = true;
-			vacdmTagColorOverrides.targetR = structuredTagColorOverrides.targetR;
-			vacdmTagColorOverrides.targetG = structuredTagColorOverrides.targetG;
-			vacdmTagColorOverrides.targetB = structuredTagColorOverrides.targetB;
-			vacdmTagColorOverrides.targetA = structuredTagColorOverrides.targetA;
+			vacdmTagColorOverrides.targetR = effectiveStructuredTagColorOverrides.targetR;
+			vacdmTagColorOverrides.targetG = effectiveStructuredTagColorOverrides.targetG;
+			vacdmTagColorOverrides.targetB = effectiveStructuredTagColorOverrides.targetB;
+			vacdmTagColorOverrides.targetA = effectiveStructuredTagColorOverrides.targetA;
 		}
-		if (structuredTagColorOverrides.hasTagColor)
+		if (effectiveStructuredTagColorOverrides.hasTagColor)
 		{
 			vacdmTagColorOverrides.hasTagColor = true;
-			vacdmTagColorOverrides.tagR = structuredTagColorOverrides.tagR;
-			vacdmTagColorOverrides.tagG = structuredTagColorOverrides.tagG;
-			vacdmTagColorOverrides.tagB = structuredTagColorOverrides.tagB;
-			vacdmTagColorOverrides.tagA = structuredTagColorOverrides.tagA;
+			vacdmTagColorOverrides.tagR = effectiveStructuredTagColorOverrides.tagR;
+			vacdmTagColorOverrides.tagG = effectiveStructuredTagColorOverrides.tagG;
+			vacdmTagColorOverrides.tagB = effectiveStructuredTagColorOverrides.tagB;
+			vacdmTagColorOverrides.tagA = effectiveStructuredTagColorOverrides.tagA;
 		}
-		if (structuredTagColorOverrides.hasTextColor)
+		if (effectiveStructuredTagColorOverrides.hasTextColor)
 		{
 			vacdmTagColorOverrides.hasTextColor = true;
-			vacdmTagColorOverrides.textR = structuredTagColorOverrides.textR;
-			vacdmTagColorOverrides.textG = structuredTagColorOverrides.textG;
-			vacdmTagColorOverrides.textB = structuredTagColorOverrides.textB;
-			vacdmTagColorOverrides.textA = structuredTagColorOverrides.textA;
+			vacdmTagColorOverrides.textR = effectiveStructuredTagColorOverrides.textR;
+			vacdmTagColorOverrides.textG = effectiveStructuredTagColorOverrides.textG;
+			vacdmTagColorOverrides.textB = effectiveStructuredTagColorOverrides.textB;
+			vacdmTagColorOverrides.textA = effectiveStructuredTagColorOverrides.textA;
 		}
 
 		struct RenderedTagElement
