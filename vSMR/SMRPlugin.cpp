@@ -650,20 +650,101 @@ namespace
 		return std::isspace(static_cast<unsigned char>(text[token.size()])) != 0;
 	}
 
-	std::filesystem::path ResolveCdmAliasPath()
+	std::string StripEnclosingQuotesCopy(const std::string& text)
 	{
+		if (text.size() >= 2)
+		{
+			const char first = text.front();
+			const char last = text.back();
+			if ((first == '"' && last == '"') || (first == '\'' && last == '\''))
+				return text.substr(1, text.size() - 2);
+		}
+		return text;
+	}
+
+	std::filesystem::path NormalizeAliasPathForLookup(const std::filesystem::path& path)
+	{
+		if (path.empty())
+			return path;
+
+		std::error_code ec;
+		const std::filesystem::path absolute = std::filesystem::absolute(path, ec);
+		if (!ec && !absolute.empty())
+			return absolute.lexically_normal();
+
+		return path.lexically_normal();
+	}
+
+	void AppendAliasPathCandidate(std::vector<std::filesystem::path>& candidates, const std::filesystem::path& path)
+	{
+		if (path.empty())
+			return;
+
+		const std::filesystem::path normalizedPath = NormalizeAliasPathForLookup(path);
+		if (std::find(candidates.begin(), candidates.end(), normalizedPath) != candidates.end())
+			return;
+
+		candidates.push_back(normalizedPath);
+	}
+
+	std::filesystem::path ResolveCdmAliasPath(EuroScopePlugIn::CPlugIn* plugIn)
+	{
+		std::vector<std::filesystem::path> candidates;
+
+		std::filesystem::path processDirectory;
+		char modulePath[MAX_PATH] = {};
+		const DWORD modulePathLength = ::GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
+		if (modulePathLength > 0 && modulePathLength < MAX_PATH)
+			processDirectory = std::filesystem::path(std::string(modulePath, modulePathLength)).parent_path();
+
+		if (plugIn != nullptr)
+		{
+			const char* configuredAliasPathRaw = plugIn->GetDataFromSettings("alias");
+			if (configuredAliasPathRaw != nullptr)
+			{
+				std::string configuredAliasPath = TrimAsciiWhitespaceCopy(configuredAliasPathRaw);
+				configuredAliasPath = StripEnclosingQuotesCopy(configuredAliasPath);
+				configuredAliasPath = TrimAsciiWhitespaceCopy(configuredAliasPath);
+				if (!configuredAliasPath.empty())
+				{
+					const std::filesystem::path configuredPath(configuredAliasPath);
+					AppendAliasPathCandidate(candidates, configuredPath);
+					if (!configuredPath.is_absolute() && !processDirectory.empty())
+						AppendAliasPathCandidate(candidates, processDirectory / configuredPath);
+				}
+			}
+		}
+
+		if (!processDirectory.empty())
+			AppendAliasPathCandidate(candidates, processDirectory / "Alias" / "alias.txt");
+
 		if (!Logger::DLL_PATH.empty())
 		{
 			const std::filesystem::path pluginDir(Logger::DLL_PATH);
-			return (pluginDir / ".." / "Alias" / "alias.txt").lexically_normal();
+			AppendAliasPathCandidate(candidates, pluginDir / ".." / ".." / "Alias" / "alias.txt");
+			AppendAliasPathCandidate(candidates, pluginDir / ".." / "Alias" / "alias.txt");
 		}
+
+		AppendAliasPathCandidate(candidates, std::filesystem::path("alias.txt"));
+
+		std::error_code ec;
+		for (const std::filesystem::path& candidate : candidates)
+		{
+			if (std::filesystem::exists(candidate, ec))
+				return candidate;
+			ec.clear();
+		}
+
+		if (!candidates.empty())
+			return candidates.front();
+
 		return std::filesystem::path("alias.txt");
 	}
 
-	bool TryReadCdmReminderMessageFromAlias(std::string& outMessage, std::string& outAliasPath)
+	bool TryReadCdmReminderMessageFromAlias(EuroScopePlugIn::CPlugIn* plugIn, std::string& outMessage, std::string& outAliasPath)
 	{
 		outMessage.clear();
-		const std::filesystem::path aliasPath = ResolveCdmAliasPath();
+		const std::filesystem::path aliasPath = ResolveCdmAliasPath(plugIn);
 		outAliasPath = aliasPath.string();
 
 		std::ifstream input(aliasPath);
@@ -714,7 +795,7 @@ namespace
 	bool TryLoadCdmReminderMessage(EuroScopePlugIn::CPlugIn* plugIn, std::string& outMessage)
 	{
 		std::string aliasPath;
-		if (TryReadCdmReminderMessageFromAlias(outMessage, aliasPath))
+		if (TryReadCdmReminderMessageFromAlias(plugIn, outMessage, aliasPath))
 			return true;
 
 		NotifyMissingCdmAliasMessage(plugIn, aliasPath);
