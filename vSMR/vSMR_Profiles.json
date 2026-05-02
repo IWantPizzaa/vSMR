@@ -43,6 +43,7 @@
         },
         "labels": {
             "auto_deconfliction": true,
+            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -823,6 +824,7 @@
         },
         "labels": {
             "auto_deconfliction": true,
+            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -1702,6 +1704,7 @@
         },
         "labels": {
             "auto_deconfliction": true,
+            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -2700,6 +2703,7 @@
         },
         "labels": {
             "auto_deconfliction": true,
+            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -3434,6 +3438,7 @@
         },
         "labels": {
             "auto_deconfliction": true,
+            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -4188,3 +4193,4 @@
         "sid_text_colors": []
     }
 ]
+

@@ -7,7 +7,22 @@ This repository is a maintained fork of:
 - https://github.com/AlexisBalzano/vSMR
 - https://github.com/pierr3/vSMR
 
-## What's New In v1.1.1
+## What's New In v1.1.2
+
+- Major rendering-path optimizations for symbol, tag, and profile-editor responsiveness
+- Added `NOVA` icon style and icon-trail rendering support
+- Profile editor icon layout refresh:
+  - shape controls split into two rows (`Icons`, `NOVA` / `Arrow`, `Diamond`)
+  - clipping fixes for tight-width layouts
+- Icons & Tags editor improvements:
+  - `Options` section renamed to `Tags`
+  - new `Behavior` box with global `Auto Deconfliction` and `Rounded Corners`
+  - `rounded_corners` persisted in `vSMR_Profiles.json`
+- Tag rule fix: hover/detailed tags now preserve structured color overrides
+- Top `Target` menu cleanup: icon style controls removed (handled in profile editor)
+- About panel cleanup and credits alignment with repository attribution
+
+### Previously In v1.1.1
 
 - Major profile JSON cleanup and normalization for `tags`, `icons`, and structured `rules`
 - Automatic migration from older profile keys to the new layout
@@ -36,7 +51,7 @@ vSMR is not a standalone application. It is a EuroScope plugin DLL that:
 ## Main Features
 
 - Advanced SMR radar display for ground movement and low-level airborne traffic
-- Three icon styles: `Arrow`, `Diamond`, and `Realistic`
+- Four icon styles: `Arrow`, `Diamond`, `Icons`, and `NOVA`
 - Realistic icon rendering from optional PNG silhouettes and aircraft dimensions
 - Ground and approach trail dots
 - Predicted track line
@@ -183,7 +198,6 @@ The display menu includes:
 
 The target menu includes profile-backed controls such as:
 
-- icon style
 - fixed pixel icon sizing
 - fixed size scale
 - small icon boost
@@ -255,7 +269,7 @@ The Icons & Tags page combines icon configuration and tag definition editing.
 
 Icon controls include:
 
-- shape selection: `Arrow`, `Diamond`, `Realistic`
+- shape selection: `Arrow`, `Diamond`, `Icons`, `NOVA`
 - fixed pixel mode
 - fixed size scale
 - small icon boost
@@ -270,6 +284,9 @@ Tag controls include:
 - a multiline normal definition editor
 - `Custom Hover Details` toggle
 - a multiline detailed definition editor
+- `Behavior` options:
+  - `Auto Deconfliction`
+  - global `Rounded Corners`
 
 ### Rules
 
@@ -546,9 +563,9 @@ The optional `active` string is used to conditionally show sector elements based
 LFPG:DEP:26R:ARR:26L
 ```
 
-## Realistic Aircraft Icons
+## Icons Aircraft Rendering
 
-When `Realistic` icon style is active, vSMR can combine:
+When `Icons` style is active (internally stored as `realistic`), vSMR can combine:
 
 - aircraft dimensions from `ICAO_Aircraft.json`
 - optional PNG silhouettes from `aircraft_icons\`
