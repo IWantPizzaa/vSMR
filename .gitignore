@@ -224,13 +224,5 @@ image/
 public/
 CHANGELOG.md
 
-# Release-cli transient build artifacts
-vSMR/Release_cli/*.recipe
-vSMR/Release_cli/*.iobj
-vSMR/Release_cli/*.ipdb
-vSMR/Release_cli/*.pdb
-vSMR/Release_cli/*.res
-vSMR/Release_cli/*.vcxproj.FileListAbsolute.txt
-vSMR/Release_cli/*.tlog
-vSMR/Release_cli/*.lastbuildstate
-vSMR/Release_cli/vSMR.tlog/
+# Release-cli build output
+vSMR/Release_cli/
