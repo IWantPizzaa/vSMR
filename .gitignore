@@ -222,7 +222,6 @@ cmake_install.cmake
 build/
 image/
 public/
-CHANGELOG.md
 
 # Release-cli build output
 vSMR/Release_cli/
