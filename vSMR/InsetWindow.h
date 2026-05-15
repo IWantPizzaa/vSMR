@@ -36,15 +36,15 @@ public:
 			return Area;
 		}
 
-		static RECT drawToolbarButton(CDC* dc, string letter, CRect TopBar, int left, POINT mouseLocation, COLORREF textColor, COLORREF buttonColor)
+		static RECT drawToolbarButton(CDC* dc, string letter, CRect TopBar, int left, POINT mouseLocation)
 		{
 			POINT TopLeft = { TopBar.right - left, TopBar.top + 2 };
 			POINT BottomRight = { TopBar.right - (left - 13), TopBar.bottom - 2 };
 			CRect Rect(TopLeft, BottomRight);
 			Rect.NormalizeRect();
-			CBrush ButtonBrush(buttonColor);
+			CBrush ButtonBrush(RGB(60, 60, 60));
 			dc->FillRect(Rect, &ButtonBrush);
-			dc->SetTextColor(textColor);
+			dc->SetTextColor(RGB(0, 0, 0));
 			dc->TextOutA(Rect.left + 2, Rect.top, letter.c_str());
 
 			if (mouseWithin(mouseLocation, Rect))
