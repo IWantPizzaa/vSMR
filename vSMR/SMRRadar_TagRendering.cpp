@@ -227,7 +227,7 @@ VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
 }
 }
 
-void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache)
+void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache)
 {
 	// Drawing the Tags
 	VSMR_REFRESH_LOG("Tags loop");
@@ -239,6 +239,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	}
 
 	const bool tagProModeEnabled = frameProModeEnabled;
+	const bool tagTowerModeEnabled = frameTowerModeEnabled;
 	const CorrelationSettings frameCorrelationSettings = BuildCorrelationSettings();
 	const int transitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const Value& activeProfile = CurrentConfig->getActiveProfile();
@@ -603,9 +604,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		CRadarTargetPositionData RtPos = rt.GetPosition();
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 		CFlightPlan fp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
+		CFlightPlan correlatedFp = rt.GetCorrelatedFlightPlan();
 		const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
 		const char* fpOrigin = fp.IsValid() ? fp.GetFlightPlanData().GetOrigin() : nullptr;
 		int reportedGs = RtPos.GetReportedGS();
+		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
 
 		// Filtering the targets
 
@@ -627,6 +630,21 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 
 		if (!AcisCorrelated && reportedGs < 3)
+			isAcDisplayed = false;
+
+		const char* towerModeGroundState = correlatedFp.IsValid()
+			? correlatedFp.GetGroundState()
+			: (fp.IsValid() ? fp.GetGroundState() : nullptr);
+		const CFlightPlan& towerModeFlightPlan = correlatedFp.IsValid() ? correlatedFp : fp;
+		const char* towerModeDestination = towerModeFlightPlan.IsValid()
+			? towerModeFlightPlan.GetFlightPlanData().GetDestination()
+			: nullptr;
+		const bool towerModeArrival = towerModeDestination != nullptr &&
+			towerModeDestination[0] != '\0' &&
+			_stricmp(towerModeDestination, activeAirport.c_str()) == 0;
+		if (tagTowerModeEnabled &&
+			!towerModeArrival &&
+			!shouldDisplayTagInTowerMode(towerModeGroundState, reportedGs, targetOnRunway))
 			isAcDisplayed = false;
 
 		const char* systemId = rt.GetSystemID();
@@ -760,7 +778,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		std::string definitionTagTypeKey = ruleTagTypeKey;
 		verboseTargetStep(rtCallsign, "before_onrunway_lookup");
 
-		const bool targetOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
 		verboseTargetStep(rtCallsign, "after_onrunway_lookup");
 		const char* statusDefinitionKey = nullptr;
 		const auto actypeIt = TagReplacingMap.find("actype");

@@ -402,6 +402,8 @@ public:
 	static std::string GetSessionActiveProfile(const std::string& fallbackProfile);
 	bool GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const;
 	bool SetProfileProModeEnabledForEditor(const std::string& name, bool enabled);
+	bool GetProfileTowerModeEnabledForEditor(const std::string& name, bool& outEnabled) const;
+	bool SetProfileTowerModeEnabledForEditor(const std::string& name, bool enabled);
 	bool AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName = nullptr);
 	bool RenameProfileForEditor(const std::string& oldName, const std::string& newName);
 	bool DeleteProfileForEditor(const std::string& name);
@@ -475,7 +477,7 @@ public:
 	//---OnRefresh------------------------------------------------------
 
 	virtual void OnRefresh(HDC hDC, int Phase);
-	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
+	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
 
 	//---OnClickScreenObject-----------------------------------------
 

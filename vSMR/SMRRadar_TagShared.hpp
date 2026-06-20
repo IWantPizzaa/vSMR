@@ -44,6 +44,34 @@ static GroundStateCategory classifyGroundState(const char* rawState, int reporte
 	return classifyGroundState(rawState != nullptr ? std::string(rawState) : std::string(), reportedGs, onRunway);
 }
 
+static bool shouldDisplayTagInTowerMode(const char* rawState, int reportedGs, bool onRunway)
+{
+	if (rawState == nullptr)
+		return false;
+
+	bool hasStatusText = false;
+	for (const char* current = rawState; *current != '\0'; ++current)
+	{
+		if (std::isspace(static_cast<unsigned char>(*current)) == 0)
+		{
+			hasStatusText = true;
+			break;
+		}
+	}
+	if (!hasStatusText)
+		return false;
+
+	switch (classifyGroundState(rawState, reportedGs, onRunway))
+	{
+	case GroundStateCategory::Nsts:
+	case GroundStateCategory::Push:
+	case GroundStateCategory::Stup:
+		return false;
+	default:
+		return true;
+	}
+}
+
 namespace
 {
 	std::string ToUpperAsciiCopy(const std::string& value)

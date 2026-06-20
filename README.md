@@ -7,7 +7,15 @@ This repository is a maintained fork of:
 - https://github.com/AlexisBalzano/vSMR
 - https://github.com/pierr3/vSMR
 
-## What's New In v1.1.2
+## What's New In v1.1.3
+
+- Added per-profile `Tower mode`
+- Tower Mode keeps full tags for all arrivals and aircraft at `TAXI`, `DEPA`, `ARR`, or later states
+- Aircraft with no status, `NSTS`, `PUSH`, or `STUP` remain icon-only in Tower Mode
+- Added checked `Pro mode` and `Tower mode` toggles to the top-bar `Display` menu
+- Top-bar toggles and profile editor toggles share the same persisted profile settings
+
+### Previously In v1.1.2
 
 - Major rendering-path optimizations for symbol, tag, and profile-editor responsiveness
 - Added `NOVA` icon style and icon-trail rendering support
@@ -56,6 +64,7 @@ vSMR is not a standalone application. It is a EuroScope plugin DLL that:
 - Ground and approach trail dots
 - Predicted track line
 - Tag auto-deconfliction
+- Tower Mode that hides tags below taxi status while keeping aircraft icons visible
 - Per-profile fonts, colors, icon settings, alerts, and tag layouts
 - Tag definitions by target type and status
 - Detailed hover tag definitions with optional linkage to the normal definition
@@ -192,6 +201,7 @@ The display menu includes:
 
 - active airport selection
 - profile selection
+- per-profile `Pro mode` and `Tower mode` toggles
 - `SRW 1` and `SRW 2` inset window toggles
 
 ### Target menu
@@ -309,6 +319,7 @@ A rule can contain multiple criteria. The UI supports:
 The Profiles page provides:
 
 - profile list
+- per-profile `Pro mode` and `Tower mode` toggles
 - add
 - duplicate
 - rename
@@ -498,6 +509,7 @@ Controls:
 - radar range
 - night alpha
 - pro mode behavior
+- tower mode tag visibility (missing status, `NSTS`, `PUSH`, and `STUP` are icon-only)
 
 ### `labels`
 

@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.3] - 2026-06-20
+
+### Added
+- Added per-profile Tower Mode. Aircraft at `TAXI`, `DEPA`, `ARR`, or later states keep full tags, while targets with no status or an explicit `NSTS`, `PUSH`, or `STUP` status remain icon-only.
+- Added checked `Pro mode` and `Tower mode` toggles to the top-bar Display menu, linked to the active profile settings.
+
+### Fixed
+- Arrival tags remain visible in Tower Mode even when the aircraft has no ground status.
+
+### Changed
+- Bumped plugin and Windows resource version metadata to `v1.1.3`.
+
 ## [1.1.2] - 2026-05-02
 
 ### Added
