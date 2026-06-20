@@ -486,6 +486,16 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				const bool appWindowTwoVisible = (appWindowTwoDisplayIt != appWindowDisplays.end()) && appWindowTwoDisplayIt->second;
 				GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
 				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
+				const std::string activeProfileName = GetActiveProfileNameForEditor();
+				bool proModeEnabled = false;
+				bool towerModeEnabled = false;
+				if (!activeProfileName.empty())
+				{
+					GetProfileProModeEnabledForEditor(activeProfileName, proModeEnabled);
+					GetProfileTowerModeEnabledForEditor(activeProfileName, towerModeEnabled);
+				}
+				GetPlugIn()->AddPopupListElement("Pro mode", "", RIMCAS_TOGGLE_PRO_MODE, false, int(proModeEnabled));
+				GetPlugIn()->AddPopupListElement("Tower mode", "", RIMCAS_TOGGLE_TOWER_MODE, false, int(towerModeEnabled));
 				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
 			});

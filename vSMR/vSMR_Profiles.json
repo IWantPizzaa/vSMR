@@ -39,6 +39,9 @@
                     "1200",
                     "7000"
                 ]
+            },
+            "tower_mode": {
+                "enabled": false
             }
         },
         "labels": {
@@ -820,6 +823,9 @@
                     "1200",
                     "7000"
                 ]
+            },
+            "tower_mode": {
+                "enabled": false
             }
         },
         "labels": {
@@ -1700,6 +1706,9 @@
                     "1200",
                     "7000"
                 ]
+            },
+            "tower_mode": {
+                "enabled": false
             }
         },
         "labels": {
@@ -2699,6 +2708,9 @@
                     "1200",
                     "7000"
                 ]
+            },
+            "tower_mode": {
+                "enabled": false
             }
         },
         "labels": {
@@ -3434,6 +3446,9 @@
                     "1200",
                     "7000"
                 ]
+            },
+            "tower_mode": {
+                "enabled": false
             }
         },
         "labels": {

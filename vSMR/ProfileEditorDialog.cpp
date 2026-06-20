@@ -502,6 +502,8 @@ namespace
 			return "UI Layout";
 		if (_stricmp(segment.c_str(), "pro_mode") == 0)
 			return "Pro Mode";
+		if (_stricmp(segment.c_str(), "tower_mode") == 0)
+			return "Tower Mode";
 		if (_stricmp(segment.c_str(), "ground_icons") == 0)
 			return "Ground Icons";
 		if (_stricmp(segment.c_str(), "status_background_colors") == 0)
@@ -2486,6 +2488,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileNameLabel.Create("Name", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_LABEL);
 	ProfileNameEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_EDIT);
 	ProfileProModeCheck.Create("Pro mode", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_PRO_MODE_CHECK);
+	ProfileTowerModeCheck.Create("Tower mode", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_TOWER_MODE_CHECK);
 	ProfileAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_ADD_BUTTON);
 	ProfileDuplicateButton.Create("Duplicate", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DUPLICATE_BUTTON);
 	ProfileRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_RENAME_BUTTON);
@@ -2743,6 +2746,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		RuleTextEdit.SetFont(GetFont(), TRUE);
 		ProfileNameEdit.SetFont(GetFont(), TRUE);
 		ProfileProModeCheck.SetFont(GetFont(), TRUE);
+		ProfileTowerModeCheck.SetFont(GetFont(), TRUE);
 		TagAutoDeconflictionToggle.SetFont(GetFont(), TRUE);
 		TagRoundedCornersToggle.SetFont(GetFont(), TRUE);
 		TagLine1Edit.SetFont(GetFont(), TRUE);
@@ -3171,16 +3175,22 @@ void CProfileEditorDialog::RefreshProfileControls()
 	}
 
 	bool proModeEnabled = false;
+	bool towerModeEnabled = false;
 	const std::string selectedProfile = GetSelectedProfileName();
 	if (hasSelection && Owner != nullptr)
+	{
 		Owner->GetProfileProModeEnabledForEditor(selectedProfile, proModeEnabled);
+		Owner->GetProfileTowerModeEnabledForEditor(selectedProfile, towerModeEnabled);
+	}
 
 	UpdatingControls = true;
 	ProfileProModeCheck.SetCheck(proModeEnabled ? BST_CHECKED : BST_UNCHECKED);
+	ProfileTowerModeCheck.SetCheck(towerModeEnabled ? BST_CHECKED : BST_UNCHECKED);
 	UpdatingControls = false;
 
 	ProfileNameEdit.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileProModeCheck.EnableWindow(hasSelection ? TRUE : FALSE);
+	ProfileTowerModeCheck.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileDuplicateButton.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileRenameButton.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileDeleteButton.EnableWindow(hasSelection ? TRUE : FALSE);
@@ -3669,15 +3679,18 @@ void CProfileEditorDialog::LayoutControls()
 	const int profileButtonsRowGap = 12;
 	const int profileToggleTopGap = 12;
 	const int profileToggleHeight = rowHeight;
+	const int profileToggleRowGap = 4;
 	const int profileButtonTopGap = 18;
-	const int profileFooterHeight = (buttonHeight * 2) + rowHeight + profileToggleHeight + profileButtonsRowGap + profileToggleTopGap + profileButtonTopGap + 48;
+	const int profileFooterHeight = (buttonHeight * 2) + rowHeight + (profileToggleHeight * 2) + profileToggleRowGap + profileButtonsRowGap + profileToggleTopGap + profileButtonTopGap + 48;
 	const int profileListHeight = max(100, profileHeight - 52 - profileFooterHeight);
 	ProfileList.MoveWindow(profileLeftContentLeft, profileLeftContentTop, profileLeftContentWidth, profileListHeight, TRUE);
 
 	const int profileDetailsTop = profileLeftContentTop + profileListHeight + 18;
 	const int profileToggleTop = profileDetailsTop + 6;
-	const int profileNameTop = profileToggleTop + profileToggleHeight + profileToggleTopGap;
+	const int profileTowerToggleTop = profileToggleTop + profileToggleHeight + profileToggleRowGap;
+	const int profileNameTop = profileTowerToggleTop + profileToggleHeight + profileToggleTopGap;
 	ProfileProModeCheck.MoveWindow(profileLeftContentLeft + 12, profileToggleTop, max(120, profileLeftContentWidth - 24), profileToggleHeight, TRUE);
+	ProfileTowerModeCheck.MoveWindow(profileLeftContentLeft + 12, profileTowerToggleTop, max(120, profileLeftContentWidth - 24), profileToggleHeight, TRUE);
 	ProfileNameLabel.MoveWindow(profileLeftContentLeft + 12, profileNameTop + 4, 56, rowHeight, TRUE);
 	ProfileNameEdit.MoveWindow(profileLeftContentLeft + 12 + 56 + 10, profileNameTop, max(140, profileLeftContentWidth - 90), rowHeight, TRUE);
 
@@ -3881,7 +3894,7 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 	RuleColorResetButton.ShowWindow(ruleEffectShowMode);
 	ShowControls(
 	{
-		&ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit, &ProfileProModeCheck,
+		&ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit, &ProfileProModeCheck, &ProfileTowerModeCheck,
 		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton,
 		&ProfileInfoHeader, &ProfileInfoBody, &ProfileRepoLink
 	},
@@ -6067,6 +6080,24 @@ void CProfileEditorDialog::OnProfileProModeToggled()
 	UpdatePageVisibility();
 }
 
+void CProfileEditorDialog::OnProfileTowerModeToggled()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const std::string selectedName = GetSelectedProfileName();
+	if (selectedName.empty())
+		return;
+
+	const bool enabled = (ProfileTowerModeCheck.GetCheck() == BST_CHECKED);
+	if (!Owner->SetProfileTowerModeEnabledForEditor(selectedName, enabled))
+		return;
+
+	SyncFromRadar();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
 void CProfileEditorDialog::OnProfileRepoLinkClicked()
 {
 	const HINSTANCE result = ::ShellExecuteA(
@@ -7392,6 +7423,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_PROFILE_RENAME_BUTTON, &CProfileEditorDialog::OnProfileRenameClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_DELETE_BUTTON, &CProfileEditorDialog::OnProfileDeleteClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_PRO_MODE_CHECK, &CProfileEditorDialog::OnProfileProModeToggled)
+	ON_BN_CLICKED(IDC_PE_PROFILE_TOWER_MODE_CHECK, &CProfileEditorDialog::OnProfileTowerModeToggled)
 	ON_STN_CLICKED(IDC_PE_PROFILE_REPO_LINK, &CProfileEditorDialog::OnProfileRepoLinkClicked)
 	ON_STN_CLICKED(IDC_PE_PROFILE_COFFEE_LINK, &CProfileEditorDialog::OnProfileCoffeeLinkClicked)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)

@@ -936,6 +936,9 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureBoolMember(proMode, "enabled", false);
 	ensureBoolMember(proMode, "accept_pilot_squawk", true);
 	ensureStringArrayMember(proMode, "blocked_auto_correlate_squawks", defaultDoNotAutocorrelateSquawks);
+	Value& towerMode = ensureObjectMember(filters, "tower_mode");
+	renameMemberIfPresent(towerMode, "enable", "enabled");
+	ensureBoolMember(towerMode, "enabled", false);
 
 	Value& rimcas = ensureObjectMember(profile, "rimcas");
 	renameMemberIfPresent(rimcas, "rimcas_stage_two_speed_threshold", "stage_two_speed_threshold_kt");
@@ -2894,6 +2897,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double frameSmallIconBoostResolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 	bool frameProModeEnabled = false;
+	bool frameTowerModeEnabled = false;
 	bool frameUseAspeedForGate = false;
 	if (CurrentConfig != nullptr)
 	{
@@ -2914,6 +2918,18 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				{
 					frameProModeEnabled = proMode["enable"].GetBool();
 				}
+			}
+
+			if (profile.HasMember("filters") &&
+				profile["filters"].IsObject() &&
+				profile["filters"].HasMember("tower_mode") &&
+				profile["filters"]["tower_mode"].IsObject())
+			{
+				const Value& towerMode = profile["filters"]["tower_mode"];
+				if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
+					frameTowerModeEnabled = towerMode["enabled"].GetBool();
+				else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
+					frameTowerModeEnabled = towerMode["enable"].GetBool();
 			}
 
 			if (profile.HasMember("labels") &&
@@ -4127,7 +4143,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	try
 	{
-		RenderTags(graphics, dc, frameProModeEnabled, frameTagDataCache, frameVacdmLookupCache);
+		RenderTags(graphics, dc, frameProModeEnabled, frameTowerModeEnabled, frameTagDataCache, frameVacdmLookupCache);
 	}
 	catch (const std::exception& ex)
 	{

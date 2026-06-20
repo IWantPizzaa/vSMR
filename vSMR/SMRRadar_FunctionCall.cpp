@@ -141,6 +141,35 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		QDMenabled = false;
 	}
 
+	if (FunctionId == RIMCAS_TOGGLE_PRO_MODE || FunctionId == RIMCAS_TOGGLE_TOWER_MODE)
+	{
+		const std::string activeProfileName = GetActiveProfileNameForEditor();
+		if (activeProfileName.empty())
+		{
+			showConfigError("No active profile available for mode update");
+		}
+		else if (FunctionId == RIMCAS_TOGGLE_PRO_MODE)
+		{
+			bool enabled = false;
+			if (!GetProfileProModeEnabledForEditor(activeProfileName, enabled) ||
+				!SetProfileProModeEnabledForEditor(activeProfileName, !enabled))
+			{
+				showConfigError("Failed to save Pro mode to vSMR_Profiles.json");
+			}
+		}
+		else
+		{
+			bool enabled = false;
+			if (!GetProfileTowerModeEnabledForEditor(activeProfileName, enabled) ||
+				!SetProfileTowerModeEnabledForEditor(activeProfileName, !enabled))
+			{
+				showConfigError("Failed to save Tower mode to vSMR_Profiles.json");
+			}
+		}
+
+		RequestRefresh();
+	}
+
 	if (FunctionId == RIMCAS_UPDATE_PROFILE) {
 		const std::string requestedProfile = (sItemString != nullptr) ? std::string(sItemString) : "";
 		if (!SetActiveProfileForEditor(requestedProfile, false))

@@ -238,6 +238,47 @@ namespace
 		if (proMode.HasMember("do_not_autocorrelate_squawks"))
 			proMode.RemoveMember("do_not_autocorrelate_squawks");
 	}
+
+	void EnsureProfileTowerModeDefaults(rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+
+		if (!profile.IsObject())
+			return;
+
+		if (!profile.HasMember("filters") || !profile["filters"].IsObject())
+		{
+			if (profile.HasMember("filters"))
+				profile.RemoveMember("filters");
+			Value filters(rapidjson::kObjectType);
+			profile.AddMember("filters", filters, allocator);
+		}
+
+		Value& filters = profile["filters"];
+		if (!filters.HasMember("tower_mode") || !filters["tower_mode"].IsObject())
+		{
+			if (filters.HasMember("tower_mode"))
+				filters.RemoveMember("tower_mode");
+			Value towerMode(rapidjson::kObjectType);
+			filters.AddMember("tower_mode", towerMode, allocator);
+		}
+
+		Value& towerMode = filters["tower_mode"];
+		bool enabledValue = false;
+		if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
+			enabledValue = towerMode["enabled"].GetBool();
+		else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
+			enabledValue = towerMode["enable"].GetBool();
+
+		if (towerMode.HasMember("enable"))
+			towerMode.RemoveMember("enable");
+		if (!towerMode.HasMember("enabled") || !towerMode["enabled"].IsBool())
+		{
+			if (towerMode.HasMember("enabled"))
+				towerMode.RemoveMember("enabled");
+			towerMode.AddMember("enabled", enabledValue, allocator);
+		}
+	}
 }
 
 bool CSMRRadar::EnsureProfileEditorWindowCreated()
@@ -663,6 +704,58 @@ bool CSMRRadar::SetProfileProModeEnabledForEditor(const std::string& name, bool 
 
 	EnsureProfileProModeDefaults(profile, CurrentConfig->document.GetAllocator());
 	profile["filters"]["pro_mode"]["enabled"].SetBool(enabled);
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	CurrentConfig->reload();
+	LoadProfile(activeBefore.empty() ? name : activeBefore);
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::GetProfileTowerModeEnabledForEditor(const std::string& name, bool& outEnabled) const
+{
+	outEnabled = false;
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	const rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject() || !profile.HasMember("filters") || !profile["filters"].IsObject())
+		return true;
+
+	const rapidjson::Value& filters = profile["filters"];
+	if (!filters.HasMember("tower_mode") || !filters["tower_mode"].IsObject())
+		return true;
+
+	const rapidjson::Value& towerMode = filters["tower_mode"];
+	if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
+		outEnabled = towerMode["enabled"].GetBool();
+	else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
+		outEnabled = towerMode["enable"].GetBool();
+
+	return true;
+}
+
+bool CSMRRadar::SetProfileTowerModeEnabledForEditor(const std::string& name, bool enabled)
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject())
+		return false;
+
+	EnsureProfileTowerModeDefaults(profile, CurrentConfig->document.GetAllocator());
+	profile["filters"]["tower_mode"]["enabled"].SetBool(enabled);
 	if (!CurrentConfig->saveConfig())
 		return false;
 
