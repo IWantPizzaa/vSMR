@@ -394,14 +394,17 @@ namespace
 		return lodPaths;
 	}
 
-	std::unique_ptr<GraphicsPath> BuildGeoPath(const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& paths)
+	std::unique_ptr<GraphicsPath> BuildGeoPath(
+		const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& paths,
+		CGroundMapRenderer::FeatureKind kind)
 	{
 		std::unique_ptr<GraphicsPath> geoPath = std::make_unique<GraphicsPath>(FillModeAlternate);
 		std::vector<PointF> points;
 
 		for (const auto& path : paths)
 		{
-			if (path.size() < 3)
+			const size_t minimumPoints = kind == CGroundMapRenderer::FeatureKind::Polygon ? 3 : 2;
+			if (path.size() < minimumPoints)
 				continue;
 
 			points.clear();
@@ -413,8 +416,11 @@ namespace
 					static_cast<REAL>(coordinate.latitude));
 			}
 
-			if (points.size() >= 3)
+			geoPath->StartFigure();
+			if (kind == CGroundMapRenderer::FeatureKind::Polygon)
 				geoPath->AddPolygon(points.data(), static_cast<INT>(points.size()));
+			else
+				geoPath->AddLines(points.data(), static_cast<INT>(points.size()));
 		}
 
 		return geoPath->GetPointCount() > 0 ? std::move(geoPath) : nullptr;
@@ -604,12 +610,12 @@ namespace
 		feature.lodPaths[0] = BuildLodPaths(feature.paths, feature.kind, 0.000055);
 		feature.lodPaths[1] = BuildLodPaths(feature.paths, feature.kind, 0.000022);
 		feature.lodPaths[2] = BuildLodPaths(feature.paths, feature.kind, 0.000008);
-		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
+		if (feature.kind != CGroundMapRenderer::FeatureKind::Point)
 		{
-			feature.geoPaths[0] = BuildGeoPath(feature.lodPaths[0]);
-			feature.geoPaths[1] = BuildGeoPath(feature.lodPaths[1]);
-			feature.geoPaths[2] = BuildGeoPath(feature.lodPaths[2]);
-			feature.geoPaths[3] = BuildGeoPath(feature.paths);
+			feature.geoPaths[0] = BuildGeoPath(feature.lodPaths[0], feature.kind);
+			feature.geoPaths[1] = BuildGeoPath(feature.lodPaths[1], feature.kind);
+			feature.geoPaths[2] = BuildGeoPath(feature.lodPaths[2], feature.kind);
+			feature.geoPaths[3] = BuildGeoPath(feature.paths, feature.kind);
 		}
 
 		features.push_back(std::move(feature));
@@ -766,6 +772,96 @@ namespace
 		return true;
 	}
 
+	bool FeatureHasGeoPath(const CGroundMapRenderer::Feature& feature)
+	{
+		for (const auto& geoPath : feature.geoPaths)
+		{
+			if (geoPath != nullptr && geoPath->GetPointCount() > 0)
+				return true;
+		}
+		return false;
+	}
+
+	bool CanBatchGeometry(const CGroundMapRenderer::Feature& feature)
+	{
+		if (!FeatureHasGeoPath(feature))
+			return false;
+		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
+			return feature.style.fillEnabled && feature.style.fill.GetAlpha() > 0;
+		if (feature.kind == CGroundMapRenderer::FeatureKind::Line)
+			return feature.style.strokeEnabled && feature.style.stroke.GetAlpha() > 0;
+		return false;
+	}
+
+	bool SameBatchKey(const CGroundMapRenderer::RenderBatch& batch, const CGroundMapRenderer::Feature& feature)
+	{
+		if (batch.kind != feature.kind ||
+			batch.zIndex != feature.zIndex ||
+			batch.minZoom != feature.minZoom ||
+			batch.maxZoom != feature.maxZoom)
+		{
+			return false;
+		}
+
+		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
+			return batch.style.fill.GetValue() == feature.style.fill.GetValue();
+
+		return batch.style.stroke.GetValue() == feature.style.stroke.GetValue() &&
+			std::fabs(batch.style.strokeWidth - feature.style.strokeWidth) < 0.001f;
+	}
+
+	void AppendFeatureToBatch(CGroundMapRenderer::RenderBatch& batch, const CGroundMapRenderer::Feature& feature)
+	{
+		for (size_t i = 0; i < feature.geoPaths.size(); ++i)
+		{
+			if (feature.geoPaths[i] == nullptr || feature.geoPaths[i]->GetPointCount() == 0)
+				continue;
+
+			if (batch.geoPaths[i] == nullptr)
+				batch.geoPaths[i] = std::make_unique<GraphicsPath>(FillModeAlternate);
+
+			batch.geoPaths[i]->AddPath(feature.geoPaths[i].get(), FALSE);
+		}
+	}
+
+	void RebuildRenderBatches(CGroundMapRenderer::CacheEntry& entry)
+	{
+		entry.renderBatches.clear();
+		entry.hasBounds = false;
+		entry.minLatitude = (std::numeric_limits<double>::max)();
+		entry.maxLatitude = std::numeric_limits<double>::lowest();
+		entry.minLongitude = (std::numeric_limits<double>::max)();
+		entry.maxLongitude = std::numeric_limits<double>::lowest();
+
+		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		{
+			if (feature.hasBounds)
+			{
+				entry.minLatitude = (std::min)(entry.minLatitude, feature.minLatitude);
+				entry.maxLatitude = (std::max)(entry.maxLatitude, feature.maxLatitude);
+				entry.minLongitude = (std::min)(entry.minLongitude, feature.minLongitude);
+				entry.maxLongitude = (std::max)(entry.maxLongitude, feature.maxLongitude);
+				entry.hasBounds = true;
+			}
+
+			if (!CanBatchGeometry(feature))
+				continue;
+
+			if (entry.renderBatches.empty() || !SameBatchKey(entry.renderBatches.back(), feature))
+			{
+				CGroundMapRenderer::RenderBatch batch;
+				batch.kind = feature.kind;
+				batch.style = feature.style;
+				batch.zIndex = feature.zIndex;
+				batch.minZoom = feature.minZoom;
+				batch.maxZoom = feature.maxZoom;
+				entry.renderBatches.push_back(std::move(batch));
+			}
+
+			AppendFeatureToBatch(entry.renderBatches.back(), feature);
+		}
+	}
+
 	bool IsAirportEnabled(const std::string& airport)
 	{
 		return airport == "LFPG";
@@ -826,12 +922,15 @@ namespace
 		entry.available = LoadGeoJson(entry.path, entry.features, error);
 		if (entry.available)
 		{
-			Logger::info("GroundMap: loaded " + std::to_string(entry.features.size()) + " features from " + entry.path);
+			RebuildRenderBatches(entry);
+			Logger::info("GroundMap: loaded " + std::to_string(entry.features.size()) + " features and " +
+				std::to_string(entry.renderBatches.size()) + " render batches from " + entry.path);
 		}
 		else
 		{
 			Logger::info("GroundMap: failed to load " + entry.path + " (" + error + ")");
 			entry.features.clear();
+			entry.renderBatches.clear();
 		}
 
 		return entry.available;
@@ -966,6 +1065,15 @@ namespace
 			return (std::max)(pixelWidth, pixelHeight) >= effectiveThreshold;
 		}
 
+		REAL GeoPenWidth(float pixelWidth) const
+		{
+			const double averageScale = ((std::fabs(xScale) + std::fabs(yScale)) * 0.5);
+			if (averageScale <= 0.0)
+				return pixelWidth;
+
+			return static_cast<REAL>((std::max)(0.00000001, static_cast<double>(pixelWidth) / averageScale));
+		}
+
 		bool BuildProjectedPath(const std::vector<CGroundMapRenderer::Coordinate>& sourcePath, bool closed, size_t minimumPoints)
 		{
 			scratchPoints.clear();
@@ -1091,31 +1199,41 @@ namespace
 		}
 	}
 
-	void RenderLineFeature(
+	void RenderLineGeometryFeature(
+		RenderContext& context,
+		Graphics& graphics,
+		const CGroundMapRenderer::Feature& feature,
+		int lodIndex,
+		CColorManager* colorManager)
+	{
+		if (!feature.style.strokeEnabled || feature.style.stroke.GetAlpha() == 0 ||
+			lodIndex < 0 || lodIndex >= static_cast<int>(feature.geoPaths.size()) || feature.geoPaths[lodIndex] == nullptr)
+			return;
+
+		const Color lineColor = CorrectColor(colorManager, "symbol", feature.style.stroke);
+		Pen strokePen(lineColor, context.GeoPenWidth(feature.style.strokeWidth));
+		graphics.DrawPath(&strokePen, feature.geoPaths[lodIndex].get());
+	}
+
+	void RenderLineArrowheads(
 		RenderContext& context,
 		Graphics& graphics,
 		const CGroundMapRenderer::Feature& feature,
 		const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& paths,
 		CColorManager* colorManager)
 	{
-		if (!feature.style.strokeEnabled || feature.style.stroke.GetAlpha() == 0)
+		if (!feature.style.arrowEnabled || !feature.style.strokeEnabled || feature.style.stroke.GetAlpha() == 0)
 			return;
 
 		const Color lineColor = CorrectColor(colorManager, "symbol", feature.style.stroke);
-		Pen strokePen(lineColor, feature.style.strokeWidth);
 
 		for (const auto& sourcePath : paths)
 		{
 			if (!context.BuildProjectedPath(sourcePath, false, 2))
 				continue;
 
-			graphics.DrawLines(&strokePen, context.scratchPoints.data(), static_cast<INT>(context.scratchPoints.size()));
-
-			if (feature.style.arrowEnabled)
-			{
-				DrawArrowHead(graphics, context.scratchPoints[context.scratchPoints.size() - 2], context.scratchPoints[context.scratchPoints.size() - 1], lineColor,
-					(std::max)(7.0f, feature.style.strokeWidth * 4.0f));
-			}
+			DrawArrowHead(graphics, context.scratchPoints[context.scratchPoints.size() - 2], context.scratchPoints[context.scratchPoints.size() - 1], lineColor,
+				(std::max)(7.0f, feature.style.strokeWidth * 4.0f));
 		}
 	}
 
@@ -1125,7 +1243,8 @@ namespace
 		CDC& dc,
 		const CGroundMapRenderer::Feature& feature,
 		const RECT& radarArea,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		bool drawText)
 	{
 		const Color markerColor = CorrectColor(colorManager, "symbol", feature.style.marker);
 		const Color strokeColor = CorrectColor(colorManager, "symbol", feature.style.stroke);
@@ -1166,18 +1285,16 @@ namespace
 						graphics.DrawEllipse(&markerPen, rect);
 				}
 
-				if (feature.style.textEnabled)
+				if (drawText && feature.style.textEnabled)
 					DrawLabel(dc, colorManager, feature.label, pixel, feature.style.text, static_cast<int>(radius + 4.0f), -7);
 			}
 		}
 	}
 
-	void RenderFeature(
+	void RenderGeometryFeature(
 		RenderContext& context,
 		Graphics& graphics,
-		CDC& dc,
 		const CGroundMapRenderer::Feature& feature,
-		const RECT& radarArea,
 		CColorManager* colorManager)
 	{
 		if (context.zoomLevel < feature.minZoom || context.zoomLevel > feature.maxZoom)
@@ -1193,11 +1310,38 @@ namespace
 		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
 			RenderPolygonFeature(context, graphics, feature, lodIndex, colorManager);
 		else if (feature.kind == CGroundMapRenderer::FeatureKind::Line)
-			RenderLineFeature(context, graphics, feature, selectedPaths, colorManager);
-		else
-			RenderPointFeature(context, graphics, dc, feature, radarArea, colorManager);
+			RenderLineGeometryFeature(context, graphics, feature, lodIndex, colorManager);
+	}
 
-		if (feature.kind != CGroundMapRenderer::FeatureKind::Point && feature.style.textEnabled)
+	void RenderOverlayFeature(
+		RenderContext& context,
+		Graphics& graphics,
+		CDC& dc,
+		const CGroundMapRenderer::Feature& feature,
+		const RECT& radarArea,
+		CColorManager* colorManager,
+		bool drawDetailedOverlay)
+	{
+		if (context.zoomLevel < feature.minZoom || context.zoomLevel > feature.maxZoom)
+			return;
+		if (!context.IntersectsView(feature) || !context.IsLargeEnough(feature))
+			return;
+
+		const int lodIndex = SelectLodIndexForZoom(feature, context.zoomLevel, context.interactive);
+		const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& selectedPaths = SelectPathsForLod(feature, lodIndex);
+		if (selectedPaths.empty())
+			return;
+
+		if (feature.kind == CGroundMapRenderer::FeatureKind::Point)
+		{
+			RenderPointFeature(context, graphics, dc, feature, radarArea, colorManager, drawDetailedOverlay);
+			return;
+		}
+
+		if (feature.kind == CGroundMapRenderer::FeatureKind::Line && drawDetailedOverlay)
+			RenderLineArrowheads(context, graphics, feature, selectedPaths, colorManager);
+
+		if (drawDetailedOverlay && feature.kind != CGroundMapRenderer::FeatureKind::Point && feature.style.textEnabled)
 		{
 			CGroundMapRenderer::Coordinate center;
 			center.latitude = (feature.minLatitude + feature.maxLatitude) / 2.0;
@@ -1206,6 +1350,96 @@ namespace
 			if (PointIsNearRadarArea(centerPoint, radarArea, 30))
 				DrawLabel(dc, colorManager, feature.label, centerPoint, feature.style.text, 4, -7);
 		}
+	}
+
+	double ViewCoverageRatio(const CGroundMapRenderer::CacheEntry& entry, const RenderContext& context)
+	{
+		if (!entry.hasBounds)
+			return 0.0;
+
+		const double mapWidth = entry.maxLongitude - entry.minLongitude;
+		const double mapHeight = entry.maxLatitude - entry.minLatitude;
+		if (mapWidth <= 0.0 || mapHeight <= 0.0)
+			return 0.0;
+
+		const double viewWidth = context.maxLongitude - context.minLongitude;
+		const double viewHeight = context.maxLatitude - context.minLatitude;
+		if (viewWidth <= 0.0 || viewHeight <= 0.0)
+			return 0.0;
+
+		return (std::min)(1.0, (viewWidth * viewHeight) / (mapWidth * mapHeight));
+	}
+
+	bool ShouldUseRenderBatches(const CGroundMapRenderer::CacheEntry& entry, const RenderContext& context)
+	{
+		if (entry.renderBatches.empty())
+			return false;
+
+		if (context.zoomLevel <= 8)
+			return true;
+
+		if (context.interactive && context.zoomLevel <= 10)
+			return true;
+
+		return ViewCoverageRatio(entry, context) >= 0.45;
+	}
+
+	int SelectBatchLodIndex(const CGroundMapRenderer::RenderBatch& batch, int zoomLevel, bool interactive)
+	{
+		if (interactive)
+		{
+			if (zoomLevel <= 11 && batch.geoPaths[0] != nullptr)
+				return 0;
+			if (batch.geoPaths[1] != nullptr)
+				return 1;
+		}
+		if (zoomLevel <= 5 && batch.geoPaths[0] != nullptr)
+			return 0;
+		if (zoomLevel <= 8 && batch.geoPaths[1] != nullptr)
+			return 1;
+		if (zoomLevel <= 10 && batch.geoPaths[2] != nullptr)
+			return 2;
+		return 3;
+	}
+
+	void RenderBatch(
+		RenderContext& context,
+		Graphics& graphics,
+		const CGroundMapRenderer::RenderBatch& batch,
+		CColorManager* colorManager)
+	{
+		if (context.zoomLevel < batch.minZoom || context.zoomLevel > batch.maxZoom)
+			return;
+
+		const int lodIndex = SelectBatchLodIndex(batch, context.zoomLevel, context.interactive);
+		const int pathIndex = lodIndex >= 0 && lodIndex < static_cast<int>(batch.geoPaths.size()) && batch.geoPaths[lodIndex] != nullptr ? lodIndex : 3;
+		if (pathIndex < 0 || pathIndex >= static_cast<int>(batch.geoPaths.size()) || batch.geoPaths[pathIndex] == nullptr)
+			return;
+
+		if (batch.kind == CGroundMapRenderer::FeatureKind::Polygon)
+		{
+			if (!batch.style.fillEnabled || batch.style.fill.GetAlpha() == 0)
+				return;
+			SolidBrush fillBrush(CorrectColor(colorManager, "symbol", batch.style.fill));
+			graphics.FillPath(&fillBrush, batch.geoPaths[pathIndex].get());
+		}
+		else if (batch.kind == CGroundMapRenderer::FeatureKind::Line)
+		{
+			if (!batch.style.strokeEnabled || batch.style.stroke.GetAlpha() == 0)
+				return;
+			Pen strokePen(CorrectColor(colorManager, "symbol", batch.style.stroke), context.GeoPenWidth(batch.style.strokeWidth));
+			graphics.DrawPath(&strokePen, batch.geoPaths[pathIndex].get());
+		}
+	}
+
+	void RenderBatchedGeometry(
+		RenderContext& context,
+		Graphics& graphics,
+		const CGroundMapRenderer::CacheEntry& entry,
+		CColorManager* colorManager)
+	{
+		for (const CGroundMapRenderer::RenderBatch& batch : entry.renderBatches)
+			RenderBatch(context, graphics, batch, colorManager);
 	}
 }
 
@@ -1282,6 +1516,8 @@ bool CGroundMapRenderer::RenderAirportMap(
 		radarArea.bottom - radarArea.top),
 		CombineModeReplace);
 	graphics.SetSmoothingMode(SmoothingModeHighSpeed);
+	graphics.SetCompositingQuality(CompositingQualityHighSpeed);
+	graphics.SetPixelOffsetMode(PixelOffsetModeHighSpeed);
 
 	Matrix geoTransform(
 		static_cast<REAL>(context.xScale),
@@ -1291,19 +1527,29 @@ bool CGroundMapRenderer::RenderAirportMap(
 		static_cast<REAL>(radarArea.left - (context.minLongitude * context.xScale)),
 		static_cast<REAL>(radarArea.bottom + (context.minLatitude * context.yScale)));
 	graphics.SetTransform(&geoTransform);
-	for (const Feature& feature : mapIt->second.features)
-	{
-		if (feature.kind == FeatureKind::Polygon)
-			RenderFeature(context, graphics, dc, feature, radarArea, colorManager);
-	}
 
-	graphics.ResetTransform();
-	if (!context.interactive)
+	const bool useBatchedGeometry = ShouldUseRenderBatches(mapIt->second, context);
+	if (useBatchedGeometry)
+	{
+		RenderBatchedGeometry(context, graphics, mapIt->second, colorManager);
+	}
+	else
 	{
 		for (const Feature& feature : mapIt->second.features)
 		{
-			if (feature.kind != FeatureKind::Polygon)
-				RenderFeature(context, graphics, dc, feature, radarArea, colorManager);
+			if (feature.kind == FeatureKind::Polygon || feature.kind == FeatureKind::Line)
+				RenderGeometryFeature(context, graphics, feature, colorManager);
+		}
+	}
+
+	graphics.ResetTransform();
+	const bool drawDetailedOverlay = !context.interactive && context.zoomLevel >= 8;
+	for (const Feature& feature : mapIt->second.features)
+	{
+		if (feature.kind == FeatureKind::Point ||
+			(drawDetailedOverlay && (feature.style.textEnabled || feature.style.arrowEnabled)))
+		{
+			RenderOverlayFeature(context, graphics, dc, feature, radarArea, colorManager, drawDetailedOverlay);
 		}
 	}
 

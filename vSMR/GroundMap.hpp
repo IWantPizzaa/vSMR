@@ -42,6 +42,16 @@ public:
 		bool arrowEnabled = false;
 	};
 
+	struct RenderBatch
+	{
+		FeatureKind kind = FeatureKind::Line;
+		FeatureStyle style;
+		int zIndex = 0;
+		int minZoom = 0;
+		int maxZoom = 14;
+		std::array<std::unique_ptr<Gdiplus::GraphicsPath>, 4> geoPaths;
+	};
+
 	struct Feature
 	{
 		FeatureKind kind = FeatureKind::Line;
@@ -70,6 +80,12 @@ public:
 		bool available = false;
 		std::string path;
 		std::vector<Feature> features;
+		std::vector<RenderBatch> renderBatches;
+		bool hasBounds = false;
+		double minLatitude = 0.0;
+		double maxLatitude = 0.0;
+		double minLongitude = 0.0;
+		double maxLongitude = 0.0;
 	};
 
 	void ClearCache();
