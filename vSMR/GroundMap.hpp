@@ -62,6 +62,8 @@ public:
 		double maxLatitude = 0.0;
 		double minLongitude = 0.0;
 		double maxLongitude = 0.0;
+		bool hasLabelAnchor = false;
+		Coordinate labelAnchor;
 	};
 
 	struct CacheEntry
@@ -70,6 +72,10 @@ public:
 		bool available = false;
 		std::string path;
 		std::vector<Feature> features;
+		std::vector<std::size_t> polygonIndices;
+		std::vector<std::size_t> lineIndices;
+		std::vector<std::size_t> pointIndices;
+		std::vector<std::size_t> textIndices;
 	};
 
 	struct CachedGroundLayer

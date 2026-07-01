@@ -602,6 +602,13 @@ namespace
 			}
 		}
 
+		if (feature.hasBounds)
+		{
+			feature.labelAnchor.latitude = (feature.minLatitude + feature.maxLatitude) * 0.5;
+			feature.labelAnchor.longitude = (feature.minLongitude + feature.maxLongitude) * 0.5;
+			feature.hasLabelAnchor = true;
+		}
+
 		feature.lodPaths[0] = BuildLodPaths(feature.paths, feature.kind, 0.000055);
 		feature.lodPaths[1] = BuildLodPaths(feature.paths, feature.kind, 0.000022);
 		feature.lodPaths[2] = BuildLodPaths(feature.paths, feature.kind, 0.000008);
@@ -767,6 +774,33 @@ namespace
 		return true;
 	}
 
+	void RebuildFeatureIndices(CGroundMapRenderer::CacheEntry& entry)
+	{
+		entry.polygonIndices.clear();
+		entry.lineIndices.clear();
+		entry.pointIndices.clear();
+		entry.textIndices.clear();
+
+		entry.polygonIndices.reserve(entry.features.size());
+		entry.lineIndices.reserve(entry.features.size());
+		entry.pointIndices.reserve(entry.features.size());
+		entry.textIndices.reserve(entry.features.size());
+
+		for (std::size_t i = 0; i < entry.features.size(); ++i)
+		{
+			const CGroundMapRenderer::Feature& feature = entry.features[i];
+			if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
+				entry.polygonIndices.push_back(i);
+			else if (feature.kind == CGroundMapRenderer::FeatureKind::Line)
+				entry.lineIndices.push_back(i);
+			else
+				entry.pointIndices.push_back(i);
+
+			if (feature.style.textEnabled && !feature.label.empty())
+				entry.textIndices.push_back(i);
+		}
+	}
+
 	bool IsAirportEnabled(const std::string& airport)
 	{
 		return airport == "LFPG";
@@ -827,12 +861,17 @@ namespace
 		entry.available = LoadGeoJson(entry.path, entry.features, error);
 		if (entry.available)
 		{
+			RebuildFeatureIndices(entry);
 			Logger::info("GroundMap: loaded " + std::to_string(entry.features.size()) + " features from " + entry.path);
 		}
 		else
 		{
 			Logger::info("GroundMap: failed to load " + entry.path + " (" + error + ")");
 			entry.features.clear();
+			entry.polygonIndices.clear();
+			entry.lineIndices.clear();
+			entry.pointIndices.clear();
+			entry.textIndices.clear();
 		}
 
 		return entry.available;
@@ -1236,12 +1275,9 @@ namespace
 		else
 			RenderPointFeature(context, graphics, dc, feature, radarArea, colorManager, resources, drawText);
 
-		if (drawText && feature.kind != CGroundMapRenderer::FeatureKind::Point && feature.style.textEnabled)
+		if (drawText && feature.kind != CGroundMapRenderer::FeatureKind::Point && feature.style.textEnabled && feature.hasLabelAnchor)
 		{
-			CGroundMapRenderer::Coordinate center;
-			center.latitude = (feature.minLatitude + feature.maxLatitude) / 2.0;
-			center.longitude = (feature.minLongitude + feature.maxLongitude) / 2.0;
-			const POINT centerPoint = context.ToPoint(center);
+			const POINT centerPoint = context.ToPoint(feature.labelAnchor);
 			if (PointIsNearRadarArea(centerPoint, radarArea, 30))
 				DrawLabel(dc, colorManager, feature.label, centerPoint, feature.style.text, 4, -7);
 		}
@@ -1252,18 +1288,36 @@ namespace
 		return zoomLevel <= 5 ? 0.35 : 0.25;
 	}
 
-	int ExpectedCacheWidth(const RenderContext& context)
+	struct CacheDimensions
 	{
-		const int radarWidth = context.radarArea.right - context.radarArea.left;
-		const double overscan = CacheOverscanRatio(context.zoomLevel);
-		return std::clamp(static_cast<int>(std::round(static_cast<double>(radarWidth) * (1.0 + overscan * 2.0))), 64, 4096);
-	}
+		int width = 0;
+		int height = 0;
+		double horizontalOverscan = 0.0;
+		double verticalOverscan = 0.0;
+	};
 
-	int ExpectedCacheHeight(const RenderContext& context)
+	CacheDimensions CalculateCacheDimensions(const RenderContext& context)
 	{
+		constexpr int maximumBitmapDimension = 4096;
+		const int radarWidth = context.radarArea.right - context.radarArea.left;
 		const int radarHeight = context.radarArea.bottom - context.radarArea.top;
-		const double overscan = CacheOverscanRatio(context.zoomLevel);
-		return std::clamp(static_cast<int>(std::round(static_cast<double>(radarHeight) * (1.0 + overscan * 2.0))), 64, 4096);
+		const int baseWidth = (std::max)(1, radarWidth);
+		const int baseHeight = (std::max)(1, radarHeight);
+		const double requestedOverscan = CacheOverscanRatio(context.zoomLevel);
+
+		const int requestedExtraX = static_cast<int>(std::round(static_cast<double>(baseWidth) * requestedOverscan));
+		const int requestedExtraY = static_cast<int>(std::round(static_cast<double>(baseHeight) * requestedOverscan));
+		const int availableExtraX = (std::max)(0, (maximumBitmapDimension - baseWidth) / 2);
+		const int availableExtraY = (std::max)(0, (maximumBitmapDimension - baseHeight) / 2);
+		const int actualExtraX = (std::min)(requestedExtraX, availableExtraX);
+		const int actualExtraY = (std::min)(requestedExtraY, availableExtraY);
+
+		CacheDimensions result;
+		result.width = std::clamp(baseWidth + actualExtraX * 2, 64, maximumBitmapDimension);
+		result.height = std::clamp(baseHeight + actualExtraY * 2, 64, maximumBitmapDimension);
+		result.horizontalOverscan = static_cast<double>(actualExtraX) / static_cast<double>(baseWidth);
+		result.verticalOverscan = static_cast<double>(actualExtraY) / static_cast<double>(baseHeight);
+		return result;
 	}
 
 	void GetExpandedCacheBounds(
@@ -1273,11 +1327,11 @@ namespace
 		double& minLongitude,
 		double& maxLongitude)
 	{
-		const double overscan = CacheOverscanRatio(context.zoomLevel);
+		const CacheDimensions dimensions = CalculateCacheDimensions(context);
 		const double latitudeSpan = context.maxLatitude - context.minLatitude;
 		const double longitudeSpan = context.maxLongitude - context.minLongitude;
-		const double latitudeMargin = latitudeSpan * overscan;
-		const double longitudeMargin = longitudeSpan * overscan;
+		const double latitudeMargin = latitudeSpan * dimensions.verticalOverscan;
+		const double longitudeMargin = longitudeSpan * dimensions.horizontalOverscan;
 
 		minLatitude = context.minLatitude - latitudeMargin;
 		maxLatitude = context.maxLatitude + latitudeMargin;
@@ -1298,62 +1352,100 @@ namespace
 			cache.maxLongitude >= context.maxLongitude - longitudeEpsilon;
 	}
 
-	bool CachedLayerMatchesCurrentView(const CGroundMapRenderer::CachedGroundLayer& cache, const std::string& airport, const RenderContext& context)
+	bool CachedLayerNeedsRebuild(const CGroundMapRenderer::CachedGroundLayer& cache, const std::string& airport, const RenderContext& context)
 	{
-		if (!CachedLayerCoversView(cache, airport, context))
-			return false;
-		if (cache.zoomLevel != context.zoomLevel ||
-			cache.width != ExpectedCacheWidth(context) ||
-			cache.height != ExpectedCacheHeight(context))
+		if (!cache.valid ||
+			cache.bitmap == nullptr ||
+			cache.airport != airport ||
+			cache.zoomLevel != context.zoomLevel ||
+			cache.width <= 0 ||
+			cache.height <= 0)
 		{
-			return false;
+			return true;
 		}
 
-		double expectedMinLatitude = 0.0;
-		double expectedMaxLatitude = 0.0;
-		double expectedMinLongitude = 0.0;
-		double expectedMaxLongitude = 0.0;
-		GetExpandedCacheBounds(context, expectedMinLatitude, expectedMaxLatitude, expectedMinLongitude, expectedMaxLongitude);
+		if (!CachedLayerCoversView(cache, airport, context))
+			return true;
 
-		const double latitudeTolerance = (context.maxLatitude - context.minLatitude) * 0.01;
-		const double longitudeTolerance = (context.maxLongitude - context.minLongitude) * 0.01;
-		return std::fabs(cache.minLatitude - expectedMinLatitude) <= latitudeTolerance &&
-			std::fabs(cache.maxLatitude - expectedMaxLatitude) <= latitudeTolerance &&
-			std::fabs(cache.minLongitude - expectedMinLongitude) <= longitudeTolerance &&
-			std::fabs(cache.maxLongitude - expectedMaxLongitude) <= longitudeTolerance;
+		const double cacheLatitudeSpan = cache.maxLatitude - cache.minLatitude;
+		const double cacheLongitudeSpan = cache.maxLongitude - cache.minLongitude;
+		if (cacheLatitudeSpan <= 0.0 || cacheLongitudeSpan <= 0.0)
+			return true;
+
+		const double latitudeGuard = cacheLatitudeSpan * 0.08;
+		const double longitudeGuard = cacheLongitudeSpan * 0.08;
+		const bool nearCacheEdge =
+			context.minLatitude <= cache.minLatitude + latitudeGuard ||
+			context.maxLatitude >= cache.maxLatitude - latitudeGuard ||
+			context.minLongitude <= cache.minLongitude + longitudeGuard ||
+			context.maxLongitude >= cache.maxLongitude - longitudeGuard;
+
+		const int radarWidth = context.radarArea.right - context.radarArea.left;
+		const int radarHeight = context.radarArea.bottom - context.radarArea.top;
+		if (radarWidth <= 0 || radarHeight <= 0)
+			return true;
+
+		const double currentLongitudeSpan = context.maxLongitude - context.minLongitude;
+		const double currentLatitudeSpan = context.maxLatitude - context.minLatitude;
+		if (currentLongitudeSpan <= 0.0 || currentLatitudeSpan <= 0.0)
+			return true;
+
+		const double cachedLongitudePerPixel = cacheLongitudeSpan / static_cast<double>(cache.width);
+		const double cachedLatitudePerPixel = cacheLatitudeSpan / static_cast<double>(cache.height);
+		const double currentLongitudePerPixel = currentLongitudeSpan / static_cast<double>(radarWidth);
+		const double currentLatitudePerPixel = currentLatitudeSpan / static_cast<double>(radarHeight);
+		if (currentLongitudePerPixel <= 0.0 || currentLatitudePerPixel <= 0.0)
+			return true;
+
+		const double scaleErrorX = std::fabs(cachedLongitudePerPixel / currentLongitudePerPixel - 1.0);
+		const double scaleErrorY = std::fabs(cachedLatitudePerPixel / currentLatitudePerPixel - 1.0);
+		const bool scaleChanged = scaleErrorX > 0.04 || scaleErrorY > 0.04;
+
+		return nearCacheEdge || scaleChanged;
 	}
 
-	RectF GetCachedDestination(const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& current)
-	{
-		const float left = static_cast<float>(
-			current.radarArea.left + (cache.minLongitude - current.minLongitude) * current.xScale);
-		const float right = static_cast<float>(
-			current.radarArea.left + (cache.maxLongitude - current.minLongitude) * current.xScale);
-		const float top = static_cast<float>(
-			current.radarArea.bottom - (cache.maxLatitude - current.minLatitude) * current.yScale);
-		const float bottom = static_cast<float>(
-			current.radarArea.bottom - (cache.minLatitude - current.minLatitude) * current.yScale);
-
-		return RectF(left, top, right - left, bottom - top);
-	}
-
-	bool DrawCachedLayer(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context, bool highQuality)
+	bool DrawVisibleCachedRegion(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
 	{
 		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
 			return false;
 
-		const RectF destination = GetCachedDestination(cache, context);
+		const double longitudeSpan = cache.maxLongitude - cache.minLongitude;
+		const double latitudeSpan = cache.maxLatitude - cache.minLatitude;
+		if (longitudeSpan <= 0.0 || latitudeSpan <= 0.0)
+			return false;
+
+		float sourceX = static_cast<float>(
+			(context.minLongitude - cache.minLongitude) / longitudeSpan * static_cast<double>(cache.width));
+		float sourceY = static_cast<float>(
+			(cache.maxLatitude - context.maxLatitude) / latitudeSpan * static_cast<double>(cache.height));
+		float sourceWidth = static_cast<float>(
+			(context.maxLongitude - context.minLongitude) / longitudeSpan * static_cast<double>(cache.width));
+		float sourceHeight = static_cast<float>(
+			(context.maxLatitude - context.minLatitude) / latitudeSpan * static_cast<double>(cache.height));
+
+		sourceX = std::clamp(sourceX, 0.0f, static_cast<float>(cache.width));
+		sourceY = std::clamp(sourceY, 0.0f, static_cast<float>(cache.height));
+		const float maxSourceWidth = (std::max)(1.0f, static_cast<float>(cache.width) - sourceX);
+		const float maxSourceHeight = (std::max)(1.0f, static_cast<float>(cache.height) - sourceY);
+		sourceWidth = std::clamp(sourceWidth, 1.0f, maxSourceWidth);
+		sourceHeight = std::clamp(sourceHeight, 1.0f, maxSourceHeight);
+
+		const RectF destination(
+			static_cast<REAL>(context.radarArea.left),
+			static_cast<REAL>(context.radarArea.top),
+			static_cast<REAL>(context.radarArea.right - context.radarArea.left),
+			static_cast<REAL>(context.radarArea.bottom - context.radarArea.top));
 		if (destination.Width <= 1.0f || destination.Height <= 1.0f)
 			return false;
 
-		graphics.SetInterpolationMode(highQuality ? InterpolationModeHighQualityBicubic : InterpolationModeBilinear);
+		graphics.SetInterpolationMode(context.interactive ? InterpolationModeBilinear : InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
-			0.0f,
-			0.0f,
-			static_cast<REAL>(cache.width),
-			static_cast<REAL>(cache.height),
+			sourceX,
+			sourceY,
+			sourceWidth,
+			sourceHeight,
 			UnitPixel);
 		return true;
 	}
@@ -1378,20 +1470,26 @@ namespace
 			static_cast<REAL>(radarArea.bottom + (context.minLatitude * context.yScale)));
 
 		graphics.SetTransform(&geoTransform);
-		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		for (std::size_t featureIndex : entry.polygonIndices)
 		{
-			if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
-				RenderFeature(context, graphics, dc, feature, radarArea, colorManager, resources, drawText);
+			if (featureIndex < entry.features.size())
+				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
 		}
 
 		graphics.ResetTransform();
 		if (!drawNonPolygonFeatures)
 			return;
 
-		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		for (std::size_t featureIndex : entry.lineIndices)
 		{
-			if (feature.kind != CGroundMapRenderer::FeatureKind::Polygon)
-				RenderFeature(context, graphics, dc, feature, radarArea, colorManager, resources, drawText);
+			if (featureIndex < entry.features.size())
+				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
+		}
+
+		for (std::size_t featureIndex : entry.pointIndices)
+		{
+			if (featureIndex < entry.features.size())
+				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
 		}
 	}
 
@@ -1402,8 +1500,11 @@ namespace
 		const RECT& radarArea,
 		CColorManager* colorManager)
 	{
-		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		for (std::size_t featureIndex : entry.textIndices)
 		{
+			if (featureIndex >= entry.features.size())
+				continue;
+			const CGroundMapRenderer::Feature& feature = entry.features[featureIndex];
 			if (!feature.style.textEnabled ||
 				context.zoomLevel < feature.minZoom ||
 				context.zoomLevel > feature.maxZoom ||
@@ -1427,10 +1528,9 @@ namespace
 			}
 			else
 			{
-				CGroundMapRenderer::Coordinate center;
-				center.latitude = (feature.minLatitude + feature.maxLatitude) / 2.0;
-				center.longitude = (feature.minLongitude + feature.maxLongitude) / 2.0;
-				const POINT centerPoint = context.ToPoint(center);
+				if (!feature.hasLabelAnchor)
+					continue;
+				const POINT centerPoint = context.ToPoint(feature.labelAnchor);
 				if (PointIsNearRadarArea(centerPoint, radarArea, 30))
 					DrawLabel(dc, colorManager, feature.label, centerPoint, feature.style.text, 4, -7);
 			}
@@ -1451,8 +1551,9 @@ namespace
 		double cacheMaxLongitude = 0.0;
 		GetExpandedCacheBounds(current, cacheMinLatitude, cacheMaxLatitude, cacheMinLongitude, cacheMaxLongitude);
 
-		const int cacheWidth = ExpectedCacheWidth(current);
-		const int cacheHeight = ExpectedCacheHeight(current);
+		const CacheDimensions dimensions = CalculateCacheDimensions(current);
+		const int cacheWidth = dimensions.width;
+		const int cacheHeight = dimensions.height;
 		std::unique_ptr<Bitmap> bitmap = std::make_unique<Bitmap>(cacheWidth, cacheHeight, PixelFormat32bppPARGB);
 		if (bitmap->GetLastStatus() != Ok)
 			return false;
@@ -1588,14 +1689,14 @@ bool CGroundMapRenderer::RenderAirportMap(
 		graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 	}
 
-	if (!context.interactive && !CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context))
+	if (!context.interactive && CachedLayerNeedsRebuild(CachedLayer, normalizedAirport, context))
 		RebuildCachedLayer(CachedLayer, normalizedAirport, context, mapIt->second, dc, colorManager);
 
 	const bool canDrawCachedLayer = CachedLayerCoversView(CachedLayer, normalizedAirport, context);
-	const bool drawIdleCache = !context.interactive && CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context);
+	const bool drawIdleCache = !context.interactive && canDrawCachedLayer;
 	if ((context.interactive && canDrawCachedLayer) || drawIdleCache)
 	{
-		const bool drewCache = DrawCachedLayer(graphics, CachedLayer, context, !context.interactive);
+		const bool drewCache = DrawVisibleCachedRegion(graphics, CachedLayer, context);
 		if (drewCache)
 		{
 			if (!context.interactive)
