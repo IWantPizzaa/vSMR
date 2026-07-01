@@ -2669,7 +2669,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	if (GroundMapRenderer != nullptr)
 	{
+#if defined(_DEBUG)
 		const auto groundMapStart = std::chrono::steady_clock::now();
+#endif
 		GroundMapRenderer->RenderAirportMap(
 			getActiveAirport(),
 			DllPath,
@@ -2678,6 +2680,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			dc,
 			RadarArea,
 			ColorManager.get());
+#if defined(_DEBUG)
 		const auto groundMapEnd = std::chrono::steady_clock::now();
 		const double groundMapMilliseconds =
 			std::chrono::duration<double, std::milli>(groundMapEnd - groundMapStart).count();
@@ -2688,6 +2691,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			lastGroundMapRenderLog = nowTick;
 			Logger::info("Ground map render: " + std::to_string(groundMapMilliseconds) + " ms");
 		}
+#endif
 	}
 
 	RimcasInstance->RunwayAreas.clear();
