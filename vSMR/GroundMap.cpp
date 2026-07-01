@@ -929,6 +929,14 @@ namespace
 		double maxLongitude = 0.0;
 		double xScale = 0.0;
 		double yScale = 0.0;
+		double longitudePixelScale = 0.0;
+		double latitudePixelScale = 0.0;
+		double geoM11 = 0.0;
+		double geoM12 = 0.0;
+		double geoM21 = 0.0;
+		double geoM22 = 0.0;
+		double geoDx = 0.0;
+		double geoDy = 0.0;
 		double latitudeMargin = 0.0;
 		double longitudeMargin = 0.0;
 		double simplificationStepSquared = 0.0;
@@ -938,7 +946,7 @@ namespace
 		bool valid = false;
 		std::vector<PointF> scratchPoints;
 
-		RenderContext(const RECT& area, const CPosition& sw, const CPosition& ne, int zoom, bool moving)
+		RenderContext(const RECT& area, const CPosition& sw, const CPosition& ne, int zoom, bool moving, CSMRRadar* radar = nullptr)
 		{
 			radarArea = area;
 			displaySW = sw;
@@ -961,8 +969,20 @@ namespace
 
 			xScale = width / longitudeSpan;
 			yScale = height / latitudeSpan;
-			longitudeMargin = 24.0 / xScale;
-			latitudeMargin = 24.0 / yScale;
+			longitudePixelScale = xScale;
+			latitudePixelScale = yScale;
+			geoM11 = xScale;
+			geoM12 = 0.0;
+			geoM21 = 0.0;
+			geoM22 = -yScale;
+			geoDx = static_cast<double>(radarArea.left) - (minLongitude * xScale);
+			geoDy = static_cast<double>(radarArea.bottom) + (minLatitude * yScale);
+
+			if (radar != nullptr)
+				CalibrateToRadarProjection(*radar, latitudeSpan, longitudeSpan);
+
+			longitudeMargin = 24.0 / (std::max)(0.0000001, longitudePixelScale);
+			latitudeMargin = 24.0 / (std::max)(0.0000001, latitudePixelScale);
 
 			double simplificationStep = SimplificationStepPixels(zoomLevel);
 			if (interactive)
@@ -971,10 +991,63 @@ namespace
 			minimumFeatureExtent = MinimumFeatureExtentPixels(zoomLevel, CGroundMapRenderer::FeatureKind::Polygon);
 		}
 
+		void CalibrateToRadarProjection(CSMRRadar& radar, double latitudeSpan, double longitudeSpan)
+		{
+			const double centerLatitude = (minLatitude + maxLatitude) * 0.5;
+			const double centerLongitude = (minLongitude + maxLongitude) * 0.5;
+			const double latitudeDelta = (std::max)(latitudeSpan * 0.25, 0.00001);
+			const double longitudeDelta = (std::max)(longitudeSpan * 0.25, 0.00001);
+
+			CPosition center;
+			center.m_Latitude = centerLatitude;
+			center.m_Longitude = centerLongitude;
+			CPosition east = center;
+			east.m_Longitude += longitudeDelta;
+			CPosition north = center;
+			north.m_Latitude += latitudeDelta;
+
+			const POINT centerPixel = radar.ConvertCoordFromPositionToPixel(center);
+			const POINT eastPixel = radar.ConvertCoordFromPositionToPixel(east);
+			const POINT northPixel = radar.ConvertCoordFromPositionToPixel(north);
+
+			const double longitudeAxisX = static_cast<double>(eastPixel.x - centerPixel.x) / longitudeDelta;
+			const double longitudeAxisY = static_cast<double>(eastPixel.y - centerPixel.y) / longitudeDelta;
+			const double latitudeAxisX = static_cast<double>(northPixel.x - centerPixel.x) / latitudeDelta;
+			const double latitudeAxisY = static_cast<double>(northPixel.y - centerPixel.y) / latitudeDelta;
+			const double longitudeAxisLength = std::sqrt(longitudeAxisX * longitudeAxisX + longitudeAxisY * longitudeAxisY);
+			const double latitudeAxisLength = std::sqrt(latitudeAxisX * latitudeAxisX + latitudeAxisY * latitudeAxisY);
+
+			if (!std::isfinite(longitudeAxisLength) || !std::isfinite(latitudeAxisLength) ||
+				longitudeAxisLength < 1.0 || latitudeAxisLength < 1.0)
+			{
+				return;
+			}
+
+			geoM11 = longitudeAxisX;
+			geoM12 = longitudeAxisY;
+			geoM21 = latitudeAxisX;
+			geoM22 = latitudeAxisY;
+			geoDx = static_cast<double>(centerPixel.x) - (centerLongitude * geoM11) - (centerLatitude * geoM21);
+			geoDy = static_cast<double>(centerPixel.y) - (centerLongitude * geoM12) - (centerLatitude * geoM22);
+			longitudePixelScale = longitudeAxisLength;
+			latitudePixelScale = latitudeAxisLength;
+		}
+
+		Matrix BuildGeoTransform() const
+		{
+			return Matrix(
+				static_cast<REAL>(geoM11),
+				static_cast<REAL>(geoM12),
+				static_cast<REAL>(geoM21),
+				static_cast<REAL>(geoM22),
+				static_cast<REAL>(geoDx),
+				static_cast<REAL>(geoDy));
+		}
+
 		PointF ToPointF(const CGroundMapRenderer::Coordinate& coordinate) const
 		{
-			const double x = static_cast<double>(radarArea.left) + ((coordinate.longitude - minLongitude) * xScale);
-			const double y = static_cast<double>(radarArea.bottom) - ((coordinate.latitude - minLatitude) * yScale);
+			const double x = (coordinate.longitude * geoM11) + (coordinate.latitude * geoM21) + geoDx;
+			const double y = (coordinate.longitude * geoM12) + (coordinate.latitude * geoM22) + geoDy;
 			return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
 		}
 
@@ -1000,8 +1073,8 @@ namespace
 			if (threshold <= 0.0 || !feature.hasBounds)
 				return true;
 
-			const double pixelWidth = (feature.maxLongitude - feature.minLongitude) * xScale;
-			const double pixelHeight = (feature.maxLatitude - feature.minLatitude) * yScale;
+			const double pixelWidth = (feature.maxLongitude - feature.minLongitude) * longitudePixelScale;
+			const double pixelHeight = (feature.maxLatitude - feature.minLatitude) * latitudePixelScale;
 			const double effectiveThreshold = interactive ? threshold * 3.0 : threshold;
 			return (std::max)(pixelWidth, pixelHeight) >= effectiveThreshold;
 		}
@@ -1404,6 +1477,32 @@ namespace
 		return nearCacheEdge || scaleChanged;
 	}
 
+	bool BuildProjectedImageDestination(
+		const RenderContext& context,
+		double minLatitude,
+		double maxLatitude,
+		double minLongitude,
+		double maxLongitude,
+		PointF destination[3])
+	{
+		CGroundMapRenderer::Coordinate topLeft;
+		topLeft.latitude = maxLatitude;
+		topLeft.longitude = minLongitude;
+		CGroundMapRenderer::Coordinate topRight;
+		topRight.latitude = maxLatitude;
+		topRight.longitude = maxLongitude;
+		CGroundMapRenderer::Coordinate bottomLeft;
+		bottomLeft.latitude = minLatitude;
+		bottomLeft.longitude = minLongitude;
+
+		destination[0] = context.ToPointF(topLeft);
+		destination[1] = context.ToPointF(topRight);
+		destination[2] = context.ToPointF(bottomLeft);
+
+		return SquaredDistance(destination[0], destination[1]) >= 1.0 &&
+			SquaredDistance(destination[0], destination[2]) >= 1.0;
+	}
+
 	bool DrawVisibleCachedRegion(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
 	{
 		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
@@ -1430,18 +1529,23 @@ namespace
 		sourceWidth = std::clamp(sourceWidth, 1.0f, maxSourceWidth);
 		sourceHeight = std::clamp(sourceHeight, 1.0f, maxSourceHeight);
 
-		const RectF destination(
-			static_cast<REAL>(context.radarArea.left),
-			static_cast<REAL>(context.radarArea.top),
-			static_cast<REAL>(context.radarArea.right - context.radarArea.left),
-			static_cast<REAL>(context.radarArea.bottom - context.radarArea.top));
-		if (destination.Width <= 1.0f || destination.Height <= 1.0f)
+		PointF destination[3];
+		if (!BuildProjectedImageDestination(
+			context,
+			context.minLatitude,
+			context.maxLatitude,
+			context.minLongitude,
+			context.maxLongitude,
+			destination))
+		{
 			return false;
+		}
 
 		graphics.SetInterpolationMode(context.interactive ? InterpolationModeBilinear : InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
+			3,
 			sourceX,
 			sourceY,
 			sourceWidth,
@@ -1460,21 +1564,32 @@ namespace
 		if (longitudeSpan <= 0.0 || latitudeSpan <= 0.0)
 			return false;
 
-		const RectF destination(
-			static_cast<REAL>(context.radarArea.left + (cache.minLongitude - context.minLongitude) * context.xScale),
-			static_cast<REAL>(context.radarArea.bottom - (cache.maxLatitude - context.minLatitude) * context.yScale),
-			static_cast<REAL>(longitudeSpan * context.xScale),
-			static_cast<REAL>(latitudeSpan * context.yScale));
+		PointF destination[3];
+		if (!BuildProjectedImageDestination(
+			context,
+			cache.minLatitude,
+			cache.maxLatitude,
+			cache.minLongitude,
+			cache.maxLongitude,
+			destination))
+		{
+			return false;
+		}
+
 		const RectF radarRectangle(
 			static_cast<REAL>(context.radarArea.left),
 			static_cast<REAL>(context.radarArea.top),
 			static_cast<REAL>(context.radarArea.right - context.radarArea.left),
 			static_cast<REAL>(context.radarArea.bottom - context.radarArea.top));
 
-		const REAL intersectionLeft = (std::max)(destination.X, radarRectangle.X);
-		const REAL intersectionTop = (std::max)(destination.Y, radarRectangle.Y);
-		const REAL intersectionRight = (std::min)(destination.X + destination.Width, radarRectangle.X + radarRectangle.Width);
-		const REAL intersectionBottom = (std::min)(destination.Y + destination.Height, radarRectangle.Y + radarRectangle.Height);
+		const REAL destinationLeft = (std::min)(destination[0].X, (std::min)(destination[1].X, destination[2].X));
+		const REAL destinationTop = (std::min)(destination[0].Y, (std::min)(destination[1].Y, destination[2].Y));
+		const REAL destinationRight = (std::max)(destination[0].X, (std::max)(destination[1].X, destination[2].X));
+		const REAL destinationBottom = (std::max)(destination[0].Y, (std::max)(destination[1].Y, destination[2].Y));
+		const REAL intersectionLeft = (std::max)(destinationLeft, radarRectangle.X);
+		const REAL intersectionTop = (std::max)(destinationTop, radarRectangle.Y);
+		const REAL intersectionRight = (std::min)(destinationRight, radarRectangle.X + radarRectangle.Width);
+		const REAL intersectionBottom = (std::min)(destinationBottom, radarRectangle.Y + radarRectangle.Height);
 		if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop)
 			return false;
 
@@ -1482,6 +1597,7 @@ namespace
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
+			3,
 			0.0f,
 			0.0f,
 			static_cast<REAL>(cache.width),
@@ -1501,13 +1617,7 @@ namespace
 		bool drawText)
 	{
 		RenderPassResources resources;
-		Matrix geoTransform(
-			static_cast<REAL>(context.xScale),
-			0.0f,
-			0.0f,
-			static_cast<REAL>(-context.yScale),
-			static_cast<REAL>(radarArea.left - (context.minLongitude * context.xScale)),
-			static_cast<REAL>(radarArea.bottom + (context.minLatitude * context.yScale)));
+		Matrix geoTransform = context.BuildGeoTransform();
 
 		graphics.SetTransform(&geoTransform);
 		for (std::size_t featureIndex : entry.polygonIndices)
@@ -1720,7 +1830,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
 	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
 	const bool interactiveView = panInteractive || zoomInteractive;
-	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView);
+	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView, &radar);
 	if (!context.valid)
 		return false;
 
