@@ -14,6 +14,7 @@
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <unordered_map>
 
 #include "rapidjson/document.h"
 
@@ -1002,6 +1003,38 @@ namespace
 		return colorManager->get_corrected_color(channel, color);
 	}
 
+	struct RenderPassResources
+	{
+		std::unordered_map<ARGB, std::unique_ptr<SolidBrush>> brushes;
+		std::unordered_map<unsigned long long, std::unique_ptr<Pen>> pens;
+	};
+
+	SolidBrush& GetCachedBrush(RenderPassResources& resources, Color color)
+	{
+		const ARGB key = color.GetValue();
+		auto it = resources.brushes.find(key);
+		if (it == resources.brushes.end())
+			it = resources.brushes.emplace(key, std::make_unique<SolidBrush>(color)).first;
+		return *it->second;
+	}
+
+	unsigned long long BuildPenKey(Color color, float width)
+	{
+		const unsigned long long colorKey = static_cast<unsigned long long>(color.GetValue());
+		const unsigned long long widthKey = static_cast<unsigned long long>(
+			std::clamp<int>(static_cast<int>(std::round(width * 100.0f)), 0, 0xFFFF));
+		return (colorKey << 16) ^ widthKey;
+	}
+
+	Pen& GetCachedPen(RenderPassResources& resources, Color color, float width)
+	{
+		const unsigned long long key = BuildPenKey(color, width);
+		auto it = resources.pens.find(key);
+		if (it == resources.pens.end())
+			it = resources.pens.emplace(key, std::make_unique<Pen>(color, width)).first;
+		return *it->second;
+	}
+
 	int SelectLodIndexForZoom(const CGroundMapRenderer::Feature& feature, int zoomLevel, bool interactive)
 	{
 		if (feature.kind == CGroundMapRenderer::FeatureKind::Point)
@@ -1079,14 +1112,15 @@ namespace
 		Graphics& graphics,
 		const CGroundMapRenderer::Feature& feature,
 		int lodIndex,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		RenderPassResources& resources)
 	{
 		if (lodIndex < 0 || lodIndex >= static_cast<int>(feature.geoPaths.size()) || feature.geoPaths[lodIndex] == nullptr)
 			return;
 
 		if (feature.style.fillEnabled && feature.style.fill.GetAlpha() > 0)
 		{
-			SolidBrush fillBrush(CorrectColor(colorManager, "symbol", feature.style.fill));
+			SolidBrush& fillBrush = GetCachedBrush(resources, CorrectColor(colorManager, "symbol", feature.style.fill));
 			graphics.FillPath(&fillBrush, feature.geoPaths[lodIndex].get());
 		}
 	}
@@ -1096,13 +1130,14 @@ namespace
 		Graphics& graphics,
 		const CGroundMapRenderer::Feature& feature,
 		const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& paths,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		RenderPassResources& resources)
 	{
 		if (!feature.style.strokeEnabled || feature.style.stroke.GetAlpha() == 0)
 			return;
 
 		const Color lineColor = CorrectColor(colorManager, "symbol", feature.style.stroke);
-		Pen strokePen(lineColor, feature.style.strokeWidth);
+		Pen& strokePen = GetCachedPen(resources, lineColor, feature.style.strokeWidth);
 
 		for (const auto& sourcePath : paths)
 		{
@@ -1125,12 +1160,14 @@ namespace
 		CDC& dc,
 		const CGroundMapRenderer::Feature& feature,
 		const RECT& radarArea,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		RenderPassResources& resources,
+		bool drawText)
 	{
 		const Color markerColor = CorrectColor(colorManager, "symbol", feature.style.marker);
 		const Color strokeColor = CorrectColor(colorManager, "symbol", feature.style.stroke);
-		SolidBrush markerBrush(markerColor);
-		Pen markerPen(strokeColor, (std::max)(1.0f, feature.style.strokeWidth));
+		SolidBrush& markerBrush = GetCachedBrush(resources, markerColor);
+		Pen& markerPen = GetCachedPen(resources, strokeColor, (std::max)(1.0f, feature.style.strokeWidth));
 
 		for (const auto& path : feature.paths)
 		{
@@ -1150,7 +1187,7 @@ namespace
 					const PointF tip(
 						static_cast<REAL>(pixel.x + std::sin(headingRad) * radius * 1.8),
 						static_cast<REAL>(pixel.y - std::cos(headingRad) * radius * 1.8));
-					Pen arrowPen(markerColor, (std::max)(1.0f, feature.style.strokeWidth));
+					Pen& arrowPen = GetCachedPen(resources, markerColor, (std::max)(1.0f, feature.style.strokeWidth));
 					graphics.DrawLine(&arrowPen, tail, tip);
 					DrawArrowHead(graphics, tail, tip, markerColor, (std::max)(6.0f, radius));
 				}
@@ -1166,7 +1203,7 @@ namespace
 						graphics.DrawEllipse(&markerPen, rect);
 				}
 
-				if (feature.style.textEnabled)
+				if (drawText && feature.style.textEnabled)
 					DrawLabel(dc, colorManager, feature.label, pixel, feature.style.text, static_cast<int>(radius + 4.0f), -7);
 			}
 		}
@@ -1178,7 +1215,9 @@ namespace
 		CDC& dc,
 		const CGroundMapRenderer::Feature& feature,
 		const RECT& radarArea,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		RenderPassResources& resources,
+		bool drawText)
 	{
 		if (context.zoomLevel < feature.minZoom || context.zoomLevel > feature.maxZoom)
 			return;
@@ -1191,13 +1230,13 @@ namespace
 			return;
 
 		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
-			RenderPolygonFeature(context, graphics, feature, lodIndex, colorManager);
+			RenderPolygonFeature(context, graphics, feature, lodIndex, colorManager, resources);
 		else if (feature.kind == CGroundMapRenderer::FeatureKind::Line)
-			RenderLineFeature(context, graphics, feature, selectedPaths, colorManager);
+			RenderLineFeature(context, graphics, feature, selectedPaths, colorManager, resources);
 		else
-			RenderPointFeature(context, graphics, dc, feature, radarArea, colorManager);
+			RenderPointFeature(context, graphics, dc, feature, radarArea, colorManager, resources, drawText);
 
-		if (feature.kind != CGroundMapRenderer::FeatureKind::Point && feature.style.textEnabled)
+		if (drawText && feature.kind != CGroundMapRenderer::FeatureKind::Point && feature.style.textEnabled)
 		{
 			CGroundMapRenderer::Coordinate center;
 			center.latitude = (feature.minLatitude + feature.maxLatitude) / 2.0;
@@ -1207,11 +1246,221 @@ namespace
 				DrawLabel(dc, colorManager, feature.label, centerPoint, feature.style.text, 4, -7);
 		}
 	}
+
+	double CacheOverscanRatio(int zoomLevel)
+	{
+		return zoomLevel <= 5 ? 0.35 : 0.25;
+	}
+
+	int ExpectedCacheWidth(const RenderContext& context)
+	{
+		const int radarWidth = context.radarArea.right - context.radarArea.left;
+		const double overscan = CacheOverscanRatio(context.zoomLevel);
+		return std::clamp(static_cast<int>(std::round(static_cast<double>(radarWidth) * (1.0 + overscan * 2.0))), 64, 4096);
+	}
+
+	int ExpectedCacheHeight(const RenderContext& context)
+	{
+		const int radarHeight = context.radarArea.bottom - context.radarArea.top;
+		const double overscan = CacheOverscanRatio(context.zoomLevel);
+		return std::clamp(static_cast<int>(std::round(static_cast<double>(radarHeight) * (1.0 + overscan * 2.0))), 64, 4096);
+	}
+
+	void GetExpandedCacheBounds(
+		const RenderContext& context,
+		double& minLatitude,
+		double& maxLatitude,
+		double& minLongitude,
+		double& maxLongitude)
+	{
+		const double overscan = CacheOverscanRatio(context.zoomLevel);
+		const double latitudeSpan = context.maxLatitude - context.minLatitude;
+		const double longitudeSpan = context.maxLongitude - context.minLongitude;
+		const double latitudeMargin = latitudeSpan * overscan;
+		const double longitudeMargin = longitudeSpan * overscan;
+
+		minLatitude = context.minLatitude - latitudeMargin;
+		maxLatitude = context.maxLatitude + latitudeMargin;
+		minLongitude = context.minLongitude - longitudeMargin;
+		maxLongitude = context.maxLongitude + longitudeMargin;
+	}
+
+	bool CachedLayerCoversView(const CGroundMapRenderer::CachedGroundLayer& cache, const std::string& airport, const RenderContext& context)
+	{
+		if (!cache.valid || cache.bitmap == nullptr || cache.airport != airport)
+			return false;
+
+		const double latitudeEpsilon = (context.maxLatitude - context.minLatitude) * 0.002;
+		const double longitudeEpsilon = (context.maxLongitude - context.minLongitude) * 0.002;
+		return cache.minLatitude <= context.minLatitude + latitudeEpsilon &&
+			cache.maxLatitude >= context.maxLatitude - latitudeEpsilon &&
+			cache.minLongitude <= context.minLongitude + longitudeEpsilon &&
+			cache.maxLongitude >= context.maxLongitude - longitudeEpsilon;
+	}
+
+	bool CachedLayerMatchesCurrentView(const CGroundMapRenderer::CachedGroundLayer& cache, const std::string& airport, const RenderContext& context)
+	{
+		if (!CachedLayerCoversView(cache, airport, context))
+			return false;
+		if (cache.zoomLevel != context.zoomLevel ||
+			cache.width != ExpectedCacheWidth(context) ||
+			cache.height != ExpectedCacheHeight(context))
+		{
+			return false;
+		}
+
+		double expectedMinLatitude = 0.0;
+		double expectedMaxLatitude = 0.0;
+		double expectedMinLongitude = 0.0;
+		double expectedMaxLongitude = 0.0;
+		GetExpandedCacheBounds(context, expectedMinLatitude, expectedMaxLatitude, expectedMinLongitude, expectedMaxLongitude);
+
+		const double latitudeTolerance = (context.maxLatitude - context.minLatitude) * 0.01;
+		const double longitudeTolerance = (context.maxLongitude - context.minLongitude) * 0.01;
+		return std::fabs(cache.minLatitude - expectedMinLatitude) <= latitudeTolerance &&
+			std::fabs(cache.maxLatitude - expectedMaxLatitude) <= latitudeTolerance &&
+			std::fabs(cache.minLongitude - expectedMinLongitude) <= longitudeTolerance &&
+			std::fabs(cache.maxLongitude - expectedMaxLongitude) <= longitudeTolerance;
+	}
+
+	RectF GetCachedDestination(const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& current)
+	{
+		const float left = static_cast<float>(
+			current.radarArea.left + (cache.minLongitude - current.minLongitude) * current.xScale);
+		const float right = static_cast<float>(
+			current.radarArea.left + (cache.maxLongitude - current.minLongitude) * current.xScale);
+		const float top = static_cast<float>(
+			current.radarArea.bottom - (cache.maxLatitude - current.minLatitude) * current.yScale);
+		const float bottom = static_cast<float>(
+			current.radarArea.bottom - (cache.minLatitude - current.minLatitude) * current.yScale);
+
+		return RectF(left, top, right - left, bottom - top);
+	}
+
+	bool DrawCachedLayer(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
+	{
+		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
+			return false;
+
+		const RectF destination = GetCachedDestination(cache, context);
+		if (destination.Width <= 1.0f || destination.Height <= 1.0f)
+			return false;
+
+		graphics.SetInterpolationMode(InterpolationModeBilinear);
+		graphics.DrawImage(
+			cache.bitmap.get(),
+			destination,
+			0.0f,
+			0.0f,
+			static_cast<REAL>(cache.width),
+			static_cast<REAL>(cache.height),
+			UnitPixel);
+		return true;
+	}
+
+	void RenderVectorLayer(
+		RenderContext& context,
+		Graphics& graphics,
+		CDC& dc,
+		const CGroundMapRenderer::CacheEntry& entry,
+		const RECT& radarArea,
+		CColorManager* colorManager,
+		bool drawNonPolygonFeatures,
+		bool drawText)
+	{
+		RenderPassResources resources;
+		Matrix geoTransform(
+			static_cast<REAL>(context.xScale),
+			0.0f,
+			0.0f,
+			static_cast<REAL>(-context.yScale),
+			static_cast<REAL>(radarArea.left - (context.minLongitude * context.xScale)),
+			static_cast<REAL>(radarArea.bottom + (context.minLatitude * context.yScale)));
+
+		graphics.SetTransform(&geoTransform);
+		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		{
+			if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
+				RenderFeature(context, graphics, dc, feature, radarArea, colorManager, resources, drawText);
+		}
+
+		graphics.ResetTransform();
+		if (!drawNonPolygonFeatures)
+			return;
+
+		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		{
+			if (feature.kind != CGroundMapRenderer::FeatureKind::Polygon)
+				RenderFeature(context, graphics, dc, feature, radarArea, colorManager, resources, drawText);
+		}
+	}
+
+	bool RebuildCachedLayer(
+		CGroundMapRenderer::CachedGroundLayer& cache,
+		const std::string& airport,
+		const RenderContext& current,
+		const CGroundMapRenderer::CacheEntry& entry,
+		CDC& dc,
+		CColorManager* colorManager)
+	{
+		double cacheMinLatitude = 0.0;
+		double cacheMaxLatitude = 0.0;
+		double cacheMinLongitude = 0.0;
+		double cacheMaxLongitude = 0.0;
+		GetExpandedCacheBounds(current, cacheMinLatitude, cacheMaxLatitude, cacheMinLongitude, cacheMaxLongitude);
+
+		const int cacheWidth = ExpectedCacheWidth(current);
+		const int cacheHeight = ExpectedCacheHeight(current);
+		std::unique_ptr<Bitmap> bitmap = std::make_unique<Bitmap>(cacheWidth, cacheHeight, PixelFormat32bppPARGB);
+		if (bitmap->GetLastStatus() != Ok)
+			return false;
+
+		Graphics bitmapGraphics(bitmap.get());
+		if (bitmapGraphics.GetLastStatus() != Ok)
+			return false;
+
+		bitmapGraphics.SetPageUnit(UnitPixel);
+		bitmapGraphics.Clear(Color(0, 0, 0, 0));
+		bitmapGraphics.SetSmoothingMode(SmoothingModeHighSpeed);
+		bitmapGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHighSpeed);
+
+		RECT cacheArea = { 0, 0, cacheWidth, cacheHeight };
+		CPosition cacheSW;
+		cacheSW.m_Latitude = cacheMinLatitude;
+		cacheSW.m_Longitude = cacheMinLongitude;
+		CPosition cacheNE;
+		cacheNE.m_Latitude = cacheMaxLatitude;
+		cacheNE.m_Longitude = cacheMaxLongitude;
+		RenderContext cacheContext(cacheArea, cacheSW, cacheNE, current.zoomLevel, false);
+		if (!cacheContext.valid)
+			return false;
+
+		const GraphicsState bitmapState = bitmapGraphics.Save();
+		bitmapGraphics.SetClip(Rect(0, 0, cacheWidth, cacheHeight), CombineModeReplace);
+		RenderVectorLayer(cacheContext, bitmapGraphics, dc, entry, cacheArea, colorManager, true, false);
+		bitmapGraphics.Restore(bitmapState);
+
+		cache.bitmap = std::move(bitmap);
+		cache.airport = airport;
+		cache.width = cacheWidth;
+		cache.height = cacheHeight;
+		cache.zoomLevel = current.zoomLevel;
+		cache.minLatitude = cacheMinLatitude;
+		cache.maxLatitude = cacheMaxLatitude;
+		cache.minLongitude = cacheMinLongitude;
+		cache.maxLongitude = cacheMaxLongitude;
+		cache.valid = true;
+		return true;
+	}
 }
 
 void CGroundMapRenderer::ClearCache()
 {
 	AirportMaps.clear();
+	CachedLayer = CachedGroundLayer();
+	HasLastView = false;
+	LastViewChangeTick = 0;
 }
 
 bool CGroundMapRenderer::RenderAirportMap(
@@ -1269,7 +1518,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 	LastMinLongitude = currentMinLongitude;
 	LastMaxLongitude = currentMaxLongitude;
 
-	const bool interactiveView = LastViewChangeTick != 0 && nowTick - LastViewChangeTick < 180;
+	const bool interactiveView = LastViewChangeTick != 0 && nowTick - LastViewChangeTick < 260;
 	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView);
 	if (!context.valid)
 		return false;
@@ -1281,33 +1530,37 @@ bool CGroundMapRenderer::RenderAirportMap(
 		radarArea.right - radarArea.left,
 		radarArea.bottom - radarArea.top),
 		CombineModeReplace);
-	graphics.SetSmoothingMode(SmoothingModeHighSpeed);
-
-	Matrix geoTransform(
-		static_cast<REAL>(context.xScale),
-		0.0f,
-		0.0f,
-		static_cast<REAL>(-context.yScale),
-		static_cast<REAL>(radarArea.left - (context.minLongitude * context.xScale)),
-		static_cast<REAL>(radarArea.bottom + (context.minLatitude * context.yScale)));
-	graphics.SetTransform(&geoTransform);
-	for (const Feature& feature : mapIt->second.features)
+	if (context.interactive)
 	{
-		if (feature.kind == FeatureKind::Polygon)
-			RenderFeature(context, graphics, dc, feature, radarArea, colorManager);
+		graphics.SetSmoothingMode(SmoothingModeNone);
+		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		graphics.SetInterpolationMode(InterpolationModeBilinear);
+		graphics.SetPixelOffsetMode(PixelOffsetModeHighSpeed);
+	}
+	else
+	{
+		graphics.SetSmoothingMode(context.zoomLevel <= 6 ? SmoothingModeHighSpeed : SmoothingModeAntiAlias);
 	}
 
-	graphics.ResetTransform();
-	if (!context.interactive)
+	const bool canDrawCachedLayer = CachedLayerCoversView(CachedLayer, normalizedAirport, context);
+	const bool drawLowZoomCache = !context.interactive &&
+		context.zoomLevel <= 6 &&
+		CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context);
+	if ((context.interactive && canDrawCachedLayer) || drawLowZoomCache)
 	{
-		for (const Feature& feature : mapIt->second.features)
-		{
-			if (feature.kind != FeatureKind::Polygon)
-				RenderFeature(context, graphics, dc, feature, radarArea, colorManager);
-		}
+		const bool drewCache = DrawCachedLayer(graphics, CachedLayer, context);
+		graphics.Restore(graphicsState);
+		if (drewCache)
+			return true;
 	}
 
+	const bool drawNonPolygonFeatures = !context.interactive || !canDrawCachedLayer;
+	const bool drawText = !context.interactive;
+	RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, drawNonPolygonFeatures, drawText);
 	graphics.Restore(graphicsState);
+
+	if (!context.interactive && !CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context))
+		RebuildCachedLayer(CachedLayer, normalizedAirport, context, mapIt->second, dc, colorManager);
 
 	return true;
 }

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <cctype>
+#include <chrono>
 #include "rapidjson/document.h"
 #include "SMRRadar_TagShared.hpp"
 #include "ProfileEditorDialog.hpp"
@@ -350,6 +351,7 @@ void CSMRRadar::ReloadConfig() {
 	RadarViewZoomLevel = -1;
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
+	AirportPositionsCacheValid = false;
 	ReloadGroundMaps();
 	RequestRefresh();
 }
@@ -358,6 +360,26 @@ void CSMRRadar::ReloadGroundMaps()
 {
 	if (GroundMapRenderer != nullptr)
 		GroundMapRenderer->ClearCache();
+}
+
+void CSMRRadar::RebuildAirportPositionCache()
+{
+	AirportPositions.clear();
+
+	for (CSectorElement apt = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
+		apt.IsValid();
+		apt = GetPlugIn()->SectorFileElementSelectNext(apt, SECTOR_ELEMENT_AIRPORT))
+	{
+		const char* airportName = apt.GetName();
+		if (airportName == nullptr || airportName[0] == '\0')
+			continue;
+
+		CPosition position;
+		apt.GetPosition(&position, 0);
+		AirportPositions[string(airportName)] = position;
+	}
+
+	AirportPositionsCacheValid = true;
 }
 
 void CSMRRadar::LoadProfile(string profileName) {
@@ -2642,25 +2664,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	RECT ChatArea = GetChatArea();
 	RadarArea.bottom = ChatArea.top;
 
-	AirportPositions.clear();
-
-
-	CSectorElement apt;
-	for (apt = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
-		apt.IsValid();
-		apt = GetPlugIn()->SectorFileElementSelectNext(apt, SECTOR_ELEMENT_AIRPORT))
-	{
-		const char* airportName = apt.GetName();
-		if (airportName == nullptr || airportName[0] == '\0')
-			continue;
-
-		CPosition Pos;
-		apt.GetPosition(&Pos, 0);
-		AirportPositions[string(airportName)] = Pos;
-	}
+	if (!AirportPositionsCacheValid)
+		RebuildAirportPositionCache();
 
 	if (GroundMapRenderer != nullptr)
 	{
+		const auto groundMapStart = std::chrono::steady_clock::now();
 		GroundMapRenderer->RenderAirportMap(
 			getActiveAirport(),
 			DllPath,
@@ -2669,6 +2678,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			dc,
 			RadarArea,
 			ColorManager.get());
+		const auto groundMapEnd = std::chrono::steady_clock::now();
+		const double groundMapMilliseconds =
+			std::chrono::duration<double, std::milli>(groundMapEnd - groundMapStart).count();
+		static ULONGLONG lastGroundMapRenderLog = 0;
+		const ULONGLONG nowTick = GetTickCount64();
+		if (groundMapMilliseconds > 4.0 && nowTick - lastGroundMapRenderLog > 1000)
+		{
+			lastGroundMapRenderLog = nowTick;
+			Logger::info("Ground map render: " + std::to_string(groundMapMilliseconds) + " ms");
+		}
 	}
 
 	RimcasInstance->RunwayAreas.clear();

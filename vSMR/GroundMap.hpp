@@ -72,6 +72,20 @@ public:
 		std::vector<Feature> features;
 	};
 
+	struct CachedGroundLayer
+	{
+		std::unique_ptr<Gdiplus::Bitmap> bitmap;
+		std::string airport;
+		int width = 0;
+		int height = 0;
+		int zoomLevel = -1;
+		double minLatitude = 0.0;
+		double maxLatitude = 0.0;
+		double minLongitude = 0.0;
+		double maxLongitude = 0.0;
+		bool valid = false;
+	};
+
 	void ClearCache();
 	bool RenderAirportMap(
 		const std::string& airport,
@@ -84,6 +98,7 @@ public:
 
 private:
 	std::map<std::string, CacheEntry> AirportMaps;
+	CachedGroundLayer CachedLayer;
 	bool HasLastView = false;
 	RECT LastRadarArea = {};
 	double LastMinLatitude = 0.0;

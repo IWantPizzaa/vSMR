@@ -124,6 +124,7 @@ public:
 
 	void ReloadConfig();
 	void ReloadGroundMaps();
+	void RebuildAirportPositionCache();
 
 	static map<string, string> vStripsStands;
 
@@ -227,6 +228,7 @@ public:
 	int currentFontSize = 1;
 
 	map<string, CPosition> AirportPositions;
+	bool AirportPositionsCacheValid = false;
 
 	bool Afterglow = true;
 
