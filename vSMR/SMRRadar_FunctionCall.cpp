@@ -390,7 +390,10 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	if (FunctionId == RIMCAS_BRIGHTNESS_SYMBOL)
 	{
 		if (hasItemString)
+		{
 			ColorManager->update_brightness("symbol", std::atoi(itemString));
+			ReloadGroundMaps();
+		}
 		reopenList("Symbol");
 	}
 

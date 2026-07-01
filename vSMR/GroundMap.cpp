@@ -1337,7 +1337,7 @@ namespace
 		return RectF(left, top, right - left, bottom - top);
 	}
 
-	bool DrawCachedLayer(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
+	bool DrawCachedLayer(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context, bool highQuality)
 	{
 		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
 			return false;
@@ -1346,7 +1346,7 @@ namespace
 		if (destination.Width <= 1.0f || destination.Height <= 1.0f)
 			return false;
 
-		graphics.SetInterpolationMode(InterpolationModeBilinear);
+		graphics.SetInterpolationMode(highQuality ? InterpolationModeHighQualityBicubic : InterpolationModeBilinear);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
@@ -1395,6 +1395,48 @@ namespace
 		}
 	}
 
+	void RenderTextOverlay(
+		RenderContext& context,
+		CDC& dc,
+		const CGroundMapRenderer::CacheEntry& entry,
+		const RECT& radarArea,
+		CColorManager* colorManager)
+	{
+		for (const CGroundMapRenderer::Feature& feature : entry.features)
+		{
+			if (!feature.style.textEnabled ||
+				context.zoomLevel < feature.minZoom ||
+				context.zoomLevel > feature.maxZoom ||
+				!context.IntersectsView(feature) ||
+				!context.IsLargeEnough(feature))
+			{
+				continue;
+			}
+
+			if (feature.kind == CGroundMapRenderer::FeatureKind::Point)
+			{
+				for (const auto& path : feature.paths)
+				{
+					for (const auto& coordinate : path)
+					{
+						const POINT pixel = context.ToPoint(coordinate);
+						if (PointIsNearRadarArea(pixel, radarArea, 30))
+							DrawLabel(dc, colorManager, feature.label, pixel, feature.style.text, static_cast<int>(feature.style.markerSize + 4.0f), -7);
+					}
+				}
+			}
+			else
+			{
+				CGroundMapRenderer::Coordinate center;
+				center.latitude = (feature.minLatitude + feature.maxLatitude) / 2.0;
+				center.longitude = (feature.minLongitude + feature.maxLongitude) / 2.0;
+				const POINT centerPoint = context.ToPoint(center);
+				if (PointIsNearRadarArea(centerPoint, radarArea, 30))
+					DrawLabel(dc, colorManager, feature.label, centerPoint, feature.style.text, 4, -7);
+			}
+		}
+	}
+
 	bool RebuildCachedLayer(
 		CGroundMapRenderer::CachedGroundLayer& cache,
 		const std::string& airport,
@@ -1421,9 +1463,10 @@ namespace
 
 		bitmapGraphics.SetPageUnit(UnitPixel);
 		bitmapGraphics.Clear(Color(0, 0, 0, 0));
-		bitmapGraphics.SetSmoothingMode(SmoothingModeHighSpeed);
-		bitmapGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHighSpeed);
+		bitmapGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+		bitmapGraphics.SetCompositingQuality(CompositingQualityHighQuality);
+		bitmapGraphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 
 		RECT cacheArea = { 0, 0, cacheWidth, cacheHeight };
 		CPosition cacheSW;
@@ -1539,28 +1582,33 @@ bool CGroundMapRenderer::RenderAirportMap(
 	}
 	else
 	{
-		graphics.SetSmoothingMode(context.zoomLevel <= 6 ? SmoothingModeHighSpeed : SmoothingModeAntiAlias);
+		graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+		graphics.SetCompositingQuality(CompositingQualityHighQuality);
+		graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+		graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
 	}
 
+	if (!context.interactive && !CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context))
+		RebuildCachedLayer(CachedLayer, normalizedAirport, context, mapIt->second, dc, colorManager);
+
 	const bool canDrawCachedLayer = CachedLayerCoversView(CachedLayer, normalizedAirport, context);
-	const bool drawLowZoomCache = !context.interactive &&
-		context.zoomLevel <= 6 &&
-		CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context);
-	if ((context.interactive && canDrawCachedLayer) || drawLowZoomCache)
+	const bool drawIdleCache = !context.interactive && CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context);
+	if ((context.interactive && canDrawCachedLayer) || drawIdleCache)
 	{
-		const bool drewCache = DrawCachedLayer(graphics, CachedLayer, context);
-		graphics.Restore(graphicsState);
+		const bool drewCache = DrawCachedLayer(graphics, CachedLayer, context, !context.interactive);
 		if (drewCache)
+		{
+			if (!context.interactive)
+				RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
+			graphics.Restore(graphicsState);
 			return true;
+		}
 	}
 
 	const bool drawNonPolygonFeatures = !context.interactive || !canDrawCachedLayer;
 	const bool drawText = !context.interactive;
 	RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, drawNonPolygonFeatures, drawText);
 	graphics.Restore(graphicsState);
-
-	if (!context.interactive && !CachedLayerMatchesCurrentView(CachedLayer, normalizedAirport, context))
-		RebuildCachedLayer(CachedLayer, normalizedAirport, context, mapIt->second, dc, colorManager);
 
 	return true;
 }
