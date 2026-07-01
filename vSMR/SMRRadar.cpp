@@ -101,6 +101,7 @@ CSMRRadar::CSMRRadar()
 	mapsPath = DllPath + "\\vSMR_Maps.json";
 	IconsPath = DllPath + "\\aircraft_icons";
 	LoadAircraftSpecs();
+	GroundMapRenderer = std::make_unique<CGroundMapRenderer>();
 
 	Logger::info("Loading callsigns");
 
@@ -349,7 +350,14 @@ void CSMRRadar::ReloadConfig() {
 	RadarViewZoomLevel = -1;
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
+	ReloadGroundMaps();
 	RequestRefresh();
+}
+
+void CSMRRadar::ReloadGroundMaps()
+{
+	if (GroundMapRenderer != nullptr)
+		GroundMapRenderer->ClearCache();
 }
 
 void CSMRRadar::LoadProfile(string profileName) {
@@ -2649,6 +2657,18 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		CPosition Pos;
 		apt.GetPosition(&Pos, 0);
 		AirportPositions[string(airportName)] = Pos;
+	}
+
+	if (GroundMapRenderer != nullptr)
+	{
+		GroundMapRenderer->RenderAirportMap(
+			getActiveAirport(),
+			DllPath,
+			*this,
+			graphics,
+			dc,
+			RadarArea,
+			ColorManager.get());
 	}
 
 	RimcasInstance->RunwayAreas.clear();

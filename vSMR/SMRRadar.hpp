@@ -15,6 +15,7 @@
 #include "Constant.hpp"
 #include "CallsignLookup.hpp"
 #include "Config.hpp"
+#include "GroundMap.hpp"
 #include "Rimcas.hpp"
 #include <memory>
 #include <asio/io_service.hpp>
@@ -122,6 +123,7 @@ public:
 	virtual ~CSMRRadar();
 
 	void ReloadConfig();
+	void ReloadGroundMaps();
 
 	static map<string, string> vStripsStands;
 
@@ -217,6 +219,7 @@ public:
 
 	std::unique_ptr<CRimcas> RimcasInstance;
 	std::unique_ptr<CConfig> CurrentConfig;
+	std::unique_ptr<CGroundMapRenderer> GroundMapRenderer;
 
 	std::map<int, std::unique_ptr<Gdiplus::Font>> customFonts;
 	std::map<int, std::unique_ptr<CInsetWindow>> appWindows;
