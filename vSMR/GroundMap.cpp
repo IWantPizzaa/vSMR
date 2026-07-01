@@ -1450,6 +1450,46 @@ namespace
 		return true;
 	}
 
+	bool DrawStaleCachedLayer(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
+	{
+		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
+			return false;
+
+		const double longitudeSpan = cache.maxLongitude - cache.minLongitude;
+		const double latitudeSpan = cache.maxLatitude - cache.minLatitude;
+		if (longitudeSpan <= 0.0 || latitudeSpan <= 0.0)
+			return false;
+
+		const RectF destination(
+			static_cast<REAL>(context.radarArea.left + (cache.minLongitude - context.minLongitude) * context.xScale),
+			static_cast<REAL>(context.radarArea.bottom - (cache.maxLatitude - context.minLatitude) * context.yScale),
+			static_cast<REAL>(longitudeSpan * context.xScale),
+			static_cast<REAL>(latitudeSpan * context.yScale));
+		const RectF radarRectangle(
+			static_cast<REAL>(context.radarArea.left),
+			static_cast<REAL>(context.radarArea.top),
+			static_cast<REAL>(context.radarArea.right - context.radarArea.left),
+			static_cast<REAL>(context.radarArea.bottom - context.radarArea.top));
+
+		const REAL intersectionLeft = (std::max)(destination.X, radarRectangle.X);
+		const REAL intersectionTop = (std::max)(destination.Y, radarRectangle.Y);
+		const REAL intersectionRight = (std::min)(destination.X + destination.Width, radarRectangle.X + radarRectangle.Width);
+		const REAL intersectionBottom = (std::min)(destination.Y + destination.Height, radarRectangle.Y + radarRectangle.Height);
+		if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop)
+			return false;
+
+		graphics.SetInterpolationMode(InterpolationModeBilinear);
+		graphics.DrawImage(
+			cache.bitmap.get(),
+			destination,
+			0.0f,
+			0.0f,
+			static_cast<REAL>(cache.width),
+			static_cast<REAL>(cache.height),
+			UnitPixel);
+		return true;
+	}
+
 	void RenderVectorLayer(
 		RenderContext& context,
 		Graphics& graphics,
@@ -1564,10 +1604,10 @@ namespace
 
 		bitmapGraphics.SetPageUnit(UnitPixel);
 		bitmapGraphics.Clear(Color(0, 0, 0, 0));
-		bitmapGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
-		bitmapGraphics.SetCompositingQuality(CompositingQualityHighQuality);
-		bitmapGraphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
+		bitmapGraphics.SetSmoothingMode(SmoothingModeHighSpeed);
+		bitmapGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		bitmapGraphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 		RECT cacheArea = { 0, 0, cacheWidth, cacheHeight };
 		CPosition cacheSW;
@@ -1604,7 +1644,8 @@ void CGroundMapRenderer::ClearCache()
 	AirportMaps.clear();
 	CachedLayer = CachedGroundLayer();
 	HasLastView = false;
-	LastViewChangeTick = 0;
+	LastPanChangeTick = 0;
+	LastZoomChangeTick = 0;
 }
 
 bool CGroundMapRenderer::RenderAirportMap(
@@ -1633,28 +1674,40 @@ bool CGroundMapRenderer::RenderAirportMap(
 	const double currentMinLongitude = (std::min)(displaySW.m_Longitude, displayNE.m_Longitude);
 	const double currentMaxLongitude = (std::max)(displaySW.m_Longitude, displayNE.m_Longitude);
 	const ULONGLONG nowTick = GetTickCount64();
-	bool viewChanged = false;
 	if (!HasLastView)
 	{
 		HasLastView = true;
-		viewChanged = false;
 	}
 	else
 	{
-		const double tolerance = 0.0000005;
-		viewChanged =
+		const double previousLatitudeSpan = LastMaxLatitude - LastMinLatitude;
+		const double previousLongitudeSpan = LastMaxLongitude - LastMinLongitude;
+		const double currentLatitudeSpan = currentMaxLatitude - currentMinLatitude;
+		const double currentLongitudeSpan = currentMaxLongitude - currentMinLongitude;
+		const double previousCenterLatitude = (LastMinLatitude + LastMaxLatitude) * 0.5;
+		const double previousCenterLongitude = (LastMinLongitude + LastMaxLongitude) * 0.5;
+		const double currentCenterLatitude = (currentMinLatitude + currentMaxLatitude) * 0.5;
+		const double currentCenterLongitude = (currentMinLongitude + currentMaxLongitude) * 0.5;
+		const bool radarSizeChanged =
 			LastRadarArea.left != radarArea.left ||
 			LastRadarArea.top != radarArea.top ||
 			LastRadarArea.right != radarArea.right ||
-			LastRadarArea.bottom != radarArea.bottom ||
-			std::fabs(LastMinLatitude - currentMinLatitude) > tolerance ||
-			std::fabs(LastMaxLatitude - currentMaxLatitude) > tolerance ||
-			std::fabs(LastMinLongitude - currentMinLongitude) > tolerance ||
-			std::fabs(LastMaxLongitude - currentMaxLongitude) > tolerance;
-	}
+			LastRadarArea.bottom != radarArea.bottom;
+		const double latitudeSpanTolerance = (std::max)(1e-9, std::fabs(previousLatitudeSpan) * 0.001);
+		const double longitudeSpanTolerance = (std::max)(1e-9, std::fabs(previousLongitudeSpan) * 0.001);
+		const bool zoomChanged =
+			radarSizeChanged ||
+			std::fabs(currentLatitudeSpan - previousLatitudeSpan) > latitudeSpanTolerance ||
+			std::fabs(currentLongitudeSpan - previousLongitudeSpan) > longitudeSpanTolerance;
+		const bool panChanged =
+			std::fabs(currentCenterLatitude - previousCenterLatitude) > 0.0000005 ||
+			std::fabs(currentCenterLongitude - previousCenterLongitude) > 0.0000005;
 
-	if (viewChanged)
-		LastViewChangeTick = nowTick;
+		if (zoomChanged)
+			LastZoomChangeTick = nowTick;
+		if (panChanged)
+			LastPanChangeTick = nowTick;
+	}
 
 	LastRadarArea = radarArea;
 	LastMinLatitude = currentMinLatitude;
@@ -1662,7 +1715,11 @@ bool CGroundMapRenderer::RenderAirportMap(
 	LastMinLongitude = currentMinLongitude;
 	LastMaxLongitude = currentMaxLongitude;
 
-	const bool interactiveView = LastViewChangeTick != 0 && nowTick - LastViewChangeTick < 260;
+	constexpr ULONGLONG panSettleDelayMs = 220;
+	constexpr ULONGLONG zoomSettleDelayMs = 550;
+	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
+	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
+	const bool interactiveView = panInteractive || zoomInteractive;
 	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView);
 	if (!context.valid)
 		return false;
@@ -1693,8 +1750,19 @@ bool CGroundMapRenderer::RenderAirportMap(
 		RebuildCachedLayer(CachedLayer, normalizedAirport, context, mapIt->second, dc, colorManager);
 
 	const bool canDrawCachedLayer = CachedLayerCoversView(CachedLayer, normalizedAirport, context);
+	if (context.interactive)
+	{
+		if (canDrawCachedLayer)
+			DrawVisibleCachedRegion(graphics, CachedLayer, context);
+		else if (CachedLayer.valid && CachedLayer.airport == normalizedAirport)
+			DrawStaleCachedLayer(graphics, CachedLayer, context);
+
+		graphics.Restore(graphicsState);
+		return true;
+	}
+
 	const bool drawIdleCache = !context.interactive && canDrawCachedLayer;
-	if ((context.interactive && canDrawCachedLayer) || drawIdleCache)
+	if (drawIdleCache)
 	{
 		const bool drewCache = DrawVisibleCachedRegion(graphics, CachedLayer, context);
 		if (drewCache)
