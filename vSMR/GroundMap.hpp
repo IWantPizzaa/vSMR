@@ -111,5 +111,6 @@ private:
 	double LastMaxLatitude = 0.0;
 	double LastMinLongitude = 0.0;
 	double LastMaxLongitude = 0.0;
-	ULONGLONG LastViewChangeTick = 0;
+	ULONGLONG LastPanChangeTick = 0;
+	ULONGLONG LastZoomChangeTick = 0;
 };
