@@ -218,6 +218,7 @@ void CSMRRadar::LoadAircraftSpecs() {
 void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 {
 	Logger::info(string(__FUNCSIG__));
+	AirportPositionsCacheValid = false;
 	const char * p_value;
 
 	// ReSharper disable CppZeroConstantCanBeReplacedWithNullptr
