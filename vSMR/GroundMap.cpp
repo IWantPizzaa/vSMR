@@ -1361,6 +1361,9 @@ namespace
 		return zoomLevel <= 5 ? 0.35 : 0.25;
 	}
 
+	constexpr int kMaximumCacheBitmapDimension = 4096;
+	constexpr double kPreferredCacheQualityScale = 1.25;
+
 	struct CacheDimensions
 	{
 		int width = 0;
@@ -1369,9 +1372,18 @@ namespace
 		double verticalOverscan = 0.0;
 	};
 
+	double CalculateCacheQualityScale(int requestedWidth, int requestedHeight)
+	{
+		const double widthLimit = static_cast<double>(kMaximumCacheBitmapDimension) /
+			static_cast<double>((std::max)(1, requestedWidth));
+		const double heightLimit = static_cast<double>(kMaximumCacheBitmapDimension) /
+			static_cast<double>((std::max)(1, requestedHeight));
+		const double capLimitedScale = (std::min)(widthLimit, heightLimit);
+		return std::clamp((std::min)(kPreferredCacheQualityScale, capLimitedScale), 1.0, kPreferredCacheQualityScale);
+	}
+
 	CacheDimensions CalculateCacheDimensions(const RenderContext& context)
 	{
-		constexpr int maximumBitmapDimension = 4096;
 		const int radarWidth = context.radarArea.right - context.radarArea.left;
 		const int radarHeight = context.radarArea.bottom - context.radarArea.top;
 		const int baseWidth = (std::max)(1, radarWidth);
@@ -1380,14 +1392,23 @@ namespace
 
 		const int requestedExtraX = static_cast<int>(std::round(static_cast<double>(baseWidth) * requestedOverscan));
 		const int requestedExtraY = static_cast<int>(std::round(static_cast<double>(baseHeight) * requestedOverscan));
-		const int availableExtraX = (std::max)(0, (maximumBitmapDimension - baseWidth) / 2);
-		const int availableExtraY = (std::max)(0, (maximumBitmapDimension - baseHeight) / 2);
+		const int availableExtraX = (std::max)(0, (kMaximumCacheBitmapDimension - baseWidth) / 2);
+		const int availableExtraY = (std::max)(0, (kMaximumCacheBitmapDimension - baseHeight) / 2);
 		const int actualExtraX = (std::min)(requestedExtraX, availableExtraX);
 		const int actualExtraY = (std::min)(requestedExtraY, availableExtraY);
+		const int requestedWidth = baseWidth + actualExtraX * 2;
+		const int requestedHeight = baseHeight + actualExtraY * 2;
+		const double qualityScale = CalculateCacheQualityScale(requestedWidth, requestedHeight);
 
 		CacheDimensions result;
-		result.width = std::clamp(baseWidth + actualExtraX * 2, 64, maximumBitmapDimension);
-		result.height = std::clamp(baseHeight + actualExtraY * 2, 64, maximumBitmapDimension);
+		result.width = std::clamp(
+			static_cast<int>(std::round(static_cast<double>(requestedWidth) * qualityScale)),
+			64,
+			kMaximumCacheBitmapDimension);
+		result.height = std::clamp(
+			static_cast<int>(std::round(static_cast<double>(requestedHeight) * qualityScale)),
+			64,
+			kMaximumCacheBitmapDimension);
 		result.horizontalOverscan = static_cast<double>(actualExtraX) / static_cast<double>(baseWidth);
 		result.verticalOverscan = static_cast<double>(actualExtraY) / static_cast<double>(baseHeight);
 		return result;
@@ -1503,7 +1524,11 @@ namespace
 			SquaredDistance(destination[0], destination[2]) >= 1.0;
 	}
 
-	bool DrawVisibleCachedRegion(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
+	bool DrawVisibleCachedRegion(
+		Graphics& graphics,
+		const CGroundMapRenderer::CachedGroundLayer& cache,
+		const RenderContext& context,
+		bool recentlyInteractive)
 	{
 		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
 			return false;
@@ -1541,7 +1566,11 @@ namespace
 			return false;
 		}
 
-		graphics.SetInterpolationMode(context.interactive ? InterpolationModeBilinear : InterpolationModeNearestNeighbor);
+		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
+		graphics.SetInterpolationMode(context.interactive || recentlyInteractive ?
+			InterpolationModeBilinear :
+			InterpolationModeHighQualityBilinear);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
@@ -1593,6 +1622,8 @@ namespace
 		if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop)
 			return false;
 
+		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 		graphics.SetInterpolationMode(InterpolationModeBilinear);
 		graphics.DrawImage(
 			cache.bitmap.get(),
@@ -1714,9 +1745,9 @@ namespace
 
 		bitmapGraphics.SetPageUnit(UnitPixel);
 		bitmapGraphics.Clear(Color(0, 0, 0, 0));
-		bitmapGraphics.SetSmoothingMode(SmoothingModeHighSpeed);
+		bitmapGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
 		bitmapGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		bitmapGraphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		bitmapGraphics.SetInterpolationMode(InterpolationModeHighQualityBilinear);
 		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 		RECT cacheArea = { 0, 0, cacheWidth, cacheHeight };
@@ -1756,6 +1787,7 @@ void CGroundMapRenderer::ClearCache()
 	HasLastView = false;
 	LastPanChangeTick = 0;
 	LastZoomChangeTick = 0;
+	LastInteractiveRefreshTick = 0;
 }
 
 bool CGroundMapRenderer::RenderAirportMap(
@@ -1827,12 +1859,24 @@ bool CGroundMapRenderer::RenderAirportMap(
 
 	constexpr ULONGLONG panSettleDelayMs = 220;
 	constexpr ULONGLONG zoomSettleDelayMs = 550;
+	constexpr ULONGLONG qualitySettleDelayMs = 180;
+	constexpr ULONGLONG interactiveRefreshIntervalMs = 16;
 	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
 	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
 	const bool interactiveView = panInteractive || zoomInteractive;
+	const ULONGLONG lastInteractionTick = (std::max)(LastPanChangeTick, LastZoomChangeTick);
+	const bool recentlyInteractive =
+		lastInteractionTick != 0 &&
+		nowTick - lastInteractionTick < qualitySettleDelayMs;
 	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView, &radar);
 	if (!context.valid)
 		return false;
+
+	if (context.interactive && nowTick - LastInteractiveRefreshTick >= interactiveRefreshIntervalMs)
+	{
+		LastInteractiveRefreshTick = nowTick;
+		radar.RequestRefresh();
+	}
 
 	const GraphicsState graphicsState = graphics.Save();
 	graphics.SetClip(Gdiplus::Rect(
@@ -1846,7 +1890,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 		graphics.SetSmoothingMode(SmoothingModeNone);
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
 		graphics.SetInterpolationMode(InterpolationModeBilinear);
-		graphics.SetPixelOffsetMode(PixelOffsetModeHighSpeed);
+		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 	}
 	else
 	{
@@ -1863,7 +1907,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 	if (context.interactive)
 	{
 		if (canDrawCachedLayer)
-			DrawVisibleCachedRegion(graphics, CachedLayer, context);
+			DrawVisibleCachedRegion(graphics, CachedLayer, context, recentlyInteractive);
 		else if (CachedLayer.valid && CachedLayer.airport == normalizedAirport)
 			DrawStaleCachedLayer(graphics, CachedLayer, context);
 
@@ -1874,7 +1918,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 	const bool drawIdleCache = !context.interactive && canDrawCachedLayer;
 	if (drawIdleCache)
 	{
-		const bool drewCache = DrawVisibleCachedRegion(graphics, CachedLayer, context);
+		const bool drewCache = DrawVisibleCachedRegion(graphics, CachedLayer, context, recentlyInteractive);
 		if (drewCache)
 		{
 			if (!context.interactive)
