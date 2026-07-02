@@ -2,6 +2,7 @@
 
 #include <GdiPlus.h>
 #include <array>
+#include <deque>
 #include <map>
 #include <memory>
 #include <string>
@@ -76,6 +77,15 @@ public:
 		std::vector<std::size_t> lineIndices;
 		std::vector<std::size_t> pointIndices;
 		std::vector<std::size_t> textIndices;
+		bool hasLocalProjection = false;
+		double originLatitude = 0.0;
+		double originLongitude = 0.0;
+		double latitudeMetersPerDegree = 111320.0;
+		double longitudeMetersPerDegree = 111320.0;
+		double minX = 0.0;
+		double minY = 0.0;
+		double maxX = 0.0;
+		double maxY = 0.0;
 	};
 
 	struct CachedGroundLayer
@@ -92,6 +102,57 @@ public:
 		bool valid = false;
 	};
 
+	struct GroundTileKey
+	{
+		std::string airport;
+		int zoom = 0;
+		int featureZoom = 0;
+		int x = 0;
+		int y = 0;
+		int styleRevision = 100;
+
+		bool operator==(const GroundTileKey& other) const
+		{
+			return airport == other.airport &&
+				zoom == other.zoom &&
+				featureZoom == other.featureZoom &&
+				x == other.x &&
+				y == other.y &&
+				styleRevision == other.styleRevision;
+		}
+
+		bool operator<(const GroundTileKey& other) const
+		{
+			if (airport != other.airport)
+				return airport < other.airport;
+			if (zoom != other.zoom)
+				return zoom < other.zoom;
+			if (featureZoom != other.featureZoom)
+				return featureZoom < other.featureZoom;
+			if (x != other.x)
+				return x < other.x;
+			if (y != other.y)
+				return y < other.y;
+			return styleRevision < other.styleRevision;
+		}
+	};
+
+	struct GroundTile
+	{
+		GroundTileKey key;
+		std::unique_ptr<Gdiplus::Bitmap> bitmap;
+		double minX = 0.0;
+		double minY = 0.0;
+		double maxX = 0.0;
+		double maxY = 0.0;
+		double minLatitude = 0.0;
+		double maxLatitude = 0.0;
+		double minLongitude = 0.0;
+		double maxLongitude = 0.0;
+		bool ready = false;
+		ULONGLONG lastUsed = 0;
+	};
+
 	void ClearCache();
 	bool RenderAirportMap(
 		const std::string& airport,
@@ -105,6 +166,8 @@ public:
 private:
 	std::map<std::string, CacheEntry> AirportMaps;
 	CachedGroundLayer CachedLayer;
+	std::map<GroundTileKey, GroundTile> GroundTiles;
+	std::deque<GroundTileKey> PendingGroundTiles;
 	bool HasLastView = false;
 	RECT LastRadarArea = {};
 	double LastMinLatitude = 0.0;
