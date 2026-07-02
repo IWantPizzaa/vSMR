@@ -113,4 +113,5 @@ private:
 	double LastMaxLongitude = 0.0;
 	ULONGLONG LastPanChangeTick = 0;
 	ULONGLONG LastZoomChangeTick = 0;
+	ULONGLONG LastInteractiveRefreshTick = 0;
 };
