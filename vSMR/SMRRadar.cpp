@@ -152,25 +152,36 @@ namespace
 		return static_cast<float>(std::clamp(width, 0.25, 8.0));
 	}
 
-	bool IsAvisoFeatureVisible(const CSMRRadar::AvisoFeature& feature, const CPosition& displayA, const CPosition& displayB)
-	{
-		const double minLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
-		const double maxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
-		const double minLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
-		const double maxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
-
-		return feature.maxLatitude >= minLat &&
-			feature.minLatitude <= maxLat &&
-			feature.maxLongitude >= minLon &&
-			feature.minLongitude <= maxLon;
-	}
-
 	bool AvisoColorsEqual(const Gdiplus::Color& left, const Gdiplus::Color& right)
 	{
 		return left.GetAlpha() == right.GetAlpha() &&
 			left.GetR() == right.GetR() &&
 			left.GetG() == right.GetG() &&
 			left.GetB() == right.GetB();
+	}
+
+	bool AvisoBatchStyleMatches(const CSMRRadar::AvisoPathBatch& batch, const CSMRRadar::AvisoFeature& feature)
+	{
+		return batch.polygon == feature.polygon &&
+			AvisoColorsEqual(batch.fillColor, feature.fillColor) &&
+			AvisoColorsEqual(batch.strokeColor, feature.strokeColor) &&
+			batch.strokeWidth == feature.strokeWidth;
+	}
+
+	void ExtendAvisoBatchBounds(CSMRRadar::AvisoPathBatch& batch, const CSMRRadar::AvisoFeature& feature)
+	{
+		batch.minLongitude = AvisoMin(batch.minLongitude, feature.minLongitude);
+		batch.maxLongitude = AvisoMax(batch.maxLongitude, feature.maxLongitude);
+		batch.minLatitude = AvisoMin(batch.minLatitude, feature.minLatitude);
+		batch.maxLatitude = AvisoMax(batch.maxLatitude, feature.maxLatitude);
+	}
+
+	bool IsAvisoBatchVisible(const CSMRRadar::AvisoPathBatch& batch, double minLat, double maxLat, double minLon, double maxLon)
+	{
+		return batch.maxLatitude >= minLat &&
+			batch.minLatitude <= maxLat &&
+			batch.maxLongitude >= minLon &&
+			batch.minLongitude <= maxLon;
 	}
 }
 
@@ -428,7 +439,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		return AvisoGeoJsonLoaded;
 	}
 
-	AvisoGeoJsonFeatures.clear();
+	AvisoGeoJsonPathBatches.clear();
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
@@ -492,6 +503,68 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		feature.maxLongitude = AvisoMax(feature.maxLongitude, longitude);
 		feature.minLatitude = AvisoMin(feature.minLatitude, latitude);
 		feature.maxLatitude = AvisoMax(feature.maxLatitude, latitude);
+	};
+
+	auto appendFeatureToPathBatches = [&](const AvisoFeature& feature) {
+		if (feature.paths.empty())
+			return;
+
+		AvisoPathBatch* batch = nullptr;
+		if (!AvisoGeoJsonPathBatches.empty() &&
+			AvisoBatchStyleMatches(AvisoGeoJsonPathBatches.back(), feature))
+		{
+			batch = &AvisoGeoJsonPathBatches.back();
+			ExtendAvisoBatchBounds(*batch, feature);
+		}
+		else
+		{
+			AvisoPathBatch newBatch;
+			newBatch.polygon = feature.polygon;
+			newBatch.path = std::make_unique<GraphicsPath>(FillModeWinding);
+			newBatch.fillColor = feature.fillColor;
+			newBatch.strokeColor = feature.strokeColor;
+			newBatch.strokeWidth = feature.strokeWidth;
+			newBatch.drawOutline =
+				feature.polygon &&
+				feature.strokeColor.GetAlpha() > 0 &&
+				feature.strokeWidth > 0.0f &&
+				!AvisoColorsEqual(feature.fillColor, feature.strokeColor);
+			newBatch.minLongitude = feature.minLongitude;
+			newBatch.maxLongitude = feature.maxLongitude;
+			newBatch.minLatitude = feature.minLatitude;
+			newBatch.maxLatitude = feature.maxLatitude;
+			AvisoGeoJsonPathBatches.push_back(std::move(newBatch));
+			batch = &AvisoGeoJsonPathBatches.back();
+		}
+
+		if (batch == nullptr || batch->path == nullptr)
+			return;
+
+		std::vector<PointF> pathPoints;
+		for (const std::vector<AvisoPoint>& sourcePath : feature.paths)
+		{
+			const size_t minimumPointCount = feature.polygon ? 3 : 2;
+			if (sourcePath.size() < minimumPointCount)
+				continue;
+
+			pathPoints.clear();
+			pathPoints.reserve(sourcePath.size());
+			for (const AvisoPoint& coordinate : sourcePath)
+			{
+				pathPoints.emplace_back(
+					static_cast<REAL>(coordinate.longitude),
+					static_cast<REAL>(coordinate.latitude));
+			}
+
+			if (pathPoints.size() < minimumPointCount)
+				continue;
+
+			batch->path->StartFigure();
+			if (feature.polygon)
+				batch->path->AddPolygon(pathPoints.data(), static_cast<INT>(pathPoints.size()));
+			else
+				batch->path->AddLines(pathPoints.data(), static_cast<INT>(pathPoints.size()));
+		}
 	};
 
 	for (SizeType i = 0; i < features.Size(); ++i)
@@ -589,14 +662,14 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 				AvisoGeoJsonMinLatitude = AvisoMin(AvisoGeoJsonMinLatitude, parsedFeature.minLatitude);
 				AvisoGeoJsonMaxLatitude = AvisoMax(AvisoGeoJsonMaxLatitude, parsedFeature.maxLatitude);
 			}
-			AvisoGeoJsonFeatures.push_back(std::move(parsedFeature));
+			appendFeatureToPathBatches(parsedFeature);
 		}
 	}
 
 	AvisoGeoJsonLoaded = true;
 	Logger::info(
 		"AVISO GeoJSON loaded path=" + path +
-		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
+		" batches=" + std::to_string(AvisoGeoJsonPathBatches.size()) +
 		" polygons=" + std::to_string(polygonCount) +
 		" multilines=" + std::to_string(multiLineCount));
 	return true;
@@ -607,7 +680,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
 	if (path.empty())
 		return;
-	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonFeatures.empty())
+	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonPathBatches.empty())
 		return;
 
 	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
@@ -671,82 +744,54 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	const double scaleX = width / lonSpan;
 	const double scaleY = height / latSpan;
-	auto projectPoint = [&](const AvisoPoint& coordinate) -> PointF
-	{
-		const double x = static_cast<double>(radarArea.left) + ((coordinate.longitude - displayMinLon) * scaleX);
-		const double y = static_cast<double>(radarArea.top) + ((displayMaxLat - coordinate.latitude) * scaleY);
-		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
-	};
+	const REAL transformScaleX = static_cast<REAL>(scaleX);
+	const REAL transformScaleY = static_cast<REAL>(scaleY);
+	const REAL transformDx = static_cast<REAL>(static_cast<double>(radarArea.left) - (displayMinLon * scaleX));
+	const REAL transformDy = static_cast<REAL>(static_cast<double>(radarArea.top) + (displayMaxLat * scaleY));
 
+	GraphicsState state = graphics.Save();
 	graphics.SetSmoothingMode(SmoothingModeNone);
+	graphics.SetClip(
+		Rect(radarArea.left, radarArea.top, radarArea.right - radarArea.left, radarArea.bottom - radarArea.top),
+		CombineModeIntersect);
+	Matrix transform(transformScaleX, 0.0f, 0.0f, -transformScaleY, transformDx, transformDy);
+	graphics.SetTransform(&transform);
 
-	std::vector<PointF> points;
-	for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
+	for (const AvisoPathBatch& batch : AvisoGeoJsonPathBatches)
 	{
-		if (!IsAvisoFeatureVisible(feature, displayA, displayB))
+		if (batch.path == nullptr || batch.path->GetPointCount() == 0)
+			continue;
+		if (!IsAvisoBatchVisible(batch, displayMinLat, displayMaxLat, displayMinLon, displayMaxLon))
 			continue;
 
-		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * scaleX;
-		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * scaleY;
-		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
-			continue;
-
-		if (feature.polygon)
+		if (batch.polygon)
 		{
-			for (const std::vector<AvisoPoint>& ring : feature.paths)
+			if (batch.fillColor.GetAlpha() > 0)
 			{
-				if (ring.size() < 3)
-					continue;
+				SolidBrush fillBrush(batch.fillColor);
+				graphics.FillPath(&fillBrush, batch.path.get());
+			}
 
-				points.clear();
-				points.reserve(ring.size());
-				for (const AvisoPoint& coordinate : ring)
-					points.push_back(projectPoint(coordinate));
-
-				if (points.size() >= 3)
-				{
-					if (feature.fillColor.GetAlpha() > 0)
-					{
-						SolidBrush fillBrush(feature.fillColor);
-						graphics.FillPolygon(&fillBrush, points.data(), static_cast<INT>(points.size()), FillModeAlternate);
-					}
-
-					if (feature.strokeColor.GetAlpha() > 0 &&
-						feature.strokeWidth > 0.0f &&
-						!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
-					{
-						Pen outlinePen(feature.strokeColor, feature.strokeWidth);
-						outlinePen.SetLineJoin(LineJoinRound);
-						graphics.DrawPolygon(&outlinePen, points.data(), static_cast<INT>(points.size()));
-					}
-				}
+			if (batch.drawOutline)
+			{
+				Pen outlinePen(batch.strokeColor, batch.strokeWidth);
+				outlinePen.SetLineJoin(LineJoinRound);
+				graphics.DrawPath(&outlinePen, batch.path.get());
 			}
 			continue;
 		}
 
-		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
+		if (batch.strokeColor.GetAlpha() == 0 || batch.strokeWidth <= 0.0f)
 			continue;
 
-		Pen linePen(feature.strokeColor, feature.strokeWidth);
+		Pen linePen(batch.strokeColor, batch.strokeWidth);
 		linePen.SetLineJoin(LineJoinRound);
 		linePen.SetStartCap(LineCapRound);
 		linePen.SetEndCap(LineCapRound);
-		for (const std::vector<AvisoPoint>& line : feature.paths)
-		{
-			if (line.size() < 2)
-				continue;
-
-			points.clear();
-			points.reserve(line.size());
-			for (const AvisoPoint& coordinate : line)
-				points.push_back(projectPoint(coordinate));
-
-			if (points.size() >= 2)
-				graphics.DrawLines(&linePen, points.data(), static_cast<INT>(points.size()));
-		}
+		graphics.DrawPath(&linePen, batch.path.get());
 	}
 
-	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	graphics.Restore(state);
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
