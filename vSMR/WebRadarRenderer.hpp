@@ -24,7 +24,15 @@ public:
 			return false;
 
 		if (!ResolveContentRoot(dllPath))
+		{
+			if (!MissingAssetsLogged)
+			{
+				Logger::info("WebRadarRenderer: web assets not found beside DLL or repository source tree");
+				MissingAssetsLogged = true;
+			}
 			return false;
+		}
+		MissingAssetsLogged = false;
 
 		ParentWindow = parentWindow;
 		LastBounds = bounds;
@@ -41,10 +49,6 @@ public:
 
 		CreationStarted = true;
 		const std::wstring userDataFolder = ContentRoot + L"\\WebView2UserData";
-
-		HRESULT initResult = ::OleInitialize(nullptr);
-		if (SUCCEEDED(initResult))
-			OleInitialized = true;
 
 		HRESULT result = CreateCoreWebView2EnvironmentWithOptions(
 			nullptr,
@@ -88,7 +92,37 @@ public:
 								}
 
 								if (WebView)
+								{
+									EventRegistrationToken messageToken = {};
+									WebView->add_WebMessageReceived(
+										Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+											[](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
+											{
+												LPWSTR json = nullptr;
+												if (args != nullptr && SUCCEEDED(args->get_WebMessageAsJson(&json)) && json != nullptr)
+												{
+													Logger::info("WebRadarRenderer: web message " + CWebRadarRenderer::WideToUtf8(json));
+													::CoTaskMemFree(json);
+												}
+												return S_OK;
+											}).Get(),
+										&messageToken);
+
+									EventRegistrationToken navigationToken = {};
+									WebView->add_NavigationCompleted(
+										Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>(
+											[](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT
+											{
+												BOOL success = FALSE;
+												if (args != nullptr)
+													args->get_IsSuccess(&success);
+												Logger::info(std::string("WebRadarRenderer: navigation completed success=") + (success ? "true" : "false"));
+												return S_OK;
+											}).Get(),
+										&navigationToken);
+
 									WebView->Navigate(NavigationUri.c_str());
+								}
 
 								CreationStarted = false;
 								return S_OK;
@@ -121,15 +155,25 @@ public:
 		WebView.Reset();
 		Environment.Reset();
 		CreationStarted = false;
-
-		if (OleInitialized)
-		{
-			::OleUninitialize();
-			OleInitialized = false;
-		}
 	}
 
 private:
+	static std::string WideToUtf8(const wchar_t* value)
+	{
+		if (value == nullptr || value[0] == L'\0')
+			return std::string();
+
+		const int length = ::WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+		if (length <= 0)
+			return std::string();
+
+		std::string result(static_cast<size_t>(length), '\0');
+		::WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(), length, nullptr, nullptr);
+		if (!result.empty() && result.back() == '\0')
+			result.pop_back();
+		return result;
+	}
+
 	static std::wstring ToWide(const std::string& value)
 	{
 		if (value.empty())
@@ -186,5 +230,5 @@ private:
 	std::wstring ContentRoot;
 	std::wstring NavigationUri;
 	bool CreationStarted = false;
-	bool OleInitialized = false;
+	bool MissingAssetsLogged = false;
 };
