@@ -106,7 +106,6 @@ public:
 	{
 		std::string airport;
 		int zoom = 0;
-		int featureZoom = 0;
 		int x = 0;
 		int y = 0;
 		int styleRevision = 100;
