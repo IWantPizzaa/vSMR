@@ -1269,17 +1269,45 @@ namespace
 		RenderContext& context,
 		Graphics& graphics,
 		const CGroundMapRenderer::Feature& feature,
-		int lodIndex,
 		CColorManager* colorManager,
 		RenderPassResources& resources)
 	{
-		if (lodIndex < 0 || lodIndex >= static_cast<int>(feature.geoPaths.size()) || feature.geoPaths[lodIndex] == nullptr)
+		GraphicsPath projectedPath(FillModeAlternate);
+		std::vector<PointF> projectedPoints;
+
+		for (const auto& ring : feature.paths)
+		{
+			if (ring.size() < 3)
+				continue;
+
+			projectedPoints.clear();
+			projectedPoints.reserve(ring.size());
+			for (const CGroundMapRenderer::Coordinate& coordinate : ring)
+				projectedPoints.push_back(context.ToPointF(coordinate));
+
+			if (projectedPoints.size() > 3 &&
+				SquaredDistance(projectedPoints.front(), projectedPoints.back()) < 0.01)
+			{
+				projectedPoints.pop_back();
+			}
+
+			if (projectedPoints.size() >= 3)
+				projectedPath.AddPolygon(projectedPoints.data(), static_cast<INT>(projectedPoints.size()));
+		}
+
+		if (projectedPath.GetPointCount() == 0)
 			return;
 
 		if (feature.style.fillEnabled && feature.style.fill.GetAlpha() > 0)
 		{
 			SolidBrush& fillBrush = GetCachedBrush(resources, CorrectColor(colorManager, "symbol", feature.style.fill));
-			graphics.FillPath(&fillBrush, feature.geoPaths[lodIndex].get());
+			graphics.FillPath(&fillBrush, &projectedPath);
+		}
+
+		if (feature.style.strokeEnabled && feature.style.stroke.GetAlpha() > 0)
+		{
+			Pen& strokePen = GetCachedPen(resources, CorrectColor(colorManager, "symbol", feature.style.stroke), feature.style.strokeWidth);
+			graphics.DrawPath(&strokePen, &projectedPath);
 		}
 	}
 
@@ -1387,12 +1415,15 @@ namespace
 		const int lodIndex = feature.kind == CGroundMapRenderer::FeatureKind::Polygon ?
 			3 :
 			SelectLodIndexForZoom(feature, context.zoomLevel, context.interactive);
-		const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& selectedPaths = SelectPathsForLod(feature, lodIndex);
+		const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& selectedPaths =
+			feature.kind == CGroundMapRenderer::FeatureKind::Polygon ?
+			feature.paths :
+			SelectPathsForLod(feature, lodIndex);
 		if (selectedPaths.empty())
 			return;
 
 		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
-			RenderPolygonFeature(context, graphics, feature, lodIndex, colorManager, resources);
+			RenderPolygonFeature(context, graphics, feature, colorManager, resources);
 		else if (feature.kind == CGroundMapRenderer::FeatureKind::Line)
 			RenderLineFeature(context, graphics, feature, selectedPaths, colorManager, resources);
 		else
@@ -1414,12 +1445,13 @@ namespace
 	constexpr int kMaximumCacheBitmapDimension = 4096;
 	constexpr double kPreferredCacheQualityScale = 1.25;
 	constexpr int kGroundTileLogicalSize = 512;
-	constexpr int kGroundTileContentSize = 768;
+	constexpr int kGroundTileContentSize = 512;
 	constexpr int kGroundTileGutter = 3;
 	constexpr int kGroundTileBitmapSize = kGroundTileContentSize + kGroundTileGutter * 2;
 	constexpr int kMaximumGroundTileZoom = 8;
 	constexpr double kGroundTileBasePixelsPerMeter = 0.125;
-	constexpr size_t kMaximumGroundTiles = 96;
+	constexpr size_t kMaximumGroundTiles = 24;
+	constexpr size_t kMaximumPendingGroundTiles = 128;
 
 	struct CacheDimensions
 	{
@@ -1745,16 +1777,13 @@ namespace
 		bool drawText)
 	{
 		RenderPassResources resources;
-		Matrix geoTransform = context.BuildGeoTransform();
 
-		graphics.SetTransform(&geoTransform);
 		for (std::size_t featureIndex : entry.polygonIndices)
 		{
 			if (featureIndex < entry.features.size())
 				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
 		}
 
-		graphics.ResetTransform();
 		if (!drawNonPolygonFeatures)
 			return;
 
@@ -2019,6 +2048,27 @@ namespace
 			const TileRange detailRange = CalculateGroundTileRange(entry, context, tileZoom + 1, 0);
 			QueueGroundTileRange(entry, airport, tileZoom + 1, FeatureZoomForTileZoom(tileZoom + 1), styleRevision, detailRange, tiles, pendingTiles, false);
 		}
+	}
+
+	void PrunePendingGroundTiles(
+		std::deque<CGroundMapRenderer::GroundTileKey>& pendingTiles,
+		const std::string& airport,
+		int currentTileZoom,
+		int styleRevision)
+	{
+		pendingTiles.erase(
+			std::remove_if(
+				pendingTiles.begin(),
+				pendingTiles.end(),
+				[&](const CGroundMapRenderer::GroundTileKey& key) {
+					return key.airport != airport ||
+						key.styleRevision != styleRevision ||
+						key.zoom > currentTileZoom + 1;
+				}),
+			pendingTiles.end());
+
+		while (pendingTiles.size() > kMaximumPendingGroundTiles)
+			pendingTiles.pop_back();
 	}
 
 	int FloorDivideByTwo(int value)
@@ -2420,10 +2470,20 @@ void CGroundMapRenderer::ClearCache()
 	CachedLayer = CachedGroundLayer();
 	GroundTiles.clear();
 	PendingGroundTiles.clear();
+	DeferredRefreshNeeded = false;
 	HasLastView = false;
 	LastPanChangeTick = 0;
 	LastZoomChangeTick = 0;
 	LastInteractiveRefreshTick = 0;
+}
+
+bool CGroundMapRenderer::ConsumeDeferredRefresh()
+{
+	if (!DeferredRefreshNeeded)
+		return false;
+
+	DeferredRefreshNeeded = false;
+	return true;
 }
 
 bool CGroundMapRenderer::RenderAirportMap(
@@ -2435,6 +2495,20 @@ bool CGroundMapRenderer::RenderAirportMap(
 	const RECT& radarArea,
 	CColorManager* colorManager)
 {
+	if (RenderInProgress)
+		return true;
+
+	RenderInProgress = true;
+	struct RenderFlagGuard
+	{
+		bool& flag;
+		~RenderFlagGuard()
+		{
+			flag = false;
+		}
+	};
+	RenderFlagGuard renderGuard{ RenderInProgress };
+
 	const std::string normalizedAirport = ToUpperCopy(TrimAsciiWhitespace(airport));
 	if (!EnsureAirportLoaded(AirportMaps, normalizedAirport, dllPath))
 		return false;
@@ -2511,7 +2585,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 	if (context.interactive && nowTick - LastInteractiveRefreshTick >= interactiveRefreshIntervalMs)
 	{
 		LastInteractiveRefreshTick = nowTick;
-		radar.RequestRefresh();
+		DeferredRefreshNeeded = true;
 	}
 
 	const GraphicsState graphicsState = graphics.Save();
@@ -2538,6 +2612,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 
 	const int styleRevision = GroundMapStyleRevision(colorManager);
 	const int tileZoom = SelectGroundTileZoom(context, mapIt->second);
+	PrunePendingGroundTiles(PendingGroundTiles, normalizedAirport, tileZoom, styleRevision);
 	QueueGroundTilesForView(
 		mapIt->second,
 		normalizedAirport,
@@ -2546,6 +2621,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 		styleRevision,
 		GroundTiles,
 		PendingGroundTiles);
+	PrunePendingGroundTiles(PendingGroundTiles, normalizedAirport, tileZoom, styleRevision);
 
 	if (!context.interactive)
 	{
@@ -2559,7 +2635,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 			styleRevision,
 			nowTick);
 		if (builtTiles > 0)
-			radar.RequestRefresh();
+			DeferredRefreshNeeded = true;
 	}
 
 	const bool drewTiles = DrawVisibleGroundTiles(
