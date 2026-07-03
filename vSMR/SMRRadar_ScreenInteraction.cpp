@@ -2,7 +2,6 @@
 #include "Resource.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
-#include "EuroScopeCallbackGuard.hpp"
 
 extern CPoint mouseLocation;
 extern string TagBeingDragged;
@@ -11,8 +10,6 @@ extern bool standardCursor;
 extern bool customCursor;
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRRadar::OnMoveScreenObject type=" + std::to_string(ObjectType), [&]() {
 	Logger::info(string(__FUNCSIG__));
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
 	const char* objectId = hasObjectId ? sObjectId : "";
@@ -230,23 +227,17 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	mouseLocation = Pt;
 	RequestRefresh();
 
-	});
 }
 
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRRadar::OnOverScreenObject type=" + std::to_string(ObjectType), [&]() {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
 	RequestRefresh();
-	});
 }
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRRadar::OnClickScreenObject type=" + std::to_string(ObjectType), [&]() {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
@@ -726,6 +717,5 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	}
 
 	RequestRefresh();
-	});
 };
 

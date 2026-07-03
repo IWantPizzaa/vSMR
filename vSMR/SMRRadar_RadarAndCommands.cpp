@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
-#include "EuroScopeCallbackGuard.hpp"
 
 void CSMRRadar::RefreshAirportActivity(void) {
 	Logger::info(string(__FUNCSIG__));
@@ -28,8 +27,6 @@ void CSMRRadar::RefreshAirportActivity(void) {
 
 void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRRadar::OnRadarTargetPositionUpdate", [&]() {
 	Logger::info(string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
 		return;
@@ -161,7 +158,6 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 			lastPoint = newPoint;
 		}
 	}
-	});
 }
 
 string CSMRRadar::GetBottomLine(const char * Callsign) {
@@ -231,8 +227,6 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 
 bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	return vsmr::RunEuroScopeCallbackOr<bool>("CSMRRadar::OnCompileCommand", false, [&]() -> bool {
 	Logger::info(string(__FUNCSIG__));
 	if (sCommandLine == nullptr)
 		return false;
@@ -264,13 +258,10 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 
 
 	return false;
-	});
 }
 
 void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRRadar::OnFlightPlanDisconnect", [&]() {
 	Logger::info(string(__FUNCSIG__));
 	if (!FlightPlan.IsValid() || FlightPlan.GetCallsign() == nullptr || FlightPlan.GetCallsign()[0] == '\0')
 		return;
@@ -291,5 +282,4 @@ void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		else
 			++itr;
 	}
-	});
 }

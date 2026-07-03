@@ -78,9 +78,6 @@
     <ClCompile Include="SMRRadar_ProfileEditorWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="GroundMap.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -156,9 +153,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ProfileEditorDialog.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="GroundMap.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
