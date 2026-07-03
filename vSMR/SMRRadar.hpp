@@ -188,7 +188,20 @@ public:
 		double maxLongitude = 0.0;
 		double maxLatitude = 0.0;
 	};
-	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
+	struct AvisoPathBatch
+	{
+		bool polygon = false;
+		std::unique_ptr<Gdiplus::GraphicsPath> path;
+		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
+		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
+		float strokeWidth = 1.0f;
+		bool drawOutline = false;
+		double minLongitude = 0.0;
+		double minLatitude = 0.0;
+		double maxLongitude = 0.0;
+		double maxLatitude = 0.0;
+	};
+	std::vector<AvisoPathBatch> AvisoGeoJsonPathBatches;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
