@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -2025,10 +2026,11 @@ namespace
 		const TileRange visibleRange = CalculateGroundTileRange(entry, context, tileZoom, 0);
 		QueueGroundTileRange(entry, airport, tileZoom, FeatureZoomForTileZoom(tileZoom), styleRevision, visibleRange, tiles, pendingTiles, true);
 
-		for (int parentZoom = tileZoom - 1; parentZoom >= 0; --parentZoom)
+		if (tileZoom > 0)
 		{
+			const int parentZoom = tileZoom - 1;
 			const TileRange parentRange = CalculateGroundTileRange(entry, context, parentZoom, 0);
-			QueueGroundTileRange(entry, airport, parentZoom, FeatureZoomForTileZoom(parentZoom), styleRevision, parentRange, tiles, pendingTiles, true);
+			QueueGroundTileRange(entry, airport, parentZoom, FeatureZoomForTileZoom(parentZoom), styleRevision, parentRange, tiles, pendingTiles, false);
 		}
 
 		const TileRange neighbourRange = CalculateGroundTileRange(entry, context, tileZoom, 1);
@@ -2356,12 +2358,13 @@ namespace
 		int styleRevision,
 		ULONGLONG nowTick)
 	{
-		constexpr int maximumTilesPerFrame = 1;
+		constexpr double tileBuildBudgetMs = 4.0;
+		const auto buildStart = std::chrono::steady_clock::now();
 		int builtTiles = 0;
 		size_t attempts = 0;
 		const size_t maximumAttempts = pendingTiles.size();
 
-		while (builtTiles < maximumTilesPerFrame && !pendingTiles.empty() && attempts < maximumAttempts)
+		while (!pendingTiles.empty() && attempts < maximumAttempts)
 		{
 			CGroundMapRenderer::GroundTileKey key = pendingTiles.front();
 			pendingTiles.pop_front();
@@ -2382,6 +2385,11 @@ namespace
 
 			tiles.emplace(key, std::move(tile));
 			++builtTiles;
+
+			const double elapsedMs = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - buildStart).count();
+			if (elapsedMs >= tileBuildBudgetMs)
+				break;
 		}
 
 		if (builtTiles > 0)
@@ -2534,8 +2542,8 @@ bool CGroundMapRenderer::RenderAirportMap(
 	LastMinLongitude = currentMinLongitude;
 	LastMaxLongitude = currentMaxLongitude;
 
-	constexpr ULONGLONG panSettleDelayMs = 220;
-	constexpr ULONGLONG zoomSettleDelayMs = 550;
+	constexpr ULONGLONG panSettleDelayMs = 120;
+	constexpr ULONGLONG zoomSettleDelayMs = 180;
 	constexpr ULONGLONG qualitySettleDelayMs = 180;
 	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
 	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
