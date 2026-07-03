@@ -24,6 +24,7 @@
 #include <ctime>
 #include "ColorManager.h"
 #include "Logger.h"
+#include "EuroScopeCallbackGuard.hpp"
 #include <filesystem>
 #include <iostream>
 
@@ -716,6 +717,8 @@ public:
 	// -> we can't delete CurrentConfig just yet otherwise we can't save the active profile
 	inline virtual void OnAsrContentToBeClosed(void)
 	{
+		AFX_MANAGE_STATE(AfxGetStaticModuleState());
+		vsmr::RunEuroScopeCallback("CSMRRadar::OnAsrContentToBeClosed", [&]() {
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
 
@@ -735,5 +738,6 @@ public:
 		}
 
 		delete this;
+		});
 	};
 };

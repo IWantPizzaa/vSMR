@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "EuroScopeCallbackGuard.hpp"
 
 Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw) {
 	std::string ac = acTypeRaw;
@@ -217,6 +218,8 @@ void CSMRRadar::LoadAircraftSpecs() {
 
 void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	vsmr::RunEuroScopeCallback("CSMRRadar::OnAsrContentLoaded", [&]() {
 	Logger::info(string(__FUNCSIG__));
 	AirportPositionsCacheValid = false;
 	const char * p_value;
@@ -332,10 +335,13 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	}
 
 	// ReSharper restore CppZeroConstantCanBeReplacedWithNullptr
+	});
 }
 
 void CSMRRadar::OnAsrContentToBeSaved()
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	vsmr::RunEuroScopeCallback("CSMRRadar::OnAsrContentToBeSaved", [&]() {
 	Logger::info(string(__FUNCSIG__));
 
 	SaveDataToAsr("Airport", "Active airport for RIMCAS", getActiveAirport().c_str());
@@ -393,6 +399,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 			to_save = "1";
 		SaveDataToAsr(string(prefix + "Display").c_str(), "Display Secondary Radar Window", to_save.c_str());
 	}	
+	});
 }
 
 
