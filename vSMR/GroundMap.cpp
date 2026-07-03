@@ -1448,7 +1448,7 @@ namespace
 	constexpr int kGroundTileContentSize = 512;
 	constexpr int kGroundTileGutter = 3;
 	constexpr int kGroundTileBitmapSize = kGroundTileContentSize + kGroundTileGutter * 2;
-	constexpr int kMaximumGroundTileZoom = 8;
+	constexpr int kMaximumGroundTileZoom = 6;
 	constexpr double kGroundTileBasePixelsPerMeter = 0.125;
 	constexpr size_t kMaximumGroundTiles = 24;
 	constexpr size_t kMaximumPendingGroundTiles = 128;
@@ -2470,20 +2470,9 @@ void CGroundMapRenderer::ClearCache()
 	CachedLayer = CachedGroundLayer();
 	GroundTiles.clear();
 	PendingGroundTiles.clear();
-	DeferredRefreshNeeded = false;
 	HasLastView = false;
 	LastPanChangeTick = 0;
 	LastZoomChangeTick = 0;
-	LastInteractiveRefreshTick = 0;
-}
-
-bool CGroundMapRenderer::ConsumeDeferredRefresh()
-{
-	if (!DeferredRefreshNeeded)
-		return false;
-
-	DeferredRefreshNeeded = false;
-	return true;
 }
 
 bool CGroundMapRenderer::RenderAirportMap(
@@ -2570,7 +2559,6 @@ bool CGroundMapRenderer::RenderAirportMap(
 	constexpr ULONGLONG panSettleDelayMs = 220;
 	constexpr ULONGLONG zoomSettleDelayMs = 550;
 	constexpr ULONGLONG qualitySettleDelayMs = 180;
-	constexpr ULONGLONG interactiveRefreshIntervalMs = 16;
 	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
 	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
 	const bool interactiveView = panInteractive || zoomInteractive;
@@ -2581,12 +2569,6 @@ bool CGroundMapRenderer::RenderAirportMap(
 	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView, &radar);
 	if (!context.valid)
 		return false;
-
-	if (context.interactive && nowTick - LastInteractiveRefreshTick >= interactiveRefreshIntervalMs)
-	{
-		LastInteractiveRefreshTick = nowTick;
-		DeferredRefreshNeeded = true;
-	}
 
 	const GraphicsState graphicsState = graphics.Save();
 	graphics.SetClip(Gdiplus::Rect(
@@ -2625,7 +2607,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 
 	if (!context.interactive)
 	{
-		const int builtTiles = BuildQueuedGroundTiles(
+		BuildQueuedGroundTiles(
 			GroundTiles,
 			PendingGroundTiles,
 			normalizedAirport,
@@ -2634,8 +2616,6 @@ bool CGroundMapRenderer::RenderAirportMap(
 			colorManager,
 			styleRevision,
 			nowTick);
-		if (builtTiles > 0)
-			DeferredRefreshNeeded = true;
 	}
 
 	const bool drewTiles = DrawVisibleGroundTiles(
