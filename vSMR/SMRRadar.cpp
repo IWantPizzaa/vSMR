@@ -357,6 +357,8 @@ void CSMRRadar::ReloadConfig() {
 	RadarViewZoomLevel = -1;
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
+	PendingSectorMapUpdate = PendingMapUpdate();
+	AppliedSectorElementVisibility.clear();
 	AirportPositionsCacheValid = false;
 	ReloadGroundMaps();
 	RequestRefresh();
@@ -366,6 +368,182 @@ void CSMRRadar::ReloadGroundMaps()
 {
 	if (GroundMapRenderer != nullptr)
 		GroundMapRenderer->ClearCache();
+}
+
+void CSMRRadar::QueuePendingSectorMapUpdate(
+	int zoomLevel,
+	const std::string& airport,
+	const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses)
+{
+	const bool pendingTargetChanged =
+		!PendingSectorMapUpdate.pending ||
+		PendingSectorMapUpdate.zoomLevel != zoomLevel ||
+		PendingSectorMapUpdate.airport != airport ||
+		PendingSectorMapUpdate.runwayStatuses != runwayStatuses;
+
+	RadarViewZoomLevel = zoomLevel;
+	if (!pendingTargetChanged)
+		return;
+
+	PendingSectorMapUpdate.pending = true;
+	PendingSectorMapUpdate.zoomLevel = zoomLevel;
+	PendingSectorMapUpdate.airport = airport;
+	PendingSectorMapUpdate.runwayStatuses = runwayStatuses;
+	PendingSectorMapUpdate.lastChangeTick = GetTickCount64();
+}
+
+std::map<std::string, bool> CSMRRadar::BuildSectorElementVisibility(
+	int zoomLevel,
+	const std::string& airport,
+	const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses)
+{
+	std::map<std::string, bool> drawItemMap;
+	if (CurrentConfig == nullptr)
+		return drawItemMap;
+
+	const vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
+	const vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(zoomLevel);
+
+	auto tokenDataStart = [](const string& s, const string& token) -> size_t {
+		const size_t pos = s.find(token);
+		if (pos == string::npos)
+			return string::npos;
+		return pos + token.length() + 1;
+	};
+
+	auto getVectorFromCommaList = [](const string& list) {
+		vector<string> result;
+		size_t start = 0;
+		size_t end = list.find(',');
+		while (end != string::npos) {
+			result.push_back(list.substr(start, end - start));
+			start = end + 1;
+			end = list.find(',', start);
+		}
+		result.push_back(list.substr(start));
+		return result;
+	};
+
+	for (const auto& item : allItems) {
+		const bool present = std::any_of(itemsToDraw.begin(), itemsToDraw.end(),
+			[&](const CConfig::mapData& mapItem) { return mapItem.element == item.element; });
+
+		bool shouldDraw = present;
+		if (present && item.active.size() > 4) {
+			if (item.active.substr(0, 4) != airport)
+				shouldDraw = false;
+
+			if (shouldDraw) {
+				const size_t depPos = tokenDataStart(item.active, "DEP");
+				const size_t arrPos = tokenDataStart(item.active, "ARR");
+				if (depPos != string::npos) {
+					const size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
+					const string depList = item.active.substr(depPos, depEnd - depPos);
+					const vector<string> depRunways = getVectorFromCommaList(depList);
+					for (const auto& runway : depRunways) {
+						const auto statusIt = runwayStatuses.find(runway);
+						if (statusIt == runwayStatuses.end() ||
+							(statusIt->second != CRimcas::RunwayStatus::DEP &&
+								statusIt->second != CRimcas::RunwayStatus::BOTH)) {
+							shouldDraw = false;
+							break;
+						}
+					}
+				}
+
+				if (arrPos != string::npos && shouldDraw) {
+					const string arrList = item.active.substr(arrPos);
+					const vector<string> arrRunways = getVectorFromCommaList(arrList);
+					for (const auto& runway : arrRunways) {
+						const auto statusIt = runwayStatuses.find(runway);
+						if (statusIt == runwayStatuses.end() ||
+							(statusIt->second != CRimcas::RunwayStatus::ARR &&
+								statusIt->second != CRimcas::RunwayStatus::BOTH)) {
+							shouldDraw = false;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		drawItemMap[item.element] = shouldDraw;
+	}
+
+	return drawItemMap;
+}
+
+void CSMRRadar::ApplySectorMapVisibility(
+	int zoomLevel,
+	const std::string& airport,
+	const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses)
+{
+	const std::map<std::string, bool> desiredVisibility =
+		BuildSectorElementVisibility(zoomLevel, airport, runwayStatuses);
+	bool contentChanged = false;
+
+	for (const auto& [elementName, shouldDraw] : desiredVisibility) {
+		const auto previous = AppliedSectorElementVisibility.find(elementName);
+		if (previous != AppliedSectorElementVisibility.end() && previous->second == shouldDraw)
+			continue;
+
+		const size_t slashPos = elementName.find("/");
+		if (slashPos == string::npos) {
+			AppliedSectorElementVisibility[elementName] = shouldDraw;
+			continue;
+		}
+
+		const string category = elementName.substr(0, slashPos);
+		const string name = elementName.substr(slashPos + 1);
+		const int elementCategory = getIntFromCategory(category);
+		if (elementCategory == -1 || name.empty()) {
+			AppliedSectorElementVisibility[elementName] = shouldDraw;
+			continue;
+		}
+
+		bool appliedAny = false;
+		for (CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
+			element.IsValid();
+			element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory))
+		{
+			const char* elementNameRaw = element.GetName();
+			if (elementNameRaw == nullptr || elementNameRaw[0] == '\0')
+				continue;
+
+			if (strncmp(name.c_str(), elementNameRaw, name.size()) == 0) {
+				const char* componentName = element.GetComponentName(0);
+				if (componentName != nullptr) {
+					ShowSectorFileElement(element, componentName, shouldDraw);
+					appliedAny = true;
+				}
+			}
+		}
+
+		AppliedSectorElementVisibility[elementName] = shouldDraw;
+		if (appliedAny)
+			contentChanged = true;
+	}
+
+	if (contentChanged)
+		RefreshMapContent();
+
+	LastMapRunwayStatuses = runwayStatuses;
+	LastMapActiveAirport = airport;
+}
+
+void CSMRRadar::ApplyPendingSectorMapUpdate()
+{
+	if (!PendingSectorMapUpdate.pending)
+		return;
+
+	const ULONGLONG nowTick = GetTickCount64();
+	constexpr ULONGLONG settleDelayMs = 300;
+	if (nowTick - PendingSectorMapUpdate.lastChangeTick < settleDelayMs)
+		return;
+
+	const PendingMapUpdate update = PendingSectorMapUpdate;
+	PendingSectorMapUpdate.pending = false;
+	ApplySectorMapVisibility(update.zoomLevel, update.airport, update.runwayStatuses);
 }
 
 void CSMRRadar::RebuildAirportPositionCache()
@@ -2496,34 +2674,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	VSMR_REFRESH_LOG("Phase != REFRESH_PHASE_BEFORE_TAGS");
 
-	struct Utils {
-		static RECT GetAreaFromText(CDC * dc, string text, POINT Pos) {
-			RECT Area = { Pos.x, Pos.y, Pos.x + dc->GetTextExtent(text.c_str()).cx, Pos.y + dc->GetTextExtent(text.c_str()).cy };
-			return Area;
-		}
-		static string getEnumString(TagTypes type) {
-			if (type == TagTypes::Departure)
-				return "departure";
-			if (type == TagTypes::Arrival)
-				return "arrival";
-			if (type == TagTypes::Uncorrelated)
-				return "uncorrelated";
-			return "airborne";
-		}
-		static vector<string> getVectorFromCommaList(const string& list) {
-			vector<string> result;
-			size_t start = 0;
-			size_t end = list.find(',');
-			while (end != string::npos) {
-				result.push_back(list.substr(start, end - start));
-				start = end + 1;
-				end = list.find(',', start);
-			}
-			result.push_back(list.substr(start));
-			return result;
-		}
-	};
-
 	// Timer each seconds
 	clock_final = clock() - clock_init;
 	double delta_t = (double)clock_final / ((double)CLOCKS_PER_SEC);
@@ -2541,108 +2691,19 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
 	const std::string currentMapAirport = getActiveAirport();
 	const auto& currentRunwayStatuses = RimcasInstance->GetRunwayStatuses();
-	const bool needsMapRefresh =
-		(NewRadarViewZoomLevel != RadarViewZoomLevel) ||
-		(currentMapAirport != LastMapActiveAirport) ||
-		(currentRunwayStatuses != LastMapRunwayStatuses);
+	const bool pendingTargetChanged =
+		PendingSectorMapUpdate.pending &&
+		(PendingSectorMapUpdate.zoomLevel != NewRadarViewZoomLevel ||
+			PendingSectorMapUpdate.airport != currentMapAirport ||
+			PendingSectorMapUpdate.runwayStatuses != currentRunwayStatuses);
+	const bool appliedTargetChanged =
+		!PendingSectorMapUpdate.pending &&
+		(NewRadarViewZoomLevel != RadarViewZoomLevel ||
+			currentMapAirport != LastMapActiveAirport ||
+			currentRunwayStatuses != LastMapRunwayStatuses);
 
-	if (needsMapRefresh) {
-		RadarViewZoomLevel = NewRadarViewZoomLevel;
-		// Draw items based on asr config & zoom level
-		vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
-		vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
-		map<string, bool> drawItemMap;
-
-		auto tokenDataStart = [](const string& s, const string& token) -> size_t {
-			// Find token like "DEP" or "ARR" and return the index right after the token and the following separator (eg. "DEP:")
-			size_t pos = s.find(token);
-			if (pos == string::npos) return string::npos;
-			// token length +1 for separator (':') -> matches previous code's +4 for "DEP" (3) + ':'
-			return pos + token.length() + 1;
-			};
-
-		for (const auto& item : allItems) {
-			// Consider element present if any map entry has the same element name (compare element only).
-			bool present = std::any_of(itemsToDraw.begin(), itemsToDraw.end(),
-				[&](const CConfig::mapData& m) { return m.element == item.element; });
-
-			bool shouldDraw = present;
-
-			// If the item has an "active" definition we need to evaluate DEP/ARR conditions
-			if (present && item.active.size() > 4) {
-				if (item.active.substr(0, 4) != currentMapAirport) {
-					shouldDraw = false;
-				}
-
-				// airport prefix (first 4 chars) must match active airport
-				
-				if (shouldDraw) {
-					size_t depPos = tokenDataStart(item.active, "DEP");
-					size_t arrPos = tokenDataStart(item.active, "ARR");
-					// If DEP present, extract substring between DEP: and ARR: (or end) and check runways
-					if (depPos != string::npos) {
-						size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
-						string depList = item.active.substr(depPos, depEnd - depPos);
-						vector<string> depRunways = Utils::getVectorFromCommaList(depList);
-						for (const auto& rwy : depRunways) {
-							auto it = currentRunwayStatuses.find(rwy);
-							if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
-								shouldDraw = false;
-								break;
-							}
-						}
-					}
-
-					// If ARR present, extract substring after ARR: and check runways
-					if (arrPos != string::npos && shouldDraw) {
-						string arrList = item.active.substr(arrPos);
-						vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
-						for (const auto& rwy : arrRunways) {
-							auto it = currentRunwayStatuses.find(rwy);
-							if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
-								shouldDraw = false;
-								break;
-							}
-						}
-					}
-				}
-			}
-
-			// Always set an entry for this element (avoids missing keys and an empty draw map).
-			drawItemMap[item.element] = shouldDraw;
-		}
-
-		// Now apply the map
-		for (const auto& [elementName, toDraw] : drawItemMap) {
-			size_t slashPos = elementName.find("/");
-			if (slashPos == string::npos) continue;
-			string category = elementName.substr(0, slashPos);
-			string name = elementName.substr(slashPos + 1);
-
-			int elementCategory = getIntFromCategory(category);
-			if (elementCategory == -1) continue;
-			CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
-			while (element.IsValid()) {
-				const char* elementNameRaw = element.GetName();
-				if (elementNameRaw == nullptr || elementNameRaw[0] == '\0')
-				{
-					element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
-					continue;
-				}
-
-				if (strncmp(name.c_str(), elementNameRaw, strlen(name.c_str())) == 0) {
-					const char* componentName = element.GetComponentName(0);
-					if (componentName != nullptr)
-						ShowSectorFileElement(element, componentName, toDraw);
-				}
-				element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
-			}
-		}
-
-		RefreshMapContent();
-		LastMapRunwayStatuses = currentRunwayStatuses;
-		LastMapActiveAirport = currentMapAirport;
-	}
+	if (pendingTargetChanged || appliedTargetChanged)
+		QueuePendingSectorMapUpdate(NewRadarViewZoomLevel, currentMapAirport, currentRunwayStatuses);
 
 
 	if (!QDMenabled && !QDMSelectEnabled)

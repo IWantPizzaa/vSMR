@@ -126,6 +126,19 @@ public:
 	void ReloadConfig();
 	void ReloadGroundMaps();
 	void RebuildAirportPositionCache();
+	void QueuePendingSectorMapUpdate(
+		int zoomLevel,
+		const std::string& airport,
+		const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses);
+	void ApplyPendingSectorMapUpdate();
+	std::map<std::string, bool> BuildSectorElementVisibility(
+		int zoomLevel,
+		const std::string& airport,
+		const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses);
+	void ApplySectorMapVisibility(
+		int zoomLevel,
+		const std::string& airport,
+		const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses);
 
 	static map<string, string> vStripsStands;
 
@@ -157,9 +170,20 @@ public:
 
 	map<string, Patatoide_Points> Patatoides;
 
+	struct PendingMapUpdate
+	{
+		bool pending = false;
+		int zoomLevel = -1;
+		std::string airport;
+		std::map<std::string, CRimcas::RunwayStatus> runwayStatuses;
+		ULONGLONG lastChangeTick = 0;
+	};
+
 	int RadarViewZoomLevel = 0;
 	std::map<std::string, CRimcas::RunwayStatus> LastMapRunwayStatuses;
 	std::string LastMapActiveAirport;
+	PendingMapUpdate PendingSectorMapUpdate;
+	std::map<std::string, bool> AppliedSectorElementVisibility;
 
 	map<string, bool> ClosedRunway;
 

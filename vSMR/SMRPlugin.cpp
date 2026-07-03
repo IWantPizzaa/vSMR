@@ -2347,6 +2347,12 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 void CSMRPlugin::OnTimer(int Counter)
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	for (auto* radarScreen : RadarScreensOpened)
+	{
+		if (radarScreen != nullptr)
+			radarScreen->ApplyPendingSectorMapUpdate();
+	}
+
 	vsmr::RunEuroScopeCallback("CSMRPlugin::OnTimer", [&]() {
 	(void)Counter;
 	Logger::info(string(__FUNCSIG__));
