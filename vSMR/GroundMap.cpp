@@ -1453,10 +1453,10 @@ namespace
 
 	constexpr int kMaximumCacheBitmapDimension = 3072;
 	constexpr double kPreferredCacheQualityScale = 1.0;
-	constexpr int kMaximumStaticAtlasBitmapDimension = 4096;
-	constexpr double kPreferredStaticAtlasPixelsPerMeter = 0.45;
+	constexpr int kMaximumStaticAtlasBitmapDimension = 6144;
+	constexpr double kPreferredStaticAtlasPixelsPerMeter = 0.85;
 	constexpr double kStaticAtlasMarginMeters = 180.0;
-	constexpr int kStaticAtlasStyleRevision = 1;
+	constexpr int kStaticAtlasStyleRevision = 2;
 	constexpr int kGroundTileLogicalSize = 512;
 	constexpr int kGroundTileContentSize = 512;
 	constexpr int kGroundTileGutter = 3;
@@ -1748,7 +1748,7 @@ namespace
 
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
 		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(fastInteraction ? InterpolationModeNearestNeighbor : InterpolationModeLowQuality);
+		graphics.SetInterpolationMode(fastInteraction ? InterpolationModeBilinear : InterpolationModeHighQualityBilinear);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
