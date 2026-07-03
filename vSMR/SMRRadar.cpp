@@ -6,6 +6,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <cctype>
+#include <limits>
 #include "rapidjson/document.h"
 #include "SMRRadar_TagShared.hpp"
 #include "ProfileEditorDialog.hpp"
@@ -45,6 +46,123 @@ namespace
 		{
 			return "vSMR_LastActiveProfile.txt";
 		}
+	}
+
+	std::string TrimAvisoAirportCode(const std::string& value)
+	{
+		size_t start = 0;
+		while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0)
+			++start;
+
+		size_t end = value.size();
+		while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0)
+			--end;
+
+		return value.substr(start, end - start);
+	}
+
+	double AvisoMin(double left, double right)
+	{
+		return left < right ? left : right;
+	}
+
+	double AvisoMax(double left, double right)
+	{
+		return left > right ? left : right;
+	}
+
+	std::string ToUpperAscii(std::string value)
+	{
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+			return static_cast<char>(std::toupper(c));
+		});
+		return value;
+	}
+
+	bool TryParseHexByte(const char* text, unsigned int& value)
+	{
+		if (text == nullptr)
+			return false;
+
+		value = 0;
+		for (int i = 0; i < 2; ++i)
+		{
+			const char c = text[i];
+			unsigned int digit = 0;
+			if (c >= '0' && c <= '9')
+				digit = static_cast<unsigned int>(c - '0');
+			else if (c >= 'a' && c <= 'f')
+				digit = static_cast<unsigned int>(c - 'a' + 10);
+			else if (c >= 'A' && c <= 'F')
+				digit = static_cast<unsigned int>(c - 'A' + 10);
+			else
+				return false;
+			value = (value << 4) | digit;
+		}
+		return true;
+	}
+
+	Gdiplus::Color ParseAvisoColor(const Value* properties, const char* colorProperty, const char* opacityProperty, const Gdiplus::Color& fallback)
+	{
+		if (properties == nullptr || !properties->IsObject() || colorProperty == nullptr)
+			return fallback;
+
+		if (!properties->HasMember(colorProperty) || !(*properties)[colorProperty].IsString())
+			return fallback;
+
+		const char* hex = (*properties)[colorProperty].GetString();
+		if (hex == nullptr || hex[0] != '#' || std::strlen(hex) != 7)
+			return fallback;
+
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		if (!TryParseHexByte(hex + 1, red) ||
+			!TryParseHexByte(hex + 3, green) ||
+			!TryParseHexByte(hex + 5, blue))
+		{
+			return fallback;
+		}
+
+		double opacity = static_cast<double>(fallback.GetAlpha()) / 255.0;
+		if (opacityProperty != nullptr &&
+			properties->HasMember(opacityProperty) &&
+			(*properties)[opacityProperty].IsNumber())
+		{
+			opacity = (*properties)[opacityProperty].GetDouble();
+		}
+		opacity = std::clamp(opacity, 0.0, 1.0);
+		const BYTE alpha = static_cast<BYTE>(std::lround(opacity * 255.0));
+
+		return Gdiplus::Color(alpha, static_cast<BYTE>(red), static_cast<BYTE>(green), static_cast<BYTE>(blue));
+	}
+
+	float ParseAvisoStrokeWidth(const Value* properties, float fallback)
+	{
+		if (properties == nullptr || !properties->IsObject() ||
+			!properties->HasMember("stroke-width") ||
+			!(*properties)["stroke-width"].IsNumber())
+		{
+			return fallback;
+		}
+
+		const double width = (*properties)["stroke-width"].GetDouble();
+		if (!std::isfinite(width))
+			return fallback;
+		return static_cast<float>(std::clamp(width, 0.25, 8.0));
+	}
+
+	bool IsAvisoFeatureVisible(const CSMRRadar::AvisoFeature& feature, const CPosition& displayA, const CPosition& displayB)
+	{
+		const double minLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
+		const double maxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
+		const double minLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
+		const double maxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
+
+		return feature.maxLatitude >= minLat &&
+			feature.minLatitude <= maxLat &&
+			feature.maxLongitude >= minLon &&
+			feature.minLongitude <= maxLon;
 	}
 }
 
@@ -141,6 +259,12 @@ CSMRRadar::CSMRRadar()
 
 	standardCursor = true;	
 	ActiveAirport = "EGKK";
+	const std::string avisoDefaultAirport = DetectDefaultAirportFromAviso();
+	if (!avisoDefaultAirport.empty())
+	{
+		ActiveAirport = avisoDefaultAirport;
+		Logger::info("CSMRRadar::CSMRRadar() default active airport from AVISO file=" + ActiveAirport);
+	}
 
 	// Setting up the data for the 2 approach windows
 	appWindowDisplays[1] = false;
@@ -178,6 +302,410 @@ CSMRRadar::~CSMRRadar()
 	// Shutting down GDI+
 	if (m_gdiplusToken != 0)
 		GdiplusShutdown(m_gdiplusToken);
+}
+
+std::string CSMRRadar::DetectDefaultAirportFromAviso() const
+{
+	try
+	{
+		if (DllPath.empty())
+			return "";
+
+		const fs::path pluginDirectory(DllPath);
+		if (!fs::exists(pluginDirectory) || !fs::is_directory(pluginDirectory))
+			return "";
+
+		std::set<std::string> airports;
+		for (const auto& entry : fs::directory_iterator(pluginDirectory))
+		{
+			if (!entry.is_regular_file())
+				continue;
+
+			const fs::path path = entry.path();
+			if (ToUpperAscii(path.extension().string()) != ".GEOJSON")
+				continue;
+
+			const std::string stem = ToUpperAscii(path.stem().string());
+			const std::string prefix = "AVISO_";
+			if (stem.rfind(prefix, 0) != 0)
+				continue;
+
+			const std::string airport = stem.substr(prefix.size());
+			if (airport.size() == 4)
+				airports.insert(airport);
+		}
+
+		if (airports.size() == 1)
+			return *airports.begin();
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info("DetectDefaultAirportFromAviso exception: " + std::string(ex.what()));
+	}
+	catch (...)
+	{
+		Logger::info("DetectDefaultAirportFromAviso exception: unknown");
+	}
+
+	return "";
+}
+
+std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const
+{
+	const std::string airportUpper = ToUpperAscii(TrimAvisoAirportCode(airport));
+	if (DllPath.empty() || airportUpper.empty())
+		return "";
+
+	const fs::path pluginDirectory(DllPath);
+	const fs::path exactPath = pluginDirectory / ("AVISO_" + airportUpper + ".geojson");
+	try
+	{
+		if (fs::exists(exactPath) && fs::is_regular_file(exactPath))
+			return exactPath.string();
+
+		if (!fs::exists(pluginDirectory) || !fs::is_directory(pluginDirectory))
+			return "";
+
+		const std::string expectedStem = "AVISO_" + airportUpper;
+		for (const auto& entry : fs::directory_iterator(pluginDirectory))
+		{
+			if (!entry.is_regular_file())
+				continue;
+
+			const fs::path path = entry.path();
+			if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
+				ToUpperAscii(path.stem().string()) == expectedStem)
+			{
+				return path.string();
+			}
+		}
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info("ResolveAvisoGeoJsonPathForAirport exception: " + std::string(ex.what()));
+	}
+	catch (...)
+	{
+		Logger::info("ResolveAvisoGeoJsonPathForAirport exception: unknown");
+	}
+
+	return "";
+}
+
+bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
+{
+	if (path.empty())
+		return false;
+
+	fs::file_time_type writeTime;
+	try
+	{
+		writeTime = fs::last_write_time(path);
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info("AVISO GeoJSON stat failed path=" + path + " error=" + ex.what());
+		return false;
+	}
+	catch (...)
+	{
+		Logger::info("AVISO GeoJSON stat failed path=" + path + " error=unknown");
+		return false;
+	}
+
+	if (AvisoGeoJsonLoadAttempted &&
+		AvisoGeoJsonLoadedPath == path &&
+		AvisoGeoJsonLoadedWriteTime == writeTime)
+	{
+		return AvisoGeoJsonLoaded;
+	}
+
+	AvisoGeoJsonFeatures.clear();
+	AvisoGeoJsonLoadedPath = path;
+	AvisoGeoJsonViewInitializedPath.clear();
+	AvisoGeoJsonLoadedWriteTime = writeTime;
+	AvisoGeoJsonLoadAttempted = true;
+	AvisoGeoJsonLoaded = false;
+	AvisoGeoJsonHasBounds = false;
+	AvisoGeoJsonMinLongitude = 0.0;
+	AvisoGeoJsonMinLatitude = 0.0;
+	AvisoGeoJsonMaxLongitude = 0.0;
+	AvisoGeoJsonMaxLatitude = 0.0;
+
+	std::ifstream input(path, std::ios::binary);
+	if (!input.is_open())
+	{
+		Logger::info("AVISO GeoJSON open failed path=" + path);
+		return false;
+	}
+
+	std::stringstream buffer;
+	buffer << input.rdbuf();
+	const std::string json = buffer.str();
+
+	Document document;
+	if (document.Parse<0>(json.c_str()).HasParseError())
+	{
+		Logger::info(
+			"AVISO GeoJSON parse failed path=" + path +
+			" offset=" + std::to_string(document.GetErrorOffset()) +
+			" error=" + std::string(document.GetParseError()));
+		return false;
+	}
+
+	if (!document.IsObject() ||
+		!document.HasMember("features") ||
+		!document["features"].IsArray())
+	{
+		Logger::info("AVISO GeoJSON has no feature array path=" + path);
+		AvisoGeoJsonLoaded = true;
+		return true;
+	}
+
+	const Value& features = document["features"];
+	size_t polygonCount = 0;
+	size_t multiLineCount = 0;
+
+	auto addPoint = [](const Value& coordinate, AvisoFeature& feature, std::vector<AvisoPoint>& pathPoints) {
+		if (!coordinate.IsArray() || coordinate.Size() < 2 ||
+			!coordinate[static_cast<SizeType>(0)].IsNumber() ||
+			!coordinate[static_cast<SizeType>(1)].IsNumber())
+		{
+			return;
+		}
+
+		const double longitude = coordinate[static_cast<SizeType>(0)].GetDouble();
+		const double latitude = coordinate[static_cast<SizeType>(1)].GetDouble();
+		if (!std::isfinite(longitude) || !std::isfinite(latitude))
+			return;
+
+		pathPoints.push_back({ longitude, latitude });
+		feature.minLongitude = AvisoMin(feature.minLongitude, longitude);
+		feature.maxLongitude = AvisoMax(feature.maxLongitude, longitude);
+		feature.minLatitude = AvisoMin(feature.minLatitude, latitude);
+		feature.maxLatitude = AvisoMax(feature.maxLatitude, latitude);
+	};
+
+	for (SizeType i = 0; i < features.Size(); ++i)
+	{
+		const Value& featureValue = features[i];
+		if (!featureValue.IsObject() ||
+			!featureValue.HasMember("geometry") ||
+			!featureValue["geometry"].IsObject())
+		{
+			continue;
+		}
+
+		const Value& geometry = featureValue["geometry"];
+		if (!geometry.HasMember("type") ||
+			!geometry["type"].IsString() ||
+			!geometry.HasMember("coordinates") ||
+			!geometry["coordinates"].IsArray())
+		{
+			continue;
+		}
+
+		const Value* properties = nullptr;
+		if (featureValue.HasMember("properties") && featureValue["properties"].IsObject())
+			properties = &featureValue["properties"];
+
+		const std::string geometryType = geometry["type"].GetString();
+		const Value& coordinates = geometry["coordinates"];
+
+		AvisoFeature parsedFeature;
+		parsedFeature.fillColor = ParseAvisoColor(properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
+		parsedFeature.strokeColor = ParseAvisoColor(properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
+		parsedFeature.strokeWidth = ParseAvisoStrokeWidth(properties, 1.0f);
+		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();
+		parsedFeature.minLatitude = (std::numeric_limits<double>::max)();
+		parsedFeature.maxLongitude = std::numeric_limits<double>::lowest();
+		parsedFeature.maxLatitude = std::numeric_limits<double>::lowest();
+
+		if (geometryType == "Polygon")
+		{
+			parsedFeature.polygon = true;
+			for (SizeType ringIndex = 0; ringIndex < coordinates.Size(); ++ringIndex)
+			{
+				const Value& ring = coordinates[ringIndex];
+				if (!ring.IsArray())
+					continue;
+
+				std::vector<AvisoPoint> ringPoints;
+				ringPoints.reserve(ring.Size());
+				for (SizeType pointIndex = 0; pointIndex < ring.Size(); ++pointIndex)
+					addPoint(ring[pointIndex], parsedFeature, ringPoints);
+
+				if (ringPoints.size() >= 3)
+					parsedFeature.paths.push_back(std::move(ringPoints));
+			}
+			if (!parsedFeature.paths.empty())
+				++polygonCount;
+		}
+		else if (geometryType == "MultiLineString")
+		{
+			parsedFeature.polygon = false;
+			for (SizeType lineIndex = 0; lineIndex < coordinates.Size(); ++lineIndex)
+			{
+				const Value& line = coordinates[lineIndex];
+				if (!line.IsArray())
+					continue;
+
+				std::vector<AvisoPoint> linePoints;
+				linePoints.reserve(line.Size());
+				for (SizeType pointIndex = 0; pointIndex < line.Size(); ++pointIndex)
+					addPoint(line[pointIndex], parsedFeature, linePoints);
+
+				if (linePoints.size() >= 2)
+					parsedFeature.paths.push_back(std::move(linePoints));
+			}
+			if (!parsedFeature.paths.empty())
+				++multiLineCount;
+		}
+
+		if (!parsedFeature.paths.empty() &&
+			parsedFeature.minLongitude <= parsedFeature.maxLongitude &&
+			parsedFeature.minLatitude <= parsedFeature.maxLatitude)
+		{
+			if (!AvisoGeoJsonHasBounds)
+			{
+				AvisoGeoJsonMinLongitude = parsedFeature.minLongitude;
+				AvisoGeoJsonMaxLongitude = parsedFeature.maxLongitude;
+				AvisoGeoJsonMinLatitude = parsedFeature.minLatitude;
+				AvisoGeoJsonMaxLatitude = parsedFeature.maxLatitude;
+				AvisoGeoJsonHasBounds = true;
+			}
+			else
+			{
+				AvisoGeoJsonMinLongitude = AvisoMin(AvisoGeoJsonMinLongitude, parsedFeature.minLongitude);
+				AvisoGeoJsonMaxLongitude = AvisoMax(AvisoGeoJsonMaxLongitude, parsedFeature.maxLongitude);
+				AvisoGeoJsonMinLatitude = AvisoMin(AvisoGeoJsonMinLatitude, parsedFeature.minLatitude);
+				AvisoGeoJsonMaxLatitude = AvisoMax(AvisoGeoJsonMaxLatitude, parsedFeature.maxLatitude);
+			}
+			AvisoGeoJsonFeatures.push_back(std::move(parsedFeature));
+		}
+	}
+
+	AvisoGeoJsonLoaded = true;
+	Logger::info(
+		"AVISO GeoJSON loaded path=" + path +
+		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
+		" polygons=" + std::to_string(polygonCount) +
+		" multilines=" + std::to_string(multiLineCount));
+	return true;
+}
+
+void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
+{
+	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
+	if (path.empty())
+		return;
+	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonFeatures.empty())
+		return;
+
+	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
+	{
+		CPosition currentDisplayA;
+		CPosition currentDisplayB;
+		GetDisplayArea(&currentDisplayA, &currentDisplayB);
+
+		const double displayMinLat = AvisoMin(currentDisplayA.m_Latitude, currentDisplayB.m_Latitude);
+		const double displayMaxLat = AvisoMax(currentDisplayA.m_Latitude, currentDisplayB.m_Latitude);
+		const double displayMinLon = AvisoMin(currentDisplayA.m_Longitude, currentDisplayB.m_Longitude);
+		const double displayMaxLon = AvisoMax(currentDisplayA.m_Longitude, currentDisplayB.m_Longitude);
+		const bool displayOverlapsAviso =
+			AvisoGeoJsonMaxLatitude >= displayMinLat &&
+			AvisoGeoJsonMinLatitude <= displayMaxLat &&
+			AvisoGeoJsonMaxLongitude >= displayMinLon &&
+			AvisoGeoJsonMinLongitude <= displayMaxLon;
+
+		if (!displayOverlapsAviso)
+		{
+			const double latSpan = AvisoGeoJsonMaxLatitude - AvisoGeoJsonMinLatitude;
+			const double lonSpan = AvisoGeoJsonMaxLongitude - AvisoGeoJsonMinLongitude;
+			const double latPadding = AvisoMax(latSpan * 0.08, 0.001);
+			const double lonPadding = AvisoMax(lonSpan * 0.08, 0.001);
+
+			CPosition leftDown;
+			leftDown.m_Latitude = AvisoGeoJsonMinLatitude - latPadding;
+			leftDown.m_Longitude = AvisoGeoJsonMinLongitude - lonPadding;
+
+			CPosition rightUp;
+			rightUp.m_Latitude = AvisoGeoJsonMaxLatitude + latPadding;
+			rightUp.m_Longitude = AvisoGeoJsonMaxLongitude + lonPadding;
+
+			SetDisplayArea(leftDown, rightUp);
+			Logger::info("AVISO GeoJSON fitted display path=" + path);
+		}
+
+		AvisoGeoJsonViewInitializedPath = path;
+	}
+
+	CPosition displayA;
+	CPosition displayB;
+	GetDisplayArea(&displayA, &displayB);
+
+	std::vector<PointF> points;
+	for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
+	{
+		if (!IsAvisoFeatureVisible(feature, displayA, displayB))
+			continue;
+
+		if (feature.polygon)
+		{
+			GraphicsPath path(FillModeAlternate);
+			for (const std::vector<AvisoPoint>& ring : feature.paths)
+			{
+				if (ring.size() < 3)
+					continue;
+
+				points.clear();
+				points.reserve(ring.size());
+				for (const AvisoPoint& coordinate : ring)
+				{
+					CPosition position;
+					position.m_Latitude = coordinate.latitude;
+					position.m_Longitude = coordinate.longitude;
+					const POINT pixel = ConvertCoordFromPositionToPixel(position);
+					points.emplace_back(static_cast<REAL>(pixel.x), static_cast<REAL>(pixel.y));
+				}
+
+				if (points.size() >= 3)
+					path.AddPolygon(points.data(), static_cast<INT>(points.size()));
+			}
+
+			SolidBrush fillBrush(feature.fillColor);
+			graphics.FillPath(&fillBrush, &path);
+
+			Pen outlinePen(feature.strokeColor, feature.strokeWidth);
+			outlinePen.SetLineJoin(LineJoinRound);
+			graphics.DrawPath(&outlinePen, &path);
+			continue;
+		}
+
+		Pen linePen(feature.strokeColor, feature.strokeWidth);
+		linePen.SetLineJoin(LineJoinRound);
+		linePen.SetStartCap(LineCapRound);
+		linePen.SetEndCap(LineCapRound);
+		for (const std::vector<AvisoPoint>& line : feature.paths)
+		{
+			if (line.size() < 2)
+				continue;
+
+			points.clear();
+			points.reserve(line.size());
+			for (const AvisoPoint& coordinate : line)
+			{
+				CPosition position;
+				position.m_Latitude = coordinate.latitude;
+				position.m_Longitude = coordinate.longitude;
+				const POINT pixel = ConvertCoordFromPositionToPixel(position);
+				points.emplace_back(static_cast<REAL>(pixel.x), static_cast<REAL>(pixel.y));
+			}
+
+			if (points.size() >= 2)
+				graphics.DrawLines(&linePen, points.data(), static_cast<INT>(points.size()));
+		}
+	}
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
@@ -2633,6 +3161,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	RECT RadarArea = GetRadarArea();
 	RECT ChatArea = GetChatArea();
 	RadarArea.bottom = ChatArea.top;
+
+	RenderAvisoGeoJson(graphics);
 
 	AirportPositions.clear();
 

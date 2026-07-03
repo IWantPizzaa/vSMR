@@ -222,7 +222,14 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 
 	// ReSharper disable CppZeroConstantCanBeReplacedWithNullptr
 	if ((p_value = GetDataFromAsr("Airport")) != NULL)
+	{
 		setActiveAirport(p_value);
+		Logger::info("OnAsrContentLoaded: active airport from ASR=" + getActiveAirport());
+	}
+	else
+	{
+		Logger::info("OnAsrContentLoaded: no ASR Airport value; active airport=" + getActiveAirport());
+	}
 
 	std::string loadedProfileName;
 	const std::string persistedProfile = ReadLastActiveProfileFromDisk();
