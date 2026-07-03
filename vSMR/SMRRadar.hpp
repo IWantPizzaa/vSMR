@@ -171,6 +171,34 @@ public:
 	std::map<std::string, AircraftSpec> AircraftSpecs;
 	mutable bool StructuredTagRulesCacheValid = false;
 	mutable std::vector<StructuredTagColorRule> StructuredTagRulesCache;
+	struct AvisoPoint
+	{
+		double longitude = 0.0;
+		double latitude = 0.0;
+	};
+	struct AvisoFeature
+	{
+		bool polygon = false;
+		std::vector<std::vector<AvisoPoint>> paths;
+		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
+		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
+		float strokeWidth = 1.0f;
+		double minLongitude = 0.0;
+		double minLatitude = 0.0;
+		double maxLongitude = 0.0;
+		double maxLatitude = 0.0;
+	};
+	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
+	std::string AvisoGeoJsonLoadedPath;
+	std::string AvisoGeoJsonViewInitializedPath;
+	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
+	bool AvisoGeoJsonLoadAttempted = false;
+	bool AvisoGeoJsonLoaded = false;
+	bool AvisoGeoJsonHasBounds = false;
+	double AvisoGeoJsonMinLongitude = 0.0;
+	double AvisoGeoJsonMinLatitude = 0.0;
+	double AvisoGeoJsonMaxLongitude = 0.0;
+	double AvisoGeoJsonMaxLatitude = 0.0;
 
 	map<string, bool> ShowLists;
 	map<string, RECT> ListAreas;
@@ -477,6 +505,10 @@ public:
 	//---OnRefresh------------------------------------------------------
 
 	virtual void OnRefresh(HDC hDC, int Phase);
+	std::string DetectDefaultAirportFromAviso() const;
+	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
+	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
+	void RenderAvisoGeoJson(Gdiplus::Graphics& graphics);
 	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
 
 	//---OnClickScreenObject-----------------------------------------
