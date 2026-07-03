@@ -22,6 +22,8 @@ public:
 	{
 		if (parentWindow == nullptr || !::IsWindow(parentWindow))
 			return false;
+		if (CreationFailed)
+			return false;
 
 		if (!ResolveContentRoot(dllPath))
 		{
@@ -40,14 +42,15 @@ public:
 		if (Controller)
 		{
 			Controller->put_Bounds(LastBounds);
-			Controller->put_IsVisible(TRUE);
-			return true;
+			Controller->put_IsVisible(PageReady ? TRUE : FALSE);
+			return PageReady;
 		}
 
 		if (CreationStarted)
-			return true;
+			return false;
 
 		CreationStarted = true;
+		PageReady = false;
 		const std::wstring userDataFolder = ContentRoot + L"\\WebView2UserData";
 
 		HRESULT result = CreateCoreWebView2EnvironmentWithOptions(
@@ -61,6 +64,7 @@ public:
 					{
 						Logger::info("WebRadarRenderer: WebView2 environment creation failed");
 						CreationStarted = false;
+						CreationFailed = true;
 						return environmentResult;
 					}
 
@@ -74,12 +78,13 @@ public:
 								{
 									Logger::info("WebRadarRenderer: WebView2 controller creation failed");
 									CreationStarted = false;
+									CreationFailed = true;
 									return controllerResult;
 								}
 
 								Controller = controller;
 								Controller->put_Bounds(LastBounds);
-								Controller->put_IsVisible(TRUE);
+								Controller->put_IsVisible(FALSE);
 								Controller->get_CoreWebView2(&WebView);
 
 								Microsoft::WRL::ComPtr<ICoreWebView2_3> webView3;
@@ -93,33 +98,39 @@ public:
 
 								if (WebView)
 								{
-									EventRegistrationToken messageToken = {};
 									WebView->add_WebMessageReceived(
 										Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
-											[](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
+											[this](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
 											{
 												LPWSTR json = nullptr;
 												if (args != nullptr && SUCCEEDED(args->get_WebMessageAsJson(&json)) && json != nullptr)
 												{
-													Logger::info("WebRadarRenderer: web message " + CWebRadarRenderer::WideToUtf8(json));
+													HandleWebMessage(CWebRadarRenderer::WideToUtf8(json));
 													::CoTaskMemFree(json);
 												}
 												return S_OK;
 											}).Get(),
-										&messageToken);
+										&MessageToken);
+									MessageHandlerRegistered = true;
 
-									EventRegistrationToken navigationToken = {};
 									WebView->add_NavigationCompleted(
 										Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>(
-											[](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT
+											[this](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT
 											{
 												BOOL success = FALSE;
 												if (args != nullptr)
 													args->get_IsSuccess(&success);
 												Logger::info(std::string("WebRadarRenderer: navigation completed success=") + (success ? "true" : "false"));
+												if (!success)
+												{
+													CreationFailed = true;
+													PageReady = false;
+													Hide();
+												}
 												return S_OK;
 											}).Get(),
-										&navigationToken);
+										&NavigationToken);
+									NavigationHandlerRegistered = true;
 
 									WebView->Navigate(NavigationUri.c_str());
 								}
@@ -133,10 +144,16 @@ public:
 		{
 			Logger::info("WebRadarRenderer: CreateCoreWebView2EnvironmentWithOptions failed");
 			CreationStarted = false;
+			CreationFailed = true;
 			return false;
 		}
 
-		return true;
+		return false;
+	}
+
+	bool HasFailed() const
+	{
+		return CreationFailed;
 	}
 
 	void Hide()
@@ -147,6 +164,19 @@ public:
 
 	void Shutdown()
 	{
+		if (WebView)
+		{
+			if (MessageHandlerRegistered)
+			{
+				WebView->remove_WebMessageReceived(MessageToken);
+				MessageHandlerRegistered = false;
+			}
+			if (NavigationHandlerRegistered)
+			{
+				WebView->remove_NavigationCompleted(NavigationToken);
+				NavigationHandlerRegistered = false;
+			}
+		}
 		if (Controller)
 		{
 			Controller->Close();
@@ -155,9 +185,39 @@ public:
 		WebView.Reset();
 		Environment.Reset();
 		CreationStarted = false;
+		PageReady = false;
 	}
 
 private:
+	void HandleWebMessage(const std::string& json)
+	{
+		Logger::info("WebRadarRenderer: web message " + json);
+
+		if (json.find("\"type\":\"geojson-loaded\"") != std::string::npos)
+		{
+			PageReady = true;
+			CreationFailed = false;
+			if (Controller)
+			{
+				Controller->put_Bounds(LastBounds);
+				Controller->put_IsVisible(TRUE);
+			}
+			if (ParentWindow != nullptr && ::IsWindow(ParentWindow))
+				::InvalidateRect(ParentWindow, nullptr, FALSE);
+			return;
+		}
+
+		if (json.find("\"type\":\"geojson-error\"") != std::string::npos ||
+			json.find("\"type\":\"map-error\"") != std::string::npos)
+		{
+			PageReady = false;
+			CreationFailed = true;
+			Hide();
+			if (ParentWindow != nullptr && ::IsWindow(ParentWindow))
+				::InvalidateRect(ParentWindow, nullptr, FALSE);
+		}
+	}
+
 	static std::string WideToUtf8(const wchar_t* value)
 	{
 		if (value == nullptr || value[0] == L'\0')
@@ -229,6 +289,12 @@ private:
 	RECT LastBounds = {};
 	std::wstring ContentRoot;
 	std::wstring NavigationUri;
+	EventRegistrationToken MessageToken = {};
+	EventRegistrationToken NavigationToken = {};
 	bool CreationStarted = false;
+	bool CreationFailed = false;
+	bool PageReady = false;
 	bool MissingAssetsLogged = false;
+	bool MessageHandlerRegistered = false;
+	bool NavigationHandlerRegistered = false;
 };

@@ -20,6 +20,21 @@
             display: none !important;
         }
 
+        #toolbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 20px;
+            box-sizing: border-box;
+            padding: 4px 8px;
+            color: #000;
+            background: #7f7a7a;
+            font: 12px/12px Arial, sans-serif;
+            z-index: 3;
+            user-select: none;
+        }
+
         #status {
             position: absolute;
             left: 10px;
@@ -40,6 +55,7 @@
 </head>
 <body>
 <div id="map"></div>
+<div id="toolbar">LFPG</div>
 <div id="status"></div>
 <script src="vendor/maplibre-gl.js"></script>
 <script>
