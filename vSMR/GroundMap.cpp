@@ -1448,11 +1448,11 @@ namespace
 
 	double CacheOverscanRatio(int zoomLevel)
 	{
-		return zoomLevel <= 5 ? 0.35 : 0.25;
+		return zoomLevel <= 5 ? 0.14 : 0.10;
 	}
 
-	constexpr int kMaximumCacheBitmapDimension = 4096;
-	constexpr double kPreferredCacheQualityScale = 1.25;
+	constexpr int kMaximumCacheBitmapDimension = 3072;
+	constexpr double kPreferredCacheQualityScale = 1.0;
 	constexpr int kGroundTileLogicalSize = 512;
 	constexpr int kGroundTileContentSize = 512;
 	constexpr int kGroundTileGutter = 3;
@@ -1555,9 +1555,26 @@ namespace
 		maxLongitude = context.maxLongitude + longitudeMargin;
 	}
 
-	bool CachedLayerCoversView(const CGroundMapRenderer::CachedGroundLayer& cache, const std::string& airport, const RenderContext& context)
+	bool CachedLayerMatches(
+		const CGroundMapRenderer::CachedGroundLayer& cache,
+		const std::string& airport,
+		int styleRevision)
 	{
-		if (!cache.valid || cache.bitmap == nullptr || cache.airport != airport)
+		return cache.valid &&
+			cache.bitmap != nullptr &&
+			cache.airport == airport &&
+			cache.styleRevision == styleRevision &&
+			cache.width > 0 &&
+			cache.height > 0;
+	}
+
+	bool CachedLayerCoversView(
+		const CGroundMapRenderer::CachedGroundLayer& cache,
+		const std::string& airport,
+		const RenderContext& context,
+		int styleRevision)
+	{
+		if (!CachedLayerMatches(cache, airport, styleRevision))
 			return false;
 
 		const double latitudeEpsilon = (context.maxLatitude - context.minLatitude) * 0.002;
@@ -1568,19 +1585,19 @@ namespace
 			cache.maxLongitude >= context.maxLongitude - longitudeEpsilon;
 	}
 
-	bool CachedLayerNeedsRebuild(const CGroundMapRenderer::CachedGroundLayer& cache, const std::string& airport, const RenderContext& context)
+	bool CachedLayerNeedsRebuild(
+		const CGroundMapRenderer::CachedGroundLayer& cache,
+		const std::string& airport,
+		const RenderContext& context,
+		int styleRevision)
 	{
-		if (!cache.valid ||
-			cache.bitmap == nullptr ||
-			cache.airport != airport ||
-			cache.zoomLevel != context.zoomLevel ||
-			cache.width <= 0 ||
-			cache.height <= 0)
+		if (!CachedLayerMatches(cache, airport, styleRevision) ||
+			cache.zoomLevel != context.zoomLevel)
 		{
 			return true;
 		}
 
-		if (!CachedLayerCoversView(cache, airport, context))
+		if (!CachedLayerCoversView(cache, airport, context, styleRevision))
 			return true;
 
 		const double cacheLatitudeSpan = cache.maxLatitude - cache.minLatitude;
@@ -1588,8 +1605,8 @@ namespace
 		if (cacheLatitudeSpan <= 0.0 || cacheLongitudeSpan <= 0.0)
 			return true;
 
-		const double latitudeGuard = cacheLatitudeSpan * 0.08;
-		const double longitudeGuard = cacheLongitudeSpan * 0.08;
+		const double latitudeGuard = cacheLatitudeSpan * 0.12;
+		const double longitudeGuard = cacheLongitudeSpan * 0.12;
 		const bool nearCacheEdge =
 			context.minLatitude <= cache.minLatitude + latitudeGuard ||
 			context.maxLatitude >= cache.maxLatitude - latitudeGuard ||
@@ -1615,7 +1632,7 @@ namespace
 
 		const double scaleErrorX = std::fabs(cachedLongitudePerPixel / currentLongitudePerPixel - 1.0);
 		const double scaleErrorY = std::fabs(cachedLatitudePerPixel / currentLatitudePerPixel - 1.0);
-		const bool scaleChanged = scaleErrorX > 0.04 || scaleErrorY > 0.04;
+		const bool scaleChanged = scaleErrorX > 0.12 || scaleErrorY > 0.12;
 
 		return nearCacheEdge || scaleChanged;
 	}
@@ -1674,8 +1691,7 @@ namespace
 	bool DrawVisibleCachedRegion(
 		Graphics& graphics,
 		const CGroundMapRenderer::CachedGroundLayer& cache,
-		const RenderContext& context,
-		bool recentlyInteractive)
+		const RenderContext& context)
 	{
 		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
 			return false;
@@ -2429,7 +2445,8 @@ namespace
 		const RenderContext& current,
 		const CGroundMapRenderer::CacheEntry& entry,
 		CDC& dc,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		int styleRevision)
 	{
 		double cacheMinLatitude = 0.0;
 		double cacheMaxLatitude = 0.0;
@@ -2476,6 +2493,7 @@ namespace
 		cache.width = cacheWidth;
 		cache.height = cacheHeight;
 		cache.zoomLevel = current.zoomLevel;
+		cache.styleRevision = styleRevision;
 		cache.minLatitude = cacheMinLatitude;
 		cache.maxLatitude = cacheMaxLatitude;
 		cache.minLongitude = cacheMinLongitude;
@@ -2568,16 +2586,11 @@ bool CGroundMapRenderer::RenderAirportMap(
 	LastMinLongitude = currentMinLongitude;
 	LastMaxLongitude = currentMaxLongitude;
 
-	constexpr ULONGLONG panSettleDelayMs = 260;
-	constexpr ULONGLONG zoomSettleDelayMs = 320;
-	constexpr ULONGLONG qualitySettleDelayMs = 260;
+	constexpr ULONGLONG panSettleDelayMs = 450;
+	constexpr ULONGLONG zoomSettleDelayMs = 600;
 	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
 	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
 	const bool interactiveView = panInteractive || zoomInteractive;
-	const ULONGLONG lastInteractionTick = (std::max)(LastPanChangeTick, LastZoomChangeTick);
-	const bool recentlyInteractive =
-		lastInteractionTick != 0 &&
-		nowTick - lastInteractionTick < qualitySettleDelayMs;
 	RenderContext context(radarArea, displaySW, displayNE, radar.RadarViewZoomLevel, interactiveView, &radar);
 	if (!context.valid)
 		return false;
@@ -2595,68 +2608,37 @@ bool CGroundMapRenderer::RenderAirportMap(
 	graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 	const int styleRevision = GroundMapStyleRevision(colorManager);
-	const int tileZoom = SelectGroundTileZoom(context, mapIt->second);
-	PrunePendingGroundTiles(PendingGroundTiles, normalizedAirport, tileZoom, styleRevision);
-	QueueGroundTilesForView(
-		mapIt->second,
-		normalizedAirport,
-		context,
-		tileZoom,
-		styleRevision,
-		GroundTiles,
-		PendingGroundTiles);
-	PrunePendingGroundTiles(PendingGroundTiles, normalizedAirport, tileZoom, styleRevision);
-	EvictOldGroundTiles(GroundTiles);
-	assert(GroundTiles.size() <= kMaximumGroundTiles);
+	if (!GroundTiles.empty())
+		GroundTiles.clear();
+	if (!PendingGroundTiles.empty())
+		PendingGroundTiles.clear();
 
 	if (context.interactive)
 	{
-		DrawVisibleGroundTiles(
-			graphics,
-			GroundTiles,
-			PendingGroundTiles,
-			normalizedAirport,
-			mapIt->second,
-			context,
-			tileZoom,
-			styleRevision,
-			true,
-			nowTick,
-			false);
+		if (CachedLayerCoversView(CachedLayer, normalizedAirport, context, styleRevision))
+			DrawVisibleCachedRegion(graphics, CachedLayer, context);
+		else if (CachedLayerMatches(CachedLayer, normalizedAirport, styleRevision))
+			DrawStaleCachedLayer(graphics, CachedLayer, context);
 		graphics.Restore(graphicsState);
 		return true;
 	}
 
-	if (!context.interactive)
+	if (CachedLayerNeedsRebuild(CachedLayer, normalizedAirport, context, styleRevision))
 	{
-		BuildQueuedGroundTiles(
-			GroundTiles,
-			PendingGroundTiles,
+		RebuildCachedLayer(
+			CachedLayer,
 			normalizedAirport,
+			context,
 			mapIt->second,
 			dc,
 			colorManager,
-			styleRevision,
-			nowTick);
-		assert(GroundTiles.size() <= kMaximumGroundTiles);
+			styleRevision);
 	}
 
-	const bool drewTiles = DrawVisibleGroundTiles(
-		graphics,
-		GroundTiles,
-		PendingGroundTiles,
-		normalizedAirport,
-		mapIt->second,
-		context,
-		tileZoom,
-		styleRevision,
-		recentlyInteractive,
-		nowTick,
-		true);
-	if (drewTiles)
+	if (CachedLayerCoversView(CachedLayer, normalizedAirport, context, styleRevision) &&
+		DrawVisibleCachedRegion(graphics, CachedLayer, context))
 	{
-		if (!context.interactive)
-			RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
+		RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
 		graphics.Restore(graphicsState);
 		return true;
 	}
