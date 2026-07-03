@@ -115,7 +115,6 @@ public:
 		{
 			return airport == other.airport &&
 				zoom == other.zoom &&
-				featureZoom == other.featureZoom &&
 				x == other.x &&
 				y == other.y &&
 				styleRevision == other.styleRevision;
@@ -127,8 +126,6 @@ public:
 				return airport < other.airport;
 			if (zoom != other.zoom)
 				return zoom < other.zoom;
-			if (featureZoom != other.featureZoom)
-				return featureZoom < other.featureZoom;
 			if (x != other.x)
 				return x < other.x;
 			if (y != other.y)
@@ -154,6 +151,7 @@ public:
 	};
 
 	void ClearCache();
+	bool ConsumeDeferredRefresh();
 	bool RenderAirportMap(
 		const std::string& airport,
 		const std::string& dllPath,
@@ -168,6 +166,8 @@ private:
 	CachedGroundLayer CachedLayer;
 	std::map<GroundTileKey, GroundTile> GroundTiles;
 	std::deque<GroundTileKey> PendingGroundTiles;
+	bool RenderInProgress = false;
+	bool DeferredRefreshNeeded = false;
 	bool HasLastView = false;
 	RECT LastRadarArea = {};
 	double LastMinLatitude = 0.0;
