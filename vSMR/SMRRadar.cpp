@@ -2482,8 +2482,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			RadarArea.bottom = GetChatArea().bottom;
 
 			graphics.FillRectangle(&AlphaBrush, CopyRect(CRect(RadarArea)));
-
-			graphics.ReleaseHDC(hDC);
 		}
 
 		VSMR_REFRESH_LOG("break Phase == REFRESH_PHASE_AFTER_LISTS");
@@ -4201,9 +4199,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	{
 		Logger::info("RenderTags: unknown C++ exception caught");
 	}
-
-	// Releasing the hDC after the drawing
-	graphics.ReleaseHDC(hDC);
 
 	CBrush BrushGrey(RGB(150, 150, 150));
 	COLORREF oldColor = dc.SetTextColor(RGB(33, 33, 33));
