@@ -2493,8 +2493,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			RECT webChatArea = GetChatArea();
 			webRadarArea.bottom = webChatArea.top;
 			HWND parentWindow = (pluginWindow != nullptr && ::IsWindow(pluginWindow)) ? pluginWindow : GetActiveWindow();
-			if (WebRadarRenderer->EnsureVisible(parentWindow, webRadarArea, DllPath))
+			const bool webRadarReady = WebRadarRenderer->EnsureVisible(parentWindow, webRadarArea, DllPath);
+			if (WebRadarRenderer->HasFailed())
+			{
+				WebRadarRendererDisabled = true;
+				WebRadarRenderer.reset();
+			}
+			else if (webRadarReady)
+			{
 				return;
+			}
 		}
 		catch (CException* exception)
 		{
