@@ -113,6 +113,7 @@ struct StructuredTagColorRule
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);
 class CProfileEditorDialog;
 class CInsetWindow;
+class CWebRadarRenderer;
 
 class CSMRRadar :
 	public EuroScopePlugIn::CRadarScreen
@@ -194,6 +195,7 @@ public:
 	map<string, bool> ProfileColorPathHasAlpha;
 	string SelectedProfileColorPath;
 	std::unique_ptr<CProfileEditorDialog> ProfileEditorDialog;
+	std::unique_ptr<CWebRadarRenderer> WebRadarRenderer;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
 	std::string TagDefinitionEditorDepartureStatus = "default";

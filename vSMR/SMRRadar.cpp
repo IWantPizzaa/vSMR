@@ -9,6 +9,7 @@
 #include "rapidjson/document.h"
 #include "SMRRadar_TagShared.hpp"
 #include "ProfileEditorDialog.hpp"
+#include "WebRadarRenderer.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -45,6 +46,42 @@ namespace
 		{
 			return "vSMR_LastActiveProfile.txt";
 		}
+	}
+
+	bool ExistsNoThrow(const fs::path& path)
+	{
+		std::error_code error;
+		return fs::exists(path, error) && !error;
+	}
+
+	bool HasWebRadarAssets(const std::string& dllPath)
+	{
+		const fs::path runtimeRoot(dllPath);
+		const fs::path runtimeWeb = runtimeRoot / "web";
+		const fs::path repositoryWeb = runtimeRoot.parent_path() / "vSMR" / "web";
+
+		auto hasAssets = [](const fs::path& webRoot) {
+			return ExistsNoThrow(webRoot / "map.html") &&
+				ExistsNoThrow(webRoot / "vendor" / "maplibre-gl.js") &&
+				ExistsNoThrow(webRoot / "vendor" / "maplibre-gl.css");
+		};
+
+		return hasAssets(runtimeWeb) || hasAssets(repositoryWeb);
+	}
+
+	bool HasLfpgGeoJson(const std::string& dllPath)
+	{
+		const fs::path runtimeRoot(dllPath);
+		return ExistsNoThrow(runtimeRoot / "AVISO_LFPG.geojson") ||
+			ExistsNoThrow(runtimeRoot.parent_path() / "Release" / "AVISO_LFPG.geojson") ||
+			ExistsNoThrow(runtimeRoot.parent_path() / "vSMR" / "AVISO_LFPG.geojson");
+	}
+
+	bool ShouldUseWebRadarRenderer(const std::string& airport, const std::string& dllPath)
+	{
+		return _stricmp(airport.c_str(), "LFPG") == 0 &&
+			HasWebRadarAssets(dllPath) &&
+			HasLfpgGeoJson(dllPath);
 	}
 }
 
@@ -172,6 +209,7 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
+	WebRadarRenderer.reset();
 	customFonts.clear();
 	appWindows.clear();
 
@@ -2459,6 +2497,23 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		return;
 
 	VSMR_REFRESH_LOG("Phase != REFRESH_PHASE_BEFORE_TAGS");
+
+	if (ShouldUseWebRadarRenderer(getActiveAirport(), DllPath))
+	{
+		if (WebRadarRenderer == nullptr)
+			WebRadarRenderer = std::make_unique<CWebRadarRenderer>();
+
+		RECT webRadarArea = GetRadarArea();
+		RECT webChatArea = GetChatArea();
+		webRadarArea.bottom = webChatArea.top;
+		HWND parentWindow = (pluginWindow != nullptr && ::IsWindow(pluginWindow)) ? pluginWindow : GetActiveWindow();
+		if (WebRadarRenderer->EnsureVisible(parentWindow, webRadarArea, DllPath))
+			return;
+	}
+	else if (WebRadarRenderer != nullptr)
+	{
+		WebRadarRenderer->Hide();
+	}
 
 	struct Utils {
 		static RECT GetAreaFromText(CDC * dc, string text, POINT Pos) {
