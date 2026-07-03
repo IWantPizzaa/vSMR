@@ -163,6 +163,7 @@ public:
 private:
 	std::map<std::string, CacheEntry> AirportMaps;
 	CachedGroundLayer CachedLayer;
+	CachedGroundLayer FastCachedLayer;
 	std::map<GroundTileKey, GroundTile> GroundTiles;
 	std::deque<GroundTileKey> PendingGroundTiles;
 	std::mutex StateMutex;
