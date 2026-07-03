@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "vSMR.hpp"
+#include "EuroScopeCallbackGuard.hpp"
 
 
 #ifdef _DEBUG
@@ -41,8 +42,10 @@ BOOL CvSMRApp::InitInstance()
 
 void __declspec (dllexport) EuroScopePlugInInit(EuroScopePlugIn::CPlugIn** ppPlugInInstance)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState())
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	vsmr::RunEuroScopeCallback("EuroScopePlugInInit", [&]() {
 
 		// create the instance
 		* ppPlugInInstance = theApp.gpMyPlugin = new CSMRPlugin();
+	});
 }
