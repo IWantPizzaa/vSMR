@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "SMRPlugin.hpp"
-#include "EuroScopeCallbackGuard.hpp"
 #include <atomic>
 #include <mutex>
 #include <ctime>
@@ -1652,7 +1651,6 @@ CSMRPlugin::~CSMRPlugin()
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	return vsmr::RunEuroScopeCallbackOr<bool>("CSMRPlugin::OnCompileCommand", false, [&]() -> bool {
 	const std::string command = TrimAsciiWhitespaceCopy(sCommandLine == nullptr ? "" : std::string(sCommandLine));
 	std::string commandLower = command;
 	std::transform(commandLower.begin(), commandLower.end(), commandLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -1693,7 +1691,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			if (rd != nullptr)
 				rd->ReloadConfig();
 		}
-		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json, vSMR_Maps.json and ground GeoJSON files", true, true, false, true, false);
+		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR_Profiles.json and vSMR_Maps.json", true, true, false, true, false);
 		return true;
 	}
 	else if (startsWithCommand(".smr cdm cooldown"))
@@ -2031,12 +2029,9 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		return true;
 	}
 	return false;
-	});
 }
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRPlugin::OnGetTagItem item=" + std::to_string(ItemCode), [&]() {
 	Logger::info(string(__FUNCSIG__));
 	if (ItemCode != TAG_ITEM_DATALINK_STS)
 		return;
@@ -2092,13 +2087,10 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 		strcpy_s(sItemString, 16, "V");
 		return;
 	}
-	});
 }
 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRPlugin::OnFunctionCall function=" + std::to_string(FunctionId), [&]() {
 	Logger::info(string(__FUNCSIG__));
 	if (FunctionId == TAG_FUNC_DATALINK_MENU) {
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
@@ -2309,13 +2301,10 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		}
 
 	}
-	});
 }
 
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("CSMRPlugin::OnFlightPlanDisconnect", [&]() {
 	Logger::info(string(__FUNCSIG__));
 	if (!FlightPlan.IsValid())
 		return;
@@ -2341,19 +2330,10 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 
 	ReleasedTracks.erase(systemId);
 	ManuallyCorrelated.erase(systemId);
-	});
 }
 
 void CSMRPlugin::OnTimer(int Counter)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	for (auto* radarScreen : RadarScreensOpened)
-	{
-		if (radarScreen != nullptr)
-			radarScreen->ApplyPendingSectorMapUpdate();
-	}
-
-	vsmr::RunEuroScopeCallback("CSMRPlugin::OnTimer", [&]() {
 	(void)Counter;
 	Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
@@ -2445,13 +2425,10 @@ void CSMRPlugin::OnTimer(int Counter)
 				}),
 			AircraftWilco.end());
 	}
-	});
 };
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	return vsmr::RunEuroScopeCallbackOr<CRadarScreen*>("CSMRPlugin::OnRadarScreenCreated", nullptr, [&]() -> CRadarScreen* {
 	Logger::info(string(__FUNCSIG__));
 	if (sDisplayName != nullptr && !strcmp(sDisplayName, MY_PLUGIN_VIEW_AVISO)) {
 		CSMRRadar* rd = new CSMRRadar();
@@ -2460,15 +2437,12 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 	}
 
 	return NULL;
-	});
 }
 
 //---EuroScopePlugInExit-----------------------------------------------
 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-	vsmr::RunEuroScopeCallback("EuroScopePlugInExit", []() {
 	const std::vector<CSMRRadar*> radarScreens = RadarScreensOpened;
 	RadarScreensOpened.clear();
 	for (auto* var : radarScreens)
@@ -2476,5 +2450,4 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 		if (var != nullptr)
 			var->EuroScopePlugInExitCustom();
 	}
-	});
 }
