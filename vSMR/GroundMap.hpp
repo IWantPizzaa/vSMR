@@ -151,7 +151,6 @@ public:
 	};
 
 	void ClearCache();
-	bool ConsumeDeferredRefresh();
 	bool RenderAirportMap(
 		const std::string& airport,
 		const std::string& dllPath,
@@ -167,7 +166,6 @@ private:
 	std::map<GroundTileKey, GroundTile> GroundTiles;
 	std::deque<GroundTileKey> PendingGroundTiles;
 	bool RenderInProgress = false;
-	bool DeferredRefreshNeeded = false;
 	bool HasLastView = false;
 	RECT LastRadarArea = {};
 	double LastMinLatitude = 0.0;
@@ -176,5 +174,4 @@ private:
 	double LastMaxLongitude = 0.0;
 	ULONGLONG LastPanChangeTick = 0;
 	ULONGLONG LastZoomChangeTick = 0;
-	ULONGLONG LastInteractiveRefreshTick = 0;
 };
