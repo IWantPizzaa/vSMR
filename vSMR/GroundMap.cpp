@@ -1455,8 +1455,11 @@ namespace
 	constexpr double kPreferredCacheQualityScale = 1.0;
 	constexpr int kMaximumStaticAtlasBitmapDimension = 6144;
 	constexpr double kPreferredStaticAtlasPixelsPerMeter = 0.85;
+	constexpr int kMaximumFastAtlasBitmapDimension = 3072;
+	constexpr double kPreferredFastAtlasPixelsPerMeter = 0.38;
 	constexpr double kStaticAtlasMarginMeters = 180.0;
 	constexpr int kStaticAtlasStyleRevision = 2;
+	constexpr int kFastAtlasStyleRevision = 102;
 	constexpr int kGroundTileLogicalSize = 512;
 	constexpr int kGroundTileContentSize = 512;
 	constexpr int kGroundTileGutter = 3;
@@ -1747,8 +1750,8 @@ namespace
 			return false;
 
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(fastInteraction ? InterpolationModeBilinear : InterpolationModeHighQualityBilinear);
+		graphics.SetPixelOffsetMode(fastInteraction ? PixelOffsetModeHighSpeed : PixelOffsetModeHalf);
+		graphics.SetInterpolationMode(fastInteraction ? InterpolationModeLowQuality : InterpolationModeHighQualityBilinear);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
@@ -2406,7 +2409,10 @@ namespace
 		const std::string& airport,
 		const CGroundMapRenderer::CacheEntry& entry,
 		CDC& dc,
-		CColorManager* colorManager)
+		CColorManager* colorManager,
+		int maximumBitmapDimension,
+		double preferredPixelsPerMeter,
+		int styleRevision)
 	{
 		if (!entry.hasLocalProjection)
 			return false;
@@ -2421,11 +2427,11 @@ namespace
 			return false;
 
 		const double widthLimitedScale =
-			static_cast<double>(kMaximumStaticAtlasBitmapDimension) / widthMeters;
+			static_cast<double>(maximumBitmapDimension) / widthMeters;
 		const double heightLimitedScale =
-			static_cast<double>(kMaximumStaticAtlasBitmapDimension) / heightMeters;
+			static_cast<double>(maximumBitmapDimension) / heightMeters;
 		const double pixelsPerMeter = (std::min)(
-			kPreferredStaticAtlasPixelsPerMeter,
+			preferredPixelsPerMeter,
 			(std::min)(widthLimitedScale, heightLimitedScale));
 		if (!std::isfinite(pixelsPerMeter) || pixelsPerMeter <= 0.0)
 			return false;
@@ -2433,11 +2439,11 @@ namespace
 		const int atlasWidth = std::clamp(
 			static_cast<int>(std::ceil(widthMeters * pixelsPerMeter)),
 			64,
-			kMaximumStaticAtlasBitmapDimension);
+			maximumBitmapDimension);
 		const int atlasHeight = std::clamp(
 			static_cast<int>(std::ceil(heightMeters * pixelsPerMeter)),
 			64,
-			kMaximumStaticAtlasBitmapDimension);
+			maximumBitmapDimension);
 		std::unique_ptr<Bitmap> bitmap = std::make_unique<Bitmap>(atlasWidth, atlasHeight, PixelFormat32bppPARGB);
 		if (bitmap->GetLastStatus() != Ok)
 			return false;
@@ -2476,7 +2482,7 @@ namespace
 		atlas.width = atlasWidth;
 		atlas.height = atlasHeight;
 		atlas.zoomLevel = -1;
-		atlas.styleRevision = kStaticAtlasStyleRevision;
+		atlas.styleRevision = styleRevision;
 		atlas.minLatitude = southwest.latitude;
 		atlas.maxLatitude = northeast.latitude;
 		atlas.minLongitude = southwest.longitude;
@@ -2554,6 +2560,7 @@ void CGroundMapRenderer::ClearCache()
 	std::lock_guard<std::mutex> lock(StateMutex);
 	AirportMaps.clear();
 	CachedLayer = CachedGroundLayer();
+	FastCachedLayer = CachedGroundLayer();
 	GroundTiles.clear();
 	PendingGroundTiles.clear();
 	HasLastView = false;
@@ -2653,28 +2660,58 @@ bool CGroundMapRenderer::RenderAirportMap(
 	graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 	graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
-	bool atlasReady = CachedLayerMatches(CachedLayer, normalizedAirport, kStaticAtlasStyleRevision);
-	if (!atlasReady && !context.interactive)
+	bool highAtlasReady = CachedLayerMatches(CachedLayer, normalizedAirport, kStaticAtlasStyleRevision);
+	bool fastAtlasReady = CachedLayerMatches(FastCachedLayer, normalizedAirport, kFastAtlasStyleRevision);
+	bool builtFastAtlas = false;
+	if (!fastAtlasReady && !context.interactive)
 	{
-		atlasReady = RebuildStaticAtlasLayer(
+		fastAtlasReady = RebuildStaticAtlasLayer(
+			FastCachedLayer,
+			normalizedAirport,
+			mapIt->second,
+			dc,
+			colorManager,
+			kMaximumFastAtlasBitmapDimension,
+			kPreferredFastAtlasPixelsPerMeter,
+			kFastAtlasStyleRevision);
+		builtFastAtlas = fastAtlasReady;
+	}
+
+	if (!highAtlasReady && !context.interactive && !builtFastAtlas)
+	{
+		highAtlasReady = RebuildStaticAtlasLayer(
 			CachedLayer,
 			normalizedAirport,
 			mapIt->second,
 			dc,
-			colorManager);
-	}
-
-	if (atlasReady)
-	{
-		DrawVisibleCachedRegion(graphics, CachedLayer, context, context.interactive);
-		if (!context.interactive)
-			RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
-		graphics.Restore(graphicsState);
-		return true;
+			colorManager,
+			kMaximumStaticAtlasBitmapDimension,
+			kPreferredStaticAtlasPixelsPerMeter,
+			kStaticAtlasStyleRevision);
 	}
 
 	if (context.interactive)
 	{
+		if (fastAtlasReady)
+			DrawVisibleCachedRegion(graphics, FastCachedLayer, context, true);
+		else if (highAtlasReady)
+			DrawVisibleCachedRegion(graphics, CachedLayer, context, true);
+		graphics.Restore(graphicsState);
+		return true;
+	}
+
+	if (highAtlasReady)
+	{
+		DrawVisibleCachedRegion(graphics, CachedLayer, context, false);
+		RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
+		graphics.Restore(graphicsState);
+		return true;
+	}
+
+	if (fastAtlasReady)
+	{
+		DrawVisibleCachedRegion(graphics, FastCachedLayer, context, false);
+		RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
 		graphics.Restore(graphicsState);
 		return true;
 	}
