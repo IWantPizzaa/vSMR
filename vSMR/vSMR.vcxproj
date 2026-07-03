@@ -137,7 +137,6 @@
     <ClCompile Include="Config.cpp" />
     <ClCompile Include="CPDLCSettingsDialog.cpp" />
     <ClCompile Include="DataLinkDialog.cpp" />
-    <ClCompile Include="GroundMap.cpp" />
     <ClCompile Include="HttpHelper.cpp" />
     <ClCompile Include="InsetWindow.cpp" />
     <ClCompile Include="ProfileEditorDialog.cpp" />
@@ -172,7 +171,6 @@
     <ClInclude Include="Constant.hpp" />
     <ClInclude Include="CPDLCSettingsDialog.hpp" />
     <ClInclude Include="DataLinkDialog.hpp" />
-    <ClInclude Include="GroundMap.hpp" />
     <ClInclude Include="HttpHelper.hpp" />
     <ClInclude Include="InsetWindow.h" />
     <ClInclude Include="Logger.h" />
@@ -202,11 +200,6 @@
     <Media Include="..\Ding.wav" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <Target Name="PreserveGroundGeoJsonRuntimeFiles" BeforeTargets="IncrementalClean">
-    <ItemGroup>
-      <FileWrites Include="$(TargetDir)AVISO_*.geojson" />
-    </ItemGroup>
-  </Target>
   <ImportGroup Label="ExtensionTargets" />
   <ProjectExtensions>
     <VisualStudio>

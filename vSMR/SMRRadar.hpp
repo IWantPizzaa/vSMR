@@ -15,7 +15,6 @@
 #include "Constant.hpp"
 #include "CallsignLookup.hpp"
 #include "Config.hpp"
-#include "GroundMap.hpp"
 #include "Rimcas.hpp"
 #include <memory>
 #include <asio/io_service.hpp>
@@ -24,7 +23,6 @@
 #include <ctime>
 #include "ColorManager.h"
 #include "Logger.h"
-#include "EuroScopeCallbackGuard.hpp"
 #include <filesystem>
 #include <iostream>
 
@@ -124,21 +122,6 @@ public:
 	virtual ~CSMRRadar();
 
 	void ReloadConfig();
-	void ReloadGroundMaps();
-	void RebuildAirportPositionCache();
-	void QueuePendingSectorMapUpdate(
-		int zoomLevel,
-		const std::string& airport,
-		const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses);
-	void ApplyPendingSectorMapUpdate();
-	std::map<std::string, bool> BuildSectorElementVisibility(
-		int zoomLevel,
-		const std::string& airport,
-		const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses);
-	void ApplySectorMapVisibility(
-		int zoomLevel,
-		const std::string& airport,
-		const std::map<std::string, CRimcas::RunwayStatus>& runwayStatuses);
 
 	static map<string, string> vStripsStands;
 
@@ -170,20 +153,9 @@ public:
 
 	map<string, Patatoide_Points> Patatoides;
 
-	struct PendingMapUpdate
-	{
-		bool pending = false;
-		int zoomLevel = -1;
-		std::string airport;
-		std::map<std::string, CRimcas::RunwayStatus> runwayStatuses;
-		ULONGLONG lastChangeTick = 0;
-	};
-
 	int RadarViewZoomLevel = 0;
 	std::map<std::string, CRimcas::RunwayStatus> LastMapRunwayStatuses;
 	std::string LastMapActiveAirport;
-	PendingMapUpdate PendingSectorMapUpdate;
-	std::map<std::string, bool> AppliedSectorElementVisibility;
 
 	map<string, bool> ClosedRunway;
 
@@ -245,7 +217,6 @@ public:
 
 	std::unique_ptr<CRimcas> RimcasInstance;
 	std::unique_ptr<CConfig> CurrentConfig;
-	std::unique_ptr<CGroundMapRenderer> GroundMapRenderer;
 
 	std::map<int, std::unique_ptr<Gdiplus::Font>> customFonts;
 	std::map<int, std::unique_ptr<CInsetWindow>> appWindows;
@@ -253,7 +224,6 @@ public:
 	int currentFontSize = 1;
 
 	map<string, CPosition> AirportPositions;
-	bool AirportPositionsCacheValid = false;
 
 	bool Afterglow = true;
 
@@ -741,8 +711,6 @@ public:
 	// -> we can't delete CurrentConfig just yet otherwise we can't save the active profile
 	inline virtual void OnAsrContentToBeClosed(void)
 	{
-		AFX_MANAGE_STATE(AfxGetStaticModuleState());
-		vsmr::RunEuroScopeCallback("CSMRRadar::OnAsrContentToBeClosed", [&]() {
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
 
@@ -762,6 +730,5 @@ public:
 		}
 
 		delete this;
-		});
 	};
 };
