@@ -196,6 +196,7 @@ public:
 	string SelectedProfileColorPath;
 	std::unique_ptr<CProfileEditorDialog> ProfileEditorDialog;
 	std::unique_ptr<CWebRadarRenderer> WebRadarRenderer;
+	bool WebRadarRendererDisabled = false;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
 	std::string TagDefinitionEditorDepartureStatus = "default";

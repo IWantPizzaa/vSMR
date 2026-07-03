@@ -19,12 +19,44 @@
         .maplibregl-ctrl-attrib {
             display: none !important;
         }
+
+        #status {
+            position: absolute;
+            left: 10px;
+            bottom: 10px;
+            max-width: 560px;
+            padding: 6px 8px;
+            color: #d8e7f5;
+            background: rgba(7, 15, 22, 0.82);
+            font: 12px/1.35 Consolas, monospace;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #status:empty {
+            display: none;
+        }
     </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="status"></div>
 <script src="vendor/maplibre-gl.js"></script>
 <script>
+const statusElement = document.getElementById("status");
+
+function postStatus(type, payload = {}) {
+    const message = { type, ...payload };
+    if (window.chrome && window.chrome.webview)
+        window.chrome.webview.postMessage(message);
+}
+
+function setStatus(text) {
+    statusElement.textContent = text || "";
+    if (text)
+        postStatus("status", { text });
+}
+
 const map = new maplibregl.Map({
     container: "map",
     style: {
@@ -58,9 +90,16 @@ async function fetchFirstJson(urls) {
     let lastError = null;
     for (const url of urls) {
         try {
+            setStatus(`Loading ${url}`);
             const response = await fetch(url, { cache: "no-store" });
-            if (response.ok)
-                return await response.json();
+            if (response.ok) {
+                const data = await response.json();
+                postStatus("geojson-loaded", {
+                    url,
+                    features: Array.isArray(data.features) ? data.features.length : 0
+                });
+                return data;
+            }
             lastError = new Error(`${url}: ${response.status}`);
         } catch (error) {
             lastError = error;
@@ -69,71 +108,134 @@ async function fetchFirstJson(urls) {
     throw lastError || new Error("No GeoJSON URL configured");
 }
 
-map.on("load", async () => {
-    const airport = await fetchFirstJson([
-        "/AVISO_LFPG.geojson",
-        "/Release/AVISO_LFPG.geojson",
-        "/vSMR/AVISO_LFPG.geojson"
-    ]);
-
-    map.addSource("airport", {
-        type: "geojson",
-        data: airport,
-        tolerance: 0.05,
-        buffer: 128,
-        maxzoom: 21
-    });
-
-    map.addLayer({
-        id: "airport-polygons",
-        type: "fill",
-        source: "airport",
-        filter: ["==", ["geometry-type"], "Polygon"],
-        paint: {
-            "fill-color": propertyColor("fill", "#354252"),
-            "fill-opacity": propertyNumber("fill-opacity", 0.85)
-        }
-    });
-
-    map.addLayer({
-        id: "airport-polygon-outlines",
-        type: "line",
-        source: "airport",
-        filter: ["==", ["geometry-type"], "Polygon"],
-        paint: {
-            "line-color": propertyColor("stroke", "#8c98aa"),
-            "line-opacity": propertyNumber("stroke-opacity", 0.75),
-            "line-width": propertyNumber("stroke-width", 1.0)
-        }
-    });
-
-    map.addLayer({
-        id: "airport-lines",
-        type: "line",
-        source: "airport",
-        filter: ["!=", ["geometry-type"], "Polygon"],
-        layout: {
-            "line-cap": "round",
-            "line-join": "round"
-        },
-        paint: {
-            "line-color": propertyColor("stroke", "#9aa7b8"),
-            "line-opacity": propertyNumber("stroke-opacity", 0.95),
-            "line-width": propertyNumber("stroke-width", 1.2)
-        }
-    });
-});
-
-window.chrome.webview.addEventListener("message", event => {
-    const message = event.data;
-    if (!message || message.type !== "camera")
+function extendBounds(bounds, coordinate) {
+    if (!Array.isArray(coordinate) || coordinate.length < 2)
+        return;
+    const lng = Number(coordinate[0]);
+    const lat = Number(coordinate[1]);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat))
         return;
 
-    map.jumpTo({
-        center: [message.longitude, message.latitude],
-        zoom: message.zoom
-    });
+    bounds.minLng = Math.min(bounds.minLng, lng);
+    bounds.minLat = Math.min(bounds.minLat, lat);
+    bounds.maxLng = Math.max(bounds.maxLng, lng);
+    bounds.maxLat = Math.max(bounds.maxLat, lat);
+}
+
+function walkCoordinates(coordinates, bounds) {
+    if (!Array.isArray(coordinates))
+        return;
+    if (typeof coordinates[0] === "number") {
+        extendBounds(bounds, coordinates);
+        return;
+    }
+    for (const child of coordinates)
+        walkCoordinates(child, bounds);
+}
+
+function computeGeoJsonBounds(geojson) {
+    const bounds = {
+        minLng: Infinity,
+        minLat: Infinity,
+        maxLng: -Infinity,
+        maxLat: -Infinity
+    };
+    const features = Array.isArray(geojson.features) ? geojson.features : [];
+    for (const feature of features) {
+        if (feature && feature.geometry)
+            walkCoordinates(feature.geometry.coordinates, bounds);
+    }
+    return Number.isFinite(bounds.minLng) ? bounds : null;
+}
+
+map.on("error", event => {
+    const message = event && event.error ? event.error.message : "MapLibre error";
+    setStatus(message);
+    postStatus("map-error", { message });
 });
+
+map.on("load", async () => {
+    try {
+        const airport = await fetchFirstJson([
+            "/AVISO_LFPG.geojson",
+            "/Release/AVISO_LFPG.geojson",
+            "/vSMR/AVISO_LFPG.geojson"
+        ]);
+
+        map.addSource("airport", {
+            type: "geojson",
+            data: airport,
+            tolerance: 0.05,
+            buffer: 128,
+            maxzoom: 21
+        });
+
+        map.addLayer({
+            id: "airport-polygons",
+            type: "fill",
+            source: "airport",
+            filter: ["==", ["geometry-type"], "Polygon"],
+            paint: {
+                "fill-color": propertyColor("fill", "#354252"),
+                "fill-opacity": propertyNumber("fill-opacity", 0.85)
+            }
+        });
+
+        map.addLayer({
+            id: "airport-polygon-outlines",
+            type: "line",
+            source: "airport",
+            filter: ["==", ["geometry-type"], "Polygon"],
+            paint: {
+                "line-color": propertyColor("stroke", "#8c98aa"),
+                "line-opacity": propertyNumber("stroke-opacity", 0.75),
+                "line-width": propertyNumber("stroke-width", 1.0)
+            }
+        });
+
+        map.addLayer({
+            id: "airport-lines",
+            type: "line",
+            source: "airport",
+            filter: ["!=", ["geometry-type"], "Polygon"],
+            layout: {
+                "line-cap": "round",
+                "line-join": "round"
+            },
+            paint: {
+                "line-color": propertyColor("stroke", "#9aa7b8"),
+                "line-opacity": propertyNumber("stroke-opacity", 0.95),
+                "line-width": propertyNumber("stroke-width", 1.2)
+            }
+        });
+
+        const bounds = computeGeoJsonBounds(airport);
+        if (bounds) {
+            map.fitBounds(
+                [[bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat]],
+                { padding: 80, duration: 0, maxZoom: 18 }
+            );
+        }
+        setStatus("");
+    } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        setStatus(`AVISO_LFPG.geojson failed: ${message}`);
+        postStatus("geojson-error", { message });
+    }
+});
+
+if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.addEventListener("message", event => {
+        const message = event.data;
+        if (!message || message.type !== "camera")
+            return;
+
+        map.jumpTo({
+            center: [message.longitude, message.latitude],
+            zoom: message.zoom
+        });
+    });
+}
 </script>
 </body>
 </html>
