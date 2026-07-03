@@ -1453,6 +1453,10 @@ namespace
 
 	constexpr int kMaximumCacheBitmapDimension = 3072;
 	constexpr double kPreferredCacheQualityScale = 1.0;
+	constexpr int kMaximumStaticAtlasBitmapDimension = 4096;
+	constexpr double kPreferredStaticAtlasPixelsPerMeter = 0.45;
+	constexpr double kStaticAtlasMarginMeters = 180.0;
+	constexpr int kStaticAtlasStyleRevision = 1;
 	constexpr int kGroundTileLogicalSize = 512;
 	constexpr int kGroundTileContentSize = 512;
 	constexpr int kGroundTileGutter = 3;
@@ -2397,6 +2401,90 @@ namespace
 		return builtTiles;
 	}
 
+	bool RebuildStaticAtlasLayer(
+		CGroundMapRenderer::CachedGroundLayer& atlas,
+		const std::string& airport,
+		const CGroundMapRenderer::CacheEntry& entry,
+		CDC& dc,
+		CColorManager* colorManager)
+	{
+		if (!entry.hasLocalProjection)
+			return false;
+
+		const double atlasMinX = entry.minX - kStaticAtlasMarginMeters;
+		const double atlasMaxX = entry.maxX + kStaticAtlasMarginMeters;
+		const double atlasMinY = entry.minY - kStaticAtlasMarginMeters;
+		const double atlasMaxY = entry.maxY + kStaticAtlasMarginMeters;
+		const double widthMeters = atlasMaxX - atlasMinX;
+		const double heightMeters = atlasMaxY - atlasMinY;
+		if (widthMeters <= 1.0 || heightMeters <= 1.0)
+			return false;
+
+		const double widthLimitedScale =
+			static_cast<double>(kMaximumStaticAtlasBitmapDimension) / widthMeters;
+		const double heightLimitedScale =
+			static_cast<double>(kMaximumStaticAtlasBitmapDimension) / heightMeters;
+		const double pixelsPerMeter = (std::min)(
+			kPreferredStaticAtlasPixelsPerMeter,
+			(std::min)(widthLimitedScale, heightLimitedScale));
+		if (!std::isfinite(pixelsPerMeter) || pixelsPerMeter <= 0.0)
+			return false;
+
+		const int atlasWidth = std::clamp(
+			static_cast<int>(std::ceil(widthMeters * pixelsPerMeter)),
+			64,
+			kMaximumStaticAtlasBitmapDimension);
+		const int atlasHeight = std::clamp(
+			static_cast<int>(std::ceil(heightMeters * pixelsPerMeter)),
+			64,
+			kMaximumStaticAtlasBitmapDimension);
+		std::unique_ptr<Bitmap> bitmap = std::make_unique<Bitmap>(atlasWidth, atlasHeight, PixelFormat32bppPARGB);
+		if (bitmap->GetLastStatus() != Ok)
+			return false;
+
+		Graphics atlasGraphics(bitmap.get());
+		if (atlasGraphics.GetLastStatus() != Ok)
+			return false;
+
+		const CGroundMapRenderer::Coordinate southwest = ToCoordinate(entry, atlasMinX, atlasMinY);
+		const CGroundMapRenderer::Coordinate northeast = ToCoordinate(entry, atlasMaxX, atlasMaxY);
+		RECT atlasArea = { 0, 0, atlasWidth, atlasHeight };
+		CPosition atlasSW;
+		atlasSW.m_Latitude = southwest.latitude;
+		atlasSW.m_Longitude = southwest.longitude;
+		CPosition atlasNE;
+		atlasNE.m_Latitude = northeast.latitude;
+		atlasNE.m_Longitude = northeast.longitude;
+		RenderContext atlasContext(atlasArea, atlasSW, atlasNE, kDefaultMaxZoom, false);
+		if (!atlasContext.valid)
+			return false;
+
+		atlasGraphics.SetPageUnit(UnitPixel);
+		atlasGraphics.Clear(Color(0, 0, 0, 0));
+		atlasGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+		atlasGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		atlasGraphics.SetInterpolationMode(InterpolationModeLowQuality);
+		atlasGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
+
+		const GraphicsState atlasState = atlasGraphics.Save();
+		atlasGraphics.SetClip(Rect(0, 0, atlasWidth, atlasHeight), CombineModeReplace);
+		RenderVectorLayer(atlasContext, atlasGraphics, dc, entry, atlasArea, colorManager, true, false, RenderPurpose::GroundTile);
+		atlasGraphics.Restore(atlasState);
+
+		atlas.bitmap = std::move(bitmap);
+		atlas.airport = airport;
+		atlas.width = atlasWidth;
+		atlas.height = atlasHeight;
+		atlas.zoomLevel = -1;
+		atlas.styleRevision = kStaticAtlasStyleRevision;
+		atlas.minLatitude = southwest.latitude;
+		atlas.maxLatitude = northeast.latitude;
+		atlas.minLongitude = southwest.longitude;
+		atlas.maxLongitude = northeast.longitude;
+		atlas.valid = true;
+		return true;
+	}
+
 	bool RebuildCachedLayer(
 		CGroundMapRenderer::CachedGroundLayer& cache,
 		const std::string& airport,
@@ -2565,36 +2653,28 @@ bool CGroundMapRenderer::RenderAirportMap(
 	graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 	graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
-	const int styleRevision = GroundMapStyleRevision(colorManager);
-	if (!GroundTiles.empty())
-		GroundTiles.clear();
-	if (!PendingGroundTiles.empty())
-		PendingGroundTiles.clear();
-
-	if (context.interactive)
+	bool atlasReady = CachedLayerMatches(CachedLayer, normalizedAirport, kStaticAtlasStyleRevision);
+	if (!atlasReady && !context.interactive)
 	{
-		if (CachedLayerMatches(CachedLayer, normalizedAirport, styleRevision))
-			DrawVisibleCachedRegion(graphics, CachedLayer, context, true);
+		atlasReady = RebuildStaticAtlasLayer(
+			CachedLayer,
+			normalizedAirport,
+			mapIt->second,
+			dc,
+			colorManager);
+	}
+
+	if (atlasReady)
+	{
+		DrawVisibleCachedRegion(graphics, CachedLayer, context, context.interactive);
+		if (!context.interactive)
+			RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
 		graphics.Restore(graphicsState);
 		return true;
 	}
 
-	if (CachedLayerNeedsRebuild(CachedLayer, normalizedAirport, context, styleRevision))
+	if (context.interactive)
 	{
-		RebuildCachedLayer(
-			CachedLayer,
-			normalizedAirport,
-			context,
-			mapIt->second,
-			dc,
-			colorManager,
-			styleRevision);
-	}
-
-	if (CachedLayerCoversView(CachedLayer, normalizedAirport, context, styleRevision) &&
-		DrawVisibleCachedRegion(graphics, CachedLayer, context, false))
-	{
-		RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
 		graphics.Restore(graphicsState);
 		return true;
 	}
