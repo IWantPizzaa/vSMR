@@ -1715,9 +1715,7 @@ namespace
 
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
 		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(context.interactive || recentlyInteractive ?
-			InterpolationModeBilinear :
-			InterpolationModeHighQualityBilinear);
+		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
@@ -1771,7 +1769,7 @@ namespace
 
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
 		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(InterpolationModeBilinear);
+		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
@@ -2201,9 +2199,7 @@ namespace
 
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
 		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(context.interactive || recentlyInteractive ?
-			InterpolationModeBilinear :
-			InterpolationModeHighQualityBilinear);
+		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			tile.bitmap.get(),
 			destination,
@@ -2228,7 +2224,8 @@ namespace
 		int tileZoom,
 		int styleRevision,
 		bool recentlyInteractive,
-		ULONGLONG nowTick)
+		ULONGLONG nowTick,
+		bool requireCompleteCoverage)
 	{
 		const TileRange visibleRange = CalculateGroundTileRange(entry, context, tileZoom, 0);
 		if (!visibleRange.valid)
@@ -2256,7 +2253,11 @@ namespace
 				GetGroundTileLocalBounds(key, resolved.minX, resolved.minY, resolved.maxX, resolved.maxY);
 				resolved.tile = FindGroundTileOrParent(tiles, key);
 				if (resolved.tile == nullptr)
-					return false;
+				{
+					if (requireCompleteCoverage)
+						return false;
+					continue;
+				}
 
 				resolvedTiles.push_back(resolved);
 			}
@@ -2276,7 +2277,8 @@ namespace
 					recentlyInteractive,
 					nowTick))
 			{
-				return false;
+				if (requireCompleteCoverage)
+					return false;
 			}
 		}
 
@@ -2328,9 +2330,9 @@ namespace
 
 		tileGraphics.SetPageUnit(UnitPixel);
 		tileGraphics.Clear(Color(0, 0, 0, 0));
-		tileGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+		tileGraphics.SetSmoothingMode(SmoothingModeNone);
 		tileGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		tileGraphics.SetInterpolationMode(InterpolationModeHighQualityBilinear);
+		tileGraphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		tileGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 		RECT tileArea = { 0, 0, kGroundTileBitmapSize, kGroundTileBitmapSize };
@@ -2382,7 +2384,7 @@ namespace
 		int styleRevision,
 		ULONGLONG nowTick)
 	{
-		constexpr double tileBuildBudgetMs = 4.0;
+		constexpr double tileBuildBudgetMs = 2.5;
 		const auto buildStart = std::chrono::steady_clock::now();
 		int builtTiles = 0;
 		size_t attempts = 0;
@@ -2448,9 +2450,9 @@ namespace
 
 		bitmapGraphics.SetPageUnit(UnitPixel);
 		bitmapGraphics.Clear(Color(0, 0, 0, 0));
-		bitmapGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+		bitmapGraphics.SetSmoothingMode(SmoothingModeNone);
 		bitmapGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		bitmapGraphics.SetInterpolationMode(InterpolationModeHighQualityBilinear);
+		bitmapGraphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 		RECT cacheArea = { 0, 0, cacheWidth, cacheHeight };
@@ -2566,9 +2568,9 @@ bool CGroundMapRenderer::RenderAirportMap(
 	LastMinLongitude = currentMinLongitude;
 	LastMaxLongitude = currentMaxLongitude;
 
-	constexpr ULONGLONG panSettleDelayMs = 120;
-	constexpr ULONGLONG zoomSettleDelayMs = 180;
-	constexpr ULONGLONG qualitySettleDelayMs = 180;
+	constexpr ULONGLONG panSettleDelayMs = 260;
+	constexpr ULONGLONG zoomSettleDelayMs = 320;
+	constexpr ULONGLONG qualitySettleDelayMs = 260;
 	const bool panInteractive = LastPanChangeTick != 0 && nowTick - LastPanChangeTick < panSettleDelayMs;
 	const bool zoomInteractive = LastZoomChangeTick != 0 && nowTick - LastZoomChangeTick < zoomSettleDelayMs;
 	const bool interactiveView = panInteractive || zoomInteractive;
@@ -2587,20 +2589,10 @@ bool CGroundMapRenderer::RenderAirportMap(
 		radarArea.right - radarArea.left,
 		radarArea.bottom - radarArea.top),
 		CombineModeReplace);
-	if (context.interactive)
-	{
-		graphics.SetSmoothingMode(SmoothingModeNone);
-		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		graphics.SetInterpolationMode(InterpolationModeBilinear);
-		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-	}
-	else
-	{
-		graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-		graphics.SetCompositingQuality(CompositingQualityHighQuality);
-		graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-		graphics.SetPixelOffsetMode(PixelOffsetModeHighQuality);
-	}
+	graphics.SetSmoothingMode(SmoothingModeNone);
+	graphics.SetCompositingQuality(CompositingQualityHighSpeed);
+	graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+	graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 	const int styleRevision = GroundMapStyleRevision(colorManager);
 	const int tileZoom = SelectGroundTileZoom(context, mapIt->second);
@@ -2616,6 +2608,24 @@ bool CGroundMapRenderer::RenderAirportMap(
 	PrunePendingGroundTiles(PendingGroundTiles, normalizedAirport, tileZoom, styleRevision);
 	EvictOldGroundTiles(GroundTiles);
 	assert(GroundTiles.size() <= kMaximumGroundTiles);
+
+	if (context.interactive)
+	{
+		DrawVisibleGroundTiles(
+			graphics,
+			GroundTiles,
+			PendingGroundTiles,
+			normalizedAirport,
+			mapIt->second,
+			context,
+			tileZoom,
+			styleRevision,
+			true,
+			nowTick,
+			false);
+		graphics.Restore(graphicsState);
+		return true;
+	}
 
 	if (!context.interactive)
 	{
@@ -2641,18 +2651,12 @@ bool CGroundMapRenderer::RenderAirportMap(
 		tileZoom,
 		styleRevision,
 		recentlyInteractive,
-		nowTick);
+		nowTick,
+		true);
 	if (drewTiles)
 	{
 		if (!context.interactive)
 			RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
-		graphics.Restore(graphicsState);
-		return true;
-	}
-
-	if (context.interactive)
-	{
-		RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, true, false, RenderPurpose::Screen);
 		graphics.Restore(graphicsState);
 		return true;
 	}

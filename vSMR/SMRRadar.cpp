@@ -2634,7 +2634,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			Graphics graphics(hDC);
 			graphics.SetPageUnit(Gdiplus::UnitPixel);
 
-			graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+			graphics.SetSmoothingMode(SmoothingModeNone);
 
 			int nightAlpha = 110;
 			if (CurrentConfig != nullptr)
@@ -2725,7 +2725,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	Graphics graphics(hDC);
 	graphics.SetPageUnit(Gdiplus::UnitPixel);
 
-	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	graphics.SetSmoothingMode(SmoothingModeNone);
 
 	RECT RadarArea = GetRadarArea();
 	RECT ChatArea = GetChatArea();
