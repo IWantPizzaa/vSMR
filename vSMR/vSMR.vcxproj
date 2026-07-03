@@ -199,12 +199,6 @@
   <ItemGroup>
     <Media Include="..\Ding.wav" />
   </ItemGroup>
-  <ItemGroup>
-    <WebRadarAsset Include="web\**\*.*" />
-  </ItemGroup>
-  <Target Name="CopyWebRadarAssets" AfterTargets="Build">
-    <Copy SourceFiles="@(WebRadarAsset)" DestinationFiles="@(WebRadarAsset->'$(TargetDir)web\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ProjectExtensions>
