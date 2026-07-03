@@ -1577,8 +1577,8 @@ namespace
 		if (!CachedLayerMatches(cache, airport, styleRevision))
 			return false;
 
-		const double latitudeEpsilon = (context.maxLatitude - context.minLatitude) * 0.002;
-		const double longitudeEpsilon = (context.maxLongitude - context.minLongitude) * 0.002;
+		const double latitudeEpsilon = (context.maxLatitude - context.minLatitude) * 0.0001;
+		const double longitudeEpsilon = (context.maxLongitude - context.minLongitude) * 0.0001;
 		return cache.minLatitude <= context.minLatitude + latitudeEpsilon &&
 			cache.maxLatitude >= context.maxLatitude - latitudeEpsilon &&
 			cache.minLongitude <= context.minLongitude + longitudeEpsilon &&
@@ -1691,7 +1691,8 @@ namespace
 	bool DrawVisibleCachedRegion(
 		Graphics& graphics,
 		const CGroundMapRenderer::CachedGroundLayer& cache,
-		const RenderContext& context)
+		const RenderContext& context,
+		bool fastInteraction)
 	{
 		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
 			return false;
@@ -1701,14 +1702,21 @@ namespace
 		if (longitudeSpan <= 0.0 || latitudeSpan <= 0.0)
 			return false;
 
+		const double drawMinLatitude = (std::max)(cache.minLatitude, context.minLatitude);
+		const double drawMaxLatitude = (std::min)(cache.maxLatitude, context.maxLatitude);
+		const double drawMinLongitude = (std::max)(cache.minLongitude, context.minLongitude);
+		const double drawMaxLongitude = (std::min)(cache.maxLongitude, context.maxLongitude);
+		if (drawMaxLatitude <= drawMinLatitude || drawMaxLongitude <= drawMinLongitude)
+			return false;
+
 		float sourceX = static_cast<float>(
-			(context.minLongitude - cache.minLongitude) / longitudeSpan * static_cast<double>(cache.width));
+			(drawMinLongitude - cache.minLongitude) / longitudeSpan * static_cast<double>(cache.width));
 		float sourceY = static_cast<float>(
-			(cache.maxLatitude - context.maxLatitude) / latitudeSpan * static_cast<double>(cache.height));
+			(cache.maxLatitude - drawMaxLatitude) / latitudeSpan * static_cast<double>(cache.height));
 		float sourceWidth = static_cast<float>(
-			(context.maxLongitude - context.minLongitude) / longitudeSpan * static_cast<double>(cache.width));
+			(drawMaxLongitude - drawMinLongitude) / longitudeSpan * static_cast<double>(cache.width));
 		float sourceHeight = static_cast<float>(
-			(context.maxLatitude - context.minLatitude) / latitudeSpan * static_cast<double>(cache.height));
+			(drawMaxLatitude - drawMinLatitude) / latitudeSpan * static_cast<double>(cache.height));
 
 		sourceX = std::clamp(sourceX, 0.0f, static_cast<float>(cache.width));
 		sourceY = std::clamp(sourceY, 0.0f, static_cast<float>(cache.height));
@@ -1717,83 +1725,33 @@ namespace
 		sourceWidth = std::clamp(sourceWidth, 1.0f, maxSourceWidth);
 		sourceHeight = std::clamp(sourceHeight, 1.0f, maxSourceHeight);
 
-		PointF destination[3];
-		if (!BuildProjectedImageDestination(
-			context,
-			context.minLatitude,
-			context.maxLatitude,
-			context.minLongitude,
-			context.maxLongitude,
-			destination))
-		{
+		CGroundMapRenderer::Coordinate northwest;
+		northwest.latitude = drawMaxLatitude;
+		northwest.longitude = drawMinLongitude;
+		CGroundMapRenderer::Coordinate southeast;
+		southeast.latitude = drawMinLatitude;
+		southeast.longitude = drawMaxLongitude;
+		const PointF topLeft = context.ToPointF(northwest);
+		const PointF bottomRight = context.ToPointF(southeast);
+
+		RectF destination(
+			(std::min)(topLeft.X, bottomRight.X),
+			(std::min)(topLeft.Y, bottomRight.Y),
+			std::fabs(bottomRight.X - topLeft.X),
+			std::fabs(bottomRight.Y - topLeft.Y));
+		if (destination.Width < 1.0f || destination.Height < 1.0f)
 			return false;
-		}
 
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
 		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		graphics.SetInterpolationMode(fastInteraction ? InterpolationModeNearestNeighbor : InterpolationModeLowQuality);
 		graphics.DrawImage(
 			cache.bitmap.get(),
 			destination,
-			3,
 			sourceX,
 			sourceY,
 			sourceWidth,
 			sourceHeight,
-			UnitPixel);
-		return true;
-	}
-
-	bool DrawStaleCachedLayer(Graphics& graphics, const CGroundMapRenderer::CachedGroundLayer& cache, const RenderContext& context)
-	{
-		if (!cache.valid || cache.bitmap == nullptr || cache.width <= 0 || cache.height <= 0)
-			return false;
-
-		const double longitudeSpan = cache.maxLongitude - cache.minLongitude;
-		const double latitudeSpan = cache.maxLatitude - cache.minLatitude;
-		if (longitudeSpan <= 0.0 || latitudeSpan <= 0.0)
-			return false;
-
-		PointF destination[3];
-		if (!BuildProjectedImageDestination(
-			context,
-			cache.minLatitude,
-			cache.maxLatitude,
-			cache.minLongitude,
-			cache.maxLongitude,
-			destination))
-		{
-			return false;
-		}
-
-		const RectF radarRectangle(
-			static_cast<REAL>(context.radarArea.left),
-			static_cast<REAL>(context.radarArea.top),
-			static_cast<REAL>(context.radarArea.right - context.radarArea.left),
-			static_cast<REAL>(context.radarArea.bottom - context.radarArea.top));
-
-		const REAL destinationLeft = (std::min)(destination[0].X, (std::min)(destination[1].X, destination[2].X));
-		const REAL destinationTop = (std::min)(destination[0].Y, (std::min)(destination[1].Y, destination[2].Y));
-		const REAL destinationRight = (std::max)(destination[0].X, (std::max)(destination[1].X, destination[2].X));
-		const REAL destinationBottom = (std::max)(destination[0].Y, (std::max)(destination[1].Y, destination[2].Y));
-		const REAL intersectionLeft = (std::max)(destinationLeft, radarRectangle.X);
-		const REAL intersectionTop = (std::max)(destinationTop, radarRectangle.Y);
-		const REAL intersectionRight = (std::min)(destinationRight, radarRectangle.X + radarRectangle.Width);
-		const REAL intersectionBottom = (std::min)(destinationBottom, radarRectangle.Y + radarRectangle.Height);
-		if (intersectionRight <= intersectionLeft || intersectionBottom <= intersectionTop)
-			return false;
-
-		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		graphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
-		graphics.DrawImage(
-			cache.bitmap.get(),
-			destination,
-			3,
-			0.0f,
-			0.0f,
-			static_cast<REAL>(cache.width),
-			static_cast<REAL>(cache.height),
 			UnitPixel);
 		return true;
 	}
@@ -2467,9 +2425,9 @@ namespace
 
 		bitmapGraphics.SetPageUnit(UnitPixel);
 		bitmapGraphics.Clear(Color(0, 0, 0, 0));
-		bitmapGraphics.SetSmoothingMode(SmoothingModeNone);
+		bitmapGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
 		bitmapGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		bitmapGraphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		bitmapGraphics.SetInterpolationMode(InterpolationModeLowQuality);
 		bitmapGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 
 		RECT cacheArea = { 0, 0, cacheWidth, cacheHeight };
@@ -2615,10 +2573,8 @@ bool CGroundMapRenderer::RenderAirportMap(
 
 	if (context.interactive)
 	{
-		if (CachedLayerCoversView(CachedLayer, normalizedAirport, context, styleRevision))
-			DrawVisibleCachedRegion(graphics, CachedLayer, context);
-		else if (CachedLayerMatches(CachedLayer, normalizedAirport, styleRevision))
-			DrawStaleCachedLayer(graphics, CachedLayer, context);
+		if (CachedLayerMatches(CachedLayer, normalizedAirport, styleRevision))
+			DrawVisibleCachedRegion(graphics, CachedLayer, context, true);
 		graphics.Restore(graphicsState);
 		return true;
 	}
@@ -2636,7 +2592,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 	}
 
 	if (CachedLayerCoversView(CachedLayer, normalizedAirport, context, styleRevision) &&
-		DrawVisibleCachedRegion(graphics, CachedLayer, context))
+		DrawVisibleCachedRegion(graphics, CachedLayer, context, false))
 	{
 		RenderTextOverlay(context, dc, mapIt->second, radarArea, colorManager);
 		graphics.Restore(graphicsState);
@@ -2645,6 +2601,8 @@ bool CGroundMapRenderer::RenderAirportMap(
 
 	const bool drawNonPolygonFeatures = true;
 	const bool drawText = true;
+	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	graphics.SetInterpolationMode(InterpolationModeLowQuality);
 	RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, drawNonPolygonFeatures, drawText, RenderPurpose::Screen);
 	graphics.Restore(graphicsState);
 
