@@ -9,7 +9,6 @@
 #include "rapidjson/document.h"
 #include "SMRRadar_TagShared.hpp"
 #include "ProfileEditorDialog.hpp"
-#include "WebRadarRenderer.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -46,26 +45,6 @@ namespace
 		{
 			return "vSMR_LastActiveProfile.txt";
 		}
-	}
-
-	bool ExistsNoThrow(const fs::path& path)
-	{
-		std::error_code error;
-		return fs::exists(path, error) && !error;
-	}
-
-	bool HasLfpgGeoJson(const std::string& dllPath)
-	{
-		const fs::path runtimeRoot(dllPath);
-		return ExistsNoThrow(runtimeRoot / "AVISO_LFPG.geojson") ||
-			ExistsNoThrow(runtimeRoot.parent_path() / "Release" / "AVISO_LFPG.geojson") ||
-			ExistsNoThrow(runtimeRoot.parent_path() / "vSMR" / "AVISO_LFPG.geojson");
-	}
-
-	bool ShouldUseWebRadarRenderer(const std::string& airport, const std::string& dllPath)
-	{
-		return _stricmp(airport.c_str(), "LFPG") == 0 &&
-			HasLfpgGeoJson(dllPath);
 	}
 }
 
@@ -193,7 +172,6 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
-	WebRadarRenderer.reset();
 	customFonts.clear();
 	appWindows.clear();
 
@@ -2481,54 +2459,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		return;
 
 	VSMR_REFRESH_LOG("Phase != REFRESH_PHASE_BEFORE_TAGS");
-
-	if (!WebRadarRendererDisabled && ShouldUseWebRadarRenderer(getActiveAirport(), DllPath))
-	{
-		try
-		{
-			if (WebRadarRenderer == nullptr)
-				WebRadarRenderer = std::make_unique<CWebRadarRenderer>();
-
-			RECT webRadarArea = GetRadarArea();
-			RECT webChatArea = GetChatArea();
-			webRadarArea.bottom = webChatArea.top;
-			HWND parentWindow = (pluginWindow != nullptr && ::IsWindow(pluginWindow)) ? pluginWindow : GetActiveWindow();
-			const bool webRadarReady = WebRadarRenderer->EnsureVisible(parentWindow, webRadarArea, DllPath);
-			if (WebRadarRenderer->HasFailed())
-			{
-				WebRadarRendererDisabled = true;
-				WebRadarRenderer.reset();
-			}
-			else if (webRadarReady)
-			{
-				return;
-			}
-		}
-		catch (CException* exception)
-		{
-			if (exception != nullptr)
-				exception->Delete();
-			WebRadarRendererDisabled = true;
-			WebRadarRenderer.reset();
-			Logger::info("WebRadarRenderer: disabled after MFC exception during startup");
-		}
-		catch (const std::exception& exception)
-		{
-			WebRadarRendererDisabled = true;
-			WebRadarRenderer.reset();
-			Logger::info(std::string("WebRadarRenderer: disabled after exception during startup: ") + exception.what());
-		}
-		catch (...)
-		{
-			WebRadarRendererDisabled = true;
-			WebRadarRenderer.reset();
-			Logger::info("WebRadarRenderer: disabled after unknown exception during startup");
-		}
-	}
-	else if (WebRadarRenderer != nullptr)
-	{
-		WebRadarRenderer->Hide();
-	}
 
 	struct Utils {
 		static RECT GetAreaFromText(CDC * dc, string text, POINT Pos) {
