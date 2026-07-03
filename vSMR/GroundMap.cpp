@@ -1159,6 +1159,12 @@ namespace
 		std::unordered_map<unsigned long long, std::unique_ptr<Pen>> pens;
 	};
 
+	enum class RenderPurpose
+	{
+		Screen,
+		GroundTile
+	};
+
 	SolidBrush& GetCachedBrush(RenderPassResources& resources, Color color)
 	{
 		const ARGB key = color.GetValue();
@@ -1395,10 +1401,21 @@ namespace
 		const RECT& radarArea,
 		CColorManager* colorManager,
 		RenderPassResources& resources,
-		bool drawText)
+		bool drawText,
+		RenderPurpose purpose)
 	{
-		if (context.zoomLevel < feature.minZoom || context.zoomLevel > feature.maxZoom)
+		const bool isStaticInfrastructure =
+			feature.kind == CGroundMapRenderer::FeatureKind::Polygon ||
+			feature.kind == CGroundMapRenderer::FeatureKind::Line;
+		const bool enforceZoomVisibility =
+			purpose == RenderPurpose::Screen ||
+			!isStaticInfrastructure;
+
+		if (enforceZoomVisibility &&
+			(context.zoomLevel < feature.minZoom || context.zoomLevel > feature.maxZoom))
+		{
 			return;
+		}
 		if (!context.IntersectsView(feature))
 			return;
 		if (feature.kind != CGroundMapRenderer::FeatureKind::Polygon && !context.IsLargeEnough(feature))
@@ -1466,6 +1483,15 @@ namespace
 		int minY = 0;
 		int maxY = 0;
 		bool valid = false;
+	};
+
+	struct ResolvedGroundTile
+	{
+		CGroundMapRenderer::GroundTile* tile = nullptr;
+		double minX = 0.0;
+		double minY = 0.0;
+		double maxX = 0.0;
+		double maxY = 0.0;
 	};
 
 	double CalculateCacheQualityScale(int requestedWidth, int requestedHeight)
@@ -1766,14 +1792,15 @@ namespace
 		const RECT& radarArea,
 		CColorManager* colorManager,
 		bool drawNonPolygonFeatures,
-		bool drawText)
+		bool drawText,
+		RenderPurpose purpose)
 	{
 		RenderPassResources resources;
 
 		for (std::size_t featureIndex : entry.polygonIndices)
 		{
 			if (featureIndex < entry.features.size())
-				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
+				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText, purpose);
 		}
 
 		if (!drawNonPolygonFeatures)
@@ -1782,13 +1809,13 @@ namespace
 		for (std::size_t featureIndex : entry.lineIndices)
 		{
 			if (featureIndex < entry.features.size())
-				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
+				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText, purpose);
 		}
 
 		for (std::size_t featureIndex : entry.pointIndices)
 		{
 			if (featureIndex < entry.features.size())
-				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText);
+				RenderFeature(context, graphics, dc, entry.features[featureIndex], radarArea, colorManager, resources, drawText, purpose);
 		}
 	}
 
@@ -1915,6 +1942,17 @@ namespace
 			minY <= entry.maxY + margin;
 	}
 
+	int TileIndexForMinimum(double value, double tileSize)
+	{
+		return static_cast<int>(std::floor(value / tileSize));
+	}
+
+	int TileIndexForMaximum(double value, double tileSize)
+	{
+		const double adjusted = std::nextafter(value, -std::numeric_limits<double>::infinity());
+		return static_cast<int>(std::floor(adjusted / tileSize));
+	}
+
 	TileRange CalculateGroundTileRange(const CGroundMapRenderer::CacheEntry& entry, const RenderContext& context, int tileZoom, int marginTiles)
 	{
 		TileRange range;
@@ -1931,10 +1969,10 @@ namespace
 		if (!std::isfinite(tileWorldSize) || tileWorldSize <= 0.0)
 			return range;
 
-		range.minX = static_cast<int>(std::floor(minX / tileWorldSize)) - marginTiles;
-		range.maxX = static_cast<int>(std::floor(maxX / tileWorldSize)) + marginTiles;
-		range.minY = static_cast<int>(std::floor(minY / tileWorldSize)) - marginTiles;
-		range.maxY = static_cast<int>(std::floor(maxY / tileWorldSize)) + marginTiles;
+		range.minX = TileIndexForMinimum(minX, tileWorldSize) - marginTiles;
+		range.maxX = TileIndexForMaximum(maxX, tileWorldSize) + marginTiles;
+		range.minY = TileIndexForMinimum(minY, tileWorldSize) - marginTiles;
+		range.maxY = TileIndexForMaximum(maxY, tileWorldSize) + marginTiles;
 		range.valid = range.minX <= range.maxX && range.minY <= range.maxY;
 		return range;
 	}
@@ -1942,7 +1980,6 @@ namespace
 	CGroundMapRenderer::GroundTileKey MakeGroundTileKey(
 		const std::string& airport,
 		int tileZoom,
-		int featureZoom,
 		int tileX,
 		int tileY,
 		int styleRevision)
@@ -1950,7 +1987,6 @@ namespace
 		CGroundMapRenderer::GroundTileKey key;
 		key.airport = airport;
 		key.zoom = std::clamp(tileZoom, 0, kMaximumGroundTileZoom);
-		key.featureZoom = featureZoom;
 		key.x = tileX;
 		key.y = tileY;
 		key.styleRevision = styleRevision;
@@ -1990,7 +2026,6 @@ namespace
 		const CGroundMapRenderer::CacheEntry& entry,
 		const std::string& airport,
 		int tileZoom,
-		int featureZoom,
 		int styleRevision,
 		const TileRange& range,
 		const std::map<CGroundMapRenderer::GroundTileKey, CGroundMapRenderer::GroundTile>& tiles,
@@ -2008,7 +2043,7 @@ namespace
 					entry,
 					tiles,
 					pendingTiles,
-					MakeGroundTileKey(airport, tileZoom, featureZoom, tileX, tileY, styleRevision),
+					MakeGroundTileKey(airport, tileZoom, tileX, tileY, styleRevision),
 					highPriority);
 			}
 		}
@@ -2024,22 +2059,22 @@ namespace
 		std::deque<CGroundMapRenderer::GroundTileKey>& pendingTiles)
 	{
 		const TileRange visibleRange = CalculateGroundTileRange(entry, context, tileZoom, 0);
-		QueueGroundTileRange(entry, airport, tileZoom, FeatureZoomForTileZoom(tileZoom), styleRevision, visibleRange, tiles, pendingTiles, true);
+		QueueGroundTileRange(entry, airport, tileZoom, styleRevision, visibleRange, tiles, pendingTiles, true);
 
 		if (tileZoom > 0)
 		{
 			const int parentZoom = tileZoom - 1;
 			const TileRange parentRange = CalculateGroundTileRange(entry, context, parentZoom, 0);
-			QueueGroundTileRange(entry, airport, parentZoom, FeatureZoomForTileZoom(parentZoom), styleRevision, parentRange, tiles, pendingTiles, false);
+			QueueGroundTileRange(entry, airport, parentZoom, styleRevision, parentRange, tiles, pendingTiles, false);
 		}
 
 		const TileRange neighbourRange = CalculateGroundTileRange(entry, context, tileZoom, 1);
-		QueueGroundTileRange(entry, airport, tileZoom, FeatureZoomForTileZoom(tileZoom), styleRevision, neighbourRange, tiles, pendingTiles, false);
+		QueueGroundTileRange(entry, airport, tileZoom, styleRevision, neighbourRange, tiles, pendingTiles, false);
 
 		if (tileZoom < kMaximumGroundTileZoom)
 		{
 			const TileRange detailRange = CalculateGroundTileRange(entry, context, tileZoom + 1, 0);
-			QueueGroundTileRange(entry, airport, tileZoom + 1, FeatureZoomForTileZoom(tileZoom + 1), styleRevision, detailRange, tiles, pendingTiles, false);
+			QueueGroundTileRange(entry, airport, tileZoom + 1, styleRevision, detailRange, tiles, pendingTiles, false);
 		}
 	}
 
@@ -2074,7 +2109,6 @@ namespace
 		if (key.zoom <= 0)
 			return key;
 		key.zoom -= 1;
-		key.featureZoom = FeatureZoomForTileZoom(key.zoom);
 		key.x = FloorDivideByTwo(key.x);
 		key.y = FloorDivideByTwo(key.y);
 		return key;
@@ -2090,39 +2124,13 @@ namespace
 		return &it->second;
 	}
 
-	CGroundMapRenderer::GroundTile* FindCompatibleGroundTile(
-		std::map<CGroundMapRenderer::GroundTileKey, CGroundMapRenderer::GroundTile>& tiles,
-		const CGroundMapRenderer::GroundTileKey& requested)
-	{
-		for (int difference = 0; difference <= kDefaultMaxZoom; ++difference)
-		{
-			const int candidates[2] = {
-				requested.featureZoom - difference,
-				requested.featureZoom + difference
-			};
-
-			for (int featureZoom : candidates)
-			{
-				if (featureZoom < kDefaultMinZoom || featureZoom > kDefaultMaxZoom)
-					continue;
-
-				CGroundMapRenderer::GroundTileKey candidate = requested;
-				candidate.featureZoom = featureZoom;
-				if (CGroundMapRenderer::GroundTile* tile = FindReadyGroundTile(tiles, candidate))
-					return tile;
-			}
-		}
-
-		return nullptr;
-	}
-
 	CGroundMapRenderer::GroundTile* FindGroundTileOrParent(
 		std::map<CGroundMapRenderer::GroundTileKey, CGroundMapRenderer::GroundTile>& tiles,
 		CGroundMapRenderer::GroundTileKey key)
 	{
 		for (;;)
 		{
-			if (CGroundMapRenderer::GroundTile* tile = FindCompatibleGroundTile(tiles, key))
+			if (CGroundMapRenderer::GroundTile* tile = FindReadyGroundTile(tiles, key))
 				return tile;
 			if (key.zoom <= 0)
 				break;
@@ -2151,12 +2159,19 @@ namespace
 		if (tileWidth <= 0.0 || tileHeight <= 0.0)
 			return false;
 
+		const double drawMinX = (std::max)(minX, tile.minX);
+		const double drawMinY = (std::max)(minY, tile.minY);
+		const double drawMaxX = (std::min)(maxX, tile.maxX);
+		const double drawMaxY = (std::min)(maxY, tile.maxY);
+		if (drawMaxX <= drawMinX || drawMaxY <= drawMinY)
+			return false;
+
 		float sourceX = static_cast<float>(kGroundTileGutter) +
-			static_cast<float>((minX - tile.minX) / tileWidth * static_cast<double>(kGroundTileContentSize));
+			static_cast<float>((drawMinX - tile.minX) / tileWidth * static_cast<double>(kGroundTileContentSize));
 		float sourceY = static_cast<float>(kGroundTileGutter) +
-			static_cast<float>((tile.maxY - maxY) / tileHeight * static_cast<double>(kGroundTileContentSize));
-		float sourceWidth = static_cast<float>((maxX - minX) / tileWidth * static_cast<double>(kGroundTileContentSize));
-		float sourceHeight = static_cast<float>((maxY - minY) / tileHeight * static_cast<double>(kGroundTileContentSize));
+			static_cast<float>((tile.maxY - drawMaxY) / tileHeight * static_cast<double>(kGroundTileContentSize));
+		float sourceWidth = static_cast<float>((drawMaxX - drawMinX) / tileWidth * static_cast<double>(kGroundTileContentSize));
+		float sourceHeight = static_cast<float>((drawMaxY - drawMinY) / tileHeight * static_cast<double>(kGroundTileContentSize));
 
 		const float internalLeft = static_cast<float>(kGroundTileGutter);
 		const float internalTop = static_cast<float>(kGroundTileGutter);
@@ -2164,13 +2179,13 @@ namespace
 		const float internalBottom = static_cast<float>(kGroundTileGutter + kGroundTileContentSize);
 		sourceX = std::clamp(sourceX, internalLeft, internalRight);
 		sourceY = std::clamp(sourceY, internalTop, internalBottom);
-		const float maxSourceWidth = (std::max)(1.0f, internalRight - sourceX);
-		const float maxSourceHeight = (std::max)(1.0f, internalBottom - sourceY);
-		sourceWidth = std::clamp(sourceWidth, 1.0f, maxSourceWidth);
-		sourceHeight = std::clamp(sourceHeight, 1.0f, maxSourceHeight);
+		sourceWidth = (std::min)(sourceWidth, internalRight - sourceX);
+		sourceHeight = (std::min)(sourceHeight, internalBottom - sourceY);
+		if (sourceWidth < 0.25f || sourceHeight < 0.25f)
+			return false;
 
-		const CGroundMapRenderer::Coordinate southwest = ToCoordinate(entry, minX, minY);
-		const CGroundMapRenderer::Coordinate northeast = ToCoordinate(entry, maxX, maxY);
+		const CGroundMapRenderer::Coordinate southwest = ToCoordinate(entry, drawMinX, drawMinY);
+		const CGroundMapRenderer::Coordinate northeast = ToCoordinate(entry, drawMaxX, drawMaxY);
 		PointF destination[3];
 		if (!BuildProjectedImageDestination(
 			context,
@@ -2219,7 +2234,12 @@ namespace
 		if (!visibleRange.valid)
 			return false;
 
-		bool drewAny = false;
+		const int tileCount =
+			(visibleRange.maxX - visibleRange.minX + 1) *
+			(visibleRange.maxY - visibleRange.minY + 1);
+		std::vector<ResolvedGroundTile> resolvedTiles;
+		resolvedTiles.reserve(static_cast<std::size_t>((std::max)(0, tileCount)));
+
 		for (int tileY = visibleRange.minY; tileY <= visibleRange.maxY; ++tileY)
 		{
 			for (int tileX = visibleRange.minX; tileX <= visibleRange.maxX; ++tileX)
@@ -2227,37 +2247,40 @@ namespace
 				const CGroundMapRenderer::GroundTileKey key = MakeGroundTileKey(
 					airport,
 					tileZoom,
-					FeatureZoomForTileZoom(tileZoom),
 					tileX,
 					tileY,
 					styleRevision);
 				QueueGroundTile(entry, tiles, pendingTiles, key, true);
 
-				double minX = 0.0;
-				double minY = 0.0;
-				double maxX = 0.0;
-				double maxY = 0.0;
-				GetGroundTileLocalBounds(key, minX, minY, maxX, maxY);
+				ResolvedGroundTile resolved;
+				GetGroundTileLocalBounds(key, resolved.minX, resolved.minY, resolved.maxX, resolved.maxY);
+				resolved.tile = FindGroundTileOrParent(tiles, key);
+				if (resolved.tile == nullptr)
+					return false;
 
-				CGroundMapRenderer::GroundTile* tile = FindGroundTileOrParent(tiles, key);
-				if (tile == nullptr)
-					continue;
-
-				drewAny |= DrawGroundTilePortion(
-					graphics,
-					*tile,
-					entry,
-					context,
-					minX,
-					minY,
-					maxX,
-					maxY,
-					recentlyInteractive,
-					nowTick);
+				resolvedTiles.push_back(resolved);
 			}
 		}
 
-		return drewAny;
+		for (ResolvedGroundTile& resolved : resolvedTiles)
+		{
+			if (!DrawGroundTilePortion(
+					graphics,
+					*resolved.tile,
+					entry,
+					context,
+					resolved.minX,
+					resolved.minY,
+					resolved.maxX,
+					resolved.maxY,
+					recentlyInteractive,
+					nowTick))
+			{
+				return false;
+			}
+		}
+
+		return !resolvedTiles.empty();
 	}
 
 	bool BuildGroundTile(
@@ -2317,13 +2340,14 @@ namespace
 		CPosition tileNE;
 		tileNE.m_Latitude = renderNortheast.latitude;
 		tileNE.m_Longitude = renderNortheast.longitude;
-		RenderContext tileContext(tileArea, tileSW, tileNE, key.featureZoom, false);
+		const int detailZoom = FeatureZoomForTileZoom(key.zoom);
+		RenderContext tileContext(tileArea, tileSW, tileNE, detailZoom, false);
 		if (!tileContext.valid)
 			return false;
 
 		const GraphicsState tileState = tileGraphics.Save();
 		tileGraphics.SetClip(Rect(0, 0, kGroundTileBitmapSize, kGroundTileBitmapSize), CombineModeReplace);
-		RenderVectorLayer(tileContext, tileGraphics, dc, entry, tileArea, colorManager, true, false);
+		RenderVectorLayer(tileContext, tileGraphics, dc, entry, tileArea, colorManager, true, false, RenderPurpose::GroundTile);
 		tileGraphics.Restore(tileState);
 
 		outTile.bitmap = std::move(bitmap);
@@ -2442,7 +2466,7 @@ namespace
 
 		const GraphicsState bitmapState = bitmapGraphics.Save();
 		bitmapGraphics.SetClip(Rect(0, 0, cacheWidth, cacheHeight), CombineModeReplace);
-		RenderVectorLayer(cacheContext, bitmapGraphics, dc, entry, cacheArea, colorManager, true, false);
+		RenderVectorLayer(cacheContext, bitmapGraphics, dc, entry, cacheArea, colorManager, true, false, RenderPurpose::Screen);
 		bitmapGraphics.Restore(bitmapState);
 
 		cache.bitmap = std::move(bitmap);
@@ -2628,14 +2652,14 @@ bool CGroundMapRenderer::RenderAirportMap(
 
 	if (context.interactive)
 	{
-		RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, true, false);
+		RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, true, false, RenderPurpose::Screen);
 		graphics.Restore(graphicsState);
 		return true;
 	}
 
 	const bool drawNonPolygonFeatures = true;
 	const bool drawText = true;
-	RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, drawNonPolygonFeatures, drawText);
+	RenderVectorLayer(context, graphics, dc, mapIt->second, radarArea, colorManager, drawNonPolygonFeatures, drawText, RenderPurpose::Screen);
 	graphics.Restore(graphicsState);
 
 	return true;
