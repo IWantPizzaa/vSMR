@@ -95,6 +95,7 @@ public:
 		int width = 0;
 		int height = 0;
 		int zoomLevel = -1;
+		int styleRevision = 100;
 		double minLatitude = 0.0;
 		double maxLatitude = 0.0;
 		double minLongitude = 0.0;
