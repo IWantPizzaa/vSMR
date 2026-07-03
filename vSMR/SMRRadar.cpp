@@ -31,6 +31,7 @@ map<string, string> CSMRRadar::vStripsStands;
 
 namespace
 {
+	constexpr UINT WM_VSMR_DEFERRED_GROUND_MAP_REFRESH = WM_APP + 0x5A1;
 	std::mutex gSessionActiveProfileMutex;
 	std::string gSessionActiveProfileName;
 
@@ -46,6 +47,26 @@ namespace
 		{
 			return "vSMR_LastActiveProfile.txt";
 		}
+	}
+
+	bool IsKnownRadarScreen(CSMRRadar* radar)
+	{
+		return radar != nullptr &&
+			std::find(RadarScreensOpened.begin(), RadarScreensOpened.end(), radar) != RadarScreensOpened.end();
+	}
+
+	void PostDeferredGroundMapRefresh(CSMRRadar* radar)
+	{
+		if (!IsKnownRadarScreen(radar))
+			return;
+
+		HWND targetWindow = pluginWindow;
+		if (targetWindow == nullptr || !::IsWindow(targetWindow))
+			targetWindow = GetActiveWindow();
+		if (targetWindow == nullptr || !::IsWindow(targetWindow))
+			return;
+
+		::PostMessage(targetWindow, WM_VSMR_DEFERRED_GROUND_MAP_REFRESH, reinterpret_cast<WPARAM>(radar), 0);
 	}
 }
 
@@ -174,12 +195,17 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
+	GroundMapRenderer.reset();
+	AircraftIcons.clear();
 	customFonts.clear();
 	appWindows.clear();
 
 	// Shutting down GDI+
 	if (m_gdiplusToken != 0)
+	{
 		GdiplusShutdown(m_gdiplusToken);
+		m_gdiplusToken = 0;
+	}
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
@@ -2378,6 +2404,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case WM_SETCURSOR:
 		SetCursor(smrCursor);
 		return true;
+	case WM_VSMR_DEFERRED_GROUND_MAP_REFRESH:
+	{
+		CSMRRadar* radar = reinterpret_cast<CSMRRadar*>(wParam);
+		if (IsKnownRadarScreen(radar))
+			radar->RequestRefresh();
+		return 0;
+	}
 	default:
 		if (gSourceProc != nullptr)
 			return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
@@ -2680,6 +2713,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			dc,
 			RadarArea,
 			ColorManager.get());
+		if (GroundMapRenderer->ConsumeDeferredRefresh())
+			PostDeferredGroundMapRefresh(this);
 #if defined(_DEBUG)
 		const auto groundMapEnd = std::chrono::steady_clock::now();
 		const double groundMapMilliseconds =
