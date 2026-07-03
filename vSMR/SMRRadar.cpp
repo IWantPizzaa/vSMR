@@ -164,6 +164,14 @@ namespace
 			feature.maxLongitude >= minLon &&
 			feature.minLongitude <= maxLon;
 	}
+
+	bool AvisoColorsEqual(const Gdiplus::Color& left, const Gdiplus::Color& right)
+	{
+		return left.GetAlpha() == right.GetAlpha() &&
+			left.GetR() == right.GetR() &&
+			left.GetG() == right.GetG() &&
+			left.GetB() == right.GetB();
+	}
 }
 
 #if defined(_DEBUG)
@@ -644,15 +652,47 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	CPosition displayB;
 	GetDisplayArea(&displayA, &displayB);
 
+	const double displayMinLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
+	const double displayMaxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
+	const double displayMinLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
+	const double displayMaxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
+	const double latSpan = displayMaxLat - displayMinLat;
+	const double lonSpan = displayMaxLon - displayMinLon;
+	if (latSpan <= 0.0 || lonSpan <= 0.0)
+		return;
+
+	CRect radarArea(GetRadarArea());
+	CRect chatArea(GetChatArea());
+	radarArea.bottom = chatArea.top;
+	const double width = static_cast<double>(radarArea.right - radarArea.left);
+	const double height = static_cast<double>(radarArea.bottom - radarArea.top);
+	if (width <= 0.0 || height <= 0.0)
+		return;
+
+	const double scaleX = width / lonSpan;
+	const double scaleY = height / latSpan;
+	auto projectPoint = [&](const AvisoPoint& coordinate) -> PointF
+	{
+		const double x = static_cast<double>(radarArea.left) + ((coordinate.longitude - displayMinLon) * scaleX);
+		const double y = static_cast<double>(radarArea.top) + ((displayMaxLat - coordinate.latitude) * scaleY);
+		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
+	};
+
+	graphics.SetSmoothingMode(SmoothingModeNone);
+
 	std::vector<PointF> points;
 	for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
 	{
 		if (!IsAvisoFeatureVisible(feature, displayA, displayB))
 			continue;
 
+		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * scaleX;
+		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * scaleY;
+		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
+			continue;
+
 		if (feature.polygon)
 		{
-			GraphicsPath path(FillModeAlternate);
 			for (const std::vector<AvisoPoint>& ring : feature.paths)
 			{
 				if (ring.size() < 3)
@@ -661,26 +701,31 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 				points.clear();
 				points.reserve(ring.size());
 				for (const AvisoPoint& coordinate : ring)
-				{
-					CPosition position;
-					position.m_Latitude = coordinate.latitude;
-					position.m_Longitude = coordinate.longitude;
-					const POINT pixel = ConvertCoordFromPositionToPixel(position);
-					points.emplace_back(static_cast<REAL>(pixel.x), static_cast<REAL>(pixel.y));
-				}
+					points.push_back(projectPoint(coordinate));
 
 				if (points.size() >= 3)
-					path.AddPolygon(points.data(), static_cast<INT>(points.size()));
+				{
+					if (feature.fillColor.GetAlpha() > 0)
+					{
+						SolidBrush fillBrush(feature.fillColor);
+						graphics.FillPolygon(&fillBrush, points.data(), static_cast<INT>(points.size()), FillModeAlternate);
+					}
+
+					if (feature.strokeColor.GetAlpha() > 0 &&
+						feature.strokeWidth > 0.0f &&
+						!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
+					{
+						Pen outlinePen(feature.strokeColor, feature.strokeWidth);
+						outlinePen.SetLineJoin(LineJoinRound);
+						graphics.DrawPolygon(&outlinePen, points.data(), static_cast<INT>(points.size()));
+					}
+				}
 			}
-
-			SolidBrush fillBrush(feature.fillColor);
-			graphics.FillPath(&fillBrush, &path);
-
-			Pen outlinePen(feature.strokeColor, feature.strokeWidth);
-			outlinePen.SetLineJoin(LineJoinRound);
-			graphics.DrawPath(&outlinePen, &path);
 			continue;
 		}
+
+		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
+			continue;
 
 		Pen linePen(feature.strokeColor, feature.strokeWidth);
 		linePen.SetLineJoin(LineJoinRound);
@@ -694,18 +739,14 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 			points.clear();
 			points.reserve(line.size());
 			for (const AvisoPoint& coordinate : line)
-			{
-				CPosition position;
-				position.m_Latitude = coordinate.latitude;
-				position.m_Longitude = coordinate.longitude;
-				const POINT pixel = ConvertCoordFromPositionToPixel(position);
-				points.emplace_back(static_cast<REAL>(pixel.x), static_cast<REAL>(pixel.y));
-			}
+				points.push_back(projectPoint(coordinate));
 
 			if (points.size() >= 2)
 				graphics.DrawLines(&linePen, points.data(), static_cast<INT>(points.size()));
 		}
 	}
+
+	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
