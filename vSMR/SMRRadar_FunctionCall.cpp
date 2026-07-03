@@ -1,10 +1,13 @@
 ﻿#include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "EuroScopeCallbackGuard.hpp"
 
 extern CPoint mouseLocation;
 
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	vsmr::RunEuroScopeCallback("CSMRRadar::OnFunctionCall function=" + std::to_string(FunctionId), [&]() {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
 	const bool hasItemString = (sItemString != nullptr && sItemString[0] != '\0');
@@ -416,4 +419,5 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 
 		CorrelateCursor();
 	}
+	});
 }

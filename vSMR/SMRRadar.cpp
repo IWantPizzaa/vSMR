@@ -2,6 +2,7 @@
 #include "Resource.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "EuroScopeCallbackGuard.hpp"
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -2392,6 +2393,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	vsmr::RunEuroScopeCallback("CSMRRadar::OnRefresh phase=" + std::to_string(Phase), [&]() {
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
 	if (Logger::is_verbose_mode())
 	{
@@ -4833,6 +4836,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	VSMR_REFRESH_LOG("END "+ string(__FUNCSIG__));
 
+	});
 }
 
 // ReSharper restore CppMsExtAddressOfClassRValue
@@ -4841,7 +4845,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 void CSMRRadar::EuroScopePlugInExitCustom()
 {
-	AFX_MANAGE_STATE(AfxGetStaticModuleState())
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	vsmr::RunEuroScopeCallback("CSMRRadar::EuroScopePlugInExitCustom", [&]() {
 
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
@@ -4851,4 +4856,5 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 
 		pluginWindow = nullptr;
 		gSourceProc = nullptr;
+	});
 }
