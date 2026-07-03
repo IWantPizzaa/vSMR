@@ -5,6 +5,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -48,7 +49,6 @@ public:
 		FeatureKind kind = FeatureKind::Line;
 		std::vector<std::vector<Coordinate>> paths;
 		std::array<std::vector<std::vector<Coordinate>>, 3> lodPaths;
-		std::array<std::unique_ptr<Gdiplus::GraphicsPath>, 4> geoPaths;
 		std::string label;
 		std::string layer;
 		FeatureStyle style;
@@ -165,7 +165,7 @@ private:
 	CachedGroundLayer CachedLayer;
 	std::map<GroundTileKey, GroundTile> GroundTiles;
 	std::deque<GroundTileKey> PendingGroundTiles;
-	bool RenderInProgress = false;
+	std::mutex StateMutex;
 	bool HasLastView = false;
 	RECT LastRadarArea = {};
 	double LastMinLatitude = 0.0;

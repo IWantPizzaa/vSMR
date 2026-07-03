@@ -6,6 +6,7 @@
 #include "SMRRadar.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -395,32 +396,6 @@ namespace
 		return lodPaths;
 	}
 
-	std::unique_ptr<GraphicsPath> BuildGeoPath(const std::vector<std::vector<CGroundMapRenderer::Coordinate>>& paths)
-	{
-		std::unique_ptr<GraphicsPath> geoPath = std::make_unique<GraphicsPath>(FillModeAlternate);
-		std::vector<PointF> points;
-
-		for (const auto& path : paths)
-		{
-			if (path.size() < 3)
-				continue;
-
-			points.clear();
-			points.reserve(path.size());
-			for (const auto& coordinate : path)
-			{
-				points.emplace_back(
-					static_cast<REAL>(coordinate.longitude),
-					static_cast<REAL>(coordinate.latitude));
-			}
-
-			if (points.size() >= 3)
-				geoPath->AddPolygon(points.data(), static_cast<INT>(points.size()));
-		}
-
-		return geoPath->GetPointCount() > 0 ? std::move(geoPath) : nullptr;
-	}
-
 	std::vector<CGroundMapRenderer::Coordinate> ReadCoordinatePath(const Value& coordinates)
 	{
 		std::vector<CGroundMapRenderer::Coordinate> path;
@@ -609,15 +584,11 @@ namespace
 			feature.hasLabelAnchor = true;
 		}
 
-		feature.lodPaths[0] = BuildLodPaths(feature.paths, feature.kind, 0.000055);
-		feature.lodPaths[1] = BuildLodPaths(feature.paths, feature.kind, 0.000022);
-		feature.lodPaths[2] = BuildLodPaths(feature.paths, feature.kind, 0.000008);
-		if (feature.kind == CGroundMapRenderer::FeatureKind::Polygon)
+		if (feature.kind == CGroundMapRenderer::FeatureKind::Line)
 		{
-			feature.geoPaths[0] = BuildGeoPath(feature.lodPaths[0]);
-			feature.geoPaths[1] = BuildGeoPath(feature.lodPaths[1]);
-			feature.geoPaths[2] = BuildGeoPath(feature.lodPaths[2]);
-			feature.geoPaths[3] = BuildGeoPath(feature.paths);
+			feature.lodPaths[0] = BuildLodPaths(feature.paths, feature.kind, 0.000055);
+			feature.lodPaths[1] = BuildLodPaths(feature.paths, feature.kind, 0.000022);
+			feature.lodPaths[2] = BuildLodPaths(feature.paths, feature.kind, 0.000008);
 		}
 
 		features.push_back(std::move(feature));
@@ -712,7 +683,25 @@ namespace
 		}
 	}
 
-	bool LoadGeoJson(const std::string& path, std::vector<CGroundMapRenderer::Feature>& features, std::string& error)
+	bool FeatureBelongsToAirport(const Value* properties, const std::string& airport)
+	{
+		if (properties == nullptr || !properties->IsObject())
+			return true;
+
+		const std::string explicitDataset = ToUpperCopy(TrimAsciiWhitespace(ReadStringProperty(
+			properties,
+			{ "airport", "icao", "dataset" })));
+		if (!explicitDataset.empty())
+			return explicitDataset.find(airport) != std::string::npos;
+
+		const std::string name = ToUpperCopy(TrimAsciiWhitespace(ReadStringProperty(properties, { "name" })));
+		if (name.size() >= 4 && name[0] == 'L' && name[1] == 'F')
+			return name.rfind(airport, 0) == 0;
+
+		return true;
+	}
+
+	bool LoadGeoJson(const std::string& path, const std::string& requestedAirport, std::vector<CGroundMapRenderer::Feature>& features, std::string& error)
 	{
 		std::ifstream input(path, std::ios::binary);
 		if (!input.is_open())
@@ -752,6 +741,8 @@ namespace
 				const Value* properties = nullptr;
 				if (geoFeature.HasMember("properties") && geoFeature["properties"].IsObject())
 					properties = &geoFeature["properties"];
+				if (!FeatureBelongsToAirport(properties, requestedAirport))
+					continue;
 				AppendGeometry(geoFeature["geometry"], properties, features);
 			}
 		}
@@ -904,7 +895,7 @@ namespace
 		entry.path = geoJsonPath.string();
 
 		std::string error;
-		entry.available = LoadGeoJson(entry.path, entry.features, error);
+		entry.available = LoadGeoJson(entry.path, airport, entry.features, error);
 		if (entry.available)
 		{
 			RebuildFeatureIndices(entry);
@@ -2347,13 +2338,9 @@ namespace
 				tiles.begin(),
 				tiles.end(),
 				[](const auto& left, const auto& right) {
-					if (left.second.key.zoom <= 1 && right.second.key.zoom > 1)
-						return false;
-					if (left.second.key.zoom > 1 && right.second.key.zoom <= 1)
-						return true;
 					return left.second.lastUsed < right.second.lastUsed;
 				});
-			if (oldest == tiles.end() || oldest->second.key.zoom <= 1)
+			if (oldest == tiles.end())
 				break;
 			tiles.erase(oldest);
 		}
@@ -2466,6 +2453,7 @@ namespace
 
 void CGroundMapRenderer::ClearCache()
 {
+	std::lock_guard<std::mutex> lock(StateMutex);
 	AirportMaps.clear();
 	CachedLayer = CachedGroundLayer();
 	GroundTiles.clear();
@@ -2484,19 +2472,9 @@ bool CGroundMapRenderer::RenderAirportMap(
 	const RECT& radarArea,
 	CColorManager* colorManager)
 {
-	if (RenderInProgress)
+	std::unique_lock<std::mutex> lock(StateMutex, std::try_to_lock);
+	if (!lock.owns_lock())
 		return true;
-
-	RenderInProgress = true;
-	struct RenderFlagGuard
-	{
-		bool& flag;
-		~RenderFlagGuard()
-		{
-			flag = false;
-		}
-	};
-	RenderFlagGuard renderGuard{ RenderInProgress };
 
 	const std::string normalizedAirport = ToUpperCopy(TrimAsciiWhitespace(airport));
 	if (!EnsureAirportLoaded(AirportMaps, normalizedAirport, dllPath))
@@ -2604,6 +2582,8 @@ bool CGroundMapRenderer::RenderAirportMap(
 		GroundTiles,
 		PendingGroundTiles);
 	PrunePendingGroundTiles(PendingGroundTiles, normalizedAirport, tileZoom, styleRevision);
+	EvictOldGroundTiles(GroundTiles);
+	assert(GroundTiles.size() <= kMaximumGroundTiles);
 
 	if (!context.interactive)
 	{
@@ -2616,6 +2596,7 @@ bool CGroundMapRenderer::RenderAirportMap(
 			colorManager,
 			styleRevision,
 			nowTick);
+		assert(GroundTiles.size() <= kMaximumGroundTiles);
 	}
 
 	const bool drewTiles = DrawVisibleGroundTiles(
