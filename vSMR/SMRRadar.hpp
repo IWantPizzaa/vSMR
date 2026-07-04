@@ -201,6 +201,7 @@ public:
 		double maxLongitude = 0.0;
 		double maxLatitude = 0.0;
 	};
+	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
 	std::vector<AvisoPathBatch> AvisoGeoJsonPathBatches;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
