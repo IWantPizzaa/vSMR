@@ -445,6 +445,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		return AvisoGeoJsonLoaded;
 	}
 
+	AvisoGeoJsonFeatures.clear();
 	AvisoGeoJsonPathBatches.clear();
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
@@ -676,12 +677,14 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 				AvisoGeoJsonMaxLatitude = AvisoMax(AvisoGeoJsonMaxLatitude, parsedFeature.maxLatitude);
 			}
 			appendFeatureToPathBatches(parsedFeature);
+			AvisoGeoJsonFeatures.push_back(std::move(parsedFeature));
 		}
 	}
 
 	AvisoGeoJsonLoaded = true;
 	Logger::info(
 		"AVISO GeoJSON loaded path=" + path +
+		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
 		" batches=" + std::to_string(AvisoGeoJsonPathBatches.size()) +
 		" polygons=" + std::to_string(polygonCount) +
 		" multilines=" + std::to_string(multiLineCount));
@@ -693,7 +696,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
 	if (path.empty())
 		return;
-	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonPathBatches.empty())
+	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonFeatures.empty())
 		return;
 
 	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
@@ -870,55 +873,83 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	const double rasterScaleX = static_cast<double>(rasterWidth) / lonSpan;
 	const double rasterScaleY = static_cast<double>(rasterHeight) / latSpan;
-	const REAL transformScaleX = static_cast<REAL>(rasterScaleX);
-	const REAL transformScaleY = static_cast<REAL>(rasterScaleY);
-	const REAL transformDx = static_cast<REAL>(-(displayMinLon * rasterScaleX));
-	const REAL transformDy = static_cast<REAL>(displayMaxLat * rasterScaleY);
-
-	GraphicsState rasterState = rasterGraphics.Save();
-	Matrix transform(transformScaleX, 0.0f, 0.0f, -transformScaleY, transformDx, transformDy);
-	rasterGraphics.SetTransform(&transform);
-
-	for (const AvisoPathBatch& batch : AvisoGeoJsonPathBatches)
+	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
 	{
-		if (batch.path == nullptr || batch.path->GetPointCount() == 0)
-			continue;
-		if (!IsAvisoBatchVisible(batch, displayMinLat, displayMaxLat, displayMinLon, displayMaxLon))
-			continue;
+		const double x = (coordinate.longitude - displayMinLon) * rasterScaleX;
+		const double y = (displayMaxLat - coordinate.latitude) * rasterScaleY;
+		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
+	};
 
-		const double batchPixelWidth = (batch.maxLongitude - batch.minLongitude) * rasterScaleX;
-		const double batchPixelHeight = (batch.maxLatitude - batch.minLatitude) * rasterScaleY;
-		if (batchPixelWidth < 0.5 && batchPixelHeight < 0.5)
-			continue;
-
-		if (batch.polygon)
+	std::vector<PointF> rasterPoints;
+	for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
+	{
+		if (feature.maxLatitude < displayMinLat ||
+			feature.minLatitude > displayMaxLat ||
+			feature.maxLongitude < displayMinLon ||
+			feature.minLongitude > displayMaxLon)
 		{
-			if (batch.fillColor.GetAlpha() > 0)
-			{
-				SolidBrush fillBrush(batch.fillColor);
-				rasterGraphics.FillPath(&fillBrush, batch.path.get());
-			}
+			continue;
+		}
 
-			if (batch.drawOutline)
+		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * rasterScaleX;
+		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * rasterScaleY;
+		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
+			continue;
+
+		if (feature.polygon)
+		{
+			for (const std::vector<AvisoPoint>& ring : feature.paths)
 			{
-				Pen outlinePen(batch.strokeColor, batch.strokeWidth);
-				outlinePen.SetLineJoin(LineJoinRound);
-				rasterGraphics.DrawPath(&outlinePen, batch.path.get());
+				if (ring.size() < 3)
+					continue;
+
+				rasterPoints.clear();
+				rasterPoints.reserve(ring.size());
+				for (const AvisoPoint& coordinate : ring)
+					rasterPoints.push_back(projectRasterPoint(coordinate));
+
+				if (rasterPoints.size() < 3)
+					continue;
+
+				if (feature.fillColor.GetAlpha() > 0)
+				{
+					SolidBrush fillBrush(feature.fillColor);
+					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
+				}
+
+				if (feature.strokeColor.GetAlpha() > 0 &&
+					feature.strokeWidth > 0.0f &&
+					!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
+				{
+					Pen outlinePen(feature.strokeColor, feature.strokeWidth);
+					outlinePen.SetLineJoin(LineJoinRound);
+					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+				}
 			}
 			continue;
 		}
 
-		if (batch.strokeColor.GetAlpha() == 0 || batch.strokeWidth <= 0.0f)
+		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
 			continue;
 
-		Pen linePen(batch.strokeColor, batch.strokeWidth);
+		Pen linePen(feature.strokeColor, feature.strokeWidth);
 		linePen.SetLineJoin(LineJoinRound);
 		linePen.SetStartCap(LineCapRound);
 		linePen.SetEndCap(LineCapRound);
-		rasterGraphics.DrawPath(&linePen, batch.path.get());
-	}
+		for (const std::vector<AvisoPoint>& line : feature.paths)
+		{
+			if (line.size() < 2)
+				continue;
 
-	rasterGraphics.Restore(rasterState);
+			rasterPoints.clear();
+			rasterPoints.reserve(line.size());
+			for (const AvisoPoint& coordinate : line)
+				rasterPoints.push_back(projectRasterPoint(coordinate));
+
+			if (rasterPoints.size() >= 2)
+				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+		}
+	}
 
 	AvisoGeoJsonRasterCache = std::move(raster);
 	AvisoGeoJsonRasterCachePath = path;
