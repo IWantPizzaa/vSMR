@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "InsetWindow.h"
 #include "SMRRadar.hpp"
+#include "SMRGroundState.hpp"
 #include "SMRTagDefinitionUtils.hpp"
 #include <chrono>
 #include <future>
@@ -38,6 +39,33 @@ namespace
 			dc->Draw3dRect(rect, RGB(75, 75, 75), RGB(45, 45, 45));
 
 		return rect;
+	}
+
+	std::string AvisoTagTypeKey(CSMRRadar::TagTypes type)
+	{
+		if (type == CSMRRadar::TagTypes::Departure)
+			return "departure";
+		if (type == CSMRRadar::TagTypes::Arrival)
+			return "arrival";
+		if (type == CSMRRadar::TagTypes::Uncorrelated)
+			return "uncorrelated";
+		return "airborne";
+	}
+
+	double AvisoFinitePositive(double value, double fallback, double minValue, double maxValue)
+	{
+		if (!std::isfinite(value))
+			return fallback;
+		return std::clamp(value, minValue, maxValue);
+	}
+
+	bool AvisoRectIntersects(const CRect& one, const CRect& two)
+	{
+		CRect a(one);
+		CRect b(two);
+		a.NormalizeRect();
+		b.NormalizeRect();
+		return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 	}
 }
 
@@ -203,9 +231,6 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 
 	if (sObjectId != nullptr && strcmp(sObjectId, "window") != 0 && strcmp(sObjectId, "resize") != 0 && strcmp(sObjectId, "topbar") != 0)
 	{
-		if (IsAvisoViewport())
-			return true;
-
 		string callsign = sObjectId;
 		if (!callsign.empty())
 		{
@@ -719,14 +744,18 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return;
 
 		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
+		Gdiplus::GraphicsState graphicsState = gdi->Save();
+		gdi->SetClip(CopyRect(viewportRect), Gdiplus::CombineModeIntersect);
+		m_TargetPoints.clear();
+		m_TagAreas.clear();
 
-		auto pointInViewport = [&](const POINT& point) -> bool
+		auto pointInViewport = [&](const POINT& point, int margin = 0) -> bool
 		{
 			return
-				point.x >= viewportRect.left &&
-				point.x <= viewportRect.right &&
-				point.y >= viewportRect.top &&
-				point.y <= viewportRect.bottom;
+				point.x >= viewportRect.left - margin &&
+				point.x <= viewportRect.right + margin &&
+				point.y >= viewportRect.top - margin &&
+				point.y <= viewportRect.bottom + margin;
 		};
 		auto projectTargetPosition = [&](const CPosition& position) -> POINT
 		{
@@ -738,43 +767,1246 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		};
 		auto positionNearViewport = [&](const CPosition& position) -> bool
 		{
-			const double lonMargin = lonSpan * 0.08;
-			const double latMargin = latSpan * 0.08;
+			const double lonMargin = lonSpan * 0.25;
+			const double latMargin = latSpan * 0.25;
 			return
 				position.m_Longitude >= displayMinLon - lonMargin &&
 				position.m_Longitude <= displayMaxLon + lonMargin &&
 				position.m_Latitude >= displayMinLat - latMargin &&
 				position.m_Latitude <= displayMaxLat + latMargin;
 		};
-		auto drawTrailPoint = [&](const POINT& point, COLORREF color)
+		auto rectIntersectsViewport = [&](const CRect& rect) -> bool
 		{
-			if (!pointInViewport(point))
-				return;
-			CRect trailRect(point.x - 1, point.y - 1, point.x + 2, point.y + 2);
-			dc.FillSolidRect(trailRect, color);
+			return AvisoRectIntersects(rect, viewportRect);
 		};
 
-		const Gdiplus::Color symbolColor = radar_screen->ColorManager != nullptr
-			? radar_screen->ColorManager->get_corrected_color("symbol", Gdiplus::Color::White)
-			: Gdiplus::Color::White;
-		const COLORREF symbolColorRef = symbolColor.ToCOLORREF();
-		const COLORREF selectedColorRef = RGB(0, 220, 255);
-		const COLORREF stageOneColorRef = RGB(210, 130, 30);
-		const COLORREF stageTwoColorRef = RGB(220, 40, 40);
+		static const Value emptyObject(kObjectType);
+		const Value& activeProfile = (radar_screen->CurrentConfig != nullptr)
+			? radar_screen->CurrentConfig->getActiveProfile()
+			: emptyObject;
+		auto getProfileObjectSection = [&](const char* key) -> const Value*
+		{
+			if (!activeProfile.IsObject() || !activeProfile.HasMember(key) || !activeProfile[key].IsObject())
+				return nullptr;
+			return &activeProfile[key];
+		};
+		auto getSectionBool = [&](const Value* section, const char* key, bool fallback) -> bool
+		{
+			if (section != nullptr && section->HasMember(key) && (*section)[key].IsBool())
+				return (*section)[key].GetBool();
+			return fallback;
+		};
+		auto getSectionColor = [&](const Value* section, const char* key, const Color& fallback) -> Color
+		{
+			if (radar_screen->CurrentConfig != nullptr &&
+				section != nullptr &&
+				section->HasMember(key) &&
+				(*section)[key].IsObject())
+			{
+				return radar_screen->CurrentConfig->getConfigColor((*section)[key]);
+			}
+			return fallback;
+		};
+		auto getColorWithLegacy = [&](const Value* section, const char* preferredKey, const char* legacyKey, const Color& fallback) -> Color
+		{
+			if (radar_screen->CurrentConfig != nullptr &&
+				section != nullptr &&
+				section->HasMember(preferredKey) &&
+				(*section)[preferredKey].IsObject())
+			{
+				return radar_screen->CurrentConfig->getConfigColor((*section)[preferredKey]);
+			}
+			if (radar_screen->CurrentConfig != nullptr &&
+				legacyKey != nullptr &&
+				section != nullptr &&
+				section->HasMember(legacyKey) &&
+				(*section)[legacyKey].IsObject())
+			{
+				return radar_screen->CurrentConfig->getConfigColor((*section)[legacyKey]);
+			}
+			return fallback;
+		};
+		auto getConfigTargetColor = [&](const Value* targetsConfig, const char* key, Color fallback) -> Color
+		{
+			if (radar_screen->CurrentConfig == nullptr || targetsConfig == nullptr || key == nullptr || key[0] == '\0')
+				return fallback;
 
-		CPen symbolPen(PS_SOLID, 1, symbolColorRef);
-		CPen selectedPen(PS_SOLID, 1, selectedColorRef);
-		CPen stageOnePen(PS_SOLID, 1, stageOneColorRef);
-		CPen stageTwoPen(PS_SOLID, 1, stageTwoColorRef);
-		CBrush symbolBrush(symbolColorRef);
-		CBrush stageOneBrush(stageOneColorRef);
-		CBrush stageTwoBrush(stageTwoColorRef);
+			const Value& targets = *targetsConfig;
+			Color resolvedColor;
+			auto tryReadColor = [&](const Value& object, const char* colorKey) -> bool
+			{
+				if (!object.IsObject() || !object.HasMember(colorKey) || !object[colorKey].IsObject())
+					return false;
+				resolvedColor = radar_screen->CurrentConfig->getConfigColor(object[colorKey]);
+				return true;
+			};
+			auto trySection = [&](const char* sectionKey, const char* colorKey) -> bool
+			{
+				if (!targets.HasMember(sectionKey) || !targets[sectionKey].IsObject())
+					return false;
+				return tryReadColor(targets[sectionKey], colorKey);
+			};
+
+			if (_stricmp(key, "airborne_departure") == 0 || _stricmp(key, "departure_airborne") == 0)
+			{
+				if (trySection("departure", "airborne"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "departure_gate") == 0)
+			{
+				if (trySection("departure", "gate"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "nofpl") == 0 || _stricmp(key, "no_fpl") == 0)
+			{
+				if (trySection("departure", "no_fpl"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "nsts") == 0 || _stricmp(key, "no_status") == 0)
+			{
+				if (trySection("departure", "no_status"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "push") == 0)
+			{
+				if (trySection("departure", "push"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "stup") == 0 || _stricmp(key, "startup") == 0)
+			{
+				if (trySection("departure", "startup"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "taxi") == 0)
+			{
+				if (trySection("departure", "taxi"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0)
+			{
+				if (trySection("departure", "departure"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "airborne_arrival") == 0 || _stricmp(key, "arrival_airborne") == 0)
+			{
+				if (trySection("arrival", "airborne"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "arrival_gate") == 0)
+			{
+				if (trySection("arrival", "gate"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "arr") == 0 || _stricmp(key, "arrival_taxi") == 0 || _stricmp(key, "on_ground") == 0)
+			{
+				if (trySection("arrival", "on_ground"))
+					return resolvedColor;
+			}
+			else if (_stricmp(key, "gate") == 0)
+			{
+				if (trySection("departure", "gate"))
+					return resolvedColor;
+				if (trySection("arrival", "gate"))
+					return resolvedColor;
+			}
+			else
+			{
+				if (trySection("departure", key))
+					return resolvedColor;
+				if (trySection("arrival", key))
+					return resolvedColor;
+			}
+
+			if (targets.HasMember("ground_icons") &&
+				targets["ground_icons"].IsObject() &&
+				tryReadColor(targets["ground_icons"], key))
+			{
+				return resolvedColor;
+			}
+			return fallback;
+		};
+
+		const Value* labelsSection = getProfileObjectSection("labels");
+		const Value* rimcasSection = getProfileObjectSection("rimcas");
+		const Value* targetsConfig = getProfileObjectSection("targets");
+		const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
+		const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
+		const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
+		const Color squawkErrorLabelColor = getSectionColor(labelsSection, "squawk_error_color", Color(255, 255, 0, 0));
+
+		bool tagProModeEnabled = false;
+		bool tagTowerModeEnabled = false;
+		bool useAspeedForGate = false;
+		bool airborneUseDepartureArrivalColoring = false;
+		if (activeProfile.IsObject())
+		{
+			if (activeProfile.HasMember("filters") &&
+				activeProfile["filters"].IsObject())
+			{
+				const Value& filters = activeProfile["filters"];
+				if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
+				{
+					const Value& proMode = filters["pro_mode"];
+					if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+						tagProModeEnabled = proMode["enabled"].GetBool();
+					else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
+						tagProModeEnabled = proMode["enable"].GetBool();
+				}
+				if (filters.HasMember("tower_mode") && filters["tower_mode"].IsObject())
+				{
+					const Value& towerMode = filters["tower_mode"];
+					if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
+						tagTowerModeEnabled = towerMode["enabled"].GetBool();
+					else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
+						tagTowerModeEnabled = towerMode["enable"].GetBool();
+				}
+			}
+
+			if (labelsSection != nullptr)
+			{
+				if (labelsSection->HasMember("use_speed_for_gate") && (*labelsSection)["use_speed_for_gate"].IsBool())
+					useAspeedForGate = (*labelsSection)["use_speed_for_gate"].GetBool();
+				else if (labelsSection->HasMember("use_aspeed_for_gate") && (*labelsSection)["use_aspeed_for_gate"].IsBool())
+					useAspeedForGate = (*labelsSection)["use_aspeed_for_gate"].GetBool();
+
+				if (labelsSection->HasMember("use_departure_arrival_coloring") && (*labelsSection)["use_departure_arrival_coloring"].IsBool())
+					airborneUseDepartureArrivalColoring = (*labelsSection)["use_departure_arrival_coloring"].GetBool();
+				else if (labelsSection->HasMember("airborne") &&
+					(*labelsSection)["airborne"].IsObject() &&
+					(*labelsSection)["airborne"].HasMember("use_departure_arrival_coloring") &&
+					(*labelsSection)["airborne"]["use_departure_arrival_coloring"].IsBool())
+				{
+					airborneUseDepartureArrivalColoring = (*labelsSection)["airborne"]["use_departure_arrival_coloring"].GetBool();
+				}
+			}
+		}
+
+		const CSMRRadar::CorrelationSettings correlationSettings = radar_screen->BuildCorrelationSettings();
+		const int transitionAltitude = radar_screen->GetPlugIn()->GetTransitionAltitude();
+		const std::string activeAirport = radar_screen->getActiveAirport();
+		const std::string activeAirportUpper = ToUpperAsciiCopy(activeAirport);
+		const std::string frameIconStyle = radar_screen->GetActiveTargetIconStyle();
+		const bool useNovaIconStyle = (frameIconStyle == "nova");
+		const bool useDiamondIconStyle = (frameIconStyle == "diamond");
+		const bool useRealisticIconStyle = (frameIconStyle == "realistic");
+		const bool smallIconBoostEnabled = radar_screen->GetSmallTargetIconBoostEnabled();
+		const bool fixedPixelIconSize = radar_screen->GetFixedPixelTargetIconSizeEnabled();
+		const double smallIconBoostFactor = std::clamp(radar_screen->GetSmallTargetIconBoostFactor(), 0.5, 4.0);
+		const double smallIconBoostResolutionScale = std::clamp(radar_screen->GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
+		const double fixedTriangleScale = std::clamp(radar_screen->GetFixedPixelTriangleIconScale(), 0.1, 3.0);
+		const double pixPerMeter = max(0.0, static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
+		const Color symbolWhiteColor = radar_screen->ColorManager != nullptr
+			? radar_screen->ColorManager->get_corrected_color("symbol", Color::White)
+			: Color::White;
+		const unsigned long long realisticIconCacheFrame = useRealisticIconStyle
+			? ++radar_screen->RealisticIconCacheFrame
+			: radar_screen->RealisticIconCacheFrame;
+
+		const Gdiplus::InterpolationMode savedInterpolationMode = gdi->GetInterpolationMode();
+		const Gdiplus::PixelOffsetMode savedPixelOffsetMode = gdi->GetPixelOffsetMode();
+		const Gdiplus::CompositingQuality savedCompositingQuality = gdi->GetCompositingQuality();
+		if (useRealisticIconStyle)
+		{
+			gdi->SetInterpolationMode(Gdiplus::InterpolationModeLowQuality);
+			gdi->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
+			gdi->SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
+		}
+
+		CPen symbolPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
+		CPen selectedPen(PS_SOLID, 1, RGB(0, 220, 255));
 		CBrush hollowBrush;
 		hollowBrush.CreateStockObject(HOLLOW_BRUSH);
 
 		CRadarTarget aselTarget = radar_screen->GetPlugIn()->RadarTargetSelectASEL();
 		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
-		const int maxTrailDots = max(0, min(6, max(radar_screen->Trail_Gnd, radar_screen->Trail_App)));
+		vector<POINT> appAreaVect = {
+			viewportRect.TopLeft(),
+			{ viewportRect.right, viewportRect.top },
+			viewportRect.BottomRight(),
+			{ viewportRect.left, viewportRect.bottom }
+		};
+
+		auto drawTrailHistory = [&](CRadarTarget target, int reportedGs)
+		{
+			if (reportedGs <= 5)
+				return;
+
+			const int trailNumber = reportedGs > 50 ? radar_screen->Trail_App : radar_screen->Trail_Gnd;
+			if (trailNumber <= 0)
+				return;
+
+			CRadarTargetPositionData previousPos = target.GetPreviousPosition(target.GetPosition());
+			if (useNovaIconStyle)
+			{
+				SolidBrush trailBrush(symbolWhiteColor);
+				for (int j = 1; j <= trailNumber && previousPos.IsValid(); ++j)
+				{
+					const CPosition position = previousPos.GetPosition();
+					if (positionNearViewport(position))
+					{
+						POINT point = projectTargetPosition(position);
+						if (pointInViewport(point, 2))
+							gdi->FillRectangle(&trailBrush, point.x - 1, point.y - 1, 2, 2);
+					}
+					previousPos = target.GetPreviousPosition(previousPos);
+				}
+				return;
+			}
+
+			for (int j = 1; j <= trailNumber && previousPos.IsValid(); ++j)
+			{
+				const CPosition position = previousPos.GetPosition();
+				if (!positionNearViewport(position))
+				{
+					previousPos = target.GetPreviousPosition(previousPos);
+					continue;
+				}
+
+				POINT point = projectTargetPosition(position);
+				if (!pointInViewport(point, 60))
+				{
+					previousPos = target.GetPreviousPosition(previousPos);
+					continue;
+				}
+
+				int diameterPx = 6;
+				if (pixPerMeter > 0.0)
+					diameterPx = int((pixPerMeter * 10.0) + 0.5);
+				diameterPx = std::clamp(diameterPx, 2, 50);
+
+				double shrink = 1.0 - (0.15 * (j - 1));
+				if (shrink < 0.2)
+					shrink = 0.2;
+				diameterPx = max(2, int((diameterPx * shrink) + 0.5));
+				const int radius = diameterPx / 2;
+				const double t = (trailNumber > 1) ? double(j - 1) / double(trailNumber - 1) : 0.0;
+				auto lerp = [](double a, double b, double amount) { return a + ((b - a) * amount); };
+				Color bubbleColor(
+					static_cast<BYTE>(std::clamp(int(lerp(200.0, 40.0, t) + 0.5), 0, 255)),
+					static_cast<BYTE>(std::clamp(int(lerp(255.0, 120.0, t) + 0.5), 0, 255)),
+					static_cast<BYTE>(std::clamp(int(lerp(255.0, 150.0, t) + 0.5), 0, 255)),
+					static_cast<BYTE>(std::clamp(int(lerp(255.0, 190.0, t) + 0.5), 0, 255)));
+				Gdiplus::Pen ringPen(bubbleColor, Gdiplus::REAL(1.5f));
+				gdi->DrawEllipse(&ringPen, point.x - radius, point.y - radius, diameterPx, diameterPx);
+				previousPos = target.GetPreviousPosition(previousPos);
+			}
+		};
+
+		auto fallbackTypeForWtc = [](char wtcChar) -> std::string
+		{
+			switch (std::toupper(static_cast<unsigned char>(wtcChar)))
+			{
+			case 'L': return "c172";
+			case 'M': return "a320";
+			case 'H': return "b77w";
+			case 'J': return "a388";
+			default: return "a320";
+			}
+		};
+
+		auto resolveTargetColor = [&](CFlightPlan fp, bool isCorrelated, int reportedGs, bool isOnRunway, bool isDepartureTarget, bool hasNoFlightPlan) -> Color
+		{
+			Color targetColor = symbolWhiteColor;
+			auto applyTargetTint = [&](const Color& color)
+			{
+				targetColor = radar_screen->ColorManager != nullptr
+					? radar_screen->ColorManager->get_corrected_color("symbol", color)
+					: color;
+			};
+
+			const bool isAirborneTarget = reportedGs > 50;
+			GroundStateCategory groundStateCat = GroundStateCategory::Unknown;
+			if (fp.IsValid())
+				groundStateCat = classifyGroundState(fp.GetGroundState(), reportedGs, isOnRunway);
+
+			if (hasNoFlightPlan)
+			{
+				applyTargetTint(getConfigTargetColor(targetsConfig, "nofpl", getConfigTargetColor(targetsConfig, "gate", Color(255, 128, 128, 128))));
+			}
+			else if (isAirborneTarget)
+			{
+				if (isDepartureTarget)
+					applyTargetTint(getConfigTargetColor(targetsConfig, "airborne_departure", getConfigTargetColor(targetsConfig, "depa", Color(255, 240, 240, 240))));
+				else
+					applyTargetTint(getConfigTargetColor(targetsConfig, "airborne_arrival", getConfigTargetColor(targetsConfig, "arr", Color(255, 120, 190, 240))));
+			}
+			else if (isDepartureTarget)
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Gate:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "departure_gate", getConfigTargetColor(targetsConfig, "gate", Color(255, 165, 165, 165))));
+					break;
+				case GroundStateCategory::Push:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "push", Color(255, 253, 218, 13)));
+					break;
+				case GroundStateCategory::Stup:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "stup", Color(255, 253, 218, 13)));
+					break;
+				case GroundStateCategory::Taxi:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "taxi", Color(255, 240, 240, 240)));
+					break;
+				case GroundStateCategory::Depa:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "depa", getConfigTargetColor(targetsConfig, "taxi", Color(255, 240, 240, 240))));
+					break;
+				case GroundStateCategory::Nsts:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "nsts", getConfigTargetColor(targetsConfig, "departure_gate", getConfigTargetColor(targetsConfig, "gate", Color(255, 165, 165, 165)))));
+					break;
+				default:
+					break;
+				}
+			}
+			else
+			{
+				switch (groundStateCat)
+				{
+				case GroundStateCategory::Gate:
+				case GroundStateCategory::Nsts:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "arrival_gate", getConfigTargetColor(targetsConfig, "gate", Color(255, 165, 165, 165))));
+					break;
+				default:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "arr", getConfigTargetColor(targetsConfig, "arrival_gate", getConfigTargetColor(targetsConfig, "gate", Color(255, 165, 165, 165)))));
+					break;
+				}
+			}
+
+			if (!isCorrelated && reportedGs >= 3)
+				applyTargetTint(getConfigTargetColor(targetsConfig, "uncorrelated", targetColor));
+
+			return targetColor;
+		};
+
+		auto drawConfiguredIcon = [&](CRadarTarget rt, CFlightPlan fp, const std::string& rtCallsign, const CRadarTargetPositionData& rtPositionData, const POINT& targetPoint, bool isCorrelated, bool isDepartureTarget, bool hasNoFlightPlan, bool isOnRunway) -> int
+		{
+			const int reportedGs = rtPositionData.GetReportedGS();
+			Color targetColor = resolveTargetColor(fp, isCorrelated, reportedGs, isOnRunway, isDepartureTarget, hasNoFlightPlan);
+			double headingDeg = static_cast<double>(rtPositionData.GetReportedHeadingTrueNorth());
+			if (headingDeg < 0.0 || headingDeg >= 360.0)
+				headingDeg = rt.GetTrackHeading();
+
+			if (useNovaIconStyle)
+			{
+				CPen novaPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
+				CPen* oldPen = dc.SelectObject(&novaPen);
+				if (rtPositionData.GetTransponderC())
+				{
+					dc.MoveTo({ targetPoint.x, targetPoint.y - 6 });
+					dc.LineTo({ targetPoint.x - 6, targetPoint.y });
+					dc.LineTo({ targetPoint.x, targetPoint.y + 6 });
+					dc.LineTo({ targetPoint.x + 6, targetPoint.y });
+					dc.LineTo({ targetPoint.x, targetPoint.y - 6 });
+				}
+				else
+				{
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x - 4, targetPoint.y - 4);
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x + 4, targetPoint.y - 4);
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x - 4, targetPoint.y + 4);
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x + 4, targetPoint.y + 4);
+				}
+				dc.SelectObject(oldPen);
+				return 12;
+			}
+
+			char wtc = fp.IsValid() ? fp.GetFlightPlanData().GetAircraftWtc() : '\0';
+			std::string acType;
+			if (fp.IsValid())
+			{
+				const char* acTypeRaw = fp.GetFlightPlanData().GetAircraftFPType();
+				acType = acTypeRaw != nullptr ? acTypeRaw : "";
+			}
+			if (acType.size() > 4)
+				acType = acType.substr(0, 4);
+			std::transform(acType.begin(), acType.end(), acType.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+			std::string iconType = acType;
+			Gdiplus::Bitmap* iconBmp = nullptr;
+			auto specIt = radar_screen->AircraftSpecs.end();
+			if (useRealisticIconStyle)
+			{
+				iconBmp = radar_screen->GetAircraftIcon(iconType);
+				if (iconBmp == nullptr)
+				{
+					iconType = fallbackTypeForWtc(wtc);
+					iconBmp = radar_screen->GetAircraftIcon(iconType);
+				}
+				specIt = radar_screen->AircraftSpecs.find(acType);
+				if (specIt == radar_screen->AircraftSpecs.end())
+					specIt = radar_screen->AircraftSpecs.find(iconType);
+				if (specIt == radar_screen->AircraftSpecs.end())
+					specIt = radar_screen->AircraftSpecs.find(fallbackTypeForWtc(wtc));
+			}
+
+			UINT iconBmpWidth = 0;
+			UINT iconBmpHeight = 0;
+			bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
+			if (canUseRealisticIcon)
+			{
+				iconBmpWidth = iconBmp->GetWidth();
+				iconBmpHeight = iconBmp->GetHeight();
+				canUseRealisticIcon = iconBmp->GetLastStatus() == Gdiplus::Ok && iconBmpWidth > 0 && iconBmpHeight > 0;
+			}
+
+			if (canUseRealisticIcon)
+			{
+				double lengthMeters = 0.0;
+				double spanMeters = 0.0;
+				if (specIt != radar_screen->AircraftSpecs.end())
+				{
+					lengthMeters = specIt->second.length;
+					spanMeters = specIt->second.wingspan;
+				}
+				if (lengthMeters <= 0.0 || spanMeters <= 0.0)
+				{
+					switch (std::toupper(static_cast<unsigned char>(wtc)))
+					{
+					case 'L': lengthMeters = 28.0; spanMeters = 28.0; break;
+					case 'M': lengthMeters = 40.0; spanMeters = 36.0; break;
+					case 'H': lengthMeters = 60.0; spanMeters = 60.0; break;
+					case 'J': lengthMeters = 72.0; spanMeters = 80.0; break;
+					default: lengthMeters = 40.0; spanMeters = 36.0; break;
+					}
+				}
+
+				double drawW = spanMeters * pixPerMeter;
+				double drawH = lengthMeters * pixPerMeter;
+				if (fixedPixelIconSize)
+				{
+					const double configuredFactor = smallIconBoostEnabled ? smallIconBoostFactor : 1.0;
+					const double pxPerMeterFixed = (18.0 * smallIconBoostResolutionScale) / 40.0;
+					drawW = spanMeters * pxPerMeterFixed * configuredFactor;
+					drawH = lengthMeters * pxPerMeterFixed * configuredFactor;
+				}
+				else if (smallIconBoostEnabled && pixPerMeter > 0.0)
+				{
+					const double referenceScreenSize = 40.0 * pixPerMeter;
+					const double boostStartSize = 14.0 * smallIconBoostResolutionScale;
+					if (referenceScreenSize < boostStartSize)
+					{
+						const double boostedReferenceSize = 18.0 * smallIconBoostFactor * smallIconBoostResolutionScale;
+						const double zoomBoostScale = std::clamp(boostedReferenceSize / max(0.01, referenceScreenSize), 1.0, 6.0 * smallIconBoostFactor * smallIconBoostResolutionScale);
+						drawW *= zoomBoostScale;
+						drawH *= zoomBoostScale;
+					}
+				}
+				drawW = AvisoFinitePositive(drawW, 24.0, 4.0, 1200.0);
+				drawH = AvisoFinitePositive(drawH, 24.0, 4.0, 1200.0);
+
+				int drawPixelW = 0;
+				int drawPixelH = 0;
+				std::string scaledCacheKey;
+				Gdiplus::Bitmap* cachedIcon = radar_screen->GetCachedRealisticIconBitmap(
+					iconType,
+					iconBmp,
+					iconBmpWidth,
+					iconBmpHeight,
+					true,
+					targetColor,
+					drawW,
+					drawH,
+					realisticIconCacheFrame,
+					drawPixelW,
+					drawPixelH,
+					scaledCacheKey);
+				if (cachedIcon == nullptr)
+				{
+					drawPixelW = std::clamp(static_cast<int>(std::lround(drawW)), 1, 2048);
+					drawPixelH = std::clamp(static_cast<int>(std::lround(drawH)), 1, 2048);
+				}
+
+				CPosition nosePos = radar_screen->Haversine(rtPositionData.GetPosition(), headingDeg, 50.0);
+				POINT nosePix = projectTargetPosition(nosePos);
+				const double screenHeadingDeg = atan2(double(nosePix.y - targetPoint.y), double(nosePix.x - targetPoint.x)) * 180.0 / 3.14159265358979323846;
+				double rotationDeg = screenHeadingDeg + 90.0;
+				if (!std::isfinite(rotationDeg))
+					rotationDeg = 0.0;
+
+				CSMRRadar::RealisticIconCacheEntry* rotatedIcon = radar_screen->GetCachedRotatedRealisticIconBitmap(
+					scaledCacheKey,
+					cachedIcon,
+					drawPixelW,
+					drawPixelH,
+					rotationDeg,
+					realisticIconCacheFrame);
+				if (rotatedIcon != nullptr && rotatedIcon->bitmap != nullptr)
+				{
+					gdi->DrawImage(rotatedIcon->bitmap.get(), targetPoint.x - rotatedIcon->centerX, targetPoint.y - rotatedIcon->centerY);
+				}
+				else
+				{
+					GraphicsState state = gdi->Save();
+					Gdiplus::Matrix matrix;
+					matrix.Translate(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y));
+					matrix.Rotate(Gdiplus::REAL(rotationDeg));
+					matrix.Translate(Gdiplus::REAL(-drawPixelW / 2.0), Gdiplus::REAL(-drawPixelH / 2.0));
+					gdi->SetTransform(&matrix);
+					if (cachedIcon != nullptr)
+						gdi->DrawImage(cachedIcon, 0, 0);
+					else
+						gdi->DrawImage(iconBmp, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(drawPixelW), Gdiplus::REAL(drawPixelH));
+					gdi->Restore(state);
+				}
+				return max(drawPixelW, drawPixelH);
+			}
+
+			double lenPx = 20.0;
+			double halfWidthPx = 12.0;
+			double lenMetersUsed = 20.0;
+			double halfWidthMetersUsed = 12.0;
+			if (fixedPixelIconSize)
+			{
+				const double fixedScale = (smallIconBoostEnabled ? smallIconBoostFactor : 1.0) * smallIconBoostResolutionScale;
+				lenPx = std::clamp(lenPx * fixedScale, 6.0, 160.0);
+				halfWidthPx = std::clamp(halfWidthPx * fixedScale, 3.0, 80.0);
+			}
+			else if (pixPerMeter > 0.0)
+			{
+				lenPx = std::clamp(pixPerMeter * 20.0, 6.0, 120.0);
+				halfWidthPx = std::clamp(pixPerMeter * 12.0, 3.0, 60.0);
+				if (smallIconBoostEnabled)
+				{
+					const double currentExtent = lenPx + halfWidthPx;
+					const double targetMinExtent = 14.0 * smallIconBoostFactor * smallIconBoostResolutionScale;
+					const double boostScale = std::clamp(targetMinExtent / max(0.01, currentExtent), 1.0, 2.0 * smallIconBoostFactor * smallIconBoostResolutionScale);
+					lenPx *= boostScale;
+					halfWidthPx *= boostScale;
+				}
+			}
+			lenPx = AvisoFinitePositive(lenPx * fixedTriangleScale, 20.0, 1.0, 220.0);
+			halfWidthPx = AvisoFinitePositive(halfWidthPx * fixedTriangleScale, 12.0, 1.0, 110.0);
+			if (pixPerMeter > 0.0)
+			{
+				lenMetersUsed = lenPx / pixPerMeter;
+				halfWidthMetersUsed = halfWidthPx / pixPerMeter;
+			}
+
+			if (useDiamondIconStyle)
+			{
+				const double diagonalPx = std::clamp(lenPx + halfWidthPx, 10.0, 220.0);
+				const double sidePx = diagonalPx / std::sqrt(2.0);
+				const double halfSide = sidePx / 2.0;
+				const Gdiplus::REAL rectX = static_cast<Gdiplus::REAL>(targetPoint.x - halfSide);
+				const Gdiplus::REAL rectY = static_cast<Gdiplus::REAL>(targetPoint.y - halfSide);
+				const Gdiplus::REAL rectW = static_cast<Gdiplus::REAL>(sidePx);
+				const Gdiplus::REAL rectH = static_cast<Gdiplus::REAL>(sidePx);
+				Gdiplus::REAL radius = std::clamp(static_cast<Gdiplus::REAL>(sidePx * 0.22), 2.0f, static_cast<Gdiplus::REAL>(sidePx / 2.0));
+
+				Gdiplus::GraphicsPath diamondPath;
+				const Gdiplus::REAL diameter = radius * 2.0f;
+				diamondPath.AddArc(rectX, rectY, diameter, diameter, 180, 90);
+				diamondPath.AddArc(rectX + rectW - diameter, rectY, diameter, diameter, 270, 90);
+				diamondPath.AddArc(rectX + rectW - diameter, rectY + rectH - diameter, diameter, diameter, 0, 90);
+				diamondPath.AddArc(rectX, rectY + rectH - diameter, diameter, diameter, 90, 90);
+				diamondPath.CloseFigure();
+
+				CPosition nosePos = radar_screen->Haversine(rtPositionData.GetPosition(), headingDeg, 50.0);
+				POINT nosePix = projectTargetPosition(nosePos);
+				const double screenHeadingDeg = atan2(double(nosePix.y - targetPoint.y), double(nosePix.x - targetPoint.x)) * 180.0 / 3.14159265358979323846;
+				Gdiplus::GraphicsState state = gdi->Save();
+				Gdiplus::Matrix transform;
+				transform.RotateAt(static_cast<Gdiplus::REAL>(screenHeadingDeg + 45.0), PointF(static_cast<Gdiplus::REAL>(targetPoint.x), static_cast<Gdiplus::REAL>(targetPoint.y)));
+				gdi->MultiplyTransform(&transform);
+				SolidBrush brush(targetColor);
+				gdi->FillPath(&brush, &diamondPath);
+				gdi->Restore(state);
+				return int(max(12.0, diagonalPx));
+			}
+
+			auto wrap360 = [](double deg)
+			{
+				double wrapped = fmod(deg, 360.0);
+				return wrapped < 0.0 ? wrapped + 360.0 : wrapped;
+			};
+			const CPosition acPos = rtPositionData.GetPosition();
+			const CPosition tipPos = BetterHarversine(acPos, wrap360(headingDeg), lenMetersUsed);
+			const CPosition basePos = BetterHarversine(acPos, wrap360(headingDeg + 180.0), lenMetersUsed * 0.33);
+			const CPosition notchPos = BetterHarversine(acPos, wrap360(headingDeg + 180.0), lenMetersUsed * 0.05);
+			const CPosition rightPos = BetterHarversine(basePos, wrap360(headingDeg + 90.0), halfWidthMetersUsed);
+			const CPosition leftPos = BetterHarversine(basePos, wrap360(headingDeg - 90.0), halfWidthMetersUsed);
+			POINT tip = projectTargetPosition(tipPos);
+			POINT right = projectTargetPosition(rightPos);
+			POINT notch = projectTargetPosition(notchPos);
+			POINT left = projectTargetPosition(leftPos);
+			PointF arrow[4] = {
+				PointF(Gdiplus::REAL(tip.x), Gdiplus::REAL(tip.y)),
+				PointF(Gdiplus::REAL(right.x), Gdiplus::REAL(right.y)),
+				PointF(Gdiplus::REAL(notch.x), Gdiplus::REAL(notch.y)),
+				PointF(Gdiplus::REAL(left.x), Gdiplus::REAL(left.y))
+			};
+			SolidBrush arrowBrush(targetColor);
+			gdi->FillPolygon(&arrowBrush, arrow, 4);
+			return int(max(12.0, lenPx + halfWidthPx));
+		};
+
+		auto tagFontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
+		Gdiplus::Font* tagRegularFont = (tagFontIt != radar_screen->customFonts.end()) ? tagFontIt->second.get() : nullptr;
+		Gdiplus::Font* tagBoldFont = tagRegularFont;
+		std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
+		int tagBlankWidth = 2;
+		int tagOneLineHeight = 10;
+		if (tagRegularFont != nullptr)
+		{
+			Gdiplus::FontFamily baseFamily;
+			if (tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
+			{
+				const INT boldStyle = tagRegularFont->GetStyle() | Gdiplus::FontStyleBold;
+				tagBoldFontOwned.reset(new Gdiplus::Font(&baseFamily, tagRegularFont->GetSize(), boldStyle, Gdiplus::UnitPixel));
+				if (tagBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
+					tagBoldFont = tagBoldFontOwned.get();
+			}
+
+			RectF fontMeasureRect;
+			gdi->MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &fontMeasureRect);
+			tagBlankWidth = max(2, static_cast<int>(fontMeasureRect.GetRight()));
+
+			fontMeasureRect = RectF(0, 0, 0, 0);
+			gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
+				tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &fontMeasureRect);
+			tagOneLineHeight = max(1, static_cast<int>(fontMeasureRect.GetBottom()));
+			if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
+			{
+				RectF boldMeasureRect;
+				gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
+					tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasureRect);
+				tagOneLineHeight = max(tagOneLineHeight, static_cast<int>(boldMeasureRect.GetBottom()));
+			}
+		}
+
+		std::map<std::string, std::vector<std::string>> tagDefinitionLineCache;
+		auto getCachedDefinitionLines = [&](const std::string& typeKey, const char* statusKey) -> const std::vector<std::string>&
+		{
+			const std::string normalizedStatus = (statusKey != nullptr && statusKey[0] != '\0') ? statusKey : "default";
+			const std::string cacheKey = typeKey + "|" + normalizedStatus;
+			auto it = tagDefinitionLineCache.find(cacheKey);
+			if (it == tagDefinitionLineCache.end())
+			{
+				it = tagDefinitionLineCache.emplace(
+					cacheKey,
+					radar_screen->GetTagDefinitionLineStrings(
+						typeKey,
+						false,
+						CSMRRadar::TagDefinitionEditorMaxLines,
+						false,
+						normalizedStatus)).first;
+			}
+			return it->second;
+		};
+		auto definitionLinesHaveContent = [](const std::vector<std::string>& lines) -> bool
+		{
+			for (const std::string& line : lines)
+			{
+				if (!TrimAsciiWhitespaceCopy(line).empty())
+					return true;
+			}
+			return false;
+		};
+
+		auto drawTag = [&](CRadarTarget rt, CFlightPlan fp, const std::string& rtCallsign, const POINT& targetPoint, bool isASEL, bool isCorrelated, int reportedGs, bool isOnRunway)
+		{
+			if (tagRegularFont == nullptr)
+				return;
+			const int blankWidth = tagBlankWidth;
+			const int oneLineHeight = tagOneLineHeight;
+
+			RectF measureRect;
+
+			POINT tagCenter{};
+			m_TargetPoints[rtCallsign] = targetPoint;
+			auto customTagOffsetIt = m_TagOffsets.find(rtCallsign);
+			if (customTagOffsetIt != m_TagOffsets.end())
+			{
+				tagCenter.x = targetPoint.x + customTagOffsetIt->second.x;
+				tagCenter.y = targetPoint.y + customTagOffsetIt->second.y;
+			}
+			else
+			{
+				if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
+					m_TagAngles[rtCallsign] = 45.0;
+				const int leaderLength = 50;
+				tagCenter.x = long(targetPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
+				tagCenter.y = long(targetPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
+			}
+
+			const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
+			const char* fpOrigin = fp.IsValid() ? fp.GetFlightPlanData().GetOrigin() : nullptr;
+			const char* fpPlanType = fp.IsValid() ? fp.GetFlightPlanData().GetPlanType() : nullptr;
+
+			CSMRRadar::TagTypes tagType = CSMRRadar::TagTypes::Departure;
+			CSMRRadar::TagTypes colorTagType = CSMRRadar::TagTypes::Departure;
+			if (fpDestination != nullptr && strcmp(fpDestination, activeAirport.c_str()) == 0)
+			{
+				if (fpOrigin == nullptr || strcmp(fpOrigin, activeAirport.c_str()) != 0)
+				{
+					tagType = CSMRRadar::TagTypes::Arrival;
+					colorTagType = CSMRRadar::TagTypes::Arrival;
+				}
+			}
+			if (reportedGs > 50)
+			{
+				tagType = CSMRRadar::TagTypes::Airborne;
+				if (!airborneUseDepartureArrivalColoring)
+					colorTagType = CSMRRadar::TagTypes::Airborne;
+			}
+			if (!isCorrelated && reportedGs >= 3)
+			{
+				tagType = CSMRRadar::TagTypes::Uncorrelated;
+				colorTagType = CSMRRadar::TagTypes::Uncorrelated;
+			}
+
+			map<string, string> tagReplacingMap = CSMRRadar::GenerateTagData(
+				rt,
+				fp,
+				isASEL,
+				isCorrelated,
+				tagProModeEnabled,
+				transitionAltitude,
+				useAspeedForGate,
+				activeAirport,
+				rtCallsign);
+
+			map<string, int> tagClickableMap;
+			auto addClickableToken = [&](const char* tokenKey, int clickType)
+			{
+				auto tokenIt = tagReplacingMap.find(tokenKey);
+				if (tokenIt != tagReplacingMap.end() && !tokenIt->second.empty())
+					tagClickableMap[tokenIt->second] = clickType;
+			};
+			addClickableToken("callsign", TAG_CITEM_CALLSIGN);
+			addClickableToken("actype", TAG_CITEM_FPBOX);
+			addClickableToken("sctype", TAG_CITEM_FPBOX);
+			addClickableToken("sqerror", TAG_CITEM_FPBOX);
+			addClickableToken("deprwy", TAG_CITEM_RWY);
+			addClickableToken("seprwy", TAG_CITEM_RWY);
+			addClickableToken("arvrwy", TAG_CITEM_RWY);
+			addClickableToken("srvrwy", TAG_CITEM_RWY);
+			addClickableToken("gate", TAG_CITEM_GATE);
+			addClickableToken("sate", TAG_CITEM_GATE);
+			addClickableToken("flightlevel", TAG_CITEM_NO);
+			addClickableToken("gs", TAG_CITEM_NO);
+			addClickableToken("tobt", TAG_CITEM_NO);
+			addClickableToken("tsat", TAG_CITEM_NO);
+			addClickableToken("ttot", TAG_CITEM_NO);
+			addClickableToken("asat", TAG_CITEM_NO);
+			addClickableToken("aobt", TAG_CITEM_NO);
+			addClickableToken("atot", TAG_CITEM_NO);
+			addClickableToken("asrt", TAG_CITEM_NO);
+			addClickableToken("aort", TAG_CITEM_NO);
+			addClickableToken("ctot", TAG_CITEM_NO);
+			addClickableToken("event_booking", TAG_CITEM_NO);
+			addClickableToken("tendency", TAG_CITEM_NO);
+			addClickableToken("wake", TAG_CITEM_FPBOX);
+			addClickableToken("tssr", TAG_CITEM_NO);
+			addClickableToken("asid", TAG_CITEM_SID);
+			addClickableToken("ssid", TAG_CITEM_SID);
+			addClickableToken("sid", TAG_CITEM_SID);
+			addClickableToken("shid", TAG_CITEM_SID);
+			addClickableToken("origin", TAG_CITEM_FPBOX);
+			addClickableToken("dest", TAG_CITEM_FPBOX);
+			addClickableToken("systemid", TAG_CITEM_MANUALCORRELATE);
+			addClickableToken("gstatus", TAG_CITEM_GROUNDSTATUS);
+			addClickableToken("groundstatus", TAG_CITEM_GROUNDSTATUS);
+			addClickableToken("clearance", TAG_CITEM_CLEARANCE);
+			addClickableToken("uk_stand", TAG_CITEM_UKSTAND);
+			addClickableToken("remark", TAG_CITEM_REMARK);
+			addClickableToken("scratchpad", TAG_CITEM_SCRATCHPAD);
+
+			std::string definitionTypeKey = AvisoTagTypeKey(tagType);
+			const char* statusDefinitionKey = nullptr;
+			const auto actypeIt = tagReplacingMap.find("actype");
+			const bool noFlightPlanTag = (actypeIt != tagReplacingMap.end() && actypeIt->second == "NoFPL");
+			if (noFlightPlanTag && (tagType == CSMRRadar::TagTypes::Departure || tagType == CSMRRadar::TagTypes::Arrival))
+			{
+				statusDefinitionKey = "nofpl";
+			}
+			else if (tagType == CSMRRadar::TagTypes::Airborne)
+			{
+				bool airborneArrival = false;
+				if (fpDestination != nullptr &&
+					strcmp(fpDestination, activeAirport.c_str()) == 0 &&
+					(fpOrigin == nullptr || strcmp(fpOrigin, activeAirport.c_str()) != 0))
+				{
+					airborneArrival = true;
+				}
+				definitionTypeKey = airborneArrival ? "arrival" : "departure";
+				statusDefinitionKey = airborneArrival
+					? (isOnRunway ? "airarr_onrunway" : "airarr")
+					: (isOnRunway ? "airdep_onrunway" : "airdep");
+			}
+			else if (fp.IsValid())
+			{
+				const GroundStateCategory status = classifyGroundState(fp.GetGroundState(), reportedGs, isOnRunway);
+				if (tagType == CSMRRadar::TagTypes::Departure)
+				{
+					switch (status)
+					{
+					case GroundStateCategory::Taxi: statusDefinitionKey = "taxi"; break;
+					case GroundStateCategory::Push: statusDefinitionKey = "push"; break;
+					case GroundStateCategory::Stup: statusDefinitionKey = "stup"; break;
+					case GroundStateCategory::Nsts: statusDefinitionKey = "nsts"; break;
+					case GroundStateCategory::Depa: statusDefinitionKey = "depa"; break;
+					default: break;
+					}
+				}
+			}
+
+			const std::vector<std::string>* definitionLines = &getCachedDefinitionLines(definitionTypeKey, statusDefinitionKey);
+			if (!definitionLinesHaveContent(*definitionLines))
+			{
+				if (statusDefinitionKey != nullptr &&
+					(strcmp(statusDefinitionKey, "airarr_onrunway") == 0 || strcmp(statusDefinitionKey, "airdep_onrunway") == 0))
+				{
+					definitionLines = &getCachedDefinitionLines(
+						definitionTypeKey,
+						strcmp(statusDefinitionKey, "airarr_onrunway") == 0 ? "airarr" : "airdep");
+				}
+
+				if (!definitionLinesHaveContent(*definitionLines))
+					definitionLines = &getCachedDefinitionLines(definitionTypeKey, "default");
+			}
+
+			struct RenderedTagElement
+			{
+				std::string token;
+				std::string text;
+				bool bold = false;
+				bool hasCustomColor = false;
+				int colorR = 255;
+				int colorG = 255;
+				int colorB = 255;
+				int measuredWidth = 0;
+				int measuredHeight = 0;
+				bool isClearanceToken = false;
+			};
+			vector<vector<RenderedTagElement>> renderedLines;
+			int tagWidth = 0;
+			int tagHeight = 0;
+			for (const std::string& lineText : *definitionLines)
+			{
+				vector<string> rawElements = SplitDefinitionTokens(lineText);
+				if (rawElements.empty())
+					continue;
+
+				vector<RenderedTagElement> renderedLine;
+				renderedLine.reserve(rawElements.size());
+				bool allEmpty = true;
+				int tempTagWidth = 0;
+				for (const std::string& rawElement : rawElements)
+				{
+					DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawElement);
+					const std::string baseToken = styledToken.token.empty() ? rawElement : styledToken.token;
+					string element;
+					string clearanceNotClearedText;
+					string clearanceClearedText;
+					const bool isClearanceToken = TryParseClearanceTokenDisplay(baseToken, clearanceNotClearedText, clearanceClearedText);
+					if (isClearanceToken)
+					{
+						if (fp.IsValid() && isCorrelated)
+							element = fp.GetClearenceFlag() ? clearanceClearedText : clearanceNotClearedText;
+					}
+					else
+					{
+						auto exactMatch = tagReplacingMap.find(baseToken);
+						if (exactMatch != tagReplacingMap.end())
+							element = exactMatch->second;
+						else
+						{
+							element = baseToken;
+							for (const auto& kv : tagReplacingMap)
+							{
+								if (element.find(kv.first) != std::string::npos)
+									replaceAll(element, kv.first, kv.second);
+							}
+						}
+					}
+
+					RenderedTagElement renderedElement;
+					renderedElement.token = baseToken;
+					renderedElement.text = element;
+					renderedElement.bold = styledToken.bold;
+					renderedElement.hasCustomColor = styledToken.hasCustomColor;
+					renderedElement.colorR = styledToken.colorR;
+					renderedElement.colorG = styledToken.colorG;
+					renderedElement.colorB = styledToken.colorB;
+					renderedElement.isClearanceToken = isClearanceToken;
+
+					if (!element.empty())
+					{
+						allEmpty = false;
+						wstring wstr(element.begin(), element.end());
+						Gdiplus::Font* measureFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
+						gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+						renderedElement.measuredWidth = static_cast<int>(measureRect.GetRight());
+						renderedElement.measuredHeight = static_cast<int>(measureRect.GetBottom());
+						tempTagWidth += renderedElement.measuredWidth;
+					}
+					renderedLine.push_back(std::move(renderedElement));
+				}
+
+				if (allEmpty)
+					continue;
+				if (!renderedLine.empty())
+					tempTagWidth += blankWidth * (static_cast<int>(renderedLine.size()) - 1);
+				tagHeight += oneLineHeight;
+				tagWidth = max(tagWidth, tempTagWidth);
+				renderedLines.push_back(std::move(renderedLine));
+			}
+
+			if (renderedLines.empty())
+			{
+				auto callsignIt = tagReplacingMap.find("callsign");
+				const std::string callsignText = (callsignIt != tagReplacingMap.end() && !callsignIt->second.empty())
+					? callsignIt->second
+					: rtCallsign;
+				RenderedTagElement fallbackElement;
+				fallbackElement.token = "callsign";
+				fallbackElement.text = callsignText;
+				wstring wstr(callsignText.begin(), callsignText.end());
+				gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+				fallbackElement.measuredWidth = static_cast<int>(measureRect.GetRight());
+				fallbackElement.measuredHeight = static_cast<int>(measureRect.GetBottom());
+				tagWidth = fallbackElement.measuredWidth;
+				tagHeight = oneLineHeight;
+				renderedLines.push_back({ fallbackElement });
+			}
+			if (tagHeight > 0)
+				tagHeight -= 2;
+
+			const std::string colorTagTypeKey = AvisoTagTypeKey(colorTagType);
+			const Value* colorTagLabelSection = nullptr;
+			if (labelsSection != nullptr &&
+				labelsSection->HasMember(colorTagTypeKey.c_str()) &&
+				(*labelsSection)[colorTagTypeKey.c_str()].IsObject())
+			{
+				colorTagLabelSection = &(*labelsSection)[colorTagTypeKey.c_str()];
+			}
+
+			Color definedBackgroundColor = Color(255, 53, 126, 187);
+			Color definedBackgroundOnRunwayColor = definedBackgroundColor;
+			Color definedTextColor = Color::White;
+			if (colorTagType == CSMRRadar::TagTypes::Departure)
+			{
+				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_no_status_color", "gate_color", Color(255, 53, 126, 187));
+				definedBackgroundOnRunwayColor = getColorWithLegacy(colorTagLabelSection, "background_on_runway_color", "on_runway_color", definedBackgroundColor);
+				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", Color::White);
+			}
+			else if (colorTagType == CSMRRadar::TagTypes::Arrival)
+			{
+				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_on_ground_color", "background_color", Color(255, 191, 87, 91));
+				definedBackgroundOnRunwayColor = getColorWithLegacy(colorTagLabelSection, "background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
+				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", Color::White);
+			}
+			else if (colorTagType == CSMRRadar::TagTypes::Uncorrelated)
+			{
+				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_on_ground_color", "background_color", Color(255, 150, 22, 135));
+				definedBackgroundOnRunwayColor = getColorWithLegacy(colorTagLabelSection, "background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
+				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", Color::White);
+			}
+			else
+			{
+				definedBackgroundColor = getSectionColor(colorTagLabelSection, "background_color", Color(255, 53, 126, 187));
+				definedBackgroundOnRunwayColor = getSectionColor(colorTagLabelSection, "background_color_on_runway", definedBackgroundColor);
+				definedTextColor = getSectionColor(colorTagLabelSection, "text_color", Color::White);
+			}
+
+			if (colorTagType == CSMRRadar::TagTypes::Departure)
+			{
+				std::string sidText;
+				auto asidIt = tagReplacingMap.find("asid");
+				if (asidIt != tagReplacingMap.end())
+					sidText = asidIt->second;
+				if (sidText.empty())
+				{
+					auto sidIt = tagReplacingMap.find("sid");
+					if (sidIt != tagReplacingMap.end())
+						sidText = sidIt->second;
+				}
+				if (!sidText.empty() &&
+					radar_screen->CurrentConfig != nullptr &&
+					radar_screen->CurrentConfig->isSidColorAvail(sidText, activeAirport))
+				{
+					definedBackgroundColor = radar_screen->CurrentConfig->getSidColor(sidText, activeAirport);
+				}
+				if (fpPlanType != nullptr &&
+					fpPlanType[0] == 'I' &&
+					sidText.empty() &&
+					colorTagLabelSection != nullptr)
+				{
+					definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_no_sid_color", "nosid_color", definedBackgroundColor);
+				}
+			}
+			if (noFlightPlanTag && colorTagLabelSection != nullptr)
+				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_no_fpl_color", "nofpl_color", definedBackgroundColor);
+
+			Color tagBackgroundColor = definedBackgroundColor;
+			if (radar_screen->RimcasInstance != nullptr)
+			{
+				tagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(
+					rtCallsign,
+					definedBackgroundColor,
+					definedBackgroundOnRunwayColor,
+					rimcasStageOneColor,
+					rimcasStageTwoColor);
+				if (rimcasLabelOnlySetting)
+				{
+					tagBackgroundColor = radar_screen->RimcasInstance->GetAircraftColor(
+						rtCallsign,
+						definedBackgroundColor,
+						definedBackgroundOnRunwayColor);
+				}
+			}
+
+			CRect tagBackgroundRect(
+				tagCenter.x - (tagWidth / 2),
+				tagCenter.y - (tagHeight / 2),
+				tagCenter.x + (tagWidth / 2),
+				tagCenter.y + (tagHeight / 2));
+			tagBackgroundRect.InflateRect(3, 3);
+			tagBackgroundRect.NormalizeRect();
+			if (!rectIntersectsViewport(tagBackgroundRect) && !pointInViewport(targetPoint, 20))
+				return;
+
+			m_TagAreas[rtCallsign] = tagBackgroundRect;
+			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), tagBackgroundRect, true, radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+
+			Gdiplus::GraphicsPath roundedPath;
+			const int radius = 4;
+			const int diameter = radius * 2;
+			Rect roundedRect = CopyRect(tagBackgroundRect);
+			roundedPath.AddArc(roundedRect.X, roundedRect.Y, diameter, diameter, 180, 90);
+			roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.Y, diameter, diameter, 270, 90);
+			roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.GetBottom() - diameter, diameter, diameter, 0, 90);
+			roundedPath.AddArc(roundedRect.X, roundedRect.GetBottom() - diameter, diameter, diameter, 90, 90);
+			roundedPath.CloseFigure();
+			SolidBrush tagBackgroundBrush(tagBackgroundColor);
+			gdi->FillPath(&tagBackgroundBrush, &roundedPath);
+
+			SolidBrush fontBrush(radar_screen->ColorManager != nullptr
+				? radar_screen->ColorManager->get_corrected_color("label", definedTextColor)
+				: definedTextColor);
+			SolidBrush squawkErrorBrush(radar_screen->ColorManager != nullptr
+				? radar_screen->ColorManager->get_corrected_color("label", squawkErrorLabelColor)
+				: squawkErrorLabelColor);
+			SolidBrush alertTextBrushStageOne(radar_screen->ColorManager != nullptr
+				? radar_screen->ColorManager->get_corrected_color("label", Color(255, 30, 30, 30))
+				: Color(255, 30, 30, 30));
+			SolidBrush alertTextBrushStageTwo(radar_screen->ColorManager != nullptr
+				? radar_screen->ColorManager->get_corrected_color("label", Color(255, 255, 255, 255))
+				: Color(255, 255, 255, 255));
+
+			const int textLeft = tagBackgroundRect.left + 3;
+			const int textTop = tagBackgroundRect.top + 3;
+			const int textWidth = max(0, tagBackgroundRect.Width() - 6);
+			int heightOffset = 0;
+			for (auto&& line : renderedLines)
+			{
+				int lineWidth = 0;
+				for (auto&& renderedElement : line)
+					lineWidth += renderedElement.measuredWidth;
+				if (!line.empty())
+					lineWidth += blankWidth * (static_cast<int>(line.size()) - 1);
+
+				int widthOffset = max(0, (textWidth - lineWidth) / 2);
+				for (auto&& renderedElement : line)
+				{
+					if (renderedElement.text.empty())
+					{
+						widthOffset += blankWidth;
+						continue;
+					}
+
+					Gdiplus::Font* drawFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
+					SolidBrush* drawBrush = &fontBrush;
+					auto sqErrorIt = tagReplacingMap.find("sqerror");
+					if (sqErrorIt != tagReplacingMap.end() && !sqErrorIt->second.empty() && renderedElement.text == sqErrorIt->second)
+						drawBrush = &squawkErrorBrush;
+					if (radar_screen->RimcasInstance != nullptr)
+					{
+						const CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance->getAlert(rtCallsign);
+						if (rimcasStage != CRimcas::NoAlert)
+							drawBrush = (rimcasStage == CRimcas::StageTwo) ? &alertTextBrushStageTwo : &alertTextBrushStageOne;
+					}
+					std::unique_ptr<SolidBrush> tokenCustomBrush;
+					if (renderedElement.hasCustomColor)
+					{
+						const Color customColor = radar_screen->ColorManager != nullptr
+							? radar_screen->ColorManager->get_corrected_color("label", Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB))
+							: Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB);
+						tokenCustomBrush.reset(new SolidBrush(customColor));
+						drawBrush = tokenCustomBrush.get();
+					}
+
+					wstring text(renderedElement.text.begin(), renderedElement.text.end());
+					const int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
+					gdi->DrawString(text.c_str(), wcslen(text.c_str()), drawFont,
+						PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
+						&Gdiplus::StringFormat(), drawBrush);
+
+					int clickItemType = TAG_CITEM_NO;
+					auto clickIt = tagClickableMap.find(renderedElement.text);
+					if (clickIt != tagClickableMap.end())
+						clickItemType = clickIt->second;
+					if (renderedElement.isClearanceToken || IsClearanceDefinitionToken(renderedElement.token))
+						clickItemType = TAG_CITEM_CLEARANCE;
+
+					const int itemWidth = renderedElement.measuredWidth;
+					const int itemHeight = max(renderedElement.measuredHeight, oneLineHeight);
+					if (itemWidth > 0 && itemHeight > 0)
+					{
+						CRect itemRect(
+							textLeft + widthOffset,
+							textTop + heightOffset,
+							textLeft + widthOffset + itemWidth,
+							textTop + heightOffset + itemHeight);
+						radar_screen->AddScreenObject(clickItemType, rtCallsign.c_str(), itemRect, true, radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+					}
+
+					widthOffset += renderedElement.measuredWidth + blankWidth;
+				}
+				heightOffset += oneLineHeight;
+			}
+
+			POINT toDraw1, toDraw2;
+			RECT tagRectData = tagBackgroundRect;
+			if (LiangBarsky(tagRectData, targetPoint, tagBackgroundRect.CenterPoint(), toDraw1, toDraw2))
+			{
+				Gdiplus::Pen leaderPen(symbolWhiteColor);
+				gdi->DrawLine(&leaderPen,
+					PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+					PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
+			}
+
+			if (rimcasLabelOnlySetting && radar_screen->RimcasInstance != nullptr)
+			{
+				Color rimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(
+					rtCallsign,
+					Color::AliceBlue,
+					Color::AliceBlue,
+					rimcasStageOneColor,
+					rimcasStageTwoColor);
+				if (rimcasLabelColor.ToCOLORREF() != Color(Color::AliceBlue).ToCOLORREF())
+				{
+					wstring alertText(L"ALERT");
+					RectF alertMeasure;
+					gdi->MeasureString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &alertMeasure);
+					const int rimcasHeight = max(1, static_cast<int>(alertMeasure.GetBottom()));
+					CRect rimcasLabelRect(tagBackgroundRect.left, tagBackgroundRect.top - rimcasHeight, tagBackgroundRect.right, tagBackgroundRect.top);
+					SolidBrush rimcasBrush(rimcasLabelColor);
+					gdi->FillRectangle(&rimcasBrush, CopyRect(rimcasLabelRect));
+					StringFormat stringFormat;
+					stringFormat.SetAlignment(StringAlignment::StringAlignmentCenter);
+					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::StageTwo)
+						? &alertTextBrushStageTwo
+						: &alertTextBrushStageOne;
+					gdi->DrawString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont,
+						PointF(Gdiplus::REAL((rimcasLabelRect.left + rimcasLabelRect.right) / 2), Gdiplus::REAL(rimcasLabelRect.top)),
+						&stringFormat,
+						rimcasTextBrush);
+				}
+			}
+		};
 
 		for (CRadarTarget rt = radar_screen->GetPlugIn()->RadarTargetSelectFirst();
 			rt.IsValid();
@@ -794,90 +2026,52 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				continue;
 
 			const POINT targetPoint = projectTargetPosition(targetPosition);
-			if (!pointInViewport(targetPoint))
+			if (!pointInViewport(targetPoint, 180))
 				continue;
 
 			const int reportedGs = rtPositionData.GetReportedGS();
-			const int trailDots = reportedGs > 50
-				? max(0, min(maxTrailDots, radar_screen->Trail_App))
-				: max(0, min(maxTrailDots, radar_screen->Trail_Gnd));
-			CRadarTargetPositionData previousPosition = rt.GetPreviousPosition(rtPositionData);
-			for (int trailIndex = 0; trailIndex < trailDots && previousPosition.IsValid(); ++trailIndex)
-			{
-				const CPosition previous = previousPosition.GetPosition();
-				if (positionNearViewport(previous))
-					drawTrailPoint(projectTargetPosition(previous), RGB(180, 190, 190));
-				previousPosition = rt.GetPreviousPosition(previousPosition);
-			}
+			CFlightPlan fp = radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
+			bool acIsCorrelated = radar_screen->IsCorrelatedWithSettings(fp, rt, correlationSettings);
+			const char* assignedSquawk = fp.IsValid() ? fp.GetControllerAssignedData().GetSquawk() : nullptr;
+			const char* reportedSquawk = rtPositionData.GetSquawk();
+			const bool hasAssignedSquawk = assignedSquawk != nullptr && assignedSquawk[0] != '\0';
+			const bool hasReportedSquawk = reportedSquawk != nullptr && reportedSquawk[0] != '\0';
+			const bool hasWrongAssignedSquawk = hasAssignedSquawk && hasReportedSquawk && strcmp(assignedSquawk, reportedSquawk) != 0;
+			if (tagProModeEnabled && (!hasAssignedSquawk || hasWrongAssignedSquawk))
+				acIsCorrelated = false;
 
-			CPen* targetPen = &symbolPen;
-			CBrush* targetBrush = &symbolBrush;
-			if (radar_screen->RimcasInstance != nullptr)
+			const bool keepIconForSquawkMismatch = tagProModeEnabled && (hasWrongAssignedSquawk || !hasAssignedSquawk);
+			if (!acIsCorrelated && reportedGs < 1 && !radar_screen->ReleaseInProgress && !radar_screen->AcquireInProgress && !keepIconForSquawkMismatch)
+				continue;
+
+			const bool isOnRunway = radar_screen->RimcasInstance != nullptr && radar_screen->RimcasInstance->isAcOnRunway(rtCallsign);
+			bool isDepartureTarget = false;
+			if (fp.IsValid() && acIsCorrelated)
 			{
-				const CRimcas::RimcasAlertTypes alert = radar_screen->RimcasInstance->getAlert(rtCallsign);
-				if (alert == CRimcas::StageTwo)
+				const char* originRaw = fp.GetFlightPlanData().GetOrigin();
+				if (originRaw != nullptr && originRaw[0] != '\0' && !activeAirportUpper.empty())
+					isDepartureTarget = (_stricmp(originRaw, activeAirportUpper.c_str()) == 0);
+			}
+			const bool hasNoFlightPlan = !fp.IsValid();
+
+			drawTrailHistory(rt, reportedGs);
+			const int iconSize = drawConfiguredIcon(rt, fp, rtCallsign, rtPositionData, targetPoint, acIsCorrelated, isDepartureTarget, hasNoFlightPlan, isOnRunway);
+
+			if (reportedGs > 50 && radar_screen->PredictedLength > 0)
+			{
+				double distance = double(rtPositionData.GetReportedGS() * 0.514444) * 10.0;
+				CPosition awayBase = BetterHarversine(targetPosition, rt.GetTrackHeading(), distance);
+				distance = double(rtPositionData.GetReportedGS() * 0.514444) * (radar_screen->PredictedLength * 60) - 10.0;
+				CPosition predictedEnd = BetterHarversine(awayBase, rt.GetTrackHeading(), distance);
+				POINT lineOne, lineTwo;
+				if (LiangBarsky(viewportRect, projectTargetPosition(awayBase), projectTargetPosition(predictedEnd), lineOne, lineTwo))
 				{
-					targetPen = &stageTwoPen;
-					targetBrush = &stageTwoBrush;
-				}
-				else if (alert == CRimcas::StageOne)
-				{
-					targetPen = &stageOnePen;
-					targetBrush = &stageOneBrush;
+					CPen* oldPen = dc.SelectObject(&symbolPen);
+					dc.MoveTo(lineOne);
+					dc.LineTo(lineTwo);
+					dc.SelectObject(oldPen);
 				}
 			}
-
-			CPen* oldPen = dc.SelectObject(targetPen);
-			CBrush* oldBrush = dc.SelectObject(targetBrush);
-
-			double headingDeg = static_cast<double>(rtPositionData.GetReportedHeadingTrueNorth());
-			if (headingDeg < 0.0 || headingDeg >= 360.0)
-				headingDeg = rt.GetTrackHeading();
-
-			CPosition nosePosition = radar_screen->Haversine(targetPosition, headingDeg, 50.0);
-			POINT nosePoint = projectTargetPosition(nosePosition);
-			double headingRadians = atan2(
-				static_cast<double>(nosePoint.y - targetPoint.y),
-				static_cast<double>(nosePoint.x - targetPoint.x));
-			if (!std::isfinite(headingRadians))
-				headingRadians = -3.14159265358979323846 / 2.0;
-
-			if (reportedGs > 3)
-			{
-				const double length = reportedGs > 50 ? 14.0 : 11.0;
-				const double baseLength = length * 0.55;
-				const double halfWidth = reportedGs > 50 ? 6.0 : 5.0;
-				const double cosH = std::cos(headingRadians);
-				const double sinH = std::sin(headingRadians);
-				const double baseX = static_cast<double>(targetPoint.x) - (cosH * baseLength);
-				const double baseY = static_cast<double>(targetPoint.y) - (sinH * baseLength);
-
-				POINT aircraftPolygon[3] = {
-					{
-						static_cast<LONG>(std::lround(static_cast<double>(targetPoint.x) + (cosH * length))),
-						static_cast<LONG>(std::lround(static_cast<double>(targetPoint.y) + (sinH * length)))
-					},
-					{
-						static_cast<LONG>(std::lround(baseX + (sinH * halfWidth))),
-						static_cast<LONG>(std::lround(baseY - (cosH * halfWidth)))
-					},
-					{
-						static_cast<LONG>(std::lround(baseX - (sinH * halfWidth))),
-						static_cast<LONG>(std::lround(baseY + (cosH * halfWidth)))
-					}
-				};
-				dc.Polygon(aircraftPolygon, 3);
-			}
-			else
-			{
-				const int radius = 5;
-				dc.Ellipse(targetPoint.x - radius, targetPoint.y - radius, targetPoint.x + radius, targetPoint.y + radius);
-			}
-
-			if (oldBrush != nullptr)
-				dc.SelectObject(oldBrush);
-			if (oldPen != nullptr)
-				dc.SelectObject(oldPen);
 
 			const bool isAsel = aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign.c_str()) == 0;
 			if (isAsel)
@@ -891,7 +2085,29 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					dc.SelectObject(oldSelectedPen);
 			}
 
-			const int hitSize = reportedGs > 3 ? 16 : 12;
+			if (mouseWithin(mouseLocation, { targetPoint.x - 5, targetPoint.y - 5, targetPoint.x + 5, targetPoint.y + 5 }))
+			{
+				CPen* oldPen = dc.SelectObject(&symbolPen);
+				dc.MoveTo(targetPoint.x, targetPoint.y - 8);
+				dc.LineTo(targetPoint.x - 6, targetPoint.y - 12);
+				dc.MoveTo(targetPoint.x, targetPoint.y - 8);
+				dc.LineTo(targetPoint.x + 6, targetPoint.y - 12);
+				dc.MoveTo(targetPoint.x, targetPoint.y + 8);
+				dc.LineTo(targetPoint.x - 6, targetPoint.y + 12);
+				dc.MoveTo(targetPoint.x, targetPoint.y + 8);
+				dc.LineTo(targetPoint.x + 6, targetPoint.y + 12);
+				dc.MoveTo(targetPoint.x - 8, targetPoint.y);
+				dc.LineTo(targetPoint.x - 12, targetPoint.y - 6);
+				dc.MoveTo(targetPoint.x - 8, targetPoint.y);
+				dc.LineTo(targetPoint.x - 12, targetPoint.y + 6);
+				dc.MoveTo(targetPoint.x + 8, targetPoint.y);
+				dc.LineTo(targetPoint.x + 12, targetPoint.y - 6);
+				dc.MoveTo(targetPoint.x + 8, targetPoint.y);
+				dc.LineTo(targetPoint.x + 12, targetPoint.y + 6);
+				dc.SelectObject(oldPen);
+			}
+
+			const int hitSize = max(iconSize, 12);
 			CRect targetArea(
 				targetPoint.x - hitSize / 2,
 				targetPoint.y - hitSize / 2,
@@ -904,8 +2120,34 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				targetArea,
 				false,
 				radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+
+			bool drawTargetTag = radar_screen->isVisible(rt);
+			if (tagProModeEnabled && (!hasAssignedSquawk || hasWrongAssignedSquawk))
+				drawTargetTag = false;
+			if (!acIsCorrelated && reportedGs < 3)
+				drawTargetTag = false;
+			if (tagTowerModeEnabled)
+			{
+				const char* towerModeGroundState = fp.IsValid() ? fp.GetGroundState() : nullptr;
+				const char* towerModeDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
+				const bool towerModeArrival =
+					towerModeDestination != nullptr &&
+					towerModeDestination[0] != '\0' &&
+					_stricmp(towerModeDestination, activeAirport.c_str()) == 0;
+				if (!towerModeArrival && !shouldDisplayTagInTowerMode(towerModeGroundState, reportedGs, isOnRunway))
+					drawTargetTag = false;
+			}
+			if (drawTargetTag)
+				drawTag(rt, fp, rtCallsign, targetPoint, isAsel, acIsCorrelated, reportedGs, isOnRunway);
 		}
 
+		if (useRealisticIconStyle)
+		{
+			gdi->SetInterpolationMode(savedInterpolationMode);
+			gdi->SetPixelOffsetMode(savedPixelOffsetMode);
+			gdi->SetCompositingQuality(savedCompositingQuality);
+		}
+		gdi->Restore(graphicsState);
 		::RestoreDC(hDC, savedDc);
 	};
 
