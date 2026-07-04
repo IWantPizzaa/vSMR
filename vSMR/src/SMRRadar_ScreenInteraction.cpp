@@ -526,6 +526,16 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 	if (wheelDelta == 0)
 		return false;
 
+	POINTS wheelPoint = MAKEPOINTS(lParam);
+	POINT wheelScreenPoint = { static_cast<LONG>(wheelPoint.x), static_cast<LONG>(wheelPoint.y) };
+	return HandleAvisoMouseWheelAtScreenPoint(wheelScreenPoint, wheelDelta, hwnd);
+}
+
+bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
+{
+	if (wheelDelta == 0)
+		return false;
+
 	auto zoomViewportAtPoint = [&](POINT point) -> bool
 	{
 		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, point);
@@ -558,7 +568,7 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 		{
 			addCandidateWindow(parent);
 		}
-		addCandidateWindow(hwnd);
+		addCandidateWindow(sourceHwnd);
 		addCandidateWindow(::GetActiveWindow());
 		addCandidateWindow(::GetForegroundWindow());
 		addCandidateWindow(::GetCapture());
@@ -577,9 +587,7 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 	if (::GetCursorPos(&cursorScreenPoint) && tryScreenPoint(cursorScreenPoint))
 		return true;
 
-	POINTS wheelPoint = MAKEPOINTS(lParam);
-	POINT wheelScreenPoint = { static_cast<LONG>(wheelPoint.x), static_cast<LONG>(wheelPoint.y) };
-	if (tryScreenPoint(wheelScreenPoint))
+	if (tryScreenPoint(screenPoint))
 		return true;
 
 	if (zoomViewportAtPoint(mouseLocation))
