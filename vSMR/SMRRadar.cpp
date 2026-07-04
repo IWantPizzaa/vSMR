@@ -673,8 +673,9 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const double scaleY = height / latSpan;
 	const int radarWidth = radarArea.right - radarArea.left;
 	const int radarHeight = radarArea.bottom - radarArea.top;
-	const double lonPixelTolerance = (lonSpan / width) * 0.35;
-	const double latPixelTolerance = (latSpan / height) * 0.35;
+	const double viewPixelTolerance = 1.15;
+	const double lonPixelTolerance = (lonSpan / width) * viewPixelTolerance;
+	const double latPixelTolerance = (latSpan / height) * viewPixelTolerance;
 
 	const unsigned long nowTick = ::GetTickCount();
 	const bool viewChanged =
@@ -752,7 +753,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	if (cacheMatchesCurrentView() && drawRasterCacheExact())
 		return;
 
-	const unsigned long rasterSettleDelayMs = 260;
+	const unsigned long rasterSettleDelayMs = 380;
 	if (AvisoGeoJsonRasterCache != nullptr &&
 		(nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs &&
 		drawRasterCacheTransformed())
@@ -811,6 +812,33 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
 	};
 
+	const double minRasterPointDistance = AvisoMax(0.35 * rasterScale, 0.5);
+	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
+	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
+	{
+		if (!force && hasLastCoordinate)
+		{
+			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * scaleX * rasterScale;
+			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * scaleY * rasterScale;
+			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
+				return;
+		}
+
+		const PointF point = projectRasterPoint(coordinate);
+		if (!force && !points.empty())
+		{
+			const PointF& lastPoint = points.back();
+			const double dx = static_cast<double>(point.X - lastPoint.X);
+			const double dy = static_cast<double>(point.Y - lastPoint.Y);
+			if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
+				return;
+		}
+
+		points.push_back(point);
+		lastCoordinate = coordinate;
+		hasLastCoordinate = true;
+	};
+
 	std::vector<PointF> rasterPoints;
 	for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
 	{
@@ -836,8 +864,10 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 				rasterPoints.clear();
 				rasterPoints.reserve(ring.size());
-				for (const AvisoPoint& coordinate : ring)
-					rasterPoints.push_back(projectRasterPoint(coordinate));
+				AvisoPoint lastCoordinate{};
+				bool hasLastCoordinate = false;
+				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
 
 				if (rasterPoints.size() < 3)
 					continue;
@@ -874,8 +904,10 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 			rasterPoints.clear();
 			rasterPoints.reserve(line.size());
-			for (const AvisoPoint& coordinate : line)
-				rasterPoints.push_back(projectRasterPoint(coordinate));
+			AvisoPoint lastCoordinate{};
+			bool hasLastCoordinate = false;
+			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
+				appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
 
 			if (rasterPoints.size() >= 2)
 				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
@@ -3348,7 +3380,33 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	RECT ChatArea = GetChatArea();
 	RadarArea.bottom = ChatArea.top;
 
-	RenderAvisoGeoJson(graphics);
+	try
+	{
+		RenderAvisoGeoJson(graphics);
+	}
+	catch (CException* ex)
+	{
+		Logger::info("AVISO GeoJSON render MFC exception caught");
+		if (ex != nullptr)
+			ex->Delete();
+		AvisoGeoJsonRasterCache.reset();
+		AvisoGeoJsonRasterWidth = 0;
+		AvisoGeoJsonRasterHeight = 0;
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info(std::string("AVISO GeoJSON render exception caught: ") + ex.what());
+		AvisoGeoJsonRasterCache.reset();
+		AvisoGeoJsonRasterWidth = 0;
+		AvisoGeoJsonRasterHeight = 0;
+	}
+	catch (...)
+	{
+		Logger::info("AVISO GeoJSON render unknown exception caught");
+		AvisoGeoJsonRasterCache.reset();
+		AvisoGeoJsonRasterWidth = 0;
+		AvisoGeoJsonRasterHeight = 0;
+	}
 
 	AirportPositions.clear();
 
