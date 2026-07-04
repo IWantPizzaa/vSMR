@@ -1395,6 +1395,22 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 			return false;
 		}
 
+		const double visibleLeft = AvisoMax(destX, static_cast<double>(radarArea.left));
+		const double visibleTop = AvisoMax(destY, static_cast<double>(radarArea.top));
+		const double visibleRight = AvisoMin(destRight, static_cast<double>(radarArea.right));
+		const double visibleBottom = AvisoMin(destBottom, static_cast<double>(radarArea.bottom));
+		const double visibleWidth = visibleRight - visibleLeft;
+		const double visibleHeight = visibleBottom - visibleTop;
+		if (visibleWidth < 1.0 || visibleHeight < 1.0)
+			return false;
+
+		const double sourceScaleX = static_cast<double>(AvisoGeoJsonRasterWidth) / destWidth;
+		const double sourceScaleY = static_cast<double>(AvisoGeoJsonRasterHeight) / destHeight;
+		const double sourceX = (visibleLeft - destX) * sourceScaleX;
+		const double sourceY = (visibleTop - destY) * sourceScaleY;
+		const double sourceWidth = visibleWidth * sourceScaleX;
+		const double sourceHeight = visibleHeight * sourceScaleY;
+
 		GraphicsState state = graphics.Save();
 		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
@@ -1404,14 +1420,49 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		graphics.SetInterpolationMode(nearNativeScale ? InterpolationModeNearestNeighbor : InterpolationModeBilinear);
 		graphics.DrawImage(
 			AvisoGeoJsonRasterCache.get(),
-			RectF(static_cast<REAL>(destX), static_cast<REAL>(destY), static_cast<REAL>(destWidth), static_cast<REAL>(destHeight)),
-			0.0f,
-			0.0f,
-			static_cast<REAL>(AvisoGeoJsonRasterWidth),
-			static_cast<REAL>(AvisoGeoJsonRasterHeight),
+			RectF(static_cast<REAL>(visibleLeft), static_cast<REAL>(visibleTop), static_cast<REAL>(visibleWidth), static_cast<REAL>(visibleHeight)),
+			static_cast<REAL>(sourceX),
+			static_cast<REAL>(sourceY),
+			static_cast<REAL>(sourceWidth),
+			static_cast<REAL>(sourceHeight),
 			UnitPixel);
 		graphics.Restore(state);
 		return true;
+	};
+
+	auto rasterCacheHasWorkingMargin = [&]() -> bool
+	{
+		if (AvisoGeoJsonRasterCache == nullptr ||
+			AvisoGeoJsonRasterCachePath != path ||
+			!AvisoGeoJsonRasterAnchorValid)
+		{
+			return false;
+		}
+
+		const double cachedDisplayLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
+		const double cachedDisplayLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
+		if (cachedDisplayLonSpan <= 0.0 || cachedDisplayLatSpan <= 0.0)
+			return false;
+
+		const double lonScaleRatio = lonSpan / cachedDisplayLonSpan;
+		const double latScaleRatio = latSpan / cachedDisplayLatSpan;
+		const bool sameZoomScale =
+			lonScaleRatio >= 0.985 && lonScaleRatio <= 1.015 &&
+			latScaleRatio >= 0.985 && latScaleRatio <= 1.015;
+		if (!sameZoomScale)
+			return false;
+
+		const double cachedRenderMinLon = AvisoMin(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLongitude);
+		const double cachedRenderMaxLon = AvisoMax(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLongitude);
+		const double cachedRenderMinLat = AvisoMin(AvisoGeoJsonRasterAnchorLatitude, AvisoGeoJsonRasterBottomRightLatitude);
+		const double cachedRenderMaxLat = AvisoMax(AvisoGeoJsonRasterAnchorLatitude, AvisoGeoJsonRasterBottomRightLatitude);
+		const double requiredLonMargin = lonSpan * 0.25;
+		const double requiredLatMargin = latSpan * 0.25;
+		return
+			cachedRenderMinLon <= displayMinLon - requiredLonMargin &&
+			cachedRenderMaxLon >= displayMaxLon + requiredLonMargin &&
+			cachedRenderMinLat <= displayMinLat - requiredLatMargin &&
+			cachedRenderMaxLat >= displayMaxLat + requiredLatMargin;
 	};
 
 	ApplyCompletedAvisoGeoJsonRaster();
@@ -1489,7 +1540,8 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	if (drawRasterCacheTransformed())
 	{
-		QueueAvisoGeoJsonRasterRender(std::move(request));
+		if (!rasterCacheHasWorkingMargin())
+			QueueAvisoGeoJsonRasterRender(std::move(request));
 		return;
 	}
 
