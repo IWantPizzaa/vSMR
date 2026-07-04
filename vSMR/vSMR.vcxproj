@@ -183,6 +183,7 @@
     <ClInclude Include="SMRDataTypes.hpp" />
     <ClInclude Include="SMRGeometry.hpp" />
     <ClInclude Include="SMRGroundState.hpp" />
+    <ClInclude Include="SMRProfileColorPaths.hpp" />
     <ClInclude Include="SMRSharedState.hpp" />
     <ClInclude Include="SMRPlugin.hpp" />
     <ClInclude Include="SMRRadar.hpp" />
