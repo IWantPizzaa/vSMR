@@ -60,7 +60,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USRDLL;%(PreprocessorDefinitions);CURL_STATICLIB;CURL_STATIC;ASIO_STANDALONE</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)\lib\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)\lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -73,7 +73,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ModuleDefinitionFile>.\vSMR.def</ModuleDefinitionFile>
+      <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
       <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -86,7 +86,7 @@
     <ResourceCompile>
       <Culture>0x0409</Culture>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -102,7 +102,7 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;%(PreprocessorDefinitions);CURL_STATICLIB;CURL_STATIC;ASIO_STANDALONE</PreprocessorDefinitions>
       <SDLCheck>false</SDLCheck>
       <BufferSecurityCheck>false</BufferSecurityCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)\lib\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)\lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -113,7 +113,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
-      <ModuleDefinitionFile>.\vSMR.def</ModuleDefinitionFile>
+      <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
       <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -126,39 +126,36 @@
     <ResourceCompile>
       <Culture>0x0409</Culture>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)include;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="CallsignLookup.cpp" />
-    <ClCompile Include="Config.cpp" />
-    <ClCompile Include="CPDLCSettingsDialog.cpp" />
-    <ClCompile Include="DataLinkDialog.cpp" />
-    <ClCompile Include="HttpHelper.cpp" />
-    <ClCompile Include="InsetWindow.cpp" />
-    <ClCompile Include="ProfileEditorDialog.cpp" />
-    <ClCompile Include="Rimcas.cpp" />
-    <ClCompile Include="SMRGeometry.cpp" />
-    <ClCompile Include="SMRPlugin.cpp" />
-    <ClCompile Include="SMRRadar.cpp" />
-    <ClCompile Include="SMRSharedState.cpp" />
-    <ClCompile Include="SMRRadar_AircraftAndAsr.cpp" />
-    <ClCompile Include="SMRRadar_FunctionCall.cpp" />
-    <ClCompile Include="SMRRadar_ProfileEditorWindow.cpp" />
-    <ClCompile Include="SMRRadar_RadarAndCommands.cpp" />
-    <ClCompile Include="SMRRadar_ScreenInteraction.cpp" />
-    <ClCompile Include="SMRRadar_TagRendering.cpp" />
-    <ClCompile Include="SMRRadar_TagDefinitions.cpp" />
-    <ClCompile Include="SMRRadar_TargetsAndFonts.cpp" />
-    <ClCompile Include="SMRRadar_Utilities.cpp" />
-    <ClCompile Include="stdafx.cpp">
+    <ClCompile Include="src\CallsignLookup.cpp" />
+    <ClCompile Include="src\Config.cpp" />
+    <ClCompile Include="src\CPDLCSettingsDialog.cpp" />
+    <ClCompile Include="src\DataLinkDialog.cpp" />
+    <ClCompile Include="src\HttpHelper.cpp" />
+    <ClCompile Include="src\InsetWindow.cpp" />
+    <ClCompile Include="src\ProfileEditorDialog.cpp" />
+    <ClCompile Include="src\Rimcas.cpp" />
+    <ClCompile Include="src\SMRGeometry.cpp" />
+    <ClCompile Include="src\SMRPlugin.cpp" />
+    <ClCompile Include="src\SMRRadar.cpp" />
+    <ClCompile Include="src\SMRSharedState.cpp" />
+    <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp" />
+    <ClCompile Include="src\SMRRadar_FunctionCall.cpp" />
+    <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp" />
+    <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp" />
+    <ClCompile Include="src\SMRRadar_ScreenInteraction.cpp" />
+    <ClCompile Include="src\SMRRadar_TagRendering.cpp" />
+    <ClCompile Include="src\SMRRadar_TagDefinitions.cpp" />
+    <ClCompile Include="src\SMRRadar_TargetsAndFonts.cpp" />
+    <ClCompile Include="src\SMRRadar_Utilities.cpp" />
+    <ClCompile Include="src\stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="vSMR.cpp" />
+    <ClCompile Include="src\vSMR.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\lib\include\rapidjson\document.h" />
@@ -168,54 +165,58 @@
     <ClInclude Include="..\lib\include\rapidjson\reader.h" />
     <ClInclude Include="..\lib\include\rapidjson\stringbuffer.h" />
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
-    <ClInclude Include="CallsignLookup.hpp" />
-    <ClInclude Include="ColorManager.h" />
-    <ClInclude Include="Config.hpp" />
-    <ClInclude Include="Constant.hpp" />
-    <ClInclude Include="CPDLCSettingsDialog.hpp" />
-    <ClInclude Include="DataLinkDialog.hpp" />
-    <ClInclude Include="HttpHelper.hpp" />
-    <ClInclude Include="InsetWindow.h" />
-    <ClInclude Include="Logger.h" />
-    <ClInclude Include="ProfileEditorDialog.hpp" />
-    <ClInclude Include="Resource.h" />
-    <ClInclude Include="Rimcas.hpp" />
-    <ClInclude Include="SMRColorUtils.hpp" />
-    <ClInclude Include="SMRDataTypes.hpp" />
-    <ClInclude Include="SMRGeometry.hpp" />
-    <ClInclude Include="SMRGroundState.hpp" />
-    <ClInclude Include="SMRProfileColorPaths.hpp" />
-    <ClInclude Include="SMRSharedState.hpp" />
-    <ClInclude Include="SMRPlugin.hpp" />
-    <ClInclude Include="SMRRadar.hpp" />
-    <ClInclude Include="SMRTagColorRules.hpp" />
-    <ClInclude Include="SMRTagDefinitionUtils.hpp" />
-    <ClInclude Include="SMRTextUtils.hpp" />
-    <ClInclude Include="SMRVacdmTagHelpers.hpp" />
-    <ClInclude Include="stdafx.h" />
-    <ClInclude Include="targetver.h" />
-    <ClInclude Include="vSMR.hpp" />
+    <ClInclude Include="include\CallsignLookup.hpp" />
+    <ClInclude Include="include\ColorManager.h" />
+    <ClInclude Include="include\Config.hpp" />
+    <ClInclude Include="include\Constant.hpp" />
+    <ClInclude Include="include\CPDLCSettingsDialog.hpp" />
+    <ClInclude Include="include\DataLinkDialog.hpp" />
+    <ClInclude Include="include\HttpHelper.hpp" />
+    <ClInclude Include="include\InsetWindow.h" />
+    <ClInclude Include="include\Logger.h" />
+    <ClInclude Include="include\ProfileEditorDialog.hpp" />
+    <ClInclude Include="include\resource.h" />
+    <ClInclude Include="include\Rimcas.hpp" />
+    <ClInclude Include="include\SMRColorUtils.hpp" />
+    <ClInclude Include="include\SMRDataTypes.hpp" />
+    <ClInclude Include="include\SMRGeometry.hpp" />
+    <ClInclude Include="include\SMRGroundState.hpp" />
+    <ClInclude Include="include\SMRProfileColorPaths.hpp" />
+    <ClInclude Include="include\SMRSharedState.hpp" />
+    <ClInclude Include="include\SMRPlugin.hpp" />
+    <ClInclude Include="include\SMRRadar.hpp" />
+    <ClInclude Include="include\SMRTagColorRules.hpp" />
+    <ClInclude Include="include\SMRTagDefinitionUtils.hpp" />
+    <ClInclude Include="include\SMRTextUtils.hpp" />
+    <ClInclude Include="include\SMRVacdmTagHelpers.hpp" />
+    <ClInclude Include="include\stdafx.h" />
+    <ClInclude Include="include\targetver.h" />
+    <ClInclude Include="include\vSMR.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\ml_blau_link.cur" />
-    <None Include="..\move.cur" />
-    <None Include="arrow.cur" />
-    <None Include="cursor1.cur" />
-    <None Include="POINTER1.cur" />
-    <None Include="res\vSMR.rc2" />
-    <None Include="vSMR.def" />
+    <None Include="data\ICAO_Aircraft.json" />
+    <None Include="data\vSMR_Maps.json" />
+    <None Include="data\vSMR_Profiles.json" />
+    <None Include="resources\cursors\arrow.cur" />
+    <None Include="resources\cursors\cursor1.cur" />
+    <None Include="resources\cursors\ml_blau_link.cur" />
+    <None Include="resources\cursors\move.cur" />
+    <None Include="resources\cursors\POINTER1.cur" />
+    <None Include="resources\vSMR.def" />
+    <None Include="resources\vSMR.rc2" />
+    <None Include="tools\edit_tagdefs.ps1" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="vSMR.rc" />
+    <ResourceCompile Include="resources\vSMR.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Media Include="..\Ding.wav" />
+    <Media Include="resources\audio\Ding.wav" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
   <ProjectExtensions>
     <VisualStudio>
-      <UserProperties RESOURCE_FILE="vSMR.rc" />
+      <UserProperties RESOURCE_FILE="resources\vSMR.rc" />
     </VisualStudio>
   </ProjectExtensions>
 </Project>
