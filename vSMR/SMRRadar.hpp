@@ -532,6 +532,27 @@ public:
 	const std::vector<StructuredTagColorRule>& GetStructuredTagColorRules() const;
 	bool SetStructuredTagColorRules(const std::vector<StructuredTagColorRule>& rules, bool persistToDisk);
 	Gdiplus::Bitmap* GetAircraftIcon(const std::string& acType);
+	void TrimRealisticIconBitmapCache(const std::string& protectedCacheKey, unsigned long long cacheFrame);
+	Gdiplus::Bitmap* GetCachedRealisticIconBitmap(
+		const std::string& iconType,
+		Gdiplus::Bitmap* sourceBitmap,
+		UINT sourceWidth,
+		UINT sourceHeight,
+		bool applyTint,
+		const Gdiplus::Color& tintColor,
+		double drawW,
+		double drawH,
+		unsigned long long cacheFrame,
+		int& outDrawW,
+		int& outDrawH,
+		std::string& outCacheKey);
+	RealisticIconCacheEntry* GetCachedRotatedRealisticIconBitmap(
+		const std::string& scaledCacheKey,
+		Gdiplus::Bitmap* scaledBitmap,
+		int scaledWidth,
+		int scaledHeight,
+		double rotationDeg,
+		unsigned long long cacheFrame);
 	void LoadAircraftSpecs();
 	void InvalidateStructuredTagRuleCache();
 

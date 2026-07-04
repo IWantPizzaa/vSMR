@@ -2,7 +2,8 @@
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
 
-Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw) {
+Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
+{
 	std::string ac = acTypeRaw;
 	if (ac.empty())
 		return nullptr;
@@ -12,20 +13,237 @@ Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw) {
 	if (it != AircraftIcons.end())
 		return it->second.get();
 
-	fs::path candidate = fs::path(IconsPath) / (ac + ".png");
-	if (!fs::exists(candidate)) {
+	const fs::path candidate = fs::path(IconsPath) / (ac + ".png");
+	if (!fs::exists(candidate))
+	{
 		AircraftIcons[ac] = nullptr;
 		return nullptr;
 	}
 
-	std::unique_ptr<Bitmap> bmp(new Bitmap(candidate.wstring().c_str()));
-	if (bmp->GetLastStatus() != Ok) {
+	auto bmp = std::make_unique<Gdiplus::Bitmap>(candidate.wstring().c_str());
+	if (bmp->GetLastStatus() != Gdiplus::Ok)
+	{
 		AircraftIcons[ac] = nullptr;
 		return nullptr;
 	}
 
 	AircraftIcons[ac] = std::move(bmp);
 	return AircraftIcons[ac].get();
+}
+
+void CSMRRadar::TrimRealisticIconBitmapCache(const std::string& protectedCacheKey, unsigned long long cacheFrame)
+{
+	const size_t softLimit = 384;
+	const size_t hardLimit = 512;
+	if (RealisticIconBitmapCache.size() <= hardLimit)
+		return;
+
+	const unsigned long long staleBefore = (cacheFrame > 120) ? (cacheFrame - 120) : 0;
+	for (auto it = RealisticIconBitmapCache.begin();
+		it != RealisticIconBitmapCache.end() && RealisticIconBitmapCache.size() > softLimit;)
+	{
+		if (it->first != protectedCacheKey && it->second.lastUsedFrame < staleBefore)
+			it = RealisticIconBitmapCache.erase(it);
+		else
+			++it;
+	}
+
+	if (RealisticIconBitmapCache.size() <= hardLimit)
+		return;
+
+	std::vector<std::pair<unsigned long long, std::string>> cacheAge;
+	cacheAge.reserve(RealisticIconBitmapCache.size());
+	for (const auto& cacheItem : RealisticIconBitmapCache)
+		cacheAge.emplace_back(cacheItem.second.lastUsedFrame, cacheItem.first);
+	std::sort(cacheAge.begin(), cacheAge.end());
+
+	for (const auto& cacheItem : cacheAge)
+	{
+		if (RealisticIconBitmapCache.size() <= softLimit)
+			break;
+		if (cacheItem.second == protectedCacheKey)
+			continue;
+		RealisticIconBitmapCache.erase(cacheItem.second);
+	}
+}
+
+Gdiplus::Bitmap* CSMRRadar::GetCachedRealisticIconBitmap(
+	const std::string& iconType,
+	Gdiplus::Bitmap* sourceBitmap,
+	UINT sourceWidth,
+	UINT sourceHeight,
+	bool applyTint,
+	const Gdiplus::Color& tintColor,
+	double drawW,
+	double drawH,
+	unsigned long long cacheFrame,
+	int& outDrawW,
+	int& outDrawH,
+	std::string& outCacheKey)
+{
+	outDrawW = std::clamp(static_cast<int>(std::lround(drawW)), 1, 2048);
+	outDrawH = std::clamp(static_cast<int>(std::lround(drawH)), 1, 2048);
+	outCacheKey.clear();
+	if (sourceBitmap == nullptr || sourceWidth == 0 || sourceHeight == 0 || iconType.empty())
+		return nullptr;
+
+	const unsigned int tintKey = applyTint
+		? ((static_cast<unsigned int>(tintColor.GetAlpha()) << 24) |
+			(static_cast<unsigned int>(tintColor.GetR()) << 16) |
+			(static_cast<unsigned int>(tintColor.GetG()) << 8) |
+			static_cast<unsigned int>(tintColor.GetB()))
+		: 0xffffffffu;
+	outCacheKey =
+		"s|" + iconType + "|" +
+		std::to_string(outDrawW) + "x" + std::to_string(outDrawH) + "|" +
+		std::to_string(tintKey);
+
+	auto cachedBitmap = RealisticIconBitmapCache.find(outCacheKey);
+	if (cachedBitmap != RealisticIconBitmapCache.end())
+	{
+		cachedBitmap->second.lastUsedFrame = cacheFrame;
+		return cachedBitmap->second.bitmap.get();
+	}
+
+	TrimRealisticIconBitmapCache(std::string(), cacheFrame);
+
+	auto scaledBitmap = std::make_unique<Gdiplus::Bitmap>(
+		outDrawW,
+		outDrawH,
+		PixelFormat32bppPARGB);
+	if (scaledBitmap == nullptr || scaledBitmap->GetLastStatus() != Gdiplus::Ok)
+		return nullptr;
+
+	Gdiplus::Graphics scaledGraphics(scaledBitmap.get());
+	if (scaledGraphics.GetLastStatus() != Gdiplus::Ok)
+		return nullptr;
+
+	scaledGraphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
+	scaledGraphics.SetInterpolationMode(Gdiplus::InterpolationModeBilinear);
+	scaledGraphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+	scaledGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+
+	Gdiplus::Rect destinationRect(0, 0, outDrawW, outDrawH);
+	if (applyTint)
+	{
+		const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(tintColor.GetAlpha()) / 255.0f;
+		Gdiplus::ColorMatrix colorMatrix = {
+			{
+				{ static_cast<Gdiplus::REAL>(tintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+				{ 0.0f, static_cast<Gdiplus::REAL>(tintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
+				{ 0.0f, 0.0f, static_cast<Gdiplus::REAL>(tintColor.GetB()) / 255.0f, 0.0f, 0.0f },
+				{ 0.0f, 0.0f, 0.0f, tintAlpha, 0.0f },
+				{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
+			}
+		};
+		Gdiplus::ImageAttributes tintAttributes;
+		tintAttributes.SetColorMatrix(&colorMatrix, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
+		scaledGraphics.DrawImage(
+			sourceBitmap,
+			destinationRect,
+			0,
+			0,
+			static_cast<INT>(sourceWidth),
+			static_cast<INT>(sourceHeight),
+			UnitPixel,
+			&tintAttributes);
+	}
+	else
+	{
+		scaledGraphics.DrawImage(
+			sourceBitmap,
+			destinationRect,
+			0,
+			0,
+			static_cast<INT>(sourceWidth),
+			static_cast<INT>(sourceHeight),
+			UnitPixel);
+	}
+
+	RealisticIconCacheEntry cacheEntry;
+	cacheEntry.bitmap = std::move(scaledBitmap);
+	cacheEntry.centerX = outDrawW / 2;
+	cacheEntry.centerY = outDrawH / 2;
+	cacheEntry.lastUsedFrame = cacheFrame;
+	auto inserted = RealisticIconBitmapCache.emplace(outCacheKey, std::move(cacheEntry));
+	return inserted.first->second.bitmap.get();
+}
+
+CSMRRadar::RealisticIconCacheEntry* CSMRRadar::GetCachedRotatedRealisticIconBitmap(
+	const std::string& scaledCacheKey,
+	Gdiplus::Bitmap* scaledBitmap,
+	int scaledWidth,
+	int scaledHeight,
+	double rotationDeg,
+	unsigned long long cacheFrame)
+{
+	if (scaledCacheKey.empty() || scaledBitmap == nullptr || scaledWidth <= 0 || scaledHeight <= 0)
+		return nullptr;
+
+	double normalizedRotation = std::fmod(rotationDeg, 360.0);
+	if (normalizedRotation < 0.0)
+		normalizedRotation += 360.0;
+	const int rotationBucket = static_cast<int>(std::lround(normalizedRotation / 2.0)) % 180;
+	const double cachedRotationDeg = static_cast<double>(rotationBucket) * 2.0;
+	const std::string cacheKey = "r|" + scaledCacheKey + "|" + std::to_string(rotationBucket);
+
+	auto cachedBitmap = RealisticIconBitmapCache.find(cacheKey);
+	if (cachedBitmap != RealisticIconBitmapCache.end())
+	{
+		cachedBitmap->second.lastUsedFrame = cacheFrame;
+		return &cachedBitmap->second;
+	}
+
+	TrimRealisticIconBitmapCache(scaledCacheKey, cacheFrame);
+
+	const double rotationRadians = cachedRotationDeg * M_PI / 180.0;
+	const double absCos = std::abs(std::cos(rotationRadians));
+	const double absSin = std::abs(std::sin(rotationRadians));
+	const int rotatedWidth = std::clamp(
+		static_cast<int>(std::ceil(static_cast<double>(scaledWidth) * absCos + static_cast<double>(scaledHeight) * absSin)),
+		1,
+		3072);
+	const int rotatedHeight = std::clamp(
+		static_cast<int>(std::ceil(static_cast<double>(scaledWidth) * absSin + static_cast<double>(scaledHeight) * absCos)),
+		1,
+		3072);
+	const int centerX = rotatedWidth / 2;
+	const int centerY = rotatedHeight / 2;
+
+	auto rotatedBitmap = std::make_unique<Gdiplus::Bitmap>(
+		rotatedWidth,
+		rotatedHeight,
+		PixelFormat32bppPARGB);
+	if (rotatedBitmap == nullptr || rotatedBitmap->GetLastStatus() != Gdiplus::Ok)
+		return nullptr;
+
+	Gdiplus::Graphics rotatedGraphics(rotatedBitmap.get());
+	if (rotatedGraphics.GetLastStatus() != Gdiplus::Ok)
+		return nullptr;
+
+	rotatedGraphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
+	rotatedGraphics.SetInterpolationMode(Gdiplus::InterpolationModeBilinear);
+	rotatedGraphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+	rotatedGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+
+	Gdiplus::Matrix rotationTransform;
+	rotationTransform.Translate(
+		static_cast<Gdiplus::REAL>(centerX),
+		static_cast<Gdiplus::REAL>(centerY));
+	rotationTransform.Rotate(static_cast<Gdiplus::REAL>(cachedRotationDeg));
+	rotationTransform.Translate(
+		static_cast<Gdiplus::REAL>(-scaledWidth / 2.0),
+		static_cast<Gdiplus::REAL>(-scaledHeight / 2.0));
+	rotatedGraphics.SetTransform(&rotationTransform);
+	rotatedGraphics.DrawImage(scaledBitmap, 0, 0);
+
+	RealisticIconCacheEntry cacheEntry;
+	cacheEntry.bitmap = std::move(rotatedBitmap);
+	cacheEntry.centerX = centerX;
+	cacheEntry.centerY = centerY;
+	cacheEntry.lastUsedFrame = cacheFrame;
+	auto inserted = RealisticIconBitmapCache.emplace(cacheKey, std::move(cacheEntry));
+	return &inserted.first->second;
 }
 
 void CSMRRadar::LoadAircraftSpecs() {
