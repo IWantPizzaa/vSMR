@@ -3870,6 +3870,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		return;
 
 	VSMR_REFRESH_LOG("Phase != REFRESH_PHASE_BEFORE_TAGS");
+	const unsigned long fpsNowTick = ::GetTickCount();
+	if (FpsLastSampleTick == 0)
+		FpsLastSampleTick = fpsNowTick;
+	++FpsFrameCount;
+	const unsigned long fpsElapsedMs = fpsNowTick - FpsLastSampleTick;
+	if (fpsElapsedMs >= 500)
+	{
+		FpsDisplayValue = static_cast<int>((static_cast<double>(FpsFrameCount) * 1000.0 / static_cast<double>(fpsElapsedMs)) + 0.5);
+		FpsFrameCount = 0;
+		FpsLastSampleTick = fpsNowTick;
+	}
 
 	struct Utils {
 		static RECT GetAreaFromText(CDC * dc, string text, POINT Pos) {
@@ -6145,6 +6156,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		graphics.DrawRectangle(&Pen(Color::White), CopyRect(barDistanceRect));
 	}
 	AddScreenObject(RIMCAS_MENU, "/", barDistanceRect, false, "Distance tool");
+
+	const std::string fpsText = "FPS " + std::to_string(FpsDisplayValue);
+	const CSize fpsTextSize = dc.GetTextExtent(fpsText.c_str());
+	const int fpsRightPadding = 6;
+	const int fpsLeft = ToolBarAreaTop.right - fpsRightPadding - fpsTextSize.cx;
+	if (fpsLeft > ToolBarAreaTop.left + offset + 12)
+		dc.TextOutA(fpsLeft, ToolBarAreaTop.top + 4, fpsText.c_str());
 
 	dc.SetTextColor(oldTextColor);
 
