@@ -188,7 +188,19 @@ public:
 		double maxLongitude = 0.0;
 		double maxLatitude = 0.0;
 	};
+	struct AvisoLabel
+	{
+		AvisoPoint position;
+		std::wstring text;
+		std::string labelClass;
+		std::string textAnchor = "center";
+		Gdiplus::Color textColor = Gdiplus::Color(255, 128, 128, 128);
+		Gdiplus::Color haloColor = Gdiplus::Color(255, 0, 0, 0);
+		float textSize = 12.0f;
+		float haloWidth = 1.0f;
+	};
 	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
+	std::vector<AvisoLabel> AvisoGeoJsonLabels;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
