@@ -137,6 +137,88 @@ void CInsetWindow::ClearAvisoViewportCache()
 		m_AvisoState->ClearCache();
 }
 
+bool CInsetWindow::IsPointInside(POINT Pt) const
+{
+	CRect areaRect(m_Area);
+	areaRect.NormalizeRect();
+	return
+		Pt.x >= areaRect.left &&
+		Pt.x <= areaRect.right &&
+		Pt.y >= areaRect.top &&
+		Pt.y <= areaRect.bottom;
+}
+
+void CInsetWindow::BeginAvisoPan(POINT Pt)
+{
+	if (!IsAvisoViewport())
+		return;
+
+	m_OffsetDrag = Pt;
+	m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
+	m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
+	m_AvisoRightPanning = true;
+	m_AvisoScrollSelected = true;
+	m_Grip = false;
+}
+
+bool CInsetWindow::UpdateAvisoPan(POINT Pt)
+{
+	if (!IsAvisoViewport() || !m_AvisoRightPanning)
+		return false;
+
+	const int scale = max(1, m_AvisoScale);
+	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
+	const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoDragStartLatitude));
+	const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
+	const int dragX = Pt.x - m_OffsetDrag.x;
+	const int dragY = Pt.y - m_OffsetDrag.y;
+	m_AvisoCenterLongitude = m_AvisoDragStartLongitude - (static_cast<double>(dragX) * lonDegreesPerPixel);
+	m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoDragStartLatitude + (static_cast<double>(dragY) * latDegreesPerPixel));
+	return true;
+}
+
+void CInsetWindow::EndAvisoPan()
+{
+	m_AvisoRightPanning = false;
+}
+
+bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
+{
+	if (!IsAvisoViewport() || !IsPointInside(Pt) || !std::isfinite(scaleMultiplier) || scaleMultiplier <= 0.0)
+		return false;
+
+	CRect viewportRect(m_Area);
+	viewportRect.NormalizeRect();
+	const int viewportWidth = viewportRect.Width();
+	const int viewportHeight = viewportRect.Height();
+	if (viewportWidth <= 0 || viewportHeight <= 0)
+		return false;
+
+	const POINT centerPoint = viewportRect.CenterPoint();
+	const double dx = static_cast<double>(Pt.x - centerPoint.x);
+	const double dy = static_cast<double>(Pt.y - centerPoint.y);
+
+	const int oldScale = max(1, m_AvisoScale);
+	const double oldMetersPerPixel = kAvisoMetersPerNm / static_cast<double>(oldScale);
+	const double oldLonDegreesPerPixel = oldMetersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoCenterLatitude));
+	const double oldLatDegreesPerPixel = oldMetersPerPixel / kAvisoLatMetersPerDegree;
+	const double anchorLongitude = m_AvisoCenterLongitude + (dx * oldLonDegreesPerPixel);
+	const double anchorLatitude = m_AvisoCenterLatitude - (dy * oldLatDegreesPerPixel);
+
+	const int newScale = std::clamp(static_cast<int>(std::lround(static_cast<double>(oldScale) * scaleMultiplier)), 20, 2400);
+	if (newScale == oldScale)
+		return false;
+
+	m_AvisoScale = newScale;
+	const double newMetersPerPixel = kAvisoMetersPerNm / static_cast<double>(newScale);
+	const double newLonDegreesPerPixel = newMetersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(anchorLatitude));
+	const double newLatDegreesPerPixel = newMetersPerPixel / kAvisoLatMetersPerDegree;
+	m_AvisoCenterLongitude = anchorLongitude - (dx * newLonDegreesPerPixel);
+	m_AvisoCenterLatitude = ClampAvisoLatitude(anchorLatitude + (dy * newLatDegreesPerPixel));
+	m_AvisoScrollSelected = true;
+	return true;
+}
+
 void CInsetWindow::setAirport(string icao)
 {
 	this->icao = icao;
@@ -154,25 +236,9 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	if (strcmp(sObjectId, "window") == 0) {
 		if (IsAvisoViewport())
 		{
-			if (!this->m_Grip)
-			{
-				m_OffsetDrag = Pt;
-				m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
-				m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
-				m_Grip = true;
-			}
-
-			const int scale = max(1, m_AvisoScale);
-			const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
-			const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoDragStartLatitude));
-			const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
-			const int dragX = Pt.x - m_OffsetDrag.x;
-			const int dragY = Pt.y - m_OffsetDrag.y;
-			m_AvisoCenterLongitude = m_AvisoDragStartLongitude - (static_cast<double>(dragX) * lonDegreesPerPixel);
-			m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoDragStartLatitude + (static_cast<double>(dragY) * latDegreesPerPixel));
-
+			UpdateAvisoPan(Pt);
 			if (Released)
-				m_Grip = false;
+				EndAvisoPan();
 
 			return true;
 		}
@@ -1013,9 +1079,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		}
 
 		CPen symbolPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
-		CPen selectedPen(PS_SOLID, 1, RGB(0, 220, 255));
-		CBrush hollowBrush;
-		hollowBrush.CreateStockObject(HOLLOW_BRUSH);
 
 		CRadarTarget aselTarget = radar_screen->GetPlugIn()->RadarTargetSelectASEL();
 		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
@@ -1188,32 +1251,42 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			if (useNovaIconStyle)
 			{
-				Gdiplus::Pen novaPen(symbolWhiteColor, 1.4f);
+				Gdiplus::Pen novaHaloPen(Color(220, 0, 0, 0), 3.4f);
+				Gdiplus::Pen novaPen(symbolWhiteColor, 1.8f);
+				auto drawNovaShape = [&](Gdiplus::Pen& pen)
+				{
+					if (rtPositionData.GetTransponderC())
+					{
+						PointF diamond[5] = {
+							PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 7)),
+							PointF(Gdiplus::REAL(targetPoint.x - 7), Gdiplus::REAL(targetPoint.y)),
+							PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y + 7)),
+							PointF(Gdiplus::REAL(targetPoint.x + 7), Gdiplus::REAL(targetPoint.y)),
+							PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 7))
+						};
+						gdi->DrawLines(&pen, diamond, 5);
+						return;
+					}
+
+					gdi->DrawLine(&pen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x - 5), Gdiplus::REAL(targetPoint.y - 5)));
+					gdi->DrawLine(&pen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x + 5), Gdiplus::REAL(targetPoint.y - 5)));
+					gdi->DrawLine(&pen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x - 5), Gdiplus::REAL(targetPoint.y + 5)));
+					gdi->DrawLine(&pen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x + 5), Gdiplus::REAL(targetPoint.y + 5)));
+				};
+				drawNovaShape(novaHaloPen);
+				drawNovaShape(novaPen);
 				if (rtPositionData.GetTransponderC())
 				{
-					PointF diamond[5] = {
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 6)),
-						PointF(Gdiplus::REAL(targetPoint.x - 6), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y + 6)),
-						PointF(Gdiplus::REAL(targetPoint.x + 6), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 6))
-					};
-					gdi->DrawLines(&novaPen, diamond, 5);
-				}
-				else
-				{
-					gdi->DrawLine(&novaPen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x - 4), Gdiplus::REAL(targetPoint.y - 4)));
-					gdi->DrawLine(&novaPen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x + 4), Gdiplus::REAL(targetPoint.y - 4)));
-					gdi->DrawLine(&novaPen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x - 4), Gdiplus::REAL(targetPoint.y + 4)));
-					gdi->DrawLine(&novaPen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x + 4), Gdiplus::REAL(targetPoint.y + 4)));
+					SolidBrush centerBrush(symbolWhiteColor);
+					gdi->FillRectangle(&centerBrush, targetPoint.x - 1, targetPoint.y - 1, 2, 2);
 				}
 				return 12;
 			}
@@ -2081,16 +2154,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			}
 
 			const bool isAsel = aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign.c_str()) == 0;
-			if (isAsel)
-			{
-				CPen* oldSelectedPen = dc.SelectObject(&selectedPen);
-				CBrush* oldSelectedBrush = dc.SelectObject(&hollowBrush);
-				dc.Ellipse(targetPoint.x - 10, targetPoint.y - 10, targetPoint.x + 10, targetPoint.y + 10);
-				if (oldSelectedBrush != nullptr)
-					dc.SelectObject(oldSelectedBrush);
-				if (oldSelectedPen != nullptr)
-					dc.SelectObject(oldSelectedPen);
-			}
 
 			if (mouseWithin(mouseLocation, { targetPoint.x - 5, targetPoint.y - 5, targetPoint.x + 5, targetPoint.y + 5 }))
 			{

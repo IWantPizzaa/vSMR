@@ -37,6 +37,8 @@ public:
 	double m_AvisoDragStartLatitude = 0.0;
 	double m_AvisoDragStartLongitude = 0.0;
 	bool m_AvisoViewInitialized = false;
+	bool m_AvisoRightPanning = false;
+	bool m_AvisoScrollSelected = false;
 
 	map<string, double> m_TagAngles;
 	map<string, POINT> m_TagOffsets;
@@ -51,6 +53,11 @@ public:
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released);
 	bool IsAvisoViewport() const;
+	bool IsPointInside(POINT Pt) const;
+	void BeginAvisoPan(POINT Pt);
+	bool UpdateAvisoPan(POINT Pt);
+	void EndAvisoPan();
+	bool ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier);
 	void ClearAvisoViewportCache();
 	
 private:
