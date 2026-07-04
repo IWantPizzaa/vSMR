@@ -131,12 +131,17 @@ public:
 		Gdiplus::Color haloColor = Gdiplus::Color(255, 0, 0, 0);
 		float textSize = 12.0f;
 		float haloWidth = 1.0f;
+		double maxMetersPerPixel = 0.0;
 	};
 	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
 	std::vector<AvisoLabel> AvisoGeoJsonLabels;
+	mutable std::string AvisoGeoJsonResolvedAirport;
+	mutable std::string AvisoGeoJsonResolvedDllPath;
+	mutable std::string AvisoGeoJsonResolvedPath;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
+	unsigned long AvisoGeoJsonLastStatTick = 0;
 	std::unique_ptr<Gdiplus::Bitmap> AvisoGeoJsonRasterCache;
 	std::string AvisoGeoJsonRasterCachePath;
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
@@ -147,6 +152,8 @@ public:
 	int AvisoGeoJsonRasterHeight = 0;
 	double AvisoGeoJsonRasterAnchorLongitude = 0.0;
 	double AvisoGeoJsonRasterAnchorLatitude = 0.0;
+	double AvisoGeoJsonRasterBottomRightLongitude = 0.0;
+	double AvisoGeoJsonRasterBottomRightLatitude = 0.0;
 	bool AvisoGeoJsonRasterAnchorValid = false;
 	bool AvisoGeoJsonLastViewValid = false;
 	std::string AvisoGeoJsonLastViewPath;
