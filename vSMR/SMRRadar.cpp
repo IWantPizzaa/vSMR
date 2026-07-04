@@ -137,6 +137,62 @@ namespace
 		return Gdiplus::Color(alpha, static_cast<BYTE>(red), static_cast<BYTE>(green), static_cast<BYTE>(blue));
 	}
 
+	const char* GetAvisoStringProperty(const Value* properties, std::initializer_list<const char*> keys)
+	{
+		if (properties == nullptr || !properties->IsObject())
+			return nullptr;
+
+		for (const char* key : keys)
+		{
+			if (key == nullptr ||
+				!properties->HasMember(key) ||
+				!(*properties)[key].IsString())
+			{
+				continue;
+			}
+
+			const char* value = (*properties)[key].GetString();
+			if (value != nullptr && value[0] != '\0')
+				return value;
+		}
+
+		return nullptr;
+	}
+
+	std::wstring AvisoUtf8ToWide(const char* text)
+	{
+		if (text == nullptr || text[0] == '\0')
+			return L"";
+
+		const int requiredLength = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
+		if (requiredLength > 1)
+		{
+			std::wstring wide(static_cast<size_t>(requiredLength - 1), L'\0');
+			::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide.data(), requiredLength);
+			return wide;
+		}
+
+		std::wstring fallback;
+		while (*text != '\0')
+			fallback.push_back(static_cast<unsigned char>(*text++));
+		return fallback;
+	}
+
+	float ParseAvisoFloatProperty(const Value* properties, const char* key, float fallback, float minValue, float maxValue)
+	{
+		if (properties == nullptr || !properties->IsObject() || key == nullptr ||
+			!properties->HasMember(key) ||
+			!(*properties)[key].IsNumber())
+		{
+			return fallback;
+		}
+
+		const double value = (*properties)[key].GetDouble();
+		if (!std::isfinite(value))
+			return fallback;
+		return static_cast<float>(std::clamp(value, static_cast<double>(minValue), static_cast<double>(maxValue)));
+	}
+
 	float ParseAvisoStrokeWidth(const Value* properties, float fallback)
 	{
 		if (properties == nullptr || !properties->IsObject() ||
@@ -453,6 +509,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	}
 
 	AvisoGeoJsonFeatures.clear();
+	AvisoGeoJsonLabels.clear();
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
@@ -509,6 +566,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	const Value& features = document["features"];
 	size_t polygonCount = 0;
 	size_t multiLineCount = 0;
+	size_t labelCount = 0;
 
 	auto addPoint = [](const Value& coordinate, AvisoFeature& feature, std::vector<AvisoPoint>& pathPoints) {
 		if (!coordinate.IsArray() || coordinate.Size() < 2 ||
@@ -555,6 +613,51 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 
 		const std::string geometryType = geometry["type"].GetString();
 		const Value& coordinates = geometry["coordinates"];
+
+		if (geometryType == "Point")
+		{
+			const char* geometryRole = GetAvisoStringProperty(properties, { "geometry_role" });
+			if (geometryRole == nullptr || ToUpperAscii(geometryRole) != "TEXT_LABEL")
+				continue;
+
+			if (!coordinates.IsArray() ||
+				coordinates.Size() < 2 ||
+				!coordinates[static_cast<SizeType>(0)].IsNumber() ||
+				!coordinates[static_cast<SizeType>(1)].IsNumber())
+			{
+				continue;
+			}
+
+			const char* rawText = GetAvisoStringProperty(properties, { "text-field", "text", "label", "name" });
+			if (rawText == nullptr)
+				continue;
+
+			const double longitude = coordinates[static_cast<SizeType>(0)].GetDouble();
+			const double latitude = coordinates[static_cast<SizeType>(1)].GetDouble();
+			if (!std::isfinite(longitude) || !std::isfinite(latitude))
+				continue;
+
+			AvisoLabel parsedLabel;
+			parsedLabel.position = { longitude, latitude };
+			parsedLabel.text = AvisoUtf8ToWide(rawText);
+			if (parsedLabel.text.empty())
+				continue;
+
+			const char* labelClass = GetAvisoStringProperty(properties, { "label_class", "category", "section" });
+			if (labelClass != nullptr)
+				parsedLabel.labelClass = labelClass;
+			const char* textAnchor = GetAvisoStringProperty(properties, { "text-anchor" });
+			if (textAnchor != nullptr)
+				parsedLabel.textAnchor = textAnchor;
+
+			parsedLabel.textColor = ParseAvisoColor(properties, "text-color", nullptr, Gdiplus::Color(255, 128, 128, 128));
+			parsedLabel.haloColor = ParseAvisoColor(properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
+			parsedLabel.textSize = ParseAvisoFloatProperty(properties, "text-size", 12.0f, 6.0f, 32.0f);
+			parsedLabel.haloWidth = ParseAvisoFloatProperty(properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
+			AvisoGeoJsonLabels.push_back(std::move(parsedLabel));
+			++labelCount;
+			continue;
+		}
 
 		AvisoFeature parsedFeature;
 		parsedFeature.fillColor = ParseAvisoColor(properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
@@ -634,7 +737,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		"AVISO GeoJSON loaded path=" + path +
 		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
 		" polygons=" + std::to_string(polygonCount) +
-		" multilines=" + std::to_string(multiLineCount));
+		" multilines=" + std::to_string(multiLineCount) +
+		" labels=" + std::to_string(labelCount));
 	return true;
 }
 
@@ -663,8 +767,11 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		AvisoGeoJsonRenderDisabledPath.clear();
 	}
 
-	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonFeatures.empty())
+	if (!EnsureAvisoGeoJsonLoaded(path) ||
+		(AvisoGeoJsonFeatures.empty() && AvisoGeoJsonLabels.empty()))
+	{
 		return;
+	}
 
 	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
 	{
@@ -993,6 +1100,105 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 			if (rasterPoints.size() >= 2)
 				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+		}
+	}
+
+	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
+	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / width;
+	const double metersPerPixelLat = (latSpan * 110540.0) / height;
+	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
+	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
+	{
+		const std::string labelClassUpper = ToUpperAscii(label.labelClass);
+		if (labelClassUpper.find("GATES") != std::string::npos ||
+			labelClassUpper.find("GATE") != std::string::npos)
+		{
+			return metersPerPixel <= 3.0;
+		}
+		if (labelClassUpper.find("TAXIWAYS") != std::string::npos ||
+			labelClassUpper.find("TAXIWAY") != std::string::npos)
+		{
+			return metersPerPixel <= 7.0;
+		}
+		return true;
+	};
+	auto labelRectForAnchor = [](const PointF& point, REAL widthPx, REAL heightPx, const std::string& anchor) -> RectF
+	{
+		const std::string normalizedAnchor = ToUpperAscii(anchor);
+		REAL x = point.X - (widthPx * 0.5f);
+		REAL y = point.Y - (heightPx * 0.5f);
+		if (normalizedAnchor.find("LEFT") != std::string::npos)
+			x = point.X;
+		else if (normalizedAnchor.find("RIGHT") != std::string::npos)
+			x = point.X - widthPx;
+		if (normalizedAnchor.find("TOP") != std::string::npos)
+			y = point.Y;
+		else if (normalizedAnchor.find("BOTTOM") != std::string::npos)
+			y = point.Y - heightPx;
+		return RectF(x, y, widthPx, heightPx);
+	};
+
+	if (!AvisoGeoJsonLabels.empty())
+	{
+		rasterGraphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+		FontFamily labelFontFamily(L"Arial");
+		StringFormat labelFormat;
+		labelFormat.SetAlignment(StringAlignmentCenter);
+		labelFormat.SetLineAlignment(StringAlignmentCenter);
+		labelFormat.SetFormatFlags(StringFormatFlagsNoWrap);
+		auto getLabelEmSize = [&](float textSize) -> REAL
+		{
+			const float scaledSize = static_cast<float>(std::clamp(static_cast<double>(textSize * static_cast<float>(rasterScale)), 6.0, 40.0));
+			const int fontKey = static_cast<int>(std::lround(static_cast<double>(scaledSize) * 10.0));
+			return static_cast<REAL>(fontKey) / 10.0f;
+		};
+
+		for (const AvisoLabel& label : AvisoGeoJsonLabels)
+		{
+			if (label.position.latitude < displayMinLat ||
+				label.position.latitude > displayMaxLat ||
+				label.position.longitude < displayMinLon ||
+				label.position.longitude > displayMaxLon ||
+				!isDenseLabelVisible(label))
+			{
+				continue;
+			}
+
+			const REAL labelEmSize = getLabelEmSize(label.textSize);
+
+			const PointF labelPoint = projectRasterPoint(label.position);
+			const REAL textLength = static_cast<REAL>(label.text.length());
+			const REAL scaledTextSize = static_cast<REAL>(label.textSize * static_cast<float>(rasterScale));
+			const REAL haloPadding = static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * rasterScale), 0.0) * 3.0);
+			const REAL layoutWidth = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f + haloPadding * 2.0f), 14.0));
+			const REAL layoutHeight = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * 1.65f + haloPadding * 2.0f), 10.0));
+			const RectF layoutRect = labelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
+
+			GraphicsPath textPath;
+			textPath.AddString(
+				label.text.c_str(),
+				static_cast<INT>(label.text.length()),
+				&labelFontFamily,
+				FontStyleRegular,
+				labelEmSize,
+				layoutRect,
+				&labelFormat);
+
+			if (textPath.GetPointCount() <= 0)
+				continue;
+
+			if (label.haloWidth > 0.0f && label.haloColor.GetAlpha() > 0)
+			{
+				Pen haloPen(label.haloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * rasterScale * 2.0f), 1.0)));
+				haloPen.SetLineJoin(LineJoinRound);
+				rasterGraphics.DrawPath(&haloPen, &textPath);
+			}
+
+			if (label.textColor.GetAlpha() > 0)
+			{
+				SolidBrush textBrush(label.textColor);
+				rasterGraphics.FillPath(&textBrush, &textPath);
+			}
 		}
 	}
 
