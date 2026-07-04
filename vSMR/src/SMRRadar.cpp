@@ -4155,9 +4155,9 @@ LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
 	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
 	{
-		MOUSEHOOKSTRUCTEX* mouseData = reinterpret_cast<MOUSEHOOKSTRUCTEX*>(lParam);
+		MSLLHOOKSTRUCT* mouseData = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
 		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
-		if (gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(mouseData->pt, wheelDelta, mouseData->hwnd))
+		if (gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(mouseData->pt, wheelDelta, ::WindowFromPoint(mouseData->pt)))
 			return 1;
 	}
 
@@ -4246,7 +4246,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 
 		if (gMouseHook == nullptr)
-			gMouseHook = ::SetWindowsHookEx(WH_MOUSE, MouseHookProc, nullptr, ::GetCurrentThreadId());
+			gMouseHook = ::SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, AfxGetInstanceHandle(), 0);
 		initCursor = false;
 	}
 
