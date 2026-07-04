@@ -226,6 +226,25 @@ namespace
 		return delta >= -tolerance && delta <= tolerance;
 	}
 
+	D2D1_COLOR_F AvisoD2DColorFromGdiplus(const Gdiplus::Color& color)
+	{
+		return D2D1::ColorF(
+			static_cast<float>(color.GetR()) / 255.0f,
+			static_cast<float>(color.GetG()) / 255.0f,
+			static_cast<float>(color.GetB()) / 255.0f,
+			static_cast<float>(color.GetAlpha()) / 255.0f);
+	}
+
+	template <typename T>
+	void ReleaseComPtr(T*& ptr)
+	{
+		if (ptr != nullptr)
+		{
+			ptr->Release();
+			ptr = nullptr;
+		}
+	}
+
 	void OutputVsmrDebugLine(const std::string& message)
 	{
 		const std::string line = "[vSMR] " + message + "\n";
@@ -377,6 +396,7 @@ CSMRRadar::~CSMRRadar()
 {
 	Logger::info(string(__FUNCSIG__));
 	StopAvisoGeoJsonRenderThread();
+	ReleaseAvisoDirect2DResources();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
 	try {
@@ -1216,7 +1236,432 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	return result;
 }
 
-void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
+void CSMRRadar::ReleaseAvisoDirect2DTargetResources()
+{
+	for (auto& brushEntry : AvisoD2DBrushCache)
+		ReleaseComPtr(brushEntry.second);
+	AvisoD2DBrushCache.clear();
+	ReleaseComPtr(AvisoD2DRenderTarget);
+}
+
+void CSMRRadar::ReleaseAvisoDirect2DResources()
+{
+	ReleaseAvisoDirect2DTargetResources();
+	for (auto& formatEntry : AvisoDWriteTextFormatCache)
+		ReleaseComPtr(formatEntry.second);
+	AvisoDWriteTextFormatCache.clear();
+	ReleaseComPtr(AvisoDWriteFactory);
+	ReleaseComPtr(AvisoD2DFactory);
+}
+
+bool CSMRRadar::EnsureAvisoDirect2DResources()
+{
+	if (!AvisoDirect2DEnabled || AvisoDirect2DUnavailable)
+		return false;
+
+	if (AvisoD2DFactory == nullptr)
+	{
+		HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &AvisoD2DFactory);
+		if (FAILED(hr) || AvisoD2DFactory == nullptr)
+		{
+			AvisoDirect2DUnavailable = true;
+			if (!AvisoDirect2DLoggedUnavailable)
+			{
+				Logger::info("AVISO Direct2D disabled: D2D1CreateFactory failed hr=" + std::to_string(static_cast<long>(hr)));
+				AvisoDirect2DLoggedUnavailable = true;
+			}
+			return false;
+		}
+	}
+
+	if (AvisoDWriteFactory == nullptr)
+	{
+		IUnknown* writeFactory = nullptr;
+		HRESULT hr = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), &writeFactory);
+		if (SUCCEEDED(hr) && writeFactory != nullptr)
+			AvisoDWriteFactory = static_cast<IDWriteFactory*>(writeFactory);
+		else
+		{
+			AvisoDirect2DUnavailable = true;
+			if (!AvisoDirect2DLoggedUnavailable)
+			{
+				Logger::info("AVISO Direct2D disabled: DWriteCreateFactory failed hr=" + std::to_string(static_cast<long>(hr)));
+				AvisoDirect2DLoggedUnavailable = true;
+			}
+			return false;
+		}
+	}
+
+	if (AvisoD2DRenderTarget == nullptr)
+	{
+		const D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties(
+			D2D1_RENDER_TARGET_TYPE_DEFAULT,
+			D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+			96.0f,
+			96.0f,
+			D2D1_RENDER_TARGET_USAGE_NONE,
+			D2D1_FEATURE_LEVEL_DEFAULT);
+		HRESULT hr = AvisoD2DFactory->CreateDCRenderTarget(&properties, &AvisoD2DRenderTarget);
+		if (FAILED(hr) || AvisoD2DRenderTarget == nullptr)
+		{
+			AvisoDirect2DUnavailable = true;
+			if (!AvisoDirect2DLoggedUnavailable)
+			{
+				Logger::info("AVISO Direct2D disabled: CreateDCRenderTarget failed hr=" + std::to_string(static_cast<long>(hr)));
+				AvisoDirect2DLoggedUnavailable = true;
+			}
+			return false;
+		}
+	}
+
+	return true;
+}
+
+ID2D1SolidColorBrush* CSMRRadar::GetAvisoD2DBrush(const Gdiplus::Color& color)
+{
+	if (AvisoD2DRenderTarget == nullptr || color.GetAlpha() == 0)
+		return nullptr;
+
+	const unsigned int key = color.GetValue();
+	auto brushIt = AvisoD2DBrushCache.find(key);
+	if (brushIt != AvisoD2DBrushCache.end())
+		return brushIt->second;
+
+	ID2D1SolidColorBrush* brush = nullptr;
+	const HRESULT hr = AvisoD2DRenderTarget->CreateSolidColorBrush(AvisoD2DColorFromGdiplus(color), &brush);
+	if (FAILED(hr) || brush == nullptr)
+		return nullptr;
+
+	AvisoD2DBrushCache[key] = brush;
+	return brush;
+}
+
+IDWriteTextFormat* CSMRRadar::GetAvisoDWriteTextFormat(float textSize)
+{
+	if (AvisoDWriteFactory == nullptr)
+		return nullptr;
+
+	const float clampedSize = static_cast<float>(std::clamp(static_cast<double>(textSize), 6.0, 40.0));
+	const int fontKey = static_cast<int>(std::lround(static_cast<double>(clampedSize) * 10.0));
+	auto formatIt = AvisoDWriteTextFormatCache.find(fontKey);
+	if (formatIt != AvisoDWriteTextFormatCache.end())
+		return formatIt->second;
+
+	IDWriteTextFormat* format = nullptr;
+	const HRESULT hr = AvisoDWriteFactory->CreateTextFormat(
+		L"Arial",
+		nullptr,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		static_cast<FLOAT>(fontKey) / 10.0f,
+		L"",
+		&format);
+	if (FAILED(hr) || format == nullptr)
+		return nullptr;
+
+	format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+	AvisoDWriteTextFormatCache[fontKey] = format;
+	return format;
+}
+
+bool CSMRRadar::RenderAvisoGeoJsonDirect2D(HDC hDC, const AvisoRasterRenderRequest& request, const RECT& targetRect)
+{
+	if (hDC == nullptr ||
+		request.features == nullptr ||
+		request.labels == nullptr ||
+		targetRect.right <= targetRect.left ||
+		targetRect.bottom <= targetRect.top)
+	{
+		return false;
+	}
+
+	if (!EnsureAvisoDirect2DResources())
+		return false;
+
+	RECT bindRect = targetRect;
+	HRESULT hr = AvisoD2DRenderTarget->BindDC(hDC, &bindRect);
+	if (FAILED(hr))
+	{
+		if (!AvisoDirect2DLoggedUnavailable)
+		{
+			Logger::info("AVISO Direct2D fallback: BindDC failed hr=" + std::to_string(static_cast<long>(hr)));
+			AvisoDirect2DLoggedUnavailable = true;
+		}
+		return false;
+	}
+
+	const double displayMinLon = request.displayMinLongitude;
+	const double displayMaxLon = request.displayMaxLongitude;
+	const double displayMinLat = request.displayMinLatitude;
+	const double displayMaxLat = request.displayMaxLatitude;
+	const double lonSpan = displayMaxLon - displayMinLon;
+	const double latSpan = displayMaxLat - displayMinLat;
+	if (lonSpan <= 0.0 || latSpan <= 0.0)
+		return false;
+
+	auto projectScreenPoint = [&](double longitude, double latitude) -> D2D1_POINT_2F
+	{
+		const double u = (longitude - displayMinLon) / lonSpan;
+		const double v = (displayMaxLat - latitude) / latSpan;
+		const double topX = static_cast<double>(request.projectedTopLeft.X) + static_cast<double>(request.projectedTopRight.X - request.projectedTopLeft.X) * u;
+		const double bottomX = static_cast<double>(request.projectedBottomLeft.X) + static_cast<double>(request.projectedBottomRight.X - request.projectedBottomLeft.X) * u;
+		const double topY = static_cast<double>(request.projectedTopLeft.Y) + static_cast<double>(request.projectedTopRight.Y - request.projectedTopLeft.Y) * u;
+		const double bottomY = static_cast<double>(request.projectedBottomLeft.Y) + static_cast<double>(request.projectedBottomRight.Y - request.projectedBottomLeft.Y) * u;
+		return D2D1::Point2F(
+			static_cast<FLOAT>(topX + (bottomX - topX) * v - static_cast<double>(targetRect.left)),
+			static_cast<FLOAT>(topY + (bottomY - topY) * v - static_cast<double>(targetRect.top)));
+	};
+
+	const double minPointDistanceSquared = 0.35 * 0.35;
+	auto appendProjectedPoint = [&](std::vector<D2D1_POINT_2F>& points, const AvisoPoint& coordinate, bool force)
+	{
+		const D2D1_POINT_2F point = projectScreenPoint(coordinate.longitude, coordinate.latitude);
+		if (!force && !points.empty())
+		{
+			const double dx = static_cast<double>(point.x - points.back().x);
+			const double dy = static_cast<double>(point.y - points.back().y);
+			if ((dx * dx + dy * dy) < minPointDistanceSquared)
+				return;
+		}
+		points.push_back(point);
+	};
+
+	ID2D1StrokeStyle* roundStrokeStyle = nullptr;
+	const D2D1_STROKE_STYLE_PROPERTIES strokeProperties = D2D1::StrokeStyleProperties(
+		D2D1_CAP_STYLE_ROUND,
+		D2D1_CAP_STYLE_ROUND,
+		D2D1_CAP_STYLE_ROUND,
+		D2D1_LINE_JOIN_ROUND);
+	if (AvisoD2DFactory != nullptr)
+		AvisoD2DFactory->CreateStrokeStyle(&strokeProperties, nullptr, 0, &roundStrokeStyle);
+
+	auto createGeometry = [&](const std::vector<D2D1_POINT_2F>& points, bool closed, bool filled) -> ID2D1PathGeometry*
+	{
+		if (points.size() < (closed ? 3U : 2U) || AvisoD2DFactory == nullptr)
+			return nullptr;
+
+		ID2D1PathGeometry* geometry = nullptr;
+		ID2D1GeometrySink* sink = nullptr;
+		if (FAILED(AvisoD2DFactory->CreatePathGeometry(&geometry)) || geometry == nullptr)
+			return nullptr;
+		if (FAILED(geometry->Open(&sink)) || sink == nullptr)
+		{
+			ReleaseComPtr(geometry);
+			return nullptr;
+		}
+
+		sink->SetFillMode(D2D1_FILL_MODE_ALTERNATE);
+		sink->BeginFigure(points.front(), filled ? D2D1_FIGURE_BEGIN_FILLED : D2D1_FIGURE_BEGIN_HOLLOW);
+		if (points.size() > 1)
+			sink->AddLines(points.data() + 1, static_cast<UINT32>(points.size() - 1));
+		sink->EndFigure(closed ? D2D1_FIGURE_END_CLOSED : D2D1_FIGURE_END_OPEN);
+		const HRESULT closeHr = sink->Close();
+		ReleaseComPtr(sink);
+		if (FAILED(closeHr))
+		{
+			ReleaseComPtr(geometry);
+			return nullptr;
+		}
+		return geometry;
+	};
+
+	AvisoD2DRenderTarget->BeginDraw();
+	AvisoD2DRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
+	AvisoD2DRenderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+	AvisoD2DRenderTarget->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+
+	std::vector<D2D1_POINT_2F> d2dPoints;
+	for (const AvisoFeature& feature : *request.features)
+	{
+		if (feature.maxLatitude < displayMinLat ||
+			feature.minLatitude > displayMaxLat ||
+			feature.maxLongitude < displayMinLon ||
+			feature.minLongitude > displayMaxLon)
+		{
+			continue;
+		}
+
+		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX;
+		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY;
+		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
+			continue;
+
+		if (feature.polygon)
+		{
+			for (const std::vector<AvisoPoint>& ring : feature.paths)
+			{
+				if (ring.size() < 3)
+					continue;
+
+				d2dPoints.clear();
+				d2dPoints.reserve(ring.size());
+				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+					appendProjectedPoint(d2dPoints, ring[pointIndex], pointIndex == 0);
+				if (d2dPoints.size() < 3)
+					continue;
+
+				ID2D1PathGeometry* geometry = createGeometry(d2dPoints, true, true);
+				if (geometry == nullptr)
+					continue;
+
+				if (feature.fillColor.GetAlpha() > 0)
+				{
+					ID2D1SolidColorBrush* fillBrush = GetAvisoD2DBrush(feature.fillColor);
+					if (fillBrush != nullptr)
+						AvisoD2DRenderTarget->FillGeometry(geometry, fillBrush);
+				}
+
+				if (feature.strokeColor.GetAlpha() > 0 &&
+					feature.strokeWidth > 0.0f &&
+					!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
+				{
+					ID2D1SolidColorBrush* strokeBrush = GetAvisoD2DBrush(feature.strokeColor);
+					if (strokeBrush != nullptr)
+						AvisoD2DRenderTarget->DrawGeometry(geometry, strokeBrush, feature.strokeWidth, roundStrokeStyle);
+				}
+
+				ReleaseComPtr(geometry);
+			}
+			continue;
+		}
+
+		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
+			continue;
+
+		ID2D1SolidColorBrush* strokeBrush = GetAvisoD2DBrush(feature.strokeColor);
+		if (strokeBrush == nullptr)
+			continue;
+
+		for (const std::vector<AvisoPoint>& line : feature.paths)
+		{
+			if (line.size() < 2)
+				continue;
+
+			d2dPoints.clear();
+			d2dPoints.reserve(line.size());
+			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
+				appendProjectedPoint(d2dPoints, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
+			if (d2dPoints.size() < 2)
+				continue;
+
+			ID2D1PathGeometry* geometry = createGeometry(d2dPoints, false, false);
+			if (geometry != nullptr)
+			{
+				AvisoD2DRenderTarget->DrawGeometry(geometry, strokeBrush, feature.strokeWidth, roundStrokeStyle);
+				ReleaseComPtr(geometry);
+			}
+		}
+	}
+
+	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
+	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / AvisoMax(request.scaleX * lonSpan, 1.0);
+	const double metersPerPixelLat = (latSpan * 110540.0) / AvisoMax(request.scaleY * latSpan, 1.0);
+	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
+	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
+	{
+		return label.maxMetersPerPixel <= 0.0 || metersPerPixel <= label.maxMetersPerPixel;
+	};
+	auto labelRectForAnchor = [](const D2D1_POINT_2F& point, FLOAT widthPx, FLOAT heightPx, const std::string& anchor) -> D2D1_RECT_F
+	{
+		const std::string normalizedAnchor = ToUpperAscii(anchor);
+		FLOAT x = point.x - (widthPx * 0.5f);
+		FLOAT y = point.y - (heightPx * 0.5f);
+		if (normalizedAnchor.find("LEFT") != std::string::npos)
+			x = point.x;
+		else if (normalizedAnchor.find("RIGHT") != std::string::npos)
+			x = point.x - widthPx;
+		if (normalizedAnchor.find("TOP") != std::string::npos)
+			y = point.y;
+		else if (normalizedAnchor.find("BOTTOM") != std::string::npos)
+			y = point.y - heightPx;
+		return D2D1::RectF(x, y, x + widthPx, y + heightPx);
+	};
+
+	for (const AvisoLabel& label : *request.labels)
+	{
+		if (label.position.latitude < displayMinLat ||
+			label.position.latitude > displayMaxLat ||
+			label.position.longitude < displayMinLon ||
+			label.position.longitude > displayMaxLon ||
+			!isDenseLabelVisible(label) ||
+			label.text.empty())
+		{
+			continue;
+		}
+
+		IDWriteTextFormat* textFormat = GetAvisoDWriteTextFormat(label.textSize);
+		if (textFormat == nullptr)
+			continue;
+
+		const D2D1_POINT_2F labelPoint = projectScreenPoint(label.position.longitude, label.position.latitude);
+		const FLOAT textLength = static_cast<FLOAT>(label.text.length());
+		const FLOAT scaledTextSize = static_cast<FLOAT>(label.textSize);
+		const FLOAT haloPadding = static_cast<FLOAT>(AvisoMax(static_cast<double>(label.haloWidth), 0.0) * 3.0);
+		const FLOAT layoutWidth = static_cast<FLOAT>(AvisoMax(static_cast<double>(scaledTextSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f + haloPadding * 2.0f), 14.0));
+		const FLOAT layoutHeight = static_cast<FLOAT>(AvisoMax(static_cast<double>(scaledTextSize * 1.65f + haloPadding * 2.0f), 10.0));
+		const D2D1_RECT_F layoutRect = labelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
+		const UINT32 textLength32 = static_cast<UINT32>(label.text.length());
+
+		if (label.haloWidth > 0.0f && label.haloColor.GetAlpha() > 0)
+		{
+			ID2D1SolidColorBrush* haloBrush = GetAvisoD2DBrush(label.haloColor);
+			if (haloBrush != nullptr)
+			{
+				const FLOAT haloOffset = static_cast<FLOAT>(AvisoMax(static_cast<double>(label.haloWidth), 1.0));
+				const D2D1_POINT_2F offsets[] = {
+					D2D1::Point2F(-haloOffset, 0.0f),
+					D2D1::Point2F(haloOffset, 0.0f),
+					D2D1::Point2F(0.0f, -haloOffset),
+					D2D1::Point2F(0.0f, haloOffset),
+					D2D1::Point2F(-haloOffset, -haloOffset),
+					D2D1::Point2F(haloOffset, -haloOffset),
+					D2D1::Point2F(-haloOffset, haloOffset),
+					D2D1::Point2F(haloOffset, haloOffset)
+				};
+				for (const D2D1_POINT_2F& offset : offsets)
+				{
+					const D2D1_RECT_F haloRect = D2D1::RectF(
+						layoutRect.left + offset.x,
+						layoutRect.top + offset.y,
+						layoutRect.right + offset.x,
+						layoutRect.bottom + offset.y);
+					AvisoD2DRenderTarget->DrawText(label.text.c_str(), textLength32, textFormat, haloRect, haloBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+				}
+			}
+		}
+
+		if (label.textColor.GetAlpha() > 0)
+		{
+			ID2D1SolidColorBrush* textBrush = GetAvisoD2DBrush(label.textColor);
+			if (textBrush != nullptr)
+				AvisoD2DRenderTarget->DrawText(label.text.c_str(), textLength32, textFormat, layoutRect, textBrush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+		}
+	}
+
+	ReleaseComPtr(roundStrokeStyle);
+	hr = AvisoD2DRenderTarget->EndDraw();
+	if (hr == D2DERR_RECREATE_TARGET)
+	{
+		ReleaseAvisoDirect2DTargetResources();
+		return false;
+	}
+	if (FAILED(hr))
+	{
+		if (!AvisoDirect2DLoggedUnavailable)
+		{
+			Logger::info("AVISO Direct2D fallback: EndDraw failed hr=" + std::to_string(static_cast<long>(hr)));
+			AvisoDirect2DLoggedUnavailable = true;
+		}
+		return false;
+	}
+
+	return true;
+}
+
+void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 {
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
 	if (path.empty())
@@ -1475,6 +1920,32 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
 	if (AvisoGeoJsonFeatureSnapshot == nullptr || AvisoGeoJsonLabelSnapshot == nullptr)
 		return;
+
+	AvisoRasterRenderRequest direct2DRequest;
+	direct2DRequest.path = path;
+	direct2DRequest.features = AvisoGeoJsonFeatureSnapshot;
+	direct2DRequest.labels = AvisoGeoJsonLabelSnapshot;
+	direct2DRequest.displayMinLongitude = displayMinLon;
+	direct2DRequest.displayMinLatitude = displayMinLat;
+	direct2DRequest.displayMaxLongitude = displayMaxLon;
+	direct2DRequest.displayMaxLatitude = displayMaxLat;
+	direct2DRequest.renderMinLongitude = displayMinLon;
+	direct2DRequest.renderMinLatitude = displayMinLat;
+	direct2DRequest.renderMaxLongitude = displayMaxLon;
+	direct2DRequest.renderMaxLatitude = displayMaxLat;
+	direct2DRequest.scaleX = scaleX;
+	direct2DRequest.scaleY = scaleY;
+	direct2DRequest.projectedTopLeft = PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y));
+	direct2DRequest.projectedTopRight = PointF(static_cast<REAL>(projectedTopRight.x), static_cast<REAL>(projectedTopRight.y));
+	direct2DRequest.projectedBottomLeft = PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y));
+	direct2DRequest.projectedBottomRight = PointF(static_cast<REAL>(projectedBottomRight.x), static_cast<REAL>(projectedBottomRight.y));
+
+	if (AvisoDirect2DEnabled)
+	{
+		graphics.Flush(FlushIntentionFlush);
+		if (RenderAvisoGeoJsonDirect2D(hDC, direct2DRequest, radarArea))
+			return;
+	}
 
 	const double overscanRatio = 0.75;
 	const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
@@ -4339,7 +4810,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	try
 	{
 		setRefreshStage("AVISO render");
-		RenderAvisoGeoJson(graphics);
+		RenderAvisoGeoJson(hDC, graphics);
 	}
 	catch (COleException* ex)
 	{
