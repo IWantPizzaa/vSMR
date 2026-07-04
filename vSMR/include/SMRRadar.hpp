@@ -274,6 +274,9 @@ public:
 
 	map<string, RECT> MenuPositions;
 	map<string, bool> DisplayMenu;
+	unsigned long FpsLastSampleTick = 0;
+	int FpsFrameCount = 0;
+	int FpsDisplayValue = 0;
 
 	map<string, clock_t> RecentlyAutoMovedTags;
 
