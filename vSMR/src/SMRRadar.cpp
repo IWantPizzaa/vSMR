@@ -403,8 +403,12 @@ CSMRRadar::CSMRRadar()
 	// Setting up the data for the 2 approach windows
 	appWindowDisplays[1] = false;
 	appWindowDisplays[2] = false;
+	appWindowDisplays[3] = false;
 	appWindows[1] = std::make_unique<CInsetWindow>(APPWINDOW_ONE);
 	appWindows[2] = std::make_unique<CInsetWindow>(APPWINDOW_TWO);
+	appWindows[3] = std::make_unique<CInsetWindow>(APPWINDOW_AVISO);
+	appWindows[3]->m_Mode = CInsetWindow::Mode::AvisoViewport;
+	appWindows[3]->m_Area = { 260, 260, 760, 560 };
 
 	Logger::info("Loading profile");
 

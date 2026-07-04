@@ -528,6 +528,46 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 			appWindowDisplays[i] = atoi(p_value) == 1 ? true : false;
 	}
 
+	{
+		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+		auto avisoWindowIt = appWindows.find(avisoWindowId);
+		if (avisoWindowIt != appWindows.end() && avisoWindowIt->second != nullptr)
+		{
+			CInsetWindow* avisoWindow = avisoWindowIt->second.get();
+			const string prefix = "AVISO1";
+
+			if ((p_value = GetDataFromAsr(string(prefix + "TopLeftX").c_str())) != NULL)
+				avisoWindow->m_Area.left = atoi(p_value);
+
+			if ((p_value = GetDataFromAsr(string(prefix + "TopLeftY").c_str())) != NULL)
+				avisoWindow->m_Area.top = atoi(p_value);
+
+			if ((p_value = GetDataFromAsr(string(prefix + "BottomRightX").c_str())) != NULL)
+				avisoWindow->m_Area.right = atoi(p_value);
+
+			if ((p_value = GetDataFromAsr(string(prefix + "BottomRightY").c_str())) != NULL)
+				avisoWindow->m_Area.bottom = atoi(p_value);
+
+			if ((p_value = GetDataFromAsr(string(prefix + "CenterLat").c_str())) != NULL)
+			{
+				avisoWindow->m_AvisoCenterLatitude = atof(p_value);
+				avisoWindow->m_AvisoViewInitialized = true;
+			}
+
+			if ((p_value = GetDataFromAsr(string(prefix + "CenterLon").c_str())) != NULL)
+			{
+				avisoWindow->m_AvisoCenterLongitude = atof(p_value);
+				avisoWindow->m_AvisoViewInitialized = true;
+			}
+
+			if ((p_value = GetDataFromAsr(string(prefix + "Scale").c_str())) != NULL)
+				avisoWindow->m_AvisoScale = max(1, atoi(p_value));
+
+			if ((p_value = GetDataFromAsr(string(prefix + "Display").c_str())) != NULL)
+				appWindowDisplays[avisoWindowId] = atoi(p_value) == 1 ? true : false;
+		}
+	}
+
 	// Auto load the airport config on ASR opened.
 	CSectorElement rwy;
 	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
@@ -617,6 +657,42 @@ void CSMRRadar::OnAsrContentToBeSaved()
 			to_save = "1";
 		SaveDataToAsr(string(prefix + "Display").c_str(), "Display Secondary Radar Window", to_save.c_str());
 	}	
+
+	{
+		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+		auto avisoWindowIt = appWindows.find(avisoWindowId);
+		if (avisoWindowIt != appWindows.end() && avisoWindowIt->second != nullptr)
+		{
+			CInsetWindow* avisoWindow = avisoWindowIt->second.get();
+			const string prefix = "AVISO1";
+
+			temp = std::to_string(avisoWindow->m_Area.left);
+			SaveDataToAsr(string(prefix + "TopLeftX").c_str(), "AVISO viewport position", temp.c_str());
+
+			temp = std::to_string(avisoWindow->m_Area.top);
+			SaveDataToAsr(string(prefix + "TopLeftY").c_str(), "AVISO viewport position", temp.c_str());
+
+			temp = std::to_string(avisoWindow->m_Area.right);
+			SaveDataToAsr(string(prefix + "BottomRightX").c_str(), "AVISO viewport position", temp.c_str());
+
+			temp = std::to_string(avisoWindow->m_Area.bottom);
+			SaveDataToAsr(string(prefix + "BottomRightY").c_str(), "AVISO viewport position", temp.c_str());
+
+			temp = std::to_string(avisoWindow->m_AvisoCenterLatitude);
+			SaveDataToAsr(string(prefix + "CenterLat").c_str(), "AVISO viewport center", temp.c_str());
+
+			temp = std::to_string(avisoWindow->m_AvisoCenterLongitude);
+			SaveDataToAsr(string(prefix + "CenterLon").c_str(), "AVISO viewport center", temp.c_str());
+
+			temp = std::to_string(avisoWindow->m_AvisoScale);
+			SaveDataToAsr(string(prefix + "Scale").c_str(), "AVISO viewport zoom", temp.c_str());
+
+			string toSave = "0";
+			if (appWindowDisplays[avisoWindowId])
+				toSave = "1";
+			SaveDataToAsr(string(prefix + "Display").c_str(), "Display AVISO viewport", toSave.c_str());
+		}
+	}
 }
 
 
