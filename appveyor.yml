@@ -43,14 +43,16 @@ install:
 configuration: Release
 
 build_script:
-  - ps: (Get-Content  C:\projects\vsmr\vSMR\SMRPlugin.hpp).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\SMRPlugin.hpp
-  - ps: (Get-Content  C:\projects\vsmr\vSMR\vSMR.rc).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\vSMR.rc
+  - ps: (Get-Content  C:\projects\vsmr\vSMR\include\SMRPlugin.hpp).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\include\SMRPlugin.hpp
+  - ps: (Get-Content  C:\projects\vsmr\vSMR\resources\vSMR.rc).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\resources\vSMR.rc
   - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /m /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 after_build:
   - cmd: mkdir vSMR-nightly
   - cmd: cp Release\vSMR.dll vSMR-nightly\
-  - cmd: cp vSMR\vSMR_Profiles.json vSMR-nightly\
+  - cmd: cp vSMR\data\vSMR_Profiles.json vSMR-nightly\
+  - cmd: cp vSMR\data\vSMR_Maps.json vSMR-nightly\
+  - cmd: cp vSMR\data\ICAO_Aircraft.json vSMR-nightly\
   - cmd: 7z a vSMR-nightly.zip %APPVEYOR_BUILD_FOLDER%\vSMR-nightly\
 
 #---------------------------------#

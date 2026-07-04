@@ -28,15 +28,15 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_DEFAULT
 // Cursor
 //
 
-IDC_SMRMOVETAG          CURSOR                  "cursor1.cur"
+IDC_SMRMOVETAG          CURSOR                  "cursors\\cursor1.cur"
 
-IDC_SMRCURSOR           CURSOR                  "arrow.cur"
+IDC_SMRCURSOR           CURSOR                  "cursors\\arrow.cur"
 
-IDC_SMRRESIZE           CURSOR                  "POINTER1.cur"
+IDC_SMRRESIZE           CURSOR                  "cursors\\POINTER1.cur"
 
-IDC_SMRCORRELATE        CURSOR                  "..\\ml_blau_link.cur"
+IDC_SMRCORRELATE        CURSOR                  "cursors\\ml_blau_link.cur"
 
-IDC_SMRMOVEWINDOW       CURSOR                  "..\\move.cur"
+IDC_SMRMOVEWINDOW       CURSOR                  "cursors\\move.cur"
 
 #endif    // Neutral (Default) resources
 /////////////////////////////////////////////////////////////////////////////
@@ -127,7 +127,7 @@ BEGIN
     "\r\n"
     "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
     "LANGUAGE 9, 1\r\n"
-    "#include ""res\\vSMR.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""vSMR.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
     "#include ""afxres.rc""      // Standard components\r\n"
     "#endif\r\n"
     "\0"
@@ -239,7 +239,7 @@ END
 // WAVE
 //
 
-IDR_WAVE1               WAVE                    "..\\Ding.wav"
+IDR_WAVE1               WAVE                    "audio\\Ding.wav"
 
 #endif    // French (France) resources
 /////////////////////////////////////////////////////////////////////////////
@@ -258,7 +258,7 @@ IDR_WAVE1               WAVE                    "..\\Ding.wav"
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 LANGUAGE 9, 1
-#include "res\vSMR.rc2"  // non-Microsoft Visual C++ edited resources
+#include "vSMR.rc2"  // non-Microsoft Visual C++ edited resources
 #include "afxres.rc"      // Standard components
 #endif
 
