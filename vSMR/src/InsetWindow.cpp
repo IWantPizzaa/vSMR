@@ -1180,34 +1180,41 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		{
 			const int reportedGs = rtPositionData.GetReportedGS();
 			Color targetColor = resolveTargetColor(fp, isCorrelated, reportedGs, isOnRunway, isDepartureTarget, hasNoFlightPlan);
+			if (targetColor.GetAlpha() < 32)
+				targetColor = Color(255, targetColor.GetR(), targetColor.GetG(), targetColor.GetB());
 			double headingDeg = static_cast<double>(rtPositionData.GetReportedHeadingTrueNorth());
 			if (headingDeg < 0.0 || headingDeg >= 360.0)
 				headingDeg = rt.GetTrackHeading();
 
 			if (useNovaIconStyle)
 			{
-				CPen novaPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
-				CPen* oldPen = dc.SelectObject(&novaPen);
+				Gdiplus::Pen novaPen(symbolWhiteColor, 1.4f);
 				if (rtPositionData.GetTransponderC())
 				{
-					dc.MoveTo({ targetPoint.x, targetPoint.y - 6 });
-					dc.LineTo({ targetPoint.x - 6, targetPoint.y });
-					dc.LineTo({ targetPoint.x, targetPoint.y + 6 });
-					dc.LineTo({ targetPoint.x + 6, targetPoint.y });
-					dc.LineTo({ targetPoint.x, targetPoint.y - 6 });
+					PointF diamond[5] = {
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 6)),
+						PointF(Gdiplus::REAL(targetPoint.x - 6), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y + 6)),
+						PointF(Gdiplus::REAL(targetPoint.x + 6), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 6))
+					};
+					gdi->DrawLines(&novaPen, diamond, 5);
 				}
 				else
 				{
-					dc.MoveTo(targetPoint.x, targetPoint.y);
-					dc.LineTo(targetPoint.x - 4, targetPoint.y - 4);
-					dc.MoveTo(targetPoint.x, targetPoint.y);
-					dc.LineTo(targetPoint.x + 4, targetPoint.y - 4);
-					dc.MoveTo(targetPoint.x, targetPoint.y);
-					dc.LineTo(targetPoint.x - 4, targetPoint.y + 4);
-					dc.MoveTo(targetPoint.x, targetPoint.y);
-					dc.LineTo(targetPoint.x + 4, targetPoint.y + 4);
+					gdi->DrawLine(&novaPen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x - 4), Gdiplus::REAL(targetPoint.y - 4)));
+					gdi->DrawLine(&novaPen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x + 4), Gdiplus::REAL(targetPoint.y - 4)));
+					gdi->DrawLine(&novaPen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x - 4), Gdiplus::REAL(targetPoint.y + 4)));
+					gdi->DrawLine(&novaPen,
+						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
+						PointF(Gdiplus::REAL(targetPoint.x + 4), Gdiplus::REAL(targetPoint.y + 4)));
 				}
-				dc.SelectObject(oldPen);
 				return 12;
 			}
 
@@ -1292,8 +1299,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 						drawH *= zoomBoostScale;
 					}
 				}
-				drawW = AvisoFinitePositive(drawW, 24.0, 4.0, 1200.0);
-				drawH = AvisoFinitePositive(drawH, 24.0, 4.0, 1200.0);
+				drawW = AvisoFinitePositive(drawW, 24.0, 12.0, 1200.0);
+				drawH = AvisoFinitePositive(drawH, 24.0, 12.0, 1200.0);
 
 				int drawPixelW = 0;
 				int drawPixelH = 0;
