@@ -50,11 +50,18 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			return 5;
 		return fallback;
 	};
-	if (FunctionId == APPWINDOW_ONE || FunctionId == APPWINDOW_TWO) {
+	auto isAppWindowFunction = [](int functionId) -> bool
+	{
+		return functionId > APPWINDOW_BASE && functionId <= APPWINDOW_AVISO;
+	};
+	if (isAppWindowFunction(FunctionId)) {
 		int id = FunctionId - APPWINDOW_BASE;
 		auto appWindowDisplayIt = appWindowDisplays.find(id);
 		if (appWindowDisplayIt != appWindowDisplays.end())
+		{
 			appWindowDisplayIt->second = !appWindowDisplayIt->second;
+			RequestRefresh();
+		}
 	}
 
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {
@@ -252,28 +259,45 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		RequestRefresh();
 	}
 
-	if (FunctionId == RIMCAS_UPDATEFILTER1 || FunctionId == RIMCAS_UPDATEFILTER2) {
+	if (FunctionId > RIMCAS_UPDATEFILTER && FunctionId <= RIMCAS_UPDATEFILTER3) {
 		int id = FunctionId - RIMCAS_UPDATEFILTER;
 		const char* filterValue = itemString;
 		if (startsWith("UNL", filterValue))
 			filterValue = "66000";
 		CInsetWindow* appWindow = getAppWindowById(id);
-		if (appWindow != nullptr)
+		if (appWindow != nullptr && !appWindow->IsAvisoViewport())
+		{
 			appWindow->m_Filter = atoi(filterValue);
+			RequestRefresh();
+		}
 	}
 
-	if (FunctionId == RIMCAS_UPDATERANGE1 || FunctionId == RIMCAS_UPDATERANGE2) {
+	if (FunctionId > RIMCAS_UPDATERANGE && FunctionId <= RIMCAS_UPDATERANGE3) {
 		int id = FunctionId - RIMCAS_UPDATERANGE;
 		CInsetWindow* appWindow = getAppWindowById(id);
 		if (appWindow != nullptr)
-			appWindow->m_Scale = atoi(itemString);
+		{
+			if (appWindow->IsAvisoViewport())
+			{
+				appWindow->m_AvisoScale = max(1, atoi(itemString));
+				appWindow->ClearAvisoViewportCache();
+			}
+			else
+			{
+				appWindow->m_Scale = atoi(itemString);
+			}
+			RequestRefresh();
+		}
 	}
 
-	if (FunctionId == RIMCAS_UPDATEROTATE1 || FunctionId == RIMCAS_UPDATEROTATE2) {
+	if (FunctionId > RIMCAS_UPDATEROTATE && FunctionId <= RIMCAS_UPDATEROTATE3) {
 		int id = FunctionId - RIMCAS_UPDATEROTATE;
 		CInsetWindow* appWindow = getAppWindowById(id);
-		if (appWindow != nullptr)
+		if (appWindow != nullptr && !appWindow->IsAvisoViewport())
+		{
 			appWindow->m_Rotation = atoi(itemString);
+			RequestRefresh();
+		}
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_BRIGHNESS) {

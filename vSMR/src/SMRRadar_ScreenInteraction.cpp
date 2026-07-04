@@ -17,6 +17,10 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	{
 		return expected != nullptr && strcmp(objectId, expected) == 0;
 	};
+	auto isAppWindowObjectType = [](int objectType) -> bool
+	{
+		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
+	};
 	auto setCursorState = [&](HCURSOR cursor, bool keepStandardCursor)
 	{
 		AFX_MANAGE_STATE(AfxGetStaticModuleState());
@@ -63,7 +67,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		}
 	};
 
-	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
+	if (isAppWindowObjectType(ObjectType)) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
@@ -246,6 +250,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	{
 		return expected != nullptr && strcmp(objectId, expected) == 0;
 	};
+	auto isAppWindowObjectType = [](int objectType) -> bool
+	{
+		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
+	};
 	auto shiftPopupAreaDown = [&](int pixels)
 	{
 		Area.top += pixels;
@@ -362,7 +370,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		}
 	};
 
-	if (ObjectType == APPWINDOW_ONE || ObjectType == APPWINDOW_TWO) {
+	if (isAppWindowObjectType(ObjectType)) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
@@ -376,6 +384,19 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		if (isObjectId("range")) {
 			if (appWindow == nullptr)
 				return;
+			if (appWindow->IsAvisoViewport())
+			{
+				openPopupListWithClose("AVISO Zoom", [&]()
+				{
+					const int values[] = { 1200, 900, 700, 500, 350, 250, 150, 100, 60, 30 };
+					for (int value : values)
+					{
+						const string label = std::to_string(value);
+						GetPlugIn()->AddPopupListElement(label.c_str(), "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_AvisoScale == value));
+					}
+				});
+				return;
+			}
 			openPopupListWithClose("SRW Zoom", [&]()
 			{
 				GetPlugIn()->AddPopupListElement("55", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 55));
@@ -394,6 +415,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		}
 		if (isObjectId("filter")) {
 			if (appWindow == nullptr)
+				return;
+			if (appWindow->IsAvisoViewport())
 				return;
 			openPopupListWithClose("SRW Filter (ft)", [&]()
 			{
@@ -414,6 +437,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		}
 		if (isObjectId("rotate")) {
 			if (appWindow == nullptr)
+				return;
+			if (appWindow->IsAvisoViewport())
 				return;
 			openPopupListWithClose("SRW Rotate (deg)", [&]()
 			{
@@ -484,8 +509,11 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				const bool appWindowOneVisible = (appWindowOneDisplayIt != appWindowDisplays.end()) && appWindowOneDisplayIt->second;
 				const auto appWindowTwoDisplayIt = appWindowDisplays.find(2);
 				const bool appWindowTwoVisible = (appWindowTwoDisplayIt != appWindowDisplays.end()) && appWindowTwoDisplayIt->second;
+				const auto avisoWindowDisplayIt = appWindowDisplays.find(APPWINDOW_AVISO - APPWINDOW_BASE);
+				const bool avisoWindowVisible = (avisoWindowDisplayIt != appWindowDisplays.end()) && avisoWindowDisplayIt->second;
 				GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
 				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
+				GetPlugIn()->AddPopupListElement("AVISO View", "", APPWINDOW_AVISO, false, int(avisoWindowVisible));
 				const std::string activeProfileName = GetActiveProfileNameForEditor();
 				bool proModeEnabled = false;
 				bool towerModeEnabled = false;
