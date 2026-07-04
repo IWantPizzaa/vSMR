@@ -16,13 +16,15 @@
 #include "CallsignLookup.hpp"
 #include "Config.hpp"
 #include "Rimcas.hpp"
+#include "SMRGeometry.hpp"
 #include <memory>
-#include <asio/io_service.hpp>
 #include <thread>
 #include <mutex>
 #include <ctime>
 #include "ColorManager.h"
 #include "Logger.h"
+#include "SMRDataTypes.hpp"
+#include "SMRSharedState.hpp"
 #include <filesystem>
 #include <iostream>
 
@@ -31,86 +33,8 @@ using namespace Gdiplus;
 using namespace EuroScopePlugIn;
 namespace fs = std::filesystem;
 
-namespace SMRSharedData
-{
-	static unordered_set<string> ReleasedTracks;
-	static unordered_set<string> ManuallyCorrelated;
-};
-
-
-namespace SMRPluginSharedData
-{
-	static asio::io_service io_service;
-}
-
 using namespace SMRSharedData;
 
-struct VacdmPilotData
-{
-	std::string callsign;
-	std::string tobtState;
-	std::time_t tobtUtc = 0;
-	std::time_t tsatUtc = 0;
-	std::time_t ttotUtc = 0;
-	std::time_t asatUtc = 0;
-	std::time_t aobtUtc = 0;
-	std::time_t atotUtc = 0;
-	std::time_t asrtUtc = 0;
-	std::time_t aortUtc = 0;
-	std::time_t ctotUtc = 0;
-	bool hasTobt = false;
-	bool hasTsat = false;
-	bool hasTtot = false;
-	bool hasAsat = false;
-	bool hasAobt = false;
-	bool hasAtot = false;
-	bool hasAsrt = false;
-	bool hasAort = false;
-	bool hasCtot = false;
-	bool hasBooking = false;
-};
-
-struct FrameVacdmLookupResult
-{
-	bool hasData = false;
-	VacdmPilotData data;
-};
-
-struct StructuredTagColorRule
-{
-	struct Criterion
-	{
-		std::string source = "vacdm";
-		std::string token;
-		std::string condition;
-	};
-
-	std::string source = "vacdm";
-	std::string token;
-	std::string condition;
-	std::vector<Criterion> criteria;
-	std::string name;
-	std::string tagType = "any";
-	std::string status = "any";
-	std::string detail = "any";
-	bool applyTarget = false;
-	int targetR = 255;
-	int targetG = 255;
-	int targetB = 255;
-	int targetA = 255;
-	bool applyTag = false;
-	int tagR = 255;
-	int tagG = 255;
-	int tagB = 255;
-	int tagA = 255;
-	bool applyText = false;
-	int textR = 255;
-	int textG = 255;
-	int textB = 255;
-	int textA = 255;
-};
-
-bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData);
 class CProfileEditorDialog;
 class CInsetWindow;
 
@@ -350,86 +274,9 @@ public:
 		const Value* blockedAutoCorrelateSquawks = nullptr;
 	};
 
-	inline CorrelationSettings BuildCorrelationSettings() const
-	{
-		CorrelationSettings settings;
-		if (CurrentConfig != nullptr)
-		{
-			const Value& profile = CurrentConfig->getActiveProfile();
-			if (profile.IsObject() && profile.HasMember("filters") && profile["filters"].IsObject())
-			{
-				const Value& filters = profile["filters"];
-				if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
-				{
-					const Value& proMode = filters["pro_mode"];
-					if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-						settings.proModeEnabled = proMode["enabled"].GetBool();
-					else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-						settings.proModeEnabled = proMode["enable"].GetBool();
-					if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
-						settings.acceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
-					if (proMode.HasMember("blocked_auto_correlate_squawks"))
-						settings.blockedAutoCorrelateSquawks = &proMode["blocked_auto_correlate_squawks"];
-					else if (proMode.HasMember("do_not_autocorrelate_squawks"))
-						settings.blockedAutoCorrelateSquawks = &proMode["do_not_autocorrelate_squawks"];
-				}
-			}
-		}
-		return settings;
-	}
-
-	inline bool IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const CorrelationSettings& settings) const
-	{
-		auto hasText = [](const char* text) -> bool
-		{
-			return text != nullptr && text[0] != '\0';
-		};
-
-		if (!settings.proModeEnabled)
-		{
-			// If pro mode is disabled, all targets are considered correlated.
-			return true;
-		}
-
-		if (!fp.IsValid())
-			return false;
-
-		bool isCorr = false;
-		const char* assignedSquawk = fp.GetControllerAssignedData().GetSquawk();
-		const char* reportedSquawk = (rt.IsValid() && rt.GetPosition().IsValid()) ? rt.GetPosition().GetSquawk() : nullptr;
-		if (hasText(assignedSquawk) && hasText(reportedSquawk) && strcmp(assignedSquawk, reportedSquawk) == 0)
-			isCorr = true;
-
-		if (settings.acceptPilotSquawk)
-			isCorr = true;
-
-		if (isCorr && settings.blockedAutoCorrelateSquawks != nullptr && settings.blockedAutoCorrelateSquawks->IsArray())
-		{
-			for (SizeType i = 0; i < settings.blockedAutoCorrelateSquawks->Size(); i++)
-			{
-				const Value& blockedSquawk = (*settings.blockedAutoCorrelateSquawks)[i];
-				if (hasText(reportedSquawk) && blockedSquawk.IsString() && strcmp(reportedSquawk, blockedSquawk.GetString()) == 0)
-				{
-					isCorr = false;
-					break;
-				}
-			}
-		}
-
-		const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
-		if (hasText(systemId) && ManuallyCorrelated.find(systemId) != ManuallyCorrelated.end())
-			isCorr = true;
-
-		if (hasText(systemId) && ReleasedTracks.find(systemId) != ReleasedTracks.end())
-			isCorr = false;
-
-		return isCorr;
-	};
-
-	inline virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt)
-	{
-		return IsCorrelatedWithSettings(fp, rt, BuildCorrelationSettings());
-	}
+	CorrelationSettings BuildCorrelationSettings() const;
+	bool IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const CorrelationSettings& settings) const;
+	virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt);
 
 	//---CorrelateCursor--------------------------------------------
 
@@ -601,166 +448,22 @@ public:
 
 	virtual void OnFlightPlanDisconnect(CFlightPlan FlightPlan);
 
-	virtual bool isVisible(CRadarTarget rt)
-	{
-		if (!rt.IsValid())
-			return false;
-
-		CRadarTargetPositionData RtPos = rt.GetPosition();
-		if (!RtPos.IsValid())
-			return false;
-
-		auto airportIt = AirportPositions.find(getActiveAirport());
-		if (airportIt == AirportPositions.end())
-			return false;
-
-		int radarRange = 999;
-		int altitudeFilter = 5500;
-		int speedFilter = 250;
-		if (CurrentConfig != nullptr)
-		{
-			const Value& profile = CurrentConfig->getActiveProfile();
-			if (profile.IsObject() && profile.HasMember("filters") && profile["filters"].IsObject())
-			{
-				const Value& filters = profile["filters"];
-				if (filters.HasMember("radar_range_nm") && filters["radar_range_nm"].IsInt())
-					radarRange = filters["radar_range_nm"].GetInt();
-				if (filters.HasMember("max_altitude_ft") && filters["max_altitude_ft"].IsInt())
-					altitudeFilter = filters["max_altitude_ft"].GetInt();
-				else if (filters.HasMember("hide_above_alt") && filters["hide_above_alt"].IsInt())
-					altitudeFilter = filters["hide_above_alt"].GetInt();
-				if (filters.HasMember("max_speed_kt") && filters["max_speed_kt"].IsInt())
-					speedFilter = filters["max_speed_kt"].GetInt();
-				else if (filters.HasMember("hide_above_spd") && filters["hide_above_spd"].IsInt())
-					speedFilter = filters["hide_above_spd"].GetInt();
-			}
-		}
-		radarRange = max(1, radarRange);
-		bool isAcDisplayed = true;
-
-		if (airportIt->second.DistanceTo(RtPos.GetPosition()) > radarRange)
-			isAcDisplayed = false;
-
-		if (altitudeFilter != 0) {
-			if (RtPos.GetPressureAltitude() > altitudeFilter)
-				isAcDisplayed = false;
-		}
-
-		if (speedFilter != 0) {
-			if (RtPos.GetReportedGS() > speedFilter)
-				isAcDisplayed = false;
-		}
-
-		return isAcDisplayed;
-	}
+	virtual bool isVisible(CRadarTarget rt);
 
 	//---Haversine---------------------------------------------
 	// Heading in deg, distance in m
-	const double PI = (double)M_PI;
+	const double PI = SMRGeometry::Pi;
 
-	inline virtual CPosition Haversine(CPosition origin, double heading, double distance) {
-
-		CPosition newPos;
-
-		double d = (distance*0.00053996) / 60 * PI / 180;
-		double trk = DegToRad(heading);
-		double lat0 = DegToRad(origin.m_Latitude);
-		double lon0 = DegToRad(origin.m_Longitude);
-
-		double lat = asin(sin(lat0) * cos(d) + cos(lat0) * sin(d) * cos(trk));
-		double lon = cos(lat) == 0 ? lon0 : fmod(lon0 + asin(sin(trk) * sin(d) / cos(lat)) + PI, 2 * PI) - PI;
-
-		newPos.m_Latitude = RadToDeg(lat);
-		newPos.m_Longitude = RadToDeg(lon);
-
-		return newPos;
-	}
-
-	inline virtual double Haversine(CPosition origin, CPosition dest) {
-		double haversine;
-		double temp;
-
-		double earthRadius = 6372797.56085;
-
-		origin.m_Latitude = DegToRad(origin.m_Latitude);
-		origin.m_Longitude = DegToRad(origin.m_Longitude);
-		dest.m_Latitude = DegToRad(dest.m_Latitude);
-		dest.m_Longitude = DegToRad(dest.m_Longitude);
-
-		haversine = (pow(sin((1.0 / 2) * (dest.m_Latitude - origin.m_Latitude)), 2)) + ((cos(origin.m_Latitude)) * (cos(dest.m_Latitude)) * (pow(sin((1.0 / 2) * (dest.m_Longitude - origin.m_Longitude)), 2)));
-		temp = 2 * asin(min(1.0, sqrt(haversine)));
-		return earthRadius * temp;
-	}
+	virtual CPosition Haversine(CPosition origin, double heading, double distance);
+	virtual double Haversine(CPosition origin, CPosition dest);
 
 	//---GetZoomLevelFromCrossDistance-----------------------------
 	int maxZoomLevel = 14;
-	inline virtual int getZoomLevelFromCrossDistance(double crossDistance) {
-		int d = (int)crossDistance;
-
-		if (d <= 2000)
-			return 14;
-		if (d <= 2500)
-			return 13;
-		if (d <= 3000)
-			return 12;
-		if (d <= 4000)
-			return 11;
-		if (d <= 5000)
-			return 10;
-		if (d <= 6000)
-			return 9;
-		if (d <= 8000)
-			return 8;
-		if (d <= 9500)
-			return 7;
-		if (d <= 12000)
-			return 6;
-		if (d <= 14000)
-			return 5;
-		if (d <= 18000)
-			return 4;
-		if (d <= 22000)
-			return 3;
-		if (d <= 28000)
-			return 2;
-		if (d <= 34000)
-			return 1;
-		return 0;
-	}
-
-	inline virtual float randomizeHeading(float originHead) {
-		return float(fmod(originHead + float((rand() % 5) - 2), 360));
-	}
+	virtual int getZoomLevelFromCrossDistance(double crossDistance);
+	virtual float randomizeHeading(float originHead);
 
 	//---getIntFromCategory-------------------------------------------
-	inline virtual int getIntFromCategory(string category) {
-		if (category == "FREETEXT")
-			return SECTOR_ELEMENT_FREE_TEXT;
-		else if (category == "RUNWAY")
-			return SECTOR_ELEMENT_RUNWAY;
-		else if (category == "VOR")
-			return SECTOR_ELEMENT_VOR;
-		else if (category == "NDB")
-			return SECTOR_ELEMENT_NDB;
-		else if (category == "FIX")
-			return SECTOR_ELEMENT_FIX;
-		else if (category == "AIRPORT")
-			return SECTOR_ELEMENT_AIRPORT;
-		else if (category == "STAR")
-			return  SECTOR_ELEMENT_STAR;
-		else if (category == "SID")
-			return SECTOR_ELEMENT_SID;
-		else if (category == "ARTC")
-			return SECTOR_ELEMENT_ARTC;
-		else if (category == "GEO")
-			return SECTOR_ELEMENT_GEO;
-		else if (category == "AIRSPACE")
-			return SECTOR_ELEMENT_AIRSPACE;
-		else if (category == "REGIONS")
-			return SECTOR_ELEMENT_REGIONS;
-		else
-			return -1;
-	}
+	virtual int getIntFromCategory(string category);
 
 	//---GetBottomLine---------------------------------------------
 
@@ -801,28 +504,5 @@ public:
 
 	void CSMRRadar::EuroScopePlugInExitCustom();
 
-	//  This gets called before OnAsrContentToBeSaved()
-	// -> we can't delete CurrentConfig just yet otherwise we can't save the active profile
-	inline virtual void OnAsrContentToBeClosed(void)
-	{
-		CloseProfileEditorWindow(false);
-		DestroyProfileEditorWindow();
-
-		const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
-		const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
-		WriteLastActiveProfileToDisk(profileToPersist);
-		SaveDataToAsr("ActiveProfile", "vSMR active profile", profileToPersist.c_str());
-
-		if (CurrentConfig != nullptr)
-		{
-			// Reload before writing shutdown state so stale radar instances do not overwrite
-			// edits already saved by another screen during the session.
-			CurrentConfig->reload();
-			if (RimcasInstance != nullptr)
-				CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
-			CurrentConfig->saveConfig();
-		}
-
-		delete this;
-	};
+	virtual void OnAsrContentToBeClosed(void);
 };
