@@ -169,6 +169,15 @@ public:
 	std::string IconsPath;
 	struct AircraftSpec { double length = 0.0; double wingspan = 0.0; };
 	std::map<std::string, AircraftSpec> AircraftSpecs;
+	struct RealisticIconCacheEntry
+	{
+		std::unique_ptr<Gdiplus::Bitmap> bitmap;
+		int centerX = 0;
+		int centerY = 0;
+		unsigned long long lastUsedFrame = 0;
+	};
+	std::map<std::string, RealisticIconCacheEntry> RealisticIconBitmapCache;
+	unsigned long long RealisticIconCacheFrame = 0;
 	mutable bool StructuredTagRulesCacheValid = false;
 	mutable std::vector<StructuredTagColorRule> StructuredTagRulesCache;
 	struct AvisoPoint
