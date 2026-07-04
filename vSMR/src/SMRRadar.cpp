@@ -1445,9 +1445,9 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	const double maxDimension = renderPixelWidth > renderPixelHeight ? renderPixelWidth : renderPixelHeight;
 	const double targetRasterScale = 1.0;
-	const double minRasterScale = 0.30;
-	const double maxRasterSide = 3200.0;
-	const double maxRasterPixels = 5200000.0;
+	const double minRasterScale = 0.50;
+	const double maxRasterSide = 6400.0;
+	const double maxRasterPixels = 18000000.0;
 	double rasterScale = targetRasterScale;
 	const double sideLimitedScale = maxRasterSide / maxDimension;
 	if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
