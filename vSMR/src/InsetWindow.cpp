@@ -2,15 +2,111 @@
 #include "InsetWindow.h"
 #include "SMRRadar.hpp"
 #include "SMRTagDefinitionUtils.hpp"
+#include <chrono>
+#include <future>
 
+namespace
+{
+	constexpr double kAvisoMetersPerNm = 1852.0;
+	constexpr double kAvisoLatMetersPerDegree = 110540.0;
+	constexpr double kAvisoLonMetersPerDegree = 111320.0;
+
+	double ClampAvisoLatitude(double latitude)
+	{
+		return std::clamp(latitude, -85.0, 85.0);
+	}
+
+	double AvisoCosLatitude(double latitude)
+	{
+		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
+	}
+
+	RECT DrawInsetToolbarButton(CDC* dc, const string& letter, CRect topBar, int left, POINT mouseLocation)
+	{
+		POINT topLeft = { topBar.right - left, topBar.top + 2 };
+		POINT bottomRight = { topBar.right - (left - 11), topBar.bottom - 2 };
+		CRect rect(topLeft, bottomRight);
+		rect.NormalizeRect();
+		CBrush buttonBrush(RGB(60, 60, 60));
+		dc->FillRect(rect, &buttonBrush);
+		dc->SetTextColor(RGB(0, 0, 0));
+		dc->TextOutA(rect.left + 2, rect.top, letter.c_str());
+
+		if (mouseWithin(mouseLocation, rect))
+			dc->Draw3dRect(rect, RGB(45, 45, 45), RGB(75, 75, 75));
+		else
+			dc->Draw3dRect(rect, RGB(75, 75, 75), RGB(45, 45, 45));
+
+		return rect;
+	}
+}
+
+struct AvisoViewportState
+{
+	~AvisoViewportState()
+	{
+		ClearCache();
+	}
+
+	void ClearCache()
+	{
+		if (cacheBitmap != nullptr)
+		{
+			::DeleteObject(cacheBitmap);
+			cacheBitmap = nullptr;
+		}
+
+		cachePath.clear();
+		cacheWidth = 0;
+		cacheHeight = 0;
+		displayMinLongitude = 0.0;
+		displayMinLatitude = 0.0;
+		displayMaxLongitude = 0.0;
+		displayMaxLatitude = 0.0;
+		renderMinLongitude = 0.0;
+		renderMinLatitude = 0.0;
+		renderMaxLongitude = 0.0;
+		renderMaxLatitude = 0.0;
+		anchorValid = false;
+	}
+
+	HBITMAP cacheBitmap = nullptr;
+	string cachePath;
+	int cacheWidth = 0;
+	int cacheHeight = 0;
+	double displayMinLongitude = 0.0;
+	double displayMinLatitude = 0.0;
+	double displayMaxLongitude = 0.0;
+	double displayMaxLatitude = 0.0;
+	double renderMinLongitude = 0.0;
+	double renderMinLatitude = 0.0;
+	double renderMaxLongitude = 0.0;
+	double renderMaxLatitude = 0.0;
+	bool anchorValid = false;
+	bool renderPending = false;
+	unsigned long long nextRequestId = 0;
+	std::future<std::unique_ptr<CSMRRadar::AvisoRasterRenderResult>> renderFuture;
+};
 
 CInsetWindow::CInsetWindow(int Id)
 {
 	m_Id = Id;
+	m_AvisoState = std::make_unique<AvisoViewportState>();
 }
 
 CInsetWindow::~CInsetWindow()
 {
+}
+
+bool CInsetWindow::IsAvisoViewport() const
+{
+	return m_Mode == Mode::AvisoViewport;
+}
+
+void CInsetWindow::ClearAvisoViewportCache()
+{
+	if (m_AvisoState != nullptr)
+		m_AvisoState->ClearCache();
 }
 
 void CInsetWindow::setAirport(string icao)
@@ -28,6 +124,31 @@ void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int B
 bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool Released)
 {
 	if (strcmp(sObjectId, "window") == 0) {
+		if (IsAvisoViewport())
+		{
+			if (!this->m_Grip)
+			{
+				m_OffsetDrag = Pt;
+				m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
+				m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
+				m_Grip = true;
+			}
+
+			const int scale = max(1, m_AvisoScale);
+			const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
+			const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoDragStartLatitude));
+			const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
+			const int dragX = Pt.x - m_OffsetDrag.x;
+			const int dragY = Pt.y - m_OffsetDrag.y;
+			m_AvisoCenterLongitude = m_AvisoDragStartLongitude - (static_cast<double>(dragX) * lonDegreesPerPixel);
+			m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoDragStartLatitude + (static_cast<double>(dragY) * latDegreesPerPixel));
+
+			if (Released)
+				m_Grip = false;
+
+			return true;
+		}
+
 		if (!this->m_Grip)
 		{
 			m_OffsetInit = m_Offset;
@@ -82,6 +203,9 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 
 	if (sObjectId != nullptr && strcmp(sObjectId, "window") != 0 && strcmp(sObjectId, "resize") != 0 && strcmp(sObjectId, "topbar") != 0)
 	{
+		if (IsAvisoViewport())
+			return true;
+
 		string callsign = sObjectId;
 		if (!callsign.empty())
 		{
@@ -184,13 +308,428 @@ POINT CInsetWindow::projectPoint(CPosition pos)
 	}
 }
 
-void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
+void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
 {
+	if (radar_screen == nullptr || gdi == nullptr || m_AvisoState == nullptr)
+		return;
+
 	CDC dc;
 	dc.Attach(hDC);
+	CRect viewportRect(m_Area);
+	viewportRect.NormalizeRect();
+	const int viewportWidth = viewportRect.Width();
+	const int viewportHeight = viewportRect.Height();
+	if (viewportWidth <= 0 || viewportHeight <= 0)
+	{
+		dc.Detach();
+		return;
+	}
 
+	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
+	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
+
+	auto drawCenteredMessage = [&](const char* message)
+	{
+		COLORREF oldTextColor = dc.SetTextColor(RGB(180, 190, 195));
+		const CSize messageSize = dc.GetTextExtent(message);
+		dc.TextOutA(
+			viewportRect.left + (viewportRect.Width() - messageSize.cx) / 2,
+			viewportRect.top + (viewportRect.Height() - messageSize.cy) / 2,
+			message);
+		dc.SetTextColor(oldTextColor);
+	};
+
+	auto drawChrome = [&]()
+	{
+		POINT bottomRight = { m_Area.right, m_Area.bottom };
+		POINT resizeTopLeft = { bottomRight.x - 10, bottomRight.y - 10 };
+		CRect resizeArea(resizeTopLeft, bottomRight);
+		resizeArea.NormalizeRect();
+		CBrush resizeBrush(RGB(60, 60, 60));
+		dc.FillRect(resizeArea, &resizeBrush);
+		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
+		dc.Draw3dRect(resizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
+
+		CBrush frameBrush(RGB(127, 122, 122));
+		dc.FrameRect(viewportRect, &frameBrush);
+
+		POINT topBarTopLeft = viewportRect.TopLeft();
+		topBarTopLeft.y -= 15;
+		POINT topBarBottomRight = { viewportRect.right, viewportRect.top };
+		CRect topBar(topBarTopLeft, topBarBottomRight);
+		topBar.NormalizeRect();
+		dc.FillRect(topBar, &frameBrush);
+		radar_screen->AddScreenObject(m_Id, "topbar", topBar, true, "");
+
+		COLORREF oldTextColor = dc.SetTextColor(RGB(35, 35, 35));
+		const string title = "AVISO";
+		const CSize titleSize = dc.GetTextExtent(title.c_str());
+		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
+		const int titleY = topBar.bottom - titleSize.cy;
+		dc.TextOutA(titleX, titleY, title.c_str());
+
+		CRect rangeRect = DrawInsetToolbarButton(&dc, "Z", topBar, 29, mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "range", rangeRect, false, "");
+
+		POINT closeTopLeft = { topBar.right - 16, topBar.top + 2 };
+		POINT closeBottomRight = { topBar.right - 5, topBar.bottom - 2 };
+		CRect closeRect(closeTopLeft, closeBottomRight);
+		closeRect.NormalizeRect();
+		CBrush closeBrush(RGB(60, 60, 60));
+		dc.FillRect(closeRect, &closeBrush);
+		CPen blackPen(PS_SOLID, 1, RGB(0, 0, 0));
+		CPen* oldPen = dc.SelectObject(&blackPen);
+		dc.MoveTo(closeRect.TopLeft());
+		dc.LineTo(closeRect.BottomRight());
+		dc.MoveTo({ closeRect.right - 1, closeRect.top });
+		dc.LineTo({ closeRect.left - 1, closeRect.bottom });
+		if (oldPen != nullptr)
+			dc.SelectObject(oldPen);
+
+		if (mouseWithin(mouseLocation, closeRect))
+			dc.Draw3dRect(closeRect, RGB(45, 45, 45), RGB(75, 75, 75));
+		else
+			dc.Draw3dRect(closeRect, RGB(75, 75, 75), RGB(45, 45, 45));
+		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
+		dc.SetTextColor(oldTextColor);
+	};
+
+	const std::string airport = radar_screen->getActiveAirport();
+	const std::string path = radar_screen->ResolveAvisoGeoJsonPathForAirport(airport);
+	if (path.empty() ||
+		!radar_screen->EnsureAvisoGeoJsonLoaded(path) ||
+		(radar_screen->AvisoGeoJsonFeatures.empty() && radar_screen->AvisoGeoJsonLabels.empty()))
+	{
+		drawCenteredMessage("AVISO unavailable");
+		drawChrome();
+		dc.Detach();
+		return;
+	}
+
+	if (!m_AvisoViewInitialized)
+	{
+		CPosition airportPosition;
+		if (radar_screen->TryGetActiveAirportPosition(airportPosition))
+		{
+			m_AvisoCenterLatitude = airportPosition.m_Latitude;
+			m_AvisoCenterLongitude = airportPosition.m_Longitude;
+		}
+		else if (radar_screen->AvisoGeoJsonHasBounds)
+		{
+			m_AvisoCenterLatitude = (radar_screen->AvisoGeoJsonMinLatitude + radar_screen->AvisoGeoJsonMaxLatitude) * 0.5;
+			m_AvisoCenterLongitude = (radar_screen->AvisoGeoJsonMinLongitude + radar_screen->AvisoGeoJsonMaxLongitude) * 0.5;
+		}
+		m_AvisoViewInitialized = true;
+		m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoCenterLatitude);
+	}
+
+	if (radar_screen->AvisoGeoJsonFeatureSnapshot == nullptr)
+		radar_screen->AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<CSMRRadar::AvisoFeature>>(radar_screen->AvisoGeoJsonFeatures);
+	if (radar_screen->AvisoGeoJsonLabelSnapshot == nullptr)
+		radar_screen->AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<CSMRRadar::AvisoLabel>>(radar_screen->AvisoGeoJsonLabels);
+	if (radar_screen->AvisoGeoJsonFeatureSnapshot == nullptr || radar_screen->AvisoGeoJsonLabelSnapshot == nullptr)
+	{
+		drawCenteredMessage("AVISO unavailable");
+		drawChrome();
+		dc.Detach();
+		return;
+	}
+
+	if (m_AvisoState->renderPending &&
+		m_AvisoState->renderFuture.valid() &&
+		m_AvisoState->renderFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+	{
+		std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = m_AvisoState->renderFuture.get();
+		m_AvisoState->renderPending = false;
+		if (result != nullptr && result->bitmap != nullptr)
+		{
+			m_AvisoState->ClearCache();
+			m_AvisoState->cacheBitmap = result->bitmap;
+			result->bitmap = nullptr;
+			m_AvisoState->cachePath = result->path;
+			m_AvisoState->cacheWidth = result->rasterWidth;
+			m_AvisoState->cacheHeight = result->rasterHeight;
+			m_AvisoState->displayMinLongitude = result->displayMinLongitude;
+			m_AvisoState->displayMinLatitude = result->displayMinLatitude;
+			m_AvisoState->displayMaxLongitude = result->displayMaxLongitude;
+			m_AvisoState->displayMaxLatitude = result->displayMaxLatitude;
+			m_AvisoState->renderMinLongitude = result->renderMinLongitude;
+			m_AvisoState->renderMinLatitude = result->renderMinLatitude;
+			m_AvisoState->renderMaxLongitude = result->renderMaxLongitude;
+			m_AvisoState->renderMaxLatitude = result->renderMaxLatitude;
+			m_AvisoState->anchorValid = true;
+		}
+	}
+
+	const int scale = max(1, m_AvisoScale);
+	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
+	const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoCenterLatitude));
+	const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
+	const double halfLonSpan = static_cast<double>(viewportWidth) * lonDegreesPerPixel * 0.5;
+	const double halfLatSpan = static_cast<double>(viewportHeight) * latDegreesPerPixel * 0.5;
+	const double displayMinLon = m_AvisoCenterLongitude - halfLonSpan;
+	const double displayMaxLon = m_AvisoCenterLongitude + halfLonSpan;
+	const double displayMinLat = ClampAvisoLatitude(m_AvisoCenterLatitude - halfLatSpan);
+	const double displayMaxLat = ClampAvisoLatitude(m_AvisoCenterLatitude + halfLatSpan);
+	const double lonSpan = displayMaxLon - displayMinLon;
+	const double latSpan = displayMaxLat - displayMinLat;
+	if (lonSpan <= 0.0 || latSpan <= 0.0)
+	{
+		drawCenteredMessage("AVISO unavailable");
+		drawChrome();
+		dc.Detach();
+		return;
+	}
+
+	const double scaleX = static_cast<double>(viewportWidth) / lonSpan;
+	const double scaleY = static_cast<double>(viewportHeight) / latSpan;
+	auto projectPoint = [&](double longitude, double latitude) -> Gdiplus::PointF
+	{
+		const double x = static_cast<double>(viewportRect.left) + ((longitude - displayMinLon) * scaleX);
+		const double y = static_cast<double>(viewportRect.top) + ((displayMaxLat - latitude) * scaleY);
+		return Gdiplus::PointF(static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(y));
+	};
+
+	auto drawCache = [&]() -> bool
+	{
+		if (m_AvisoState->cacheBitmap == nullptr ||
+			m_AvisoState->cachePath != path ||
+			m_AvisoState->cacheWidth <= 0 ||
+			m_AvisoState->cacheHeight <= 0 ||
+			!m_AvisoState->anchorValid)
+		{
+			return false;
+		}
+
+		const Gdiplus::PointF destTopLeft = projectPoint(m_AvisoState->renderMinLongitude, m_AvisoState->renderMaxLatitude);
+		const Gdiplus::PointF destBottomRight = projectPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMinLatitude);
+		const double destX = min(static_cast<double>(destTopLeft.X), static_cast<double>(destBottomRight.X));
+		const double destY = min(static_cast<double>(destTopLeft.Y), static_cast<double>(destBottomRight.Y));
+		const double destRight = max(static_cast<double>(destTopLeft.X), static_cast<double>(destBottomRight.X));
+		const double destBottom = max(static_cast<double>(destTopLeft.Y), static_cast<double>(destBottomRight.Y));
+		const double destWidth = destRight - destX;
+		const double destHeight = destBottom - destY;
+		if (destWidth < 1.0 || destHeight < 1.0)
+			return false;
+
+		const double visibleLeft = max(destX, static_cast<double>(viewportRect.left));
+		const double visibleTop = max(destY, static_cast<double>(viewportRect.top));
+		const double visibleRight = min(destRight, static_cast<double>(viewportRect.right));
+		const double visibleBottom = min(destBottom, static_cast<double>(viewportRect.bottom));
+		const double visibleWidth = visibleRight - visibleLeft;
+		const double visibleHeight = visibleBottom - visibleTop;
+		if (visibleWidth < 1.0 || visibleHeight < 1.0)
+			return false;
+
+		const double sourceScaleX = static_cast<double>(m_AvisoState->cacheWidth) / destWidth;
+		const double sourceScaleY = static_cast<double>(m_AvisoState->cacheHeight) / destHeight;
+		const double sourceX = (visibleLeft - destX) * sourceScaleX;
+		const double sourceY = (visibleTop - destY) * sourceScaleY;
+		const double sourceWidth = visibleWidth * sourceScaleX;
+		const double sourceHeight = visibleHeight * sourceScaleY;
+
+		const int destLeft = static_cast<int>(std::floor(visibleLeft));
+		const int destTop = static_cast<int>(std::floor(visibleTop));
+		const int destRightInt = static_cast<int>(std::ceil(visibleRight));
+		const int destBottomInt = static_cast<int>(std::ceil(visibleBottom));
+		const int destWidthInt = destRightInt - destLeft;
+		const int destHeightInt = destBottomInt - destTop;
+		if (destWidthInt <= 0 || destHeightInt <= 0)
+			return false;
+
+		int sourceXInt = static_cast<int>(std::floor(sourceX));
+		int sourceYInt = static_cast<int>(std::floor(sourceY));
+		int sourceRightInt = static_cast<int>(std::ceil(sourceX + sourceWidth));
+		int sourceBottomInt = static_cast<int>(std::ceil(sourceY + sourceHeight));
+		sourceXInt = std::clamp(sourceXInt, 0, m_AvisoState->cacheWidth);
+		sourceYInt = std::clamp(sourceYInt, 0, m_AvisoState->cacheHeight);
+		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, m_AvisoState->cacheWidth);
+		sourceBottomInt = std::clamp(sourceBottomInt, sourceYInt, m_AvisoState->cacheHeight);
+		const int sourceWidthInt = sourceRightInt - sourceXInt;
+		const int sourceHeightInt = sourceBottomInt - sourceYInt;
+		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
+			return false;
+
+		HDC sourceDc = ::CreateCompatibleDC(hDC);
+		if (sourceDc == nullptr)
+			return false;
+		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, m_AvisoState->cacheBitmap);
+		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
+		{
+			::DeleteDC(sourceDc);
+			return false;
+		}
+
+		gdi->Flush(Gdiplus::FlushIntentionFlush);
+		const int savedDc = ::SaveDC(hDC);
+		if (savedDc == 0)
+		{
+			::SelectObject(sourceDc, oldBitmap);
+			::DeleteDC(sourceDc);
+			return false;
+		}
+
+		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
+		const bool nearNativeScale =
+			std::abs(static_cast<double>(destWidthInt - sourceWidthInt)) <= 1.0 &&
+			std::abs(static_cast<double>(destHeightInt - sourceHeightInt)) <= 1.0;
+		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
+		if (!nearNativeScale)
+			::SetBrushOrgEx(hDC, 0, 0, nullptr);
+
+		BLENDFUNCTION blend = {};
+		blend.BlendOp = AC_SRC_OVER;
+		blend.SourceConstantAlpha = 255;
+		blend.AlphaFormat = AC_SRC_ALPHA;
+		const BOOL blended = ::AlphaBlend(
+			hDC,
+			destLeft,
+			destTop,
+			destWidthInt,
+			destHeightInt,
+			sourceDc,
+			sourceXInt,
+			sourceYInt,
+			sourceWidthInt,
+			sourceHeightInt,
+			blend);
+
+		if (oldStretchMode != 0)
+			::SetStretchBltMode(hDC, oldStretchMode);
+		::RestoreDC(hDC, savedDc);
+		::SelectObject(sourceDc, oldBitmap);
+		::DeleteDC(sourceDc);
+		return blended != FALSE;
+	};
+
+	auto cacheHasWorkingMargin = [&]() -> bool
+	{
+		if (m_AvisoState->cacheBitmap == nullptr ||
+			m_AvisoState->cachePath != path ||
+			!m_AvisoState->anchorValid)
+		{
+			return false;
+		}
+
+		const double cachedDisplayLonSpan = m_AvisoState->displayMaxLongitude - m_AvisoState->displayMinLongitude;
+		const double cachedDisplayLatSpan = m_AvisoState->displayMaxLatitude - m_AvisoState->displayMinLatitude;
+		if (cachedDisplayLonSpan <= 0.0 || cachedDisplayLatSpan <= 0.0)
+			return false;
+
+		const double lonScaleRatio = lonSpan / cachedDisplayLonSpan;
+		const double latScaleRatio = latSpan / cachedDisplayLatSpan;
+		if (lonScaleRatio < 0.985 || lonScaleRatio > 1.015 ||
+			latScaleRatio < 0.985 || latScaleRatio > 1.015)
+		{
+			return false;
+		}
+
+		const double requiredLonMargin = lonSpan * 0.20;
+		const double requiredLatMargin = latSpan * 0.20;
+		return
+			m_AvisoState->renderMinLongitude <= displayMinLon - requiredLonMargin &&
+			m_AvisoState->renderMaxLongitude >= displayMaxLon + requiredLonMargin &&
+			m_AvisoState->renderMinLatitude <= displayMinLat - requiredLatMargin &&
+			m_AvisoState->renderMaxLatitude >= displayMaxLat + requiredLatMargin;
+	};
+
+	const bool cacheDrawn = drawCache();
+	if (!cacheDrawn || !cacheHasWorkingMargin())
+	{
+		if (!m_AvisoState->renderPending)
+		{
+			const double overscanRatio = 0.65;
+			const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
+			const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
+			const double renderMinLat = ClampAvisoLatitude(displayMinLat - (latSpan * overscanRatio));
+			const double renderMaxLat = ClampAvisoLatitude(displayMaxLat + (latSpan * overscanRatio));
+			const Gdiplus::PointF renderTopLeft = projectPoint(renderMinLon, renderMaxLat);
+			const Gdiplus::PointF renderBottomRight = projectPoint(renderMaxLon, renderMinLat);
+			const double renderScreenLeft = min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderBottomRight.X));
+			const double renderScreenTop = min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderBottomRight.Y));
+			const double renderScreenRight = max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderBottomRight.X));
+			const double renderScreenBottom = max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderBottomRight.Y));
+			const double renderPixelWidth = renderScreenRight - renderScreenLeft;
+			const double renderPixelHeight = renderScreenBottom - renderScreenTop;
+			if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
+			{
+				const double maxRasterSide = 4096.0;
+				const double maxRasterPixels = 8000000.0;
+				double rasterScale = 1.0;
+				const double maxDimension = max(renderPixelWidth, renderPixelHeight);
+				const double sideLimitedScale = maxRasterSide / maxDimension;
+				if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
+					rasterScale = sideLimitedScale;
+				const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
+				if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
+					rasterScale = pixelLimitedScale;
+				rasterScale = std::clamp(rasterScale, 0.5, 1.0);
+
+				CSMRRadar::AvisoRasterRenderRequest request;
+				request.requestId = ++m_AvisoState->nextRequestId;
+				request.path = path;
+				request.features = radar_screen->AvisoGeoJsonFeatureSnapshot;
+				request.labels = radar_screen->AvisoGeoJsonLabelSnapshot;
+				request.rasterWidth = max(1, static_cast<int>((renderPixelWidth * rasterScale) + 0.5));
+				request.rasterHeight = max(1, static_cast<int>((renderPixelHeight * rasterScale) + 0.5));
+				request.rasterScale = rasterScale;
+				request.displayMinLongitude = displayMinLon;
+				request.displayMinLatitude = displayMinLat;
+				request.displayMaxLongitude = displayMaxLon;
+				request.displayMaxLatitude = displayMaxLat;
+				request.renderMinLongitude = renderMinLon;
+				request.renderMinLatitude = renderMinLat;
+				request.renderMaxLongitude = renderMaxLon;
+				request.renderMaxLatitude = renderMaxLat;
+				request.renderScreenLeft = renderScreenLeft;
+				request.renderScreenTop = renderScreenTop;
+				request.scaleX = scaleX;
+				request.scaleY = scaleY;
+				request.projectedTopLeft = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.left), static_cast<Gdiplus::REAL>(viewportRect.top));
+				request.projectedTopRight = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.right), static_cast<Gdiplus::REAL>(viewportRect.top));
+				request.projectedBottomLeft = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.left), static_cast<Gdiplus::REAL>(viewportRect.bottom));
+				request.projectedBottomRight = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.right), static_cast<Gdiplus::REAL>(viewportRect.bottom));
+
+				m_AvisoState->renderPending = true;
+				m_AvisoState->renderFuture = std::async(
+					std::launch::async,
+					[radar_screen, request]()
+					{
+						std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = radar_screen->RenderAvisoGeoJsonRaster(request);
+						try
+						{
+							radar_screen->RequestRefresh();
+						}
+						catch (...)
+						{
+						}
+						return result;
+					});
+			}
+		}
+	}
+
+	if (!cacheDrawn)
+		drawCenteredMessage(m_AvisoState->renderPending ? "Rendering AVISO" : "AVISO unavailable");
+
+	drawChrome();
+
+	dc.Detach();
+}
+
+void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
+{
 	if (this->m_Id == -1)
 		return;
+
+	if (IsAvisoViewport())
+	{
+		renderAvisoViewport(hDC, radar_screen, gdi, mouseLocation);
+		return;
+	}
+
+	CDC dc;
+	dc.Attach(hDC);
 
 	struct Utils
 	{
