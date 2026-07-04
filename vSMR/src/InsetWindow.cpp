@@ -712,6 +712,206 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	if (!cacheDrawn)
 		drawCenteredMessage(m_AvisoState->renderPending ? "Rendering AVISO" : "AVISO unavailable");
 
+	auto drawAircraft = [&]()
+	{
+		const int savedDc = ::SaveDC(hDC);
+		if (savedDc == 0)
+			return;
+
+		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
+
+		auto pointInViewport = [&](const POINT& point) -> bool
+		{
+			return
+				point.x >= viewportRect.left &&
+				point.x <= viewportRect.right &&
+				point.y >= viewportRect.top &&
+				point.y <= viewportRect.bottom;
+		};
+		auto projectTargetPosition = [&](const CPosition& position) -> POINT
+		{
+			const Gdiplus::PointF projected = projectPoint(position.m_Longitude, position.m_Latitude);
+			return {
+				static_cast<LONG>(std::lround(static_cast<double>(projected.X))),
+				static_cast<LONG>(std::lround(static_cast<double>(projected.Y)))
+			};
+		};
+		auto positionNearViewport = [&](const CPosition& position) -> bool
+		{
+			const double lonMargin = lonSpan * 0.08;
+			const double latMargin = latSpan * 0.08;
+			return
+				position.m_Longitude >= displayMinLon - lonMargin &&
+				position.m_Longitude <= displayMaxLon + lonMargin &&
+				position.m_Latitude >= displayMinLat - latMargin &&
+				position.m_Latitude <= displayMaxLat + latMargin;
+		};
+		auto drawTrailPoint = [&](const POINT& point, COLORREF color)
+		{
+			if (!pointInViewport(point))
+				return;
+			CRect trailRect(point.x - 1, point.y - 1, point.x + 2, point.y + 2);
+			dc.FillSolidRect(trailRect, color);
+		};
+
+		const Gdiplus::Color symbolColor = radar_screen->ColorManager != nullptr
+			? radar_screen->ColorManager->get_corrected_color("symbol", Gdiplus::Color::White)
+			: Gdiplus::Color::White;
+		const COLORREF symbolColorRef = symbolColor.ToCOLORREF();
+		const COLORREF selectedColorRef = RGB(0, 220, 255);
+		const COLORREF stageOneColorRef = RGB(210, 130, 30);
+		const COLORREF stageTwoColorRef = RGB(220, 40, 40);
+
+		CPen symbolPen(PS_SOLID, 1, symbolColorRef);
+		CPen selectedPen(PS_SOLID, 1, selectedColorRef);
+		CPen stageOnePen(PS_SOLID, 1, stageOneColorRef);
+		CPen stageTwoPen(PS_SOLID, 1, stageTwoColorRef);
+		CBrush symbolBrush(symbolColorRef);
+		CBrush stageOneBrush(stageOneColorRef);
+		CBrush stageTwoBrush(stageTwoColorRef);
+		CBrush hollowBrush;
+		hollowBrush.CreateStockObject(HOLLOW_BRUSH);
+
+		CRadarTarget aselTarget = radar_screen->GetPlugIn()->RadarTargetSelectASEL();
+		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
+		const int maxTrailDots = max(0, min(6, max(radar_screen->Trail_Gnd, radar_screen->Trail_App)));
+
+		for (CRadarTarget rt = radar_screen->GetPlugIn()->RadarTargetSelectFirst();
+			rt.IsValid();
+			rt = radar_screen->GetPlugIn()->RadarTargetSelectNext(rt))
+		{
+			if (!rt.IsValid() || !rt.GetPosition().IsValid() || !radar_screen->isVisible(rt))
+				continue;
+
+			const char* rtCallsignRaw = rt.GetCallsign();
+			if (rtCallsignRaw == nullptr || rtCallsignRaw[0] == '\0')
+				continue;
+			const std::string rtCallsign = rtCallsignRaw;
+
+			CRadarTargetPositionData rtPositionData = rt.GetPosition();
+			const CPosition targetPosition = rtPositionData.GetPosition();
+			if (!positionNearViewport(targetPosition))
+				continue;
+
+			const POINT targetPoint = projectTargetPosition(targetPosition);
+			if (!pointInViewport(targetPoint))
+				continue;
+
+			const int reportedGs = rtPositionData.GetReportedGS();
+			const int trailDots = reportedGs > 50
+				? max(0, min(maxTrailDots, radar_screen->Trail_App))
+				: max(0, min(maxTrailDots, radar_screen->Trail_Gnd));
+			CRadarTargetPositionData previousPosition = rt.GetPreviousPosition(rtPositionData);
+			for (int trailIndex = 0; trailIndex < trailDots && previousPosition.IsValid(); ++trailIndex)
+			{
+				const CPosition previous = previousPosition.GetPosition();
+				if (positionNearViewport(previous))
+					drawTrailPoint(projectTargetPosition(previous), RGB(180, 190, 190));
+				previousPosition = rt.GetPreviousPosition(previousPosition);
+			}
+
+			CPen* targetPen = &symbolPen;
+			CBrush* targetBrush = &symbolBrush;
+			if (radar_screen->RimcasInstance != nullptr)
+			{
+				const CRimcas::RimcasAlertTypes alert = radar_screen->RimcasInstance->getAlert(rtCallsign);
+				if (alert == CRimcas::StageTwo)
+				{
+					targetPen = &stageTwoPen;
+					targetBrush = &stageTwoBrush;
+				}
+				else if (alert == CRimcas::StageOne)
+				{
+					targetPen = &stageOnePen;
+					targetBrush = &stageOneBrush;
+				}
+			}
+
+			CPen* oldPen = dc.SelectObject(targetPen);
+			CBrush* oldBrush = dc.SelectObject(targetBrush);
+
+			double headingDeg = static_cast<double>(rtPositionData.GetReportedHeadingTrueNorth());
+			if (headingDeg < 0.0 || headingDeg >= 360.0)
+				headingDeg = rt.GetTrackHeading();
+
+			CPosition nosePosition = radar_screen->Haversine(targetPosition, headingDeg, 50.0);
+			POINT nosePoint = projectTargetPosition(nosePosition);
+			double headingRadians = atan2(
+				static_cast<double>(nosePoint.y - targetPoint.y),
+				static_cast<double>(nosePoint.x - targetPoint.x));
+			if (!std::isfinite(headingRadians))
+				headingRadians = -3.14159265358979323846 / 2.0;
+
+			if (reportedGs > 3)
+			{
+				const double length = reportedGs > 50 ? 14.0 : 11.0;
+				const double baseLength = length * 0.55;
+				const double halfWidth = reportedGs > 50 ? 6.0 : 5.0;
+				const double cosH = std::cos(headingRadians);
+				const double sinH = std::sin(headingRadians);
+				const double baseX = static_cast<double>(targetPoint.x) - (cosH * baseLength);
+				const double baseY = static_cast<double>(targetPoint.y) - (sinH * baseLength);
+
+				POINT aircraftPolygon[3] = {
+					{
+						static_cast<LONG>(std::lround(static_cast<double>(targetPoint.x) + (cosH * length))),
+						static_cast<LONG>(std::lround(static_cast<double>(targetPoint.y) + (sinH * length)))
+					},
+					{
+						static_cast<LONG>(std::lround(baseX + (sinH * halfWidth))),
+						static_cast<LONG>(std::lround(baseY - (cosH * halfWidth)))
+					},
+					{
+						static_cast<LONG>(std::lround(baseX - (sinH * halfWidth))),
+						static_cast<LONG>(std::lround(baseY + (cosH * halfWidth)))
+					}
+				};
+				dc.Polygon(aircraftPolygon, 3);
+			}
+			else
+			{
+				const int radius = 5;
+				dc.Ellipse(targetPoint.x - radius, targetPoint.y - radius, targetPoint.x + radius, targetPoint.y + radius);
+			}
+
+			if (oldBrush != nullptr)
+				dc.SelectObject(oldBrush);
+			if (oldPen != nullptr)
+				dc.SelectObject(oldPen);
+
+			const bool isAsel = aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign.c_str()) == 0;
+			if (isAsel)
+			{
+				CPen* oldSelectedPen = dc.SelectObject(&selectedPen);
+				CBrush* oldSelectedBrush = dc.SelectObject(&hollowBrush);
+				dc.Ellipse(targetPoint.x - 10, targetPoint.y - 10, targetPoint.x + 10, targetPoint.y + 10);
+				if (oldSelectedBrush != nullptr)
+					dc.SelectObject(oldSelectedBrush);
+				if (oldSelectedPen != nullptr)
+					dc.SelectObject(oldSelectedPen);
+			}
+
+			const int hitSize = reportedGs > 3 ? 16 : 12;
+			CRect targetArea(
+				targetPoint.x - hitSize / 2,
+				targetPoint.y - hitSize / 2,
+				targetPoint.x + hitSize / 2,
+				targetPoint.y + hitSize / 2);
+			targetArea.NormalizeRect();
+			radar_screen->AddScreenObject(
+				DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE),
+				rtCallsign.c_str(),
+				targetArea,
+				false,
+				radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+		}
+
+		::RestoreDC(hDC, savedDc);
+	};
+
+	if (cacheDrawn)
+		drawAircraft();
+
 	drawChrome();
 
 	dc.Detach();

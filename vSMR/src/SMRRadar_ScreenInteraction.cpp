@@ -699,12 +699,14 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		}
 	}
 
-	if (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1 || ObjectType == DRAWING_AC_SYMBOL_APPWINDOW2)
+	if (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1 ||
+		ObjectType == DRAWING_AC_SYMBOL_APPWINDOW2 ||
+		ObjectType == DRAWING_AC_SYMBOL_APPWINDOW3)
 	{
 		if (selectDistanceToolTarget(objectId)) {
 		} else
 		{
-			const int appWindowId = (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1) ? 1 : 2;
+			const int appWindowId = ObjectType - DRAWING_AC_SYMBOL_APPWINDOW_BASE;
 			auto appWindowIt = appWindows.find(appWindowId);
 			if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr)
 				appWindowIt->second->OnClickScreenObject(objectId, Pt, Button);
