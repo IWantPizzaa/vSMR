@@ -141,8 +141,10 @@
     <ClCompile Include="InsetWindow.cpp" />
     <ClCompile Include="ProfileEditorDialog.cpp" />
     <ClCompile Include="Rimcas.cpp" />
+    <ClCompile Include="SMRGeometry.cpp" />
     <ClCompile Include="SMRPlugin.cpp" />
     <ClCompile Include="SMRRadar.cpp" />
+    <ClCompile Include="SMRSharedState.cpp" />
     <ClCompile Include="SMRRadar_AircraftAndAsr.cpp" />
     <ClCompile Include="SMRRadar_FunctionCall.cpp" />
     <ClCompile Include="SMRRadar_ProfileEditorWindow.cpp" />
@@ -151,6 +153,7 @@
     <ClCompile Include="SMRRadar_TagRendering.cpp" />
     <ClCompile Include="SMRRadar_TagDefinitions.cpp" />
     <ClCompile Include="SMRRadar_TargetsAndFonts.cpp" />
+    <ClCompile Include="SMRRadar_Utilities.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -177,6 +180,9 @@
     <ClInclude Include="ProfileEditorDialog.hpp" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="Rimcas.hpp" />
+    <ClInclude Include="SMRDataTypes.hpp" />
+    <ClInclude Include="SMRGeometry.hpp" />
+    <ClInclude Include="SMRSharedState.hpp" />
     <ClInclude Include="SMRPlugin.hpp" />
     <ClInclude Include="SMRRadar.hpp" />
     <ClInclude Include="SMRRadar_TagShared.hpp" />
