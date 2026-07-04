@@ -200,6 +200,9 @@ public:
 	double AvisoGeoJsonRasterMaxLatitude = 0.0;
 	int AvisoGeoJsonRasterWidth = 0;
 	int AvisoGeoJsonRasterHeight = 0;
+	double AvisoGeoJsonRasterAnchorLongitude = 0.0;
+	double AvisoGeoJsonRasterAnchorLatitude = 0.0;
+	bool AvisoGeoJsonRasterAnchorValid = false;
 	bool AvisoGeoJsonLastViewValid = false;
 	std::string AvisoGeoJsonLastViewPath;
 	double AvisoGeoJsonLastViewMinLongitude = 0.0;
