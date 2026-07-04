@@ -566,6 +566,7 @@ public:
 	bool HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button);
 	bool HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam);
 	bool HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam);
+	bool HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
 
 	//---OnCompileCommand-----------------------------------------
 
