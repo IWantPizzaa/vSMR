@@ -540,41 +540,66 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 		return true;
 	};
 
-	POINTS wheelPoint = MAKEPOINTS(lParam);
-	POINT screenPoint = { static_cast<LONG>(wheelPoint.x), static_cast<LONG>(wheelPoint.y) };
-	POINT candidatePoint = screenPoint;
-	if (::ScreenToClient(hwnd, &candidatePoint) && zoomViewportAtPoint(candidatePoint))
-		return true;
+	std::vector<HWND> candidateWindows;
+	auto addCandidateWindow = [&](HWND candidate)
+	{
+		if (candidate == nullptr || !::IsWindow(candidate))
+			return;
+		if (std::find(candidateWindows.begin(), candidateWindows.end(), candidate) == candidateWindows.end())
+			candidateWindows.push_back(candidate);
+	};
+	auto tryScreenPoint = [&](POINT screenPoint) -> bool
+	{
+		candidateWindows.clear();
+		addCandidateWindow(::WindowFromPoint(screenPoint));
+		for (HWND parent = candidateWindows.empty() ? nullptr : ::GetParent(candidateWindows.front());
+			parent != nullptr;
+			parent = ::GetParent(parent))
+		{
+			addCandidateWindow(parent);
+		}
+		addCandidateWindow(hwnd);
+		addCandidateWindow(::GetActiveWindow());
+		addCandidateWindow(::GetForegroundWindow());
+		addCandidateWindow(::GetCapture());
+
+		for (HWND candidate : candidateWindows)
+		{
+			POINT candidatePoint = screenPoint;
+			if (::ScreenToClient(candidate, &candidatePoint) && zoomViewportAtPoint(candidatePoint))
+				return true;
+		}
+
+		return false;
+	};
 
 	POINT cursorScreenPoint{};
-	if (::GetCursorPos(&cursorScreenPoint))
-	{
-		candidatePoint = cursorScreenPoint;
-		if (::ScreenToClient(hwnd, &candidatePoint) && zoomViewportAtPoint(candidatePoint))
-			return true;
+	if (::GetCursorPos(&cursorScreenPoint) && tryScreenPoint(cursorScreenPoint))
+		return true;
 
-		HWND activeWindow = ::GetActiveWindow();
-		if (activeWindow != nullptr && activeWindow != hwnd && ::IsWindow(activeWindow))
-		{
-			candidatePoint = cursorScreenPoint;
-			if (::ScreenToClient(activeWindow, &candidatePoint) && zoomViewportAtPoint(candidatePoint))
-				return true;
-		}
-
-		HWND foregroundWindow = ::GetForegroundWindow();
-		if (foregroundWindow != nullptr &&
-			foregroundWindow != hwnd &&
-			foregroundWindow != activeWindow &&
-			::IsWindow(foregroundWindow))
-		{
-			candidatePoint = cursorScreenPoint;
-			if (::ScreenToClient(foregroundWindow, &candidatePoint) && zoomViewportAtPoint(candidatePoint))
-				return true;
-		}
-	}
+	POINTS wheelPoint = MAKEPOINTS(lParam);
+	POINT wheelScreenPoint = { static_cast<LONG>(wheelPoint.x), static_cast<LONG>(wheelPoint.y) };
+	if (tryScreenPoint(wheelScreenPoint))
+		return true;
 
 	if (zoomViewportAtPoint(mouseLocation))
 		return true;
+
+	for (auto& kv : appWindows)
+	{
+		CInsetWindow* appWindow = kv.second.get();
+		if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !IsAppWindowVisible(this, kv.first))
+			continue;
+
+		if (appWindow->IsPointInside(mouseLocation))
+		{
+			SelectAvisoViewport(this, appWindow);
+			const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
+			if (appWindow->ZoomAvisoAtPoint(mouseLocation, scaleMultiplier))
+				RequestRefresh();
+			return true;
+		}
+	}
 
 	return false;
 }
