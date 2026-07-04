@@ -460,9 +460,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const int titleY = topBar.bottom - titleSize.cy;
 		dc.TextOutA(titleX, titleY, title.c_str());
 
-		CRect rangeRect = DrawInsetToolbarButton(&dc, "Z", topBar, 29, mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "range", rangeRect, false, "");
-
 		POINT closeTopLeft = { topBar.right - 16, topBar.top + 2 };
 		POINT closeBottomRight = { topBar.right - 5, topBar.bottom - 2 };
 		CRect closeRect(closeTopLeft, closeBottomRight);
