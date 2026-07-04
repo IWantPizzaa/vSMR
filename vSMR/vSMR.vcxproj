@@ -74,7 +74,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
@@ -114,7 +114,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib;d2d1.lib;dwrite.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>/IGNORE:4099 /NODEFAULTLIB:LIBCMT %(AdditionalOptions)</AdditionalOptions>
