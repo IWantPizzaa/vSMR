@@ -562,6 +562,9 @@ public:
 	//---OnOverScreenObject---------------------------------------------
 
 	virtual void OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area);
+	bool HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button);
+	bool HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button);
+	bool HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam);
 	bool HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
 	//---OnCompileCommand-----------------------------------------
