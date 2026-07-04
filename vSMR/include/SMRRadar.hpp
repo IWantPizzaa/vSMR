@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <time.h>
 #include <GdiPlus.h>
+#include <d2d1.h>
+#include <dwrite.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "Constant.hpp"
@@ -216,6 +218,14 @@ public:
 	double AvisoGeoJsonMinLatitude = 0.0;
 	double AvisoGeoJsonMaxLongitude = 0.0;
 	double AvisoGeoJsonMaxLatitude = 0.0;
+	bool AvisoDirect2DEnabled = true;
+	bool AvisoDirect2DUnavailable = false;
+	bool AvisoDirect2DLoggedUnavailable = false;
+	ID2D1Factory* AvisoD2DFactory = nullptr;
+	ID2D1DCRenderTarget* AvisoD2DRenderTarget = nullptr;
+	IDWriteFactory* AvisoDWriteFactory = nullptr;
+	std::map<unsigned int, ID2D1SolidColorBrush*> AvisoD2DBrushCache;
+	std::map<int, IDWriteTextFormat*> AvisoDWriteTextFormatCache;
 	std::mutex AvisoGeoJsonRenderMutex;
 	std::condition_variable AvisoGeoJsonRenderCondition;
 	std::thread AvisoGeoJsonRenderThread;
@@ -519,7 +529,13 @@ public:
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
-	void RenderAvisoGeoJson(Gdiplus::Graphics& graphics);
+	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
+	bool RenderAvisoGeoJsonDirect2D(HDC hDC, const AvisoRasterRenderRequest& request, const RECT& targetRect);
+	bool EnsureAvisoDirect2DResources();
+	void ReleaseAvisoDirect2DResources();
+	void ReleaseAvisoDirect2DTargetResources();
+	ID2D1SolidColorBrush* GetAvisoD2DBrush(const Gdiplus::Color& color);
+	IDWriteTextFormat* GetAvisoDWriteTextFormat(float textSize);
 	void EnsureAvisoGeoJsonRenderThread();
 	void StopAvisoGeoJsonRenderThread();
 	void AvisoGeoJsonRenderThreadMain();

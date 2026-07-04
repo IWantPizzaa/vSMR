@@ -255,6 +255,18 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		GetPlugIn()->DisplayUserMessage("vSMR", "", msg.c_str(), true, true, false, false, false);
 		return true;
 	}
+	if (strcmp(sCommandLine, ".smr d2d") == 0) {
+		AvisoDirect2DEnabled = !AvisoDirect2DEnabled;
+		if (!AvisoDirect2DEnabled)
+			ReleaseAvisoDirect2DResources();
+		else
+			AvisoDirect2DUnavailable = false;
+
+		const std::string msg = std::string("AVISO Direct2D renderer ") + (AvisoDirect2DEnabled ? "enabled" : "disabled");
+		GetPlugIn()->DisplayUserMessage("vSMR", "", msg.c_str(), true, true, false, false, false);
+		RequestRefresh();
+		return true;
+	}
 
 
 	return false;
