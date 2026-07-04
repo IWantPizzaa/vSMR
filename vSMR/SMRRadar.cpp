@@ -160,34 +160,10 @@ namespace
 			left.GetB() == right.GetB();
 	}
 
-	bool AvisoNearlyEqual(double left, double right)
+	bool AvisoWithinTolerance(double left, double right, double tolerance)
 	{
 		const double delta = left - right;
-		return delta > -0.0000000001 && delta < 0.0000000001;
-	}
-
-	bool AvisoBatchStyleMatches(const CSMRRadar::AvisoPathBatch& batch, const CSMRRadar::AvisoFeature& feature)
-	{
-		return batch.polygon == feature.polygon &&
-			AvisoColorsEqual(batch.fillColor, feature.fillColor) &&
-			AvisoColorsEqual(batch.strokeColor, feature.strokeColor) &&
-			batch.strokeWidth == feature.strokeWidth;
-	}
-
-	void ExtendAvisoBatchBounds(CSMRRadar::AvisoPathBatch& batch, const CSMRRadar::AvisoFeature& feature)
-	{
-		batch.minLongitude = AvisoMin(batch.minLongitude, feature.minLongitude);
-		batch.maxLongitude = AvisoMax(batch.maxLongitude, feature.maxLongitude);
-		batch.minLatitude = AvisoMin(batch.minLatitude, feature.minLatitude);
-		batch.maxLatitude = AvisoMax(batch.maxLatitude, feature.maxLatitude);
-	}
-
-	bool IsAvisoBatchVisible(const CSMRRadar::AvisoPathBatch& batch, double minLat, double maxLat, double minLon, double maxLon)
-	{
-		return batch.maxLatitude >= minLat &&
-			batch.minLatitude <= maxLat &&
-			batch.maxLongitude >= minLon &&
-			batch.minLongitude <= maxLon;
+		return delta >= -tolerance && delta <= tolerance;
 	}
 }
 
@@ -446,7 +422,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	}
 
 	AvisoGeoJsonFeatures.clear();
-	AvisoGeoJsonPathBatches.clear();
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
@@ -517,68 +492,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		feature.maxLongitude = AvisoMax(feature.maxLongitude, longitude);
 		feature.minLatitude = AvisoMin(feature.minLatitude, latitude);
 		feature.maxLatitude = AvisoMax(feature.maxLatitude, latitude);
-	};
-
-	auto appendFeatureToPathBatches = [&](const AvisoFeature& feature) {
-		if (feature.paths.empty())
-			return;
-
-		AvisoPathBatch* batch = nullptr;
-		if (!AvisoGeoJsonPathBatches.empty() &&
-			AvisoBatchStyleMatches(AvisoGeoJsonPathBatches.back(), feature))
-		{
-			batch = &AvisoGeoJsonPathBatches.back();
-			ExtendAvisoBatchBounds(*batch, feature);
-		}
-		else
-		{
-			AvisoPathBatch newBatch;
-			newBatch.polygon = feature.polygon;
-			newBatch.path = std::make_unique<GraphicsPath>(FillModeWinding);
-			newBatch.fillColor = feature.fillColor;
-			newBatch.strokeColor = feature.strokeColor;
-			newBatch.strokeWidth = feature.strokeWidth;
-			newBatch.drawOutline =
-				feature.polygon &&
-				feature.strokeColor.GetAlpha() > 0 &&
-				feature.strokeWidth > 0.0f &&
-				!AvisoColorsEqual(feature.fillColor, feature.strokeColor);
-			newBatch.minLongitude = feature.minLongitude;
-			newBatch.maxLongitude = feature.maxLongitude;
-			newBatch.minLatitude = feature.minLatitude;
-			newBatch.maxLatitude = feature.maxLatitude;
-			AvisoGeoJsonPathBatches.push_back(std::move(newBatch));
-			batch = &AvisoGeoJsonPathBatches.back();
-		}
-
-		if (batch == nullptr || batch->path == nullptr)
-			return;
-
-		std::vector<PointF> pathPoints;
-		for (const std::vector<AvisoPoint>& sourcePath : feature.paths)
-		{
-			const size_t minimumPointCount = feature.polygon ? 3 : 2;
-			if (sourcePath.size() < minimumPointCount)
-				continue;
-
-			pathPoints.clear();
-			pathPoints.reserve(sourcePath.size());
-			for (const AvisoPoint& coordinate : sourcePath)
-			{
-				pathPoints.emplace_back(
-					static_cast<REAL>(coordinate.longitude),
-					static_cast<REAL>(coordinate.latitude));
-			}
-
-			if (pathPoints.size() < minimumPointCount)
-				continue;
-
-			batch->path->StartFigure();
-			if (feature.polygon)
-				batch->path->AddPolygon(pathPoints.data(), static_cast<INT>(pathPoints.size()));
-			else
-				batch->path->AddLines(pathPoints.data(), static_cast<INT>(pathPoints.size()));
-		}
 	};
 
 	for (SizeType i = 0; i < features.Size(); ++i)
@@ -676,7 +589,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 				AvisoGeoJsonMinLatitude = AvisoMin(AvisoGeoJsonMinLatitude, parsedFeature.minLatitude);
 				AvisoGeoJsonMaxLatitude = AvisoMax(AvisoGeoJsonMaxLatitude, parsedFeature.maxLatitude);
 			}
-			appendFeatureToPathBatches(parsedFeature);
 			AvisoGeoJsonFeatures.push_back(std::move(parsedFeature));
 		}
 	}
@@ -685,7 +597,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	Logger::info(
 		"AVISO GeoJSON loaded path=" + path +
 		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
-		" batches=" + std::to_string(AvisoGeoJsonPathBatches.size()) +
 		" polygons=" + std::to_string(polygonCount) +
 		" multilines=" + std::to_string(multiLineCount));
 	return true;
@@ -762,15 +673,17 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const double scaleY = height / latSpan;
 	const int radarWidth = radarArea.right - radarArea.left;
 	const int radarHeight = radarArea.bottom - radarArea.top;
+	const double lonPixelTolerance = (lonSpan / width) * 0.35;
+	const double latPixelTolerance = (latSpan / height) * 0.35;
 
 	const unsigned long nowTick = ::GetTickCount();
 	const bool viewChanged =
 		!AvisoGeoJsonLastViewValid ||
 		AvisoGeoJsonLastViewPath != path ||
-		!AvisoNearlyEqual(AvisoGeoJsonLastViewMinLongitude, displayMinLon) ||
-		!AvisoNearlyEqual(AvisoGeoJsonLastViewMinLatitude, displayMinLat) ||
-		!AvisoNearlyEqual(AvisoGeoJsonLastViewMaxLongitude, displayMaxLon) ||
-		!AvisoNearlyEqual(AvisoGeoJsonLastViewMaxLatitude, displayMaxLat);
+		!AvisoWithinTolerance(AvisoGeoJsonLastViewMinLongitude, displayMinLon, lonPixelTolerance) ||
+		!AvisoWithinTolerance(AvisoGeoJsonLastViewMinLatitude, displayMinLat, latPixelTolerance) ||
+		!AvisoWithinTolerance(AvisoGeoJsonLastViewMaxLongitude, displayMaxLon, lonPixelTolerance) ||
+		!AvisoWithinTolerance(AvisoGeoJsonLastViewMaxLatitude, displayMaxLat, latPixelTolerance);
 	if (viewChanged)
 	{
 		AvisoGeoJsonLastViewValid = true;
@@ -786,10 +699,10 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	{
 		return AvisoGeoJsonRasterCache != nullptr &&
 			AvisoGeoJsonRasterCachePath == path &&
-			AvisoNearlyEqual(AvisoGeoJsonRasterMinLongitude, displayMinLon) &&
-			AvisoNearlyEqual(AvisoGeoJsonRasterMinLatitude, displayMinLat) &&
-			AvisoNearlyEqual(AvisoGeoJsonRasterMaxLongitude, displayMaxLon) &&
-			AvisoNearlyEqual(AvisoGeoJsonRasterMaxLatitude, displayMaxLat);
+			AvisoWithinTolerance(AvisoGeoJsonRasterMinLongitude, displayMinLon, lonPixelTolerance) &&
+			AvisoWithinTolerance(AvisoGeoJsonRasterMinLatitude, displayMinLat, latPixelTolerance) &&
+			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLongitude, displayMaxLon, lonPixelTolerance) &&
+			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLatitude, displayMaxLat, latPixelTolerance);
 	};
 
 	auto drawRasterCacheExact = [&]() -> bool
@@ -799,7 +712,11 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 		GraphicsState state = graphics.Save();
 		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
-		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		const InterpolationMode interpolationMode =
+			(AvisoGeoJsonRasterWidth == radarWidth && AvisoGeoJsonRasterHeight == radarHeight)
+			? InterpolationModeNearestNeighbor
+			: InterpolationModeHighQualityBilinear;
+		graphics.SetInterpolationMode(interpolationMode);
 		graphics.DrawImage(AvisoGeoJsonRasterCache.get(), radarArea.left, radarArea.top, radarWidth, radarHeight);
 		graphics.Restore(state);
 		return true;
@@ -819,7 +736,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 		GraphicsState state = graphics.Save();
 		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
-		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		graphics.SetInterpolationMode(InterpolationModeBilinear);
 		graphics.DrawImage(
 			AvisoGeoJsonRasterCache.get(),
 			RectF(static_cast<REAL>(destX), static_cast<REAL>(destY), static_cast<REAL>(destWidth), static_cast<REAL>(destHeight)),
@@ -835,7 +752,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	if (cacheMatchesCurrentView() && drawRasterCacheExact())
 		return;
 
-	const unsigned long rasterSettleDelayMs = 180;
+	const unsigned long rasterSettleDelayMs = 260;
 	if (AvisoGeoJsonRasterCache != nullptr &&
 		(nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs &&
 		drawRasterCacheTransformed())
@@ -843,9 +760,19 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		return;
 	}
 
-	const double maxRasterSide = 1600.0;
 	const double maxDimension = width > height ? width : height;
-	const double rasterScale = maxDimension > maxRasterSide ? (maxRasterSide / maxDimension) : 1.0;
+	const double targetRasterScale = maxDimension <= 1800.0 ? 1.75 : 1.35;
+	const double maxRasterSide = 3200.0;
+	const double maxRasterPixels = 9000000.0;
+	double rasterScale = targetRasterScale;
+	const double sideLimitedScale = maxRasterSide / maxDimension;
+	if (sideLimitedScale >= 1.0 && sideLimitedScale < rasterScale)
+		rasterScale = sideLimitedScale;
+	const double pixelLimitedScale = std::sqrt(maxRasterPixels / (width * height));
+	if (pixelLimitedScale >= 1.0 && pixelLimitedScale < rasterScale)
+		rasterScale = pixelLimitedScale;
+	if (rasterScale < 1.0)
+		rasterScale = 1.0;
 	int rasterWidth = static_cast<int>((width * rasterScale) + 0.5);
 	int rasterHeight = static_cast<int>((height * rasterScale) + 0.5);
 	if (rasterWidth < 1)
@@ -869,7 +796,9 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	rasterGraphics.SetPageUnit(UnitPixel);
 	rasterGraphics.Clear(Color(0, 0, 0, 0));
-	rasterGraphics.SetSmoothingMode(SmoothingModeNone);
+	rasterGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
+	rasterGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
 
 	const double rasterScaleX = static_cast<double>(rasterWidth) / lonSpan;
 	const double rasterScaleY = static_cast<double>(rasterHeight) / latSpan;
@@ -921,7 +850,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 					feature.strokeWidth > 0.0f &&
 					!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
 				{
-					Pen outlinePen(feature.strokeColor, feature.strokeWidth);
+					Pen outlinePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(rasterScale));
 					outlinePen.SetLineJoin(LineJoinRound);
 					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
 				}
@@ -932,7 +861,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
 			continue;
 
-		Pen linePen(feature.strokeColor, feature.strokeWidth);
+		Pen linePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(rasterScale));
 		linePen.SetLineJoin(LineJoinRound);
 		linePen.SetStartCap(LineCapRound);
 		linePen.SetEndCap(LineCapRound);
