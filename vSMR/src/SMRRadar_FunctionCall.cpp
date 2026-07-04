@@ -336,10 +336,13 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_UPDATE_LVP) {
+		const bool oldLvp = isLVP;
 		if (strcmp(itemString, "Normal") == 0)
 			isLVP = false;
 		if (strcmp(itemString, "Low") == 0)
 			isLVP = true;
+		if (isLVP != oldLvp)
+			InvalidateRunwayGeometryCache();
 
 		reopenList("Visibility", true);
 	}
