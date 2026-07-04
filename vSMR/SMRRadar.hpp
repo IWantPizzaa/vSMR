@@ -212,6 +212,8 @@ public:
 	unsigned long AvisoGeoJsonLastViewChangeTick = 0;
 	bool AvisoGeoJsonLoadAttempted = false;
 	bool AvisoGeoJsonLoaded = false;
+	bool AvisoGeoJsonRenderDisabled = false;
+	std::string AvisoGeoJsonRenderDisabledPath;
 	bool AvisoGeoJsonHasBounds = false;
 	double AvisoGeoJsonMinLongitude = 0.0;
 	double AvisoGeoJsonMinLatitude = 0.0;

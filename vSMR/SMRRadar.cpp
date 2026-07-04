@@ -437,6 +437,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	AvisoGeoJsonLastViewChangeTick = 0;
 	AvisoGeoJsonLoadAttempted = true;
 	AvisoGeoJsonLoaded = false;
+	AvisoGeoJsonRenderDisabled = false;
+	AvisoGeoJsonRenderDisabledPath.clear();
 	AvisoGeoJsonHasBounds = false;
 	AvisoGeoJsonMinLongitude = 0.0;
 	AvisoGeoJsonMinLatitude = 0.0;
@@ -610,6 +612,26 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
 	if (path.empty())
 		return;
+
+	if (AvisoGeoJsonRenderDisabled)
+	{
+		bool sameFile = AvisoGeoJsonRenderDisabledPath.empty() || AvisoGeoJsonRenderDisabledPath == path;
+		try
+		{
+			sameFile = sameFile && AvisoGeoJsonLoadedPath == path && AvisoGeoJsonLoadedWriteTime == fs::last_write_time(path);
+		}
+		catch (...)
+		{
+			sameFile = true;
+		}
+
+		if (sameFile)
+			return;
+
+		AvisoGeoJsonRenderDisabled = false;
+		AvisoGeoJsonRenderDisabledPath.clear();
+	}
+
 	if (!EnsureAvisoGeoJsonLoaded(path) || AvisoGeoJsonFeatures.empty())
 		return;
 
@@ -3414,35 +3436,49 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	RECT ChatArea = GetChatArea();
 	RadarArea.bottom = ChatArea.top;
 
+	auto disableAvisoGeoJsonRender = [&](const std::string& reason)
+	{
+		std::string disabledPath = AvisoGeoJsonLoadedPath;
+		if (disabledPath.empty())
+			disabledPath = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
+
+		AvisoGeoJsonRenderDisabled = true;
+		AvisoGeoJsonRenderDisabledPath = disabledPath;
+		AvisoGeoJsonRasterCache.reset();
+		AvisoGeoJsonRasterWidth = 0;
+		AvisoGeoJsonRasterHeight = 0;
+		AvisoGeoJsonRasterAnchorValid = false;
+		AvisoGeoJsonLastViewValid = false;
+		Logger::info("AVISO GeoJSON render disabled path=" + disabledPath + " reason=" + reason);
+	};
+
 	try
 	{
 		RenderAvisoGeoJson(graphics);
 	}
+	catch (COleException* ex)
+	{
+		long scode = 0;
+		if (ex != nullptr)
+		{
+			scode = static_cast<long>(ex->m_sc);
+			ex->Delete();
+		}
+		disableAvisoGeoJsonRender("OLE exception scode=" + std::to_string(scode));
+	}
 	catch (CException* ex)
 	{
-		Logger::info("AVISO GeoJSON render MFC exception caught");
 		if (ex != nullptr)
 			ex->Delete();
-		AvisoGeoJsonRasterCache.reset();
-		AvisoGeoJsonRasterWidth = 0;
-		AvisoGeoJsonRasterHeight = 0;
-		AvisoGeoJsonRasterAnchorValid = false;
+		disableAvisoGeoJsonRender("MFC exception");
 	}
 	catch (const std::exception& ex)
 	{
-		Logger::info(std::string("AVISO GeoJSON render exception caught: ") + ex.what());
-		AvisoGeoJsonRasterCache.reset();
-		AvisoGeoJsonRasterWidth = 0;
-		AvisoGeoJsonRasterHeight = 0;
-		AvisoGeoJsonRasterAnchorValid = false;
+		disableAvisoGeoJsonRender(std::string("std exception: ") + ex.what());
 	}
 	catch (...)
 	{
-		Logger::info("AVISO GeoJSON render unknown exception caught");
-		AvisoGeoJsonRasterCache.reset();
-		AvisoGeoJsonRasterWidth = 0;
-		AvisoGeoJsonRasterHeight = 0;
-		AvisoGeoJsonRasterAnchorValid = false;
+		disableAvisoGeoJsonRender("unknown exception");
 	}
 
 	AirportPositions.clear();
