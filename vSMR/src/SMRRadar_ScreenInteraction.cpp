@@ -536,78 +536,17 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 	CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, clientPoint);
 	if (viewportAtPoint != nullptr)
 	{
-		if (viewportAtPoint->m_AvisoScrollSelected)
-		{
-			const double scaleMultiplier = (wheelDelta > 0) ? zoomStep : (1.0 / zoomStep);
-			if (viewportAtPoint->ZoomAvisoAtPoint(clientPoint, scaleMultiplier))
-				RequestRefresh();
-		}
+		SelectAvisoViewport(this, viewportAtPoint);
+		const double scaleMultiplier = (wheelDelta > 0) ? zoomStep : (1.0 / zoomStep);
+		if (viewportAtPoint->ZoomAvisoAtPoint(clientPoint, scaleMultiplier))
+			RequestRefresh();
 		return true;
 	}
 
 	if (VisibleAppWindowAtPoint(this, clientPoint) != nullptr)
 		return true;
 
-	if (!IsPointInMainRadarArea(this, clientPoint))
-		return false;
-
-	const bool mainAvisoAvailable = !ResolveAvisoGeoJsonPathForAirport(getActiveAirport()).empty();
-	if (!mainAvisoAvailable)
-		return false;
-
-	if (!AvisoGeoJsonScrollSelected)
-		return true;
-
-	CRect radarArea(GetRadarArea());
-	CRect chatArea(GetChatArea());
-	radarArea.NormalizeRect();
-	chatArea.NormalizeRect();
-	radarArea.bottom = chatArea.top;
-	const double radarWidth = static_cast<double>(max(1, radarArea.Width()));
-	const double radarHeight = static_cast<double>(max(1, radarArea.Height()));
-	const double fx = std::clamp((static_cast<double>(clientPoint.x - radarArea.left) / radarWidth), 0.0, 1.0);
-	const double fy = std::clamp((static_cast<double>(clientPoint.y - radarArea.top) / radarHeight), 0.0, 1.0);
-
-	CPosition displayA;
-	CPosition displayB;
-	GetDisplayArea(&displayA, &displayB);
-	const double minLat = min(displayA.m_Latitude, displayB.m_Latitude);
-	const double maxLat = max(displayA.m_Latitude, displayB.m_Latitude);
-	const double minLon = min(displayA.m_Longitude, displayB.m_Longitude);
-	const double maxLon = max(displayA.m_Longitude, displayB.m_Longitude);
-	const double latSpan = maxLat - minLat;
-	const double lonSpan = maxLon - minLon;
-	if (!std::isfinite(latSpan) || !std::isfinite(lonSpan) || latSpan <= 0.0 || lonSpan <= 0.0)
-		return true;
-
-	const CPosition anchor = ConvertCoordFromPixelToPosition(clientPoint);
-	const double spanMultiplier = (wheelDelta > 0) ? (1.0 / zoomStep) : zoomStep;
-	const double newLatSpan = std::clamp(latSpan * spanMultiplier, 0.00001, 170.0);
-	const double newLonSpan = std::clamp(lonSpan * spanMultiplier, 0.00001, 360.0);
-
-	double newMinLon = anchor.m_Longitude - (fx * newLonSpan);
-	double newMaxLat = anchor.m_Latitude + (fy * newLatSpan);
-	double newMinLat = newMaxLat - newLatSpan;
-	if (newMaxLat > 85.0)
-	{
-		newMaxLat = 85.0;
-		newMinLat = newMaxLat - newLatSpan;
-	}
-	if (newMinLat < -85.0)
-	{
-		newMinLat = -85.0;
-		newMaxLat = newMinLat + newLatSpan;
-	}
-
-	CPosition leftDown;
-	leftDown.m_Latitude = newMinLat;
-	leftDown.m_Longitude = newMinLon;
-	CPosition rightUp;
-	rightUp.m_Latitude = newMaxLat;
-	rightUp.m_Longitude = newMinLon + newLonSpan;
-	SetDisplayArea(leftDown, rightUp);
-	RequestRefresh();
-	return true;
+	return false;
 }
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
