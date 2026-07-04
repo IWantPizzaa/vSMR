@@ -21,6 +21,19 @@ namespace
 		return objectId != nullptr && expected != nullptr && strcmp(objectId, expected) == 0;
 	}
 
+	bool IsAvisoViewportPanSurfaceObjectId(const char* objectId)
+	{
+		return IsObjectId(objectId, "window") || IsObjectId(objectId, "viewport");
+	}
+
+	POINT ClientPointFromMouseLParam(LPARAM lParam)
+	{
+		return {
+			static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
+			static_cast<LONG>(static_cast<short>(HIWORD(lParam)))
+		};
+	}
+
 	bool IsAppWindowVisible(CSMRRadar* radar, int appWindowId)
 	{
 		if (radar == nullptr)
@@ -143,7 +156,7 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 		return;
 
 	CInsetWindow* appWindow = appWindowIt->second.get();
-	if (!appWindow->IsAvisoViewport() || !IsObjectId(objectId, "window"))
+	if (!appWindow->IsAvisoViewport() || !IsAvisoViewportPanSurfaceObjectId(objectId))
 		return;
 
 	SelectAvisoViewport(this, appWindow);
@@ -411,6 +424,97 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 		}
 	}
 	RequestRefresh();
+}
+
+bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button)
+{
+	UNREFERENCED_PARAMETER(wParam);
+	if (hwnd == nullptr || !::IsWindow(hwnd))
+		return false;
+
+	POINT clientPoint = ClientPointFromMouseLParam(lParam);
+	mouseLocation = clientPoint;
+
+	CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, clientPoint);
+	if (viewportAtPoint != nullptr)
+	{
+		SelectAvisoViewport(this, viewportAtPoint);
+		if (Button == BUTTON_RIGHT)
+		{
+			viewportAtPoint->BeginAvisoPan(clientPoint);
+			::SetCapture(hwnd);
+			RequestRefresh();
+			return true;
+		}
+
+		RequestRefresh();
+		return false;
+	}
+
+	if (VisibleAppWindowAtPoint(this, clientPoint) == nullptr && IsPointInMainRadarArea(this, clientPoint))
+	{
+		SelectMainAviso(this);
+		RequestRefresh();
+	}
+
+	return false;
+}
+
+bool CSMRRadar::HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button)
+{
+	UNREFERENCED_PARAMETER(wParam);
+	if (Button != BUTTON_RIGHT)
+		return false;
+
+	POINT clientPoint = ClientPointFromMouseLParam(lParam);
+	mouseLocation = clientPoint;
+
+	bool hadActivePan = false;
+	for (auto& kv : appWindows)
+	{
+		CInsetWindow* appWindow = kv.second.get();
+		if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+		{
+			appWindow->EndAvisoPan();
+			hadActivePan = true;
+		}
+	}
+
+	if (!hadActivePan)
+		return false;
+
+	if (hwnd != nullptr && ::GetCapture() == hwnd)
+		::ReleaseCapture();
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam)
+{
+	POINT clientPoint = ClientPointFromMouseLParam(lParam);
+	mouseLocation = clientPoint;
+
+	for (auto& kv : appWindows)
+	{
+		CInsetWindow* appWindow = kv.second.get();
+		if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !appWindow->m_AvisoRightPanning)
+			continue;
+
+		if ((wParam & MK_RBUTTON) == 0 && (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
+		{
+			appWindow->EndAvisoPan();
+			if (hwnd != nullptr && ::GetCapture() == hwnd)
+				::ReleaseCapture();
+			RequestRefresh();
+			return true;
+		}
+
+		appWindow->UpdateAvisoPan(clientPoint);
+		RequestRefresh();
+		return true;
+	}
+
+	return false;
 }
 
 bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
