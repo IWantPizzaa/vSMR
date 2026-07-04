@@ -29,6 +29,7 @@ bool standardCursor; // True when the default arrow cursor is active.
 bool customCursor; // True when the plugin-specific cursor theme is enabled.
 WNDPROC gSourceProc;
 HWND pluginWindow;
+CSMRRadar* gWindowProcRadarScreen = nullptr;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 map<string, string> CSMRRadar::vStripsStands;
@@ -422,6 +423,8 @@ CSMRRadar::CSMRRadar()
 CSMRRadar::~CSMRRadar()
 {
 	Logger::info(string(__FUNCSIG__));
+	if (gWindowProcRadarScreen == this)
+		gWindowProcRadarScreen = nullptr;
 	StopAvisoGeoJsonRenderThread();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
@@ -4107,6 +4110,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	switch (uMsg)
 	{
+	case WM_MOUSEWHEEL:
+		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseWheel(hwnd, wParam, lParam))
+			return 0;
+		break;
 	case WM_SETCURSOR:
 		SetCursor(smrCursor);
 		return true;
@@ -4115,6 +4122,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
 		return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
+
+	if (gSourceProc != nullptr)
+		return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
+	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
@@ -4186,9 +4197,15 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				WNDPROC previousProc = reinterpret_cast<WNDPROC>(
 					::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
 				if (previousProc != nullptr)
+				{
 					gSourceProc = previousProc;
+					gWindowProcRadarScreen = this;
+				}
 				else
+				{
 					pluginWindow = nullptr;
+					gWindowProcRadarScreen = nullptr;
+				}
 			}
 		}
 		initCursor = false;
@@ -6639,6 +6656,7 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
 			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
 
+		gWindowProcRadarScreen = nullptr;
 		pluginWindow = nullptr;
 		gSourceProc = nullptr;
 }

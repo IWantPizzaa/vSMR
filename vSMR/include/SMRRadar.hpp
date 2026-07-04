@@ -239,6 +239,7 @@ public:
 	double AvisoGeoJsonRenderLastRequestMaxLatitude = 0.0;
 	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
 	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
+	bool AvisoGeoJsonScrollSelected = false;
 	double PerfLastFrameMs = 0.0;
 	double PerfLastAvisoMs = 0.0;
 	double PerfLastTargetsMs = 0.0;
@@ -546,6 +547,14 @@ public:
 
 	virtual void OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button);
 
+	//---OnButtonDownScreenObject-------------------------------------
+
+	virtual void OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button);
+
+	//---OnButtonUpScreenObject---------------------------------------
+
+	virtual void OnButtonUpScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button);
+
 	//---OnMoveScreenObject---------------------------------------------
 
 	virtual void OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released);
@@ -553,6 +562,7 @@ public:
 	//---OnOverScreenObject---------------------------------------------
 
 	virtual void OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area);
+	bool HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
 	//---OnCompileCommand-----------------------------------------
 
