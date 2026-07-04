@@ -113,6 +113,9 @@
     <ClInclude Include="Rimcas.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SMRColorUtils.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="SMRPlugin.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
