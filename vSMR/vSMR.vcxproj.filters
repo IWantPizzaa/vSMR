@@ -125,6 +125,9 @@
     <ClInclude Include="SMRGeometry.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SMRGroundState.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="SMRSharedState.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -171,6 +174,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ProfileEditorDialog.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SMRTextUtils.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
