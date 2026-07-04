@@ -519,7 +519,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	AvisoGeoJsonLoadedWriteTime = writeTime;
 	AvisoGeoJsonRasterCache.reset();
 	AvisoGeoJsonRasterCachePath.clear();
-	AvisoGeoJsonRasterCachePreview = false;
 	AvisoGeoJsonRasterWidth = 0;
 	AvisoGeoJsonRasterHeight = 0;
 	AvisoGeoJsonRasterAnchorLongitude = 0.0;
@@ -927,14 +926,13 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		if (destWidth < 1.0 || destHeight < 1.0)
 			return false;
 
-		const bool sameZoomScale =
-			std::abs(destWidth - static_cast<double>(AvisoGeoJsonRasterWidth)) <= 1.0 &&
-			std::abs(destHeight - static_cast<double>(AvisoGeoJsonRasterHeight)) <= 1.0;
-		if (!sameZoomScale)
+		const double scaleRatioX = destWidth / static_cast<double>(AvisoGeoJsonRasterWidth);
+		const double scaleRatioY = destHeight / static_cast<double>(AvisoGeoJsonRasterHeight);
+		const bool reasonableZoomReuse =
+			scaleRatioX >= 0.45 && scaleRatioX <= 2.20 &&
+			scaleRatioY >= 0.45 && scaleRatioY <= 2.20;
+		if (!reasonableZoomReuse)
 			return false;
-
-		destRight = destLeft + static_cast<double>(AvisoGeoJsonRasterWidth);
-		destBottom = destTop + static_cast<double>(AvisoGeoJsonRasterHeight);
 
 		const double radarLeft = static_cast<double>(radarArea.left);
 		const double radarTop = static_cast<double>(radarArea.top);
@@ -955,14 +953,13 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		GraphicsState state = graphics.Save();
 		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
+		const bool scaled =
+			scaleRatioX < 0.98 || scaleRatioX > 1.02 ||
+			scaleRatioY < 0.98 || scaleRatioY > 1.02;
+		graphics.SetInterpolationMode(scaled ? InterpolationModeBilinear : InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			AvisoGeoJsonRasterCache.get(),
-			RectF(
-				static_cast<REAL>(destLeft),
-				static_cast<REAL>(destTop),
-				static_cast<REAL>(AvisoGeoJsonRasterWidth),
-				static_cast<REAL>(AvisoGeoJsonRasterHeight)),
+			RectF(static_cast<REAL>(destLeft), static_cast<REAL>(destTop), static_cast<REAL>(destWidth), static_cast<REAL>(destHeight)),
 			0.0f,
 			0.0f,
 			static_cast<REAL>(AvisoGeoJsonRasterWidth),
@@ -972,24 +969,16 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		return true;
 	};
 
-	const unsigned long rasterSettleDelayMs = 160;
-	if (cacheMatchesCurrentView())
-	{
-		const bool previewStillSettling =
-			AvisoGeoJsonRasterCachePreview &&
-			(nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs;
-		if ((!AvisoGeoJsonRasterCachePreview || previewStillSettling) && drawRasterCacheExact())
-			return;
-	}
+	if (cacheMatchesCurrentView() && drawRasterCacheExact())
+		return;
 
-	const bool viewIsSettling = (nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs;
+	const unsigned long rasterSettleDelayMs = 220;
 	if (AvisoGeoJsonRasterCache != nullptr &&
-		viewIsSettling &&
+		(nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs &&
 		drawRasterCacheTransformed())
 	{
 		return;
 	}
-	const bool buildPreviewRaster = viewIsSettling;
 
 	const double maxDimension = width > height ? width : height;
 	const double targetRasterScale = 1.0;
@@ -1027,8 +1016,8 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	rasterGraphics.SetPageUnit(UnitPixel);
 	rasterGraphics.Clear(Color(0, 0, 0, 0));
-	rasterGraphics.SetSmoothingMode(buildPreviewRaster ? SmoothingModeHighSpeed : SmoothingModeAntiAlias);
-	rasterGraphics.SetPixelOffsetMode(buildPreviewRaster ? PixelOffsetModeNone : PixelOffsetModeHalf);
+	rasterGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 	rasterGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
 
 	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
@@ -1042,9 +1031,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
 	};
 
-	const double minRasterPointDistance = buildPreviewRaster
-		? AvisoMax(1.15 * rasterScale, 1.0)
-		: AvisoMax(0.35 * rasterScale, 0.5);
+	const double minRasterPointDistance = AvisoMax(0.35 * rasterScale, 0.5);
 	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
 	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
 	{
@@ -1084,8 +1071,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * scaleX * rasterScale;
 		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * scaleY * rasterScale;
-		const double minFeaturePixelSize = buildPreviewRaster ? 1.0 : 0.5;
-		if (featurePixelWidth < minFeaturePixelSize && featurePixelHeight < minFeaturePixelSize)
+		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
 			continue;
 
 		if (feature.polygon)
@@ -1182,7 +1168,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		return RectF(x, y, widthPx, heightPx);
 	};
 
-	if (!buildPreviewRaster && !AvisoGeoJsonLabels.empty())
+	if (!AvisoGeoJsonLabels.empty())
 	{
 		rasterGraphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
 		FontFamily labelFontFamily(L"Arial");
@@ -1248,7 +1234,6 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	AvisoGeoJsonRasterCache = std::move(raster);
 	AvisoGeoJsonRasterCachePath = path;
-	AvisoGeoJsonRasterCachePreview = buildPreviewRaster;
 	AvisoGeoJsonRasterMinLongitude = displayMinLon;
 	AvisoGeoJsonRasterMinLatitude = displayMinLat;
 	AvisoGeoJsonRasterMaxLongitude = displayMaxLon;
@@ -3757,7 +3742,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		AvisoGeoJsonRenderDisabled = true;
 		AvisoGeoJsonRenderDisabledPath = disabledPath;
 		AvisoGeoJsonRasterCache.reset();
-		AvisoGeoJsonRasterCachePreview = false;
 		AvisoGeoJsonRasterWidth = 0;
 		AvisoGeoJsonRasterHeight = 0;
 		AvisoGeoJsonRasterAnchorValid = false;

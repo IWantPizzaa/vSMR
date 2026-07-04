@@ -139,7 +139,6 @@ public:
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
 	std::unique_ptr<Gdiplus::Bitmap> AvisoGeoJsonRasterCache;
 	std::string AvisoGeoJsonRasterCachePath;
-	bool AvisoGeoJsonRasterCachePreview = false;
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
 	double AvisoGeoJsonRasterMinLatitude = 0.0;
 	double AvisoGeoJsonRasterMaxLongitude = 0.0;
