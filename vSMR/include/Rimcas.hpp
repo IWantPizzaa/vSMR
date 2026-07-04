@@ -40,6 +40,9 @@ public:
 
 	map<string, RunwayAreaType> RunwayAreas;
 	map<string, RunwayStatus> RunwayStatuses;
+	map<string, vector<POINT>> RunwayAreasScreenCache;
+	bool RunwayAreasScreenCacheValid = false;
+	CRadarScreen* RunwayAreasScreenCacheInstance = nullptr;
 	multimap<string, string> AcOnRunway;
 	vector<int> CountdownDefinition;
 	vector<int> CountdownDefinitionLVP;
@@ -115,6 +118,8 @@ public:
 	void AddRunwayArea(CRadarScreen *instance, string runway_name1, string runway_name2, vector<CPosition> Definition);
 	void SetRunwayStatus(string runway, RunwayStatus status) { RunwayStatuses[runway] = status; }
 	const map<string, RunwayStatus>& GetRunwayStatuses() const { return RunwayStatuses; }
+	void InvalidateRunwayAreaScreenCache();
+	const vector<POINT>* GetRunwayAreaScreenPoints(const string& runway, CRadarScreen* instance);
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
 	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor);
 	const unordered_set<string>& GetInactiveAlerts() const { return inactiveAlerts; }

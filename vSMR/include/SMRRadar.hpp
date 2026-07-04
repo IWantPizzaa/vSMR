@@ -277,6 +277,22 @@ public:
 	unsigned long FpsLastSampleTick = 0;
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
+	bool AirportPositionsCacheValid = false;
+	struct CachedRunwayGeometry
+	{
+		std::string runwayNameA;
+		std::string runwayNameB;
+		std::string displayName;
+		std::vector<CPosition> rimcasDefinition;
+		std::vector<CPosition> closedDefinition;
+	};
+	std::vector<CachedRunwayGeometry> CachedRunwayGeometries;
+	bool CachedRunwayGeometryValid = false;
+	std::string CachedRunwayAirport;
+	std::string CachedRunwayProfile;
+	bool CachedRunwayIsLvp = false;
+	unsigned long RunwayStatusLastRefreshTick = 0;
+	std::string RunwayStatusLastAirport;
 
 	map<string, clock_t> RecentlyAutoMovedTags;
 
@@ -313,12 +329,26 @@ public:
 
 	string ActiveAirport = "EGKK";
 
+	void InvalidateAirportPositionCache();
+	void InvalidateRunwayGeometryCache();
+	void EnsureAirportPositionCache();
+	void EnsureRunwayGeometryCache();
+	void RefreshRunwayStatuses(bool force);
+
 	inline string getActiveAirport() {
 		return ActiveAirport;
 	}
 
 	inline string setActiveAirport(string value) {
-		return ActiveAirport = value;
+		if (ActiveAirport != value)
+		{
+			ActiveAirport = value;
+			InvalidateRunwayGeometryCache();
+			LastMapActiveAirport.clear();
+			RunwayStatusLastRefreshTick = 0;
+			RunwayStatusLastAirport.clear();
+		}
+		return ActiveAirport;
 	}
 
 	inline bool TryGetActiveAirportPosition(CPosition& outPosition) const
