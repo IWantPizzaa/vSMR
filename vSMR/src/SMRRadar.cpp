@@ -1732,6 +1732,8 @@ void CSMRRadar::ReloadConfig() {
 	this->RefreshAirportActivity();
 
 	// Force map visibility recomputation on next frame even when zoom level is unchanged.
+	InvalidateAirportPositionCache();
+	InvalidateRunwayGeometryCache();
 	RadarViewZoomLevel = -1;
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
@@ -1749,6 +1751,7 @@ void CSMRRadar::LoadProfile(string profileName) {
 
 	// Loading the new profile
 	CurrentConfig->setActiveProfile(profileName);
+	InvalidateRunwayGeometryCache();
 	InvalidateStructuredTagRuleCache();
 	EnsureTargetGroundStatusColorEntries();
 
@@ -1813,6 +1816,249 @@ void CSMRRadar::LoadProfile(string profileName) {
 
 	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
 		ProfileEditorDialog->SyncFromRadar();
+}
+
+void CSMRRadar::InvalidateAirportPositionCache()
+{
+	AirportPositionsCacheValid = false;
+}
+
+void CSMRRadar::InvalidateRunwayGeometryCache()
+{
+	CachedRunwayGeometryValid = false;
+	CachedRunwayAirport.clear();
+	CachedRunwayProfile.clear();
+	CachedRunwayGeometries.clear();
+	RunwayStatusLastRefreshTick = 0;
+	RunwayStatusLastAirport.clear();
+	LastMapRunwayStatuses.clear();
+	LastMapActiveAirport.clear();
+
+	if (RimcasInstance != nullptr)
+	{
+		RimcasInstance->RunwayAreas.clear();
+		RimcasInstance->RunwayStatuses.clear();
+	}
+}
+
+void CSMRRadar::EnsureAirportPositionCache()
+{
+	if (AirportPositionsCacheValid)
+		return;
+
+	AirportPositions.clear();
+
+	CSectorElement apt;
+	for (apt = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
+		apt.IsValid();
+		apt = GetPlugIn()->SectorFileElementSelectNext(apt, SECTOR_ELEMENT_AIRPORT))
+	{
+		const char* airportName = apt.GetName();
+		if (airportName == nullptr || airportName[0] == '\0')
+			continue;
+
+		CPosition position;
+		apt.GetPosition(&position, 0);
+		AirportPositions[string(airportName)] = position;
+	}
+
+	AirportPositionsCacheValid = true;
+}
+
+void CSMRRadar::EnsureRunwayGeometryCache()
+{
+	if (RimcasInstance == nullptr)
+		return;
+
+	const std::string activeAirport = getActiveAirport();
+	const std::string activeProfile = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string();
+
+	auto populateRimcasRunwayAreas = [&]()
+	{
+		RimcasInstance->RunwayAreas.clear();
+		for (const auto& runway : CachedRunwayGeometries)
+			RimcasInstance->AddRunwayArea(this, runway.runwayNameA, runway.runwayNameB, runway.rimcasDefinition);
+	};
+
+	if (CachedRunwayGeometryValid &&
+		CachedRunwayAirport == activeAirport &&
+		CachedRunwayProfile == activeProfile &&
+		CachedRunwayIsLvp == isLVP)
+	{
+		if (RimcasInstance->RunwayAreas.empty() && !CachedRunwayGeometries.empty())
+			populateRimcasRunwayAreas();
+		return;
+	}
+
+	CachedRunwayGeometries.clear();
+	CachedRunwayAirport = activeAirport;
+	CachedRunwayProfile = activeProfile;
+	CachedRunwayIsLvp = isLVP;
+
+	const Value* configuredRunways = nullptr;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& customMap = CurrentConfig->getAirportMapIfAny(activeAirport);
+		if (customMap.IsObject() &&
+			customMap.HasMember("runways") &&
+			customMap["runways"].IsArray())
+		{
+			configuredRunways = &customMap["runways"];
+		}
+	}
+
+	auto loadClosedRunwayDefinition = [&](const std::string& runwayNameA, const std::string& runwayNameB) -> std::vector<CPosition>
+	{
+		std::vector<CPosition> definition;
+		if (configuredRunways == nullptr)
+			return definition;
+
+		for (SizeType i = 0; i < configuredRunways->Size(); ++i)
+		{
+			const Value& runway = (*configuredRunways)[i];
+			if (!runway.IsObject() ||
+				!runway.HasMember("runway_name") ||
+				!runway["runway_name"].IsString())
+			{
+				continue;
+			}
+
+			const char* configuredName = runway["runway_name"].GetString();
+			if (configuredName == nullptr || configuredName[0] == '\0')
+				continue;
+
+			if (!startsWith(runwayNameA.c_str(), configuredName) &&
+				!startsWith(runwayNameB.c_str(), configuredName))
+			{
+				continue;
+			}
+
+			const char* pathName = isLVP ? "path_lvp" : "path";
+			const Value* path = nullptr;
+			if (runway.HasMember(pathName) && runway[pathName].IsArray())
+				path = &runway[pathName];
+			else if (isLVP && runway.HasMember("path") && runway["path"].IsArray())
+				path = &runway["path"];
+
+			if (path == nullptr)
+				continue;
+
+			for (SizeType j = 0; j < path->Size(); ++j)
+			{
+				const Value& point = (*path)[j];
+				if (!point.IsArray() ||
+					point.Size() < 2 ||
+					!point[static_cast<SizeType>(0)].IsString() ||
+					!point[static_cast<SizeType>(1)].IsString())
+				{
+					continue;
+				}
+
+				CPosition position;
+				position.LoadFromStrings(
+					point[static_cast<SizeType>(1)].GetString(),
+					point[static_cast<SizeType>(0)].GetString());
+				definition.push_back(position);
+			}
+
+			if (!definition.empty())
+				return definition;
+		}
+
+		return definition;
+	};
+
+	CSectorElement rwy;
+	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
+		rwy.IsValid();
+		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
+	{
+		const char* runwayAirportName = rwy.GetAirportName();
+		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+			continue;
+
+		if (!startsWith(activeAirport.c_str(), runwayAirportName))
+			continue;
+
+		const char* runwayNameA = rwy.GetRunwayName(0);
+		const char* runwayNameB = rwy.GetRunwayName(1);
+		if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
+			continue;
+
+		CPosition left;
+		rwy.GetPosition(&left, 1);
+		CPosition right;
+		rwy.GetPosition(&right, 0);
+
+		CachedRunwayGeometry runway;
+		runway.runwayNameA = runwayNameA;
+		runway.runwayNameB = runwayNameB;
+		runway.displayName = runway.runwayNameA + " / " + runway.runwayNameB;
+		runway.rimcasDefinition = RimcasInstance->GetRunwayArea(left, right);
+		runway.closedDefinition = loadClosedRunwayDefinition(runway.runwayNameA, runway.runwayNameB);
+		CachedRunwayGeometries.push_back(std::move(runway));
+	}
+
+	CachedRunwayGeometryValid = true;
+	populateRimcasRunwayAreas();
+}
+
+void CSMRRadar::RefreshRunwayStatuses(bool force)
+{
+	if (RimcasInstance == nullptr)
+		return;
+
+	const std::string activeAirport = getActiveAirport();
+	const unsigned long nowTick = ::GetTickCount();
+	const unsigned long statusRefreshIntervalMs = 200;
+	if (!force &&
+		RunwayStatusLastRefreshTick != 0 &&
+		RunwayStatusLastAirport == activeAirport &&
+		(nowTick - RunwayStatusLastRefreshTick) < statusRefreshIntervalMs)
+	{
+		return;
+	}
+
+	auto getRunwayStatus = [](CSectorElement& runway, int index) -> CRimcas::RunwayStatus
+	{
+		const bool isDepartureRunway = runway.IsElementActive(true, index);
+		const bool isArrivalRunway = runway.IsElementActive(false, index);
+		if (isDepartureRunway && isArrivalRunway)
+			return CRimcas::RunwayStatus::BOTH;
+		if (isDepartureRunway)
+			return CRimcas::RunwayStatus::DEP;
+		if (isArrivalRunway)
+			return CRimcas::RunwayStatus::ARR;
+		return CRimcas::RunwayStatus::CLSD;
+	};
+
+	std::map<std::string, CRimcas::RunwayStatus> runwayStatuses;
+	CSectorElement rwy;
+	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
+		rwy.IsValid();
+		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
+	{
+		const char* runwayAirportName = rwy.GetAirportName();
+		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+			continue;
+
+		if (!startsWith(activeAirport.c_str(), runwayAirportName))
+			continue;
+
+		const char* runwayNameA = rwy.GetRunwayName(0);
+		const char* runwayNameB = rwy.GetRunwayName(1);
+		if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
+			continue;
+
+		runwayStatuses[runwayNameA] = getRunwayStatus(rwy, 0);
+		runwayStatuses[runwayNameB] = getRunwayStatus(rwy, 1);
+	}
+
+	RunwayStatusLastRefreshTick = nowTick;
+	RunwayStatusLastAirport = activeAirport;
+
+	if (RimcasInstance->RunwayStatuses != runwayStatuses)
+		RimcasInstance->RunwayStatuses = std::move(runwayStatuses);
 }
 
 void CSMRRadar::InvalidateStructuredTagRuleCache()
@@ -3919,6 +4165,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RefreshAirportActivity();
 	}
 
+	setRefreshStage("sector geometry cache");
+	EnsureAirportPositionCache();
+	EnsureRunwayGeometryCache();
+	RefreshRunwayStatuses(false);
+
 	// Draw map elements based on zoom level
 	CPosition radarDownLeft;
 	CPosition radarUpRight;
@@ -4115,26 +4366,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		disableAvisoGeoJsonRender("unknown exception");
 	}
 
-	setRefreshStage("airport sector scan");
-	AirportPositions.clear();
-
-
-	CSectorElement apt;
-	for (apt = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
-		apt.IsValid();
-		apt = GetPlugIn()->SectorFileElementSelectNext(apt, SECTOR_ELEMENT_AIRPORT))
-	{
-		const char* airportName = apt.GetName();
-		if (airportName == nullptr || airportName[0] == '\0')
-			continue;
-
-		CPosition Pos;
-		apt.GetPosition(&Pos, 0);
-		AirportPositions[string(airportName)] = Pos;
-	}
-
-	RimcasInstance->RunwayAreas.clear();
-
 	if (QDMSelectEnabled || QDMenabled)
 	{
 		CRect R(GetRadarArea());
@@ -4145,189 +4376,43 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		AddScreenObject(DRAWING_BACKGROUND_CLICK, "", R, false, "");
 	}
 
-	VSMR_REFRESH_LOG("Runway loop");
-	setRefreshStage("runway sector scan");
-	CSectorElement rwy;
-	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
-		rwy.IsValid();
-		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
+	VSMR_REFRESH_LOG("Runway overlay loop");
+	setRefreshStage("runway overlay draw");
+	for (const auto& runway : CachedRunwayGeometries)
 	{
-		const char* runwayAirportName = rwy.GetAirportName();
-		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+		if (drawRunways && runway.rimcasDefinition.size() >= 3)
+		{
+			std::vector<PointF> points;
+			points.reserve(runway.rimcasDefinition.size());
+			for (const auto& point : runway.rimcasDefinition)
+			{
+				POINT toDraw = ConvertCoordFromPositionToPixel(point);
+				points.push_back({ REAL(toDraw.x), REAL(toDraw.y) });
+			}
+
+			Pen runwayPen(ColorManager->get_corrected_color("label", Color::White));
+			graphics.DrawPolygon(&runwayPen, points.data(), static_cast<INT>(points.size()));
+		}
+
+		const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(runway.displayName);
+		if (closedRunwayIt == RimcasInstance->ClosedRunway.end() || !closedRunwayIt->second)
 			continue;
 
-		if (startsWith(getActiveAirport().c_str(), runwayAirportName)) {
+		const std::vector<CPosition>& closedDefinition =
+			runway.closedDefinition.empty() ? runway.rimcasDefinition : runway.closedDefinition;
+		if (closedDefinition.size() < 3)
+			continue;
 
-			const char* runwayNameA = rwy.GetRunwayName(0);
-			const char* runwayNameB = rwy.GetRunwayName(1);
-			if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
-				continue;
-
-			CPosition Left;
-			rwy.GetPosition(&Left, 1);
-			CPosition Right;
-			rwy.GetPosition(&Right, 0);
-
-			string runway_name = runwayNameA;
-			string runway_name2 = runwayNameB;
-
-			double bearing1 = TrueBearing(Left, Right);
-			double bearing2 = TrueBearing(Right, Left);
-
-			const Value& CustomMap = CurrentConfig->getAirportMapIfAny(getActiveAirport());
-
-			vector<CPosition> def;
-// Rimcas now ignores the defined runway polygon to ensure that the correct detection area is used, defined runway is now only used for closed runway
-//			if (CurrentConfig->isCustomRunwayAvail(getActiveAirport(), runway_name, runway_name2)) {
-			//	const Value& Runways = CustomMap["runways"];
-			//
-			//		if (Runways.IsArray()) {
-			//		for (SizeType i = 0; i < Runways.Size(); i++) {
-			//			if (startsWith(runway_name.c_str(), Runways[i]["runway_name"].GetString()) ||
-			//				startsWith(runway_name2.c_str(), Runways[i]["runway_name"].GetString())) {
-			//
-			//				string path_name = "path";
-			//
-			//				if (isLVP)
-			//					path_name = "path_lvp";
-			//
-			//				const Value& Path = Runways[i][path_name.c_str()];
-			//				for (SizeType j = 0; j < Path.Size(); j++) {
-			//					CPosition position;
-			//					position.LoadFromStrings(Path[j][(SizeType)1].GetString(), Path[j][(SizeType)0].GetString());
-			//
-			//					def.push_back(position);
-			//				}
-			//	
-			//			}
-			//		}
-			//	}
-			//}
-			//else {
-				def = RimcasInstance->GetRunwayArea(Left, Right);
-			//}
-
-			RimcasInstance->AddRunwayArea(this, runway_name, runway_name2, def);
-
-			// Check runway statuses
-			bool isDepartureRwy = rwy.IsElementActive(true, 0);
-			bool isArrivalRwy = rwy.IsElementActive(false, 0);
-			if (isDepartureRwy) {
-				if (isArrivalRwy) {
-					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::BOTH);
-				}
-				else {
-					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::DEP);
-				}
-			}
-			else {
-				if (isArrivalRwy) {
-					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::ARR);
-				}
-				else {
-					RimcasInstance->SetRunwayStatus(runway_name, CRimcas::RunwayStatus::CLSD);
-				}
-
-			}
-			isDepartureRwy = rwy.IsElementActive(true, 1);
-			isArrivalRwy = rwy.IsElementActive(false, 1);
-			if (isDepartureRwy) {
-				if (isArrivalRwy) {
-					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::BOTH);
-				}
-				else {
-					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::DEP);
-				}
-			}
-			else {
-				if (isArrivalRwy) {
-					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::ARR);
-				}
-				else {
-					RimcasInstance->SetRunwayStatus(runway_name2, CRimcas::RunwayStatus::CLSD);
-				}
-			}
-
-			string RwName = runway_name + " / " + runway_name2;
-
-			if (drawRunways) {
-
-				PointF lpPoints[5000];
-				int w = 0;
-				for (auto& Point : def)
-				{
-					POINT toDraw = ConvertCoordFromPositionToPixel(Point);
-
-					lpPoints[w] = { REAL(toDraw.x), REAL(toDraw.y) };
-					w++;
-				}
-				Pen pw(ColorManager->get_corrected_color("label", Color::White));
-				graphics.DrawPolygon( &pw, lpPoints, w);
-			}
-
-			if (RimcasInstance->ClosedRunway.find(RwName) != RimcasInstance->ClosedRunway.end()) {
-				const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(RwName);
-				if (closedRunwayIt != RimcasInstance->ClosedRunway.end() && closedRunwayIt->second) {
-
-					CPen RedPen(PS_SOLID, 2, RGB(150, 0, 0));
-					CPen * oldPen = dc.SelectObject(&RedPen);
-
-					if (CurrentConfig->isCustomRunwayAvail(getActiveAirport(), runway_name, runway_name2)) {
-						const Value& Runways = CustomMap["runways"];
-
-						if (Runways.IsArray()) {
-							for (SizeType i = 0; i < Runways.Size(); i++) {
-								if (startsWith(runway_name.c_str(), Runways[i]["runway_name"].GetString()) ||
-									startsWith(runway_name2.c_str(), Runways[i]["runway_name"].GetString())) {
-
-									string path_name = "path";
-
-									if (isLVP)
-										path_name = "path_lvp";
-
-									const Value& Path = Runways[i][path_name.c_str()];
-
-									PointF lpPoints[5000];
-
-									int k = 1;
-									int l = 0;
-									for (SizeType w = 0; w < Path.Size(); w++) {
-										CPosition position;
-										position.LoadFromStrings(Path[w][static_cast<SizeType>(1)].GetString(), Path[w][static_cast<SizeType>(0)].GetString());
-
-										POINT cv = ConvertCoordFromPositionToPixel(position);
-										lpPoints[l] = { REAL(cv.x), REAL(cv.y) };
-
-										k++;
-										l++;
-									}
-
-									graphics.FillPolygon(&SolidBrush(Color(150, 0, 0)), lpPoints, k - 1);
-
-									break;
-								}
-							}
-						}
-
-					}
-					else {
-						PointF lpPoints[5000];
-						int w = 0;
-						for(auto &Point : def)
-						{
-							POINT toDraw = ConvertCoordFromPositionToPixel(Point);
-
-							lpPoints[w] = { REAL(toDraw.x), REAL(toDraw.y) };
-							w++;
-						}
-
-						graphics.FillPolygon(&SolidBrush(Color(150, 0, 0)), lpPoints, w);
-					}
-
-					dc.SelectObject(oldPen);
-				}
-			}
+		std::vector<PointF> points;
+		points.reserve(closedDefinition.size());
+		for (const auto& point : closedDefinition)
+		{
+			POINT toDraw = ConvertCoordFromPositionToPixel(point);
+			points.push_back({ REAL(toDraw.x), REAL(toDraw.y) });
 		}
+
+		SolidBrush closedRunwayBrush(Color(150, 0, 0));
+		graphics.FillPolygon(&closedRunwayBrush, points.data(), static_cast<INT>(points.size()));
 	}
 
 	setRefreshStage("RIMCAS refresh begin");

@@ -22,6 +22,7 @@ void CRimcas::Reset() {
 	Logger::info(string(__FUNCSIG__));
 	RunwayAreas.clear();
 	RunwayStatuses.clear();
+	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
 	AcOnRunway.clear();
 	TimeTable.clear();
@@ -33,6 +34,7 @@ void CRimcas::Reset() {
 
 void CRimcas::OnRefreshBegin(bool isLVP) {
 	Logger::info(string(__FUNCSIG__));
+	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
 	AcOnRunway.clear();
 	TimeTable.clear();
@@ -57,6 +59,43 @@ void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string 
 	Runway.Definition = Definition;
 
 	RunwayAreas[Name] = Runway;
+	InvalidateRunwayAreaScreenCache();
+}
+
+void CRimcas::InvalidateRunwayAreaScreenCache()
+{
+	RunwayAreasScreenCache.clear();
+	RunwayAreasScreenCacheValid = false;
+	RunwayAreasScreenCacheInstance = nullptr;
+}
+
+const vector<POINT>* CRimcas::GetRunwayAreaScreenPoints(const string& runway, CRadarScreen* instance)
+{
+	if (instance == nullptr)
+		return nullptr;
+
+	if (!RunwayAreasScreenCacheValid || RunwayAreasScreenCacheInstance != instance)
+	{
+		RunwayAreasScreenCache.clear();
+		for (const auto& runwayArea : RunwayAreas)
+		{
+			vector<POINT> runwayOnScreen;
+			runwayOnScreen.reserve(runwayArea.second.Definition.size());
+			for (const auto& point : runwayArea.second.Definition)
+				runwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(point));
+
+			if (runwayOnScreen.size() >= 3)
+				RunwayAreasScreenCache[runwayArea.first] = std::move(runwayOnScreen);
+		}
+
+		RunwayAreasScreenCacheInstance = instance;
+		RunwayAreasScreenCacheValid = true;
+	}
+
+	const auto cacheIt = RunwayAreasScreenCache.find(runway);
+	if (cacheIt == RunwayAreasScreenCache.end())
+		return nullptr;
+	return &cacheIt->second;
 }
 
 string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
@@ -88,14 +127,11 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 		if (monitoredDepIt == MonitoredRunwayDep.end() || !monitoredDepIt->second)
 			continue;
 
-		vector<POINT> RunwayOnScreen;
+		const vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
+		if (RunwayOnScreen == nullptr)
+			continue;
 
-		for (auto& Point : it->second.Definition)
-		{
-			RunwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(Point));
-		}
-
-		if (Is_Inside(AcPosPix, RunwayOnScreen)) {
+		if (Is_Inside(AcPosPix, *RunwayOnScreen)) {
 			AcOnRunway.insert(std::pair<string, string>(it->first, acCallsign));
 			return string(it->first);
 		}
@@ -142,12 +178,9 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 
 		// We need to know when and if the AC is going to enter the runway within 5 minutes (by steps of 10 seconds
 
-		vector<POINT> RunwayOnScreen;
-
-		for (auto& Point : it->second.Definition)
-		{
-			RunwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(Point));
-		}
+		const vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
+		if (RunwayOnScreen == nullptr)
+			continue;
 
 		for (int t = 5; t <= 300; t += 5)
 		{
@@ -169,7 +202,7 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 			{
 				POINT PredictedPosition = instance->ConvertCoordFromPositionToPixel(
 					BetterHarversine(currentPos.GetPosition(), fmod(Ac.GetTrackHeading() + a, 360), distance));
-				isGoingToLand = Is_Inside(PredictedPosition, RunwayOnScreen);
+				isGoingToLand = Is_Inside(PredictedPosition, *RunwayOnScreen);
 
 				if (isGoingToLand)
 					break;
@@ -350,13 +383,10 @@ bool CRimcas::isAcOnRunway(string callsign) {
 string CRimcas::AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance)
 {
 	Logger::info(string(__FUNCSIG__));
+	POINT acPosPix = instance->ConvertCoordFromPositionToPixel(Rt.GetPosition().GetPosition());
 	for (const auto& rwy : RunwayAreas) {
-		POINT acPosPix = instance->ConvertCoordFromPositionToPixel(Rt.GetPosition().GetPosition());
-		vector<POINT> runwayOnScreen;
-		for (const auto& point : rwy.second.Definition) {
-			runwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(point));
-		}
-		if (Is_Inside(acPosPix, runwayOnScreen)) {
+		const vector<POINT>* runwayOnScreen = GetRunwayAreaScreenPoints(rwy.first, instance);
+		if (runwayOnScreen != nullptr && Is_Inside(acPosPix, *runwayOnScreen)) {
 			return rwy.first;
 		}
 	}
