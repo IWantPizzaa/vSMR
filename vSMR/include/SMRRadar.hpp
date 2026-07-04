@@ -218,7 +218,7 @@ public:
 	double AvisoGeoJsonMinLatitude = 0.0;
 	double AvisoGeoJsonMaxLongitude = 0.0;
 	double AvisoGeoJsonMaxLatitude = 0.0;
-	bool AvisoDirect2DEnabled = true;
+	bool AvisoDirect2DEnabled = false;
 	bool AvisoDirect2DUnavailable = false;
 	bool AvisoDirect2DLoggedUnavailable = false;
 	ID2D1Factory* AvisoD2DFactory = nullptr;
