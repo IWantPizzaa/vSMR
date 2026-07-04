@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <time.h>
 #include <GdiPlus.h>
-#include <d2d1.h>
-#include <dwrite.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "Constant.hpp"
@@ -164,8 +162,14 @@ public:
 	};
 	struct AvisoRasterRenderResult
 	{
+		~AvisoRasterRenderResult()
+		{
+			if (bitmap != nullptr)
+				::DeleteObject(bitmap);
+		}
+
 		unsigned long long requestId = 0;
-		std::unique_ptr<Gdiplus::Bitmap> bitmap;
+		HBITMAP bitmap = nullptr;
 		std::string path;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
@@ -189,7 +193,7 @@ public:
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
 	unsigned long AvisoGeoJsonLastStatTick = 0;
-	std::unique_ptr<Gdiplus::Bitmap> AvisoGeoJsonRasterCache;
+	HBITMAP AvisoGeoJsonRasterCache = nullptr;
 	std::string AvisoGeoJsonRasterCachePath;
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
 	double AvisoGeoJsonRasterMinLatitude = 0.0;
@@ -218,14 +222,6 @@ public:
 	double AvisoGeoJsonMinLatitude = 0.0;
 	double AvisoGeoJsonMaxLongitude = 0.0;
 	double AvisoGeoJsonMaxLatitude = 0.0;
-	bool AvisoDirect2DEnabled = false;
-	bool AvisoDirect2DUnavailable = false;
-	bool AvisoDirect2DLoggedUnavailable = false;
-	ID2D1Factory* AvisoD2DFactory = nullptr;
-	ID2D1DCRenderTarget* AvisoD2DRenderTarget = nullptr;
-	IDWriteFactory* AvisoDWriteFactory = nullptr;
-	std::map<unsigned int, ID2D1SolidColorBrush*> AvisoD2DBrushCache;
-	std::map<int, IDWriteTextFormat*> AvisoDWriteTextFormatCache;
 	std::mutex AvisoGeoJsonRenderMutex;
 	std::condition_variable AvisoGeoJsonRenderCondition;
 	std::thread AvisoGeoJsonRenderThread;
@@ -243,6 +239,13 @@ public:
 	double AvisoGeoJsonRenderLastRequestMaxLatitude = 0.0;
 	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
 	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
+	double PerfLastFrameMs = 0.0;
+	double PerfLastAvisoMs = 0.0;
+	double PerfLastTargetsMs = 0.0;
+	double PerfLastRimcasMs = 0.0;
+	double PerfLastTagsMs = 0.0;
+	double PerfLastSrwMs = 0.0;
+	unsigned long PerfLastLogTick = 0;
 
 	map<string, bool> ShowLists;
 	map<string, RECT> ListAreas;
@@ -529,13 +532,8 @@ public:
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
+	void ClearAvisoGeoJsonRasterCache();
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
-	bool RenderAvisoGeoJsonDirect2D(HDC hDC, const AvisoRasterRenderRequest& request, const RECT& targetRect);
-	bool EnsureAvisoDirect2DResources();
-	void ReleaseAvisoDirect2DResources();
-	void ReleaseAvisoDirect2DTargetResources();
-	ID2D1SolidColorBrush* GetAvisoD2DBrush(const Gdiplus::Color& color);
-	IDWriteTextFormat* GetAvisoDWriteTextFormat(float textSize);
 	void EnsureAvisoGeoJsonRenderThread();
 	void StopAvisoGeoJsonRenderThread();
 	void AvisoGeoJsonRenderThreadMain();
