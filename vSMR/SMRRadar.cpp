@@ -800,12 +800,14 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
 	rasterGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
 
-	const double rasterScaleX = static_cast<double>(rasterWidth) / lonSpan;
-	const double rasterScaleY = static_cast<double>(rasterHeight) / latSpan;
 	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
 	{
-		const double x = (coordinate.longitude - displayMinLon) * rasterScaleX;
-		const double y = (displayMaxLat - coordinate.latitude) * rasterScaleY;
+		CPosition position;
+		position.m_Latitude = coordinate.latitude;
+		position.m_Longitude = coordinate.longitude;
+		const POINT screenPoint = ConvertCoordFromPositionToPixel(position);
+		const double x = static_cast<double>(screenPoint.x - radarArea.left) * rasterScale;
+		const double y = static_cast<double>(screenPoint.y - radarArea.top) * rasterScale;
 		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
 	};
 
@@ -820,8 +822,8 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 			continue;
 		}
 
-		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * rasterScaleX;
-		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * rasterScaleY;
+		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * scaleX * rasterScale;
+		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * scaleY * rasterScale;
 		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
 			continue;
 
