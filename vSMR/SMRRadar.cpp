@@ -728,40 +728,43 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	{
 		if (AvisoGeoJsonRasterCache == nullptr || AvisoGeoJsonRasterWidth <= 0 || AvisoGeoJsonRasterHeight <= 0)
 			return false;
-
-		CPosition cachedTopLeft;
-		cachedTopLeft.m_Latitude = AvisoGeoJsonRasterMaxLatitude;
-		cachedTopLeft.m_Longitude = AvisoGeoJsonRasterMinLongitude;
-		CPosition cachedBottomRight;
-		cachedBottomRight.m_Latitude = AvisoGeoJsonRasterMinLatitude;
-		cachedBottomRight.m_Longitude = AvisoGeoJsonRasterMaxLongitude;
-
-		const POINT topLeft = ConvertCoordFromPositionToPixel(cachedTopLeft);
-		const POINT bottomRight = ConvertCoordFromPositionToPixel(cachedBottomRight);
-		double destX = static_cast<double>(topLeft.x);
-		double destY = static_cast<double>(topLeft.y);
-		double destWidth = static_cast<double>(bottomRight.x - topLeft.x);
-		double destHeight = static_cast<double>(bottomRight.y - topLeft.y);
-		if (destWidth < 0.0)
-		{
-			destX += destWidth;
-			destWidth = -destWidth;
-		}
-		if (destHeight < 0.0)
-		{
-			destY += destHeight;
-			destHeight = -destHeight;
-		}
-		if (destWidth <= 1.0 || destHeight <= 1.0)
+		if (AvisoGeoJsonRasterWidth != radarWidth || AvisoGeoJsonRasterHeight != radarHeight)
 			return false;
+
+		const double cachedLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
+		const double cachedLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
+		if (cachedLonSpan <= 0.0 || cachedLatSpan <= 0.0)
+			return false;
+
+		const double lonScaleRatio = lonSpan / cachedLonSpan;
+		const double latScaleRatio = latSpan / cachedLatSpan;
+		const bool sameZoomScale =
+			lonScaleRatio >= 0.985 && lonScaleRatio <= 1.015 &&
+			latScaleRatio >= 0.985 && latScaleRatio <= 1.015;
+		if (!sameZoomScale)
+			return false;
+
+		CPosition cachedCenter;
+		cachedCenter.m_Latitude = (AvisoGeoJsonRasterMinLatitude + AvisoGeoJsonRasterMaxLatitude) * 0.5;
+		cachedCenter.m_Longitude = (AvisoGeoJsonRasterMinLongitude + AvisoGeoJsonRasterMaxLongitude) * 0.5;
+		const POINT cachedCenterPoint = ConvertCoordFromPositionToPixel(cachedCenter);
+		const double destX = static_cast<double>(cachedCenterPoint.x) - (static_cast<double>(AvisoGeoJsonRasterWidth) * 0.5);
+		const double destY = static_cast<double>(cachedCenterPoint.y) - (static_cast<double>(AvisoGeoJsonRasterHeight) * 0.5);
+		const double maxPanX = static_cast<double>(radarWidth) * 1.25;
+		const double maxPanY = static_cast<double>(radarHeight) * 1.25;
+		if (std::abs(destX - static_cast<double>(radarArea.left)) > maxPanX ||
+			std::abs(destY - static_cast<double>(radarArea.top)) > maxPanY)
+		{
+			return false;
+		}
 
 		GraphicsState state = graphics.Save();
 		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		graphics.SetInterpolationMode(InterpolationModeBilinear);
+		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			AvisoGeoJsonRasterCache.get(),
-			RectF(static_cast<REAL>(destX), static_cast<REAL>(destY), static_cast<REAL>(destWidth), static_cast<REAL>(destHeight)),
+			RectF(static_cast<REAL>(destX), static_cast<REAL>(destY), static_cast<REAL>(AvisoGeoJsonRasterWidth), static_cast<REAL>(AvisoGeoJsonRasterHeight)),
 			0.0f,
 			0.0f,
 			static_cast<REAL>(AvisoGeoJsonRasterWidth),
