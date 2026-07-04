@@ -895,7 +895,9 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	{
 		if (AvisoGeoJsonRasterCache == nullptr || AvisoGeoJsonRasterWidth <= 0 || AvisoGeoJsonRasterHeight <= 0)
 			return false;
-		if (AvisoGeoJsonRasterCachePath != path)
+		if (AvisoGeoJsonRasterWidth != radarWidth || AvisoGeoJsonRasterHeight != radarHeight)
+			return false;
+		if (!AvisoGeoJsonRasterAnchorValid)
 			return false;
 
 		const double cachedLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
@@ -903,63 +905,35 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		if (cachedLonSpan <= 0.0 || cachedLatSpan <= 0.0)
 			return false;
 
-		CPosition cachedTopLeft;
-		cachedTopLeft.m_Latitude = AvisoGeoJsonRasterMaxLatitude;
-		cachedTopLeft.m_Longitude = AvisoGeoJsonRasterMinLongitude;
-		CPosition cachedBottomRight;
-		cachedBottomRight.m_Latitude = AvisoGeoJsonRasterMinLatitude;
-		cachedBottomRight.m_Longitude = AvisoGeoJsonRasterMaxLongitude;
-
-		const POINT cachedTopLeftPoint = ConvertCoordFromPositionToPixel(cachedTopLeft);
-		const POINT cachedBottomRightPoint = ConvertCoordFromPositionToPixel(cachedBottomRight);
-		double destLeft = static_cast<double>(cachedTopLeftPoint.x);
-		double destTop = static_cast<double>(cachedTopLeftPoint.y);
-		double destRight = static_cast<double>(cachedBottomRightPoint.x);
-		double destBottom = static_cast<double>(cachedBottomRightPoint.y);
-		if (destRight < destLeft)
-			std::swap(destLeft, destRight);
-		if (destBottom < destTop)
-			std::swap(destTop, destBottom);
-
-		const double destWidth = destRight - destLeft;
-		const double destHeight = destBottom - destTop;
-		if (destWidth < 1.0 || destHeight < 1.0)
+		const double lonScaleRatio = lonSpan / cachedLonSpan;
+		const double latScaleRatio = latSpan / cachedLatSpan;
+		const bool sameZoomScale =
+			lonScaleRatio >= 0.985 && lonScaleRatio <= 1.015 &&
+			latScaleRatio >= 0.985 && latScaleRatio <= 1.015;
+		if (!sameZoomScale)
 			return false;
 
-		const double scaleRatioX = destWidth / static_cast<double>(AvisoGeoJsonRasterWidth);
-		const double scaleRatioY = destHeight / static_cast<double>(AvisoGeoJsonRasterHeight);
-		const bool reasonableZoomReuse =
-			scaleRatioX >= 0.45 && scaleRatioX <= 2.20 &&
-			scaleRatioY >= 0.45 && scaleRatioY <= 2.20;
-		if (!reasonableZoomReuse)
+		CPosition cachedAnchor;
+		cachedAnchor.m_Latitude = AvisoGeoJsonRasterAnchorLatitude;
+		cachedAnchor.m_Longitude = AvisoGeoJsonRasterAnchorLongitude;
+		const POINT cachedAnchorPoint = ConvertCoordFromPositionToPixel(cachedAnchor);
+		const double destX = static_cast<double>(cachedAnchorPoint.x);
+		const double destY = static_cast<double>(cachedAnchorPoint.y);
+		const double maxPanX = static_cast<double>(radarWidth) * 0.65;
+		const double maxPanY = static_cast<double>(radarHeight) * 0.65;
+		if (std::abs(destX - static_cast<double>(radarArea.left)) > maxPanX ||
+			std::abs(destY - static_cast<double>(radarArea.top)) > maxPanY)
+		{
 			return false;
-
-		const double radarLeft = static_cast<double>(radarArea.left);
-		const double radarTop = static_cast<double>(radarArea.top);
-		const double radarRight = static_cast<double>(radarArea.right);
-		const double radarBottom = static_cast<double>(radarArea.bottom);
-		const double overlapLeft = AvisoMax(destLeft, radarLeft);
-		const double overlapTop = AvisoMax(destTop, radarTop);
-		const double overlapRight = AvisoMin(destRight, radarRight);
-		const double overlapBottom = AvisoMin(destBottom, radarBottom);
-		if (overlapRight <= overlapLeft || overlapBottom <= overlapTop)
-			return false;
-
-		const double overlapArea = (overlapRight - overlapLeft) * (overlapBottom - overlapTop);
-		const double radarAreaPixels = static_cast<double>(radarWidth) * static_cast<double>(radarHeight);
-		if (radarAreaPixels <= 0.0 || (overlapArea / radarAreaPixels) < 0.30)
-			return false;
+		}
 
 		GraphicsState state = graphics.Save();
 		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
 		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		const bool scaled =
-			scaleRatioX < 0.98 || scaleRatioX > 1.02 ||
-			scaleRatioY < 0.98 || scaleRatioY > 1.02;
-		graphics.SetInterpolationMode(scaled ? InterpolationModeBilinear : InterpolationModeNearestNeighbor);
+		graphics.SetInterpolationMode(InterpolationModeNearestNeighbor);
 		graphics.DrawImage(
 			AvisoGeoJsonRasterCache.get(),
-			RectF(static_cast<REAL>(destLeft), static_cast<REAL>(destTop), static_cast<REAL>(destWidth), static_cast<REAL>(destHeight)),
+			RectF(static_cast<REAL>(destX), static_cast<REAL>(destY), static_cast<REAL>(AvisoGeoJsonRasterWidth), static_cast<REAL>(AvisoGeoJsonRasterHeight)),
 			0.0f,
 			0.0f,
 			static_cast<REAL>(AvisoGeoJsonRasterWidth),
@@ -972,7 +946,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	if (cacheMatchesCurrentView() && drawRasterCacheExact())
 		return;
 
-	const unsigned long rasterSettleDelayMs = 220;
+	const unsigned long rasterSettleDelayMs = 380;
 	if (AvisoGeoJsonRasterCache != nullptr &&
 		(nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs &&
 		drawRasterCacheTransformed())
