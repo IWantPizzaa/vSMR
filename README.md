@@ -69,8 +69,6 @@ vSMR/
   tools/       Maintenance scripts
 ```
 
-The map renderer proof-of-concept remains separate under [`vSMRMapRenderer/`](vSMRMapRenderer/), with shared protocol types in [`vSMRMapIPC/`](vSMRMapIPC/).
-
 ## Main Features
 
 - Advanced SMR radar display for ground movement and low-level airborne traffic
