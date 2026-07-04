@@ -20,6 +20,7 @@
 #include <memory>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <ctime>
 #include "ColorManager.h"
 #include "Logger.h"
@@ -133,8 +134,52 @@ public:
 		float haloWidth = 1.0f;
 		double maxMetersPerPixel = 0.0;
 	};
+	struct AvisoRasterRenderRequest
+	{
+		unsigned long long requestId = 0;
+		std::string path;
+		std::shared_ptr<const std::vector<AvisoFeature>> features;
+		std::shared_ptr<const std::vector<AvisoLabel>> labels;
+		int rasterWidth = 0;
+		int rasterHeight = 0;
+		double rasterScale = 1.0;
+		double displayMinLongitude = 0.0;
+		double displayMinLatitude = 0.0;
+		double displayMaxLongitude = 0.0;
+		double displayMaxLatitude = 0.0;
+		double renderMinLongitude = 0.0;
+		double renderMinLatitude = 0.0;
+		double renderMaxLongitude = 0.0;
+		double renderMaxLatitude = 0.0;
+		double renderScreenLeft = 0.0;
+		double renderScreenTop = 0.0;
+		double scaleX = 1.0;
+		double scaleY = 1.0;
+		Gdiplus::PointF projectedTopLeft;
+		Gdiplus::PointF projectedTopRight;
+		Gdiplus::PointF projectedBottomLeft;
+		Gdiplus::PointF projectedBottomRight;
+	};
+	struct AvisoRasterRenderResult
+	{
+		unsigned long long requestId = 0;
+		std::unique_ptr<Gdiplus::Bitmap> bitmap;
+		std::string path;
+		int rasterWidth = 0;
+		int rasterHeight = 0;
+		double displayMinLongitude = 0.0;
+		double displayMinLatitude = 0.0;
+		double displayMaxLongitude = 0.0;
+		double displayMaxLatitude = 0.0;
+		double renderMinLongitude = 0.0;
+		double renderMinLatitude = 0.0;
+		double renderMaxLongitude = 0.0;
+		double renderMaxLatitude = 0.0;
+	};
 	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
 	std::vector<AvisoLabel> AvisoGeoJsonLabels;
+	std::shared_ptr<const std::vector<AvisoFeature>> AvisoGeoJsonFeatureSnapshot;
+	std::shared_ptr<const std::vector<AvisoLabel>> AvisoGeoJsonLabelSnapshot;
 	mutable std::string AvisoGeoJsonResolvedAirport;
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
@@ -171,6 +216,23 @@ public:
 	double AvisoGeoJsonMinLatitude = 0.0;
 	double AvisoGeoJsonMaxLongitude = 0.0;
 	double AvisoGeoJsonMaxLatitude = 0.0;
+	std::mutex AvisoGeoJsonRenderMutex;
+	std::condition_variable AvisoGeoJsonRenderCondition;
+	std::thread AvisoGeoJsonRenderThread;
+	bool AvisoGeoJsonRenderThreadStarted = false;
+	bool AvisoGeoJsonRenderStop = false;
+	std::unique_ptr<AvisoRasterRenderRequest> AvisoGeoJsonPendingRenderRequest;
+	std::unique_ptr<AvisoRasterRenderResult> AvisoGeoJsonCompletedRenderResult;
+	unsigned long long AvisoGeoJsonRenderNextRequestId = 0;
+	unsigned long long AvisoGeoJsonRenderLatestRequestId = 0;
+	bool AvisoGeoJsonRenderLastRequestValid = false;
+	std::string AvisoGeoJsonRenderLastRequestPath;
+	double AvisoGeoJsonRenderLastRequestMinLongitude = 0.0;
+	double AvisoGeoJsonRenderLastRequestMinLatitude = 0.0;
+	double AvisoGeoJsonRenderLastRequestMaxLongitude = 0.0;
+	double AvisoGeoJsonRenderLastRequestMaxLatitude = 0.0;
+	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
+	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
 
 	map<string, bool> ShowLists;
 	map<string, RECT> ListAreas;
@@ -425,6 +487,12 @@ public:
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
 	void RenderAvisoGeoJson(Gdiplus::Graphics& graphics);
+	void EnsureAvisoGeoJsonRenderThread();
+	void StopAvisoGeoJsonRenderThread();
+	void AvisoGeoJsonRenderThreadMain();
+	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
+	void ApplyCompletedAvisoGeoJsonRaster();
+	std::unique_ptr<AvisoRasterRenderResult> RenderAvisoGeoJsonRaster(const AvisoRasterRenderRequest& request) const;
 	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
 
 	//---OnClickScreenObject-----------------------------------------
