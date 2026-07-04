@@ -418,6 +418,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
 	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
+	radar_screen->AddScreenObject(m_Id, "viewport", m_Area, false, "");
 
 	auto drawCenteredMessage = [&](const char* message)
 	{
@@ -1251,43 +1252,36 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			if (useNovaIconStyle)
 			{
-				Gdiplus::Pen novaHaloPen(Color(220, 0, 0, 0), 3.4f);
-				Gdiplus::Pen novaPen(symbolWhiteColor, 1.8f);
-				auto drawNovaShape = [&](Gdiplus::Pen& pen)
+				auto drawNovaShape = [&](CPen& pen)
 				{
+					CPen* oldPen = dc.SelectObject(&pen);
 					if (rtPositionData.GetTransponderC())
 					{
-						PointF diamond[5] = {
-							PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 7)),
-							PointF(Gdiplus::REAL(targetPoint.x - 7), Gdiplus::REAL(targetPoint.y)),
-							PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y + 7)),
-							PointF(Gdiplus::REAL(targetPoint.x + 7), Gdiplus::REAL(targetPoint.y)),
-							PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y - 7))
-						};
-						gdi->DrawLines(&pen, diamond, 5);
-						return;
+						dc.MoveTo(targetPoint.x, targetPoint.y - 7);
+						dc.LineTo(targetPoint.x - 7, targetPoint.y);
+						dc.LineTo(targetPoint.x, targetPoint.y + 7);
+						dc.LineTo(targetPoint.x + 7, targetPoint.y);
+						dc.LineTo(targetPoint.x, targetPoint.y - 7);
+					}
+					else
+					{
+						dc.MoveTo(targetPoint.x, targetPoint.y);
+						dc.LineTo(targetPoint.x - 5, targetPoint.y - 5);
+						dc.MoveTo(targetPoint.x, targetPoint.y);
+						dc.LineTo(targetPoint.x + 5, targetPoint.y - 5);
+						dc.MoveTo(targetPoint.x, targetPoint.y);
+						dc.LineTo(targetPoint.x - 5, targetPoint.y + 5);
+						dc.MoveTo(targetPoint.x, targetPoint.y);
+						dc.LineTo(targetPoint.x + 5, targetPoint.y + 5);
 					}
 
-					gdi->DrawLine(&pen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x - 5), Gdiplus::REAL(targetPoint.y - 5)));
-					gdi->DrawLine(&pen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x + 5), Gdiplus::REAL(targetPoint.y - 5)));
-					gdi->DrawLine(&pen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x - 5), Gdiplus::REAL(targetPoint.y + 5)));
-					gdi->DrawLine(&pen,
-						PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-						PointF(Gdiplus::REAL(targetPoint.x + 5), Gdiplus::REAL(targetPoint.y + 5)));
+					if (oldPen != nullptr)
+						dc.SelectObject(oldPen);
 				};
+				CPen novaHaloPen(PS_SOLID, 4, RGB(0, 0, 0));
+				CPen novaPen(PS_SOLID, 2, symbolWhiteColor.ToCOLORREF());
 				drawNovaShape(novaHaloPen);
 				drawNovaShape(novaPen);
-				if (rtPositionData.GetTransponderC())
-				{
-					SolidBrush centerBrush(symbolWhiteColor);
-					gdi->FillRectangle(&centerBrush, targetPoint.x - 1, targetPoint.y - 1, 2, 2);
-				}
 				return 12;
 			}
 
