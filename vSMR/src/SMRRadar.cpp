@@ -840,7 +840,7 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const double scaleY = height / latSpan;
 	const int radarWidth = radarArea.right - radarArea.left;
 	const int radarHeight = radarArea.bottom - radarArea.top;
-	const double viewPixelTolerance = 1.15;
+	const double viewPixelTolerance = 0.35;
 	const double lonPixelTolerance = (lonSpan / width) * viewPixelTolerance;
 	const double latPixelTolerance = (latSpan / height) * viewPixelTolerance;
 
@@ -893,6 +893,129 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 	if (cacheMatchesCurrentView() && drawRasterCacheExact())
 		return;
+
+	const unsigned long movementRenderDelayMs = 140;
+	const bool viewIsMoving = viewChanged || (nowTick - AvisoGeoJsonLastViewChangeTick) < movementRenderDelayMs;
+	if (viewIsMoving)
+	{
+		GraphicsState state = graphics.Save();
+		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
+		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
+		graphics.SetSmoothingMode(SmoothingModeHighSpeed);
+		graphics.SetPixelOffsetMode(PixelOffsetModeNone);
+
+		auto projectScreenPoint = [&](const AvisoPoint& coordinate) -> PointF
+		{
+			const double x = static_cast<double>(radarArea.left) + ((coordinate.longitude - displayMinLon) * scaleX);
+			const double y = static_cast<double>(radarArea.top) + ((displayMaxLat - coordinate.latitude) * scaleY);
+			return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
+		};
+
+		const double minScreenPointDistance = 1.1;
+		const double minScreenPointDistanceSquared = minScreenPointDistance * minScreenPointDistance;
+		auto appendScreenPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
+		{
+			if (!force && hasLastCoordinate)
+			{
+				const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * scaleX;
+				const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * scaleY;
+				if ((approxDx * approxDx + approxDy * approxDy) < minScreenPointDistanceSquared)
+					return;
+			}
+
+			const PointF point = projectScreenPoint(coordinate);
+			if (!force && !points.empty())
+			{
+				const PointF& lastPoint = points.back();
+				const double dx = static_cast<double>(point.X - lastPoint.X);
+				const double dy = static_cast<double>(point.Y - lastPoint.Y);
+				if ((dx * dx + dy * dy) < minScreenPointDistanceSquared)
+					return;
+			}
+
+			points.push_back(point);
+			lastCoordinate = coordinate;
+			hasLastCoordinate = true;
+		};
+
+		std::vector<PointF> screenPoints;
+		for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
+		{
+			if (feature.maxLatitude < displayMinLat ||
+				feature.minLatitude > displayMaxLat ||
+				feature.maxLongitude < displayMinLon ||
+				feature.minLongitude > displayMaxLon)
+			{
+				continue;
+			}
+
+			const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * scaleX;
+			const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * scaleY;
+			if (featurePixelWidth < 1.0 && featurePixelHeight < 1.0)
+				continue;
+
+			if (feature.polygon)
+			{
+				for (const std::vector<AvisoPoint>& ring : feature.paths)
+				{
+					if (ring.size() < 3)
+						continue;
+
+					screenPoints.clear();
+					screenPoints.reserve(ring.size());
+					AvisoPoint lastCoordinate{};
+					bool hasLastCoordinate = false;
+					for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+						appendScreenPoint(screenPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
+
+					if (screenPoints.size() < 3)
+						continue;
+
+					if (feature.fillColor.GetAlpha() > 0)
+					{
+						SolidBrush fillBrush(feature.fillColor);
+						graphics.FillPolygon(&fillBrush, screenPoints.data(), static_cast<INT>(screenPoints.size()), FillModeAlternate);
+					}
+
+					if (feature.strokeColor.GetAlpha() > 0 &&
+						feature.strokeWidth > 0.0f &&
+						!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
+					{
+						Pen outlinePen(feature.strokeColor, feature.strokeWidth);
+						outlinePen.SetLineJoin(LineJoinRound);
+						graphics.DrawPolygon(&outlinePen, screenPoints.data(), static_cast<INT>(screenPoints.size()));
+					}
+				}
+				continue;
+			}
+
+			if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
+				continue;
+
+			Pen linePen(feature.strokeColor, feature.strokeWidth);
+			linePen.SetLineJoin(LineJoinRound);
+			linePen.SetStartCap(LineCapRound);
+			linePen.SetEndCap(LineCapRound);
+			for (const std::vector<AvisoPoint>& line : feature.paths)
+			{
+				if (line.size() < 2)
+					continue;
+
+				screenPoints.clear();
+				screenPoints.reserve(line.size());
+				AvisoPoint lastCoordinate{};
+				bool hasLastCoordinate = false;
+				for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
+					appendScreenPoint(screenPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
+
+				if (screenPoints.size() >= 2)
+					graphics.DrawLines(&linePen, screenPoints.data(), static_cast<INT>(screenPoints.size()));
+			}
+		}
+
+		graphics.Restore(state);
+		return;
+	}
 
 	const double maxDimension = width > height ? width : height;
 	const double targetRasterScale = 1.0;
