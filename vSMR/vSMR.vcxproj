@@ -188,6 +188,7 @@
     <ClInclude Include="SMRRadar.hpp" />
     <ClInclude Include="SMRRadar_TagShared.hpp" />
     <ClInclude Include="SMRTextUtils.hpp" />
+    <ClInclude Include="SMRVacdmTagHelpers.hpp" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="vSMR.hpp" />
