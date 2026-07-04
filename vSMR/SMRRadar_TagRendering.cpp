@@ -6,7 +6,11 @@
 #include <unordered_map>
 #include <cctype>
 
-#include "SMRRadar_TagShared.hpp"
+#include "SMRGroundState.hpp"
+#include "SMRProfileColorPaths.hpp"
+#include "SMRTagColorRules.hpp"
+#include "SMRTagDefinitionUtils.hpp"
+#include "SMRVacdmTagHelpers.hpp"
 
 #if defined(_DEBUG)
 #define VSMR_REFRESH_LOG(message) Logger::info(message)

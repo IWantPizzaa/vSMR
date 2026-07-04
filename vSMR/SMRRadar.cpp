@@ -8,7 +8,11 @@
 #include <cctype>
 #include <limits>
 #include "rapidjson/document.h"
-#include "SMRRadar_TagShared.hpp"
+#include "SMRGroundState.hpp"
+#include "SMRProfileColorPaths.hpp"
+#include "SMRTagColorRules.hpp"
+#include "SMRTagDefinitionUtils.hpp"
+#include "SMRVacdmTagHelpers.hpp"
 #include "ProfileEditorDialog.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
