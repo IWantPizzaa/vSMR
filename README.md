@@ -56,6 +56,21 @@ vSMR is not a standalone application. It is a EuroScope plugin DLL that:
 - integrates Hoppie CPDLC for datalink clearance workflows
 - ships with a detachable live profile editor
 
+## Repository Layout
+
+The main EuroScope plugin project lives in [`vSMR/`](vSMR/):
+
+```text
+vSMR/
+  src/         C++ implementation files
+  include/     Project headers and resource IDs
+  resources/   RC script, cursors, audio, and linker definition
+  data/        Default runtime JSON files to copy next to vSMR.dll
+  tools/       Maintenance scripts
+```
+
+The map renderer proof-of-concept remains separate under [`vSMRMapRenderer/`](vSMRMapRenderer/), with shared protocol types in [`vSMRMapIPC/`](vSMRMapIPC/).
+
 ## Main Features
 
 - Advanced SMR radar display for ground movement and low-level airborne traffic
@@ -103,7 +118,7 @@ Important:
 
 - `vSMR_Profiles.json` is required. The code expects it to exist and parses it on startup.
 - `vSMR_Maps.json` is optional.
-- The repository already ships example runtime files under [`vSMR/`](vSMR/).
+- The repository already ships example runtime files under [`vSMR/data/`](vSMR/data/).
 
 Example deployment layout:
 

@@ -1,228 +1,252 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
+    <Filter Include="Source">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+      <Extensions>cpp;c;cc;cxx</Extensions>
     </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+    <Filter Include="Headers">
+      <UniqueIdentifier>{93995380-89BD-4B04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
     </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{67DA6AB6-F800-4C08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Resources\Cursors">
+      <UniqueIdentifier>{6B5D3803-9232-414B-94AF-4021F2E87F31}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources\Audio">
+      <UniqueIdentifier>{21C24E8D-995F-47BA-9A54-56D5531D3A86}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Data">
+      <UniqueIdentifier>{08057F37-735D-4E2D-A3D9-F3F16E39AA0B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tools">
+      <UniqueIdentifier>{32649C8B-7A62-48DA-8A7C-541F0A096E5C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Third Party Headers">
+      <UniqueIdentifier>{8D3F87A9-5077-4DFD-A1E4-4C7DCDE80A13}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="ReadMe.txt" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="vSMR.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\CallsignLookup.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="stdafx.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\Config.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRPlugin.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\CPDLCSettingsDialog.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="Rimcas.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\DataLinkDialog.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRGeometry.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\HttpHelper.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\InsetWindow.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRSharedState.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\ProfileEditorDialog.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_AircraftAndAsr.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\Rimcas.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_FunctionCall.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRGeometry.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_RadarAndCommands.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRPlugin.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_ScreenInteraction.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_TagRendering.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRSharedState.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_TagDefinitions.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_TargetsAndFonts.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_FunctionCall.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="CallsignLookup.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="HttpHelper.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="DataLinkDialog.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_ScreenInteraction.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="CPDLCSettingsDialog.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_TagDefinitions.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="Config.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_TagRendering.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="InsetWindow.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_TargetsAndFonts.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="ProfileEditorDialog.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\SMRRadar_Utilities.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_ProfileEditorWindow.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\stdafx.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
-    <ClCompile Include="SMRRadar_Utilities.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="src\vSMR.cpp">
+      <Filter>Source</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="stdafx.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\CallsignLookup.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\ColorManager.h">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\Config.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="CallsignLookup.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\Constant.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="CPDLCSettingsDialog.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\CPDLCSettingsDialog.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="DataLinkDialog.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\DataLinkDialog.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="HttpHelper.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\HttpHelper.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="Rimcas.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\InsetWindow.h">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRColorUtils.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\Logger.h">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRPlugin.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\ProfileEditorDialog.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRRadar.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\resource.h">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRDataTypes.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\Rimcas.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRGeometry.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRColorUtils.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRGroundState.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRDataTypes.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRProfileColorPaths.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRGeometry.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="SMRSharedState.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRGroundState.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="vSMR.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRPlugin.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="Constant.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRProfileColorPaths.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="Config.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRRadar.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="InsetWindow.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRSharedState.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="ColorManager.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRTagColorRules.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="Logger.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="include\SMRTagDefinitionUtils.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SMRTextUtils.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SMRVacdmTagHelpers.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\stdafx.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\targetver.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\vSMR.hpp">
+      <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\document.h">
-      <Filter>Header Files</Filter>
+      <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\filestream.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\lib\include\rapidjson\rapidjson.h">
-      <Filter>Header Files</Filter>
+      <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\prettywriter.h">
-      <Filter>Header Files</Filter>
+      <Filter>Third Party Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\lib\include\rapidjson\rapidjson.h">
+      <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\reader.h">
-      <Filter>Header Files</Filter>
+      <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\stringbuffer.h">
-      <Filter>Header Files</Filter>
+      <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\writer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ProfileEditorDialog.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SMRTextUtils.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SMRVacdmTagHelpers.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SMRTagDefinitionUtils.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SMRTagColorRules.hpp">
-      <Filter>Header Files</Filter>
+      <Filter>Third Party Headers</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="vSMR.def">
-      <Filter>Source Files</Filter>
+    <None Include="data\ICAO_Aircraft.json">
+      <Filter>Data</Filter>
     </None>
-    <None Include="res\vSMR.rc2">
-      <Filter>Resource Files</Filter>
+    <None Include="data\vSMR_Maps.json">
+      <Filter>Data</Filter>
     </None>
-    <None Include="arrow.cur">
-      <Filter>Resource Files</Filter>
+    <None Include="data\vSMR_Profiles.json">
+      <Filter>Data</Filter>
     </None>
-    <None Include="cursor1.cur">
-      <Filter>Resource Files</Filter>
+    <None Include="resources\cursors\arrow.cur">
+      <Filter>Resources\Cursors</Filter>
     </None>
-    <None Include="POINTER1.cur">
-      <Filter>Resource Files</Filter>
+    <None Include="resources\cursors\cursor1.cur">
+      <Filter>Resources\Cursors</Filter>
     </None>
-    <None Include="..\ml_blau_link.cur">
-      <Filter>Resource Files</Filter>
+    <None Include="resources\cursors\ml_blau_link.cur">
+      <Filter>Resources\Cursors</Filter>
     </None>
-    <None Include="..\move.cur">
-      <Filter>Resource Files</Filter>
+    <None Include="resources\cursors\move.cur">
+      <Filter>Resources\Cursors</Filter>
+    </None>
+    <None Include="resources\cursors\POINTER1.cur">
+      <Filter>Resources\Cursors</Filter>
+    </None>
+    <None Include="resources\vSMR.def">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="resources\vSMR.rc2">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="tools\edit_tagdefs.ps1">
+      <Filter>Tools</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="vSMR.rc">
-      <Filter>Resource Files</Filter>
+    <ResourceCompile Include="resources\vSMR.rc">
+      <Filter>Resources</Filter>
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Media Include="..\Ding.wav">
-      <Filter>Resource Files</Filter>
+    <Media Include="resources\audio\Ding.wav">
+      <Filter>Resources\Audio</Filter>
     </Media>
   </ItemGroup>
 </Project>
