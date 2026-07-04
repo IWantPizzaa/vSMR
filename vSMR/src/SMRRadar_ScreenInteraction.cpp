@@ -9,6 +9,163 @@ extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
 
+namespace
+{
+	bool IsAppWindowObjectType(int objectType)
+	{
+		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
+	}
+
+	bool IsObjectId(const char* objectId, const char* expected)
+	{
+		return objectId != nullptr && expected != nullptr && strcmp(objectId, expected) == 0;
+	}
+
+	bool IsAppWindowVisible(CSMRRadar* radar, int appWindowId)
+	{
+		if (radar == nullptr)
+			return false;
+
+		const auto displayIt = radar->appWindowDisplays.find(appWindowId);
+		return displayIt != radar->appWindowDisplays.end() && displayIt->second;
+	}
+
+	bool IsPointInMainRadarArea(CSMRRadar* radar, POINT pt)
+	{
+		if (radar == nullptr)
+			return false;
+
+		CRect radarArea(radar->GetRadarArea());
+		CRect chatArea(radar->GetChatArea());
+		radarArea.NormalizeRect();
+		chatArea.NormalizeRect();
+		radarArea.bottom = chatArea.top;
+		return
+			pt.x >= radarArea.left &&
+			pt.x <= radarArea.right &&
+			pt.y >= radarArea.top &&
+			pt.y <= radarArea.bottom;
+	}
+
+	CInsetWindow* VisibleAppWindowAtPoint(CSMRRadar* radar, POINT pt)
+	{
+		if (radar == nullptr)
+			return nullptr;
+
+		for (auto& kv : radar->appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow == nullptr ||
+				!IsAppWindowVisible(radar, kv.first) ||
+				!appWindow->IsPointInside(pt))
+			{
+				continue;
+			}
+
+			return appWindow;
+		}
+
+		return nullptr;
+	}
+
+	CInsetWindow* VisibleAvisoViewportAtPoint(CSMRRadar* radar, POINT pt)
+	{
+		CInsetWindow* appWindow = VisibleAppWindowAtPoint(radar, pt);
+		if (appWindow != nullptr && appWindow->IsAvisoViewport())
+			return appWindow;
+		return nullptr;
+	}
+
+	void SelectAvisoViewport(CSMRRadar* radar, CInsetWindow* selectedViewport)
+	{
+		if (radar == nullptr || selectedViewport == nullptr)
+			return;
+
+		radar->AvisoGeoJsonScrollSelected = false;
+		for (auto& kv : radar->appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow != nullptr && appWindow->IsAvisoViewport())
+				appWindow->m_AvisoScrollSelected = (appWindow == selectedViewport);
+		}
+	}
+
+	void SelectMainAviso(CSMRRadar* radar)
+	{
+		if (radar == nullptr)
+			return;
+
+		radar->AvisoGeoJsonScrollSelected = true;
+		for (auto& kv : radar->appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow != nullptr && appWindow->IsAvisoViewport())
+				appWindow->m_AvisoScrollSelected = false;
+		}
+	}
+
+	void EndAvisoViewportPans(CSMRRadar* radar)
+	{
+		if (radar == nullptr)
+			return;
+
+		for (auto& kv : radar->appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow != nullptr && appWindow->IsAvisoViewport())
+				appWindow->EndAvisoPan();
+		}
+	}
+}
+
+void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
+{
+	Logger::info(string(__FUNCSIG__));
+	UNREFERENCED_PARAMETER(Area);
+	mouseLocation = Pt;
+
+	const char* objectId = (sObjectId != nullptr) ? sObjectId : "";
+	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
+	{
+		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, Pt);
+		if (viewportAtPoint != nullptr)
+			SelectAvisoViewport(this, viewportAtPoint);
+		else if (VisibleAppWindowAtPoint(this, Pt) == nullptr && IsPointInMainRadarArea(this, Pt))
+			SelectMainAviso(this);
+	}
+
+	if (Button != BUTTON_RIGHT || !IsAppWindowObjectType(ObjectType))
+		return;
+
+	const int appWindowId = ObjectType - APPWINDOW_BASE;
+	auto appWindowIt = appWindows.find(appWindowId);
+	if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
+		return;
+
+	CInsetWindow* appWindow = appWindowIt->second.get();
+	if (!appWindow->IsAvisoViewport() || !IsObjectId(objectId, "window"))
+		return;
+
+	SelectAvisoViewport(this, appWindow);
+	appWindow->BeginAvisoPan(Pt);
+	RequestRefresh();
+}
+
+void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
+{
+	Logger::info(string(__FUNCSIG__));
+	UNREFERENCED_PARAMETER(ObjectType);
+	UNREFERENCED_PARAMETER(sObjectId);
+	UNREFERENCED_PARAMETER(Area);
+	mouseLocation = Pt;
+
+	if (Button == BUTTON_RIGHT)
+	{
+		EndAvisoViewportPans(this);
+		RequestRefresh();
+	}
+}
+
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
 	Logger::info(string(__FUNCSIG__));
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
@@ -16,10 +173,6 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	auto isObjectId = [&](const char* expected) -> bool
 	{
 		return expected != nullptr && strcmp(objectId, expected) == 0;
-	};
-	auto isAppWindowObjectType = [](int objectType) -> bool
-	{
-		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
 	};
 	auto setCursorState = [&](HCURSOR cursor, bool keepStandardCursor)
 	{
@@ -67,7 +220,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		}
 	};
 
-	if (isAppWindowObjectType(ObjectType)) {
+	if (IsAppWindowObjectType(ObjectType)) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
@@ -236,8 +389,121 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
 	Logger::info(string(__FUNCSIG__));
+	UNREFERENCED_PARAMETER(ObjectType);
+	UNREFERENCED_PARAMETER(sObjectId);
+	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
+	for (auto& kv : appWindows)
+	{
+		CInsetWindow* appWindow = kv.second.get();
+		if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+		{
+			if ((::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
+			{
+				appWindow->EndAvisoPan();
+				RequestRefresh();
+				return;
+			}
+
+			appWindow->UpdateAvisoPan(Pt);
+			RequestRefresh();
+			return;
+		}
+	}
 	RequestRefresh();
+}
+
+bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
+{
+	if (hwnd == nullptr || !::IsWindow(hwnd))
+		return false;
+
+	POINTS wheelPoint = MAKEPOINTS(lParam);
+	POINT clientPoint = { static_cast<LONG>(wheelPoint.x), static_cast<LONG>(wheelPoint.y) };
+	if (!::ScreenToClient(hwnd, &clientPoint))
+		return false;
+
+	const int wheelDelta = static_cast<short>(HIWORD(wParam));
+	if (wheelDelta == 0)
+		return false;
+
+	mouseLocation = clientPoint;
+	const double zoomStep = 1.18;
+	CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, clientPoint);
+	if (viewportAtPoint != nullptr)
+	{
+		if (viewportAtPoint->m_AvisoScrollSelected)
+		{
+			const double scaleMultiplier = (wheelDelta > 0) ? zoomStep : (1.0 / zoomStep);
+			if (viewportAtPoint->ZoomAvisoAtPoint(clientPoint, scaleMultiplier))
+				RequestRefresh();
+		}
+		return true;
+	}
+
+	if (VisibleAppWindowAtPoint(this, clientPoint) != nullptr)
+		return true;
+
+	if (!IsPointInMainRadarArea(this, clientPoint))
+		return false;
+
+	const bool mainAvisoAvailable = !ResolveAvisoGeoJsonPathForAirport(getActiveAirport()).empty();
+	if (!mainAvisoAvailable)
+		return false;
+
+	if (!AvisoGeoJsonScrollSelected)
+		return true;
+
+	CRect radarArea(GetRadarArea());
+	CRect chatArea(GetChatArea());
+	radarArea.NormalizeRect();
+	chatArea.NormalizeRect();
+	radarArea.bottom = chatArea.top;
+	const double radarWidth = static_cast<double>(max(1, radarArea.Width()));
+	const double radarHeight = static_cast<double>(max(1, radarArea.Height()));
+	const double fx = std::clamp((static_cast<double>(clientPoint.x - radarArea.left) / radarWidth), 0.0, 1.0);
+	const double fy = std::clamp((static_cast<double>(clientPoint.y - radarArea.top) / radarHeight), 0.0, 1.0);
+
+	CPosition displayA;
+	CPosition displayB;
+	GetDisplayArea(&displayA, &displayB);
+	const double minLat = min(displayA.m_Latitude, displayB.m_Latitude);
+	const double maxLat = max(displayA.m_Latitude, displayB.m_Latitude);
+	const double minLon = min(displayA.m_Longitude, displayB.m_Longitude);
+	const double maxLon = max(displayA.m_Longitude, displayB.m_Longitude);
+	const double latSpan = maxLat - minLat;
+	const double lonSpan = maxLon - minLon;
+	if (!std::isfinite(latSpan) || !std::isfinite(lonSpan) || latSpan <= 0.0 || lonSpan <= 0.0)
+		return true;
+
+	const CPosition anchor = ConvertCoordFromPixelToPosition(clientPoint);
+	const double spanMultiplier = (wheelDelta > 0) ? (1.0 / zoomStep) : zoomStep;
+	const double newLatSpan = std::clamp(latSpan * spanMultiplier, 0.00001, 170.0);
+	const double newLonSpan = std::clamp(lonSpan * spanMultiplier, 0.00001, 360.0);
+
+	double newMinLon = anchor.m_Longitude - (fx * newLonSpan);
+	double newMaxLat = anchor.m_Latitude + (fy * newLatSpan);
+	double newMinLat = newMaxLat - newLatSpan;
+	if (newMaxLat > 85.0)
+	{
+		newMaxLat = 85.0;
+		newMinLat = newMaxLat - newLatSpan;
+	}
+	if (newMinLat < -85.0)
+	{
+		newMinLat = -85.0;
+		newMaxLat = newMinLat + newLatSpan;
+	}
+
+	CPosition leftDown;
+	leftDown.m_Latitude = newMinLat;
+	leftDown.m_Longitude = newMinLon;
+	CPosition rightUp;
+	rightUp.m_Latitude = newMaxLat;
+	rightUp.m_Longitude = newMinLon + newLonSpan;
+	SetDisplayArea(leftDown, rightUp);
+	RequestRefresh();
+	return true;
 }
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
@@ -249,10 +515,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	auto isObjectId = [&](const char* expected) -> bool
 	{
 		return expected != nullptr && strcmp(objectId, expected) == 0;
-	};
-	auto isAppWindowObjectType = [](int objectType) -> bool
-	{
-		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
 	};
 	auto shiftPopupAreaDown = [&](int pixels)
 	{
@@ -370,7 +632,16 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		}
 	};
 
-	if (isAppWindowObjectType(ObjectType)) {
+	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
+	{
+		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, Pt);
+		if (viewportAtPoint != nullptr)
+			SelectAvisoViewport(this, viewportAtPoint);
+		else if (VisibleAppWindowAtPoint(this, Pt) == nullptr && IsPointInMainRadarArea(this, Pt))
+			SelectMainAviso(this);
+	}
+
+	if (IsAppWindowObjectType(ObjectType)) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
