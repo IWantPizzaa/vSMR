@@ -376,6 +376,7 @@ CSMRRadar::CSMRRadar()
 CSMRRadar::~CSMRRadar()
 {
 	Logger::info(string(__FUNCSIG__));
+	StopAvisoGeoJsonRenderThread();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
 	try {
@@ -541,6 +542,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 
 	AvisoGeoJsonFeatures.clear();
 	AvisoGeoJsonLabels.clear();
+	AvisoGeoJsonFeatureSnapshot.reset();
+	AvisoGeoJsonLabelSnapshot.reset();
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
@@ -566,6 +569,13 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	AvisoGeoJsonMinLatitude = 0.0;
 	AvisoGeoJsonMaxLongitude = 0.0;
 	AvisoGeoJsonMaxLatitude = 0.0;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		++AvisoGeoJsonRenderLatestRequestId;
+		AvisoGeoJsonPendingRenderRequest.reset();
+		AvisoGeoJsonCompletedRenderResult.reset();
+		AvisoGeoJsonRenderLastRequestValid = false;
+	}
 
 	std::ifstream input(path, std::ios::binary);
 	if (!input.is_open())
@@ -594,6 +604,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	{
 		Logger::info("AVISO GeoJSON has no feature array path=" + path);
 		AvisoGeoJsonLoaded = true;
+		AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
+		AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
 		return true;
 	}
 
@@ -774,6 +786,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	}
 
 	AvisoGeoJsonLoaded = true;
+	AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
+	AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
 	Logger::info(
 		"AVISO GeoJSON loaded path=" + path +
 		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
@@ -781,6 +795,425 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		" multilines=" + std::to_string(multiLineCount) +
 		" labels=" + std::to_string(labelCount));
 	return true;
+}
+
+void CSMRRadar::EnsureAvisoGeoJsonRenderThread()
+{
+	bool shouldStart = false;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		if (!AvisoGeoJsonRenderThreadStarted)
+		{
+			AvisoGeoJsonRenderStop = false;
+			AvisoGeoJsonRenderThreadStarted = true;
+			shouldStart = true;
+		}
+	}
+
+	if (shouldStart)
+		AvisoGeoJsonRenderThread = std::thread(&CSMRRadar::AvisoGeoJsonRenderThreadMain, this);
+}
+
+void CSMRRadar::StopAvisoGeoJsonRenderThread()
+{
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		if (!AvisoGeoJsonRenderThreadStarted)
+			return;
+		AvisoGeoJsonRenderStop = true;
+		AvisoGeoJsonPendingRenderRequest.reset();
+		AvisoGeoJsonCompletedRenderResult.reset();
+	}
+
+	AvisoGeoJsonRenderCondition.notify_all();
+	if (AvisoGeoJsonRenderThread.joinable())
+		AvisoGeoJsonRenderThread.join();
+
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		AvisoGeoJsonRenderThreadStarted = false;
+		AvisoGeoJsonRenderStop = false;
+		AvisoGeoJsonRenderLastRequestValid = false;
+	}
+}
+
+void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
+{
+	if (request.path.empty() ||
+		request.features == nullptr ||
+		request.labels == nullptr ||
+		request.rasterWidth <= 0 ||
+		request.rasterHeight <= 0)
+	{
+		return;
+	}
+
+	EnsureAvisoGeoJsonRenderThread();
+
+	bool shouldNotify = false;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		const bool sameRequest =
+			AvisoGeoJsonRenderLastRequestValid &&
+			AvisoGeoJsonRenderLastRequestPath == request.path &&
+			AvisoGeoJsonRenderLastRequestRasterWidth == request.rasterWidth &&
+			AvisoGeoJsonRenderLastRequestRasterHeight == request.rasterHeight &&
+			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLongitude, request.displayMinLongitude, 1e-10) &&
+			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLatitude, request.displayMinLatitude, 1e-10) &&
+			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLongitude, request.displayMaxLongitude, 1e-10) &&
+			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLatitude, request.displayMaxLatitude, 1e-10);
+		if (sameRequest)
+			return;
+
+		request.requestId = ++AvisoGeoJsonRenderNextRequestId;
+		AvisoGeoJsonRenderLatestRequestId = request.requestId;
+		AvisoGeoJsonRenderLastRequestValid = true;
+		AvisoGeoJsonRenderLastRequestPath = request.path;
+		AvisoGeoJsonRenderLastRequestMinLongitude = request.displayMinLongitude;
+		AvisoGeoJsonRenderLastRequestMinLatitude = request.displayMinLatitude;
+		AvisoGeoJsonRenderLastRequestMaxLongitude = request.displayMaxLongitude;
+		AvisoGeoJsonRenderLastRequestMaxLatitude = request.displayMaxLatitude;
+		AvisoGeoJsonRenderLastRequestRasterWidth = request.rasterWidth;
+		AvisoGeoJsonRenderLastRequestRasterHeight = request.rasterHeight;
+		AvisoGeoJsonPendingRenderRequest = std::make_unique<AvisoRasterRenderRequest>(std::move(request));
+		shouldNotify = true;
+	}
+
+	if (shouldNotify)
+		AvisoGeoJsonRenderCondition.notify_one();
+}
+
+void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
+{
+	std::unique_ptr<AvisoRasterRenderResult> result;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		result = std::move(AvisoGeoJsonCompletedRenderResult);
+	}
+
+	if (result == nullptr || result->bitmap == nullptr)
+		return;
+
+	AvisoGeoJsonRasterCache = std::move(result->bitmap);
+	AvisoGeoJsonRasterCachePath = result->path;
+	AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
+	AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
+	AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
+	AvisoGeoJsonRasterMaxLatitude = result->displayMaxLatitude;
+	AvisoGeoJsonRasterWidth = result->rasterWidth;
+	AvisoGeoJsonRasterHeight = result->rasterHeight;
+	AvisoGeoJsonRasterAnchorLongitude = result->renderMinLongitude;
+	AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
+	AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
+	AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
+	AvisoGeoJsonRasterAnchorValid = true;
+}
+
+void CSMRRadar::AvisoGeoJsonRenderThreadMain()
+{
+	for (;;)
+	{
+		std::unique_ptr<AvisoRasterRenderRequest> request;
+		{
+			std::unique_lock<std::mutex> lock(AvisoGeoJsonRenderMutex);
+			AvisoGeoJsonRenderCondition.wait(lock, [&]() {
+				return AvisoGeoJsonRenderStop || AvisoGeoJsonPendingRenderRequest != nullptr;
+			});
+
+			if (AvisoGeoJsonRenderStop)
+				return;
+
+			request = std::move(AvisoGeoJsonPendingRenderRequest);
+		}
+
+		if (request == nullptr)
+			continue;
+
+		std::unique_ptr<AvisoRasterRenderResult> result = RenderAvisoGeoJsonRaster(*request);
+		bool shouldRefresh = false;
+		{
+			std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+			if (AvisoGeoJsonRenderStop)
+				return;
+
+			if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
+			{
+				AvisoGeoJsonCompletedRenderResult = std::move(result);
+				shouldRefresh = true;
+			}
+		}
+
+		if (shouldRefresh)
+		{
+			try
+			{
+				RequestRefresh();
+			}
+			catch (...)
+			{
+			}
+		}
+	}
+}
+
+std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJsonRaster(const AvisoRasterRenderRequest& request) const
+{
+	if (request.features == nullptr ||
+		request.labels == nullptr ||
+		request.rasterWidth <= 0 ||
+		request.rasterHeight <= 0)
+	{
+		return nullptr;
+	}
+
+	auto raster = std::make_unique<Bitmap>(request.rasterWidth, request.rasterHeight, PixelFormat32bppPARGB);
+	if (raster == nullptr || raster->GetLastStatus() != Ok)
+		return nullptr;
+
+	Graphics rasterGraphics(raster.get());
+	if (rasterGraphics.GetLastStatus() != Ok)
+		return nullptr;
+
+	rasterGraphics.SetPageUnit(UnitPixel);
+	rasterGraphics.Clear(Color(0, 0, 0, 0));
+	rasterGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
+	rasterGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
+
+	const double displayMinLon = request.displayMinLongitude;
+	const double displayMaxLon = request.displayMaxLongitude;
+	const double displayMinLat = request.displayMinLatitude;
+	const double displayMaxLat = request.displayMaxLatitude;
+	const double lonSpan = displayMaxLon - displayMinLon;
+	const double latSpan = displayMaxLat - displayMinLat;
+	if (lonSpan <= 0.0 || latSpan <= 0.0)
+		return nullptr;
+
+	auto projectScreenPoint = [&](double longitude, double latitude) -> PointF
+	{
+		const double u = (longitude - displayMinLon) / lonSpan;
+		const double v = (displayMaxLat - latitude) / latSpan;
+		const double topX = static_cast<double>(request.projectedTopLeft.X) + static_cast<double>(request.projectedTopRight.X - request.projectedTopLeft.X) * u;
+		const double bottomX = static_cast<double>(request.projectedBottomLeft.X) + static_cast<double>(request.projectedBottomRight.X - request.projectedBottomLeft.X) * u;
+		const double topY = static_cast<double>(request.projectedTopLeft.Y) + static_cast<double>(request.projectedTopRight.Y - request.projectedTopLeft.Y) * u;
+		const double bottomY = static_cast<double>(request.projectedBottomLeft.Y) + static_cast<double>(request.projectedBottomRight.Y - request.projectedBottomLeft.Y) * u;
+		return PointF(
+			static_cast<REAL>(topX + (bottomX - topX) * v),
+			static_cast<REAL>(topY + (bottomY - topY) * v));
+	};
+
+	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
+	{
+		const PointF screenPoint = projectScreenPoint(coordinate.longitude, coordinate.latitude);
+		const double x = (static_cast<double>(screenPoint.X) - request.renderScreenLeft) * request.rasterScale;
+		const double y = (static_cast<double>(screenPoint.Y) - request.renderScreenTop) * request.rasterScale;
+		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
+	};
+
+	const double minRasterPointDistance = AvisoMax(0.35 * request.rasterScale, 0.5);
+	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
+	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
+	{
+		if (!force && hasLastCoordinate)
+		{
+			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * request.rasterScale;
+			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * request.rasterScale;
+			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
+				return;
+		}
+
+		const PointF point = projectRasterPoint(coordinate);
+		if (!force && !points.empty())
+		{
+			const PointF& lastPoint = points.back();
+			const double dx = static_cast<double>(point.X - lastPoint.X);
+			const double dy = static_cast<double>(point.Y - lastPoint.Y);
+			if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
+				return;
+		}
+
+		points.push_back(point);
+		lastCoordinate = coordinate;
+		hasLastCoordinate = true;
+	};
+
+	std::vector<PointF> rasterPoints;
+	for (const AvisoFeature& feature : *request.features)
+	{
+		if (feature.maxLatitude < request.renderMinLatitude ||
+			feature.minLatitude > request.renderMaxLatitude ||
+			feature.maxLongitude < request.renderMinLongitude ||
+			feature.minLongitude > request.renderMaxLongitude)
+		{
+			continue;
+		}
+
+		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX * request.rasterScale;
+		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * request.rasterScale;
+		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
+			continue;
+
+		if (feature.polygon)
+		{
+			for (const std::vector<AvisoPoint>& ring : feature.paths)
+			{
+				if (ring.size() < 3)
+					continue;
+
+				rasterPoints.clear();
+				rasterPoints.reserve(ring.size());
+				AvisoPoint lastCoordinate{};
+				bool hasLastCoordinate = false;
+				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
+
+				if (rasterPoints.size() < 3)
+					continue;
+
+				if (feature.fillColor.GetAlpha() > 0)
+				{
+					SolidBrush fillBrush(feature.fillColor);
+					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
+				}
+
+				if (feature.strokeColor.GetAlpha() > 0 &&
+					feature.strokeWidth > 0.0f &&
+					!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
+				{
+					Pen outlinePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale));
+					outlinePen.SetLineJoin(LineJoinRound);
+					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+				}
+			}
+			continue;
+		}
+
+		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
+			continue;
+
+		Pen linePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale));
+		linePen.SetLineJoin(LineJoinRound);
+		linePen.SetStartCap(LineCapRound);
+		linePen.SetEndCap(LineCapRound);
+		for (const std::vector<AvisoPoint>& line : feature.paths)
+		{
+			if (line.size() < 2)
+				continue;
+
+			rasterPoints.clear();
+			rasterPoints.reserve(line.size());
+			AvisoPoint lastCoordinate{};
+			bool hasLastCoordinate = false;
+			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
+				appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
+
+			if (rasterPoints.size() >= 2)
+				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+		}
+	}
+
+	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
+	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / AvisoMax(request.scaleX * lonSpan, 1.0);
+	const double metersPerPixelLat = (latSpan * 110540.0) / AvisoMax(request.scaleY * latSpan, 1.0);
+	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
+	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
+	{
+		return label.maxMetersPerPixel <= 0.0 || metersPerPixel <= label.maxMetersPerPixel;
+	};
+	auto labelRectForAnchor = [](const PointF& point, REAL widthPx, REAL heightPx, const std::string& anchor) -> RectF
+	{
+		const std::string normalizedAnchor = ToUpperAscii(anchor);
+		REAL x = point.X - (widthPx * 0.5f);
+		REAL y = point.Y - (heightPx * 0.5f);
+		if (normalizedAnchor.find("LEFT") != std::string::npos)
+			x = point.X;
+		else if (normalizedAnchor.find("RIGHT") != std::string::npos)
+			x = point.X - widthPx;
+		if (normalizedAnchor.find("TOP") != std::string::npos)
+			y = point.Y;
+		else if (normalizedAnchor.find("BOTTOM") != std::string::npos)
+			y = point.Y - heightPx;
+		return RectF(x, y, widthPx, heightPx);
+	};
+
+	if (!request.labels->empty())
+	{
+		rasterGraphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+		FontFamily labelFontFamily(L"Arial");
+		StringFormat labelFormat;
+		labelFormat.SetAlignment(StringAlignmentCenter);
+		labelFormat.SetLineAlignment(StringAlignmentCenter);
+		labelFormat.SetFormatFlags(StringFormatFlagsNoWrap);
+		auto getLabelEmSize = [&](float textSize) -> REAL
+		{
+			const float scaledSize = static_cast<float>(std::clamp(static_cast<double>(textSize * static_cast<float>(request.rasterScale)), 6.0, 40.0));
+			const int fontKey = static_cast<int>(std::lround(static_cast<double>(scaledSize) * 10.0));
+			return static_cast<REAL>(fontKey) / 10.0f;
+		};
+
+		for (const AvisoLabel& label : *request.labels)
+		{
+			if (label.position.latitude < request.renderMinLatitude ||
+				label.position.latitude > request.renderMaxLatitude ||
+				label.position.longitude < request.renderMinLongitude ||
+				label.position.longitude > request.renderMaxLongitude ||
+				!isDenseLabelVisible(label))
+			{
+				continue;
+			}
+
+			const REAL labelEmSize = getLabelEmSize(label.textSize);
+			const PointF labelPoint = projectRasterPoint(label.position);
+			const REAL textLength = static_cast<REAL>(label.text.length());
+			const REAL scaledTextSize = static_cast<REAL>(label.textSize * static_cast<float>(request.rasterScale));
+			const REAL haloPadding = static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale), 0.0) * 3.0);
+			const REAL layoutWidth = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f + haloPadding * 2.0f), 14.0));
+			const REAL layoutHeight = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * 1.65f + haloPadding * 2.0f), 10.0));
+			const RectF layoutRect = labelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
+
+			GraphicsPath textPath;
+			textPath.AddString(
+				label.text.c_str(),
+				static_cast<INT>(label.text.length()),
+				&labelFontFamily,
+				FontStyleRegular,
+				labelEmSize,
+				layoutRect,
+				&labelFormat);
+
+			if (textPath.GetPointCount() <= 0)
+				continue;
+
+			if (label.haloWidth > 0.0f && label.haloColor.GetAlpha() > 0)
+			{
+				Pen haloPen(label.haloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * 2.0f), 1.0)));
+				haloPen.SetLineJoin(LineJoinRound);
+				rasterGraphics.DrawPath(&haloPen, &textPath);
+			}
+
+			if (label.textColor.GetAlpha() > 0)
+			{
+				SolidBrush textBrush(label.textColor);
+				rasterGraphics.FillPath(&textBrush, &textPath);
+			}
+		}
+	}
+
+	auto result = std::make_unique<AvisoRasterRenderResult>();
+	result->requestId = request.requestId;
+	result->bitmap = std::move(raster);
+	result->path = request.path;
+	result->rasterWidth = request.rasterWidth;
+	result->rasterHeight = request.rasterHeight;
+	result->displayMinLongitude = request.displayMinLongitude;
+	result->displayMinLatitude = request.displayMinLatitude;
+	result->displayMaxLongitude = request.displayMaxLongitude;
+	result->displayMaxLatitude = request.displayMaxLatitude;
+	result->renderMinLongitude = request.renderMinLongitude;
+	result->renderMinLatitude = request.renderMinLatitude;
+	result->renderMaxLongitude = request.renderMaxLongitude;
+	result->renderMaxLatitude = request.renderMaxLatitude;
+	return result;
 }
 
 void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
@@ -917,25 +1350,6 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 	const double lonPixelTolerance = (1.0 / scaleX) * viewPixelTolerance;
 	const double latPixelTolerance = (1.0 / scaleY) * viewPixelTolerance;
 
-	const unsigned long nowTick = ::GetTickCount();
-	const bool viewChanged =
-		!AvisoGeoJsonLastViewValid ||
-		AvisoGeoJsonLastViewPath != path ||
-		!AvisoWithinTolerance(AvisoGeoJsonLastViewMinLongitude, displayMinLon, lonPixelTolerance) ||
-		!AvisoWithinTolerance(AvisoGeoJsonLastViewMinLatitude, displayMinLat, latPixelTolerance) ||
-		!AvisoWithinTolerance(AvisoGeoJsonLastViewMaxLongitude, displayMaxLon, lonPixelTolerance) ||
-		!AvisoWithinTolerance(AvisoGeoJsonLastViewMaxLatitude, displayMaxLat, latPixelTolerance);
-	if (viewChanged)
-	{
-		AvisoGeoJsonLastViewValid = true;
-		AvisoGeoJsonLastViewPath = path;
-		AvisoGeoJsonLastViewMinLongitude = displayMinLon;
-		AvisoGeoJsonLastViewMinLatitude = displayMinLat;
-		AvisoGeoJsonLastViewMaxLongitude = displayMaxLon;
-		AvisoGeoJsonLastViewMaxLatitude = displayMaxLat;
-		AvisoGeoJsonLastViewChangeTick = nowTick;
-	}
-
 	auto cacheMatchesCurrentView = [&]() -> bool
 	{
 		return AvisoGeoJsonRasterCache != nullptr &&
@@ -944,24 +1358,6 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 			AvisoWithinTolerance(AvisoGeoJsonRasterMinLatitude, displayMinLat, latPixelTolerance) &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLongitude, displayMaxLon, lonPixelTolerance) &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLatitude, displayMaxLat, latPixelTolerance);
-	};
-
-	auto drawRasterCacheExact = [&]() -> bool
-	{
-		if (AvisoGeoJsonRasterCache == nullptr || AvisoGeoJsonRasterWidth <= 0 || AvisoGeoJsonRasterHeight <= 0)
-			return false;
-
-		GraphicsState state = graphics.Save();
-		graphics.SetClip(Rect(radarArea.left, radarArea.top, radarWidth, radarHeight), CombineModeIntersect);
-		graphics.SetCompositingQuality(CompositingQualityHighSpeed);
-		const InterpolationMode interpolationMode =
-			(AvisoGeoJsonRasterWidth == radarWidth && AvisoGeoJsonRasterHeight == radarHeight)
-			? InterpolationModeNearestNeighbor
-			: InterpolationModeBilinear;
-		graphics.SetInterpolationMode(interpolationMode);
-		graphics.DrawImage(AvisoGeoJsonRasterCache.get(), radarArea.left, radarArea.top, radarWidth, radarHeight);
-		graphics.Restore(state);
-		return true;
 	};
 
 	auto drawRasterCacheTransformed = [&]() -> bool
@@ -1018,274 +1414,104 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 		return true;
 	};
 
-	if (cacheMatchesCurrentView() && drawRasterCacheExact())
+	ApplyCompletedAvisoGeoJsonRaster();
+	if (cacheMatchesCurrentView() && drawRasterCacheTransformed())
 		return;
 
-	const unsigned long rasterSettleDelayMs = 750;
-	if (AvisoGeoJsonRasterCache != nullptr &&
-		(nowTick - AvisoGeoJsonLastViewChangeTick) < rasterSettleDelayMs &&
-		drawRasterCacheTransformed())
-	{
+	if (AvisoGeoJsonFeatureSnapshot == nullptr)
+		AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
+	if (AvisoGeoJsonLabelSnapshot == nullptr)
+		AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
+	if (AvisoGeoJsonFeatureSnapshot == nullptr || AvisoGeoJsonLabelSnapshot == nullptr)
 		return;
-	}
 
-	const double maxDimension = width > height ? width : height;
+	const double overscanRatio = 0.75;
+	const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
+	const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
+	const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
+	const double renderMaxLat = displayMaxLat + (latSpan * overscanRatio);
+	const PointF renderTopLeft = projectScreenPoint(renderMinLon, renderMaxLat);
+	const PointF renderTopRight = projectScreenPoint(renderMaxLon, renderMaxLat);
+	const PointF renderBottomLeft = projectScreenPoint(renderMinLon, renderMinLat);
+	const PointF renderBottomRight = projectScreenPoint(renderMaxLon, renderMinLat);
+	const double renderScreenLeft = AvisoMin(AvisoMin(renderTopLeft.X, renderTopRight.X), AvisoMin(renderBottomLeft.X, renderBottomRight.X));
+	const double renderScreenTop = AvisoMin(AvisoMin(renderTopLeft.Y, renderTopRight.Y), AvisoMin(renderBottomLeft.Y, renderBottomRight.Y));
+	const double renderScreenRight = AvisoMax(AvisoMax(renderTopLeft.X, renderTopRight.X), AvisoMax(renderBottomLeft.X, renderBottomRight.X));
+	const double renderScreenBottom = AvisoMax(AvisoMax(renderTopLeft.Y, renderTopRight.Y), AvisoMax(renderBottomLeft.Y, renderBottomRight.Y));
+	const double renderPixelWidth = renderScreenRight - renderScreenLeft;
+	const double renderPixelHeight = renderScreenBottom - renderScreenTop;
+	if (renderPixelWidth <= 0.0 || renderPixelHeight <= 0.0)
+		return;
+
+	const double maxDimension = renderPixelWidth > renderPixelHeight ? renderPixelWidth : renderPixelHeight;
 	const double targetRasterScale = 1.0;
-	const double minRasterScale = 0.45;
-	const double maxRasterSide = 2400.0;
-	const double maxRasterPixels = 4000000.0;
+	const double minRasterScale = 0.30;
+	const double maxRasterSide = 3200.0;
+	const double maxRasterPixels = 5200000.0;
 	double rasterScale = targetRasterScale;
 	const double sideLimitedScale = maxRasterSide / maxDimension;
 	if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
 		rasterScale = sideLimitedScale;
-	const double pixelLimitedScale = std::sqrt(maxRasterPixels / (width * height));
+	const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
 	if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
 		rasterScale = pixelLimitedScale;
 	rasterScale = std::clamp(rasterScale, minRasterScale, targetRasterScale);
-	int rasterWidth = static_cast<int>((width * rasterScale) + 0.5);
-	int rasterHeight = static_cast<int>((height * rasterScale) + 0.5);
+	int rasterWidth = static_cast<int>((renderPixelWidth * rasterScale) + 0.5);
+	int rasterHeight = static_cast<int>((renderPixelHeight * rasterScale) + 0.5);
 	if (rasterWidth < 1)
 		rasterWidth = 1;
 	if (rasterHeight < 1)
 		rasterHeight = 1;
 
-	auto raster = std::make_unique<Bitmap>(rasterWidth, rasterHeight, PixelFormat32bppPARGB);
-	if (raster == nullptr || raster->GetLastStatus() != Ok)
+	AvisoRasterRenderRequest request;
+	request.path = path;
+	request.features = AvisoGeoJsonFeatureSnapshot;
+	request.labels = AvisoGeoJsonLabelSnapshot;
+	request.rasterWidth = rasterWidth;
+	request.rasterHeight = rasterHeight;
+	request.rasterScale = rasterScale;
+	request.displayMinLongitude = displayMinLon;
+	request.displayMinLatitude = displayMinLat;
+	request.displayMaxLongitude = displayMaxLon;
+	request.displayMaxLatitude = displayMaxLat;
+	request.renderMinLongitude = renderMinLon;
+	request.renderMinLatitude = renderMinLat;
+	request.renderMaxLongitude = renderMaxLon;
+	request.renderMaxLatitude = renderMaxLat;
+	request.renderScreenLeft = renderScreenLeft;
+	request.renderScreenTop = renderScreenTop;
+	request.scaleX = scaleX;
+	request.scaleY = scaleY;
+	request.projectedTopLeft = PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y));
+	request.projectedTopRight = PointF(static_cast<REAL>(projectedTopRight.x), static_cast<REAL>(projectedTopRight.y));
+	request.projectedBottomLeft = PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y));
+	request.projectedBottomRight = PointF(static_cast<REAL>(projectedBottomRight.x), static_cast<REAL>(projectedBottomRight.y));
+
+	if (drawRasterCacheTransformed())
 	{
-		drawRasterCacheTransformed();
+		QueueAvisoGeoJsonRasterRender(std::move(request));
 		return;
 	}
 
-	Graphics rasterGraphics(raster.get());
-	if (rasterGraphics.GetLastStatus() != Ok)
-	{
-		drawRasterCacheTransformed();
+	std::unique_ptr<AvisoRasterRenderResult> result = RenderAvisoGeoJsonRaster(request);
+	if (result == nullptr || result->bitmap == nullptr)
 		return;
-	}
 
-	rasterGraphics.SetPageUnit(UnitPixel);
-	rasterGraphics.Clear(Color(0, 0, 0, 0));
-	rasterGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
-	rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-	rasterGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
-
-	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
-	{
-		const PointF screenPoint = projectScreenPoint(coordinate.longitude, coordinate.latitude);
-		const double x = (static_cast<double>(screenPoint.X) - static_cast<double>(radarArea.left)) * rasterScale;
-		const double y = (static_cast<double>(screenPoint.Y) - static_cast<double>(radarArea.top)) * rasterScale;
-		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
-	};
-
-	const double minRasterPointDistance = AvisoMax(0.35 * rasterScale, 0.5);
-	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
-	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
-	{
-		if (!force && hasLastCoordinate)
-		{
-			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * scaleX * rasterScale;
-			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * scaleY * rasterScale;
-			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
-				return;
-		}
-
-		const PointF point = projectRasterPoint(coordinate);
-		if (!force && !points.empty())
-		{
-			const PointF& lastPoint = points.back();
-			const double dx = static_cast<double>(point.X - lastPoint.X);
-			const double dy = static_cast<double>(point.Y - lastPoint.Y);
-			if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
-				return;
-		}
-
-		points.push_back(point);
-		lastCoordinate = coordinate;
-		hasLastCoordinate = true;
-	};
-
-	std::vector<PointF> rasterPoints;
-	for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
-	{
-		if (feature.maxLatitude < displayMinLat ||
-			feature.minLatitude > displayMaxLat ||
-			feature.maxLongitude < displayMinLon ||
-			feature.minLongitude > displayMaxLon)
-		{
-			continue;
-		}
-
-		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * scaleX * rasterScale;
-		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * scaleY * rasterScale;
-		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
-			continue;
-
-		if (feature.polygon)
-		{
-			for (const std::vector<AvisoPoint>& ring : feature.paths)
-			{
-				if (ring.size() < 3)
-					continue;
-
-				rasterPoints.clear();
-				rasterPoints.reserve(ring.size());
-				AvisoPoint lastCoordinate{};
-				bool hasLastCoordinate = false;
-				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
-					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
-
-				if (rasterPoints.size() < 3)
-					continue;
-
-				if (feature.fillColor.GetAlpha() > 0)
-				{
-					SolidBrush fillBrush(feature.fillColor);
-					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
-				}
-
-				if (feature.strokeColor.GetAlpha() > 0 &&
-					feature.strokeWidth > 0.0f &&
-					!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
-				{
-					Pen outlinePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(rasterScale));
-					outlinePen.SetLineJoin(LineJoinRound);
-					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
-				}
-			}
-			continue;
-		}
-
-		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
-			continue;
-
-		Pen linePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(rasterScale));
-		linePen.SetLineJoin(LineJoinRound);
-		linePen.SetStartCap(LineCapRound);
-		linePen.SetEndCap(LineCapRound);
-		for (const std::vector<AvisoPoint>& line : feature.paths)
-		{
-			if (line.size() < 2)
-				continue;
-
-			rasterPoints.clear();
-			rasterPoints.reserve(line.size());
-			AvisoPoint lastCoordinate{};
-			bool hasLastCoordinate = false;
-			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
-				appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
-
-			if (rasterPoints.size() >= 2)
-				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
-		}
-	}
-
-	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
-	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / projectedWidth;
-	const double metersPerPixelLat = (latSpan * 110540.0) / projectedHeight;
-	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
-	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
-	{
-		return label.maxMetersPerPixel <= 0.0 || metersPerPixel <= label.maxMetersPerPixel;
-	};
-	auto labelRectForAnchor = [](const PointF& point, REAL widthPx, REAL heightPx, const std::string& anchor) -> RectF
-	{
-		const std::string normalizedAnchor = ToUpperAscii(anchor);
-		REAL x = point.X - (widthPx * 0.5f);
-		REAL y = point.Y - (heightPx * 0.5f);
-		if (normalizedAnchor.find("LEFT") != std::string::npos)
-			x = point.X;
-		else if (normalizedAnchor.find("RIGHT") != std::string::npos)
-			x = point.X - widthPx;
-		if (normalizedAnchor.find("TOP") != std::string::npos)
-			y = point.Y;
-		else if (normalizedAnchor.find("BOTTOM") != std::string::npos)
-			y = point.Y - heightPx;
-		return RectF(x, y, widthPx, heightPx);
-	};
-
-	if (!AvisoGeoJsonLabels.empty())
-	{
-		rasterGraphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
-		FontFamily labelFontFamily(L"Arial");
-		StringFormat labelFormat;
-		labelFormat.SetAlignment(StringAlignmentCenter);
-		labelFormat.SetLineAlignment(StringAlignmentCenter);
-		labelFormat.SetFormatFlags(StringFormatFlagsNoWrap);
-		auto getLabelEmSize = [&](float textSize) -> REAL
-		{
-			const float scaledSize = static_cast<float>(std::clamp(static_cast<double>(textSize * static_cast<float>(rasterScale)), 6.0, 40.0));
-			const int fontKey = static_cast<int>(std::lround(static_cast<double>(scaledSize) * 10.0));
-			return static_cast<REAL>(fontKey) / 10.0f;
-		};
-
-		for (const AvisoLabel& label : AvisoGeoJsonLabels)
-		{
-			if (label.position.latitude < displayMinLat ||
-				label.position.latitude > displayMaxLat ||
-				label.position.longitude < displayMinLon ||
-				label.position.longitude > displayMaxLon ||
-				!isDenseLabelVisible(label))
-			{
-				continue;
-			}
-
-			const REAL labelEmSize = getLabelEmSize(label.textSize);
-
-			const PointF labelPoint = projectRasterPoint(label.position);
-			const REAL textLength = static_cast<REAL>(label.text.length());
-			const REAL scaledTextSize = static_cast<REAL>(label.textSize * static_cast<float>(rasterScale));
-			const REAL haloPadding = static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * rasterScale), 0.0) * 3.0);
-			const REAL layoutWidth = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f + haloPadding * 2.0f), 14.0));
-			const REAL layoutHeight = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * 1.65f + haloPadding * 2.0f), 10.0));
-			const RectF layoutRect = labelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
-
-			GraphicsPath textPath;
-			textPath.AddString(
-				label.text.c_str(),
-				static_cast<INT>(label.text.length()),
-				&labelFontFamily,
-				FontStyleRegular,
-				labelEmSize,
-				layoutRect,
-				&labelFormat);
-
-			if (textPath.GetPointCount() <= 0)
-				continue;
-
-			if (label.haloWidth > 0.0f && label.haloColor.GetAlpha() > 0)
-			{
-				Pen haloPen(label.haloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * rasterScale * 2.0f), 1.0)));
-				haloPen.SetLineJoin(LineJoinRound);
-				rasterGraphics.DrawPath(&haloPen, &textPath);
-			}
-
-			if (label.textColor.GetAlpha() > 0)
-			{
-				SolidBrush textBrush(label.textColor);
-				rasterGraphics.FillPath(&textBrush, &textPath);
-			}
-		}
-	}
-
-	AvisoGeoJsonRasterCache = std::move(raster);
-	AvisoGeoJsonRasterCachePath = path;
-	AvisoGeoJsonRasterMinLongitude = displayMinLon;
-	AvisoGeoJsonRasterMinLatitude = displayMinLat;
-	AvisoGeoJsonRasterMaxLongitude = displayMaxLon;
-	AvisoGeoJsonRasterMaxLatitude = displayMaxLat;
-	AvisoGeoJsonRasterWidth = rasterWidth;
-	AvisoGeoJsonRasterHeight = rasterHeight;
-	POINT rasterAnchorPixel = { radarArea.left, radarArea.top };
-	CPosition rasterAnchor = ConvertCoordFromPixelToPosition(rasterAnchorPixel);
-	POINT rasterBottomRightPixel = { radarArea.right, radarArea.bottom };
-	CPosition rasterBottomRight = ConvertCoordFromPixelToPosition(rasterBottomRightPixel);
-	AvisoGeoJsonRasterAnchorLongitude = rasterAnchor.m_Longitude;
-	AvisoGeoJsonRasterAnchorLatitude = rasterAnchor.m_Latitude;
-	AvisoGeoJsonRasterBottomRightLongitude = rasterBottomRight.m_Longitude;
-	AvisoGeoJsonRasterBottomRightLatitude = rasterBottomRight.m_Latitude;
+	AvisoGeoJsonRasterCache = std::move(result->bitmap);
+	AvisoGeoJsonRasterCachePath = result->path;
+	AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
+	AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
+	AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
+	AvisoGeoJsonRasterMaxLatitude = result->displayMaxLatitude;
+	AvisoGeoJsonRasterWidth = result->rasterWidth;
+	AvisoGeoJsonRasterHeight = result->rasterHeight;
+	AvisoGeoJsonRasterAnchorLongitude = result->renderMinLongitude;
+	AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
+	AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
+	AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
 	AvisoGeoJsonRasterAnchorValid = true;
 
-	drawRasterCacheExact();
+	drawRasterCacheTransformed();
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
