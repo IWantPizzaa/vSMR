@@ -30,7 +30,9 @@ bool customCursor; // True when the plugin-specific cursor theme is enabled.
 WNDPROC gSourceProc;
 HWND pluginWindow;
 CSMRRadar* gWindowProcRadarScreen = nullptr;
+HHOOK gMouseHook = nullptr;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam);
 
 map<string, string> CSMRRadar::vStripsStands;
 
@@ -425,6 +427,11 @@ CSMRRadar::~CSMRRadar()
 	Logger::info(string(__FUNCSIG__));
 	if (gWindowProcRadarScreen == this)
 		gWindowProcRadarScreen = nullptr;
+	if (gMouseHook != nullptr)
+	{
+		::UnhookWindowsHookEx(gMouseHook);
+		gMouseHook = nullptr;
+	}
 	StopAvisoGeoJsonRenderThread();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
@@ -4144,6 +4151,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
+LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam)
+{
+	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
+	{
+		MOUSEHOOKSTRUCTEX* mouseData = reinterpret_cast<MOUSEHOOKSTRUCTEX*>(lParam);
+		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
+		if (gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(mouseData->pt, wheelDelta, mouseData->hwnd))
+			return 1;
+	}
+
+	return ::CallNextHookEx(gMouseHook, code, wParam, lParam);
+}
+
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
@@ -4224,6 +4244,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				}
 			}
 		}
+
+		if (gMouseHook == nullptr)
+			gMouseHook = ::SetWindowsHookEx(WH_MOUSE, MouseHookProc, nullptr, ::GetCurrentThreadId());
 		initCursor = false;
 	}
 
@@ -6672,6 +6695,11 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
 			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
 
+		if (gMouseHook != nullptr)
+		{
+			::UnhookWindowsHookEx(gMouseHook);
+			gMouseHook = nullptr;
+		}
 		gWindowProcRadarScreen = nullptr;
 		pluginWindow = nullptr;
 		gSourceProc = nullptr;
