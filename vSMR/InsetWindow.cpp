@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "InsetWindow.h"
 #include "SMRRadar.hpp"
-#include "SMRRadar_TagShared.hpp"
+#include "SMRTagDefinitionUtils.hpp"
 
 
 CInsetWindow::CInsetWindow(int Id)
