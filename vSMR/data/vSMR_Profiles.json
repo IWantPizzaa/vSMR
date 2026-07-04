@@ -45,8 +45,7 @@
             }
         },
         "labels": {
-            "auto_deconfliction": true,
-            "rounded_corners": true,
+            "auto_deconfliction": false,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -64,9 +63,9 @@
                     "a": 255
                 },
                 "background_on_runway_color": {
-                    "r": 40,
-                    "g": 50,
-                    "b": 200,
+                    "r": 116,
+                    "g": 99,
+                    "b": 199,
                     "a": 255
                 },
                 "text_on_ground_color": {
@@ -125,7 +124,7 @@
                 },
                 "definition": [
                     [
-                        "callsign",
+                        "b:callsign",
                         "sctype"
                     ],
                     [
@@ -135,7 +134,7 @@
                 ],
                 "definition_detailed": [
                     [
-                        "callsign",
+                        "b:callsign",
                         "sctype"
                     ],
                     [
@@ -227,10 +226,6 @@
                             [
                                 "callsign",
                                 "sctype"
-                            ],
-                            [
-                                "asid",
-                                "deprwy"
                             ]
                         ],
                         "definition_detailed": [
@@ -611,7 +606,8 @@
                         ]
                     }
                 }
-            }
+            },
+            "rounded_corners": false
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -671,8 +667,8 @@
         },
         "targets": {
             "show_primary_target": true,
-            "icon_style": "realistic",
-            "small_icon_boost": true,
+            "icon_style": "nova",
+            "small_icon_boost": false,
             "small_icon_boost_factor": 1,
             "small_icon_boost_resolution_preset": "1080p",
             "fixed_pixel_icon_size": false,
@@ -746,6 +742,30 @@
                     "b": 255,
                     "a": 255
                 }
+            },
+            "target_color": {
+                "r": 255,
+                "g": 242,
+                "b": 73,
+                "a": 255
+            },
+            "history_one_color": {
+                "r": 0,
+                "g": 255,
+                "b": 255,
+                "a": 255
+            },
+            "history_two_color": {
+                "r": 0,
+                "g": 219,
+                "b": 219,
+                "a": 255
+            },
+            "history_three_color": {
+                "r": 0,
+                "g": 183,
+                "b": 183,
+                "a": 255
             }
         },
         "approach_insets": {
@@ -770,10 +790,10 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 798,
-                "y": 207,
-                "width": 839,
-                "height": 700,
+                "x": 197,
+                "y": 181,
+                "width": 772,
+                "height": 715,
                 "visible": false
             }
         },
@@ -830,7 +850,6 @@
         },
         "labels": {
             "auto_deconfliction": true,
-            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -1448,7 +1467,8 @@
                         ]
                     }
                 }
-            }
+            },
+            "rounded_corners": true
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -1583,6 +1603,30 @@
                     "b": 167,
                     "a": 225
                 }
+            },
+            "target_color": {
+                "r": 255,
+                "g": 242,
+                "b": 73,
+                "a": 255
+            },
+            "history_one_color": {
+                "r": 0,
+                "g": 255,
+                "b": 255,
+                "a": 255
+            },
+            "history_two_color": {
+                "r": 0,
+                "g": 219,
+                "b": 219,
+                "a": 255
+            },
+            "history_three_color": {
+                "r": 0,
+                "g": 183,
+                "b": 183,
+                "a": 255
             }
         },
         "approach_insets": {
@@ -1607,8 +1651,8 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 512,
-                "y": 223,
+                "x": 387,
+                "y": 256,
                 "width": 876,
                 "height": 700,
                 "visible": false
@@ -1690,7 +1734,7 @@
                 "four": 13,
                 "five": 14
             },
-            "label_font_size": 2
+            "label_font_size": 1
         },
         "filters": {
             "max_altitude_ft": 5500,
@@ -1712,8 +1756,7 @@
             }
         },
         "labels": {
-            "auto_deconfliction": true,
-            "rounded_corners": true,
+            "auto_deconfliction": false,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -1813,7 +1856,6 @@
                         "deprwy"
                     ],
                     [
-                        "remark",
                         "scratchpad"
                     ]
                 ],
@@ -1822,17 +1864,12 @@
                         "definition": [
                             [
                                 "callsign",
-                                "gs",
-                                "ttot",
-                                "sqerror"
+                                "actype",
+                                "gs"
                             ],
                             [
-                                "actype",
                                 "wake",
                                 "deprwy",
-                                "asid"
-                            ],
-                            [
                                 "scratchpad"
                             ]
                         ],
@@ -1858,10 +1895,9 @@
                         "definition": [
                             [
                                 "callsign",
-                                "sqerror"
+                                "actype"
                             ],
                             [
-                                "actype",
                                 "wake",
                                 "deprwy"
                             ],
@@ -2072,8 +2108,7 @@
                 "definition": [
                     [
                         "callsign",
-                        "actype",
-                        "groundstatus"
+                        "actype"
                     ],
                     [
                         "gs",
@@ -2375,7 +2410,8 @@
                         "definition_detailed_inherits_normal": true
                     }
                 }
-            }
+            },
+            "rounded_corners": true
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -2436,9 +2472,9 @@
         "targets": {
             "show_primary_target": true,
             "icon_style": "realistic",
-            "small_icon_boost": true,
+            "small_icon_boost": false,
             "small_icon_boost_factor": 0.75,
-            "small_icon_boost_resolution_preset": "4k",
+            "small_icon_boost_resolution_preset": "1080p",
             "fixed_pixel_icon_size": true,
             "fixed_pixel_icon_scale": 1,
             "departure": {
@@ -2510,6 +2546,30 @@
                     "b": 206,
                     "a": 255
                 }
+            },
+            "target_color": {
+                "r": 255,
+                "g": 242,
+                "b": 73,
+                "a": 255
+            },
+            "history_one_color": {
+                "r": 0,
+                "g": 255,
+                "b": 255,
+                "a": 255
+            },
+            "history_two_color": {
+                "r": 0,
+                "g": 219,
+                "b": 219,
+                "a": 255
+            },
+            "history_three_color": {
+                "r": 0,
+                "g": 183,
+                "b": 183,
+                "a": 255
             }
         },
         "approach_insets": {
@@ -2534,11 +2594,11 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 699,
-                "y": 210,
-                "width": 839,
-                "height": 700,
-                "visible": false
+                "x": 184,
+                "y": 186,
+                "width": 772,
+                "height": 715,
+                "visible": true
             }
         },
         "rules": {
@@ -2561,7 +2621,8 @@
                     "target_color": {
                         "r": 0,
                         "g": 170,
-                        "b": 0
+                        "b": 0,
+                        "a": 255
                     }
                 },
                 {
@@ -2581,18 +2642,19 @@
                     "target_color": {
                         "r": 203,
                         "g": 20,
-                        "b": 20
+                        "b": 20,
+                        "a": 255
                     }
                 },
                 {
                     "source": "runway",
                     "token": "deprwy",
-                    "condition": "26r",
+                    "condition": "26R,08L",
                     "criteria": [
                         {
                             "source": "runway",
                             "token": "deprwy",
-                            "condition": "26r"
+                            "condition": "26R,08L"
                         }
                     ],
                     "tag_type": "departure",
@@ -2601,67 +2663,29 @@
                     "tag_color": {
                         "r": 26,
                         "g": 144,
-                        "b": 153
+                        "b": 153,
+                        "a": 255
                     }
                 },
                 {
                     "source": "runway",
                     "token": "deprwy",
-                    "condition": "08l",
+                    "condition": "27L,09R",
                     "criteria": [
                         {
                             "source": "runway",
                             "token": "deprwy",
-                            "condition": "08l"
-                        }
-                    ],
-                    "tag_type": "departure",
-                    "status": "taxi",
-                    "detail": "normal",
-                    "tag_color": {
-                        "r": 26,
-                        "g": 144,
-                        "b": 153
-                    }
-                },
-                {
-                    "source": "runway",
-                    "token": "deprwy",
-                    "condition": "26r",
-                    "criteria": [
-                        {
-                            "source": "runway",
-                            "token": "deprwy",
-                            "condition": "26r"
+                            "condition": "27L,09R"
                         }
                     ],
                     "tag_type": "departure",
                     "status": "taxi",
                     "detail": "detailed",
                     "tag_color": {
-                        "r": 26,
-                        "g": 144,
-                        "b": 153
-                    }
-                },
-                {
-                    "source": "runway",
-                    "token": "deprwy",
-                    "condition": "08l",
-                    "criteria": [
-                        {
-                            "source": "runway",
-                            "token": "deprwy",
-                            "condition": "08l"
-                        }
-                    ],
-                    "tag_type": "departure",
-                    "status": "taxi",
-                    "detail": "detailed",
-                    "tag_color": {
-                        "r": 26,
-                        "g": 144,
-                        "b": 153
+                        "r": 69,
+                        "g": 82,
+                        "b": 153,
+                        "a": 255
                     }
                 }
             ]
@@ -2715,7 +2739,6 @@
         },
         "labels": {
             "auto_deconfliction": true,
-            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -2800,7 +2823,6 @@
                     ],
                     [
                         "asid",
-                        "tendency",
                         "deprwy"
                     ]
                 ],
@@ -2813,10 +2835,6 @@
                         "asid",
                         "tendency",
                         "deprwy"
-                    ],
-                    [
-                        "remark",
-                        "groundstatus"
                     ],
                     [
                         "scratchpad"
@@ -3021,7 +3039,8 @@
                             ]
                         ]
                     }
-                }
+                },
+                "definition_detailed_inherits_normal": false
             },
             "arrival": {
                 "background_on_ground_color": {
@@ -3233,7 +3252,8 @@
                         "groundstatus"
                     ]
                 ]
-            }
+            },
+            "rounded_corners": true
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -3297,8 +3317,8 @@
             "small_icon_boost": false,
             "small_icon_boost_factor": 1,
             "small_icon_boost_resolution_preset": "1080p",
-            "fixed_pixel_icon_size": true,
-            "fixed_pixel_icon_scale": 0.5,
+            "fixed_pixel_icon_size": false,
+            "fixed_pixel_icon_scale": 0.6,
             "departure": {
                 "airborne": {
                     "r": 240,
@@ -3368,6 +3388,30 @@
                     "b": 255,
                     "a": 200
                 }
+            },
+            "target_color": {
+                "r": 255,
+                "g": 242,
+                "b": 73,
+                "a": 255
+            },
+            "history_one_color": {
+                "r": 0,
+                "g": 255,
+                "b": 255,
+                "a": 255
+            },
+            "history_two_color": {
+                "r": 0,
+                "g": 219,
+                "b": 219,
+                "a": 255
+            },
+            "history_three_color": {
+                "r": 0,
+                "g": 183,
+                "b": 183,
+                "a": 255
             }
         },
         "approach_insets": {
@@ -3392,8 +3436,8 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 632,
-                "y": 237,
+                "x": 923,
+                "y": 248,
                 "width": 886,
                 "height": 700,
                 "visible": false
@@ -3453,7 +3497,6 @@
         },
         "labels": {
             "auto_deconfliction": true,
-            "rounded_corners": true,
             "leader_line_length": 50,
             "use_speed_for_gate": false,
             "use_departure_arrival_coloring": false,
@@ -3641,7 +3684,7 @@
                             ],
                             [
                                 "asid",
-                                "deprwy"
+                                "scratchpad"
                             ]
                         ]
                     },
@@ -3741,7 +3784,7 @@
                 "definition_detailed": [
                     [
                         "b:callsign",
-                        "actyp"
+                        "actype"
                     ],
                     [
                         "uk_stand"
@@ -3989,7 +4032,8 @@
                         "definition_detailed_inherits_normal": true
                     }
                 }
-            }
+            },
+            "rounded_corners": true
         },
         "rimcas": {
             "rimcas_label_only": true,
@@ -4057,21 +4101,21 @@
             "fixed_pixel_icon_scale": 1,
             "departure": {
                 "airborne": {
-                    "r": 240,
-                    "g": 240,
-                    "b": 240,
+                    "r": 255,
+                    "g": 242,
+                    "b": 73,
                     "a": 255
                 },
                 "departure": {
                     "r": 255,
-                    "g": 255,
-                    "b": 255,
+                    "g": 242,
+                    "b": 73,
                     "a": 255
                 },
                 "gate": {
-                    "r": 44,
-                    "g": 68,
-                    "b": 100,
+                    "r": 165,
+                    "g": 165,
+                    "b": 165,
                     "a": 255
                 },
                 "no_fpl": {
@@ -4088,20 +4132,20 @@
                 },
                 "push": {
                     "r": 255,
-                    "g": 255,
-                    "b": 255,
+                    "g": 242,
+                    "b": 73,
                     "a": 255
                 },
                 "startup": {
                     "r": 255,
-                    "g": 255,
-                    "b": 255,
+                    "g": 242,
+                    "b": 73,
                     "a": 255
                 },
                 "taxi": {
                     "r": 255,
-                    "g": 255,
-                    "b": 255,
+                    "g": 242,
+                    "b": 73,
                     "a": 255
                 }
             },
@@ -4124,6 +4168,30 @@
                     "b": 255,
                     "a": 255
                 }
+            },
+            "target_color": {
+                "r": 255,
+                "g": 242,
+                "b": 73,
+                "a": 255
+            },
+            "history_one_color": {
+                "r": 0,
+                "g": 255,
+                "b": 255,
+                "a": 255
+            },
+            "history_two_color": {
+                "r": 0,
+                "g": 219,
+                "b": 219,
+                "a": 255
+            },
+            "history_three_color": {
+                "r": 0,
+                "g": 183,
+                "b": 183,
+                "a": 255
             }
         },
         "approach_insets": {
@@ -4149,16 +4217,60 @@
         "maps": {},
         "ui_layout": {
             "profile_editor_window": {
-                "x": 659,
-                "y": 189,
-                "width": 839,
-                "height": 700,
+                "x": 410,
+                "y": 268,
+                "width": 828,
+                "height": 717,
                 "visible": false
             }
         },
         "rules": {
             "version": 1,
             "items": [
+                {
+                    "source": "vacdm",
+                    "token": "tobt",
+                    "condition": "unconfirmed",
+                    "name": "TSAT Valid",
+                    "criteria": [
+                        {
+                            "source": "vacdm",
+                            "token": "tobt",
+                            "condition": "unconfirmed"
+                        }
+                    ],
+                    "tag_type": "departure",
+                    "status": "default",
+                    "detail": "any",
+                    "text_color": {
+                        "r": 255,
+                        "g": 233,
+                        "b": 53,
+                        "a": 255
+                    }
+                },
+                {
+                    "source": "vacdm",
+                    "token": "tobt",
+                    "condition": "confirmed",
+                    "name": "TSAT expired",
+                    "criteria": [
+                        {
+                            "source": "vacdm",
+                            "token": "tobt",
+                            "condition": "confirmed"
+                        }
+                    ],
+                    "tag_type": "departure",
+                    "status": "default",
+                    "detail": "any",
+                    "text_color": {
+                        "r": 134,
+                        "g": 232,
+                        "b": 82,
+                        "a": 255
+                    }
+                },
                 {
                     "source": "vacdm",
                     "token": "tsat",
@@ -4169,15 +4281,20 @@
                             "source": "vacdm",
                             "token": "tsat",
                             "condition": "valid"
+                        },
+                        {
+                            "source": "vacdm",
+                            "token": "tobt",
+                            "condition": "confirmed"
                         }
                     ],
-                    "tag_type": "any",
-                    "status": "any",
+                    "tag_type": "departure",
+                    "status": "default",
                     "detail": "any",
                     "text_color": {
-                        "r": 121,
-                        "g": 255,
-                        "b": 62,
+                        "r": 10,
+                        "g": 179,
+                        "b": 2,
                         "a": 255
                     }
                 },
@@ -4185,7 +4302,7 @@
                     "source": "vacdm",
                     "token": "tsat",
                     "condition": "expired",
-                    "name": "TSAT expired",
+                    "name": "Rule 4",
                     "criteria": [
                         {
                             "source": "vacdm",
@@ -4193,13 +4310,67 @@
                             "condition": "expired"
                         }
                     ],
-                    "tag_type": "any",
+                    "tag_type": "departure",
                     "status": "default",
                     "detail": "any",
                     "text_color": {
-                        "r": 232,
-                        "g": 122,
+                        "r": 255,
+                        "g": 152,
+                        "b": 56,
+                        "a": 255
+                    }
+                },
+                {
+                    "source": "vacdm",
+                    "token": "tobt",
+                    "condition": "confirmed_delay",
+                    "name": "Rule 5",
+                    "criteria": [
+                        {
+                            "source": "vacdm",
+                            "token": "tobt",
+                            "condition": "confirmed_delay"
+                        },
+                        {
+                            "source": "vacdm",
+                            "token": "tsat",
+                            "condition": "valid"
+                        }
+                    ],
+                    "tag_type": "any",
+                    "status": "any",
+                    "detail": "any",
+                    "text_color": {
+                        "r": 10,
+                        "g": 179,
                         "b": 2,
+                        "a": 255
+                    }
+                },
+                {
+                    "source": "vacdm",
+                    "token": "tobt",
+                    "condition": "confirmed_delay",
+                    "name": "Rule 6",
+                    "criteria": [
+                        {
+                            "source": "vacdm",
+                            "token": "tobt",
+                            "condition": "confirmed_delay"
+                        },
+                        {
+                            "source": "vacdm",
+                            "token": "tsat",
+                            "condition": "future"
+                        }
+                    ],
+                    "tag_type": "any",
+                    "status": "any",
+                    "detail": "any",
+                    "text_color": {
+                        "r": 134,
+                        "g": 232,
+                        "b": 82,
                         "a": 255
                     }
                 }
@@ -4208,4 +4379,3 @@
         "sid_text_colors": []
     }
 ]
-

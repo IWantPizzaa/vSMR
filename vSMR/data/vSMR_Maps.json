@@ -40,11 +40,11 @@
 		"element": "FREETEXT/LFLL Gates"
 	},
 	{
-		"zoomLevel": 12,
+		"zoomLevel": 7,
 		"element": "FREETEXT/LFML Gates"
 	},
 	{
-		"zoomLevel": 12,
+		"zoomLevel": 7,
 		"element": "FREETEXT/LFBO Gates"
 	},
 	{
@@ -55,7 +55,7 @@
 	{
 		"zoomLevel": 5,
 		"element": "GEO/LFPG Groundlayout West Arrows",
-		"active": "LFPG:DEP:26R:ARR:26L"
+		"active": "LFPG:DEP:26R:ARR:26L" 
 	},
 	{
 		"zoomLevel": 8,
