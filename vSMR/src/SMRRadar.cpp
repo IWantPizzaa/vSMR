@@ -976,12 +976,14 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 		auto projectPreviewPoint = [&](const AvisoPoint& coordinate) -> PointF
 		{
-			const double x = static_cast<double>(radarArea.left) + ((coordinate.longitude - displayMinLon) * scaleX);
-			const double y = static_cast<double>(radarArea.top) + ((displayMaxLat - coordinate.latitude) * scaleY);
-			return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
+			CPosition position;
+			position.m_Latitude = coordinate.latitude;
+			position.m_Longitude = coordinate.longitude;
+			const POINT screenPoint = ConvertCoordFromPositionToPixel(position);
+			return PointF(static_cast<REAL>(screenPoint.x), static_cast<REAL>(screenPoint.y));
 		};
 
-		const double minPreviewPointDistance = 1.4;
+		const double minPreviewPointDistance = 2.0;
 		const double minPreviewPointDistanceSquared = minPreviewPointDistance * minPreviewPointDistance;
 		auto appendPreviewPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
 		{
@@ -1080,6 +1082,86 @@ void CSMRRadar::RenderAvisoGeoJson(Gdiplus::Graphics& graphics)
 
 				if (previewPoints.size() >= 2)
 					graphics.DrawLines(&linePen, previewPoints.data(), static_cast<INT>(previewPoints.size()));
+			}
+		}
+
+		if (!AvisoGeoJsonLabels.empty())
+		{
+			const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
+			const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / width;
+			const double metersPerPixelLat = (latSpan * 110540.0) / height;
+			const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
+			auto isPreviewLabelVisible = [&](const AvisoLabel& label) -> bool
+			{
+				const std::string labelClassUpper = ToUpperAscii(label.labelClass);
+				if (labelClassUpper.find("GATES") != std::string::npos ||
+					labelClassUpper.find("GATE") != std::string::npos)
+				{
+					return metersPerPixel <= 3.0;
+				}
+				if (labelClassUpper.find("TAXIWAYS") != std::string::npos ||
+					labelClassUpper.find("TAXIWAY") != std::string::npos)
+				{
+					return metersPerPixel <= 7.0;
+				}
+				return true;
+			};
+			auto previewLabelRectForAnchor = [](const PointF& point, REAL widthPx, REAL heightPx, const std::string& anchor) -> RectF
+			{
+				const std::string normalizedAnchor = ToUpperAscii(anchor);
+				REAL x = point.X - (widthPx * 0.5f);
+				REAL y = point.Y - (heightPx * 0.5f);
+				if (normalizedAnchor.find("LEFT") != std::string::npos)
+					x = point.X;
+				else if (normalizedAnchor.find("RIGHT") != std::string::npos)
+					x = point.X - widthPx;
+				if (normalizedAnchor.find("TOP") != std::string::npos)
+					y = point.Y;
+				else if (normalizedAnchor.find("BOTTOM") != std::string::npos)
+					y = point.Y - heightPx;
+				return RectF(x, y, widthPx, heightPx);
+			};
+
+			graphics.SetTextRenderingHint(TextRenderingHintSingleBitPerPixelGridFit);
+			FontFamily labelFontFamily(L"Arial");
+			StringFormat labelFormat;
+			labelFormat.SetAlignment(StringAlignmentCenter);
+			labelFormat.SetLineAlignment(StringAlignmentCenter);
+			labelFormat.SetFormatFlags(StringFormatFlagsNoWrap);
+
+			for (const AvisoLabel& label : AvisoGeoJsonLabels)
+			{
+				if (label.position.latitude < displayMinLat ||
+					label.position.latitude > displayMaxLat ||
+					label.position.longitude < displayMinLon ||
+					label.position.longitude > displayMaxLon ||
+					!isPreviewLabelVisible(label))
+				{
+					continue;
+				}
+
+				const PointF labelPoint = projectPreviewPoint(label.position);
+				const REAL labelEmSize = static_cast<REAL>(std::clamp(static_cast<double>(label.textSize), 6.0, 32.0));
+				const REAL textLength = static_cast<REAL>(label.text.length());
+				const REAL layoutWidth = static_cast<REAL>(AvisoMax(static_cast<double>(labelEmSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f), 14.0));
+				const REAL layoutHeight = static_cast<REAL>(AvisoMax(static_cast<double>(labelEmSize * 1.65f), 10.0));
+				const RectF layoutRect = previewLabelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
+
+				Gdiplus::Font labelFont(&labelFontFamily, labelEmSize, FontStyleRegular, UnitPixel);
+				if (labelFont.GetLastStatus() != Ok)
+					continue;
+
+				if (label.textColor.GetAlpha() > 0)
+				{
+					SolidBrush textBrush(label.textColor);
+					graphics.DrawString(
+						label.text.c_str(),
+						static_cast<INT>(label.text.length()),
+						&labelFont,
+						layoutRect,
+						&labelFormat,
+						&textBrush);
+				}
 			}
 		}
 
