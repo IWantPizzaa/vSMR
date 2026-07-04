@@ -30,7 +30,13 @@
     <ClCompile Include="Rimcas.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SMRGeometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="SMRRadar.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SMRSharedState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SMRRadar_AircraftAndAsr.cpp">
@@ -78,6 +84,9 @@
     <ClCompile Include="SMRRadar_ProfileEditorWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SMRRadar_Utilities.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -108,6 +117,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SMRRadar.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SMRDataTypes.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SMRGeometry.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SMRSharedState.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SMRRadar_TagShared.hpp">
