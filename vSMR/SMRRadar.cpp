@@ -165,6 +165,37 @@ namespace
 		const double delta = left - right;
 		return delta >= -tolerance && delta <= tolerance;
 	}
+
+	void OutputVsmrDebugLine(const std::string& message)
+	{
+		const std::string line = "[vSMR] " + message + "\n";
+		::OutputDebugStringA(line.c_str());
+		Logger::info(message);
+	}
+
+	class ScopedCdcDetach
+	{
+	public:
+		explicit ScopedCdcDetach(CDC& dc) : dc_(dc)
+		{
+		}
+
+		~ScopedCdcDetach()
+		{
+			Detach();
+		}
+
+		void Detach()
+		{
+			if (attached_ && dc_.GetSafeHdc() != nullptr)
+				dc_.Detach();
+			attached_ = false;
+		}
+
+	private:
+		CDC& dc_;
+		bool attached_ = true;
+	};
 }
 
 #if defined(_DEBUG)
@@ -3160,6 +3191,27 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
+	const char* refreshStage = "entry";
+	auto setRefreshStage = [&](const char* stage)
+	{
+		refreshStage = stage;
+	};
+	auto logRefreshException = [&](const std::string& reason)
+	{
+		static DWORD lastLogTick = 0;
+		static std::string lastMessage;
+		const DWORD nowTick = ::GetTickCount();
+		const std::string message = "OnRefresh caught exception stage=" + std::string(refreshStage) + " reason=" + reason;
+		if (message != lastMessage || nowTick - lastLogTick > 2000)
+		{
+			OutputVsmrDebugLine(message);
+			lastMessage = message;
+			lastLogTick = nowTick;
+		}
+	};
+
+	try
+	{
 	if (Logger::is_verbose_mode())
 	{
 		Logger::info(
@@ -3306,6 +3358,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	double radarCrossDistance = Haversine(radarDownLeft, radarUpRight);
 	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
 	const std::string currentMapAirport = getActiveAirport();
+	const bool useAvisoGroundRenderer = !ResolveAvisoGeoJsonPathForAirport(currentMapAirport).empty();
 	const auto& currentRunwayStatuses = RimcasInstance->GetRunwayStatuses();
 	const bool needsMapRefresh =
 		(NewRadarViewZoomLevel != RadarViewZoomLevel) ||
@@ -3313,99 +3366,105 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		(currentRunwayStatuses != LastMapRunwayStatuses);
 
 	if (needsMapRefresh) {
+		setRefreshStage("map refresh");
 		RadarViewZoomLevel = NewRadarViewZoomLevel;
-		// Draw items based on asr config & zoom level
-		vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
-		vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
-		map<string, bool> drawItemMap;
+		if (!useAvisoGroundRenderer)
+		{
+			// Draw items based on asr config & zoom level
+			vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
+			vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
+			map<string, bool> drawItemMap;
 
-		auto tokenDataStart = [](const string& s, const string& token) -> size_t {
-			// Find token like "DEP" or "ARR" and return the index right after the token and the following separator (eg. "DEP:")
-			size_t pos = s.find(token);
-			if (pos == string::npos) return string::npos;
-			// token length +1 for separator (':') -> matches previous code's +4 for "DEP" (3) + ':'
-			return pos + token.length() + 1;
-			};
+			auto tokenDataStart = [](const string& s, const string& token) -> size_t {
+				// Find token like "DEP" or "ARR" and return the index right after the token and the following separator (eg. "DEP:")
+				size_t pos = s.find(token);
+				if (pos == string::npos) return string::npos;
+				// token length +1 for separator (':') -> matches previous code's +4 for "DEP" (3) + ':'
+				return pos + token.length() + 1;
+				};
 
-		for (const auto& item : allItems) {
-			// Consider element present if any map entry has the same element name (compare element only).
-			bool present = std::any_of(itemsToDraw.begin(), itemsToDraw.end(),
-				[&](const CConfig::mapData& m) { return m.element == item.element; });
+			for (const auto& item : allItems) {
+				// Consider element present if any map entry has the same element name (compare element only).
+				bool present = std::any_of(itemsToDraw.begin(), itemsToDraw.end(),
+					[&](const CConfig::mapData& m) { return m.element == item.element; });
 
-			bool shouldDraw = present;
+				bool shouldDraw = present;
 
-			// If the item has an "active" definition we need to evaluate DEP/ARR conditions
-			if (present && item.active.size() > 4) {
-				if (item.active.substr(0, 4) != currentMapAirport) {
-					shouldDraw = false;
-				}
+				// If the item has an "active" definition we need to evaluate DEP/ARR conditions
+				if (present && item.active.size() > 4) {
+					if (item.active.substr(0, 4) != currentMapAirport) {
+						shouldDraw = false;
+					}
 
-				// airport prefix (first 4 chars) must match active airport
+					// airport prefix (first 4 chars) must match active airport
 				
-				if (shouldDraw) {
-					size_t depPos = tokenDataStart(item.active, "DEP");
-					size_t arrPos = tokenDataStart(item.active, "ARR");
-					// If DEP present, extract substring between DEP: and ARR: (or end) and check runways
-					if (depPos != string::npos) {
-						size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
-						string depList = item.active.substr(depPos, depEnd - depPos);
-						vector<string> depRunways = Utils::getVectorFromCommaList(depList);
-						for (const auto& rwy : depRunways) {
-							auto it = currentRunwayStatuses.find(rwy);
-							if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
-								shouldDraw = false;
-								break;
+					if (shouldDraw) {
+						size_t depPos = tokenDataStart(item.active, "DEP");
+						size_t arrPos = tokenDataStart(item.active, "ARR");
+						// If DEP present, extract substring between DEP: and ARR: (or end) and check runways
+						if (depPos != string::npos) {
+							size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
+							string depList = item.active.substr(depPos, depEnd - depPos);
+							vector<string> depRunways = Utils::getVectorFromCommaList(depList);
+							for (const auto& rwy : depRunways) {
+								auto it = currentRunwayStatuses.find(rwy);
+								if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
+									shouldDraw = false;
+									break;
+								}
 							}
 						}
-					}
 
-					// If ARR present, extract substring after ARR: and check runways
-					if (arrPos != string::npos && shouldDraw) {
-						string arrList = item.active.substr(arrPos);
-						vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
-						for (const auto& rwy : arrRunways) {
-							auto it = currentRunwayStatuses.find(rwy);
-							if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
-								shouldDraw = false;
-								break;
+						// If ARR present, extract substring after ARR: and check runways
+						if (arrPos != string::npos && shouldDraw) {
+							string arrList = item.active.substr(arrPos);
+							vector<string> arrRunways = Utils::getVectorFromCommaList(arrList);
+							for (const auto& rwy : arrRunways) {
+								auto it = currentRunwayStatuses.find(rwy);
+								if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
+									shouldDraw = false;
+									break;
+								}
 							}
 						}
 					}
 				}
+
+				// Always set an entry for this element (avoids missing keys and an empty draw map).
+				drawItemMap[item.element] = shouldDraw;
 			}
 
-			// Always set an entry for this element (avoids missing keys and an empty draw map).
-			drawItemMap[item.element] = shouldDraw;
-		}
+			// Now apply the map
+			setRefreshStage("sector element visibility");
+			for (const auto& [elementName, toDraw] : drawItemMap) {
+				size_t slashPos = elementName.find("/");
+				if (slashPos == string::npos) continue;
+				string category = elementName.substr(0, slashPos);
+				string name = elementName.substr(slashPos + 1);
 
-		// Now apply the map
-		for (const auto& [elementName, toDraw] : drawItemMap) {
-			size_t slashPos = elementName.find("/");
-			if (slashPos == string::npos) continue;
-			string category = elementName.substr(0, slashPos);
-			string name = elementName.substr(slashPos + 1);
+				int elementCategory = getIntFromCategory(category);
+				if (elementCategory == -1) continue;
+				CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
+				while (element.IsValid()) {
+					const char* elementNameRaw = element.GetName();
+					if (elementNameRaw == nullptr || elementNameRaw[0] == '\0')
+					{
+						element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
+						continue;
+					}
 
-			int elementCategory = getIntFromCategory(category);
-			if (elementCategory == -1) continue;
-			CSectorElement element = GetPlugIn()->SectorFileElementSelectFirst(elementCategory);
-			while (element.IsValid()) {
-				const char* elementNameRaw = element.GetName();
-				if (elementNameRaw == nullptr || elementNameRaw[0] == '\0')
-				{
+					if (strncmp(name.c_str(), elementNameRaw, strlen(name.c_str())) == 0) {
+						const char* componentName = element.GetComponentName(0);
+						if (componentName != nullptr)
+							ShowSectorFileElement(element, componentName, toDraw);
+					}
 					element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
-					continue;
 				}
-
-				if (strncmp(name.c_str(), elementNameRaw, strlen(name.c_str())) == 0) {
-					const char* componentName = element.GetComponentName(0);
-					if (componentName != nullptr)
-						ShowSectorFileElement(element, componentName, toDraw);
-				}
-				element = GetPlugIn()->SectorFileElementSelectNext(element, elementCategory);
 			}
-		}
 
-		RefreshMapContent();
+			setRefreshStage("RefreshMapContent");
+			RefreshMapContent();
+		}
 		LastMapRunwayStatuses = currentRunwayStatuses;
 		LastMapActiveAirport = currentMapAirport;
 	}
@@ -3423,8 +3482,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	VSMR_REFRESH_LOG("Graphics set up");
+	setRefreshStage("graphics setup");
 	CDC dc;
 	dc.Attach(hDC);
+	ScopedCdcDetach dcDetach(dc);
 
 	// Creating the gdi+ graphics
 	Graphics graphics(hDC);
@@ -3454,6 +3515,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	try
 	{
+		setRefreshStage("AVISO render");
 		RenderAvisoGeoJson(graphics);
 	}
 	catch (COleException* ex)
@@ -3481,6 +3543,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		disableAvisoGeoJsonRender("unknown exception");
 	}
 
+	setRefreshStage("airport sector scan");
 	AirportPositions.clear();
 
 
@@ -3511,6 +3574,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	VSMR_REFRESH_LOG("Runway loop");
+	setRefreshStage("runway sector scan");
 	CSectorElement rwy;
 	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
 		rwy.IsValid();
@@ -3694,11 +3758,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 	}
 
+	setRefreshStage("RIMCAS refresh begin");
 	RimcasInstance->OnRefreshBegin(isLVP);
 
 #pragma region symbols
 	// Drawing the symbols
 	VSMR_REFRESH_LOG("Symbols loop");
+	setRefreshStage("target symbol rendering");
 
 	// Cache current view scaling once per frame; reused by trail and icon sizing.
 	double framePixPerMeter = 0.0;
@@ -4139,6 +4205,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
 	}
 	EuroScopePlugIn::CRadarTarget rt;
+	setRefreshStage("radar target loop");
 	for (rt = GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
 		rt = GetPlugIn()->RadarTargetSelectNext(rt))
@@ -4984,12 +5051,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 	}
 	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
+	setRefreshStage("RIMCAS refresh end");
 	RimcasInstance->OnRefreshEnd(this, rimcasStageTwoSpeedThreshold);
 
 	graphics.SetSmoothingMode(SmoothingModeDefault);
 
 	try
 	{
+		setRefreshStage("tag rendering");
 		RenderTags(graphics, dc, frameProModeEnabled, frameTowerModeEnabled, frameTagDataCache, frameVacdmLookupCache);
 	}
 	catch (const std::exception& ex)
@@ -5009,6 +5078,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	int TextHeight = dc.GetTextExtent("60").cy;
 	VSMR_REFRESH_LOG("RIMCAS Loop");
+	setRefreshStage("RIMCAS list rendering");
 	for (std::map<string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
 	{
 		const auto timeTableIt = RimcasInstance->TimeTable.find(it->first);
@@ -5082,6 +5152,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	VSMR_REFRESH_LOG("Menu bar lists");
+	setRefreshStage("popup list rendering");
 
 
 	if (ShowLists["Conflict Alert ARR"]) {
@@ -5280,6 +5351,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	VSMR_REFRESH_LOG("QRD");
+	setRefreshStage("QDM distance tools");
 
 	//---------------------------------
 	// QRD
@@ -5416,6 +5488,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	//---------------------------------
 
 	VSMR_REFRESH_LOG("Menu Bar");
+	setRefreshStage("top menu bar");
 
 	COLORREF qToolBarColor = RGB(127, 122, 122);
 
@@ -5468,6 +5541,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	//
 
 	VSMR_REFRESH_LOG("Tag deconfliction loop");
+	setRefreshStage("tag deconfliction");
 	bool autoDeconflictionEnabled = true;
 	if (CurrentConfig != nullptr)
 	{
@@ -5620,6 +5694,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	//
 
 	VSMR_REFRESH_LOG("App window rendering");
+	setRefreshStage("app window rendering");
 
 	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
 	{
@@ -5633,10 +5708,35 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		appWindowIt->second->render(hDC, this, &graphics, mouseLocation, DistanceTools);
 	}
 
-	dc.Detach();
+	dcDetach.Detach();
 
 	VSMR_REFRESH_LOG("END "+ string(__FUNCSIG__));
 
+	}
+	catch (COleException* ex)
+	{
+		long scode = 0;
+		if (ex != nullptr)
+		{
+			scode = static_cast<long>(ex->m_sc);
+			ex->Delete();
+		}
+		logRefreshException("OLE exception scode=" + std::to_string(scode));
+	}
+	catch (CException* ex)
+	{
+		if (ex != nullptr)
+			ex->Delete();
+		logRefreshException("MFC exception");
+	}
+	catch (const std::exception& ex)
+	{
+		logRefreshException(std::string("std exception: ") + ex.what());
+	}
+	catch (...)
+	{
+		logRefreshException("unknown exception");
+	}
 }
 
 // ReSharper restore CppMsExtAddressOfClassRValue
