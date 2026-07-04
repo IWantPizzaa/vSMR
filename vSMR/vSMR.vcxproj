@@ -189,6 +189,7 @@
     <ClInclude Include="SMRPlugin.hpp" />
     <ClInclude Include="SMRRadar.hpp" />
     <ClInclude Include="SMRRadar_TagShared.hpp" />
+    <ClInclude Include="SMRTagDefinitionUtils.hpp" />
     <ClInclude Include="SMRTextUtils.hpp" />
     <ClInclude Include="SMRVacdmTagHelpers.hpp" />
     <ClInclude Include="stdafx.h" />
