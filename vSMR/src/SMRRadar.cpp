@@ -4767,89 +4767,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	FrameTagDataCache frameTagDataCache;
 	FrameVacdmLookupCache frameVacdmLookupCache;
 	std::unordered_map<std::string, std::vector<VacdmColorRuleDefinition>> frameIconVacdmRuleCache;
-	auto structuredRuleContextMatches = [](const StructuredTagColorRule& rule, const std::string& type, const std::string& status, const std::string& detail) -> bool
-	{
-		auto normalize = [](const std::string& text) -> std::string
-		{
-			return ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(text));
-		};
-
-		auto fieldMatches = [&](const std::string& expectedRaw, const std::string& currentRaw) -> bool
-		{
-			const std::string expected = normalize(expectedRaw);
-			const std::string current = normalize(currentRaw);
-			if (expected.empty() || expected == "any" || expected == "all" || expected == "*")
-				return true;
-			return expected == current;
-		};
-
-		return fieldMatches(rule.tagType, type) &&
-			fieldMatches(rule.status, status) &&
-			fieldMatches(rule.detail, detail);
-	};
-	auto evaluateStructuredColorRules = [&](const std::string& type, const std::string& status, const std::string& detail,
-		const std::map<std::string, std::string>& replacingMap, const VacdmPilotData* pilotData) -> VacdmColorRuleOverrides
-	{
-		VacdmColorRuleOverrides overrides;
-		for (const StructuredTagColorRule& rule : frameStructuredTagRules)
-		{
-			if (!structuredRuleContextMatches(rule, type, status, detail))
-				continue;
-
-			const std::string source = ToLowerAsciiCopy(rule.source);
-			bool matches = false;
-			if (source == "runway")
-			{
-				std::string actualRunway;
-				auto itRunway = replacingMap.find(rule.token);
-				if (itRunway != replacingMap.end())
-					actualRunway = itRunway->second;
-				matches = RunwayRuleConditionMatches(rule.condition, actualRunway);
-			}
-			else if (source == "custom")
-			{
-				std::string actualValue;
-				auto itValue = replacingMap.find(rule.token);
-				if (itValue != replacingMap.end())
-					actualValue = itValue->second;
-				matches = RunwayRuleConditionMatches(rule.condition, actualValue);
-			}
-			else
-			{
-				const std::string actualState = ResolveVacdmRuleStateName(rule.token, pilotData);
-				matches = VacdmRuleStateMatches(rule.condition, actualState);
-			}
-
-			if (!matches)
-				continue;
-
-			if (rule.applyTarget)
-			{
-				overrides.hasTargetColor = true;
-				overrides.targetR = rule.targetR;
-				overrides.targetG = rule.targetG;
-				overrides.targetB = rule.targetB;
-				overrides.targetA = rule.targetA;
-			}
-			if (rule.applyTag)
-			{
-				overrides.hasTagColor = true;
-				overrides.tagR = rule.tagR;
-				overrides.tagG = rule.tagG;
-				overrides.tagB = rule.tagB;
-				overrides.tagA = rule.tagA;
-			}
-			if (rule.applyText)
-			{
-				overrides.hasTextColor = true;
-				overrides.textR = rule.textR;
-				overrides.textG = rule.textG;
-				overrides.textB = rule.textB;
-				overrides.textA = rule.textA;
-			}
-		}
-		return overrides;
-	};
 	auto getCachedVacdmLookup = [&](CRadarTarget radarTarget, CFlightPlan flightPlan, VacdmPilotData& outData) -> bool
 	{
 		const std::string callsign = radarTarget.IsValid() && radarTarget.GetCallsign() != nullptr
@@ -5454,7 +5371,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		iconVerboseStep("after_tag_data");
 		const TagReplacingMap& iconReplacingMap = tagDataIt->second;
-		const VacdmColorRuleOverrides structuredIconColorRuleOverrides = evaluateStructuredColorRules(
+		const VacdmColorRuleOverrides structuredIconColorRuleOverrides = EvaluateStructuredTagColorRules(
+			frameStructuredTagRules,
 			vacdmRuleType,
 			vacdmRuleStatus,
 			"normal",

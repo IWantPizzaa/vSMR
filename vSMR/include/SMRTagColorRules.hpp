@@ -16,65 +16,39 @@
 
 namespace
 {
-	struct VacdmColorRuleDefinition
+	struct ColorRuleChannels
+	{
+		bool hasTargetColor = false;
+		int targetR = 255;
+		int targetG = 255;
+		int targetB = 255;
+		int targetA = 255;
+		bool hasTagColor = false;
+		int tagR = 255;
+		int tagG = 255;
+		int tagB = 255;
+		int tagA = 255;
+		bool hasTextColor = false;
+		int textR = 255;
+		int textG = 255;
+		int textB = 255;
+		int textA = 255;
+	};
+
+	struct VacdmColorRuleDefinition : ColorRuleChannels
 	{
 		std::string token;
 		std::string expectedState;
-		bool hasTargetColor = false;
-		int targetR = 255;
-		int targetG = 255;
-		int targetB = 255;
-		int targetA = 255;
-		bool hasTagColor = false;
-		int tagR = 255;
-		int tagG = 255;
-		int tagB = 255;
-		int tagA = 255;
-		bool hasTextColor = false;
-		int textR = 255;
-		int textG = 255;
-		int textB = 255;
-		int textA = 255;
 	};
 
-	struct VacdmColorRuleOverrides
+	struct VacdmColorRuleOverrides : ColorRuleChannels
 	{
-		bool hasTargetColor = false;
-		int targetR = 255;
-		int targetG = 255;
-		int targetB = 255;
-		int targetA = 255;
-		bool hasTagColor = false;
-		int tagR = 255;
-		int tagG = 255;
-		int tagB = 255;
-		int tagA = 255;
-		bool hasTextColor = false;
-		int textR = 255;
-		int textG = 255;
-		int textB = 255;
-		int textA = 255;
 	};
 
-	struct RunwayColorRuleDefinition
+	struct RunwayColorRuleDefinition : ColorRuleChannels
 	{
 		std::string token;
 		std::string expectedRunway;
-		bool hasTargetColor = false;
-		int targetR = 255;
-		int targetG = 255;
-		int targetB = 255;
-		int targetA = 255;
-		bool hasTagColor = false;
-		int tagR = 255;
-		int tagG = 255;
-		int tagB = 255;
-		int tagA = 255;
-		bool hasTextColor = false;
-		int textR = 255;
-		int textG = 255;
-		int textB = 255;
-		int textA = 255;
 	};
 
 	bool IsVacdmRuleTokenName(const std::string& tokenName)
@@ -160,11 +134,100 @@ namespace
 		return true;
 	}
 
-	// Parse color-rule token syntax:
-	// token(state_<name>=[target|tag|text, color=(r,g,b), color_target=(r,g,b), ...]).
-	bool TryParseVacdmColorRuleToken(const std::string& rawToken, VacdmColorRuleDefinition& outRule)
+	void ApplyColorRuleChannels(VacdmColorRuleOverrides& target, const ColorRuleChannels& source)
 	{
-		outRule = VacdmColorRuleDefinition();
+		if (source.hasTargetColor)
+		{
+			target.hasTargetColor = true;
+			target.targetR = source.targetR;
+			target.targetG = source.targetG;
+			target.targetB = source.targetB;
+			target.targetA = source.targetA;
+		}
+		if (source.hasTagColor)
+		{
+			target.hasTagColor = true;
+			target.tagR = source.tagR;
+			target.tagG = source.tagG;
+			target.tagB = source.tagB;
+			target.tagA = source.tagA;
+		}
+		if (source.hasTextColor)
+		{
+			target.hasTextColor = true;
+			target.textR = source.textR;
+			target.textG = source.textG;
+			target.textB = source.textB;
+			target.textA = source.textA;
+		}
+	}
+
+	void ApplyStructuredRuleColors(VacdmColorRuleOverrides& target, const StructuredTagColorRule& rule)
+	{
+		if (rule.applyTarget)
+		{
+			target.hasTargetColor = true;
+			target.targetR = rule.targetR;
+			target.targetG = rule.targetG;
+			target.targetB = rule.targetB;
+			target.targetA = rule.targetA;
+		}
+		if (rule.applyTag)
+		{
+			target.hasTagColor = true;
+			target.tagR = rule.tagR;
+			target.tagG = rule.tagG;
+			target.tagB = rule.tagB;
+			target.tagA = rule.tagA;
+		}
+		if (rule.applyText)
+		{
+			target.hasTextColor = true;
+			target.textR = rule.textR;
+			target.textG = rule.textG;
+			target.textB = rule.textB;
+			target.textA = rule.textA;
+		}
+	}
+
+	void MergeColorRuleOverrides(VacdmColorRuleOverrides& target, const VacdmColorRuleOverrides& source)
+	{
+		ApplyColorRuleChannels(target, source);
+	}
+
+	void MergeMissingColorRuleOverrides(VacdmColorRuleOverrides& target, const VacdmColorRuleOverrides& fallback)
+	{
+		if (!target.hasTargetColor && fallback.hasTargetColor)
+		{
+			target.hasTargetColor = true;
+			target.targetR = fallback.targetR;
+			target.targetG = fallback.targetG;
+			target.targetB = fallback.targetB;
+			target.targetA = fallback.targetA;
+		}
+		if (!target.hasTagColor && fallback.hasTagColor)
+		{
+			target.hasTagColor = true;
+			target.tagR = fallback.tagR;
+			target.tagG = fallback.tagG;
+			target.tagB = fallback.tagB;
+			target.tagA = fallback.tagA;
+		}
+		if (!target.hasTextColor && fallback.hasTextColor)
+		{
+			target.hasTextColor = true;
+			target.textR = fallback.textR;
+			target.textG = fallback.textG;
+			target.textB = fallback.textB;
+			target.textA = fallback.textA;
+		}
+	}
+
+	bool TrySplitColorRuleToken(const std::string& rawToken, std::string& outBaseToken, std::string& outCondition, std::string& outPayload)
+	{
+		outBaseToken.clear();
+		outCondition.clear();
+		outPayload.clear();
 
 		const std::string token = TrimAsciiWhitespaceCopy(rawToken);
 		if (token.empty())
@@ -175,8 +238,8 @@ namespace
 		if (openPos == std::string::npos || closePos == std::string::npos || closePos <= openPos || closePos != token.size() - 1)
 			return false;
 
-		const std::string baseToken = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(token.substr(0, openPos)));
-		if (!IsVacdmRuleTokenName(baseToken))
+		outBaseToken = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(token.substr(0, openPos)));
+		if (outBaseToken.empty())
 			return false;
 
 		const std::string expression = TrimAsciiWhitespaceCopy(token.substr(openPos + 1, closePos - openPos - 1));
@@ -184,19 +247,18 @@ namespace
 		if (eqPos == std::string::npos)
 			return false;
 
-		std::string lhs = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(expression.substr(0, eqPos)));
-		if (lhs.rfind("state_", 0) != 0 || lhs.size() <= 6)
-			return false;
-		std::string stateName = lhs.substr(6);
-		if (stateName.empty())
+		outCondition = TrimAsciiWhitespaceCopy(expression.substr(0, eqPos));
+		outPayload = TrimAsciiWhitespaceCopy(expression.substr(eqPos + 1));
+		if (outCondition.empty() || outPayload.size() < 2 || outPayload.front() != '[' || outPayload.back() != ']')
 			return false;
 
-		std::string rhs = TrimAsciiWhitespaceCopy(expression.substr(eqPos + 1));
-		if (rhs.size() < 2 || rhs.front() != '[' || rhs.back() != ']')
-			return false;
-		rhs = TrimAsciiWhitespaceCopy(rhs.substr(1, rhs.size() - 2));
-		if (rhs.empty())
-			return false;
+		outPayload = TrimAsciiWhitespaceCopy(outPayload.substr(1, outPayload.size() - 2));
+		return !outPayload.empty();
+	}
+
+	bool TryParseColorRuleChannels(const std::string& payload, ColorRuleChannels& outChannels)
+	{
+		outChannels = ColorRuleChannels();
 
 		bool scopeTargetRequested = false;
 		bool scopeTagRequested = false;
@@ -206,7 +268,7 @@ namespace
 		int sharedG = 255;
 		int sharedB = 255;
 
-		const std::vector<std::string> items = SplitCommaSeparatedItems(rhs);
+		const std::vector<std::string> items = SplitCommaSeparatedItems(payload);
 		for (const std::string& itemRaw : items)
 		{
 			const std::string item = TrimAsciiWhitespaceCopy(itemRaw);
@@ -237,7 +299,9 @@ namespace
 			const std::string key = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(item.substr(0, keyEqPos)));
 			const std::string value = TrimAsciiWhitespaceCopy(item.substr(keyEqPos + 1));
 
-			int r = 0, g = 0, b = 0;
+			int r = 0;
+			int g = 0;
+			int b = 0;
 			if (!TryParseVacdmRuleRgb(value, r, g, b))
 				continue;
 
@@ -249,65 +313,88 @@ namespace
 				sharedB = b;
 				continue;
 			}
-
 			if (key == "color_target")
 			{
 				scopeTargetRequested = true;
-				outRule.hasTargetColor = true;
-				outRule.targetR = r;
-				outRule.targetG = g;
-				outRule.targetB = b;
+				outChannels.hasTargetColor = true;
+				outChannels.targetR = r;
+				outChannels.targetG = g;
+				outChannels.targetB = b;
 				continue;
 			}
 			if (key == "color_tag")
 			{
 				scopeTagRequested = true;
-				outRule.hasTagColor = true;
-				outRule.tagR = r;
-				outRule.tagG = g;
-				outRule.tagB = b;
+				outChannels.hasTagColor = true;
+				outChannels.tagR = r;
+				outChannels.tagG = g;
+				outChannels.tagB = b;
 				continue;
 			}
 			if (key == "color_text")
 			{
 				scopeTextRequested = true;
-				outRule.hasTextColor = true;
-				outRule.textR = r;
-				outRule.textG = g;
-				outRule.textB = b;
+				outChannels.hasTextColor = true;
+				outChannels.textR = r;
+				outChannels.textG = g;
+				outChannels.textB = b;
 				continue;
 			}
 		}
 
-		if (scopeTargetRequested && !outRule.hasTargetColor && hasSharedColor)
+		if (scopeTargetRequested && !outChannels.hasTargetColor && hasSharedColor)
 		{
-			outRule.hasTargetColor = true;
-			outRule.targetR = sharedR;
-			outRule.targetG = sharedG;
-			outRule.targetB = sharedB;
+			outChannels.hasTargetColor = true;
+			outChannels.targetR = sharedR;
+			outChannels.targetG = sharedG;
+			outChannels.targetB = sharedB;
 		}
-		if (scopeTagRequested && !outRule.hasTagColor && hasSharedColor)
+		if (scopeTagRequested && !outChannels.hasTagColor && hasSharedColor)
 		{
-			outRule.hasTagColor = true;
-			outRule.tagR = sharedR;
-			outRule.tagG = sharedG;
-			outRule.tagB = sharedB;
+			outChannels.hasTagColor = true;
+			outChannels.tagR = sharedR;
+			outChannels.tagG = sharedG;
+			outChannels.tagB = sharedB;
 		}
-		if (scopeTextRequested && !outRule.hasTextColor && hasSharedColor)
+		if (scopeTextRequested && !outChannels.hasTextColor && hasSharedColor)
 		{
-			outRule.hasTextColor = true;
-			outRule.textR = sharedR;
-			outRule.textG = sharedG;
-			outRule.textB = sharedB;
+			outChannels.hasTextColor = true;
+			outChannels.textR = sharedR;
+			outChannels.textG = sharedG;
+			outChannels.textB = sharedB;
 		}
 
-		if (scopeTargetRequested && !outRule.hasTargetColor)
+		if (scopeTargetRequested && !outChannels.hasTargetColor)
 			return false;
-		if (scopeTagRequested && !outRule.hasTagColor)
+		if (scopeTagRequested && !outChannels.hasTagColor)
 			return false;
-		if (scopeTextRequested && !outRule.hasTextColor)
+		if (scopeTextRequested && !outChannels.hasTextColor)
 			return false;
-		if (!outRule.hasTargetColor && !outRule.hasTagColor && !outRule.hasTextColor)
+		return outChannels.hasTargetColor || outChannels.hasTagColor || outChannels.hasTextColor;
+	}
+
+	// Parse color-rule token syntax:
+	// token(state_<name>=[target|tag|text, color=(r,g,b), color_target=(r,g,b), ...]).
+	bool TryParseVacdmColorRuleToken(const std::string& rawToken, VacdmColorRuleDefinition& outRule)
+	{
+		outRule = VacdmColorRuleDefinition();
+
+		std::string baseToken;
+		std::string condition;
+		std::string payload;
+		if (!TrySplitColorRuleToken(rawToken, baseToken, condition, payload))
+			return false;
+		if (!IsVacdmRuleTokenName(baseToken))
+			return false;
+
+		std::string stateName = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(condition));
+		if (stateName.rfind("state_", 0) != 0 || stateName.size() <= 6)
+			return false;
+		stateName = stateName.substr(6);
+		if (stateName.empty())
+			return false;
+
+		if (!TryParseColorRuleChannels(payload, outRule))
 			return false;
 
 		outRule.token = baseToken;
@@ -533,8 +620,8 @@ namespace
 		return false;
 	}
 
-	// Collect only vACDM color-rule tokens from tag definition lines.
-	void CollectVacdmColorRulesFromLineTexts(const std::vector<std::string>& lineTexts, std::vector<VacdmColorRuleDefinition>& outRules)
+	template <typename RuleType, typename Parser>
+	void CollectColorRulesFromLineTexts(const std::vector<std::string>& lineTexts, std::vector<RuleType>& outRules, Parser parser)
 	{
 		for (const std::string& line : lineTexts)
 		{
@@ -543,11 +630,29 @@ namespace
 			{
 				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawToken);
 				const std::string baseToken = styledToken.token.empty() ? rawToken : styledToken.token;
-				VacdmColorRuleDefinition parsedRule;
-				if (TryParseVacdmColorRuleToken(baseToken, parsedRule))
+				RuleType parsedRule;
+				if (parser(baseToken, parsedRule))
 					outRules.push_back(parsedRule);
 			}
 		}
+	}
+
+	template <typename RuleType, typename Matcher>
+	VacdmColorRuleOverrides EvaluateColorRules(const std::vector<RuleType>& rules, Matcher matcher)
+	{
+		VacdmColorRuleOverrides overrides;
+		for (const RuleType& rule : rules)
+		{
+			if (matcher(rule))
+				ApplyColorRuleChannels(overrides, rule);
+		}
+		return overrides;
+	}
+
+	// Collect only vACDM color-rule tokens from tag definition lines.
+	void CollectVacdmColorRulesFromLineTexts(const std::vector<std::string>& lineTexts, std::vector<VacdmColorRuleDefinition>& outRules)
+	{
+		CollectColorRulesFromLineTexts(lineTexts, outRules, TryParseVacdmColorRuleToken);
 	}
 
 	std::vector<std::string> ConvertDefinitionValueToLineTexts(const rapidjson::Value& labelLines)
@@ -585,39 +690,10 @@ namespace
 
 	VacdmColorRuleOverrides EvaluateVacdmColorRules(const std::vector<VacdmColorRuleDefinition>& rules, const VacdmPilotData* pilotData)
 	{
-		VacdmColorRuleOverrides overrides;
-		for (const VacdmColorRuleDefinition& rule : rules)
-		{
+		return EvaluateColorRules(rules, [&](const VacdmColorRuleDefinition& rule) {
 			const std::string actualState = ResolveVacdmRuleStateName(rule.token, pilotData);
-			if (!VacdmRuleStateMatches(rule.expectedState, actualState))
-				continue;
-
-			if (rule.hasTargetColor)
-			{
-				overrides.hasTargetColor = true;
-				overrides.targetR = rule.targetR;
-				overrides.targetG = rule.targetG;
-				overrides.targetB = rule.targetB;
-				overrides.targetA = rule.targetA;
-			}
-			if (rule.hasTagColor)
-			{
-				overrides.hasTagColor = true;
-				overrides.tagR = rule.tagR;
-				overrides.tagG = rule.tagG;
-				overrides.tagB = rule.tagB;
-				overrides.tagA = rule.tagA;
-			}
-			if (rule.hasTextColor)
-			{
-				overrides.hasTextColor = true;
-				overrides.textR = rule.textR;
-				overrides.textG = rule.textG;
-				overrides.textB = rule.textB;
-				overrides.textA = rule.textA;
-			}
-		}
-		return overrides;
+			return VacdmRuleStateMatches(rule.expectedState, actualState);
+			});
 	}
 
 	std::string NormalizeSidMatchText(const std::string& value)
@@ -669,147 +745,19 @@ namespace
 	{
 		outRule = RunwayColorRuleDefinition();
 
-		const std::string token = TrimAsciiWhitespaceCopy(rawToken);
-		if (token.empty())
+		std::string baseToken;
+		std::string condition;
+		std::string payload;
+		if (!TrySplitColorRuleToken(rawToken, baseToken, condition, payload))
 			return false;
-
-		const size_t openPos = token.find('(');
-		const size_t closePos = token.rfind(')');
-		if (openPos == std::string::npos || closePos == std::string::npos || closePos <= openPos || closePos != token.size() - 1)
-			return false;
-
-		const std::string baseToken = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(token.substr(0, openPos)));
 		if (!IsRunwayRuleTokenName(baseToken))
 			return false;
 
-		const std::string expression = TrimAsciiWhitespaceCopy(token.substr(openPos + 1, closePos - openPos - 1));
-		const size_t eqPos = expression.find('=');
-		if (eqPos == std::string::npos)
-			return false;
-
-		const std::string lhsRaw = TrimAsciiWhitespaceCopy(expression.substr(0, eqPos));
-		const std::string runwayCondition = NormalizeRunwayRuleConditionName(lhsRaw);
+		const std::string runwayCondition = NormalizeRunwayRuleConditionName(condition);
 		if (runwayCondition.empty())
 			return false;
 
-		std::string rhs = TrimAsciiWhitespaceCopy(expression.substr(eqPos + 1));
-		if (rhs.size() < 2 || rhs.front() != '[' || rhs.back() != ']')
-			return false;
-		rhs = TrimAsciiWhitespaceCopy(rhs.substr(1, rhs.size() - 2));
-		if (rhs.empty())
-			return false;
-
-		bool scopeTargetRequested = false;
-		bool scopeTagRequested = false;
-		bool scopeTextRequested = false;
-		bool hasSharedColor = false;
-		int sharedR = 255;
-		int sharedG = 255;
-		int sharedB = 255;
-
-		const std::vector<std::string> items = SplitCommaSeparatedItems(rhs);
-		for (const std::string& itemRaw : items)
-		{
-			const std::string item = TrimAsciiWhitespaceCopy(itemRaw);
-			if (item.empty())
-				continue;
-
-			const std::string loweredItem = ToLowerAsciiCopy(item);
-			if (loweredItem == "target")
-			{
-				scopeTargetRequested = true;
-				continue;
-			}
-			if (loweredItem == "tag")
-			{
-				scopeTagRequested = true;
-				continue;
-			}
-			if (loweredItem == "text")
-			{
-				scopeTextRequested = true;
-				continue;
-			}
-
-			const size_t keyEqPos = item.find('=');
-			if (keyEqPos == std::string::npos)
-				continue;
-
-			const std::string key = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(item.substr(0, keyEqPos)));
-			const std::string value = TrimAsciiWhitespaceCopy(item.substr(keyEqPos + 1));
-
-			int r = 0;
-			int g = 0;
-			int b = 0;
-			if (!TryParseVacdmRuleRgb(value, r, g, b))
-				continue;
-
-			if (key == "color")
-			{
-				hasSharedColor = true;
-				sharedR = r;
-				sharedG = g;
-				sharedB = b;
-				continue;
-			}
-			if (key == "color_target")
-			{
-				scopeTargetRequested = true;
-				outRule.hasTargetColor = true;
-				outRule.targetR = r;
-				outRule.targetG = g;
-				outRule.targetB = b;
-				continue;
-			}
-			if (key == "color_tag")
-			{
-				scopeTagRequested = true;
-				outRule.hasTagColor = true;
-				outRule.tagR = r;
-				outRule.tagG = g;
-				outRule.tagB = b;
-				continue;
-			}
-			if (key == "color_text")
-			{
-				scopeTextRequested = true;
-				outRule.hasTextColor = true;
-				outRule.textR = r;
-				outRule.textG = g;
-				outRule.textB = b;
-				continue;
-			}
-		}
-
-		if (scopeTargetRequested && !outRule.hasTargetColor && hasSharedColor)
-		{
-			outRule.hasTargetColor = true;
-			outRule.targetR = sharedR;
-			outRule.targetG = sharedG;
-			outRule.targetB = sharedB;
-		}
-		if (scopeTagRequested && !outRule.hasTagColor && hasSharedColor)
-		{
-			outRule.hasTagColor = true;
-			outRule.tagR = sharedR;
-			outRule.tagG = sharedG;
-			outRule.tagB = sharedB;
-		}
-		if (scopeTextRequested && !outRule.hasTextColor && hasSharedColor)
-		{
-			outRule.hasTextColor = true;
-			outRule.textR = sharedR;
-			outRule.textG = sharedG;
-			outRule.textB = sharedB;
-		}
-
-		if (scopeTargetRequested && !outRule.hasTargetColor)
-			return false;
-		if (scopeTagRequested && !outRule.hasTagColor)
-			return false;
-		if (scopeTextRequested && !outRule.hasTextColor)
-			return false;
-		if (!outRule.hasTargetColor && !outRule.hasTagColor && !outRule.hasTextColor)
+		if (!TryParseColorRuleChannels(payload, outRule))
 			return false;
 
 		outRule.token = baseToken;
@@ -878,61 +826,212 @@ namespace
 		return !hasToken ? matchesSingleCondition(expectedConditionRaw) : false;
 	}
 
+	bool StructuredRuleContextMatches(const StructuredTagColorRule& rule, const std::string& tagTypeKey, const std::string& statusKey, const std::string& detailKey)
+	{
+		auto matchesField = [](const std::string& value, const std::string& current) -> bool
+		{
+			const std::string normalized = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(value));
+			if (normalized.empty() || normalized == "any" || normalized == "all" || normalized == "*")
+				return true;
+			return normalized == ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(current));
+		};
+
+		return matchesField(rule.tagType, tagTypeKey) &&
+			matchesField(rule.status, statusKey) &&
+			matchesField(rule.detail, detailKey);
+	}
+
+	bool StructuredRuleContextMatches(const StructuredTagColorRule& rule, const std::string& tagTypeKey, const char* statusDefinitionKey, bool isTagDetailed)
+	{
+		const std::string statusKey = statusDefinitionKey != nullptr ? statusDefinitionKey : "default";
+		const std::string detailKey = isTagDetailed ? "detailed" : "normal";
+		return StructuredRuleContextMatches(rule, tagTypeKey, statusKey, detailKey);
+	}
+
+	bool CustomRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualValueRaw)
+	{
+		const std::string actualNormalized = NormalizeSidMatchText(actualValueRaw);
+		const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
+		const std::string expectedLower = ToLowerAsciiCopy(expectedTrimmed);
+
+		if (expectedLower.empty() || expectedLower == "any" || expectedLower == "*" || expectedLower == "all")
+			return !actualNormalized.empty();
+		if (expectedLower == "set" || expectedLower == "present" || expectedLower == "available")
+			return !actualNormalized.empty();
+		if (expectedLower == "missing" || expectedLower == "unset" || expectedLower == "none" || expectedLower == "empty")
+			return actualNormalized.empty();
+
+		bool invert = false;
+		std::string listText = expectedTrimmed;
+		if (expectedLower.rfind("not_in:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(7);
+		}
+		else if (expectedLower.rfind("notin:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(6);
+		}
+		else if (expectedLower.rfind("not:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(4);
+		}
+		else if (expectedLower.rfind("in:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(3);
+		}
+		else if (expectedLower.rfind("list:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(5);
+		}
+		else if (expectedLower.rfind("sid:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(4);
+		}
+
+		auto matchesSinglePattern = [&](const std::string& rawPattern) -> bool
+		{
+			const std::string pattern = NormalizeSidMatchText(rawPattern);
+			if (pattern.empty() || actualNormalized.empty())
+				return false;
+			if (actualNormalized == pattern)
+				return true;
+			if (actualNormalized.size() >= pattern.size() && actualNormalized.compare(0, pattern.size(), pattern) == 0)
+				return true;
+			return false;
+		};
+
+		bool anyPattern = false;
+		bool anyMatch = false;
+		std::string token;
+		for (size_t i = 0; i <= listText.size(); ++i)
+		{
+			const char ch = (i < listText.size()) ? listText[i] : ',';
+			if (ch == ',' || ch == ';' || ch == '|')
+			{
+				const std::string trimmedToken = TrimAsciiWhitespaceCopy(token);
+				token.clear();
+				if (trimmedToken.empty())
+					continue;
+				anyPattern = true;
+				if (matchesSinglePattern(trimmedToken))
+				{
+					anyMatch = true;
+					if (!invert)
+						return true;
+				}
+				continue;
+			}
+			token.push_back(ch);
+		}
+
+		if (!anyPattern)
+			anyMatch = matchesSinglePattern(listText);
+
+		if (!invert)
+			return anyMatch;
+		if (actualNormalized.empty())
+			return false;
+		return !anyMatch;
+	}
+
+	bool StructuredRuleCriterionMatches(
+		const std::string& sourceText,
+		const std::string& token,
+		const std::string& condition,
+		const std::map<std::string, std::string>& replacingMap,
+		const VacdmPilotData* pilotData)
+	{
+		const std::string source = ToLowerAsciiCopy(sourceText);
+		if (source == "runway")
+		{
+			std::string actualRunway;
+			auto it = replacingMap.find(token);
+			if (it != replacingMap.end())
+				actualRunway = it->second;
+			return RunwayRuleConditionMatches(condition, actualRunway);
+		}
+		if (source == "custom")
+		{
+			std::string actualValue;
+			auto it = replacingMap.find(token);
+			if (it != replacingMap.end())
+				actualValue = it->second;
+			return CustomRuleConditionMatches(condition, actualValue);
+		}
+
+		const std::string actualState = ResolveVacdmRuleStateName(token, pilotData);
+		return VacdmRuleStateMatches(condition, actualState);
+	}
+
+	VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
+		const std::vector<StructuredTagColorRule>& rules,
+		const std::string& tagTypeKey,
+		const std::string& statusKey,
+		const std::string& detailKey,
+		const std::map<std::string, std::string>& replacingMap,
+		const VacdmPilotData* pilotData)
+	{
+		VacdmColorRuleOverrides overrides;
+		for (const StructuredTagColorRule& rule : rules)
+		{
+			if (!StructuredRuleContextMatches(rule, tagTypeKey, statusKey, detailKey))
+				continue;
+
+			bool ruleMatches = true;
+			if (!rule.criteria.empty())
+			{
+				for (const StructuredTagColorRule::Criterion& criterion : rule.criteria)
+				{
+					if (!StructuredRuleCriterionMatches(criterion.source, criterion.token, criterion.condition, replacingMap, pilotData))
+					{
+						ruleMatches = false;
+						break;
+					}
+				}
+			}
+			else
+			{
+				ruleMatches = StructuredRuleCriterionMatches(rule.source, rule.token, rule.condition, replacingMap, pilotData);
+			}
+
+			if (ruleMatches)
+				ApplyStructuredRuleColors(overrides, rule);
+		}
+
+		return overrides;
+	}
+
+	VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
+		const std::vector<StructuredTagColorRule>& rules,
+		const std::string& tagTypeKey,
+		const char* statusDefinitionKey,
+		bool isTagDetailed,
+		const std::map<std::string, std::string>& replacingMap,
+		const VacdmPilotData* pilotData)
+	{
+		const std::string statusKey = statusDefinitionKey != nullptr ? statusDefinitionKey : "default";
+		const std::string detailKey = isTagDetailed ? "detailed" : "normal";
+		return EvaluateStructuredTagColorRules(rules, tagTypeKey, statusKey, detailKey, replacingMap, pilotData);
+	}
+
 	void CollectRunwayColorRulesFromLineTexts(const std::vector<std::string>& lineTexts, std::vector<RunwayColorRuleDefinition>& outRules)
 	{
-		for (const std::string& line : lineTexts)
-		{
-			const std::vector<std::string> tokens = SplitDefinitionTokens(line);
-			for (const std::string& rawToken : tokens)
-			{
-				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawToken);
-				const std::string baseToken = styledToken.token.empty() ? rawToken : styledToken.token;
-				RunwayColorRuleDefinition parsedRule;
-				if (TryParseRunwayColorRuleToken(baseToken, parsedRule))
-					outRules.push_back(parsedRule);
-			}
-		}
+		CollectColorRulesFromLineTexts(lineTexts, outRules, TryParseRunwayColorRuleToken);
 	}
 
 	VacdmColorRuleOverrides EvaluateRunwayColorRules(const std::vector<RunwayColorRuleDefinition>& rules, const std::map<std::string, std::string>& replacingMap)
 	{
-		VacdmColorRuleOverrides overrides;
-		for (const RunwayColorRuleDefinition& rule : rules)
-		{
+		return EvaluateColorRules(rules, [&](const RunwayColorRuleDefinition& rule) {
 			std::string actualRunway;
 			auto it = replacingMap.find(rule.token);
 			if (it != replacingMap.end())
 				actualRunway = it->second;
 
-			if (!RunwayRuleConditionMatches(rule.expectedRunway, actualRunway))
-				continue;
-
-			if (rule.hasTargetColor)
-			{
-				overrides.hasTargetColor = true;
-				overrides.targetR = rule.targetR;
-				overrides.targetG = rule.targetG;
-				overrides.targetB = rule.targetB;
-				overrides.targetA = rule.targetA;
-			}
-			if (rule.hasTagColor)
-			{
-				overrides.hasTagColor = true;
-				overrides.tagR = rule.tagR;
-				overrides.tagG = rule.tagG;
-				overrides.tagB = rule.tagB;
-				overrides.tagA = rule.tagA;
-			}
-			if (rule.hasTextColor)
-			{
-				overrides.hasTextColor = true;
-				overrides.textR = rule.textR;
-				overrides.textG = rule.textG;
-				overrides.textB = rule.textB;
-				overrides.textA = rule.textA;
-			}
-		}
-		return overrides;
+			return RunwayRuleConditionMatches(rule.expectedRunway, actualRunway);
+			});
 	}
 
 	bool SidMatchesPatterns(const rapidjson::Value& patternsValue, const std::string& sidNormalized)
