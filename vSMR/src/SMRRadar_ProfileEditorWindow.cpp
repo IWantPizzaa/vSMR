@@ -302,10 +302,10 @@ namespace
 		modeValue.SetObject();
 		WriteStringMember(modeValue, "name", settings.name.empty() ? "Display Mode" : settings.name, allocator);
 		WriteBoolMember(modeValue, "require_assigned_squawk", settings.requireAssignedSquawk, allocator);
-		WriteBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk, allocator);
+		WriteBoolMember(modeValue, "require_clearance", settings.requireClearance, allocator);
+		WriteBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat, allocator);
+		WriteBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
 		WriteStringArrayMember(modeValue, "blocked_auto_correlate_squawks", settings.blockedAutoCorrelateSquawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : settings.blockedAutoCorrelateSquawks, allocator);
-		WriteBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
-		WriteBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
 		WriteStatusVisibility(modeValue, settings.statuses, allocator);
 	}
 
@@ -322,6 +322,9 @@ namespace
 				settings.name = name;
 		}
 		settings.requireAssignedSquawk = ReadBoolMember(modeValue, "require_assigned_squawk", ReadBoolMember(modeValue, "squawk_rule", settings.requireAssignedSquawk));
+		settings.requireClearance = ReadBoolMember(modeValue, "require_clearance", settings.requireClearance);
+		settings.requireValidTsat = ReadBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat);
+		settings.requireActiveTobt = ReadBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt);
 		settings.acceptPilotSquawk = ReadBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk);
 		settings.towerFilter = ReadBoolMember(modeValue, "tower_filter", ReadBoolMember(modeValue, "tower_mode", settings.towerFilter));
 		settings.structuredRulesEnabled = ReadBoolMember(modeValue, "structured_rules", ReadBoolMember(modeValue, "structured_rules_enabled", settings.structuredRulesEnabled));
