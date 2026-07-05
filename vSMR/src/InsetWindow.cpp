@@ -759,11 +759,80 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	if (strcmp(sObjectId, "window") == 0) {
 		if (IsAvisoViewport())
 		{
-			UpdateAvisoPan(Pt);
-			if (Released)
-				EndAvisoPan();
+			if (m_AvisoRightPanning)
+			{
+				UpdateAvisoPan(Pt);
+				if (Released)
+					EndAvisoPan();
 
-			return true;
+				return true;
+			}
+
+			if (Released && !m_Grip)
+				return true;
+
+			if (!m_Grip)
+			{
+				ApplyAvisoLayoutBounds(layoutBounds);
+				CRect currentArea(m_Area);
+				currentArea.NormalizeRect();
+				if (currentArea.Width() <= 0 || currentArea.Height() <= 0)
+					return true;
+
+				if (IsAvisoSplitLayout(m_AvisoLayoutMode))
+				{
+					const int detachedWidth = min(
+						max(kAvisoMinLayoutWidth, currentArea.Width() - 40),
+						std::clamp(currentArea.Width() / 2, kAvisoMinLayoutWidth, 620));
+					const int detachedHeight = min(
+						max(kAvisoMinLayoutHeight, currentArea.Height() - 40),
+						std::clamp(currentArea.Height() / 2, kAvisoMinLayoutHeight, 380));
+
+					const double xRatio = std::clamp(
+						static_cast<double>(Pt.x - currentArea.left) / static_cast<double>(max(1, currentArea.Width())),
+						0.15,
+						0.85);
+					const double yRatio = std::clamp(
+						static_cast<double>(Pt.y - currentArea.top) / static_cast<double>(max(1, currentArea.Height())),
+						0.15,
+						0.85);
+					const int left = Pt.x - static_cast<int>(std::lround(static_cast<double>(detachedWidth) * xRatio));
+					const int top = Pt.y - static_cast<int>(std::lround(static_cast<double>(detachedHeight) * yRatio));
+
+					m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+					m_Area = { left, top, left + detachedWidth, top + detachedHeight };
+					ApplyAvisoLayoutBounds(layoutBounds);
+					currentArea = CRect(m_Area);
+					currentArea.NormalizeRect();
+				}
+				else if (m_AvisoLayoutMode != AvisoLayoutMode::Floating)
+				{
+					m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+					ApplyAvisoLayoutBounds(layoutBounds);
+					currentArea = CRect(m_Area);
+					currentArea.NormalizeRect();
+				}
+
+				m_OffsetDrag = { Pt.x - currentArea.left, Pt.y - currentArea.top };
+				m_Grip = true;
+			}
+
+			CRect appWindowRect(m_Area);
+			appWindowRect.NormalizeRect();
+			const int width = appWindowRect.Width();
+			const int height = appWindowRect.Height();
+			if (width <= 0 || height <= 0)
+				return true;
+
+			const int left = Pt.x - m_OffsetDrag.x;
+			const int top = Pt.y - m_OffsetDrag.y;
+			m_Area = { left, top, left + width, top + height };
+			ApplyAvisoLayoutBounds(layoutBounds);
+
+			if (Released)
+				m_Grip = false;
+
+			return Released;
 		}
 
 		if (!this->m_Grip)
