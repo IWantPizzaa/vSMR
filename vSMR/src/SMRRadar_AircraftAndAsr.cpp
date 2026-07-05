@@ -568,12 +568,9 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 
 			if ((p_value = GetDataFromAsr(string(prefix + "LayoutMode").c_str())) != NULL)
 			{
-				const int layoutMode = std::clamp(atoi(p_value), 0, 6);
+				const int layoutMode = std::clamp(atoi(p_value), 0, 8);
 				avisoWindow->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
 			}
-
-			if ((p_value = GetDataFromAsr(string(prefix + "LayoutLocked").c_str())) != NULL)
-				avisoWindow->m_AvisoLayoutLocked = atoi(p_value) == 1 ? true : false;
 		}
 	}
 
@@ -703,9 +700,6 @@ void CSMRRadar::OnAsrContentToBeSaved()
 
 			temp = std::to_string(static_cast<int>(avisoWindow->m_AvisoLayoutMode));
 			SaveDataToAsr(string(prefix + "LayoutMode").c_str(), "AVISO viewport layout mode", temp.c_str());
-
-			temp = std::to_string(int(avisoWindow->m_AvisoLayoutLocked));
-			SaveDataToAsr(string(prefix + "LayoutLocked").c_str(), "AVISO viewport layout lock", temp.c_str());
 		}
 	}
 }
