@@ -676,7 +676,7 @@ void CInsetWindow::EndAvisoPan()
 	m_AvisoRightPanning = false;
 }
 
-void CInsetWindow::BeginAvisoMove(POINT Pt)
+void CInsetWindow::BeginAvisoMove(POINT Pt, const RECT* layoutBounds)
 {
 	if (!IsAvisoViewport())
 		return;
@@ -686,20 +686,13 @@ void CInsetWindow::BeginAvisoMove(POINT Pt)
 	m_AvisoScrollSelected = true;
 	m_Grip = false;
 	m_OffsetDrag = Pt;
+	OnMoveScreenObject("window", Pt, m_Area, false, layoutBounds);
 }
 
 bool CInsetWindow::UpdateAvisoMove(POINT Pt, const RECT* layoutBounds)
 {
 	if (!IsAvisoViewport() || !m_AvisoLeftMoving || m_AvisoRightPanning)
 		return false;
-
-	if (!m_Grip)
-	{
-		const int dragX = Pt.x - m_OffsetDrag.x;
-		const int dragY = Pt.y - m_OffsetDrag.y;
-		if ((dragX * dragX) + (dragY * dragY) < 16)
-			return false;
-	}
 
 	OnMoveScreenObject("window", Pt, m_Area, false, layoutBounds);
 	return true;
@@ -711,8 +704,7 @@ bool CInsetWindow::EndAvisoMove(POINT Pt, const RECT* layoutBounds)
 		return false;
 
 	const bool consumedDrag = m_Grip;
-	if (m_Grip)
-		OnMoveScreenObject("window", Pt, m_Area, true, layoutBounds);
+	OnMoveScreenObject("window", Pt, m_Area, true, layoutBounds);
 
 	m_AvisoLeftMoving = false;
 	m_Grip = false;
