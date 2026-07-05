@@ -424,8 +424,9 @@ bool CSMRRadar::SaveAvisoPreset(const std::string& requestedName, bool overwrite
 	std::string presetName = TrimAsciiWhitespaceCopy(requestedName);
 	if (presetName.empty())
 		presetName = "AVISO Preset";
-	if (!overwriteExisting)
-		presetName = MakeUniquePresetName(items, presetName);
+	const rapidjson::SizeType existingIndex = FindPresetIndexNoCase(items, presetName);
+	if (existingIndex != kInvalidPresetIndex && !overwriteExisting)
+		return false;
 
 	AvisoPreset preset;
 	preset.name = presetName;
@@ -457,11 +458,8 @@ bool CSMRRadar::SaveAvisoPreset(const std::string& requestedName, bool overwrite
 	rapidjson::Value presetValue;
 	WriteAvisoPreset(preset, presetValue, allocator);
 
-	const rapidjson::SizeType existingIndex = FindPresetIndexNoCase(items, presetName);
 	if (existingIndex != kInvalidPresetIndex)
 	{
-		if (!overwriteExisting)
-			return false;
 		items[existingIndex] = presetValue;
 	}
 	else
