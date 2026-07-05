@@ -1050,6 +1050,20 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 		const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
 		const Color squawkErrorLabelColor = getSectionColor(labelsSection, "squawk_error_color", Color(255, 255, 0, 0));
+		const bool showLegacyPrimaryTarget = getSectionBool(targetsConfig, "show_primary_target", false);
+		auto getLegacyTargetColor = [&](const char* key, const Color& fallbackColor) -> Color
+		{
+			if (radar_screen->CurrentConfig != nullptr &&
+				targetsConfig != nullptr &&
+				key != nullptr &&
+				key[0] != '\0' &&
+				targetsConfig->HasMember(key) &&
+				(*targetsConfig)[key].IsObject())
+			{
+				return radar_screen->CurrentConfig->getConfigColor((*targetsConfig)[key]);
+			}
+			return fallbackColor;
+		};
 
 		bool tagProModeEnabled = false;
 		bool tagTowerModeEnabled = false;
@@ -1139,8 +1153,31 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			viewportRect.BottomRight(),
 			{ viewportRect.left, viewportRect.bottom }
 		};
+		std::vector<PointF> patatoidePolygonPoints;
+		auto drawPatatoidePolygon = [&](const std::map<int, CSMRRadar::POINT2>& sourcePoints, const Color& fillColor)
+		{
+			if (sourcePoints.size() < 3)
+				return;
 
-		auto drawTrailHistory = [&](CRadarTarget target, int reportedGs)
+			patatoidePolygonPoints.clear();
+			patatoidePolygonPoints.reserve(sourcePoints.size());
+			for (const auto& sourcePoint : sourcePoints)
+			{
+				const Gdiplus::PointF point = projectPoint(sourcePoint.second.y, sourcePoint.second.x);
+				patatoidePolygonPoints.emplace_back(point);
+			}
+
+			if (patatoidePolygonPoints.size() < 3)
+				return;
+
+			const Color drawColor = radar_screen->ColorManager != nullptr
+				? radar_screen->ColorManager->get_corrected_color("afterglow", fillColor)
+				: fillColor;
+			SolidBrush polygonBrush(drawColor);
+			gdi->FillPolygon(&polygonBrush, patatoidePolygonPoints.data(), static_cast<INT>(patatoidePolygonPoints.size()));
+		};
+
+		auto drawTrailHistory = [&](const std::string& callsign, CRadarTarget target, int reportedGs)
 		{
 			if (reportedGs <= 5)
 				return;
@@ -1152,6 +1189,23 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			CRadarTargetPositionData previousPos = target.GetPreviousPosition(target.GetPosition());
 			if (useNovaIconStyle)
 			{
+				if (radar_screen->Afterglow && showLegacyPrimaryTarget)
+				{
+					const auto patatoideIt = radar_screen->Patatoides.find(callsign);
+					if (patatoideIt != radar_screen->Patatoides.end())
+					{
+						drawPatatoidePolygon(
+							patatoideIt->second.History_one_points,
+							getLegacyTargetColor("history_one_color", Color(255, 0, 255, 255)));
+						drawPatatoidePolygon(
+							patatoideIt->second.History_two_points,
+							getLegacyTargetColor("history_two_color", Color(255, 0, 219, 219)));
+						drawPatatoidePolygon(
+							patatoideIt->second.History_three_points,
+							getLegacyTargetColor("history_three_color", Color(255, 0, 183, 183)));
+					}
+				}
+
 				SolidBrush trailBrush(symbolWhiteColor);
 				for (int j = 1; j <= trailNumber && previousPos.IsValid(); ++j)
 				{
@@ -1293,47 +1347,15 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		auto drawConfiguredIcon = [&](CRadarTarget rt, CFlightPlan fp, const std::string& rtCallsign, const CRadarTargetPositionData& rtPositionData, const POINT& targetPoint, bool isCorrelated, bool isDepartureTarget, bool hasNoFlightPlan, bool isOnRunway) -> int
 		{
 			const int reportedGs = rtPositionData.GetReportedGS();
+			if (useNovaIconStyle)
+				return 18;
+
 			Color targetColor = resolveTargetColor(fp, isCorrelated, reportedGs, isOnRunway, isDepartureTarget, hasNoFlightPlan);
 			if (targetColor.GetAlpha() < 32)
 				targetColor = Color(255, targetColor.GetR(), targetColor.GetG(), targetColor.GetB());
 			double headingDeg = static_cast<double>(rtPositionData.GetReportedHeadingTrueNorth());
 			if (headingDeg < 0.0 || headingDeg >= 360.0)
 				headingDeg = rt.GetTrackHeading();
-
-			if (useNovaIconStyle)
-			{
-				auto drawNovaShape = [&](CPen& pen)
-				{
-					CPen* oldPen = dc.SelectObject(&pen);
-					if (rtPositionData.GetTransponderC())
-					{
-						dc.MoveTo(targetPoint.x, targetPoint.y - 7);
-						dc.LineTo(targetPoint.x - 7, targetPoint.y);
-						dc.LineTo(targetPoint.x, targetPoint.y + 7);
-						dc.LineTo(targetPoint.x + 7, targetPoint.y);
-						dc.LineTo(targetPoint.x, targetPoint.y - 7);
-					}
-					else
-					{
-						dc.MoveTo(targetPoint.x, targetPoint.y);
-						dc.LineTo(targetPoint.x - 5, targetPoint.y - 5);
-						dc.MoveTo(targetPoint.x, targetPoint.y);
-						dc.LineTo(targetPoint.x + 5, targetPoint.y - 5);
-						dc.MoveTo(targetPoint.x, targetPoint.y);
-						dc.LineTo(targetPoint.x - 5, targetPoint.y + 5);
-						dc.MoveTo(targetPoint.x, targetPoint.y);
-						dc.LineTo(targetPoint.x + 5, targetPoint.y + 5);
-					}
-
-					if (oldPen != nullptr)
-						dc.SelectObject(oldPen);
-				};
-				CPen novaHaloPen(PS_SOLID, 4, RGB(0, 0, 0));
-				CPen novaPen(PS_SOLID, 2, symbolWhiteColor.ToCOLORREF());
-				drawNovaShape(novaHaloPen);
-				drawNovaShape(novaPen);
-				return 12;
-			}
 
 			char wtc = fp.IsValid() ? fp.GetFlightPlanData().GetAircraftWtc() : '\0';
 			std::string acType;
@@ -2178,7 +2200,17 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			}
 			const bool hasNoFlightPlan = !fp.IsValid();
 
-			drawTrailHistory(rt, reportedGs);
+			drawTrailHistory(rtCallsign, rt, reportedGs);
+			if (useNovaIconStyle && showLegacyPrimaryTarget)
+			{
+				const auto patatoideIt = radar_screen->Patatoides.find(rtCallsign);
+				if (patatoideIt != radar_screen->Patatoides.end())
+				{
+					drawPatatoidePolygon(
+						patatoideIt->second.points,
+						getLegacyTargetColor("target_color", Color(255, 255, 242, 73)));
+				}
+			}
 			const int iconSize = drawConfiguredIcon(rt, fp, rtCallsign, rtPositionData, targetPoint, acIsCorrelated, isDepartureTarget, hasNoFlightPlan, isOnRunway);
 
 			if (reportedGs > 50 && radar_screen->PredictedLength > 0)
