@@ -108,6 +108,21 @@ namespace
 		return nullptr;
 	}
 
+	CInsetWindow* ActiveAvisoPanViewport(CSMRRadar* radar)
+	{
+		if (radar == nullptr)
+			return nullptr;
+
+		for (auto& kv : radar->appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+				return appWindow;
+		}
+
+		return nullptr;
+	}
+
 	void SelectAvisoViewport(CSMRRadar* radar, CInsetWindow* selectedViewport)
 	{
 		if (radar == nullptr || selectedViewport == nullptr)
@@ -136,17 +151,43 @@ namespace
 		}
 	}
 
-	void EndAvisoViewportPans(CSMRRadar* radar)
+	bool SelectAvisoScrollTargetAtPoint(CSMRRadar* radar, POINT pt)
 	{
 		if (radar == nullptr)
-			return;
+			return false;
 
+		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(radar, pt);
+		if (viewportAtPoint != nullptr)
+		{
+			SelectAvisoViewport(radar, viewportAtPoint);
+			return true;
+		}
+
+		if (VisibleAppWindowAtPoint(radar, pt) == nullptr && IsPointInMainRadarArea(radar, pt))
+		{
+			SelectMainAviso(radar);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool EndAvisoViewportPans(CSMRRadar* radar)
+	{
+		if (radar == nullptr)
+			return false;
+
+		bool endedPan = false;
 		for (auto& kv : radar->appWindows)
 		{
 			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow != nullptr && appWindow->IsAvisoViewport())
+			if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+			{
 				appWindow->EndAvisoPan();
+				endedPan = true;
+			}
 		}
+		return endedPan;
 	}
 }
 
@@ -158,13 +199,7 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 
 	const char* objectId = (sObjectId != nullptr) ? sObjectId : "";
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
-	{
-		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, Pt);
-		if (viewportAtPoint != nullptr)
-			SelectAvisoViewport(this, viewportAtPoint);
-		else if (VisibleAppWindowAtPoint(this, Pt) == nullptr && IsPointInMainRadarArea(this, Pt))
-			SelectMainAviso(this);
-	}
+		SelectAvisoScrollTargetAtPoint(this, Pt);
 
 	if (Button != BUTTON_RIGHT || !IsAppWindowObjectType(ObjectType))
 		return;
@@ -426,22 +461,19 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
-	for (auto& kv : appWindows)
+	CInsetWindow* activePanViewport = ActiveAvisoPanViewport(this);
+	if (activePanViewport != nullptr)
 	{
-		CInsetWindow* appWindow = kv.second.get();
-		if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+		if ((::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
 		{
-			if ((::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
-			{
-				appWindow->EndAvisoPan();
-				RequestRefresh();
-				return;
-			}
-
-			appWindow->UpdateAvisoPan(Pt);
+			activePanViewport->EndAvisoPan();
 			RequestRefresh();
 			return;
 		}
+
+		activePanViewport->UpdateAvisoPan(Pt);
+		RequestRefresh();
+		return;
 	}
 	RequestRefresh();
 }
@@ -471,11 +503,8 @@ bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lPar
 		return false;
 	}
 
-	if (VisibleAppWindowAtPoint(this, clientPoint) == nullptr && IsPointInMainRadarArea(this, clientPoint))
-	{
-		SelectMainAviso(this);
+	if (SelectAvisoScrollTargetAtPoint(this, clientPoint))
 		RequestRefresh();
-	}
 
 	return false;
 }
@@ -489,18 +518,7 @@ bool CSMRRadar::HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam
 	if (Button != BUTTON_RIGHT)
 		return false;
 
-	bool hadActivePan = false;
-	for (auto& kv : appWindows)
-	{
-		CInsetWindow* appWindow = kv.second.get();
-		if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
-		{
-			appWindow->EndAvisoPan();
-			hadActivePan = true;
-		}
-	}
-
-	if (!hadActivePan)
+	if (!EndAvisoViewportPans(this))
 		return false;
 
 	if (hwnd != nullptr && ::GetCapture() == hwnd)
@@ -514,22 +532,20 @@ bool CSMRRadar::HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam)
 	POINT clientPoint = ClientPointFromMouseLParam(lParam);
 	mouseLocation = clientPoint;
 
-	for (auto& kv : appWindows)
+	CInsetWindow* activePanViewport = ActiveAvisoPanViewport(this);
+	if (activePanViewport != nullptr)
 	{
-		CInsetWindow* appWindow = kv.second.get();
-		if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !appWindow->m_AvisoRightPanning)
-			continue;
 
 		if ((wParam & MK_RBUTTON) == 0 && (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
 		{
-			appWindow->EndAvisoPan();
+			activePanViewport->EndAvisoPan();
 			if (hwnd != nullptr && ::GetCapture() == hwnd)
 				::ReleaseCapture();
 			RequestRefresh();
 			return true;
 		}
 
-		appWindow->UpdateAvisoPan(clientPoint);
+		activePanViewport->UpdateAvisoPan(clientPoint);
 		RequestRefresh();
 		return true;
 	}
@@ -775,13 +791,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	};
 
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
-	{
-		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, Pt);
-		if (viewportAtPoint != nullptr)
-			SelectAvisoViewport(this, viewportAtPoint);
-		else if (VisibleAppWindowAtPoint(this, Pt) == nullptr && IsPointInMainRadarArea(this, Pt))
-			SelectMainAviso(this);
-	}
+		SelectAvisoScrollTargetAtPoint(this, Pt);
 
 	if (IsAppWindowObjectType(ObjectType)) {
 		int appWindowId = ObjectType - APPWINDOW_BASE;
