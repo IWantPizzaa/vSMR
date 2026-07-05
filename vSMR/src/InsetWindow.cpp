@@ -117,6 +117,31 @@ namespace
 		return IsAvisoVerticalSplit(mode) || IsAvisoHorizontalSplit(mode);
 	}
 
+	bool IsAvisoCornerLayout(AvisoLayoutMode mode)
+	{
+		return mode == AvisoLayoutMode::CornerTopLeft ||
+			mode == AvisoLayoutMode::CornerTopRight ||
+			mode == AvisoLayoutMode::CornerBottomLeft ||
+			mode == AvisoLayoutMode::CornerBottomRight;
+	}
+
+	bool IsAvisoSnappedLayout(AvisoLayoutMode mode)
+	{
+		return IsAvisoSplitLayout(mode) || IsAvisoCornerLayout(mode);
+	}
+
+	bool IsAvisoCornerRightAnchored(AvisoLayoutMode mode)
+	{
+		return mode == AvisoLayoutMode::CornerTopRight ||
+			mode == AvisoLayoutMode::CornerBottomRight;
+	}
+
+	bool IsAvisoCornerBottomAnchored(AvisoLayoutMode mode)
+	{
+		return mode == AvisoLayoutMode::CornerBottomLeft ||
+			mode == AvisoLayoutMode::CornerBottomRight;
+	}
+
 	CRect DefaultAvisoSplitRect(AvisoLayoutMode mode, const CRect& bounds)
 	{
 		const int midX = (bounds.left + bounds.right) / 2;
@@ -132,6 +157,26 @@ namespace
 			return CRect(bounds.left, bounds.top, bounds.right, midY);
 		case AvisoLayoutMode::SplitBottom:
 			return CRect(bounds.left, midY, bounds.right, bounds.bottom);
+		default:
+			return CRect(0, 0, 0, 0);
+		}
+	}
+
+	CRect DefaultAvisoCornerRect(AvisoLayoutMode mode, const CRect& bounds)
+	{
+		const int midX = (bounds.left + bounds.right) / 2;
+		const int midY = (bounds.top + bounds.bottom) / 2;
+
+		switch (mode)
+		{
+		case AvisoLayoutMode::CornerTopLeft:
+			return CRect(bounds.left, bounds.top, midX, midY);
+		case AvisoLayoutMode::CornerTopRight:
+			return CRect(midX, bounds.top, bounds.right, midY);
+		case AvisoLayoutMode::CornerBottomLeft:
+			return CRect(bounds.left, midY, midX, bounds.bottom);
+		case AvisoLayoutMode::CornerBottomRight:
+			return CRect(midX, midY, bounds.right, bounds.bottom);
 		default:
 			return CRect(0, 0, 0, 0);
 		}
@@ -170,6 +215,44 @@ namespace
 		}
 	}
 
+	bool ResizeAvisoCornerRectToPoint(AvisoLayoutMode mode, POINT Pt, const CRect& bounds, RECT& area, bool resizeX, bool resizeY)
+	{
+		if (!IsAvisoCornerLayout(mode))
+			return false;
+
+		CRect current(area);
+		current.NormalizeRect();
+		if (current.Width() < kAvisoMinLayoutWidth || current.Height() < kAvisoMinLayoutHeight)
+			current = DefaultAvisoCornerRect(mode, bounds);
+
+		const bool rightAnchored = IsAvisoCornerRightAnchored(mode);
+		const bool bottomAnchored = IsAvisoCornerBottomAnchored(mode);
+
+		int left = rightAnchored ? current.left : bounds.left;
+		int right = rightAnchored ? bounds.right : current.right;
+		int top = bottomAnchored ? current.top : bounds.top;
+		int bottom = bottomAnchored ? bounds.bottom : current.bottom;
+
+		if (resizeX)
+		{
+			if (rightAnchored)
+				left = std::clamp(Pt.x, bounds.left, bounds.right - kAvisoMinLayoutWidth);
+			else
+				right = std::clamp(Pt.x, bounds.left + kAvisoMinLayoutWidth, bounds.right);
+		}
+
+		if (resizeY)
+		{
+			if (bottomAnchored)
+				top = std::clamp(Pt.y, bounds.top, bounds.bottom - kAvisoMinLayoutHeight);
+			else
+				bottom = std::clamp(Pt.y, bounds.top + kAvisoMinLayoutHeight, bounds.bottom);
+		}
+
+		area = { left, top, right, bottom };
+		return true;
+	}
+
 	CRect AvisoSplitDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
 	{
 		if (IsAvisoVerticalSplit(mode))
@@ -187,6 +270,52 @@ namespace
 		return CRect(0, 0, 0, 0);
 	}
 
+	CRect AvisoCornerVerticalDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
+	{
+		if (!IsAvisoCornerLayout(mode))
+			return CRect(0, 0, 0, 0);
+
+		const int dividerX = IsAvisoCornerRightAnchored(mode) ? viewportRect.left : viewportRect.right;
+		return CRect(dividerX - 3, viewportRect.top, dividerX + 3, viewportRect.bottom);
+	}
+
+	CRect AvisoCornerHorizontalDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
+	{
+		if (!IsAvisoCornerLayout(mode))
+			return CRect(0, 0, 0, 0);
+
+		const int dividerY = IsAvisoCornerBottomAnchored(mode) ? viewportRect.top : viewportRect.bottom;
+		return CRect(viewportRect.left, dividerY - 3, viewportRect.right, dividerY + 3);
+	}
+
+	CRect AvisoCornerButtonRect(AvisoLayoutMode mode, const CRect& viewportRect, bool oppositeCorner)
+	{
+		const int buttonSize = 17;
+		const int margin = 5;
+		bool rightSide = IsAvisoCornerRightAnchored(mode);
+		bool bottomSide = IsAvisoCornerBottomAnchored(mode);
+		if (oppositeCorner)
+		{
+			rightSide = !rightSide;
+			bottomSide = !bottomSide;
+		}
+
+		const int left = rightSide ? viewportRect.right - margin - buttonSize : viewportRect.left + margin;
+		const int top = bottomSide ? viewportRect.bottom - margin - buttonSize : viewportRect.top + margin;
+		return CRect(left, top, left + buttonSize, top + buttonSize);
+	}
+
+	void DrawAvisoDivider(CDC& dc, CSMRRadar* radarScreen, int objectType, const char* objectId, const CRect& dividerRect)
+	{
+		if (radarScreen == nullptr || objectId == nullptr || dividerRect.IsRectEmpty())
+			return;
+
+		CBrush dividerBrush(RGB(105, 105, 105));
+		dc.FillRect(dividerRect, &dividerBrush);
+		dc.Draw3dRect(dividerRect, RGB(70, 70, 70), RGB(150, 150, 150));
+		radarScreen->AddScreenObject(objectType, objectId, dividerRect, true, "");
+	}
+
 	std::string AvisoTagTypeKey(CSMRRadar::TagTypes type)
 	{
 		if (type == CSMRRadar::TagTypes::Departure)
@@ -196,229 +325,6 @@ namespace
 		if (type == CSMRRadar::TagTypes::Uncorrelated)
 			return "uncorrelated";
 		return "airborne";
-	}
-
-	bool AvisoStructuredRuleContextMatches(const StructuredTagColorRule& rule, const std::string& tagTypeKey, const char* statusDefinitionKey, bool isTagDetailed)
-	{
-		const std::string currentType = ToLowerAsciiCopy(tagTypeKey);
-		const std::string currentStatus = statusDefinitionKey != nullptr ? ToLowerAsciiCopy(statusDefinitionKey) : "default";
-		const std::string currentDetail = isTagDetailed ? "detailed" : "normal";
-
-		auto matchesField = [](const std::string& value, const std::string& current) -> bool
-		{
-			const std::string normalized = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(value));
-			if (normalized.empty() || normalized == "any" || normalized == "all" || normalized == "*")
-				return true;
-			return normalized == current;
-		};
-
-		return matchesField(rule.tagType, currentType) &&
-			matchesField(rule.status, currentStatus) &&
-			matchesField(rule.detail, currentDetail);
-	}
-
-	bool AvisoCustomRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualValueRaw)
-	{
-		const std::string actualNormalized = NormalizeSidMatchText(actualValueRaw);
-		const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
-		const std::string expectedLower = ToLowerAsciiCopy(expectedTrimmed);
-
-		if (expectedLower.empty() || expectedLower == "any" || expectedLower == "*" || expectedLower == "all")
-			return !actualNormalized.empty();
-		if (expectedLower == "set" || expectedLower == "present" || expectedLower == "available")
-			return !actualNormalized.empty();
-		if (expectedLower == "missing" || expectedLower == "unset" || expectedLower == "none" || expectedLower == "empty")
-			return actualNormalized.empty();
-
-		bool invert = false;
-		std::string listText = expectedTrimmed;
-		if (expectedLower.rfind("not_in:", 0) == 0)
-		{
-			invert = true;
-			listText = expectedTrimmed.substr(7);
-		}
-		else if (expectedLower.rfind("notin:", 0) == 0)
-		{
-			invert = true;
-			listText = expectedTrimmed.substr(6);
-		}
-		else if (expectedLower.rfind("not:", 0) == 0)
-		{
-			invert = true;
-			listText = expectedTrimmed.substr(4);
-		}
-		else if (expectedLower.rfind("in:", 0) == 0)
-		{
-			listText = expectedTrimmed.substr(3);
-		}
-		else if (expectedLower.rfind("list:", 0) == 0)
-		{
-			listText = expectedTrimmed.substr(5);
-		}
-		else if (expectedLower.rfind("sid:", 0) == 0)
-		{
-			listText = expectedTrimmed.substr(4);
-		}
-
-		auto matchesSinglePattern = [&](const std::string& rawPattern) -> bool
-		{
-			const std::string pattern = NormalizeSidMatchText(rawPattern);
-			if (pattern.empty() || actualNormalized.empty())
-				return false;
-			if (actualNormalized == pattern)
-				return true;
-			if (actualNormalized.size() >= pattern.size() && actualNormalized.compare(0, pattern.size(), pattern) == 0)
-				return true;
-			return false;
-		};
-
-		bool anyPattern = false;
-		bool anyMatch = false;
-		std::string token;
-		for (size_t i = 0; i <= listText.size(); ++i)
-		{
-			const char ch = (i < listText.size()) ? listText[i] : ',';
-			if (ch == ',' || ch == ';' || ch == '|')
-			{
-				const std::string trimmedToken = TrimAsciiWhitespaceCopy(token);
-				token.clear();
-				if (trimmedToken.empty())
-					continue;
-				anyPattern = true;
-				if (matchesSinglePattern(trimmedToken))
-				{
-					anyMatch = true;
-					if (!invert)
-						return true;
-				}
-				continue;
-			}
-			token.push_back(ch);
-		}
-
-		if (!anyPattern)
-			anyMatch = matchesSinglePattern(listText);
-
-		if (!invert)
-			return anyMatch;
-		if (actualNormalized.empty())
-			return false;
-		return !anyMatch;
-	}
-
-	VacdmColorRuleOverrides EvaluateAvisoStructuredTagColorRules(
-		const std::vector<StructuredTagColorRule>& rules,
-		const std::string& tagTypeKey,
-		const char* statusDefinitionKey,
-		bool isTagDetailed,
-		const std::map<std::string, std::string>& replacingMap,
-		const VacdmPilotData* pilotData)
-	{
-		VacdmColorRuleOverrides overrides;
-		for (const StructuredTagColorRule& rule : rules)
-		{
-			if (!AvisoStructuredRuleContextMatches(rule, tagTypeKey, statusDefinitionKey, isTagDetailed))
-				continue;
-
-			auto criterionMatches = [&](const std::string& sourceText, const std::string& token, const std::string& condition) -> bool
-			{
-				const std::string source = ToLowerAsciiCopy(sourceText);
-				if (source == "runway")
-				{
-					std::string actualRunway;
-					auto it = replacingMap.find(token);
-					if (it != replacingMap.end())
-						actualRunway = it->second;
-					return RunwayRuleConditionMatches(condition, actualRunway);
-				}
-				if (source == "custom")
-				{
-					std::string actualValue;
-					auto it = replacingMap.find(token);
-					if (it != replacingMap.end())
-						actualValue = it->second;
-					return AvisoCustomRuleConditionMatches(condition, actualValue);
-				}
-
-				const std::string actualState = ResolveVacdmRuleStateName(token, pilotData);
-				return VacdmRuleStateMatches(condition, actualState);
-			};
-
-			bool ruleMatches = true;
-			if (!rule.criteria.empty())
-			{
-				for (const StructuredTagColorRule::Criterion& criterion : rule.criteria)
-				{
-					if (!criterionMatches(criterion.source, criterion.token, criterion.condition))
-					{
-						ruleMatches = false;
-						break;
-					}
-				}
-			}
-			else
-			{
-				ruleMatches = criterionMatches(rule.source, rule.token, rule.condition);
-			}
-
-			if (!ruleMatches)
-				continue;
-
-			if (rule.applyTarget)
-			{
-				overrides.hasTargetColor = true;
-				overrides.targetR = rule.targetR;
-				overrides.targetG = rule.targetG;
-				overrides.targetB = rule.targetB;
-				overrides.targetA = rule.targetA;
-			}
-			if (rule.applyTag)
-			{
-				overrides.hasTagColor = true;
-				overrides.tagR = rule.tagR;
-				overrides.tagG = rule.tagG;
-				overrides.tagB = rule.tagB;
-				overrides.tagA = rule.tagA;
-			}
-			if (rule.applyText)
-			{
-				overrides.hasTextColor = true;
-				overrides.textR = rule.textR;
-				overrides.textG = rule.textG;
-				overrides.textB = rule.textB;
-				overrides.textA = rule.textA;
-			}
-		}
-
-		return overrides;
-	}
-
-	void MergeAvisoColorRuleOverrides(VacdmColorRuleOverrides& target, const VacdmColorRuleOverrides& source)
-	{
-		if (source.hasTargetColor)
-		{
-			target.hasTargetColor = true;
-			target.targetR = source.targetR;
-			target.targetG = source.targetG;
-			target.targetB = source.targetB;
-			target.targetA = source.targetA;
-		}
-		if (source.hasTagColor)
-		{
-			target.hasTagColor = true;
-			target.tagR = source.tagR;
-			target.tagG = source.tagG;
-			target.tagB = source.tagB;
-			target.tagA = source.tagA;
-		}
-		if (source.hasTextColor)
-		{
-			target.hasTextColor = true;
-			target.textR = source.textR;
-			target.textG = source.textG;
-			target.textB = source.textB;
-			target.textA = source.textA;
-		}
 	}
 
 	double AvisoFinitePositive(double value, double fallback, double minValue, double maxValue)
@@ -566,20 +472,21 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	case AvisoLayoutMode::CornerBottomLeft:
 	case AvisoLayoutMode::CornerBottomRight:
 	{
-		const int midX = (bounds.left + bounds.right) / 2;
-		const int midY = (bounds.top + bounds.bottom) / 2;
-		const bool rightSide =
-			m_AvisoLayoutMode == AvisoLayoutMode::CornerTopRight ||
-			m_AvisoLayoutMode == AvisoLayoutMode::CornerBottomRight;
-		const bool bottomSide =
-			m_AvisoLayoutMode == AvisoLayoutMode::CornerBottomLeft ||
-			m_AvisoLayoutMode == AvisoLayoutMode::CornerBottomRight;
-		const int left = rightSide ? midX : bounds.left;
-		const int right = rightSide ? bounds.right : midX;
-		const int top = bottomSide ? midY + kAvisoViewportTopBarHeight : contentTop;
-		const int bottom = bottomSide ? bounds.bottom : midY;
-		if (right - left >= kAvisoMinLayoutWidth && bottom - top >= kAvisoMinLayoutHeight)
-			m_Area = { left, top, right, bottom };
+		const bool rightAnchored = IsAvisoCornerRightAnchored(m_AvisoLayoutMode);
+		const bool bottomAnchored = IsAvisoCornerBottomAnchored(m_AvisoLayoutMode);
+		const int left = rightAnchored
+			? std::clamp(static_cast<int>(area.left), static_cast<int>(bounds.left), static_cast<int>(bounds.right) - kAvisoMinLayoutWidth)
+			: static_cast<int>(bounds.left);
+		const int right = rightAnchored
+			? static_cast<int>(bounds.right)
+			: std::clamp(static_cast<int>(area.right), static_cast<int>(bounds.left) + kAvisoMinLayoutWidth, static_cast<int>(bounds.right));
+		const int top = bottomAnchored
+			? std::clamp(static_cast<int>(area.top), static_cast<int>(bounds.top), static_cast<int>(bounds.bottom) - kAvisoMinLayoutHeight)
+			: static_cast<int>(bounds.top);
+		const int bottom = bottomAnchored
+			? static_cast<int>(bounds.bottom)
+			: std::clamp(static_cast<int>(area.bottom), static_cast<int>(bounds.top) + kAvisoMinLayoutHeight, static_cast<int>(bounds.bottom));
+		m_Area = { left, top, right, bottom };
 		break;
 	}
 	case AvisoLayoutMode::Floating:
@@ -648,6 +555,12 @@ void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 		CRect splitRect = DefaultAvisoSplitRect(snappedMode, bounds);
 		if (!splitRect.IsRectEmpty())
 			m_Area = splitRect;
+	}
+	else if (IsAvisoCornerLayout(snappedMode))
+	{
+		CRect cornerRect = DefaultAvisoCornerRect(snappedMode, bounds);
+		if (!cornerRect.IsRectEmpty())
+			m_Area = cornerRect;
 	}
 
 	ApplyAvisoLayoutBounds(layoutBounds);
@@ -831,7 +744,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	if (sObjectId == nullptr)
 		return true;
 
-	if (strcmp(sObjectId, "divider") == 0)
+	if (strcmp(sObjectId, "divider") == 0 || strcmp(sObjectId, "divider_x") == 0 || strcmp(sObjectId, "divider_y") == 0)
 	{
 		if (!IsAvisoViewport())
 			return true;
@@ -840,7 +753,19 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		if (bounds.IsRectEmpty())
 			return true;
 
-		ResizeAvisoSplitRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area);
+		if (strcmp(sObjectId, "divider") == 0)
+		{
+			ResizeAvisoSplitRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area);
+		}
+		else if (strcmp(sObjectId, "divider_x") == 0)
+		{
+			ResizeAvisoCornerRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area, true, false);
+		}
+		else
+		{
+			ResizeAvisoCornerRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area, false, true);
+		}
+		ApplyAvisoLayoutBounds(layoutBounds);
 
 		return Released;
 	}
@@ -924,6 +849,14 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		if (IsAvisoViewport())
 		{
 			ApplyAvisoLayoutBounds(layoutBounds);
+			CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
+			if (!bounds.IsRectEmpty() && IsAvisoCornerLayout(m_AvisoLayoutMode))
+			{
+				ResizeAvisoCornerRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area, true, true);
+				ApplyAvisoLayoutBounds(layoutBounds);
+				return Released;
+			}
+
 			m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 		}
 
@@ -976,7 +909,12 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		return Released;
 	}
 
-	if (strcmp(sObjectId, "window") != 0 && strcmp(sObjectId, "resize") != 0 && strcmp(sObjectId, "topbar") != 0)
+	if (strcmp(sObjectId, "window") != 0 &&
+		strcmp(sObjectId, "resize") != 0 &&
+		strcmp(sObjectId, "topbar") != 0 &&
+		strcmp(sObjectId, "divider") != 0 &&
+		strcmp(sObjectId, "divider_x") != 0 &&
+		strcmp(sObjectId, "divider_y") != 0)
 	{
 		string callsign = sObjectId;
 		if (!callsign.empty())
@@ -1111,7 +1049,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	UpdateAvisoScreenArea(renderWindow);
 
 	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
-	radar_screen->AddScreenObject(m_Id, "window", m_Area, !IsAvisoSplitLayout(m_AvisoLayoutMode), "");
+	radar_screen->AddScreenObject(m_Id, "window", m_Area, !IsAvisoSnappedLayout(m_AvisoLayoutMode), "");
 	radar_screen->AddScreenObject(m_Id, "viewport", m_Area, false, "");
 
 	auto drawCenteredMessage = [&](const char* message)
@@ -1140,14 +1078,28 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
 
-			CRect dividerRect = AvisoSplitDividerRect(m_AvisoLayoutMode, viewportRect);
-			if (!dividerRect.IsRectEmpty())
-			{
-				CBrush dividerBrush(RGB(105, 105, 105));
-				dc.FillRect(dividerRect, &dividerBrush);
-				dc.Draw3dRect(dividerRect, RGB(70, 70, 70), RGB(150, 150, 150));
-				radar_screen->AddScreenObject(m_Id, "divider", dividerRect, true, "");
-			}
+			DrawAvisoDivider(dc, radar_screen, m_Id, "divider", AvisoSplitDividerRect(m_AvisoLayoutMode, viewportRect));
+			return;
+		}
+
+		if (IsAvisoCornerLayout(m_AvisoLayoutMode))
+		{
+			const CRect floatButtonRect = DrawInsetButton(
+				dc,
+				"F",
+				AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, false),
+				mouseLocation);
+			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
+
+			CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, true);
+			resizeArea.NormalizeRect();
+			CBrush resizeBrush(RGB(60, 60, 60));
+			dc.FillRect(resizeArea, &resizeBrush);
+			radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
+			dc.Draw3dRect(resizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
+
+			DrawAvisoDivider(dc, radar_screen, m_Id, "divider_x", AvisoCornerVerticalDividerRect(m_AvisoLayoutMode, viewportRect));
+			DrawAvisoDivider(dc, radar_screen, m_Id, "divider_y", AvisoCornerHorizontalDividerRect(m_AvisoLayoutMode, viewportRect));
 			return;
 		}
 
@@ -2469,10 +2421,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const bool hasVacdmRulePilotData = TryGetVacdmPilotDataForTarget(rt, fp, vacdmRulePilotData);
 			VacdmColorRuleOverrides tagColorRuleOverrides =
 				EvaluateVacdmColorRules(vacdmTagColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
-			MergeAvisoColorRuleOverrides(tagColorRuleOverrides, EvaluateRunwayColorRules(runwayTagColorRules, tagReplacingMap));
-			MergeAvisoColorRuleOverrides(
+			MergeColorRuleOverrides(tagColorRuleOverrides, EvaluateRunwayColorRules(runwayTagColorRules, tagReplacingMap));
+			MergeColorRuleOverrides(
 				tagColorRuleOverrides,
-				EvaluateAvisoStructuredTagColorRules(
+				EvaluateStructuredTagColorRules(
 					structuredTagRules,
 					ruleTagTypeKey,
 					statusDefinitionKey,
