@@ -30,47 +30,6 @@ namespace
 		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
 	}
 
-	void DrawAntialiasedNovaSymbol(
-		Gdiplus::Graphics& graphics,
-		POINT center,
-		bool transponderC,
-		const Gdiplus::Color& color,
-		Gdiplus::REAL diamondRadius,
-		Gdiplus::REAL crossRadius)
-	{
-		const Gdiplus::GraphicsState state = graphics.Save();
-		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-
-		Gdiplus::Pen pen(color, 1.2f);
-		pen.SetStartCap(Gdiplus::LineCapRound);
-		pen.SetEndCap(Gdiplus::LineCapRound);
-		pen.SetLineJoin(Gdiplus::LineJoinRound);
-
-		const Gdiplus::REAL x = static_cast<Gdiplus::REAL>(center.x);
-		const Gdiplus::REAL y = static_cast<Gdiplus::REAL>(center.y);
-		if (transponderC)
-		{
-			Gdiplus::PointF points[5] = {
-				{ x, y - diamondRadius },
-				{ x - diamondRadius, y },
-				{ x, y + diamondRadius },
-				{ x + diamondRadius, y },
-				{ x, y - diamondRadius }
-			};
-			graphics.DrawLines(&pen, points, 5);
-		}
-		else
-		{
-			graphics.DrawLine(&pen, x, y, x - crossRadius, y - crossRadius);
-			graphics.DrawLine(&pen, x, y, x + crossRadius, y - crossRadius);
-			graphics.DrawLine(&pen, x, y, x - crossRadius, y + crossRadius);
-			graphics.DrawLine(&pen, x, y, x + crossRadius, y + crossRadius);
-		}
-
-		graphics.Restore(state);
-	}
-
 	constexpr int kInsetToolbarButtonSize = 13;
 	constexpr int kInsetToolbarButtonGap = 2;
 	constexpr int kInsetToolbarRightMargin = 3;
@@ -1513,8 +1472,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
 		Gdiplus::GraphicsState graphicsState = gdi->Save();
 		gdi->SetClip(CopyRect(viewportRect), Gdiplus::CombineModeIntersect);
-		gdi->SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-		gdi->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 		m_TargetPoints.clear();
 		m_TagAreas.clear();
 
@@ -1792,7 +1749,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (useRealisticIconStyle)
 		{
 			gdi->SetInterpolationMode(Gdiplus::InterpolationModeLowQuality);
-			gdi->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+			gdi->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
 			gdi->SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
 		}
 
@@ -3386,12 +3343,22 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		if (Is_Inside(RtPoint, appAreaVect)) {
 			dc.SelectObject(&WhitePen);
 
-			if (gdi != nullptr)
-			{
-				const Color symbolColor = radar_screen->ColorManager != nullptr
-					? radar_screen->ColorManager->get_corrected_color("symbol", Color::White)
-					: Color::White;
-				DrawAntialiasedNovaSymbol(*gdi, RtPoint, RtPos.GetTransponderC(), symbolColor, 4.0f, 4.0f);
+			if (RtPos.GetTransponderC()) {
+				dc.MoveTo({ RtPoint.x, RtPoint.y - 4 });
+				dc.LineTo({ RtPoint.x - 4, RtPoint.y });
+				dc.LineTo({ RtPoint.x, RtPoint.y + 4 });
+				dc.LineTo({ RtPoint.x + 4, RtPoint.y });
+				dc.LineTo({ RtPoint.x, RtPoint.y - 4 });
+			}
+			else {
+				dc.MoveTo(RtPoint.x, RtPoint.y);
+				dc.LineTo(RtPoint.x - 4, RtPoint.y - 4);
+				dc.MoveTo(RtPoint.x, RtPoint.y);
+				dc.LineTo(RtPoint.x + 4, RtPoint.y - 4);
+				dc.MoveTo(RtPoint.x, RtPoint.y);
+				dc.LineTo(RtPoint.x - 4, RtPoint.y + 4);
+				dc.MoveTo(RtPoint.x, RtPoint.y);
+				dc.LineTo(RtPoint.x + 4, RtPoint.y + 4);
 			}
 
 			CRect TargetArea(RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4);

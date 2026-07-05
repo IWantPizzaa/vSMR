@@ -118,10 +118,9 @@ Gdiplus::Bitmap* CSMRRadar::GetCachedRealisticIconBitmap(
 	if (scaledGraphics.GetLastStatus() != Gdiplus::Ok)
 		return nullptr;
 
-	scaledGraphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
-	scaledGraphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+	scaledGraphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
+	scaledGraphics.SetInterpolationMode(Gdiplus::InterpolationModeBilinear);
 	scaledGraphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-	scaledGraphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 	scaledGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
 
 	Gdiplus::Rect destinationRect(0, 0, outDrawW, outDrawH);
@@ -222,10 +221,9 @@ CSMRRadar::RealisticIconCacheEntry* CSMRRadar::GetCachedRotatedRealisticIconBitm
 	if (rotatedGraphics.GetLastStatus() != Gdiplus::Ok)
 		return nullptr;
 
-	rotatedGraphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
-	rotatedGraphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+	rotatedGraphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
+	rotatedGraphics.SetInterpolationMode(Gdiplus::InterpolationModeBilinear);
 	rotatedGraphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-	rotatedGraphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 	rotatedGraphics.Clear(Gdiplus::Color(0, 0, 0, 0));
 
 	Gdiplus::Matrix rotationTransform;
