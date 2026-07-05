@@ -30,14 +30,10 @@ bool customCursor; // True when the plugin-specific cursor theme is enabled.
 WNDPROC gSourceProc = nullptr;
 HWND pluginWindow = nullptr;
 CSMRRadar* gWindowProcRadarScreen = nullptr;
-HHOOK gMouseHook = nullptr;
 HHOOK gThreadMouseHook = nullptr;
 DWORD gThreadMouseHookThreadId = 0;
-DWORD gLastLowLevelHookError = 0xFFFFFFFF;
 DWORD gLastThreadHookError = 0xFFFFFFFF;
-bool gLoggedAvisoWheelConsumed = false;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
 
 map<string, string> CSMRRadar::vStripsStands;
@@ -438,11 +434,6 @@ CSMRRadar::~CSMRRadar()
 		::UnhookWindowsHookEx(gThreadMouseHook);
 		gThreadMouseHook = nullptr;
 		gThreadMouseHookThreadId = 0;
-	}
-	if (gMouseHook != nullptr)
-	{
-		::UnhookWindowsHookEx(gMouseHook);
-		gMouseHook = nullptr;
 	}
 	StopAvisoGeoJsonRenderThread();
 	CloseProfileEditorWindow(false);
@@ -4168,29 +4159,7 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 	if (gWindowProcRadarScreen == nullptr || wheelDelta == 0)
 		return false;
 
-	const bool handled = gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
-	if (handled && !gLoggedAvisoWheelConsumed)
-	{
-		gLoggedAvisoWheelConsumed = true;
-		Logger::info(
-			"AVISO viewport wheel consumed screen=" +
-			std::to_string(screenPoint.x) + "," +
-			std::to_string(screenPoint.y));
-	}
-	return handled;
-}
-
-LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam)
-{
-	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
-	{
-		MSLLHOOKSTRUCT* mouseData = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
-		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
-		if (TryHandleAvisoWheel(mouseData->pt, wheelDelta, ::WindowFromPoint(mouseData->pt)))
-			return 1;
-	}
-
-	return ::CallNextHookEx(gMouseHook, code, wParam, lParam);
+	return gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
 }
 
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
@@ -4244,24 +4213,6 @@ void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 		}
 	}
 
-	if (gMouseHook == nullptr)
-	{
-		gMouseHook = ::SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, HINSTANCE(&__ImageBase), 0);
-		if (gMouseHook == nullptr)
-		{
-			const DWORD error = ::GetLastError();
-			if (gLastLowLevelHookError != error)
-			{
-				Logger::info("AVISO viewport low-level wheel hook install failed error=" + std::to_string(error));
-				gLastLowLevelHookError = error;
-			}
-		}
-		else
-		{
-			gLastLowLevelHookError = ERROR_SUCCESS;
-			Logger::info("AVISO viewport low-level wheel hook installed");
-		}
-	}
 }
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
@@ -6794,10 +6745,11 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
 			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
 
-		if (gMouseHook != nullptr)
+		if (gThreadMouseHook != nullptr)
 		{
-			::UnhookWindowsHookEx(gMouseHook);
-			gMouseHook = nullptr;
+			::UnhookWindowsHookEx(gThreadMouseHook);
+			gThreadMouseHook = nullptr;
+			gThreadMouseHookThreadId = 0;
 		}
 		gWindowProcRadarScreen = nullptr;
 		pluginWindow = nullptr;

@@ -537,18 +537,22 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 	if (wheelDelta == 0)
 		return false;
 
-	auto zoomViewportAtPoint = [&](POINT point) -> bool
+	const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
+	auto zoomViewport = [&](CInsetWindow* viewport, POINT point) -> bool
 	{
-		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, point);
-		if (viewportAtPoint == nullptr)
+		if (viewport == nullptr)
 			return false;
 
 		mouseLocation = point;
-		SelectAvisoViewport(this, viewportAtPoint);
-		const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
-		if (viewportAtPoint->ZoomAvisoAtPoint(point, scaleMultiplier))
+		SelectAvisoViewport(this, viewport);
+		if (viewport->ZoomAvisoAtPoint(point, scaleMultiplier))
 			RequestRefresh();
 		return true;
+	};
+	auto zoomViewportAtPoint = [&](POINT point) -> bool
+	{
+		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, point);
+		return zoomViewport(viewportAtPoint, point);
 	};
 	auto zoomViewportAtScreenPoint = [&](POINT screenPoint) -> bool
 	{
@@ -562,12 +566,7 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 			if (!appWindow->TryMapAvisoScreenPoint(screenPoint, avisoPoint))
 				continue;
 
-			mouseLocation = avisoPoint;
-			SelectAvisoViewport(this, appWindow);
-			const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
-			if (appWindow->ZoomAvisoAtPoint(avisoPoint, scaleMultiplier))
-				RequestRefresh();
-			return true;
+			return zoomViewport(appWindow, avisoPoint);
 		}
 
 		return false;
@@ -626,22 +625,6 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 
 	if (zoomViewportAtPoint(mouseLocation))
 		return true;
-
-	for (auto& kv : appWindows)
-	{
-		CInsetWindow* appWindow = kv.second.get();
-		if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !IsAppWindowVisible(this, kv.first))
-			continue;
-
-		if (appWindow->IsPointInside(mouseLocation))
-		{
-			SelectAvisoViewport(this, appWindow);
-			const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
-			if (appWindow->ZoomAvisoAtPoint(mouseLocation, scaleMultiplier))
-				RequestRefresh();
-			return true;
-		}
-	}
 
 	return false;
 }
