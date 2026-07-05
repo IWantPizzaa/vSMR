@@ -27,12 +27,18 @@ bool initCursor = true;
 HCURSOR smrCursor = NULL;
 bool standardCursor; // True when the default arrow cursor is active.
 bool customCursor; // True when the plugin-specific cursor theme is enabled.
-WNDPROC gSourceProc;
-HWND pluginWindow;
+WNDPROC gSourceProc = nullptr;
+HWND pluginWindow = nullptr;
 CSMRRadar* gWindowProcRadarScreen = nullptr;
 HHOOK gMouseHook = nullptr;
+HHOOK gThreadMouseHook = nullptr;
+DWORD gThreadMouseHookThreadId = 0;
+DWORD gLastLowLevelHookError = 0xFFFFFFFF;
+DWORD gLastThreadHookError = 0xFFFFFFFF;
+bool gLoggedAvisoWheelConsumed = false;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
 
 map<string, string> CSMRRadar::vStripsStands;
 
@@ -427,6 +433,12 @@ CSMRRadar::~CSMRRadar()
 	Logger::info(string(__FUNCSIG__));
 	if (gWindowProcRadarScreen == this)
 		gWindowProcRadarScreen = nullptr;
+	if (gThreadMouseHook != nullptr)
+	{
+		::UnhookWindowsHookEx(gThreadMouseHook);
+		gThreadMouseHook = nullptr;
+		gThreadMouseHookThreadId = 0;
+	}
 	if (gMouseHook != nullptr)
 	{
 		::UnhookWindowsHookEx(gMouseHook);
@@ -4151,17 +4163,105 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
+bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
+{
+	if (gWindowProcRadarScreen == nullptr || wheelDelta == 0)
+		return false;
+
+	const bool handled = gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
+	if (handled && !gLoggedAvisoWheelConsumed)
+	{
+		gLoggedAvisoWheelConsumed = true;
+		Logger::info(
+			"AVISO viewport wheel consumed screen=" +
+			std::to_string(screenPoint.x) + "," +
+			std::to_string(screenPoint.y));
+	}
+	return handled;
+}
+
 LRESULT CALLBACK MouseHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
 	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
 	{
 		MSLLHOOKSTRUCT* mouseData = reinterpret_cast<MSLLHOOKSTRUCT*>(lParam);
 		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
-		if (gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(mouseData->pt, wheelDelta, ::WindowFromPoint(mouseData->pt)))
+		if (TryHandleAvisoWheel(mouseData->pt, wheelDelta, ::WindowFromPoint(mouseData->pt)))
 			return 1;
 	}
 
 	return ::CallNextHookEx(gMouseHook, code, wParam, lParam);
+}
+
+LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
+{
+	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
+	{
+		MOUSEHOOKSTRUCTEX* mouseData = reinterpret_cast<MOUSEHOOKSTRUCTEX*>(lParam);
+		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
+		HWND sourceHwnd = mouseData->hwnd;
+		if (sourceHwnd == nullptr || !::IsWindow(sourceHwnd))
+			sourceHwnd = ::WindowFromPoint(mouseData->pt);
+		if (TryHandleAvisoWheel(mouseData->pt, wheelDelta, sourceHwnd))
+			return 1;
+	}
+
+	return ::CallNextHookEx(gThreadMouseHook, code, wParam, lParam);
+}
+
+void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
+{
+	if (radarScreen == nullptr)
+		return;
+
+	gWindowProcRadarScreen = radarScreen;
+
+	const DWORD currentThreadId = ::GetCurrentThreadId();
+	if (gThreadMouseHook != nullptr && gThreadMouseHookThreadId != currentThreadId)
+	{
+		::UnhookWindowsHookEx(gThreadMouseHook);
+		gThreadMouseHook = nullptr;
+		gThreadMouseHookThreadId = 0;
+	}
+
+	if (gThreadMouseHook == nullptr)
+	{
+		gThreadMouseHook = ::SetWindowsHookEx(WH_MOUSE, MouseMessageHookProc, nullptr, currentThreadId);
+		if (gThreadMouseHook == nullptr)
+		{
+			const DWORD error = ::GetLastError();
+			if (gLastThreadHookError != error)
+			{
+				Logger::info("AVISO viewport thread wheel hook install failed error=" + std::to_string(error));
+				gLastThreadHookError = error;
+			}
+		}
+		else
+		{
+			gThreadMouseHookThreadId = currentThreadId;
+			gLastThreadHookError = ERROR_SUCCESS;
+			Logger::info("AVISO viewport thread wheel hook installed thread=" + std::to_string(currentThreadId));
+		}
+	}
+
+	if (gMouseHook == nullptr)
+	{
+		gMouseHook = ::SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, HINSTANCE(&__ImageBase), 0);
+		if (gMouseHook == nullptr)
+		{
+			const DWORD error = ::GetLastError();
+			if (gLastLowLevelHookError != error)
+			{
+				Logger::info("AVISO viewport low-level wheel hook install failed error=" + std::to_string(error));
+				gLastLowLevelHookError = error;
+			}
+		}
+		else
+		{
+			gLastLowLevelHookError = ERROR_SUCCESS;
+			Logger::info("AVISO viewport low-level wheel hook installed");
+		}
+	}
 }
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
@@ -4213,6 +4313,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		Logger::info("OnRefresh: ColorManager was null; recreating");
 		ColorManager = std::make_unique<CColorManager>();
 	}
+	EnsureAvisoWheelHooks(this);
 	// Refresh pipeline is phase-driven by EuroScope. Cursor/theme work is kept here on the UI thread.
 	if (initCursor)
 	{
@@ -4245,8 +4346,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 		}
 
-		if (gMouseHook == nullptr)
-			gMouseHook = ::SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, AfxGetInstanceHandle(), 0);
 		initCursor = false;
 	}
 

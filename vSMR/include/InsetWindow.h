@@ -39,6 +39,8 @@ public:
 	bool m_AvisoViewInitialized = false;
 	bool m_AvisoRightPanning = false;
 	bool m_AvisoScrollSelected = false;
+	RECT m_AvisoScreenArea = { 0, 0, 0, 0 };
+	bool m_AvisoScreenAreaValid = false;
 
 	map<string, double> m_TagAngles;
 	map<string, POINT> m_TagOffsets;
@@ -54,6 +56,8 @@ public:
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released);
 	bool IsAvisoViewport() const;
 	bool IsPointInside(POINT Pt) const;
+	void UpdateAvisoScreenArea(HWND hwnd);
+	bool TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const;
 	void BeginAvisoPan(POINT Pt);
 	bool UpdateAvisoPan(POINT Pt);
 	void EndAvisoPan();
