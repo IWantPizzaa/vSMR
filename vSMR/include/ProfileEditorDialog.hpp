@@ -279,9 +279,9 @@ private:
 		, IDC_PE_PROFILE_MODE_RENAME_BUTTON = 9286
 		, IDC_PE_PROFILE_MODE_DELETE_BUTTON = 9287
 		, IDC_PE_PROFILE_MODE_SQUAWK_CHECK = 9288
-		, IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK = 9289
-		, IDC_PE_PROFILE_MODE_TOWER_CHECK = 9290
-		, IDC_PE_PROFILE_MODE_RULES_CHECK = 9291
+		, IDC_PE_PROFILE_MODE_CLEARANCE_CHECK = 9289
+		, IDC_PE_PROFILE_MODE_VALID_TSAT_CHECK = 9290
+		, IDC_PE_PROFILE_MODE_ACTIVE_TOBT_CHECK = 9291
 		, IDC_PE_PROFILE_MODE_STATUS_HEADER = 9292
 		, IDC_PE_PROFILE_MODE_STATUS_NOSTATUS = 9293
 		, IDC_PE_PROFILE_MODE_STATUS_PUSH = 9294
@@ -436,9 +436,9 @@ private:
 	CButton ProfileModeRenameButton;
 	CButton ProfileModeDeleteButton;
 	CButton ProfileModeSquawkCheck;
-	CButton ProfileModeAcceptPilotCheck;
-	CButton ProfileModeTowerCheck;
-	CButton ProfileModeRulesCheck;
+	CButton ProfileModeClearanceCheck;
+	CButton ProfileModeValidTsatCheck;
+	CButton ProfileModeActiveTobtCheck;
 	CStatic ProfileModeStatusHeader;
 	CButton ProfileModeStatusNoStatusCheck;
 	CButton ProfileModeStatusPushCheck;

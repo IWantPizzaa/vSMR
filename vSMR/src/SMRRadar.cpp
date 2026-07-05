@@ -2774,7 +2774,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureIntMember(filters, "night_overlay_alpha", 110, 0, 255);
 	bool legacyProModeEnabled = false;
 	bool legacyTowerModeEnabled = false;
-	bool legacyAcceptPilotSquawk = true;
 	std::vector<std::string> legacyBlockedSquawks = defaultDoNotAutocorrelateSquawks;
 	if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
 	{
@@ -2783,8 +2782,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		renameMemberIfPresent(proMode, "do_not_autocorrelate_squawks", "blocked_auto_correlate_squawks");
 		if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
 			legacyProModeEnabled = proMode["enabled"].GetBool();
-		if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
-			legacyAcceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
 		if (proMode.HasMember("blocked_auto_correlate_squawks") && proMode["blocked_auto_correlate_squawks"].IsArray())
 		{
 			std::vector<std::string> blockedSquawks;
@@ -2805,7 +2802,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
 			legacyTowerModeEnabled = towerMode["enabled"].GetBool();
 	}
-	auto addDisplayMode = [&](Value& items, const char* name, bool requireAssignedSquawk, bool towerFilter)
+	auto addDisplayMode = [&](Value& items, const char* name, bool requireAssignedSquawk)
 	{
 		Value mode(kObjectType);
 		Value nameKey;
@@ -2814,7 +2811,9 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		nameValue.SetString(name, allocator);
 		mode.AddMember(nameKey, nameValue, allocator);
 		mode.AddMember("require_assigned_squawk", requireAssignedSquawk, allocator);
-		mode.AddMember("accept_pilot_squawk", legacyAcceptPilotSquawk, allocator);
+		mode.AddMember("require_clearance", false, allocator);
+		mode.AddMember("require_valid_tsat", false, allocator);
+		mode.AddMember("require_active_tobt", false, allocator);
 		Value blockedSquawks(kArrayType);
 		for (const std::string& squawk : legacyBlockedSquawks)
 		{
@@ -2823,8 +2822,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 			blockedSquawks.PushBack(squawkValue, allocator);
 		}
 		mode.AddMember("blocked_auto_correlate_squawks", blockedSquawks, allocator);
-		mode.AddMember("tower_filter", towerFilter, allocator);
-		mode.AddMember("structured_rules", true, allocator);
 		Value statuses(kObjectType);
 		statuses.AddMember("no_status", true, allocator);
 		statuses.AddMember("push", true, allocator);
@@ -2845,10 +2842,10 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 		if (displayModes.HasMember("items"))
 			displayModes.RemoveMember("items");
 		Value items(kArrayType);
-		addDisplayMode(items, "Normal", false, false);
-		addDisplayMode(items, "Pro", true, false);
-		addDisplayMode(items, "Tower", false, true);
-		addDisplayMode(items, "Pro + Tower", true, true);
+		addDisplayMode(items, "Normal", false);
+		addDisplayMode(items, "Pro", true);
+		addDisplayMode(items, "Tower", false);
+		addDisplayMode(items, "Pro + Tower", true);
 		displayModes.AddMember("items", items, allocator);
 		changed = true;
 	}

@@ -36,15 +36,12 @@
                     {
                         "name": "Normal",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -56,20 +53,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -81,20 +78,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Tower",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -106,20 +103,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro + Tower",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -131,7 +128,10 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     }
                 ]
             }
@@ -932,15 +932,12 @@
                     {
                         "name": "Normal",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -952,20 +949,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -977,20 +974,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Tower",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -1002,20 +999,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro + Tower",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -1027,7 +1024,10 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     }
                 ]
             }
@@ -1931,15 +1931,12 @@
                     {
                         "name": "Normal",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -1951,20 +1948,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -1976,20 +1973,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Tower",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -2001,20 +1998,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro + Tower",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -2026,7 +2023,10 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     }
                 ]
             }
@@ -3005,15 +3005,12 @@
                     {
                         "name": "Normal",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3025,20 +3022,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3050,20 +3047,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Tower",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3075,20 +3072,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro + Tower",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3100,7 +3097,10 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     }
                 ]
             }
@@ -3855,15 +3855,12 @@
                     {
                         "name": "Normal",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3875,20 +3872,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": false,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3900,20 +3897,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Tower",
                         "require_assigned_squawk": false,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3925,20 +3922,20 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     },
                     {
                         "name": "Pro + Tower",
                         "require_assigned_squawk": true,
-                        "accept_pilot_squawk": true,
                         "blocked_auto_correlate_squawks": [
                             "2000",
                             "2200",
                             "1200",
                             "7000"
                         ],
-                        "tower_filter": true,
-                        "structured_rules": true,
                         "statuses": {
                             "no_status": true,
                             "push": true,
@@ -3950,7 +3947,10 @@
                             "arrivals": true,
                             "no_fpl": true,
                             "uncorrelated": true
-                        }
+                        },
+                        "require_clearance": false,
+                        "require_valid_tsat": false,
+                        "require_active_tobt": false
                     }
                 ]
             }

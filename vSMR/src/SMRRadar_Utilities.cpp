@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "SMRGroundState.hpp"
+#include "SMRTagColorRules.hpp"
+#include "SMRVacdmTagHelpers.hpp"
 
 #include <algorithm>
 
@@ -68,7 +70,34 @@ bool CSMRRadar::IsCorrelated(CFlightPlan fp, CRadarTarget rt)
 
 bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget rt, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings) const
 {
-	(void)rt;
+	if (settings.requireClearance && (!fp.IsValid() || !fp.GetClearenceFlag()))
+		return false;
+
+	if (settings.requireValidTsat || settings.requireActiveTobt)
+	{
+		VacdmPilotData pilotData;
+		if (!TryGetVacdmPilotDataForTarget(rt, fp, pilotData))
+			return false;
+
+		if (settings.requireValidTsat)
+		{
+			const std::string tsatState = ResolveVacdmRuleStateName("tsat", &pilotData);
+			if (tsatState != "valid" && tsatState != "valid_ctot")
+				return false;
+		}
+
+		if (settings.requireActiveTobt)
+		{
+			const std::string tobtState = ResolveVacdmRuleStateName("tobt", &pilotData);
+			if (tobtState != "confirmed" &&
+				tobtState != "unconfirmed" &&
+				tobtState != "confirmed_delay" &&
+				tobtState != "unconfirmed_delay")
+			{
+				return false;
+			}
+		}
+	}
 
 	if (!fp.IsValid())
 		return settings.statuses.noFlightPlan;

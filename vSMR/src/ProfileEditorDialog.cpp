@@ -1713,9 +1713,9 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_PROFILE_MODE_HEADER:
 		case IDC_PE_PROFILE_MODE_NAME_LABEL:
 		case IDC_PE_PROFILE_MODE_SQUAWK_CHECK:
-		case IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK:
-		case IDC_PE_PROFILE_MODE_TOWER_CHECK:
-		case IDC_PE_PROFILE_MODE_RULES_CHECK:
+		case IDC_PE_PROFILE_MODE_CLEARANCE_CHECK:
+		case IDC_PE_PROFILE_MODE_VALID_TSAT_CHECK:
+		case IDC_PE_PROFILE_MODE_ACTIVE_TOBT_CHECK:
 		case IDC_PE_PROFILE_MODE_STATUS_HEADER:
 		case IDC_PE_PROFILE_MODE_STATUS_NOSTATUS:
 		case IDC_PE_PROFILE_MODE_STATUS_PUSH:
@@ -2526,9 +2526,9 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileModeRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_RENAME_BUTTON);
 	ProfileModeDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_DELETE_BUTTON);
 	ProfileModeSquawkCheck.Create("Require assigned squawk", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_SQUAWK_CHECK);
-	ProfileModeAcceptPilotCheck.Create("Accept pilot squawk", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK);
-	ProfileModeTowerCheck.Create("Tower ground filter", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_TOWER_CHECK);
-	ProfileModeRulesCheck.Create("Structured color rules", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_RULES_CHECK);
+	ProfileModeClearanceCheck.Create("Require clearance", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_CLEARANCE_CHECK);
+	ProfileModeValidTsatCheck.Create("Require valid TSAT", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_VALID_TSAT_CHECK);
+	ProfileModeActiveTobtCheck.Create("Require active TOBT", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_ACTIVE_TOBT_CHECK);
 	ProfileModeStatusHeader.Create("Visible Statuses", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_HEADER);
 	ProfileModeStatusNoStatusCheck.Create("No status", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_NOSTATUS);
 	ProfileModeStatusPushCheck.Create("Push", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_PUSH);
@@ -2796,9 +2796,9 @@ void CProfileEditorDialog::CreateEditorControls()
 		ProfileModeList.SetFont(&MonoFont, TRUE);
 		ProfileModeNameEdit.SetFont(GetFont(), TRUE);
 		ProfileModeSquawkCheck.SetFont(GetFont(), TRUE);
-		ProfileModeAcceptPilotCheck.SetFont(GetFont(), TRUE);
-		ProfileModeTowerCheck.SetFont(GetFont(), TRUE);
-		ProfileModeRulesCheck.SetFont(GetFont(), TRUE);
+		ProfileModeClearanceCheck.SetFont(GetFont(), TRUE);
+		ProfileModeValidTsatCheck.SetFont(GetFont(), TRUE);
+		ProfileModeActiveTobtCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusNoStatusCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusPushCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusStartupCheck.SetFont(GetFont(), TRUE);
@@ -3285,9 +3285,9 @@ void CProfileEditorDialog::RefreshProfileModeControls()
 	UpdatingControls = true;
 	SetEditTextPreserveCaret(ProfileModeNameEdit, hasModeSelection ? settings.name : "");
 	setCheck(ProfileModeSquawkCheck, hasModeSelection && settings.requireAssignedSquawk);
-	setCheck(ProfileModeAcceptPilotCheck, !hasModeSelection || settings.acceptPilotSquawk);
-	setCheck(ProfileModeTowerCheck, hasModeSelection && settings.towerFilter);
-	setCheck(ProfileModeRulesCheck, !hasModeSelection || settings.structuredRulesEnabled);
+	setCheck(ProfileModeClearanceCheck, hasModeSelection && settings.requireClearance);
+	setCheck(ProfileModeValidTsatCheck, hasModeSelection && settings.requireValidTsat);
+	setCheck(ProfileModeActiveTobtCheck, hasModeSelection && settings.requireActiveTobt);
 	setCheck(ProfileModeStatusNoStatusCheck, !hasModeSelection || settings.statuses.noStatus);
 	setCheck(ProfileModeStatusPushCheck, !hasModeSelection || settings.statuses.push);
 	setCheck(ProfileModeStatusStartupCheck, !hasModeSelection || settings.statuses.startup);
@@ -3306,9 +3306,9 @@ void CProfileEditorDialog::RefreshProfileModeControls()
 	ProfileModeRenameButton.EnableWindow(enabled);
 	ProfileModeDeleteButton.EnableWindow((hasModeSelection && ProfileModeBuffer.size() > 1) ? TRUE : FALSE);
 	ProfileModeSquawkCheck.EnableWindow(enabled);
-	ProfileModeAcceptPilotCheck.EnableWindow(enabled);
-	ProfileModeTowerCheck.EnableWindow(enabled);
-	ProfileModeRulesCheck.EnableWindow(enabled);
+	ProfileModeClearanceCheck.EnableWindow(enabled);
+	ProfileModeValidTsatCheck.EnableWindow(enabled);
+	ProfileModeActiveTobtCheck.EnableWindow(enabled);
 	ProfileModeStatusNoStatusCheck.EnableWindow(enabled);
 	ProfileModeStatusPushCheck.EnableWindow(enabled);
 	ProfileModeStatusStartupCheck.EnableWindow(enabled);
@@ -3329,9 +3329,9 @@ bool CProfileEditorDialog::ReadProfileDisplayModeFromControls(CSMRRadar::Display
 
 	outSettings = ProfileModeBuffer[selected];
 	outSettings.requireAssignedSquawk = (ProfileModeSquawkCheck.GetCheck() == BST_CHECKED);
-	outSettings.acceptPilotSquawk = (ProfileModeAcceptPilotCheck.GetCheck() == BST_CHECKED);
-	outSettings.towerFilter = (ProfileModeTowerCheck.GetCheck() == BST_CHECKED);
-	outSettings.structuredRulesEnabled = (ProfileModeRulesCheck.GetCheck() == BST_CHECKED);
+	outSettings.requireClearance = (ProfileModeClearanceCheck.GetCheck() == BST_CHECKED);
+	outSettings.requireValidTsat = (ProfileModeValidTsatCheck.GetCheck() == BST_CHECKED);
+	outSettings.requireActiveTobt = (ProfileModeActiveTobtCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.noStatus = (ProfileModeStatusNoStatusCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.push = (ProfileModeStatusPushCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.startup = (ProfileModeStatusStartupCheck.GetCheck() == BST_CHECKED);
@@ -3915,11 +3915,11 @@ void CProfileEditorDialog::LayoutControls()
 	const int modeColumnWidth = max(90, (profileInfoContentWidth - modeColumnGap) / 2);
 	ProfileModeSquawkCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
 	modeY += rowHeight;
-	ProfileModeAcceptPilotCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	ProfileModeClearanceCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
 	modeY += rowHeight;
-	ProfileModeTowerCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	ProfileModeValidTsatCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
 	modeY += rowHeight;
-	ProfileModeRulesCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	ProfileModeActiveTobtCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
 	modeY += rowHeight + 12;
 
 	ProfileModeStatusHeader.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
@@ -4130,7 +4130,7 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton,
 		&ProfileModeHeader, &ProfileModeList, &ProfileModeNameLabel, &ProfileModeNameEdit,
 		&ProfileModeAddButton, &ProfileModeDuplicateButton, &ProfileModeRenameButton, &ProfileModeDeleteButton,
-		&ProfileModeSquawkCheck, &ProfileModeAcceptPilotCheck, &ProfileModeTowerCheck, &ProfileModeRulesCheck,
+		&ProfileModeSquawkCheck, &ProfileModeClearanceCheck, &ProfileModeValidTsatCheck, &ProfileModeActiveTobtCheck,
 		&ProfileModeStatusHeader, &ProfileModeStatusNoStatusCheck, &ProfileModeStatusPushCheck,
 		&ProfileModeStatusStartupCheck, &ProfileModeStatusTaxiCheck, &ProfileModeStatusDepartureCheck,
 		&ProfileModeStatusOnRunwayCheck, &ProfileModeStatusAirborneCheck, &ProfileModeStatusArrivalsCheck,
@@ -7759,9 +7759,9 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_RENAME_BUTTON, &CProfileEditorDialog::OnProfileModeRenameClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_DELETE_BUTTON, &CProfileEditorDialog::OnProfileModeDeleteClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_SQUAWK_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
-	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
-	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_TOWER_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
-	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_RULES_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_CLEARANCE_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_VALID_TSAT_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_ACTIVE_TOBT_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_NOSTATUS, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_PUSH, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_STARTUP, &CProfileEditorDialog::OnProfileModeFieldChanged)
