@@ -14,6 +14,7 @@ namespace
 	constexpr double kAvisoLatMetersPerDegree = 110540.0;
 	constexpr double kAvisoLonMetersPerDegree = 111320.0;
 	constexpr int kAvisoViewportTopBarHeight = 15;
+	constexpr int kAvisoTopMenuClearancePx = 22;
 	constexpr int kAvisoSnapThresholdPx = 28;
 	constexpr int kAvisoCornerSnapThresholdPx = 48;
 	constexpr int kAvisoMinLayoutWidth = 300;
@@ -1071,7 +1072,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	CRect chatArea(radar_screen->GetChatArea());
 	layoutBounds.NormalizeRect();
 	chatArea.NormalizeRect();
-	layoutBounds.top += kAvisoViewportTopBarHeight;
+	layoutBounds.top += kAvisoTopMenuClearancePx;
 	if (!chatArea.IsRectEmpty())
 		layoutBounds.bottom = chatArea.top;
 	ApplyAvisoLayoutBounds(&layoutBounds);
