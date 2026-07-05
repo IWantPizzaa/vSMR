@@ -22,21 +22,35 @@ namespace
 		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
 	}
 
-	RECT DrawInsetToolbarButton(CDC* dc, const string& letter, CRect topBar, int left, POINT mouseLocation)
+	constexpr int kInsetToolbarButtonSize = 13;
+	constexpr int kInsetToolbarButtonGap = 2;
+	constexpr int kInsetToolbarRightMargin = 3;
+
+	int InsetToolbarRightOffset(int buttonIndexFromRight)
 	{
-		POINT topLeft = { topBar.right - left, topBar.top + 2 };
-		POINT bottomRight = { topBar.right - (left - 11), topBar.bottom - 2 };
-		CRect rect(topLeft, bottomRight);
-		rect.NormalizeRect();
+		return kInsetToolbarRightMargin + buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
+	}
+
+	CRect DrawInsetToolbarButton(CDC& dc, const char* label, const CRect& topBar, int rightOffset, POINT mouseLocation)
+	{
+		CRect rect(
+			topBar.right - rightOffset - kInsetToolbarButtonSize,
+			topBar.top + 1,
+			topBar.right - rightOffset,
+			topBar.bottom - 1);
 		CBrush buttonBrush(RGB(60, 60, 60));
-		dc->FillRect(rect, &buttonBrush);
-		dc->SetTextColor(RGB(0, 0, 0));
-		dc->TextOutA(rect.left + 2, rect.top, letter.c_str());
+		dc.FillRect(rect, &buttonBrush);
+
+		const COLORREF oldTextColor = dc.SetTextColor(RGB(0, 0, 0));
+		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
+		dc.DrawTextA(label, -1, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		dc.SetBkMode(oldBkMode);
+		dc.SetTextColor(oldTextColor);
 
 		if (mouseWithin(mouseLocation, rect))
-			dc->Draw3dRect(rect, RGB(45, 45, 45), RGB(75, 75, 75));
+			dc.Draw3dRect(rect, RGB(45, 45, 45), RGB(75, 75, 75));
 		else
-			dc->Draw3dRect(rect, RGB(75, 75, 75), RGB(45, 45, 45));
+			dc.Draw3dRect(rect, RGB(75, 75, 75), RGB(45, 45, 45));
 
 		return rect;
 	}
@@ -517,25 +531,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const int titleY = topBar.bottom - titleSize.cy;
 		dc.TextOutA(titleX, titleY, title.c_str());
 
-		POINT closeTopLeft = { topBar.right - 16, topBar.top + 2 };
-		POINT closeBottomRight = { topBar.right - 5, topBar.bottom - 2 };
-		CRect closeRect(closeTopLeft, closeBottomRight);
-		closeRect.NormalizeRect();
-		CBrush closeBrush(RGB(60, 60, 60));
-		dc.FillRect(closeRect, &closeBrush);
-		CPen blackPen(PS_SOLID, 1, RGB(0, 0, 0));
-		CPen* oldPen = dc.SelectObject(&blackPen);
-		dc.MoveTo(closeRect.TopLeft());
-		dc.LineTo(closeRect.BottomRight());
-		dc.MoveTo({ closeRect.right - 1, closeRect.top });
-		dc.LineTo({ closeRect.left - 1, closeRect.bottom });
-		if (oldPen != nullptr)
-			dc.SelectObject(oldPen);
-
-		if (mouseWithin(mouseLocation, closeRect))
-			dc.Draw3dRect(closeRect, RGB(45, 45, 45), RGB(75, 75, 75));
-		else
-			dc.Draw3dRect(closeRect, RGB(75, 75, 75), RGB(45, 45, 45));
+		const CRect closeRect = DrawInsetToolbarButton(dc, "X", topBar, InsetToolbarRightOffset(0), mouseLocation);
 		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
 		dc.SetTextColor(oldTextColor);
 	};
@@ -2307,24 +2303,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			return Area;
 		}
 
-		static RECT drawToolbarButton(CDC * dc, string letter, CRect TopBar, int left, POINT mouseLocation)
-		{
-			POINT TopLeft = { TopBar.right - left, TopBar.top + 2 };
-			POINT BottomRight = { TopBar.right - (left - 11), TopBar.bottom - 2 };
-			CRect Rect(TopLeft, BottomRight);
-			Rect.NormalizeRect();
-			CBrush ButtonBrush(RGB(60, 60, 60));
-			dc->FillRect(Rect, &ButtonBrush);
-			dc->SetTextColor(RGB(0, 0, 0));
-			dc->TextOutA(Rect.left + 2, Rect.top, letter.c_str());
-
-			if (mouseWithin(mouseLocation, Rect))
-				dc->Draw3dRect(Rect, RGB(45, 45, 45), RGB(75, 75, 75));
-			else
-				dc->Draw3dRect(Rect, RGB(75, 75, 75), RGB(45, 45, 45));
-
-			return Rect;
-		}
 	};
 
 	icao = radar_screen->ActiveAirport;
@@ -3400,38 +3378,21 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	dc.TextOutA(TopLeftText.x + (TopBar.right-TopBar.left) / 2 - dc.GetTextExtent("SRW 1").cx , TopLeftText.y, Toptext.c_str());
 
 	// Range button
-	CRect RangeRect = Utils::drawToolbarButton(&dc, "Z", TopBar, 29, mouseLocation);
+	CRect RangeRect = DrawInsetToolbarButton(dc, "Z", TopBar, InsetToolbarRightOffset(1), mouseLocation);
 	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
 
 	// Filter button
-	CRect FilterRect = Utils::drawToolbarButton(&dc, "F", TopBar, 42, mouseLocation);
+	CRect FilterRect = DrawInsetToolbarButton(dc, "F", TopBar, InsetToolbarRightOffset(2), mouseLocation);
 	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
 
 	// Rotate button
-	CRect RotateRect = Utils::drawToolbarButton(&dc, "R", TopBar, 55, mouseLocation);
+	CRect RotateRect = DrawInsetToolbarButton(dc, "R", TopBar, InsetToolbarRightOffset(3), mouseLocation);
 	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
 
 	dc.SetTextColor(oldTextColorC);
 
 	// Close
-	POINT TopLeftClose = { TopBar.right - 16, TopBar.top + 2 };
-	POINT BottomRightClose = { TopBar.right - 5, TopBar.bottom - 2 };
-	CRect CloseRect(TopLeftClose, BottomRightClose);
-	CloseRect.NormalizeRect();
-	CBrush CloseBrush(RGB(60, 60, 60));
-	dc.FillRect(CloseRect, &CloseBrush);
-	CPen BlackPen(PS_SOLID, 1, RGB(0, 0, 0));
-	dc.SelectObject(BlackPen);
-	dc.MoveTo(CloseRect.TopLeft());
-	dc.LineTo(CloseRect.BottomRight());
-	dc.MoveTo({ CloseRect.right - 1, CloseRect.top });
-	dc.LineTo({ CloseRect.left - 1, CloseRect.bottom });
-
-	if (mouseWithin(mouseLocation, CloseRect))
-		dc.Draw3dRect(CloseRect, RGB(45, 45, 45), RGB(75, 75, 75));
-	else
-		dc.Draw3dRect(CloseRect, RGB(75, 75, 75), RGB(45, 45, 45));
-
+	CRect CloseRect = DrawInsetToolbarButton(dc, "X", TopBar, InsetToolbarRightOffset(0), mouseLocation);
 	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
 
 	dc.Detach();
