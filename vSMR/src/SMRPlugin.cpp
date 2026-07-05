@@ -9,6 +9,7 @@
 #include <climits>
 #include <cerrno>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 #include <deque>
 #include <set>
@@ -496,61 +497,71 @@ namespace
 		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
 	}
 
+	std::string NormalizeVacdmServerUrl(std::string value)
+	{
+		value = TrimAsciiWhitespaceCopy(value);
+		while (!value.empty() && value.back() == '/')
+			value.pop_back();
+		return value;
+	}
+
+	std::filesystem::path ResolveProfilesConfigPath()
+	{
+		const std::filesystem::path pluginDirectory(Logger::DLL_PATH);
+		const std::filesystem::path dataConfigPath = pluginDirectory / "vSMR_Data" / "vSMR_Profiles.json";
+
+		std::error_code ec;
+		if (std::filesystem::exists(dataConfigPath, ec))
+			return dataConfigPath;
+		return pluginDirectory / "vSMR_Profiles.json";
+	}
+
 	bool TryReadVacdmServerUrl(std::string& outServerUrl)
 	{
 		outServerUrl.clear();
 		if (Logger::DLL_PATH.empty())
 			return false;
 
-		std::ifstream input;
-		const std::vector<std::filesystem::path> candidates = {
-			std::filesystem::path(Logger::DLL_PATH) / "vSMR_Data" / "vacdm.txt",
-			std::filesystem::path(Logger::DLL_PATH) / "vacdm.txt"
-		};
-
-		for (const std::filesystem::path& candidate : candidates)
-		{
-			input.open(candidate.string(), std::ios::binary);
-			if (input.is_open())
-				break;
-			input.clear();
-		}
+		const std::filesystem::path configPath = ResolveProfilesConfigPath();
+		std::ifstream input(configPath, std::ios::binary);
 
 		if (!input.is_open())
 			return false;
 
-		std::string line;
-		while (std::getline(input, line))
+		std::stringstream buffer;
+		buffer << input.rdbuf();
+		std::string json = buffer.str();
+		if (json.size() >= 3 &&
+			static_cast<unsigned char>(json[0]) == 0xEF &&
+			static_cast<unsigned char>(json[1]) == 0xBB &&
+			static_cast<unsigned char>(json[2]) == 0xBF)
 		{
-			if (line.size() >= 3 &&
-				static_cast<unsigned char>(line[0]) == 0xEF &&
-				static_cast<unsigned char>(line[1]) == 0xBB &&
-				static_cast<unsigned char>(line[2]) == 0xBF)
+			json = json.substr(3);
+		}
+
+		rapidjson::Document document;
+		if (document.Parse<0>(json.c_str()).HasParseError() || !document.IsArray())
+			return false;
+
+		for (rapidjson::SizeType i = 0; i < document.Size(); ++i)
+		{
+			const rapidjson::Value& entry = document[i];
+			if (!entry.IsObject() ||
+				!entry.HasMember("_vsmr") ||
+				!entry["_vsmr"].IsObject())
 			{
-				line = line.substr(3);
+				continue;
 			}
 
-			const std::string trimmed = TrimAsciiWhitespaceCopy(line);
-			if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == ';')
+			const rapidjson::Value& metadata = entry["_vsmr"];
+			if (!metadata.HasMember("vacdm") || !metadata["vacdm"].IsObject())
 				continue;
 
-			const size_t separator = trimmed.find('=');
-			if (separator == std::string::npos)
+			const rapidjson::Value& vacdm = metadata["vacdm"];
+			if (!vacdm.HasMember("server_url") || !vacdm["server_url"].IsString())
 				continue;
 
-			const std::string key = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(trimmed.substr(0, separator)));
-			if (key != "SERVER_URL")
-				continue;
-
-			std::string value = TrimAsciiWhitespaceCopy(trimmed.substr(separator + 1));
-			if (value.size() >= 2 &&
-				((value.front() == '"' && value.back() == '"') || (value.front() == '\'' && value.back() == '\'')))
-			{
-				value = value.substr(1, value.size() - 2);
-			}
-
-			while (!value.empty() && value.back() == '/')
-				value.pop_back();
+			const std::string value = NormalizeVacdmServerUrl(vacdm["server_url"].GetString());
 			if (value.empty())
 				continue;
 
@@ -1628,7 +1639,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	{
 		VacdmConfiguredServerUrl.clear();
 		VacdmPollingEnabled.store(false, std::memory_order_relaxed);
-		Logger::info("VACDM polling disabled (no SERVER_URL in vacdm.txt)");
+		Logger::info("VACDM polling disabled (no _vsmr.vacdm.server_url in vSMR_Profiles.json)");
 	}
 }
 

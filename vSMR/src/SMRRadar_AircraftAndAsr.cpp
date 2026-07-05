@@ -459,7 +459,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	}
 
 	std::string loadedProfileName;
-	const std::string persistedProfile = ReadLastActiveProfileFromDisk();
+	const std::string persistedProfile = ReadLastActiveProfileFromConfig();
 	if (!persistedProfile.empty())
 	{
 		this->LoadProfile(persistedProfile);
@@ -480,7 +480,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if (!loadedProfileName.empty())
 	{
 		RememberSessionActiveProfile(loadedProfileName);
-		WriteLastActiveProfileToDisk(loadedProfileName);
+		WriteLastActiveProfileToConfig(loadedProfileName);
 		SaveDataToAsr("ActiveProfile", "vSMR active profile", loadedProfileName.c_str());
 	}
 
@@ -624,7 +624,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	const std::string activeProfileFallback = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
 	const std::string activeProfileToPersist = GetSessionActiveProfile(activeProfileFallback);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfileToPersist.c_str());
-	WriteLastActiveProfileToDisk(activeProfileToPersist);
+	WriteLastActiveProfileToConfig(activeProfileToPersist);
 
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 

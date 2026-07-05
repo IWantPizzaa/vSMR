@@ -171,7 +171,7 @@ void CSMRRadar::OnAsrContentToBeClosed(void)
 
 	const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
 	const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
-	WriteLastActiveProfileToDisk(profileToPersist);
+	WriteLastActiveProfileToConfig(profileToPersist);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", profileToPersist.c_str());
 
 	if (CurrentConfig != nullptr)
