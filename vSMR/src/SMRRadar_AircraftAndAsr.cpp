@@ -250,18 +250,27 @@ void CSMRRadar::LoadAircraftSpecs() {
 	AircraftSpecs.clear();
 	std::vector<fs::path> candidates;
 
-	// AppData\Roaming\EuroScope\LFXX\Plugins (priority)
+	auto pushUniqueCandidate = [&](const fs::path& candidate) {
+		if (std::find(candidates.begin(), candidates.end(), candidate) == candidates.end())
+			candidates.push_back(candidate);
+		};
+
+	if (!DataPath.empty())
+		pushUniqueCandidate(fs::path(DataPath) / "ICAO_Aircraft.json");
+	pushUniqueCandidate(fs::path(DllPath) / "vSMR_Data" / "ICAO_Aircraft.json");
+
+	// Legacy flat AppData\Roaming\EuroScope\LFXX\Plugins fallback
 	char* appdata = nullptr;
 	size_t appdata_len = 0;
 	if (_dupenv_s(&appdata, &appdata_len, "APPDATA") == 0 && appdata != nullptr) {
 		fs::path roaming(appdata);
-		candidates.push_back(roaming / "EuroScope" / "LFXX" / "Plugins" / "ICAO_Aircraft.json");
+		pushUniqueCandidate(roaming / "EuroScope" / "LFXX" / "Plugins" / "ICAO_Aircraft.json");
 		free(appdata);
 	}
 
 	// Plugin folder and parent
-	candidates.push_back(fs::path(DllPath) / "ICAO_Aircraft.json");
-	candidates.push_back(fs::path(DllPath).parent_path() / "ICAO_Aircraft.json");
+	pushUniqueCandidate(fs::path(DllPath) / "ICAO_Aircraft.json");
+	pushUniqueCandidate(fs::path(DllPath).parent_path() / "ICAO_Aircraft.json");
 
 	auto getStringMember = [](const rapidjson::Value& obj, std::initializer_list<const char*> keys, std::string& out) -> bool {
 		for (auto k : keys) {
