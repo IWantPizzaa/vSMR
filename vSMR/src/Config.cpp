@@ -2,6 +2,23 @@
 #include "Config.hpp"
 #include <algorithm>
 
+namespace
+{
+	const rapidjson::Value* GetObjectMemberIfPresent(const rapidjson::Value& object, const char* key)
+	{
+		if (!object.IsObject() || key == nullptr || !object.HasMember(key) || !object[key].IsObject())
+			return nullptr;
+		return &object[key];
+	}
+
+	int ReadColorComponent(const rapidjson::Value& colorValue, const char* key, int fallback = 0)
+	{
+		if (!colorValue.IsObject() || key == nullptr || !colorValue.HasMember(key) || !colorValue[key].IsInt())
+			return fallback;
+		return std::clamp(colorValue[key].GetInt(), 0, 255);
+	}
+}
+
 CConfig::CConfig(string configPath, string mapPath)
 {
 	config_path = configPath;
@@ -126,20 +143,18 @@ const Value& CConfig::getActiveProfile() {
 	return emptyProfile;
 }
 
-bool CConfig::isSidColorAvail(string sid, string airport) {
+const Value* CConfig::findSidDefinition(const string& sid, const string& airport)
+{
 	const Value& activeProfile = getActiveProfile();
-	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
-		return false;
+	const Value* mapsObject = GetObjectMemberIfPresent(activeProfile, "maps");
+	if (mapsObject == nullptr)
+		return nullptr;
 
-	const Value& maps = activeProfile["maps"];
-	if (!maps.HasMember(airport.c_str()) || !maps[airport.c_str()].IsObject())
-		return false;
+	const Value* airportMap = GetObjectMemberIfPresent(*mapsObject, airport.c_str());
+	if (airportMap == nullptr || !airportMap->HasMember("sids") || !(*airportMap)["sids"].IsArray())
+		return nullptr;
 
-	const Value& airportMap = maps[airport.c_str()];
-	if (!airportMap.HasMember("sids") || !airportMap["sids"].IsArray())
-		return false;
-
-	const Value& sidDefinitions = airportMap["sids"];
+	const Value& sidDefinitions = (*airportMap)["sids"];
 	for (SizeType i = 0; i < sidDefinitions.Size(); i++)
 	{
 		const Value& sidDefinition = sidDefinitions[i];
@@ -150,54 +165,28 @@ bool CConfig::isSidColorAvail(string sid, string airport) {
 		for (SizeType s = 0; s < sidNames.Size(); s++) {
 			if (!sidNames[s].IsString())
 				continue;
-			string currentsid = sidNames[s].GetString();
-			std::transform(currentsid.begin(), currentsid.end(), currentsid.begin(), [](unsigned char c) {
+
+			string currentSid = sidNames[s].GetString();
+			std::transform(currentSid.begin(), currentSid.end(), currentSid.begin(), [](unsigned char c) {
 				return static_cast<char>(std::toupper(c));
 			});
-			if (startsWith(sid.c_str(), currentsid.c_str()))
-				return true;
+			if (startsWith(sid.c_str(), currentSid.c_str()))
+				return &sidDefinition;
 		}
 	}
-	return false;
+
+	return nullptr;
+}
+
+bool CConfig::isSidColorAvail(string sid, string airport) {
+	return findSidDefinition(sid, airport) != nullptr;
 }
 
 Gdiplus::Color CConfig::getSidColor(string sid, string airport)
 {
-	const Value& activeProfile = getActiveProfile();
-	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
-		return Gdiplus::Color(0, 0, 0);
-
-	const Value& maps = activeProfile["maps"];
-	if (!maps.HasMember(airport.c_str()) || !maps[airport.c_str()].IsObject())
-		return Gdiplus::Color(0, 0, 0);
-
-	const Value& airportMap = maps[airport.c_str()];
-	if (!airportMap.HasMember("sids") || !airportMap["sids"].IsArray())
-		return Gdiplus::Color(0, 0, 0);
-
-	const Value& sidDefinitions = airportMap["sids"];
-	for (SizeType i = 0; i < sidDefinitions.Size(); i++)
-	{
-		const Value& sidDefinition = sidDefinitions[i];
-		if (!sidDefinition.IsObject() || !sidDefinition.HasMember("names") || !sidDefinition["names"].IsArray())
-			continue;
-
-		const Value& sidNames = sidDefinition["names"];
-		for (SizeType s = 0; s < sidNames.Size(); s++) {
-			if (!sidNames[s].IsString())
-				continue;
-			string currentsid = sidNames[s].GetString();
-			std::transform(currentsid.begin(), currentsid.end(), currentsid.begin(), [](unsigned char c) {
-				return static_cast<char>(std::toupper(c));
-			});
-			if (startsWith(sid.c_str(), currentsid.c_str()))
-			{
-				if (sidDefinition.HasMember("color") && sidDefinition["color"].IsObject())
-					return getConfigColor(sidDefinition["color"]);
-				return Gdiplus::Color(0, 0, 0);
-			}
-		}
-	}
+	const Value* sidDefinition = findSidDefinition(sid, airport);
+	if (sidDefinition != nullptr && sidDefinition->HasMember("color") && (*sidDefinition)["color"].IsObject())
+		return getConfigColor((*sidDefinition)["color"]);
 	return Gdiplus::Color(0, 0, 0);
 }
 
@@ -205,17 +194,10 @@ Gdiplus::Color CConfig::getConfigColor(const Value& config_path) {
 	if (!config_path.IsObject())
 		return Gdiplus::Color(255, 0, 0, 0);
 
-	int r = (config_path.HasMember("r") && config_path["r"].IsInt()) ? config_path["r"].GetInt() : 0;
-	int g = (config_path.HasMember("g") && config_path["g"].IsInt()) ? config_path["g"].GetInt() : 0;
-	int b = (config_path.HasMember("b") && config_path["b"].IsInt()) ? config_path["b"].GetInt() : 0;
-	int a = 255;
-	if (config_path.HasMember("a") && config_path["a"].IsInt())
-		a = config_path["a"].GetInt();
-
-	r = std::clamp(r, 0, 255);
-	g = std::clamp(g, 0, 255);
-	b = std::clamp(b, 0, 255);
-	a = std::clamp(a, 0, 255);
+	const int r = ReadColorComponent(config_path, "r");
+	const int g = ReadColorComponent(config_path, "g");
+	const int b = ReadColorComponent(config_path, "b");
+	const int a = ReadColorComponent(config_path, "a", 255);
 
 	Gdiplus::Color Color(a, r, g, b);
 	return Color;
@@ -225,13 +207,9 @@ COLORREF CConfig::getConfigColorRef(const Value& config_path) {
 	if (!config_path.IsObject())
 		return RGB(0, 0, 0);
 
-	int r = (config_path.HasMember("r") && config_path["r"].IsInt()) ? config_path["r"].GetInt() : 0;
-	int g = (config_path.HasMember("g") && config_path["g"].IsInt()) ? config_path["g"].GetInt() : 0;
-	int b = (config_path.HasMember("b") && config_path["b"].IsInt()) ? config_path["b"].GetInt() : 0;
-
-	r = std::clamp(r, 0, 255);
-	g = std::clamp(g, 0, 255);
-	b = std::clamp(b, 0, 255);
+	const int r = ReadColorComponent(config_path, "r");
+	const int g = ReadColorComponent(config_path, "g");
+	const int b = ReadColorComponent(config_path, "b");
 
 	COLORREF Color(RGB(r, g, b));
 	return Color;
@@ -239,23 +217,21 @@ COLORREF CConfig::getConfigColorRef(const Value& config_path) {
 
 const Value& CConfig::getAirportMapIfAny(string airport) {
 	const Value& activeProfile = getActiveProfile();
-	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+	const Value* mapData = GetObjectMemberIfPresent(activeProfile, "maps");
+	if (mapData == nullptr)
 		return activeProfile;
 
-	const Value& mapData = activeProfile["maps"];
-	if (mapData.HasMember(airport.c_str()) && mapData[airport.c_str()].IsObject())
-		return mapData[airport.c_str()];
+	const Value* airportMap = GetObjectMemberIfPresent(*mapData, airport.c_str());
+	if (airportMap != nullptr)
+		return *airportMap;
 
 	return activeProfile;
 }
 
 bool CConfig::isAirportMapAvail(string airport) {
 	const Value& activeProfile = getActiveProfile();
-	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
-		return false;
-	if (activeProfile["maps"].HasMember(airport.c_str()) && activeProfile["maps"][airport.c_str()].IsObject())
-		return true;
-	return false;
+	const Value* mapData = GetObjectMemberIfPresent(activeProfile, "maps");
+	return mapData != nullptr && GetObjectMemberIfPresent(*mapData, airport.c_str()) != nullptr;
 }
 
 bool CConfig::isCustomCursorUsed() {
@@ -267,16 +243,14 @@ bool CConfig::isCustomCursorUsed() {
 
 bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
 	const Value& activeProfile = getActiveProfile();
-	if (!activeProfile.IsObject() || !activeProfile.HasMember("maps") || !activeProfile["maps"].IsObject())
+	const Value* maps = GetObjectMemberIfPresent(activeProfile, "maps");
+	if (maps == nullptr)
 		return false;
-	const Value& maps = activeProfile["maps"];
-	if (!maps.HasMember(airport.c_str()) || !maps[airport.c_str()].IsObject())
-		return false;
-	const Value& airportMap = maps[airport.c_str()];
-	if (!airportMap.HasMember("runways") || !airportMap["runways"].IsArray())
+	const Value* airportMap = GetObjectMemberIfPresent(*maps, airport.c_str());
+	if (airportMap == nullptr || !airportMap->HasMember("runways") || !(*airportMap)["runways"].IsArray())
 		return false;
 
-	const Value& runways = airportMap["runways"];
+	const Value& runways = (*airportMap)["runways"];
 	for (SizeType i = 0; i < runways.Size(); i++) {
 		const Value& runway = runways[i];
 		if (!runway.IsObject() || !runway.HasMember("runway_name") || !runway["runway_name"].IsString())

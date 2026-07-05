@@ -301,7 +301,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		{
 			if (isObjectId("topbar") || (isObjectId("window") && appWindow->IsAvisoViewport()))
 				setInteractionCursorIfNeeded(IDC_SMRMOVEWINDOW);
-			else if (isObjectId("resize") || isObjectId("divider"))
+			else if (isObjectId("resize") || isObjectId("divider") || isObjectId("divider_x") || isObjectId("divider_y"))
 				setInteractionCursorIfNeeded(IDC_SMRRESIZE);
 		}
 		else
