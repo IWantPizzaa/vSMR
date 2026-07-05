@@ -4,11 +4,71 @@
 
 namespace
 {
+	const char* kMetadataWrapperKey = "_vsmr";
+	const char* kMetadataSchemaVersionKey = "schema_version";
+	const char* kLastActiveProfileKey = "last_active_profile";
+	const char* kVacdmKey = "vacdm";
+	const char* kVacdmServerUrlKey = "server_url";
+
 	const rapidjson::Value* GetObjectMemberIfPresent(const rapidjson::Value& object, const char* key)
 	{
 		if (!object.IsObject() || key == nullptr || !object.HasMember(key) || !object[key].IsObject())
 			return nullptr;
 		return &object[key];
+	}
+
+	bool IsProfileEntry(const rapidjson::Value& value)
+	{
+		return value.IsObject() && value.HasMember("name") && value["name"].IsString();
+	}
+
+	bool IsMetadataEntry(const rapidjson::Value& value)
+	{
+		return value.IsObject() &&
+			value.HasMember(kMetadataWrapperKey) &&
+			value[kMetadataWrapperKey].IsObject() &&
+			!value.HasMember("name");
+	}
+
+	std::string ReadStringMember(const rapidjson::Value& object, const char* key)
+	{
+		if (!object.IsObject() || key == nullptr || !object.HasMember(key) || !object[key].IsString())
+			return "";
+		return object[key].GetString();
+	}
+
+	void SetStringMember(rapidjson::Value& object, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!object.IsObject() || key == nullptr)
+			return;
+
+		rapidjson::Value stringValue;
+		stringValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
+		if (object.HasMember(key))
+			object[key] = stringValue;
+		else
+		{
+			rapidjson::Value keyValue;
+			keyValue.SetString(key, allocator);
+			object.AddMember(keyValue, stringValue, allocator);
+		}
+	}
+
+	rapidjson::Value& EnsureObjectMember(rapidjson::Value& object, const char* key, rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!object.IsObject())
+			object.SetObject();
+
+		if (!object.HasMember(key) || !object[key].IsObject())
+		{
+			object.RemoveMember(key);
+			rapidjson::Value keyValue;
+			keyValue.SetString(key, allocator);
+			rapidjson::Value newObject(rapidjson::kObjectType);
+			object.AddMember(keyValue, newObject, allocator);
+		}
+
+		return object[key];
 	}
 
 	int ReadColorComponent(const rapidjson::Value& colorValue, const char* key, int fallback = 0)
@@ -88,7 +148,7 @@ void CConfig::loadConfig() {
 
 	for (SizeType i = 0; i < document.Size(); i++) {
 		const Value& profile = document[i];
-		if (!profile.IsObject() || !profile.HasMember("name") || !profile["name"].IsString())
+		if (!IsProfileEntry(profile))
 			continue;
 		string profile_name = profile["name"].GetString();
 		profiles.insert(pair<string, rapidjson::SizeType>(profile_name, i));
@@ -132,11 +192,13 @@ void CConfig::loadMap()
 }
 
 const Value& CConfig::getActiveProfile() {
-	if (document.IsArray() && !document.Empty())
+	if (document.IsArray())
 	{
-		if (active_profile < document.Size())
+		if (active_profile < document.Size() && IsProfileEntry(document[active_profile]))
 			return document[active_profile];
-		return document[static_cast<SizeType>(0)];
+
+		if (!profiles.empty())
+			return document[profiles.begin()->second];
 	}
 
 	static const Value emptyProfile(kObjectType);
@@ -268,7 +330,7 @@ vector<string> CConfig::getAllProfiles() {
 	if (document.IsArray()) {
 		for (SizeType i = 0; i < document.Size(); i++) {
 			const Value& profile = document[i];
-			if (profile.IsObject() && profile.HasMember("name") && profile["name"].IsString()) {
+			if (IsProfileEntry(profile)) {
 				toR.push_back(profile["name"].GetString());
 			}
 		}
@@ -282,6 +344,88 @@ vector<string> CConfig::getAllProfiles() {
 	}
 
 	return toR;
+}
+
+size_t CConfig::getProfileCount() const
+{
+	return profiles.size();
+}
+
+const Value* CConfig::findMetadata() const
+{
+	if (!document.IsArray())
+		return nullptr;
+
+	for (SizeType i = 0; i < document.Size(); i++)
+	{
+		const Value& item = document[i];
+		if (IsMetadataEntry(item))
+			return &item[kMetadataWrapperKey];
+	}
+
+	return nullptr;
+}
+
+Value& CConfig::ensureMetadata()
+{
+	if (!document.IsArray())
+		document.SetArray();
+
+	for (SizeType i = 0; i < document.Size(); i++)
+	{
+		Value& item = document[i];
+		if (IsMetadataEntry(item))
+			return item[kMetadataWrapperKey];
+	}
+
+	Value wrapper(kObjectType);
+	Value metadata(kObjectType);
+	metadata.AddMember(kMetadataSchemaVersionKey, 1, document.GetAllocator());
+
+	Value wrapperKey;
+	wrapperKey.SetString(kMetadataWrapperKey, document.GetAllocator());
+	wrapper.AddMember(wrapperKey, metadata, document.GetAllocator());
+	document.PushBack(wrapper, document.GetAllocator());
+	return document[document.Size() - 1][kMetadataWrapperKey];
+}
+
+string CConfig::getLastActiveProfileName() const
+{
+	const Value* metadata = findMetadata();
+	if (metadata == nullptr)
+		return "";
+	return trimProfileName(ReadStringMember(*metadata, kLastActiveProfileKey));
+}
+
+bool CConfig::setLastActiveProfileName(const string& profileName)
+{
+	const string trimmedProfile = trimProfileName(profileName);
+	if (trimmedProfile.empty())
+		return false;
+
+	Value& metadata = ensureMetadata();
+	SetStringMember(metadata, kLastActiveProfileKey, trimmedProfile, document.GetAllocator());
+	return true;
+}
+
+string CConfig::getVacdmServerUrl() const
+{
+	const Value* metadata = findMetadata();
+	if (metadata == nullptr)
+		return "";
+
+	const Value* vacdm = GetObjectMemberIfPresent(*metadata, kVacdmKey);
+	if (vacdm == nullptr)
+		return "";
+	return ReadStringMember(*vacdm, kVacdmServerUrlKey);
+}
+
+bool CConfig::setVacdmServerUrl(const string& serverUrl)
+{
+	Value& metadata = ensureMetadata();
+	Value& vacdm = EnsureObjectMember(metadata, kVacdmKey, document.GetAllocator());
+	SetStringMember(vacdm, kVacdmServerUrlKey, serverUrl, document.GetAllocator());
+	return true;
 }
 
 bool CConfig::saveConfig()

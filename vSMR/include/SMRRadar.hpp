@@ -452,8 +452,8 @@ public:
 	std::vector<std::string> GetProfileNamesForEditor() const;
 	std::string GetActiveProfileNameForEditor() const;
 	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);
-	std::string ReadLastActiveProfileFromDisk() const;
-	void WriteLastActiveProfileToDisk(const std::string& profileName) const;
+	std::string ReadLastActiveProfileFromConfig() const;
+	void WriteLastActiveProfileToConfig(const std::string& profileName) const;
 	static void RememberSessionActiveProfile(const std::string& profileName);
 	static std::string GetSessionActiveProfile(const std::string& fallbackProfile);
 	bool GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const;

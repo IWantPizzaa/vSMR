@@ -102,7 +102,6 @@ Optional runtime data:
 - `ICAO_Aircraft.json`
 - `AVISO\AVISO_*.geojson`
 - `aircraft_icons\*.png`
-- `vacdm.txt`
 
 ## Installation
 
@@ -129,7 +128,6 @@ EuroScope\Plugins\
     vSMR_Profiles.json
     vSMR_Maps.json
     ICAO_Aircraft.json
-    vacdm.txt
     AVISO\
       AVISO_LFPG.geojson
     aircraft_icons\
@@ -152,25 +150,33 @@ EuroScope\Plugins\
 | ------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | `vSMR_Maps.json`         | `vSMR_Data\`, then same folder as `vSMR.dll` fallback                                                        | Map element visibility by zoom level and optional active runway/airport conditions |
 | `AVISO_*.geojson`        | `vSMR_Data\AVISO\`, then `vSMR_Data\`, then `<dll folder>\AVISO\`, then DLL folder fallback                  | Optional AVISO map overlays by airport, for example `AVISO_LFPG.geojson`           |
-| `vacdm.txt`              | `vSMR_Data\`, then same folder as `vSMR.dll` fallback                                                        | Enables VACDM polling and sets the VACDM base server URL                           |
 | `ICAO_Airlines.txt`      | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt`                      | Airline/callsign lookup for bottom-line text and related displays                  |
 | `ICAO_Aircraft.json`     | `vSMR_Data\`, then `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder fallback      | Aircraft length and wingspan data used by realistic icons                          |
 | `aircraft_icons\*.png`   | `vSMR_Data\aircraft_icons\`, then `<dll folder>\aircraft_icons\` fallback                                    | Optional per-aircraft realistic icon silhouettes                                   |
 
-### `vacdm.txt` format
+### Profile Metadata
 
-If present, the file is parsed as simple `key=value` text. The supported key is:
+`vSMR_Profiles.json` can include one metadata object at the end of the profile array. It has no `name` field, so it is not shown as a profile:
 
-```text
-SERVER_URL=https://your-server.example
+```json
+{
+  "_vsmr": {
+    "schema_version": 1,
+    "last_active_profile": "Default",
+    "vacdm": {
+      "server_url": "https://your-server.example"
+    }
+  }
+}
 ```
 
 Notes:
 
+- `last_active_profile` replaces `vSMR_LastActiveProfile.txt`.
+- `vacdm.server_url` replaces `vacdm.txt`.
 - vSMR appends `/api/v1/pilots` internally.
-- VACDM polling is currently enabled only when `SERVER_URL` is present in `vacdm.txt`.
-- Lines beginning with `#` or `;` are ignored.
-- Quoted values are accepted, and trailing `/` is trimmed.
+- VACDM polling is enabled only when `_vsmr.vacdm.server_url` is not empty.
+- A trailing `/` is trimmed from the configured server URL.
 
 ## Commands
 
@@ -455,7 +461,7 @@ VACDM pilot data is polled in the plugin and exposed to tag rendering and rule e
 
 Behavior visible in code:
 
-- polling is opt-in and starts only when `vSMR_Data\vacdm.txt` or the flat-layout fallback `vacdm.txt` contains `SERVER_URL=...`
+- polling is opt-in and starts only when `_vsmr.vacdm.server_url` is set in `vSMR_Profiles.json`
 - URL used by polling is `<SERVER_URL>/api/v1/pilots`
 - polling interval: 15 seconds
 - polling waits for a stable EuroScope network connection before fetching
@@ -680,7 +686,7 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 - If the profile editor opens off-screen, remove or correct `ui_layout.profile_editor_window`.
 - If realistic icons do not appear, verify `targets.icon_style`, `vSMR_Data\ICAO_Aircraft.json`, and `vSMR_Data\aircraft_icons\`.
 - If airline names are missing, verify `ICAO_Airlines.txt` in one of the supported search paths.
-- If VACDM fields stay empty, verify that `vSMR_Data\vacdm.txt` exists with `SERVER_URL=...`, then check callsign matching and backend data availability.
+- If VACDM fields stay empty, verify that `_vsmr.vacdm.server_url` is set in `vSMR_Data\vSMR_Profiles.json`, then check callsign matching and backend data availability.
 - If `.smr profile` does nothing, make sure at least one SMR radar screen is open.
 
 ## Credits

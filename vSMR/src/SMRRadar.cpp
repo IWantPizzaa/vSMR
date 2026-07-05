@@ -96,20 +96,6 @@ namespace
 		return (fs::path(dllPath) / directoryName).string();
 	}
 
-	std::string BuildLastActiveProfilePath(const std::string& configPath)
-	{
-		try
-		{
-			const fs::path cfgPath(configPath);
-			const fs::path directory = cfgPath.has_parent_path() ? cfgPath.parent_path() : fs::path(".");
-			return (directory / "vSMR_LastActiveProfile.txt").string();
-		}
-		catch (...)
-		{
-			return "vSMR_LastActiveProfile.txt";
-		}
-	}
-
 	std::string TrimAvisoAirportCode(const std::string& value)
 	{
 		size_t start = 0;
@@ -1825,42 +1811,21 @@ std::string CSMRRadar::GetSessionActiveProfile(const std::string& fallbackProfil
 	return fallbackProfile;
 }
 
-std::string CSMRRadar::ReadLastActiveProfileFromDisk() const
+std::string CSMRRadar::ReadLastActiveProfileFromConfig() const
 {
-	try
-	{
-		const std::string statePath = BuildLastActiveProfilePath(ConfigPath);
-		std::ifstream input(statePath, std::ios::binary);
-		if (!input.is_open())
-			return "";
-
-		std::string profileName;
-		std::getline(input, profileName);
-		return TrimAsciiWhitespaceCopy(profileName);
-	}
-	catch (...)
-	{
+	if (CurrentConfig == nullptr)
 		return "";
-	}
+	return TrimAsciiWhitespaceCopy(CurrentConfig->getLastActiveProfileName());
 }
 
-void CSMRRadar::WriteLastActiveProfileToDisk(const std::string& profileName) const
+void CSMRRadar::WriteLastActiveProfileToConfig(const std::string& profileName) const
 {
 	const std::string trimmedName = TrimAsciiWhitespaceCopy(profileName);
-	if (trimmedName.empty())
+	if (trimmedName.empty() || CurrentConfig == nullptr)
 		return;
 
-	try
-	{
-		const std::string statePath = BuildLastActiveProfilePath(ConfigPath);
-		std::ofstream output(statePath, std::ios::binary | std::ios::trunc);
-		if (!output.is_open())
-			return;
-		output << trimmedName;
-	}
-	catch (...)
-	{
-	}
+	if (CurrentConfig->setLastActiveProfileName(trimmedName))
+		CurrentConfig->saveConfig();
 }
 
 void CSMRRadar::CorrelateCursor() {

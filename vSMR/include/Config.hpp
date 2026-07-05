@@ -48,11 +48,16 @@ public:
 	COLORREF getConfigColorRef(const Value& config_path);
 
 	vector<string> getAllProfiles();
+	size_t getProfileCount() const;
 
 	bool saveConfig();
 
 	unordered_set<string> getInactiveAlert();
 	bool setInactiveAlert(const unordered_set<string>& inactiveAlerts);
+	string getLastActiveProfileName() const;
+	bool setLastActiveProfileName(const string& profileName);
+	string getVacdmServerUrl() const;
+	bool setVacdmServerUrl(const string& serverUrl);
 
 	inline int isItActiveProfile(string toTest) {
 		auto it = profiles.find(toTest);
@@ -119,6 +124,8 @@ protected:
 	void loadConfig();
 	void loadMap();
 	const Value* findSidDefinition(const string& sid, const string& airport);
+	const Value* findMetadata() const;
+	Value& ensureMetadata();
 
 	static string trimProfileName(const string& text)
 	{

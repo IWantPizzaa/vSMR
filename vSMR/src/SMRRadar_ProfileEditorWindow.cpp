@@ -639,7 +639,7 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 		radar->LoadCustomFont();
 		const std::string activeProfile = radar->CurrentConfig->getActiveProfileName();
 		RememberSessionActiveProfile(activeProfile);
-		radar->WriteLastActiveProfileToDisk(activeProfile);
+		radar->WriteLastActiveProfileToConfig(activeProfile);
 		radar->SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 		radar->RequestRefresh();
 		return true;
@@ -779,13 +779,21 @@ bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool dupli
 	{
 		CloneJsonValue(CurrentConfig->getActiveProfile(), newProfile, CurrentConfig->document.GetAllocator());
 	}
-	else if (CurrentConfig->document.Size() > 0 && CurrentConfig->document[static_cast<rapidjson::SizeType>(0)].IsObject())
-	{
-		CloneJsonValue(CurrentConfig->document[static_cast<rapidjson::SizeType>(0)], newProfile, CurrentConfig->document.GetAllocator());
-	}
 	else
 	{
-		newProfile.SetObject();
+		for (rapidjson::SizeType i = 0; i < CurrentConfig->document.Size(); ++i)
+		{
+			if (CurrentConfig->document[i].IsObject() &&
+				CurrentConfig->document[i].HasMember("name") &&
+				CurrentConfig->document[i]["name"].IsString())
+			{
+				CloneJsonValue(CurrentConfig->document[i], newProfile, CurrentConfig->document.GetAllocator());
+				break;
+			}
+		}
+
+		if (!newProfile.IsObject())
+			newProfile.SetObject();
 	}
 
 	rapidjson::Value profileNameValue;
@@ -804,7 +812,7 @@ bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool dupli
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);
-	WriteLastActiveProfileToDisk(activeProfile);
+	WriteLastActiveProfileToConfig(activeProfile);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 	RequestRefresh();
 	if (outCreatedName != nullptr)
@@ -856,7 +864,7 @@ bool CSMRRadar::RenameProfileForEditor(const std::string& oldName, const std::st
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);
-	WriteLastActiveProfileToDisk(activeProfile);
+	WriteLastActiveProfileToConfig(activeProfile);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 	RequestRefresh();
 	return true;
@@ -866,7 +874,7 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 {
 	if (!CurrentConfig || !CurrentConfig->document.IsArray())
 		return false;
-	if (CurrentConfig->document.Size() <= 1)
+	if (CurrentConfig->getProfileCount() <= 1)
 		return false;
 
 	const std::string activeBefore = CurrentConfig->getActiveProfileName();
@@ -892,7 +900,7 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);
-	WriteLastActiveProfileToDisk(activeProfile);
+	WriteLastActiveProfileToConfig(activeProfile);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 	RequestRefresh();
 	return true;
