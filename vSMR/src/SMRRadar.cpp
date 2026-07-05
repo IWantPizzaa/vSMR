@@ -6589,6 +6589,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	VSMR_REFRESH_LOG("App window rendering");
 	setRefreshStage("app window rendering");
 
+	SyncLinkedAvisoSecondaryToMainView();
+
 	const double perfSrwStartMs = RefreshPerfNowMs();
 	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
 	{

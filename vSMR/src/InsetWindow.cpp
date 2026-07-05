@@ -288,10 +288,11 @@ namespace
 		return CRect(viewportRect.left, dividerY - 3, viewportRect.right, dividerY + 3);
 	}
 
-	CRect AvisoCornerButtonRect(AvisoLayoutMode mode, const CRect& viewportRect, bool oppositeCorner)
+	CRect AvisoCornerToolbarButtonRect(AvisoLayoutMode mode, const CRect& viewportRect, bool oppositeCorner, int buttonIndex)
 	{
 		const int buttonSize = 17;
 		const int margin = 5;
+		const int gap = 2;
 		bool rightSide = IsAvisoCornerRightAnchored(mode);
 		bool bottomSide = IsAvisoCornerBottomAnchored(mode);
 		if (oppositeCorner)
@@ -300,9 +301,15 @@ namespace
 			bottomSide = !bottomSide;
 		}
 
-		const int left = rightSide ? viewportRect.right - margin - buttonSize : viewportRect.left + margin;
+		const int step = max(0, buttonIndex) * (buttonSize + gap);
+		const int left = rightSide ? viewportRect.right - margin - buttonSize - step : viewportRect.left + margin + step;
 		const int top = bottomSide ? viewportRect.bottom - margin - buttonSize : viewportRect.top + margin;
 		return CRect(left, top, left + buttonSize, top + buttonSize);
+	}
+
+	CRect AvisoCornerButtonRect(AvisoLayoutMode mode, const CRect& viewportRect, bool oppositeCorner)
+	{
+		return AvisoCornerToolbarButtonRect(mode, viewportRect, oppositeCorner, 0);
 	}
 
 	void DrawAvisoDivider(CDC& dc, CSMRRadar* radarScreen, int objectType, const char* objectId, const CRect& dividerRect)
@@ -1078,6 +1085,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
 
+			CRect presetsRect(
+				viewportRect.right - 42,
+				viewportRect.top + 5,
+				viewportRect.right - 25,
+				viewportRect.top + 22);
+			const CRect presetsButtonRect = DrawInsetButton(dc, "P", presetsRect, mouseLocation);
+			radar_screen->AddScreenObject(m_Id, "presets", presetsButtonRect, false, "");
+
 			DrawAvisoDivider(dc, radar_screen, m_Id, "divider", AvisoSplitDividerRect(m_AvisoLayoutMode, viewportRect));
 			return;
 		}
@@ -1090,6 +1105,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, false),
 				mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
+
+			const CRect presetsButtonRect = DrawInsetButton(
+				dc,
+				"P",
+				AvisoCornerToolbarButtonRect(m_AvisoLayoutMode, viewportRect, false, 1),
+				mouseLocation);
+			radar_screen->AddScreenObject(m_Id, "presets", presetsButtonRect, false, "");
 
 			CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, true);
 			resizeArea.NormalizeRect();
@@ -1129,6 +1151,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 		const CRect closeRect = DrawInsetToolbarButton(dc, "X", topBar, InsetToolbarRightOffset(0), mouseLocation);
 		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
+		const CRect presetsRect = DrawInsetToolbarButton(dc, "P", topBar, InsetToolbarRightOffset(1), mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "presets", presetsRect, false, "");
 		dc.SetTextColor(oldTextColor);
 	};
 

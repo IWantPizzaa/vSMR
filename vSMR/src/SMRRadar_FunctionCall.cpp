@@ -19,6 +19,9 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	auto showConfigError = [&](const char* message) {
 		GetPlugIn()->DisplayUserMessage("vSMR", "Config", message, true, true, false, false, false);
 	};
+	auto showAvisoPresetMessage = [&](const std::string& message) {
+		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO Presets", message.c_str(), true, true, false, false, false);
+	};
 	auto persistProfileUpdate = [&](bool updateResult, const char* message) -> bool
 	{
 		if (!updateResult || !CurrentConfig->saveConfig())
@@ -62,6 +65,149 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			appWindowDisplayIt->second = !appWindowDisplayIt->second;
 			RequestRefresh();
 		}
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_CREATE_PROMPT)
+	{
+		GetPlugIn()->OpenPopupEdit(Area, RIMCAS_AVISO_PRESET_CREATE, "AVISO Preset");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_RENAME_PROMPT)
+	{
+		const std::string activePreset = GetActiveAvisoPresetName();
+		if (activePreset.empty())
+		{
+			showAvisoPresetMessage("No active AVISO preset to rename.");
+			return;
+		}
+
+		GetPlugIn()->OpenPopupEdit(Area, RIMCAS_AVISO_PRESET_RENAME, activePreset.c_str());
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_DUPLICATE_PROMPT)
+	{
+		const std::string activePreset = GetActiveAvisoPresetName();
+		if (activePreset.empty())
+		{
+			showAvisoPresetMessage("No active AVISO preset to duplicate.");
+			return;
+		}
+
+		const std::string suggestedName = "Copy of " + activePreset;
+		GetPlugIn()->OpenPopupEdit(Area, RIMCAS_AVISO_PRESET_DUPLICATE, suggestedName.c_str());
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_CREATE)
+	{
+		if (!hasItemString)
+			return;
+
+		std::string savedName;
+		if (SaveAvisoPreset(itemString, false, &savedName))
+			showAvisoPresetMessage("Saved AVISO preset: " + savedName);
+		else
+			showConfigError("Failed to save AVISO preset to vSMR_Profiles.json");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_LOAD)
+	{
+		if (!hasItemString)
+			return;
+
+		if (LoadAvisoPreset(itemString))
+			showAvisoPresetMessage("Loaded AVISO preset: " + GetActiveAvisoPresetName());
+		else
+			showAvisoPresetMessage("AVISO preset not found.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_UPDATE)
+	{
+		const std::string activePreset = GetActiveAvisoPresetName();
+		if (UpdateActiveAvisoPreset())
+			showAvisoPresetMessage("Updated AVISO preset: " + activePreset);
+		else
+			showConfigError("Failed to update active AVISO preset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_RENAME)
+	{
+		if (!hasItemString)
+			return;
+
+		const std::string oldName = GetActiveAvisoPresetName();
+		if (!oldName.empty() && RenameAvisoPreset(oldName, itemString))
+			showAvisoPresetMessage("Renamed AVISO preset: " + GetActiveAvisoPresetName());
+		else
+			showConfigError("Failed to rename active AVISO preset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_DUPLICATE)
+	{
+		if (!hasItemString)
+			return;
+
+		const std::string sourceName = GetActiveAvisoPresetName();
+		std::string savedName;
+		if (!sourceName.empty() && DuplicateAvisoPreset(sourceName, itemString, &savedName))
+			showAvisoPresetMessage("Duplicated AVISO preset: " + savedName);
+		else
+			showConfigError("Failed to duplicate active AVISO preset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_DELETE)
+	{
+		const std::string activePreset = GetActiveAvisoPresetName();
+		if (!activePreset.empty() && DeleteAvisoPreset(activePreset))
+			showAvisoPresetMessage("Deleted AVISO preset: " + activePreset);
+		else
+			showConfigError("Failed to delete active AVISO preset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_SET_DEFAULT)
+	{
+		const std::string activePreset = GetActiveAvisoPresetName();
+		if (!activePreset.empty() && SetDefaultAvisoPreset(activePreset))
+			showAvisoPresetMessage("Default AVISO preset: " + activePreset);
+		else
+			showConfigError("Failed to set default AVISO preset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_CLEAR_DEFAULT)
+	{
+		if (ClearDefaultAvisoPreset())
+			showAvisoPresetMessage("Cleared default AVISO preset.");
+		else
+			showConfigError("Failed to clear default AVISO preset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_RESET)
+	{
+		if (ResetActiveAvisoPreset())
+			showAvisoPresetMessage("Reset AVISO view to preset: " + GetActiveAvisoPresetName());
+		else
+			showAvisoPresetMessage("No active or default AVISO preset to reset.");
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_PRESET_TOGGLE_LINK)
+	{
+		const bool linked = !IsAvisoPresetLinkedMovementEnabled();
+		if (SetActiveAvisoPresetLinkedMovement(linked))
+			showAvisoPresetMessage(std::string("AVISO linked movement ") + (linked ? "enabled." : "disabled."));
+		else
+			showConfigError("Failed to update AVISO linked movement.");
+		return;
 	}
 
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {

@@ -69,6 +69,9 @@
     <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\SMRRadar_AvisoPresets.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="src\SMRRadar_FunctionCall.cpp">
       <Filter>Source</Filter>
     </ClCompile>

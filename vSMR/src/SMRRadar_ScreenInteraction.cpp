@@ -810,6 +810,53 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			return;
 		}
 
+		if (isObjectId("presets"))
+		{
+			if (appWindow == nullptr || !appWindow->IsAvisoViewport())
+				return;
+
+			SelectAvisoViewport(this, appWindow);
+			openPopupListWithClose("AVISO Presets", [&]()
+			{
+				const std::vector<AvisoPreset> presets = GetAvisoPresets();
+				const std::string activePreset = GetActiveAvisoPresetName();
+				const std::string defaultPreset = GetDefaultAvisoPresetName();
+				if (!defaultPreset.empty())
+				{
+					const std::string defaultLabel = "Default: " + defaultPreset;
+					GetPlugIn()->AddPopupListElement(defaultLabel.c_str(), "", RIMCAS_CLOSE, false, 2, false, true);
+				}
+
+				if (presets.empty())
+				{
+					GetPlugIn()->AddPopupListElement("No presets saved", "", RIMCAS_CLOSE, false, 2, false, true);
+				}
+				else
+				{
+					for (const AvisoPreset& preset : presets)
+					{
+						const bool isActive = !activePreset.empty() && preset.name == activePreset;
+						GetPlugIn()->AddPopupListElement(preset.name.c_str(), "", RIMCAS_AVISO_PRESET_LOAD, false, int(isActive));
+					}
+				}
+
+				GetPlugIn()->AddPopupListElement("Save current as new...", "", RIMCAS_AVISO_PRESET_CREATE_PROMPT, false, 0, false, true);
+				if (!activePreset.empty())
+				{
+					GetPlugIn()->AddPopupListElement("Update active preset", "", RIMCAS_AVISO_PRESET_UPDATE);
+					GetPlugIn()->AddPopupListElement("Reset to active preset", "", RIMCAS_AVISO_PRESET_RESET);
+					GetPlugIn()->AddPopupListElement("Rename active preset...", "", RIMCAS_AVISO_PRESET_RENAME_PROMPT);
+					GetPlugIn()->AddPopupListElement("Duplicate active preset...", "", RIMCAS_AVISO_PRESET_DUPLICATE_PROMPT);
+					GetPlugIn()->AddPopupListElement("Delete active preset", "", RIMCAS_AVISO_PRESET_DELETE);
+					GetPlugIn()->AddPopupListElement("Set active as default", "", RIMCAS_AVISO_PRESET_SET_DEFAULT);
+				}
+				if (!defaultPreset.empty())
+					GetPlugIn()->AddPopupListElement("Clear default preset", "", RIMCAS_AVISO_PRESET_CLEAR_DEFAULT);
+				GetPlugIn()->AddPopupListElement("Linked movement", "", RIMCAS_AVISO_PRESET_TOGGLE_LINK, false, int(IsAvisoPresetLinkedMovementEnabled()));
+			});
+			return;
+		}
+
 		if (isObjectId("close"))
 		{
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
