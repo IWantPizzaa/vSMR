@@ -574,6 +574,8 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		}
 	}
 
+	ApplyDefaultAvisoPresetIfConfigured();
+
 	// Auto load the airport config on ASR opened.
 	CSectorElement rwy;
 	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);

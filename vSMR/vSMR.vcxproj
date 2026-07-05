@@ -143,6 +143,7 @@
     <ClCompile Include="src\SMRRadar.cpp" />
     <ClCompile Include="src\SMRSharedState.cpp" />
     <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp" />
+    <ClCompile Include="src\SMRRadar_AvisoPresets.cpp" />
     <ClCompile Include="src\SMRRadar_FunctionCall.cpp" />
     <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp" />
     <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp" />

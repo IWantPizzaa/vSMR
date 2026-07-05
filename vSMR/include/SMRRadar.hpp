@@ -134,6 +134,27 @@ public:
 		float haloWidth = 1.0f;
 		double maxMetersPerPixel = 0.0;
 	};
+	struct AvisoMainViewPreset
+	{
+		bool valid = false;
+		double minLatitude = 0.0;
+		double minLongitude = 0.0;
+		double maxLatitude = 0.0;
+		double maxLongitude = 0.0;
+		int zoomLevel = 0;
+	};
+	struct AvisoPreset
+	{
+		std::string name;
+		AvisoMainViewPreset mainView;
+		RECT secondaryArea = { 260, 260, 760, 560 };
+		int secondaryScale = 350;
+		double secondaryCenterLatitude = 0.0;
+		double secondaryCenterLongitude = 0.0;
+		int secondaryLayoutMode = 0;
+		bool secondaryVisible = true;
+		bool linkedMovement = false;
+	};
 	struct AvisoRasterRenderRequest
 	{
 		unsigned long long requestId = 0;
@@ -240,6 +261,8 @@ public:
 	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
 	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
 	bool AvisoGeoJsonScrollSelected = false;
+	bool AvisoViewsLinked = false;
+	std::string ActiveAvisoPresetName;
 	double PerfLastFrameMs = 0.0;
 	double PerfLastAvisoMs = 0.0;
 	double PerfLastTargetsMs = 0.0;
@@ -541,6 +564,22 @@ public:
 	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
 	void ApplyCompletedAvisoGeoJsonRaster();
 	std::unique_ptr<AvisoRasterRenderResult> RenderAvisoGeoJsonRaster(const AvisoRasterRenderRequest& request) const;
+	std::vector<AvisoPreset> GetAvisoPresets() const;
+	std::string GetDefaultAvisoPresetName() const;
+	std::string GetActiveAvisoPresetName() const;
+	bool SaveAvisoPreset(const std::string& requestedName, bool overwriteExisting, std::string* outSavedName = nullptr);
+	bool LoadAvisoPreset(const std::string& name);
+	bool RenameAvisoPreset(const std::string& oldName, const std::string& newName);
+	bool DuplicateAvisoPreset(const std::string& sourceName, const std::string& requestedName, std::string* outSavedName = nullptr);
+	bool DeleteAvisoPreset(const std::string& name);
+	bool SetDefaultAvisoPreset(const std::string& name);
+	bool ClearDefaultAvisoPreset();
+	bool ApplyDefaultAvisoPresetIfConfigured();
+	bool UpdateActiveAvisoPreset();
+	bool ResetActiveAvisoPreset();
+	bool SetActiveAvisoPresetLinkedMovement(bool linked);
+	bool IsAvisoPresetLinkedMovementEnabled() const;
+	void SyncLinkedAvisoSecondaryToMainView();
 	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
 
 	//---OnClickScreenObject-----------------------------------------
