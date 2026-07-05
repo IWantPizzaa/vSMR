@@ -500,10 +500,8 @@ namespace
 			return "RIMCAS";
 		if (_stricmp(segment.c_str(), "ui_layout") == 0)
 			return "UI Layout";
-		if (_stricmp(segment.c_str(), "pro_mode") == 0)
-			return "Pro Mode";
-		if (_stricmp(segment.c_str(), "tower_mode") == 0)
-			return "Tower Mode";
+		if (_stricmp(segment.c_str(), "display_modes") == 0)
+			return "Display Modes";
 		if (_stricmp(segment.c_str(), "ground_icons") == 0)
 			return "Ground Icons";
 		if (_stricmp(segment.c_str(), "status_background_colors") == 0)
@@ -1609,6 +1607,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 			case IDC_PE_RULE_TAG_EDIT:
 			case IDC_PE_RULE_TEXT_EDIT:
 			case IDC_PE_PROFILE_NAME_EDIT:
+			case IDC_PE_PROFILE_MODE_NAME_EDIT:
 			case IDC_PE_TAG_DEFINITION_EDIT:
 			case IDC_PE_TAG_LINE1_EDIT:
 			case IDC_PE_TAG_LINE2_EDIT:
@@ -1711,6 +1710,23 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_PROFILE_INFO_PANEL:
 		case IDC_PE_PROFILE_INFO_HEADER:
 		case IDC_PE_PROFILE_INFO_BODY:
+		case IDC_PE_PROFILE_MODE_HEADER:
+		case IDC_PE_PROFILE_MODE_NAME_LABEL:
+		case IDC_PE_PROFILE_MODE_SQUAWK_CHECK:
+		case IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK:
+		case IDC_PE_PROFILE_MODE_TOWER_CHECK:
+		case IDC_PE_PROFILE_MODE_RULES_CHECK:
+		case IDC_PE_PROFILE_MODE_STATUS_HEADER:
+		case IDC_PE_PROFILE_MODE_STATUS_NOSTATUS:
+		case IDC_PE_PROFILE_MODE_STATUS_PUSH:
+		case IDC_PE_PROFILE_MODE_STATUS_STARTUP:
+		case IDC_PE_PROFILE_MODE_STATUS_TAXI:
+		case IDC_PE_PROFILE_MODE_STATUS_DEPARTURE:
+		case IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY:
+		case IDC_PE_PROFILE_MODE_STATUS_AIRBORNE:
+		case IDC_PE_PROFILE_MODE_STATUS_ARRIVALS:
+		case IDC_PE_PROFILE_MODE_STATUS_NO_FPL:
+		case IDC_PE_PROFILE_MODE_STATUS_UNCORRELATED:
 		case IDC_PE_TAG_PANEL:
 		case IDC_PE_TAG_HEADER_PANEL:
 		case IDC_PE_TAG_TYPE_LABEL:
@@ -1757,9 +1773,13 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 	const UINT controlId = lpDrawItemStruct->CtlID;
 	// Icon card panels are kept as standard static controls (not owner-drawn)
 	// to avoid child overpaint/flicker issues on tab switches.
-	if (controlId == IDC_PE_RULE_LIST || controlId == IDC_PE_PROFILE_LIST)
+	if (controlId == IDC_PE_RULE_LIST || controlId == IDC_PE_PROFILE_LIST || controlId == IDC_PE_PROFILE_MODE_LIST)
 	{
-		CListBox* listBox = (controlId == IDC_PE_PROFILE_LIST) ? &ProfileList : &RulesList;
+		CListBox* listBox = &RulesList;
+		if (controlId == IDC_PE_PROFILE_LIST)
+			listBox = &ProfileList;
+		else if (controlId == IDC_PE_PROFILE_MODE_LIST)
+			listBox = &ProfileModeList;
 		CDC dc;
 		dc.Attach(lpDrawItemStruct->hDC);
 		CRect outerRect(lpDrawItemStruct->rcItem);
@@ -1802,7 +1822,7 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 			textRect.DeflateRect(8, 0);
 			memDc.DrawText(itemText, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
-			if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 && controlId != IDC_PE_PROFILE_LIST)
+			if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0 && controlId != IDC_PE_PROFILE_LIST && controlId != IDC_PE_PROFILE_MODE_LIST)
 			{
 				CRect focusRect(itemRect);
 				focusRect.DeflateRect(3, 2);
@@ -1831,6 +1851,10 @@ void CProfileEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStr
 		(controlId == IDC_PE_PROFILE_DUPLICATE_BUTTON) ||
 		(controlId == IDC_PE_PROFILE_RENAME_BUTTON) ||
 		(controlId == IDC_PE_PROFILE_DELETE_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_MODE_ADD_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_MODE_DUPLICATE_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_MODE_RENAME_BUTTON) ||
+		(controlId == IDC_PE_PROFILE_MODE_DELETE_BUTTON) ||
 		(controlId == IDC_PE_TAG_TOKEN_ADD_BUTTON) ||
 		(controlId == IDC_PE_NAV_COLORS) ||
 		(controlId == IDC_PE_NAV_ICON) ||
@@ -2487,14 +2511,35 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_LIST);
 	ProfileNameLabel.Create("Name", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_LABEL);
 	ProfileNameEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_NAME_EDIT);
-	ProfileProModeCheck.Create("Pro mode", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_PRO_MODE_CHECK);
-	ProfileTowerModeCheck.Create("Tower mode", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_TOWER_MODE_CHECK);
 	ProfileAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_ADD_BUTTON);
 	ProfileDuplicateButton.Create("Duplicate", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DUPLICATE_BUTTON);
 	ProfileRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_RENAME_BUTTON);
 	ProfileDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_DELETE_BUTTON);
 	ProfileInfoPanel.Create("", WS_CHILD | WS_VISIBLE | SS_ETCHEDFRAME, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_PANEL);
 	ProfileInfoHeader.Create("About", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_INFO_HEADER);
+	ProfileModeHeader.Create("Display Modes", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_HEADER);
+	ProfileModeList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_LIST);
+	ProfileModeNameLabel.Create("Name", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_NAME_LABEL);
+	ProfileModeNameEdit.Create(commonEditStyle, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_NAME_EDIT);
+	ProfileModeAddButton.Create("Add", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_ADD_BUTTON);
+	ProfileModeDuplicateButton.Create("Duplicate", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_DUPLICATE_BUTTON);
+	ProfileModeRenameButton.Create("Rename", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_RENAME_BUTTON);
+	ProfileModeDeleteButton.Create("Delete", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_DELETE_BUTTON);
+	ProfileModeSquawkCheck.Create("Require assigned squawk", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_SQUAWK_CHECK);
+	ProfileModeAcceptPilotCheck.Create("Accept pilot squawk", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK);
+	ProfileModeTowerCheck.Create("Tower ground filter", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_TOWER_CHECK);
+	ProfileModeRulesCheck.Create("Structured color rules", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_RULES_CHECK);
+	ProfileModeStatusHeader.Create("Visible Statuses", WS_CHILD | WS_VISIBLE, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_HEADER);
+	ProfileModeStatusNoStatusCheck.Create("No status", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_NOSTATUS);
+	ProfileModeStatusPushCheck.Create("Push", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_PUSH);
+	ProfileModeStatusStartupCheck.Create("Startup", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_STARTUP);
+	ProfileModeStatusTaxiCheck.Create("Taxi", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_TAXI);
+	ProfileModeStatusDepartureCheck.Create("Departure", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_DEPARTURE);
+	ProfileModeStatusOnRunwayCheck.Create("On runway", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY);
+	ProfileModeStatusAirborneCheck.Create("Airborne", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_AIRBORNE);
+	ProfileModeStatusArrivalsCheck.Create("Arrivals", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_ARRIVALS);
+	ProfileModeStatusNoFplCheck.Create("No FPL", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_NO_FPL);
+	ProfileModeStatusUncorrelatedCheck.Create("Uncorrelated", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_UNCORRELATED);
 	ProfileInfoBody.Create(
 		"vSMR is a EuroScope SMR plugin maintained as a fork of AlexisBalzano/vSMR and pierr3/vSMR.\r\n\r\nCredits: Alexis.B, Baptiste.C, Steve.A and Yohannes.D.",
 		WS_CHILD | WS_VISIBLE,
@@ -2515,6 +2560,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		IDC_PE_PROFILE_COFFEE_LINK);
 	RulesList.SetItemHeight(0, 28);
 	ProfileList.SetItemHeight(0, 26);
+	ProfileModeList.SetItemHeight(0, 26);
 	RuleTree.SetIndent(16);
 	RuleTree.SendMessage(TVM_SETITEMHEIGHT, 32, 0);
 	RuleTree.SetBkColor(kEditorThemeBackgroundColor);
@@ -2590,6 +2636,8 @@ void CProfileEditorDialog::CreateEditorControls()
 	};
 	removeNativeBorder(EditRgba);
 	removeNativeBorder(EditHex);
+	removeNativeBorder(ProfileNameEdit);
+	removeNativeBorder(ProfileModeNameEdit);
 	removeNativeBorder(TagDefinitionEdit);
 	removeNativeBorder(TagLine1Edit);
 	removeNativeBorder(TagLine2Edit);
@@ -2745,8 +2793,22 @@ void CProfileEditorDialog::CreateEditorControls()
 		RuleTagEdit.SetFont(GetFont(), TRUE);
 		RuleTextEdit.SetFont(GetFont(), TRUE);
 		ProfileNameEdit.SetFont(GetFont(), TRUE);
-		ProfileProModeCheck.SetFont(GetFont(), TRUE);
-		ProfileTowerModeCheck.SetFont(GetFont(), TRUE);
+		ProfileModeList.SetFont(&MonoFont, TRUE);
+		ProfileModeNameEdit.SetFont(GetFont(), TRUE);
+		ProfileModeSquawkCheck.SetFont(GetFont(), TRUE);
+		ProfileModeAcceptPilotCheck.SetFont(GetFont(), TRUE);
+		ProfileModeTowerCheck.SetFont(GetFont(), TRUE);
+		ProfileModeRulesCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusNoStatusCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusPushCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusStartupCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusTaxiCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusDepartureCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusOnRunwayCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusAirborneCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusArrivalsCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusNoFplCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusUncorrelatedCheck.SetFont(GetFont(), TRUE);
 		TagAutoDeconflictionToggle.SetFont(GetFont(), TRUE);
 		TagRoundedCornersToggle.SetFont(GetFont(), TRUE);
 		TagLine1Edit.SetFont(GetFont(), TRUE);
@@ -2767,6 +2829,8 @@ void CProfileEditorDialog::CreateEditorControls()
 		RuleRightHeader.SetFont(&SectionHeaderFont, TRUE);
 		ProfileHeader.SetFont(&SectionHeaderFont, TRUE);
 		ProfileInfoHeader.SetFont(&SectionHeaderFont, TRUE);
+		ProfileModeHeader.SetFont(&SectionHeaderFont, TRUE);
+		ProfileModeStatusHeader.SetFont(&SectionHeaderFont, TRUE);
 		TagHeaderPanel.SetFont(&SectionHeaderFont, TRUE);
 		TagOptionsHeader.SetFont(&SectionHeaderFont, TRUE);
 		IconShapeHeader.SetFont(&SectionHeaderFont, TRUE);
@@ -2850,6 +2914,7 @@ void CProfileEditorDialog::ApplyThemedEditBorders()
 	attachBorder(TagDetailedLine3Edit);
 	attachBorder(TagDetailedLine4Edit);
 	attachBorder(ProfileNameEdit);
+	attachBorder(ProfileModeNameEdit);
 }
 
 void CProfileEditorDialog::ApplyThemedComboBorders()
@@ -3163,6 +3228,143 @@ std::string CProfileEditorDialog::GetSelectedProfileName() const
 	return ProfileNames[selected];
 }
 
+void CProfileEditorDialog::RebuildProfileModeList(const std::string& preferredModeName)
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string selectedProfile = GetSelectedProfileName();
+	ProfileModeBuffer.clear();
+	SelectedProfileModeIndex = -1;
+
+	UpdatingControls = true;
+	ProfileModeList.ResetContent();
+	if (!selectedProfile.empty())
+	{
+		ProfileModeBuffer = Owner->GetProfileDisplayModesForEditor(selectedProfile);
+		const std::string activeMode = Owner->GetActiveProfileDisplayModeForEditor(selectedProfile);
+		std::string targetMode = preferredModeName.empty() ? activeMode : preferredModeName;
+		for (size_t i = 0; i < ProfileModeBuffer.size(); ++i)
+		{
+			std::string label = ProfileModeBuffer[i].name;
+			if (!activeMode.empty() && _stricmp(label.c_str(), activeMode.c_str()) == 0)
+				label = "* " + label;
+			ProfileModeList.AddString(label.c_str());
+			if (!targetMode.empty() && _stricmp(ProfileModeBuffer[i].name.c_str(), targetMode.c_str()) == 0)
+				SelectedProfileModeIndex = static_cast<int>(i);
+		}
+		if (SelectedProfileModeIndex < 0 && !ProfileModeBuffer.empty())
+			SelectedProfileModeIndex = 0;
+		if (SelectedProfileModeIndex >= 0)
+			ProfileModeList.SetCurSel(SelectedProfileModeIndex);
+	}
+	UpdatingControls = false;
+}
+
+std::string CProfileEditorDialog::GetSelectedProfileModeName() const
+{
+	const int selected = ProfileModeList.GetCurSel();
+	if (selected == LB_ERR || selected < 0 || selected >= static_cast<int>(ProfileModeBuffer.size()))
+		return "";
+	return ProfileModeBuffer[selected].name;
+}
+
+void CProfileEditorDialog::RefreshProfileModeControls()
+{
+	const int selected = ProfileModeList.GetCurSel();
+	const bool hasModeSelection = (selected != LB_ERR && selected >= 0 && selected < static_cast<int>(ProfileModeBuffer.size()));
+	CSMRRadar::DisplayModeSettings settings;
+	if (hasModeSelection)
+		settings = ProfileModeBuffer[selected];
+
+	auto setCheck = [](CButton& button, bool checked)
+	{
+		button.SetCheck(checked ? BST_CHECKED : BST_UNCHECKED);
+	};
+
+	UpdatingControls = true;
+	SetEditTextPreserveCaret(ProfileModeNameEdit, hasModeSelection ? settings.name : "");
+	setCheck(ProfileModeSquawkCheck, hasModeSelection && settings.requireAssignedSquawk);
+	setCheck(ProfileModeAcceptPilotCheck, !hasModeSelection || settings.acceptPilotSquawk);
+	setCheck(ProfileModeTowerCheck, hasModeSelection && settings.towerFilter);
+	setCheck(ProfileModeRulesCheck, !hasModeSelection || settings.structuredRulesEnabled);
+	setCheck(ProfileModeStatusNoStatusCheck, !hasModeSelection || settings.statuses.noStatus);
+	setCheck(ProfileModeStatusPushCheck, !hasModeSelection || settings.statuses.push);
+	setCheck(ProfileModeStatusStartupCheck, !hasModeSelection || settings.statuses.startup);
+	setCheck(ProfileModeStatusTaxiCheck, !hasModeSelection || settings.statuses.taxi);
+	setCheck(ProfileModeStatusDepartureCheck, !hasModeSelection || settings.statuses.departure);
+	setCheck(ProfileModeStatusOnRunwayCheck, !hasModeSelection || settings.statuses.onRunway);
+	setCheck(ProfileModeStatusAirborneCheck, !hasModeSelection || settings.statuses.airborne);
+	setCheck(ProfileModeStatusArrivalsCheck, !hasModeSelection || settings.statuses.arrivals);
+	setCheck(ProfileModeStatusNoFplCheck, !hasModeSelection || settings.statuses.noFlightPlan);
+	setCheck(ProfileModeStatusUncorrelatedCheck, !hasModeSelection || settings.statuses.uncorrelated);
+	UpdatingControls = false;
+
+	const BOOL enabled = hasModeSelection ? TRUE : FALSE;
+	ProfileModeNameEdit.EnableWindow(enabled);
+	ProfileModeDuplicateButton.EnableWindow(enabled);
+	ProfileModeRenameButton.EnableWindow(enabled);
+	ProfileModeDeleteButton.EnableWindow((hasModeSelection && ProfileModeBuffer.size() > 1) ? TRUE : FALSE);
+	ProfileModeSquawkCheck.EnableWindow(enabled);
+	ProfileModeAcceptPilotCheck.EnableWindow(enabled);
+	ProfileModeTowerCheck.EnableWindow(enabled);
+	ProfileModeRulesCheck.EnableWindow(enabled);
+	ProfileModeStatusNoStatusCheck.EnableWindow(enabled);
+	ProfileModeStatusPushCheck.EnableWindow(enabled);
+	ProfileModeStatusStartupCheck.EnableWindow(enabled);
+	ProfileModeStatusTaxiCheck.EnableWindow(enabled);
+	ProfileModeStatusDepartureCheck.EnableWindow(enabled);
+	ProfileModeStatusOnRunwayCheck.EnableWindow(enabled);
+	ProfileModeStatusAirborneCheck.EnableWindow(enabled);
+	ProfileModeStatusArrivalsCheck.EnableWindow(enabled);
+	ProfileModeStatusNoFplCheck.EnableWindow(enabled);
+	ProfileModeStatusUncorrelatedCheck.EnableWindow(enabled);
+}
+
+bool CProfileEditorDialog::ReadProfileDisplayModeFromControls(CSMRRadar::DisplayModeSettings& outSettings) const
+{
+	const int selected = ProfileModeList.GetCurSel();
+	if (selected == LB_ERR || selected < 0 || selected >= static_cast<int>(ProfileModeBuffer.size()))
+		return false;
+
+	outSettings = ProfileModeBuffer[selected];
+	outSettings.requireAssignedSquawk = (ProfileModeSquawkCheck.GetCheck() == BST_CHECKED);
+	outSettings.acceptPilotSquawk = (ProfileModeAcceptPilotCheck.GetCheck() == BST_CHECKED);
+	outSettings.towerFilter = (ProfileModeTowerCheck.GetCheck() == BST_CHECKED);
+	outSettings.structuredRulesEnabled = (ProfileModeRulesCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.noStatus = (ProfileModeStatusNoStatusCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.push = (ProfileModeStatusPushCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.startup = (ProfileModeStatusStartupCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.taxi = (ProfileModeStatusTaxiCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.departure = (ProfileModeStatusDepartureCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.onRunway = (ProfileModeStatusOnRunwayCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.airborne = (ProfileModeStatusAirborneCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.arrivals = (ProfileModeStatusArrivalsCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.noFlightPlan = (ProfileModeStatusNoFplCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.uncorrelated = (ProfileModeStatusUncorrelatedCheck.GetCheck() == BST_CHECKED);
+	return true;
+}
+
+void CProfileEditorDialog::ApplyProfileDisplayModeControlChanges()
+{
+	if (UpdatingControls || Owner == nullptr)
+		return;
+
+	const std::string selectedProfile = GetSelectedProfileName();
+	if (selectedProfile.empty())
+		return;
+
+	CSMRRadar::DisplayModeSettings settings;
+	if (!ReadProfileDisplayModeFromControls(settings))
+		return;
+
+	if (!Owner->UpdateProfileDisplayModeForEditor(selectedProfile, settings))
+		return;
+
+	RebuildProfileModeList(settings.name);
+	RefreshProfileModeControls();
+}
+
 void CProfileEditorDialog::RefreshProfileControls()
 {
 	bool hasSelection = (!GetSelectedProfileName().empty());
@@ -3174,26 +3376,15 @@ void CProfileEditorDialog::RefreshProfileControls()
 		hasSelection = (!GetSelectedProfileName().empty());
 	}
 
-	bool proModeEnabled = false;
-	bool towerModeEnabled = false;
-	const std::string selectedProfile = GetSelectedProfileName();
-	if (hasSelection && Owner != nullptr)
-	{
-		Owner->GetProfileProModeEnabledForEditor(selectedProfile, proModeEnabled);
-		Owner->GetProfileTowerModeEnabledForEditor(selectedProfile, towerModeEnabled);
-	}
-
-	UpdatingControls = true;
-	ProfileProModeCheck.SetCheck(proModeEnabled ? BST_CHECKED : BST_UNCHECKED);
-	ProfileTowerModeCheck.SetCheck(towerModeEnabled ? BST_CHECKED : BST_UNCHECKED);
-	UpdatingControls = false;
+	RebuildProfileModeList();
+	RefreshProfileModeControls();
 
 	ProfileNameEdit.EnableWindow(hasSelection ? TRUE : FALSE);
-	ProfileProModeCheck.EnableWindow(hasSelection ? TRUE : FALSE);
-	ProfileTowerModeCheck.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileDuplicateButton.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileRenameButton.EnableWindow(hasSelection ? TRUE : FALSE);
 	ProfileDeleteButton.EnableWindow(hasSelection ? TRUE : FALSE);
+	ProfileModeAddButton.EnableWindow(hasSelection ? TRUE : FALSE);
+	ProfileModeList.EnableWindow(hasSelection ? TRUE : FALSE);
 }
 
 void CProfileEditorDialog::LayoutControls()
@@ -3677,20 +3868,13 @@ void CProfileEditorDialog::LayoutControls()
 	const int profileLeftContentTop = profileTop + 46;
 	const int profileLeftContentWidth = max(180, profileLeftWidth - 24);
 	const int profileButtonsRowGap = 12;
-	const int profileToggleTopGap = 12;
-	const int profileToggleHeight = rowHeight;
-	const int profileToggleRowGap = 4;
 	const int profileButtonTopGap = 18;
-	const int profileFooterHeight = (buttonHeight * 2) + rowHeight + (profileToggleHeight * 2) + profileToggleRowGap + profileButtonsRowGap + profileToggleTopGap + profileButtonTopGap + 48;
+	const int profileFooterHeight = (buttonHeight * 2) + rowHeight + profileButtonsRowGap + profileButtonTopGap + 48;
 	const int profileListHeight = max(100, profileHeight - 52 - profileFooterHeight);
 	ProfileList.MoveWindow(profileLeftContentLeft, profileLeftContentTop, profileLeftContentWidth, profileListHeight, TRUE);
 
 	const int profileDetailsTop = profileLeftContentTop + profileListHeight + 18;
-	const int profileToggleTop = profileDetailsTop + 6;
-	const int profileTowerToggleTop = profileToggleTop + profileToggleHeight + profileToggleRowGap;
-	const int profileNameTop = profileTowerToggleTop + profileToggleHeight + profileToggleTopGap;
-	ProfileProModeCheck.MoveWindow(profileLeftContentLeft + 12, profileToggleTop, max(120, profileLeftContentWidth - 24), profileToggleHeight, TRUE);
-	ProfileTowerModeCheck.MoveWindow(profileLeftContentLeft + 12, profileTowerToggleTop, max(120, profileLeftContentWidth - 24), profileToggleHeight, TRUE);
+	const int profileNameTop = profileDetailsTop + 6;
 	ProfileNameLabel.MoveWindow(profileLeftContentLeft + 12, profileNameTop + 4, 56, rowHeight, TRUE);
 	ProfileNameEdit.MoveWindow(profileLeftContentLeft + 12 + 56 + 10, profileNameTop, max(140, profileLeftContentWidth - 90), rowHeight, TRUE);
 
@@ -3705,11 +3889,59 @@ void CProfileEditorDialog::LayoutControls()
 
 	const int profileInfoContentLeft = profileInfoLeft + 14;
 	const int profileInfoContentWidth = max(140, profileRightWidth - 28);
-	ProfileInfoHeader.MoveWindow(profileInfoContentLeft, profileTop + 14, profileInfoContentWidth, rowHeight, TRUE);
-	const int profileInfoBodyHeight = max(rowHeight * 4, MeasureWrappedStaticHeight(ProfileInfoBody, profileInfoContentWidth));
-	ProfileInfoBody.MoveWindow(profileInfoContentLeft, profileTop + 46, profileInfoContentWidth, profileInfoBodyHeight + 4, TRUE);
-	const int profileLinksTop = profileTop + 46 + profileInfoBodyHeight + 12;
-	ProfileRepoLink.MoveWindow(profileInfoContentLeft, profileLinksTop, profileInfoContentWidth, rowHeight, TRUE);
+	ProfileModeHeader.MoveWindow(profileInfoContentLeft, profileTop + 14, profileInfoContentWidth, rowHeight, TRUE);
+	const int modeButtonHeight = min(buttonHeight, 32);
+	const int modeStatusRows = 5;
+	const int modeFixedHeight = 46 + rowHeight + 8 + (modeButtonHeight * 2) + profileButtonsRowGap + 12 + (rowHeight * 4) + 12 + rowHeight + (modeStatusRows * rowHeight) + 18;
+	const int modeListHeight = max(70, profileHeight - modeFixedHeight);
+	int modeY = profileTop + 46;
+	ProfileModeList.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, modeListHeight, TRUE);
+	modeY += modeListHeight + 8;
+	ProfileModeNameLabel.MoveWindow(profileInfoContentLeft, modeY + 4, 56, rowHeight, TRUE);
+	ProfileModeNameEdit.MoveWindow(profileInfoContentLeft + 66, modeY, max(120, profileInfoContentWidth - 66), rowHeight, TRUE);
+	modeY += rowHeight + 8;
+
+	const int modeButtonWidth = max(78, min(actionButtonWidth, (profileInfoContentWidth - actionButtonGap) / 2));
+	const int modeButtonsRowWidth = (modeButtonWidth * 2) + actionButtonGap;
+	const int modeButtonsLeft = profileInfoContentLeft + max(0, (profileInfoContentWidth - modeButtonsRowWidth) / 2);
+	ProfileModeAddButton.MoveWindow(modeButtonsLeft, modeY, modeButtonWidth, modeButtonHeight, TRUE);
+	ProfileModeDuplicateButton.MoveWindow(modeButtonsLeft + modeButtonWidth + actionButtonGap, modeY, modeButtonWidth, modeButtonHeight, TRUE);
+	modeY += modeButtonHeight + profileButtonsRowGap;
+	ProfileModeRenameButton.MoveWindow(modeButtonsLeft, modeY, modeButtonWidth, modeButtonHeight, TRUE);
+	ProfileModeDeleteButton.MoveWindow(modeButtonsLeft + modeButtonWidth + actionButtonGap, modeY, modeButtonWidth, modeButtonHeight, TRUE);
+	modeY += modeButtonHeight + 12;
+
+	const int modeColumnGap = 12;
+	const int modeColumnWidth = max(90, (profileInfoContentWidth - modeColumnGap) / 2);
+	ProfileModeSquawkCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeAcceptPilotCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeTowerCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeRulesCheck.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	modeY += rowHeight + 12;
+
+	ProfileModeStatusHeader.MoveWindow(profileInfoContentLeft, modeY, profileInfoContentWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeStatusNoStatusCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusPushCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeStatusStartupCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusTaxiCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeStatusDepartureCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusOnRunwayCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeStatusAirborneCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusArrivalsCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeStatusNoFplCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusUncorrelatedCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+
+	MoveControlOffscreen(ProfileInfoHeader);
+	MoveControlOffscreen(ProfileInfoBody);
+	MoveControlOffscreen(ProfileRepoLink);
 	MoveControlOffscreen(ProfileCoffeeLink);
 
 	// Keep live preview generated, but hidden to match the compact editor layout.
@@ -3754,7 +3986,7 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 		break;
 	case kTabProfile:
 		PageTitleLabel.SetWindowTextA("Profiles");
-		PageSubtitleLabel.SetWindowTextA("Manage profiles on the left and find project info on the right.");
+		PageSubtitleLabel.SetWindowTextA("Manage profiles and custom display modes.");
 		break;
 	default:
 		PageTitleLabel.SetWindowTextA("Profile Editor");
@@ -3894,11 +4126,20 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 	RuleColorResetButton.ShowWindow(ruleEffectShowMode);
 	ShowControls(
 	{
-		&ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit, &ProfileProModeCheck, &ProfileTowerModeCheck,
+		&ProfileHeader, &ProfileList, &ProfileNameLabel, &ProfileNameEdit,
 		&ProfileAddButton, &ProfileDuplicateButton, &ProfileRenameButton, &ProfileDeleteButton,
-		&ProfileInfoHeader, &ProfileInfoBody, &ProfileRepoLink
+		&ProfileModeHeader, &ProfileModeList, &ProfileModeNameLabel, &ProfileModeNameEdit,
+		&ProfileModeAddButton, &ProfileModeDuplicateButton, &ProfileModeRenameButton, &ProfileModeDeleteButton,
+		&ProfileModeSquawkCheck, &ProfileModeAcceptPilotCheck, &ProfileModeTowerCheck, &ProfileModeRulesCheck,
+		&ProfileModeStatusHeader, &ProfileModeStatusNoStatusCheck, &ProfileModeStatusPushCheck,
+		&ProfileModeStatusStartupCheck, &ProfileModeStatusTaxiCheck, &ProfileModeStatusDepartureCheck,
+		&ProfileModeStatusOnRunwayCheck, &ProfileModeStatusAirborneCheck, &ProfileModeStatusArrivalsCheck,
+		&ProfileModeStatusNoFplCheck, &ProfileModeStatusUncorrelatedCheck
 	},
 	showProfile ? SW_SHOW : SW_HIDE);
+	ProfileInfoHeader.ShowWindow(SW_HIDE);
+	ProfileInfoBody.ShowWindow(SW_HIDE);
+	ProfileRepoLink.ShowWindow(SW_HIDE);
 	ProfileCoffeeLink.ShowWindow(SW_HIDE);
 	ProfilePanel.ShowWindow(SW_HIDE);
 	ProfileInfoPanel.ShowWindow(SW_HIDE);
@@ -6062,40 +6303,130 @@ void CProfileEditorDialog::OnProfileDeleteClicked()
 	UpdatePageVisibility();
 }
 
-void CProfileEditorDialog::OnProfileProModeToggled()
+void CProfileEditorDialog::OnProfileModeSelectionChanged()
 {
 	if (UpdatingControls || Owner == nullptr)
 		return;
 
-	const std::string selectedName = GetSelectedProfileName();
-	if (selectedName.empty())
+	const std::string selectedProfile = GetSelectedProfileName();
+	const std::string selectedMode = GetSelectedProfileModeName();
+	if (selectedProfile.empty() || selectedMode.empty())
 		return;
 
-	const bool enabled = (ProfileProModeCheck.GetCheck() == BST_CHECKED);
-	if (!Owner->SetProfileProModeEnabledForEditor(selectedName, enabled))
+	if (!Owner->SetProfileDisplayModeActiveForEditor(selectedProfile, selectedMode))
 		return;
 
-	SyncFromRadar();
+	RebuildProfileModeList(selectedMode);
+	RefreshProfileModeControls();
 	PageTabs.SetCurSel(kTabProfile);
 	UpdatePageVisibility();
 }
 
-void CProfileEditorDialog::OnProfileTowerModeToggled()
+void CProfileEditorDialog::OnProfileModeAddClicked()
 {
-	if (UpdatingControls || Owner == nullptr)
+	if (Owner == nullptr)
 		return;
 
-	const std::string selectedName = GetSelectedProfileName();
-	if (selectedName.empty())
+	const std::string selectedProfile = GetSelectedProfileName();
+	if (selectedProfile.empty())
 		return;
 
-	const bool enabled = (ProfileTowerModeCheck.GetCheck() == BST_CHECKED);
-	if (!Owner->SetProfileTowerModeEnabledForEditor(selectedName, enabled))
+	CString requestedText;
+	ProfileModeNameEdit.GetWindowText(requestedText);
+	std::string requestedName = TrimAsciiWhitespaceCopy(std::string(requestedText.GetString()));
+	if (requestedName.empty())
+		requestedName = "Display Mode";
+
+	std::string createdName;
+	if (!Owner->AddProfileDisplayModeForEditor(selectedProfile, requestedName, false, "", &createdName))
 		return;
 
-	SyncFromRadar();
+	RebuildProfileModeList(createdName);
+	RefreshProfileModeControls();
 	PageTabs.SetCurSel(kTabProfile);
 	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileModeDuplicateClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string selectedProfile = GetSelectedProfileName();
+	const std::string selectedMode = GetSelectedProfileModeName();
+	if (selectedProfile.empty() || selectedMode.empty())
+		return;
+
+	CString requestedText;
+	ProfileModeNameEdit.GetWindowText(requestedText);
+	std::string requestedName = TrimAsciiWhitespaceCopy(std::string(requestedText.GetString()));
+	if (requestedName.empty())
+		requestedName = selectedMode + " Copy";
+	else if (_stricmp(requestedName.c_str(), selectedMode.c_str()) == 0)
+		requestedName += " Copy";
+
+	std::string createdName;
+	if (!Owner->AddProfileDisplayModeForEditor(selectedProfile, requestedName, true, selectedMode, &createdName))
+		return;
+
+	RebuildProfileModeList(createdName);
+	RefreshProfileModeControls();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileModeRenameClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string selectedProfile = GetSelectedProfileName();
+	const std::string selectedMode = GetSelectedProfileModeName();
+	if (selectedProfile.empty() || selectedMode.empty())
+		return;
+
+	CString requestedText;
+	ProfileModeNameEdit.GetWindowText(requestedText);
+	const std::string requestedName = TrimAsciiWhitespaceCopy(std::string(requestedText.GetString()));
+	if (requestedName.empty())
+		return;
+
+	if (!Owner->RenameProfileDisplayModeForEditor(selectedProfile, selectedMode, requestedName))
+		return;
+
+	RebuildProfileModeList(requestedName);
+	RefreshProfileModeControls();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileModeDeleteClicked()
+{
+	if (Owner == nullptr)
+		return;
+
+	const std::string selectedProfile = GetSelectedProfileName();
+	const std::string selectedMode = GetSelectedProfileModeName();
+	if (selectedProfile.empty() || selectedMode.empty())
+		return;
+
+	CString confirmText;
+	confirmText.Format("Delete display mode '%s'?", selectedMode.c_str());
+	if (AfxMessageBox(confirmText, MB_ICONQUESTION | MB_YESNO) != IDYES)
+		return;
+
+	if (!Owner->DeleteProfileDisplayModeForEditor(selectedProfile, selectedMode))
+		return;
+
+	RebuildProfileModeList();
+	RefreshProfileModeControls();
+	PageTabs.SetCurSel(kTabProfile);
+	UpdatePageVisibility();
+}
+
+void CProfileEditorDialog::OnProfileModeFieldChanged()
+{
+	ApplyProfileDisplayModeControlChanges();
 }
 
 void CProfileEditorDialog::OnProfileRepoLinkClicked()
@@ -7422,8 +7753,25 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_PROFILE_DUPLICATE_BUTTON, &CProfileEditorDialog::OnProfileDuplicateClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_RENAME_BUTTON, &CProfileEditorDialog::OnProfileRenameClicked)
 	ON_BN_CLICKED(IDC_PE_PROFILE_DELETE_BUTTON, &CProfileEditorDialog::OnProfileDeleteClicked)
-	ON_BN_CLICKED(IDC_PE_PROFILE_PRO_MODE_CHECK, &CProfileEditorDialog::OnProfileProModeToggled)
-	ON_BN_CLICKED(IDC_PE_PROFILE_TOWER_MODE_CHECK, &CProfileEditorDialog::OnProfileTowerModeToggled)
+	ON_LBN_SELCHANGE(IDC_PE_PROFILE_MODE_LIST, &CProfileEditorDialog::OnProfileModeSelectionChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_ADD_BUTTON, &CProfileEditorDialog::OnProfileModeAddClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_DUPLICATE_BUTTON, &CProfileEditorDialog::OnProfileModeDuplicateClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_RENAME_BUTTON, &CProfileEditorDialog::OnProfileModeRenameClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_DELETE_BUTTON, &CProfileEditorDialog::OnProfileModeDeleteClicked)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_SQUAWK_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_TOWER_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_RULES_CHECK, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_NOSTATUS, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_PUSH, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_STARTUP, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_TAXI, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_DEPARTURE, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_AIRBORNE, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_ARRIVALS, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_NO_FPL, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_UNCORRELATED, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_STN_CLICKED(IDC_PE_PROFILE_REPO_LINK, &CProfileEditorDialog::OnProfileRepoLinkClicked)
 	ON_STN_CLICKED(IDC_PE_PROFILE_COFFEE_LINK, &CProfileEditorDialog::OnProfileCoffeeLinkClicked)
 	ON_CBN_SELCHANGE(IDC_PE_TAG_TYPE_COMBO, &CProfileEditorDialog::OnTagTypeChanged)

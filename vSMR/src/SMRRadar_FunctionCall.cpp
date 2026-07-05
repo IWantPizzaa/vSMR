@@ -318,30 +318,25 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		QDMenabled = false;
 	}
 
-	if (FunctionId == RIMCAS_TOGGLE_PRO_MODE || FunctionId == RIMCAS_TOGGLE_TOWER_MODE)
+	if (FunctionId == RIMCAS_UPDATE_DISPLAY_MODE)
 	{
 		const std::string activeProfileName = GetActiveProfileNameForEditor();
 		if (activeProfileName.empty())
 		{
-			showConfigError("No active profile available for mode update");
+			showConfigError("No active profile available for display mode update");
 		}
-		else if (FunctionId == RIMCAS_TOGGLE_PRO_MODE)
+		else if (sItemString == nullptr || sItemString[0] == '\0')
 		{
-			bool enabled = false;
-			if (!GetProfileProModeEnabledForEditor(activeProfileName, enabled) ||
-				!SetProfileProModeEnabledForEditor(activeProfileName, !enabled))
-			{
-				showConfigError("Failed to save Pro mode to vSMR_Profiles.json");
-			}
+			showConfigError("No display mode selected");
 		}
 		else
 		{
-			bool enabled = false;
-			if (!GetProfileTowerModeEnabledForEditor(activeProfileName, enabled) ||
-				!SetProfileTowerModeEnabledForEditor(activeProfileName, !enabled))
-			{
-				showConfigError("Failed to save Tower mode to vSMR_Profiles.json");
-			}
+			std::string requestedMode = sItemString;
+			const std::string modePrefix = "Mode: ";
+			if (requestedMode.rfind(modePrefix, 0) == 0)
+				requestedMode = requestedMode.substr(modePrefix.size());
+			if (!SetProfileDisplayModeActiveForEditor(activeProfileName, requestedMode))
+				showConfigError("Failed to save display mode to vSMR_Profiles.json");
 		}
 
 		RequestRefresh();

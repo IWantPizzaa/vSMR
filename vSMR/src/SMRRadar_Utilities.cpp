@@ -1,33 +1,16 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
+#include "SMRGroundState.hpp"
 
 #include <algorithm>
 
 CSMRRadar::CorrelationSettings CSMRRadar::BuildCorrelationSettings() const
 {
 	CorrelationSettings settings;
-	if (CurrentConfig != nullptr)
-	{
-		const Value& profile = CurrentConfig->getActiveProfile();
-		if (profile.IsObject() && profile.HasMember("filters") && profile["filters"].IsObject())
-		{
-			const Value& filters = profile["filters"];
-			if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
-			{
-				const Value& proMode = filters["pro_mode"];
-				if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-					settings.proModeEnabled = proMode["enabled"].GetBool();
-				else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-					settings.proModeEnabled = proMode["enable"].GetBool();
-				if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
-					settings.acceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
-				if (proMode.HasMember("blocked_auto_correlate_squawks"))
-					settings.blockedAutoCorrelateSquawks = &proMode["blocked_auto_correlate_squawks"];
-				else if (proMode.HasMember("do_not_autocorrelate_squawks"))
-					settings.blockedAutoCorrelateSquawks = &proMode["do_not_autocorrelate_squawks"];
-			}
-		}
-	}
+	const DisplayModeSettings displayMode = GetActiveDisplayModeSettings();
+	settings.proModeEnabled = displayMode.requireAssignedSquawk;
+	settings.acceptPilotSquawk = displayMode.acceptPilotSquawk;
+	settings.blockedAutoCorrelateSquawks = displayMode.blockedAutoCorrelateSquawks;
 	return settings;
 }
 
@@ -56,12 +39,11 @@ bool CSMRRadar::IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const 
 	if (settings.acceptPilotSquawk)
 		isCorr = true;
 
-	if (isCorr && settings.blockedAutoCorrelateSquawks != nullptr && settings.blockedAutoCorrelateSquawks->IsArray())
+	if (isCorr)
 	{
-		for (SizeType i = 0; i < settings.blockedAutoCorrelateSquawks->Size(); i++)
+		for (const std::string& blockedSquawk : settings.blockedAutoCorrelateSquawks)
 		{
-			const Value& blockedSquawk = (*settings.blockedAutoCorrelateSquawks)[i];
-			if (hasText(reportedSquawk) && blockedSquawk.IsString() && strcmp(reportedSquawk, blockedSquawk.GetString()) == 0)
+			if (hasText(reportedSquawk) && strcmp(reportedSquawk, blockedSquawk.c_str()) == 0)
 			{
 				isCorr = false;
 				break;
@@ -82,6 +64,66 @@ bool CSMRRadar::IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const 
 bool CSMRRadar::IsCorrelated(CFlightPlan fp, CRadarTarget rt)
 {
 	return IsCorrelatedWithSettings(fp, rt, BuildCorrelationSettings());
+}
+
+bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget rt, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings) const
+{
+	(void)rt;
+
+	if (!fp.IsValid())
+		return settings.statuses.noFlightPlan;
+
+	if (!acIsCorrelated && reportedGs >= 3)
+		return settings.statuses.uncorrelated;
+
+	const std::string activeAirport = getActiveAirport();
+	const char* destination = fp.GetFlightPlanData().GetDestination();
+	const char* origin = fp.GetFlightPlanData().GetOrigin();
+	const bool isArrival =
+		destination != nullptr &&
+		destination[0] != '\0' &&
+		!activeAirport.empty() &&
+		_stricmp(destination, activeAirport.c_str()) == 0 &&
+		(origin == nullptr || _stricmp(origin, activeAirport.c_str()) != 0);
+	const bool isDeparture =
+		origin != nullptr &&
+		origin[0] != '\0' &&
+		!activeAirport.empty() &&
+		_stricmp(origin, activeAirport.c_str()) == 0;
+
+	if (isArrival && !settings.statuses.arrivals)
+		return false;
+	if (reportedGs > 50 && !settings.statuses.airborne)
+		return false;
+	if (targetOnRunway && !settings.statuses.onRunway)
+		return false;
+
+	if (isArrival)
+		return true;
+
+	if (!isDeparture && destination != nullptr && destination[0] != '\0')
+		return settings.statuses.arrivals;
+
+	const GroundStateCategory targetStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
+	switch (targetStatus)
+	{
+	case GroundStateCategory::Push:
+		return settings.statuses.push;
+	case GroundStateCategory::Stup:
+		return settings.statuses.startup;
+	case GroundStateCategory::Taxi:
+		return settings.statuses.taxi;
+	case GroundStateCategory::Depa:
+		return settings.statuses.departure;
+	case GroundStateCategory::Nsts:
+	case GroundStateCategory::Gate:
+	case GroundStateCategory::Unknown:
+		return settings.statuses.noStatus;
+	case GroundStateCategory::Arr:
+		return settings.statuses.arrivals;
+	default:
+		return true;
+	}
 }
 
 bool CSMRRadar::isVisible(CRadarTarget rt)

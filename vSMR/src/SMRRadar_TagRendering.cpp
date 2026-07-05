@@ -39,6 +39,8 @@ std::string TagTypeToConfigKey(CSMRRadar::TagTypes type)
 
 void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache)
 {
+	(void)frameProModeEnabled;
+	(void)frameTowerModeEnabled;
 	// Drawing the Tags
 	VSMR_REFRESH_LOG("Tags loop");
 	if (CurrentConfig == nullptr || ColorManager == nullptr || RimcasInstance == nullptr)
@@ -48,8 +50,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		return;
 	}
 
-	const bool tagProModeEnabled = frameProModeEnabled;
-	const bool tagTowerModeEnabled = frameTowerModeEnabled;
+	const DisplayModeSettings displayModeSettings = GetActiveDisplayModeSettings();
+	const bool tagProModeEnabled = displayModeSettings.requireAssignedSquawk;
+	const bool tagTowerModeEnabled = displayModeSettings.towerFilter;
 	const CorrelationSettings frameCorrelationSettings = BuildCorrelationSettings();
 	const int transitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const Value& activeProfile = CurrentConfig->getActiveProfile();
@@ -228,7 +231,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		bool valid = false;
 	};
 	std::unordered_map<std::string, TagDefinitionCacheEntry> tagDefinitionCache;
-	const std::vector<StructuredTagColorRule>& structuredTagRules = GetStructuredTagColorRules();
+	static const std::vector<StructuredTagColorRule> emptyStructuredTagRules;
+	const std::vector<StructuredTagColorRule>& structuredTagRules =
+		displayModeSettings.structuredRulesEnabled ? GetStructuredTagColorRules() : emptyStructuredTagRules;
 
 	auto buildParsedTagTemplates = [&](const Value& labelLines) -> std::vector<ParsedTagLineTemplate>
 	{
@@ -455,6 +460,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		if (tagTowerModeEnabled &&
 			!towerModeArrival &&
 			!shouldDisplayTagInTowerMode(towerModeGroundState, reportedGs, targetOnRunway))
+			isAcDisplayed = false;
+
+		if (!ShouldDisplayTargetForDisplayMode(fp, rt, AcisCorrelated, reportedGs, targetOnRunway, displayModeSettings))
 			isAcDisplayed = false;
 
 		const char* systemId = rt.GetSystemID();

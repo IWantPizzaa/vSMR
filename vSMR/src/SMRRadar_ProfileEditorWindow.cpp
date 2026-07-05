@@ -152,94 +152,327 @@ namespace
 		return invalidIndex;
 	}
 
-	void EnsureProfileProModeDefaults(rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator)
+	std::vector<std::string> DefaultBlockedAutoCorrelateSquawks()
 	{
-		using rapidjson::Value;
-
-		if (!profile.IsObject())
-			return;
-
-		if (!profile.HasMember("filters") || !profile["filters"].IsObject())
-		{
-			if (profile.HasMember("filters"))
-				profile.RemoveMember("filters");
-			Value filters(rapidjson::kObjectType);
-			profile.AddMember("filters", filters, allocator);
-		}
-
-		Value& filters = profile["filters"];
-		if (!filters.HasMember("pro_mode") || !filters["pro_mode"].IsObject())
-		{
-			if (filters.HasMember("pro_mode"))
-				filters.RemoveMember("pro_mode");
-			Value proMode(rapidjson::kObjectType);
-			filters.AddMember("pro_mode", proMode, allocator);
-		}
-
-		Value& proMode = filters["pro_mode"];
-		bool enabledValue = false;
-		if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-			enabledValue = proMode["enabled"].GetBool();
-		else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-			enabledValue = proMode["enable"].GetBool();
-		if (proMode.HasMember("enable"))
-			proMode.RemoveMember("enable");
-		if (!proMode.HasMember("enabled") || !proMode["enabled"].IsBool())
-		{
-			if (proMode.HasMember("enabled"))
-				proMode.RemoveMember("enabled");
-			proMode.AddMember("enabled", enabledValue, allocator);
-		}
-		if (!proMode.HasMember("accept_pilot_squawk") || !proMode["accept_pilot_squawk"].IsBool())
-		{
-			if (proMode.HasMember("accept_pilot_squawk"))
-				proMode.RemoveMember("accept_pilot_squawk");
-			proMode.AddMember("accept_pilot_squawk", true, allocator);
-		}
-
-		const Value* blockedSource = nullptr;
-		if (proMode.HasMember("blocked_auto_correlate_squawks") && proMode["blocked_auto_correlate_squawks"].IsArray())
-			blockedSource = &proMode["blocked_auto_correlate_squawks"];
-		else if (proMode.HasMember("do_not_autocorrelate_squawks") && proMode["do_not_autocorrelate_squawks"].IsArray())
-			blockedSource = &proMode["do_not_autocorrelate_squawks"];
-
-		if (!proMode.HasMember("blocked_auto_correlate_squawks") || !proMode["blocked_auto_correlate_squawks"].IsArray())
-		{
-			if (proMode.HasMember("blocked_auto_correlate_squawks"))
-				proMode.RemoveMember("blocked_auto_correlate_squawks");
-			Value squawks(rapidjson::kArrayType);
-
-			if (blockedSource != nullptr)
-			{
-				for (rapidjson::SizeType i = 0; i < blockedSource->Size(); ++i)
-				{
-					if (!(*blockedSource)[i].IsString())
-						continue;
-
-					Value squawkValue;
-					squawkValue.SetString((*blockedSource)[i].GetString(), static_cast<rapidjson::SizeType>(std::strlen((*blockedSource)[i].GetString())), allocator);
-					squawks.PushBack(squawkValue, allocator);
-				}
-			}
-
-			if (squawks.Empty())
-			{
-				static const char* const defaultSquawks[] = { "2000", "2200", "1200", "7000" };
-				for (const char* squawk : defaultSquawks)
-				{
-					Value squawkValue;
-					squawkValue.SetString(squawk, static_cast<rapidjson::SizeType>(std::strlen(squawk)), allocator);
-					squawks.PushBack(squawkValue, allocator);
-				}
-			}
-
-			proMode.AddMember("blocked_auto_correlate_squawks", squawks, allocator);
-		}
-		if (proMode.HasMember("do_not_autocorrelate_squawks"))
-			proMode.RemoveMember("do_not_autocorrelate_squawks");
+		return { "2000", "2200", "1200", "7000" };
 	}
 
-	void EnsureProfileTowerModeDefaults(rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator)
+	CSMRRadar::DisplayModeSettings MakeDisplayModeSettings(
+		const std::string& name,
+		bool requireAssignedSquawk,
+		bool towerFilter,
+		bool structuredRulesEnabled = true)
+	{
+		CSMRRadar::DisplayModeSettings settings;
+		settings.name = name;
+		settings.requireAssignedSquawk = requireAssignedSquawk;
+		settings.acceptPilotSquawk = true;
+		settings.blockedAutoCorrelateSquawks = DefaultBlockedAutoCorrelateSquawks();
+		settings.towerFilter = towerFilter;
+		settings.structuredRulesEnabled = structuredRulesEnabled;
+		return settings;
+	}
+
+	bool ContainsDisplayModeNameNoCase(const std::vector<CSMRRadar::DisplayModeSettings>& modes, const std::string& candidate)
+	{
+		for (const CSMRRadar::DisplayModeSettings& mode : modes)
+		{
+			if (EqualsNoCase(mode.name, candidate))
+				return true;
+		}
+		return false;
+	}
+
+	std::string MakeUniqueDisplayModeName(const std::vector<CSMRRadar::DisplayModeSettings>& modes, const std::string& requestedName)
+	{
+		std::string baseName = TrimAsciiWhitespaceCopy(requestedName);
+		if (baseName.empty())
+			baseName = "Display Mode";
+
+		if (!ContainsDisplayModeNameNoCase(modes, baseName))
+			return baseName;
+
+		for (int i = 2; i < 1000; ++i)
+		{
+			const std::string candidate = baseName + " (" + std::to_string(i) + ")";
+			if (!ContainsDisplayModeNameNoCase(modes, candidate))
+				return candidate;
+		}
+
+		return baseName + " Copy";
+	}
+
+	int FindDisplayModeIndexNoCase(const std::vector<CSMRRadar::DisplayModeSettings>& modes, const std::string& name)
+	{
+		for (size_t i = 0; i < modes.size(); ++i)
+		{
+			if (EqualsNoCase(modes[i].name, name))
+				return static_cast<int>(i);
+		}
+		return -1;
+	}
+
+	bool ReadBoolMember(const rapidjson::Value& objectValue, const char* key, bool fallback)
+	{
+		if (objectValue.IsObject() && objectValue.HasMember(key) && objectValue[key].IsBool())
+			return objectValue[key].GetBool();
+		return fallback;
+	}
+
+	std::vector<std::string> ReadSquawkArray(const rapidjson::Value& objectValue, const char* key)
+	{
+		std::vector<std::string> values;
+		if (!objectValue.IsObject() || !objectValue.HasMember(key) || !objectValue[key].IsArray())
+			return values;
+
+		const rapidjson::Value& arrayValue = objectValue[key];
+		for (rapidjson::SizeType i = 0; i < arrayValue.Size(); ++i)
+		{
+			if (arrayValue[i].IsString() && arrayValue[i].GetStringLength() > 0)
+				values.push_back(arrayValue[i].GetString());
+		}
+		return values;
+	}
+
+	void WriteStringMember(rapidjson::Value& objectValue, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+		if (objectValue.HasMember(key))
+			objectValue.RemoveMember(key);
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value stringValue;
+		stringValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
+		objectValue.AddMember(keyValue, stringValue, allocator);
+	}
+
+	void WriteBoolMember(rapidjson::Value& objectValue, const char* key, bool value, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+		if (objectValue.HasMember(key))
+			objectValue.RemoveMember(key);
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		objectValue.AddMember(keyValue, Value(value), allocator);
+	}
+
+	void WriteStringArrayMember(rapidjson::Value& objectValue, const char* key, const std::vector<std::string>& values, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+		if (objectValue.HasMember(key))
+			objectValue.RemoveMember(key);
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value arrayValue(rapidjson::kArrayType);
+		for (const std::string& value : values)
+		{
+			if (value.empty())
+				continue;
+			Value itemValue;
+			itemValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
+			arrayValue.PushBack(itemValue, allocator);
+		}
+		objectValue.AddMember(keyValue, arrayValue, allocator);
+	}
+
+	void WriteStatusVisibility(rapidjson::Value& modeValue, const CSMRRadar::DisplayModeStatusVisibility& statuses, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+		if (modeValue.HasMember("statuses"))
+			modeValue.RemoveMember("statuses");
+
+		Value keyValue;
+		keyValue.SetString("statuses", allocator);
+		Value statusValue(rapidjson::kObjectType);
+		WriteBoolMember(statusValue, "no_status", statuses.noStatus, allocator);
+		WriteBoolMember(statusValue, "push", statuses.push, allocator);
+		WriteBoolMember(statusValue, "startup", statuses.startup, allocator);
+		WriteBoolMember(statusValue, "taxi", statuses.taxi, allocator);
+		WriteBoolMember(statusValue, "departure", statuses.departure, allocator);
+		WriteBoolMember(statusValue, "on_runway", statuses.onRunway, allocator);
+		WriteBoolMember(statusValue, "airborne", statuses.airborne, allocator);
+		WriteBoolMember(statusValue, "arrivals", statuses.arrivals, allocator);
+		WriteBoolMember(statusValue, "no_fpl", statuses.noFlightPlan, allocator);
+		WriteBoolMember(statusValue, "uncorrelated", statuses.uncorrelated, allocator);
+		modeValue.AddMember(keyValue, statusValue, allocator);
+	}
+
+	void WriteDisplayModeValue(rapidjson::Value& modeValue, const CSMRRadar::DisplayModeSettings& settings, rapidjson::Document::AllocatorType& allocator)
+	{
+		modeValue.SetObject();
+		WriteStringMember(modeValue, "name", settings.name.empty() ? "Display Mode" : settings.name, allocator);
+		WriteBoolMember(modeValue, "require_assigned_squawk", settings.requireAssignedSquawk, allocator);
+		WriteBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk, allocator);
+		WriteStringArrayMember(modeValue, "blocked_auto_correlate_squawks", settings.blockedAutoCorrelateSquawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : settings.blockedAutoCorrelateSquawks, allocator);
+		WriteBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
+		WriteBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
+		WriteStatusVisibility(modeValue, settings.statuses, allocator);
+	}
+
+	CSMRRadar::DisplayModeSettings ReadDisplayModeValue(const rapidjson::Value& modeValue, const CSMRRadar::DisplayModeSettings& fallback)
+	{
+		CSMRRadar::DisplayModeSettings settings = fallback;
+		if (!modeValue.IsObject())
+			return settings;
+
+		if (modeValue.HasMember("name") && modeValue["name"].IsString())
+		{
+			const std::string name = TrimAsciiWhitespaceCopy(modeValue["name"].GetString());
+			if (!name.empty())
+				settings.name = name;
+		}
+		settings.requireAssignedSquawk = ReadBoolMember(modeValue, "require_assigned_squawk", ReadBoolMember(modeValue, "squawk_rule", settings.requireAssignedSquawk));
+		settings.acceptPilotSquawk = ReadBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk);
+		settings.towerFilter = ReadBoolMember(modeValue, "tower_filter", ReadBoolMember(modeValue, "tower_mode", settings.towerFilter));
+		settings.structuredRulesEnabled = ReadBoolMember(modeValue, "structured_rules", ReadBoolMember(modeValue, "structured_rules_enabled", settings.structuredRulesEnabled));
+
+		std::vector<std::string> squawks = ReadSquawkArray(modeValue, "blocked_auto_correlate_squawks");
+		if (squawks.empty())
+			squawks = ReadSquawkArray(modeValue, "do_not_autocorrelate_squawks");
+		settings.blockedAutoCorrelateSquawks = squawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : squawks;
+
+		if (modeValue.HasMember("statuses") && modeValue["statuses"].IsObject())
+		{
+			const rapidjson::Value& statuses = modeValue["statuses"];
+			settings.statuses.noStatus = ReadBoolMember(statuses, "no_status", settings.statuses.noStatus);
+			settings.statuses.push = ReadBoolMember(statuses, "push", settings.statuses.push);
+			settings.statuses.startup = ReadBoolMember(statuses, "startup", ReadBoolMember(statuses, "stup", settings.statuses.startup));
+			settings.statuses.taxi = ReadBoolMember(statuses, "taxi", settings.statuses.taxi);
+			settings.statuses.departure = ReadBoolMember(statuses, "departure", ReadBoolMember(statuses, "depa", settings.statuses.departure));
+			settings.statuses.onRunway = ReadBoolMember(statuses, "on_runway", settings.statuses.onRunway);
+			settings.statuses.airborne = ReadBoolMember(statuses, "airborne", settings.statuses.airborne);
+			settings.statuses.arrivals = ReadBoolMember(statuses, "arrivals", settings.statuses.arrivals);
+			settings.statuses.noFlightPlan = ReadBoolMember(statuses, "no_fpl", settings.statuses.noFlightPlan);
+			settings.statuses.uncorrelated = ReadBoolMember(statuses, "uncorrelated", settings.statuses.uncorrelated);
+		}
+
+		return settings;
+	}
+
+	void ReadLegacyDisplayModeFlags(const rapidjson::Value& filters, bool& outProModeEnabled, bool& outTowerModeEnabled, bool& outAcceptPilotSquawk, std::vector<std::string>& outBlockedSquawks)
+	{
+		outProModeEnabled = false;
+		outTowerModeEnabled = false;
+		outAcceptPilotSquawk = true;
+		outBlockedSquawks = DefaultBlockedAutoCorrelateSquawks();
+
+		if (!filters.IsObject())
+			return;
+
+		if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
+		{
+			const rapidjson::Value& proMode = filters["pro_mode"];
+			outProModeEnabled = ReadBoolMember(proMode, "enabled", ReadBoolMember(proMode, "enable", false));
+			outAcceptPilotSquawk = ReadBoolMember(proMode, "accept_pilot_squawk", true);
+			std::vector<std::string> blocked = ReadSquawkArray(proMode, "blocked_auto_correlate_squawks");
+			if (blocked.empty())
+				blocked = ReadSquawkArray(proMode, "do_not_autocorrelate_squawks");
+			if (!blocked.empty())
+				outBlockedSquawks = blocked;
+		}
+
+		if (filters.HasMember("tower_mode") && filters["tower_mode"].IsObject())
+		{
+			const rapidjson::Value& towerMode = filters["tower_mode"];
+			outTowerModeEnabled = ReadBoolMember(towerMode, "enabled", ReadBoolMember(towerMode, "enable", false));
+		}
+	}
+
+	std::vector<CSMRRadar::DisplayModeSettings> BuildLegacyDisplayModes(const rapidjson::Value& filters)
+	{
+		bool legacyProModeEnabled = false;
+		bool legacyTowerModeEnabled = false;
+		bool acceptPilotSquawk = true;
+		std::vector<std::string> blockedSquawks;
+		ReadLegacyDisplayModeFlags(filters, legacyProModeEnabled, legacyTowerModeEnabled, acceptPilotSquawk, blockedSquawks);
+
+		std::vector<CSMRRadar::DisplayModeSettings> modes;
+		modes.push_back(MakeDisplayModeSettings("Normal", false, false));
+		modes.push_back(MakeDisplayModeSettings("Pro", true, false));
+		modes.push_back(MakeDisplayModeSettings("Tower", false, true));
+		modes.push_back(MakeDisplayModeSettings("Pro + Tower", true, true));
+		for (CSMRRadar::DisplayModeSettings& mode : modes)
+		{
+			mode.acceptPilotSquawk = acceptPilotSquawk;
+			mode.blockedAutoCorrelateSquawks = blockedSquawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : blockedSquawks;
+		}
+		return modes;
+	}
+
+	std::string GetLegacyActiveDisplayModeName(const rapidjson::Value& filters)
+	{
+		bool legacyProModeEnabled = false;
+		bool legacyTowerModeEnabled = false;
+		bool acceptPilotSquawk = true;
+		std::vector<std::string> blockedSquawks;
+		ReadLegacyDisplayModeFlags(filters, legacyProModeEnabled, legacyTowerModeEnabled, acceptPilotSquawk, blockedSquawks);
+		if (legacyProModeEnabled && legacyTowerModeEnabled)
+			return "Pro + Tower";
+		if (legacyProModeEnabled)
+			return "Pro";
+		if (legacyTowerModeEnabled)
+			return "Tower";
+		return "Normal";
+	}
+
+	void ReadProfileDisplayModes(const rapidjson::Value& profile, std::vector<CSMRRadar::DisplayModeSettings>& outModes, std::string& outActiveName)
+	{
+		outModes.clear();
+		outActiveName = "Normal";
+		if (!profile.IsObject())
+			return;
+
+		const rapidjson::Value* filters = nullptr;
+		if (profile.HasMember("filters") && profile["filters"].IsObject())
+			filters = &profile["filters"];
+
+		if (filters == nullptr)
+		{
+			outModes.push_back(MakeDisplayModeSettings("Normal", false, false));
+			return;
+		}
+
+		if (filters->HasMember("display_modes") && (*filters)["display_modes"].IsObject())
+		{
+			const rapidjson::Value& displayModes = (*filters)["display_modes"];
+			if (displayModes.HasMember("active") && displayModes["active"].IsString())
+			{
+				const std::string active = TrimAsciiWhitespaceCopy(displayModes["active"].GetString());
+				if (!active.empty())
+					outActiveName = active;
+			}
+
+			if (displayModes.HasMember("items") && displayModes["items"].IsArray())
+			{
+				const rapidjson::Value& items = displayModes["items"];
+				for (rapidjson::SizeType i = 0; i < items.Size(); ++i)
+				{
+					CSMRRadar::DisplayModeSettings fallback = MakeDisplayModeSettings("Display Mode", false, false);
+					CSMRRadar::DisplayModeSettings mode = ReadDisplayModeValue(items[i], fallback);
+					mode.name = MakeUniqueDisplayModeName(outModes, mode.name);
+					outModes.push_back(mode);
+				}
+			}
+		}
+
+		if (outModes.empty())
+			outModes = BuildLegacyDisplayModes(*filters);
+		if (FindDisplayModeIndexNoCase(outModes, outActiveName) < 0)
+			outActiveName = outModes.empty() ? "Normal" : outModes.front().name;
+	}
+
+	CSMRRadar::DisplayModeSettings ReadActiveDisplayModeFromProfile(const rapidjson::Value& profile)
+	{
+		std::vector<CSMRRadar::DisplayModeSettings> modes;
+		std::string activeName;
+		ReadProfileDisplayModes(profile, modes, activeName);
+		const int activeIndex = FindDisplayModeIndexNoCase(modes, activeName);
+		if (activeIndex >= 0)
+			return modes[activeIndex];
+		return MakeDisplayModeSettings("Normal", false, false);
+	}
+
+	void EnsureProfileDisplayModeDefaults(rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator)
 	{
 		using rapidjson::Value;
 
@@ -255,29 +488,46 @@ namespace
 		}
 
 		Value& filters = profile["filters"];
-		if (!filters.HasMember("tower_mode") || !filters["tower_mode"].IsObject())
+		std::vector<CSMRRadar::DisplayModeSettings> modes;
+		std::string activeName;
+		ReadProfileDisplayModes(profile, modes, activeName);
+		if (modes.empty())
+			modes.push_back(MakeDisplayModeSettings("Normal", false, false));
+
+		if (!filters.HasMember("display_modes") || !filters["display_modes"].IsObject())
 		{
-			if (filters.HasMember("tower_mode"))
-				filters.RemoveMember("tower_mode");
-			Value towerMode(rapidjson::kObjectType);
-			filters.AddMember("tower_mode", towerMode, allocator);
+			if (filters.HasMember("display_modes"))
+				filters.RemoveMember("display_modes");
+			Value displayModes(rapidjson::kObjectType);
+			filters.AddMember("display_modes", displayModes, allocator);
 		}
 
-		Value& towerMode = filters["tower_mode"];
-		bool enabledValue = false;
-		if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
-			enabledValue = towerMode["enabled"].GetBool();
-		else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
-			enabledValue = towerMode["enable"].GetBool();
+		Value& displayModes = filters["display_modes"];
+		if (displayModes.HasMember("active"))
+			displayModes.RemoveMember("active");
+		Value activeKey;
+		activeKey.SetString("active", allocator);
+		Value activeValue;
+		activeValue.SetString(activeName.c_str(), static_cast<rapidjson::SizeType>(activeName.size()), allocator);
+		displayModes.AddMember(activeKey, activeValue, allocator);
 
-		if (towerMode.HasMember("enable"))
-			towerMode.RemoveMember("enable");
-		if (!towerMode.HasMember("enabled") || !towerMode["enabled"].IsBool())
+		if (displayModes.HasMember("items"))
+			displayModes.RemoveMember("items");
+		Value itemsKey;
+		itemsKey.SetString("items", allocator);
+		Value items(rapidjson::kArrayType);
+		for (const CSMRRadar::DisplayModeSettings& mode : modes)
 		{
-			if (towerMode.HasMember("enabled"))
-				towerMode.RemoveMember("enabled");
-			towerMode.AddMember("enabled", enabledValue, allocator);
+			Value modeValue(rapidjson::kObjectType);
+			WriteDisplayModeValue(modeValue, mode, allocator);
+			items.PushBack(modeValue, allocator);
 		}
+		displayModes.AddMember(itemsKey, items, allocator);
+
+		if (filters.HasMember("pro_mode"))
+			filters.RemoveMember("pro_mode");
+		if (filters.HasMember("tower_mode"))
+			filters.RemoveMember("tower_mode");
 	}
 }
 
@@ -662,39 +912,51 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 	return true;
 }
 
-bool CSMRRadar::GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const
+std::vector<CSMRRadar::DisplayModeSettings> CSMRRadar::GetProfileDisplayModesForEditor(const std::string& profileName) const
 {
-	outEnabled = false;
 	if (!CurrentConfig || !CurrentConfig->document.IsArray())
-		return false;
+		return {};
 
-	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
 	if (targetIndex >= CurrentConfig->document.Size())
-		return false;
+		return {};
 
-	const rapidjson::Value& profile = CurrentConfig->document[targetIndex];
-	if (!profile.IsObject() || !profile.HasMember("filters") || !profile["filters"].IsObject())
-		return true;
-
-	const rapidjson::Value& filters = profile["filters"];
-	if (!filters.HasMember("pro_mode") || !filters["pro_mode"].IsObject())
-		return true;
-
-	const rapidjson::Value& proMode = filters["pro_mode"];
-	if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-		outEnabled = proMode["enabled"].GetBool();
-	else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-		outEnabled = proMode["enable"].GetBool();
-
-	return true;
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(CurrentConfig->document[targetIndex], modes, activeName);
+	return modes;
 }
 
-bool CSMRRadar::SetProfileProModeEnabledForEditor(const std::string& name, bool enabled)
+std::string CSMRRadar::GetActiveProfileDisplayModeForEditor(const std::string& profileName) const
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return "";
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return "";
+
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(CurrentConfig->document[targetIndex], modes, activeName);
+	return activeName;
+}
+
+CSMRRadar::DisplayModeSettings CSMRRadar::GetActiveDisplayModeSettings() const
+{
+	if (!CurrentConfig)
+		return MakeDisplayModeSettings("Normal", false, false);
+
+	const Value& profile = CurrentConfig->getActiveProfile();
+	return ReadActiveDisplayModeFromProfile(profile);
+}
+
+bool CSMRRadar::SetProfileDisplayModeActiveForEditor(const std::string& profileName, const std::string& modeName)
 {
 	if (!CurrentConfig || !CurrentConfig->document.IsArray())
 		return false;
 
-	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
 	if (targetIndex >= CurrentConfig->document.Size())
 		return false;
 
@@ -702,51 +964,33 @@ bool CSMRRadar::SetProfileProModeEnabledForEditor(const std::string& name, bool 
 	if (!profile.IsObject())
 		return false;
 
-	EnsureProfileProModeDefaults(profile, CurrentConfig->document.GetAllocator());
-	profile["filters"]["pro_mode"]["enabled"].SetBool(enabled);
+	EnsureProfileDisplayModeDefaults(profile, CurrentConfig->document.GetAllocator());
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(profile, modes, activeName);
+	const int modeIndex = FindDisplayModeIndexNoCase(modes, modeName);
+	if (modeIndex < 0)
+		return false;
+
+	rapidjson::Value& displayModes = profile["filters"]["display_modes"];
+	displayModes["active"].SetString(modes[modeIndex].name.c_str(), static_cast<rapidjson::SizeType>(modes[modeIndex].name.size()), CurrentConfig->document.GetAllocator());
 	if (!CurrentConfig->saveConfig())
 		return false;
 
 	const std::string activeBefore = CurrentConfig->getActiveProfileName();
 	CurrentConfig->reload();
-	LoadProfile(activeBefore.empty() ? name : activeBefore);
+	LoadProfile(activeBefore.empty() ? profileName : activeBefore);
+	InvalidateStructuredTagRuleCache();
 	RequestRefresh();
 	return true;
 }
 
-bool CSMRRadar::GetProfileTowerModeEnabledForEditor(const std::string& name, bool& outEnabled) const
-{
-	outEnabled = false;
-	if (!CurrentConfig || !CurrentConfig->document.IsArray())
-		return false;
-
-	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
-	if (targetIndex >= CurrentConfig->document.Size())
-		return false;
-
-	const rapidjson::Value& profile = CurrentConfig->document[targetIndex];
-	if (!profile.IsObject() || !profile.HasMember("filters") || !profile["filters"].IsObject())
-		return true;
-
-	const rapidjson::Value& filters = profile["filters"];
-	if (!filters.HasMember("tower_mode") || !filters["tower_mode"].IsObject())
-		return true;
-
-	const rapidjson::Value& towerMode = filters["tower_mode"];
-	if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
-		outEnabled = towerMode["enabled"].GetBool();
-	else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
-		outEnabled = towerMode["enable"].GetBool();
-
-	return true;
-}
-
-bool CSMRRadar::SetProfileTowerModeEnabledForEditor(const std::string& name, bool enabled)
+bool CSMRRadar::AddProfileDisplayModeForEditor(const std::string& profileName, const std::string& requestedName, bool duplicateSelectedMode, const std::string& selectedModeName, std::string* outCreatedName)
 {
 	if (!CurrentConfig || !CurrentConfig->document.IsArray())
 		return false;
 
-	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
 	if (targetIndex >= CurrentConfig->document.Size())
 		return false;
 
@@ -754,14 +998,174 @@ bool CSMRRadar::SetProfileTowerModeEnabledForEditor(const std::string& name, boo
 	if (!profile.IsObject())
 		return false;
 
-	EnsureProfileTowerModeDefaults(profile, CurrentConfig->document.GetAllocator());
-	profile["filters"]["tower_mode"]["enabled"].SetBool(enabled);
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	EnsureProfileDisplayModeDefaults(profile, allocator);
+
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(profile, modes, activeName);
+
+	DisplayModeSettings newMode = MakeDisplayModeSettings("Display Mode", false, false);
+	if (duplicateSelectedMode)
+	{
+		const int selectedIndex = FindDisplayModeIndexNoCase(modes, selectedModeName.empty() ? activeName : selectedModeName);
+		if (selectedIndex >= 0)
+			newMode = modes[selectedIndex];
+	}
+	newMode.name = MakeUniqueDisplayModeName(modes, requestedName.empty() ? newMode.name : requestedName);
+
+	rapidjson::Value modeValue(rapidjson::kObjectType);
+	WriteDisplayModeValue(modeValue, newMode, allocator);
+	profile["filters"]["display_modes"]["items"].PushBack(modeValue, allocator);
+	profile["filters"]["display_modes"]["active"].SetString(newMode.name.c_str(), static_cast<rapidjson::SizeType>(newMode.name.size()), allocator);
+
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	if (outCreatedName != nullptr)
+		*outCreatedName = newMode.name;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	CurrentConfig->reload();
+	LoadProfile(activeBefore.empty() ? profileName : activeBefore);
+	InvalidateStructuredTagRuleCache();
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::RenameProfileDisplayModeForEditor(const std::string& profileName, const std::string& oldName, const std::string& newName)
+{
+	const std::string trimmedNewName = TrimAsciiWhitespaceCopy(newName);
+	if (trimmedNewName.empty())
+		return false;
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	EnsureProfileDisplayModeDefaults(profile, allocator);
+
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(profile, modes, activeName);
+	const int modeIndex = FindDisplayModeIndexNoCase(modes, oldName);
+	if (modeIndex < 0)
+		return false;
+
+	for (size_t i = 0; i < modes.size(); ++i)
+	{
+		if (static_cast<int>(i) != modeIndex && EqualsNoCase(modes[i].name, trimmedNewName))
+			return false;
+	}
+
+	rapidjson::Value& displayModes = profile["filters"]["display_modes"];
+	rapidjson::Value& items = displayModes["items"];
+	items[static_cast<rapidjson::SizeType>(modeIndex)]["name"].SetString(trimmedNewName.c_str(), static_cast<rapidjson::SizeType>(trimmedNewName.size()), allocator);
+	if (EqualsNoCase(activeName, oldName))
+		displayModes["active"].SetString(trimmedNewName.c_str(), static_cast<rapidjson::SizeType>(trimmedNewName.size()), allocator);
+
 	if (!CurrentConfig->saveConfig())
 		return false;
 
 	const std::string activeBefore = CurrentConfig->getActiveProfileName();
 	CurrentConfig->reload();
-	LoadProfile(activeBefore.empty() ? name : activeBefore);
+	LoadProfile(activeBefore.empty() ? profileName : activeBefore);
+	InvalidateStructuredTagRuleCache();
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::DeleteProfileDisplayModeForEditor(const std::string& profileName, const std::string& modeName)
+{
+	if (!CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	EnsureProfileDisplayModeDefaults(profile, allocator);
+
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(profile, modes, activeName);
+	if (modes.size() <= 1)
+		return false;
+
+	const int modeIndex = FindDisplayModeIndexNoCase(modes, modeName);
+	if (modeIndex < 0)
+		return false;
+
+	rapidjson::Value& displayModes = profile["filters"]["display_modes"];
+	rapidjson::Value& items = displayModes["items"];
+	for (rapidjson::SizeType i = static_cast<rapidjson::SizeType>(modeIndex); (i + 1) < items.Size(); ++i)
+		items[i] = items[i + 1];
+	items.PopBack();
+
+	if (EqualsNoCase(activeName, modeName))
+	{
+		std::string replacementName = "Normal";
+		ReadProfileDisplayModes(profile, modes, activeName);
+		if (!modes.empty())
+			replacementName = modes.front().name;
+		displayModes["active"].SetString(replacementName.c_str(), static_cast<rapidjson::SizeType>(replacementName.size()), allocator);
+	}
+
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	CurrentConfig->reload();
+	LoadProfile(activeBefore.empty() ? profileName : activeBefore);
+	InvalidateStructuredTagRuleCache();
+	RequestRefresh();
+	return true;
+}
+
+bool CSMRRadar::UpdateProfileDisplayModeForEditor(const std::string& profileName, const DisplayModeSettings& settings)
+{
+	if (settings.name.empty() || !CurrentConfig || !CurrentConfig->document.IsArray())
+		return false;
+
+	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
+	if (targetIndex >= CurrentConfig->document.Size())
+		return false;
+
+	rapidjson::Value& profile = CurrentConfig->document[targetIndex];
+	if (!profile.IsObject())
+		return false;
+
+	auto& allocator = CurrentConfig->document.GetAllocator();
+	EnsureProfileDisplayModeDefaults(profile, allocator);
+
+	std::vector<DisplayModeSettings> modes;
+	std::string activeName;
+	ReadProfileDisplayModes(profile, modes, activeName);
+	const int modeIndex = FindDisplayModeIndexNoCase(modes, settings.name);
+	if (modeIndex < 0)
+		return false;
+
+	rapidjson::Value& modeValue = profile["filters"]["display_modes"]["items"][static_cast<rapidjson::SizeType>(modeIndex)];
+	WriteDisplayModeValue(modeValue, settings, allocator);
+	if (!CurrentConfig->saveConfig())
+		return false;
+
+	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	CurrentConfig->reload();
+	LoadProfile(activeBefore.empty() ? profileName : activeBefore);
+	InvalidateStructuredTagRuleCache();
 	RequestRefresh();
 	return true;
 }
@@ -803,6 +1207,7 @@ bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool dupli
 	else
 		newProfile.AddMember("name", profileNameValue, CurrentConfig->document.GetAllocator());
 
+	EnsureProfileDisplayModeDefaults(newProfile, CurrentConfig->document.GetAllocator());
 	CurrentConfig->document.PushBack(newProfile, CurrentConfig->document.GetAllocator());
 	if (!CurrentConfig->saveConfig())
 		return false;

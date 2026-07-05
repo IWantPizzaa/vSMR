@@ -2772,15 +2772,112 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureIntMember(filters, "max_speed_kt", 250, 0, 2000);
 	ensureIntMember(filters, "radar_range_nm", 999, 1, 9999);
 	ensureIntMember(filters, "night_overlay_alpha", 110, 0, 255);
-	Value& proMode = ensureObjectMember(filters, "pro_mode");
-	renameMemberIfPresent(proMode, "enable", "enabled");
-	renameMemberIfPresent(proMode, "do_not_autocorrelate_squawks", "blocked_auto_correlate_squawks");
-	ensureBoolMember(proMode, "enabled", false);
-	ensureBoolMember(proMode, "accept_pilot_squawk", true);
-	ensureStringArrayMember(proMode, "blocked_auto_correlate_squawks", defaultDoNotAutocorrelateSquawks);
-	Value& towerMode = ensureObjectMember(filters, "tower_mode");
-	renameMemberIfPresent(towerMode, "enable", "enabled");
-	ensureBoolMember(towerMode, "enabled", false);
+	bool legacyProModeEnabled = false;
+	bool legacyTowerModeEnabled = false;
+	bool legacyAcceptPilotSquawk = true;
+	std::vector<std::string> legacyBlockedSquawks = defaultDoNotAutocorrelateSquawks;
+	if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
+	{
+		Value& proMode = filters["pro_mode"];
+		renameMemberIfPresent(proMode, "enable", "enabled");
+		renameMemberIfPresent(proMode, "do_not_autocorrelate_squawks", "blocked_auto_correlate_squawks");
+		if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
+			legacyProModeEnabled = proMode["enabled"].GetBool();
+		if (proMode.HasMember("accept_pilot_squawk") && proMode["accept_pilot_squawk"].IsBool())
+			legacyAcceptPilotSquawk = proMode["accept_pilot_squawk"].GetBool();
+		if (proMode.HasMember("blocked_auto_correlate_squawks") && proMode["blocked_auto_correlate_squawks"].IsArray())
+		{
+			std::vector<std::string> blockedSquawks;
+			const Value& squawks = proMode["blocked_auto_correlate_squawks"];
+			for (SizeType i = 0; i < squawks.Size(); ++i)
+			{
+				if (squawks[i].IsString() && squawks[i].GetStringLength() > 0)
+					blockedSquawks.push_back(squawks[i].GetString());
+			}
+			if (!blockedSquawks.empty())
+				legacyBlockedSquawks = blockedSquawks;
+		}
+	}
+	if (filters.HasMember("tower_mode") && filters["tower_mode"].IsObject())
+	{
+		Value& towerMode = filters["tower_mode"];
+		renameMemberIfPresent(towerMode, "enable", "enabled");
+		if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
+			legacyTowerModeEnabled = towerMode["enabled"].GetBool();
+	}
+	auto addDisplayMode = [&](Value& items, const char* name, bool requireAssignedSquawk, bool towerFilter)
+	{
+		Value mode(kObjectType);
+		Value nameKey;
+		nameKey.SetString("name", allocator);
+		Value nameValue;
+		nameValue.SetString(name, allocator);
+		mode.AddMember(nameKey, nameValue, allocator);
+		mode.AddMember("require_assigned_squawk", requireAssignedSquawk, allocator);
+		mode.AddMember("accept_pilot_squawk", legacyAcceptPilotSquawk, allocator);
+		Value blockedSquawks(kArrayType);
+		for (const std::string& squawk : legacyBlockedSquawks)
+		{
+			Value squawkValue;
+			squawkValue.SetString(squawk.c_str(), static_cast<SizeType>(squawk.size()), allocator);
+			blockedSquawks.PushBack(squawkValue, allocator);
+		}
+		mode.AddMember("blocked_auto_correlate_squawks", blockedSquawks, allocator);
+		mode.AddMember("tower_filter", towerFilter, allocator);
+		mode.AddMember("structured_rules", true, allocator);
+		Value statuses(kObjectType);
+		statuses.AddMember("no_status", true, allocator);
+		statuses.AddMember("push", true, allocator);
+		statuses.AddMember("startup", true, allocator);
+		statuses.AddMember("taxi", true, allocator);
+		statuses.AddMember("departure", true, allocator);
+		statuses.AddMember("on_runway", true, allocator);
+		statuses.AddMember("airborne", true, allocator);
+		statuses.AddMember("arrivals", true, allocator);
+		statuses.AddMember("no_fpl", true, allocator);
+		statuses.AddMember("uncorrelated", true, allocator);
+		mode.AddMember("statuses", statuses, allocator);
+		items.PushBack(mode, allocator);
+	};
+	Value& displayModes = ensureObjectMember(filters, "display_modes");
+	if (!displayModes.HasMember("items") || !displayModes["items"].IsArray() || displayModes["items"].Empty())
+	{
+		if (displayModes.HasMember("items"))
+			displayModes.RemoveMember("items");
+		Value items(kArrayType);
+		addDisplayMode(items, "Normal", false, false);
+		addDisplayMode(items, "Pro", true, false);
+		addDisplayMode(items, "Tower", false, true);
+		addDisplayMode(items, "Pro + Tower", true, true);
+		displayModes.AddMember("items", items, allocator);
+		changed = true;
+	}
+	std::string activeDisplayMode = "Normal";
+	if (legacyProModeEnabled && legacyTowerModeEnabled)
+		activeDisplayMode = "Pro + Tower";
+	else if (legacyProModeEnabled)
+		activeDisplayMode = "Pro";
+	else if (legacyTowerModeEnabled)
+		activeDisplayMode = "Tower";
+	if (!displayModes.HasMember("active") || !displayModes["active"].IsString() || displayModes["active"].GetStringLength() == 0)
+	{
+		if (displayModes.HasMember("active"))
+			displayModes.RemoveMember("active");
+		Value activeValue;
+		activeValue.SetString(activeDisplayMode.c_str(), static_cast<SizeType>(activeDisplayMode.size()), allocator);
+		displayModes.AddMember("active", activeValue, allocator);
+		changed = true;
+	}
+	if (filters.HasMember("pro_mode"))
+	{
+		filters.RemoveMember("pro_mode");
+		changed = true;
+	}
+	if (filters.HasMember("tower_mode"))
+	{
+		filters.RemoveMember("tower_mode");
+		changed = true;
+	}
 
 	Value& rimcas = ensureObjectMember(profile, "rimcas");
 	renameMemberIfPresent(rimcas, "rimcas_stage_two_speed_threshold", "stage_two_speed_threshold_kt");
@@ -4110,7 +4207,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	else
 		TagReplacingMap["systemid"].append("000000");
 
-	// Pro mode data here
+	// Display modes with the squawk rule enabled use SSR-centric fallback data.
 	if (isProMode)
 	{
 
@@ -4773,42 +4870,15 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double frameSmallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
 	const double frameSmallIconBoostResolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
-	bool frameProModeEnabled = false;
-	bool frameTowerModeEnabled = false;
+	const DisplayModeSettings frameDisplayModeSettings = GetActiveDisplayModeSettings();
+	bool frameProModeEnabled = frameDisplayModeSettings.requireAssignedSquawk;
+	bool frameTowerModeEnabled = frameDisplayModeSettings.towerFilter;
 	bool frameUseAspeedForGate = false;
 	if (CurrentConfig != nullptr)
 	{
 		const Value& profile = CurrentConfig->getActiveProfile();
 		if (profile.IsObject())
 		{
-			if (profile.HasMember("filters") &&
-				profile["filters"].IsObject() &&
-				profile["filters"].HasMember("pro_mode") &&
-				profile["filters"]["pro_mode"].IsObject())
-			{
-				const Value& proMode = profile["filters"]["pro_mode"];
-				if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-				{
-					frameProModeEnabled = proMode["enabled"].GetBool();
-				}
-				else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-				{
-					frameProModeEnabled = proMode["enable"].GetBool();
-				}
-			}
-
-			if (profile.HasMember("filters") &&
-				profile["filters"].IsObject() &&
-				profile["filters"].HasMember("tower_mode") &&
-				profile["filters"]["tower_mode"].IsObject())
-			{
-				const Value& towerMode = profile["filters"]["tower_mode"];
-				if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
-					frameTowerModeEnabled = towerMode["enabled"].GetBool();
-				else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
-					frameTowerModeEnabled = towerMode["enable"].GetBool();
-			}
-
 			if (profile.HasMember("labels") &&
 				profile["labels"].IsObject() &&
 				profile["labels"].HasMember("use_speed_for_gate") &&
@@ -4829,7 +4899,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
 	const std::string frameActiveAirport = getActiveAirport();
 	const std::string frameActiveAirportUpper = ToUpperAsciiCopy(frameActiveAirport);
-	const std::vector<StructuredTagColorRule>& frameStructuredTagRules = GetStructuredTagColorRules();
+	static const std::vector<StructuredTagColorRule> emptyStructuredTagRules;
+	const std::vector<StructuredTagColorRule>& frameStructuredTagRules =
+		frameDisplayModeSettings.structuredRulesEnabled ? GetStructuredTagColorRules() : emptyStructuredTagRules;
 	CRadarTarget frameAselTarget = GetPlugIn()->RadarTargetSelectASEL();
 	FrameTagDataCache frameTagDataCache;
 	FrameVacdmLookupCache frameVacdmLookupCache;

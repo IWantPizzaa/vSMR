@@ -77,8 +77,12 @@ protected:
 	afx_msg void OnProfileDuplicateClicked();
 	afx_msg void OnProfileRenameClicked();
 	afx_msg void OnProfileDeleteClicked();
-	afx_msg void OnProfileProModeToggled();
-	afx_msg void OnProfileTowerModeToggled();
+	afx_msg void OnProfileModeSelectionChanged();
+	afx_msg void OnProfileModeAddClicked();
+	afx_msg void OnProfileModeDuplicateClicked();
+	afx_msg void OnProfileModeRenameClicked();
+	afx_msg void OnProfileModeDeleteClicked();
+	afx_msg void OnProfileModeFieldChanged();
 	afx_msg void OnProfileRepoLinkClicked();
 	afx_msg void OnProfileCoffeeLinkClicked();
 	afx_msg void OnRuleColorValueSliderCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
@@ -231,8 +235,6 @@ private:
 		, IDC_PE_PROFILE_DUPLICATE_BUTTON = 9240
 		, IDC_PE_PROFILE_RENAME_BUTTON = 9241
 		, IDC_PE_PROFILE_DELETE_BUTTON = 9242
-		, IDC_PE_PROFILE_PRO_MODE_CHECK = 9272
-		, IDC_PE_PROFILE_TOWER_MODE_CHECK = 9280
 		, IDC_PE_SIDEBAR_PANEL = 9243
 		, IDC_PE_SIDEBAR_TITLE = 9244
 		, IDC_PE_NAV_COLORS = 9245
@@ -268,6 +270,29 @@ private:
 		, IDC_PE_TAG_OPTIONS_PANEL = 9277
 		, IDC_PE_TAG_OPTIONS_HEADER = 9278
 		, IDC_PE_TAG_ROUNDED_CORNERS = 9279
+		, IDC_PE_PROFILE_MODE_HEADER = 9280
+		, IDC_PE_PROFILE_MODE_LIST = 9281
+		, IDC_PE_PROFILE_MODE_NAME_LABEL = 9282
+		, IDC_PE_PROFILE_MODE_NAME_EDIT = 9283
+		, IDC_PE_PROFILE_MODE_ADD_BUTTON = 9284
+		, IDC_PE_PROFILE_MODE_DUPLICATE_BUTTON = 9285
+		, IDC_PE_PROFILE_MODE_RENAME_BUTTON = 9286
+		, IDC_PE_PROFILE_MODE_DELETE_BUTTON = 9287
+		, IDC_PE_PROFILE_MODE_SQUAWK_CHECK = 9288
+		, IDC_PE_PROFILE_MODE_ACCEPT_PILOT_CHECK = 9289
+		, IDC_PE_PROFILE_MODE_TOWER_CHECK = 9290
+		, IDC_PE_PROFILE_MODE_RULES_CHECK = 9291
+		, IDC_PE_PROFILE_MODE_STATUS_HEADER = 9292
+		, IDC_PE_PROFILE_MODE_STATUS_NOSTATUS = 9293
+		, IDC_PE_PROFILE_MODE_STATUS_PUSH = 9294
+		, IDC_PE_PROFILE_MODE_STATUS_STARTUP = 9295
+		, IDC_PE_PROFILE_MODE_STATUS_TAXI = 9296
+		, IDC_PE_PROFILE_MODE_STATUS_DEPARTURE = 9297
+		, IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY = 9298
+		, IDC_PE_PROFILE_MODE_STATUS_AIRBORNE = 9299
+		, IDC_PE_PROFILE_MODE_STATUS_ARRIVALS = 9300
+		, IDC_PE_PROFILE_MODE_STATUS_NO_FPL = 9301
+		, IDC_PE_PROFILE_MODE_STATUS_UNCORRELATED = 9302
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -398,12 +423,33 @@ private:
 	CListBox ProfileList;
 	CStatic ProfileNameLabel;
 	CEdit ProfileNameEdit;
-	CButton ProfileProModeCheck;
-	CButton ProfileTowerModeCheck;
 	CButton ProfileAddButton;
 	CButton ProfileDuplicateButton;
 	CButton ProfileRenameButton;
 	CButton ProfileDeleteButton;
+	CStatic ProfileModeHeader;
+	CListBox ProfileModeList;
+	CStatic ProfileModeNameLabel;
+	CEdit ProfileModeNameEdit;
+	CButton ProfileModeAddButton;
+	CButton ProfileModeDuplicateButton;
+	CButton ProfileModeRenameButton;
+	CButton ProfileModeDeleteButton;
+	CButton ProfileModeSquawkCheck;
+	CButton ProfileModeAcceptPilotCheck;
+	CButton ProfileModeTowerCheck;
+	CButton ProfileModeRulesCheck;
+	CStatic ProfileModeStatusHeader;
+	CButton ProfileModeStatusNoStatusCheck;
+	CButton ProfileModeStatusPushCheck;
+	CButton ProfileModeStatusStartupCheck;
+	CButton ProfileModeStatusTaxiCheck;
+	CButton ProfileModeStatusDepartureCheck;
+	CButton ProfileModeStatusOnRunwayCheck;
+	CButton ProfileModeStatusAirborneCheck;
+	CButton ProfileModeStatusArrivalsCheck;
+	CButton ProfileModeStatusNoFplCheck;
+	CButton ProfileModeStatusUncorrelatedCheck;
 	CStatic ProfileInfoPanel;
 	CStatic ProfileInfoHeader;
 	CStatic ProfileInfoBody;
@@ -455,7 +501,9 @@ private:
 
 	std::vector<StructuredTagColorRule> RuleBuffer;
 	std::vector<std::string> ProfileNames;
+	std::vector<CSMRRadar::DisplayModeSettings> ProfileModeBuffer;
 	int SelectedProfileListIndex = -1;
+	int SelectedProfileModeIndex = -1;
 	int SelectedRuleIndex = -1;
 	int SelectedRuleCriterionIndex = -1;
 	std::map<HTREEITEM, std::pair<int, int>> RuleTreeSelectionMap;
@@ -511,8 +559,13 @@ private:
 	void PopulateRuleTokenCombo(const std::string& source, const std::string& selectedToken);
 	void PopulateRuleConditionCombo(const std::string& source, const std::string& token, const std::string& selectedCondition);
 	void RebuildProfileList();
+	void RebuildProfileModeList(const std::string& preferredModeName = "");
 	void RefreshProfileControls();
+	void RefreshProfileModeControls();
 	std::string GetSelectedProfileName() const;
+	std::string GetSelectedProfileModeName() const;
+	bool ReadProfileDisplayModeFromControls(CSMRRadar::DisplayModeSettings& outSettings) const;
+	void ApplyProfileDisplayModeControlChanges();
 	std::string ReadComboText(CComboBox& combo) const;
 	void RebuildRulesList();
 	void SelectRuleNodeInTree(int ruleIndex, int criterionIndex);
