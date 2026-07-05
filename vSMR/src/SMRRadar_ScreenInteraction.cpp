@@ -996,6 +996,15 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
 				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
 				GetPlugIn()->AddPopupListElement("AVISO View", "", APPWINDOW_AVISO, false, int(avisoWindowVisible));
+				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
+			});
+		}
+
+		if (isObjectId("ModesMenu")) {
+			shiftPopupAreaDown(30);
+			openPopupListWithClose("Modes", [&]()
+			{
 				const std::string activeProfileName = GetActiveProfileNameForEditor();
 				if (!activeProfileName.empty())
 				{
@@ -1003,12 +1012,9 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 					const std::vector<DisplayModeSettings> displayModes = GetProfileDisplayModesForEditor(activeProfileName);
 					for (const DisplayModeSettings& displayMode : displayModes)
 					{
-						const std::string label = "Mode: " + displayMode.name;
-						GetPlugIn()->AddPopupListElement(label.c_str(), "", RIMCAS_UPDATE_DISPLAY_MODE, false, int(_stricmp(displayMode.name.c_str(), activeDisplayMode.c_str()) == 0));
+						GetPlugIn()->AddPopupListElement(displayMode.name.c_str(), "", RIMCAS_UPDATE_DISPLAY_MODE, false, int(_stricmp(displayMode.name.c_str(), activeDisplayMode.c_str()) == 0));
 					}
 				}
-				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
 			});
 		}
 
