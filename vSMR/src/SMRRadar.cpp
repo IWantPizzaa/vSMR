@@ -80,6 +80,25 @@ namespace
 		return left > right ? left : right;
 	}
 
+	double AvisoAirportGeometryAntialiasScale(int width, int height)
+	{
+		const double pixels = static_cast<double>(max(1, width)) * static_cast<double>(max(1, height));
+		if (pixels <= 6000000.0)
+			return 1.6;
+		if (pixels <= 12000000.0)
+			return 1.35;
+		return 1.15;
+	}
+
+	void ConfigureAvisoGeometryGraphics(Gdiplus::Graphics& graphics)
+	{
+		graphics.SetPageUnit(Gdiplus::UnitPixel);
+		graphics.SetSmoothingMode(Gdiplus::SmoothingModeHighQuality);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+		graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighQuality);
+		graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+	}
+
 	void DrawAntialiasedNovaSymbol(
 		Gdiplus::Graphics& graphics,
 		POINT center,
@@ -1111,11 +1130,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	if (rasterGraphics.GetLastStatus() != Ok)
 		return nullptr;
 
-	rasterGraphics.SetPageUnit(UnitPixel);
+	ConfigureAvisoGeometryGraphics(rasterGraphics);
 	rasterGraphics.Clear(Color(0, 0, 0, 0));
-	rasterGraphics.SetSmoothingMode(SmoothingModeAntiAlias);
-	rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
-	rasterGraphics.SetCompositingQuality(CompositingQualityHighSpeed);
 
 	const double displayMinLon = request.displayMinLongitude;
 	const double displayMaxLon = request.displayMaxLongitude;
@@ -1139,114 +1155,164 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			static_cast<REAL>(topY + (bottomY - topY) * v));
 	};
 
-	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
+	auto projectRasterPoint = [&](const AvisoPoint& coordinate, double scaleXFactor, double scaleYFactor) -> PointF
 	{
 		const PointF screenPoint = projectScreenPoint(coordinate.longitude, coordinate.latitude);
-		const double x = (static_cast<double>(screenPoint.X) - request.renderScreenLeft) * request.rasterScale;
-		const double y = (static_cast<double>(screenPoint.Y) - request.renderScreenTop) * request.rasterScale;
+		const double x = (static_cast<double>(screenPoint.X) - request.renderScreenLeft) * request.rasterScale * scaleXFactor;
+		const double y = (static_cast<double>(screenPoint.Y) - request.renderScreenTop) * request.rasterScale * scaleYFactor;
 		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
 	};
 
-	const double minRasterPointDistance = AvisoMax(0.35 * request.rasterScale, 0.5);
-	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
-	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
+	auto drawAirportGeometry = [&](Graphics& targetGraphics, double scaleXFactor, double scaleYFactor)
 	{
-		if (!force && hasLastCoordinate)
+		const double effectiveRasterScale = request.rasterScale * AvisoMin(scaleXFactor, scaleYFactor);
+		const double minRasterPointDistance = AvisoMax(0.25 * effectiveRasterScale, 0.35);
+		const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
+		auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
 		{
-			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * request.rasterScale;
-			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * request.rasterScale;
-			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
-				return;
-		}
-
-		const PointF point = projectRasterPoint(coordinate);
-		if (!force && !points.empty())
-		{
-			const PointF& lastPoint = points.back();
-			const double dx = static_cast<double>(point.X - lastPoint.X);
-			const double dy = static_cast<double>(point.Y - lastPoint.Y);
-			if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
-				return;
-		}
-
-		points.push_back(point);
-		lastCoordinate = coordinate;
-		hasLastCoordinate = true;
-	};
-
-	std::vector<PointF> rasterPoints;
-	for (const AvisoFeature& feature : *request.features)
-	{
-		if (feature.maxLatitude < request.renderMinLatitude ||
-			feature.minLatitude > request.renderMaxLatitude ||
-			feature.maxLongitude < request.renderMinLongitude ||
-			feature.minLongitude > request.renderMaxLongitude)
-		{
-			continue;
-		}
-
-		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX * request.rasterScale;
-		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * request.rasterScale;
-		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
-			continue;
-
-		if (feature.polygon)
-		{
-			for (const std::vector<AvisoPoint>& ring : feature.paths)
+			if (!force && hasLastCoordinate)
 			{
-				if (ring.size() < 3)
+				const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * request.rasterScale * scaleXFactor;
+				const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * request.rasterScale * scaleYFactor;
+				if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
+					return;
+			}
+
+			const PointF point = projectRasterPoint(coordinate, scaleXFactor, scaleYFactor);
+			if (!force && !points.empty())
+			{
+				const PointF& lastPoint = points.back();
+				const double dx = static_cast<double>(point.X - lastPoint.X);
+				const double dy = static_cast<double>(point.Y - lastPoint.Y);
+				if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
+					return;
+			}
+
+			points.push_back(point);
+			lastCoordinate = coordinate;
+			hasLastCoordinate = true;
+		};
+
+		std::vector<PointF> rasterPoints;
+		for (const AvisoFeature& feature : *request.features)
+		{
+			if (feature.maxLatitude < request.renderMinLatitude ||
+				feature.minLatitude > request.renderMaxLatitude ||
+				feature.maxLongitude < request.renderMinLongitude ||
+				feature.minLongitude > request.renderMaxLongitude)
+			{
+				continue;
+			}
+
+			const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX * request.rasterScale * scaleXFactor;
+			const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * request.rasterScale * scaleYFactor;
+			if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
+				continue;
+
+			if (feature.polygon)
+			{
+				for (const std::vector<AvisoPoint>& ring : feature.paths)
+				{
+					if (ring.size() < 3)
+						continue;
+
+					rasterPoints.clear();
+					rasterPoints.reserve(ring.size());
+					AvisoPoint lastCoordinate{};
+					bool hasLastCoordinate = false;
+					for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+						appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
+
+					if (rasterPoints.size() < 3)
+						continue;
+
+					if (feature.fillColor.GetAlpha() > 0)
+					{
+						SolidBrush fillBrush(feature.fillColor);
+						targetGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
+					}
+
+					if (feature.strokeColor.GetAlpha() > 0 &&
+						feature.strokeWidth > 0.0f &&
+						!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
+					{
+						Pen outlinePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(effectiveRasterScale));
+						outlinePen.SetLineJoin(LineJoinRound);
+						targetGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+					}
+				}
+				continue;
+			}
+
+			if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
+				continue;
+
+			Pen linePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(effectiveRasterScale));
+			linePen.SetLineJoin(LineJoinRound);
+			linePen.SetStartCap(LineCapRound);
+			linePen.SetEndCap(LineCapRound);
+			for (const std::vector<AvisoPoint>& line : feature.paths)
+			{
+				if (line.size() < 2)
 					continue;
 
 				rasterPoints.clear();
-				rasterPoints.reserve(ring.size());
+				rasterPoints.reserve(line.size());
 				AvisoPoint lastCoordinate{};
 				bool hasLastCoordinate = false;
-				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
-					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
+				for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
+					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
 
-				if (rasterPoints.size() < 3)
-					continue;
-
-				if (feature.fillColor.GetAlpha() > 0)
-				{
-					SolidBrush fillBrush(feature.fillColor);
-					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
-				}
-
-				if (feature.strokeColor.GetAlpha() > 0 &&
-					feature.strokeWidth > 0.0f &&
-					!AvisoColorsEqual(feature.fillColor, feature.strokeColor))
-				{
-					Pen outlinePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale));
-					outlinePen.SetLineJoin(LineJoinRound);
-					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
-				}
+				if (rasterPoints.size() >= 2)
+					targetGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
 			}
-			continue;
 		}
+	};
 
-		if (feature.strokeColor.GetAlpha() == 0 || feature.strokeWidth <= 0.0f)
-			continue;
-
-		Pen linePen(feature.strokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale));
-		linePen.SetLineJoin(LineJoinRound);
-		linePen.SetStartCap(LineCapRound);
-		linePen.SetEndCap(LineCapRound);
-		for (const std::vector<AvisoPoint>& line : feature.paths)
+	const double geometryAntialiasScale = AvisoAirportGeometryAntialiasScale(request.rasterWidth, request.rasterHeight);
+	if (geometryAntialiasScale > 1.01)
+	{
+		const int geometryWidth = max(request.rasterWidth, static_cast<int>(std::lround(static_cast<double>(request.rasterWidth) * geometryAntialiasScale)));
+		const int geometryHeight = max(request.rasterHeight, static_cast<int>(std::lround(static_cast<double>(request.rasterHeight) * geometryAntialiasScale)));
+		Bitmap geometryRaster(geometryWidth, geometryHeight, PixelFormat32bppPARGB);
+		Graphics geometryGraphics(&geometryRaster);
+		if (geometryRaster.GetLastStatus() == Ok && geometryGraphics.GetLastStatus() == Ok)
 		{
-			if (line.size() < 2)
-				continue;
+			ConfigureAvisoGeometryGraphics(geometryGraphics);
+			geometryGraphics.Clear(Color(0, 0, 0, 0));
+			const double scaleXFactor = static_cast<double>(geometryWidth) / static_cast<double>(max(1, request.rasterWidth));
+			const double scaleYFactor = static_cast<double>(geometryHeight) / static_cast<double>(max(1, request.rasterHeight));
+			drawAirportGeometry(geometryGraphics, scaleXFactor, scaleYFactor);
+			geometryGraphics.Flush(FlushIntentionFlush);
 
-			rasterPoints.clear();
-			rasterPoints.reserve(line.size());
-			AvisoPoint lastCoordinate{};
-			bool hasLastCoordinate = false;
-			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
-				appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
-
-			if (rasterPoints.size() >= 2)
-				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+			const GraphicsState downsampleState = rasterGraphics.Save();
+			rasterGraphics.SetCompositingMode(CompositingModeSourceCopy);
+			rasterGraphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+			rasterGraphics.SetPixelOffsetMode(PixelOffsetModeHalf);
+			rasterGraphics.SetCompositingQuality(CompositingQualityHighQuality);
+			const Status downsampleStatus = rasterGraphics.DrawImage(
+				&geometryRaster,
+				Rect(0, 0, request.rasterWidth, request.rasterHeight),
+				0,
+				0,
+				geometryWidth,
+				geometryHeight,
+				UnitPixel);
+			rasterGraphics.Restore(downsampleState);
+			if (downsampleStatus != Ok)
+			{
+				rasterGraphics.Clear(Color(0, 0, 0, 0));
+				drawAirportGeometry(rasterGraphics, 1.0, 1.0);
+			}
 		}
+		else
+		{
+			drawAirportGeometry(rasterGraphics, 1.0, 1.0);
+		}
+	}
+	else
+	{
+		drawAirportGeometry(rasterGraphics, 1.0, 1.0);
 	}
 
 	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
@@ -1305,7 +1371,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			}
 
 			const REAL labelEmSize = getLabelEmSize(label.textSize);
-			const PointF labelPoint = projectRasterPoint(label.position);
+			const PointF labelPoint = projectRasterPoint(label.position, 1.0, 1.0);
 			const REAL textLength = static_cast<REAL>(label.text.length());
 			const REAL scaledTextSize = static_cast<REAL>(label.textSize * static_cast<float>(request.rasterScale));
 			const REAL haloPadding = static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale), 0.0) * 3.0);
