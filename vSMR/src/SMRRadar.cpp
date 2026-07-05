@@ -6522,22 +6522,19 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	AddScreenObject(RIMCAS_ACTIVE_PROFILE, "ActiveProfile", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(activeProfileName.c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(activeProfileName.c_str()).cy }, false, "Active profile");
 
 	offset += dc.GetTextExtent(activeProfileName.c_str()).cx + 10;
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Display");
-	AddScreenObject(RIMCAS_MENU, "DisplayMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Display").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Display").cy }, false, "Display menu");
+	auto drawToolbarMenuItem = [&](const char* label, const char* objectId, const char* tooltip)
+	{
+		const CSize labelSize = dc.GetTextExtent(label);
+		dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, label);
+		AddScreenObject(RIMCAS_MENU, objectId, { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + labelSize.cx, ToolBarAreaTop.top + 4 + labelSize.cy }, false, tooltip);
+		offset += labelSize.cx + 10;
+	};
+	drawToolbarMenuItem("Display", "DisplayMenu", "Display menu");
+	drawToolbarMenuItem("Modes", "ModesMenu", "Modes menu");
+	drawToolbarMenuItem("Target", "TargetMenu", "Target menu");
+	drawToolbarMenuItem("Colours", "ColourMenu", "Colour menu");
+	drawToolbarMenuItem("Alerts", "RIMCASMenu", "RIMCAS menu");
 
-	offset += dc.GetTextExtent("Display").cx + 10;
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Target");
-	AddScreenObject(RIMCAS_MENU, "TargetMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Target").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Target").cy }, false, "Target menu");
-
-	offset += dc.GetTextExtent("Target").cx + 10;
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Colours");
-	AddScreenObject(RIMCAS_MENU, "ColourMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Colour").cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent("Colour").cy }, false, "Colour menu");
-
-	offset += dc.GetTextExtent("Colours").cx + 10;
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "Alerts");
-	AddScreenObject(RIMCAS_MENU, "RIMCASMenu", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("Alerts").cx, ToolBarAreaTop.top + 4 + +dc.GetTextExtent("Alerts").cy }, false, "RIMCAS menu");
-
-	offset += dc.GetTextExtent("Alerts").cx + 10;
 	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "/");
 	CRect barDistanceRect = { ToolBarAreaTop.left + offset - 2, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("/").cx, ToolBarAreaTop.top + 4 + +dc.GetTextExtent("/").cy };
 	if (DistanceToolActive)
