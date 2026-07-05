@@ -20,6 +20,8 @@ namespace
 	constexpr int kAvisoMinLayoutWidth = 300;
 	constexpr int kAvisoMinLayoutHeight = 120;
 
+	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
+
 	double ClampAvisoLatitude(double latitude)
 	{
 		return std::clamp(latitude, -85.0, 85.0);
@@ -98,21 +100,91 @@ namespace
 		return std::clamp(y, minY, maxY);
 	}
 
-	bool IsAvisoVerticalSplit(CInsetWindow::AvisoLayoutMode mode)
+	bool IsAvisoVerticalSplit(AvisoLayoutMode mode)
 	{
-		return mode == CInsetWindow::AvisoLayoutMode::SplitLeft ||
-			mode == CInsetWindow::AvisoLayoutMode::SplitRight;
+		return mode == AvisoLayoutMode::SplitLeft ||
+			mode == AvisoLayoutMode::SplitRight;
 	}
 
-	bool IsAvisoHorizontalSplit(CInsetWindow::AvisoLayoutMode mode)
+	bool IsAvisoHorizontalSplit(AvisoLayoutMode mode)
 	{
-		return mode == CInsetWindow::AvisoLayoutMode::SplitTop ||
-			mode == CInsetWindow::AvisoLayoutMode::SplitBottom;
+		return mode == AvisoLayoutMode::SplitTop ||
+			mode == AvisoLayoutMode::SplitBottom;
 	}
 
-	bool IsAvisoSplitLayout(CInsetWindow::AvisoLayoutMode mode)
+	bool IsAvisoSplitLayout(AvisoLayoutMode mode)
 	{
 		return IsAvisoVerticalSplit(mode) || IsAvisoHorizontalSplit(mode);
+	}
+
+	CRect DefaultAvisoSplitRect(AvisoLayoutMode mode, const CRect& bounds)
+	{
+		const int midX = (bounds.left + bounds.right) / 2;
+		const int midY = (bounds.top + bounds.bottom) / 2;
+
+		switch (mode)
+		{
+		case AvisoLayoutMode::SplitLeft:
+			return CRect(bounds.left, bounds.top, midX, bounds.bottom);
+		case AvisoLayoutMode::SplitRight:
+			return CRect(midX, bounds.top, bounds.right, bounds.bottom);
+		case AvisoLayoutMode::SplitTop:
+			return CRect(bounds.left, bounds.top, bounds.right, midY);
+		case AvisoLayoutMode::SplitBottom:
+			return CRect(bounds.left, midY, bounds.right, bounds.bottom);
+		default:
+			return CRect(0, 0, 0, 0);
+		}
+	}
+
+	bool ResizeAvisoSplitRectToPoint(AvisoLayoutMode mode, POINT Pt, const CRect& bounds, RECT& area)
+	{
+		switch (mode)
+		{
+		case AvisoLayoutMode::SplitLeft:
+		{
+			const int dividerX = ClampAvisoDividerX(Pt.x, bounds);
+			area = { bounds.left, bounds.top, dividerX, bounds.bottom };
+			return true;
+		}
+		case AvisoLayoutMode::SplitRight:
+		{
+			const int dividerX = ClampAvisoDividerX(Pt.x, bounds);
+			area = { dividerX, bounds.top, bounds.right, bounds.bottom };
+			return true;
+		}
+		case AvisoLayoutMode::SplitTop:
+		{
+			const int dividerY = ClampAvisoDividerY(Pt.y, bounds);
+			area = { bounds.left, bounds.top, bounds.right, dividerY };
+			return true;
+		}
+		case AvisoLayoutMode::SplitBottom:
+		{
+			const int dividerY = ClampAvisoDividerY(Pt.y, bounds);
+			area = { bounds.left, dividerY, bounds.right, bounds.bottom };
+			return true;
+		}
+		default:
+			return false;
+		}
+	}
+
+	CRect AvisoSplitDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
+	{
+		if (IsAvisoVerticalSplit(mode))
+		{
+			const int dividerX = (mode == AvisoLayoutMode::SplitLeft) ? viewportRect.right : viewportRect.left;
+			return CRect(dividerX - 3, viewportRect.top, dividerX + 3, viewportRect.bottom);
+		}
+
+		if (IsAvisoHorizontalSplit(mode))
+		{
+			const int dividerY = (mode == AvisoLayoutMode::SplitTop) ? viewportRect.bottom : viewportRect.top;
+			return CRect(viewportRect.left, dividerY - 3, viewportRect.right, dividerY + 3);
+		}
+
+		return CRect(0, 0, 0, 0);
 	}
 
 	std::string AvisoTagTypeKey(CSMRRadar::TagTypes type)
@@ -552,39 +624,31 @@ void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 	const bool nearCornerRight = Pt.x >= bounds.right - kAvisoCornerSnapThresholdPx;
 	const bool nearCornerTop = Pt.y <= bounds.top + kAvisoCornerSnapThresholdPx;
 	const bool nearCornerBottom = Pt.y >= bounds.bottom - kAvisoCornerSnapThresholdPx;
-	const int midX = (bounds.left + bounds.right) / 2;
-	const int midY = (bounds.top + bounds.bottom) / 2;
-
+	AvisoLayoutMode snappedMode = AvisoLayoutMode::Floating;
 	if (nearCornerLeft && nearCornerTop)
-		m_AvisoLayoutMode = AvisoLayoutMode::CornerTopLeft;
+		snappedMode = AvisoLayoutMode::CornerTopLeft;
 	else if (nearCornerRight && nearCornerTop)
-		m_AvisoLayoutMode = AvisoLayoutMode::CornerTopRight;
+		snappedMode = AvisoLayoutMode::CornerTopRight;
 	else if (nearCornerLeft && nearCornerBottom)
-		m_AvisoLayoutMode = AvisoLayoutMode::CornerBottomLeft;
+		snappedMode = AvisoLayoutMode::CornerBottomLeft;
 	else if (nearCornerRight && nearCornerBottom)
-		m_AvisoLayoutMode = AvisoLayoutMode::CornerBottomRight;
+		snappedMode = AvisoLayoutMode::CornerBottomRight;
 	else if (nearLeft)
-	{
-		m_AvisoLayoutMode = AvisoLayoutMode::SplitLeft;
-		m_Area = { bounds.left, bounds.top, midX, bounds.bottom };
-	}
+		snappedMode = AvisoLayoutMode::SplitLeft;
 	else if (nearRight)
-	{
-		m_AvisoLayoutMode = AvisoLayoutMode::SplitRight;
-		m_Area = { midX, bounds.top, bounds.right, bounds.bottom };
-	}
+		snappedMode = AvisoLayoutMode::SplitRight;
 	else if (nearTop)
-	{
-		m_AvisoLayoutMode = AvisoLayoutMode::SplitTop;
-		m_Area = { bounds.left, bounds.top, bounds.right, midY };
-	}
+		snappedMode = AvisoLayoutMode::SplitTop;
 	else if (nearBottom)
+		snappedMode = AvisoLayoutMode::SplitBottom;
+
+	m_AvisoLayoutMode = snappedMode;
+	if (IsAvisoSplitLayout(snappedMode))
 	{
-		m_AvisoLayoutMode = AvisoLayoutMode::SplitBottom;
-		m_Area = { bounds.left, midY, bounds.right, bounds.bottom };
+		CRect splitRect = DefaultAvisoSplitRect(snappedMode, bounds);
+		if (!splitRect.IsRectEmpty())
+			m_Area = splitRect;
 	}
-	else
-		m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 
 	ApplyAvisoLayoutBounds(layoutBounds);
 }
@@ -776,26 +840,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		if (bounds.IsRectEmpty())
 			return true;
 
-		if (m_AvisoLayoutMode == AvisoLayoutMode::SplitLeft)
-		{
-			const int dividerX = ClampAvisoDividerX(Pt.x, bounds);
-			m_Area = { bounds.left, bounds.top, dividerX, bounds.bottom };
-		}
-		else if (m_AvisoLayoutMode == AvisoLayoutMode::SplitRight)
-		{
-			const int dividerX = ClampAvisoDividerX(Pt.x, bounds);
-			m_Area = { dividerX, bounds.top, bounds.right, bounds.bottom };
-		}
-		else if (m_AvisoLayoutMode == AvisoLayoutMode::SplitTop)
-		{
-			const int dividerY = ClampAvisoDividerY(Pt.y, bounds);
-			m_Area = { bounds.left, bounds.top, bounds.right, dividerY };
-		}
-		else if (m_AvisoLayoutMode == AvisoLayoutMode::SplitBottom)
-		{
-			const int dividerY = ClampAvisoDividerY(Pt.y, bounds);
-			m_Area = { bounds.left, dividerY, bounds.right, bounds.bottom };
-		}
+		ResizeAvisoSplitRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area);
 
 		return Released;
 	}
@@ -1095,19 +1140,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
 
-			if (IsAvisoVerticalSplit(m_AvisoLayoutMode))
+			CRect dividerRect = AvisoSplitDividerRect(m_AvisoLayoutMode, viewportRect);
+			if (!dividerRect.IsRectEmpty())
 			{
-				const int dividerX = (m_AvisoLayoutMode == AvisoLayoutMode::SplitLeft) ? viewportRect.right : viewportRect.left;
-				CRect dividerRect(dividerX - 3, viewportRect.top, dividerX + 3, viewportRect.bottom);
-				CBrush dividerBrush(RGB(105, 105, 105));
-				dc.FillRect(dividerRect, &dividerBrush);
-				dc.Draw3dRect(dividerRect, RGB(70, 70, 70), RGB(150, 150, 150));
-				radar_screen->AddScreenObject(m_Id, "divider", dividerRect, true, "");
-			}
-			else if (IsAvisoHorizontalSplit(m_AvisoLayoutMode))
-			{
-				const int dividerY = (m_AvisoLayoutMode == AvisoLayoutMode::SplitTop) ? viewportRect.bottom : viewportRect.top;
-				CRect dividerRect(viewportRect.left, dividerY - 3, viewportRect.right, dividerY + 3);
 				CBrush dividerBrush(RGB(105, 105, 105));
 				dc.FillRect(dividerRect, &dividerBrush);
 				dc.Draw3dRect(dividerRect, RGB(70, 70, 70), RGB(150, 150, 150));
