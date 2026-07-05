@@ -12,6 +12,8 @@ extern HWND pluginWindow;
 
 namespace
 {
+	constexpr int kAvisoViewportTopBarHeight = 15;
+
 	bool IsAppWindowObjectType(int objectType)
 	{
 		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
@@ -70,6 +72,7 @@ namespace
 		CRect chatArea(radar->GetChatArea());
 		radarArea.NormalizeRect();
 		chatArea.NormalizeRect();
+		radarArea.top += kAvisoViewportTopBarHeight;
 		if (!chatArea.IsRectEmpty())
 			radarArea.bottom = chatArea.top;
 		radarArea.NormalizeRect();
@@ -785,22 +788,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
-		if (appWindow != nullptr && appWindow->IsAvisoViewport())
-		{
-			if (isObjectId("lock"))
-			{
-				appWindow->m_AvisoLayoutLocked = !appWindow->m_AvisoLayoutLocked;
-				RequestRefresh();
-				return;
-			}
-			if (isObjectId("reset"))
-			{
-				CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
-				appWindow->ResetAvisoLayout(&avisoLayoutBounds);
-				RequestRefresh();
-				return;
-			}
-		}
 		if (isObjectId("close"))
 		{
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
