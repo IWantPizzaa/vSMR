@@ -2,7 +2,9 @@
 #include "InsetWindow.h"
 #include "SMRRadar.hpp"
 #include "SMRGroundState.hpp"
+#include "SMRTagColorRules.hpp"
 #include "SMRTagDefinitionUtils.hpp"
+#include "SMRVacdmTagHelpers.hpp"
 #include <chrono>
 #include <future>
 
@@ -115,6 +117,229 @@ namespace
 		if (type == CSMRRadar::TagTypes::Uncorrelated)
 			return "uncorrelated";
 		return "airborne";
+	}
+
+	bool AvisoStructuredRuleContextMatches(const StructuredTagColorRule& rule, const std::string& tagTypeKey, const char* statusDefinitionKey, bool isTagDetailed)
+	{
+		const std::string currentType = ToLowerAsciiCopy(tagTypeKey);
+		const std::string currentStatus = statusDefinitionKey != nullptr ? ToLowerAsciiCopy(statusDefinitionKey) : "default";
+		const std::string currentDetail = isTagDetailed ? "detailed" : "normal";
+
+		auto matchesField = [](const std::string& value, const std::string& current) -> bool
+		{
+			const std::string normalized = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(value));
+			if (normalized.empty() || normalized == "any" || normalized == "all" || normalized == "*")
+				return true;
+			return normalized == current;
+		};
+
+		return matchesField(rule.tagType, currentType) &&
+			matchesField(rule.status, currentStatus) &&
+			matchesField(rule.detail, currentDetail);
+	}
+
+	bool AvisoCustomRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualValueRaw)
+	{
+		const std::string actualNormalized = NormalizeSidMatchText(actualValueRaw);
+		const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
+		const std::string expectedLower = ToLowerAsciiCopy(expectedTrimmed);
+
+		if (expectedLower.empty() || expectedLower == "any" || expectedLower == "*" || expectedLower == "all")
+			return !actualNormalized.empty();
+		if (expectedLower == "set" || expectedLower == "present" || expectedLower == "available")
+			return !actualNormalized.empty();
+		if (expectedLower == "missing" || expectedLower == "unset" || expectedLower == "none" || expectedLower == "empty")
+			return actualNormalized.empty();
+
+		bool invert = false;
+		std::string listText = expectedTrimmed;
+		if (expectedLower.rfind("not_in:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(7);
+		}
+		else if (expectedLower.rfind("notin:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(6);
+		}
+		else if (expectedLower.rfind("not:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(4);
+		}
+		else if (expectedLower.rfind("in:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(3);
+		}
+		else if (expectedLower.rfind("list:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(5);
+		}
+		else if (expectedLower.rfind("sid:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(4);
+		}
+
+		auto matchesSinglePattern = [&](const std::string& rawPattern) -> bool
+		{
+			const std::string pattern = NormalizeSidMatchText(rawPattern);
+			if (pattern.empty() || actualNormalized.empty())
+				return false;
+			if (actualNormalized == pattern)
+				return true;
+			if (actualNormalized.size() >= pattern.size() && actualNormalized.compare(0, pattern.size(), pattern) == 0)
+				return true;
+			return false;
+		};
+
+		bool anyPattern = false;
+		bool anyMatch = false;
+		std::string token;
+		for (size_t i = 0; i <= listText.size(); ++i)
+		{
+			const char ch = (i < listText.size()) ? listText[i] : ',';
+			if (ch == ',' || ch == ';' || ch == '|')
+			{
+				const std::string trimmedToken = TrimAsciiWhitespaceCopy(token);
+				token.clear();
+				if (trimmedToken.empty())
+					continue;
+				anyPattern = true;
+				if (matchesSinglePattern(trimmedToken))
+				{
+					anyMatch = true;
+					if (!invert)
+						return true;
+				}
+				continue;
+			}
+			token.push_back(ch);
+		}
+
+		if (!anyPattern)
+			anyMatch = matchesSinglePattern(listText);
+
+		if (!invert)
+			return anyMatch;
+		if (actualNormalized.empty())
+			return false;
+		return !anyMatch;
+	}
+
+	VacdmColorRuleOverrides EvaluateAvisoStructuredTagColorRules(
+		const std::vector<StructuredTagColorRule>& rules,
+		const std::string& tagTypeKey,
+		const char* statusDefinitionKey,
+		bool isTagDetailed,
+		const std::map<std::string, std::string>& replacingMap,
+		const VacdmPilotData* pilotData)
+	{
+		VacdmColorRuleOverrides overrides;
+		for (const StructuredTagColorRule& rule : rules)
+		{
+			if (!AvisoStructuredRuleContextMatches(rule, tagTypeKey, statusDefinitionKey, isTagDetailed))
+				continue;
+
+			auto criterionMatches = [&](const std::string& sourceText, const std::string& token, const std::string& condition) -> bool
+			{
+				const std::string source = ToLowerAsciiCopy(sourceText);
+				if (source == "runway")
+				{
+					std::string actualRunway;
+					auto it = replacingMap.find(token);
+					if (it != replacingMap.end())
+						actualRunway = it->second;
+					return RunwayRuleConditionMatches(condition, actualRunway);
+				}
+				if (source == "custom")
+				{
+					std::string actualValue;
+					auto it = replacingMap.find(token);
+					if (it != replacingMap.end())
+						actualValue = it->second;
+					return AvisoCustomRuleConditionMatches(condition, actualValue);
+				}
+
+				const std::string actualState = ResolveVacdmRuleStateName(token, pilotData);
+				return VacdmRuleStateMatches(condition, actualState);
+			};
+
+			bool ruleMatches = true;
+			if (!rule.criteria.empty())
+			{
+				for (const StructuredTagColorRule::Criterion& criterion : rule.criteria)
+				{
+					if (!criterionMatches(criterion.source, criterion.token, criterion.condition))
+					{
+						ruleMatches = false;
+						break;
+					}
+				}
+			}
+			else
+			{
+				ruleMatches = criterionMatches(rule.source, rule.token, rule.condition);
+			}
+
+			if (!ruleMatches)
+				continue;
+
+			if (rule.applyTarget)
+			{
+				overrides.hasTargetColor = true;
+				overrides.targetR = rule.targetR;
+				overrides.targetG = rule.targetG;
+				overrides.targetB = rule.targetB;
+				overrides.targetA = rule.targetA;
+			}
+			if (rule.applyTag)
+			{
+				overrides.hasTagColor = true;
+				overrides.tagR = rule.tagR;
+				overrides.tagG = rule.tagG;
+				overrides.tagB = rule.tagB;
+				overrides.tagA = rule.tagA;
+			}
+			if (rule.applyText)
+			{
+				overrides.hasTextColor = true;
+				overrides.textR = rule.textR;
+				overrides.textG = rule.textG;
+				overrides.textB = rule.textB;
+				overrides.textA = rule.textA;
+			}
+		}
+
+		return overrides;
+	}
+
+	void MergeAvisoColorRuleOverrides(VacdmColorRuleOverrides& target, const VacdmColorRuleOverrides& source)
+	{
+		if (source.hasTargetColor)
+		{
+			target.hasTargetColor = true;
+			target.targetR = source.targetR;
+			target.targetG = source.targetG;
+			target.targetB = source.targetB;
+			target.targetA = source.targetA;
+		}
+		if (source.hasTagColor)
+		{
+			target.hasTagColor = true;
+			target.tagR = source.tagR;
+			target.tagG = source.tagG;
+			target.tagB = source.tagB;
+			target.tagA = source.tagA;
+		}
+		if (source.hasTextColor)
+		{
+			target.hasTextColor = true;
+			target.textR = source.textR;
+			target.textG = source.textG;
+			target.textB = source.textB;
+			target.textA = source.textA;
+		}
 	}
 
 	double AvisoFinitePositive(double value, double fallback, double minValue, double maxValue)
@@ -1329,6 +1554,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Value* labelsSection = getProfileObjectSection("labels");
 		const Value* rimcasSection = getProfileObjectSection("rimcas");
 		const Value* targetsConfig = getProfileObjectSection("targets");
+		const std::vector<StructuredTagColorRule>& structuredTagRules = radar_screen->GetStructuredTagColorRules();
 		const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
 		const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 		const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
@@ -2043,6 +2269,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			addClickableToken("scratchpad", TAG_CITEM_SCRATCHPAD);
 
 			std::string definitionTypeKey = AvisoTagTypeKey(tagType);
+			std::string ruleTagTypeKey = definitionTypeKey;
 			const char* statusDefinitionKey = nullptr;
 			const auto actypeIt = tagReplacingMap.find("actype");
 			const bool noFlightPlanTag = (actypeIt != tagReplacingMap.end() && actypeIt->second == "NoFPL");
@@ -2060,6 +2287,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					airborneArrival = true;
 				}
 				definitionTypeKey = airborneArrival ? "arrival" : "departure";
+				ruleTagTypeKey = definitionTypeKey;
 				statusDefinitionKey = airborneArrival
 					? (isOnRunway ? "airarr_onrunway" : "airarr")
 					: (isOnRunway ? "airdep_onrunway" : "airdep");
@@ -2096,6 +2324,26 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					definitionLines = &getCachedDefinitionLines(definitionTypeKey, "default");
 			}
 
+			std::vector<VacdmColorRuleDefinition> vacdmTagColorRules;
+			std::vector<RunwayColorRuleDefinition> runwayTagColorRules;
+			CollectVacdmColorRulesFromLineTexts(*definitionLines, vacdmTagColorRules);
+			CollectRunwayColorRulesFromLineTexts(*definitionLines, runwayTagColorRules);
+
+			VacdmPilotData vacdmRulePilotData;
+			const bool hasVacdmRulePilotData = TryGetVacdmPilotDataForTarget(rt, fp, vacdmRulePilotData);
+			VacdmColorRuleOverrides tagColorRuleOverrides =
+				EvaluateVacdmColorRules(vacdmTagColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
+			MergeAvisoColorRuleOverrides(tagColorRuleOverrides, EvaluateRunwayColorRules(runwayTagColorRules, tagReplacingMap));
+			MergeAvisoColorRuleOverrides(
+				tagColorRuleOverrides,
+				EvaluateAvisoStructuredTagColorRules(
+					structuredTagRules,
+					ruleTagTypeKey,
+					statusDefinitionKey,
+					false,
+					tagReplacingMap,
+					hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr));
+
 			struct RenderedTagElement
 			{
 				std::string token;
@@ -2126,6 +2374,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				{
 					DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawElement);
 					const std::string baseToken = styledToken.token.empty() ? rawElement : styledToken.token;
+					VacdmColorRuleDefinition vacdmRuleToken;
+					if (TryParseVacdmColorRuleToken(baseToken, vacdmRuleToken))
+						continue;
+					RunwayColorRuleDefinition runwayRuleToken;
+					if (TryParseRunwayColorRuleToken(baseToken, runwayRuleToken))
+						continue;
+
 					string element;
 					string clearanceNotClearedText;
 					string clearanceClearedText;
@@ -2265,9 +2520,108 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				{
 					definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_no_sid_color", "nosid_color", definedBackgroundColor);
 				}
+
+				if (colorTagLabelSection != nullptr)
+				{
+					GroundStateCategory departureStatus = GroundStateCategory::Unknown;
+					if (fp.IsValid())
+						departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, isOnRunway);
+
+					const char* statusColorKey = nullptr;
+					const char* legacyStatusColorKey = nullptr;
+					switch (departureStatus)
+					{
+					case GroundStateCategory::Taxi:
+						statusColorKey = "background_taxi_color";
+						legacyStatusColorKey = "taxi";
+						break;
+					case GroundStateCategory::Push:
+						statusColorKey = "background_push_color";
+						legacyStatusColorKey = "push";
+						break;
+					case GroundStateCategory::Stup:
+						statusColorKey = "background_startup_color";
+						legacyStatusColorKey = "stup";
+						break;
+					case GroundStateCategory::Depa:
+						statusColorKey = "background_departure_color";
+						legacyStatusColorKey = "depa";
+						break;
+					default:
+						statusColorKey = "background_no_status_color";
+						legacyStatusColorKey = "nsts";
+						break;
+					}
+
+					if (statusColorKey != nullptr &&
+						colorTagLabelSection->HasMember(statusColorKey) &&
+						(*colorTagLabelSection)[statusColorKey].IsObject())
+					{
+						definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor((*colorTagLabelSection)[statusColorKey]);
+					}
+					else if (legacyStatusColorKey != nullptr &&
+						colorTagLabelSection->HasMember("status_background_colors") &&
+						(*colorTagLabelSection)["status_background_colors"].IsObject() &&
+						(*colorTagLabelSection)["status_background_colors"].HasMember(legacyStatusColorKey) &&
+						(*colorTagLabelSection)["status_background_colors"][legacyStatusColorKey].IsObject())
+					{
+						definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor((*colorTagLabelSection)["status_background_colors"][legacyStatusColorKey]);
+					}
+				}
 			}
 			if (noFlightPlanTag && colorTagLabelSection != nullptr)
 				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_no_fpl_color", "nofpl_color", definedBackgroundColor);
+
+			if (tagType == CSMRRadar::TagTypes::Airborne && fp.IsValid() && isCorrelated)
+			{
+				bool airborneDeparture = true;
+				if (fpOrigin != nullptr && fpOrigin[0] != '\0' && !activeAirport.empty())
+					airborneDeparture = (_stricmp(fpOrigin, activeAirport.c_str()) == 0);
+
+				const char* runwaySectionKey = airborneDeparture ? "departure" : "arrival";
+				if (labelsSection != nullptr &&
+					labelsSection->HasMember(runwaySectionKey) &&
+					(*labelsSection)[runwaySectionKey].IsObject())
+				{
+					const Value& runwaySection = (*labelsSection)[runwaySectionKey];
+					if (runwaySection.HasMember("background_airborne_color") && runwaySection["background_airborne_color"].IsObject())
+						definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(runwaySection["background_airborne_color"]);
+					if (runwaySection.HasMember("text_airborne_color") && runwaySection["text_airborne_color"].IsObject())
+						definedTextColor = radar_screen->CurrentConfig->getConfigColor(runwaySection["text_airborne_color"]);
+
+					if (runwaySection.HasMember("background_on_runway_color") && runwaySection["background_on_runway_color"].IsObject())
+						definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(runwaySection["background_on_runway_color"]);
+					else if (airborneDeparture && runwaySection.HasMember("on_runway_color") && runwaySection["on_runway_color"].IsObject())
+						definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(runwaySection["on_runway_color"]);
+					else if (runwaySection.HasMember("background_color_on_runway") && runwaySection["background_color_on_runway"].IsObject())
+						definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(runwaySection["background_color_on_runway"]);
+				}
+				else if (labelsSection != nullptr &&
+					labelsSection->HasMember("airborne") &&
+					(*labelsSection)["airborne"].IsObject())
+				{
+					const Value& airborneLabel = (*labelsSection)["airborne"];
+					const char* bgKey = airborneDeparture ? "departure_background_color" : "arrival_background_color";
+					const char* textKey = airborneDeparture ? "departure_text_color" : "arrival_text_color";
+					const char* bgOnRunwayKey = airborneDeparture ? "departure_background_color_on_runway" : "arrival_background_color_on_runway";
+					if (airborneLabel.HasMember(bgKey) && airborneLabel[bgKey].IsObject())
+						definedBackgroundColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[bgKey]);
+					if (airborneLabel.HasMember(textKey) && airborneLabel[textKey].IsObject())
+						definedTextColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[textKey]);
+					if (airborneLabel.HasMember(bgOnRunwayKey) && airborneLabel[bgOnRunwayKey].IsObject())
+						definedBackgroundOnRunwayColor = radar_screen->CurrentConfig->getConfigColor(airborneLabel[bgOnRunwayKey]);
+				}
+			}
+
+			if (tagColorRuleOverrides.hasTagColor)
+			{
+				definedBackgroundColor = Color(tagColorRuleOverrides.tagA, tagColorRuleOverrides.tagR, tagColorRuleOverrides.tagG, tagColorRuleOverrides.tagB);
+				definedBackgroundOnRunwayColor = definedBackgroundColor;
+			}
+			if (tagColorRuleOverrides.hasTextColor)
+			{
+				definedTextColor = Color(tagColorRuleOverrides.textA, tagColorRuleOverrides.textR, tagColorRuleOverrides.textG, tagColorRuleOverrides.textB);
+			}
 
 			Color tagBackgroundColor = definedBackgroundColor;
 			if (radar_screen->RimcasInstance != nullptr)
@@ -2286,6 +2640,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 						definedBackgroundOnRunwayColor);
 				}
 			}
+			if (radar_screen->ColorManager != nullptr)
+				tagBackgroundColor = radar_screen->ColorManager->get_corrected_color("label", tagBackgroundColor);
 
 			CRect tagBackgroundRect(
 				tagCenter.x - (tagWidth / 2),
