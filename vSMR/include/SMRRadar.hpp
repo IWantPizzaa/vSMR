@@ -373,7 +373,7 @@ public:
 	void EnsureRunwayGeometryCache();
 	void RefreshRunwayStatuses(bool force);
 
-	inline string getActiveAirport() {
+	inline string getActiveAirport() const {
 		return ActiveAirport;
 	}
 
@@ -411,12 +411,39 @@ public:
 	{
 		bool proModeEnabled = false;
 		bool acceptPilotSquawk = true;
-		const Value* blockedAutoCorrelateSquawks = nullptr;
+		std::vector<std::string> blockedAutoCorrelateSquawks;
+	};
+
+	struct DisplayModeStatusVisibility
+	{
+		bool noStatus = true;
+		bool push = true;
+		bool startup = true;
+		bool taxi = true;
+		bool departure = true;
+		bool onRunway = true;
+		bool airborne = true;
+		bool arrivals = true;
+		bool noFlightPlan = true;
+		bool uncorrelated = true;
+	};
+
+	struct DisplayModeSettings
+	{
+		std::string name = "Normal";
+		bool requireAssignedSquawk = false;
+		bool acceptPilotSquawk = true;
+		std::vector<std::string> blockedAutoCorrelateSquawks;
+		bool towerFilter = false;
+		bool structuredRulesEnabled = true;
+		DisplayModeStatusVisibility statuses;
 	};
 
 	CorrelationSettings BuildCorrelationSettings() const;
 	bool IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const CorrelationSettings& settings) const;
 	virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt);
+	DisplayModeSettings GetActiveDisplayModeSettings() const;
+	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget rt, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings) const;
 
 	//---CorrelateCursor--------------------------------------------
 
@@ -456,10 +483,13 @@ public:
 	void WriteLastActiveProfileToConfig(const std::string& profileName) const;
 	static void RememberSessionActiveProfile(const std::string& profileName);
 	static std::string GetSessionActiveProfile(const std::string& fallbackProfile);
-	bool GetProfileProModeEnabledForEditor(const std::string& name, bool& outEnabled) const;
-	bool SetProfileProModeEnabledForEditor(const std::string& name, bool enabled);
-	bool GetProfileTowerModeEnabledForEditor(const std::string& name, bool& outEnabled) const;
-	bool SetProfileTowerModeEnabledForEditor(const std::string& name, bool enabled);
+	std::vector<DisplayModeSettings> GetProfileDisplayModesForEditor(const std::string& profileName) const;
+	std::string GetActiveProfileDisplayModeForEditor(const std::string& profileName) const;
+	bool SetProfileDisplayModeActiveForEditor(const std::string& profileName, const std::string& modeName);
+	bool AddProfileDisplayModeForEditor(const std::string& profileName, const std::string& requestedName, bool duplicateSelectedMode, const std::string& selectedModeName, std::string* outCreatedName = nullptr);
+	bool RenameProfileDisplayModeForEditor(const std::string& profileName, const std::string& oldName, const std::string& newName);
+	bool DeleteProfileDisplayModeForEditor(const std::string& profileName, const std::string& modeName);
+	bool UpdateProfileDisplayModeForEditor(const std::string& profileName, const DisplayModeSettings& settings);
 	bool AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName = nullptr);
 	bool RenameProfileForEditor(const std::string& oldName, const std::string& newName);
 	bool DeleteProfileForEditor(const std::string& name);

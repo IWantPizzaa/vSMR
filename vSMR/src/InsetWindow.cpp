@@ -1666,7 +1666,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Value* labelsSection = getProfileObjectSection("labels");
 		const Value* rimcasSection = getProfileObjectSection("rimcas");
 		const Value* targetsConfig = getProfileObjectSection("targets");
-		const std::vector<StructuredTagColorRule>& structuredTagRules = radar_screen->GetStructuredTagColorRules();
+		const CSMRRadar::DisplayModeSettings displayModeSettings = radar_screen->GetActiveDisplayModeSettings();
+		static const std::vector<StructuredTagColorRule> emptyStructuredTagRules;
+		const std::vector<StructuredTagColorRule>& structuredTagRules =
+			displayModeSettings.structuredRulesEnabled ? radar_screen->GetStructuredTagColorRules() : emptyStructuredTagRules;
 		const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
 		const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 		const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
@@ -1686,34 +1689,12 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return fallbackColor;
 		};
 
-		bool tagProModeEnabled = false;
-		bool tagTowerModeEnabled = false;
+		bool tagProModeEnabled = displayModeSettings.requireAssignedSquawk;
+		bool tagTowerModeEnabled = displayModeSettings.towerFilter;
 		bool useAspeedForGate = false;
 		bool airborneUseDepartureArrivalColoring = false;
 		if (activeProfile.IsObject())
 		{
-			if (activeProfile.HasMember("filters") &&
-				activeProfile["filters"].IsObject())
-			{
-				const Value& filters = activeProfile["filters"];
-				if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
-				{
-					const Value& proMode = filters["pro_mode"];
-					if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-						tagProModeEnabled = proMode["enabled"].GetBool();
-					else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-						tagProModeEnabled = proMode["enable"].GetBool();
-				}
-				if (filters.HasMember("tower_mode") && filters["tower_mode"].IsObject())
-				{
-					const Value& towerMode = filters["tower_mode"];
-					if (towerMode.HasMember("enabled") && towerMode["enabled"].IsBool())
-						tagTowerModeEnabled = towerMode["enabled"].GetBool();
-					else if (towerMode.HasMember("enable") && towerMode["enable"].IsBool())
-						tagTowerModeEnabled = towerMode["enable"].GetBool();
-				}
-			}
-
 			if (labelsSection != nullptr)
 			{
 				if (labelsSection->HasMember("use_speed_for_gate") && (*labelsSection)["use_speed_for_gate"].IsBool())
@@ -3034,6 +3015,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				if (!towerModeArrival && !shouldDisplayTagInTowerMode(towerModeGroundState, reportedGs, isOnRunway))
 					drawTargetTag = false;
 			}
+			if (!radar_screen->ShouldDisplayTargetForDisplayMode(fp, rt, acIsCorrelated, reportedGs, isOnRunway, displayModeSettings))
+				drawTargetTag = false;
 			if (drawTargetTag)
 				drawTag(rt, fp, rtCallsign, targetPoint, isAsel, acIsCorrelated, reportedGs, isOnRunway);
 		}
@@ -3249,9 +3232,10 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	vector<POINT> appAreaVect = { windowAreaCRect.TopLeft(),{ windowAreaCRect.right, windowAreaCRect.top }, windowAreaCRect.BottomRight(),{ windowAreaCRect.left, windowAreaCRect.bottom } };
 	CPen WhitePen(PS_SOLID, 1, radar_screen->ColorManager->get_corrected_color("symbol", Color::White).ToCOLORREF());
 	const CSMRRadar::CorrelationSettings insetCorrelationSettings = radar_screen->BuildCorrelationSettings();
+	const CSMRRadar::DisplayModeSettings insetDisplayModeSettings = radar_screen->GetActiveDisplayModeSettings();
 	const int insetTransitionAltitude = radar_screen->GetPlugIn()->GetTransitionAltitude();
 	const std::string insetActiveAirport = radar_screen->getActiveAirport();
-	bool insetTagProModeEnabled = false;
+	bool insetTagProModeEnabled = insetDisplayModeSettings.requireAssignedSquawk;
 	bool insetUseAspeedForGate = false;
 	bool insetAirborneUseDepartureArrivalColoring = false;
 	if (radar_screen->CurrentConfig != nullptr)
@@ -3259,22 +3243,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		const Value& profile = radar_screen->CurrentConfig->getActiveProfile();
 		if (profile.IsObject())
 		{
-			if (profile.HasMember("filters") &&
-				profile["filters"].IsObject() &&
-				profile["filters"].HasMember("pro_mode") &&
-				profile["filters"]["pro_mode"].IsObject())
-			{
-				const Value& proMode = profile["filters"]["pro_mode"];
-				if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
-				{
-					insetTagProModeEnabled = proMode["enabled"].GetBool();
-				}
-				else if (proMode.HasMember("enable") && proMode["enable"].IsBool())
-				{
-					insetTagProModeEnabled = proMode["enable"].GetBool();
-				}
-			}
-
 			if (profile.HasMember("labels") &&
 				profile["labels"].IsObject())
 			{
@@ -3330,6 +3298,10 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
 		const char* fpOrigin = fp.IsValid() ? fp.GetFlightPlanData().GetOrigin() : nullptr;
 		const char* fpPlanType = fp.IsValid() ? fp.GetFlightPlanData().GetPlanType() : nullptr;
+		const bool isOnRunway = radar_screen->RimcasInstance != nullptr && radar_screen->RimcasInstance->isAcOnRunway(rtCallsign);
+		const bool acIsCorrelatedForMode = radar_screen->IsCorrelatedWithSettings(fp, rt, insetCorrelationSettings);
+		if (!radar_screen->ShouldDisplayTargetForDisplayMode(fp, rt, acIsCorrelatedForMode, reportedGs, isOnRunway, insetDisplayModeSettings))
+			continue;
 
 		// Filtering the targets
 
@@ -3445,7 +3417,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				rt,
 				fp,
 				isASEL,
-				radar_screen->IsCorrelatedWithSettings(fp, rt, insetCorrelationSettings),
+				acIsCorrelatedForMode,
 				insetTagProModeEnabled,
 				insetTransitionAltitude,
 				insetUseAspeedForGate,
@@ -3500,7 +3472,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				}
 			}
 
-		bool AcisCorrelated = radar_screen->IsCorrelatedWithSettings(radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign), rt, insetCorrelationSettings);
+		bool AcisCorrelated = acIsCorrelatedForMode;
 		if (!AcisCorrelated && reportedGs >= 3)
 		{
 			TagType = CSMRRadar::TagTypes::Uncorrelated;

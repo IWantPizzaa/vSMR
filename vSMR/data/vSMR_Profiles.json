@@ -30,18 +30,110 @@
             "max_speed_kt": 250,
             "radar_range_nm": 999,
             "night_overlay_alpha": 110,
-            "pro_mode": {
-                "enabled": false,
-                "accept_pilot_squawk": true,
-                "blocked_auto_correlate_squawks": [
-                    "2000",
-                    "2200",
-                    "1200",
-                    "7000"
+            "display_modes": {
+                "active": "Normal",
+                "items": [
+                    {
+                        "name": "Normal",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Tower",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro + Tower",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    }
                 ]
-            },
-            "tower_mode": {
-                "enabled": false
             }
         },
         "labels": {
@@ -834,18 +926,110 @@
             "max_speed_kt": 250,
             "radar_range_nm": 999,
             "night_overlay_alpha": 110,
-            "pro_mode": {
-                "enabled": false,
-                "accept_pilot_squawk": true,
-                "blocked_auto_correlate_squawks": [
-                    "2000",
-                    "2200",
-                    "1200",
-                    "7000"
+            "display_modes": {
+                "active": "Normal",
+                "items": [
+                    {
+                        "name": "Normal",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Tower",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro + Tower",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    }
                 ]
-            },
-            "tower_mode": {
-                "enabled": false
             }
         },
         "labels": {
@@ -1741,18 +1925,110 @@
             "max_speed_kt": 250,
             "radar_range_nm": 999,
             "night_overlay_alpha": 110,
-            "pro_mode": {
-                "enabled": false,
-                "accept_pilot_squawk": true,
-                "blocked_auto_correlate_squawks": [
-                    "2000",
-                    "2200",
-                    "1200",
-                    "7000"
+            "display_modes": {
+                "active": "Normal",
+                "items": [
+                    {
+                        "name": "Normal",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Tower",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro + Tower",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    }
                 ]
-            },
-            "tower_mode": {
-                "enabled": false
             }
         },
         "labels": {
@@ -2723,18 +2999,110 @@
             "max_speed_kt": 250,
             "radar_range_nm": 999,
             "night_overlay_alpha": 110,
-            "pro_mode": {
-                "enabled": false,
-                "accept_pilot_squawk": true,
-                "blocked_auto_correlate_squawks": [
-                    "2000",
-                    "2200",
-                    "1200",
-                    "7000"
+            "display_modes": {
+                "active": "Normal",
+                "items": [
+                    {
+                        "name": "Normal",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Tower",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro + Tower",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    }
                 ]
-            },
-            "tower_mode": {
-                "enabled": false
             }
         },
         "labels": {
@@ -3481,18 +3849,110 @@
             "max_speed_kt": 250,
             "radar_range_nm": 999,
             "night_overlay_alpha": 110,
-            "pro_mode": {
-                "enabled": false,
-                "accept_pilot_squawk": true,
-                "blocked_auto_correlate_squawks": [
-                    "2000",
-                    "2200",
-                    "1200",
-                    "7000"
+            "display_modes": {
+                "active": "Normal",
+                "items": [
+                    {
+                        "name": "Normal",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": false,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Tower",
+                        "require_assigned_squawk": false,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    },
+                    {
+                        "name": "Pro + Tower",
+                        "require_assigned_squawk": true,
+                        "accept_pilot_squawk": true,
+                        "blocked_auto_correlate_squawks": [
+                            "2000",
+                            "2200",
+                            "1200",
+                            "7000"
+                        ],
+                        "tower_filter": true,
+                        "structured_rules": true,
+                        "statuses": {
+                            "no_status": true,
+                            "push": true,
+                            "startup": true,
+                            "taxi": true,
+                            "departure": true,
+                            "on_runway": true,
+                            "airborne": true,
+                            "arrivals": true,
+                            "no_fpl": true,
+                            "uncorrelated": true
+                        }
+                    }
                 ]
-            },
-            "tower_mode": {
-                "enabled": false
             }
         },
         "labels": {
@@ -4383,7 +4843,7 @@
             "schema_version": 1,
             "last_active_profile": "Default",
             "vacdm": {
-                "server_url": ""
+                "server_url": "https://cdm.vatsim.fr"
             }
         }
     }
