@@ -466,6 +466,13 @@ bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lPar
 			RequestRefresh();
 			return true;
 		}
+		if (Button == BUTTON_LEFT && viewportAtPoint->IsAvisoSplitLayoutActive())
+		{
+			viewportAtPoint->BeginAvisoMove(clientPoint);
+			::SetCapture(hwnd);
+			RequestRefresh();
+			return false;
+		}
 
 		RequestRefresh();
 		return false;
@@ -483,11 +490,36 @@ bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lPar
 bool CSMRRadar::HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button)
 {
 	UNREFERENCED_PARAMETER(wParam);
-	if (Button != BUTTON_RIGHT)
-		return false;
-
 	POINT clientPoint = ClientPointFromMouseLParam(lParam);
 	mouseLocation = clientPoint;
+
+	if (Button == BUTTON_LEFT)
+	{
+		bool hadActiveMove = false;
+		bool consumedMove = false;
+		CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+		for (auto& kv : appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoLeftMoving)
+			{
+				hadActiveMove = true;
+				if (appWindow->EndAvisoMove(clientPoint, &avisoLayoutBounds))
+					consumedMove = true;
+			}
+		}
+
+		if (!hadActiveMove)
+			return false;
+
+		if (hwnd != nullptr && ::GetCapture() == hwnd)
+			::ReleaseCapture();
+		RequestRefresh();
+		return consumedMove;
+	}
+
+	if (Button != BUTTON_RIGHT)
+		return false;
 
 	bool hadActivePan = false;
 	for (auto& kv : appWindows)
@@ -513,6 +545,29 @@ bool CSMRRadar::HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam)
 {
 	POINT clientPoint = ClientPointFromMouseLParam(lParam);
 	mouseLocation = clientPoint;
+
+	for (auto& kv : appWindows)
+	{
+		CInsetWindow* appWindow = kv.second.get();
+		if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !appWindow->m_AvisoLeftMoving)
+			continue;
+
+		CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+		if ((wParam & MK_LBUTTON) == 0 && (::GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0)
+		{
+			const bool consumedMove = appWindow->EndAvisoMove(clientPoint, &avisoLayoutBounds);
+			if (hwnd != nullptr && ::GetCapture() == hwnd)
+				::ReleaseCapture();
+			RequestRefresh();
+			return consumedMove;
+		}
+
+		if (!appWindow->UpdateAvisoMove(clientPoint, &avisoLayoutBounds))
+			return false;
+
+		RequestRefresh();
+		return true;
+	}
 
 	for (auto& kv : appWindows)
 	{

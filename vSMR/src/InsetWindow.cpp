@@ -421,6 +421,11 @@ bool CInsetWindow::IsAvisoViewport() const
 	return m_Mode == Mode::AvisoViewport;
 }
 
+bool CInsetWindow::IsAvisoSplitLayoutActive() const
+{
+	return IsAvisoSplitLayout(m_AvisoLayoutMode);
+}
+
 void CInsetWindow::ClearAvisoViewportCache()
 {
 	if (m_AvisoState != nullptr)
@@ -644,6 +649,7 @@ void CInsetWindow::BeginAvisoPan(POINT Pt)
 	m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
 	m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
 	m_AvisoRightPanning = true;
+	m_AvisoLeftMoving = false;
 	m_AvisoScrollSelected = true;
 	m_Grip = false;
 }
@@ -667,6 +673,49 @@ bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 void CInsetWindow::EndAvisoPan()
 {
 	m_AvisoRightPanning = false;
+}
+
+void CInsetWindow::BeginAvisoMove(POINT Pt)
+{
+	if (!IsAvisoViewport())
+		return;
+
+	m_AvisoLeftMoving = true;
+	m_AvisoRightPanning = false;
+	m_AvisoScrollSelected = true;
+	m_Grip = false;
+	m_OffsetDrag = Pt;
+}
+
+bool CInsetWindow::UpdateAvisoMove(POINT Pt, const RECT* layoutBounds)
+{
+	if (!IsAvisoViewport() || !m_AvisoLeftMoving || m_AvisoRightPanning)
+		return false;
+
+	if (!m_Grip)
+	{
+		const int dragX = Pt.x - m_OffsetDrag.x;
+		const int dragY = Pt.y - m_OffsetDrag.y;
+		if ((dragX * dragX) + (dragY * dragY) < 16)
+			return false;
+	}
+
+	OnMoveScreenObject("window", Pt, m_Area, false, layoutBounds);
+	return true;
+}
+
+bool CInsetWindow::EndAvisoMove(POINT Pt, const RECT* layoutBounds)
+{
+	if (!IsAvisoViewport() || !m_AvisoLeftMoving)
+		return false;
+
+	const bool consumedDrag = m_Grip;
+	if (m_Grip)
+		OnMoveScreenObject("window", Pt, m_Area, true, layoutBounds);
+
+	m_AvisoLeftMoving = false;
+	m_Grip = false;
+	return consumedDrag;
 }
 
 bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
