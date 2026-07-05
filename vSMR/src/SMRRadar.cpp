@@ -43,6 +43,59 @@ namespace
 	std::mutex gSessionActiveProfileMutex;
 	std::string gSessionActiveProfileName;
 
+	bool IsRegularFileNoThrow(const fs::path& path)
+	{
+		try
+		{
+			return fs::exists(path) && fs::is_regular_file(path);
+		}
+		catch (...)
+		{
+			return false;
+		}
+	}
+
+	bool IsDirectoryNoThrow(const fs::path& path)
+	{
+		try
+		{
+			return fs::exists(path) && fs::is_directory(path);
+		}
+		catch (...)
+		{
+			return false;
+		}
+	}
+
+	fs::path PluginDataDirectory(const std::string& dllPath)
+	{
+		return fs::path(dllPath) / "vSMR_Data";
+	}
+
+	std::string ResolvePluginDataDirectoryPath(const std::string& dllPath)
+	{
+		const fs::path dataDirectory = PluginDataDirectory(dllPath);
+		if (IsDirectoryNoThrow(dataDirectory))
+			return dataDirectory.string();
+		return fs::path(dllPath).string();
+	}
+
+	std::string ResolvePluginFilePath(const std::string& dllPath, const char* fileName)
+	{
+		const fs::path dataPath = PluginDataDirectory(dllPath) / fileName;
+		if (IsRegularFileNoThrow(dataPath))
+			return dataPath.string();
+		return (fs::path(dllPath) / fileName).string();
+	}
+
+	std::string ResolvePluginDirectoryPath(const std::string& dllPath, const char* directoryName)
+	{
+		const fs::path dataPath = PluginDataDirectory(dllPath) / directoryName;
+		if (IsDirectoryNoThrow(dataPath))
+			return dataPath.string();
+		return (fs::path(dllPath) / directoryName).string();
+	}
+
 	std::string BuildLastActiveProfilePath(const std::string& configPath)
 	{
 		try
@@ -86,6 +139,63 @@ namespace
 			return static_cast<char>(std::toupper(c));
 		});
 		return value;
+	}
+
+	void PushUniquePath(std::vector<fs::path>& paths, const fs::path& path)
+	{
+		if (path.empty())
+			return;
+
+		const std::string normalized = ToUpperAscii(path.lexically_normal().string());
+		for (const fs::path& existing : paths)
+		{
+			if (ToUpperAscii(existing.lexically_normal().string()) == normalized)
+				return;
+		}
+
+		paths.push_back(path);
+	}
+
+	std::vector<fs::path> BuildAvisoGeoJsonSearchDirectories(const std::string& dllPath, const std::string& dataPath)
+	{
+		std::vector<fs::path> directories;
+		const fs::path pluginDirectory(dllPath);
+		const fs::path resolvedDataDirectory = dataPath.empty() ? PluginDataDirectory(dllPath) : fs::path(dataPath);
+
+		PushUniquePath(directories, resolvedDataDirectory / "AVISO");
+		PushUniquePath(directories, resolvedDataDirectory);
+		PushUniquePath(directories, pluginDirectory / "AVISO");
+		PushUniquePath(directories, pluginDirectory);
+
+		return directories;
+	}
+
+	std::set<std::string> CollectAvisoAirportsInDirectory(const fs::path& searchDirectory)
+	{
+		std::set<std::string> airports;
+		if (!IsDirectoryNoThrow(searchDirectory))
+			return airports;
+
+		for (const auto& entry : fs::directory_iterator(searchDirectory))
+		{
+			if (!entry.is_regular_file())
+				continue;
+
+			const fs::path path = entry.path();
+			if (ToUpperAscii(path.extension().string()) != ".GEOJSON")
+				continue;
+
+			const std::string stem = ToUpperAscii(path.stem().string());
+			const std::string prefix = "AVISO_";
+			if (stem.rfind(prefix, 0) != 0)
+				continue;
+
+			const std::string airport = stem.substr(prefix.size());
+			if (airport.size() == 4)
+				airports.insert(airport);
+		}
+
+		return airports;
 	}
 
 	bool TryParseHexByte(const char* text, unsigned int& value)
@@ -354,9 +464,10 @@ CSMRRadar::CSMRRadar()
 	DllPath = DllPathFile;
 	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
 	
-	ConfigPath = DllPath + "\\vSMR_Profiles.json";
-	mapsPath = DllPath + "\\vSMR_Maps.json";
-	IconsPath = DllPath + "\\aircraft_icons";
+	DataPath = ResolvePluginDataDirectoryPath(DllPath);
+	ConfigPath = ResolvePluginFilePath(DllPath, "vSMR_Profiles.json");
+	mapsPath = ResolvePluginFilePath(DllPath, "vSMR_Maps.json");
+	IconsPath = ResolvePluginDirectoryPath(DllPath, "aircraft_icons");
 	LoadAircraftSpecs();
 
 	Logger::info("Loading callsigns");
@@ -464,32 +575,16 @@ std::string CSMRRadar::DetectDefaultAirportFromAviso() const
 		if (DllPath.empty())
 			return "";
 
-		const fs::path pluginDirectory(DllPath);
-		if (!fs::exists(pluginDirectory) || !fs::is_directory(pluginDirectory))
-			return "";
-
-		std::set<std::string> airports;
-		for (const auto& entry : fs::directory_iterator(pluginDirectory))
+		for (const fs::path& searchDirectory : BuildAvisoGeoJsonSearchDirectories(DllPath, DataPath))
 		{
-			if (!entry.is_regular_file())
+			const std::set<std::string> airports = CollectAvisoAirportsInDirectory(searchDirectory);
+			if (airports.empty())
 				continue;
 
-			const fs::path path = entry.path();
-			if (ToUpperAscii(path.extension().string()) != ".GEOJSON")
-				continue;
-
-			const std::string stem = ToUpperAscii(path.stem().string());
-			const std::string prefix = "AVISO_";
-			if (stem.rfind(prefix, 0) != 0)
-				continue;
-
-			const std::string airport = stem.substr(prefix.size());
-			if (airport.size() == 4)
-				airports.insert(airport);
+			if (airports.size() == 1)
+				return *airports.begin();
+			return "";
 		}
-
-		if (airports.size() == 1)
-			return *airports.begin();
 	}
 	catch (const std::exception& ex)
 	{
@@ -509,8 +604,9 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	if (DllPath.empty() || airportUpper.empty())
 		return "";
 
+	const std::string resolutionKey = DllPath + "|" + DataPath;
 	if (AvisoGeoJsonResolvedAirport == airportUpper &&
-		AvisoGeoJsonResolvedDllPath == DllPath)
+		AvisoGeoJsonResolvedDllPath == resolutionKey)
 	{
 		return AvisoGeoJsonResolvedPath;
 	}
@@ -518,32 +614,38 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	auto rememberResolvedPath = [&](const std::string& path) -> std::string
 	{
 		AvisoGeoJsonResolvedAirport = airportUpper;
-		AvisoGeoJsonResolvedDllPath = DllPath;
+		AvisoGeoJsonResolvedDllPath = resolutionKey;
 		AvisoGeoJsonResolvedPath = path;
 		return path;
 	};
 
-	const fs::path pluginDirectory(DllPath);
-	const fs::path exactPath = pluginDirectory / ("AVISO_" + airportUpper + ".geojson");
 	try
 	{
-		if (fs::exists(exactPath) && fs::is_regular_file(exactPath))
-			return rememberResolvedPath(exactPath.string());
-
-		if (!fs::exists(pluginDirectory) || !fs::is_directory(pluginDirectory))
-			return rememberResolvedPath("");
+		const std::vector<fs::path> searchDirectories = BuildAvisoGeoJsonSearchDirectories(DllPath, DataPath);
+		for (const fs::path& searchDirectory : searchDirectories)
+		{
+			const fs::path exactPath = searchDirectory / ("AVISO_" + airportUpper + ".geojson");
+			if (IsRegularFileNoThrow(exactPath))
+				return rememberResolvedPath(exactPath.string());
+		}
 
 		const std::string expectedStem = "AVISO_" + airportUpper;
-		for (const auto& entry : fs::directory_iterator(pluginDirectory))
+		for (const fs::path& searchDirectory : searchDirectories)
 		{
-			if (!entry.is_regular_file())
+			if (!IsDirectoryNoThrow(searchDirectory))
 				continue;
 
-			const fs::path path = entry.path();
-			if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
-				ToUpperAscii(path.stem().string()) == expectedStem)
+			for (const auto& entry : fs::directory_iterator(searchDirectory))
 			{
-				return rememberResolvedPath(path.string());
+				if (!entry.is_regular_file())
+					continue;
+
+				const fs::path path = entry.path();
+				if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
+					ToUpperAscii(path.stem().string()) == expectedStem)
+				{
+					return rememberResolvedPath(path.string());
+				}
 			}
 		}
 	}

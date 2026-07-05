@@ -502,7 +502,20 @@ namespace
 		if (Logger::DLL_PATH.empty())
 			return false;
 
-		std::ifstream input(Logger::DLL_PATH + "\\vacdm.txt");
+		std::ifstream input;
+		const std::vector<std::filesystem::path> candidates = {
+			std::filesystem::path(Logger::DLL_PATH) / "vSMR_Data" / "vacdm.txt",
+			std::filesystem::path(Logger::DLL_PATH) / "vacdm.txt"
+		};
+
+		for (const std::filesystem::path& candidate : candidates)
+		{
+			input.open(candidate.string(), std::ios::binary);
+			if (input.is_open())
+				break;
+			input.clear();
+		}
+
 		if (!input.is_open())
 			return false;
 
