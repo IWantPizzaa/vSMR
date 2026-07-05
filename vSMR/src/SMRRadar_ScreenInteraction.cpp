@@ -8,6 +8,7 @@ extern string TagBeingDragged;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
+extern HWND pluginWindow;
 
 namespace
 {
@@ -549,6 +550,31 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 			RequestRefresh();
 		return true;
 	};
+	auto zoomViewportAtScreenPoint = [&](POINT screenPoint) -> bool
+	{
+		for (auto& kv : appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !IsAppWindowVisible(this, kv.first))
+				continue;
+
+			POINT avisoPoint{};
+			if (!appWindow->TryMapAvisoScreenPoint(screenPoint, avisoPoint))
+				continue;
+
+			mouseLocation = avisoPoint;
+			SelectAvisoViewport(this, appWindow);
+			const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
+			if (appWindow->ZoomAvisoAtPoint(avisoPoint, scaleMultiplier))
+				RequestRefresh();
+			return true;
+		}
+
+		return false;
+	};
+
+	if (zoomViewportAtScreenPoint(screenPoint))
+		return true;
 
 	std::vector<HWND> candidateWindows;
 	auto addCandidateWindow = [&](HWND candidate)
@@ -558,20 +584,23 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 		if (std::find(candidateWindows.begin(), candidateWindows.end(), candidate) == candidateWindows.end())
 			candidateWindows.push_back(candidate);
 	};
+	auto addCandidateWindowAndParents = [&](HWND candidate)
+	{
+		for (HWND current = candidate; current != nullptr && ::IsWindow(current); current = ::GetParent(current))
+			addCandidateWindow(current);
+
+		if (candidate != nullptr && ::IsWindow(candidate))
+			addCandidateWindow(::GetAncestor(candidate, GA_ROOT));
+	};
 	auto tryScreenPoint = [&](POINT screenPoint) -> bool
 	{
 		candidateWindows.clear();
-		addCandidateWindow(::WindowFromPoint(screenPoint));
-		for (HWND parent = candidateWindows.empty() ? nullptr : ::GetParent(candidateWindows.front());
-			parent != nullptr;
-			parent = ::GetParent(parent))
-		{
-			addCandidateWindow(parent);
-		}
-		addCandidateWindow(sourceHwnd);
-		addCandidateWindow(::GetActiveWindow());
-		addCandidateWindow(::GetForegroundWindow());
-		addCandidateWindow(::GetCapture());
+		addCandidateWindowAndParents(::WindowFromPoint(screenPoint));
+		addCandidateWindowAndParents(sourceHwnd);
+		addCandidateWindowAndParents(pluginWindow);
+		addCandidateWindowAndParents(::GetActiveWindow());
+		addCandidateWindowAndParents(::GetForegroundWindow());
+		addCandidateWindowAndParents(::GetCapture());
 
 		for (HWND candidate : candidateWindows)
 		{
@@ -584,8 +613,13 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 	};
 
 	POINT cursorScreenPoint{};
-	if (::GetCursorPos(&cursorScreenPoint) && tryScreenPoint(cursorScreenPoint))
-		return true;
+	if (::GetCursorPos(&cursorScreenPoint))
+	{
+		if (zoomViewportAtScreenPoint(cursorScreenPoint))
+			return true;
+		if (tryScreenPoint(cursorScreenPoint))
+			return true;
+	}
 
 	if (tryScreenPoint(screenPoint))
 		return true;
