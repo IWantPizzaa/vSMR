@@ -22,6 +22,28 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	auto showAvisoPresetMessage = [&](const std::string& message) {
 		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO Presets", message.c_str(), true, true, false, false, false);
 	};
+	auto avisoPresetExists = [&](const std::string& name) -> bool
+	{
+		for (const AvisoPreset& preset : GetAvisoPresets())
+		{
+			if (preset.name.size() != name.size())
+				continue;
+
+			bool sameName = true;
+			for (size_t i = 0; i < name.size(); ++i)
+			{
+				if (std::tolower(static_cast<unsigned char>(preset.name[i])) != std::tolower(static_cast<unsigned char>(name[i])))
+				{
+					sameName = false;
+					break;
+				}
+			}
+
+			if (sameName)
+				return true;
+		}
+		return false;
+	};
 	auto persistProfileUpdate = [&](bool updateResult, const char* message) -> bool
 	{
 		if (!updateResult || !CurrentConfig->saveConfig())
@@ -108,6 +130,8 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		std::string savedName;
 		if (SaveAvisoPreset(itemString, false, &savedName))
 			showAvisoPresetMessage("Saved AVISO preset: " + savedName);
+		else if (avisoPresetExists(itemString))
+			showAvisoPresetMessage("AVISO preset already exists: " + std::string(itemString));
 		else
 			showConfigError("Failed to save AVISO preset to vSMR_Profiles.json");
 		return;
