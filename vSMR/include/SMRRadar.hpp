@@ -433,6 +433,9 @@ public:
 		std::string name = "Normal";
 		bool requireAssignedSquawk = false;
 		bool acceptPilotSquawk = true;
+		bool requireClearance = false;
+		bool requireValidTsat = false;
+		bool requireActiveTobt = false;
 		std::vector<std::string> blockedAutoCorrelateSquawks;
 		bool towerFilter = false;
 		bool structuredRulesEnabled = true;
