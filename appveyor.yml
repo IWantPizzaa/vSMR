@@ -49,10 +49,12 @@ build_script:
 
 after_build:
   - cmd: mkdir vSMR-nightly
+  - cmd: mkdir vSMR-nightly\vSMR_Data
   - cmd: cp Release\vSMR.dll vSMR-nightly\
-  - cmd: cp vSMR\data\vSMR_Profiles.json vSMR-nightly\
-  - cmd: cp vSMR\data\vSMR_Maps.json vSMR-nightly\
-  - cmd: cp vSMR\data\ICAO_Aircraft.json vSMR-nightly\
+  - cmd: cp vSMR\data\vSMR_Profiles.json vSMR-nightly\vSMR_Data\
+  - cmd: cp vSMR\data\vSMR_Maps.json vSMR-nightly\vSMR_Data\
+  - cmd: cp vSMR\data\ICAO_Aircraft.json vSMR-nightly\vSMR_Data\
+  - cmd: xcopy vSMR\data\aircraft_icons vSMR-nightly\vSMR_Data\aircraft_icons\ /E /I /Y
   - cmd: 7z a vSMR-nightly.zip %APPVEYOR_BUILD_FOLDER%\vSMR-nightly\
 
 #---------------------------------#

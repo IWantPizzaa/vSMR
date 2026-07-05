@@ -86,6 +86,7 @@ public:
 
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
+	string DataPath;
 	string ConfigPath;
 	string mapsPath;
 	std::unique_ptr<CCallsignLookup> Callsigns;

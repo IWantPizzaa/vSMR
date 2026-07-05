@@ -93,13 +93,14 @@ vSMR/
 
 - EuroScope 32-bit
 - A Win32 build of `vSMR.dll`
-- A valid `vSMR_Profiles.json` next to the DLL
+- A valid `vSMR_Profiles.json` in `vSMR_Data\` next to the DLL, or in the DLL folder for older flat installs
 
 Optional runtime data:
 
 - `vSMR_Maps.json`
 - `ICAO_Airlines.txt`
 - `ICAO_Aircraft.json`
+- `AVISO\AVISO_*.geojson`
 - `aircraft_icons\*.png`
 - `vacdm.txt`
 
@@ -107,15 +108,16 @@ Optional runtime data:
 
 1. Build or obtain `vSMR.dll` for `Release | Win32`.
 2. Copy `vSMR.dll` into your EuroScope plugin folder.
-3. Copy `vSMR_Profiles.json` into the same folder as `vSMR.dll`.
-4. Optionally copy the other runtime files described below.
-5. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
-6. Open the vSMR radar display from EuroScope.
+3. Create `vSMR_Data\` next to `vSMR.dll`.
+4. Copy `vSMR_Profiles.json` into `vSMR_Data\`.
+5. Optionally copy the other runtime files described below into `vSMR_Data\`.
+6. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
+7. Open the vSMR radar display from EuroScope.
 
 Important:
 
-- `vSMR_Profiles.json` is required. The code expects it to exist and parses it on startup.
-- `vSMR_Maps.json` is optional.
+- `vSMR_Profiles.json` is required. vSMR checks `vSMR_Data\` first, then the DLL folder for existing installs.
+- `vSMR_Maps.json` is optional and uses the same search order.
 - The repository already ships example runtime files under [`vSMR/data/`](vSMR/data/).
 
 Example deployment layout:
@@ -123,33 +125,37 @@ Example deployment layout:
 ```text
 EuroScope\Plugins\
   vSMR.dll
-  vSMR_Profiles.json
-  vSMR_Maps.json
-  ICAO_Aircraft.json
-  vacdm.txt
-  aircraft_icons\
-    a320.png
-    b738.png
-    e190.png
+  vSMR_Data\
+    vSMR_Profiles.json
+    vSMR_Maps.json
+    ICAO_Aircraft.json
+    vacdm.txt
+    AVISO\
+      AVISO_LFPG.geojson
+    aircraft_icons\
+      a320.png
+      b738.png
+      e190.png
 ```
 
 ## Runtime Files
 
 ### Required
 
-| File                   | Location                    | Purpose                                                                                                    |
-| ---------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `vSMR_Profiles.json` | Same folder as `vSMR.dll` | Main profile database: fonts, labels, rules, colors, alerts, icon settings, editor window layout, and more |
+| File                 | Location                                             | Purpose                                                                                                    |
+| -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `vSMR_Profiles.json` | `vSMR_Data\`, then same folder as `vSMR.dll` fallback | Main profile database: fonts, labels, rules, colors, alerts, icon settings, editor window layout, and more |
 
 ### Optional
 
-| File                     | Search location(s)                                                                          | Purpose                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `vSMR_Maps.json`       | Same folder as `vSMR.dll`                                                                 | Map element visibility by zoom level and optional active runway/airport conditions |
-| `vacdm.txt`            | Same folder as `vSMR.dll`                                                                 | Enables VACDM polling and sets the VACDM base server URL                           |
-| `ICAO_Airlines.txt`    | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt` | Airline/callsign lookup for bottom-line text and related displays                  |
-| `ICAO_Aircraft.json`   | `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder               | Aircraft length and wingspan data used by realistic icons                          |
-| `aircraft_icons\*.png` | `<dll folder>\aircraft_icons\`                                                            | Optional per-aircraft realistic icon silhouettes                                   |
+| File                     | Search location(s)                                                                                           | Purpose                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `vSMR_Maps.json`         | `vSMR_Data\`, then same folder as `vSMR.dll` fallback                                                        | Map element visibility by zoom level and optional active runway/airport conditions |
+| `AVISO_*.geojson`        | `vSMR_Data\AVISO\`, then `vSMR_Data\`, then `<dll folder>\AVISO\`, then DLL folder fallback                  | Optional AVISO map overlays by airport, for example `AVISO_LFPG.geojson`           |
+| `vacdm.txt`              | `vSMR_Data\`, then same folder as `vSMR.dll` fallback                                                        | Enables VACDM polling and sets the VACDM base server URL                           |
+| `ICAO_Airlines.txt`      | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt`                      | Airline/callsign lookup for bottom-line text and related displays                  |
+| `ICAO_Aircraft.json`     | `vSMR_Data\`, then `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder fallback      | Aircraft length and wingspan data used by realistic icons                          |
+| `aircraft_icons\*.png`   | `vSMR_Data\aircraft_icons\`, then `<dll folder>\aircraft_icons\` fallback                                    | Optional per-aircraft realistic icon silhouettes                                   |
 
 ### `vacdm.txt` format
 
@@ -449,7 +455,7 @@ VACDM pilot data is polled in the plugin and exposed to tag rendering and rule e
 
 Behavior visible in code:
 
-- polling is opt-in and starts only when `vacdm.txt` contains `SERVER_URL=...`
+- polling is opt-in and starts only when `vSMR_Data\vacdm.txt` or the flat-layout fallback `vacdm.txt` contains `SERVER_URL=...`
 - URL used by polling is `<SERVER_URL>/api/v1/pilots`
 - polling interval: 15 seconds
 - polling waits for a stable EuroScope network connection before fetching
@@ -592,8 +598,8 @@ LFPG:DEP:26R:ARR:26L
 
 When `Icons` style is active (internally stored as `realistic`), vSMR can combine:
 
-- aircraft dimensions from `ICAO_Aircraft.json`
-- optional PNG silhouettes from `aircraft_icons\`
+- aircraft dimensions from `vSMR_Data\ICAO_Aircraft.json`
+- optional PNG silhouettes from `vSMR_Data\aircraft_icons\`
 - WTC-based fallbacks when dimensions are missing
 
 `ICAO_Aircraft.json` supports both:
@@ -670,11 +676,11 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 
 ## Troubleshooting
 
-- If the plugin fails to load its profile data, validate `vSMR_Profiles.json` first.
+- If the plugin fails to load its profile data, validate `vSMR_Data\vSMR_Profiles.json` first.
 - If the profile editor opens off-screen, remove or correct `ui_layout.profile_editor_window`.
-- If realistic icons do not appear, verify `targets.icon_style`, `ICAO_Aircraft.json`, and `aircraft_icons\`.
+- If realistic icons do not appear, verify `targets.icon_style`, `vSMR_Data\ICAO_Aircraft.json`, and `vSMR_Data\aircraft_icons\`.
 - If airline names are missing, verify `ICAO_Airlines.txt` in one of the supported search paths.
-- If VACDM fields stay empty, verify that `vacdm.txt` exists with `SERVER_URL=...`, then check callsign matching and backend data availability.
+- If VACDM fields stay empty, verify that `vSMR_Data\vacdm.txt` exists with `SERVER_URL=...`, then check callsign matching and backend data availability.
 - If `.smr profile` does nothing, make sure at least one SMR radar screen is open.
 
 ## Credits
