@@ -80,6 +80,47 @@ namespace
 		return left > right ? left : right;
 	}
 
+	void DrawAntialiasedNovaSymbol(
+		Gdiplus::Graphics& graphics,
+		POINT center,
+		bool transponderC,
+		const Gdiplus::Color& color,
+		Gdiplus::REAL diamondRadius,
+		Gdiplus::REAL crossRadius)
+	{
+		const Gdiplus::GraphicsState state = graphics.Save();
+		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+
+		Gdiplus::Pen pen(color, 1.2f);
+		pen.SetStartCap(Gdiplus::LineCapRound);
+		pen.SetEndCap(Gdiplus::LineCapRound);
+		pen.SetLineJoin(Gdiplus::LineJoinRound);
+
+		const Gdiplus::REAL x = static_cast<Gdiplus::REAL>(center.x);
+		const Gdiplus::REAL y = static_cast<Gdiplus::REAL>(center.y);
+		if (transponderC)
+		{
+			Gdiplus::PointF points[5] = {
+				{ x, y - diamondRadius },
+				{ x - diamondRadius, y },
+				{ x, y + diamondRadius },
+				{ x + diamondRadius, y },
+				{ x, y - diamondRadius }
+			};
+			graphics.DrawLines(&pen, points, 5);
+		}
+		else
+		{
+			graphics.DrawLine(&pen, x, y, x - crossRadius, y - crossRadius);
+			graphics.DrawLine(&pen, x, y, x + crossRadius, y - crossRadius);
+			graphics.DrawLine(&pen, x, y, x - crossRadius, y + crossRadius);
+			graphics.DrawLine(&pen, x, y, x + crossRadius, y + crossRadius);
+		}
+
+		graphics.Restore(state);
+	}
+
 	std::string ToUpperAscii(std::string value)
 	{
 		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
@@ -5098,7 +5139,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (frameUseFastRealisticBitmapRendering)
 	{
 		graphics.SetInterpolationMode(Gdiplus::InterpolationModeLowQuality);
-		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
+		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
 		graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
 	}
 	EuroScopePlugIn::CRadarTarget rt;
@@ -5560,26 +5601,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (useNovaIconStyle)
 		{
-			CPen qTrailPen(PS_SOLID, 1, frameSymbolWhiteColor.ToCOLORREF());
-			CPen* pqOrigPen = dc.SelectObject(&qTrailPen);
-			if (RtPos.GetTransponderC()) {
-				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
-				dc.LineTo({ acPosPix.x - 6, acPosPix.y });
-				dc.LineTo({ acPosPix.x, acPosPix.y + 6 });
-				dc.LineTo({ acPosPix.x + 6, acPosPix.y });
-				dc.LineTo({ acPosPix.x, acPosPix.y - 6 });
-			}
-			else {
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x - 4, acPosPix.y - 4);
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x + 4, acPosPix.y - 4);
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x - 4, acPosPix.y + 4);
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x + 4, acPosPix.y + 4);
-			}
-			dc.SelectObject(pqOrigPen);
+			DrawAntialiasedNovaSymbol(graphics, acPosPix, RtPos.GetTransponderC(), frameSymbolWhiteColor, 6.0f, 4.0f);
 			iconSize = 12;
 		}
 		else if (canUseRealisticIcon) {
