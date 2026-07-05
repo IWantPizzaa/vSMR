@@ -39,13 +39,9 @@ namespace
 		return kInsetToolbarRightMargin + buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
 	}
 
-	CRect DrawInsetToolbarButton(CDC& dc, const char* label, const CRect& topBar, int rightOffset, POINT mouseLocation)
+	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation)
 	{
-		CRect rect(
-			topBar.right - rightOffset - kInsetToolbarButtonSize,
-			topBar.top + 1,
-			topBar.right - rightOffset,
-			topBar.bottom - 1);
+		rect.NormalizeRect();
 		CBrush buttonBrush(RGB(60, 60, 60));
 		dc.FillRect(rect, &buttonBrush);
 
@@ -61,6 +57,16 @@ namespace
 			dc.Draw3dRect(rect, RGB(75, 75, 75), RGB(45, 45, 45));
 
 		return rect;
+	}
+
+	CRect DrawInsetToolbarButton(CDC& dc, const char* label, const CRect& topBar, int rightOffset, POINT mouseLocation)
+	{
+		CRect rect(
+			topBar.right - rightOffset - kInsetToolbarButtonSize,
+			topBar.top + 1,
+			topBar.right - rightOffset,
+			topBar.bottom - 1);
+		return DrawInsetButton(dc, label, rect, mouseLocation);
 	}
 
 	CRect NormalizedAvisoLayoutBounds(const RECT* layoutBounds)
@@ -422,11 +428,6 @@ bool CInsetWindow::IsAvisoViewport() const
 	return m_Mode == Mode::AvisoViewport;
 }
 
-bool CInsetWindow::IsAvisoSplitLayoutActive() const
-{
-	return IsAvisoSplitLayout(m_AvisoLayoutMode);
-}
-
 void CInsetWindow::ClearAvisoViewportCache()
 {
 	if (m_AvisoState != nullptr)
@@ -650,7 +651,6 @@ void CInsetWindow::BeginAvisoPan(POINT Pt)
 	m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
 	m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
 	m_AvisoRightPanning = true;
-	m_AvisoLeftMoving = false;
 	m_AvisoScrollSelected = true;
 	m_Grip = false;
 }
@@ -676,39 +676,41 @@ void CInsetWindow::EndAvisoPan()
 	m_AvisoRightPanning = false;
 }
 
-void CInsetWindow::BeginAvisoMove(POINT Pt, const RECT* layoutBounds)
+void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 {
 	if (!IsAvisoViewport())
 		return;
 
-	m_AvisoLeftMoving = true;
+	ApplyAvisoLayoutBounds(layoutBounds);
+	CRect currentArea(m_Area);
+	currentArea.NormalizeRect();
+	if (currentArea.Width() <= 0 || currentArea.Height() <= 0)
+		return;
+
+	const int detachedWidth = min(
+		max(kAvisoMinLayoutWidth, currentArea.Width() - 40),
+		std::clamp(currentArea.Width() / 2, kAvisoMinLayoutWidth, 620));
+	const int detachedHeight = min(
+		max(kAvisoMinLayoutHeight, currentArea.Height() - 40),
+		std::clamp(currentArea.Height() / 2, kAvisoMinLayoutHeight, 380));
+
+	const double xRatio = std::clamp(
+		static_cast<double>(Pt.x - currentArea.left) / static_cast<double>(max(1, currentArea.Width())),
+		0.15,
+		0.85);
+	const double yRatio = std::clamp(
+		static_cast<double>(Pt.y - currentArea.top) / static_cast<double>(max(1, currentArea.Height())),
+		0.15,
+		0.85);
+	const int left = Pt.x - static_cast<int>(std::lround(static_cast<double>(detachedWidth) * xRatio));
+	const int top = Pt.y - static_cast<int>(std::lround(static_cast<double>(detachedHeight) * yRatio));
+
+	m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+	m_Area = { left, top, left + detachedWidth, top + detachedHeight };
 	m_AvisoRightPanning = false;
 	m_AvisoScrollSelected = true;
 	m_Grip = false;
-	m_OffsetDrag = Pt;
-	OnMoveScreenObject("window", Pt, m_Area, false, layoutBounds);
-}
-
-bool CInsetWindow::UpdateAvisoMove(POINT Pt, const RECT* layoutBounds)
-{
-	if (!IsAvisoViewport() || !m_AvisoLeftMoving || m_AvisoRightPanning)
-		return false;
-
-	OnMoveScreenObject("window", Pt, m_Area, false, layoutBounds);
-	return true;
-}
-
-bool CInsetWindow::EndAvisoMove(POINT Pt, const RECT* layoutBounds)
-{
-	if (!IsAvisoViewport() || !m_AvisoLeftMoving)
-		return false;
-
-	const bool consumedDrag = m_Grip;
-	OnMoveScreenObject("window", Pt, m_Area, true, layoutBounds);
-
-	m_AvisoLeftMoving = false;
-	m_Grip = false;
-	return consumedDrag;
+	ApplyAvisoLayoutBounds(layoutBounds);
 }
 
 bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
@@ -823,27 +825,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 
 				if (IsAvisoSplitLayout(m_AvisoLayoutMode))
 				{
-					const int detachedWidth = min(
-						max(kAvisoMinLayoutWidth, currentArea.Width() - 40),
-						std::clamp(currentArea.Width() / 2, kAvisoMinLayoutWidth, 620));
-					const int detachedHeight = min(
-						max(kAvisoMinLayoutHeight, currentArea.Height() - 40),
-						std::clamp(currentArea.Height() / 2, kAvisoMinLayoutHeight, 380));
-
-					const double xRatio = std::clamp(
-						static_cast<double>(Pt.x - currentArea.left) / static_cast<double>(max(1, currentArea.Width())),
-						0.15,
-						0.85);
-					const double yRatio = std::clamp(
-						static_cast<double>(Pt.y - currentArea.top) / static_cast<double>(max(1, currentArea.Height())),
-						0.15,
-						0.85);
-					const int left = Pt.x - static_cast<int>(std::lround(static_cast<double>(detachedWidth) * xRatio));
-					const int top = Pt.y - static_cast<int>(std::lround(static_cast<double>(detachedHeight) * yRatio));
-
-					m_AvisoLayoutMode = AvisoLayoutMode::Floating;
-					m_Area = { left, top, left + detachedWidth, top + detachedHeight };
-					ApplyAvisoLayoutBounds(layoutBounds);
+					FloatAvisoViewport(Pt, layoutBounds);
 					currentArea = CRect(m_Area);
 					currentArea.NormalizeRect();
 				}
@@ -1084,7 +1066,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	UpdateAvisoScreenArea(renderWindow);
 
 	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
-	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
+	radar_screen->AddScreenObject(m_Id, "window", m_Area, !IsAvisoSplitLayout(m_AvisoLayoutMode), "");
 	radar_screen->AddScreenObject(m_Id, "viewport", m_Area, false, "");
 
 	auto drawCenteredMessage = [&](const char* message)
@@ -1105,6 +1087,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 		if (IsAvisoSplitLayout(m_AvisoLayoutMode))
 		{
+			CRect floatRect(
+				viewportRect.right - 23,
+				viewportRect.top + 5,
+				viewportRect.right - 6,
+				viewportRect.top + 22);
+			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
+			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
+
 			if (IsAvisoVerticalSplit(m_AvisoLayoutMode))
 			{
 				const int dividerX = (m_AvisoLayoutMode == AvisoLayoutMode::SplitLeft) ? viewportRect.right : viewportRect.left;
