@@ -29,7 +29,9 @@ public:
 		CornerTopLeft = 3,
 		CornerTopRight = 4,
 		CornerBottomLeft = 5,
-		CornerBottomRight = 6
+		CornerBottomRight = 6,
+		SplitTop = 7,
+		SplitBottom = 8
 	};
 
 	CInsetWindow(int Id);
@@ -53,7 +55,6 @@ public:
 	RECT m_AvisoScreenArea = { 0, 0, 0, 0 };
 	bool m_AvisoScreenAreaValid = false;
 	AvisoLayoutMode m_AvisoLayoutMode = AvisoLayoutMode::Floating;
-	bool m_AvisoLayoutLocked = false;
 
 	map<string, double> m_TagAngles;
 	map<string, POINT> m_TagOffsets;
@@ -70,7 +71,6 @@ public:
 	bool IsAvisoViewport() const;
 	bool IsPointInside(POINT Pt) const;
 	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
-	void ResetAvisoLayout(const RECT* layoutBounds);
 	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);
 	void UpdateAvisoScreenArea(HWND hwnd);
 	bool TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const;
