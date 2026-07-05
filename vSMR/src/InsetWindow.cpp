@@ -145,7 +145,60 @@ bool CInsetWindow::IsPointInside(POINT Pt) const
 		Pt.x >= areaRect.left &&
 		Pt.x <= areaRect.right &&
 		Pt.y >= areaRect.top &&
-		Pt.y <= areaRect.bottom;
+			Pt.y <= areaRect.bottom;
+}
+
+void CInsetWindow::UpdateAvisoScreenArea(HWND hwnd)
+{
+	m_AvisoScreenArea = { 0, 0, 0, 0 };
+	m_AvisoScreenAreaValid = false;
+	if (!IsAvisoViewport() || hwnd == nullptr || !::IsWindow(hwnd))
+		return;
+
+	CRect areaRect(m_Area);
+	areaRect.NormalizeRect();
+	if (areaRect.Width() <= 0 || areaRect.Height() <= 0)
+		return;
+
+	POINT topLeft = areaRect.TopLeft();
+	POINT bottomRight = areaRect.BottomRight();
+	if (!::ClientToScreen(hwnd, &topLeft) || !::ClientToScreen(hwnd, &bottomRight))
+		return;
+
+	CRect screenRect(topLeft, bottomRight);
+	screenRect.NormalizeRect();
+	if (screenRect.Width() <= 0 || screenRect.Height() <= 0)
+		return;
+
+	m_AvisoScreenArea = screenRect;
+	m_AvisoScreenAreaValid = true;
+}
+
+bool CInsetWindow::TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const
+{
+	if (!IsAvisoViewport() || !m_AvisoScreenAreaValid)
+		return false;
+
+	CRect screenRect(m_AvisoScreenArea);
+	screenRect.NormalizeRect();
+	if (screenRect.Width() <= 0 || screenRect.Height() <= 0)
+		return false;
+	if (screenPoint.x < screenRect.left || screenPoint.x > screenRect.right ||
+		screenPoint.y < screenRect.top || screenPoint.y > screenRect.bottom)
+	{
+		return false;
+	}
+
+	CRect areaRect(m_Area);
+	areaRect.NormalizeRect();
+	if (areaRect.Width() <= 0 || areaRect.Height() <= 0)
+		return false;
+
+	const double fx = static_cast<double>(screenPoint.x - screenRect.left) / static_cast<double>(max(1, screenRect.Width()));
+	const double fy = static_cast<double>(screenPoint.y - screenRect.top) / static_cast<double>(max(1, screenRect.Height()));
+	avisoPoint.x = areaRect.left + static_cast<LONG>(std::lround(fx * static_cast<double>(areaRect.Width())));
+	avisoPoint.y = areaRect.top + static_cast<LONG>(std::lround(fy * static_cast<double>(areaRect.Height())));
+	return IsPointInside(avisoPoint);
 }
 
 void CInsetWindow::BeginAvisoPan(POINT Pt)
@@ -415,6 +468,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
+	HWND renderWindow = ::WindowFromDC(hDC);
+	if (renderWindow == nullptr || !::IsWindow(renderWindow))
+		renderWindow = ::GetActiveWindow();
+	UpdateAvisoScreenArea(renderWindow);
 
 	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
 	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
