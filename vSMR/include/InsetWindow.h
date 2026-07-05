@@ -79,7 +79,7 @@ public:
 	void BeginAvisoPan(POINT Pt);
 	bool UpdateAvisoPan(POINT Pt);
 	void EndAvisoPan();
-	void BeginAvisoMove(POINT Pt);
+	void BeginAvisoMove(POINT Pt, const RECT* layoutBounds);
 	bool UpdateAvisoMove(POINT Pt, const RECT* layoutBounds);
 	bool EndAvisoMove(POINT Pt, const RECT* layoutBounds);
 	bool ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier);

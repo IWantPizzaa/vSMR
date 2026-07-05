@@ -468,7 +468,8 @@ bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lPar
 		}
 		if (Button == BUTTON_LEFT && viewportAtPoint->IsAvisoSplitLayoutActive())
 		{
-			viewportAtPoint->BeginAvisoMove(clientPoint);
+			CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+			viewportAtPoint->BeginAvisoMove(clientPoint, &avisoLayoutBounds);
 			::SetCapture(hwnd);
 			RequestRefresh();
 			return true;
