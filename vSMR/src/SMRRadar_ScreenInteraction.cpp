@@ -61,6 +61,21 @@ namespace
 			pt.y <= radarArea.bottom;
 	}
 
+	CRect AvisoViewportLayoutBounds(CSMRRadar* radar)
+	{
+		if (radar == nullptr)
+			return CRect(0, 0, 0, 0);
+
+		CRect radarArea(radar->GetRadarArea());
+		CRect chatArea(radar->GetChatArea());
+		radarArea.NormalizeRect();
+		chatArea.NormalizeRect();
+		if (!chatArea.IsRectEmpty())
+			radarArea.bottom = chatArea.top;
+		radarArea.NormalizeRect();
+		return radarArea;
+	}
+
 	CInsetWindow* VisibleAppWindowAtPoint(CSMRRadar* radar, POINT pt)
 	{
 		if (radar == nullptr)
@@ -241,13 +256,14 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 			return;
 		CInsetWindow* appWindow = appWindowIt->second.get();
 
-		bool toggleCursor = appWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released);
+		CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+		bool toggleCursor = appWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released, &avisoLayoutBounds);
 
 		if (!toggleCursor)
 		{
 			if (isObjectId("topbar"))
 				setInteractionCursorIfNeeded(IDC_SMRMOVEWINDOW);
-			else if (isObjectId("resize"))
+			else if (isObjectId("resize") || isObjectId("divider"))
 				setInteractionCursorIfNeeded(IDC_SMRRESIZE);
 		}
 		else
@@ -769,6 +785,22 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
+		if (appWindow != nullptr && appWindow->IsAvisoViewport())
+		{
+			if (isObjectId("lock"))
+			{
+				appWindow->m_AvisoLayoutLocked = !appWindow->m_AvisoLayoutLocked;
+				RequestRefresh();
+				return;
+			}
+			if (isObjectId("reset"))
+			{
+				CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+				appWindow->ResetAvisoLayout(&avisoLayoutBounds);
+				RequestRefresh();
+				return;
+			}
+		}
 		if (isObjectId("close"))
 		{
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);

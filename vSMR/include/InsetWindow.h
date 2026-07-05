@@ -21,6 +21,17 @@ public:
 		AvisoViewport = 1
 	};
 
+	enum class AvisoLayoutMode
+	{
+		Floating = 0,
+		SplitLeft = 1,
+		SplitRight = 2,
+		CornerTopLeft = 3,
+		CornerTopRight = 4,
+		CornerBottomLeft = 5,
+		CornerBottomRight = 6
+	};
+
 	CInsetWindow(int Id);
 	virtual ~CInsetWindow();
 
@@ -41,6 +52,8 @@ public:
 	bool m_AvisoScrollSelected = false;
 	RECT m_AvisoScreenArea = { 0, 0, 0, 0 };
 	bool m_AvisoScreenAreaValid = false;
+	AvisoLayoutMode m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+	bool m_AvisoLayoutLocked = false;
 
 	map<string, double> m_TagAngles;
 	map<string, POINT> m_TagOffsets;
@@ -53,9 +66,12 @@ public:
 	virtual void setAirport(string icao);
 	virtual POINT projectPoint(CPosition pos);
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);
-	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released);
+	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
 	bool IsAvisoViewport() const;
 	bool IsPointInside(POINT Pt) const;
+	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
+	void ResetAvisoLayout(const RECT* layoutBounds);
+	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);
 	void UpdateAvisoScreenArea(HWND hwnd);
 	bool TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const;
 	void BeginAvisoPan(POINT Pt);
