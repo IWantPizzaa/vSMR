@@ -997,15 +997,16 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
 				GetPlugIn()->AddPopupListElement("AVISO View", "", APPWINDOW_AVISO, false, int(avisoWindowVisible));
 				const std::string activeProfileName = GetActiveProfileNameForEditor();
-				bool proModeEnabled = false;
-				bool towerModeEnabled = false;
 				if (!activeProfileName.empty())
 				{
-					GetProfileProModeEnabledForEditor(activeProfileName, proModeEnabled);
-					GetProfileTowerModeEnabledForEditor(activeProfileName, towerModeEnabled);
+					const std::string activeDisplayMode = GetActiveProfileDisplayModeForEditor(activeProfileName);
+					const std::vector<DisplayModeSettings> displayModes = GetProfileDisplayModesForEditor(activeProfileName);
+					for (const DisplayModeSettings& displayMode : displayModes)
+					{
+						const std::string label = "Mode: " + displayMode.name;
+						GetPlugIn()->AddPopupListElement(label.c_str(), "", RIMCAS_UPDATE_DISPLAY_MODE, false, int(_stricmp(displayMode.name.c_str(), activeDisplayMode.c_str()) == 0));
+					}
 				}
-				GetPlugIn()->AddPopupListElement("Pro mode", "", RIMCAS_TOGGLE_PRO_MODE, false, int(proModeEnabled));
-				GetPlugIn()->AddPopupListElement("Tower mode", "", RIMCAS_TOGGLE_TOWER_MODE, false, int(towerModeEnabled));
 				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
 			});
