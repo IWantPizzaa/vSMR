@@ -51,7 +51,6 @@ public:
 	double m_AvisoDragStartLongitude = 0.0;
 	bool m_AvisoViewInitialized = false;
 	bool m_AvisoRightPanning = false;
-	bool m_AvisoLeftMoving = false;
 	bool m_AvisoScrollSelected = false;
 	RECT m_AvisoScreenArea = { 0, 0, 0, 0 };
 	bool m_AvisoScreenAreaValid = false;
@@ -71,7 +70,6 @@ public:
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
 	bool IsAvisoViewport() const;
 	bool IsPointInside(POINT Pt) const;
-	bool IsAvisoSplitLayoutActive() const;
 	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
 	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);
 	void UpdateAvisoScreenArea(HWND hwnd);
@@ -79,9 +77,7 @@ public:
 	void BeginAvisoPan(POINT Pt);
 	bool UpdateAvisoPan(POINT Pt);
 	void EndAvisoPan();
-	void BeginAvisoMove(POINT Pt, const RECT* layoutBounds);
-	bool UpdateAvisoMove(POINT Pt, const RECT* layoutBounds);
-	bool EndAvisoMove(POINT Pt, const RECT* layoutBounds);
+	void FloatAvisoViewport(POINT Pt, const RECT* layoutBounds);
 	bool ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier);
 	void ClearAvisoViewportCache();
 	

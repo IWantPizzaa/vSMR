@@ -466,14 +466,6 @@ bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lPar
 			RequestRefresh();
 			return true;
 		}
-		if (Button == BUTTON_LEFT && viewportAtPoint->IsAvisoSplitLayoutActive())
-		{
-			CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
-			viewportAtPoint->BeginAvisoMove(clientPoint, &avisoLayoutBounds);
-			::SetCapture(hwnd);
-			RequestRefresh();
-			return true;
-		}
 
 		RequestRefresh();
 		return false;
@@ -493,29 +485,6 @@ bool CSMRRadar::HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam
 	UNREFERENCED_PARAMETER(wParam);
 	POINT clientPoint = ClientPointFromMouseLParam(lParam);
 	mouseLocation = clientPoint;
-
-	if (Button == BUTTON_LEFT)
-	{
-		bool hadActiveMove = false;
-		CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
-		for (auto& kv : appWindows)
-		{
-			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoLeftMoving)
-			{
-				hadActiveMove = true;
-				appWindow->EndAvisoMove(clientPoint, &avisoLayoutBounds);
-			}
-		}
-
-		if (!hadActiveMove)
-			return false;
-
-		if (hwnd != nullptr && ::GetCapture() == hwnd)
-			::ReleaseCapture();
-		RequestRefresh();
-		return true;
-	}
 
 	if (Button != BUTTON_RIGHT)
 		return false;
@@ -544,32 +513,6 @@ bool CSMRRadar::HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam)
 {
 	POINT clientPoint = ClientPointFromMouseLParam(lParam);
 	mouseLocation = clientPoint;
-
-	for (auto& kv : appWindows)
-	{
-		CInsetWindow* appWindow = kv.second.get();
-		if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !appWindow->m_AvisoLeftMoving)
-			continue;
-
-		CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
-		if ((wParam & MK_LBUTTON) == 0 && (::GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0)
-		{
-			appWindow->EndAvisoMove(clientPoint, &avisoLayoutBounds);
-			if (hwnd != nullptr && ::GetCapture() == hwnd)
-				::ReleaseCapture();
-			RequestRefresh();
-			return true;
-		}
-
-		if (!appWindow->UpdateAvisoMove(clientPoint, &avisoLayoutBounds))
-		{
-			RequestRefresh();
-			return true;
-		}
-
-		RequestRefresh();
-		return true;
-	}
 
 	for (auto& kv : appWindows)
 	{
@@ -845,6 +788,18 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
+		if (isObjectId("float"))
+		{
+			if (appWindow == nullptr || !appWindow->IsAvisoViewport())
+				return;
+
+			CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+			SelectAvisoViewport(this, appWindow);
+			appWindow->FloatAvisoViewport(Pt, &avisoLayoutBounds);
+			RequestRefresh();
+			return;
+		}
+
 		if (isObjectId("close"))
 		{
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
