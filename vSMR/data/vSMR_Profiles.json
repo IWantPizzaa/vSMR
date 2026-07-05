@@ -4377,5 +4377,14 @@
             ]
         },
         "sid_text_colors": []
+    },
+    {
+        "_vsmr": {
+            "schema_version": 1,
+            "last_active_profile": "Default",
+            "vacdm": {
+                "server_url": ""
+            }
+        }
     }
 ]

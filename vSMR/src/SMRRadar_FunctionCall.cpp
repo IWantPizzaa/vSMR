@@ -270,7 +270,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 					LoadCustomFont();
 					const std::string activeProfile = GetActiveProfileNameForEditor();
 					RememberSessionActiveProfile(activeProfile);
-					WriteLastActiveProfileToDisk(activeProfile);
+					WriteLastActiveProfileToConfig(activeProfile);
 					SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 				}
 			}
