@@ -4121,8 +4121,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	switch (uMsg)
 	{
 	case WM_LBUTTONDOWN:
-		if (gWindowProcRadarScreen != nullptr)
-			(void)gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_LEFT);
+		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_LEFT))
+			return 0;
+		break;
+	case WM_LBUTTONUP:
+		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonUp(hwnd, wParam, lParam, BUTTON_LEFT))
+			return 0;
 		break;
 	case WM_RBUTTONDOWN:
 		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_RIGHT))
