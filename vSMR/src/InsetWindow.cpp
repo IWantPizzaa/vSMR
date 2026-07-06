@@ -1669,8 +1669,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return false;
 		}
 
-		const double requiredLonMargin = lonSpan * 0.20;
-		const double requiredLatMargin = latSpan * 0.20;
+		const double requiredLonMargin = lonSpan * 0.25;
+		const double requiredLatMargin = latSpan * 0.25;
 		return
 			m_AvisoState->renderMinLongitude <= displayMinLon - requiredLonMargin &&
 			m_AvisoState->renderMaxLongitude >= displayMaxLon + requiredLonMargin &&
@@ -1685,11 +1685,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	{
 		if (!m_AvisoState->renderPending)
 		{
-			const double overscanRatio = 0.65;
+			const double overscanRatio = 0.75;
 			const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
 			const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
-			const double renderMinLat = ClampAvisoLatitude(displayMinLat - (latSpan * overscanRatio));
-			const double renderMaxLat = ClampAvisoLatitude(displayMaxLat + (latSpan * overscanRatio));
+			const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
+			const double renderMaxLat = displayMaxLat + (latSpan * overscanRatio);
 			const Gdiplus::PointF renderTopLeft = projectPoint(renderMinLon, renderMaxLat);
 			const Gdiplus::PointF renderTopRight = projectPoint(renderMaxLon, renderMaxLat);
 			const Gdiplus::PointF renderBottomLeft = projectPoint(renderMinLon, renderMinLat);
@@ -1702,9 +1702,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const double renderPixelHeight = renderScreenBottom - renderScreenTop;
 			if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
 			{
-				const double maxRasterSide = 4096.0;
-				const double maxRasterPixels = 8000000.0;
-				double rasterScale = 1.0;
+				const double targetRasterScale = 1.0;
+				const double minRasterScale = 0.50;
+				const double maxRasterSide = 6400.0;
+				const double maxRasterPixels = 18000000.0;
+				double rasterScale = targetRasterScale;
 				const double maxDimension = max(renderPixelWidth, renderPixelHeight);
 				const double sideLimitedScale = maxRasterSide / maxDimension;
 				if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
@@ -1712,7 +1714,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
 				if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
 					rasterScale = pixelLimitedScale;
-				rasterScale = std::clamp(rasterScale, 0.5, 1.0);
+				rasterScale = std::clamp(rasterScale, minRasterScale, targetRasterScale);
 
 				CSMRRadar::AvisoRasterRenderRequest request;
 				request.requestId = ++m_AvisoState->nextRequestId;
