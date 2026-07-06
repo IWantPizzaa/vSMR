@@ -1283,34 +1283,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		return;
 	}
 
+	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
 	if (m_AvisoState->renderPending &&
 		m_AvisoState->renderFuture.valid() &&
 		m_AvisoState->renderFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
 	{
-		std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = m_AvisoState->renderFuture.get();
+		completedRenderResult = m_AvisoState->renderFuture.get();
 		m_AvisoState->renderPending = false;
-		if (result != nullptr && result->bitmap != nullptr)
-		{
-			m_AvisoState->ClearCache();
-			m_AvisoState->cacheBitmap = result->bitmap;
-			result->bitmap = nullptr;
-			m_AvisoState->cachePath = result->path;
-			m_AvisoState->cacheWidth = result->rasterWidth;
-			m_AvisoState->cacheHeight = result->rasterHeight;
-			m_AvisoState->displayMinLongitude = result->displayMinLongitude;
-			m_AvisoState->displayMinLatitude = result->displayMinLatitude;
-			m_AvisoState->displayMaxLongitude = result->displayMaxLongitude;
-			m_AvisoState->displayMaxLatitude = result->displayMaxLatitude;
-			m_AvisoState->renderMinLongitude = result->renderMinLongitude;
-			m_AvisoState->renderMinLatitude = result->renderMinLatitude;
-			m_AvisoState->renderMaxLongitude = result->renderMaxLongitude;
-			m_AvisoState->renderMaxLatitude = result->renderMaxLatitude;
-			m_AvisoState->projectedTopLeft = result->projectedTopLeft;
-			m_AvisoState->projectedTopRight = result->projectedTopRight;
-			m_AvisoState->projectedBottomLeft = result->projectedBottomLeft;
-			m_AvisoState->projectedBottomRight = result->projectedBottomRight;
-			m_AvisoState->anchorValid = true;
-		}
 	}
 
 	const int scale = max(1, m_AvisoScale);
@@ -1366,10 +1345,57 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (m_AvisoState->cacheBitmap == nullptr || !m_AvisoState->anchorValid)
 			return false;
 
-		const double transformPixelTolerance = 1.5;
+		const double transformPixelTolerance = 4.0;
 		return AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) &&
 			AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance);
 	};
+	auto completedResultMatchesCurrentView = [&](const CSMRRadar::AvisoRasterRenderResult& result) -> bool
+	{
+		if (result.bitmap == nullptr ||
+			result.path != path ||
+			result.rasterWidth <= 0 ||
+			result.rasterHeight <= 0)
+		{
+			return false;
+		}
+
+		const double transformPixelTolerance = 4.0;
+		if (!AvisoVectorWithinTolerance(result.projectedTopLeft, result.projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) ||
+			!AvisoVectorWithinTolerance(result.projectedTopLeft, result.projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance))
+		{
+			return false;
+		}
+
+		const double coverageToleranceLon = lonSpan * 0.02;
+		const double coverageToleranceLat = latSpan * 0.02;
+		return
+			result.renderMinLongitude <= displayMinLon + coverageToleranceLon &&
+			result.renderMaxLongitude >= displayMaxLon - coverageToleranceLon &&
+			result.renderMinLatitude <= displayMinLat + coverageToleranceLat &&
+			result.renderMaxLatitude >= displayMaxLat - coverageToleranceLat;
+	};
+	if (completedRenderResult != nullptr && completedResultMatchesCurrentView(*completedRenderResult))
+	{
+		m_AvisoState->ClearCache();
+		m_AvisoState->cacheBitmap = completedRenderResult->bitmap;
+		completedRenderResult->bitmap = nullptr;
+		m_AvisoState->cachePath = completedRenderResult->path;
+		m_AvisoState->cacheWidth = completedRenderResult->rasterWidth;
+		m_AvisoState->cacheHeight = completedRenderResult->rasterHeight;
+		m_AvisoState->displayMinLongitude = completedRenderResult->displayMinLongitude;
+		m_AvisoState->displayMinLatitude = completedRenderResult->displayMinLatitude;
+		m_AvisoState->displayMaxLongitude = completedRenderResult->displayMaxLongitude;
+		m_AvisoState->displayMaxLatitude = completedRenderResult->displayMaxLatitude;
+		m_AvisoState->renderMinLongitude = completedRenderResult->renderMinLongitude;
+		m_AvisoState->renderMinLatitude = completedRenderResult->renderMinLatitude;
+		m_AvisoState->renderMaxLongitude = completedRenderResult->renderMaxLongitude;
+		m_AvisoState->renderMaxLatitude = completedRenderResult->renderMaxLatitude;
+		m_AvisoState->projectedTopLeft = completedRenderResult->projectedTopLeft;
+		m_AvisoState->projectedTopRight = completedRenderResult->projectedTopRight;
+		m_AvisoState->projectedBottomLeft = completedRenderResult->projectedBottomLeft;
+		m_AvisoState->projectedBottomRight = completedRenderResult->projectedBottomRight;
+		m_AvisoState->anchorValid = true;
+	}
 
 	auto drawCache = [&]() -> bool
 	{
