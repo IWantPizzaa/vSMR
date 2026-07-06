@@ -32,6 +32,77 @@ namespace
 		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
 	}
 
+	bool AvisoWithinTolerance(double left, double right, double tolerance)
+	{
+		const double delta = left - right;
+		return delta >= -tolerance && delta <= tolerance;
+	}
+
+	bool AvisoVectorWithinTolerance(
+		const Gdiplus::PointF& leftStart,
+		const Gdiplus::PointF& leftEnd,
+		const Gdiplus::PointF& rightStart,
+		const Gdiplus::PointF& rightEnd,
+		double tolerance)
+	{
+		return AvisoWithinTolerance(static_cast<double>(leftEnd.X - leftStart.X), static_cast<double>(rightEnd.X - rightStart.X), tolerance) &&
+			AvisoWithinTolerance(static_cast<double>(leftEnd.Y - leftStart.Y), static_cast<double>(rightEnd.Y - rightStart.Y), tolerance);
+	}
+
+	Gdiplus::PointF RotateAvisoVector(double x, double y, double degrees)
+	{
+		if (!std::isfinite(degrees) || std::abs(degrees) < 0.001)
+			return Gdiplus::PointF(static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(y));
+
+		const double radians = DegToRad(degrees);
+		const double cosine = std::cos(radians);
+		const double sine = std::sin(radians);
+		return Gdiplus::PointF(
+			static_cast<Gdiplus::REAL>((x * cosine) - (y * sine)),
+			static_cast<Gdiplus::REAL>((x * sine) + (y * cosine)));
+	}
+
+	Gdiplus::PointF RotateAvisoPointAround(double x, double y, const Gdiplus::PointF& center, double degrees)
+	{
+		const Gdiplus::PointF rotated = RotateAvisoVector(
+			x - static_cast<double>(center.X),
+			y - static_cast<double>(center.Y),
+			degrees);
+		return Gdiplus::PointF(
+			static_cast<Gdiplus::REAL>(static_cast<double>(center.X) + rotated.X),
+			static_cast<Gdiplus::REAL>(static_cast<double>(center.Y) + rotated.Y));
+	}
+
+	double ResolveAvisoViewportScreenRotationDeg(CSMRRadar* radarScreen, double latitude, double longitude)
+	{
+		if (radarScreen == nullptr)
+			return 0.0;
+
+		CPosition centerPosition;
+		centerPosition.m_Latitude = ClampAvisoLatitude(latitude);
+		centerPosition.m_Longitude = longitude;
+		const POINT centerPixel = radarScreen->ConvertCoordFromPositionToPixel(centerPosition);
+
+		for (double sampleDelta : { 0.01, 0.05, 0.1 })
+		{
+			CPosition northPosition = centerPosition;
+			northPosition.m_Latitude = ClampAvisoLatitude(latitude + sampleDelta);
+			if (std::abs(northPosition.m_Latitude - centerPosition.m_Latitude) < 1e-9)
+				continue;
+
+			const POINT northPixel = radarScreen->ConvertCoordFromPositionToPixel(northPosition);
+			const double dx = static_cast<double>(northPixel.x - centerPixel.x);
+			const double dy = static_cast<double>(northPixel.y - centerPixel.y);
+			if ((dx * dx + dy * dy) < 4.0)
+				continue;
+
+			const double rotationDeg = std::atan2(dx, -dy) * 180.0 / 3.14159265358979323846;
+			return std::isfinite(rotationDeg) ? rotationDeg : 0.0;
+		}
+
+		return 0.0;
+	}
+
 	constexpr int kInsetToolbarButtonSize = 13;
 	constexpr int kInsetToolbarButtonGap = 2;
 	constexpr int kInsetToolbarRightMargin = 3;
@@ -377,6 +448,10 @@ struct AvisoViewportState
 		renderMinLatitude = 0.0;
 		renderMaxLongitude = 0.0;
 		renderMaxLatitude = 0.0;
+		projectedTopLeft = Gdiplus::PointF();
+		projectedTopRight = Gdiplus::PointF();
+		projectedBottomLeft = Gdiplus::PointF();
+		projectedBottomRight = Gdiplus::PointF();
 		anchorValid = false;
 	}
 
@@ -392,7 +467,12 @@ struct AvisoViewportState
 	double renderMinLatitude = 0.0;
 	double renderMaxLongitude = 0.0;
 	double renderMaxLatitude = 0.0;
+	Gdiplus::PointF projectedTopLeft;
+	Gdiplus::PointF projectedTopRight;
+	Gdiplus::PointF projectedBottomLeft;
+	Gdiplus::PointF projectedBottomRight;
 	bool anchorValid = false;
+	double screenRotationDeg = 0.0;
 	bool renderPending = false;
 	unsigned long long nextRequestId = 0;
 	std::future<std::unique_ptr<CSMRRadar::AvisoRasterRenderResult>> renderFuture;
@@ -648,10 +728,12 @@ bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
 	const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoDragStartLatitude));
 	const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
-	const int dragX = Pt.x - m_OffsetDrag.x;
-	const int dragY = Pt.y - m_OffsetDrag.y;
-	m_AvisoCenterLongitude = m_AvisoDragStartLongitude - (static_cast<double>(dragX) * lonDegreesPerPixel);
-	m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoDragStartLatitude + (static_cast<double>(dragY) * latDegreesPerPixel));
+	const Gdiplus::PointF drag = RotateAvisoVector(
+		static_cast<double>(Pt.x - m_OffsetDrag.x),
+		static_cast<double>(Pt.y - m_OffsetDrag.y),
+		-(m_AvisoState != nullptr ? m_AvisoState->screenRotationDeg : 0.0));
+	m_AvisoCenterLongitude = m_AvisoDragStartLongitude - (static_cast<double>(drag.X) * lonDegreesPerPixel);
+	m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoDragStartLatitude + (static_cast<double>(drag.Y) * latDegreesPerPixel));
 	return true;
 }
 
@@ -710,8 +792,12 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 		return false;
 
 	const POINT centerPoint = viewportRect.CenterPoint();
-	const double dx = static_cast<double>(Pt.x - centerPoint.x);
-	const double dy = static_cast<double>(Pt.y - centerPoint.y);
+	const Gdiplus::PointF localOffset = RotateAvisoVector(
+		static_cast<double>(Pt.x - centerPoint.x),
+		static_cast<double>(Pt.y - centerPoint.y),
+		-(m_AvisoState != nullptr ? m_AvisoState->screenRotationDeg : 0.0));
+	const double dx = static_cast<double>(localOffset.X);
+	const double dy = static_cast<double>(localOffset.Y);
 
 	const int oldScale = max(1, m_AvisoScale);
 	const double oldMetersPerPixel = kAvisoMetersPerNm / static_cast<double>(oldScale);
@@ -1219,6 +1305,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_AvisoState->renderMinLatitude = result->renderMinLatitude;
 			m_AvisoState->renderMaxLongitude = result->renderMaxLongitude;
 			m_AvisoState->renderMaxLatitude = result->renderMaxLatitude;
+			m_AvisoState->projectedTopLeft = result->projectedTopLeft;
+			m_AvisoState->projectedTopRight = result->projectedTopRight;
+			m_AvisoState->projectedBottomLeft = result->projectedBottomLeft;
+			m_AvisoState->projectedBottomRight = result->projectedBottomRight;
 			m_AvisoState->anchorValid = true;
 		}
 	}
@@ -1245,11 +1335,40 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 	const double scaleX = static_cast<double>(viewportWidth) / lonSpan;
 	const double scaleY = static_cast<double>(viewportHeight) / latSpan;
+	const double screenRotationDeg = ResolveAvisoViewportScreenRotationDeg(radar_screen, m_AvisoCenterLatitude, m_AvisoCenterLongitude);
+	m_AvisoState->screenRotationDeg = screenRotationDeg;
+	const CPoint viewportCenterPoint = viewportRect.CenterPoint();
+	const Gdiplus::PointF viewportCenter(
+		static_cast<Gdiplus::REAL>(viewportCenterPoint.x),
+		static_cast<Gdiplus::REAL>(viewportCenterPoint.y));
+	auto rotateViewportPoint = [&](double x, double y) -> Gdiplus::PointF
+	{
+		return RotateAvisoPointAround(x, y, viewportCenter, screenRotationDeg);
+	};
+	const Gdiplus::PointF projectedTopLeft = rotateViewportPoint(viewportRect.left, viewportRect.top);
+	const Gdiplus::PointF projectedTopRight = rotateViewportPoint(viewportRect.right, viewportRect.top);
+	const Gdiplus::PointF projectedBottomLeft = rotateViewportPoint(viewportRect.left, viewportRect.bottom);
+	const Gdiplus::PointF projectedBottomRight = rotateViewportPoint(viewportRect.right, viewportRect.bottom);
 	auto projectPoint = [&](double longitude, double latitude) -> Gdiplus::PointF
 	{
-		const double x = static_cast<double>(viewportRect.left) + ((longitude - displayMinLon) * scaleX);
-		const double y = static_cast<double>(viewportRect.top) + ((displayMaxLat - latitude) * scaleY);
-		return Gdiplus::PointF(static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(y));
+		const double u = (longitude - displayMinLon) / lonSpan;
+		const double v = (displayMaxLat - latitude) / latSpan;
+		const double topX = static_cast<double>(projectedTopLeft.X) + static_cast<double>(projectedTopRight.X - projectedTopLeft.X) * u;
+		const double bottomX = static_cast<double>(projectedBottomLeft.X) + static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X) * u;
+		const double topY = static_cast<double>(projectedTopLeft.Y) + static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y) * u;
+		const double bottomY = static_cast<double>(projectedBottomLeft.Y) + static_cast<double>(projectedBottomRight.Y - projectedBottomLeft.Y) * u;
+		return Gdiplus::PointF(
+			static_cast<Gdiplus::REAL>(topX + (bottomX - topX) * v),
+			static_cast<Gdiplus::REAL>(topY + (bottomY - topY) * v));
+	};
+	auto cacheTransformMatchesCurrentView = [&]() -> bool
+	{
+		if (m_AvisoState->cacheBitmap == nullptr || !m_AvisoState->anchorValid)
+			return false;
+
+		const double transformPixelTolerance = 1.5;
+		return AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) &&
+			AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance);
 	};
 
 	auto drawCache = [&]() -> bool
@@ -1262,13 +1381,17 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		{
 			return false;
 		}
+		if (!cacheTransformMatchesCurrentView())
+			return false;
 
 		const Gdiplus::PointF destTopLeft = projectPoint(m_AvisoState->renderMinLongitude, m_AvisoState->renderMaxLatitude);
+		const Gdiplus::PointF destTopRight = projectPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMaxLatitude);
+		const Gdiplus::PointF destBottomLeft = projectPoint(m_AvisoState->renderMinLongitude, m_AvisoState->renderMinLatitude);
 		const Gdiplus::PointF destBottomRight = projectPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMinLatitude);
-		const double destX = min(static_cast<double>(destTopLeft.X), static_cast<double>(destBottomRight.X));
-		const double destY = min(static_cast<double>(destTopLeft.Y), static_cast<double>(destBottomRight.Y));
-		const double destRight = max(static_cast<double>(destTopLeft.X), static_cast<double>(destBottomRight.X));
-		const double destBottom = max(static_cast<double>(destTopLeft.Y), static_cast<double>(destBottomRight.Y));
+		const double destX = min(min(static_cast<double>(destTopLeft.X), static_cast<double>(destTopRight.X)), min(static_cast<double>(destBottomLeft.X), static_cast<double>(destBottomRight.X)));
+		const double destY = min(min(static_cast<double>(destTopLeft.Y), static_cast<double>(destTopRight.Y)), min(static_cast<double>(destBottomLeft.Y), static_cast<double>(destBottomRight.Y)));
+		const double destRight = max(max(static_cast<double>(destTopLeft.X), static_cast<double>(destTopRight.X)), max(static_cast<double>(destBottomLeft.X), static_cast<double>(destBottomRight.X)));
+		const double destBottom = max(max(static_cast<double>(destTopLeft.Y), static_cast<double>(destTopRight.Y)), max(static_cast<double>(destBottomLeft.Y), static_cast<double>(destBottomRight.Y)));
 		const double destWidth = destRight - destX;
 		const double destHeight = destBottom - destY;
 		if (destWidth < 1.0 || destHeight < 1.0)
@@ -1372,6 +1495,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		{
 			return false;
 		}
+		if (!cacheTransformMatchesCurrentView())
+			return false;
 
 		const double cachedDisplayLonSpan = m_AvisoState->displayMaxLongitude - m_AvisoState->displayMinLongitude;
 		const double cachedDisplayLatSpan = m_AvisoState->displayMaxLatitude - m_AvisoState->displayMinLatitude;
@@ -1406,11 +1531,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const double renderMinLat = ClampAvisoLatitude(displayMinLat - (latSpan * overscanRatio));
 			const double renderMaxLat = ClampAvisoLatitude(displayMaxLat + (latSpan * overscanRatio));
 			const Gdiplus::PointF renderTopLeft = projectPoint(renderMinLon, renderMaxLat);
+			const Gdiplus::PointF renderTopRight = projectPoint(renderMaxLon, renderMaxLat);
+			const Gdiplus::PointF renderBottomLeft = projectPoint(renderMinLon, renderMinLat);
 			const Gdiplus::PointF renderBottomRight = projectPoint(renderMaxLon, renderMinLat);
-			const double renderScreenLeft = min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderBottomRight.X));
-			const double renderScreenTop = min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderBottomRight.Y));
-			const double renderScreenRight = max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderBottomRight.X));
-			const double renderScreenBottom = max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderBottomRight.Y));
+			const double renderScreenLeft = min(min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), min(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+			const double renderScreenTop = min(min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), min(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+			const double renderScreenRight = max(max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), max(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+			const double renderScreenBottom = max(max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), max(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
 			const double renderPixelWidth = renderScreenRight - renderScreenLeft;
 			const double renderPixelHeight = renderScreenBottom - renderScreenTop;
 			if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
@@ -1447,10 +1574,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				request.renderScreenTop = renderScreenTop;
 				request.scaleX = scaleX;
 				request.scaleY = scaleY;
-				request.projectedTopLeft = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.left), static_cast<Gdiplus::REAL>(viewportRect.top));
-				request.projectedTopRight = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.right), static_cast<Gdiplus::REAL>(viewportRect.top));
-				request.projectedBottomLeft = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.left), static_cast<Gdiplus::REAL>(viewportRect.bottom));
-				request.projectedBottomRight = Gdiplus::PointF(static_cast<Gdiplus::REAL>(viewportRect.right), static_cast<Gdiplus::REAL>(viewportRect.bottom));
+				request.projectedTopLeft = projectedTopLeft;
+				request.projectedTopRight = projectedTopRight;
+				request.projectedBottomLeft = projectedBottomLeft;
+				request.projectedBottomRight = projectedBottomRight;
 
 				m_AvisoState->renderPending = true;
 				m_AvisoState->renderFuture = std::async(
