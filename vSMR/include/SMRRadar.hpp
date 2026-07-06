@@ -203,6 +203,10 @@ public:
 		double renderMinLatitude = 0.0;
 		double renderMaxLongitude = 0.0;
 		double renderMaxLatitude = 0.0;
+		Gdiplus::PointF projectedTopLeft;
+		Gdiplus::PointF projectedTopRight;
+		Gdiplus::PointF projectedBottomLeft;
+		Gdiplus::PointF projectedBottomRight;
 	};
 	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
 	std::vector<AvisoLabel> AvisoGeoJsonLabels;
@@ -227,6 +231,10 @@ public:
 	double AvisoGeoJsonRasterAnchorLatitude = 0.0;
 	double AvisoGeoJsonRasterBottomRightLongitude = 0.0;
 	double AvisoGeoJsonRasterBottomRightLatitude = 0.0;
+	Gdiplus::PointF AvisoGeoJsonRasterProjectedTopLeft;
+	Gdiplus::PointF AvisoGeoJsonRasterProjectedTopRight;
+	Gdiplus::PointF AvisoGeoJsonRasterProjectedBottomLeft;
+	Gdiplus::PointF AvisoGeoJsonRasterProjectedBottomRight;
 	bool AvisoGeoJsonRasterAnchorValid = false;
 	bool AvisoGeoJsonLastViewValid = false;
 	std::string AvisoGeoJsonLastViewPath;
@@ -261,6 +269,10 @@ public:
 	double AvisoGeoJsonRenderLastRequestMaxLatitude = 0.0;
 	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
 	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
+	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedTopLeft;
+	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedTopRight;
+	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedBottomLeft;
+	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedBottomRight;
 	bool AvisoGeoJsonScrollSelected = false;
 	bool AvisoViewsLinked = false;
 	std::string ActiveAvisoPresetName;

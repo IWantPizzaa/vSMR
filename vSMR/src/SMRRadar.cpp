@@ -327,6 +327,18 @@ namespace
 		return delta >= -tolerance && delta <= tolerance;
 	}
 
+	bool AvisoPointWithinTolerance(const PointF& left, const PointF& right, double tolerance)
+	{
+		return AvisoWithinTolerance(left.X, right.X, tolerance) &&
+			AvisoWithinTolerance(left.Y, right.Y, tolerance);
+	}
+
+	bool AvisoVectorWithinTolerance(const PointF& leftStart, const PointF& leftEnd, const PointF& rightStart, const PointF& rightEnd, double tolerance)
+	{
+		return AvisoWithinTolerance(static_cast<double>(leftEnd.X - leftStart.X), static_cast<double>(rightEnd.X - rightStart.X), tolerance) &&
+			AvisoWithinTolerance(static_cast<double>(leftEnd.Y - leftStart.Y), static_cast<double>(rightEnd.Y - rightStart.Y), tolerance);
+	}
+
 	double RefreshPerfNowMs()
 	{
 		static LARGE_INTEGER frequency = {};
@@ -1001,7 +1013,11 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLongitude, request.displayMinLongitude, 1e-10) &&
 			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLatitude, request.displayMinLatitude, 1e-10) &&
 			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLongitude, request.displayMaxLongitude, 1e-10) &&
-			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLatitude, request.displayMaxLatitude, 1e-10);
+			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLatitude, request.displayMaxLatitude, 1e-10) &&
+			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedTopLeft, request.projectedTopLeft, 0.25) &&
+			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedTopRight, request.projectedTopRight, 0.25) &&
+			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.25) &&
+			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedBottomRight, request.projectedBottomRight, 0.25);
 		if (sameRequest)
 			return;
 
@@ -1015,6 +1031,10 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		AvisoGeoJsonRenderLastRequestMaxLatitude = request.displayMaxLatitude;
 		AvisoGeoJsonRenderLastRequestRasterWidth = request.rasterWidth;
 		AvisoGeoJsonRenderLastRequestRasterHeight = request.rasterHeight;
+		AvisoGeoJsonRenderLastRequestProjectedTopLeft = request.projectedTopLeft;
+		AvisoGeoJsonRenderLastRequestProjectedTopRight = request.projectedTopRight;
+		AvisoGeoJsonRenderLastRequestProjectedBottomLeft = request.projectedBottomLeft;
+		AvisoGeoJsonRenderLastRequestProjectedBottomRight = request.projectedBottomRight;
 		AvisoGeoJsonPendingRenderRequest = std::make_unique<AvisoRasterRenderRequest>(std::move(request));
 		shouldNotify = true;
 	}
@@ -1042,6 +1062,10 @@ void CSMRRadar::ClearAvisoGeoJsonRasterCache()
 	AvisoGeoJsonRasterAnchorLatitude = 0.0;
 	AvisoGeoJsonRasterBottomRightLongitude = 0.0;
 	AvisoGeoJsonRasterBottomRightLatitude = 0.0;
+	AvisoGeoJsonRasterProjectedTopLeft = PointF();
+	AvisoGeoJsonRasterProjectedTopRight = PointF();
+	AvisoGeoJsonRasterProjectedBottomLeft = PointF();
+	AvisoGeoJsonRasterProjectedBottomRight = PointF();
 	AvisoGeoJsonRasterAnchorValid = false;
 }
 
@@ -1070,6 +1094,10 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 	AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
 	AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
 	AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
+	AvisoGeoJsonRasterProjectedTopLeft = result->projectedTopLeft;
+	AvisoGeoJsonRasterProjectedTopRight = result->projectedTopRight;
+	AvisoGeoJsonRasterProjectedBottomLeft = result->projectedBottomLeft;
+	AvisoGeoJsonRasterProjectedBottomRight = result->projectedBottomRight;
 	AvisoGeoJsonRasterAnchorValid = true;
 }
 
@@ -1402,6 +1430,10 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	result->renderMinLatitude = request.renderMinLatitude;
 	result->renderMaxLongitude = request.renderMaxLongitude;
 	result->renderMaxLatitude = request.renderMaxLatitude;
+	result->projectedTopLeft = request.projectedTopLeft;
+	result->projectedTopRight = request.projectedTopRight;
+	result->projectedBottomLeft = request.projectedBottomLeft;
+	result->projectedBottomRight = request.projectedBottomRight;
 	return result;
 }
 
@@ -1538,6 +1570,16 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	const double viewPixelTolerance = 1.15;
 	const double lonPixelTolerance = (1.0 / scaleX) * viewPixelTolerance;
 	const double latPixelTolerance = (1.0 / scaleY) * viewPixelTolerance;
+	const double transformPixelTolerance = 1.5;
+
+	auto rasterCacheTransformMatchesCurrentView = [&]() -> bool
+	{
+		if (AvisoGeoJsonRasterCache == nullptr || !AvisoGeoJsonRasterAnchorValid)
+			return false;
+
+		return AvisoVectorWithinTolerance(AvisoGeoJsonRasterProjectedTopLeft, AvisoGeoJsonRasterProjectedTopRight, PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y)), PointF(static_cast<REAL>(projectedTopRight.x), static_cast<REAL>(projectedTopRight.y)), transformPixelTolerance) &&
+			AvisoVectorWithinTolerance(AvisoGeoJsonRasterProjectedTopLeft, AvisoGeoJsonRasterProjectedBottomLeft, PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y)), PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y)), transformPixelTolerance);
+	};
 
 	auto cacheMatchesCurrentView = [&]() -> bool
 	{
@@ -1546,7 +1588,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 			AvisoWithinTolerance(AvisoGeoJsonRasterMinLongitude, displayMinLon, lonPixelTolerance) &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMinLatitude, displayMinLat, latPixelTolerance) &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLongitude, displayMaxLon, lonPixelTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLatitude, displayMaxLat, latPixelTolerance);
+			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLatitude, displayMaxLat, latPixelTolerance) &&
+			rasterCacheTransformMatchesCurrentView();
 	};
 
 	auto drawRasterCacheTransformed = [&]() -> bool
@@ -1556,6 +1599,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		if (AvisoGeoJsonRasterCachePath != path)
 			return false;
 		if (!AvisoGeoJsonRasterAnchorValid)
+			return false;
+		if (!rasterCacheTransformMatchesCurrentView())
 			return false;
 
 		const double cachedViewportLonSpan = std::abs(AvisoGeoJsonRasterBottomRightLongitude - AvisoGeoJsonRasterAnchorLongitude);
