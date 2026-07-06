@@ -542,10 +542,10 @@ CSMRRadar::CSMRRadar()
 CSMRRadar::~CSMRRadar()
 {
 	Logger::info(string(__FUNCSIG__));
+	BeginShutdown();
 	if (gWindowProcRadarScreen == this)
 		gWindowProcRadarScreen = nullptr;
 	UnhookAvisoThreadHooks();
-	StopAvisoGeoJsonRenderThread();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
 	try {
@@ -662,6 +662,9 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 
 bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 {
+	if (IsShutdownRequested())
+		return false;
+
 	if (path.empty())
 		return false;
 
@@ -952,12 +955,17 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 
 void CSMRRadar::EnsureAvisoGeoJsonRenderThread()
 {
+	if (IsShutdownRequested() || IsAvisoGeoJsonRenderStopRequested())
+		return;
+
 	bool shouldStart = false;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		if (!AvisoGeoJsonRenderThreadStarted)
+		if (!IsShutdownRequested() &&
+			!AvisoGeoJsonRenderStop.load(std::memory_order_relaxed) &&
+			!AvisoGeoJsonRenderThreadStarted)
 		{
-			AvisoGeoJsonRenderStop = false;
+			AvisoGeoJsonRenderStop.store(false, std::memory_order_relaxed);
 			AvisoGeoJsonRenderThreadStarted = true;
 			shouldStart = true;
 		}
@@ -969,13 +977,21 @@ void CSMRRadar::EnsureAvisoGeoJsonRenderThread()
 
 void CSMRRadar::StopAvisoGeoJsonRenderThread()
 {
+	bool shouldJoin = false;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		if (!AvisoGeoJsonRenderThreadStarted)
-			return;
-		AvisoGeoJsonRenderStop = true;
+		AvisoGeoJsonRenderStop.store(true, std::memory_order_relaxed);
 		AvisoGeoJsonPendingRenderRequest.reset();
 		AvisoGeoJsonCompletedRenderResult.reset();
+		AvisoGeoJsonRenderLastRequestValid = false;
+		shouldJoin = AvisoGeoJsonRenderThreadStarted;
+	}
+
+	if (!shouldJoin)
+	{
+		if (AvisoGeoJsonRenderThread.joinable())
+			AvisoGeoJsonRenderThread.join();
+		return;
 	}
 
 	AvisoGeoJsonRenderCondition.notify_all();
@@ -985,13 +1001,38 @@ void CSMRRadar::StopAvisoGeoJsonRenderThread()
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
 		AvisoGeoJsonRenderThreadStarted = false;
-		AvisoGeoJsonRenderStop = false;
 		AvisoGeoJsonRenderLastRequestValid = false;
+	}
+}
+
+bool CSMRRadar::IsAvisoGeoJsonRenderStopRequested() const
+{
+	return IsShutdownRequested() || AvisoGeoJsonRenderStop.load(std::memory_order_relaxed);
+}
+
+bool CSMRRadar::IsShutdownRequested() const
+{
+	return ShutdownRequested.load(std::memory_order_relaxed);
+}
+
+void CSMRRadar::BeginShutdown()
+{
+	ShutdownRequested.store(true, std::memory_order_relaxed);
+	AvisoGeoJsonRenderStop.store(true, std::memory_order_relaxed);
+	StopAvisoGeoJsonRenderThread();
+
+	for (auto& appWindow : appWindows)
+	{
+		if (appWindow.second != nullptr)
+			appWindow.second->CancelAvisoViewportRender();
 	}
 }
 
 void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 {
+	if (IsShutdownRequested() || IsAvisoGeoJsonRenderStopRequested())
+		return;
+
 	if (request.path.empty() ||
 		request.features == nullptr ||
 		request.labels == nullptr ||
@@ -1002,10 +1043,15 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 	}
 
 	EnsureAvisoGeoJsonRenderThread();
+	if (IsShutdownRequested() || IsAvisoGeoJsonRenderStopRequested())
+		return;
 
 	bool shouldNotify = false;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		if (IsShutdownRequested() || AvisoGeoJsonRenderStop.load(std::memory_order_relaxed))
+			return;
+
 		const bool sameRequest =
 			AvisoGeoJsonRenderLastRequestValid &&
 			AvisoGeoJsonRenderLastRequestPath == request.path &&
@@ -1072,6 +1118,9 @@ void CSMRRadar::ClearAvisoGeoJsonRasterCache()
 
 void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 {
+	if (IsShutdownRequested())
+		return;
+
 	std::unique_ptr<AvisoRasterRenderResult> result;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
@@ -1110,10 +1159,10 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 		{
 			std::unique_lock<std::mutex> lock(AvisoGeoJsonRenderMutex);
 			AvisoGeoJsonRenderCondition.wait(lock, [&]() {
-				return AvisoGeoJsonRenderStop || AvisoGeoJsonPendingRenderRequest != nullptr;
+				return IsAvisoGeoJsonRenderStopRequested() || AvisoGeoJsonPendingRenderRequest != nullptr;
 			});
 
-			if (AvisoGeoJsonRenderStop)
+			if (IsAvisoGeoJsonRenderStopRequested())
 				return;
 
 			request = std::move(AvisoGeoJsonPendingRenderRequest);
@@ -1126,7 +1175,7 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 		bool shouldRefresh = false;
 		{
 			std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-			if (AvisoGeoJsonRenderStop)
+			if (IsAvisoGeoJsonRenderStopRequested())
 				return;
 
 			if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
@@ -1158,6 +1207,13 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	{
 		return nullptr;
 	}
+
+	auto renderCancelled = [&]() -> bool
+	{
+		return IsAvisoGeoJsonRenderStopRequested();
+	};
+	if (renderCancelled())
+		return nullptr;
 
 	BITMAPINFO bitmapInfo = {};
 	bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -1200,6 +1256,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	const double lonSpan = displayMaxLon - displayMinLon;
 	const double latSpan = displayMaxLat - displayMinLat;
 	if (lonSpan <= 0.0 || latSpan <= 0.0)
+		return nullptr;
+	if (renderCancelled())
 		return nullptr;
 
 	auto projectScreenPoint = [&](double longitude, double latitude) -> PointF
@@ -1253,6 +1311,9 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	std::vector<PointF> rasterPoints;
 	for (const AvisoFeature& feature : *request.features)
 	{
+		if (renderCancelled())
+			return nullptr;
+
 		if (feature.maxLatitude < request.renderMinLatitude ||
 			feature.minLatitude > request.renderMaxLatitude ||
 			feature.maxLongitude < request.renderMinLongitude ||
@@ -1270,6 +1331,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		{
 			for (const std::vector<AvisoPoint>& ring : feature.paths)
 			{
+				if (renderCancelled())
+					return nullptr;
 				if (ring.size() < 3)
 					continue;
 
@@ -1278,10 +1341,16 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				AvisoPoint lastCoordinate{};
 				bool hasLastCoordinate = false;
 				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+				{
+					if ((pointIndex & 0x3ff) == 0 && renderCancelled())
+						return nullptr;
 					appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, ring[pointIndex], pointIndex == 0);
+				}
 
 				if (rasterPoints.size() < 3)
 					continue;
+				if (renderCancelled())
+					return nullptr;
 
 				if (feature.fillColor.GetAlpha() > 0)
 				{
@@ -1310,6 +1379,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		linePen.SetEndCap(LineCapRound);
 		for (const std::vector<AvisoPoint>& line : feature.paths)
 		{
+			if (renderCancelled())
+				return nullptr;
 			if (line.size() < 2)
 				continue;
 
@@ -1318,10 +1389,18 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			AvisoPoint lastCoordinate{};
 			bool hasLastCoordinate = false;
 			for (size_t pointIndex = 0; pointIndex < line.size(); ++pointIndex)
+			{
+				if ((pointIndex & 0x3ff) == 0 && renderCancelled())
+					return nullptr;
 				appendRasterPoint(rasterPoints, lastCoordinate, hasLastCoordinate, line[pointIndex], pointIndex == 0 || pointIndex + 1 == line.size());
+			}
 
 			if (rasterPoints.size() >= 2)
+			{
+				if (renderCancelled())
+					return nullptr;
 				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+			}
 		}
 	}
 
@@ -1370,6 +1449,9 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 		for (const AvisoLabel& label : *request.labels)
 		{
+			if (renderCancelled())
+				return nullptr;
+
 			if (label.position.latitude < request.renderMinLatitude ||
 				label.position.latitude > request.renderMaxLatitude ||
 				label.position.longitude < request.renderMinLongitude ||
@@ -1417,6 +1499,9 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		}
 	}
 
+	if (renderCancelled())
+		return nullptr;
+
 	auto result = std::make_unique<AvisoRasterRenderResult>();
 	result->requestId = request.requestId;
 	result->bitmap = dibBitmap.Release();
@@ -1440,6 +1525,9 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 {
+	if (IsShutdownRequested())
+		return;
+
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
 	if (path.empty())
 		return;
@@ -4538,6 +4626,9 @@ void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
+	if (IsShutdownRequested())
+		return;
+
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
 	const char* refreshStage = "entry";
 	auto setRefreshStage = [&](const char* stage)
@@ -6959,6 +7050,7 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState())
 
+		BeginShutdown();
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
 
