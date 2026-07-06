@@ -83,7 +83,9 @@ namespace
 		centerPosition.m_Longitude = longitude;
 		const POINT centerPixel = radarScreen->ConvertCoordFromPositionToPixel(centerPosition);
 
-		for (double sampleDelta : { 0.01, 0.05, 0.1 })
+		double bestRotationDeg = 0.0;
+		double bestDistanceSquared = 0.0;
+		for (double sampleDelta : { 0.02, 0.05, 0.1, 0.25, 0.5 })
 		{
 			CPosition northPosition = centerPosition;
 			northPosition.m_Latitude = ClampAvisoLatitude(latitude + sampleDelta);
@@ -93,14 +95,25 @@ namespace
 			const POINT northPixel = radarScreen->ConvertCoordFromPositionToPixel(northPosition);
 			const double dx = static_cast<double>(northPixel.x - centerPixel.x);
 			const double dy = static_cast<double>(northPixel.y - centerPixel.y);
-			if ((dx * dx + dy * dy) < 4.0)
+			const double distanceSquared = (dx * dx) + (dy * dy);
+			if (distanceSquared < 4.0)
 				continue;
 
 			const double rotationDeg = std::atan2(dx, -dy) * 180.0 / 3.14159265358979323846;
-			return std::isfinite(rotationDeg) ? rotationDeg : 0.0;
+			if (!std::isfinite(rotationDeg))
+				continue;
+
+			if (distanceSquared > bestDistanceSquared)
+			{
+				bestDistanceSquared = distanceSquared;
+				bestRotationDeg = rotationDeg;
+			}
+
+			if (distanceSquared >= 2500.0)
+				return bestRotationDeg;
 		}
 
-		return 0.0;
+		return bestRotationDeg;
 	}
 
 	constexpr int kInsetToolbarButtonSize = 13;
@@ -1345,7 +1358,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (m_AvisoState->cacheBitmap == nullptr || !m_AvisoState->anchorValid)
 			return false;
 
-		const double transformPixelTolerance = 4.0;
+		const double transformPixelTolerance = 12.0;
 		return AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) &&
 			AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance);
 	};
@@ -1359,7 +1372,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return false;
 		}
 
-		const double transformPixelTolerance = 4.0;
+		const double transformPixelTolerance = 12.0;
 		if (!AvisoVectorWithinTolerance(result.projectedTopLeft, result.projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) ||
 			!AvisoVectorWithinTolerance(result.projectedTopLeft, result.projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance))
 		{
@@ -1512,6 +1525,65 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		::DeleteDC(sourceDc);
 		return blended != FALSE;
 	};
+	auto drawCacheFallbackDuringInteraction = [&]() -> bool
+	{
+		if (!m_Grip && !m_AvisoRightPanning)
+			return false;
+		if (m_AvisoState->cacheBitmap == nullptr ||
+			m_AvisoState->cachePath != path ||
+			m_AvisoState->cacheWidth <= 0 ||
+			m_AvisoState->cacheHeight <= 0)
+		{
+			return false;
+		}
+
+		HDC sourceDc = ::CreateCompatibleDC(hDC);
+		if (sourceDc == nullptr)
+			return false;
+		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, m_AvisoState->cacheBitmap);
+		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
+		{
+			::DeleteDC(sourceDc);
+			return false;
+		}
+
+		gdi->Flush(Gdiplus::FlushIntentionFlush);
+		const int savedDc = ::SaveDC(hDC);
+		if (savedDc == 0)
+		{
+			::SelectObject(sourceDc, oldBitmap);
+			::DeleteDC(sourceDc);
+			return false;
+		}
+
+		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
+		const int oldStretchMode = ::SetStretchBltMode(hDC, HALFTONE);
+		::SetBrushOrgEx(hDC, 0, 0, nullptr);
+
+		BLENDFUNCTION blend = {};
+		blend.BlendOp = AC_SRC_OVER;
+		blend.SourceConstantAlpha = 255;
+		blend.AlphaFormat = AC_SRC_ALPHA;
+		const BOOL blended = ::AlphaBlend(
+			hDC,
+			viewportRect.left,
+			viewportRect.top,
+			viewportRect.Width(),
+			viewportRect.Height(),
+			sourceDc,
+			0,
+			0,
+			m_AvisoState->cacheWidth,
+			m_AvisoState->cacheHeight,
+			blend);
+
+		if (oldStretchMode != 0)
+			::SetStretchBltMode(hDC, oldStretchMode);
+		::RestoreDC(hDC, savedDc);
+		::SelectObject(sourceDc, oldBitmap);
+		::DeleteDC(sourceDc);
+		return blended != FALSE;
+	};
 
 	auto cacheHasWorkingMargin = [&]() -> bool
 	{
@@ -1546,7 +1618,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_AvisoState->renderMaxLatitude >= displayMaxLat + requiredLatMargin;
 	};
 
-	const bool cacheDrawn = drawCache();
+	bool cacheDrawn = drawCache();
+	if (!cacheDrawn)
+		cacheDrawn = drawCacheFallbackDuringInteraction();
 	if (!cacheDrawn || !cacheHasWorkingMargin())
 	{
 		if (!m_AvisoState->renderPending)
