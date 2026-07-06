@@ -33,8 +33,14 @@ CSMRRadar* gWindowProcRadarScreen = nullptr;
 HHOOK gThreadMouseHook = nullptr;
 DWORD gThreadMouseHookThreadId = 0;
 DWORD gLastThreadHookError = 0xFFFFFFFF;
+HHOOK gThreadKeyboardHook = nullptr;
+DWORD gThreadKeyboardHookThreadId = 0;
+DWORD gLastThreadKeyboardHookError = 0xFFFFFFFF;
+bool gAvisoWheelRoutingEnabled = false;
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
+void UnhookAvisoThreadHooks();
 
 map<string, string> CSMRRadar::vStripsStands;
 
@@ -538,12 +544,7 @@ CSMRRadar::~CSMRRadar()
 	Logger::info(string(__FUNCSIG__));
 	if (gWindowProcRadarScreen == this)
 		gWindowProcRadarScreen = nullptr;
-	if (gThreadMouseHook != nullptr)
-	{
-		::UnhookWindowsHookEx(gThreadMouseHook);
-		gThreadMouseHook = nullptr;
-		gThreadMouseHookThreadId = 0;
-	}
+	UnhookAvisoThreadHooks();
 	StopAvisoGeoJsonRenderThread();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
@@ -4322,11 +4323,82 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	return TagReplacingMap;
 }
 
+void UnhookAvisoMouseHook()
+{
+	if (gThreadMouseHook == nullptr)
+		return;
+
+	::UnhookWindowsHookEx(gThreadMouseHook);
+	gThreadMouseHook = nullptr;
+	gThreadMouseHookThreadId = 0;
+}
+
+void UnhookAvisoKeyboardHook()
+{
+	if (gThreadKeyboardHook == nullptr)
+		return;
+
+	::UnhookWindowsHookEx(gThreadKeyboardHook);
+	gThreadKeyboardHook = nullptr;
+	gThreadKeyboardHookThreadId = 0;
+}
+
+void UnhookAvisoThreadHooks()
+{
+	UnhookAvisoMouseHook();
+	UnhookAvisoKeyboardHook();
+}
+
+void ClearAvisoWheelRoutingState()
+{
+	gAvisoWheelRoutingEnabled = false;
+
+	for (CSMRRadar* radarScreen : RadarScreensOpened)
+	{
+		if (radarScreen == nullptr)
+			continue;
+
+		radarScreen->AvisoGeoJsonScrollSelected = false;
+		for (auto& appWindow : radarScreen->appWindows)
+		{
+			CInsetWindow* insetWindow = appWindow.second.get();
+			if (insetWindow == nullptr || !insetWindow->IsAvisoViewport())
+				continue;
+
+			insetWindow->ResetAvisoInteractionState();
+		}
+	}
+}
+
+bool IsEuroScopeViewSwitchKey(WPARAM key)
+{
+	return key >= VK_F1 && key <= VK_F12;
+}
+
+bool IsMouseButtonDownMessage(WPARAM message)
+{
+	switch (message)
+	{
+	case WM_LBUTTONDOWN:
+	case WM_RBUTTONDOWN:
+	case WM_MBUTTONDOWN:
+	case WM_XBUTTONDOWN:
+	case WM_NCLBUTTONDOWN:
+	case WM_NCRBUTTONDOWN:
+	case WM_NCMBUTTONDOWN:
+	case WM_NCXBUTTONDOWN:
+		return true;
+	default:
+		return false;
+	}
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	switch (uMsg)
 	{
 	case WM_LBUTTONDOWN:
+		ClearAvisoWheelRoutingState();
 		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_LEFT))
 			return 0;
 		break;
@@ -4335,6 +4407,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			return 0;
 		break;
 	case WM_RBUTTONDOWN:
+		ClearAvisoWheelRoutingState();
 		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_RIGHT))
 			return 0;
 		break;
@@ -4347,8 +4420,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			return 0;
 		break;
 	case WM_MOUSEWHEEL:
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseWheel(hwnd, wParam, lParam))
+		if (gAvisoWheelRoutingEnabled && gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseWheel(hwnd, wParam, lParam))
 			return 0;
+		break;
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+	case WM_KEYUP:
+	case WM_SYSKEYUP:
+		if (IsEuroScopeViewSwitchKey(wParam))
+			ClearAvisoWheelRoutingState();
 		break;
 	case WM_SETCURSOR:
 		SetCursor(smrCursor);
@@ -4366,7 +4446,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 {
-	if (gWindowProcRadarScreen == nullptr || wheelDelta == 0)
+	if (!gAvisoWheelRoutingEnabled || gWindowProcRadarScreen == nullptr || wheelDelta == 0)
 		return false;
 
 	return gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
@@ -4374,6 +4454,9 @@ bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
+	if (code >= 0 && IsMouseButtonDownMessage(wParam))
+		ClearAvisoWheelRoutingState();
+
 	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
 	{
 		MOUSEHOOKSTRUCTEX* mouseData = reinterpret_cast<MOUSEHOOKSTRUCTEX*>(lParam);
@@ -4388,6 +4471,16 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 	return ::CallNextHookEx(gThreadMouseHook, code, wParam, lParam);
 }
 
+LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+
+	if (code >= 0 && IsEuroScopeViewSwitchKey(wParam))
+		ClearAvisoWheelRoutingState();
+
+	return ::CallNextHookEx(gThreadKeyboardHook, code, wParam, lParam);
+}
+
 void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 {
 	if (radarScreen == nullptr)
@@ -4397,11 +4490,9 @@ void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 
 	const DWORD currentThreadId = ::GetCurrentThreadId();
 	if (gThreadMouseHook != nullptr && gThreadMouseHookThreadId != currentThreadId)
-	{
-		::UnhookWindowsHookEx(gThreadMouseHook);
-		gThreadMouseHook = nullptr;
-		gThreadMouseHookThreadId = 0;
-	}
+		UnhookAvisoMouseHook();
+	if (gThreadKeyboardHook != nullptr && gThreadKeyboardHookThreadId != currentThreadId)
+		UnhookAvisoKeyboardHook();
 
 	if (gThreadMouseHook == nullptr)
 	{
@@ -4420,6 +4511,26 @@ void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 			gThreadMouseHookThreadId = currentThreadId;
 			gLastThreadHookError = ERROR_SUCCESS;
 			Logger::info("AVISO viewport thread wheel hook installed thread=" + std::to_string(currentThreadId));
+		}
+	}
+
+	if (gThreadKeyboardHook == nullptr)
+	{
+		gThreadKeyboardHook = ::SetWindowsHookEx(WH_KEYBOARD, KeyboardMessageHookProc, nullptr, currentThreadId);
+		if (gThreadKeyboardHook == nullptr)
+		{
+			const DWORD error = ::GetLastError();
+			if (gLastThreadKeyboardHookError != error)
+			{
+				Logger::info("AVISO viewport thread keyboard hook install failed error=" + std::to_string(error));
+				gLastThreadKeyboardHookError = error;
+			}
+		}
+		else
+		{
+			gThreadKeyboardHookThreadId = currentThreadId;
+			gLastThreadKeyboardHookError = ERROR_SUCCESS;
+			Logger::info("AVISO viewport thread keyboard hook installed thread=" + std::to_string(currentThreadId));
 		}
 	}
 
@@ -6770,6 +6881,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	SyncLinkedAvisoSecondaryToMainView();
 
 	const double perfSrwStartMs = RefreshPerfNowMs();
+	bool avisoViewportRenderedForWheel = false;
+	gAvisoWheelRoutingEnabled = false;
 	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
 	{
 		if (!it->second)
@@ -6779,8 +6892,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		auto appWindowIt = appWindows.find(appWindowId);
 		if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
 			continue;
-		appWindowIt->second->render(hDC, this, &graphics, mouseLocation, DistanceTools);
+
+		CInsetWindow* appWindow = appWindowIt->second.get();
+		appWindow->render(hDC, this, &graphics, mouseLocation, DistanceTools);
+		if (appWindow->IsAvisoViewport() && appWindow->m_AvisoScreenAreaValid)
+			avisoViewportRenderedForWheel = true;
 	}
+	gAvisoWheelRoutingEnabled = avisoViewportRenderedForWheel;
 	perfSrwMs += RefreshPerfNowMs() - perfSrwStartMs;
 
 	PerfLastFrameMs = RefreshPerfNowMs() - perfFrameStartMs;
@@ -6847,12 +6965,7 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
 			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
 
-		if (gThreadMouseHook != nullptr)
-		{
-			::UnhookWindowsHookEx(gThreadMouseHook);
-			gThreadMouseHook = nullptr;
-			gThreadMouseHookThreadId = 0;
-		}
+		UnhookAvisoThreadHooks();
 		gWindowProcRadarScreen = nullptr;
 		pluginWindow = nullptr;
 		gSourceProc = nullptr;
