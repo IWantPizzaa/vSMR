@@ -21,6 +21,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 #include <ctime>
 #include "ColorManager.h"
 #include "Logger.h"
@@ -255,8 +256,9 @@ public:
 	std::mutex AvisoGeoJsonRenderMutex;
 	std::condition_variable AvisoGeoJsonRenderCondition;
 	std::thread AvisoGeoJsonRenderThread;
+	std::atomic<bool> ShutdownRequested{ false };
 	bool AvisoGeoJsonRenderThreadStarted = false;
-	bool AvisoGeoJsonRenderStop = false;
+	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
 	std::unique_ptr<AvisoRasterRenderRequest> AvisoGeoJsonPendingRenderRequest;
 	std::unique_ptr<AvisoRasterRenderResult> AvisoGeoJsonCompletedRenderResult;
 	unsigned long long AvisoGeoJsonRenderNextRequestId = 0;
@@ -604,8 +606,11 @@ public:
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
 	void ClearAvisoGeoJsonRasterCache();
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
+	void BeginShutdown();
+	bool IsShutdownRequested() const;
 	void EnsureAvisoGeoJsonRenderThread();
 	void StopAvisoGeoJsonRenderThread();
+	bool IsAvisoGeoJsonRenderStopRequested() const;
 	void AvisoGeoJsonRenderThreadMain();
 	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
 	void ApplyCompletedAvisoGeoJsonRaster();

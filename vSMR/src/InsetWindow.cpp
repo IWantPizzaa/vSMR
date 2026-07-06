@@ -499,6 +499,7 @@ CInsetWindow::CInsetWindow(int Id)
 
 CInsetWindow::~CInsetWindow()
 {
+	CancelAvisoViewportRender();
 }
 
 bool CInsetWindow::IsAvisoViewport() const
@@ -510,6 +511,24 @@ void CInsetWindow::ClearAvisoViewportCache()
 {
 	if (m_AvisoState != nullptr)
 		m_AvisoState->ClearCache();
+}
+
+void CInsetWindow::CancelAvisoViewportRender()
+{
+	if (m_AvisoState == nullptr)
+		return;
+
+	m_AvisoState->renderPending = false;
+	if (m_AvisoState->renderFuture.valid())
+	{
+		try
+		{
+			(void)m_AvisoState->renderFuture.get();
+		}
+		catch (...)
+		{
+		}
+	}
 }
 
 void CInsetWindow::ResetAvisoInteractionState()
@@ -1143,6 +1162,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 {
 	if (radar_screen == nullptr || gdi == nullptr || m_AvisoState == nullptr)
 		return;
+	if (radar_screen->IsShutdownRequested())
+		return;
 
 	CDC dc;
 	dc.Attach(hDC);
@@ -1756,21 +1777,29 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				request.projectedBottomLeft = projectedBottomLeft;
 				request.projectedBottomRight = projectedBottomRight;
 
-				m_AvisoState->renderPending = true;
-				m_AvisoState->renderFuture = std::async(
-					std::launch::async,
-					[radar_screen, request]()
-					{
-						std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = radar_screen->RenderAvisoGeoJsonRaster(request);
-						try
+				if (!radar_screen->IsShutdownRequested() && !radar_screen->IsAvisoGeoJsonRenderStopRequested())
+				{
+					m_AvisoState->renderPending = true;
+					m_AvisoState->renderFuture = std::async(
+						std::launch::async,
+						[radar_screen, request]()
 						{
-							radar_screen->RequestRefresh();
-						}
-						catch (...)
-						{
-						}
-						return result;
-					});
+							std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = radar_screen->RenderAvisoGeoJsonRaster(request);
+							if (result != nullptr &&
+								!radar_screen->IsShutdownRequested() &&
+								!radar_screen->IsAvisoGeoJsonRenderStopRequested())
+							{
+								try
+								{
+									radar_screen->RequestRefresh();
+								}
+								catch (...)
+								{
+								}
+							}
+							return result;
+						});
+				}
 			}
 		}
 	}

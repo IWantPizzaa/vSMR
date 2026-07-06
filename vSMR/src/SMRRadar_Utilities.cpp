@@ -237,6 +237,7 @@ int CSMRRadar::getIntFromCategory(string category)
 
 void CSMRRadar::OnAsrContentToBeClosed(void)
 {
+	BeginShutdown();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
 

@@ -23,6 +23,7 @@ Logger::Mode Logger::CURRENT_MODE = Logger::Mode::Normal;
 std::atomic<bool> HoppieConnected(false);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
+std::atomic<bool> PluginShutdownRequested(false);
 
 string logonCode = "";
 string logonCallsign = "EGKK";
@@ -1027,6 +1028,9 @@ namespace
 
 	bool SendDatalinkPacketMessage(const std::string& destination, const std::string& type, const std::string& packet, const std::string& callsign)
 	{
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return false;
+
 		string raw;
 		string url = baseUrlDatalink;
 		url += "?logon=";
@@ -1047,6 +1051,9 @@ namespace
 		}
 
 		raw.assign(GetHttpHelper().downloadStringFromURL(url));
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return false;
+
 		if (!startsWith("ok", raw.c_str()))
 			return false;
 
@@ -1270,10 +1277,16 @@ void refreshVacdmDataImpl(void* arg)
 		}
 	} reset;
 
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	try
 	{
 		const std::string pilotsUrl = ResolveVacdmPilotsUrl();
 		std::string raw = GetHttpHelper().downloadStringFromURL(pilotsUrl);
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return;
+
 		if (raw.empty())
 		{
 			Logger::info("VACDM refresh failed: empty response url=" + pilotsUrl);
@@ -1335,6 +1348,9 @@ void refreshVacdmDataImpl(void* arg)
 			parsedData[data.callsign] = data;
 		}
 
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return;
+
 		std::string aselCallsign;
 		{
 			std::lock_guard<std::mutex> stateGuard(VacdmDebugStateMutex);
@@ -1386,6 +1402,9 @@ void refreshVacdmData(void* arg)
 
 void datalinkLogin(void * arg) {
 	(void)arg;
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	string raw;
 	string url = baseUrlDatalink;
 	url += "?logon=";
@@ -1394,6 +1413,8 @@ void datalinkLogin(void * arg) {
 	url += logonCallsign;
 	url += "&to=SERVER&type=PING";
 	raw.assign(GetHttpHelper().downloadStringFromURL(url));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
 
 	if (startsWith("ok", raw.c_str())) {
 		HoppieConnected.store(true);
@@ -1406,6 +1427,9 @@ void datalinkLogin(void * arg) {
 
 void sendDatalinkMessage(void * arg) {
 	(void)arg;
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	std::string localDest;
 	std::string localType;
 	std::string localMessage;
@@ -1424,6 +1448,9 @@ void sendDatalinkMessage(void * arg) {
 
 void pollMessages(void * arg) {
 	(void)arg;
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	string raw = "";
 	string url = baseUrlDatalink;
 	url += "?logon=";
@@ -1432,6 +1459,8 @@ void pollMessages(void * arg) {
 	url += logonCallsign;
 	url += "&to=SERVER&type=POLL";
 	raw.assign(GetHttpHelper().downloadStringFromURL(url));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
 
 	if (!startsWith("ok", raw.c_str()) || raw.size() <= 3)
 		return;
@@ -1443,6 +1472,9 @@ void pollMessages(void * arg) {
 	size_t pos = 0;
 	std::string token;
 	while ((pos = raw.find(delimiter)) != std::string::npos) {
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+			return;
+
 		token = raw.substr(1, pos);
 
 		string parsed;
@@ -1472,7 +1504,8 @@ void pollMessages(void * arg) {
 						ttype = "CPDLC";
 						tdest = message.from;
 					}
-					_beginthread(sendDatalinkMessage, 0, NULL);
+					if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+						_beginthread(sendDatalinkMessage, 0, NULL);
 				} else {
 					if (PlaySoundClr) {
 						AFX_MANAGE_STATE(AfxGetStaticModuleState());
@@ -1506,6 +1539,9 @@ void pollMessages(void * arg) {
 
 void sendDatalinkClearance(void * arg) {
 	(void)arg;
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	DatalinkPacket packet;
 	std::string localFrequency;
 	{
@@ -1568,6 +1604,8 @@ void sendDatalinkClearance(void * arg) {
 	}
 
 	raw.assign(GetHttpHelper().downloadStringFromURL(url));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
 
 	if (startsWith("ok", raw.c_str())) {
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -1581,6 +1619,7 @@ void sendDatalinkClearance(void * arg) {
 
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
 {
+	PluginShutdownRequested.store(false, std::memory_order_relaxed);
 
 	Logger::DLL_PATH = "";
 	Logger::ENABLED = false;
@@ -1645,6 +1684,10 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 CSMRPlugin::~CSMRPlugin()
 {
+	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	HoppieConnected.store(false, std::memory_order_relaxed);
+	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
+
 	// Persist CPDLC settings via EuroScope's plugin settings storage.
 	SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", logonCallsign.c_str());
 	SaveDataToSettings("cpdlc_password", "The CPDLC logon password", logonCode.c_str());
@@ -1675,6 +1718,9 @@ CSMRPlugin::~CSMRPlugin()
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return false;
+
 	const std::string command = TrimAsciiWhitespaceCopy(sCommandLine == nullptr ? "" : std::string(sCommandLine));
 	std::string commandLower = command;
 	std::transform(commandLower.begin(), commandLower.end(), commandLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -2057,6 +2103,12 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
 	Logger::info(string(__FUNCSIG__));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		strcpy_s(sItemString, 16, "");
+		return;
+	}
+
 	if (ItemCode != TAG_ITEM_DATALINK_STS)
 		return;
 
@@ -2116,6 +2168,9 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
 {
 	Logger::info(string(__FUNCSIG__));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	if (FunctionId == TAG_FUNC_DATALINK_MENU) {
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
@@ -2175,7 +2230,8 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 				ttype = "CPDLC";
 				tdest = fpCallsign;
 			}
-			_beginthread(sendDatalinkMessage, 0, NULL);
+			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+				_beginthread(sendDatalinkMessage, 0, NULL);
 		}
 	}
 
@@ -2216,7 +2272,8 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 				ttype = "TELEX";
 				tdest = fpCallsign;
 			}
-			_beginthread(sendDatalinkMessage, 0, NULL);
+			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+				_beginthread(sendDatalinkMessage, 0, NULL);
 		}
 	}
 
@@ -2240,7 +2297,8 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 				PendingMessages.erase(fpCallsign);
 			}
 
-			_beginthread(sendDatalinkMessage, 0, NULL);
+			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+				_beginthread(sendDatalinkMessage, 0, NULL);
 		}
 
 	}
@@ -2320,7 +2378,8 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 				myfrequency = std::to_string(ControllerMyself().GetPrimaryFrequency()).substr(0, 7);
 			}
 
-			_beginthread(sendDatalinkClearance, 0, NULL);
+			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+				_beginthread(sendDatalinkClearance, 0, NULL);
 
 		}
 
@@ -2330,6 +2389,9 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
 	Logger::info(string(__FUNCSIG__));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	if (!FlightPlan.IsValid())
 		return;
 
@@ -2359,6 +2421,9 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 void CSMRPlugin::OnTimer(int Counter)
 {
 	(void)Counter;
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
 	Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	static int lastConnectionType = -999;
@@ -2404,7 +2469,9 @@ void CSMRPlugin::OnTimer(int Counter)
 		HoppieConnected.store(false);
 	}
 
-	if (((clock() - timer) / CLOCKS_PER_SEC) > 10 && HoppieConnected.load()) {
+	if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
+		((clock() - timer) / CLOCKS_PER_SEC) > 10 &&
+		HoppieConnected.load()) {
 		_beginthread(pollMessages, 0, NULL);
 		timer = clock();
 	}
@@ -2416,6 +2483,7 @@ void CSMRPlugin::OnTimer(int Counter)
 
 	const clock_t lastVacdmFetchClock = VacdmLastFetchClock.load();
 	if (vacdmPollingEnabled &&
+		!PluginShutdownRequested.load(std::memory_order_relaxed) &&
 		connectionStableForVacdm &&
 		(lastVacdmFetchClock == 0 || ((clock() - lastVacdmFetchClock) / CLOCKS_PER_SEC) >= VacdmFetchIntervalSeconds) &&
 		!VacdmFetchInProgress.load())
@@ -2423,19 +2491,31 @@ void CSMRPlugin::OnTimer(int Counter)
 		bool expected = false;
 		if (VacdmFetchInProgress.compare_exchange_strong(expected, true))
 		{
-			const uintptr_t threadHandle = _beginthread(refreshVacdmData, 0, NULL);
-			if (threadHandle == static_cast<uintptr_t>(-1L))
+			if (PluginShutdownRequested.load(std::memory_order_relaxed))
 			{
 				VacdmFetchInProgress.store(false);
 				VacdmLastFetchClock = clock();
-				Logger::info("VACDM refresh thread start failed errno=" + std::to_string(errno));
+			}
+			else
+			{
+				const uintptr_t threadHandle = _beginthread(refreshVacdmData, 0, NULL);
+				if (threadHandle == static_cast<uintptr_t>(-1L))
+				{
+					VacdmFetchInProgress.store(false);
+					VacdmLastFetchClock = clock();
+					Logger::info("VACDM refresh thread start failed errno=" + std::to_string(errno));
+				}
 			}
 		}
 	}
 
-	ProcessCdmAutoMode(this);
-	ProcessQueuedCdmReminderMessages(this);
+	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		ProcessCdmAutoMode(this);
+		ProcessQueuedCdmReminderMessages(this);
+	}
 
+	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		AircraftWilco.erase(
@@ -2454,6 +2534,9 @@ void CSMRPlugin::OnTimer(int Counter)
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
 	Logger::info(string(__FUNCSIG__));
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return NULL;
+
 	if (sDisplayName != nullptr && !strcmp(sDisplayName, MY_PLUGIN_VIEW_AVISO)) {
 		CSMRRadar* rd = new CSMRRadar();
 		RadarScreensOpened.push_back(rd);
@@ -2467,8 +2550,11 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
+	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	HoppieConnected.store(false, std::memory_order_relaxed);
+	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
+
 	const std::vector<CSMRRadar*> radarScreens = RadarScreensOpened;
-	RadarScreensOpened.clear();
 	for (auto* var : radarScreens)
 	{
 		if (var != nullptr)
