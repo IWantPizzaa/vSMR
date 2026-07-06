@@ -81,6 +81,7 @@ public:
 	void FloatAvisoViewport(POINT Pt, const RECT* layoutBounds);
 	bool ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier);
 	void ClearAvisoViewportCache();
+	void CancelAvisoViewportRender();
 	void ResetAvisoInteractionState();
 	
 private:
