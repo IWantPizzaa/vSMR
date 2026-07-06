@@ -584,6 +584,15 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	}
 
 	ApplyDefaultAvisoPresetIfConfigured();
+	AvisoGeoJsonScrollSelected = false;
+	for (auto& appWindow : appWindows)
+	{
+		CInsetWindow* insetWindow = appWindow.second.get();
+		if (insetWindow == nullptr || !insetWindow->IsAvisoViewport())
+			continue;
+
+		insetWindow->ResetAvisoInteractionState();
+	}
 
 	// Auto load the airport config on ASR opened.
 	CSectorElement rwy;

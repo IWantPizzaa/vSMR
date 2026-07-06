@@ -54,6 +54,7 @@ public:
 	bool m_AvisoScrollSelected = false;
 	RECT m_AvisoScreenArea = { 0, 0, 0, 0 };
 	bool m_AvisoScreenAreaValid = false;
+	HWND m_AvisoRenderWindow = nullptr;
 	AvisoLayoutMode m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 
 	map<string, double> m_TagAngles;
@@ -80,6 +81,7 @@ public:
 	void FloatAvisoViewport(POINT Pt, const RECT* layoutBounds);
 	bool ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier);
 	void ClearAvisoViewportCache();
+	void ResetAvisoInteractionState();
 	
 private:
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
