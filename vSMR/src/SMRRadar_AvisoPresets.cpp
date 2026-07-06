@@ -523,8 +523,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		avisoWindow->m_AvisoCenterLongitude = preset.secondaryCenterLongitude;
 		avisoWindow->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(preset.secondaryLayoutMode, 0, 8));
 		avisoWindow->m_AvisoViewInitialized = true;
-		avisoWindow->m_AvisoRightPanning = false;
-		avisoWindow->m_AvisoScrollSelected = false;
+		avisoWindow->ResetAvisoInteractionState();
 		avisoWindow->ClearAvisoViewportCache();
 	}
 

@@ -3,12 +3,12 @@
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
 
+extern std::vector<CSMRRadar*> RadarScreensOpened;
 extern CPoint mouseLocation;
 extern string TagBeingDragged;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
-extern HWND pluginWindow;
 
 namespace
 {
@@ -569,39 +569,60 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
 bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 {
+	UNREFERENCED_PARAMETER(sourceHwnd);
+
 	if (wheelDelta == 0)
 		return false;
 
 	const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
-	auto zoomViewport = [&](CInsetWindow* viewport, POINT point) -> bool
+
+	// A viewport may only claim a wheel event when its owning radar screen is the
+	// one currently on screen at the cursor. Multiple views (switched with F7) live
+	// in the same EuroScope instance and share the thread-wide wheel hook, so we
+	// gate on the window the viewport last rendered into matching the window under
+	// the cursor. Without this, a view that is enabled but not displayed (e.g. an
+	// AVISO view snapped to the bottom half) keeps stealing scrolls over the bottom
+	// half of whatever view F7 has brought to the front.
+	auto windowMatches = [](HWND target, HWND renderWindow) -> bool
 	{
-		if (viewport == nullptr)
+		if (target == nullptr || renderWindow == nullptr)
+			return false;
+		for (HWND current = target; current != nullptr && ::IsWindow(current); current = ::GetParent(current))
+		{
+			if (current == renderWindow)
+				return true;
+		}
+		return false;
+	};
+	auto zoomViewportAtScreenPoint = [&](POINT point) -> bool
+	{
+		const HWND targetWindow = ::WindowFromPoint(point);
+		if (targetWindow == nullptr)
 			return false;
 
-		mouseLocation = point;
-		SelectAvisoViewport(this, viewport);
-		if (viewport->ZoomAvisoAtPoint(point, scaleMultiplier))
-			RequestRefresh();
-		return true;
-	};
-	auto zoomViewportAtPoint = [&](POINT point) -> bool
-	{
-		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, point);
-		return zoomViewport(viewportAtPoint, point);
-	};
-	auto zoomViewportAtScreenPoint = [&](POINT screenPoint) -> bool
-	{
-		for (auto& kv : appWindows)
+		for (CSMRRadar* radar : RadarScreensOpened)
 		{
-			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !IsAppWindowVisible(this, kv.first))
+			if (radar == nullptr)
 				continue;
 
-			POINT avisoPoint{};
-			if (!appWindow->TryMapAvisoScreenPoint(screenPoint, avisoPoint))
-				continue;
+			for (auto& kv : radar->appWindows)
+			{
+				CInsetWindow* appWindow = kv.second.get();
+				if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !IsAppWindowVisible(radar, kv.first))
+					continue;
+				if (!windowMatches(targetWindow, appWindow->m_AvisoRenderWindow))
+					continue;
 
-			return zoomViewport(appWindow, avisoPoint);
+				POINT avisoPoint{};
+				if (!appWindow->TryMapAvisoScreenPoint(point, avisoPoint))
+					continue;
+
+				mouseLocation = avisoPoint;
+				SelectAvisoViewport(radar, appWindow);
+				if (appWindow->ZoomAvisoAtPoint(avisoPoint, scaleMultiplier))
+					radar->RequestRefresh();
+				return true;
+			}
 		}
 
 		return false;
@@ -610,56 +631,15 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 	if (zoomViewportAtScreenPoint(screenPoint))
 		return true;
 
-	std::vector<HWND> candidateWindows;
-	auto addCandidateWindow = [&](HWND candidate)
-	{
-		if (candidate == nullptr || !::IsWindow(candidate))
-			return;
-		if (std::find(candidateWindows.begin(), candidateWindows.end(), candidate) == candidateWindows.end())
-			candidateWindows.push_back(candidate);
-	};
-	auto addCandidateWindowAndParents = [&](HWND candidate)
-	{
-		for (HWND current = candidate; current != nullptr && ::IsWindow(current); current = ::GetParent(current))
-			addCandidateWindow(current);
-
-		if (candidate != nullptr && ::IsWindow(candidate))
-			addCandidateWindow(::GetAncestor(candidate, GA_ROOT));
-	};
-	auto tryScreenPoint = [&](POINT screenPoint) -> bool
-	{
-		candidateWindows.clear();
-		addCandidateWindowAndParents(::WindowFromPoint(screenPoint));
-		addCandidateWindowAndParents(sourceHwnd);
-		addCandidateWindowAndParents(pluginWindow);
-		addCandidateWindowAndParents(::GetActiveWindow());
-		addCandidateWindowAndParents(::GetForegroundWindow());
-		addCandidateWindowAndParents(::GetCapture());
-
-		for (HWND candidate : candidateWindows)
-		{
-			POINT candidatePoint = screenPoint;
-			if (::ScreenToClient(candidate, &candidatePoint) && zoomViewportAtPoint(candidatePoint))
-				return true;
-		}
-
-		return false;
-	};
-
 	POINT cursorScreenPoint{};
 	if (::GetCursorPos(&cursorScreenPoint))
 	{
-		if (zoomViewportAtScreenPoint(cursorScreenPoint))
+		if ((cursorScreenPoint.x != screenPoint.x || cursorScreenPoint.y != screenPoint.y) &&
+			zoomViewportAtScreenPoint(cursorScreenPoint))
+		{
 			return true;
-		if (tryScreenPoint(cursorScreenPoint))
-			return true;
+		}
 	}
-
-	if (tryScreenPoint(screenPoint))
-		return true;
-
-	if (zoomViewportAtPoint(mouseLocation))
-		return true;
 
 	return false;
 }

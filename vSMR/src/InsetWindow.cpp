@@ -512,6 +512,19 @@ void CInsetWindow::ClearAvisoViewportCache()
 		m_AvisoState->ClearCache();
 }
 
+void CInsetWindow::ResetAvisoInteractionState()
+{
+	if (!IsAvisoViewport())
+		return;
+
+	m_AvisoRightPanning = false;
+	m_AvisoScrollSelected = false;
+	m_AvisoScreenArea = { 0, 0, 0, 0 };
+	m_AvisoScreenAreaValid = false;
+	m_AvisoRenderWindow = nullptr;
+	m_Grip = false;
+}
+
 bool CInsetWindow::IsPointInside(POINT Pt) const
 {
 	CRect areaRect(m_Area);
@@ -670,6 +683,7 @@ void CInsetWindow::UpdateAvisoScreenArea(HWND hwnd)
 {
 	m_AvisoScreenArea = { 0, 0, 0, 0 };
 	m_AvisoScreenAreaValid = false;
+	m_AvisoRenderWindow = nullptr;
 	if (!IsAvisoViewport() || hwnd == nullptr || !::IsWindow(hwnd))
 		return;
 
@@ -690,6 +704,7 @@ void CInsetWindow::UpdateAvisoScreenArea(HWND hwnd)
 
 	m_AvisoScreenArea = screenRect;
 	m_AvisoScreenAreaValid = true;
+	m_AvisoRenderWindow = hwnd;
 }
 
 bool CInsetWindow::TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const
