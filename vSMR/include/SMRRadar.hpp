@@ -38,6 +38,7 @@ namespace fs = std::filesystem;
 using namespace SMRSharedData;
 
 class CProfileEditorDialog;
+class CAvisoEditorDialog;
 class CInsetWindow;
 
 class CSMRRadar :
@@ -128,6 +129,7 @@ public:
 	{
 		AvisoPoint position;
 		std::wstring text;
+		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
 		std::string textAnchor = "center";
 		Gdiplus::Color textColor = Gdiplus::Color(255, 128, 128, 128);
@@ -308,6 +310,7 @@ public:
 	map<string, bool> ProfileColorPathHasAlpha;
 	string SelectedProfileColorPath;
 	std::unique_ptr<CProfileEditorDialog> ProfileEditorDialog;
+	std::unique_ptr<CAvisoEditorDialog> AvisoEditorDialog;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
 	std::string TagDefinitionEditorDepartureStatus = "default";
@@ -603,7 +606,9 @@ public:
 	virtual void OnRefresh(HDC hDC, int Phase);
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
+	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
+	bool ForceReloadAvisoGeoJson();
 	void ClearAvisoGeoJsonRasterCache();
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
@@ -631,6 +636,11 @@ public:
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);
 	bool IsAvisoPresetLinkedMovementEnabled() const;
 	void SyncLinkedAvisoSecondaryToMainView();
+	bool EnsureAvisoEditorWindowCreated();
+	void OpenAvisoEditorWindow();
+	void CloseAvisoEditorWindow();
+	void DestroyAvisoEditorWindow();
+	void OnAvisoEditorWindowClosed();
 	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
 
 	//---OnClickScreenObject-----------------------------------------

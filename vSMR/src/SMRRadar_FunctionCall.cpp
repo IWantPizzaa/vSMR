@@ -234,6 +234,21 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		return;
 	}
 
+	if (FunctionId == RIMCAS_AVISO_EDITOR_OPEN)
+	{
+		OpenAvisoEditorWindow();
+		return;
+	}
+
+	if (FunctionId == RIMCAS_AVISO_RELOAD)
+	{
+		if (ForceReloadAvisoGeoJson())
+			GetPlugIn()->DisplayUserMessage("vSMR", "AVISO", "Reloaded AVISO.", true, true, false, false, false);
+		else
+			GetPlugIn()->DisplayUserMessage("vSMR", "AVISO", "No AVISO file loaded.", true, true, false, false, false);
+		return;
+	}
+
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {
 		if (hasItemString)
 		{

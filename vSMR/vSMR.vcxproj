@@ -136,6 +136,7 @@
     <ClCompile Include="src\DataLinkDialog.cpp" />
     <ClCompile Include="src\HttpHelper.cpp" />
     <ClCompile Include="src\InsetWindow.cpp" />
+    <ClCompile Include="src\AvisoEditorDialog.cpp" />
     <ClCompile Include="src\ProfileEditorDialog.cpp" />
     <ClCompile Include="src\Rimcas.cpp" />
     <ClCompile Include="src\SMRGeometry.cpp" />
@@ -143,6 +144,7 @@
     <ClCompile Include="src\SMRRadar.cpp" />
     <ClCompile Include="src\SMRSharedState.cpp" />
     <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp" />
+    <ClCompile Include="src\SMRRadar_AvisoEditor.cpp" />
     <ClCompile Include="src\SMRRadar_AvisoPresets.cpp" />
     <ClCompile Include="src\SMRRadar_FunctionCall.cpp" />
     <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp" />
@@ -174,6 +176,7 @@
     <ClInclude Include="include\DataLinkDialog.hpp" />
     <ClInclude Include="include\HttpHelper.hpp" />
     <ClInclude Include="include\InsetWindow.h" />
+    <ClInclude Include="include\AvisoEditorDialog.hpp" />
     <ClInclude Include="include\Logger.h" />
     <ClInclude Include="include\ProfileEditorDialog.hpp" />
     <ClInclude Include="include\resource.h" />
