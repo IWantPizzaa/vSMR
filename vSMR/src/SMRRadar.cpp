@@ -14,6 +14,7 @@
 #include "SMRTagDefinitionUtils.hpp"
 #include "SMRVacdmTagHelpers.hpp"
 #include "ProfileEditorDialog.hpp"
+#include "AvisoEditorDialog.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -268,6 +269,34 @@ namespace
 		}
 
 		return nullptr;
+	}
+
+	bool IsAvisoFeatureVisible(const Value* properties)
+	{
+		if (properties == nullptr || !properties->IsObject())
+			return true;
+
+		if (properties->HasMember("visible"))
+		{
+			const Value& visible = (*properties)["visible"];
+			if (visible.IsBool())
+				return visible.GetBool();
+			if (visible.IsString())
+			{
+				const std::string value = ToUpperAscii(TrimAvisoAirportCode(visible.GetString()));
+				if (value == "FALSE" || value == "0" || value == "NO" || value == "OFF" || value == "HIDDEN" || value == "NONE")
+					return false;
+			}
+		}
+
+		if (const char* visibility = GetAvisoStringProperty(properties, { "visibility" }))
+		{
+			const std::string value = ToUpperAscii(TrimAvisoAirportCode(visibility));
+			if (value == "NONE" || value == "HIDDEN" || value == "FALSE" || value == "OFF" || value == "0")
+				return false;
+		}
+
+		return true;
 	}
 
 	std::wstring AvisoUtf8ToWide(const char* text)
@@ -546,6 +575,8 @@ CSMRRadar::~CSMRRadar()
 	if (gWindowProcRadarScreen == this)
 		gWindowProcRadarScreen = nullptr;
 	UnhookAvisoThreadHooks();
+	CloseAvisoEditorWindow();
+	DestroyAvisoEditorWindow();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
 	try {
@@ -669,7 +700,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		return false;
 
 	const unsigned long nowTick = ::GetTickCount();
-	const unsigned long statRefreshIntervalMs = 2000;
+	const unsigned long statRefreshIntervalMs = 500;
 	if (AvisoGeoJsonLoadAttempted &&
 		AvisoGeoJsonLoadedPath == path &&
 		AvisoGeoJsonLastStatTick != 0 &&
@@ -812,6 +843,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		const Value* properties = nullptr;
 		if (featureValue.HasMember("properties") && featureValue["properties"].IsObject())
 			properties = &featureValue["properties"];
+		if (!IsAvisoFeatureVisible(properties))
+			continue;
 
 		const std::string geometryType = geometry["type"].GetString();
 		const Value& coordinates = geometry["coordinates"];
@@ -858,6 +891,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			const char* textAnchor = GetAvisoStringProperty(properties, { "text-anchor" });
 			if (textAnchor != nullptr)
 				parsedLabel.textAnchor = textAnchor;
+			const char* textFont = GetAvisoStringProperty(properties, { "text-font", "font", "font-family" });
+			if (textFont != nullptr)
+				parsedLabel.fontFamily = AvisoUtf8ToWide(textFont);
 
 			parsedLabel.textColor = ParseAvisoColor(properties, "text-color", nullptr, Gdiplus::Color(255, 128, 128, 128));
 			parsedLabel.haloColor = ParseAvisoColor(properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
@@ -916,6 +952,20 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			}
 			if (!parsedFeature.paths.empty())
 				++multiLineCount;
+		}
+		else if (geometryType == "LineString")
+		{
+			parsedFeature.polygon = false;
+			std::vector<AvisoPoint> linePoints;
+			linePoints.reserve(coordinates.Size());
+			for (SizeType pointIndex = 0; pointIndex < coordinates.Size(); ++pointIndex)
+				addPoint(coordinates[pointIndex], parsedFeature, linePoints);
+
+			if (linePoints.size() >= 2)
+			{
+				parsedFeature.paths.push_back(std::move(linePoints));
+				++multiLineCount;
+			}
 		}
 
 		if (!parsedFeature.paths.empty() &&
@@ -1435,7 +1485,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	if (!request.labels->empty())
 	{
 		rasterGraphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
-		FontFamily labelFontFamily(L"Arial");
+		FontFamily fallbackLabelFontFamily(L"Arial");
 		StringFormat labelFormat;
 		labelFormat.SetAlignment(StringAlignmentCenter);
 		labelFormat.SetLineAlignment(StringAlignmentCenter);
@@ -1470,12 +1520,14 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			const REAL layoutWidth = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * AvisoMax(static_cast<double>(textLength), 1.0) * 0.9f + haloPadding * 2.0f), 14.0));
 			const REAL layoutHeight = static_cast<REAL>(AvisoMax(static_cast<double>(scaledTextSize * 1.65f + haloPadding * 2.0f), 10.0));
 			const RectF layoutRect = labelRectForAnchor(labelPoint, layoutWidth, layoutHeight, label.textAnchor);
+			FontFamily labelFontFamily(label.fontFamily.empty() ? L"Arial" : label.fontFamily.c_str());
+			const FontFamily* fontFamily = labelFontFamily.GetLastStatus() == Ok ? &labelFontFamily : &fallbackLabelFontFamily;
 
 			GraphicsPath textPath;
 			textPath.AddString(
 				label.text.c_str(),
 				static_cast<INT>(label.text.length()),
-				&labelFontFamily,
+				fontFamily,
 				FontStyleRegular,
 				labelEmSize,
 				layoutRect,
@@ -7051,6 +7103,8 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 	AFX_MANAGE_STATE(AfxGetStaticModuleState())
 
 		BeginShutdown();
+		CloseAvisoEditorWindow();
+		DestroyAvisoEditorWindow();
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
 
