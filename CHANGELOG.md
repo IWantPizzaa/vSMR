@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- Added a built-in AVISO editor for GeoJSON AVISO files with live reload, object visibility, layer/name metadata, style fields, label text/font/position fields, simple line/label creation, duplication, deletion, and save/reload actions.
+
 ## [1.1.3] - 2026-06-20
 
 ### Added

@@ -235,6 +235,15 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		ReloadConfig();
 		return true;
 	}
+	if (strcmp(sCommandLine, ".smr aviso reload") == 0) {
+		const bool loaded = ForceReloadAvisoGeoJson();
+		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO", loaded ? "Reloaded AVISO." : "No AVISO file loaded.", true, true, false, false, false);
+		return true;
+	}
+	if (strcmp(sCommandLine, ".smr aviso editor") == 0) {
+		OpenAvisoEditorWindow();
+		return true;
+	}
 	if (strcmp(sCommandLine, ".smr draw") == 0) {
 		// Draw runways areas on radar screen
 		drawRunways = !drawRunways;

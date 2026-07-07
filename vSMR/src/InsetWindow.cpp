@@ -1288,6 +1288,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
 		const CRect presetsRect = DrawInsetToolbarButton(dc, "P", topBar, InsetToolbarRightOffset(1), mouseLocation);
 		radar_screen->AddScreenObject(m_Id, "presets", presetsRect, false, "");
+		const CRect reloadRect = DrawInsetToolbarButton(dc, "R", topBar, InsetToolbarRightOffset(2), mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "reload", reloadRect, false, "");
+		const CRect editorRect = DrawInsetToolbarButton(dc, "E", topBar, InsetToolbarRightOffset(3), mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "editor", editorRect, false, "");
 		dc.SetTextColor(oldTextColor);
 	};
 
