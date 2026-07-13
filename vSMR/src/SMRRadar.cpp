@@ -134,6 +134,28 @@ namespace
 		return value;
 	}
 
+	bool AvisoGeoJsonShouldLogDiagnostics(const std::string& path)
+	{
+		if (!Logger::is_verbose_mode())
+			return false;
+
+		return ToUpperAscii(path).find("LFBO") != std::string::npos;
+	}
+
+	bool AvisoGeoJsonDiagnosticSignatureChanged(const std::string& key, const std::string& signature)
+	{
+		static std::mutex signatureMutex;
+		static std::unordered_map<std::string, std::string> signatures;
+
+		std::lock_guard<std::mutex> guard(signatureMutex);
+		const auto found = signatures.find(key);
+		if (found != signatures.end() && found->second == signature)
+			return false;
+
+		signatures[key] = signature;
+		return true;
+	}
+
 	void PushUniquePath(std::vector<fs::path>& paths, const fs::path& path)
 	{
 		if (path.empty())
@@ -1203,6 +1225,7 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		return;
 
 	bool shouldNotify = false;
+	std::string diagnosticMessage;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
 		if (IsShutdownRequested() || AvisoGeoJsonRenderStop.load(std::memory_order_relaxed))
@@ -1226,6 +1249,19 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 
 		request.requestId = ++AvisoGeoJsonRenderNextRequestId;
 		AvisoGeoJsonRenderLatestRequestId = request.requestId;
+		if (AvisoGeoJsonShouldLogDiagnostics(request.path))
+		{
+			diagnosticMessage =
+				"AVISO LFBO diag queue request=" + std::to_string(request.requestId) +
+				" raster=" + std::to_string(request.rasterWidth) + "x" + std::to_string(request.rasterHeight) +
+				" scale=" + std::to_string(request.rasterScale) +
+				" displayLon=" + std::to_string(request.displayMinLongitude) + ".." + std::to_string(request.displayMaxLongitude) +
+				" displayLat=" + std::to_string(request.displayMinLatitude) + ".." + std::to_string(request.displayMaxLatitude) +
+				" renderLon=" + std::to_string(request.renderMinLongitude) + ".." + std::to_string(request.renderMaxLongitude) +
+				" renderLat=" + std::to_string(request.renderMinLatitude) + ".." + std::to_string(request.renderMaxLatitude) +
+				" features=" + std::to_string(request.features->size()) +
+				" labels=" + std::to_string(request.labels->size());
+		}
 		AvisoGeoJsonRenderLastRequestValid = true;
 		AvisoGeoJsonRenderLastRequestPath = request.path;
 		AvisoGeoJsonRenderLastRequestMinLongitude = request.displayMinLongitude;
@@ -1242,6 +1278,8 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		shouldNotify = true;
 	}
 
+	if (!diagnosticMessage.empty())
+		Logger::info(diagnosticMessage);
 	if (shouldNotify)
 		AvisoGeoJsonRenderCondition.notify_one();
 }
@@ -1305,6 +1343,17 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 	AvisoGeoJsonRasterProjectedBottomLeft = result->projectedBottomLeft;
 	AvisoGeoJsonRasterProjectedBottomRight = result->projectedBottomRight;
 	AvisoGeoJsonRasterAnchorValid = true;
+
+	if (AvisoGeoJsonShouldLogDiagnostics(AvisoGeoJsonRasterCachePath))
+	{
+		Logger::info(
+			"AVISO LFBO diag apply request=" + std::to_string(result->requestId) +
+			" cache=" + std::to_string(AvisoGeoJsonRasterWidth) + "x" + std::to_string(AvisoGeoJsonRasterHeight) +
+			" displayLon=" + std::to_string(AvisoGeoJsonRasterMinLongitude) + ".." + std::to_string(AvisoGeoJsonRasterMaxLongitude) +
+			" displayLat=" + std::to_string(AvisoGeoJsonRasterMinLatitude) + ".." + std::to_string(AvisoGeoJsonRasterMaxLatitude) +
+			" renderLon=" + std::to_string(AvisoGeoJsonRasterAnchorLongitude) + ".." + std::to_string(AvisoGeoJsonRasterBottomRightLongitude) +
+			" renderLat=" + std::to_string(AvisoGeoJsonRasterBottomRightLatitude) + ".." + std::to_string(AvisoGeoJsonRasterAnchorLatitude));
+	}
 }
 
 void CSMRRadar::AvisoGeoJsonRenderThreadMain()
@@ -1439,14 +1488,23 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	const double minRasterPointDistance = AvisoMax(0.35 * request.rasterScale, 0.5);
 	const double minRasterPointDistanceSquared = minRasterPointDistance * minRasterPointDistance;
+	size_t diagnosticInputPointCount = 0;
+	size_t diagnosticOutputPointCount = 0;
+	size_t diagnosticApproxSkippedPointCount = 0;
+	size_t diagnosticRasterSkippedPointCount = 0;
+	size_t diagnosticTinyFeatureSkipCount = 0;
 	auto appendRasterPoint = [&](std::vector<PointF>& points, AvisoPoint& lastCoordinate, bool& hasLastCoordinate, const AvisoPoint& coordinate, bool force)
 	{
+		++diagnosticInputPointCount;
 		if (!force && hasLastCoordinate)
 		{
 			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * request.rasterScale;
 			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * request.rasterScale;
 			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
+			{
+				++diagnosticApproxSkippedPointCount;
 				return;
+			}
 		}
 
 		const PointF point = projectRasterPoint(coordinate);
@@ -1456,10 +1514,14 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			const double dx = static_cast<double>(point.X - lastPoint.X);
 			const double dy = static_cast<double>(point.Y - lastPoint.Y);
 			if ((dx * dx + dy * dy) < minRasterPointDistanceSquared)
+			{
+				++diagnosticRasterSkippedPointCount;
 				return;
+			}
 		}
 
 		points.push_back(point);
+		++diagnosticOutputPointCount;
 		lastCoordinate = coordinate;
 		hasLastCoordinate = true;
 	};
@@ -1481,7 +1543,10 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX * request.rasterScale;
 		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * request.rasterScale;
 		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
+		{
+			++diagnosticTinyFeatureSkipCount;
 			continue;
+		}
 
 		if (feature.polygon)
 		{
@@ -1659,6 +1724,20 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	if (renderCancelled())
 		return nullptr;
+
+	if (AvisoGeoJsonShouldLogDiagnostics(request.path))
+	{
+		Logger::info(
+			"AVISO LFBO diag raster request=" + std::to_string(request.requestId) +
+			" raster=" + std::to_string(request.rasterWidth) + "x" + std::to_string(request.rasterHeight) +
+			" scale=" + std::to_string(request.rasterScale) +
+			" minPointDistance=" + std::to_string(minRasterPointDistance) +
+			" inputPoints=" + std::to_string(diagnosticInputPointCount) +
+			" outputPoints=" + std::to_string(diagnosticOutputPointCount) +
+			" skippedApprox=" + std::to_string(diagnosticApproxSkippedPointCount) +
+			" skippedRaster=" + std::to_string(diagnosticRasterSkippedPointCount) +
+			" tinyFeaturesSkipped=" + std::to_string(diagnosticTinyFeatureSkipCount));
+	}
 
 	auto result = std::make_unique<AvisoRasterRenderResult>();
 	result->requestId = request.requestId;
@@ -1941,6 +2020,28 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
 		if (!nearNativeScale)
 			::SetBrushOrgEx(hDC, 0, 0, nullptr);
+
+		if (AvisoGeoJsonShouldLogDiagnostics(path))
+		{
+			const std::string stretchMode = nearNativeScale ? "COLORONCOLOR" : "HALFTONE";
+			const std::string signature =
+				std::to_string(AvisoGeoJsonRasterWidth) + "x" + std::to_string(AvisoGeoJsonRasterHeight) + "|" +
+				std::to_string(destWidthInt) + "x" + std::to_string(destHeightInt) + "|" +
+				std::to_string(sourceWidthInt) + "x" + std::to_string(sourceHeightInt) + "|" +
+				stretchMode;
+			if (AvisoGeoJsonDiagnosticSignatureChanged("main-cache-draw:" + path, signature))
+			{
+				Logger::info(
+					"AVISO LFBO diag cacheDraw cache=" + std::to_string(AvisoGeoJsonRasterWidth) + "x" + std::to_string(AvisoGeoJsonRasterHeight) +
+					" dest=" + std::to_string(destWidthInt) + "x" + std::to_string(destHeightInt) +
+					" source=" + std::to_string(sourceWidthInt) + "x" + std::to_string(sourceHeightInt) +
+					" sourceScale=" + std::to_string(sourceScaleX) + "," + std::to_string(sourceScaleY) +
+					" nearNative=" + std::string(nearNativeScale ? "true" : "false") +
+					" stretchMode=" + stretchMode +
+					" destOrigin=" + std::to_string(destLeft) + "," + std::to_string(destTop) +
+					" sourceOrigin=" + std::to_string(sourceXInt) + "," + std::to_string(sourceYInt));
+			}
+		}
 
 		BLENDFUNCTION blend = {};
 		blend.BlendOp = AC_SRC_OVER;
