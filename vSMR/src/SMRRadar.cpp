@@ -2068,7 +2068,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		return blended != FALSE;
 	};
 
-	auto rasterCacheHasWorkingMargin = [&]() -> bool
+	auto rasterCacheHasCompatibleZoom = [&]() -> bool
 	{
 		if (AvisoGeoJsonRasterCache == nullptr ||
 			AvisoGeoJsonRasterCachePath != path ||
@@ -2084,10 +2084,14 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 
 		const double lonScaleRatio = lonSpan / cachedDisplayLonSpan;
 		const double latScaleRatio = latSpan / cachedDisplayLatSpan;
-		const bool sameZoomScale =
+		return
 			lonScaleRatio >= 0.985 && lonScaleRatio <= 1.015 &&
 			latScaleRatio >= 0.985 && latScaleRatio <= 1.015;
-		if (!sameZoomScale)
+	};
+
+	auto rasterCacheHasWorkingMargin = [&]() -> bool
+	{
+		if (!rasterCacheHasCompatibleZoom())
 			return false;
 
 		const double cachedRenderMinLon = AvisoMin(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLongitude);
@@ -2136,7 +2140,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	const double targetRasterScale = 1.0;
 	const double minRasterScale = 0.50;
 	const double maxRasterSide = 6400.0;
-	const double maxRasterPixels = 18000000.0;
+	const double maxRasterPixels = 32000000.0;
 	double rasterScale = targetRasterScale;
 	const double sideLimitedScale = maxRasterSide / maxDimension;
 	if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
@@ -2176,7 +2180,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.projectedBottomLeft = PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y));
 	request.projectedBottomRight = PointF(static_cast<REAL>(projectedBottomRight.x), static_cast<REAL>(projectedBottomRight.y));
 
-	if (drawRasterCacheTransformed())
+	if (rasterCacheHasCompatibleZoom() && drawRasterCacheTransformed())
 	{
 		if (!rasterCacheHasWorkingMargin())
 			QueueAvisoGeoJsonRasterRender(std::move(request));
