@@ -249,6 +249,59 @@ namespace
 		return Gdiplus::Color(alpha, static_cast<BYTE>(red), static_cast<BYTE>(green), static_cast<BYTE>(blue));
 	}
 
+	bool AvisoHasStringProperty(const Value* properties, const char* key)
+	{
+		return properties != nullptr &&
+			properties->IsObject() &&
+			key != nullptr &&
+			properties->HasMember(key) &&
+			(*properties)[key].IsString() &&
+			(*properties)[key].GetString()[0] != '\0';
+	}
+
+	bool AvisoHasNumberProperty(const Value* properties, const char* key)
+	{
+		return properties != nullptr &&
+			properties->IsObject() &&
+			key != nullptr &&
+			properties->HasMember(key) &&
+			(*properties)[key].IsNumber();
+	}
+
+	Gdiplus::Color ParseAvisoColorResolved(const Value* sharedPaint, const Value* inlineProperties, const char* colorProperty, const char* opacityProperty, const Gdiplus::Color& fallback)
+	{
+		const Value* colorSource = AvisoHasStringProperty(sharedPaint, colorProperty) ? sharedPaint : inlineProperties;
+		if (!AvisoHasStringProperty(colorSource, colorProperty))
+			return fallback;
+
+		const char* hex = (*colorSource)[colorProperty].GetString();
+		if (hex == nullptr || hex[0] != '#' || std::strlen(hex) != 7)
+			return fallback;
+
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		if (!TryParseHexByte(hex + 1, red) ||
+			!TryParseHexByte(hex + 3, green) ||
+			!TryParseHexByte(hex + 5, blue))
+		{
+			return fallback;
+		}
+
+		double opacity = static_cast<double>(fallback.GetAlpha()) / 255.0;
+		const Value* opacitySource = nullptr;
+		if (AvisoHasNumberProperty(sharedPaint, opacityProperty))
+			opacitySource = sharedPaint;
+		else if (AvisoHasNumberProperty(inlineProperties, opacityProperty))
+			opacitySource = inlineProperties;
+		if (opacitySource != nullptr)
+			opacity = (*opacitySource)[opacityProperty].GetDouble();
+
+		opacity = std::clamp(opacity, 0.0, 1.0);
+		const BYTE alpha = static_cast<BYTE>(std::lround(opacity * 255.0));
+		return Gdiplus::Color(alpha, static_cast<BYTE>(red), static_cast<BYTE>(green), static_cast<BYTE>(blue));
+	}
+
 	const char* GetAvisoStringProperty(const Value* properties, std::initializer_list<const char*> keys)
 	{
 		if (properties == nullptr || !properties->IsObject())
@@ -269,6 +322,13 @@ namespace
 		}
 
 		return nullptr;
+	}
+
+	const char* GetAvisoStringPropertyResolved(const Value* sharedPaint, const Value* inlineProperties, std::initializer_list<const char*> keys)
+	{
+		if (const char* value = GetAvisoStringProperty(sharedPaint, keys))
+			return value;
+		return GetAvisoStringProperty(inlineProperties, keys);
 	}
 
 	bool IsAvisoFeatureVisible(const Value* properties)
@@ -333,6 +393,13 @@ namespace
 		return static_cast<float>(std::clamp(value, static_cast<double>(minValue), static_cast<double>(maxValue)));
 	}
 
+	float ParseAvisoFloatPropertyResolved(const Value* sharedPaint, const Value* inlineProperties, const char* key, float fallback, float minValue, float maxValue)
+	{
+		if (AvisoHasNumberProperty(sharedPaint, key))
+			return ParseAvisoFloatProperty(sharedPaint, key, fallback, minValue, maxValue);
+		return ParseAvisoFloatProperty(inlineProperties, key, fallback, minValue, maxValue);
+	}
+
 	float ParseAvisoStrokeWidth(const Value* properties, float fallback)
 	{
 		if (properties == nullptr || !properties->IsObject() ||
@@ -346,6 +413,24 @@ namespace
 		if (!std::isfinite(width))
 			return fallback;
 		return static_cast<float>(std::clamp(width, 0.25, 8.0));
+	}
+
+	float ParseAvisoStrokeWidthResolved(const Value* sharedPaint, const Value* inlineProperties, float fallback)
+	{
+		if (AvisoHasNumberProperty(sharedPaint, "stroke-width"))
+			return ParseAvisoStrokeWidth(sharedPaint, fallback);
+		return ParseAvisoStrokeWidth(inlineProperties, fallback);
+	}
+
+	const Value* ResolveAvisoStylePaint(const Value* properties, const std::unordered_map<std::string, const Value*>& stylePaintById)
+	{
+		if (properties == nullptr || !properties->IsObject())
+			return nullptr;
+		const char* styleId = GetAvisoStringProperty(properties, { "style_id" });
+		if (styleId == nullptr)
+			return nullptr;
+		const auto found = stylePaintById.find(styleId);
+		return found != stylePaintById.end() ? found->second : nullptr;
 	}
 
 	bool AvisoColorsEqual(const Gdiplus::Color& left, const Gdiplus::Color& right)
@@ -797,9 +882,22 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	}
 
 	const Value& features = document["features"];
+	std::unordered_map<std::string, const Value*> stylePaintById;
+	if (document.HasMember("styles") && document["styles"].IsObject())
+	{
+		const Value& styles = document["styles"];
+		for (Value::ConstMemberIterator it = styles.MemberBegin(); it != styles.MemberEnd(); ++it)
+		{
+			if (!it->name.IsString() || !it->value.IsObject())
+				continue;
+			if (it->value.HasMember("paint") && it->value["paint"].IsObject())
+				stylePaintById.emplace(it->name.GetString(), &it->value["paint"]);
+		}
+	}
 	size_t polygonCount = 0;
 	size_t multiLineCount = 0;
 	size_t labelCount = 0;
+	size_t missingStyleCount = 0;
 
 	auto addPoint = [](const Value& coordinate, AvisoFeature& feature, std::vector<AvisoPoint>& pathPoints) {
 		if (!coordinate.IsArray() || coordinate.Size() < 2 ||
@@ -845,6 +943,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			properties = &featureValue["properties"];
 		if (!IsAvisoFeatureVisible(properties))
 			continue;
+		const Value* sharedPaint = ResolveAvisoStylePaint(properties, stylePaintById);
+		if (sharedPaint == nullptr && !stylePaintById.empty() && GetAvisoStringProperty(properties, { "style_id" }) != nullptr)
+			++missingStyleCount;
 
 		const std::string geometryType = geometry["type"].GetString();
 		const Value& coordinates = geometry["coordinates"];
@@ -852,7 +953,10 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		if (geometryType == "Point")
 		{
 			const char* geometryRole = GetAvisoStringProperty(properties, { "geometry_role" });
-			if (geometryRole == nullptr || ToUpperAscii(geometryRole) != "TEXT_LABEL")
+			const char* objectType = GetAvisoStringProperty(properties, { "object_type", "type" });
+			const bool textRole = geometryRole != nullptr && ToUpperAscii(geometryRole) == "TEXT_LABEL";
+			const bool labelObject = objectType != nullptr && ToUpperAscii(objectType) == "LABEL";
+			if (!textRole && !labelObject)
 				continue;
 
 			if (!coordinates.IsArray() ||
@@ -888,26 +992,26 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 				else if (labelClassUpper.find("TAXIWAY") != std::string::npos)
 					parsedLabel.maxMetersPerPixel = 7.0;
 			}
-			const char* textAnchor = GetAvisoStringProperty(properties, { "text-anchor" });
+			const char* textAnchor = GetAvisoStringPropertyResolved(sharedPaint, properties, { "text-anchor" });
 			if (textAnchor != nullptr)
 				parsedLabel.textAnchor = textAnchor;
-			const char* textFont = GetAvisoStringProperty(properties, { "text-font", "font", "font-family" });
+			const char* textFont = GetAvisoStringPropertyResolved(sharedPaint, properties, { "text-font", "font", "font-family" });
 			if (textFont != nullptr)
 				parsedLabel.fontFamily = AvisoUtf8ToWide(textFont);
 
-			parsedLabel.textColor = ParseAvisoColor(properties, "text-color", nullptr, Gdiplus::Color(255, 128, 128, 128));
-			parsedLabel.haloColor = ParseAvisoColor(properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
-			parsedLabel.textSize = ParseAvisoFloatProperty(properties, "text-size", 12.0f, 6.0f, 32.0f);
-			parsedLabel.haloWidth = ParseAvisoFloatProperty(properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
+			parsedLabel.textColor = ParseAvisoColorResolved(sharedPaint, properties, "text-color", nullptr, Gdiplus::Color(255, 128, 128, 128));
+			parsedLabel.haloColor = ParseAvisoColorResolved(sharedPaint, properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
+			parsedLabel.textSize = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-size", 12.0f, 6.0f, 32.0f);
+			parsedLabel.haloWidth = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
 			AvisoGeoJsonLabels.push_back(std::move(parsedLabel));
 			++labelCount;
 			continue;
 		}
 
 		AvisoFeature parsedFeature;
-		parsedFeature.fillColor = ParseAvisoColor(properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
-		parsedFeature.strokeColor = ParseAvisoColor(properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
-		parsedFeature.strokeWidth = ParseAvisoStrokeWidth(properties, 1.0f);
+		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
+		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
+		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
 		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();
 		parsedFeature.minLatitude = (std::numeric_limits<double>::max)();
 		parsedFeature.maxLongitude = std::numeric_limits<double>::lowest();
@@ -999,7 +1103,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
 		" polygons=" + std::to_string(polygonCount) +
 		" multilines=" + std::to_string(multiLineCount) +
-		" labels=" + std::to_string(labelCount));
+		" labels=" + std::to_string(labelCount) +
+		" styles=" + std::to_string(stylePaintById.size()) +
+		" missingStyles=" + std::to_string(missingStyleCount));
 	return true;
 }
 

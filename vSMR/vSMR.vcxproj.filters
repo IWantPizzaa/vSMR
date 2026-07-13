@@ -48,6 +48,9 @@
     <ClCompile Include="src\InsetWindow.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\AvisoDocumentModel.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="src\AvisoEditorDialog.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -132,6 +135,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\InsetWindow.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AvisoDocumentModel.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\AvisoEditorDialog.hpp">
