@@ -202,6 +202,9 @@ void CAvisoEditorDialog::CreateEditorControls()
 	StatusLabel.Create("", staticStyle | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_AE_STATUS_LABEL);
 	SearchLabel.Create("Search", staticStyle, CRect(0, 0, 0, 0), this);
 	SearchEdit.Create(editStyle, CRect(0, 0, 0, 0), this, IDC_AE_SEARCH_EDIT);
+#ifdef EM_SETCUEBANNER
+	::SendMessageW(SearchEdit.GetSafeHwnd(), EM_SETCUEBANNER, FALSE, reinterpret_cast<LPARAM>(L"Search objects, layers, stands..."));
+#endif
 	LayerFilterLabel.Create("Layer", staticStyle, CRect(0, 0, 0, 0), this);
 	LayerFilterCombo.Create(comboStyle, CRect(0, 0, 0, 0), this, IDC_AE_LAYER_FILTER_COMBO);
 	ObjectTypeFilterLabel.Create("Type", staticStyle, CRect(0, 0, 0, 0), this);
@@ -216,21 +219,20 @@ void CAvisoEditorDialog::CreateEditorControls()
 	StyleFilterCombo.Create(comboStyle, CRect(0, 0, 0, 0), this, IDC_AE_STYLE_FILTER_COMBO);
 	ObjectCountLabel.Create("", staticStyle | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this);
 	ObjectList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WS_VSCROLL | WS_HSCROLL | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA, CRect(0, 0, 0, 0), this, IDC_AE_OBJECT_LIST);
-	ObjectList.SetExtendedStyle(ObjectList.GetExtendedStyle() | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
+	ObjectList.SetExtendedStyle(ObjectList.GetExtendedStyle() | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 	ObjectList.InsertColumn(0, "Visible", LVCFMT_LEFT, 58);
 	ObjectList.InsertColumn(1, "Name/Text", LVCFMT_LEFT, 210);
 	ObjectList.InsertColumn(2, "Layer", LVCFMT_LEFT, 120);
 	ObjectList.InsertColumn(3, "Object Type", LVCFMT_LEFT, 110);
 	ObjectList.InsertColumn(4, "Geometry", LVCFMT_LEFT, 92);
-	ObjectList.InsertColumn(5, "Category", LVCFMT_LEFT, 130);
-	ObjectList.InsertColumn(6, "Style", LVCFMT_LEFT, 150);
 	ReloadButton.Create("Reload", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_RELOAD_BUTTON);
 	SaveButton.Create("Save", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_SAVE_BUTTON);
 	AddLabelButton.Create("Add Label", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_ADD_LABEL_BUTTON);
 	AddLineButton.Create("Add Line", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_ADD_LINE_BUTTON);
+	SelectFilteredButton.Create("Select filtered", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_SELECT_FILTERED_BUTTON);
 	DuplicateButton.Create("Duplicate", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_DUPLICATE_BUTTON);
 	DeleteButton.Create("Delete", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_DELETE_BUTTON);
-	ApplyButton.Create("Apply", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_APPLY_BUTTON);
+	ApplyButton.Create("Apply changes", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_APPLY_BUTTON);
 	CloseButton.Create("Close", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_CLOSE_BUTTON);
 	VisibleCheck.Create("Visible", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_AE_VISIBLE_CHECK);
 	DetailsHeader.Create("Object properties", staticStyle, CRect(0, 0, 0, 0), this, IDC_AE_DETAILS_HEADER);
@@ -248,6 +250,8 @@ void CAvisoEditorDialog::CreateEditorControls()
 	ApplyScopeCombo.AddString(kScopeSameLayer);
 	ApplyScopeCombo.AddString(kScopeSameStyle);
 	ApplyScopeCombo.SetCurSel(0);
+	ApplyScopeLabel.ShowWindow(SW_HIDE);
+	ApplyScopeCombo.ShowWindow(SW_HIDE);
 
 	NameLabel.Create("Name", staticStyle, CRect(0, 0, 0, 0), this);
 	NameEdit.Create(editStyle, CRect(0, 0, 0, 0), this, IDC_AE_NAME_EDIT);
@@ -307,10 +311,11 @@ void CAvisoEditorDialog::LayoutControls()
 	const int buttonH = 24;
 	const int rowH = 23;
 	const int topH = 38;
+	const int leftButtonRows = 4;
 	int leftW = std::clamp(client.Width() * 46 / 100, 360, 660);
 	const int maxLeftW = (std::max)(300, client.Width() - margin * 2 - 12 - 360);
 	leftW = (std::min)(leftW, maxLeftW);
-	const int listBottom = client.bottom - margin - ((buttonH + gap) * 3);
+	const int listBottom = client.bottom - margin - ((buttonH + gap) * leftButtonRows);
 	const int rightX = margin + leftW + 12;
 	const int rightW = (std::max)(120, static_cast<int>(client.right) - rightX - margin);
 
@@ -339,9 +344,10 @@ void CAvisoEditorDialog::LayoutControls()
 	StyleFilterCombo.MoveWindow(margin + 170 + thirdFilterW * 2, leftY, (std::max)(80, leftW - 170 - thirdFilterW * 2), comboDropH);
 	leftY += rowH;
 
+	const int countLabelW = 180;
 	CategoryFilterLabel.MoveWindow(margin, leftY + 4, 58, 16);
-	CategoryFilterCombo.MoveWindow(margin + 60, leftY, (std::max)(120, leftW - 190), comboDropH);
-	ObjectCountLabel.MoveWindow(margin + leftW - 124, leftY + 4, 124, 16);
+	CategoryFilterCombo.MoveWindow(margin + 60, leftY, (std::max)(120, leftW - 60 - countLabelW - gap), comboDropH);
+	ObjectCountLabel.MoveWindow(margin + leftW - countLabelW, leftY + 4, countLabelW, 16);
 	leftY += rowH + gap;
 
 	ObjectList.MoveWindow(margin, leftY, leftW, (std::max)(80, listBottom - leftY));
@@ -349,33 +355,31 @@ void CAvisoEditorDialog::LayoutControls()
 	const int geometryColumnW = 92;
 	const int objectTypeColumnW = 112;
 	const int layerColumnW = 118;
-	const int categoryColumnW = 130;
-	const int styleColumnW = 150;
-	const int nameColumnW = (std::max)(150, leftW - visibleColumnW - geometryColumnW - objectTypeColumnW - layerColumnW - categoryColumnW - styleColumnW - 8);
+	const int nameColumnW = (std::max)(150, leftW - visibleColumnW - geometryColumnW - objectTypeColumnW - layerColumnW - 8);
 	ObjectList.SetColumnWidth(0, visibleColumnW);
 	ObjectList.SetColumnWidth(1, nameColumnW);
 	ObjectList.SetColumnWidth(2, layerColumnW);
 	ObjectList.SetColumnWidth(3, objectTypeColumnW);
 	ObjectList.SetColumnWidth(4, geometryColumnW);
-	ObjectList.SetColumnWidth(5, categoryColumnW);
-	ObjectList.SetColumnWidth(6, styleColumnW);
 
 	int leftButtonY = listBottom + gap;
 	const int halfButtonW = (leftW - gap) / 2;
 	ReloadButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
 	SaveButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
 	leftButtonY += buttonH + gap;
+	SelectFilteredButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
+	DuplicateButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
+	leftButtonY += buttonH + gap;
 	AddLabelButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
 	AddLineButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
 	leftButtonY += buttonH + gap;
-	DuplicateButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
-	DeleteButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
+	DeleteButton.MoveWindow(margin, leftButtonY, leftW, buttonH);
 
 	int y = margin + topH;
 	DetailsHeader.MoveWindow(rightX, y, 132, 18);
 	VisibleCheck.MoveWindow(rightX + 136, y - 1, 76, 20);
-	ApplyScopeLabel.MoveWindow(rightX + rightW - 252, y + 3, 58, 16);
-	ApplyScopeCombo.MoveWindow(rightX + rightW - 190, y - 2, 190, comboDropH);
+	ApplyScopeLabel.ShowWindow(SW_HIDE);
+	ApplyScopeCombo.ShowWindow(SW_HIDE);
 	y += 24;
 	PropertyTabs.MoveWindow(rightX, y, rightW, 26);
 	y += 32;
@@ -693,52 +697,19 @@ void CAvisoEditorDialog::OnFieldChanged()
 
 	DirtyFieldMask |= dirtyFlag;
 	PendingFieldChanges = DirtyFieldMask != 0;
-	SetStatusText("Field changes pending. Apply commits them in memory; Save writes the file.");
+	SetStatusText("Field changes pending. Apply changes updates the current selection; Save writes the file.");
 }
 
 void CAvisoEditorDialog::OnApplyClicked()
 {
-	if (!PendingFieldChanges || DirtyFieldMask == 0)
-	{
-		SetStatusText("No field changes pending.");
-		return;
-	}
-
-	const std::string scope = ReadComboText(ApplyScopeCombo);
-	if (EqualsNoCase(scope, kScopeSelectedObject) || scope.empty())
-	{
-		if (!ApplyFieldsToSelectedFeature(true, true))
-			return;
-	}
-	else
-	{
-		const std::vector<int> targets = GetBatchTargetFeatureIndices();
-		if (targets.empty())
-		{
-			SetStatusText("No objects match the selected batch scope.");
-			return;
-		}
-		if (!ApplyBatchFieldsToFeatures(targets, true))
-			return;
-	}
-	SetStatusText("Applied changes in memory. Press Save to write the AVISO file and reload the radar.");
+	if (ApplyPendingFieldsToCurrentSelection(true))
+		SetStatusText("Applied changes in memory. Press Save to write the AVISO file and reload the radar.");
 }
 
 void CAvisoEditorDialog::OnSaveClicked()
 {
-	if (PendingFieldChanges)
-	{
-		const std::string scope = ReadComboText(ApplyScopeCombo);
-		if (EqualsNoCase(scope, kScopeSelectedObject) || scope.empty())
-		{
-			if (!ApplyFieldsToSelectedFeature(true, true))
-				return;
-		}
-		else if (!ApplyBatchFieldsToFeatures(GetBatchTargetFeatureIndices(), true))
-		{
-			return;
-		}
-	}
+	if (PendingFieldChanges && !ApplyPendingFieldsToCurrentSelection(true))
+		return;
 	SaveDocument(true);
 }
 
@@ -786,9 +757,62 @@ void CAvisoEditorDialog::OnDuplicateClicked()
 
 void CAvisoEditorDialog::OnDeleteClicked()
 {
-	const int featureIndex = GetSelectedFeatureIndex();
-	if (featureIndex >= 0)
+	std::vector<int> selectedFeatureIndices = GetSelectedFeatureIndices();
+	if (selectedFeatureIndices.empty())
+		return;
+
+	if (selectedFeatureIndices.size() > 1)
+	{
+		const std::string message = "Delete " + std::to_string(selectedFeatureIndices.size()) + " selected AVISO objects?";
+		if (MessageBox(message.c_str(), "AVISO Editor", MB_ICONWARNING | MB_YESNO) != IDYES)
+			return;
+	}
+
+	std::sort(selectedFeatureIndices.begin(), selectedFeatureIndices.end(), std::greater<int>());
+	for (int featureIndex : selectedFeatureIndices)
 		DeleteFeatureAt(featureIndex);
+}
+
+void CAvisoEditorDialog::OnSelectFilteredClicked()
+{
+	if (!::IsWindow(ObjectList.GetSafeHwnd()) || FilteredFeatureIndices.empty())
+	{
+		SetStatusText("No objects match the current filters.");
+		return;
+	}
+
+	if (PendingFieldChanges)
+	{
+		const int response = MessageBox(
+			"Apply pending field changes before selecting all filtered objects?",
+			"AVISO Editor",
+			MB_ICONQUESTION | MB_YESNOCANCEL);
+		if (response == IDCANCEL)
+			return;
+		if (response == IDYES && !ApplyPendingFieldsToCurrentSelection(true))
+			return;
+		if (response == IDNO)
+		{
+			PendingFieldChanges = false;
+			DirtyFieldMask = 0;
+		}
+	}
+
+	RestoringObjectSelection = true;
+	ObjectList.SetRedraw(FALSE);
+	ObjectList.SetItemState(-1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+	for (int row = 0; row < static_cast<int>(FilteredFeatureIndices.size()); ++row)
+	{
+		const UINT state = row == 0 ? (LVIS_SELECTED | LVIS_FOCUSED) : LVIS_SELECTED;
+		ObjectList.SetItemState(row, state, LVIS_SELECTED | LVIS_FOCUSED);
+	}
+	ObjectList.SetRedraw(TRUE);
+	ObjectList.Invalidate();
+	ObjectList.EnsureVisible(0, FALSE);
+	RestoringObjectSelection = false;
+
+	RefreshFieldsFromSelection();
+	SetStatusText(std::to_string(FilteredFeatureIndices.size()) + " filtered object(s) selected.");
 }
 
 void CAvisoEditorDialog::OnCloseClicked()
@@ -817,16 +841,8 @@ bool CAvisoEditorDialog::PromptForUnsavedChanges(const char* actionText)
 	}
 	if (PendingFieldChanges)
 	{
-		const std::string scope = ReadComboText(ApplyScopeCombo);
-		if (EqualsNoCase(scope, kScopeSelectedObject) || scope.empty())
-		{
-			if (!ApplyFieldsToSelectedFeature(true, true))
-				return false;
-		}
-		else if (!ApplyBatchFieldsToFeatures(GetBatchTargetFeatureIndices(), true))
-		{
+		if (!ApplyPendingFieldsToCurrentSelection(true))
 			return false;
-		}
 	}
 	return SaveDocument(true);
 }
@@ -1238,28 +1254,54 @@ void CAvisoEditorDialog::PopulateObjectList(int preferredFeatureIndex)
 	}
 
 	ObjectList.Invalidate();
-	ObjectCountLabel.SetWindowText((std::to_string(FilteredFeatureIndices.size()) + " / " + std::to_string(Model.FeatureCount()) + " objects").c_str());
+	UpdateObjectCountText();
 
 	UpdatingControls = false;
 	RefreshFieldsFromSelection();
 }
 
+void CAvisoEditorDialog::UpdateObjectCountText()
+{
+	if (!::IsWindow(ObjectCountLabel.GetSafeHwnd()))
+		return;
+
+	const int selectedCount = ::IsWindow(ObjectList.GetSafeHwnd()) ? ObjectList.GetSelectedCount() : 0;
+	std::string text = std::to_string(FilteredFeatureIndices.size()) + " / " + std::to_string(Model.FeatureCount()) + " objects";
+	if (selectedCount > 0)
+		text += " | " + std::to_string(selectedCount) + " selected";
+	ObjectCountLabel.SetWindowText(text.c_str());
+}
+
 void CAvisoEditorDialog::RestoreObjectSelection(int featureIndex)
+{
+	if (featureIndex < 0)
+		RestoreObjectSelection(std::vector<int>());
+	else
+		RestoreObjectSelection(std::vector<int>{ featureIndex });
+}
+
+void CAvisoEditorDialog::RestoreObjectSelection(const std::vector<int>& featureIndices)
 {
 	if (!::IsWindow(ObjectList.GetSafeHwnd()))
 		return;
 
+	std::set<int> targetFeatureIndices(featureIndices.begin(), featureIndices.end());
+	int firstSelectedRow = -1;
 	RestoringObjectSelection = true;
 	ObjectList.SetItemState(-1, 0, LVIS_SELECTED | LVIS_FOCUSED);
 	for (int row = 0; row < static_cast<int>(FilteredFeatureIndices.size()); ++row)
 	{
-		if (FilteredFeatureIndices[static_cast<size_t>(row)] == featureIndex)
+		if (targetFeatureIndices.find(FilteredFeatureIndices[static_cast<size_t>(row)]) != targetFeatureIndices.end())
 		{
-			ObjectList.SetItemState(row, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-			ObjectList.EnsureVisible(row, FALSE);
-			break;
+			if (firstSelectedRow < 0)
+				firstSelectedRow = row;
+			const UINT state = firstSelectedRow == row ? (LVIS_SELECTED | LVIS_FOCUSED) : LVIS_SELECTED;
+			ObjectList.SetItemState(row, state, LVIS_SELECTED | LVIS_FOCUSED);
 		}
 	}
+	if (firstSelectedRow >= 0)
+		ObjectList.EnsureVisible(firstSelectedRow, FALSE);
+	UpdateObjectCountText();
 	RestoringObjectSelection = false;
 }
 
@@ -1268,8 +1310,9 @@ bool CAvisoEditorDialog::ResolvePendingChangesBeforeSelectionRefresh()
 	if (!PendingFieldChanges || DirtyFieldMask == 0)
 		return true;
 
-	const int previousFeatureIndex = LastSelectedFeatureIndex;
-	if (previousFeatureIndex < 0)
+	const std::vector<int> previousFeatureIndices = LastSelectedFeatureIndices;
+	const int previousFeatureIndex = previousFeatureIndices.empty() ? LastSelectedFeatureIndex : previousFeatureIndices.front();
+	if (previousFeatureIndices.empty() && previousFeatureIndex < 0)
 	{
 		PendingFieldChanges = false;
 		DirtyFieldMask = 0;
@@ -1282,7 +1325,7 @@ bool CAvisoEditorDialog::ResolvePendingChangesBeforeSelectionRefresh()
 		MB_ICONQUESTION | MB_YESNOCANCEL);
 	if (response == IDCANCEL)
 	{
-		RestoreObjectSelection(previousFeatureIndex);
+		RestoreObjectSelection(previousFeatureIndices.empty() ? std::vector<int>{ previousFeatureIndex } : previousFeatureIndices);
 		return false;
 	}
 	if (response == IDNO)
@@ -1292,17 +1335,19 @@ bool CAvisoEditorDialog::ResolvePendingChangesBeforeSelectionRefresh()
 		return true;
 	}
 
-	const std::string scope = ReadComboText(ApplyScopeCombo);
-	if (!EqualsNoCase(scope, kScopeSelectedObject) && !scope.empty())
+	if (previousFeatureIndices.size() > 1)
 	{
-		MessageBox("Apply batch edits with the Apply button before changing selection.", "AVISO Editor", MB_ICONWARNING | MB_OK);
-		RestoreObjectSelection(previousFeatureIndex);
-		return false;
+		if (!ApplyBatchFieldsToFeatures(previousFeatureIndices, true))
+		{
+			RestoreObjectSelection(previousFeatureIndices);
+			return false;
+		}
+		return true;
 	}
 
 	if (!ApplyFieldsToFeature(previousFeatureIndex, true, true, false, true))
 	{
-		RestoreObjectSelection(previousFeatureIndex);
+		RestoreObjectSelection(previousFeatureIndices.empty() ? std::vector<int>{ previousFeatureIndex } : previousFeatureIndices);
 		return false;
 	}
 	return true;
@@ -1355,8 +1400,22 @@ std::string CAvisoEditorDialog::GetObjectListCellText(int rowIndex, int subItem)
 void CAvisoEditorDialog::RefreshFieldsFromSelection()
 {
 	UpdatingControls = true;
-	const int featureIndex = GetSelectedFeatureIndex();
+	const std::vector<int> selectedFeatureIndices = GetSelectedFeatureIndices();
+	const int selectedCount = static_cast<int>(selectedFeatureIndices.size());
+	const bool hasSelection = selectedCount > 0;
+	const bool singleSelection = selectedCount == 1;
+	const int featureIndex = hasSelection ? selectedFeatureIndices.front() : -1;
 	LastSelectedFeatureIndex = featureIndex;
+	LastSelectedFeatureIndices = selectedFeatureIndices;
+	UpdateObjectCountText();
+
+	if (selectedCount == 0)
+		DetailsHeader.SetWindowText("No object selected");
+	else if (selectedCount == 1)
+		DetailsHeader.SetWindowText("Object properties");
+	else
+		DetailsHeader.SetWindowText((std::to_string(selectedCount) + " objects selected").c_str());
+
 	const rapidjson::Value* feature = GetFeatureByIndex(featureIndex);
 	const bool hasFeature = feature != nullptr && feature->IsObject();
 	const rapidjson::Value* properties = nullptr;
@@ -1376,17 +1435,33 @@ void CAvisoEditorDialog::RefreshFieldsFromSelection()
 
 	const bool pointGeometry = hasFeature && IsPointGeometry(*feature);
 	const bool labelFeature = hasFeature && IsEditableTextFeature(*feature);
-	SetEditText(TextEdit, labelFeature ? ReadStringProperty(properties, "text-field",
-		ReadStringProperty(properties, "text",
-			ReadStringProperty(properties, "label",
-				ReadStringProperty(properties, "title",
-					ReadStringProperty(properties, "description"))))) : "");
-	SetEditText(TextFontEdit, labelFeature ? ReadStringProperty(properties, "text-font", "Arial") : "");
-	SetEditText(TextColorEdit, labelFeature ? ReadStringProperty(properties, "text-color") : "");
-	SetEditText(TextSizeEdit, labelFeature && properties != nullptr && properties->HasMember("text-size") && (*properties)["text-size"].IsNumber() ? FormatDouble((*properties)["text-size"].GetDouble()) : "");
-	SetEditText(TextAnchorEdit, labelFeature ? ReadStringProperty(properties, "text-anchor", "center") : "");
-	SetEditText(HaloColorEdit, labelFeature ? ReadStringProperty(properties, "text-halo-color") : "");
-	SetEditText(HaloWidthEdit, labelFeature && properties != nullptr && properties->HasMember("text-halo-width") && (*properties)["text-halo-width"].IsNumber() ? FormatDouble((*properties)["text-halo-width"].GetDouble()) : "");
+	const rapidjson::Value* textProperties = properties;
+	bool hasTextFeature = labelFeature;
+	if (!hasTextFeature)
+	{
+		for (int selectedFeatureIndex : selectedFeatureIndices)
+		{
+			const rapidjson::Value* selectedFeature = GetFeatureByIndex(selectedFeatureIndex);
+			if (selectedFeature == nullptr || !selectedFeature->IsObject() || !IsEditableTextFeature(*selectedFeature))
+				continue;
+			hasTextFeature = true;
+			if (selectedFeature->HasMember("properties") && (*selectedFeature)["properties"].IsObject())
+				textProperties = &(*selectedFeature)["properties"];
+			break;
+		}
+	}
+
+	SetEditText(TextEdit, singleSelection && labelFeature ? ReadStringProperty(textProperties, "text-field",
+		ReadStringProperty(textProperties, "text",
+			ReadStringProperty(textProperties, "label",
+				ReadStringProperty(textProperties, "title",
+					ReadStringProperty(textProperties, "description"))))) : "");
+	SetEditText(TextFontEdit, hasTextFeature ? ReadStringProperty(textProperties, "text-font", "Arial") : "");
+	SetEditText(TextColorEdit, hasTextFeature ? ReadStringProperty(textProperties, "text-color") : "");
+	SetEditText(TextSizeEdit, hasTextFeature && textProperties != nullptr && textProperties->HasMember("text-size") && (*textProperties)["text-size"].IsNumber() ? FormatDouble((*textProperties)["text-size"].GetDouble()) : "");
+	SetEditText(TextAnchorEdit, singleSelection && labelFeature ? ReadStringProperty(textProperties, "text-anchor", "center") : "");
+	SetEditText(HaloColorEdit, hasTextFeature ? ReadStringProperty(textProperties, "text-halo-color") : "");
+	SetEditText(HaloWidthEdit, hasTextFeature && textProperties != nullptr && textProperties->HasMember("text-halo-width") && (*textProperties)["text-halo-width"].IsNumber() ? FormatDouble((*textProperties)["text-halo-width"].GetDouble()) : "");
 
 	double longitude = 0.0;
 	double latitude = 0.0;
@@ -1417,29 +1492,29 @@ void CAvisoEditorDialog::RefreshFieldsFromSelection()
 
 	UpdateRawEditForSelection(hasFeature ? feature : nullptr);
 
-	VisibleCheck.EnableWindow(hasFeature);
-	SetEditEnabled(NameEdit, hasFeature);
-	SetEditEnabled(LayerEdit, hasFeature);
-	SetEditEnabled(ObjectTypeEdit, hasFeature);
-	SetEditEnabled(FillEdit, hasFeature);
-	SetEditEnabled(FillOpacityEdit, hasFeature);
-	SetEditEnabled(StrokeEdit, hasFeature);
-	SetEditEnabled(StrokeOpacityEdit, hasFeature);
-	SetEditEnabled(StrokeWidthEdit, hasFeature);
-	SetEditEnabled(TextEdit, labelFeature);
-	SetEditEnabled(TextFontEdit, labelFeature);
-	SetEditEnabled(TextColorEdit, labelFeature);
-	SetEditEnabled(TextSizeEdit, labelFeature);
-	SetEditEnabled(TextAnchorEdit, labelFeature);
-	SetEditEnabled(HaloColorEdit, labelFeature);
-	SetEditEnabled(HaloWidthEdit, labelFeature);
-	SetEditEnabled(LongitudeEdit, pointGeometry);
-	SetEditEnabled(LatitudeEdit, pointGeometry);
-	SetEditEnabled(CoordinatesEdit, hasFeature);
-	SetEditEnabled(RawEdit, hasFeature);
-	ApplyButton.EnableWindow(hasFeature);
-	DuplicateButton.EnableWindow(hasFeature);
-	DeleteButton.EnableWindow(hasFeature);
+	VisibleCheck.EnableWindow(hasSelection);
+	SetEditEnabled(NameEdit, singleSelection && hasFeature);
+	SetEditEnabled(LayerEdit, singleSelection && hasFeature);
+	SetEditEnabled(ObjectTypeEdit, singleSelection && hasFeature);
+	SetEditEnabled(FillEdit, hasSelection);
+	SetEditEnabled(FillOpacityEdit, hasSelection);
+	SetEditEnabled(StrokeEdit, hasSelection);
+	SetEditEnabled(StrokeOpacityEdit, hasSelection);
+	SetEditEnabled(StrokeWidthEdit, hasSelection);
+	SetEditEnabled(TextEdit, singleSelection && labelFeature);
+	SetEditEnabled(TextFontEdit, hasTextFeature);
+	SetEditEnabled(TextColorEdit, hasTextFeature);
+	SetEditEnabled(TextSizeEdit, hasTextFeature);
+	SetEditEnabled(TextAnchorEdit, singleSelection && labelFeature);
+	SetEditEnabled(HaloColorEdit, hasTextFeature);
+	SetEditEnabled(HaloWidthEdit, hasTextFeature);
+	SetEditEnabled(LongitudeEdit, singleSelection && pointGeometry);
+	SetEditEnabled(LatitudeEdit, singleSelection && pointGeometry);
+	SetEditEnabled(CoordinatesEdit, singleSelection && hasFeature);
+	SetEditEnabled(RawEdit, singleSelection && hasFeature);
+	ApplyButton.EnableWindow(hasSelection);
+	DuplicateButton.EnableWindow(singleSelection && hasFeature);
+	DeleteButton.EnableWindow(hasSelection);
 
 	PendingFieldChanges = false;
 	DirtyFieldMask = 0;
@@ -1728,7 +1803,7 @@ bool CAvisoEditorDialog::ApplyBatchFieldsToFeatures(const std::vector<int>& feat
 	if (featureIndices.empty())
 	{
 		if (showErrors)
-			SetStatusText("No objects match the selected batch scope.");
+			SetStatusText("No objects are selected.");
 		return false;
 	}
 	if ((DirtyFieldMask & kDirtyBatchEditableMask) == 0)
@@ -1737,10 +1812,15 @@ bool CAvisoEditorDialog::ApplyBatchFieldsToFeatures(const std::vector<int>& feat
 			SetStatusText("No batch-editable field changes pending.");
 		return false;
 	}
+	if ((DirtyFieldMask & ~kDirtyBatchEditableMask) != 0)
+	{
+		if (showErrors)
+			SetStatusText("Only visibility and style fields can be applied to multiple selected objects.");
+		return false;
+	}
 
 	const int selectedFeatureIndex = GetSelectedFeatureIndex();
-	const std::string scope = ReadComboText(ApplyScopeCombo);
-	bool detachSharedStyle = !EqualsNoCase(scope, kScopeSameStyle);
+	bool detachSharedStyle = true;
 	rapidjson::StringBuffer rollbackBuffer;
 	rapidjson::PrettyWriter<rapidjson::StringBuffer> rollbackWriter(rollbackBuffer);
 	Document.Accept(rollbackWriter);
@@ -1832,9 +1912,46 @@ bool CAvisoEditorDialog::ApplyBatchFieldsToFeatures(const std::vector<int>& feat
 		Model.MarkIndexesDirty();
 		PopulateFilterCombos();
 		PopulateObjectList(selectedFeatureIndex);
-		SetStatusText("Applied batch style changes to " + std::to_string(changedCount) + " object(s).");
+		SetStatusText("Applied changes to " + std::to_string(changedCount) + " selected object(s).");
 	}
 	return changedCount > 0;
+}
+
+bool CAvisoEditorDialog::ApplyPendingFieldsToCurrentSelection(bool showErrors)
+{
+	if (!PendingFieldChanges || DirtyFieldMask == 0)
+	{
+		if (showErrors)
+			SetStatusText("No field changes pending.");
+		return false;
+	}
+
+	if (IsFieldDirty(kDirtyRaw))
+	{
+		if (showErrors)
+			SetStatusText("Raw GeoJSON editing is read-only until the validated raw editor is available.");
+		return false;
+	}
+
+	const std::vector<int> selectedFeatureIndices = GetSelectedFeatureIndices();
+	if (selectedFeatureIndices.empty())
+	{
+		if (showErrors)
+			SetStatusText("Select an object before applying changes.");
+		return false;
+	}
+
+	if (selectedFeatureIndices.size() == 1)
+		return ApplyFieldsToSelectedFeature(true, showErrors);
+
+	if ((DirtyFieldMask & ~kDirtyBatchEditableMask) != 0)
+	{
+		if (showErrors)
+			SetStatusText("Only visibility and style fields can be applied to multiple selected objects.");
+		return false;
+	}
+
+	return ApplyBatchFieldsToFeatures(selectedFeatureIndices, showErrors);
 }
 
 void CAvisoEditorDialog::AddFeature(rapidjson::Value& feature)
@@ -2654,6 +2771,7 @@ BEGIN_MESSAGE_MAP(CAvisoEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_AE_SAVE_BUTTON, &CAvisoEditorDialog::OnSaveClicked)
 	ON_BN_CLICKED(IDC_AE_ADD_LABEL_BUTTON, &CAvisoEditorDialog::OnAddLabelClicked)
 	ON_BN_CLICKED(IDC_AE_ADD_LINE_BUTTON, &CAvisoEditorDialog::OnAddLineClicked)
+	ON_BN_CLICKED(IDC_AE_SELECT_FILTERED_BUTTON, &CAvisoEditorDialog::OnSelectFilteredClicked)
 	ON_BN_CLICKED(IDC_AE_DUPLICATE_BUTTON, &CAvisoEditorDialog::OnDuplicateClicked)
 	ON_BN_CLICKED(IDC_AE_DELETE_BUTTON, &CAvisoEditorDialog::OnDeleteClicked)
 	ON_BN_CLICKED(IDC_AE_APPLY_BUTTON, &CAvisoEditorDialog::OnApplyClicked)

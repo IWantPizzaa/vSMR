@@ -43,6 +43,7 @@ protected:
 	afx_msg void OnAddLineClicked();
 	afx_msg void OnDuplicateClicked();
 	afx_msg void OnDeleteClicked();
+	afx_msg void OnSelectFilteredClicked();
 	afx_msg void OnCloseClicked();
 
 	DECLARE_MESSAGE_MAP()
@@ -91,7 +92,8 @@ private:
 		IDC_AE_PROPERTY_TABS = 9439,
 		IDC_AE_RAW_EDIT = 9440,
 		IDC_AE_APPLY_SCOPE_COMBO = 9441,
-		IDC_AE_CATEGORY_FILTER_COMBO = 9442
+		IDC_AE_CATEGORY_FILTER_COMBO = 9442,
+		IDC_AE_SELECT_FILTERED_BUTTON = 9443
 	};
 	enum FieldDirtyFlags : unsigned int
 	{
@@ -129,6 +131,7 @@ private:
 	bool PendingFieldChanges = false;
 	unsigned int DirtyFieldMask = 0;
 	int LastSelectedFeatureIndex = -1;
+	std::vector<int> LastSelectedFeatureIndices;
 	int LastLayoutWidth = -1;
 	int LastLayoutHeight = -1;
 	std::string LoadedPath;
@@ -158,6 +161,7 @@ private:
 	CButton SaveButton;
 	CButton AddLabelButton;
 	CButton AddLineButton;
+	CButton SelectFilteredButton;
 	CButton DuplicateButton;
 	CButton DeleteButton;
 	CButton ApplyButton;
@@ -219,7 +223,9 @@ private:
 	bool EnsureDocumentForEditing();
 	bool SaveDocument(bool reloadAfterSave);
 	void PopulateObjectList(int preferredFeatureIndex);
+	void UpdateObjectCountText();
 	void RestoreObjectSelection(int featureIndex);
+	void RestoreObjectSelection(const std::vector<int>& featureIndices);
 	bool ResolvePendingChangesBeforeSelectionRefresh();
 	AvisoFeatureFilter BuildCurrentFilter() const;
 	std::string GetObjectListCellText(int rowIndex, int subItem) const;
@@ -229,6 +235,7 @@ private:
 	bool ApplyFieldsToFeature(int featureIndex, bool markDirty, bool showErrors, bool batchStyleOnly, bool detachSharedStyle);
 	bool ApplyRawJsonToSelectedFeature(bool showErrors);
 	bool ApplyBatchFieldsToFeatures(const std::vector<int>& featureIndices, bool showErrors);
+	bool ApplyPendingFieldsToCurrentSelection(bool showErrors);
 	int GetSelectedFeatureIndex() const;
 	std::vector<int> GetSelectedFeatureIndices() const;
 	std::vector<int> GetFilteredFeatureIndices() const;
