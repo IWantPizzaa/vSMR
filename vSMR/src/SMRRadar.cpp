@@ -2180,7 +2180,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.projectedBottomLeft = PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y));
 	request.projectedBottomRight = PointF(static_cast<REAL>(projectedBottomRight.x), static_cast<REAL>(projectedBottomRight.y));
 
-	if (rasterCacheHasCompatibleZoom() && drawRasterCacheTransformed())
+	const bool compatibleCacheZoom = rasterCacheHasCompatibleZoom();
+	if (compatibleCacheZoom && drawRasterCacheTransformed())
 	{
 		if (!rasterCacheHasWorkingMargin())
 			QueueAvisoGeoJsonRasterRender(std::move(request));
@@ -2188,6 +2189,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	}
 
 	QueueAvisoGeoJsonRasterRender(std::move(request));
+	if (!compatibleCacheZoom && drawRasterCacheTransformed())
+		return;
 }
 
 void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
