@@ -33,6 +33,12 @@ struct AvisoFeatureFilter
 	std::string styleId;
 };
 
+struct AvisoValidationResult
+{
+	bool ok = true;
+	std::string errorText;
+};
+
 class AvisoDocumentModel
 {
 public:
@@ -41,7 +47,8 @@ public:
 
 	void ResetToEmpty();
 	bool LoadFromFile(const std::string& path, std::string& errorText);
-	bool EnsureFeatureCollection();
+	void CreateEmptyFeatureCollection();
+	bool ValidateLoadedFeatureCollection(std::string& errorText) const;
 	bool SaveAtomically(const std::string& path, std::string& errorText);
 
 	void MarkIndexesDirty();
@@ -65,8 +72,10 @@ public:
 
 	std::string MakeUniqueFeatureId(const std::string& preferredPrefix);
 	void EnsureFeatureId(rapidjson::Value& feature, const std::string& preferredPrefix);
+	void NoteFeatureInserted(int featureIndex);
+	void NoteFeatureDeleted(int featureIndex);
 	void MarkFeatureGeometryDirty(int featureIndex);
-	void RecalculateMetadata();
+	AvisoValidationResult ValidateAndRecalculate();
 
 	static std::string ReadStringProperty(const rapidjson::Value* properties, const char* key, const std::string& fallback = "");
 	static bool ReadBoolProperty(const rapidjson::Value* properties, const char* key, bool fallback);
@@ -77,7 +86,10 @@ public:
 private:
 	rapidjson::Document Document;
 	bool IndexesDirty = true;
+	unsigned long long RuntimeIdCounter = 0;
+	std::vector<std::string> RuntimeFeatureIds;
 	std::vector<AvisoFeatureSummary> Summaries;
+	std::vector<int> SummaryPositionByFeatureIndex;
 	std::unordered_map<std::string, size_t> FeatureIdToIndex;
 	std::unordered_map<std::string, std::string> OriginalCoordinatesJsonByFeatureId;
 	std::set<std::string> GeometryDirtyFeatureIds;
@@ -96,12 +108,18 @@ private:
 	static bool SearchMatches(const std::string& searchText, const std::string& query);
 	static std::string BuildDisplayText(const rapidjson::Value& feature, int featureIndex);
 	static std::string BuildSearchText(const AvisoFeatureSummary& summary, const rapidjson::Value* properties);
+	static bool IsGeometryCoordinatesValid(const rapidjson::Value& geometry);
+	static bool HasDuplicatePersistedFeatureIds(const rapidjson::Value& features, std::string& duplicateId);
 	static bool FindMatchingJsonBracket(const std::string& json, size_t openOffset, char openChar, char closeChar, size_t& closeOffset);
 	static bool FindJsonStringKey(const std::string& json, size_t searchStart, size_t searchEnd, const char* key, size_t& keyOffset);
 	static bool FindCoordinatesJsonRangeFromFeatureText(const std::string& json, size_t featureStart, size_t featureEnd, size_t& coordinatesStart, size_t& coordinatesEnd);
 	static bool ExtractCoordinatesJsonFromFeatureText(const std::string& json, size_t featureStart, size_t featureEnd, std::string& coordinatesJson);
-	static std::string FeatureIdentityForPreservation(const rapidjson::Value& feature, int featureIndex);
+	std::string FeatureIdentityForPreservation(const rapidjson::Value& feature, int featureIndex) const;
+	std::string GenerateRuntimeFeatureId();
+	void EnsureRuntimeFeatureIds();
+	void AssignRuntimeFeatureIdsForCurrentDocument();
 	void CaptureOriginalCoordinatesJson(const std::string& sourceJson);
 	void PatchSerializedCoordinates(std::string& serializedJson) const;
 	void SetNumberMember(rapidjson::Value& object, const char* key, int value);
+	void SetObjectMember(rapidjson::Value& object, const char* key, rapidjson::Value& value);
 };
