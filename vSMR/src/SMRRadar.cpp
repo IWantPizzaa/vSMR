@@ -1817,7 +1817,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	const double viewPixelTolerance = 1.15;
 	const double lonPixelTolerance = (1.0 / scaleX) * viewPixelTolerance;
 	const double latPixelTolerance = (1.0 / scaleY) * viewPixelTolerance;
-	const double transformPixelTolerance = 1.5;
+	const double transformPixelTolerance = 0.25;
 
 	auto rasterCacheTransformMatchesCurrentView = [&]() -> bool
 	{
@@ -1936,9 +1936,9 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 
 		::IntersectClipRect(hDC, radarArea.left, radarArea.top, radarArea.right, radarArea.bottom);
 		const bool nearNativeScale =
-			std::abs(static_cast<double>(destWidthInt - sourceWidthInt)) <= 1.0 &&
-			std::abs(static_cast<double>(destHeightInt - sourceHeightInt)) <= 1.0;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
+			destWidthInt == sourceWidthInt &&
+			destHeightInt == sourceHeightInt;
+		const int oldStretchMode = nearNativeScale ? 0 : ::SetStretchBltMode(hDC, HALFTONE);
 		if (!nearNativeScale)
 			::SetBrushOrgEx(hDC, 0, 0, nullptr);
 
@@ -1946,18 +1946,37 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		blend.BlendOp = AC_SRC_OVER;
 		blend.SourceConstantAlpha = 255;
 		blend.AlphaFormat = AC_SRC_ALPHA;
-		const BOOL blended = ::AlphaBlend(
-			hDC,
-			destLeft,
-			destTop,
-			destWidthInt,
-			destHeightInt,
-			sourceDc,
-			sourceXInt,
-			sourceYInt,
-			sourceWidthInt,
-			sourceHeightInt,
-			blend);
+		BOOL blended = FALSE;
+		if (nearNativeScale)
+		{
+			blended = ::AlphaBlend(
+				hDC,
+				destLeft,
+				destTop,
+				sourceWidthInt,
+				sourceHeightInt,
+				sourceDc,
+				sourceXInt,
+				sourceYInt,
+				sourceWidthInt,
+				sourceHeightInt,
+				blend);
+		}
+		else
+		{
+			blended = ::AlphaBlend(
+				hDC,
+				destLeft,
+				destTop,
+				destWidthInt,
+				destHeightInt,
+				sourceDc,
+				sourceXInt,
+				sourceYInt,
+				sourceWidthInt,
+				sourceHeightInt,
+				blend);
+		}
 
 		if (oldStretchMode != 0)
 			::SetStretchBltMode(hDC, oldStretchMode);
@@ -2032,10 +2051,11 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		return;
 
 	const double maxDimension = renderPixelWidth > renderPixelHeight ? renderPixelWidth : renderPixelHeight;
-	const double targetRasterScale = 1.0;
-	const double minRasterScale = 0.50;
-	const double maxRasterSide = 6400.0;
-	const double maxRasterPixels = 18000000.0;
+	// Render AVISO above screen resolution to avoid blurry cached geometry.
+	const double targetRasterScale = 2.0;
+	const double minRasterScale = 1.0;
+	const double maxRasterSide = 12000.0;
+	const double maxRasterPixels = 50000000.0;
 	double rasterScale = targetRasterScale;
 	const double sideLimitedScale = maxRasterSide / maxDimension;
 	if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
