@@ -5,10 +5,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <sstream>
 
@@ -25,9 +27,11 @@ const rapidjson::Document& AvisoDocumentModel::GetDocument() const
 void AvisoDocumentModel::ResetToEmpty()
 {
 	Document.SetObject();
+	RuntimeFeatureIds.clear();
+	RuntimeIdCounter = 0;
 	OriginalCoordinatesJsonByFeatureId.clear();
 	GeometryDirtyFeatureIds.clear();
-	EnsureFeatureCollection();
+	CreateEmptyFeatureCollection();
 	MarkIndexesDirty();
 }
 
@@ -67,6 +71,12 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 			MarkIndexesDirty();
 			return false;
 		}
+		if (!ValidateLoadedFeatureCollection(errorText))
+		{
+			Document.SetObject();
+			MarkIndexesDirty();
+			return false;
+		}
 	}
 	catch (const std::exception& ex)
 	{
@@ -79,13 +89,13 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 		return false;
 	}
 
-	EnsureFeatureCollection();
+	AssignRuntimeFeatureIdsForCurrentDocument();
 	BuildIndexes();
 	CaptureOriginalCoordinatesJson(sourceJson);
 	return true;
 }
 
-bool AvisoDocumentModel::EnsureFeatureCollection()
+void AvisoDocumentModel::CreateEmptyFeatureCollection()
 {
 	if (!Document.IsObject())
 		Document.SetObject();
@@ -107,7 +117,52 @@ bool AvisoDocumentModel::EnsureFeatureCollection()
 		rapidjson::Value features(rapidjson::kArrayType);
 		Document.AddMember("features", features, allocator);
 	}
+	EnsureRuntimeFeatureIds();
+}
 
+bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText) const
+{
+	if (!Document.IsObject())
+	{
+		errorText = "AVISO GeoJSON root must be an object.";
+		return false;
+	}
+	if (!Document.HasMember("features") || !Document["features"].IsArray())
+	{
+		errorText = "AVISO GeoJSON must contain a features array.";
+		return false;
+	}
+	const rapidjson::Value& features = Document["features"];
+	std::string duplicateId;
+	if (HasDuplicatePersistedFeatureIds(features, duplicateId))
+	{
+		errorText = "AVISO GeoJSON contains duplicate feature id '" + duplicateId + "'.";
+		return false;
+	}
+	for (rapidjson::SizeType i = 0; i < features.Size(); ++i)
+	{
+		const rapidjson::Value& feature = features[i];
+		if (!feature.IsObject())
+		{
+			errorText = "AVISO feature " + std::to_string(i + 1) + " must be an object.";
+			return false;
+		}
+		if (feature.HasMember("type") && feature["type"].IsString() && std::string(feature["type"].GetString()) != "Feature")
+		{
+			errorText = "AVISO feature " + std::to_string(i + 1) + " has unsupported type.";
+			return false;
+		}
+		if (!feature.HasMember("properties") || !feature["properties"].IsObject())
+		{
+			errorText = "AVISO feature " + std::to_string(i + 1) + " must contain a properties object.";
+			return false;
+		}
+		if (!feature.HasMember("geometry") || !feature["geometry"].IsObject() || !IsGeometryCoordinatesValid(feature["geometry"]))
+		{
+			errorText = "AVISO feature " + std::to_string(i + 1) + " has invalid geometry.";
+			return false;
+		}
+	}
 	return true;
 }
 
@@ -120,8 +175,12 @@ bool AvisoDocumentModel::SaveAtomically(const std::string& path, std::string& er
 		return false;
 	}
 
-	EnsureFeatureCollection();
-	RecalculateMetadata();
+	AvisoValidationResult validationResult = ValidateAndRecalculate();
+	if (!validationResult.ok)
+	{
+		errorText = validationResult.errorText;
+		return false;
+	}
 
 	rapidjson::StringBuffer buffer;
 	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
@@ -134,9 +193,11 @@ bool AvisoDocumentModel::SaveAtomically(const std::string& path, std::string& er
 	if (validation.Parse<0>(serializedJson.c_str()).HasParseError() ||
 		!validation.IsObject() ||
 		!validation.HasMember("features") ||
-		!validation["features"].IsArray())
+		!validation["features"].IsArray() ||
+		!ValidateLoadedFeatureCollection(errorText))
 	{
-		errorText = "AVISO save validation failed before writing.";
+		if (errorText.empty())
+			errorText = "AVISO save validation failed before writing.";
 		return false;
 	}
 
@@ -196,7 +257,9 @@ void AvisoDocumentModel::MarkIndexesDirty()
 
 void AvisoDocumentModel::BuildIndexes()
 {
+	EnsureRuntimeFeatureIds();
 	Summaries.clear();
+	SummaryPositionByFeatureIndex.clear();
 	FeatureIdToIndex.clear();
 	Layers.clear();
 	Categories.clear();
@@ -222,6 +285,7 @@ void AvisoDocumentModel::BuildIndexes()
 	}
 
 	Summaries.reserve(features->Size());
+	SummaryPositionByFeatureIndex.assign(features->Size(), -1);
 	for (rapidjson::SizeType i = 0; i < features->Size(); ++i)
 	{
 		const rapidjson::Value& feature = (*features)[i];
@@ -237,7 +301,7 @@ void AvisoDocumentModel::BuildIndexes()
 		if (feature.HasMember("id") && feature["id"].IsString())
 			summary.featureId = feature["id"].GetString();
 		if (summary.featureId.empty())
-			summary.featureId = "__editor_feature_" + std::to_string(i + 1);
+			summary.featureId = FeatureIdentityForPreservation(feature, summary.featureIndex);
 		summary.nameText = BuildDisplayText(feature, summary.featureIndex);
 		summary.layer = ReadStringProperty(properties, "layer");
 		summary.category = ReadStringProperty(properties, "category");
@@ -260,6 +324,7 @@ void AvisoDocumentModel::BuildIndexes()
 			StyleIds.insert(summary.styleId);
 
 		FeatureIdToIndex[summary.featureId] = static_cast<size_t>(summary.featureIndex);
+		SummaryPositionByFeatureIndex[static_cast<size_t>(summary.featureIndex)] = static_cast<int>(Summaries.size());
 		Summaries.push_back(std::move(summary));
 	}
 
@@ -302,12 +367,12 @@ const std::vector<AvisoFeatureSummary>& AvisoDocumentModel::GetSummaries()
 const AvisoFeatureSummary* AvisoDocumentModel::GetSummaryByFeatureIndex(int featureIndex)
 {
 	EnsureIndexes();
-	for (const AvisoFeatureSummary& summary : Summaries)
-	{
-		if (summary.featureIndex == featureIndex)
-			return &summary;
-	}
-	return nullptr;
+	if (featureIndex < 0 || static_cast<size_t>(featureIndex) >= SummaryPositionByFeatureIndex.size())
+		return nullptr;
+	const int summaryPosition = SummaryPositionByFeatureIndex[static_cast<size_t>(featureIndex)];
+	if (summaryPosition < 0 || static_cast<size_t>(summaryPosition) >= Summaries.size())
+		return nullptr;
+	return &Summaries[static_cast<size_t>(summaryPosition)];
 }
 
 const AvisoFeatureSummary* AvisoDocumentModel::GetSummaryByFeatureId(const std::string& featureId)
@@ -412,6 +477,22 @@ void AvisoDocumentModel::EnsureFeatureId(rapidjson::Value& feature, const std::s
 	MarkIndexesDirty();
 }
 
+void AvisoDocumentModel::NoteFeatureInserted(int featureIndex)
+{
+	EnsureRuntimeFeatureIds();
+	const int clampedIndex = (std::max)(0, (std::min)(featureIndex, static_cast<int>(RuntimeFeatureIds.size())));
+	RuntimeFeatureIds.insert(RuntimeFeatureIds.begin() + clampedIndex, GenerateRuntimeFeatureId());
+	MarkIndexesDirty();
+}
+
+void AvisoDocumentModel::NoteFeatureDeleted(int featureIndex)
+{
+	EnsureRuntimeFeatureIds();
+	if (featureIndex >= 0 && static_cast<size_t>(featureIndex) < RuntimeFeatureIds.size())
+		RuntimeFeatureIds.erase(RuntimeFeatureIds.begin() + featureIndex);
+	MarkIndexesDirty();
+}
+
 void AvisoDocumentModel::MarkFeatureGeometryDirty(int featureIndex)
 {
 	const rapidjson::Value* features = GetFeatureArray();
@@ -422,25 +503,120 @@ void AvisoDocumentModel::MarkFeatureGeometryDirty(int featureIndex)
 		GeometryDirtyFeatureIds.insert(identity);
 }
 
-void AvisoDocumentModel::RecalculateMetadata()
+AvisoValidationResult AvisoDocumentModel::ValidateAndRecalculate()
 {
+	AvisoValidationResult result;
 	if (!Document.IsObject())
-		return;
+	{
+		result.ok = false;
+		result.errorText = "AVISO document root must be an object.";
+		return result;
+	}
+	if (!Document.HasMember("features") || !Document["features"].IsArray())
+	{
+		result.ok = false;
+		result.errorText = "AVISO document must contain a features array.";
+		return result;
+	}
 
 	const int featureCount = FeatureCount();
-	std::map<std::string, int> styleFeatureCounts;
 	const rapidjson::Value* features = GetFeatureArray();
-	if (features != nullptr)
+	if (features == nullptr)
 	{
-		for (rapidjson::SizeType i = 0; i < features->Size(); ++i)
+		result.ok = false;
+		result.errorText = "AVISO document must contain a features array.";
+		return result;
+	}
+
+	std::string duplicateId;
+	if (HasDuplicatePersistedFeatureIds(*features, duplicateId))
+	{
+		result.ok = false;
+		result.errorText = "AVISO document contains duplicate feature id '" + duplicateId + "'.";
+		return result;
+	}
+
+	std::map<std::string, int> styleFeatureCounts;
+	std::map<std::string, int> layerCounts;
+	std::map<std::string, int> categoryCounts;
+	bool hasBounds = false;
+	double minLongitude = 0.0;
+	double minLatitude = 0.0;
+	double maxLongitude = 0.0;
+	double maxLatitude = 0.0;
+
+	std::function<void(const rapidjson::Value&)> collectBounds = [&](const rapidjson::Value& value)
+	{
+		if (!value.IsArray())
+			return;
+		if (value.Size() >= 2 &&
+			value[static_cast<rapidjson::SizeType>(0)].IsNumber() &&
+			value[static_cast<rapidjson::SizeType>(1)].IsNumber())
 		{
-			const rapidjson::Value& feature = (*features)[i];
-			if (!feature.IsObject() || !feature.HasMember("properties") || !feature["properties"].IsObject())
-				continue;
-			const std::string styleId = ReadStringProperty(&feature["properties"], "style_id");
-			if (!styleId.empty())
-				++styleFeatureCounts[styleId];
+			const double longitude = value[static_cast<rapidjson::SizeType>(0)].GetDouble();
+			const double latitude = value[static_cast<rapidjson::SizeType>(1)].GetDouble();
+			if (!std::isfinite(longitude) || !std::isfinite(latitude))
+				return;
+			if (!hasBounds)
+			{
+				minLongitude = maxLongitude = longitude;
+				minLatitude = maxLatitude = latitude;
+				hasBounds = true;
+			}
+			else
+			{
+				minLongitude = (std::min)(minLongitude, longitude);
+				maxLongitude = (std::max)(maxLongitude, longitude);
+				minLatitude = (std::min)(minLatitude, latitude);
+				maxLatitude = (std::max)(maxLatitude, latitude);
+			}
+			return;
 		}
+		for (rapidjson::SizeType i = 0; i < value.Size(); ++i)
+			collectBounds(value[i]);
+	};
+
+	for (rapidjson::SizeType i = 0; i < features->Size(); ++i)
+	{
+		const rapidjson::Value& feature = (*features)[i];
+		if (!feature.IsObject())
+		{
+			result.ok = false;
+			result.errorText = "AVISO feature " + std::to_string(i + 1) + " must be an object.";
+			return result;
+		}
+		if (!feature.HasMember("properties") || !feature["properties"].IsObject())
+		{
+			result.ok = false;
+			result.errorText = "AVISO feature " + std::to_string(i + 1) + " must contain a properties object.";
+			return result;
+		}
+		if (!feature.HasMember("geometry") || !feature["geometry"].IsObject() || !IsGeometryCoordinatesValid(feature["geometry"]))
+		{
+			result.ok = false;
+			result.errorText = "AVISO feature " + std::to_string(i + 1) + " has invalid geometry.";
+			return result;
+		}
+
+		const rapidjson::Value& properties = feature["properties"];
+		const std::string layer = ReadStringProperty(&properties, "layer");
+		const std::string category = ReadStringProperty(&properties, "category");
+		const std::string styleId = ReadStringProperty(&properties, "style_id");
+		if (!layer.empty())
+			++layerCounts[layer];
+		if (!category.empty())
+			++categoryCounts[category];
+		if (!styleId.empty())
+		{
+			if (Document.HasMember("styles") && Document["styles"].IsObject() && !Document["styles"].HasMember(styleId.c_str()))
+			{
+				result.ok = false;
+				result.errorText = "AVISO feature references missing style_id '" + styleId + "'.";
+				return result;
+			}
+			++styleFeatureCounts[styleId];
+		}
+		collectBounds(feature["geometry"]["coordinates"]);
 	}
 
 	if (Document.HasMember("styles") && Document["styles"].IsObject())
@@ -458,9 +634,36 @@ void AvisoDocumentModel::RecalculateMetadata()
 	{
 		SetNumberMember(Document["metadata"], "feature_count", featureCount);
 		SetNumberMember(Document["metadata"], "style_count", StyleCount());
+		auto writeCountsObject = [&](const char* key, const std::map<std::string, int>& counts)
+		{
+			rapidjson::Value countObject(rapidjson::kObjectType);
+			for (const auto& entry : counts)
+			{
+				rapidjson::Value name;
+				name.SetString(entry.first.c_str(), static_cast<rapidjson::SizeType>(entry.first.size()), Document.GetAllocator());
+				rapidjson::Value countValue;
+				countValue.SetInt(entry.second);
+				countObject.AddMember(name, countValue, Document.GetAllocator());
+			}
+			SetObjectMember(Document["metadata"], key, countObject);
+		};
+		writeCountsObject("layer_counts", layerCounts);
+		writeCountsObject("category_counts", categoryCounts);
+	}
+
+	if (hasBounds)
+	{
+		rapidjson::Value bbox(rapidjson::kArrayType);
+		bbox.PushBack(minLongitude, Document.GetAllocator());
+		bbox.PushBack(minLatitude, Document.GetAllocator());
+		bbox.PushBack(maxLongitude, Document.GetAllocator());
+		bbox.PushBack(maxLatitude, Document.GetAllocator());
+		SetObjectMember(Document, "bbox", bbox);
 	}
 
 	MarkIndexesDirty();
+	result.ok = true;
+	return result;
 }
 
 std::string AvisoDocumentModel::ReadStringProperty(const rapidjson::Value* properties, const char* key, const std::string& fallback)
@@ -513,6 +716,9 @@ std::string AvisoDocumentModel::GeometryTypeFromFeature(const rapidjson::Value& 
 
 bool AvisoDocumentModel::IsEditableTextFeature(const rapidjson::Value& feature)
 {
+	if (GeometryTypeFromFeature(feature) != "Point")
+		return false;
+
 	const rapidjson::Value* properties = nullptr;
 	if (feature.IsObject() && feature.HasMember("properties") && feature["properties"].IsObject())
 		properties = &feature["properties"];
@@ -522,16 +728,7 @@ bool AvisoDocumentModel::IsEditableTextFeature(const rapidjson::Value& feature)
 	if (EqualsNoCase(ReadStringProperty(properties, "object_type"), "Label"))
 		return true;
 	const std::string role = ToUpperAscii(ReadStringProperty(properties, "geometry_role"));
-	if (role == "TEXT_LABEL")
-		return true;
-
-	const char* textKeys[] = { "text-field", "text", "label", "name", "title", "description" };
-	for (const char* key : textKeys)
-	{
-		if (properties->HasMember(key) && (*properties)[key].IsString())
-			return true;
-	}
-	return false;
+	return role == "TEXT_LABEL";
 }
 
 const rapidjson::Value* AvisoDocumentModel::GetFeatureArray() const
@@ -648,6 +845,107 @@ std::string AvisoDocumentModel::BuildSearchText(const AvisoFeatureSummary& summa
 		}
 	}
 	return ToLowerAscii(text);
+}
+
+bool AvisoDocumentModel::IsGeometryCoordinatesValid(const rapidjson::Value& geometry)
+{
+	if (!geometry.IsObject() ||
+		!geometry.HasMember("type") ||
+		!geometry["type"].IsString() ||
+		!geometry.HasMember("coordinates") ||
+		!geometry["coordinates"].IsArray())
+	{
+		return false;
+	}
+
+	const std::string geometryType = geometry["type"].GetString();
+	const rapidjson::Value& coordinates = geometry["coordinates"];
+	auto isPoint = [](const rapidjson::Value& point) {
+		return point.IsArray() &&
+			point.Size() >= 2 &&
+			point[static_cast<rapidjson::SizeType>(0)].IsNumber() &&
+			point[static_cast<rapidjson::SizeType>(1)].IsNumber() &&
+			std::isfinite(point[static_cast<rapidjson::SizeType>(0)].GetDouble()) &&
+			std::isfinite(point[static_cast<rapidjson::SizeType>(1)].GetDouble());
+	};
+	auto isLine = [&](const rapidjson::Value& line, size_t minPoints) {
+		if (!line.IsArray() || line.Size() < minPoints)
+			return false;
+		for (rapidjson::SizeType i = 0; i < line.Size(); ++i)
+		{
+			if (!isPoint(line[i]))
+				return false;
+		}
+		return true;
+	};
+
+	if (geometryType == "Point")
+		return isPoint(coordinates);
+	if (geometryType == "LineString")
+		return isLine(coordinates, 2);
+	if (geometryType == "Polygon")
+	{
+		if (coordinates.Size() == 0)
+			return false;
+		for (rapidjson::SizeType i = 0; i < coordinates.Size(); ++i)
+		{
+			if (!isLine(coordinates[i], 4))
+				return false;
+		}
+		return true;
+	}
+	if (geometryType == "MultiLineString")
+	{
+		if (coordinates.Size() == 0)
+			return false;
+		for (rapidjson::SizeType i = 0; i < coordinates.Size(); ++i)
+		{
+			if (!isLine(coordinates[i], 2))
+				return false;
+		}
+		return true;
+	}
+	if (geometryType == "MultiPolygon")
+	{
+		if (coordinates.Size() == 0)
+			return false;
+		for (rapidjson::SizeType polygonIndex = 0; polygonIndex < coordinates.Size(); ++polygonIndex)
+		{
+			const rapidjson::Value& polygon = coordinates[polygonIndex];
+			if (!polygon.IsArray() || polygon.Size() == 0)
+				return false;
+			for (rapidjson::SizeType ringIndex = 0; ringIndex < polygon.Size(); ++ringIndex)
+			{
+				if (!isLine(polygon[ringIndex], 4))
+					return false;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+bool AvisoDocumentModel::HasDuplicatePersistedFeatureIds(const rapidjson::Value& features, std::string& duplicateId)
+{
+	if (!features.IsArray())
+		return false;
+
+	std::set<std::string> seenIds;
+	for (rapidjson::SizeType i = 0; i < features.Size(); ++i)
+	{
+		const rapidjson::Value& feature = features[i];
+		if (!feature.IsObject() || !feature.HasMember("id") || !feature["id"].IsString())
+			continue;
+		const std::string id = feature["id"].GetString();
+		if (id.empty())
+			continue;
+		if (!seenIds.insert(id).second)
+		{
+			duplicateId = id;
+			return true;
+		}
+	}
+	return false;
 }
 
 bool AvisoDocumentModel::FindMatchingJsonBracket(const std::string& json, size_t openOffset, char openChar, char closeChar, size_t& closeOffset)
@@ -807,15 +1105,46 @@ bool AvisoDocumentModel::ExtractCoordinatesJsonFromFeatureText(const std::string
 	return true;
 }
 
-std::string AvisoDocumentModel::FeatureIdentityForPreservation(const rapidjson::Value& feature, int featureIndex)
+std::string AvisoDocumentModel::FeatureIdentityForPreservation(const rapidjson::Value& feature, int featureIndex) const
 {
 	if (feature.IsObject() && feature.HasMember("id") && feature["id"].IsString() && feature["id"].GetString()[0] != '\0')
 		return feature["id"].GetString();
-	return "__editor_feature_" + std::to_string(featureIndex + 1);
+	if (featureIndex >= 0 && static_cast<size_t>(featureIndex) < RuntimeFeatureIds.size())
+		return RuntimeFeatureIds[static_cast<size_t>(featureIndex)];
+	return "legacy.runtime.missing";
+}
+
+std::string AvisoDocumentModel::GenerateRuntimeFeatureId()
+{
+	++RuntimeIdCounter;
+	std::ostringstream stream;
+	stream << "legacy.runtime." << ::GetTickCount() << "." << RuntimeIdCounter;
+	return stream.str();
+}
+
+void AvisoDocumentModel::EnsureRuntimeFeatureIds()
+{
+	const rapidjson::Value* features = GetFeatureArray();
+	const size_t featureCount = features != nullptr ? static_cast<size_t>(features->Size()) : 0;
+	while (RuntimeFeatureIds.size() < featureCount)
+		RuntimeFeatureIds.push_back(GenerateRuntimeFeatureId());
+	if (RuntimeFeatureIds.size() > featureCount)
+		RuntimeFeatureIds.resize(featureCount);
+}
+
+void AvisoDocumentModel::AssignRuntimeFeatureIdsForCurrentDocument()
+{
+	RuntimeFeatureIds.clear();
+	const rapidjson::Value* features = GetFeatureArray();
+	const size_t featureCount = features != nullptr ? static_cast<size_t>(features->Size()) : 0;
+	RuntimeFeatureIds.reserve(featureCount);
+	for (size_t i = 0; i < featureCount; ++i)
+		RuntimeFeatureIds.push_back(GenerateRuntimeFeatureId());
 }
 
 void AvisoDocumentModel::CaptureOriginalCoordinatesJson(const std::string& sourceJson)
 {
+	EnsureRuntimeFeatureIds();
 	OriginalCoordinatesJsonByFeatureId.clear();
 	GeometryDirtyFeatureIds.clear();
 	if (sourceJson.empty())
@@ -941,4 +1270,15 @@ void AvisoDocumentModel::SetNumberMember(rapidjson::Value& object, const char* k
 	rapidjson::Value numberValue;
 	numberValue.SetInt(value);
 	object.AddMember(keyValue, numberValue, Document.GetAllocator());
+}
+
+void AvisoDocumentModel::SetObjectMember(rapidjson::Value& object, const char* key, rapidjson::Value& value)
+{
+	if (!object.IsObject() || key == nullptr)
+		return;
+	if (object.HasMember(key))
+		object.RemoveMember(key);
+	rapidjson::Value keyValue;
+	keyValue.SetString(key, Document.GetAllocator());
+	object.AddMember(keyValue, value, Document.GetAllocator());
 }

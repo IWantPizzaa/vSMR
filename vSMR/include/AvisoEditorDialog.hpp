@@ -123,6 +123,8 @@ private:
 	bool ControlsCreated = false;
 	bool Initialized = false;
 	bool UpdatingControls = false;
+	bool SelectionRefreshPending = false;
+	bool RestoringObjectSelection = false;
 	bool Dirty = false;
 	bool PendingFieldChanges = false;
 	unsigned int DirtyFieldMask = 0;
@@ -217,6 +219,8 @@ private:
 	bool EnsureDocumentForEditing();
 	bool SaveDocument(bool reloadAfterSave);
 	void PopulateObjectList(int preferredFeatureIndex);
+	void RestoreObjectSelection(int featureIndex);
+	bool ResolvePendingChangesBeforeSelectionRefresh();
 	AvisoFeatureFilter BuildCurrentFilter() const;
 	std::string GetObjectListCellText(int rowIndex, int subItem) const;
 	void RefreshFieldsFromSelection();
