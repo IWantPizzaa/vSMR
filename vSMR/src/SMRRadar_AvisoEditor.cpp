@@ -40,7 +40,7 @@ namespace
 
 	CRect BuildDefaultAvisoEditorWindowRect()
 	{
-		CRect fallback(120, 120, 820, 600);
+		CRect fallback(120, 120, 1060, 740);
 		CWnd* mainWindow = AfxGetMainWnd();
 		if (mainWindow != nullptr && ::IsWindow(mainWindow->GetSafeHwnd()))
 		{
@@ -50,8 +50,8 @@ namespace
 			{
 				fallback.left = mainRect.left + 80;
 				fallback.top = mainRect.top + 80;
-				fallback.right = fallback.left + 700;
-				fallback.bottom = fallback.top + 480;
+				fallback.right = fallback.left + 940;
+				fallback.bottom = fallback.top + 620;
 			}
 		}
 		return fallback;
@@ -149,8 +149,8 @@ bool CSMRRadar::EnsureAvisoEditorWindowCreated()
 		nullptr,
 		windowRect.left,
 		windowRect.top,
-		max(560, windowRect.Width()),
-		max(380, windowRect.Height()),
+		max(820, windowRect.Width()),
+		max(520, windowRect.Height()),
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	AvisoEditorDialog->ShowWindow(SW_HIDE);
 	return true;

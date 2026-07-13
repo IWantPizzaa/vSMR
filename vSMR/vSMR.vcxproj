@@ -136,6 +136,7 @@
     <ClCompile Include="src\DataLinkDialog.cpp" />
     <ClCompile Include="src\HttpHelper.cpp" />
     <ClCompile Include="src\InsetWindow.cpp" />
+    <ClCompile Include="src\AvisoDocumentModel.cpp" />
     <ClCompile Include="src\AvisoEditorDialog.cpp" />
     <ClCompile Include="src\ProfileEditorDialog.cpp" />
     <ClCompile Include="src\Rimcas.cpp" />
@@ -176,6 +177,7 @@
     <ClInclude Include="include\DataLinkDialog.hpp" />
     <ClInclude Include="include\HttpHelper.hpp" />
     <ClInclude Include="include\InsetWindow.h" />
+    <ClInclude Include="include\AvisoDocumentModel.hpp" />
     <ClInclude Include="include\AvisoEditorDialog.hpp" />
     <ClInclude Include="include\Logger.h" />
     <ClInclude Include="include\ProfileEditorDialog.hpp" />
