@@ -218,6 +218,8 @@ public:
 	mutable std::string AvisoGeoJsonResolvedAirport;
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
+	std::string AvisoGeoJsonOverrideAirport;
+	std::string AvisoGeoJsonOverridePath;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
@@ -607,6 +609,7 @@ public:
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
+	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
 	bool ForceReloadAvisoGeoJson();
 	void ClearAvisoGeoJsonRasterCache();

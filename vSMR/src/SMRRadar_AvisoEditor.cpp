@@ -75,6 +75,16 @@ std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& ai
 	return preferredPath.string();
 }
 
+void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path)
+{
+	const std::string airportUpper = ToUpperAscii(TrimAsciiWhitespaceCopy(airport));
+	AvisoGeoJsonOverrideAirport = airportUpper;
+	AvisoGeoJsonOverridePath = path;
+	AvisoGeoJsonResolvedAirport.clear();
+	AvisoGeoJsonResolvedDllPath.clear();
+	AvisoGeoJsonResolvedPath.clear();
+}
+
 bool CSMRRadar::ForceReloadAvisoGeoJson()
 {
 	if (IsShutdownRequested())
