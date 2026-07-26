@@ -2029,21 +2029,25 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			false);
 		return true;
 	}
-	else if (commandLower == ".smr profile" || commandLower == ".smr editor" || commandLower == ".smr config")
+	else if (commandLower == ".smr editor" || commandLower == ".smr vsmr" || commandLower == ".smr config" || commandLower == ".smr profile")
 	{
+		const std::string pageName =
+			commandLower == ".smr profile" ? "profiles" :
+			commandLower == ".smr config" ? "settings" :
+			"overview";
 		bool opened = false;
 		for (auto* rd : RadarScreensOpened)
 		{
 			if (rd == nullptr)
 				continue;
-			rd->OpenProfileEditorWindow();
+			rd->OpenVsmrControlCenterWindow(pageName);
 			opened = true;
 			break;
 		}
 
 		if (!opened)
 		{
-			DisplayUserMessage("vSMR", "Config", "No active SMR radar screen found to open the config window.", true, true, false, true, false);
+			DisplayUserMessage("vSMR", "Config", "No active SMR radar screen found to open the vSMR window.", true, true, false, true, false);
 		}
 		return true;
 	}

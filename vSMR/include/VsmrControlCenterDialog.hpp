@@ -89,7 +89,7 @@ private:
 	void HidePageControls();
 	void HideHostedEditors();
 	void UpdateNavState();
-	void UpdateHeader();
+	bool IsHostedEditorPage() const;
 	void SetStatusText(const std::string& text);
 	void SetPageText(const std::string& title, const std::string& subtitle);
 	void LoadMapsText();
@@ -109,8 +109,6 @@ private:
 	bool ControlsCreated = false;
 
 	CStatic NavigationTitleLabel;
-	CStatic HeaderTitleLabel;
-	CStatic HeaderSubtitleLabel;
 	CStatic PageTitleLabel;
 	CStatic PageSubtitleLabel;
 	CStatic StatusLabel;
