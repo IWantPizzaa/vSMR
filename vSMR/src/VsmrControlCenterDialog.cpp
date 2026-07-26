@@ -14,10 +14,10 @@ IMPLEMENT_DYNAMIC(CVsmrControlCenterDialog, CDialogEx)
 namespace
 {
 	constexpr int kSidebarWidth = 178;
-	constexpr int kHeaderHeight = 68;
 	constexpr int kBottomStatusHeight = 30;
 	constexpr int kOuterPad = 18;
 	constexpr int kControlGap = 8;
+	constexpr int kPageTitleHeight = 50;
 
 	std::string CStringToStdString(const CString& value)
 	{
@@ -89,8 +89,6 @@ void CVsmrControlCenterDialog::CreateReadOnlyEdit(CEdit& edit)
 void CVsmrControlCenterDialog::CreateControls()
 {
 	CreateStatic(NavigationTitleLabel, "vSMR Control Center");
-	CreateStatic(HeaderTitleLabel, "vSMR");
-	CreateStatic(HeaderSubtitleLabel, "");
 	CreateStatic(PageTitleLabel, "");
 	CreateStatic(PageSubtitleLabel, "");
 	CreateStatic(StatusLabel, "");
@@ -134,7 +132,6 @@ void CVsmrControlCenterDialog::ShowPage(Page page)
 	CurrentPage = page;
 	HidePageControls();
 	HideHostedEditors();
-	UpdateHeader();
 	UpdateNavState();
 
 	switch (CurrentPage)
@@ -187,7 +184,6 @@ void CVsmrControlCenterDialog::ShowPage(Page page)
 
 void CVsmrControlCenterDialog::SyncFromRadar()
 {
-	UpdateHeader();
 	if (CurrentPage == Page::Overview)
 		OverviewEdit.SetWindowTextA(BuildOverviewText().c_str());
 	else if (CurrentPage == Page::Settings)
@@ -238,17 +234,6 @@ void CVsmrControlCenterDialog::HideHostedEditors()
 		Owner->AvisoEditorDialog->ShowWindow(SW_HIDE);
 }
 
-void CVsmrControlCenterDialog::UpdateHeader()
-{
-	const std::string title = "vSMR";
-	const std::string subtitle =
-		"Airport: " + ActiveAirportName() +
-		"    Profile: " + ActiveProfileName() +
-		"    AVISO: " + (ActiveAvisoPath().empty() ? "not loaded" : ActiveAvisoPath());
-	HeaderTitleLabel.SetWindowTextA(title.c_str());
-	HeaderSubtitleLabel.SetWindowTextA(subtitle.c_str());
-}
-
 void CVsmrControlCenterDialog::UpdateNavState()
 {
 	auto setNavText = [&](CButton& button, Page page, const char* label)
@@ -270,19 +255,30 @@ void CVsmrControlCenterDialog::SetStatusText(const std::string& text)
 	StatusLabel.SetWindowTextA(text.c_str());
 }
 
+bool CVsmrControlCenterDialog::IsHostedEditorPage() const
+{
+	return CurrentPage == Page::Profiles || CurrentPage == Page::Aviso;
+}
+
 void CVsmrControlCenterDialog::SetPageText(const std::string& title, const std::string& subtitle)
 {
 	PageTitleLabel.SetWindowTextA(title.c_str());
 	PageSubtitleLabel.SetWindowTextA(subtitle.c_str());
+	const int showState = IsHostedEditorPage() ? SW_HIDE : SW_SHOW;
+	PageTitleLabel.ShowWindow(showState);
+	PageSubtitleLabel.ShowWindow(showState);
 }
 
 CRect CVsmrControlCenterDialog::ContentRect() const
 {
 	CRect client;
 	const_cast<CVsmrControlCenterDialog*>(this)->GetClientRect(&client);
+	const int contentTop = IsHostedEditorPage()
+		? kOuterPad
+		: kOuterPad + kPageTitleHeight;
 	return CRect(
 		kSidebarWidth + kOuterPad,
-		kHeaderHeight + 58,
+		contentTop,
 		client.right - kOuterPad,
 		client.bottom - kBottomStatusHeight - kOuterPad);
 }
@@ -310,10 +306,8 @@ void CVsmrControlCenterDialog::LayoutControls()
 	moveNav(NavMapsButton);
 	moveNav(NavSettingsButton);
 
-	HeaderTitleLabel.MoveWindow(kSidebarWidth + kOuterPad, 13, 180, 24, TRUE);
-	HeaderSubtitleLabel.MoveWindow(kSidebarWidth + kOuterPad, 40, max(100, client.Width() - kSidebarWidth - (kOuterPad * 2)), 18, TRUE);
-	PageTitleLabel.MoveWindow(kSidebarWidth + kOuterPad, kHeaderHeight + 14, 240, 22, TRUE);
-	PageSubtitleLabel.MoveWindow(kSidebarWidth + kOuterPad, kHeaderHeight + 38, max(100, client.Width() - kSidebarWidth - (kOuterPad * 2)), 18, TRUE);
+	PageTitleLabel.MoveWindow(kSidebarWidth + kOuterPad, kOuterPad, 240, 22, TRUE);
+	PageSubtitleLabel.MoveWindow(kSidebarWidth + kOuterPad, kOuterPad + 24, max(100, client.Width() - kSidebarWidth - (kOuterPad * 2)), 18, TRUE);
 	StatusLabel.MoveWindow(kSidebarWidth + kOuterPad, client.bottom - 24, max(100, client.Width() - kSidebarWidth - (kOuterPad * 2)), 18, TRUE);
 
 	const CRect content = ContentRect();
