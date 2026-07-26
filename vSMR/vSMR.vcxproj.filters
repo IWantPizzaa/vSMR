@@ -57,6 +57,9 @@
     <ClCompile Include="src\ProfileEditorDialog.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\VsmrControlCenterDialog.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="src\Rimcas.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -79,6 +82,9 @@
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\SMRRadar_AvisoPresets.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SMRRadar_ControlCenter.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\SMRRadar_FunctionCall.cpp">
@@ -147,6 +153,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\ProfileEditorDialog.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\VsmrControlCenterDialog.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\resource.h">

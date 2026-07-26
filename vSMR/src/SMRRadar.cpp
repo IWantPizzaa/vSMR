@@ -15,6 +15,7 @@
 #include "SMRVacdmTagHelpers.hpp"
 #include "ProfileEditorDialog.hpp"
 #include "AvisoEditorDialog.hpp"
+#include "VsmrControlCenterDialog.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -660,10 +661,12 @@ CSMRRadar::~CSMRRadar()
 	if (gWindowProcRadarScreen == this)
 		gWindowProcRadarScreen = nullptr;
 	UnhookAvisoThreadHooks();
+	CloseVsmrControlCenterWindow();
 	CloseAvisoEditorWindow();
 	DestroyAvisoEditorWindow();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
+	DestroyVsmrControlCenterWindow();
 	try {
 		//this->OnAsrContentToBeSaved();
 		//this->EuroScopePlugInExitCustom();
@@ -7254,10 +7257,12 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 	AFX_MANAGE_STATE(AfxGetStaticModuleState())
 
 		BeginShutdown();
+		CloseVsmrControlCenterWindow();
 		CloseAvisoEditorWindow();
 		DestroyAvisoEditorWindow();
 		CloseProfileEditorWindow(false);
 		DestroyProfileEditorWindow();
+		DestroyVsmrControlCenterWindow();
 
 		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
 			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
