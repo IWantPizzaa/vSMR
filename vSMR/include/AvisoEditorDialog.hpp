@@ -30,6 +30,11 @@ protected:
 	afx_msg void OnMove(int x, int y);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
+	afx_msg void OnShowWindow(BOOL bShow, UINT nStatus);
+	afx_msg void OnDestroy();
+	afx_msg void OnPaint();
+	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnObjectListItemChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnObjectListGetDispInfo(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnFilterChanged();
@@ -38,13 +43,12 @@ protected:
 	afx_msg void OnFieldChanged();
 	afx_msg void OnApplyClicked();
 	afx_msg void OnSaveClicked();
-	afx_msg void OnReloadClicked();
-	afx_msg void OnAddLabelClicked();
-	afx_msg void OnAddLineClicked();
-	afx_msg void OnDuplicateClicked();
 	afx_msg void OnDeleteClicked();
-	afx_msg void OnSelectFilteredClicked();
-	afx_msg void OnCloseClicked();
+	afx_msg void OnCurrentPageClicked();
+	afx_msg void OnLoadAvisoClicked();
+	afx_msg void OnMapsJsonClicked();
+	afx_msg void OnFilterButtonClicked();
+	afx_msg void OnClearFiltersClicked();
 
 	DECLARE_MESSAGE_MAP()
 
@@ -54,14 +58,12 @@ private:
 		IDC_AE_PATH_LABEL = 9401,
 		IDC_AE_STATUS_LABEL = 9402,
 		IDC_AE_OBJECT_LIST = 9403,
-		IDC_AE_RELOAD_BUTTON = 9404,
+		IDC_AE_CURRENT_PAGE_BUTTON = 9404,
 		IDC_AE_SAVE_BUTTON = 9405,
-		IDC_AE_ADD_LABEL_BUTTON = 9406,
-		IDC_AE_ADD_LINE_BUTTON = 9407,
-		IDC_AE_DUPLICATE_BUTTON = 9408,
+		IDC_AE_LOAD_AVISO_BUTTON = 9406,
+		IDC_AE_MAPS_JSON_BUTTON = 9407,
 		IDC_AE_DELETE_BUTTON = 9409,
 		IDC_AE_APPLY_BUTTON = 9410,
-		IDC_AE_CLOSE_BUTTON = 9411,
 		IDC_AE_VISIBLE_CHECK = 9412,
 		IDC_AE_NAME_EDIT = 9413,
 		IDC_AE_LAYER_EDIT = 9414,
@@ -93,7 +95,16 @@ private:
 		IDC_AE_RAW_EDIT = 9440,
 		IDC_AE_APPLY_SCOPE_COMBO = 9441,
 		IDC_AE_CATEGORY_FILTER_COMBO = 9442,
-		IDC_AE_SELECT_FILTERED_BUTTON = 9443
+		IDC_AE_SIDEBAR_PANEL = 9444,
+		IDC_AE_SIDEBAR_TITLE = 9445,
+		IDC_AE_SIDEBAR_DIVIDER = 9446,
+		IDC_AE_PAGE_TITLE = 9447,
+		IDC_AE_PAGE_SUBTITLE = 9448,
+		IDC_AE_BROWSER_PANEL = 9449,
+		IDC_AE_INSPECTOR_PANEL = 9450,
+		IDC_AE_BROWSER_HEADER = 9451,
+		IDC_AE_FILTER_BUTTON = 9452,
+		IDC_AE_CLEAR_FILTERS_BUTTON = 9453
 	};
 	enum FieldDirtyFlags : unsigned int
 	{
@@ -138,9 +149,20 @@ private:
 	AvisoDocumentModel Model;
 	rapidjson::Document& Document;
 	std::vector<int> FilteredFeatureIndices;
+	CRect SidebarPanelRect;
+	CRect BrowserPanelRect;
+	CRect InspectorPanelRect;
 
 	CStatic PathLabel;
 	CStatic StatusLabel;
+	CStatic SidebarPanel;
+	CStatic SidebarTitle;
+	CStatic SidebarDivider;
+	CStatic PageTitleLabel;
+	CStatic PageSubtitleLabel;
+	CStatic BrowserPanel;
+	CStatic InspectorPanel;
+	CStatic BrowserHeader;
 	CStatic SearchLabel;
 	CEdit SearchEdit;
 	CStatic LayerFilterLabel;
@@ -157,15 +179,14 @@ private:
 	CComboBox StyleFilterCombo;
 	CStatic ObjectCountLabel;
 	CListCtrl ObjectList;
-	CButton ReloadButton;
+	CButton FilterButton;
+	CButton ClearFiltersButton;
+	CButton CurrentPageButton;
+	CButton LoadAvisoButton;
+	CButton MapsJsonButton;
 	CButton SaveButton;
-	CButton AddLabelButton;
-	CButton AddLineButton;
-	CButton SelectFilteredButton;
-	CButton DuplicateButton;
 	CButton DeleteButton;
 	CButton ApplyButton;
-	CButton CloseButton;
 	CButton VisibleCheck;
 	CStatic DetailsHeader;
 	CTabCtrl PropertyTabs;
@@ -211,14 +232,30 @@ private:
 	CEdit CoordinatesEdit;
 	CStatic RawLabel;
 	CEdit RawEdit;
+	CBrush HeaderBarBrush;
+	CBrush SidebarBrush;
+	CFont TitleFont;
+	CFont SectionHeaderFont;
+	CFont UniformUiFont;
+	CFont MonoFont;
 
 	void CreateEditorControls();
 	void LayoutControls();
+	void ApplyProfileEditorVisualStyle();
+	void ApplyThemedEditBorders();
+	void ForceChildRepaint();
 	void PopulateFilterCombos();
 	void UpdatePropertyTabVisibility();
 	void HideAndNotifyOwner();
 	bool PromptForUnsavedChanges(const char* actionText);
 	void SetStatusText(const std::string& text);
+	bool ImportAvisoGeoJsonFromFile(const std::string& sourcePath);
+	bool ImportAvisoGeoJsonFromGithubUrl(const std::string& url);
+	bool ImportAvisoGeoJsonText(const std::string& geoJsonText, const std::string& sourceHint);
+	std::string DetectAirportForAvisoImport(const rapidjson::Document& document, const std::string& sourceHint) const;
+	std::string NormalizeGithubGeoJsonUrl(const std::string& url) const;
+	std::string ReadClipboardText() const;
+	bool LoadDocumentFromPath(const std::string& path, bool keepSelection, const std::string& loadedStatusText);
 	bool LoadDocumentFromCurrentAviso(bool keepSelection);
 	bool EnsureDocumentForEditing();
 	bool SaveDocument(bool reloadAfterSave);
@@ -251,13 +288,8 @@ private:
 	bool FeatureMatchesFilters(const rapidjson::Value& feature, int featureIndex) const;
 	bool FeatureMatchesCategory(const rapidjson::Value& feature, const std::string& category) const;
 	std::string BuildObjectListLabel(const rapidjson::Value& feature, int featureIndex) const;
-	void AddFeature(rapidjson::Value& feature);
 	void DeleteFeatureAt(int featureIndex);
-	void DuplicateFeatureAt(int featureIndex);
-	void BuildLabelFeature(double longitude, double latitude, rapidjson::Value& feature);
-	void BuildLineFeature(double longitude, double latitude, rapidjson::Value& feature);
 	void CloneJsonValue(const rapidjson::Value& source, rapidjson::Value& destination);
-	bool TryGetDefaultInsertPosition(double& longitude, double& latitude) const;
 	void RefreshAfterDocumentMutation(int selectedFeatureIndex);
 	void MarkDirty(bool dirty);
 
