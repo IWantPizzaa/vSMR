@@ -19,14 +19,6 @@ namespace
 	constexpr int kOuterPad = 18;
 	constexpr int kControlGap = 8;
 
-	const COLORREF kColorBackground = RGB(248, 249, 251);
-	const COLORREF kColorSidebar = RGB(243, 246, 250);
-	const COLORREF kColorHeader = RGB(255, 255, 255);
-	const COLORREF kColorText = RGB(30, 40, 55);
-	const COLORREF kColorMutedText = RGB(87, 100, 120);
-	const COLORREF kColorBorder = RGB(214, 220, 230);
-	const COLORREF kColorEdit = RGB(255, 255, 255);
-
 	std::string CStringToStdString(const CString& value)
 	{
 		return std::string(static_cast<LPCSTR>(value));
@@ -63,14 +55,6 @@ BOOL CVsmrControlCenterDialog::OnInitDialog()
 	CDialogEx::OnInitDialog();
 
 	SetWindowTextA("vSMR");
-	UiFont.CreatePointFont(90, "Segoe UI");
-	TitleFont.CreatePointFont(150, "Segoe UI");
-	SidebarTitleFont.CreatePointFont(105, "Segoe UI");
-	BackgroundBrush.CreateSolidBrush(kColorBackground);
-	SidebarBrush.CreateSolidBrush(kColorSidebar);
-	HeaderBrush.CreateSolidBrush(kColorHeader);
-	EditBrush.CreateSolidBrush(kColorEdit);
-
 	CreateControls();
 	ControlsCreated = true;
 	ShowPage(Page::Overview);
@@ -86,13 +70,11 @@ void CVsmrControlCenterDialog::CreateButton(CButton& button, const char* text, U
 		CRect(0, 0, 0, 0),
 		this,
 		id);
-	button.SetFont(&UiFont);
 }
 
 void CVsmrControlCenterDialog::CreateStatic(CStatic& label, const char* text)
 {
 	label.Create(text, WS_CHILD | WS_VISIBLE | SS_LEFT, CRect(0, 0, 0, 0), this);
-	label.SetFont(&UiFont);
 }
 
 void CVsmrControlCenterDialog::CreateReadOnlyEdit(CEdit& edit)
@@ -102,16 +84,14 @@ void CVsmrControlCenterDialog::CreateReadOnlyEdit(CEdit& edit)
 		CRect(0, 0, 0, 0),
 		this,
 		0);
-	edit.SetFont(&UiFont);
 }
 
 void CVsmrControlCenterDialog::CreateControls()
 {
+	CreateStatic(NavigationTitleLabel, "vSMR Control Center");
 	CreateStatic(HeaderTitleLabel, "vSMR");
-	HeaderTitleLabel.SetFont(&TitleFont);
 	CreateStatic(HeaderSubtitleLabel, "");
 	CreateStatic(PageTitleLabel, "");
-	PageTitleLabel.SetFont(&SidebarTitleFont);
 	CreateStatic(PageSubtitleLabel, "");
 	CreateStatic(StatusLabel, "");
 	CreateStatic(MapsPathLabel, "vSMR_Maps.json");
@@ -142,13 +122,11 @@ void CVsmrControlCenterDialog::CreateControls()
 		CRect(0, 0, 0, 0),
 		this,
 		0);
-	MapsPathEdit.SetFont(&UiFont);
 	MapsRawEdit.Create(
 		WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
 		CRect(0, 0, 0, 0),
 		this,
 		0);
-	MapsRawEdit.SetFont(&UiFont);
 }
 
 void CVsmrControlCenterDialog::ShowPage(Page page)
@@ -205,7 +183,6 @@ void CVsmrControlCenterDialog::ShowPage(Page page)
 	}
 
 	LayoutControls();
-	Invalidate(FALSE);
 }
 
 void CVsmrControlCenterDialog::SyncFromRadar()
@@ -319,6 +296,7 @@ void CVsmrControlCenterDialog::LayoutControls()
 	GetClientRect(&client);
 	const int navLeft = 18;
 	const int navWidth = kSidebarWidth - 36;
+	NavigationTitleLabel.MoveWindow(navLeft, 18, navWidth, 18, TRUE);
 	int navY = 76;
 	const int navHeight = 34;
 	auto moveNav = [&](CButton& button)
@@ -605,7 +583,6 @@ void CVsmrControlCenterDialog::OnSize(UINT nType, int cx, int cy)
 {
 	CDialogEx::OnSize(nType, cx, cy);
 	LayoutControls();
-	Invalidate(FALSE);
 }
 
 void CVsmrControlCenterDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -616,60 +593,6 @@ void CVsmrControlCenterDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 		lpMMI->ptMinTrackSize.x = 880;
 		lpMMI->ptMinTrackSize.y = 620;
 	}
-}
-
-void CVsmrControlCenterDialog::OnPaint()
-{
-	CPaintDC dc(this);
-	CRect client;
-	GetClientRect(&client);
-
-	dc.FillSolidRect(client, kColorBackground);
-	dc.FillSolidRect(CRect(client.left, client.top, kSidebarWidth, client.bottom), kColorSidebar);
-	dc.FillSolidRect(CRect(kSidebarWidth, client.top, client.right, kHeaderHeight), kColorHeader);
-	dc.FillSolidRect(CRect(kSidebarWidth, client.bottom - kBottomStatusHeight, client.right, client.bottom), kColorHeader);
-
-	CPen borderPen(PS_SOLID, 1, kColorBorder);
-	CPen* oldPen = dc.SelectObject(&borderPen);
-	dc.MoveTo(kSidebarWidth, client.top);
-	dc.LineTo(kSidebarWidth, client.bottom);
-	dc.MoveTo(kSidebarWidth, kHeaderHeight);
-	dc.LineTo(client.right, kHeaderHeight);
-	dc.MoveTo(kSidebarWidth, client.bottom - kBottomStatusHeight);
-	dc.LineTo(client.right, client.bottom - kBottomStatusHeight);
-	dc.SelectObject(oldPen);
-
-	CFont* oldFont = dc.SelectObject(&SidebarTitleFont);
-	dc.SetBkMode(TRANSPARENT);
-	dc.SetTextColor(kColorText);
-	dc.TextOutA(18, 24, "vSMR");
-	dc.SetTextColor(kColorMutedText);
-	dc.TextOutA(18, 45, "Control Center");
-	dc.SelectObject(oldFont);
-}
-
-HBRUSH CVsmrControlCenterDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
-{
-	HBRUSH brush = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
-	if (pDC == nullptr || pWnd == nullptr)
-		return brush;
-
-	pDC->SetTextColor(kColorText);
-	if (nCtlColor == CTLCOLOR_EDIT || nCtlColor == CTLCOLOR_LISTBOX)
-	{
-		pDC->SetBkColor(kColorEdit);
-		return static_cast<HBRUSH>(EditBrush.GetSafeHandle());
-	}
-
-	pDC->SetBkMode(TRANSPARENT);
-	if (pWnd->GetSafeHwnd() == HeaderTitleLabel.GetSafeHwnd() ||
-		pWnd->GetSafeHwnd() == HeaderSubtitleLabel.GetSafeHwnd() ||
-		pWnd->GetSafeHwnd() == StatusLabel.GetSafeHwnd())
-	{
-		return static_cast<HBRUSH>(HeaderBrush.GetSafeHandle());
-	}
-
-	return static_cast<HBRUSH>(BackgroundBrush.GetSafeHandle());
 }
 
 void CVsmrControlCenterDialog::OnNavOverviewClicked()
@@ -762,8 +685,6 @@ BEGIN_MESSAGE_MAP(CVsmrControlCenterDialog, CDialogEx)
 	ON_WM_DESTROY()
 	ON_WM_SIZE()
 	ON_WM_GETMINMAXINFO()
-	ON_WM_PAINT()
-	ON_WM_CTLCOLOR()
 	ON_BN_CLICKED(IDC_VCC_NAV_OVERVIEW, &CVsmrControlCenterDialog::OnNavOverviewClicked)
 	ON_BN_CLICKED(IDC_VCC_NAV_PROFILES, &CVsmrControlCenterDialog::OnNavProfilesClicked)
 	ON_BN_CLICKED(IDC_VCC_NAV_AVISO, &CVsmrControlCenterDialog::OnNavAvisoClicked)
