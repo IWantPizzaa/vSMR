@@ -1,9 +1,12 @@
 #include "stdafx.h"
 #include "AvisoEditorDialog.hpp"
 #include "SMRRadar.hpp"
+#include "HttpHelper.hpp"
 #include "afxdialogex.h"
 #include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
+
+#include <shellapi.h>
 
 #include <algorithm>
 #include <cctype>
@@ -47,6 +50,18 @@ namespace
 		return value;
 	}
 
+	bool StartsWithNoCase(const std::string& text, const std::string& prefix)
+	{
+		if (prefix.size() > text.size())
+			return false;
+		for (size_t i = 0; i < prefix.size(); ++i)
+		{
+			if (std::tolower(static_cast<unsigned char>(text[i])) != std::tolower(static_cast<unsigned char>(prefix[i])))
+				return false;
+		}
+		return true;
+	}
+
 	bool ContainsNoCase(const std::string& text, const std::string& needle)
 	{
 		if (needle.empty())
@@ -64,6 +79,61 @@ namespace
 				return false;
 		}
 		return true;
+	}
+
+	std::string NormalizePathForCompare(const std::string& path)
+	{
+		try
+		{
+			return std::filesystem::absolute(std::filesystem::path(path)).lexically_normal().string();
+		}
+		catch (...)
+		{
+			return path;
+		}
+	}
+
+	bool PathsEqualNoCase(const std::string& left, const std::string& right)
+	{
+		return !left.empty() && !right.empty() && EqualsNoCase(NormalizePathForCompare(left), NormalizePathForCompare(right));
+	}
+
+	std::string NormalizeAirportCandidate(std::string value)
+	{
+		value = ToUpperAscii(TrimAsciiWhitespaceCopy(value));
+		if (value.size() != 4)
+			return "";
+		for (char c : value)
+		{
+			if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')))
+				return "";
+		}
+		if (value == "JSON" || value == "AVIS" || value == "GEOJ")
+			return "";
+		return value;
+	}
+
+	std::string FileNameFromSourceHint(std::string sourceHint)
+	{
+		std::replace(sourceHint.begin(), sourceHint.end(), '\\', '/');
+		const size_t queryOffset = sourceHint.find_first_of("?#");
+		if (queryOffset != std::string::npos)
+			sourceHint = sourceHint.substr(0, queryOffset);
+		const size_t slashOffset = sourceHint.find_last_of('/');
+		if (slashOffset != std::string::npos)
+			sourceHint = sourceHint.substr(slashOffset + 1);
+		return sourceHint;
+	}
+
+	std::string SanitizeFileName(std::string fileName)
+	{
+		for (char& c : fileName)
+		{
+			const unsigned char uc = static_cast<unsigned char>(c);
+			if (std::isalnum(uc) == 0 && c != '.' && c != '_' && c != '-')
+				c = '_';
+		}
+		return fileName;
 	}
 
 	std::vector<std::string> SplitString(const std::string& text, char delimiter)
@@ -119,6 +189,12 @@ namespace
 	constexpr int kPropertyTabText = 2;
 	constexpr int kPropertyTabGeometry = 3;
 	constexpr int kPropertyTabRaw = 4;
+	const COLORREF kEditorBorderColor = RGB(198, 204, 214);
+	const COLORREF kEditorThemeBackgroundColor = RGB(240, 240, 240);
+	const COLORREF kEditorSidebarBackgroundColor = RGB(250, 250, 251);
+	const COLORREF kEditorTextColor = RGB(17, 24, 39);
+	const COLORREF kEditorMutedTextColor = RGB(107, 114, 128);
+	const int kOffscreenPos = -5000;
 
 	const char* kFilterAll = "All";
 	const char* kFilterVisible = "Visible";
@@ -132,6 +208,9 @@ namespace
 	const UINT_PTR kSelectionRefreshTimerId = 1702;
 	const UINT kSearchDebounceMs = 150;
 	const UINT kSelectionRefreshMs = 40;
+	const UINT kFilterMenuCommandBase = 9600;
+	const UINT kLoadAvisoFromComputerCommand = 10600;
+	const UINT kLoadAvisoFromGithubCommand = 10601;
 }
 
 CAvisoEditorDialog::CAvisoEditorDialog(CSMRRadar* owner, CWnd* pParent /*=NULL*/)
@@ -159,6 +238,7 @@ void CAvisoEditorDialog::DoDataExchange(CDataExchange* pDX)
 BOOL CAvisoEditorDialog::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
+	ModifyStyle(0, WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
 
 	CWnd* statusWnd = GetDlgItem(IDC_AVISO_EDITOR_STATUS);
 	if (statusWnd != nullptr && ::IsWindow(statusWnd->GetSafeHwnd()))
@@ -167,6 +247,7 @@ BOOL CAvisoEditorDialog::OnInitDialog()
 	CreateEditorControls();
 	Initialized = true;
 	SyncFromRadar();
+	ForceChildRepaint();
 	return TRUE;
 }
 
@@ -193,11 +274,19 @@ void CAvisoEditorDialog::CreateEditorControls()
 		return;
 
 	const DWORD staticStyle = WS_CHILD | WS_VISIBLE;
-	const DWORD editStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL;
-	const DWORD multilineEditStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL;
+	const DWORD editStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL;
+	const DWORD multilineEditStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL;
 	const DWORD comboStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL;
-	const DWORD buttonStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON;
+	const DWORD buttonStyle = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW;
 
+	SidebarPanel.Create("", staticStyle | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_AE_SIDEBAR_PANEL);
+	SidebarTitle.Create("AVISO", staticStyle | SS_CENTER, CRect(0, 0, 0, 0), this, IDC_AE_SIDEBAR_TITLE);
+	SidebarDivider.Create("", staticStyle | SS_ETCHEDVERT, CRect(0, 0, 0, 0), this, IDC_AE_SIDEBAR_DIVIDER);
+	PageTitleLabel.Create("AVISO Editor", staticStyle, CRect(0, 0, 0, 0), this, IDC_AE_PAGE_TITLE);
+	PageSubtitleLabel.Create("", staticStyle | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_AE_PAGE_SUBTITLE);
+	BrowserPanel.Create("", staticStyle | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_AE_BROWSER_PANEL);
+	InspectorPanel.Create("", staticStyle | WS_BORDER, CRect(0, 0, 0, 0), this, IDC_AE_INSPECTOR_PANEL);
+	BrowserHeader.Create("Objects", staticStyle, CRect(0, 0, 0, 0), this, IDC_AE_BROWSER_HEADER);
 	PathLabel.Create("", staticStyle | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_AE_PATH_LABEL);
 	StatusLabel.Create("", staticStyle | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this, IDC_AE_STATUS_LABEL);
 	SearchLabel.Create("Search", staticStyle, CRect(0, 0, 0, 0), this);
@@ -220,20 +309,22 @@ void CAvisoEditorDialog::CreateEditorControls()
 	ObjectCountLabel.Create("", staticStyle | SS_LEFTNOWORDWRAP, CRect(0, 0, 0, 0), this);
 	ObjectList.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WS_VSCROLL | WS_HSCROLL | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_OWNERDATA, CRect(0, 0, 0, 0), this, IDC_AE_OBJECT_LIST);
 	ObjectList.SetExtendedStyle(ObjectList.GetExtendedStyle() | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+	ObjectList.SetBkColor(kEditorThemeBackgroundColor);
+	ObjectList.SetTextBkColor(kEditorThemeBackgroundColor);
+	ObjectList.SetTextColor(kEditorTextColor);
 	ObjectList.InsertColumn(0, "Visible", LVCFMT_LEFT, 58);
 	ObjectList.InsertColumn(1, "Name/Text", LVCFMT_LEFT, 210);
 	ObjectList.InsertColumn(2, "Layer", LVCFMT_LEFT, 120);
 	ObjectList.InsertColumn(3, "Object Type", LVCFMT_LEFT, 110);
 	ObjectList.InsertColumn(4, "Geometry", LVCFMT_LEFT, 92);
-	ReloadButton.Create("Reload", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_RELOAD_BUTTON);
+	FilterButton.Create("Filters", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_FILTER_BUTTON);
+	ClearFiltersButton.Create("Clear", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_CLEAR_FILTERS_BUTTON);
+	CurrentPageButton.Create("Object editor", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_CURRENT_PAGE_BUTTON);
+	LoadAvisoButton.Create("Load GeoJSON", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_LOAD_AVISO_BUTTON);
+	MapsJsonButton.Create("Maps JSON", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_MAPS_JSON_BUTTON);
 	SaveButton.Create("Save", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_SAVE_BUTTON);
-	AddLabelButton.Create("Add Label", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_ADD_LABEL_BUTTON);
-	AddLineButton.Create("Add Line", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_ADD_LINE_BUTTON);
-	SelectFilteredButton.Create("Select filtered", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_SELECT_FILTERED_BUTTON);
-	DuplicateButton.Create("Duplicate", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_DUPLICATE_BUTTON);
 	DeleteButton.Create("Delete", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_DELETE_BUTTON);
-	ApplyButton.Create("Apply changes", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_APPLY_BUTTON);
-	CloseButton.Create("Close", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_CLOSE_BUTTON);
+	ApplyButton.Create("Apply", buttonStyle, CRect(0, 0, 0, 0), this, IDC_AE_APPLY_BUTTON);
 	VisibleCheck.Create("Visible", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, CRect(0, 0, 0, 0), this, IDC_AE_VISIBLE_CHECK);
 	DetailsHeader.Create("Object properties", staticStyle, CRect(0, 0, 0, 0), this, IDC_AE_DETAILS_HEADER);
 	PropertyTabs.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP, CRect(0, 0, 0, 0), this, IDC_AE_PROPERTY_TABS);
@@ -294,9 +385,147 @@ void CAvisoEditorDialog::CreateEditorControls()
 	RawLabel.Create("Raw GeoJSON", staticStyle, CRect(0, 0, 0, 0), this);
 	RawEdit.Create(multilineEditStyle | ES_READONLY, CRect(0, 0, 0, 0), this, IDC_AE_RAW_EDIT);
 
+	LayerFilterLabel.ShowWindow(SW_HIDE);
+	LayerFilterCombo.ShowWindow(SW_HIDE);
+	ObjectTypeFilterLabel.ShowWindow(SW_HIDE);
+	ObjectTypeFilterCombo.ShowWindow(SW_HIDE);
+	GeometryFilterLabel.ShowWindow(SW_HIDE);
+	GeometryFilterCombo.ShowWindow(SW_HIDE);
+	VisibilityFilterLabel.ShowWindow(SW_HIDE);
+	VisibilityFilterCombo.ShowWindow(SW_HIDE);
+	CategoryFilterLabel.ShowWindow(SW_HIDE);
+	CategoryFilterCombo.ShowWindow(SW_HIDE);
+	StyleFilterLabel.ShowWindow(SW_HIDE);
+	StyleFilterCombo.ShowWindow(SW_HIDE);
+
 	PopulateFilterCombos();
+	ApplyProfileEditorVisualStyle();
 	ControlsCreated = true;
 	LayoutControls();
+	ApplyThemedEditBorders();
+}
+
+void CAvisoEditorDialog::ApplyProfileEditorVisualStyle()
+{
+	if (!::IsWindow(GetSafeHwnd()))
+		return;
+
+	if (HeaderBarBrush.GetSafeHandle() == nullptr)
+		HeaderBarBrush.CreateSolidBrush(kEditorThemeBackgroundColor);
+	if (SidebarBrush.GetSafeHandle() == nullptr)
+		SidebarBrush.CreateSolidBrush(kEditorSidebarBackgroundColor);
+
+	auto softenPanelBorder = [](CStatic& panel)
+	{
+		if (!::IsWindow(panel.GetSafeHwnd()))
+			return;
+		panel.ModifyStyle(SS_ETCHEDFRAME, WS_BORDER);
+		panel.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+		panel.SetWindowPos(nullptr, 0, 0, 0, 0,
+			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+	};
+	softenPanelBorder(SidebarPanel);
+	softenPanelBorder(BrowserPanel);
+	softenPanelBorder(InspectorPanel);
+	SidebarPanel.ShowWindow(SW_HIDE);
+	BrowserPanel.ShowWindow(SW_HIDE);
+	InspectorPanel.ShowWindow(SW_HIDE);
+	SidebarDivider.ShowWindow(SW_HIDE);
+
+	ObjectList.ModifyStyleEx(WS_EX_CLIENTEDGE, 0);
+	ObjectList.SetBkColor(kEditorThemeBackgroundColor);
+	ObjectList.SetTextBkColor(kEditorThemeBackgroundColor);
+	ObjectList.SetTextColor(kEditorTextColor);
+
+	if (GetFont() != nullptr)
+	{
+		LOGFONT lf = {};
+		GetFont()->GetLogFont(&lf);
+		LOGFONT titleLf = lf;
+		titleLf.lfHeight = (std::max)(18L, lf.lfHeight + 8);
+		titleLf.lfWeight = FW_BOLD;
+		TitleFont.CreateFontIndirect(&titleLf);
+
+		LOGFONT sectionLf = lf;
+		sectionLf.lfWeight = FW_BOLD;
+		SectionHeaderFont.CreateFontIndirect(&sectionLf);
+
+		LOGFONT uniformLf = lf;
+		uniformLf.lfHeight = lf.lfHeight - 2;
+		UniformUiFont.CreateFontIndirect(&uniformLf);
+
+		LOGFONT monoLf = lf;
+		strcpy_s(monoLf.lfFaceName, LF_FACESIZE, "Consolas");
+		MonoFont.CreateFontIndirect(&monoLf);
+
+		CFont* uniformFont = UniformUiFont.GetSafeHandle() != nullptr ? &UniformUiFont : GetFont();
+		for (CWnd* child = GetWindow(GW_CHILD); child != nullptr; child = child->GetNextWindow())
+		{
+			if (::IsWindow(child->GetSafeHwnd()) && uniformFont != nullptr)
+				child->SetFont(uniformFont, TRUE);
+		}
+
+		if (TitleFont.GetSafeHandle() != nullptr)
+			PageTitleLabel.SetFont(&TitleFont, TRUE);
+		if (SectionHeaderFont.GetSafeHandle() != nullptr)
+		{
+			SidebarTitle.SetFont(&SectionHeaderFont, TRUE);
+			BrowserHeader.SetFont(&SectionHeaderFont, TRUE);
+			DetailsHeader.SetFont(&SectionHeaderFont, TRUE);
+		}
+		if (MonoFont.GetSafeHandle() != nullptr)
+		{
+			ObjectList.SetFont(&MonoFont, TRUE);
+			CoordinatesEdit.SetFont(&MonoFont, TRUE);
+			RawEdit.SetFont(&MonoFont, TRUE);
+		}
+	}
+
+	SidebarPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	BrowserPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+	InspectorPanel.SetWindowPos(&CWnd::wndBottom, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+void CAvisoEditorDialog::ApplyThemedEditBorders()
+{
+	auto normalizeEdit = [](CEdit& edit)
+	{
+		if (!::IsWindow(edit.GetSafeHwnd()))
+			return;
+		edit.ModifyStyle(0, WS_BORDER);
+		edit.ModifyStyleEx(0, WS_EX_CLIENTEDGE);
+		edit.SetWindowPos(nullptr, 0, 0, 0, 0,
+			SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+		edit.SendMessage(EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(4, 4));
+	};
+
+	normalizeEdit(SearchEdit);
+	normalizeEdit(NameEdit);
+	normalizeEdit(LayerEdit);
+	normalizeEdit(ObjectTypeEdit);
+	normalizeEdit(GeometryEdit);
+	normalizeEdit(FillEdit);
+	normalizeEdit(FillOpacityEdit);
+	normalizeEdit(StrokeEdit);
+	normalizeEdit(StrokeOpacityEdit);
+	normalizeEdit(StrokeWidthEdit);
+	normalizeEdit(TextEdit);
+	normalizeEdit(TextFontEdit);
+	normalizeEdit(TextColorEdit);
+	normalizeEdit(TextSizeEdit);
+	normalizeEdit(TextAnchorEdit);
+	normalizeEdit(HaloColorEdit);
+	normalizeEdit(HaloWidthEdit);
+	normalizeEdit(LongitudeEdit);
+	normalizeEdit(LatitudeEdit);
+	normalizeEdit(CoordinatesEdit);
+	normalizeEdit(RawEdit);
+}
+
+void CAvisoEditorDialog::ForceChildRepaint()
+{
+	if (::IsWindow(GetSafeHwnd()))
+		RedrawWindow(nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 void CAvisoEditorDialog::LayoutControls()
@@ -306,136 +535,187 @@ void CAvisoEditorDialog::LayoutControls()
 
 	CRect client;
 	GetClientRect(&client);
-	const int margin = 8;
-	const int gap = 6;
-	const int buttonH = 24;
-	const int rowH = 23;
-	const int topH = 38;
-	const int leftButtonRows = 4;
-	int leftW = std::clamp(client.Width() * 46 / 100, 360, 660);
-	const int maxLeftW = (std::max)(300, client.Width() - margin * 2 - 12 - 360);
-	leftW = (std::min)(leftW, maxLeftW);
-	const int listBottom = client.bottom - margin - ((buttonH + gap) * leftButtonRows);
-	const int rightX = margin + leftW + 12;
-	const int rightW = (std::max)(120, static_cast<int>(client.right) - rightX - margin);
-
-	PathLabel.MoveWindow(margin, margin, client.Width() - margin * 2, 16);
-	StatusLabel.MoveWindow(margin, margin + 18, client.Width() - margin * 2, 16);
-
-	int leftY = margin + topH;
-	SearchLabel.MoveWindow(margin, leftY + 4, 48, 16);
-	SearchEdit.MoveWindow(margin + 52, leftY, leftW - 52, 20);
-	leftY += rowH;
-
+	const int sidebarWidth = 128;
+	const int sidebarPad = 16;
+	const int navButtonHeight = 38;
+	const int navGap = 8;
+	const int mainPad = 18;
+	const int innerPad = 16;
+	const int panelGap = 16;
+	const int rowHeight = 24;
+	const int fieldHeight = 24;
 	const int comboDropH = 140;
-	const int halfFilterW = (leftW - 86) / 2;
-	LayerFilterLabel.MoveWindow(margin, leftY + 4, 40, 16);
-	LayerFilterCombo.MoveWindow(margin + 42, leftY, halfFilterW, comboDropH);
-	ObjectTypeFilterLabel.MoveWindow(margin + 48 + halfFilterW, leftY + 4, 40, 16);
-	ObjectTypeFilterCombo.MoveWindow(margin + 88 + halfFilterW, leftY, leftW - 88 - halfFilterW, comboDropH);
-	leftY += rowH;
+	const int actionButtonWidth = 96;
+	const int actionButtonHeight = 38;
+	const int actionButtonGap = 10;
 
-	const int thirdFilterW = (leftW - 182) / 3;
-	GeometryFilterLabel.MoveWindow(margin, leftY + 4, 58, 16);
-	GeometryFilterCombo.MoveWindow(margin + 60, leftY, thirdFilterW, comboDropH);
-	VisibilityFilterLabel.MoveWindow(margin + 66 + thirdFilterW, leftY + 4, 58, 16);
-	VisibilityFilterCombo.MoveWindow(margin + 126 + thirdFilterW, leftY, thirdFilterW, comboDropH);
-	StyleFilterLabel.MoveWindow(margin + 132 + thirdFilterW * 2, leftY + 4, 36, 16);
-	StyleFilterCombo.MoveWindow(margin + 170 + thirdFilterW * 2, leftY, (std::max)(80, leftW - 170 - thirdFilterW * 2), comboDropH);
-	leftY += rowH;
+	SidebarPanelRect.SetRect(client.left, client.top, client.left + sidebarWidth, client.top + (std::max)(120, client.Height()));
+	SidebarPanel.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	SidebarTitle.MoveWindow(client.left + sidebarPad, client.top + 18, sidebarWidth - (sidebarPad * 2), 20, TRUE);
+	SidebarDivider.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
 
-	const int countLabelW = 180;
-	CategoryFilterLabel.MoveWindow(margin, leftY + 4, 58, 16);
-	CategoryFilterCombo.MoveWindow(margin + 60, leftY, (std::max)(120, leftW - 60 - countLabelW - gap), comboDropH);
-	ObjectCountLabel.MoveWindow(margin + leftW - countLabelW, leftY + 4, countLabelW, 16);
-	leftY += rowH + gap;
+	int navY = client.top + 46;
+	const int navWidth = sidebarWidth - (sidebarPad * 2);
+	CurrentPageButton.MoveWindow(client.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
+	navY += navButtonHeight + navGap;
+	LoadAvisoButton.MoveWindow(client.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
+	navY += navButtonHeight + navGap;
+	MapsJsonButton.MoveWindow(client.left + sidebarPad, navY, navWidth, navButtonHeight, TRUE);
 
-	ObjectList.MoveWindow(margin, leftY, leftW, (std::max)(80, listBottom - leftY));
-	const int visibleColumnW = 58;
-	const int geometryColumnW = 92;
-	const int objectTypeColumnW = 112;
-	const int layerColumnW = 118;
-	const int nameColumnW = (std::max)(150, leftW - visibleColumnW - geometryColumnW - objectTypeColumnW - layerColumnW - 8);
+	const int mainLeft = client.left + sidebarWidth + mainPad;
+	const int mainTop = client.top + mainPad;
+	const int mainWidth = (std::max)(220, client.Width() - sidebarWidth - (mainPad * 2));
+	const int headerHeight = 50;
+	const int actionsRight = mainLeft + mainWidth;
+	const int bottomActionY = (std::max)(mainTop + headerHeight + 80, static_cast<int>(client.bottom) - mainPad - actionButtonHeight);
+
+	SaveButton.MoveWindow(actionsRight - actionButtonWidth, bottomActionY, actionButtonWidth, actionButtonHeight, TRUE);
+	ApplyButton.MoveWindow(actionsRight - (actionButtonWidth * 2) - actionButtonGap, bottomActionY, actionButtonWidth, actionButtonHeight, TRUE);
+	DeleteButton.MoveWindow(actionsRight - (actionButtonWidth * 3) - (actionButtonGap * 2), bottomActionY, actionButtonWidth, actionButtonHeight, TRUE);
+	PageTitleLabel.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	PageSubtitleLabel.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	const int headerTextWidth = (std::max)(160, mainWidth);
+	PathLabel.MoveWindow(mainLeft, mainTop + 5, headerTextWidth, 16, TRUE);
+	StatusLabel.MoveWindow(mainLeft, mainTop + 25, headerTextWidth, 16, TRUE);
+
+	const int pageTop = mainTop + headerHeight + 14;
+	const int pageHeight = (std::max)(140, bottomActionY - pageTop - 12);
+	const int availableWidth = (std::max)(420, mainWidth - panelGap);
+	const int minInspectorWidth = 360;
+	int browserW = std::clamp(availableWidth * 54 / 100, 400, availableWidth - minInspectorWidth);
+	if (browserW < 260)
+		browserW = availableWidth / 2;
+	const int inspectorW = (std::max)(240, availableWidth - browserW);
+	const int browserX = mainLeft;
+	const int inspectorX = browserX + browserW + panelGap;
+
+	BrowserPanelRect.SetRect(browserX, pageTop, browserX + browserW, pageTop + pageHeight);
+	InspectorPanelRect.SetRect(inspectorX, pageTop, inspectorX + inspectorW, pageTop + pageHeight);
+	BrowserPanel.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	InspectorPanel.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	BrowserHeader.MoveWindow(browserX + 10, pageTop + 10, 120, 24, TRUE);
+	ObjectCountLabel.MoveWindow(browserX + browserW - innerPad - 210, pageTop + 12, 210, 18, TRUE);
+
+	int leftY = pageTop + 42;
+	const int contentLeft = browserX + innerPad;
+	const int contentRight = browserX + browserW - innerPad;
+	const int contentW = (std::max)(120, contentRight - contentLeft);
+	auto hideFilterControl = [](CWnd& window)
+	{
+		if (!::IsWindow(window.GetSafeHwnd()))
+			return;
+		window.ShowWindow(SW_HIDE);
+		window.MoveWindow(kOffscreenPos, kOffscreenPos, 10, 10, TRUE);
+	};
+
+	SearchLabel.MoveWindow(contentLeft, leftY + 4, 58, 16, TRUE);
+	const int clearButtonW = 62;
+	const int filterButtonW = 84;
+	const int filterButtonGap = 8;
+	const int searchX = contentLeft + 64;
+	const int searchW = (std::max)(80, contentW - 64 - filterButtonW - clearButtonW - (filterButtonGap * 2));
+	SearchEdit.MoveWindow(searchX, leftY, searchW, fieldHeight, TRUE);
+	FilterButton.MoveWindow(searchX + searchW + filterButtonGap, leftY - 1, filterButtonW, fieldHeight + 2, TRUE);
+	ClearFiltersButton.MoveWindow(searchX + searchW + filterButtonGap + filterButtonW + filterButtonGap, leftY - 1, clearButtonW, fieldHeight + 2, TRUE);
+	leftY += rowHeight + 12;
+
+	hideFilterControl(LayerFilterLabel);
+	hideFilterControl(LayerFilterCombo);
+	hideFilterControl(ObjectTypeFilterLabel);
+	hideFilterControl(ObjectTypeFilterCombo);
+	hideFilterControl(GeometryFilterLabel);
+	hideFilterControl(GeometryFilterCombo);
+	hideFilterControl(VisibilityFilterLabel);
+	hideFilterControl(VisibilityFilterCombo);
+	hideFilterControl(StyleFilterLabel);
+	hideFilterControl(StyleFilterCombo);
+	hideFilterControl(CategoryFilterLabel);
+	hideFilterControl(CategoryFilterCombo);
+
+	const int listBottom = pageTop + pageHeight - innerPad;
+	ObjectList.MoveWindow(contentLeft, leftY, contentW, (std::max)(80, listBottom - leftY), TRUE);
+	const int visibleColumnW = 54;
+	const int geometryColumnW = std::clamp(contentW / 6, 68, 92);
+	const int objectTypeColumnW = std::clamp(contentW / 5, 76, 112);
+	const int layerColumnW = std::clamp(contentW / 4, 92, 118);
+	const int nameColumnW = (std::max)(80, contentW - visibleColumnW - geometryColumnW - objectTypeColumnW - layerColumnW - 4);
 	ObjectList.SetColumnWidth(0, visibleColumnW);
 	ObjectList.SetColumnWidth(1, nameColumnW);
 	ObjectList.SetColumnWidth(2, layerColumnW);
 	ObjectList.SetColumnWidth(3, objectTypeColumnW);
 	ObjectList.SetColumnWidth(4, geometryColumnW);
 
-	int leftButtonY = listBottom + gap;
-	const int halfButtonW = (leftW - gap) / 2;
-	ReloadButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
-	SaveButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
-	leftButtonY += buttonH + gap;
-	SelectFilteredButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
-	DuplicateButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
-	leftButtonY += buttonH + gap;
-	AddLabelButton.MoveWindow(margin, leftButtonY, halfButtonW, buttonH);
-	AddLineButton.MoveWindow(margin + halfButtonW + gap, leftButtonY, halfButtonW, buttonH);
-	leftButtonY += buttonH + gap;
-	DeleteButton.MoveWindow(margin, leftButtonY, leftW, buttonH);
+	const int inspectorLeft = inspectorX + innerPad;
+	const int inspectorRight = inspectorX + inspectorW - innerPad;
+	const int inspectorContentW = (std::max)(120, inspectorRight - inspectorLeft);
+	int y = pageTop + 12;
+	DetailsHeader.MoveWindow(inspectorLeft, y, (std::max)(140, inspectorContentW - 92), 24, TRUE);
+	VisibleCheck.MoveWindow(inspectorRight - 84, y - 1, 84, 22, TRUE);
+	y += 30;
+	ApplyScopeLabel.ShowWindow(SW_SHOW);
+	ApplyScopeCombo.ShowWindow(SW_SHOW);
+	ApplyScopeLabel.MoveWindow(inspectorLeft, y + 4, 58, 16, TRUE);
+	ApplyScopeCombo.MoveWindow(inspectorLeft + 64, y, (std::max)(90, inspectorContentW - 64), comboDropH, TRUE);
+	y += rowHeight + 8;
+	PropertyTabs.MoveWindow(inspectorLeft, y, inspectorContentW, 26, TRUE);
+	y += 36;
 
-	int y = margin + topH;
-	DetailsHeader.MoveWindow(rightX, y, 132, 18);
-	VisibleCheck.MoveWindow(rightX + 136, y - 1, 76, 20);
-	ApplyScopeLabel.ShowWindow(SW_HIDE);
-	ApplyScopeCombo.ShowWindow(SW_HIDE);
-	y += 24;
-	PropertyTabs.MoveWindow(rightX, y, rightW, 26);
-	y += 32;
-
-	const int labelW = 86;
-	const int editW = (std::max)(80, (rightW - labelW * 2 - gap * 3) / 2);
-	auto movePair = [&](CStatic& label, CEdit& edit, int column, int rowY)
+	const int labelW = 92;
+	const int fieldW = (std::max)(90, inspectorContentW - labelW);
+	auto moveRow = [&](CStatic& label, CEdit& edit, int rowY)
 	{
-		const int columnX = rightX + column * (labelW + editW + gap);
-		label.MoveWindow(columnX, rowY + 4, labelW, 16);
-		edit.MoveWindow(columnX + labelW, rowY, editW, 20);
+		label.MoveWindow(inspectorLeft, rowY + 4, labelW, 16, TRUE);
+		edit.MoveWindow(inspectorLeft + labelW, rowY, fieldW, fieldHeight, TRUE);
 	};
 	auto moveFull = [&](CStatic& label, CEdit& edit, int rowY, int height)
 	{
-		label.MoveWindow(rightX, rowY + 4, labelW, 16);
-		edit.MoveWindow(rightX + labelW, rowY, rightW - labelW, height);
+		label.MoveWindow(inspectorLeft, rowY + 4, labelW, 16, TRUE);
+		edit.MoveWindow(inspectorLeft + labelW, rowY, fieldW, height, TRUE);
 	};
 
 	const int tabTopY = y;
-	const int bottomButtonY = client.bottom - margin - buttonH;
-	movePair(NameLabel, NameEdit, 0, y);
-	movePair(LayerLabel, LayerEdit, 1, y);
-	y += rowH;
-	movePair(ObjectTypeLabel, ObjectTypeEdit, 0, y);
-	movePair(GeometryLabel, GeometryEdit, 1, y);
+	const int inspectorBottom = pageTop + pageHeight - innerPad;
+	moveRow(NameLabel, NameEdit, y);
+	y += rowHeight;
+	moveRow(LayerLabel, LayerEdit, y);
+	y += rowHeight;
+	moveRow(ObjectTypeLabel, ObjectTypeEdit, y);
+	y += rowHeight;
+	moveRow(GeometryLabel, GeometryEdit, y);
 	y = tabTopY;
-	movePair(FillLabel, FillEdit, 0, y);
-	movePair(FillOpacityLabel, FillOpacityEdit, 1, y);
-	y += rowH;
-	movePair(StrokeLabel, StrokeEdit, 0, y);
-	movePair(StrokeOpacityLabel, StrokeOpacityEdit, 1, y);
-	y += rowH;
-	movePair(StrokeWidthLabel, StrokeWidthEdit, 0, y);
+	moveRow(FillLabel, FillEdit, y);
+	y += rowHeight;
+	moveRow(FillOpacityLabel, FillOpacityEdit, y);
+	y += rowHeight;
+	moveRow(StrokeLabel, StrokeEdit, y);
+	y += rowHeight;
+	moveRow(StrokeOpacityLabel, StrokeOpacityEdit, y);
+	y += rowHeight;
+	moveRow(StrokeWidthLabel, StrokeWidthEdit, y);
 	y = tabTopY;
 	moveFull(TextLabel, TextEdit, y, 90);
 	y += 96;
-	movePair(TextFontLabel, TextFontEdit, 0, y);
-	movePair(TextColorLabel, TextColorEdit, 1, y);
-	y += rowH;
-	movePair(TextSizeLabel, TextSizeEdit, 0, y);
-	movePair(TextAnchorLabel, TextAnchorEdit, 1, y);
-	y += rowH;
-	movePair(HaloColorLabel, HaloColorEdit, 0, y);
-	movePair(HaloWidthLabel, HaloWidthEdit, 1, y);
+	moveRow(TextFontLabel, TextFontEdit, y);
+	y += rowHeight;
+	moveRow(TextColorLabel, TextColorEdit, y);
+	y += rowHeight;
+	moveRow(TextSizeLabel, TextSizeEdit, y);
+	y += rowHeight;
+	moveRow(TextAnchorLabel, TextAnchorEdit, y);
+	y += rowHeight;
+	moveRow(HaloColorLabel, HaloColorEdit, y);
+	y += rowHeight;
+	moveRow(HaloWidthLabel, HaloWidthEdit, y);
 	y = tabTopY;
-	movePair(LongitudeLabel, LongitudeEdit, 0, y);
-	movePair(LatitudeLabel, LatitudeEdit, 1, y);
-	y += rowH + 2;
-	const int coordinatesH = (std::max)(50, bottomButtonY - y - gap);
+	moveRow(LongitudeLabel, LongitudeEdit, y);
+	y += rowHeight;
+	moveRow(LatitudeLabel, LatitudeEdit, y);
+	y += rowHeight + 2;
+	const int coordinatesH = (std::max)(50, inspectorBottom - y);
 	moveFull(CoordinatesLabel, CoordinatesEdit, y, coordinatesH);
-	RawLabel.MoveWindow(rightX, tabTopY + 4, labelW, 16);
-	RawEdit.MoveWindow(rightX + labelW, tabTopY, rightW - labelW, (std::max)(80, bottomButtonY - tabTopY - gap));
+	RawLabel.MoveWindow(inspectorLeft, tabTopY + 4, labelW, 16, TRUE);
+	RawEdit.MoveWindow(inspectorLeft + labelW, tabTopY, fieldW, (std::max)(80, inspectorBottom - tabTopY), TRUE);
 
-	const int actionW = 92;
-	CloseButton.MoveWindow(client.right - margin - actionW, bottomButtonY, actionW, buttonH);
-	ApplyButton.MoveWindow(client.right - margin - actionW * 2 - gap, bottomButtonY, actionW, buttonH);
 	UpdatePropertyTabVisibility();
 }
 
@@ -581,6 +861,7 @@ void CAvisoEditorDialog::OnSize(UINT nType, int cx, int cy)
 	LastLayoutWidth = cx;
 	LastLayoutHeight = cy;
 	LayoutControls();
+	Invalidate(TRUE);
 }
 
 void CAvisoEditorDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -588,9 +869,318 @@ void CAvisoEditorDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 	CDialogEx::OnGetMinMaxInfo(lpMMI);
 	if (lpMMI != nullptr)
 	{
-		lpMMI->ptMinTrackSize.x = 820;
-		lpMMI->ptMinTrackSize.y = 520;
+		lpMMI->ptMinTrackSize.x = 980;
+		lpMMI->ptMinTrackSize.y = 640;
 	}
+}
+
+void CAvisoEditorDialog::OnShowWindow(BOOL bShow, UINT nStatus)
+{
+	CDialogEx::OnShowWindow(bShow, nStatus);
+	if (bShow && ControlsCreated)
+	{
+		LayoutControls();
+		ForceChildRepaint();
+	}
+}
+
+void CAvisoEditorDialog::OnDestroy()
+{
+	CDialogEx::OnDestroy();
+}
+
+void CAvisoEditorDialog::OnPaint()
+{
+	CPaintDC dc(this);
+	CRect client;
+	GetClientRect(&client);
+	dc.FillSolidRect(&client, kEditorThemeBackgroundColor);
+
+	const auto drawCardRect = [&](const CRect& sourceRect)
+	{
+		CRect rect(sourceRect);
+		if (rect.Width() <= 2 || rect.Height() <= 2)
+			return;
+
+		CRect card(rect);
+		card.DeflateRect(1, 1);
+		CBrush fillBrush(kEditorThemeBackgroundColor);
+		CPen borderPen(PS_SOLID, 1, kEditorBorderColor);
+		CBrush* oldBrush = dc.SelectObject(&fillBrush);
+		CPen* oldPen = dc.SelectObject(&borderPen);
+		dc.RoundRect(&card, CPoint(12, 12));
+		dc.SelectObject(oldPen);
+		dc.SelectObject(oldBrush);
+	};
+
+	const auto drawSectionDivider = [&](CWnd& header, const CRect& panelRect)
+	{
+		if (!::IsWindow(header.GetSafeHwnd()) || !header.IsWindowVisible() || panelRect.IsRectEmpty())
+			return;
+
+		CRect headerRect;
+		header.GetWindowRect(&headerRect);
+		ScreenToClient(&headerRect);
+
+		const int lineY = (std::min)(panelRect.bottom - 12, headerRect.bottom + 3);
+		const int lineLeft = panelRect.left + 12;
+		const int lineRight = panelRect.right - 12;
+		if (lineRight <= lineLeft)
+			return;
+
+		CPen dividerPen(PS_SOLID, 1, RGB(210, 215, 223));
+		CPen* oldPen = dc.SelectObject(&dividerPen);
+		dc.MoveTo(lineLeft, lineY);
+		dc.LineTo(lineRight, lineY);
+		dc.SelectObject(oldPen);
+	};
+
+	if (!SidebarPanelRect.IsRectEmpty())
+	{
+		dc.FillSolidRect(&SidebarPanelRect, kEditorSidebarBackgroundColor);
+		CPen dividerPen(PS_SOLID, 1, kEditorBorderColor);
+		CPen* oldPen = dc.SelectObject(&dividerPen);
+		dc.MoveTo(SidebarPanelRect.right - 1, SidebarPanelRect.top);
+		dc.LineTo(SidebarPanelRect.right - 1, SidebarPanelRect.bottom);
+		dc.SelectObject(oldPen);
+	}
+
+	drawCardRect(BrowserPanelRect);
+	drawCardRect(InspectorPanelRect);
+	drawSectionDivider(BrowserHeader, BrowserPanelRect);
+	drawSectionDivider(DetailsHeader, InspectorPanelRect);
+}
+
+void CAvisoEditorDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
+{
+	if (lpDrawItemStruct == nullptr)
+	{
+		CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
+		return;
+	}
+
+	const UINT controlId = lpDrawItemStruct->CtlID;
+	const bool isModernButton =
+		controlId == IDC_AE_CURRENT_PAGE_BUTTON ||
+		controlId == IDC_AE_LOAD_AVISO_BUTTON ||
+		controlId == IDC_AE_MAPS_JSON_BUTTON ||
+		controlId == IDC_AE_SAVE_BUTTON ||
+		controlId == IDC_AE_DELETE_BUTTON ||
+		controlId == IDC_AE_APPLY_BUTTON ||
+		controlId == IDC_AE_FILTER_BUTTON ||
+		controlId == IDC_AE_CLEAR_FILTERS_BUTTON;
+	if (!isModernButton)
+	{
+		CDialogEx::OnDrawItem(nIDCtl, lpDrawItemStruct);
+		return;
+	}
+
+	CDC dc;
+	dc.Attach(lpDrawItemStruct->hDC);
+	CRect outerRect(lpDrawItemStruct->rcItem);
+	CRect localOuter(0, 0, outerRect.Width(), outerRect.Height());
+
+	CDC memDc;
+	memDc.CreateCompatibleDC(&dc);
+	CBitmap frameBitmap;
+	frameBitmap.CreateCompatibleBitmap(&dc, (std::max)(1, localOuter.Width()), (std::max)(1, localOuter.Height()));
+	CBitmap* oldFrameBitmap = memDc.SelectObject(&frameBitmap);
+
+	const bool isSidebarButton =
+		controlId == IDC_AE_CURRENT_PAGE_BUTTON ||
+		controlId == IDC_AE_LOAD_AVISO_BUTTON ||
+		controlId == IDC_AE_MAPS_JSON_BUTTON;
+	memDc.FillSolidRect(&localOuter, isSidebarButton ? kEditorSidebarBackgroundColor : kEditorThemeBackgroundColor);
+
+	const bool isDisabled = (lpDrawItemStruct->itemState & ODS_DISABLED) != 0;
+	const bool isPressed = (lpDrawItemStruct->itemState & ODS_SELECTED) != 0;
+	const bool isHot = (lpDrawItemStruct->itemState & ODS_HOTLIGHT) != 0;
+	const bool isActivePageButton = controlId == IDC_AE_CURRENT_PAGE_BUTTON;
+	const bool isPrimaryButton = controlId == IDC_AE_SAVE_BUTTON || controlId == IDC_AE_APPLY_BUTTON;
+	const bool isDestructiveButton = controlId == IDC_AE_DELETE_BUTTON;
+
+	COLORREF fillColor = RGB(247, 248, 250);
+	COLORREF borderColor = RGB(171, 180, 190);
+	COLORREF textColor = kEditorTextColor;
+	if (isActivePageButton && !isDisabled)
+	{
+		fillColor = RGB(221, 236, 255);
+		borderColor = RGB(63, 120, 208);
+		textColor = RGB(37, 99, 235);
+	}
+	else if (isPrimaryButton && !isDisabled)
+	{
+		fillColor = isPressed ? RGB(47, 118, 234) : RGB(59, 130, 246);
+		borderColor = RGB(37, 99, 235);
+		textColor = RGB(255, 255, 255);
+	}
+	else if (isDestructiveButton && !isDisabled)
+	{
+		fillColor = RGB(255, 255, 255);
+		borderColor = RGB(220, 38, 38);
+		textColor = RGB(153, 27, 27);
+	}
+	else if (isSidebarButton)
+	{
+		fillColor = kEditorSidebarBackgroundColor;
+		borderColor = kEditorSidebarBackgroundColor;
+		textColor = RGB(31, 41, 55);
+	}
+
+	if (isDisabled)
+	{
+		fillColor = RGB(232, 232, 232);
+		borderColor = RGB(194, 194, 194);
+		textColor = RGB(138, 138, 138);
+	}
+	else if (!isPrimaryButton && isPressed)
+	{
+		fillColor = isDestructiveButton ? RGB(254, 226, 226) : RGB(221, 236, 255);
+		borderColor = isDestructiveButton ? RGB(185, 28, 28) : RGB(63, 120, 208);
+	}
+	else if (!isPrimaryButton && isHot)
+	{
+		fillColor = isDestructiveButton ? RGB(254, 242, 242) : RGB(236, 245, 255);
+		borderColor = isDestructiveButton ? RGB(239, 68, 68) : RGB(102, 153, 224);
+	}
+
+	CRect buttonRect(localOuter);
+	buttonRect.DeflateRect(1, 1);
+	CBrush fillBrush(fillColor);
+	CPen borderPen(PS_SOLID, 1, borderColor);
+	CBrush* oldBrush = memDc.SelectObject(&fillBrush);
+	CPen* oldPen = memDc.SelectObject(&borderPen);
+	memDc.RoundRect(&buttonRect, CPoint(10, 10));
+	memDc.SelectObject(oldPen);
+	memDc.SelectObject(oldBrush);
+
+	CString buttonText;
+	if (CWnd* button = GetDlgItem(controlId))
+		button->GetWindowText(buttonText);
+	CFont* oldFont = nullptr;
+	if (CWnd* button = GetDlgItem(controlId))
+	{
+		CFont* font = button->GetFont();
+		if (font != nullptr)
+			oldFont = memDc.SelectObject(font);
+	}
+	memDc.SetBkMode(TRANSPARENT);
+	memDc.SetTextColor(textColor);
+	CRect textRect(buttonRect);
+	memDc.DrawText(buttonText, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+	if (oldFont != nullptr)
+		memDc.SelectObject(oldFont);
+
+	if ((lpDrawItemStruct->itemState & ODS_FOCUS) != 0)
+	{
+		CRect focusRect(buttonRect);
+		focusRect.DeflateRect(4, 3);
+		memDc.DrawFocusRect(&focusRect);
+	}
+
+	dc.BitBlt(outerRect.left, outerRect.top, localOuter.Width(), localOuter.Height(), &memDc, 0, 0, SRCCOPY);
+	memDc.SelectObject(oldFrameBitmap);
+	dc.Detach();
+}
+
+HBRUSH CAvisoEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+	HBRUSH hbr = CDialogEx::OnCtlColor(pDC, pWnd, nCtlColor);
+	if (pWnd == nullptr)
+		return hbr;
+
+	const int controlId = pWnd->GetDlgCtrlID();
+	if (nCtlColor == CTLCOLOR_BTN)
+		return hbr;
+
+	if ((controlId == IDC_AE_SIDEBAR_PANEL || controlId == IDC_AE_SIDEBAR_TITLE) && SidebarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorSidebarBackgroundColor);
+		pDC->SetTextColor(controlId == IDC_AE_SIDEBAR_TITLE ? RGB(92, 101, 116) : kEditorTextColor);
+		return static_cast<HBRUSH>(SidebarBrush.GetSafeHandle());
+	}
+
+	if ((nCtlColor == CTLCOLOR_STATIC || nCtlColor == CTLCOLOR_DLG) && HeaderBarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorThemeBackgroundColor);
+		if (controlId == IDC_AE_PAGE_SUBTITLE || controlId == IDC_AE_PATH_LABEL || controlId == IDC_AE_STATUS_LABEL)
+			pDC->SetTextColor(kEditorMutedTextColor);
+		else
+			pDC->SetTextColor(kEditorTextColor);
+		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+	}
+
+	if (nCtlColor == CTLCOLOR_EDIT)
+	{
+		pDC->SetBkColor(RGB(255, 255, 255));
+		pDC->SetTextColor(kEditorTextColor);
+		return ::GetSysColorBrush(COLOR_WINDOW);
+	}
+
+	if (nCtlColor == CTLCOLOR_LISTBOX && HeaderBarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorThemeBackgroundColor);
+		pDC->SetTextColor(kEditorTextColor);
+		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+	}
+
+	const bool useThemeBackground = [&]()
+	{
+		switch (controlId)
+		{
+		case IDC_AE_PATH_LABEL:
+		case IDC_AE_STATUS_LABEL:
+		case IDC_AE_PAGE_TITLE:
+		case IDC_AE_PAGE_SUBTITLE:
+		case IDC_AE_BROWSER_PANEL:
+		case IDC_AE_INSPECTOR_PANEL:
+		case IDC_AE_BROWSER_HEADER:
+		case IDC_AE_DETAILS_HEADER:
+		case IDC_AE_SEARCH_EDIT:
+		case IDC_AE_LAYER_FILTER_COMBO:
+		case IDC_AE_OBJECT_TYPE_FILTER_COMBO:
+		case IDC_AE_GEOMETRY_FILTER_COMBO:
+		case IDC_AE_VISIBILITY_FILTER_COMBO:
+		case IDC_AE_STYLE_FILTER_COMBO:
+		case IDC_AE_CATEGORY_FILTER_COMBO:
+		case IDC_AE_OBJECT_LIST:
+		case IDC_AE_VISIBLE_CHECK:
+		case IDC_AE_NAME_EDIT:
+		case IDC_AE_LAYER_EDIT:
+		case IDC_AE_OBJECT_TYPE_EDIT:
+		case IDC_AE_GEOMETRY_EDIT:
+		case IDC_AE_FILL_EDIT:
+		case IDC_AE_FILL_OPACITY_EDIT:
+		case IDC_AE_STROKE_EDIT:
+		case IDC_AE_STROKE_OPACITY_EDIT:
+		case IDC_AE_STROKE_WIDTH_EDIT:
+		case IDC_AE_TEXT_EDIT:
+		case IDC_AE_TEXT_FONT_EDIT:
+		case IDC_AE_TEXT_COLOR_EDIT:
+		case IDC_AE_TEXT_SIZE_EDIT:
+		case IDC_AE_TEXT_ANCHOR_EDIT:
+		case IDC_AE_HALO_COLOR_EDIT:
+		case IDC_AE_HALO_WIDTH_EDIT:
+		case IDC_AE_LONGITUDE_EDIT:
+		case IDC_AE_LATITUDE_EDIT:
+		case IDC_AE_COORDINATES_EDIT:
+		case IDC_AE_RAW_EDIT:
+			return true;
+		default:
+			return false;
+		}
+	}();
+	if (useThemeBackground && HeaderBarBrush.GetSafeHandle() != nullptr)
+	{
+		pDC->SetBkColor(kEditorThemeBackgroundColor);
+		if (controlId == IDC_AE_PAGE_SUBTITLE || controlId == IDC_AE_PATH_LABEL || controlId == IDC_AE_STATUS_LABEL)
+			pDC->SetTextColor(kEditorMutedTextColor);
+		else
+			pDC->SetTextColor(kEditorTextColor);
+		return static_cast<HBRUSH>(HeaderBarBrush.GetSafeHandle());
+	}
+
+	return hbr;
 }
 
 void CAvisoEditorDialog::OnObjectListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)
@@ -703,56 +1293,14 @@ void CAvisoEditorDialog::OnFieldChanged()
 void CAvisoEditorDialog::OnApplyClicked()
 {
 	if (ApplyPendingFieldsToCurrentSelection(true))
-		SetStatusText("Applied changes in memory. Press Save to write the AVISO file and reload the radar.");
+		SetStatusText("Applied changes in memory. Press Save to write the AVISO file.");
 }
 
 void CAvisoEditorDialog::OnSaveClicked()
 {
 	if (PendingFieldChanges && !ApplyPendingFieldsToCurrentSelection(true))
 		return;
-	SaveDocument(true);
-}
-
-void CAvisoEditorDialog::OnReloadClicked()
-{
-	if (!PromptForUnsavedChanges("reloading the AVISO file"))
-		return;
-	LoadDocumentFromCurrentAviso(true);
-	if (Owner != nullptr)
-		Owner->ForceReloadAvisoGeoJson();
-}
-
-void CAvisoEditorDialog::OnAddLabelClicked()
-{
-	if (!EnsureDocumentForEditing())
-		return;
-
-	double longitude = 0.0;
-	double latitude = 0.0;
-	TryGetDefaultInsertPosition(longitude, latitude);
-	rapidjson::Value feature;
-	BuildLabelFeature(longitude, latitude, feature);
-	AddFeature(feature);
-}
-
-void CAvisoEditorDialog::OnAddLineClicked()
-{
-	if (!EnsureDocumentForEditing())
-		return;
-
-	double longitude = 0.0;
-	double latitude = 0.0;
-	TryGetDefaultInsertPosition(longitude, latitude);
-	rapidjson::Value feature;
-	BuildLineFeature(longitude, latitude, feature);
-	AddFeature(feature);
-}
-
-void CAvisoEditorDialog::OnDuplicateClicked()
-{
-	const int featureIndex = GetSelectedFeatureIndex();
-	if (featureIndex >= 0)
-		DuplicateFeatureAt(featureIndex);
+	SaveDocument(false);
 }
 
 void CAvisoEditorDialog::OnDeleteClicked()
@@ -773,53 +1321,503 @@ void CAvisoEditorDialog::OnDeleteClicked()
 		DeleteFeatureAt(featureIndex);
 }
 
-void CAvisoEditorDialog::OnSelectFilteredClicked()
+void CAvisoEditorDialog::OnCurrentPageClicked()
 {
-	if (!::IsWindow(ObjectList.GetSafeHwnd()) || FilteredFeatureIndices.empty())
+	SetStatusText("Object editor is open.");
+}
+
+void CAvisoEditorDialog::OnLoadAvisoClicked()
+{
+	if (!PromptForUnsavedChanges("loading another AVISO file"))
+		return;
+
+	HMENU menu = ::CreatePopupMenu();
+	if (menu == nullptr)
+		return;
+	::AppendMenu(menu, MF_STRING, kLoadAvisoFromComputerCommand, "From computer...");
+	::AppendMenu(menu, MF_STRING, kLoadAvisoFromGithubCommand, "From GitHub URL in clipboard");
+
+	CRect buttonRect;
+	LoadAvisoButton.GetWindowRect(&buttonRect);
+	const UINT command = ::TrackPopupMenu(
+		menu,
+		TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD | TPM_NONOTIFY,
+		buttonRect.left,
+		buttonRect.bottom + 2,
+		0,
+		GetSafeHwnd(),
+		nullptr);
+	::DestroyMenu(menu);
+
+	if (command == kLoadAvisoFromGithubCommand)
 	{
-		SetStatusText("No objects match the current filters.");
+		const std::string clipboardText = ReadClipboardText();
+		if (clipboardText.empty())
+		{
+			SetStatusText("Copy a GitHub GeoJSON URL to the clipboard first.");
+			return;
+		}
+		ImportAvisoGeoJsonFromGithubUrl(clipboardText);
 		return;
 	}
+	if (command != kLoadAvisoFromComputerCommand)
+		return;
 
-	if (PendingFieldChanges)
+	CString initialDir;
+	if (!LoadedPath.empty())
 	{
-		const int response = MessageBox(
-			"Apply pending field changes before selecting all filtered objects?",
-			"AVISO Editor",
-			MB_ICONQUESTION | MB_YESNOCANCEL);
-		if (response == IDCANCEL)
-			return;
-		if (response == IDYES && !ApplyPendingFieldsToCurrentSelection(true))
-			return;
-		if (response == IDNO)
+		try
 		{
-			PendingFieldChanges = false;
-			DirtyFieldMask = 0;
+			const std::filesystem::path parentPath = std::filesystem::path(LoadedPath).parent_path();
+			if (!parentPath.empty())
+				initialDir = parentPath.string().c_str();
+		}
+		catch (...)
+		{
+			initialDir.Empty();
 		}
 	}
 
-	RestoringObjectSelection = true;
-	ObjectList.SetRedraw(FALSE);
-	ObjectList.SetItemState(-1, 0, LVIS_SELECTED | LVIS_FOCUSED);
-	for (int row = 0; row < static_cast<int>(FilteredFeatureIndices.size()); ++row)
-	{
-		const UINT state = row == 0 ? (LVIS_SELECTED | LVIS_FOCUSED) : LVIS_SELECTED;
-		ObjectList.SetItemState(row, state, LVIS_SELECTED | LVIS_FOCUSED);
-	}
-	ObjectList.SetRedraw(TRUE);
-	ObjectList.Invalidate();
-	ObjectList.EnsureVisible(0, FALSE);
-	RestoringObjectSelection = false;
+	CFileDialog dialog(
+		TRUE,
+		"geojson",
+		nullptr,
+		OFN_HIDEREADONLY | OFN_FILEMUSTEXIST,
+		"AVISO GeoJSON (*.geojson)|*.geojson|JSON files (*.json)|*.json|All files (*.*)|*.*||",
+		this);
+	if (!initialDir.IsEmpty())
+		dialog.m_ofn.lpstrInitialDir = initialDir.GetString();
 
-	RefreshFieldsFromSelection();
-	SetStatusText(std::to_string(FilteredFeatureIndices.size()) + " filtered object(s) selected.");
+	if (dialog.DoModal() != IDOK)
+		return;
+
+	ImportAvisoGeoJsonFromFile(std::string(dialog.GetPathName().GetString()));
 }
 
-void CAvisoEditorDialog::OnCloseClicked()
+void CAvisoEditorDialog::OnMapsJsonClicked()
 {
-	if (!PromptForUnsavedChanges("closing the editor"))
+	if (Owner == nullptr || Owner->mapsPath.empty())
+	{
+		SetStatusText("vSMR_Maps.json path is unavailable.");
 		return;
-	HideAndNotifyOwner();
+	}
+
+	const HINSTANCE result = ::ShellExecuteA(GetSafeHwnd(), "open", Owner->mapsPath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+	if (reinterpret_cast<INT_PTR>(result) <= 32)
+	{
+		SetStatusText("Unable to open vSMR_Maps.json.");
+		return;
+	}
+	SetStatusText("Opened vSMR_Maps.json in the associated editor.");
+}
+
+bool CAvisoEditorDialog::ImportAvisoGeoJsonFromFile(const std::string& sourcePath)
+{
+	if (sourcePath.empty())
+	{
+		SetStatusText("No GeoJSON file selected.");
+		return false;
+	}
+
+	std::ifstream input(sourcePath, std::ios::binary);
+	if (!input)
+	{
+		SetStatusText("Unable to open selected GeoJSON file.");
+		return false;
+	}
+
+	std::ostringstream buffer;
+	buffer << input.rdbuf();
+	return ImportAvisoGeoJsonText(buffer.str(), sourcePath);
+}
+
+bool CAvisoEditorDialog::ImportAvisoGeoJsonFromGithubUrl(const std::string& url)
+{
+	const std::string normalizedUrl = NormalizeGithubGeoJsonUrl(url);
+	if (!StartsWithNoCase(normalizedUrl, "https://") && !StartsWithNoCase(normalizedUrl, "http://"))
+	{
+		SetStatusText("Clipboard does not contain a valid GitHub GeoJSON URL.");
+		return false;
+	}
+
+	SetStatusText("Downloading AVISO GeoJSON from GitHub...");
+	HttpHelper http;
+	const std::string geoJsonText = http.downloadStringFromURL(normalizedUrl);
+	if (geoJsonText.empty())
+	{
+		SetStatusText("GitHub GeoJSON download failed.");
+		return false;
+	}
+	return ImportAvisoGeoJsonText(geoJsonText, normalizedUrl);
+}
+
+bool CAvisoEditorDialog::ImportAvisoGeoJsonText(const std::string& geoJsonText, const std::string& sourceHint)
+{
+	if (Owner == nullptr)
+	{
+		SetStatusText("No active radar screen is available.");
+		return false;
+	}
+	if (geoJsonText.empty())
+	{
+		SetStatusText("Selected GeoJSON file is empty.");
+		return false;
+	}
+
+	rapidjson::Document parsed;
+	parsed.Parse<0>(geoJsonText.c_str());
+	if (parsed.HasParseError() || !parsed.IsObject())
+	{
+		SetStatusText("Selected file is not valid GeoJSON.");
+		return false;
+	}
+	if (!parsed.HasMember("features") || !parsed["features"].IsArray())
+	{
+		SetStatusText("Selected GeoJSON must contain a features array.");
+		return false;
+	}
+
+	const std::string airport = DetectAirportForAvisoImport(parsed, sourceHint);
+	if (airport.empty())
+	{
+		SetStatusText("Could not detect the airport ICAO. Use a filename like AVISO_LFBO.geojson or metadata.icao.");
+		return false;
+	}
+
+	const bool sourceIsRemote = StartsWithNoCase(sourceHint, "http://") || StartsWithNoCase(sourceHint, "https://");
+	std::string selectedPath = sourceHint;
+	if (sourceIsRemote)
+	{
+		std::filesystem::path dataDirectory = Owner->DataPath.empty()
+			? (std::filesystem::path(Owner->DllPath) / "vSMR_Data")
+			: std::filesystem::path(Owner->DataPath);
+		std::filesystem::path targetDirectory = dataDirectory / "AVISO";
+		std::string fileName = SanitizeFileName(FileNameFromSourceHint(sourceHint));
+		const std::string fileNameUpper = ToUpperAscii(fileName);
+		if (fileName.empty() ||
+			(fileNameUpper.find(".GEOJSON") == std::string::npos && fileNameUpper.find(".JSON") == std::string::npos))
+		{
+			fileName = "AVISO_" + airport + "_github.geojson";
+		}
+		else if (fileNameUpper.find(airport) == std::string::npos)
+		{
+			fileName = "AVISO_" + airport + "_" + fileName;
+		}
+
+		const std::filesystem::path targetPath = targetDirectory / fileName;
+		selectedPath = targetPath.string();
+		try
+		{
+			std::filesystem::create_directories(targetDirectory);
+			if (std::filesystem::exists(targetPath))
+			{
+				const std::string message = "Replace downloaded AVISO variant " + targetPath.filename().string() + "?";
+				if (MessageBox(message.c_str(), "AVISO Editor", MB_ICONQUESTION | MB_YESNO) != IDYES)
+					return false;
+			}
+			std::ofstream output(selectedPath, std::ios::binary | std::ios::trunc);
+			if (!output)
+			{
+				SetStatusText("Unable to write downloaded AVISO file.");
+				return false;
+			}
+			output.write(geoJsonText.data(), static_cast<std::streamsize>(geoJsonText.size()));
+			if (!output)
+			{
+				SetStatusText("Unable to finish writing downloaded AVISO file.");
+				return false;
+			}
+		}
+		catch (const std::exception& ex)
+		{
+			SetStatusText("Unable to store downloaded AVISO: " + std::string(ex.what()));
+			return false;
+		}
+		catch (...)
+		{
+			SetStatusText("Unable to store downloaded AVISO.");
+			return false;
+		}
+	}
+	else if (!std::filesystem::exists(selectedPath))
+	{
+		SetStatusText("Selected AVISO file no longer exists.");
+		return false;
+	}
+
+	Owner->setActiveAirport(airport);
+	Owner->SetAvisoGeoJsonOverrideForAirport(airport, selectedPath);
+	LoadDocumentFromPath(selectedPath, false, "Loaded AVISO variant for " + airport + ". Select an object to edit.");
+	Owner->ForceReloadAvisoGeoJson();
+	SetStatusText("Loaded AVISO variant for " + airport + ".");
+	return true;
+}
+
+std::string CAvisoEditorDialog::DetectAirportForAvisoImport(const rapidjson::Document& document, const std::string& sourceHint) const
+{
+	const char* keys[] = { "icao", "icao_code", "airport_icao", "airport_code", "airport", "active_airport" };
+	auto findInObject = [&](const rapidjson::Value& object) -> std::string
+	{
+		if (!object.IsObject())
+			return "";
+		for (const char* key : keys)
+		{
+			if (object.HasMember(key) && object[key].IsString())
+			{
+				const std::string candidate = NormalizeAirportCandidate(object[key].GetString());
+				if (!candidate.empty())
+					return candidate;
+			}
+		}
+		return "";
+	};
+
+	std::string airport = findInObject(document);
+	if (!airport.empty())
+		return airport;
+	if (document.HasMember("metadata") && document["metadata"].IsObject())
+	{
+		airport = findInObject(document["metadata"]);
+		if (!airport.empty())
+			return airport;
+	}
+	if (document.HasMember("properties") && document["properties"].IsObject())
+	{
+		airport = findInObject(document["properties"]);
+		if (!airport.empty())
+			return airport;
+	}
+
+	std::string hint = sourceHint;
+	std::replace(hint.begin(), hint.end(), '\\', '/');
+	const size_t queryOffset = hint.find_first_of("?#");
+	if (queryOffset != std::string::npos)
+		hint = hint.substr(0, queryOffset);
+	const size_t slashOffset = hint.find_last_of('/');
+	if (slashOffset != std::string::npos)
+		hint = hint.substr(slashOffset + 1);
+	hint = ToUpperAscii(hint);
+
+	const std::string avisoPrefix = "AVISO_";
+	const size_t avisoOffset = hint.find(avisoPrefix);
+	if (avisoOffset != std::string::npos && avisoOffset + avisoPrefix.size() + 4 <= hint.size())
+	{
+		airport = NormalizeAirportCandidate(hint.substr(avisoOffset + avisoPrefix.size(), 4));
+		if (!airport.empty())
+			return airport;
+	}
+
+	std::string token;
+	for (char c : hint)
+	{
+		if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))
+		{
+			token.push_back(c);
+			continue;
+		}
+		airport = NormalizeAirportCandidate(token);
+		if (!airport.empty())
+			return airport;
+		token.clear();
+	}
+	return NormalizeAirportCandidate(token);
+}
+
+std::string CAvisoEditorDialog::NormalizeGithubGeoJsonUrl(const std::string& url) const
+{
+	std::string trimmed = TrimAsciiWhitespaceCopy(url);
+	if (!trimmed.empty() && (trimmed.front() == '"' || trimmed.front() == '<'))
+		trimmed.erase(trimmed.begin());
+	if (!trimmed.empty() && (trimmed.back() == '"' || trimmed.back() == '>'))
+		trimmed.pop_back();
+	const size_t newlineOffset = trimmed.find_first_of("\r\n\t ");
+	if (newlineOffset != std::string::npos)
+		trimmed = trimmed.substr(0, newlineOffset);
+
+	std::string lower = ToLowerAscii(trimmed);
+	const std::string rawPrefix = "https://raw.githubusercontent.com/";
+	if (StartsWithNoCase(trimmed, rawPrefix) || StartsWithNoCase(trimmed, "http://raw.githubusercontent.com/"))
+		return trimmed;
+
+	const std::string httpsPrefix = "https://github.com/";
+	const std::string httpPrefix = "http://github.com/";
+	size_t prefixSize = 0;
+	if (StartsWithNoCase(trimmed, httpsPrefix))
+		prefixSize = httpsPrefix.size();
+	else if (StartsWithNoCase(trimmed, httpPrefix))
+		prefixSize = httpPrefix.size();
+	else
+		return trimmed;
+
+	const size_t queryOffset = trimmed.find_first_of("?#");
+	if (queryOffset != std::string::npos)
+	{
+		trimmed = trimmed.substr(0, queryOffset);
+		lower = ToLowerAscii(trimmed);
+	}
+
+	const size_t blobOffset = lower.find("/blob/", prefixSize);
+	if (blobOffset == std::string::npos)
+		return trimmed;
+
+	const std::string ownerRepo = trimmed.substr(prefixSize, blobOffset - prefixSize);
+	const std::string branchAndPath = trimmed.substr(blobOffset + 6);
+	if (ownerRepo.empty() || branchAndPath.empty())
+		return trimmed;
+	return rawPrefix + ownerRepo + "/" + branchAndPath;
+}
+
+std::string CAvisoEditorDialog::ReadClipboardText() const
+{
+	if (!::OpenClipboard(GetSafeHwnd()))
+		return "";
+
+	std::string result;
+	if (HANDLE unicodeHandle = ::GetClipboardData(CF_UNICODETEXT))
+	{
+		if (const wchar_t* wideText = static_cast<const wchar_t*>(::GlobalLock(unicodeHandle)))
+		{
+			const int requiredBytes = ::WideCharToMultiByte(CP_UTF8, 0, wideText, -1, nullptr, 0, nullptr, nullptr);
+			if (requiredBytes > 1)
+			{
+				result.resize(static_cast<size_t>(requiredBytes - 1));
+				::WideCharToMultiByte(CP_UTF8, 0, wideText, -1, result.data(), requiredBytes, nullptr, nullptr);
+			}
+			::GlobalUnlock(unicodeHandle);
+		}
+	}
+
+	if (result.empty())
+	{
+		if (HANDLE textHandle = ::GetClipboardData(CF_TEXT))
+		{
+			if (const char* text = static_cast<const char*>(::GlobalLock(textHandle)))
+			{
+				result = text;
+				::GlobalUnlock(textHandle);
+			}
+		}
+	}
+
+	::CloseClipboard();
+	return TrimAsciiWhitespaceCopy(result);
+}
+
+void CAvisoEditorDialog::OnFilterButtonClicked()
+{
+	if (!::IsWindow(FilterButton.GetSafeHwnd()))
+		return;
+
+	struct FilterMenuAction
+	{
+		CComboBox* combo = nullptr;
+		std::string groupName;
+		std::string value;
+	};
+
+	std::vector<FilterMenuAction> actions;
+	HMENU menu = ::CreatePopupMenu();
+	if (menu == nullptr)
+		return;
+
+	auto appendItem = [&](HMENU submenu, CComboBox& combo, const std::string& groupName, const std::string& value)
+	{
+		if (submenu == nullptr || actions.size() >= 800)
+			return;
+
+		const UINT commandId = kFilterMenuCommandBase + static_cast<UINT>(actions.size());
+		const std::string currentValue = ReadComboText(combo).empty() ? kFilterAll : ReadComboText(combo);
+		UINT flags = MF_STRING;
+		if (EqualsNoCase(currentValue, value))
+			flags |= MF_CHECKED;
+		::AppendMenu(submenu, flags, commandId, value.c_str());
+		actions.push_back(FilterMenuAction{ &combo, groupName, value });
+	};
+
+	auto appendDynamicSubmenu = [&](const char* title, CComboBox& combo, const std::set<std::string>& values)
+	{
+		HMENU submenu = ::CreatePopupMenu();
+		if (submenu == nullptr)
+			return;
+
+		appendItem(submenu, combo, title, kFilterAll);
+		if (!values.empty())
+			::AppendMenu(submenu, MF_SEPARATOR, 0, nullptr);
+		for (const std::string& value : values)
+			appendItem(submenu, combo, title, value);
+
+		::AppendMenu(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), title);
+	};
+
+	auto appendFixedSubmenu = [&](const char* title, CComboBox& combo, const std::vector<std::string>& values)
+	{
+		HMENU submenu = ::CreatePopupMenu();
+		if (submenu == nullptr)
+			return;
+
+		for (size_t i = 0; i < values.size(); ++i)
+		{
+			if (i == 1)
+				::AppendMenu(submenu, MF_SEPARATOR, 0, nullptr);
+			appendItem(submenu, combo, title, values[i]);
+		}
+
+		::AppendMenu(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(submenu), title);
+	};
+
+	appendDynamicSubmenu("Layer", LayerFilterCombo, Model.GetLayers());
+	appendDynamicSubmenu("Object type", ObjectTypeFilterCombo, Model.GetObjectTypes());
+	appendDynamicSubmenu("Geometry", GeometryFilterCombo, Model.GetGeometryTypes());
+	appendFixedSubmenu("Visibility", VisibilityFilterCombo, std::vector<std::string>{ kFilterAll, kFilterVisible, kFilterHidden });
+	appendDynamicSubmenu("Category", CategoryFilterCombo, Model.GetCategories());
+	appendDynamicSubmenu("Style", StyleFilterCombo, Model.GetStyleIds());
+
+	CRect buttonRect;
+	FilterButton.GetWindowRect(&buttonRect);
+	const UINT command = ::TrackPopupMenu(
+		menu,
+		TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD | TPM_NONOTIFY,
+		buttonRect.left,
+		buttonRect.bottom + 2,
+		0,
+		GetSafeHwnd(),
+		nullptr);
+	::DestroyMenu(menu);
+
+	if (command < kFilterMenuCommandBase)
+		return;
+	const size_t actionIndex = static_cast<size_t>(command - kFilterMenuCommandBase);
+	if (actionIndex >= actions.size() || actions[actionIndex].combo == nullptr)
+		return;
+
+	KillTimer(kSearchDebounceTimerId);
+	SelectComboEntryByText(*actions[actionIndex].combo, actions[actionIndex].value);
+	PopulateObjectList(GetSelectedFeatureIndex());
+
+	if (EqualsNoCase(actions[actionIndex].value, kFilterAll))
+		SetStatusText(actions[actionIndex].groupName + " filter cleared.");
+	else
+		SetStatusText(actions[actionIndex].groupName + " filter: " + actions[actionIndex].value);
+}
+
+void CAvisoEditorDialog::OnClearFiltersClicked()
+{
+	if (!ControlsCreated)
+		return;
+
+	KillTimer(kSearchDebounceTimerId);
+	UpdatingControls = true;
+	SetEditText(SearchEdit, "");
+	SelectComboEntryByText(LayerFilterCombo, kFilterAll);
+	SelectComboEntryByText(ObjectTypeFilterCombo, kFilterAll);
+	SelectComboEntryByText(GeometryFilterCombo, kFilterAll);
+	SelectComboEntryByText(VisibilityFilterCombo, kFilterAll);
+	SelectComboEntryByText(CategoryFilterCombo, kFilterAll);
+	SelectComboEntryByText(StyleFilterCombo, kFilterAll);
+	UpdatingControls = false;
+
+	PopulateObjectList(GetSelectedFeatureIndex());
+	SetStatusText("Filters cleared.");
 }
 
 bool CAvisoEditorDialog::PromptForUnsavedChanges(const char* actionText)
@@ -844,7 +1842,7 @@ bool CAvisoEditorDialog::PromptForUnsavedChanges(const char* actionText)
 		if (!ApplyPendingFieldsToCurrentSelection(true))
 			return false;
 	}
-	return SaveDocument(true);
+	return SaveDocument(false);
 }
 
 bool CAvisoEditorDialog::EnsureDocumentForEditing()
@@ -853,16 +1851,10 @@ bool CAvisoEditorDialog::EnsureDocumentForEditing()
 	return true;
 }
 
-bool CAvisoEditorDialog::LoadDocumentFromCurrentAviso(bool keepSelection)
+bool CAvisoEditorDialog::LoadDocumentFromPath(const std::string& path, bool keepSelection, const std::string& loadedStatusText)
 {
-	if (Owner == nullptr)
-	{
-		SetStatusText("No active radar screen is available.");
-		return false;
-	}
-
 	const int previousSelection = keepSelection ? GetSelectedFeatureIndex() : -1;
-	LoadedPath = Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+	LoadedPath = path;
 	PathLabel.SetWindowText(LoadedPath.empty() ? "AVISO path: unavailable" : ("AVISO path: " + LoadedPath).c_str());
 
 	if (LoadedPath.empty())
@@ -870,7 +1862,7 @@ bool CAvisoEditorDialog::LoadDocumentFromCurrentAviso(bool keepSelection)
 		Model.ResetToEmpty();
 		PopulateFilterCombos();
 		PopulateObjectList(-1);
-		SetStatusText("No active airport is available for AVISO editing.");
+		SetStatusText("No AVISO file is available for editing.");
 		return false;
 	}
 
@@ -891,10 +1883,32 @@ bool CAvisoEditorDialog::LoadDocumentFromCurrentAviso(bool keepSelection)
 	PopulateFilterCombos();
 	PopulateObjectList(previousSelection);
 	if (std::filesystem::exists(LoadedPath))
-		SetStatusText("AVISO loaded. Select an object to edit.");
+		SetStatusText(loadedStatusText.empty() ? "AVISO loaded. Select an object to edit." : loadedStatusText);
 	else
 		SetStatusText("New AVISO file will be created on save.");
 	return true;
+}
+
+bool CAvisoEditorDialog::LoadDocumentFromCurrentAviso(bool keepSelection)
+{
+	if (Owner == nullptr)
+	{
+		SetStatusText("No active radar screen is available.");
+		return false;
+	}
+
+	const std::string path = Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+	if (path.empty())
+	{
+		Model.ResetToEmpty();
+		LoadedPath.clear();
+		PathLabel.SetWindowText("AVISO path: unavailable");
+		PopulateFilterCombos();
+		PopulateObjectList(-1);
+		SetStatusText("No active airport is available for AVISO editing.");
+		return false;
+	}
+	return LoadDocumentFromPath(path, keepSelection, "AVISO loaded. Select an object to edit.");
 }
 
 bool CAvisoEditorDialog::SaveDocument(bool reloadAfterSave)
@@ -918,10 +1932,15 @@ bool CAvisoEditorDialog::SaveDocument(bool reloadAfterSave)
 	Dirty = false;
 	PendingFieldChanges = false;
 	DirtyFieldMask = 0;
-	PopulateFilterCombos();
-	PopulateObjectList(GetSelectedFeatureIndex());
-	SetStatusText(reloadAfterSave ? "AVISO saved and radar reloaded." : "AVISO saved.");
+	bool reloadRadar = false;
 	if (reloadAfterSave && Owner != nullptr)
+	{
+		const std::string activeAvisoPath = Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+		reloadRadar = PathsEqualNoCase(LoadedPath, activeAvisoPath);
+	}
+
+	SetStatusText(reloadRadar ? "AVISO saved and radar reloaded." : "AVISO saved.");
+	if (reloadRadar && Owner != nullptr)
 		Owner->ForceReloadAvisoGeoJson();
 	return true;
 }
@@ -1270,6 +2289,30 @@ void CAvisoEditorDialog::UpdateObjectCountText()
 	if (selectedCount > 0)
 		text += " | " + std::to_string(selectedCount) + " selected";
 	ObjectCountLabel.SetWindowText(text.c_str());
+
+	if (::IsWindow(FilterButton.GetSafeHwnd()) && ::IsWindow(ClearFiltersButton.GetSafeHwnd()))
+	{
+		int activeFilters = 0;
+		auto countActiveCombo = [&](CComboBox& combo)
+		{
+			const std::string value = ReadComboText(combo);
+			if (!value.empty() && !EqualsNoCase(value, kFilterAll))
+				++activeFilters;
+		};
+
+		if (!TrimAsciiWhitespaceCopy(GetEditText(SearchEdit)).empty())
+			++activeFilters;
+		countActiveCombo(LayerFilterCombo);
+		countActiveCombo(ObjectTypeFilterCombo);
+		countActiveCombo(GeometryFilterCombo);
+		countActiveCombo(VisibilityFilterCombo);
+		countActiveCombo(CategoryFilterCombo);
+		countActiveCombo(StyleFilterCombo);
+
+		const std::string filterButtonText = activeFilters > 0 ? "Filters (" + std::to_string(activeFilters) + ")" : "Filters";
+		FilterButton.SetWindowText(filterButtonText.c_str());
+		ClearFiltersButton.EnableWindow(activeFilters > 0 ? TRUE : FALSE);
+	}
 }
 
 void CAvisoEditorDialog::RestoreObjectSelection(int featureIndex)
@@ -1513,7 +2556,6 @@ void CAvisoEditorDialog::RefreshFieldsFromSelection()
 	SetEditEnabled(CoordinatesEdit, singleSelection && hasFeature);
 	SetEditEnabled(RawEdit, singleSelection && hasFeature);
 	ApplyButton.EnableWindow(hasSelection);
-	DuplicateButton.EnableWindow(singleSelection && hasFeature);
 	DeleteButton.EnableWindow(hasSelection);
 
 	PendingFieldChanges = false;
@@ -1954,20 +2996,6 @@ bool CAvisoEditorDialog::ApplyPendingFieldsToCurrentSelection(bool showErrors)
 	return ApplyBatchFieldsToFeatures(selectedFeatureIndices, showErrors);
 }
 
-void CAvisoEditorDialog::AddFeature(rapidjson::Value& feature)
-{
-	EnsureDocumentForEditing();
-	rapidjson::Value* properties = nullptr;
-	if (feature.IsObject() && feature.HasMember("properties") && feature["properties"].IsObject())
-		properties = &feature["properties"];
-	Model.EnsureFeatureId(feature, ReadStringProperty(properties, "style_id", ReadStringProperty(properties, "object_type", "editor.feature")));
-	rapidjson::Value& features = Document["features"];
-	const int newIndex = static_cast<int>(features.Size());
-	Model.NoteFeatureInserted(newIndex);
-	features.PushBack(feature, Document.GetAllocator());
-	RefreshAfterDocumentMutation(newIndex);
-}
-
 void CAvisoEditorDialog::DeleteFeatureAt(int featureIndex)
 {
 	EnsureDocumentForEditing();
@@ -1981,107 +3009,6 @@ void CAvisoEditorDialog::DeleteFeatureAt(int featureIndex)
 	features.PopBack();
 	Model.MarkIndexesDirty();
 	RefreshAfterDocumentMutation((std::min)(featureIndex, static_cast<int>(features.Size()) - 1));
-}
-
-void CAvisoEditorDialog::DuplicateFeatureAt(int featureIndex)
-{
-	const rapidjson::Value* source = GetFeatureByIndex(featureIndex);
-	if (source == nullptr)
-		return;
-
-	rapidjson::Value copy;
-	CloneJsonValue(*source, copy);
-	if (copy.IsObject() && copy.HasMember("id"))
-		copy.RemoveMember("id");
-	rapidjson::Value& properties = EnsureFeatureProperties(copy);
-	const std::string baseName = ReadStringProperty(&properties, "name", BuildObjectListLabel(*source, featureIndex));
-	SetStringMember(properties, "name", baseName + " Copy");
-	AddFeature(copy);
-}
-
-void CAvisoEditorDialog::BuildLabelFeature(double longitude, double latitude, rapidjson::Value& feature)
-{
-	rapidjson::Document::AllocatorType& allocator = Document.GetAllocator();
-	feature.SetObject();
-	SetStringMember(feature, "type", "Feature");
-
-	rapidjson::Value properties(rapidjson::kObjectType);
-	rapidjson::Value value;
-	value.SetString("New label", allocator);
-	properties.AddMember("name", value, allocator);
-	value.SetString("Editor", allocator);
-	properties.AddMember("layer", value, allocator);
-	value.SetString("Editor label", allocator);
-	properties.AddMember("category", value, allocator);
-	value.SetString("Label", allocator);
-	properties.AddMember("object_type", value, allocator);
-	value.SetString("TEXT_LABEL", allocator);
-	properties.AddMember("geometry_role", value, allocator);
-	value.SetString("New label", allocator);
-	properties.AddMember("text-field", value, allocator);
-	value.SetString("Arial", allocator);
-	properties.AddMember("text-font", value, allocator);
-	value.SetString("#A0A0A0", allocator);
-	properties.AddMember("text-color", value, allocator);
-	properties.AddMember("text-size", 12.0, allocator);
-	value.SetString("center", allocator);
-	properties.AddMember("text-anchor", value, allocator);
-	value.SetString("#000000", allocator);
-	properties.AddMember("text-halo-color", value, allocator);
-	properties.AddMember("text-halo-width", 1.0, allocator);
-	properties.AddMember("visible", true, allocator);
-	feature.AddMember("properties", properties, allocator);
-
-	rapidjson::Value geometry(rapidjson::kObjectType);
-	value.SetString("Point", allocator);
-	geometry.AddMember("type", value, allocator);
-	rapidjson::Value coordinates(rapidjson::kArrayType);
-	coordinates.PushBack(longitude, allocator);
-	coordinates.PushBack(latitude, allocator);
-	geometry.AddMember("coordinates", coordinates, allocator);
-	feature.AddMember("geometry", geometry, allocator);
-}
-
-void CAvisoEditorDialog::BuildLineFeature(double longitude, double latitude, rapidjson::Value& feature)
-{
-	rapidjson::Document::AllocatorType& allocator = Document.GetAllocator();
-	feature.SetObject();
-	SetStringMember(feature, "type", "Feature");
-
-	rapidjson::Value properties(rapidjson::kObjectType);
-	rapidjson::Value value;
-	value.SetString("New line", allocator);
-	properties.AddMember("name", value, allocator);
-	value.SetString("Editor", allocator);
-	properties.AddMember("layer", value, allocator);
-	value.SetString("Editor line", allocator);
-	properties.AddMember("category", value, allocator);
-	value.SetString("Line", allocator);
-	properties.AddMember("object_type", value, allocator);
-	value.SetString("#8C98AA", allocator);
-	properties.AddMember("stroke", value, allocator);
-	properties.AddMember("stroke-opacity", 0.85, allocator);
-	properties.AddMember("stroke-width", 1.0, allocator);
-	properties.AddMember("visible", true, allocator);
-	feature.AddMember("properties", properties, allocator);
-
-	rapidjson::Value geometry(rapidjson::kObjectType);
-	value.SetString("MultiLineString", allocator);
-	geometry.AddMember("type", value, allocator);
-	rapidjson::Value allLines(rapidjson::kArrayType);
-	rapidjson::Value line(rapidjson::kArrayType);
-	const double delta = 0.001;
-	rapidjson::Value pointA(rapidjson::kArrayType);
-	pointA.PushBack(longitude - delta, allocator);
-	pointA.PushBack(latitude, allocator);
-	rapidjson::Value pointB(rapidjson::kArrayType);
-	pointB.PushBack(longitude + delta, allocator);
-	pointB.PushBack(latitude, allocator);
-	line.PushBack(pointA, allocator);
-	line.PushBack(pointB, allocator);
-	allLines.PushBack(line, allocator);
-	geometry.AddMember("coordinates", allLines, allocator);
-	feature.AddMember("geometry", geometry, allocator);
 }
 
 void CAvisoEditorDialog::CloneJsonValue(const rapidjson::Value& source, rapidjson::Value& destination)
@@ -2149,52 +3076,6 @@ void CAvisoEditorDialog::CloneJsonValue(const rapidjson::Value& source, rapidjso
 		return;
 	}
 	destination.SetNull();
-}
-
-bool CAvisoEditorDialog::TryGetDefaultInsertPosition(double& longitude, double& latitude) const
-{
-	if (Owner != nullptr)
-	{
-		CPosition airportPosition;
-		if (Owner->TryGetActiveAirportPosition(airportPosition))
-		{
-			longitude = airportPosition.m_Longitude;
-			latitude = airportPosition.m_Latitude;
-			return true;
-		}
-		if (Owner->AvisoGeoJsonHasBounds)
-		{
-			longitude = (Owner->AvisoGeoJsonMinLongitude + Owner->AvisoGeoJsonMaxLongitude) * 0.5;
-			latitude = (Owner->AvisoGeoJsonMinLatitude + Owner->AvisoGeoJsonMaxLatitude) * 0.5;
-			return true;
-		}
-	}
-
-	if (Document.IsObject() && Document.HasMember("features") && Document["features"].IsArray())
-	{
-		const rapidjson::Value& features = Document["features"];
-		for (rapidjson::SizeType i = 0; i < features.Size(); ++i)
-		{
-			const rapidjson::Value& feature = features[i];
-			if (!feature.IsObject() ||
-				!feature.HasMember("geometry") ||
-				!feature["geometry"].IsObject() ||
-				!feature["geometry"].HasMember("coordinates"))
-			{
-				continue;
-			}
-			const rapidjson::Value& coordinates = feature["geometry"]["coordinates"];
-			if (coordinates.IsArray() && coordinates.Size() >= 2 &&
-				coordinates[static_cast<rapidjson::SizeType>(0)].IsNumber() &&
-				coordinates[static_cast<rapidjson::SizeType>(1)].IsNumber())
-			{
-				longitude = coordinates[static_cast<rapidjson::SizeType>(0)].GetDouble();
-				latitude = coordinates[static_cast<rapidjson::SizeType>(1)].GetDouble();
-				return true;
-			}
-		}
-	}
-	return false;
 }
 
 void CAvisoEditorDialog::RefreshAfterDocumentMutation(int selectedFeatureIndex)
@@ -2756,6 +3637,11 @@ BEGIN_MESSAGE_MAP(CAvisoEditorDialog, CDialogEx)
 	ON_WM_MOVE()
 	ON_WM_SIZE()
 	ON_WM_GETMINMAXINFO()
+	ON_WM_SHOWWINDOW()
+	ON_WM_DESTROY()
+	ON_WM_PAINT()
+	ON_WM_DRAWITEM()
+	ON_WM_CTLCOLOR()
 	ON_NOTIFY(LVN_ITEMCHANGED, IDC_AE_OBJECT_LIST, &CAvisoEditorDialog::OnObjectListItemChanged)
 	ON_NOTIFY(LVN_GETDISPINFO, IDC_AE_OBJECT_LIST, &CAvisoEditorDialog::OnObjectListGetDispInfo)
 	ON_NOTIFY(TCN_SELCHANGE, IDC_AE_PROPERTY_TABS, &CAvisoEditorDialog::OnPropertyTabChanged)
@@ -2767,15 +3653,14 @@ BEGIN_MESSAGE_MAP(CAvisoEditorDialog, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_AE_VISIBILITY_FILTER_COMBO, &CAvisoEditorDialog::OnFilterChanged)
 	ON_CBN_SELCHANGE(IDC_AE_CATEGORY_FILTER_COMBO, &CAvisoEditorDialog::OnFilterChanged)
 	ON_CBN_SELCHANGE(IDC_AE_STYLE_FILTER_COMBO, &CAvisoEditorDialog::OnFilterChanged)
-	ON_BN_CLICKED(IDC_AE_RELOAD_BUTTON, &CAvisoEditorDialog::OnReloadClicked)
+	ON_BN_CLICKED(IDC_AE_CURRENT_PAGE_BUTTON, &CAvisoEditorDialog::OnCurrentPageClicked)
+	ON_BN_CLICKED(IDC_AE_LOAD_AVISO_BUTTON, &CAvisoEditorDialog::OnLoadAvisoClicked)
+	ON_BN_CLICKED(IDC_AE_MAPS_JSON_BUTTON, &CAvisoEditorDialog::OnMapsJsonClicked)
 	ON_BN_CLICKED(IDC_AE_SAVE_BUTTON, &CAvisoEditorDialog::OnSaveClicked)
-	ON_BN_CLICKED(IDC_AE_ADD_LABEL_BUTTON, &CAvisoEditorDialog::OnAddLabelClicked)
-	ON_BN_CLICKED(IDC_AE_ADD_LINE_BUTTON, &CAvisoEditorDialog::OnAddLineClicked)
-	ON_BN_CLICKED(IDC_AE_SELECT_FILTERED_BUTTON, &CAvisoEditorDialog::OnSelectFilteredClicked)
-	ON_BN_CLICKED(IDC_AE_DUPLICATE_BUTTON, &CAvisoEditorDialog::OnDuplicateClicked)
+	ON_BN_CLICKED(IDC_AE_FILTER_BUTTON, &CAvisoEditorDialog::OnFilterButtonClicked)
+	ON_BN_CLICKED(IDC_AE_CLEAR_FILTERS_BUTTON, &CAvisoEditorDialog::OnClearFiltersClicked)
 	ON_BN_CLICKED(IDC_AE_DELETE_BUTTON, &CAvisoEditorDialog::OnDeleteClicked)
 	ON_BN_CLICKED(IDC_AE_APPLY_BUTTON, &CAvisoEditorDialog::OnApplyClicked)
-	ON_BN_CLICKED(IDC_AE_CLOSE_BUTTON, &CAvisoEditorDialog::OnCloseClicked)
 	ON_BN_CLICKED(IDC_AE_VISIBLE_CHECK, &CAvisoEditorDialog::OnFieldChanged)
 	ON_EN_CHANGE(IDC_AE_NAME_EDIT, &CAvisoEditorDialog::OnFieldChanged)
 	ON_EN_CHANGE(IDC_AE_LAYER_EDIT, &CAvisoEditorDialog::OnFieldChanged)

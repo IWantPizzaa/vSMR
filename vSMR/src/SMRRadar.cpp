@@ -719,6 +719,14 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	if (DllPath.empty() || airportUpper.empty())
 		return "";
 
+	if (!AvisoGeoJsonOverrideAirport.empty() &&
+		!AvisoGeoJsonOverridePath.empty() &&
+		AvisoGeoJsonOverrideAirport == airportUpper &&
+		IsRegularFileNoThrow(AvisoGeoJsonOverridePath))
+	{
+		return AvisoGeoJsonOverridePath;
+	}
+
 	const std::string resolutionKey = DllPath + "|" + DataPath;
 	if (AvisoGeoJsonResolvedAirport == airportUpper &&
 		AvisoGeoJsonResolvedDllPath == resolutionKey)
