@@ -5,8 +5,11 @@
 #include "SMRTagColorRules.hpp"
 #include "SMRTagDefinitionUtils.hpp"
 #include "SMRVacdmTagHelpers.hpp"
+#include <atomic>
 #include <chrono>
-#include <future>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 namespace
 {
@@ -36,6 +39,12 @@ namespace
 	{
 		const double delta = left - right;
 		return delta >= -tolerance && delta <= tolerance;
+	}
+
+	bool AvisoPointWithinTolerance(const Gdiplus::PointF& left, const Gdiplus::PointF& right, double tolerance)
+	{
+		return AvisoWithinTolerance(static_cast<double>(left.X), static_cast<double>(right.X), tolerance) &&
+			AvisoWithinTolerance(static_cast<double>(left.Y), static_cast<double>(right.Y), tolerance);
 	}
 
 	bool AvisoVectorWithinTolerance(
@@ -439,6 +448,7 @@ struct AvisoViewportState
 {
 	~AvisoViewportState()
 	{
+		StopRenderThread();
 		ClearCache();
 	}
 
@@ -468,6 +478,191 @@ struct AvisoViewportState
 		anchorValid = false;
 	}
 
+	void InvalidateRenderRequests()
+	{
+		std::lock_guard<std::mutex> guard(renderMutex);
+		pendingRenderRequest.reset();
+		completedRenderResult.reset();
+		pendingRenderRadar = nullptr;
+		latestRequestId = ++nextRequestId;
+		lastRequestValid = false;
+		renderPending.store(false, std::memory_order_relaxed);
+	}
+
+	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> TakeCompletedRender()
+	{
+		std::lock_guard<std::mutex> guard(renderMutex);
+		std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = std::move(completedRenderResult);
+		renderPending.store(renderInFlight || pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
+		return result;
+	}
+
+	void QueueRender(CSMRRadar* radarScreen, CSMRRadar::AvisoRasterRenderRequest request)
+	{
+		if (radarScreen == nullptr ||
+			request.path.empty() ||
+			request.features == nullptr ||
+			request.labels == nullptr ||
+			request.rasterWidth <= 0 ||
+			request.rasterHeight <= 0)
+		{
+			return;
+		}
+
+		if (radarScreen->IsShutdownRequested() || radarScreen->IsAvisoGeoJsonRenderStopRequested())
+			return;
+
+		bool shouldNotify = false;
+		{
+			std::lock_guard<std::mutex> guard(renderMutex);
+			if (renderStopRequested)
+				return;
+
+			const bool sameRequest =
+				lastRequestValid &&
+				lastRequestPath == request.path &&
+				lastRequestRasterWidth == request.rasterWidth &&
+				lastRequestRasterHeight == request.rasterHeight &&
+				AvisoWithinTolerance(lastRequestMinLongitude, request.displayMinLongitude, 1e-10) &&
+				AvisoWithinTolerance(lastRequestMinLatitude, request.displayMinLatitude, 1e-10) &&
+				AvisoWithinTolerance(lastRequestMaxLongitude, request.displayMaxLongitude, 1e-10) &&
+				AvisoWithinTolerance(lastRequestMaxLatitude, request.displayMaxLatitude, 1e-10) &&
+				AvisoPointWithinTolerance(lastRequestProjectedTopLeft, request.projectedTopLeft, 0.25) &&
+				AvisoPointWithinTolerance(lastRequestProjectedTopRight, request.projectedTopRight, 0.25) &&
+				AvisoPointWithinTolerance(lastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.25) &&
+				AvisoPointWithinTolerance(lastRequestProjectedBottomRight, request.projectedBottomRight, 0.25);
+			if (sameRequest)
+				return;
+
+			request.requestId = ++nextRequestId;
+			latestRequestId = request.requestId;
+			lastRequestValid = true;
+			lastRequestPath = request.path;
+			lastRequestMinLongitude = request.displayMinLongitude;
+			lastRequestMinLatitude = request.displayMinLatitude;
+			lastRequestMaxLongitude = request.displayMaxLongitude;
+			lastRequestMaxLatitude = request.displayMaxLatitude;
+			lastRequestRasterWidth = request.rasterWidth;
+			lastRequestRasterHeight = request.rasterHeight;
+			lastRequestProjectedTopLeft = request.projectedTopLeft;
+			lastRequestProjectedTopRight = request.projectedTopRight;
+			lastRequestProjectedBottomLeft = request.projectedBottomLeft;
+			lastRequestProjectedBottomRight = request.projectedBottomRight;
+			pendingRenderRadar = radarScreen;
+			pendingRenderRequest = std::make_unique<CSMRRadar::AvisoRasterRenderRequest>(std::move(request));
+			renderPending.store(true, std::memory_order_relaxed);
+
+			if (!renderThreadStarted)
+			{
+				renderStopRequested = false;
+				renderThread = std::thread(&AvisoViewportState::RenderThreadMain, this);
+				renderThreadStarted = true;
+			}
+			shouldNotify = true;
+		}
+
+		if (shouldNotify)
+			renderCondition.notify_one();
+	}
+
+	void StopRenderThread()
+	{
+		bool shouldJoin = false;
+		{
+			std::lock_guard<std::mutex> guard(renderMutex);
+			renderStopRequested = true;
+			pendingRenderRequest.reset();
+			completedRenderResult.reset();
+			pendingRenderRadar = nullptr;
+			renderInFlight = false;
+			renderPending.store(false, std::memory_order_relaxed);
+			shouldJoin = renderThreadStarted;
+		}
+
+		renderCondition.notify_all();
+		if (shouldJoin && renderThread.joinable())
+			renderThread.join();
+
+		{
+			std::lock_guard<std::mutex> guard(renderMutex);
+			renderThreadStarted = false;
+			renderStopRequested = false;
+			lastRequestValid = false;
+		}
+	}
+
+	void RenderThreadMain()
+	{
+		for (;;)
+		{
+			std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> request;
+			CSMRRadar* radarScreen = nullptr;
+			{
+				std::unique_lock<std::mutex> lock(renderMutex);
+				renderCondition.wait(lock, [&]() {
+					return renderStopRequested || pendingRenderRequest != nullptr;
+				});
+
+				if (renderStopRequested)
+					return;
+
+				request = std::move(pendingRenderRequest);
+				radarScreen = pendingRenderRadar;
+				pendingRenderRadar = nullptr;
+				renderInFlight = request != nullptr;
+				renderPending.store(renderInFlight || pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
+			}
+
+			if (request == nullptr || radarScreen == nullptr)
+			{
+				std::lock_guard<std::mutex> guard(renderMutex);
+				renderInFlight = false;
+				renderPending.store(pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
+				continue;
+			}
+
+			std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result;
+			try
+			{
+				result = radarScreen->RenderAvisoGeoJsonRaster(*request);
+			}
+			catch (...)
+			{
+				result.reset();
+			}
+
+			bool shouldRefresh = false;
+			{
+				std::lock_guard<std::mutex> guard(renderMutex);
+				if (renderStopRequested)
+					return;
+
+				if (result != nullptr &&
+					result->requestId == latestRequestId &&
+					!radarScreen->IsShutdownRequested() &&
+					!radarScreen->IsAvisoGeoJsonRenderStopRequested())
+				{
+					completedRenderResult = std::move(result);
+					shouldRefresh = true;
+				}
+
+				renderInFlight = false;
+				renderPending.store(pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
+			}
+
+			if (shouldRefresh)
+			{
+				try
+				{
+					radarScreen->RequestRefresh();
+				}
+				catch (...)
+				{
+				}
+			}
+		}
+	}
+
 	HBITMAP cacheBitmap = nullptr;
 	string cachePath;
 	int cacheWidth = 0;
@@ -486,9 +681,30 @@ struct AvisoViewportState
 	Gdiplus::PointF projectedBottomRight;
 	bool anchorValid = false;
 	double screenRotationDeg = 0.0;
-	bool renderPending = false;
+	std::atomic<bool> renderPending{ false };
 	unsigned long long nextRequestId = 0;
-	std::future<std::unique_ptr<CSMRRadar::AvisoRasterRenderResult>> renderFuture;
+	unsigned long long latestRequestId = 0;
+	std::mutex renderMutex;
+	std::condition_variable renderCondition;
+	std::thread renderThread;
+	bool renderThreadStarted = false;
+	bool renderStopRequested = false;
+	bool renderInFlight = false;
+	CSMRRadar* pendingRenderRadar = nullptr;
+	std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> pendingRenderRequest;
+	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
+	bool lastRequestValid = false;
+	string lastRequestPath;
+	double lastRequestMinLongitude = 0.0;
+	double lastRequestMinLatitude = 0.0;
+	double lastRequestMaxLongitude = 0.0;
+	double lastRequestMaxLatitude = 0.0;
+	int lastRequestRasterWidth = 0;
+	int lastRequestRasterHeight = 0;
+	Gdiplus::PointF lastRequestProjectedTopLeft;
+	Gdiplus::PointF lastRequestProjectedTopRight;
+	Gdiplus::PointF lastRequestProjectedBottomLeft;
+	Gdiplus::PointF lastRequestProjectedBottomRight;
 };
 
 CInsetWindow::CInsetWindow(int Id)
@@ -510,7 +726,10 @@ bool CInsetWindow::IsAvisoViewport() const
 void CInsetWindow::ClearAvisoViewportCache()
 {
 	if (m_AvisoState != nullptr)
+	{
+		m_AvisoState->InvalidateRenderRequests();
 		m_AvisoState->ClearCache();
+	}
 }
 
 void CInsetWindow::CancelAvisoViewportRender()
@@ -518,17 +737,7 @@ void CInsetWindow::CancelAvisoViewportRender()
 	if (m_AvisoState == nullptr)
 		return;
 
-	m_AvisoState->renderPending = false;
-	if (m_AvisoState->renderFuture.valid())
-	{
-		try
-		{
-			(void)m_AvisoState->renderFuture.get();
-		}
-		catch (...)
-		{
-		}
-	}
+	m_AvisoState->StopRenderThread();
 }
 
 void CInsetWindow::ResetAvisoInteractionState()
@@ -1336,14 +1545,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		return;
 	}
 
-	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
-	if (m_AvisoState->renderPending &&
-		m_AvisoState->renderFuture.valid() &&
-		m_AvisoState->renderFuture.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
-	{
-		completedRenderResult = m_AvisoState->renderFuture.get();
-		m_AvisoState->renderPending = false;
-	}
+	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult = m_AvisoState->TakeCompletedRender();
 
 	const int scale = max(1, m_AvisoScale);
 	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
@@ -1723,93 +1925,67 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		cacheDrawn = drawCacheFallbackDuringInteraction();
 	if (!cacheDrawn || !cacheHasWorkingMargin())
 	{
-		if (!m_AvisoState->renderPending)
+		const double overscanRatio = 0.75;
+		const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
+		const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
+		const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
+		const double renderMaxLat = displayMaxLat + (latSpan * overscanRatio);
+		const Gdiplus::PointF renderTopLeft = projectPoint(renderMinLon, renderMaxLat);
+		const Gdiplus::PointF renderTopRight = projectPoint(renderMaxLon, renderMaxLat);
+		const Gdiplus::PointF renderBottomLeft = projectPoint(renderMinLon, renderMinLat);
+		const Gdiplus::PointF renderBottomRight = projectPoint(renderMaxLon, renderMinLat);
+		const double renderScreenLeft = min(min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), min(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+		const double renderScreenTop = min(min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), min(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+		const double renderScreenRight = max(max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), max(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+		const double renderScreenBottom = max(max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), max(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+		const double renderPixelWidth = renderScreenRight - renderScreenLeft;
+		const double renderPixelHeight = renderScreenBottom - renderScreenTop;
+		if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
 		{
-			const double overscanRatio = 0.75;
-			const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
-			const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
-			const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
-			const double renderMaxLat = displayMaxLat + (latSpan * overscanRatio);
-			const Gdiplus::PointF renderTopLeft = projectPoint(renderMinLon, renderMaxLat);
-			const Gdiplus::PointF renderTopRight = projectPoint(renderMaxLon, renderMaxLat);
-			const Gdiplus::PointF renderBottomLeft = projectPoint(renderMinLon, renderMinLat);
-			const Gdiplus::PointF renderBottomRight = projectPoint(renderMaxLon, renderMinLat);
-			const double renderScreenLeft = min(min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), min(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
-			const double renderScreenTop = min(min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), min(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
-			const double renderScreenRight = max(max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), max(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
-			const double renderScreenBottom = max(max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), max(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
-			const double renderPixelWidth = renderScreenRight - renderScreenLeft;
-			const double renderPixelHeight = renderScreenBottom - renderScreenTop;
-			if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
-			{
-				const double targetRasterScale = 1.0;
-				const double minRasterScale = 0.50;
-				const double maxRasterSide = 6400.0;
-				const double maxRasterPixels = 18000000.0;
-				double rasterScale = targetRasterScale;
-				const double maxDimension = max(renderPixelWidth, renderPixelHeight);
-				const double sideLimitedScale = maxRasterSide / maxDimension;
-				if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
-					rasterScale = sideLimitedScale;
-				const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
-				if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
-					rasterScale = pixelLimitedScale;
-				rasterScale = std::clamp(rasterScale, minRasterScale, targetRasterScale);
+			const double targetRasterScale = 1.0;
+			const double minRasterScale = 0.50;
+			const double maxRasterSide = 6400.0;
+			const double maxRasterPixels = 18000000.0;
+			double rasterScale = targetRasterScale;
+			const double maxDimension = max(renderPixelWidth, renderPixelHeight);
+			const double sideLimitedScale = maxRasterSide / maxDimension;
+			if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
+				rasterScale = sideLimitedScale;
+			const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
+			if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
+				rasterScale = pixelLimitedScale;
+			rasterScale = std::clamp(rasterScale, minRasterScale, targetRasterScale);
 
-				CSMRRadar::AvisoRasterRenderRequest request;
-				request.requestId = ++m_AvisoState->nextRequestId;
-				request.path = path;
-				request.features = radar_screen->AvisoGeoJsonFeatureSnapshot;
-				request.labels = radar_screen->AvisoGeoJsonLabelSnapshot;
-				request.rasterWidth = max(1, static_cast<int>((renderPixelWidth * rasterScale) + 0.5));
-				request.rasterHeight = max(1, static_cast<int>((renderPixelHeight * rasterScale) + 0.5));
-				request.rasterScale = rasterScale;
-				request.displayMinLongitude = displayMinLon;
-				request.displayMinLatitude = displayMinLat;
-				request.displayMaxLongitude = displayMaxLon;
-				request.displayMaxLatitude = displayMaxLat;
-				request.renderMinLongitude = renderMinLon;
-				request.renderMinLatitude = renderMinLat;
-				request.renderMaxLongitude = renderMaxLon;
-				request.renderMaxLatitude = renderMaxLat;
-				request.renderScreenLeft = renderScreenLeft;
-				request.renderScreenTop = renderScreenTop;
-				request.scaleX = scaleX;
-				request.scaleY = scaleY;
-				request.projectedTopLeft = projectedTopLeft;
-				request.projectedTopRight = projectedTopRight;
-				request.projectedBottomLeft = projectedBottomLeft;
-				request.projectedBottomRight = projectedBottomRight;
+			CSMRRadar::AvisoRasterRenderRequest request;
+			request.path = path;
+			request.features = radar_screen->AvisoGeoJsonFeatureSnapshot;
+			request.labels = radar_screen->AvisoGeoJsonLabelSnapshot;
+			request.rasterWidth = max(1, static_cast<int>((renderPixelWidth * rasterScale) + 0.5));
+			request.rasterHeight = max(1, static_cast<int>((renderPixelHeight * rasterScale) + 0.5));
+			request.rasterScale = rasterScale;
+			request.displayMinLongitude = displayMinLon;
+			request.displayMinLatitude = displayMinLat;
+			request.displayMaxLongitude = displayMaxLon;
+			request.displayMaxLatitude = displayMaxLat;
+			request.renderMinLongitude = renderMinLon;
+			request.renderMinLatitude = renderMinLat;
+			request.renderMaxLongitude = renderMaxLon;
+			request.renderMaxLatitude = renderMaxLat;
+			request.renderScreenLeft = renderScreenLeft;
+			request.renderScreenTop = renderScreenTop;
+			request.scaleX = scaleX;
+			request.scaleY = scaleY;
+			request.projectedTopLeft = projectedTopLeft;
+			request.projectedTopRight = projectedTopRight;
+			request.projectedBottomLeft = projectedBottomLeft;
+			request.projectedBottomRight = projectedBottomRight;
 
-				if (!radar_screen->IsShutdownRequested() && !radar_screen->IsAvisoGeoJsonRenderStopRequested())
-				{
-					m_AvisoState->renderPending = true;
-					m_AvisoState->renderFuture = std::async(
-						std::launch::async,
-						[radar_screen, request]()
-						{
-							std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = radar_screen->RenderAvisoGeoJsonRaster(request);
-							if (result != nullptr &&
-								!radar_screen->IsShutdownRequested() &&
-								!radar_screen->IsAvisoGeoJsonRenderStopRequested())
-							{
-								try
-								{
-									radar_screen->RequestRefresh();
-								}
-								catch (...)
-								{
-								}
-							}
-							return result;
-						});
-				}
-			}
+			m_AvisoState->QueueRender(radar_screen, std::move(request));
 		}
 	}
 
 	if (!cacheDrawn)
-		drawCenteredMessage(m_AvisoState->renderPending ? "Rendering AVISO" : "AVISO unavailable");
+		drawCenteredMessage(m_AvisoState->renderPending.load(std::memory_order_relaxed) ? "Rendering AVISO" : "AVISO unavailable");
 
 	auto drawAircraft = [&]()
 	{
