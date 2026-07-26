@@ -39,8 +39,6 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
-	afx_msg void OnPaint();
-	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	afx_msg void OnNavOverviewClicked();
 	afx_msg void OnNavProfilesClicked();
 	afx_msg void OnNavAvisoClicked();
@@ -110,14 +108,7 @@ private:
 	Page CurrentPage = Page::Overview;
 	bool ControlsCreated = false;
 
-	CFont UiFont;
-	CFont TitleFont;
-	CFont SidebarTitleFont;
-	CBrush BackgroundBrush;
-	CBrush SidebarBrush;
-	CBrush HeaderBrush;
-	CBrush EditBrush;
-
+	CStatic NavigationTitleLabel;
 	CStatic HeaderTitleLabel;
 	CStatic HeaderSubtitleLabel;
 	CStatic PageTitleLabel;
