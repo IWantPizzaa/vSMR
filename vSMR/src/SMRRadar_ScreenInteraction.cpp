@@ -996,10 +996,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
 				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
 				GetPlugIn()->AddPopupListElement("AVISO View", "", APPWINDOW_AVISO, false, int(avisoWindowVisible));
+				GetPlugIn()->AddPopupListElement("vSMR Control Center", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("AVISO Editor", "", RIMCAS_AVISO_EDITOR_OPEN);
 				GetPlugIn()->AddPopupListElement("Reload AVISO", "", RIMCAS_AVISO_RELOAD);
 				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Profile Editor", "", RIMCAS_OPEN_LIST);
 			});
 		}
 

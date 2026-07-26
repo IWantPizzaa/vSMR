@@ -524,10 +524,15 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	}
 
 	if (FunctionId == RIMCAS_OPEN_LIST) {
+		if (hasItemString && strcmp(itemString, "vSMR Control Center") == 0)
+		{
+			OpenVsmrControlCenterWindow();
+			return;
+		}
 		if (hasItemString &&
 			(strcmp(itemString, "Tag Definitions") == 0 || strcmp(itemString, "Profile Editor") == 0))
 		{
-			OpenProfileEditorWindow();
+			OpenVsmrControlCenterWindow("profiles");
 			return;
 		}
 		if (!hasItemString)
