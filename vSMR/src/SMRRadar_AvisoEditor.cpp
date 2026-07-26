@@ -168,17 +168,7 @@ bool CSMRRadar::EnsureAvisoEditorWindowCreated()
 
 void CSMRRadar::OpenAvisoEditorWindow()
 {
-	if (!EnsureAvisoEditorWindowCreated())
-	{
-		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO Editor", "Failed to open AVISO Editor window.", true, true, false, false, false);
-		RequestRefresh();
-		return;
-	}
-
-	AvisoEditorDialog->ShowWindow(SW_SHOW);
-	AvisoEditorDialog->BringWindowToTop();
-	AvisoEditorDialog->SyncFromRadar();
-	RequestRefresh();
+	OpenVsmrControlCenterWindow("aviso");
 }
 
 void CSMRRadar::CloseAvisoEditorWindow()

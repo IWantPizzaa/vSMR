@@ -235,6 +235,10 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		ReloadConfig();
 		return true;
 	}
+	if (strcmp(sCommandLine, ".smr editor") == 0 || strcmp(sCommandLine, ".smr vsmr") == 0) {
+		OpenVsmrControlCenterWindow();
+		return true;
+	}
 	if (strcmp(sCommandLine, ".smr aviso reload") == 0) {
 		const bool loaded = ForceReloadAvisoGeoJson();
 		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO", loaded ? "Reloaded AVISO." : "No AVISO file loaded.", true, true, false, false, false);

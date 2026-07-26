@@ -39,6 +39,7 @@ using namespace SMRSharedData;
 
 class CProfileEditorDialog;
 class CAvisoEditorDialog;
+class CVsmrControlCenterDialog;
 class CInsetWindow;
 
 class CSMRRadar :
@@ -313,6 +314,7 @@ public:
 	string SelectedProfileColorPath;
 	std::unique_ptr<CProfileEditorDialog> ProfileEditorDialog;
 	std::unique_ptr<CAvisoEditorDialog> AvisoEditorDialog;
+	std::unique_ptr<CVsmrControlCenterDialog> VsmrControlCenterDialog;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
 	std::string TagDefinitionEditorDepartureStatus = "default";
@@ -490,6 +492,12 @@ public:
 	void OnProfileEditorWindowLayoutChanged(const CRect& windowRect);
 	bool IsProfileEditorWindowVisible() const;
 	bool EnsureProfileEditorWindowCreated();
+	bool EnsureVsmrControlCenterWindowCreated();
+	void OpenVsmrControlCenterWindow();
+	void OpenVsmrControlCenterWindow(const std::string& pageName);
+	void CloseVsmrControlCenterWindow();
+	void DestroyVsmrControlCenterWindow();
+	void OnVsmrControlCenterWindowClosed();
 	bool PersistProfileEditorWindowLayout(const CRect& windowRect, bool visible, bool persistToDisk);
 	CRect GetProfileEditorWindowRectFromConfig() const;
 	std::vector<std::string> GetProfileColorPathsForEditor();

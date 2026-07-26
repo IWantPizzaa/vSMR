@@ -238,8 +238,10 @@ int CSMRRadar::getIntFromCategory(string category)
 void CSMRRadar::OnAsrContentToBeClosed(void)
 {
 	BeginShutdown();
+	CloseVsmrControlCenterWindow();
 	CloseProfileEditorWindow(false);
 	DestroyProfileEditorWindow();
+	DestroyVsmrControlCenterWindow();
 
 	const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
 	const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
