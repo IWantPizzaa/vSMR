@@ -690,6 +690,7 @@ struct AvisoViewportState
 	bool renderThreadStarted = false;
 	bool renderStopRequested = false;
 	bool renderInFlight = false;
+	unsigned long lastZoomInteractionTick = 0;
 	CSMRRadar* pendingRenderRadar = nullptr;
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> pendingRenderRequest;
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
@@ -1073,6 +1074,8 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	m_AvisoCenterLongitude = anchorLongitude - (dx * newLonDegreesPerPixel);
 	m_AvisoCenterLatitude = ClampAvisoLatitude(anchorLatitude + (dy * newLatDegreesPerPixel));
 	m_AvisoScrollSelected = true;
+	if (m_AvisoState != nullptr)
+		m_AvisoState->lastZoomInteractionTick = ::GetTickCount();
 	return true;
 }
 
@@ -1570,6 +1573,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	const double scaleX = static_cast<double>(viewportWidth) / lonSpan;
 	const double scaleY = static_cast<double>(viewportHeight) / latSpan;
 	const double screenRotationDeg = ResolveAvisoViewportScreenRotationDeg(radar_screen, m_AvisoCenterLatitude, m_AvisoCenterLongitude);
+	const unsigned long nowTick = ::GetTickCount();
+	const unsigned long zoomPreviewMs = 320;
+	const bool avisoZoomRecentlyChanged =
+		m_AvisoState->lastZoomInteractionTick != 0 &&
+		(nowTick - m_AvisoState->lastZoomInteractionTick) < zoomPreviewMs;
 	m_AvisoState->screenRotationDeg = screenRotationDeg;
 	const CPoint viewportCenterPoint = viewportRect.CenterPoint();
 	const Gdiplus::PointF viewportCenter(
@@ -1769,7 +1777,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	};
 	auto drawCacheFallbackDuringInteraction = [&]() -> bool
 	{
-		if (!m_Grip && !m_AvisoRightPanning)
+		if (!m_Grip && !m_AvisoRightPanning && !avisoZoomRecentlyChanged)
 			return false;
 		if (m_AvisoState->cacheBitmap == nullptr ||
 			m_AvisoState->cachePath != path ||
