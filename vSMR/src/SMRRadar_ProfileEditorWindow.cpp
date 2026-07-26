@@ -570,27 +570,7 @@ bool CSMRRadar::IsProfileEditorWindowVisible() const
 
 void CSMRRadar::OpenProfileEditorWindow()
 {
-	if (!EnsureProfileEditorWindowCreated())
-	{
-		GetPlugIn()->DisplayUserMessage("vSMR", "Profile Editor", "Failed to open detached Profile Editor window.", true, true, false, false, false);
-		RequestRefresh();
-		return;
-	}
-
-	const CRect windowRect = GetProfileEditorWindowRectFromConfig();
-	ProfileEditorDialog->SetWindowPos(
-		nullptr,
-		windowRect.left,
-		windowRect.top,
-		max(320, windowRect.Width()),
-		max(220, windowRect.Height()),
-		SWP_NOZORDER | SWP_NOACTIVATE);
-	ProfileEditorDialog->ShowWindow(SW_SHOW);
-	ProfileEditorDialog->BringWindowToTop();
-	ProfileEditorDialog->SyncFromRadar();
-
-	PersistProfileEditorWindowLayout(windowRect, true, true);
-	RequestRefresh();
+	OpenVsmrControlCenterWindow("profiles");
 }
 
 void CSMRRadar::CloseProfileEditorWindow(bool persistVisibility)

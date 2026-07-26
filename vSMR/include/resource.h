@@ -34,14 +34,15 @@
 #define IDC_PROFILE_EDITOR_STATUS       7022
 #define IDD_AVISO_EDITOR_DIALOG         7023
 #define IDC_AVISO_EDITOR_STATUS         7024
+#define IDD_VSMR_CONTROL_CENTER_DIALOG  7025
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        7025
+#define _APS_NEXT_RESOURCE_VALUE        7026
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         7025
+#define _APS_NEXT_CONTROL_VALUE         7026
 #define _APS_NEXT_SYMED_VALUE           7000
 #endif
 #endif
