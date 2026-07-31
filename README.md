@@ -56,6 +56,11 @@ vSMR is not a standalone application. It is a EuroScope plugin DLL that:
 - integrates Hoppie CPDLC for datalink clearance workflows
 - ships with a detachable live profile editor
 
+Control Center maintainers should also read the
+[implementation notes](docs/CONTROL_CENTER.md) and run the
+[deterministic test checklist](docs/CONTROL_CENTER_TEST_CHECKLIST.md) before
+release.
+
 ## Repository Layout
 
 The main EuroScope plugin project lives in [`vSMR/`](vSMR/):
@@ -93,6 +98,7 @@ vSMR/
 
 - EuroScope 32-bit
 - A Win32 build of `vSMR.dll`
+- The x86 [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - A valid `vSMR_Profiles.json` in `vSMR_Data\` next to the DLL, or in the DLL folder for older flat installs
 
 Optional runtime data:
@@ -106,16 +112,18 @@ Optional runtime data:
 ## Installation
 
 1. Build or obtain `vSMR.dll` for `Release | Win32`.
-2. Copy `vSMR.dll` into your EuroScope plugin folder.
-3. Create `vSMR_Data\` next to `vSMR.dll`.
-4. Copy `vSMR_Profiles.json` into `vSMR_Data\`.
-5. Optionally copy the other runtime files described below into `vSMR_Data\`.
-6. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
-7. Open the vSMR radar display from EuroScope.
+2. Install the x86 WebView2 Evergreen Runtime if it is not already installed.
+3. Copy `Release\vSMR.dll` and the complete `Release\vSMR_webUI\` build output into your EuroScope plugin folder (or use the equivalent files from a packaged release).
+4. Create `vSMR_Data\` next to `vSMR.dll`.
+5. Copy `vSMR_Profiles.json` into `vSMR_Data\`.
+6. Optionally copy the other runtime files described below into `vSMR_Data\`.
+7. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
+8. Open the vSMR radar display from EuroScope.
 
 Important:
 
 - `vSMR_Profiles.json` is required. vSMR checks `vSMR_Data\` first, then the DLL folder for existing installs.
+- Keep the complete six-file `vSMR_webUI\` package next to `vSMR.dll`: four application assets plus the two files under `defaults\`. The Control Center does not use an external web server.
 - `vSMR_Maps.json` is optional and uses the same search order.
 - The repository already ships example runtime files under [`vSMR/data/`](vSMR/data/).
 
@@ -124,6 +132,14 @@ Example deployment layout:
 ```text
 EuroScope\Plugins\
   vSMR.dll
+  vSMR_webUI\
+    index.html
+    styles.css
+    app.js
+    data.js
+    defaults\
+      vSMR_Profiles.json
+      AVISO_LFPG.geojson
   vSMR_Data\
     vSMR_Profiles.json
     vSMR_Maps.json
@@ -143,6 +159,7 @@ EuroScope\Plugins\
 | File                 | Location                                             | Purpose                                                                                                    |
 | -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `vSMR_Profiles.json` | `vSMR_Data\`, then same folder as `vSMR.dll` fallback | Main profile database: fonts, labels, rules, colors, alerts, icon settings, editor window layout, and more |
+| `vSMR_webUI\*`       | Directory next to `vSMR.dll`                         | Four local application assets plus full profile/LFPG AVISO defaults used by the modeless Control Center    |
 
 ### Optional
 
@@ -621,12 +638,16 @@ When `Icons` style is active (internally stored as `realistic`), vSMR can combin
 - MSVC toolset `v143`
 - C++17
 - `Release | Win32`
+- NuGet restore access to `Microsoft.Web.WebView2` version `1.0.4078.44`
 
 ### Important build notes
 
 - EuroScope support is Win32 only here
 - The project uses MFC
 - The project links against `EuroScopePlugInDll.lib`
+- The WebView2 loader is linked statically; do not deploy `WebView2Loader.dll`
+- The x86 Evergreen Runtime remains required on the EuroScope computer
+- The Control Center resources are local, so normal operation does not require internet access
 - HTTP downloading is currently performed through WinHTTP (`HttpHelper.cpp`)
 - `libcurl` headers/libs are still referenced in project settings for compatibility
 - `winmm.lib` is linked for sound-related functionality
@@ -634,6 +655,7 @@ When `Icons` style is active (internally stored as `realistic`), vSMR can combin
 ### Build command
 
 ```powershell
+msbuild vSMR.sln /t:Restore /p:Configuration=Release /p:Platform=Win32
 msbuild vSMR.sln /t:Build /p:Configuration=Release /p:Platform=Win32
 ```
 
@@ -641,7 +663,27 @@ Output:
 
 ```text
 Release\vSMR.dll
+Release\vSMR_webUI\
+  index.html
+  styles.css
+  app.js
+  data.js
+  defaults\
+    vSMR_Profiles.json
+    AVISO_LFPG.geojson
 ```
+
+### Offline dependencies
+
+For an offline build, download `Microsoft.Web.WebView2.1.0.4078.44.nupkg` on a connected computer, place it in a local NuGet feed, and restore with `/p:RestoreSources=C:\path\to\offline-feed` before building.
+
+For an offline EuroScope computer, download the **Evergreen Standalone Installer (x86)** on a connected computer and run it on the target machine. A silent installation can use:
+
+```powershell
+MicrosoftEdgeWebView2RuntimeInstallerX86.exe /silent /install
+```
+
+Deploy `vSMR.dll`, `vSMR_webUI\`, and `vSMR_Data\` together as shown above. The static loader removes the separate `WebView2Loader.dll` deployment dependency; it does not embed the Evergreen Runtime.
 
 ## Source Tree Guide
 

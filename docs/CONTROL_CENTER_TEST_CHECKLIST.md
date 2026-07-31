@@ -1,0 +1,218 @@
+# Control Center deterministic test checklist
+
+Use this checklist in a disposable EuroScope setup. Do not run persistence or
+malformed-file tests against a controller's only production configuration.
+
+Record the build identifier, Windows version, EuroScope version, WebView2
+Runtime version, airport, profile path, AVISO path, and tester at the top of
+the test record.
+
+## Test fixture
+
+1. Build and deploy `Release | Win32`, including all four application assets
+   and both files under `vSMR_webUI\defaults`, using the layout in the
+   [README](../README.md#installation).
+2. Put working copies of `vSMR_Profiles.json` and the active airport's AVISO
+   GeoJSON in the disposable deployment's normal `vSMR_Data` paths, and keep
+   pristine copies in a separate temporary directory.
+3. Add one sentinel unknown object to the profiles array, one unknown member to
+   a profile, one unknown top-level AVISO member, one unknown feature property,
+   and recognizable high-precision coordinates.
+4. Keep hashes and byte copies of both input files.
+5. Open one vSMR radar display at LFPG with traffic or replay targets suitable
+   for tag, filter, and RIMCAS observations.
+6. Save the ASR once so runtime-rail and inset persistence can be checked.
+
+For each row, mark Pass, Fail, Blocked, or N/A and attach a screenshot/log/file
+diff where the expected result is not immediately visible.
+
+## Host and visual shell
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| H-01 | Start with `vSMR_webUI` absent, then open Control Center. | A readable native fallback identifies the missing resources; EuroScope remains responsive. |
+| H-02 | Restore the four application assets and two reset defaults, then open Control Center. | The modeless 728 x 500-ish window opens without stealing normal radar operation. |
+| H-03 | Drag by the HTML title bar, resize to the 646 x 480 minimum, close, and reopen. | Drag is native; the action bar remains visible, layout has no horizontal overflow, and position/size restore on-screen. |
+| H-04 | Exercise Display, AVISO Geometry/Text, Alerts tabs, Groups, Modes, Profiles, Settings, dialogs, long names, empty lists, mixed selections, hover, selected, disabled, and scroll states. | No clipped text, doubled borders, broken SVGs, raw browser controls, unexplained rectangles, or unnecessary horizontal scrollbars. |
+| H-05 | Right-click, press browser DevTools/zoom shortcuts, drag a file onto the window, and try a link/new window. | Context menu, DevTools/accelerators, zoom, external drop, permissions, and off-origin navigation stay blocked. |
+| H-06 | Remove/disable the x86 WebView2 Runtime and open Control Center. | The host displays the Runtime requirement and does not crash EuroScope. |
+| H-07 | Close during WebView startup; then unload/reload the plugin while Control Center is open and while a GitHub request is active. Reopen Control Center after reload. | Windows, handlers, workers, controller, registered host class, and COM resources close without a hang, use-after-free, stale window procedure, or crash. |
+| H-08 | At 728 x 500, capture each page/tab/dialog/state beside the supplied prototype. | Dimensions, spacing, typography, colors, borders, icons, hierarchy, hover/selected/disabled states, and scrollbars have no unexplained visual divergence. |
+| H-09 | In the EuroScope setup that initializes its callback thread as MTA, open through the runtime icon and through `.smr editor`. | The full Control Center loads through the dedicated STA host; no COM-apartment fallback appears, and both routes remain interactive. |
+| H-10 | Open Control Center from two radar screens, resize and use both, then close them in each order. | Each window keeps its own bridge/page state; the shared STA host class remains valid until the final window closes. |
+
+## Runtime rail
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| RT-01 | Inspect the normal radar display before opening Control Center. | Only the compact five-icon native rail is present; it has Mode, Groups, AVISO Insets, Profile, and Control Center tooltips. |
+| RT-02 | Drag the grip, save/reopen the ASR. | Rail stays inside the radar area and restores from `RuntimeMenuX`/`RuntimeMenuY`. |
+| RT-03 | Place the rail near the right edge and open every popup. | Popups flip left and remain on-screen. Long lists page without clipping. |
+| RT-04 | Open Mode and select a different row. | Row contains only indicator/name; renderer immediately uses that mode. |
+| RT-05 | Open Groups and toggle a group containing an exclusively grouped label, line, and area. | Row contains only eye/name; those items disappear/reappear in main and AVISO inset rendering without a file reload. |
+| RT-06 | Toggle AVISO Inset, SRW 1, and SRW 2 independently. | Each actual native window changes immediately and the other two retain their state. |
+| RT-07 | Switch profile from the rail. | Row contains only indicator/name; colors, tags, icons, modes, rules, and alerts reload live. |
+| RT-08 | Click Control Center and then close its title button. | Modeless Control Center opens and hides; the runtime rail remains usable. |
+| RT-09 | Click outside an open popup. | Popup closes and no stale hit regions remain. |
+| RT-10 | Compare the rail and each native popup with the supplied prototype. | Icon family and compact styling match; no permanent button text, emoji substitute, description, internal ID, count, or redundant “Active”/On/Off label appears. |
+
+## Inset presets
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| IP-01 | Arrange main AVISO view, AVISO inset, both SRWs, filters, scales, rotation, visibility, and layout; save a uniquely named preset. | Preset is created and becomes active. |
+| IP-02 | Change all those values, then load the preset. | Main/secondary AVISO and both SRWs restore their captured state. |
+| IP-03 | Update the active preset, alter the layout, then Reset. | Reset returns to the updated snapshot. |
+| IP-04 | Rename, duplicate, set default, toggle linked movement, and delete the duplicate. | Every operation updates the popup and profile data; invalid/duplicate names report failure without corruption. |
+| IP-05 | Save/reopen the ASR and profile. | Default preset and linked movement apply as configured. |
+
+## Global commands and history
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| GH-01 | Open clean state. | Save is disabled; Undo and Redo are disabled. |
+| GH-02 | Change a field, press its local Update, then navigate elsewhere. | Save becomes blue/enabled; change remains staged. |
+| GH-03 | Undo and Redo from another page. | Data changes in each direction while the current page and selection remain stable; availability buttons update. |
+| GH-04 | Make at least 13 committed edits and undo repeatedly. | History remains stable and is bounded to the last 12 snapshots. |
+| GH-05 | Click Reload while dirty, first cancel and then confirm. | Cancel retains staged state; confirm replaces it with disk-authoritative state. |
+| GH-06 | Click Save and wait for native replies. | Save stays pending/disabled until success, then authoritative state reloads and Save becomes disabled. |
+| GH-07 | Make an invalid staged document and Save. | Correlated error is visible, pending state clears, and the destination remains valid. |
+
+## Display: colors and icons
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| DI-01 | Search/select a color, change hue/R/G/B/opacity and Update. | Working profile changes, Revert restores the draft, and disk is unchanged until global Save. |
+| DI-02 | Save the color, observe matching live radar element, then Reload. | Renderer and reopened editor use the saved RGBA value. |
+| DI-03 | Exercise each icon style, primary-target visibility, fixed-pixel size, and small-icon boost. | Preview follows the selection; after Save the actual target renderer follows it. |
+| DI-04 | Change Resolution in Settings, Apply, Save, and inspect small icons. | Resolution is stored in `targets.small_icon_boost_resolution_preset` and applied live. |
+
+## Display: tags
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| DT-01 | Select several tag definitions/statuses. | List rows contain readable names only; no duplicated codes/counts/color squares. |
+| DT-02 | Edit normal/detailed lines, inheritance, and insert a token; Revert, then Update. | Revert discards the draft; Update stages exact token arrays; Save changes rendered tags. |
+| DT-03 | Change rounded corners, automatic deconfliction, speed-based gate, departure/arrival coloring, leader length, label size, typeface, and a supported font weight. | Global options change matching renderer behavior after Save/reload. |
+| DT-04 | Select each offered font weight. | The offered Regular, Bold, and Italic weights are visually distinct and persist after Save/reload. |
+
+## Display: rules
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| DR-01 | Create, duplicate, rename, and delete a rule. | List shows names only; actions are undoable and remain staged until Save. |
+| DR-02 | Add multiple criteria and target/tag/text colors. | Saved rule evaluates all criteria and affects only enabled output channels. |
+| DR-03 | Select All statuses, one status, and a subset of at least two statuses. | Dropdown mixed/all state is clear; native `statuses[]` matching applies the rule to exactly the chosen set. |
+| DR-04 | Load a legacy rule with singular `status`. | The correct checkbox selection appears and a no-op Save preserves compatible behavior. |
+
+## AVISO loading
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| AL-01 | Open From computer, cancel the native picker, then reopen it and select valid GeoJSON. | Cancel changes nothing. The selected document is parsed/staged, source caption changes, and the configured destination is untouched before Save. |
+| AL-02 | Load a normal `github.com/.../blob/...` URL and a `raw.githubusercontent.com` URL. | Download is asynchronous, each parses/stages successfully, and EuroScope drawing remains responsive. |
+| AL-03 | Try a repository page, non-GitHub host, malformed JSON, and empty response. | Each is rejected with a visible correlated error; prior state remains active. |
+| AL-04 | Start a GitHub load and inspect/operate the URL controls before it completes. | Input and Load stay disabled, the browser does not post a second request, and there is at most one active worker. A bridge-level test may inject a second canonical request to verify the correlated native rejection. |
+
+## AVISO geometry
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| AG-01 | Search, Ctrl-click additive select, Shift-select a range, and select all filtered. | Selection and anchor behavior are deterministic and survive rendering. |
+| AG-02 | Select only areas and edit fill/stroke/visibility. | Only area-relevant controls show; Update touches explicitly modified values. |
+| AG-03 | Select only lines and edit stroke/visibility. | Fill controls are absent; line renderer changes after Save/reload. |
+| AG-04 | Select mixed lines and areas with different values. | Mixed states are explicit, incompatible fill controls hide, and untouched values remain byte/semantically unchanged. |
+| AG-05 | Revert, Update, Save, and Reload. | Revert restores the current staged state; Update stages; Save validates/reloads the main and inset renderer. |
+
+## AVISO text
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| AT-01 | Filter by one style, search, Ctrl-click, Shift-select, and select all filtered. | One style selector is shown and multi-selection is deterministic. |
+| AT-02 | Select one label and edit text, visibility, font, size, text/halo colors, and halo width. | Update affects the selected label/scope and renders after Save/reload. |
+| AT-03 | Select multiple labels with mixed values. | Mixed state is clear and text-content input is disabled. |
+| AT-04 | Apply settings to selection, current text group, and all AVISO text in turn. | Only the chosen scope changes; one Update action is recorded each time. |
+| AT-05 | Change Zoom visibility at several levels and vary the main and inset radar range. | Labels obey the configured `zoomLevel` range threshold in both renderer paths. |
+| AT-06 | Save a document containing a text anchor and unknown text property. | Both remain present even though the UI does not expose them. |
+
+## Groups
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| GR-01 | Create, rename, duplicate, and delete groups. | Stable internal IDs remain hidden; visible names/actions update without collisions. |
+| GR-02 | With group search clear, drag groups before and after one another, Save, and reopen. | Page order, runtime popup order, and saved `vsmr_groups` array order agree. Searching disables reordering. |
+| GR-03 | Open Add/remove and switch Text, Lines, Areas; search, multi-select, Select shown, Clear shown, Apply content. | Mixed membership is stored on the selected features and member list uses compact type indicators. |
+| GR-04 | Remove one member and Clear a group. | Only requested memberships are removed; unrelated properties and other group memberships remain. |
+| GR-05 | Put one item in two groups; toggle those groups individually from the runtime popup. | Main and inset update immediately. The item remains visible while either known group is visible and hides only when both are hidden; no stale raster survives cache invalidation. |
+| GR-06 | Save/reload/restart with existing non-slug group IDs. | IDs and memberships remain stable; no automatic case or punctuation rewrite occurs. |
+| GR-07 | Import a fixture using each supported membership alias plus a membership whose group has no top-level definition, then Save and reload. | Canonical-array precedence is deterministic, and the unknown legacy membership appears as a controllable runtime group after the staged document becomes the native-loaded AVISO. |
+
+## Alerts/RIMCAS
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| AR-01 | Toggle global RIMCAS, label-only, red emergency symbol, each of the nine alert types, All, and None; Update. | Actual RIMCAS flags and inactive-alert set change live, then survive Save/reload. |
+| AR-02 | Toggle ARR, DEP, Closed, Normal/LVP, All ARR, All DEP, and Open all. | `CRimcas` live runway maps and LVP mode match every row. |
+| AR-03 | Add a valid runway pair, reject an invalid/duplicate pair, and remove a row. | Validation is visible; live table and native maps contain exactly the accepted rows. |
+| AR-04 | Edit all five normal timers, all five LVP timers, and stage-two speed threshold. | Valid non-negative integers reach native countdown/threshold logic. |
+| AR-05 | Edit six appearance colors. | Stage-one/stage-two aircraft and caution/warning label colors update in live rendering. |
+| AR-06 | Save, close EuroScope, reopen the ASR/profile, and inspect runway/LVP state. | Profile runway and visibility choices restore; an explicit runway array remains authoritative over sector-derived legacy defaults. |
+
+## Modes
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| MO-01 | Create, duplicate, rename, Update, and delete a mode. | List and active reference remain consistent; at least one mode is retained. |
+| MO-02 | Add/remove blocked squawk chips; reject a code containing 8 or 9; edit every requirement. | Only unique four-digit octal codes are accepted; assigned/pilot squawk, clearance, TSAT, TOBT, tower-filter, and structured-rule behavior follow the saved mode. |
+| MO-03 | Select visible statuses individually and use All/None. | Target visibility matches the exact set and both helper controls update every status deterministically. |
+| MO-04 | Activate the mode from page and runtime rail. | Change is immediate and both surfaces show the same selection. |
+| MO-05 | Toggle `accept_pilot_squawk`, `tower_filter`, and `structured_rules`; Save and reopen. | The three visible editors round-trip their native fields and affect the selected mode without dropping unrelated mode data. |
+
+## Profiles
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| PR-01 | Create, duplicate, rename, Update, and delete profiles. | Names remain unique, at least one profile remains, and metadata active-name reference stays valid. |
+| PR-02 | Edit altitude, speed, range, and night-alpha filters. | Main/inset radar filtering and night overlay use saved values. |
+| PR-03 | Confirm Advanced starts collapsed, expand it, and inspect Schema. | Schema stays out of the primary form; its value is read-only and remains unchanged. |
+| PR-04 | Activate from page, rail selector, and runtime rail. | Live renderer and every selector agree; last active profile persists. |
+| PR-05 | Make the profile destination unwritable and activate a different profile from the Control Center. | The live selection may already be applied, but a correlated error is shown, no authoritative success is sent, and the on-disk active-profile value remains unchanged. |
+
+## Settings and disabled controls
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| SE-01 | Inspect native-host Settings, then expand Advanced and Danger zone. | Both disclosures start collapsed. Profile/AVISO paths are read-only. Watch files, bridge, update interval, runtime sync, VACDM, CPDLC, and the inset feature toggle are disabled with explanatory tooltips. |
+| SE-02 | Use Computer and GitHub for Profiles and AVISO. | Valid data stages; source text reports the source; native destination paths do not silently change. |
+| SE-03 | Change Resolution and RIMCAS, then Apply. | Connected settings apply live and mark staged profile state dirty. |
+| SE-04 | Turn deletion confirmation off and perform a delete. | Confirmation behavior changes for the current browser session. It is expected to reset after authoritative reload until native persistence is added. |
+| SE-05 | Make a recognizable staged edit and click Reset supplied data; cancel once, then confirm once. | Cancel changes nothing. Confirm validates and stages the complete packaged profiles and LFPG AVISO together, marks Save dirty, and does not write either configured destination before global Save. |
+| SE-06 | Temporarily remove or corrupt one packaged default and confirm Reset. | A visible error identifies missing/invalid defaults and the previously staged documents remain intact. |
+
+## Persistence, compatibility, and failure recovery
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| PC-01 | Save profile-only changes. | Destination parses; old destination is in `.bak`; no temporary file remains; live renderer reloads. |
+| PC-02 | Save AVISO-only changes. | Destination is a valid FeatureCollection; the previous file is in `.bak`; no partial/truncated temporary file remains; renderer reloads. |
+| PC-03 | Load a profile fixture with non-profile top-level sentinels, make a profile edit, Undo/Redo it, then compare sentinels and unknown fields before/after no-op and targeted Saves. | Imported top-level entries, unknown profile members, AVISO top-level/feature properties, anchors, style IDs, feature IDs, and group IDs remain. |
+| PC-04 | Compare original high-precision coordinates after non-geometry AVISO edits. | Serialized coordinate text is unchanged for matching untouched features. |
+| PC-05 | Introduce duplicate profile names, duplicate feature IDs, invalid geometry, or a missing style reference. | Save fails visibly and does not replace the corresponding destination. |
+| PC-06 | Replace profile JSON with malformed text and Reload. | A correlated Control Center error appears and the previously loaded profile remains active. |
+| PC-07 | Replace map JSON with malformed entries and Reload. | A correlated Control Center error appears and the previously loaded map index remains active. |
+| PC-08 | Replace AVISO JSON with malformed text and Reload. | A correlated Control Center error appears; prior main/inset AVISO snapshots remain rendered and no empty document is staged or saved. |
+| PC-09 | Make the AVISO destination unwritable and Save changes to both documents. | `state.error` clears pending UI; profile destination is untouched and neither file is partially overwritten. |
+| PC-10 | With an existing AVISO destination, allow its write but force the subsequent profile replacement to fail. | Error is visible; the in-memory profile is restored and AVISO is rolled back from `.bak`. Review both files because two-file Save is not a transactional filesystem operation. |
+
+## Completion record
+
+The Control Center is ready for release only when:
+
+- every non-N/A row passes;
+- each N/A row corresponds to the current limitations table in
+  [CONTROL_CENTER.md](CONTROL_CENTER.md);
+- `Release | Win32` builds from a clean restore;
+- `Release\vSMR_webUI` contains the four application assets plus
+  `defaults\vSMR_Profiles.json` and `defaults\AVISO_LFPG.geojson`;
+- no malformed-file or unload test crashes EuroScope; and
+- profile/AVISO diffs show no unexplained data loss.

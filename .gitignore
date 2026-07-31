@@ -196,11 +196,10 @@ FakesAssemblies/
 *.opt
 
 # html ui preview
-.html
+/vSMR_webUI/vSMR_webUI.html
 
 #Custom
 
-curl-7.41.0/
 ipch/
 package/
 /vSMR/version.txt

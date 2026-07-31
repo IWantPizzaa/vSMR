@@ -29,23 +29,24 @@ max_jobs: 1
 #---------------------------------#
 
 # Build worker image (VM template)
-os: Visual Studio 2019
+image: Visual Studio 2022
 
 #---------------------------------#
 #       build configuration       #
 #---------------------------------#
 
 install:
-  - cmd: git submodule update --init --recursive
   - cmd: msbuild /version
 
 # build Configuration, i.e. Debug, Release, etc.
 configuration: Release
+platform: Win32
 
 build_script:
   - ps: (Get-Content  C:\projects\vsmr\vSMR\include\SMRPlugin.hpp).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\include\SMRPlugin.hpp
   - ps: (Get-Content  C:\projects\vsmr\vSMR\resources\vSMR.rc).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\resources\vSMR.rc
-  - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /m /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
+  - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /t:Restore /p:Configuration=Release /p:Platform=Win32
+  - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /m /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143 /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 after_build:
   - cmd: mkdir vSMR-nightly
@@ -54,7 +55,9 @@ after_build:
   - cmd: cp vSMR\data\vSMR_Profiles.json vSMR-nightly\vSMR_Data\
   - cmd: cp vSMR\data\vSMR_Maps.json vSMR-nightly\vSMR_Data\
   - cmd: cp vSMR\data\ICAO_Aircraft.json vSMR-nightly\vSMR_Data\
+  - cmd: xcopy vSMR\data\AVISO vSMR-nightly\vSMR_Data\AVISO\ /E /I /Y
   - cmd: xcopy vSMR\data\aircraft_icons vSMR-nightly\vSMR_Data\aircraft_icons\ /E /I /Y
+  - cmd: xcopy Release\vSMR_webUI vSMR-nightly\vSMR_webUI\ /E /I /Y
   - cmd: 7z a vSMR-nightly.zip %APPVEYOR_BUILD_FOLDER%\vSMR-nightly\
 
 #---------------------------------#
