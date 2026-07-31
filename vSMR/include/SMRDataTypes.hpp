@@ -51,6 +51,7 @@ struct StructuredTagColorRule
 	std::string name;
 	std::string tagType = "any";
 	std::string status = "any";
+	std::vector<std::string> statuses;
 	std::string detail = "any";
 	bool applyTarget = false;
 	int targetR = 255;

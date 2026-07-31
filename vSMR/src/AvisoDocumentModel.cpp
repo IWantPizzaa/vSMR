@@ -207,20 +207,113 @@ bool AvisoDocumentModel::SaveAtomically(const std::string& path, std::string& er
 		if (outputPath.has_parent_path())
 			std::filesystem::create_directories(outputPath.parent_path());
 
-		const std::filesystem::path tempPath = outputPath.string() + ".tmp";
+		std::filesystem::path tempPath;
+		HANDLE output = INVALID_HANDLE_VALUE;
+		for (int attempt = 0; attempt < 128; ++attempt)
 		{
-			std::ofstream output(tempPath, std::ios::binary | std::ios::trunc);
-			if (!output.is_open())
+			tempPath =
+				outputPath.string() +
+				".tmp." +
+				std::to_string(::GetCurrentProcessId()) +
+				"." +
+				std::to_string(::GetTickCount()) +
+				"." +
+				std::to_string(attempt);
+			output = ::CreateFileA(
+				tempPath.string().c_str(),
+				GENERIC_WRITE,
+				0,
+				nullptr,
+				CREATE_NEW,
+				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
+				nullptr);
+			if (output != INVALID_HANDLE_VALUE)
+				break;
+			const DWORD createError = ::GetLastError();
+			if (createError != ERROR_FILE_EXISTS &&
+				createError != ERROR_ALREADY_EXISTS)
 			{
 				errorText = "Unable to write AVISO temp file.";
 				return false;
 			}
-			output.write(serializedJson.c_str(), static_cast<std::streamsize>(serializedJson.size()));
-			output.close();
-			if (!output)
+		}
+		if (output == INVALID_HANDLE_VALUE)
+		{
+			errorText = "Unable to allocate a unique AVISO temp file.";
+			return false;
+		}
+
+		bool writeOk = true;
+		size_t offset = 0;
+		while (offset < serializedJson.size())
+		{
+			const size_t remaining = serializedJson.size() - offset;
+			const DWORD chunk = static_cast<DWORD>(
+				(std::min)(remaining, static_cast<size_t>(0x7fffffff)));
+			DWORD written = 0;
+			if (!::WriteFile(
+				output,
+				serializedJson.data() + offset,
+				chunk,
+				&written,
+				nullptr) ||
+				written == 0)
 			{
-				errorText = "Unable to flush AVISO temp file.";
+				writeOk = false;
+				break;
+			}
+			offset += written;
+		}
+		if (writeOk && !::FlushFileBuffers(output))
+			writeOk = false;
+		if (!::CloseHandle(output))
+			writeOk = false;
+		if (!writeOk)
+		{
+			errorText = "Unable to flush AVISO temp file.";
+			std::error_code ignored;
+			std::filesystem::remove(tempPath, ignored);
+			return false;
+		}
+
+		std::ifstream persistedInput(tempPath, std::ios::binary);
+		std::ostringstream persistedBuffer;
+		persistedBuffer << persistedInput.rdbuf();
+		const std::string persistedJson = persistedBuffer.str();
+		rapidjson::Document persistedValidation;
+		if (persistedInput.bad() ||
+			persistedJson != serializedJson ||
+			persistedValidation.Parse<0>(persistedJson.c_str()).HasParseError() ||
+			!persistedValidation.IsObject() ||
+			!persistedValidation.HasMember("features") ||
+			!persistedValidation["features"].IsArray())
+		{
+			errorText = "AVISO temp-file validation failed.";
+			persistedInput.close();
+			std::error_code ignored;
+			std::filesystem::remove(tempPath, ignored);
+			return false;
+		}
+		persistedInput.close();
+
+		if (std::filesystem::is_regular_file(outputPath))
+		{
+			const std::filesystem::path backupPath =
+				outputPath.string() + ".bak";
+			const std::filesystem::path backupTempPath =
+				tempPath.string() + ".backup";
+			if (!::CopyFileA(
+				outputPath.string().c_str(),
+				backupTempPath.string().c_str(),
+				TRUE) ||
+				!::MoveFileExA(
+					backupTempPath.string().c_str(),
+					backupPath.string().c_str(),
+					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			{
+				errorText = "Unable to create the AVISO backup file.";
 				std::error_code ignored;
+				std::filesystem::remove(backupTempPath, ignored);
 				std::filesystem::remove(tempPath, ignored);
 				return false;
 			}

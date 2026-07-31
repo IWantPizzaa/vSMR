@@ -320,6 +320,37 @@ namespace
 				out.secondaryLayoutMode = LayoutModeFromValue((*secondary)["layout_mode_id"], out.secondaryLayoutMode);
 		}
 
+		if (const rapidjson::Value* srw = GetArrayMember(value, "srw"))
+		{
+			for (rapidjson::SizeType index = 0; index < srw->Size(); ++index)
+			{
+				const rapidjson::Value& item = (*srw)[index];
+				const int id = ReadIntMember(item, "id", static_cast<int>(index) + 1);
+				if (!item.IsObject() || id < 1 || id > 2)
+					continue;
+
+				CSMRRadar::AvisoPreset::SecondaryRadarWindow& window =
+					out.srw[static_cast<size_t>(id - 1)];
+				window.valid = true;
+				window.visible = ReadBoolMember(item, "visible", window.visible);
+				window.area.left = ReadIntMember(item, "left", window.area.left);
+				window.area.top = ReadIntMember(item, "top", window.area.top);
+				window.area.right = ReadIntMember(item, "right", window.area.right);
+				window.area.bottom = ReadIntMember(item, "bottom", window.area.bottom);
+				window.offset.x = ReadIntMember(item, "offset_x", window.offset.x);
+				window.offset.y = ReadIntMember(item, "offset_y", window.offset.y);
+				window.scale = std::clamp(
+					ReadIntMember(item, "scale", window.scale),
+					1,
+					2400);
+				window.filter = std::clamp(
+					ReadIntMember(item, "filter", window.filter),
+					0,
+					66000);
+				ReadDoubleMember(item, "rotation", window.rotation);
+			}
+		}
+
 		return true;
 	}
 
@@ -351,6 +382,39 @@ namespace
 		AddIntMember(secondary, "layout_mode_id", std::clamp(preset.secondaryLayoutMode, 0, 8), allocator);
 		rapidjson::Value secondaryKey("secondary", allocator);
 		out.AddMember(secondaryKey, secondary, allocator);
+
+		rapidjson::Value srw(rapidjson::kArrayType);
+		for (size_t index = 0; index < preset.srw.size(); ++index)
+		{
+			const CSMRRadar::AvisoPreset::SecondaryRadarWindow& window =
+				preset.srw[index];
+			if (!window.valid)
+				continue;
+
+			rapidjson::Value item(rapidjson::kObjectType);
+			AddIntMember(item, "id", static_cast<int>(index) + 1, allocator);
+			AddBoolMember(item, "visible", window.visible, allocator);
+			AddIntMember(item, "left", window.area.left, allocator);
+			AddIntMember(item, "top", window.area.top, allocator);
+			AddIntMember(item, "right", window.area.right, allocator);
+			AddIntMember(item, "bottom", window.area.bottom, allocator);
+			AddIntMember(item, "offset_x", window.offset.x, allocator);
+			AddIntMember(item, "offset_y", window.offset.y, allocator);
+			AddIntMember(
+				item,
+				"scale",
+				std::clamp(window.scale, 1, 2400),
+				allocator);
+			AddIntMember(
+				item,
+				"filter",
+				std::clamp(window.filter, 0, 66000),
+				allocator);
+			AddDoubleMember(item, "rotation", window.rotation, allocator);
+			srw.PushBack(item, allocator);
+		}
+		rapidjson::Value srwKey("srw", allocator);
+		out.AddMember(srwKey, srw, allocator);
 	}
 
 	CInsetWindow* GetSecondaryAvisoWindow(CSMRRadar* radar)
@@ -454,6 +518,24 @@ bool CSMRRadar::SaveAvisoPreset(const std::string& requestedName, bool overwrite
 	preset.secondaryLayoutMode = std::clamp(static_cast<int>(avisoWindow->m_AvisoLayoutMode), 0, 8);
 	const auto displayIt = appWindowDisplays.find(avisoWindowId);
 	preset.secondaryVisible = displayIt != appWindowDisplays.end() && displayIt->second;
+	for (int id = 1; id <= 2; ++id)
+	{
+		const auto windowIt = appWindows.find(id);
+		if (windowIt == appWindows.end() || windowIt->second == nullptr)
+			continue;
+
+		AvisoPreset::SecondaryRadarWindow& window =
+			preset.srw[static_cast<size_t>(id - 1)];
+		window.valid = true;
+		window.area = windowIt->second->m_Area;
+		window.offset = windowIt->second->m_Offset;
+		window.scale = windowIt->second->m_Scale;
+		window.filter = windowIt->second->m_Filter;
+		window.rotation = windowIt->second->m_Rotation;
+		const auto visibleIt = appWindowDisplays.find(id);
+		window.visible =
+			visibleIt != appWindowDisplays.end() && visibleIt->second;
+	}
 
 	rapidjson::Value presetValue;
 	WriteAvisoPreset(preset, presetValue, allocator);
@@ -528,6 +610,23 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 	}
 
 	appWindowDisplays[APPWINDOW_AVISO - APPWINDOW_BASE] = preset.secondaryVisible;
+	for (int id = 1; id <= 2; ++id)
+	{
+		const AvisoPreset::SecondaryRadarWindow& window =
+			preset.srw[static_cast<size_t>(id - 1)];
+		if (!window.valid)
+			continue;
+
+		const auto windowIt = appWindows.find(id);
+		if (windowIt == appWindows.end() || windowIt->second == nullptr)
+			continue;
+		windowIt->second->m_Area = window.area;
+		windowIt->second->m_Offset = window.offset;
+		windowIt->second->m_Scale = std::clamp(window.scale, 1, 2400);
+		windowIt->second->m_Filter = std::clamp(window.filter, 0, 66000);
+		windowIt->second->m_Rotation = window.rotation;
+		appWindowDisplays[id] = window.visible;
+	}
 	AvisoViewsLinked = preset.linkedMovement;
 	ActiveAvisoPresetName = preset.name;
 	if (AvisoViewsLinked)

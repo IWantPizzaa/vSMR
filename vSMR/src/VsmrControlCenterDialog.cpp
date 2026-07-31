@@ -1,48 +1,277 @@
 #include "stdafx.h"
 #include "VsmrControlCenterDialog.hpp"
-#include "SMRRadar.hpp"
-#include "ProfileEditorDialog.hpp"
-#include "AvisoEditorDialog.hpp"
 
+#include "HttpHelper.hpp"
+#include "Logger.h"
+#include "SMRRadar.hpp"
+#include "VsmrControlCenterBridge.hpp"
+
+#include "WebView2.h"
+#include <wrl.h>
+
+#include "rapidjson/document.h"
+#include "rapidjson/prettywriter.h"
+#include "rapidjson/stringbuffer.h"
+
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <shellapi.h>
+#include <utility>
+
+using Microsoft::WRL::Callback;
+using Microsoft::WRL::ComPtr;
 
 IMPLEMENT_DYNAMIC(CVsmrControlCenterDialog, CDialogEx)
 
 namespace
 {
-	constexpr int kSidebarWidth = 178;
-	constexpr int kBottomStatusHeight = 30;
-	constexpr int kOuterPad = 18;
-	constexpr int kControlGap = 8;
-	constexpr int kPageTitleHeight = 50;
+	constexpr UINT kGithubDownloadCompleteMessage = WM_APP + 0x552;
+	constexpr int kDefaultClientWidth = 728;
+	constexpr int kDefaultClientHeight = 500;
+	constexpr int kMinimumWindowWidth = 646;
+	constexpr int kMinimumWindowHeight = 480;
+	const wchar_t* kVirtualHostName = L"app.vsmr";
+	const wchar_t* kVirtualOriginPrefix = L"https://app.vsmr/";
 
-	std::string CStringToStdString(const CString& value)
+	std::wstring Utf8ToWide(const std::string& value)
 	{
-		return std::string(static_cast<LPCSTR>(value));
+		if (value.empty())
+			return {};
+		const int length = ::MultiByteToWideChar(
+			CP_UTF8,
+			MB_ERR_INVALID_CHARS,
+			value.data(),
+			static_cast<int>(value.size()),
+			nullptr,
+			0);
+		if (length <= 0)
+			return std::wstring(value.begin(), value.end());
+		std::wstring output(static_cast<size_t>(length), L'\0');
+		::MultiByteToWideChar(
+			CP_UTF8,
+			MB_ERR_INVALID_CHARS,
+			value.data(),
+			static_cast<int>(value.size()),
+			output.data(),
+			length);
+		return output;
 	}
 
-	bool IsShellExecuteSuccess(HINSTANCE result)
+	std::string WideToUtf8(const std::wstring& value)
 	{
-		return reinterpret_cast<INT_PTR>(result) > 32;
+		if (value.empty())
+			return {};
+		const int length = ::WideCharToMultiByte(
+			CP_UTF8,
+			WC_ERR_INVALID_CHARS,
+			value.data(),
+			static_cast<int>(value.size()),
+			nullptr,
+			0,
+			nullptr,
+			nullptr);
+		if (length <= 0)
+		{
+			std::string fallback;
+			fallback.reserve(value.size());
+			for (wchar_t character : value)
+				fallback.push_back(
+					character >= 0 && character <= 0x7f
+						? static_cast<char>(character)
+						: '?');
+			return fallback;
+		}
+		std::string output(static_cast<size_t>(length), '\0');
+		::WideCharToMultiByte(
+			CP_UTF8,
+			WC_ERR_INVALID_CHARS,
+			value.data(),
+			static_cast<int>(value.size()),
+			output.data(),
+			length,
+			nullptr,
+			nullptr);
+		return output;
+	}
+
+	std::wstring LocalAppDataPath()
+	{
+		wchar_t buffer[32768] = {};
+		const DWORD length = ::GetEnvironmentVariableW(
+			L"LOCALAPPDATA",
+			buffer,
+			static_cast<DWORD>(std::size(buffer)));
+		if (length > 0 && length < std::size(buffer))
+			return std::wstring(buffer, length);
+
+		const DWORD tempLength = ::GetTempPathW(
+			static_cast<DWORD>(std::size(buffer)),
+			buffer);
+		if (tempLength > 0 && tempLength < std::size(buffer))
+			return std::wstring(buffer, tempLength);
+		return L".";
+	}
+
+	bool IsAllowedNavigation(const std::wstring& uri)
+	{
+		if (uri == L"about:blank")
+			return true;
+		if (uri.size() < wcslen(kVirtualOriginPrefix))
+			return false;
+		return _wcsnicmp(
+			uri.c_str(),
+			kVirtualOriginPrefix,
+			wcslen(kVirtualOriginPrefix)) == 0;
+	}
+
+	CRect ClampWindowRectToMonitor(const CRect& requested)
+	{
+		CRect result = requested;
+		int width = (std::max)(kMinimumWindowWidth, result.Width());
+		int height = (std::max)(kMinimumWindowHeight, result.Height());
+
+		RECT requestedRect = result;
+		HMONITOR monitor = ::MonitorFromRect(
+			&requestedRect,
+			MONITOR_DEFAULTTONEAREST);
+		MONITORINFO monitorInfo = {};
+		monitorInfo.cbSize = sizeof(monitorInfo);
+		if (monitor == nullptr || !::GetMonitorInfoW(monitor, &monitorInfo))
+			return CRect(
+				result.left,
+				result.top,
+				result.left + width,
+				result.top + height);
+
+		const CRect workArea(monitorInfo.rcWork);
+		width = (std::min)(width, workArea.Width());
+		height = (std::min)(height, workArea.Height());
+		const int left = (std::clamp)(
+			result.left,
+			workArea.left,
+			(std::max)(workArea.left, workArea.right - width));
+		const int top = (std::clamp)(
+			result.top,
+			workArea.top,
+			(std::max)(workArea.top, workArea.bottom - height));
+		return CRect(left, top, left + width, top + height);
+	}
+
+	bool ReadTextFile(const std::filesystem::path& path, std::string& text)
+	{
+		text.clear();
+		std::ifstream input(path, std::ios::binary);
+		if (!input.is_open())
+			return false;
+		std::ostringstream stream;
+		stream << input.rdbuf();
+		text = stream.str();
+		return static_cast<bool>(input) || input.eof();
+	}
+
+	bool WriteTextFileAtomically(
+		const std::filesystem::path& path,
+		const std::string& text)
+	{
+		try
+		{
+			if (path.has_parent_path())
+				std::filesystem::create_directories(path.parent_path());
+			const std::filesystem::path temp =
+				path.string() + ".tmp." + std::to_string(::GetCurrentProcessId());
+			{
+				std::ofstream output(
+					temp,
+					std::ios::binary | std::ios::trunc);
+				if (!output.is_open())
+					return false;
+				output.write(
+					text.data(),
+					static_cast<std::streamsize>(text.size()));
+				output.flush();
+				output.close();
+				if (!output)
+				{
+					std::error_code ignored;
+					std::filesystem::remove(temp, ignored);
+					return false;
+				}
+			}
+			if (!::MoveFileExW(
+				temp.c_str(),
+				path.c_str(),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			{
+				std::error_code ignored;
+				std::filesystem::remove(temp, ignored);
+				return false;
+			}
+			return true;
+		}
+		catch (...)
+		{
+			return false;
+		}
 	}
 }
 
-CVsmrControlCenterDialog::CVsmrControlCenterDialog(CSMRRadar* owner, CWnd* parent)
+struct CVsmrControlCenterDialog::WebViewHostState
+{
+	ComPtr<ICoreWebView2Environment> environment;
+	ComPtr<ICoreWebView2Controller> controller;
+	ComPtr<ICoreWebView2> webView;
+	EventRegistrationToken navigationStartingToken = {};
+	EventRegistrationToken newWindowToken = {};
+	EventRegistrationToken webMessageToken = {};
+	EventRegistrationToken permissionToken = {};
+	bool navigationStartingRegistered = false;
+	bool newWindowRegistered = false;
+	bool webMessageRegistered = false;
+	bool permissionRegistered = false;
+	bool comInitialized = false;
+};
+
+struct CVsmrControlCenterDialog::GithubDownloadResult
+{
+	std::string resource;
+	std::string source;
+	std::string requestId;
+	std::string body;
+};
+
+BEGIN_MESSAGE_MAP(CVsmrControlCenterDialog, CDialogEx)
+	ON_WM_CLOSE()
+	ON_WM_DESTROY()
+	ON_WM_SIZE()
+	ON_WM_MOVE()
+	ON_WM_GETMINMAXINFO()
+	ON_MESSAGE(kGithubDownloadCompleteMessage, OnGithubDownloadComplete)
+END_MESSAGE_MAP()
+
+CVsmrControlCenterDialog::CVsmrControlCenterDialog(
+	CSMRRadar* owner,
+	CWnd* parent)
 	: CDialogEx(CVsmrControlCenterDialog::IDD, parent),
-	Owner(owner)
+	Owner(owner),
+	WebHost(std::make_unique<WebViewHostState>()),
+	LifetimeToken(std::make_shared<std::atomic<bool>>(true))
 {
 }
 
 CVsmrControlCenterDialog::~CVsmrControlCenterDialog()
 {
+	if (LifetimeToken)
+		LifetimeToken->store(false);
+	if (GithubDownloadThread.joinable())
+		GithubDownloadThread.join();
 }
 
 void CVsmrControlCenterDialog::SetOwner(CSMRRadar* owner)
 {
 	Owner = owner;
+	if (Bridge)
+		Bridge->SetOwner(owner);
 }
 
 void CVsmrControlCenterDialog::DoDataExchange(CDataExchange* pDX)
@@ -54,529 +283,745 @@ BOOL CVsmrControlCenterDialog::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	SetWindowTextA("vSMR");
-	CreateControls();
-	ControlsCreated = true;
-	ShowPage(Page::Overview);
-	LayoutControls();
+	SetWindowTextA("vSMR Control Center");
+	ModifyStyle(
+		WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
+		0,
+		SWP_FRAMECHANGED);
+
+	FallbackLabel.Create(
+		"Starting vSMR Control Center...",
+		WS_CHILD | WS_VISIBLE | SS_CENTER,
+		CRect(0, 0, 0, 0),
+		this);
+
+	VsmrBridgeHostCallbacks callbacks;
+	callbacks.sendJson = [this](const std::string& json) {
+		SendJsonToWebView(json);
+	};
+	callbacks.closeWindow = [this]() {
+		OnClose();
+	};
+	callbacks.beginWindowDrag = [this]() {
+		BeginNativeWindowDrag();
+	};
+	callbacks.requestComputerLoad =
+		[this](const std::string& resource, const std::string& requestId) {
+			RequestComputerResource(resource, requestId);
+		};
+	callbacks.requestResetDefaults =
+		[this](const std::string& requestId) {
+			RequestResetDefaults(requestId);
+		};
+	callbacks.requestGithubLoad =
+		[this](
+			const std::string& resource,
+			const std::string& url,
+			const std::string& requestId) {
+			RequestGithubResource(resource, url, requestId);
+		};
+	Bridge = std::make_unique<VsmrControlCenterBridge>(
+		Owner,
+		std::move(callbacks));
+
+	InitializeWebView();
+	ResizeWebView();
 	return TRUE;
 }
 
-void CVsmrControlCenterDialog::CreateButton(CButton& button, const char* text, UINT id)
+void CVsmrControlCenterDialog::InitializeWebView()
 {
-	button.Create(
-		text,
-		WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-		CRect(0, 0, 0, 0),
-		this,
-		id);
+	const std::wstring resourceFolder = ResolveWebResourceFolder();
+	if (resourceFolder.empty())
+	{
+		ShowFallback(
+			"vSMR web resources were not found. Reinstall the vSMR_webUI folder next to vSMR.dll.");
+		return;
+	}
+
+	const std::wstring userDataFolder = WebViewUserDataFolder();
+	try
+	{
+		std::filesystem::create_directories(userDataFolder);
+	}
+	catch (const std::exception& ex)
+	{
+		ShowFallback(
+			"Unable to create the WebView2 data folder: " +
+			std::string(ex.what()));
+		return;
+	}
+
+	const HRESULT comResult = ::CoInitializeEx(
+		nullptr,
+		COINIT_APARTMENTTHREADED);
+	if (SUCCEEDED(comResult))
+		WebHost->comInitialized = true;
+	else if (comResult != RPC_E_CHANGED_MODE)
+	{
+		ShowFallback(
+			"Unable to initialize COM for WebView2 (0x" +
+			std::to_string(static_cast<unsigned long>(comResult)) + ").");
+		return;
+	}
+	else
+	{
+		ShowFallback(
+			"WebView2 requires the EuroScope UI thread to use an STA COM apartment.");
+		return;
+	}
+
+	std::weak_ptr<std::atomic<bool>> weakLifetime = LifetimeToken;
+	const HRESULT createResult = ::CreateCoreWebView2EnvironmentWithOptions(
+		nullptr,
+		userDataFolder.c_str(),
+		nullptr,
+		Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+			[this, weakLifetime](
+				HRESULT result,
+				ICoreWebView2Environment* environment) -> HRESULT
+			{
+				const auto lifetime = weakLifetime.lock();
+				if (!lifetime || !lifetime->load())
+					return S_OK;
+				return OnWebViewEnvironmentCreated(result, environment);
+			}).Get());
+	if (FAILED(createResult))
+	{
+		ShowFallback(
+			"Unable to start WebView2. Install the x86 Microsoft Edge WebView2 Evergreen Runtime.");
+	}
 }
 
-void CVsmrControlCenterDialog::CreateStatic(CStatic& label, const char* text)
+HRESULT CVsmrControlCenterDialog::OnWebViewEnvironmentCreated(
+	HRESULT result,
+	IUnknown* environmentUnknown)
 {
-	label.Create(text, WS_CHILD | WS_VISIBLE | SS_LEFT, CRect(0, 0, 0, 0), this);
+	if (FAILED(result) || environmentUnknown == nullptr)
+	{
+		ShowFallback(
+			"Microsoft Edge WebView2 Runtime is unavailable. Install the x86 Evergreen Runtime and reopen the Control Center.");
+		return S_OK;
+	}
+
+	ComPtr<ICoreWebView2Environment> environment;
+	const HRESULT queryResult = environmentUnknown->QueryInterface(
+		IID_PPV_ARGS(&environment));
+	if (FAILED(queryResult) || !environment)
+	{
+		ShowFallback("WebView2 returned an unsupported environment.");
+		return S_OK;
+	}
+	WebHost->environment = environment;
+
+	std::weak_ptr<std::atomic<bool>> weakLifetime = LifetimeToken;
+	return WebHost->environment->CreateCoreWebView2Controller(
+		GetSafeHwnd(),
+		Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+			[this, weakLifetime](
+				HRESULT controllerResult,
+				ICoreWebView2Controller* controller) -> HRESULT
+			{
+				const auto lifetime = weakLifetime.lock();
+				if (!lifetime || !lifetime->load())
+					return S_OK;
+				return OnWebViewControllerCreated(
+					controllerResult,
+					controller);
+			}).Get());
 }
 
-void CVsmrControlCenterDialog::CreateReadOnlyEdit(CEdit& edit)
+HRESULT CVsmrControlCenterDialog::OnWebViewControllerCreated(
+	HRESULT result,
+	IUnknown* controllerUnknown)
 {
-	edit.Create(
-		WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-		CRect(0, 0, 0, 0),
-		this,
-		0);
+	if (FAILED(result) || controllerUnknown == nullptr)
+	{
+		ShowFallback("Unable to create the WebView2 controller.");
+		return S_OK;
+	}
+
+	ComPtr<ICoreWebView2Controller> controller;
+	const HRESULT queryResult = controllerUnknown->QueryInterface(
+		IID_PPV_ARGS(&controller));
+	if (FAILED(queryResult) || !controller)
+	{
+		ShowFallback("WebView2 returned an unsupported controller.");
+		return S_OK;
+	}
+	WebHost->controller = controller;
+	if (FAILED(WebHost->controller->get_CoreWebView2(&WebHost->webView)) ||
+		!WebHost->webView)
+	{
+		ShowFallback("Unable to create the WebView2 browser instance.");
+		return S_OK;
+	}
+
+	ConfigureWebView();
+	return S_OK;
 }
 
-void CVsmrControlCenterDialog::CreateControls()
+void CVsmrControlCenterDialog::ConfigureWebView()
 {
-	CreateStatic(NavigationTitleLabel, "vSMR Control Center");
-	CreateStatic(PageTitleLabel, "");
-	CreateStatic(PageSubtitleLabel, "");
-	CreateStatic(StatusLabel, "");
-	CreateStatic(MapsPathLabel, "vSMR_Maps.json");
+	if (!WebHost->webView || !WebHost->controller)
+		return;
 
-	CreateButton(NavOverviewButton, "Overview", IDC_VCC_NAV_OVERVIEW);
-	CreateButton(NavProfilesButton, "Profiles", IDC_VCC_NAV_PROFILES);
-	CreateButton(NavAvisoButton, "AVISO", IDC_VCC_NAV_AVISO);
-	CreateButton(NavMapsButton, "Maps", IDC_VCC_NAV_MAPS);
-	CreateButton(NavSettingsButton, "Settings", IDC_VCC_NAV_SETTINGS);
+	ComPtr<ICoreWebView2Settings> settings;
+	if (SUCCEEDED(WebHost->webView->get_Settings(&settings)) && settings)
+	{
+		settings->put_IsScriptEnabled(TRUE);
+		settings->put_IsWebMessageEnabled(TRUE);
+		settings->put_AreDefaultContextMenusEnabled(FALSE);
+		settings->put_AreDevToolsEnabled(FALSE);
+		settings->put_IsStatusBarEnabled(FALSE);
+		settings->put_IsZoomControlEnabled(FALSE);
+		settings->put_AreHostObjectsAllowed(FALSE);
 
-	CreateButton(OverviewProfilesButton, "Edit Profiles", IDC_VCC_OVERVIEW_PROFILES);
-	CreateButton(OverviewAvisoButton, "Edit AVISO", IDC_VCC_OVERVIEW_AVISO);
-	CreateButton(OverviewMapsButton, "Edit Maps", IDC_VCC_OVERVIEW_MAPS);
-	CreateButton(ReloadConfigButton, "Reload vSMR", IDC_VCC_RELOAD_CONFIG);
-	CreateButton(ReloadAvisoButton, "Reload AVISO", IDC_VCC_RELOAD_AVISO);
-	CreateButton(OpenMapsExternalButton, "Open file", IDC_VCC_OPEN_MAPS_EXTERNAL);
-	CreateButton(ReloadMapsTextButton, "Reload", IDC_VCC_RELOAD_MAPS_TEXT);
-	CreateButton(SaveMapsTextButton, "Save and reload", IDC_VCC_SAVE_MAPS_TEXT);
-	CreateButton(OpenConfigExternalButton, "Open profiles JSON", IDC_VCC_OPEN_CONFIG_EXTERNAL);
-	CreateButton(OpenDataFolderButton, "Open data folder", IDC_VCC_OPEN_DATA_FOLDER);
-	CreateButton(OpenPluginFolderButton, "Open plugin folder", IDC_VCC_OPEN_PLUGIN_FOLDER);
+		ComPtr<ICoreWebView2Settings3> settings3;
+		if (SUCCEEDED(settings.As(&settings3)) && settings3)
+			settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
+	}
 
-	CreateReadOnlyEdit(OverviewEdit);
-	CreateReadOnlyEdit(SettingsEdit);
+	ComPtr<ICoreWebView2Controller4> controller4;
+	if (SUCCEEDED(WebHost->controller.As(&controller4)) && controller4)
+		controller4->put_AllowExternalDrop(FALSE);
 
-	MapsPathEdit.Create(
-		WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_READONLY,
-		CRect(0, 0, 0, 0),
-		this,
-		0);
-	MapsRawEdit.Create(
-		WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL,
-		CRect(0, 0, 0, 0),
-		this,
-		0);
+	ComPtr<ICoreWebView2_3> webView3;
+	if (FAILED(WebHost->webView.As(&webView3)) || !webView3)
+	{
+		ShowFallback(
+			"The installed WebView2 Runtime does not support local resource mapping.");
+		return;
+	}
+
+	const std::wstring resourceFolder = ResolveWebResourceFolder();
+	if (FAILED(webView3->SetVirtualHostNameToFolderMapping(
+		kVirtualHostName,
+		resourceFolder.c_str(),
+		COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS)))
+	{
+		ShowFallback("Unable to map the bundled vSMR web resources.");
+		return;
+	}
+
+	std::weak_ptr<std::atomic<bool>> weakLifetime = LifetimeToken;
+	if (SUCCEEDED(WebHost->webView->add_NavigationStarting(
+		Callback<ICoreWebView2NavigationStartingEventHandler>(
+			[weakLifetime](
+				ICoreWebView2*,
+				ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT
+			{
+				const auto lifetime = weakLifetime.lock();
+				if (!lifetime || !lifetime->load() || args == nullptr)
+					return S_OK;
+				LPWSTR rawUri = nullptr;
+				if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri != nullptr)
+				{
+					const bool allowed = IsAllowedNavigation(rawUri);
+					::CoTaskMemFree(rawUri);
+					if (!allowed)
+						args->put_Cancel(TRUE);
+				}
+				return S_OK;
+			}).Get(),
+		&WebHost->navigationStartingToken)))
+	{
+		WebHost->navigationStartingRegistered = true;
+	}
+
+	if (SUCCEEDED(WebHost->webView->add_NewWindowRequested(
+		Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+			[weakLifetime](
+				ICoreWebView2*,
+				ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT
+			{
+				const auto lifetime = weakLifetime.lock();
+				if (lifetime && lifetime->load() && args != nullptr)
+					args->put_Handled(TRUE);
+				return S_OK;
+			}).Get(),
+		&WebHost->newWindowToken)))
+	{
+		WebHost->newWindowRegistered = true;
+	}
+
+	if (SUCCEEDED(WebHost->webView->add_PermissionRequested(
+		Callback<ICoreWebView2PermissionRequestedEventHandler>(
+			[weakLifetime](
+				ICoreWebView2*,
+				ICoreWebView2PermissionRequestedEventArgs* args) -> HRESULT
+			{
+				const auto lifetime = weakLifetime.lock();
+				if (lifetime && lifetime->load() && args != nullptr)
+					args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY);
+				return S_OK;
+			}).Get(),
+		&WebHost->permissionToken)))
+	{
+		WebHost->permissionRegistered = true;
+	}
+
+	if (SUCCEEDED(WebHost->webView->add_WebMessageReceived(
+		Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+			[this, weakLifetime](
+				ICoreWebView2*,
+				ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
+			{
+				const auto lifetime = weakLifetime.lock();
+				if (!lifetime || !lifetime->load() || args == nullptr || !Bridge)
+					return S_OK;
+				LPWSTR rawJson = nullptr;
+				if (SUCCEEDED(args->get_WebMessageAsJson(&rawJson)) &&
+					rawJson != nullptr)
+				{
+					Bridge->HandleWebMessage(
+						WideToUtf8(std::wstring(rawJson)));
+					::CoTaskMemFree(rawJson);
+				}
+				return S_OK;
+			}).Get(),
+		&WebHost->webMessageToken)))
+	{
+		WebHost->webMessageRegistered = true;
+	}
+
+	WebHost->controller->put_IsVisible(TRUE);
+	ResizeWebView();
+	FallbackLabel.ShowWindow(SW_HIDE);
+	WebViewReady = true;
+
+	std::wstring uri =
+		std::wstring(kVirtualOriginPrefix) +
+		L"index.html?ui=control&hosted=1&page=" +
+		Utf8ToWide(PageName(CurrentPage));
+	WebHost->webView->Navigate(uri.c_str());
+}
+
+void CVsmrControlCenterDialog::ResizeWebView()
+{
+	if (!::IsWindow(GetSafeHwnd()))
+		return;
+	CRect client;
+	GetClientRect(&client);
+	if (WebHost && WebHost->controller)
+	{
+		RECT bounds = client;
+		WebHost->controller->put_Bounds(bounds);
+	}
+	if (::IsWindow(FallbackLabel.GetSafeHwnd()))
+		FallbackLabel.MoveWindow(client, TRUE);
+}
+
+void CVsmrControlCenterDialog::ShutdownWebView()
+{
+	if (!WebHost)
+		return;
+
+	if (WebHost->webView)
+	{
+		if (WebHost->navigationStartingRegistered)
+			WebHost->webView->remove_NavigationStarting(
+				WebHost->navigationStartingToken);
+		if (WebHost->newWindowRegistered)
+			WebHost->webView->remove_NewWindowRequested(
+				WebHost->newWindowToken);
+		if (WebHost->webMessageRegistered)
+			WebHost->webView->remove_WebMessageReceived(
+				WebHost->webMessageToken);
+		if (WebHost->permissionRegistered)
+			WebHost->webView->remove_PermissionRequested(
+				WebHost->permissionToken);
+	}
+	if (WebHost->controller)
+		WebHost->controller->Close();
+	WebHost->webView.Reset();
+	WebHost->controller.Reset();
+	WebHost->environment.Reset();
+	if (WebHost->comInitialized)
+	{
+		::CoUninitialize();
+		WebHost->comInitialized = false;
+	}
+	WebViewReady = false;
+}
+
+void CVsmrControlCenterDialog::ShowFallback(const std::string& message)
+{
+	Logger::info("Control Center WebView2: " + message);
+	if (::IsWindow(FallbackLabel.GetSafeHwnd()))
+	{
+		FallbackLabel.SetWindowTextA(message.c_str());
+		FallbackLabel.ShowWindow(SW_SHOW);
+		ResizeWebView();
+	}
+}
+
+void CVsmrControlCenterDialog::SendJsonToWebView(const std::string& json)
+{
+	if (!WebHost || !WebHost->webView || json.empty())
+		return;
+	const std::wstring wideJson = Utf8ToWide(json);
+	WebHost->webView->PostWebMessageAsJson(wideJson.c_str());
+}
+
+void CVsmrControlCenterDialog::BeginNativeWindowDrag()
+{
+	if (!::IsWindow(GetSafeHwnd()))
+		return;
+	::ReleaseCapture();
+	SendMessage(WM_NCLBUTTONDOWN, HTCAPTION, 0);
+}
+
+void CVsmrControlCenterDialog::RequestComputerResource(
+	const std::string& resource,
+	const std::string& requestId)
+{
+	const bool profiles = resource == "profiles";
+	CFileDialog dialog(
+		TRUE,
+		profiles ? "json" : "geojson",
+		nullptr,
+		OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY,
+		profiles
+			? "vSMR profiles (*.json)|*.json|All files (*.*)|*.*||"
+			: "GeoJSON (*.geojson;*.json)|*.geojson;*.json|All files (*.*)|*.*||",
+		this);
+	if (dialog.DoModal() != IDOK)
+		return;
+
+	const std::filesystem::path path(
+		static_cast<LPCSTR>(dialog.GetPathName()));
+	std::string text;
+	if (!ReadTextFile(path, text))
+	{
+		if (Bridge)
+			Bridge->PushError(requestId, "Unable to read the selected file.");
+		return;
+	}
+	if (Bridge)
+		Bridge->HandleLoadedResource(
+			resource,
+			path.string(),
+			requestId,
+			text);
+}
+
+void CVsmrControlCenterDialog::RequestResetDefaults(
+	const std::string& requestId)
+{
+	const std::filesystem::path resourceFolder(ResolveWebResourceFolder());
+	const std::filesystem::path profilesPath =
+		resourceFolder / L"defaults" / L"vSMR_Profiles.json";
+	const std::filesystem::path avisoPath =
+		resourceFolder / L"defaults" / L"AVISO_LFPG.geojson";
+
+	std::string profilesText;
+	std::string avisoText;
+	if (!ReadTextFile(profilesPath, profilesText) ||
+		!ReadTextFile(avisoPath, avisoText))
+	{
+		if (Bridge)
+			Bridge->PushError(
+				requestId,
+				"The bundled profile or LFPG AVISO defaults are missing.");
+		return;
+	}
+
+	if (!Bridge)
+		return;
+
+	std::string validationError;
+	if (!Bridge->ValidateLoadedResource(
+			"profiles",
+			profilesText,
+			validationError) ||
+		!Bridge->ValidateLoadedResource(
+			"aviso",
+			avisoText,
+			validationError))
+	{
+		Bridge->PushError(
+			requestId,
+			validationError.empty()
+				? "The bundled profile or LFPG AVISO defaults are invalid."
+				: validationError);
+		return;
+	}
+
+	Bridge->HandleLoadedResource(
+		"profiles",
+		"bundled defaults",
+		requestId,
+		profilesText);
+	Bridge->HandleLoadedResource(
+		"aviso",
+		"bundled defaults",
+		requestId,
+		avisoText);
+}
+
+void CVsmrControlCenterDialog::RequestGithubResource(
+	const std::string& resource,
+	const std::string& url,
+	const std::string& requestId)
+{
+	if (GithubDownloadInProgress.exchange(true))
+	{
+		if (Bridge)
+			Bridge->PushError(
+				requestId,
+				"Another GitHub resource is still loading.");
+		return;
+	}
+	if (GithubDownloadThread.joinable())
+		GithubDownloadThread.join();
+
+	const HWND target = GetSafeHwnd();
+	std::weak_ptr<std::atomic<bool>> weakLifetime = LifetimeToken;
+	GithubDownloadThread = std::thread(
+		[target, weakLifetime, resource, url, requestId]()
+		{
+			HttpHelper helper;
+			auto result = std::make_unique<GithubDownloadResult>();
+			result->resource = resource;
+			result->source = url;
+			result->requestId = requestId;
+			result->body = helper.downloadStringFromURL(url);
+
+			const auto lifetime = weakLifetime.lock();
+			if (!lifetime || !lifetime->load() || !::IsWindow(target))
+				return;
+			GithubDownloadResult* raw = result.release();
+			if (!::PostMessage(
+				target,
+				kGithubDownloadCompleteMessage,
+				0,
+				reinterpret_cast<LPARAM>(raw)))
+				delete raw;
+		});
+}
+
+LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
+	WPARAM,
+	LPARAM lParam)
+{
+	std::unique_ptr<GithubDownloadResult> result(
+		reinterpret_cast<GithubDownloadResult*>(lParam));
+	GithubDownloadInProgress.store(false);
+	if (GithubDownloadThread.joinable())
+		GithubDownloadThread.join();
+	if (!result)
+		return 0;
+	if (result->body.empty())
+	{
+		if (Bridge)
+			Bridge->PushError(
+				result->requestId,
+				"GitHub download failed or returned an empty file.");
+		return 0;
+	}
+	if (Bridge)
+		Bridge->HandleLoadedResource(
+			result->resource,
+			result->source,
+			result->requestId,
+			result->body);
+	return 0;
 }
 
 void CVsmrControlCenterDialog::ShowPage(Page page)
 {
 	CurrentPage = page;
-	HidePageControls();
-	HideHostedEditors();
-	UpdateNavState();
-
-	switch (CurrentPage)
-	{
-	case Page::Overview:
-		SetPageText("Overview", "Current airport, profile, AVISO, and the most common workflow actions.");
-		OverviewEdit.SetWindowTextA(BuildOverviewText().c_str());
-		OverviewEdit.ShowWindow(SW_SHOW);
-		OverviewProfilesButton.ShowWindow(SW_SHOW);
-		OverviewAvisoButton.ShowWindow(SW_SHOW);
-		OverviewMapsButton.ShowWindow(SW_SHOW);
-		ReloadConfigButton.ShowWindow(SW_SHOW);
-		ReloadAvisoButton.ShowWindow(SW_SHOW);
-		break;
-	case Page::Profiles:
-		SetPageText("Profiles", "Edit profile colors, target icons, tag rules, tag definitions, and profile modes.");
-		if (!HostProfileEditor())
-			SetStatusText("Unable to host the Profile editor.");
-		break;
-	case Page::Aviso:
-		SetPageText("AVISO", "Edit AVISO GeoJSON objects, styles, labels, filters, and imported variants.");
-		if (!HostAvisoEditor())
-			SetStatusText("Unable to host the AVISO editor.");
-		break;
-	case Page::Maps:
-		SetPageText("Maps", "Edit vSMR_Maps.json directly, then save and reload vSMR.");
-		MapsPathLabel.ShowWindow(SW_SHOW);
-		MapsPathEdit.ShowWindow(SW_SHOW);
-		MapsRawEdit.ShowWindow(SW_SHOW);
-		OpenMapsExternalButton.ShowWindow(SW_SHOW);
-		ReloadMapsTextButton.ShowWindow(SW_SHOW);
-		SaveMapsTextButton.ShowWindow(SW_SHOW);
-		LoadMapsText();
-		break;
-	case Page::Settings:
-		SetPageText("Settings", "Central actions for reloads, folders, and runtime state.");
-		SettingsEdit.SetWindowTextA(BuildSettingsText().c_str());
-		SettingsEdit.ShowWindow(SW_SHOW);
-		ReloadConfigButton.ShowWindow(SW_SHOW);
-		ReloadAvisoButton.ShowWindow(SW_SHOW);
-		OpenConfigExternalButton.ShowWindow(SW_SHOW);
-		OpenMapsExternalButton.ShowWindow(SW_SHOW);
-		OpenDataFolderButton.ShowWindow(SW_SHOW);
-		OpenPluginFolderButton.ShowWindow(SW_SHOW);
-		break;
-	}
-
-	LayoutControls();
+	if (!WebViewReady || !WebHost || !WebHost->webView)
+		return;
+	const std::wstring script =
+		L"window.vsmrControlCenter && window.vsmrControlCenter.open(" +
+		std::wstring(L"\"") +
+		Utf8ToWide(PageName(page)) +
+		L"\");";
+	WebHost->webView->ExecuteScript(script.c_str(), nullptr);
 }
 
 void CVsmrControlCenterDialog::SyncFromRadar()
 {
-	if (CurrentPage == Page::Overview)
-		OverviewEdit.SetWindowTextA(BuildOverviewText().c_str());
-	else if (CurrentPage == Page::Settings)
-		SettingsEdit.SetWindowTextA(BuildSettingsText().c_str());
-	else if (CurrentPage == Page::Maps)
-		MapsPathEdit.SetWindowTextA(Owner != nullptr ? Owner->mapsPath.c_str() : "");
-	else if (CurrentPage == Page::Profiles && Owner != nullptr && Owner->ProfileEditorDialog)
-		Owner->ProfileEditorDialog->SyncFromRadar();
-	else if (CurrentPage == Page::Aviso && Owner != nullptr && Owner->AvisoEditorDialog)
-		Owner->AvisoEditorDialog->SyncFromRadar();
+	if (Bridge && WebViewReady)
+		Bridge->PushAuthoritativeState("runtime");
 }
 
-void CVsmrControlCenterDialog::HidePageControls()
+std::string CVsmrControlCenterDialog::PageName(Page page) const
 {
-	CWnd* controls[] = {
-		&OverviewEdit,
-		&SettingsEdit,
-		&MapsPathLabel,
-		&MapsPathEdit,
-		&MapsRawEdit,
-		&OverviewProfilesButton,
-		&OverviewAvisoButton,
-		&OverviewMapsButton,
-		&ReloadConfigButton,
-		&ReloadAvisoButton,
-		&OpenMapsExternalButton,
-		&ReloadMapsTextButton,
-		&SaveMapsTextButton,
-		&OpenConfigExternalButton,
-		&OpenDataFolderButton,
-		&OpenPluginFolderButton
-	};
-
-	for (CWnd* control : controls)
+	switch (page)
 	{
-		if (control != nullptr && ::IsWindow(control->GetSafeHwnd()))
-			control->ShowWindow(SW_HIDE);
+	case Page::Aviso: return "aviso";
+	case Page::Alerts: return "alerts";
+	case Page::Groups: return "groups";
+	case Page::Modes: return "modes";
+	case Page::Profiles: return "profiles";
+	case Page::Settings: return "settings";
+	default: return "display";
 	}
 }
 
-void CVsmrControlCenterDialog::HideHostedEditors()
+std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 {
-	if (Owner == nullptr)
-		return;
-	if (Owner->ProfileEditorDialog && ::IsWindow(Owner->ProfileEditorDialog->GetSafeHwnd()))
-		Owner->ProfileEditorDialog->ShowWindow(SW_HIDE);
-	if (Owner->AvisoEditorDialog && ::IsWindow(Owner->AvisoEditorDialog->GetSafeHwnd()))
-		Owner->AvisoEditorDialog->ShowWindow(SW_HIDE);
-}
-
-void CVsmrControlCenterDialog::UpdateNavState()
-{
-	auto setNavText = [&](CButton& button, Page page, const char* label)
-	{
-		const std::string text = (CurrentPage == page ? "> " : "  ") + std::string(label);
-		button.SetWindowTextA(text.c_str());
-		button.EnableWindow(CurrentPage != page);
-	};
-
-	setNavText(NavOverviewButton, Page::Overview, "Overview");
-	setNavText(NavProfilesButton, Page::Profiles, "Profiles");
-	setNavText(NavAvisoButton, Page::Aviso, "AVISO");
-	setNavText(NavMapsButton, Page::Maps, "Maps");
-	setNavText(NavSettingsButton, Page::Settings, "Settings");
-}
-
-void CVsmrControlCenterDialog::SetStatusText(const std::string& text)
-{
-	StatusLabel.SetWindowTextA(text.c_str());
-}
-
-bool CVsmrControlCenterDialog::IsHostedEditorPage() const
-{
-	return CurrentPage == Page::Profiles || CurrentPage == Page::Aviso;
-}
-
-void CVsmrControlCenterDialog::SetPageText(const std::string& title, const std::string& subtitle)
-{
-	PageTitleLabel.SetWindowTextA(title.c_str());
-	PageSubtitleLabel.SetWindowTextA(subtitle.c_str());
-	const int showState = IsHostedEditorPage() ? SW_HIDE : SW_SHOW;
-	PageTitleLabel.ShowWindow(showState);
-	PageSubtitleLabel.ShowWindow(showState);
-}
-
-CRect CVsmrControlCenterDialog::ContentRect() const
-{
-	CRect client;
-	const_cast<CVsmrControlCenterDialog*>(this)->GetClientRect(&client);
-	const int contentTop = IsHostedEditorPage()
-		? kOuterPad
-		: kOuterPad + kPageTitleHeight;
-	return CRect(
-		kSidebarWidth + kOuterPad,
-		contentTop,
-		client.right - kOuterPad,
-		client.bottom - kBottomStatusHeight - kOuterPad);
-}
-
-void CVsmrControlCenterDialog::LayoutControls()
-{
-	if (!ControlsCreated)
-		return;
-
-	CRect client;
-	GetClientRect(&client);
-	const int navLeft = 18;
-	const int navWidth = kSidebarWidth - 36;
-	NavigationTitleLabel.MoveWindow(navLeft, 18, navWidth, 18, TRUE);
-	int navY = 76;
-	const int navHeight = 34;
-	auto moveNav = [&](CButton& button)
-	{
-		button.MoveWindow(navLeft, navY, navWidth, navHeight, TRUE);
-		navY += navHeight + 8;
-	};
-	moveNav(NavOverviewButton);
-	moveNav(NavProfilesButton);
-	moveNav(NavAvisoButton);
-	moveNav(NavMapsButton);
-	moveNav(NavSettingsButton);
-
-	PageTitleLabel.MoveWindow(kSidebarWidth + kOuterPad, kOuterPad, 240, 22, TRUE);
-	PageSubtitleLabel.MoveWindow(kSidebarWidth + kOuterPad, kOuterPad + 24, max(100, client.Width() - kSidebarWidth - (kOuterPad * 2)), 18, TRUE);
-	StatusLabel.MoveWindow(kSidebarWidth + kOuterPad, client.bottom - 24, max(100, client.Width() - kSidebarWidth - (kOuterPad * 2)), 18, TRUE);
-
-	const CRect content = ContentRect();
-	const int buttonWidth = 126;
-	const int buttonHeight = 28;
-	const int buttonTop = content.top;
-	const int editTop = buttonTop + buttonHeight + 12;
-
-	if (CurrentPage == Page::Overview)
-	{
-		OverviewProfilesButton.MoveWindow(content.left, buttonTop, buttonWidth, buttonHeight, TRUE);
-		OverviewAvisoButton.MoveWindow(content.left + buttonWidth + kControlGap, buttonTop, buttonWidth, buttonHeight, TRUE);
-		OverviewMapsButton.MoveWindow(content.left + ((buttonWidth + kControlGap) * 2), buttonTop, buttonWidth, buttonHeight, TRUE);
-		ReloadConfigButton.MoveWindow(content.left + ((buttonWidth + kControlGap) * 3), buttonTop, buttonWidth, buttonHeight, TRUE);
-		ReloadAvisoButton.MoveWindow(content.left + ((buttonWidth + kControlGap) * 4), buttonTop, buttonWidth, buttonHeight, TRUE);
-		OverviewEdit.MoveWindow(content.left, editTop, content.Width(), max(40, content.bottom - editTop), TRUE);
-	}
-	else if (CurrentPage == Page::Maps)
-	{
-		MapsPathLabel.MoveWindow(content.left, content.top, 110, 18, TRUE);
-		MapsPathEdit.MoveWindow(content.left + 116, content.top - 2, max(100, content.Width() - 116), 22, TRUE);
-		const int mapsButtonTop = content.top + 30;
-		OpenMapsExternalButton.MoveWindow(content.left, mapsButtonTop, 98, buttonHeight, TRUE);
-		ReloadMapsTextButton.MoveWindow(content.left + 106, mapsButtonTop, 98, buttonHeight, TRUE);
-		SaveMapsTextButton.MoveWindow(content.left + 212, mapsButtonTop, 132, buttonHeight, TRUE);
-		MapsRawEdit.MoveWindow(content.left, mapsButtonTop + buttonHeight + 12, content.Width(), max(40, content.bottom - (mapsButtonTop + buttonHeight + 12)), TRUE);
-	}
-	else if (CurrentPage == Page::Settings)
-	{
-		ReloadConfigButton.MoveWindow(content.left, buttonTop, 112, buttonHeight, TRUE);
-		ReloadAvisoButton.MoveWindow(content.left + 120, buttonTop, 112, buttonHeight, TRUE);
-		OpenConfigExternalButton.MoveWindow(content.left + 240, buttonTop, 138, buttonHeight, TRUE);
-		OpenMapsExternalButton.MoveWindow(content.left + 386, buttonTop, 98, buttonHeight, TRUE);
-		OpenDataFolderButton.MoveWindow(content.left, buttonTop + buttonHeight + 10, 132, buttonHeight, TRUE);
-		OpenPluginFolderButton.MoveWindow(content.left + 140, buttonTop + buttonHeight + 10, 132, buttonHeight, TRUE);
-		SettingsEdit.MoveWindow(content.left, buttonTop + (buttonHeight * 2) + 24, content.Width(), max(40, content.bottom - (buttonTop + (buttonHeight * 2) + 24)), TRUE);
-	}
-
-	LayoutHostedEditors();
-}
-
-void CVsmrControlCenterDialog::LayoutHostedEditors()
-{
-	const CRect content = ContentRect();
-	if (CurrentPage == Page::Profiles &&
-		Owner != nullptr &&
-		Owner->ProfileEditorDialog &&
-		::IsWindow(Owner->ProfileEditorDialog->GetSafeHwnd()))
-	{
-		Owner->ProfileEditorDialog->MoveWindow(content, TRUE);
-	}
-	else if (CurrentPage == Page::Aviso &&
-		Owner != nullptr &&
-		Owner->AvisoEditorDialog &&
-		::IsWindow(Owner->AvisoEditorDialog->GetSafeHwnd()))
-	{
-		Owner->AvisoEditorDialog->MoveWindow(content, TRUE);
-	}
-}
-
-bool CVsmrControlCenterDialog::HostProfileEditor()
-{
-	if (Owner == nullptr || !Owner->EnsureProfileEditorWindowCreated() || !Owner->ProfileEditorDialog)
-		return false;
-
-	Owner->ProfileEditorDialog->SetOwner(Owner);
-	PrepareHostedDialog(Owner->ProfileEditorDialog.get(), ContentRect());
-	Owner->ProfileEditorDialog->SyncFromRadar();
-	SetStatusText("Profile editor loaded in vSMR.");
-	return true;
-}
-
-bool CVsmrControlCenterDialog::HostAvisoEditor()
-{
-	if (Owner == nullptr || !Owner->EnsureAvisoEditorWindowCreated() || !Owner->AvisoEditorDialog)
-		return false;
-
-	Owner->AvisoEditorDialog->SetOwner(Owner);
-	PrepareHostedDialog(Owner->AvisoEditorDialog.get(), ContentRect());
-	Owner->AvisoEditorDialog->SyncFromRadar();
-	SetStatusText("AVISO editor loaded in vSMR.");
-	return true;
-}
-
-void CVsmrControlCenterDialog::PrepareHostedDialog(CDialogEx* dialog, const CRect& targetRect)
-{
-	if (dialog == nullptr || !::IsWindow(dialog->GetSafeHwnd()))
-		return;
-
-	dialog->ShowWindow(SW_HIDE);
-	dialog->SetParent(this);
-	dialog->ModifyStyle(
-		WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
-		WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-		SWP_FRAMECHANGED);
-	dialog->ModifyStyleEx(WS_EX_APPWINDOW, WS_EX_CONTROLPARENT, SWP_FRAMECHANGED);
-	dialog->MoveWindow(targetRect, TRUE);
-	dialog->ShowWindow(SW_SHOW);
-}
-
-void CVsmrControlCenterDialog::LoadMapsText()
-{
-	if (Owner == nullptr || Owner->mapsPath.empty())
-	{
-		MapsPathEdit.SetWindowTextA("");
-		MapsRawEdit.SetWindowTextA("");
-		SetStatusText("vSMR_Maps.json path is unavailable.");
-		return;
-	}
-
-	MapsPathEdit.SetWindowTextA(Owner->mapsPath.c_str());
-	std::ifstream input(Owner->mapsPath, std::ios::binary);
-	if (!input)
-	{
-		MapsRawEdit.SetWindowTextA("");
-		SetStatusText("Unable to read vSMR_Maps.json.");
-		return;
-	}
-
-	std::ostringstream buffer;
-	buffer << input.rdbuf();
-	MapsRawEdit.SetWindowTextA(buffer.str().c_str());
-	SetStatusText("Loaded vSMR_Maps.json.");
-}
-
-bool CVsmrControlCenterDialog::SaveMapsText()
-{
-	if (Owner == nullptr || Owner->mapsPath.empty())
-	{
-		SetStatusText("vSMR_Maps.json path is unavailable.");
-		return false;
-	}
-
-	CString text;
-	MapsRawEdit.GetWindowText(text);
-	std::ofstream output(Owner->mapsPath, std::ios::binary | std::ios::trunc);
-	if (!output)
-	{
-		SetStatusText("Unable to save vSMR_Maps.json.");
-		return false;
-	}
-
-	const std::string value = CStringToStdString(text);
-	output.write(value.data(), static_cast<std::streamsize>(value.size()));
-	if (!output.good())
-	{
-		SetStatusText("Failed while writing vSMR_Maps.json.");
-		return false;
-	}
-
+	std::vector<std::filesystem::path> candidates;
 	if (Owner != nullptr)
-		Owner->ReloadConfig();
-	SetStatusText("Saved vSMR_Maps.json and reloaded vSMR.");
-	return true;
-}
-
-std::string CVsmrControlCenterDialog::BuildOverviewText() const
-{
-	std::ostringstream text;
-	text
-		<< "Runtime\r\n"
-		<< "Active airport: " << ActiveAirportName() << "\r\n"
-		<< "Active profile: " << ActiveProfileName() << "\r\n"
-		<< "Active AVISO: " << (ActiveAvisoPath().empty() ? "not loaded" : ActiveAvisoPath()) << "\r\n\r\n"
-		<< "Files\r\n"
-		<< "Profiles: " << (Owner != nullptr ? Owner->ConfigPath : "") << "\r\n"
-		<< "Maps: " << (Owner != nullptr ? Owner->mapsPath : "") << "\r\n"
-		<< "Data: " << (Owner != nullptr ? Owner->DataPath : "") << "\r\n\r\n"
-		<< "Workflow\r\n"
-		<< "Use Profiles for colors, target icons, tag definitions, rules, and modes.\r\n"
-		<< "Use AVISO for airport GeoJSON layers, labels, visibility, styles, and variants.\r\n"
-		<< "Use Maps for vSMR_Maps.json, then save and reload from the same window.\r\n"
-		<< "Use Settings for reloads and folder/file access.";
-	return text.str();
-}
-
-std::string CVsmrControlCenterDialog::BuildSettingsText() const
-{
-	std::ostringstream text;
-	text
-		<< "Centralized runtime actions\r\n\r\n"
-		<< "Reload vSMR: reloads vSMR_Profiles.json and vSMR_Maps.json.\r\n"
-		<< "Reload AVISO: clears AVISO geometry/raster caches and reloads the active airport AVISO.\r\n"
-		<< "Open profiles JSON: opens vSMR_Profiles.json in the associated editor.\r\n"
-		<< "Open file: opens vSMR_Maps.json in the associated editor.\r\n"
-		<< "Open data folder: opens the vSMR_Data folder used for AVISO and data overrides.\r\n"
-		<< "Open plugin folder: opens the plugin installation folder.\r\n\r\n"
-		<< "Current state\r\n"
-		<< "Airport: " << ActiveAirportName() << "\r\n"
-		<< "Profile: " << ActiveProfileName() << "\r\n"
-		<< "AVISO: " << (ActiveAvisoPath().empty() ? "not loaded" : ActiveAvisoPath());
-	return text.str();
-}
-
-std::string CVsmrControlCenterDialog::ActiveProfileName() const
-{
-	if (Owner == nullptr || Owner->CurrentConfig == nullptr)
-		return "";
-	return Owner->CurrentConfig->getActiveProfileName();
-}
-
-std::string CVsmrControlCenterDialog::ActiveAirportName() const
-{
-	if (Owner == nullptr)
-		return "";
-	return Owner->getActiveAirport();
-}
-
-std::string CVsmrControlCenterDialog::ActiveAvisoPath() const
-{
-	if (Owner == nullptr)
-		return "";
-	return Owner->ResolveAvisoGeoJsonPathForAirport(ActiveAirportName());
-}
-
-bool CVsmrControlCenterDialog::OpenPathExternal(const std::string& path, bool folderMode)
-{
-	if (path.empty())
 	{
-		SetStatusText("Path is unavailable.");
-		return false;
+		candidates.emplace_back(
+			std::filesystem::path(Owner->DllPath) / "vSMR_webUI");
+		candidates.emplace_back(
+			std::filesystem::path(Owner->DataPath) / "vSMR_webUI");
+	}
+	try
+	{
+		candidates.emplace_back(
+			std::filesystem::current_path() / "vSMR_webUI");
+	}
+	catch (...)
+	{
 	}
 
-	std::filesystem::path target(path);
-	if (folderMode)
+	for (const std::filesystem::path& candidate : candidates)
 	{
-		std::error_code ec;
-		if (std::filesystem::is_regular_file(target, ec))
-			target = target.parent_path();
+		try
+		{
+			if (std::filesystem::is_regular_file(candidate / "index.html") &&
+				std::filesystem::is_regular_file(candidate / "styles.css") &&
+				std::filesystem::is_regular_file(candidate / "app.js"))
+				return std::filesystem::absolute(candidate).wstring();
+		}
+		catch (...)
+		{
+		}
 	}
-
-	const std::string targetText = target.string();
-	const HINSTANCE result = ::ShellExecuteA(GetSafeHwnd(), "open", targetText.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-	if (!IsShellExecuteSuccess(result))
-	{
-		SetStatusText("Unable to open path.");
-		return false;
-	}
-
-	SetStatusText("Opened " + targetText);
-	return true;
+	return {};
 }
 
-void CVsmrControlCenterDialog::OnCancel()
+std::wstring CVsmrControlCenterDialog::WebViewUserDataFolder() const
 {
-	ShowWindow(SW_HIDE);
+	return (
+		std::filesystem::path(LocalAppDataPath()) /
+		"vSMR" /
+		"WebView2").wstring();
 }
 
-void CVsmrControlCenterDialog::OnOK()
+std::wstring CVsmrControlCenterDialog::WindowPlacementPath() const
 {
+	return (
+		std::filesystem::path(LocalAppDataPath()) /
+		"vSMR" /
+		"control-center-window.json").wstring();
+}
+
+void CVsmrControlCenterDialog::RestoreWindowPlacementOrDefault(
+	const CRect& fallback)
+{
+	CRect requested = fallback;
+	std::string text;
+	const std::filesystem::path path(WindowPlacementPath());
+	if (ReadTextFile(path, text))
+	{
+		rapidjson::Document document;
+		document.Parse<0>(text.c_str());
+		if (!document.HasParseError() && document.IsObject())
+		{
+			auto readInt = [&](const char* key, int fallbackValue)
+			{
+				return document.HasMember(key) && document[key].IsInt()
+					? document[key].GetInt()
+					: fallbackValue;
+			};
+			const int width = readInt("width", fallback.Width());
+			const int height = readInt("height", fallback.Height());
+			requested.left = readInt("x", fallback.left);
+			requested.top = readInt("y", fallback.top);
+			requested.right = requested.left + width;
+			requested.bottom = requested.top + height;
+		}
+	}
+
+	requested = ClampWindowRectToMonitor(requested);
+	SetWindowPos(
+		nullptr,
+		requested.left,
+		requested.top,
+		requested.Width(),
+		requested.Height(),
+		SWP_NOZORDER | SWP_NOACTIVATE);
+	WindowPlacementDirty = false;
+}
+
+void CVsmrControlCenterDialog::SaveWindowPlacement()
+{
+	if (!::IsWindow(GetSafeHwnd()))
+		return;
+	CRect window;
+	GetWindowRect(&window);
+	if (window.IsRectEmpty())
+		return;
+
+	rapidjson::Document document;
+	document.SetObject();
+	document.AddMember("x", window.left, document.GetAllocator());
+	document.AddMember("y", window.top, document.GetAllocator());
+	document.AddMember("width", window.Width(), document.GetAllocator());
+	document.AddMember("height", window.Height(), document.GetAllocator());
+	rapidjson::StringBuffer buffer;
+	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+	document.Accept(writer);
+	if (WriteTextFileAtomically(
+		std::filesystem::path(WindowPlacementPath()),
+		std::string(buffer.GetString(), buffer.Size())))
+		WindowPlacementDirty = false;
 }
 
 void CVsmrControlCenterDialog::OnClose()
 {
+	SaveWindowPlacement();
 	ShowWindow(SW_HIDE);
 	if (Owner != nullptr)
 		Owner->OnVsmrControlCenterWindowClosed();
 }
 
+void CVsmrControlCenterDialog::OnCancel()
+{
+	OnClose();
+}
+
+void CVsmrControlCenterDialog::OnOK()
+{
+	// Enter belongs to the focused editor, not to the modeless host dialog.
+}
+
 void CVsmrControlCenterDialog::OnDestroy()
 {
-	HideHostedEditors();
+	Closing = true;
+	if (LifetimeToken)
+		LifetimeToken->store(false);
+	SaveWindowPlacement();
+	if (GithubDownloadThread.joinable())
+		GithubDownloadThread.join();
+	GithubDownloadInProgress.store(false);
+	ShutdownWebView();
+	Bridge.reset();
 	CDialogEx::OnDestroy();
 }
 
 void CVsmrControlCenterDialog::OnSize(UINT nType, int cx, int cy)
 {
 	CDialogEx::OnSize(nType, cx, cy);
-	LayoutControls();
+	if (nType != SIZE_MINIMIZED)
+	{
+		WindowPlacementDirty = true;
+		ResizeWebView();
+	}
+}
+
+void CVsmrControlCenterDialog::OnMove(int x, int y)
+{
+	CDialogEx::OnMove(x, y);
+	if (!Closing)
+		WindowPlacementDirty = true;
 }
 
 void CVsmrControlCenterDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -584,115 +1029,7 @@ void CVsmrControlCenterDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 	CDialogEx::OnGetMinMaxInfo(lpMMI);
 	if (lpMMI != nullptr)
 	{
-		lpMMI->ptMinTrackSize.x = 880;
-		lpMMI->ptMinTrackSize.y = 620;
+		lpMMI->ptMinTrackSize.x = kMinimumWindowWidth;
+		lpMMI->ptMinTrackSize.y = kMinimumWindowHeight;
 	}
 }
-
-void CVsmrControlCenterDialog::OnNavOverviewClicked()
-{
-	ShowPage(Page::Overview);
-}
-
-void CVsmrControlCenterDialog::OnNavProfilesClicked()
-{
-	ShowPage(Page::Profiles);
-}
-
-void CVsmrControlCenterDialog::OnNavAvisoClicked()
-{
-	ShowPage(Page::Aviso);
-}
-
-void CVsmrControlCenterDialog::OnNavMapsClicked()
-{
-	ShowPage(Page::Maps);
-}
-
-void CVsmrControlCenterDialog::OnNavSettingsClicked()
-{
-	ShowPage(Page::Settings);
-}
-
-void CVsmrControlCenterDialog::OnOverviewProfilesClicked()
-{
-	ShowPage(Page::Profiles);
-}
-
-void CVsmrControlCenterDialog::OnOverviewAvisoClicked()
-{
-	ShowPage(Page::Aviso);
-}
-
-void CVsmrControlCenterDialog::OnOverviewMapsClicked()
-{
-	ShowPage(Page::Maps);
-}
-
-void CVsmrControlCenterDialog::OnReloadConfigClicked()
-{
-	if (Owner != nullptr)
-		Owner->ReloadConfig();
-	SyncFromRadar();
-	SetStatusText("Reloaded vSMR profiles and maps.");
-}
-
-void CVsmrControlCenterDialog::OnReloadAvisoClicked()
-{
-	const bool loaded = Owner != nullptr && Owner->ForceReloadAvisoGeoJson();
-	SyncFromRadar();
-	SetStatusText(loaded ? "Reloaded AVISO." : "No AVISO file loaded.");
-}
-
-void CVsmrControlCenterDialog::OnOpenMapsExternalClicked()
-{
-	OpenPathExternal(Owner != nullptr ? Owner->mapsPath : "", false);
-}
-
-void CVsmrControlCenterDialog::OnReloadMapsTextClicked()
-{
-	LoadMapsText();
-}
-
-void CVsmrControlCenterDialog::OnSaveMapsTextClicked()
-{
-	SaveMapsText();
-}
-
-void CVsmrControlCenterDialog::OnOpenConfigExternalClicked()
-{
-	OpenPathExternal(Owner != nullptr ? Owner->ConfigPath : "", false);
-}
-
-void CVsmrControlCenterDialog::OnOpenDataFolderClicked()
-{
-	OpenPathExternal(Owner != nullptr ? Owner->DataPath : "", true);
-}
-
-void CVsmrControlCenterDialog::OnOpenPluginFolderClicked()
-{
-	OpenPathExternal(Owner != nullptr ? Owner->DllPath : "", true);
-}
-
-BEGIN_MESSAGE_MAP(CVsmrControlCenterDialog, CDialogEx)
-	ON_WM_CLOSE()
-	ON_WM_DESTROY()
-	ON_WM_SIZE()
-	ON_WM_GETMINMAXINFO()
-	ON_BN_CLICKED(IDC_VCC_NAV_OVERVIEW, &CVsmrControlCenterDialog::OnNavOverviewClicked)
-	ON_BN_CLICKED(IDC_VCC_NAV_PROFILES, &CVsmrControlCenterDialog::OnNavProfilesClicked)
-	ON_BN_CLICKED(IDC_VCC_NAV_AVISO, &CVsmrControlCenterDialog::OnNavAvisoClicked)
-	ON_BN_CLICKED(IDC_VCC_NAV_MAPS, &CVsmrControlCenterDialog::OnNavMapsClicked)
-	ON_BN_CLICKED(IDC_VCC_NAV_SETTINGS, &CVsmrControlCenterDialog::OnNavSettingsClicked)
-	ON_BN_CLICKED(IDC_VCC_OVERVIEW_PROFILES, &CVsmrControlCenterDialog::OnOverviewProfilesClicked)
-	ON_BN_CLICKED(IDC_VCC_OVERVIEW_AVISO, &CVsmrControlCenterDialog::OnOverviewAvisoClicked)
-	ON_BN_CLICKED(IDC_VCC_OVERVIEW_MAPS, &CVsmrControlCenterDialog::OnOverviewMapsClicked)
-	ON_BN_CLICKED(IDC_VCC_RELOAD_CONFIG, &CVsmrControlCenterDialog::OnReloadConfigClicked)
-	ON_BN_CLICKED(IDC_VCC_RELOAD_AVISO, &CVsmrControlCenterDialog::OnReloadAvisoClicked)
-	ON_BN_CLICKED(IDC_VCC_OPEN_MAPS_EXTERNAL, &CVsmrControlCenterDialog::OnOpenMapsExternalClicked)
-	ON_BN_CLICKED(IDC_VCC_RELOAD_MAPS_TEXT, &CVsmrControlCenterDialog::OnReloadMapsTextClicked)
-	ON_BN_CLICKED(IDC_VCC_SAVE_MAPS_TEXT, &CVsmrControlCenterDialog::OnSaveMapsTextClicked)
-	ON_BN_CLICKED(IDC_VCC_OPEN_CONFIG_EXTERNAL, &CVsmrControlCenterDialog::OnOpenConfigExternalClicked)
-	ON_BN_CLICKED(IDC_VCC_OPEN_DATA_FOLDER, &CVsmrControlCenterDialog::OnOpenDataFolderClicked)
-	ON_BN_CLICKED(IDC_VCC_OPEN_PLUGIN_FOLDER, &CVsmrControlCenterDialog::OnOpenPluginFolderClicked)
-END_MESSAGE_MAP()

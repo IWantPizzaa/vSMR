@@ -1184,6 +1184,7 @@ namespace
 			a.name == b.name &&
 			a.tagType == b.tagType &&
 			a.status == b.status &&
+			a.statuses == b.statuses &&
 			a.detail == b.detail &&
 			a.applyTarget == b.applyTarget &&
 			a.targetR == b.targetR &&
@@ -1471,6 +1472,31 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 		if (item.HasMember("status") && item["status"].IsString())
 			status = item["status"].GetString();
 		rule.status = NormalizeStructuredRuleStatus(status);
+		if (item.HasMember("statuses") && item["statuses"].IsArray())
+		{
+			const rapidjson::Value& statuses = item["statuses"];
+			for (rapidjson::SizeType statusIndex = 0;
+				statusIndex < statuses.Size();
+				++statusIndex)
+			{
+				if (!statuses[statusIndex].IsString())
+					continue;
+				const std::string normalizedStatus =
+					NormalizeStructuredRuleStatus(
+						statuses[statusIndex].GetString());
+				if (normalizedStatus == "any")
+				{
+					rule.statuses.clear();
+					rule.status = "any";
+					break;
+				}
+				if (std::find(
+					rule.statuses.begin(),
+					rule.statuses.end(),
+					normalizedStatus) == rule.statuses.end())
+					rule.statuses.push_back(normalizedStatus);
+			}
+		}
 
 		std::string detail = "any";
 		if (item.HasMember("detail") && item["detail"].IsString())
@@ -1577,6 +1603,28 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		normalizedRule.name = TrimAsciiWhitespace(rawRule.name);
 		normalizedRule.tagType = NormalizeStructuredRuleTagType(rawRule.tagType);
 		normalizedRule.status = NormalizeStructuredRuleStatus(rawRule.status);
+		normalizedRule.statuses.clear();
+		for (const std::string& rawStatus : rawRule.statuses)
+		{
+			const std::string normalizedStatus =
+				NormalizeStructuredRuleStatus(rawStatus);
+			if (normalizedStatus == "any")
+			{
+				normalizedRule.statuses.clear();
+				normalizedRule.status = "any";
+				break;
+			}
+			if (std::find(
+				normalizedRule.statuses.begin(),
+				normalizedRule.statuses.end(),
+				normalizedStatus) == normalizedRule.statuses.end())
+				normalizedRule.statuses.push_back(normalizedStatus);
+		}
+		if (!normalizedRule.statuses.empty())
+			normalizedRule.status =
+				normalizedRule.statuses.size() == 1
+					? normalizedRule.statuses.front()
+					: "any";
 		normalizedRule.detail = NormalizeStructuredRuleDetail(rawRule.detail);
 		normalizedRule.targetR = ClampRuleColorComponent(rawRule.targetR);
 		normalizedRule.targetG = ClampRuleColorComponent(rawRule.targetG);
@@ -1693,6 +1741,26 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 			rapidjson::Value statusValue;
 			statusValue.SetString(rule.status.c_str(), static_cast<rapidjson::SizeType>(rule.status.size()), allocator);
 			ruleObject.AddMember(statusKey, statusValue, allocator);
+
+			if (!rule.statuses.empty())
+			{
+				rapidjson::Value statusesKey;
+				statusesKey.SetString("statuses", allocator);
+				rapidjson::Value statusesValue(rapidjson::kArrayType);
+				for (const std::string& status : rule.statuses)
+				{
+					rapidjson::Value statusValueItem;
+					statusValueItem.SetString(
+						status.c_str(),
+						static_cast<rapidjson::SizeType>(status.size()),
+						allocator);
+					statusesValue.PushBack(statusValueItem, allocator);
+				}
+				ruleObject.AddMember(
+					statusesKey,
+					statusesValue,
+					allocator);
+			}
 
 			rapidjson::Value detailKey;
 			detailKey.SetString("detail", allocator);

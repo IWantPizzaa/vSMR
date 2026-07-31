@@ -235,6 +235,11 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
 	Logger::info(string(__FUNCSIG__));
+	if (HandleRuntimeMenuMove(ObjectType, sObjectId, Pt, Area, Released))
+	{
+		mouseLocation = Pt;
+		return;
+	}
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
 	const char* objectId = hasObjectId ? sObjectId : "";
 	auto isObjectId = [&](const char* expected) -> bool
@@ -648,6 +653,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
+	if (HandleRuntimeMenuClick(ObjectType, sObjectId, Pt, Area, Button))
+		return;
+	if (ActiveRuntimeMenuPopup != RuntimeMenuPopup::None)
+		CloseRuntimeMenuPopup();
 	const bool hasObjectId = (sObjectId != nullptr && sObjectId[0] != '\0');
 	const char* objectId = hasObjectId ? sObjectId : "";
 	auto isObjectId = [&](const char* expected) -> bool

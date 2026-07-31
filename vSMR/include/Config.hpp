@@ -112,7 +112,11 @@ public:
 
 	Document document;
 	Document mapDocument;
-	void reload();
+	bool reload();
+	bool replaceInMemoryConfig(
+		const Value& replacementDocument,
+		const string& requestedActiveProfile,
+		string& error);
 
 protected:
 	string config_path;
@@ -121,8 +125,8 @@ protected:
 	map<string, rapidjson::SizeType> profiles;
 	map<int, vector<mapData>> maps;
 
-	void loadConfig();
-	void loadMap();
+	bool loadConfig();
+	bool loadMap();
 	const Value* findSidDefinition(const string& sid, const string& airport);
 	const Value* findMetadata() const;
 	Value& ensureMetadata();

@@ -28,6 +28,9 @@
     <Filter Include="Third Party Headers">
       <UniqueIdentifier>{8D3F87A9-5077-4DFD-A1E4-4C7DCDE80A13}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Web UI">
+      <UniqueIdentifier>{7D1798B1-43DA-48C3-A415-DFBEE9C1344A}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\CallsignLookup.cpp">
@@ -58,6 +61,9 @@
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\VsmrControlCenterDialog.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="src\VsmrControlCenterBridge.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\Rimcas.cpp">
@@ -94,6 +100,9 @@
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SMRRadar_RuntimeMenu.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\SMRRadar_ScreenInteraction.cpp">
@@ -156,6 +165,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\VsmrControlCenterDialog.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\VsmrControlCenterBridge.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\resource.h">
@@ -240,6 +252,21 @@
     </None>
     <None Include="data\vSMR_Profiles.json">
       <Filter>Data</Filter>
+    </None>
+    <None Include="data\AVISO\AVISO_LFPG.geojson">
+      <Filter>Data</Filter>
+    </None>
+    <None Include="..\vSMR_webUI\app.js">
+      <Filter>Web UI</Filter>
+    </None>
+    <None Include="..\vSMR_webUI\data.js">
+      <Filter>Web UI</Filter>
+    </None>
+    <None Include="..\vSMR_webUI\index.html">
+      <Filter>Web UI</Filter>
+    </None>
+    <None Include="..\vSMR_webUI\styles.css">
+      <Filter>Web UI</Filter>
     </None>
     <None Include="resources\cursors\arrow.cur">
       <Filter>Resources\Cursors</Filter>

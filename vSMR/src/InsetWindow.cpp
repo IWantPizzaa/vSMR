@@ -461,6 +461,7 @@ struct AvisoViewportState
 		}
 
 		cachePath.clear();
+		cacheGroupGeneration = 0;
 		cacheWidth = 0;
 		cacheHeight = 0;
 		displayMinLongitude = 0.0;
@@ -521,6 +522,7 @@ struct AvisoViewportState
 			const bool sameRequest =
 				lastRequestValid &&
 				lastRequestPath == request.path &&
+				lastRequestGroupGeneration == request.groupGeneration &&
 				lastRequestRasterWidth == request.rasterWidth &&
 				lastRequestRasterHeight == request.rasterHeight &&
 				AvisoWithinTolerance(lastRequestMinLongitude, request.displayMinLongitude, 1e-10) &&
@@ -544,6 +546,7 @@ struct AvisoViewportState
 			lastRequestMaxLatitude = request.displayMaxLatitude;
 			lastRequestRasterWidth = request.rasterWidth;
 			lastRequestRasterHeight = request.rasterHeight;
+			lastRequestGroupGeneration = request.groupGeneration;
 			lastRequestProjectedTopLeft = request.projectedTopLeft;
 			lastRequestProjectedTopRight = request.projectedTopRight;
 			lastRequestProjectedBottomLeft = request.projectedBottomLeft;
@@ -665,6 +668,7 @@ struct AvisoViewportState
 
 	HBITMAP cacheBitmap = nullptr;
 	string cachePath;
+	unsigned long long cacheGroupGeneration = 0;
 	int cacheWidth = 0;
 	int cacheHeight = 0;
 	double displayMinLongitude = 0.0;
@@ -702,6 +706,7 @@ struct AvisoViewportState
 	double lastRequestMaxLatitude = 0.0;
 	int lastRequestRasterWidth = 0;
 	int lastRequestRasterHeight = 0;
+	unsigned long long lastRequestGroupGeneration = 0;
 	Gdiplus::PointF lastRequestProjectedTopLeft;
 	Gdiplus::PointF lastRequestProjectedTopRight;
 	Gdiplus::PointF lastRequestProjectedBottomLeft;
@@ -1518,6 +1523,21 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
+	std::shared_ptr<const std::vector<CSMRRadar::AvisoFeature>> featureSnapshot;
+	std::shared_ptr<const std::vector<CSMRRadar::AvisoLabel>> labelSnapshot;
+	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
+	unsigned long long groupGeneration = 0;
+	if (!radar_screen->GetAvisoRenderSnapshots(
+		featureSnapshot,
+		labelSnapshot,
+		groupVisibility,
+		groupGeneration))
+	{
+		drawCenteredMessage("AVISO unavailable");
+		drawChrome();
+		dc.Detach();
+		return;
+	}
 
 	if (!m_AvisoViewInitialized)
 	{
@@ -1534,18 +1554,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		}
 		m_AvisoViewInitialized = true;
 		m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoCenterLatitude);
-	}
-
-	if (radar_screen->AvisoGeoJsonFeatureSnapshot == nullptr)
-		radar_screen->AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<CSMRRadar::AvisoFeature>>(radar_screen->AvisoGeoJsonFeatures);
-	if (radar_screen->AvisoGeoJsonLabelSnapshot == nullptr)
-		radar_screen->AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<CSMRRadar::AvisoLabel>>(radar_screen->AvisoGeoJsonLabels);
-	if (radar_screen->AvisoGeoJsonFeatureSnapshot == nullptr || radar_screen->AvisoGeoJsonLabelSnapshot == nullptr)
-	{
-		drawCenteredMessage("AVISO unavailable");
-		drawChrome();
-		dc.Detach();
-		return;
 	}
 
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult = m_AvisoState->TakeCompletedRender();
@@ -1607,6 +1615,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	{
 		if (m_AvisoState->cacheBitmap == nullptr || !m_AvisoState->anchorValid)
 			return false;
+		if (m_AvisoState->cacheGroupGeneration != groupGeneration)
+			return false;
 
 		const double transformPixelTolerance = 12.0;
 		return AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) &&
@@ -1616,6 +1626,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	{
 		if (result.bitmap == nullptr ||
 			result.path != path ||
+			result.groupGeneration != groupGeneration ||
 			result.rasterWidth <= 0 ||
 			result.rasterHeight <= 0)
 		{
@@ -1639,31 +1650,38 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	};
 	if (completedRenderResult != nullptr && completedResultMatchesCurrentView(*completedRenderResult))
 	{
-		m_AvisoState->ClearCache();
-		m_AvisoState->cacheBitmap = completedRenderResult->bitmap;
-		completedRenderResult->bitmap = nullptr;
-		m_AvisoState->cachePath = completedRenderResult->path;
-		m_AvisoState->cacheWidth = completedRenderResult->rasterWidth;
-		m_AvisoState->cacheHeight = completedRenderResult->rasterHeight;
-		m_AvisoState->displayMinLongitude = completedRenderResult->displayMinLongitude;
-		m_AvisoState->displayMinLatitude = completedRenderResult->displayMinLatitude;
-		m_AvisoState->displayMaxLongitude = completedRenderResult->displayMaxLongitude;
-		m_AvisoState->displayMaxLatitude = completedRenderResult->displayMaxLatitude;
-		m_AvisoState->renderMinLongitude = completedRenderResult->renderMinLongitude;
-		m_AvisoState->renderMinLatitude = completedRenderResult->renderMinLatitude;
-		m_AvisoState->renderMaxLongitude = completedRenderResult->renderMaxLongitude;
-		m_AvisoState->renderMaxLatitude = completedRenderResult->renderMaxLatitude;
-		m_AvisoState->projectedTopLeft = completedRenderResult->projectedTopLeft;
-		m_AvisoState->projectedTopRight = completedRenderResult->projectedTopRight;
-		m_AvisoState->projectedBottomLeft = completedRenderResult->projectedBottomLeft;
-		m_AvisoState->projectedBottomRight = completedRenderResult->projectedBottomRight;
-		m_AvisoState->anchorValid = true;
+		std::lock_guard<std::mutex> groupGuard(radar_screen->AvisoGroupMutex);
+		if (completedRenderResult->groupGeneration ==
+			radar_screen->AvisoGroupGeneration.load(std::memory_order_relaxed))
+		{
+			m_AvisoState->ClearCache();
+			m_AvisoState->cacheBitmap = completedRenderResult->bitmap;
+			completedRenderResult->bitmap = nullptr;
+			m_AvisoState->cachePath = completedRenderResult->path;
+			m_AvisoState->cacheGroupGeneration = completedRenderResult->groupGeneration;
+			m_AvisoState->cacheWidth = completedRenderResult->rasterWidth;
+			m_AvisoState->cacheHeight = completedRenderResult->rasterHeight;
+			m_AvisoState->displayMinLongitude = completedRenderResult->displayMinLongitude;
+			m_AvisoState->displayMinLatitude = completedRenderResult->displayMinLatitude;
+			m_AvisoState->displayMaxLongitude = completedRenderResult->displayMaxLongitude;
+			m_AvisoState->displayMaxLatitude = completedRenderResult->displayMaxLatitude;
+			m_AvisoState->renderMinLongitude = completedRenderResult->renderMinLongitude;
+			m_AvisoState->renderMinLatitude = completedRenderResult->renderMinLatitude;
+			m_AvisoState->renderMaxLongitude = completedRenderResult->renderMaxLongitude;
+			m_AvisoState->renderMaxLatitude = completedRenderResult->renderMaxLatitude;
+			m_AvisoState->projectedTopLeft = completedRenderResult->projectedTopLeft;
+			m_AvisoState->projectedTopRight = completedRenderResult->projectedTopRight;
+			m_AvisoState->projectedBottomLeft = completedRenderResult->projectedBottomLeft;
+			m_AvisoState->projectedBottomRight = completedRenderResult->projectedBottomRight;
+			m_AvisoState->anchorValid = true;
+		}
 	}
 
 	auto drawCache = [&]() -> bool
 	{
 		if (m_AvisoState->cacheBitmap == nullptr ||
 			m_AvisoState->cachePath != path ||
+			m_AvisoState->cacheGroupGeneration != groupGeneration ||
 			m_AvisoState->cacheWidth <= 0 ||
 			m_AvisoState->cacheHeight <= 0 ||
 			!m_AvisoState->anchorValid)
@@ -1781,6 +1799,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return false;
 		if (m_AvisoState->cacheBitmap == nullptr ||
 			m_AvisoState->cachePath != path ||
+			m_AvisoState->cacheGroupGeneration != groupGeneration ||
 			m_AvisoState->cacheWidth <= 0 ||
 			m_AvisoState->cacheHeight <= 0 ||
 			!m_AvisoState->anchorValid)
@@ -1899,6 +1918,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	{
 		if (m_AvisoState->cacheBitmap == nullptr ||
 			m_AvisoState->cachePath != path ||
+			m_AvisoState->cacheGroupGeneration != groupGeneration ||
 			!m_AvisoState->anchorValid)
 		{
 			return false;
@@ -1965,9 +1985,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			rasterScale = std::clamp(rasterScale, minRasterScale, targetRasterScale);
 
 			CSMRRadar::AvisoRasterRenderRequest request;
+			request.groupGeneration = groupGeneration;
 			request.path = path;
-			request.features = radar_screen->AvisoGeoJsonFeatureSnapshot;
-			request.labels = radar_screen->AvisoGeoJsonLabelSnapshot;
+			request.features = featureSnapshot;
+			request.labels = labelSnapshot;
+			request.groupVisibility = groupVisibility;
 			request.rasterWidth = max(1, static_cast<int>((renderPixelWidth * rasterScale) + 0.5));
 			request.rasterHeight = max(1, static_cast<int>((renderPixelHeight * rasterScale) + 0.5));
 			request.rasterScale = rasterScale;

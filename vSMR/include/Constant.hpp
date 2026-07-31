@@ -366,6 +366,8 @@ const int APPWINDOW_BASE = 8887;
 const int APPWINDOW_ONE = 8888;
 const int APPWINDOW_TWO = 8889;
 const int APPWINDOW_AVISO = 8890;
+const int RUNTIME_MENU_RAIL = 8891;
+const int RUNTIME_MENU_POPUP = 8892;
 
 // Brightness update
 const int RIMCAS_BRIGHTNESS_LABEL = 301;

@@ -49,7 +49,7 @@ public:
 	CSMRRadar();
 	virtual ~CSMRRadar();
 
-	void ReloadConfig();
+	bool ReloadConfig();
 
 	static map<string, string> vStripsStands;
 
@@ -114,9 +114,18 @@ public:
 		double longitude = 0.0;
 		double latitude = 0.0;
 	};
+	struct AvisoGroup
+	{
+		std::string id;
+		std::string name;
+		bool visible = true;
+	};
 	struct AvisoFeature
 	{
 		bool polygon = false;
+		int sourceFeatureIndex = -1;
+		std::string sourceFeatureId;
+		std::vector<std::string> groupIds;
 		std::vector<std::vector<AvisoPoint>> paths;
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
@@ -129,6 +138,9 @@ public:
 	struct AvisoLabel
 	{
 		AvisoPoint position;
+		int sourceFeatureIndex = -1;
+		std::string sourceFeatureId;
+		std::vector<std::string> groupIds;
 		std::wstring text;
 		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
@@ -138,6 +150,7 @@ public:
 		float textSize = 12.0f;
 		float haloWidth = 1.0f;
 		double maxMetersPerPixel = 0.0;
+		double maxViewRangeKm = 0.0;
 	};
 	struct AvisoMainViewPreset
 	{
@@ -150,6 +163,17 @@ public:
 	};
 	struct AvisoPreset
 	{
+		struct SecondaryRadarWindow
+		{
+			bool valid = false;
+			RECT area = { 200, 200, 600, 500 };
+			POINT offset = { 0, 0 };
+			int scale = 15;
+			int filter = 5500;
+			double rotation = 0.0;
+			bool visible = false;
+		};
+
 		std::string name;
 		AvisoMainViewPreset mainView;
 		RECT secondaryArea = { 260, 260, 760, 560 };
@@ -159,13 +183,16 @@ public:
 		int secondaryLayoutMode = 0;
 		bool secondaryVisible = true;
 		bool linkedMovement = false;
+		std::array<SecondaryRadarWindow, 2> srw;
 	};
 	struct AvisoRasterRenderRequest
 	{
 		unsigned long long requestId = 0;
+		unsigned long long groupGeneration = 0;
 		std::string path;
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
+		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
@@ -195,6 +222,7 @@ public:
 		}
 
 		unsigned long long requestId = 0;
+		unsigned long long groupGeneration = 0;
 		HBITMAP bitmap = nullptr;
 		std::string path;
 		int rasterWidth = 0;
@@ -216,6 +244,11 @@ public:
 	std::vector<AvisoLabel> AvisoGeoJsonLabels;
 	std::shared_ptr<const std::vector<AvisoFeature>> AvisoGeoJsonFeatureSnapshot;
 	std::shared_ptr<const std::vector<AvisoLabel>> AvisoGeoJsonLabelSnapshot;
+	size_t AvisoGeoJsonSourceFeatureCount = 0;
+	std::vector<AvisoGroup> AvisoRuntimeGroups;
+	std::shared_ptr<const std::unordered_map<std::string, bool>> AvisoGroupVisibilitySnapshot;
+	mutable std::mutex AvisoGroupMutex;
+	std::atomic<unsigned long long> AvisoGroupGeneration{ 0 };
 	mutable std::string AvisoGeoJsonResolvedAirport;
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
@@ -227,6 +260,7 @@ public:
 	unsigned long AvisoGeoJsonLastStatTick = 0;
 	HBITMAP AvisoGeoJsonRasterCache = nullptr;
 	std::string AvisoGeoJsonRasterCachePath;
+	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
 	double AvisoGeoJsonRasterMinLatitude = 0.0;
 	double AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -276,6 +310,7 @@ public:
 	double AvisoGeoJsonRenderLastRequestMaxLatitude = 0.0;
 	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
 	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
+	unsigned long long AvisoGeoJsonRenderLastRequestGroupGeneration = 0;
 	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedTopLeft;
 	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedTopRight;
 	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedBottomLeft;
@@ -322,6 +357,9 @@ public:
 	static const int TagDefinitionEditorMaxLines = 4;
 
 	bool isLVP = false;
+	bool RimcasEnabled = true;
+	bool RimcasUseRedEmergencySymbols = true;
+	bool RimcasRunwaysExplicitlyConfigured = false;
 
 	map<string, RECT> TimePopupAreas;
 
@@ -333,6 +371,20 @@ public:
 
 	map<string, RECT> MenuPositions;
 	map<string, bool> DisplayMenu;
+	enum class RuntimeMenuPopup
+	{
+		None,
+		Mode,
+		Groups,
+		Insets,
+		Profile
+	};
+	RuntimeMenuPopup ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
+	POINT RuntimeMenuPosition = { 14, 100 };
+	bool RuntimeMenuPositionInitialized = false;
+	CRect RuntimeMenuArea = { 0, 0, 0, 0 };
+	CRect RuntimeMenuPopupArea = { 0, 0, 0, 0 };
+	int RuntimeMenuPopupScrollOffset = 0;
 	unsigned long FpsLastSampleTick = 0;
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
@@ -614,12 +666,34 @@ public:
 	//---OnRefresh------------------------------------------------------
 
 	virtual void OnRefresh(HDC hDC, int Phase);
+	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
+	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
+	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
+	void CloseRuntimeMenuPopup();
+	void LoadRuntimeMenuPositionFromAsr();
+	void SaveRuntimeMenuPositionToAsr();
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
 	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
 	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
 	bool ForceReloadAvisoGeoJson();
+	std::vector<AvisoGroup> GetAvisoGroups() const;
+	std::shared_ptr<const std::unordered_map<std::string, bool>> GetAvisoGroupVisibilitySnapshot(
+		unsigned long long* outGeneration = nullptr) const;
+	bool GetAvisoRenderSnapshots(
+		std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
+		std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
+		std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
+		unsigned long long& outGeneration) const;
+	bool ApplyAvisoGroupMembershipSnapshot(
+		const rapidjson::Value& aviso,
+		std::string* outError = nullptr);
+	bool SetAvisoGroupVisibility(const std::string& groupId, bool visible);
+	bool ToggleAvisoGroupVisibility(const std::string& groupId, bool* outVisible = nullptr);
+	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility);
+	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
+	void InvalidateAvisoGroupRendering();
 	void ClearAvisoGeoJsonRasterCache();
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();

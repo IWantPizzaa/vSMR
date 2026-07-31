@@ -2,9 +2,13 @@
 
 #include "resource.h"
 
+#include <atomic>
+#include <memory>
 #include <string>
+#include <thread>
 
 class CSMRRadar;
+class VsmrControlCenterBridge;
 
 class CVsmrControlCenterDialog : public CDialogEx
 {
@@ -13,10 +17,12 @@ class CVsmrControlCenterDialog : public CDialogEx
 public:
 	enum class Page
 	{
-		Overview,
-		Profiles,
+		Display,
 		Aviso,
-		Maps,
+		Alerts,
+		Groups,
+		Modes,
+		Profiles,
 		Settings
 	};
 
@@ -28,6 +34,7 @@ public:
 	void SetOwner(CSMRRadar* owner);
 	void ShowPage(Page page);
 	void SyncFromRadar();
+	void RestoreWindowPlacementOrDefault(const CRect& fallback);
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX) override;
@@ -38,101 +45,49 @@ protected:
 	afx_msg void OnClose();
 	afx_msg void OnDestroy();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnMove(int x, int y);
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
-	afx_msg void OnNavOverviewClicked();
-	afx_msg void OnNavProfilesClicked();
-	afx_msg void OnNavAvisoClicked();
-	afx_msg void OnNavMapsClicked();
-	afx_msg void OnNavSettingsClicked();
-	afx_msg void OnOverviewProfilesClicked();
-	afx_msg void OnOverviewAvisoClicked();
-	afx_msg void OnOverviewMapsClicked();
-	afx_msg void OnReloadConfigClicked();
-	afx_msg void OnReloadAvisoClicked();
-	afx_msg void OnOpenMapsExternalClicked();
-	afx_msg void OnReloadMapsTextClicked();
-	afx_msg void OnSaveMapsTextClicked();
-	afx_msg void OnOpenConfigExternalClicked();
-	afx_msg void OnOpenDataFolderClicked();
-	afx_msg void OnOpenPluginFolderClicked();
+	afx_msg LRESULT OnGithubDownloadComplete(WPARAM wParam, LPARAM lParam);
 
 	DECLARE_MESSAGE_MAP()
 
 private:
-	enum
-	{
-		IDC_VCC_NAV_OVERVIEW = 9601,
-		IDC_VCC_NAV_PROFILES = 9602,
-		IDC_VCC_NAV_AVISO = 9603,
-		IDC_VCC_NAV_MAPS = 9604,
-		IDC_VCC_NAV_SETTINGS = 9605,
-		IDC_VCC_OVERVIEW_PROFILES = 9610,
-		IDC_VCC_OVERVIEW_AVISO = 9611,
-		IDC_VCC_OVERVIEW_MAPS = 9612,
-		IDC_VCC_RELOAD_CONFIG = 9613,
-		IDC_VCC_RELOAD_AVISO = 9614,
-		IDC_VCC_OPEN_MAPS_EXTERNAL = 9620,
-		IDC_VCC_RELOAD_MAPS_TEXT = 9621,
-		IDC_VCC_SAVE_MAPS_TEXT = 9622,
-		IDC_VCC_OPEN_CONFIG_EXTERNAL = 9630,
-		IDC_VCC_OPEN_DATA_FOLDER = 9631,
-		IDC_VCC_OPEN_PLUGIN_FOLDER = 9632
-	};
+	struct WebViewHostState;
+	struct GithubDownloadResult;
 
-	void CreateControls();
-	void CreateButton(CButton& button, const char* text, UINT id);
-	void CreateStatic(CStatic& label, const char* text);
-	void CreateReadOnlyEdit(CEdit& edit);
-	void LayoutControls();
-	void LayoutHostedEditors();
-	CRect ContentRect() const;
-	void HidePageControls();
-	void HideHostedEditors();
-	void UpdateNavState();
-	bool IsHostedEditorPage() const;
-	void SetStatusText(const std::string& text);
-	void SetPageText(const std::string& title, const std::string& subtitle);
-	void LoadMapsText();
-	bool SaveMapsText();
-	bool HostProfileEditor();
-	bool HostAvisoEditor();
-	void PrepareHostedDialog(CDialogEx* dialog, const CRect& targetRect);
-	std::string BuildOverviewText() const;
-	std::string BuildSettingsText() const;
-	std::string ActiveProfileName() const;
-	std::string ActiveAirportName() const;
-	std::string ActiveAvisoPath() const;
-	bool OpenPathExternal(const std::string& path, bool folderMode);
+	void InitializeWebView();
+	HRESULT OnWebViewEnvironmentCreated(HRESULT result, IUnknown* environment);
+	HRESULT OnWebViewControllerCreated(HRESULT result, IUnknown* controller);
+	void ConfigureWebView();
+	void ResizeWebView();
+	void ShutdownWebView();
+	void ShowFallback(const std::string& message);
+	void SendJsonToWebView(const std::string& json);
+	void BeginNativeWindowDrag();
+	void RequestComputerResource(
+		const std::string& resource,
+		const std::string& requestId);
+	void RequestResetDefaults(const std::string& requestId);
+	void RequestGithubResource(
+		const std::string& resource,
+		const std::string& url,
+		const std::string& requestId);
+	void SaveWindowPlacement();
+	std::wstring ResolveWebResourceFolder() const;
+	std::wstring WebViewUserDataFolder() const;
+	std::wstring WindowPlacementPath() const;
+	std::string PageName(Page page) const;
 
 	CSMRRadar* Owner = nullptr;
-	Page CurrentPage = Page::Overview;
-	bool ControlsCreated = false;
+	Page CurrentPage = Page::Display;
+	bool Closing = false;
+	bool WindowPlacementDirty = false;
+	bool WebViewReady = false;
 
-	CStatic NavigationTitleLabel;
-	CStatic PageTitleLabel;
-	CStatic PageSubtitleLabel;
-	CStatic StatusLabel;
-	CStatic MapsPathLabel;
-
-	CButton NavOverviewButton;
-	CButton NavProfilesButton;
-	CButton NavAvisoButton;
-	CButton NavMapsButton;
-	CButton NavSettingsButton;
-	CButton OverviewProfilesButton;
-	CButton OverviewAvisoButton;
-	CButton OverviewMapsButton;
-	CButton ReloadConfigButton;
-	CButton ReloadAvisoButton;
-	CButton OpenMapsExternalButton;
-	CButton ReloadMapsTextButton;
-	CButton SaveMapsTextButton;
-	CButton OpenConfigExternalButton;
-	CButton OpenDataFolderButton;
-	CButton OpenPluginFolderButton;
-
-	CEdit OverviewEdit;
-	CEdit SettingsEdit;
-	CEdit MapsPathEdit;
-	CEdit MapsRawEdit;
+	CStatic FallbackLabel;
+	std::unique_ptr<WebViewHostState> WebHost;
+	std::unique_ptr<VsmrControlCenterBridge> Bridge;
+	std::shared_ptr<std::atomic<bool>> LifetimeToken;
+	std::thread GithubDownloadThread;
+	std::atomic<bool> GithubDownloadInProgress{ false };
 };

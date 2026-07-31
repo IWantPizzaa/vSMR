@@ -8,7 +8,9 @@ namespace
 {
 	CRect BuildDefaultControlCenterWindowRect()
 	{
-		CRect fallback(90, 90, 1180, 790);
+		constexpr int defaultWidth = 728;
+		constexpr int defaultHeight = 500;
+		CRect fallback(90, 90, 90 + defaultWidth, 90 + defaultHeight);
 		CWnd* mainWindow = AfxGetMainWnd();
 		if (mainWindow != nullptr && ::IsWindow(mainWindow->GetSafeHwnd()))
 		{
@@ -16,10 +18,10 @@ namespace
 			mainWindow->GetWindowRect(&mainRect);
 			if (!mainRect.IsRectEmpty())
 			{
-				fallback.left = mainRect.left + 70;
-				fallback.top = mainRect.top + 70;
-				fallback.right = fallback.left + 1090;
-				fallback.bottom = fallback.top + 700;
+				fallback.left = mainRect.left + max(24, (mainRect.Width() - defaultWidth) / 2);
+				fallback.top = mainRect.top + max(24, (mainRect.Height() - defaultHeight) / 2);
+				fallback.right = fallback.left + defaultWidth;
+				fallback.bottom = fallback.top + defaultHeight;
 			}
 		}
 		return fallback;
@@ -32,15 +34,23 @@ namespace
 			return static_cast<char>(std::tolower(c));
 		});
 
-		if (normalized == "profile" || normalized == "profiles" || normalized == "tags" || normalized == "tag")
+		if (normalized == "display" || normalized == "colors" || normalized == "icons" ||
+			normalized == "tags" || normalized == "tag" || normalized == "overview")
+			return CVsmrControlCenterDialog::Page::Display;
+		if (normalized == "profile" || normalized == "profiles")
 			return CVsmrControlCenterDialog::Page::Profiles;
 		if (normalized == "aviso" || normalized == "geojson")
 			return CVsmrControlCenterDialog::Page::Aviso;
-		if (normalized == "maps" || normalized == "map")
-			return CVsmrControlCenterDialog::Page::Maps;
-		if (normalized == "settings" || normalized == "config")
+		if (normalized == "alerts" || normalized == "rimcas")
+			return CVsmrControlCenterDialog::Page::Alerts;
+		if (normalized == "groups" || normalized == "group")
+			return CVsmrControlCenterDialog::Page::Groups;
+		if (normalized == "modes" || normalized == "mode")
+			return CVsmrControlCenterDialog::Page::Modes;
+		if (normalized == "settings" || normalized == "config" ||
+			normalized == "maps" || normalized == "map")
 			return CVsmrControlCenterDialog::Page::Settings;
-		return CVsmrControlCenterDialog::Page::Overview;
+		return CVsmrControlCenterDialog::Page::Display;
 	}
 }
 
@@ -61,21 +71,15 @@ bool CSMRRadar::EnsureVsmrControlCenterWindowCreated()
 		return false;
 	}
 
-	const CRect windowRect = BuildDefaultControlCenterWindowRect();
-	VsmrControlCenterDialog->SetWindowPos(
-		nullptr,
-		windowRect.left,
-		windowRect.top,
-		max(880, windowRect.Width()),
-		max(620, windowRect.Height()),
-		SWP_NOZORDER | SWP_NOACTIVATE);
+	VsmrControlCenterDialog->RestoreWindowPlacementOrDefault(
+		BuildDefaultControlCenterWindowRect());
 	VsmrControlCenterDialog->ShowWindow(SW_HIDE);
 	return true;
 }
 
 void CSMRRadar::OpenVsmrControlCenterWindow()
 {
-	OpenVsmrControlCenterWindow("overview");
+	OpenVsmrControlCenterWindow("display");
 }
 
 void CSMRRadar::OpenVsmrControlCenterWindow(const std::string& pageName)
@@ -87,8 +91,13 @@ void CSMRRadar::OpenVsmrControlCenterWindow(const std::string& pageName)
 		return;
 	}
 
-	VsmrControlCenterDialog->ShowWindow(SW_SHOW);
-	VsmrControlCenterDialog->BringWindowToTop();
+	VsmrControlCenterDialog->SetWindowPos(
+		&CWnd::wndTop,
+		0,
+		0,
+		0,
+		0,
+		SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
 	VsmrControlCenterDialog->ShowPage(PageFromName(pageName));
 	VsmrControlCenterDialog->SyncFromRadar();
 	RequestRefresh();

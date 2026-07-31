@@ -302,9 +302,12 @@ namespace
 		modeValue.SetObject();
 		WriteStringMember(modeValue, "name", settings.name.empty() ? "Display Mode" : settings.name, allocator);
 		WriteBoolMember(modeValue, "require_assigned_squawk", settings.requireAssignedSquawk, allocator);
+		WriteBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk, allocator);
 		WriteBoolMember(modeValue, "require_clearance", settings.requireClearance, allocator);
 		WriteBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat, allocator);
 		WriteBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
+		WriteBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
+		WriteBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
 		WriteStringArrayMember(modeValue, "blocked_auto_correlate_squawks", settings.blockedAutoCorrelateSquawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : settings.blockedAutoCorrelateSquawks, allocator);
 		WriteStatusVisibility(modeValue, settings.statuses, allocator);
 	}
@@ -890,8 +893,8 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 	if (!appliedToAnyRadar)
 		return false;
 
-	if (persistToDisk)
-		CurrentConfig->saveConfig();
+	if (persistToDisk && !CurrentConfig->saveConfig())
+		return false;
 	return true;
 }
 

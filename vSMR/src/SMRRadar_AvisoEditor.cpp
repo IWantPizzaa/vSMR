@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
+#include "AvisoDocumentModel.hpp"
 #include "AvisoEditorDialog.hpp"
 #include "InsetWindow.h"
 
@@ -91,13 +92,35 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 		return false;
 
 	const std::string airport = getActiveAirport();
+	const std::string path = ResolveAvisoGeoJsonPathForAirport(airport);
+	if (path.empty() || !IsRegularFileNoThrow(path))
+		return false;
+
+	AvisoDocumentModel validationModel;
+	std::string validationError;
+	if (!validationModel.LoadFromFile(path, validationError))
+	{
+		Logger::info(
+			"AVISO GeoJSON reload validation failed path=" + path +
+			" error=" + validationError);
+		return false;
+	}
+
 	AvisoGeoJsonResolvedAirport.clear();
 	AvisoGeoJsonResolvedDllPath.clear();
 	AvisoGeoJsonResolvedPath.clear();
 	AvisoGeoJsonFeatures.clear();
 	AvisoGeoJsonLabels.clear();
-	AvisoGeoJsonFeatureSnapshot.reset();
-	AvisoGeoJsonLabelSnapshot.reset();
+	{
+		auto emptyVisibility = std::make_shared<const std::unordered_map<std::string, bool>>();
+		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
+		AvisoGeoJsonFeatureSnapshot.reset();
+		AvisoGeoJsonLabelSnapshot.reset();
+		AvisoGeoJsonSourceFeatureCount = 0;
+		AvisoRuntimeGroups.clear();
+		AvisoGroupVisibilitySnapshot = std::move(emptyVisibility);
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+	}
 	AvisoGeoJsonLoadedPath.clear();
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLastStatTick = 0;
@@ -129,8 +152,7 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 			appWindow->ClearAvisoViewportCache();
 	}
 
-	const std::string path = ResolveAvisoGeoJsonPathForAirport(airport);
-	const bool loaded = !path.empty() && IsRegularFileNoThrow(path) && EnsureAvisoGeoJsonLoaded(path);
+	const bool loaded = EnsureAvisoGeoJsonLoaded(path);
 	if (AvisoEditorDialog && ::IsWindow(AvisoEditorDialog->GetSafeHwnd()) && AvisoEditorDialog->IsWindowVisible())
 		AvisoEditorDialog->SyncFromRadar();
 	RequestRefresh();
