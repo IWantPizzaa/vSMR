@@ -499,6 +499,8 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("PredictedLine")) != NULL)
 		PredictedLength = atoi(p_value);
 
+	LoadRuntimeMenuPositionFromAsr();
+
 	string temp;
 
 	for (int i = 1; i < 3; i++)
@@ -594,28 +596,32 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		insetWindow->ResetAvisoInteractionState();
 	}
 
-	// Auto load the airport config on ASR opened.
-	CSectorElement rwy;
-	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
-		rwy.IsValid();
-		rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
+	// Auto-detect active sector runways only for legacy profiles. An explicit
+	// profile runway array is authoritative, including when it is empty.
+	if (!RimcasRunwaysExplicitlyConfigured)
 	{
-		const char* runwayAirportName = rwy.GetAirportName();
-		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
-			continue;
+		CSectorElement rwy;
+		for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
+			rwy.IsValid();
+			rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
+		{
+			const char* runwayAirportName = rwy.GetAirportName();
+			if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
+				continue;
 
-		const char* runwayNameA = rwy.GetRunwayName(0);
-		const char* runwayNameB = rwy.GetRunwayName(1);
-		if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
-			continue;
+			const char* runwayNameA = rwy.GetRunwayName(0);
+			const char* runwayNameB = rwy.GetRunwayName(1);
+			if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
+				continue;
 
-		if (startsWith(getActiveAirport().c_str(), runwayAirportName)) {
-			string name = string(runwayNameA) + " / " + string(runwayNameB);
+			if (startsWith(getActiveAirport().c_str(), runwayAirportName)) {
+				string name = string(runwayNameA) + " / " + string(runwayNameB);
 
-			if (rwy.IsElementActive(true, 0) || rwy.IsElementActive(true, 1) || rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
-				RimcasInstance->toggleMonitoredRunwayDep(name);
-				if (rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
-					RimcasInstance->toggleMonitoredRunwayArr(name);
+				if (rwy.IsElementActive(true, 0) || rwy.IsElementActive(true, 1) || rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
+					RimcasInstance->toggleMonitoredRunwayDep(name);
+					if (rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
+						RimcasInstance->toggleMonitoredRunwayArr(name);
+					}
 				}
 			}
 		}
@@ -644,6 +650,8 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr("GndTrailsDots", "vSMR GRND Trail Dots", std::to_string(Trail_Gnd).c_str());
 
 	SaveDataToAsr("PredictedLine", "vSMR Predicted Track Lines", std::to_string(PredictedLength).c_str());
+
+	SaveRuntimeMenuPositionToAsr();
 
 	string temp = "";
 

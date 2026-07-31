@@ -836,8 +836,20 @@ namespace
 			return normalized == ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(current));
 		};
 
+		bool statusMatches = rule.statuses.empty()
+			? matchesField(rule.status, statusKey)
+			: false;
+		for (const std::string& status : rule.statuses)
+		{
+			if (matchesField(status, statusKey))
+			{
+				statusMatches = true;
+				break;
+			}
+		}
+
 		return matchesField(rule.tagType, tagTypeKey) &&
-			matchesField(rule.status, statusKey) &&
+			statusMatches &&
 			matchesField(rule.detail, detailKey);
 	}
 
