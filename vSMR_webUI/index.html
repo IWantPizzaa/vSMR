@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="dark" name="color-scheme"/>
+<title>vSMR Control Center</title>
+<link href="styles.css" rel="stylesheet"/>
+</head>
+<body>
+<div aria-hidden="true" class="radar-backdrop">
+<span class="radar-line l1"></span><span class="radar-line l2"></span><span class="radar-line l3"></span>
+<span class="radar-cross c1">+</span><span class="radar-cross c2">+</span><span class="radar-cross c3">+</span>
+</div>
+<section aria-label="vSMR quick controls" class="runtime-menu runtime-icon-rail" id="runtimeMenu">
+<header aria-label="Drag vSMR menu" class="runtime-titlebar" id="runtimeDragHandle" title="Drag"></header>
+<div class="runtime-menu-list">
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Mode" class="runtime-menu-button" data-runtime-popover="mode" id="runtimeModeButton" title="Mode" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 4v3M12 17v3M4 12h3M17 12h3M12 12l4-4"></path><circle cx="12" cy="12" r="1.5"></circle></svg>
+<span aria-hidden="true" class="runtime-corner-indicator"></span>
+</button>
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Groups" class="runtime-menu-button" data-runtime-popover="groups" id="runtimeGroupsButton" title="Groups" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="7" cy="8" r="2.5"></circle><circle cx="17" cy="8" r="2.5"></circle><circle cx="12" cy="17" r="2.5"></circle><path d="M9.2 9.2l1.7 5.3M14.8 9.2l-1.7 5.3M9.5 8h5"></path></svg>
+<span aria-hidden="true" class="runtime-corner-indicator"></span>
+</button>
+<button aria-expanded="false" aria-haspopup="menu" aria-label="AVISO insets" class="runtime-menu-button runtime-inset-button" data-runtime-popover="inset" id="runtimeInsetButton" title="AVISO insets" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><rect x="8" y="8" width="8" height="8"></rect><path d="M8 11H4M20 13h-4"></path></svg>
+<span aria-hidden="true" class="runtime-inset-indicators"><i data-inset-indicator="aviso"></i><i data-inset-indicator="srw1"></i><i data-inset-indicator="srw2"></i></span>
+</button>
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Profile" class="runtime-menu-button" data-runtime-popover="profile" id="runtimeProfileButton" title="Profile" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg>
+<span aria-hidden="true" class="runtime-corner-indicator"></span>
+</button>
+<button aria-label="Open Control Center" class="runtime-menu-button runtime-settings-button" data-action="open-control-center" title="Open Control Center" type="button">
+<svg aria-hidden="true" class="settings-gear-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.08V21h-4v-.08A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.08-.4H3v-4h.08A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.08V3h4v.08A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.36.35.7.6 1 .3.3.68.45 1.08.4H21v4h-.08A1.7 1.7 0 0 0 19.4 15z"></path></svg>
+</button>
+</div>
+<section aria-label="Quick control choices" class="runtime-popover" hidden="" id="runtimePopover">
+<div class="runtime-popover-title"><span id="runtimePopoverTitle">Options</span><button data-action="close-runtime-popover" title="Close" type="button">×</button></div>
+<div class="runtime-popover-content" id="runtimePopoverContent"></div>
+</section>
+</section>
+<section aria-label="vSMR Control Center" class="control-window hidden" id="controlWindow">
+<header class="titlebar" id="dragHandle">
+<span>vSMR Control Center</span>
+<button class="title-close" id="closeButton" title="Close" type="button">×</button>
+</header>
+<div class="window-shell">
+<nav aria-label="Sections and global actions" class="page-rail">
+<button class="rail-button active" data-page="display" title="Display" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg>
+</button>
+<button class="rail-button" data-page="aviso" title="AVISO" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 6l4-2 6 2 4-2v14l-4 2-6-2-4 2z"></path><path d="M9 4v14M15 6v14"></path></svg>
+</button>
+<button class="rail-button" data-page="alerts" title="Alerts" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 3 2.8 20h18.4zM12 8v6m0 3v.2"></path></svg>
+</button>
+<button class="rail-button" data-page="groups" title="Groups" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="7" cy="8" r="2.5"></circle><circle cx="17" cy="8" r="2.5"></circle><circle cx="12" cy="17" r="2.5"></circle><path d="M9.2 9.2l1.7 5.3M14.8 9.2l-1.7 5.3M9.5 8h5"></path></svg>
+</button>
+<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 4v3M12 17v3M4 12h3M17 12h3M12 12l4-4"></path><circle cx="12" cy="12" r="1.5"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
+<svg aria-hidden="true" class="settings-gear-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.08V21h-4v-.08A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.08-.4H3v-4h.08A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.08V3h4v.08A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.36.35.7.6 1 .3.3.68.45 1.08.4H21v4h-.08A1.7 1.7 0 0 0 19.4 15z"></path></svg>
+</button>
+<div aria-hidden="true" class="rail-separator"></div>
+<button aria-label="Undo" class="rail-button rail-action-button" disabled="" id="undoButton" title="Undo" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 0 1 6 6"></path></svg>
+</button>
+<button aria-label="Redo" class="rail-button rail-action-button" disabled="" id="redoButton" title="Redo" type="button">
+<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 7 5 5-5 5M19 12h-8a6 6 0 0 0-6 6"></path></svg>
+</button>
+<div class="rail-profile-control">
+<button aria-expanded="false" aria-haspopup="listbox" class="rail-button rail-profile-button" data-action="toggle-profile-menu" id="railProfileButton" title="Active profile" type="button">
+<span class="rail-profile-short" id="railProfileShort">LFPG</span>
+</button>
+<div class="rail-profile-popover" hidden="" id="railProfilePopover">
+<label class="rail-profile-selector">
+<span>Active profile</span>
+<select aria-label="Active profile" id="globalProfileSelect"></select>
+</label>
+</div>
+</div>
+<button aria-label="Reload configuration" class="rail-button rail-action-button" id="reloadButton" title="Reload configuration" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M19 7v5h-5M5 17v-5h5M7.1 8.1A7 7 0 0 1 18.5 10M16.9 15.9A7 7 0 0 1 5.5 14"></path></svg>
+</button>
+<button aria-label="Save" class="rail-button rail-action-button rail-save-button" id="saveButton" title="Save" type="button">
+<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M4 4h13l3 3v13H4zm3 0v6h9V4M7 20v-7h10v7"></path></svg>
+<span aria-hidden="true" class="rail-dirty-dot" id="dirtyDot" title="Saved"></span>
+</button>
+<div class="rail-spacer"></div>
+</nav>
+<div class="workspace">
+<main class="page-stack">
+<section class="page active" data-page-panel="display">
+<nav aria-label="Profile editor sections" class="subtabs profile-subtabs">
+<button class="active" data-profile-tab="colors" type="button">Colors</button>
+<button data-profile-tab="icons" type="button">Icons</button>
+<button data-profile-tab="tags" type="button">Tags</button>
+<button data-profile-tab="rules" type="button">Rules</button>
+</nav>
+<div class="subpage-stack">
+<section class="subpage active" data-profile-panel="colors">
+<div class="split-layout split-master color-layout">
+<aside class="panel master-panel">
+<div class="panel-title"><span>Profile colors <small id="colorCountCaption"></small></span><button class="title-tool" data-action="reset-color" title="Reset selected color" type="button">↺</button></div>
+<div class="search-row"><input aria-label="Find color" id="colorSearch" placeholder="Find color…" type="search"/></div>
+<div class="scroll-list visual-tree color-definition-tree" id="colorTree"></div>
+</aside>
+<section class="panel detail-panel">
+<div class="panel-title"><span id="selectedColorPath">Color</span><small id="selectedColorGroup"></small></div>
+<div class="detail-scroll color-detail-scroll">
+<fieldset class="compact-group color-editor-card">
+<legend>Color</legend>
+<div class="color-picker-workbench">
+<div aria-label="Saturation and brightness" class="color-sv-palette" id="colorSvPalette" role="slider" tabindex="0">
+<span aria-hidden="true" class="color-palette-cursor" id="colorPaletteCursor"></span>
+</div>
+<label class="color-preview-card" title="Open the system color picker">
+<span aria-hidden="true" class="color-preview-swatch" id="colorSwatch"></span>
+<input aria-label="Open system color picker" id="nativeColorPicker" type="color"/>
+</label>
+</div>
+<div aria-label="HSRGBA channels" class="color-channel-sliders">
+<label class="color-slider-row hue-slider-row"><span>Hue</span><input id="colorHue" max="360" min="0" step="1" type="range"/><output id="colorHueOutput">0°</output></label>
+<label class="color-slider-row red-channel"><span>Red</span><input id="colorRed" max="255" min="0" step="1" type="range"/><output id="colorRedOutput">0</output></label>
+<label class="color-slider-row green-channel"><span>Green</span><input id="colorGreen" max="255" min="0" step="1" type="range"/><output id="colorGreenOutput">0</output></label>
+<label class="color-slider-row blue-channel"><span>Blue</span><input id="colorBlue" max="255" min="0" step="1" type="range"/><output id="colorBlueOutput">0</output></label>
+<label class="color-slider-row opacity-channel"><span>Opacity</span><input id="colorOpacity" max="100" min="0" step="1" type="range"/><output id="colorOpacityOutput">100%</output></label>
+</div>
+</fieldset>
+<details class="advanced-disclosure color-advanced">
+<summary><span>Advanced</span><small>HEX &amp; internal path</small></summary>
+<div class="advanced-body">
+<label class="field color-hex-field"><span>Hex</span><input id="colorHex" spellcheck="false" type="text"/></label>
+<label class="field"><span>JSON path</span><input id="colorJsonPath" readonly="" type="text"/></label>
+</div>
+</details>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons">
+<button class="ui-button" data-action="revert-color" type="button">Revert</button>
+<button class="ui-button primary" data-action="apply-color" type="button">Update</button>
+</div>
+</section>
+</div>
+</section>
+<section class="subpage" data-profile-panel="icons">
+<section class="panel full-editor-panel">
+<div class="panel-title"><span>Target icons</span><small id="iconProfileCaption"></small></div>
+<div class="profile-settings-scroll icon-settings-grid">
+<fieldset class="compact-group icon-symbol-group">
+<legend>Symbol</legend>
+<div class="icon-symbol-layout">
+<div aria-label="Target icon preview" class="icon-symbol-preview" id="iconSymbolPreview"></div>
+<div class="icon-symbol-controls">
+<label class="field"><span>Icon style</span><select id="targetIconStyle"><option>realistic</option><option>nova</option><option>triangle</option></select></label>
+<label class="check-field"><input id="showPrimaryTarget" type="checkbox"/><span>Show primary target</span></label>
+</div>
+</div>
+</fieldset>
+<fieldset class="compact-group icon-parameters-group">
+<legend>Parameters</legend>
+<div class="icon-size-options">
+<section class="icon-parameter-block">
+<strong>Fixed pixel size</strong>
+<label class="check-field"><input id="fixedPixelIconSize" type="checkbox"/><span>Enable</span></label>
+<label class="field"><span>Scale</span><span class="range-control"><input id="fixedPixelIconScale" max="2" min="0.25" step="0.05" type="range"/><output id="fixedPixelIconScaleOutput">1.00×</output></span></label>
+</section>
+<section class="icon-parameter-block">
+<strong>Small icon boost</strong>
+<label class="check-field"><input id="smallIconBoost" type="checkbox"/><span>Enable</span></label>
+<label class="field"><span>Factor</span><span class="range-control"><input id="smallIconBoostFactor" max="2" min="0.5" step="0.05" type="range"/><output id="smallIconBoostFactorOutput">1.00×</output></span></label>
+</section>
+</div>
+</fieldset>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-icons" type="button">Revert</button><button class="ui-button primary" data-action="apply-icons" type="button">Update</button></div>
+</section>
+</section>
+<section class="subpage" data-profile-panel="tags">
+<div class="split-layout split-master tag-layout">
+<aside class="panel master-panel">
+<div class="panel-title"><span>Tag definitions <small id="tagCountCaption"></small></span></div>
+<div class="scroll-list visual-tree tag-definition-tree" id="tagDefinitionList"></div>
+</aside>
+<div class="tag-right-stack">
+<section class="panel tag-definition-detail-panel">
+<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><small id="tagEditorScope"></small></div>
+<div class="detail-scroll tag-definition-detail-scroll">
+<div class="tag-editor-panel" id="tagDefinitionEditor">
+<label class="check-field inherit-row"><input id="tagDetailedInherits" type="checkbox"/><span>Detailed tag inherits normal</span></label>
+<div class="tag-definition-grid tag-header-row"><span></span><strong>Normal</strong><strong>Detailed</strong></div>
+<div class="tag-line-grid" id="tagLineGrid"></div>
+<div class="tag-token-tools">
+<select aria-label="Tag token" id="tagTokenSelect"></select>
+<button class="ui-button" data-action="insert-tag-token" type="button">Insert token</button>
+</div>
+</div>
+</div>
+</section>
+<section class="panel tag-global-options-panel">
+<div class="panel-title"><span>Tag options</span><small>Global · active profile</small></div>
+<div class="tag-global-options-body" id="tagOptionsEditor">
+<div class="tag-options-block">
+<div class="tag-options-subtitle">Behaviour</div>
+<div class="dense-form two-cols">
+<label class="check-field check-in-form"><input id="tagRoundedCorners" type="checkbox"/><span>Rounded corners</span></label>
+<label class="check-field check-in-form"><input id="tagAutoDeconfliction" type="checkbox"/><span>Auto deconfliction</span></label>
+<label class="check-field check-in-form"><input id="tagUseSpeedGate" type="checkbox"/><span>Speed-based gate</span></label>
+<label class="check-field check-in-form"><input id="tagDepartureArrivalColors" type="checkbox"/><span>Departure / arrival colors</span></label>
+<label class="field"><span>Leader line</span><input id="tagLeaderLineLength" min="0" step="1" type="number"/></label>
+<label class="field"><span>Label size</span><span class="range-control"><input id="tagLabelFontSize" max="5" min="1" step="1" type="range"/><output id="tagLabelFontSizeOutput">1</output></span></label>
+</div>
+</div>
+<div class="tag-options-block tag-typography-block">
+<div class="tag-options-subtitle">Typography</div>
+<div class="dense-form three-cols tag-font-grid">
+<label class="field span-2"><span>Typeface</span><select id="profileFontName"></select></label>
+<label class="field"><span>Weight</span><select id="profileFontWeight"><option>Regular</option><option>Bold</option><option>Italic</option></select></label>
+</div>
+</div>
+</div>
+</section>
+<div class="actionbar bottom-actions equal-action-buttons tag-shared-actions"><button class="ui-button" data-action="revert-tag" type="button">Revert</button><button class="ui-button primary" data-action="apply-tag" type="button">Update</button></div>
+</div>
+</div>
+</section>
+<section class="subpage" data-profile-panel="rules">
+<div class="split-layout split-master rules-layout">
+<aside class="panel master-panel">
+<div class="panel-title"><span>Rules <small id="ruleCountCaption"></small></span><span class="mini-tools list-tools"><button aria-label="New rule" data-action="new-rule" title="New" type="button">+</button><button aria-label="Duplicate rule" data-action="duplicate-rule" title="Duplicate" type="button">⧉</button><button aria-label="Delete rule" data-action="delete-rule" title="Delete" type="button">−</button></span></div>
+<div class="scroll-list selection-list" id="ruleList"></div>
+</aside>
+<section class="panel detail-panel">
+<div class="panel-title"><span id="ruleFormCaption">Rule</span></div>
+<div class="detail-scroll rule-detail-scroll">
+<fieldset class="compact-group editor-section-card">
+<legend>Rule</legend>
+<label class="field"><span>Name</span><input id="ruleName" placeholder="Optional" type="text"/></label>
+</fieldset>
+<fieldset class="compact-group conditions-group">
+<legend>Match</legend>
+<div class="criteria-list" id="criteriaList"></div>
+<button class="inline-add" data-action="add-condition" type="button">+ condition</button>
+</fieldset>
+<fieldset class="compact-group">
+<legend>Applies to</legend>
+<div class="dense-form three-cols compact-rule-scope">
+<label class="field"><span>Tag</span><select id="ruleTagType"><option>any</option><option>departure</option><option>arrival</option><option>airborne</option><option>uncorrelated</option></select></label>
+<div class="field rule-status-field"><span>Status</span><div class="checkbox-dropdown" id="ruleStatusDropdown">
+<button aria-expanded="false" aria-haspopup="listbox" class="checkbox-dropdown-button" id="ruleStatusButton" type="button">All statuses</button>
+<div aria-multiselectable="true" class="checkbox-dropdown-menu" hidden="" id="ruleStatusMenu" role="listbox">
+<label class="checkbox-dropdown-all"><input id="ruleStatusAll" type="checkbox"/><span>All statuses</span></label>
+<div class="checkbox-dropdown-options" id="ruleStatusOptions"></div>
+</div>
+</div></div>
+<label class="field"><span>Detail</span><select id="ruleDetail"><option>any</option><option>normal</option><option>detailed</option></select></label>
+</div>
+</fieldset>
+<fieldset class="compact-group output-group">
+<legend>Colors</legend>
+<div class="rule-color-grid">
+<label class="check-field"><input id="ruleUseTargetColor" type="checkbox"/><span>Target</span></label><input id="ruleTargetColor" type="text"/><label class="mini-color-swatch"><input id="ruleTargetPicker" type="color"/></label>
+<label class="check-field"><input id="ruleUseTagColor" type="checkbox"/><span>Tag</span></label><input id="ruleTagColor" type="text"/><label class="mini-color-swatch"><input id="ruleTagPicker" type="color"/></label>
+<label class="check-field"><input id="ruleUseTextColor" type="checkbox"/><span>Text</span></label><input id="ruleTextColor" type="text"/><label class="mini-color-swatch"><input id="ruleTextPicker" type="color"/></label>
+</div>
+</fieldset>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-rule" type="button">Revert</button><button class="ui-button primary" data-action="apply-rule" type="button">Update</button></div>
+</section>
+</div>
+</section>
+</div>
+</section><section class="page standalone-manager-page modes-page" data-page-panel="modes">
+<div class="split-layout split-master modes-layout">
+<aside class="panel master-panel">
+<div class="panel-title"><span>Modes <small id="modeCountCaption"></small></span><span class="mini-tools list-tools"><button aria-label="New mode" data-action="new-mode" title="New" type="button">+</button><button aria-label="Duplicate mode" data-action="duplicate-mode" title="Duplicate" type="button">⧉</button><button aria-label="Delete mode" data-action="delete-mode" title="Delete" type="button">−</button></span></div>
+<div class="scroll-list selection-list" id="modeList"></div>
+</aside>
+<section class="panel detail-panel mode-detail-panel">
+<div class="panel-title"><span id="modePropertiesCaption">Mode properties</span><button class="title-tool" data-action="activate-mode" title="Set active mode" type="button">Set active</button></div>
+<div class="detail-scroll mode-detail-scroll">
+<fieldset class="compact-group editor-section-card">
+<legend>Mode</legend>
+<div class="dense-form two-cols section-form">
+<label class="field"><span>Name</span><input id="modeName" type="text"/></label>
+<div class="field mode-squawk-field"><span>Blocked squawks</span><div class="mode-squawk-editor"><div class="mode-squawk-chips" id="modeBlockedSquawkChips"></div><input aria-label="Add blocked squawk" id="modeBlockedSquawkInput" inputmode="numeric" maxlength="4" placeholder="Add code" type="text"/><button class="ui-button" data-action="add-mode-squawk" type="button">Add</button></div></div>
+</div>
+</fieldset>
+<fieldset class="compact-group">
+<legend>Requirements</legend>
+<div class="feature-grid mode-requirements">
+<label class="check-field"><input id="reqSquawk" type="checkbox"/><span>Assigned squawk</span></label>
+<label class="check-field"><input id="modeAcceptPilotSquawk" type="checkbox"/><span>Accept pilot squawk</span></label>
+<label class="check-field"><input id="reqClearance" type="checkbox"/><span>Clearance</span></label>
+<label class="check-field"><input id="reqTsat" type="checkbox"/><span>Valid TSAT</span></label>
+<label class="check-field"><input id="reqTobt" type="checkbox"/><span>Active TOBT</span></label>
+<label class="check-field"><input id="modeTowerFilter" type="checkbox"/><span>Tower filter</span></label>
+<label class="check-field"><input id="modeStructuredRules" type="checkbox"/><span>Structured rules</span></label>
+</div>
+</fieldset>
+<fieldset class="compact-group">
+<legend><span>Visible statuses</span><span class="legend-tools"><button data-action="mode-statuses-all" type="button">All</button><button data-action="mode-statuses-none" type="button">None</button></span></legend>
+<div class="mode-status-grid" id="modeStatusGrid"></div>
+</fieldset>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-mode" type="button">Revert</button><button class="ui-button primary" data-action="apply-mode" type="button">Update</button></div>
+</section>
+</div>
+</section><section class="page standalone-manager-page profiles-page" data-page-panel="profiles">
+<div class="split-layout split-master profiles-layout">
+<aside class="panel master-panel">
+<div class="panel-title"><span>Profiles <small id="profileCountCaption"></small></span><span class="mini-tools list-tools"><button aria-label="New profile" data-action="new-profile" title="New" type="button">+</button><button aria-label="Duplicate profile" data-action="duplicate-profile" title="Duplicate" type="button">⧉</button><button aria-label="Delete profile" data-action="delete-profile" title="Delete" type="button">−</button></span></div>
+<div class="scroll-list selection-list" id="profileList"></div>
+</aside>
+<section class="panel detail-panel profile-detail-panel">
+<div class="panel-title"><span id="profilePropertiesCaption">Profile properties</span><button class="title-tool" data-action="activate-profile" type="button">Set active</button></div>
+<div class="detail-scroll profile-detail-scroll">
+<fieldset class="compact-group editor-section-card">
+<legend>Profile</legend>
+<div class="dense-form profile-main-fields section-form">
+<label class="field"><span>Name</span><input id="profileName" type="text"/></label>
+</div>
+</fieldset>
+<fieldset class="compact-group">
+<legend>Radar filters</legend>
+<div class="dense-form four-cols profile-filter-grid">
+<label class="field"><span>Max alt (ft)</span><input id="profileMaxAltitude" step="100" type="number"/></label>
+<label class="field"><span>Max speed</span><input id="profileMaxSpeed" step="5" type="number"/></label>
+<label class="field"><span>Range (NM)</span><input id="profileRadarRange" step="1" type="number"/></label>
+<label class="field"><span>Night alpha</span><input id="profileNightAlpha" max="255" min="0" type="number"/></label>
+</div>
+</fieldset>
+<details class="advanced-disclosure profile-advanced">
+<summary><span>Advanced</span><small>Profile metadata</small></summary>
+<div class="advanced-body"><label class="field"><span>Schema version</span><input id="profileSchema" readonly="" type="number"/></label></div>
+</details>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-profile" type="button">Revert</button><button class="ui-button primary" data-action="apply-profile" type="button">Update</button></div>
+</section>
+</div>
+</section>
+<section class="page aviso-page" data-page-panel="aviso">
+<div class="aviso-toolbar">
+<nav aria-label="AVISO editor sections" class="subtabs aviso-subtabs">
+<button data-aviso-view="geometry" type="button">Geometry <small id="avisoGeometryTabCount"></small></button>
+<button class="active" data-aviso-view="text" type="button">Text <small id="avisoTextTabCount"></small></button>
+</nav>
+<span class="dataset-caption" id="avisoDatasetCaption">LFPG</span>
+<div class="aviso-load-control">
+<button aria-expanded="false" aria-haspopup="menu" class="ui-button" data-action="toggle-aviso-load-menu" id="avisoLoadButton" type="button">Load GeoJSON…</button>
+<div class="compact-popup-menu" hidden="" id="avisoLoadMenu" role="menu">
+<button data-action="load-aviso-computer" role="menuitem" type="button">From computer…</button>
+<button data-action="load-aviso-github" role="menuitem" type="button">From GitHub…</button>
+</div>
+</div>
+</div>
+<div class="aviso-view-stack">
+<section class="aviso-view" data-aviso-view-panel="geometry">
+<div class="aviso-geometry-layout">
+<aside class="panel aviso-style-list-panel">
+<div class="panel-title">
+<span>Geometry styles <small id="avisoGeometryStyleCount"></small></span>
+<small class="selection-caption" id="avisoGeometrySelectionCount">1 selected</small>
+</div>
+<div class="search-row"><input aria-label="Find geometry style" id="avisoGeometrySearch" placeholder="Find surface or line…" type="search"/></div>
+<div aria-label="Geometry styles" aria-multiselectable="true" class="scroll-list aviso-style-tree" id="avisoGeometryStyleList" role="listbox" tabindex="0"></div>
+</aside>
+<section class="panel aviso-category-editor">
+<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><small id="avisoGeometrySelectionMeta"></small></div>
+<div class="detail-scroll aviso-editor-scroll">
+<div class="aviso-style-summary">
+<span class="aviso-kind-badge" id="avisoGeometryKind">Area</span>
+<span id="avisoGeometryLayer">—</span>
+<span id="avisoGeometryObjectCount">—</span>
+</div>
+<div class="selection-compatibility" hidden="" id="avisoGeometryCompatibility"></div>
+<fieldset class="compact-group aviso-edit-group">
+<legend>Visibility</legend>
+<label class="check-field aviso-wide-check"><input id="avisoGeometryVisible" type="checkbox"/><span id="avisoGeometryVisibleLabel">Show this category</span></label>
+</fieldset>
+<fieldset class="compact-group aviso-edit-group" id="avisoGeometryFillGroup">
+<legend>Fill</legend>
+<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryFillPair"><input aria-label="Fill color picker" id="avisoGeometryFillPicker" type="color"/><input id="avisoGeometryFillColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
+</fieldset>
+<fieldset class="compact-group aviso-edit-group">
+<legend id="avisoGeometryStrokeLegend">Outline</legend>
+<div class="dense-form two-cols aviso-style-form">
+<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryStrokePair"><input aria-label="Line color picker" id="avisoGeometryStrokePicker" type="color"/><input id="avisoGeometryStrokeColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
+<label class="field"><span>Width</span><input id="avisoGeometryStrokeWidth" min="0" placeholder="Mixed" step="0.25" type="number"/></label>
+</div>
+</fieldset>
+<details class="advanced-disclosure" id="avisoGeometryAdvanced">
+<summary><span>Advanced</span><small>Opacity &amp; groups</small></summary>
+<div class="advanced-body">
+<label class="field aviso-range-field" id="avisoGeometryFillOpacityField"><span>Fill opacity</span><span class="range-control"><input id="avisoGeometryFillOpacity" max="100" min="0" type="range"/><output id="avisoGeometryFillOpacityOutput">100%</output></span></label>
+<label class="field aviso-range-field"><span>Line / outline opacity</span><span class="range-control"><input id="avisoGeometryStrokeOpacity" max="100" min="0" type="range"/><output id="avisoGeometryStrokeOpacityOutput">100%</output></span></label>
+<div class="aviso-group-assignment">
+<label class="field"><span>Add selection to group</span><select id="avisoGeometryGroupTarget"></select></label>
+<button class="ui-button" data-action="assign-aviso-geometry-group" id="avisoGeometryGroupAdd" type="button">Add</button>
+</div>
+<div class="aviso-advanced-meta" id="avisoGeometryAdvancedInfo"></div>
+</div>
+</details>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons">
+<button class="ui-button" data-action="revert-aviso-editor" type="button">Revert</button>
+<button class="ui-button primary" data-action="apply-aviso-geometry" id="avisoGeometryApplyButton" type="button">Update</button>
+</div>
+</section>
+</div>
+</section>
+<section class="aviso-view active" data-aviso-view-panel="text">
+<div class="aviso-text-layout aviso-text-single-style-layout">
+<aside class="panel aviso-text-label-panel aviso-text-master-panel">
+<div class="panel-title">
+<span>Labels <small id="avisoTextLabelCount"></small></span>
+<small class="selection-caption" id="avisoTextSelectionCount">1 selected</small>
+</div>
+<div class="aviso-text-style-selector-row">
+<label class="field"><span>Style</span><select aria-label="Text style" id="avisoTextStyleSelect"></select></label>
+<small id="avisoTextStyleCount"></small>
+</div>
+<div class="search-row"><input aria-label="Find text label" id="avisoTextSearch" placeholder="Find label…" type="search"/></div>
+<div aria-label="Text labels" aria-multiselectable="true" class="scroll-list aviso-label-list" id="avisoTextLabelList" role="listbox" tabindex="0"></div>
+</aside>
+<section class="panel aviso-text-editor">
+<div class="panel-title"><span id="avisoTextCaption">Text label</span><small id="avisoTextStyleCaption"></small></div>
+<div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
+<fieldset class="compact-group aviso-edit-group">
+<legend>Label</legend>
+<div class="dense-form aviso-style-form aviso-label-form">
+<label class="field"><span>Text</span><input id="avisoTextValue" placeholder="Label text" type="text"/></label>
+<label class="check-field aviso-wide-check"><input id="avisoTextVisible" type="checkbox"/><span>Visible</span></label>
+</div>
+</fieldset>
+<fieldset class="compact-group aviso-edit-group">
+<legend>Typography</legend>
+<div class="dense-form two-cols aviso-style-form">
+<label class="field"><span>Font</span><input id="avisoTextFont" list="avisoFontChoices" placeholder="Mixed" type="text"/></label>
+<label class="field"><span>Size</span><input id="avisoTextSize" max="80" min="1" placeholder="Mixed" step="1" type="number"/></label>
+<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoTextColorPair"><input aria-label="Text color picker" id="avisoTextColorPicker" type="color"/><input id="avisoTextColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
+</div>
+</fieldset>
+<fieldset class="compact-group aviso-edit-group aviso-halo-group">
+<legend>Halo</legend>
+<div class="dense-form two-cols aviso-style-form">
+<label class="field"><span>Color</span><span class="aviso-color-pair" id="avisoTextHaloPair"><input aria-label="Halo color picker" id="avisoTextHaloPicker" type="color"/><input id="avisoTextHaloColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
+<label class="field"><span>Width</span><input id="avisoTextHaloWidth" max="12" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
+</div>
+<div class="aviso-text-zoom-box">
+<div class="tag-options-subtitle">Zoom visibility</div>
+<div class="aviso-text-zoom-grid">
+<label class="field"><span>Level</span><input id="avisoTextZoomLevel" max="14" min="0" placeholder="Mixed" step="1" type="number"/></label>
+<label class="field aviso-text-zoom-range"><span id="avisoTextZoomMeaning">12 km or closer</span><input id="avisoTextZoomSlider" max="14" min="0" step="1" type="range"/></label>
+</div>
+</div>
+</fieldset>
+</div>
+<div class="actionbar bottom-actions aviso-text-actions">
+<button class="ui-button" data-action="revert-aviso-editor" type="button">Revert</button>
+<label class="compact-apply-scope"><span>Apply to</span><select id="avisoTextApplyTarget"><option value="selection">Selected label</option><option value="group">Current text group</option><option value="all">All AVISO text</option></select></label>
+<button class="ui-button primary" data-action="apply-aviso-text" id="avisoTextApplyButton" type="button">Update</button>
+</div>
+</section>
+</div>
+</section>
+</div>
+<datalist id="avisoFontChoices">
+<option value="Arial"></option><option value="Tahoma"></option><option value="Segoe UI"></option><option value="Verdana"></option><option value="Consolas"></option>
+</datalist>
+</section><section class="page alerts-page" data-page-panel="alerts">
+<nav aria-label="Alert settings" class="subtabs alerts-subtabs">
+<button class="active" data-alerts-view="active" type="button">Active alerts</button>
+<button data-alerts-view="runways" type="button">Runways</button>
+<button data-alerts-view="timing" type="button">Timing</button>
+<button data-alerts-view="appearance" type="button">Appearance</button>
+</nav>
+<div class="alerts-view-stack">
+<section class="alerts-view active" data-alerts-view-panel="active">
+<div class="alerts-active-layout">
+<fieldset class="compact-group alert-global-box">
+<legend>RIMCAS</legend>
+<div class="feature-grid alert-global-grid">
+<label class="check-field"><input id="alertRimcasEnabled" type="checkbox"/><span>Enabled</span></label>
+<label class="check-field"><input id="alertLabelOnly" type="checkbox"/><span>Label only</span></label>
+<label class="check-field"><input id="alertRedEmergency" type="checkbox"/><span>Red emergency symbol</span></label>
+</div>
+</fieldset>
+<fieldset class="compact-group alert-types-box">
+<legend><span>Active alert types</span><span class="legend-tools"><button data-action="alerts-enable-all" type="button">All</button><button data-action="alerts-disable-all" type="button">None</button></span></legend>
+<div class="alert-toggle-grid" id="alertTypeGrid"></div>
+</fieldset>
+</div>
+</section>
+<section class="alerts-view" data-alerts-view-panel="runways">
+<div class="alerts-runways-layout">
+<div class="alerts-runway-toolbar">
+<label class="field alert-visibility-field"><span>Visibility</span><select id="alertVisibilityMode"><option value="normal">Normal</option><option value="lvp">Low visibility (LVP)</option></select></label>
+<span class="mini-tools"><button class="wide" data-action="alert-runways-all-arr" type="button">All ARR</button><button class="wide" data-action="alert-runways-all-dep" type="button">All DEP</button><button class="wide" data-action="alert-runways-open-all" type="button">Open all</button><button data-action="new-alert-runway" title="Add runway pair" type="button">+</button></span>
+</div>
+<div class="alert-runway-table" id="alertRunwayTable"></div>
+</div>
+</section>
+<section class="alerts-view" data-alerts-view-panel="timing">
+<div class="alerts-timing-layout">
+<fieldset class="compact-group">
+<legend>Conflict countdown · normal</legend>
+<div class="alert-timer-row" id="alertTimerNormal"></div>
+</fieldset>
+<fieldset class="compact-group">
+<legend>Conflict countdown · LVP</legend>
+<div class="alert-timer-row" id="alertTimerLvp"></div>
+</fieldset>
+<fieldset class="compact-group alert-threshold-box">
+<legend>Stage two</legend>
+<label class="field"><span>Speed threshold (kt)</span><input id="alertSpeedThreshold" min="0" step="1" type="number"/></label>
+</fieldset>
+</div>
+</section>
+<section class="alerts-view" data-alerts-view-panel="appearance">
+<div class="alerts-appearance-grid">
+<fieldset class="compact-group"><legend>Aircraft stages</legend><div class="alert-color-list">
+<label class="field"><span>Stage one</span><span class="alert-color-pair"><input id="alertStageOnePicker" type="color"/><input id="alertStageOneColor" spellcheck="false" type="text"/></span></label>
+<label class="field"><span>Stage two</span><span class="alert-color-pair"><input id="alertStageTwoPicker" type="color"/><input id="alertStageTwoColor" spellcheck="false" type="text"/></span></label>
+</div></fieldset>
+<fieldset class="compact-group"><legend>Caution label</legend><div class="alert-color-list">
+<label class="field"><span>Text</span><span class="alert-color-pair"><input id="alertCautionTextPicker" type="color"/><input id="alertCautionTextColor" spellcheck="false" type="text"/></span></label>
+<label class="field"><span>Background</span><span class="alert-color-pair"><input id="alertCautionBgPicker" type="color"/><input id="alertCautionBgColor" spellcheck="false" type="text"/></span></label>
+</div></fieldset>
+<fieldset class="compact-group"><legend>Warning label</legend><div class="alert-color-list">
+<label class="field"><span>Text</span><span class="alert-color-pair"><input id="alertWarningTextPicker" type="color"/><input id="alertWarningTextColor" spellcheck="false" type="text"/></span></label>
+<label class="field"><span>Background</span><span class="alert-color-pair"><input id="alertWarningBgPicker" type="color"/><input id="alertWarningBgColor" spellcheck="false" type="text"/></span></label>
+</div></fieldset>
+</div>
+</section>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-alerts" type="button">Revert</button><button class="ui-button primary" data-action="apply-alerts" type="button">Update</button></div>
+</section>
+<section class="page groups-page" data-page-panel="groups">
+<div class="aviso-groups-layout">
+<aside class="panel aviso-group-list-panel">
+<div class="panel-title"><span>Groups <small id="avisoGroupCount"></small></span><span class="mini-tools list-tools"><button aria-label="New group" data-action="new-aviso-group" title="New" type="button">+</button><button aria-label="Duplicate group" data-action="duplicate-aviso-group" title="Duplicate" type="button">⧉</button><button aria-label="Delete group" data-action="delete-aviso-group" title="Delete" type="button">−</button></span></div>
+<div class="search-row"><input aria-label="Find AVISO group" id="avisoGroupSearch" placeholder="Find group…" type="search"/></div>
+<div aria-label="AVISO groups" class="scroll-list aviso-group-list" id="avisoGroupList" role="listbox"></div>
+</aside>
+<section class="panel aviso-group-editor">
+<div class="panel-title"><span id="avisoGroupCaption">Group</span><small id="avisoGroupSelectionMeta"></small></div>
+<div class="detail-scroll aviso-group-editor-scroll redesigned-group-editor">
+<fieldset class="compact-group group-settings-card">
+<legend>Group</legend>
+<label class="field group-name-field"><span>Name</span><input autocomplete="off" id="avisoGroupName" placeholder="Group name" type="text"/></label>
+<input id="avisoGroupId" type="hidden"/>
+</fieldset>
+<fieldset class="compact-group group-members-card">
+<legend>Contents</legend>
+<div class="group-member-toolbar">
+<input aria-label="Find group member" id="avisoGroupMemberSearch" placeholder="Find text, line or area…" type="search"/>
+<button class="ui-button" data-action="clear-aviso-group" type="button">Clear</button>
+<button class="ui-button" data-action="open-aviso-group-content" type="button">Add/remove…</button>
+</div>
+<div class="aviso-group-member-list" id="avisoGroupMemberList"></div>
+</fieldset>
+</div>
+<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-aviso-group" type="button">Revert</button><button class="ui-button primary" data-action="apply-aviso-group" type="button">Update</button></div>
+</section>
+</div>
+</section>
+<section class="page settings-page" data-page-panel="settings">
+<div class="settings-layout">
+<fieldset class="compact-group settings-group files-group">
+<legend>Data files</legend>
+<div class="settings-file-list">
+<section class="settings-file-row">
+<div class="settings-file-heading"><strong>Profiles</strong><small>vSMR_Profiles.json</small></div>
+<input aria-label="Profiles source" id="settingsProfileFile" type="text"/>
+<div class="settings-file-actions">
+<button class="ui-button" data-action="load-profiles-computer" type="button">Computer…</button>
+<button class="ui-button" data-action="load-profiles-github" type="button">GitHub…</button>
+</div>
+</section>
+<section class="settings-file-row">
+<div class="settings-file-heading"><strong>AVISO GeoJSON</strong><small>FeatureCollection</small></div>
+<input aria-label="AVISO GeoJSON source" id="settingsAvisoFile" type="text"/>
+<div class="settings-file-actions">
+<button class="ui-button" data-action="load-aviso-computer" type="button">Computer…</button>
+<button class="ui-button" data-action="load-aviso-github" type="button">GitHub…</button>
+</div>
+</section>
+</div>
+</fieldset>
+<fieldset class="compact-group settings-group display-group">
+<legend>Display</legend>
+<label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
+</fieldset>
+<fieldset class="compact-group settings-group features-group">
+<legend>Features</legend>
+<div class="feature-grid">
+<label class="check-field"><input id="settingsRimcas" type="checkbox"/><span>RIMCAS</span></label>
+<label class="check-field"><input id="settingsVacdm" type="checkbox"/><span>VACDM</span></label>
+<label class="check-field"><input id="settingsCpdlc" type="checkbox"/><span>CPDLC</span></label>
+<label class="check-field"><input id="settingsApproachWindows" type="checkbox"/><span>Inset windows</span></label>
+</div>
+</fieldset>
+<details class="advanced-disclosure settings-advanced">
+<summary><span>Advanced</span><small>Bridge and synchronization</small></summary>
+<div class="advanced-body">
+<div class="dense-form two-cols">
+<label class="field"><span>Bridge</span><select id="settingsBridgeMode"><option>Auto detect</option><option>WebView2</option><option>Browser demo</option></select></label>
+<label class="field"><span>Update interval (ms)</span><input id="settingsUpdateInterval" min="50" step="50" type="number"/></label>
+<label class="check-field check-in-form"><input id="settingsRuntimeSync" type="checkbox"/><span>Runtime sync</span></label>
+<label class="check-field check-in-form"><input id="settingsConfirmDelete" type="checkbox"/><span>Confirm deletion</span></label>
+<label class="check-field check-in-form span-2"><input id="settingsWatchFiles" type="checkbox"/><span>Auto-reload changed local files</span></label>
+</div>
+</div>
+</details>
+<details class="advanced-disclosure settings-danger">
+<summary><span>Danger zone</span><small>Restore bundled defaults</small></summary>
+<div class="advanced-body"><button class="ui-button danger" data-action="reset-data" type="button">Reset supplied data</button></div>
+</details>
+</div>
+<div class="actionbar bottom-actions settings-bottom-actions">
+<button class="ui-button primary" data-action="apply-settings" type="button">Apply</button>
+</div>
+</section>
+</main>
+</div>
+</div>
+</section>
+<div aria-live="polite" class="toast" id="toast" role="status"></div>
+<dialog class="compact-dialog aviso-group-content-dialog" id="avisoGroupContentDialog">
+<form class="compact-dialog-panel aviso-group-content-panel" id="avisoGroupContentForm" method="dialog">
+<div class="panel-title"><span id="avisoGroupContentTitle">Group content</span><button class="title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
+<div class="aviso-group-content-body">
+<div aria-label="Content type" class="segmented-control aviso-group-content-tabs" role="group">
+<button class="active" data-aviso-group-content-type="text" type="button">Text</button>
+<button data-aviso-group-content-type="line" type="button">Lines</button>
+<button data-aviso-group-content-type="area" type="button">Areas</button>
+</div>
+<div class="aviso-group-content-search-row">
+<input aria-label="Find content" id="avisoGroupContentSearch" placeholder="Find content…" type="search"/>
+<button class="ui-button" data-action="select-filtered-group-content" type="button">Select shown</button>
+<button class="ui-button" data-action="clear-filtered-group-content" type="button">Clear shown</button>
+</div>
+<div class="aviso-group-content-summary" id="avisoGroupContentSummary"></div>
+<div class="scroll-list aviso-group-content-list" id="avisoGroupContentList"></div>
+</div>
+<div class="actionbar compact-dialog-actions">
+<button class="ui-button" type="submit" value="cancel">Cancel</button>
+<button class="ui-button primary" data-action="apply-aviso-group-content" id="avisoGroupContentApply" type="button">Apply content</button>
+</div>
+</form>
+</dialog>
+<dialog class="compact-dialog" id="insetPresetDialog">
+<form class="compact-dialog-panel" id="insetPresetForm" method="dialog">
+<div class="panel-title"><span id="insetPresetDialogTitle">Save inset preset</span><button class="title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
+<div class="compact-dialog-body">
+<label class="field"><span>Name</span><input autocomplete="off" id="insetPresetName" maxlength="40" placeholder="New preset" type="text"/></label>
+<label class="check-field"><input id="insetPresetLinked" type="checkbox"/><span>Linked movement</span></label>
+<small>The native bridge supplies the current AVISO inset position, zoom and layout when available.</small>
+</div>
+<div class="actionbar compact-dialog-actions"><button class="ui-button" type="submit" value="cancel">Cancel</button><button class="ui-button primary" data-action="capture-inset-preset" id="insetPresetConfirm" type="button">Save</button></div>
+</form>
+</dialog>
+<dialog class="compact-dialog" id="resourceGithubDialog">
+<form class="compact-dialog-panel" id="resourceGithubForm" method="dialog">
+<div class="panel-title"><span id="resourceGithubTitle">Load from GitHub</span><button class="title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
+<div class="compact-dialog-body">
+<label class="field"><span>GitHub file URL</span><input autocomplete="off" id="resourceGithubUrl" placeholder="https://github.com/owner/repo/blob/branch/file.json" type="url"/></label>
+<small id="resourceGithubHint">Paste a GitHub file URL or a raw.githubusercontent.com URL.</small>
+</div>
+<div class="actionbar compact-dialog-actions">
+<button class="ui-button" type="submit" value="cancel">Cancel</button>
+<button class="ui-button primary" id="resourceGithubLoadConfirm" type="button">Load</button>
+</div>
+</form>
+</dialog>
+<input accept="application/json,.json" hidden="" id="profilesFileInput" type="file"/>
+<input accept="application/json,.json,.geojson" hidden="" id="avisoFileInput" type="file"/>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

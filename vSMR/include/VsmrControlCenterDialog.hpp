@@ -48,6 +48,9 @@ protected:
 	afx_msg void OnMove(int x, int y);
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
 	afx_msg LRESULT OnGithubDownloadComplete(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnWebViewMessageReceived(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnWebViewFallback(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnWebViewReady(WPARAM wParam, LPARAM lParam);
 
 	DECLARE_MESSAGE_MAP()
 
@@ -56,12 +59,28 @@ private:
 	struct GithubDownloadResult;
 
 	void InitializeWebView();
+	void WebViewThreadMain();
+	bool AcquireWebViewHostWindowClass();
+	void ReleaseWebViewHostWindowClass();
+	static LRESULT CALLBACK WebViewThreadWindowProc(
+		HWND window,
+		UINT message,
+		WPARAM wParam,
+		LPARAM lParam);
 	HRESULT OnWebViewEnvironmentCreated(HRESULT result, IUnknown* environment);
 	HRESULT OnWebViewControllerCreated(HRESULT result, IUnknown* controller);
 	void ConfigureWebView();
 	void ResizeWebView();
+	void ResizeWebViewOnStaThread();
+	void NotifyWebViewParentMovedOnStaThread();
+	void SendQueuedJsonOnStaThread();
+	void ShowRequestedPageOnStaThread();
+	void CompleteWebViewPageReadyOnStaThread();
+	void MaybeStopWebViewThreadOnStaThread();
+	void StopWebViewThread();
 	void ShutdownWebView();
 	void ShowFallback(const std::string& message);
+	void QueueWebMessageForDialog(const std::string& json);
 	void SendJsonToWebView(const std::string& json);
 	void BeginNativeWindowDrag();
 	void RequestComputerResource(
@@ -82,12 +101,13 @@ private:
 	Page CurrentPage = Page::Display;
 	bool Closing = false;
 	bool WindowPlacementDirty = false;
-	bool WebViewReady = false;
+	std::atomic<bool> WebViewReady{ false };
 
 	CStatic FallbackLabel;
 	std::unique_ptr<WebViewHostState> WebHost;
 	std::unique_ptr<VsmrControlCenterBridge> Bridge;
 	std::shared_ptr<std::atomic<bool>> LifetimeToken;
+	std::thread WebViewThread;
 	std::thread GithubDownloadThread;
 	std::atomic<bool> GithubDownloadInProgress{ false };
 };
