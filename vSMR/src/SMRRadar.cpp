@@ -360,6 +360,129 @@ namespace
 		return true;
 	}
 
+	void PushUniqueAvisoGroupId(std::vector<std::string>& groupIds, const std::string& rawGroupId)
+	{
+		const std::string& groupId = rawGroupId;
+		if (groupId.empty() ||
+			std::find(groupIds.begin(), groupIds.end(), groupId) != groupIds.end())
+		{
+			return;
+		}
+		groupIds.push_back(groupId);
+	}
+
+	bool TryReadAvisoFeatureGroupIds(
+		const Value* properties,
+		std::vector<std::string>& groupIds)
+	{
+		groupIds.clear();
+		if (properties == nullptr || !properties->IsObject())
+			return true;
+
+		const char* arrayKeys[] = {
+			"vsmr_group_ids",
+			"vsmr_groups",
+			"group_ids"
+		};
+		for (const char* key : arrayKeys)
+		{
+			if (!properties->HasMember(key))
+				continue;
+
+			const Value& value = (*properties)[key];
+			if (value.IsArray())
+			{
+				for (SizeType i = 0; i < value.Size(); ++i)
+				{
+					if (!value[i].IsString())
+						return false;
+					PushUniqueAvisoGroupId(groupIds, value[i].GetString());
+				}
+			}
+			else if (value.IsString())
+			{
+				PushUniqueAvisoGroupId(groupIds, value.GetString());
+			}
+			else
+			{
+				return false;
+			}
+
+			// The first present modern membership property is authoritative,
+			// including an explicitly empty array used to remove legacy membership.
+			return true;
+		}
+
+		const char* scalarKeys[] = {
+			"group_id",
+			"vsmr_group_id"
+		};
+		for (const char* key : scalarKeys)
+		{
+			if (!properties->HasMember(key))
+				continue;
+			const Value& value = (*properties)[key];
+			if (!value.IsString())
+				return false;
+			PushUniqueAvisoGroupId(groupIds, value.GetString());
+			return true;
+		}
+
+		return true;
+	}
+
+	std::vector<std::string> ReadAvisoFeatureGroupIds(const Value* properties)
+	{
+		std::vector<std::string> groupIds;
+		if (!TryReadAvisoFeatureGroupIds(properties, groupIds))
+			groupIds.clear();
+		return groupIds;
+	}
+
+	std::string ReadAvisoFeatureIdentity(const Value& feature)
+	{
+		if (!feature.IsObject())
+			return "";
+		if (feature.HasMember("id") && feature["id"].IsString())
+			return feature["id"].GetString();
+		if (feature.HasMember("properties") &&
+			feature["properties"].IsObject() &&
+			feature["properties"].HasMember("id") &&
+			feature["properties"]["id"].IsString())
+		{
+			return feature["properties"]["id"].GetString();
+		}
+		return "";
+	}
+
+	bool IsAvisoGroupedItemVisible(
+		const std::vector<std::string>& groupIds,
+		const std::unordered_map<std::string, bool>* visibilityById)
+	{
+		if (groupIds.empty() || visibilityById == nullptr)
+			return true;
+
+		bool foundKnownGroup = false;
+		for (const std::string& groupId : groupIds)
+		{
+			const auto found = visibilityById->find(groupId);
+			if (found == visibilityById->end())
+			{
+				// Legacy/foreign group references remain visible until a
+				// definition explicitly controls them.
+				return true;
+			}
+
+			foundKnownGroup = true;
+			if (found->second)
+				return true;
+		}
+
+		// Multiple membership uses union semantics: an item is visible when
+		// at least one of its configured groups is visible.
+		return !foundKnownGroup;
+	}
+
 	std::wstring AvisoUtf8ToWide(const char* text)
 	{
 		if (text == nullptr || text[0] == '\0')
@@ -399,6 +522,36 @@ namespace
 		if (AvisoHasNumberProperty(sharedPaint, key))
 			return ParseAvisoFloatProperty(sharedPaint, key, fallback, minValue, maxValue);
 		return ParseAvisoFloatProperty(inlineProperties, key, fallback, minValue, maxValue);
+	}
+
+	double ParseAvisoZoomRangeKm(const Value* sharedPaint, const Value* inlineProperties)
+	{
+		const Value* zoomValue = nullptr;
+		const char* aliases[] = { "zoomLevel", "zoom_level" };
+		for (const char* alias : aliases)
+		{
+			if (AvisoHasNumberProperty(sharedPaint, alias))
+			{
+				zoomValue = &(*sharedPaint)[alias];
+				break;
+			}
+			if (AvisoHasNumberProperty(inlineProperties, alias))
+			{
+				zoomValue = &(*inlineProperties)[alias];
+				break;
+			}
+		}
+
+		if (zoomValue == nullptr)
+			return 0.0;
+
+		const int level = static_cast<int>(std::lround(std::clamp(zoomValue->GetDouble(), 0.0, 14.0)));
+		static const double maxViewRangeKmByLevel[] = {
+			0.0, 34.0, 28.0, 22.0, 18.0,
+			14.0, 12.0, 9.5, 8.0, 6.0,
+			5.0, 4.0, 3.0, 2.5, 2.0
+		};
+		return maxViewRangeKmByLevel[level];
 	}
 
 	float ParseAvisoStrokeWidth(const Value* properties, float fallback)
@@ -833,8 +986,16 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 
 	AvisoGeoJsonFeatures.clear();
 	AvisoGeoJsonLabels.clear();
-	AvisoGeoJsonFeatureSnapshot.reset();
-	AvisoGeoJsonLabelSnapshot.reset();
+	{
+		auto emptyVisibility = std::make_shared<const std::unordered_map<std::string, bool>>();
+		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
+		AvisoGeoJsonFeatureSnapshot.reset();
+		AvisoGeoJsonLabelSnapshot.reset();
+		AvisoGeoJsonSourceFeatureCount = 0;
+		AvisoRuntimeGroups.clear();
+		AvisoGroupVisibilitySnapshot = std::move(emptyVisibility);
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+	}
 	AvisoGeoJsonLoadedPath = path;
 	AvisoGeoJsonViewInitializedPath.clear();
 	AvisoGeoJsonLoadedWriteTime = writeTime;
@@ -887,8 +1048,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	{
 		Logger::info("AVISO GeoJSON has no feature array path=" + path);
 		AvisoGeoJsonLoaded = true;
-		AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
-		AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
+		{
+			std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
+			AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
+			AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
+		}
 		return true;
 	}
 
@@ -903,6 +1067,37 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 				continue;
 			if (it->value.HasMember("paint") && it->value["paint"].IsObject())
 				stylePaintById.emplace(it->name.GetString(), &it->value["paint"]);
+		}
+	}
+	std::vector<AvisoGroup> parsedGroups;
+	std::unordered_set<std::string> parsedGroupIds;
+	auto addParsedGroup = [&](const std::string& rawId, const std::string& rawName, bool visible)
+	{
+		const std::string& id = rawId;
+		if (id.empty() || !parsedGroupIds.insert(id).second)
+			return;
+
+		AvisoGroup group;
+		group.id = id;
+		group.name = TrimAvisoAirportCode(rawName);
+		if (group.name.empty())
+			group.name = id;
+		group.visible = visible;
+		parsedGroups.push_back(std::move(group));
+	};
+	if (document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray())
+	{
+		const Value& groupDefinitions = document["vsmr_groups"];
+		for (SizeType i = 0; i < groupDefinitions.Size(); ++i)
+		{
+			const Value& groupValue = groupDefinitions[i];
+			if (!groupValue.IsObject())
+				continue;
+			const char* id = GetAvisoStringProperty(&groupValue, { "id", "group_id" });
+			if (id == nullptr)
+				continue;
+			const char* name = GetAvisoStringProperty(&groupValue, { "name", "label" });
+			addParsedGroup(id, name != nullptr ? name : id, IsAvisoFeatureVisible(&groupValue));
 		}
 	}
 	size_t polygonCount = 0;
@@ -952,6 +1147,10 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		const Value* properties = nullptr;
 		if (featureValue.HasMember("properties") && featureValue["properties"].IsObject())
 			properties = &featureValue["properties"];
+		const std::string sourceFeatureId = ReadAvisoFeatureIdentity(featureValue);
+		const std::vector<std::string> groupIds = ReadAvisoFeatureGroupIds(properties);
+		for (const std::string& groupId : groupIds)
+			addParsedGroup(groupId, groupId, true);
 		if (!IsAvisoFeatureVisible(properties))
 			continue;
 		const Value* sharedPaint = ResolveAvisoStylePaint(properties, stylePaintById);
@@ -989,20 +1188,16 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 
 			AvisoLabel parsedLabel;
 			parsedLabel.position = { longitude, latitude };
+			parsedLabel.sourceFeatureIndex = static_cast<int>(i);
+			parsedLabel.sourceFeatureId = sourceFeatureId;
+			parsedLabel.groupIds = groupIds;
 			parsedLabel.text = AvisoUtf8ToWide(rawText);
 			if (parsedLabel.text.empty())
 				continue;
 
 			const char* labelClass = GetAvisoStringProperty(properties, { "label_class", "category", "section" });
 			if (labelClass != nullptr)
-			{
 				parsedLabel.labelClass = labelClass;
-				const std::string labelClassUpper = ToUpperAscii(parsedLabel.labelClass);
-				if (labelClassUpper.find("GATE") != std::string::npos)
-					parsedLabel.maxMetersPerPixel = 3.0;
-				else if (labelClassUpper.find("TAXIWAY") != std::string::npos)
-					parsedLabel.maxMetersPerPixel = 7.0;
-			}
 			const char* textAnchor = GetAvisoStringPropertyResolved(sharedPaint, properties, { "text-anchor" });
 			if (textAnchor != nullptr)
 				parsedLabel.textAnchor = textAnchor;
@@ -1014,12 +1209,16 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			parsedLabel.haloColor = ParseAvisoColorResolved(sharedPaint, properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
 			parsedLabel.textSize = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-size", 12.0f, 6.0f, 32.0f);
 			parsedLabel.haloWidth = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
+			parsedLabel.maxViewRangeKm = ParseAvisoZoomRangeKm(sharedPaint, properties);
 			AvisoGeoJsonLabels.push_back(std::move(parsedLabel));
 			++labelCount;
 			continue;
 		}
 
 		AvisoFeature parsedFeature;
+		parsedFeature.sourceFeatureIndex = static_cast<int>(i);
+		parsedFeature.sourceFeatureId = sourceFeatureId;
+		parsedFeature.groupIds = groupIds;
 		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
 		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
 		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
@@ -1107,16 +1306,407 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	}
 
 	AvisoGeoJsonLoaded = true;
-	AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
-	AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
+	auto featureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
+	auto labelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
+	{
+		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
+		visibility->reserve(parsedGroups.size());
+		for (const AvisoGroup& group : parsedGroups)
+			(*visibility)[group.id] = group.visible;
+
+		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
+		AvisoGeoJsonFeatureSnapshot = std::move(featureSnapshot);
+		AvisoGeoJsonLabelSnapshot = std::move(labelSnapshot);
+		AvisoGeoJsonSourceFeatureCount = static_cast<size_t>(features.Size());
+		AvisoRuntimeGroups = parsedGroups;
+		AvisoGroupVisibilitySnapshot = visibility;
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+	}
+	for (auto& appWindow : appWindows)
+	{
+		if (appWindow.second != nullptr && appWindow.second->IsAvisoViewport())
+			appWindow.second->ClearAvisoViewportCache();
+	}
 	Logger::info(
 		"AVISO GeoJSON loaded path=" + path +
 		" features=" + std::to_string(AvisoGeoJsonFeatures.size()) +
 		" polygons=" + std::to_string(polygonCount) +
 		" multilines=" + std::to_string(multiLineCount) +
 		" labels=" + std::to_string(labelCount) +
+		" groups=" + std::to_string(parsedGroups.size()) +
 		" styles=" + std::to_string(stylePaintById.size()) +
 		" missingStyles=" + std::to_string(missingStyleCount));
+	return true;
+}
+
+std::vector<CSMRRadar::AvisoGroup> CSMRRadar::GetAvisoGroups() const
+{
+	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+	return AvisoRuntimeGroups;
+}
+
+std::shared_ptr<const std::unordered_map<std::string, bool>> CSMRRadar::GetAvisoGroupVisibilitySnapshot(
+	unsigned long long* outGeneration) const
+{
+	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+	if (outGeneration != nullptr)
+		*outGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+	return AvisoGroupVisibilitySnapshot;
+}
+
+bool CSMRRadar::GetAvisoRenderSnapshots(
+	std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
+	std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
+	std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
+	unsigned long long& outGeneration) const
+{
+	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+	outFeatures = AvisoGeoJsonFeatureSnapshot;
+	outLabels = AvisoGeoJsonLabelSnapshot;
+	outGroupVisibility = AvisoGroupVisibilitySnapshot;
+	outGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+	return outFeatures != nullptr && outLabels != nullptr && outGroupVisibility != nullptr;
+}
+
+bool CSMRRadar::ApplyAvisoGroupMembershipSnapshot(
+	const rapidjson::Value& aviso,
+	std::string* outError)
+{
+	auto fail = [&](const std::string& message) -> bool
+	{
+		if (outError != nullptr)
+			*outError = message;
+		return false;
+	};
+	if (outError != nullptr)
+		outError->clear();
+
+	if (!aviso.IsObject() ||
+		!aviso.HasMember("features") ||
+		!aviso["features"].IsArray())
+	{
+		return fail("Staged AVISO state must contain a features array.");
+	}
+
+	std::shared_ptr<const std::vector<AvisoFeature>> baseFeatures;
+	std::shared_ptr<const std::vector<AvisoLabel>> baseLabels;
+	size_t sourceFeatureCount = 0;
+	unsigned long long baseGeneration = 0;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		baseFeatures = AvisoGeoJsonFeatureSnapshot;
+		baseLabels = AvisoGeoJsonLabelSnapshot;
+		sourceFeatureCount = AvisoGeoJsonSourceFeatureCount;
+		baseGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+	}
+	if (baseFeatures == nullptr || baseLabels == nullptr)
+		return fail("No loaded AVISO renderer snapshot is available.");
+
+	const rapidjson::Value& stagedFeatures = aviso["features"];
+	const size_t stagedFeatureCount = static_cast<size_t>(stagedFeatures.Size());
+	std::vector<std::vector<std::string>> memberships(stagedFeatureCount);
+	std::vector<std::string> featureIds(stagedFeatureCount);
+	std::unordered_map<std::string, size_t> stagedIndexById;
+	stagedIndexById.reserve(stagedFeatureCount);
+	for (rapidjson::SizeType index = 0; index < stagedFeatures.Size(); ++index)
+	{
+		const rapidjson::Value& feature = stagedFeatures[index];
+		if (!feature.IsObject() ||
+			!feature.HasMember("properties") ||
+			!feature["properties"].IsObject())
+		{
+			return fail(
+				"Staged AVISO feature " + std::to_string(index + 1) +
+				" must contain a properties object.");
+		}
+
+		if (!TryReadAvisoFeatureGroupIds(
+			&feature["properties"],
+			memberships[static_cast<size_t>(index)]))
+		{
+			return fail(
+				"Staged AVISO feature " + std::to_string(index + 1) +
+				" has an invalid group membership value.");
+		}
+		const size_t featureIndex = static_cast<size_t>(index);
+		featureIds[featureIndex] = ReadAvisoFeatureIdentity(feature);
+		if (!featureIds[featureIndex].empty() &&
+			!stagedIndexById.emplace(featureIds[featureIndex], featureIndex).second)
+		{
+			return fail(
+				"Staged AVISO feature ids must be unique when applying group membership.");
+		}
+	}
+
+	auto featureSnapshot = std::make_shared<std::vector<AvisoFeature>>(*baseFeatures);
+	auto labelSnapshot = std::make_shared<std::vector<AvisoLabel>>(*baseLabels);
+	auto applyMembership = [&](auto& item) -> bool
+	{
+		if (item.sourceFeatureIndex < 0 ||
+			static_cast<size_t>(item.sourceFeatureIndex) >= sourceFeatureCount)
+		{
+			return false;
+		}
+
+		size_t stagedIndex = 0;
+		bool matched = false;
+		if (!item.sourceFeatureId.empty())
+		{
+			const auto found = stagedIndexById.find(item.sourceFeatureId);
+			if (found != stagedIndexById.end())
+			{
+				stagedIndex = found->second;
+				matched = true;
+			}
+		}
+		else
+		{
+			const size_t sourceIndex = static_cast<size_t>(item.sourceFeatureIndex);
+			if (sourceIndex < stagedFeatureCount &&
+				featureIds[sourceIndex].empty())
+			{
+				stagedIndex = sourceIndex;
+				matched = true;
+			}
+		}
+
+		// Geometry additions/deletions remain staged until Save. Leave any
+		// loaded item without a safe staged identity match unchanged.
+		if (matched)
+			item.groupIds = memberships[stagedIndex];
+		return true;
+	};
+	for (AvisoFeature& feature : *featureSnapshot)
+	{
+		if (!applyMembership(feature))
+			return fail("Staged AVISO feature identities do not match the loaded renderer.");
+	}
+	for (AvisoLabel& label : *labelSnapshot)
+	{
+		if (!applyMembership(label))
+			return fail("Staged AVISO feature identities do not match the loaded renderer.");
+	}
+
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		if (AvisoGroupGeneration.load(std::memory_order_relaxed) != baseGeneration ||
+			AvisoGeoJsonFeatureSnapshot != baseFeatures ||
+			AvisoGeoJsonLabelSnapshot != baseLabels ||
+			AvisoGeoJsonSourceFeatureCount != sourceFeatureCount)
+		{
+			return fail("AVISO renderer state changed while applying staged membership.");
+		}
+
+		AvisoGeoJsonFeatureSnapshot = featureSnapshot;
+		AvisoGeoJsonLabelSnapshot = labelSnapshot;
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+	}
+
+	InvalidateAvisoGroupRendering();
+	return true;
+}
+
+void CSMRRadar::InvalidateAvisoGroupRendering()
+{
+	{
+		std::lock_guard<std::mutex> renderGuard(AvisoGeoJsonRenderMutex);
+		++AvisoGeoJsonRenderLatestRequestId;
+		AvisoGeoJsonPendingRenderRequest.reset();
+		AvisoGeoJsonCompletedRenderResult.reset();
+		AvisoGeoJsonRenderLastRequestValid = false;
+	}
+
+	ClearAvisoGeoJsonRasterCache();
+	AvisoGeoJsonLastViewValid = false;
+	AvisoGeoJsonLastViewPath.clear();
+	AvisoGeoJsonLastViewChangeTick = 0;
+
+	for (auto& appWindow : appWindows)
+	{
+		if (appWindow.second != nullptr && appWindow.second->IsAvisoViewport())
+			appWindow.second->ClearAvisoViewportCache();
+	}
+
+	try
+	{
+		RequestRefresh();
+	}
+	catch (...)
+	{
+	}
+}
+
+bool CSMRRadar::SetAvisoGroupVisibility(const std::string& rawGroupId, bool visible)
+{
+	const std::string& groupId = rawGroupId;
+	if (groupId.empty())
+		return false;
+
+	bool changed = false;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		auto found = std::find_if(
+			AvisoRuntimeGroups.begin(),
+			AvisoRuntimeGroups.end(),
+			[&](const AvisoGroup& group) { return group.id == groupId; });
+		if (found == AvisoRuntimeGroups.end())
+			return false;
+		if (found->visible == visible)
+			return true;
+
+		found->visible = visible;
+		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
+		visibility->reserve(AvisoRuntimeGroups.size());
+		for (const AvisoGroup& group : AvisoRuntimeGroups)
+			(*visibility)[group.id] = group.visible;
+		AvisoGroupVisibilitySnapshot = visibility;
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+		changed = true;
+	}
+
+	if (changed)
+		InvalidateAvisoGroupRendering();
+	return true;
+}
+
+bool CSMRRadar::ToggleAvisoGroupVisibility(const std::string& rawGroupId, bool* outVisible)
+{
+	const std::string& groupId = rawGroupId;
+	if (groupId.empty())
+		return false;
+
+	bool nextVisibility = true;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		auto found = std::find_if(
+			AvisoRuntimeGroups.begin(),
+			AvisoRuntimeGroups.end(),
+			[&](const AvisoGroup& group) { return group.id == groupId; });
+		if (found == AvisoRuntimeGroups.end())
+			return false;
+
+		found->visible = !found->visible;
+		nextVisibility = found->visible;
+		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
+		visibility->reserve(AvisoRuntimeGroups.size());
+		for (const AvisoGroup& group : AvisoRuntimeGroups)
+			(*visibility)[group.id] = group.visible;
+		AvisoGroupVisibilitySnapshot = visibility;
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+	}
+
+	if (outVisible != nullptr)
+		*outVisible = nextVisibility;
+	InvalidateAvisoGroupRendering();
+	return true;
+}
+
+bool CSMRRadar::SetAvisoGroupVisibilities(
+	const std::vector<std::pair<std::string, bool>>& requestedVisibility)
+{
+	std::unordered_map<std::string, bool> visibilityById;
+	for (const auto& entry : requestedVisibility)
+	{
+		const std::string& groupId = entry.first;
+		if (!groupId.empty())
+			visibilityById[groupId] = entry.second;
+	}
+
+	if (visibilityById.empty())
+		return requestedVisibility.empty();
+
+	bool changed = false;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		for (const auto& requested : visibilityById)
+		{
+			const auto found = std::find_if(
+				AvisoRuntimeGroups.begin(),
+				AvisoRuntimeGroups.end(),
+				[&](const AvisoGroup& group) { return group.id == requested.first; });
+			if (found == AvisoRuntimeGroups.end())
+				return false;
+		}
+
+		for (AvisoGroup& group : AvisoRuntimeGroups)
+		{
+			const auto found = visibilityById.find(group.id);
+			if (found == visibilityById.end())
+				continue;
+			if (group.visible != found->second)
+			{
+				group.visible = found->second;
+				changed = true;
+			}
+		}
+
+		if (changed)
+		{
+			auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
+			visibility->reserve(AvisoRuntimeGroups.size());
+			for (const AvisoGroup& group : AvisoRuntimeGroups)
+				(*visibility)[group.id] = group.visible;
+			AvisoGroupVisibilitySnapshot = visibility;
+			AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+		}
+	}
+
+	if (changed)
+		InvalidateAvisoGroupRendering();
+	return true;
+}
+
+bool CSMRRadar::UpdateAvisoGroups(const std::vector<AvisoGroup>& groups)
+{
+	std::vector<AvisoGroup> normalizedGroups;
+	std::unordered_set<std::string> knownIds;
+	normalizedGroups.reserve(groups.size());
+	for (const AvisoGroup& source : groups)
+	{
+		AvisoGroup group = source;
+		if (group.id.empty() || !knownIds.insert(group.id).second)
+			continue;
+		group.name = TrimAvisoAirportCode(group.name);
+		if (group.name.empty())
+			group.name = group.id;
+		normalizedGroups.push_back(std::move(group));
+	}
+
+	bool changed = false;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		if (AvisoRuntimeGroups.size() != normalizedGroups.size())
+		{
+			changed = true;
+		}
+		else
+		{
+			for (size_t i = 0; i < normalizedGroups.size(); ++i)
+			{
+				if (AvisoRuntimeGroups[i].id != normalizedGroups[i].id ||
+					AvisoRuntimeGroups[i].name != normalizedGroups[i].name ||
+					AvisoRuntimeGroups[i].visible != normalizedGroups[i].visible)
+				{
+					changed = true;
+					break;
+				}
+			}
+		}
+
+		if (changed)
+		{
+			AvisoRuntimeGroups = std::move(normalizedGroups);
+			auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
+			visibility->reserve(AvisoRuntimeGroups.size());
+			for (const AvisoGroup& group : AvisoRuntimeGroups)
+				(*visibility)[group.id] = group.visible;
+			AvisoGroupVisibilitySnapshot = visibility;
+			AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+		}
+	}
+
+	if (changed)
+		InvalidateAvisoGroupRendering();
 	return true;
 }
 
@@ -1222,6 +1812,7 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		const bool sameRequest =
 			AvisoGeoJsonRenderLastRequestValid &&
 			AvisoGeoJsonRenderLastRequestPath == request.path &&
+			AvisoGeoJsonRenderLastRequestGroupGeneration == request.groupGeneration &&
 			AvisoGeoJsonRenderLastRequestRasterWidth == request.rasterWidth &&
 			AvisoGeoJsonRenderLastRequestRasterHeight == request.rasterHeight &&
 			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLongitude, request.displayMinLongitude, 1e-10) &&
@@ -1245,6 +1836,7 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		AvisoGeoJsonRenderLastRequestMaxLatitude = request.displayMaxLatitude;
 		AvisoGeoJsonRenderLastRequestRasterWidth = request.rasterWidth;
 		AvisoGeoJsonRenderLastRequestRasterHeight = request.rasterHeight;
+		AvisoGeoJsonRenderLastRequestGroupGeneration = request.groupGeneration;
 		AvisoGeoJsonRenderLastRequestProjectedTopLeft = request.projectedTopLeft;
 		AvisoGeoJsonRenderLastRequestProjectedTopRight = request.projectedTopRight;
 		AvisoGeoJsonRenderLastRequestProjectedBottomLeft = request.projectedBottomLeft;
@@ -1266,6 +1858,7 @@ void CSMRRadar::ClearAvisoGeoJsonRasterCache()
 	}
 
 	AvisoGeoJsonRasterCachePath.clear();
+	AvisoGeoJsonRasterGroupGeneration = 0;
 	AvisoGeoJsonRasterMinLongitude = 0.0;
 	AvisoGeoJsonRasterMinLatitude = 0.0;
 	AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -1297,25 +1890,32 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 	if (result == nullptr || result->bitmap == nullptr)
 		return;
 
-	ClearAvisoGeoJsonRasterCache();
-	AvisoGeoJsonRasterCache = result->bitmap;
-	result->bitmap = nullptr;
-	AvisoGeoJsonRasterCachePath = result->path;
-	AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
-	AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
-	AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
-	AvisoGeoJsonRasterMaxLatitude = result->displayMaxLatitude;
-	AvisoGeoJsonRasterWidth = result->rasterWidth;
-	AvisoGeoJsonRasterHeight = result->rasterHeight;
-	AvisoGeoJsonRasterAnchorLongitude = result->renderMinLongitude;
-	AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
-	AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
-	AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
-	AvisoGeoJsonRasterProjectedTopLeft = result->projectedTopLeft;
-	AvisoGeoJsonRasterProjectedTopRight = result->projectedTopRight;
-	AvisoGeoJsonRasterProjectedBottomLeft = result->projectedBottomLeft;
-	AvisoGeoJsonRasterProjectedBottomRight = result->projectedBottomRight;
-	AvisoGeoJsonRasterAnchorValid = true;
+	{
+		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
+		if (result->groupGeneration != AvisoGroupGeneration.load(std::memory_order_relaxed))
+			return;
+
+		ClearAvisoGeoJsonRasterCache();
+		AvisoGeoJsonRasterCache = result->bitmap;
+		result->bitmap = nullptr;
+		AvisoGeoJsonRasterCachePath = result->path;
+		AvisoGeoJsonRasterGroupGeneration = result->groupGeneration;
+		AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
+		AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
+		AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
+		AvisoGeoJsonRasterMaxLatitude = result->displayMaxLatitude;
+		AvisoGeoJsonRasterWidth = result->rasterWidth;
+		AvisoGeoJsonRasterHeight = result->rasterHeight;
+		AvisoGeoJsonRasterAnchorLongitude = result->renderMinLongitude;
+		AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
+		AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
+		AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
+		AvisoGeoJsonRasterProjectedTopLeft = result->projectedTopLeft;
+		AvisoGeoJsonRasterProjectedTopRight = result->projectedTopRight;
+		AvisoGeoJsonRasterProjectedBottomLeft = result->projectedBottomLeft;
+		AvisoGeoJsonRasterProjectedBottomRight = result->projectedBottomRight;
+		AvisoGeoJsonRasterAnchorValid = true;
+	}
 }
 
 void CSMRRadar::AvisoGeoJsonRenderThreadMain()
@@ -1377,7 +1977,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	auto renderCancelled = [&]() -> bool
 	{
-		return IsAvisoGeoJsonRenderStopRequested();
+		return IsAvisoGeoJsonRenderStopRequested() ||
+			request.groupGeneration != AvisoGroupGeneration.load(std::memory_order_relaxed);
 	};
 	if (renderCancelled())
 		return nullptr;
@@ -1480,6 +2081,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	{
 		if (renderCancelled())
 			return nullptr;
+		if (!IsAvisoGroupedItemVisible(feature.groupIds, request.groupVisibility.get()))
+			continue;
 
 		if (feature.maxLatitude < request.renderMinLatitude ||
 			feature.minLatitude > request.renderMaxLatitude ||
@@ -1575,13 +2178,16 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / AvisoMax(request.scaleX * lonSpan, 1.0);
 	const double metersPerPixelLat = (latSpan * 110540.0) / AvisoMax(request.scaleY * latSpan, 1.0);
 	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
-	const double defaultLabelMaxMetersPerPixel = 12.0;
+	const double horizontalViewKm = lonSpan * 111.320 * std::cos(centerLatitudeRadians);
+	const double verticalViewKm = latSpan * 110.540;
+	const double viewRangeKm = AvisoMax(horizontalViewKm, verticalViewKm) * 0.5;
 	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
 	{
-		const double labelLimit = label.maxMetersPerPixel > 0.0
-			? AvisoMin(label.maxMetersPerPixel, defaultLabelMaxMetersPerPixel)
-			: defaultLabelMaxMetersPerPixel;
-		return metersPerPixel <= labelLimit;
+		if (label.maxViewRangeKm > 0.0 && viewRangeKm > label.maxViewRangeKm)
+			return false;
+		if (label.maxMetersPerPixel > 0.0 && metersPerPixel > label.maxMetersPerPixel)
+			return false;
+		return true;
 	};
 	auto labelRectForAnchor = [](const PointF& point, REAL widthPx, REAL heightPx, const std::string& anchor) -> RectF
 	{
@@ -1618,6 +2224,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		{
 			if (renderCancelled())
 				return nullptr;
+			if (!IsAvisoGroupedItemVisible(label.groupIds, request.groupVisibility.get()))
+				continue;
 
 			if (label.position.latitude < request.renderMinLatitude ||
 				label.position.latitude > request.renderMaxLatitude ||
@@ -1673,6 +2281,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 	auto result = std::make_unique<AvisoRasterRenderResult>();
 	result->requestId = request.requestId;
+	result->groupGeneration = request.groupGeneration;
 	result->bitmap = dibBitmap.Release();
 	result->path = request.path;
 	result->rasterWidth = request.rasterWidth;
@@ -1722,6 +2331,18 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 
 	if (!EnsureAvisoGeoJsonLoaded(path) ||
 		(AvisoGeoJsonFeatures.empty() && AvisoGeoJsonLabels.empty()))
+	{
+		return;
+	}
+	std::shared_ptr<const std::vector<AvisoFeature>> featureSnapshot;
+	std::shared_ptr<const std::vector<AvisoLabel>> labelSnapshot;
+	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
+	unsigned long long groupGeneration = 0;
+	if (!GetAvisoRenderSnapshots(
+		featureSnapshot,
+		labelSnapshot,
+		groupVisibility,
+		groupGeneration))
 	{
 		return;
 	}
@@ -1865,6 +2486,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	{
 		return AvisoGeoJsonRasterCache != nullptr &&
 			AvisoGeoJsonRasterCachePath == path &&
+			AvisoGeoJsonRasterGroupGeneration == groupGeneration &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMinLongitude, displayMinLon, lonPixelTolerance) &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMinLatitude, displayMinLat, latPixelTolerance) &&
 			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLongitude, displayMaxLon, lonPixelTolerance) &&
@@ -1877,6 +2499,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		if (AvisoGeoJsonRasterCache == nullptr || AvisoGeoJsonRasterWidth <= 0 || AvisoGeoJsonRasterHeight <= 0)
 			return false;
 		if (AvisoGeoJsonRasterCachePath != path)
+			return false;
+		if (AvisoGeoJsonRasterGroupGeneration != groupGeneration)
 			return false;
 		if (!AvisoGeoJsonRasterAnchorValid)
 			return false;
@@ -2004,6 +2628,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	{
 		if (AvisoGeoJsonRasterCache == nullptr ||
 			AvisoGeoJsonRasterCachePath != path ||
+			AvisoGeoJsonRasterGroupGeneration != groupGeneration ||
 			!AvisoGeoJsonRasterAnchorValid)
 		{
 			return false;
@@ -2044,15 +2669,9 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		avisoViewRecentlyChanged &&
 		AvisoGeoJsonRasterCache != nullptr &&
 		AvisoGeoJsonRasterCachePath == path &&
+		AvisoGeoJsonRasterGroupGeneration == groupGeneration &&
 		AvisoGeoJsonRasterAnchorValid;
 	if (cacheMatchesCurrentView() && drawRasterCacheTransformed())
-		return;
-
-	if (AvisoGeoJsonFeatureSnapshot == nullptr)
-		AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
-	if (AvisoGeoJsonLabelSnapshot == nullptr)
-		AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
-	if (AvisoGeoJsonFeatureSnapshot == nullptr || AvisoGeoJsonLabelSnapshot == nullptr)
 		return;
 
 	const double overscanRatio = 0.75;
@@ -2094,9 +2713,11 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		rasterHeight = 1;
 
 	AvisoRasterRenderRequest request;
+	request.groupGeneration = groupGeneration;
 	request.path = path;
-	request.features = AvisoGeoJsonFeatureSnapshot;
-	request.labels = AvisoGeoJsonLabelSnapshot;
+	request.features = featureSnapshot;
+	request.labels = labelSnapshot;
+	request.groupVisibility = groupVisibility;
 	request.rasterWidth = rasterWidth;
 	request.rasterHeight = rasterHeight;
 	request.rasterScale = rasterScale;
@@ -2261,13 +2882,17 @@ void CSMRRadar::LoadCustomFont() {
 	customFonts[5] = createFont(sizeFive);
 }
 
-void CSMRRadar::ReloadConfig() {
+bool CSMRRadar::ReloadConfig() {
 	Logger::info("CSMRRadar::ReloadConfig()");
 	std::string activeProfile = CurrentConfig ? CurrentConfig->getActiveProfileName() : "Default";
+	bool reloadSucceeded = true;
 	if (!CurrentConfig)
+	{
 		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
+		reloadSucceeded = CurrentConfig->getProfileCount() > 0;
+	}
 	else {
-		CurrentConfig->reload();
+		reloadSucceeded = CurrentConfig->reload();
 	}
 	if (activeProfile.empty())
 		activeProfile = "Default";
@@ -2288,6 +2913,7 @@ void CSMRRadar::ReloadConfig() {
 	AvisoGeoJsonResolvedPath.clear();
 	AvisoGeoJsonLastStatTick = 0;
 	RequestRefresh();
+	return reloadSucceeded;
 }
 
 void CSMRRadar::LoadProfile(string profileName) {
@@ -2307,9 +2933,109 @@ void CSMRRadar::LoadProfile(string profileName) {
 	if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
 		rimcasConfig = &activeProfile["rimcas"];
 
+	RimcasEnabled = true;
+	RimcasUseRedEmergencySymbols = true;
+	RimcasRunwaysExplicitlyConfigured = false;
+	if (rimcasConfig != nullptr)
+	{
+		if (rimcasConfig->HasMember("enabled") && (*rimcasConfig)["enabled"].IsBool())
+			RimcasEnabled = (*rimcasConfig)["enabled"].GetBool();
+		if (rimcasConfig->HasMember("use_red_symbol_for_emergencies") &&
+			(*rimcasConfig)["use_red_symbol_for_emergencies"].IsBool())
+		{
+			RimcasUseRedEmergencySymbols = (*rimcasConfig)["use_red_symbol_for_emergencies"].GetBool();
+		}
+		if (rimcasConfig->HasMember("visibility") && (*rimcasConfig)["visibility"].IsString())
+		{
+			std::string visibility = (*rimcasConfig)["visibility"].GetString();
+			std::transform(
+				visibility.begin(),
+				visibility.end(),
+				visibility.begin(),
+				[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			if (visibility == "lvp" || visibility == "low")
+				isLVP = true;
+			else if (visibility == "normal")
+				isLVP = false;
+		}
+
+		if (rimcasConfig->HasMember("runways") && (*rimcasConfig)["runways"].IsArray())
+		{
+			RimcasRunwaysExplicitlyConfigured = true;
+			RimcasInstance->MonitoredRunwayArr.clear();
+			RimcasInstance->MonitoredRunwayDep.clear();
+			RimcasInstance->ClosedRunway.clear();
+
+			auto trimRunwayPart = [](const std::string& value) -> std::string
+			{
+				size_t first = 0;
+				while (first < value.size() &&
+					std::isspace(static_cast<unsigned char>(value[first])) != 0)
+				{
+					++first;
+				}
+				size_t last = value.size();
+				while (last > first &&
+					std::isspace(static_cast<unsigned char>(value[last - 1])) != 0)
+				{
+					--last;
+				}
+				return value.substr(first, last - first);
+			};
+			auto normalizeRunwayPair = [&](const std::string& rawName) -> std::string
+			{
+				std::string name = trimRunwayPart(rawName);
+				const size_t slash = name.find('/');
+				if (slash != std::string::npos)
+				{
+					const std::string first = trimRunwayPart(name.substr(0, slash));
+					const std::string second = trimRunwayPart(name.substr(slash + 1));
+					if (!first.empty() && !second.empty())
+						name = first + " / " + second;
+				}
+				std::transform(
+					name.begin(),
+					name.end(),
+					name.begin(),
+					[](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+				return name;
+			};
+
+			const Value& runwayRows = (*rimcasConfig)["runways"];
+			for (SizeType index = 0; index < runwayRows.Size(); ++index)
+			{
+				const Value& runway = runwayRows[index];
+				if (!runway.IsObject() ||
+					!runway.HasMember("id") ||
+					!runway["id"].IsString())
+				{
+					continue;
+				}
+
+				const std::string runwayId = normalizeRunwayPair(runway["id"].GetString());
+				if (runwayId.empty())
+					continue;
+				RimcasInstance->MonitoredRunwayArr[runwayId] =
+					runway.HasMember("arrival") &&
+					runway["arrival"].IsBool() &&
+					runway["arrival"].GetBool();
+				RimcasInstance->MonitoredRunwayDep[runwayId] =
+					runway.HasMember("departure") &&
+					runway["departure"].IsBool() &&
+					runway["departure"].GetBool();
+				RimcasInstance->ClosedRunway[runwayId] =
+					runway.HasMember("closed") &&
+					runway["closed"].IsBool() &&
+					runway["closed"].GetBool();
+			}
+		}
+	}
+
 	// Inactive alerts
 	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
 	RimcasInstance->setInactiveAlerts(inactiveAlerts);
+	if (!RimcasEnabled)
+		RimcasInstance->OnRefreshBegin(isLVP);
 
 	auto readCountdownDefinition = [&](const Value* arrayValue, const std::vector<int>& fallback) -> std::vector<int>
 	{
@@ -5227,6 +5953,30 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		AddScreenObject(DRAWING_BACKGROUND_CLICK, "", R, false, "");
 	}
 
+	// Missing profile keys retain the legacy behavior: RIMCAS and emergency
+	// symbol coloring are enabled.
+	bool frameRimcasEnabled = true;
+	bool frameUseRedEmergencySymbols = true;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject() &&
+			profile.HasMember("rimcas") &&
+			profile["rimcas"].IsObject())
+		{
+			const Value& rimcas = profile["rimcas"];
+			if (rimcas.HasMember("enabled") && rimcas["enabled"].IsBool())
+				frameRimcasEnabled = rimcas["enabled"].GetBool();
+			if (rimcas.HasMember("use_red_symbol_for_emergencies") &&
+				rimcas["use_red_symbol_for_emergencies"].IsBool())
+			{
+				frameUseRedEmergencySymbols = rimcas["use_red_symbol_for_emergencies"].GetBool();
+			}
+		}
+	}
+	RimcasEnabled = frameRimcasEnabled;
+	RimcasUseRedEmergencySymbols = frameUseRedEmergencySymbols;
+
 	VSMR_REFRESH_LOG("Runway overlay loop");
 	setRefreshStage("runway overlay draw");
 	for (const auto& runway : CachedRunwayGeometries)
@@ -5244,6 +5994,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			Pen runwayPen(ColorManager->get_corrected_color("label", Color::White));
 			graphics.DrawPolygon(&runwayPen, points.data(), static_cast<INT>(points.size()));
 		}
+
+		if (!frameRimcasEnabled)
+			continue;
 
 		const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(runway.displayName);
 		if (closedRunwayIt == RimcasInstance->ClosedRunway.end() || !closedRunwayIt->second)
@@ -5649,9 +6402,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
 		bool AcisCorrelated = IsCorrelatedWithSettings(iconFp, rt, frameCorrelationSettings);
-		const double perfRimcasTargetStartMs = RefreshPerfNowMs();
-		RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
-		perfRimcasMs += RefreshPerfNowMs() - perfRimcasTargetStartMs;
+		if (frameRimcasEnabled)
+		{
+			const double perfRimcasTargetStartMs = RefreshPerfNowMs();
+			RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
+			perfRimcasMs += RefreshPerfNowMs() - perfRimcasTargetStartMs;
+		}
+		const bool useEmergencySymbolColor =
+			frameRimcasEnabled &&
+			frameUseRedEmergencySymbols &&
+			RimcasInstance->getMovementAlert(rtCallsign) == CRimcas::EMERG;
+		const Color emergencySymbolColor(255, 255, 0, 0);
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
@@ -5780,9 +6541,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
 		if (drawLegacyPrimarySymbol && frameShowLegacyPrimaryTarget) {
+			const Color primaryTargetColor = useEmergencySymbolColor
+				? emergencySymbolColor
+				: getLegacyTargetColor("target_color", Color(255, 255, 242, 73));
 			drawPatatoidePolygon(
 				Patatoides[rtCallsign].points,
-				getLegacyTargetColor("target_color", Color(255, 255, 242, 73)));
+				primaryTargetColor);
 		}
 		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
@@ -6064,10 +6828,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		{
 			applyTargetTint(Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
 		}
+		if (useEmergencySymbolColor)
+			applyTargetTint(emergencySymbolColor);
 
 		if (useNovaIconStyle)
 		{
-			CPen qTrailPen(PS_SOLID, 1, frameSymbolWhiteColor.ToCOLORREF());
+			const Color novaSymbolColor = applyTargetTintColor ? targetTintColor : frameSymbolWhiteColor;
+			CPen qTrailPen(PS_SOLID, 1, novaSymbolColor.ToCOLORREF());
 			CPen* pqOrigPen = dc.SelectObject(&qTrailPen);
 			if (RtPos.GetTransponderC()) {
 				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
@@ -6511,9 +7278,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
 	setRefreshStage("RIMCAS refresh end");
-	const double perfRimcasEndStartMs = RefreshPerfNowMs();
-	RimcasInstance->OnRefreshEnd(this, rimcasStageTwoSpeedThreshold);
-	perfRimcasMs += RefreshPerfNowMs() - perfRimcasEndStartMs;
+	if (frameRimcasEnabled)
+	{
+		const double perfRimcasEndStartMs = RefreshPerfNowMs();
+		RimcasInstance->OnRefreshEnd(this, rimcasStageTwoSpeedThreshold);
+		perfRimcasMs += RefreshPerfNowMs() - perfRimcasEndStartMs;
+	}
 
 	graphics.SetSmoothingMode(SmoothingModeDefault);
 
@@ -7197,6 +7967,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 	gAvisoWheelRoutingEnabled = avisoViewportRenderedForWheel;
 	perfSrwMs += RefreshPerfNowMs() - perfSrwStartMs;
+
+	setRefreshStage("runtime menu");
+	RenderRuntimeMenu(hDC, graphics);
 
 	PerfLastFrameMs = RefreshPerfNowMs() - perfFrameStartMs;
 	PerfLastAvisoMs = perfAvisoMs;

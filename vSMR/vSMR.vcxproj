@@ -15,6 +15,12 @@
     <RootNamespace>vSMR</RootNamespace>
     <Keyword>MFCDLLProj</Keyword>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <EnableNativePackageReferenceSupport>true</EnableNativePackageReferenceSupport>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+    <TargetFrameworkMoniker>native,Version=v0.0</TargetFrameworkMoniker>
+    <NuGetTargetMoniker Condition="'$(NuGetTargetMoniker)' == ''">native,Version=v0.0</NuGetTargetMoniker>
+    <AssetTargetFallback>$(AssetTargetFallback);native</AssetTargetFallback>
+    <WebView2LoaderPreference>Static</WebView2LoaderPreference>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -140,6 +146,7 @@
     <ClCompile Include="src\AvisoEditorDialog.cpp" />
     <ClCompile Include="src\ProfileEditorDialog.cpp" />
     <ClCompile Include="src\VsmrControlCenterDialog.cpp" />
+    <ClCompile Include="src\VsmrControlCenterBridge.cpp" />
     <ClCompile Include="src\Rimcas.cpp" />
     <ClCompile Include="src\SMRGeometry.cpp" />
     <ClCompile Include="src\SMRPlugin.cpp" />
@@ -152,6 +159,7 @@
     <ClCompile Include="src\SMRRadar_FunctionCall.cpp" />
     <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp" />
     <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp" />
+    <ClCompile Include="src\SMRRadar_RuntimeMenu.cpp" />
     <ClCompile Include="src\SMRRadar_ScreenInteraction.cpp" />
     <ClCompile Include="src\SMRRadar_TagRendering.cpp" />
     <ClCompile Include="src\SMRRadar_TagDefinitions.cpp" />
@@ -184,6 +192,7 @@
     <ClInclude Include="include\Logger.h" />
     <ClInclude Include="include\ProfileEditorDialog.hpp" />
     <ClInclude Include="include\VsmrControlCenterDialog.hpp" />
+    <ClInclude Include="include\VsmrControlCenterBridge.hpp" />
     <ClInclude Include="include\resource.h" />
     <ClInclude Include="include\Rimcas.hpp" />
     <ClInclude Include="include\SMRColorUtils.hpp" />
@@ -203,9 +212,26 @@
     <ClInclude Include="include\vSMR.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectCapability Include="PackageReferences" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="data\ICAO_Aircraft.json" />
     <None Include="data\vSMR_Maps.json" />
     <None Include="data\vSMR_Profiles.json" />
+    <None Include="data\AVISO\AVISO_LFPG.geojson" />
+    <None Include="..\vSMR_webUI\app.js">
+      <Link>vSMR_webUI\app.js</Link>
+    </None>
+    <None Include="..\vSMR_webUI\data.js">
+      <Link>vSMR_webUI\data.js</Link>
+    </None>
+    <None Include="..\vSMR_webUI\index.html">
+      <Link>vSMR_webUI\index.html</Link>
+    </None>
+    <None Include="..\vSMR_webUI\styles.css">
+      <Link>vSMR_webUI\styles.css</Link>
+    </None>
     <None Include="resources\cursors\arrow.cur" />
     <None Include="resources\cursors\cursor1.cur" />
     <None Include="resources\cursors\ml_blau_link.cur" />
@@ -221,7 +247,26 @@
   <ItemGroup>
     <Media Include="resources\audio\Ding.wav" />
   </ItemGroup>
+  <Target Name="EnsureWebView2PackageRestored" BeforeTargets="PrepareForBuild" Condition="!Exists('$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets')">
+    <Error Text="Microsoft.Web.WebView2 1.0.4078.44 is not restored. Run MSBuild vSMR.sln /t:Restore before building." />
+  </Target>
+  <Target Name="CopyVsmrWebUi" AfterTargets="Build">
+    <ItemGroup>
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\index.html" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\styles.css" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\app.js" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\data.js" />
+      <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
+      <_VsmrDefaultAviso Include="$(MSBuildProjectDirectory)\data\AVISO\AVISO_LFPG.geojson" />
+    </ItemGroup>
+    <MakeDir Directories="$(OutDir)vSMR_webUI" />
+    <MakeDir Directories="$(OutDir)vSMR_webUI\defaults" />
+    <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(OutDir)vSMR_webUI" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrDefaultProfile);@(_VsmrDefaultAviso)" DestinationFolder="$(OutDir)vSMR_webUI\defaults" SkipUnchangedFiles="true" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <!-- VS 2022 restores native PackageReference items but can select the managed buildTransitive entry point. -->
+  <Import Project="$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets" Condition="Exists('$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets')" />
   <ImportGroup Label="ExtensionTargets" />
   <ProjectExtensions>
     <VisualStudio>
