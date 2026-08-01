@@ -49,7 +49,7 @@ time.
 
 | Surface | Owned controls | Intentionally absent |
 | --- | --- | --- |
-| Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW visibility, full inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
+| Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW visibility and reset, full airport-specific inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
 | AVISO inset | Title/drag, `F` detach, resize handles/dividers, pan, and zoom | Close/visibility, preset, reload, and editor buttons |
 | Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, and settings editing, including FPS visibility | Radar cursor tools and duplicated inset chrome |
 | FPS overlay | Optional `FPS <value>` text at the radar area's top-right corner | Component timings, controls, background toolbar, and hit regions |
@@ -71,7 +71,7 @@ Five 40 px icon buttons follow the airport row:
 
 - Mode
 - Groups
-- AVISO Insets
+- Insets
 - Profile
 - Control Center
 
@@ -81,15 +81,18 @@ rail, flip to its left near the right screen edge, and page long mode, group,
 profile, or preset lists.
 
 Mode and profile choices call the existing live activation APIs. Inset choices
-independently toggle AVISO, SRW 1, and SRW 2. Presets capture and restore the
+independently toggle or reset AVISO, SRW 1, and SRW 2. Presets capture and restore the
 main AVISO view, AVISO secondary window, and both SRWs, including visibility,
-placement, scale/range, filter, rotation, layout, and linked movement. Rename
+placement, pan, scale/range, filter, compatible legacy rotation, snap layout,
+and linked movement. Preset lists and defaults are scoped by profile and active
+airport. Airport-qualified ASR state restores only that airport's three windows;
+an unseen airport without a default starts reset and hidden. Rename
 uses EuroScope's popup editor. The default action reads `Set default` when an
 active non-default preset can be promoted. It reads `Clear default` when the
 active preset is already the default, or when no preset is active but a
 configured default remains; the other rail interactions remain focusless.
 
-AVISO top, top-left, and top-right snap layouts use `GetRadarArea().top`
+AVISO and SRW top, top-left, and top-right snap layouts use `GetRadarArea().top`
 directly. Rendering and interaction share those bounds, so no obsolete toolbar
 clearance remains in snapping, dragging, resizing, or preset restoration.
 Floating layouts retain only the small clearance required to keep their own
@@ -208,7 +211,7 @@ editor and renderer classes do not parse raw message strings.
 | `aviso.inset.preset.update` | Re-captures the active preset. |
 | `aviso.inset.preset.rename` | Renames the selected preset. |
 | `aviso.inset.preset.duplicate` | Duplicates the selected preset. |
-| `aviso.inset.preset.default` | Sets the profile default preset; the native Runtime Menu uses the same action to clear an existing default when appropriate. |
+| `aviso.inset.preset.default` | Sets the active profile-and-airport default preset; the native Runtime Menu uses the same action to clear an existing default when appropriate. |
 | `aviso.inset.preset.reset` | Reloads the active/default preset. |
 | `aviso.inset.preset.delete` | Deletes a preset. |
 | `aviso.inset.preset.linked` | Changes linked movement. |
@@ -222,9 +225,9 @@ need a separate native action: their `Update` button records a staged snapshot,
 and `state.save` sends the complete profiles/AVISO documents.
 
 Inset preset create/update/rename/duplicate/set-or-clear-default/delete
-operations use the existing native preset API, which persists the profile
-immediately. They are runtime-management operations rather than ordinary
-staged editor fields.
+operations use the existing native preset API, which persists the active
+profile-and-airport store immediately. They are runtime-management operations
+rather than ordinary staged editor fields.
 Profile and display-mode activation are also immediate runtime operations and
 persist their active selection through the existing profile/ASR paths.
 

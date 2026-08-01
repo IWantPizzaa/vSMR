@@ -70,6 +70,7 @@ public:
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
 	bool IsAvisoViewport() const;
+	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;
 	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
 	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);

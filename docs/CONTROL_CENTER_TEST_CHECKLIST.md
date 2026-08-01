@@ -46,17 +46,18 @@ diff where the expected result is not immediately visible.
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| RT-01 | Inspect the normal radar display before opening Control Center. | The Runtime Menu has its grip, a centered current-airport text row as its first content entry, then exactly five icon buttons with Mode, Groups, AVISO Insets, Profile, and Control Center tooltips. |
+| RT-01 | Inspect the normal radar display before opening Control Center. | The Runtime Menu has its grip, a centered current-airport text row as its first content entry, then exactly five icon buttons with Mode, Groups, Insets, Profile, and Control Center tooltips. |
 | RT-02 | Drag the grip to every radar edge, save, and reopen the ASR. | The complete rail, including its airport row, stays inside the radar area and restores from `RuntimeMenuX`/`RuntimeMenuY`. |
 | RT-03 | Place the rail near the right edge and open every popup. | Popups flip left and remain on-screen. Long lists page without clipping. |
 | RT-04 | Open Mode and select a different row. | Row contains only indicator/name; renderer immediately uses that mode. |
 | RT-05 | Open Groups and toggle a group containing an exclusively grouped label, line, and area. | Row contains only eye/name; those items disappear/reappear in main and AVISO inset rendering without a file reload. |
 | RT-06 | Toggle AVISO Inset, SRW 1, and SRW 2 independently. | Each actual native window changes immediately and the other two retain their state. |
-| RT-07 | Switch from the rail between profiles with different default AVISO presets. | Row contains only indicator/name; colors, tags, icons, modes, rules, alerts, and the selected profile's default AVISO preset reload live without retaining the prior profile's active preset name. |
+| RT-07 | Switch from the rail between profiles with different default inset presets for the current airport. | Row contains only indicator/name; colors, tags, icons, modes, rules, alerts, and the selected profile-and-airport default inset preset reload live without retaining the prior profile's active preset name. |
 | RT-08 | Click Control Center and then close its title button. | Modeless Control Center opens and hides; the runtime rail remains usable. |
 | RT-09 | Click outside an open popup. | Popup closes and no stale hit regions remain. |
 | RT-10 | Compare the rail and each native popup with the supplied prototype. | The grip stripes stay clipped inside the rail, neither rail nor popup has an offset shadow, icon family and compact styling match, and no permanent button text, emoji substitute, description, internal ID, count, or redundant “Active”/On/Off label appears. |
-| RT-11 | Open AVISO Insets and inspect every row/action before and after selecting the current default preset. | Visibility for AVISO/SRW 1/SRW 2 and all preset operations are present only here; the action reads `Set default` for a non-default preset and changes to `Clear default` for the current default. |
+| RT-11 | Open Insets and inspect every row/action before and after selecting the current default preset. | Visibility and a compact per-window Reset action for AVISO/SRW 1/SRW 2 plus all preset operations are present only here; the action reads `Set default` for a non-default preset and changes to `Clear default` for the current default. |
+| RT-12 | Change the position, pan, zoom, and snap mode of each inset, then use its compact Reset action. | Only that inset returns to its floating default view; its visibility and the other two inset states do not change. |
 
 ## Runtime airport and FPS overlay
 
@@ -79,17 +80,22 @@ diff where the expected result is not immediately visible.
 | AI-03 | Hide/show AVISO from the Runtime Menu, then save, load, update, rename, duplicate, reset, set/clear default, toggle linked movement, and delete a preset. | Visibility and every preset operation work from the Runtime Menu without an inset-local button or duplicate EuroScope popup. |
 | AI-04 | Edit AVISO geometry/text in Control Center, Save, then use Control Center Reload. | Main and inset rendering update from the Control Center workflow; the inset exposes neither Editor nor Reload AVISO. |
 | AI-05 | Save top, top-left, and top-right layouts in presets and the ASR; reopen and load each one. | Every layout re-anchors to the full radar top with no obsolete 22 px clearance, and rendering/click/resize bounds remain identical. |
+| AI-06 | For each SRW, right-drag to pan, wheel over several cursor positions to zoom, drag the title into each corner, detach, and inspect the floating toolbar. | Pan and cursor-anchored zoom match AVISO behavior, corner/split snapping works, and the SRW toolbar has `F` filter and `X` only—no `Z` or `R`. |
 
 ## Inset presets
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| IP-01 | Arrange main AVISO view, AVISO inset, both SRWs, filters, scales, rotation, visibility, and layout; save a uniquely named preset from the Runtime Menu. | Preset is created and becomes active. |
+| IP-01 | Arrange main AVISO view, AVISO inset, both SRWs, filters, scales, visibility, pan, and snap layout; save a uniquely named preset from the Runtime Menu. | Preset is created and becomes active. |
 | IP-02 | Change all those values, then load the preset from the Runtime Menu. | Main/secondary AVISO and both SRWs restore their captured state. |
 | IP-03 | Use Runtime Menu Update on the active preset, alter the layout, then use Reset. | Reset returns to the updated snapshot. |
 | IP-04 | Rename, duplicate, set the duplicate as default, confirm the action changes to `Clear default`, clear it, toggle linked movement, and delete the duplicate. | Every operation updates the Runtime Menu and profile data; default state clears deterministically, and invalid/duplicate names report failure without corruption. |
 | IP-05 | Set a default again, save/reopen the ASR and profile. | Default preset and linked movement apply as configured. |
 | IP-06 | With preset A configured as default, load non-default preset B, delete B, then inspect and click the default action. | The Runtime Menu no longer treats deleted B as active; `Clear default` remains enabled and removes default A. |
+| IP-07 | Create distinct LFPG and LFPO presets (including both SRWs), switch airports in both directions, and reopen the ASR. | Each airport lists and restores only its own presets/default/three-window state; an unused airport is reset and hidden, and no LFPG name or geometry appears under LFPO. |
+| IP-08 | Clear an airport default, make and save an unrelated Control Center edit, then reload. | The default remains cleared; the first preset may be selected for use but is not silently persisted as the default. |
+| IP-09 | Leave an unrelated Control Center edit unsaved, capture/update/delete a preset natively, use Undo/Redo on the editor change, then Save. | Editor history changes only the staged edit; the authoritative airport preset store and live SRW geometry are not rolled back or overwritten. |
+| IP-10 | Open two radar screens on different airports, change presets from each, then save a non-preset profile setting from the older screen. | Both airports' latest preset stores remain present; a stale screen cannot erase or resurrect another screen's presets. |
 
 ## Global commands and history
 

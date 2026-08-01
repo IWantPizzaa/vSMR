@@ -225,7 +225,7 @@ The plugin responds to the following EuroScope command-line commands:
 
 ## Radar Screen Behavior
 
-### Runtime Menu and AVISO inset
+### Runtime Menu and insets
 
 The Runtime Menu starts with a compact current-airport row immediately below
 its drag handle and above every icon button. Click the ICAO text to edit it;
@@ -238,10 +238,13 @@ and owns:
 - display-mode selection
 - AVISO group visibility
 - AVISO, SRW 1, and SRW 2 visibility
-- AVISO inset preset load/save/update/rename/duplicate/reset/delete operations
+- airport-specific inset preset load/save/update/rename/duplicate/reload/delete operations
 - the `Set default` / `Clear default` preset toggle and linked movement
 - active-profile selection
 - opening the Control Center
+
+Each inset row also has a compact Reset button that restores that window's
+position, pan, zoom, and snap layout without changing its visibility.
 
 The AVISO inset itself is limited to viewport interaction: its title/drag
 surface, `F` detach control, resize handles/dividers, pan, and zoom. It has no
@@ -252,6 +255,17 @@ the Control Center.
 Top, top-left, and top-right AVISO snap layouts use the full radar area and
 start at its actual top edge. No space is reserved for a toolbar. Floating
 layouts still keep their title/drag surface reachable inside the radar area.
+
+SRW 1 and SRW 2 use the same corner/split snapping, right-drag panning, and
+cursor-anchored mouse-wheel zoom as AVISO. Their former `Z` and `R` menus are
+removed. In floating mode `F` controls the altitude filter; after snapping,
+`F` detaches the inset. Floating inset title bars use the Runtime Menu's dark
+striped chrome.
+
+Inset working state and preset/default lists are scoped by active airport.
+Changing from one ICAO to another snapshots the outgoing three windows and
+restores only the incoming airport's state or default preset. An airport with
+no prior state or default starts with all three insets hidden and reset.
 
 ### FPS overlay
 

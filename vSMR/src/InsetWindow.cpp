@@ -136,19 +136,16 @@ namespace
 	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation)
 	{
 		rect.NormalizeRect();
-		CBrush buttonBrush(RGB(60, 60, 60));
+		CBrush buttonBrush(mouseWithin(mouseLocation, rect) ? RGB(53, 71, 75) : RGB(41, 57, 59));
 		dc.FillRect(rect, &buttonBrush);
 
-		const COLORREF oldTextColor = dc.SetTextColor(RGB(0, 0, 0));
+		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.DrawTextA(label, -1, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 		dc.SetBkMode(oldBkMode);
 		dc.SetTextColor(oldTextColor);
 
-		if (mouseWithin(mouseLocation, rect))
-			dc.Draw3dRect(rect, RGB(45, 45, 45), RGB(75, 75, 75));
-		else
-			dc.Draw3dRect(rect, RGB(75, 75, 75), RGB(45, 45, 45));
+		dc.Draw3dRect(rect, RGB(82, 96, 101), RGB(5, 7, 8));
 
 		return rect;
 	}
@@ -161,6 +158,44 @@ namespace
 			topBar.right - rightOffset,
 			topBar.bottom - 1);
 		return DrawInsetButton(dc, label, rect, mouseLocation);
+	}
+
+	void DrawStripedInsetTitleBar(CDC& dc, CRect rect)
+	{
+		rect.NormalizeRect();
+		dc.FillSolidRect(rect, RGB(16, 20, 22));
+		const int savedDc = ::SaveDC(dc.GetSafeHdc());
+		if (savedDc != 0)
+		{
+			::IntersectClipRect(dc.GetSafeHdc(), rect.left, rect.top, rect.right, rect.bottom);
+			::SelectObject(dc.GetSafeHdc(), ::GetStockObject(DC_PEN));
+			::SetDCPenColor(dc.GetSafeHdc(), RGB(46, 57, 60));
+			for (int x = rect.left - rect.Height(); x < rect.right; x += 5)
+			{
+				::MoveToEx(dc.GetSafeHdc(), x, rect.bottom, nullptr);
+				::LineTo(dc.GetSafeHdc(), x + rect.Height(), rect.top);
+			}
+			::RestoreDC(dc.GetSafeHdc(), savedDc);
+		}
+		dc.Draw3dRect(rect, RGB(5, 7, 8), RGB(5, 7, 8));
+	}
+
+	void DrawInsetTitle(CDC& dc, const CRect& topBar, const std::string& title)
+	{
+		const CSize titleSize = dc.GetTextExtent(title.c_str());
+		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
+		const int titleY = topBar.top + max(0, (topBar.Height() - titleSize.cy) / 2);
+		CRect titlePad(
+			titleX - 3,
+			topBar.top + 1,
+			titleX + titleSize.cx + 3,
+			topBar.bottom - 1);
+		dc.FillSolidRect(titlePad, RGB(16, 20, 22));
+		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
+		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
+		dc.TextOutA(titleX, titleY, title.c_str());
+		dc.SetBkMode(oldBkMode);
+		dc.SetTextColor(oldTextColor);
 	}
 
 	CRect NormalizedAvisoLayoutBounds(const RECT* layoutBounds)
@@ -180,6 +215,8 @@ namespace
 	{
 		const int minX = static_cast<int>(bounds.left) + kAvisoMinLayoutWidth;
 		const int maxX = static_cast<int>(bounds.right) - kAvisoMinLayoutWidth;
+		if (maxX < minX)
+			return (bounds.left + bounds.right) / 2;
 		return std::clamp(x, minX, maxX);
 	}
 
@@ -409,9 +446,9 @@ namespace
 		if (radarScreen == nullptr || objectId == nullptr || dividerRect.IsRectEmpty())
 			return;
 
-		CBrush dividerBrush(RGB(105, 105, 105));
+		CBrush dividerBrush(RGB(41, 57, 59));
 		dc.FillRect(dividerRect, &dividerBrush);
-		dc.Draw3dRect(dividerRect, RGB(70, 70, 70), RGB(150, 150, 150));
+		dc.Draw3dRect(dividerRect, RGB(5, 7, 8), RGB(82, 96, 101));
 		radarScreen->AddScreenObject(objectType, objectId, dividerRect, true, "");
 	}
 
@@ -728,6 +765,11 @@ bool CInsetWindow::IsAvisoViewport() const
 	return m_Mode == Mode::AvisoViewport;
 }
 
+bool CInsetWindow::IsSnappedLayout() const
+{
+	return IsAvisoSnappedLayout(m_AvisoLayoutMode);
+}
+
 void CInsetWindow::ClearAvisoViewportCache()
 {
 	if (m_AvisoState != nullptr)
@@ -747,9 +789,6 @@ void CInsetWindow::CancelAvisoViewportRender()
 
 void CInsetWindow::ResetAvisoInteractionState()
 {
-	if (!IsAvisoViewport())
-		return;
-
 	m_AvisoRightPanning = false;
 	m_AvisoScrollSelected = false;
 	m_AvisoScreenArea = { 0, 0, 0, 0 };
@@ -771,9 +810,6 @@ bool CInsetWindow::IsPointInside(POINT Pt) const
 
 void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 {
-	if (!IsAvisoViewport())
-		return;
-
 	CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
 	if (bounds.IsRectEmpty())
 		return;
@@ -859,9 +895,6 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 
 void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 {
-	if (!IsAvisoViewport())
-		return;
-
 	CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
 	if (bounds.IsRectEmpty())
 	{
@@ -917,7 +950,7 @@ void CInsetWindow::UpdateAvisoScreenArea(HWND hwnd)
 	m_AvisoScreenArea = { 0, 0, 0, 0 };
 	m_AvisoScreenAreaValid = false;
 	m_AvisoRenderWindow = nullptr;
-	if (!IsAvisoViewport() || hwnd == nullptr || !::IsWindow(hwnd))
+	if (hwnd == nullptr || !::IsWindow(hwnd))
 		return;
 
 	CRect areaRect(m_Area);
@@ -942,7 +975,7 @@ void CInsetWindow::UpdateAvisoScreenArea(HWND hwnd)
 
 bool CInsetWindow::TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) const
 {
-	if (!IsAvisoViewport() || !m_AvisoScreenAreaValid)
+	if (!m_AvisoScreenAreaValid)
 		return false;
 
 	CRect screenRect(m_AvisoScreenArea);
@@ -969,12 +1002,16 @@ bool CInsetWindow::TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) 
 
 void CInsetWindow::BeginAvisoPan(POINT Pt)
 {
-	if (!IsAvisoViewport())
-		return;
-
 	m_OffsetDrag = Pt;
-	m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
-	m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
+	if (IsAvisoViewport())
+	{
+		m_AvisoDragStartLatitude = m_AvisoCenterLatitude;
+		m_AvisoDragStartLongitude = m_AvisoCenterLongitude;
+	}
+	else
+	{
+		m_OffsetInit = m_Offset;
+	}
 	m_AvisoRightPanning = true;
 	m_AvisoScrollSelected = true;
 	m_Grip = false;
@@ -982,8 +1019,18 @@ void CInsetWindow::BeginAvisoPan(POINT Pt)
 
 bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 {
-	if (!IsAvisoViewport() || !m_AvisoRightPanning)
+	if (!m_AvisoRightPanning)
 		return false;
+
+	if (!IsAvisoViewport())
+	{
+		CRect area(m_Area);
+		area.NormalizeRect();
+		const POINT maximumOffset = { area.Width() / 2, area.Height() / 2 };
+		m_Offset.x = std::clamp(m_OffsetInit.x + (Pt.x - m_OffsetDrag.x), -maximumOffset.x, maximumOffset.x);
+		m_Offset.y = std::clamp(m_OffsetInit.y + (Pt.y - m_OffsetDrag.y), -maximumOffset.y, maximumOffset.y);
+		return true;
+	}
 
 	const int scale = max(1, m_AvisoScale);
 	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
@@ -1005,9 +1052,6 @@ void CInsetWindow::EndAvisoPan()
 
 void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 {
-	if (!IsAvisoViewport())
-		return;
-
 	ApplyAvisoLayoutBounds(layoutBounds);
 	CRect currentArea(m_Area);
 	currentArea.NormalizeRect();
@@ -1042,7 +1086,7 @@ void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 
 bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 {
-	if (!IsAvisoViewport() || !IsPointInside(Pt) || !std::isfinite(scaleMultiplier) || scaleMultiplier <= 0.0)
+	if (!IsPointInside(Pt) || !std::isfinite(scaleMultiplier) || scaleMultiplier <= 0.0)
 		return false;
 
 	CRect viewportRect(m_Area);
@@ -1051,6 +1095,39 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	const int viewportHeight = viewportRect.Height();
 	if (viewportWidth <= 0 || viewportHeight <= 0)
 		return false;
+
+	if (!IsAvisoViewport())
+	{
+		const int oldScale = max(1, m_Scale);
+		int newScale = std::clamp(
+			static_cast<int>(std::lround(static_cast<double>(oldScale) * scaleMultiplier)),
+			1,
+			2400);
+		if (newScale == oldScale)
+			newScale = std::clamp(oldScale + (scaleMultiplier > 1.0 ? 1 : -1), 1, 2400);
+		if (newScale == oldScale)
+			return false;
+
+		const POINT center = viewportRect.CenterPoint();
+		const double ratio = static_cast<double>(newScale) / static_cast<double>(oldScale);
+		const double oldReferenceX = static_cast<double>(center.x + m_Offset.x);
+		const double oldReferenceY = static_cast<double>(center.y + m_Offset.y);
+		const double newReferenceX = static_cast<double>(Pt.x) -
+			(ratio * (static_cast<double>(Pt.x) - oldReferenceX));
+		const double newReferenceY = static_cast<double>(Pt.y) -
+			(ratio * (static_cast<double>(Pt.y) - oldReferenceY));
+		m_Scale = newScale;
+		m_Offset.x = std::clamp(
+			static_cast<int>(std::lround(newReferenceX - static_cast<double>(center.x))),
+			-viewportWidth / 2,
+			viewportWidth / 2);
+		m_Offset.y = std::clamp(
+			static_cast<int>(std::lround(newReferenceY - static_cast<double>(center.y))),
+			-viewportHeight / 2,
+			viewportHeight / 2);
+		m_AvisoScrollSelected = true;
+		return true;
+	}
 
 	const POINT centerPoint = viewportRect.CenterPoint();
 	const Gdiplus::PointF localOffset = RotateAvisoVector(
@@ -1102,9 +1179,6 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 
 	if (strcmp(sObjectId, "divider") == 0 || strcmp(sObjectId, "divider_x") == 0 || strcmp(sObjectId, "divider_y") == 0)
 	{
-		if (!IsAvisoViewport())
-			return true;
-
 		CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
 		if (bounds.IsRectEmpty())
 			return true;
@@ -1202,19 +1276,16 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		}
 	}
 	if (strcmp(sObjectId, "resize") == 0) {
-		if (IsAvisoViewport())
+		ApplyAvisoLayoutBounds(layoutBounds);
+		CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
+		if (!bounds.IsRectEmpty() && IsAvisoCornerLayout(m_AvisoLayoutMode))
 		{
+			ResizeAvisoCornerRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area, true, true);
 			ApplyAvisoLayoutBounds(layoutBounds);
-			CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
-			if (!bounds.IsRectEmpty() && IsAvisoCornerLayout(m_AvisoLayoutMode))
-			{
-				ResizeAvisoCornerRectToPoint(m_AvisoLayoutMode, Pt, bounds, m_Area, true, true);
-				ApplyAvisoLayoutBounds(layoutBounds);
-				return Released;
-			}
-
-			m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+			return Released;
 		}
+
+		m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 
 		POINT TopLeft = { m_Area.left, m_Area.top };
 		POINT BottomRight = { Area.right, Area.bottom };
@@ -1233,17 +1304,13 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		}
 
 		m_Area = newSize;
-		if (IsAvisoViewport())
-			ApplyAvisoLayoutBounds(layoutBounds);
+		ApplyAvisoLayoutBounds(layoutBounds);
 
 		return Released;
 	}
 	if (strcmp(sObjectId, "topbar") == 0) {
-		if (IsAvisoViewport())
-		{
-			ApplyAvisoLayoutBounds(layoutBounds);
-			m_AvisoLayoutMode = AvisoLayoutMode::Floating;
-		}
+		ApplyAvisoLayoutBounds(layoutBounds);
+		m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 
 		CRect appWindowRect(m_Area);
 		appWindowRect.NormalizeRect();
@@ -1254,13 +1321,10 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 		newPos.NormalizeRect();
 
 		m_Area = newPos;
-		if (IsAvisoViewport())
-		{
-			if (Released)
-				SnapAvisoLayoutToPoint(Pt, layoutBounds);
-			else
-				ApplyAvisoLayoutBounds(layoutBounds);
-		}
+		if (Released)
+			SnapAvisoLayoutToPoint(Pt, layoutBounds);
+		else
+			ApplyAvisoLayoutBounds(layoutBounds);
 
 		return Released;
 	}
@@ -1422,7 +1486,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 	auto drawChrome = [&]()
 	{
-		CBrush frameBrush(RGB(127, 122, 122));
+		CBrush frameBrush(RGB(5, 7, 8));
 		dc.FrameRect(viewportRect, &frameBrush);
 
 		if (IsAvisoSplitLayout(m_AvisoLayoutMode))
@@ -1458,7 +1522,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, true);
 			resizeArea.NormalizeRect();
-			CBrush resizeBrush(RGB(60, 60, 60));
+			CBrush resizeBrush(RGB(41, 57, 59));
 			dc.FillRect(resizeArea, &resizeBrush);
 			radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
 			dc.Draw3dRect(resizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
@@ -1472,7 +1536,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		POINT resizeTopLeft = { bottomRight.x - 10, bottomRight.y - 10 };
 		CRect resizeArea(resizeTopLeft, bottomRight);
 		resizeArea.NormalizeRect();
-		CBrush resizeBrush(RGB(60, 60, 60));
+		CBrush resizeBrush(RGB(41, 57, 59));
 		dc.FillRect(resizeArea, &resizeBrush);
 		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
 		dc.Draw3dRect(resizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
@@ -1482,17 +1546,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		POINT topBarBottomRight = { viewportRect.right, viewportRect.top };
 		CRect topBar(topBarTopLeft, topBarBottomRight);
 		topBar.NormalizeRect();
-		dc.FillRect(topBar, &frameBrush);
+		DrawStripedInsetTitleBar(dc, topBar);
 		radar_screen->AddScreenObject(m_Id, "topbar", topBar, true, "");
-
-		COLORREF oldTextColor = dc.SetTextColor(RGB(35, 35, 35));
-		const string title = "AVISO";
-		const CSize titleSize = dc.GetTextExtent(title.c_str());
-		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
-		const int titleY = topBar.bottom - titleSize.cy;
-		dc.TextOutA(titleX, titleY, title.c_str());
-
-		dc.SetTextColor(oldTextColor);
+		DrawInsetTitle(dc, topBar, "AVISO");
 	};
 
 	const std::string airport = radar_screen->getActiveAirport();
@@ -3462,6 +3518,17 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 	CDC dc;
 	dc.Attach(hDC);
+	CRect layoutBounds(radar_screen->GetRadarArea());
+	CRect chatArea(radar_screen->GetChatArea());
+	layoutBounds.NormalizeRect();
+	chatArea.NormalizeRect();
+	if (!chatArea.IsRectEmpty())
+		layoutBounds.bottom = chatArea.top;
+	ApplyAvisoLayoutBounds(&layoutBounds);
+	HWND renderWindow = ::WindowFromDC(hDC);
+	if (renderWindow == nullptr || !::IsWindow(renderWindow))
+		renderWindow = ::GetActiveWindow();
+	UpdateAvisoScreenArea(renderWindow);
 
 	struct Utils
 	{
@@ -3545,7 +3612,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 	// We create the radar
 	dc.FillSolidRect(windowAreaCRect, qBackgroundColor);
-	radar_screen->AddScreenObject(m_Id, "window", m_Area, true, "");
+	radar_screen->AddScreenObject(m_Id, "window", m_Area, !IsSnappedLayout(), "");
 
 	auto scale = m_Scale;
 
@@ -4407,55 +4474,61 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 	}
 
-	// Resize square
-	COLORREF resizeBackgroundColor = RGB(60, 60, 60);
-	POINT BottomRight = { m_Area.right, m_Area.bottom };
-	POINT TopLeft = { BottomRight.x - 10, BottomRight.y - 10 };
-	CRect ResizeArea = { TopLeft, BottomRight };
-	ResizeArea.NormalizeRect();
-	dc.FillSolidRect(ResizeArea, resizeBackgroundColor);
-	radar_screen->AddScreenObject(m_Id, "resize", ResizeArea, true, "");
+	CBrush frameBrush(RGB(5, 7, 8));
+	dc.FrameRect(windowAreaCRect, &frameBrush);
+	if (IsAvisoSplitLayout(m_AvisoLayoutMode))
+	{
+		const bool reserveTopRightFps =
+			radar_screen->ShowFps &&
+			(m_AvisoLayoutMode == AvisoLayoutMode::SplitTop ||
+				m_AvisoLayoutMode == AvisoLayoutMode::SplitRight);
+		const int floatTop = windowAreaCRect.top + (reserveTopRightFps ? 27 : 5);
+		CRect floatArea(windowAreaCRect.right - 23, floatTop, windowAreaCRect.right - 6, floatTop + 17);
+		const CRect floatButton = DrawInsetButton(dc, "F", floatArea, mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "float", floatButton, false, "");
+		DrawAvisoDivider(dc, radar_screen, m_Id, "divider", AvisoSplitDividerRect(m_AvisoLayoutMode, windowAreaCRect));
+	}
+	else if (IsAvisoCornerLayout(m_AvisoLayoutMode))
+	{
+		CRect floatArea = AvisoCornerButtonRect(m_AvisoLayoutMode, windowAreaCRect, false);
+		if (radar_screen->ShowFps && m_AvisoLayoutMode == AvisoLayoutMode::CornerTopRight)
+			floatArea.OffsetRect(0, 22);
+		const CRect floatButton = DrawInsetButton(dc, "F", floatArea, mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "float", floatButton, false, "");
 
-	dc.Draw3dRect(ResizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
+		CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, windowAreaCRect, true);
+		resizeArea.NormalizeRect();
+		dc.FillSolidRect(resizeArea, RGB(41, 57, 59));
+		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
+		dc.Draw3dRect(resizeArea, RGB(5, 7, 8), RGB(5, 7, 8));
+		DrawAvisoDivider(dc, radar_screen, m_Id, "divider_x", AvisoCornerVerticalDividerRect(m_AvisoLayoutMode, windowAreaCRect));
+		DrawAvisoDivider(dc, radar_screen, m_Id, "divider_y", AvisoCornerHorizontalDividerRect(m_AvisoLayoutMode, windowAreaCRect));
+	}
+	else
+	{
+		POINT bottomRight = { m_Area.right, m_Area.bottom };
+		POINT topLeft = { bottomRight.x - 10, bottomRight.y - 10 };
+		CRect resizeArea(topLeft, bottomRight);
+		resizeArea.NormalizeRect();
+		dc.FillSolidRect(resizeArea, RGB(41, 57, 59));
+		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
+		dc.Draw3dRect(resizeArea, RGB(5, 7, 8), RGB(5, 7, 8));
 
-	// Sides
-	//CBrush FrameBrush(RGB(35, 35, 35));
-	CBrush FrameBrush(RGB(127, 122, 122));
-	COLORREF TopBarTextColor(RGB(35, 35, 35));
-	dc.FrameRect(windowAreaCRect, &FrameBrush);
+		topLeft = windowAreaCRect.TopLeft();
+		topLeft.y -= kAvisoViewportTopBarHeight;
+		bottomRight = { windowAreaCRect.right, windowAreaCRect.top };
+		CRect topBar(topLeft, bottomRight);
+		topBar.NormalizeRect();
+		DrawStripedInsetTitleBar(dc, topBar);
+		radar_screen->AddScreenObject(m_Id, "topbar", topBar, true, "");
 
-	// Topbar
-	TopLeft = windowAreaCRect.TopLeft();
-	TopLeft.y = TopLeft.y - 15;
-	BottomRight = { windowAreaCRect.right, windowAreaCRect.top };
-	CRect TopBar(TopLeft, BottomRight);
-	TopBar.NormalizeRect();
-	dc.FillRect(TopBar, &FrameBrush);
-	POINT TopLeftText = { TopBar.left + 5, TopBar.bottom - dc.GetTextExtent("SRW 1").cy };
-	COLORREF oldTextColorC = dc.SetTextColor(TopBarTextColor);
-
-	radar_screen->AddScreenObject(m_Id, "topbar", TopBar, true, "");
-
-	string Toptext = "SRW " + std::to_string(m_Id - APPWINDOW_BASE);
-	dc.TextOutA(TopLeftText.x + (TopBar.right-TopBar.left) / 2 - dc.GetTextExtent("SRW 1").cx , TopLeftText.y, Toptext.c_str());
-
-	// Range button
-	CRect RangeRect = DrawInsetToolbarButton(dc, "Z", TopBar, InsetToolbarRightOffset(1), mouseLocation);
-	radar_screen->AddScreenObject(m_Id, "range", RangeRect, false, "");
-
-	// Filter button
-	CRect FilterRect = DrawInsetToolbarButton(dc, "F", TopBar, InsetToolbarRightOffset(2), mouseLocation);
-	radar_screen->AddScreenObject(m_Id, "filter", FilterRect, false, "");
-
-	// Rotate button
-	CRect RotateRect = DrawInsetToolbarButton(dc, "R", TopBar, InsetToolbarRightOffset(3), mouseLocation);
-	radar_screen->AddScreenObject(m_Id, "rotate", RotateRect, false, "");
-
-	dc.SetTextColor(oldTextColorC);
-
-	// Close
-	CRect CloseRect = DrawInsetToolbarButton(dc, "X", TopBar, InsetToolbarRightOffset(0), mouseLocation);
-	radar_screen->AddScreenObject(m_Id, "close", CloseRect, false, "");
+		const std::string title = "SRW " + std::to_string(m_Id - APPWINDOW_BASE);
+		DrawInsetTitle(dc, topBar, title);
+		const CRect filterRect = DrawInsetToolbarButton(dc, "F", topBar, InsetToolbarRightOffset(1), mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "filter", filterRect, false, "");
+		const CRect closeRect = DrawInsetToolbarButton(dc, "X", topBar, InsetToolbarRightOffset(0), mouseLocation);
+		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
+	}
 
 	dc.Detach();
 }
