@@ -35,6 +35,7 @@ public:
 	void ShowPage(Page page);
 	void SyncFromRadar();
 	void RestoreWindowPlacementOrDefault(const CRect& fallback);
+	void ConstrainToEuroScopeWindow();
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX) override;
@@ -46,6 +47,8 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnMove(int x, int y);
+	afx_msg void OnMoving(UINT fwSide, LPRECT pRect);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* lpMMI);
 	afx_msg LRESULT OnGithubDownloadComplete(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnWebViewMessageReceived(WPARAM wParam, LPARAM lParam);

@@ -87,16 +87,16 @@ key is unlimited; levels 1 through 14 use maximum half-view ranges of 34, 28,
 
 The Control Center is created lazily per radar screen and owned by
 `CSMRRadar`. Closing hides the modeless window; plugin/radar shutdown destroys
-it and releases WebView2. The default window size is 728 x 500 px, the minimum
-window size is 646 x 480 px, and restored bounds are clamped to a monitor work
-area.
+it and releases WebView2. Its borderless 728 x 500 px shell is fixed-size,
+owned by the EuroScope window, and clamped to the EuroScope client area while
+it is restored or dragged and after the EuroScope window moves or resizes.
 
 Host-local state is stored under `%LOCALAPPDATA%\vSMR`:
 
 | Path | Purpose |
 | --- | --- |
 | `WebView2\` | WebView2 user-data directory |
-| `control-center-window.json` | Atomically replaced window position and size |
+| `control-center-window.json` | Atomically replaced window position |
 
 The host searches for `vSMR_webUI` next to the DLL, below the vSMR data path,
 and below the current working directory. It maps the chosen directory to

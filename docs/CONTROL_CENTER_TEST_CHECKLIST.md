@@ -31,15 +31,15 @@ diff where the expected result is not immediately visible.
 | ID | Action | Expected result |
 | --- | --- | --- |
 | H-01 | Start with `vSMR_webUI` absent, then open Control Center. | A readable native fallback identifies the missing resources; EuroScope remains responsive. |
-| H-02 | Restore the four application assets and two reset defaults, then open Control Center. | The modeless 728 x 500-ish window opens without stealing normal radar operation. |
-| H-03 | Drag by the HTML title bar, resize to the 646 x 480 minimum, close, and reopen. | Drag is native; the action bar remains visible, layout has no horizontal overflow, and position/size restore on-screen. |
+| H-02 | Restore the four application assets and two reset defaults, then open Control Center. | The modeless window opens at exactly 728 x 500 inside EuroScope without stealing normal radar operation, and its title reads `vSMR`. |
+| H-03 | Drag by the HTML title bar against every EuroScope client edge, move/resize EuroScope, close, and reopen. Attempt to resize the Control Center or use Windows Snap. | Drag is native, the window is re-clamped inside EuroScope, its fixed size cannot change, and its position restores inside the EuroScope client area. |
 | H-04 | Exercise Display, AVISO Geometry/Text, Alerts tabs, Groups, Modes, Profiles, Settings, dialogs, long names, empty lists, mixed selections, hover, selected, disabled, and scroll states. | No clipped text, doubled borders, broken SVGs, raw browser controls, unexplained rectangles, or unnecessary horizontal scrollbars. |
 | H-05 | Right-click, press browser DevTools/zoom shortcuts, drag a file onto the window, and try a link/new window. | Context menu, DevTools/accelerators, zoom, external drop, permissions, and off-origin navigation stay blocked. |
 | H-06 | Remove/disable the x86 WebView2 Runtime and open Control Center. | The host displays the Runtime requirement and does not crash EuroScope. |
 | H-07 | Close during WebView startup; then unload/reload the plugin while Control Center is open and while a GitHub request is active. Reopen Control Center after reload. | Windows, handlers, workers, controller, registered host class, and COM resources close without a hang, use-after-free, stale window procedure, or crash. |
 | H-08 | At 728 x 500, capture each page/tab/dialog/state beside the supplied prototype. | Dimensions, spacing, typography, colors, borders, icons, hierarchy, hover/selected/disabled states, and scrollbars have no unexplained visual divergence. |
 | H-09 | In the EuroScope setup that initializes its callback thread as MTA, open through the runtime icon and through `.smr editor`. | The full Control Center loads through the dedicated STA host; no COM-apartment fallback appears, and both routes remain interactive. |
-| H-10 | Open Control Center from two radar screens, resize and use both, then close them in each order. | Each window keeps its own bridge/page state; the shared STA host class remains valid until the final window closes. |
+| H-10 | Open Control Center from two radar screens, move and use both, then close them in each order. | Each fixed-size EuroScope-owned window keeps its own bridge/page state; the shared STA host class remains valid until the final window closes. |
 
 ## Runtime rail
 
@@ -54,7 +54,7 @@ diff where the expected result is not immediately visible.
 | RT-07 | Switch profile from the rail. | Row contains only indicator/name; colors, tags, icons, modes, rules, and alerts reload live. |
 | RT-08 | Click Control Center and then close its title button. | Modeless Control Center opens and hides; the runtime rail remains usable. |
 | RT-09 | Click outside an open popup. | Popup closes and no stale hit regions remain. |
-| RT-10 | Compare the rail and each native popup with the supplied prototype. | Icon family and compact styling match; no permanent button text, emoji substitute, description, internal ID, count, or redundant “Active”/On/Off label appears. |
+| RT-10 | Compare the rail and each native popup with the supplied prototype. | The grip stripes stay clipped inside the rail, neither rail nor popup has an offset shadow, icon family and compact styling match, and no permanent button text, emoji substitute, description, internal ID, count, or redundant “Active”/On/Off label appears. |
 
 ## Inset presets
 
