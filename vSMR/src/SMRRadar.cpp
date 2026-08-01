@@ -716,6 +716,14 @@ CSMRRadar::CSMRRadar()
 {
 
 	Logger::info("CSMRRadar::CSMRRadar()");
+	LOGFONT runtimeOverlayFont = {};
+	runtimeOverlayFont.lfHeight = -11;
+	runtimeOverlayFont.lfWeight = FW_BOLD;
+	runtimeOverlayFont.lfCharSet = DEFAULT_CHARSET;
+	runtimeOverlayFont.lfQuality = CLEARTYPE_QUALITY;
+	runtimeOverlayFont.lfPitchAndFamily = DEFAULT_PITCH | FF_SWISS;
+	strcpy_s(runtimeOverlayFont.lfFaceName, LF_FACESIZE, "Segoe UI");
+	RuntimeOverlayFont.CreateFontIndirect(&runtimeOverlayFont);
 
 	// Initializing randomizer
 	srand(static_cast<unsigned>(time(nullptr)));
@@ -775,9 +783,6 @@ CSMRRadar::CSMRRadar()
 	// Loading up the config file
 	if (CurrentConfig == nullptr)
 		CurrentConfig = std::make_unique<CConfig>(ConfigPath, mapsPath);
-
-	if (ColorManager == nullptr)
-		ColorManager = std::make_unique<CColorManager>();
 
 	standardCursor = true;	
 	ActiveAirport = "EGKK";
@@ -2789,38 +2794,6 @@ void CSMRRadar::WriteLastActiveProfileToConfig(const std::string& profileName) c
 		CurrentConfig->saveConfig();
 }
 
-void CSMRRadar::CorrelateCursor() {
-	if (NeedCorrelateCursor)
-	{
-		if (standardCursor)
-		{
-			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCORRELATE), IMAGE_CURSOR, 0, 0, LR_SHARED));
-
-			AFX_MANAGE_STATE(AfxGetStaticModuleState());
-			ASSERT(smrCursor);
-			SetCursor(smrCursor);
-			standardCursor = false;
-		}
-	}
-	else
-	{
-	if (!standardCursor)
-	{
-		if (customCursor) {
-			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
-		}
-			else {
-				smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
-			}
-
-			AFX_MANAGE_STATE(AfxGetStaticModuleState());
-			ASSERT(smrCursor);
-			SetCursor(smrCursor);
-			standardCursor = true;
-		}
-	}
-}
-
 void CSMRRadar::LoadCustomFont() {
 	Logger::info(string(__FUNCSIG__));
 	// Loading the custom font if there is one in use
@@ -3836,11 +3809,11 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	Value& filters = ensureObjectMember(profile, "filters");
 	renameMemberIfPresent(filters, "hide_above_alt", "max_altitude_ft");
 	renameMemberIfPresent(filters, "hide_above_spd", "max_speed_kt");
-	renameMemberIfPresent(filters, "night_alpha_setting", "night_overlay_alpha");
+	changed = filters.RemoveMember("night_alpha_setting") || changed;
+	changed = filters.RemoveMember("night_overlay_alpha") || changed;
 	ensureIntMember(filters, "max_altitude_ft", 5500, 0, 80000);
 	ensureIntMember(filters, "max_speed_kt", 250, 0, 2000);
 	ensureIntMember(filters, "radar_range_nm", 999, 1, 9999);
-	ensureIntMember(filters, "night_overlay_alpha", 110, 0, 255);
 	bool legacyProModeEnabled = false;
 	bool legacyTowerModeEnabled = false;
 	std::vector<std::string> legacyBlockedSquawks = defaultDoNotAutocorrelateSquawks;
@@ -4105,9 +4078,9 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	ensureDoubleMember(targets, "fixed_pixel_icon_scale", 1.0, 0.1, 3.0);
 	ensureBoolMember(targets, "show_primary_target", true);
 	ensureColorMember(targets, "target_color", 255, 242, 73, 255);
-	ensureColorMember(targets, "history_one_color", 0, 255, 255, 255);
-	ensureColorMember(targets, "history_two_color", 0, 219, 219, 255);
-	ensureColorMember(targets, "history_three_color", 0, 183, 183, 255);
+	changed = targets.RemoveMember("history_one_color") || changed;
+	changed = targets.RemoveMember("history_two_color") || changed;
+	changed = targets.RemoveMember("history_three_color") || changed;
 
 	Value* legacyGroundIcons = nullptr;
 	if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject())
@@ -5606,13 +5579,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		return;
 	}
 
-	if (ColorManager == nullptr)
-	{
-		Logger::info("OnRefresh: ColorManager was null; recreating");
-		ColorManager = std::make_unique<CColorManager>();
-	}
 	EnsureAvisoWheelHooks(this);
-	// Refresh pipeline is phase-driven by EuroScope. Cursor/theme work is kept here on the UI thread.
+	// Refresh pipeline is phase-driven by EuroScope. Cursor setup stays on the UI thread.
 	if (initCursor)
 	{
 		if (customCursor) {
@@ -5649,44 +5617,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	if (Phase == REFRESH_PHASE_AFTER_LISTS) {
 		VSMR_REFRESH_LOG("Phase == REFRESH_PHASE_AFTER_LISTS");
-		if (!ColorSettingsDay) {
-			// Creating the gdi+ graphics
-			Graphics graphics(hDC);
-			graphics.SetPageUnit(Gdiplus::UnitPixel);
-
-			graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-
-			int nightAlpha = 110;
-			if (CurrentConfig != nullptr)
-			{
-				const Value& profile = CurrentConfig->getActiveProfile();
-				if (profile.IsObject() &&
-					profile.HasMember("filters") &&
-					profile["filters"].IsObject())
-				{
-					const Value& filters = profile["filters"];
-					if (filters.HasMember("night_overlay_alpha") && filters["night_overlay_alpha"].IsInt())
-					{
-						nightAlpha = filters["night_overlay_alpha"].GetInt();
-					}
-					else if (filters.HasMember("night_alpha_setting") && filters["night_alpha_setting"].IsInt())
-					{
-						nightAlpha = filters["night_alpha_setting"].GetInt();
-					}
-				}
-			}
-			nightAlpha = std::clamp(nightAlpha, 0, 255);
-			SolidBrush AlphaBrush(Color(nightAlpha, 0, 0, 0));
-
-			CRect RadarArea(GetRadarArea());
-			RadarArea.top = RadarArea.top - 1;
-			RadarArea.bottom = GetChatArea().bottom;
-
-			graphics.FillRectangle(&AlphaBrush, CopyRect(CRect(RadarArea)));
-
-			graphics.ReleaseHDC(hDC);
-		}
-
 		VSMR_REFRESH_LOG("break Phase == REFRESH_PHASE_AFTER_LISTS");
 		return;
 	}
@@ -5874,14 +5804,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 
-	if (!QDMenabled && !QDMSelectEnabled)
-	{
-		POINT p;
-		if (GetCursorPos(&p)) {
-			HWND activeWindow = GetActiveWindow();
-			if (activeWindow != nullptr && ScreenToClient(activeWindow, &p)) {
-				mouseLocation = p;
-			}
+	POINT p;
+	if (GetCursorPos(&p)) {
+		HWND activeWindow = GetActiveWindow();
+		if (activeWindow != nullptr && ScreenToClient(activeWindow, &p)) {
+			mouseLocation = p;
 		}
 	}
 
@@ -5946,16 +5873,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 	perfAvisoMs += RefreshPerfNowMs() - perfAvisoStartMs;
 
-	if (QDMSelectEnabled || QDMenabled)
-	{
-		CRect R(GetRadarArea());
-		R.top += 20;
-		R.bottom = GetChatArea().top;
-
-		R.NormalizeRect();
-		AddScreenObject(DRAWING_BACKGROUND_CLICK, "", R, false, "");
-	}
-
 	// Missing profile keys retain the legacy behavior: RIMCAS and emergency
 	// symbol coloring are enabled.
 	bool frameRimcasEnabled = true;
@@ -5994,7 +5911,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				points.push_back({ REAL(toDraw.x), REAL(toDraw.y) });
 			}
 
-			Pen runwayPen(ColorManager->get_corrected_color("label", Color::White));
+			Pen runwayPen(Color::White);
 			graphics.DrawPolygon(&runwayPen, points.data(), static_cast<INT>(points.size()));
 		}
 
@@ -6032,7 +5949,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	VSMR_REFRESH_LOG("Symbols loop");
 	setRefreshStage("target symbol rendering");
 
-	// Cache current view scaling once per frame; reused by trail and icon sizing.
+	// Cache current view scaling once per frame for configured icon sizing.
 	double framePixPerMeter = 0.0;
 	{
 		RECT radarArea = GetRadarArea();
@@ -6148,7 +6065,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		return it->second;
 	};
-	const Color frameSymbolWhiteColor = ColorManager->get_corrected_color("symbol", Gdiplus::Color::White);
+	const Color frameSymbolWhiteColor = Gdiplus::Color::White;
 	auto isValidColorObject = [](const Value& colorValue) -> bool
 	{
 		if (!colorValue.IsObject())
@@ -6324,7 +6241,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (framePatatoidePolygonPoints.size() < 3)
 			return;
 
-		SolidBrush polygonBrush(ColorManager->get_corrected_color("afterglow", fillColor));
+		SolidBrush polygonBrush(fillColor);
 		graphics.FillPolygon(&polygonBrush, framePatatoidePolygonPoints.data(), static_cast<INT>(framePatatoidePolygonPoints.size()));
 	};
 	std::unordered_map<unsigned int, std::unique_ptr<Gdiplus::ImageAttributes>> frameTintAttributesCache;
@@ -6419,129 +6336,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
-		if (rt.GetGS() > 5) {
-			if (frameUseNovaIconStyle)
-			{
-				auto& patatoide = Patatoides[rtCallsign];
-				CRadarTargetPositionData pAcPos = rt.GetPosition();
-
-				for (int i = 1; i <= 2; i++) {
-					CRadarTargetPositionData previousTrailPos = rt.GetPreviousPosition(pAcPos);
-					if (!previousTrailPos.IsValid())
-						break;
-
-					pAcPos = previousTrailPos;
-					acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
-
-					if (!Afterglow || !frameShowLegacyPrimaryTarget)
-						continue;
-
-					if (i == 1 && !patatoide.History_one_points.empty())
-					{
-						drawPatatoidePolygon(
-							patatoide.History_one_points,
-							getLegacyTargetColor("history_one_color", Color(255, 0, 255, 255)));
-					}
-
-					if (i != 2 && !patatoide.History_two_points.empty())
-					{
-						drawPatatoidePolygon(
-							patatoide.History_two_points,
-							getLegacyTargetColor("history_two_color", Color(255, 0, 219, 219)));
-					}
-
-					if (i == 2 && !patatoide.History_three_points.empty())
-					{
-						drawPatatoidePolygon(
-							patatoide.History_three_points,
-							getLegacyTargetColor("history_three_color", Color(255, 0, 183, 183)));
-					}
-				}
-
-				int trailNumber = Trail_Gnd;
-				if (reportedGs > 50)
-					trailNumber = Trail_App;
-
-				CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
-				SolidBrush trailBrush(frameSymbolWhiteColor);
-				for (int j = 1; j <= trailNumber; j++) {
-					if (!previousPos.IsValid())
-						break;
-
-					POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
-					graphics.FillRectangle(&trailBrush, pCoord.x - 1, pCoord.y - 1, 2, 2);
-
-					previousPos = rt.GetPreviousPosition(previousPos);
-				}
-			}
-			else
-			{
-				CRadarTargetPositionData pAcPos = rt.GetPosition();
-
-				for (int i = 1; i <= 2; i++) {
-					CRadarTargetPositionData previousTrailPos = rt.GetPreviousPosition(pAcPos);
-					if (!previousTrailPos.IsValid())
-						break;
-
-					pAcPos = previousTrailPos;
-					acPosPix = ConvertCoordFromPositionToPixel(pAcPos.GetPosition());
-
-					// Afterglow polygons disabled (remove comet-like trail)
-				}
-
-				// Trails as shrinking bubbles
-				int TrailNumber = Trail_Gnd;
-				if (reportedGs > 50)
-					TrailNumber = Trail_App;
-
-				const double pixPerMeter = framePixPerMeter;
-
-				CRadarTargetPositionData previousPos = rt.GetPreviousPosition(rt.GetPosition());
-				for (int j = 1; j <= TrailNumber; j++) {
-					if (!previousPos.IsValid())
-						break;
-
-					POINT pCoord = ConvertCoordFromPositionToPixel(previousPos.GetPosition());
-
-					// Bubble diameter is fixed in meters so it scales with zoom
-					double metersPerBubble = 10.0; // base diameter in meters
-					int diameterPx = 6;
-					if (pixPerMeter > 0.0) {
-						diameterPx = int(pixPerMeter * metersPerBubble + 0.5);
-					}
-					if (diameterPx < 2) diameterPx = 2;
-					if (diameterPx > 50) diameterPx = 50;
-
-					// Shrink size with age (more aggressive for visibility)
-					double shrink = 1.0 - 0.15 * (j - 1);
-					if (shrink < 0.2) shrink = 0.2;
-					diameterPx = int(diameterPx * shrink + 0.5);
-					if (diameterPx < 2) diameterPx = 2;
-					int radius = diameterPx / 2;
-
-					// Gradient from transparent white (new) to gray-blue (older) with fading alpha
-					double t = (TrailNumber > 1) ? double(j - 1) / double(TrailNumber - 1) : 0.0;
-					auto lerp = [](double a, double b, double tt) { return a + (b - a) * tt; };
-					int r = int(lerp(255.0, 120.0, t) + 0.5);
-					int g = int(lerp(255.0, 150.0, t) + 0.5);
-					int b = int(lerp(255.0, 190.0, t) + 0.5);
-					int a = int(lerp(200.0, 40.0, t) + 0.5); // fade alpha
-					if (r < 0) r = 0; if (r > 255) r = 255;
-					if (g < 0) g = 0; if (g > 255) g = 255;
-					if (b < 0) b = 0; if (b > 255) b = 255;
-					if (a < 0) a = 0; if (a > 255) a = 255;
-
-					Color bubbleColor(static_cast<BYTE>(a), static_cast<BYTE>(r), static_cast<BYTE>(g), static_cast<BYTE>(b));
-					// Slightly thicker ring to balance visibility and hole size
-					Gdiplus::Pen ringPen(bubbleColor, Gdiplus::REAL(1.5f));
-					graphics.DrawEllipse(&ringPen, pCoord.x - radius, pCoord.y - radius, diameterPx, diameterPx);
-
-					previousPos = rt.GetPreviousPosition(previousPos);
-				}
-			}
-		}
-
-
 		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
 		if (drawLegacyPrimarySymbol && frameShowLegacyPrimaryTarget) {
 			const Color primaryTargetColor = useEmergencySymbolColor
@@ -6554,10 +6348,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
 
 		const bool proModeEnabled = frameProModeEnabled;
-		const char* systemId = rt.GetSystemID();
-		const bool hasSystemId = (systemId != nullptr && systemId[0] != '\0');
-		const bool isReleasedTrack = hasSystemId &&
-			(ReleasedTracks.find(systemId) != ReleasedTracks.end());
 		const char* assignedSquawk = iconFp.IsValid() ? iconFp.GetControllerAssignedData().GetSquawk() : nullptr;
 		const char* reportedSquawk = RtPos.GetSquawk();
 		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');
@@ -6567,9 +6357,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (proModeEnabled && !hasAssignedSquawk)
 			AcisCorrelated = false;
 
-		const bool keepIconForSquawkMismatch = proModeEnabled && (isWrongSquawk || !hasAssignedSquawk) && !isReleasedTrack;
+		const bool keepIconForSquawkMismatch = proModeEnabled && (isWrongSquawk || !hasAssignedSquawk);
 
-		if (!AcisCorrelated && reportedGs < 1 && !ReleaseInProgress && !AcquireInProgress && !keepIconForSquawkMismatch)
+		if (!AcisCorrelated && reportedGs < 1 && !keepIconForSquawkMismatch)
 			continue;
 
 		// Prefer the aircraft-reported heading to keep icon orientation aligned with the nose (even when moving backwards)
@@ -6772,7 +6562,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		bool applyTargetTintColor = false;
 		auto applyTargetTint = [&](const Color& color)
 		{
-			targetTintColor = ColorManager->get_corrected_color("symbol", color);
+			targetTintColor = color;
 			applyTargetTintColor = true;
 		};
 		if (hasNoFlightPlan)
@@ -6837,8 +6627,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (useNovaIconStyle)
 		{
 			const Color novaSymbolColor = applyTargetTintColor ? targetTintColor : frameSymbolWhiteColor;
-			CPen qTrailPen(PS_SOLID, 1, novaSymbolColor.ToCOLORREF());
-			CPen* pqOrigPen = dc.SelectObject(&qTrailPen);
+			CPen novaSymbolPen(PS_SOLID, 1, novaSymbolColor.ToCOLORREF());
+			CPen* previousNovaSymbolPen = dc.SelectObject(&novaSymbolPen);
 			if (RtPos.GetTransponderC()) {
 				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
 				dc.LineTo({ acPosPix.x - 6, acPosPix.y });
@@ -6856,7 +6646,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				dc.MoveTo(acPosPix.x, acPosPix.y);
 				dc.LineTo(acPosPix.x + 4, acPosPix.y + 4);
 			}
-			dc.SelectObject(pqOrigPen);
+			dc.SelectObject(previousNovaSymbolPen);
 			iconSize = 12;
 		}
 		else if (canUseRealisticIcon) {
@@ -7191,20 +6981,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		iconVerboseStep("after_icon_draw");
 
-		// Predicted Track Line
-		// It starts 20 seconds away from the ac
-		if (reportedGs > 50 && PredictedLength > 0)
-		{
-			double d = double(rt.GetPosition().GetReportedGS()*0.514444) * 10;
-			CPosition AwayBase = BetterHarversine(rt.GetPosition().GetPosition(), rt.GetTrackHeading(), d);
-
-			d = double(rt.GetPosition().GetReportedGS()*0.514444) * (PredictedLength * 60) - 10;
-			CPosition PredictedEnd = BetterHarversine(AwayBase, rt.GetTrackHeading(), d);
-
-			dc.MoveTo(ConvertCoordFromPositionToPixel(AwayBase));
-			dc.LineTo(ConvertCoordFromPositionToPixel(PredictedEnd));
-		}
-
 		if (mouseWithin({ acPosPix.x - 5, acPosPix.y - 5, acPosPix.x + 5, acPosPix.y + 5 })) {
 			dc.MoveTo(acPosPix.x, acPosPix.y - 8);
 			dc.LineTo(acPosPix.x - 6, acPosPix.y - 12);
@@ -7389,280 +7165,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 	perfRimcasMs += RefreshPerfNowMs() - perfRimcasListStartMs;
 
-	VSMR_REFRESH_LOG("Menu bar lists");
-	setRefreshStage("popup list rendering");
-
-
-	if (ShowLists["Day / Night"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Day / Night"], "Day / Night", 1);
-		GetPlugIn()->AddPopupListElement("Day", "", RIMCAS_UPDATE_BRIGHNESS, false, int(ColorSettingsDay));
-		GetPlugIn()->AddPopupListElement("Night", "", RIMCAS_UPDATE_BRIGHNESS, false, int(!ColorSettingsDay));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Day / Night"] = false;
-	}
-
-	if (ShowLists["GRND Trail Dots"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["GRND Trail Dots"], "GRND Trail Dots", 1);
-		GetPlugIn()->AddPopupListElement("0", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 0)));
-		GetPlugIn()->AddPopupListElement("2", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 2)));
-		GetPlugIn()->AddPopupListElement("4", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 4)));
-		GetPlugIn()->AddPopupListElement("8", "", RIMCAS_UPDATE_GND_TRAIL, false, int(bool(Trail_Gnd == 8)));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["GRND Trail Dots"] = false;
-	}
-
-	if (ShowLists["APPR Trail Dots"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["APPR Trail Dots"], "APPR Trail Dots", 1);
-		GetPlugIn()->AddPopupListElement("0", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 0)));
-		GetPlugIn()->AddPopupListElement("4", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 4)));
-		GetPlugIn()->AddPopupListElement("8", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 8)));
-		GetPlugIn()->AddPopupListElement("12", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 12)));
-		GetPlugIn()->AddPopupListElement("16", "", RIMCAS_UPDATE_APP_TRAIL, false, int(bool(Trail_App == 16)));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["APPR Trail Dots"] = false;
-	}
-
-	if (ShowLists["Predicted Track Line"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Predicted Track Line"], "Predicted Track Line", 1);
-		GetPlugIn()->AddPopupListElement("0", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 0)));
-		GetPlugIn()->AddPopupListElement("1", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 1)));
-		GetPlugIn()->AddPopupListElement("2", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 2)));
-		GetPlugIn()->AddPopupListElement("3", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 3)));
-		GetPlugIn()->AddPopupListElement("4", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 4)));
-		GetPlugIn()->AddPopupListElement("5", "", RIMCAS_UPDATE_PTL, false, int(bool(PredictedLength == 5)));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Predicted Track Line"] = false;
-	}
-
-	if (ShowLists["Brightness"])
-	{
-		GetPlugIn()->OpenPopupList(ListAreas["Brightness"], "Brightness", 1);
-		GetPlugIn()->AddPopupListElement("Label", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Symbol", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_OPEN_LIST, false);
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Brightness"] = false;
-	}
-
-	if (ShowLists["Label"])
-	{
-		GetPlugIn()->OpenPopupList(ListAreas["Label"], "Label Brightness", 1);
-		for(int i = CColorManager::bounds_low(); i <= CColorManager::bounds_high(); i +=10)
-			GetPlugIn()->AddPopupListElement(std::to_string(i).c_str(), "", RIMCAS_BRIGHTNESS_LABEL, false, int(bool(i == ColorManager->get_brightness("label"))));
-
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Label"] = false;
-	}
-
-	if (ShowLists["Symbol"])
-	{
-		GetPlugIn()->OpenPopupList(ListAreas["Symbol"], "Symbol Brightness", 1);
-		for (int i = CColorManager::bounds_low(); i <= CColorManager::bounds_high(); i += 10)
-			GetPlugIn()->AddPopupListElement(std::to_string(i).c_str(), "", RIMCAS_BRIGHTNESS_SYMBOL, false, int(bool(i == ColorManager->get_brightness("symbol"))));
-
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Symbol"] = false;
-	}
-
-	if (ShowLists["Afterglow"])
-	{
-		GetPlugIn()->OpenPopupList(ListAreas["Afterglow"], "Afterglow Brightness", 1);
-		for (int i = CColorManager::bounds_low(); i <= CColorManager::bounds_high(); i += 10)
-			GetPlugIn()->AddPopupListElement(std::to_string(i).c_str(), "", RIMCAS_BRIGHTNESS_AFTERGLOW, false, int(bool(i == ColorManager->get_brightness("afterglow"))));
-
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Afterglow"] = false;
-	}
-
-	VSMR_REFRESH_LOG("QRD");
-	setRefreshStage("QDM distance tools");
-
-	//---------------------------------
-	// QRD
-	//---------------------------------
-
-	if (QDMenabled || QDMSelectEnabled || (DistanceToolActive && ActiveDistance.first != "")) {
-		CPen Pen(PS_SOLID, 1, RGB(255, 255, 255));
-		CPen *oldPen = dc.SelectObject(&Pen);
-
-		POINT AirportPos = mouseLocation;
-		CPosition AirportCPos = ConvertCoordFromPixelToPosition(mouseLocation);
-		if (QDMSelectEnabled)
-		{
-			AirportPos = QDMSelectPt;
-			AirportCPos = ConvertCoordFromPixelToPosition(QDMSelectPt);
-		}
-		else
-		{
-			CPosition activeAirportPosition;
-			if (TryGetActiveAirportPosition(activeAirportPosition))
-			{
-				AirportPos = ConvertCoordFromPositionToPixel(activeAirportPosition);
-				AirportCPos = activeAirportPosition;
-			}
-		}
-		if (DistanceToolActive)
-		{
-			CRadarTarget activeDistanceTarget = GetPlugIn()->RadarTargetSelect(ActiveDistance.first.c_str());
-			if (!activeDistanceTarget.IsValid() || !activeDistanceTarget.GetPosition().IsValid())
-			{
-				DistanceToolActive = false;
-				ActiveDistance = pair<string, string>("", "");
-				dc.SelectObject(oldPen);
-				RequestRefresh();
-				return;
-			}
-			CPosition r = activeDistanceTarget.GetPosition().GetPosition();
-			AirportPos = ConvertCoordFromPositionToPixel(r);
-			AirportCPos = r;
-		}
-		dc.MoveTo(AirportPos);
-		POINT point = mouseLocation;
-		dc.LineTo(point);
-
-		CPosition CursorPos = ConvertCoordFromPixelToPosition(point);
-		double Distance = AirportCPos.DistanceTo(CursorPos);
-		double Bearing = AirportCPos.DirectionTo(CursorPos);
-	
-		Gdiplus::Pen WhitePen(Color::White);
-		graphics.DrawEllipse(&WhitePen, point.x - 5, point.y - 5, 10, 10);
-
-		Distance = Distance / 0.00053996f;
-
-		Distance = round(Distance * 10) / 10;
-
-		Bearing = round(Bearing * 10) / 10;
-
-		POINT TextPos = { point.x + 20, point.y };
-
-		if (!DistanceToolActive)
-		{
-			string distances = std::to_string(Distance);
-			size_t decimal_pos = distances.find(".");
-			distances = distances.substr(0, decimal_pos + 2);
-
-			string bearings = std::to_string(Bearing);
-			decimal_pos = bearings.find(".");
-			bearings = bearings.substr(0, decimal_pos + 2);
-
-			string text = bearings;
-			text += "Ãƒâ€šÃ‚Â° / ";
-			text += distances;
-			text += "m";
-			COLORREF old_color = dc.SetTextColor(RGB(255, 255, 255));
-			dc.TextOutA(TextPos.x, TextPos.y, text.c_str());
-			dc.SetTextColor(old_color);
-		}
-
-		dc.SelectObject(oldPen);
-		RequestRefresh();
-	}
-
-	// Distance tools here
-	for (auto&& kv : DistanceTools)
-	{
-		CRadarTarget one = GetPlugIn()->RadarTargetSelect(kv.first.c_str());
-		CRadarTarget two = GetPlugIn()->RadarTargetSelect(kv.second.c_str());
-
-		if (!isVisible(one) || !isVisible(two))
-			continue;
-
-		CPen Pen(PS_SOLID, 1, RGB(255, 255, 255));
-		CPen *oldPen = dc.SelectObject(&Pen);
-
-		POINT onePoint = ConvertCoordFromPositionToPixel(one.GetPosition().GetPosition());
-		POINT twoPoint = ConvertCoordFromPositionToPixel(two.GetPosition().GetPosition());
-
-		dc.MoveTo(onePoint);
-		dc.LineTo(twoPoint);
-
-		POINT TextPos = { twoPoint.x + 20, twoPoint.y };
-
-		double Distance = one.GetPosition().GetPosition().DistanceTo(two.GetPosition().GetPosition());
-		double Bearing = one.GetPosition().GetPosition().DirectionTo(two.GetPosition().GetPosition());
-
-		string distances = std::to_string(Distance);
-		size_t decimal_pos = distances.find(".");
-		distances = distances.substr(0, decimal_pos + 2);
-
-		string bearings = std::to_string(Bearing);
-		decimal_pos = bearings.find(".");
-		bearings = bearings.substr(0, decimal_pos + 2);
-
-		string text = bearings;
-		text += "Ãƒâ€šÃ‚Â° / ";
-		text += distances;
-		text += "nm";
-		COLORREF old_color = dc.SetTextColor(RGB(0, 0, 0));
-
-		CRect ClickableRect = { TextPos.x - 2, TextPos.y, TextPos.x + dc.GetTextExtent(text.c_str()).cx + 2, TextPos.y + dc.GetTextExtent(text.c_str()).cy };
-		graphics.FillRectangle(&SolidBrush(Color(127, 122, 122)), CopyRect(ClickableRect));
-		dc.Draw3dRect(ClickableRect, RGB(75, 75, 75), RGB(45, 45, 45));
-		dc.TextOutA(TextPos.x, TextPos.y, text.c_str());
-
-		AddScreenObject(RIMCAS_DISTANCE_TOOL, string(kv.first+","+kv.second).c_str(), ClickableRect, false, "");
-
-		dc.SetTextColor(old_color);
-
-		dc.SelectObject(oldPen);
-	}
-
-	//---------------------------------
-	// Drawing the toolbar
-	//---------------------------------
-
-	VSMR_REFRESH_LOG("Menu Bar");
-	setRefreshStage("top menu bar");
-
-	COLORREF qToolBarColor = RGB(127, 122, 122);
-
-	// Drawing the toolbar on the top
-	CRect ToolBarAreaTop(RadarArea.left, RadarArea.top, RadarArea.right, RadarArea.top + 20);
-	dc.FillSolidRect(ToolBarAreaTop, qToolBarColor);
-
-	COLORREF oldTextColor = dc.SetTextColor(RGB(0, 0, 0));
-
-	int offset = 2;
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, getActiveAirport().c_str());
-	AddScreenObject(RIMCAS_ACTIVE_AIRPORT, "ActiveAirport", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(getActiveAirport().c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(getActiveAirport().c_str()).cy }, false, "Active Airport");
-
-	offset += dc.GetTextExtent(getActiveAirport().c_str()).cx + 10;
-	auto drawToolbarMenuItem = [&](const char* label, const char* objectId, const char* tooltip)
-	{
-		const CSize labelSize = dc.GetTextExtent(label);
-		dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, label);
-		AddScreenObject(RIMCAS_MENU, objectId, { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + labelSize.cx, ToolBarAreaTop.top + 4 + labelSize.cy }, false, tooltip);
-		offset += labelSize.cx + 10;
-	};
-	drawToolbarMenuItem("QDR", "QdrMenu", "QDR reference tools");
-	drawToolbarMenuItem("Target", "TargetMenu", "Target menu");
-	drawToolbarMenuItem("Lighting", "LightingMenu", "Runtime lighting");
-
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "/");
-	CRect barDistanceRect = { ToolBarAreaTop.left + offset - 2, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("/").cx, ToolBarAreaTop.top + 4 + +dc.GetTextExtent("/").cy };
-	if (DistanceToolActive)
-	{
-		graphics.DrawRectangle(&Pen(Color::White), CopyRect(barDistanceRect));
-	}
-	AddScreenObject(RIMCAS_MENU, "/", barDistanceRect, false, "Distance tool");
-
-	std::ostringstream fpsStream;
-	fpsStream
-		<< "FPS " << FpsDisplayValue
-		<< " A" << static_cast<int>(PerfLastAvisoMs + 0.5)
-		<< " C" << static_cast<int>(PerfLastTargetsMs + 0.5)
-		<< " R" << static_cast<int>(PerfLastRimcasMs + 0.5)
-		<< " T" << static_cast<int>(PerfLastTagsMs + 0.5)
-		<< " S" << static_cast<int>(PerfLastSrwMs + 0.5);
-	const std::string fpsText = fpsStream.str();
-	const CSize fpsTextSize = dc.GetTextExtent(fpsText.c_str());
-	const int fpsRightPadding = 6;
-	const int fpsLeft = ToolBarAreaTop.right - fpsRightPadding - fpsTextSize.cx;
-	if (fpsLeft > ToolBarAreaTop.left + offset + 12)
-		dc.TextOutA(fpsLeft, ToolBarAreaTop.top + 4, fpsText.c_str());
-
-	dc.SetTextColor(oldTextColor);
-
 	//
 	// Tag deconflicting
 	//
@@ -7841,12 +7343,31 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			continue;
 
 		CInsetWindow* appWindow = appWindowIt->second.get();
-		appWindow->render(hDC, this, &graphics, mouseLocation, DistanceTools);
+		appWindow->render(hDC, this, &graphics, mouseLocation);
 		if (appWindow->IsAvisoViewport() && appWindow->m_AvisoScreenAreaValid)
 			avisoViewportRenderedForWheel = true;
 	}
 	gAvisoWheelRoutingEnabled = avisoViewportRenderedForWheel;
 	perfSrwMs += RefreshPerfNowMs() - perfSrwStartMs;
+
+	setRefreshStage("fps overlay");
+	if (ShowFps)
+	{
+		const std::string fpsText = "FPS " + std::to_string(FpsDisplayValue);
+		CFont* previousFont = RuntimeOverlayFont.GetSafeHandle() != nullptr
+			? dc.SelectObject(&RuntimeOverlayFont)
+			: nullptr;
+		const CSize fpsSize = dc.GetTextExtent(fpsText.c_str());
+		const int fpsX = (std::max)(RadarArea.left + 4, RadarArea.right - fpsSize.cx - 6);
+		const int fpsY = RadarArea.top + 4;
+		const int previousBackgroundMode = dc.SetBkMode(TRANSPARENT);
+		const COLORREF previousTextColor = dc.SetTextColor(RGB(235, 245, 247));
+		dc.TextOutA(fpsX, fpsY, fpsText.c_str());
+		dc.SetTextColor(previousTextColor);
+		dc.SetBkMode(previousBackgroundMode);
+		if (previousFont != nullptr)
+			dc.SelectObject(previousFont);
+	}
 
 	setRefreshStage("runtime menu");
 	RenderRuntimeMenu(hDC, graphics);
