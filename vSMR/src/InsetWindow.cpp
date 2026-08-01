@@ -1437,14 +1437,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
 
-			CRect presetsRect(
-				viewportRect.right - 42,
-				viewportRect.top + 5,
-				viewportRect.right - 25,
-				viewportRect.top + 22);
-			const CRect presetsButtonRect = DrawInsetButton(dc, "P", presetsRect, mouseLocation);
-			radar_screen->AddScreenObject(m_Id, "presets", presetsButtonRect, false, "");
-
 			DrawAvisoDivider(dc, radar_screen, m_Id, "divider", AvisoSplitDividerRect(m_AvisoLayoutMode, viewportRect));
 			return;
 		}
@@ -1457,13 +1449,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, false),
 				mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
-
-			const CRect presetsButtonRect = DrawInsetButton(
-				dc,
-				"P",
-				AvisoCornerToolbarButtonRect(m_AvisoLayoutMode, viewportRect, false, 1),
-				mouseLocation);
-			radar_screen->AddScreenObject(m_Id, "presets", presetsButtonRect, false, "");
 
 			CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, true);
 			resizeArea.NormalizeRect();
@@ -1501,14 +1486,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const int titleY = topBar.bottom - titleSize.cy;
 		dc.TextOutA(titleX, titleY, title.c_str());
 
-		const CRect closeRect = DrawInsetToolbarButton(dc, "X", topBar, InsetToolbarRightOffset(0), mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
-		const CRect presetsRect = DrawInsetToolbarButton(dc, "P", topBar, InsetToolbarRightOffset(1), mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "presets", presetsRect, false, "");
-		const CRect reloadRect = DrawInsetToolbarButton(dc, "R", topBar, InsetToolbarRightOffset(2), mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "reload", reloadRect, false, "");
-		const CRect editorRect = DrawInsetToolbarButton(dc, "E", topBar, InsetToolbarRightOffset(3), mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "editor", editorRect, false, "");
 		dc.SetTextColor(oldTextColor);
 	};
 

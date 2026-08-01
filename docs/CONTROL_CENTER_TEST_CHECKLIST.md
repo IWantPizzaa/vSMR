@@ -51,20 +51,42 @@ diff where the expected result is not immediately visible.
 | RT-04 | Open Mode and select a different row. | Row contains only indicator/name; renderer immediately uses that mode. |
 | RT-05 | Open Groups and toggle a group containing an exclusively grouped label, line, and area. | Row contains only eye/name; those items disappear/reappear in main and AVISO inset rendering without a file reload. |
 | RT-06 | Toggle AVISO Inset, SRW 1, and SRW 2 independently. | Each actual native window changes immediately and the other two retain their state. |
-| RT-07 | Switch profile from the rail. | Row contains only indicator/name; colors, tags, icons, modes, rules, and alerts reload live. |
+| RT-07 | Switch from the rail between profiles with different default AVISO presets. | Row contains only indicator/name; colors, tags, icons, modes, rules, alerts, and the selected profile's default AVISO preset reload live without retaining the prior profile's active preset name. |
 | RT-08 | Click Control Center and then close its title button. | Modeless Control Center opens and hides; the runtime rail remains usable. |
 | RT-09 | Click outside an open popup. | Popup closes and no stale hit regions remain. |
 | RT-10 | Compare the rail and each native popup with the supplied prototype. | The grip stripes stay clipped inside the rail, neither rail nor popup has an offset shadow, icon family and compact styling match, and no permanent button text, emoji substitute, description, internal ID, count, or redundant “Active”/On/Off label appears. |
+| RT-11 | Open AVISO Insets and inspect every row/action before and after selecting the current default preset. | Visibility for AVISO/SRW 1/SRW 2 and all preset operations are present only here; the action reads `Set default` for a non-default preset and changes to `Clear default` for the current default. |
+
+## Consolidated radar controls
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| RC-01 | Inspect the complete old grey top toolbar at a width that leaves room for diagnostics. | The only entries, in order, are active airport, `QDR`, `Target`, `Lighting`, `/`, and the `FPS A/C/R/T/S` readout. There is no active-profile text and no Display, Modes, Colours, Alerts, inset, AVISO editor/reload, label-size, or typeface entry. |
+| RC-02 | Open QDR and exercise Fixed Reference and Select Reference, including right-click cancellation of a selected reference. | Both retained QDR tools still draw from the active-airport or selected reference as appropriate; no unrelated configuration action is present. |
+| RC-03 | Open Target and exercise Afterglow, every ground/approach trail choice, every PTL choice, Acquire, and Release. | All retained target-session actions work, and icon style/sizing, label size, and typeface are absent. |
+| RC-04 | Open Lighting; switch Day/Night and set label, symbol, and afterglow brightness to non-default values. | Day/night overlay and all three runtime brightness multipliers update; persisted profile-color editing remains available only in Control Center. |
+| RC-05 | Left-click `/`, select two targets, remove one resulting distance annotation, then right-click `/`. | Distance selection and annotation removal still work; right-click clears the active selection and all saved on-screen distance pairs. |
+| RC-06 | Click the active-airport text, enter another configured airport, save/reopen the ASR, then restore the fixture airport. | Radar airport context changes and the `Airport` ASR value restores; active-airport selection has no duplicate Runtime Menu or Control Center entry. |
+
+## AVISO inset viewport controls
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| AI-01 | Inspect the AVISO inset in floating, snapped, and split layouts. | Its own chrome contains only title/drag where applicable, `F` detach, resize handles/dividers, and the viewport. No `X`, `P`, `R`, Editor, Reload, Presets, or other duplicate action appears. |
+| AI-02 | Drag the floating title, detach with `F`, resize from each supported handle, move every split divider, pan, and zoom. | Every retained viewport interaction works in its applicable layout and the inset remains constrained to valid geometry. |
+| AI-03 | Hide/show AVISO from the Runtime Menu, then save, load, update, rename, duplicate, reset, set/clear default, toggle linked movement, and delete a preset. | Visibility and every preset operation work from the Runtime Menu without an inset-local button or duplicate EuroScope popup. |
+| AI-04 | Edit AVISO geometry/text in Control Center, Save, then use Control Center Reload. | Main and inset rendering update from the Control Center workflow; neither the inset nor old grey top toolbar exposes Editor or Reload AVISO. |
 
 ## Inset presets
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| IP-01 | Arrange main AVISO view, AVISO inset, both SRWs, filters, scales, rotation, visibility, and layout; save a uniquely named preset. | Preset is created and becomes active. |
-| IP-02 | Change all those values, then load the preset. | Main/secondary AVISO and both SRWs restore their captured state. |
-| IP-03 | Update the active preset, alter the layout, then Reset. | Reset returns to the updated snapshot. |
-| IP-04 | Rename, duplicate, set default, toggle linked movement, and delete the duplicate. | Every operation updates the popup and profile data; invalid/duplicate names report failure without corruption. |
-| IP-05 | Save/reopen the ASR and profile. | Default preset and linked movement apply as configured. |
+| IP-01 | Arrange main AVISO view, AVISO inset, both SRWs, filters, scales, rotation, visibility, and layout; save a uniquely named preset from the Runtime Menu. | Preset is created and becomes active. |
+| IP-02 | Change all those values, then load the preset from the Runtime Menu. | Main/secondary AVISO and both SRWs restore their captured state. |
+| IP-03 | Use Runtime Menu Update on the active preset, alter the layout, then use Reset. | Reset returns to the updated snapshot. |
+| IP-04 | Rename, duplicate, set the duplicate as default, confirm the action changes to `Clear default`, clear it, toggle linked movement, and delete the duplicate. | Every operation updates the Runtime Menu and profile data; default state clears deterministically, and invalid/duplicate names report failure without corruption. |
+| IP-05 | Set a default again, save/reopen the ASR and profile. | Default preset and linked movement apply as configured. |
+| IP-06 | With preset A configured as default, load non-default preset B, delete B, then inspect and click the default action. | The Runtime Menu no longer treats deleted B as active; `Clear default` remains enabled and removes default A. |
 
 ## Global commands and history
 

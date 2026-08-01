@@ -585,7 +585,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		}
 	}
 
-	ApplyDefaultAvisoPresetIfConfigured();
+	ResetAvisoPresetStateForActiveProfile();
 	AvisoGeoJsonScrollSelected = false;
 	for (auto& appWindow : appWindows)
 	{
