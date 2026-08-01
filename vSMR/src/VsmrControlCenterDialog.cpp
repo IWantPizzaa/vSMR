@@ -40,10 +40,10 @@ namespace
 	constexpr UINT kWebViewShutdownMessage = WM_APP + 0x567;
 	constexpr UINT kWebViewBeginWindowDragMessage = WM_APP + 0x568;
 	constexpr UINT kWebViewPageReadyMessage = WM_APP + 0x569;
-	constexpr int kDefaultClientWidth = 728;
-	constexpr int kDefaultClientHeight = 500;
-	constexpr int kMinimumWindowWidth = 646;
-	constexpr int kMinimumWindowHeight = 480;
+	constexpr UINT_PTR kEuroScopeBoundsTimerId = 0x5A1;
+	constexpr UINT kEuroScopeBoundsTimerIntervalMs = 250;
+	constexpr int kFixedWindowWidth = 728;
+	constexpr int kFixedWindowHeight = 500;
 	const wchar_t* kVirtualHostName = L"app.vsmr";
 	const wchar_t* kVirtualOriginPrefix = L"https://app.vsmr/";
 	const wchar_t* kWebViewHostWindowClass = L"vSMR.ControlCenter.WebViewHost";
@@ -142,37 +142,72 @@ namespace
 			wcslen(kVirtualOriginPrefix)) == 0;
 	}
 
-	CRect ClampWindowRectToMonitor(const CRect& requested)
+	bool TryGetEuroScopeClientBounds(HWND dialogWindow, CRect& bounds)
 	{
-		CRect result = requested;
-		int width = (std::max)(kMinimumWindowWidth, result.Width());
-		int height = (std::max)(kMinimumWindowHeight, result.Height());
+		bounds.SetRectEmpty();
+		if (!::IsWindow(dialogWindow))
+			return false;
 
-		RECT requestedRect = result;
-		HMONITOR monitor = ::MonitorFromRect(
-			&requestedRect,
-			MONITOR_DEFAULTTONEAREST);
-		MONITORINFO monitorInfo = {};
-		monitorInfo.cbSize = sizeof(monitorInfo);
-		if (monitor == nullptr || !::GetMonitorInfoW(monitor, &monitorInfo))
-			return CRect(
-				result.left,
-				result.top,
-				result.left + width,
-				result.top + height);
+		const HWND ownerWindow = ::GetWindow(dialogWindow, GW_OWNER);
+		if (!::IsWindow(ownerWindow))
+			return false;
 
-		const CRect workArea(monitorInfo.rcWork);
-		width = (std::min)(width, workArea.Width());
-		height = (std::min)(height, workArea.Height());
+		RECT client = {};
+		if (!::GetClientRect(ownerWindow, &client))
+			return false;
+		POINT topLeft = { client.left, client.top };
+		POINT bottomRight = { client.right, client.bottom };
+		if (!::ClientToScreen(ownerWindow, &topLeft) ||
+			!::ClientToScreen(ownerWindow, &bottomRight))
+		{
+			return false;
+		}
+		bounds = CRect(topLeft, bottomRight);
+		bounds.NormalizeRect();
+		return !bounds.IsRectEmpty();
+	}
+
+	CRect ClampControlCenterRectToEuroScope(
+		HWND dialogWindow,
+		const CRect& requested)
+	{
+		CRect available;
+		if (!TryGetEuroScopeClientBounds(dialogWindow, available))
+		{
+			RECT requestedRect = requested;
+			const HMONITOR monitor = ::MonitorFromRect(
+				&requestedRect,
+				MONITOR_DEFAULTTONEAREST);
+			MONITORINFO monitorInfo = {};
+			monitorInfo.cbSize = sizeof(monitorInfo);
+			if (monitor != nullptr &&
+				::GetMonitorInfoW(monitor, &monitorInfo))
+			{
+				available = CRect(monitorInfo.rcWork);
+			}
+			else
+			{
+				return CRect(
+					requested.left,
+					requested.top,
+					requested.left + kFixedWindowWidth,
+					requested.top + kFixedWindowHeight);
+			}
+		}
+
 		const int left = (std::clamp)(
-			result.left,
-			workArea.left,
-			(std::max)(workArea.left, workArea.right - width));
+			requested.left,
+			available.left,
+			(std::max)(available.left, available.right - kFixedWindowWidth));
 		const int top = (std::clamp)(
-			result.top,
-			workArea.top,
-			(std::max)(workArea.top, workArea.bottom - height));
-		return CRect(left, top, left + width, top + height);
+			requested.top,
+			available.top,
+			(std::max)(available.top, available.bottom - kFixedWindowHeight));
+		return CRect(
+			left,
+			top,
+			left + kFixedWindowWidth,
+			top + kFixedWindowHeight);
 	}
 
 	bool ReadTextFile(const std::filesystem::path& path, std::string& text)
@@ -245,8 +280,8 @@ struct CVsmrControlCenterDialog::WebViewHostState
 	HINSTANCE moduleInstance = nullptr;
 	std::atomic<HWND> threadWindow{ nullptr };
 	std::atomic<bool> stopRequested{ false };
-	std::atomic<int> clientWidth{ kDefaultClientWidth };
-	std::atomic<int> clientHeight{ kDefaultClientHeight };
+	std::atomic<int> clientWidth{ kFixedWindowWidth };
+	std::atomic<int> clientHeight{ kFixedWindowHeight };
 	std::atomic<int> requestedPage{
 		static_cast<int>(CVsmrControlCenterDialog::Page::Display) };
 	std::atomic<bool> pageReady{ false };
@@ -280,6 +315,8 @@ BEGIN_MESSAGE_MAP(CVsmrControlCenterDialog, CDialogEx)
 	ON_WM_DESTROY()
 	ON_WM_SIZE()
 	ON_WM_MOVE()
+	ON_WM_MOVING()
+	ON_WM_TIMER()
 	ON_WM_GETMINMAXINFO()
 	ON_MESSAGE(kGithubDownloadCompleteMessage, OnGithubDownloadComplete)
 	ON_MESSAGE(kWebViewMessageReceivedMessage, OnWebViewMessageReceived)
@@ -322,10 +359,16 @@ BOOL CVsmrControlCenterDialog::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
 
-	SetWindowTextA("vSMR Control Center");
+	SetWindowTextA("vSMR");
 	ModifyStyle(
-		WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
-		0,
+		WS_CAPTION | WS_SYSMENU | WS_THICKFRAME |
+		WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER,
+		WS_POPUP,
+		SWP_FRAMECHANGED);
+	ModifyStyleEx(
+		WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE |
+		WS_EX_APPWINDOW,
+		WS_EX_TOOLWINDOW,
 		SWP_FRAMECHANGED);
 
 	FallbackLabel.Create(
@@ -363,6 +406,10 @@ BOOL CVsmrControlCenterDialog::OnInitDialog()
 		Owner,
 		std::move(callbacks));
 
+	SetTimer(
+		kEuroScopeBoundsTimerId,
+		kEuroScopeBoundsTimerIntervalMs,
+		nullptr);
 	InitializeWebView();
 	ResizeWebView();
 	return TRUE;
@@ -1414,7 +1461,11 @@ std::wstring CVsmrControlCenterDialog::WindowPlacementPath() const
 void CVsmrControlCenterDialog::RestoreWindowPlacementOrDefault(
 	const CRect& fallback)
 {
-	CRect requested = fallback;
+	CRect requested(
+		fallback.left,
+		fallback.top,
+		fallback.left + kFixedWindowWidth,
+		fallback.top + kFixedWindowHeight);
 	std::string text;
 	const std::filesystem::path path(WindowPlacementPath());
 	if (ReadTextFile(path, text))
@@ -1429,16 +1480,16 @@ void CVsmrControlCenterDialog::RestoreWindowPlacementOrDefault(
 					? document[key].GetInt()
 					: fallbackValue;
 			};
-			const int width = readInt("width", fallback.Width());
-			const int height = readInt("height", fallback.Height());
 			requested.left = readInt("x", fallback.left);
 			requested.top = readInt("y", fallback.top);
-			requested.right = requested.left + width;
-			requested.bottom = requested.top + height;
+			requested.right = requested.left + kFixedWindowWidth;
+			requested.bottom = requested.top + kFixedWindowHeight;
 		}
 	}
 
-	requested = ClampWindowRectToMonitor(requested);
+	requested = ClampControlCenterRectToEuroScope(
+		GetSafeHwnd(),
+		requested);
 	SetWindowPos(
 		nullptr,
 		requested.left,
@@ -1447,6 +1498,28 @@ void CVsmrControlCenterDialog::RestoreWindowPlacementOrDefault(
 		requested.Height(),
 		SWP_NOZORDER | SWP_NOACTIVATE);
 	WindowPlacementDirty = false;
+}
+
+void CVsmrControlCenterDialog::ConstrainToEuroScopeWindow()
+{
+	if (!::IsWindow(GetSafeHwnd()))
+		return;
+
+	CRect current;
+	GetWindowRect(&current);
+	const CRect constrained = ClampControlCenterRectToEuroScope(
+		GetSafeHwnd(),
+		current);
+	if (current == constrained)
+		return;
+
+	SetWindowPos(
+		nullptr,
+		constrained.left,
+		constrained.top,
+		constrained.Width(),
+		constrained.Height(),
+		SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void CVsmrControlCenterDialog::SaveWindowPlacement()
@@ -1462,8 +1535,6 @@ void CVsmrControlCenterDialog::SaveWindowPlacement()
 	document.SetObject();
 	document.AddMember("x", window.left, document.GetAllocator());
 	document.AddMember("y", window.top, document.GetAllocator());
-	document.AddMember("width", window.Width(), document.GetAllocator());
-	document.AddMember("height", window.Height(), document.GetAllocator());
 	rapidjson::StringBuffer buffer;
 	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
 	document.Accept(writer);
@@ -1494,6 +1565,7 @@ void CVsmrControlCenterDialog::OnOK()
 void CVsmrControlCenterDialog::OnDestroy()
 {
 	Closing = true;
+	KillTimer(kEuroScopeBoundsTimerId);
 	if (LifetimeToken)
 		LifetimeToken->store(false);
 	SaveWindowPlacement();
@@ -1534,12 +1606,38 @@ void CVsmrControlCenterDialog::OnMove(int x, int y)
 	}
 }
 
+void CVsmrControlCenterDialog::OnMoving(UINT fwSide, LPRECT pRect)
+{
+	CDialogEx::OnMoving(fwSide, pRect);
+	if (pRect == nullptr)
+		return;
+
+	const CRect requested(
+		pRect->left,
+		pRect->top,
+		pRect->left + kFixedWindowWidth,
+		pRect->top + kFixedWindowHeight);
+	const CRect constrained = ClampControlCenterRectToEuroScope(
+		GetSafeHwnd(),
+		requested);
+	*pRect = constrained;
+}
+
+void CVsmrControlCenterDialog::OnTimer(UINT_PTR nIDEvent)
+{
+	if (nIDEvent == kEuroScopeBoundsTimerId && IsWindowVisible())
+		ConstrainToEuroScopeWindow();
+	CDialogEx::OnTimer(nIDEvent);
+}
+
 void CVsmrControlCenterDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 {
 	CDialogEx::OnGetMinMaxInfo(lpMMI);
 	if (lpMMI != nullptr)
 	{
-		lpMMI->ptMinTrackSize.x = kMinimumWindowWidth;
-		lpMMI->ptMinTrackSize.y = kMinimumWindowHeight;
+		lpMMI->ptMinTrackSize.x = kFixedWindowWidth;
+		lpMMI->ptMinTrackSize.y = kFixedWindowHeight;
+		lpMMI->ptMaxTrackSize.x = kFixedWindowWidth;
+		lpMMI->ptMaxTrackSize.y = kFixedWindowHeight;
 	}
 }

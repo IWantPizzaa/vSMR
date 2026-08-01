@@ -6,16 +6,17 @@
 
 namespace
 {
-	CRect BuildDefaultControlCenterWindowRect()
+	CRect BuildDefaultControlCenterWindowRect(CWnd* euroScopeWindow)
 	{
 		constexpr int defaultWidth = 728;
 		constexpr int defaultHeight = 500;
 		CRect fallback(90, 90, 90 + defaultWidth, 90 + defaultHeight);
-		CWnd* mainWindow = AfxGetMainWnd();
-		if (mainWindow != nullptr && ::IsWindow(mainWindow->GetSafeHwnd()))
+		if (euroScopeWindow != nullptr &&
+			::IsWindow(euroScopeWindow->GetSafeHwnd()))
 		{
 			CRect mainRect;
-			mainWindow->GetWindowRect(&mainRect);
+			euroScopeWindow->GetClientRect(&mainRect);
+			euroScopeWindow->ClientToScreen(&mainRect);
 			if (!mainRect.IsRectEmpty())
 			{
 				fallback.left = mainRect.left + max(24, (mainRect.Width() - defaultWidth) / 2);
@@ -63,16 +64,34 @@ bool CSMRRadar::EnsureVsmrControlCenterWindowCreated()
 	}
 
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	CWnd* candidateWindow = AfxGetMainWnd();
+	if (candidateWindow == nullptr ||
+		!::IsWindow(candidateWindow->GetSafeHwnd()))
+	{
+		return false;
+	}
+	HWND euroScopeHwnd = ::GetAncestor(
+		candidateWindow->GetSafeHwnd(),
+		GA_ROOTOWNER);
+	if (!::IsWindow(euroScopeHwnd))
+		return false;
+	CWnd* euroScopeWindow = CWnd::FromHandle(euroScopeHwnd);
+	if (euroScopeWindow == nullptr)
+		return false;
 
-	VsmrControlCenterDialog = std::make_unique<CVsmrControlCenterDialog>(this, AfxGetMainWnd());
-	if (!VsmrControlCenterDialog->Create(CVsmrControlCenterDialog::IDD, AfxGetMainWnd()))
+	VsmrControlCenterDialog = std::make_unique<CVsmrControlCenterDialog>(
+		this,
+		euroScopeWindow);
+	if (!VsmrControlCenterDialog->Create(
+		CVsmrControlCenterDialog::IDD,
+		euroScopeWindow))
 	{
 		VsmrControlCenterDialog.reset();
 		return false;
 	}
 
 	VsmrControlCenterDialog->RestoreWindowPlacementOrDefault(
-		BuildDefaultControlCenterWindowRect());
+		BuildDefaultControlCenterWindowRect(euroScopeWindow));
 	VsmrControlCenterDialog->ShowWindow(SW_HIDE);
 	return true;
 }
@@ -91,6 +110,7 @@ void CSMRRadar::OpenVsmrControlCenterWindow(const std::string& pageName)
 		return;
 	}
 
+	VsmrControlCenterDialog->ConstrainToEuroScopeWindow();
 	VsmrControlCenterDialog->SetWindowPos(
 		&CWnd::wndTop,
 		0,
