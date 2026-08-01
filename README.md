@@ -12,14 +12,14 @@ This repository is a maintained fork of:
 - Added per-profile `Tower mode`
 - Tower Mode keeps full tags for all arrivals and aircraft at `TAXI`, `DEPA`, `ARR`, or later states
 - Aircraft with no status, `NSTS`, `PUSH`, or `STUP` remain icon-only in Tower Mode
-- Added checked `Pro mode` and `Tower mode` toggles to the top-bar `Display` menu
-- Top-bar toggles and profile editor toggles share the same persisted profile settings
+- `Pro mode` and `Tower mode` are represented by profile display modes, selected
+  from the Runtime Menu and configured on the Control Center `Modes` page
 
 ### Previously In v1.1.2
 
-- Major rendering-path optimizations for symbol, tag, and profile-editor responsiveness
+- Major rendering-path optimizations for symbol, tag, and Control Center responsiveness
 - Added `NOVA` icon style and icon-trail rendering support
-- Profile editor icon layout refresh:
+- Control Center icon layout refresh:
   - shape controls split into two rows (`Icons`, `NOVA` / `Arrow`, `Diamond`)
   - clipping fixes for tight-width layouts
 - Icons & Tags editor improvements:
@@ -27,7 +27,7 @@ This repository is a maintained fork of:
   - new `Behavior` box with global `Auto Deconfliction` and `Rounded Corners`
   - `rounded_corners` persisted in `vSMR_Profiles.json`
 - Tag rule fix: hover/detailed tags now preserve structured color overrides
-- Top `Target` menu cleanup: icon style controls removed (handled in profile editor)
+- Top `Target` menu cleanup: icon style controls removed (handled in the Control Center)
 - About panel cleanup and credits alignment with repository attribution
 
 ### Previously In v1.1.1
@@ -41,7 +41,7 @@ This repository is a maintained fork of:
   - all other on-ground arrival movement states use `On Ground`
 - Profile lists now use one consistent ordering across UI:
   - `Default` first (if present), then alphabetical
-- Profile editor selection sync fix when profile is changed from radar menus
+- Control Center selection sync fix when the active profile changes from runtime controls
 
 ## Overview
 
@@ -54,7 +54,7 @@ vSMR is not a standalone application. It is a EuroScope plugin DLL that:
 - monitors runway activity and movement conflicts through RIMCAS
 - integrates VACDM timestamps and states into tags and color rules
 - integrates Hoppie CPDLC for datalink clearance workflows
-- ships with a detachable live profile editor
+- ships with a fixed-size, EuroScope-owned modeless Control Center
 
 Control Center maintainers should also read the
 [implementation notes](docs/CONTROL_CENTER.md) and run the
@@ -89,10 +89,11 @@ vSMR/
 - Structured rule engine for icon, tag, and text recoloring
 - RIMCAS alerts for runway and movement conflicts
 - Two approach/surface inset windows (`SRW 1` and `SRW 2`)
-- Top toolbar menus for display, targets, colors, alerts, and distance tools
+- Compact Runtime Menu for profile, mode, group, inset, and preset operations
+- Reduced top toolbar for active-airport and radar-session tools
 - VACDM integration for `TOBT`, `TSAT`, `TTOT`, `ASAT`, `AOBT`, `ATOT`, `ASRT`, `AORT`, `CTOT`, and event booking
 - Hoppie CPDLC login, polling, and datalink UI integration
-- Detached modeless profile editor with live updates
+- Fixed-size modeless Control Center with live runtime synchronization
 
 ## Requirements
 
@@ -158,7 +159,7 @@ EuroScope\Plugins\
 
 | File                 | Location                                             | Purpose                                                                                                    |
 | -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `vSMR_Profiles.json` | `vSMR_Data\`, then same folder as `vSMR.dll` fallback | Main profile database: fonts, labels, rules, colors, alerts, icon settings, editor window layout, and more |
+| `vSMR_Profiles.json` | `vSMR_Data\`, then same folder as `vSMR.dll` fallback | Main profile database: fonts, labels, rules, colors, alerts, icon settings, legacy UI metadata, and more |
 | `vSMR_webUI\*`       | Directory next to `vSMR.dll`                         | Four local application assets plus full profile/LFPG AVISO defaults used by the modeless Control Center    |
 
 ### Optional
@@ -210,15 +211,16 @@ The plugin responds to the following EuroScope command-line commands:
 | `.smr log verbose` | Plugin           | Enables detailed logging                                               |
 | `.smr log off`     | Plugin           | Disables logging                                                       |
 | `.smr log status`  | Plugin           | Prints current logging status and mode                                 |
-| `.smr profile`     | Plugin           | Opens the detached profile editor on the first active SMR radar screen |
-| `.smr editor`      | Plugin           | Alias for `.smr profile`                                             |
-| `.smr config`      | Plugin           | Alias for `.smr profile`                                             |
+| `.smr profile`     | Plugin           | Opens the Control Center `Profiles` page on the first active SMR radar screen |
+| `.smr editor`      | Plugin           | Opens the Control Center `Display` page                               |
+| `.smr vsmr`        | Plugin           | Alias for `.smr editor`                                               |
+| `.smr config`      | Plugin           | Opens the Control Center `Settings` page                              |
 | `.smr draw`        | Radar screen     | Toggles runway-area drawing                                            |
 | `.smr status`      | Radar screen     | Prints current runway status information from RIMCAS                   |
 
 ### Logging Modes
 
-- `normal`: concise logs for routine troubleshooting; suppresses function-signature traces and profile-editor step spam.
+- `normal`: concise logs for routine troubleshooting; suppresses function-signature traces and editor-initialization step spam.
 - `verbose`: detailed logs for deep debugging; still suppresses known hot-loop trace spam.
 - The log file is `vsmr.log` in the same folder as `vSMR.dll`.
 - `.smr log on`, `.smr log enable`, and `.smr log 1` are accepted aliases for `normal`.
@@ -228,51 +230,74 @@ The plugin responds to the following EuroScope command-line commands:
 
 ### Top toolbar
 
-The radar screen draws a top toolbar with:
+The reduced grey toolbar is reserved for active-airport and radar-session
+controls. From left to right it shows:
 
 - active airport selector
-- `Display`
+- `QDR`
 - `Target`
-- `Colours`
-- `Alerts`
+- `Lighting`
 - `/` distance tool
+- the `FPS A/C/R/T/S` performance readout when space permits
 
-### Display menu
+Profile selection, display modes, AVISO groups, inset visibility, and inset
+presets belong to the Runtime Menu. Persistent profile, tag, icon, AVISO, and
+RIMCAS editing belongs to the Control Center. They are intentionally absent
+from the top toolbar.
 
-The display menu includes:
+### QDR menu
 
-- active airport selection
-- profile selection
-- per-profile `Pro mode` and `Tower mode` toggles
-- `SRW 1` and `SRW 2` inset window toggles
+The QDR menu retains the two radar reference tools:
+
+- `QDR Fixed Reference`, measured from the active airport
+- `QDR Select Reference`, measured from a point selected on the radar
 
 ### Target menu
 
-The target menu includes profile-backed controls such as:
+The Target menu retains immediate radar-session controls:
 
-- fixed pixel icon sizing
-- fixed size scale
-- small icon boost
-- boost factor
-- resolution preset
-- trail settings
-- predicted track line
+- afterglow
+- ground trail dots
+- approach trail dots
+- predicted track line (PTL)
+- acquire and release correlation actions
 
-### Colours menu
+Icon style, icon sizing, label size, and typeface are configured only in the
+Control Center and do not appear here.
 
-The colors menu includes:
+### Lighting menu
+
+The Lighting menu contains runtime visual adjustments:
 
 - day/night mode
-- label font size
-- tag font selection
+- label, symbol, and afterglow brightness
 
-### Alerts menu
+These are session-level multipliers and are distinct from the persisted color
+values edited on the Control Center `Display > Colors` page.
 
-The alerts menu includes:
+### Runtime Menu and AVISO inset
 
-- active alert toggles
-- monitored runway controls
-- runway state related settings
+The draggable five-icon Runtime Menu owns:
+
+- display-mode selection
+- AVISO group visibility
+- AVISO, SRW 1, and SRW 2 visibility
+- AVISO inset preset load/save/update/rename/duplicate/reset/delete operations
+- the `Set default` / `Clear default` preset toggle and linked movement
+- active-profile selection
+- opening the Control Center
+
+The AVISO inset itself is limited to viewport interaction: its title/drag
+surface, `F` detach control, resize handles/dividers, pan, and zoom. It has no
+duplicate close, preset, reload, or editor buttons. Show/hide and preset actions
+are performed from the Runtime Menu; AVISO editing and reload are performed in
+the Control Center.
+
+### RIMCAS
+
+RIMCAS alert types, monitored runways, closed-runway state, and Normal/LVP
+visibility are configured on the Control Center `Alerts` page rather than the
+top toolbar.
 
 Supported RIMCAS alert labels in code:
 
@@ -293,80 +318,46 @@ Supported RIMCAS alert labels in code:
 - The distance tool is attached to the `/` toolbar button.
 - The plugin exposes a `Datalink clearance` tag item and a `Datalink menu` tag function to EuroScope.
 
-## Profile Editor
+## vSMR Control Center
 
-The profile editor is a detached, modeless window. It updates the active radar screen live and persists its own window rectangle in `ui_layout.profile_editor_window` inside `vSMR_Profiles.json`.
+The Control Center is a fixed 728 x 500 modeless window titled `vSMR`. It is
+owned by EuroScope, remains inside the EuroScope client area, and restores its
+position from `%LOCALAPPDATA%\vSMR\control-center-window.json`. Open it from
+the Runtime Menu gear or with one of the commands above.
 
-Current pages:
+Its primary pages are:
 
-- `Colors`
-- `Icons & Tags`
-- `Rules`
-- `Profiles`
+- `Display`, with `Colors`, `Icons`, `Tags`, and `Rules` tabs
+- `AVISO`, for geometry/text editing and data reload/import
+- `Alerts`, for RIMCAS types, runways, timers, visibility, and appearance
+- `Groups`, for AVISO group definition, membership, and ordering
+- `Modes`, for display-mode definitions and activation
+- `Profiles`, for profile filters, lifecycle, and activation
+- `Settings`, for connected runtime settings and data sources
 
-### Colors
+Local `Update` buttons stage editor changes. `Revert` discards the current
+draft, while the global blue `Save` validates and persists staged profile and
+AVISO documents. Runtime profile/mode/group/inset actions remain immediate and
+are synchronized between the Control Center and Runtime Menu.
 
-The Colors page provides:
+### Display editor
 
-- a hierarchical color tree on the left
-- a live preview
-- color wheel editing
-- value and opacity sliders
-- RGBA and HEX editing
-- immediate apply/reset against the active profile
+The Display page provides a hierarchical profile-color editor, icon style and
+size controls, normal/detailed tag definitions with token insertion, global tag
+behavior and typography, and structured target/tag/text color rules.
 
-### Icons & Tags
+### AVISO, Alerts, and Groups
 
-The Icons & Tags page combines icon configuration and tag definition editing.
+AVISO geometry, text, source loading, and reload are centralized in the
+Control Center. Alert configuration likewise lives only on the Alerts page;
+the old top-bar alert lists are not retained. Group definition and membership
+are edited here, while visibility remains a quick Runtime Menu operation.
 
-Icon controls include:
+### Modes and Profiles
 
-- shape selection: `Arrow`, `Diamond`, `Icons`, `NOVA`
-- fixed pixel mode
-- fixed size scale
-- small icon boost
-- boost factor
-- display resolution presets: `1080p`, `2K`, `4K`
-
-Tag controls include:
-
-- tag type selection
-- status selection
-- token insertion dropdown
-- a multiline normal definition editor
-- `Custom Hover Details` toggle
-- a multiline detailed definition editor
-- `Behavior` options:
-  - `Auto Deconfliction`
-  - global `Rounded Corners`
-
-### Rules
-
-The Rules page edits the structured rule engine used to recolor:
-
-- target icons
-- tag backgrounds
-- tag text
-
-A rule can contain multiple criteria. The UI supports:
-
-- adding and removing rules
-- adding extra parameters to a rule
-- selecting rule source, token, and condition
-- limiting by tag type, status, and detail level
-- editing icon/tag/text output colors
-
-### Profiles
-
-The Profiles page provides:
-
-- profile list
-- per-profile `Pro mode` and `Tower mode` toggles
-- add
-- duplicate
-- rename
-- delete
-- an About panel with project links
+The Modes page creates and edits display modes, including requirements and
+visible statuses. The Profiles page creates, duplicates, renames, deletes, and
+activates profiles and edits altitude, speed, range, and night-alpha filters.
 
 ## Tag Definitions
 
@@ -376,7 +367,7 @@ Tag definitions are profile-backed and depend on:
 - target status
 - whether the tag is shown in normal or detailed mode
 
-Profile editor target types:
+Control Center tag-editor target types:
 
 - `departure`
 - `arrival`
@@ -599,9 +590,9 @@ Controls:
 
 ### `ui_layout`
 
-Currently used for at least:
-
-- `profile_editor_window`
+Legacy profiles may still contain `profile_editor_window`. The current
+fixed-size Control Center does not use that profile field; its position is
+stored in `%LOCALAPPDATA%\vSMR\control-center-window.json`.
 
 ## Maps
 
@@ -703,8 +694,10 @@ This is the quickest code map for new contributors:
 | `vSMR/SMRRadar_AircraftAndAsr.cpp`      | Aircraft dimensions, realistic icon data, ASR persistence                              |
 | `vSMR/Config.*`                         | JSON config and map loading/saving                                                     |
 | `vSMR/Rimcas.*`                         | RIMCAS alerting and runway monitoring                                                  |
-| `vSMR/ProfileEditorDialog.*`            | Detached profile editor UI                                                             |
-| `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Profile editor window creation, persistence, and lifecycle                             |
+| `vSMR/ProfileEditorDialog.*`            | Legacy native editor implementation retained for compatibility; current entry points use the Control Center |
+| `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Shared profile/mode editing APIs plus legacy editor lifecycle                           |
+| `vSMR/src/VsmrControlCenter*.cpp`, `vSMR/include/VsmrControlCenter*.hpp` | Fixed-size WebView2 Control Center host, bridge, lifecycle, and runtime synchronization |
+| `vSMR/src/SMRRadar_RuntimeMenu.cpp`     | Native five-icon Runtime Menu and inset-preset operations                              |
 | `vSMR/InsetWindow.*`                    | Approach/surface inset windows                                                         |
 | `vSMR/CallsignLookup.*`                 | Airline/callsign lookup from `ICAO_Airlines.txt`                                     |
 | `vSMR/HttpHelper.*`                     | HTTP downloading helper (WinHTTP path used in current implementation)                  |
@@ -725,11 +718,14 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 ## Troubleshooting
 
 - If the plugin fails to load its profile data, validate `vSMR_Data\vSMR_Profiles.json` first.
-- If the profile editor opens off-screen, remove or correct `ui_layout.profile_editor_window`.
+- If the Control Center restores outside the visible EuroScope area, remove
+  `%LOCALAPPDATA%\vSMR\control-center-window.json`; it will reopen centered and
+  clamped inside EuroScope.
 - If realistic icons do not appear, verify `targets.icon_style`, `vSMR_Data\ICAO_Aircraft.json`, and `vSMR_Data\aircraft_icons\`.
 - If airline names are missing, verify `ICAO_Airlines.txt` in one of the supported search paths.
 - If VACDM fields stay empty, verify that `_vsmr.vacdm.server_url` is set in `vSMR_Data\vSMR_Profiles.json`, then check callsign matching and backend data availability.
-- If `.smr profile` does nothing, make sure at least one SMR radar screen is open.
+- If `.smr profile`, `.smr editor`, or `.smr config` does nothing, make sure at
+  least one SMR radar screen is open and the x86 WebView2 Runtime is installed.
 
 ## Credits
 

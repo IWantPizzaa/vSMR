@@ -370,7 +370,6 @@ public:
 	map<string, CRimcas::RunwayAreaType> RunwayAreas;
 
 	map<string, RECT> MenuPositions;
-	map<string, bool> DisplayMenu;
 	enum class RuntimeMenuPopup
 	{
 		None,
@@ -716,6 +715,7 @@ public:
 	bool SetDefaultAvisoPreset(const std::string& name);
 	bool ClearDefaultAvisoPreset();
 	bool ApplyDefaultAvisoPresetIfConfigured();
+	void ResetAvisoPresetStateForActiveProfile();
 	bool UpdateActiveAvisoPreset();
 	bool ResetActiveAvisoPreset();
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);

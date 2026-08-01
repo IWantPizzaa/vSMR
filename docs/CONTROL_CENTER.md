@@ -12,6 +12,8 @@ capability boundaries.
 | Layer | Main files | Responsibility |
 | --- | --- | --- |
 | Native runtime UI | `vSMR/src/SMRRadar_RuntimeMenu.cpp` | Draws the focusless radar-screen icon rail and compact popups with EuroScope screen objects. |
+| Radar operational UI | `vSMR/src/SMRRadar.cpp`, `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Draws the reduced top toolbar and handles active-airport, QDR, target-session, lighting, and distance actions. |
+| AVISO viewport UI | `vSMR/src/InsetWindow.cpp` | Draws only AVISO viewport chrome and interaction: title/drag, detach, resize/dividers, pan, and zoom. |
 | Runtime/render state | `vSMR/src/SMRRadar.cpp`, `vSMR/src/InsetWindow.cpp` | Applies profiles, modes, inset state, RIMCAS state, and AVISO renderer state. |
 | Modeless host | `vSMR/src/SMRRadar_ControlCenter.cpp`, `vSMR/src/VsmrControlCenterDialog.cpp` | Owns the modeless MFC window, WebView2 lifetime, local-resource mapping, placement, file selection, and asynchronous GitHub loading. |
 | Typed dispatch | `vSMR/include/VsmrControlCenterBridge.hpp`, `vSMR/src/VsmrControlCenterBridge.cpp` | Decodes one versioned envelope, validates payloads, dispatches to radar/config APIs, and emits replies. |
@@ -39,6 +41,25 @@ operations that change native state. Local editor `Update` buttons commit a
 draft into staged browser state; the blue global `Save` button writes that
 staged state.
 
+## Surface ownership
+
+Runtime and editing controls have one owner each. This prevents the same action
+from appearing in the AVISO inset, Runtime Menu, legacy top toolbar, and Control
+Center at the same time.
+
+| Surface | Owned controls | Intentionally absent |
+| --- | --- | --- |
+| Runtime Menu | Mode/profile selection, AVISO group visibility, AVISO/SRW visibility, full inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
+| AVISO inset | Title/drag, `F` detach, resize handles/dividers, pan, and zoom | Close/visibility, preset, reload, and editor buttons |
+| Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, and settings editing | Radar cursor tools and duplicated inset chrome |
+| Top toolbar | Active airport, QDR, Target session controls, Lighting, `/` distance tool, and the FPS component readout | Profile, mode, alert, inset, AVISO editor/reload, label-size, and typeface controls |
+
+The reduced top toolbar therefore reads: active airport, `QDR`, `Target`,
+`Lighting`, `/`, and `FPS`. QDR contains fixed and selected reference tools.
+Target contains afterglow, ground/approach trails, predicted track line,
+Acquire, and Release.
+Lighting contains Day/Night plus label, symbol, and afterglow brightness.
+
 ## Runtime rail
 
 The runtime rail is a native GDI/GDI+ overlay, not the browser preview rail. It
@@ -60,7 +81,10 @@ Mode and profile choices call the existing live activation APIs. Inset choices
 independently toggle AVISO, SRW 1, and SRW 2. Presets capture and restore the
 main AVISO view, AVISO secondary window, and both SRWs, including visibility,
 placement, scale/range, filter, rotation, layout, and linked movement. Rename
-uses EuroScope's popup editor; the other rail interactions remain focusless.
+uses EuroScope's popup editor. The default action reads `Set default` when an
+active non-default preset can be promoted. It reads `Clear default` when the
+active preset is already the default, or when no preset is active but a
+configured default remains; the other rail interactions remain focusless.
 
 AVISO items may belong to more than one group. Visibility uses union semantics:
 an item is rendered when at least one known assigned group is visible.
@@ -175,7 +199,7 @@ editor and renderer classes do not parse raw message strings.
 | `aviso.inset.preset.update` | Re-captures the active preset. |
 | `aviso.inset.preset.rename` | Renames the selected preset. |
 | `aviso.inset.preset.duplicate` | Duplicates the selected preset. |
-| `aviso.inset.preset.default` | Sets the profile default preset. |
+| `aviso.inset.preset.default` | Sets the profile default preset; the native Runtime Menu uses the same action to clear an existing default when appropriate. |
 | `aviso.inset.preset.reset` | Reloads the active/default preset. |
 | `aviso.inset.preset.delete` | Deletes a preset. |
 | `aviso.inset.preset.linked` | Changes linked movement. |
@@ -188,9 +212,10 @@ Most profile, display, rule, tag, AVISO, mode, and group editor changes do not
 need a separate native action: their `Update` button records a staged snapshot,
 and `state.save` sends the complete profiles/AVISO documents.
 
-Inset preset create/update/rename/duplicate/default/delete operations use the
-existing native preset API, which persists the profile immediately. They are
-runtime-management operations rather than ordinary staged editor fields.
+Inset preset create/update/rename/duplicate/set-or-clear-default/delete
+operations use the existing native preset API, which persists the profile
+immediately. They are runtime-management operations rather than ordinary
+staged editor fields.
 Profile and display-mode activation are also immediate runtime operations and
 persist their active selection through the existing profile/ASR paths.
 
@@ -343,7 +368,12 @@ runtime or packaged resources are unavailable.
 - Added the native five-button draggable runtime rail and compact edge-aware
   popups.
 - Added runtime profile/mode switching, group visibility, three independent
-  inset toggles, and full native inset-preset management.
+  inset toggles, and full native inset-preset management, including a
+  Set/Clear-default toggle.
+- Reduced AVISO inset chrome to viewport-only controls and moved visibility and
+  presets to the Runtime Menu, with editing/reload owned by the Control Center.
+- Reduced the old grey top toolbar to active airport, QDR, Target session
+  controls, Lighting, distance, and performance diagnostics.
 - Added modeless WebView2 hosting, local virtual-host mapping, placement
   persistence, and runtime/resource fallback diagnostics.
 - Added the centralized versioned bridge and authoritative state/error flows.

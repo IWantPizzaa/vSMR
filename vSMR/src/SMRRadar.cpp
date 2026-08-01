@@ -2885,6 +2885,7 @@ void CSMRRadar::LoadCustomFont() {
 bool CSMRRadar::ReloadConfig() {
 	Logger::info("CSMRRadar::ReloadConfig()");
 	std::string activeProfile = CurrentConfig ? CurrentConfig->getActiveProfileName() : "Default";
+	const std::string previousActiveProfile = activeProfile;
 	bool reloadSucceeded = true;
 	if (!CurrentConfig)
 	{
@@ -2900,6 +2901,8 @@ bool CSMRRadar::ReloadConfig() {
 		activeProfile = CurrentConfig->getAllProfiles().front();
 	}
 	this->LoadProfile(activeProfile);
+	if (_stricmp(previousActiveProfile.c_str(), CurrentConfig->getActiveProfileName().c_str()) != 0)
+		ResetAvisoPresetStateForActiveProfile();
 	this->RefreshAirportActivity();
 
 	// Force map visibility recomputation on next frame even when zoom level is unchanged.
@@ -7390,126 +7393,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	setRefreshStage("popup list rendering");
 
 
-	if (ShowLists["Conflict Alert ARR"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert ARR"], "CA Arrival", 1);
-		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
-		{
-			const auto monitoredArrIt = RimcasInstance->MonitoredRunwayArr.find(it->first);
-			const bool monitoredArr = (monitoredArrIt != RimcasInstance->MonitoredRunwayArr.end()) && monitoredArrIt->second;
-			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_ARRIVAL_FUNC, false, monitoredArr);
-		}
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Conflict Alert ARR"] = false;
-	}
-
-	if (ShowLists["Conflict Alert DEP"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Conflict Alert DEP"], "CA Departure", 1);
-		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
-		{
-			const auto monitoredDepIt = RimcasInstance->MonitoredRunwayDep.find(it->first);
-			const bool monitoredDep = (monitoredDepIt != RimcasInstance->MonitoredRunwayDep.end()) && monitoredDepIt->second;
-			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CA_MONITOR_FUNC, false, monitoredDep);
-		}
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Conflict Alert DEP"] = false;
-	}
-
-	if (ShowLists["Runway closed"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Runway closed"], "Runway Closed", 1);
-		for (std::map<string, CRimcas::RunwayAreaType>::iterator it = RimcasInstance->RunwayAreas.begin(); it != RimcasInstance->RunwayAreas.end(); ++it)
-		{
-			const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(it->first);
-			const bool isClosedRunway = (closedRunwayIt != RimcasInstance->ClosedRunway.end()) && closedRunwayIt->second;
-			GetPlugIn()->AddPopupListElement(it->first.c_str(), "", RIMCAS_CLOSED_RUNWAYS_FUNC, false, isClosedRunway);
-		}
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Runway closed"] = false;
-	}
-
-	if (ShowLists["Visibility"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Visibility"], "Visibility", 1);
-		GetPlugIn()->AddPopupListElement("Normal", "", RIMCAS_UPDATE_LVP, false, int(!isLVP));
-		GetPlugIn()->AddPopupListElement("Low", "", RIMCAS_UPDATE_LVP, false, int(isLVP));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Visibility"] = false;
-	}
-
-	if (ShowLists["Active Alerts"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Active Alerts"], "Active Alerts", 1);
-		GetPlugIn()->AddPopupListElement("NO PUSH", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO PUSH") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("NO TAXI", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO TAXI") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("NO TKOF", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("NO TKOF") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("STAT RPA", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("STAT RPA") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("RWY INC", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY INC") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("RWY TYPE", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY TYPE") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("RWY CLSD", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("RWY CLSD") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("HIGH SPD", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("HIGH SPD") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("EMERG", "", RIMCAS_ALERTS_TOGGLE_FUNC, false, RimcasInstance->inactiveAlerts.find("EMERG") == RimcasInstance->inactiveAlerts.end());
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Active Alerts"] = false;
-	}
-
-	if (ShowLists["Profiles"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Profiles"], "Profiles", 1);
-		vector<string> allProfiles = GetOrderedProfileNamesForUi();
-		for (std::vector<string>::iterator it = allProfiles.begin(); it != allProfiles.end(); ++it) {
-			GetPlugIn()->AddPopupListElement(it->c_str(), "", RIMCAS_UPDATE_PROFILE, false, int(CurrentConfig->isItActiveProfile(it->c_str())));
-		}
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Profiles"] = false;
-	}
-
-	if (ShowLists["Colour Settings"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Colour Settings"], "Colour Settings", 1);
+	if (ShowLists["Day / Night"]) {
+		GetPlugIn()->OpenPopupList(ListAreas["Day / Night"], "Day / Night", 1);
 		GetPlugIn()->AddPopupListElement("Day", "", RIMCAS_UPDATE_BRIGHNESS, false, int(ColorSettingsDay));
 		GetPlugIn()->AddPopupListElement("Night", "", RIMCAS_UPDATE_BRIGHNESS, false, int(!ColorSettingsDay));
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Colour Settings"] = false;
-	}
-
-	if (ShowLists["Label Font Size"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Label Font Size"], "Label Font Size", 1);
-		GetPlugIn()->AddPopupListElement("Size 1", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 1)));
-		GetPlugIn()->AddPopupListElement("Size 2", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 2)));
-		GetPlugIn()->AddPopupListElement("Size 3", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 3)));
-		GetPlugIn()->AddPopupListElement("Size 4", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 4)));
-		GetPlugIn()->AddPopupListElement("Size 5", "", RIMCAS_UPDATE_FONTS, false, int(bool(currentFontSize == 5)));
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Label Font Size"] = false;
-	}
-
-	if (ShowLists["Tag Font"]) {
-		GetPlugIn()->OpenPopupList(ListAreas["Tag Font"], "Tag Font", 1);
-
-		auto toLowerCopy = [](std::string value) {
-			std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-			return value;
-		};
-
-		const std::string currentFontName = GetActiveTagFontName();
-		const std::string currentFontNameLower = toLowerCopy(currentFontName);
-		std::vector<std::string> availableFonts = GetAvailableTagFonts();
-
-		bool containsCurrentFont = false;
-		for (const std::string& fontName : availableFonts)
-		{
-			if (toLowerCopy(fontName) == currentFontNameLower)
-			{
-				containsCurrentFont = true;
-				break;
-			}
-		}
-
-		if (!currentFontName.empty() && !containsCurrentFont)
-			availableFonts.insert(availableFonts.begin(), currentFontName);
-
-		for (const std::string& fontName : availableFonts)
-		{
-			GetPlugIn()->AddPopupListElement(fontName.c_str(), "", RIMCAS_UPDATE_TAG_FONT, false, int(bool(toLowerCopy(fontName) == currentFontNameLower)));
-		}
-
-		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
-		ShowLists["Tag Font"] = false;
+		ShowLists["Day / Night"] = false;
 	}
 
 	if (ShowLists["GRND Trail Dots"]) {
@@ -7738,13 +7627,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	AddScreenObject(RIMCAS_ACTIVE_AIRPORT, "ActiveAirport", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(getActiveAirport().c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(getActiveAirport().c_str()).cy }, false, "Active Airport");
 
 	offset += dc.GetTextExtent(getActiveAirport().c_str()).cx + 10;
-	std::string activeProfileName = GetActiveProfileNameForEditor();
-	if (activeProfileName.empty())
-		activeProfileName = "Default";
-	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, activeProfileName.c_str());
-	AddScreenObject(RIMCAS_ACTIVE_PROFILE, "ActiveProfile", { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent(activeProfileName.c_str()).cx, ToolBarAreaTop.top + 4 + dc.GetTextExtent(activeProfileName.c_str()).cy }, false, "Active profile");
-
-	offset += dc.GetTextExtent(activeProfileName.c_str()).cx + 10;
 	auto drawToolbarMenuItem = [&](const char* label, const char* objectId, const char* tooltip)
 	{
 		const CSize labelSize = dc.GetTextExtent(label);
@@ -7752,11 +7634,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		AddScreenObject(RIMCAS_MENU, objectId, { ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + labelSize.cx, ToolBarAreaTop.top + 4 + labelSize.cy }, false, tooltip);
 		offset += labelSize.cx + 10;
 	};
-	drawToolbarMenuItem("Display", "DisplayMenu", "Display menu");
-	drawToolbarMenuItem("Modes", "ModesMenu", "Modes menu");
+	drawToolbarMenuItem("QDR", "QdrMenu", "QDR reference tools");
 	drawToolbarMenuItem("Target", "TargetMenu", "Target menu");
-	drawToolbarMenuItem("Colours", "ColourMenu", "Colour menu");
-	drawToolbarMenuItem("Alerts", "RIMCASMenu", "RIMCAS menu");
+	drawToolbarMenuItem("Lighting", "LightingMenu", "Runtime lighting");
 
 	dc.TextOutA(ToolBarAreaTop.left + offset, ToolBarAreaTop.top + 4, "/");
 	CRect barDistanceRect = { ToolBarAreaTop.left + offset - 2, ToolBarAreaTop.top + 4, ToolBarAreaTop.left + offset + dc.GetTextExtent("/").cx, ToolBarAreaTop.top + 4 + +dc.GetTextExtent("/").cy };

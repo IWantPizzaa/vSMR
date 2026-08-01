@@ -871,7 +871,11 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 		if (canonicalName.empty())
 			return false;
 
+		const bool profileChanged =
+			!EqualsNoCase(radar->CurrentConfig->getActiveProfileName(), canonicalName);
 		radar->LoadProfile(canonicalName);
+		if (profileChanged)
+			radar->ResetAvisoPresetStateForActiveProfile();
 		radar->LoadCustomFont();
 		const std::string activeProfile = radar->CurrentConfig->getActiveProfileName();
 		RememberSessionActiveProfile(activeProfile);
@@ -1200,6 +1204,7 @@ bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool dupli
 
 	CurrentConfig->reload();
 	LoadProfile(createdName);
+	ResetAvisoPresetStateForActiveProfile();
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);
@@ -1269,6 +1274,7 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 		return false;
 
 	const std::string activeBefore = CurrentConfig->getActiveProfileName();
+	const bool deletingActive = EqualsNoCase(activeBefore, name);
 	const rapidjson::SizeType removeIndex = FindProfileIndexNoCase(CurrentConfig->document, name);
 	if (removeIndex >= CurrentConfig->document.Size())
 		return false;
@@ -1281,13 +1287,15 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 
 	CurrentConfig->reload();
 	std::string nextActive = activeBefore;
-	if (EqualsNoCase(activeBefore, name))
+	if (deletingActive)
 	{
 		const std::vector<std::string> names = CurrentConfig->getAllProfiles();
 		nextActive = names.empty() ? "Default" : names.front();
 	}
 
 	LoadProfile(nextActive);
+	if (deletingActive)
+		ResetAvisoPresetStateForActiveProfile();
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);

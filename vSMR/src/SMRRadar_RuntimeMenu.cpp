@@ -689,6 +689,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 		const std::vector<AvisoPreset> presets = GetAvisoPresets();
 		const std::string activePreset = GetActiveAvisoPresetName();
+		const std::string defaultPreset = GetDefaultAvisoPresetName();
 		const int presetRows = (std::min)(4, static_cast<int>(presets.size()));
 		const int maximumPresetOffset = (std::max)(0, static_cast<int>(presets.size()) - presetRows);
 		RuntimeMenuPopupScrollOffset = std::clamp(RuntimeMenuPopupScrollOffset, 0, maximumPresetOffset);
@@ -748,7 +749,16 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			contentTop += kPopupPagerHeight;
 		}
 
-		const bool hasActivePreset = !activePreset.empty();
+		const bool hasActivePreset =
+			!activePreset.empty() &&
+			std::any_of(presets.begin(), presets.end(), [&](const AvisoPreset& preset)
+			{
+				return EqualsNoCase(preset.name, activePreset);
+			});
+		const bool hasDefaultPreset = !defaultPreset.empty();
+		const bool clearDefaultAction =
+			hasDefaultPreset && (!hasActivePreset || EqualsNoCase(activePreset, defaultPreset));
+		const bool canChangeDefault = hasActivePreset || hasDefaultPreset;
 		CRect linkedArea(
 			RuntimeMenuPopupArea.left + kPopupPadding,
 			contentTop + 2,
@@ -776,17 +786,17 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		const struct
 		{
 			const char* id;
-			const char* label;
-			bool requiresActive;
+			std::string label;
+			bool enabled;
 			bool danger;
 		} actions[] = {
-			{ "runtime.preset.save", "Save current", false, false },
-			{ "runtime.preset.update", "Update", true, false },
-			{ "runtime.preset.rename", "Rename", true, false },
-			{ "runtime.preset.duplicate", "Duplicate", true, false },
-			{ "runtime.preset.default", "Set default", true, false },
-			{ "runtime.preset.reset", "Reset", true, false },
-			{ "runtime.preset.delete", "Delete", true, true }
+			{ "runtime.preset.save", "Save current", true, false },
+			{ "runtime.preset.update", "Update", hasActivePreset, false },
+			{ "runtime.preset.rename", "Rename", hasActivePreset, false },
+			{ "runtime.preset.duplicate", "Duplicate", hasActivePreset, false },
+			{ "runtime.preset.default", clearDefaultAction ? "Clear default" : "Set default", canChangeDefault, false },
+			{ "runtime.preset.reset", "Reset", hasActivePreset, false },
+			{ "runtime.preset.delete", "Delete", hasActivePreset, true }
 		};
 
 		const int actionGap = 3;
@@ -801,7 +811,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				contentTop + (row * (24 + actionGap)),
 				RuntimeMenuPopupArea.left + kPopupPadding + (column * (actionWidth + actionGap)) + actionWidth,
 				contentTop + (row * (24 + actionGap)) + 24);
-			const bool enabled = !actions[index].requiresActive || hasActivePreset;
+			const bool enabled = actions[index].enabled;
 			COLORREF fill =
 				!enabled ? kDisabledBackground :
 				(actions[index].danger ? kDanger :
@@ -810,7 +820,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			::SelectObject(hdc, actionFont);
 			DrawTextEllipsis(hdc, actionArea, actions[index].label, enabled ? kText : kDisabledText, DT_CENTER);
 			if (enabled)
-				AddScreenObject(RUNTIME_MENU_POPUP, actions[index].id, actionArea, false, actions[index].label);
+				AddScreenObject(RUNTIME_MENU_POPUP, actions[index].id, actionArea, false, actions[index].label.c_str());
 		}
 	}
 
@@ -980,7 +990,16 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	}
 
 	const std::vector<AvisoPreset> presets = GetAvisoPresets();
-	const std::string activePreset = GetActiveAvisoPresetName();
+	std::string activePreset = GetActiveAvisoPresetName();
+	const auto activePresetIt = std::find_if(
+		presets.begin(),
+		presets.end(),
+		[&](const AvisoPreset& preset) { return EqualsNoCase(preset.name, activePreset); });
+	if (activePresetIt == presets.end())
+		activePreset.clear();
+	else
+		activePreset = activePresetIt->name;
+	const std::string defaultPreset = GetDefaultAvisoPresetName();
 	if (std::strcmp(id, "runtime.preset.save") == 0)
 	{
 		const std::string name = MakeUniquePresetName(presets, "AVISO Preset");
@@ -995,8 +1014,22 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		const std::string name = MakeUniquePresetName(presets, "Copy of " + activePreset);
 		DuplicateAvisoPreset(activePreset, name, nullptr);
 	}
-	else if (std::strcmp(id, "runtime.preset.default") == 0 && !activePreset.empty())
-		SetDefaultAvisoPreset(activePreset);
+	else if (std::strcmp(id, "runtime.preset.default") == 0)
+	{
+		if (!defaultPreset.empty() &&
+			(activePreset.empty() || EqualsNoCase(activePreset, defaultPreset)))
+		{
+			ClearDefaultAvisoPreset();
+		}
+		else if (!activePreset.empty())
+		{
+			SetDefaultAvisoPreset(activePreset);
+		}
+		else
+		{
+			return true;
+		}
+	}
 	else if (std::strcmp(id, "runtime.preset.reset") == 0 && !activePreset.empty())
 		ResetActiveAvisoPreset();
 	else if (std::strcmp(id, "runtime.preset.delete") == 0 && !activePreset.empty())
