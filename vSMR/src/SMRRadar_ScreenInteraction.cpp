@@ -799,95 +799,18 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			return;
 		}
 
-		if (isObjectId("presets"))
-		{
-			if (appWindow == nullptr || !appWindow->IsAvisoViewport())
-				return;
-
-			SelectAvisoViewport(this, appWindow);
-			openPopupListWithClose("AVISO Presets", [&]()
-			{
-				const std::vector<AvisoPreset> presets = GetAvisoPresets();
-				const std::string activePreset = GetActiveAvisoPresetName();
-				const std::string defaultPreset = GetDefaultAvisoPresetName();
-				if (!defaultPreset.empty())
-				{
-					const std::string defaultLabel = "Default: " + defaultPreset;
-					GetPlugIn()->AddPopupListElement(defaultLabel.c_str(), "", RIMCAS_CLOSE, false, 2, false, true);
-				}
-
-				if (presets.empty())
-				{
-					GetPlugIn()->AddPopupListElement("No presets saved", "", RIMCAS_CLOSE, false, 2, false, true);
-				}
-				else
-				{
-					for (const AvisoPreset& preset : presets)
-					{
-						const bool isActive = !activePreset.empty() && preset.name == activePreset;
-						GetPlugIn()->AddPopupListElement(preset.name.c_str(), "", RIMCAS_AVISO_PRESET_LOAD, false, int(isActive));
-					}
-				}
-
-				GetPlugIn()->AddPopupListElement("Save current as new...", "", RIMCAS_AVISO_PRESET_CREATE_PROMPT, false, 0, false, true);
-				if (!activePreset.empty())
-				{
-					GetPlugIn()->AddPopupListElement("Update active preset", "", RIMCAS_AVISO_PRESET_UPDATE);
-					GetPlugIn()->AddPopupListElement("Reset to active preset", "", RIMCAS_AVISO_PRESET_RESET);
-					GetPlugIn()->AddPopupListElement("Rename active preset...", "", RIMCAS_AVISO_PRESET_RENAME_PROMPT);
-					GetPlugIn()->AddPopupListElement("Duplicate active preset...", "", RIMCAS_AVISO_PRESET_DUPLICATE_PROMPT);
-					GetPlugIn()->AddPopupListElement("Delete active preset", "", RIMCAS_AVISO_PRESET_DELETE);
-					GetPlugIn()->AddPopupListElement("Set active as default", "", RIMCAS_AVISO_PRESET_SET_DEFAULT);
-				}
-				if (!defaultPreset.empty())
-					GetPlugIn()->AddPopupListElement("Clear default preset", "", RIMCAS_AVISO_PRESET_CLEAR_DEFAULT);
-				GetPlugIn()->AddPopupListElement("Linked movement", "", RIMCAS_AVISO_PRESET_TOGGLE_LINK, false, int(IsAvisoPresetLinkedMovementEnabled()));
-			});
-			return;
-		}
-
-		if (isObjectId("reload"))
-		{
-			if (appWindow == nullptr || !appWindow->IsAvisoViewport())
-				return;
-
-			const bool loaded = ForceReloadAvisoGeoJson();
-			GetPlugIn()->DisplayUserMessage("vSMR", "AVISO", loaded ? "Reloaded AVISO." : "No AVISO file loaded.", true, true, false, false, false);
-			RequestRefresh();
-			return;
-		}
-
-		if (isObjectId("editor"))
-		{
-			if (appWindow == nullptr || !appWindow->IsAvisoViewport())
-				return;
-
-			OpenAvisoEditorWindow();
-			return;
-		}
-
 		if (isObjectId("close"))
 		{
+			if (appWindow == nullptr || appWindow->IsAvisoViewport())
+				return;
+
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
 			if (appWindowDisplayIt != appWindowDisplays.end())
 				appWindowDisplayIt->second = false;
 		}
 		if (isObjectId("range")) {
-			if (appWindow == nullptr)
+			if (appWindow == nullptr || appWindow->IsAvisoViewport())
 				return;
-			if (appWindow->IsAvisoViewport())
-			{
-				openPopupListWithClose("AVISO Zoom", [&]()
-				{
-					const int values[] = { 1200, 900, 700, 500, 350, 250, 150, 100, 60, 30 };
-					for (int value : values)
-					{
-						const string label = std::to_string(value);
-						GetPlugIn()->AddPopupListElement(label.c_str(), "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_AvisoScale == value));
-					}
-				});
-				return;
-			}
 			openPopupListWithClose("SRW Zoom", [&]()
 			{
 				GetPlugIn()->AddPopupListElement("55", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 55));
@@ -946,21 +869,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		GetPlugIn()->OpenPopupEdit(Area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
 	}
 
-	if (ObjectType == RIMCAS_ACTIVE_PROFILE) {
-		if (Button == BUTTON_LEFT)
-		{
-			Area.top += 30;
-			Area.bottom += 30;
-			ShowLists["Profiles"] = true;
-			ListAreas["Profiles"] = Area;
-			RequestRefresh();
-		}
-		else if (Button == BUTTON_RIGHT)
-		{
-			OpenProfileEditorWindow();
-		}
-	}
-
 	if (ObjectType == DRAWING_BACKGROUND_CLICK)
 	{
 		if (QDMSelectEnabled)
@@ -990,42 +898,12 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (ObjectType == RIMCAS_MENU) {
 
-		if (isObjectId("DisplayMenu")) {
+		if (isObjectId("QdrMenu")) {
 			shiftPopupAreaDown(30);
-			openPopupListWithClose("Display Menu", [&]()
+			openPopupListWithClose("QDR Reference", [&]()
 			{
 				GetPlugIn()->AddPopupListElement("QDR Fixed Reference", "", RIMCAS_QDM_TOGGLE);
 				GetPlugIn()->AddPopupListElement("QDR Select Reference", "", RIMCAS_QDM_SELECT_TOGGLE);
-				const auto appWindowOneDisplayIt = appWindowDisplays.find(1);
-				const bool appWindowOneVisible = (appWindowOneDisplayIt != appWindowDisplays.end()) && appWindowOneDisplayIt->second;
-				const auto appWindowTwoDisplayIt = appWindowDisplays.find(2);
-				const bool appWindowTwoVisible = (appWindowTwoDisplayIt != appWindowDisplays.end()) && appWindowTwoDisplayIt->second;
-				const auto avisoWindowDisplayIt = appWindowDisplays.find(APPWINDOW_AVISO - APPWINDOW_BASE);
-				const bool avisoWindowVisible = (avisoWindowDisplayIt != appWindowDisplays.end()) && avisoWindowDisplayIt->second;
-				GetPlugIn()->AddPopupListElement("SRW 1", "", APPWINDOW_ONE, false, int(appWindowOneVisible));
-				GetPlugIn()->AddPopupListElement("SRW 2", "", APPWINDOW_TWO, false, int(appWindowTwoVisible));
-				GetPlugIn()->AddPopupListElement("AVISO View", "", APPWINDOW_AVISO, false, int(avisoWindowVisible));
-				GetPlugIn()->AddPopupListElement("vSMR Control Center", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("AVISO Editor", "", RIMCAS_AVISO_EDITOR_OPEN);
-				GetPlugIn()->AddPopupListElement("Reload AVISO", "", RIMCAS_AVISO_RELOAD);
-				GetPlugIn()->AddPopupListElement("Profiles", "", RIMCAS_OPEN_LIST);
-			});
-		}
-
-		if (isObjectId("ModesMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("Modes", [&]()
-			{
-				const std::string activeProfileName = GetActiveProfileNameForEditor();
-				if (!activeProfileName.empty())
-				{
-					const std::string activeDisplayMode = GetActiveProfileDisplayModeForEditor(activeProfileName);
-					const std::vector<DisplayModeSettings> displayModes = GetProfileDisplayModesForEditor(activeProfileName);
-					for (const DisplayModeSettings& displayMode : displayModes)
-					{
-						GetPlugIn()->AddPopupListElement(displayMode.name.c_str(), "", RIMCAS_UPDATE_DISPLAY_MODE, false, int(_stricmp(displayMode.name.c_str(), activeDisplayMode.c_str()) == 0));
-					}
-				}
 			});
 		}
 
@@ -1033,8 +911,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			shiftPopupAreaDown(30);
 			openPopupListWithClose("Target", [&]()
 			{
-				GetPlugIn()->AddPopupListElement("Label Font Size", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Tag Font", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_UPDATE_AFTERGLOW, false, int(Afterglow));
 				GetPlugIn()->AddPopupListElement("GRND Trail Dots", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("APPR Trail Dots", "", RIMCAS_OPEN_LIST);
@@ -1044,38 +920,12 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			});
 		}
 
-		if (isObjectId("DefinitionMenu")) {
+		if (isObjectId("LightingMenu")) {
 			shiftPopupAreaDown(30);
-			openPopupListWithClose("Definitions", [&]() {});
-		}
-
-		if (isObjectId("MapMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("Maps", [&]()
+			openPopupListWithClose("Runtime Lighting", [&]()
 			{
-				GetPlugIn()->AddPopupListElement("Airport Maps", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Custom Maps", "", RIMCAS_OPEN_LIST);
-			});
-		}
-
-		if (isObjectId("ColourMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("Colours", [&]()
-			{
-				GetPlugIn()->AddPopupListElement("Colour Settings", "", RIMCAS_OPEN_LIST);
+				GetPlugIn()->AddPopupListElement("Day / Night", "", RIMCAS_OPEN_LIST);
 				GetPlugIn()->AddPopupListElement("Brightness", "", RIMCAS_OPEN_LIST);
-			});
-		}
-
-		if (isObjectId("RIMCASMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("Alerts", [&]()
-			{
-				GetPlugIn()->AddPopupListElement("Conflict Alert ARR", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Conflict Alert DEP", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Runway closed", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Visibility", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Active Alerts", "", RIMCAS_OPEN_LIST);
 			});
 		}
 

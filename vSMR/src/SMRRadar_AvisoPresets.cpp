@@ -750,7 +750,10 @@ bool CSMRRadar::DeleteAvisoPreset(const std::string& name)
 		section.RemoveMember(kDefaultPresetKey);
 
 	if (EqualsNoCase(ActiveAvisoPresetName, canonicalName))
+	{
 		ActiveAvisoPresetName.clear();
+		AvisoViewsLinked = false;
+	}
 
 	return CurrentConfig->saveConfig();
 }
@@ -804,6 +807,13 @@ bool CSMRRadar::ApplyDefaultAvisoPresetIfConfigured()
 	if (defaultPreset.empty())
 		return false;
 	return LoadAvisoPreset(defaultPreset);
+}
+
+void CSMRRadar::ResetAvisoPresetStateForActiveProfile()
+{
+	ActiveAvisoPresetName.clear();
+	AvisoViewsLinked = false;
+	ApplyDefaultAvisoPresetIfConfigured();
 }
 
 bool CSMRRadar::UpdateActiveAvisoPreset()
