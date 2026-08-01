@@ -145,6 +145,46 @@
     return match?.[0] || "";
   }
 
+  function normalizeAirportCode(value) {
+    return String(value || "").trim().toUpperCase();
+  }
+
+  function normalizeAvisoPresetStore(store) {
+    const normalized = store && typeof store === "object" && !Array.isArray(store) ? store : {};
+    if (!Array.isArray(normalized.items)) normalized.items = [];
+    for (let index = normalized.items.length - 1; index >= 0; --index) {
+      if (!normalized.items[index] || typeof normalized.items[index] !== "object") normalized.items.splice(index, 1);
+    }
+    normalized.items.forEach((item, index) => {
+      item.name = String(item.name || `Preset ${index + 1}`).trim() || `Preset ${index + 1}`;
+      item.linked_movement = Boolean(item.linked_movement);
+    });
+    normalized.default = String(normalized.default || "").trim();
+    if (normalized.default && !normalized.items.some(item => item.name === normalized.default)) normalized.default = "";
+    return normalized;
+  }
+
+  function profileAvisoPresetStoreForAirport(profile, airport, migrateLegacy = true) {
+    profile.aviso_presets ||= {};
+    const root = profile.aviso_presets;
+    if (!root.airports || typeof root.airports !== "object" || Array.isArray(root.airports)) root.airports = {};
+
+    const airportCode = normalizeAirportCode(airport);
+    if (!airportCode) return normalizeAvisoPresetStore({});
+
+    let store = root.airports[airportCode];
+    const hasAirportStores = Object.keys(root.airports).length > 0;
+    const hasLegacyStore = Array.isArray(root.items) || typeof root.default === "string";
+    if ((!store || typeof store !== "object" || Array.isArray(store)) && migrateLegacy && !hasAirportStores && hasLegacyStore) {
+      store = { default: String(root.default || ""), items: clone(Array.isArray(root.items) ? root.items : []) };
+      delete root.default;
+      delete root.items;
+    }
+    if (!store || typeof store !== "object" || Array.isArray(store)) store = {};
+    root.airports[airportCode] = normalizeAvisoPresetStore(store);
+    return root.airports[airportCode];
+  }
+
   function normalizeAvisoGroupId(value, fallback = "group") {
     const normalized = String(value || fallback).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     return normalized || fallback;
@@ -221,7 +261,12 @@
     let metadata = { schema_version: 1, last_active_profile: "", vacdm: { server_url: "https://cdm.vatsim.fr" } };
     (Array.isArray(sourceProfiles) ? sourceProfiles : []).forEach((entry, index) => {
       if (entry && typeof entry === "object" && entry.name) {
-        records.push({ id: `profile-${index}-${String(entry.name).replace(/\W+/g, "-").toLowerCase()}`, data: clone(entry), original: clone(entry) });
+        records.push({
+          id: `profile-${index}-${String(entry.name).replace(/\W+/g, "-").toLowerCase()}`,
+          persistedName: String(entry.name),
+          data: clone(entry),
+          original: clone(entry)
+        });
       } else if (entry?._vsmr) {
         metadata = clone(entry._vsmr);
       } else {
@@ -236,12 +281,15 @@
     const preferred = records.find(record => record.data.name === "Custom LFPG")
       || records.find(record => record.data.name === metadata.last_active_profile)
       || records[0];
-    const suppliedPresetStore = records.map(record => record.data?.aviso_presets).find(store => Array.isArray(store?.items) && store.items.length) || null;
-    if (preferred && (!Array.isArray(preferred.data?.aviso_presets?.items) || !preferred.data.aviso_presets.items.length) && suppliedPresetStore) {
-      preferred.data.aviso_presets = clone(suppliedPresetStore);
-    }
-    const preferredPresetItems = Array.isArray(preferred?.data?.aviso_presets?.items) ? preferred.data.aviso_presets.items : [];
-    const preferredPresetName = String(preferred?.data?.aviso_presets?.default || preferredPresetItems[0]?.name || "");
+    const initialAirport = normalizeAirportCode(bundle.airport
+      || bundle.aviso?.metadata?.airport
+      || inferAirport(bundle.aviso?.name)
+      || inferAirport(preferred?.data?.name));
+    const preferredPresetStore = preferred
+      ? profileAvisoPresetStoreForAirport(preferred.data, initialAirport, true)
+      : normalizeAvisoPresetStore({});
+    const preferredPresetItems = preferredPresetStore.items;
+    const preferredPresetName = String(preferredPresetStore.default || preferredPresetItems[0]?.name || "");
     const preferredPreset = preferredPresetItems.find(item => item?.name === preferredPresetName) || preferredPresetItems[0] || null;
     const normalizedAviso = normalizeAvisoData(bundle.aviso || { type: "FeatureCollection", features: [], styles: {} });
     const avisoFeatures = normalizedAviso.features || [];
@@ -257,8 +305,8 @@
       profileExtras: clone(extras),
       activeProfileId: preferred?.id || "",
       aviso: normalizedAviso,
-      airport: String(bundle.airport || "").trim().toUpperCase(),
-      hostAirport: String(bundle.airport || "").trim().toUpperCase(),
+      airport: initialAirport,
+      hostAirport: initialAirport,
       settings: {
         profileFile: "vSMR_DATA\\vSMR_Profiles.json",
         avisoFile: "vSMR_DATA\\AVISO\\AVISO_LFPG.geojson",
@@ -306,6 +354,7 @@
         avisoInsetVisible: false,
         insets: { aviso: false, srw1: false, srw2: false },
         activeAvisoPreset: preferredPresetName,
+        activeAvisoPresetScope: `${preferred?.id || ""}:${initialAirport}`,
         avisoInsetSnapshot: preferredPreset ? clone(preferredPreset) : null,
         alerts: {
           visibility: "normal",
@@ -339,6 +388,45 @@
   function activeProfile() { return activeProfileRecord()?.data || {}; }
   function managedProfileRecord() {
     return state.profiles.find(record => record.id === state.ui.managedProfileId) || activeProfileRecord();
+  }
+
+  function assignAirportPresetStore(profile, airport, store) {
+    if (!profile || typeof profile !== "object" || !airport || !store || typeof store !== "object" || Array.isArray(store)) return false;
+    profile.aviso_presets ||= {};
+    if (!profile.aviso_presets.airports || typeof profile.aviso_presets.airports !== "object" || Array.isArray(profile.aviso_presets.airports)) {
+      profile.aviso_presets.airports = {};
+    }
+    profile.aviso_presets.airports[airport] = clone(store);
+    return true;
+  }
+
+  function assignRecordAirportPresetStore(record, airport, store) {
+    if (!record) return false;
+    const assigned = assignAirportPresetStore(record.data, airport, store);
+    assignAirportPresetStore(record.original, airport, store);
+    return assigned;
+  }
+
+  function rebasePresetStoreSnapshots(profileId, profileNames, airport, store) {
+    const names = new Set((Array.isArray(profileNames) ? profileNames : [profileNames]).filter(Boolean));
+    const snapshots = [history.present, ...history.past, ...history.future, savedSnapshot];
+    const visited = new Set();
+    snapshots.forEach(snapshot => {
+      if (!snapshot?.profiles || visited.has(snapshot)) return;
+      visited.add(snapshot);
+      try {
+        const records = JSON.parse(snapshot.profiles);
+        const record = Array.isArray(records)
+          ? records.find(item => item?.id === profileId)
+            || records.find(item => names.has(item?.data?.name))
+          : null;
+        if (record && assignRecordAirportPresetStore(record, airport, store)) {
+          snapshot.profiles = JSON.stringify(records);
+        }
+      } catch (error) {
+        console.warn("Could not rebase inset presets in editor history", error);
+      }
+    });
   }
 
   function nextMessageId() {
@@ -478,7 +566,10 @@
   }
 
   function markSaved(message = "Saved") {
-    state.profiles.forEach(record => { record.original = clone(record.data); });
+    state.profiles.forEach(record => {
+      record.original = clone(record.data);
+      record.persistedName = String(record.data?.name || "");
+    });
     history.present = captureHistorySnapshot();
     savedSnapshot = history.present;
     state.dirty = false;
@@ -684,34 +775,31 @@
     renderRuntimeMenu();
   }
 
+  function activePresetAirport() {
+    return normalizeAirportCode(state.hostAirport);
+  }
+
+  function activePresetScope() {
+    return `${state.activeProfileId || ""}:${activePresetAirport()}`;
+  }
+
   function profileAvisoPresetStore(profile = activeProfile()) {
-    profile.aviso_presets ||= {};
-    if (!Array.isArray(profile.aviso_presets.items)) profile.aviso_presets.items = [];
-    if (!profile.aviso_presets.items.length) {
-      const supplied = state.profiles.map(record => record.data?.aviso_presets).find(store => store !== profile.aviso_presets && Array.isArray(store?.items) && store.items.length);
-      if (supplied) profile.aviso_presets = clone(supplied);
-    }
-    profile.aviso_presets.items = profile.aviso_presets.items
-      .filter(item => item && typeof item === "object")
-      .map((item, index) => ({
-        ...item,
-        name: String(item.name || `Preset ${index + 1}`).trim() || `Preset ${index + 1}`,
-        linked_movement: Boolean(item.linked_movement)
-      }));
-    if (!profile.aviso_presets.default && profile.aviso_presets.items.length) profile.aviso_presets.default = profile.aviso_presets.items[0].name;
-    return profile.aviso_presets;
+    return profileAvisoPresetStoreForAirport(profile, activePresetAirport(), true);
   }
 
   function avisoPresets() { return profileAvisoPresetStore().items; }
 
   function activeAvisoPreset() {
+    if (state.runtime.activeAvisoPresetScope !== activePresetScope()) return syncRuntimePresetForProfile();
+    if (!String(state.runtime.activeAvisoPreset || "")) {
+      state.runtime.avisoInsetSnapshot = null;
+      return null;
+    }
     const presets = avisoPresets();
-    let preset = presets.find(item => item.name === state.runtime.activeAvisoPreset);
+    const preset = presets.find(item => item.name === state.runtime.activeAvisoPreset);
     if (!preset) {
-      const store = profileAvisoPresetStore();
-      preset = presets.find(item => item.name === store.default) || presets[0] || null;
-      state.runtime.activeAvisoPreset = preset?.name || "";
-      state.runtime.avisoInsetSnapshot = preset ? clone(preset) : null;
+      state.runtime.avisoInsetSnapshot = null;
+      return null;
     }
     return preset;
   }
@@ -720,7 +808,9 @@
     const store = profileAvisoPresetStore();
     const preset = store.items.find(item => item.name === store.default) || store.items[0] || null;
     state.runtime.activeAvisoPreset = preset?.name || "";
+    state.runtime.activeAvisoPresetScope = activePresetScope();
     state.runtime.avisoInsetSnapshot = preset ? clone(preset) : null;
+    return preset;
   }
 
   function insetState(kind) {
@@ -827,7 +917,7 @@
     }
 
     if (kind === "inset") {
-      title.textContent = "AVISO Insets";
+      title.textContent = "Insets";
       const presets = avisoPresets();
       const activePreset = activeAvisoPreset();
       const store = profileAvisoPresetStore();
@@ -900,7 +990,7 @@
     if (kind === "aviso") state.runtime.avisoInsetVisible = state.runtime.insets[kind];
     const preset = activeAvisoPreset();
     const action = kind === "aviso" ? "aviso.inset.toggle" : "display.srw.toggle";
-    postBridge(action, { window: kind, visible: state.runtime.insets[kind], preset: preset?.name || "", profile: activeProfile().name });
+    postBridge(action, { airport: activePresetAirport(), window: kind, visible: state.runtime.insets[kind], preset: preset?.name || "", profile: activeProfile().name });
     renderRuntimeMenu();
     showToast(`${kind === "aviso" ? "AVISO inset" : kind.toUpperCase()} ${state.runtime.insets[kind] ? "shown" : "hidden"}`, "success");
   }
@@ -909,8 +999,9 @@
     const preset = avisoPresets().find(item => item.name === name);
     if (!preset) return;
     state.runtime.activeAvisoPreset = preset.name;
+    state.runtime.activeAvisoPresetScope = activePresetScope();
     state.runtime.avisoInsetSnapshot = clone(preset);
-    postBridge("aviso.inset.preset.load", { profile: activeProfile().name, preset: clone(preset) });
+    postBridge("aviso.inset.preset.load", { airport: activePresetAirport(), profile: activeProfile().name, preset: clone(preset) });
     renderRuntimeMenu();
     showToast(`Inset preset: ${preset.name}`, "success");
   }
@@ -946,23 +1037,14 @@
       if (!current) return;
       if (store.items.some(item => item !== current && item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
       const oldName = current.name;
-      current.name = name;
-      if (store.default === oldName) store.default = name;
-      state.runtime.activeAvisoPreset = name;
-      current.linked_movement = linked;
-      markDirty("Inset preset renamed");
-      postBridge("aviso.inset.preset.rename", { profile: activeProfile().name, oldName, name, linked_movement: linked });
+      postBridge("aviso.inset.preset.rename", { airport: activePresetAirport(), profile: activeProfile().name, oldName, name, linked_movement: linked });
     } else {
       if (store.items.some(item => item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
-      const source = clone(state.runtime.avisoInsetSnapshot || current || {});
-      delete source.name;
-      const preset = { ...source, name, linked_movement: linked };
-      store.items.push(preset);
-      state.runtime.activeAvisoPreset = name;
-      state.runtime.avisoInsetSnapshot = clone(preset);
-      if (!store.default) store.default = name;
-      markDirty("Inset preset saved");
-      postBridge("aviso.inset.preset.capture", { profile: activeProfile().name, preset: clone(preset) });
+      postBridge("aviso.inset.preset.capture", {
+        airport: activePresetAirport(),
+        profile: activeProfile().name,
+        preset: { name, linked_movement: linked }
+      });
     }
     dialog.close();
     renderRuntimeMenu();
@@ -971,77 +1053,53 @@
   function updateAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    const snapshot = clone(state.runtime.avisoInsetSnapshot || current);
-    const name = current.name;
-    const linked = current.linked_movement;
-    Object.keys(current).forEach(key => delete current[key]);
-    Object.assign(current, snapshot, { name, linked_movement: linked });
-    state.runtime.avisoInsetSnapshot = clone(current);
-    markDirty("Inset preset updated");
-    postBridge("aviso.inset.preset.update", { profile: activeProfile().name, preset: clone(current) });
+    postBridge("aviso.inset.preset.update", { airport: activePresetAirport(), profile: activeProfile().name, preset: clone(current) });
     renderRuntimeMenu();
   }
 
   function resetAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    const original = activeProfileRecord()?.original?.aviso_presets?.items?.find(item => item?.name === current.name);
-    if (original) {
-      Object.keys(current).forEach(key => delete current[key]);
-      Object.assign(current, clone(original));
-      state.runtime.avisoInsetSnapshot = clone(current);
-      markDirty("Inset preset reset");
-    } else {
-      state.runtime.avisoInsetSnapshot = clone(current);
-    }
-    postBridge("aviso.inset.preset.reset", { profile: activeProfile().name, preset: current.name });
+    postBridge("aviso.inset.preset.reset", { airport: activePresetAirport(), profile: activeProfile().name, preset: current.name });
     renderRuntimeMenu();
   }
 
   function duplicateAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    const copy = clone(current);
-    copy.name = uniqueInsetPresetName(`${current.name} copy`);
-    profileAvisoPresetStore().items.push(copy);
-    state.runtime.activeAvisoPreset = copy.name;
-    state.runtime.avisoInsetSnapshot = clone(copy);
-    markDirty("Inset preset duplicated");
-    postBridge("aviso.inset.preset.duplicate", { profile: activeProfile().name, source: current.name, preset: clone(copy) });
+    const name = uniqueInsetPresetName(`${current.name} copy`);
+    postBridge("aviso.inset.preset.duplicate", {
+      airport: activePresetAirport(),
+      profile: activeProfile().name,
+      source: current.name,
+      preset: { name }
+    });
     renderRuntimeMenu();
   }
 
   function setDefaultAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    profileAvisoPresetStore().default = current.name;
-    markDirty("Default inset preset changed");
-    postBridge("aviso.inset.preset.default", { profile: activeProfile().name, preset: current.name });
+    postBridge("aviso.inset.preset.default", { airport: activePresetAirport(), profile: activeProfile().name, preset: current.name });
     renderRuntimeMenu();
   }
 
   function deleteAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current || !confirmDelete(`Delete the inset preset “${current.name}”?`)) return;
-    const store = profileAvisoPresetStore();
-    const index = store.items.indexOf(current);
-    store.items.splice(index, 1);
-    if (store.default === current.name) store.default = store.items[0]?.name || "";
-    const next = store.items[Math.max(0, index - 1)] || store.items[0] || null;
-    state.runtime.activeAvisoPreset = next?.name || "";
-    state.runtime.avisoInsetSnapshot = next ? clone(next) : null;
-    markDirty("Inset preset deleted");
-    postBridge("aviso.inset.preset.delete", { profile: activeProfile().name, preset: current.name });
+    postBridge("aviso.inset.preset.delete", { airport: activePresetAirport(), profile: activeProfile().name, preset: current.name });
     renderRuntimeMenu();
   }
 
   function toggleRuntimePresetLinked(checked) {
     const current = activeAvisoPreset();
     if (!current) return;
-    current.linked_movement = Boolean(checked);
-    if (state.runtime.avisoInsetSnapshot) state.runtime.avisoInsetSnapshot.linked_movement = current.linked_movement;
-    markDirty("Inset preset movement updated");
-    postBridge("aviso.inset.preset.linked", { profile: activeProfile().name, preset: current.name, linked_movement: current.linked_movement });
+    postBridge("aviso.inset.preset.linked", {
+      airport: activePresetAirport(),
+      profile: activeProfile().name,
+      preset: current.name,
+      linked_movement: Boolean(checked)
+    });
     renderRuntimeMenu();
   }
 
@@ -3230,6 +3288,11 @@
   function serializeStatePayload(updateLastActive = false) {
     return {
       profiles: serializeProfiles(updateLastActive),
+      profileIdentities: state.profiles.map(record => ({
+        id: record.id,
+        currentName: String(record.data?.name || ""),
+        persistedName: String(record.persistedName || "")
+      })),
       aviso: clone(state.aviso),
       settings: clone(state.settings),
       runtime: clone(state.runtime),
@@ -3977,7 +4040,7 @@
   function createProfile() {
     const base = clone(activeProfile());
     base.name = "New profile";
-    const record = { id: uid("profile"), data: base, original: clone(base) };
+    const record = { id: uid("profile"), persistedName: "", data: base, original: clone(base) };
     state.profiles.push(record);
     state.ui.managedProfileId = record.id;
     drafts.profile = null;
@@ -3987,7 +4050,7 @@
   function duplicateProfile() {
     const source = managedProfileRecord(); if (!source) return;
     const data = clone(source.data); data.name = `${data.name} copy`;
-    const record = { id: uid("profile"), data, original: clone(data) };
+    const record = { id: uid("profile"), persistedName: "", data, original: clone(data) };
     const index = state.profiles.indexOf(source) + 1;
     state.profiles.splice(index, 0, record);
     state.ui.managedProfileId = record.id; drafts.profile = null; markDirty("Profile copied"); renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
@@ -4244,6 +4307,9 @@
     const preservedUi = state.ui;
     const previousProfileName = activeProfile().name || "";
     const previousHostAirport = state.hostAirport;
+    const incomingAirport = normalizeAirportCode(
+      typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
+    );
     const preservesStagedEditors = state.dirty &&
       !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason);
     let avisoChanged = false;
@@ -4252,6 +4318,26 @@
       const normalized = getProfileRecords(incoming.profiles);
       if (normalized.records.length) {
         const requestedProfile = String(incoming.activeProfile || incoming.active_profile || incoming.profile || "");
+        if (preservesStagedEditors && incomingAirport) {
+          const incomingProfile = normalized.records.find(record =>
+            record.id === requestedProfile || record.data.name === requestedProfile
+          ) || normalized.records.find(record => record.data.name === previousProfileName);
+          const localProfile = incomingProfile
+            ? state.profiles.find(record =>
+                record.id === incomingProfile.id || record.data.name === incomingProfile.data.name
+              )
+            : activeProfileRecord();
+          const incomingStore = incomingProfile?.data?.aviso_presets?.airports?.[incomingAirport];
+          if (localProfile && incomingStore && typeof incomingStore === "object" && !Array.isArray(incomingStore)) {
+            assignRecordAirportPresetStore(localProfile, incomingAirport, incomingStore);
+            rebasePresetStoreSnapshots(
+              localProfile.id,
+              [localProfile.data.name, incomingProfile.data.name],
+              incomingAirport,
+              incomingStore
+            );
+          }
+        }
         if (!preservesStagedEditors) {
           state.profiles = normalized.records;
           state.metadata = normalized.metadata;
@@ -4279,6 +4365,13 @@
     if (incoming.runtime && typeof incoming.runtime === "object") {
       state.runtime = { ...state.runtime, ...clone(incoming.runtime) };
       state.runtime.insets = { aviso: false, srw1: false, srw2: false, ...(state.runtime.insets || {}) };
+      if (Object.hasOwn(incoming.runtime, "activeAvisoPreset")) {
+        state.runtime.activeAvisoPresetScope = activePresetScope();
+        const activePreset = profileAvisoPresetStore().items.find(item =>
+          item.name === state.runtime.activeAvisoPreset
+        );
+        state.runtime.avisoInsetSnapshot = activePreset ? clone(activePreset) : null;
+      }
     }
 
     state.ui = preservedUi;

@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Config.hpp"
 #include <algorithm>
+#include <mutex>
 
 namespace
 {
@@ -10,7 +11,13 @@ namespace
 	const char* kVacdmKey = "vacdm";
 	const char* kVacdmServerUrlKey = "server_url";
 	const char* kBackupSuffix = ".bak";
+	const char* kAvisoPresetsKey = "aviso_presets";
 	volatile LONG gTemporaryFileSequence = 0;
+	// Every CConfig instance points at the same persisted profiles file. Both
+	// ordinary saves and narrowly-scoped preset transactions participate in this
+	// lock so a stale radar screen cannot race a newer preset write.
+	std::mutex gConfigSaveMutex;
+	std::vector<CConfig*> gLiveConfigs;
 
 	const rapidjson::Value* GetObjectMemberIfPresent(const rapidjson::Value& object, const char* key)
 	{
@@ -124,6 +131,152 @@ namespace
 	{
 		validationDocument.Parse<0>(serializedJson.c_str());
 		return !validationDocument.HasParseError() && validationDocument.IsArray();
+	}
+
+	bool EqualsNoCaseAscii(const std::string& left, const std::string& right)
+	{
+		if (left.size() != right.size())
+			return false;
+		for (size_t index = 0; index < left.size(); ++index)
+		{
+			if (std::tolower(static_cast<unsigned char>(left[index])) !=
+				std::tolower(static_cast<unsigned char>(right[index])))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	rapidjson::Value* FindProfileByName(
+		rapidjson::Document& profilesDocument,
+		const std::string& profileName)
+	{
+		if (!profilesDocument.IsArray() || profileName.empty())
+			return nullptr;
+
+		for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+		{
+			rapidjson::Value& profile = profilesDocument[index];
+			if (IsProfileEntry(profile) &&
+				EqualsNoCaseAscii(profile["name"].GetString(), profileName))
+			{
+				return &profile;
+			}
+		}
+		return nullptr;
+	}
+
+	const rapidjson::Value* FindProfileByName(
+		const rapidjson::Document& profilesDocument,
+		const std::string& profileName)
+	{
+		if (!profilesDocument.IsArray() || profileName.empty())
+			return nullptr;
+
+		for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+		{
+			const rapidjson::Value& profile = profilesDocument[index];
+			if (IsProfileEntry(profile) &&
+				EqualsNoCaseAscii(profile["name"].GetString(), profileName))
+			{
+				return &profile;
+			}
+		}
+		return nullptr;
+	}
+
+	bool CloneJsonValue(
+		const rapidjson::Value& source,
+		rapidjson::Document::AllocatorType& allocator,
+		rapidjson::Value& destination)
+	{
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		source.Accept(writer);
+
+		rapidjson::Document clone(&allocator);
+		clone.Parse<0>(buffer.GetString());
+		if (clone.HasParseError())
+			return false;
+
+		destination = static_cast<rapidjson::Value&>(clone);
+		return true;
+	}
+
+	bool MergeAvisoPresetRoot(
+		rapidjson::Value& destinationProfile,
+		const rapidjson::Value& authoritativeProfile,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!destinationProfile.IsObject() || !authoritativeProfile.IsObject())
+			return false;
+
+		if (!authoritativeProfile.HasMember(kAvisoPresetsKey))
+		{
+			if (destinationProfile.HasMember(kAvisoPresetsKey))
+				destinationProfile.RemoveMember(kAvisoPresetsKey);
+			return true;
+		}
+
+		rapidjson::Value clonedRoot;
+		if (!CloneJsonValue(authoritativeProfile[kAvisoPresetsKey], allocator, clonedRoot))
+			return false;
+
+		if (destinationProfile.HasMember(kAvisoPresetsKey))
+			destinationProfile[kAvisoPresetsKey] = clonedRoot;
+		else
+		{
+			rapidjson::Value keyValue;
+			keyValue.SetString(kAvisoPresetsKey, allocator);
+			destinationProfile.AddMember(keyValue, clonedRoot, allocator);
+		}
+		return true;
+	}
+
+	bool MergeLatestAvisoPresetRoots(
+		rapidjson::Document& destination,
+		const rapidjson::Document& authoritative,
+		const std::vector<CConfig::ProfileSaveIdentity>& profileIdentities)
+	{
+		if (!destination.IsArray() || !authoritative.IsArray())
+			return false;
+
+		for (rapidjson::SizeType index = 0; index < destination.Size(); ++index)
+		{
+			rapidjson::Value& destinationProfile = destination[index];
+			if (!IsProfileEntry(destinationProfile))
+				continue;
+
+			const std::string currentName = destinationProfile["name"].GetString();
+			const CConfig::ProfileSaveIdentity* identity = nullptr;
+			for (const CConfig::ProfileSaveIdentity& candidate : profileIdentities)
+			{
+				if (EqualsNoCaseAscii(candidate.currentName, currentName))
+				{
+					identity = &candidate;
+					break;
+				}
+			}
+
+			// A supplied empty persisted name explicitly marks a newly-created
+			// profile. Otherwise use the stable pre-edit name so a rename cannot
+			// detach this profile from a newer preset root on disk.
+			const rapidjson::Value* authoritativeProfile = nullptr;
+			if (identity == nullptr)
+				authoritativeProfile = FindProfileByName(authoritative, currentName);
+			else if (!identity->persistedName.empty())
+				authoritativeProfile = FindProfileByName(authoritative, identity->persistedName);
+			if (authoritativeProfile != nullptr &&
+				!MergeAvisoPresetRoot(
+					destinationProfile,
+					*authoritativeProfile,
+					destination.GetAllocator()))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	bool BuildMapIndex(
@@ -278,6 +431,54 @@ namespace
 
 		return true;
 	}
+
+	bool PersistConfigDocument(
+		const std::string& destination,
+		const rapidjson::Document& source)
+	{
+		if (!source.IsArray())
+			return false;
+
+		rapidjson::StringBuffer buffer;
+		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+		source.Accept(writer);
+
+		const std::string serializedJson(buffer.GetString(), buffer.Size());
+		rapidjson::Document validationDocument;
+		if (!ParseValidatedArray(serializedJson, validationDocument))
+			return false;
+
+		std::string temporaryPath;
+		if (!WriteTemporaryFile(destination, serializedJson, temporaryPath))
+			return false;
+
+		std::string persistedJson;
+		rapidjson::Document persistedValidationDocument;
+		if (!ReadFileContents(temporaryPath, persistedJson) ||
+			persistedJson != serializedJson ||
+			!ParseValidatedArray(persistedJson, persistedValidationDocument))
+		{
+			::DeleteFileA(temporaryPath.c_str());
+			return false;
+		}
+
+		if (!BackupDestinationIfPresent(destination))
+		{
+			::DeleteFileA(temporaryPath.c_str());
+			return false;
+		}
+
+		if (!::MoveFileExA(
+			temporaryPath.c_str(),
+			destination.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			::DeleteFileA(temporaryPath.c_str());
+			return false;
+		}
+
+		return true;
+	}
 }
 
 CConfig::CConfig(string configPath, string mapPath)
@@ -288,6 +489,9 @@ CConfig::CConfig(string configPath, string mapPath)
 	loadMap();
 
 	setActiveProfile("Default");
+
+	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
+	gLiveConfigs.push_back(this);
 }
 
 bool CConfig::reload()
@@ -717,50 +921,92 @@ bool CConfig::setVacdmServerUrl(const string& serverUrl)
 	return true;
 }
 
-bool CConfig::saveConfig()
+bool CConfig::saveConfig(const vector<ProfileSaveIdentity>& profileIdentities)
 {
+	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
 	if (!document.IsArray())
 		return false;
 
-	rapidjson::StringBuffer buffer;
-	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
-	document.Accept(writer);
-
-	const std::string serializedJson(buffer.GetString(), buffer.Size());
-	Document validationDocument;
-	if (!ParseValidatedArray(serializedJson, validationDocument))
-		return false;
-
-	std::string temporaryPath;
-	if (!WriteTemporaryFile(config_path, serializedJson, temporaryPath))
-		return false;
-
-	std::string persistedJson;
-	Document persistedValidationDocument;
-	if (!ReadFileContents(temporaryPath, persistedJson) ||
-		persistedJson != serializedJson ||
-		!ParseValidatedArray(persistedJson, persistedValidationDocument))
+	// Preset stores are immediate, shared state. An ordinary save may originate
+	// from a screen whose full profile snapshot predates another screen's preset
+	// transaction, so refresh only these roots before persisting everything else.
+	std::string latestJson;
+	Document latestDocument;
+	if (ReadFileContents(config_path, latestJson) &&
+		ParseValidatedArray(latestJson, latestDocument) &&
+		!MergeLatestAvisoPresetRoots(document, latestDocument, profileIdentities))
 	{
-		::DeleteFileA(temporaryPath.c_str());
 		return false;
 	}
 
-	if (!BackupDestinationIfPresent(config_path))
+	return PersistConfigDocument(config_path, document);
+}
+
+bool CConfig::sharesConfigFileWith(const CConfig& other) const
+{
+	return EqualsNoCaseAscii(config_path, other.config_path);
+}
+
+bool CConfig::transactAvisoPresetStore(
+	const string& profileName,
+	const AvisoPresetTransaction& transaction)
+{
+	if (trimProfileName(profileName).empty() || !transaction)
+		return false;
+
+	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
+
+	// Deliberately load only the profiles document. A malformed or unavailable
+	// maps file must not make an otherwise valid preset transaction fail.
+	std::string latestJson;
+	Document latestDocument;
+	if (!ReadFileContents(config_path, latestJson) ||
+		!ParseValidatedArray(latestJson, latestDocument))
 	{
-		::DeleteFileA(temporaryPath.c_str());
 		return false;
 	}
 
-	if (!::MoveFileExA(
-		temporaryPath.c_str(),
-		config_path.c_str(),
-		MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	Value* latestProfile = FindProfileByName(latestDocument, trimProfileName(profileName));
+	if (latestProfile == nullptr)
+		return false;
+
+	const AvisoPresetTransactionAction action = transaction(
+		*latestProfile,
+		latestDocument.GetAllocator());
+	if (action == AvisoPresetTransactionAction::Abort)
+		return false;
+
+	if (action == AvisoPresetTransactionAction::Save &&
+		!PersistConfigDocument(config_path, latestDocument))
 	{
-		::DeleteFileA(temporaryPath.c_str());
 		return false;
 	}
 
-	return true;
+	bool ownerMerged = false;
+	for (CConfig* liveConfig : gLiveConfigs)
+	{
+		if (liveConfig == nullptr ||
+			!EqualsNoCaseAscii(liveConfig->config_path, config_path))
+			continue;
+
+		Value* liveProfile = FindProfileByName(
+			liveConfig->document,
+			trimProfileName(profileName));
+		if (liveProfile == nullptr)
+			continue;
+
+		if (!MergeAvisoPresetRoot(
+			*liveProfile,
+			*latestProfile,
+			liveConfig->document.GetAllocator()))
+		{
+			return false;
+		}
+		if (liveConfig == this)
+			ownerMerged = true;
+	}
+
+	return ownerMerged;
 }
 
 unordered_set<string> CConfig::getInactiveAlert()
@@ -814,4 +1060,8 @@ bool CConfig::setInactiveAlert(const unordered_set<string>& inactiveAlerts)
 
 CConfig::~CConfig()
 {
+	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
+	gLiveConfigs.erase(
+		std::remove(gLiveConfigs.begin(), gLiveConfigs.end(), this),
+		gLiveConfigs.end());
 }

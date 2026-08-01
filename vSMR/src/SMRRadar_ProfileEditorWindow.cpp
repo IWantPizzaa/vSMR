@@ -1242,7 +1242,10 @@ bool CSMRRadar::RenameProfileForEditor(const std::string& oldName, const std::st
 		trimmedNewName.c_str(),
 		static_cast<rapidjson::SizeType>(trimmedNewName.size()),
 		CurrentConfig->document.GetAllocator());
-	if (!CurrentConfig->saveConfig())
+	const std::vector<CConfig::ProfileSaveIdentity> profileIdentities = {
+		{ trimmedNewName, oldName }
+	};
+	if (!CurrentConfig->saveConfig(profileIdentities))
 		return false;
 
 	const std::string activeBefore = CurrentConfig->getActiveProfileName();

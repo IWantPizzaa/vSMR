@@ -1220,6 +1220,64 @@ struct VsmrControlCenterBridge::Impl
 		if (!ValidateProfileArray(incomingProfiles, error))
 			return false;
 
+		std::vector<CConfig::ProfileSaveIdentity> profileIdentities;
+		if (payload->HasMember("profileIdentities"))
+		{
+			const rapidjson::Value& identities = (*payload)["profileIdentities"];
+			if (!identities.IsArray())
+			{
+				error = "Profile identity state must be an array.";
+				return false;
+			}
+
+			std::set<std::string> seenCurrentNames;
+			for (rapidjson::SizeType index = 0; index < identities.Size(); ++index)
+			{
+				const rapidjson::Value& identity = identities[index];
+				if (!identity.IsObject())
+				{
+					error = "Each profile identity must be an object.";
+					return false;
+				}
+				const std::string currentName = TrimAscii(ReadString(identity, "currentName"));
+				const std::string persistedName = TrimAscii(ReadString(identity, "persistedName"));
+				if (currentName.empty())
+				{
+					error = "Each profile identity must name its current profile.";
+					return false;
+				}
+
+				bool currentProfileExists = false;
+				for (rapidjson::SizeType profileIndex = 0; profileIndex < incomingProfiles.Size(); ++profileIndex)
+				{
+					const rapidjson::Value& profile = incomingProfiles[profileIndex];
+					if (IsProfileEntry(profile) &&
+						EqualsNoCase(TrimAscii(profile["name"].GetString()), currentName))
+					{
+						currentProfileExists = true;
+						break;
+					}
+				}
+				if (!currentProfileExists ||
+					!seenCurrentNames.insert(LowerAscii(currentName)).second)
+				{
+					error = "Profile identity state does not match the profiles being saved.";
+					return false;
+				}
+
+				profileIdentities.push_back({ currentName, persistedName });
+			}
+
+			size_t incomingProfileCount = 0;
+			for (rapidjson::SizeType index = 0; index < incomingProfiles.Size(); ++index)
+				incomingProfileCount += IsProfileEntry(incomingProfiles[index]) ? 1u : 0u;
+			if (profileIdentities.size() != incomingProfileCount)
+			{
+				error = "Profile identity state must contain exactly one entry per profile.";
+				return false;
+			}
+		}
+
 		rapidjson::Document mergedProfiles;
 		MergeProfileArrayPreservingTopLevelUnknowns(
 			Owner->CurrentConfig->document,
@@ -1289,7 +1347,7 @@ struct VsmrControlCenterBridge::Impl
 			}
 		}
 
-		if (!Owner->CurrentConfig->saveConfig())
+		if (!Owner->CurrentConfig->saveConfig(profileIdentities))
 		{
 			CloneJsonValue(
 				previousProfiles,
@@ -1377,6 +1435,18 @@ struct VsmrControlCenterBridge::Impl
 			error = "Inset payload must be an object.";
 			return false;
 		}
+		const std::string airport = TrimAscii(ReadString(*payload, "airport"));
+		if (!airport.empty() && !EqualsNoCase(airport, TrimAscii(Owner->getActiveAirport())))
+		{
+			error = "Inset request belongs to a different airport.";
+			return false;
+		}
+		const std::string profile = TrimAscii(ReadString(*payload, "profile"));
+		if (!profile.empty() && !EqualsNoCase(profile, TrimAscii(Owner->GetActiveProfileNameForEditor())))
+		{
+			error = "Inset request belongs to a different profile.";
+			return false;
+		}
 		const std::string window = LowerAscii(ReadString(*payload, "window"));
 		int id = 0;
 		if (window == "srw1") id = 1;
@@ -1388,6 +1458,7 @@ struct VsmrControlCenterBridge::Impl
 			return false;
 		}
 		Owner->appWindowDisplays[id] = ReadBool(*payload, "visible", false);
+		Owner->SaveInsetStateToAsrForAirport(Owner->getActiveAirport());
 		Owner->RequestRefresh();
 		return true;
 	}
@@ -1400,6 +1471,18 @@ struct VsmrControlCenterBridge::Impl
 		if (payload == nullptr || !payload->IsObject())
 		{
 			error = "Inset preset payload must be an object.";
+			return false;
+		}
+		const std::string airport = TrimAscii(ReadString(*payload, "airport"));
+		if (!airport.empty() && !EqualsNoCase(airport, TrimAscii(Owner->getActiveAirport())))
+		{
+			error = "Inset preset request belongs to a different airport.";
+			return false;
+		}
+		const std::string profile = TrimAscii(ReadString(*payload, "profile"));
+		if (!profile.empty() && !EqualsNoCase(profile, TrimAscii(Owner->GetActiveProfileNameForEditor())))
+		{
+			error = "Inset preset request belongs to a different profile.";
 			return false;
 		}
 
@@ -1424,9 +1507,7 @@ struct VsmrControlCenterBridge::Impl
 		case VsmrBridgeAction::InsetPresetCapture:
 		{
 			std::string savedName;
-			ok = Owner->SaveAvisoPreset(presetName, false, &savedName);
-			if (ok && linked)
-				ok = Owner->SetActiveAvisoPresetLinkedMovement(true);
+			ok = Owner->SaveAvisoPreset(presetName, false, &savedName, linked);
 			break;
 		}
 		case VsmrBridgeAction::InsetPresetUpdate:
@@ -1435,9 +1516,8 @@ struct VsmrControlCenterBridge::Impl
 		case VsmrBridgeAction::InsetPresetRename:
 			ok = Owner->RenameAvisoPreset(
 				oldName.empty() ? Owner->GetActiveAvisoPresetName() : oldName,
-				presetName);
-			if (ok)
-				ok = Owner->SetActiveAvisoPresetLinkedMovement(linked);
+				presetName,
+				linked);
 			break;
 		case VsmrBridgeAction::InsetPresetDuplicate:
 		{

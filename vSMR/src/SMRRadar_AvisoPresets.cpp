@@ -1,12 +1,16 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "VsmrControlCenterDialog.hpp"
 
 #include <cctype>
+
+extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
 {
 	const char* kAvisoPresetsKey = "aviso_presets";
+	const char* kAirportPresetStoresKey = "airports";
 	const char* kPresetItemsKey = "items";
 	const char* kDefaultPresetKey = "default";
 	const rapidjson::SizeType kInvalidPresetIndex = static_cast<rapidjson::SizeType>(-1);
@@ -39,6 +43,15 @@ namespace
 	{
 		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
 			return static_cast<char>(std::tolower(c));
+		});
+		return value;
+	}
+
+	std::string NormalizeAirportKey(std::string value)
+	{
+		value = TrimAsciiWhitespaceCopy(value);
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+			return static_cast<char>(std::toupper(c));
 		});
 		return value;
 	}
@@ -204,16 +217,117 @@ namespace
 		return 0;
 	}
 
-	const rapidjson::Value* GetPresetItems(const rapidjson::Value& profile)
+	const rapidjson::Value* GetAirportPresetSection(const rapidjson::Value& profile, const std::string& airport)
 	{
 		const rapidjson::Value* section = GetObjectMember(profile, kAvisoPresetsKey);
+		const rapidjson::Value* airports = section != nullptr ? GetObjectMember(*section, kAirportPresetStoresKey) : nullptr;
+		const std::string airportKey = NormalizeAirportKey(airport);
+		if (airports == nullptr || airportKey.empty() || !airports->HasMember(airportKey.c_str()) ||
+			!(*airports)[airportKey.c_str()].IsObject())
+		{
+			return nullptr;
+		}
+		return &(*airports)[airportKey.c_str()];
+	}
+
+	rapidjson::Value& EnsureAirportPresetSection(
+		rapidjson::Value& profile,
+		const std::string& airport,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		rapidjson::Value& section = EnsureObjectMember(profile, kAvisoPresetsKey, allocator);
+		rapidjson::Value& airports = EnsureObjectMember(section, kAirportPresetStoresKey, allocator);
+		const std::string airportKey = NormalizeAirportKey(airport);
+		return EnsureObjectMember(airports, airportKey.c_str(), allocator);
+	}
+
+	const rapidjson::Value* GetPresetItems(const rapidjson::Value& profile, const std::string& airport)
+	{
+		const rapidjson::Value* section = GetAirportPresetSection(profile, airport);
 		return section != nullptr ? GetArrayMember(*section, kPresetItemsKey) : nullptr;
 	}
 
-	rapidjson::Value& EnsurePresetItems(rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator)
+	rapidjson::Value& EnsurePresetItems(
+		rapidjson::Value& profile,
+		const std::string& airport,
+		rapidjson::Document::AllocatorType& allocator)
 	{
-		rapidjson::Value& section = EnsureObjectMember(profile, kAvisoPresetsKey, allocator);
+		rapidjson::Value& section = EnsureAirportPresetSection(profile, airport, allocator);
 		return EnsureArrayMember(section, kPresetItemsKey, allocator);
+	}
+
+	bool MigrateLegacyPresetStore(
+		rapidjson::Value& profile,
+		const std::string& airport,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!profile.IsObject() || !profile.HasMember(kAvisoPresetsKey) ||
+			!profile[kAvisoPresetsKey].IsObject() || NormalizeAirportKey(airport).empty())
+		{
+			return false;
+		}
+
+		rapidjson::Value& legacySection = profile[kAvisoPresetsKey];
+		const bool hasItemsMember = legacySection.HasMember(kPresetItemsKey);
+		const bool hasDefaultMember = legacySection.HasMember(kDefaultPresetKey);
+		if ((!hasItemsMember && !hasDefaultMember) ||
+			(hasItemsMember && !legacySection[kPresetItemsKey].IsArray()) ||
+			(hasDefaultMember && !legacySection[kDefaultPresetKey].IsString()))
+		{
+			return false;
+		}
+
+		// A legacy store has no airport identity. It can only be claimed while the
+		// complete airport map is empty; otherwise leave it untouched for explicit
+		// user resolution instead of allowing whichever airport opens next to claim
+		// it. Items and default are moved in the same persisted transaction.
+		rapidjson::Value* airports = nullptr;
+		if (legacySection.HasMember(kAirportPresetStoresKey))
+		{
+			if (!legacySection[kAirportPresetStoresKey].IsObject() ||
+				legacySection[kAirportPresetStoresKey].MemberBegin() !=
+					legacySection[kAirportPresetStoresKey].MemberEnd())
+			{
+				return false;
+			}
+			airports = &legacySection[kAirportPresetStoresKey];
+		}
+		else
+		{
+			rapidjson::Value airportsKey(kAirportPresetStoresKey, allocator);
+			rapidjson::Value airportsValue(rapidjson::kObjectType);
+			legacySection.AddMember(airportsKey, airportsValue, allocator);
+			airports = &legacySection[kAirportPresetStoresKey];
+		}
+
+		const std::string airportKey = NormalizeAirportKey(airport);
+		rapidjson::Value airportKeyValue;
+		airportKeyValue.SetString(
+			airportKey.c_str(),
+			static_cast<rapidjson::SizeType>(airportKey.size()),
+			allocator);
+		rapidjson::Value airportSection(rapidjson::kObjectType);
+		if (hasItemsMember)
+		{
+			rapidjson::Value items;
+			items = legacySection[kPresetItemsKey];
+			rapidjson::Value itemsKey(kPresetItemsKey, allocator);
+			airportSection.AddMember(itemsKey, items, allocator);
+		}
+		if (hasDefaultMember)
+		{
+			rapidjson::Value defaultValue;
+			defaultValue = legacySection[kDefaultPresetKey];
+			rapidjson::Value defaultKey(kDefaultPresetKey, allocator);
+			airportSection.AddMember(defaultKey, defaultValue, allocator);
+		}
+		airports->AddMember(airportKeyValue, airportSection, allocator);
+
+		if (hasItemsMember)
+			legacySection.RemoveMember(kPresetItemsKey);
+		if (hasDefaultMember)
+			legacySection.RemoveMember(kDefaultPresetKey);
+		return true;
 	}
 
 	rapidjson::SizeType FindPresetIndexNoCase(const rapidjson::Value& items, const std::string& name)
@@ -237,7 +351,7 @@ namespace
 	{
 		std::string baseName = TrimAsciiWhitespaceCopy(requestedName);
 		if (baseName.empty())
-			baseName = "AVISO Preset";
+			baseName = "Inset Preset";
 
 		if (FindPresetIndexNoCase(items, baseName) == kInvalidPresetIndex)
 			return baseName;
@@ -348,6 +462,10 @@ namespace
 					0,
 					66000);
 				ReadDoubleMember(item, "rotation", window.rotation);
+				if (item.HasMember("layout_mode"))
+					window.layoutMode = LayoutModeFromValue(item["layout_mode"], window.layoutMode);
+				else if (item.HasMember("layout_mode_id"))
+					window.layoutMode = LayoutModeFromValue(item["layout_mode_id"], window.layoutMode);
 			}
 		}
 
@@ -411,6 +529,8 @@ namespace
 				std::clamp(window.filter, 0, 66000),
 				allocator);
 			AddDoubleMember(item, "rotation", window.rotation, allocator);
+			AddStringMember(item, "layout_mode", LayoutModeToString(window.layoutMode), allocator);
+			AddIntMember(item, "layout_mode_id", std::clamp(window.layoutMode, 0, 8), allocator);
 			srw.PushBack(item, allocator);
 		}
 		rapidjson::Value srwKey("srw", allocator);
@@ -433,6 +553,72 @@ namespace
 	{
 		return GetSecondaryAvisoWindow(const_cast<CSMRRadar*>(radar));
 	}
+
+	void ReconcileLiveRadarPresetContexts(
+		CSMRRadar* source,
+		const std::string& profileName,
+		const std::string& airport,
+		const std::string& renamedFrom = "",
+		const std::string& renamedTo = "")
+	{
+		if (source == nullptr || source->CurrentConfig == nullptr)
+			return;
+
+		auto reconcile = [&](CSMRRadar* radar)
+		{
+			if (radar == nullptr || radar->IsShutdownRequested() ||
+				radar->CurrentConfig == nullptr ||
+				!radar->CurrentConfig->sharesConfigFileWith(*source->CurrentConfig) ||
+				!EqualsNoCase(radar->CurrentConfig->getActiveProfileName(), profileName) ||
+				!EqualsNoCase(NormalizeAirportKey(radar->getActiveAirport()), airport))
+			{
+				return;
+			}
+
+			if (!renamedFrom.empty() && !renamedTo.empty() &&
+				EqualsNoCase(radar->ActiveAvisoPresetName, renamedFrom))
+			{
+				radar->ActiveAvisoPresetName = renamedTo;
+			}
+
+			if (!radar->ActiveAvisoPresetName.empty())
+			{
+				const std::vector<CSMRRadar::AvisoPreset> presets = radar->GetAvisoPresets();
+				const auto active = std::find_if(
+					presets.begin(),
+					presets.end(),
+					[&](const CSMRRadar::AvisoPreset& preset) {
+						return EqualsNoCase(preset.name, radar->ActiveAvisoPresetName);
+					});
+				if (active == presets.end())
+				{
+					radar->ActiveAvisoPresetName.clear();
+					radar->AvisoViewsLinked = false;
+				}
+				else
+				{
+					radar->ActiveAvisoPresetName = active->name;
+					radar->AvisoViewsLinked = active->linkedMovement;
+					if (radar->AvisoViewsLinked)
+						radar->SyncLinkedAvisoSecondaryToMainView();
+				}
+			}
+
+			radar->SaveInsetStateToAsrForAirport(radar->getActiveAirport());
+			radar->RequestRefresh();
+			if (radar != source && radar->VsmrControlCenterDialog != nullptr)
+				radar->VsmrControlCenterDialog->SyncFromRadar();
+		};
+
+		bool sourceSeen = false;
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			sourceSeen = sourceSeen || radar == source;
+			reconcile(radar);
+		}
+		if (!sourceSeen)
+			reconcile(source);
+	}
 }
 
 std::vector<CSMRRadar::AvisoPreset> CSMRRadar::GetAvisoPresets() const
@@ -442,7 +628,7 @@ std::vector<CSMRRadar::AvisoPreset> CSMRRadar::GetAvisoPresets() const
 		return presets;
 
 	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
-	const rapidjson::Value* items = GetPresetItems(profile);
+	const rapidjson::Value* items = GetPresetItems(profile, getActiveAirport());
 	if (items == nullptr)
 		return presets;
 
@@ -462,7 +648,7 @@ std::string CSMRRadar::GetDefaultAvisoPresetName() const
 		return "";
 
 	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
-	const rapidjson::Value* section = GetObjectMember(profile, kAvisoPresetsKey);
+	const rapidjson::Value* section = GetAirportPresetSection(profile, getActiveAirport());
 	if (section == nullptr)
 		return "";
 
@@ -474,27 +660,27 @@ std::string CSMRRadar::GetActiveAvisoPresetName() const
 	return ActiveAvisoPresetName;
 }
 
-bool CSMRRadar::SaveAvisoPreset(const std::string& requestedName, bool overwriteExisting, std::string* outSavedName)
+bool CSMRRadar::SaveAvisoPreset(
+	const std::string& requestedName,
+	bool overwriteExisting,
+	std::string* outSavedName,
+	std::optional<bool> linkedMovementOverride)
 {
 	if (CurrentConfig == nullptr)
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	rapidjson::Value& items = EnsurePresetItems(profile, allocator);
 	std::string presetName = TrimAsciiWhitespaceCopy(requestedName);
 	if (presetName.empty())
-		presetName = "AVISO Preset";
-	const rapidjson::SizeType existingIndex = FindPresetIndexNoCase(items, presetName);
-	if (existingIndex != kInvalidPresetIndex && !overwriteExisting)
-		return false;
+		presetName = "Inset Preset";
 
 	AvisoPreset preset;
 	preset.name = presetName;
-	preset.linkedMovement = AvisoViewsLinked;
+	preset.linkedMovement = linkedMovementOverride.value_or(AvisoViewsLinked);
 
 	CPosition displayA;
 	CPosition displayB;
@@ -532,27 +718,41 @@ bool CSMRRadar::SaveAvisoPreset(const std::string& requestedName, bool overwrite
 		window.scale = windowIt->second->m_Scale;
 		window.filter = windowIt->second->m_Filter;
 		window.rotation = windowIt->second->m_Rotation;
+		window.layoutMode = std::clamp(static_cast<int>(windowIt->second->m_AvisoLayoutMode), 0, 8);
 		const auto visibleIt = appWindowDisplays.find(id);
 		window.visible =
 			visibleIt != appWindowDisplays.end() && visibleIt->second;
 	}
 
-	rapidjson::Value presetValue;
-	WriteAvisoPreset(preset, presetValue, allocator);
+	const bool saved = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			MigrateLegacyPresetStore(profile, airport, allocator);
+			rapidjson::Value& items = EnsurePresetItems(profile, airport, allocator);
+			const rapidjson::SizeType existingIndex = FindPresetIndexNoCase(items, presetName);
 
-	if (existingIndex != kInvalidPresetIndex)
-	{
-		items[existingIndex] = presetValue;
-	}
-	else
-	{
-		items.PushBack(presetValue, allocator);
-	}
+			// overwriteExisting is the update path. If another screen deleted this
+			// preset after it was displayed, abort instead of recreating stale state.
+			if ((overwriteExisting && existingIndex == kInvalidPresetIndex) ||
+				(!overwriteExisting && existingIndex != kInvalidPresetIndex))
+			{
+				return CConfig::AvisoPresetTransactionAction::Abort;
+			}
 
-	if (!CurrentConfig->saveConfig())
+			rapidjson::Value presetValue;
+			WriteAvisoPreset(preset, presetValue, allocator);
+			if (existingIndex != kInvalidPresetIndex)
+				items[existingIndex] = presetValue;
+			else
+				items.PushBack(presetValue, allocator);
+			return CConfig::AvisoPresetTransactionAction::Save;
+		});
+	if (!saved)
 		return false;
 
 	ActiveAvisoPresetName = presetName;
+	AvisoViewsLinked = preset.linkedMovement;
+	ReconcileLiveRadarPresetContexts(this, activeProfileName, airport);
 	if (outSavedName != nullptr)
 		*outSavedName = presetName;
 	return true;
@@ -568,7 +768,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		return false;
 
 	const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
-	const rapidjson::Value* items = GetPresetItems(profile);
+	const rapidjson::Value* items = GetPresetItems(profile, getActiveAirport());
 	if (items == nullptr)
 		return false;
 
@@ -625,6 +825,8 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		windowIt->second->m_Scale = std::clamp(window.scale, 1, 2400);
 		windowIt->second->m_Filter = std::clamp(window.filter, 0, 66000);
 		windowIt->second->m_Rotation = window.rotation;
+		windowIt->second->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(
+			std::clamp(window.layoutMode, 0, 8));
 		appWindowDisplays[id] = window.visible;
 	}
 	AvisoViewsLinked = preset.linkedMovement;
@@ -632,11 +834,15 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 	if (AvisoViewsLinked)
 		SyncLinkedAvisoSecondaryToMainView();
 
+	SaveInsetStateToAsrForAirport(getActiveAirport());
 	RequestRefresh();
 	return true;
 }
 
-bool CSMRRadar::RenameAvisoPreset(const std::string& oldName, const std::string& newName)
+bool CSMRRadar::RenameAvisoPreset(
+	const std::string& oldName,
+	const std::string& newName,
+	std::optional<bool> linkedMovementOverride)
 {
 	if (CurrentConfig == nullptr)
 		return false;
@@ -646,39 +852,56 @@ bool CSMRRadar::RenameAvisoPreset(const std::string& oldName, const std::string&
 	if (trimmedOldName.empty() || trimmedNewName.empty())
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	rapidjson::Value& items = EnsurePresetItems(profile, allocator);
-	const rapidjson::SizeType oldIndex = FindPresetIndexNoCase(items, trimmedOldName);
-	if (oldIndex == kInvalidPresetIndex)
+	std::string oldCanonicalName;
+	const bool renamed = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			MigrateLegacyPresetStore(profile, airport, allocator);
+			rapidjson::Value& items = EnsurePresetItems(profile, airport, allocator);
+			const rapidjson::SizeType oldIndex = FindPresetIndexNoCase(items, trimmedOldName);
+			if (oldIndex == kInvalidPresetIndex)
+				return CConfig::AvisoPresetTransactionAction::Abort;
+
+			const rapidjson::SizeType newIndex = FindPresetIndexNoCase(items, trimmedNewName);
+			if (newIndex != kInvalidPresetIndex && newIndex != oldIndex)
+				return CConfig::AvisoPresetTransactionAction::Abort;
+
+			AvisoPreset preset;
+			if (!ParseAvisoPreset(items[oldIndex], preset))
+				return CConfig::AvisoPresetTransactionAction::Abort;
+
+			oldCanonicalName = preset.name;
+			preset.name = trimmedNewName;
+			if (linkedMovementOverride.has_value())
+				preset.linkedMovement = *linkedMovementOverride;
+			rapidjson::Value presetValue;
+			WriteAvisoPreset(preset, presetValue, allocator);
+			items[oldIndex] = presetValue;
+
+			rapidjson::Value& section = EnsureAirportPresetSection(profile, airport, allocator);
+			const std::string defaultName = TrimAsciiWhitespaceCopy(
+				ReadStringMember(section, kDefaultPresetKey));
+			if (!defaultName.empty() && EqualsNoCase(defaultName, oldCanonicalName))
+				SetStringMember(section, kDefaultPresetKey, trimmedNewName, allocator);
+			return CConfig::AvisoPresetTransactionAction::Save;
+		});
+	if (!renamed)
 		return false;
-
-	const rapidjson::SizeType newIndex = FindPresetIndexNoCase(items, trimmedNewName);
-	if (newIndex != kInvalidPresetIndex && newIndex != oldIndex)
-		return false;
-
-	AvisoPreset preset;
-	if (!ParseAvisoPreset(items[oldIndex], preset))
-		return false;
-
-	const std::string oldCanonicalName = preset.name;
-	preset.name = trimmedNewName;
-	rapidjson::Value presetValue;
-	WriteAvisoPreset(preset, presetValue, allocator);
-	items[oldIndex] = presetValue;
-
-	rapidjson::Value& section = EnsureObjectMember(profile, kAvisoPresetsKey, allocator);
-	const std::string defaultName = GetDefaultAvisoPresetName();
-	if (!defaultName.empty() && EqualsNoCase(defaultName, oldCanonicalName))
-		SetStringMember(section, kDefaultPresetKey, trimmedNewName, allocator);
 
 	if (EqualsNoCase(ActiveAvisoPresetName, oldCanonicalName))
 		ActiveAvisoPresetName = trimmedNewName;
-
-	return CurrentConfig->saveConfig();
+	ReconcileLiveRadarPresetContexts(
+		this,
+		activeProfileName,
+		airport,
+		oldCanonicalName,
+		trimmedNewName);
+	return true;
 }
 
 bool CSMRRadar::DuplicateAvisoPreset(const std::string& sourceName, const std::string& requestedName, std::string* outSavedName)
@@ -690,30 +913,39 @@ bool CSMRRadar::DuplicateAvisoPreset(const std::string& sourceName, const std::s
 	if (trimmedSourceName.empty())
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	rapidjson::Value& items = EnsurePresetItems(profile, allocator);
-	const rapidjson::SizeType sourceIndex = FindPresetIndexNoCase(items, trimmedSourceName);
-	if (sourceIndex == kInvalidPresetIndex)
-		return false;
+	std::string uniqueName;
+	const bool duplicated = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			MigrateLegacyPresetStore(profile, airport, allocator);
+			rapidjson::Value& items = EnsurePresetItems(profile, airport, allocator);
+			const rapidjson::SizeType sourceIndex = FindPresetIndexNoCase(items, trimmedSourceName);
+			if (sourceIndex == kInvalidPresetIndex)
+				return CConfig::AvisoPresetTransactionAction::Abort;
 
-	AvisoPreset preset;
-	if (!ParseAvisoPreset(items[sourceIndex], preset))
-		return false;
+			AvisoPreset preset;
+			if (!ParseAvisoPreset(items[sourceIndex], preset))
+				return CConfig::AvisoPresetTransactionAction::Abort;
 
-	const std::string uniqueName = MakeUniquePresetName(items, requestedName.empty() ? ("Copy of " + preset.name) : requestedName);
-	preset.name = uniqueName;
-
-	rapidjson::Value presetValue;
-	WriteAvisoPreset(preset, presetValue, allocator);
-	items.PushBack(presetValue, allocator);
-	if (!CurrentConfig->saveConfig())
+			uniqueName = MakeUniquePresetName(
+				items,
+				requestedName.empty() ? ("Copy of " + preset.name) : requestedName);
+			preset.name = uniqueName;
+			rapidjson::Value presetValue;
+			WriteAvisoPreset(preset, presetValue, allocator);
+			items.PushBack(presetValue, allocator);
+			return CConfig::AvisoPresetTransactionAction::Save;
+		});
+	if (!duplicated)
 		return false;
 
 	ActiveAvisoPresetName = uniqueName;
+	ReconcileLiveRadarPresetContexts(this, activeProfileName, airport);
 	if (outSavedName != nullptr)
 		*outSavedName = uniqueName;
 	return true;
@@ -728,34 +960,47 @@ bool CSMRRadar::DeleteAvisoPreset(const std::string& name)
 	if (trimmedName.empty())
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
-		return false;
-
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	rapidjson::Value& section = EnsureObjectMember(profile, kAvisoPresetsKey, allocator);
-	rapidjson::Value& items = EnsureArrayMember(section, kPresetItemsKey, allocator);
-	const rapidjson::SizeType index = FindPresetIndexNoCase(items, trimmedName);
-	if (index == kInvalidPresetIndex)
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
 	std::string canonicalName = trimmedName;
-	AvisoPreset preset;
-	if (ParseAvisoPreset(items[index], preset))
-		canonicalName = preset.name;
+	const bool deleted = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			MigrateLegacyPresetStore(profile, airport, allocator);
+			rapidjson::Value& section = EnsureAirportPresetSection(profile, airport, allocator);
+			rapidjson::Value& items = EnsureArrayMember(section, kPresetItemsKey, allocator);
+			const rapidjson::SizeType index = FindPresetIndexNoCase(items, trimmedName);
+			if (index == kInvalidPresetIndex)
+				return CConfig::AvisoPresetTransactionAction::Abort;
 
-	RemoveArrayElement(items, index);
-	const std::string defaultName = GetDefaultAvisoPresetName();
-	if (!defaultName.empty() && EqualsNoCase(defaultName, canonicalName) && section.HasMember(kDefaultPresetKey))
-		section.RemoveMember(kDefaultPresetKey);
+			AvisoPreset preset;
+			if (ParseAvisoPreset(items[index], preset))
+				canonicalName = preset.name;
+			RemoveArrayElement(items, index);
+
+			const std::string defaultName = TrimAsciiWhitespaceCopy(
+				ReadStringMember(section, kDefaultPresetKey));
+			if (!defaultName.empty() && EqualsNoCase(defaultName, canonicalName) &&
+				section.HasMember(kDefaultPresetKey))
+			{
+				section.RemoveMember(kDefaultPresetKey);
+			}
+			return CConfig::AvisoPresetTransactionAction::Save;
+		});
+	if (!deleted)
+		return false;
 
 	if (EqualsNoCase(ActiveAvisoPresetName, canonicalName))
 	{
 		ActiveAvisoPresetName.clear();
 		AvisoViewsLinked = false;
 	}
+	ReconcileLiveRadarPresetContexts(this, activeProfileName, airport);
 
-	return CurrentConfig->saveConfig();
+	return true;
 }
 
 bool CSMRRadar::SetDefaultAvisoPreset(const std::string& name)
@@ -767,23 +1012,40 @@ bool CSMRRadar::SetDefaultAvisoPreset(const std::string& name)
 	if (trimmedName.empty())
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	rapidjson::Value& items = EnsurePresetItems(profile, allocator);
-	const rapidjson::SizeType index = FindPresetIndexNoCase(items, trimmedName);
-	if (index == kInvalidPresetIndex)
-		return false;
+	const bool saved = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			const bool migrated = MigrateLegacyPresetStore(profile, airport, allocator);
+			rapidjson::Value& items = EnsurePresetItems(profile, airport, allocator);
+			const rapidjson::SizeType index = FindPresetIndexNoCase(items, trimmedName);
+			if (index == kInvalidPresetIndex)
+				return CConfig::AvisoPresetTransactionAction::Abort;
 
-	AvisoPreset preset;
-	if (!ParseAvisoPreset(items[index], preset))
-		return false;
+			AvisoPreset preset;
+			if (!ParseAvisoPreset(items[index], preset))
+				return CConfig::AvisoPresetTransactionAction::Abort;
 
-	rapidjson::Value& section = EnsureObjectMember(profile, kAvisoPresetsKey, allocator);
-	SetStringMember(section, kDefaultPresetKey, preset.name, allocator);
-	return CurrentConfig->saveConfig();
+			rapidjson::Value& section = EnsureAirportPresetSection(profile, airport, allocator);
+			const std::string currentDefault = TrimAsciiWhitespaceCopy(
+				ReadStringMember(section, kDefaultPresetKey));
+			if (EqualsNoCase(currentDefault, preset.name))
+			{
+				return migrated
+					? CConfig::AvisoPresetTransactionAction::Save
+					: CConfig::AvisoPresetTransactionAction::NoChange;
+			}
+
+			SetStringMember(section, kDefaultPresetKey, preset.name, allocator);
+			return CConfig::AvisoPresetTransactionAction::Save;
+		});
+	if (saved)
+		ReconcileLiveRadarPresetContexts(this, activeProfileName, airport);
+	return saved;
 }
 
 bool CSMRRadar::ClearDefaultAvisoPreset()
@@ -791,14 +1053,32 @@ bool CSMRRadar::ClearDefaultAvisoPreset()
 	if (CurrentConfig == nullptr)
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
-	rapidjson::Value& section = EnsureObjectMember(profile, kAvisoPresetsKey, CurrentConfig->document.GetAllocator());
-	if (section.HasMember(kDefaultPresetKey))
-		section.RemoveMember(kDefaultPresetKey);
-	return CurrentConfig->saveConfig();
+	const bool saved = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			const bool migrated = MigrateLegacyPresetStore(profile, airport, allocator);
+			const rapidjson::Value* existingSection = GetAirportPresetSection(profile, airport);
+			if (existingSection != nullptr && existingSection->HasMember(kDefaultPresetKey))
+			{
+				rapidjson::Value& section = EnsureAirportPresetSection(
+					profile,
+					airport,
+					allocator);
+				section.RemoveMember(kDefaultPresetKey);
+				return CConfig::AvisoPresetTransactionAction::Save;
+			}
+			return migrated
+				? CConfig::AvisoPresetTransactionAction::Save
+				: CConfig::AvisoPresetTransactionAction::NoChange;
+		});
+	if (saved)
+		ReconcileLiveRadarPresetContexts(this, activeProfileName, airport);
+	return saved;
 }
 
 bool CSMRRadar::ApplyDefaultAvisoPresetIfConfigured()
@@ -809,11 +1089,28 @@ bool CSMRRadar::ApplyDefaultAvisoPresetIfConfigured()
 	return LoadAvisoPreset(defaultPreset);
 }
 
-void CSMRRadar::ResetAvisoPresetStateForActiveProfile()
+void CSMRRadar::ResetAvisoPresetStateForActiveProfile(bool applyDefaultPreset)
 {
+	if (CurrentConfig != nullptr)
+	{
+		const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+		const std::string airport = NormalizeAirportKey(getActiveAirport());
+		if (!activeProfileName.empty() && !airport.empty())
+		{
+			CurrentConfig->transactAvisoPresetStore(
+				activeProfileName,
+				[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+					return MigrateLegacyPresetStore(profile, airport, allocator)
+						? CConfig::AvisoPresetTransactionAction::Save
+						: CConfig::AvisoPresetTransactionAction::NoChange;
+				});
+		}
+	}
+
 	ActiveAvisoPresetName.clear();
 	AvisoViewsLinked = false;
-	ApplyDefaultAvisoPresetIfConfigured();
+	if (applyDefaultPreset)
+		ApplyDefaultAvisoPresetIfConfigured();
 }
 
 bool CSMRRadar::UpdateActiveAvisoPreset()
@@ -837,11 +1134,12 @@ bool CSMRRadar::ResetActiveAvisoPreset()
 
 bool CSMRRadar::SetActiveAvisoPresetLinkedMovement(bool linked)
 {
-	AvisoViewsLinked = linked;
 	if (ActiveAvisoPresetName.empty())
 	{
+		AvisoViewsLinked = linked;
 		if (AvisoViewsLinked)
 			SyncLinkedAvisoSecondaryToMainView();
+		SaveInsetStateToAsrForAirport(getActiveAirport());
 		RequestRefresh();
 		return true;
 	}
@@ -849,23 +1147,36 @@ bool CSMRRadar::SetActiveAvisoPresetLinkedMovement(bool linked)
 	if (CurrentConfig == nullptr)
 		return false;
 
-	rapidjson::Value& profile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
+	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
+	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string presetName = ActiveAvisoPresetName;
+	if (activeProfileName.empty() || airport.empty())
 		return false;
 
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	rapidjson::Value& items = EnsurePresetItems(profile, allocator);
-	const rapidjson::SizeType index = FindPresetIndexNoCase(items, ActiveAvisoPresetName);
-	if (index == kInvalidPresetIndex || !items[index].IsObject())
+	const bool saved = CurrentConfig->transactAvisoPresetStore(
+		activeProfileName,
+		[&](rapidjson::Value& profile, rapidjson::Document::AllocatorType& allocator) {
+			const bool migrated = MigrateLegacyPresetStore(profile, airport, allocator);
+			rapidjson::Value& items = EnsurePresetItems(profile, airport, allocator);
+			const rapidjson::SizeType index = FindPresetIndexNoCase(items, presetName);
+			if (index == kInvalidPresetIndex || !items[index].IsObject())
+				return CConfig::AvisoPresetTransactionAction::Abort;
+
+			const bool currentValue = ReadBoolMember(items[index], "linked_movement", false);
+			if (currentValue == linked && items[index].HasMember("linked_movement"))
+			{
+				return migrated
+					? CConfig::AvisoPresetTransactionAction::Save
+					: CConfig::AvisoPresetTransactionAction::NoChange;
+			}
+			SetBoolMember(items[index], "linked_movement", linked, allocator);
+			return CConfig::AvisoPresetTransactionAction::Save;
+		});
+	if (!saved)
 		return false;
 
-	SetBoolMember(items[index], "linked_movement", linked, allocator);
-	if (!CurrentConfig->saveConfig())
-		return false;
-
-	if (AvisoViewsLinked)
-		SyncLinkedAvisoSecondaryToMainView();
-	RequestRefresh();
+	AvisoViewsLinked = linked;
+	ReconcileLiveRadarPresetContexts(this, activeProfileName, airport);
 	return true;
 }
 
