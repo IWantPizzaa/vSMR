@@ -5,6 +5,21 @@
 
 extern CPoint mouseLocation;
 
+namespace
+{
+	std::string NormalizeAirportInput(const char* input)
+	{
+		std::string airport = input != nullptr ? input : "";
+		const auto first = std::find_if_not(airport.begin(), airport.end(), [](unsigned char value) { return std::isspace(value) != 0; });
+		const auto last = std::find_if_not(airport.rbegin(), airport.rend(), [](unsigned char value) { return std::isspace(value) != 0; }).base();
+		if (first >= last)
+			return "";
+		airport = std::string(first, last);
+		std::transform(airport.begin(), airport.end(), airport.begin(), [](unsigned char value) { return static_cast<char>(std::toupper(value)); });
+		return airport;
+	}
+}
+
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
@@ -22,12 +37,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	};
 	auto showAvisoPresetMessage = [&](const std::string& message) {
 		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO Presets", message.c_str(), true, true, false, false, false);
-	};
-	auto reopenList = [&](const std::string& listName, bool refreshAfterOpen = false)
-	{
-		ShowLists[listName] = true;
-		if (refreshAfterOpen)
-			RequestRefresh();
 	};
 	if (FunctionId == RIMCAS_AVISO_PRESET_RENAME)
 	{
@@ -50,28 +59,16 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	if (FunctionId == RIMCAS_ACTIVE_AIRPORT_FUNC) {
 		if (hasItemString)
 		{
-			setActiveAirport(itemString);
+			const std::string airport = NormalizeAirportInput(itemString);
+			if (airport.empty())
+				return;
+			setActiveAirport(airport);
 			SaveDataToAsr("Airport", "Active airport", getActiveAirport().c_str());
+			if (VsmrControlCenterDialog != nullptr)
+				VsmrControlCenterDialog->SyncFromRadar();
+			RequestRefresh();
 		}
-	}
-
-	if (FunctionId == RIMCAS_QDM_TOGGLE) {
-		QDMenabled = !QDMenabled;
-		QDMSelectEnabled = false;
-	}
-
-	if (FunctionId == RIMCAS_QDM_SELECT_TOGGLE)
-	{
-		if (!QDMSelectEnabled)
-		{
-			CPosition activeAirportPosition;
-			if (TryGetActiveAirportPosition(activeAirportPosition))
-				QDMSelectPt = ConvertCoordFromPositionToPixel(activeAirportPosition);
-			else
-				QDMSelectPt = Pt;
-		}
-		QDMSelectEnabled = !QDMSelectEnabled;
-		QDMenabled = false;
+		return;
 	}
 
 	if (FunctionId > RIMCAS_UPDATEFILTER && FunctionId <= RIMCAS_UPDATEFILTER3) {
@@ -107,92 +104,4 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		}
 	}
 
-	if (FunctionId == RIMCAS_UPDATE_BRIGHNESS) {
-		if (strcmp(itemString, "Day") == 0)
-			ColorSettingsDay = true;
-		else
-			ColorSettingsDay = false;
-
-		reopenList("Day / Night", true);
-	}
-
-	if (FunctionId == RIMCAS_OPEN_LIST) {
-		if (!hasItemString)
-			return;
-
-		reopenList(itemString);
-		ListAreas[string(itemString)] = Area;
-
-		RequestRefresh();
-	}
-
-	if (FunctionId == RIMCAS_UPDATE_AFTERGLOW)
-	{
-		Afterglow = !Afterglow;
-	}
-
-	if (FunctionId == RIMCAS_UPDATE_GND_TRAIL)
-	{
-		if (hasItemString)
-			Trail_Gnd = atoi(itemString);
-
-		reopenList("GRND Trail Dots");
-	}
-
-	if (FunctionId == RIMCAS_UPDATE_APP_TRAIL)
-	{
-		if (hasItemString)
-			Trail_App = atoi(itemString);
-
-		reopenList("APPR Trail Dots");
-	}
-
-	if (FunctionId == RIMCAS_UPDATE_PTL)
-	{
-		if (hasItemString)
-			PredictedLength = atoi(itemString);
-
-		reopenList("Predicted Track Line");
-	}
-
-	if (FunctionId == RIMCAS_BRIGHTNESS_LABEL)
-	{
-		if (hasItemString)
-			ColorManager->update_brightness("label", std::atoi(itemString));
-		reopenList("Label");
-	}
-
-	if (FunctionId == RIMCAS_BRIGHTNESS_AFTERGLOW)
-	{
-		if (hasItemString)
-			ColorManager->update_brightness("afterglow", std::atoi(itemString));
-		reopenList("Afterglow");
-	}
-
-	if (FunctionId == RIMCAS_BRIGHTNESS_SYMBOL)
-	{
-		if (hasItemString)
-			ColorManager->update_brightness("symbol", std::atoi(itemString));
-		reopenList("Symbol");
-	}
-
-	if (FunctionId == RIMCAS_UPDATE_RELEASE)
-	{
-		ReleaseInProgress = !ReleaseInProgress;
-		if (ReleaseInProgress)
-			AcquireInProgress = false;
-		NeedCorrelateCursor = ReleaseInProgress;
-
-		CorrelateCursor();
-	}
-
-	if (FunctionId == RIMCAS_UPDATE_ACQUIRE)
-	{
-		AcquireInProgress = !AcquireInProgress;
-		if (AcquireInProgress)
-			ReleaseInProgress = false;
-		NeedCorrelateCursor = AcquireInProgress;
-
-		CorrelateCursor();
-	}
 }

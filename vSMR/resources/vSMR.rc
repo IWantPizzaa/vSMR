@@ -34,7 +34,6 @@ IDC_SMRCURSOR           CURSOR                  "cursors\\arrow.cur"
 
 IDC_SMRRESIZE           CURSOR                  "cursors\\POINTER1.cur"
 
-IDC_SMRCORRELATE        CURSOR                  "cursors\\ml_blau_link.cur"
 
 IDC_SMRMOVEWINDOW       CURSOR                  "cursors\\move.cur"
 
