@@ -487,17 +487,9 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	// Label font size is persisted per profile in vSMR_Profiles.json.
 	// Keep ASR value untouched to avoid overriding the active profile setting.
 
-	if ((p_value = GetDataFromAsr("Afterglow")) != NULL)
-		Afterglow = atoi(p_value) == 1 ? true : false;
-
-	if ((p_value = GetDataFromAsr("AppTrailsDots")) != NULL)
-		Trail_App = atoi(p_value);
-
-	if ((p_value = GetDataFromAsr("GndTrailsDots")) != NULL)
-		Trail_Gnd = atoi(p_value);
-
-	if ((p_value = GetDataFromAsr("PredictedLine")) != NULL)
-		PredictedLength = atoi(p_value);
+	ShowFps = true;
+	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
+		ShowFps = atoi(p_value) != 0;
 
 	LoadRuntimeMenuPositionFromAsr();
 
@@ -643,13 +635,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 
-	SaveDataToAsr("Afterglow", "vSMR Afterglow enabled", std::to_string(int(Afterglow)).c_str());
-
-	SaveDataToAsr("AppTrailsDots", "vSMR APPR Trail Dots", std::to_string(Trail_App).c_str());
-
-	SaveDataToAsr("GndTrailsDots", "vSMR GRND Trail Dots", std::to_string(Trail_Gnd).c_str());
-
-	SaveDataToAsr("PredictedLine", "vSMR Predicted Track Lines", std::to_string(PredictedLength).c_str());
+	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
 
 	SaveRuntimeMenuPositionToAsr();
 

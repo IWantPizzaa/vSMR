@@ -14,11 +14,13 @@ namespace
 	constexpr int kRailPadding = 3;
 	constexpr int kButtonSize = 40;
 	constexpr int kButtonGap = 3;
+	constexpr int kAirportRowHeight = 22;
 	constexpr int kRailHeight =
 		kDragHeight +
 		(kRailPadding * 2) +
+		kAirportRowHeight +
 		(kButtonSize * 5) +
-		(kButtonGap * 4);
+		(kButtonGap * 5);
 	constexpr int kPopupGap = 4;
 	constexpr int kPopupHeaderHeight = 23;
 	constexpr int kPopupRowHeight = 28;
@@ -280,7 +282,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	chatArea.NormalizeRect();
 	if (!chatArea.IsRectEmpty() && chatArea.top > bounds.top && chatArea.top < bounds.bottom)
 		bounds.bottom = chatArea.top;
-	bounds.top += 22;
 	if (bounds.Width() < kRailWidth + 8 || bounds.Height() < kRailHeight + 8)
 		return;
 
@@ -306,6 +307,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const int savedDc = ::SaveDC(hdc);
 	::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
 	::SelectObject(hdc, ::GetStockObject(DC_PEN));
+	if (RuntimeOverlayFont.GetSafeHandle() != nullptr)
+		::SelectObject(hdc, RuntimeOverlayFont.GetSafeHandle());
 	graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
 	FillRectColor(hdc, RuntimeMenuArea, kRailBackground);
@@ -336,6 +339,21 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	AddScreenObject(RUNTIME_MENU_RAIL, "runtime.drag", dragArea, true, "Drag vSMR runtime menu");
 
+	CRect airportArea(
+		RuntimeMenuArea.left + 4,
+		RuntimeMenuArea.top + kDragHeight + kRailPadding,
+		RuntimeMenuArea.right - 4,
+		RuntimeMenuArea.top + kDragHeight + kRailPadding + kAirportRowHeight);
+	const bool airportHover = PointInside(airportArea, mouseLocation);
+	DrawRoundedRect(hdc, airportArea, airportHover ? kButtonHover : kButtonBackground, kOuterBorder, 4);
+	DrawTextEllipsis(hdc, airportArea, getActiveAirport(), kText, DT_CENTER);
+	AddScreenObject(
+		RUNTIME_MENU_RAIL,
+		"runtime.airport",
+		airportArea,
+		false,
+		"Edit active airport");
+
 	const std::string activeProfile = GetActiveProfileNameForEditor();
 	const std::string activeMode = activeProfile.empty() ? "" : GetActiveProfileDisplayModeForEditor(activeProfile);
 	const std::vector<AvisoGroup> groups = GetAvisoGroups();
@@ -361,7 +379,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 
-	int buttonTop = RuntimeMenuArea.top + kDragHeight + kRailPadding;
+	int buttonTop = airportArea.bottom + kButtonGap;
 	for (size_t index = 0; index < _countof(buttons); ++index)
 	{
 		const RailButton& button = buttons[index];
@@ -863,7 +881,12 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			RequestRefresh();
 		};
 
-		if (std::strcmp(id, "runtime.button.mode") == 0)
+		if (std::strcmp(id, "runtime.airport") == 0)
+		{
+			CloseRuntimeMenuPopup();
+			GetPlugIn()->OpenPopupEdit(area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
+		}
+		else if (std::strcmp(id, "runtime.button.mode") == 0)
 			togglePopup(RuntimeMenuPopup::Mode);
 		else if (std::strcmp(id, "runtime.button.groups") == 0)
 			togglePopup(RuntimeMenuPopup::Groups);

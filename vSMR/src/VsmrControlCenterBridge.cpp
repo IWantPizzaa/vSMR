@@ -721,6 +721,7 @@ struct VsmrControlCenterBridge::Impl
 			"resolutionPreset",
 			Owner->GetSmallTargetIconBoostResolutionPreset(),
 			allocator);
+		settings.AddMember("showFps", Owner->ShowFps, allocator);
 		settings.AddMember("runtimeSync", true, allocator);
 		settings.AddMember("confirmDelete", true, allocator);
 
@@ -917,6 +918,7 @@ struct VsmrControlCenterBridge::Impl
 			"activeProfile",
 			Owner->GetActiveProfileNameForEditor(),
 			allocator);
+		AddString(payload, "airport", Owner->getActiveAirport(), allocator);
 		AddString(payload, "reason", reason, allocator);
 		message.AddMember("payload", payload, allocator);
 		Send(message);
@@ -973,6 +975,12 @@ struct VsmrControlCenterBridge::Impl
 			"activeProfile",
 			Owner->GetActiveProfileNameForEditor(),
 			allocator);
+		const std::string stagedAirport = ReadString(stagedState, "airport");
+		AddString(
+			payload,
+			"airport",
+			stagedAirport.empty() ? Owner->getActiveAirport() : stagedAirport,
+			allocator);
 		AddString(payload, "reason", reason, allocator);
 		message.AddMember("payload", payload, allocator);
 		Send(message);
@@ -999,6 +1007,14 @@ struct VsmrControlCenterBridge::Impl
 		}
 
 		const rapidjson::Value& stagedState = (*payload)["state"];
+		const std::string stagedAirport = TrimAscii(ReadString(stagedState, "airport"));
+		if (stagedState.HasMember("aviso") &&
+			(stagedAirport.empty() ||
+				!EqualsNoCase(stagedAirport, TrimAscii(Owner->getActiveAirport()))))
+		{
+			error = "The active airport changed while these edits were staged. Reload the Control Center before continuing.";
+			return false;
+		}
 		if (!stagedState.HasMember("profiles"))
 		{
 			error = "Undo/redo state is missing profiles.";
@@ -1046,6 +1062,16 @@ struct VsmrControlCenterBridge::Impl
 			{
 				error = "The staged resolution preset is invalid.";
 				return false;
+			}
+
+			const rapidjson::Value& settings = stagedState["settings"];
+			if (settings.HasMember("showFps") && settings["showFps"].IsBool())
+			{
+				Owner->ShowFps = settings["showFps"].GetBool();
+				Owner->SaveDataToAsr(
+					"ShowFps",
+					"Show FPS counter",
+					Owner->ShowFps ? "1" : "0");
 			}
 		}
 
@@ -1179,6 +1205,14 @@ struct VsmrControlCenterBridge::Impl
 		if (!payload->HasMember("profiles"))
 		{
 			error = "Save payload is missing profiles.";
+			return false;
+		}
+		const std::string stagedAirport = TrimAscii(ReadString(*payload, "airport"));
+		if (payload->HasMember("aviso") &&
+			(stagedAirport.empty() ||
+				!EqualsNoCase(stagedAirport, TrimAscii(Owner->getActiveAirport()))))
+		{
+			error = "The active airport changed while these edits were staged. Reload the Control Center before saving.";
 			return false;
 		}
 
@@ -1529,6 +1563,15 @@ struct VsmrControlCenterBridge::Impl
 		{
 			error = "The selected resolution preset is invalid.";
 			return false;
+		}
+
+		if (payload->HasMember("showFps") && (*payload)["showFps"].IsBool())
+		{
+			Owner->ShowFps = (*payload)["showFps"].GetBool();
+			Owner->SaveDataToAsr(
+				"ShowFps",
+				"Show FPS counter",
+				Owner->ShowFps ? "1" : "0");
 		}
 
 		if (Owner->CurrentConfig != nullptr &&

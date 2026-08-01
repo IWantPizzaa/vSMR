@@ -21,7 +21,8 @@ the test record.
 4. Keep hashes and byte copies of both input files.
 5. Open one vSMR radar display at LFPG with traffic or replay targets suitable
    for tag, filter, and RIMCAS observations.
-6. Save the ASR once so runtime-rail and inset persistence can be checked.
+6. Save the ASR once so runtime-rail, inset, airport, and FPS persistence can
+   be checked.
 
 For each row, mark Pass, Fail, Blocked, or N/A and attach a screenshot/log/file
 diff where the expected result is not immediately visible.
@@ -45,8 +46,8 @@ diff where the expected result is not immediately visible.
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| RT-01 | Inspect the normal radar display before opening Control Center. | Only the compact five-icon native rail is present; it has Mode, Groups, AVISO Insets, Profile, and Control Center tooltips. |
-| RT-02 | Drag the grip, save/reopen the ASR. | Rail stays inside the radar area and restores from `RuntimeMenuX`/`RuntimeMenuY`. |
+| RT-01 | Inspect the normal radar display before opening Control Center. | The Runtime Menu has its grip, a centered current-airport text row as its first content entry, then exactly five icon buttons with Mode, Groups, AVISO Insets, Profile, and Control Center tooltips. |
+| RT-02 | Drag the grip to every radar edge, save, and reopen the ASR. | The complete rail, including its airport row, stays inside the radar area and restores from `RuntimeMenuX`/`RuntimeMenuY`. |
 | RT-03 | Place the rail near the right edge and open every popup. | Popups flip left and remain on-screen. Long lists page without clipping. |
 | RT-04 | Open Mode and select a different row. | Row contains only indicator/name; renderer immediately uses that mode. |
 | RT-05 | Open Groups and toggle a group containing an exclusively grouped label, line, and area. | Row contains only eye/name; those items disappear/reappear in main and AVISO inset rendering without a file reload. |
@@ -57,25 +58,27 @@ diff where the expected result is not immediately visible.
 | RT-10 | Compare the rail and each native popup with the supplied prototype. | The grip stripes stay clipped inside the rail, neither rail nor popup has an offset shadow, icon family and compact styling match, and no permanent button text, emoji substitute, description, internal ID, count, or redundant “Active”/On/Off label appears. |
 | RT-11 | Open AVISO Insets and inspect every row/action before and after selecting the current default preset. | Visibility for AVISO/SRW 1/SRW 2 and all preset operations are present only here; the action reads `Set default` for a non-default preset and changes to `Clear default` for the current default. |
 
-## Consolidated radar controls
+## Runtime airport and FPS overlay
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| RC-01 | Inspect the complete old grey top toolbar at a width that leaves room for diagnostics. | The only entries, in order, are active airport, `QDR`, `Target`, `Lighting`, `/`, and the `FPS A/C/R/T/S` readout. There is no active-profile text and no Display, Modes, Colours, Alerts, inset, AVISO editor/reload, label-size, or typeface entry. |
-| RC-02 | Open QDR and exercise Fixed Reference and Select Reference, including right-click cancellation of a selected reference. | Both retained QDR tools still draw from the active-airport or selected reference as appropriate; no unrelated configuration action is present. |
-| RC-03 | Open Target and exercise Afterglow, every ground/approach trail choice, every PTL choice, Acquire, and Release. | All retained target-session actions work, and icon style/sizing, label size, and typeface are absent. |
-| RC-04 | Open Lighting; switch Day/Night and set label, symbol, and afterglow brightness to non-default values. | Day/night overlay and all three runtime brightness multipliers update; persisted profile-color editing remains available only in Control Center. |
-| RC-05 | Left-click `/`, select two targets, remove one resulting distance annotation, then right-click `/`. | Distance selection and annotation removal still work; right-click clears the active selection and all saved on-screen distance pairs. |
-| RC-06 | Click the active-airport text, enter another configured airport, save/reopen the ASR, then restore the fixture airport. | Radar airport context changes and the `Airport` ASR value restores; active-airport selection has no duplicate Runtime Menu or Control Center entry. |
+| RC-01 | Inspect the full radar top edge at narrow and wide widths, then click where the old menu entries used to be. | There is no grey band, top menu, QDR, Target, Lighting, `/`, legacy text, or stale menu hit region. Normal radar interaction continues in the reclaimed area. |
+| RC-02 | Inspect the Runtime Menu before using any icon. | The current-airport ICAO row is the first content entry immediately below the grip and above Mode; the airport is not duplicated elsewhere. |
+| RC-03 | Click the airport row, submit a different configured ICAO with surrounding spaces and lowercase letters, then submit an empty value. Save/reopen the ASR and finally restore the fixture airport. | The non-empty value is trimmed, uppercased, applied live, synchronized with airport-dependent rendering, and restored from the `Airport` ASR key. Empty input changes nothing. |
+| RC-04 | Enable Show FPS and watch the top-right corner for at least two sample intervals. | A compact updating `FPS <integer>` readout appears without a background toolbar. It contains no A, C, R, T, S, component timings, or other menu text. |
+| RC-05 | Disable Show FPS, Apply, save/reopen the ASR, then enable it and repeat. | The readout disappears and reappears immediately; each state restores from the `ShowFps` ASR key and agrees with the Control Center checkbox. |
+| RC-06 | Enable Show FPS while AVISO is snapped top-right; move the Runtime Menu near and then directly over the counter. | FPS remains aligned to the radar area's top-right corner without restoring a reserved toolbar lane and does not block the inset's `F` control. The interactive Runtime Menu paints above the decorative counter when deliberately overlapped. |
+| RC-07 | Stage an unsaved AVISO change in Control Center, then change the airport from the Runtime Menu. | Control Center reports that its airport context changed and disables Save, Undo, and Redo until Reload is confirmed. Neither airport's AVISO file is modified by the switch. |
 
 ## AVISO inset viewport controls
 
 | ID | Action | Expected result |
 | --- | --- | --- |
 | AI-01 | Inspect the AVISO inset in floating, snapped, and split layouts. | Its own chrome contains only title/drag where applicable, `F` detach, resize handles/dividers, and the viewport. No `X`, `P`, `R`, Editor, Reload, Presets, or other duplicate action appears. |
-| AI-02 | Drag the floating title, detach with `F`, resize from each supported handle, move every split divider, pan, and zoom. | Every retained viewport interaction works in its applicable layout and the inset remains constrained to valid geometry. |
+| AI-02 | Drag the floating title, detach with `F`, resize from each supported handle, move every split divider, pan, and zoom. Snap to top, top-left, and top-right. | Every retained viewport interaction works in its applicable layout. Top and top-corner layouts begin exactly at the radar area's top edge, while floating layouts keep their own title/drag surface reachable. |
 | AI-03 | Hide/show AVISO from the Runtime Menu, then save, load, update, rename, duplicate, reset, set/clear default, toggle linked movement, and delete a preset. | Visibility and every preset operation work from the Runtime Menu without an inset-local button or duplicate EuroScope popup. |
-| AI-04 | Edit AVISO geometry/text in Control Center, Save, then use Control Center Reload. | Main and inset rendering update from the Control Center workflow; neither the inset nor old grey top toolbar exposes Editor or Reload AVISO. |
+| AI-04 | Edit AVISO geometry/text in Control Center, Save, then use Control Center Reload. | Main and inset rendering update from the Control Center workflow; the inset exposes neither Editor nor Reload AVISO. |
+| AI-05 | Save top, top-left, and top-right layouts in presets and the ASR; reopen and load each one. | Every layout re-anchors to the full radar top with no obsolete 22 px clearance, and rendering/click/resize bounds remain identical. |
 
 ## Inset presets
 
@@ -207,9 +210,10 @@ diff where the expected result is not immediately visible.
 | SE-01 | Inspect native-host Settings, then expand Advanced and Danger zone. | Both disclosures start collapsed. Profile/AVISO paths are read-only. Watch files, bridge, update interval, runtime sync, VACDM, CPDLC, and the inset feature toggle are disabled with explanatory tooltips. |
 | SE-02 | Use Computer and GitHub for Profiles and AVISO. | Valid data stages; source text reports the source; native destination paths do not silently change. |
 | SE-03 | Change Resolution and RIMCAS, then Apply. | Connected settings apply live and mark staged profile state dirty. |
-| SE-04 | Turn deletion confirmation off and perform a delete. | Confirmation behavior changes for the current browser session. It is expected to reset after authoritative reload until native persistence is added. |
-| SE-05 | Make a recognizable staged edit and click Reset supplied data; cancel once, then confirm once. | Cancel changes nothing. Confirm validates and stages the complete packaged profiles and LFPG AVISO together, marks Save dirty, and does not write either configured destination before global Save. |
-| SE-06 | Temporarily remove or corrupt one packaged default and confirm Reset. | A visible error identifies missing/invalid defaults and the previously staged documents remain intact. |
+| SE-04 | Toggle Show FPS and Apply in both directions. | The checkbox remains enabled in the native host, changes the FPS-only overlay live, and immediately persists `ShowFps` in the ASR. Undo/Redo keeps browser and native visibility synchronized. |
+| SE-05 | Turn deletion confirmation off and perform a delete. | Confirmation behavior changes for the current browser session. It is expected to reset after authoritative reload until native persistence is added. |
+| SE-06 | Make a recognizable staged edit and click Reset supplied data; cancel once, then confirm once. | Cancel changes nothing. Confirm validates and stages the complete packaged profiles and LFPG AVISO together, marks Save dirty, and does not write either configured destination before global Save. |
+| SE-07 | Temporarily remove or corrupt one packaged default and confirm Reset. | A visible error identifies missing/invalid defaults and the previously staged documents remain intact. |
 
 ## Persistence, compatibility, and failure recovery
 
