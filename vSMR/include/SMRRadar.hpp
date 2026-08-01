@@ -28,6 +28,7 @@
 #include "SMRSharedState.hpp"
 #include <filesystem>
 #include <iostream>
+#include <optional>
 
 using namespace std;
 using namespace Gdiplus;
@@ -159,6 +160,7 @@ public:
 			int scale = 15;
 			int filter = 5500;
 			double rotation = 0.0;
+			int layoutMode = 0;
 			bool visible = false;
 		};
 
@@ -416,17 +418,7 @@ public:
 		return ActiveAirport;
 	}
 
-	inline string setActiveAirport(string value) {
-		if (ActiveAirport != value)
-		{
-			ActiveAirport = value;
-			InvalidateRunwayGeometryCache();
-			LastMapActiveAirport.clear();
-			RunwayStatusLastRefreshTick = 0;
-			RunwayStatusLastAirport.clear();
-		}
-		return ActiveAirport;
-	}
+	string setActiveAirport(string value, bool switchInsetContext = true);
 
 	inline bool TryGetActiveAirportPosition(CPosition& outPosition) const
 	{
@@ -620,6 +612,10 @@ public:
 	//---OnAsrContentLoaded--------------------------------------------
 
 	virtual void OnAsrContentLoaded(bool Loaded);
+	bool LoadInsetStateFromAsrForAirport(const std::string& airport, bool allowLegacyFallback);
+	void SaveInsetStateToAsrForAirport(const std::string& airport);
+	void ResetInsetWindowState(int appWindowId, bool preserveVisibility = true);
+	void ResetAllInsetWindowStates(bool preserveVisibility = true);
 
 	//---OnAsrContentToBeSaved------------------------------------------
 
@@ -670,15 +666,22 @@ public:
 	std::vector<AvisoPreset> GetAvisoPresets() const;
 	std::string GetDefaultAvisoPresetName() const;
 	std::string GetActiveAvisoPresetName() const;
-	bool SaveAvisoPreset(const std::string& requestedName, bool overwriteExisting, std::string* outSavedName = nullptr);
+	bool SaveAvisoPreset(
+		const std::string& requestedName,
+		bool overwriteExisting,
+		std::string* outSavedName = nullptr,
+		std::optional<bool> linkedMovementOverride = std::nullopt);
 	bool LoadAvisoPreset(const std::string& name);
-	bool RenameAvisoPreset(const std::string& oldName, const std::string& newName);
+	bool RenameAvisoPreset(
+		const std::string& oldName,
+		const std::string& newName,
+		std::optional<bool> linkedMovementOverride = std::nullopt);
 	bool DuplicateAvisoPreset(const std::string& sourceName, const std::string& requestedName, std::string* outSavedName = nullptr);
 	bool DeleteAvisoPreset(const std::string& name);
 	bool SetDefaultAvisoPreset(const std::string& name);
 	bool ClearDefaultAvisoPreset();
 	bool ApplyDefaultAvisoPresetIfConfigured();
-	void ResetAvisoPresetStateForActiveProfile();
+	void ResetAvisoPresetStateForActiveProfile(bool applyDefaultPreset = true);
 	bool UpdateActiveAvisoPreset();
 	bool ResetActiveAvisoPreset();
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);

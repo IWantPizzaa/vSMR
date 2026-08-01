@@ -6,6 +6,7 @@
 #include <map>
 #include <unordered_set>
 #include <vector>
+#include <functional>
 #include <cctype>
 #include <Gdiplus.h>
 #include "rapidjson/document.h"
@@ -20,6 +21,23 @@ using namespace rapidjson;
 class CConfig
 {
 public:
+	enum class AvisoPresetTransactionAction
+	{
+		Abort,
+		NoChange,
+		Save
+	};
+
+	using AvisoPresetTransaction = std::function<AvisoPresetTransactionAction(
+		rapidjson::Value& profile,
+		rapidjson::Document::AllocatorType& allocator)>;
+
+	struct ProfileSaveIdentity
+	{
+		string currentName;
+		string persistedName;
+	};
+
 	struct mapData
 	{
 		string element;
@@ -50,7 +68,11 @@ public:
 	vector<string> getAllProfiles();
 	size_t getProfileCount() const;
 
-	bool saveConfig();
+	bool saveConfig(const vector<ProfileSaveIdentity>& profileIdentities = {});
+	bool transactAvisoPresetStore(
+		const string& profileName,
+		const AvisoPresetTransaction& transaction);
+	bool sharesConfigFileWith(const CConfig& other) const;
 
 	unordered_set<string> getInactiveAlert();
 	bool setInactiveAlert(const unordered_set<string>& inactiveAlerts);

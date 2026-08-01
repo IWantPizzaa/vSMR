@@ -144,16 +144,20 @@ window.VSMR_DATA = {
       },
       rules: { version: 1, items: [] },
       aviso_presets: {
-        default: "LFPG Ground",
-        items: [{
-          name: "LFPG Ground",
-          linked_movement: false,
-          main: {
-            min_latitude: 49.0052, min_longitude: 2.50333,
-            max_latitude: 49.0303, max_longitude: 2.57476,
-            zoom_level: 9
+        airports: {
+          LFPG: {
+            default: "LFPG Ground",
+            items: [{
+              name: "LFPG Ground",
+              linked_movement: false,
+              main: {
+                min_latitude: 49.0052, min_longitude: 2.50333,
+                max_latitude: 49.0303, max_longitude: 2.57476,
+                zoom_level: 9
+              }
+            }]
           }
-        }]
+        }
       }
     },
     {

@@ -1,6 +1,34 @@
 ﻿#include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "VsmrControlCenterDialog.hpp"
+
+namespace
+{
+	std::string NormalizeInsetAirport(std::string airport)
+	{
+		const auto first = std::find_if_not(airport.begin(), airport.end(), [](unsigned char value) {
+			return std::isspace(value) != 0;
+		});
+		const auto last = std::find_if_not(airport.rbegin(), airport.rend(), [](unsigned char value) {
+			return std::isspace(value) != 0;
+		}).base();
+		if (first >= last)
+			return "";
+
+		airport = std::string(first, last);
+		std::transform(airport.begin(), airport.end(), airport.begin(), [](unsigned char value) {
+			return static_cast<char>(std::toupper(value));
+		});
+		return airport;
+	}
+
+	std::string AirportInsetAsrPrefix(const std::string& airport)
+	{
+		const std::string normalized = NormalizeInsetAirport(airport);
+		return normalized.empty() ? "" : "Insets." + normalized + ".";
+	}
+}
 
 Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
 {
@@ -440,7 +468,268 @@ void CSMRRadar::LoadAircraftSpecs() {
 
 	Logger::info("Total aircraft specs loaded: " + std::to_string(totalLoaded));
 }
+void CSMRRadar::ResetInsetWindowState(int appWindowId, bool preserveVisibility)
+{
+	const auto windowIt = appWindows.find(appWindowId);
+	if (windowIt == appWindows.end() || windowIt->second == nullptr)
+		return;
 
+	const bool wasVisible = appWindowDisplays.find(appWindowId) != appWindowDisplays.end() &&
+		appWindowDisplays[appWindowId];
+	CInsetWindow* window = windowIt->second.get();
+	window->m_Offset = { 0, 0 };
+	window->m_OffsetInit = { 0, 0 };
+	window->m_OffsetDrag = { 0, 0 };
+	window->m_Grip = false;
+	window->m_AvisoLayoutMode = CInsetWindow::AvisoLayoutMode::Floating;
+	window->ResetAvisoInteractionState();
+
+	if (window->IsAvisoViewport())
+	{
+		window->m_Area = { 260, 260, 760, 560 };
+		window->m_AvisoScale = 350;
+		window->m_AvisoCenterLatitude = 0.0;
+		window->m_AvisoCenterLongitude = 0.0;
+		window->m_AvisoDragStartLatitude = 0.0;
+		window->m_AvisoDragStartLongitude = 0.0;
+		window->m_AvisoViewInitialized = false;
+		window->ClearAvisoViewportCache();
+	}
+	else
+	{
+		window->m_Area = appWindowId == 2
+			? RECT{ 240, 240, 640, 540 }
+			: RECT{ 200, 200, 600, 500 };
+		window->m_Scale = 15;
+		window->m_Filter = 5500;
+		window->m_Rotation = 0.0;
+	}
+
+	appWindowDisplays[appWindowId] = preserveVisibility ? wasVisible : false;
+}
+
+void CSMRRadar::ResetAllInsetWindowStates(bool preserveVisibility)
+{
+	ResetInsetWindowState(1, preserveVisibility);
+	ResetInsetWindowState(2, preserveVisibility);
+	ResetInsetWindowState(APPWINDOW_AVISO - APPWINDOW_BASE, preserveVisibility);
+}
+
+void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
+{
+	const std::string prefix = AirportInsetAsrPrefix(airport);
+	if (prefix.empty())
+		return;
+
+	auto save = [&](const std::string& suffix, const char* description, const std::string& value)
+	{
+		const std::string key = prefix + suffix;
+		SaveDataToAsr(key.c_str(), description, value.c_str());
+	};
+
+	save("Version", "Airport-specific inset state version", "1");
+	for (int id = 1; id <= 2; ++id)
+	{
+		const auto windowIt = appWindows.find(id);
+		if (windowIt == appWindows.end() || windowIt->second == nullptr)
+			continue;
+
+		CInsetWindow* window = windowIt->second.get();
+		const std::string windowPrefix = "SRW" + std::to_string(id);
+		save(windowPrefix + "TopLeftX", "SRW position", std::to_string(window->m_Area.left));
+		save(windowPrefix + "TopLeftY", "SRW position", std::to_string(window->m_Area.top));
+		save(windowPrefix + "BottomRightX", "SRW position", std::to_string(window->m_Area.right));
+		save(windowPrefix + "BottomRightY", "SRW position", std::to_string(window->m_Area.bottom));
+		save(windowPrefix + "OffsetX", "SRW offset", std::to_string(window->m_Offset.x));
+		save(windowPrefix + "OffsetY", "SRW offset", std::to_string(window->m_Offset.y));
+		save(windowPrefix + "Filter", "SRW filter", std::to_string(window->m_Filter));
+		save(windowPrefix + "Scale", "SRW zoom", std::to_string(window->m_Scale));
+		save(windowPrefix + "Rotation", "SRW legacy rotation", std::to_string(window->m_Rotation));
+		save(windowPrefix + "LayoutMode", "SRW layout mode", std::to_string(static_cast<int>(window->m_AvisoLayoutMode)));
+		const auto displayIt = appWindowDisplays.find(id);
+		save(windowPrefix + "Display", "Display Secondary Radar Window",
+			displayIt != appWindowDisplays.end() && displayIt->second ? "1" : "0");
+	}
+
+	const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+	const auto avisoWindowIt = appWindows.find(avisoWindowId);
+	if (avisoWindowIt != appWindows.end() && avisoWindowIt->second != nullptr)
+	{
+		CInsetWindow* window = avisoWindowIt->second.get();
+		const std::string windowPrefix = "AVISO1";
+		save(windowPrefix + "TopLeftX", "AVISO viewport position", std::to_string(window->m_Area.left));
+		save(windowPrefix + "TopLeftY", "AVISO viewport position", std::to_string(window->m_Area.top));
+		save(windowPrefix + "BottomRightX", "AVISO viewport position", std::to_string(window->m_Area.right));
+		save(windowPrefix + "BottomRightY", "AVISO viewport position", std::to_string(window->m_Area.bottom));
+		save(windowPrefix + "CenterLat", "AVISO viewport center", std::to_string(window->m_AvisoCenterLatitude));
+		save(windowPrefix + "CenterLon", "AVISO viewport center", std::to_string(window->m_AvisoCenterLongitude));
+		save(windowPrefix + "Scale", "AVISO viewport zoom", std::to_string(window->m_AvisoScale));
+		save(windowPrefix + "LayoutMode", "AVISO viewport layout mode", std::to_string(static_cast<int>(window->m_AvisoLayoutMode)));
+		const auto displayIt = appWindowDisplays.find(avisoWindowId);
+		save(windowPrefix + "Display", "Display AVISO viewport",
+			displayIt != appWindowDisplays.end() && displayIt->second ? "1" : "0");
+	}
+
+	save("ActivePreset", "Active airport inset preset", ActiveAvisoPresetName);
+	save("Linked", "Link AVISO views", AvisoViewsLinked ? "1" : "0");
+}
+
+bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool allowLegacyFallback)
+{
+	const std::string scopedPrefix = AirportInsetAsrPrefix(airport);
+	if (scopedPrefix.empty())
+		return false;
+
+	auto readWithPrefix = [&](const std::string& prefix, const std::string& suffix) -> const char*
+	{
+		const std::string key = prefix + suffix;
+		return GetDataFromAsr(key.c_str());
+	};
+
+	bool hasScopedState = readWithPrefix(scopedPrefix, "Version") != nullptr;
+	if (!hasScopedState)
+	{
+		for (const char* probe : { "SRW1Display", "SRW2Display", "AVISO1Display", "SRW1TopLeftX", "AVISO1TopLeftX" })
+		{
+			if (readWithPrefix(scopedPrefix, probe) != nullptr)
+			{
+				hasScopedState = true;
+				break;
+			}
+		}
+	}
+
+	std::string readPrefix;
+	if (hasScopedState)
+		readPrefix = scopedPrefix;
+	else if (allowLegacyFallback)
+	{
+		for (const char* probe : { "SRW1Display", "SRW2Display", "AVISO1Display", "SRW1TopLeftX", "AVISO1TopLeftX" })
+		{
+			if (GetDataFromAsr(probe) != nullptr)
+			{
+				readPrefix.clear();
+				hasScopedState = true;
+				break;
+			}
+		}
+	}
+
+	if (!hasScopedState)
+		return false;
+
+	auto read = [&](const std::string& suffix) -> const char*
+	{
+		return readWithPrefix(readPrefix, suffix);
+	};
+
+	for (int id = 1; id <= 2; ++id)
+	{
+		const auto windowIt = appWindows.find(id);
+		if (windowIt == appWindows.end() || windowIt->second == nullptr)
+			continue;
+
+		CInsetWindow* window = windowIt->second.get();
+		const std::string windowPrefix = "SRW" + std::to_string(id);
+		const char* value = nullptr;
+		if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
+		if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
+		if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
+		if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
+		if ((value = read(windowPrefix + "OffsetX")) != nullptr) window->m_Offset.x = atoi(value);
+		if ((value = read(windowPrefix + "OffsetY")) != nullptr) window->m_Offset.y = atoi(value);
+		if ((value = read(windowPrefix + "Filter")) != nullptr) window->m_Filter = std::clamp(atoi(value), 0, 66000);
+		if ((value = read(windowPrefix + "Scale")) != nullptr) window->m_Scale = std::clamp(atoi(value), 1, 2400);
+		if ((value = read(windowPrefix + "Rotation")) != nullptr) window->m_Rotation = atof(value);
+		if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
+			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
+		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[id] = atoi(value) != 0;
+		window->ResetAvisoInteractionState();
+	}
+
+	const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+	const auto avisoWindowIt = appWindows.find(avisoWindowId);
+	if (avisoWindowIt != appWindows.end() && avisoWindowIt->second != nullptr)
+	{
+		CInsetWindow* window = avisoWindowIt->second.get();
+		const std::string windowPrefix = "AVISO1";
+		const char* value = nullptr;
+		bool centerLoaded = false;
+		if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
+		if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
+		if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
+		if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
+		if ((value = read(windowPrefix + "CenterLat")) != nullptr)
+		{
+			window->m_AvisoCenterLatitude = std::clamp(atof(value), -85.0, 85.0);
+			centerLoaded = true;
+		}
+		if ((value = read(windowPrefix + "CenterLon")) != nullptr)
+		{
+			window->m_AvisoCenterLongitude = atof(value);
+			centerLoaded = true;
+		}
+		window->m_AvisoViewInitialized = centerLoaded;
+		if ((value = read(windowPrefix + "Scale")) != nullptr) window->m_AvisoScale = std::clamp(atoi(value), 1, 2400);
+		if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
+			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
+		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[avisoWindowId] = atoi(value) != 0;
+		window->ResetAvisoInteractionState();
+		window->ClearAvisoViewportCache();
+	}
+
+	ActiveAvisoPresetName.clear();
+	AvisoViewsLinked = false;
+	if (!readPrefix.empty())
+	{
+		if (const char* activePreset = read("ActivePreset"))
+		{
+			for (const AvisoPreset& preset : GetAvisoPresets())
+			{
+				if (_stricmp(preset.name.c_str(), activePreset) == 0)
+				{
+					ActiveAvisoPresetName = preset.name;
+					break;
+				}
+			}
+		}
+		if (const char* linked = read("Linked"))
+			AvisoViewsLinked = !ActiveAvisoPresetName.empty() && atoi(linked) != 0;
+	}
+
+	return true;
+}
+
+string CSMRRadar::setActiveAirport(string value, bool switchInsetContext)
+{
+	const std::string airport = NormalizeInsetAirport(value);
+	if (airport.empty() || _stricmp(ActiveAirport.c_str(), airport.c_str()) == 0)
+		return ActiveAirport;
+
+	if (switchInsetContext && !ActiveAirport.empty())
+		SaveInsetStateToAsrForAirport(ActiveAirport);
+
+	ActiveAirport = airport;
+	InvalidateRunwayGeometryCache();
+	LastMapActiveAirport.clear();
+	RunwayStatusLastRefreshTick = 0;
+	RunwayStatusLastAirport.clear();
+	ClearAvisoGeoJsonRasterCache();
+	AvisoGeoJsonLastViewValid = false;
+
+	if (switchInsetContext)
+	{
+		ResetAllInsetWindowStates(false);
+		ResetAvisoPresetStateForActiveProfile(false);
+		if (!LoadInsetStateFromAsrForAirport(ActiveAirport, false))
+			ApplyDefaultAvisoPresetIfConfigured();
+		SaveDataToAsr("Airport", "Active airport", ActiveAirport.c_str());
+		if (VsmrControlCenterDialog != nullptr)
+			VsmrControlCenterDialog->SyncFromRadar();
+	}
+
+	return ActiveAirport;
+}
 
 void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 {
@@ -450,7 +739,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	// ReSharper disable CppZeroConstantCanBeReplacedWithNullptr
 	if ((p_value = GetDataFromAsr("Airport")) != NULL)
 	{
-		setActiveAirport(p_value);
+		setActiveAirport(p_value, false);
 		Logger::info("OnAsrContentLoaded: active airport from ASR=" + getActiveAirport());
 	}
 	else
@@ -493,96 +782,16 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 
 	LoadRuntimeMenuPositionFromAsr();
 
-	string temp;
-
-	for (int i = 1; i < 3; i++)
-	{
-		string prefix = "SRW" + std::to_string(i);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "TopLeftX").c_str())) != NULL)
-			appWindows[i]->m_Area.left = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "TopLeftY").c_str())) != NULL)
-			appWindows[i]->m_Area.top = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "BottomRightX").c_str())) != NULL)
-			appWindows[i]->m_Area.right = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "BottomRightY").c_str())) != NULL)
-			appWindows[i]->m_Area.bottom = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "OffsetX").c_str())) != NULL)
-			appWindows[i]->m_Offset.x = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "OffsetY").c_str())) != NULL)
-			appWindows[i]->m_Offset.y = atoi(p_value);
-
-
-		if ((p_value = GetDataFromAsr(string(prefix + "Filter").c_str())) != NULL)
-			appWindows[i]->m_Filter = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "Scale").c_str())) != NULL)
-			appWindows[i]->m_Scale = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "Rotation").c_str())) != NULL)
-			appWindows[i]->m_Rotation = atoi(p_value);
-
-		if ((p_value = GetDataFromAsr(string(prefix + "Display").c_str())) != NULL)
-			appWindowDisplays[i] = atoi(p_value) == 1 ? true : false;
-	}
-
-	{
-		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
-		auto avisoWindowIt = appWindows.find(avisoWindowId);
-		if (avisoWindowIt != appWindows.end() && avisoWindowIt->second != nullptr)
-		{
-			CInsetWindow* avisoWindow = avisoWindowIt->second.get();
-			const string prefix = "AVISO1";
-
-			if ((p_value = GetDataFromAsr(string(prefix + "TopLeftX").c_str())) != NULL)
-				avisoWindow->m_Area.left = atoi(p_value);
-
-			if ((p_value = GetDataFromAsr(string(prefix + "TopLeftY").c_str())) != NULL)
-				avisoWindow->m_Area.top = atoi(p_value);
-
-			if ((p_value = GetDataFromAsr(string(prefix + "BottomRightX").c_str())) != NULL)
-				avisoWindow->m_Area.right = atoi(p_value);
-
-			if ((p_value = GetDataFromAsr(string(prefix + "BottomRightY").c_str())) != NULL)
-				avisoWindow->m_Area.bottom = atoi(p_value);
-
-			if ((p_value = GetDataFromAsr(string(prefix + "CenterLat").c_str())) != NULL)
-			{
-				avisoWindow->m_AvisoCenterLatitude = atof(p_value);
-				avisoWindow->m_AvisoViewInitialized = true;
-			}
-
-			if ((p_value = GetDataFromAsr(string(prefix + "CenterLon").c_str())) != NULL)
-			{
-				avisoWindow->m_AvisoCenterLongitude = atof(p_value);
-				avisoWindow->m_AvisoViewInitialized = true;
-			}
-
-			if ((p_value = GetDataFromAsr(string(prefix + "Scale").c_str())) != NULL)
-				avisoWindow->m_AvisoScale = max(1, atoi(p_value));
-
-			if ((p_value = GetDataFromAsr(string(prefix + "Display").c_str())) != NULL)
-				appWindowDisplays[avisoWindowId] = atoi(p_value) == 1 ? true : false;
-
-			if ((p_value = GetDataFromAsr(string(prefix + "LayoutMode").c_str())) != NULL)
-			{
-				const int layoutMode = std::clamp(atoi(p_value), 0, 8);
-				avisoWindow->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
-			}
-		}
-	}
-
-	ResetAvisoPresetStateForActiveProfile();
+	ResetAllInsetWindowStates(false);
+	ResetAvisoPresetStateForActiveProfile(false);
+	if (!LoadInsetStateFromAsrForAirport(getActiveAirport(), true))
+		ApplyDefaultAvisoPresetIfConfigured();
+	SaveInsetStateToAsrForAirport(getActiveAirport());
 	AvisoGeoJsonScrollSelected = false;
 	for (auto& appWindow : appWindows)
 	{
 		CInsetWindow* insetWindow = appWindow.second.get();
-		if (insetWindow == nullptr || !insetWindow->IsAvisoViewport())
+		if (insetWindow == nullptr)
 			continue;
 
 		insetWindow->ResetAvisoInteractionState();
@@ -638,84 +847,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
 
 	SaveRuntimeMenuPositionToAsr();
-
-	string temp = "";
-
-	for (int i = 1; i < 3; i++)
-	{
-		string prefix = "SRW" + std::to_string(i);
-
-		temp = std::to_string(appWindows[i]->m_Area.left);
-		SaveDataToAsr(string(prefix + "TopLeftX").c_str(), "SRW position", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Area.top);
-		SaveDataToAsr(string(prefix + "TopLeftY").c_str(), "SRW position", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Area.right);
-		SaveDataToAsr(string(prefix + "BottomRightX").c_str(), "SRW position", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Area.bottom);
-		SaveDataToAsr(string(prefix + "BottomRightY").c_str(), "SRW position", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Offset.x);
-		SaveDataToAsr(string(prefix + "OffsetX").c_str(), "SRW offset", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Offset.y);
-		SaveDataToAsr(string(prefix + "OffsetY").c_str(), "SRW offset", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Filter);
-		SaveDataToAsr(string(prefix + "Filter").c_str(), "SRW filter", temp.c_str());
-
-		temp = std::to_string(appWindows[i]->m_Scale);
-		SaveDataToAsr(string(prefix + "Scale").c_str(), "SRW range", temp.c_str());
-
-		temp = std::to_string((int)appWindows[i]->m_Rotation);
-		SaveDataToAsr(string(prefix + "Rotation").c_str(), "SRW rotation", temp.c_str());
-
-		string to_save = "0";
-		if (appWindowDisplays[i])
-			to_save = "1";
-		SaveDataToAsr(string(prefix + "Display").c_str(), "Display Secondary Radar Window", to_save.c_str());
-	}	
-
-	{
-		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
-		auto avisoWindowIt = appWindows.find(avisoWindowId);
-		if (avisoWindowIt != appWindows.end() && avisoWindowIt->second != nullptr)
-		{
-			CInsetWindow* avisoWindow = avisoWindowIt->second.get();
-			const string prefix = "AVISO1";
-
-			temp = std::to_string(avisoWindow->m_Area.left);
-			SaveDataToAsr(string(prefix + "TopLeftX").c_str(), "AVISO viewport position", temp.c_str());
-
-			temp = std::to_string(avisoWindow->m_Area.top);
-			SaveDataToAsr(string(prefix + "TopLeftY").c_str(), "AVISO viewport position", temp.c_str());
-
-			temp = std::to_string(avisoWindow->m_Area.right);
-			SaveDataToAsr(string(prefix + "BottomRightX").c_str(), "AVISO viewport position", temp.c_str());
-
-			temp = std::to_string(avisoWindow->m_Area.bottom);
-			SaveDataToAsr(string(prefix + "BottomRightY").c_str(), "AVISO viewport position", temp.c_str());
-
-			temp = std::to_string(avisoWindow->m_AvisoCenterLatitude);
-			SaveDataToAsr(string(prefix + "CenterLat").c_str(), "AVISO viewport center", temp.c_str());
-
-			temp = std::to_string(avisoWindow->m_AvisoCenterLongitude);
-			SaveDataToAsr(string(prefix + "CenterLon").c_str(), "AVISO viewport center", temp.c_str());
-
-			temp = std::to_string(avisoWindow->m_AvisoScale);
-			SaveDataToAsr(string(prefix + "Scale").c_str(), "AVISO viewport zoom", temp.c_str());
-
-			string toSave = "0";
-			if (appWindowDisplays[avisoWindowId])
-				toSave = "1";
-			SaveDataToAsr(string(prefix + "Display").c_str(), "Display AVISO viewport", toSave.c_str());
-
-			temp = std::to_string(static_cast<int>(avisoWindow->m_AvisoLayoutMode));
-			SaveDataToAsr(string(prefix + "LayoutMode").c_str(), "AVISO viewport layout mode", temp.c_str());
-		}
-	}
+	SaveInsetStateToAsrForAirport(getActiveAirport());
 }
 
 

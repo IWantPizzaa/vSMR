@@ -17,16 +17,6 @@ namespace
 		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
 	}
 
-	bool IsObjectId(const char* objectId, const char* expected)
-	{
-		return objectId != nullptr && expected != nullptr && strcmp(objectId, expected) == 0;
-	}
-
-	bool IsAvisoViewportPanSurfaceObjectId(const char* objectId)
-	{
-		return IsObjectId(objectId, "window") || IsObjectId(objectId, "viewport");
-	}
-
 	POINT ClientPointFromMouseLParam(LPARAM lParam)
 	{
 		return {
@@ -61,6 +51,20 @@ namespace
 			pt.y <= radarArea.bottom;
 	}
 
+	bool IsPointInRuntimeMenuOverlay(CSMRRadar* radar, POINT pt)
+	{
+		if (radar == nullptr)
+			return false;
+
+		if (!radar->RuntimeMenuArea.IsRectEmpty() && radar->RuntimeMenuArea.PtInRect(pt))
+			return true;
+
+		return
+			radar->ActiveRuntimeMenuPopup != CSMRRadar::RuntimeMenuPopup::None &&
+			!radar->RuntimeMenuPopupArea.IsRectEmpty() &&
+			radar->RuntimeMenuPopupArea.PtInRect(pt);
+	}
+
 	CRect AvisoViewportLayoutBounds(CSMRRadar* radar)
 	{
 		if (radar == nullptr)
@@ -81,11 +85,12 @@ namespace
 		if (radar == nullptr)
 			return nullptr;
 
-		for (auto& kv : radar->appWindows)
+		for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
 		{
-			CInsetWindow* appWindow = kv.second.get();
+			const int appWindowId = it->first;
+			CInsetWindow* appWindow = it->second.get();
 			if (appWindow == nullptr ||
-				!IsAppWindowVisible(radar, kv.first) ||
+				!IsAppWindowVisible(radar, appWindowId) ||
 				!appWindow->IsPointInside(pt))
 			{
 				continue;
@@ -99,10 +104,7 @@ namespace
 
 	CInsetWindow* VisibleAvisoViewportAtPoint(CSMRRadar* radar, POINT pt)
 	{
-		CInsetWindow* appWindow = VisibleAppWindowAtPoint(radar, pt);
-		if (appWindow != nullptr && appWindow->IsAvisoViewport())
-			return appWindow;
-		return nullptr;
+		return VisibleAppWindowAtPoint(radar, pt);
 	}
 
 	CInsetWindow* ActiveAvisoPanViewport(CSMRRadar* radar)
@@ -113,7 +115,7 @@ namespace
 		for (auto& kv : radar->appWindows)
 		{
 			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+			if (appWindow != nullptr && appWindow->m_AvisoRightPanning)
 				return appWindow;
 		}
 
@@ -129,7 +131,7 @@ namespace
 		for (auto& kv : radar->appWindows)
 		{
 			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow != nullptr && appWindow->IsAvisoViewport())
+			if (appWindow != nullptr)
 				appWindow->m_AvisoScrollSelected = (appWindow == selectedViewport);
 		}
 	}
@@ -143,7 +145,7 @@ namespace
 		for (auto& kv : radar->appWindows)
 		{
 			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow != nullptr && appWindow->IsAvisoViewport())
+			if (appWindow != nullptr)
 				appWindow->m_AvisoScrollSelected = false;
 		}
 	}
@@ -178,7 +180,7 @@ namespace
 		for (auto& kv : radar->appWindows)
 		{
 			CInsetWindow* appWindow = kv.second.get();
-			if (appWindow != nullptr && appWindow->IsAvisoViewport() && appWindow->m_AvisoRightPanning)
+			if (appWindow != nullptr && appWindow->m_AvisoRightPanning)
 			{
 				appWindow->EndAvisoPan();
 				endedPan = true;
@@ -191,23 +193,21 @@ namespace
 void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
 	Logger::info(string(__FUNCSIG__));
+	UNREFERENCED_PARAMETER(ObjectType);
+	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
+	if (IsPointInRuntimeMenuOverlay(this, Pt))
+		return;
 
-	const char* objectId = (sObjectId != nullptr) ? sObjectId : "";
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
 
-	if (Button != BUTTON_RIGHT || !IsAppWindowObjectType(ObjectType))
+	if (Button != BUTTON_RIGHT)
 		return;
 
-	const int appWindowId = ObjectType - APPWINDOW_BASE;
-	auto appWindowIt = appWindows.find(appWindowId);
-	if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
-		return;
-
-	CInsetWindow* appWindow = appWindowIt->second.get();
-	if (!appWindow->IsAvisoViewport() || !IsAvisoViewportPanSurfaceObjectId(objectId))
+	CInsetWindow* appWindow = VisibleAvisoViewportAtPoint(this, Pt);
+	if (appWindow == nullptr)
 		return;
 
 	SelectAvisoViewport(this, appWindow);
@@ -301,7 +301,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 		if (!toggleCursor)
 		{
-			if (isObjectId("topbar") || (isObjectId("window") && appWindow->IsAvisoViewport()))
+			if (isObjectId("topbar") || isObjectId("window"))
 				setInteractionCursorIfNeeded(IDC_SMRMOVEWINDOW);
 			else if (isObjectId("resize") || isObjectId("divider") || isObjectId("divider_x") || isObjectId("divider_y"))
 				setInteractionCursorIfNeeded(IDC_SMRRESIZE);
@@ -488,6 +488,8 @@ bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lPar
 
 	POINT clientPoint = ClientPointFromMouseLParam(lParam);
 	mouseLocation = clientPoint;
+	if (IsPointInRuntimeMenuOverlay(this, clientPoint))
+		return false;
 
 	CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, clientPoint);
 	if (viewportAtPoint != nullptr)
@@ -607,10 +609,11 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 			if (radar == nullptr)
 				continue;
 
-			for (auto& kv : radar->appWindows)
+			for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
 			{
-				CInsetWindow* appWindow = kv.second.get();
-				if (appWindow == nullptr || !appWindow->IsAvisoViewport() || !IsAppWindowVisible(radar, kv.first))
+				const int appWindowId = it->first;
+				CInsetWindow* appWindow = it->second.get();
+				if (appWindow == nullptr || !IsAppWindowVisible(radar, appWindowId))
 					continue;
 				if (!windowMatches(targetWindow, appWindow->m_AvisoRenderWindow))
 					continue;
@@ -618,6 +621,8 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 				POINT avisoPoint{};
 				if (!appWindow->TryMapAvisoScreenPoint(point, avisoPoint))
 					continue;
+				if (IsPointInRuntimeMenuOverlay(radar, avisoPoint))
+					return true;
 
 				mouseLocation = avisoPoint;
 				SelectAvisoViewport(radar, appWindow);
@@ -730,15 +735,24 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	};
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
+	if (Button == BUTTON_RIGHT &&
+		!IsPointInRuntimeMenuOverlay(this, Pt) &&
+		VisibleAvisoViewportAtPoint(this, Pt) != nullptr)
+	{
+		RequestRefresh();
+		return;
+	}
 
 	if (IsAppWindowObjectType(ObjectType)) {
+		if (Button != BUTTON_LEFT)
+			return;
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
 		if (isObjectId("float"))
 		{
-			if (appWindow == nullptr || !appWindow->IsAvisoViewport())
+			if (appWindow == nullptr)
 				return;
 
 			CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
@@ -755,26 +769,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
 			if (appWindowDisplayIt != appWindowDisplays.end())
-				appWindowDisplayIt->second = false;
-		}
-		if (isObjectId("range")) {
-			if (appWindow == nullptr || appWindow->IsAvisoViewport())
-				return;
-			openPopupListWithClose("SRW Zoom", [&]()
 			{
-				GetPlugIn()->AddPopupListElement("55", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 55));
-				GetPlugIn()->AddPopupListElement("50", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 50));
-				GetPlugIn()->AddPopupListElement("45", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 45));
-				GetPlugIn()->AddPopupListElement("40", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 40));
-				GetPlugIn()->AddPopupListElement("35", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 35));
-				GetPlugIn()->AddPopupListElement("30", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 30));
-				GetPlugIn()->AddPopupListElement("25", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 25));
-				GetPlugIn()->AddPopupListElement("20", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 20));
-				GetPlugIn()->AddPopupListElement("15", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 15));
-				GetPlugIn()->AddPopupListElement("10", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 10));
-				GetPlugIn()->AddPopupListElement("5", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 5));
-				GetPlugIn()->AddPopupListElement("1", "", RIMCAS_UPDATERANGE + appWindowId, false, int(appWindow->m_Scale == 1));
-			});
+				appWindowDisplayIt->second = false;
+				SaveInsetStateToAsrForAirport(getActiveAirport());
+			}
 		}
 		if (isObjectId("filter")) {
 			if (appWindow == nullptr)
@@ -796,20 +794,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				GetPlugIn()->AddPopupListElement("500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 500));
 				string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
 				GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEFILTER + appWindowId, false, 2, false, true);
-			});
-		}
-		if (isObjectId("rotate")) {
-			if (appWindow == nullptr)
-				return;
-			if (appWindow->IsAvisoViewport())
-				return;
-			openPopupListWithClose("SRW Rotate (deg)", [&]()
-			{
-				for (int k = 0; k <= 360; k++)
-				{
-					string tmp = std::to_string(k);
-					GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEROTATE + appWindowId, false, int(appWindow->m_Rotation == k));
-				}
 			});
 		}
 	}
