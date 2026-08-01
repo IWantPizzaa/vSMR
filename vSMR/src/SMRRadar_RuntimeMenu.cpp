@@ -308,9 +308,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	::SelectObject(hdc, ::GetStockObject(DC_PEN));
 	graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
-	CRect shadow(RuntimeMenuArea);
-	shadow.OffsetRect(2, 3);
-	FillRectColor(hdc, shadow, RGB(8, 11, 12));
 	FillRectColor(hdc, RuntimeMenuArea, kRailBackground);
 	DrawRectBorder(hdc, RuntimeMenuArea, kOuterBorder);
 
@@ -320,11 +317,22 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		RuntimeMenuArea.right - 1,
 		RuntimeMenuArea.top + kDragHeight);
 	FillRectColor(hdc, dragArea, kTitleBackground);
-	::SetDCPenColor(hdc, RGB(46, 57, 60));
-	for (int x = dragArea.left - dragArea.Height(); x < dragArea.right; x += 5)
+	const int stripeDc = ::SaveDC(hdc);
+	if (stripeDc != 0)
 	{
-		::MoveToEx(hdc, x, dragArea.bottom, nullptr);
-		::LineTo(hdc, x + dragArea.Height(), dragArea.top);
+		::IntersectClipRect(
+			hdc,
+			dragArea.left,
+			dragArea.top,
+			dragArea.right,
+			dragArea.bottom);
+		::SetDCPenColor(hdc, RGB(46, 57, 60));
+		for (int x = dragArea.left - dragArea.Height(); x < dragArea.right; x += 5)
+		{
+			::MoveToEx(hdc, x, dragArea.bottom, nullptr);
+			::LineTo(hdc, x + dragArea.Height(), dragArea.top);
+		}
+		::RestoreDC(hdc, stripeDc);
 	}
 	AddScreenObject(RUNTIME_MENU_RAIL, "runtime.drag", dragArea, true, "Drag vSMR runtime menu");
 
@@ -516,9 +524,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	popupTop = (std::max)(static_cast<int>(bounds.top + 4), popupTop);
 	RuntimeMenuPopupArea = CRect(popupLeft, popupTop, popupLeft + popupWidth, popupTop + popupHeight);
 
-	CRect popupShadow(RuntimeMenuPopupArea);
-	popupShadow.OffsetRect(2, 3);
-	FillRectColor(hdc, popupShadow, RGB(8, 11, 12));
 	FillRectColor(hdc, RuntimeMenuPopupArea, kRailBackground);
 	DrawRectBorder(hdc, RuntimeMenuPopupArea, kOuterBorder);
 	AddScreenObject(RUNTIME_MENU_POPUP, "runtime.popup", RuntimeMenuPopupArea, false, title.c_str());

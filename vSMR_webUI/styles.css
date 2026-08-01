@@ -3193,7 +3193,7 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid #050708;
   border-radius: 2px;
   background: #202a2d;
-  box-shadow: 0 8px 20px rgba(0,0,0,.44);
+  box-shadow: none;
   overflow: visible;
 }
 .runtime-menu.hidden { display: none; }
@@ -3302,7 +3302,7 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid #050708;
   border-radius: 4px;
   background: #202a2d;
-  box-shadow: 0 8px 22px rgba(0,0,0,.58);
+  box-shadow: none;
 }
 .runtime-popover-title {
   height: 22px;
@@ -5118,6 +5118,7 @@ input[type="range"] {
   background: #202a2d;
   box-shadow: 0 7px 18px rgba(0, 0, 0, .5);
 }
+.runtime-popover { box-shadow: none; }
 .compact-popup-menu button {
   min-height: var(--ui-control-height);
   border-radius: var(--ui-radius-control);
@@ -5597,7 +5598,7 @@ html.host-mode .control-window.hidden {
   min-width: 0;
   min-height: 0;
   transform: none;
-  border: 0;
+  border: 1px solid var(--border);
   border-radius: 0;
   box-shadow: none;
 }
