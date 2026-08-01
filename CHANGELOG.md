@@ -6,6 +6,15 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - Added a built-in AVISO editor for GeoJSON AVISO files with live reload, object visibility, layer/name metadata, style fields, label text/font/position fields, simple line/label creation, duplication, deletion, and save/reload actions.
+- Added airport-specific state and preset/default stores for AVISO, SRW 1, and SRW 2.
+- Added SRW corner/split snapping, right-drag panning, and cursor-anchored wheel zoom.
+- Added compact per-inset Reset actions to the Runtime Menu.
+
+### Changed
+- Renamed the Runtime Menu's `AVISO Insets` section to `Insets`.
+- Unified floating inset title bars with the Runtime Menu's dark striped chrome.
+- Removed the SRW `Z` range and `R` rotation menus; wheel zoom replaces the range menu.
+- Made inset-preset writes authoritative across open radar screens and Control Center history without overwriting unrelated staged settings.
 
 ## [1.1.3] - 2026-06-20
 

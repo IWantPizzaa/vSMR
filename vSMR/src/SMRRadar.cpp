@@ -5348,6 +5348,7 @@ void UnhookAvisoThreadHooks()
 void ClearAvisoWheelRoutingState()
 {
 	gAvisoWheelRoutingEnabled = false;
+	bool endedInsetPan = false;
 
 	for (CSMRRadar* radarScreen : RadarScreensOpened)
 	{
@@ -5358,12 +5359,16 @@ void ClearAvisoWheelRoutingState()
 		for (auto& appWindow : radarScreen->appWindows)
 		{
 			CInsetWindow* insetWindow = appWindow.second.get();
-			if (insetWindow == nullptr || !insetWindow->IsAvisoViewport())
+			if (insetWindow == nullptr)
 				continue;
 
+			endedInsetPan = endedInsetPan || insetWindow->m_AvisoRightPanning;
 			insetWindow->ResetAvisoInteractionState();
 		}
 	}
+
+	if (endedInsetPan && ::GetCapture() != nullptr)
+		::ReleaseCapture();
 }
 
 bool IsEuroScopeViewSwitchKey(WPARAM key)
@@ -7330,7 +7335,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	SyncLinkedAvisoSecondaryToMainView();
 
 	const double perfSrwStartMs = RefreshPerfNowMs();
-	bool avisoViewportRenderedForWheel = false;
+	bool insetRenderedForWheel = false;
 	gAvisoWheelRoutingEnabled = false;
 	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
 	{
@@ -7344,10 +7349,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		CInsetWindow* appWindow = appWindowIt->second.get();
 		appWindow->render(hDC, this, &graphics, mouseLocation);
-		if (appWindow->IsAvisoViewport() && appWindow->m_AvisoScreenAreaValid)
-			avisoViewportRenderedForWheel = true;
+		if (appWindow->m_AvisoScreenAreaValid)
+			insetRenderedForWheel = true;
 	}
-	gAvisoWheelRoutingEnabled = avisoViewportRenderedForWheel;
+	gAvisoWheelRoutingEnabled = insetRenderedForWheel;
 	perfSrwMs += RefreshPerfNowMs() - perfSrwStartMs;
 
 	setRefreshStage("fps overlay");

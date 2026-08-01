@@ -247,7 +247,7 @@ namespace
 		if (!requested.empty() && !exists(requested))
 			return requested;
 
-		const std::string base = requested.empty() ? "AVISO Preset" : requested;
+		const std::string base = requested.empty() ? "Inset Preset" : requested;
 		for (int suffix = 2; suffix < 10000; ++suffix)
 		{
 			const std::string candidate = base + " " + std::to_string(suffix);
@@ -374,7 +374,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const RailButton buttons[] = {
 		{ "runtime.button.mode", "mode", "Mode", RuntimeMenuPopup::Mode },
 		{ "runtime.button.groups", "groups", "Groups", RuntimeMenuPopup::Groups },
-		{ "runtime.button.insets", "insets", "AVISO Insets", RuntimeMenuPopup::Insets },
+		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
@@ -570,7 +570,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 	HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
 	CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
-	DrawTextEllipsis(hdc, titleText, insetPopup ? "AVISO Insets" : title, RGB(217, 226, 228));
+	DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, RGB(217, 226, 228));
 	CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
 	DrawRoundedRect(hdc, closeArea, RGB(29, 38, 41), RGB(82, 96, 101), 2);
 	::SelectObject(hdc, actionFont);
@@ -672,12 +672,13 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		const struct
 		{
 			const char* id;
+			const char* resetId;
 			const char* label;
 			int appWindowId;
 		} insetRows[] = {
-			{ "runtime.inset.aviso", "AVISO Inset", avisoWindowId },
-			{ "runtime.inset.srw1", "SRW 1", 1 },
-			{ "runtime.inset.srw2", "SRW 2", 2 }
+			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
+			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
+			{ "runtime.inset.srw2", "runtime.inset.reset.srw2", "SRW 2", 2 }
 		};
 		for (const auto& inset : insetRows)
 		{
@@ -692,7 +693,23 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				contentTop,
 				RuntimeMenuPopupArea.right - kPopupPadding,
 				contentTop + kPopupRowHeight);
-			drawChoiceRow(entry, rowArea);
+			CRect visibilityArea(rowArea);
+			visibilityArea.right -= 45;
+			drawChoiceRow(entry, visibilityArea);
+			CRect resetArea(
+				visibilityArea.right + 3,
+				rowArea.top + 3,
+				rowArea.right,
+				rowArea.bottom - 3);
+			DrawRoundedRect(
+				hdc,
+				resetArea,
+				PointInside(resetArea, mouseLocation) ? kButtonHover : kButtonBackground,
+				kOuterBorder,
+				3);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, resetArea, "Reset", kText, DT_CENTER);
+			AddScreenObject(RUNTIME_MENU_POPUP, inset.resetId, resetArea, false, "Reset this inset view");
 			contentTop += kPopupRowHeight;
 		}
 
@@ -813,7 +830,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			{ "runtime.preset.rename", "Rename", hasActivePreset, false },
 			{ "runtime.preset.duplicate", "Duplicate", hasActivePreset, false },
 			{ "runtime.preset.default", clearDefaultAction ? "Clear default" : "Set default", canChangeDefault, false },
-			{ "runtime.preset.reset", "Reset", hasActivePreset, false },
+			{ "runtime.preset.reset", "Reload", hasActivePreset, false },
 			{ "runtime.preset.delete", "Delete", hasActivePreset, true }
 		};
 
@@ -987,12 +1004,15 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (display != appWindowDisplays.end())
 		{
 			display->second = !display->second;
-			SaveDataToAsr(
-				appWindowId == 1 ? "SRW1Display" :
-				appWindowId == 2 ? "SRW2Display" : "AVISO1Display",
-				appWindowId == 3 ? "Display AVISO viewport" : "Display Secondary Radar Window",
-				display->second ? "1" : "0");
+			SaveInsetStateToAsrForAirport(getActiveAirport());
 		}
+		syncControlCenter();
+		RequestRefresh();
+	};
+	auto resetInsetWindow = [&](int appWindowId)
+	{
+		ResetInsetWindowState(appWindowId, true);
+		SaveInsetStateToAsrForAirport(getActiveAirport());
 		syncControlCenter();
 		RequestRefresh();
 	};
@@ -1011,6 +1031,21 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		toggleAppWindow(2);
 		return true;
 	}
+	if (std::strcmp(id, "runtime.inset.reset.aviso") == 0)
+	{
+		resetInsetWindow(APPWINDOW_AVISO - APPWINDOW_BASE);
+		return true;
+	}
+	if (std::strcmp(id, "runtime.inset.reset.srw1") == 0)
+	{
+		resetInsetWindow(1);
+		return true;
+	}
+	if (std::strcmp(id, "runtime.inset.reset.srw2") == 0)
+	{
+		resetInsetWindow(2);
+		return true;
+	}
 
 	const std::vector<AvisoPreset> presets = GetAvisoPresets();
 	std::string activePreset = GetActiveAvisoPresetName();
@@ -1025,7 +1060,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	const std::string defaultPreset = GetDefaultAvisoPresetName();
 	if (std::strcmp(id, "runtime.preset.save") == 0)
 	{
-		const std::string name = MakeUniquePresetName(presets, "AVISO Preset");
+		const std::string name = MakeUniquePresetName(presets, "Inset Preset");
 		SaveAvisoPreset(name, false, nullptr);
 	}
 	else if (std::strcmp(id, "runtime.preset.update") == 0)
