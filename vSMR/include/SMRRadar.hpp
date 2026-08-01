@@ -23,7 +23,6 @@
 #include <condition_variable>
 #include <atomic>
 #include <ctime>
-#include "ColorManager.h"
 #include "Logger.h"
 #include "SMRDataTypes.hpp"
 #include "SMRSharedState.hpp"
@@ -34,8 +33,6 @@ using namespace std;
 using namespace Gdiplus;
 using namespace EuroScopePlugIn;
 namespace fs = std::filesystem;
-
-using namespace SMRSharedData;
 
 class CProfileEditorDialog;
 class CAvisoEditorDialog;
@@ -62,11 +59,6 @@ public:
 	clock_t clock_init = 0;
 	clock_t clock_final = 0;
 
-	COLORREF SMR_TARGET_COLOR = RGB(255, 242, 73);
-	COLORREF SMR_H1_COLOR = RGB(0, 255, 255);
-	COLORREF SMR_H2_COLOR = RGB(0, 219, 219);
-	COLORREF SMR_H3_COLOR = RGB(0, 183, 183);
-
 	typedef struct tagPOINT2 {
 		double x;
 		double y;
@@ -74,9 +66,6 @@ public:
 
 	struct Patatoide_Points {
 		map<int, POINT2> points;
-		map<int, POINT2> History_one_points;
-		map<int, POINT2> History_two_points;
-		map<int, POINT2> History_three_points;
 	};
 
 	map<string, Patatoide_Points> Patatoides;
@@ -93,7 +82,6 @@ public:
 	string ConfigPath;
 	string mapsPath;
 	std::unique_ptr<CCallsignLookup> Callsigns;
-	std::unique_ptr<CColorManager> ColorManager;
 	std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> AircraftIcons;
 	std::string IconsPath;
 	struct AircraftSpec { double length = 0.0; double wingspan = 0.0; };
@@ -326,9 +314,6 @@ public:
 	double PerfLastSrwMs = 0.0;
 	unsigned long PerfLastLogTick = 0;
 
-	map<string, bool> ShowLists;
-	map<string, RECT> ListAreas;
-
 	map<int, bool> appWindowDisplays;
 
 	map<string, CRect> tagAreas;
@@ -338,12 +323,6 @@ public:
 	map<string, CRect> previousTagSize;
 	map<std::string, POINT> TagDragOffsetFromCenter;
 
-	bool QDMenabled = false;
-	bool QDMSelectEnabled = false;
-	POINT QDMSelectPt;
-	POINT QDMmousePt;
-
-	bool ColorSettingsDay = true;
 	vector<string> ProfileColorPaths;
 	map<string, bool> ProfileColorPathHasAlpha;
 	string SelectedProfileColorPath;
@@ -387,6 +366,8 @@ public:
 	unsigned long FpsLastSampleTick = 0;
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
+	bool ShowFps = true;
+	CFont RuntimeOverlayFont;
 	bool AirportPositionsCacheValid = false;
 	struct CachedRunwayGeometry
 	{
@@ -415,20 +396,6 @@ public:
 	int currentFontSize = 1;
 
 	map<string, CPosition> AirportPositions;
-
-	bool Afterglow = true;
-
-	int Trail_Gnd = 4;
-	int Trail_App = 4;
-	int PredictedLength = 0;
-
-	bool NeedCorrelateCursor = false;
-	bool ReleaseInProgress = false;
-	bool AcquireInProgress = false;
-
-	multimap<string, string> DistanceTools;
-	bool DistanceToolActive = false;
-	pair<string, string> ActiveDistance;
 
 	//----
 	// Tag types
@@ -519,10 +486,6 @@ public:
 	virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt);
 	DisplayModeSettings GetActiveDisplayModeSettings() const;
 	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget rt, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings) const;
-
-	//---CorrelateCursor--------------------------------------------
-
-	virtual void CorrelateCursor();
 
 	//---LoadCustomFont--------------------------------------------
 

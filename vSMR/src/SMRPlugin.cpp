@@ -2412,14 +2412,6 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		RemoveQueuedCdmReminderUnlocked(normalizedCallsign);
 		ClearDatalinkClearanceSentUnlocked(normalizedCallsign);
 	}
-
-	CRadarTarget rt = RadarTargetSelect(normalizedCallsign.c_str());
-	const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
-	if (systemId == nullptr || systemId[0] == '\0')
-		return;
-
-	ReleasedTracks.erase(systemId);
-	ManuallyCorrelated.erase(systemId);
 }
 
 void CSMRPlugin::OnTimer(int Counter)

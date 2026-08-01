@@ -53,13 +53,6 @@ bool CSMRRadar::IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const 
 		}
 	}
 
-	const char* systemId = rt.IsValid() ? rt.GetSystemID() : nullptr;
-	if (hasText(systemId) && ManuallyCorrelated.find(systemId) != ManuallyCorrelated.end())
-		isCorr = true;
-
-	if (hasText(systemId) && ReleasedTracks.find(systemId) != ReleasedTracks.end())
-		isCorr = false;
-
 	return isCorr;
 }
 

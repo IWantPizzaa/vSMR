@@ -45,10 +45,6 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 
 	CRadarTargetPositionData RtPos = RadarTarget.GetPosition();
 
-	Patatoides[callsign].History_three_points = Patatoides[callsign].History_two_points;
-	Patatoides[callsign].History_two_points = Patatoides[callsign].History_one_points;
-	Patatoides[callsign].History_one_points = Patatoides[callsign].points;
-
 	Patatoides[callsign].points.clear();
 
 	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(callsign.c_str());
@@ -287,12 +283,4 @@ void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	tagAreas.erase(callsign);
 	tagCollisionAreas.erase(callsign);
 	TagDragOffsetFromCenter.erase(callsign);
-
-	for (auto itr = DistanceTools.begin(); itr != DistanceTools.end(); )
-	{
-		if (itr->first == callsign || itr->second == callsign)
-			itr = DistanceTools.erase(itr);
-		else
-			++itr;
-	}
 }

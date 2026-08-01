@@ -11,14 +11,14 @@ capability boundaries.
 
 | Layer | Main files | Responsibility |
 | --- | --- | --- |
-| Native runtime UI | `vSMR/src/SMRRadar_RuntimeMenu.cpp` | Draws the focusless radar-screen icon rail and compact popups with EuroScope screen objects. |
-| Radar operational UI | `vSMR/src/SMRRadar.cpp`, `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Draws the reduced top toolbar and handles active-airport, QDR, target-session, lighting, and distance actions. |
+| Native runtime UI | `vSMR/src/SMRRadar_RuntimeMenu.cpp` | Draws the editable current-airport row, focusless radar-screen icon rail, and compact popups with EuroScope screen objects. |
+| Radar operational UI | `vSMR/src/SMRRadar.cpp`, `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Draws the optional FPS-only overlay and handles current radar-screen interactions without a top menu. |
 | AVISO viewport UI | `vSMR/src/InsetWindow.cpp` | Draws only AVISO viewport chrome and interaction: title/drag, detach, resize/dividers, pan, and zoom. |
 | Runtime/render state | `vSMR/src/SMRRadar.cpp`, `vSMR/src/InsetWindow.cpp` | Applies profiles, modes, inset state, RIMCAS state, and AVISO renderer state. |
 | Modeless host | `vSMR/src/SMRRadar_ControlCenter.cpp`, `vSMR/src/VsmrControlCenterDialog.cpp` | Owns the modeless MFC window, WebView2 lifetime, local-resource mapping, placement, file selection, and asynchronous GitHub loading. |
 | Typed dispatch | `vSMR/include/VsmrControlCenterBridge.hpp`, `vSMR/src/VsmrControlCenterBridge.cpp` | Decodes one versioned envelope, validates payloads, dispatches to radar/config APIs, and emits replies. |
 | Browser application | `vSMR_webUI/index.html`, `styles.css`, `app.js`, `data.js` | Reproduces the supplied interface, stages edits, maintains undo/redo history, and renders authoritative native state. |
-| Persistence | `vSMR/src/Config.cpp`, `vSMR/src/AvisoDocumentModel.cpp` | Validates profile and AVISO documents and performs replace-style writes. |
+| Persistence | `vSMR/src/Config.cpp`, `vSMR/src/AvisoDocumentModel.cpp`, `vSMR/src/SMRRadar_AircraftAndAsr.cpp` | Validates profile/AVISO documents and persists radar-screen preferences in the ASR. |
 
 The normal data flow is:
 
@@ -44,27 +44,30 @@ staged state.
 ## Surface ownership
 
 Runtime and editing controls have one owner each. This prevents the same action
-from appearing in the AVISO inset, Runtime Menu, legacy top toolbar, and Control
-Center at the same time.
+from appearing in the AVISO inset, Runtime Menu, and Control Center at the same
+time.
 
 | Surface | Owned controls | Intentionally absent |
 | --- | --- | --- |
-| Runtime Menu | Mode/profile selection, AVISO group visibility, AVISO/SRW visibility, full inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
+| Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW visibility, full inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
 | AVISO inset | Title/drag, `F` detach, resize handles/dividers, pan, and zoom | Close/visibility, preset, reload, and editor buttons |
-| Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, and settings editing | Radar cursor tools and duplicated inset chrome |
-| Top toolbar | Active airport, QDR, Target session controls, Lighting, `/` distance tool, and the FPS component readout | Profile, mode, alert, inset, AVISO editor/reload, label-size, and typeface controls |
+| Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, and settings editing, including FPS visibility | Radar cursor tools and duplicated inset chrome |
+| FPS overlay | Optional `FPS <value>` text at the radar area's top-right corner | Component timings, controls, background toolbar, and hit regions |
 
-The reduced top toolbar therefore reads: active airport, `QDR`, `Target`,
-`Lighting`, `/`, and `FPS`. QDR contains fixed and selected reference tools.
-Target contains afterglow, ground/approach trails, predicted track line,
-Acquire, and Release.
-Lighting contains Day/Night plus label, symbol, and afterglow brightness.
+The old grey top menu and its QDR, Target, Lighting, and distance actions are
+removed completely. It leaves no background band or legacy hit regions. FPS
+is an independent optional overlay and displays no A/C/R/T/S component values.
 
 ## Runtime rail
 
 The runtime rail is a native GDI/GDI+ overlay, not the browser preview rail. It
 uses EuroScope hit regions (`RUNTIME_MENU_RAIL` and
-`RUNTIME_MENU_POPUP`) and has five 40 px icon buttons:
+`RUNTIME_MENU_POPUP`). Immediately below its 10 px draggable grip, its first
+content row is the centered current-airport ICAO text. Clicking that row opens
+EuroScope's text editor; accepted input is trimmed, uppercased, applied live,
+and saved under the ASR `Airport` key. Empty input is ignored.
+
+Five 40 px icon buttons follow the airport row:
 
 - Mode
 - Groups
@@ -72,7 +75,7 @@ uses EuroScope hit regions (`RUNTIME_MENU_RAIL` and
 - Profile
 - Control Center
 
-The 10 px grip is draggable without moving focus away from EuroScope.
+The grip is draggable without moving focus away from EuroScope.
 `RuntimeMenuX` and `RuntimeMenuY` are saved in the ASR. Popups open beside the
 rail, flip to its left near the right screen edge, and page long mode, group,
 profile, or preset lists.
@@ -85,6 +88,12 @@ uses EuroScope's popup editor. The default action reads `Set default` when an
 active non-default preset can be promoted. It reads `Clear default` when the
 active preset is already the default, or when no preset is active but a
 configured default remains; the other rail interactions remain focusless.
+
+AVISO top, top-left, and top-right snap layouts use `GetRadarArea().top`
+directly. Rendering and interaction share those bounds, so no obsolete toolbar
+clearance remains in snapping, dragging, resizing, or preset restoration.
+Floating layouts retain only the small clearance required to keep their own
+title/drag surface reachable.
 
 AVISO items may belong to more than one group. Visibility uses union semantics:
 an item is rendered when at least one known assigned group is visible.
@@ -184,7 +193,7 @@ editor and renderer classes do not parse raw message strings.
 | `ui.ready` | Sends the initial authoritative profiles/settings/runtime state and the split AVISO document. |
 | `window.close` | Hides the modeless host. |
 | `window.drag.start` | Starts a native non-client drag from the HTML title bar. |
-| `state.save` | Validates and writes profiles and, when present, AVISO; reloads affected live systems. |
+| `state.save` | Validates the staged airport binding, then writes profiles and, when present, AVISO; reloads affected live systems. |
 | `state.reload` | Reloads profile/map and pre-validated AVISO data from disk; a failure returns a correlated error and the failed document/overlay retains its prior live version. |
 | `state.reset` | Requests the host to validate and stage the packaged profiles and LFPG AVISO defaults after the browser confirmation. Nothing is written until global Save. |
 | `state.undo`, `state.redo` | Validates the supplied history snapshot, applies its profile/runtime state plus staged AVISO group metadata/membership in memory, and returns staged authoritative state. |
@@ -204,7 +213,7 @@ editor and renderer classes do not parse raw message strings.
 | `aviso.inset.preset.delete` | Deletes a preset. |
 | `aviso.inset.preset.linked` | Changes linked movement. |
 | `alerts.update` | Applies active-profile RIMCAS fields and runway state live; changes remain dirty until global Save. |
-| `settings.update` | Applies the connected resolution and RIMCAS settings live; changes remain dirty until global Save. |
+| `settings.update` | Applies resolution and RIMCAS live in staged profile state, and applies FPS visibility live while immediately persisting it under the ASR `ShowFps` key. |
 | `resource.computer.load` | Opens the native JSON/GeoJSON file picker. Compatibility aliases are accepted. |
 | `resource.github.load` | Downloads a GitHub file asynchronously after URL validation. |
 
@@ -223,7 +232,7 @@ persist their active selection through the existing profile/ASR paths.
 
 | Type | Payload and UI behavior |
 | --- | --- |
-| `state.authoritative` | `profiles`, `settings`, `runtime`, `activeProfile`, and `reason`, with inline `aviso` for staged undo/redo and group-update replies. Replaces clean state; runtime-only pushes preserve dirty editor documents. |
+| `state.authoritative` | `profiles`, `settings`, `runtime`, `activeProfile`, `airport`, and `reason`, with inline `aviso` for staged undo/redo and group-update replies. Replaces clean state; runtime-only pushes preserve dirty editor documents. |
 | `state.aviso` | The authoritative GeoJSON FeatureCollection. Sent separately to avoid duplicating the large document in every state envelope. |
 | `state.saved` | Correlated Save success. The UI clears Save pending state and marks the current snapshot clean. |
 | `state.ack` | Correlated success acknowledgement with `action` and optional `message`. |
@@ -256,6 +265,9 @@ request with id = "ui-..."
 - Reload asks before discarding dirty state.
 - Native runtime pushes update runtime fields while retaining staged profile
   and AVISO edits.
+- Staged AVISO state remains bound to the airport from which it was loaded. If
+  the Runtime Menu changes airports while editors are dirty, Save, Undo, and
+  Redo stay disabled until Reload confirms discarding the stale staged state.
 - Resource loading only stages parsed content. It does not change the configured
   destination path or write a file until Save.
 
@@ -322,6 +334,16 @@ represented by a visible editor remain present. Top-level placement may change
 because the current browser emits profiles first, followed by retained
 non-profile entries and metadata.
 
+### Radar-screen preferences
+
+The current airport, Runtime Menu position, inset state/geometry, active
+profile, and optional FPS visibility are radar-screen preferences stored in the
+ASR. `Settings > Display > Show FPS` updates the live `ShowFps` value and writes
+the `ShowFps` ASR key as `1` or `0`; a missing key defaults to enabled for
+compatibility. The overlay renders only `FPS <value>` at the top-right corner.
+Detailed component timings may still be collected for logs, but are never
+included in the radar overlay.
+
 ### AVISO
 
 `AvisoDocumentModel::SaveAtomically()` validates the FeatureCollection,
@@ -365,15 +387,17 @@ runtime or packaged resources are unavailable.
 
 ## Native features added or changed
 
-- Added the native five-button draggable runtime rail and compact edge-aware
-  popups.
+- Added the native draggable runtime rail with its current-airport row, five
+  icon buttons, and compact edge-aware popups.
 - Added runtime profile/mode switching, group visibility, three independent
   inset toggles, and full native inset-preset management, including a
   Set/Clear-default toggle.
 - Reduced AVISO inset chrome to viewport-only controls and moved visibility and
   presets to the Runtime Menu, with editing/reload owned by the Control Center.
-- Reduced the old grey top toolbar to active airport, QDR, Target session
-  controls, Lighting, distance, and performance diagnostics.
+- Removed the old grey top menu and its QDR, Target, Lighting, and distance
+  actions; moved current-airport editing to the first Runtime Menu content row.
+- Added the persisted optional FPS-only overlay and reclaimed the full radar
+  top edge for AVISO top and corner snapping.
 - Added modeless WebView2 hosting, local virtual-host mapping, placement
   persistence, and runtime/resource fallback diagnostics.
 - Added the centralized versioned bridge and authoritative state/error flows.

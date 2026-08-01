@@ -257,6 +257,8 @@
       profileExtras: clone(extras),
       activeProfileId: preferred?.id || "",
       aviso: normalizedAviso,
+      airport: String(bundle.airport || "").trim().toUpperCase(),
+      hostAirport: String(bundle.airport || "").trim().toUpperCase(),
       settings: {
         profileFile: "vSMR_DATA\\vSMR_Profiles.json",
         avisoFile: "vSMR_DATA\\AVISO\\AVISO_LFPG.geojson",
@@ -264,6 +266,7 @@
         bridgeMode: "Auto detect",
         updateInterval: 250,
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
+        showFps: true,
         runtimeSync: true,
         confirmDelete: true,
         rimcas: true,
@@ -382,22 +385,25 @@
 
   function updateCommandState() {
     const busy = Boolean(pending.save || pending.reload);
+    const airportMismatch = Boolean(state.airport && state.hostAirport && state.airport !== state.hostAirport);
     const saveButton = $("#saveButton");
     const reloadButton = $("#reloadButton");
     const undoButton = $("#undoButton");
     const redoButton = $("#redoButton");
     if (saveButton) {
-      saveButton.disabled = !state.dirty || Boolean(pending.save);
+      saveButton.disabled = !state.dirty || Boolean(pending.save) || airportMismatch;
       saveButton.classList.toggle("pending", Boolean(pending.save));
-      saveButton.title = pending.save ? "Saving…" : state.dirty ? "Save changes" : "No changes to save";
+      saveButton.title = airportMismatch
+        ? "Reload after changing airports before saving"
+        : pending.save ? "Saving…" : state.dirty ? "Save changes" : "No changes to save";
     }
     if (reloadButton) {
       reloadButton.disabled = busy;
       reloadButton.classList.toggle("pending", Boolean(pending.reload));
       reloadButton.title = pending.reload ? "Reloading…" : "Reload configuration";
     }
-    if (undoButton) undoButton.disabled = busy || history.past.length === 0;
-    if (redoButton) redoButton.disabled = busy || history.future.length === 0;
+    if (undoButton) undoButton.disabled = busy || airportMismatch || history.past.length === 0;
+    if (redoButton) redoButton.disabled = busy || airportMismatch || history.future.length === 0;
   }
 
   function updateDirtyState(message = "") {
@@ -1791,7 +1797,6 @@
     $("#profileMaxAltitude").value = profile.filters.max_altitude_ft ?? 5500;
     $("#profileMaxSpeed").value = profile.filters.max_speed_kt ?? 250;
     $("#profileRadarRange").value = profile.filters.radar_range_nm ?? 999;
-    $("#profileNightAlpha").value = profile.filters.night_overlay_alpha ?? 110;
     $("[data-action='activate-profile']").textContent = record.id === state.activeProfileId ? "Active" : "Set active";
   }
 
@@ -1803,7 +1808,6 @@
     profile.filters.max_altitude_ft = Number($("#profileMaxAltitude").value) || 0;
     profile.filters.max_speed_kt = Number($("#profileMaxSpeed").value) || 0;
     profile.filters.radar_range_nm = Number($("#profileRadarRange").value) || 0;
-    profile.filters.night_overlay_alpha = Math.round(clamp($("#profileNightAlpha").value, 0, 255));
     return profile;
   }
 
@@ -3142,6 +3146,7 @@
     $("#settingsBridgeMode").value = settings.bridgeMode;
     $("#settingsUpdateInterval").value = settings.updateInterval;
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
+    $("#settingsShowFps").checked = settings.showFps !== false;
     $("#settingsRuntimeSync").checked = settings.runtimeSync;
     $("#settingsConfirmDelete").checked = settings.confirmDelete;
     $("#settingsRimcas").checked = settings.rimcas;
@@ -3179,6 +3184,7 @@
       bridgeMode: $("#settingsBridgeMode").value,
       updateInterval: Number($("#settingsUpdateInterval").value) || 250,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
+      showFps: $("#settingsShowFps").checked,
       runtimeSync: $("#settingsRuntimeSync").checked,
       confirmDelete: $("#settingsConfirmDelete").checked,
       rimcas: $("#settingsRimcas").checked,
@@ -3227,12 +3233,13 @@
       aviso: clone(state.aviso),
       settings: clone(state.settings),
       runtime: clone(state.runtime),
+      airport: state.airport,
       activeProfile: activeProfile().name || ""
     };
   }
 
   function saveAll() {
-    if (!state.dirty || pending.save) return;
+    if (!state.dirty || pending.save || state.airport !== state.hostAirport) return;
     const payload = serializeStatePayload(true);
     pending.save = postBridge("state.save", payload);
     setStatus("Saving configuration…", "info");
@@ -3268,6 +3275,7 @@
           aviso: DEFAULT_DATA.aviso,
           settings: fallback.settings,
           runtime: fallback.runtime,
+          airport: fallback.airport,
           activeProfile: fallback.metadata?.last_active_profile || fallback.profiles[0]?.data?.name || ""
         }
       }), 0);
@@ -3275,7 +3283,7 @@
   }
 
   function undoHistory() {
-    if (!history.past.length || pending.save || pending.reload) return;
+    if (!history.past.length || pending.save || pending.reload || state.airport !== state.hostAirport) return;
     const target = history.past.pop();
     history.future.push(history.present);
     if (history.future.length > HISTORY_LIMIT) history.future.shift();
@@ -3285,7 +3293,7 @@
   }
 
   function redoHistory() {
-    if (!history.future.length || pending.save || pending.reload) return;
+    if (!history.future.length || pending.save || pending.reload || state.airport !== state.hostAirport) return;
     const target = history.future.pop();
     history.past.push(history.present);
     if (history.past.length > HISTORY_LIMIT) history.past.shift();
@@ -4235,6 +4243,7 @@
     const incoming = authoritativePayload(payload);
     const preservedUi = state.ui;
     const previousProfileName = activeProfile().name || "";
+    const previousHostAirport = state.hostAirport;
     const preservesStagedEditors = state.dirty &&
       !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason);
     let avisoChanged = false;
@@ -4262,6 +4271,11 @@
     if (!preservesStagedEditors && incoming.settings && typeof incoming.settings === "object") {
       state.settings = { ...state.settings, ...clone(incoming.settings) };
     }
+    if (typeof incoming.airport === "string") {
+      state.hostAirport = incoming.airport.trim().toUpperCase();
+      if (!preservesStagedEditors)
+        state.airport = state.hostAirport;
+    }
     if (incoming.runtime && typeof incoming.runtime === "object") {
       state.runtime = { ...state.runtime, ...clone(incoming.runtime) };
       state.runtime.insets = { aviso: false, srw1: false, srw2: false, ...(state.runtime.insets || {}) };
@@ -4274,6 +4288,12 @@
     Object.keys(drafts).forEach(key => drafts[key] = null);
     if (avisoChanged) resetAvisoSelections();
     renderAll();
+    if (preservesStagedEditors && state.airport && state.hostAirport &&
+      state.airport !== state.hostAirport && previousHostAirport !== state.hostAirport) {
+      const message = "The active airport changed. Reload before saving or using Undo/Redo.";
+      setStatus(message, "error");
+      showToast(message, "error");
+    }
 
     if (reason === "initial" || reason === "reload") {
       resetHistory(true);

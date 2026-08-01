@@ -131,9 +131,6 @@
     <ClInclude Include="include\CallsignLookup.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="include\ColorManager.h">
-      <Filter>Headers</Filter>
-    </ClInclude>
     <ClInclude Include="include\Config.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
@@ -272,9 +269,6 @@
       <Filter>Resources\Cursors</Filter>
     </None>
     <None Include="resources\cursors\cursor1.cur">
-      <Filter>Resources\Cursors</Filter>
-    </None>
-    <None Include="resources\cursors\ml_blau_link.cur">
       <Filter>Resources\Cursors</Filter>
     </None>
     <None Include="resources\cursors\move.cur">

@@ -43,10 +43,10 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 	(void)frameTowerModeEnabled;
 	// Drawing the Tags
 	VSMR_REFRESH_LOG("Tags loop");
-	if (CurrentConfig == nullptr || ColorManager == nullptr || RimcasInstance == nullptr)
+	if (CurrentConfig == nullptr || RimcasInstance == nullptr)
 	{
 		if (Logger::is_verbose_mode())
-			Logger::info("RenderTags: skipped (missing config/color/rimcas dependency)");
+			Logger::info("RenderTags: skipped (missing config/rimcas dependency)");
 		return;
 	}
 
@@ -463,11 +463,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			isAcDisplayed = false;
 
 		if (!ShouldDisplayTargetForDisplayMode(fp, rt, AcisCorrelated, reportedGs, targetOnRunway, displayModeSettings))
-			isAcDisplayed = false;
-
-		const char* systemId = rt.GetSystemID();
-		if (systemId != nullptr && systemId[0] != '\0' &&
-			ReleasedTracks.find(systemId) != ReleasedTracks.end())
 			isAcDisplayed = false;
 
 		if (!isAcDisplayed)
@@ -1118,7 +1113,6 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			definedBackgroundColor,
 			definedBackgroundOnRunwayColor);
 
-		TagBackgroundColor = ColorManager->get_corrected_color("label", TagBackgroundColor);
 		verboseTargetStep(rtCallsign, "after_background_color");
 
 		// Drawing the tag background
@@ -1155,7 +1149,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			graphics.FillPath(&TagBackgroundBrush, &roundedPath);
 			if (pointerInTagRect || hoverState.isDragged)
 			{
-				Pen pw(ColorManager->get_corrected_color("label", Color::White));
+				Pen pw(Color::White);
 				graphics.DrawPath(&pw, &roundedPath);
 			}
 		}
@@ -1164,21 +1158,20 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			graphics.FillRectangle(&TagBackgroundBrush, RoundedRect);
 			if (pointerInTagRect || hoverState.isDragged)
 			{
-				Pen pw(ColorManager->get_corrected_color("label", Color::White));
+				Pen pw(Color::White);
 				graphics.DrawRectangle(&pw, RoundedRect);
 			}
 		}
 
 		// Drawing the tag text
 
-		SolidBrush FontColor(ColorManager->get_corrected_color("label", definedTextColor));
+		SolidBrush FontColor(definedTextColor);
 		Color squawkErrorColorValue(255, 255, 0, 0);
 		if (LabelsSettings.HasMember("squawk_error_color") && LabelsSettings["squawk_error_color"].IsObject())
 			squawkErrorColorValue = CurrentConfig->getConfigColor(LabelsSettings["squawk_error_color"]);
-		SolidBrush SquawkErrorColor(ColorManager->get_corrected_color("label",
-			squawkErrorColorValue));
-		SolidBrush ClearanceNotReceivedColor(ColorManager->get_corrected_color("label", Color(255, 235, 70, 70)));
-		SolidBrush ClearanceReceivedColor(ColorManager->get_corrected_color("label", Color(255, 95, 225, 120)));
+		SolidBrush SquawkErrorColor(squawkErrorColorValue);
+		SolidBrush ClearanceNotReceivedColor(Color(255, 235, 70, 70));
+		SolidBrush ClearanceReceivedColor(Color(255, 95, 225, 120));
 		auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
 		{
 			if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
@@ -1189,14 +1182,14 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			}
 			return fallback;
 		};
-		SolidBrush AlertTextColorCaution(ColorManager->get_corrected_color("label",
-			getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30))));
-		SolidBrush AlertTextColorWarning(ColorManager->get_corrected_color("label",
-			getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
-		SolidBrush AlertColorCaution(ColorManager->get_corrected_color("label",
-			getRimcasEditorColor("caution_alert_background_color", Color(230, 255, 215, 0))));
-		SolidBrush AlertColorWarning(ColorManager->get_corrected_color("label",
-			getRimcasEditorColor("warning_alert_background_color", Color(230, 200, 40, 40))));
+		SolidBrush AlertTextColorCaution(
+			getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30)));
+		SolidBrush AlertTextColorWarning(
+			getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255)));
+		SolidBrush AlertColorCaution(
+			getRimcasEditorColor("caution_alert_background_color", Color(230, 255, 215, 0)));
+		SolidBrush AlertColorWarning(
+			getRimcasEditorColor("warning_alert_background_color", Color(230, 200, 40, 40)));
 		const bool isClearanceReceived = (fp.IsValid() && fp.GetClearenceFlag());
 		std::unique_ptr<SolidBrush> VacdmTobtTextBrush;
 		std::unique_ptr<SolidBrush> VacdmTsatTextBrush;
@@ -1208,8 +1201,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			int tobtB = 255;
 			if (TryResolveVacdmTobtTextColor(vacdmRulePilotData, tobtR, tobtG, tobtB))
 			{
-				VacdmTobtTextBrush = std::make_unique<SolidBrush>(
-					ColorManager->get_corrected_color("label", Color(255, tobtR, tobtG, tobtB)));
+				VacdmTobtTextBrush = std::make_unique<SolidBrush>(Color(255, tobtR, tobtG, tobtB));
 			}
 
 			int tsatR = 255;
@@ -1217,12 +1209,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			int tsatB = 255;
 			if (TryResolveVacdmTsatTextColor(vacdmRulePilotData, tsatR, tsatG, tsatB))
 			{
-				VacdmTsatTextBrush = std::make_unique<SolidBrush>(
-					ColorManager->get_corrected_color("label", Color(255, tsatR, tsatG, tsatB)));
+				VacdmTsatTextBrush = std::make_unique<SolidBrush>(Color(255, tsatR, tsatG, tsatB));
 			}
 		}
 
-		const Color leaderLineColor = ColorManager->get_corrected_color("symbol", Color::White);
+		const Color leaderLineColor = Color::White;
 
 
 		// Drawing the leader line
@@ -1306,8 +1297,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				std::unique_ptr<SolidBrush> tokenCustomColorBrush;
 				if (renderedElement.hasCustomColor)
 				{
-					Color customColor = ColorManager->get_corrected_color("label",
-						Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB));
+					Color customColor(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB);
 					tokenCustomColorBrush.reset(new SolidBrush(customColor));
 					color = tokenCustomColorBrush.get();
 				}

@@ -17,7 +17,6 @@ window.VSMR_DATA = {
         max_altitude_ft: 5500,
         max_speed_kt: 250,
         radar_range_nm: 999,
-        night_overlay_alpha: 110,
         display_modes: {
           active: "Normal",
           items: [
@@ -134,10 +133,7 @@ window.VSMR_DATA = {
           gate: { r: 168, g: 109, b: 0, a: 225 },
           on_ground: { r: 255, g: 222, b: 167, a: 225 }
         },
-        target_color: { r: 255, g: 242, b: 73, a: 255 },
-        history_one_color: { r: 0, g: 255, b: 255, a: 255 },
-        history_two_color: { r: 0, g: 219, b: 219, a: 255 },
-        history_three_color: { r: 0, g: 183, b: 183, a: 255 }
+        target_color: { r: 255, g: 242, b: 73, a: 255 }
       },
       approach_insets: {
         extended_lines_length: 15,

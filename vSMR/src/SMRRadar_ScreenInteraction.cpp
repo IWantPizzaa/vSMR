@@ -12,8 +12,6 @@ extern bool customCursor;
 
 namespace
 {
-	constexpr int kAvisoTopMenuClearancePx = 22;
-
 	bool IsAppWindowObjectType(int objectType)
 	{
 		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
@@ -72,7 +70,6 @@ namespace
 		CRect chatArea(radar->GetChatArea());
 		radarArea.NormalizeRect();
 		chatArea.NormalizeRect();
-		radarArea.top += kAvisoTopMenuClearancePx;
 		if (!chatArea.IsRectEmpty())
 			radarArea.bottom = chatArea.top;
 		radarArea.NormalizeRect();
@@ -663,11 +660,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	{
 		return expected != nullptr && strcmp(objectId, expected) == 0;
 	};
-	auto shiftPopupAreaDown = [&](int pixels)
-	{
-		Area.top += pixels;
-		Area.bottom += pixels;
-	};
 	auto addPopupCloseItem = [&]()
 	{
 		GetPlugIn()->AddPopupListElement("Close", "", RIMCAS_CLOSE, false, 2, false, true);
@@ -677,26 +669,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		GetPlugIn()->OpenPopupList(Area, title, 1);
 		addItems();
 		addPopupCloseItem();
-	};
-	auto selectDistanceToolTarget = [&](const char* targetId) -> bool
-	{
-		if (!DistanceToolActive || targetId == nullptr || targetId[0] == '\0')
-			return false;
-
-		if (ActiveDistance.first.empty())
-		{
-			ActiveDistance.first = targetId;
-		}
-		else if (ActiveDistance.second.empty())
-		{
-			ActiveDistance.second = targetId;
-			DistanceTools.insert(ActiveDistance);
-			ActiveDistance = pair<string, string>("", "");
-			DistanceToolActive = false;
-		}
-
-		RequestRefresh();
-		return true;
 	};
 	auto selectAseAndGetTarget = [&]() -> CRadarTarget
 	{
@@ -756,29 +728,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			return 0;
 		}
 	};
-	auto removeDistanceToolPair = [&](const char* distanceToolId)
-	{
-		if (distanceToolId == nullptr || distanceToolId[0] == '\0')
-			return;
-
-		vector<string> parts = split(distanceToolId, ',');
-		if (parts.size() < 2)
-			return;
-
-		pair<string, string> toRemove(parts.front(), parts.back());
-		typedef multimap<string, string>::iterator iterator;
-		std::pair<iterator, iterator> iterpair = DistanceTools.equal_range(toRemove.first);
-		iterator it = iterpair.first;
-		for (; it != iterpair.second; ++it)
-		{
-			if (it->second == toRemove.second)
-			{
-				DistanceTools.erase(it);
-				break;
-			}
-		}
-	};
-
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
 
@@ -865,96 +814,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		}
 	}
 
-	if (ObjectType == RIMCAS_ACTIVE_AIRPORT) {
-		GetPlugIn()->OpenPopupEdit(Area, RIMCAS_ACTIVE_AIRPORT_FUNC, getActiveAirport().c_str());
-	}
-
-	if (ObjectType == DRAWING_BACKGROUND_CLICK)
-	{
-		if (QDMSelectEnabled)
-		{
-			if (Button == BUTTON_LEFT)
-			{
-				QDMSelectPt = Pt;
-				RequestRefresh();
-			}
-
-			if (Button == BUTTON_RIGHT)
-			{
-				QDMSelectEnabled = false;
-				RequestRefresh();
-			}
-		}
-
-		if (QDMenabled)
-		{
-			if (Button == BUTTON_RIGHT)
-			{
-				QDMenabled = false;
-				RequestRefresh();
-			}
-		}
-	}
-
-	if (ObjectType == RIMCAS_MENU) {
-
-		if (isObjectId("QdrMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("QDR Reference", [&]()
-			{
-				GetPlugIn()->AddPopupListElement("QDR Fixed Reference", "", RIMCAS_QDM_TOGGLE);
-				GetPlugIn()->AddPopupListElement("QDR Select Reference", "", RIMCAS_QDM_SELECT_TOGGLE);
-			});
-		}
-
-		if (isObjectId("TargetMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("Target", [&]()
-			{
-				GetPlugIn()->AddPopupListElement("Afterglow", "", RIMCAS_UPDATE_AFTERGLOW, false, int(Afterglow));
-				GetPlugIn()->AddPopupListElement("GRND Trail Dots", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("APPR Trail Dots", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Predicted Track Line", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Acquire", "", RIMCAS_UPDATE_ACQUIRE);
-				GetPlugIn()->AddPopupListElement("Release", "", RIMCAS_UPDATE_RELEASE);
-			});
-		}
-
-		if (isObjectId("LightingMenu")) {
-			shiftPopupAreaDown(30);
-			openPopupListWithClose("Runtime Lighting", [&]()
-			{
-				GetPlugIn()->AddPopupListElement("Day / Night", "", RIMCAS_OPEN_LIST);
-				GetPlugIn()->AddPopupListElement("Brightness", "", RIMCAS_OPEN_LIST);
-			});
-		}
-
-		if (isObjectId("/"))
-		{
-			if (Button == BUTTON_LEFT)
-			{
-				DistanceToolActive = !DistanceToolActive;
-				if (!DistanceToolActive)
-					ActiveDistance = pair<string, string>("", "");
-
-				if (DistanceToolActive)
-				{
-					QDMenabled = false;
-					QDMSelectEnabled = false;
-				}
-			}
-			if (Button == BUTTON_RIGHT)
-			{
-				DistanceToolActive = false;
-				ActiveDistance = pair<string, string>("", "");
-				DistanceTools.clear();
-			}
-
-		}
-
-	}
-
-	if (ObjectType == DRAWING_TAG || ObjectType == DRAWING_AC_SYMBOL) {		
+	if (ObjectType == DRAWING_TAG || ObjectType == DRAWING_AC_SYMBOL) {
 		CRadarTarget rt = GetPlugIn()->RadarTargetSelect(objectId);
 		if (!rt.IsValid())
 			return;
@@ -968,84 +828,35 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			StartTagFunction(rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_TYPE_CALLSIGN, rtCallsign, NULL, EuroScopePlugIn::TAG_ITEM_FUNCTION_NO, Pt, Area);
 		}		
 
-		// Release & correlate actions
-
-		if (ReleaseInProgress || AcquireInProgress)
-		{
-			const char* systemIdRaw = rt.GetSystemID();
-			if (systemIdRaw == nullptr || systemIdRaw[0] == '\0')
-			{
-				ReleaseInProgress = NeedCorrelateCursor = false;
-				AcquireInProgress = NeedCorrelateCursor = false;
-				CorrelateCursor();
-				return;
-			}
-
-			const std::string systemId = systemIdRaw;
-			if (ReleaseInProgress)
-			{
-				ReleaseInProgress = NeedCorrelateCursor = false;
-
-				ReleasedTracks.insert(systemId);
-				ManuallyCorrelated.erase(systemId);
-			}
-
-			if (AcquireInProgress)
-			{
-				AcquireInProgress = NeedCorrelateCursor = false;
-
-				ManuallyCorrelated.insert(systemId);
-				ReleasedTracks.erase(systemId);
-			}
-
-
-			CorrelateCursor();
-
-			return;
-		}
-
 		if (ObjectType == DRAWING_AC_SYMBOL)
 		{
-			if (QDMSelectEnabled)
+			if (TagsOffsets.find(objectId) != TagsOffsets.end())
+				TagsOffsets.erase(objectId);
+
+			if (Button == BUTTON_LEFT)
 			{
-				if (Button == BUTTON_LEFT)
+				if (TagAngles.find(objectId) == TagAngles.end())
 				{
-					QDMSelectPt = Pt;
-					RequestRefresh();
+					TagAngles[objectId] = 0;
+				} else
+				{
+					TagAngles[objectId] = fmod(TagAngles[objectId] - 22.5, 360);
 				}
 			}
-			else if (selectDistanceToolTarget(objectId)) {
-			}
-			else
+
+			if (Button == BUTTON_RIGHT)
 			{
-				if (TagsOffsets.find(objectId) != TagsOffsets.end())
-					TagsOffsets.erase(objectId);
-
-				if (Button == BUTTON_LEFT)
+				if (TagAngles.find(objectId) == TagAngles.end())
 				{
-					if (TagAngles.find(objectId) == TagAngles.end())
-					{
-						TagAngles[objectId] = 0;
-					} else
-					{
-						TagAngles[objectId] = fmod(TagAngles[objectId] - 22.5, 360);
-					}
+					TagAngles[objectId] = 0;
 				}
-
-				if (Button == BUTTON_RIGHT)
+				else
 				{
-					if (TagAngles.find(objectId) == TagAngles.end())
-					{
-						TagAngles[objectId] = 0;
-					}
-					else
-					{
-						TagAngles[objectId] = fmod(TagAngles[objectId] + 22.5, 360);
-					}
+					TagAngles[objectId] = fmod(TagAngles[objectId] + 22.5, 360);
 				}
-
-				RequestRefresh();
 			}
+
+			RequestRefresh();
 		}
 	}
 
@@ -1053,14 +864,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		ObjectType == DRAWING_AC_SYMBOL_APPWINDOW2 ||
 		ObjectType == DRAWING_AC_SYMBOL_APPWINDOW3)
 	{
-		if (selectDistanceToolTarget(objectId)) {
-		} else
-		{
-			const int appWindowId = ObjectType - DRAWING_AC_SYMBOL_APPWINDOW_BASE;
-			auto appWindowIt = appWindows.find(appWindowId);
-			if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr)
-				appWindowIt->second->OnClickScreenObject(objectId, Pt, Button);
-		}
+		const int appWindowId = ObjectType - DRAWING_AC_SYMBOL_APPWINDOW_BASE;
+		auto appWindowIt = appWindows.find(appWindowId);
+		if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr)
+			appWindowIt->second->OnClickScreenObject(objectId, Pt, Button);
 	}
 
 	if (Button == BUTTON_LEFT) {
@@ -1089,11 +896,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		else {
 			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, rightTagMenu, NULL, false);
 		}
-	}
-
-	if (ObjectType == RIMCAS_DISTANCE_TOOL)
-	{
-		removeDistanceToolPair(objectId);
 	}
 
 	RequestRefresh();

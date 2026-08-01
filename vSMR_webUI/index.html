@@ -324,11 +324,10 @@
 </fieldset>
 <fieldset class="compact-group">
 <legend>Radar filters</legend>
-<div class="dense-form four-cols profile-filter-grid">
+<div class="dense-form three-cols profile-filter-grid">
 <label class="field"><span>Max alt (ft)</span><input id="profileMaxAltitude" step="100" type="number"/></label>
 <label class="field"><span>Max speed</span><input id="profileMaxSpeed" step="5" type="number"/></label>
 <label class="field"><span>Range (NM)</span><input id="profileRadarRange" step="1" type="number"/></label>
-<label class="field"><span>Night alpha</span><input id="profileNightAlpha" max="255" min="0" type="number"/></label>
 </div>
 </fieldset>
 <details class="advanced-disclosure profile-advanced">
@@ -592,6 +591,7 @@
 <fieldset class="compact-group settings-group display-group">
 <legend>Display</legend>
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
+<label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
 </fieldset>
 <fieldset class="compact-group settings-group features-group">
 <legend>Features</legend>

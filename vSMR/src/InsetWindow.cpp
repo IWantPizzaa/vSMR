@@ -17,7 +17,6 @@ namespace
 	constexpr double kAvisoLatMetersPerDegree = 110540.0;
 	constexpr double kAvisoLonMetersPerDegree = 111320.0;
 	constexpr int kAvisoViewportTopBarHeight = 15;
-	constexpr int kAvisoTopMenuClearancePx = 22;
 	constexpr int kAvisoSnapThresholdPx = 28;
 	constexpr int kAvisoCornerSnapThresholdPx = 48;
 	constexpr int kAvisoMinLayoutWidth = 300;
@@ -1388,7 +1387,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	CRect chatArea(radar_screen->GetChatArea());
 	layoutBounds.NormalizeRect();
 	chatArea.NormalizeRect();
-	layoutBounds.top += kAvisoTopMenuClearancePx;
 	if (!chatArea.IsRectEmpty())
 		layoutBounds.bottom = chatArea.top;
 	ApplyAvisoLayoutBounds(&layoutBounds);
@@ -1429,11 +1427,16 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 		if (IsAvisoSplitLayout(m_AvisoLayoutMode))
 		{
+			const bool reserveTopRightFps =
+				radar_screen->ShowFps &&
+				(m_AvisoLayoutMode == AvisoLayoutMode::SplitTop ||
+					m_AvisoLayoutMode == AvisoLayoutMode::SplitRight);
+			const int floatTop = viewportRect.top + (reserveTopRightFps ? 27 : 5);
 			CRect floatRect(
 				viewportRect.right - 23,
-				viewportRect.top + 5,
+				floatTop,
 				viewportRect.right - 6,
-				viewportRect.top + 22);
+				floatTop + 17);
 			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
 
@@ -1443,10 +1446,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 		if (IsAvisoCornerLayout(m_AvisoLayoutMode))
 		{
+			CRect floatArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, false);
+			if (radar_screen->ShowFps && m_AvisoLayoutMode == AvisoLayoutMode::CornerTopRight)
+				floatArea.OffsetRect(0, 22);
 			const CRect floatButtonRect = DrawInsetButton(
 				dc,
 				"F",
-				AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, false),
+				floatArea,
 				mouseLocation);
 			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
 
@@ -2248,9 +2254,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const double smallIconBoostResolutionScale = std::clamp(radar_screen->GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 		const double fixedTriangleScale = std::clamp(radar_screen->GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 		const double pixPerMeter = max(0.0, static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
-		const Color symbolWhiteColor = radar_screen->ColorManager != nullptr
-			? radar_screen->ColorManager->get_corrected_color("symbol", Color::White)
-			: Color::White;
+		const Color symbolWhiteColor = Color::White;
 		const unsigned long long realisticIconCacheFrame = useRealisticIconStyle
 			? ++radar_screen->RealisticIconCacheFrame
 			: radar_screen->RealisticIconCacheFrame;
@@ -2292,94 +2296,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			if (patatoidePolygonPoints.size() < 3)
 				return;
 
-			const Color drawColor = radar_screen->ColorManager != nullptr
-				? radar_screen->ColorManager->get_corrected_color("afterglow", fillColor)
-				: fillColor;
-			SolidBrush polygonBrush(drawColor);
+			SolidBrush polygonBrush(fillColor);
 			gdi->FillPolygon(&polygonBrush, patatoidePolygonPoints.data(), static_cast<INT>(patatoidePolygonPoints.size()));
-		};
-
-		auto drawTrailHistory = [&](const std::string& callsign, CRadarTarget target, int reportedGs)
-		{
-			if (reportedGs <= 5)
-				return;
-
-			const int trailNumber = reportedGs > 50 ? radar_screen->Trail_App : radar_screen->Trail_Gnd;
-			if (trailNumber <= 0)
-				return;
-
-			CRadarTargetPositionData previousPos = target.GetPreviousPosition(target.GetPosition());
-			if (useNovaIconStyle)
-			{
-				if (radar_screen->Afterglow && showLegacyPrimaryTarget)
-				{
-					const auto patatoideIt = radar_screen->Patatoides.find(callsign);
-					if (patatoideIt != radar_screen->Patatoides.end())
-					{
-						drawPatatoidePolygon(
-							patatoideIt->second.History_one_points,
-							getLegacyTargetColor("history_one_color", Color(255, 0, 255, 255)));
-						drawPatatoidePolygon(
-							patatoideIt->second.History_two_points,
-							getLegacyTargetColor("history_two_color", Color(255, 0, 219, 219)));
-						drawPatatoidePolygon(
-							patatoideIt->second.History_three_points,
-							getLegacyTargetColor("history_three_color", Color(255, 0, 183, 183)));
-					}
-				}
-
-				SolidBrush trailBrush(symbolWhiteColor);
-				for (int j = 1; j <= trailNumber && previousPos.IsValid(); ++j)
-				{
-					const CPosition position = previousPos.GetPosition();
-					if (positionNearViewport(position))
-					{
-						POINT point = projectTargetPosition(position);
-						if (pointInViewport(point, 2))
-							gdi->FillRectangle(&trailBrush, point.x - 1, point.y - 1, 2, 2);
-					}
-					previousPos = target.GetPreviousPosition(previousPos);
-				}
-				return;
-			}
-
-			for (int j = 1; j <= trailNumber && previousPos.IsValid(); ++j)
-			{
-				const CPosition position = previousPos.GetPosition();
-				if (!positionNearViewport(position))
-				{
-					previousPos = target.GetPreviousPosition(previousPos);
-					continue;
-				}
-
-				POINT point = projectTargetPosition(position);
-				if (!pointInViewport(point, 60))
-				{
-					previousPos = target.GetPreviousPosition(previousPos);
-					continue;
-				}
-
-				int diameterPx = 6;
-				if (pixPerMeter > 0.0)
-					diameterPx = int((pixPerMeter * 10.0) + 0.5);
-				diameterPx = std::clamp(diameterPx, 2, 50);
-
-				double shrink = 1.0 - (0.15 * (j - 1));
-				if (shrink < 0.2)
-					shrink = 0.2;
-				diameterPx = max(2, int((diameterPx * shrink) + 0.5));
-				const int radius = diameterPx / 2;
-				const double t = (trailNumber > 1) ? double(j - 1) / double(trailNumber - 1) : 0.0;
-				auto lerp = [](double a, double b, double amount) { return a + ((b - a) * amount); };
-				Color bubbleColor(
-					static_cast<BYTE>(std::clamp(int(lerp(200.0, 40.0, t) + 0.5), 0, 255)),
-					static_cast<BYTE>(std::clamp(int(lerp(255.0, 120.0, t) + 0.5), 0, 255)),
-					static_cast<BYTE>(std::clamp(int(lerp(255.0, 150.0, t) + 0.5), 0, 255)),
-					static_cast<BYTE>(std::clamp(int(lerp(255.0, 190.0, t) + 0.5), 0, 255)));
-				Gdiplus::Pen ringPen(bubbleColor, Gdiplus::REAL(1.5f));
-				gdi->DrawEllipse(&ringPen, point.x - radius, point.y - radius, diameterPx, diameterPx);
-				previousPos = target.GetPreviousPosition(previousPos);
-			}
 		};
 
 		auto fallbackTypeForWtc = [](char wtcChar) -> std::string
@@ -2399,9 +2317,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			Color targetColor = symbolWhiteColor;
 			auto applyTargetTint = [&](const Color& color)
 			{
-				targetColor = radar_screen->ColorManager != nullptr
-					? radar_screen->ColorManager->get_corrected_color("symbol", color)
-					: color;
+				targetColor = color;
 			};
 
 			const bool isAirborneTarget = reportedGs > 50;
@@ -3253,9 +3169,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 						definedBackgroundOnRunwayColor);
 				}
 			}
-			if (radar_screen->ColorManager != nullptr)
-				tagBackgroundColor = radar_screen->ColorManager->get_corrected_color("label", tagBackgroundColor);
-
 			CRect tagBackgroundRect(
 				tagCenter.x - (tagWidth / 2),
 				tagCenter.y - (tagHeight / 2),
@@ -3281,18 +3194,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			SolidBrush tagBackgroundBrush(tagBackgroundColor);
 			gdi->FillPath(&tagBackgroundBrush, &roundedPath);
 
-			SolidBrush fontBrush(radar_screen->ColorManager != nullptr
-				? radar_screen->ColorManager->get_corrected_color("label", definedTextColor)
-				: definedTextColor);
-			SolidBrush squawkErrorBrush(radar_screen->ColorManager != nullptr
-				? radar_screen->ColorManager->get_corrected_color("label", squawkErrorLabelColor)
-				: squawkErrorLabelColor);
-			SolidBrush alertTextBrushStageOne(radar_screen->ColorManager != nullptr
-				? radar_screen->ColorManager->get_corrected_color("label", Color(255, 30, 30, 30))
-				: Color(255, 30, 30, 30));
-			SolidBrush alertTextBrushStageTwo(radar_screen->ColorManager != nullptr
-				? radar_screen->ColorManager->get_corrected_color("label", Color(255, 255, 255, 255))
-				: Color(255, 255, 255, 255));
+			SolidBrush fontBrush(definedTextColor);
+			SolidBrush squawkErrorBrush(squawkErrorLabelColor);
+			SolidBrush alertTextBrushStageOne(Color(255, 30, 30, 30));
+			SolidBrush alertTextBrushStageTwo(Color(255, 255, 255, 255));
 
 			const int textLeft = tagBackgroundRect.left + 3;
 			const int textTop = tagBackgroundRect.top + 3;
@@ -3329,9 +3234,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					std::unique_ptr<SolidBrush> tokenCustomBrush;
 					if (renderedElement.hasCustomColor)
 					{
-						const Color customColor = radar_screen->ColorManager != nullptr
-							? radar_screen->ColorManager->get_corrected_color("label", Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB))
-							: Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB);
+						const Color customColor(
+							255,
+							renderedElement.colorR,
+							renderedElement.colorG,
+							renderedElement.colorB);
 						tokenCustomBrush.reset(new SolidBrush(customColor));
 						drawBrush = tokenCustomBrush.get();
 					}
@@ -3439,7 +3346,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				acIsCorrelated = false;
 
 			const bool keepIconForSquawkMismatch = tagProModeEnabled && (hasWrongAssignedSquawk || !hasAssignedSquawk);
-			if (!acIsCorrelated && reportedGs < 1 && !radar_screen->ReleaseInProgress && !radar_screen->AcquireInProgress && !keepIconForSquawkMismatch)
+			if (!acIsCorrelated && reportedGs < 1 && !keepIconForSquawkMismatch)
 				continue;
 
 			const bool isOnRunway = radar_screen->RimcasInstance != nullptr && radar_screen->RimcasInstance->isAcOnRunway(rtCallsign);
@@ -3452,7 +3359,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			}
 			const bool hasNoFlightPlan = !fp.IsValid();
 
-			drawTrailHistory(rtCallsign, rt, reportedGs);
 			if (useNovaIconStyle && showLegacyPrimaryTarget)
 			{
 				const auto patatoideIt = radar_screen->Patatoides.find(rtCallsign);
@@ -3464,22 +3370,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				}
 			}
 			const int iconSize = drawConfiguredIcon(rt, fp, rtCallsign, rtPositionData, targetPoint, acIsCorrelated, isDepartureTarget, hasNoFlightPlan, isOnRunway);
-
-			if (reportedGs > 50 && radar_screen->PredictedLength > 0)
-			{
-				double distance = double(rtPositionData.GetReportedGS() * 0.514444) * 10.0;
-				CPosition awayBase = BetterHarversine(targetPosition, rt.GetTrackHeading(), distance);
-				distance = double(rtPositionData.GetReportedGS() * 0.514444) * (radar_screen->PredictedLength * 60) - 10.0;
-				CPosition predictedEnd = BetterHarversine(awayBase, rt.GetTrackHeading(), distance);
-				POINT lineOne, lineTwo;
-				if (LiangBarsky(viewportRect, projectTargetPosition(awayBase), projectTargetPosition(predictedEnd), lineOne, lineTwo))
-				{
-					CPen* oldPen = dc.SelectObject(&symbolPen);
-					dc.MoveTo(lineOne);
-					dc.LineTo(lineTwo);
-					dc.SelectObject(oldPen);
-				}
-			}
 
 			const bool isAsel = aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign.c_str()) == 0;
 
@@ -3559,7 +3449,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	dc.Detach();
 }
 
-void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, multimap<string, string> DistanceTools)
+void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
 {
 	if (this->m_Id == -1)
 		return;
@@ -3750,7 +3640,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	// Aircrafts
 
 	vector<POINT> appAreaVect = { windowAreaCRect.TopLeft(),{ windowAreaCRect.right, windowAreaCRect.top }, windowAreaCRect.BottomRight(),{ windowAreaCRect.left, windowAreaCRect.bottom } };
-	CPen WhitePen(PS_SOLID, 1, radar_screen->ColorManager->get_corrected_color("symbol", Color::White).ToCOLORREF());
+	CPen WhitePen(PS_SOLID, 1, RGB(255, 255, 255));
 	const CSMRRadar::CorrelationSettings insetCorrelationSettings = radar_screen->BuildCorrelationSettings();
 	const CSMRRadar::DisplayModeSettings insetDisplayModeSettings = radar_screen->GetActiveDisplayModeSettings();
 	const int insetTransitionAltitude = radar_screen->GetPlugIn()->GetTransitionAltitude();
@@ -3825,23 +3715,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		// Filtering the targets
 
-		POINT RtPoint, hPoint;
+		POINT RtPoint;
 
 		RtPoint = projectPoint(RtPos2);
-
-		CRadarTargetPositionData hPos = rt.GetPreviousPosition(rt.GetPosition());
-		for (int i = 1; i < radar_screen->Trail_App; i++) {
-			if (!hPos.IsValid())
-				continue;
-
-			hPoint = projectPoint(hPos.GetPosition());
-
-			if (Is_Inside(hPoint, appAreaVect)) {
-				dc.SetPixel(hPoint, radar_screen->ColorManager->get_corrected_color("symbol", Color::White).ToCOLORREF());
-			}
-
-			hPos = rt.GetPreviousPosition(hPos);
-		}
 
 		if (Is_Inside(RtPoint, appAreaVect)) {
 			dc.SelectObject(&WhitePen);
@@ -3867,25 +3743,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			CRect TargetArea(RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4);
 			TargetArea.NormalizeRect();
 			radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign, TargetArea, false, radar_screen->GetBottomLine(rtCallsign).c_str());
-		}
-
-		// Predicted Track Line
-		// It starts 10 seconds away from the ac
-		if (radar_screen->PredictedLength > 0) {
-			double d = double(rt.GetPosition().GetReportedGS() * 0.514444) * 10;
-			CPosition AwayBase = BetterHarversine(rt.GetPosition().GetPosition(), rt.GetTrackHeading(), d);
-
-			d = double(rt.GetPosition().GetReportedGS() * 0.514444) * (radar_screen->PredictedLength * 60) - 10;
-			CPosition PredictedEnd = BetterHarversine(AwayBase, rt.GetTrackHeading(), d);
-
-			POINT liangOne, liangTwo;
-
-			if (LiangBarsky(m_Area, projectPoint(AwayBase), projectPoint(PredictedEnd), liangOne, liangTwo))
-			{
-				dc.SelectObject(&WhitePen);
-				dc.MoveTo(liangOne);
-				dc.LineTo(liangTwo);
-			}
 		}
 
 		if (mouseWithin(mouseLocation, { RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4 })) {
@@ -4424,13 +4281,12 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				return fallback;
 			};
 
-			SolidBrush FontColor(radar_screen->ColorManager->get_corrected_color("label", definedTextColor));
-			SolidBrush SquawkErrorColor(radar_screen->ColorManager->get_corrected_color("label",
-				squawkErrorLabelColor));
-			SolidBrush AlertTextColorCaution(radar_screen->ColorManager->get_corrected_color("label",
-				getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30))));
-			SolidBrush AlertTextColorWarning(radar_screen->ColorManager->get_corrected_color("label",
-				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255))));
+			SolidBrush FontColor(definedTextColor);
+			SolidBrush SquawkErrorColor(squawkErrorLabelColor);
+			SolidBrush AlertTextColorCaution(
+				getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30)));
+			SolidBrush AlertTextColorWarning(
+				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255)));
 
 			m_TagAreas[rtCallsign] = TagBackgroundRect;
 			radar_screen->AddScreenObject(m_Id, rtCallsign, TagBackgroundRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
@@ -4464,8 +4320,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					std::unique_ptr<SolidBrush> tokenCustomColorBrush;
 					if (renderedElement.hasCustomColor)
 					{
-						Color customColor = radar_screen->ColorManager->get_corrected_color("label",
-							Color(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB));
+						Color customColor(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB);
 						tokenCustomColorBrush.reset(new SolidBrush(customColor));
 						color = tokenCustomColorBrush.get();
 					}
@@ -4503,7 +4358,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			RECT TagBackRectData = TagBackgroundRect;
 			POINT toDraw1, toDraw2;
 			if (LiangBarsky(TagBackRectData, RtPoint, TagBackgroundRect.CenterPoint(), toDraw1, toDraw2))
-				gdi->DrawLine(&Pen(radar_screen->ColorManager->get_corrected_color("symbol", Color::White)), PointF(Gdiplus::REAL(RtPoint.x), Gdiplus::REAL(RtPoint.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
+				gdi->DrawLine(&Pen(Color::White), PointF(Gdiplus::REAL(RtPoint.x), Gdiplus::REAL(RtPoint.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
 
 			// If we use a RIMCAS label only, we display it, and adapt the rectangle
 			CRect oldCrectSave = TagBackgroundRect;
@@ -4550,74 +4405,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 			// Now adding the clickable zones
 		}
-	}
-
-	// Distance tools here
-	for (auto&& kv : DistanceTools)
-	{
-		CRadarTarget one = radar_screen->GetPlugIn()->RadarTargetSelect(kv.first.c_str());
-		CRadarTarget two = radar_screen->GetPlugIn()->RadarTargetSelect(kv.second.c_str());
-
-		int radarRange = radarRangeNm;
-
-		if (one.GetGS() < 60 ||
-			one.GetPosition().GetPressureAltitude() > m_Filter ||
-			!one.IsValid() ||
-			!one.GetPosition().IsValid() ||
-			one.GetPosition().GetPosition().DistanceTo(AptPositions[icao]) > radarRange)
-			continue;
-
-		if (two.GetGS() < 60 ||
-			two.GetPosition().GetPressureAltitude() > m_Filter ||
-			!two.IsValid() ||
-			!two.GetPosition().IsValid() ||
-			two.GetPosition().GetPosition().DistanceTo(AptPositions[icao]) > radarRange)
-			continue;
-
-		CPen Pen(PS_SOLID, 1, RGB(255, 255, 255));
-		CPen *oldPen = dc.SelectObject(&Pen);
-
-		POINT onePoint = projectPoint(one.GetPosition().GetPosition());
-		POINT twoPoint = projectPoint(two.GetPosition().GetPosition());
-
-		POINT toDraw1, toDraw2;
-		if (LiangBarsky(m_Area, onePoint, twoPoint, toDraw1, toDraw2)) {
-			dc.MoveTo(toDraw1);
-			dc.LineTo(toDraw2);
-		}
-
-		POINT TextPos = { twoPoint.x + 20, twoPoint.y };
-
-		double Distance = one.GetPosition().GetPosition().DistanceTo(two.GetPosition().GetPosition());
-		double Bearing = one.GetPosition().GetPosition().DirectionTo(two.GetPosition().GetPosition());
-
-		string distances = std::to_string(Distance);
-		size_t decimal_pos = distances.find(".");
-		distances = distances.substr(0, decimal_pos + 2);
-
-		string bearings = std::to_string(Bearing);
-		decimal_pos = bearings.find(".");
-		bearings = bearings.substr(0, decimal_pos + 2);
-
-		string text = bearings;
-		text += "° / ";
-		text += distances;
-		text += "nm";
-		COLORREF old_color = dc.SetTextColor(RGB(0, 0, 0));
-
-		CRect ClickableRect = { TextPos.x - 2, TextPos.y, TextPos.x + dc.GetTextExtent(text.c_str()).cx + 2, TextPos.y + dc.GetTextExtent(text.c_str()).cy };
-		if (Is_Inside(ClickableRect.TopLeft(), appAreaVect) && Is_Inside(ClickableRect.BottomRight(), appAreaVect))
-		{
-			gdi->FillRectangle(&SolidBrush(Color(127, 122, 122)), CopyRect(ClickableRect));
-			dc.Draw3dRect(ClickableRect, RGB(75, 75, 75), RGB(45, 45, 45));
-			dc.TextOutA(TextPos.x, TextPos.y, text.c_str());
-
-			radar_screen->AddScreenObject(RIMCAS_DISTANCE_TOOL, string(kv.first + "," + kv.second).c_str(), ClickableRect, false, "");
-		}
-		
-		dc.SetTextColor(old_color);
-
-		dc.SelectObject(oldPen);
 	}
 
 	// Resize square

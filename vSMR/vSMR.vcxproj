@@ -180,7 +180,6 @@
     <ClInclude Include="..\lib\include\rapidjson\stringbuffer.h" />
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
     <ClInclude Include="include\CallsignLookup.hpp" />
-    <ClInclude Include="include\ColorManager.h" />
     <ClInclude Include="include\Config.hpp" />
     <ClInclude Include="include\Constant.hpp" />
     <ClInclude Include="include\CPDLCSettingsDialog.hpp" />
@@ -234,7 +233,6 @@
     </None>
     <None Include="resources\cursors\arrow.cur" />
     <None Include="resources\cursors\cursor1.cur" />
-    <None Include="resources\cursors\ml_blau_link.cur" />
     <None Include="resources\cursors\move.cur" />
     <None Include="resources\cursors\POINTER1.cur" />
     <None Include="resources\vSMR.def" />

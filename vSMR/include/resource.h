@@ -15,7 +15,6 @@
 #define IDC_SMRMOVETAG                  7006
 #define IDC_SID                         7007
 #define IDC_CTOT                        7008
-#define IDC_SMRCORRELATE                7008
 #define IDC_TSAT                        7010
 #define IDC_SMRMOVE                     7010
 #define IDC_SMRMOVEWINDOW               7010
