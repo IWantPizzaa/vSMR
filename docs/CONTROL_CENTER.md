@@ -297,7 +297,7 @@ persist their active selection through the existing profile/ASR paths.
 | `state.saved` | Correlated Save success. The UI clears Save pending state and marks the current snapshot clean. |
 | `state.ack` | Correlated success acknowledgement with `action` and optional `message`. |
 | `state.error` | Correlated failure with a human-readable `message`; pending Save, Reload, or resource state is cleared by the UI. |
-| `resource.loaded` | `resource`, `source`, and parsed `data`; the UI stages the imported profiles or AVISO document. |
+| `resource.loaded` | `resource`, origin `source`, active local `path`, and parsed `data`; the UI stages the imported document and reports the native Save/Reload destination. Bundled Reset replies omit `path` and preserve the current destination. |
 
 Typical Save sequence:
 
@@ -333,8 +333,16 @@ request with id = "ui-..."
 - Staged AVISO state remains bound to the airport from which it was loaded. If
   the Runtime Menu changes airports while editors are dirty, Save, Undo, and
   Redo stay disabled until Reload confirms discarding the stale staged state.
-- Resource loading only stages parsed content. It does not change the configured
-  destination path or write a file until Save.
+- Computer resource loading validates and activates the selected absolute path
+  without copying it. GitHub loading validates first, atomically installs a
+  collision-safe variant under `vSMR_Data\Profiles\` or `vSMR_Data\AVISO\`,
+  and activates that local file. Canonical defaults and all existing variants
+  are never replaced by import. Resource paths are native session state and are
+  excluded from browser Undo/Redo snapshots.
+- AVISO imports must identify their airport through metadata or an ICAO-aware
+  filename such as `LFPO.geojson`, `LFPO_AVISO.geojson`, or
+  `AVISO_LFPO.geojson`; ambiguous and active-airport-mismatched files are
+  rejected before activation.
 
 ## Threading, lifecycle, and security
 
@@ -348,7 +356,10 @@ request with id = "ui-..."
   thread and WebView COM interfaces never cross apartments.
 - GitHub download uses a worker `std::thread`; completion is marshalled to the
   modeless window with a private `WM_APP` message. Only one GitHub download is
-  allowed at a time.
+  allowed at a time per Control Center. Valid downloads use an exclusively
+  created same-directory temporary file and a no-replace move, so concurrent
+  Control Centers remain isolated and a URL named exactly like a bundled
+  default still creates a distinct `_github` variant.
 - Weak lifetime tokens prevent late WebView and download completions from
   dereferencing a destroyed dialog. Event handlers are removed, the controller
   is closed, the STA message pump is stopped and joined, and COM is balanced on
@@ -380,8 +391,8 @@ request with id = "ui-..."
 2. Creates a unique same-directory temporary file.
 3. Writes with write-through, flushes the file handle, reads it back, compares
    it byte-for-byte, and parses it again.
-4. Copies the previous destination through a temporary file to
-   `vSMR_Profiles.json.bak`.
+4. Copies the previous selected destination through a temporary file to a
+   sibling `.bak` file.
 5. Replaces the destination with `MoveFileEx(...,
    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)`.
 
@@ -495,7 +506,7 @@ runtime or packaged resources are unavailable.
 
 | Control/capability | Native-host state | Technical reason or supported path |
 | --- | --- | --- |
-| Profile, AVISO, and EuroScope alias source text fields | Read-only | They report native paths; profile/AVISO import uses Computer/GitHub and Save writes the configured native destinations. |
+| Profile, AVISO, and EuroScope alias source text fields | Read-only | They report actual native paths. Computer imports use the selected file in place; GitHub imports activate unique cached variants; Save and Reload follow those displayed destinations. |
 | Maps source/editor | Not present | Maps were explicitly removed from this Control Center design; bridge capability reports `maps: false`. |
 
 Run the deterministic checklist in

@@ -147,10 +147,11 @@ diff where the expected result is not immediately visible.
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| AL-01 | Open From computer, cancel the native picker, then reopen it and select valid GeoJSON. | Cancel changes nothing. The selected document is parsed/staged, source caption changes, and the configured destination is untouched before Save. |
-| AL-02 | Load a normal `github.com/.../blob/...` URL and a `raw.githubusercontent.com` URL. | Download is asynchronous, each parses/stages successfully, and EuroScope drawing remains responsive. |
+| AL-01 | Hash canonical `AVISO_LFPG.geojson`; cancel From computer, then select a valid external LFPG GeoJSON identified by metadata or an ICAO filename and Save an edit. | Cancel changes nothing. The external absolute path appears in Settings, renderer/Reload use it, only that file changes, and the canonical hash remains unchanged. |
+| AL-02 | Load normal and raw GitHub URLs whose basename is exactly `AVISO_LFPG.geojson`, including a repeat load. | Download stays asynchronous. Each valid response creates and activates a distinct `_github` variant under `vSMR_Data\AVISO`; neither canonical nor prior variants are overwritten. |
 | AL-03 | Try a repository page, non-GitHub host, malformed JSON, and empty response. | Each is rejected with a visible correlated error; prior state remains active. |
 | AL-04 | Start a GitHub load and inspect/operate the URL controls before it completes. | Input and Load stay disabled, the browser does not post a second request, and there is at most one active worker. A bridge-level test may inject a second canonical request to verify the correlated native rejection. |
+| AL-05 | With LFPG active, try an AVISO file explicitly identified as LFPO, then switch to LFPO and load it. | The mismatched load is rejected without changing source or creating an active file; after selecting LFPO it loads, and returning to LFPG restores LFPG's airport-scoped source. |
 
 ## AVISO geometry
 
@@ -221,9 +222,10 @@ diff where the expected result is not immediately visible.
 | ID | Action | Expected result |
 | --- | --- | --- |
 | SE-01 | Inspect native-host Settings at 728 x 500. | Data files and Display form the left stack; CPDLC connection and PDC reminders form the right stack. There is no Datalink rail page, readiness card, Features card, Advanced section, or Danger zone. |
-| SE-02 | Use Computer and GitHub for Profiles and AVISO. | Valid data stages; source text reports the source; native destination paths do not silently change. |
+| SE-02 | Use Computer and GitHub for Profiles and AVISO, then Reload and exercise Undo/Redo. | Computer paths become the active in-place destinations; GitHub paths point to unique local variants; Reload follows them; Undo/Redo never changes or desynchronizes the displayed native paths. |
 | SE-03 | Inspect Data files, change Resolution, then click Apply display. | Profile, AVISO, and EuroScope alias paths are read-only in the native host; the resolution change applies and marks staged profile state dirty. |
 | SE-04 | Toggle Show FPS and click Apply display in both directions. | The checkbox remains enabled in the native host, changes the FPS-only overlay live, and immediately persists `ShowFps` in the ASR. Undo/Redo keeps browser and native visibility synchronized. |
+| SE-05 | Hash canonical `vSMR_Profiles.json`; load an external profile file, then a GitHub URL named `vSMR_Profiles.json`, and Save. | Settings shows the active absolute path, all open radar screens use it, the GitHub copy lives under `vSMR_Data\Profiles`, and the canonical profile hash remains unchanged. |
 
 ## CPDLC and PDC in Settings
 

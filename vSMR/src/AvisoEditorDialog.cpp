@@ -2,6 +2,8 @@
 #include "AvisoEditorDialog.hpp"
 #include "SMRRadar.hpp"
 #include "HttpHelper.hpp"
+#include "VsmrControlCenterDialog.hpp"
+#include "VsmrResourceFiles.hpp"
 #include "afxdialogex.h"
 #include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
@@ -18,6 +20,8 @@
 #include <limits>
 #include <set>
 #include <sstream>
+
+extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 IMPLEMENT_DYNAMIC(CAvisoEditorDialog, CDialogEx)
 
@@ -111,29 +115,6 @@ namespace
 		if (value == "JSON" || value == "AVIS" || value == "GEOJ")
 			return "";
 		return value;
-	}
-
-	std::string FileNameFromSourceHint(std::string sourceHint)
-	{
-		std::replace(sourceHint.begin(), sourceHint.end(), '\\', '/');
-		const size_t queryOffset = sourceHint.find_first_of("?#");
-		if (queryOffset != std::string::npos)
-			sourceHint = sourceHint.substr(0, queryOffset);
-		const size_t slashOffset = sourceHint.find_last_of('/');
-		if (slashOffset != std::string::npos)
-			sourceHint = sourceHint.substr(slashOffset + 1);
-		return sourceHint;
-	}
-
-	std::string SanitizeFileName(std::string fileName)
-	{
-		for (char& c : fileName)
-		{
-			const unsigned char uc = static_cast<unsigned char>(c);
-			if (std::isalnum(uc) == 0 && c != '.' && c != '_' && c != '-')
-				c = '_';
-		}
-		return fileName;
 	}
 
 	std::vector<std::string> SplitString(const std::string& text, char delimiter)
@@ -1434,9 +1415,9 @@ bool CAvisoEditorDialog::ImportAvisoGeoJsonFromFile(const std::string& sourcePat
 bool CAvisoEditorDialog::ImportAvisoGeoJsonFromGithubUrl(const std::string& url)
 {
 	const std::string normalizedUrl = NormalizeGithubGeoJsonUrl(url);
-	if (!StartsWithNoCase(normalizedUrl, "https://") && !StartsWithNoCase(normalizedUrl, "http://"))
+	if (!StartsWithNoCase(normalizedUrl, "https://raw.githubusercontent.com/"))
 	{
-		SetStatusText("Clipboard does not contain a valid GitHub GeoJSON URL.");
+		SetStatusText("Clipboard does not contain a valid HTTPS GitHub file URL.");
 		return false;
 	}
 
@@ -1477,6 +1458,25 @@ bool CAvisoEditorDialog::ImportAvisoGeoJsonText(const std::string& geoJsonText, 
 		return false;
 	}
 
+	AvisoDocumentModel validationModel;
+	rapidjson::Document& validationDocument = validationModel.MutableDocument();
+	validationDocument.Parse<0>(geoJsonText.c_str());
+	if (validationDocument.HasParseError())
+	{
+		SetStatusText("Selected file is not valid GeoJSON.");
+		return false;
+	}
+	validationModel.MarkIndexesDirty();
+	const AvisoValidationResult validationResult =
+		validationModel.ValidateAndRecalculate();
+	if (!validationResult.ok)
+	{
+		SetStatusText(validationResult.errorText.empty()
+			? "Selected AVISO GeoJSON failed validation."
+			: validationResult.errorText);
+		return false;
+	}
+
 	const std::string airport = DetectAirportForAvisoImport(parsed, sourceHint);
 	if (airport.empty())
 	{
@@ -1486,58 +1486,28 @@ bool CAvisoEditorDialog::ImportAvisoGeoJsonText(const std::string& geoJsonText, 
 
 	const bool sourceIsRemote = StartsWithNoCase(sourceHint, "http://") || StartsWithNoCase(sourceHint, "https://");
 	std::string selectedPath = sourceHint;
+	bool storedRemoteFile = false;
 	if (sourceIsRemote)
 	{
-		std::filesystem::path dataDirectory = Owner->DataPath.empty()
+		const std::filesystem::path dataDirectory = Owner->DataPath.empty()
 			? (std::filesystem::path(Owner->DllPath) / "vSMR_Data")
 			: std::filesystem::path(Owner->DataPath);
-		std::filesystem::path targetDirectory = dataDirectory / "AVISO";
-		std::string fileName = SanitizeFileName(FileNameFromSourceHint(sourceHint));
-		const std::string fileNameUpper = ToUpperAscii(fileName);
-		if (fileName.empty() ||
-			(fileNameUpper.find(".GEOJSON") == std::string::npos && fileNameUpper.find(".JSON") == std::string::npos))
+		std::string storageError;
+		if (!VsmrResourceFiles::StoreGithubDownload(
+			VsmrResourceFiles::Kind::Aviso,
+			dataDirectory.string(),
+			sourceHint,
+			airport,
+			geoJsonText,
+			selectedPath,
+			storageError))
 		{
-			fileName = "AVISO_" + airport + "_github.geojson";
-		}
-		else if (fileNameUpper.find(airport) == std::string::npos)
-		{
-			fileName = "AVISO_" + airport + "_" + fileName;
-		}
-
-		const std::filesystem::path targetPath = targetDirectory / fileName;
-		selectedPath = targetPath.string();
-		try
-		{
-			std::filesystem::create_directories(targetDirectory);
-			if (std::filesystem::exists(targetPath))
-			{
-				const std::string message = "Replace downloaded AVISO variant " + targetPath.filename().string() + "?";
-				if (MessageBox(message.c_str(), "AVISO Editor", MB_ICONQUESTION | MB_YESNO) != IDYES)
-					return false;
-			}
-			std::ofstream output(selectedPath, std::ios::binary | std::ios::trunc);
-			if (!output)
-			{
-				SetStatusText("Unable to write downloaded AVISO file.");
-				return false;
-			}
-			output.write(geoJsonText.data(), static_cast<std::streamsize>(geoJsonText.size()));
-			if (!output)
-			{
-				SetStatusText("Unable to finish writing downloaded AVISO file.");
-				return false;
-			}
-		}
-		catch (const std::exception& ex)
-		{
-			SetStatusText("Unable to store downloaded AVISO: " + std::string(ex.what()));
+			SetStatusText(storageError.empty()
+				? "Unable to store downloaded AVISO."
+				: storageError);
 			return false;
 		}
-		catch (...)
-		{
-			SetStatusText("Unable to store downloaded AVISO.");
-			return false;
-		}
+		storedRemoteFile = true;
 	}
 	else if (!std::filesystem::exists(selectedPath))
 	{
@@ -1545,10 +1515,84 @@ bool CAvisoEditorDialog::ImportAvisoGeoJsonText(const std::string& geoJsonText, 
 		return false;
 	}
 
-	Owner->setActiveAirport(airport);
-	Owner->SetAvisoGeoJsonOverrideForAirport(airport, selectedPath);
-	LoadDocumentFromPath(selectedPath, false, "Loaded AVISO variant for " + airport + ". Select an object to edit.");
-	Owner->ForceReloadAvisoGeoJson();
+	const std::string previousActiveAirport = Owner->getActiveAirport();
+	const std::string previousLoadedPath = LoadedPath;
+	bool overrideChanged = false;
+	bool hadPreviousOverride = false;
+	std::string previousOverridePath;
+
+	// Load into the editor before changing the live renderer. The downloaded
+	// file has already been validated, but this also catches an I/O race before
+	// an override is published to the other radar screens.
+	std::error_code selectedPathError;
+	const bool selectedPathAvailable =
+		std::filesystem::is_regular_file(selectedPath, selectedPathError) &&
+		!selectedPathError;
+	const bool documentLoaded = selectedPathAvailable && LoadDocumentFromPath(
+		selectedPath,
+		false,
+		"Loaded AVISO variant for " + airport + ". Select an object to edit.");
+	if (documentLoaded)
+	{
+		Owner->setActiveAirport(airport);
+		const auto previousOverride = Owner->AvisoGeoJsonOverridePaths.find(airport);
+		hadPreviousOverride = previousOverride != Owner->AvisoGeoJsonOverridePaths.end();
+		if (hadPreviousOverride)
+			previousOverridePath = previousOverride->second;
+		Owner->SetAvisoGeoJsonOverrideForAirport(airport, selectedPath);
+		overrideChanged = true;
+	}
+	const bool selectedPathActivated = documentLoaded && PathsEqualNoCase(
+		Owner->ResolveAvisoGeoJsonPathForAirport(airport),
+		selectedPath);
+	const bool rendererReloaded = selectedPathActivated && Owner->ForceReloadAvisoGeoJson();
+	if (!rendererReloaded)
+	{
+		if (overrideChanged)
+		{
+			Owner->SetAvisoGeoJsonOverrideForAirport(
+				airport,
+				hadPreviousOverride ? previousOverridePath : std::string());
+		}
+		if (_stricmp(previousActiveAirport.c_str(), airport.c_str()) != 0)
+			Owner->setActiveAirport(previousActiveAirport);
+		Owner->ForceReloadAvisoGeoJson();
+
+		if (!previousLoadedPath.empty())
+		{
+			LoadDocumentFromPath(
+				previousLoadedPath,
+				false,
+				"Previous AVISO restored after the import failed.");
+		}
+		else
+		{
+			LoadDocumentFromCurrentAviso(false);
+		}
+
+		bool removedStoredFile = true;
+		if (storedRemoteFile)
+		{
+			std::error_code removeError;
+			removedStoredFile = std::filesystem::remove(selectedPath, removeError);
+			if (!removedStoredFile && !removeError)
+				removedStoredFile = !std::filesystem::exists(selectedPath, removeError) && !removeError;
+		}
+		SetStatusText(removedStoredFile
+			? "Unable to activate the selected AVISO. The previous source was restored."
+			: "Unable to activate the selected AVISO. The previous source was restored, but the downloaded variant could not be removed.");
+		return false;
+	}
+
+	// SetAvisoGeoJsonOverrideForAirport propagates the source to all radar
+	// screens. Publish it to their Control Centers only after both editor and
+	// renderer activation have succeeded so rollback paths never become visible.
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar->VsmrControlCenterDialog == nullptr)
+			continue;
+		radar->VsmrControlCenterDialog->SyncFromRadar("resource-source");
+	}
 	SetStatusText("Loaded AVISO variant for " + airport + ".");
 	return true;
 }
@@ -1634,36 +1678,35 @@ std::string CAvisoEditorDialog::NormalizeGithubGeoJsonUrl(const std::string& url
 	if (newlineOffset != std::string::npos)
 		trimmed = trimmed.substr(0, newlineOffset);
 
-	std::string lower = ToLowerAscii(trimmed);
 	const std::string rawPrefix = "https://raw.githubusercontent.com/";
-	if (StartsWithNoCase(trimmed, rawPrefix) || StartsWithNoCase(trimmed, "http://raw.githubusercontent.com/"))
+	if (StartsWithNoCase(trimmed, rawPrefix))
 		return trimmed;
 
-	const std::string httpsPrefix = "https://github.com/";
-	const std::string httpPrefix = "http://github.com/";
+	const std::string githubPrefix = "https://github.com/";
+	const std::string githubWwwPrefix = "https://www.github.com/";
 	size_t prefixSize = 0;
-	if (StartsWithNoCase(trimmed, httpsPrefix))
-		prefixSize = httpsPrefix.size();
-	else if (StartsWithNoCase(trimmed, httpPrefix))
-		prefixSize = httpPrefix.size();
+	if (StartsWithNoCase(trimmed, githubPrefix))
+		prefixSize = githubPrefix.size();
+	else if (StartsWithNoCase(trimmed, githubWwwPrefix))
+		prefixSize = githubWwwPrefix.size();
 	else
-		return trimmed;
+		return "";
 
 	const size_t queryOffset = trimmed.find_first_of("?#");
 	if (queryOffset != std::string::npos)
-	{
 		trimmed = trimmed.substr(0, queryOffset);
-		lower = ToLowerAscii(trimmed);
-	}
+	const std::string lower = ToLowerAscii(trimmed);
 
-	const size_t blobOffset = lower.find("/blob/", prefixSize);
-	if (blobOffset == std::string::npos)
-		return trimmed;
+	size_t fileMarkerOffset = lower.find("/blob/", prefixSize);
+	if (fileMarkerOffset == std::string::npos)
+		fileMarkerOffset = lower.find("/raw/", prefixSize);
+	if (fileMarkerOffset == std::string::npos)
+		return "";
 
-	const std::string ownerRepo = trimmed.substr(prefixSize, blobOffset - prefixSize);
-	const std::string branchAndPath = trimmed.substr(blobOffset + 6);
+	const std::string ownerRepo = trimmed.substr(prefixSize, fileMarkerOffset - prefixSize);
+	const std::string branchAndPath = trimmed.substr(fileMarkerOffset + 6);
 	if (ownerRepo.empty() || branchAndPath.empty())
-		return trimmed;
+		return "";
 	return rawPrefix + ownerRepo + "/" + branchAndPath;
 }
 

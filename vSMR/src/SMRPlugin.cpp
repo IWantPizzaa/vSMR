@@ -132,6 +132,11 @@ std::atomic<bool> VacdmFetchInProgress(false);
 std::atomic<clock_t> VacdmLastFetchClock(0);
 const int VacdmFetchIntervalSeconds = 15;
 const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
+std::mutex ProfilesSourceMutex;
+std::string ActiveProfilesConfigPath;
+bool ActiveProfilesConfigPathClaimed = false;
+unsigned long long ProfilesSourceGeneration = 0;
+// Guarded by ProfilesSourceMutex. Workers consume only a copied snapshot.
 std::string VacdmConfiguredServerUrl;
 std::atomic<bool> VacdmPollingEnabled(false);
 std::atomic<unsigned long> VacdmFetchCounter(0);
@@ -716,7 +721,7 @@ namespace
 		return value;
 	}
 
-	std::filesystem::path ResolveProfilesConfigPath()
+	std::filesystem::path ResolveDefaultProfilesConfigPath()
 	{
 		const std::filesystem::path pluginDirectory(Logger::DLL_PATH);
 		const std::filesystem::path dataConfigPath = pluginDirectory / "vSMR_Data" / "vSMR_Profiles.json";
@@ -727,13 +732,13 @@ namespace
 		return pluginDirectory / "vSMR_Profiles.json";
 	}
 
-	bool TryReadVacdmServerUrl(std::string& outServerUrl)
+	bool TryReadVacdmServerUrl(
+		const std::filesystem::path& configPath,
+		std::string& outServerUrl)
 	{
 		outServerUrl.clear();
-		if (Logger::DLL_PATH.empty())
+		if (configPath.empty())
 			return false;
-
-		const std::filesystem::path configPath = ResolveProfilesConfigPath();
 		std::ifstream input(configPath, std::ios::binary);
 
 		if (!input.is_open())
@@ -783,13 +788,16 @@ namespace
 		return false;
 	}
 
-	std::string ResolveVacdmPilotsUrl()
+	std::string ResolveVacdmPilotsUrl(unsigned long long* sourceGeneration = nullptr)
 	{
-		if (!VacdmConfiguredServerUrl.empty())
-			return VacdmConfiguredServerUrl + "/api/v1/pilots";
-
 		std::string serverUrl;
-		if (TryReadVacdmServerUrl(serverUrl))
+		{
+			std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+			serverUrl = VacdmConfiguredServerUrl;
+			if (sourceGeneration != nullptr)
+				*sourceGeneration = ProfilesSourceGeneration;
+		}
+		if (!serverUrl.empty())
 			return serverUrl + "/api/v1/pilots";
 		return VacdmPilotsUrlDefault;
 	}
@@ -1484,22 +1492,35 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 void refreshVacdmDataImpl(void* arg)
 {
 	(void)arg;
+	unsigned long long sourceGeneration = 0;
+	const std::string pilotsUrl = ResolveVacdmPilotsUrl(&sourceGeneration);
 
 	struct ResetFetchFlag
 	{
+		unsigned long long sourceGeneration = 0;
+		explicit ResetFetchFlag(unsigned long long generation)
+			: sourceGeneration(generation) {}
+
 		~ResetFetchFlag()
 		{
-			VacdmLastFetchClock = clock();
+			bool sourceStillCurrent = false;
+			{
+				std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+				sourceStillCurrent =
+					ProfilesSourceGeneration == sourceGeneration;
+			}
+			if (sourceStillCurrent)
+				VacdmLastFetchClock = clock();
 			VacdmFetchInProgress.store(false);
 		}
-	} reset;
+	} reset{ sourceGeneration };
 
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+		!VacdmPollingEnabled.load(std::memory_order_acquire))
 		return;
 
 	try
 	{
-		const std::string pilotsUrl = ResolveVacdmPilotsUrl();
 		std::string raw = GetHttpHelper().downloadStringFromURL(pilotsUrl);
 		if (PluginShutdownRequested.load(std::memory_order_relaxed))
 			return;
@@ -1577,7 +1598,10 @@ void refreshVacdmDataImpl(void* arg)
 		const bool aselFound = !aselCallsign.empty() && parsedData.find(aselCallsign) != parsedData.end();
 
 		{
-			std::lock_guard<std::mutex> guard(VacdmPilotsMutex);
+			std::lock_guard<std::mutex> sourceGuard(ProfilesSourceMutex);
+			if (ProfilesSourceGeneration != sourceGeneration)
+				return;
+			std::lock_guard<std::mutex> pilotsGuard(VacdmPilotsMutex);
 			VacdmPilots.swap(parsedData);
 		}
 
@@ -1994,6 +2018,54 @@ void sendDatalinkClearance(void * arg) {
 	}
 };
 
+std::string CSMRPlugin::GetActiveProfilesConfigPath(
+	bool* selectionClaimed)
+{
+	std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+	if (selectionClaimed != nullptr)
+		*selectionClaimed = ActiveProfilesConfigPathClaimed;
+	return ActiveProfilesConfigPath;
+}
+
+void CSMRPlugin::PublishActiveProfilesConfigPath(
+	const std::string& path,
+	bool claimSelection)
+{
+	std::string configuredVacdmServerUrl;
+	const bool vacdmConfigured = TryReadVacdmServerUrl(
+		std::filesystem::path(path),
+		configuredVacdmServerUrl);
+	{
+		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+		ActiveProfilesConfigPath = path;
+		ActiveProfilesConfigPathClaimed = claimSelection;
+		VacdmConfiguredServerUrl = vacdmConfigured
+			? configuredVacdmServerUrl
+			: std::string();
+		++ProfilesSourceGeneration;
+		// Publish the enable state before workers can observe the new source
+		// generation. This prevents an old `true` value from starting a fetch
+		// against the fallback URL after switching to a profile without VACDM.
+		VacdmPollingEnabled.store(vacdmConfigured, std::memory_order_release);
+		std::lock_guard<std::mutex> pilotsGuard(VacdmPilotsMutex);
+		VacdmPilots.clear();
+	}
+
+	VacdmLastFetchClock.store(0, std::memory_order_relaxed);
+	if (vacdmConfigured)
+	{
+		Logger::info(
+			"VACDM polling enabled profiles=" + path +
+			" server_url=" + configuredVacdmServerUrl);
+	}
+	else
+	{
+		Logger::info(
+			"VACDM polling disabled profiles=" + path +
+			" (no _vsmr.vacdm.server_url)");
+	}
+}
+
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
 {
 	ActivePluginInstance = this;
@@ -2064,20 +2136,16 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	DllPath = DllPathFile;
 	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
 	Logger::DLL_PATH = DllPath;
-
-	std::string configuredVacdmServerUrl;
-	if (TryReadVacdmServerUrl(configuredVacdmServerUrl))
 	{
-		VacdmConfiguredServerUrl = configuredVacdmServerUrl;
-		VacdmPollingEnabled.store(true, std::memory_order_relaxed);
-		Logger::info("VACDM polling enabled server_url=" + VacdmConfiguredServerUrl);
-	}
-	else
-	{
+		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+		ActiveProfilesConfigPath.clear();
+		ActiveProfilesConfigPathClaimed = false;
+		ProfilesSourceGeneration = 0;
 		VacdmConfiguredServerUrl.clear();
-		VacdmPollingEnabled.store(false, std::memory_order_relaxed);
-		Logger::info("VACDM polling disabled (no _vsmr.vacdm.server_url in vSMR_Profiles.json)");
 	}
+	PublishActiveProfilesConfigPath(
+		ResolveDefaultProfilesConfigPath().string(),
+		false);
 }
 
 CSMRPlugin::~CSMRPlugin()

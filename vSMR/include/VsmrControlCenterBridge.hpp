@@ -76,7 +76,8 @@ public:
 		const std::string& resource,
 		const std::string& source,
 		const std::string& requestId,
-		const std::string& jsonText);
+		const std::string& jsonText,
+		const std::string& effectivePath = "");
 
 private:
 	struct Impl;

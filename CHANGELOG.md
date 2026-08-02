@@ -29,6 +29,7 @@ All notable changes to this project are documented in this file.
 - Local Release builds now copy the complete `vSMR_Data` tree, matching the packaged deployment layout.
 
 ### Fixed
+- Loading Profiles or AVISO now activates the selected computer file in place; GitHub loads create collision-safe variants under `vSMR_Data` and can no longer overwrite canonical airport/profile files. Settings, Reload, multiple radar screens, and persisted source selection follow the actual active paths.
 - Removed the duplicate Windows title bar and system-looking edit borders/scrollbars from the PDC and Message windows, and constrained their custom title-bar dragging to the EuroScope client area.
 - Kept saved Hoppie credentials visibly masked after auto-save, normalized pasted codes, URL-encoded credentials, and replaced the misleading callsign-collision login error with the actual sanitized Hoppie or network failure.
 - Stopping or rescheduling automatic PDC reminders now removes only queued automatic reminders while preserving manual reminder checks.
