@@ -1499,13 +1499,6 @@ struct VsmrControlCenterBridge::Impl
 			error = "Inset preset request belongs to a different airport.";
 			return false;
 		}
-		const std::string profile = TrimAscii(ReadString(*payload, "profile"));
-		if (!profile.empty() && !EqualsNoCase(profile, TrimAscii(Owner->GetActiveProfileNameForEditor())))
-		{
-			error = "Inset preset request belongs to a different profile.";
-			return false;
-		}
-
 		std::string presetName = ReadString(*payload, "preset");
 		if (payload->HasMember("preset") && (*payload)["preset"].IsObject())
 			presetName = ReadString((*payload)["preset"], "name");

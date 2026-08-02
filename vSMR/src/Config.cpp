@@ -12,6 +12,9 @@ namespace
 	const char* kVacdmServerUrlKey = "server_url";
 	const char* kBackupSuffix = ".bak";
 	const char* kAvisoPresetsKey = "aviso_presets";
+	const char* kAirportPresetStoresKey = "airports";
+	const char* kPresetItemsKey = "items";
+	const char* kDefaultPresetKey = "default";
 	volatile LONG gTemporaryFileSequence = 0;
 	// Every CConfig instance points at the same persisted profiles file. Both
 	// ordinary saves and narrowly-scoped preset transactions participate in this
@@ -82,6 +85,65 @@ namespace
 		}
 
 		return object[key];
+	}
+
+	std::string TrimAsciiWhitespace(std::string value)
+	{
+		size_t start = 0;
+		while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0)
+			++start;
+
+		size_t end = value.size();
+		while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0)
+			--end;
+		return value.substr(start, end - start);
+	}
+
+	std::string NormalizeAirportKey(std::string value)
+	{
+		value = TrimAsciiWhitespace(value);
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+			return static_cast<char>(std::toupper(character));
+		});
+		return value;
+	}
+
+	const rapidjson::Value* FindMetadataValue(const rapidjson::Document& profilesDocument)
+	{
+		if (!profilesDocument.IsArray())
+			return nullptr;
+
+		for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+		{
+			const rapidjson::Value& entry = profilesDocument[index];
+			if (IsMetadataEntry(entry))
+				return &entry[kMetadataWrapperKey];
+		}
+		return nullptr;
+	}
+
+	rapidjson::Value* FindMetadataValue(rapidjson::Document& profilesDocument)
+	{
+		return const_cast<rapidjson::Value*>(
+			FindMetadataValue(static_cast<const rapidjson::Document&>(profilesDocument)));
+	}
+
+	rapidjson::Value& EnsureMetadataValue(rapidjson::Document& profilesDocument)
+	{
+		if (!profilesDocument.IsArray())
+			profilesDocument.SetArray();
+
+		if (rapidjson::Value* metadata = FindMetadataValue(profilesDocument))
+			return *metadata;
+
+		rapidjson::Value wrapper(rapidjson::kObjectType);
+		rapidjson::Value metadata(rapidjson::kObjectType);
+		metadata.AddMember(kMetadataSchemaVersionKey, 1, profilesDocument.GetAllocator());
+		rapidjson::Value wrapperKey;
+		wrapperKey.SetString(kMetadataWrapperKey, profilesDocument.GetAllocator());
+		wrapper.AddMember(wrapperKey, metadata, profilesDocument.GetAllocator());
+		profilesDocument.PushBack(wrapper, profilesDocument.GetAllocator());
+		return profilesDocument[profilesDocument.Size() - 1][kMetadataWrapperKey];
 	}
 
 	int ReadColorComponent(const rapidjson::Value& colorValue, const char* key, int fallback = 0)
@@ -204,6 +266,336 @@ namespace
 		return true;
 	}
 
+	rapidjson::Value& EnsureArrayMember(
+		rapidjson::Value& object,
+		const char* key,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!object.IsObject())
+			object.SetObject();
+
+		if (!object.HasMember(key) || !object[key].IsArray())
+		{
+			rapidjson::Value replacement(rapidjson::kArrayType);
+			if (object.HasMember(key))
+				object[key] = replacement;
+			else
+			{
+				rapidjson::Value keyValue;
+				keyValue.SetString(key, allocator);
+				object.AddMember(keyValue, replacement, allocator);
+			}
+		}
+		return object[key];
+	}
+
+	std::string ReadPresetName(const rapidjson::Value& preset)
+	{
+		if (!preset.IsObject() || !preset.HasMember("name") || !preset["name"].IsString())
+			return "";
+		return TrimAsciiWhitespace(preset["name"].GetString());
+	}
+
+	rapidjson::SizeType FindPresetIndexNoCase(
+		const rapidjson::Value& items,
+		const std::string& name)
+	{
+		if (!items.IsArray() || name.empty())
+			return static_cast<rapidjson::SizeType>(-1);
+
+		for (rapidjson::SizeType index = 0; index < items.Size(); ++index)
+		{
+			const std::string candidate = ReadPresetName(items[index]);
+			if (!candidate.empty() && EqualsNoCaseAscii(candidate, name))
+				return index;
+		}
+		return static_cast<rapidjson::SizeType>(-1);
+	}
+
+	bool JsonValuesEqual(const rapidjson::Value& left, const rapidjson::Value& right)
+	{
+		rapidjson::StringBuffer leftBuffer;
+		rapidjson::Writer<rapidjson::StringBuffer> leftWriter(leftBuffer);
+		left.Accept(leftWriter);
+		rapidjson::StringBuffer rightBuffer;
+		rapidjson::Writer<rapidjson::StringBuffer> rightWriter(rightBuffer);
+		right.Accept(rightWriter);
+		return std::strcmp(leftBuffer.GetString(), rightBuffer.GetString()) == 0;
+	}
+
+	std::string MakeUniqueMigratedPresetName(
+		const rapidjson::Value& items,
+		const std::string& originalName,
+		const std::string& sourceProfile)
+	{
+		const std::string suffix = TrimAsciiWhitespace(sourceProfile).empty()
+			? "Legacy profile"
+			: TrimAsciiWhitespace(sourceProfile);
+		const std::string base = originalName + " (" + suffix + ")";
+		std::string candidate = base;
+		int sequence = 2;
+		while (FindPresetIndexNoCase(items, candidate) != static_cast<rapidjson::SizeType>(-1))
+			candidate = base + " " + std::to_string(sequence++);
+		return candidate;
+	}
+
+	bool PresetSectionDefaultIsValid(const rapidjson::Value& section)
+	{
+		if (!section.IsObject() || !section.HasMember(kDefaultPresetKey) ||
+			!section[kDefaultPresetKey].IsString() || !section.HasMember(kPresetItemsKey) ||
+			!section[kPresetItemsKey].IsArray())
+		{
+			return false;
+		}
+
+		const std::string defaultName =
+			TrimAsciiWhitespace(section[kDefaultPresetKey].GetString());
+		return !defaultName.empty() &&
+			FindPresetIndexNoCase(section[kPresetItemsKey], defaultName) !=
+				static_cast<rapidjson::SizeType>(-1);
+	}
+
+	bool PresetSectionCanBeMigrated(const rapidjson::Value& section)
+	{
+		if (!section.IsObject())
+			return false;
+		if (section.HasMember(kPresetItemsKey))
+		{
+			if (!section[kPresetItemsKey].IsArray())
+				return false;
+			const rapidjson::Value& items = section[kPresetItemsKey];
+			for (rapidjson::SizeType index = 0; index < items.Size(); ++index)
+			{
+				if (ReadPresetName(items[index]).empty())
+					return false;
+			}
+		}
+		return !section.HasMember(kDefaultPresetKey) ||
+			section[kDefaultPresetKey].IsString();
+	}
+
+	bool ProfilePresetRootCanBeMigrated(const rapidjson::Value& root)
+	{
+		if (!PresetSectionCanBeMigrated(root))
+			return false;
+		if (!root.HasMember(kAirportPresetStoresKey))
+			return true;
+		if (!root[kAirportPresetStoresKey].IsObject())
+			return false;
+
+		const rapidjson::Value& airports = root[kAirportPresetStoresKey];
+		for (auto member = airports.MemberBegin(); member != airports.MemberEnd(); ++member)
+		{
+			if (NormalizeAirportKey(member->name.GetString()).empty() ||
+				!PresetSectionCanBeMigrated(member->value))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool MergePresetSection(
+		rapidjson::Value& destinationSection,
+		const rapidjson::Value& sourceSection,
+		const std::string& sourceProfile,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!sourceSection.IsObject())
+			return false;
+		if (sourceSection.HasMember(kPresetItemsKey) &&
+			!sourceSection[kPresetItemsKey].IsArray())
+		{
+			return false;
+		}
+		if (sourceSection.HasMember(kDefaultPresetKey) &&
+			!sourceSection[kDefaultPresetKey].IsString())
+		{
+			return false;
+		}
+
+		if (!destinationSection.IsObject())
+			destinationSection.SetObject();
+		rapidjson::Value& destinationItems =
+			EnsureArrayMember(destinationSection, kPresetItemsKey, allocator);
+		const std::string sourceDefault = sourceSection.HasMember(kDefaultPresetKey)
+			? TrimAsciiWhitespace(sourceSection[kDefaultPresetKey].GetString())
+			: "";
+		std::string mappedDefault;
+
+		if (sourceSection.HasMember(kPresetItemsKey))
+		{
+			const rapidjson::Value& sourceItems = sourceSection[kPresetItemsKey];
+			for (rapidjson::SizeType index = 0; index < sourceItems.Size(); ++index)
+			{
+				const rapidjson::Value& sourcePreset = sourceItems[index];
+				const std::string sourceName = ReadPresetName(sourcePreset);
+				if (sourceName.empty())
+					return false;
+
+				std::string destinationName = sourceName;
+				const rapidjson::SizeType existingIndex =
+					FindPresetIndexNoCase(destinationItems, sourceName);
+				if (existingIndex == static_cast<rapidjson::SizeType>(-1))
+				{
+					rapidjson::Value clonedPreset;
+					if (!CloneJsonValue(sourcePreset, allocator, clonedPreset))
+						return false;
+					destinationItems.PushBack(clonedPreset, allocator);
+				}
+				else if (JsonValuesEqual(destinationItems[existingIndex], sourcePreset))
+				{
+					destinationName = ReadPresetName(destinationItems[existingIndex]);
+				}
+				else
+				{
+					destinationName = MakeUniqueMigratedPresetName(
+						destinationItems,
+						sourceName,
+						sourceProfile);
+					rapidjson::Value clonedPreset;
+					if (!CloneJsonValue(sourcePreset, allocator, clonedPreset))
+						return false;
+					SetStringMember(clonedPreset, "name", destinationName, allocator);
+					destinationItems.PushBack(clonedPreset, allocator);
+				}
+
+				if (!sourceDefault.empty() && EqualsNoCaseAscii(sourceDefault, sourceName))
+					mappedDefault = destinationName;
+			}
+		}
+
+		if (!PresetSectionDefaultIsValid(destinationSection))
+		{
+			if (destinationSection.HasMember(kDefaultPresetKey))
+				destinationSection.RemoveMember(kDefaultPresetKey);
+			if (!mappedDefault.empty())
+				SetStringMember(destinationSection, kDefaultPresetKey, mappedDefault, allocator);
+		}
+		return true;
+	}
+
+	bool MergeProfilePresetRootIntoMetadata(
+		rapidjson::Value& metadata,
+		const rapidjson::Value& profile,
+		const std::string& activeAirport,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (!profile.IsObject() || !profile.HasMember(kAvisoPresetsKey) ||
+			!profile[kAvisoPresetsKey].IsObject() ||
+			!ProfilePresetRootCanBeMigrated(profile[kAvisoPresetsKey]))
+		{
+			return false;
+		}
+
+		const rapidjson::Value& sourceRoot = profile[kAvisoPresetsKey];
+		rapidjson::Value& destinationRoot =
+			EnsureObjectMember(metadata, kAvisoPresetsKey, allocator);
+		rapidjson::Value& destinationAirports =
+			EnsureObjectMember(destinationRoot, kAirportPresetStoresKey, allocator);
+		const std::string sourceProfile = ReadStringMember(profile, "name");
+
+		if (sourceRoot.HasMember(kAirportPresetStoresKey))
+		{
+			if (!sourceRoot[kAirportPresetStoresKey].IsObject())
+				return false;
+
+			const rapidjson::Value& sourceAirports = sourceRoot[kAirportPresetStoresKey];
+			for (auto member = sourceAirports.MemberBegin(); member != sourceAirports.MemberEnd(); ++member)
+			{
+				const std::string airportKey = NormalizeAirportKey(member->name.GetString());
+				if (airportKey.empty() || !member->value.IsObject())
+					return false;
+				rapidjson::Value& destinationSection =
+					EnsureObjectMember(destinationAirports, airportKey.c_str(), allocator);
+				if (!MergePresetSection(
+					destinationSection,
+					member->value,
+					sourceProfile,
+					allocator))
+				{
+					return false;
+				}
+			}
+		}
+
+		const bool hasFlatItems = sourceRoot.HasMember(kPresetItemsKey);
+		const bool hasFlatDefault = sourceRoot.HasMember(kDefaultPresetKey);
+		if (hasFlatItems || hasFlatDefault)
+		{
+			const std::string airportKey = NormalizeAirportKey(activeAirport);
+			if (airportKey.empty())
+				return false;
+			rapidjson::Value& destinationSection =
+				EnsureObjectMember(destinationAirports, airportKey.c_str(), allocator);
+			if (!MergePresetSection(
+				destinationSection,
+				sourceRoot,
+				sourceProfile,
+				allocator))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool MigrateProfileAvisoPresetRoots(
+		rapidjson::Document& profilesDocument,
+		const std::string& preferredProfileName,
+		const std::string& activeAirport)
+	{
+		if (!profilesDocument.IsArray())
+			return false;
+
+		std::vector<rapidjson::SizeType> profileOrder;
+		for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+		{
+			const rapidjson::Value& profile = profilesDocument[index];
+			if (IsProfileEntry(profile) &&
+				EqualsNoCaseAscii(profile["name"].GetString(), preferredProfileName))
+			{
+				profileOrder.push_back(index);
+				break;
+			}
+		}
+		for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+		{
+			if (!IsProfileEntry(profilesDocument[index]) ||
+				(!profileOrder.empty() && profileOrder.front() == index))
+			{
+				continue;
+			}
+			profileOrder.push_back(index);
+		}
+
+		bool migrated = false;
+		for (rapidjson::SizeType profileIndex : profileOrder)
+		{
+			rapidjson::Value& profile = profilesDocument[profileIndex];
+			if (!profile.HasMember(kAvisoPresetsKey))
+				continue;
+
+			rapidjson::Value& metadata = EnsureMetadataValue(profilesDocument);
+			// EnsureMetadataValue may append to the array, but existing element
+			// storage remains valid only after reacquiring the indexed profile.
+			rapidjson::Value& currentProfile = profilesDocument[profileIndex];
+			if (!MergeProfilePresetRootIntoMetadata(
+				metadata,
+				currentProfile,
+				activeAirport,
+				profilesDocument.GetAllocator()))
+			{
+				continue;
+			}
+
+			currentProfile.RemoveMember(kAvisoPresetsKey);
+			migrated = true;
+		}
+		return migrated;
+	}
+
 	bool MergeAvisoPresetRoot(
 		rapidjson::Value& destinationProfile,
 		const rapidjson::Value& authoritativeProfile,
@@ -241,6 +633,66 @@ namespace
 	{
 		if (!destination.IsArray() || !authoritative.IsArray())
 			return false;
+
+		// Airport preset state is file-global. Once the canonical metadata root
+		// exists, it is authoritative and legacy profile copies must not be
+		// resurrected by a stale Control Center or radar-screen save.
+		const rapidjson::Value* authoritativeMetadata = FindMetadataValue(authoritative);
+		if (authoritativeMetadata != nullptr &&
+			authoritativeMetadata->HasMember(kAvisoPresetsKey))
+		{
+			rapidjson::Value& destinationMetadata = EnsureMetadataValue(destination);
+			if (!MergeAvisoPresetRoot(
+				destinationMetadata,
+				*authoritativeMetadata,
+				destination.GetAllocator()))
+			{
+				return false;
+			}
+
+			for (rapidjson::SizeType index = 0; index < destination.Size(); ++index)
+			{
+				rapidjson::Value& destinationProfile = destination[index];
+				if (!IsProfileEntry(destinationProfile))
+					continue;
+
+				const std::string currentName = destinationProfile["name"].GetString();
+				const CConfig::ProfileSaveIdentity* identity = nullptr;
+				for (const CConfig::ProfileSaveIdentity& candidate : profileIdentities)
+				{
+					if (EqualsNoCaseAscii(candidate.currentName, currentName))
+					{
+						identity = &candidate;
+						break;
+					}
+				}
+
+				const rapidjson::Value* authoritativeProfile = nullptr;
+				if (identity == nullptr)
+					authoritativeProfile = FindProfileByName(authoritative, currentName);
+				else if (!identity->persistedName.empty())
+					authoritativeProfile = FindProfileByName(
+						authoritative,
+						identity->persistedName);
+
+				if (authoritativeProfile != nullptr &&
+					authoritativeProfile->HasMember(kAvisoPresetsKey))
+				{
+					if (!MergeAvisoPresetRoot(
+						destinationProfile,
+						*authoritativeProfile,
+						destination.GetAllocator()))
+					{
+						return false;
+					}
+				}
+				else if (destinationProfile.HasMember(kAvisoPresetsKey))
+				{
+					destinationProfile.RemoveMember(kAvisoPresetsKey);
+				}
+			}
+			return true;
+		}
 
 		for (rapidjson::SizeType index = 0; index < destination.Size(); ++index)
 		{
@@ -947,11 +1399,17 @@ bool CConfig::sharesConfigFileWith(const CConfig& other) const
 	return EqualsNoCaseAscii(config_path, other.config_path);
 }
 
+const Value* CConfig::getSharedAvisoPresetContainer() const
+{
+	return findMetadata();
+}
+
 bool CConfig::transactAvisoPresetStore(
-	const string& profileName,
+	const string& preferredProfileName,
+	const string& activeAirport,
 	const AvisoPresetTransaction& transaction)
 {
-	if (trimProfileName(profileName).empty() || !transaction)
+	if (NormalizeAirportKey(activeAirport).empty() || !transaction)
 		return false;
 
 	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
@@ -966,17 +1424,20 @@ bool CConfig::transactAvisoPresetStore(
 		return false;
 	}
 
-	Value* latestProfile = FindProfileByName(latestDocument, trimProfileName(profileName));
-	if (latestProfile == nullptr)
-		return false;
-
+	const bool migrated = MigrateProfileAvisoPresetRoots(
+		latestDocument,
+		// Profile identity is used only to choose deterministic precedence while
+		// importing legacy data; the resulting store itself is profile-independent.
+		trimProfileName(preferredProfileName),
+		activeAirport);
+	Value& sharedMetadata = EnsureMetadataValue(latestDocument);
 	const AvisoPresetTransactionAction action = transaction(
-		*latestProfile,
+		sharedMetadata,
 		latestDocument.GetAllocator());
 	if (action == AvisoPresetTransactionAction::Abort)
 		return false;
 
-	if (action == AvisoPresetTransactionAction::Save &&
+	if ((migrated || action == AvisoPresetTransactionAction::Save) &&
 		!PersistConfigDocument(config_path, latestDocument))
 	{
 		return false;
@@ -989,16 +1450,10 @@ bool CConfig::transactAvisoPresetStore(
 			!EqualsNoCaseAscii(liveConfig->config_path, config_path))
 			continue;
 
-		Value* liveProfile = FindProfileByName(
+		if (!MergeLatestAvisoPresetRoots(
 			liveConfig->document,
-			trimProfileName(profileName));
-		if (liveProfile == nullptr)
-			continue;
-
-		if (!MergeAvisoPresetRoot(
-			*liveProfile,
-			*latestProfile,
-			liveConfig->document.GetAllocator()))
+			latestDocument,
+			{}))
 		{
 			return false;
 		}

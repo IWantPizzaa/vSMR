@@ -871,11 +871,7 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 		if (canonicalName.empty())
 			return false;
 
-		const bool profileChanged =
-			!EqualsNoCase(radar->CurrentConfig->getActiveProfileName(), canonicalName);
 		radar->LoadProfile(canonicalName);
-		if (profileChanged)
-			radar->ResetAvisoPresetStateForActiveProfile();
 		radar->LoadCustomFont();
 		const std::string activeProfile = radar->CurrentConfig->getActiveProfileName();
 		RememberSessionActiveProfile(activeProfile);
@@ -1204,7 +1200,6 @@ bool CSMRRadar::AddProfileForEditor(const std::string& requestedName, bool dupli
 
 	CurrentConfig->reload();
 	LoadProfile(createdName);
-	ResetAvisoPresetStateForActiveProfile();
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);
@@ -1297,8 +1292,6 @@ bool CSMRRadar::DeleteProfileForEditor(const std::string& name)
 	}
 
 	LoadProfile(nextActive);
-	if (deletingActive)
-		ResetAvisoPresetStateForActiveProfile();
 	LoadCustomFont();
 	const std::string activeProfile = CurrentConfig->getActiveProfileName();
 	RememberSessionActiveProfile(activeProfile);
