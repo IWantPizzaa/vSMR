@@ -51,7 +51,8 @@ time.
 | --- | --- | --- |
 | Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW visibility and reset, full airport-specific inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
 | AVISO/SRW insets | Striped title/drag bar, `X` close control, edge/corner resizing, snapping, pan, and zoom; floating SRWs also expose the `F` altitude filter | Preset, reload, and editor buttons |
-| Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, and settings editing, including FPS visibility | Radar cursor tools and duplicated inset chrome |
+| Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, CPDLC/CDM, and settings editing, including FPS visibility | Per-flight PDC composition, radar cursor tools, and duplicated inset chrome |
+| PDC / Message window | Per-flight clearance or TELEX composition in a compact EuroScope-owned Cofrance window | Persistent CPDLC credentials and CDM automation |
 | FPS overlay | Optional `FPS <value>` text placed in an unobstructed corner of the remaining main AVISO area | Component timings, controls, background toolbar, and hit regions |
 
 The old grey top menu and its QDR, Target, Lighting, and distance actions are
@@ -218,7 +219,7 @@ editor and renderer classes do not parse raw message strings.
 
 | Type | Native result |
 | --- | --- |
-| `ui.ready` | Sends the initial authoritative profiles/settings/runtime state and the split AVISO document. |
+| `ui.ready` | Sends the initial authoritative profiles/settings/runtime/datalink state and the split AVISO document. |
 | `window.close` | Hides the modeless host. |
 | `window.drag.start` | Starts a native non-client drag from the HTML title bar. |
 | `state.save` | Validates the staged airport binding, then writes profiles and, when present, AVISO; reloads affected live systems. |
@@ -241,7 +242,12 @@ editor and renderer classes do not parse raw message strings.
 | `aviso.inset.preset.delete` | Deletes a preset. |
 | `aviso.inset.preset.linked` | Changes linked movement. |
 | `alerts.update` | Applies active-profile RIMCAS fields and runway state live; changes remain dirty until global Save. |
-| `settings.update` | Applies resolution and RIMCAS live in staged profile state, and applies FPS visibility live while immediately persisting it under the ASR `ShowFps` key. |
+| `settings.update` | Applies the resolution preset in staged profile state and applies FPS visibility live while immediately persisting it under the ASR `ShowFps` key. |
+| `datalink.state.request` | Returns current native CPDLC/CDM status without exposing the saved Hoppie code. |
+| `datalink.settings.update` | Validates and immediately persists partial auto-save patches for the logon callsign, optional Hoppie-code replacement, sound, and PDC reminder Run/Stop/Update values. |
+| `datalink.connection.connect`, `datalink.connection.disconnect` | Starts or cancels the guarded native Hoppie connection workflow. |
+| `datalink.poll` | Starts one guarded manual Hoppie poll when connected. |
+| `cdm.scan` | Checks active-airport eligibility and queues CDM reminder messages using the native `.cdm` alias workflow. |
 | `resource.computer.load` | Opens the native JSON/GeoJSON file picker. Compatibility aliases are accepted. |
 | `resource.github.load` | Downloads a GitHub file asynchronously after URL validation. |
 
@@ -265,7 +271,8 @@ persist their active selection through the existing profile/ASR paths.
 
 | Type | Payload and UI behavior |
 | --- | --- |
-| `state.authoritative` | `profiles`, `settings`, `runtime`, `activeProfile`, `airport`, and `reason`, with inline `aviso` for staged undo/redo and group-update replies. Replaces clean state; runtime-only pushes preserve dirty editor documents. |
+| `state.authoritative` | `profiles`, `settings`, `runtime`, `datalink`, `activeProfile`, `airport`, and `reason`, with inline `aviso` for staged undo/redo and group-update replies. Replaces clean state; runtime-only pushes preserve dirty editor documents. |
+| `datalink.state` | Correlated live CPDLC/CDM state. It contains only `hasPassword`, never the saved Hoppie code, and does not replace a dirty Datalink form draft. |
 | `state.aviso` | The authoritative GeoJSON FeatureCollection. Sent separately to avoid duplicating the large document in every state envelope. |
 | `state.saved` | Correlated Save success. The UI clears Save pending state and marks the current snapshot clean. |
 | `state.ack` | Correlated success acknowledgement with `action` and optional `message`. |
@@ -298,6 +305,11 @@ request with id = "ui-..."
 - Reload asks before discarding dirty state.
 - Native runtime pushes update runtime fields while retaining staged profile
   and AVISO edits.
+- The CPDLC and PDC cards in Settings use transient service state outside
+  profile serialization, global Save, and Undo/Redo history.
+- CPDLC connection fields auto-save. PDC reminder timing auto-saves while
+  stopped; while running, edits remain staged until `Update`, and `Stop`
+  cancels queued automatic reminders without cancelling a manual `Check now`.
 - Staged AVISO state remains bound to the airport from which it was loaded. If
   the Runtime Menu changes airports while editors are dirty, Save, Undo, and
   Redo stay disabled until Reload confirms discarding the stale staged state.
@@ -332,6 +344,8 @@ request with id = "ui-..."
 - Context menus, DevTools, browser accelerator keys, status bar, zoom controls,
   host objects, and external drop are disabled.
 - Virtual-host resource access uses `DENY_CORS`.
+- The Hoppie code is sent only in a dedicated replacement request; native
+  state exposes a boolean indicating whether a code is stored.
 - GitHub loading accepts only `github.com`, `www.github.com`, and
   `raw.githubusercontent.com` file URLs. Normal operation performs no network
   request.
@@ -436,8 +450,8 @@ runtime or packaged resources are unavailable.
   persistence, and runtime/resource fallback diagnostics.
 - Added the centralized versioned bridge and authoritative state/error flows.
 - Added asynchronous, allow-listed GitHub JSON/GeoJSON loading.
-- Added validated packaged profile/LFPG AVISO restoration through the collapsed
-  Danger zone.
+- Consolidated CPDLC connection and PDC reminder automation into Settings,
+  with the resolved EuroScope alias path shown under Data files.
 - Added Control Center routing from existing profile/AVISO commands and menus.
 - Added AVISO group membership/visibility to the main and inset renderer paths,
   with cache invalidation and snapshot-based render-thread handoff.
@@ -457,23 +471,12 @@ runtime or packaged resources are unavailable.
 - Added native PackageReference restore, static WebView2 loader integration,
   asset-copy targets, and packaged CI output.
 
-## Intentionally disabled or not connected
-
-The native host disables controls when no safe native behavior exists. Disabled
-controls have a tooltip explaining the reason.
+## Native-host boundaries
 
 | Control/capability | Native-host state | Technical reason or supported path |
 | --- | --- | --- |
-| Auto-reload changed local files | Disabled | No filesystem watcher service is implemented. Use Reload. |
-| Bridge selector | Disabled | The embedded host always uses native WebView2. |
-| Update interval | Disabled | Native synchronization is event-driven, not polling-based. |
-| Runtime sync toggle | Disabled | Runtime synchronization is always enabled. |
-| VACDM feature toggle | Disabled | Configure the VACDM server through existing `_vsmr.vacdm.server_url` data. |
-| CPDLC feature toggle | Disabled | CPDLC remains owned by the existing vSMR/EuroScope settings flow. |
-| Inset-windows feature toggle | Disabled | AVISO/SRW visibility is controlled directly by the runtime rail. |
-| Profile and AVISO source text fields | Read-only | They report the native paths/source; import uses Computer/GitHub and Save writes the configured native destinations. |
+| Profile, AVISO, and EuroScope alias source text fields | Read-only | They report native paths; profile/AVISO import uses Computer/GitHub and Save writes the configured native destinations. |
 | Maps source/editor | Not present | Maps were explicitly removed from this Control Center design; bridge capability reports `maps: false`. |
-| Deletion confirmation | Browser-session setting | It controls web confirmation prompts but is not persisted by the native configuration model. |
 
 Run the deterministic checklist in
 [CONTROL_CENTER_TEST_CHECKLIST.md](CONTROL_CENTER_TEST_CHECKLIST.md) before

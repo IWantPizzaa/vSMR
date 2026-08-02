@@ -567,6 +567,7 @@
 </section>
 <section class="page settings-page" data-page-panel="settings">
 <div class="settings-layout">
+<div class="settings-column settings-files-column">
 <fieldset class="compact-group settings-group files-group">
 <legend>Data files</legend>
 <div class="settings-file-list">
@@ -586,6 +587,10 @@
 <button class="ui-button" data-action="load-aviso-github" type="button">GitHub…</button>
 </div>
 </section>
+<section class="settings-file-row settings-alias-file-row">
+<div class="settings-file-heading"><strong>EuroScope alias</strong><small>.cdm template source</small></div>
+<input aria-label="EuroScope alias file" id="settingsAliasFile" readonly="" type="text"/>
+</section>
 </div>
 </fieldset>
 <fieldset class="compact-group settings-group display-group">
@@ -593,34 +598,33 @@
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
 <label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
 </fieldset>
-<fieldset class="compact-group settings-group features-group">
-<legend>Features</legend>
-<div class="feature-grid">
-<label class="check-field"><input id="settingsRimcas" type="checkbox"/><span>RIMCAS</span></label>
-<label class="check-field"><input id="settingsVacdm" type="checkbox"/><span>VACDM</span></label>
-<label class="check-field"><input id="settingsCpdlc" type="checkbox"/><span>CPDLC</span></label>
-<label class="check-field"><input id="settingsApproachWindows" type="checkbox"/><span>Inset windows</span></label>
 </div>
-</fieldset>
-<details class="advanced-disclosure settings-advanced">
-<summary><span>Advanced</span><small>Bridge and synchronization</small></summary>
-<div class="advanced-body">
-<div class="dense-form two-cols">
-<label class="field"><span>Bridge</span><select id="settingsBridgeMode"><option>Auto detect</option><option>WebView2</option><option>Browser demo</option></select></label>
-<label class="field"><span>Update interval (ms)</span><input id="settingsUpdateInterval" min="50" step="50" type="number"/></label>
-<label class="check-field check-in-form"><input id="settingsRuntimeSync" type="checkbox"/><span>Runtime sync</span></label>
-<label class="check-field check-in-form"><input id="settingsConfirmDelete" type="checkbox"/><span>Confirm deletion</span></label>
-<label class="check-field check-in-form span-2"><input id="settingsWatchFiles" type="checkbox"/><span>Auto-reload changed local files</span></label>
+<div class="settings-column settings-datalink-column">
+<section class="panel datalink-card datalink-connection-card">
+<div class="panel-title datalink-card-title"><span>CPDLC connection</span><span class="datalink-state-badge disconnected" id="datalinkConnectionState"><i aria-hidden="true"></i><span>Disconnected</span></span></div>
+<div class="datalink-card-body">
+<div class="dense-form datalink-connection-form">
+<label class="field"><span>Logon callsign</span><input autocomplete="off" id="datalinkLogonCallsign" maxlength="8" spellcheck="false" type="text"/></label>
+<label class="field datalink-password-field"><span>Hoppie code</span><span class="datalink-password-control"><input autocomplete="new-password" id="datalinkPassword" spellcheck="false" type="password"/><button aria-label="Show Hoppie code" data-action="toggle-datalink-password" id="datalinkPasswordToggle" title="Show code" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.8 12s3.5-5 9.2-5 9.2 5 9.2 5-3.5 5-9.2 5-9.2-5-9.2-5z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button></span></label>
+</div>
+<label class="check-field datalink-sound-option"><input id="datalinkPlaySound" type="checkbox"/><span>Sound on clearance request</span></label>
+</div>
+<div class="datalink-card-actions"><button class="ui-button" data-action="datalink-poll" id="datalinkPollButton" type="button">Poll</button><button class="ui-button primary" data-action="datalink-toggle-connection" id="datalinkConnectButton" type="button">Connect</button></div>
+</section>
+<section class="panel datalink-card datalink-cdm-card">
+<div class="panel-title datalink-card-title"><span>PDC reminders</span><span class="datalink-state-badge disconnected" id="datalinkReminderState"><i aria-hidden="true"></i><span>Stopped</span></span></div>
+<div class="datalink-card-body">
+<div class="dense-form two-cols datalink-cdm-form">
+<label class="field"><span>Delay</span><span class="number-unit"><input id="datalinkCdmDelay" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
+<label class="field"><span>Resend cooldown</span><span class="number-unit"><input id="datalinkCdmCooldown" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
 </div>
 </div>
-</details>
-<details class="advanced-disclosure settings-danger">
-<summary><span>Danger zone</span><small>Restore bundled defaults</small></summary>
-<div class="advanced-body"><button class="ui-button danger" data-action="reset-data" type="button">Reset supplied data</button></div>
-</details>
+<div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button><button class="ui-button primary" data-action="datalink-reminder-update" hidden id="datalinkReminderUpdateButton" type="button">Update</button></div>
+</section>
+</div>
 </div>
 <div class="actionbar bottom-actions settings-bottom-actions">
-<button class="ui-button primary" data-action="apply-settings" type="button">Apply</button>
+<button class="ui-button primary" data-action="apply-settings" type="button">Apply display</button>
 </div>
 </section>
 </main>

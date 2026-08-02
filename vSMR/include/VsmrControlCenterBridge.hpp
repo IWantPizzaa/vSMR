@@ -35,6 +35,12 @@ enum class VsmrBridgeAction
 	InsetPresetLinked,
 	AlertsUpdate,
 	SettingsUpdate,
+	DatalinkStateRequest,
+	DatalinkSettingsUpdate,
+	DatalinkConnect,
+	DatalinkDisconnect,
+	DatalinkPoll,
+	CdmScan,
 	ResourceComputerLoad,
 	ResourceGithubLoad
 };

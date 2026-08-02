@@ -48,6 +48,9 @@ namespace
 			return CVsmrControlCenterDialog::Page::Groups;
 		if (normalized == "modes" || normalized == "mode")
 			return CVsmrControlCenterDialog::Page::Modes;
+		if (normalized == "datalink" || normalized == "cpdlc" ||
+			normalized == "cdm")
+			return CVsmrControlCenterDialog::Page::Settings;
 		if (normalized == "settings" || normalized == "config" ||
 			normalized == "maps" || normalized == "map")
 			return CVsmrControlCenterDialog::Page::Settings;
