@@ -54,17 +54,13 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <Linkage-openssl>static</Linkage-openssl>
-    <Linkage-curl>static</Linkage-curl>
-    <Linkage-libssh2>static</Linkage-libssh2>
-    <Linkage-zlib>static</Linkage-zlib>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USRDLL;%(PreprocessorDefinitions);CURL_STATICLIB;CURL_STATIC;ASIO_STANDALONE</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)\lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
@@ -80,7 +76,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
@@ -105,7 +101,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <StringPooling>true</StringPooling>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;%(PreprocessorDefinitions);CURL_STATICLIB;CURL_STATIC;ASIO_STANDALONE</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>false</SDLCheck>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)\lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -120,7 +116,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <ModuleDefinitionFile>resources\vSMR.def</ModuleDefinitionFile>
-      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;..\lib\libcurl.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
+      <AdditionalDependencies>..\lib\EuroScopePlugInDll.lib;winmm.lib;msimg32.lib</AdditionalDependencies>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>/IGNORE:4099 /NODEFAULTLIB:LIBCMT %(AdditionalOptions)</AdditionalOptions>
@@ -152,7 +148,6 @@
     <ClCompile Include="src\SMRGeometry.cpp" />
     <ClCompile Include="src\SMRPlugin.cpp" />
     <ClCompile Include="src\SMRRadar.cpp" />
-    <ClCompile Include="src\SMRSharedState.cpp" />
     <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp" />
     <ClCompile Include="src\SMRRadar_AvisoEditor.cpp" />
     <ClCompile Include="src\SMRRadar_AvisoPresets.cpp" />
@@ -201,7 +196,6 @@
     <ClInclude Include="include\SMRGeometry.hpp" />
     <ClInclude Include="include\SMRGroundState.hpp" />
     <ClInclude Include="include\SMRProfileColorPaths.hpp" />
-    <ClInclude Include="include\SMRSharedState.hpp" />
     <ClInclude Include="include\SMRPlugin.hpp" />
     <ClInclude Include="include\SMRRadar.hpp" />
     <ClInclude Include="include\SMRTagColorRules.hpp" />
@@ -217,6 +211,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="data\Audio\Alarm.wav" />
+    <None Include="data\Audio\Ding.wav" />
     <None Include="data\ICAO_Aircraft.json" />
     <None Include="data\vSMR_Maps.json" />
     <None Include="data\vSMR_Profiles.json" />
@@ -236,7 +232,6 @@
     <None Include="resources\cursors\arrow.cur" />
     <None Include="resources\cursors\cursor1.cur" />
     <None Include="resources\cursors\move.cur" />
-    <None Include="resources\cursors\POINTER1.cur" />
     <None Include="resources\vSMR.def" />
     <None Include="resources\vSMR.rc2" />
     <None Include="tools\edit_tagdefs.ps1" />
@@ -244,13 +239,10 @@
   <ItemGroup>
     <ResourceCompile Include="resources\vSMR.rc" />
   </ItemGroup>
-  <ItemGroup>
-    <Media Include="resources\audio\Ding.wav" />
-  </ItemGroup>
   <Target Name="EnsureWebView2PackageRestored" BeforeTargets="PrepareForBuild" Condition="!Exists('$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets')">
     <Error Text="Microsoft.Web.WebView2 1.0.4078.44 is not restored. Run MSBuild vSMR.sln /t:Restore before building." />
   </Target>
-  <Target Name="CopyVsmrWebUi" AfterTargets="Build">
+  <Target Name="CopyVsmrRuntimeAssets" AfterTargets="Build">
     <ItemGroup>
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\index.html" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\styles.css" />
@@ -258,11 +250,22 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\..\vSMR_webUI\data.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrDefaultAviso Include="$(MSBuildProjectDirectory)\data\AVISO\AVISO_LFPG.geojson" />
+      <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*" />
+      <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
+      <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
     </ItemGroup>
     <MakeDir Directories="$(OutDir)vSMR_webUI" />
     <MakeDir Directories="$(OutDir)vSMR_webUI\defaults" />
+    <MakeDir Directories="$(OutDir)THIRD_PARTY_LICENSES" />
     <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(OutDir)vSMR_webUI" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrDefaultProfile);@(_VsmrDefaultAviso)" DestinationFolder="$(OutDir)vSMR_webUI\defaults" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(OutDir)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrProjectLicense)" DestinationFiles="$(OutDir)LICENSE" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(OutDir)THIRD_PARTY_LICENSES\RapidJSON.txt" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
+    <RemoveDir Directories="$(OutDir)vSMR_webUI;$(OutDir)vSMR_Data;$(OutDir)THIRD_PARTY_LICENSES" />
+    <Delete Files="$(OutDir)LICENSE" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!-- VS 2022 restores native PackageReference items but can select the managed buildTransitive entry point. -->

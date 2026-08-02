@@ -25,6 +25,7 @@ void CRimcas::Reset() {
 	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
 	AcOnRunway.clear();
+	AircraftOnRunway.clear();
 	TimeTable.clear();
 	inactiveAlerts.clear();
 	MonitoredRunwayArr.clear();
@@ -33,10 +34,12 @@ void CRimcas::Reset() {
 }
 
 void CRimcas::OnRefreshBegin(bool isLVP) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
 	AcOnRunway.clear();
+	AircraftOnRunway.clear();
 	TimeTable.clear();
 	ApproachingAircrafts.clear();
 	this->IsLVP = isLVP;
@@ -44,7 +47,8 @@ void CRimcas::OnRefreshBegin(bool isLVP) {
 }
 
 void CRimcas::OnRefresh(CRadarTarget Rt, CRadarScreen* instance, bool isCorrelated, bool isLVP) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	GetAcInRunwayArea(Rt, instance);
 	GetAcInRunwayAreaSoon(Rt, instance, isCorrelated);
 	CheckForMovementAlert(Rt, instance, isLVP);
@@ -56,9 +60,9 @@ void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string 
 
 	RunwayAreaType Runway;
 	Runway.Name = Name;
-	Runway.Definition = Definition;
+	Runway.Definition = std::move(Definition);
 
-	RunwayAreas[Name] = Runway;
+	RunwayAreas[Name] = std::move(Runway);
 	InvalidateRunwayAreaScreenCache();
 }
 
@@ -99,7 +103,8 @@ const vector<POINT>* CRimcas::GetRunwayAreaScreenPoints(const string& runway, CR
 }
 
 string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	const char* acCallsign = Ac.GetCallsign();
 	if (acCallsign == nullptr || acCallsign[0] == '\0')
 		return string_false;
@@ -133,6 +138,7 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 
 		if (Is_Inside(AcPosPix, *RunwayOnScreen)) {
 			AcOnRunway.insert(std::pair<string, string>(it->first, acCallsign));
+			AircraftOnRunway.insert(acCallsign);
 			return string(it->first);
 		}
 	}
@@ -141,7 +147,8 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 }
 
 string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, bool isCorrelated) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	const char* acCallsign = Ac.GetCallsign();
 	if (acCallsign == nullptr || acCallsign[0] == '\0')
 		return string_false;
@@ -243,7 +250,10 @@ string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, b
 					StageTwoTrigger = 30;
 
 				if (t <= StageTwoTrigger)
+				{
 					AcOnRunway.insert(std::pair<string, string>(it->first, acCallsign));
+					AircraftOnRunway.insert(acCallsign);
+				}
 
 				// If the AC is 45 seconds away from the runway, we consider him approaching
 
@@ -275,7 +285,8 @@ vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float 
 }
 
 void CRimcas::OnRefreshEnd(CRadarScreen* instance, int threshold) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	if (instance == nullptr)
 		return;
 
@@ -369,20 +380,16 @@ void CRimcas::OnRefreshEnd(CRadarScreen* instance, int threshold) {
 
 }
 
-bool CRimcas::isAcOnRunway(string callsign) {
-	Logger::info(string(__FUNCSIG__));
-	for (std::map<string, string>::iterator it = AcOnRunway.begin(); it != AcOnRunway.end(); ++it)
-	{
-		if (it->second == callsign)
-			return true;
-	}
-
-	return false;
+bool CRimcas::isAcOnRunway(const string& callsign) {
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
+	return AircraftOnRunway.find(callsign) != AircraftOnRunway.end();
 }
 
 string CRimcas::AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	POINT acPosPix = instance->ConvertCoordFromPositionToPixel(Rt.GetPosition().GetPosition());
 	for (const auto& rwy : RunwayAreas) {
 		const vector<POINT>* runwayOnScreen = GetRunwayAreaScreenPoints(rwy.first, instance);
@@ -510,9 +517,10 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	movementAlerts[rtCallsign] = CRimcas::RimcasAlerts::NONE;
 }
 
-CRimcas::RimcasAlertTypes CRimcas::getAlert(string callsign)
+CRimcas::RimcasAlertTypes CRimcas::getAlert(const string& callsign)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	const auto alertIt = AcColor.find(callsign);
 	if (alertIt == AcColor.end())
 		return NoAlert;
@@ -520,9 +528,10 @@ CRimcas::RimcasAlertTypes CRimcas::getAlert(string callsign)
 	return alertIt->second;
 }
 
-CRimcas::RimcasAlerts CRimcas::getMovementAlert(string callsign)
+CRimcas::RimcasAlerts CRimcas::getMovementAlert(const string& callsign)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	const auto alertIt = movementAlerts.find(callsign);
 	if (alertIt == movementAlerts.end())
 		return CRimcas::RimcasAlerts::NONE;
@@ -570,8 +579,9 @@ CRimcas::RimcasAlertSeverity CRimcas::getAlertSeverity(RimcasAlerts alert)
 	}
 }
 
-Color CRimcas::GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo) {
-	Logger::info(string(__FUNCSIG__));
+Color CRimcas::GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo) {
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	const auto colorIt = AcColor.find(AcCallsign);
 	if (colorIt == AcColor.end()) {
 		if (isAcOnRunway(AcCallsign)) {
@@ -591,8 +601,9 @@ Color CRimcas::GetAircraftColor(string AcCallsign, Color StandardColor, Color On
 	}
 }
 
-Color CRimcas::GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor) {
-	Logger::info(string(__FUNCSIG__));
+Color CRimcas::GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor) {
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	if (isAcOnRunway(AcCallsign)) {
 		return OnRunwayColor;
 	}

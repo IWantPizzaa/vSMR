@@ -30,7 +30,7 @@
     airdep: "Airborne departure", airdep_onrunway: "Departure on runway", airarr: "Airborne arrival",
     airarr_onrunway: "Arrival on runway"
   };
-  const COLOR_FAMILY_ORDER = ["Tags", "Targets", "RIMCAS", "Approach inset"];
+  const COLOR_FAMILY_ORDER = ["Tags", "Targets", "RIMCAS", "SRW 1"];
   const COLOR_SECTION_ORDER = ["General", "Departure", "Arrival", "Uncorrelated", "Airborne"];
   const TAG_STATUS_COLOR_KEYS = {
     departure: {
@@ -483,8 +483,7 @@
         runtimeSync: true,
         confirmDelete: true,
         rimcas: true,
-        vacdm: true,
-        approachWindows: true
+        vacdm: true
       },
       datalink: createPreviewDatalinkState(initialAirport, metadata),
       ui: {
@@ -517,7 +516,7 @@
       },
       runtime: {
         avisoInsetVisible: false,
-        insets: { aviso: false, srw1: false, srw2: false, weather: false },
+        insets: { aviso: false, srw1: false, weather: false, timer: false },
         activeAvisoPreset: preferredPresetName,
         activeAvisoPresetScope: initialAirport,
         avisoInsetSnapshot: preferredPreset ? clone(preferredPreset) : null,
@@ -788,10 +787,15 @@
   function setProfileTab(tab) {
     if (!PROFILE_TITLES[tab]) return;
     state.ui.profileTab = tab;
-    $$('[data-profile-tab]').forEach(button => button.classList.toggle("active", button.dataset.profileTab === tab));
-    $$('[data-profile-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.profilePanel === tab));
+    syncProfileTabSelection();
     renderCurrentProfileTab();
     updateContext();
+  }
+
+  function syncProfileTabSelection() {
+    const tab = state.ui.profileTab;
+    $$('[data-profile-tab]').forEach(button => button.classList.toggle("active", button.dataset.profileTab === tab));
+    $$('[data-profile-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.profilePanel === tab));
   }
 
   function profileRailLabel(name) {
@@ -886,27 +890,36 @@
     else delete feature.properties.vsmr_group_ids;
   }
 
-  function avisoGroupMemberIndices(groupId) {
-    return avisoFeatures().map((feature, index) => featureGroupIds(feature).includes(groupId) ? index : -1).filter(index => index >= 0);
-  }
-
-  function avisoGroupCounts(groupId) {
-    const counts = { total: 0, text: 0, line: 0, area: 0 };
-    avisoGroupMemberIndices(groupId).forEach(index => {
-      const feature = avisoFeatures()[index];
+  function buildAvisoGroupIndex() {
+    const index = new Map(avisoGroups().map(group => [group.id, {
+      indices: [],
+      counts: { total: 0, text: 0, line: 0, area: 0 }
+    }]));
+    avisoFeatures().forEach((feature, featureIndex) => {
+      const groupIds = featureGroupIds(feature);
+      if (!groupIds.length) return;
       const kind = isAvisoTextFeature(feature) ? "text" : inferAvisoObjectType(feature).toLowerCase();
-      counts.total += 1;
-      if (kind === "text") counts.text += 1;
-      else if (kind === "line") counts.line += 1;
-      else counts.area += 1;
+      groupIds.forEach(groupId => {
+        if (!index.has(groupId)) {
+          index.set(groupId, { indices: [], counts: { total: 0, text: 0, line: 0, area: 0 } });
+        }
+        const entry = index.get(groupId);
+        entry.indices.push(featureIndex);
+        entry.counts.total += 1;
+        if (kind === "text") entry.counts.text += 1;
+        else if (kind === "line") entry.counts.line += 1;
+        else entry.counts.area += 1;
+      });
     });
-    return counts;
+    return index;
   }
 
-  function avisoGroupSummary(counts) {
-    const lineLabel = counts.line === 1 ? "line" : "lines";
-    const areaLabel = counts.area === 1 ? "area" : "areas";
-    return `${counts.text} text · ${counts.line} ${lineLabel} · ${counts.area} ${areaLabel}`;
+  function avisoGroupMemberIndices(groupId, groupIndex = buildAvisoGroupIndex()) {
+    return groupIndex.get(groupId)?.indices || [];
+  }
+
+  function avisoGroupCounts(groupId, groupIndex = buildAvisoGroupIndex()) {
+    return groupIndex.get(groupId)?.counts || { total: 0, text: 0, line: 0, area: 0 };
   }
 
   function selectedAvisoGroup() {
@@ -989,7 +1002,7 @@
   }
 
   function insetState(kind) {
-    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false, weather: false };
+    state.runtime.insets ||= { aviso: false, srw1: false, weather: false, timer: false };
     return Boolean(state.runtime.insets[kind]);
   }
 
@@ -1001,13 +1014,13 @@
 
   function renderRuntimeMenu() {
     const menu = $("#runtimeMenu");
-    if (!menu) return;
+    if (!menu || HOST_MODE) return;
     const groups = avisoGroups();
     const visibleGroups = groups.filter(group => group.visible !== false).length;
     const profile = activeProfile();
     const mode = activeModeName();
     const preset = activeAvisoPreset();
-    const anyInset = ["aviso", "srw1", "srw2", "weather"].some(insetState);
+    const anyInset = ["aviso", "srw1", "weather", "timer"].some(insetState);
 
     const modeButton = $("#runtimeModeButton");
     const groupsButton = $("#runtimeGroupsButton");
@@ -1019,10 +1032,10 @@
     groupsButton.setAttribute("aria-label", `Groups: ${visibleGroups} of ${groups.length || 0} visible`);
     profileButton.title = `Profile · ${profile?.name || "Profile"}`;
     profileButton.setAttribute("aria-label", `Profile: ${profile?.name || "Profile"}`);
-    insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, SRW2 ${insetState("srw2") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
+    insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}, Timer ${insetState("timer") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
     insetButton.setAttribute("aria-label", insetButton.title);
     insetButton.classList.toggle("active", anyInset);
-    ["aviso", "srw1", "srw2", "weather"].forEach(kind => {
+    ["aviso", "srw1", "weather", "timer"].forEach(kind => {
       const dot = $(`[data-inset-indicator="${kind}"]`, insetButton);
       dot?.classList.toggle("active", insetState(kind));
     });
@@ -1099,8 +1112,8 @@
       const insetRows = [
         ["aviso", "AVISO inset"],
         ["srw1", "SRW 1"],
-        ["srw2", "SRW 2"],
-        ["weather", "Weather"]
+        ["weather", "Weather"],
+        ["timer", "Timer"]
       ].map(([id, label]) => {
         const visible = insetState(id);
         return `<button type="button" class="runtime-choice-row runtime-compact-row runtime-inset-row ${visible ? "active" : ""}" data-runtime-inset="${id}">${runtimeVisibilityIcon(visible)}<strong class="runtime-row-label">${label}</strong></button>`;
@@ -1160,15 +1173,15 @@
   }
 
   function toggleInsetWindow(kind) {
-    if (!["aviso", "srw1", "srw2", "weather"].includes(kind)) return;
-    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false, weather: false };
+    if (!["aviso", "srw1", "weather", "timer"].includes(kind)) return;
+    state.runtime.insets ||= { aviso: false, srw1: false, weather: false, timer: false };
     state.runtime.insets[kind] = !state.runtime.insets[kind];
     if (kind === "aviso") state.runtime.avisoInsetVisible = state.runtime.insets[kind];
     const preset = activeAvisoPreset();
-    const action = kind === "srw1" || kind === "srw2" ? "display.srw.toggle" : "aviso.inset.toggle";
+    const action = kind === "srw1" ? "display.srw.toggle" : "aviso.inset.toggle";
     postBridge(action, { airport: activePresetAirport(), window: kind, visible: state.runtime.insets[kind], preset: preset?.name || "", profile: activeProfile().name });
     renderRuntimeMenu();
-    showToast(`${kind === "aviso" ? "AVISO inset" : kind === "weather" ? "Weather" : kind.toUpperCase()} ${state.runtime.insets[kind] ? "shown" : "hidden"}`, "success");
+    showToast(`${kind === "aviso" ? "AVISO inset" : kind === "weather" ? "Weather" : kind === "timer" ? "Timer" : kind.toUpperCase()} ${state.runtime.insets[kind] ? "shown" : "hidden"}`, "success");
   }
 
   function loadAvisoPreset(name) {
@@ -1276,8 +1289,6 @@
     renderRuntimeMenu();
   }
 
-  function toggleRuntimeInset() { toggleInsetWindow("aviso"); }
-
   function collectProfileColors(profile) {
     const entries = [];
     const roots = ["labels", "rimcas", "targets", "approach_insets"];
@@ -1329,7 +1340,7 @@
       return { family: "Targets", section, group: `Targets · ${section}` };
     }
     if (root === "rimcas") return { family: "RIMCAS", section: "", group: "RIMCAS" };
-    if (root === "approach_insets") return { family: "Approach inset", section: "", group: "Approach inset" };
+    if (root === "approach_insets") return { family: "SRW 1", section: "", group: "SRW 1" };
     const family = humanize(root);
     return { family, section: "", group: family };
   }
@@ -2219,22 +2230,6 @@
     if (result.mixed) input.placeholder = "Mixed";
   }
 
-  function setCommonSelect(selector, result, fallback = "") {
-    const select = $(selector);
-    select.querySelectorAll("option[data-mixed-option]").forEach(option => option.remove());
-    resetControlFlags(select, result.mixed);
-    if (result.mixed) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Mixed";
-      option.dataset.mixedOption = "true";
-      select.prepend(option);
-      select.value = "";
-    } else {
-      ensureSelectValue(select, String(result.value ?? fallback));
-    }
-  }
-
   function setCommonCheckbox(selector, values) {
     const checkbox = $(selector);
     const yes = values.filter(Boolean).length;
@@ -2389,8 +2384,8 @@
     return String(properties["text-field"] || properties.name || properties.category || properties.style_id || `Feature ${index + 1}`);
   }
 
-  function avisoGroupMemberRows(groupId) {
-    const memberSet = new Set(avisoGroupMemberIndices(groupId));
+  function avisoGroupMemberRows(groupId, groupIndex = buildAvisoGroupIndex()) {
+    const memberSet = new Set(avisoGroupMemberIndices(groupId, groupIndex));
     const rows = [];
     const features = avisoFeatures();
 
@@ -2461,6 +2456,7 @@
 
   function renderAvisoGroups() {
     const groups = avisoGroups();
+    const groupIndex = buildAvisoGroupIndex();
     const search = String(state.ui.avisoGroupSearch || "").trim().toLowerCase();
     const filtered = groups.filter(group => !search || `${group.name} ${group.id}`.toLowerCase().includes(search));
     const selected = selectedAvisoGroup();
@@ -2468,7 +2464,7 @@
     $("#avisoGroupSearch").value = state.ui.avisoGroupSearch;
     $("#avisoGroupCount").textContent = `(${groups.length})`;
     $("#avisoGroupList").innerHTML = filtered.length ? `<div class="aviso-group-box">${filtered.map(group => {
-      const counts = avisoGroupCounts(group.id);
+      const counts = avisoGroupCounts(group.id, groupIndex);
       const active = group.id === selected?.id;
       return `<div class="aviso-group-row ${active ? "active" : ""}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="${search ? "false" : "true"}" title="${search ? "Clear the search to reorder groups" : "Drag to reorder"}">
         <span class="aviso-group-row-copy"><strong>${escapeHtml(group.name)}</strong></span>
@@ -2476,11 +2472,11 @@
       </div>`;
     }).join("")}</div>` : `<div class="aviso-list-message">${groups.length ? "No matching groups" : "No groups yet"}</div>`;
 
-    renderAvisoGroupEditor();
+    renderAvisoGroupEditor(groupIndex);
     renderAvisoGroupTargets();
   }
 
-  function renderAvisoGroupEditor() {
+  function renderAvisoGroupEditor(groupIndex = buildAvisoGroupIndex()) {
     const group = selectedAvisoGroup();
     const editor = $(".aviso-group-editor");
     if (!group) {
@@ -2497,7 +2493,7 @@
     $("#avisoGroupName").disabled = false;
     if (!drafts.avisoGroup || drafts.avisoGroup.id !== group.id) drafts.avisoGroup = { id: group.id, original: clone(group), data: clone(group) };
     const draft = drafts.avisoGroup.data;
-    const counts = avisoGroupCounts(group.id);
+    const counts = avisoGroupCounts(group.id, groupIndex);
 
     $("#avisoGroupCaption").textContent = draft.name || group.name;
     $("#avisoGroupSelectionMeta").textContent = `${counts.total.toLocaleString()} item${counts.total === 1 ? "" : "s"}`;
@@ -2506,7 +2502,7 @@
 
     $("#avisoGroupMemberSearch").value = state.ui.avisoGroupMemberSearch;
     const search = String(state.ui.avisoGroupMemberSearch || "").trim().toLowerCase();
-    const rows = avisoGroupMemberRows(group.id).filter(row =>
+    const rows = avisoGroupMemberRows(group.id, groupIndex).filter(row =>
       !search || `${row.name} ${row.subtitle} ${row.id}`.toLowerCase().includes(search)
     );
     $("#avisoGroupMemberList").innerHTML = rows.length ? rows.map(row => {
@@ -2588,28 +2584,6 @@
     if (!group) return;
     drafts.avisoGroup = { id: group.id, original: clone(group), data: clone(group) };
     renderAvisoGroupEditor();
-  }
-
-  function setSelectedAvisoGroupVisibility(visible) {
-    const group = selectedAvisoGroup();
-    if (!group) return;
-    group.visible = Boolean(visible);
-    if (drafts.avisoGroup?.id === group.id) drafts.avisoGroup.data.visible = group.visible;
-    markDirty(`Group ${group.visible ? "shown" : "hidden"}`);
-    postBridge("aviso.group.visibility", { id: group.id, name: group.name, visible: group.visible });
-    renderAvisoGroups();
-    renderRuntimeMenu();
-  }
-
-  function isolateSelectedAvisoGroup() {
-    const selected = selectedAvisoGroup();
-    if (!selected) return;
-    avisoGroups().forEach(group => { group.visible = group.id === selected.id; });
-    if (drafts.avisoGroup?.id === selected.id) drafts.avisoGroup.data.visible = true;
-    markDirty("AVISO group isolated");
-    postBridge("aviso.groups.visibility", { groups: avisoGroups().map(group => ({ id: group.id, visible: group.visible })) });
-    renderAvisoGroups();
-    renderRuntimeMenu();
   }
 
   function clearSelectedAvisoGroup() {
@@ -4158,12 +4132,6 @@
     postBridge("settings.update", clone(state.settings));
   }
 
-  function fillSelect(select, values, firstLabel, selectedValue = "") {
-    const unique = [...new Set(values.filter(Boolean))];
-    select.innerHTML = `<option value="">${escapeHtml(firstLabel)}</option>${unique.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
-    select.value = unique.includes(selectedValue) ? selectedValue : "";
-  }
-
   function ensureSelectValue(select, value) {
     const stringValue = String(value ?? "");
     if (![...select.options].some(option => option.value === stringValue)) {
@@ -4263,35 +4231,16 @@
     showToast("Redone", "success");
   }
 
-  function downloadJson(filename, value) {
-    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 500);
-  }
-
   function confirmDelete(message) {
     return !state.settings.confirmDelete || window.confirm(message);
   }
 
   function renderAll() {
     renderGlobalProfileSelect();
-    renderAllProfileSections();
-    renderAviso();
-    renderAlerts();
-    renderAvisoGroups();
-    renderDatalink();
-    renderSettings();
+    syncProfileTabSelection();
     setPage(state.ui.page);
-    setProfileTab(state.ui.profileTab);
     renderRuntimeMenu();
     syncSurfaceVisibility();
-    updateContext();
   }
 
   function applyQueryState() {
@@ -4771,7 +4720,6 @@
   function handleAction(action, button) {
     if (action === "open-control-center") openControlCenter("settings");
     else if (action === "close-runtime-popover") { state.ui.runtimePopover = ""; renderRuntimeMenu(); }
-    else if (action === "toggle-runtime-inset") toggleRuntimeInset();
     else if (action === "save-inset-preset") openInsetPresetDialog("capture");
     else if (action === "rename-inset-preset") openInsetPresetDialog("rename");
     else if (action === "capture-inset-preset") confirmInsetPresetDialog();
@@ -4780,11 +4728,10 @@
     else if (action === "duplicate-inset-preset") duplicateAvisoPreset();
     else if (action === "default-inset-preset") setDefaultAvisoPreset();
     else if (action === "delete-inset-preset") deleteAvisoPreset();
-    else if (action === "manage-aviso-groups") openControlCenter("groups");
     else if (action === "toggle-profile-menu") setRailProfilePopoverOpen($("#railProfilePopover").hidden);
     else if (action === "apply-color") applyColorDraft();
     else if (action === "revert-color") { drafts.color = null; renderColorEditor(); }
-    else if (action === "reset-color" || action === "reset-colors") resetSelectedColor();
+    else if (action === "reset-color") resetSelectedColor();
     else if (action === "apply-icons") applyIcons();
     else if (action === "revert-icons") renderIcons();
 
@@ -4844,9 +4791,6 @@
     else if (action === "delete-aviso-group") deleteAvisoGroup();
     else if (action === "apply-aviso-group") applyAvisoGroup();
     else if (action === "revert-aviso-group") revertAvisoGroup();
-    else if (action === "show-aviso-group") setSelectedAvisoGroupVisibility(true);
-    else if (action === "hide-aviso-group") setSelectedAvisoGroupVisibility(false);
-    else if (action === "isolate-aviso-group") isolateSelectedAvisoGroup();
     else if (action === "clear-aviso-group") clearSelectedAvisoGroup();
     else if (action === "open-aviso-group-content") openAvisoGroupContentDialog();
     else if (action === "apply-aviso-group-content") applyAvisoGroupContent();
@@ -4872,11 +4816,6 @@
     else if (action === "datalink-reminder-update") updatePdcReminders();
     else if (action === "apply-settings") applySettings();
     else if (action.startsWith("browse-")) { postBridge(action.replaceAll("-", ".")); showToast("Native file picker requested"); }
-  }
-
-  function copyText(value) {
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(() => showToast("Copied", "success")).catch(() => {});
-    else showToast(value);
   }
 
   function insertTagToken() {
@@ -5290,7 +5229,13 @@
     }
     if (incoming.runtime && typeof incoming.runtime === "object") {
       state.runtime = { ...state.runtime, ...clone(incoming.runtime) };
-      state.runtime.insets = { aviso: false, srw1: false, srw2: false, weather: false, ...(state.runtime.insets || {}) };
+      const incomingInsets = { ...(state.runtime.insets || {}) };
+      state.runtime.insets = {
+        aviso: Boolean(incomingInsets.aviso),
+        srw1: Boolean(incomingInsets.srw1),
+        weather: Boolean(incomingInsets.weather),
+        timer: Boolean(incomingInsets.timer)
+      };
       if (Object.hasOwn(incoming.runtime, "activeAvisoPreset")) {
         state.runtime.activeAvisoPresetScope = activePresetScope();
         const activePreset = airportAvisoPresetStore().items.find(item =>
@@ -5328,8 +5273,16 @@
   }
 
   function setInsetWindows(windows = {}) {
-    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false, weather: false };
-    ["aviso", "srw1", "srw2", "weather"].forEach(key => { if (key in windows) state.runtime.insets[key] = Boolean(windows[key]); });
+    state.runtime.insets = {
+      aviso: Boolean(state.runtime.insets?.aviso),
+      srw1: Boolean(state.runtime.insets?.srw1),
+      weather: Boolean(state.runtime.insets?.weather),
+      timer: Boolean(state.runtime.insets?.timer)
+    };
+    const normalizedWindows = { ...windows };
+    ["aviso", "srw1", "weather", "timer"].forEach(key => {
+      if (key in normalizedWindows) state.runtime.insets[key] = Boolean(normalizedWindows[key]);
+    });
     state.runtime.avisoInsetVisible = state.runtime.insets.aviso;
     renderRuntimeMenu();
   }

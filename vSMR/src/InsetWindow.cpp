@@ -28,6 +28,8 @@ namespace
 	constexpr int kInsetResizeInsidePx = 5;
 	constexpr int kInsetResizeCornerPx = 18;
 	constexpr int kInsetDragThresholdPx = 4;
+	constexpr int kTimerContentWidth = 126;
+	constexpr int kTimerContentHeight = 28;
 
 	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
 	using ResizeRegion = CInsetWindow::ResizeRegion;
@@ -161,9 +163,9 @@ namespace
 	constexpr int kInsetToolbarButtonGap = 2;
 	constexpr int kInsetToolbarRightMargin = 3;
 
-	int InsetToolbarRightOffset(int buttonIndexFromRight)
+	int InsetToolbarRightOffset(int buttonIndexFromRight, bool allowResize = true)
 	{
-		return kInsetToolbarRightMargin + kInsetResizeCornerPx +
+		return kInsetToolbarRightMargin + (allowResize ? kInsetResizeCornerPx : 0) +
 			buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
 	}
 
@@ -430,13 +432,13 @@ namespace
 		return CRect(area.left, area.top, area.right, min(area.bottom, area.top + kAvisoViewportTopBarHeight));
 	}
 
-	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue)
+	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue, bool allowResize = true)
 	{
 		const CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		return CRect(
-			titleBar.right - InsetToolbarRightOffset(0) - kInsetToolbarButtonSize,
+			titleBar.right - InsetToolbarRightOffset(0, allowResize) - kInsetToolbarButtonSize,
 			titleBar.top + 1,
-			titleBar.right - InsetToolbarRightOffset(0),
+			titleBar.right - InsetToolbarRightOffset(0, allowResize),
 			titleBar.bottom - 1);
 	}
 
@@ -450,15 +452,22 @@ namespace
 			titleBar.bottom - 1);
 	}
 
-	CRect InsetTitleBarMoveRect(AvisoLayoutMode mode, const RECT& areaValue, bool showFilter)
+	CRect InsetTitleBarMoveRect(
+		AvisoLayoutMode mode,
+		const RECT& areaValue,
+		bool showFilter,
+		bool allowResize = true)
 	{
 		CRect moveRect = InsetTitleBarRect(mode, areaValue);
 		moveRect.NormalizeRect();
-		moveRect.left = min(moveRect.right, moveRect.left + kInsetResizeCornerPx);
-		moveRect.right = max(moveRect.left, moveRect.right - kInsetResizeCornerPx);
-		moveRect.top = min(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
+		if (allowResize)
+		{
+			moveRect.left = min(moveRect.right, moveRect.left + kInsetResizeCornerPx);
+			moveRect.right = max(moveRect.left, moveRect.right - kInsetResizeCornerPx);
+			moveRect.top = min(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
+		}
 
-		CRect closeButton = InsetCloseButtonRect(mode, areaValue);
+		CRect closeButton = InsetCloseButtonRect(mode, areaValue, allowResize);
 		closeButton.NormalizeRect();
 		moveRect.right = min(moveRect.right, closeButton.left);
 		if (showFilter && mode == AvisoLayoutMode::Floating)
@@ -753,7 +762,8 @@ namespace
 		const RECT& areaValue,
 		const std::string& title,
 		bool showFilter,
-		POINT mouseLocation)
+		POINT mouseLocation,
+		bool allowResize = true)
 	{
 		if (radarScreen == nullptr)
 			return;
@@ -776,18 +786,24 @@ namespace
 		CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		titleBar.NormalizeRect();
 		DrawStripedInsetTitleBar(dc, titleBar);
-		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter);
+		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter, allowResize);
 		if (!titleBarMoveRect.IsRectEmpty())
 			radarScreen->AddScreenObject(objectType, "topbar", titleBarMoveRect, true, "");
 		DrawInsetTitle(dc, titleBar, title);
-		RegisterInsetResizeObjects(radarScreen, objectType, mode, areaValue);
+		if (allowResize)
+			RegisterInsetResizeObjects(radarScreen, objectType, mode, areaValue);
 
 		if (showFilter && mode == AvisoLayoutMode::Floating)
 		{
 			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation);
 			radarScreen->AddScreenObject(objectType, "filter", filterRect, false, "");
 		}
-		const CRect closeRect = DrawInsetToolbarButton(dc, "X", titleBar, InsetToolbarRightOffset(0), mouseLocation);
+		const CRect closeRect = DrawInsetToolbarButton(
+			dc,
+			"X",
+			titleBar,
+			InsetToolbarRightOffset(0, allowResize),
+			mouseLocation);
 		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
 	}
 
@@ -1097,6 +1113,69 @@ CInsetWindow::CInsetWindow(int Id)
 CInsetWindow::~CInsetWindow()
 {
 	CancelAvisoViewportRender();
+	ReleaseCachedFonts();
+}
+
+HFONT CInsetWindow::GetWeatherFont(
+	size_t index,
+	int height,
+	int weight,
+	DWORD pitchAndFamily,
+	const char* faceName)
+{
+	if (index >= m_WeatherFonts.size())
+		return nullptr;
+
+	if (m_WeatherFonts[index] != nullptr && m_WeatherFontHeights[index] == height)
+		return m_WeatherFonts[index];
+
+	if (m_WeatherFonts[index] != nullptr)
+	{
+		::DeleteObject(m_WeatherFonts[index]);
+		m_WeatherFonts[index] = nullptr;
+	}
+
+	HFONT font = ::CreateFontA(
+		height, 0, 0, 0, weight, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, pitchAndFamily, faceName);
+	if (font != nullptr)
+	{
+		m_WeatherFonts[index] = font;
+		m_WeatherFontHeights[index] = height;
+	}
+	return font;
+}
+
+HFONT CInsetWindow::GetTimerFont()
+{
+	if (m_TimerFont == nullptr)
+	{
+		m_TimerFont = ::CreateFontA(
+			-10, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+			DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+			CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
+	}
+	return m_TimerFont;
+}
+
+void CInsetWindow::ReleaseCachedFonts()
+{
+	for (HFONT& font : m_WeatherFonts)
+	{
+		if (font != nullptr)
+		{
+			::DeleteObject(font);
+			font = nullptr;
+		}
+	}
+	m_WeatherFontHeights.fill(0);
+
+	if (m_TimerFont != nullptr)
+	{
+		::DeleteObject(m_TimerFont);
+		m_TimerFont = nullptr;
+	}
 }
 
 bool CInsetWindow::IsAvisoViewport() const
@@ -1112,6 +1191,11 @@ bool CInsetWindow::IsSecondaryRadar() const
 bool CInsetWindow::IsWeather() const
 {
 	return m_Mode == Mode::Weather;
+}
+
+bool CInsetWindow::IsTimer() const
+{
+	return m_Mode == Mode::Timer;
 }
 
 bool CInsetWindow::SupportsPanAndZoom() const
@@ -1164,16 +1248,22 @@ bool CInsetWindow::IsPointInside(POINT Pt) const
 
 CRect CInsetWindow::GetWindowFrameRect() const
 {
+	if (IsTimer())
+		return InsetFrameRect(AvisoLayoutMode::Floating, m_Area);
 	return InsetFrameRect(m_AvisoLayoutMode, m_Area);
 }
 
 CRect CInsetWindow::GetWindowContentRect() const
 {
+	if (IsTimer())
+		return CRect(m_Area);
 	return InsetContentRect(m_AvisoLayoutMode, m_Area);
 }
 
 CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 {
+	if (IsTimer())
+		return ResizeRegion::None;
 	if (GetWindowFrameRect().IsRectEmpty())
 		return ResizeRegion::None;
 
@@ -1211,7 +1301,8 @@ CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
 
 bool CInsetWindow::HitTestTitleBar(POINT Pt) const
 {
-	CRect moveRect = InsetTitleBarMoveRect(m_AvisoLayoutMode, m_Area, IsSecondaryRadar());
+	const AvisoLayoutMode chromeMode = IsTimer() ? AvisoLayoutMode::Floating : m_AvisoLayoutMode;
+	CRect moveRect = InsetTitleBarMoveRect(chromeMode, m_Area, IsSecondaryRadar(), !IsTimer());
 	moveRect.NormalizeRect();
 	return moveRect.PtInRect(Pt) != FALSE;
 }
@@ -1223,7 +1314,7 @@ bool CInsetWindow::BeginWindowMove(POINT Pt, const RECT* layoutBounds, bool requ
 
 	ApplyAvisoLayoutBounds(layoutBounds);
 	m_WindowMoveActive = true;
-	m_WindowMoveStartedSnapped = IsSnappedLayout();
+	m_WindowMoveStartedSnapped = IsSnappedLayout() && !IsTimer();
 	m_WindowMoveDetached = !m_WindowMoveStartedSnapped;
 	m_WindowInteractionMoved = false;
 	m_WindowInteractionStartPoint = Pt;
@@ -1306,6 +1397,93 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 		startArea.top + deltaY + height
 	};
 	ApplyAvisoLayoutBounds(layoutBounds);
+	if (IsTimer())
+	{
+		CRect frame = GetWindowFrameRect();
+		frame.NormalizeRect();
+		bool snapHorizontal = false;
+		bool snapVertical = false;
+		bool snapLeft = false;
+		bool snapTop = false;
+		int snappedLeft = frame.left;
+		int snappedTop = frame.top;
+		// The compact Timer may be grabbed far from the edge of its frame.
+		// Snap from frame proximity so a visually flush window always receives
+		// an anchor and the matching preview, regardless of the grab point.
+		const bool nearLeft = frame.left <= bounds.left + kAvisoSnapThresholdPx;
+		const bool nearRight = frame.right >= bounds.right - kAvisoSnapThresholdPx;
+		const bool nearTop = frame.top <= bounds.top + kAvisoSnapThresholdPx;
+		const bool nearBottom = frame.bottom >= bounds.bottom - kAvisoSnapThresholdPx;
+		const bool nearCornerLeft = frame.left <= bounds.left + kAvisoCornerSnapThresholdPx;
+		const bool nearCornerRight = frame.right >= bounds.right - kAvisoCornerSnapThresholdPx;
+		const bool nearCornerTop = frame.top <= bounds.top + kAvisoCornerSnapThresholdPx;
+		const bool nearCornerBottom = frame.bottom >= bounds.bottom - kAvisoCornerSnapThresholdPx;
+
+		if ((nearCornerLeft || nearCornerRight) && (nearCornerTop || nearCornerBottom))
+		{
+			snapHorizontal = true;
+			snapVertical = true;
+			snapLeft = nearCornerLeft;
+			snapTop = nearCornerTop;
+			snappedLeft = snapLeft ? bounds.left : bounds.right - frame.Width();
+			snappedTop = snapTop ? bounds.top : bounds.bottom - frame.Height();
+		}
+		else
+		{
+			if (nearLeft || nearRight)
+			{
+				snapHorizontal = true;
+				snapLeft = nearLeft;
+				snappedLeft = snapLeft ? bounds.left : bounds.right - frame.Width();
+			}
+			if (nearTop || nearBottom)
+			{
+				snapVertical = true;
+				snapTop = nearTop;
+				snappedTop = snapTop ? bounds.top : bounds.bottom - frame.Height();
+			}
+		}
+
+		m_SnapPreviewValid = snapHorizontal || snapVertical;
+		if (snapHorizontal && snapVertical)
+		{
+			m_SnapPreviewMode = snapLeft
+				? (snapTop ? AvisoLayoutMode::CornerTopLeft : AvisoLayoutMode::CornerBottomLeft)
+				: (snapTop ? AvisoLayoutMode::CornerTopRight : AvisoLayoutMode::CornerBottomRight);
+		}
+		else if (snapHorizontal)
+		{
+			m_SnapPreviewMode = snapLeft ? AvisoLayoutMode::SplitLeft : AvisoLayoutMode::SplitRight;
+		}
+		else if (snapVertical)
+		{
+			m_SnapPreviewMode = snapTop ? AvisoLayoutMode::SplitTop : AvisoLayoutMode::SplitBottom;
+		}
+		else
+		{
+			m_SnapPreviewMode = AvisoLayoutMode::Floating;
+		}
+		if (m_SnapPreviewValid)
+		{
+			const int minimumLeft = static_cast<int>(bounds.left);
+			const int minimumTop = static_cast<int>(bounds.top);
+			const int maximumLeft = max(minimumLeft, static_cast<int>(bounds.right) - frame.Width());
+			const int maximumTop = max(minimumTop, static_cast<int>(bounds.bottom) - frame.Height());
+			snappedLeft = std::clamp(snappedLeft, minimumLeft, maximumLeft);
+			snappedTop = std::clamp(snappedTop, minimumTop, maximumTop);
+			m_SnapPreviewArea = {
+				snappedLeft,
+				snappedTop + kAvisoViewportTopBarHeight,
+				snappedLeft + frame.Width(),
+				snappedTop + frame.Height()
+			};
+		}
+		else
+		{
+			m_SnapPreviewArea = { 0, 0, 0, 0 };
+		}
+		return true;
+	}
 
 	CRect previewArea;
 	AvisoLayoutMode previewMode = AvisoLayoutMode::Floating;
@@ -1349,7 +1527,7 @@ bool CInsetWindow::EndWindowMove(POINT Pt, const RECT* layoutBounds)
 
 bool CInsetWindow::BeginWindowResize(ResizeRegion region, POINT Pt, const RECT* layoutBounds)
 {
-	if (region == ResizeRegion::None || m_WindowMoveActive)
+	if (IsTimer() || region == ResizeRegion::None || m_WindowMoveActive)
 		return false;
 
 	ApplyAvisoLayoutBounds(layoutBounds);
@@ -1555,6 +1733,8 @@ bool CInsetWindow::GetSnapPreviewRect(CRect& preview) const
 	if (!m_SnapPreviewValid)
 		return false;
 	preview = CRect(m_SnapPreviewArea);
+	if (IsTimer())
+		preview = InsetFrameRect(AvisoLayoutMode::Floating, m_SnapPreviewArea);
 	preview.NormalizeRect();
 	return !preview.IsRectEmpty();
 }
@@ -1564,9 +1744,8 @@ void CInsetWindow::RenderSnapPreview(Gdiplus::Graphics& graphics) const
 	if (!m_SnapPreviewValid)
 		return;
 
-	CRect preview(m_SnapPreviewArea);
-	preview.NormalizeRect();
-	if (preview.Width() <= 0 || preview.Height() <= 0)
+	CRect preview;
+	if (!GetSnapPreviewRect(preview))
 		return;
 
 	const Gdiplus::GraphicsState state = graphics.Save();
@@ -1591,6 +1770,56 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	const int contentTop = bounds.top + kAvisoViewportTopBarHeight;
 	if (contentTop >= bounds.bottom)
 		return;
+	if (IsTimer())
+	{
+		CRect area(m_Area);
+		area.NormalizeRect();
+		const int width = min(kTimerContentWidth, bounds.Width());
+		const int height = min(kTimerContentHeight, static_cast<int>(bounds.bottom) - contentTop);
+		const int minimumLeft = static_cast<int>(bounds.left);
+		const int minimumTop = contentTop;
+		const int maximumLeft = max(minimumLeft, static_cast<int>(bounds.right) - width);
+		const int maximumTop = max(minimumTop, static_cast<int>(bounds.bottom) - height);
+		int left = static_cast<int>(area.left);
+		int top = static_cast<int>(area.top);
+		switch (m_AvisoLayoutMode)
+		{
+		case AvisoLayoutMode::SplitLeft:
+			left = minimumLeft;
+			break;
+		case AvisoLayoutMode::SplitRight:
+			left = maximumLeft;
+			break;
+		case AvisoLayoutMode::SplitTop:
+			top = minimumTop;
+			break;
+		case AvisoLayoutMode::SplitBottom:
+			top = maximumTop;
+			break;
+		case AvisoLayoutMode::CornerTopLeft:
+			left = minimumLeft;
+			top = minimumTop;
+			break;
+		case AvisoLayoutMode::CornerTopRight:
+			left = maximumLeft;
+			top = minimumTop;
+			break;
+		case AvisoLayoutMode::CornerBottomLeft:
+			left = minimumLeft;
+			top = maximumTop;
+			break;
+		case AvisoLayoutMode::CornerBottomRight:
+			left = maximumLeft;
+			top = maximumTop;
+			break;
+		default:
+			break;
+		}
+		left = std::clamp(left, minimumLeft, maximumLeft);
+		top = std::clamp(top, minimumTop, maximumTop);
+		m_Area = { left, top, left + width, top + height };
+		return;
+	}
 
 	CRect area(m_Area);
 	area.NormalizeRect();
@@ -1768,7 +1997,7 @@ bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 	if (!SupportsPanAndZoom() || !m_AvisoRightPanning)
 		return false;
 
-	if (IsSecondaryRadar())
+	if (!IsAvisoViewport())
 	{
 		CRect area = GetWindowContentRect();
 		area.NormalizeRect();
@@ -1842,15 +2071,17 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	if (viewportWidth <= 0 || viewportHeight <= 0)
 		return false;
 
-	if (IsSecondaryRadar())
+	if (!IsAvisoViewport())
 	{
-		const int oldScale = max(1, m_Scale);
+		const int minimumScale = 1;
+		const int maximumScale = 2400;
+		const int oldScale = std::clamp(m_Scale, minimumScale, maximumScale);
 		int newScale = std::clamp(
 			static_cast<int>(std::lround(static_cast<double>(oldScale) * scaleMultiplier)),
-			1,
-			2400);
+			minimumScale,
+			maximumScale);
 		if (newScale == oldScale)
-			newScale = std::clamp(oldScale + (scaleMultiplier > 1.0 ? 1 : -1), 1, 2400);
+			newScale = std::clamp(oldScale + (scaleMultiplier > 1.0 ? 1 : -1), minimumScale, maximumScale);
 		if (newScale == oldScale)
 			return false;
 
@@ -1863,14 +2094,16 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 		const double newReferenceY = static_cast<double>(Pt.y) -
 			(ratio * (static_cast<double>(Pt.y) - oldReferenceY));
 		m_Scale = newScale;
+		const int maximumOffsetX = viewportWidth / 2;
+		const int maximumOffsetY = viewportHeight / 2;
 		m_Offset.x = std::clamp(
 			static_cast<int>(std::lround(newReferenceX - static_cast<double>(center.x))),
-			-viewportWidth / 2,
-			viewportWidth / 2);
+			-maximumOffsetX,
+			maximumOffsetX);
 		m_Offset.y = std::clamp(
 			static_cast<int>(std::lround(newReferenceY - static_cast<double>(center.y))),
-			-viewportHeight / 2,
-			viewportHeight / 2);
+			-maximumOffsetY,
+			maximumOffsetY);
 		m_AvisoScrollSelected = true;
 		return true;
 	}
@@ -1913,9 +2146,78 @@ void CInsetWindow::setAirport(string icao)
 
 void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int Button)
 {
-	UNREFERENCED_PARAMETER(sItemString);
 	UNREFERENCED_PARAMETER(Pt);
-	UNREFERENCED_PARAMETER(Button);
+	if (!IsTimer() || sItemString == nullptr)
+		return;
+
+	int durationMinutes = 0;
+	if (strcmp(sItemString, "timer.1m") == 0)
+		durationMinutes = 1;
+	else if (strcmp(sItemString, "timer.2m") == 0)
+		durationMinutes = 2;
+	else if (strcmp(sItemString, "timer.3m") == 0)
+		durationMinutes = 3;
+	if (durationMinutes == 0)
+		return;
+
+	if (Button == BUTTON_LEFT)
+		StartTimer(durationMinutes);
+	else if (Button == BUTTON_RIGHT)
+		ResetTimer(durationMinutes);
+}
+
+void CInsetWindow::StartTimer(int durationMinutes)
+{
+	if (!IsTimer() || durationMinutes < 1 || durationMinutes > 3)
+		return;
+	const size_t index = static_cast<size_t>(durationMinutes - 1);
+	if (m_TimerDeadlineTicks[index] != 0)
+		return;
+	m_TimerDeadlineTicks[index] = ::GetTickCount64() +
+		(static_cast<unsigned long long>(durationMinutes) * 60ULL * 1000ULL);
+	m_TimerExpired[index] = false;
+}
+
+void CInsetWindow::ResetTimer(int durationMinutes)
+{
+	if (!IsTimer() || durationMinutes < 1 || durationMinutes > 3)
+		return;
+	const size_t index = static_cast<size_t>(durationMinutes - 1);
+	m_TimerDeadlineTicks[index] = 0;
+	m_TimerExpired[index] = false;
+}
+
+bool CInsetWindow::UpdateTimerCountdowns()
+{
+	if (!IsTimer())
+		return false;
+
+	const unsigned long long now = ::GetTickCount64();
+	bool alarmDue = false;
+	for (size_t index = 0; index < m_TimerDeadlineTicks.size(); ++index)
+	{
+		const unsigned long long deadline = m_TimerDeadlineTicks[index];
+		if (deadline == 0 || now < deadline)
+			continue;
+
+		m_TimerDeadlineTicks[index] = 0;
+		m_TimerExpired[index] = true;
+		alarmDue = true;
+	}
+	return alarmDue;
+}
+
+int CInsetWindow::GetTimerRemainingSeconds(int durationMinutes, unsigned long long now) const
+{
+	if (!IsTimer() || durationMinutes < 1 || durationMinutes > 3)
+		return 0;
+	const size_t index = static_cast<size_t>(durationMinutes - 1);
+	const unsigned long long deadline = m_TimerDeadlineTicks[index];
+	if (deadline == 0)
+		return 0;
+	if (now >= deadline)
+		return 0;
+	return static_cast<int>((deadline - now + 999ULL) / 1000ULL);
 }
 
 bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool Released, const RECT* layoutBounds)
@@ -1937,7 +2239,12 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 	{
 		if (!m_WindowMoveActive)
 		{
-			CRect originalTitleBar = InsetTitleBarMoveRect(m_AvisoLayoutMode, m_Area, IsSecondaryRadar());
+			const AvisoLayoutMode chromeMode = IsTimer() ? AvisoLayoutMode::Floating : m_AvisoLayoutMode;
+			CRect originalTitleBar = InsetTitleBarMoveRect(
+				chromeMode,
+				m_Area,
+				IsSecondaryRadar(),
+				!IsTimer());
 			originalTitleBar.NormalizeRect();
 			const POINT startPoint = originalPointerFromMovedObject(originalTitleBar);
 			if (!BeginWindowMove(startPoint, layoutBounds, false))
@@ -2062,7 +2369,10 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 			m_Grip = true;
 		}
 
-		POINT maxoffset = { (m_Area.right - m_Area.left) / 2, (m_Area.bottom - (m_Area.top + 15)) / 2 };
+		POINT maxoffset = {
+			(m_Area.right - m_Area.left) / 2,
+			(m_Area.bottom - (m_Area.top + 15)) / 2
+		};
 		m_Offset.x = max(-maxoffset.x, min(maxoffset.x, m_OffsetInit.x + (Pt.x - m_OffsetDrag.x)));
 		m_Offset.y = max(-maxoffset.y, min(maxoffset.y, m_OffsetInit.y + (Pt.y - m_OffsetDrag.y)));
 
@@ -2217,9 +2527,11 @@ POINT CInsetWindow::projectPoint(CPosition pos)
 	refPt.y += m_Offset.y;
 
 	POINT out = {0, 0};
+	if (!m_AirportPositionValid)
+		return refPt;
 
-	double dist = AptPositions[icao].DistanceTo(pos);
-	double dir = TrueBearing(AptPositions[icao], pos);
+	double dist = m_AirportPosition.DistanceTo(pos);
+	double dir = TrueBearing(m_AirportPosition, pos);
 
 
 	out.x = refPt.x + int(m_Scale * dist * sin(dir) + 0.5);
@@ -3525,7 +3837,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return false;
 		};
 
-		auto drawTag = [&](CRadarTarget rt, CFlightPlan fp, const std::string& rtCallsign, const POINT& targetPoint, bool isASEL, bool isCorrelated, int reportedGs, bool isOnRunway)
+		auto drawTag = [&](CRadarTarget rt, CFlightPlan fp, const std::string& rtCallsign, const std::string& bottomLine, const POINT& targetPoint, bool isASEL, bool isCorrelated, int reportedGs, bool isOnRunway)
 		{
 			if (tagRegularFont == nullptr)
 				return;
@@ -3989,6 +4301,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				definedTextColor = Color(tagColorRuleOverrides.textA, tagColorRuleOverrides.textR, tagColorRuleOverrides.textG, tagColorRuleOverrides.textB);
 			}
 
+			const CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance != nullptr
+				? radar_screen->RimcasInstance->getAlert(rtCallsign)
+				: CRimcas::NoAlert;
 			Color tagBackgroundColor = definedBackgroundColor;
 			if (radar_screen->RimcasInstance != nullptr)
 			{
@@ -4017,7 +4332,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				return;
 
 			m_TagAreas[rtCallsign] = tagBackgroundRect;
-			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), tagBackgroundRect, true, radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), tagBackgroundRect, true, bottomLine.c_str());
 
 			Gdiplus::GraphicsPath roundedPath;
 			const int radius = 4;
@@ -4062,12 +4377,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					auto sqErrorIt = tagReplacingMap.find("sqerror");
 					if (sqErrorIt != tagReplacingMap.end() && !sqErrorIt->second.empty() && renderedElement.text == sqErrorIt->second)
 						drawBrush = &squawkErrorBrush;
-					if (radar_screen->RimcasInstance != nullptr)
-					{
-						const CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance->getAlert(rtCallsign);
-						if (rimcasStage != CRimcas::NoAlert)
-							drawBrush = (rimcasStage == CRimcas::StageTwo) ? &alertTextBrushStageTwo : &alertTextBrushStageOne;
-					}
+					if (rimcasStage != CRimcas::NoAlert)
+						drawBrush = (rimcasStage == CRimcas::StageTwo) ? &alertTextBrushStageTwo : &alertTextBrushStageOne;
 					std::unique_ptr<SolidBrush> tokenCustomBrush;
 					if (renderedElement.hasCustomColor)
 					{
@@ -4102,7 +4413,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 							textTop + heightOffset,
 							textLeft + widthOffset + itemWidth,
 							textTop + heightOffset + itemHeight);
-						radar_screen->AddScreenObject(clickItemType, rtCallsign.c_str(), itemRect, true, radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+						radar_screen->AddScreenObject(clickItemType, rtCallsign.c_str(), itemRect, true, bottomLine.c_str());
 					}
 
 					widthOffset += renderedElement.measuredWidth + blankWidth;
@@ -4139,7 +4450,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					gdi->FillRectangle(&rimcasBrush, CopyRect(rimcasLabelRect));
 					StringFormat stringFormat;
 					stringFormat.SetAlignment(StringAlignment::StringAlignmentCenter);
-					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::StageTwo)
+					SolidBrush* rimcasTextBrush = (rimcasStage == CRimcas::StageTwo)
 						? &alertTextBrushStageTwo
 						: &alertTextBrushStageOne;
 					gdi->DrawString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont,
@@ -4233,6 +4544,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			}
 
 			const int hitSize = max(iconSize, 12);
+			const std::string bottomLine = radar_screen->GetBottomLine(rtCallsign.c_str());
 			CRect targetArea(
 				targetPoint.x - hitSize / 2,
 				targetPoint.y - hitSize / 2,
@@ -4244,7 +4556,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				rtCallsign.c_str(),
 				targetArea,
 				false,
-				radar_screen->GetBottomLine(rtCallsign.c_str()).c_str());
+				bottomLine.c_str());
 
 			bool drawTargetTag = radar_screen->isVisible(rt);
 			if (tagProModeEnabled && (!hasAssignedSquawk || hasWrongAssignedSquawk))
@@ -4265,7 +4577,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			if (!radar_screen->ShouldDisplayTargetForDisplayMode(fp, rt, acIsCorrelated, reportedGs, isOnRunway, displayModeSettings))
 				drawTargetTag = false;
 			if (drawTargetTag)
-				drawTag(rt, fp, rtCallsign, targetPoint, isAsel, acIsCorrelated, reportedGs, isOnRunway);
+				drawTag(rt, fp, rtCallsign, bottomLine, targetPoint, isAsel, acIsCorrelated, reportedGs, isOnRunway);
 		}
 
 		if (useRealisticIconStyle)
@@ -4345,34 +4657,13 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		return -max(1, static_cast<int>(std::lround(static_cast<double>(pixels) * weatherScale)));
 	};
-	HFONT labelFont = ::CreateFontA(
-		scaledFontHeight(8), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT valueFont = ::CreateFontA(
-		scaledFontHeight(11), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT directionFont = ::CreateFontA(
-		scaledFontHeight(20), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT speedFont = ::CreateFontA(
-		scaledFontHeight(15), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT gustFont = ::CreateFontA(
-		scaledFontHeight(11), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT qnhFont = ::CreateFontA(
-		scaledFontHeight(17), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT compassFont = ::CreateFontA(
-		scaledFontHeight(8), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT labelFont = GetWeatherFont(0, scaledFontHeight(8), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT valueFont = GetWeatherFont(1, scaledFontHeight(11), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT directionFont = GetWeatherFont(2, scaledFontHeight(20), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT speedFont = GetWeatherFont(3, scaledFontHeight(15), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT gustFont = GetWeatherFont(4, scaledFontHeight(11), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT qnhFont = GetWeatherFont(5, scaledFontHeight(17), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT compassFont = GetWeatherFont(6, scaledFontHeight(8), FW_NORMAL, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 	HGDIOBJ originalFont = ::GetCurrentObject(hDC, OBJ_FONT);
 
 	auto drawText = [&](const CRect& source, const std::string& value, HFONT font, COLORREF color, UINT flags)
@@ -4425,73 +4716,38 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		double headwindScore = -1000000.0;
 	};
 	RunwayReference referenceRunway;
-	auto normalizeHeading = [](double heading) -> double
+	const auto considerRunway = [&](const std::string& runwayName, double trueHeading, bool headingValid)
 	{
-		heading = std::fmod(heading, 360.0);
-		return heading < 0.0 ? heading + 360.0 : heading;
-	};
-	auto trueBearing = [&](const CPosition& from, const CPosition& to) -> double
-	{
-		const double fromLatitude = DegToRad(from.m_Latitude);
-		const double toLatitude = DegToRad(to.m_Latitude);
-		const double longitudeDelta = DegToRad(to.m_Longitude - from.m_Longitude);
-		const double y = std::sin(longitudeDelta) * std::cos(toLatitude);
-		const double x = std::cos(fromLatitude) * std::sin(toLatitude) -
-			std::sin(fromLatitude) * std::cos(toLatitude) * std::cos(longitudeDelta);
-		return normalizeHeading(std::atan2(y, x) * 180.0 / 3.14159265358979323846);
-	};
-	auto angularDistance = [&](double first, double second) -> double
-	{
-		return std::abs(normalizeHeading(first - second + 180.0) - 180.0);
-	};
-	CSectorElement runway;
-	for (runway = radar_screen->GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
-		runway.IsValid();
-		runway = radar_screen->GetPlugIn()->SectorFileElementSelectNext(runway, SECTOR_ELEMENT_RUNWAY))
-	{
-		const char* airportName = runway.GetAirportName();
-		if (airportName == nullptr || station.empty() ||
-			VsmrWeather::NormalizeIcao(airportName) != station)
+		if (!headingValid || runwayName.empty() || radar_screen->RimcasInstance == nullptr)
+			return;
+		const auto statusIt = radar_screen->RimcasInstance->RunwayStatuses.find(runwayName);
+		if (statusIt == radar_screen->RimcasInstance->RunwayStatuses.end())
+			return;
+		const CRimcas::RunwayStatus status = statusIt->second;
+		const int priority = (status == CRimcas::DEP || status == CRimcas::BOTH)
+			? 0
+			: (status == CRimcas::ARR ? 1 : 3);
+		if (priority >= 3)
+			return;
+
+		const double headwindScore = weather.hasWind && !weather.windVariable
+			? static_cast<double>(weather.windSpeedKnots) *
+				std::cos(DegToRad(static_cast<double>(weather.windDirectionDegrees) - trueHeading))
+			: 0.0;
+		if (!referenceRunway.valid || priority < referenceRunway.priority ||
+			(priority == referenceRunway.priority && headwindScore > referenceRunway.headwindScore))
 		{
-			continue;
+			referenceRunway.valid = true;
+			referenceRunway.name = runwayName;
+			referenceRunway.trueHeading = trueHeading;
+			referenceRunway.priority = priority;
+			referenceRunway.headwindScore = headwindScore;
 		}
-
-		for (int index = 0; index < 2; ++index)
-		{
-			const char* runwayName = runway.GetRunwayName(index);
-			const int sectorHeading = runway.GetRunwayHeading(index);
-			if (runwayName == nullptr || runwayName[0] == '\0' || sectorHeading < 0 || sectorHeading > 360)
-				continue;
-
-			const int priority = runway.IsElementActive(true, index)
-				? 0
-				: (runway.IsElementActive(false, index) ? 1 : 3);
-			if (priority >= 3)
-				continue;
-
-			CPosition endpoints[2];
-			if (!runway.GetPosition(&endpoints[0], 0) || !runway.GetPosition(&endpoints[1], 1))
-				continue;
-			double heading = trueBearing(endpoints[index], endpoints[1 - index]);
-			// Sector files are normally ordered by runway end, but tolerate an
-			// inverted pair without using the magnetic sector-file heading for
-			// the actual wind-component calculation.
-			if (angularDistance(heading, static_cast<double>(sectorHeading)) > 90.0)
-				heading = normalizeHeading(heading + 180.0);
-			const double headwindScore = weather.hasWind && !weather.windVariable
-				? static_cast<double>(weather.windSpeedKnots) *
-					std::cos(DegToRad(static_cast<double>(weather.windDirectionDegrees) - heading))
-				: 0.0;
-			if (!referenceRunway.valid || priority < referenceRunway.priority ||
-				(priority == referenceRunway.priority && headwindScore > referenceRunway.headwindScore))
-			{
-				referenceRunway.valid = true;
-				referenceRunway.name = runwayName;
-				referenceRunway.trueHeading = heading;
-				referenceRunway.priority = priority;
-				referenceRunway.headwindScore = headwindScore;
-			}
-		}
+	};
+	for (const auto& runway : radar_screen->CachedRunwayGeometries)
+	{
+		considerRunway(runway.runwayNameA, runway.trueHeadingA, runway.trueHeadingAValid);
+		considerRunway(runway.runwayNameB, runway.trueHeadingB, runway.trueHeadingBValid);
 	}
 
 	SYSTEMTIME utcTime = {};
@@ -4784,13 +5040,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 
 	if (originalFont != nullptr)
 		::SelectObject(hDC, originalFont);
-	if (labelFont != nullptr) ::DeleteObject(labelFont);
-	if (valueFont != nullptr) ::DeleteObject(valueFont);
-	if (directionFont != nullptr) ::DeleteObject(directionFont);
-	if (speedFont != nullptr) ::DeleteObject(speedFont);
-	if (gustFont != nullptr) ::DeleteObject(gustFont);
-	if (qnhFont != nullptr) ::DeleteObject(qnhFont);
-	if (compassFont != nullptr) ::DeleteObject(compassFont);
 
 	gdi->Restore(graphicsState);
 	if (savedDc != 0)
@@ -4798,20 +5047,128 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 
 	CBrush frameBrush(outerBorder);
 	dc.FrameRect(content, &frameBrush);
-	std::string title = "WEATHER";
-	if (!station.empty())
-		title += " " + station;
-	if (referenceRunway.valid)
-		title += " " + referenceRunway.name;
 	DrawInsetWindowChrome(
 		dc,
 		radar_screen,
 		m_Id,
 		m_AvisoLayoutMode,
 		m_Area,
-		title,
+		"Metar",
 		false,
 		mouseLocation);
+
+	dc.Detach();
+}
+
+void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
+{
+	if (radar_screen == nullptr || gdi == nullptr || radar_screen->IsShutdownRequested())
+		return;
+
+	CDC dc;
+	dc.Attach(hDC);
+	CRect layoutBounds(radar_screen->GetRadarArea());
+	CRect chatArea(radar_screen->GetChatArea());
+	layoutBounds.NormalizeRect();
+	chatArea.NormalizeRect();
+	if (!chatArea.IsRectEmpty())
+		layoutBounds.bottom = chatArea.top;
+	ApplyAvisoLayoutBounds(&layoutBounds);
+
+	CRect content = GetWindowContentRect();
+	content.NormalizeRect();
+	if (content.Width() <= 0 || content.Height() <= 0)
+	{
+		dc.Detach();
+		return;
+	}
+
+	HWND renderWindow = ::WindowFromDC(hDC);
+	if (renderWindow == nullptr || !::IsWindow(renderWindow))
+		renderWindow = ::GetActiveWindow();
+	UpdateAvisoScreenArea(renderWindow);
+
+	const COLORREF outerBorder = RGB(5, 7, 8);
+	const COLORREF innerBorder = RGB(82, 96, 101);
+	const COLORREF idleFill = RGB(36, 48, 51);
+	const COLORREF hoverFill = RGB(48, 64, 68);
+	const COLORREF runningFill = RGB(38, 79, 91);
+	const COLORREF expiredFill = RGB(92, 42, 42);
+	const COLORREF idleText = RGB(208, 217, 220);
+	const COLORREF runningText = RGB(115, 216, 229);
+	const COLORREF expiredText = RGB(255, 167, 157);
+
+	dc.FillSolidRect(content, idleFill);
+	radar_screen->AddScreenObject(m_Id, "window", content, false, "Timer");
+	const int savedDc = ::SaveDC(hDC);
+	if (savedDc != 0)
+		::IntersectClipRect(hDC, content.left, content.top, content.right, content.bottom);
+	HFONT timerFont = GetTimerFont();
+	HGDIOBJ originalFont = timerFont != nullptr ? ::SelectObject(hDC, timerFont) : nullptr;
+	const int oldBkMode = ::SetBkMode(hDC, TRANSPARENT);
+	const unsigned long long now = ::GetTickCount64();
+
+	for (int durationMinutes = 1; durationMinutes <= 3; ++durationMinutes)
+	{
+		const int index = durationMinutes - 1;
+		CRect cell(
+			content.left + (content.Width() * index) / 3,
+			content.top,
+			content.left + (content.Width() * (index + 1)) / 3,
+			content.bottom);
+		const int remainingSeconds = GetTimerRemainingSeconds(durationMinutes, now);
+		const bool running = m_TimerDeadlineTicks[static_cast<size_t>(index)] != 0;
+		const bool expired = m_TimerExpired[static_cast<size_t>(index)];
+		COLORREF fill = running ? runningFill : (expired ? expiredFill : idleFill);
+		if (!running && !expired && cell.PtInRect(mouseLocation))
+			fill = hoverFill;
+		dc.FillSolidRect(cell, fill);
+		dc.Draw3dRect(cell, innerBorder, outerBorder);
+
+		char label[16] = {};
+		if (running)
+		{
+			std::snprintf(label, sizeof(label), "%d:%02d", remainingSeconds / 60, remainingSeconds % 60);
+		}
+		else if (expired)
+		{
+			std::snprintf(label, sizeof(label), "0:00");
+		}
+		else
+		{
+			std::snprintf(label, sizeof(label), "%dM", durationMinutes);
+		}
+		::SetTextColor(hDC, running ? runningText : (expired ? expiredText : idleText));
+		CRect textRect(cell);
+		::DrawTextA(hDC, label, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+		const std::string objectId = "timer." + std::to_string(durationMinutes) + "m";
+		radar_screen->AddScreenObject(
+			m_Id,
+			objectId.c_str(),
+			cell,
+			false,
+			"Left click to start; right click to reset");
+	}
+
+	::SetBkMode(hDC, oldBkMode);
+	if (originalFont != nullptr)
+		::SelectObject(hDC, originalFont);
+	if (savedDc != 0)
+		::RestoreDC(hDC, savedDc);
+
+	CBrush frameBrush(outerBorder);
+	dc.FrameRect(content, &frameBrush);
+	DrawInsetWindowChrome(
+		dc,
+		radar_screen,
+		m_Id,
+		AvisoLayoutMode::Floating,
+		m_Area,
+		"Timer",
+		false,
+		mouseLocation,
+		false);
 
 	dc.Detach();
 }
@@ -4831,7 +5188,11 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		renderWeather(hDC, radar_screen, gdi, mouseLocation);
 		return;
 	}
-
+	if (IsTimer())
+	{
+		renderTimer(hDC, radar_screen, gdi, mouseLocation);
+		return;
+	}
 	CDC dc;
 	dc.Attach(hDC);
 	CRect layoutBounds(radar_screen->GetRadarArea());
@@ -4864,8 +5225,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 	};
 
-	icao = radar_screen->ActiveAirport;
-	AptPositions = radar_screen->AirportPositions;
+	icao = radar_screen->getActiveAirport();
+	m_AirportPositionValid = radar_screen->TryGetActiveAirportPosition(m_AirportPosition);
 	m_TargetPoints.clear();
 	m_TagAreas.clear();
 
@@ -4907,16 +5268,16 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		return fallback;
 	};
 
-	const Value* approachInsetSection = getProfileObjectSection("approach_insets");
+	const Value* srwInsetSection = getProfileObjectSection("approach_insets");
 	const Value* filterSection = getProfileObjectSection("filters");
 	const Value* rimcasSection = getProfileObjectSection("rimcas");
 	const Value* labelsSection = getProfileObjectSection("labels");
 
-	const COLORREF qBackgroundColor = getSectionColorRef(approachInsetSection, "background_color", RGB(30, 30, 30));
-	const COLORREF approachRunwayColor = getSectionColorRef(approachInsetSection, "runway_color", RGB(255, 255, 255));
-	const COLORREF approachExtendedLineColor = getSectionColorRef(approachInsetSection, "extended_lines_color", RGB(180, 180, 180));
-	const double approachExtendedLineLengthNm = max(0.1, getSectionDouble(approachInsetSection, "extended_lines_length", 15.0));
-	const int approachExtendedLineTickSpacingNm = max(1, getSectionInt(approachInsetSection, "extended_lines_ticks_spacing", 1));
+	const COLORREF qBackgroundColor = getSectionColorRef(srwInsetSection, "background_color", RGB(30, 30, 30));
+	const COLORREF srwRunwayColor = getSectionColorRef(srwInsetSection, "runway_color", RGB(255, 255, 255));
+	const COLORREF srwExtendedLineColor = getSectionColorRef(srwInsetSection, "extended_lines_color", RGB(180, 180, 180));
+	const double srwExtendedLineLengthNm = max(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
+	const int srwExtendedLineTickSpacingNm = max(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
 	const int radarRangeNm = max(1, getSectionInt(filterSection, "radar_range_nm", 999));
 	const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
 	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
@@ -4953,6 +5314,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	refPt.y += m_Offset.y;
 
 	// Here we draw all runways for the airport
+	CPen runwayPen(PS_SOLID, 1, srwRunwayColor);
+	CPen extendedCentreLinePen(PS_SOLID, 1, srwExtendedLineColor);
 	CSectorElement rwy;
 	for (rwy = radar_screen->GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
 		rwy.IsValid();
@@ -4962,9 +5325,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		if (startsWith(icao.c_str(), rwy.GetAirportName()))
 		{
 
-			CPen RunwayPen(PS_SOLID, 1, approachRunwayColor);
-			CPen ExtendedCentreLinePen(PS_SOLID, 1, approachExtendedLineColor);
-			CPen* oldPen = dc.SelectObject(&RunwayPen);
+			CPen* oldPen = dc.SelectObject(&runwayPen);
 
 			CPosition EndOne, EndTwo;
 			rwy.GetPosition(&EndOne, 0);
@@ -4996,24 +5357,24 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					
 
 				double reverseHeading = RadToDeg(TrueBearing(OtherEnd, Threshold));
-				double lenght = approachExtendedLineLengthNm * 1852.0;
+				double length = srwExtendedLineLengthNm * 1852.0;
 
 				// Drawing the extended centreline
-				CPosition endExtended = BetterHarversine(Threshold, reverseHeading, lenght);
+				CPosition endExtended = BetterHarversine(Threshold, reverseHeading, length);
 
 				Pt1 = projectPoint(Threshold);
 				Pt2 = projectPoint(endExtended);
 
 				if (LiangBarsky(windowAreaCRect, Pt1, Pt2, toDraw1, toDraw2)) {
-					dc.SelectObject(&ExtendedCentreLinePen);
+					dc.SelectObject(&extendedCentreLinePen);
 					dc.MoveTo(toDraw1);
 					dc.LineTo(toDraw2);
 				}
 
 				// Drawing the ticks
-				int increment = approachExtendedLineTickSpacingNm * 1852;
+				int increment = srwExtendedLineTickSpacingNm * 1852;
 
-				for (int j = increment; j <= int(approachExtendedLineLengthNm * 1852); j += increment) {
+				for (int j = increment; j <= int(srwExtendedLineLengthNm * 1852); j += increment) {
 
 					CPosition tickPosition = BetterHarversine(Threshold, reverseHeading, j);
 					CPosition tickBottom = BetterHarversine(tickPosition, fmod(reverseHeading - 90, 360), 500);
@@ -5024,7 +5385,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					Pt2 = projectPoint(tickTop);
 
 					if (LiangBarsky(windowAreaCRect, Pt1, Pt2, toDraw1, toDraw2)) {
-						dc.SelectObject(&ExtendedCentreLinePen);
+						dc.SelectObject(&extendedCentreLinePen);
 						dc.MoveTo(toDraw1);
 						dc.LineTo(toDraw2);
 					}
@@ -5032,13 +5393,12 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				}
 			} 
 
-			dc.SelectObject(&oldPen);
+			dc.SelectObject(oldPen);
 		}
 	}
 
 	// Aircrafts
 
-	vector<POINT> appAreaVect = { windowAreaCRect.TopLeft(),{ windowAreaCRect.right, windowAreaCRect.top }, windowAreaCRect.BottomRight(),{ windowAreaCRect.left, windowAreaCRect.bottom } };
 	CPen WhitePen(PS_SOLID, 1, RGB(255, 255, 255));
 	const CSMRRadar::CorrelationSettings insetCorrelationSettings = radar_screen->BuildCorrelationSettings();
 	const CSMRRadar::DisplayModeSettings insetDisplayModeSettings = radar_screen->GetActiveDisplayModeSettings();
@@ -5080,7 +5440,46 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 	}
 
+	auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
+	Gdiplus::Font* tagRegularFont = (fontIt != radar_screen->customFonts.end()) ? fontIt->second.get() : nullptr;
+	Gdiplus::Font* tagBoldFont = tagRegularFont;
+	std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
+	int blankWidth = 0;
+	int oneLineHeight = 0;
+	if (tagRegularFont != nullptr)
+	{
+		Gdiplus::FontFamily baseFamily;
+		if (tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
+		{
+			const INT boldStyle = tagRegularFont->GetStyle() | Gdiplus::FontStyleBold;
+			tagBoldFontOwned = std::make_unique<Gdiplus::Font>(
+				&baseFamily,
+				tagRegularFont->GetSize(),
+				boldStyle,
+				Gdiplus::UnitPixel);
+			if (tagBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
+				tagBoldFont = tagBoldFontOwned.get();
+		}
+
+		RectF measureRect;
+		gdi->MeasureString(L" ", 1, tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+		blankWidth = static_cast<int>(measureRect.GetRight());
+		measureRect = RectF(0, 0, 0, 0);
+		static const wchar_t kMetricSample[] = L"AZERTYUIOPQSDFGHJKLMWXCVBN";
+		gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
+			tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+		oneLineHeight = static_cast<int>(measureRect.GetBottom());
+		if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
+		{
+			RectF boldMeasureRect;
+			gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
+				tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasureRect);
+			oneLineHeight = max(oneLineHeight, static_cast<int>(boldMeasureRect.GetBottom()));
+		}
+	}
+
 	CRadarTarget aselTarget = radar_screen->GetPlugIn()->RadarTargetSelectASEL();
+	const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
 	CRadarTarget rt;
 	for (rt = radar_screen->GetPlugIn()->RadarTargetSelectFirst();
 		rt.IsValid();
@@ -5089,19 +5488,17 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		const char* rtCallsign = rt.GetCallsign();
 		if (rtCallsign == nullptr || rtCallsign[0] == '\0')
 			continue;
-		const char* aselCallsign = aselTarget.IsValid() ? aselTarget.GetCallsign() : nullptr;
 		bool isASEL = (aselCallsign != nullptr && strcmp(aselCallsign, rtCallsign) == 0);
-		int radarRange = radarRangeNm;
 
-		if (rt.GetGS() < 60 ||
-			rt.GetPosition().GetPressureAltitude() > m_Filter ||
-			!rt.IsValid() ||
-			!rt.GetPosition().IsValid() ||
-			rt.GetPosition().GetPosition().DistanceTo(AptPositions[icao]) > radarRange)
+		CRadarTargetPositionData RtPos = rt.GetPosition();
+		if (!RtPos.IsValid() ||
+			rt.GetGS() < 60 ||
+			!m_AirportPositionValid ||
+			RtPos.GetPressureAltitude() > m_Filter ||
+			RtPos.GetPosition().DistanceTo(m_AirportPosition) > radarRangeNm)
 			continue;
 
-		CPosition RtPos2 = rt.GetPosition().GetPosition();
-		CRadarTargetPositionData RtPos = rt.GetPosition();
+		CPosition RtPos2 = RtPos.GetPosition();
 		auto fp = radar_screen->GetPlugIn()->FlightPlanSelect(rtCallsign);
 		auto reportedGs = RtPos.GetReportedGS();
 		const char* fpDestination = fp.IsValid() ? fp.GetFlightPlanData().GetDestination() : nullptr;
@@ -5111,6 +5508,20 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		const bool acIsCorrelatedForMode = radar_screen->IsCorrelatedWithSettings(fp, rt, insetCorrelationSettings);
 		if (!radar_screen->ShouldDisplayTargetForDisplayMode(fp, rt, acIsCorrelatedForMode, reportedGs, isOnRunway, insetDisplayModeSettings))
 			continue;
+		const CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance != nullptr
+			? radar_screen->RimcasInstance->getAlert(rtCallsign)
+			: CRimcas::NoAlert;
+		std::string bottomLine;
+		bool bottomLineResolved = false;
+		const auto getBottomLine = [&]() -> const char*
+		{
+			if (!bottomLineResolved)
+			{
+				bottomLine = radar_screen->GetBottomLine(rtCallsign);
+				bottomLineResolved = true;
+			}
+			return bottomLine.c_str();
+		};
 
 		// Filtering the targets
 
@@ -5118,7 +5529,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		RtPoint = projectPoint(RtPos2);
 
-		if (Is_Inside(RtPoint, appAreaVect)) {
+		if (windowAreaCRect.PtInRect(RtPoint)) {
 			dc.SelectObject(&WhitePen);
 
 			if (RtPos.GetTransponderC()) {
@@ -5143,7 +5554,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			TargetArea.NormalizeRect();
 			const CRect clippedTargetArea = clipToWindowContent(TargetArea);
 			if (!clippedTargetArea.IsRectEmpty())
-				radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign, clippedTargetArea, false, radar_screen->GetBottomLine(rtCallsign).c_str());
+				radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign, clippedTargetArea, false, getBottomLine());
 		}
 
 		if (mouseWithin(mouseLocation, windowAreaCRect) &&
@@ -5169,7 +5580,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			dc.LineTo(RtPoint.x + 10, RtPoint.y + 4);
 		}
 
-		int lenght = 50;
+		const int leaderLength = 50;
 
 		POINT TagCenter;
 		m_TargetPoints[rtCallsign] = RtPoint;
@@ -5186,8 +5597,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				m_TagAngles[rtCallsign] = 45.0; // TODO: Not the best, ah well
 			}
 
-			TagCenter.x = long(RtPoint.x + float(lenght * cos(DegToRad(m_TagAngles[rtCallsign]))));
-			TagCenter.y = long(RtPoint.y + float(lenght * sin(DegToRad(m_TagAngles[rtCallsign]))));
+			TagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
+			TagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
 		}
 		// Drawing the tags, what a mess
 
@@ -5262,35 +5673,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		int TagWidth = 0, TagHeight = 0;
 		RectF mesureRect;
-		auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
-		Gdiplus::Font* tagRegularFont = (fontIt != radar_screen->customFonts.end()) ? fontIt->second.get() : nullptr;
 		if (tagRegularFont == nullptr)
 			continue;
-		Gdiplus::Font* tagBoldFont = tagRegularFont;
-		std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
-		Gdiplus::FontFamily baseFamily;
-		if (tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
-		{
-			INT boldStyle = tagRegularFont->GetStyle() | Gdiplus::FontStyleBold;
-			tagBoldFontOwned.reset(new Gdiplus::Font(&baseFamily, tagRegularFont->GetSize(), boldStyle, Gdiplus::UnitPixel));
-			if (tagBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
-				tagBoldFont = tagBoldFontOwned.get();
-		}
-
-		gdi->MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
-		int blankWidth = (int)mesureRect.GetRight();
-
-		mesureRect = RectF(0, 0, 0, 0);
-		gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-			tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
-		int oneLineHeight = (int)mesureRect.GetBottom();
-		if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
-		{
-			RectF boldMeasureRect;
-			gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-				tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasureRect);
-			oneLineHeight = max(oneLineHeight, (int)boldMeasureRect.GetBottom());
-		}
 
 		static const Value emptyObject(kObjectType);
 		const Value& LabelsSettings = (labelsSection != nullptr) ? *labelsSection : emptyObject;
@@ -5337,15 +5721,14 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		{
 			bool isAirborneArrival = false;
 			if (fpDestination != nullptr &&
-				strcmp(fpDestination, radar_screen->getActiveAirport().c_str()) == 0)
+				strcmp(fpDestination, insetActiveAirport.c_str()) == 0)
 			{
 				isAirborneArrival = true;
 			}
 			definitionTypeKey = isAirborneArrival ? "arrival" : "departure";
 			const char* airborneStatusKey = isAirborneArrival ? "airarr" : "airdep";
 			const char* onRunwayStatusKey = isAirborneArrival ? "airarr_onrunway" : "airdep_onrunway";
-			const bool targetOnRunway = radar_screen->RimcasInstance->isAcOnRunway(rtCallsign);
-			if (targetOnRunway && hasStatusDefinition(definitionTypeKey, onRunwayStatusKey))
+			if (isOnRunway && hasStatusDefinition(definitionTypeKey, onRunwayStatusKey))
 				definitionStatusKey = onRunwayStatusKey;
 			else
 				definitionStatusKey = airborneStatusKey;
@@ -5621,9 +6004,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		CRect TagBackgroundRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
 
-		if (Is_Inside(TagBackgroundRect.TopLeft(), appAreaVect) &&
-			Is_Inside(RtPoint, appAreaVect) &&
-			Is_Inside(TagBackgroundRect.BottomRight(), appAreaVect)) {
+		if (windowAreaCRect.PtInRect(TagBackgroundRect.TopLeft()) &&
+			windowAreaCRect.PtInRect(RtPoint) &&
+			windowAreaCRect.PtInRect(TagBackgroundRect.BottomRight())) {
 
 			const int padding = 3;
 			TagBackgroundRect = CRect(TagBackgroundRect.left - padding, TagBackgroundRect.top - padding, TagBackgroundRect.right + padding, TagBackgroundRect.bottom + padding);
@@ -5632,7 +6015,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			int textWidth = max(0, TagBackgroundRect.Width() - (padding * 2));
 
 			// Semi-transparent background to reduce clutter while keeping arrival/departure color coding (unless RIMCAS alert overrides the color).
-			if (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::NoAlert) {
+			if (rimcasStage == CRimcas::NoAlert) {
 				auto blend = [](Color a, Color b, float t) {
 					auto mix = [t](BYTE c1, BYTE c2) -> BYTE {
 						return static_cast<BYTE>(c1 * t + c2 * (1.0f - t));
@@ -5693,7 +6076,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			m_TagAreas[rtCallsign] = TagBackgroundRect;
 			const CRect clippedTagArea = clipToWindowContent(TagBackgroundRect);
 			if (!clippedTagArea.IsRectEmpty())
-				radar_screen->AddScreenObject(m_Id, rtCallsign, clippedTagArea, true, radar_screen->GetBottomLine(rtCallsign).c_str());
+				radar_screen->AddScreenObject(m_Id, rtCallsign, clippedTagArea, true, getBottomLine());
 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
@@ -5717,7 +6100,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					if (TagReplacingMap["sqerror"].size() > 0 && strcmp(element.c_str(), TagReplacingMap["sqerror"].c_str()) == 0)
 						color = &SquawkErrorColor;
 
-					CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance->getAlert(rtCallsign);
 					if (rimcasStage != CRimcas::NoAlert)
 						color = (rimcasStage == CRimcas::StageTwo) ? &AlertTextColorWarning : &AlertTextColorCaution;
 
@@ -5750,7 +6132,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 							textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
 						const CRect clippedItemRect = clipToWindowContent(ItemRect);
 						if (!clippedItemRect.IsRectEmpty())
-							radar_screen->AddScreenObject(clickItemType, rtCallsign, clippedItemRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
+							radar_screen->AddScreenObject(clickItemType, rtCallsign, clippedItemRect, true, getBottomLine());
 					}
 
 					widthOffset += renderedElement.measuredWidth;
@@ -5795,7 +6177,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					wstring rimcasw = wstring(L"ALERT");
 					StringFormat stformat;
 					stformat.SetAlignment(StringAlignment::StringAlignmentCenter);
-					SolidBrush* rimcasTextBrush = (radar_screen->RimcasInstance->getAlert(rtCallsign) == CRimcas::StageTwo)
+					SolidBrush* rimcasTextBrush = (rimcasStage == CRimcas::StageTwo)
 						? &AlertTextColorWarning
 						: &AlertTextColorCaution;
 					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), tagRegularFont, PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, rimcasTextBrush);

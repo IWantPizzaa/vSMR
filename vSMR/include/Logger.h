@@ -87,7 +87,6 @@ public:
 			"CSMRPlugin::OnFlightPlanDisconnect(",
 			"CSMRRadar::OnOverScreenObject(",
 			"CSMRRadar::OnRadarTargetPositionUpdate(",
-			"CSMRRadar::RefreshAirportActivity(",
 			"CSMRRadar::GenerateTagData(",
 			"CSMRRadar::GetBottomLine(",
 			"CSMRRadar::OnFlightPlanDisconnect("

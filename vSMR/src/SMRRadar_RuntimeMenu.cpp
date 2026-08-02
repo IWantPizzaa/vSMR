@@ -416,8 +416,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			const int appWindowIds[] = {
 				APPWINDOW_AVISO - APPWINDOW_BASE,
 				1,
-				2,
-				APPWINDOW_WEATHER - APPWINDOW_BASE
+				APPWINDOW_WEATHER - APPWINDOW_BASE,
+				APPWINDOW_TIMER - APPWINDOW_BASE
 			};
 			const int dotY = buttonArea.bottom - 6;
 			for (int dot = 0; dot < static_cast<int>(_countof(appWindowIds)); ++dot)
@@ -496,6 +496,9 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 
 	const bool insetPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
+	const std::vector<AvisoPreset> insetPresets = insetPopup
+		? GetAvisoPresets()
+		: std::vector<AvisoPreset>();
 	const int popupWidth = insetPopup ? kInsetPopupWidth : kStandardPopupWidth;
 	int popupHeight = 0;
 	int visibleRows = 0;
@@ -516,9 +519,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	else
 	{
-		const std::vector<AvisoPreset> presets = GetAvisoPresets();
-		const int presetRows = (std::min)(4, static_cast<int>(presets.size()));
-		const bool presetPager = presets.size() > 4;
+		const int presetRows = (std::min)(4, static_cast<int>(insetPresets.size()));
+		const bool presetPager = insetPresets.size() > 4;
 		popupHeight =
 			kPopupHeaderHeight +
 			kPopupPadding +
@@ -561,18 +563,9 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	CRect titleDivider(titleArea.left, titleArea.bottom - 1, titleArea.right, titleArea.bottom);
 	FillRectColor(hdc, titleDivider, RGB(17, 23, 25));
 
-	HFONT headerFont = ::CreateFontA(
-		-11, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT rowFont = ::CreateFontA(
-		-11, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT actionFont = ::CreateFontA(
-		-10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT headerFont = static_cast<HFONT>(RuntimeOverlayFont.GetSafeHandle());
+	HFONT rowFont = headerFont;
+	HFONT actionFont = static_cast<HFONT>(RuntimeMenuActionFont.GetSafeHandle());
 
 	HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
 	CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
@@ -676,6 +669,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	{
 		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
 		const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+		const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
 		const struct
 		{
 			const char* id;
@@ -685,8 +679,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		} insetRows[] = {
 			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
 			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
-			{ "runtime.inset.srw2", "runtime.inset.reset.srw2", "SRW 2", 2 },
-			{ "runtime.inset.weather", "runtime.inset.reset.weather", "Weather", weatherWindowId }
+			{ "runtime.inset.weather", "runtime.inset.reset.weather", "Weather", weatherWindowId },
+			{ "runtime.inset.timer", "runtime.inset.reset.timer", "Timer", timerWindowId }
 		};
 		for (const auto& inset : insetRows)
 		{
@@ -730,7 +724,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		DrawTextEllipsis(hdc, sectionArea, "PRESET", RGB(159, 176, 181));
 		contentTop += 19;
 
-		const std::vector<AvisoPreset> presets = GetAvisoPresets();
+		const std::vector<AvisoPreset>& presets = insetPresets;
 		const std::string activePreset = GetActiveAvisoPresetName();
 		const std::string defaultPreset = GetDefaultAvisoPresetName();
 		const int presetRows = (std::min)(4, static_cast<int>(presets.size()));
@@ -868,12 +862,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 
 	::SelectObject(hdc, oldFont);
-	if (headerFont != nullptr)
-		::DeleteObject(headerFont);
-	if (rowFont != nullptr)
-		::DeleteObject(rowFont);
-	if (actionFont != nullptr)
-		::DeleteObject(actionFont);
 	::RestoreDC(hdc, savedDc);
 }
 
@@ -1041,14 +1029,14 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		toggleAppWindow(1);
 		return true;
 	}
-	if (std::strcmp(id, "runtime.inset.srw2") == 0)
-	{
-		toggleAppWindow(2);
-		return true;
-	}
 	if (std::strcmp(id, "runtime.inset.weather") == 0)
 	{
 		toggleAppWindow(APPWINDOW_WEATHER - APPWINDOW_BASE);
+		return true;
+	}
+	if (std::strcmp(id, "runtime.inset.timer") == 0)
+	{
+		toggleAppWindow(APPWINDOW_TIMER - APPWINDOW_BASE);
 		return true;
 	}
 	if (std::strcmp(id, "runtime.inset.reset.aviso") == 0)
@@ -1061,14 +1049,14 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		resetInsetWindow(1);
 		return true;
 	}
-	if (std::strcmp(id, "runtime.inset.reset.srw2") == 0)
-	{
-		resetInsetWindow(2);
-		return true;
-	}
 	if (std::strcmp(id, "runtime.inset.reset.weather") == 0)
 	{
 		resetInsetWindow(APPWINDOW_WEATHER - APPWINDOW_BASE);
+		return true;
+	}
+	if (std::strcmp(id, "runtime.inset.reset.timer") == 0)
+	{
+		resetInsetWindow(APPWINDOW_TIMER - APPWINDOW_BASE);
 		return true;
 	}
 
