@@ -720,7 +720,7 @@ string CSMRRadar::setActiveAirport(string value, bool switchInsetContext)
 	if (switchInsetContext)
 	{
 		ResetAllInsetWindowStates(false);
-		ResetAvisoPresetStateForActiveProfile(false);
+		ResetAvisoPresetStateForActiveAirport(false);
 		if (!LoadInsetStateFromAsrForAirport(ActiveAirport, false))
 			ApplyDefaultAvisoPresetIfConfigured();
 		SaveDataToAsr("Airport", "Active airport", ActiveAirport.c_str());
@@ -783,7 +783,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	LoadRuntimeMenuPositionFromAsr();
 
 	ResetAllInsetWindowStates(false);
-	ResetAvisoPresetStateForActiveProfile(false);
+	ResetAvisoPresetStateForActiveAirport(false);
 	if (!LoadInsetStateFromAsrForAirport(getActiveAirport(), true))
 		ApplyDefaultAvisoPresetIfConfigured();
 	SaveInsetStateToAsrForAirport(getActiveAirport());

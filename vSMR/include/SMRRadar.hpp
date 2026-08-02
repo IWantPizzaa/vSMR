@@ -682,7 +682,7 @@ public:
 	bool SetDefaultAvisoPreset(const std::string& name);
 	bool ClearDefaultAvisoPreset();
 	bool ApplyDefaultAvisoPresetIfConfigured();
-	void ResetAvisoPresetStateForActiveProfile(bool applyDefaultPreset = true);
+	void ResetAvisoPresetStateForActiveAirport(bool applyDefaultPreset = true);
 	bool UpdateActiveAvisoPreset();
 	bool ResetActiveAvisoPreset();
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);
