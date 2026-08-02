@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <deque>
 #include <set>
+#include <memory>
+#include <new>
 #include "rapidjson/document.h"
 
 bool Logger::ENABLED;
@@ -21,6 +23,10 @@ Logger::Mode Logger::CURRENT_MODE = Logger::Mode::Normal;
 
 // CPDLC/Hoppie connection state shared between timer and worker threads.
 std::atomic<bool> HoppieConnected(false);
+std::atomic<bool> HoppieConnecting(false);
+std::atomic<bool> HoppiePollInProgress(false);
+std::atomic<unsigned long long> HoppieConnectionGeneration(0);
+std::atomic<unsigned long long> HoppiePollGeneration(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 std::atomic<bool> PluginShutdownRequested(false);
@@ -31,6 +37,8 @@ string logonCallsign = "EGKK";
 bool BLINK = false;
 
 bool PlaySoundClr = false;
+std::string DatalinkStatusMessage = "Disconnected.";
+std::mutex DatalinkControlMutex;
 
 struct DatalinkPacket {
 	string callsign;
@@ -47,7 +55,7 @@ struct DatalinkPacket {
 
 DatalinkPacket DatalinkToSend;
 
-string baseUrlDatalink = "http://www.hoppie.nl/acars/system/connect.html";
+string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
 
 struct AcarsMessage {
 	string from;
@@ -67,6 +75,7 @@ struct QueuedCdmReminderMessage {
 	string callsign;
 	string message;
 	int sendAttempts = 0;
+	bool automatic = false;
 };
 
 std::deque<QueuedCdmReminderMessage> CdmReminderMessageQueue;
@@ -132,6 +141,52 @@ namespace
 {
 	const std::time_t CdmWarningCooldownSeconds = 60;
 	const int CdmReminderQueueMaxSendAttempts = 20;
+	const int CdmMaximumMinutes = 24 * 60;
+
+	struct DatalinkCredentialsSnapshot
+	{
+		std::string callsign;
+		std::string password;
+		bool playSound = false;
+	};
+
+	struct DatalinkLoginRequest
+	{
+		DatalinkCredentialsSnapshot credentials;
+		unsigned long long generation = 0;
+	};
+
+	struct DatalinkPollRequest
+	{
+		DatalinkCredentialsSnapshot credentials;
+		unsigned long long generation = 0;
+		unsigned long long pollGeneration = 0;
+		bool reportStatus = false;
+	};
+
+	DatalinkCredentialsSnapshot SnapshotDatalinkCredentials()
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		DatalinkCredentialsSnapshot snapshot;
+		snapshot.callsign = logonCallsign;
+		snapshot.password = logonCode;
+		snapshot.playSound = PlaySoundClr;
+		return snapshot;
+	}
+
+	void SetDatalinkStatusMessage(const std::string& message)
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		DatalinkStatusMessage = message;
+	}
+
+	std::string GetDatalinkStatusMessageCopy()
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		return DatalinkStatusMessage;
+	}
+
+	bool StartDatalinkPoll(bool reportStatus, std::string& error);
 
 	HttpHelper& GetHttpHelper()
 	{
@@ -169,6 +224,92 @@ namespace
 		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
 			--end;
 		return text.substr(start, end - start);
+	}
+
+	std::string EncodeUrlQueryComponent(const std::string& text)
+	{
+		static const char hex[] = "0123456789ABCDEF";
+		std::string encoded;
+		encoded.reserve(text.size());
+		for (unsigned char c : text)
+		{
+			const bool isAsciiAlphaNumeric =
+				(c >= 'A' && c <= 'Z') ||
+				(c >= 'a' && c <= 'z') ||
+				(c >= '0' && c <= '9');
+			if (isAsciiAlphaNumeric || c == '-' || c == '_' || c == '.' || c == '~')
+			{
+				encoded.push_back(static_cast<char>(c));
+				continue;
+			}
+			encoded.push_back('%');
+			encoded.push_back(hex[(c >> 4) & 0x0F]);
+			encoded.push_back(hex[c & 0x0F]);
+		}
+		return encoded;
+	}
+
+	std::string NormalizeHoppieResponse(const std::string& raw)
+	{
+		std::string normalized = raw;
+		if (normalized.size() >= 3 &&
+			static_cast<unsigned char>(normalized[0]) == 0xEF &&
+			static_cast<unsigned char>(normalized[1]) == 0xBB &&
+			static_cast<unsigned char>(normalized[2]) == 0xBF)
+		{
+			normalized.erase(0, 3);
+		}
+		normalized = TrimAsciiWhitespaceCopy(normalized);
+		for (char& c : normalized)
+		{
+			if (c == '\r' || c == '\n' || c == '\t')
+				c = ' ';
+		}
+		return normalized;
+	}
+
+	bool IsHoppieOkResponse(const std::string& raw)
+	{
+		const std::string normalized = NormalizeHoppieResponse(raw);
+		if (normalized.size() < 2 ||
+			std::tolower(static_cast<unsigned char>(normalized[0])) != 'o' ||
+			std::tolower(static_cast<unsigned char>(normalized[1])) != 'k')
+		{
+			return false;
+		}
+		return normalized.size() == 2 ||
+			std::isspace(static_cast<unsigned char>(normalized[2])) != 0 ||
+			normalized[2] == '{';
+	}
+
+	std::string RedactSensitiveValue(std::string text, const std::string& secret)
+	{
+		if (secret.empty())
+			return text;
+		size_t position = 0;
+		while ((position = text.find(secret, position)) != std::string::npos)
+		{
+			text.replace(position, secret.size(), "<redacted>");
+			position += strlen("<redacted>");
+		}
+		return text;
+	}
+
+	std::string BuildHoppieLoginFailureMessage(
+		const std::string& raw,
+		const std::string& password)
+	{
+		std::string response = NormalizeHoppieResponse(raw);
+		response = RedactSensitiveValue(response, password);
+		response = RedactSensitiveValue(response, EncodeUrlQueryComponent(password));
+		if (response.empty())
+		{
+			return "Connection failed: Hoppie returned no response. Check the network or proxy and try again.";
+		}
+		const size_t maximumResponseLength = 160;
+		if (response.size() > maximumResponseLength)
+			response = response.substr(0, maximumResponseLength) + "...";
+		return "Hoppie rejected the connection: " + response;
 	}
 
 	std::string KeepAsciiAlnumCopy(const std::string& text)
@@ -365,7 +506,10 @@ namespace
 			});
 	}
 
-	bool QueueCdmReminderUnlocked(const std::string& callsign, const std::string& message)
+	bool QueueCdmReminderUnlocked(
+		const std::string& callsign,
+		const std::string& message,
+		bool automatic)
 	{
 		if (callsign.empty() || message.empty())
 			return false;
@@ -376,6 +520,7 @@ namespace
 		queued.callsign = callsign;
 		queued.message = message;
 		queued.sendAttempts = 0;
+		queued.automatic = automatic;
 		CdmReminderMessageQueue.push_back(queued);
 		return true;
 	}
@@ -430,7 +575,8 @@ namespace
 		const std::string& reminderMessage,
 		std::time_t nowUtc,
 		bool* outVacdmEvaluated = nullptr,
-		bool* outHasVacdmData = nullptr)
+		bool* outHasVacdmData = nullptr,
+		bool automatic = false)
 	{
 		if (outVacdmEvaluated != nullptr)
 			*outVacdmEvaluated = false;
@@ -469,17 +615,29 @@ namespace
 				return CdmQueueReminderOutcome::AlreadyQueued;
 			if (HasDatalinkClearanceSentUnlocked(normalizedCallsign))
 				return CdmQueueReminderOutcome::AlreadyCleared;
-			if (!QueueCdmReminderUnlocked(normalizedCallsign, reminderMessage))
+			if (!QueueCdmReminderUnlocked(normalizedCallsign, reminderMessage, automatic))
 				return CdmQueueReminderOutcome::Failed;
 		}
 
 		return CdmQueueReminderOutcome::Queued;
 	}
 
-	void ClearCdmAutoTrackingState()
+	void ClearCdmAutoTrackingState(bool clearQueuedAutomaticReminders = false)
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		AircraftCdmAutoTracked.clear();
+		if (clearQueuedAutomaticReminders)
+		{
+			CdmReminderMessageQueue.erase(
+				std::remove_if(
+					CdmReminderMessageQueue.begin(),
+					CdmReminderMessageQueue.end(),
+					[](const QueuedCdmReminderMessage& reminder)
+					{
+						return reminder.automatic;
+					}),
+				CdmReminderMessageQueue.end());
+		}
 	}
 
 	bool ContainsCallsignUnlocked(const std::vector<std::string>& collection, const std::string& callsign)
@@ -1030,13 +1188,14 @@ namespace
 	{
 		if (PluginShutdownRequested.load(std::memory_order_relaxed))
 			return false;
+		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
 
 		string raw;
 		string url = baseUrlDatalink;
 		url += "?logon=";
-		url += logonCode;
+		url += EncodeUrlQueryComponent(credentials.password);
 		url += "&from=";
-		url += logonCallsign;
+		url += EncodeUrlQueryComponent(credentials.callsign);
 		url += "&to=";
 		url += destination;
 		url += "&type=";
@@ -1200,7 +1359,13 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 	for (const std::string& callsign : callsignsToQueue)
 	{
 		const CdmQueueReminderOutcome outcome =
-			TryQueueCdmReminderForCallsign(callsign, reminderMessage, nowUtc);
+			TryQueueCdmReminderForCallsign(
+				callsign,
+				reminderMessage,
+				nowUtc,
+				nullptr,
+				nullptr,
+				true);
 		if (outcome == CdmQueueReminderOutcome::Queued)
 			++queuedCount;
 	}
@@ -1401,27 +1566,69 @@ void refreshVacdmData(void* arg)
 }
 
 void datalinkLogin(void * arg) {
-	(void)arg;
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	std::unique_ptr<DatalinkLoginRequest> request(
+		static_cast<DatalinkLoginRequest*>(arg));
+	if (!request || PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
-	string raw;
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=SERVER&type=PING";
-	raw.assign(GetHttpHelper().downloadStringFromURL(url));
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-		return;
-
-	if (startsWith("ok", raw.c_str())) {
-		HoppieConnected.store(true);
-		ConnectionMessage.store(true);
+	bool connected = false;
+	std::string failureMessage;
+	try
+	{
+		string url = baseUrlDatalink;
+		url += "?logon=";
+		url += EncodeUrlQueryComponent(request->credentials.password);
+		url += "&from=";
+		url += EncodeUrlQueryComponent(request->credentials.callsign);
+		url += "&to=SERVER&type=PING";
+		const string raw = GetHttpHelper().downloadStringFromURL(url);
+		connected = IsHoppieOkResponse(raw);
+		if (!connected)
+			failureMessage = BuildHoppieLoginFailureMessage(raw, request->credentials.password);
 	}
-	else {
-		FailedToConnectMessage.store(true);
+	catch (const std::exception& exception)
+	{
+		connected = false;
+		failureMessage = "Connection failed before Hoppie replied.";
+		std::string exceptionDetail = RedactSensitiveValue(
+			exception.what(),
+			request->credentials.password);
+		exceptionDetail = RedactSensitiveValue(
+			exceptionDetail,
+			EncodeUrlQueryComponent(request->credentials.password));
+		Logger::info("CPDLC login exception: " + exceptionDetail);
+	}
+	catch (...)
+	{
+		connected = false;
+		failureMessage = "Connection failed before Hoppie replied.";
+		Logger::info("CPDLC login exception: unknown");
+	}
+
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+		request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+	{
+		return;
+	}
+
+	if (connected)
+	{
+		SetDatalinkStatusMessage("Connected.");
+		HoppieConnected.store(true, std::memory_order_release);
+		HoppieConnecting.store(false, std::memory_order_release);
+		FailedToConnectMessage.store(false, std::memory_order_relaxed);
+		ConnectionMessage.store(true, std::memory_order_release);
+	}
+	else
+	{
+		if (failureMessage.empty())
+			failureMessage = "Connection failed: Hoppie rejected the login.";
+		ConnectionMessage.store(false, std::memory_order_relaxed);
+		SetDatalinkStatusMessage(failureMessage);
+		HoppieConnected.store(false, std::memory_order_release);
+		HoppieConnecting.store(false, std::memory_order_release);
+		Logger::info(failureMessage);
+		FailedToConnectMessage.store(true, std::memory_order_release);
 	}
 };
 
@@ -1447,23 +1654,70 @@ void sendDatalinkMessage(void * arg) {
 };
 
 void pollMessages(void * arg) {
-	(void)arg;
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	std::unique_ptr<DatalinkPollRequest> request(
+		static_cast<DatalinkPollRequest*>(arg));
+	if (!request)
+	{
+		HoppiePollInProgress.store(false, std::memory_order_release);
 		return;
+	}
 
-	string raw = "";
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += logonCode;
-	url += "&from=";
-	url += logonCallsign;
-	url += "&to=SERVER&type=POLL";
-	raw.assign(GetHttpHelper().downloadStringFromURL(url));
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-		return;
+	const auto completePoll = [&](bool succeeded)
+	{
+		if (request->pollGeneration ==
+			HoppiePollGeneration.load(std::memory_order_acquire))
+		{
+			HoppiePollInProgress.store(false, std::memory_order_release);
+		}
+		if (!request->reportStatus ||
+			PluginShutdownRequested.load(std::memory_order_relaxed) ||
+			request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		{
+			return;
+		}
+		SetDatalinkStatusMessage(succeeded ? "Poll complete." : "Poll failed.");
+	};
 
-	if (!startsWith("ok", raw.c_str()) || raw.size() <= 3)
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		completePoll(false);
 		return;
+	}
+
+	string raw;
+	try
+	{
+		string url = baseUrlDatalink;
+		url += "?logon=";
+		url += EncodeUrlQueryComponent(request->credentials.password);
+		url += "&from=";
+		url += EncodeUrlQueryComponent(request->credentials.callsign);
+		url += "&to=SERVER&type=POLL";
+		raw.assign(GetHttpHelper().downloadStringFromURL(url));
+	}
+	catch (...)
+	{
+		completePoll(false);
+		return;
+	}
+
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+		request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+	{
+		completePoll(false);
+		return;
+	}
+
+	if (!startsWith("ok", raw.c_str()))
+	{
+		completePoll(false);
+		return;
+	}
+	if (raw.size() <= 3)
+	{
+		completePoll(true);
+		return;
+	}
 
 	raw = raw + " ";
 	raw = raw.substr(3, raw.size() - 3);
@@ -1472,8 +1726,12 @@ void pollMessages(void * arg) {
 	size_t pos = 0;
 	std::string token;
 	while ((pos = raw.find(delimiter)) != std::string::npos) {
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+			request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		{
+			completePoll(false);
 			return;
+		}
 
 		token = raw.substr(1, pos);
 
@@ -1507,7 +1765,7 @@ void pollMessages(void * arg) {
 					if (!PluginShutdownRequested.load(std::memory_order_relaxed))
 						_beginthread(sendDatalinkMessage, 0, NULL);
 				} else {
-					if (PlaySoundClr) {
+					if (request->credentials.playSound) {
 						AFX_MANAGE_STATE(AfxGetStaticModuleState());
 						PlaySound(MAKEINTRESOURCE(IDR_WAVE1), AfxGetInstanceHandle(), SND_RESOURCE | SND_ASYNC);
 					}
@@ -1534,13 +1792,81 @@ void pollMessages(void * arg) {
 		raw.erase(0, pos + delimiter.length());
 	}
 
-
+	completePoll(true);
 };
+
+namespace
+{
+	bool StartDatalinkPoll(bool reportStatus, std::string& error)
+	{
+		error.clear();
+		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		{
+			error = "The CPDLC service is shutting down.";
+			return false;
+		}
+		if (!HoppieConnected.load(std::memory_order_acquire))
+		{
+			error = "CPDLC is not connected.";
+			return false;
+		}
+
+		bool expected = false;
+		if (!HoppiePollInProgress.compare_exchange_strong(
+			expected,
+			true,
+			std::memory_order_acq_rel))
+		{
+			error = "A CPDLC poll is already in progress.";
+			return false;
+		}
+
+		std::unique_ptr<DatalinkPollRequest> request(new (std::nothrow) DatalinkPollRequest());
+		if (!request)
+		{
+			HoppiePollInProgress.store(false, std::memory_order_release);
+			error = "Unable to allocate the CPDLC poll request.";
+			return false;
+		}
+		request->credentials = SnapshotDatalinkCredentials();
+		request->generation = HoppieConnectionGeneration.load(std::memory_order_acquire);
+		request->pollGeneration =
+			HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+		request->reportStatus = reportStatus;
+		if (!HoppieConnected.load(std::memory_order_acquire) ||
+			request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		{
+			if (request->pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
+				HoppiePollInProgress.store(false, std::memory_order_release);
+			error = "CPDLC disconnected before the poll could start.";
+			return false;
+		}
+
+		if (reportStatus)
+			SetDatalinkStatusMessage("Polling...");
+
+		DatalinkPollRequest* rawRequest = request.release();
+		const uintptr_t threadHandle = _beginthread(pollMessages, 0, rawRequest);
+		if (threadHandle == static_cast<uintptr_t>(-1L))
+		{
+			const unsigned long long failedPollGeneration = rawRequest->pollGeneration;
+			delete rawRequest;
+			if (failedPollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
+				HoppiePollInProgress.store(false, std::memory_order_release);
+			error = "Unable to start the CPDLC poll worker.";
+			if (reportStatus)
+				SetDatalinkStatusMessage(error);
+			return false;
+		}
+		return true;
+	}
+}
 
 void sendDatalinkClearance(void * arg) {
 	(void)arg;
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
+	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
 
 	DatalinkPacket packet;
 	std::string localFrequency;
@@ -1553,9 +1879,9 @@ void sendDatalinkClearance(void * arg) {
 	string raw;
 	string url = baseUrlDatalink;
 	url += "?logon=";
-	url += logonCode;
+	url += EncodeUrlQueryComponent(credentials.password);
 	url += "&from=";
-	url += logonCallsign;
+	url += EncodeUrlQueryComponent(credentials.callsign);
 	url += "&to=";
 	url += packet.callsign;
 	url += "&type=CPDLC&packet=/data2/";
@@ -1620,6 +1946,23 @@ void sendDatalinkClearance(void * arg) {
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
 {
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
+	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
+	HoppieConnected.store(false, std::memory_order_relaxed);
+	HoppieConnecting.store(false, std::memory_order_relaxed);
+	HoppiePollInProgress.store(false, std::memory_order_relaxed);
+	ConnectionMessage.store(false, std::memory_order_relaxed);
+	FailedToConnectMessage.store(false, std::memory_order_relaxed);
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		logonCallsign = "EGKK";
+		logonCode.clear();
+		PlaySoundClr = false;
+		DatalinkStatusMessage = "Disconnected.";
+	}
+	CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
+	CdmAutoDelayMinutes.store(5, std::memory_order_relaxed);
+	CdmReminderCooldownMinutes.store(60, std::memory_order_relaxed);
 
 	Logger::DLL_PATH = "";
 	Logger::ENABLED = false;
@@ -1638,12 +1981,15 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 	const char * p_value;
 
-	if ((p_value = GetDataFromSettings("cpdlc_logon")) != NULL)
-		logonCallsign = p_value;
-	if ((p_value = GetDataFromSettings("cpdlc_password")) != NULL)
-		logonCode = p_value;
-	if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
-		PlaySoundClr = bool(!!atoi(p_value));
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		if ((p_value = GetDataFromSettings("cpdlc_logon")) != NULL)
+			logonCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(p_value));
+		if ((p_value = GetDataFromSettings("cpdlc_password")) != NULL)
+			logonCode = TrimAsciiWhitespaceCopy(p_value);
+		if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
+			PlaySoundClr = bool(!!atoi(p_value));
+	}
 	if ((p_value = GetDataFromSettings("cdm_auto_enabled")) != NULL)
 		CdmAutoModeEnabled.store(bool(!!atoi(p_value)), std::memory_order_relaxed);
 	if ((p_value = GetDataFromSettings("cdm_auto_delay_min")) != NULL)
@@ -1685,16 +2031,18 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 CSMRPlugin::~CSMRPlugin()
 {
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);
+	HoppieConnecting.store(false, std::memory_order_relaxed);
+	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
 
 	// Persist CPDLC settings via EuroScope's plugin settings storage.
-	SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", logonCallsign.c_str());
-	SaveDataToSettings("cpdlc_password", "The CPDLC logon password", logonCode.c_str());
-	int temp = 0;
-	if (PlaySoundClr)
-		temp = 1;
-	SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", std::to_string(temp).c_str());
+	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+	SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", credentials.callsign.c_str());
+	SaveDataToSettings("cpdlc_password", "The CPDLC logon password", credentials.password.c_str());
+	SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", credentials.playSound ? "1" : "0");
 	SaveDataToSettings("cdm_auto_enabled", "Enable automatic CDM reminder messaging", CdmAutoModeEnabled.load(std::memory_order_relaxed) ? "1" : "0");
 	int cdmAutoDelayToPersist = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
 	if (cdmAutoDelayToPersist < 0)
@@ -1716,6 +2064,322 @@ CSMRPlugin::~CSMRPlugin()
 	}
 }
 
+DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
+{
+	DatalinkControlState state;
+	state.connected = HoppieConnected.load(std::memory_order_acquire);
+	state.connecting = HoppieConnecting.load(std::memory_order_acquire);
+	state.pollInProgress = HoppiePollInProgress.load(std::memory_order_acquire);
+	state.controllerConnected = ControllerMyself().IsController();
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		state.logonCallsign = logonCallsign;
+		state.hasPassword = !TrimAsciiWhitespaceCopy(logonCode).empty();
+		state.playSound = PlaySoundClr;
+		state.statusMessage = DatalinkStatusMessage;
+	}
+	state.cdmAutoEnabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
+	state.cdmDelayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
+	state.cdmCooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
+	state.vacdmConfigured = VacdmPollingEnabled.load(std::memory_order_relaxed);
+	state.activeAirport = ResolveActiveAirportFilterUpper();
+
+	std::string aliasMessage;
+	state.cdmAliasReady = TryReadCdmReminderMessageFromAlias(
+		const_cast<CSMRPlugin*>(this),
+		aliasMessage,
+		state.cdmAliasPath);
+	return state;
+}
+
+bool CSMRPlugin::UpdateDatalinkControlSettings(
+	const std::string& callsign,
+	const std::string& password,
+	bool replacePassword,
+	bool playSound,
+	bool cdmAutoEnabled,
+	int delayMinutes,
+	int cooldownMinutes,
+	std::string& error)
+{
+	error.clear();
+	const std::string normalizedCallsign =
+		ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
+	const std::string normalizedPassword =
+		replacePassword ? TrimAsciiWhitespaceCopy(password) : std::string();
+	if (normalizedCallsign.empty())
+	{
+		error = "The CPDLC logon callsign is required.";
+		return false;
+	}
+	if (replacePassword && normalizedPassword.empty())
+	{
+		error = "Enter a Hoppie code before replacing the saved code.";
+		return false;
+	}
+	if (delayMinutes < 0 || delayMinutes > CdmMaximumMinutes)
+	{
+		error = "The CDM auto delay must be between 0 and 1440 minutes.";
+		return false;
+	}
+	if (cooldownMinutes < 0 || cooldownMinutes > CdmMaximumMinutes)
+	{
+		error = "The CDM reminder cooldown must be between 0 and 1440 minutes.";
+		return false;
+	}
+
+	const bool previousAutoEnabled =
+		CdmAutoModeEnabled.load(std::memory_order_relaxed);
+	const int previousDelayMinutes =
+		CdmAutoDelayMinutes.load(std::memory_order_relaxed);
+	std::string passwordToPersist;
+	bool credentialsChanged = false;
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		credentialsChanged =
+			ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(logonCallsign)) != normalizedCallsign ||
+			(replacePassword && logonCode != normalizedPassword);
+		logonCallsign = normalizedCallsign;
+		if (replacePassword)
+			logonCode = normalizedPassword;
+		PlaySoundClr = playSound;
+		passwordToPersist = logonCode;
+	}
+	if (credentialsChanged &&
+		(HoppieConnected.load(std::memory_order_acquire) ||
+			HoppieConnecting.load(std::memory_order_acquire)))
+	{
+		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+		HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
+		HoppieConnected.store(false, std::memory_order_release);
+		HoppieConnecting.store(false, std::memory_order_release);
+		HoppiePollInProgress.store(false, std::memory_order_release);
+		ConnectionMessage.store(false, std::memory_order_relaxed);
+		FailedToConnectMessage.store(false, std::memory_order_relaxed);
+		SetDatalinkStatusMessage("Credentials changed. Reconnect CPDLC to apply them.");
+	}
+	else if (credentialsChanged)
+	{
+		SetDatalinkStatusMessage("Credentials updated. Ready to connect.");
+	}
+	CdmAutoModeEnabled.store(cdmAutoEnabled, std::memory_order_relaxed);
+	CdmAutoDelayMinutes.store(delayMinutes, std::memory_order_relaxed);
+	CdmReminderCooldownMinutes.store(cooldownMinutes, std::memory_order_relaxed);
+
+	if (previousAutoEnabled != cdmAutoEnabled ||
+		previousDelayMinutes != delayMinutes)
+	{
+		ClearCdmAutoTrackingState(true);
+	}
+
+	SaveDataToSettings(
+		"cpdlc_logon",
+		"The CPDLC logon callsign",
+		normalizedCallsign.c_str());
+	SaveDataToSettings(
+		"cpdlc_password",
+		"The CPDLC logon password",
+		passwordToPersist.c_str());
+	SaveDataToSettings(
+		"cpdlc_sound",
+		"Play sound on clearance request",
+		playSound ? "1" : "0");
+	SaveDataToSettings(
+		"cdm_auto_enabled",
+		"Enable automatic CDM reminder messaging",
+		cdmAutoEnabled ? "1" : "0");
+	SaveDataToSettings(
+		"cdm_auto_delay_min",
+		"CDM auto reminder delay in minutes",
+		std::to_string(delayMinutes).c_str());
+	SaveDataToSettings(
+		"cdm_cooldown_min",
+		"CDM reminder resend cooldown in minutes",
+		std::to_string(cooldownMinutes).c_str());
+	return true;
+}
+
+bool CSMRPlugin::ConnectDatalink(std::string& error)
+{
+	error.clear();
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		error = "The CPDLC service is shutting down.";
+		return false;
+	}
+	if (!ControllerMyself().IsController())
+	{
+		error = "You are not logged in as a controller.";
+		return false;
+	}
+	if (HoppieConnected.load(std::memory_order_acquire))
+	{
+		error = "CPDLC is already connected.";
+		return false;
+	}
+
+	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+	if (TrimAsciiWhitespaceCopy(credentials.callsign).empty() ||
+		TrimAsciiWhitespaceCopy(credentials.password).empty())
+	{
+		error = "A CPDLC logon callsign and Hoppie code are required.";
+		return false;
+	}
+
+	bool expected = false;
+	if (!HoppieConnecting.compare_exchange_strong(
+		expected,
+		true,
+		std::memory_order_acq_rel))
+	{
+		error = "A CPDLC connection attempt is already in progress.";
+		return false;
+	}
+	if (HoppieConnected.load(std::memory_order_acquire))
+	{
+		HoppieConnecting.store(false, std::memory_order_release);
+		error = "CPDLC is already connected.";
+		return false;
+	}
+
+	const unsigned long long generation =
+		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+	ConnectionMessage.store(false, std::memory_order_relaxed);
+	FailedToConnectMessage.store(false, std::memory_order_relaxed);
+	SetDatalinkStatusMessage("Connecting...");
+
+	std::unique_ptr<DatalinkLoginRequest> request(new (std::nothrow) DatalinkLoginRequest());
+	if (!request)
+	{
+		HoppieConnecting.store(false, std::memory_order_release);
+		error = "Unable to allocate the CPDLC connection request.";
+		SetDatalinkStatusMessage(error);
+		return false;
+	}
+	request->credentials = credentials;
+	request->generation = generation;
+
+	DatalinkLoginRequest* rawRequest = request.release();
+	const uintptr_t threadHandle = _beginthread(datalinkLogin, 0, rawRequest);
+	if (threadHandle == static_cast<uintptr_t>(-1L))
+	{
+		delete rawRequest;
+		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+		HoppieConnecting.store(false, std::memory_order_release);
+		error = "Unable to start the CPDLC connection worker.";
+		SetDatalinkStatusMessage(error);
+		return false;
+	}
+	return true;
+}
+
+bool CSMRPlugin::DisconnectDatalink(std::string& error)
+{
+	error.clear();
+	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
+	HoppieConnected.store(false, std::memory_order_release);
+	HoppieConnecting.store(false, std::memory_order_release);
+	HoppiePollInProgress.store(false, std::memory_order_release);
+	ConnectionMessage.store(false, std::memory_order_relaxed);
+	FailedToConnectMessage.store(false, std::memory_order_relaxed);
+	SetDatalinkStatusMessage("Disconnected.");
+	return true;
+}
+
+bool CSMRPlugin::PollDatalink(std::string& error)
+{
+	return StartDatalinkPoll(true, error);
+}
+
+bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
+{
+	result.clear();
+	error.clear();
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		error = "The CDM reminder service is shutting down.";
+		return false;
+	}
+
+	const std::vector<std::string> candidateCallsigns =
+		CollectFlightPlanCandidateCallsignsForActiveAirport(this);
+	const std::time_t nowUtc = std::time(nullptr);
+	std::string reminderMessage;
+	std::string aliasPath;
+	if (!TryReadCdmReminderMessageFromAlias(this, reminderMessage, aliasPath))
+	{
+		error = "Missing or invalid .cdm alias";
+		if (!aliasPath.empty())
+			error += " in " + aliasPath;
+		error += ".";
+		return false;
+	}
+
+	int alreadyNotifiedCount = 0;
+	int alreadyQueuedCount = 0;
+	int alreadyClearedCount = 0;
+	int hasTobtCount = 0;
+	int queuedCount = 0;
+	int failedCount = 0;
+	int missingVacdmCount = 0;
+
+	{
+		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+		PruneCdmReminderHistoryUnlocked(nowUtc);
+	}
+
+	for (const std::string& callsign : candidateCallsigns)
+	{
+		bool vacdmEvaluated = false;
+		bool hasVacdmData = false;
+		const CdmQueueReminderOutcome outcome =
+			TryQueueCdmReminderForCallsign(
+				callsign,
+				reminderMessage,
+				nowUtc,
+				&vacdmEvaluated,
+				&hasVacdmData);
+		if (vacdmEvaluated && !hasVacdmData)
+			++missingVacdmCount;
+
+		switch (outcome)
+		{
+		case CdmQueueReminderOutcome::Queued:
+			++queuedCount;
+			break;
+		case CdmQueueReminderOutcome::AlreadyNotified:
+			++alreadyNotifiedCount;
+			break;
+		case CdmQueueReminderOutcome::AlreadyQueued:
+			++alreadyQueuedCount;
+			break;
+		case CdmQueueReminderOutcome::AlreadyCleared:
+			++alreadyClearedCount;
+			break;
+		case CdmQueueReminderOutcome::HasSubmittedTobt:
+			++hasTobtCount;
+			break;
+		case CdmQueueReminderOutcome::Failed:
+		default:
+			++failedCount;
+			break;
+		}
+	}
+
+	const int checkedCount = static_cast<int>(candidateCallsigns.size());
+	result = "CDM check: ";
+	result += std::to_string(checkedCount) + " checked, ";
+	result += std::to_string(queuedCount) + " queued, ";
+	result += std::to_string(hasTobtCount) + " already has TOBT, ";
+	result += std::to_string(alreadyNotifiedCount) + " already notified, ";
+	result += std::to_string(alreadyQueuedCount) + " already queued, ";
+	result += std::to_string(alreadyClearedCount) + " already cleared, ";
+	result += std::to_string(missingVacdmCount) + " missing VACDM, ";
+	result += std::to_string(failedCount) + " failed.";
+	return true;
+}
+
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -1734,26 +2398,33 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 	if (startsWithCommand(".smr connect"))
 	{
-		if (ControllerMyself().IsController()) {
-			if (!HoppieConnected.load()) {
-				_beginthread(datalinkLogin, 0, NULL);
-			}
-			else {
-				HoppieConnected.store(false);
-				DisplayUserMessage("CPDLC", "Server", "Logged off!", true, true, false, true, false);
-			}
+		const DatalinkControlState state = GetDatalinkControlState();
+		std::string error;
+		if (state.connected || state.connecting)
+		{
+			DisconnectDatalink(error);
+			DisplayUserMessage(
+				"CPDLC",
+				"Server",
+				state.connected ? "Logged off!" : "Connection attempt cancelled.",
+				true,
+				true,
+				false,
+				true,
+				false);
 		}
-		else {
-			DisplayUserMessage("CPDLC", "Error", "You are not logged in as a controller!", true, true, false, true, false);
+		else if (!ConnectDatalink(error))
+		{
+			DisplayUserMessage("CPDLC", "Error", error.c_str(), true, true, false, true, false);
 		}
 
 		return true;
 	}
 	else if (startsWithCommand(".smr poll"))
 	{
-		if (HoppieConnected.load()) {
-			_beginthread(pollMessages, 0, NULL);
-		}
+		std::string error;
+		if (!PollDatalink(error) && !error.empty())
+			DisplayUserMessage("CPDLC", "Error", error.c_str(), true, true, false, true, false);
 		return true;
 	}
 	else if (commandLower == ".smr reload") {
@@ -1773,7 +2444,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 		const auto publishCooldownStatus = [&](const char* action)
 		{
-			int cooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
+			int cooldownMinutes = GetDatalinkControlState().cdmCooldownMinutes;
 			if (cooldownMinutes < 0)
 				cooldownMinutes = 0;
 			std::string message = std::string(action) + " CDM reminder cooldown: " + std::to_string(cooldownMinutes) + " minute";
@@ -1803,7 +2474,21 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			return true;
 		}
 
-		CdmReminderCooldownMinutes.store(parsedCooldownMinutes, std::memory_order_relaxed);
+		const DatalinkControlState state = GetDatalinkControlState();
+		std::string updateError;
+		if (!UpdateDatalinkControlSettings(
+			state.logonCallsign,
+			"",
+			false,
+			state.playSound,
+			state.cdmAutoEnabled,
+			state.cdmDelayMinutes,
+			parsedCooldownMinutes,
+			updateError))
+		{
+			DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
+			return true;
+		}
 		publishCooldownStatus("Updated");
 		return true;
 	}
@@ -1816,8 +2501,9 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 		const auto publishCdmAutoStatus = [&](const char* action)
 		{
-			const bool enabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
-			int delayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
+			const DatalinkControlState state = GetDatalinkControlState();
+			const bool enabled = state.cdmAutoEnabled;
+			int delayMinutes = state.cdmDelayMinutes;
 			if (delayMinutes < 0)
 				delayMinutes = 0;
 
@@ -1840,16 +2526,42 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 
 		if (argument == "off" || argument == "disable")
 		{
-			CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
-			ClearCdmAutoTrackingState();
+			const DatalinkControlState state = GetDatalinkControlState();
+			std::string updateError;
+			if (!UpdateDatalinkControlSettings(
+				state.logonCallsign,
+				"",
+				false,
+				state.playSound,
+				false,
+				state.cdmDelayMinutes,
+				state.cdmCooldownMinutes,
+				updateError))
+			{
+				DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
+				return true;
+			}
 			publishCdmAutoStatus("Updated");
 			return true;
 		}
 
 		if (argument == "on" || argument == "enable")
 		{
-			CdmAutoModeEnabled.store(true, std::memory_order_relaxed);
-			ClearCdmAutoTrackingState();
+			const DatalinkControlState state = GetDatalinkControlState();
+			std::string updateError;
+			if (!UpdateDatalinkControlSettings(
+				state.logonCallsign,
+				"",
+				false,
+				state.playSound,
+				true,
+				state.cdmDelayMinutes,
+				state.cdmCooldownMinutes,
+				updateError))
+			{
+				DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
+				return true;
+			}
 			publishCdmAutoStatus("Updated");
 			return true;
 		}
@@ -1869,82 +2581,32 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			return true;
 		}
 
-		CdmAutoDelayMinutes.store(parsedDelayMinutes, std::memory_order_relaxed);
-		CdmAutoModeEnabled.store(true, std::memory_order_relaxed);
-		ClearCdmAutoTrackingState();
+		const DatalinkControlState state = GetDatalinkControlState();
+		std::string updateError;
+		if (!UpdateDatalinkControlSettings(
+			state.logonCallsign,
+			"",
+			false,
+			state.playSound,
+			true,
+			parsedDelayMinutes,
+			state.cdmCooldownMinutes,
+			updateError))
+		{
+			DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
+			return true;
+		}
 		publishCdmAutoStatus("Updated");
 		return true;
 	}
 	else if (commandLower == ".smr cdm")
 	{
-		const std::vector<std::string> candidateCallsigns = CollectFlightPlanCandidateCallsignsForActiveAirport(this);
-		const std::time_t nowUtc = std::time(nullptr);
-		std::string reminderMessage;
-		if (!TryLoadCdmReminderMessage(this, reminderMessage))
-			return true;
-
-		int alreadyNotifiedCount = 0;
-		int alreadyQueuedCount = 0;
-		int alreadyClearedCount = 0;
-		int hasTobtCount = 0;
-		int queuedCount = 0;
-		int failedCount = 0;
-		int missingVacdmCount = 0;
-
-		{
-			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			PruneCdmReminderHistoryUnlocked(nowUtc);
-		}
-
-		for (const std::string& callsign : candidateCallsigns)
-		{
-			bool vacdmEvaluated = false;
-			bool hasVacdmData = false;
-			const CdmQueueReminderOutcome outcome =
-				TryQueueCdmReminderForCallsign(
-					callsign,
-					reminderMessage,
-					nowUtc,
-					&vacdmEvaluated,
-					&hasVacdmData);
-			if (vacdmEvaluated && !hasVacdmData)
-				++missingVacdmCount;
-
-			switch (outcome)
-			{
-			case CdmQueueReminderOutcome::Queued:
-				++queuedCount;
-				break;
-			case CdmQueueReminderOutcome::AlreadyNotified:
-				++alreadyNotifiedCount;
-				break;
-			case CdmQueueReminderOutcome::AlreadyQueued:
-				++alreadyQueuedCount;
-				break;
-			case CdmQueueReminderOutcome::AlreadyCleared:
-				++alreadyClearedCount;
-				break;
-			case CdmQueueReminderOutcome::HasSubmittedTobt:
-				++hasTobtCount;
-				break;
-			case CdmQueueReminderOutcome::Failed:
-			default:
-				++failedCount;
-				break;
-			}
-		}
-
-		const int checkedCount = static_cast<int>(candidateCallsigns.size());
-		std::string summary = "CDM check: ";
-		summary += std::to_string(checkedCount) + " checked, ";
-		summary += std::to_string(queuedCount) + " queued, ";
-		summary += std::to_string(hasTobtCount) + " already has TOBT, ";
-		summary += std::to_string(alreadyNotifiedCount) + " already notified, ";
-		summary += std::to_string(alreadyQueuedCount) + " already queued, ";
-		summary += std::to_string(alreadyClearedCount) + " already cleared, ";
-		summary += std::to_string(missingVacdmCount) + " missing VACDM, ";
-		summary += std::to_string(failedCount) + " failed.";
-		DisplayUserMessage("vSMR", "CDM", summary.c_str(), true, true, false, true, false);
+		std::string result;
+		std::string error;
+		if (RunCdmReminderScan(result, error))
+			DisplayUserMessage("vSMR", "CDM", result.c_str(), true, true, false, true, false);
+		else if (!error.empty())
+			DisplayUserMessage("vSMR", "CDM", error.c_str(), true, true, false, true, false);
 		return true;
 	}
 	else if (startsWithCommand(".smr log")) {
@@ -2051,36 +2713,60 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		}
 		return true;
 	}
-	else if (startsWithCommand(".smr"))
+	else if (commandLower == ".smr")
 	{
-		auto applyCpdlcDialogValues = [&](const CCPDLCSettingsDialog& dialog)
+		for (auto* rd : RadarScreensOpened)
 		{
-			logonCallsign = dialog.m_Logon;
-			logonCode = dialog.m_Password;
-			PlaySoundClr = (dialog.m_Sound != 0);
+			if (rd == nullptr)
+				continue;
+			rd->OpenVsmrControlCenterWindow("settings");
+			return true;
+		}
+
+		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+		auto applyCpdlcDialogValues = [&](const CCPDLCSettingsDialog& dialog) -> bool
+		{
+			const DatalinkControlState state = GetDatalinkControlState();
+			std::string updateError;
+			if (UpdateDatalinkControlSettings(
+				static_cast<const char*>(CStringA(dialog.m_Logon)),
+				static_cast<const char*>(CStringA(dialog.m_Password)),
+				true,
+				dialog.m_Sound != 0,
+				state.cdmAutoEnabled,
+				state.cdmDelayMinutes,
+				state.cdmCooldownMinutes,
+				updateError))
+			{
+				return true;
+			}
+			DisplayUserMessage("CPDLC", "Error", updateError.c_str(), true, true, false, true, false);
+			return false;
 		};
 
 		CCPDLCSettingsDialog dia(AfxGetMainWnd());
-		dia.m_Logon = logonCallsign.c_str();
-		dia.m_Password = logonCode.c_str();
-		dia.m_Sound = int(PlaySoundClr);
+		dia.m_Logon = credentials.callsign.c_str();
+		dia.m_Password = credentials.password.c_str();
+		dia.m_Sound = int(credentials.playSound);
 
 		INT_PTR dialogResult = dia.DoModal();
 		if (dialogResult == -1)
 		{
 			CCPDLCSettingsDialog diaNoParent(nullptr);
-			diaNoParent.m_Logon = logonCallsign.c_str();
-			diaNoParent.m_Password = logonCode.c_str();
-			diaNoParent.m_Sound = int(PlaySoundClr);
+			diaNoParent.m_Logon = credentials.callsign.c_str();
+			diaNoParent.m_Password = credentials.password.c_str();
+			diaNoParent.m_Sound = int(credentials.playSound);
 			dialogResult = diaNoParent.DoModal();
 			if (dialogResult == IDOK)
 			{
-				applyCpdlcDialogValues(diaNoParent);
+				if (!applyCpdlcDialogValues(diaNoParent))
+					return true;
 			}
 		}
 		else if (dialogResult == IDOK)
 		{
-			applyCpdlcDialogValues(dia);
+			if (!applyCpdlcDialogValues(dia))
+				return true;
 		}
 
 		if (dialogResult == -1)
@@ -2095,10 +2781,6 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		}
 		if (dialogResult != IDOK)
 			return true;
-
-		SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", logonCallsign.c_str());
-		SaveDataToSettings("cpdlc_password", "The CPDLC logon password", logonCode.c_str());
-		SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", std::to_string(PlaySoundClr ? 1 : 0).c_str());
 
 		return true;
 	}
@@ -2250,6 +2932,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			AFX_MANAGE_STATE(AfxGetStaticModuleState());
 
 			CDataLinkDialog dia;
+			dia.SetDialogMode(CDataLinkDialog::DialogMode::Message);
 			dia.m_Callsign = fpCallsign;
 			dia.m_Aircraft = FlightPlan.GetFlightPlanData().GetAircraftFPType();
 			dia.m_Dest = FlightPlan.GetFlightPlanData().GetDestination();
@@ -2318,6 +3001,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			AFX_MANAGE_STATE(AfxGetStaticModuleState());
 
 			CDataLinkDialog dia;
+			dia.SetDialogMode(CDataLinkDialog::DialogMode::Pdc);
 			dia.m_Callsign = fpCallsign;
 			dia.m_Aircraft = FlightPlan.GetFlightPlanData().GetAircraftFPType();
 			dia.m_Dest = FlightPlan.GetFlightPlanData().GetDestination();
@@ -2456,19 +3140,27 @@ void CSMRPlugin::OnTimer(int Counter)
 	}
 
 	if (FailedToConnectMessage.load()) {
-		DisplayUserMessage("CPDLC", "Server", "Could not login! Callsign probably in use.", true, true, false, true, false);
+		std::string failureMessage = GetDatalinkStatusMessageCopy();
+		if (failureMessage.empty())
+			failureMessage = "Could not connect to Hoppie.";
+		DisplayUserMessage("CPDLC", "Server", failureMessage.c_str(), true, true, false, true, false);
 		FailedToConnectMessage.store(false);
 	}
 
-	if (HoppieConnected.load() && GetConnectionType() == CONNECTION_TYPE_NO) {
+	if ((HoppieConnected.load(std::memory_order_acquire) ||
+		HoppieConnecting.load(std::memory_order_acquire)) &&
+		GetConnectionType() == CONNECTION_TYPE_NO) {
+		std::string disconnectError;
+		DisconnectDatalink(disconnectError);
+		SetDatalinkStatusMessage("Automatically disconnected because EuroScope is offline.");
 		DisplayUserMessage("CPDLC", "Server", "Automatically logged off!", true, true, false, true, false);
-		HoppieConnected.store(false);
 	}
 
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
 		((clock() - timer) / CLOCKS_PER_SEC) > 10 &&
 		HoppieConnected.load()) {
-		_beginthread(pollMessages, 0, NULL);
+		std::string pollError;
+		StartDatalinkPoll(false, pollError);
 		timer = clock();
 	}
 
@@ -2547,7 +3239,11 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
+	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);
+	HoppieConnecting.store(false, std::memory_order_relaxed);
+	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
 
 	const std::vector<CSMRRadar*> radarScreens = RadarScreensOpened;

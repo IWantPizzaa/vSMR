@@ -392,6 +392,56 @@
     return { records, metadata, extras };
   }
 
+  function normalizeDatalinkRuntimeState(incoming = {}, fallback = {}) {
+    const source = incoming && typeof incoming === "object" && !Array.isArray(incoming) ? incoming : {};
+    const previous = fallback && typeof fallback === "object" && !Array.isArray(fallback) ? fallback : {};
+    const readBool = (key, defaultValue = false) => Object.hasOwn(source, key)
+      ? Boolean(source[key])
+      : Object.hasOwn(previous, key) ? Boolean(previous[key]) : defaultValue;
+    const readString = (key, defaultValue = "") => Object.hasOwn(source, key)
+      ? String(source[key] ?? "")
+      : Object.hasOwn(previous, key) ? String(previous[key] ?? "") : defaultValue;
+    const readMinutes = (key, defaultValue) => Math.round(clamp(
+      Object.hasOwn(source, key) ? source[key] : Object.hasOwn(previous, key) ? previous[key] : defaultValue,
+      0,
+      1440
+    ));
+    return {
+      connected: readBool("connected"),
+      connecting: readBool("connecting"),
+      pollInProgress: readBool("pollInProgress"),
+      controllerConnected: readBool("controllerConnected"),
+      logonCallsign: readString("logonCallsign").trim().toUpperCase().slice(0, 8),
+      hasPassword: readBool("hasPassword"),
+      playSound: readBool("playSound"),
+      cdmAutoEnabled: readBool("cdmAutoEnabled"),
+      cdmDelayMinutes: readMinutes("cdmDelayMinutes", 5),
+      cdmCooldownMinutes: readMinutes("cdmCooldownMinutes", 60),
+      vacdmConfigured: readBool("vacdmConfigured"),
+      activeAirport: normalizeAirportCode(readString("activeAirport")),
+      cdmAliasPath: readString("cdmAliasPath"),
+      cdmAliasReady: readBool("cdmAliasReady"),
+      statusMessage: readString("statusMessage")
+    };
+  }
+
+  function createPreviewDatalinkState(activeAirport, metadata) {
+    return normalizeDatalinkRuntimeState({
+      controllerConnected: true,
+      logonCallsign: activeAirport || "LFPG",
+      hasPassword: true,
+      playSound: true,
+      cdmAutoEnabled: false,
+      cdmDelayMinutes: 5,
+      cdmCooldownMinutes: 60,
+      vacdmConfigured: Boolean(String(metadata?.vacdm?.server_url || "").trim()),
+      activeAirport,
+      cdmAliasPath: "C:\\EuroScope\\Alias\\alias.txt",
+      cdmAliasReady: true,
+      statusMessage: "Ready to connect to Hoppie."
+    });
+  }
+
   function createState(bundle = DATA) {
     const { records, metadata, extras } = getProfileRecords(bundle.profiles);
     const preferred = records.find(record => record.data.name === "Custom LFPG")
@@ -434,9 +484,9 @@
         confirmDelete: true,
         rimcas: true,
         vacdm: true,
-        cpdlc: true,
         approachWindows: true
       },
+      datalink: createPreviewDatalinkState(initialAirport, metadata),
       ui: {
         page: "display",
         profileTab: "colors",
@@ -493,6 +543,24 @@
   let insetPresetDialogMode = "capture";
   let outboundMessageSequence = 0;
   const pending = { save: "", reload: "", github: null };
+  const datalinkPending = { settings: null, connection: null, poll: null, scan: null };
+  let datalinkDraft = null;
+  let datalinkBaseline = null;
+  let datalinkPasswordVisible = false;
+  let datalinkPasswordCommitReady = false;
+  const datalinkFieldRevisions = {
+    logonCallsign: 0,
+    password: 0,
+    playSound: 0,
+    cdmDelayMinutes: 0,
+    cdmCooldownMinutes: 0
+  };
+  let datalinkAutoSaveTimer = 0;
+  let datalinkAutoSaveRetryCount = 0;
+  let datalinkConnectAfterSave = false;
+  let datalinkQueuedReminderAction = null;
+  const datalinkAutoSaveScopes = new Set();
+  let lastDatalinkStateRequestAt = 0;
   let splitAvisoContext = null;
   const history = { past: [], present: null, future: [] };
   let savedSnapshot = null;
@@ -696,6 +764,7 @@
     context.textContent = `${profileName} · ${suffix}`;
   }
   function setPage(page) {
+    if (["datalink", "cpdlc", "cdm"].includes(page)) page = "settings";
     if (!PAGE_TITLES[page]) return;
     state.ui.page = page;
     $$(".rail-button[data-page]").forEach(button => button.classList.toggle("active", button.dataset.page === page));
@@ -708,7 +777,11 @@
     if (page === "groups") renderAvisoGroups();
     if (page === "modes") renderModes();
     if (page === "profiles") renderProfilesManager();
-    if (page === "settings") renderSettings();
+    if (page === "settings") {
+      renderSettings();
+      renderDatalink();
+      requestDatalinkState();
+    }
     updateContext();
   }
 
@@ -858,7 +931,7 @@
     state.ui.controlCenterOpen = true;
     state.ui.runtimePopover = "";
     syncSurfaceVisibility();
-    if (PAGE_TITLES[page]) setPage(page);
+    setPage(page);
     if (page === "aviso" && ["geometry", "text"].includes(avisoView)) {
       state.ui.avisoView = avisoView;
       renderAviso();
@@ -868,6 +941,7 @@
 
   function closeControlCenter() {
     if (HOST_MODE) {
+      state.ui.controlCenterOpen = false;
       postBridge("window.close", { dirty: state.dirty });
       return;
     }
@@ -3294,38 +3368,773 @@
     renderAlerts();
   }
 
+  function datalinkFormFromRuntime(runtime = state.datalink) {
+    return {
+      logonCallsign: String(runtime?.logonCallsign || "").trim().toUpperCase().slice(0, 8),
+      password: "",
+      replacePassword: false,
+      playSound: Boolean(runtime?.playSound),
+      cdmAutoEnabled: Boolean(runtime?.cdmAutoEnabled),
+      cdmDelayMinutes: Math.round(clamp(runtime?.cdmDelayMinutes ?? 5, 0, 1440)),
+      cdmCooldownMinutes: Math.round(clamp(runtime?.cdmCooldownMinutes ?? 60, 0, 1440))
+    };
+  }
+
+  function normalizeDatalinkForm(form = {}) {
+    const password = String(form.password || "").trim();
+    return {
+      logonCallsign: String(form.logonCallsign || "").trim().toUpperCase().slice(0, 8),
+      password,
+      replacePassword: Boolean(password),
+      playSound: Boolean(form.playSound),
+      cdmAutoEnabled: Boolean(form.cdmAutoEnabled),
+      cdmDelayMinutes: Math.round(clamp(form.cdmDelayMinutes, 0, 1440)),
+      cdmCooldownMinutes: Math.round(clamp(form.cdmCooldownMinutes, 0, 1440))
+    };
+  }
+
+  function datalinkDirtyFields(draft = datalinkDraft, baseline = datalinkBaseline) {
+    if (!draft || !baseline) {
+      return {
+        connection: { logonCallsign: false, password: false, playSound: false },
+        cdm: { delay: false, cooldown: false }
+      };
+    }
+    return {
+      connection: {
+        logonCallsign: draft.logonCallsign !== baseline.logonCallsign,
+        password: Boolean(draft.replacePassword && draft.password),
+        playSound: draft.playSound !== baseline.playSound
+      },
+      cdm: {
+        delay: draft.cdmDelayMinutes !== baseline.cdmDelayMinutes,
+        cooldown: draft.cdmCooldownMinutes !== baseline.cdmCooldownMinutes
+      }
+    };
+  }
+
+  function datalinkRequestIncludesField(request, field) {
+    if (!request?.payload) return false;
+    if (field === "password") return Boolean(request.payload.replacePassword);
+    return Object.hasOwn(request.payload, field);
+  }
+
+  function datalinkFieldChangedSinceRequest(request, field) {
+    return datalinkRequestIncludesField(request, field) &&
+      Number(request?.revisions?.[field] ?? -1) !== datalinkFieldRevisions[field];
+  }
+
+  function datalinkEffectiveDirtyFields() {
+    const fields = datalinkDirtyFields();
+    const request = datalinkPending.settings;
+    if (!request) return fields;
+    fields.connection.logonCallsign ||= datalinkFieldChangedSinceRequest(request, "logonCallsign");
+    fields.connection.password ||= datalinkFieldChangedSinceRequest(request, "password");
+    fields.connection.playSound ||= datalinkFieldChangedSinceRequest(request, "playSound");
+    fields.cdm.delay ||= datalinkFieldChangedSinceRequest(request, "cdmDelayMinutes");
+    fields.cdm.cooldown ||= datalinkFieldChangedSinceRequest(request, "cdmCooldownMinutes");
+    return fields;
+  }
+
+  function datalinkScopeChangedSinceRequest(request, scope) {
+    const fields = scope === "connection"
+      ? ["logonCallsign", "password", "playSound"]
+      : ["cdmDelayMinutes", "cdmCooldownMinutes"];
+    return fields.some(field => Number(request?.revisions?.[field] ?? -1) !== datalinkFieldRevisions[field]);
+  }
+
+  function datalinkDirtyParts() {
+    const fields = datalinkEffectiveDirtyFields();
+    return {
+      connection: Object.values(fields.connection).some(Boolean),
+      cdm: Object.values(fields.cdm).some(Boolean)
+    };
+  }
+
+  function datalinkHasSavableConnectionChanges() {
+    const fields = datalinkEffectiveDirtyFields().connection;
+    return fields.logonCallsign || fields.playSound || (fields.password && datalinkPasswordCommitReady);
+  }
+
+  function refreshDatalinkDirtyState() {
+    const dirty = datalinkDirtyParts();
+    return dirty;
+  }
+
+  function resetDatalinkDraftFromRuntime() {
+    datalinkBaseline = datalinkFormFromRuntime();
+    datalinkDraft = clone(datalinkBaseline);
+    datalinkPasswordCommitReady = false;
+  }
+
+  function rebaseDatalinkDraftFromRuntime() {
+    if (!datalinkDraft || !datalinkBaseline) {
+      resetDatalinkDraftFromRuntime();
+      return;
+    }
+    const dirty = datalinkEffectiveDirtyFields();
+    const nextBaseline = datalinkFormFromRuntime();
+    const nextDraft = clone(datalinkDraft);
+    if (!dirty.connection.logonCallsign)
+      nextDraft.logonCallsign = nextBaseline.logonCallsign;
+    if (!dirty.connection.password) {
+      nextDraft.password = "";
+      nextDraft.replacePassword = false;
+      datalinkPasswordCommitReady = false;
+    }
+    if (!dirty.connection.playSound)
+      nextDraft.playSound = nextBaseline.playSound;
+    if (!dirty.cdm.delay)
+      nextDraft.cdmDelayMinutes = nextBaseline.cdmDelayMinutes;
+    if (!dirty.cdm.cooldown)
+      nextDraft.cdmCooldownMinutes = nextBaseline.cdmCooldownMinutes;
+    nextDraft.cdmAutoEnabled = nextBaseline.cdmAutoEnabled;
+    datalinkBaseline = nextBaseline;
+    datalinkDraft = normalizeDatalinkForm(nextDraft);
+    refreshDatalinkDirtyState();
+  }
+
+  function captureDatalinkDraftFromControls() {
+    if (!datalinkDraft) resetDatalinkDraftFromRuntime();
+    const callsign = $("#datalinkLogonCallsign");
+    if (!callsign) return datalinkDraft;
+    datalinkDraft = normalizeDatalinkForm({
+      logonCallsign: callsign.value,
+      password: $("#datalinkPassword").value,
+      playSound: $("#datalinkPlaySound").checked,
+      cdmAutoEnabled: Boolean(state.datalink?.cdmAutoEnabled),
+      cdmDelayMinutes: $("#datalinkCdmDelay").value,
+      cdmCooldownMinutes: $("#datalinkCdmCooldown").value
+    });
+    refreshDatalinkDirtyState();
+    return datalinkDraft;
+  }
+
+  function setDatalinkInputValue(control, value) {
+    if (control && control.value !== String(value ?? "")) control.value = String(value ?? "");
+  }
+
+  function renderDatalink() {
+    if (!$("#datalinkConnectionState")) return;
+    if (!datalinkDraft || !datalinkBaseline) resetDatalinkDraftFromRuntime();
+    const runtime = state.datalink || normalizeDatalinkRuntimeState();
+    const draft = datalinkDraft;
+    const dirty = refreshDatalinkDirtyState();
+    const connectionState = runtime.connecting
+      ? { label: "Connecting", className: "connecting" }
+      : runtime.connected
+        ? { label: "Connected", className: "connected" }
+        : !runtime.controllerConnected
+          ? { label: "EuroScope offline", className: "offline" }
+          : { label: "Disconnected", className: "disconnected" };
+    const connectionBadge = $("#datalinkConnectionState");
+    connectionBadge.className = `datalink-state-badge ${connectionState.className}`;
+    $("span", connectionBadge).textContent = connectionState.label;
+    connectionBadge.title = runtime.statusMessage || connectionState.label;
+
+    setDatalinkInputValue($("#datalinkLogonCallsign"), draft.logonCallsign);
+    const password = $("#datalinkPassword");
+    setDatalinkInputValue(password, draft.password);
+    password.type = datalinkPasswordVisible ? "text" : "password";
+    const showingStoredPassword = runtime.hasPassword && !draft.password;
+    password.placeholder = showingStoredPassword ? "••••••••••••••" : "Enter Hoppie code";
+    password.classList.toggle("stored-secret", showingStoredPassword);
+    const passwordToggle = $("#datalinkPasswordToggle");
+    passwordToggle.classList.toggle("showing", datalinkPasswordVisible);
+    passwordToggle.disabled = showingStoredPassword;
+    passwordToggle.title = showingStoredPassword
+      ? "The saved code is hidden; enter a new code to replace it"
+      : datalinkPasswordVisible ? "Hide code" : "Show code";
+    passwordToggle.setAttribute("aria-label", showingStoredPassword
+      ? "Saved Hoppie code is hidden"
+      : datalinkPasswordVisible ? "Hide Hoppie code" : "Show Hoppie code");
+
+    $("#datalinkPlaySound").checked = draft.playSound;
+    setDatalinkInputValue($("#datalinkCdmDelay"), draft.cdmDelayMinutes);
+    setDatalinkInputValue($("#datalinkCdmCooldown"), draft.cdmCooldownMinutes);
+
+    const aliasPath = $("#settingsAliasFile");
+    if (aliasPath) {
+      aliasPath.value = runtime.cdmAliasPath || "No alias file found";
+      aliasPath.title = runtime.cdmAliasPath || "No alias file found";
+    }
+
+    const connectionBusy = Boolean(runtime.connecting || datalinkPending.connection);
+    const settingsRequest = datalinkPending.settings;
+    const cdmSettingsBusy = Boolean(settingsRequest?.includeCdm);
+    const connectButton = $("#datalinkConnectButton");
+    connectButton.textContent = datalinkConnectAfterSave
+      ? "Saving..."
+      : runtime.connected
+      ? connectionBusy ? "Disconnecting..." : "Disconnect"
+      : connectionBusy ? "Connecting..." : "Connect";
+    connectButton.classList.toggle("primary", !runtime.connected);
+    connectButton.disabled = connectionBusy || datalinkConnectAfterSave || !runtime.controllerConnected ||
+      (!runtime.connected && (!draft.logonCallsign || (!runtime.hasPassword && !draft.replacePassword)));
+    connectButton.title = !runtime.controllerConnected
+      ? "EuroScope is not connected as a controller"
+      : !runtime.connected && !draft.logonCallsign
+        ? "Enter a CPDLC logon callsign"
+      : !runtime.connected && !runtime.hasPassword && !draft.replacePassword
+          ? "Store a Hoppie code before connecting"
+        : !runtime.connected && dirty.connection
+          ? "Save changed connection settings automatically, then connect"
+          : runtime.connected ? "Disconnect Hoppie CPDLC" : "Connect Hoppie CPDLC";
+
+    const pollButton = $("#datalinkPollButton");
+    pollButton.disabled = !runtime.connected || runtime.connecting || runtime.pollInProgress || Boolean(datalinkPending.poll);
+    pollButton.textContent = runtime.pollInProgress || datalinkPending.poll ? "Polling..." : "Poll";
+
+    const reminderRequest = settingsRequest;
+    const pendingReminderOperation = String(reminderRequest?.kind || "").startsWith("reminder-")
+      ? String(reminderRequest.kind)
+      : "";
+    const reminderOperation = pendingReminderOperation || String(datalinkQueuedReminderAction?.kind || "");
+    const reminderActionBusy = cdmSettingsBusy || Boolean(datalinkQueuedReminderAction);
+    const reminderRunning = Boolean(runtime.cdmAutoEnabled);
+    const reminderBadge = $("#datalinkReminderState");
+    const reminderLabel = reminderOperation === "reminder-run"
+      ? "Starting"
+      : reminderOperation === "reminder-stop"
+        ? "Stopping"
+        : reminderOperation === "reminder-update"
+          ? "Updating"
+          : reminderRunning ? "Running" : "Stopped";
+    reminderBadge.className = `datalink-state-badge ${reminderRunning ? "connected" : reminderOperation === "reminder-run" ? "connecting" : "disconnected"}`;
+    $("span", reminderBadge).textContent = reminderLabel;
+    reminderBadge.title = reminderRunning
+      ? "Automatic PDC reminders are running"
+      : "Automatic PDC reminders are stopped";
+
+    const scanButton = $("#datalinkScanButton");
+    scanButton.disabled = !runtime.controllerConnected || !runtime.activeAirport || !runtime.cdmAliasReady || Boolean(datalinkPending.scan);
+    scanButton.textContent = datalinkPending.scan ? "Checking..." : "Check now";
+    scanButton.title = !runtime.controllerConnected
+      ? "EuroScope is not connected as a controller"
+      : !runtime.activeAirport ? "Select an active airport first"
+        : !runtime.cdmAliasReady ? "Add a valid .cdm entry to the EuroScope alias file"
+          : "Check eligible departures now";
+
+    const reminderReady = runtime.controllerConnected && Boolean(runtime.activeAirport) && runtime.cdmAliasReady;
+    const reminderToggleButton = $("#datalinkReminderToggleButton");
+    reminderToggleButton.textContent = reminderOperation === "reminder-run"
+      ? "Starting..."
+      : reminderOperation === "reminder-stop"
+        ? "Stopping..."
+        : reminderRunning ? "Stop" : "Run";
+    reminderToggleButton.classList.toggle("primary", !reminderRunning);
+    reminderToggleButton.classList.toggle("danger", reminderRunning);
+    reminderToggleButton.disabled = reminderActionBusy || (!reminderRunning && !reminderReady);
+    reminderToggleButton.title = reminderRunning
+      ? "Stop automatic PDC reminders"
+      : !runtime.controllerConnected ? "EuroScope is not connected as a controller"
+        : !runtime.activeAirport ? "Select an active airport first"
+          : !runtime.cdmAliasReady ? "Add a valid .cdm entry to the EuroScope alias file"
+            : "Start automatic PDC reminders";
+
+    const reminderUpdateButton = $("#datalinkReminderUpdateButton");
+    reminderUpdateButton.hidden = !reminderRunning || !dirty.cdm;
+    reminderUpdateButton.disabled = reminderActionBusy;
+    reminderUpdateButton.textContent = reminderOperation === "reminder-update" ? "Updating..." : "Update";
+    $("#datalinkCdmDelay").disabled = reminderActionBusy;
+    $("#datalinkCdmCooldown").disabled = reminderActionBusy;
+    $(".datalink-reminder-actions").classList.toggle("has-update", !reminderUpdateButton.hidden);
+  }
+
+  function applyDatalinkRuntimeState(incoming) {
+    const previous = state.datalink || normalizeDatalinkRuntimeState();
+    state.datalink = normalizeDatalinkRuntimeState(incoming, state.datalink);
+    rebaseDatalinkDraftFromRuntime();
+    if (previous.connecting && !state.datalink.connecting) {
+      const message = state.datalink.statusMessage || (state.datalink.connected ? "Connected to Hoppie" : "Hoppie connection failed");
+      if (state.datalink.connected) {
+        setStatus(message);
+      } else {
+        setStatus(message, "error");
+        showToast(message, "error");
+      }
+    }
+    if (state.ui.page === "settings") {
+      renderDatalink();
+      updateContext();
+    }
+  }
+
+  function requestDatalinkState(force = false) {
+    if (state.ui.page !== "settings" || !state.ui.controlCenterOpen || document.hidden) return;
+    const now = Date.now();
+    if (!force && now - lastDatalinkStateRequestAt < 900) return;
+    lastDatalinkStateRequestAt = now;
+    const requestId = postBridge("datalink.state.request", {});
+    if (!HOST_MODE) {
+      setTimeout(() => receiveHostMessage({
+        version: PROTOCOL_VERSION,
+        requestId,
+        type: "datalink.state",
+        payload: { datalink: clone(state.datalink) }
+      }), 20);
+    }
+  }
+
+  function previewDatalinkAck(action, requestId, message, delay = 120) {
+    if (HOST_MODE) return;
+    setTimeout(() => receiveHostMessage({
+      version: PROTOCOL_VERSION,
+      requestId,
+      type: "state.ack",
+      payload: { action, message }
+    }), delay);
+  }
+
+  function clearDatalinkAutoSaveTimer() {
+    if (!datalinkAutoSaveTimer) return;
+    window.clearTimeout(datalinkAutoSaveTimer);
+    datalinkAutoSaveTimer = 0;
+  }
+
+  function scheduleDatalinkAutoSave(scope, delay = 450) {
+    if (scope !== "connection" && scope !== "cdm") return;
+    if (scope === "cdm" && state.datalink.cdmAutoEnabled) return;
+    const hasChanges = scope === "connection"
+      ? datalinkHasSavableConnectionChanges()
+      : datalinkDirtyParts().cdm;
+    if (!hasChanges) {
+      datalinkAutoSaveScopes.delete(scope);
+      if (!datalinkAutoSaveScopes.size) clearDatalinkAutoSaveTimer();
+      return;
+    }
+    datalinkAutoSaveRetryCount = 0;
+    datalinkAutoSaveScopes.add(scope);
+    clearDatalinkAutoSaveTimer();
+    datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, Math.max(0, delay));
+  }
+
+  function flushDatalinkAutoSave() {
+    clearDatalinkAutoSaveTimer();
+    if (datalinkPending.settings) return;
+    const includeConnection = datalinkAutoSaveScopes.has("connection");
+    const includeCdm = datalinkAutoSaveScopes.has("cdm") && !state.datalink.cdmAutoEnabled;
+    datalinkAutoSaveScopes.clear();
+    if (!includeConnection && !includeCdm) return;
+    const draft = captureDatalinkDraftFromControls();
+    if (includeConnection && !draft?.logonCallsign) {
+      $("#datalinkLogonCallsign").classList.add("invalid");
+      datalinkAutoSaveScopes.add("connection");
+      if (datalinkConnectAfterSave) {
+        datalinkConnectAfterSave = false;
+        showToast("Enter a CPDLC logon callsign", "error");
+      }
+      if (includeCdm) {
+        submitDatalinkSettings({
+          includeCdm: true,
+          cdmAutoEnabled: false,
+          kind: "autosave",
+          silent: true
+        });
+      }
+      renderDatalink();
+      return;
+    }
+    const submitted = submitDatalinkSettings({
+      includeConnection,
+      includeCdm,
+      cdmAutoEnabled: includeCdm ? false : undefined,
+      kind: "autosave",
+      silent: true
+    });
+    if (!submitted) window.setTimeout(continueQueuedDatalinkWork, 0);
+  }
+
+  function submitDatalinkSettings({
+    includeConnection = false,
+    includeCdm = false,
+    cdmAutoEnabled,
+    kind = "autosave",
+    silent = false
+  } = {}) {
+    const draft = captureDatalinkDraftFromControls();
+    if (!draft || datalinkPending.settings) return false;
+    const dirtyFields = datalinkDirtyFields();
+    const requestIncludesConnection = includeConnection && (
+      dirtyFields.connection.logonCallsign ||
+      dirtyFields.connection.playSound ||
+      (dirtyFields.connection.password && datalinkPasswordCommitReady));
+    const requestIncludesCdm = Boolean(includeCdm);
+    if (!requestIncludesConnection && !requestIncludesCdm) return false;
+    if (requestIncludesConnection && !draft.logonCallsign) {
+      $("#datalinkLogonCallsign").classList.add("invalid");
+      if (!silent) showToast("Enter a CPDLC logon callsign", "error");
+      return false;
+    }
+    $("#datalinkLogonCallsign").classList.remove("invalid");
+
+    const payload = {};
+    if (requestIncludesConnection) {
+      if (dirtyFields.connection.logonCallsign)
+        payload.logonCallsign = draft.logonCallsign;
+      if (dirtyFields.connection.playSound)
+        payload.playSound = draft.playSound;
+      if (dirtyFields.connection.password && datalinkPasswordCommitReady) {
+        payload.password = draft.password;
+        payload.replacePassword = true;
+      }
+    }
+    if (requestIncludesCdm) {
+      payload.cdmAutoEnabled = typeof cdmAutoEnabled === "boolean"
+        ? cdmAutoEnabled
+        : Boolean(state.datalink.cdmAutoEnabled);
+      payload.cdmDelayMinutes = draft.cdmDelayMinutes;
+      payload.cdmCooldownMinutes = draft.cdmCooldownMinutes;
+    }
+
+    const requestId = postBridge("datalink.settings.update", payload);
+    datalinkPending.settings = {
+      id: requestId,
+      action: "datalink.settings.update",
+      kind,
+      silent,
+      includeConnection: requestIncludesConnection,
+      includeCdm: requestIncludesCdm,
+      submitted: clone(draft),
+      revisions: { ...datalinkFieldRevisions },
+      payload: clone(payload)
+    };
+    renderDatalink();
+    if (!silent) {
+      const pendingText = kind === "reminder-run"
+        ? "Starting PDC reminders..."
+        : kind === "reminder-stop"
+          ? "Stopping PDC reminders..."
+          : "Updating PDC reminders...";
+      setStatus(pendingText);
+    }
+    previewDatalinkAck("datalink.settings.update", requestId, "Datalink settings applied");
+    return true;
+  }
+
+  function togglePdcReminders() {
+    clearDatalinkAutoSaveTimer();
+    datalinkAutoSaveScopes.delete("cdm");
+    const running = Boolean(state.datalink.cdmAutoEnabled);
+    const operation = {
+      includeCdm: true,
+      cdmAutoEnabled: !running,
+      kind: running ? "reminder-stop" : "reminder-run"
+    };
+    if (datalinkPending.settings) {
+      if (datalinkPending.settings.includeCdm) return;
+      datalinkQueuedReminderAction = operation;
+      renderDatalink();
+      return;
+    }
+    submitDatalinkSettings(operation);
+  }
+
+  function updatePdcReminders() {
+    if (!state.datalink.cdmAutoEnabled) return;
+    clearDatalinkAutoSaveTimer();
+    datalinkAutoSaveScopes.delete("cdm");
+    const operation = {
+      includeCdm: true,
+      cdmAutoEnabled: true,
+      kind: "reminder-update"
+    };
+    if (datalinkPending.settings) {
+      if (datalinkPending.settings.includeCdm) return;
+      datalinkQueuedReminderAction = operation;
+      renderDatalink();
+      return;
+    }
+    submitDatalinkSettings(operation);
+  }
+
+  function flushQueuedPdcReminderAction() {
+    if (datalinkPending.settings || !datalinkQueuedReminderAction) return false;
+    const operation = datalinkQueuedReminderAction;
+    datalinkQueuedReminderAction = null;
+    return submitDatalinkSettings(operation);
+  }
+
+  function continueQueuedDatalinkWork() {
+    if (datalinkPending.settings) return;
+    if (datalinkAutoSaveScopes.size) {
+      clearDatalinkAutoSaveTimer();
+      datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 0);
+      return;
+    }
+    if (flushQueuedPdcReminderAction()) return;
+    if (!datalinkConnectAfterSave) return;
+    if (datalinkDirtyParts().connection) {
+      if (!datalinkHasSavableConnectionChanges()) {
+        datalinkConnectAfterSave = false;
+        renderDatalink();
+        return;
+      }
+      datalinkAutoSaveScopes.add("connection");
+      clearDatalinkAutoSaveTimer();
+      datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 0);
+      return;
+    }
+    datalinkConnectAfterSave = false;
+    renderDatalink();
+    window.setTimeout(toggleDatalinkConnection, 0);
+  }
+
+  function toggleDatalinkConnection() {
+    const runtime = state.datalink;
+    if (datalinkPending.connection || runtime.connecting) return;
+    captureDatalinkDraftFromControls();
+    if (!runtime.connected && datalinkDraft?.replacePassword)
+      datalinkPasswordCommitReady = true;
+    if (!runtime.controllerConnected) {
+      showToast("Connect EuroScope as a controller first", "error");
+      return;
+    }
+    if (!runtime.connected && !datalinkDraft?.logonCallsign) {
+      $("#datalinkLogonCallsign").classList.add("invalid");
+      showToast("Enter a CPDLC logon callsign", "error");
+      return;
+    }
+    if (!runtime.connected && !runtime.hasPassword && !datalinkDraft?.replacePassword) {
+      showToast("Store a Hoppie code before connecting", "error");
+      return;
+    }
+    if (!runtime.connected &&
+      (datalinkDirtyParts().connection || datalinkPending.settings?.includeConnection)) {
+      datalinkConnectAfterSave = true;
+      datalinkAutoSaveRetryCount = 0;
+      const pendingConnectionSave = datalinkPending.settings?.includeConnection
+        ? datalinkPending.settings
+        : null;
+      const dirtyFields = datalinkEffectiveDirtyFields().connection;
+      const pendingCoversDraft = pendingConnectionSave &&
+        (!dirtyFields.logonCallsign || pendingConnectionSave.payload.logonCallsign === datalinkDraft.logonCallsign) &&
+        (!dirtyFields.playSound || pendingConnectionSave.payload.playSound === datalinkDraft.playSound) &&
+        (!dirtyFields.password || !datalinkPasswordCommitReady ||
+          (pendingConnectionSave.payload.replacePassword && pendingConnectionSave.submitted.password === datalinkDraft.password));
+      if (!pendingCoversDraft) datalinkAutoSaveScopes.add("connection");
+      clearDatalinkAutoSaveTimer();
+      if (!datalinkPending.settings)
+        datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 0);
+      renderDatalink();
+      return;
+    }
+    const action = runtime.connected ? "datalink.connection.disconnect" : "datalink.connection.connect";
+    const requestId = postBridge(action, {});
+    datalinkPending.connection = { id: requestId, action };
+    if (!HOST_MODE) {
+      state.datalink.connecting = !runtime.connected;
+      if (runtime.connected) state.datalink.connected = false;
+    }
+    renderDatalink();
+    previewDatalinkAck(action, requestId, runtime.connected ? "CPDLC disconnected" : "CPDLC connected", 260);
+    if (!HOST_MODE) {
+      setTimeout(() => receiveHostMessage({
+        version: PROTOCOL_VERSION,
+        requestId,
+        type: "datalink.state",
+        payload: { datalink: { ...clone(state.datalink), connecting: false, connected: action.endsWith(".connect"), statusMessage: action.endsWith(".connect") ? "Connected to Hoppie." : "Disconnected from Hoppie." } }
+      }), 320);
+    }
+  }
+
+  function pollDatalinkNow() {
+    const runtime = state.datalink;
+    if (!runtime.connected || runtime.pollInProgress || datalinkPending.poll) return;
+    const requestId = postBridge("datalink.poll", {});
+    datalinkPending.poll = { id: requestId, action: "datalink.poll" };
+    if (!HOST_MODE) state.datalink.pollInProgress = true;
+    renderDatalink();
+    previewDatalinkAck("datalink.poll", requestId, "CPDLC message poll completed", 260);
+    if (!HOST_MODE) {
+      setTimeout(() => receiveHostMessage({
+        version: PROTOCOL_VERSION,
+        requestId,
+        type: "datalink.state",
+        payload: { datalink: { ...clone(state.datalink), pollInProgress: false, statusMessage: "Message poll completed." } }
+      }), 300);
+    }
+  }
+
+  function scanCdmReminders() {
+    const runtime = state.datalink;
+    if (datalinkPending.scan || !runtime.controllerConnected || !runtime.activeAirport || !runtime.cdmAliasReady) return;
+    const requestId = postBridge("cdm.scan", {});
+    datalinkPending.scan = { id: requestId, action: "cdm.scan" };
+    renderDatalink();
+    previewDatalinkAck("cdm.scan", requestId, `CDM reminder check completed for ${runtime.activeAirport}`, 260);
+  }
+
+  function datalinkPendingSlotForAction(action) {
+    if (action === "datalink.settings.update") return "settings";
+    if (action === "datalink.connection.connect" || action === "datalink.connection.disconnect") return "connection";
+    if (action === "datalink.poll") return "poll";
+    if (action === "cdm.scan") return "scan";
+    return "";
+  }
+
+  function isDatalinkAction(action) {
+    return String(action || "").startsWith("datalink.") || action === "cdm.scan";
+  }
+
+  function finishDatalinkAck(message) {
+    const action = String(message.payload.action || "");
+    if (!isDatalinkAction(action)) return false;
+    const slot = datalinkPendingSlotForAction(action);
+    const pending = slot ? datalinkPending[slot] : null;
+    if (pending?.id && !messageMatchesRequest(message, pending.id)) return true;
+    if (slot === "settings" && !pending) return true;
+    let completedRequest = null;
+    if (slot === "settings" && datalinkPending.settings) {
+      const request = datalinkPending.settings;
+      completedRequest = request;
+      const submitted = request.submitted;
+      const current = clone(datalinkDraft || submitted);
+      const currentDirty = datalinkDirtyFields(current, datalinkBaseline);
+      const changedAfterSubmit = {
+        logonCallsign: datalinkFieldChangedSinceRequest(request, "logonCallsign"),
+        password: datalinkFieldChangedSinceRequest(request, "password"),
+        playSound: datalinkFieldChangedSinceRequest(request, "playSound"),
+        cdmDelayMinutes: datalinkFieldChangedSinceRequest(request, "cdmDelayMinutes"),
+        cdmCooldownMinutes: datalinkFieldChangedSinceRequest(request, "cdmCooldownMinutes")
+      };
+      const applied = {};
+      if (request.includeConnection) {
+        if (Object.hasOwn(request.payload, "logonCallsign"))
+          applied.logonCallsign = request.payload.logonCallsign;
+        if (Object.hasOwn(request.payload, "playSound"))
+          applied.playSound = request.payload.playSound;
+        if (request.payload.replacePassword) applied.hasPassword = true;
+      }
+      if (request.includeCdm) {
+        applied.cdmAutoEnabled = request.payload.cdmAutoEnabled;
+        applied.cdmDelayMinutes = request.payload.cdmDelayMinutes;
+        applied.cdmCooldownMinutes = request.payload.cdmCooldownMinutes;
+      }
+      state.datalink = normalizeDatalinkRuntimeState(applied, state.datalink);
+      datalinkPending.settings = null;
+
+      const nextBaseline = datalinkFormFromRuntime();
+      if (request.includeConnection) {
+        if (!changedAfterSubmit.logonCallsign && (!currentDirty.connection.logonCallsign ||
+          (Object.hasOwn(request.payload, "logonCallsign") && current.logonCallsign === submitted.logonCallsign)))
+          current.logonCallsign = nextBaseline.logonCallsign;
+        if (!changedAfterSubmit.playSound && (!currentDirty.connection.playSound ||
+          (Object.hasOwn(request.payload, "playSound") && current.playSound === submitted.playSound)))
+          current.playSound = nextBaseline.playSound;
+        if (!changedAfterSubmit.password && request.payload.replacePassword && current.password === submitted.password) {
+          current.password = "";
+          current.replacePassword = false;
+          datalinkPasswordVisible = false;
+          datalinkPasswordCommitReady = false;
+        }
+      }
+      if (request.includeCdm) {
+        if (!changedAfterSubmit.cdmDelayMinutes &&
+          (!currentDirty.cdm.delay || current.cdmDelayMinutes === submitted.cdmDelayMinutes))
+          current.cdmDelayMinutes = nextBaseline.cdmDelayMinutes;
+        if (!changedAfterSubmit.cdmCooldownMinutes &&
+          (!currentDirty.cdm.cooldown || current.cdmCooldownMinutes === submitted.cdmCooldownMinutes))
+          current.cdmCooldownMinutes = nextBaseline.cdmCooldownMinutes;
+      }
+      current.cdmAutoEnabled = nextBaseline.cdmAutoEnabled;
+      datalinkBaseline = nextBaseline;
+      datalinkDraft = normalizeDatalinkForm(current);
+      refreshDatalinkDirtyState();
+      if (request.kind === "autosave") datalinkAutoSaveRetryCount = 0;
+    } else if (slot) {
+      datalinkPending[slot] = null;
+    }
+    const text = completedRequest?.kind === "reminder-run"
+      ? "PDC reminders running"
+      : completedRequest?.kind === "reminder-stop"
+        ? "PDC reminders stopped"
+        : completedRequest?.kind === "reminder-update"
+          ? "PDC reminder settings updated"
+          : completedRequest?.kind === "autosave"
+            ? "Datalink settings saved"
+            : message.payload.message || "Datalink operation completed";
+    renderDatalink();
+    setStatus(text);
+    if (!completedRequest?.silent) showToast(text, "success");
+    if (completedRequest) window.setTimeout(continueQueuedDatalinkWork, 0);
+    return true;
+  }
+
+  function finishDatalinkError(message) {
+    let action = String(message.payload.action || "");
+    let slot = datalinkPendingSlotForAction(action);
+    if (!slot) {
+      for (const candidate of ["settings", "connection", "poll", "scan"]) {
+        const request = datalinkPending[candidate];
+        if (request?.id && messageMatchesRequest(message, request.id)) {
+          slot = candidate;
+          action = request.action || request.payload?.action || action;
+          break;
+        }
+      }
+    }
+    if (!slot && !isDatalinkAction(action)) return false;
+    const failedRequest = slot ? datalinkPending[slot] : null;
+    if (failedRequest?.id && !messageMatchesRequest(message, failedRequest.id)) return true;
+    if (slot === "settings" && !failedRequest) return true;
+    if (slot) datalinkPending[slot] = null;
+    let retryScheduled = false;
+    if (slot === "settings" && failedRequest?.kind === "autosave") {
+      if (failedRequest.includeConnection) datalinkAutoSaveScopes.add("connection");
+      if (failedRequest.includeCdm && !state.datalink.cdmAutoEnabled) datalinkAutoSaveScopes.add("cdm");
+      if (datalinkAutoSaveRetryCount < 1) {
+        datalinkAutoSaveRetryCount += 1;
+        clearDatalinkAutoSaveTimer();
+        datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 800);
+        retryScheduled = true;
+      } else {
+        if (failedRequest.includeConnection) {
+          const keepNewerConnectionEdit =
+            datalinkScopeChangedSinceRequest(failedRequest, "connection") &&
+            datalinkHasSavableConnectionChanges();
+          if (keepNewerConnectionEdit) {
+            datalinkAutoSaveScopes.add("connection");
+            datalinkAutoSaveRetryCount = 0;
+          } else {
+            datalinkAutoSaveScopes.delete("connection");
+            datalinkConnectAfterSave = false;
+          }
+        }
+        if (failedRequest.includeCdm) {
+          const keepNewerCdmEdit =
+            datalinkScopeChangedSinceRequest(failedRequest, "cdm") &&
+            datalinkDirtyParts().cdm && !state.datalink.cdmAutoEnabled;
+          if (keepNewerCdmEdit) {
+            datalinkAutoSaveScopes.add("cdm");
+            datalinkAutoSaveRetryCount = 0;
+          } else {
+            datalinkAutoSaveScopes.delete("cdm");
+          }
+        }
+      }
+    }
+    if (slot === "connection") state.datalink.connecting = false;
+    if (slot === "poll") state.datalink.pollInProgress = false;
+    const text = message.payload.message || message.payload.error || "Datalink operation failed";
+    state.datalink.statusMessage = text;
+    renderDatalink();
+    setStatus(text, "error");
+    showToast(text, "error");
+    if (slot === "settings" && !retryScheduled) {
+      window.setTimeout(continueQueuedDatalinkWork, 0);
+    }
+    return true;
+  }
+
   function renderSettings() {
     const settings = state.settings;
     $("#settingsProfileFile").value = settings.profileFile;
     $("#settingsAvisoFile").value = settings.avisoFile;
-    $("#settingsWatchFiles").checked = settings.watchFiles;
-    $("#settingsBridgeMode").value = settings.bridgeMode;
-    $("#settingsUpdateInterval").value = settings.updateInterval;
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
-    $("#settingsRuntimeSync").checked = settings.runtimeSync;
-    $("#settingsConfirmDelete").checked = settings.confirmDelete;
-    $("#settingsRimcas").checked = settings.rimcas;
-    $("#settingsVacdm").checked = settings.vacdm;
-    $("#settingsCpdlc").checked = settings.cpdlc;
-    $("#settingsApproachWindows").checked = settings.approachWindows;
     if (HOST_MODE) {
-      const unsupported = [
-        ["#settingsWatchFiles", "Automatic file watching is not supported by the native host."],
-        ["#settingsBridgeMode", "The native host always uses WebView2."],
-        ["#settingsUpdateInterval", "Runtime synchronization is event-driven."],
-        ["#settingsRuntimeSync", "Runtime synchronization is always enabled by the native host."],
-        ["#settingsVacdm", "Configure VACDM through the existing profile metadata/server URL."],
-        ["#settingsCpdlc", "Configure CPDLC through the EuroScope vSMR settings dialog."],
-        ["#settingsApproachWindows", "Inset windows are controlled from the runtime rail."]
-      ];
-      unsupported.forEach(([selector, title]) => {
-        const control = $(selector);
-        if (!control) return;
-        control.disabled = true;
-        control.title = title;
-      });
-      ["#settingsProfileFile", "#settingsAvisoFile"].forEach(selector => {
+      ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {
         const control = $(selector);
         if (control) control.readOnly = true;
       });
@@ -3336,23 +4145,13 @@
     Object.assign(state.settings, {
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
-      watchFiles: $("#settingsWatchFiles").checked,
-      bridgeMode: $("#settingsBridgeMode").value,
-      updateInterval: Number($("#settingsUpdateInterval").value) || 250,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
-      showFps: $("#settingsShowFps").checked,
-      runtimeSync: $("#settingsRuntimeSync").checked,
-      confirmDelete: $("#settingsConfirmDelete").checked,
-      rimcas: $("#settingsRimcas").checked,
-      vacdm: $("#settingsVacdm").checked,
-      cpdlc: $("#settingsCpdlc").checked,
-      approachWindows: $("#settingsApproachWindows").checked
+      showFps: $("#settingsShowFps").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
       record.data.targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset;
     });
-    ensureProfileRimcas().enabled = state.settings.rimcas;
     markDirty("Settings updated");
     renderIcons();
     postBridge("settings.update", clone(state.settings));
@@ -3463,26 +4262,6 @@
     showToast("Redone", "success");
   }
 
-  function resetFromSupplied(showMessage = true) {
-    if (!window.confirm("Restore the bundled vSMR profiles and LFPG AVISO data? Current staged changes will be replaced.")) return;
-    if (HOST_MODE) {
-      postBridge("state.reset", {});
-      setStatus("Loading bundled profile and LFPG AVISO defaults…", "info");
-      return;
-    }
-    const preservedUi = state.ui;
-    const insetStates = clone(state.runtime.insets || { aviso: false, srw1: false, srw2: false });
-    state = createState(DEFAULT_DATA);
-    state.ui = preservedUi;
-    state.runtime.insets = insetStates;
-    state.runtime.avisoInsetVisible = Boolean(insetStates.aviso);
-    Object.keys(drafts).forEach(key => drafts[key] = null);
-    resetAvisoSelections();
-    renderAll();
-    markDirty("Supplied data restored");
-    if (showMessage) showToast("Supplied LFPG data restored", "success");
-  }
-
   function downloadJson(filename, value) {
     const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -3505,6 +4284,7 @@
     renderAviso();
     renderAlerts();
     renderAvisoGroups();
+    renderDatalink();
     renderSettings();
     setPage(state.ui.page);
     setProfileTab(state.ui.profileTab);
@@ -3515,7 +4295,8 @@
 
   function applyQueryState() {
     const params = new URLSearchParams(window.VSMR_PREVIEW_QUERY || location.search);
-    const page = params.get("page");
+    const requestedPage = params.get("page");
+    const page = ["datalink", "cpdlc", "cdm"].includes(requestedPage) ? "settings" : requestedPage;
     const tab = params.get("tab");
     if (PAGE_TITLES[page]) state.ui.page = page;
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
@@ -3646,6 +4427,53 @@
       switchActiveProfile(event.target.value);
       postActiveProfileChange();
       setRailProfilePopoverOpen(false);
+    });
+    const syncDatalinkDraft = (...fields) => {
+      if (!datalinkDraft) resetDatalinkDraftFromRuntime();
+      const before = clone(datalinkDraft);
+      const after = captureDatalinkDraftFromControls();
+      fields.forEach(field => {
+        if (before?.[field] !== after?.[field]) datalinkFieldRevisions[field] += 1;
+      });
+      renderDatalink();
+    };
+    $("#datalinkLogonCallsign").addEventListener("input", event => {
+      const selection = event.target.selectionStart;
+      event.target.value = event.target.value.toUpperCase().replace(/\s/g, "").slice(0, 8);
+      if (selection != null) event.target.setSelectionRange(Math.min(selection, event.target.value.length), Math.min(selection, event.target.value.length));
+      syncDatalinkDraft("logonCallsign");
+      scheduleDatalinkAutoSave("connection", 500);
+    });
+    $("#datalinkPassword").addEventListener("input", () => {
+      datalinkPasswordCommitReady = false;
+      syncDatalinkDraft("password");
+    });
+    $("#datalinkPassword").addEventListener("change", () => {
+      syncDatalinkDraft("password");
+      datalinkPasswordCommitReady = true;
+      scheduleDatalinkAutoSave("connection", 0);
+    });
+    $("#datalinkPassword").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        syncDatalinkDraft("password");
+        datalinkPasswordCommitReady = true;
+        scheduleDatalinkAutoSave("connection", 0);
+      }
+    });
+    $("#datalinkPlaySound").addEventListener("change", () => {
+      syncDatalinkDraft("playSound");
+      scheduleDatalinkAutoSave("connection", 0);
+    });
+    [["#datalinkCdmDelay", "cdmDelayMinutes"], ["#datalinkCdmCooldown", "cdmCooldownMinutes"]].forEach(([selector, field]) => {
+      $(selector).addEventListener("input", () => {
+        syncDatalinkDraft(field);
+        scheduleDatalinkAutoSave("cdm", 500);
+      });
+      $(selector).addEventListener("change", event => {
+        event.target.value = String(Math.round(clamp(event.target.value, 0, 1440)));
+        syncDatalinkDraft(field);
+        scheduleDatalinkAutoSave("cdm", 0);
+      });
     });
     $("#avisoTextStyleSelect").addEventListener("change", event => {
       state.ui.selectedAvisoTextStyleId = event.target.value;
@@ -4035,8 +4863,13 @@
     else if (action === "alert-runways-open-all") setAllAlertRunwayField("closed", false);
     else if (action === "new-alert-runway") addAlertRunway();
     else if (action === "remove-alert-runway") removeAlertRunway(Number(button.dataset.index));
+    else if (action === "toggle-datalink-password") { datalinkPasswordVisible = !datalinkPasswordVisible; renderDatalink(); $("#datalinkPassword").focus(); }
+    else if (action === "datalink-toggle-connection") toggleDatalinkConnection();
+    else if (action === "datalink-poll") pollDatalinkNow();
+    else if (action === "datalink-scan") scanCdmReminders();
+    else if (action === "datalink-reminder-toggle") togglePdcReminders();
+    else if (action === "datalink-reminder-update") updatePdcReminders();
     else if (action === "apply-settings") applySettings();
-    else if (action === "reset-data") resetFromSupplied();
     else if (action.startsWith("browse-")) { postBridge(action.replaceAll("-", ".")); showToast("Native file picker requested"); }
   }
 
@@ -4445,6 +5278,10 @@
     if (!preservesStagedEditors && incoming.settings && typeof incoming.settings === "object") {
       state.settings = { ...state.settings, ...clone(incoming.settings) };
     }
+    if (incoming.datalink && typeof incoming.datalink === "object" && !Array.isArray(incoming.datalink)) {
+      state.datalink = normalizeDatalinkRuntimeState(incoming.datalink, state.datalink);
+      rebaseDatalinkDraftFromRuntime();
+    }
     if (typeof incoming.airport === "string") {
       state.hostAirport = incoming.airport.trim().toUpperCase();
       if (!preservesStagedEditors)
@@ -4569,6 +5406,27 @@
       }
       return;
     }
+    if (message.type === "datalink.state") {
+      const incomingDatalink = payload.datalink || payload.state?.datalink || payload.state || payload;
+      if (datalinkPending.connection?.id && messageMatchesRequest(message, datalinkPending.connection.id)) {
+        datalinkPending.connection = null;
+      }
+      if (datalinkPending.poll?.id && messageMatchesRequest(message, datalinkPending.poll.id)) {
+        datalinkPending.poll = null;
+      }
+      if (incomingDatalink && typeof incomingDatalink === "object" && !Array.isArray(incomingDatalink)) {
+        applyDatalinkRuntimeState(incomingDatalink);
+      }
+      if (payload.message) {
+        state.datalink.statusMessage = String(payload.message);
+        if (state.ui.page === "settings") renderDatalink();
+      }
+      return;
+    }
+    if (message.type === "state.ack") {
+      if (finishDatalinkAck(message)) return;
+      return;
+    }
     if (message.type === "state.saved" || message.type === "saved") {
       if (pending.save && !messageMatchesRequest(message, pending.save)) return;
       pending.save = "";
@@ -4594,6 +5452,7 @@
       return;
     }
     if (message.type === "state.error" || message.type === "error") {
+      if (finishDatalinkError(message)) return;
       let matched = false;
       if (pending.save && messageMatchesRequest(message, pending.save)) { pending.save = ""; matched = true; }
       if (pending.reload && messageMatchesRequest(message, pending.reload)) { pending.reload = ""; matched = true; }
@@ -4645,6 +5504,7 @@
     setInsetState(snapshot) {
       if (snapshot && typeof snapshot === "object") state.runtime.avisoInsetSnapshot = clone(snapshot);
     },
+    setDatalinkState(datalink) { applyDatalinkRuntimeState(datalink); },
     setAlertsState,
     getState: serializeStatePayload
   };
@@ -4657,10 +5517,14 @@
   bindEvents();
   renderAll();
   resetHistory(true);
+  window.setInterval(() => requestDatalinkState(), 1250);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.ui.page === "settings") requestDatalinkState(true);
+  });
   setStatus(HOST_MODE ? "Waiting for configuration…" : "Bundled LFPG preview loaded");
   postBridge("ui.ready", {
     hostMode: HOST_MODE,
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "bundled-reset", "window-actions", "split-aviso"]
+    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink"]
   });
 })();

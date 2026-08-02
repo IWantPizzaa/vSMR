@@ -213,17 +213,28 @@ diff where the expected result is not immediately visible.
 | PR-04 | Activate from page, rail selector, and runtime rail. | Live renderer and every selector agree; last active profile persists. |
 | PR-05 | Make the profile destination unwritable and activate a different profile from the Control Center. | The live selection may already be applied, but a correlated error is shown, no authoritative success is sent, and the on-disk active-profile value remains unchanged. |
 
-## Settings and disabled controls
+## Settings
 
 | ID | Action | Expected result |
 | --- | --- | --- |
-| SE-01 | Inspect native-host Settings, then expand Advanced and Danger zone. | Both disclosures start collapsed. Profile/AVISO paths are read-only. Watch files, bridge, update interval, runtime sync, VACDM, CPDLC, and the inset feature toggle are disabled with explanatory tooltips. |
+| SE-01 | Inspect native-host Settings at 728 x 500. | Data files and Display form the left stack; CPDLC connection and PDC reminders form the right stack. There is no Datalink rail page, readiness card, Features card, Advanced section, or Danger zone. |
 | SE-02 | Use Computer and GitHub for Profiles and AVISO. | Valid data stages; source text reports the source; native destination paths do not silently change. |
-| SE-03 | Change Resolution and RIMCAS, then Apply. | Connected settings apply live and mark staged profile state dirty. |
-| SE-04 | Toggle Show FPS and Apply in both directions. | The checkbox remains enabled in the native host, changes the FPS-only overlay live, and immediately persists `ShowFps` in the ASR. Undo/Redo keeps browser and native visibility synchronized. |
-| SE-05 | Turn deletion confirmation off and perform a delete. | Confirmation behavior changes for the current browser session. It is expected to reset after authoritative reload until native persistence is added. |
-| SE-06 | Make a recognizable staged edit and click Reset supplied data; cancel once, then confirm once. | Cancel changes nothing. Confirm validates and stages the complete packaged profiles and LFPG AVISO together, marks Save dirty, and does not write either configured destination before global Save. |
-| SE-07 | Temporarily remove or corrupt one packaged default and confirm Reset. | A visible error identifies missing/invalid defaults and the previously staged documents remain intact. |
+| SE-03 | Inspect Data files, change Resolution, then click Apply display. | Profile, AVISO, and EuroScope alias paths are read-only in the native host; the resolution change applies and marks staged profile state dirty. |
+| SE-04 | Toggle Show FPS and click Apply display in both directions. | The checkbox remains enabled in the native host, changes the FPS-only overlay live, and immediately persists `ShowFps` in the ASR. Undo/Redo keeps browser and native visibility synchronized. |
+
+## CPDLC and PDC in Settings
+
+| ID | Action | Expected result |
+| --- | --- | --- |
+| DL-01 | Open `.smr` with an SMR screen active. | The fixed Control Center opens directly on Settings; no legacy settings dialog or separate Datalink page appears. |
+| DL-02 | Change callsign, optionally replace the masked Hoppie code, toggle sound, and set reminder delay/cooldown to boundary values 0 and 1440. Wait for auto-save, reopen, and switch profiles. | Native EuroScope settings persist without Apply/Revert and independently of profiles; the secret is never returned to JavaScript or written into profile/history payloads. |
+| DL-03 | Enter delay/cooldown below 0 or above 1440 and leave the field. | The browser clamps the value to 0–1440 and auto-saves it while reminders are stopped; native bridge requests outside that range remain rejected. |
+| DL-04 | Connect, click Connect repeatedly, disconnect while connecting, then reconnect. | Only one login worker runs; a cancelled stale worker cannot reconnect; status updates from native state. |
+| DL-05 | Poll manually while a poll is active and leave Settings open through timer polling. | Polls do not overlap, the UI stays responsive, and the busy state clears after completion. |
+| DL-06 | Remove the `.cdm` alias, restore it, and use `Check now` for an active airport. | The Data-files alias path updates live; the check is disabled with a clear missing-template hint until a valid alias is restored, then reports checked/queued/suppressed counts. |
+| DL-07 | Open Confirm and Message from an aircraft datalink menu. | Each opens a fixed EuroScope-owned striped Cofrance window. PDC flight-plan fields are read-only; CTOT, TSAT, frequency, and additional text are editable. Message mode keeps the received text and reply workflow. |
+| DL-08 | Paste a Hoppie code with surrounding whitespace, leave the field so it auto-saves, and reconnect; also try an invalid code. | The saved field remains visibly masked, surrounding whitespace is discarded, a valid code connects, and an invalid/network failure reports the sanitized Hoppie or transport result instead of a callsign-collision guess. |
+| DL-09 | Run PDC reminders, edit delay/cooldown while running, click Update, then Stop while an automatic reminder is queued. | Run changes to Stop; edits reveal Update without stopping the service; Update restarts automatic tracking with the new schedule; Stop cancels queued automatic reminders while preserving explicit `Check now` work. |
 
 ## Persistence, compatibility, and failure recovery
 
