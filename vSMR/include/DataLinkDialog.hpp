@@ -10,8 +10,16 @@ class CDataLinkDialog : public CDialogEx
 	DECLARE_DYNAMIC(CDataLinkDialog)
 
 public:
+	enum class DialogMode
+	{
+		Auto = 0,
+		Pdc,
+		Message
+	};
+
 	CDataLinkDialog(CWnd* pParent = NULL);   // standard constructor
 	virtual ~CDataLinkDialog();
+	void SetDialogMode(DialogMode mode);
 
 	CString m_Callsign;
 	CString m_Aircraft;
@@ -32,8 +40,31 @@ public:
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV support
+	virtual BOOL OnInitDialog();
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
 
 	DECLARE_MESSAGE_MAP()
+
+	DialogMode ResolveDialogMode() const;
+	void ConfigureModeLayout();
+	void SetControlLimit(int controlId, UINT limit);
+	void DrawPanel(LPDRAWITEMSTRUCT drawItem, const CString& caption);
+	void DrawButton(LPDRAWITEMSTRUCT drawItem, const CString& caption, bool primary);
+
+	DialogMode m_DialogMode;
+	DialogMode m_ResolvedMode;
+	CBrush m_BackgroundBrush;
+	CBrush m_PanelBrush;
+	CBrush m_EditBrush;
+	CBrush m_ReadOnlyBrush;
+	CFont m_InterfaceFont;
+	CFont m_BoldFont;
+	int m_FullWindowWidth;
+	int m_FullWindowHeight;
+
 public:
 	afx_msg void OnBnClickedOk();
+	afx_msg void OnBnClickedClose();
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
+	afx_msg void OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct);
 };

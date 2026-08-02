@@ -9,12 +9,22 @@ All notable changes to this project are documented in this file.
 - Added airport-specific state and preset/default stores for AVISO, SRW 1, and SRW 2.
 - Added SRW corner/split snapping, right-drag panning, and cursor-anchored wheel zoom.
 - Added compact per-inset Reset actions to the Runtime Menu.
+- Added CPDLC connection, polling, credentials, notification sound, and automatic PDC reminder controls to the Control Center Settings page.
+- Added live CPDLC/CDM status reporting and manual CDM reminder scans for the active airport.
 
 ### Changed
 - Renamed the Runtime Menu's `AVISO Insets` section to `Insets`.
 - Unified floating inset title bars with the Runtime Menu's dark striped chrome.
 - Removed the SRW `Z` range and `R` rotation menus; wheel zoom replaces the range menu.
 - Made inset-preset writes authoritative across open radar screens and Control Center history without overwriting unrelated staged settings.
+- Reworked the native PDC and received-message dialogs into compact, EuroScope-owned Cofrance-style windows while preserving editable PDC fields and message replies.
+- Routed `.smr`, `.smr connect`, `.smr poll`, and `.smr cdm` through the shared native datalink service, with guarded asynchronous connection and polling operations.
+- Consolidated automatic CPDLC saves and explicit PDC reminder Run, Stop, Update, and Check-now controls into Settings; removed the separate Datalink page, readiness card, feature switches, Advanced section, and Danger zone.
+- Added the resolved EuroScope `.cdm` alias path to the Settings data-files card.
+
+### Fixed
+- Kept saved Hoppie credentials visibly masked after auto-save, normalized pasted codes, URL-encoded credentials, and replaced the misleading callsign-collision login error with the actual sanitized Hoppie or network failure.
+- Stopping or rescheduling automatic PDC reminders now removes only queued automatic reminders while preserving manual reminder checks.
 
 ## [1.1.3] - 2026-06-20
 
