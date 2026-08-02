@@ -55,11 +55,6 @@ vSMR is not a standalone application. It is a EuroScope plugin DLL that:
 - integrates Hoppie CPDLC for datalink clearance workflows
 - ships with a fixed-size, EuroScope-owned modeless Control Center
 
-Control Center maintainers should also read the
-[implementation notes](docs/CONTROL_CENTER.md) and run the
-[deterministic test checklist](docs/CONTROL_CENTER_TEST_CHECKLIST.md) before
-release.
-
 ## Repository Layout
 
 The main EuroScope plugin project lives in [`vSMR/`](vSMR/):
@@ -70,6 +65,7 @@ vSMR/
   include/     Project headers and resource IDs
   resources/   RC script, cursors, and linker definition
   data/        Default runtime data, including JSON, AVISO, icons, and audio
+  vSMR_webUI/  Local Control Center HTML, CSS, and JavaScript assets
   tools/       Maintenance scripts
 ```
 
@@ -114,14 +110,14 @@ Optional runtime data:
 
 1. Build or obtain `vSMR.dll` for `Release | Win32`.
 2. Install the x86 Visual C++ Redistributable and WebView2 Evergreen Runtime if they are not already installed.
-3. Copy `Release\vSMR.dll`, `Release\vSMR_Data\`, and `Release\vSMR_webUI\` into your EuroScope plugin folder (or use the equivalent complete directories from a packaged release).
+3. Copy `Release\vSMR.dll` and `Release\vSMR_Data\` into your EuroScope plugin folder (or use the equivalent complete items from a packaged release).
 4. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
 5. Open the vSMR radar display from EuroScope.
 
 Important:
 
 - `vSMR_Profiles.json` is required. vSMR checks `vSMR_Data\` first, then the DLL folder for existing installs.
-- Keep the complete six-file `vSMR_webUI\` package next to `vSMR.dll`: four application assets plus the two files under `defaults\`. The Control Center does not use an external web server.
+- Keep the complete `vSMR_Data\vSMR_webUI\` package next to `vSMR.dll`: four application assets plus the two files under `defaults\`. The Control Center does not use an external web server.
 - `vSMR_Maps.json` is optional and uses the same search order.
 - The repository already ships example runtime files under [`vSMR/data/`](vSMR/data/).
 
@@ -130,18 +126,21 @@ Example deployment layout:
 ```text
 EuroScope\Plugins\
   vSMR.dll
-  vSMR_webUI\
-    index.html
-    styles.css
-    app.js
-    data.js
-    defaults\
-      vSMR_Profiles.json
-      AVISO_LFPG.geojson
   vSMR_Data\
     Audio\
       Alarm.wav
       Ding.wav
+    Licenses\
+      vSMR.txt
+      RapidJSON.txt
+    vSMR_webUI\
+      index.html
+      styles.css
+      app.js
+      data.js
+      defaults\
+        vSMR_Profiles.json
+        AVISO_LFPG.geojson
     vSMR_Profiles.json
     vSMR_Maps.json
     ICAO_Aircraft.json
@@ -160,7 +159,7 @@ EuroScope\Plugins\
 | File                 | Location                                             | Purpose                                                                                                    |
 | -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `vSMR_Profiles.json` | `vSMR_Data\`, then same folder as `vSMR.dll` fallback | Main profile database: fonts, labels, rules, colors, alerts, icon settings, legacy UI metadata, and more |
-| `vSMR_webUI\*`       | Directory next to `vSMR.dll`                         | Four local application assets plus full profile/LFPG AVISO defaults used by the modeless Control Center    |
+| `vSMR_webUI\*`       | `vSMR_Data\vSMR_webUI\`                             | Four local application assets plus full profile/LFPG AVISO defaults used by the modeless Control Center    |
 
 ### Optional
 
@@ -677,9 +676,6 @@ Output:
 
 ```text
 Release\vSMR.dll
-Release\LICENSE
-Release\THIRD_PARTY_LICENSES\
-  RapidJSON.txt
 Release\vSMR_Data\
   vSMR_Profiles.json
   vSMR_Maps.json
@@ -687,14 +683,17 @@ Release\vSMR_Data\
   AVISO\
   aircraft_icons\
   Audio\
-Release\vSMR_webUI\
-  index.html
-  styles.css
-  app.js
-  data.js
-  defaults\
-    vSMR_Profiles.json
-    AVISO_LFPG.geojson
+  Licenses\
+    vSMR.txt
+    RapidJSON.txt
+  vSMR_webUI\
+    index.html
+    styles.css
+    app.js
+    data.js
+    defaults\
+      vSMR_Profiles.json
+      AVISO_LFPG.geojson
 ```
 
 ### Offline dependencies
@@ -707,7 +706,7 @@ For an offline EuroScope computer, download the **Evergreen Standalone Installer
 MicrosoftEdgeWebView2RuntimeInstallerX86.exe /silent /install
 ```
 
-Deploy `vSMR.dll`, `vSMR_webUI\`, and `vSMR_Data\` together as shown above. The static loader removes the separate `WebView2Loader.dll` deployment dependency; it does not embed the Evergreen Runtime.
+Deploy `vSMR.dll` and `vSMR_Data\` together as shown above. The static loader removes the separate `WebView2Loader.dll` deployment dependency; it does not embed the Evergreen Runtime.
 
 ## Source Tree Guide
 
