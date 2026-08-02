@@ -27,6 +27,7 @@ All notable changes to this project are documented in this file.
 - Added the resolved EuroScope `.cdm` alias path to the Settings data-files card.
 - Reduced redraw work by caching inset/runtime fonts and runway headings, reusing per-target metadata, indexing runway occupancy, and avoiding duplicate Control Center renders and AVISO group scans.
 - Local Release builds now copy the complete `vSMR_Data` tree, matching the packaged deployment layout.
+- Moved the Control Center Web UI source under `vSMR\` and its release assets under `vSMR_Data`, leaving only `vSMR.dll` and `vSMR_Data\` at the Release root.
 
 ### Fixed
 - Loading Profiles or AVISO now activates the selected computer file in place; GitHub loads create collision-safe variants under `vSMR_Data` and can no longer overwrite canonical airport/profile files. Settings, Reload, multiple radar screens, and persisted source selection follow the actual active paths.
@@ -37,6 +38,7 @@ All notable changes to this project are documented in this file.
 
 ### Repository
 - Removed the unused bundled Asio and libcurl headers/libraries, their dead shared state, and an obsolete custom resize cursor.
+- Removed the superseded Control Center implementation notes and test checklist from `docs\`.
 - Simplified AppVeyor packaging, included project and RapidJSON license notices, and enabled validation for `main`, `master`, and `dev`.
 
 ## [1.1.3] - 2026-06-20

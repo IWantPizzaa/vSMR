@@ -265,16 +265,16 @@
     <None Include="data\AVISO\AVISO_LFPG.geojson">
       <Filter>Data</Filter>
     </None>
-    <None Include="..\vSMR_webUI\app.js">
+    <None Include="vSMR_webUI\app.js">
       <Filter>Web UI</Filter>
     </None>
-    <None Include="..\vSMR_webUI\data.js">
+    <None Include="vSMR_webUI\data.js">
       <Filter>Web UI</Filter>
     </None>
-    <None Include="..\vSMR_webUI\index.html">
+    <None Include="vSMR_webUI\index.html">
       <Filter>Web UI</Filter>
     </None>
-    <None Include="..\vSMR_webUI\styles.css">
+    <None Include="vSMR_webUI\styles.css">
       <Filter>Web UI</Filter>
     </None>
     <None Include="resources\cursors\arrow.cur">

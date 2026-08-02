@@ -422,7 +422,7 @@ void CVsmrControlCenterDialog::InitializeWebView()
 	if (resourceFolder.empty())
 	{
 		ShowFallback(
-			"vSMR web resources were not found. Reinstall the vSMR_webUI folder next to vSMR.dll.");
+			"vSMR web resources were not found. Reinstall vSMR_Data\\vSMR_webUI next to vSMR.dll.");
 		return;
 	}
 
@@ -1471,12 +1471,14 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	if (Owner != nullptr)
 	{
 		candidates.emplace_back(
-			std::filesystem::path(Owner->DllPath) / "vSMR_webUI");
-		candidates.emplace_back(
 			std::filesystem::path(Owner->DataPath) / "vSMR_webUI");
+		candidates.emplace_back(
+			std::filesystem::path(Owner->DllPath) / "vSMR_webUI");
 	}
 	try
 	{
+		candidates.emplace_back(
+			std::filesystem::current_path() / "vSMR" / "vSMR_webUI");
 		candidates.emplace_back(
 			std::filesystem::current_path() / "vSMR_webUI");
 	}
@@ -1490,7 +1492,8 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 		{
 			if (std::filesystem::is_regular_file(candidate / "index.html") &&
 				std::filesystem::is_regular_file(candidate / "styles.css") &&
-				std::filesystem::is_regular_file(candidate / "app.js"))
+				std::filesystem::is_regular_file(candidate / "app.js") &&
+				std::filesystem::is_regular_file(candidate / "data.js"))
 				return std::filesystem::absolute(candidate).wstring();
 		}
 		catch (...)
