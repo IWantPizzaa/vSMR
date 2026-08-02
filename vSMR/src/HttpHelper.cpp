@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "HttpHelper.hpp"
 #include <winhttp.h>
+#include <algorithm>
 #include <vector>
 
 #pragma comment(lib, "winhttp.lib")
@@ -9,15 +10,28 @@
 // HttpHelper Class by Even Rognlien, used with permission
 //
 
-std::string HttpHelper::downloadedContents;
-std::mutex HttpHelper::downloadMutex;
-
 namespace
 {
-	std::string DownloadStringWithWinHttp(const std::string& url)
+	std::string DownloadStringWithWinHttp(
+		const std::string& url,
+		int timeoutMs,
+		const std::atomic<bool>* cancelRequested)
 	{
-		if (url.empty())
+		auto isCancelled = [cancelRequested]() -> bool
+		{
+			return cancelRequested != nullptr && cancelRequested->load(std::memory_order_acquire);
+		};
+		if (url.empty() || isCancelled())
 			return "";
+		timeoutMs = std::clamp(timeoutMs, 1000, 30000);
+		const ULONGLONG startedAt = ::GetTickCount64();
+		auto remainingTimeoutMs = [&]() -> int
+		{
+			const ULONGLONG elapsed = ::GetTickCount64() - startedAt;
+			if (elapsed >= static_cast<ULONGLONG>(timeoutMs))
+				return 0;
+			return (std::max)(1, timeoutMs - static_cast<int>(elapsed));
+		};
 
 		std::wstring wideUrl(url.begin(), url.end());
 		URL_COMPONENTS components = {};
@@ -50,12 +64,22 @@ namespace
 		if (session == NULL)
 			return "";
 
-		const int timeoutMs = 6000;
 		WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+		if (isCancelled() || remainingTimeoutMs() == 0)
+		{
+			WinHttpCloseHandle(session);
+			return "";
+		}
 
 		HINTERNET connect = WinHttpConnect(session, host.c_str(), components.nPort, 0);
 		if (connect == NULL)
 		{
+			WinHttpCloseHandle(session);
+			return "";
+		}
+		if (isCancelled() || remainingTimeoutMs() == 0)
+		{
+			WinHttpCloseHandle(connect);
 			WinHttpCloseHandle(session);
 			return "";
 		}
@@ -69,6 +93,15 @@ namespace
 			return "";
 		}
 
+		int remaining = remainingTimeoutMs();
+		if (isCancelled() || remaining == 0)
+		{
+			WinHttpCloseHandle(request);
+			WinHttpCloseHandle(connect);
+			WinHttpCloseHandle(session);
+			return "";
+		}
+		WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
 		BOOL ok = WinHttpSendRequest(request,
 			L"Accept: application/json\r\n",
 			(DWORD)-1L,
@@ -76,15 +109,27 @@ namespace
 			0,
 			0,
 			0);
-		if (ok == TRUE)
+		remaining = remainingTimeoutMs();
+		if (ok == TRUE && !isCancelled() && remaining > 0)
+		{
+			WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
 			ok = WinHttpReceiveResponse(request, NULL);
+		}
+		else
+		{
+			ok = FALSE;
+		}
 
 		std::string response;
-		if (ok == TRUE)
+		if (ok == TRUE && !isCancelled())
 		{
 			DWORD available = 0;
 			do
 			{
+				remaining = remainingTimeoutMs();
+				if (isCancelled() || remaining == 0)
+					break;
+				WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
 				available = 0;
 				if (!WinHttpQueryDataAvailable(request, &available))
 					break;
@@ -100,14 +145,14 @@ namespace
 					break;
 
 				response.append(buffer.data(), downloaded);
-			} while (available > 0);
+			} while (available > 0 && !isCancelled());
 		}
 
 		WinHttpCloseHandle(request);
 		WinHttpCloseHandle(connect);
 		WinHttpCloseHandle(session);
 
-		return response;
+		return isCancelled() ? "" : response;
 	}
 }
 
@@ -115,22 +160,11 @@ HttpHelper::HttpHelper()  {
 
 }
 
-// Used for downloading strings from web:
-size_t HttpHelper::handle_data(void *ptr, size_t size, size_t nmemb, void *stream) {
-	int numbytes = size*nmemb;
-	// The data is not null-terminated, so get the last character, and replace it with '\0'. 
-	char lastchar = *((char *)ptr + numbytes - 1);
-	*((char *)ptr + numbytes - 1) = '\0';
-	downloadedContents.append((char *)ptr);
-	downloadedContents.append(1, lastchar);
-	*((char *)ptr + numbytes - 1) = lastchar;  // Might not be necessary. 
-	return size*nmemb;
-}
-
-
-std::string HttpHelper::downloadStringFromURL(std::string url) {
-	std::lock_guard<std::mutex> guard(downloadMutex);
-	return DownloadStringWithWinHttp(url);
+std::string HttpHelper::downloadStringFromURL(
+	std::string url,
+	int timeoutMs,
+	const std::atomic<bool>* cancelRequested) {
+	return DownloadStringWithWinHttp(url, timeoutMs, cancelRequested);
 }
 
 HttpHelper::~HttpHelper() {

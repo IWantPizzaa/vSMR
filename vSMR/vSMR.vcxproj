@@ -147,6 +147,7 @@
     <ClCompile Include="src\ProfileEditorDialog.cpp" />
     <ClCompile Include="src\VsmrControlCenterDialog.cpp" />
     <ClCompile Include="src\VsmrControlCenterBridge.cpp" />
+    <ClCompile Include="src\WeatherData.cpp" />
     <ClCompile Include="src\Rimcas.cpp" />
     <ClCompile Include="src\SMRGeometry.cpp" />
     <ClCompile Include="src\SMRPlugin.cpp" />
@@ -192,6 +193,7 @@
     <ClInclude Include="include\ProfileEditorDialog.hpp" />
     <ClInclude Include="include\VsmrControlCenterDialog.hpp" />
     <ClInclude Include="include\VsmrControlCenterBridge.hpp" />
+    <ClInclude Include="include\WeatherData.hpp" />
     <ClInclude Include="include\resource.h" />
     <ClInclude Include="include\Rimcas.hpp" />
     <ClInclude Include="include\SMRColorUtils.hpp" />

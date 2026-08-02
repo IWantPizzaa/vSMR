@@ -791,11 +791,15 @@ CSMRRadar::CSMRRadar()
 	appWindowDisplays[1] = false;
 	appWindowDisplays[2] = false;
 	appWindowDisplays[3] = false;
+	appWindowDisplays[4] = false;
 	appWindows[1] = std::make_unique<CInsetWindow>(APPWINDOW_ONE);
 	appWindows[2] = std::make_unique<CInsetWindow>(APPWINDOW_TWO);
 	appWindows[3] = std::make_unique<CInsetWindow>(APPWINDOW_AVISO);
 	appWindows[3]->m_Mode = CInsetWindow::Mode::AvisoViewport;
 	appWindows[3]->m_Area = { 260, 260, 760, 560 };
+	appWindows[4] = std::make_unique<CInsetWindow>(APPWINDOW_WEATHER);
+	appWindows[4]->m_Mode = CInsetWindow::Mode::Weather;
+	appWindows[4]->m_Area = { 300, 200, 606, 375 };
 
 	Logger::info("Loading profile");
 
