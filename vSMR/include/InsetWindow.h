@@ -1,5 +1,6 @@
 #pragma once
 #include "EuroScopePlugIn.h"
+#include <array>
 #include <string>
 #include <map>
 #include <memory>
@@ -19,7 +20,8 @@ public:
 	{
 		SecondaryRadar = 0,
 		AvisoViewport = 1,
-		Weather = 2
+		Weather = 2,
+		Timer = 3
 	};
 
 	enum class AvisoLayoutMode
@@ -86,6 +88,8 @@ public:
 	bool IsAvisoViewport() const;
 	bool IsSecondaryRadar() const;
 	bool IsWeather() const;
+	bool IsTimer() const;
+	bool UpdateTimerCountdowns();
 	bool SupportsPanAndZoom() const;
 	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;
@@ -121,8 +125,21 @@ public:
 private:
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
+	void renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
+	void StartTimer(int durationMinutes);
+	void ResetTimer(int durationMinutes);
+	int GetTimerRemainingSeconds(int durationMinutes, unsigned long long now) const;
+	HFONT GetWeatherFont(size_t index, int height, int weight, DWORD pitchAndFamily, const char* faceName);
+	HFONT GetTimerFont();
+	void ReleaseCachedFonts();
 	string icao;
-	map<string, CPosition> AptPositions;
+	CPosition m_AirportPosition;
+	bool m_AirportPositionValid = false;
+	std::array<unsigned long long, 3> m_TimerDeadlineTicks = { 0, 0, 0 };
+	std::array<bool, 3> m_TimerExpired = { false, false, false };
+	std::array<HFONT, 7> m_WeatherFonts = {};
+	std::array<int, 7> m_WeatherFontHeights = {};
+	HFONT m_TimerFont = nullptr;
 	std::unique_ptr<AvisoViewportState> m_AvisoState;
 	bool m_WindowMoveActive = false;
 	bool m_WindowMoveStartedSnapped = false;

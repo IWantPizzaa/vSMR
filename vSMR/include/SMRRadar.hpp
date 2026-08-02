@@ -25,7 +25,6 @@
 #include <ctime>
 #include "Logger.h"
 #include "SMRDataTypes.hpp"
-#include "SMRSharedState.hpp"
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -51,14 +50,8 @@ public:
 
 	static map<string, string> vStripsStands;
 
-	bool BLINK = false;
 	bool drawRunways = false;
 	map<string, POINT> TagsOffsets;
-
-	vector<string> Active_Arrivals;
-
-	clock_t clock_init = 0;
-	clock_t clock_final = 0;
 
 	typedef struct tagPOINT2 {
 		double x;
@@ -74,8 +67,6 @@ public:
 	int RadarViewZoomLevel = 0;
 	std::map<std::string, CRimcas::RunwayStatus> LastMapRunwayStatuses;
 	std::string LastMapActiveAirport;
-
-	map<string, bool> ClosedRunway;
 
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
@@ -181,8 +172,9 @@ public:
 		int secondaryLayoutMode = 0;
 		bool secondaryVisible = true;
 		bool linkedMovement = false;
-		std::array<SecondaryRadarWindow, 2> srw;
+		std::array<SecondaryRadarWindow, 1> srw;
 		InsetWindowState weather;
+		InsetWindowState timer;
 	};
 	struct AvisoRasterRenderRequest
 	{
@@ -353,12 +345,6 @@ public:
 
 	map<string, RECT> TimePopupAreas;
 
-	map<int, string> TimePopupData;
-	multimap<string, string> AcOnRunway;
-	map<string, bool> ColorAC;
-
-	map<string, CRimcas::RunwayAreaType> RunwayAreas;
-
 	map<string, RECT> MenuPositions;
 	enum class RuntimeMenuPopup
 	{
@@ -379,12 +365,17 @@ public:
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
 	CFont RuntimeOverlayFont;
+	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;
 	struct CachedRunwayGeometry
 	{
 		std::string runwayNameA;
 		std::string runwayNameB;
 		std::string displayName;
+		double trueHeadingA = 0.0;
+		double trueHeadingB = 0.0;
+		bool trueHeadingAValid = false;
+		bool trueHeadingBValid = false;
 		std::vector<CPosition> rimcasDefinition;
 		std::vector<CPosition> closedDefinition;
 	};
@@ -731,10 +722,6 @@ public:
 	//---OnCompileCommand-----------------------------------------
 
 	virtual bool OnCompileCommand(const char * sCommandLine);
-
-	//---RefreshAirportActivity---------------------------------------------
-
-	virtual void RefreshAirportActivity(void);
 
 	//---OnRadarTargetPositionUpdate---------------------------------------------
 
