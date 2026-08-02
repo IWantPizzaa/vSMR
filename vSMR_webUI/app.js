@@ -541,7 +541,7 @@
   let draggedAvisoGroupId = "";
   let insetPresetDialogMode = "capture";
   let outboundMessageSequence = 0;
-  const pending = { save: "", reload: "", github: null };
+  const pending = { save: "", reload: "", resource: null };
   const datalinkPending = { settings: null, connection: null, poll: null, scan: null };
   let datalinkDraft = null;
   let datalinkBaseline = null;
@@ -620,12 +620,15 @@
   }
 
   function captureHistorySnapshot(reuse = history.present) {
+    const historySettings = clone(state.settings);
+    delete historySettings.profileFile;
+    delete historySettings.avisoFile;
     const values = {
       profiles: state.profiles,
       metadata: state.metadata,
       profileExtras: state.profileExtras,
       aviso: state.aviso,
-      settings: state.settings
+      settings: historySettings
     };
     const snapshot = {};
     Object.entries(values).forEach(([key, value]) => {
@@ -700,12 +703,16 @@
     if (!snapshot) return;
     const preservedUi = state.ui;
     const preservedActiveProfileId = state.activeProfileId;
+    const preservedResourcePaths = {
+      profileFile: state.settings.profileFile,
+      avisoFile: state.settings.avisoFile
+    };
     state.profiles = JSON.parse(snapshot.profiles);
     state.metadata = JSON.parse(snapshot.metadata);
     state.profileExtras = JSON.parse(snapshot.profileExtras || "[]");
     state.activeProfileId = preservedActiveProfileId;
     state.aviso = JSON.parse(snapshot.aviso);
-    state.settings = JSON.parse(snapshot.settings);
+    state.settings = { ...JSON.parse(snapshot.settings), ...preservedResourcePaths };
     state.ui = preservedUi;
     if (!state.profiles.some(record => record.id === state.activeProfileId)) state.activeProfileId = state.profiles[0]?.id || "";
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
@@ -4106,6 +4113,8 @@
     const settings = state.settings;
     $("#settingsProfileFile").value = settings.profileFile;
     $("#settingsAvisoFile").value = settings.avisoFile;
+    $("#settingsProfileFile").title = settings.profileFile;
+    $("#settingsAvisoFile").title = settings.avisoFile;
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
     if (HOST_MODE) {
@@ -4969,7 +4978,7 @@
     if (state.ui.page === "settings") renderSettings();
   }
 
-  function applyProfilesPayload(parsed, source = "Profiles") {
+  function applyProfilesPayload(parsed, source = "") {
     if (!Array.isArray(parsed)) throw new Error("Expected a vSMR profiles JSON array");
     const { records, metadata, extras } = getProfileRecords(parsed);
     if (!records.length) throw new Error("No profiles were found in this file");
@@ -4987,23 +4996,23 @@
     state.ui.selectedColorPath = colors[0]?.id || "";
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
     Object.keys(drafts).forEach(key => drafts[key] = null);
-    setResourceSource("profiles", source);
+    if (source) setResourceSource("profiles", source);
     renderGlobalProfileSelect();
     renderAllProfileSections();
     renderSettings();
     renderRuntimeMenu();
-    markDirty(`${source} loaded`);
+    markDirty(`${source || "Profiles"} loaded`);
   }
 
 
-  function applyAvisoPayload(parsed, source = "AVISO GeoJSON") {
+  function applyAvisoPayload(parsed, source = "") {
     if (parsed?.type !== "FeatureCollection" || !Array.isArray(parsed.features)) throw new Error("Expected a GeoJSON FeatureCollection");
     state.aviso = normalizeAvisoData(parsed);
     resetAvisoSelections();
-    setResourceSource("aviso", source);
+    if (source) setResourceSource("aviso", source);
     renderAviso();
     renderRuntimeMenu();
-    markDirty(`${source} loaded`);
+    markDirty(`${source || "AVISO GeoJSON"} loaded`);
   }
 
   function openResourceGithubDialog(type) {
@@ -5038,10 +5047,10 @@
     try {
       const sourceUrl = String(input.value || "").trim();
       const url = normalizeGithubRawUrl(sourceUrl);
-      if (pending.github) return;
+      if (pending.resource) return;
       const resource = githubResourceType;
       const id = postBridge("resource.github.load", { resource, url });
-      pending.github = { id, resource, source: sourceUrl };
+      pending.resource = { id, resource, source: sourceUrl, kind: "github" };
       setGithubRequestPending(true);
       setStatus(`Loading ${resource === "aviso" ? "AVISO GeoJSON" : "profiles"} from GitHub...`, "info");
       if (!HOST_MODE) {
@@ -5178,11 +5187,13 @@
     const preservedUi = state.ui;
     const previousProfileName = activeProfile().name || "";
     const previousHostAirport = state.hostAirport;
+    const resourceSourceChanged = reason === "resource-source";
+    const supersededDirtyEditors = resourceSourceChanged && state.dirty;
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
     const preservesStagedEditors = state.dirty &&
-      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason);
+      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo", "resource-source"].includes(reason);
     let avisoChanged = false;
 
     if (Array.isArray(incoming.profiles)) {
@@ -5215,8 +5226,14 @@
       state.aviso = normalizeAvisoData(incoming.aviso);
       avisoChanged = true;
     }
-    if (!preservesStagedEditors && incoming.settings && typeof incoming.settings === "object") {
-      state.settings = { ...state.settings, ...clone(incoming.settings) };
+    if (incoming.settings && typeof incoming.settings === "object" && !Array.isArray(incoming.settings)) {
+      if (!preservesStagedEditors) {
+        state.settings = { ...state.settings, ...clone(incoming.settings) };
+      } else {
+        ["profileFile", "avisoFile"].forEach(key => {
+          if (typeof incoming.settings[key] === "string") state.settings[key] = incoming.settings[key];
+        });
+      }
     }
     if (incoming.datalink && typeof incoming.datalink === "object" && !Array.isArray(incoming.datalink)) {
       state.datalink = normalizeDatalinkRuntimeState(incoming.datalink, state.datalink);
@@ -5259,8 +5276,13 @@
       showToast(message, "error");
     }
 
-    if (reason === "initial" || reason === "reload") {
+    if (reason === "initial" || reason === "reload" || resourceSourceChanged) {
       resetHistory(true);
+      if (supersededDirtyEditors) {
+        const message = "Data source changed; unsaved edits were replaced by the newly active file.";
+        setStatus(message, "info");
+        showToast(message, "info");
+      }
     } else if (reason === "save") {
       history.present = captureHistorySnapshot();
       markSaved(incoming.message || "Configuration saved");
@@ -5293,33 +5315,39 @@
     if (state.ui.page === "alerts") renderAlerts();
   }
 
-  function finishGithubRequest(message, success) {
-    if (pending.github && !messageMatchesRequest(message, pending.github.id)) return false;
-    const request = pending.github || {
+  function finishResourceRequest(message, success) {
+    const pendingRequest = pending.resource;
+    const matchesPending = Boolean(pendingRequest && messageMatchesRequest(message, pendingRequest.id));
+    const source = String(message.payload.source || "");
+    const request = matchesPending ? pendingRequest : {
       id: message.id,
       resource: message.payload.resource,
-      source: message.payload.source || "computer",
-      kind: "computer"
+      source: source || "computer",
+      kind: /^https:\/\/(?:www\.)?github\.com\//i.test(source) ||
+        /^https:\/\/raw\.githubusercontent\.com\//i.test(source)
+        ? "github"
+        : source === "bundled defaults" ? "defaults" : "computer"
     };
-    if (pending.github) {
-      pending.github = null;
+    if (matchesPending) {
+      pending.resource = null;
       setGithubRequestPending(false);
     }
     if (!success) return true;
     const resource = String(message.payload.resource || request.resource);
     const data = message.payload.data;
-    const source = message.payload.source || request.source;
+    const resourceSource = source || request.source;
+    const effectivePath = String(message.payload.path || "");
     try {
-      if (resource === "profiles") applyProfilesPayload(data, source);
-      else if (resource === "aviso") applyAvisoPayload(data, source);
+      if (resource === "profiles") applyProfilesPayload(data, effectivePath);
+      else if (resource === "aviso") applyAvisoPayload(data, effectivePath);
       else throw new Error("Unknown resource type");
       const dialog = $("#resourceGithubDialog");
-      if (dialog.open) {
+      if (dialog.open && (!pendingRequest || matchesPending)) {
         if (typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
       }
-      const sourceLabel = source === "bundled defaults"
+      const sourceLabel = resourceSource === "bundled defaults"
         ? "bundled defaults"
-        : request.kind === "computer" || source === "computer"
+        : request.kind === "computer" || resourceSource === "computer"
           ? "computer"
           : "GitHub";
       showToast(`${resource === "aviso" ? "GeoJSON" : "Profiles"} loaded from ${sourceLabel}`, "success");
@@ -5395,11 +5423,11 @@
       return;
     }
     if (message.type === "resource.loaded") {
-      finishGithubRequest(message, true);
+      finishResourceRequest(message, true);
       return;
     }
     if (message.type === "resource.error") {
-      if (!finishGithubRequest(message, false)) return;
+      finishResourceRequest(message, false);
       const text = payload.message || "Could not load the resource";
       setStatus(text, "error");
       showToast(text, "error");
@@ -5407,15 +5435,12 @@
     }
     if (message.type === "state.error" || message.type === "error") {
       if (finishDatalinkError(message)) return;
-      let matched = false;
-      if (pending.save && messageMatchesRequest(message, pending.save)) { pending.save = ""; matched = true; }
-      if (pending.reload && messageMatchesRequest(message, pending.reload)) { pending.reload = ""; matched = true; }
-      if (pending.github && messageMatchesRequest(message, pending.github.id)) {
-        pending.github = null;
+      if (pending.save && messageMatchesRequest(message, pending.save)) pending.save = "";
+      if (pending.reload && messageMatchesRequest(message, pending.reload)) pending.reload = "";
+      if (pending.resource && messageMatchesRequest(message, pending.resource.id)) {
+        pending.resource = null;
         setGithubRequestPending(false);
-        matched = true;
       }
-      if (!matched && !message.legacy && (pending.save || pending.reload || pending.github)) return;
       updateCommandState();
       const text = payload.message || payload.error || "Native operation failed";
       setStatus(text, "error");

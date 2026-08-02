@@ -15,6 +15,7 @@
 #include "SMRVacdmTagHelpers.hpp"
 #include "ProfileEditorDialog.hpp"
 #include "AvisoEditorDialog.hpp"
+#include "SMRPlugin.hpp"
 #include "VsmrControlCenterDialog.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
@@ -742,6 +743,21 @@ CSMRRadar::CSMRRadar()
 	
 	DataPath = ResolvePluginDataDirectoryPath(DllPath);
 	ConfigPath = ResolvePluginFilePath(DllPath, "vSMR_Profiles.json");
+	{
+		const std::string sessionProfilesPath =
+			CSMRPlugin::GetActiveProfilesConfigPath();
+		std::error_code sessionPathError;
+		if (!sessionProfilesPath.empty() &&
+			fs::is_regular_file(fs::path(sessionProfilesPath), sessionPathError) &&
+			!sessionPathError)
+		{
+			ConfigPath = fs::absolute(
+				fs::path(sessionProfilesPath),
+				sessionPathError).lexically_normal().string();
+			if (sessionPathError)
+				ConfigPath = sessionProfilesPath;
+		}
+	}
 	mapsPath = ResolvePluginFilePath(DllPath, "vSMR_Maps.json");
 	IconsPath = ResolvePluginDirectoryPath(DllPath, "aircraft_icons");
 	LoadAircraftSpecs();
@@ -811,7 +827,7 @@ CSMRRadar::CSMRRadar()
 
 	Logger::info("Loading profile");
 
-	this->CSMRRadar::LoadProfile("Default");
+	this->CSMRRadar::LoadProfile("Default", false);
 
 	this->CSMRRadar::LoadCustomFont();
 
@@ -887,12 +903,11 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	if (DllPath.empty() || airportUpper.empty())
 		return "";
 
-	if (!AvisoGeoJsonOverrideAirport.empty() &&
-		!AvisoGeoJsonOverridePath.empty() &&
-		AvisoGeoJsonOverrideAirport == airportUpper &&
-		IsRegularFileNoThrow(AvisoGeoJsonOverridePath))
+	const auto overridePath = AvisoGeoJsonOverridePaths.find(airportUpper);
+	if (overridePath != AvisoGeoJsonOverridePaths.end() &&
+		IsRegularFileNoThrow(overridePath->second))
 	{
-		return AvisoGeoJsonOverridePath;
+		return overridePath->second;
 	}
 
 	const std::string resolutionKey = DllPath + "|" + DataPath;
@@ -3171,6 +3186,184 @@ void CSMRRadar::LoadCustomFont() {
 	customFonts[5] = createFont(sizeFive);
 }
 
+bool CSMRRadar::SetProfilesConfigPath(
+	const std::string& path,
+	std::string* errorText,
+	bool persistToAsr)
+{
+	if (errorText != nullptr)
+		errorText->clear();
+
+	auto normalizeExistingPath = [](const std::string& value, std::string& result) -> bool
+	{
+		result.clear();
+		std::error_code pathError;
+		const fs::path normalized = fs::absolute(fs::path(value), pathError).lexically_normal();
+		if (pathError || normalized.empty() ||
+			!fs::is_regular_file(normalized, pathError) || pathError)
+		{
+			return false;
+		}
+		result = normalized.string();
+		return true;
+	};
+
+	bool sessionSelectionClaimed = false;
+	const std::string sessionPath =
+		CSMRPlugin::GetActiveProfilesConfigPath(&sessionSelectionClaimed);
+	std::string normalizedSessionPath;
+	const bool sessionPathAvailable =
+		normalizeExistingPath(sessionPath, normalizedSessionPath);
+
+	// Explicit Control Center selection always replaces the session source.
+	// ASR restoration is first-screen-wins: once one valid path has claimed the
+	// session, a later screen adopts it instead of switching every existing view
+	// back to a stale per-screen value.
+	const bool explicitSelection = persistToAsr;
+	std::string normalizedRequestedPath;
+	const bool requestedPathAvailable =
+		normalizeExistingPath(path, normalizedRequestedPath);
+	std::string normalizedPath;
+	if (!explicitSelection && sessionSelectionClaimed && sessionPathAvailable)
+	{
+		normalizedPath = normalizedSessionPath;
+	}
+	else if (requestedPathAvailable)
+	{
+		normalizedPath = normalizedRequestedPath;
+	}
+	else
+	{
+		if (!explicitSelection && sessionPathAvailable)
+		{
+			normalizedPath = normalizedSessionPath;
+		}
+		else
+		{
+			if (errorText != nullptr)
+				*errorText = "The selected profiles file is no longer available.";
+			return false;
+		}
+	}
+	const bool publishSessionSelection =
+		explicitSelection ||
+		(requestedPathAvailable &&
+			(!sessionSelectionClaimed || !sessionPathAvailable));
+
+	std::vector<CSMRRadar*> targets;
+	if (publishSessionSelection)
+	{
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar != nullptr &&
+				std::find(targets.begin(), targets.end(), radar) == targets.end())
+			{
+				targets.push_back(radar);
+			}
+		}
+	}
+	if (std::find(targets.begin(), targets.end(), this) == targets.end())
+		targets.insert(targets.begin(), this);
+
+	struct Replacement
+	{
+		CSMRRadar* radar = nullptr;
+		std::unique_ptr<CConfig> config;
+	};
+	std::vector<Replacement> replacements;
+	replacements.reserve(targets.size());
+	try
+	{
+		for (CSMRRadar* radar : targets)
+		{
+			auto config = std::make_unique<CConfig>(normalizedPath, radar->mapsPath);
+			if (config->getProfileCount() == 0)
+			{
+				if (errorText != nullptr)
+					*errorText = "The selected profiles file contains no usable profiles.";
+				return false;
+			}
+			replacements.push_back({ radar, std::move(config) });
+		}
+	}
+	catch (const std::exception& error)
+	{
+		if (errorText != nullptr)
+			*errorText = "Unable to load the selected profiles file: " + std::string(error.what());
+		return false;
+	}
+	catch (...)
+	{
+		if (errorText != nullptr)
+			*errorText = "Unable to load the selected profiles file.";
+		return false;
+	}
+
+	CConfig* primaryConfig = nullptr;
+	for (const Replacement& replacement : replacements)
+	{
+		if (replacement.radar == this)
+		{
+			primaryConfig = replacement.config.get();
+			break;
+		}
+	}
+	if (primaryConfig == nullptr)
+		return false;
+
+	const std::vector<std::string> profileNames = primaryConfig->getAllProfiles();
+	std::string activeProfile = primaryConfig->getLastActiveProfileName();
+	if (activeProfile.empty() ||
+		std::find_if(profileNames.begin(), profileNames.end(), [&](const std::string& candidate) {
+			return _stricmp(candidate.c_str(), activeProfile.c_str()) == 0;
+		}) == profileNames.end())
+	{
+		const std::string currentProfile = CurrentConfig != nullptr
+			? CurrentConfig->getActiveProfileName()
+			: std::string();
+		const auto currentMatch = std::find_if(profileNames.begin(), profileNames.end(), [&](const std::string& candidate) {
+			return _stricmp(candidate.c_str(), currentProfile.c_str()) == 0;
+		});
+		activeProfile = currentMatch != profileNames.end()
+			? *currentMatch
+			: profileNames.front();
+	}
+
+	for (Replacement& replacement : replacements)
+	{
+		CSMRRadar* radar = replacement.radar;
+		radar->ConfigPath = normalizedPath;
+		radar->CurrentConfig = std::move(replacement.config);
+		radar->LoadProfile(activeProfile, false);
+		radar->InvalidateAirportPositionCache();
+		radar->InvalidateRunwayGeometryCache();
+		radar->RadarViewZoomLevel = -1;
+		radar->LastMapRunwayStatuses.clear();
+		radar->LastMapActiveAirport.clear();
+		if (publishSessionSelection || radar == this)
+		{
+			radar->SaveDataToAsr(
+				"ProfilesFile",
+				"Active vSMR profiles file",
+				radar->ConfigPath.c_str());
+		}
+		radar->RequestRefresh();
+	}
+	if (publishSessionSelection)
+		CSMRPlugin::PublishActiveProfilesConfigPath(normalizedPath, true);
+	for (CSMRRadar* radar : targets)
+	{
+		if (radar != this &&
+			radar->VsmrControlCenterDialog != nullptr)
+		{
+			radar->VsmrControlCenterDialog->SyncFromRadar(
+				publishSessionSelection ? "resource-source" : "runtime");
+		}
+	}
+	RememberSessionActiveProfile(activeProfile);
+	return true;
+}
+
 bool CSMRRadar::ReloadConfig() {
 	Logger::info("CSMRRadar::ReloadConfig()");
 	std::string activeProfile = CurrentConfig ? CurrentConfig->getActiveProfileName() : "Default";
@@ -3203,10 +3396,12 @@ bool CSMRRadar::ReloadConfig() {
 	return reloadSucceeded;
 }
 
-void CSMRRadar::LoadProfile(string profileName) {
+void CSMRRadar::LoadProfile(string profileName, bool saveOutgoingState) {
 	Logger::info(string(__FUNCSIG__));
-	// Saving old profile data
-	CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+	// Record runtime changes only when switching within the same source. A new
+	// source must never inherit state from the file it is replacing.
+	if (saveOutgoingState)
+		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
 
 	// Loading the new profile
 	CurrentConfig->setActiveProfile(profileName);
