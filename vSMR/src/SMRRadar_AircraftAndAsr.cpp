@@ -3,6 +3,8 @@
 #include "InsetWindow.h"
 #include "VsmrControlCenterDialog.hpp"
 
+extern std::vector<CSMRRadar*> RadarScreensOpened;
+
 namespace
 {
 	std::string NormalizeInsetAirport(std::string airport)
@@ -536,6 +538,12 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 	};
 
 	save("Version", "Airport-specific inset state version", "3");
+	const std::string normalizedAirport = NormalizeInsetAirport(airport);
+	const auto avisoPath = AvisoGeoJsonOverridePaths.find(normalizedAirport);
+	save(
+		"AvisoFile",
+		"Airport-specific AVISO source file",
+		avisoPath != AvisoGeoJsonOverridePaths.end() ? avisoPath->second : std::string());
 	for (const int id : { 1 })
 	{
 		const auto windowIt = appWindows.find(id);
@@ -619,6 +627,45 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	const std::string scopedPrefix = AirportInsetAsrPrefix(airport);
 	if (scopedPrefix.empty())
 		return false;
+	const std::string normalizedAirport = NormalizeInsetAirport(airport);
+
+	// An AVISO source selected earlier in this EuroScope session is
+	// authoritative for later-created radar screens. Their independently saved
+	// ASR values must not split the same airport across different source files.
+	std::string sessionAvisoPath;
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar == this)
+			continue;
+		const auto selectedPath = radar->AvisoGeoJsonOverridePaths.find(normalizedAirport);
+		if (selectedPath == radar->AvisoGeoJsonOverridePaths.end() || selectedPath->second.empty())
+			continue;
+
+		std::error_code pathError;
+		const std::filesystem::path candidate(selectedPath->second);
+		if (!std::filesystem::is_regular_file(candidate, pathError) || pathError)
+			continue;
+		sessionAvisoPath = std::filesystem::absolute(candidate, pathError).lexically_normal().string();
+		if (pathError)
+			sessionAvisoPath = selectedPath->second;
+		break;
+	}
+	const bool hasSessionAvisoPath = !sessionAvisoPath.empty();
+	auto adoptSessionAvisoPath = [&]()
+	{
+		if (!hasSessionAvisoPath)
+			return;
+		AvisoGeoJsonOverridePaths[normalizedAirport] = sessionAvisoPath;
+		AvisoGeoJsonResolvedAirport.clear();
+		AvisoGeoJsonResolvedDllPath.clear();
+		AvisoGeoJsonResolvedPath.clear();
+		AvisoGeoJsonLastStatTick = 0;
+		const std::string key = scopedPrefix + "AvisoFile";
+		SaveDataToAsr(
+			key.c_str(),
+			"Airport-specific AVISO source file",
+			sessionAvisoPath.c_str());
+	};
 
 	auto readWithPrefix = [&](const std::string& prefix, const std::string& suffix) -> const char*
 	{
@@ -629,7 +676,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	bool hasScopedState = readWithPrefix(scopedPrefix, "Version") != nullptr;
 	if (!hasScopedState)
 	{
-		for (const char* probe : { "SRW1Display", "AVISO1Display", "WEATHER1Display", "TIMER1Display", "SRW1TopLeftX", "AVISO1TopLeftX", "WEATHER1TopLeftX", "TIMER1TopLeftX" })
+		for (const char* probe : { "AvisoFile", "SRW1Display", "AVISO1Display", "WEATHER1Display", "TIMER1Display", "SRW1TopLeftX", "AVISO1TopLeftX", "WEATHER1TopLeftX", "TIMER1TopLeftX" })
 		{
 			if (readWithPrefix(scopedPrefix, probe) != nullptr)
 			{
@@ -644,7 +691,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		readPrefix = scopedPrefix;
 	else if (allowLegacyFallback)
 	{
-		for (const char* probe : { "SRW1Display", "AVISO1Display", "WEATHER1Display", "TIMER1Display", "SRW1TopLeftX", "AVISO1TopLeftX", "WEATHER1TopLeftX", "TIMER1TopLeftX" })
+		for (const char* probe : { "AvisoFile", "SRW1Display", "AVISO1Display", "WEATHER1Display", "TIMER1Display", "SRW1TopLeftX", "AVISO1TopLeftX", "WEATHER1TopLeftX", "TIMER1TopLeftX" })
 		{
 			if (GetDataFromAsr(probe) != nullptr)
 			{
@@ -656,12 +703,38 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	}
 
 	if (!hasScopedState)
+	{
+		adoptSessionAvisoPath();
 		return false;
+	}
 
 	auto read = [&](const std::string& suffix) -> const char*
 	{
 		return readWithPrefix(readPrefix, suffix);
 	};
+
+	if (hasSessionAvisoPath)
+	{
+		adoptSessionAvisoPath();
+	}
+	else if (const char* selectedAvisoPath = read("AvisoFile"))
+	{
+		std::error_code pathError;
+		const std::filesystem::path sourcePath(selectedAvisoPath);
+		if (selectedAvisoPath[0] != '\0' &&
+			std::filesystem::is_regular_file(sourcePath, pathError) &&
+			!pathError)
+		{
+			AvisoGeoJsonOverridePaths[normalizedAirport] =
+				std::filesystem::absolute(sourcePath, pathError).lexically_normal().string();
+			if (pathError)
+				AvisoGeoJsonOverridePaths[normalizedAirport] = selectedAvisoPath;
+		}
+		else
+		{
+			AvisoGeoJsonOverridePaths.erase(normalizedAirport);
+		}
+	}
 
 	for (const int id : { 1 })
 	{
@@ -835,6 +908,29 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		Logger::info("OnAsrContentLoaded: no ASR Airport value; active airport=" + getActiveAirport());
 	}
 
+	const char* savedProfilesPath = GetDataFromAsr("ProfilesFile");
+	if (savedProfilesPath != NULL && savedProfilesPath[0] != '\0')
+	{
+		const std::string requestedProfilesPath(savedProfilesPath);
+		std::string profilePathError;
+		if (!SetProfilesConfigPath(requestedProfilesPath, &profilePathError, false))
+		{
+			Logger::info(
+				"OnAsrContentLoaded: profiles source is unavailable path=" +
+				requestedProfilesPath + " error=" + profilePathError);
+		}
+	}
+	else if (!ConfigPath.empty())
+	{
+		// Missing legacy keys do not claim the session source. The constructor
+		// has already adopted any claimed session path, so merely persist the
+		// effective value for this ASR's next load.
+		SaveDataToAsr(
+			"ProfilesFile",
+			"Active vSMR profiles file",
+			ConfigPath.c_str());
+	}
+
 	std::string loadedProfileName;
 	const std::string persistedProfile = ReadLastActiveProfileFromConfig();
 	if (!persistedProfile.empty())
@@ -929,6 +1025,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	const std::string activeProfileToPersist = GetSessionActiveProfile(activeProfileFallback);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfileToPersist.c_str());
 	WriteLastActiveProfileToConfig(activeProfileToPersist);
+	SaveDataToAsr("ProfilesFile", "Active vSMR profiles file", ConfigPath.c_str());
 
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 

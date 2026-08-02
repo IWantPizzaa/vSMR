@@ -66,6 +66,9 @@
     <ClCompile Include="src\VsmrControlCenterBridge.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\VsmrResourceFiles.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="src\WeatherData.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -165,6 +168,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\VsmrControlCenterBridge.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\VsmrResourceFiles.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\WeatherData.hpp">

@@ -67,6 +67,11 @@ public:
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);
 	bool RunCdmReminderScan(std::string& result, std::string& error);
+	static std::string GetActiveProfilesConfigPath(
+		bool* selectionClaimed = nullptr);
+	static void PublishActiveProfilesConfigPath(
+		const std::string& path,
+		bool claimSelection);
 	void StopWeatherFetchWorker();
 
 	//---OnCompileCommand------------------------------------------

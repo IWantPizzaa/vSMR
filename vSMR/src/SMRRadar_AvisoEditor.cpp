@@ -6,6 +6,8 @@
 
 #include <cctype>
 
+extern std::vector<CSMRRadar*> RadarScreensOpened;
+
 namespace
 {
 	std::string TrimAsciiWhitespaceCopy(const std::string& text)
@@ -79,11 +81,49 @@ std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& ai
 void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path)
 {
 	const std::string airportUpper = ToUpperAscii(TrimAsciiWhitespaceCopy(airport));
-	AvisoGeoJsonOverrideAirport = airportUpper;
-	AvisoGeoJsonOverridePath = path;
-	AvisoGeoJsonResolvedAirport.clear();
-	AvisoGeoJsonResolvedDllPath.clear();
-	AvisoGeoJsonResolvedPath.clear();
+	if (airportUpper.empty())
+		return;
+
+	std::string normalizedPath = path;
+	if (!path.empty())
+	{
+		try
+		{
+			normalizedPath =
+				std::filesystem::absolute(std::filesystem::path(path)).lexically_normal().string();
+		}
+		catch (...) {}
+	}
+
+	std::vector<CSMRRadar*> targets;
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar != nullptr &&
+			std::find(targets.begin(), targets.end(), radar) == targets.end())
+		{
+			targets.push_back(radar);
+		}
+	}
+	if (std::find(targets.begin(), targets.end(), this) == targets.end())
+		targets.push_back(this);
+
+	for (CSMRRadar* radar : targets)
+	{
+		if (normalizedPath.empty())
+			radar->AvisoGeoJsonOverridePaths.erase(airportUpper);
+		else
+			radar->AvisoGeoJsonOverridePaths[airportUpper] = normalizedPath;
+		radar->AvisoGeoJsonResolvedAirport.clear();
+		radar->AvisoGeoJsonResolvedDllPath.clear();
+		radar->AvisoGeoJsonResolvedPath.clear();
+		radar->AvisoGeoJsonLastStatTick = 0;
+		const std::string asrKey = "Insets." + airportUpper + ".AvisoFile";
+		radar->SaveDataToAsr(
+			asrKey.c_str(),
+			"Airport-specific AVISO source file",
+			normalizedPath.c_str());
+		radar->RequestRefresh();
+	}
 }
 
 bool CSMRRadar::ForceReloadAvisoGeoJson()

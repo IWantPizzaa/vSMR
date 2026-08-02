@@ -5,6 +5,7 @@
 #include "Logger.h"
 #include "SMRRadar.hpp"
 #include "VsmrControlCenterBridge.hpp"
+#include "VsmrResourceFiles.hpp"
 
 #include "WebView2.h"
 #include <wrl.h>
@@ -1196,7 +1197,8 @@ void CVsmrControlCenterDialog::RequestComputerResource(
 			resource,
 			path.string(),
 			requestId,
-			text);
+			text,
+			path.string());
 }
 
 void CVsmrControlCenterDialog::RequestResetDefaults(
@@ -1313,12 +1315,68 @@ LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
 				"GitHub download failed or returned an empty file.");
 		return 0;
 	}
-	if (Bridge)
-		Bridge->HandleLoadedResource(
-			result->resource,
-			result->source,
+	if (!Bridge)
+		return 0;
+
+	std::string validationError;
+	if (!Bridge->ValidateLoadedResource(
+		result->resource,
+		result->body,
+		validationError))
+	{
+		Bridge->PushError(
 			result->requestId,
-			result->body);
+			validationError.empty()
+				? "The downloaded resource is invalid."
+				: validationError);
+		return 0;
+	}
+
+	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->DataPath.empty()
+		? std::filesystem::path(Owner->DataPath)
+		: std::filesystem::path(Logger::DLL_PATH) / "vSMR_Data";
+	const VsmrResourceFiles::Kind kind = result->resource == "profiles"
+		? VsmrResourceFiles::Kind::Profiles
+		: VsmrResourceFiles::Kind::Aviso;
+	std::string storedPath;
+	std::string storageError;
+	if (!VsmrResourceFiles::StoreGithubDownload(
+		kind,
+		dataDirectory.string(),
+		result->source,
+		Owner != nullptr ? Owner->getActiveAirport() : std::string(),
+		result->body,
+		storedPath,
+		storageError))
+	{
+		Bridge->PushError(
+			result->requestId,
+			storageError.empty()
+				? "Unable to store the downloaded resource."
+				: storageError);
+		return 0;
+	}
+
+	if (!Bridge->HandleLoadedResource(
+		result->resource,
+		result->source,
+		result->requestId,
+		result->body,
+		storedPath))
+	{
+		std::error_code removeError;
+		std::filesystem::remove(storedPath, removeError);
+		if (removeError)
+		{
+			Logger::info(
+				"Control Center rejected resource cleanup failed path=" +
+				storedPath + " error=" + removeError.message());
+			Bridge->PushError(
+				result->requestId,
+				"The resource was rejected, but its downloaded variant could not be removed: " +
+				storedPath);
+		}
+	}
 	return 0;
 }
 
@@ -1387,10 +1445,10 @@ void CVsmrControlCenterDialog::ShowPage(Page page)
 		::PostMessage(threadWindow, kWebViewShowPageMessage, 0, 0);
 }
 
-void CVsmrControlCenterDialog::SyncFromRadar()
+void CVsmrControlCenterDialog::SyncFromRadar(const std::string& reason)
 {
 	if (Bridge && WebViewReady.load())
-		Bridge->PushAuthoritativeState("runtime");
+		Bridge->PushAuthoritativeState(reason.empty() ? "runtime" : reason);
 }
 
 std::string CVsmrControlCenterDialog::PageName(Page page) const

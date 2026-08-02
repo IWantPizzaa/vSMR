@@ -47,6 +47,10 @@ public:
 	virtual ~CSMRRadar();
 
 	bool ReloadConfig();
+	bool SetProfilesConfigPath(
+		const std::string& path,
+		std::string* errorText = nullptr,
+		bool persistToAsr = true);
 
 	static map<string, string> vStripsStands;
 
@@ -243,8 +247,7 @@ public:
 	mutable std::string AvisoGeoJsonResolvedAirport;
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
-	std::string AvisoGeoJsonOverrideAirport;
-	std::string AvisoGeoJsonOverridePath;
+	std::unordered_map<std::string, std::string> AvisoGeoJsonOverridePaths;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
@@ -485,7 +488,9 @@ public:
 
 	//---LoadProfile--------------------------------------------
 
-	virtual void LoadProfile(string profileName);
+	virtual void LoadProfile(
+		string profileName,
+		bool saveOutgoingState = true);
 	void EnsureTargetGroundStatusColorEntries();
 	void RebuildProfileColorEntries();
 	bool IsProfileColorPathValid(const std::string& path, bool* hasAlpha = nullptr);

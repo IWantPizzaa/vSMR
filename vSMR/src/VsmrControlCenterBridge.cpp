@@ -5,6 +5,8 @@
 #include "InsetWindow.h"
 #include "SMRPlugin.hpp"
 #include "SMRRadar.hpp"
+#include "VsmrControlCenterDialog.hpp"
+#include "VsmrResourceFiles.hpp"
 
 #include "rapidjson/document.h"
 #include "rapidjson/prettywriter.h"
@@ -19,6 +21,8 @@
 #include <sstream>
 #include <unordered_set>
 #include <utility>
+
+extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
 {
@@ -47,9 +51,125 @@ namespace
 		return value;
 	}
 
+	std::string UpperAscii(std::string value)
+	{
+		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+			return static_cast<char>(std::toupper(c));
+		});
+		return value;
+	}
+
 	bool EqualsNoCase(const std::string& left, const std::string& right)
 	{
 		return LowerAscii(left) == LowerAscii(right);
+	}
+
+	std::string NormalizeAirportCandidate(std::string value)
+	{
+		value = UpperAscii(TrimAscii(value));
+		if (value.size() != 4 || value == "JSON" || value == "AVIS" || value == "GEOJ")
+			return "";
+		for (const unsigned char character : value)
+		{
+			if (std::isalnum(character) == 0)
+				return "";
+		}
+		return value;
+	}
+
+	std::string DetectAvisoAirport(
+		const rapidjson::Value& document,
+		std::string sourceHint)
+	{
+		const char* keys[] = {
+			"icao", "icao_code", "airport_icao", "airport_code", "airport", "active_airport"
+		};
+		auto findInObject = [&](const rapidjson::Value& object) -> std::string
+		{
+			if (!object.IsObject())
+				return "";
+			for (const char* key : keys)
+			{
+				if (!object.HasMember(key) || !object[key].IsString())
+					continue;
+				const std::string candidate = NormalizeAirportCandidate(object[key].GetString());
+				if (!candidate.empty())
+					return candidate;
+			}
+			return "";
+		};
+
+		std::string airport = findInObject(document);
+		if (!airport.empty())
+			return airport;
+		if (document.IsObject() && document.HasMember("metadata"))
+		{
+			airport = findInObject(document["metadata"]);
+			if (!airport.empty())
+				return airport;
+		}
+		if (document.IsObject() && document.HasMember("properties"))
+		{
+			airport = findInObject(document["properties"]);
+			if (!airport.empty())
+				return airport;
+		}
+
+		std::replace(sourceHint.begin(), sourceHint.end(), '\\', '/');
+		const size_t suffix = sourceHint.find_first_of("?#");
+		if (suffix != std::string::npos)
+			sourceHint.resize(suffix);
+		const size_t slash = sourceHint.find_last_of('/');
+		if (slash != std::string::npos)
+			sourceHint = sourceHint.substr(slash + 1);
+
+		// Work only with the basename stem so URL path segments and extensions
+		// such as blob/json/geojson can never be mistaken for an airport. Accept
+		// either a bare ICAO filename (LFPO.geojson) or the ICAO token directly
+		// beside AVISO (LFPO_AVISO.geojson / AVISO_LFPO.geojson).
+		const size_t extension = sourceHint.find_last_of('.');
+		if (extension != std::string::npos)
+			sourceHint.resize(extension);
+		sourceHint = UpperAscii(sourceHint);
+
+		std::vector<std::string> tokens;
+		std::string token;
+		for (const unsigned char character : sourceHint)
+		{
+			if (std::isalnum(character) != 0)
+			{
+				token.push_back(static_cast<char>(character));
+				continue;
+			}
+			if (!token.empty())
+			{
+				tokens.push_back(std::move(token));
+				token.clear();
+			}
+		}
+		if (!token.empty())
+			tokens.push_back(std::move(token));
+
+		if (tokens.size() == 1)
+			return NormalizeAirportCandidate(tokens.front());
+		for (size_t index = 0; index < tokens.size(); ++index)
+		{
+			if (tokens[index] != "AVISO")
+				continue;
+			if (index > 0)
+			{
+				airport = NormalizeAirportCandidate(tokens[index - 1]);
+				if (!airport.empty())
+					return airport;
+			}
+			if (index + 1 < tokens.size())
+			{
+				airport = NormalizeAirportCandidate(tokens[index + 1]);
+				if (!airport.empty())
+					return airport;
+			}
+		}
+		return "";
 	}
 
 	std::string ReadString(const rapidjson::Value& object, const char* key)
@@ -2331,7 +2451,8 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	const std::string& resource,
 	const std::string& source,
 	const std::string& requestId,
-	const std::string& jsonText)
+	const std::string& jsonText,
+	const std::string& effectivePath)
 {
 	std::string validationError;
 	if (!ValidateLoadedResource(resource, jsonText, validationError))
@@ -2343,6 +2464,109 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	rapidjson::Document parsed;
 	parsed.Parse<0>(jsonText.c_str());
 	const std::string normalizedResource = LowerAscii(resource);
+	std::string normalizedEffectivePath;
+	if (!effectivePath.empty())
+	{
+		std::string pathError;
+		if (!VsmrResourceFiles::NormalizeExistingFilePath(
+			effectivePath,
+			normalizedEffectivePath,
+			pathError))
+		{
+			State->SendError(
+				requestId,
+				pathError.empty() ? "The selected resource path is unavailable." : pathError);
+			return false;
+		}
+
+		if (State->Owner == nullptr)
+		{
+			State->SendError(requestId, "vSMR radar state is not available.");
+			return false;
+		}
+
+		std::string activationError;
+		if (normalizedResource == "profiles")
+		{
+			if (!State->Owner->SetProfilesConfigPath(
+				normalizedEffectivePath,
+				&activationError,
+				true))
+			{
+				State->SendError(
+					requestId,
+					activationError.empty()
+						? "Unable to activate the selected profiles file."
+						: activationError);
+				return false;
+			}
+		}
+		else if (normalizedResource == "aviso")
+		{
+			const std::string activeAirport = NormalizeAirportCandidate(
+				State->Owner->getActiveAirport());
+			if (activeAirport.empty())
+			{
+				State->SendError(requestId, "Select an active airport before loading AVISO GeoJSON.");
+				return false;
+			}
+
+			const std::string detectedAirport = DetectAvisoAirport(parsed, source);
+			if (detectedAirport.empty())
+			{
+				State->SendError(
+					requestId,
+					"Could not determine the AVISO airport. Add metadata.icao or use a filename such as LFPO.geojson, LFPO_AVISO.geojson, or AVISO_LFPO.geojson.");
+				return false;
+			}
+			if (detectedAirport != activeAirport)
+			{
+				State->SendError(
+					requestId,
+					"This AVISO file is for " + detectedAirport +
+					". Select that airport before loading it; the active airport is " +
+					activeAirport + ".");
+				return false;
+			}
+
+			const auto previousOverride =
+				State->Owner->AvisoGeoJsonOverridePaths.find(activeAirport);
+			const bool hadPreviousOverride =
+				previousOverride != State->Owner->AvisoGeoJsonOverridePaths.end();
+			const std::string previousOverridePath = hadPreviousOverride
+				? previousOverride->second
+				: std::string();
+			State->Owner->SetAvisoGeoJsonOverrideForAirport(
+				activeAirport,
+				normalizedEffectivePath);
+			const std::string activatedPath =
+				State->Owner->ResolveAvisoGeoJsonPathForAirport(activeAirport);
+			if (!EqualsNoCase(activatedPath, normalizedEffectivePath) ||
+				!State->Owner->ForceReloadAvisoGeoJson())
+			{
+				State->Owner->SetAvisoGeoJsonOverrideForAirport(
+					activeAirport,
+					hadPreviousOverride ? previousOverridePath : std::string());
+				State->Owner->ForceReloadAvisoGeoJson();
+				State->SendError(requestId, "Unable to activate the selected AVISO GeoJSON file.");
+				return false;
+			}
+
+			// The override is process-wide across radar screens. Do not publish it
+			// to other Control Centers until validation and renderer activation have
+			// both succeeded, otherwise a failed load briefly exposes the path that
+			// is about to be rolled back.
+			for (CSMRRadar* radar : RadarScreensOpened)
+			{
+				if (radar == nullptr || radar == State->Owner ||
+					radar->VsmrControlCenterDialog == nullptr)
+				{
+					continue;
+				}
+				radar->VsmrControlCenterDialog->SyncFromRadar("resource-source");
+			}
+		}
+	}
 
 	rapidjson::Document message;
 	MakeEnvelope(message, "resource.loaded", requestId);
@@ -2350,6 +2574,8 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	rapidjson::Value payload(rapidjson::kObjectType);
 	AddString(payload, "resource", normalizedResource, allocator);
 	AddString(payload, "source", source, allocator);
+	if (!normalizedEffectivePath.empty())
+		AddString(payload, "path", normalizedEffectivePath, allocator);
 	rapidjson::Value data;
 	CloneJsonValue(parsed, data, allocator);
 	payload.AddMember("data", data, allocator);

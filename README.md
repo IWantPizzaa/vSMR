@@ -345,6 +345,12 @@ draft, while the global blue `Save` validates and persists staged profile and
 AVISO documents. Runtime profile/mode/group/inset actions remain immediate and
 are synchronized between the Control Center and Runtime Menu.
 
+Loading Profiles or AVISO from `Computer` activates that selected file in
+place; Save and Reload continue to use its absolute path and do not replace the
+bundled default. GitHub resources are validated, downloaded to collision-safe
+variant files under `vSMR_Data\Profiles\` or `vSMR_Data\AVISO\`, and activated
+from there. The read-only paths on Settings always show the actual active files.
+
 ### Display editor
 
 The Display page provides a hierarchical profile-color editor, icon style and
