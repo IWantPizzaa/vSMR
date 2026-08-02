@@ -152,6 +152,14 @@ public:
 	};
 	struct AvisoPreset
 	{
+		struct InsetWindowState
+		{
+			bool valid = false;
+			RECT area = { 300, 200, 606, 375 };
+			int layoutMode = 0;
+			bool visible = false;
+		};
+
 		struct SecondaryRadarWindow
 		{
 			bool valid = false;
@@ -174,6 +182,7 @@ public:
 		bool secondaryVisible = true;
 		bool linkedMovement = false;
 		std::array<SecondaryRadarWindow, 2> srw;
+		InsetWindowState weather;
 	};
 	struct AvisoRasterRenderRequest
 	{
