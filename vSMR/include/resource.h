@@ -2,13 +2,9 @@
 // Microsoft Visual C++ generated include file.
 // Used by vSMR.rc
 //
-#define IDC_POINTER                     104
 #define IDC_SMRCURSOR                   104
-#define IDC_POINTER_COPY                105
 #define IDD_DIALOG1                     7000
 #define IDD_DIALOG2                     7001
-#define IDR_WAVE1                       7002
-#define IDC_SMRMOVECURSOR               7003
 #define IDC_CALLSIGN                    7004
 #define IDC_FROM                        7005
 #define IDC_DEST                        7006
@@ -21,7 +17,6 @@
 #define IDC_MESSAGE                     7012
 #define IDC_ACT                         7013
 #define IDC_RWY                         7014
-#define IDC_SMRRESIZE                   7014
 #define IDC_CLB                         7015
 #define IDC_SSR                         7016
 #define IDC_FREQ                        7017

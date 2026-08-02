@@ -32,9 +32,6 @@ IDC_SMRMOVETAG          CURSOR                  "cursors\\cursor1.cur"
 
 IDC_SMRCURSOR           CURSOR                  "cursors\\arrow.cur"
 
-IDC_SMRRESIZE           CURSOR                  "cursors\\POINTER1.cur"
-
-
 IDC_SMRMOVEWINDOW       CURSOR                  "cursors\\move.cur"
 
 #endif    // Neutral (Default) resources
@@ -260,13 +257,6 @@ BEGIN
 END
 #endif    // APSTUDIO_INVOKED
 
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// WAVE
-//
-
-IDR_WAVE1               WAVE                    "audio\\Ding.wav"
 
 #endif    // French (France) resources
 /////////////////////////////////////////////////////////////////////////////

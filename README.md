@@ -1,6 +1,6 @@
 # vSMR for EuroScope
 
-vSMR is a Win32 EuroScope plugin that provides a surface movement radar display with configurable target symbols, profile-driven tags and colors, RIMCAS alerts, approach inset windows, VACDM integration, and Hoppie CPDLC support.
+vSMR is a Win32 EuroScope plugin that provides a surface movement radar display with configurable target symbols, profile-driven tags and colors, RIMCAS alerts, native inset windows, VACDM integration, and Hoppie CPDLC support.
 
 This repository is a maintained fork of:
 
@@ -68,8 +68,8 @@ The main EuroScope plugin project lives in [`vSMR/`](vSMR/):
 vSMR/
   src/         C++ implementation files
   include/     Project headers and resource IDs
-  resources/   RC script, cursors, audio, and linker definition
-  data/        Default runtime JSON files to copy next to vSMR.dll
+  resources/   RC script, cursors, and linker definition
+  data/        Default runtime data, including JSON, AVISO, icons, and audio
   tools/       Maintenance scripts
 ```
 
@@ -85,8 +85,9 @@ vSMR/
 - Detailed hover tag definitions with optional linkage to the normal definition
 - Structured rule engine for icon, tag, and text recoloring
 - RIMCAS alerts for runway and movement conflicts
-- Two approach/surface inset windows (`SRW 1` and `SRW 2`)
+- One surface radar window (`SRW 1`)
 - Compact live-weather inset with a wind rose, runway components, QNH, and clocks
+- Compact Timer inset with independent 1, 2, and 3 minute countdowns
 - Compact Runtime Menu for airport, profile, mode, group, inset, and preset operations
 - Optional persisted FPS-only overlay in the top-right corner
 - VACDM integration for `TOBT`, `TSAT`, `TTOT`, `ASAT`, `AOBT`, `ATOT`, `ASRT`, `AORT`, `CTOT`, and event booking
@@ -97,6 +98,7 @@ vSMR/
 
 - EuroScope 32-bit
 - A Win32 build of `vSMR.dll`
+- The Microsoft Visual C++ 2015-2022 Redistributable (x86)
 - The x86 [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - A valid `vSMR_Profiles.json` in `vSMR_Data\` next to the DLL, or in the DLL folder for older flat installs
 
@@ -111,13 +113,10 @@ Optional runtime data:
 ## Installation
 
 1. Build or obtain `vSMR.dll` for `Release | Win32`.
-2. Install the x86 WebView2 Evergreen Runtime if it is not already installed.
-3. Copy `Release\vSMR.dll` and the complete `Release\vSMR_webUI\` build output into your EuroScope plugin folder (or use the equivalent files from a packaged release).
-4. Create `vSMR_Data\` next to `vSMR.dll`.
-5. Copy `vSMR_Profiles.json` into `vSMR_Data\`.
-6. Optionally copy the other runtime files described below into `vSMR_Data\`.
-7. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
-8. Open the vSMR radar display from EuroScope.
+2. Install the x86 Visual C++ Redistributable and WebView2 Evergreen Runtime if they are not already installed.
+3. Copy `Release\vSMR.dll`, `Release\vSMR_Data\`, and `Release\vSMR_webUI\` into your EuroScope plugin folder (or use the equivalent complete directories from a packaged release).
+4. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
+5. Open the vSMR radar display from EuroScope.
 
 Important:
 
@@ -140,6 +139,9 @@ EuroScope\Plugins\
       vSMR_Profiles.json
       AVISO_LFPG.geojson
   vSMR_Data\
+    Audio\
+      Alarm.wav
+      Ding.wav
     vSMR_Profiles.json
     vSMR_Maps.json
     ICAO_Aircraft.json
@@ -169,6 +171,8 @@ EuroScope\Plugins\
 | `ICAO_Airlines.txt`      | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt`                      | Airline/callsign lookup for bottom-line text and related displays                  |
 | `ICAO_Aircraft.json`     | `vSMR_Data\`, then `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder fallback      | Aircraft length and wingspan data used by realistic icons                          |
 | `aircraft_icons\*.png`   | `vSMR_Data\aircraft_icons\`, then `<dll folder>\aircraft_icons\` fallback                                    | Optional per-aircraft realistic icon silhouettes                                   |
+| `Audio\Alarm.wav`        | `vSMR_Data\Audio\`                                                                                          | Timer expiry notification                                                          |
+| `Audio\Ding.wav`         | `vSMR_Data\Audio\`                                                                                          | CPDLC request notification                                                         |
 
 ### Profile Metadata
 
@@ -241,7 +245,7 @@ and owns:
 
 - display-mode selection
 - AVISO group visibility
-- AVISO, SRW 1, SRW 2, and Weather visibility
+- AVISO, SRW 1, Weather, and Timer visibility
 - airport-specific inset preset load/save/update/rename/duplicate/reload/delete operations
 - the `Set default` / `Clear default` preset toggle and linked movement
 - active-profile selection
@@ -260,10 +264,10 @@ Top, top-left, and top-right AVISO snap layouts use the full radar area and
 start at its actual top edge. No space is reserved for a toolbar. Floating
 layouts still keep their title/drag surface reachable inside the radar area.
 
-SRW 1 and SRW 2 use the same corner/split snapping, right-drag panning, and
-cursor-anchored mouse-wheel zoom as AVISO. Their former `Z` and `R` menus are
-removed. In floating mode `F` controls the altitude filter; after snapping,
-the filter control is hidden. Floating inset title bars use the Runtime Menu's dark
+SRW 1 uses the same corner/split snapping, right-drag panning, and
+cursor-anchored mouse-wheel zoom as AVISO. Its former `Z` and `R` menus are
+removed. In floating mode `F` controls its altitude filter; after snapping, that
+filter control is hidden. Floating inset title bars use the Runtime Menu's dark
 striped chrome.
 
 The Weather inset uses the same striped chrome, close action, free resize, and
@@ -273,6 +277,14 @@ QNH, UTC, and controller-local time. If EuroScope has not subscribed to that
 station, a bounded background request uses VATSIM's METAR endpoint instead;
 network work never runs on EuroScope's UI thread. The inset intentionally has
 no raw METAR block, map pan, wheel zoom, or SRW altitude filter.
+
+The Timer is a fixed-size striped inset with three independent countdown cells.
+Left-click `1M`, `2M`, or `3M` to start that countdown; right-click the same
+cell to reset it. `vSMR_Data\Audio\Alarm.wav` sounds once when any countdown reaches
+zero, including while the Timer inset is hidden. The compact window can be dragged and magnet-snapped to radar
+edges or corners without reserving space from the main AVISO view. Airport
+state and presets retain only its visibility and placement; active countdowns
+remain session state and are not reset by layout or preset operations.
 
 Inset working state and preset/default lists are scoped by active airport.
 Changing from one ICAO to another snapshots the outgoing four windows and
@@ -510,7 +522,8 @@ Saved EuroScope settings:
 - `cdm_auto_delay_min`
 - `cdm_cooldown_min`
 
-The notification sound is compiled into the plugin resources from `Ding.wav`.
+The notification sound is loaded from `vSMR_Data\Audio\Ding.wav`. If the file
+is unavailable, CPDLC remains operational and the missing path is written to the log.
 
 ## Configuration Model
 
@@ -581,9 +594,10 @@ Controls:
 - fixed triangle scale
 - small icon boost and resolution presets
 
-### `approach_insets`
+### `approach_insets` (legacy SRW 1 key)
 
-Controls:
+Controls SRW 1 runway and extended-centreline styling. The key name is retained
+for profile compatibility:
 
 - extended line length
 - tick spacing
@@ -640,10 +654,10 @@ When `Icons` style is active (internally stored as `realistic`), vSMR can combin
 - The project uses MFC
 - The project links against `EuroScopePlugInDll.lib`
 - The WebView2 loader is linked statically; do not deploy `WebView2Loader.dll`
+- The target computer needs the x86 Microsoft Visual C++ 2015-2022 Redistributable for the dynamically linked C++ and MFC runtimes
 - The x86 Evergreen Runtime remains required on the EuroScope computer
 - The Control Center resources are local, so normal operation does not require internet access
 - HTTP downloading is currently performed through WinHTTP (`HttpHelper.cpp`)
-- `libcurl` headers/libs are still referenced in project settings for compatibility
 - `winmm.lib` is linked for sound-related functionality
 
 ### Build command
@@ -657,6 +671,16 @@ Output:
 
 ```text
 Release\vSMR.dll
+Release\LICENSE
+Release\THIRD_PARTY_LICENSES\
+  RapidJSON.txt
+Release\vSMR_Data\
+  vSMR_Profiles.json
+  vSMR_Maps.json
+  ICAO_Aircraft.json
+  AVISO\
+  aircraft_icons\
+  Audio\
 Release\vSMR_webUI\
   index.html
   styles.css
@@ -685,27 +709,28 @@ This is the quickest code map for new contributors:
 
 | Path                                      | Responsibility                                                                         |
 | ----------------------------------------- | -------------------------------------------------------------------------------------- |
-| `vSMR/vSMR.cpp`                         | DLL entry point and EuroScope plugin export                                            |
-| `vSMR/SMRPlugin.*`                      | Main plugin object, commands, CPDLC, VACDM polling, tag item registration              |
-| `vSMR/SMRRadar.cpp`                     | Core radar screen lifecycle, rendering, target drawing, and optional FPS overlay       |
-| `vSMR/SMRRadar_RadarAndCommands.cpp`    | Radar-side command handling and some target geometry logic                             |
-| `vSMR/SMRRadar_ScreenInteraction.cpp`   | Click handling, popup menus, dragging, tag interaction                                 |
-| `vSMR/SMRRadar_FunctionCall.cpp`        | EuroScope popup callbacks retained by current runtime workflows                        |
-| `vSMR/SMRRadar_TagDefinitions.cpp`      | Tag token handling, type/status normalization, structured rule parsing and persistence |
-| `vSMR/SMRRadar_TagRendering.cpp`        | Tag drawing logic                                                                      |
-| `vSMR/SMRRadar_TargetsAndFonts.cpp`     | Target display and font handling helpers                                               |
-| `vSMR/SMRRadar_AircraftAndAsr.cpp`      | Aircraft dimensions, realistic icon data, ASR persistence                              |
-| `vSMR/Config.*`                         | JSON config and map loading/saving                                                     |
-| `vSMR/Rimcas.*`                         | RIMCAS alerting and runway monitoring                                                  |
-| `vSMR/ProfileEditorDialog.*`            | Legacy native editor implementation retained for compatibility; current entry points use the Control Center |
-| `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Shared profile/mode editing APIs plus legacy editor lifecycle                           |
+| `vSMR/src/vSMR.cpp`                     | DLL entry point and EuroScope plugin export                                            |
+| `vSMR/src/SMRPlugin.cpp`, `vSMR/include/SMRPlugin.hpp` | Main plugin object, commands, CPDLC, VACDM polling, tag item registration |
+| `vSMR/src/SMRRadar.cpp`, `vSMR/include/SMRRadar.hpp` | Core radar screen lifecycle, rendering, target drawing, and optional FPS overlay |
+| `vSMR/src/SMRRadar_RadarAndCommands.cpp` | Radar-side command handling and some target geometry logic                            |
+| `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Click handling, popup menus, dragging, tag interaction                               |
+| `vSMR/src/SMRRadar_FunctionCall.cpp`    | EuroScope popup callbacks retained by current runtime workflows                        |
+| `vSMR/src/SMRRadar_TagDefinitions.cpp`  | Tag token handling, type/status normalization, structured rule parsing and persistence |
+| `vSMR/src/SMRRadar_TagRendering.cpp`    | Tag drawing logic                                                                      |
+| `vSMR/src/SMRRadar_TargetsAndFonts.cpp` | Target display and font handling helpers                                               |
+| `vSMR/src/SMRRadar_AircraftAndAsr.cpp`  | Aircraft dimensions, realistic icon data, ASR persistence                              |
+| `vSMR/src/Config.cpp`, `vSMR/include/Config.hpp` | JSON config and map loading/saving                                           |
+| `vSMR/src/Rimcas.cpp`, `vSMR/include/Rimcas.hpp` | RIMCAS alerting and runway monitoring                                        |
+| `vSMR/src/ProfileEditorDialog.cpp`, `vSMR/include/ProfileEditorDialog.hpp` | Legacy native editor retained for compatibility; current entry points use the Control Center |
+| `vSMR/src/SMRRadar_ProfileEditorWindow.cpp` | Shared profile/mode editing APIs plus legacy editor lifecycle                       |
 | `vSMR/src/VsmrControlCenter*.cpp`, `vSMR/include/VsmrControlCenter*.hpp` | Fixed-size WebView2 Control Center host, bridge, lifecycle, and runtime synchronization |
 | `vSMR/src/SMRRadar_RuntimeMenu.cpp`     | Native airport row, five-icon Runtime Menu, and inset-preset operations                 |
-| `vSMR/InsetWindow.*`, `vSMR/WeatherData.*` | AVISO, approach/surface, and live-weather inset windows                              |
-| `vSMR/CallsignLookup.*`                 | Airline/callsign lookup from `ICAO_Airlines.txt`                                     |
-| `vSMR/HttpHelper.*`                     | HTTP downloading helper (WinHTTP path used in current implementation)                  |
-| `vSMR/DataLinkDialog.*`                 | CPDLC datalink dialog                                                                  |
-| `vSMR/CPDLCSettingsDialog.*`            | CPDLC settings dialog                                                                  |
+| `vSMR/src/InsetWindow.cpp`, `vSMR/include/InsetWindow.h` | AVISO, surface-radar, live-weather, and Timer inset windows             |
+| `vSMR/src/WeatherData.cpp`, `vSMR/include/WeatherData.hpp` | Thread-safe weather snapshot storage                                      |
+| `vSMR/src/CallsignLookup.cpp`, `vSMR/include/CallsignLookup.hpp` | Airline/callsign lookup from `ICAO_Airlines.txt`                     |
+| `vSMR/src/HttpHelper.cpp`, `vSMR/include/HttpHelper.hpp` | HTTP downloading helper (WinHTTP path used in current implementation)      |
+| `vSMR/src/DataLinkDialog.cpp`, `vSMR/include/DataLinkDialog.hpp` | CPDLC datalink dialog                                              |
+| `vSMR/src/CPDLCSettingsDialog.cpp`, `vSMR/include/CPDLCSettingsDialog.hpp` | CPDLC settings dialog                                  |
 
 ## Runtime Flow (Developer Quick Map)
 

@@ -718,11 +718,13 @@ CSMRRadar::CSMRRadar()
 	runtimeOverlayFont.lfPitchAndFamily = DEFAULT_PITCH | FF_SWISS;
 	strcpy_s(runtimeOverlayFont.lfFaceName, LF_FACESIZE, "Segoe UI");
 	RuntimeOverlayFont.CreateFontIndirect(&runtimeOverlayFont);
+	LOGFONT runtimeMenuActionFont = runtimeOverlayFont;
+	runtimeMenuActionFont.lfHeight = -10;
+	runtimeMenuActionFont.lfWeight = FW_NORMAL;
+	RuntimeMenuActionFont.CreateFontIndirect(&runtimeMenuActionFont);
 
 	// Initializing randomizer
 	srand(static_cast<unsigned>(time(nullptr)));
-	clock_init = clock();
-	clock_final = clock_init;
 
 	// Initialize GDI+
 	GdiplusStartupInput gdiplusStartupInput;
@@ -787,19 +789,25 @@ CSMRRadar::CSMRRadar()
 		Logger::info("CSMRRadar::CSMRRadar() default active airport from AVISO file=" + ActiveAirport);
 	}
 
-	// Setting up the data for the 2 approach windows
-	appWindowDisplays[1] = false;
-	appWindowDisplays[2] = false;
-	appWindowDisplays[3] = false;
-	appWindowDisplays[4] = false;
-	appWindows[1] = std::make_unique<CInsetWindow>(APPWINDOW_ONE);
-	appWindows[2] = std::make_unique<CInsetWindow>(APPWINDOW_TWO);
-	appWindows[3] = std::make_unique<CInsetWindow>(APPWINDOW_AVISO);
-	appWindows[3]->m_Mode = CInsetWindow::Mode::AvisoViewport;
-	appWindows[3]->m_Area = { 260, 260, 760, 560 };
-	appWindows[4] = std::make_unique<CInsetWindow>(APPWINDOW_WEATHER);
-	appWindows[4]->m_Mode = CInsetWindow::Mode::Weather;
-	appWindows[4]->m_Area = { 300, 200, 606, 375 };
+	// Set up the native inset windows.
+	const int srwWindowId = APPWINDOW_ONE - APPWINDOW_BASE;
+	const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
+	appWindowDisplays[srwWindowId] = false;
+	appWindowDisplays[avisoWindowId] = false;
+	appWindowDisplays[weatherWindowId] = false;
+	appWindowDisplays[timerWindowId] = false;
+	appWindows[srwWindowId] = std::make_unique<CInsetWindow>(APPWINDOW_ONE);
+	appWindows[avisoWindowId] = std::make_unique<CInsetWindow>(APPWINDOW_AVISO);
+	appWindows[avisoWindowId]->m_Mode = CInsetWindow::Mode::AvisoViewport;
+	appWindows[avisoWindowId]->m_Area = { 260, 260, 760, 560 };
+	appWindows[weatherWindowId] = std::make_unique<CInsetWindow>(APPWINDOW_WEATHER);
+	appWindows[weatherWindowId]->m_Mode = CInsetWindow::Mode::Weather;
+	appWindows[weatherWindowId]->m_Area = { 300, 200, 606, 375 };
+	appWindows[timerWindowId] = std::make_unique<CInsetWindow>(APPWINDOW_TIMER);
+	appWindows[timerWindowId]->m_Mode = CInsetWindow::Mode::Timer;
+	appWindows[timerWindowId]->m_Area = { 100, 180, 226, 208 };
 
 	Logger::info("Loading profile");
 
@@ -807,7 +815,6 @@ CSMRRadar::CSMRRadar()
 
 	this->CSMRRadar::LoadCustomFont();
 
-	this->CSMRRadar::RefreshAirportActivity();
 }
 
 CSMRRadar::~CSMRRadar()
@@ -2350,6 +2357,8 @@ CRect CSMRRadar::ResolveMainAvisoRenderArea()
 			continue;
 
 		const CInsetWindow* inset = windowIt->second.get();
+		if (inset->IsTimer())
+			continue;
 		CRect insetArea(inset->m_Area);
 		insetArea.NormalizeRect();
 		switch (inset->m_AvisoLayoutMode)
@@ -3180,8 +3189,6 @@ bool CSMRRadar::ReloadConfig() {
 		activeProfile = CurrentConfig->getAllProfiles().front();
 	}
 	this->LoadProfile(activeProfile);
-	this->RefreshAirportActivity();
-
 	// Force map visibility recomputation on next frame even when zoom level is unchanged.
 	InvalidateAirportPositionCache();
 	InvalidateRunwayGeometryCache();
@@ -3520,6 +3527,25 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 		return definition;
 	};
 
+	auto normalizeHeading = [](double heading) -> double
+	{
+		heading = std::fmod(heading, 360.0);
+		return heading < 0.0 ? heading + 360.0 : heading;
+	};
+	auto angularDistance = [&](double first, double second) -> double
+	{
+		return std::abs(normalizeHeading(first - second + 180.0) - 180.0);
+	};
+	auto resolveTrueHeading = [&](const CPosition& from, const CPosition& to, int sectorHeading, double& heading, bool& valid)
+	{
+		if (sectorHeading < 0 || sectorHeading > 360)
+			return;
+		heading = normalizeHeading(RadToDeg(TrueBearing(from, to)));
+		if (angularDistance(heading, static_cast<double>(sectorHeading)) > 90.0)
+			heading = normalizeHeading(heading + 180.0);
+		valid = true;
+	};
+
 	CSectorElement rwy;
 	for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
 		rwy.IsValid();
@@ -3538,14 +3564,18 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 			continue;
 
 		CPosition left;
-		rwy.GetPosition(&left, 1);
+		const bool leftValid = rwy.GetPosition(&left, 1);
 		CPosition right;
-		rwy.GetPosition(&right, 0);
+		const bool rightValid = rwy.GetPosition(&right, 0);
+		if (!leftValid || !rightValid)
+			continue;
 
 		CachedRunwayGeometry runway;
 		runway.runwayNameA = runwayNameA;
 		runway.runwayNameB = runwayNameB;
 		runway.displayName = runway.runwayNameA + " / " + runway.runwayNameB;
+		resolveTrueHeading(right, left, rwy.GetRunwayHeading(0), runway.trueHeadingA, runway.trueHeadingAValid);
+		resolveTrueHeading(left, right, rwy.GetRunwayHeading(1), runway.trueHeadingB, runway.trueHeadingBValid);
 		runway.rimcasDefinition = RimcasInstance->GetRunwayArea(left, right);
 		runway.closedDefinition = loadClosedRunwayDefinition(runway.runwayNameA, runway.runwayNameB);
 		CachedRunwayGeometries.push_back(std::move(runway));
@@ -5203,7 +5233,8 @@ bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char compon
 
 map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	auto verboseStep = [&](const std::string& step)
 	{
 		if (!Logger::is_verbose_mode())
@@ -6022,15 +6053,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			return result;
 		}
 	};
-
-	// Timer each seconds
-	clock_final = clock() - clock_init;
-	double delta_t = (double)clock_final / ((double)CLOCKS_PER_SEC);
-	if (delta_t >= 1) {
-		clock_init = clock();
-		BLINK = !BLINK;
-		RefreshAirportActivity();
-	}
 
 	setRefreshStage("sector geometry cache");
 	EnsureAirportPositionCache();
@@ -7395,9 +7417,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 #pragma endregion Drawing of the symbols
 
-	TimePopupData.clear();
-	AcOnRunway.clear();
-	ColorAC.clear();
 	tagAreas.clear();
 	tagCollisionAreas.clear();
 
