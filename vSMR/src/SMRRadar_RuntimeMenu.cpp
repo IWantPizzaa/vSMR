@@ -915,7 +915,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		else if (std::strcmp(id, "runtime.button.control-center") == 0)
 		{
 			CloseRuntimeMenuPopup();
-			OpenVsmrControlCenterWindow();
+			OpenVsmrControlCenterWindow("settings");
 		}
 		return true;
 	}

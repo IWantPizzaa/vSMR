@@ -21,12 +21,46 @@
 using namespace std;
 using namespace EuroScopePlugIn;
 
+struct DatalinkControlState
+{
+	bool connected = false;
+	bool connecting = false;
+	bool pollInProgress = false;
+	bool controllerConnected = false;
+	std::string logonCallsign;
+	bool hasPassword = false;
+	bool playSound = false;
+	bool cdmAutoEnabled = false;
+	int cdmDelayMinutes = 5;
+	int cdmCooldownMinutes = 60;
+	bool vacdmConfigured = false;
+	std::string activeAirport;
+	std::string cdmAliasPath;
+	bool cdmAliasReady = false;
+	std::string statusMessage;
+};
+
 class CSMRPlugin :
 	public EuroScopePlugIn::CPlugIn
 {
 public:
 	CSMRPlugin();
 	virtual ~CSMRPlugin();
+
+	DatalinkControlState GetDatalinkControlState() const;
+	bool UpdateDatalinkControlSettings(
+		const std::string& callsign,
+		const std::string& password,
+		bool replacePassword,
+		bool playSound,
+		bool cdmAutoEnabled,
+		int delayMinutes,
+		int cooldownMinutes,
+		std::string& error);
+	bool ConnectDatalink(std::string& error);
+	bool DisconnectDatalink(std::string& error);
+	bool PollDatalink(std::string& error);
+	bool RunCdmReminderScan(std::string& result, std::string& error);
 
 	//---OnCompileCommand------------------------------------------
 

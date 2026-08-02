@@ -199,9 +199,12 @@ The plugin responds to the following EuroScope command-line commands:
 
 | Command              | Scope            | Effect                                                                 |
 | -------------------- | ---------------- | ---------------------------------------------------------------------- |
-| `.smr`             | Plugin           | Opens the CPDLC settings dialog                                        |
+| `.smr`             | Plugin           | Opens the Control Center `Settings` page (legacy dialog fallback when no SMR screen is open) |
 | `.smr connect`     | Plugin           | Connects or disconnects Hoppie CPDLC                                   |
 | `.smr poll`        | Plugin           | Manually polls CPDLC messages when connected                           |
+| `.smr cdm`         | Plugin           | Checks the active airport and queues eligible CDM reminders            |
+| `.smr cdm auto [status\|on\|off\|minutes]` | Plugin | Shows or changes automatic CDM reminders and their delay     |
+| `.smr cdm cooldown [status\|minutes]` | Plugin | Shows or changes the reminder resend cooldown                  |
 | `.smr reload`      | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens              |
 | `.smr log`         | Plugin           | Toggles logging off/on (when enabled this defaults to `normal` mode) |
 | `.smr log normal`  | Plugin           | Enables concise logging                                                |
@@ -314,7 +317,7 @@ Its primary pages are:
 - `Groups`, for AVISO group definition, membership, and ordering
 - `Modes`, for display-mode definitions and activation
 - `Profiles`, for profile filters, lifecycle, and activation
-- `Settings`, for connected runtime settings, FPS visibility, and data sources
+- `Settings`, for data sources, FPS visibility, CPDLC connection, and PDC reminder automation
 
 Local `Update` buttons stage editor changes. `Revert` discards the current
 draft, while the global blue `Save` validates and persists staged profile and
@@ -472,21 +475,31 @@ VACDM values used by vSMR include:
 
 ## CPDLC / Hoppie Integration
 
-CPDLC behavior is handled at plugin level.
+CPDLC and CDM behavior remains native and is surfaced through the Control
+Center `Settings` page. Credentials never enter profile JSON, editor history,
+or the global Control Center save payload.
 
 Features:
 
-- settings dialog opened by `.smr`
+- live connection state and guarded connect/disconnect controls
+- automatically saved masked Hoppie-code replacement, logon callsign, and clearance-request sound
 - Hoppie login/logout with `.smr connect`
 - manual poll with `.smr poll`
-- optional sound on clearance request
+- explicit Run, Stop, and live Update controls for automatic PDC reminders, with configurable delay and resend cooldown
+- manual active-airport reminder checks equivalent to `.smr cdm`
+- read-only EuroScope `.cdm` alias path in the Settings data-files card
+- contextual disabled-state hints when the active airport or `.cdm` template is unavailable
 - datalink menu integration in tags
+- compact Cofrance-styled PDC and generic Message windows
 
 Saved EuroScope settings:
 
 - `cpdlc_logon`
 - `cpdlc_password`
 - `cpdlc_sound`
+- `cdm_auto_enabled`
+- `cdm_auto_delay_min`
+- `cdm_cooldown_min`
 
 The notification sound is compiled into the plugin resources from `Ding.wav`.
 
