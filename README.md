@@ -86,6 +86,7 @@ vSMR/
 - Structured rule engine for icon, tag, and text recoloring
 - RIMCAS alerts for runway and movement conflicts
 - Two approach/surface inset windows (`SRW 1` and `SRW 2`)
+- Compact live-weather inset with a wind rose, runway components, QNH, and clocks
 - Compact Runtime Menu for airport, profile, mode, group, inset, and preset operations
 - Optional persisted FPS-only overlay in the top-right corner
 - VACDM integration for `TOBT`, `TSAT`, `TTOT`, `ASAT`, `AOBT`, `ATOT`, `ASRT`, `AORT`, `CTOT`, and event booking
@@ -240,7 +241,7 @@ and owns:
 
 - display-mode selection
 - AVISO group visibility
-- AVISO, SRW 1, and SRW 2 visibility
+- AVISO, SRW 1, SRW 2, and Weather visibility
 - airport-specific inset preset load/save/update/rename/duplicate/reload/delete operations
 - the `Set default` / `Clear default` preset toggle and linked movement
 - active-profile selection
@@ -250,7 +251,7 @@ Each inset row also has a compact Reset button that restores that window's
 position, pan, zoom, and snap layout without changing its visibility.
 
 The AVISO inset itself is limited to viewport interaction: its title/drag
-surface, `F` detach control, resize handles/dividers, pan, and zoom. It has no
+surface, resize handles/dividers, pan, and zoom. It has no
 duplicate close, preset, reload, or editor buttons. Show/hide and preset actions
 are performed from the Runtime Menu; AVISO editing and reload are performed in
 the Control Center.
@@ -262,13 +263,21 @@ layouts still keep their title/drag surface reachable inside the radar area.
 SRW 1 and SRW 2 use the same corner/split snapping, right-drag panning, and
 cursor-anchored mouse-wheel zoom as AVISO. Their former `Z` and `R` menus are
 removed. In floating mode `F` controls the altitude filter; after snapping,
-`F` detaches the inset. Floating inset title bars use the Runtime Menu's dark
+the filter control is hidden. Floating inset title bars use the Runtime Menu's dark
 striped chrome.
 
+The Weather inset uses the same striped chrome, close action, free resize, and
+edge/corner snapping. It follows the active airport and displays the latest
+EuroScope METAR as a wind rose with active-runway head/crosswind components,
+QNH, UTC, and controller-local time. If EuroScope has not subscribed to that
+station, a bounded background request uses VATSIM's METAR endpoint instead;
+network work never runs on EuroScope's UI thread. The inset intentionally has
+no raw METAR block, map pan, wheel zoom, or SRW altitude filter.
+
 Inset working state and preset/default lists are scoped by active airport.
-Changing from one ICAO to another snapshots the outgoing three windows and
+Changing from one ICAO to another snapshots the outgoing four windows and
 restores only the incoming airport's state or default preset. An airport with
-no prior state or default starts with all three insets hidden and reset.
+no prior state or default starts with all four insets hidden and reset.
 
 ### FPS overlay
 
@@ -692,7 +701,7 @@ This is the quickest code map for new contributors:
 | `vSMR/SMRRadar_ProfileEditorWindow.cpp` | Shared profile/mode editing APIs plus legacy editor lifecycle                           |
 | `vSMR/src/VsmrControlCenter*.cpp`, `vSMR/include/VsmrControlCenter*.hpp` | Fixed-size WebView2 Control Center host, bridge, lifecycle, and runtime synchronization |
 | `vSMR/src/SMRRadar_RuntimeMenu.cpp`     | Native airport row, five-icon Runtime Menu, and inset-preset operations                 |
-| `vSMR/InsetWindow.*`                    | Approach/surface inset windows                                                         |
+| `vSMR/InsetWindow.*`, `vSMR/WeatherData.*` | AVISO, approach/surface, and live-weather inset windows                              |
 | `vSMR/CallsignLookup.*`                 | Airline/callsign lookup from `ICAO_Airlines.txt`                                     |
 | `vSMR/HttpHelper.*`                     | HTTP downloading helper (WinHTTP path used in current implementation)                  |
 | `vSMR/DataLinkDialog.*`                 | CPDLC datalink dialog                                                                  |
@@ -702,10 +711,10 @@ This is the quickest code map for new contributors:
 
 This is the high-level execution flow when EuroScope loads and runs the plugin:
 
-1. `SMRPlugin` is created, registers display/tag extensions, loads CPDLC settings, and initializes VACDM polling configuration.
+1. `SMRPlugin` is created, registers display/tag extensions, loads CPDLC settings, initializes VACDM polling configuration, and receives EuroScope METAR updates.
 2. EuroScope creates one `SMRRadar` instance per opened vSMR display window.
 3. `SMRRadar` loads profiles/maps/resources, then drives drawing and interaction in `OnRefresh`.
-4. `SMRPlugin::OnTimer` handles periodic tasks (CPDLC polling, VACDM fetch scheduling, status blinking, and cleanup).
+4. `SMRPlugin::OnTimer` handles periodic tasks (CPDLC polling, VACDM and fallback-weather fetch scheduling, status blinking, and cleanup).
 5. Radar/profile state is persisted through profile JSON and ASR keys such as `Airport`, `ActiveProfile`, `ShowFps`, Runtime Menu position, and inset geometry/visibility.
 6. `.smr reload` reloads JSON config and reapplies profiles across currently opened radar windows.
 

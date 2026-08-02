@@ -9,6 +9,12 @@
 #include "Mmsystem.h"
 #include <chrono>
 #include <thread>
+#include <condition_variable>
+#include <ctime>
+#include <deque>
+#include <map>
+#include <mutex>
+#include <set>
 #include "SMRRadar.hpp"
 #include "Logger.h"
 
@@ -61,6 +67,7 @@ public:
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);
 	bool RunCdmReminderScan(std::string& result, std::string& error);
+	void StopWeatherFetchWorker();
 
 	//---OnCompileCommand------------------------------------------
 
@@ -82,8 +89,25 @@ public:
 
 	virtual void OnTimer(int Counter);
 
+	//---OnNewMetarReceived------------------------------------------
+
+	virtual void OnNewMetarReceived(const char* sStation, const char* sFullMetar);
+
 	//---OnRadarScreenCreated------------------------------------------
 
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
+
+private:
+	void QueueWeatherFetch(const std::string& station);
+	void WeatherFetchThreadMain();
+
+	std::mutex WeatherFetchMutex;
+	std::condition_variable WeatherFetchCondition;
+	std::thread WeatherFetchThread;
+	std::atomic<bool> WeatherFetchCancellationRequested{ false };
+	bool WeatherFetchStop = false;
+	std::deque<std::string> WeatherFetchQueue;
+	std::set<std::string> WeatherFetchQueued;
+	std::map<std::string, std::time_t> WeatherLastAttemptUtc;
 };
 

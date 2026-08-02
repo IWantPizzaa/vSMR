@@ -517,7 +517,7 @@
       },
       runtime: {
         avisoInsetVisible: false,
-        insets: { aviso: false, srw1: false, srw2: false },
+        insets: { aviso: false, srw1: false, srw2: false, weather: false },
         activeAvisoPreset: preferredPresetName,
         activeAvisoPresetScope: initialAirport,
         avisoInsetSnapshot: preferredPreset ? clone(preferredPreset) : null,
@@ -989,7 +989,7 @@
   }
 
   function insetState(kind) {
-    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false };
+    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false, weather: false };
     return Boolean(state.runtime.insets[kind]);
   }
 
@@ -1007,7 +1007,7 @@
     const profile = activeProfile();
     const mode = activeModeName();
     const preset = activeAvisoPreset();
-    const anyInset = ["aviso", "srw1", "srw2"].some(insetState);
+    const anyInset = ["aviso", "srw1", "srw2", "weather"].some(insetState);
 
     const modeButton = $("#runtimeModeButton");
     const groupsButton = $("#runtimeGroupsButton");
@@ -1019,10 +1019,10 @@
     groupsButton.setAttribute("aria-label", `Groups: ${visibleGroups} of ${groups.length || 0} visible`);
     profileButton.title = `Profile · ${profile?.name || "Profile"}`;
     profileButton.setAttribute("aria-label", `Profile: ${profile?.name || "Profile"}`);
-    insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, SRW2 ${insetState("srw2") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
+    insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, SRW2 ${insetState("srw2") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
     insetButton.setAttribute("aria-label", insetButton.title);
     insetButton.classList.toggle("active", anyInset);
-    ["aviso", "srw1", "srw2"].forEach(kind => {
+    ["aviso", "srw1", "srw2", "weather"].forEach(kind => {
       const dot = $(`[data-inset-indicator="${kind}"]`, insetButton);
       dot?.classList.toggle("active", insetState(kind));
     });
@@ -1099,7 +1099,8 @@
       const insetRows = [
         ["aviso", "AVISO inset"],
         ["srw1", "SRW 1"],
-        ["srw2", "SRW 2"]
+        ["srw2", "SRW 2"],
+        ["weather", "Weather"]
       ].map(([id, label]) => {
         const visible = insetState(id);
         return `<button type="button" class="runtime-choice-row runtime-compact-row runtime-inset-row ${visible ? "active" : ""}" data-runtime-inset="${id}">${runtimeVisibilityIcon(visible)}<strong class="runtime-row-label">${label}</strong></button>`;
@@ -1159,15 +1160,15 @@
   }
 
   function toggleInsetWindow(kind) {
-    if (!["aviso", "srw1", "srw2"].includes(kind)) return;
-    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false };
+    if (!["aviso", "srw1", "srw2", "weather"].includes(kind)) return;
+    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false, weather: false };
     state.runtime.insets[kind] = !state.runtime.insets[kind];
     if (kind === "aviso") state.runtime.avisoInsetVisible = state.runtime.insets[kind];
     const preset = activeAvisoPreset();
-    const action = kind === "aviso" ? "aviso.inset.toggle" : "display.srw.toggle";
+    const action = kind === "srw1" || kind === "srw2" ? "display.srw.toggle" : "aviso.inset.toggle";
     postBridge(action, { airport: activePresetAirport(), window: kind, visible: state.runtime.insets[kind], preset: preset?.name || "", profile: activeProfile().name });
     renderRuntimeMenu();
-    showToast(`${kind === "aviso" ? "AVISO inset" : kind.toUpperCase()} ${state.runtime.insets[kind] ? "shown" : "hidden"}`, "success");
+    showToast(`${kind === "aviso" ? "AVISO inset" : kind === "weather" ? "Weather" : kind.toUpperCase()} ${state.runtime.insets[kind] ? "shown" : "hidden"}`, "success");
   }
 
   function loadAvisoPreset(name) {
@@ -5289,7 +5290,7 @@
     }
     if (incoming.runtime && typeof incoming.runtime === "object") {
       state.runtime = { ...state.runtime, ...clone(incoming.runtime) };
-      state.runtime.insets = { aviso: false, srw1: false, srw2: false, ...(state.runtime.insets || {}) };
+      state.runtime.insets = { aviso: false, srw1: false, srw2: false, weather: false, ...(state.runtime.insets || {}) };
       if (Object.hasOwn(incoming.runtime, "activeAvisoPreset")) {
         state.runtime.activeAvisoPresetScope = activePresetScope();
         const activePreset = airportAvisoPresetStore().items.find(item =>
@@ -5327,8 +5328,8 @@
   }
 
   function setInsetWindows(windows = {}) {
-    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false };
-    ["aviso", "srw1", "srw2"].forEach(key => { if (key in windows) state.runtime.insets[key] = Boolean(windows[key]); });
+    state.runtime.insets ||= { aviso: false, srw1: false, srw2: false, weather: false };
+    ["aviso", "srw1", "srw2", "weather"].forEach(key => { if (key in windows) state.runtime.insets[key] = Boolean(windows[key]); });
     state.runtime.avisoInsetVisible = state.runtime.insets.aviso;
     renderRuntimeMenu();
   }

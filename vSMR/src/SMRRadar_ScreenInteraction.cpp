@@ -2,6 +2,7 @@
 #include "Resource.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "VsmrControlCenterDialog.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 extern CPoint mouseLocation;
@@ -16,7 +17,7 @@ namespace
 
 	bool IsAppWindowObjectType(int objectType)
 	{
-		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
+		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_WEATHER;
 	}
 
 	bool IsAppWindowVisible(CSMRRadar* radar, int appWindowId)
@@ -237,7 +238,10 @@ namespace
 
 	CInsetWindow* VisibleAvisoViewportAtPoint(CSMRRadar* radar, POINT pt)
 	{
-		return VisibleAppWindowAtPoint(radar, pt);
+		CInsetWindow* appWindow = VisibleAppWindowAtPoint(radar, pt);
+		return appWindow != nullptr && appWindow->SupportsPanAndZoom()
+			? appWindow
+			: nullptr;
 	}
 
 	CInsetWindow* ActiveAvisoPanViewport(CSMRRadar* radar)
@@ -304,15 +308,15 @@ namespace
 		if (radar == nullptr)
 			return false;
 
-		CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(radar, pt);
-		if (viewportAtPoint != nullptr)
+		CInsetWindow* insetAtPoint = TopmostVisibleInsetFrameAtPoint(radar, pt);
+		if (insetAtPoint != nullptr)
 		{
-			SelectAvisoViewport(radar, viewportAtPoint);
-			return true;
+			// Selection also owns visual z-order. Read-only insets such as
+			// Weather must therefore be selectable even though they do not pan
+			// or zoom.
+			SelectAvisoViewport(radar, insetAtPoint);
+			return insetAtPoint->SupportsPanAndZoom();
 		}
-		if (TopmostVisibleInsetFrameAtPoint(radar, pt) != nullptr)
-			return false;
-
 		if (IsPointInMainRadarArea(radar, pt))
 		{
 			SelectMainAviso(radar);
@@ -344,7 +348,6 @@ namespace
 void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
 	Logger::info(string(__FUNCSIG__));
-	UNREFERENCED_PARAMETER(ObjectType);
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
@@ -352,7 +355,22 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 		return;
 
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
-		SelectAvisoScrollTargetAtPoint(this, Pt);
+	{
+		bool selectedByObject = false;
+		if (IsAppWindowObjectType(ObjectType))
+		{
+			const int appWindowId = ObjectType - APPWINDOW_BASE;
+			const auto appWindow = appWindows.find(appWindowId);
+			if (appWindow != appWindows.end() && appWindow->second != nullptr &&
+				IsAppWindowVisible(this, appWindowId))
+			{
+				SelectAvisoViewport(this, appWindow->second.get());
+				selectedByObject = true;
+			}
+		}
+		if (!selectedByObject)
+			SelectAvisoScrollTargetAtPoint(this, Pt);
+	}
 
 	if (Button != BUTTON_RIGHT)
 		return;
@@ -732,26 +750,24 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 		RequestRefresh();
 	}
 
-	for (auto it = appWindows.rbegin(); it != appWindows.rend(); ++it)
+	auto applyCursorForWindow = [&](int appWindowId, CInsetWindow* insetWindow) -> int
 	{
-		const int appWindowId = it->first;
-		CInsetWindow* insetWindow = it->second.get();
 		if (insetWindow == nullptr || !IsAppWindowVisible(this, appWindowId))
-			continue;
+			return 0;
 
 		POINT clientPoint = {};
 		if (!pointForWindow(insetWindow, clientPoint))
-			continue;
+			return 0;
 		const CInsetWindow::ResizeRegion resizeRegion = insetWindow->HitTestResize(clientPoint);
 		if (resizeRegion != CInsetWindow::ResizeRegion::None)
 		{
 			ApplyResizeCursor(resizeRegion);
-			return true;
+			return 1;
 		}
 		if (insetWindow->HitTestTitleBar(clientPoint))
 		{
 			ApplyMoveCursor();
-			return true;
+			return 1;
 		}
 
 		CRect frame = insetWindow->GetWindowFrameRect();
@@ -759,8 +775,30 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 		if (frame.PtInRect(clientPoint))
 		{
 			RestoreInsetCursor();
-			return false;
+			return 2;
 		}
+		return 0;
+	};
+
+	// Match the render order: the selected inset is painted last and must own
+	// cursor hit-testing before any numerically higher window behind it.
+	for (auto it = appWindows.rbegin(); it != appWindows.rend(); ++it)
+	{
+		CInsetWindow* insetWindow = it->second.get();
+		if (insetWindow == nullptr || !insetWindow->m_AvisoScrollSelected)
+			continue;
+		const int result = applyCursorForWindow(it->first, insetWindow);
+		if (result != 0)
+			return result == 1;
+	}
+	for (auto it = appWindows.rbegin(); it != appWindows.rend(); ++it)
+	{
+		CInsetWindow* insetWindow = it->second.get();
+		if (insetWindow != nullptr && insetWindow->m_AvisoScrollSelected)
+			continue;
+		const int result = applyCursorForWindow(it->first, insetWindow);
+		if (result != 0)
+			return result == 1;
 	}
 
 	RestoreInsetCursor();
@@ -841,6 +879,8 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 			if (radar == nullptr)
 				continue;
 
+			POINT insetPoint = {};
+			bool pointMapped = false;
 			for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
 			{
 				const int appWindowId = it->first;
@@ -850,18 +890,27 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 				if (!windowMatches(targetWindow, appWindow->m_AvisoRenderWindow))
 					continue;
 
-				POINT avisoPoint{};
-				if (!appWindow->TryMapAvisoScreenPoint(point, avisoPoint))
+				if (!appWindow->TryMapAvisoScreenPoint(point, insetPoint))
 					continue;
-				if (IsPointInRuntimeMenuOverlay(radar, avisoPoint))
-					return true;
-
-				mouseLocation = avisoPoint;
-				SelectAvisoViewport(radar, appWindow);
-				if (appWindow->ZoomAvisoAtPoint(avisoPoint, scaleMultiplier))
-					radar->RequestRefresh();
-				return true;
+				pointMapped = true;
+				break;
 			}
+			if (!pointMapped)
+				continue;
+
+			if (IsPointInRuntimeMenuOverlay(radar, insetPoint))
+				return true;
+			CInsetWindow* appWindow = TopmostVisibleInsetFrameAtPoint(radar, insetPoint);
+			if (appWindow == nullptr)
+				continue;
+			if (!appWindow->SupportsPanAndZoom())
+				return true;
+
+			mouseLocation = insetPoint;
+			SelectAvisoViewport(radar, appWindow);
+			if (appWindow->ZoomAvisoAtPoint(insetPoint, scaleMultiplier))
+				radar->RequestRefresh();
+			return true;
 		}
 
 		return false;
@@ -993,6 +1042,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				appWindowDisplayIt->second = false;
 				appWindow->ResetAvisoInteractionState();
 				SaveInsetStateToAsrForAirport(getActiveAirport());
+				if (VsmrControlCenterDialog != nullptr)
+					VsmrControlCenterDialog->SyncFromRadar();
 			}
 			RequestRefresh();
 			return;
@@ -1000,7 +1051,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		if (isObjectId("filter")) {
 			if (appWindow == nullptr)
 				return;
-			if (appWindow->IsAvisoViewport())
+			if (!appWindow->IsSecondaryRadar())
 				return;
 			openPopupListWithClose("SRW Filter (ft)", [&]()
 			{

@@ -413,13 +413,18 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 		if (index == 2)
 		{
-			const int appWindowIds[] = { APPWINDOW_AVISO - APPWINDOW_BASE, 1, 2 };
+			const int appWindowIds[] = {
+				APPWINDOW_AVISO - APPWINDOW_BASE,
+				1,
+				2,
+				APPWINDOW_WEATHER - APPWINDOW_BASE
+			};
 			const int dotY = buttonArea.bottom - 6;
-			for (int dot = 0; dot < 3; ++dot)
+			for (int dot = 0; dot < static_cast<int>(_countof(appWindowIds)); ++dot)
 			{
 				const auto display = appWindowDisplays.find(appWindowIds[dot]);
 				const bool visible = display != appWindowDisplays.end() && display->second;
-				const int dotX = buttonArea.left + 16 + (dot * 5);
+				const int dotX = buttonArea.left + 11 + (dot * 5);
 				::SetDCBrushColor(hdc, visible ? RGB(237, 248, 251) : RGB(88, 102, 106));
 				::SetDCPenColor(hdc, RGB(9, 16, 18));
 				::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
@@ -517,7 +522,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		popupHeight =
 			kPopupHeaderHeight +
 			kPopupPadding +
-			(3 * kPopupRowHeight) +
+			(4 * kPopupRowHeight) +
 			19 +
 			(presetRows > 0 ? presetRows * kPopupRowHeight : 32) +
 			(presetPager ? kPopupPagerHeight : 0) +
@@ -670,6 +675,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	else
 	{
 		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+		const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
 		const struct
 		{
 			const char* id;
@@ -679,7 +685,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		} insetRows[] = {
 			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
 			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
-			{ "runtime.inset.srw2", "runtime.inset.reset.srw2", "SRW 2", 2 }
+			{ "runtime.inset.srw2", "runtime.inset.reset.srw2", "SRW 2", 2 },
+			{ "runtime.inset.weather", "runtime.inset.reset.weather", "Weather", weatherWindowId }
 		};
 		for (const auto& inset : insetRows)
 		{
@@ -1039,6 +1046,11 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		toggleAppWindow(2);
 		return true;
 	}
+	if (std::strcmp(id, "runtime.inset.weather") == 0)
+	{
+		toggleAppWindow(APPWINDOW_WEATHER - APPWINDOW_BASE);
+		return true;
+	}
 	if (std::strcmp(id, "runtime.inset.reset.aviso") == 0)
 	{
 		resetInsetWindow(APPWINDOW_AVISO - APPWINDOW_BASE);
@@ -1052,6 +1064,11 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (std::strcmp(id, "runtime.inset.reset.srw2") == 0)
 	{
 		resetInsetWindow(2);
+		return true;
+	}
+	if (std::strcmp(id, "runtime.inset.reset.weather") == 0)
+	{
+		resetInsetWindow(APPWINDOW_WEATHER - APPWINDOW_BASE);
 		return true;
 	}
 

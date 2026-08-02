@@ -76,7 +76,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		if (startsWith("UNL", filterValue))
 			filterValue = "66000";
 		CInsetWindow* appWindow = getAppWindowById(id);
-		if (appWindow != nullptr && !appWindow->IsAvisoViewport())
+		if (appWindow != nullptr && appWindow->IsSecondaryRadar())
 		{
 			appWindow->m_Filter = atoi(filterValue);
 			RequestRefresh();

@@ -495,6 +495,10 @@ void CSMRRadar::ResetInsetWindowState(int appWindowId, bool preserveVisibility)
 		window->m_AvisoViewInitialized = false;
 		window->ClearAvisoViewportCache();
 	}
+	else if (window->IsWeather())
+	{
+		window->m_Area = { 300, 200, 606, 375 };
+	}
 	else
 	{
 		window->m_Area = appWindowId == 2
@@ -513,6 +517,7 @@ void CSMRRadar::ResetAllInsetWindowStates(bool preserveVisibility)
 	ResetInsetWindowState(1, preserveVisibility);
 	ResetInsetWindowState(2, preserveVisibility);
 	ResetInsetWindowState(APPWINDOW_AVISO - APPWINDOW_BASE, preserveVisibility);
+	ResetInsetWindowState(APPWINDOW_WEATHER - APPWINDOW_BASE, preserveVisibility);
 }
 
 void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
@@ -527,7 +532,7 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 		SaveDataToAsr(key.c_str(), description, value.c_str());
 	};
 
-	save("Version", "Airport-specific inset state version", "1");
+	save("Version", "Airport-specific inset state version", "2");
 	for (int id = 1; id <= 2; ++id)
 	{
 		const auto windowIt = appWindows.find(id);
@@ -570,6 +575,22 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 			displayIt != appWindowDisplays.end() && displayIt->second ? "1" : "0");
 	}
 
+	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+	const auto weatherWindowIt = appWindows.find(weatherWindowId);
+	if (weatherWindowIt != appWindows.end() && weatherWindowIt->second != nullptr)
+	{
+		CInsetWindow* window = weatherWindowIt->second.get();
+		const std::string windowPrefix = "WEATHER1";
+		save(windowPrefix + "TopLeftX", "Weather inset position", std::to_string(window->m_Area.left));
+		save(windowPrefix + "TopLeftY", "Weather inset position", std::to_string(window->m_Area.top));
+		save(windowPrefix + "BottomRightX", "Weather inset position", std::to_string(window->m_Area.right));
+		save(windowPrefix + "BottomRightY", "Weather inset position", std::to_string(window->m_Area.bottom));
+		save(windowPrefix + "LayoutMode", "Weather inset layout mode", std::to_string(static_cast<int>(window->m_AvisoLayoutMode)));
+		const auto displayIt = appWindowDisplays.find(weatherWindowId);
+		save(windowPrefix + "Display", "Display Weather inset",
+			displayIt != appWindowDisplays.end() && displayIt->second ? "1" : "0");
+	}
+
 	save("ActivePreset", "Active airport inset preset", ActiveAvisoPresetName);
 	save("Linked", "Link AVISO views", AvisoViewsLinked ? "1" : "0");
 }
@@ -589,7 +610,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	bool hasScopedState = readWithPrefix(scopedPrefix, "Version") != nullptr;
 	if (!hasScopedState)
 	{
-		for (const char* probe : { "SRW1Display", "SRW2Display", "AVISO1Display", "SRW1TopLeftX", "AVISO1TopLeftX" })
+		for (const char* probe : { "SRW1Display", "SRW2Display", "AVISO1Display", "WEATHER1Display", "SRW1TopLeftX", "AVISO1TopLeftX", "WEATHER1TopLeftX" })
 		{
 			if (readWithPrefix(scopedPrefix, probe) != nullptr)
 			{
@@ -604,7 +625,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		readPrefix = scopedPrefix;
 	else if (allowLegacyFallback)
 	{
-		for (const char* probe : { "SRW1Display", "SRW2Display", "AVISO1Display", "SRW1TopLeftX", "AVISO1TopLeftX" })
+		for (const char* probe : { "SRW1Display", "SRW2Display", "AVISO1Display", "WEATHER1Display", "SRW1TopLeftX", "AVISO1TopLeftX", "WEATHER1TopLeftX" })
 		{
 			if (GetDataFromAsr(probe) != nullptr)
 			{
@@ -676,6 +697,23 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[avisoWindowId] = atoi(value) != 0;
 		window->ResetAvisoInteractionState();
 		window->ClearAvisoViewportCache();
+	}
+
+	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+	const auto weatherWindowIt = appWindows.find(weatherWindowId);
+	if (weatherWindowIt != appWindows.end() && weatherWindowIt->second != nullptr)
+	{
+		CInsetWindow* window = weatherWindowIt->second.get();
+		const std::string windowPrefix = "WEATHER1";
+		const char* value = nullptr;
+		if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
+		if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
+		if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
+		if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
+		if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
+			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
+		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[weatherWindowId] = atoi(value) != 0;
+		window->ResetAvisoInteractionState();
 	}
 
 	ActiveAvisoPresetName.clear();
