@@ -13,7 +13,7 @@ capability boundaries.
 | --- | --- | --- |
 | Native runtime UI | `vSMR/src/SMRRadar_RuntimeMenu.cpp` | Draws the editable current-airport row, focusless radar-screen icon rail, and compact popups with EuroScope screen objects. |
 | Radar operational UI | `vSMR/src/SMRRadar.cpp`, `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Draws the optional FPS-only overlay and handles current radar-screen interactions without a top menu. |
-| AVISO viewport UI | `vSMR/src/InsetWindow.cpp` | Draws only AVISO viewport chrome and interaction: title/drag, detach, resize/dividers, pan, and zoom. |
+| Inset window UI | `vSMR/src/InsetWindow.cpp` | Draws AVISO and SRW chrome and interaction: title/drag, live snap previews, edge/corner resize, close, pan, and zoom. |
 | Runtime/render state | `vSMR/src/SMRRadar.cpp`, `vSMR/src/InsetWindow.cpp` | Applies profiles, modes, inset state, RIMCAS state, and AVISO renderer state. |
 | Modeless host | `vSMR/src/SMRRadar_ControlCenter.cpp`, `vSMR/src/VsmrControlCenterDialog.cpp` | Owns the modeless MFC window, WebView2 lifetime, local-resource mapping, placement, file selection, and asynchronous GitHub loading. |
 | Typed dispatch | `vSMR/include/VsmrControlCenterBridge.hpp`, `vSMR/src/VsmrControlCenterBridge.cpp` | Decodes one versioned envelope, validates payloads, dispatches to radar/config APIs, and emits replies. |
@@ -50,9 +50,9 @@ time.
 | Surface | Owned controls | Intentionally absent |
 | --- | --- | --- |
 | Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW visibility and reset, full airport-specific inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
-| AVISO inset | Title/drag, `F` detach, resize handles/dividers, pan, and zoom | Close/visibility, preset, reload, and editor buttons |
+| AVISO/SRW insets | Striped title/drag bar, `X` close control, edge/corner resizing, snapping, pan, and zoom; floating SRWs also expose the `F` altitude filter | Preset, reload, and editor buttons |
 | Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, and settings editing, including FPS visibility | Radar cursor tools and duplicated inset chrome |
-| FPS overlay | Optional `FPS <value>` text at the radar area's top-right corner | Component timings, controls, background toolbar, and hit regions |
+| FPS overlay | Optional `FPS <value>` text placed in an unobstructed corner of the remaining main AVISO area | Component timings, controls, background toolbar, and hit regions |
 
 The old grey top menu and its QDR, Target, Lighting, and distance actions are
 removed completely. It leaves no background band or legacy hit regions. FPS
@@ -97,6 +97,29 @@ directly. Rendering and interaction share those bounds, so no obsolete toolbar
 clearance remains in snapping, dragging, resizing, or preset restoration.
 Floating layouts retain only the small clearance required to keep their own
 title/drag surface reachable.
+
+All three inset windows use the same striped title bar and a right-aligned `X`
+close action. The floating SRW windows additionally retain `F` as their altitude
+filter; `F` is not a detach control. Dragging any inset title bar near a radar
+edge or corner shows the exact prospective half-screen or quadrant footprint
+before release. Dragging a snapped title bar restores a floating window while
+keeping the grabbed title point under the pointer. Each outer edge and corner
+has a forgiving resize hit band with the matching Windows resize cursor; an
+anchored split or quadrant keeps its dock while its inward divider is resized,
+and dragging an outer anchored edge converts it to a freely resizable floating
+window. Cursor selection and EuroScope dragging use the same canonical hit
+rectangles, and cursor state is recalculated from the live pointer position so
+it cannot remain stuck after leaving a released border.
+
+An edge-snapped inset reserves its occupied strip from the main AVISO viewport.
+The main renderer derives and rasterizes only the geographic bounds visible in
+the complementary area while preserving EuroScope's screen projection, so
+targets and geometry stay aligned without divider-induced projection jitter.
+Inset caches likewise compare geographic pixel scale rather than raw window
+dimensions, preventing temporary shrink or aspect distortion during live
+resize. Corner snaps remain overlays and do not
+shrink the main viewport. The snapped title bar is excluded from inset map
+rendering, pan, and wheel input.
 
 AVISO items may belong to more than one group. Visibility uses union semantics:
 an item is rendered when at least one known assigned group is visible.
@@ -343,7 +366,8 @@ The current airport, Runtime Menu position, inset state/geometry, active
 profile, and optional FPS visibility are radar-screen preferences stored in the
 ASR. `Settings > Display > Show FPS` updates the live `ShowFps` value and writes
 the `ShowFps` ASR key as `1` or `0`; a missing key defaults to enabled for
-compatibility. The overlay renders only `FPS <value>` at the top-right corner.
+compatibility. The overlay renders only `FPS <value>` at the top-right of the
+unobstructed main area, moving below a corner inset when necessary.
 Detailed component timings may still be collected for logs, but are never
 included in the radar overlay.
 

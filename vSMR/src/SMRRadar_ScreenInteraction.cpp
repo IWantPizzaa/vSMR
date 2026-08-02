@@ -12,17 +12,11 @@ extern bool customCursor;
 
 namespace
 {
+	bool gInsetCursorOverride = false;
+
 	bool IsAppWindowObjectType(int objectType)
 	{
 		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_AVISO;
-	}
-
-	POINT ClientPointFromMouseLParam(LPARAM lParam)
-	{
-		return {
-			static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
-			static_cast<LONG>(static_cast<short>(HIWORD(lParam)))
-		};
 	}
 
 	bool IsAppWindowVisible(CSMRRadar* radar, int appWindowId)
@@ -34,16 +28,103 @@ namespace
 		return displayIt != radar->appWindowDisplays.end() && displayIt->second;
 	}
 
+	HCURSOR LoadDefaultRadarCursor()
+	{
+		AFX_MANAGE_STATE(AfxGetStaticModuleState());
+		if (customCursor)
+		{
+			HCURSOR cursor = reinterpret_cast<HCURSOR>(::LoadImage(
+				AfxGetInstanceHandle(),
+				MAKEINTRESOURCE(IDC_SMRCURSOR),
+				IMAGE_CURSOR,
+				0,
+				0,
+				LR_SHARED));
+			if (cursor != nullptr)
+				return cursor;
+		}
+		return ::LoadCursor(nullptr, IDC_ARROW);
+	}
+
+	void ApplyRadarCursor(HCURSOR cursor, bool isDefault)
+	{
+		if (cursor == nullptr)
+			return;
+		smrCursor = cursor;
+		::SetCursor(cursor);
+		standardCursor = isDefault;
+	}
+
+	HCURSOR ResizeCursorForRegion(CInsetWindow::ResizeRegion region)
+	{
+		switch (region)
+		{
+		case CInsetWindow::ResizeRegion::Left:
+		case CInsetWindow::ResizeRegion::Right:
+			return ::LoadCursor(nullptr, IDC_SIZEWE);
+		case CInsetWindow::ResizeRegion::Top:
+		case CInsetWindow::ResizeRegion::Bottom:
+			return ::LoadCursor(nullptr, IDC_SIZENS);
+		case CInsetWindow::ResizeRegion::TopLeft:
+		case CInsetWindow::ResizeRegion::BottomRight:
+			return ::LoadCursor(nullptr, IDC_SIZENWSE);
+		case CInsetWindow::ResizeRegion::TopRight:
+		case CInsetWindow::ResizeRegion::BottomLeft:
+			return ::LoadCursor(nullptr, IDC_SIZENESW);
+		default:
+			return nullptr;
+		}
+	}
+
+	CInsetWindow::ResizeRegion ResizeRegionFromObjectId(const char* objectId)
+	{
+		if (objectId == nullptr)
+			return CInsetWindow::ResizeRegion::None;
+		if (strcmp(objectId, "resize_left") == 0) return CInsetWindow::ResizeRegion::Left;
+		if (strcmp(objectId, "resize_right") == 0) return CInsetWindow::ResizeRegion::Right;
+		if (strcmp(objectId, "resize_top") == 0) return CInsetWindow::ResizeRegion::Top;
+		if (strcmp(objectId, "resize_bottom") == 0) return CInsetWindow::ResizeRegion::Bottom;
+		if (strcmp(objectId, "resize_tl") == 0) return CInsetWindow::ResizeRegion::TopLeft;
+		if (strcmp(objectId, "resize_tr") == 0) return CInsetWindow::ResizeRegion::TopRight;
+		if (strcmp(objectId, "resize_bl") == 0) return CInsetWindow::ResizeRegion::BottomLeft;
+		if (strcmp(objectId, "resize_br") == 0) return CInsetWindow::ResizeRegion::BottomRight;
+		return CInsetWindow::ResizeRegion::None;
+	}
+
+	void ApplyResizeCursor(CInsetWindow::ResizeRegion region)
+	{
+		ApplyRadarCursor(ResizeCursorForRegion(region), false);
+		gInsetCursorOverride = true;
+	}
+
+	void ApplyMoveCursor()
+	{
+		ApplyRadarCursor(::LoadCursor(nullptr, IDC_SIZEALL), false);
+		gInsetCursorOverride = true;
+	}
+
+	void RestoreRadarCursor()
+	{
+		if (standardCursor)
+			return;
+		ApplyRadarCursor(LoadDefaultRadarCursor(), true);
+	}
+
+	void RestoreInsetCursor()
+	{
+		if (!gInsetCursorOverride)
+			return;
+		gInsetCursorOverride = false;
+		RestoreRadarCursor();
+	}
+
 	bool IsPointInMainRadarArea(CSMRRadar* radar, POINT pt)
 	{
 		if (radar == nullptr)
 			return false;
 
-		CRect radarArea(radar->GetRadarArea());
-		CRect chatArea(radar->GetChatArea());
+		CRect radarArea = radar->ResolveMainAvisoRenderArea();
 		radarArea.NormalizeRect();
-		chatArea.NormalizeRect();
-		radarArea.bottom = chatArea.top;
 		return
 			pt.x >= radarArea.left &&
 			pt.x <= radarArea.right &&
@@ -80,26 +161,78 @@ namespace
 		return radarArea;
 	}
 
-	CInsetWindow* VisibleAppWindowAtPoint(CSMRRadar* radar, POINT pt)
+	bool WindowsShareHierarchy(HWND first, HWND second)
+	{
+		if (first == nullptr || second == nullptr || !::IsWindow(first) || !::IsWindow(second))
+			return false;
+		for (HWND current = first; current != nullptr && ::IsWindow(current); current = ::GetParent(current))
+		{
+			if (current == second)
+				return true;
+		}
+		for (HWND current = second; current != nullptr && ::IsWindow(current); current = ::GetParent(current))
+		{
+			if (current == first)
+				return true;
+		}
+		return false;
+	}
+
+	bool HasInsetRenderedInWindow(CSMRRadar* radar, HWND hwnd)
+	{
+		if (radar == nullptr || hwnd == nullptr || !::IsWindow(hwnd))
+			return false;
+		for (const auto& window : radar->appWindows)
+		{
+			if (!IsAppWindowVisible(radar, window.first) || window.second == nullptr)
+				continue;
+			if (WindowsShareHierarchy(hwnd, window.second->m_AvisoRenderWindow))
+				return true;
+		}
+		return false;
+	}
+
+	CInsetWindow* TopmostVisibleInsetFrameAtPoint(CSMRRadar* radar, POINT pt, int inflation = 0)
 	{
 		if (radar == nullptr)
 			return nullptr;
 
+		auto containsPoint = [&](CInsetWindow* appWindow) -> bool
+		{
+			if (appWindow == nullptr)
+				return false;
+			CRect frame = appWindow->GetWindowFrameRect();
+			frame.NormalizeRect();
+			if (inflation > 0)
+				frame.InflateRect(inflation, inflation);
+			return frame.PtInRect(pt) != FALSE;
+		};
+		for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
+		{
+			CInsetWindow* appWindow = it->second.get();
+			if (appWindow != nullptr && appWindow->m_AvisoScrollSelected &&
+				IsAppWindowVisible(radar, it->first) && containsPoint(appWindow))
+			{
+				return appWindow;
+			}
+		}
 		for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
 		{
 			const int appWindowId = it->first;
 			CInsetWindow* appWindow = it->second.get();
-			if (appWindow == nullptr ||
-				!IsAppWindowVisible(radar, appWindowId) ||
-				!appWindow->IsPointInside(pt))
-			{
+			if (appWindow == nullptr || appWindow->m_AvisoScrollSelected ||
+				!IsAppWindowVisible(radar, appWindowId))
 				continue;
-			}
-
-			return appWindow;
+			if (containsPoint(appWindow))
+				return appWindow;
 		}
-
 		return nullptr;
+	}
+
+	CInsetWindow* VisibleAppWindowAtPoint(CSMRRadar* radar, POINT pt)
+	{
+		CInsetWindow* appWindow = TopmostVisibleInsetFrameAtPoint(radar, pt);
+		return appWindow != nullptr && appWindow->IsPointInside(pt) ? appWindow : nullptr;
 	}
 
 	CInsetWindow* VisibleAvisoViewportAtPoint(CSMRRadar* radar, POINT pt)
@@ -119,6 +252,22 @@ namespace
 				return appWindow;
 		}
 
+		return nullptr;
+	}
+
+	CInsetWindow* ActiveInsetWindowInteraction(CSMRRadar* radar)
+	{
+		if (radar == nullptr)
+			return nullptr;
+		for (auto& kv : radar->appWindows)
+		{
+			CInsetWindow* appWindow = kv.second.get();
+			if (appWindow != nullptr &&
+				(appWindow->IsWindowMoveActive() || appWindow->IsWindowResizeActive()))
+			{
+				return appWindow;
+			}
+		}
 		return nullptr;
 	}
 
@@ -161,8 +310,10 @@ namespace
 			SelectAvisoViewport(radar, viewportAtPoint);
 			return true;
 		}
+		if (TopmostVisibleInsetFrameAtPoint(radar, pt) != nullptr)
+			return false;
 
-		if (VisibleAppWindowAtPoint(radar, pt) == nullptr && IsPointInMainRadarArea(radar, pt))
+		if (IsPointInMainRadarArea(radar, pt))
 		{
 			SelectMainAviso(radar);
 			return true;
@@ -247,8 +398,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	{
 		AFX_MANAGE_STATE(AfxGetStaticModuleState());
 		ASSERT(cursor);
-		SetCursor(cursor);
-		standardCursor = keepStandardCursor;
+		ApplyRadarCursor(cursor, keepStandardCursor);
 	};
 	auto setInteractionCursorIfNeeded = [&](int resourceId)
 	{
@@ -259,12 +409,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	};
 	auto setDefaultCursorIfNeeded = [&]()
 	{
-		if (standardCursor)
-			return;
-		HCURSOR cursor = customCursor
-			? CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED))
-			: (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
-		setCursorState(cursor, true);
+		RestoreRadarCursor();
 	};
 	auto isTagObjectType = [&](int objectType) -> bool
 	{
@@ -295,21 +440,38 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		if (appWindowIt == appWindows.end() || appWindowIt->second == nullptr)
 			return;
 		CInsetWindow* appWindow = appWindowIt->second.get();
+		const CInsetWindow::ResizeRegion resizeRegion = ResizeRegionFromObjectId(objectId);
 
-		CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
-		bool toggleCursor = appWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released, &avisoLayoutBounds);
+		if (isObjectId("topbar") || resizeRegion != CInsetWindow::ResizeRegion::None)
+		{
+			CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
+			appWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released, &avisoLayoutBounds);
+			if (Released)
+			{
+				RestoreInsetCursor();
+				SaveInsetStateToAsrForAirport(getActiveAirport());
+			}
+			else if (resizeRegion != CInsetWindow::ResizeRegion::None)
+			{
+				ApplyResizeCursor(resizeRegion);
+			}
+			else
+			{
+				ApplyMoveCursor();
+			}
+			mouseLocation = Pt;
+			RequestRefresh();
+			return;
+		}
 
-		if (!toggleCursor)
-		{
-			if (isObjectId("topbar") || isObjectId("window"))
-				setInteractionCursorIfNeeded(IDC_SMRMOVEWINDOW);
-			else if (isObjectId("resize") || isObjectId("divider") || isObjectId("divider_x") || isObjectId("divider_y"))
-				setInteractionCursorIfNeeded(IDC_SMRRESIZE);
-		}
-		else
-		{
-			setDefaultCursorIfNeeded();
-		}
+		const bool obsoleteChromeMove =
+			isObjectId("window") || isObjectId("resize") ||
+			isObjectId("divider") || isObjectId("divider_x") || isObjectId("divider_y");
+		if (obsoleteChromeMove)
+			return;
+
+		// SRW tags remain EuroScope-moveable alongside the inset chrome objects.
+		appWindow->OnMoveScreenObject(sObjectId, Pt, Area, Released);
 	}
 
 	if (isTagObjectType(ObjectType)) {
@@ -459,10 +621,41 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
 	Logger::info(string(__FUNCSIG__));
-	UNREFERENCED_PARAMETER(ObjectType);
-	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
+	UNREFERENCED_PARAMETER(sObjectId);
 	mouseLocation = Pt;
+	CInsetWindow* activeWindowInteraction = ActiveInsetWindowInteraction(this);
+	if (activeWindowInteraction != nullptr)
+	{
+		if (activeWindowInteraction->IsWindowResizeActive())
+			ApplyResizeCursor(activeWindowInteraction->GetActiveResizeRegion());
+		else
+			ApplyMoveCursor();
+	}
+	else if (IsAppWindowObjectType(ObjectType))
+	{
+		const int appWindowId = ObjectType - APPWINDOW_BASE;
+		auto appWindowIt = appWindows.find(appWindowId);
+		CInsetWindow* appWindow = appWindowIt != appWindows.end() ? appWindowIt->second.get() : nullptr;
+		if (appWindow != nullptr)
+		{
+			const CInsetWindow::ResizeRegion resizeRegion = appWindow->HitTestResize(Pt);
+			if (resizeRegion != CInsetWindow::ResizeRegion::None)
+				ApplyResizeCursor(resizeRegion);
+			else if (appWindow->HitTestTitleBar(Pt))
+				ApplyMoveCursor();
+			else
+				RestoreInsetCursor();
+		}
+		else
+		{
+			RestoreInsetCursor();
+		}
+	}
+	else
+	{
+		RestoreInsetCursor();
+	}
 	CInsetWindow* activePanViewport = ActiveAvisoPanViewport(this);
 	if (activePanViewport != nullptr)
 	{
@@ -480,81 +673,120 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 	RequestRefresh();
 }
 
-bool CSMRRadar::HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button)
+bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 {
-	UNREFERENCED_PARAMETER(wParam);
-	if (hwnd == nullptr || !::IsWindow(hwnd))
-		return false;
-
-	POINT clientPoint = ClientPointFromMouseLParam(lParam);
-	mouseLocation = clientPoint;
-	if (IsPointInRuntimeMenuOverlay(this, clientPoint))
-		return false;
-
-	CInsetWindow* viewportAtPoint = VisibleAvisoViewportAtPoint(this, clientPoint);
-	if (viewportAtPoint != nullptr)
+	if (hwnd == nullptr || !::IsWindow(hwnd) || !HasInsetRenderedInWindow(this, hwnd))
 	{
-		SelectAvisoViewport(this, viewportAtPoint);
-		if (Button == BUTTON_RIGHT)
-		{
-			viewportAtPoint->BeginAvisoPan(clientPoint);
-			::SetCapture(hwnd);
-			RequestRefresh();
-			return true;
-		}
-
-		RequestRefresh();
+		RestoreInsetCursor();
 		return false;
 	}
 
-	if (SelectAvisoScrollTargetAtPoint(this, clientPoint))
-		RequestRefresh();
-
-	return false;
-}
-
-bool CSMRRadar::HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button)
-{
-	UNREFERENCED_PARAMETER(wParam);
-	POINT clientPoint = ClientPointFromMouseLParam(lParam);
-	mouseLocation = clientPoint;
-
-	if (Button != BUTTON_RIGHT)
-		return false;
-
-	if (!EndAvisoViewportPans(this))
-		return false;
-
-	if (hwnd != nullptr && ::GetCapture() == hwnd)
-		::ReleaseCapture();
-	RequestRefresh();
-	return true;
-}
-
-bool CSMRRadar::HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam)
-{
-	POINT clientPoint = ClientPointFromMouseLParam(lParam);
-	mouseLocation = clientPoint;
-
-	CInsetWindow* activePanViewport = ActiveAvisoPanViewport(this);
-	if (activePanViewport != nullptr)
+	POINT screenPoint = {};
+	if (!::GetCursorPos(&screenPoint))
 	{
+		RestoreInsetCursor();
+		return false;
+	}
 
-		if ((wParam & MK_RBUTTON) == 0 && (::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
+	auto pointForWindow = [&](CInsetWindow* insetWindow, POINT& clientPoint) -> bool
+	{
+		if (insetWindow == nullptr)
+			return false;
+		HWND renderWindow = insetWindow->m_AvisoRenderWindow;
+		if (renderWindow == nullptr || !::IsWindow(renderWindow))
+			renderWindow = hwnd;
+		clientPoint = screenPoint;
+		return renderWindow != nullptr && ::ScreenToClient(renderWindow, &clientPoint) != FALSE;
+	};
+
+	CInsetWindow* activeWindow = ActiveInsetWindowInteraction(this);
+	if (activeWindow != nullptr)
+	{
+		POINT activePoint = {};
+		const bool pointMapped = pointForWindow(activeWindow, activePoint);
+		if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0)
 		{
-			activePanViewport->EndAvisoPan();
-			if (hwnd != nullptr && ::GetCapture() == hwnd)
-				::ReleaseCapture();
-			RequestRefresh();
+			if (activeWindow->IsWindowResizeActive())
+				ApplyResizeCursor(activeWindow->GetActiveResizeRegion());
+			else
+				ApplyMoveCursor();
 			return true;
 		}
 
-		activePanViewport->UpdateAvisoPan(clientPoint);
+		// Recover cleanly if EuroScope misses the final move callback. This only
+		// ends vSMR's state machine; EuroScope keeps ownership of mouse capture.
+		if (pointMapped)
+		{
+			CRect layoutBounds = AvisoViewportLayoutBounds(this);
+			if (activeWindow->IsWindowResizeActive())
+				activeWindow->EndWindowResize(activePoint, &layoutBounds);
+			else
+				activeWindow->EndWindowMove(activePoint, &layoutBounds);
+		}
+		else
+		{
+			activeWindow->CancelWindowInteraction();
+		}
+		RestoreInsetCursor();
+		SaveInsetStateToAsrForAirport(getActiveAirport());
 		RequestRefresh();
-		return true;
 	}
 
+	for (auto it = appWindows.rbegin(); it != appWindows.rend(); ++it)
+	{
+		const int appWindowId = it->first;
+		CInsetWindow* insetWindow = it->second.get();
+		if (insetWindow == nullptr || !IsAppWindowVisible(this, appWindowId))
+			continue;
+
+		POINT clientPoint = {};
+		if (!pointForWindow(insetWindow, clientPoint))
+			continue;
+		const CInsetWindow::ResizeRegion resizeRegion = insetWindow->HitTestResize(clientPoint);
+		if (resizeRegion != CInsetWindow::ResizeRegion::None)
+		{
+			ApplyResizeCursor(resizeRegion);
+			return true;
+		}
+		if (insetWindow->HitTestTitleBar(clientPoint))
+		{
+			ApplyMoveCursor();
+			return true;
+		}
+
+		CRect frame = insetWindow->GetWindowFrameRect();
+		frame.NormalizeRect();
+		if (frame.PtInRect(clientPoint))
+		{
+			RestoreInsetCursor();
+			return false;
+		}
+	}
+
+	RestoreInsetCursor();
 	return false;
+}
+
+void CSMRRadar::CancelInsetWindowInteractions()
+{
+	bool changed = EndAvisoViewportPans(this);
+	for (auto& kv : appWindows)
+	{
+		CInsetWindow* appWindow = kv.second.get();
+		if (appWindow == nullptr)
+			continue;
+		if (appWindow->IsWindowMoveActive() || appWindow->IsWindowResizeActive())
+			changed = true;
+		appWindow->CancelWindowInteraction();
+	}
+	// EuroScope owns capture while moving its screen objects. Never release a
+	// capture that may belong to the host or another plug-in from this cleanup.
+	RestoreInsetCursor();
+	if (changed)
+	{
+		SaveInsetStateToAsrForAirport(getActiveAirport());
+		RequestRefresh();
+	}
 }
 
 bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
@@ -750,29 +982,20 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
 		
-		if (isObjectId("float"))
-		{
-			if (appWindow == nullptr)
-				return;
-
-			CRect avisoLayoutBounds = AvisoViewportLayoutBounds(this);
-			SelectAvisoViewport(this, appWindow);
-			appWindow->FloatAvisoViewport(Pt, &avisoLayoutBounds);
-			RequestRefresh();
-			return;
-		}
-
 		if (isObjectId("close"))
 		{
-			if (appWindow == nullptr || appWindow->IsAvisoViewport())
+			if (appWindow == nullptr)
 				return;
 
 			auto appWindowDisplayIt = appWindowDisplays.find(appWindowId);
 			if (appWindowDisplayIt != appWindowDisplays.end())
 			{
 				appWindowDisplayIt->second = false;
+				appWindow->ResetAvisoInteractionState();
 				SaveInsetStateToAsrForAirport(getActiveAirport());
 			}
+			RequestRefresh();
+			return;
 		}
 		if (isObjectId("filter")) {
 			if (appWindow == nullptr)
