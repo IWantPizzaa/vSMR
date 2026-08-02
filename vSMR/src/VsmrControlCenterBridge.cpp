@@ -835,6 +835,7 @@ struct VsmrControlCenterBridge::Impl
 		insets.AddMember("aviso", insetVisible(3), allocator);
 		insets.AddMember("srw1", insetVisible(1), allocator);
 		insets.AddMember("srw2", insetVisible(2), allocator);
+		insets.AddMember("weather", insetVisible(APPWINDOW_WEATHER - APPWINDOW_BASE), allocator);
 		runtime.AddMember("insets", insets, allocator);
 		runtime.AddMember("avisoInsetVisible", insetVisible(3), allocator);
 		AddString(
@@ -1156,6 +1157,8 @@ struct VsmrControlCenterBridge::Impl
 			Owner->CancelInsetWindowInteractions();
 			const auto applyInsetVisibility = [&](int id, const char* key)
 			{
+				if (!insets.HasMember(key) || !insets[key].IsBool())
+					return;
 				const bool visible = ReadBool(insets, key, false);
 				Owner->appWindowDisplays[id] = visible;
 				if (!visible)
@@ -1168,6 +1171,7 @@ struct VsmrControlCenterBridge::Impl
 			applyInsetVisibility(3, "aviso");
 			applyInsetVisibility(1, "srw1");
 			applyInsetVisibility(2, "srw2");
+			applyInsetVisibility(APPWINDOW_WEATHER - APPWINDOW_BASE, "weather");
 		}
 
 		if (stagedState.HasMember("aviso"))
@@ -1535,6 +1539,7 @@ struct VsmrControlCenterBridge::Impl
 		int id = 0;
 		if (window == "srw1") id = 1;
 		else if (window == "srw2") id = 2;
+		else if (!srwOnly && window == "weather") id = APPWINDOW_WEATHER - APPWINDOW_BASE;
 		else if (!srwOnly && (window == "aviso" || window.empty())) id = 3;
 		if (id == 0)
 		{

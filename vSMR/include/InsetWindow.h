@@ -18,7 +18,8 @@ public:
 	enum class Mode
 	{
 		SecondaryRadar = 0,
-		AvisoViewport = 1
+		AvisoViewport = 1,
+		Weather = 2
 	};
 
 	enum class AvisoLayoutMode
@@ -83,6 +84,9 @@ public:
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
 	bool IsAvisoViewport() const;
+	bool IsSecondaryRadar() const;
+	bool IsWeather() const;
+	bool SupportsPanAndZoom() const;
 	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;
 	CRect GetWindowFrameRect() const;
@@ -116,6 +120,7 @@ public:
 	
 private:
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
+	void renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	string icao;
 	map<string, CPosition> AptPositions;
 	std::unique_ptr<AvisoViewportState> m_AvisoState;

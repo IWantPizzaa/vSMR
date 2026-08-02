@@ -16,6 +16,7 @@
 #include <memory>
 #include <new>
 #include "rapidjson/document.h"
+#include "WeatherData.hpp"
 
 bool Logger::ENABLED;
 string Logger::DLL_PATH;
@@ -30,6 +31,7 @@ std::atomic<unsigned long long> HoppiePollGeneration(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 std::atomic<bool> PluginShutdownRequested(false);
+CSMRPlugin* ActivePluginInstance = nullptr;
 
 string logonCode = "";
 string logonCallsign = "EGKK";
@@ -1945,6 +1947,7 @@ void sendDatalinkClearance(void * arg) {
 
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
 {
+	ActivePluginInstance = this;
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -2037,6 +2040,10 @@ CSMRPlugin::~CSMRPlugin()
 	HoppieConnecting.store(false, std::memory_order_relaxed);
 	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
+	StopWeatherFetchWorker();
+	if (ActivePluginInstance == this)
+		ActivePluginInstance = nullptr;
+	VsmrWeather::Clear();
 
 	// Persist CPDLC settings via EuroScope's plugin settings storage.
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
@@ -2061,6 +2068,23 @@ CSMRPlugin::~CSMRPlugin()
 	catch (std::exception& e)
 	{
 		std::cerr << e.what() << std::endl;
+	}
+}
+
+void CSMRPlugin::StopWeatherFetchWorker()
+{
+	WeatherFetchCancellationRequested.store(true, std::memory_order_release);
+	{
+		std::lock_guard<std::mutex> guard(WeatherFetchMutex);
+		WeatherFetchStop = true;
+		WeatherFetchQueue.clear();
+		WeatherFetchQueued.clear();
+	}
+	WeatherFetchCondition.notify_all();
+	if (WeatherFetchThread.joinable())
+	{
+		::CancelSynchronousIo(WeatherFetchThread.native_handle());
+		WeatherFetchThread.join();
 	}
 }
 
@@ -3098,6 +3122,85 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	}
 }
 
+void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar)
+{
+	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
+		VsmrWeather::Update(sStation, sFullMetar);
+}
+
+void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
+{
+	const std::string station = VsmrWeather::NormalizeIcao(rawStation);
+	if (station.empty() || PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
+	VsmrWeather::Snapshot snapshot;
+	const bool hasSnapshot = VsmrWeather::TryGet(station, snapshot);
+	const std::time_t now = std::time(nullptr);
+	const std::time_t refreshInterval = hasSnapshot ? 5 * 60 : 60;
+
+	std::lock_guard<std::mutex> guard(WeatherFetchMutex);
+	if (WeatherFetchStop || WeatherFetchQueued.find(station) != WeatherFetchQueued.end())
+		return;
+
+	const auto lastAttempt = WeatherLastAttemptUtc.find(station);
+	if (lastAttempt != WeatherLastAttemptUtc.end() &&
+		now >= lastAttempt->second && now - lastAttempt->second < refreshInterval)
+	{
+		return;
+	}
+
+	if (!WeatherFetchThread.joinable())
+	{
+		try
+		{
+			WeatherFetchThread = std::thread(&CSMRPlugin::WeatherFetchThreadMain, this);
+		}
+		catch (const std::system_error&)
+		{
+			WeatherLastAttemptUtc[station] = now;
+			return;
+		}
+	}
+
+	WeatherLastAttemptUtc[station] = now;
+	WeatherFetchQueued.insert(station);
+	WeatherFetchQueue.push_back(station);
+	WeatherFetchCondition.notify_one();
+}
+
+void CSMRPlugin::WeatherFetchThreadMain()
+{
+	for (;;)
+	{
+		std::string station;
+		{
+			std::unique_lock<std::mutex> lock(WeatherFetchMutex);
+			WeatherFetchCondition.wait(lock, [this]() {
+				return WeatherFetchStop || !WeatherFetchQueue.empty();
+				});
+			if (WeatherFetchStop)
+				return;
+
+			station = std::move(WeatherFetchQueue.front());
+			WeatherFetchQueue.pop_front();
+			WeatherFetchQueued.erase(station);
+		}
+
+		const std::time_t requestStartedUtc = std::time(nullptr);
+		const std::string url = "https://metar.vatsim.net/metar.php?id=" + station;
+		const std::string report = GetHttpHelper().downloadStringFromURL(
+			url,
+			3500,
+			&WeatherFetchCancellationRequested);
+		if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
+			!report.empty() && report.size() <= 4096)
+		{
+			VsmrWeather::Update(station, report, requestStartedUtc, true);
+		}
+	}
+}
+
 void CSMRPlugin::OnTimer(int Counter)
 {
 	(void)Counter;
@@ -3217,6 +3320,19 @@ void CSMRPlugin::OnTimer(int Counter)
 				}),
 			AircraftWilco.end());
 	}
+
+	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar->IsShutdownRequested())
+			continue;
+		const auto display = radar->appWindowDisplays.find(weatherWindowId);
+		if (display != radar->appWindowDisplays.end() && display->second)
+		{
+			QueueWeatherFetch(radar->getActiveAirport());
+			radar->RequestRefresh();
+		}
+	}
 };
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
@@ -3238,6 +3354,7 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
+	CSMRPlugin* pluginInstance = ActivePluginInstance;
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -3245,6 +3362,8 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 	HoppieConnecting.store(false, std::memory_order_relaxed);
 	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
+	if (pluginInstance != nullptr)
+		pluginInstance->StopWeatherFetchWorker();
 
 	const std::vector<CSMRRadar*> radarScreens = RadarScreensOpened;
 	for (auto* var : radarScreens)
@@ -3252,4 +3371,6 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 		if (var != nullptr)
 			var->EuroScopePlugInExitCustom();
 	}
+	VsmrWeather::Clear();
+	ActivePluginInstance = nullptr;
 }

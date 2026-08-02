@@ -469,6 +469,20 @@ namespace
 			}
 		}
 
+		if (const rapidjson::Value* weather = GetObjectMember(value, "weather"))
+		{
+			out.weather.valid = true;
+			out.weather.visible = ReadBoolMember(*weather, "visible", out.weather.visible);
+			out.weather.area.left = ReadIntMember(*weather, "left", out.weather.area.left);
+			out.weather.area.top = ReadIntMember(*weather, "top", out.weather.area.top);
+			out.weather.area.right = ReadIntMember(*weather, "right", out.weather.area.right);
+			out.weather.area.bottom = ReadIntMember(*weather, "bottom", out.weather.area.bottom);
+			if (weather->HasMember("layout_mode"))
+				out.weather.layoutMode = LayoutModeFromValue((*weather)["layout_mode"], out.weather.layoutMode);
+			else if (weather->HasMember("layout_mode_id"))
+				out.weather.layoutMode = LayoutModeFromValue((*weather)["layout_mode_id"], out.weather.layoutMode);
+		}
+
 		return true;
 	}
 
@@ -535,6 +549,20 @@ namespace
 		}
 		rapidjson::Value srwKey("srw", allocator);
 		out.AddMember(srwKey, srw, allocator);
+
+		if (preset.weather.valid)
+		{
+			rapidjson::Value weather(rapidjson::kObjectType);
+			AddBoolMember(weather, "visible", preset.weather.visible, allocator);
+			AddIntMember(weather, "left", preset.weather.area.left, allocator);
+			AddIntMember(weather, "top", preset.weather.area.top, allocator);
+			AddIntMember(weather, "right", preset.weather.area.right, allocator);
+			AddIntMember(weather, "bottom", preset.weather.area.bottom, allocator);
+			AddStringMember(weather, "layout_mode", LayoutModeToString(preset.weather.layoutMode), allocator);
+			AddIntMember(weather, "layout_mode_id", std::clamp(preset.weather.layoutMode, 0, 8), allocator);
+			rapidjson::Value weatherKey("weather", allocator);
+			out.AddMember(weatherKey, weather, allocator);
+		}
 	}
 
 	CInsetWindow* GetSecondaryAvisoWindow(CSMRRadar* radar)
@@ -727,6 +755,19 @@ bool CSMRRadar::SaveAvisoPreset(
 		window.visible =
 			visibleIt != appWindowDisplays.end() && visibleIt->second;
 	}
+	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+	const auto weatherWindowIt = appWindows.find(weatherWindowId);
+	if (weatherWindowIt != appWindows.end() && weatherWindowIt->second != nullptr)
+	{
+		preset.weather.valid = true;
+		preset.weather.area = weatherWindowIt->second->m_Area;
+		preset.weather.layoutMode = std::clamp(
+			static_cast<int>(weatherWindowIt->second->m_AvisoLayoutMode),
+			0,
+			8);
+		const auto visibleIt = appWindowDisplays.find(weatherWindowId);
+		preset.weather.visible = visibleIt != appWindowDisplays.end() && visibleIt->second;
+	}
 
 	const bool saved = CurrentConfig->transactAvisoPresetStore(
 		activeProfileName,
@@ -838,6 +879,19 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 			std::clamp(window.layoutMode, 0, 8));
 		windowIt->second->ResetAvisoInteractionState();
 		appWindowDisplays[id] = window.visible;
+	}
+	if (preset.weather.valid)
+	{
+		const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+		const auto weatherWindowIt = appWindows.find(weatherWindowId);
+		if (weatherWindowIt != appWindows.end() && weatherWindowIt->second != nullptr)
+		{
+			weatherWindowIt->second->m_Area = preset.weather.area;
+			weatherWindowIt->second->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(
+				std::clamp(preset.weather.layoutMode, 0, 8));
+			weatherWindowIt->second->ResetAvisoInteractionState();
+			appWindowDisplays[weatherWindowId] = preset.weather.visible;
+		}
 	}
 	AvisoViewsLinked = preset.linkedMovement;
 	ActiveAvisoPresetName = preset.name;
