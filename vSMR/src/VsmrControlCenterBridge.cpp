@@ -806,8 +806,6 @@ struct VsmrControlCenterBridge::Impl
 			Owner->CurrentConfig != nullptr &&
 				!Owner->CurrentConfig->getVacdmServerUrl().empty(),
 			allocator);
-		settings.AddMember("approachWindows", true, allocator);
-
 		rapidjson::Value capabilities(rapidjson::kObjectType);
 		capabilities.AddMember("nativeBridge", true, allocator);
 		capabilities.AddMember("atomicSave", true, allocator);
@@ -834,8 +832,8 @@ struct VsmrControlCenterBridge::Impl
 		};
 		insets.AddMember("aviso", insetVisible(3), allocator);
 		insets.AddMember("srw1", insetVisible(1), allocator);
-		insets.AddMember("srw2", insetVisible(2), allocator);
 		insets.AddMember("weather", insetVisible(APPWINDOW_WEATHER - APPWINDOW_BASE), allocator);
+		insets.AddMember("timer", insetVisible(APPWINDOW_TIMER - APPWINDOW_BASE), allocator);
 		runtime.AddMember("insets", insets, allocator);
 		runtime.AddMember("avisoInsetVisible", insetVisible(3), allocator);
 		AddString(
@@ -1170,8 +1168,8 @@ struct VsmrControlCenterBridge::Impl
 			};
 			applyInsetVisibility(3, "aviso");
 			applyInsetVisibility(1, "srw1");
-			applyInsetVisibility(2, "srw2");
 			applyInsetVisibility(APPWINDOW_WEATHER - APPWINDOW_BASE, "weather");
+			applyInsetVisibility(APPWINDOW_TIMER - APPWINDOW_BASE, "timer");
 		}
 
 		if (stagedState.HasMember("aviso"))
@@ -1538,8 +1536,8 @@ struct VsmrControlCenterBridge::Impl
 		const std::string window = LowerAscii(ReadString(*payload, "window"));
 		int id = 0;
 		if (window == "srw1") id = 1;
-		else if (window == "srw2") id = 2;
 		else if (!srwOnly && window == "weather") id = APPWINDOW_WEATHER - APPWINDOW_BASE;
+		else if (!srwOnly && window == "timer") id = APPWINDOW_TIMER - APPWINDOW_BASE;
 		else if (!srwOnly && (window == "aviso" || window.empty())) id = 3;
 		if (id == 0)
 		{

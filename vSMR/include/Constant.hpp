@@ -277,7 +277,6 @@ const int DRAWING_TAG = 1211;
 const int DRAWING_AC_SYMBOL = 1212;
 const int DRAWING_AC_SYMBOL_APPWINDOW_BASE = 1251;
 const int DRAWING_AC_SYMBOL_APPWINDOW1 = 1252;
-const int DRAWING_AC_SYMBOL_APPWINDOW2 = 1253;
 const int DRAWING_AC_SYMBOL_APPWINDOW3 = 1254;
 
 const int TAG_CITEM_NO = 1910;
@@ -292,10 +291,6 @@ const int TAG_CITEM_UKSTAND = 1990;
 const int TAG_CITEM_REMARK = 1991;
 const int TAG_CITEM_SCRATCHPAD = 1992;
 const int TAG_CITEM_CLEARANCE = 1993;
-
-
-const int FUNC_MANUAL_CALLSIGN = 2000;
-
 // RIMCAS menu and runtime callbacks
 const int RIMCAS_CLOSE = EuroScopePlugIn::TAG_ITEM_FUNCTION_NO;
 const int RIMCAS_ACTIVE_AIRPORT_FUNC = 8008;
@@ -310,8 +305,9 @@ const int RIMCAS_UPDATEFILTER3 = 6018;
 
 const int APPWINDOW_BASE = 8887;
 const int APPWINDOW_ONE = 8888;
-const int APPWINDOW_TWO = 8889;
+// 8889 is intentionally left unused so existing inset identifiers stay stable.
 const int APPWINDOW_AVISO = 8890;
 const int APPWINDOW_WEATHER = 8891;
-const int RUNTIME_MENU_RAIL = 8892;
-const int RUNTIME_MENU_POPUP = 8893;
+const int APPWINDOW_TIMER = 8892;
+const int RUNTIME_MENU_RAIL = 8893;
+const int RUNTIME_MENU_POPUP = 8894;

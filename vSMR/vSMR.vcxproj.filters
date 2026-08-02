@@ -16,7 +16,7 @@
     <Filter Include="Resources\Cursors">
       <UniqueIdentifier>{6B5D3803-9232-414B-94AF-4021F2E87F31}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Resources\Audio">
+    <Filter Include="Data\Audio">
       <UniqueIdentifier>{21C24E8D-995F-47BA-9A54-56D5531D3A86}</UniqueIdentifier>
     </Filter>
     <Filter Include="Data">
@@ -79,9 +79,6 @@
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\SMRRadar.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRSharedState.cpp">
       <Filter>Source</Filter>
     </ClCompile>
     <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp">
@@ -200,9 +197,6 @@
     <ClInclude Include="include\SMRRadar.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
-    <ClInclude Include="include\SMRSharedState.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
     <ClInclude Include="include\SMRTagColorRules.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
@@ -247,6 +241,12 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="data\Audio\Alarm.wav">
+      <Filter>Data\Audio</Filter>
+    </None>
+    <None Include="data\Audio\Ding.wav">
+      <Filter>Data\Audio</Filter>
+    </None>
     <None Include="data\ICAO_Aircraft.json">
       <Filter>Data</Filter>
     </None>
@@ -280,9 +280,6 @@
     <None Include="resources\cursors\move.cur">
       <Filter>Resources\Cursors</Filter>
     </None>
-    <None Include="resources\cursors\POINTER1.cur">
-      <Filter>Resources\Cursors</Filter>
-    </None>
     <None Include="resources\vSMR.def">
       <Filter>Resources</Filter>
     </None>
@@ -297,10 +294,5 @@
     <ResourceCompile Include="resources\vSMR.rc">
       <Filter>Resources</Filter>
     </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Media Include="resources\audio\Ding.wav">
-      <Filter>Resources\Audio</Filter>
-    </Media>
   </ItemGroup>
 </Project>

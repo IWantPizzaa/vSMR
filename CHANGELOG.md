@@ -5,14 +5,18 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- Added a compact striped Timer inset with independent 1, 2, and 3 minute countdowns; left-click starts, right-click resets, and the alarm sounds once when a countdown expires.
 - Added a built-in AVISO editor for GeoJSON AVISO files with live reload, object visibility, layer/name metadata, style fields, label text/font/position fields, simple line/label creation, duplication, deletion, and save/reload actions.
-- Added airport-specific state and preset/default stores for AVISO, SRW 1, and SRW 2.
+- Added airport-specific state and preset/default stores for AVISO and SRW 1.
 - Added SRW corner/split snapping, right-drag panning, and cursor-anchored wheel zoom.
 - Added compact per-inset Reset actions to the Runtime Menu.
 - Added CPDLC connection, polling, credentials, notification sound, and automatic PDC reminder controls to the Control Center Settings page.
 - Added live CPDLC/CDM status reporting and manual CDM reminder scans for the active airport.
 
 ### Changed
+- Removed the Approach Path/SRW 2 inset and its runtime, preset, persistence, and rendering paths while preserving later inset IDs for compatibility.
+- Moved the Timer alarm and CPDLC notification sounds to `vSMR_Data\Audio` so both runtime assets ship outside the plugin DLL.
+- Added Timer visibility, placement reset, airport-scoped ASR state, and optional preset placement to the Runtime Menu and Control Center inset controls without persisting live countdown deadlines.
 - Renamed the Runtime Menu's `AVISO Insets` section to `Insets`.
 - Unified floating inset title bars with the Runtime Menu's dark striped chrome.
 - Removed the SRW `Z` range and `R` rotation menus; wheel zoom replaces the range menu.
@@ -21,11 +25,18 @@ All notable changes to this project are documented in this file.
 - Routed `.smr`, `.smr connect`, `.smr poll`, and `.smr cdm` through the shared native datalink service, with guarded asynchronous connection and polling operations.
 - Consolidated automatic CPDLC saves and explicit PDC reminder Run, Stop, Update, and Check-now controls into Settings; removed the separate Datalink page, readiness card, feature switches, Advanced section, and Danger zone.
 - Added the resolved EuroScope `.cdm` alias path to the Settings data-files card.
+- Reduced redraw work by caching inset/runtime fonts and runway headings, reusing per-target metadata, indexing runway occupancy, and avoiding duplicate Control Center renders and AVISO group scans.
+- Local Release builds now copy the complete `vSMR_Data` tree, matching the packaged deployment layout.
 
 ### Fixed
 - Removed the duplicate Windows title bar and system-looking edit borders/scrollbars from the PDC and Message windows, and constrained their custom title-bar dragging to the EuroScope client area.
 - Kept saved Hoppie credentials visibly masked after auto-save, normalized pasted codes, URL-encoded credentials, and replaced the misleading callsign-collision login error with the actual sanitized Hoppie or network failure.
 - Stopping or rescheduling automatic PDC reminders now removes only queued automatic reminders while preserving manual reminder checks.
+- Corrected SRW pen restoration and removed an unused once-per-second sector-airport scan.
+
+### Repository
+- Removed the unused bundled Asio and libcurl headers/libraries, their dead shared state, and an obsolete custom resize cursor.
+- Simplified AppVeyor packaging, included project and RapidJSON license notices, and enabled validation for `main`, `master`, and `dev`.
 
 ## [1.1.3] - 2026-06-20
 

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "SMRPlugin.hpp"
+#include "InsetWindow.h"
 #include <atomic>
 #include <mutex>
 #include <ctime>
@@ -120,7 +121,6 @@ map<string, string> vStrips_Stands;
 
 bool startThreadvStrips = true;
 
-using namespace SMRPluginSharedData;
 char recv_buf[1024];
 
 vector<CSMRRadar*> RadarScreensOpened;
@@ -144,6 +144,56 @@ namespace
 	const std::time_t CdmWarningCooldownSeconds = 60;
 	const int CdmReminderQueueMaxSendAttempts = 20;
 	const int CdmMaximumMinutes = 24 * 60;
+
+	std::filesystem::path ResolveRuntimeAudioPath(const wchar_t* fileName)
+	{
+		std::wstring modulePathBuffer(32768, L'\0');
+		const DWORD modulePathLength = ::GetModuleFileNameW(
+			HINSTANCE(&__ImageBase),
+			modulePathBuffer.data(),
+			static_cast<DWORD>(modulePathBuffer.size()));
+
+		std::filesystem::path pluginDirectory;
+		if (modulePathLength > 0 && modulePathLength < modulePathBuffer.size())
+		{
+			modulePathBuffer.resize(modulePathLength);
+			pluginDirectory = std::filesystem::path(modulePathBuffer).parent_path();
+		}
+		else if (!Logger::DLL_PATH.empty())
+		{
+			pluginDirectory = std::filesystem::path(Logger::DLL_PATH);
+		}
+
+		if (pluginDirectory.empty())
+			return {};
+
+		return pluginDirectory / L"vSMR_Data" / L"Audio" / fileName;
+	}
+
+	bool PlayRuntimeAudio(const wchar_t* fileName, const char* description)
+	{
+		const std::filesystem::path audioPath = ResolveRuntimeAudioPath(fileName);
+		if (audioPath.empty())
+		{
+			Logger::info(std::string("Unable to resolve ") + description + " audio path");
+			return false;
+		}
+
+		std::error_code ec;
+		if (!std::filesystem::is_regular_file(audioPath, ec))
+		{
+			Logger::info(std::string(description) + " audio file is missing: " + audioPath.u8string());
+			return false;
+		}
+
+		if (!::PlaySoundW(audioPath.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT))
+		{
+			Logger::info(std::string(description) + " audio playback failed: " + audioPath.u8string());
+			return false;
+		}
+
+		return true;
+	}
 
 	struct DatalinkCredentialsSnapshot
 	{
@@ -1768,8 +1818,7 @@ void pollMessages(void * arg) {
 						_beginthread(sendDatalinkMessage, 0, NULL);
 				} else {
 					if (request->credentials.playSound) {
-						AFX_MANAGE_STATE(AfxGetStaticModuleState());
-						PlaySound(MAKEINTRESOURCE(IDR_WAVE1), AfxGetInstanceHandle(), SND_RESOURCE | SND_ASYNC);
+						PlayRuntimeAudio(L"Ding.wav", "CPDLC notification");
 					}
 					std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 					AddCallsignUniqueUnlocked(AircraftDemandingClearance, message.from);
@@ -2059,16 +2108,6 @@ CSMRPlugin::~CSMRPlugin()
 	if (cdmCooldownToPersist < 0)
 		cdmCooldownToPersist = 0;
 	SaveDataToSettings("cdm_cooldown_min", "CDM reminder resend cooldown in minutes", std::to_string(cdmCooldownToPersist).c_str());
-
-	try
-	{
-		io_service.stop();
-		//vStripsThread.join();
-	}
-	catch (std::exception& e)
-	{
-		std::cerr << e.what() << std::endl;
-	}
 }
 
 void CSMRPlugin::StopWeatherFetchWorker()
@@ -2812,7 +2851,8 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 }
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		strcpy_s(sItemString, 16, "");
@@ -2877,7 +2917,8 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
@@ -3207,7 +3248,8 @@ void CSMRPlugin::OnTimer(int Counter)
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	static int lastConnectionType = -999;
 	static clock_t lastConnectionTypeChangeClock = 0;
@@ -3322,16 +3364,34 @@ void CSMRPlugin::OnTimer(int Counter)
 	}
 
 	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
+	bool timerAlarmDue = false;
 	for (CSMRRadar* radar : RadarScreensOpened)
 	{
 		if (radar == nullptr || radar->IsShutdownRequested())
 			continue;
-		const auto display = radar->appWindowDisplays.find(weatherWindowId);
-		if (display != radar->appWindowDisplays.end() && display->second)
+		bool refresh = false;
+		const auto weatherDisplay = radar->appWindowDisplays.find(weatherWindowId);
+		if (weatherDisplay != radar->appWindowDisplays.end() && weatherDisplay->second)
 		{
 			QueueWeatherFetch(radar->getActiveAirport());
-			radar->RequestRefresh();
+			refresh = true;
 		}
+		const auto timerDisplay = radar->appWindowDisplays.find(timerWindowId);
+		const auto timerWindow = radar->appWindows.find(timerWindowId);
+		if (timerWindow != radar->appWindows.end() && timerWindow->second != nullptr &&
+			timerWindow->second->UpdateTimerCountdowns())
+		{
+			timerAlarmDue = true;
+		}
+		if (timerDisplay != radar->appWindowDisplays.end() && timerDisplay->second)
+			refresh = true;
+		if (refresh)
+			radar->RequestRefresh();
+	}
+	if (timerAlarmDue && !PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		PlayRuntimeAudio(L"Alarm.wav", "Timer alarm");
 	}
 };
 

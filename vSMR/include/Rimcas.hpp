@@ -5,6 +5,7 @@
 #include <map>
 #include <unordered_set>
 #include <string>
+#include <utility>
 #include <algorithm>
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -44,6 +45,7 @@ public:
 	bool RunwayAreasScreenCacheValid = false;
 	CRadarScreen* RunwayAreasScreenCacheInstance = nullptr;
 	multimap<string, string> AcOnRunway;
+	unordered_set<string> AircraftOnRunway;
 	vector<int> CountdownDefinition;
 	vector<int> CountdownDefinitionLVP;
 	multimap<string, string> ApproachingAircrafts;
@@ -120,11 +122,11 @@ public:
 	const map<string, RunwayStatus>& GetRunwayStatuses() const { return RunwayStatuses; }
 	void InvalidateRunwayAreaScreenCache();
 	const vector<POINT>* GetRunwayAreaScreenPoints(const string& runway, CRadarScreen* instance);
-	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
-	Color GetAircraftColor(string AcCallsign, Color StandardColor, Color OnRunwayColor);
+	Color GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
+	Color GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor);
 	const unordered_set<string>& GetInactiveAlerts() const { return inactiveAlerts; }
 
-	bool isAcOnRunway(string callsign);
+	bool isAcOnRunway(const string& callsign);
 	string AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance);
 	void CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, bool isLVP);
 
@@ -135,8 +137,8 @@ public:
 	void OnRefreshEnd(CRadarScreen *instance, int threshold);
 	void Reset();
 
-	RimcasAlertTypes getAlert(string callsign);
-	RimcasAlerts getMovementAlert(string callsign);
+	RimcasAlertTypes getAlert(const string& callsign);
+	RimcasAlerts getMovementAlert(const string& callsign);
 	RimcasAlertSeverity getAlertSeverity(RimcasAlerts alert);
 
 	void setInactiveAlerts(const unordered_set<string>& alerts) {
@@ -145,10 +147,10 @@ public:
 
 	void setCountdownDefinition(vector<int> data, vector<int> dataLVP)
 	{
-		CountdownDefinition = data;
+		CountdownDefinition = std::move(data);
 		std::sort(CountdownDefinition.begin(), CountdownDefinition.end(), std::greater<int>());
 
-		CountdownDefinitionLVP = dataLVP;
+		CountdownDefinitionLVP = std::move(dataLVP);
 		std::sort(CountdownDefinitionLVP.begin(), CountdownDefinitionLVP.end(), std::greater<int>());
 	}
 

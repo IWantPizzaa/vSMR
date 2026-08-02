@@ -15,7 +15,9 @@ version: 1.5.{build}
 branches:
   # whitelist
   only:
+    - main
     - master
+    - dev
 
   # blacklist
   except:
@@ -43,20 +45,15 @@ configuration: Release
 platform: Win32
 
 build_script:
-  - ps: (Get-Content  C:\projects\vsmr\vSMR\include\SMRPlugin.hpp).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\include\SMRPlugin.hpp
-  - ps: (Get-Content  C:\projects\vsmr\vSMR\resources\vSMR.rc).replace('@appveyor_build', $Env:appveyor_build_version) | Set-Content  C:\projects\vsmr\vSMR\resources\vSMR.rc
   - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /t:Restore /p:Configuration=Release /p:Platform=Win32
   - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /m /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143 /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 after_build:
   - cmd: mkdir vSMR-nightly
-  - cmd: mkdir vSMR-nightly\vSMR_Data
-  - cmd: cp Release\vSMR.dll vSMR-nightly\
-  - cmd: cp vSMR\data\vSMR_Profiles.json vSMR-nightly\vSMR_Data\
-  - cmd: cp vSMR\data\vSMR_Maps.json vSMR-nightly\vSMR_Data\
-  - cmd: cp vSMR\data\ICAO_Aircraft.json vSMR-nightly\vSMR_Data\
-  - cmd: xcopy vSMR\data\AVISO vSMR-nightly\vSMR_Data\AVISO\ /E /I /Y
-  - cmd: xcopy vSMR\data\aircraft_icons vSMR-nightly\vSMR_Data\aircraft_icons\ /E /I /Y
+  - cmd: copy /Y Release\vSMR.dll vSMR-nightly\
+  - cmd: copy /Y Release\LICENSE vSMR-nightly\
+  - cmd: xcopy Release\THIRD_PARTY_LICENSES vSMR-nightly\THIRD_PARTY_LICENSES\ /E /I /Y
+  - cmd: xcopy Release\vSMR_Data vSMR-nightly\vSMR_Data\ /E /I /Y
   - cmd: xcopy Release\vSMR_webUI vSMR-nightly\vSMR_webUI\ /E /I /Y
   - cmd: 7z a vSMR-nightly.zip %APPVEYOR_BUILD_FOLDER%\vSMR-nightly\
 

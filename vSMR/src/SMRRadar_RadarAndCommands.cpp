@@ -1,33 +1,10 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
 
-void CSMRRadar::RefreshAirportActivity(void) {
-	Logger::info(string(__FUNCSIG__));
-	//
-	// Getting the depatures and arrivals airports
-	//
-
-	Active_Arrivals.clear();
-	CSectorElement airport;
-	for (airport = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
-		airport.IsValid();
-		airport = GetPlugIn()->SectorFileElementSelectNext(airport, SECTOR_ELEMENT_AIRPORT))
-	{
-		if (airport.IsElementActive(false)) {
-			const char* airportName = airport.GetName();
-			if (airportName == nullptr || airportName[0] == '\0')
-				continue;
-			string s = airportName;
-			s = s.substr(0, 4);
-			transform(s.begin(), s.end(), s.begin(), ::toupper);
-			Active_Arrivals.push_back(s);
-		}
-	}
-}
-
 void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
 		return;
 	const char* callsignRaw = RadarTarget.GetCallsign();

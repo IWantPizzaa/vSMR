@@ -13,7 +13,7 @@ capability boundaries.
 | --- | --- | --- |
 | Native runtime UI | `vSMR/src/SMRRadar_RuntimeMenu.cpp` | Draws the editable current-airport row, focusless radar-screen icon rail, and compact popups with EuroScope screen objects. |
 | Radar operational UI | `vSMR/src/SMRRadar.cpp`, `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Draws the optional FPS-only overlay and handles current radar-screen interactions without a top menu. |
-| Inset window UI | `vSMR/src/InsetWindow.cpp` | Draws AVISO, SRW, and Weather chrome and interaction: title/drag, live snap previews, edge/corner resize, close, and mode-specific content controls. |
+| Inset window UI | `vSMR/src/InsetWindow.cpp` | Draws AVISO, SRW, Weather, and Timer chrome and interaction: title/drag, live snap previews, compatible edge/corner resize, close, and mode-specific content controls. |
 | Weather data | `vSMR/src/WeatherData.cpp`, `vSMR/src/SMRPlugin.cpp` | Parses and caches live EuroScope METAR wind/QNH updates by airport, with a background VATSIM fallback for stations EuroScope has not subscribed to. |
 | Runtime/render state | `vSMR/src/SMRRadar.cpp`, `vSMR/src/InsetWindow.cpp` | Applies profiles, modes, inset state, RIMCAS state, and AVISO renderer state. |
 | Modeless host | `vSMR/src/SMRRadar_ControlCenter.cpp`, `vSMR/src/VsmrControlCenterDialog.cpp` | Owns the modeless MFC window, WebView2 lifetime, local-resource mapping, placement, file selection, and asynchronous GitHub loading. |
@@ -50,8 +50,8 @@ time.
 
 | Surface | Owned controls | Intentionally absent |
 | --- | --- | --- |
-| Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW/Weather visibility and reset, full airport-specific inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
-| AVISO/SRW/Weather insets | Striped title/drag bar, `X` close control, edge/corner resizing, and snapping; AVISO/SRW additionally pan and zoom, while floating SRWs expose the `F` altitude filter | Preset, reload, and editor buttons |
+| Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW/Weather/Timer visibility and reset, full airport-specific inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
+| AVISO/SRW/Weather/Timer insets | Striped title/drag bar, `X` close control, and snapping; AVISO, SRW, and Weather resize at edges and corners, AVISO/SRW pan and zoom, and only floating SRW 1 exposes the `F` altitude filter. Timer remains compact and fixed-size | Preset, reload, and editor buttons |
 | Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, CPDLC/CDM, and settings editing, including FPS visibility | Per-flight PDC composition, radar cursor tools, and duplicated inset chrome |
 | PDC / Message window | Per-flight clearance or TELEX composition in a fixed, frameless EuroScope-owned Cofrance window with constrained title-bar dragging | Persistent CPDLC credentials and CDM automation |
 | FPS overlay | Optional `FPS <value>` text placed in an unobstructed corner of the remaining main AVISO area | Component timings, controls, background toolbar, and hit regions |
@@ -83,8 +83,8 @@ rail, flip to its left near the right screen edge, and page long mode, group,
 profile, or preset lists.
 
 Mode and profile choices call the existing live activation APIs. Inset choices
-independently toggle or reset AVISO, SRW 1, SRW 2, and Weather. Presets capture and restore the
-main AVISO view, AVISO secondary window, both SRWs, and Weather, including visibility,
+independently toggle or reset AVISO, SRW 1, Weather, and Timer. Presets capture and restore the
+main AVISO view, AVISO secondary window, SRW 1, Weather, and Timer, including visibility,
 placement, pan, scale/range, filter, compatible legacy rotation, snap layout,
 and linked movement. Preset lists and defaults are scoped only by active airport
 and are shared by every profile. Changing profile therefore preserves the
@@ -103,10 +103,10 @@ Floating layouts retain only the small clearance required to keep their own
 title/drag surface reachable.
 
 All four inset windows use the same striped title bar and a right-aligned `X`
-close action. The floating SRW windows additionally retain `F` as their altitude
-filter; `F` is not a detach control. Dragging any inset title bar near a radar
-edge or corner shows the exact prospective half-screen or quadrant footprint
-before release. Dragging a snapped title bar restores a floating window while
+close action. Floating SRW 1 additionally retains `F` as its altitude filter;
+`F` is not a detach control. Dragging a resizable inset title bar near a radar
+edge or corner shows the exact prospective half-screen or quadrant footprint;
+Timer instead previews its compact anchored frame. Dragging a snapped title bar restores a floating window while
 keeping the grabbed title point under the pointer. Each outer edge and corner
 has a forgiving resize hit band with the matching Windows resize cursor; an
 anchored split or quadrant keeps its dock while its inward divider is resized,
@@ -124,6 +124,15 @@ out-of-order older updates preserve the last usable report. The compact panel sh
 gust/variation, QNH, active-runway head/crosswind components, UTC, and
 controller-local time without a raw METAR block. It consumes wheel input over
 its frame without exposing map pan or zoom.
+
+Timer exposes fixed `1M`, `2M`, and `3M` cells. Each cell owns an independent
+countdown: left-click starts it while idle and right-click resets it. The
+external `vSMR_Data\Audio\Alarm.wav` plays once on the expiry transition even when Timer is
+hidden; simultaneous expirations in one plugin tick are coalesced. Its
+fixed-size frame uses size-preserving anchored edge/corner placement instead of
+half-screen docking, never reduces the main AVISO area, and has no resize, pan,
+or zoom interaction. Presets and airport ASR state store only Timer visibility
+and placement; countdown deadlines remain in-memory session state.
 
 An edge-snapped inset reserves its occupied strip from the main AVISO viewport.
 The main renderer derives and rasterizes only the geographic bounds visible in
@@ -242,7 +251,7 @@ editor and renderer classes do not parse raw message strings.
 | `aviso.group.visibility` | Changes one runtime AVISO group visibility. |
 | `aviso.groups.visibility` | Changes multiple runtime AVISO group visibilities. |
 | `aviso.groups.update` | Updates native group metadata/order and, when the payload includes staged AVISO, refreshes renderer membership from that document. Persistence still occurs through global Save. |
-| `aviso.inset.toggle`, `display.srw.toggle` | Toggles AVISO, SRW 1, SRW 2, or Weather live. |
+| `aviso.inset.toggle`, `display.srw.toggle` | Toggles AVISO, SRW 1, Weather, or Timer live. |
 | `aviso.inset.preset.load` | Loads an existing native inset preset. |
 | `aviso.inset.preset.capture` | Captures the current native layout as a preset. |
 | `aviso.inset.preset.update` | Re-captures the active preset. |
@@ -448,7 +457,7 @@ runtime or packaged resources are unavailable.
 
 - Added the native draggable runtime rail with its current-airport row, five
   icon buttons, and compact edge-aware popups.
-- Added runtime profile/mode switching, group visibility, three independent
+- Added runtime profile/mode switching, group visibility, four independent
   inset toggles, and full native inset-preset management, including a
   Set/Clear-default toggle.
 - Reduced AVISO inset chrome to viewport-only controls and moved visibility and

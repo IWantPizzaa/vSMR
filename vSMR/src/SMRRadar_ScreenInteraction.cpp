@@ -17,7 +17,10 @@ namespace
 
 	bool IsAppWindowObjectType(int objectType)
 	{
-		return objectType > APPWINDOW_BASE && objectType <= APPWINDOW_WEATHER;
+		return objectType == APPWINDOW_ONE ||
+			objectType == APPWINDOW_AVISO ||
+			objectType == APPWINDOW_WEATHER ||
+			objectType == APPWINDOW_TIMER;
 	}
 
 	bool IsAppWindowVisible(CSMRRadar* radar, int appWindowId)
@@ -311,9 +314,9 @@ namespace
 		CInsetWindow* insetAtPoint = TopmostVisibleInsetFrameAtPoint(radar, pt);
 		if (insetAtPoint != nullptr)
 		{
-			// Selection also owns visual z-order. Read-only insets such as
-			// Weather must therefore be selectable even though they do not pan
-			// or zoom.
+			// Selection also owns visual z-order. Non-map insets such as
+			// Weather and Timer must therefore be selectable even though they
+			// do not pan or zoom.
 			SelectAvisoViewport(radar, insetAtPoint);
 			return insetAtPoint->SupportsPanAndZoom();
 		}
@@ -400,7 +403,8 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 }
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	if (HandleRuntimeMenuMove(ObjectType, sObjectId, Pt, Area, Released))
 	{
 		mouseLocation = Pt;
@@ -638,7 +642,8 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
-	Logger::info(string(__FUNCSIG__));
+	if (Logger::is_verbose_mode())
+		Logger::info(string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(Area);
 	UNREFERENCED_PARAMETER(sObjectId);
 	mouseLocation = Pt;
@@ -1025,11 +1030,21 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	}
 
 	if (IsAppWindowObjectType(ObjectType)) {
-		if (Button != BUTTON_LEFT)
-			return;
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
+		if (appWindow != nullptr && appWindow->IsTimer() &&
+			strncmp(objectId, "timer.", 6) == 0)
+		{
+			if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
+			{
+				appWindow->OnClickScreenObject(objectId, Pt, Button);
+				RequestRefresh();
+			}
+			return;
+		}
+		if (Button != BUTTON_LEFT)
+			return;
 		
 		if (isObjectId("close"))
 		{
@@ -1119,7 +1134,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	}
 
 	if (ObjectType == DRAWING_AC_SYMBOL_APPWINDOW1 ||
-		ObjectType == DRAWING_AC_SYMBOL_APPWINDOW2 ||
 		ObjectType == DRAWING_AC_SYMBOL_APPWINDOW3)
 	{
 		const int appWindowId = ObjectType - DRAWING_AC_SYMBOL_APPWINDOW_BASE;
