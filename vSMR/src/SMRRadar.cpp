@@ -3161,7 +3161,6 @@ void CSMRRadar::LoadCustomFont() {
 bool CSMRRadar::ReloadConfig() {
 	Logger::info("CSMRRadar::ReloadConfig()");
 	std::string activeProfile = CurrentConfig ? CurrentConfig->getActiveProfileName() : "Default";
-	const std::string previousActiveProfile = activeProfile;
 	bool reloadSucceeded = true;
 	if (!CurrentConfig)
 	{
@@ -3177,8 +3176,6 @@ bool CSMRRadar::ReloadConfig() {
 		activeProfile = CurrentConfig->getAllProfiles().front();
 	}
 	this->LoadProfile(activeProfile);
-	if (_stricmp(previousActiveProfile.c_str(), CurrentConfig->getActiveProfileName().c_str()) != 0)
-		ResetAvisoPresetStateForActiveProfile();
 	this->RefreshAirportActivity();
 
 	// Force map visibility recomputation on next frame even when zoom level is unchanged.

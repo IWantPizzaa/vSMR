@@ -84,9 +84,11 @@ Mode and profile choices call the existing live activation APIs. Inset choices
 independently toggle or reset AVISO, SRW 1, and SRW 2. Presets capture and restore the
 main AVISO view, AVISO secondary window, and both SRWs, including visibility,
 placement, pan, scale/range, filter, compatible legacy rotation, snap layout,
-and linked movement. Preset lists and defaults are scoped by profile and active
-airport. Airport-qualified ASR state restores only that airport's three windows;
-an unseen airport without a default starts reset and hidden. Rename
+and linked movement. Preset lists and defaults are scoped only by active airport
+and are shared by every profile. Changing profile therefore preserves the
+current airport's preset list, default, active preset, linked state, and live
+inset layout. Airport-qualified ASR state restores only that airport's three
+windows; an unseen airport without a default starts reset and hidden. Rename
 uses EuroScope's popup editor. The default action reads `Set default` when an
 active non-default preset can be promoted. It reads `Clear default` when the
 active preset is already the default, or when no preset is active but a
@@ -234,7 +236,7 @@ editor and renderer classes do not parse raw message strings.
 | `aviso.inset.preset.update` | Re-captures the active preset. |
 | `aviso.inset.preset.rename` | Renames the selected preset. |
 | `aviso.inset.preset.duplicate` | Duplicates the selected preset. |
-| `aviso.inset.preset.default` | Sets the active profile-and-airport default preset; the native Runtime Menu uses the same action to clear an existing default when appropriate. |
+| `aviso.inset.preset.default` | Sets the active airport's profile-independent default preset; the native Runtime Menu uses the same action to clear an existing default when appropriate. |
 | `aviso.inset.preset.reset` | Reloads the active/default preset. |
 | `aviso.inset.preset.delete` | Deletes a preset. |
 | `aviso.inset.preset.linked` | Changes linked movement. |
@@ -249,7 +251,12 @@ and `state.save` sends the complete profiles/AVISO documents.
 
 Inset preset create/update/rename/duplicate/set-or-clear-default/delete
 operations use the existing native preset API, which persists the active
-profile-and-airport store immediately. They are runtime-management operations
+airport's shared store immediately. The store lives in global vSMR metadata,
+outside every profile, so creating, duplicating, renaming, or deleting a profile
+does not create, hide, or remove inset presets. Legacy per-profile stores are
+migrated into the airport-only store deterministically without discarding
+distinct presets. The global store remains authoritative during ordinary Save,
+Undo/Redo, and stale-editor writes. These are runtime-management operations
 rather than ordinary staged editor fields.
 Profile and display-mode activation are also immediate runtime operations and
 persist their active selection through the existing profile/ASR paths.

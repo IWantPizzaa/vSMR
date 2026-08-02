@@ -29,7 +29,7 @@ public:
 	};
 
 	using AvisoPresetTransaction = std::function<AvisoPresetTransactionAction(
-		rapidjson::Value& profile,
+		rapidjson::Value& sharedMetadata,
 		rapidjson::Document::AllocatorType& allocator)>;
 
 	struct ProfileSaveIdentity
@@ -69,8 +69,10 @@ public:
 	size_t getProfileCount() const;
 
 	bool saveConfig(const vector<ProfileSaveIdentity>& profileIdentities = {});
+	const Value* getSharedAvisoPresetContainer() const;
 	bool transactAvisoPresetStore(
-		const string& profileName,
+		const string& preferredProfileName,
+		const string& activeAirport,
 		const AvisoPresetTransaction& transaction);
 	bool sharesConfigFileWith(const CConfig& other) const;
 
