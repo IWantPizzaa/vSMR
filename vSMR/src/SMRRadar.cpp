@@ -29,9 +29,9 @@ bool initCursor = true;
 HCURSOR smrCursor = NULL;
 bool standardCursor; // True when the default arrow cursor is active.
 bool customCursor; // True when the plugin-specific cursor theme is enabled.
-WNDPROC gSourceProc = nullptr;
-HWND pluginWindow = nullptr;
+std::map<HWND, WNDPROC> gInsetWindowSourceProcs;
 CSMRRadar* gWindowProcRadarScreen = nullptr;
+void RestoreInsetWindowProcHooks();
 HHOOK gThreadMouseHook = nullptr;
 DWORD gThreadMouseHookThreadId = 0;
 DWORD gLastThreadHookError = 0xFFFFFFFF;
@@ -607,12 +607,6 @@ namespace
 			AvisoWithinTolerance(left.Y, right.Y, tolerance);
 	}
 
-	bool AvisoVectorWithinTolerance(const PointF& leftStart, const PointF& leftEnd, const PointF& rightStart, const PointF& rightEnd, double tolerance)
-	{
-		return AvisoWithinTolerance(static_cast<double>(leftEnd.X - leftStart.X), static_cast<double>(rightEnd.X - rightStart.X), tolerance) &&
-			AvisoWithinTolerance(static_cast<double>(leftEnd.Y - leftStart.Y), static_cast<double>(rightEnd.Y - rightStart.Y), tolerance);
-	}
-
 	double RefreshPerfNowMs()
 	{
 		static LARGE_INTEGER frequency = {};
@@ -835,6 +829,8 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
+	if (RadarScreensOpened.empty())
+		RestoreInsetWindowProcHooks();
 	customFonts.clear();
 	appWindows.clear();
 
@@ -1786,7 +1782,11 @@ void CSMRRadar::BeginShutdown()
 	for (auto& appWindow : appWindows)
 	{
 		if (appWindow.second != nullptr)
+		{
+			appWindow.second->EndAvisoPan();
+			appWindow.second->CancelWindowInteraction();
 			appWindow.second->CancelAvisoViewportRender();
+		}
 	}
 }
 
@@ -2046,11 +2046,26 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			static_cast<REAL>(topY + (bottomY - topY) * v));
 	};
 
+	const PointF rasterRenderTopLeft = projectScreenPoint(request.renderMinLongitude, request.renderMaxLatitude);
+	const PointF rasterRenderTopRight = projectScreenPoint(request.renderMaxLongitude, request.renderMaxLatitude);
+	const PointF rasterRenderBottomLeft = projectScreenPoint(request.renderMinLongitude, request.renderMinLatitude);
+	const PointF rasterRenderBottomRight = projectScreenPoint(request.renderMaxLongitude, request.renderMinLatitude);
+	const double rasterRenderLeft = AvisoMin(AvisoMin(rasterRenderTopLeft.X, rasterRenderTopRight.X), AvisoMin(rasterRenderBottomLeft.X, rasterRenderBottomRight.X));
+	const double rasterRenderTop = AvisoMin(AvisoMin(rasterRenderTopLeft.Y, rasterRenderTopRight.Y), AvisoMin(rasterRenderBottomLeft.Y, rasterRenderBottomRight.Y));
+	const double rasterRenderRight = AvisoMax(AvisoMax(rasterRenderTopLeft.X, rasterRenderTopRight.X), AvisoMax(rasterRenderBottomLeft.X, rasterRenderBottomRight.X));
+	const double rasterRenderBottom = AvisoMax(AvisoMax(rasterRenderTopLeft.Y, rasterRenderTopRight.Y), AvisoMax(rasterRenderBottomLeft.Y, rasterRenderBottomRight.Y));
+	const double rasterRenderWidth = rasterRenderRight - rasterRenderLeft;
+	const double rasterRenderHeight = rasterRenderBottom - rasterRenderTop;
+	if (rasterRenderWidth <= 0.0 || rasterRenderHeight <= 0.0)
+		return nullptr;
+	const double rasterCoordinateScaleX = static_cast<double>(request.rasterWidth) / rasterRenderWidth;
+	const double rasterCoordinateScaleY = static_cast<double>(request.rasterHeight) / rasterRenderHeight;
+
 	auto projectRasterPoint = [&](const AvisoPoint& coordinate) -> PointF
 	{
 		const PointF screenPoint = projectScreenPoint(coordinate.longitude, coordinate.latitude);
-		const double x = (static_cast<double>(screenPoint.X) - request.renderScreenLeft) * request.rasterScale;
-		const double y = (static_cast<double>(screenPoint.Y) - request.renderScreenTop) * request.rasterScale;
+		const double x = (static_cast<double>(screenPoint.X) - rasterRenderLeft) * rasterCoordinateScaleX;
+		const double y = (static_cast<double>(screenPoint.Y) - rasterRenderTop) * rasterCoordinateScaleY;
 		return PointF(static_cast<REAL>(x), static_cast<REAL>(y));
 	};
 
@@ -2060,8 +2075,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	{
 		if (!force && hasLastCoordinate)
 		{
-			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * request.rasterScale;
-			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * request.rasterScale;
+			const double approxDx = (coordinate.longitude - lastCoordinate.longitude) * request.scaleX * rasterCoordinateScaleX;
+			const double approxDy = (coordinate.latitude - lastCoordinate.latitude) * request.scaleY * rasterCoordinateScaleY;
 			if ((approxDx * approxDx + approxDy * approxDy) < minRasterPointDistanceSquared)
 				return;
 		}
@@ -2097,8 +2112,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			continue;
 		}
 
-		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX * request.rasterScale;
-		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * request.rasterScale;
+		const double featurePixelWidth = (feature.maxLongitude - feature.minLongitude) * request.scaleX * rasterCoordinateScaleX;
+		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * rasterCoordinateScaleY;
 		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
 			continue;
 
@@ -2306,6 +2321,56 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	return result;
 }
 
+CRect CSMRRadar::ResolveMainAvisoRenderArea()
+{
+	CRect mainArea(GetRadarArea());
+	CRect chatArea(GetChatArea());
+	mainArea.NormalizeRect();
+	chatArea.NormalizeRect();
+	if (!chatArea.IsRectEmpty())
+		mainArea.bottom = chatArea.top;
+	mainArea.NormalizeRect();
+	if (mainArea.IsRectEmpty())
+		return mainArea;
+
+	LONG availableLeft = mainArea.left;
+	LONG availableTop = mainArea.top;
+	LONG availableRight = mainArea.right;
+	LONG availableBottom = mainArea.bottom;
+	for (const auto& display : appWindowDisplays)
+	{
+		if (!display.second)
+			continue;
+		const auto windowIt = appWindows.find(display.first);
+		if (windowIt == appWindows.end() || windowIt->second == nullptr)
+			continue;
+
+		const CInsetWindow* inset = windowIt->second.get();
+		CRect insetArea(inset->m_Area);
+		insetArea.NormalizeRect();
+		switch (inset->m_AvisoLayoutMode)
+		{
+		case CInsetWindow::AvisoLayoutMode::SplitLeft:
+			availableLeft = max(availableLeft, insetArea.right);
+			break;
+		case CInsetWindow::AvisoLayoutMode::SplitRight:
+			availableRight = min(availableRight, insetArea.left);
+			break;
+		case CInsetWindow::AvisoLayoutMode::SplitTop:
+			availableTop = max(availableTop, insetArea.bottom);
+			break;
+		case CInsetWindow::AvisoLayoutMode::SplitBottom:
+			availableBottom = min(availableBottom, insetArea.top);
+			break;
+		default:
+			continue;
+		}
+	}
+	if (availableRight <= availableLeft || availableBottom <= availableTop)
+		return CRect(0, 0, 0, 0);
+	return CRect(availableLeft, availableTop, availableRight, availableBottom);
+}
+
 void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 {
 	if (IsShutdownRequested())
@@ -2394,27 +2459,14 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	CPosition displayB;
 	GetDisplayArea(&displayA, &displayB);
 
-	const double displayMinLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
-	const double displayMaxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
-	const double displayMinLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
-	const double displayMaxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
-	const double latSpan = displayMaxLat - displayMinLat;
-	const double lonSpan = displayMaxLon - displayMinLon;
-	if (latSpan <= 0.0 || lonSpan <= 0.0)
+	const double fullDisplayMinLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
+	const double fullDisplayMaxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
+	const double fullDisplayMinLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
+	const double fullDisplayMaxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
+	const double fullDisplayLatSpan = fullDisplayMaxLat - fullDisplayMinLat;
+	const double fullDisplayLonSpan = fullDisplayMaxLon - fullDisplayMinLon;
+	if (fullDisplayLatSpan <= 0.0 || fullDisplayLonSpan <= 0.0)
 		return;
-
-	CRect radarArea(GetRadarArea());
-	CRect chatArea(GetChatArea());
-	radarArea.bottom = chatArea.top;
-	const double width = static_cast<double>(radarArea.right - radarArea.left);
-	const double height = static_cast<double>(radarArea.bottom - radarArea.top);
-	if (width <= 0.0 || height <= 0.0)
-		return;
-
-	const double fallbackScaleX = width / lonSpan;
-	const double fallbackScaleY = height / latSpan;
-	const int radarWidth = radarArea.right - radarArea.left;
-	const int radarHeight = radarArea.bottom - radarArea.top;
 
 	auto makeDisplayPosition = [](double latitude, double longitude) -> CPosition
 	{
@@ -2424,15 +2476,106 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		return position;
 	};
 
-	const POINT projectedTopLeft = ConvertCoordFromPositionToPixel(makeDisplayPosition(displayMaxLat, displayMinLon));
-	const POINT projectedTopRight = ConvertCoordFromPositionToPixel(makeDisplayPosition(displayMaxLat, displayMaxLon));
-	const POINT projectedBottomLeft = ConvertCoordFromPositionToPixel(makeDisplayPosition(displayMinLat, displayMinLon));
-	const POINT projectedBottomRight = ConvertCoordFromPositionToPixel(makeDisplayPosition(displayMinLat, displayMaxLon));
+	// Keep one projection basis for the complete EuroScope view. The visible
+	// main area may be cropped by a snapped inset, but rebuilding the basis from
+	// pixel-to-coordinate-to-integer-pixel round trips makes the map twitch by a
+	// pixel as the divider moves.
+	const POINT fullProjectedTopLeft = ConvertCoordFromPositionToPixel(
+		makeDisplayPosition(fullDisplayMaxLat, fullDisplayMinLon));
+	const POINT fullProjectedTopRight = ConvertCoordFromPositionToPixel(
+		makeDisplayPosition(fullDisplayMaxLat, fullDisplayMaxLon));
+	const POINT fullProjectedBottomLeft = ConvertCoordFromPositionToPixel(
+		makeDisplayPosition(fullDisplayMinLat, fullDisplayMinLon));
+	const POINT fullProjectedBottomRight = ConvertCoordFromPositionToPixel(
+		makeDisplayPosition(fullDisplayMinLat, fullDisplayMaxLon));
+	auto projectFullDisplayPoint = [&](double longitude, double latitude) -> PointF
+	{
+		const double u = (longitude - fullDisplayMinLon) / fullDisplayLonSpan;
+		const double v = (fullDisplayMaxLat - latitude) / fullDisplayLatSpan;
+		const double topX = static_cast<double>(fullProjectedTopLeft.x) +
+			static_cast<double>(fullProjectedTopRight.x - fullProjectedTopLeft.x) * u;
+		const double bottomX = static_cast<double>(fullProjectedBottomLeft.x) +
+			static_cast<double>(fullProjectedBottomRight.x - fullProjectedBottomLeft.x) * u;
+		const double topY = static_cast<double>(fullProjectedTopLeft.y) +
+			static_cast<double>(fullProjectedTopRight.y - fullProjectedTopLeft.y) * u;
+		const double bottomY = static_cast<double>(fullProjectedBottomLeft.y) +
+			static_cast<double>(fullProjectedBottomRight.y - fullProjectedBottomLeft.y) * u;
+		return PointF(
+			static_cast<REAL>(topX + (bottomX - topX) * v),
+			static_cast<REAL>(topY + (bottomY - topY) * v));
+	};
+	double displayMinLat = fullDisplayMinLat;
+	double displayMaxLat = fullDisplayMaxLat;
+	double displayMinLon = fullDisplayMinLon;
+	double displayMaxLon = fullDisplayMaxLon;
 
-	const double projectedWidthTop = std::abs(static_cast<double>(projectedTopRight.x - projectedTopLeft.x));
-	const double projectedWidthBottom = std::abs(static_cast<double>(projectedBottomRight.x - projectedBottomLeft.x));
-	const double projectedHeightLeft = std::abs(static_cast<double>(projectedBottomLeft.y - projectedTopLeft.y));
-	const double projectedHeightRight = std::abs(static_cast<double>(projectedBottomRight.y - projectedTopRight.y));
+	CRect fullRadarArea(GetRadarArea());
+	CRect chatArea(GetChatArea());
+	fullRadarArea.NormalizeRect();
+	chatArea.NormalizeRect();
+	if (!chatArea.IsRectEmpty())
+		fullRadarArea.bottom = chatArea.top;
+	fullRadarArea.NormalizeRect();
+	CRect radarArea = ResolveMainAvisoRenderArea();
+	if (radarArea.IsRectEmpty())
+		return;
+
+	if (radarArea != fullRadarArea)
+	{
+		const POINT visibleCorners[] = {
+			{ radarArea.left, radarArea.top },
+			{ radarArea.right, radarArea.top },
+			{ radarArea.left, radarArea.bottom },
+			{ radarArea.right, radarArea.bottom }
+		};
+		double visibleMinLat = DBL_MAX;
+		double visibleMaxLat = -DBL_MAX;
+		double visibleMinLon = DBL_MAX;
+		double visibleMaxLon = -DBL_MAX;
+		bool visibleBoundsValid = true;
+		for (const POINT& corner : visibleCorners)
+		{
+			const CPosition position = ConvertCoordFromPixelToPosition(corner);
+			if (!std::isfinite(position.m_Latitude) || !std::isfinite(position.m_Longitude))
+			{
+				visibleBoundsValid = false;
+				break;
+			}
+			visibleMinLat = AvisoMin(visibleMinLat, position.m_Latitude);
+			visibleMaxLat = AvisoMax(visibleMaxLat, position.m_Latitude);
+			visibleMinLon = AvisoMin(visibleMinLon, position.m_Longitude);
+			visibleMaxLon = AvisoMax(visibleMaxLon, position.m_Longitude);
+		}
+		if (visibleBoundsValid)
+		{
+			displayMinLat = AvisoMax(fullDisplayMinLat, visibleMinLat);
+			displayMaxLat = AvisoMin(fullDisplayMaxLat, visibleMaxLat);
+			displayMinLon = AvisoMax(fullDisplayMinLon, visibleMinLon);
+			displayMaxLon = AvisoMin(fullDisplayMaxLon, visibleMaxLon);
+		}
+	}
+	const double latSpan = displayMaxLat - displayMinLat;
+	const double lonSpan = displayMaxLon - displayMinLon;
+	if (latSpan <= 0.0 || lonSpan <= 0.0)
+		return;
+
+	const double width = static_cast<double>(radarArea.right - radarArea.left);
+	const double height = static_cast<double>(radarArea.bottom - radarArea.top);
+	if (width <= 0.0 || height <= 0.0)
+		return;
+
+	const double fallbackScaleX = width / lonSpan;
+	const double fallbackScaleY = height / latSpan;
+
+	const PointF projectedTopLeft = projectFullDisplayPoint(displayMinLon, displayMaxLat);
+	const PointF projectedTopRight = projectFullDisplayPoint(displayMaxLon, displayMaxLat);
+	const PointF projectedBottomLeft = projectFullDisplayPoint(displayMinLon, displayMinLat);
+	const PointF projectedBottomRight = projectFullDisplayPoint(displayMaxLon, displayMinLat);
+
+	const double projectedWidthTop = std::abs(static_cast<double>(projectedTopRight.X - projectedTopLeft.X));
+	const double projectedWidthBottom = std::abs(static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X));
+	const double projectedHeightLeft = std::abs(static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y));
+	const double projectedHeightRight = std::abs(static_cast<double>(projectedBottomRight.Y - projectedTopRight.Y));
 	const double projectedWidth = AvisoMax(AvisoMax(projectedWidthTop, projectedWidthBottom), 1.0);
 	const double projectedHeight = AvisoMax(AvisoMax(projectedHeightLeft, projectedHeightRight), 1.0);
 	const double scaleX = projectedWidth > 1.0 ? projectedWidth / lonSpan : fallbackScaleX;
@@ -2442,10 +2585,10 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	{
 		const double u = (longitude - displayMinLon) / lonSpan;
 		const double v = (displayMaxLat - latitude) / latSpan;
-		const double topX = static_cast<double>(projectedTopLeft.x) + static_cast<double>(projectedTopRight.x - projectedTopLeft.x) * u;
-		const double bottomX = static_cast<double>(projectedBottomLeft.x) + static_cast<double>(projectedBottomRight.x - projectedBottomLeft.x) * u;
-		const double topY = static_cast<double>(projectedTopLeft.y) + static_cast<double>(projectedTopRight.y - projectedTopLeft.y) * u;
-		const double bottomY = static_cast<double>(projectedBottomLeft.y) + static_cast<double>(projectedBottomRight.y - projectedBottomLeft.y) * u;
+		const double topX = static_cast<double>(projectedTopLeft.X) + static_cast<double>(projectedTopRight.X - projectedTopLeft.X) * u;
+		const double bottomX = static_cast<double>(projectedBottomLeft.X) + static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X) * u;
+		const double topY = static_cast<double>(projectedTopLeft.Y) + static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y) * u;
+		const double bottomY = static_cast<double>(projectedBottomLeft.Y) + static_cast<double>(projectedBottomRight.Y - projectedBottomLeft.Y) * u;
 		return PointF(
 			static_cast<REAL>(topX + (bottomX - topX) * v),
 			static_cast<REAL>(topY + (bottomY - topY) * v));
@@ -2454,37 +2597,32 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	const double viewPixelTolerance = 1.15;
 	const double lonPixelTolerance = (1.0 / scaleX) * viewPixelTolerance;
 	const double latPixelTolerance = (1.0 / scaleY) * viewPixelTolerance;
-	const double transformPixelTolerance = 1.5;
-	const unsigned long nowTick = ::GetTickCount();
-	const unsigned long highQualityRasterDebounceMs = 220;
-	const bool lastViewMatchesCurrent =
-		AvisoGeoJsonLastViewValid &&
-		AvisoGeoJsonLastViewPath == path &&
-		AvisoWithinTolerance(AvisoGeoJsonLastViewMinLongitude, displayMinLon, lonPixelTolerance) &&
-		AvisoWithinTolerance(AvisoGeoJsonLastViewMinLatitude, displayMinLat, latPixelTolerance) &&
-		AvisoWithinTolerance(AvisoGeoJsonLastViewMaxLongitude, displayMaxLon, lonPixelTolerance) &&
-		AvisoWithinTolerance(AvisoGeoJsonLastViewMaxLatitude, displayMaxLat, latPixelTolerance);
-	if (!lastViewMatchesCurrent)
-	{
-		AvisoGeoJsonLastViewValid = true;
-		AvisoGeoJsonLastViewPath = path;
-		AvisoGeoJsonLastViewMinLongitude = displayMinLon;
-		AvisoGeoJsonLastViewMinLatitude = displayMinLat;
-		AvisoGeoJsonLastViewMaxLongitude = displayMaxLon;
-		AvisoGeoJsonLastViewMaxLatitude = displayMaxLat;
-		AvisoGeoJsonLastViewChangeTick = nowTick;
-	}
-	const bool avisoViewRecentlyChanged =
-		AvisoGeoJsonLastViewChangeTick != 0 &&
-		(nowTick - AvisoGeoJsonLastViewChangeTick) < highQualityRasterDebounceMs;
+	const double transformPixelTolerance = 4.0;
 
 	auto rasterCacheTransformMatchesCurrentView = [&]() -> bool
 	{
 		if (AvisoGeoJsonRasterCache == nullptr || !AvisoGeoJsonRasterAnchorValid)
 			return false;
+		const double cachedLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
+		const double cachedLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
+		if (cachedLonSpan <= 0.0 || cachedLatSpan <= 0.0 || lonSpan <= 0.0 || latSpan <= 0.0)
+			return false;
 
-		return AvisoVectorWithinTolerance(AvisoGeoJsonRasterProjectedTopLeft, AvisoGeoJsonRasterProjectedTopRight, PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y)), PointF(static_cast<REAL>(projectedTopRight.x), static_cast<REAL>(projectedTopRight.y)), transformPixelTolerance) &&
-			AvisoVectorWithinTolerance(AvisoGeoJsonRasterProjectedTopLeft, AvisoGeoJsonRasterProjectedBottomLeft, PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y)), PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y)), transformPixelTolerance);
+		const double horizontalSpanRatio = cachedLonSpan / lonSpan;
+		const double verticalSpanRatio = cachedLatSpan / latSpan;
+		const double cachedHorizontalX = AvisoGeoJsonRasterProjectedTopRight.X - AvisoGeoJsonRasterProjectedTopLeft.X;
+		const double cachedHorizontalY = AvisoGeoJsonRasterProjectedTopRight.Y - AvisoGeoJsonRasterProjectedTopLeft.Y;
+		const double currentHorizontalX = static_cast<double>(projectedTopRight.X - projectedTopLeft.X) * horizontalSpanRatio;
+		const double currentHorizontalY = static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y) * horizontalSpanRatio;
+		const double cachedVerticalX = AvisoGeoJsonRasterProjectedBottomLeft.X - AvisoGeoJsonRasterProjectedTopLeft.X;
+		const double cachedVerticalY = AvisoGeoJsonRasterProjectedBottomLeft.Y - AvisoGeoJsonRasterProjectedTopLeft.Y;
+		const double currentVerticalX = static_cast<double>(projectedBottomLeft.X - projectedTopLeft.X) * verticalSpanRatio;
+		const double currentVerticalY = static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y) * verticalSpanRatio;
+		return
+			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalX, currentVerticalX, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalY, currentVerticalY, transformPixelTolerance);
 	};
 
 	auto cacheMatchesCurrentView = [&]() -> bool
@@ -2554,15 +2692,6 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		const double sourceWidth = visibleWidth * sourceScaleX;
 		const double sourceHeight = visibleHeight * sourceScaleY;
 
-		const int destLeft = static_cast<int>(std::floor(visibleLeft));
-		const int destTop = static_cast<int>(std::floor(visibleTop));
-		const int destRightInt = static_cast<int>(std::ceil(visibleRight));
-		const int destBottomInt = static_cast<int>(std::ceil(visibleBottom));
-		const int destWidthInt = destRightInt - destLeft;
-		const int destHeightInt = destBottomInt - destTop;
-		if (destWidthInt <= 0 || destHeightInt <= 0)
-			return false;
-
 		int sourceXInt = static_cast<int>(std::floor(sourceX));
 		int sourceYInt = static_cast<int>(std::floor(sourceY));
 		int sourceRightInt = static_cast<int>(std::ceil(sourceX + sourceWidth));
@@ -2576,10 +2705,191 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
 			return false;
 
+		// Keep the expanded integer source crop on the same transform as the
+		// floating-point destination. Mapping independently rounded rectangles
+		// shifts the cached preview by one or more scaled source pixels.
+		const double alignedDestLeft = destX + (static_cast<double>(sourceXInt) / sourceScaleX);
+		const double alignedDestTop = destY + (static_cast<double>(sourceYInt) / sourceScaleY);
+		const double alignedDestRight = destX + (static_cast<double>(sourceRightInt) / sourceScaleX);
+		const double alignedDestBottom = destY + (static_cast<double>(sourceBottomInt) / sourceScaleY);
+		const int destLeft = static_cast<int>(std::lround(alignedDestLeft));
+		const int destTop = static_cast<int>(std::lround(alignedDestTop));
+		const int destRightInt = static_cast<int>(std::lround(alignedDestRight));
+		const int destBottomInt = static_cast<int>(std::lround(alignedDestBottom));
+		const int destWidthInt = destRightInt - destLeft;
+		const int destHeightInt = destBottomInt - destTop;
+		if (destWidthInt <= 0 || destHeightInt <= 0)
+			return false;
+
 		HDC sourceDc = ::CreateCompatibleDC(hDC);
 		if (sourceDc == nullptr)
 			return false;
 
+		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, AvisoGeoJsonRasterCache);
+		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
+		{
+			::DeleteDC(sourceDc);
+			return false;
+		}
+
+		graphics.Flush(FlushIntentionFlush);
+		const int savedDc = ::SaveDC(hDC);
+		if (savedDc == 0)
+		{
+			::SelectObject(sourceDc, oldBitmap);
+			::DeleteDC(sourceDc);
+			return false;
+		}
+
+		::IntersectClipRect(hDC, radarArea.left, radarArea.top, radarArea.right, radarArea.bottom);
+		const bool nearNativeScale =
+			std::abs(static_cast<double>(destWidthInt - sourceWidthInt)) <= 1.0 &&
+			std::abs(static_cast<double>(destHeightInt - sourceHeightInt)) <= 1.0;
+		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
+		if (!nearNativeScale)
+			::SetBrushOrgEx(hDC, 0, 0, nullptr);
+
+		BLENDFUNCTION blend = {};
+		blend.BlendOp = AC_SRC_OVER;
+		blend.SourceConstantAlpha = 255;
+		blend.AlphaFormat = AC_SRC_ALPHA;
+		const BOOL blended = ::AlphaBlend(
+			hDC,
+			destLeft,
+			destTop,
+			destWidthInt,
+			destHeightInt,
+			sourceDc,
+			sourceXInt,
+			sourceYInt,
+			sourceWidthInt,
+			sourceHeightInt,
+			blend);
+
+		if (oldStretchMode != 0)
+			::SetStretchBltMode(hDC, oldStretchMode);
+		::RestoreDC(hDC, savedDc);
+		::SelectObject(sourceDc, oldBitmap);
+		::DeleteDC(sourceDc);
+		return blended != FALSE;
+	};
+
+	auto drawRasterCacheViewportAligned = [&]() -> bool
+	{
+		if (AvisoGeoJsonRasterCache == nullptr ||
+			AvisoGeoJsonRasterCachePath != path ||
+			AvisoGeoJsonRasterGroupGeneration != groupGeneration ||
+			AvisoGeoJsonRasterWidth <= 0 ||
+			AvisoGeoJsonRasterHeight <= 0 ||
+			!AvisoGeoJsonRasterAnchorValid)
+		{
+			return false;
+		}
+
+		const double cachedDisplayLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
+		const double cachedDisplayLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
+		if (cachedDisplayLonSpan <= 0.0 || cachedDisplayLatSpan <= 0.0)
+			return false;
+
+		auto projectCachedPoint = [&](double longitude, double latitude) -> PointF
+		{
+			const double u = (longitude - AvisoGeoJsonRasterMinLongitude) / cachedDisplayLonSpan;
+			const double v = (AvisoGeoJsonRasterMaxLatitude - latitude) / cachedDisplayLatSpan;
+			const double topX = static_cast<double>(AvisoGeoJsonRasterProjectedTopLeft.X) + static_cast<double>(AvisoGeoJsonRasterProjectedTopRight.X - AvisoGeoJsonRasterProjectedTopLeft.X) * u;
+			const double bottomX = static_cast<double>(AvisoGeoJsonRasterProjectedBottomLeft.X) + static_cast<double>(AvisoGeoJsonRasterProjectedBottomRight.X - AvisoGeoJsonRasterProjectedBottomLeft.X) * u;
+			const double topY = static_cast<double>(AvisoGeoJsonRasterProjectedTopLeft.Y) + static_cast<double>(AvisoGeoJsonRasterProjectedTopRight.Y - AvisoGeoJsonRasterProjectedTopLeft.Y) * u;
+			const double bottomY = static_cast<double>(AvisoGeoJsonRasterProjectedBottomLeft.Y) + static_cast<double>(AvisoGeoJsonRasterProjectedBottomRight.Y - AvisoGeoJsonRasterProjectedBottomLeft.Y) * u;
+			return PointF(
+				static_cast<REAL>(topX + (bottomX - topX) * v),
+				static_cast<REAL>(topY + (bottomY - topY) * v));
+		};
+
+		const PointF cachedRenderTopLeft = projectCachedPoint(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterAnchorLatitude);
+		const PointF cachedRenderTopRight = projectCachedPoint(AvisoGeoJsonRasterBottomRightLongitude, AvisoGeoJsonRasterAnchorLatitude);
+		const PointF cachedRenderBottomLeft = projectCachedPoint(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLatitude);
+		const PointF cachedRenderBottomRight = projectCachedPoint(AvisoGeoJsonRasterBottomRightLongitude, AvisoGeoJsonRasterBottomRightLatitude);
+		const double cachedRenderLeft = AvisoMin(AvisoMin(cachedRenderTopLeft.X, cachedRenderTopRight.X), AvisoMin(cachedRenderBottomLeft.X, cachedRenderBottomRight.X));
+		const double cachedRenderTop = AvisoMin(AvisoMin(cachedRenderTopLeft.Y, cachedRenderTopRight.Y), AvisoMin(cachedRenderBottomLeft.Y, cachedRenderBottomRight.Y));
+		const double cachedRenderRight = AvisoMax(AvisoMax(cachedRenderTopLeft.X, cachedRenderTopRight.X), AvisoMax(cachedRenderBottomLeft.X, cachedRenderBottomRight.X));
+		const double cachedRenderBottom = AvisoMax(AvisoMax(cachedRenderTopLeft.Y, cachedRenderTopRight.Y), AvisoMax(cachedRenderBottomLeft.Y, cachedRenderBottomRight.Y));
+		const double cachedRenderWidth = cachedRenderRight - cachedRenderLeft;
+		const double cachedRenderHeight = cachedRenderBottom - cachedRenderTop;
+		if (cachedRenderWidth < 1.0 || cachedRenderHeight < 1.0)
+			return false;
+
+		const PointF sourceTopLeft = projectCachedPoint(displayMinLon, displayMaxLat);
+		const PointF sourceTopRight = projectCachedPoint(displayMaxLon, displayMaxLat);
+		const PointF sourceBottomLeft = projectCachedPoint(displayMinLon, displayMinLat);
+		const PointF sourceBottomRight = projectCachedPoint(displayMaxLon, displayMinLat);
+		const double sourceScreenLeft = AvisoMin(AvisoMin(sourceTopLeft.X, sourceTopRight.X), AvisoMin(sourceBottomLeft.X, sourceBottomRight.X));
+		const double sourceScreenTop = AvisoMin(AvisoMin(sourceTopLeft.Y, sourceTopRight.Y), AvisoMin(sourceBottomLeft.Y, sourceBottomRight.Y));
+		const double sourceScreenRight = AvisoMax(AvisoMax(sourceTopLeft.X, sourceTopRight.X), AvisoMax(sourceBottomLeft.X, sourceBottomRight.X));
+		const double sourceScreenBottom = AvisoMax(AvisoMax(sourceTopLeft.Y, sourceTopRight.Y), AvisoMax(sourceBottomLeft.Y, sourceBottomRight.Y));
+
+		const double sourceScaleX = static_cast<double>(AvisoGeoJsonRasterWidth) / cachedRenderWidth;
+		const double sourceScaleY = static_cast<double>(AvisoGeoJsonRasterHeight) / cachedRenderHeight;
+		const double sourceX = (sourceScreenLeft - cachedRenderLeft) * sourceScaleX;
+		const double sourceY = (sourceScreenTop - cachedRenderTop) * sourceScaleY;
+		const double sourceRight = (sourceScreenRight - cachedRenderLeft) * sourceScaleX;
+		const double sourceBottom = (sourceScreenBottom - cachedRenderTop) * sourceScaleY;
+		const double sourceWidth = sourceRight - sourceX;
+		const double sourceHeight = sourceBottom - sourceY;
+		if (sourceWidth < 1.0 || sourceHeight < 1.0)
+			return false;
+
+		// A zoom preview must have the whole current viewport in the cached
+		// overscan. Partial clamping would stretch the wrong geographic region.
+		const double coverageTolerance = 1e-6;
+		if (sourceX < -coverageTolerance ||
+			sourceY < -coverageTolerance ||
+			sourceRight > static_cast<double>(AvisoGeoJsonRasterWidth) + coverageTolerance ||
+			sourceBottom > static_cast<double>(AvisoGeoJsonRasterHeight) + coverageTolerance)
+		{
+			return false;
+		}
+
+		int sourceXInt = static_cast<int>(std::floor(sourceX));
+		int sourceYInt = static_cast<int>(std::floor(sourceY));
+		int sourceRightInt = static_cast<int>(std::ceil(sourceRight));
+		int sourceBottomInt = static_cast<int>(std::ceil(sourceBottom));
+		sourceXInt = std::clamp(sourceXInt, 0, AvisoGeoJsonRasterWidth);
+		sourceYInt = std::clamp(sourceYInt, 0, AvisoGeoJsonRasterHeight);
+		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, AvisoGeoJsonRasterWidth);
+		sourceBottomInt = std::clamp(sourceBottomInt, sourceYInt, AvisoGeoJsonRasterHeight);
+		const int sourceWidthInt = sourceRightInt - sourceXInt;
+		const int sourceHeightInt = sourceBottomInt - sourceYInt;
+		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
+			return false;
+
+		const double destX = AvisoMin(AvisoMin(static_cast<double>(projectedTopLeft.X), static_cast<double>(projectedTopRight.X)), AvisoMin(static_cast<double>(projectedBottomLeft.X), static_cast<double>(projectedBottomRight.X)));
+		const double destY = AvisoMin(AvisoMin(static_cast<double>(projectedTopLeft.Y), static_cast<double>(projectedTopRight.Y)), AvisoMin(static_cast<double>(projectedBottomLeft.Y), static_cast<double>(projectedBottomRight.Y)));
+		const double destRight = AvisoMax(AvisoMax(static_cast<double>(projectedTopLeft.X), static_cast<double>(projectedTopRight.X)), AvisoMax(static_cast<double>(projectedBottomLeft.X), static_cast<double>(projectedBottomRight.X)));
+		const double destBottom = AvisoMax(AvisoMax(static_cast<double>(projectedTopLeft.Y), static_cast<double>(projectedTopRight.Y)), AvisoMax(static_cast<double>(projectedBottomLeft.Y), static_cast<double>(projectedBottomRight.Y)));
+		const double destWidth = destRight - destX;
+		const double destHeight = destBottom - destY;
+		if (destWidth < 1.0 || destHeight < 1.0)
+			return false;
+
+		// Expand the destination by exactly the amount used to round the source
+		// crop. This keeps the zoom center fixed when AlphaBlend receives integers.
+		const double destPerSourceX = destWidth / sourceWidth;
+		const double destPerSourceY = destHeight / sourceHeight;
+		const double alignedDestLeft = destX + (static_cast<double>(sourceXInt) - sourceX) * destPerSourceX;
+		const double alignedDestTop = destY + (static_cast<double>(sourceYInt) - sourceY) * destPerSourceY;
+		const double alignedDestRight = destX + (static_cast<double>(sourceRightInt) - sourceX) * destPerSourceX;
+		const double alignedDestBottom = destY + (static_cast<double>(sourceBottomInt) - sourceY) * destPerSourceY;
+		const int destLeft = static_cast<int>(std::lround(alignedDestLeft));
+		const int destTop = static_cast<int>(std::lround(alignedDestTop));
+		const int destRightInt = static_cast<int>(std::lround(alignedDestRight));
+		const int destBottomInt = static_cast<int>(std::lround(alignedDestBottom));
+		const int destWidthInt = destRightInt - destLeft;
+		const int destHeightInt = destBottomInt - destTop;
+		if (destWidthInt <= 0 || destHeightInt <= 0)
+			return false;
+
+		HDC sourceDc = ::CreateCompatibleDC(hDC);
+		if (sourceDc == nullptr)
+			return false;
 		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, AvisoGeoJsonRasterCache);
 		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
 		{
@@ -2670,12 +2980,6 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	};
 
 	ApplyCompletedAvisoGeoJsonRaster();
-	const bool canDeferRasterRefresh =
-		avisoViewRecentlyChanged &&
-		AvisoGeoJsonRasterCache != nullptr &&
-		AvisoGeoJsonRasterCachePath == path &&
-		AvisoGeoJsonRasterGroupGeneration == groupGeneration &&
-		AvisoGeoJsonRasterAnchorValid;
 	if (cacheMatchesCurrentView() && drawRasterCacheTransformed())
 		return;
 
@@ -2738,24 +3042,23 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.renderScreenTop = renderScreenTop;
 	request.scaleX = scaleX;
 	request.scaleY = scaleY;
-	request.projectedTopLeft = PointF(static_cast<REAL>(projectedTopLeft.x), static_cast<REAL>(projectedTopLeft.y));
-	request.projectedTopRight = PointF(static_cast<REAL>(projectedTopRight.x), static_cast<REAL>(projectedTopRight.y));
-	request.projectedBottomLeft = PointF(static_cast<REAL>(projectedBottomLeft.x), static_cast<REAL>(projectedBottomLeft.y));
-	request.projectedBottomRight = PointF(static_cast<REAL>(projectedBottomRight.x), static_cast<REAL>(projectedBottomRight.y));
+	request.projectedTopLeft = projectedTopLeft;
+	request.projectedTopRight = projectedTopRight;
+	request.projectedBottomLeft = projectedBottomLeft;
+	request.projectedBottomRight = projectedBottomRight;
 
-	const bool compatibleCacheZoom = rasterCacheHasCompatibleZoom();
-	if (compatibleCacheZoom && drawRasterCacheTransformed())
+	// A divider resize changes the visible geographic span, but not the map's
+	// pixel scale. Prefer the geo-anchored cache whenever its transform matches;
+	// the compatibility/margin check still decides whether to refresh it.
+	if (drawRasterCacheTransformed())
 	{
-		if (!rasterCacheHasWorkingMargin() && !canDeferRasterRefresh)
+		if (!rasterCacheHasWorkingMargin())
 			QueueAvisoGeoJsonRasterRender(std::move(request));
 		return;
 	}
 
-	if (canDeferRasterRefresh && drawRasterCacheTransformed())
-		return;
-
 	QueueAvisoGeoJsonRasterRender(std::move(request));
-	if (!compatibleCacheZoom && drawRasterCacheTransformed())
+	if (drawRasterCacheViewportAligned())
 		return;
 }
 
@@ -5345,10 +5648,9 @@ void UnhookAvisoThreadHooks()
 	UnhookAvisoKeyboardHook();
 }
 
-void ClearAvisoWheelRoutingState()
+void ClearAvisoWheelRoutingState(bool cancelWindowInteractions = false)
 {
 	gAvisoWheelRoutingEnabled = false;
-	bool endedInsetPan = false;
 
 	for (CSMRRadar* radarScreen : RadarScreensOpened)
 	{
@@ -5356,19 +5658,25 @@ void ClearAvisoWheelRoutingState()
 			continue;
 
 		radarScreen->AvisoGeoJsonScrollSelected = false;
+		if (cancelWindowInteractions)
+			radarScreen->CancelInsetWindowInteractions();
 		for (auto& appWindow : radarScreen->appWindows)
 		{
 			CInsetWindow* insetWindow = appWindow.second.get();
 			if (insetWindow == nullptr)
 				continue;
 
-			endedInsetPan = endedInsetPan || insetWindow->m_AvisoRightPanning;
-			insetWindow->ResetAvisoInteractionState();
+			if (!cancelWindowInteractions && insetWindow->m_AvisoRightPanning)
+				insetWindow->EndAvisoPan();
+			if (cancelWindowInteractions)
+			{
+				insetWindow->m_AvisoScrollSelected = false;
+				insetWindow->m_AvisoScreenArea = { 0, 0, 0, 0 };
+				insetWindow->m_AvisoScreenAreaValid = false;
+				insetWindow->m_AvisoRenderWindow = nullptr;
+			}
 		}
 	}
-
-	if (endedInsetPan && ::GetCapture() != nullptr)
-		::ReleaseCapture();
 }
 
 bool IsEuroScopeViewSwitchKey(WPARAM key)
@@ -5396,53 +5704,99 @@ bool IsMouseButtonDownMessage(WPARAM message)
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	const auto sourceProcIt = gInsetWindowSourceProcs.find(hwnd);
+	const WNDPROC sourceProc = sourceProcIt != gInsetWindowSourceProcs.end()
+		? sourceProcIt->second
+		: nullptr;
+	const auto forwardMessage = [&]() -> LRESULT
+	{
+		return sourceProc != nullptr
+			? ::CallWindowProc(sourceProc, hwnd, uMsg, wParam, lParam)
+			: ::DefWindowProc(hwnd, uMsg, wParam, lParam);
+	};
+	if (uMsg == WM_NCDESTROY)
+	{
+		const LRESULT result = forwardMessage();
+		gInsetWindowSourceProcs.erase(hwnd);
+		return result;
+	}
+
 	switch (uMsg)
 	{
-	case WM_LBUTTONDOWN:
-		ClearAvisoWheelRoutingState();
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_LEFT))
-			return 0;
-		break;
-	case WM_LBUTTONUP:
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonUp(hwnd, wParam, lParam, BUTTON_LEFT))
-			return 0;
-		break;
-	case WM_RBUTTONDOWN:
-		ClearAvisoWheelRoutingState();
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonDown(hwnd, wParam, lParam, BUTTON_RIGHT))
-			return 0;
-		break;
-	case WM_RBUTTONUP:
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseButtonUp(hwnd, wParam, lParam, BUTTON_RIGHT))
-			return 0;
-		break;
-	case WM_MOUSEMOVE:
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseMove(hwnd, wParam, lParam))
-			return 0;
-		break;
 	case WM_MOUSEWHEEL:
 		if (gAvisoWheelRoutingEnabled && gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseWheel(hwnd, wParam, lParam))
 			return 0;
 		break;
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
-	case WM_KEYUP:
-	case WM_SYSKEYUP:
 		if (IsEuroScopeViewSwitchKey(wParam))
-			ClearAvisoWheelRoutingState();
+			ClearAvisoWheelRoutingState(true);
 		break;
 	case WM_SETCURSOR:
-		SetCursor(smrCursor);
-		return true;
+		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleInsetSetCursor(hwnd))
+			return true;
+		// SetCursor(nullptr) explicitly hides the pointer. If cursor setup has not
+		// completed (or a custom resource failed), let EuroScope choose its cursor.
+		if (smrCursor != nullptr)
+		{
+			::SetCursor(smrCursor);
+			return true;
+		}
+		break;
 	default:
-		if (gSourceProc != nullptr)
-			return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
-		return DefWindowProc(hwnd, uMsg, wParam, lParam);
+		return forwardMessage();
 	}
 
-	if (gSourceProc != nullptr)
-		return CallWindowProc(gSourceProc, hwnd, uMsg, wParam, lParam);
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+	return forwardMessage();
+}
+
+void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
+{
+	if (hwnd == nullptr || !::IsWindow(hwnd) || radarScreen == nullptr)
+		return;
+
+	const WNDPROC currentProc = reinterpret_cast<WNDPROC>(
+		::GetWindowLongPtr(hwnd, GWLP_WNDPROC));
+	const auto existing = gInsetWindowSourceProcs.find(hwnd);
+	if (existing != gInsetWindowSourceProcs.end())
+	{
+		// Another component may have subclassed above us. In that case our proc
+		// remains in its forwarding chain; installing it again would create a loop.
+		gWindowProcRadarScreen = radarScreen;
+		return;
+	}
+	if (currentProc == nullptr || currentProc == WindowProc)
+		return;
+
+	::SetLastError(ERROR_SUCCESS);
+	const WNDPROC previousProc = reinterpret_cast<WNDPROC>(
+		::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
+	if (previousProc == nullptr && ::GetLastError() != ERROR_SUCCESS)
+	{
+		Logger::info("Inset window procedure hook installation failed error=" + std::to_string(::GetLastError()));
+		return;
+	}
+	const WNDPROC sourceProc = previousProc != nullptr ? previousProc : currentProc;
+	if (sourceProc == WindowProc)
+		return;
+
+	gInsetWindowSourceProcs.emplace(hwnd, sourceProc);
+	gWindowProcRadarScreen = radarScreen;
+}
+
+void RestoreInsetWindowProcHooks()
+{
+	for (const auto& entry : gInsetWindowSourceProcs)
+	{
+		HWND hwnd = entry.first;
+		if (hwnd == nullptr || !::IsWindow(hwnd))
+			continue;
+		const WNDPROC currentProc = reinterpret_cast<WNDPROC>(
+			::GetWindowLongPtr(hwnd, GWLP_WNDPROC));
+		if (currentProc == WindowProc)
+			::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(entry.second));
+	}
+	gInsetWindowSourceProcs.clear();
 }
 
 bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
@@ -5474,10 +5828,9 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 
 LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 {
-	UNREFERENCED_PARAMETER(lParam);
-
-	if (code >= 0 && IsEuroScopeViewSwitchKey(wParam))
-		ClearAvisoWheelRoutingState();
+	const bool keyReleased = (static_cast<ULONG_PTR>(lParam) & 0x80000000ULL) != 0;
+	if (code >= 0 && !keyReleased && IsEuroScopeViewSwitchKey(wParam))
+		ClearAvisoWheelRoutingState(true);
 
 	return ::CallNextHookEx(gThreadKeyboardHook, code, wParam, lParam);
 }
@@ -5589,36 +5942,29 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (initCursor)
 	{
 		if (customCursor) {
-			smrCursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDC_SMRCURSOR), IMAGE_CURSOR, 0, 0, LR_SHARED));
+			HCURSOR loadedCursor = reinterpret_cast<HCURSOR>(::LoadImage(
+				AfxGetInstanceHandle(),
+				MAKEINTRESOURCE(IDC_SMRCURSOR),
+				IMAGE_CURSOR,
+				0,
+				0,
+				LR_SHARED));
+			if (loadedCursor != nullptr)
+				smrCursor = CopyCursor(loadedCursor);
 			// EuroScope/MFC can still override the cursor occasionally; we therefore reapply it via window proc hook.
 
 		}
-		else {
-			smrCursor = (HCURSOR)::LoadCursor(NULL, IDC_ARROW);
-		}
-
+		if (smrCursor == nullptr)
+			smrCursor = ::LoadCursor(nullptr, IDC_ARROW);
 		if (smrCursor != nullptr)
-		{
-			pluginWindow = GetActiveWindow();
-			if (pluginWindow != nullptr && ::IsWindow(pluginWindow))
-			{
-				WNDPROC previousProc = reinterpret_cast<WNDPROC>(
-					::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
-				if (previousProc != nullptr)
-				{
-					gSourceProc = previousProc;
-					gWindowProcRadarScreen = this;
-				}
-				else
-				{
-					pluginWindow = nullptr;
-					gWindowProcRadarScreen = nullptr;
-				}
-			}
-		}
+			::SetCursor(smrCursor);
 
 		initCursor = false;
 	}
+	HWND insetHostWindow = ::WindowFromDC(hDC);
+	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
+		insetHostWindow = ::GetActiveWindow();
+	EnsureInsetWindowProcHook(insetHostWindow, this);
 
 	if (Phase == REFRESH_PHASE_AFTER_LISTS) {
 		VSMR_REFRESH_LOG("Phase == REFRESH_PHASE_AFTER_LISTS");
@@ -5831,7 +6177,20 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	RECT RadarArea = GetRadarArea();
 	RECT ChatArea = GetChatArea();
-	RadarArea.bottom = ChatArea.top;
+	CRect normalizedChatArea(ChatArea);
+	normalizedChatArea.NormalizeRect();
+	if (!normalizedChatArea.IsRectEmpty())
+		RadarArea.bottom = normalizedChatArea.top;
+	CRect insetLayoutBounds(RadarArea);
+	insetLayoutBounds.NormalizeRect();
+	for (const auto& display : appWindowDisplays)
+	{
+		if (!display.second)
+			continue;
+		auto appWindowIt = appWindows.find(display.first);
+		if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr)
+			appWindowIt->second->ApplyAvisoLayoutBounds(&insetLayoutBounds);
+	}
 
 	auto disableAvisoGeoJsonRender = [&](const std::string& reason)
 	{
@@ -7337,6 +7696,43 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double perfSrwStartMs = RefreshPerfNowMs();
 	bool insetRenderedForWheel = false;
 	gAvisoWheelRoutingEnabled = false;
+	CInsetWindow* activeInsetWindow = nullptr;
+	for (const auto& display : appWindowDisplays)
+	{
+		if (!display.second)
+			continue;
+		auto appWindowIt = appWindows.find(display.first);
+		if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr &&
+			(appWindowIt->second->IsWindowMoveActive() || appWindowIt->second->IsWindowResizeActive()))
+		{
+			activeInsetWindow = appWindowIt->second.get();
+			break;
+		}
+	}
+	CInsetWindow* foregroundInsetWindow = activeInsetWindow;
+	if (foregroundInsetWindow == nullptr)
+	{
+		for (const auto& display : appWindowDisplays)
+		{
+			if (!display.second)
+				continue;
+			auto appWindowIt = appWindows.find(display.first);
+			if (appWindowIt != appWindows.end() && appWindowIt->second != nullptr &&
+				appWindowIt->second->m_AvisoScrollSelected)
+			{
+				foregroundInsetWindow = appWindowIt->second.get();
+				break;
+			}
+		}
+	}
+	auto renderInsetWindow = [&](CInsetWindow* appWindow)
+	{
+		if (appWindow == nullptr)
+			return;
+		appWindow->render(hDC, this, &graphics, mouseLocation);
+		if (appWindow->m_AvisoScreenAreaValid)
+			insetRenderedForWheel = true;
+	};
 	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
 	{
 		if (!it->second)
@@ -7348,10 +7744,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			continue;
 
 		CInsetWindow* appWindow = appWindowIt->second.get();
-		appWindow->render(hDC, this, &graphics, mouseLocation);
-		if (appWindow->m_AvisoScreenAreaValid)
-			insetRenderedForWheel = true;
+		if (appWindow != foregroundInsetWindow)
+			renderInsetWindow(appWindow);
 	}
+	if (activeInsetWindow != nullptr)
+		activeInsetWindow->RenderSnapPreview(graphics);
+	if (foregroundInsetWindow != nullptr)
+		renderInsetWindow(foregroundInsetWindow);
 	gAvisoWheelRoutingEnabled = insetRenderedForWheel;
 	perfSrwMs += RefreshPerfNowMs() - perfSrwStartMs;
 
@@ -7363,11 +7762,71 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			? dc.SelectObject(&RuntimeOverlayFont)
 			: nullptr;
 		const CSize fpsSize = dc.GetTextExtent(fpsText.c_str());
-		const int fpsX = (std::max)(RadarArea.left + 4, RadarArea.right - fpsSize.cx - 6);
-		const int fpsY = RadarArea.top + 4;
+		CRect fpsArea = ResolveMainAvisoRenderArea();
+		if (fpsArea.IsRectEmpty())
+			fpsArea = CRect(RadarArea);
+		fpsArea.NormalizeRect();
+		auto overlapsVisibleInset = [&](const CRect& candidate, int& nextY) -> bool
+		{
+			bool overlaps = false;
+			for (const auto& display : appWindowDisplays)
+			{
+				if (!display.second)
+					continue;
+				auto windowIt = appWindows.find(display.first);
+				if (windowIt == appWindows.end() || windowIt->second == nullptr)
+					continue;
+				CRect overlap;
+				const CRect frame = windowIt->second->GetWindowFrameRect();
+				if (overlap.IntersectRect(candidate, frame) && !overlap.IsRectEmpty())
+				{
+					overlaps = true;
+					nextY = max(nextY, frame.bottom + 4);
+				}
+				CRect preview;
+				if (windowIt->second->GetSnapPreviewRect(preview) &&
+					overlap.IntersectRect(candidate, preview) && !overlap.IsRectEmpty())
+				{
+					overlaps = true;
+					nextY = max(nextY, preview.bottom + 4);
+				}
+			}
+			return overlaps;
+		};
+		auto findFpsPosition = [&](bool alignRight, POINT& position) -> bool
+		{
+			int y = fpsArea.top + 4;
+			for (size_t attempt = 0; attempt <= appWindows.size(); ++attempt)
+			{
+				const int x = alignRight
+					? max(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6)
+					: fpsArea.left + 6;
+				CRect candidate(x, y, x + fpsSize.cx, y + fpsSize.cy);
+				if (candidate.right > fpsArea.right || candidate.bottom > fpsArea.bottom)
+					return false;
+				int nextY = y;
+				if (!overlapsVisibleInset(candidate, nextY))
+				{
+					position = { x, y };
+					return true;
+				}
+				if (nextY <= y)
+					return false;
+				y = nextY;
+			}
+			return false;
+		};
+		POINT fpsPosition = {
+			max(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6),
+			fpsArea.top + 4
+		};
+		bool fpsPositionFound = findFpsPosition(true, fpsPosition);
+		if (!fpsPositionFound)
+			fpsPositionFound = findFpsPosition(false, fpsPosition);
 		const int previousBackgroundMode = dc.SetBkMode(TRANSPARENT);
 		const COLORREF previousTextColor = dc.SetTextColor(RGB(235, 245, 247));
-		dc.TextOutA(fpsX, fpsY, fpsText.c_str());
+		if (fpsPositionFound)
+			dc.TextOutA(fpsPosition.x, fpsPosition.y, fpsText.c_str());
 		dc.SetTextColor(previousTextColor);
 		dc.SetBkMode(previousBackgroundMode);
 		if (previousFont != nullptr)
@@ -7443,11 +7902,7 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 		DestroyProfileEditorWindow();
 		DestroyVsmrControlCenterWindow();
 
-		if (pluginWindow != nullptr && gSourceProc != nullptr && ::IsWindow(pluginWindow))
-			::SetWindowLongPtr(pluginWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gSourceProc));
-
+		RestoreInsetWindowProcHooks();
 		UnhookAvisoThreadHooks();
 		gWindowProcRadarScreen = nullptr;
-		pluginWindow = nullptr;
-		gSourceProc = nullptr;
 }
