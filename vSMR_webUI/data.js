@@ -142,29 +142,29 @@ window.VSMR_DATA = {
         runway_color: { r: 0, g: 0, b: 0, a: 255 },
         background_color: { r: 75, g: 75, b: 75, a: 255 }
       },
-      rules: { version: 1, items: [] },
-      aviso_presets: {
-        airports: {
-          LFPG: {
-            default: "LFPG Ground",
-            items: [{
-              name: "LFPG Ground",
-              linked_movement: false,
-              main: {
-                min_latitude: 49.0052, min_longitude: 2.50333,
-                max_latitude: 49.0303, max_longitude: 2.57476,
-                zoom_level: 9
-              }
-            }]
-          }
-        }
-      }
+      rules: { version: 1, items: [] }
     },
     {
       _vsmr: {
         schema_version: 1,
         last_active_profile: "Custom LFPG",
-        vacdm: { server_url: "https://cdm.vatsim.fr" }
+        vacdm: { server_url: "https://cdm.vatsim.fr" },
+        aviso_presets: {
+          airports: {
+            LFPG: {
+              default: "LFPG Ground",
+              items: [{
+                name: "LFPG Ground",
+                linked_movement: false,
+                main: {
+                  min_latitude: 49.0052, min_longitude: 2.50333,
+                  max_latitude: 49.0303, max_longitude: 2.57476,
+                  zoom_level: 9
+                }
+              }]
+            }
+          }
+        }
       }
     }
   ],
