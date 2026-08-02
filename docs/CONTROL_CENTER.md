@@ -52,7 +52,7 @@ time.
 | Runtime Menu | Current-airport editing, mode/profile selection, AVISO group visibility, AVISO/SRW visibility and reset, full airport-specific inset-preset management, and opening the Control Center | Persistent AVISO, profile, tag, icon, mode-definition, and alert editors |
 | AVISO/SRW insets | Striped title/drag bar, `X` close control, edge/corner resizing, snapping, pan, and zoom; floating SRWs also expose the `F` altitude filter | Preset, reload, and editor buttons |
 | Control Center | AVISO geometry/text editing and reload/import; profile, mode, alert, group, tag, icon, color, rule, CPDLC/CDM, and settings editing, including FPS visibility | Per-flight PDC composition, radar cursor tools, and duplicated inset chrome |
-| PDC / Message window | Per-flight clearance or TELEX composition in a compact EuroScope-owned Cofrance window | Persistent CPDLC credentials and CDM automation |
+| PDC / Message window | Per-flight clearance or TELEX composition in a fixed, frameless EuroScope-owned Cofrance window with constrained title-bar dragging | Persistent CPDLC credentials and CDM automation |
 | FPS overlay | Optional `FPS <value>` text placed in an unobstructed corner of the remaining main AVISO area | Component timings, controls, background toolbar, and hit regions |
 
 The old grey top menu and its QDR, Target, Lighting, and distance actions are
