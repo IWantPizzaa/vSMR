@@ -17,12 +17,13 @@ All notable changes to this project are documented in this file.
 - Unified floating inset title bars with the Runtime Menu's dark striped chrome.
 - Removed the SRW `Z` range and `R` rotation menus; wheel zoom replaces the range menu.
 - Made inset-preset writes authoritative across open radar screens and Control Center history without overwriting unrelated staged settings.
-- Reworked the native PDC and received-message dialogs into compact, EuroScope-owned Cofrance-style windows while preserving editable PDC fields and message replies.
+- Reworked the native PDC and received-message dialogs into compact, fixed EuroScope-owned Cofrance windows with the same striped chrome, card headers, flat controls, and button treatment as the rest of vSMR.
 - Routed `.smr`, `.smr connect`, `.smr poll`, and `.smr cdm` through the shared native datalink service, with guarded asynchronous connection and polling operations.
 - Consolidated automatic CPDLC saves and explicit PDC reminder Run, Stop, Update, and Check-now controls into Settings; removed the separate Datalink page, readiness card, feature switches, Advanced section, and Danger zone.
 - Added the resolved EuroScope `.cdm` alias path to the Settings data-files card.
 
 ### Fixed
+- Removed the duplicate Windows title bar and system-looking edit borders/scrollbars from the PDC and Message windows, and constrained their custom title-bar dragging to the EuroScope client area.
 - Kept saved Hoppie credentials visibly masked after auto-save, normalized pasted codes, URL-encoded credentials, and replaced the misleading callsign-collision login error with the actual sanitized Hoppie or network failure.
 - Stopping or rescheduling automatic PDC reminders now removes only queued automatic reminders while preserving manual reminder checks.
 

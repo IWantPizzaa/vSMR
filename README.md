@@ -490,7 +490,7 @@ Features:
 - read-only EuroScope `.cdm` alias path in the Settings data-files card
 - contextual disabled-state hints when the active airport or `.cdm` template is unavailable
 - datalink menu integration in tags
-- compact Cofrance-styled PDC and generic Message windows
+- compact fixed PDC and Message windows with frameless striped vSMR chrome, kept inside EuroScope
 
 Saved EuroScope settings:
 
