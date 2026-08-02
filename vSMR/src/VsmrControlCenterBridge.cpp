@@ -1081,9 +1081,21 @@ struct VsmrControlCenterBridge::Impl
 			stagedState["runtime"]["insets"].IsObject())
 		{
 			const rapidjson::Value& insets = stagedState["runtime"]["insets"];
-			Owner->appWindowDisplays[3] = ReadBool(insets, "aviso", false);
-			Owner->appWindowDisplays[1] = ReadBool(insets, "srw1", false);
-			Owner->appWindowDisplays[2] = ReadBool(insets, "srw2", false);
+			Owner->CancelInsetWindowInteractions();
+			const auto applyInsetVisibility = [&](int id, const char* key)
+			{
+				const bool visible = ReadBool(insets, key, false);
+				Owner->appWindowDisplays[id] = visible;
+				if (!visible)
+				{
+					auto windowIt = Owner->appWindows.find(id);
+					if (windowIt != Owner->appWindows.end() && windowIt->second != nullptr)
+						windowIt->second->ResetAvisoInteractionState();
+				}
+			};
+			applyInsetVisibility(3, "aviso");
+			applyInsetVisibility(1, "srw1");
+			applyInsetVisibility(2, "srw2");
 		}
 
 		if (stagedState.HasMember("aviso"))
@@ -1457,7 +1469,15 @@ struct VsmrControlCenterBridge::Impl
 			error = "Unknown inset window.";
 			return false;
 		}
-		Owner->appWindowDisplays[id] = ReadBool(*payload, "visible", false);
+		const bool visible = ReadBool(*payload, "visible", false);
+		Owner->CancelInsetWindowInteractions();
+		Owner->appWindowDisplays[id] = visible;
+		if (!visible)
+		{
+			auto windowIt = Owner->appWindows.find(id);
+			if (windowIt != Owner->appWindows.end() && windowIt->second != nullptr)
+				windowIt->second->ResetAvisoInteractionState();
+		}
 		Owner->SaveInsetStateToAsrForAirport(Owner->getActiveAirport());
 		Owner->RequestRefresh();
 		return true;

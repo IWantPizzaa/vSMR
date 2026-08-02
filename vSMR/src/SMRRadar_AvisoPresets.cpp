@@ -779,6 +779,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 	AvisoPreset preset;
 	if (!ParseAvisoPreset((*items)[index], preset))
 		return false;
+	CancelInsetWindowInteractions();
 
 	if (preset.mainView.valid)
 	{
@@ -827,6 +828,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		windowIt->second->m_Rotation = window.rotation;
 		windowIt->second->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(
 			std::clamp(window.layoutMode, 0, 8));
+		windowIt->second->ResetAvisoInteractionState();
 		appWindowDisplays[id] = window.visible;
 	}
 	AvisoViewsLinked = preset.linkedMovement;

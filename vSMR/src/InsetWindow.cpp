@@ -21,8 +21,13 @@ namespace
 	constexpr int kAvisoCornerSnapThresholdPx = 48;
 	constexpr int kAvisoMinLayoutWidth = 300;
 	constexpr int kAvisoMinLayoutHeight = 120;
+	constexpr int kInsetResizeHitPx = 7;
+	constexpr int kInsetResizeInsidePx = 5;
+	constexpr int kInsetResizeCornerPx = 18;
+	constexpr int kInsetDragThresholdPx = 4;
 
 	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
+	using ResizeRegion = CInsetWindow::ResizeRegion;
 
 	double ClampAvisoLatitude(double latitude)
 	{
@@ -46,15 +51,40 @@ namespace
 			AvisoWithinTolerance(static_cast<double>(left.Y), static_cast<double>(right.Y), tolerance);
 	}
 
-	bool AvisoVectorWithinTolerance(
-		const Gdiplus::PointF& leftStart,
-		const Gdiplus::PointF& leftEnd,
-		const Gdiplus::PointF& rightStart,
-		const Gdiplus::PointF& rightEnd,
+	bool AvisoProjectionScaleWithinTolerance(
+		const Gdiplus::PointF& cachedTopLeft,
+		const Gdiplus::PointF& cachedTopRight,
+		const Gdiplus::PointF& cachedBottomLeft,
+		double cachedLongitudeSpan,
+		double cachedLatitudeSpan,
+		const Gdiplus::PointF& currentTopLeft,
+		const Gdiplus::PointF& currentTopRight,
+		const Gdiplus::PointF& currentBottomLeft,
+		double currentLongitudeSpan,
+		double currentLatitudeSpan,
 		double tolerance)
 	{
-		return AvisoWithinTolerance(static_cast<double>(leftEnd.X - leftStart.X), static_cast<double>(rightEnd.X - rightStart.X), tolerance) &&
-			AvisoWithinTolerance(static_cast<double>(leftEnd.Y - leftStart.Y), static_cast<double>(rightEnd.Y - rightStart.Y), tolerance);
+		if (cachedLongitudeSpan <= 0.0 || cachedLatitudeSpan <= 0.0 ||
+			currentLongitudeSpan <= 0.0 || currentLatitudeSpan <= 0.0)
+		{
+			return false;
+		}
+
+		const double horizontalSpanRatio = cachedLongitudeSpan / currentLongitudeSpan;
+		const double verticalSpanRatio = cachedLatitudeSpan / currentLatitudeSpan;
+		const double cachedHorizontalX = static_cast<double>(cachedTopRight.X - cachedTopLeft.X);
+		const double cachedHorizontalY = static_cast<double>(cachedTopRight.Y - cachedTopLeft.Y);
+		const double currentHorizontalX = static_cast<double>(currentTopRight.X - currentTopLeft.X) * horizontalSpanRatio;
+		const double currentHorizontalY = static_cast<double>(currentTopRight.Y - currentTopLeft.Y) * horizontalSpanRatio;
+		const double cachedVerticalX = static_cast<double>(cachedBottomLeft.X - cachedTopLeft.X);
+		const double cachedVerticalY = static_cast<double>(cachedBottomLeft.Y - cachedTopLeft.Y);
+		const double currentVerticalX = static_cast<double>(currentBottomLeft.X - currentTopLeft.X) * verticalSpanRatio;
+		const double currentVerticalY = static_cast<double>(currentBottomLeft.Y - currentTopLeft.Y) * verticalSpanRatio;
+		return
+			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX, tolerance) &&
+			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY, tolerance) &&
+			AvisoWithinTolerance(cachedVerticalX, currentVerticalX, tolerance) &&
+			AvisoWithinTolerance(cachedVerticalY, currentVerticalY, tolerance);
 	}
 
 	Gdiplus::PointF RotateAvisoVector(double x, double y, double degrees)
@@ -130,7 +160,8 @@ namespace
 
 	int InsetToolbarRightOffset(int buttonIndexFromRight)
 	{
-		return kInsetToolbarRightMargin + buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
+		return kInsetToolbarRightMargin + kInsetResizeCornerPx +
+			buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
 	}
 
 	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation)
@@ -222,8 +253,9 @@ namespace
 
 	int ClampAvisoDividerY(int y, const CRect& bounds)
 	{
-		const int minY = static_cast<int>(bounds.top) + kAvisoMinLayoutHeight;
-		const int maxY = static_cast<int>(bounds.bottom) - kAvisoMinLayoutHeight;
+		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
+		const int minY = static_cast<int>(bounds.top) + minimumFrameHeight;
+		const int maxY = static_cast<int>(bounds.bottom) - minimumFrameHeight;
 		if (maxY < minY)
 			return (bounds.top + bounds.bottom) / 2;
 		return std::clamp(y, minY, maxY);
@@ -295,19 +327,293 @@ namespace
 	{
 		const int midX = (bounds.left + bounds.right) / 2;
 		const int midY = (bounds.top + bounds.bottom) / 2;
+		const int leftCornerRight = std::clamp(
+			midX,
+			static_cast<int>(bounds.left) + kAvisoMinLayoutWidth,
+			static_cast<int>(bounds.right));
+		const int rightCornerLeft = std::clamp(
+			midX,
+			static_cast<int>(bounds.left),
+			static_cast<int>(bounds.right) - kAvisoMinLayoutWidth);
+		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
+		const int topCornerBottom = std::clamp(
+			midY,
+			static_cast<int>(bounds.top) + minimumFrameHeight,
+			static_cast<int>(bounds.bottom));
+		const int bottomCornerTop = std::clamp(
+			midY,
+			static_cast<int>(bounds.top),
+			static_cast<int>(bounds.bottom) - minimumFrameHeight);
 
 		switch (mode)
 		{
 		case AvisoLayoutMode::CornerTopLeft:
-			return CRect(bounds.left, bounds.top, midX, midY);
+			return CRect(bounds.left, bounds.top, leftCornerRight, topCornerBottom);
 		case AvisoLayoutMode::CornerTopRight:
-			return CRect(midX, bounds.top, bounds.right, midY);
+			return CRect(rightCornerLeft, bounds.top, bounds.right, topCornerBottom);
 		case AvisoLayoutMode::CornerBottomLeft:
-			return CRect(bounds.left, midY, midX, bounds.bottom);
+			return CRect(bounds.left, bottomCornerTop, leftCornerRight, bounds.bottom);
 		case AvisoLayoutMode::CornerBottomRight:
-			return CRect(midX, midY, bounds.right, bounds.bottom);
+			return CRect(rightCornerLeft, bottomCornerTop, bounds.right, bounds.bottom);
 		default:
 			return CRect(0, 0, 0, 0);
+		}
+	}
+
+	bool ResolveAvisoSnapTarget(POINT point, const CRect& bounds, AvisoLayoutMode& mode, CRect& area)
+	{
+		if (bounds.IsRectEmpty())
+			return false;
+
+		const bool nearLeft = point.x <= bounds.left + kAvisoSnapThresholdPx;
+		const bool nearRight = point.x >= bounds.right - kAvisoSnapThresholdPx;
+		const bool nearTop = point.y <= bounds.top + kAvisoSnapThresholdPx;
+		const bool nearBottom = point.y >= bounds.bottom - kAvisoSnapThresholdPx;
+		const bool nearCornerLeft = point.x <= bounds.left + kAvisoCornerSnapThresholdPx;
+		const bool nearCornerRight = point.x >= bounds.right - kAvisoCornerSnapThresholdPx;
+		const bool nearCornerTop = point.y <= bounds.top + kAvisoCornerSnapThresholdPx;
+		const bool nearCornerBottom = point.y >= bounds.bottom - kAvisoCornerSnapThresholdPx;
+
+		mode = AvisoLayoutMode::Floating;
+		if (nearCornerLeft && nearCornerTop)
+			mode = AvisoLayoutMode::CornerTopLeft;
+		else if (nearCornerRight && nearCornerTop)
+			mode = AvisoLayoutMode::CornerTopRight;
+		else if (nearCornerLeft && nearCornerBottom)
+			mode = AvisoLayoutMode::CornerBottomLeft;
+		else if (nearCornerRight && nearCornerBottom)
+			mode = AvisoLayoutMode::CornerBottomRight;
+		else if (nearLeft)
+			mode = AvisoLayoutMode::SplitLeft;
+		else if (nearRight)
+			mode = AvisoLayoutMode::SplitRight;
+		else if (nearTop)
+			mode = AvisoLayoutMode::SplitTop;
+		else if (nearBottom)
+			mode = AvisoLayoutMode::SplitBottom;
+		else
+			return false;
+
+		area = IsAvisoCornerLayout(mode)
+			? DefaultAvisoCornerRect(mode, bounds)
+			: DefaultAvisoSplitRect(mode, bounds);
+		return !area.IsRectEmpty();
+	}
+
+	CRect InsetFrameRect(AvisoLayoutMode mode, const RECT& areaValue)
+	{
+		CRect frame(areaValue);
+		frame.NormalizeRect();
+		if (mode == AvisoLayoutMode::Floating)
+			frame.top -= kAvisoViewportTopBarHeight;
+		return frame;
+	}
+
+	CRect InsetContentRect(AvisoLayoutMode mode, const RECT& areaValue)
+	{
+		CRect content(areaValue);
+		content.NormalizeRect();
+		if (mode != AvisoLayoutMode::Floating)
+			content.top = min(content.bottom, content.top + kAvisoViewportTopBarHeight);
+		return content;
+	}
+
+	CRect InsetTitleBarRect(AvisoLayoutMode mode, const RECT& areaValue)
+	{
+		CRect area(areaValue);
+		area.NormalizeRect();
+		if (mode == AvisoLayoutMode::Floating)
+			return CRect(area.left, area.top - kAvisoViewportTopBarHeight, area.right, area.top);
+		return CRect(area.left, area.top, area.right, min(area.bottom, area.top + kAvisoViewportTopBarHeight));
+	}
+
+	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue)
+	{
+		const CRect titleBar = InsetTitleBarRect(mode, areaValue);
+		return CRect(
+			titleBar.right - InsetToolbarRightOffset(0) - kInsetToolbarButtonSize,
+			titleBar.top + 1,
+			titleBar.right - InsetToolbarRightOffset(0),
+			titleBar.bottom - 1);
+	}
+
+	CRect InsetFilterButtonRect(AvisoLayoutMode mode, const RECT& areaValue)
+	{
+		const CRect titleBar = InsetTitleBarRect(mode, areaValue);
+		return CRect(
+			titleBar.right - InsetToolbarRightOffset(1) - kInsetToolbarButtonSize,
+			titleBar.top + 1,
+			titleBar.right - InsetToolbarRightOffset(1),
+			titleBar.bottom - 1);
+	}
+
+	CRect InsetTitleBarMoveRect(AvisoLayoutMode mode, const RECT& areaValue, bool showFilter)
+	{
+		CRect moveRect = InsetTitleBarRect(mode, areaValue);
+		moveRect.NormalizeRect();
+		moveRect.left = min(moveRect.right, moveRect.left + kInsetResizeCornerPx);
+		moveRect.right = max(moveRect.left, moveRect.right - kInsetResizeCornerPx);
+		moveRect.top = min(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
+
+		CRect closeButton = InsetCloseButtonRect(mode, areaValue);
+		closeButton.NormalizeRect();
+		moveRect.right = min(moveRect.right, closeButton.left);
+		if (showFilter && mode == AvisoLayoutMode::Floating)
+		{
+			CRect filterButton = InsetFilterButtonRect(mode, areaValue);
+			filterButton.NormalizeRect();
+			moveRect.right = min(moveRect.right, filterButton.left);
+		}
+		if (moveRect.right <= moveRect.left || moveRect.bottom <= moveRect.top)
+			return CRect(0, 0, 0, 0);
+		return moveRect;
+	}
+
+	const char* InsetResizeObjectId(ResizeRegion region)
+	{
+		switch (region)
+		{
+		case ResizeRegion::Left: return "resize_left";
+		case ResizeRegion::Right: return "resize_right";
+		case ResizeRegion::Top: return "resize_top";
+		case ResizeRegion::Bottom: return "resize_bottom";
+		case ResizeRegion::TopLeft: return "resize_tl";
+		case ResizeRegion::TopRight: return "resize_tr";
+		case ResizeRegion::BottomLeft: return "resize_bl";
+		case ResizeRegion::BottomRight: return "resize_br";
+		default: return "";
+		}
+	}
+
+	bool TryParseInsetResizeObjectId(const char* objectId, ResizeRegion& region)
+	{
+		region = ResizeRegion::None;
+		if (objectId == nullptr)
+			return false;
+		for (ResizeRegion candidate : {
+			ResizeRegion::Left,
+			ResizeRegion::Right,
+			ResizeRegion::Top,
+			ResizeRegion::Bottom,
+			ResizeRegion::TopLeft,
+			ResizeRegion::TopRight,
+			ResizeRegion::BottomLeft,
+			ResizeRegion::BottomRight })
+		{
+			if (strcmp(objectId, InsetResizeObjectId(candidate)) == 0)
+			{
+				region = candidate;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	CRect InsetResizeObjectRect(AvisoLayoutMode mode, const RECT& areaValue, ResizeRegion region)
+	{
+		CRect frame = InsetFrameRect(mode, areaValue);
+		frame.NormalizeRect();
+		const int outside = kInsetResizeHitPx;
+		const int inside = kInsetResizeInsidePx;
+		const int corner = kInsetResizeCornerPx;
+		switch (region)
+		{
+		case ResizeRegion::Left:
+			return CRect(frame.left - outside, frame.top + corner, frame.left + inside + 1, frame.bottom - corner);
+		case ResizeRegion::Right:
+			return CRect(frame.right - inside, frame.top + corner, frame.right + outside + 1, frame.bottom - corner);
+		case ResizeRegion::Top:
+			return CRect(frame.left + corner, frame.top - outside, frame.right - corner, frame.top + inside + 1);
+		case ResizeRegion::Bottom:
+			return CRect(frame.left + corner, frame.bottom - inside, frame.right - corner, frame.bottom + outside + 1);
+		case ResizeRegion::TopLeft:
+			return CRect(frame.left - outside, frame.top - outside, frame.left + corner, frame.top + corner);
+		case ResizeRegion::TopRight:
+			return CRect(frame.right - corner, frame.top - outside, frame.right + outside + 1, frame.top + corner);
+		case ResizeRegion::BottomLeft:
+			return CRect(frame.left - outside, frame.bottom - corner, frame.left + corner, frame.bottom + outside + 1);
+		case ResizeRegion::BottomRight:
+			return CRect(frame.right - corner, frame.bottom - corner, frame.right + outside + 1, frame.bottom + outside + 1);
+		default:
+			return CRect(0, 0, 0, 0);
+		}
+	}
+
+	void RegisterInsetResizeObjects(
+		CSMRRadar* radarScreen,
+		int objectType,
+		AvisoLayoutMode mode,
+		const RECT& areaValue)
+	{
+		if (radarScreen == nullptr)
+			return;
+		for (ResizeRegion region : {
+			ResizeRegion::Left,
+			ResizeRegion::Right,
+			ResizeRegion::Top,
+			ResizeRegion::Bottom,
+			ResizeRegion::TopLeft,
+			ResizeRegion::TopRight,
+			ResizeRegion::BottomLeft,
+			ResizeRegion::BottomRight })
+		{
+			CRect hitRect = InsetResizeObjectRect(mode, areaValue, region);
+			hitRect.NormalizeRect();
+			if (!hitRect.IsRectEmpty())
+				radarScreen->AddScreenObject(objectType, InsetResizeObjectId(region), hitRect, true, "");
+		}
+	}
+
+	bool ResizeRegionHasHorizontalEdge(CInsetWindow::ResizeRegion region)
+	{
+		return region == CInsetWindow::ResizeRegion::Left ||
+			region == CInsetWindow::ResizeRegion::Right ||
+			region == CInsetWindow::ResizeRegion::TopLeft ||
+			region == CInsetWindow::ResizeRegion::TopRight ||
+			region == CInsetWindow::ResizeRegion::BottomLeft ||
+			region == CInsetWindow::ResizeRegion::BottomRight;
+	}
+
+	bool ResizeRegionHasVerticalEdge(CInsetWindow::ResizeRegion region)
+	{
+		return region == CInsetWindow::ResizeRegion::Top ||
+			region == CInsetWindow::ResizeRegion::Bottom ||
+			region == CInsetWindow::ResizeRegion::TopLeft ||
+			region == CInsetWindow::ResizeRegion::TopRight ||
+			region == CInsetWindow::ResizeRegion::BottomLeft ||
+			region == CInsetWindow::ResizeRegion::BottomRight;
+	}
+
+	bool IsSnappedResizeRegionSupported(AvisoLayoutMode mode, CInsetWindow::ResizeRegion region)
+	{
+		switch (mode)
+		{
+		case AvisoLayoutMode::SplitLeft:
+			return region == CInsetWindow::ResizeRegion::Right;
+		case AvisoLayoutMode::SplitRight:
+			return region == CInsetWindow::ResizeRegion::Left;
+		case AvisoLayoutMode::SplitTop:
+			return region == CInsetWindow::ResizeRegion::Bottom;
+		case AvisoLayoutMode::SplitBottom:
+			return region == CInsetWindow::ResizeRegion::Top;
+		case AvisoLayoutMode::CornerTopLeft:
+			return region == CInsetWindow::ResizeRegion::Right ||
+				region == CInsetWindow::ResizeRegion::Bottom ||
+				region == CInsetWindow::ResizeRegion::BottomRight;
+		case AvisoLayoutMode::CornerTopRight:
+			return region == CInsetWindow::ResizeRegion::Left ||
+				region == CInsetWindow::ResizeRegion::Bottom ||
+				region == CInsetWindow::ResizeRegion::BottomLeft;
+		case AvisoLayoutMode::CornerBottomLeft:
+			return region == CInsetWindow::ResizeRegion::Right ||
+				region == CInsetWindow::ResizeRegion::Top ||
+				region == CInsetWindow::ResizeRegion::TopRight;
+		case AvisoLayoutMode::CornerBottomRight:
+			return region == CInsetWindow::ResizeRegion::Left ||
+				region == CInsetWindow::ResizeRegion::Top ||
+				region == CInsetWindow::ResizeRegion::TopLeft;
+		default:
+			return false;
 		}
 	}
 
@@ -351,7 +657,8 @@ namespace
 
 		CRect current(area);
 		current.NormalizeRect();
-		if (current.Width() < kAvisoMinLayoutWidth || current.Height() < kAvisoMinLayoutHeight)
+		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
+		if (current.Width() < kAvisoMinLayoutWidth || current.Height() < minimumFrameHeight)
 			current = DefaultAvisoCornerRect(mode, bounds);
 
 		const bool rightAnchored = IsAvisoCornerRightAnchored(mode);
@@ -373,9 +680,9 @@ namespace
 		if (resizeY)
 		{
 			if (bottomAnchored)
-				top = std::clamp(Pt.y, bounds.top, bounds.bottom - kAvisoMinLayoutHeight);
+				top = std::clamp(Pt.y, bounds.top, bounds.bottom - minimumFrameHeight);
 			else
-				bottom = std::clamp(Pt.y, bounds.top + kAvisoMinLayoutHeight, bounds.bottom);
+				bottom = std::clamp(Pt.y, bounds.top + minimumFrameHeight, bounds.bottom);
 		}
 
 		area = { left, top, right, bottom };
@@ -387,13 +694,17 @@ namespace
 		if (IsAvisoVerticalSplit(mode))
 		{
 			const int dividerX = (mode == AvisoLayoutMode::SplitLeft) ? viewportRect.right : viewportRect.left;
-			return CRect(dividerX - 3, viewportRect.top, dividerX + 3, viewportRect.bottom);
+			return mode == AvisoLayoutMode::SplitLeft
+				? CRect(dividerX - 6, viewportRect.top, dividerX, viewportRect.bottom)
+				: CRect(dividerX, viewportRect.top, dividerX + 6, viewportRect.bottom);
 		}
 
 		if (IsAvisoHorizontalSplit(mode))
 		{
 			const int dividerY = (mode == AvisoLayoutMode::SplitTop) ? viewportRect.bottom : viewportRect.top;
-			return CRect(viewportRect.left, dividerY - 3, viewportRect.right, dividerY + 3);
+			return mode == AvisoLayoutMode::SplitTop
+				? CRect(viewportRect.left, dividerY - 6, viewportRect.right, dividerY)
+				: CRect(viewportRect.left, dividerY, viewportRect.right, dividerY + 6);
 		}
 
 		return CRect(0, 0, 0, 0);
@@ -405,7 +716,9 @@ namespace
 			return CRect(0, 0, 0, 0);
 
 		const int dividerX = IsAvisoCornerRightAnchored(mode) ? viewportRect.left : viewportRect.right;
-		return CRect(dividerX - 3, viewportRect.top, dividerX + 3, viewportRect.bottom);
+		return IsAvisoCornerRightAnchored(mode)
+			? CRect(dividerX, viewportRect.top, dividerX + 6, viewportRect.bottom)
+			: CRect(dividerX - 6, viewportRect.top, dividerX, viewportRect.bottom);
 	}
 
 	CRect AvisoCornerHorizontalDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
@@ -414,42 +727,65 @@ namespace
 			return CRect(0, 0, 0, 0);
 
 		const int dividerY = IsAvisoCornerBottomAnchored(mode) ? viewportRect.top : viewportRect.bottom;
-		return CRect(viewportRect.left, dividerY - 3, viewportRect.right, dividerY + 3);
+		return IsAvisoCornerBottomAnchored(mode)
+			? CRect(viewportRect.left, dividerY, viewportRect.right, dividerY + 6)
+			: CRect(viewportRect.left, dividerY - 6, viewportRect.right, dividerY);
 	}
 
-	CRect AvisoCornerToolbarButtonRect(AvisoLayoutMode mode, const CRect& viewportRect, bool oppositeCorner, int buttonIndex)
+	void DrawAvisoDivider(CDC& dc, const CRect& dividerRect)
 	{
-		const int buttonSize = 17;
-		const int margin = 5;
-		const int gap = 2;
-		bool rightSide = IsAvisoCornerRightAnchored(mode);
-		bool bottomSide = IsAvisoCornerBottomAnchored(mode);
-		if (oppositeCorner)
-		{
-			rightSide = !rightSide;
-			bottomSide = !bottomSide;
-		}
-
-		const int step = max(0, buttonIndex) * (buttonSize + gap);
-		const int left = rightSide ? viewportRect.right - margin - buttonSize - step : viewportRect.left + margin + step;
-		const int top = bottomSide ? viewportRect.bottom - margin - buttonSize : viewportRect.top + margin;
-		return CRect(left, top, left + buttonSize, top + buttonSize);
-	}
-
-	CRect AvisoCornerButtonRect(AvisoLayoutMode mode, const CRect& viewportRect, bool oppositeCorner)
-	{
-		return AvisoCornerToolbarButtonRect(mode, viewportRect, oppositeCorner, 0);
-	}
-
-	void DrawAvisoDivider(CDC& dc, CSMRRadar* radarScreen, int objectType, const char* objectId, const CRect& dividerRect)
-	{
-		if (radarScreen == nullptr || objectId == nullptr || dividerRect.IsRectEmpty())
+		if (dividerRect.IsRectEmpty())
 			return;
 
 		CBrush dividerBrush(RGB(41, 57, 59));
 		dc.FillRect(dividerRect, &dividerBrush);
 		dc.Draw3dRect(dividerRect, RGB(5, 7, 8), RGB(82, 96, 101));
-		radarScreen->AddScreenObject(objectType, objectId, dividerRect, true, "");
+	}
+
+	void DrawInsetWindowChrome(
+		CDC& dc,
+		CSMRRadar* radarScreen,
+		int objectType,
+		AvisoLayoutMode mode,
+		const RECT& areaValue,
+		const std::string& title,
+		bool showFilter,
+		POINT mouseLocation)
+	{
+		if (radarScreen == nullptr)
+			return;
+
+		CRect area(areaValue);
+		area.NormalizeRect();
+		if (area.IsRectEmpty())
+			return;
+
+		if (IsAvisoSplitLayout(mode))
+		{
+			DrawAvisoDivider(dc, AvisoSplitDividerRect(mode, area));
+		}
+		else if (IsAvisoCornerLayout(mode))
+		{
+			DrawAvisoDivider(dc, AvisoCornerVerticalDividerRect(mode, area));
+			DrawAvisoDivider(dc, AvisoCornerHorizontalDividerRect(mode, area));
+		}
+
+		CRect titleBar = InsetTitleBarRect(mode, areaValue);
+		titleBar.NormalizeRect();
+		DrawStripedInsetTitleBar(dc, titleBar);
+		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter);
+		if (!titleBarMoveRect.IsRectEmpty())
+			radarScreen->AddScreenObject(objectType, "topbar", titleBarMoveRect, true, "");
+		DrawInsetTitle(dc, titleBar, title);
+		RegisterInsetResizeObjects(radarScreen, objectType, mode, areaValue);
+
+		if (showFilter && mode == AvisoLayoutMode::Floating)
+		{
+			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation);
+			radarScreen->AddScreenObject(objectType, "filter", filterRect, false, "");
+		}
+		const CRect closeRect = DrawInsetToolbarButton(dc, "X", titleBar, InsetToolbarRightOffset(0), mouseLocation);
+		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
 	}
 
 	std::string AvisoTagTypeKey(CSMRRadar::TagTypes type)
@@ -794,18 +1130,438 @@ void CInsetWindow::ResetAvisoInteractionState()
 	m_AvisoScreenArea = { 0, 0, 0, 0 };
 	m_AvisoScreenAreaValid = false;
 	m_AvisoRenderWindow = nullptr;
-	m_Grip = false;
+	CancelWindowInteraction();
 }
 
 bool CInsetWindow::IsPointInside(POINT Pt) const
 {
-	CRect areaRect(m_Area);
+	CRect areaRect = GetWindowContentRect();
 	areaRect.NormalizeRect();
 	return
 		Pt.x >= areaRect.left &&
 		Pt.x <= areaRect.right &&
 		Pt.y >= areaRect.top &&
 			Pt.y <= areaRect.bottom;
+}
+
+CRect CInsetWindow::GetWindowFrameRect() const
+{
+	return InsetFrameRect(m_AvisoLayoutMode, m_Area);
+}
+
+CRect CInsetWindow::GetWindowContentRect() const
+{
+	return InsetContentRect(m_AvisoLayoutMode, m_Area);
+}
+
+CInsetWindow::ResizeRegion CInsetWindow::HitTestResize(POINT Pt) const
+{
+	if (GetWindowFrameRect().IsRectEmpty())
+		return ResizeRegion::None;
+
+	CRect closeButton = InsetCloseButtonRect(m_AvisoLayoutMode, m_Area);
+	closeButton.NormalizeRect();
+	if (closeButton.PtInRect(Pt))
+		return ResizeRegion::None;
+	if (!IsAvisoViewport() && m_AvisoLayoutMode == AvisoLayoutMode::Floating)
+	{
+		CRect filterButton = InsetFilterButtonRect(m_AvisoLayoutMode, m_Area);
+		filterButton.NormalizeRect();
+		if (filterButton.PtInRect(Pt))
+			return ResizeRegion::None;
+	}
+
+	// These are the same rectangles registered as EuroScope moveable objects.
+	// Keep corners first so the diagonal cursor wins at the four junctions.
+	for (ResizeRegion region : {
+		ResizeRegion::TopLeft,
+		ResizeRegion::TopRight,
+		ResizeRegion::BottomLeft,
+		ResizeRegion::BottomRight,
+		ResizeRegion::Left,
+		ResizeRegion::Right,
+		ResizeRegion::Top,
+		ResizeRegion::Bottom })
+	{
+		CRect hitRect = InsetResizeObjectRect(m_AvisoLayoutMode, m_Area, region);
+		hitRect.NormalizeRect();
+		if (hitRect.PtInRect(Pt))
+			return region;
+	}
+	return ResizeRegion::None;
+}
+
+bool CInsetWindow::HitTestTitleBar(POINT Pt) const
+{
+	CRect moveRect = InsetTitleBarMoveRect(m_AvisoLayoutMode, m_Area, !IsAvisoViewport());
+	moveRect.NormalizeRect();
+	return moveRect.PtInRect(Pt) != FALSE;
+}
+
+bool CInsetWindow::BeginWindowMove(POINT Pt, const RECT* layoutBounds, bool requireTitleBarHit)
+{
+	if ((requireTitleBarHit && !HitTestTitleBar(Pt)) || m_WindowResizeActive)
+		return false;
+
+	ApplyAvisoLayoutBounds(layoutBounds);
+	m_WindowMoveActive = true;
+	m_WindowMoveStartedSnapped = IsSnappedLayout();
+	m_WindowMoveDetached = !m_WindowMoveStartedSnapped;
+	m_WindowInteractionMoved = false;
+	m_WindowInteractionStartPoint = Pt;
+	m_WindowInteractionStartArea = m_Area;
+	m_SnapPreviewValid = false;
+	m_SnapPreviewMode = AvisoLayoutMode::Floating;
+	m_SnapPreviewArea = { 0, 0, 0, 0 };
+	m_Grip = true;
+	return true;
+}
+
+bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
+{
+	if (!m_WindowMoveActive)
+		return false;
+
+	CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
+	if (bounds.IsRectEmpty())
+		return false;
+	const int initialDeltaX = Pt.x - m_WindowInteractionStartPoint.x;
+	const int initialDeltaY = Pt.y - m_WindowInteractionStartPoint.y;
+	if (!m_WindowInteractionMoved)
+	{
+		if (std::abs(initialDeltaX) < kInsetDragThresholdPx &&
+			std::abs(initialDeltaY) < kInsetDragThresholdPx)
+		{
+			return true;
+		}
+		m_WindowInteractionMoved = true;
+	}
+
+	if (m_WindowMoveStartedSnapped && !m_WindowMoveDetached)
+	{
+		const CRect snappedFrame = GetWindowFrameRect();
+		const CRect snappedTitleBar = InsetTitleBarRect(m_AvisoLayoutMode, m_Area);
+		const double horizontalGrabRatio = std::clamp(
+			static_cast<double>(m_WindowInteractionStartPoint.x - snappedFrame.left) /
+				static_cast<double>(max(1, snappedFrame.Width())),
+			0.08,
+			0.92);
+		const int titleGrabOffsetY = std::clamp(
+			static_cast<int>(m_WindowInteractionStartPoint.y - snappedTitleBar.top),
+			1,
+			max(1, static_cast<int>(snappedTitleBar.Height()) - 1));
+		FloatAvisoViewport(Pt, layoutBounds);
+		CRect detachedContent(m_Area);
+		detachedContent.NormalizeRect();
+		const int detachedWidth = detachedContent.Width();
+		const int detachedHeight = detachedContent.Height();
+		const int detachedLeft = Pt.x - static_cast<int>(std::lround(
+			static_cast<double>(detachedWidth) * horizontalGrabRatio));
+		const int detachedTop = Pt.y - titleGrabOffsetY + kAvisoViewportTopBarHeight;
+		m_Area = {
+			detachedLeft,
+			detachedTop,
+			detachedLeft + detachedWidth,
+			detachedTop + detachedHeight
+		};
+		ApplyAvisoLayoutBounds(layoutBounds);
+		m_WindowMoveDetached = true;
+		m_WindowInteractionStartPoint = Pt;
+		m_WindowInteractionStartArea = m_Area;
+		m_Grip = true;
+	}
+
+	CRect startArea(m_WindowInteractionStartArea);
+	startArea.NormalizeRect();
+	const int width = startArea.Width();
+	const int height = startArea.Height();
+	if (width <= 0 || height <= 0)
+		return false;
+
+	const int deltaX = Pt.x - m_WindowInteractionStartPoint.x;
+	const int deltaY = Pt.y - m_WindowInteractionStartPoint.y;
+	m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+	m_Area = {
+		startArea.left + deltaX,
+		startArea.top + deltaY,
+		startArea.left + deltaX + width,
+		startArea.top + deltaY + height
+	};
+	ApplyAvisoLayoutBounds(layoutBounds);
+
+	CRect previewArea;
+	AvisoLayoutMode previewMode = AvisoLayoutMode::Floating;
+	m_SnapPreviewValid = ResolveAvisoSnapTarget(Pt, bounds, previewMode, previewArea);
+	if (m_WindowInteractionMoved && m_SnapPreviewValid)
+	{
+		m_SnapPreviewMode = previewMode;
+		m_SnapPreviewArea = previewArea;
+	}
+	else
+	{
+		m_SnapPreviewMode = AvisoLayoutMode::Floating;
+		m_SnapPreviewArea = { 0, 0, 0, 0 };
+	}
+	return true;
+}
+
+bool CInsetWindow::EndWindowMove(POINT Pt, const RECT* layoutBounds)
+{
+	if (!m_WindowMoveActive)
+		return false;
+
+	UpdateWindowMove(Pt, layoutBounds);
+	if (m_WindowInteractionMoved && m_SnapPreviewValid)
+	{
+		m_AvisoLayoutMode = m_SnapPreviewMode;
+		m_Area = m_SnapPreviewArea;
+		ApplyAvisoLayoutBounds(layoutBounds);
+	}
+
+	m_WindowMoveActive = false;
+	m_WindowMoveStartedSnapped = false;
+	m_WindowMoveDetached = false;
+	m_WindowInteractionMoved = false;
+	m_SnapPreviewValid = false;
+	m_SnapPreviewMode = AvisoLayoutMode::Floating;
+	m_SnapPreviewArea = { 0, 0, 0, 0 };
+	m_Grip = false;
+	return true;
+}
+
+bool CInsetWindow::BeginWindowResize(ResizeRegion region, POINT Pt, const RECT* layoutBounds)
+{
+	if (region == ResizeRegion::None || m_WindowMoveActive)
+		return false;
+
+	ApplyAvisoLayoutBounds(layoutBounds);
+	m_WindowResizeActive = true;
+	m_WindowResizeDetached = false;
+	m_WindowResizeRegion = region;
+	m_WindowInteractionMoved = false;
+	m_WindowInteractionStartPoint = Pt;
+	m_WindowInteractionStartArea = m_Area;
+	m_WindowResizeStartFrame = GetWindowFrameRect();
+	m_SnapPreviewValid = false;
+	m_Grip = true;
+	return true;
+}
+
+bool CInsetWindow::UpdateWindowResize(POINT Pt, const RECT* layoutBounds)
+{
+	if (!m_WindowResizeActive)
+		return false;
+
+	CRect bounds = NormalizedAvisoLayoutBounds(layoutBounds);
+	if (bounds.IsRectEmpty())
+		return false;
+	const int deltaX = Pt.x - m_WindowInteractionStartPoint.x;
+	const int deltaY = Pt.y - m_WindowInteractionStartPoint.y;
+	if (!m_WindowInteractionMoved)
+	{
+		if (std::abs(deltaX) < kInsetDragThresholdPx &&
+			std::abs(deltaY) < kInsetDragThresholdPx)
+		{
+			return true;
+		}
+		m_WindowInteractionMoved = true;
+	}
+
+	if (IsSnappedLayout() &&
+		!IsSnappedResizeRegionSupported(m_AvisoLayoutMode, m_WindowResizeRegion) &&
+		!m_WindowResizeDetached)
+	{
+		CRect snappedFrame(m_WindowResizeStartFrame);
+		snappedFrame.NormalizeRect();
+		m_AvisoLayoutMode = AvisoLayoutMode::Floating;
+		m_Area = {
+			snappedFrame.left,
+			snappedFrame.top + kAvisoViewportTopBarHeight,
+			snappedFrame.right,
+			snappedFrame.bottom
+		};
+		ApplyAvisoLayoutBounds(layoutBounds);
+		m_WindowResizeDetached = true;
+	}
+
+	if (IsAvisoSplitLayout(m_AvisoLayoutMode))
+	{
+		POINT dividerPoint = Pt;
+		switch (m_AvisoLayoutMode)
+		{
+		case AvisoLayoutMode::SplitLeft:
+			dividerPoint.x = m_WindowResizeStartFrame.right + deltaX;
+			break;
+		case AvisoLayoutMode::SplitRight:
+			dividerPoint.x = m_WindowResizeStartFrame.left + deltaX;
+			break;
+		case AvisoLayoutMode::SplitTop:
+			dividerPoint.y = m_WindowResizeStartFrame.bottom + deltaY;
+			break;
+		case AvisoLayoutMode::SplitBottom:
+			dividerPoint.y = m_WindowResizeStartFrame.top + deltaY;
+			break;
+		default:
+			break;
+		}
+		ResizeAvisoSplitRectToPoint(m_AvisoLayoutMode, dividerPoint, bounds, m_Area);
+		ApplyAvisoLayoutBounds(layoutBounds);
+		return true;
+	}
+	if (IsAvisoCornerLayout(m_AvisoLayoutMode))
+	{
+		POINT dividerPoint = Pt;
+		dividerPoint.x = IsAvisoCornerRightAnchored(m_AvisoLayoutMode)
+			? m_WindowResizeStartFrame.left + deltaX
+			: m_WindowResizeStartFrame.right + deltaX;
+		dividerPoint.y = IsAvisoCornerBottomAnchored(m_AvisoLayoutMode)
+			? m_WindowResizeStartFrame.top + deltaY
+			: m_WindowResizeStartFrame.bottom + deltaY;
+		ResizeAvisoCornerRectToPoint(
+			m_AvisoLayoutMode,
+			dividerPoint,
+			bounds,
+			m_Area,
+			ResizeRegionHasHorizontalEdge(m_WindowResizeRegion),
+			ResizeRegionHasVerticalEdge(m_WindowResizeRegion));
+		ApplyAvisoLayoutBounds(layoutBounds);
+		return true;
+	}
+
+	CRect frame(m_WindowResizeStartFrame);
+	frame.NormalizeRect();
+	const bool resizeLeft = m_WindowResizeRegion == ResizeRegion::Left ||
+		m_WindowResizeRegion == ResizeRegion::TopLeft ||
+		m_WindowResizeRegion == ResizeRegion::BottomLeft;
+	const bool resizeRight = m_WindowResizeRegion == ResizeRegion::Right ||
+		m_WindowResizeRegion == ResizeRegion::TopRight ||
+		m_WindowResizeRegion == ResizeRegion::BottomRight;
+	const bool resizeTop = m_WindowResizeRegion == ResizeRegion::Top ||
+		m_WindowResizeRegion == ResizeRegion::TopLeft ||
+		m_WindowResizeRegion == ResizeRegion::TopRight;
+	const bool resizeBottom = m_WindowResizeRegion == ResizeRegion::Bottom ||
+		m_WindowResizeRegion == ResizeRegion::BottomLeft ||
+		m_WindowResizeRegion == ResizeRegion::BottomRight;
+
+	if (resizeLeft)
+		frame.left += deltaX;
+	if (resizeRight)
+		frame.right += deltaX;
+	if (resizeTop)
+		frame.top += deltaY;
+	if (resizeBottom)
+		frame.bottom += deltaY;
+
+	const int minFrameWidth = min(kAvisoMinLayoutWidth, bounds.Width());
+	const int minFrameHeight = min(kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight, bounds.Height());
+	if (frame.Width() < minFrameWidth)
+	{
+		if (resizeLeft)
+			frame.left = frame.right - minFrameWidth;
+		else
+			frame.right = frame.left + minFrameWidth;
+	}
+	if (frame.Height() < minFrameHeight)
+	{
+		if (resizeTop)
+			frame.top = frame.bottom - minFrameHeight;
+		else
+			frame.bottom = frame.top + minFrameHeight;
+	}
+
+	if (resizeLeft)
+		frame.left = max(frame.left, bounds.left);
+	if (resizeRight)
+		frame.right = min(frame.right, bounds.right);
+	if (resizeTop)
+		frame.top = max(frame.top, bounds.top);
+	if (resizeBottom)
+		frame.bottom = min(frame.bottom, bounds.bottom);
+
+	m_Area = {
+		frame.left,
+		frame.top + kAvisoViewportTopBarHeight,
+		frame.right,
+		frame.bottom
+	};
+	ApplyAvisoLayoutBounds(layoutBounds);
+	return true;
+}
+
+bool CInsetWindow::EndWindowResize(POINT Pt, const RECT* layoutBounds)
+{
+	if (!m_WindowResizeActive)
+		return false;
+	UpdateWindowResize(Pt, layoutBounds);
+	m_WindowResizeActive = false;
+	m_WindowResizeDetached = false;
+	m_WindowResizeRegion = ResizeRegion::None;
+	m_WindowInteractionMoved = false;
+	m_Grip = false;
+	return true;
+}
+
+bool CInsetWindow::IsWindowMoveActive() const
+{
+	return m_WindowMoveActive;
+}
+
+bool CInsetWindow::IsWindowResizeActive() const
+{
+	return m_WindowResizeActive;
+}
+
+CInsetWindow::ResizeRegion CInsetWindow::GetActiveResizeRegion() const
+{
+	return m_WindowResizeRegion;
+}
+
+void CInsetWindow::CancelWindowInteraction()
+{
+	m_WindowMoveActive = false;
+	m_WindowMoveStartedSnapped = false;
+	m_WindowMoveDetached = false;
+	m_WindowInteractionMoved = false;
+	m_WindowResizeActive = false;
+	m_WindowResizeDetached = false;
+	m_WindowResizeRegion = ResizeRegion::None;
+	m_SnapPreviewValid = false;
+	m_SnapPreviewMode = AvisoLayoutMode::Floating;
+	m_SnapPreviewArea = { 0, 0, 0, 0 };
+	m_Grip = false;
+}
+
+bool CInsetWindow::GetSnapPreviewRect(CRect& preview) const
+{
+	preview.SetRectEmpty();
+	if (!m_SnapPreviewValid)
+		return false;
+	preview = CRect(m_SnapPreviewArea);
+	preview.NormalizeRect();
+	return !preview.IsRectEmpty();
+}
+
+void CInsetWindow::RenderSnapPreview(Gdiplus::Graphics& graphics) const
+{
+	if (!m_SnapPreviewValid)
+		return;
+
+	CRect preview(m_SnapPreviewArea);
+	preview.NormalizeRect();
+	if (preview.Width() <= 0 || preview.Height() <= 0)
+		return;
+
+	const Gdiplus::GraphicsState state = graphics.Save();
+	graphics.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+	Gdiplus::SolidBrush fill(Gdiplus::Color(64, 72, 169, 205));
+	Gdiplus::Pen outline(Gdiplus::Color(230, 135, 220, 238), 2.0f);
+	graphics.FillRectangle(
+		&fill,
+		Gdiplus::Rect(preview.left, preview.top, preview.Width(), preview.Height()));
+	graphics.DrawRectangle(
+		&outline,
+		Gdiplus::Rect(preview.left + 1, preview.top + 1, max(1, preview.Width() - 2), max(1, preview.Height() - 2)));
+	graphics.Restore(state);
 }
 
 void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
@@ -856,6 +1612,7 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	{
 		const bool rightAnchored = IsAvisoCornerRightAnchored(m_AvisoLayoutMode);
 		const bool bottomAnchored = IsAvisoCornerBottomAnchored(m_AvisoLayoutMode);
+		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
 		const int left = rightAnchored
 			? std::clamp(static_cast<int>(area.left), static_cast<int>(bounds.left), static_cast<int>(bounds.right) - kAvisoMinLayoutWidth)
 			: static_cast<int>(bounds.left);
@@ -863,11 +1620,11 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 			? static_cast<int>(bounds.right)
 			: std::clamp(static_cast<int>(area.right), static_cast<int>(bounds.left) + kAvisoMinLayoutWidth, static_cast<int>(bounds.right));
 		const int top = bottomAnchored
-			? std::clamp(static_cast<int>(area.top), static_cast<int>(bounds.top), static_cast<int>(bounds.bottom) - kAvisoMinLayoutHeight)
+			? std::clamp(static_cast<int>(area.top), static_cast<int>(bounds.top), static_cast<int>(bounds.bottom) - minimumFrameHeight)
 			: static_cast<int>(bounds.top);
 		const int bottom = bottomAnchored
 			? static_cast<int>(bounds.bottom)
-			: std::clamp(static_cast<int>(area.bottom), static_cast<int>(bounds.top) + kAvisoMinLayoutHeight, static_cast<int>(bounds.bottom));
+			: std::clamp(static_cast<int>(area.bottom), static_cast<int>(bounds.top) + minimumFrameHeight, static_cast<int>(bounds.bottom));
 		m_Area = { left, top, right, bottom };
 		break;
 	}
@@ -902,44 +1659,16 @@ void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 		return;
 	}
 
-	const bool nearLeft = Pt.x <= bounds.left + kAvisoSnapThresholdPx;
-	const bool nearRight = Pt.x >= bounds.right - kAvisoSnapThresholdPx;
-	const bool nearTop = Pt.y <= bounds.top + kAvisoSnapThresholdPx;
-	const bool nearBottom = Pt.y >= bounds.bottom - kAvisoSnapThresholdPx;
-	const bool nearCornerLeft = Pt.x <= bounds.left + kAvisoCornerSnapThresholdPx;
-	const bool nearCornerRight = Pt.x >= bounds.right - kAvisoCornerSnapThresholdPx;
-	const bool nearCornerTop = Pt.y <= bounds.top + kAvisoCornerSnapThresholdPx;
-	const bool nearCornerBottom = Pt.y >= bounds.bottom - kAvisoCornerSnapThresholdPx;
 	AvisoLayoutMode snappedMode = AvisoLayoutMode::Floating;
-	if (nearCornerLeft && nearCornerTop)
-		snappedMode = AvisoLayoutMode::CornerTopLeft;
-	else if (nearCornerRight && nearCornerTop)
-		snappedMode = AvisoLayoutMode::CornerTopRight;
-	else if (nearCornerLeft && nearCornerBottom)
-		snappedMode = AvisoLayoutMode::CornerBottomLeft;
-	else if (nearCornerRight && nearCornerBottom)
-		snappedMode = AvisoLayoutMode::CornerBottomRight;
-	else if (nearLeft)
-		snappedMode = AvisoLayoutMode::SplitLeft;
-	else if (nearRight)
-		snappedMode = AvisoLayoutMode::SplitRight;
-	else if (nearTop)
-		snappedMode = AvisoLayoutMode::SplitTop;
-	else if (nearBottom)
-		snappedMode = AvisoLayoutMode::SplitBottom;
-
-	m_AvisoLayoutMode = snappedMode;
-	if (IsAvisoSplitLayout(snappedMode))
+	CRect snappedArea;
+	if (ResolveAvisoSnapTarget(Pt, bounds, snappedMode, snappedArea))
 	{
-		CRect splitRect = DefaultAvisoSplitRect(snappedMode, bounds);
-		if (!splitRect.IsRectEmpty())
-			m_Area = splitRect;
+		m_AvisoLayoutMode = snappedMode;
+		m_Area = snappedArea;
 	}
-	else if (IsAvisoCornerLayout(snappedMode))
+	else
 	{
-		CRect cornerRect = DefaultAvisoCornerRect(snappedMode, bounds);
-		if (!cornerRect.IsRectEmpty())
-			m_Area = cornerRect;
+		m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 	}
 
 	ApplyAvisoLayoutBounds(layoutBounds);
@@ -953,7 +1682,7 @@ void CInsetWindow::UpdateAvisoScreenArea(HWND hwnd)
 	if (hwnd == nullptr || !::IsWindow(hwnd))
 		return;
 
-	CRect areaRect(m_Area);
+	CRect areaRect = GetWindowContentRect();
 	areaRect.NormalizeRect();
 	if (areaRect.Width() <= 0 || areaRect.Height() <= 0)
 		return;
@@ -988,7 +1717,7 @@ bool CInsetWindow::TryMapAvisoScreenPoint(POINT screenPoint, POINT& avisoPoint) 
 		return false;
 	}
 
-	CRect areaRect(m_Area);
+	CRect areaRect = GetWindowContentRect();
 	areaRect.NormalizeRect();
 	if (areaRect.Width() <= 0 || areaRect.Height() <= 0)
 		return false;
@@ -1024,7 +1753,7 @@ bool CInsetWindow::UpdateAvisoPan(POINT Pt)
 
 	if (!IsAvisoViewport())
 	{
-		CRect area(m_Area);
+		CRect area = GetWindowContentRect();
 		area.NormalizeRect();
 		const POINT maximumOffset = { area.Width() / 2, area.Height() / 2 };
 		m_Offset.x = std::clamp(m_OffsetInit.x + (Pt.x - m_OffsetDrag.x), -maximumOffset.x, maximumOffset.x);
@@ -1053,7 +1782,7 @@ void CInsetWindow::EndAvisoPan()
 void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 {
 	ApplyAvisoLayoutBounds(layoutBounds);
-	CRect currentArea(m_Area);
+	CRect currentArea = GetWindowContentRect();
 	currentArea.NormalizeRect();
 	if (currentArea.Width() <= 0 || currentArea.Height() <= 0)
 		return;
@@ -1089,7 +1818,7 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	if (!IsPointInside(Pt) || !std::isfinite(scaleMultiplier) || scaleMultiplier <= 0.0)
 		return false;
 
-	CRect viewportRect(m_Area);
+	CRect viewportRect = GetWindowContentRect();
 	viewportRect.NormalizeRect();
 	const int viewportWidth = viewportRect.Width();
 	const int viewportHeight = viewportRect.Height();
@@ -1176,6 +1905,53 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 {
 	if (sObjectId == nullptr)
 		return true;
+
+	const auto originalPointerFromMovedObject = [&](const CRect& originalObject) -> POINT
+	{
+		CRect movedObject(Area);
+		movedObject.NormalizeRect();
+		return {
+			Pt.x - (movedObject.left - originalObject.left),
+			Pt.y - (movedObject.top - originalObject.top)
+		};
+	};
+
+	if (strcmp(sObjectId, "topbar") == 0)
+	{
+		if (!m_WindowMoveActive)
+		{
+			CRect originalTitleBar = InsetTitleBarMoveRect(m_AvisoLayoutMode, m_Area, !IsAvisoViewport());
+			originalTitleBar.NormalizeRect();
+			const POINT startPoint = originalPointerFromMovedObject(originalTitleBar);
+			if (!BeginWindowMove(startPoint, layoutBounds, false))
+				return true;
+		}
+
+		if (Released)
+			EndWindowMove(Pt, layoutBounds);
+		else
+			UpdateWindowMove(Pt, layoutBounds);
+		return Released;
+	}
+
+	ResizeRegion resizeRegion = ResizeRegion::None;
+	if (TryParseInsetResizeObjectId(sObjectId, resizeRegion))
+	{
+		if (!m_WindowResizeActive)
+		{
+			CRect originalResizeObject = InsetResizeObjectRect(m_AvisoLayoutMode, m_Area, resizeRegion);
+			originalResizeObject.NormalizeRect();
+			const POINT startPoint = originalPointerFromMovedObject(originalResizeObject);
+			if (!BeginWindowResize(resizeRegion, startPoint, layoutBounds))
+				return true;
+		}
+
+		if (Released)
+			EndWindowResize(Pt, layoutBounds);
+		else
+			UpdateWindowResize(Pt, layoutBounds);
+		return Released;
+	}
 
 	if (strcmp(sObjectId, "divider") == 0 || strcmp(sObjectId, "divider_x") == 0 || strcmp(sObjectId, "divider_y") == 0)
 	{
@@ -1413,7 +2189,7 @@ bool CInsetWindow::OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Are
 
 POINT CInsetWindow::projectPoint(CPosition pos)
 {
-	CRect areaRect(m_Area);
+	CRect areaRect = GetWindowContentRect();
 	areaRect.NormalizeRect();
 
 	POINT refPt = areaRect.CenterPoint();
@@ -1455,7 +2231,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		layoutBounds.bottom = chatArea.top;
 	ApplyAvisoLayoutBounds(&layoutBounds);
 
-	CRect viewportRect(m_Area);
+	CRect viewportRect = GetWindowContentRect();
 	viewportRect.NormalizeRect();
 	const int viewportWidth = viewportRect.Width();
 	const int viewportHeight = viewportRect.Height();
@@ -1470,8 +2246,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	UpdateAvisoScreenArea(renderWindow);
 
 	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
-	radar_screen->AddScreenObject(m_Id, "window", m_Area, !IsAvisoSnappedLayout(m_AvisoLayoutMode), "");
-	radar_screen->AddScreenObject(m_Id, "viewport", m_Area, false, "");
+	radar_screen->AddScreenObject(m_Id, "window", viewportRect, false, "");
+	radar_screen->AddScreenObject(m_Id, "viewport", viewportRect, false, "");
 
 	auto drawCenteredMessage = [&](const char* message)
 	{
@@ -1488,67 +2264,15 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	{
 		CBrush frameBrush(RGB(5, 7, 8));
 		dc.FrameRect(viewportRect, &frameBrush);
-
-		if (IsAvisoSplitLayout(m_AvisoLayoutMode))
-		{
-			const bool reserveTopRightFps =
-				radar_screen->ShowFps &&
-				(m_AvisoLayoutMode == AvisoLayoutMode::SplitTop ||
-					m_AvisoLayoutMode == AvisoLayoutMode::SplitRight);
-			const int floatTop = viewportRect.top + (reserveTopRightFps ? 27 : 5);
-			CRect floatRect(
-				viewportRect.right - 23,
-				floatTop,
-				viewportRect.right - 6,
-				floatTop + 17);
-			const CRect floatButtonRect = DrawInsetButton(dc, "F", floatRect, mouseLocation);
-			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
-
-			DrawAvisoDivider(dc, radar_screen, m_Id, "divider", AvisoSplitDividerRect(m_AvisoLayoutMode, viewportRect));
-			return;
-		}
-
-		if (IsAvisoCornerLayout(m_AvisoLayoutMode))
-		{
-			CRect floatArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, false);
-			if (radar_screen->ShowFps && m_AvisoLayoutMode == AvisoLayoutMode::CornerTopRight)
-				floatArea.OffsetRect(0, 22);
-			const CRect floatButtonRect = DrawInsetButton(
-				dc,
-				"F",
-				floatArea,
-				mouseLocation);
-			radar_screen->AddScreenObject(m_Id, "float", floatButtonRect, false, "");
-
-			CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, viewportRect, true);
-			resizeArea.NormalizeRect();
-			CBrush resizeBrush(RGB(41, 57, 59));
-			dc.FillRect(resizeArea, &resizeBrush);
-			radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
-			dc.Draw3dRect(resizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
-
-			DrawAvisoDivider(dc, radar_screen, m_Id, "divider_x", AvisoCornerVerticalDividerRect(m_AvisoLayoutMode, viewportRect));
-			DrawAvisoDivider(dc, radar_screen, m_Id, "divider_y", AvisoCornerHorizontalDividerRect(m_AvisoLayoutMode, viewportRect));
-			return;
-		}
-
-		POINT bottomRight = { m_Area.right, m_Area.bottom };
-		POINT resizeTopLeft = { bottomRight.x - 10, bottomRight.y - 10 };
-		CRect resizeArea(resizeTopLeft, bottomRight);
-		resizeArea.NormalizeRect();
-		CBrush resizeBrush(RGB(41, 57, 59));
-		dc.FillRect(resizeArea, &resizeBrush);
-		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
-		dc.Draw3dRect(resizeArea, RGB(0, 0, 0), RGB(0, 0, 0));
-
-		POINT topBarTopLeft = viewportRect.TopLeft();
-		topBarTopLeft.y -= kAvisoViewportTopBarHeight;
-		POINT topBarBottomRight = { viewportRect.right, viewportRect.top };
-		CRect topBar(topBarTopLeft, topBarBottomRight);
-		topBar.NormalizeRect();
-		DrawStripedInsetTitleBar(dc, topBar);
-		radar_screen->AddScreenObject(m_Id, "topbar", topBar, true, "");
-		DrawInsetTitle(dc, topBar, "AVISO");
+		DrawInsetWindowChrome(
+			dc,
+			radar_screen,
+			m_Id,
+			m_AvisoLayoutMode,
+			m_Area,
+			"AVISO",
+			false,
+			mouseLocation);
 	};
 
 	const std::string airport = radar_screen->getActiveAirport();
@@ -1657,9 +2381,23 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (m_AvisoState->cacheGroupGeneration != groupGeneration)
 			return false;
 
+		const double cachedLongitudeSpan =
+			m_AvisoState->displayMaxLongitude - m_AvisoState->displayMinLongitude;
+		const double cachedLatitudeSpan =
+			m_AvisoState->displayMaxLatitude - m_AvisoState->displayMinLatitude;
 		const double transformPixelTolerance = 12.0;
-		return AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) &&
-			AvisoVectorWithinTolerance(m_AvisoState->projectedTopLeft, m_AvisoState->projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance);
+		return AvisoProjectionScaleWithinTolerance(
+			m_AvisoState->projectedTopLeft,
+			m_AvisoState->projectedTopRight,
+			m_AvisoState->projectedBottomLeft,
+			cachedLongitudeSpan,
+			cachedLatitudeSpan,
+			projectedTopLeft,
+			projectedTopRight,
+			projectedBottomLeft,
+			lonSpan,
+			latSpan,
+			transformPixelTolerance);
 	};
 	auto completedResultMatchesCurrentView = [&](const CSMRRadar::AvisoRasterRenderResult& result) -> bool
 	{
@@ -1672,9 +2410,21 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return false;
 		}
 
+		const double resultLongitudeSpan = result.displayMaxLongitude - result.displayMinLongitude;
+		const double resultLatitudeSpan = result.displayMaxLatitude - result.displayMinLatitude;
 		const double transformPixelTolerance = 12.0;
-		if (!AvisoVectorWithinTolerance(result.projectedTopLeft, result.projectedTopRight, projectedTopLeft, projectedTopRight, transformPixelTolerance) ||
-			!AvisoVectorWithinTolerance(result.projectedTopLeft, result.projectedBottomLeft, projectedTopLeft, projectedBottomLeft, transformPixelTolerance))
+		if (!AvisoProjectionScaleWithinTolerance(
+			result.projectedTopLeft,
+			result.projectedTopRight,
+			result.projectedBottomLeft,
+			resultLongitudeSpan,
+			resultLatitudeSpan,
+			projectedTopLeft,
+			projectedTopRight,
+			projectedBottomLeft,
+			lonSpan,
+			latSpan,
+			transformPixelTolerance))
 		{
 			return false;
 		}
@@ -1759,15 +2509,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const double sourceWidth = visibleWidth * sourceScaleX;
 		const double sourceHeight = visibleHeight * sourceScaleY;
 
-		const int destLeft = static_cast<int>(std::floor(visibleLeft));
-		const int destTop = static_cast<int>(std::floor(visibleTop));
-		const int destRightInt = static_cast<int>(std::ceil(visibleRight));
-		const int destBottomInt = static_cast<int>(std::ceil(visibleBottom));
-		const int destWidthInt = destRightInt - destLeft;
-		const int destHeightInt = destBottomInt - destTop;
-		if (destWidthInt <= 0 || destHeightInt <= 0)
-			return false;
-
 		int sourceXInt = static_cast<int>(std::floor(sourceX));
 		int sourceYInt = static_cast<int>(std::floor(sourceY));
 		int sourceRightInt = static_cast<int>(std::ceil(sourceX + sourceWidth));
@@ -1779,6 +2520,22 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const int sourceWidthInt = sourceRightInt - sourceXInt;
 		const int sourceHeightInt = sourceBottomInt - sourceYInt;
 		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
+			return false;
+
+		// Derive the integer destination from the rounded source crop so both
+		// rectangles remain on one geographic transform. Rounding them
+		// independently creates a visible one-pixel snap when a new cache arrives.
+		const double alignedDestLeft = destX + (static_cast<double>(sourceXInt) / sourceScaleX);
+		const double alignedDestTop = destY + (static_cast<double>(sourceYInt) / sourceScaleY);
+		const double alignedDestRight = destX + (static_cast<double>(sourceRightInt) / sourceScaleX);
+		const double alignedDestBottom = destY + (static_cast<double>(sourceBottomInt) / sourceScaleY);
+		const int destLeft = static_cast<int>(std::lround(alignedDestLeft));
+		const int destTop = static_cast<int>(std::lround(alignedDestTop));
+		const int destRightInt = static_cast<int>(std::lround(alignedDestRight));
+		const int destBottomInt = static_cast<int>(std::lround(alignedDestBottom));
+		const int destWidthInt = destRightInt - destLeft;
+		const int destHeightInt = destBottomInt - destTop;
+		if (destWidthInt <= 0 || destHeightInt <= 0)
 			return false;
 
 		HDC sourceDc = ::CreateCompatibleDC(hDC);
@@ -1834,6 +2591,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	};
 	auto drawCacheFallbackDuringInteraction = [&]() -> bool
 	{
+		// A resize must never stretch a clamped source crop to the new aspect
+		// ratio. The normal geo-aligned cache path above is size-independent.
+		if (m_WindowResizeActive)
+			return false;
 		if (!m_Grip && !m_AvisoRightPanning && !avisoZoomRecentlyChanged)
 			return false;
 		if (m_AvisoState->cacheBitmap == nullptr ||
@@ -3607,12 +4368,28 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
 	const Color squawkErrorLabelColor = getSectionColor(labelsSection, "squawk_error_color", Color(255, 255, 0, 0));
 
-	CRect windowAreaCRect(m_Area);
+	CRect windowAreaCRect = GetWindowContentRect();
 	windowAreaCRect.NormalizeRect();
 
 	// We create the radar
 	dc.FillSolidRect(windowAreaCRect, qBackgroundColor);
-	radar_screen->AddScreenObject(m_Id, "window", m_Area, !IsSnappedLayout(), "");
+	radar_screen->AddScreenObject(m_Id, "window", windowAreaCRect, false, "");
+
+	// Keep every SRW drawing primitive and hit target inside the usable content
+	// rectangle.  This matters when a docked divider is resized through a tag or
+	// target: the title bar and neighbouring radar area must remain unobstructed.
+	const int srwSavedDc = ::SaveDC(hDC);
+	if (srwSavedDc != 0)
+		::IntersectClipRect(hDC, windowAreaCRect.left, windowAreaCRect.top, windowAreaCRect.right, windowAreaCRect.bottom);
+	const Gdiplus::GraphicsState srwGraphicsState = gdi->Save();
+	gdi->SetClip(CopyRect(windowAreaCRect), Gdiplus::CombineModeIntersect);
+	const auto clipToWindowContent = [&](CRect rect) -> CRect
+	{
+		rect.NormalizeRect();
+		CRect clipped;
+		clipped.IntersectRect(rect, windowAreaCRect);
+		return clipped;
+	};
 
 	auto scale = m_Scale;
 
@@ -3643,7 +4420,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			Pt2 = projectPoint(EndTwo);
 
 			POINT toDraw1, toDraw2;
-			if (LiangBarsky(m_Area, Pt1, Pt2, toDraw1, toDraw2)) {
+			if (LiangBarsky(windowAreaCRect, Pt1, Pt2, toDraw1, toDraw2)) {
 				dc.MoveTo(toDraw1);
 				dc.LineTo(toDraw2);
 
@@ -3672,7 +4449,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				Pt1 = projectPoint(Threshold);
 				Pt2 = projectPoint(endExtended);
 
-				if (LiangBarsky(m_Area, Pt1, Pt2, toDraw1, toDraw2)) {
+				if (LiangBarsky(windowAreaCRect, Pt1, Pt2, toDraw1, toDraw2)) {
 					dc.SelectObject(&ExtendedCentreLinePen);
 					dc.MoveTo(toDraw1);
 					dc.LineTo(toDraw2);
@@ -3691,7 +4468,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					Pt1 = projectPoint(tickBottom);
 					Pt2 = projectPoint(tickTop);
 
-					if (LiangBarsky(m_Area, Pt1, Pt2, toDraw1, toDraw2)) {
+					if (LiangBarsky(windowAreaCRect, Pt1, Pt2, toDraw1, toDraw2)) {
 						dc.SelectObject(&ExtendedCentreLinePen);
 						dc.MoveTo(toDraw1);
 						dc.LineTo(toDraw2);
@@ -3809,10 +4586,13 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 			CRect TargetArea(RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4);
 			TargetArea.NormalizeRect();
-			radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign, TargetArea, false, radar_screen->GetBottomLine(rtCallsign).c_str());
+			const CRect clippedTargetArea = clipToWindowContent(TargetArea);
+			if (!clippedTargetArea.IsRectEmpty())
+				radar_screen->AddScreenObject(DRAWING_AC_SYMBOL_APPWINDOW_BASE + (m_Id - APPWINDOW_BASE), rtCallsign, clippedTargetArea, false, radar_screen->GetBottomLine(rtCallsign).c_str());
 		}
 
-		if (mouseWithin(mouseLocation, { RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4 })) {
+		if (mouseWithin(mouseLocation, windowAreaCRect) &&
+			mouseWithin(mouseLocation, { RtPoint.x - 4, RtPoint.y - 4, RtPoint.x + 4, RtPoint.y + 4 })) {
 			dc.MoveTo(RtPoint.x, RtPoint.y - 6);
 			dc.LineTo(RtPoint.x - 4, RtPoint.y - 10);
 			dc.MoveTo(RtPoint.x, RtPoint.y - 6);
@@ -4356,7 +5136,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255)));
 
 			m_TagAreas[rtCallsign] = TagBackgroundRect;
-			radar_screen->AddScreenObject(m_Id, rtCallsign, TagBackgroundRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
+			const CRect clippedTagArea = clipToWindowContent(TagBackgroundRect);
+			if (!clippedTagArea.IsRectEmpty())
+				radar_screen->AddScreenObject(m_Id, rtCallsign, clippedTagArea, true, radar_screen->GetBottomLine(rtCallsign).c_str());
 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
@@ -4411,7 +5193,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					{
 						CRect ItemRect(textLeft + widthOffset, textTop + heightOffset,
 							textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
-						radar_screen->AddScreenObject(clickItemType, rtCallsign, ItemRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
+						const CRect clippedItemRect = clipToWindowContent(ItemRect);
+						if (!clippedItemRect.IsRectEmpty())
+							radar_screen->AddScreenObject(clickItemType, rtCallsign, clippedItemRect, true, radar_screen->GetBottomLine(rtCallsign).c_str());
 					}
 
 					widthOffset += renderedElement.measuredWidth;
@@ -4474,61 +5258,22 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 	}
 
+	gdi->Restore(srwGraphicsState);
+	if (srwSavedDc != 0)
+		::RestoreDC(hDC, srwSavedDc);
+
 	CBrush frameBrush(RGB(5, 7, 8));
 	dc.FrameRect(windowAreaCRect, &frameBrush);
-	if (IsAvisoSplitLayout(m_AvisoLayoutMode))
-	{
-		const bool reserveTopRightFps =
-			radar_screen->ShowFps &&
-			(m_AvisoLayoutMode == AvisoLayoutMode::SplitTop ||
-				m_AvisoLayoutMode == AvisoLayoutMode::SplitRight);
-		const int floatTop = windowAreaCRect.top + (reserveTopRightFps ? 27 : 5);
-		CRect floatArea(windowAreaCRect.right - 23, floatTop, windowAreaCRect.right - 6, floatTop + 17);
-		const CRect floatButton = DrawInsetButton(dc, "F", floatArea, mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "float", floatButton, false, "");
-		DrawAvisoDivider(dc, radar_screen, m_Id, "divider", AvisoSplitDividerRect(m_AvisoLayoutMode, windowAreaCRect));
-	}
-	else if (IsAvisoCornerLayout(m_AvisoLayoutMode))
-	{
-		CRect floatArea = AvisoCornerButtonRect(m_AvisoLayoutMode, windowAreaCRect, false);
-		if (radar_screen->ShowFps && m_AvisoLayoutMode == AvisoLayoutMode::CornerTopRight)
-			floatArea.OffsetRect(0, 22);
-		const CRect floatButton = DrawInsetButton(dc, "F", floatArea, mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "float", floatButton, false, "");
-
-		CRect resizeArea = AvisoCornerButtonRect(m_AvisoLayoutMode, windowAreaCRect, true);
-		resizeArea.NormalizeRect();
-		dc.FillSolidRect(resizeArea, RGB(41, 57, 59));
-		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
-		dc.Draw3dRect(resizeArea, RGB(5, 7, 8), RGB(5, 7, 8));
-		DrawAvisoDivider(dc, radar_screen, m_Id, "divider_x", AvisoCornerVerticalDividerRect(m_AvisoLayoutMode, windowAreaCRect));
-		DrawAvisoDivider(dc, radar_screen, m_Id, "divider_y", AvisoCornerHorizontalDividerRect(m_AvisoLayoutMode, windowAreaCRect));
-	}
-	else
-	{
-		POINT bottomRight = { m_Area.right, m_Area.bottom };
-		POINT topLeft = { bottomRight.x - 10, bottomRight.y - 10 };
-		CRect resizeArea(topLeft, bottomRight);
-		resizeArea.NormalizeRect();
-		dc.FillSolidRect(resizeArea, RGB(41, 57, 59));
-		radar_screen->AddScreenObject(m_Id, "resize", resizeArea, true, "");
-		dc.Draw3dRect(resizeArea, RGB(5, 7, 8), RGB(5, 7, 8));
-
-		topLeft = windowAreaCRect.TopLeft();
-		topLeft.y -= kAvisoViewportTopBarHeight;
-		bottomRight = { windowAreaCRect.right, windowAreaCRect.top };
-		CRect topBar(topLeft, bottomRight);
-		topBar.NormalizeRect();
-		DrawStripedInsetTitleBar(dc, topBar);
-		radar_screen->AddScreenObject(m_Id, "topbar", topBar, true, "");
-
-		const std::string title = "SRW " + std::to_string(m_Id - APPWINDOW_BASE);
-		DrawInsetTitle(dc, topBar, title);
-		const CRect filterRect = DrawInsetToolbarButton(dc, "F", topBar, InsetToolbarRightOffset(1), mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "filter", filterRect, false, "");
-		const CRect closeRect = DrawInsetToolbarButton(dc, "X", topBar, InsetToolbarRightOffset(0), mouseLocation);
-		radar_screen->AddScreenObject(m_Id, "close", closeRect, false, "");
-	}
+	const std::string title = "SRW " + std::to_string(m_Id - APPWINDOW_BASE);
+	DrawInsetWindowChrome(
+		dc,
+		radar_screen,
+		m_Id,
+		m_AvisoLayoutMode,
+		m_Area,
+		title,
+		true,
+		mouseLocation);
 
 	dc.Detach();
 }

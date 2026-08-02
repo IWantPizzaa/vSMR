@@ -653,6 +653,7 @@ public:
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
 	void InvalidateAvisoGroupRendering();
 	void ClearAvisoGeoJsonRasterCache();
+	CRect ResolveMainAvisoRenderArea();
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
 	bool IsShutdownRequested() const;
@@ -713,11 +714,10 @@ public:
 	//---OnOverScreenObject---------------------------------------------
 
 	virtual void OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area);
-	bool HandleAvisoMouseButtonDown(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button);
-	bool HandleAvisoMouseButtonUp(HWND hwnd, WPARAM wParam, LPARAM lParam, int Button);
-	bool HandleAvisoMouseMove(HWND hwnd, WPARAM wParam, LPARAM lParam);
+	bool HandleInsetSetCursor(HWND hwnd);
 	bool HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam);
 	bool HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
+	void CancelInsetWindowInteractions();
 
 	//---OnCompileCommand-----------------------------------------
 

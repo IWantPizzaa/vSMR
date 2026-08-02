@@ -34,6 +34,19 @@ public:
 		SplitBottom = 8
 	};
 
+	enum class ResizeRegion
+	{
+		None = 0,
+		Left,
+		Right,
+		Top,
+		Bottom,
+		TopLeft,
+		TopRight,
+		BottomLeft,
+		BottomRight
+	};
+
 	CInsetWindow(int Id);
 	virtual ~CInsetWindow();
 
@@ -72,6 +85,22 @@ public:
 	bool IsAvisoViewport() const;
 	bool IsSnappedLayout() const;
 	bool IsPointInside(POINT Pt) const;
+	CRect GetWindowFrameRect() const;
+	CRect GetWindowContentRect() const;
+	ResizeRegion HitTestResize(POINT Pt) const;
+	bool HitTestTitleBar(POINT Pt) const;
+	bool BeginWindowMove(POINT Pt, const RECT* layoutBounds, bool requireTitleBarHit = true);
+	bool UpdateWindowMove(POINT Pt, const RECT* layoutBounds);
+	bool EndWindowMove(POINT Pt, const RECT* layoutBounds);
+	bool BeginWindowResize(ResizeRegion region, POINT Pt, const RECT* layoutBounds);
+	bool UpdateWindowResize(POINT Pt, const RECT* layoutBounds);
+	bool EndWindowResize(POINT Pt, const RECT* layoutBounds);
+	bool IsWindowMoveActive() const;
+	bool IsWindowResizeActive() const;
+	ResizeRegion GetActiveResizeRegion() const;
+	void CancelWindowInteraction();
+	bool GetSnapPreviewRect(CRect& preview) const;
+	void RenderSnapPreview(Gdiplus::Graphics& graphics) const;
 	void ApplyAvisoLayoutBounds(const RECT* layoutBounds);
 	void SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds);
 	void UpdateAvisoScreenArea(HWND hwnd);
@@ -90,4 +119,17 @@ private:
 	string icao;
 	map<string, CPosition> AptPositions;
 	std::unique_ptr<AvisoViewportState> m_AvisoState;
+	bool m_WindowMoveActive = false;
+	bool m_WindowMoveStartedSnapped = false;
+	bool m_WindowMoveDetached = false;
+	bool m_WindowInteractionMoved = false;
+	POINT m_WindowInteractionStartPoint = { 0, 0 };
+	RECT m_WindowInteractionStartArea = { 0, 0, 0, 0 };
+	bool m_WindowResizeActive = false;
+	bool m_WindowResizeDetached = false;
+	ResizeRegion m_WindowResizeRegion = ResizeRegion::None;
+	RECT m_WindowResizeStartFrame = { 0, 0, 0, 0 };
+	bool m_SnapPreviewValid = false;
+	AvisoLayoutMode m_SnapPreviewMode = AvisoLayoutMode::Floating;
+	RECT m_SnapPreviewArea = { 0, 0, 0, 0 };
 };

@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "InsetWindow.h"
 #include "SMRRadar.hpp"
 #include "VsmrControlCenterDialog.hpp"
 
@@ -1000,10 +1001,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 
 	auto toggleAppWindow = [&](int appWindowId)
 	{
+		CancelInsetWindowInteractions();
 		auto display = appWindowDisplays.find(appWindowId);
 		if (display != appWindowDisplays.end())
 		{
 			display->second = !display->second;
+			if (!display->second)
+			{
+				auto window = appWindows.find(appWindowId);
+				if (window != appWindows.end() && window->second != nullptr)
+					window->second->ResetAvisoInteractionState();
+			}
 			SaveInsetStateToAsrForAirport(getActiveAirport());
 		}
 		syncControlCenter();
