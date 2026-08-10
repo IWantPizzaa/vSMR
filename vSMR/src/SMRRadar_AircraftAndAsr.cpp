@@ -971,6 +971,10 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if (!LoadInsetStateFromAsrForAirport(getActiveAirport(), true))
 		ApplyDefaultAvisoPresetIfConfigured();
 	SaveInsetStateToAsrForAirport(getActiveAirport());
+	InitialInsetStateRestorePending = true;
+	InitialInsetStateRestoreBounds.SetRectEmpty();
+	InitialInsetStateRestoreStableFrames = 0;
+	InitialInsetStateRestoreBoundsChangedTick = ::GetTickCount();
 	AvisoGeoJsonScrollSelected = false;
 	for (auto& appWindow : appWindows)
 	{
@@ -1032,7 +1036,8 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
 
 	SaveRuntimeMenuPositionToAsr();
-	SaveInsetStateToAsrForAirport(getActiveAirport());
+	if (!InitialInsetStateRestorePending)
+		SaveInsetStateToAsrForAirport(getActiveAirport());
 }
 
 

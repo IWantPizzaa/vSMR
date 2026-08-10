@@ -2534,10 +2534,12 @@ input:focus, select:focus, textarea:focus {
   border-radius: 5px;
   background: #1f292c;
 }
-.icon-symbol-preview svg {
-  width: 100%;
-  height: 100%;
+.icon-preview-stage {
   min-height: 104px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #1f292c;
 }
 .icon-symbol-preview > span {
   align-self: center;
@@ -2549,29 +2551,31 @@ input:focus, select:focus, textarea:focus {
   font: 8px/1 var(--mono);
   text-transform: uppercase;
 }
-.icon-preview-grid {
+.icon-preview-vector {
+  width: 96px;
+  height: 96px;
+  overflow: visible;
+}
+.icon-preview-vector.nova {
+  width: 40px;
+  height: 40px;
   fill: none;
-  stroke: #344247;
+  stroke: #fff;
   stroke-width: 1;
-  stroke-dasharray: 2 3;
+  shape-rendering: geometricPrecision;
 }
-.icon-preview-symbol {
-  fill: none;
-  stroke: #c7e0eb;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-.icon-preview-symbol.with-primary {
-  filter: drop-shadow(0 0 2px rgba(122,197,226,.45));
-}
-.icon-preview-symbol.without-primary {
-  opacity: .38;
-}
-.icon-preview-symbol .icon-preview-fill {
-  fill: #c7e0eb;
+.icon-preview-vector.triangle,
+.icon-preview-vector.diamond {
+  fill: #fff;
   stroke: none;
+}
+.icon-preview-aircraft {
+  display: block;
+  object-fit: fill;
+  image-rendering: auto;
+}
+.icon-preview-aircraft.missing {
+  visibility: hidden;
 }
 .icon-symbol-controls {
   min-width: 0;
@@ -5156,7 +5160,9 @@ input[type="range"] {
    -------------------------------------------------------------------------- */
 :root {
   --ui-control-height: 22px;
+  --ui-compact-height: 18px;
   --ui-panel-title-height: 23px;
+  --ui-card-title-height: 22px;
   --ui-actionbar-height: 30px;
   --ui-gap: 4px;
   --ui-page-padding: 4px;
@@ -5165,11 +5171,45 @@ input[type="range"] {
   --ui-control-radius: 3px;
   --ui-outer-border: #050708;
   --ui-inner-border: #111719;
+  --ui-divider: #3b494d;
+  --ui-page-bg: #253033;
+  --ui-panel-bg: #293639;
   --ui-panel-title-bg: #222d30;
   --ui-card-bg: #273438;
   --ui-card-title-bg: #2a393c;
-  --ui-list-bg: #29393b;
+  --ui-field-bg: #20292c;
+  --ui-list-shell-bg: #222d30;
+  --ui-list-bg: #29383b;
+  --ui-list-hover: #35474b;
+  --ui-button-bg: #29393b;
+  --ui-button-hover: #35474b;
   --ui-toolbar-bg: #242f32;
+  --ui-popup-bg: #202a2d;
+  --ui-rail-bg: #1e282b;
+  --ui-text: #d0d9dc;
+  --ui-muted-text: #8fa1a6;
+  --ui-accent: #5096b4;
+  --ui-accent-hover: #62a5c1;
+  --ui-accent-text: #f4f8f9;
+  --ui-disabled-bg: #1f2a2d;
+  --ui-disabled-text: #5b6b70;
+  --ui-danger-hover: #703337;
+
+  /* Older layout rules still consume these names. Keep one source of truth. */
+  --ui-title-height: var(--ui-panel-title-height);
+  --ui-action-height: var(--ui-actionbar-height);
+  --ui-radius-panel: var(--ui-panel-radius);
+  --ui-radius-control: var(--ui-control-radius);
+  --ui-border-outer: var(--ui-outer-border);
+  --ui-border-inner: var(--ui-inner-border);
+
+  /* Base components and the native Runtime Menu share this palette. */
+  --bg: var(--ui-page-bg);
+  --panel: var(--ui-panel-bg);
+  --control: var(--ui-button-bg);
+  --control-hover: var(--ui-button-hover);
+  --accent: var(--ui-accent);
+  --accent-text: var(--ui-accent-text);
 }
 
 /* Global geometry and control rhythm. */
@@ -5185,7 +5225,7 @@ input[type="range"] {
 .panel {
   border: 1px solid var(--ui-outer-border);
   border-radius: var(--ui-panel-radius);
-  background: var(--panel);
+  background: var(--ui-panel-bg);
 }
 .panel-title {
   height: var(--ui-panel-title-height);
@@ -6060,4 +6100,479 @@ html.host-mode .control-window.hidden {
 
 @media (max-width: 680px) {
   .datalink-card-body { padding: 5px; }
+}
+
+/* ==========================================================================
+   Shared vSMR visual authority
+   --------------------------------------------------------------------------
+   Page-specific rules may arrange components, but color, border, radius and
+   control-height semantics live here. This is also the palette mirrored by
+   the native EuroScope Runtime Menu.
+   ========================================================================== */
+
+/* Window and navigation surfaces. */
+.page,
+.subpage,
+.aviso-view {
+  background: var(--ui-page-bg);
+}
+
+.page-rail {
+  background: var(--ui-rail-bg);
+}
+
+.page-rail .rail-button {
+  width: 35px;
+  min-width: 35px;
+  height: 35px;
+  min-height: 35px;
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.page-rail .rail-button:not(:disabled):hover,
+.page-rail .rail-button.open {
+  background: var(--ui-button-hover);
+}
+
+.page-rail .rail-button.active,
+.page-rail .rail-save-button:not(:disabled) {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+.page-rail .rail-save-button:not(:disabled):hover {
+  background: var(--ui-accent-hover);
+}
+
+/* Top-level panels and their headers. */
+.panel {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-panel-bg);
+}
+
+.panel-title {
+  height: var(--ui-panel-title-height);
+  min-height: var(--ui-panel-title-height);
+  border-bottom-color: var(--ui-inner-border);
+  border-radius: calc(var(--ui-panel-radius) - 1px) calc(var(--ui-panel-radius) - 1px) 0 0;
+  background: var(--ui-panel-title-bg);
+  color: var(--ui-text);
+}
+
+/* Level-two editor cards use one body and one integrated heading style. */
+.compact-group,
+.embedded-editor-card,
+.alert-toggle-card,
+.runtime-linked-toggle,
+.advanced-disclosure {
+  border-color: var(--ui-inner-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-card-bg);
+}
+
+.rule-detail-scroll .compact-group {
+  margin-block: var(--ui-gap);
+  padding-bottom: 5px;
+}
+
+.compact-group > legend,
+.embedded-editor-title,
+.advanced-disclosure > summary {
+  height: var(--ui-card-title-height);
+  min-height: var(--ui-card-title-height);
+  border-bottom-color: var(--ui-inner-border);
+  border-radius: calc(var(--ui-card-radius) - 1px) calc(var(--ui-card-radius) - 1px) 0 0;
+  background: var(--ui-card-title-bg);
+  color: var(--ui-text);
+  line-height: var(--ui-card-title-height);
+}
+
+.advanced-disclosure > summary {
+  padding: 0 7px;
+}
+
+.title-close {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.title-close:hover {
+  background: var(--ui-button-hover);
+}
+
+/* Inputs and select-like controls. */
+input,
+select,
+textarea,
+.checkbox-dropdown-button {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background-color: var(--ui-field-bg);
+  color: var(--ui-text);
+}
+
+.checkbox-dropdown-button {
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+}
+
+input:not(:disabled):hover,
+select:not(:disabled):hover,
+textarea:not(:disabled):hover,
+.checkbox-dropdown-button:not(:disabled):hover {
+  border-color: var(--ui-button-hover);
+  background-color: var(--ui-field-bg);
+}
+
+/* Standard actions are 22px. Only header/icon tools use the 18px tier. */
+.ui-button,
+.inline-add,
+.path-row button,
+.token-strip button,
+.filter-menu summary,
+.datalink-password-control button {
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.title-tool,
+.mini-tools button,
+.legend-tools button,
+.criterion-row button,
+.alert-runway-remove,
+.aviso-member-remove,
+.runtime-popover-title button {
+  height: var(--ui-compact-height);
+  min-height: var(--ui-compact-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.ui-button:not(:disabled):hover,
+.inline-add:not(:disabled):hover,
+.path-row button:not(:disabled):hover,
+.token-strip button:not(:disabled):hover,
+.filter-menu summary:hover,
+.title-tool:not(:disabled):hover,
+.mini-tools button:not(:disabled):hover,
+.legend-tools button:not(:disabled):hover,
+.criterion-row button:not(:disabled):hover,
+.datalink-password-control button:not(:disabled):hover,
+.datalink-password-control button.showing,
+.runtime-popover-title button:not(:disabled):hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
+}
+
+.ui-button.primary {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+  font-weight: 700;
+}
+
+.ui-button.primary:not(:disabled):hover {
+  background: var(--ui-accent-hover);
+}
+
+.ui-button.danger,
+.aviso-member-remove,
+.alert-runway-remove {
+  background: var(--ui-button-bg);
+  color: #e5a7a7;
+}
+
+.ui-button.danger:not(:disabled):hover,
+.mini-tools button[title="Delete"]:not(:disabled):hover,
+.aviso-member-remove:not(:disabled):hover,
+.alert-runway-remove:not(:disabled):hover {
+  background: var(--ui-danger-hover);
+  color: #fff0f0;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: default;
+  opacity: .48;
+}
+
+.ui-button:disabled:hover,
+.inline-add:disabled:hover,
+.path-row button:disabled:hover,
+.token-strip button:disabled:hover,
+.title-tool:disabled:hover,
+.mini-tools button:disabled:hover,
+.legend-tools button:disabled:hover,
+.criterion-row button:disabled:hover,
+.runtime-popover-title button:disabled:hover {
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.ui-button.primary:disabled:hover {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+.ui-button.danger:disabled:hover,
+.mini-tools button[title="Delete"]:disabled:hover {
+  background: var(--ui-button-bg);
+  color: #e5a7a7;
+}
+
+/* Segmented controls are standard-height buttons sharing one outer shell. */
+.segmented-control {
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+}
+
+.segmented-control button {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-right: 1px solid var(--ui-outer-border);
+  border-radius: 0;
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.segmented-control button:hover {
+  background: var(--ui-button-hover);
+}
+
+.segmented-control button.active {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+/* Every list shell and row uses the same radius and surface hierarchy. */
+.selection-list,
+.menu-tree-box,
+.aviso-style-tree,
+.aviso-label-list,
+.aviso-group-list,
+.aviso-group-member-list,
+.aviso-group-content-list,
+.alert-runway-table,
+.runtime-choice-box {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-list-shell-bg);
+  box-shadow: none;
+}
+
+.group-members-card .aviso-group-member-list {
+  border-color: var(--ui-outer-border);
+  background: var(--ui-list-shell-bg);
+}
+
+.selection-row,
+.menu-tree-row,
+.aviso-style-row,
+.aviso-label-row,
+.aviso-group-row,
+.aviso-group-member-row,
+.group-content-row,
+.alert-runway-row,
+.runtime-choice-row {
+  border-bottom-color: var(--ui-inner-border);
+  border-radius: 0;
+  background: var(--ui-list-bg);
+}
+
+.selection-row:hover,
+.menu-tree-row:hover,
+.aviso-style-row:hover,
+.aviso-label-row:hover,
+.aviso-group-row:hover,
+.aviso-group-member-row:hover,
+.group-content-row:hover,
+.alert-runway-row:hover,
+.runtime-choice-row:hover {
+  background: var(--ui-list-hover);
+}
+
+.selection-row.active,
+.menu-tree-row.active,
+.aviso-style-row.active,
+.aviso-label-row.active,
+.aviso-group-row.active,
+.group-content-row.selected,
+.runtime-choice-row.active {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+/* Inset visibility is conveyed by the eye, not by a selection highlight. */
+.runtime-choice-row.runtime-inset-row.active {
+  background: var(--ui-list-bg);
+  color: var(--ui-text);
+}
+
+.runtime-choice-row.runtime-inset-row.active:hover {
+  background: var(--ui-list-hover);
+}
+
+/* Popup menus are list pickers, not a fourth button style. */
+.compact-popup-menu,
+.checkbox-dropdown-menu,
+.rail-profile-popover,
+.runtime-popover,
+.compact-dialog-panel {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-popup-bg);
+}
+
+.compact-popup-menu button {
+  min-height: var(--ui-control-height);
+  border: 0;
+  border-radius: 2px;
+  background: var(--ui-list-bg);
+  color: var(--ui-text);
+}
+
+.compact-popup-menu button:hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
+}
+
+/* Runtime preview mirrors the native EuroScope overlay palette. */
+.runtime-menu.runtime-icon-rail {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-rail-bg);
+}
+
+.runtime-icon-rail .runtime-menu-button {
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.runtime-icon-rail .runtime-menu-button:hover,
+.runtime-icon-rail .runtime-menu-button.open {
+  background: var(--ui-button-hover);
+}
+
+.runtime-icon-rail .runtime-menu-button.open,
+.runtime-icon-rail .runtime-menu-button.active {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+.runtime-popover-title {
+  height: var(--ui-panel-title-height);
+  min-height: var(--ui-panel-title-height);
+  border-bottom-color: var(--ui-inner-border);
+  background: var(--ui-panel-title-bg);
+  color: var(--ui-text);
+}
+
+.runtime-linked-toggle {
+  min-height: var(--ui-control-height);
+  background: var(--ui-card-bg);
+}
+
+/* Same-level Settings sections now use the same panel/header/action grammar. */
+.settings-page .settings-group,
+.settings-page .datalink-card {
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-panel-bg);
+}
+
+.settings-page .settings-group {
+  padding-top: 30px;
+}
+
+.settings-page .settings-group > legend,
+.settings-page .datalink-card-title {
+  height: var(--ui-panel-title-height);
+  min-height: var(--ui-panel-title-height);
+  border-bottom: 1px solid var(--ui-inner-border);
+  border-radius: calc(var(--ui-panel-radius) - 1px) calc(var(--ui-panel-radius) - 1px) 0 0;
+  background: var(--ui-panel-title-bg);
+  color: var(--ui-text);
+  line-height: var(--ui-panel-title-height);
+}
+
+.settings-page .datalink-card {
+  grid-template-rows: var(--ui-panel-title-height) auto var(--ui-actionbar-height);
+}
+
+.datalink-card-body {
+  background: transparent;
+}
+
+.datalink-card-actions {
+  min-height: var(--ui-actionbar-height);
+  height: var(--ui-actionbar-height);
+  padding: 3px 6px;
+  border-top-color: var(--ui-inner-border);
+  background: var(--ui-toolbar-bg);
+}
+
+.datalink-password-control {
+  grid-template-columns: minmax(0, 1fr) var(--ui-control-height);
+}
+
+.datalink-password-control button {
+  width: var(--ui-control-height);
+}
+
+.settings-bottom-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-bottom-actions > .ui-button {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Remove page-only box colors and doubled AVISO inset padding. */
+.tag-global-options-body {
+  background: transparent;
+}
+
+.alert-toggle-card {
+  background: var(--ui-card-bg);
+}
+
+.alert-toggle-card:hover {
+  background: var(--ui-list-hover);
+}
+
+.alert-toggle-card.inactive {
+  background: var(--ui-disabled-bg);
+}
+
+.alerts-runway-toolbar .mini-tools button {
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+}
+
+.aviso-geometry-layout,
+.aviso-text-layout {
+  padding: 0;
 }

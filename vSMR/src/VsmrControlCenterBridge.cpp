@@ -2138,9 +2138,9 @@ struct VsmrControlCenterBridge::Impl
 			{
 				error =
 					!configReloaded && !avisoReloaded
-						? "Profile/map and AVISO reload failed; the previously loaded data remains active."
+						? "Configuration and AVISO reload failed; the previously loaded data remains active."
 						: !configReloaded
-							? "Profile or map reload failed; the previously loaded data remains active."
+							? "Configuration reload failed; the previously loaded data remains active."
 							: "AVISO reload failed; the previously loaded overlay remains active.";
 				return false;
 			}
