@@ -1,39 +1,5 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
-
-## [Unreleased]
-
-### Added
-
-- Added a native TrackAudio RDF overlay for the main surface radar, AVISO inset, and SRW 1 inset. Each view uses its own projection, with white 20-pixel rings for normal transmissions and red rings for concurrent transmissions.
-- Added persistent `.smr rdf`, `.smr rdf status`, `.smr rdf on`, and `.smr rdf off` controls. Native RDF is enabled by default and connects to `ws://127.0.0.1:49080/ws`.
-- Added `vSMR_Data\Tools\RDF-vSMR-ground-view.patch` for official RDF commit `a4bd0ae5272088286acee1c2495ed3e4a2e627c6`. The GPL-3.0 compatibility patch prevents the external RDF from attaching to vSMR's `SMR radar display`, while leaving approach displays unchanged.
-- Added a native Line Up (`LNUP`) ground status. The vSMR ground-status menu publishes EuroScope-compatible `TAXI` while maintaining a shared session-local LNUP override, and exposes independent display-mode visibility, target color, tag color, tag definition, and structured-rule matching in both editors.
-
-### Changed
-
-- Changed the default AVISO lookup and editor save path to `vSMR_Data\AVISO\<ICAO>.geojson`. The canonical filename always takes priority, while legacy `AVISO_<ICAO>.geojson` files remain an upgrade fallback.
-- Expanded the bundled AVISO airport set to 396 airport files and updated build, recovery, validation, and packaging workflows to accept only exact four-character ICAO GeoJSON defaults; aggregate source files and local `.bak` files are excluded from release artifacts.
-- Applied effective LNUP state consistently to the main radar and AVISO target/tag renderers, Tower/display-mode filtering, status tokens, and structured color rules. Existing profiles inherit their initial LNUP presentation from Taxi, and all bundled profiles now contain explicit Line Up settings.
-- Updated RIMCAS so LNUP authorizes runway entry and taxi movement without authorizing takeoff: `RWY INC` and `NO TAXI` are suppressed, while `NO TKOF` still requires `DEPA`.
-
-### Fixed
-
-- Fixed ARR/DEP and Closed checkbox changes on `Alerts > RIMCAS runways` so a `change` event is always staged before the global Save, even when WebView does not emit a preceding `input` event.
-- Preserved an explicitly empty RIMCAS runway list instead of repopulating it from the current runtime runway inventory after reload, while preventing a temporary geometry-cache reset during an airport change from publishing a false empty runtime list.
-- Added EuroScope's airport/runway-activity callback and explicit per-screen sector selection so accepting manual ARR/DEP changes in the `Active Airports/Runways` dialog immediately refreshes conditional maps, weather data, and vSMR insets. A single unambiguous active airport is adopted automatically; multi-airport configurations keep each screen's explicit vSMR airport.
-- Corrected legacy-profile runway discovery so an ARR-only runway is no longer also enabled for DEP; explicit RIMCAS runway configuration remains independent and authoritative.
-
-### Compatibility
-
-- Documented why the official RDF's `.RDF ASR DRAW 0` setting is not a reliable concurrent-screen exclusion at the pinned revision: each screen refresh loads its ASR values into the plug-in's shared drawing state. The supplied creation-time display exclusion is required when external RDF and native vSMR RDF are used together.
-- EuroScope does not provide a native LNUP state. vSMR therefore publishes TAXI to EuroScope and other plug-ins, preserves the existing scratchpad content, and keeps LNUP only for the current vSMR session; restarting safely degrades it to TAXI.
-
-### Known limitations
-
-- Native vSMR RDF currently reads TrackAudio's loopback WebSocket only. Audio for VATSIM standalone hidden-window transmissions are not consumed by the native overlay.
-
 ## [2.0.0-beta.1] - 2026-08-10
 
 This beta is a major runtime, configuration, and distribution update. It is
@@ -54,6 +20,10 @@ intended for controlled operational testing rather than production promotion.
 - Added Hoppie CPDLC connection and polling, compact PDC/Message windows, datalink tag actions, and automatic CDM/PDC reminder scheduling with Run, Stop, cooldown, and manual check controls.
 - Added `.smr connect`, `.smr poll`, `.smr cdm`, `.smr cdm auto`, `.smr cdm cooldown`, and `.smr diagnostics` workflows alongside the existing radar commands.
 - Added a redacted diagnostics report and bounded log rotation for beta support.
+- Added a native TrackAudio RDF overlay for the main surface radar, AVISO inset, and SRW 1 inset. Each view uses its own projection, with white 20-pixel rings for normal transmissions and red rings for concurrent transmissions.
+- Added persistent `.smr rdf`, `.smr rdf status`, `.smr rdf on`, and `.smr rdf off` controls. Native RDF is enabled by default and connects to `ws://127.0.0.1:49080/ws`.
+- Added `vSMR_Data\Tools\RDF-vSMR-ground-view.patch` for official RDF commit `a4bd0ae5272088286acee1c2495ed3e4a2e627c6`. The GPL-3.0 compatibility patch prevents the external RDF from attaching to vSMR's `SMR radar display`, while leaving approach displays unchanged.
+- Added a native Line Up (`LNUP`) ground status. The vSMR ground-status menu publishes EuroScope-compatible `TAXI` while maintaining a shared session-local LNUP override, and exposes independent display-mode visibility, target color, tag color, tag definition, and structured-rule matching in both editors.
 
 ### Changed
 
@@ -72,6 +42,8 @@ intended for controlled operational testing rather than production promotion.
 - Loading a local Profiles or AVISO file now activates that exact file. GitHub imports are validated and stored as collision-safe files under `vSMR_Data\Profiles` or `vSMR_Data\AVISO` instead of overwriting bundled airport/profile data.
 - Reduced radar and editor work through cached fonts, symbols and runway headings, immutable AVISO snapshots, indexed runway occupancy, shared target metadata, and deduplicated Control Center and group refreshes.
 - Reorganized deployment so a release root contains only `vSMR.dll` and `vSMR_Data\`; the Control Center UI, audio, icons, AVISO, licenses, tools, and data all live below `vSMR_Data`.
+- Applied effective LNUP state consistently to the main radar and AVISO target/tag renderers, Tower/display-mode filtering, status tokens, and structured color rules. Existing profiles inherit their initial LNUP presentation from Taxi, and all bundled profiles now contain explicit Line Up settings.
+- Updated RIMCAS so LNUP authorizes runway entry and taxi movement without authorizing takeoff: `RWY INC` and `NO TAXI` are suppressed, while `NO TKOF` still requires `DEPA`.
 
 ### Fixed
 
@@ -88,6 +60,15 @@ intended for controlled operational testing rather than production promotion.
 - Removed duplicate Windows chrome and system edit styling from PDC/Message windows and corrected their close and drag hit areas.
 - Fixed shutdown hangs, guarded EuroScope callbacks and background work against exceptions, and prevented stale asynchronous AVISO or network results from replacing newer state.
 - Corrected SRW drawing-state restoration, RIMCAS runway cache behavior, and several avoidable per-frame and once-per-second scans.
+- Fixed ARR/DEP and Closed checkbox changes on `Alerts > RIMCAS runways` so a `change` event is always staged before the global Save, even when WebView does not emit a preceding `input` event.
+- Preserved an explicitly empty RIMCAS runway list instead of repopulating it from the current runtime runway inventory after reload, while preventing a temporary geometry-cache reset during an airport change from publishing a false empty runtime list.
+- Added EuroScope's airport/runway-activity callback and explicit per-screen sector selection so accepting manual ARR/DEP changes in the `Active Airports/Runways` dialog immediately refreshes conditional maps, weather data, and vSMR insets. A single unambiguous active airport is adopted automatically; multi-airport configurations keep each screen's explicit vSMR airport.
+- Corrected legacy-profile runway discovery so an ARR-only runway is no longer also enabled for DEP; explicit RIMCAS runway configuration remains independent and authoritative.
+
+### Compatibility
+
+- Documented why the official RDF's `.RDF ASR DRAW 0` setting is not a reliable concurrent-screen exclusion at the pinned revision: each screen refresh loads its ASR values into the plug-in's shared drawing state. The supplied creation-time display exclusion is required when external RDF and native vSMR RDF are used together.
+- EuroScope does not provide a native LNUP state. vSMR therefore publishes TAXI to EuroScope and other plug-ins, preserves the existing scratchpad content, and keeps LNUP only for the current vSMR session; restarting safely degrades it to TAXI.
 
 ### Security and reliability
 
@@ -115,6 +96,7 @@ intended for controlled operational testing rather than production promotion.
 - The bundled airport and aircraft data must be checked against current local operational requirements before controlling.
 - Some aircraft icon, audio, AVISO, and aircraft-dimension provenance entries still require verification; see `vSMR_Data\Licenses\ASSET_PROVENANCE.md` in the package.
 - Authenticode support does not mean a particular beta archive is signed. Treat it as signed only when package verification confirms a valid signature.
+- Native vSMR RDF currently reads TrackAudio's loopback WebSocket only. Audio for VATSIM standalone hidden-window transmissions are not consumed by the native overlay.
 
 ## [1.1.3] - 2026-06-20
 
