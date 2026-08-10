@@ -3767,6 +3767,8 @@ void CSMRRadar::LoadProfile(
 	TagDefinitionEditorDetailed = !GetTagDefinitionDetailedSameAsDefinition();
 	TagDefinitionEditorDepartureStatus = "default";
 	TagDefinitionEditorSelectedLine = 0;
+	if (!RimcasRunwaysExplicitlyConfigured)
+		RefreshLegacyRimcasRunwayMonitoring();
 
 	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
 		ProfileEditorDialog->SyncFromRadar();
@@ -4036,6 +4038,61 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 
 	if (RimcasInstance->RunwayStatuses != runwayStatuses)
 		RimcasInstance->RunwayStatuses = std::move(runwayStatuses);
+}
+
+void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
+{
+	if (RimcasInstance == nullptr || RimcasRunwaysExplicitlyConfigured)
+		return;
+	// The constructor loads a profile before EuroScope has accepted this radar
+	// screen. Defer sector-file access until OnRadarScreenCreated has returned.
+	if (std::find(RadarScreensOpened.begin(), RadarScreensOpened.end(), this) ==
+		RadarScreensOpened.end())
+	{
+		return;
+	}
+
+	// Legacy profiles without a `rimcas.runways` member follow EuroScope's
+	// current runway activity. Explicit profile rows, including an empty array,
+	// remain authoritative and are never overwritten here.
+	CPlugIn* plugin = GetPlugIn();
+	struct ActiveSectorSelectionGuard
+	{
+		CPlugIn* plugin = nullptr;
+		~ActiveSectorSelectionGuard()
+		{
+			if (plugin != nullptr)
+				plugin->SelectActiveSectorfile();
+		}
+	} selectionGuard{ plugin };
+	plugin->SelectScreenSectorfile(this);
+	RimcasInstance->MonitoredRunwayArr.clear();
+	RimcasInstance->MonitoredRunwayDep.clear();
+	RimcasInstance->ClosedRunway.clear();
+
+	const std::string activeAirport = getActiveAirport();
+	CSectorElement runway;
+	for (runway = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
+		runway.IsValid();
+		runway = GetPlugIn()->SectorFileElementSelectNext(runway, SECTOR_ELEMENT_RUNWAY))
+	{
+		const char* runwayAirport = runway.GetAirportName();
+		const char* runwayNameA = runway.GetRunwayName(0);
+		const char* runwayNameB = runway.GetRunwayName(1);
+		if (runwayAirport == nullptr || runwayNameA == nullptr || runwayNameB == nullptr ||
+			runwayAirport[0] == '\0' || runwayNameA[0] == '\0' || runwayNameB[0] == '\0' ||
+			_stricmp(runwayAirport, activeAirport.c_str()) != 0)
+		{
+			continue;
+		}
+
+		const std::string name = std::string(runwayNameA) + " / " + runwayNameB;
+		RimcasInstance->MonitoredRunwayDep[name] =
+			runway.IsElementActive(true, 0) || runway.IsElementActive(true, 1);
+		RimcasInstance->MonitoredRunwayArr[name] =
+			runway.IsElementActive(false, 0) || runway.IsElementActive(false, 1);
+		RimcasInstance->ClosedRunway[name] = false;
+	}
 }
 
 void CSMRRadar::InvalidateStructuredTagRuleCache()
@@ -6550,6 +6607,20 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	};
 
 	setRefreshStage("sector geometry cache");
+	// Sector element enumeration is stateful in the EuroScope SDK. Always bind
+	// it to this radar screen before reading airport geometry or ARR/DEP runway
+	// activity; another callback may have selected a different sector source.
+	CPlugIn* sectorPlugin = GetPlugIn();
+	struct ActiveSectorSelectionGuard
+	{
+		CPlugIn* plugin = nullptr;
+		~ActiveSectorSelectionGuard()
+		{
+			if (plugin != nullptr)
+				plugin->SelectActiveSectorfile();
+		}
+	} sectorSelectionGuard{ sectorPlugin };
+	sectorPlugin->SelectScreenSectorfile(this);
 	EnsureAirportPositionCache();
 	EnsureRunwayGeometryCache();
 	RefreshRunwayStatuses(false);
