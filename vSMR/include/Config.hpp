@@ -68,12 +68,32 @@ public:
 	vector<string> getAllProfiles();
 	size_t getProfileCount() const;
 
-	bool saveConfig(const vector<ProfileSaveIdentity>& profileIdentities = {});
+	bool saveConfig(
+		const vector<ProfileSaveIdentity>& profileIdentities = {},
+		const string& expectedRevision = {},
+		string* error = nullptr,
+		bool allowRecoveryReplacement = false);
+	string getConfigRevision() const;
+	string getPersistedConfigRevision() const;
+	string getLastLoadMessage() const;
+	bool isConfigHealthy() const;
+	bool isUsingBackup() const;
+	bool isBackupAvailable() const;
+	bool restoreBackup(string& error);
+	static bool validateAndMigrateProfilesDocument(
+		rapidjson::Document& profilesDocument,
+		string& error,
+		bool& migrated);
 	const Value* getSharedAvisoPresetContainer() const;
 	bool transactAvisoPresetStore(
 		const string& preferredProfileName,
 		const string& activeAirport,
 		const AvisoPresetTransaction& transaction);
+	bool assignUnscopedAvisoPresetsToAirport(
+		const string& preferredProfileName,
+		const string& airport,
+		size_t& assignedPresetCount,
+		string& error);
 	bool sharesConfigFileWith(const CConfig& other) const;
 
 	unordered_set<string> getInactiveAlert();
@@ -148,6 +168,14 @@ protected:
 	rapidjson::SizeType active_profile = 0;
 	map<string, rapidjson::SizeType> profiles;
 	map<int, vector<mapData>> maps;
+	// Never return a const global sentinel from getActiveProfile(): a few legacy
+	// editor paths still use const_cast. Keeping the fail-closed object owned by
+	// this instance makes those writes harmless when no profile was loaded.
+	rapidjson::Value invalid_profile;
+	string config_revision;
+	string last_load_message;
+	bool config_healthy = false;
+	bool using_backup = false;
 
 	bool loadConfig();
 	bool loadMap();

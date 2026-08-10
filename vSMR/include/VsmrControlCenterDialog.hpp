@@ -64,6 +64,7 @@ private:
 
 	void InitializeWebView();
 	void WebViewThreadMain();
+	void WebViewThreadMainImpl();
 	bool AcquireWebViewHostWindowClass();
 	void ReleaseWebViewHostWindowClass();
 	static LRESULT CALLBACK WebViewThreadWindowProc(
@@ -95,6 +96,7 @@ private:
 		const std::string& resource,
 		const std::string& url,
 		const std::string& requestId);
+	void StopGithubDownload();
 	void SaveWindowPlacement();
 	std::wstring ResolveWebResourceFolder() const;
 	std::wstring WebViewUserDataFolder() const;
@@ -114,4 +116,5 @@ private:
 	std::thread WebViewThread;
 	std::thread GithubDownloadThread;
 	std::atomic<bool> GithubDownloadInProgress{ false };
+	std::atomic<bool> GithubDownloadCancellationRequested{ false };
 };
