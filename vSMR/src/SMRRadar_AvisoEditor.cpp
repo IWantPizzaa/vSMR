@@ -29,6 +29,14 @@ namespace
 		return value;
 	}
 
+	bool IsAirportCode(const std::string& value)
+	{
+		return value.size() == 4 &&
+			std::all_of(value.begin(), value.end(), [](unsigned char character) {
+				return std::isalnum(character) != 0;
+			});
+	}
+
 	bool IsRegularFileNoThrow(const std::filesystem::path& path)
 	{
 		try
@@ -64,7 +72,7 @@ namespace
 std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const
 {
 	const std::string airportUpper = ToUpperAscii(TrimAsciiWhitespaceCopy(airport));
-	if (airportUpper.empty())
+	if (!IsAirportCode(airportUpper))
 		return "";
 
 	const std::string existingPath = ResolveAvisoGeoJsonPathForAirport(airportUpper);
@@ -74,14 +82,14 @@ std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& ai
 	const std::filesystem::path dataDirectory = DataPath.empty()
 		? (std::filesystem::path(DllPath) / "vSMR_Data")
 		: std::filesystem::path(DataPath);
-	const std::filesystem::path preferredPath = dataDirectory / "AVISO" / ("AVISO_" + airportUpper + ".geojson");
+	const std::filesystem::path preferredPath = dataDirectory / "AVISO" / (airportUpper + ".geojson");
 	return preferredPath.string();
 }
 
 void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path)
 {
 	const std::string airportUpper = ToUpperAscii(TrimAsciiWhitespaceCopy(airport));
-	if (airportUpper.empty())
+	if (!IsAirportCode(airportUpper))
 		return;
 
 	std::string normalizedPath = path;

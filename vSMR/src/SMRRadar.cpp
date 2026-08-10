@@ -195,13 +195,27 @@ namespace
 				continue;
 
 			const std::string stem = ToUpperAscii(path.stem().string());
-			const std::string prefix = "AVISO_";
-			if (stem.rfind(prefix, 0) != 0)
+			const auto isAirportCode = [](const std::string& value) {
+				return value.size() == 4 &&
+					std::all_of(value.begin(), value.end(), [](unsigned char character) {
+						return std::isalnum(character) != 0;
+					});
+			};
+			if (isAirportCode(stem))
+			{
+				airports.insert(stem);
 				continue;
+			}
 
-			const std::string airport = stem.substr(prefix.size());
-			if (airport.size() == 4)
-				airports.insert(airport);
+			// Compatibility for installations that still contain the
+			// pre-2.0 AVISO_<ICAO>.geojson filename.
+			const std::string legacyPrefix = "AVISO_";
+			if (stem.rfind(legacyPrefix, 0) == 0)
+			{
+				const std::string legacyAirport = stem.substr(legacyPrefix.size());
+				if (isAirportCode(legacyAirport))
+					airports.insert(legacyAirport);
+			}
 		}
 
 		return airports;
@@ -926,7 +940,11 @@ std::string CSMRRadar::DetectDefaultAirportFromAviso() const
 std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const
 {
 	const std::string airportUpper = ToUpperAscii(TrimAvisoAirportCode(airport));
-	if (DllPath.empty() || airportUpper.empty())
+	if (DllPath.empty() || airportUpper.size() != 4 ||
+		!std::all_of(
+			airportUpper.begin(),
+			airportUpper.end(),
+			[](unsigned char character) { return std::isalnum(character) != 0; }))
 		return "";
 
 	const auto overridePath = AvisoGeoJsonOverridePaths.find(airportUpper);
@@ -956,12 +974,12 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 		const std::vector<fs::path> searchDirectories = BuildAvisoGeoJsonSearchDirectories(DllPath, DataPath);
 		for (const fs::path& searchDirectory : searchDirectories)
 		{
-			const fs::path exactPath = searchDirectory / ("AVISO_" + airportUpper + ".geojson");
+			const fs::path exactPath = searchDirectory / (airportUpper + ".geojson");
 			if (IsRegularFileNoThrow(exactPath))
 				return rememberResolvedPath(exactPath.string());
 		}
 
-		const std::string expectedStem = "AVISO_" + airportUpper;
+		const std::string expectedStem = airportUpper;
 		for (const fs::path& searchDirectory : searchDirectories)
 		{
 			if (!IsDirectoryNoThrow(searchDirectory))
@@ -975,6 +993,28 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 				const fs::path path = entry.path();
 				if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
 					ToUpperAscii(path.stem().string()) == expectedStem)
+				{
+					return rememberResolvedPath(path.string());
+				}
+			}
+		}
+
+		// Older manual installations can continue to load until their data tree
+		// is upgraded, but the canonical ICAO filename above always wins.
+		const std::string legacyExpectedStem = "AVISO_" + airportUpper;
+		for (const fs::path& searchDirectory : searchDirectories)
+		{
+			if (!IsDirectoryNoThrow(searchDirectory))
+				continue;
+
+			for (const auto& entry : fs::directory_iterator(searchDirectory))
+			{
+				if (!entry.is_regular_file())
+					continue;
+
+				const fs::path path = entry.path();
+				if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
+					ToUpperAscii(path.stem().string()) == legacyExpectedStem)
 				{
 					return rememberResolvedPath(path.string());
 				}

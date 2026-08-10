@@ -90,9 +90,9 @@ namespace
 			// Only an ICAO-shaped token may participate in a target filename.
 			const std::string airportUpper = NormalizeAirportCode(airport);
 			if (stem.empty())
-				stem = airportUpper.empty() ? "AVISO" : "AVISO_" + airportUpper;
+				stem = airportUpper.empty() ? "AVISO" : airportUpper;
 			else if (!airportUpper.empty() && ToUpperAscii(stem).find(airportUpper) == std::string::npos)
-				stem = "AVISO_" + airportUpper + "_" + stem;
+				stem = airportUpper + "_" + stem;
 		}
 		else
 		{
@@ -103,7 +103,7 @@ namespace
 		}
 
 		// GitHub downloads are always variants. Even a URL whose basename is the
-		// canonical AVISO_<ICAO>.geojson or vSMR_Profiles.json can never target
+		// canonical <ICAO>.geojson or vSMR_Profiles.json can never target
 		// the user's original file.
 		const std::string upperStem = ToUpperAscii(stem);
 		if (upperStem.size() < 7 ||
