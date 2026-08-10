@@ -1001,7 +1001,10 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	return true;
 }
 
-string CSMRRadar::setActiveAirport(string value, bool switchInsetContext)
+string CSMRRadar::setActiveAirport(
+	string value,
+	bool switchInsetContext,
+	bool syncControlCenter)
 {
 	const std::string airport = NormalizeInsetAirport(value);
 	if (airport.empty() || _stricmp(ActiveAirport.c_str(), airport.c_str()) == 0)
@@ -1017,6 +1020,7 @@ string CSMRRadar::setActiveAirport(string value, bool switchInsetContext)
 	RunwayStatusLastAirport.clear();
 	ClearAvisoGeoJsonRasterCache();
 	AvisoGeoJsonLastViewValid = false;
+	RefreshLegacyRimcasRunwayMonitoring();
 
 	if (switchInsetContext)
 	{
@@ -1025,7 +1029,7 @@ string CSMRRadar::setActiveAirport(string value, bool switchInsetContext)
 		if (!LoadInsetStateFromAsrForAirport(ActiveAirport, false))
 			ApplyDefaultAvisoPresetIfConfigured();
 		SaveDataToAsr("Airport", "Active airport", ActiveAirport.c_str());
-		if (VsmrControlCenterDialog != nullptr)
+		if (syncControlCenter && VsmrControlCenterDialog != nullptr)
 			VsmrControlCenterDialog->SyncFromRadar();
 	}
 
@@ -1134,34 +1138,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 
 	// Auto-detect active sector runways only for legacy profiles. An explicit
 	// profile runway array is authoritative, including when it is empty.
-	if (!RimcasRunwaysExplicitlyConfigured)
-	{
-		CSectorElement rwy;
-		for (rwy = GetPlugIn()->SectorFileElementSelectFirst(SECTOR_ELEMENT_RUNWAY);
-			rwy.IsValid();
-			rwy = GetPlugIn()->SectorFileElementSelectNext(rwy, SECTOR_ELEMENT_RUNWAY))
-		{
-			const char* runwayAirportName = rwy.GetAirportName();
-			if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
-				continue;
-
-			const char* runwayNameA = rwy.GetRunwayName(0);
-			const char* runwayNameB = rwy.GetRunwayName(1);
-			if (runwayNameA == nullptr || runwayNameB == nullptr || runwayNameA[0] == '\0' || runwayNameB[0] == '\0')
-				continue;
-
-			if (startsWith(getActiveAirport().c_str(), runwayAirportName)) {
-				string name = string(runwayNameA) + " / " + string(runwayNameB);
-
-				if (rwy.IsElementActive(true, 0) || rwy.IsElementActive(true, 1) || rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
-					RimcasInstance->toggleMonitoredRunwayDep(name);
-					if (rwy.IsElementActive(false, 0) || rwy.IsElementActive(false, 1)) {
-						RimcasInstance->toggleMonitoredRunwayArr(name);
-					}
-				}
-			}
-		}
-	}
+	RefreshLegacyRimcasRunwayMonitoring();
 
 	// ReSharper restore CppZeroConstantCanBeReplacedWithNullptr
 }

@@ -4050,8 +4050,13 @@
 
 
   function ensureProfileRimcas(profile = activeProfile()) {
-    profile.rimcas ||= {};
-    const rimcas = profile.rimcas;
+    // Rendering an editor must not mutate the live profile. In particular, a
+    // legacy profile with no `runways` member must keep that absence until the
+    // user actually changes and stages the Alerts form.
+    const source = profile?.rimcas;
+    const rimcas = source && typeof source === "object" && !Array.isArray(source)
+      ? clone(source)
+      : {};
     if (!Array.isArray(rimcas.timer) || rimcas.timer.length !== 5) rimcas.timer = [60, 45, 30, 15, 0];
     if (!Array.isArray(rimcas.timer_lvp) || rimcas.timer_lvp.length !== 5) rimcas.timer_lvp = [120, 90, 60, 30, 0];
     rimcas.stage_two_speed_threshold_kt = Number.isFinite(Number(rimcas.stage_two_speed_threshold_kt)) ? Number(rimcas.stage_two_speed_threshold_kt) : 25;
@@ -4067,10 +4072,18 @@
   function ensureAlertsDraft() {
     const profileId = state.activeProfileId;
     if (!drafts.alerts || drafts.alerts.profileId !== profileId) {
-      const rimcas = clone(ensureProfileRimcas());
+      const profile = activeProfile();
+      const hasConfiguredRunways = Boolean(
+        profile?.rimcas &&
+        Object.prototype.hasOwnProperty.call(profile.rimcas, "runways") &&
+        Array.isArray(profile.rimcas.runways)
+      );
+      const rimcas = ensureProfileRimcas();
       const runtimeAlerts = state.runtime.alerts ||= { visibility: "normal", runways: clone(DEFAULT_ALERT_RUNWAYS) };
       if (!Array.isArray(runtimeAlerts.runways)) runtimeAlerts.runways = clone(DEFAULT_ALERT_RUNWAYS);
-      const profileRunways = rimcas.runways.length ? rimcas.runways : runtimeAlerts.runways;
+      // An explicitly saved empty array means "monitor no runway pairs". Only
+      // legacy profiles with no runways member inherit the current runtime list.
+      const profileRunways = hasConfiguredRunways ? rimcas.runways : runtimeAlerts.runways;
       const profileVisibility = ["normal", "lvp"].includes(rimcas.visibility)
         ? rimcas.visibility
         : runtimeAlerts.visibility;
@@ -5325,6 +5338,10 @@
       if (editorControlScope(event.target)) markEditorSectionUnapplied(event.target);
     });
     document.addEventListener("change", event => {
+      // Do not depend on a preceding `input` event. WebView/keyboard/control
+      // combinations may emit only `change`; marking here guarantees ARR/DEP
+      // checkboxes and every other editor control are staged before Save.
+      if (editorControlScope(event.target)) markEditorSectionUnapplied(event.target);
       if (!stageEditorControl(event.target)) {
         revealInvalidEditorControl(event.target);
       }

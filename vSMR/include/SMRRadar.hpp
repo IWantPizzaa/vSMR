@@ -429,12 +429,16 @@ public:
 	void EnsureAirportPositionCache();
 	void EnsureRunwayGeometryCache();
 	void RefreshRunwayStatuses(bool force);
+	void RefreshLegacyRimcasRunwayMonitoring();
 
 	inline string getActiveAirport() const {
 		return ActiveAirport;
 	}
 
-	string setActiveAirport(string value, bool switchInsetContext = true);
+	string setActiveAirport(
+		string value,
+		bool switchInsetContext = true,
+		bool syncControlCenter = true);
 
 	inline bool TryGetActiveAirportPosition(CPosition& outPosition) const
 	{

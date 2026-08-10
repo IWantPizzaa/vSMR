@@ -18,6 +18,13 @@ All notable changes to this project are documented in this file.
 - Applied effective LNUP state consistently to the main radar and AVISO target/tag renderers, Tower/display-mode filtering, status tokens, and structured color rules. Existing profiles inherit their initial LNUP presentation from Taxi, and all bundled profiles now contain explicit Line Up settings.
 - Updated RIMCAS so LNUP authorizes runway entry and taxi movement without authorizing takeoff: `RWY INC` and `NO TAXI` are suppressed, while `NO TKOF` still requires `DEPA`.
 
+### Fixed
+
+- Fixed ARR/DEP and Closed checkbox changes on `Alerts > RIMCAS runways` so a `change` event is always staged before the global Save, even when WebView does not emit a preceding `input` event.
+- Preserved an explicitly empty RIMCAS runway list instead of repopulating it from the current runtime runway inventory after reload, while preventing a temporary geometry-cache reset during an airport change from publishing a false empty runtime list.
+- Added EuroScope's airport/runway-activity callback and explicit per-screen sector selection so accepting manual ARR/DEP changes in the `Active Airports/Runways` dialog immediately refreshes conditional maps, weather data, and vSMR insets. A single unambiguous active airport is adopted automatically; multi-airport configurations keep each screen's explicit vSMR airport.
+- Corrected legacy-profile runway discovery so an ARR-only runway is no longer also enabled for DEP; explicit RIMCAS runway configuration remains independent and authoritative.
+
 ### Compatibility
 
 - Documented why the official RDF's `.RDF ASR DRAW 0` setting is not a reliable concurrent-screen exclusion at the pinned revision: each screen refresh loads its ASR values into the plug-in's shared drawing state. The supplied creation-time display exclusion is required when external RDF and native vSMR RDF are used together.

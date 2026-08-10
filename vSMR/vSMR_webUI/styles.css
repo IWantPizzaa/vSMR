@@ -4146,6 +4146,16 @@ input:focus, select:focus, textarea:focus {
   gap: 5px;
   align-content: start;
 }
+.alerts-runway-note {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  background: var(--panel-alt);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
 .alert-global-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

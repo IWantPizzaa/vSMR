@@ -102,6 +102,10 @@ public:
 
 	virtual void OnNewMetarReceived(const char* sStation, const char* sFullMetar);
 
+	//---OnAirportRunwayActivityChanged-----------------------------
+
+	void OnAirportRunwayActivityChanged() override;
+
 	//---OnRadarScreenCreated------------------------------------------
 
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
