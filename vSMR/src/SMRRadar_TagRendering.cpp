@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Resource.h"
 #include "SMRRadar.hpp"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -24,6 +25,11 @@ extern int LeaderLineDefaultlenght;
 
 namespace
 {
+BYTE ClampColorByte(int value)
+{
+	return static_cast<BYTE>(std::clamp(value, 0, 255));
+}
+
 std::string TagTypeToConfigKey(CSMRRadar::TagTypes type)
 {
     if (type == CSMRRadar::TagTypes::Departure)
@@ -39,6 +45,7 @@ std::string TagTypeToConfigKey(CSMRRadar::TagTypes type)
 
 void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache)
 {
+	(void)dc;
 	(void)frameProModeEnabled;
 	(void)frameTowerModeEnabled;
 	// Drawing the Tags
@@ -192,18 +199,19 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 	}
 
+	const Gdiplus::StringFormat tagStringFormat;
 	RectF tagMeasureRect;
-	graphics.MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &tagMeasureRect);
+	graphics.MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &tagStringFormat, &tagMeasureRect);
 	const int tagBlankWidth = static_cast<int>(tagMeasureRect.GetRight());
 	tagMeasureRect = RectF(0, 0, 0, 0);
 	graphics.MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-		tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &tagMeasureRect);
+		tagRegularFont, PointF(0, 0), &tagStringFormat, &tagMeasureRect);
 	int tagOneLineHeight = static_cast<int>(tagMeasureRect.GetBottom());
 	if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
 	{
 		RectF boldMeasure;
 		graphics.MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-			tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasure);
+			tagBoldFont, PointF(0, 0), &tagStringFormat, &boldMeasure);
 		tagOneLineHeight = max(tagOneLineHeight, static_cast<int>(boldMeasure.GetBottom()));
 	}
 
@@ -786,7 +794,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 						wstring wstr = wstring(element.begin(), element.end());
 						Gdiplus::Font* measureFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
 						graphics.MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
-							measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+							measureFont, PointF(0, 0), &tagStringFormat, &mesureRect);
 						renderedElement.measuredWidth = static_cast<int>(mesureRect.GetRight());
 						renderedElement.measuredHeight = static_cast<int>(mesureRect.GetBottom());
 						tempTagWidth += renderedElement.measuredWidth;
@@ -869,7 +877,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			{
 				wstring wstr = wstring(alertStr.begin(), alertStr.end());
 				graphics.MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
-					tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+					tagRegularFont, PointF(0, 0), &tagStringFormat, &mesureRect);
 
 				alertTextWidth = static_cast<int>(mesureRect.GetRight());
 				alertTextHeight = static_cast<int>(mesureRect.GetBottom());
@@ -923,30 +931,30 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		Color definedBackgroundColor = Color(255, 53, 126, 187);
 		Color definedBackgroundOnRunwayColor = definedBackgroundColor;
-		Color definedTextColor = Color::White;
+		Color definedTextColor(static_cast<Gdiplus::ARGB>(Color::White));
 		if (ColorTagType == TagTypes::Departure)
 		{
 			definedBackgroundColor = getTagColorWithLegacy("background_no_status_color", "gate_color", Color(255, 53, 126, 187));
 			definedBackgroundOnRunwayColor = getTagColorWithLegacy("background_on_runway_color", "on_runway_color", definedBackgroundColor);
-			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color(static_cast<Gdiplus::ARGB>(Color::White)));
 		}
 		else if (ColorTagType == TagTypes::Arrival)
 		{
 			definedBackgroundColor = getTagColorWithLegacy("background_on_ground_color", "background_color", Color(255, 191, 87, 91));
 			definedBackgroundOnRunwayColor = getTagColorWithLegacy("background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
-			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color(static_cast<Gdiplus::ARGB>(Color::White)));
 		}
 		else if (ColorTagType == TagTypes::Uncorrelated)
 		{
 			definedBackgroundColor = getTagColorWithLegacy("background_on_ground_color", "background_color", Color(255, 150, 22, 135));
 			definedBackgroundOnRunwayColor = getTagColorWithLegacy("background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
-			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+			definedTextColor = getTagColorWithLegacy("text_on_ground_color", "text_color", Color(static_cast<Gdiplus::ARGB>(Color::White)));
 		}
 		else
 		{
 			definedBackgroundColor = getTagColorFromConfigOrDefault("background_color", Color(255, 53, 126, 187));
 			definedBackgroundOnRunwayColor = getTagColorFromConfigOrDefault("background_color_on_runway", definedBackgroundColor);
-			definedTextColor = getTagColorFromConfigOrDefault("text_color", Color::White);
+			definedTextColor = getTagColorFromConfigOrDefault("text_color", Color(static_cast<Gdiplus::ARGB>(Color::White)));
 		}
 
 		if (ColorTagType == TagTypes::Departure) {
@@ -1078,12 +1086,20 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		if (vacdmTagColorOverrides.hasTagColor)
 		{
-			definedBackgroundColor = Color(vacdmTagColorOverrides.tagA, vacdmTagColorOverrides.tagR, vacdmTagColorOverrides.tagG, vacdmTagColorOverrides.tagB);
+			definedBackgroundColor = Color(
+				ClampColorByte(vacdmTagColorOverrides.tagA),
+				ClampColorByte(vacdmTagColorOverrides.tagR),
+				ClampColorByte(vacdmTagColorOverrides.tagG),
+				ClampColorByte(vacdmTagColorOverrides.tagB));
 			definedBackgroundOnRunwayColor = definedBackgroundColor;
 		}
 		if (vacdmTagColorOverrides.hasTextColor)
 		{
-			definedTextColor = Color(vacdmTagColorOverrides.textA, vacdmTagColorOverrides.textR, vacdmTagColorOverrides.textG, vacdmTagColorOverrides.textB);
+			definedTextColor = Color(
+				ClampColorByte(vacdmTagColorOverrides.textA),
+				ClampColorByte(vacdmTagColorOverrides.textR),
+				ClampColorByte(vacdmTagColorOverrides.textG),
+				ClampColorByte(vacdmTagColorOverrides.textB));
 		}
 		verboseTargetStep(rtCallsign, "after_color_resolution");
 
@@ -1149,7 +1165,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			graphics.FillPath(&TagBackgroundBrush, &roundedPath);
 			if (pointerInTagRect || hoverState.isDragged)
 			{
-				Pen pw(Color::White);
+				Pen pw(Color(static_cast<Gdiplus::ARGB>(Color::White)));
 				graphics.DrawPath(&pw, &roundedPath);
 			}
 		}
@@ -1158,7 +1174,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			graphics.FillRectangle(&TagBackgroundBrush, RoundedRect);
 			if (pointerInTagRect || hoverState.isDragged)
 			{
-				Pen pw(Color::White);
+				Pen pw(Color(static_cast<Gdiplus::ARGB>(Color::White)));
 				graphics.DrawRectangle(&pw, RoundedRect);
 			}
 		}
@@ -1201,7 +1217,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			int tobtB = 255;
 			if (TryResolveVacdmTobtTextColor(vacdmRulePilotData, tobtR, tobtG, tobtB))
 			{
-				VacdmTobtTextBrush = std::make_unique<SolidBrush>(Color(255, tobtR, tobtG, tobtB));
+				VacdmTobtTextBrush = std::make_unique<SolidBrush>(Color(
+					255,
+					ClampColorByte(tobtR),
+					ClampColorByte(tobtG),
+					ClampColorByte(tobtB)));
 			}
 
 			int tsatR = 255;
@@ -1209,18 +1229,25 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			int tsatB = 255;
 			if (TryResolveVacdmTsatTextColor(vacdmRulePilotData, tsatR, tsatG, tsatB))
 			{
-				VacdmTsatTextBrush = std::make_unique<SolidBrush>(Color(255, tsatR, tsatG, tsatB));
+				VacdmTsatTextBrush = std::make_unique<SolidBrush>(Color(
+					255,
+					ClampColorByte(tsatR),
+					ClampColorByte(tsatG),
+					ClampColorByte(tsatB)));
 			}
 		}
 
-		const Color leaderLineColor = Color::White;
+		const Color leaderLineColor(static_cast<Gdiplus::ARGB>(Color::White));
 
 
 		// Drawing the leader line
 		RECT TagBackRectData = TagBackgroundRect;
 		POINT toDraw1, toDraw2;
 		if (LiangBarsky(TagBackRectData, acPosPix, TagBackgroundRect.CenterPoint(), toDraw1, toDraw2))
-			graphics.DrawLine(&Pen(leaderLineColor), PointF(Gdiplus::REAL(acPosPix.x), Gdiplus::REAL(acPosPix.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
+		{
+			Pen leaderLinePen(leaderLineColor);
+			graphics.DrawLine(&leaderLinePen, PointF(Gdiplus::REAL(acPosPix.x), Gdiplus::REAL(acPosPix.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
+		}
 
 		// If we use a RIMCAS label only, we display it, and adapt the rectangle
 		CRect oldCrectSave = TagBackgroundRect;
@@ -1266,7 +1293,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 			const int alertTextOffsetY = max(0, (alertLineHeight - alertTextHeight + 1) / 2);
 			graphics.DrawString(walertStr.c_str(), wcslen(walertStr.c_str()), tagRegularFont,
 				PointF(Gdiplus::REAL(textLeft), Gdiplus::REAL(textTop + heightOffset + alertTextOffsetY)),
-				&Gdiplus::StringFormat(), RimcasTextColor);
+				&tagStringFormat, RimcasTextColor);
 
 			CRect alertRect(TagBackgroundRect.left, TagBackgroundRect.top + heightOffset,
 				TagBackgroundRect.left + alertTextWidth, TagBackgroundRect.top + heightOffset + max(alertTextHeight, oneLineHeight));
@@ -1297,7 +1324,11 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				std::unique_ptr<SolidBrush> tokenCustomColorBrush;
 				if (renderedElement.hasCustomColor)
 				{
-					Color customColor(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB);
+					Color customColor(
+						255,
+						ClampColorByte(renderedElement.colorR),
+						ClampColorByte(renderedElement.colorG),
+						ClampColorByte(renderedElement.colorB));
 					tokenCustomColorBrush.reset(new SolidBrush(customColor));
 					color = tokenCustomColorBrush.get();
 				}
@@ -1306,7 +1337,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				const int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
 				graphics.DrawString(welement.c_str(), wcslen(welement.c_str()), drawFont,
 					PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
-					&Gdiplus::StringFormat(), color);
+					&tagStringFormat, color);
 
 				int clickItemType = TAG_CITEM_NO;
 				auto clickItemIt = TagClickableMap.find(element);
