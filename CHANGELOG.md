@@ -4,7 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-beta.1] - 2026-08-10
+
 ### Added
+- Added a repeatable beta release pipeline with fixture-driven schema/migration and native core tests, clean staging, an exact package manifest, SHA-256 verification, build provenance, and a separate private-symbol archive.
+- Added package-validated install and rollback helpers with complete timestamped backups, default preservation of user/imported data, and an explicit reset opt-in.
+- Added optional Authenticode signing and a signature-required public-release gate.
+- Added Windows DPAPI protection and plaintext migration for saved Hoppie codes, bounded network responses, HTTPS endpoint validation, redacted diagnostics export, and log rotation.
 - Added a compact striped Timer inset with independent 1, 2, and 3 minute countdowns; left-click starts, right-click resets, and the alarm sounds once when a countdown expires.
 - Added a built-in AVISO editor for GeoJSON AVISO files with live reload, object visibility, layer/name metadata, style fields, label text/font/position fields, simple line/label creation, duplication, deletion, and save/reload actions.
 - Added airport-specific state and preset/default stores for AVISO and SRW 1.
@@ -46,6 +52,9 @@ All notable changes to this project are documented in this file.
 - Corrected SRW pen restoration and removed an unused once-per-second sector-airport scan.
 
 ### Repository
+- Unified plugin, Windows resource, documentation, CI, and archive versioning as `2.0.0-beta.1`.
+- Enabled Release warning level 4, SDL and buffer-security checks, DEP/ASLR, and private PDB generation.
+- Included the Microsoft WebView2 license/notice, a dependency manifest, and an explicit unresolved-asset provenance register in every package.
 - Removed the redundant bundled `vSMR_Maps.json` data while retaining the optional legacy loader for airports without AVISO data, and added a deterministic runtime-data validation tool.
 - Removed the unused bundled Asio and libcurl headers/libraries, their dead shared state, and an obsolete custom resize cursor.
 - Removed the superseded Control Center implementation notes and test checklist from `docs\`.

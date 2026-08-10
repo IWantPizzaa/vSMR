@@ -131,8 +131,13 @@ function Normalize-Profiles {
 
         $name = [string](Get-JsonProperty $entry "name" "")
         if ([string]::IsNullOrWhiteSpace($name)) {
-            if (-not (Test-JsonProperty $entry "_vsmr")) {
+            if (-not (Test-JsonProperty $entry "_vsmr") -or
+                -not ($entry._vsmr -is [pscustomobject])) {
                 throw "A nameless profile entry must contain _vsmr metadata."
+            }
+            if (-not (Test-JsonProperty $entry._vsmr "schema_version") -or
+                [int]$entry._vsmr.schema_version -ne 1) {
+                throw "_vsmr metadata must use supported schema_version 1."
             }
             [void]$metadataEntries.Add((ConvertTo-CanonicalValue $entry))
             continue
@@ -151,10 +156,26 @@ function Normalize-Profiles {
 
         if (Test-JsonProperty $entry "schema_version") {
             $schemaVersion = [int]$entry.schema_version
-            if ($schemaVersion -lt 2) {
-                throw "Profile '$name' must use schema_version 2 or newer."
+            if ($schemaVersion -ne 2) {
+                throw "Profile '$name' must use supported schema_version 2."
             }
             $normalized["schema_version"] = $schemaVersion
+        }
+        else {
+            throw "Profile '$name' is missing schema_version 2."
+        }
+
+        foreach ($requiredObject in @("labels", "targets")) {
+            if (-not (Test-JsonProperty $entry $requiredObject) -or
+                -not ($entry.$requiredObject -is [pscustomobject])) {
+                throw "Profile '$name' requires an object named '$requiredObject'."
+            }
+        }
+        foreach ($knownObject in @("approach_insets", "filters", "font", "maps", "rimcas", "rules")) {
+            if ((Test-JsonProperty $entry $knownObject) -and
+                -not ($entry.$knownObject -is [pscustomobject])) {
+                throw "Profile '$name' member '$knownObject' must be an object."
+            }
         }
 
         foreach ($property in @($entry.PSObject.Properties | Sort-Object Name)) {
@@ -464,6 +485,12 @@ function Normalize-AvisoFile {
     $isLfpg = $airport -eq "LFPG"
     $styles = [ordered]@{}
 
+    if ((Test-JsonProperty $document "metadata") -and
+        (Test-JsonProperty $document.metadata "schema_version") -and
+        [int]$document.metadata.schema_version -gt 2) {
+        throw "$($File.Name) uses an unsupported future schema_version."
+    }
+
     if ((Test-JsonProperty $document "styles") -and $document.styles -is [pscustomobject]) {
         foreach ($property in $document.styles.PSObject.Properties) {
             $styles[$property.Name] = New-NormalizedStyle $property.Value $null $null
@@ -664,9 +691,10 @@ function Normalize-AvisoFile {
         styles = [pscustomobject]$normalizedStyles
     }
 
-    if ((Test-JsonProperty $document "vsmr_groups") -and
-        $document.vsmr_groups -is [System.Array] -and
-        $document.vsmr_groups.Count -gt 0) {
+    if (Test-JsonProperty $document "vsmr_groups") {
+        if (-not ($document.vsmr_groups -is [System.Array])) {
+            throw "$($File.Name) vsmr_groups must be an array."
+        }
         $root["vsmr_groups"] = ConvertTo-CanonicalValue $document.vsmr_groups
     }
     $root["features"] = $normalizedFeatures.ToArray()

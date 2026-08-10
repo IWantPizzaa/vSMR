@@ -892,8 +892,29 @@ struct AvisoViewportState
 			if (!renderThreadStarted)
 			{
 				renderStopRequested = false;
-				renderThread = std::thread(&AvisoViewportState::RenderThreadMain, this);
-				renderThreadStarted = true;
+				try
+				{
+					renderThread = std::thread(&AvisoViewportState::RenderThreadMain, this);
+					renderThreadStarted = true;
+				}
+				catch (const std::exception& ex)
+				{
+					pendingRenderRequest.reset();
+					pendingRenderRadar = nullptr;
+					renderPending.store(false, std::memory_order_relaxed);
+					lastRequestValid = false;
+					Logger::info("Inset AVISO render worker start failed: " + std::string(ex.what()));
+					return;
+				}
+				catch (...)
+				{
+					pendingRenderRequest.reset();
+					pendingRenderRadar = nullptr;
+					renderPending.store(false, std::memory_order_relaxed);
+					lastRequestValid = false;
+					Logger::info("Inset AVISO render worker start failed: unknown exception");
+					return;
+				}
 			}
 			shouldNotify = true;
 		}
@@ -963,6 +984,12 @@ struct AvisoViewportState
 			{
 				result = radarScreen->RenderAvisoGeoJsonRaster(*request);
 			}
+			catch (CException* ex)
+			{
+				if (ex != nullptr)
+					ex->Delete();
+				Logger::info("Inset AVISO render worker caught MFC exception");
+			}
 			catch (...)
 			{
 				result.reset();
@@ -988,15 +1015,7 @@ struct AvisoViewportState
 			}
 
 			if (shouldRefresh)
-			{
-				try
-				{
-					radarScreen->RequestRefresh();
-				}
-				catch (...)
-				{
-				}
-			}
+				radarScreen->RequestRefreshFromWorker();
 		}
 	}
 

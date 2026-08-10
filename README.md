@@ -7,7 +7,16 @@ This repository is a maintained fork of:
 - https://github.com/AlexisBalzano/vSMR
 - https://github.com/pierr3/vSMR
 
-## What's New In v1.1.3
+## v2.0.0-beta.1
+
+This is a pre-release build intended for controlled operational testing. It
+introduces the modeless Control Center, Runtime Menu and native insets, the
+schema-2 profile and AVISO model, protected CPDLC settings, weather and timer
+insets, transactional data saves, and the rebuilt release package. Back up an
+existing installation before testing and report operational defects with a
+redacted diagnostics report.
+
+### Previously In v1.1.3
 
 - Added per-profile `Tower mode`
 - Tower Mode keeps full tags for all arrivals and aircraft at `TAXI`, `DEPA`, `ARR`, or later states
@@ -107,11 +116,53 @@ Optional runtime data:
 
 ## Installation
 
-1. Build or obtain `vSMR.dll` for `Release | Win32`.
-2. Install the x86 Visual C++ Redistributable and WebView2 Evergreen Runtime if they are not already installed.
-3. Copy `Release\vSMR.dll` and `Release\vSMR_Data\` into your EuroScope plugin folder (or use the equivalent complete items from a packaged release).
-4. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
-5. Open the vSMR radar display from EuroScope.
+### Clean installation
+
+1. Obtain the complete versioned `vSMR-2.0.0-beta.1.zip` package. Do not install a DLL copied from an unrelated build.
+2. Verify the ZIP against the adjacent `.zip.sha256` file.
+3. Close EuroScope.
+4. Install the x86 Visual C++ Redistributable and WebView2 Evergreen Runtime if they are not already installed.
+5. Extract both `vSMR.dll` and the complete `vSMR_Data\` directory into the same EuroScope plugin folder.
+6. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
+7. Open the vSMR radar display, run `.smr diagnostics`, and confirm the expected version in the generated report.
+
+For an existing plugin directory, the packaged update helper validates the
+internal payload hashes, makes a complete timestamped backup, and installs the
+matched DLL/data set:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vsmr.ps1 -DestinationDirectory "C:\path\to\EuroScope\Plugins"
+```
+
+By default it preserves the existing profile database, AVISO files, aircraft
+data/icons, audio, downloaded `Profiles\` files, and unknown user files while
+replacing immutable WebUI, license, tool, and release-metadata assets. Use
+`-ReplaceUserData` only when intentionally resetting those files to the bundled
+defaults.
+
+### Upgrade from v1.x
+
+1. Close EuroScope so the DLL and JSON files are not in use.
+2. Copy the existing `vSMR.dll`, `vSMR_Data\`, and any legacy flat `vSMR_Profiles.json`/`AVISO_*.geojson` files to a dated backup directory outside the plugin folder.
+3. Extract the complete 2.0 beta package to a staging directory and run its `install_vsmr.ps1` helper against the plugin directory. Do not merge individual files from different beta builds.
+4. Start EuroScope and verify the active profile, airport, AVISO source, inset presets, RIMCAS settings, and CPDLC settings before controlling.
+
+Profile schema 1 is migrated transactionally to schema 2. The original file is
+preserved as `vSMR_Profiles.json.bak` when the migrated document is committed.
+An invalid primary is never silently overwritten; vSMR can load a validated
+backup in memory and asks the user to restore it or the bundled defaults.
+
+### Rollback
+
+1. Close EuroScope.
+2. Find the `rollback_backup` path in `vSMR_Data\INSTALLATION.json`.
+3. Run `vSMR_Data\Tools\restore_vsmr_backup.ps1 -DestinationDirectory "C:\path\to\EuroScope\Plugins" -BackupDirectory "<rollback_backup>"`; it creates a pre-rollback safety backup first.
+4. Restore the pre-upgrade profile file rather than asking an older plugin to read a schema-2 file.
+5. Reopen EuroScope and verify the profile and ASR/inset layout before controlling.
+
+Keep the failed beta installation until its redacted diagnostic report and logs
+have been collected. A DLL-only rollback is unsupported because executable,
+WebUI, profile, and AVISO schemas must remain matched.
 
 Important:
 
@@ -131,6 +182,15 @@ EuroScope\Plugins\
     Licenses\
       vSMR.txt
       RapidJSON.txt
+      Microsoft.WebView2-LICENSE.txt
+      Microsoft.WebView2-NOTICE.txt
+      DEPENDENCIES.md
+      ASSET_PROVENANCE.md
+    Tools\
+      install_vsmr.ps1
+      restore_vsmr_backup.ps1
+    RELEASE-METADATA.json
+    SHA256SUMS.txt
     vSMR_webUI\
       index.html
       styles.css
@@ -216,6 +276,7 @@ The plugin responds to the following EuroScope command-line commands:
 | `.smr log verbose` | Plugin           | Enables detailed logging                                               |
 | `.smr log off`     | Plugin           | Disables logging                                                       |
 | `.smr log status`  | Plugin           | Prints current logging status and mode                                 |
+| `.smr diagnostics` | Plugin           | Writes a redacted support report and prints its path                    |
 | `.smr profile`     | Plugin           | Opens the Control Center `Profiles` page on the first active SMR radar screen |
 | `.smr editor`      | Plugin           | Opens the Control Center `Display` page                               |
 | `.smr vsmr`        | Plugin           | Alias for `.smr editor`                                               |
@@ -228,6 +289,7 @@ The plugin responds to the following EuroScope command-line commands:
 - `normal`: concise logs for routine troubleshooting; suppresses function-signature traces and editor-initialization step spam.
 - `verbose`: detailed logs for deep debugging; still suppresses known hot-loop trace spam.
 - The log file is `vsmr.log` in the same folder as `vSMR.dll`.
+- The log rotates to `vsmr.log.1` at approximately 4 MiB.
 - `.smr log on`, `.smr log enable`, and `.smr log 1` are accepted aliases for `normal`.
 - `.smr log disable` and `.smr log 0` are accepted aliases for `off`.
 
@@ -528,6 +590,11 @@ Saved EuroScope settings:
 - `cdm_auto_delay_min`
 - `cdm_cooldown_min`
 
+The Hoppie code is encrypted for the current Windows user with DPAPI before it
+is persisted. A legacy plaintext value is migrated on load; if protection
+fails, vSMR removes the persistent copy instead of saving plaintext. The code,
+message payloads, and endpoint query strings are omitted from diagnostics.
+
 The notification sound is loaded from `vSMR_Data\Audio\Ding.wav`. If the file
 is unavailable, CPDLC remains operational and the missing path is written to the log.
 
@@ -653,6 +720,14 @@ powershell -ExecutionPolicy Bypass -File vSMR\tools\normalize_runtime_data.ps1 -
 Maintainers can replace `Check` with `Write` to normalize imported data before
 reviewing it.
 
+The CI release gate also runs fixture-driven schema/migration, backup,
+concurrent-writer, weather, geometry, URL-validation, and package-manifest
+tests. Run the source/data gate locally with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\test_release.ps1
+```
+
 ## Building From Source
 
 ### Toolchain
@@ -679,8 +754,17 @@ reviewing it.
 
 ```powershell
 msbuild vSMR.sln /t:Restore /p:Configuration=Release /p:Platform=Win32
-msbuild vSMR.sln /t:Build /p:Configuration=Release /p:Platform=Win32
+msbuild vSMR.sln /t:Rebuild /p:Configuration=Release /p:Platform=Win32
+powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\test_release.ps1 -BuildOutputDirectory Release
+powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\package_release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\verify_release_package.ps1 -ArchivePath artifacts\vSMR-2.0.0-beta.1.zip
 ```
+
+Packaging rejects tracked or untracked source changes. `-AllowDirtySource` is
+available only for local, non-publishable verification artifacts; their release
+metadata records `source_dirty: true` and `publishable: false`. Verify such a
+local artifact with `verify_release_package.ps1 -AllowNonPublishable`; the
+normal verifier intentionally accepts only a clean 40-character Git commit.
 
 Output:
 
@@ -695,6 +779,13 @@ Release\vSMR_Data\
   Licenses\
     vSMR.txt
     RapidJSON.txt
+    Microsoft.WebView2-LICENSE.txt
+    Microsoft.WebView2-NOTICE.txt
+    DEPENDENCIES.md
+    ASSET_PROVENANCE.md
+  Tools\
+    install_vsmr.ps1
+    restore_vsmr_backup.ps1
   vSMR_webUI\
     index.html
     styles.css
@@ -716,6 +807,21 @@ MicrosoftEdgeWebView2RuntimeInstallerX86.exe /silent /install
 ```
 
 Deploy `vSMR.dll` and `vSMR_Data\` together as shown above. The static loader removes the separate `WebView2Loader.dll` deployment dependency; it does not embed the Evergreen Runtime.
+
+### Release signing and provenance
+
+`package_release.ps1` signs the staged DLL when
+`VSMR_SIGNING_CERT_THUMBPRINT` (or `-CertificateThumbprint`) identifies an
+installed code-signing certificate. Set `VSMR_REQUIRE_SIGNATURE=1` for the
+public-release gate. An externally signed build is also accepted. Timestamping
+defaults to DigiCert's RFC 3161 service and can be changed with `-TimestampUrl`.
+The user ZIP never contains PDB files; a separate private symbols archive is
+created for crash analysis.
+
+Every package contains `RELEASE-METADATA.json`, a payload `SHA256SUMS.txt`,
+third-party license texts, and the asset-provenance register. AppVeyor and
+GitHub Actions also publish an outer `.zip.sha256` file. Resolve every "verification required"
+entry in `ASSET_PROVENANCE.md` before promoting the beta to a production release.
 
 ## Source Tree Guide
 
@@ -756,6 +862,29 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 4. `SMRPlugin::OnTimer` handles periodic tasks (CPDLC polling, VACDM and fallback-weather fetch scheduling, status blinking, and cleanup).
 5. Radar/profile state is persisted through profile JSON and ASR keys such as `Airport`, `ActiveProfile`, `ShowFps`, Runtime Menu position, and inset geometry/visibility.
 6. `.smr reload` reloads JSON config and reapplies profiles across currently opened radar windows.
+
+## Beta feedback and diagnostics
+
+Before reporting a defect, enter `.smr diagnostics`. The redacted report is
+written under `vSMR_Data\Diagnostics\`; when that directory is not writable it
+falls back to `%TEMP%\vSMR_Diagnostics\`. Attach that report, `vsmr.log` and
+`vsmr.log.1` where relevant, the matching package checksum, EuroScope/Windows
+versions, airport and reproduction steps. Review attachments for local paths or
+operational information before sharing them. Never attach a Hoppie code or raw
+CPDLC message.
+
+For a freeze or crash, also report whether CPDLC, VACDM, weather, a GitHub
+download, Control Center, and AVISO rendering were active. Preserve the exact
+build so maintainers can match it to the private PDB archive.
+
+## Known beta limitations
+
+- EuroScope and this plugin are Win32; only the x86 runtime/dependency path is supported.
+- The Control Center requires the x86 WebView2 Evergreen Runtime.
+- Hoppie, VACDM, VATSIM weather, and GitHub imports depend on external services and may fail independently of radar rendering.
+- The included airports are validation/sample data, not a substitute for local operational verification.
+- Aircraft icon, audio, AVISO, and aircraft-dimension provenance still has entries marked “verification required”; see the packaged asset register.
+- Authenticode is supported by the release pipeline but a public beta must not be described as signed unless package verification reports a valid signature.
 
 ## Troubleshooting
 
