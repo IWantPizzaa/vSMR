@@ -398,7 +398,7 @@
     root.airports[airport] = normalizeAvisoPresetStore(destination);
 
     setPersistentStatus("", "", [], "legacy-presets");
-    markDirty(`Legacy inset presets assigned to ${airport}`);
+    markDirty(`Legacy inset presets assigned to ${airport}`, ["metadata"]);
     renderAll();
     showToast(`Inset presets assigned to ${airport}`, "success");
   }
@@ -671,6 +671,7 @@
   let datalinkBaseline = null;
   let datalinkPasswordVisible = false;
   let datalinkPasswordCommitReady = false;
+  let datalinkControlsInitialized = false;
   const datalinkFieldRevisions = {
     logonCallsign: 0,
     password: 0,
@@ -678,16 +679,55 @@
     cdmDelayMinutes: 0,
     cdmCooldownMinutes: 0
   };
-  let datalinkAutoSaveTimer = 0;
-  let datalinkAutoSaveRetryCount = 0;
   let datalinkConnectAfterSave = false;
   let datalinkQueuedReminderAction = null;
-  const datalinkAutoSaveScopes = new Set();
+  let globalSaveAfterDatalink = false;
+  let discardDatalinkDraftOnReload = false;
   let lastDatalinkStateRequestAt = 0;
   let splitAvisoContext = null;
 	let ignoreNextUncorrelatedAviso = false;
-  const history = { past: [], present: null, future: [] };
+  const history = { past: [], present: null, future: [], gestureKey: "" };
   let savedSnapshot = null;
+  let activeHistoryGestureKey = "";
+  let historyGestureSequence = 0;
+  const historyGestureIds = new WeakMap();
+  let deferredHistoryGesture = null;
+
+  function beginHistoryGesture(control) {
+    if (!control || typeof control !== "object") return "";
+    historyGestureSequence += 1;
+    const key = `editor-${historyGestureSequence}`;
+    historyGestureIds.set(control, key);
+    return key;
+  }
+
+  function historyGestureKey(control) {
+    return historyGestureIds.get(control) || beginHistoryGesture(control);
+  }
+
+  function withHistoryGesture(control, callback) {
+    const previous = activeHistoryGestureKey;
+    activeHistoryGestureKey = historyGestureKey(control);
+    try {
+      return callback();
+    } finally {
+      activeHistoryGestureKey = previous;
+    }
+  }
+
+  function flushDeferredHistoryGesture(updateDirty = true) {
+    const deferred = deferredHistoryGesture;
+    if (!deferred) return false;
+    deferredHistoryGesture = null;
+    const next = captureHistorySnapshot(history.present, deferred.chunks);
+    if (!snapshotsEqual(next, history.present)) history.present = next;
+    history.future.length = 0;
+    history.gestureKey = deferred.key;
+    if (history.past.length && snapshotsEqual(history.present, history.past[history.past.length - 1]))
+      history.past.pop();
+    if (updateDirty) updateDirtyState();
+    return true;
+  }
 
   const UNAPPLIED_EDITOR_SECTION_SELECTOR = [
     "[data-profile-panel]",
@@ -717,6 +757,9 @@
   }
 
   function hasUnappliedEditorInputs() {
+    // Input events are tracked until their change/blur boundary. This protects
+    // a value that is still being typed from an asynchronous host repaint; it
+    // never blocks Save, Undo or navigation.
     return unappliedEditorSections.size > 0;
   }
 
@@ -724,6 +767,9 @@
     const key = editorSectionKey(element);
     if (!key) return false;
     unappliedEditorSections.add(key);
+    const dot = $("#dirtyDot");
+    if (dot) { dot.classList.add("dirty"); dot.title = "Unsaved changes"; }
+    $("#saveButton")?.classList.add("has-unsaved");
     updateCommandState();
     return true;
   }
@@ -894,7 +940,7 @@
     return JSON.stringify(value ?? null);
   }
 
-  function captureHistorySnapshot(reuse = history.present) {
+  function captureHistorySnapshot(reuse = history.present, changedChunks = null) {
     const historySettings = clone(state.settings);
     delete historySettings.profileFile;
     delete historySettings.avisoFile;
@@ -907,7 +953,12 @@
       settings: historySettings
     };
     const snapshot = {};
+    const changed = changedChunks ? new Set(changedChunks) : null;
     Object.entries(values).forEach(([key, value]) => {
+      if (reuse?.[key] != null && changed && !changed.has(key)) {
+        snapshot[key] = reuse[key];
+        return;
+      }
       const encoded = snapshotChunk(value);
       snapshot[key] = reuse?.[key] === encoded ? reuse[key] : encoded;
     });
@@ -939,6 +990,8 @@
   }
 
   function workspaceBusyMessage() {
+    if (globalSaveAfterDatalink || datalinkPending.settings?.kind === "global-save")
+      return "Saving datalink settings...";
     if (pending.save) return "Saving and reloading vSMR data...";
     if (pending.reload) return "Reloading vSMR data...";
     if (pending.resource) return "Loading and validating vSMR data...";
@@ -1004,36 +1057,35 @@
   function updateCommandState() {
     const busy = Boolean(
 	  pending.save || pending.reload || pending.resource ||
-	  runtimeCommandPending.size || splitAvisoContext
+	  runtimeCommandPending.size || splitAvisoContext || datalinkPending.settings ||
+      globalSaveAfterDatalink
 	);
-    const unappliedWork = hasUnappliedEditorInputs() || avisoGroupContentDirty;
     const airportMismatch = Boolean(state.airport && state.hostAirport && state.airport !== state.hostAirport);
     const profilesUnsafe = state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed;
     const externalConflict = Boolean(state.externalEditConflict);
+    const stagedChanges = state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges();
     const saveButton = $("#saveButton");
     const reloadButton = $("#reloadButton");
     const undoButton = $("#undoButton");
     const redoButton = $("#redoButton");
     if (saveButton) {
-	  saveButton.disabled = !hostAuthoritativeReady || !state.dirty || busy || unappliedWork || airportMismatch || profilesUnsafe || externalConflict;
-      saveButton.classList.toggle("pending", Boolean(pending.save));
-      saveButton.title = unappliedWork
-        ? "Apply or revert the open editor fields before saving"
-        : airportMismatch
+	  saveButton.disabled = !hostAuthoritativeReady || !stagedChanges || busy || airportMismatch || profilesUnsafe || externalConflict;
+      saveButton.classList.toggle("pending", Boolean(pending.save || globalSaveAfterDatalink));
+      saveButton.title = airportMismatch
         ? "Reload after changing airports before saving"
         : externalConflict
           ? "Another vSMR window changed the active data; reload before saving"
         : profilesUnsafe
           ? "Restore the profiles backup or bundled defaults before saving"
-        : pending.save ? "Saving…" : state.dirty ? "Save changes" : "No changes to save";
+        : pending.save || globalSaveAfterDatalink ? "Saving…" : stagedChanges ? "Save changes" : "No changes to save";
     }
     if (reloadButton) {
 	  reloadButton.disabled = !hostAuthoritativeReady || busy;
       reloadButton.classList.toggle("pending", Boolean(pending.reload));
       reloadButton.title = pending.reload ? "Reloading…" : "Reload configuration";
     }
-	if (undoButton) undoButton.disabled = !hostAuthoritativeReady || busy || unappliedWork || airportMismatch || externalConflict || history.past.length === 0;
-	if (redoButton) redoButton.disabled = !hostAuthoritativeReady || busy || unappliedWork || airportMismatch || externalConflict || history.future.length === 0;
+	if (undoButton) undoButton.disabled = !hostAuthoritativeReady || busy || airportMismatch || externalConflict || history.past.length === 0;
+	if (redoButton) redoButton.disabled = !hostAuthoritativeReady || busy || airportMismatch || externalConflict || history.future.length === 0;
     updateWorkspaceInterlock();
   }
 
@@ -1046,31 +1098,46 @@
 
   function updateDirtyState(message = "") {
     state.dirty = !snapshotsEqual(history.present, savedSnapshot);
+    const visuallyDirty = state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges();
     const dot = $("#dirtyDot");
     if (dot) {
-      dot.classList.toggle("dirty", state.dirty);
-      dot.title = state.dirty ? "Unsaved changes" : "Saved";
+      dot.classList.toggle("dirty", visuallyDirty);
+      dot.title = visuallyDirty ? "Unsaved changes" : "Saved";
     }
-    $("#saveButton")?.classList.toggle("has-unsaved", state.dirty);
+    $("#saveButton")?.classList.toggle("has-unsaved", visuallyDirty);
     updateCommandState();
-    if (message) setStatus(message, state.dirty ? "info" : "");
+    if (message) setStatus(message, visuallyDirty ? "info" : "");
   }
 
-  function recordHistoryState() {
-    const next = captureHistorySnapshot();
+  function recordHistoryState(changedChunks = null, gestureKey = "") {
+    if (gestureKey && history.gestureKey === gestureKey) {
+      const chunks = deferredHistoryGesture?.key === gestureKey
+        ? deferredHistoryGesture.chunks
+        : new Set();
+      (changedChunks || ["profiles", "metadata", "profileExtras", "aviso", "settings"])
+        .forEach(key => chunks.add(key));
+      deferredHistoryGesture = { key: gestureKey, chunks };
+      return true;
+    }
+    flushDeferredHistoryGesture(false);
+    const next = captureHistorySnapshot(history.present, changedChunks);
     if (history.present && snapshotsEqual(next, history.present)) return false;
-    if (history.present) {
+    const coalesce = Boolean(gestureKey && history.gestureKey === gestureKey);
+    if (history.present && !coalesce) {
       history.past.push(history.present);
       if (history.past.length > HISTORY_LIMIT) history.past.splice(0, history.past.length - HISTORY_LIMIT);
     }
     history.present = next;
     history.future.length = 0;
+    history.gestureKey = gestureKey;
     return true;
   }
 
   function resetHistory(saved = true) {
     history.past.length = 0;
     history.future.length = 0;
+    history.gestureKey = "";
+    deferredHistoryGesture = null;
     history.present = captureHistorySnapshot(null);
     if (saved) savedSnapshot = history.present;
     updateDirtyState();
@@ -1098,6 +1165,7 @@
     clearAllUnappliedEditorSections();
     avisoGroupContentDirty = false;
     history.present = snapshot;
+    history.gestureKey = "";
     renderAll();
     updateDirtyState();
   }
@@ -1224,8 +1292,8 @@
     document.documentElement.dataset.status = type || "ready";
     if (type === "error") setPersistentStatus(message, "error", [], "native");
   }
-  function markDirty(message = "Changes not saved") {
-    recordHistoryState();
+  function markDirty(message = "Changes not saved", changedChunks = null, gestureKey = activeHistoryGestureKey) {
+    recordHistoryState(changedChunks, gestureKey);
     updateDirtyState(message);
   }
 
@@ -1235,15 +1303,13 @@
       record.persistedName = String(record.data?.name || "");
     });
     history.present = captureHistorySnapshot();
+    history.gestureKey = "";
     savedSnapshot = history.present;
     state.dirty = false;
     state.recoveryConfirmed = false;
     state.avisoRecoveryConfirmed = false;
     state.externalEditConflict = false;
-    const dot = $("#dirtyDot");
-    if (dot) { dot.classList.remove("dirty"); dot.title = "Saved"; }
-    $("#saveButton")?.classList.remove("has-unsaved");
-    updateCommandState();
+    updateDirtyState();
     setStatus(message);
   }
 
@@ -1579,15 +1645,25 @@
     renderRuntimeMenu();
   }
 
-  function closeControlCenter() {
+  function finalizeControlCenterClose() {
     if (HOST_MODE) {
       state.ui.controlCenterOpen = false;
-      postBridge("window.close", { dirty: state.dirty });
+      postBridge("window.close", {
+        dirty: state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges()
+      });
       return;
     }
     state.ui.controlCenterOpen = false;
     syncSurfaceVisibility();
     renderRuntimeMenu();
+  }
+
+  function closeControlCenter() {
+    // Closing only hides the Control Center. Keep the in-memory form draft so
+    // reopening restores it; persistence remains the global Save button's job.
+    if (datalinkControlsInitialized && datalinkDraft && datalinkBaseline)
+      captureDatalinkDraftFromControls();
+    finalizeControlCenterClose();
   }
 
   function activePresetAirport() {
@@ -1813,7 +1889,7 @@
 	const rollback = captureRuntimeCommandRollback();
     group.visible = group.visible === false;
     if (drafts.avisoGroup?.id === group.id) drafts.avisoGroup.data.visible = group.visible;
-    markDirty(`Group ${group.visible ? "shown" : "hidden"}`);
+    markDirty(`Group ${group.visible ? "shown" : "hidden"}`, ["aviso"]);
 	postRuntimeCommand(
 	  "aviso.group.visibility",
 	  { id: group.id, name: group.name, visible: group.visible },
@@ -2173,6 +2249,11 @@
 
     const palette = $("#colorSvPalette");
     palette.style.setProperty("--palette-hue", String(Math.round(drafts.color.h)));
+    palette.setAttribute("aria-valuenow", String(Math.round(drafts.color.v * 100)));
+    palette.setAttribute(
+      "aria-valuetext",
+      `Saturation ${Math.round(drafts.color.s * 100)}%, brightness ${Math.round(drafts.color.v * 100)}%`
+    );
     const cursor = $("#colorPaletteCursor");
     cursor.style.left = `${drafts.color.s * 100}%`;
     cursor.style.top = `${(1 - drafts.color.v) * 100}%`;
@@ -2211,17 +2292,16 @@
     $("#colorJsonPath").value = entry.id;
     syncColorEditorControls();
   }
-  function applyColorDraft() {
+  function applyColorDraft({ render = true } = {}) {
     const entry = selectedColorEntry();
     if (!entry || !drafts.color) return;
     const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
     const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
     if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
     setAtPath(activeProfile(), entry.path, next);
-    drafts.color = null;
     clearUnappliedEditorSection($("#colorHex"));
-    markDirty(`${entry.name} updated`);
-    renderColors();
+    markDirty(`${entry.name} updated`, ["profiles"]);
+    if (render) renderColors();
   }
 
   function resetSelectedColor() {
@@ -2233,7 +2313,7 @@
     setAtPath(record.data, entry.path, clone(original));
     drafts.color = null;
     clearUnappliedEditorSection($("#colorHex"));
-    markDirty(`${entry.name} reset`);
+    markDirty(`${entry.name} reset`, ["profiles"]);
     renderColors();
   }
 
@@ -2326,7 +2406,7 @@
     $("#smallIconBoost").closest(".icon-parameter-block")?.classList.toggle("is-disabled", !boostEnabled);
     renderIconSymbolPreview();
   }
-  function applyIcons() {
+  function applyIcons({ render = true } = {}) {
     const targets = activeProfile().targets ||= {};
     targets.icon_style = $("#targetIconStyle").value;
     targets.show_primary_target = $("#showPrimaryTarget").checked;
@@ -2336,8 +2416,8 @@
     targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset || targets.small_icon_boost_resolution_preset || "1080p";
     targets.small_icon_boost_factor = Number($("#smallIconBoostFactor").value);
     clearUnappliedEditorSection($("#targetIconStyle"));
-    markDirty("Target icon settings updated");
-    renderIcons();
+    markDirty("Target icon settings updated", ["profiles"]);
+    if (render) renderIcons();
   }
 
   function tagDefinitionColor(profile, scope, status) {
@@ -2470,7 +2550,7 @@
     drafts.tag = { id: entry.id, data };
   }
 
-  function applyTag() {
+  function applyTag({ render = true } = {}) {
     const entry = selectedTagDefinition();
     if (!entry) return;
     captureTagDraft();
@@ -2489,10 +2569,9 @@
     activeProfile().font.weight = $("#profileFontWeight").value || "Regular";
     activeProfile().font.sizes ||= { one: 10, two: 11, three: 12, four: 13, five: 14 };
 
-    drafts.tag = null;
     clearUnappliedEditorSection($("#tagDefinitionEditor"));
-    markDirty(`${entry.label} updated`);
-    renderTags();
+    markDirty(`${entry.label} updated`, ["profiles"]);
+    if (render) renderTags();
   }
 
   function rules() {
@@ -2628,15 +2707,14 @@
     });
     return rule;
   }
-  function applyRule() {
+  function applyRule({ render = true } = {}) {
     const item = rules()[state.ui.selectedRuleIndex];
     if (!item || !drafts.rule) return;
     const rule = captureRuleDraft();
     rules()[state.ui.selectedRuleIndex] = clone(rule);
-    drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
-    markDirty("Rule updated");
-    renderRules();
+    markDirty("Rule updated", ["profiles"]);
+    if (render) renderRules();
   }
 
   function modes() {
@@ -2689,15 +2767,17 @@
     const input = $("#modeBlockedSquawkInput");
     const code = String(input?.value || "").trim();
     if (!/^[0-7]{4}$/.test(code)) {
+      input?.setCustomValidity("Use four octal digits (0-7)");
       showToast("Squawks must be four octal digits (0–7)", "error");
       input?.focus();
       return false;
     }
+    input.setCustomValidity("");
     const squawks = drafts.mode.data.blocked_auto_correlate_squawks ||= [];
     if (!squawks.includes(code)) squawks.push(code);
-    markEditorSectionUnapplied(input);
     input.value = "";
     renderModeBlockedSquawkChips();
+    applyMode({ render: false, includePendingSquawk: false });
     input.focus();
     return true;
   }
@@ -2707,14 +2787,14 @@
     const squawks = drafts.mode.data.blocked_auto_correlate_squawks ||= [];
     if (index >= 0 && index < squawks.length) {
       squawks.splice(index, 1);
-      markEditorSectionUnapplied($("#modeName"));
     }
     renderModeBlockedSquawkChips();
+    applyMode({ render: false, includePendingSquawk: false });
   }
 
   function setModeStatusVisibility(visible) {
     $$("[data-mode-status]").forEach(input => { input.checked = Boolean(visible); });
-    markEditorSectionUnapplied($("#modeStatusGrid"));
+    applyMode({ render: false, includePendingSquawk: false });
   }
 
   function captureModeDraft() {
@@ -2735,18 +2815,22 @@
     return mode;
   }
 
-  function applyMode() {
+  function applyMode({ render = true, includePendingSquawk = true } = {}) {
     const current = modes()[state.ui.selectedModeIndex];
     if (!current || !drafts.mode) return;
-    if (String($("#modeBlockedSquawkInput").value || "").trim() && !addModeBlockedSquawk()) return;
+    if (includePendingSquawk && String($("#modeBlockedSquawkInput").value || "").trim() && !addModeBlockedSquawk()) return;
     const oldName = current.name;
     const next = clone(captureModeDraft());
     modes()[state.ui.selectedModeIndex] = next;
     if (activeProfile().filters.display_modes.active === oldName) activeProfile().filters.display_modes.active = next.name;
-    drafts.mode = null;
     clearUnappliedEditorSection($("#modeName"));
-    markDirty("Display mode updated");
-    renderModes();
+    markDirty("Display mode updated", ["profiles"]);
+    if (render) renderModes();
+    else {
+      $("#modePropertiesCaption").textContent = next.name || "Mode properties";
+      const rowLabel = $(`[data-mode-index="${state.ui.selectedModeIndex}"] span`);
+      if (rowLabel) rowLabel.textContent = next.name || `Mode ${state.ui.selectedModeIndex + 1}`;
+    }
     renderRuntimeMenu();
   }
 
@@ -2783,18 +2867,23 @@
     return profile;
   }
 
-  function applyProfile() {
+  function applyProfile({ render = true } = {}) {
     const record = managedProfileRecord();
     if (!record || !drafts.profile) return;
     const oldName = record.data.name;
     record.data = clone(captureProfileDraft());
     if (state.metadata.last_active_profile === oldName) state.metadata.last_active_profile = record.data.name;
-    drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
-    markDirty("Profile updated");
+    markDirty("Profile updated", ["profiles", "metadata"]);
     renderGlobalProfileSelect();
-    renderProfilesManager();
-    if (record.id === state.activeProfileId) renderAllProfileSections();
+    if (render) {
+      renderProfilesManager();
+      if (record.id === state.activeProfileId) renderAllProfileSections();
+    } else {
+      $("#profilePropertiesCaption").textContent = record.data.name || "Profile properties";
+      const rowLabel = $(`[data-managed-profile-id="${CSS.escape(record.id)}"] span`);
+      if (rowLabel) rowLabel.textContent = record.data.name || "Profile";
+    }
     renderRuntimeMenu();
   }
 
@@ -3211,6 +3300,8 @@
   function renderAvisoGroupEditor(groupIndex = buildAvisoGroupIndex()) {
     const group = selectedAvisoGroup();
     const editor = $(".aviso-group-editor");
+    const nameControl = $("#avisoGroupName");
+    nameControl?.setCustomValidity("");
     if (!group) {
       $("#avisoGroupCaption").textContent = "No group selected";
       $("#avisoGroupSelectionMeta").textContent = "";
@@ -3255,8 +3346,7 @@
     state.ui.selectedAvisoGroupId = group.id;
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
-    markDirty("AVISO group created");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
+    markDirty("AVISO group created", ["aviso"]);
     renderAviso();
     renderRuntimeMenu();
   }
@@ -3272,8 +3362,7 @@
     state.ui.selectedAvisoGroupId = copy.id;
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
-    markDirty("AVISO group copied");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
+    markDirty("AVISO group copied", ["aviso"]);
     renderAviso();
     renderRuntimeMenu();
   }
@@ -3287,32 +3376,31 @@
     state.ui.selectedAvisoGroupId = avisoGroups()[Math.max(0, index - 1)]?.id || avisoGroups()[0]?.id || "";
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
-    markDirty("AVISO group deleted");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
+    markDirty("AVISO group deleted", ["aviso"]);
     renderAviso();
     renderRuntimeMenu();
   }
 
-  function applyAvisoGroup() {
+  function applyAvisoGroup({ render = true, feedback = true } = {}) {
     const group = selectedAvisoGroup();
     if (!group) return;
     const draft = captureAvisoGroupDraft();
     const name = String(draft?.data?.name || "").trim();
     if (!name) {
-      showToast("Enter a group name", "error");
-      return;
+      $("#avisoGroupName")?.setCustomValidity("Enter a group name");
+      if (feedback) showToast("Enter a group name", "error");
+      return false;
     }
-    const visibilityChanged = group.visible !== (draft.data.visible !== false);
+    $("#avisoGroupName")?.setCustomValidity("");
     group.name = name;
     group.visible = draft.data.visible !== false;
     group.accent = normalizeHex(draft.data.accent, group.accent || "#84b7d5");
-    drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
-    markDirty("AVISO group updated");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()) });
-    if (visibilityChanged) postBridge("aviso.group.visibility", { id: group.id, name: group.name, visible: group.visible });
-    renderAviso();
+    markDirty("AVISO group updated", ["aviso"]);
+    if (render) renderAviso();
+    else $("#avisoGroupCaption").textContent = group.name;
     renderRuntimeMenu();
+    return true;
   }
 
   function revertAvisoGroup() {
@@ -3328,8 +3416,7 @@
     if (!group || !avisoGroupMemberIndices(group.id).length) return;
     if (!confirmDelete(`Remove all content from “${group.name}”?`)) return;
     avisoFeatures().forEach(feature => setFeatureGroupMembership(feature, group.id, false));
-    markDirty("AVISO group cleared");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
+    markDirty("AVISO group cleared", ["aviso"]);
     renderAvisoGroups();
     renderRuntimeMenu();
   }
@@ -3344,8 +3431,7 @@
       const entry = avisoStyleEntry(button.dataset.memberId, "geometry");
       entry?.indices.forEach(index => setFeatureGroupMembership(avisoFeatures()[index], group.id, false));
     }
-    markDirty("AVISO group contents updated");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
+    markDirty("AVISO group contents updated", ["aviso"]);
     renderAvisoGroups();
     renderRuntimeMenu();
   }
@@ -3359,8 +3445,7 @@
       ? uniqueValues(selectedAvisoGeometryEntries().flatMap(entry => entry.indices))
       : textSelectionIndices(avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text"));
     indices.forEach(index => setFeatureGroupMembership(avisoFeatures()[index], group.id, true));
-    markDirty(`${indices.length} AVISO feature${indices.length === 1 ? "" : "s"} added to ${group.name}`);
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
+    markDirty(`${indices.length} AVISO feature${indices.length === 1 ? "" : "s"} added to ${group.name}`, ["aviso"]);
     showToast(`Added ${indices.length.toLocaleString()} feature${indices.length === 1 ? "" : "s"} to ${group.name}`, "success");
     renderRuntimeMenu();
   }
@@ -3423,38 +3508,33 @@
     if (!avisoGroupContentDraft) return;
     const item = groupContentCandidates().find(candidate => candidate.key === key);
     if (!item) return;
-    avisoGroupContentDirty = true;
-    updateCommandState();
     const allSelected = item.indices.every(index => avisoGroupContentDraft.members.has(index));
     item.indices.forEach(index => {
       if (allSelected) avisoGroupContentDraft.members.delete(index);
       else avisoGroupContentDraft.members.add(index);
     });
+    stageAvisoGroupContent();
     renderAvisoGroupContentDialog();
   }
 
   function setFilteredAvisoGroupContent(selected) {
     if (!avisoGroupContentDraft) return;
-    avisoGroupContentDirty = true;
-    updateCommandState();
     groupContentCandidates().forEach(item => item.indices.forEach(index => {
       if (selected) avisoGroupContentDraft.members.add(index);
       else avisoGroupContentDraft.members.delete(index);
     }));
+    stageAvisoGroupContent();
     renderAvisoGroupContentDialog();
   }
 
-  function applyAvisoGroupContent() {
+  function stageAvisoGroupContent() {
     const group = avisoGroups().find(item => item.id === avisoGroupContentDraft?.groupId);
-    if (!group || !avisoGroupContentDraft) return;
+    if (!group || !avisoGroupContentDraft) return false;
     avisoFeatures().forEach((feature, index) => setFeatureGroupMembership(feature, group.id, avisoGroupContentDraft.members.has(index)));
-    avisoGroupContentDraft = null;
     avisoGroupContentDirty = false;
-    $("#avisoGroupContentDialog").close();
-    markDirty("AVISO group contents updated");
-    postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
-    renderAvisoGroups();
+    markDirty("AVISO group contents updated", ["aviso"]);
     renderRuntimeMenu();
+    return true;
   }
 
   function renderAviso() {
@@ -3528,7 +3608,6 @@
     const entries = selectedAvisoGeometryEntries(allEntries);
     if (!entries.length) {
       $("#avisoGeometryCaption").textContent = "No geometry selected";
-      $("#avisoGeometryApplyButton").disabled = true;
       return;
     }
 
@@ -3547,8 +3626,6 @@
     $("#avisoGeometryLayer").textContent = layers.length === 1 ? layers[0] : `${layers.length} layers`;
     $("#avisoGeometryObjectCount").textContent = `${objectCount.toLocaleString()} object${objectCount === 1 ? "" : "s"}`;
     $("#avisoGeometryVisibleLabel").textContent = entries.length === 1 ? "Show this category" : "Show selected categories";
-    $("#avisoGeometryApplyButton").textContent = entries.length === 1 ? "Update" : `Update ${entries.length} styles`;
-    $("#avisoGeometryApplyButton").disabled = false;
     $("#avisoGeometryAdvancedInfo").textContent = `${entries.length} style${entries.length === 1 ? "" : "s"} · ${types.join(" + ")} · ${layers.length} layer${layers.length === 1 ? "" : "s"}`;
 
     const compatibility = $("#avisoGeometryCompatibility");
@@ -3611,7 +3688,7 @@
     setStatus(`${next.length} geometry style${next.length === 1 ? "" : "s"} selected`, "info");
   }
 
-  function applyAvisoGeometry() {
+  function applyAvisoGeometry({ render = true, feedback = true } = {}) {
     const entries = selectedAvisoGeometryEntries();
     if (!entries.length) return;
     const multi = entries.length > 1;
@@ -3639,8 +3716,8 @@
     const applyVisibility = !multi || visibility.dataset.touched === "true";
 
     if (!Object.keys(changed).length && !applyVisibility) {
-      showToast("Change at least one shared geometry property");
-      return;
+      if (feedback) showToast("Change at least one shared geometry property");
+      return false;
     }
 
     let updatedCount = 0;
@@ -3659,9 +3736,10 @@
 
     drafts.avisoGeometry = null;
     clearUnappliedEditorSection($("#avisoGeometryVisible"));
-    markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} updated`);
-    showToast(`Updated ${updatedCount.toLocaleString()} geometry objects`, "success");
-    renderAvisoGeometry();
+    markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} updated`, ["aviso"]);
+    if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} geometry objects`, "success");
+    if (render) renderAvisoGeometry();
+    return true;
   }
 
   function effectiveAvisoTextValue(index, entry, key) {
@@ -3796,18 +3874,13 @@
     visible.disabled = !selectionScope;
     textInput.closest(".field")?.classList.toggle("scope-disabled", !selectionScope);
     visible.closest(".check-field")?.classList.toggle("scope-disabled", !selectionScope);
-    const button = $("#avisoTextApplyButton");
-    button.textContent = "Update";
-    if (scope === "selection") button.title = multi ? `Update changed properties on ${indices.length} selected labels` : "Update the selected label";
-    else if (scope === "group") button.title = `Update typography, halo and zoom visibility for ${entry.name}`;
-    else button.title = "Update typography, halo and zoom visibility for all AVISO text";
   }
 
-  function applyAvisoTextScope() {
+  function applyAvisoTextScope(options = {}) {
     const scope = $("#avisoTextApplyTarget").value;
-    if (scope === "group") applyAvisoTextStyle("style");
-    else if (scope === "all") applyAvisoTextStyle("all");
-    else applyAvisoTextSelection();
+    if (scope === "group") return applyAvisoTextStyle("style", options);
+    if (scope === "all") return applyAvisoTextStyle("all", options);
+    return applyAvisoTextSelection(options);
   }
 
   function selectAvisoTextLabel(index, event, forceToggle = false) {
@@ -3842,7 +3915,7 @@
     return paint;
   }
 
-  function applyAvisoTextSelection() {
+  function applyAvisoTextSelection({ render = true, feedback = true } = {}) {
     const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
     if (!entry) return;
     const indices = textSelectionIndices(entry);
@@ -3868,8 +3941,8 @@
     }
 
     if (!Object.keys(paint).length && !applyVisibility && !textChanged) {
-      showToast("Change at least one shared text property");
-      return;
+      if (feedback) showToast("Change at least one shared text property");
+      return false;
     }
 
     let updatedCount = 0;
@@ -3884,19 +3957,20 @@
 
     drafts.avisoTextLabel = null;
     clearUnappliedEditorSection($("#avisoTextValue"));
-    markDirty(`${updatedCount} AVISO label${updatedCount === 1 ? "" : "s"} updated`);
-    showToast(`Updated ${updatedCount.toLocaleString()} text label${updatedCount === 1 ? "" : "s"}`, "success");
-    renderAvisoText();
+    markDirty(`${updatedCount} AVISO label${updatedCount === 1 ? "" : "s"} updated`, ["aviso"]);
+    if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} text label${updatedCount === 1 ? "" : "s"}`, "success");
+    if (render) renderAvisoText();
+    return true;
   }
 
-  function applyAvisoTextStyle(scope = "style") {
+  function applyAvisoTextStyle(scope = "style", { render = true, feedback = true } = {}) {
     const currentEntry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
     if (!currentEntry) return;
     const selectedCount = textSelectionIndices(currentEntry).length;
     const textPaint = buildAvisoTextPaint(currentEntry, selectedCount > 1);
     if (!Object.keys(textPaint).length) {
-      showToast("Change at least one shared text style property");
-      return;
+      if (feedback) showToast("Change at least one shared text style property");
+      return false;
     }
 
     const targets = scope === "all" ? avisoStyleEntries("text") : [currentEntry];
@@ -3915,9 +3989,10 @@
 
     drafts.avisoTextStyle = null;
     clearUnappliedEditorSection($("#avisoTextValue"));
-    markDirty(scope === "all" ? "All AVISO text styles updated" : `${currentEntry.name} updated`);
-    showToast(`Updated ${updatedCount.toLocaleString()} text labels`, "success");
-    renderAvisoText();
+    markDirty(scope === "all" ? "All AVISO text styles updated" : `${currentEntry.name} updated`, ["aviso"]);
+    if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} text labels`, "success");
+    if (render) renderAvisoText();
+    return true;
   }
 
   function revertAvisoEditor() {
@@ -4047,7 +4122,7 @@
     return data;
   }
 
-  function applyAlerts() {
+  function applyAlerts({ render = true, feedback = true } = {}) {
     const data = captureAlertsDraft();
     state.settings.rimcas = data.enabled;
     data.rimcas.enabled = data.enabled;
@@ -4055,12 +4130,10 @@
     data.rimcas.runways = clone(data.runways);
     activeProfile().rimcas = clone(data.rimcas);
     state.runtime.alerts = { visibility: data.visibility, runways: clone(data.runways) };
-    drafts.alerts = null;
     clearUnappliedEditorSectionsWithin($("[data-page-panel='alerts']"));
-    markDirty("Alert settings updated");
-    postBridge("alerts.update", { profile: activeProfile().name, enabled: state.settings.rimcas, visibility: data.visibility, runways: clone(data.runways), rimcas: clone(data.rimcas) });
-    renderAlerts();
-    showToast("Alert settings updated", "success");
+    markDirty("Alert settings updated", ["profiles", "settings"]);
+    if (render) renderAlerts();
+    if (feedback) showToast("Alert settings updated", "success");
   }
 
   function revertAlerts() {
@@ -4071,14 +4144,14 @@
 
   function setAllAlertTypes(active) {
     $$('[data-alert-type]').forEach(input => { input.checked = active; input.closest(".alert-toggle-card")?.classList.toggle("inactive", !active); });
-    markEditorSectionUnapplied($("#alertTypeGrid"));
+    applyAlerts({ render: false, feedback: false });
   }
 
   function setAllAlertRunwayField(field, value = true) {
     captureAlertsDraft();
     ensureAlertsDraft().runways.forEach(runway => { runway[field] = value; });
-    markEditorSectionUnapplied($("#alertRunwayTable"));
     renderAlerts();
+    applyAlerts({ render: false, feedback: false });
   }
 
   function addAlertRunway() {
@@ -4090,15 +4163,15 @@
     const data = ensureAlertsDraft();
     if (data.runways.some(row => row.id === normalized)) { showToast("This runway pair is already monitored", "error"); return; }
     data.runways.push({ id: normalized, arrival: true, departure: true, closed: false });
-    markEditorSectionUnapplied($("#alertRunwayTable"));
     renderAlerts();
+    applyAlerts({ render: false, feedback: false });
   }
 
   function removeAlertRunway(index) {
     captureAlertsDraft();
     ensureAlertsDraft().runways.splice(index, 1);
-    markEditorSectionUnapplied($("#alertRunwayTable"));
     renderAlerts();
+    applyAlerts({ render: false, feedback: false });
   }
 
   function datalinkFormFromRuntime(runtime = state.datalink) {
@@ -4184,6 +4257,11 @@
     };
   }
 
+  function hasDatalinkDraftChanges() {
+    const dirty = datalinkDirtyParts();
+    return dirty.connection || dirty.cdm;
+  }
+
   function datalinkHasSavableConnectionChanges() {
     const fields = datalinkEffectiveDirtyFields().connection;
     return fields.logonCallsign || fields.playSound || (fields.password && datalinkPasswordCommitReady);
@@ -4191,6 +4269,7 @@
 
   function refreshDatalinkDirtyState() {
     const dirty = datalinkDirtyParts();
+    updateDirtyState();
     return dirty;
   }
 
@@ -4311,7 +4390,7 @@
       : !runtime.connected && !runtime.hasPassword && !draft.replacePassword
           ? "Store a Hoppie code before connecting"
         : !runtime.connected && dirty.connection
-          ? "Save changed connection settings automatically, then connect"
+          ? "Save changed connection settings, then connect"
           : runtime.connected ? "Disconnect Hoppie CPDLC" : "Connect Hoppie CPDLC";
 
     const pollButton = $("#datalinkPollButton");
@@ -4330,9 +4409,7 @@
       ? "Starting"
       : reminderOperation === "reminder-stop"
         ? "Stopping"
-        : reminderOperation === "reminder-update"
-          ? "Updating"
-          : reminderRunning ? "Running" : "Stopped";
+        : reminderRunning ? "Running" : "Stopped";
     reminderBadge.className = `datalink-state-badge ${reminderRunning ? "connected" : reminderOperation === "reminder-run" ? "connecting" : "disconnected"}`;
     $("span", reminderBadge).textContent = reminderLabel;
     reminderBadge.title = reminderRunning
@@ -4365,13 +4442,9 @@
           : !runtime.cdmAliasReady ? "Add a valid .cdm entry to the EuroScope alias file"
             : "Start automatic PDC reminders";
 
-    const reminderUpdateButton = $("#datalinkReminderUpdateButton");
-    reminderUpdateButton.hidden = !reminderRunning || !dirty.cdm;
-    reminderUpdateButton.disabled = reminderActionBusy;
-    reminderUpdateButton.textContent = reminderOperation === "reminder-update" ? "Updating..." : "Update";
     $("#datalinkCdmDelay").disabled = reminderActionBusy;
     $("#datalinkCdmCooldown").disabled = reminderActionBusy;
-    $(".datalink-reminder-actions").classList.toggle("has-update", !reminderUpdateButton.hidden);
+    datalinkControlsInitialized = true;
   }
 
   function applyDatalinkRuntimeState(incoming) {
@@ -4419,70 +4492,11 @@
     }), delay);
   }
 
-  function clearDatalinkAutoSaveTimer() {
-    if (!datalinkAutoSaveTimer) return;
-    window.clearTimeout(datalinkAutoSaveTimer);
-    datalinkAutoSaveTimer = 0;
-  }
-
-  function scheduleDatalinkAutoSave(scope, delay = 450) {
-    if (scope !== "connection" && scope !== "cdm") return;
-    if (scope === "cdm" && state.datalink.cdmAutoEnabled) return;
-    const hasChanges = scope === "connection"
-      ? datalinkHasSavableConnectionChanges()
-      : datalinkDirtyParts().cdm;
-    if (!hasChanges) {
-      datalinkAutoSaveScopes.delete(scope);
-      if (!datalinkAutoSaveScopes.size) clearDatalinkAutoSaveTimer();
-      return;
-    }
-    datalinkAutoSaveRetryCount = 0;
-    datalinkAutoSaveScopes.add(scope);
-    clearDatalinkAutoSaveTimer();
-    datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, Math.max(0, delay));
-  }
-
-  function flushDatalinkAutoSave() {
-    clearDatalinkAutoSaveTimer();
-    if (datalinkPending.settings) return;
-    const includeConnection = datalinkAutoSaveScopes.has("connection");
-    const includeCdm = datalinkAutoSaveScopes.has("cdm") && !state.datalink.cdmAutoEnabled;
-    datalinkAutoSaveScopes.clear();
-    if (!includeConnection && !includeCdm) return;
-    const draft = captureDatalinkDraftFromControls();
-    if (includeConnection && !draft?.logonCallsign) {
-      $("#datalinkLogonCallsign").classList.add("invalid");
-      datalinkAutoSaveScopes.add("connection");
-      if (datalinkConnectAfterSave) {
-        datalinkConnectAfterSave = false;
-        showToast("Enter a CPDLC logon callsign", "error");
-      }
-      if (includeCdm) {
-        submitDatalinkSettings({
-          includeCdm: true,
-          cdmAutoEnabled: false,
-          kind: "autosave",
-          silent: true
-        });
-      }
-      renderDatalink();
-      return;
-    }
-    const submitted = submitDatalinkSettings({
-      includeConnection,
-      includeCdm,
-      cdmAutoEnabled: includeCdm ? false : undefined,
-      kind: "autosave",
-      silent: true
-    });
-    if (!submitted) window.setTimeout(continueQueuedDatalinkWork, 0);
-  }
-
   function submitDatalinkSettings({
     includeConnection = false,
     includeCdm = false,
     cdmAutoEnabled,
-    kind = "autosave",
+    kind = "live-action",
     silent = false
   } = {}) {
     const draft = captureDatalinkDraftFromControls();
@@ -4540,7 +4554,11 @@
         ? "Starting PDC reminders..."
         : kind === "reminder-stop"
           ? "Stopping PDC reminders..."
-          : "Updating PDC reminders...";
+          : kind === "global-save"
+            ? "Saving datalink settings..."
+            : kind === "connect"
+              ? "Saving connection settings..."
+              : "Updating datalink settings...";
       setStatus(pendingText);
     }
     previewDatalinkAck("datalink.settings.update", requestId, "Datalink settings applied");
@@ -4548,31 +4566,11 @@
   }
 
   function togglePdcReminders() {
-    clearDatalinkAutoSaveTimer();
-    datalinkAutoSaveScopes.delete("cdm");
     const running = Boolean(state.datalink.cdmAutoEnabled);
     const operation = {
       includeCdm: true,
       cdmAutoEnabled: !running,
       kind: running ? "reminder-stop" : "reminder-run"
-    };
-    if (datalinkPending.settings) {
-      if (datalinkPending.settings.includeCdm) return;
-      datalinkQueuedReminderAction = operation;
-      renderDatalink();
-      return;
-    }
-    submitDatalinkSettings(operation);
-  }
-
-  function updatePdcReminders() {
-    if (!state.datalink.cdmAutoEnabled) return;
-    clearDatalinkAutoSaveTimer();
-    datalinkAutoSaveScopes.delete("cdm");
-    const operation = {
-      includeCdm: true,
-      cdmAutoEnabled: true,
-      kind: "reminder-update"
     };
     if (datalinkPending.settings) {
       if (datalinkPending.settings.includeCdm) return;
@@ -4592,9 +4590,8 @@
 
   function continueQueuedDatalinkWork() {
     if (datalinkPending.settings) return;
-    if (datalinkAutoSaveScopes.size) {
-      clearDatalinkAutoSaveTimer();
-      datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 0);
+    if (globalSaveAfterDatalink) {
+      continueGlobalSaveAfterDatalink();
       return;
     }
     if (flushQueuedPdcReminderAction()) return;
@@ -4603,11 +4600,13 @@
       if (!datalinkHasSavableConnectionChanges()) {
         datalinkConnectAfterSave = false;
         renderDatalink();
+        showToast("Finish the CPDLC connection settings before connecting", "error");
         return;
       }
-      datalinkAutoSaveScopes.add("connection");
-      clearDatalinkAutoSaveTimer();
-      datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 0);
+      if (!submitDatalinkSettings({ includeConnection: true, kind: "connect", silent: true })) {
+        datalinkConnectAfterSave = false;
+        renderDatalink();
+      }
       return;
     }
     datalinkConnectAfterSave = false;
@@ -4637,7 +4636,6 @@
     if (!runtime.connected &&
       (datalinkDirtyParts().connection || datalinkPending.settings?.includeConnection)) {
       datalinkConnectAfterSave = true;
-      datalinkAutoSaveRetryCount = 0;
       const pendingConnectionSave = datalinkPending.settings?.includeConnection
         ? datalinkPending.settings
         : null;
@@ -4647,10 +4645,11 @@
         (!dirtyFields.playSound || pendingConnectionSave.payload.playSound === datalinkDraft.playSound) &&
         (!dirtyFields.password || !datalinkPasswordCommitReady ||
           (pendingConnectionSave.payload.replacePassword && pendingConnectionSave.submitted.password === datalinkDraft.password));
-      if (!pendingCoversDraft) datalinkAutoSaveScopes.add("connection");
-      clearDatalinkAutoSaveTimer();
-      if (!datalinkPending.settings)
-        datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 0);
+      if (!pendingCoversDraft && !datalinkPending.settings &&
+          !submitDatalinkSettings({ includeConnection: true, kind: "connect", silent: true })) {
+        datalinkConnectAfterSave = false;
+        showToast("Save valid CPDLC settings before connecting", "error");
+      }
       renderDatalink();
       return;
     }
@@ -4717,14 +4716,18 @@
   function armDatalinkPendingTimeout(slot, requestId) {
     if (!slot || !requestId) return;
     window.setTimeout(() => {
-      if (datalinkPending[slot]?.id !== requestId) return;
+      const timedOut = datalinkPending[slot];
+      if (timedOut?.id !== requestId) return;
       datalinkPending[slot] = null;
+      if (slot === "settings" && timedOut.kind === "global-save") globalSaveAfterDatalink = false;
+      if (slot === "settings" && timedOut.kind === "connect") datalinkConnectAfterSave = false;
       if (slot === "connection") state.datalink.connecting = false;
       if (slot === "poll") state.datalink.pollInProgress = false;
       renderDatalink();
       const message = "The datalink operation timed out. Check the connection and try again.";
       setStatus(message, "error");
       showToast("Datalink operation timed out", "error");
+      updateDirtyState();
     }, REQUEST_TIMEOUT_MS);
   }
 
@@ -4796,7 +4799,6 @@
       datalinkBaseline = nextBaseline;
       datalinkDraft = normalizeDatalinkForm(current);
       refreshDatalinkDirtyState();
-      if (request.kind === "autosave") datalinkAutoSaveRetryCount = 0;
     } else if (slot) {
       datalinkPending[slot] = null;
     }
@@ -4804,11 +4806,9 @@
       ? "PDC reminders running"
       : completedRequest?.kind === "reminder-stop"
         ? "PDC reminders stopped"
-        : completedRequest?.kind === "reminder-update"
-          ? "PDC reminder settings updated"
-          : completedRequest?.kind === "autosave"
-            ? "Datalink settings saved"
-            : message.payload.message || "Datalink operation completed";
+        : completedRequest?.kind === "global-save" || completedRequest?.kind === "connect"
+          ? "Datalink settings saved"
+          : message.payload.message || "Datalink operation completed";
     renderDatalink();
     setStatus(text);
     if (!completedRequest?.silent) showToast(text, "success");
@@ -4834,41 +4834,8 @@
     if (failedRequest?.id && !messageMatchesRequest(message, failedRequest.id)) return true;
     if (slot === "settings" && !failedRequest) return true;
     if (slot) datalinkPending[slot] = null;
-    let retryScheduled = false;
-    if (slot === "settings" && failedRequest?.kind === "autosave") {
-      if (failedRequest.includeConnection) datalinkAutoSaveScopes.add("connection");
-      if (failedRequest.includeCdm && !state.datalink.cdmAutoEnabled) datalinkAutoSaveScopes.add("cdm");
-      if (datalinkAutoSaveRetryCount < 1) {
-        datalinkAutoSaveRetryCount += 1;
-        clearDatalinkAutoSaveTimer();
-        datalinkAutoSaveTimer = window.setTimeout(flushDatalinkAutoSave, 800);
-        retryScheduled = true;
-      } else {
-        if (failedRequest.includeConnection) {
-          const keepNewerConnectionEdit =
-            datalinkScopeChangedSinceRequest(failedRequest, "connection") &&
-            datalinkHasSavableConnectionChanges();
-          if (keepNewerConnectionEdit) {
-            datalinkAutoSaveScopes.add("connection");
-            datalinkAutoSaveRetryCount = 0;
-          } else {
-            datalinkAutoSaveScopes.delete("connection");
-            datalinkConnectAfterSave = false;
-          }
-        }
-        if (failedRequest.includeCdm) {
-          const keepNewerCdmEdit =
-            datalinkScopeChangedSinceRequest(failedRequest, "cdm") &&
-            datalinkDirtyParts().cdm && !state.datalink.cdmAutoEnabled;
-          if (keepNewerCdmEdit) {
-            datalinkAutoSaveScopes.add("cdm");
-            datalinkAutoSaveRetryCount = 0;
-          } else {
-            datalinkAutoSaveScopes.delete("cdm");
-          }
-        }
-      }
-    }
+    if (slot === "settings" && failedRequest?.kind === "global-save") globalSaveAfterDatalink = false;
+    if (slot === "settings" && failedRequest?.kind === "connect") datalinkConnectAfterSave = false;
     if (slot === "connection") state.datalink.connecting = false;
     if (slot === "poll") state.datalink.pollInProgress = false;
     const text = message.payload.message || message.payload.error || "Datalink operation failed";
@@ -4876,9 +4843,8 @@
     renderDatalink();
     setStatus(text, "error");
     showToast(text, "error");
-    if (slot === "settings" && !retryScheduled) {
-      window.setTimeout(continueQueuedDatalinkWork, 0);
-    }
+    updateDirtyState();
+    if (slot === "settings") window.setTimeout(continueQueuedDatalinkWork, 0);
     return true;
   }
 
@@ -4906,7 +4872,7 @@
     renderDataHealthStatus();
   }
 
-  function applySettings() {
+  function applySettings({ render = true } = {}) {
     Object.assign(state.settings, {
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
@@ -4918,9 +4884,8 @@
       record.data.targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset;
     });
     clearUnappliedEditorSection($("#settingsResolutionPreset"));
-    markDirty("Settings updated");
-    renderIcons();
-    postBridge("settings.update", clone(state.settings));
+    markDirty("Settings updated", ["profiles", "settings"]);
+    if (render) renderIcons();
   }
 
   function ensureSelectValue(select, value) {
@@ -4962,8 +4927,50 @@
     };
   }
 
-  function saveAll() {
-	if (!hostAuthoritativeReady || !state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport ||
+  function stageFocusedEditorValue() {
+    const active = document.activeElement;
+    const pendingSquawk = $("#modeBlockedSquawkInput");
+    if (String(pendingSquawk?.value || "").trim()) {
+      if (!withHistoryGesture(pendingSquawk, addModeBlockedSquawk)) {
+        revealInvalidEditorControl(pendingSquawk);
+        return false;
+      }
+    } else {
+      if (!stageEditorControl(active)) {
+        revealInvalidEditorControl(active);
+        return false;
+      }
+    }
+    if (active?.checkValidity && !active.checkValidity()) {
+      revealInvalidEditorControl(active);
+      return false;
+    }
+    if (hasUnappliedEditorInputs()) {
+      let invalid = $("#controlWindow input:invalid, #controlWindow select:invalid, #controlWindow textarea:invalid");
+      const groupInput = $("#avisoGroupName");
+      if (!invalid && unappliedEditorSections.has(editorSectionKey(groupInput)) &&
+          !String(drafts.avisoGroup?.data?.name ?? groupInput?.value ?? "").trim()) {
+        groupInput?.setCustomValidity("Enter a group name");
+        invalid = groupInput;
+      }
+      if (invalid) revealInvalidEditorControl(invalid);
+      if (!invalid) showToast("Finish the current edit before saving", "error");
+      return false;
+    }
+    return true;
+  }
+
+  function revealInvalidEditorControl(control) {
+    if (!control) return;
+    if (control.id === "modeBlockedSquawkInput" && state.ui.page !== "modes") setPage("modes");
+    else if (control.id === "avisoGroupName" && state.ui.page !== "groups") setPage("groups");
+    control.scrollIntoView?.({ block: "nearest" });
+    control.focus?.({ preventScroll: true });
+    control.reportValidity?.();
+  }
+
+  function startConfigurationSave() {
+	if (!hostAuthoritativeReady || !state.dirty || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport ||
       (state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed)) return;
     const payload = serializeStatePayload(true);
     // AVISO is an independent, potentially multi-megabyte resource.  Do not
@@ -4990,10 +4997,20 @@
 
   function requestReload() {
 	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
-    if ((state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) &&
-        !window.confirm("Discard unsaved or unapplied changes and reload configuration from disk?")) return;
+    const couldNotStageDraft = !stageFocusedEditorValue();
+    if (datalinkControlsInitialized) captureDatalinkDraftFromControls();
+    const hasUnsaved = state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges();
+    if (couldNotStageDraft) {
+      if (!window.confirm("Some current editor fields are invalid or unfinished. Discard them and all unsaved changes, then reload from disk?")) return;
+    } else if (hasUnsaved && !window.confirm("Discard unsaved changes and reload configuration from disk?")) {
+      return;
+    }
+    discardDatalinkDraftOnReload = true;
     pending.reload = postBridge("state.reload", {});
-    if (!pending.reload) return;
+    if (!pending.reload) {
+      discardDatalinkDraftOnReload = false;
+      return;
+    }
     armPendingTimeout("reload", pending.reload);
     setStatus("Reloading configuration…", "info");
     updateCommandState();
@@ -5016,6 +5033,54 @@
         }
       }), 0);
     }
+  }
+
+  function continueGlobalSaveAfterDatalink() {
+    if (!globalSaveAfterDatalink || datalinkPending.settings) return;
+    globalSaveAfterDatalink = false;
+    if (hasDatalinkDraftChanges()) {
+      updateDirtyState();
+      setStatus("Datalink settings changed while saving; press Save again", "error");
+      return;
+    }
+    if (state.dirty) {
+      startConfigurationSave();
+      return;
+    }
+    updateDirtyState();
+    setStatus("Datalink settings saved");
+    showToast("Datalink settings saved", "success");
+  }
+
+  function saveAll() {
+    if (!stageFocusedEditorValue()) return;
+	flushDeferredHistoryGesture();
+    if (datalinkControlsInitialized) captureDatalinkDraftFromControls();
+    const dirty = datalinkDirtyParts();
+    if (dirty.connection && datalinkDraft?.password) datalinkPasswordCommitReady = true;
+    if (dirty.connection && !datalinkDraft?.logonCallsign) {
+      setPage("settings");
+      $("#datalinkLogonCallsign")?.classList.add("invalid");
+      $("#datalinkLogonCallsign")?.focus();
+      showToast("Enter a CPDLC logon callsign before saving", "error");
+      return;
+    }
+    if (datalinkPending.settings || globalSaveAfterDatalink) return;
+    if (dirty.connection || dirty.cdm) {
+      globalSaveAfterDatalink = true;
+      const submitted = submitDatalinkSettings({
+        includeConnection: dirty.connection,
+        includeCdm: dirty.cdm,
+        cdmAutoEnabled: Boolean(state.datalink.cdmAutoEnabled),
+        kind: "global-save",
+        silent: true
+      });
+      if (!submitted) globalSaveAfterDatalink = false;
+      updateDirtyState();
+      if (submitted) setStatus("Saving datalink settings...", "info");
+      return;
+    }
+    startConfigurationSave();
   }
 
   function restoreProfilesBackup() {
@@ -5041,10 +5106,7 @@
 
   function undoHistory() {
 	if (!history.past.length || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport) return;
-	if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-	  showToast("Apply or revert the open editor fields before Undo", "error");
-	  return;
-	}
+	flushDeferredHistoryGesture();
 	const rollback = captureRuntimeCommandRollback();
     const target = history.past.pop();
     history.future.push(history.present);
@@ -5057,10 +5119,7 @@
 
   function redoHistory() {
 	if (!history.future.length || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport) return;
-	if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-	  showToast("Apply or revert the open editor fields before Redo", "error");
-	  return;
-	}
+	flushDeferredHistoryGesture();
 	const rollback = captureRuntimeCommandRollback();
     const target = history.future.pop();
     history.past.push(history.present);
@@ -5104,27 +5163,146 @@
     }
   }
 
+  function editorControlScope(control) {
+    if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement ||
+        control instanceof HTMLTextAreaElement)) return "";
+    if (control.matches(
+      '[type="search"], [type="file"], #avisoTextStyleSelect, #avisoTextApplyTarget, ' +
+      '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect, #modeBlockedSquawkInput'
+    ) || control.closest(".datalink-card, #runtimeMenu, .page-rail, dialog")) return "";
+
+    const profilePanel = control.closest("[data-profile-panel]")?.dataset.profilePanel;
+    if (["colors", "icons", "tags", "rules"].includes(profilePanel)) return profilePanel;
+    if (control.closest("[data-page-panel='modes']")) return "modes";
+    if (control.closest("[data-page-panel='profiles']")) return "profiles";
+    if (control.closest("[data-aviso-view-panel='geometry']")) return "aviso-geometry";
+    if (control.closest("[data-aviso-view-panel='text']")) return "aviso-text";
+    if (control.closest("[data-page-panel='groups']")) return "groups";
+    if (control.closest("[data-page-panel='alerts']")) return "alerts";
+    if (control.closest(".settings-layout")) return "settings";
+    return "";
+  }
+
+  function stageEditorControl(control) {
+    const scope = editorControlScope(control);
+    if (!scope) return true;
+    const sectionKey = editorSectionKey(control);
+    if (sectionKey && !unappliedEditorSections.has(sectionKey)) return true;
+    const result = withHistoryGesture(control, () => {
+      if (scope === "colors") return applyColorDraft({ render: false });
+      if (scope === "icons") return applyIcons({ render: false });
+      if (scope === "tags") return applyTag({ render: false });
+      if (scope === "rules") return applyRule({ render: false });
+      if (scope === "modes") return applyMode({ render: false, includePendingSquawk: false });
+      if (scope === "profiles") return applyProfile({ render: false });
+      if (scope === "aviso-geometry") return applyAvisoGeometry({ render: false, feedback: false });
+      if (scope === "aviso-text") return applyAvisoTextScope({ render: false, feedback: false });
+      if (scope === "groups") return applyAvisoGroup({ render: false, feedback: false });
+      if (scope === "alerts") return applyAlerts({ render: false, feedback: false });
+      if (scope === "settings") return applySettings({ render: false });
+    });
+    if (result === false) return false;
+    refreshEditorDerivedVisuals(scope, control);
+    return true;
+  }
+
+  const deferredDerivedRefreshes = new WeakMap();
+
+  function refreshSelectedColorRow() {
+    const entry = selectedColorEntry();
+    const row = entry && $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
+    if (!entry || !row) return;
+    const hex = colorToHex(entry.color).toUpperCase();
+    const opacity = Math.round((entry.color.a ?? 255) / 255 * 100);
+    row.style.setProperty("--node-color", hex);
+    row.title = `${entry.id} Â· ${hex}${opacity === 100 ? "" : ` Â· ${opacity}%`}`;
+    const meta = $(".menu-row-meta", row);
+    if (meta) meta.innerHTML = `<code>${hex}</code>${opacity === 100 ? "" : `<small>${opacity}%</small>`}`;
+  }
+
+  function performDeferredDerivedRefresh(scope) {
+    if (scope === "aviso-geometry") renderAvisoGeometry();
+    else if (scope === "aviso-text") renderAvisoText();
+    else if (scope === "alerts") renderAlerts();
+  }
+
+  function deferDerivedRefreshUntilFocusout(scope, control) {
+    if (!control || document.activeElement !== control) {
+      performDeferredDerivedRefresh(scope);
+      return;
+    }
+    let scopes = deferredDerivedRefreshes.get(control);
+    if (!scopes) {
+      scopes = new Set();
+      deferredDerivedRefreshes.set(control, scopes);
+      control.addEventListener("focusout", () => {
+        const queued = deferredDerivedRefreshes.get(control) || new Set();
+        deferredDerivedRefreshes.delete(control);
+        window.requestAnimationFrame(() => queued.forEach(performDeferredDerivedRefresh));
+      }, { once: true });
+    }
+    scopes.add(scope);
+  }
+
+  function refreshEditorDerivedVisuals(scope, control = null) {
+    if (scope === "colors") refreshSelectedColorRow();
+    else if (scope === "rules") {
+      const item = rules()[state.ui.selectedRuleIndex];
+      if (item) {
+        $("#ruleFormCaption").textContent = ruleLabel(item, state.ui.selectedRuleIndex);
+        const row = $(`[data-rule-index="${state.ui.selectedRuleIndex}"] span`);
+        if (row) row.textContent = ruleLabel(item, state.ui.selectedRuleIndex);
+      }
+    } else if (scope === "groups") {
+      const group = selectedAvisoGroup();
+      if (group) {
+        $("#avisoGroupCaption").textContent = group.name;
+        const row = $$("#avisoGroupList [data-aviso-group-id]").find(item => item.dataset.avisoGroupId === group.id);
+        const label = row && $("strong", row);
+        if (label) label.textContent = group.name;
+      }
+    } else if (scope === "icons") renderIconSymbolPreview();
+    else if (scope === "settings") renderIconSymbolPreview();
+    else if (["aviso-geometry", "aviso-text", "alerts"].includes(scope))
+      deferDerivedRefreshUntilFocusout(scope, control);
+  }
+
   function bindEvents() {
-    const trackUnappliedEditorInput = event => {
-      const control = event.target;
-      if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement ||
-          control instanceof HTMLTextAreaElement)) return;
-      if (control.matches(
-        '[type="search"], [type="file"], #avisoTextStyleSelect, #avisoTextApplyTarget, ' +
-        '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect'
-      ) ||
-          control.closest(".datalink-card, #runtimeMenu, .page-rail")) return;
-      if (!control.closest(
-        ".detail-panel, .full-editor-panel, .tag-definition-detail-panel, " +
-        ".tag-global-options-panel, .aviso-category-editor, .aviso-text-editor, " +
-        ".aviso-group-editor, [data-alerts-view-panel], .settings-layout"
-      )) return;
-      markEditorSectionUnapplied(control);
-    };
-    document.addEventListener("input", trackUnappliedEditorInput);
-    document.addEventListener("change", trackUnappliedEditorInput);
+    document.addEventListener("focusin", event => {
+      if (editorControlScope(event.target) || event.target.id === "modeBlockedSquawkInput" || event.target.id === "colorSvPalette")
+        beginHistoryGesture(event.target);
+    });
+    document.addEventListener("pointerdown", event => {
+      if (editorControlScope(event.target) || event.target.id === "modeBlockedSquawkInput" || event.target.id === "colorSvPalette")
+        beginHistoryGesture(event.target);
+    }, true);
+    document.addEventListener("focusout", event => {
+      if (historyGestureIds.get(event.target) === deferredHistoryGesture?.key)
+        flushDeferredHistoryGesture();
+    });
+    document.addEventListener("input", event => {
+      if (editorControlScope(event.target)) markEditorSectionUnapplied(event.target);
+    });
+    document.addEventListener("change", event => {
+      if (!stageEditorControl(event.target)) {
+        revealInvalidEditorControl(event.target);
+      }
+    });
 
     document.addEventListener("click", event => {
+      const guardedEditorAction = event.target.closest(
+        "#controlWindow button[data-action], #controlWindow button[data-page], " +
+        "#controlWindow button[data-profile-tab], #controlWindow [data-tree-toggle], " +
+        "#controlWindow [data-color-path], #controlWindow [data-tag-id], " +
+        "#controlWindow [data-rule-index], #controlWindow [data-mode-index], " +
+        "#controlWindow [data-managed-profile-id], #controlWindow [data-aviso-group-id], " +
+        "#controlWindow [data-aviso-geometry-style], #controlWindow [data-aviso-text-style], " +
+        "#controlWindow [data-aviso-text-index]"
+      );
+      if (guardedEditorAction && hasUnappliedEditorInputs() && !stageFocusedEditorValue()) {
+        event.preventDefault();
+        return;
+      }
       if (!event.target.closest("#ruleStatusDropdown")) setRuleStatusMenuOpen(false);
       if (!event.target.closest(".aviso-load-control")) setAvisoLoadMenuOpen(false);
       if (!event.target.closest(".rail-profile-control")) setRailProfilePopoverOpen(false);
@@ -5168,6 +5346,7 @@
       if (groupMemberRemove) { removeAvisoGroupMember(groupMemberRemove); return; }
       const avisoGroupRow = event.target.closest("[data-aviso-group-id]");
       if (avisoGroupRow) {
+        if (!stageFocusedEditorValue()) return;
         state.ui.selectedAvisoGroupId = avisoGroupRow.dataset.avisoGroupId;
         drafts.avisoGroup = null;
         clearUnappliedEditorSection($("#avisoGroupName"));
@@ -5176,15 +5355,16 @@
       }
 
       const pageButton = event.target.closest("[data-page]");
-      if (pageButton) { setPage(pageButton.dataset.page); return; }
+      if (pageButton) { if (stageFocusedEditorValue()) setPage(pageButton.dataset.page); return; }
       const tabButton = event.target.closest("[data-profile-tab]");
-      if (tabButton) { setProfileTab(tabButton.dataset.profileTab); return; }
+      if (tabButton) { if (stageFocusedEditorValue()) setProfileTab(tabButton.dataset.profileTab); return; }
       const avisoViewButton = event.target.closest("[data-aviso-view]");
-      if (avisoViewButton) { state.ui.avisoView = avisoViewButton.dataset.avisoView; renderAviso(); return; }
+      if (avisoViewButton) { if (stageFocusedEditorValue()) { state.ui.avisoView = avisoViewButton.dataset.avisoView; renderAviso(); } return; }
       const alertsViewButton = event.target.closest("[data-alerts-view]");
-      if (alertsViewButton) { setAlertsView(alertsViewButton.dataset.alertsView); return; }
+      if (alertsViewButton) { if (stageFocusedEditorValue()) setAlertsView(alertsViewButton.dataset.alertsView); return; }
       const treeToggle = event.target.closest("[data-tree-toggle]");
       if (treeToggle) {
+        if (!stageFocusedEditorValue()) return;
         const store = treeState[treeToggle.dataset.treeToggle];
         const key = treeToggle.dataset.treeKey;
         if (store && key) {
@@ -5195,23 +5375,25 @@
         return;
       }
       const colorRow = event.target.closest("[data-color-path]");
-      if (colorRow) { state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
+      if (colorRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
       const tagRow = event.target.closest("[data-tag-id]");
-      if (tagRow) { state.ui.selectedTagId = tagRow.dataset.tagId; drafts.tag = null; clearUnappliedEditorSection($("#tagDefinitionEditor")); renderTags(); return; }
+      if (tagRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedTagId = tagRow.dataset.tagId; drafts.tag = null; clearUnappliedEditorSection($("#tagDefinitionEditor")); renderTags(); return; }
       const ruleRow = event.target.closest("[data-rule-index]");
-      if (ruleRow) { state.ui.selectedRuleIndex = Number(ruleRow.dataset.ruleIndex); drafts.rule = null; clearUnappliedEditorSection($("#ruleName")); renderRules(); return; }
+      if (ruleRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedRuleIndex = Number(ruleRow.dataset.ruleIndex); drafts.rule = null; clearUnappliedEditorSection($("#ruleName")); renderRules(); return; }
       const modeRow = event.target.closest("[data-mode-index]");
-      if (modeRow) { state.ui.selectedModeIndex = Number(modeRow.dataset.modeIndex); drafts.mode = null; clearUnappliedEditorSection($("#modeName")); renderModes(); return; }
+      if (modeRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedModeIndex = Number(modeRow.dataset.modeIndex); drafts.mode = null; clearUnappliedEditorSection($("#modeName")); renderModes(); return; }
       const profileRow = event.target.closest("[data-managed-profile-id]");
-      if (profileRow) { state.ui.managedProfileId = profileRow.dataset.managedProfileId; drafts.profile = null; clearUnappliedEditorSection($("#profileName")); renderProfilesManager(); return; }
+      if (profileRow) { if (!stageFocusedEditorValue()) return; state.ui.managedProfileId = profileRow.dataset.managedProfileId; drafts.profile = null; clearUnappliedEditorSection($("#profileName")); renderProfilesManager(); return; }
       const avisoGeometryStyleRow = event.target.closest("[data-aviso-geometry-style]");
       if (avisoGeometryStyleRow) {
+        if (!stageFocusedEditorValue()) return;
         const forceToggle = Boolean(event.target.closest('[data-aviso-selection-toggle="geometry"]'));
         selectAvisoGeometryStyle(avisoGeometryStyleRow.dataset.avisoGeometryStyle, event, forceToggle);
         return;
       }
       const avisoTextStyleRow = event.target.closest("[data-aviso-text-style]");
       if (avisoTextStyleRow) {
+        if (!stageFocusedEditorValue()) return;
         state.ui.selectedAvisoTextStyleId = avisoTextStyleRow.dataset.avisoTextStyle;
         const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
         const index = entry?.indices?.[0] ?? 0;
@@ -5227,6 +5409,7 @@
       }
       const avisoTextRow = event.target.closest("[data-aviso-text-index]");
       if (avisoTextRow) {
+        if (!stageFocusedEditorValue()) return;
         const forceToggle = Boolean(event.target.closest('[data-aviso-selection-toggle="text"]'));
         selectAvisoTextLabel(Number(avisoTextRow.dataset.avisoTextIndex), event, forceToggle);
         return;
@@ -5258,7 +5441,6 @@
       event.target.value = event.target.value.toUpperCase().replace(/\s/g, "").slice(0, 8);
       if (selection != null) event.target.setSelectionRange(Math.min(selection, event.target.value.length), Math.min(selection, event.target.value.length));
       syncDatalinkDraft("logonCallsign");
-      scheduleDatalinkAutoSave("connection", 500);
     });
     $("#datalinkPassword").addEventListener("input", () => {
       datalinkPasswordCommitReady = false;
@@ -5267,31 +5449,30 @@
     $("#datalinkPassword").addEventListener("change", () => {
       syncDatalinkDraft("password");
       datalinkPasswordCommitReady = true;
-      scheduleDatalinkAutoSave("connection", 0);
     });
     $("#datalinkPassword").addEventListener("keydown", event => {
       if (event.key === "Enter") {
         syncDatalinkDraft("password");
         datalinkPasswordCommitReady = true;
-        scheduleDatalinkAutoSave("connection", 0);
       }
     });
     $("#datalinkPlaySound").addEventListener("change", () => {
       syncDatalinkDraft("playSound");
-      scheduleDatalinkAutoSave("connection", 0);
     });
     [["#datalinkCdmDelay", "cdmDelayMinutes"], ["#datalinkCdmCooldown", "cdmCooldownMinutes"]].forEach(([selector, field]) => {
       $(selector).addEventListener("input", () => {
         syncDatalinkDraft(field);
-        scheduleDatalinkAutoSave("cdm", 500);
       });
       $(selector).addEventListener("change", event => {
         event.target.value = String(Math.round(clamp(event.target.value, 0, 1440)));
         syncDatalinkDraft(field);
-        scheduleDatalinkAutoSave("cdm", 0);
       });
     });
     $("#avisoTextStyleSelect").addEventListener("change", event => {
+      if (!stageFocusedEditorValue()) {
+        event.target.value = state.ui.selectedAvisoTextStyleId;
+        return;
+      }
       state.ui.selectedAvisoTextStyleId = event.target.value;
       const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
       const index = entry?.indices?.[0] ?? 0;
@@ -5328,8 +5509,13 @@
       if (colorPalette.dataset.dragging === "true") updateColorFromPalettePointer(event);
     });
     const stopColorDrag = event => {
+      const changed = colorPalette.dataset.dragging === "true";
       colorPalette.dataset.dragging = "false";
       if (event.pointerId != null && colorPalette.hasPointerCapture?.(event.pointerId)) colorPalette.releasePointerCapture(event.pointerId);
+      if (changed) {
+        withHistoryGesture(colorPalette, () => applyColorDraft({ render: false }));
+        refreshEditorDerivedVisuals("colors");
+      }
     };
     colorPalette.addEventListener("pointerup", stopColorDrag);
     colorPalette.addEventListener("pointercancel", stopColorDrag);
@@ -5340,6 +5526,8 @@
       const nextS = drafts.color.s + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0);
       const nextV = drafts.color.v + (event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0);
       setColorDraftFromHsv(drafts.color.h, nextS, nextV);
+      withHistoryGesture(colorPalette, () => applyColorDraft({ render: false }));
+      refreshEditorDerivedVisuals("colors");
     });
 
     ["fixedPixelIconScale", "smallIconBoostFactor"].forEach(id => $("#" + id).addEventListener("input", event => {
@@ -5352,9 +5540,10 @@
     $("#showPrimaryTarget").addEventListener("change", renderIconSymbolPreview);
 
     $("#tagLineGrid").addEventListener("focusin", event => { if (event.target.matches(".tag-line-input")) activeTagInput = event.target; });
-    $("#tagDetailedInherits").addEventListener("change", () => {
+    $("#tagDetailedInherits").addEventListener("change", event => {
       captureTagDraft();
       drafts.tag.data.definition_detailed_inherits_normal = $("#tagDetailedInherits").checked;
+      withHistoryGesture(event.target, () => applyTag({ render: false }));
       renderTagEditor();
     });
 
@@ -5393,7 +5582,21 @@
     $("#modeBlockedSquawkInput").addEventListener("keydown", event => {
       if (event.key === "Enter") {
         event.preventDefault();
-        addModeBlockedSquawk();
+        withHistoryGesture(event.target, addModeBlockedSquawk);
+      }
+    });
+    $("#modeBlockedSquawkInput").addEventListener("input", event => {
+      const value = String(event.target.value || "").trim();
+      event.target.setCustomValidity(!value || /^[0-7]{4}$/.test(value) ? "" : "Use four octal digits (0-7)");
+      markEditorSectionUnapplied(event.target);
+    });
+    $("#modeBlockedSquawkInput").addEventListener("change", event => {
+      if (String(event.target.value || "").trim()) {
+        if (!withHistoryGesture(event.target, addModeBlockedSquawk)) event.target.reportValidity?.();
+      } else {
+        event.target.setCustomValidity("");
+        clearUnappliedEditorSection(event.target);
+        updateDirtyState();
       }
     });
 
@@ -5416,6 +5619,7 @@
       renderAvisoGroupEditor();
     });
     $("#avisoGroupName").addEventListener("input", event => {
+      event.target.setCustomValidity(event.target.value.trim() ? "" : "Enter a group name");
       const draft = captureAvisoGroupDraft();
       if (draft) {
         draft.data.name = event.target.value;
@@ -5429,6 +5633,8 @@
     $("#avisoGroupContentDialog").addEventListener("close", () => {
       avisoGroupContentDraft = null;
       avisoGroupContentDirty = false;
+      renderAvisoGroups();
+      renderRuntimeMenu();
       updateCommandState();
     });
     const avisoGroupList = $("#avisoGroupList");
@@ -5468,8 +5674,7 @@
       groups.splice(insertionIndex, 0, moved);
       state.ui.selectedAvisoGroupId = moved.id;
       draggedAvisoGroupId = "";
-      markDirty("AVISO groups reordered");
-      postBridge("aviso.groups.update", { groups: clone(groups), aviso: clone(state.aviso) });
+      markDirty("AVISO groups reordered", ["aviso"]);
       renderAvisoGroups();
       renderRuntimeMenu();
     });
@@ -5581,6 +5786,9 @@
     });
 
 
+    $("#saveButton").addEventListener("pointerdown", event => {
+      if (!stageFocusedEditorValue()) event.preventDefault();
+    });
     $("#saveButton").addEventListener("click", saveAll);
     $("#reloadButton").addEventListener("click", requestReload);
     $("#undoButton").addEventListener("click", undoHistory);
@@ -5613,37 +5821,27 @@
     else if (action === "default-inset-preset") setDefaultAvisoPreset();
     else if (action === "delete-inset-preset") deleteAvisoPreset();
     else if (action === "toggle-profile-menu") setRailProfilePopoverOpen($("#railProfilePopover").hidden);
-    else if (action === "apply-color") applyColorDraft();
-    else if (action === "revert-color") { drafts.color = null; clearUnappliedEditorSection(button); renderColorEditor(); }
     else if (action === "reset-color") resetSelectedColor();
-    else if (action === "apply-icons") applyIcons();
-    else if (action === "revert-icons") { clearUnappliedEditorSection(button); renderIcons(); }
-
-    else if (action === "apply-tag") applyTag();
-    else if (action === "revert-tag") { drafts.tag = null; clearUnappliedEditorSection(button); renderTagEditor(); }
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
     else if (action === "delete-rule") deleteRule();
-    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); markEditorSectionUnapplied(button); renderRuleEditor(); }
+    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); renderRuleEditor(); applyRule({ render: false }); }
     else if (action === "delete-condition") deleteRuleCondition(Number(button.dataset.index));
-    else if (action === "apply-rule") applyRule();
-    else if (action === "revert-rule") { drafts.rule = null; clearUnappliedEditorSection(button); renderRuleEditor(); }
     else if (action === "new-mode") createMode();
     else if (action === "duplicate-mode") duplicateMode();
     else if (action === "delete-mode") deleteMode();
-    else if (action === "apply-mode") applyMode();
-    else if (action === "revert-mode") { drafts.mode = null; clearUnappliedEditorSection(button); renderModeEditor(); }
     else if (action === "activate-mode") activateMode();
-    else if (action === "add-mode-squawk") addModeBlockedSquawk();
+    else if (action === "add-mode-squawk") {
+      const input = $("#modeBlockedSquawkInput");
+      if (String(input?.value || "").trim()) withHistoryGesture(input, addModeBlockedSquawk);
+    }
     else if (action === "remove-mode-squawk") removeModeBlockedSquawk(Number(button.dataset.index));
     else if (action === "mode-statuses-all") setModeStatusVisibility(true);
     else if (action === "mode-statuses-none") setModeStatusVisibility(false);
     else if (action === "new-profile") createProfile();
     else if (action === "duplicate-profile") duplicateProfile();
     else if (action === "delete-profile") deleteProfile();
-    else if (action === "apply-profile") applyProfile();
-    else if (action === "revert-profile") { drafts.profile = null; clearUnappliedEditorSection(button); renderProfileEditor(); }
     else if (action === "activate-profile") {
       const record = managedProfileRecord();
       if (record) {
@@ -5654,10 +5852,6 @@
     }
     else if (action === "toggle-aviso-load-menu") setAvisoLoadMenuOpen($("#avisoLoadMenu").hidden);
     else if (action === "load-profiles-computer") {
-	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-		showToast("Apply or revert the open editor fields before loading another file", "error");
-		return;
-	  }
 	  if (!confirmResourceReplacement("profiles")) return;
       if (HOST_MODE) {
         postBridge("resource.computer.load", { resource: "profiles" });
@@ -5665,10 +5859,6 @@
       } else $("#profilesFileInput").click();
     }
     else if (action === "load-aviso-computer") {
-	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-		showToast("Apply or revert the open editor fields before loading another file", "error");
-		return;
-	  }
 	  if (!confirmResourceReplacement("aviso")) return;
       setAvisoLoadMenuOpen(false);
       if (HOST_MODE) {
@@ -5677,31 +5867,21 @@
       } else $("#avisoFileInput").click();
     }
     else if (action === "load-profiles-github") {
-	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) showToast("Apply or revert the open editor fields before loading another file", "error");
-	  else openResourceGithubDialog("profiles");
+	  openResourceGithubDialog("profiles");
 	}
     else if (action === "load-aviso-github") {
-	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) showToast("Apply or revert the open editor fields before loading another file", "error");
-	  else { setAvisoLoadMenuOpen(false); openResourceGithubDialog("aviso"); }
+	  setAvisoLoadMenuOpen(false); openResourceGithubDialog("aviso");
 	}
-    else if (action === "apply-aviso-geometry") applyAvisoGeometry();
-    else if (action === "apply-aviso-text") applyAvisoTextScope();
     else if (action === "assign-aviso-geometry-group") assignAvisoSelectionToGroup("geometry");
     else if (action === "new-aviso-group") createAvisoGroup();
     else if (action === "duplicate-aviso-group") duplicateAvisoGroup();
     else if (action === "delete-aviso-group") deleteAvisoGroup();
-    else if (action === "apply-aviso-group") applyAvisoGroup();
-    else if (action === "revert-aviso-group") revertAvisoGroup();
     else if (action === "clear-aviso-group") clearSelectedAvisoGroup();
     else if (action === "open-aviso-group-content") openAvisoGroupContentDialog();
-    else if (action === "apply-aviso-group-content") applyAvisoGroupContent();
     else if (action === "select-filtered-group-content") setFilteredAvisoGroupContent(true);
     else if (action === "clear-filtered-group-content") setFilteredAvisoGroupContent(false);
     else if (action === "toggle-aviso-group-visibility") toggleRuntimeGroup(button.dataset.groupId);
     else if (action === "remove-aviso-group-member") removeAvisoGroupMember(button);
-    else if (action === "revert-aviso-editor") revertAvisoEditor();
-    else if (action === "apply-alerts") applyAlerts();
-    else if (action === "revert-alerts") revertAlerts();
     else if (action === "alerts-enable-all") setAllAlertTypes(true);
     else if (action === "alerts-disable-all") setAllAlertTypes(false);
     else if (action === "alert-runways-all-arr") setAllAlertRunwayField("arrival", true);
@@ -5714,8 +5894,6 @@
     else if (action === "datalink-poll") pollDatalinkNow();
     else if (action === "datalink-scan") scanCdmReminders();
     else if (action === "datalink-reminder-toggle") togglePdcReminders();
-    else if (action === "datalink-reminder-update") updatePdcReminders();
-    else if (action === "apply-settings") applySettings();
     else if (action.startsWith("browse-")) { postBridge(action.replaceAll("-", ".")); showToast("Native file picker requested"); }
 
   }
@@ -5728,7 +5906,7 @@
     const end = activeTagInput.selectionEnd ?? start;
     const prefix = start > 0 && !/\s$/.test(activeTagInput.value.slice(0, start)) ? " " : "";
     activeTagInput.value = activeTagInput.value.slice(0, start) + prefix + token + " " + activeTagInput.value.slice(end);
-    markEditorSectionUnapplied(activeTagInput);
+    applyTag({ render: false });
     activeTagInput.focus();
   }
 
@@ -5737,7 +5915,7 @@
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
-    markDirty("Rule created");
+    markDirty("Rule created", ["profiles"]);
     renderRules();
   }
   function duplicateRule() {
@@ -5749,7 +5927,7 @@
     state.ui.selectedRuleIndex += 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
-    markDirty("Rule copied");
+    markDirty("Rule copied", ["profiles"]);
     renderRules();
   }
   function deleteRule() {
@@ -5758,7 +5936,7 @@
     state.ui.selectedRuleIndex = Math.max(0, state.ui.selectedRuleIndex - 1);
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
-    markDirty("Rule deleted");
+    markDirty("Rule deleted", ["profiles"]);
     renderRules();
   }
   function deleteRuleCondition(index) {
@@ -5766,8 +5944,8 @@
     if (!drafts.rule) return;
     drafts.rule.data.criteria.splice(index, 1);
     if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
-    markEditorSectionUnapplied($("#ruleName"));
     renderRuleEditor();
+    applyRule({ render: false });
   }
 
   function createMode() {
@@ -5786,7 +5964,7 @@
     state.ui.selectedModeIndex = modes().length - 1;
     drafts.mode = null;
     clearUnappliedEditorSection($("#modeName"));
-    markDirty("Mode created");
+    markDirty("Mode created", ["profiles"]);
     renderModes();
     renderRuntimeMenu();
   }
@@ -5798,7 +5976,7 @@
     state.ui.selectedModeIndex += 1;
     drafts.mode = null;
     clearUnappliedEditorSection($("#modeName"));
-    markDirty("Mode copied"); renderModes(); renderRuntimeMenu();
+    markDirty("Mode copied", ["profiles"]); renderModes(); renderRuntimeMenu();
   }
   function deleteMode() {
     const items = modes();
@@ -5809,7 +5987,7 @@
     if (activeProfile().filters.display_modes.active === deleted.name) activeProfile().filters.display_modes.active = items[0].name;
     drafts.mode = null;
     clearUnappliedEditorSection($("#modeName"));
-    markDirty("Mode deleted"); renderModes(); renderRuntimeMenu();
+    markDirty("Mode deleted", ["profiles"]); renderModes(); renderRuntimeMenu();
   }
   function activateMode() {
     const mode = modes()[state.ui.selectedModeIndex];
@@ -5844,7 +6022,7 @@
     state.ui.managedProfileId = record.id;
     drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
-    markDirty("Profile created");
+    markDirty("Profile created", ["profiles"]);
     renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
   }
   function duplicateProfile() {
@@ -5856,7 +6034,7 @@
     state.ui.managedProfileId = record.id;
     drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
-    markDirty("Profile copied"); renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
+    markDirty("Profile copied", ["profiles"]); renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
   }
   function deleteProfile() {
     if (state.profiles.length <= 1 || !confirmDelete("Delete this profile?")) return;
@@ -5866,7 +6044,7 @@
     state.ui.managedProfileId = state.activeProfileId;
     drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
-    markDirty("Profile deleted"); renderGlobalProfileSelect(); renderAllProfileSections(); renderRuntimeMenu();
+    markDirty("Profile deleted", ["profiles", "metadata"]); renderGlobalProfileSelect(); renderAllProfileSections(); renderRuntimeMenu();
   }
 
 
@@ -5931,7 +6109,7 @@
     renderAllProfileSections();
     renderSettings();
     renderRuntimeMenu();
-    markDirty(`${source || "Profiles"} loaded`);
+    markDirty(`${source || "Profiles"} loaded`, ["profiles", "metadata", "profileExtras", "settings"]);
   }
 
 
@@ -5944,7 +6122,7 @@
     if (source) setResourceSource("aviso", source);
     renderAviso();
     renderRuntimeMenu();
-    markDirty(`${source || "AVISO GeoJSON"} loaded`);
+    markDirty(`${source || "AVISO GeoJSON"} loaded`, ["aviso"]);
   }
 
   function openResourceGithubDialog(type) {
@@ -6211,6 +6389,10 @@
       state.datalink = normalizeDatalinkRuntimeState(incoming.datalink, state.datalink);
       rebaseDatalinkDraftFromRuntime();
     }
+    if (reason === "reload" && discardDatalinkDraftOnReload) {
+      resetDatalinkDraftFromRuntime();
+      discardDatalinkDraftOnReload = false;
+    }
     if (typeof incoming.airport === "string") {
       state.hostAirport = incomingAirport;
       if (!preservesStagedEditors)
@@ -6244,10 +6426,9 @@
 	  avisoGroupContentDirty = false;
 	}
     if (avisoChanged && reason !== "save") resetAvisoSelections();
-	// Preserve the live form controls as well as their staged data. Several
-	// editors intentionally keep input in the DOM until Update is pressed; a
-	// benign runtime/preset sync must not repaint those controls and erase it.
-	if (preservesStagedEditors && hasUnappliedEditorWork) {
+	// A benign runtime/preset sync must not repaint the focused editor while
+	// local staged changes are waiting for the global Save action.
+	if (preservesStagedEditors) {
 	  renderGlobalProfileSelect();
 	  renderRuntimeMenu();
 	  updateContext();

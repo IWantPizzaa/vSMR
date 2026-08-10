@@ -1537,7 +1537,6 @@ struct VsmrControlCenterBridge::Impl
 			previousProfiles,
 			previousProfiles.GetAllocator());
 		const std::string previousActiveProfile = Owner->GetActiveProfileNameForEditor();
-		const bool previousShowFps = Owner->ShowFps;
 		const std::array<std::pair<int, bool>, 4> previousInsetVisibility = {{
 			{ 3, Owner->appWindowDisplays[3] },
 			{ 1, Owner->appWindowDisplays[1] },
@@ -1565,7 +1564,6 @@ struct VsmrControlCenterBridge::Impl
 					previousActiveProfile,
 					ignored);
 			}
-			Owner->ShowFps = previousShowFps;
 			for (const auto& visibility : previousInsetVisibility)
 				Owner->appWindowDisplays[visibility.first] = visibility.second;
 			Owner->CancelInsetWindowInteractions();
@@ -1611,12 +1609,8 @@ struct VsmrControlCenterBridge::Impl
 				rollbackLiveState();
 				return false;
 			}
-
-			const rapidjson::Value& settings = stagedState["settings"];
-			if (settings.HasMember("showFps") && settings["showFps"].IsBool())
-			{
-				Owner->ShowFps = settings["showFps"].GetBool();
-			}
+			// ShowFps remains staged in the editor response below. Unlike profile
+			// data, it is ASR state and is applied only by a successful SaveAll.
 		}
 
 		if (stagedAviso != nullptr)
@@ -1669,17 +1663,6 @@ struct VsmrControlCenterBridge::Impl
 			applyInsetVisibility(APPWINDOW_TIMER - APPWINDOW_BASE, "timer");
 		}
 
-		if (stagedState.HasMember("settings") &&
-			stagedState["settings"].IsObject() &&
-			stagedState["settings"].HasMember("showFps") &&
-			stagedState["settings"]["showFps"].IsBool())
-		{
-			Owner->SaveDataToAsr(
-				"ShowFps",
-				"Show FPS counter",
-				Owner->ShowFps ? "1" : "0");
-		}
-
 		Owner->InvalidateStructuredTagRuleCache();
 		Owner->RequestRefresh();
 		SendStagedAuthoritativeState(
@@ -1709,6 +1692,28 @@ struct VsmrControlCenterBridge::Impl
 		{
 			error = "Save payload is missing profiles.";
 			return false;
+		}
+
+		bool hasStagedShowFps = false;
+		bool stagedShowFps = Owner->ShowFps;
+		if (payload->HasMember("settings"))
+		{
+			const rapidjson::Value& settings = (*payload)["settings"];
+			if (!settings.IsObject())
+			{
+				error = "Save settings must be an object.";
+				return false;
+			}
+			if (settings.HasMember("showFps"))
+			{
+				if (!settings["showFps"].IsBool())
+				{
+					error = "Show FPS must be a boolean setting.";
+					return false;
+				}
+				hasStagedShowFps = true;
+				stagedShowFps = settings["showFps"].GetBool();
+			}
 		}
 		// Revision checks, both file writes, and rollback form one process-wide
 		// transaction.  Without this lock two Control Centers can both pass the
@@ -2049,6 +2054,19 @@ struct VsmrControlCenterBridge::Impl
 			Logger::info(
 				"Warning: unable to remove completed AVISO backup transaction snapshot " +
 				avisoBackupRollbackSnapshotPath);
+		}
+
+		// Display settings are staged with the rest of the Control Center draft,
+		// but ShowFps is ASR state rather than profile JSON. Commit it only after
+		// the profiles/AVISO transaction succeeds so a failed Save changes no
+		// live or persisted display state.
+		if (hasStagedShowFps)
+		{
+			Owner->ShowFps = stagedShowFps;
+			Owner->SaveDataToAsr(
+				"ShowFps",
+				"Show FPS counter",
+				Owner->ShowFps ? "1" : "0");
 		}
 
 		bool reloadFailed = false;
