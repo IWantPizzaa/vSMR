@@ -256,13 +256,25 @@
     <None Include="data\ICAO_Aircraft.json">
       <Filter>Data</Filter>
     </None>
-    <None Include="data\vSMR_Maps.json">
-      <Filter>Data</Filter>
-    </None>
     <None Include="data\vSMR_Profiles.json">
       <Filter>Data</Filter>
     </None>
+    <None Include="data\AVISO\AVISO_LFBO.geojson">
+      <Filter>Data</Filter>
+    </None>
+    <None Include="data\AVISO\AVISO_LFLL.geojson">
+      <Filter>Data</Filter>
+    </None>
+    <None Include="data\AVISO\AVISO_LFML.geojson">
+      <Filter>Data</Filter>
+    </None>
+    <None Include="data\AVISO\AVISO_LFMN.geojson">
+      <Filter>Data</Filter>
+    </None>
     <None Include="data\AVISO\AVISO_LFPG.geojson">
+      <Filter>Data</Filter>
+    </None>
+    <None Include="data\AVISO\AVISO_LFPO.geojson">
       <Filter>Data</Filter>
     </None>
     <None Include="vSMR_webUI\app.js">
@@ -293,6 +305,9 @@
       <Filter>Resources</Filter>
     </None>
     <None Include="tools\edit_tagdefs.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\normalize_runtime_data.ps1">
       <Filter>Tools</Filter>
     </None>
   </ItemGroup>

@@ -717,7 +717,7 @@ CSMRRadar::CSMRRadar()
 	runtimeOverlayFont.lfCharSet = DEFAULT_CHARSET;
 	runtimeOverlayFont.lfQuality = CLEARTYPE_QUALITY;
 	runtimeOverlayFont.lfPitchAndFamily = DEFAULT_PITCH | FF_SWISS;
-	strcpy_s(runtimeOverlayFont.lfFaceName, LF_FACESIZE, "Segoe UI");
+	strcpy_s(runtimeOverlayFont.lfFaceName, LF_FACESIZE, "Tahoma");
 	RuntimeOverlayFont.CreateFontIndirect(&runtimeOverlayFont);
 	LOGFONT runtimeMenuActionFont = runtimeOverlayFont;
 	runtimeMenuActionFont.lfHeight = -10;
@@ -2636,21 +2636,35 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		if (cachedLonSpan <= 0.0 || cachedLatSpan <= 0.0 || lonSpan <= 0.0 || latSpan <= 0.0)
 			return false;
 
-		const double horizontalSpanRatio = cachedLonSpan / lonSpan;
-		const double verticalSpanRatio = cachedLatSpan / latSpan;
 		const double cachedHorizontalX = AvisoGeoJsonRasterProjectedTopRight.X - AvisoGeoJsonRasterProjectedTopLeft.X;
 		const double cachedHorizontalY = AvisoGeoJsonRasterProjectedTopRight.Y - AvisoGeoJsonRasterProjectedTopLeft.Y;
-		const double currentHorizontalX = static_cast<double>(projectedTopRight.X - projectedTopLeft.X) * horizontalSpanRatio;
-		const double currentHorizontalY = static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y) * horizontalSpanRatio;
 		const double cachedVerticalX = AvisoGeoJsonRasterProjectedBottomLeft.X - AvisoGeoJsonRasterProjectedTopLeft.X;
 		const double cachedVerticalY = AvisoGeoJsonRasterProjectedBottomLeft.Y - AvisoGeoJsonRasterProjectedTopLeft.Y;
-		const double currentVerticalX = static_cast<double>(projectedBottomLeft.X - projectedTopLeft.X) * verticalSpanRatio;
-		const double currentVerticalY = static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y) * verticalSpanRatio;
-		return
+		const double currentHorizontalX = static_cast<double>(projectedTopRight.X - projectedTopLeft.X);
+		const double currentHorizontalY = static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y);
+		const double currentVerticalX = static_cast<double>(projectedBottomLeft.X - projectedTopLeft.X);
+		const double currentVerticalY = static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y);
+
+		// Zooming changes the geographic span, not the viewport's projection
+		// basis. The cached raster can therefore remain geo-anchored while the
+		// worker produces the definitive bitmap for the new scale.
+		const bool sameViewportBasis =
 			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX, transformPixelTolerance) &&
 			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY, transformPixelTolerance) &&
 			AvisoWithinTolerance(cachedVerticalX, currentVerticalX, transformPixelTolerance) &&
 			AvisoWithinTolerance(cachedVerticalY, currentVerticalY, transformPixelTolerance);
+		if (sameViewportBasis)
+			return true;
+
+		// A snapped-divider resize keeps the geographic pixel scale while changing
+		// the visible span, so retain the existing span-normalized compatibility.
+		const double horizontalSpanRatio = cachedLonSpan / lonSpan;
+		const double verticalSpanRatio = cachedLatSpan / latSpan;
+		return
+			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX * horizontalSpanRatio, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY * horizontalSpanRatio, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalX, currentVerticalX * verticalSpanRatio, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalY, currentVerticalY * verticalSpanRatio, transformPixelTolerance);
 	};
 
 	auto cacheMatchesCurrentView = [&]() -> bool
@@ -5306,14 +5320,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	migrateTypeDefinitions("airborne");
 	migrateTypeDefinitions("uncorrelated");
 
-	Value& uiLayout = ensureObjectMember(profile, "ui_layout");
-	Value& profileEditorWindow = ensureObjectMember(uiLayout, "profile_editor_window");
-	ensureIntMember(profileEditorWindow, "x", 120, -32768, 32767);
-	ensureIntMember(profileEditorWindow, "y", 120, -32768, 32767);
-	ensureIntMember(profileEditorWindow, "width", 640, 320, 4096);
-	ensureIntMember(profileEditorWindow, "height", 520, 220, 2160);
-	ensureBoolMember(profileEditorWindow, "visible", false);
-
 	if (changed && !CurrentConfig->saveConfig())
 	{
 		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save status settings to vSMR_Profiles.json", true, true, false, false, false);
@@ -6401,6 +6407,42 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		RadarArea.bottom = normalizedChatArea.top;
 	CRect insetLayoutBounds(RadarArea);
 	insetLayoutBounds.NormalizeRect();
+	if (InitialInsetStateRestorePending && !insetLayoutBounds.IsRectEmpty())
+	{
+		const unsigned long restoreNowTick = ::GetTickCount();
+		const bool sameBounds =
+			InitialInsetStateRestoreBounds.left == insetLayoutBounds.left &&
+			InitialInsetStateRestoreBounds.top == insetLayoutBounds.top &&
+			InitialInsetStateRestoreBounds.right == insetLayoutBounds.right &&
+			InitialInsetStateRestoreBounds.bottom == insetLayoutBounds.bottom;
+		if (sameBounds)
+		{
+			++InitialInsetStateRestoreStableFrames;
+		}
+		else
+		{
+			InitialInsetStateRestoreBounds = insetLayoutBounds;
+			InitialInsetStateRestoreStableFrames = 1;
+			InitialInsetStateRestoreBoundsChangedTick = restoreNowTick;
+		}
+
+		if (InitialInsetStateRestoreStableFrames >= 2 &&
+			restoreNowTick - InitialInsetStateRestoreBoundsChangedTick >= 250)
+		{
+			ResetAllInsetWindowStates(false);
+			ResetAvisoPresetStateForActiveAirport(false);
+			if (!LoadInsetStateFromAsrForAirport(getActiveAirport(), true))
+				ApplyDefaultAvisoPresetIfConfigured();
+			else if (!ActiveAvisoPresetName.empty())
+			{
+				const std::string activePresetName = ActiveAvisoPresetName;
+				LoadAvisoPreset(activePresetName);
+			}
+			InitialInsetStateRestorePending = false;
+			InitialInsetStateRestoreStableFrames = 0;
+			InitialInsetStateRestoreBoundsChangedTick = 0;
+		}
+	}
 	for (const auto& display : appWindowDisplays)
 	{
 		if (!display.second)
