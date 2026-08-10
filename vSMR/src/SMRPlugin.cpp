@@ -21,6 +21,8 @@
 #include <wincrypt.h>
 #include "rapidjson/document.h"
 #include "WeatherData.hpp"
+#include "RdfOverlay.hpp"
+#include "SMRGroundState.hpp"
 
 #pragma comment(lib, "crypt32.lib")
 
@@ -121,6 +123,71 @@ bool startThreadvStrips = true;
 char recv_buf[1024];
 
 vector<CSMRRadar*> RadarScreensOpened;
+
+namespace
+{
+	std::mutex LineupOverrideMutex;
+	std::map<std::string, std::chrono::steady_clock::time_point> LineupOverrides;
+
+	std::string NormalizeLineupCallsign(const char* callsign)
+	{
+		std::string normalized = callsign != nullptr ? callsign : "";
+		normalized.erase(
+			std::remove_if(normalized.begin(), normalized.end(), [](unsigned char c) { return std::isspace(c) != 0; }),
+			normalized.end());
+		std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+		return normalized;
+	}
+}
+
+bool VsmrGroundState::SetLineupOverride(const char* callsign)
+{
+	const std::string normalized = NormalizeLineupCallsign(callsign);
+	if (normalized.empty())
+		return false;
+	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
+	LineupOverrides[normalized] = std::chrono::steady_clock::now();
+	return true;
+}
+
+void VsmrGroundState::ClearLineupOverride(const char* callsign)
+{
+	const std::string normalized = NormalizeLineupCallsign(callsign);
+	if (normalized.empty())
+		return;
+	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
+	LineupOverrides.erase(normalized);
+}
+
+void VsmrGroundState::ClearAllLineupOverrides()
+{
+	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
+	LineupOverrides.clear();
+}
+
+bool VsmrGroundState::IsLineupOverrideActive(const char* callsign, GroundStateCategory observedCategory)
+{
+	const std::string normalized = NormalizeLineupCallsign(callsign);
+	if (normalized.empty())
+		return false;
+
+	std::lock_guard<std::mutex> guard(LineupOverrideMutex);
+	const auto overrideIt = LineupOverrides.find(normalized);
+	if (overrideIt == LineupOverrides.end())
+		return false;
+
+	if (observedCategory == GroundStateCategory::Taxi || observedCategory == GroundStateCategory::Lnup)
+		return true;
+
+	// SetScratchPadString("TAXI") updates EuroScope asynchronously on some
+	// installations. Keep the local state briefly, then fail safely if the
+	// host never reports TAXI or another controller changes the status.
+	if (std::chrono::steady_clock::now() - overrideIt->second < std::chrono::seconds(2))
+		return true;
+
+	LineupOverrides.erase(overrideIt);
+	return false;
+}
 
 // Snapshot cache of the latest vACDM pilot data keyed by normalized callsign.
 std::mutex VacdmPilotsMutex;
@@ -2729,11 +2796,18 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	PublishActiveProfilesConfigPath(
 		ResolveDefaultProfilesConfigPath().string(),
 		false);
+
+	bool rdfEnabled = true;
+	if ((p_value = GetDataFromSettings("rdf_enabled")) != NULL)
+		rdfEnabled = atoi(p_value) != 0;
+	VsmrRdf::Start(this, rdfEnabled);
 }
 
 CSMRPlugin::~CSMRPlugin()
 {
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	VsmrGroundState::ClearAllLineupOverrides();
+	VsmrRdf::Stop();
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);
@@ -3196,6 +3270,47 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 				rd->ReloadConfig();
 		}
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR runtime data", true, true, false, true, false);
+		return true;
+	}
+	else if (commandLower == ".smr rdf" || startsWithCommand(".smr rdf "))
+	{
+		const std::string prefix = ".smr rdf";
+		const std::string argument = commandLower.size() > prefix.size()
+			? TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()))
+			: std::string();
+
+		if (argument == "on" || argument == "enable" || argument == "1")
+		{
+			VsmrRdf::SetEnabled(true);
+			SaveDataToSettings("rdf_enabled", "Enable the native vSMR RDF overlay", "1");
+		}
+		else if (argument == "off" || argument == "disable" || argument == "0")
+		{
+			VsmrRdf::SetEnabled(false);
+			SaveDataToSettings("rdf_enabled", "Enable the native vSMR RDF overlay", "0");
+		}
+		else if (!argument.empty() && argument != "status")
+		{
+			DisplayUserMessage(
+				"vSMR",
+				"RDF",
+				"Usage: .smr rdf [on|off|status]",
+				true, true, false, true, false);
+			return true;
+		}
+
+		const VsmrRdf::Status status = VsmrRdf::GetStatus();
+		std::string message = "Native RDF ";
+		message += status.enabled ? "enabled" : "disabled";
+		message += ", TrackAudio ";
+		message += status.trackAudioConnected ? "connected" : "waiting";
+		message += ", active transmissions=" + std::to_string(status.activeTransmissionCount);
+		DisplayUserMessage("vSMR", "RDF", message.c_str(), true, true, false, true, false);
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+		}
 		return true;
 	}
 	else if (startsWithCommand(".smr cdm cooldown"))
@@ -3865,6 +3980,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
 	if (normalizedCallsign.empty())
 		return;
+	VsmrGroundState::ClearLineupOverride(normalizedCallsign.c_str());
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -3990,6 +4106,7 @@ void CSMRPlugin::OnTimer(int Counter)
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
+	VsmrRdf::OnTimer();
 	static int lastConnectionType = -999;
 	static clock_t lastConnectionTypeChangeClock = 0;
 	const int currentConnectionType = GetConnectionType();
@@ -4160,12 +4277,14 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 		nullptr,
 		std::memory_order_acq_rel);
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
+	VsmrGroundState::ClearAllLineupOverrides();
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);
 	HoppieConnecting.store(false, std::memory_order_relaxed);
 	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
+	VsmrRdf::Stop();
 	if (pluginInstance != nullptr)
 	{
 		pluginInstance->StopWeatherFetchWorker();

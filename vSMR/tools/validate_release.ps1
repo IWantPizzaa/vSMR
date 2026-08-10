@@ -103,6 +103,12 @@ foreach ($profile in $profileEntries) {
     Assert-True ([int]$profile.schema_version -eq 2) "Profile '$($profile.name)' is not schema 2."
     Assert-True ($profile.labels -is [pscustomobject]) "Profile '$($profile.name)' has no labels object."
     Assert-True ($profile.targets -is [pscustomobject]) "Profile '$($profile.name)' has no targets object."
+    Assert-True ($profile.targets.departure.lineup -is [pscustomobject]) "Profile '$($profile.name)' has no Line Up target color."
+    Assert-True ($profile.labels.departure.background_lineup_color -is [pscustomobject]) "Profile '$($profile.name)' has no Line Up tag color."
+    Assert-True ($profile.labels.departure.status_definitions.lnup -is [pscustomobject]) "Profile '$($profile.name)' has no LNUP tag definition."
+    foreach ($mode in @($profile.filters.display_modes.items)) {
+        Assert-True ($mode.statuses.lineup -is [bool]) "Profile '$($profile.name)' display mode '$($mode.name)' has no Line Up visibility flag."
+    }
     $key = ([string]$profile.name).Trim().ToUpperInvariant()
     Assert-True (-not $profileNames.ContainsKey($key)) "Duplicate profile name '$($profile.name)'."
     $profileNames[$key] = $true

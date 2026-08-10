@@ -293,6 +293,7 @@ private:
 		, IDC_PE_PROFILE_MODE_STATUS_ARRIVALS = 9300
 		, IDC_PE_PROFILE_MODE_STATUS_NO_FPL = 9301
 		, IDC_PE_PROFILE_MODE_STATUS_UNCORRELATED = 9302
+		, IDC_PE_PROFILE_MODE_STATUS_LINEUP = 9303
 	};
 
 	CSMRRadar* Owner = nullptr;
@@ -444,6 +445,7 @@ private:
 	CButton ProfileModeStatusPushCheck;
 	CButton ProfileModeStatusStartupCheck;
 	CButton ProfileModeStatusTaxiCheck;
+	CButton ProfileModeStatusLineupCheck;
 	CButton ProfileModeStatusDepartureCheck;
 	CButton ProfileModeStatusOnRunwayCheck;
 	CButton ProfileModeStatusAirborneCheck;

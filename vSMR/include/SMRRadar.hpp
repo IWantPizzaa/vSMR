@@ -366,6 +366,7 @@ public:
 		Profile
 	};
 	RuntimeMenuPopup ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
+	std::string PendingGroundStatusCallsign;
 	POINT RuntimeMenuPosition = { 14, 100 };
 	bool RuntimeMenuPositionInitialized = false;
 	bool InitialInsetStateRestorePending = false;
@@ -466,6 +467,7 @@ public:
 		bool push = true;
 		bool startup = true;
 		bool taxi = true;
+		bool lineup = true;
 		bool departure = true;
 		bool onRunway = true;
 		bool airborne = true;

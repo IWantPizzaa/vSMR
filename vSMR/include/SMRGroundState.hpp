@@ -3,14 +3,14 @@
 #include <cctype>
 #include <string>
 
-enum class GroundStateCategory { Unknown, Gate, Push, Stup, Taxi, Nsts, Depa, Arr };
+enum class GroundStateCategory { Unknown, Gate, Push, Stup, Taxi, Lnup, Nsts, Depa, Arr };
 
 inline static GroundStateCategory classifyGroundState(const std::string& rawState, int reportedGs, bool onRunway)
 {
 	std::string normalized;
 	normalized.reserve(rawState.size());
 	for (char c : rawState) {
-		if (c == ' ')
+		if (c == ' ' || c == '_' || c == '-')
 			continue;
 		normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
 	}
@@ -30,8 +30,11 @@ inline static GroundStateCategory classifyGroundState(const std::string& rawStat
 	if (normalized.find("PUSH") != std::string::npos || normalized.find("P/B") != std::string::npos || normalized == "PB" || normalized == "P/B")
 		return GroundStateCategory::Push;
 
-	if (normalized.find("TAX") != std::string::npos || normalized == "TXI")
+	if (normalized.find("TAX") != std::string::npos || normalized == "TXI" || normalized == "TXIN" || normalized == "TAXIIN")
 		return GroundStateCategory::Taxi;
+
+	if (normalized == "LNUP" || normalized == "LINEUP" || normalized == "L/UP")
+		return GroundStateCategory::Lnup;
 
 	if (normalized.find("GATE") != std::string::npos || normalized.find("STAND") != std::string::npos || normalized.find("PARK") != std::string::npos || normalized.find("STBY") != std::string::npos)
 		return GroundStateCategory::Gate;
@@ -45,6 +48,26 @@ inline static GroundStateCategory classifyGroundState(const std::string& rawStat
 inline static GroundStateCategory classifyGroundState(const char* rawState, int reportedGs, bool onRunway)
 {
 	return classifyGroundState(rawState != nullptr ? std::string(rawState) : std::string(), reportedGs, onRunway);
+}
+
+namespace VsmrGroundState
+{
+	bool SetLineupOverride(const char* callsign);
+	void ClearLineupOverride(const char* callsign);
+	void ClearAllLineupOverrides();
+	bool IsLineupOverrideActive(const char* callsign, GroundStateCategory observedCategory);
+}
+
+inline static GroundStateCategory classifyGroundStateForCallsign(
+	const char* callsign,
+	const char* rawState,
+	int reportedGs,
+	bool onRunway)
+{
+	const GroundStateCategory observedCategory = classifyGroundState(rawState, reportedGs, onRunway);
+	return VsmrGroundState::IsLineupOverrideActive(callsign, observedCategory)
+		? GroundStateCategory::Lnup
+		: observedCategory;
 }
 
 inline static bool shouldDisplayTagInTowerMode(const char* rawState, int reportedGs, bool onRunway)
