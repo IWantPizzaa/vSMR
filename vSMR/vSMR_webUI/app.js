@@ -307,6 +307,7 @@
   }
 
   function normalizeAvisoData(sourceAviso, createDefaults = true) {
+    const hasExplicitGroups = Array.isArray(sourceAviso?.vsmr_groups);
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
     if (!Array.isArray(aviso.features)) aviso.features = [];
     if (!aviso.styles || typeof aviso.styles !== "object" || Array.isArray(aviso.styles)) aviso.styles = {};
@@ -352,7 +353,7 @@
       else if (Array.isArray(feature.properties.vsmr_group_ids)) feature.properties.vsmr_group_ids = [];
     });
 
-    if (createDefaults && !aviso.vsmr_groups.length) {
+    if (createDefaults && !hasExplicitGroups && !aviso.vsmr_groups.length) {
       DEFAULT_AVISO_GROUP_BLUEPRINTS.forEach(blueprint => {
         const indices = [];
         aviso.features.forEach((feature, index) => {
@@ -947,7 +948,7 @@
     runtime.classList.toggle("hidden", HOST_MODE || state.ui.controlCenterOpen);
   }
 
-  function openControlCenter(page = "settings", avisoView = "") {
+  function openControlCenter(page = state.ui.page, avisoView = "") {
     state.ui.controlCenterOpen = true;
     state.ui.runtimePopover = "";
     syncSurfaceVisibility();
@@ -1561,29 +1562,63 @@
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
     const style = String($("#targetIconStyle")?.value || activeProfile().targets?.icon_style || "realistic").toLowerCase();
-    const showPrimary = $("#showPrimaryTarget")?.checked ?? true;
     const fixed = $("#fixedPixelIconSize")?.checked ?? false;
     const boost = $("#smallIconBoost")?.checked ?? false;
     const fixedScale = Number($("#fixedPixelIconScale")?.value || 1);
     const boostFactor = Number($("#smallIconBoostFactor")?.value || 1);
     const resolution = state.settings.resolutionPreset || activeProfile().targets?.small_icon_boost_resolution_preset || "1080p";
-    const scale = (fixed ? fixedScale : 1) * (boost ? Math.max(1, boostFactor) : 1);
+    const resolutionScale = resolution === "4k" ? 1.55 : resolution === "2k" ? 1.25 : 1;
+    const configuredBoost = boost ? Math.max(.5, boostFactor) : 1;
 
     let symbol = "";
+    let caption = "";
+    let usesAircraftImage = false;
     if (style === "nova") {
-      symbol = `<circle cx="0" cy="0" r="11"/><path d="M-19 0H19M0-19V19"/><circle class="icon-preview-fill" cx="0" cy="0" r="3"/>`;
+      // Native Mode-C NOVA target: a one-pixel diamond with six-pixel arms.
+      symbol = `<svg class="icon-preview-vector nova" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-6L-6 0 0 6 6 0Z"/></svg>`;
+      caption = "NOVA";
     } else if (style === "triangle" || style === "arrow") {
-      symbol = `<path d="M0-17 14 14 0 9-14 14Z"/><path d="M0-12V11"/>`;
+      // Native north-facing triangle: tip, right base, rear notch, left base.
+      const triangleScale = Math.max(
+        .1,
+        (fixed ? resolutionScale : 1) * configuredBoost * Math.max(.1, fixedScale)
+      );
+      const length = 20 * triangleScale;
+      const halfWidth = 12 * triangleScale;
+      symbol = `<svg class="icon-preview-vector triangle" viewBox="-48 -48 96 96" aria-hidden="true"><path d="M0 ${(-length).toFixed(2)} L${halfWidth.toFixed(2)} ${(length * .33).toFixed(2)} L0 ${(length * .05).toFixed(2)} L${(-halfWidth).toFixed(2)} ${(length * .33).toFixed(2)} Z"/></svg>`;
+      caption = "Triangle";
     } else if (style === "diamond") {
-      symbol = `<path d="M0-16 16 0 0 16-16 0Z"/><circle class="icon-preview-fill" cx="0" cy="0" r="2.5"/>`;
+      symbol = `<svg class="icon-preview-vector diamond" viewBox="-48 -48 96 96" aria-hidden="true"><rect x="-12" y="-12" width="24" height="24" rx="5.3" transform="rotate(45)"/></svg>`;
+      caption = "Diamond";
     } else {
-      symbol = `<path d="M0-20 4-5 19 1 19 5 4 2 3 16 9 20 9 23 0 20-9 23-9 20-3 16-4 2-19 5-19 1-4-5Z"/>`;
+      // Fixed-size realistic icons use an 18px medium-jet reference at 1080p.
+      // Without fixed sizing, one preview pixel per metre is representative;
+      // the live radar supplies the actual zoom-dependent pixels-per-metre.
+      const aircraftPixelsPerMeter = fixed
+        ? (18 * resolutionScale / 40) * configuredBoost
+        : configuredBoost;
+      const aircraftWidth = 35.8 * aircraftPixelsPerMeter;
+      const aircraftHeight = 37.6 * aircraftPixelsPerMeter;
+      symbol = `<img class="icon-preview-aircraft" data-aircraft-icon alt="" width="${aircraftWidth.toFixed(2)}" height="${aircraftHeight.toFixed(2)}">`;
+      caption = "Icon · A320";
+      usesAircraftImage = true;
     }
 
-    preview.innerHTML = `<svg viewBox="0 0 104 76" aria-hidden="true">
-      <g class="icon-preview-grid"><path d="M8 38H96M52 6V70"/><circle cx="52" cy="38" r="27"/></g>
-      <g class="icon-preview-symbol ${showPrimary ? "with-primary" : "without-primary"}" transform="translate(52 38) scale(${Math.min(1.45, Math.max(.68, scale)).toFixed(2)})">${symbol}</g>
-    </svg><span>${escapeHtml(style)} · ${escapeHtml(resolution)}</span>`;
+    preview.innerHTML = `<div class="icon-preview-stage">${symbol}</div><span>${escapeHtml(caption)}</span>`;
+
+    if (usesAircraftImage) {
+      const aircraftImage = preview.querySelector("[data-aircraft-icon]");
+      const sources = HOST_MODE
+        ? ["https://icons.vsmr/a320.png"]
+        : ["../data/aircraft_icons/a320.png", "../aircraft_icons/a320.png"];
+      let sourceIndex = 0;
+      aircraftImage.addEventListener("error", () => {
+        sourceIndex += 1;
+        if (sourceIndex < sources.length) aircraftImage.src = sources[sourceIndex];
+        else aircraftImage.classList.add("missing");
+      });
+      aircraftImage.src = sources[sourceIndex];
+    }
   }
 
   function renderIcons() {
@@ -4727,7 +4762,7 @@
   }
 
   function handleAction(action, button) {
-    if (action === "open-control-center") openControlCenter("settings");
+    if (action === "open-control-center") openControlCenter();
     else if (action === "close-runtime-popover") { state.ui.runtimePopover = ""; renderRuntimeMenu(); }
     else if (action === "save-inset-preset") openInsetPresetDialog("capture");
     else if (action === "rename-inset-preset") openInsetPresetDialog("rename");
@@ -5267,7 +5302,7 @@
     if (!state.profiles.some(record => record.id === state.activeProfileId)) state.activeProfileId = state.profiles[0]?.id || "";
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
     Object.keys(drafts).forEach(key => drafts[key] = null);
-    if (avisoChanged) resetAvisoSelections();
+    if (avisoChanged && reason !== "save") resetAvisoSelections();
     renderAll();
     if (preservesStagedEditors && state.airport && state.hostAirport &&
       state.airport !== state.hostAirport && previousHostAirport !== state.hostAirport) {
@@ -5473,7 +5508,7 @@
     receive: receiveHostMessage,
     setProfiles(profiles) { receiveHostMessage({ type: "profiles", data: profiles }); },
     setAviso(aviso) { receiveHostMessage({ type: "aviso", data: aviso }); },
-    open(page = "settings", avisoView = "") { openControlCenter(page, avisoView); },
+    open(page = state.ui.page, avisoView = "") { openControlCenter(page, avisoView); },
     close() { closeControlCenter(); },
     setGroupVisibility(groupId, visible) {
       receiveHostMessage({ type: "aviso.group.visibility", payload: { id: groupId, visible } });
