@@ -24,19 +24,25 @@
     "14 km or closer", "12 km or closer", "9.5 km or closer", "8 km or closer", "6 km or closer",
     "5 km or closer", "4 km or closer", "3 km or closer", "2.5 km or closer", "2 km or closer"
   ];
-  const MODE_STATUSES = ["no_status", "push", "startup", "taxi", "departure", "on_runway", "airborne", "arrivals", "no_fpl", "uncorrelated"];
-  const RULE_STATUSES = ["default", "no_status", "push", "startup", "taxi", "departure", "on_runway", "airborne", "arrivals", "no_fpl", "uncorrelated"];
+  const MODE_STATUSES = ["no_status", "push", "startup", "taxi", "lineup", "departure", "on_runway", "airborne", "arrivals", "no_fpl", "uncorrelated"];
+  const RULE_STATUSES = ["default", "nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway", "airarr", "airarr_onrunway"];
+  const RULE_STATUS_LABELS = {
+    default: "Default", nofpl: "No FPL", push: "Push", stup: "Startup", taxi: "Taxi", lnup: "Line Up",
+    depa: "Departure", airdep: "Airborne departure", airdep_onrunway: "Departure on runway",
+    airarr: "Airborne arrival", airarr_onrunway: "Arrival on runway"
+  };
   const TAG_SCOPES = ["departure", "arrival", "uncorrelated", "airborne"];
   const TAG_STATUS_LABELS = {
-    default: "Default", taxi: "Taxi", push: "Push", stup: "Startup", nofpl: "No FPL", depa: "Departure",
+    default: "Default", taxi: "Taxi", lnup: "Line Up", push: "Push", stup: "Startup", nofpl: "No FPL", depa: "Departure",
     airdep: "Airborne departure", airdep_onrunway: "Departure on runway", airarr: "Airborne arrival",
     airarr_onrunway: "Arrival on runway"
   };
+  const TAG_STATUS_ORDER = ["nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway", "airarr", "airarr_onrunway"];
   const COLOR_FAMILY_ORDER = ["Tags", "Targets", "RIMCAS", "SRW 1"];
   const COLOR_SECTION_ORDER = ["General", "Departure", "Arrival", "Uncorrelated", "Airborne"];
   const TAG_STATUS_COLOR_KEYS = {
     departure: {
-      default: "background_no_status_color", taxi: "background_taxi_color", push: "background_push_color",
+      default: "background_no_status_color", taxi: "background_taxi_color", lnup: "background_lineup_color", push: "background_push_color",
       stup: "background_startup_color", nofpl: "background_no_fpl_color", depa: "background_departure_color",
       airdep: "background_airborne_color", airdep_onrunway: "background_on_runway_color"
     },
@@ -95,10 +101,13 @@
   }
 
   function humanize(value) {
-    return String(value || "")
+    const normalized = String(value || "");
+    if (/^(lineup|line_up|lnup)$/i.test(normalized)) return "Line Up";
+    return normalized
       .replace(/_color$/i, "")
       .replaceAll("_", " ")
-      .replace(/\b\w/g, letter => letter.toUpperCase());
+      .replace(/\b\w/g, letter => letter.toUpperCase())
+      .replace(/\bLineup\b/g, "Line Up");
   }
 
   function normalizeHex(value, fallback = "#ffffff") {
@@ -2449,12 +2458,18 @@
         id: `${scope}:default`, group: humanize(scope), label: "Default", scope, status: "default",
         target: definition, color: tagDefinitionColor(profile, scope, "default")
       });
-      Object.entries(definition.status_definitions || {}).forEach(([status, target]) => {
+      Object.entries(definition.status_definitions || {})
+        .sort(([left], [right]) => {
+          const leftIndex = TAG_STATUS_ORDER.indexOf(left);
+          const rightIndex = TAG_STATUS_ORDER.indexOf(right);
+          return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex) || left.localeCompare(right);
+        })
+        .forEach(([status, target]) => {
         result.push({
           id: `${scope}:${status}`, group: humanize(scope), label: TAG_STATUS_LABELS[status] || humanize(status),
           scope, status, target, color: tagDefinitionColor(profile, scope, status)
         });
-      });
+        });
     });
     return result;
   }
@@ -2585,11 +2600,33 @@
   }
   function selectedRuleStatuses(rule) {
     const valid = new Set(RULE_STATUSES);
-    let statuses = Array.isArray(rule?.statuses) ? rule.statuses.filter(status => valid.has(status)) : [];
+    const normalizeStatus = status => {
+      const raw = String(status || "").trim().toLowerCase();
+      const compact = raw.replace(/[\s_-]+/g, "");
+      const tagType = String(rule?.tag_type || "").trim().toLowerCase();
+      if (!compact || compact === "any" || compact === "all" || compact === "*") return "any";
+      if (["default", "def", "nostatus", "nsts", "onground"].includes(compact)) return "default";
+      if (["nofpl", "noflightplan"].includes(compact)) return "nofpl";
+      if (compact === "push") return "push";
+      if (compact === "stup" || compact === "startup") return "stup";
+      if (compact === "taxi") return "taxi";
+      if (compact === "lineup" || compact === "lnup" || compact === "l/up") return "lnup";
+      if (compact === "depa" || compact === "departure") return "depa";
+      if (["airdep", "airbornedep", "airbornedeparture"].includes(compact)) return "airdep";
+      if (["airdeponrunway", "airbornedeponrunway", "airbornedepartureonrunway"].includes(compact)) return "airdep_onrunway";
+      if (["airarr", "airbornearr", "airbornearrival"].includes(compact)) return "airarr";
+      if (["airarronrunway", "airbornearronrunway", "airbornearrivalonrunway"].includes(compact)) return "airarr_onrunway";
+      if (compact === "airborne") return tagType === "arrival" ? "airarr" : "airdep";
+      if (compact === "onrunway") return tagType === "arrival" ? "airarr_onrunway" : "airdep_onrunway";
+      if (compact === "arrival" || compact === "arrivals") return tagType === "arrival" ? "default" : "airarr";
+      if (compact === "uncorrelated") return "default";
+      return raw;
+    };
+    let statuses = Array.isArray(rule?.statuses) ? rule.statuses.map(normalizeStatus).filter(status => status !== "any" && valid.has(status)) : [];
     if (!statuses.length) {
-      const legacy = String(rule?.status || "any");
+      const legacy = String(rule?.status || "any").trim().toLowerCase();
       if (!legacy || legacy === "any") statuses = RULE_STATUSES.slice();
-      else statuses = legacy.split(/[\s,;|]+/).filter(status => valid.has(status));
+      else statuses = legacy.replace(/\bline[\s_-]*up\b/g, "lnup").split(/[\s,;|]+/).map(normalizeStatus).filter(status => status !== "any" && valid.has(status));
     }
     return statuses.length ? uniqueValues(statuses) : RULE_STATUSES.slice();
   }
@@ -2607,14 +2644,14 @@
     all.checked = selected.length === options.length && options.length > 0;
     all.indeterminate = selected.length > 0 && selected.length < options.length;
     if (!selected.length || selected.length === options.length) button.textContent = "All statuses";
-    else if (selected.length === 1) button.textContent = humanize(selected[0].dataset.ruleStatus);
+    else if (selected.length === 1) button.textContent = RULE_STATUS_LABELS[selected[0].dataset.ruleStatus] || humanize(selected[0].dataset.ruleStatus);
     else button.textContent = `${selected.length} statuses`;
-    button.title = selected.length === options.length ? "All statuses selected" : selected.map(input => humanize(input.dataset.ruleStatus)).join(", ");
+    button.title = selected.length === options.length ? "All statuses selected" : selected.map(input => RULE_STATUS_LABELS[input.dataset.ruleStatus] || humanize(input.dataset.ruleStatus)).join(", ");
   }
 
   function renderRuleStatusSelector(rule, disabled = false) {
     const selected = new Set(selectedRuleStatuses(rule));
-    $("#ruleStatusOptions").innerHTML = RULE_STATUSES.map(status => `<label role="option" aria-selected="${selected.has(status)}"><input type="checkbox" data-rule-status="${status}" ${selected.has(status) ? "checked" : ""}><span>${escapeHtml(humanize(status))}</span></label>`).join("");
+    $("#ruleStatusOptions").innerHTML = RULE_STATUSES.map(status => `<label role="option" aria-selected="${selected.has(status)}"><input type="checkbox" data-rule-status="${status}" ${selected.has(status) ? "checked" : ""}><span>${escapeHtml(RULE_STATUS_LABELS[status] || humanize(status))}</span></label>`).join("");
     $("#ruleStatusButton").disabled = disabled;
     $("#ruleStatusAll").disabled = disabled;
     $$("#ruleStatusOptions input").forEach(input => { input.disabled = disabled; });
@@ -2741,6 +2778,10 @@
     $("#modePropertiesCaption").textContent = data.name || "Mode properties";
     $("#modeName").value = data.name || "";
     data.blocked_auto_correlate_squawks ||= [];
+    data.statuses ||= {};
+    if (typeof data.statuses.lineup !== "boolean")
+      data.statuses.lineup = typeof data.statuses.lnup === "boolean" ? data.statuses.lnup : (typeof data.statuses.taxi === "boolean" ? data.statuses.taxi : true);
+    delete data.statuses.lnup;
     renderModeBlockedSquawkChips();
     $("#reqSquawk").checked = Boolean(data.require_assigned_squawk);
     $("#modeAcceptPilotSquawk").checked = data.accept_pilot_squawk !== false;
@@ -2749,7 +2790,7 @@
     $("#reqTobt").checked = Boolean(data.require_active_tobt);
     $("#modeTowerFilter").checked = Boolean(data.tower_filter ?? data.tower_mode);
     $("#modeStructuredRules").checked = data.structured_rules !== false && data.structured_rules_enabled !== false;
-    $("#modeStatusGrid").innerHTML = MODE_STATUSES.map(status => `<label class="check-field"><input type="checkbox" data-mode-status="${status}" ${data.statuses?.[status] ? "checked" : ""}><span>${escapeHtml(humanize(status))}</span></label>`).join("");
+    $("#modeStatusGrid").innerHTML = MODE_STATUSES.map(status => `<label class="check-field"><input type="checkbox" data-mode-status="${status}" ${data.statuses[status] ? "checked" : ""}><span>${escapeHtml(humanize(status))}</span></label>`).join("");
     $("[data-action='activate-mode']").textContent = data.name === activeProfile().filters?.display_modes?.active ? "Active" : "Set active";
   }
 

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Rimcas.hpp"
+#include "SMRGroundState.hpp"
 
 namespace
 {
@@ -417,6 +418,11 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	std::string groundstate = SafeString(fp.GetGroundState());
 	string rwyOn = AcOnRunwayFunc(Rt, instance);
 	int groundspeed = pos.GetReportedGS();
+	const GroundStateCategory groundStateCategory = classifyGroundStateForCallsign(rtCallsign, groundstate.c_str(), groundspeed, !rwyOn.empty());
+	const bool departureAuthorized = groundStateCategory == GroundStateCategory::Depa;
+	const bool lineupAuthorized = groundStateCategory == GroundStateCategory::Lnup;
+	const bool taxiAuthorized = groundStateCategory == GroundStateCategory::Taxi || departureAuthorized || lineupAuthorized;
+	const bool pushAuthorized = groundStateCategory == GroundStateCategory::Push || groundStateCategory == GroundStateCategory::Taxi || lineupAuthorized;
 
 	// RWY CLSD
 	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
@@ -454,7 +460,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 
 	// RWY INCURSION
 	if (inactiveAlerts.find("RWY INC") == inactiveAlerts.end()) {
-		if ("DEPA" != groundstate) {
+		if (!departureAuthorized && !lineupAuthorized) {
 			if (rwyOn != "") {
 				movementAlerts[rtCallsign] = RWYINC;
 				return;
@@ -464,7 +470,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 
 	// STAT RPA
 	if (inactiveAlerts.find("STAT RPA") == inactiveAlerts.end()) {
-		if ("DEPA" == groundstate && 0 == groundspeed) {
+		if (departureAuthorized && 0 == groundspeed) {
 			movementAlerts[rtCallsign] = STATRPA;
 			return;
 		}
@@ -476,7 +482,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	bool isReversing = headingDiff >= 100;
 	// NO PUSH
 	if (inactiveAlerts.find("NO PUSH") == inactiveAlerts.end()) {
-		if ("PUSH" != groundstate && "TAXI" != groundstate && 2 < groundspeed && isReversing) {
+		if (!pushAuthorized && 2 < groundspeed && isReversing) {
 			movementAlerts[rtCallsign] = NOPUSH;
 			return;
 		}
@@ -485,7 +491,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 	// HIGHS SPD
 	if (inactiveAlerts.find("HIGH SPD") == inactiveAlerts.end()) {
 		int speedThreashold = isLVP ? 25 : 35;
-		if ("DEPA" != groundstate && speedThreashold < groundspeed && rwyOn == "") {
+		if (!departureAuthorized && speedThreashold < groundspeed && rwyOn == "") {
 			movementAlerts[rtCallsign] = HIGHSPD;
 			return;
 		}
@@ -493,7 +499,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 
 	// NO TKOF
 	if (inactiveAlerts.find("NO TKOF") == inactiveAlerts.end()) {
-		if ("DEPA" != groundstate && 35 < groundspeed && rwyOn != "") {
+		if (!departureAuthorized && 35 < groundspeed && rwyOn != "") {
 			movementAlerts[rtCallsign] = NOTKOF;
 			return;
 		}
@@ -501,7 +507,7 @@ void CRimcas::CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, boo
 
 	// NO TAXI
 	if (inactiveAlerts.find("NO TAXI") == inactiveAlerts.end()) {
-		if ("TAXI" != groundstate && "DEPA" != groundstate && 5 < groundspeed && !isReversing) {
+		if (!taxiAuthorized && 5 < groundspeed && !isReversing) {
 			movementAlerts[rtCallsign] = NOTAXI;
 			return;
 		}

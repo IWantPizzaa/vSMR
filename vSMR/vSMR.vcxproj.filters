@@ -75,6 +75,9 @@
     <ClCompile Include="src\Rimcas.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\RdfOverlay.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="src\SMRGeometry.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -180,6 +183,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\Rimcas.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\RdfOverlay.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\SMRColorUtils.hpp">

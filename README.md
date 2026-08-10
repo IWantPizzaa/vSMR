@@ -14,9 +14,11 @@ vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` 
 - Normal and detailed tags with status-specific layouts, drag positioning, and optional auto-deconfliction
 - Structured rules for target, tag, and text colors
 - Schema-2 profiles with reusable display modes
+- A native Line Up (`LNUP`) ground status with independent visibility, target color, tag color, tag definition, and rule matching
 - GeoJSON AVISO maps, groups, styles, labels, and a native geometry editor
 - Configurable RIMCAS runway and movement alerts
 - Native AVISO, SRW 1, METAR, and Timer insets
+- Native TrackAudio RDF rings on the main surface view and the AVISO and SRW 1 insets
 - Windows-style inset movement, resizing, edge/corner snapping, and live snap previews
 - Airport-specific inset state and presets that remain available when the active profile changes
 - VACDM time and state integration
@@ -139,6 +141,14 @@ If a Profiles or AVISO file changes outside vSMR while edits are pending, the Co
 
 Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
 
+### Ground statuses and Line Up
+
+The vSMR ground-status menu offers only the statuses applicable at the active airport: departures get `No Status`, `Startup`, `Push`, `Taxi`, `Line Up`, and `Departure`; arrivals get `No Status`, `Taxi In`, `Parked`, and `Arrival`. Open it by left-clicking a callsign or ground-status tag item; right-clicking the ground-status item opens the same menu.
+
+[EuroScope's documented scratchpad ground states](https://www.euroscope.hu/wp/non-standard-extensions/) do not include `LNUP`. When `Line Up` is selected, vSMR publishes EuroScope's standard `TAXI` state for interoperability and keeps a session-local `LNUP` override shared by every open vSMR screen. vSMR then uses `LNUP` consistently for display-mode visibility, target and tag colors, tag definitions, structured rules, the main view, and AVISO. Selecting another status from the vSMR menu clears the override. It is also cleared when the flight plan disconnects or EuroScope reports a state other than `TAXI`; after a restart it safely falls back to `TAXI`.
+
+Existing profiles are migrated additively: Line Up initially inherits each profile's Taxi visibility, target color, tag color, and tag definition, but can then be configured independently. A lined-up aircraft on runway must pass both the `Line Up` and `On runway` display-mode filters.
+
 The bundled profile database uses schema 2. Older supported keys are normalized during loading and saving for compatibility.
 
 ### Tags and structured rules
@@ -209,9 +219,45 @@ The Timer contains independent `1M`, `2M`, and `3M` countdowns:
 
 Countdowns are session state. Presets store only Timer visibility and placement.
 
+## Native RDF and Official RDF Compatibility
+
+vSMR has its own radio-direction-finding overlay for surface views. It draws each transmission with the projection of the view that contains it, so the main radar, AVISO inset, and SRW 1 inset remain geographically aligned when they have different pan, zoom, size, or aspect ratio.
+
+The native RDF client:
+
+- is enabled by default and remembers its state in the EuroScope plug-in settings
+- connects to TrackAudio at the fixed local endpoint `ws://127.0.0.1:49080/ws`
+- draws a white 20-pixel ring for a normal transmission
+- draws rings in red while more than one station is transmitting
+
+Use `.smr rdf` or `.smr rdf status` to show its state, `.smr rdf on` to enable it, and `.smr rdf off` to disable it.
+
+The native implementation currently consumes TrackAudio only. It does not receive the hidden-window RDF feed from the Audio for VATSIM standalone client. When only that standalone client is running, vSMR's native rings have no transmission source.
+
+### Keep the official RDF on approach views only
+
+The external [RDF Plugin for EuroScope](https://github.com/KingfuChan/RDF) can remain loaded for approach radar displays, but it must not create a radar-screen instance for vSMR's `SMR radar display`. Otherwise, the external plug-in renders once with the parent EuroScope screen projection and cannot correctly follow the independently transformed AVISO and SRW 1 insets.
+
+Apply [`vSMR/data/Tools/RDF-vSMR-ground-view.patch`](vSMR/data/Tools/RDF-vSMR-ground-view.patch) to official RDF commit `a4bd0ae5272088286acee1c2495ed3e4a2e627c6`, then rebuild that plug-in using its upstream development instructions. The same patch is distributed in a release as `vSMR_Data\Tools\RDF-vSMR-ground-view.patch`.
+
+```powershell
+git clone https://github.com/KingfuChan/RDF.git
+Set-Location RDF
+git checkout a4bd0ae5272088286acee1c2495ed3e4a2e627c6
+git apply C:\path\to\vSMR_Data\Tools\RDF-vSMR-ground-view.patch
+```
+
+The patch changes only `CRDFPlugin::OnRadarScreenCreated`: it returns `nullptr` for the exact display name `SMR radar display`, while the official RDF continues to create screens and draw on every other display.
+
+Do not use `.RDF ASR DRAW 0` as the sole exclusion when ground and approach displays are open together. At the pinned upstream revision, RDF loads per-ASR values into one shared drawing-settings object during refresh. Refreshing a different screen can therefore replace the setting currently in effect. Refusing the vSMR screen at creation time removes that ambiguity.
+
+The compatibility patch is a modification of the GPL-3.0-licensed official RDF project. Keep its upstream copyright notices and GPL license with any redistributed patched source or binary. vSMR does not bundle the external RDF source or DLL.
+
 ## RIMCAS
 
 RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The Control Center `Alerts` page controls monitored arrival/departure runways, closed runways, Normal/LVP visibility, timers, thresholds, and colors.
+
+`LNUP` authorizes runway entry and taxi movement for RIMCAS, so it suppresses `RWY INC` and `NO TAXI`. It does not authorize takeoff: `NO TKOF` remains active until the status changes to `DEPA`.
 
 Current alert labels include:
 
@@ -288,6 +334,10 @@ Enter commands in lowercase as shown.
 | `.smr reload` | Reloads vSMR runtime data on all open vSMR screens |
 | `.smr aviso reload` | Reloads the active AVISO GeoJSON |
 | `.smr aviso editor` | Opens the AVISO editor |
+| `.smr rdf` | Shows whether the native TrackAudio RDF overlay is enabled |
+| `.smr rdf status` | Shows whether the native TrackAudio RDF overlay is enabled |
+| `.smr rdf on` | Enables the native TrackAudio RDF overlay and saves the setting |
+| `.smr rdf off` | Disables the native TrackAudio RDF overlay and saves the setting |
 | `.smr connect` | Connects or disconnects Hoppie CPDLC |
 | `.smr poll` | Polls Hoppie messages immediately |
 | `.smr cdm` | Runs a manual PDC reminder scan for the active airport |
@@ -367,6 +417,8 @@ Review every report before sharing it. Operational callsigns or local paths can 
 | CPDLC cannot connect | Confirm EuroScope connectivity, callsign/code, Hoppie availability, and the sanitized error/log output |
 | PDC reminders are unavailable | Confirm the active airport, controller connection, and resolved `.cdm` alias path |
 | An inset layout is wrong after changing airports | Load or reset the preset for that airport; presets are intentionally airport-scoped |
+| Native RDF rings do not appear | TrackAudio is running and its WebSocket is available at `ws://127.0.0.1:49080/ws`; Audio for VATSIM standalone is not yet a native RDF source |
+| The external RDF draws over a vSMR surface view | Rebuild the official RDF at the pinned revision with `vSMR_Data\Tools\RDF-vSMR-ground-view.patch`; `.RDF ASR DRAW 0` alone is not reliable across concurrent screens |
 
 ## Building from Source
 
@@ -490,5 +542,7 @@ This project continues work from:
 
 - <https://github.com/AlexisBalzano/vSMR>
 - <https://github.com/pierr3/vSMR>
+
+Native RDF interoperability was developed against the GPL-3.0 [RDF Plugin for EuroScope](https://github.com/KingfuChan/RDF). The optional source patch in `vSMR_Data\Tools\` remains subject to that project's GPL-3.0 terms.
 
 Special thanks to Alexis B., Baptiste C., Steve A., and Yohannes D.

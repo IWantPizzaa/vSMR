@@ -126,7 +126,7 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget r
 	if (!isDeparture && destination != nullptr && destination[0] != '\0')
 		return settings.statuses.arrivals;
 
-	const GroundStateCategory targetStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
+	const GroundStateCategory targetStatus = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, targetOnRunway);
 	switch (targetStatus)
 	{
 	case GroundStateCategory::Push:
@@ -135,6 +135,8 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget r
 		return settings.statuses.startup;
 	case GroundStateCategory::Taxi:
 		return settings.statuses.taxi;
+	case GroundStateCategory::Lnup:
+		return settings.statuses.lineup;
 	case GroundStateCategory::Depa:
 		return settings.statuses.departure;
 	case GroundStateCategory::Nsts:

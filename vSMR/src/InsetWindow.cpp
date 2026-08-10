@@ -6,6 +6,7 @@
 #include "SMRTagDefinitionUtils.hpp"
 #include "SMRVacdmTagHelpers.hpp"
 #include "WeatherData.hpp"
+#include "RdfOverlay.hpp"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -3276,6 +3277,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				if (trySection("departure", "taxi"))
 					return resolvedColor;
 			}
+			else if (_stricmp(key, "lnup") == 0 || _stricmp(key, "lineup") == 0 || _stricmp(key, "line_up") == 0)
+			{
+				if (trySection("departure", "lineup"))
+					return resolvedColor;
+			}
 			else if (_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0)
 			{
 				if (trySection("departure", "departure"))
@@ -3454,7 +3460,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const bool isAirborneTarget = reportedGs > 50;
 			GroundStateCategory groundStateCat = GroundStateCategory::Unknown;
 			if (fp.IsValid())
-				groundStateCat = classifyGroundState(fp.GetGroundState(), reportedGs, isOnRunway);
+				groundStateCat = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, isOnRunway);
 
 			if (hasNoFlightPlan)
 			{
@@ -3482,6 +3488,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					break;
 				case GroundStateCategory::Taxi:
 					applyTargetTint(getConfigTargetColor(targetsConfig, "taxi", Color(255, 240, 240, 240)));
+					break;
+				case GroundStateCategory::Lnup:
+					applyTargetTint(getConfigTargetColor(targetsConfig, "lnup", getConfigTargetColor(targetsConfig, "taxi", Color(255, 240, 240, 240))));
 					break;
 				case GroundStateCategory::Depa:
 					applyTargetTint(getConfigTargetColor(targetsConfig, "depa", getConfigTargetColor(targetsConfig, "taxi", Color(255, 240, 240, 240))));
@@ -3516,12 +3525,35 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		auto drawConfiguredIcon = [&](CRadarTarget rt, CFlightPlan fp, const std::string&, const CRadarTargetPositionData& rtPositionData, const POINT& targetPoint, bool isCorrelated, bool isDepartureTarget, bool hasNoFlightPlan, bool isOnRunway) -> int
 		{
 			const int reportedGs = rtPositionData.GetReportedGS();
-			if (useNovaIconStyle)
-				return 18;
-
 			Color targetColor = resolveTargetColor(fp, isCorrelated, reportedGs, isOnRunway, isDepartureTarget, hasNoFlightPlan);
 			if (targetColor.GetAlpha() < 32)
 				targetColor = Color(255, targetColor.GetR(), targetColor.GetG(), targetColor.GetB());
+			if (useNovaIconStyle)
+			{
+				CPen novaSymbolPen(PS_SOLID, 1, targetColor.ToCOLORREF());
+				CPen* previousPen = dc.SelectObject(&novaSymbolPen);
+				if (rtPositionData.GetTransponderC())
+				{
+					dc.MoveTo(targetPoint.x, targetPoint.y - 6);
+					dc.LineTo(targetPoint.x - 6, targetPoint.y);
+					dc.LineTo(targetPoint.x, targetPoint.y + 6);
+					dc.LineTo(targetPoint.x + 6, targetPoint.y);
+					dc.LineTo(targetPoint.x, targetPoint.y - 6);
+				}
+				else
+				{
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x - 4, targetPoint.y - 4);
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x + 4, targetPoint.y - 4);
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x - 4, targetPoint.y + 4);
+					dc.MoveTo(targetPoint.x, targetPoint.y);
+					dc.LineTo(targetPoint.x + 4, targetPoint.y + 4);
+				}
+				dc.SelectObject(previousPen);
+				return 18;
+			}
 			double headingDeg = static_cast<double>(rtPositionData.GetReportedHeadingTrueNorth());
 			if (headingDeg < 0.0 || headingDeg >= 360.0)
 				headingDeg = rt.GetTrackHeading();
@@ -3955,12 +3987,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			}
 			else if (fp.IsValid())
 			{
-				const GroundStateCategory status = classifyGroundState(fp.GetGroundState(), reportedGs, isOnRunway);
+				const GroundStateCategory status = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, isOnRunway);
 				if (tagType == CSMRRadar::TagTypes::Departure)
 				{
 					switch (status)
 					{
 					case GroundStateCategory::Taxi: statusDefinitionKey = "taxi"; break;
+					case GroundStateCategory::Lnup: statusDefinitionKey = "lnup"; break;
 					case GroundStateCategory::Push: statusDefinitionKey = "push"; break;
 					case GroundStateCategory::Stup: statusDefinitionKey = "stup"; break;
 					case GroundStateCategory::Nsts: statusDefinitionKey = "nsts"; break;
@@ -4186,7 +4219,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				{
 					GroundStateCategory departureStatus = GroundStateCategory::Unknown;
 					if (fp.IsValid())
-						departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, isOnRunway);
+						departureStatus = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, isOnRunway);
 
 					const char* statusColorKey = nullptr;
 					const char* legacyStatusColorKey = nullptr;
@@ -4195,6 +4228,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					case GroundStateCategory::Taxi:
 						statusColorKey = "background_taxi_color";
 						legacyStatusColorKey = "taxi";
+						break;
+					case GroundStateCategory::Lnup:
+						statusColorKey = "background_lineup_color";
+						legacyStatusColorKey = "lnup";
 						break;
 					case GroundStateCategory::Push:
 						statusColorKey = "background_push_color";
@@ -4584,6 +4621,25 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 	if (cacheDrawn)
 		drawAircraft();
+
+	// Use the AVISO viewport's own pan/zoom/rotation projection.  The external
+	// RDF plugin only knows the parent radar transform, which is why its marker
+	// cannot be reused for this inset.
+	gdi->Flush(Gdiplus::FlushIntentionSync);
+	VsmrRdf::Draw(
+		hDC,
+		radar_screen,
+		viewportRect,
+		[&](const CPosition& position) -> POINT
+		{
+			const Gdiplus::PointF projected = projectPoint(
+				position.m_Longitude,
+				position.m_Latitude);
+			return {
+				static_cast<LONG>(std::lround(static_cast<double>(projected.X))),
+				static_cast<LONG>(std::lround(static_cast<double>(projected.Y)))
+			};
+		});
 
 	drawChrome();
 
@@ -6196,6 +6252,21 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 			// Now adding the clickable zones
 		}
+	}
+
+	// Render the same transmission snapshot through the SRW airport-relative
+	// scale/offset/rotation transform before releasing its content clip.
+	if (m_AirportPositionValid)
+	{
+		gdi->Flush(Gdiplus::FlushIntentionSync);
+		VsmrRdf::Draw(
+			hDC,
+			radar_screen,
+			windowAreaCRect,
+			[this](const CPosition& position) -> POINT
+			{
+				return projectPoint(position);
+			});
 	}
 
 	gdi->Restore(srwGraphicsState);

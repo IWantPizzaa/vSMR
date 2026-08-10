@@ -154,6 +154,7 @@
     <ClCompile Include="src\VsmrResourceFiles.cpp" />
     <ClCompile Include="src\WeatherData.cpp" />
     <ClCompile Include="src\Rimcas.cpp" />
+    <ClCompile Include="src\RdfOverlay.cpp" />
     <ClCompile Include="src\SMRGeometry.cpp" />
     <ClCompile Include="src\SMRPlugin.cpp" />
     <ClCompile Include="src\SMRRadar.cpp" />
@@ -201,6 +202,7 @@
     <ClInclude Include="include\WeatherData.hpp" />
     <ClInclude Include="include\resource.h" />
     <ClInclude Include="include\Rimcas.hpp" />
+    <ClInclude Include="include\RdfOverlay.hpp" />
     <ClInclude Include="include\SMRColorUtils.hpp" />
     <ClInclude Include="include\SMRDataTypes.hpp" />
     <ClInclude Include="include\SMRGeometry.hpp" />

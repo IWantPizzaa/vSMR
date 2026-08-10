@@ -307,6 +307,8 @@ namespace
 				return "stup";
 			if (compact == "taxi")
 				return "taxi";
+			if (compact == "lnup" || compact == "lineup" || compact == "l/up")
+				return "lnup";
 			if (compact == "depa" || compact == "departure")
 				return "depa";
 			if (compact == "airdep" || compact == "airborne" || compact == "airbornedeparture")
@@ -354,6 +356,8 @@ namespace
 			return "Startup";
 		if (normalizedStatus == "taxi")
 			return "Taxi";
+		if (normalizedStatus == "lnup")
+			return "Line Up";
 		if (normalizedStatus == "depa")
 			return "Departure";
 		if (normalizedStatus == "airdep")
@@ -374,7 +378,7 @@ namespace
 	{
 		const std::string normalizedType = NormalizeRuleTypeUiValue(owner, type);
 		if (normalizedType == "departure")
-			return { "Any", "No Status", "No FPL", "Push", "Startup", "Taxi", "Departure", "Airborne", "On Runway" };
+			return { "Any", "No Status", "No FPL", "Push", "Startup", "Taxi", "Line Up", "Departure", "Airborne", "On Runway" };
 		if (normalizedType == "arrival")
 			return { "Any", "On Ground", "No FPL", "Airborne", "On Runway" };
 		return { "Any" };
@@ -436,6 +440,8 @@ namespace
 				return "Startup";
 			if (normalizedStatus == "taxi")
 				return "Taxi";
+			if (normalizedStatus == "lnup")
+				return "Line Up";
 			if (normalizedStatus == "depa")
 				return "Departure";
 			if (normalizedStatus == "airdep")
@@ -534,6 +540,10 @@ namespace
 			return "Background Startup";
 		if (_stricmp(segment.c_str(), "background_taxi_color") == 0 || _stricmp(segment.c_str(), "taxi_color") == 0)
 			return "Background Taxi";
+		if (_stricmp(segment.c_str(), "background_lineup_color") == 0 || _stricmp(segment.c_str(), "lineup_color") == 0 || _stricmp(segment.c_str(), "lnup_color") == 0)
+			return "Background Line Up";
+		if (_stricmp(segment.c_str(), "lineup") == 0 || _stricmp(segment.c_str(), "lnup") == 0)
+			return "Line Up";
 		if (_stricmp(segment.c_str(), "background_airborne_color") == 0)
 			return "Background Airborne";
 		if (_stricmp(segment.c_str(), "text_airborne_color") == 0)
@@ -1721,6 +1731,7 @@ HBRUSH CProfileEditorDialog::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
 		case IDC_PE_PROFILE_MODE_STATUS_PUSH:
 		case IDC_PE_PROFILE_MODE_STATUS_STARTUP:
 		case IDC_PE_PROFILE_MODE_STATUS_TAXI:
+		case IDC_PE_PROFILE_MODE_STATUS_LINEUP:
 		case IDC_PE_PROFILE_MODE_STATUS_DEPARTURE:
 		case IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY:
 		case IDC_PE_PROFILE_MODE_STATUS_AIRBORNE:
@@ -2534,6 +2545,7 @@ void CProfileEditorDialog::CreateEditorControls()
 	ProfileModeStatusPushCheck.Create("Push", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_PUSH);
 	ProfileModeStatusStartupCheck.Create("Startup", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_STARTUP);
 	ProfileModeStatusTaxiCheck.Create("Taxi", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_TAXI);
+	ProfileModeStatusLineupCheck.Create("Line Up", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_LINEUP);
 	ProfileModeStatusDepartureCheck.Create("Departure", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_DEPARTURE);
 	ProfileModeStatusOnRunwayCheck.Create("On runway", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY);
 	ProfileModeStatusAirborneCheck.Create("Airborne", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX | BS_FLAT, CRect(0, 0, 0, 0), this, IDC_PE_PROFILE_MODE_STATUS_AIRBORNE);
@@ -2803,6 +2815,7 @@ void CProfileEditorDialog::CreateEditorControls()
 		ProfileModeStatusPushCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusStartupCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusTaxiCheck.SetFont(GetFont(), TRUE);
+		ProfileModeStatusLineupCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusDepartureCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusOnRunwayCheck.SetFont(GetFont(), TRUE);
 		ProfileModeStatusAirborneCheck.SetFont(GetFont(), TRUE);
@@ -3292,6 +3305,7 @@ void CProfileEditorDialog::RefreshProfileModeControls()
 	setCheck(ProfileModeStatusPushCheck, !hasModeSelection || settings.statuses.push);
 	setCheck(ProfileModeStatusStartupCheck, !hasModeSelection || settings.statuses.startup);
 	setCheck(ProfileModeStatusTaxiCheck, !hasModeSelection || settings.statuses.taxi);
+	setCheck(ProfileModeStatusLineupCheck, !hasModeSelection || settings.statuses.lineup);
 	setCheck(ProfileModeStatusDepartureCheck, !hasModeSelection || settings.statuses.departure);
 	setCheck(ProfileModeStatusOnRunwayCheck, !hasModeSelection || settings.statuses.onRunway);
 	setCheck(ProfileModeStatusAirborneCheck, !hasModeSelection || settings.statuses.airborne);
@@ -3313,6 +3327,7 @@ void CProfileEditorDialog::RefreshProfileModeControls()
 	ProfileModeStatusPushCheck.EnableWindow(enabled);
 	ProfileModeStatusStartupCheck.EnableWindow(enabled);
 	ProfileModeStatusTaxiCheck.EnableWindow(enabled);
+	ProfileModeStatusLineupCheck.EnableWindow(enabled);
 	ProfileModeStatusDepartureCheck.EnableWindow(enabled);
 	ProfileModeStatusOnRunwayCheck.EnableWindow(enabled);
 	ProfileModeStatusAirborneCheck.EnableWindow(enabled);
@@ -3336,6 +3351,7 @@ bool CProfileEditorDialog::ReadProfileDisplayModeFromControls(CSMRRadar::Display
 	outSettings.statuses.push = (ProfileModeStatusPushCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.startup = (ProfileModeStatusStartupCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.taxi = (ProfileModeStatusTaxiCheck.GetCheck() == BST_CHECKED);
+	outSettings.statuses.lineup = (ProfileModeStatusLineupCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.departure = (ProfileModeStatusDepartureCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.onRunway = (ProfileModeStatusOnRunwayCheck.GetCheck() == BST_CHECKED);
 	outSettings.statuses.airborne = (ProfileModeStatusAirborneCheck.GetCheck() == BST_CHECKED);
@@ -3891,7 +3907,7 @@ void CProfileEditorDialog::LayoutControls()
 	const int profileInfoContentWidth = max(140, profileRightWidth - 28);
 	ProfileModeHeader.MoveWindow(profileInfoContentLeft, profileTop + 14, profileInfoContentWidth, rowHeight, TRUE);
 	const int modeButtonHeight = min(buttonHeight, 32);
-	const int modeStatusRows = 5;
+	const int modeStatusRows = 6;
 	const int modeFixedHeight = 46 + rowHeight + 8 + (modeButtonHeight * 2) + profileButtonsRowGap + 12 + (rowHeight * 4) + 12 + rowHeight + (modeStatusRows * rowHeight) + 18;
 	const int modeListHeight = max(70, profileHeight - modeFixedHeight);
 	int modeY = profileTop + 46;
@@ -3930,14 +3946,16 @@ void CProfileEditorDialog::LayoutControls()
 	ProfileModeStatusStartupCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
 	ProfileModeStatusTaxiCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
 	modeY += rowHeight;
-	ProfileModeStatusDepartureCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
-	ProfileModeStatusOnRunwayCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusLineupCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusDepartureCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
 	modeY += rowHeight;
-	ProfileModeStatusAirborneCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
-	ProfileModeStatusArrivalsCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusOnRunwayCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusAirborneCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
 	modeY += rowHeight;
-	ProfileModeStatusNoFplCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
-	ProfileModeStatusUncorrelatedCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusArrivalsCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
+	ProfileModeStatusNoFplCheck.MoveWindow(profileInfoContentLeft + modeColumnWidth + modeColumnGap, modeY, modeColumnWidth, rowHeight, TRUE);
+	modeY += rowHeight;
+	ProfileModeStatusUncorrelatedCheck.MoveWindow(profileInfoContentLeft, modeY, modeColumnWidth, rowHeight, TRUE);
 
 	MoveControlOffscreen(ProfileInfoHeader);
 	MoveControlOffscreen(ProfileInfoBody);
@@ -4132,7 +4150,7 @@ void CProfileEditorDialog::UpdatePageVisibility(bool force)
 		&ProfileModeAddButton, &ProfileModeDuplicateButton, &ProfileModeRenameButton, &ProfileModeDeleteButton,
 		&ProfileModeSquawkCheck, &ProfileModeClearanceCheck, &ProfileModeValidTsatCheck, &ProfileModeActiveTobtCheck,
 		&ProfileModeStatusHeader, &ProfileModeStatusNoStatusCheck, &ProfileModeStatusPushCheck,
-		&ProfileModeStatusStartupCheck, &ProfileModeStatusTaxiCheck, &ProfileModeStatusDepartureCheck,
+		&ProfileModeStatusStartupCheck, &ProfileModeStatusTaxiCheck, &ProfileModeStatusLineupCheck, &ProfileModeStatusDepartureCheck,
 		&ProfileModeStatusOnRunwayCheck, &ProfileModeStatusAirborneCheck, &ProfileModeStatusArrivalsCheck,
 		&ProfileModeStatusNoFplCheck, &ProfileModeStatusUncorrelatedCheck
 	},
@@ -7766,6 +7784,7 @@ BEGIN_MESSAGE_MAP(CProfileEditorDialog, CDialogEx)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_PUSH, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_STARTUP, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_TAXI, &CProfileEditorDialog::OnProfileModeFieldChanged)
+	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_LINEUP, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_DEPARTURE, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_ON_RUNWAY, &CProfileEditorDialog::OnProfileModeFieldChanged)
 	ON_BN_CLICKED(IDC_PE_PROFILE_MODE_STATUS_AIRBORNE, &CProfileEditorDialog::OnProfileModeFieldChanged)

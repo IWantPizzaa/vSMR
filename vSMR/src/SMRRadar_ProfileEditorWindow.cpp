@@ -290,6 +290,7 @@ namespace
 		WriteBoolMember(statusValue, "push", statuses.push, allocator);
 		WriteBoolMember(statusValue, "startup", statuses.startup, allocator);
 		WriteBoolMember(statusValue, "taxi", statuses.taxi, allocator);
+		WriteBoolMember(statusValue, "lineup", statuses.lineup, allocator);
 		WriteBoolMember(statusValue, "departure", statuses.departure, allocator);
 		WriteBoolMember(statusValue, "on_runway", statuses.onRunway, allocator);
 		WriteBoolMember(statusValue, "airborne", statuses.airborne, allocator);
@@ -346,6 +347,7 @@ namespace
 			settings.statuses.push = ReadBoolMember(statuses, "push", settings.statuses.push);
 			settings.statuses.startup = ReadBoolMember(statuses, "startup", ReadBoolMember(statuses, "stup", settings.statuses.startup));
 			settings.statuses.taxi = ReadBoolMember(statuses, "taxi", settings.statuses.taxi);
+			settings.statuses.lineup = ReadBoolMember(statuses, "lineup", ReadBoolMember(statuses, "lnup", settings.statuses.taxi));
 			settings.statuses.departure = ReadBoolMember(statuses, "departure", ReadBoolMember(statuses, "depa", settings.statuses.departure));
 			settings.statuses.onRunway = ReadBoolMember(statuses, "on_runway", settings.statuses.onRunway);
 			settings.statuses.airborne = ReadBoolMember(statuses, "airborne", settings.statuses.airborne);
