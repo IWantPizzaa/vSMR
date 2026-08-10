@@ -47,6 +47,7 @@ namespace
 	constexpr int kFixedWindowHeight = 500;
 	const wchar_t* kVirtualHostName = L"app.vsmr";
 	const wchar_t* kVirtualOriginPrefix = L"https://app.vsmr/";
+	const wchar_t* kAircraftIconVirtualHostName = L"icons.vsmr";
 	const wchar_t* kWebViewHostWindowClass = L"vSMR.ControlCenter.WebViewHost";
 	std::mutex gWebViewHostWindowClassMutex;
 	unsigned int gWebViewHostWindowClassUsers = 0;
@@ -285,6 +286,7 @@ struct CVsmrControlCenterDialog::WebViewHostState
 	std::atomic<int> clientHeight{ kFixedWindowHeight };
 	std::atomic<int> requestedPage{
 		static_cast<int>(CVsmrControlCenterDialog::Page::Display) };
+	std::atomic<bool> preservePageOnNextOpen{ false };
 	std::atomic<bool> pageReady{ false };
 	bool windowClassAcquired = false;
 	bool environmentCreationPending = false;
@@ -844,6 +846,37 @@ void CVsmrControlCenterDialog::ConfigureWebView()
 		return;
 	}
 
+	// Expose the same aircraft silhouettes used by the native radar renderer.
+	// Mapping only the icon directory keeps the rest of vSMR_Data unavailable to
+	// the WebView while allowing the Control Center to preview the real A320 PNG.
+	if (Owner != nullptr && !Owner->IconsPath.empty())
+	{
+		try
+		{
+			const std::filesystem::path iconFolder =
+				std::filesystem::absolute(std::filesystem::path(Owner->IconsPath));
+			if (std::filesystem::is_regular_file(iconFolder / "a320.png"))
+			{
+				const HRESULT iconMappingResult = webView3->SetVirtualHostNameToFolderMapping(
+					kAircraftIconVirtualHostName,
+					iconFolder.wstring().c_str(),
+					COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
+				if (FAILED(iconMappingResult))
+				{
+					Logger::info(
+						"Control Center WebView2: unable to map aircraft icon resources (HRESULT " +
+						std::to_string(static_cast<long>(iconMappingResult)) + ").");
+				}
+			}
+		}
+		catch (const std::exception& exception)
+		{
+			Logger::info(
+				"Control Center WebView2: unable to resolve aircraft icon resources: " +
+				std::string(exception.what()));
+		}
+	}
+
 	std::weak_ptr<std::atomic<bool>> weakLifetime = LifetimeToken;
 	if (SUCCEEDED(WebHost->webView->add_NavigationStarting(
 		Callback<ICoreWebView2NavigationStartingEventHandler>(
@@ -1009,11 +1042,13 @@ void CVsmrControlCenterDialog::ShowRequestedPageOnStaThread()
 	if (!WebHost || !WebHost->webView || !WebViewReady.load() ||
 		!WebHost->pageReady.load())
 		return;
+	const bool preservePage = WebHost->preservePageOnNextOpen.exchange(false);
 	const Page page = static_cast<Page>(WebHost->requestedPage.load());
-	const std::wstring script =
-		L"window.vsmrControlCenter && window.vsmrControlCenter.open(\"" +
-		Utf8ToWide(PageName(page)) +
-		L"\");";
+	const std::wstring script = preservePage
+		? L"window.vsmrControlCenter && window.vsmrControlCenter.open();"
+		: L"window.vsmrControlCenter && window.vsmrControlCenter.open(\"" +
+			Utf8ToWide(PageName(page)) +
+			L"\");";
 	WebHost->webView->ExecuteScript(script.c_str(), nullptr);
 }
 
@@ -1439,7 +1474,18 @@ void CVsmrControlCenterDialog::ShowPage(Page page)
 	CurrentPage = page;
 	if (!WebHost)
 		return;
+	WebHost->preservePageOnNextOpen.store(false);
 	WebHost->requestedPage.store(static_cast<int>(page));
+	const HWND threadWindow = WebHost->threadWindow.load();
+	if (WebViewReady.load() && ::IsWindow(threadWindow))
+		::PostMessage(threadWindow, kWebViewShowPageMessage, 0, 0);
+}
+
+void CVsmrControlCenterDialog::ShowLastPage()
+{
+	if (!WebHost)
+		return;
+	WebHost->preservePageOnNextOpen.store(true);
 	const HWND threadWindow = WebHost->threadWindow.load();
 	if (WebViewReady.load() && ::IsWindow(threadWindow))
 		::PostMessage(threadWindow, kWebViewShowPageMessage, 0, 0);

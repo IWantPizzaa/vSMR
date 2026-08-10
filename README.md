@@ -100,7 +100,6 @@ vSMR/
 
 Optional runtime data:
 
-- `vSMR_Maps.json`
 - `ICAO_Airlines.txt`
 - `ICAO_Aircraft.json`
 - `AVISO\AVISO_*.geojson`
@@ -118,7 +117,6 @@ Important:
 
 - `vSMR_Profiles.json` is required. vSMR checks `vSMR_Data\` first, then the DLL folder for existing installs.
 - Keep the complete `vSMR_Data\vSMR_webUI\` package next to `vSMR.dll`: four application assets plus the two files under `defaults\`. The Control Center does not use an external web server.
-- `vSMR_Maps.json` is optional and uses the same search order.
 - The repository already ships example runtime files under [`vSMR/data/`](vSMR/data/).
 
 Example deployment layout:
@@ -142,10 +140,14 @@ EuroScope\Plugins\
         vSMR_Profiles.json
         AVISO_LFPG.geojson
     vSMR_Profiles.json
-    vSMR_Maps.json
     ICAO_Aircraft.json
     AVISO\
+      AVISO_LFBO.geojson
+      AVISO_LFLL.geojson
+      AVISO_LFML.geojson
+      AVISO_LFMN.geojson
       AVISO_LFPG.geojson
+      AVISO_LFPO.geojson
     aircraft_icons\
       a320.png
       b738.png
@@ -165,7 +167,6 @@ EuroScope\Plugins\
 
 | File                     | Search location(s)                                                                                           | Purpose                                                                            |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `vSMR_Maps.json`         | `vSMR_Data\`, then same folder as `vSMR.dll` fallback                                                        | Map element visibility by zoom level and optional active runway/airport conditions |
 | `AVISO_*.geojson`        | `vSMR_Data\AVISO\`, then `vSMR_Data\`, then `<dll folder>\AVISO\`, then DLL folder fallback                  | Optional AVISO map overlays by airport, for example `AVISO_LFPG.geojson`           |
 | `ICAO_Airlines.txt`      | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt`                      | Airline/callsign lookup for bottom-line text and related displays                  |
 | `ICAO_Aircraft.json`     | `vSMR_Data\`, then `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder fallback      | Aircraft length and wingspan data used by realistic icons                          |
@@ -542,8 +543,6 @@ The main profile file is a JSON array. Each profile object currently uses top-le
 - `rimcas`
 - `targets`
 - `approach_insets`
-- `maps`
-- `ui_layout`
 
 ### `font`
 
@@ -610,21 +609,20 @@ for profile compatibility:
 - runway color
 - background color
 
-### `ui_layout`
+## Legacy Sector Maps
 
-Legacy profiles may still contain `profile_editor_window`. The current
-fixed-size Control Center does not use that profile field; its position is
-stored in `%LOCALAPPDATA%\vSMR\control-center-window.json`.
-
-## Maps
-
-`vSMR_Maps.json` is a JSON array of map visibility entries. Each entry can define:
+Bundled airports use the airport-specific `AVISO_*.geojson` files. vSMR no
+longer ships `vSMR_Maps.json`, because its bundled entries duplicated those
+AVISO airports. Existing installations may still supply this optional file as
+a compatibility fallback when an airport has no AVISO file. It is a JSON array
+whose entries can define:
 
 - `zoomLevel`
 - `element`
 - optional `active`
 
-The optional `active` string is used to conditionally show sector elements based on airport and runway configuration. Example from the shipped file:
+The optional `active` string conditionally shows sector elements based on
+airport and runway configuration. For example:
 
 ```text
 LFPG:DEP:26R:ARR:26L
@@ -638,10 +636,22 @@ When `Icons` style is active (internally stored as `realistic`), vSMR can combin
 - optional PNG silhouettes from `vSMR_Data\aircraft_icons\`
 - WTC-based fallbacks when dimensions are missing
 
-`ICAO_Aircraft.json` supports both:
+The bundled file uses the compact native schema and includes only records with
+valid positive length and wingspan values. The loader also accepts:
 
-- the native vSMR schema
 - the alternate GNG-style schema
+
+### Runtime data validation
+
+The repository includes a deterministic normalizer for profiles, aircraft
+dimensions, and every bundled AVISO file. Check committed data with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File vSMR\tools\normalize_runtime_data.ps1 -Mode Check
+```
+
+Maintainers can replace `Check` with `Write` to normalize imported data before
+reviewing it.
 
 ## Building From Source
 
@@ -678,7 +688,6 @@ Output:
 Release\vSMR.dll
 Release\vSMR_Data\
   vSMR_Profiles.json
-  vSMR_Maps.json
   ICAO_Aircraft.json
   AVISO\
   aircraft_icons\
@@ -743,7 +752,7 @@ This is the high-level execution flow when EuroScope loads and runs the plugin:
 
 1. `SMRPlugin` is created, registers display/tag extensions, loads CPDLC settings, initializes VACDM polling configuration, and receives EuroScope METAR updates.
 2. EuroScope creates one `SMRRadar` instance per opened vSMR display window.
-3. `SMRRadar` loads profiles/maps/resources, then drives drawing and interaction in `OnRefresh`.
+3. `SMRRadar` loads profiles and runtime resources, then drives drawing and interaction in `OnRefresh`.
 4. `SMRPlugin::OnTimer` handles periodic tasks (CPDLC polling, VACDM and fallback-weather fetch scheduling, status blinking, and cleanup).
 5. Radar/profile state is persisted through profile JSON and ASR keys such as `Airport`, `ActiveProfile`, `ShowFps`, Runtime Menu position, and inset geometry/visibility.
 6. `.smr reload` reloads JSON config and reapplies profiles across currently opened radar windows.

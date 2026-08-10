@@ -217,9 +217,13 @@
     <None Include="data\Audio\Alarm.wav" />
     <None Include="data\Audio\Ding.wav" />
     <None Include="data\ICAO_Aircraft.json" />
-    <None Include="data\vSMR_Maps.json" />
     <None Include="data\vSMR_Profiles.json" />
+    <None Include="data\AVISO\AVISO_LFBO.geojson" />
+    <None Include="data\AVISO\AVISO_LFLL.geojson" />
+    <None Include="data\AVISO\AVISO_LFML.geojson" />
+    <None Include="data\AVISO\AVISO_LFMN.geojson" />
     <None Include="data\AVISO\AVISO_LFPG.geojson" />
+    <None Include="data\AVISO\AVISO_LFPO.geojson" />
     <None Include="vSMR_webUI\app.js">
       <Link>vSMR_webUI\app.js</Link>
     </None>
@@ -238,6 +242,7 @@
     <None Include="resources\vSMR.def" />
     <None Include="resources\vSMR.rc2" />
     <None Include="tools\edit_tagdefs.ps1" />
+    <None Include="tools\normalize_runtime_data.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resources\vSMR.rc" />

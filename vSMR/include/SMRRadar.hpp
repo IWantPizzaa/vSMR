@@ -360,6 +360,10 @@ public:
 	RuntimeMenuPopup ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 	POINT RuntimeMenuPosition = { 14, 100 };
 	bool RuntimeMenuPositionInitialized = false;
+	bool InitialInsetStateRestorePending = false;
+	CRect InitialInsetStateRestoreBounds = { 0, 0, 0, 0 };
+	int InitialInsetStateRestoreStableFrames = 0;
+	unsigned long InitialInsetStateRestoreBoundsChangedTick = 0;
 	CRect RuntimeMenuArea = { 0, 0, 0, 0 };
 	CRect RuntimeMenuPopupArea = { 0, 0, 0, 0 };
 	int RuntimeMenuPopupScrollOffset = 0;

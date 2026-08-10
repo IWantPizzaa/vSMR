@@ -33,6 +33,7 @@ public:
 
 	void SetOwner(CSMRRadar* owner);
 	void ShowPage(Page page);
+	void ShowLastPage();
 	void SyncFromRadar(const std::string& reason = "runtime");
 	void RestoreWindowPlacementOrDefault(const CRect& fallback);
 	void ConstrainToEuroScopeWindow();

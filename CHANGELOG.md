@@ -14,6 +14,9 @@ All notable changes to this project are documented in this file.
 - Added live CPDLC/CDM status reporting and manual CDM reminder scans for the active airport.
 
 ### Changed
+- Harmonized the Control Center and Runtime Menu around one vSMR component system for button states, control heights, panel/card headers, list shells, spacing, radii, typography, and Settings layouts.
+- Canonicalized the bundled profiles and all six AVISO airports, preserving airport-specific inset presets while removing obsolete UI placement, converter provenance, redundant paint, and default visibility fields.
+- Reduced the aircraft database to the 873 records that contain usable positive length and wingspan dimensions and converted it to the native vSMR lookup schema.
 - Removed the Approach Path/SRW 2 inset and its runtime, preset, persistence, and rendering paths while preserving later inset IDs for compatibility.
 - Moved the Timer alarm and CPDLC notification sounds to `vSMR_Data\Audio` so both runtime assets ship outside the plugin DLL.
 - Added Timer visibility, placement reset, airport-scoped ASR state, and optional preset placement to the Runtime Menu and Control Center inset controls without persisting live countdown deadlines.
@@ -30,6 +33,12 @@ All notable changes to this project are documented in this file.
 - Moved the Control Center Web UI source under `vSMR\` and its release assets under `vSMR_Data`, leaving only `vSMR.dll` and `vSMR_Data\` at the Release root.
 
 ### Fixed
+- Replaced the Control Center's invented target-symbol sketches with the native NOVA and triangle geometry plus the bundled A320 icon render.
+- Kept the previous AVISO raster geographically anchored while main-view and inset zoom renders are pending, preventing main-view blink-outs and transient inset stretching.
+- Reapplied airport inset state after EuroScope's radar bounds settle, preserving startup preset geometry and the Runtime Menu's saved position.
+- Preserved intentionally empty AVISO group lists and the selected text style after saving in the Control Center.
+- Reopened the Control Center on its last active page instead of always forcing Settings.
+- Kept corner-snapped insets at their current size and removed the obsolete thick snap-edge indicators without reducing resize hitboxes.
 - Loading Profiles or AVISO now activates the selected computer file in place; GitHub loads create collision-safe variants under `vSMR_Data` and can no longer overwrite canonical airport/profile files. Settings, Reload, multiple radar screens, and persisted source selection follow the actual active paths.
 - Removed the duplicate Windows title bar and system-looking edit borders/scrollbars from the PDC and Message windows, and constrained their custom title-bar dragging to the EuroScope client area.
 - Kept saved Hoppie credentials visibly masked after auto-save, normalized pasted codes, URL-encoded credentials, and replaced the misleading callsign-collision login error with the actual sanitized Hoppie or network failure.
@@ -37,6 +46,7 @@ All notable changes to this project are documented in this file.
 - Corrected SRW pen restoration and removed an unused once-per-second sector-airport scan.
 
 ### Repository
+- Removed the redundant bundled `vSMR_Maps.json` data while retaining the optional legacy loader for airports without AVISO data, and added a deterministic runtime-data validation tool.
 - Removed the unused bundled Asio and libcurl headers/libraries, their dead shared state, and an obsolete custom resize cursor.
 - Removed the superseded Control Center implementation notes and test checklist from `docs\`.
 - Simplified AppVeyor packaging, included project and RapidJSON license notices, and enabled validation for `main`, `master`, and `dev`.

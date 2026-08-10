@@ -56,7 +56,7 @@ namespace
 			AvisoWithinTolerance(static_cast<double>(left.Y), static_cast<double>(right.Y), tolerance);
 	}
 
-	bool AvisoProjectionScaleWithinTolerance(
+	bool AvisoProjectionTransformWithinTolerance(
 		const Gdiplus::PointF& cachedTopLeft,
 		const Gdiplus::PointF& cachedTopRight,
 		const Gdiplus::PointF& cachedBottomLeft,
@@ -75,21 +75,35 @@ namespace
 			return false;
 		}
 
-		const double horizontalSpanRatio = cachedLongitudeSpan / currentLongitudeSpan;
-		const double verticalSpanRatio = cachedLatitudeSpan / currentLatitudeSpan;
 		const double cachedHorizontalX = static_cast<double>(cachedTopRight.X - cachedTopLeft.X);
 		const double cachedHorizontalY = static_cast<double>(cachedTopRight.Y - cachedTopLeft.Y);
-		const double currentHorizontalX = static_cast<double>(currentTopRight.X - currentTopLeft.X) * horizontalSpanRatio;
-		const double currentHorizontalY = static_cast<double>(currentTopRight.Y - currentTopLeft.Y) * horizontalSpanRatio;
 		const double cachedVerticalX = static_cast<double>(cachedBottomLeft.X - cachedTopLeft.X);
 		const double cachedVerticalY = static_cast<double>(cachedBottomLeft.Y - cachedTopLeft.Y);
-		const double currentVerticalX = static_cast<double>(currentBottomLeft.X - currentTopLeft.X) * verticalSpanRatio;
-		const double currentVerticalY = static_cast<double>(currentBottomLeft.Y - currentTopLeft.Y) * verticalSpanRatio;
-		return
+		const double currentHorizontalX = static_cast<double>(currentTopRight.X - currentTopLeft.X);
+		const double currentHorizontalY = static_cast<double>(currentTopRight.Y - currentTopLeft.Y);
+		const double currentVerticalX = static_cast<double>(currentBottomLeft.X - currentTopLeft.X);
+		const double currentVerticalY = static_cast<double>(currentBottomLeft.Y - currentTopLeft.Y);
+
+		// A wheel zoom changes the geographic span while keeping the viewport's
+		// projection basis. Keep using the geo-anchored cache until its replacement
+		// arrives instead of falling back to a stretched viewport crop.
+		const bool sameViewportBasis =
 			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX, tolerance) &&
 			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY, tolerance) &&
 			AvisoWithinTolerance(cachedVerticalX, currentVerticalX, tolerance) &&
 			AvisoWithinTolerance(cachedVerticalY, currentVerticalY, tolerance);
+		if (sameViewportBasis)
+			return true;
+
+		// A window resize can instead change the viewport span while preserving
+		// the number of pixels per geographic degree.
+		const double horizontalSpanRatio = cachedLongitudeSpan / currentLongitudeSpan;
+		const double verticalSpanRatio = cachedLatitudeSpan / currentLatitudeSpan;
+		return
+			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX * horizontalSpanRatio, tolerance) &&
+			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY * horizontalSpanRatio, tolerance) &&
+			AvisoWithinTolerance(cachedVerticalX, currentVerticalX * verticalSpanRatio, tolerance) &&
+			AvisoWithinTolerance(cachedVerticalY, currentVerticalY * verticalSpanRatio, tolerance);
 	}
 
 	Gdiplus::PointF RotateAvisoVector(double x, double y, double degrees)
@@ -328,44 +342,29 @@ namespace
 		}
 	}
 
-	CRect DefaultAvisoCornerRect(AvisoLayoutMode mode, const CRect& bounds)
+	CRect AvisoCornerRectForFrameSize(AvisoLayoutMode mode, const CRect& bounds, CSize requestedSize)
 	{
-		const int midX = (bounds.left + bounds.right) / 2;
-		const int midY = (bounds.top + bounds.bottom) / 2;
-		const int leftCornerRight = std::clamp(
-			midX,
-			static_cast<int>(bounds.left) + kAvisoMinLayoutWidth,
-			static_cast<int>(bounds.right));
-		const int rightCornerLeft = std::clamp(
-			midX,
-			static_cast<int>(bounds.left),
-			static_cast<int>(bounds.right) - kAvisoMinLayoutWidth);
-		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
-		const int topCornerBottom = std::clamp(
-			midY,
-			static_cast<int>(bounds.top) + minimumFrameHeight,
-			static_cast<int>(bounds.bottom));
-		const int bottomCornerTop = std::clamp(
-			midY,
-			static_cast<int>(bounds.top),
-			static_cast<int>(bounds.bottom) - minimumFrameHeight);
-
-		switch (mode)
-		{
-		case AvisoLayoutMode::CornerTopLeft:
-			return CRect(bounds.left, bounds.top, leftCornerRight, topCornerBottom);
-		case AvisoLayoutMode::CornerTopRight:
-			return CRect(rightCornerLeft, bounds.top, bounds.right, topCornerBottom);
-		case AvisoLayoutMode::CornerBottomLeft:
-			return CRect(bounds.left, bottomCornerTop, leftCornerRight, bounds.bottom);
-		case AvisoLayoutMode::CornerBottomRight:
-			return CRect(rightCornerLeft, bottomCornerTop, bounds.right, bounds.bottom);
-		default:
+		if (!IsAvisoCornerLayout(mode) || bounds.IsRectEmpty())
 			return CRect(0, 0, 0, 0);
-		}
+
+		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
+		const int boundsWidth = static_cast<int>(bounds.Width());
+		const int boundsHeight = static_cast<int>(bounds.Height());
+		const int minimumWidth = min(kAvisoMinLayoutWidth, boundsWidth);
+		const int minimumHeight = min(minimumFrameHeight, boundsHeight);
+		const int width = std::clamp(static_cast<int>(requestedSize.cx), minimumWidth, boundsWidth);
+		const int height = std::clamp(static_cast<int>(requestedSize.cy), minimumHeight, boundsHeight);
+		const int left = IsAvisoCornerRightAnchored(mode) ? bounds.right - width : bounds.left;
+		const int top = IsAvisoCornerBottomAnchored(mode) ? bounds.bottom - height : bounds.top;
+		return CRect(left, top, left + width, top + height);
 	}
 
-	bool ResolveAvisoSnapTarget(POINT point, const CRect& bounds, AvisoLayoutMode& mode, CRect& area)
+	bool ResolveAvisoSnapTarget(
+		POINT point,
+		const CRect& bounds,
+		CSize cornerFrameSize,
+		AvisoLayoutMode& mode,
+		CRect& area)
 	{
 		if (bounds.IsRectEmpty())
 			return false;
@@ -400,7 +399,7 @@ namespace
 			return false;
 
 		area = IsAvisoCornerLayout(mode)
-			? DefaultAvisoCornerRect(mode, bounds)
+			? AvisoCornerRectForFrameSize(mode, bounds, cornerFrameSize)
 			: DefaultAvisoSplitRect(mode, bounds);
 		return !area.IsRectEmpty();
 	}
@@ -671,7 +670,14 @@ namespace
 		current.NormalizeRect();
 		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
 		if (current.Width() < kAvisoMinLayoutWidth || current.Height() < minimumFrameHeight)
-			current = DefaultAvisoCornerRect(mode, bounds);
+		{
+			current = AvisoCornerRectForFrameSize(
+				mode,
+				bounds,
+				CSize(
+					max(kAvisoMinLayoutWidth, static_cast<int>(current.Width())),
+					max(minimumFrameHeight, static_cast<int>(current.Height()))));
+		}
 
 		const bool rightAnchored = IsAvisoCornerRightAnchored(mode);
 		const bool bottomAnchored = IsAvisoCornerBottomAnchored(mode);
@@ -701,59 +707,6 @@ namespace
 		return true;
 	}
 
-	CRect AvisoSplitDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
-	{
-		if (IsAvisoVerticalSplit(mode))
-		{
-			const int dividerX = (mode == AvisoLayoutMode::SplitLeft) ? viewportRect.right : viewportRect.left;
-			return mode == AvisoLayoutMode::SplitLeft
-				? CRect(dividerX - 6, viewportRect.top, dividerX, viewportRect.bottom)
-				: CRect(dividerX, viewportRect.top, dividerX + 6, viewportRect.bottom);
-		}
-
-		if (IsAvisoHorizontalSplit(mode))
-		{
-			const int dividerY = (mode == AvisoLayoutMode::SplitTop) ? viewportRect.bottom : viewportRect.top;
-			return mode == AvisoLayoutMode::SplitTop
-				? CRect(viewportRect.left, dividerY - 6, viewportRect.right, dividerY)
-				: CRect(viewportRect.left, dividerY, viewportRect.right, dividerY + 6);
-		}
-
-		return CRect(0, 0, 0, 0);
-	}
-
-	CRect AvisoCornerVerticalDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
-	{
-		if (!IsAvisoCornerLayout(mode))
-			return CRect(0, 0, 0, 0);
-
-		const int dividerX = IsAvisoCornerRightAnchored(mode) ? viewportRect.left : viewportRect.right;
-		return IsAvisoCornerRightAnchored(mode)
-			? CRect(dividerX, viewportRect.top, dividerX + 6, viewportRect.bottom)
-			: CRect(dividerX - 6, viewportRect.top, dividerX, viewportRect.bottom);
-	}
-
-	CRect AvisoCornerHorizontalDividerRect(AvisoLayoutMode mode, const CRect& viewportRect)
-	{
-		if (!IsAvisoCornerLayout(mode))
-			return CRect(0, 0, 0, 0);
-
-		const int dividerY = IsAvisoCornerBottomAnchored(mode) ? viewportRect.top : viewportRect.bottom;
-		return IsAvisoCornerBottomAnchored(mode)
-			? CRect(viewportRect.left, dividerY, viewportRect.right, dividerY + 6)
-			: CRect(viewportRect.left, dividerY - 6, viewportRect.right, dividerY);
-	}
-
-	void DrawAvisoDivider(CDC& dc, const CRect& dividerRect)
-	{
-		if (dividerRect.IsRectEmpty())
-			return;
-
-		CBrush dividerBrush(RGB(41, 57, 59));
-		dc.FillRect(dividerRect, &dividerBrush);
-		dc.Draw3dRect(dividerRect, RGB(5, 7, 8), RGB(82, 96, 101));
-	}
-
 	void DrawInsetWindowChrome(
 		CDC& dc,
 		CSMRRadar* radarScreen,
@@ -772,16 +725,6 @@ namespace
 		area.NormalizeRect();
 		if (area.IsRectEmpty())
 			return;
-
-		if (IsAvisoSplitLayout(mode))
-		{
-			DrawAvisoDivider(dc, AvisoSplitDividerRect(mode, area));
-		}
-		else if (IsAvisoCornerLayout(mode))
-		{
-			DrawAvisoDivider(dc, AvisoCornerVerticalDividerRect(mode, area));
-			DrawAvisoDivider(dc, AvisoCornerHorizontalDividerRect(mode, area));
-		}
 
 		CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		titleBar.NormalizeRect();
@@ -1487,7 +1430,12 @@ bool CInsetWindow::UpdateWindowMove(POINT Pt, const RECT* layoutBounds)
 
 	CRect previewArea;
 	AvisoLayoutMode previewMode = AvisoLayoutMode::Floating;
-	m_SnapPreviewValid = ResolveAvisoSnapTarget(Pt, bounds, previewMode, previewArea);
+	m_SnapPreviewValid = ResolveAvisoSnapTarget(
+		Pt,
+		bounds,
+		GetWindowFrameRect().Size(),
+		previewMode,
+		previewArea);
 	if (m_WindowInteractionMoved && m_SnapPreviewValid)
 	{
 		m_SnapPreviewMode = previewMode;
@@ -1857,22 +1805,14 @@ void CInsetWindow::ApplyAvisoLayoutBounds(const RECT* layoutBounds)
 	case AvisoLayoutMode::CornerBottomLeft:
 	case AvisoLayoutMode::CornerBottomRight:
 	{
-		const bool rightAnchored = IsAvisoCornerRightAnchored(m_AvisoLayoutMode);
-		const bool bottomAnchored = IsAvisoCornerBottomAnchored(m_AvisoLayoutMode);
 		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
-		const int left = rightAnchored
-			? std::clamp(static_cast<int>(area.left), static_cast<int>(bounds.left), static_cast<int>(bounds.right) - kAvisoMinLayoutWidth)
-			: static_cast<int>(bounds.left);
-		const int right = rightAnchored
-			? static_cast<int>(bounds.right)
-			: std::clamp(static_cast<int>(area.right), static_cast<int>(bounds.left) + kAvisoMinLayoutWidth, static_cast<int>(bounds.right));
-		const int top = bottomAnchored
-			? std::clamp(static_cast<int>(area.top), static_cast<int>(bounds.top), static_cast<int>(bounds.bottom) - minimumFrameHeight)
-			: static_cast<int>(bounds.top);
-		const int bottom = bottomAnchored
-			? static_cast<int>(bounds.bottom)
-			: std::clamp(static_cast<int>(area.bottom), static_cast<int>(bounds.top) + minimumFrameHeight, static_cast<int>(bounds.bottom));
-		m_Area = { left, top, right, bottom };
+		const int boundsWidth = static_cast<int>(bounds.Width());
+		const int boundsHeight = static_cast<int>(bounds.Height());
+		const int minimumWidth = min(kAvisoMinLayoutWidth, boundsWidth);
+		const int minimumHeight = min(minimumFrameHeight, boundsHeight);
+		const int width = std::clamp(static_cast<int>(area.Width()), minimumWidth, boundsWidth);
+		const int height = std::clamp(static_cast<int>(area.Height()), minimumHeight, boundsHeight);
+		m_Area = AvisoCornerRectForFrameSize(m_AvisoLayoutMode, bounds, CSize(width, height));
 		break;
 	}
 	case AvisoLayoutMode::Floating:
@@ -1908,7 +1848,7 @@ void CInsetWindow::SnapAvisoLayoutToPoint(POINT Pt, const RECT* layoutBounds)
 
 	AvisoLayoutMode snappedMode = AvisoLayoutMode::Floating;
 	CRect snappedArea;
-	if (ResolveAvisoSnapTarget(Pt, bounds, snappedMode, snappedArea))
+	if (ResolveAvisoSnapTarget(Pt, bounds, GetWindowFrameRect().Size(), snappedMode, snappedArea))
 	{
 		m_AvisoLayoutMode = snappedMode;
 		m_Area = snappedArea;
@@ -2033,12 +1973,17 @@ void CInsetWindow::FloatAvisoViewport(POINT Pt, const RECT* layoutBounds)
 	if (currentArea.Width() <= 0 || currentArea.Height() <= 0)
 		return;
 
-	const int detachedWidth = min(
-		max(kAvisoMinLayoutWidth, currentArea.Width() - 40),
-		std::clamp(currentArea.Width() / 2, kAvisoMinLayoutWidth, 620));
-	const int detachedHeight = min(
-		max(kAvisoMinLayoutHeight, currentArea.Height() - 40),
-		std::clamp(currentArea.Height() / 2, kAvisoMinLayoutHeight, 380));
+	const bool preserveCornerSize = IsAvisoCornerLayout(m_AvisoLayoutMode);
+	const int detachedWidth = preserveCornerSize
+		? currentArea.Width()
+		: min(
+			max(kAvisoMinLayoutWidth, currentArea.Width() - 40),
+			std::clamp(currentArea.Width() / 2, kAvisoMinLayoutWidth, 620));
+	const int detachedHeight = preserveCornerSize
+		? currentArea.Height()
+		: min(
+			max(kAvisoMinLayoutHeight, currentArea.Height() - 40),
+			std::clamp(currentArea.Height() / 2, kAvisoMinLayoutHeight, 380));
 
 	const double xRatio = std::clamp(
 		static_cast<double>(Pt.x - currentArea.left) / static_cast<double>(max(1, currentArea.Width())),
@@ -2718,7 +2663,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const double cachedLatitudeSpan =
 			m_AvisoState->displayMaxLatitude - m_AvisoState->displayMinLatitude;
 		const double transformPixelTolerance = 12.0;
-		return AvisoProjectionScaleWithinTolerance(
+		return AvisoProjectionTransformWithinTolerance(
 			m_AvisoState->projectedTopLeft,
 			m_AvisoState->projectedTopRight,
 			m_AvisoState->projectedBottomLeft,
@@ -2745,7 +2690,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const double resultLongitudeSpan = result.displayMaxLongitude - result.displayMinLongitude;
 		const double resultLatitudeSpan = result.displayMaxLatitude - result.displayMinLatitude;
 		const double transformPixelTolerance = 12.0;
-		if (!AvisoProjectionScaleWithinTolerance(
+		if (!AvisoProjectionTransformWithinTolerance(
 			result.projectedTopLeft,
 			result.projectedTopRight,
 			result.projectedBottomLeft,
@@ -2981,10 +2926,23 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 		const double sourceScaleX = static_cast<double>(m_AvisoState->cacheWidth) / cachedRenderWidth;
 		const double sourceScaleY = static_cast<double>(m_AvisoState->cacheHeight) / cachedRenderHeight;
-		int sourceXInt = static_cast<int>(std::floor((sourceLeft - cachedRenderLeft) * sourceScaleX));
-		int sourceYInt = static_cast<int>(std::floor((sourceTop - cachedRenderTop) * sourceScaleY));
-		int sourceRightInt = static_cast<int>(std::ceil((sourceRight - cachedRenderLeft) * sourceScaleX));
-		int sourceBottomInt = static_cast<int>(std::ceil((sourceBottom - cachedRenderTop) * sourceScaleY));
+		const double sourceX = (sourceLeft - cachedRenderLeft) * sourceScaleX;
+		const double sourceY = (sourceTop - cachedRenderTop) * sourceScaleY;
+		const double sourceRightRaster = (sourceRight - cachedRenderLeft) * sourceScaleX;
+		const double sourceBottomRaster = (sourceBottom - cachedRenderTop) * sourceScaleY;
+		const double coverageTolerance = 1e-6;
+		if (sourceX < -coverageTolerance ||
+			sourceY < -coverageTolerance ||
+			sourceRightRaster > static_cast<double>(m_AvisoState->cacheWidth) + coverageTolerance ||
+			sourceBottomRaster > static_cast<double>(m_AvisoState->cacheHeight) + coverageTolerance)
+		{
+			return false;
+		}
+
+		int sourceXInt = static_cast<int>(std::floor(sourceX));
+		int sourceYInt = static_cast<int>(std::floor(sourceY));
+		int sourceRightInt = static_cast<int>(std::ceil(sourceRightRaster));
+		int sourceBottomInt = static_cast<int>(std::ceil(sourceBottomRaster));
 		sourceXInt = std::clamp(sourceXInt, 0, m_AvisoState->cacheWidth);
 		sourceYInt = std::clamp(sourceYInt, 0, m_AvisoState->cacheHeight);
 		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, m_AvisoState->cacheWidth);

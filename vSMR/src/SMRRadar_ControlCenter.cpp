@@ -101,7 +101,7 @@ bool CSMRRadar::EnsureVsmrControlCenterWindowCreated()
 
 void CSMRRadar::OpenVsmrControlCenterWindow()
 {
-	OpenVsmrControlCenterWindow("display");
+	OpenVsmrControlCenterWindow("");
 }
 
 void CSMRRadar::OpenVsmrControlCenterWindow(const std::string& pageName)
@@ -121,7 +121,10 @@ void CSMRRadar::OpenVsmrControlCenterWindow(const std::string& pageName)
 		0,
 		0,
 		SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE);
-	VsmrControlCenterDialog->ShowPage(PageFromName(pageName));
+	if (pageName.empty())
+		VsmrControlCenterDialog->ShowLastPage();
+	else
+		VsmrControlCenterDialog->ShowPage(PageFromName(pageName));
 	VsmrControlCenterDialog->SyncFromRadar();
 	RequestRefresh();
 }
