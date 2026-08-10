@@ -1140,9 +1140,22 @@ struct VsmrControlCenterBridge::Impl
 		rapidjson::Value runways(rapidjson::kArrayType);
 		if (Owner->RimcasInstance != nullptr)
 		{
-			for (const auto& runwayEntry : Owner->RimcasInstance->RunwayAreas)
+			// Geometry can be temporarily invalidated while the active airport is
+			// changing. Build the runtime list from the union of geometry and all
+			// configured monitoring maps so the Control Center never receives a
+			// false empty runway list during that transition.
+			std::set<std::string> runwayNames;
+			for (const auto& entry : Owner->RimcasInstance->RunwayAreas)
+				runwayNames.insert(entry.first);
+			for (const auto& entry : Owner->RimcasInstance->MonitoredRunwayArr)
+				runwayNames.insert(entry.first);
+			for (const auto& entry : Owner->RimcasInstance->MonitoredRunwayDep)
+				runwayNames.insert(entry.first);
+			for (const auto& entry : Owner->RimcasInstance->ClosedRunway)
+				runwayNames.insert(entry.first);
+
+			for (const std::string& runway : runwayNames)
 			{
-				const std::string& runway = runwayEntry.first;
 				rapidjson::Value item(rapidjson::kObjectType);
 				AddString(item, "id", runway, allocator);
 				const auto arr = Owner->RimcasInstance->MonitoredRunwayArr.find(runway);
