@@ -6,59 +6,85 @@ All notable changes to this project are documented in this file.
 
 ## [2.0.0-beta.1] - 2026-08-10
 
+This beta is a major runtime, configuration, and distribution update. It is
+intended for controlled operational testing rather than production promotion.
+
 ### Added
-- Added a repeatable beta release pipeline with runtime-data and build validation, clean staging, an exact package manifest, SHA-256 verification, build provenance, and a separate private-symbol archive.
-- Added package-validated install and rollback helpers with complete timestamped backups, default preservation of user/imported data, and an explicit reset opt-in.
-- Added optional Authenticode signing and a signature-required public-release gate.
-- Added Windows DPAPI protection and plaintext migration for saved Hoppie codes, bounded network responses, HTTPS endpoint validation, redacted diagnostics export, and log rotation.
-- Added a compact striped Timer inset with independent 1, 2, and 3 minute countdowns; left-click starts, right-click resets, and the alarm sounds once when a countdown expires.
-- Added a built-in AVISO editor for GeoJSON AVISO files with live reload, object visibility, layer/name metadata, style fields, label text/font/position fields, simple line/label creation, duplication, deletion, and save/reload actions.
-- Added airport-specific state and preset/default stores for AVISO and SRW 1.
-- Added SRW corner/split snapping, right-drag panning, and cursor-anchored wheel zoom.
-- Added compact per-inset Reset actions to the Runtime Menu.
-- Added CPDLC connection, polling, credentials, notification sound, and automatic PDC reminder controls to the Control Center Settings page.
-- Added live CPDLC/CDM status reporting and manual CDM reminder scans for the active airport.
+
+- Added a modeless, EuroScope-owned Control Center for Display, AVISO, Alerts, Groups, Modes, Profiles, and Settings. Its WebView2 interface is loaded entirely from the packaged `vSMR_Data\vSMR_webUI` assets.
+- Added the compact Runtime Menu for changing the active airport, profile, display mode, AVISO groups, inset visibility, and airport-specific layout presets without leaving the radar screen.
+- Added native AVISO GeoJSON rendering to the main radar view, including styled geometry, text labels, group visibility, screen rotation, asynchronous raster generation, and cached interaction previews.
+- Added an independent AVISO inset that renders the airport, targets, symbols, tags, and configured colors with its own pan and cursor-anchored zoom.
+- Added a common inset window system for AVISO, SRW 1, Weather, and Timer. Resizable insets support every edge and corner, practical hit areas, matching resize cursors, drag capture, Windows-style snap previews, edge splits, and size-preserving corner docking.
+- Added airport-scoped inset working state, named presets, default presets, linked main/inset movement, and per-inset Reset actions. Presets remain available when the active profile changes.
+- Added a native Weather inset with the latest EuroScope METAR, bounded VATSIM fallback retrieval, wind rose, active-runway wind components, QNH, UTC, and local time.
+- Added a striped Timer inset with independent 1, 2, and 3 minute countdowns. Left-click starts a timer, right-click resets it, and `vSMR_Data\Audio\Alarm.wav` plays once at expiry.
+- Added a built-in native AVISO editor for source selection, live reload, feature filtering, editable geometry coordinates, point-label positioning, deletion, visibility, group membership, style metadata, text, and fonts.
+- Added configurable display modes with target-status visibility and operational requirements, including the v1.1 Pro and Tower behaviors.
+- Added Hoppie CPDLC connection and polling, compact PDC/Message windows, datalink tag actions, and automatic CDM/PDC reminder scheduling with Run, Stop, cooldown, and manual check controls.
+- Added `.smr connect`, `.smr poll`, `.smr cdm`, `.smr cdm auto`, `.smr cdm cooldown`, and `.smr diagnostics` workflows alongside the existing radar commands.
+- Added a redacted diagnostics report and bounded log rotation for beta support.
 
 ### Changed
-- Harmonized the Control Center and Runtime Menu around one vSMR component system for button states, control heights, panel/card headers, list shells, spacing, radii, typography, and Settings layouts.
-- Canonicalized the bundled profiles and all six AVISO airports, preserving airport-specific inset presets while removing obsolete UI placement, converter provenance, redundant paint, and default visibility fields.
-- Reduced the aircraft database to the 873 records that contain usable positive length and wingspan dimensions and converted it to the native vSMR lookup schema.
-- Removed the Approach Path/SRW 2 inset and its runtime, preset, persistence, and rendering paths while preserving later inset IDs for compatibility.
-- Moved the Timer alarm and CPDLC notification sounds to `vSMR_Data\Audio` so both runtime assets ship outside the plugin DLL.
-- Added Timer visibility, placement reset, airport-scoped ASR state, and optional preset placement to the Runtime Menu and Control Center inset controls without persisting live countdown deadlines.
-- Renamed the Runtime Menu's `AVISO Insets` section to `Insets`.
-- Unified floating inset title bars with the Runtime Menu's dark striped chrome.
-- Removed the SRW `Z` range and `R` rotation menus; wheel zoom replaces the range menu.
-- Made inset-preset writes authoritative across open radar screens and Control Center history without overwriting unrelated staged settings.
-- Reworked the native PDC and received-message dialogs into compact, fixed EuroScope-owned Cofrance windows with the same striped chrome, card headers, flat controls, and button treatment as the rest of vSMR.
-- Routed `.smr`, `.smr connect`, `.smr poll`, and `.smr cdm` through the shared native datalink service, with guarded asynchronous connection and polling operations.
-- Consolidated automatic CPDLC saves and explicit PDC reminder Run, Stop, Update, and Check-now controls into Settings; removed the separate Datalink page, readiness card, feature switches, Advanced section, and Danger zone.
-- Added the resolved EuroScope `.cdm` alias path to the Settings data-files card.
-- Reduced redraw work by caching inset/runtime fonts and runway headings, reusing per-target metadata, indexing runway occupancy, and avoiding duplicate Control Center renders and AVISO group scans.
-- Local Release builds now copy the complete `vSMR_Data` tree, matching the packaged deployment layout.
-- Moved the Control Center Web UI source under `vSMR\` and its release assets under `vSMR_Data`, leaving only `vSMR.dll` and `vSMR_Data\` at the Release root.
+
+- Replaced the previous editor and toolbar workflows with the Control Center, Runtime Menu, and optional compact FPS readout. The Control Center keeps its current page while open and restores its native window position across sessions.
+- Removed local `Update`, `Apply`, and `Revert` controls from Control Center editors. Profile, display, AVISO, alert, group, mode, CPDLC, and PDC reminder field changes now enter the shared draft automatically; the single global `Save` action validates, persists, and applies that draft.
+- Harmonized Control Center pages, Runtime Menu controls, inset title bars, and datalink dialogs around the same Cofrance/vSMR colors, spacing, typography, cards, buttons, and striped chrome.
+- Consolidated CPDLC connection and PDC reminder settings into Settings and removed the separate Datalink page, readiness/status cards, feature switches, Advanced section, and Danger zone. The resolved EuroScope `.cdm` alias path is shown with the other data files.
+- Reworked the native PDC and received-message dialogs as compact frameless vSMR popups, with `ADEP`, `ADES`, and `RWY` field names and movement constrained to the EuroScope client area.
+- Migrated profiles to the validated schema-2 configuration model while retaining transactional migration from compatible v1 files and legacy read paths where safe.
+- Made inset state and preset/default storage airport-specific instead of profile-specific, authoritative across open radar screens, and resistant to stale Control Center snapshots.
+- Edge-snapped insets now reserve their exact area from the main AVISO view; corner-snapped windows keep their floating size. All insets use a coherent `X` close action, and obsolete thick snap borders were removed.
+- Unified AVISO and SRW interaction around right-drag panning and cursor-anchored wheel zoom. Removed the SRW `Z` range and `R` rotation menus; its floating `F` altitude control is hidden when docked.
+- Removed the Approach Path/SRW 2 inset and its rendering, persistence, preset, and runtime logic while retaining later inset IDs for compatibility.
+- Moved the Timer alarm and CPDLC notification sounds to `vSMR_Data\Audio` so both are replaceable runtime assets rather than DLL resources.
+- Canonicalized the five bundled profiles, all six AVISO airport files, and the 873 usable aircraft-dimension records for direct use by vSMR 2.0.
+- Loading a local Profiles or AVISO file now activates that exact file. GitHub imports are validated and stored as collision-safe files under `vSMR_Data\Profiles` or `vSMR_Data\AVISO` instead of overwriting bundled airport/profile data.
+- Reduced radar and editor work through cached fonts, symbols and runway headings, immutable AVISO snapshots, indexed runway occupancy, shared target metadata, and deduplicated Control Center and group refreshes.
+- Reorganized deployment so a release root contains only `vSMR.dll` and `vSMR_Data\`; the Control Center UI, audio, icons, AVISO, licenses, tools, and data all live below `vSMR_Data`.
 
 ### Fixed
-- Replaced the Control Center's invented target-symbol sketches with the native NOVA and triangle geometry plus the bundled A320 icon render.
-- Kept the previous AVISO raster geographically anchored while main-view and inset zoom renders are pending, preventing main-view blink-outs and transient inset stretching.
-- Reapplied airport inset state after EuroScope's radar bounds settle, preserving startup preset geometry and the Runtime Menu's saved position.
-- Preserved intentionally empty AVISO group lists and the selected text style after saving in the Control Center.
-- Reopened the Control Center on its last active page instead of always forcing Settings.
-- Kept corner-snapped insets at their current size and removed the obsolete thick snap-edge indicators without reducing resize hitboxes.
-- Loading Profiles or AVISO now activates the selected computer file in place; GitHub loads create collision-safe variants under `vSMR_Data` and can no longer overwrite canonical airport/profile files. Settings, Reload, multiple radar screens, and persisted source selection follow the actual active paths.
-- Removed the duplicate Windows title bar and system-looking edit borders/scrollbars from the PDC and Message windows, and constrained their custom title-bar dragging to the EuroScope client area.
-- Kept saved Hoppie credentials visibly masked after auto-save, normalized pasted codes, URL-encoded credentials, and replaced the misleading callsign-collision login error with the actual sanitized Hoppie or network failure.
-- Stopping or rescheduling automatic PDC reminders now removes only queued automatic reminders while preserving manual reminder checks.
-- Corrected SRW pen restoration and removed an unused once-per-second sector-airport scan.
 
-### Repository
-- Unified plugin, Windows resource, documentation, CI, and archive versioning as `2.0.0-beta.1`.
-- Enabled Release warning level 4, SDL and buffer-security checks, DEP/ASLR, and private PDB generation.
-- Included the Microsoft WebView2 license/notice, a dependency manifest, and an explicit unresolved-asset provenance register in every package.
-- Removed the redundant bundled `vSMR_Maps.json` data while retaining the optional legacy loader for airports without AVISO data, and added a deterministic runtime-data validation tool.
-- Removed the unused bundled Asio and libcurl headers/libraries, their dead shared state, and an obsolete custom resize cursor.
-- Removed the superseded Control Center implementation notes and test checklist from `docs\`.
-- Simplified AppVeyor packaging, included project and RapidJSON license notices, and enabled validation for `main`, `master`, and `dev`.
+- Prevented the main AVISO display from briefly disappearing during zoom and prevented the AVISO inset from transiently stretching, shrinking, or changing aspect ratio while a new raster is rendered.
+- Stabilized split-panel resize rendering so the left radar view remains geographically anchored and the right AVISO inset does not twitch or rescale during drag.
+- Aligned visible resize cursors with the actual edge/corner hitboxes and reliably cleared resize state and cursor ownership when a drag is released or leaves the window.
+- Restored drag, resize, wheel, and general EuroScope interaction after inset mouse capture, including safe release during interrupted operations.
+- Reapplied saved inset geometry after EuroScope radar bounds settle, fixing incorrectly placed startup presets while preserving the Runtime Menu position.
+- Preserved intentionally empty AVISO group lists, the chosen AVISO text style, and unrelated staged edits when saving or synchronizing runtime state.
+- Replaced placeholder symbol drawings in the Control Center with the native NOVA and triangle geometry and the bundled A320 icon render.
+- Prevented local or downloaded AVISO/profile imports from replacing canonical files and kept Settings, Reload, ASR state, and all open radar screens on the selected active source.
+- Kept saved Hoppie credentials masked after automatic persistence, normalized pasted codes, URL-encoded connection values, and surfaced the sanitized Hoppie/network failure instead of a misleading callsign-collision message.
+- Stopping or rescheduling automatic reminders now removes only queued automatic reminders and preserves manual checks.
+- Removed duplicate Windows chrome and system edit styling from PDC/Message windows and corrected their close and drag hit areas.
+- Fixed shutdown hangs, guarded EuroScope callbacks and background work against exceptions, and prevented stale asynchronous AVISO or network results from replacing newer state.
+- Corrected SRW drawing-state restoration, RIMCAS runway cache behavior, and several avoidable per-frame and once-per-second scans.
+
+### Security and reliability
+
+- Protected persisted Hoppie codes with Windows DPAPI for the current user and migrated legacy plaintext values without retaining a plaintext fallback.
+- Restricted network configuration to HTTPS, bounded response sizes and timeouts, redacted credentials and message payloads from diagnostics, and kept CPDLC, VACDM, weather, and download work away from the EuroScope UI thread.
+- Added schema and semantic validation, atomic replacement, backup rotation, recovery prompts, revision checks, and transactional saves for profiles and AVISO documents.
+- Hardened ASR parsing and inset geometry restoration against malformed, incomplete, stale, or out-of-range values.
+
+### Packaging and repository
+
+- Unified plugin, Windows resource, documentation, validation, and archive versioning as `2.0.0-beta.1`.
+- Added repeatable Release/Win32 packaging with Visual Studio/toolset discovery, NuGet restore, a clean rebuild, runtime-data validation, clean staging, exact manifests, SHA-256 checks, Git provenance, package verification, and a separate private-symbol archive.
+- Added package-validated install and rollback helpers with complete timestamped backups, preservation of user/imported data by default, and explicit opt-in replacement of user data.
+- Added optional Authenticode signing and a signature-required public-release gate.
+- Enabled warning level 4, SDL and buffer-security checks, DEP/ASLR, private PDB generation, and a warning-clean build while treating the vendored EuroScope SDK as an external header dependency.
+- Included the vSMR, RapidJSON, and Microsoft WebView2 license material, dependency manifest, payload checksums, release metadata, and asset-provenance register in every package.
+- Removed the redundant bundled `vSMR_Maps.json` while retaining its optional compatibility loader for airports without AVISO data; added deterministic validation for profiles, aircraft dimensions, and bundled AVISO files.
+- Removed unused bundled Asio/libcurl code, the obsolete custom resize cursor, superseded project notes, the repository test project and fixtures, and repository-local GitHub automation. Release validation remains available through the maintained PowerShell tools and AppVeyor configuration.
+
+### Known beta limitations
+
+- vSMR and EuroScope are Win32 applications; the x86 Visual C++ runtime, x86 MFC runtime, and x86 WebView2 Evergreen Runtime are required.
+- Hoppie, VACDM, VATSIM weather fallback, and GitHub imports depend on independent external services and can fail without stopping the radar display.
+- Weather runway components are advisory; this beta does not automatically select or modify EuroScope's active runways.
+- The bundled airport and aircraft data must be checked against current local operational requirements before controlling.
+- Some aircraft icon, audio, AVISO, and aircraft-dimension provenance entries still require verification; see `vSMR_Data\Licenses\ASSET_PROVENANCE.md` in the package.
+- Authenticode support does not mean a particular beta archive is signed. Treat it as signed only when package verification confirms a valid signature.
 
 ## [1.1.3] - 2026-06-20
 

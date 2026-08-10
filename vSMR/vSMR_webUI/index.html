@@ -121,7 +121,7 @@
 <fieldset class="compact-group color-editor-card">
 <legend>Color</legend>
 <div class="color-picker-workbench">
-<div aria-label="Saturation and brightness" class="color-sv-palette" id="colorSvPalette" role="slider" tabindex="0">
+<div aria-label="Saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" aria-valuetext="Saturation 0%, brightness 100%" class="color-sv-palette" id="colorSvPalette" role="slider" tabindex="0">
 <span aria-hidden="true" class="color-palette-cursor" id="colorPaletteCursor"></span>
 </div>
 <label class="color-preview-card" title="Open the system color picker">
@@ -144,10 +144,6 @@
 <label class="field"><span>JSON path</span><input id="colorJsonPath" readonly="" type="text"/></label>
 </div>
 </details>
-</div>
-<div class="actionbar bottom-actions equal-action-buttons">
-<button class="ui-button" data-action="revert-color" type="button">Revert</button>
-<button class="ui-button primary" data-action="apply-color" type="button">Update</button>
 </div>
 </section>
 </div>
@@ -182,7 +178,6 @@
 </div>
 </fieldset>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-icons" type="button">Revert</button><button class="ui-button primary" data-action="apply-icons" type="button">Update</button></div>
 </section>
 </section>
 <section class="subpage" data-profile-panel="tags">
@@ -229,7 +224,6 @@
 </div>
 </div>
 </section>
-<div class="actionbar bottom-actions equal-action-buttons tag-shared-actions"><button class="ui-button" data-action="revert-tag" type="button">Revert</button><button class="ui-button primary" data-action="apply-tag" type="button">Update</button></div>
 </div>
 </div>
 </section>
@@ -274,7 +268,6 @@
 </div>
 </fieldset>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-rule" type="button">Revert</button><button class="ui-button primary" data-action="apply-rule" type="button">Update</button></div>
 </section>
 </div>
 </section>
@@ -312,7 +305,6 @@
 <div class="mode-status-grid" id="modeStatusGrid"></div>
 </fieldset>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-mode" type="button">Revert</button><button class="ui-button primary" data-action="apply-mode" type="button">Update</button></div>
 </section>
 </div>
 </section><section class="page standalone-manager-page profiles-page" data-page-panel="profiles">
@@ -343,7 +335,6 @@
 <div class="advanced-body"><label class="field"><span>Schema version</span><input id="profileSchema" readonly="" type="number"/></label></div>
 </details>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-profile" type="button">Revert</button><button class="ui-button primary" data-action="apply-profile" type="button">Update</button></div>
 </section>
 </div>
 </section>
@@ -410,10 +401,6 @@
 </div>
 </details>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons">
-<button class="ui-button" data-action="revert-aviso-editor" type="button">Revert</button>
-<button class="ui-button primary" data-action="apply-aviso-geometry" id="avisoGeometryApplyButton" type="button">Update</button>
-</div>
 </section>
 </div>
 </section>
@@ -465,9 +452,7 @@
 </fieldset>
 </div>
 <div class="actionbar bottom-actions aviso-text-actions">
-<button class="ui-button" data-action="revert-aviso-editor" type="button">Revert</button>
-<label class="compact-apply-scope"><span>Apply to</span><select id="avisoTextApplyTarget"><option value="selection">Selected label</option><option value="group">Current text group</option><option value="all">All AVISO text</option></select></label>
-<button class="ui-button primary" data-action="apply-aviso-text" id="avisoTextApplyButton" type="button">Update</button>
+<label class="compact-apply-scope"><span>Edit</span><select aria-label="Text editing scope" id="avisoTextApplyTarget"><option value="selection">Selected label</option><option value="group">Current text group</option><option value="all">All AVISO text</option></select></label>
 </div>
 </section>
 </div>
@@ -542,7 +527,6 @@
 </div>
 </section>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-alerts" type="button">Revert</button><button class="ui-button primary" data-action="apply-alerts" type="button">Update</button></div>
 </section>
 <section class="page groups-page" data-page-panel="groups">
 <div class="aviso-groups-layout">
@@ -569,7 +553,6 @@
 <div class="aviso-group-member-list" id="avisoGroupMemberList"></div>
 </fieldset>
 </div>
-<div class="actionbar bottom-actions equal-action-buttons"><button class="ui-button" data-action="revert-aviso-group" type="button">Revert</button><button class="ui-button primary" data-action="apply-aviso-group" type="button">Update</button></div>
 </section>
 </div>
 </section>
@@ -631,12 +614,9 @@
 <label class="field"><span>Resend cooldown</span><span class="number-unit"><input id="datalinkCdmCooldown" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
 </div>
 </div>
-<div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button><button class="ui-button primary" data-action="datalink-reminder-update" hidden id="datalinkReminderUpdateButton" type="button">Update</button></div>
+<div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button></div>
 </section>
 </div>
-</div>
-<div class="actionbar bottom-actions settings-bottom-actions">
-<button class="ui-button primary" data-action="apply-settings" type="button">Apply display</button>
 </div>
 </section>
 </main>
@@ -661,10 +641,7 @@
 <div class="aviso-group-content-summary" id="avisoGroupContentSummary"></div>
 <div class="scroll-list aviso-group-content-list" id="avisoGroupContentList"></div>
 </div>
-<div class="actionbar compact-dialog-actions">
-<button class="ui-button" type="submit" value="cancel">Cancel</button>
-<button class="ui-button primary" data-action="apply-aviso-group-content" id="avisoGroupContentApply" type="button">Apply content</button>
-</div>
+<div class="actionbar compact-dialog-actions"><button class="ui-button primary" type="submit" value="close">Close</button></div>
 </form>
 </dialog>
 <dialog class="compact-dialog" id="insetPresetDialog">

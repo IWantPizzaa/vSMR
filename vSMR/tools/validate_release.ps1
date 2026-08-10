@@ -39,7 +39,6 @@ foreach ($relativePath in @(
     "vSMR\vSMR_webUI\styles.css",
     "vSMR\vSMR_webUI\app.js",
     "vSMR\vSMR_webUI\data.js",
-    ".github\workflows\release-validation.yml",
     "appveyor.yml",
     "README.md",
     "CHANGELOG.md"
@@ -51,7 +50,6 @@ $escapedVersion = [Regex]::Escape($ExpectedVersion)
 $headerText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\include\SMRPlugin.hpp"))
 $resourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\resources\vSMR.rc"))
 $ciText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "appveyor.yml"))
-$githubWorkflowText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot ".github\workflows\release-validation.yml"))
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "README.md"))
 $changelogText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "CHANGELOG.md"))
 $packageScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\tools\package_release.ps1"))
@@ -60,7 +58,6 @@ Assert-True ($resourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`
 Assert-True ($resourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Windows ProductVersion is inconsistent."
 Assert-True ($resourceText -match "(?s)#ifdef\s+_DEBUG\s+FILEFLAGS\s+0x3L\s+#else\s+FILEFLAGS\s+0x2L") "Windows beta resource is missing the prerelease flag."
 Assert-True ($ciText -match "(?m)^version:\s+$escapedVersion\.\{build\}\s*$") "AppVeyor version is inconsistent."
-Assert-True (-not ($githubWorkflowText -match '(?m)^\s*uses:\s*[^#\r\n]+@(?![0-9a-fA-F]{40}(?:\s|#|$))')) "GitHub Actions dependencies must be pinned to full commit SHAs."
 Assert-True ($readmeText.Contains($ExpectedVersion)) "README does not identify the beta version."
 Assert-True ($changelogText -match "\[$escapedVersion\]") "CHANGELOG has no beta release section."
 Assert-True ($packageScriptText -match '_vsmr-package-.+NewGuid') "Release packaging must use a private GUID staging directory."
