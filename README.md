@@ -1,373 +1,219 @@
-# vSMR for EuroScope
+# vSMR 2.0 for EuroScope
 
-vSMR is a Win32 EuroScope plugin that provides a surface movement radar display with configurable target symbols, profile-driven tags and colors, RIMCAS alerts, native inset windows, VACDM integration, and Hoppie CPDLC support.
+vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement radar display for ground and low-level airport traffic. Version 2.0 adds a unified Control Center, AVISO editing, Windows-style inset windows, airport-scoped layouts, RIMCAS configuration, VACDM data, and Hoppie CPDLC/PDC workflows.
 
-This repository is a maintained fork of:
+Current version: **2.0.0-beta.1**
 
-- https://github.com/AlexisBalzano/vSMR
-- https://github.com/pierr3/vSMR
+This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not mix the DLL or data files from different builds.
 
-## v2.0.0-beta.1
+vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` and create a vSMR radar screen.
 
-This is a pre-release build intended for controlled operational testing. It
-introduces the modeless Control Center, Runtime Menu and native insets, the
-schema-2 profile and AVISO model, protected CPDLC settings, weather and timer
-insets, transactional data saves, and the rebuilt release package. Back up an
-existing installation before testing and report operational defects with a
-redacted diagnostics report.
+## Highlights
 
-### Previously In v1.1.3
+- Configurable surface radar with native `NOVA`, `Icon (A320)`, and `Triangle` target rendering
+- Normal and detailed tags with status-specific layouts, drag positioning, and optional auto-deconfliction
+- Structured rules for target, tag, and text colors
+- Schema-2 profiles with reusable display modes
+- GeoJSON AVISO maps, groups, styles, labels, and a native geometry editor
+- Configurable RIMCAS runway and movement alerts
+- Native AVISO, SRW 1, METAR, and Timer insets
+- Windows-style inset movement, resizing, edge/corner snapping, and live snap previews
+- Airport-specific inset state and presets that remain available when the active profile changes
+- VACDM time and state integration
+- Hoppie CPDLC connection, message handling, PDC composition, and automatic PDC reminders
+- Transactional configuration writes, backups, diagnostics, and reproducible release packaging
 
-- Added per-profile `Tower mode`
-- Tower Mode keeps full tags for all arrivals and aircraft at `TAXI`, `DEPA`, `ARR`, or later states
-- Aircraft with no status, `NSTS`, `PUSH`, or `STUP` remain icon-only in Tower Mode
-- `Pro mode` and `Tower mode` are represented by profile display modes, selected
-  from the Runtime Menu and configured on the Control Center `Modes` page
-
-### Previously In v1.1.2
-
-- Major rendering-path optimizations for symbol, tag, and Control Center responsiveness
-- Added `NOVA` icon style and icon-trail rendering support
-- Control Center icon layout refresh:
-  - shape controls split into two rows (`Icons`, `NOVA` / `Arrow`, `Diamond`)
-  - clipping fixes for tight-width layouts
-- Icons & Tags editor improvements:
-  - `Options` section renamed to `Tags`
-  - new `Behavior` box with global `Auto Deconfliction` and `Rounded Corners`
-  - `rounded_corners` persisted in `vSMR_Profiles.json`
-- Tag rule fix: hover/detailed tags now preserve structured color overrides
-- About panel cleanup and credits alignment with repository attribution
-
-### Previously In v1.1.1
-
-- Major profile JSON cleanup and normalization for `tags`, `icons`, and structured `rules`
-- Automatic migration from older profile keys to the new layout
-- Tags editor model simplified around `Departure` and `Arrival` statuses (airborne states redistributed)
-- Rules editor `Type` and `Status` lists aligned with tag classification
-- Arrival icon-state handling improved:
-  - `Gate` stays separate
-  - all other on-ground arrival movement states use `On Ground`
-- Profile lists now use one consistent ordering across UI:
-  - `Default` first (if present), then alphabetical
-- Control Center selection sync fix when the active profile changes from runtime controls
-
-## Overview
-
-vSMR is not a standalone application. It is a EuroScope plugin DLL that:
-
-- creates a custom SMR radar screen
-- renders ground and airborne targets with multiple symbol styles
-- builds tag text from profile-defined token layouts
-- colors icons, tag backgrounds, and text from profile colors and rule logic
-- monitors runway activity and movement conflicts through RIMCAS
-- integrates VACDM timestamps and states into tags and color rules
-- integrates Hoppie CPDLC for datalink clearance workflows
-- ships with a fixed-size, EuroScope-owned modeless Control Center
-
-## Repository Layout
-
-The main EuroScope plugin project lives in [`vSMR/`](vSMR/):
-
-```text
-vSMR/
-  src/         C++ implementation files
-  include/     Project headers and resource IDs
-  resources/   RC script, cursors, and linker definition
-  data/        Default runtime data, including JSON, AVISO, icons, and audio
-  vSMR_webUI/  Local Control Center HTML, CSS, and JavaScript assets
-  tools/       Maintenance scripts
-```
-
-## Main Features
-
-- Advanced SMR radar display for ground movement and low-level airborne traffic
-- Four icon styles: `Arrow`, `Diamond`, `Icons`, and `NOVA`
-- Realistic icon rendering from optional PNG silhouettes and aircraft dimensions
-- Tag auto-deconfliction
-- Tower Mode that hides tags below taxi status while keeping aircraft icons visible
-- Per-profile fonts, colors, icon settings, alerts, and tag layouts
-- Tag definitions by target type and status
-- Detailed hover tag definitions with optional linkage to the normal definition
-- Structured rule engine for icon, tag, and text recoloring
-- RIMCAS alerts for runway and movement conflicts
-- One surface radar window (`SRW 1`)
-- Compact live-weather inset with a wind rose, runway components, QNH, and clocks
-- Compact Timer inset with independent 1, 2, and 3 minute countdowns
-- Compact Runtime Menu for airport, profile, mode, group, inset, and preset operations
-- Optional persisted FPS-only overlay in the top-right corner
-- VACDM integration for `TOBT`, `TSAT`, `TTOT`, `ASAT`, `AOBT`, `ATOT`, `ASRT`, `AORT`, `CTOT`, and event booking
-- Hoppie CPDLC login, polling, and datalink UI integration
-- Fixed-size modeless Control Center with live runtime synchronization
+The package includes ready-to-use AVISO data for LFBO, LFLL, LFML, LFMN, LFPG, and LFPO, a normalized aircraft-dimension database, aircraft silhouettes, and five example profiles.
 
 ## Requirements
 
-- EuroScope 32-bit
-- A Win32 build of `vSMR.dll`
-- The Microsoft Visual C++ 2015-2022 Redistributable (x86)
+- Windows and 32-bit EuroScope
+- The x86 Microsoft Visual C++ 2015-2022 Redistributable
 - The x86 [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
-- A valid `vSMR_Profiles.json` in `vSMR_Data\` next to the DLL, or in the DLL folder for older flat installs
+- A complete matching release containing both `vSMR.dll` and `vSMR_Data\`
 
-Optional runtime data:
-
-- `ICAO_Airlines.txt`
-- `ICAO_Aircraft.json`
-- `AVISO\AVISO_*.geojson`
-- `aircraft_icons\*.png`
+WebView2 hosts the local Control Center. The UI itself does not require a web server or an internet connection. Internet access is only required for enabled external features such as Hoppie CPDLC, VACDM, fallback METAR retrieval, or GitHub data imports.
 
 ## Installation
 
-### Clean installation
+### Install a release package
 
-1. Obtain the complete versioned `vSMR-2.0.0-beta.1.zip` package. Do not install a DLL copied from an unrelated build.
-2. Verify the ZIP against the adjacent `.zip.sha256` file.
+1. Download the complete `vSMR-2.0.0-beta.1.zip` and its matching `.zip.sha256` file.
+2. Verify the ZIP checksum.
 3. Close EuroScope.
-4. Install the x86 Visual C++ Redistributable and WebView2 Evergreen Runtime if they are not already installed.
-5. Extract both `vSMR.dll` and the complete `vSMR_Data\` directory into the same EuroScope plugin folder.
-6. In EuroScope, open `Other Settings -> Plug-ins` and add `vSMR.dll`.
-7. Open the vSMR radar display, run `.smr diagnostics`, and confirm the expected version in the generated report.
+4. Extract the package to a temporary directory.
+5. Install the x86 Visual C++ Redistributable and x86 WebView2 Evergreen Runtime if required.
+6. Install the matched DLL and data directory into the EuroScope plug-in directory.
+7. In EuroScope, open `Other Settings -> Plug-ins` and load `vSMR.dll`.
+8. Open a vSMR radar screen, select the active airport, and review the active profile, AVISO, groups, RIMCAS runways, and inset layout.
 
-For an existing plugin directory, the packaged update helper validates the
-internal payload hashes, makes a complete timestamped backup, and installs the
-matched DLL/data set:
+The recommended installer is included in every package:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vsmr.ps1 -DestinationDirectory "C:\path\to\EuroScope\Plugins"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vsmr.ps1 `
+  -DestinationDirectory "C:\path\to\EuroScope\Plugins"
 ```
 
-By default it preserves the existing profile database, AVISO files, aircraft
-data/icons, audio, downloaded `Profiles\` files, and unknown user files while
-replacing immutable WebUI, license, tool, and release-metadata assets. Use
-`-ReplaceUserData` only when intentionally resetting those files to the bundled
-defaults.
+The installer validates the package manifest before copying files and creates a complete timestamped rollback backup. On an upgrade, it replaces the DLL and immutable package resources while preserving existing user data by default, including profiles, AVISO files, imported resources, aircraft data and icons, audio, and unknown files under `vSMR_Data`.
 
-### Upgrade from v1.x
+Use `-ReplaceUserData` only when deliberately resetting user-managed data to the bundled defaults.
 
-1. Close EuroScope so the DLL and JSON files are not in use.
-2. Copy the existing `vSMR.dll`, `vSMR_Data\`, and any legacy flat `vSMR_Profiles.json`/`AVISO_*.geojson` files to a dated backup directory outside the plugin folder.
-3. Extract the complete 2.0 beta package to a staging directory and run its `install_vsmr.ps1` helper against the plugin directory. Do not merge individual files from different beta builds.
-4. Start EuroScope and verify the active profile, airport, AVISO source, inset presets, RIMCAS settings, and CPDLC settings before controlling.
-
-Profile schema 1 is migrated transactionally to schema 2. The original file is
-preserved as `vSMR_Profiles.json.bak` when the migrated document is committed.
-An invalid primary is never silently overwritten; vSMR can load a validated
-backup in memory and asks the user to restore it or the bundled defaults.
-
-### Rollback
-
-1. Close EuroScope.
-2. Find the `rollback_backup` path in `vSMR_Data\INSTALLATION.json`.
-3. Run `vSMR_Data\Tools\restore_vsmr_backup.ps1 -DestinationDirectory "C:\path\to\EuroScope\Plugins" -BackupDirectory "<rollback_backup>"`; it creates a pre-rollback safety backup first.
-4. Restore the pre-upgrade profile file rather than asking an older plugin to read a schema-2 file.
-5. Reopen EuroScope and verify the profile and ASR/inset layout before controlling.
-
-Keep the failed beta installation until its redacted diagnostic report and logs
-have been collected. A DLL-only rollback is unsupported because executable,
-WebUI, profile, and AVISO schemas must remain matched.
-
-Important:
-
-- `vSMR_Profiles.json` is required. vSMR checks `vSMR_Data\` first, then the DLL folder for existing installs.
-- Keep the complete `vSMR_Data\vSMR_webUI\` package next to `vSMR.dll`: four application assets plus the two files under `defaults\`. The Control Center does not use an external web server.
-- The repository already ships example runtime files under [`vSMR/data/`](vSMR/data/).
-
-Example deployment layout:
+For a manual clean installation, place the two package entries together:
 
 ```text
 EuroScope\Plugins\
   vSMR.dll
   vSMR_Data\
-    Audio\
-      Alarm.wav
-      Ding.wav
-    Licenses\
-      vSMR.txt
-      RapidJSON.txt
-      Microsoft.WebView2-LICENSE.txt
-      Microsoft.WebView2-NOTICE.txt
-      DEPENDENCIES.md
-      ASSET_PROVENANCE.md
-    Tools\
-      install_vsmr.ps1
-      restore_vsmr_backup.ps1
-    RELEASE-METADATA.json
-    SHA256SUMS.txt
-    vSMR_webUI\
-      index.html
-      styles.css
-      app.js
-      data.js
-      defaults\
-        vSMR_Profiles.json
-        AVISO_LFPG.geojson
     vSMR_Profiles.json
     ICAO_Aircraft.json
     AVISO\
-      AVISO_LFBO.geojson
-      AVISO_LFLL.geojson
-      AVISO_LFML.geojson
-      AVISO_LFMN.geojson
-      AVISO_LFPG.geojson
-      AVISO_LFPO.geojson
     aircraft_icons\
-      a320.png
-      b738.png
-      e190.png
+    Audio\
+    Licenses\
+    Tools\
+    vSMR_webUI\
 ```
 
-## Runtime Files
+Do not copy only the DLL. The Control Center, default data, audio, licenses, and package metadata live under `vSMR_Data`.
 
-### Required
+### Upgrade from vSMR 1.x
 
-| File                 | Location                                             | Purpose                                                                                                    |
-| -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `vSMR_Profiles.json` | `vSMR_Data\`, then same folder as `vSMR.dll` fallback | Main profile database: fonts, labels, rules, colors, alerts, icon settings, legacy UI metadata, and more |
-| `vSMR_webUI\*`       | `vSMR_Data\vSMR_webUI\`                             | Four local application assets plus full profile/LFPG AVISO defaults used by the modeless Control Center    |
+1. Close EuroScope.
+2. Back up the existing `vSMR.dll`, `vSMR_Data\`, and any legacy flat JSON/GeoJSON files.
+3. Extract the full 2.0 package to a temporary directory.
+4. Run the packaged installer against the existing plug-in directory.
+5. Start EuroScope and verify the active airport and configuration before use.
 
-### Optional
+Legacy profile data is migrated to schema 2 when required. The previous valid profile file is retained as `vSMR_Profiles.json.bak` when a migrated document is committed. Invalid primary data is not silently overwritten.
 
-| File                     | Search location(s)                                                                                           | Purpose                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `AVISO_*.geojson`        | `vSMR_Data\AVISO\`, then `vSMR_Data\`, then `<dll folder>\AVISO\`, then DLL folder fallback                  | Optional AVISO map overlays by airport, for example `AVISO_LFPG.geojson`           |
-| `ICAO_Airlines.txt`      | DLL folder, then `..\..\ICAO\ICAO_Airlines.txt`, then `..\..\..\ICAO\ICAO_Airlines.txt`                      | Airline/callsign lookup for bottom-line text and related displays                  |
-| `ICAO_Aircraft.json`     | `vSMR_Data\`, then `%APPDATA%\EuroScope\LFXX\Plugins`, then DLL folder, then DLL parent folder fallback      | Aircraft length and wingspan data used by realistic icons                          |
-| `aircraft_icons\*.png`   | `vSMR_Data\aircraft_icons\`, then `<dll folder>\aircraft_icons\` fallback                                    | Optional per-aircraft realistic icon silhouettes                                   |
-| `Audio\Alarm.wav`        | `vSMR_Data\Audio\`                                                                                          | Timer expiry notification                                                          |
-| `Audio\Ding.wav`         | `vSMR_Data\Audio\`                                                                                          | CPDLC request notification                                                         |
+### Roll back
 
-### Profile Metadata
+The installer writes the backup location to `vSMR_Data\INSTALLATION.json`. Close EuroScope, then run:
 
-`vSMR_Profiles.json` can include one metadata object at the end of the profile array. It has no `name` field, so it is not shown as a profile:
-
-```json
-{
-  "_vsmr": {
-    "schema_version": 1,
-    "last_active_profile": "Default",
-    "vacdm": {
-      "server_url": "https://your-server.example"
-    }
-  }
-}
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\restore_vsmr_backup.ps1 `
+  -DestinationDirectory "C:\path\to\EuroScope\Plugins" `
+  -BackupDirectory "C:\path\to\the\vSMR-backup"
 ```
 
-Notes:
+The rollback helper validates that the backup belongs to the selected installation and creates a safety backup of the current installation before restoring it.
 
-- `last_active_profile` replaces `vSMR_LastActiveProfile.txt`.
-- `vacdm.server_url` replaces `vacdm.txt`.
-- vSMR appends `/api/v1/pilots` internally.
-- VACDM polling is enabled only when `_vsmr.vacdm.server_url` is not empty.
-- A trailing `/` is trimmed from the configured server URL.
+## First Run
 
-## Commands
+1. Create or open a vSMR radar screen in EuroScope.
+2. Open the Runtime Menu and set the four-letter active airport ICAO.
+3. Choose a profile and display mode.
+4. Open the Control Center from the Runtime Menu or enter `.smr`.
+5. On `Settings`, verify the active Profiles and AVISO paths.
+6. On `Alerts`, verify monitored arrival/departure runways and RIMCAS behavior.
+7. Configure the required inset windows and save an airport preset if desired.
+8. Enter `.smr diagnostics` and confirm that the report identifies the expected version and data sources.
 
-The plugin responds to the following EuroScope command-line commands:
+Operational data included with the project is a starting point, not a substitute for local validation.
 
-| Command              | Scope            | Effect                                                                 |
-| -------------------- | ---------------- | ---------------------------------------------------------------------- |
-| `.smr`             | Plugin           | Opens the Control Center `Settings` page (legacy dialog fallback when no SMR screen is open) |
-| `.smr connect`     | Plugin           | Connects or disconnects Hoppie CPDLC                                   |
-| `.smr poll`        | Plugin           | Manually polls CPDLC messages when connected                           |
-| `.smr cdm`         | Plugin           | Checks the active airport and queues eligible CDM reminders            |
-| `.smr cdm auto [status\|on\|off\|minutes]` | Plugin | Shows or changes automatic CDM reminders and their delay     |
-| `.smr cdm cooldown [status\|minutes]` | Plugin | Shows or changes the reminder resend cooldown                  |
-| `.smr reload`      | Plugin and radar | Reloads `vSMR_Profiles.json` for open SMR radar screens              |
-| `.smr log`         | Plugin           | Toggles logging off/on (when enabled this defaults to `normal` mode) |
-| `.smr log normal`  | Plugin           | Enables concise logging                                                |
-| `.smr log verbose` | Plugin           | Enables detailed logging                                               |
-| `.smr log off`     | Plugin           | Disables logging                                                       |
-| `.smr log status`  | Plugin           | Prints current logging status and mode                                 |
-| `.smr diagnostics` | Plugin           | Writes a redacted support report and prints its path                    |
-| `.smr profile`     | Plugin           | Opens the Control Center `Profiles` page on the first active SMR radar screen |
-| `.smr editor`      | Plugin           | Opens the Control Center `Display` page                               |
-| `.smr vsmr`        | Plugin           | Alias for `.smr editor`                                               |
-| `.smr config`      | Plugin           | Opens the Control Center `Settings` page                              |
-| `.smr draw`        | Radar screen     | Toggles runway-area drawing                                            |
-| `.smr status`      | Radar screen     | Prints current runway status information from RIMCAS                   |
+## Control Center
 
-### Logging Modes
+The modeless vSMR Control Center is owned by EuroScope and stays synchronized with the radar screen. It keeps the current page while its WebView remains open and restores its native window position across sessions.
 
-- `normal`: concise logs for routine troubleshooting; suppresses function-signature traces and editor-initialization step spam.
-- `verbose`: detailed logs for deep debugging; still suppresses known hot-loop trace spam.
-- The log file is `vsmr.log` in the same folder as `vSMR.dll`.
-- The log rotates to `vsmr.log.1` at approximately 4 MiB.
-- `.smr log on`, `.smr log enable`, and `.smr log 1` are accepted aliases for `normal`.
-- `.smr log disable` and `.smr log 0` are accepted aliases for `off`.
+The page rail contains:
 
-## Radar Screen Behavior
+| Page | Purpose |
+| --- | --- |
+| `Display` | Profile colors, target symbols, tags, typography, and structured rules |
+| `AVISO` | Geometry styling and visibility, label editing, style selection, reload, and source loading |
+| `Alerts` | RIMCAS runways, alert types, timers, visibility, and colors |
+| `Groups` | AVISO group creation, ordering, membership, and default visibility |
+| `Modes` | Display-mode filters and requirements |
+| `Profiles` | Profile creation, duplication, naming, deletion, activation, and filters |
+| `Settings` | Data sources, display settings, CPDLC connection, and PDC reminder controls |
 
-### Runtime Menu and insets
+### Editing and saving
 
-The Runtime Menu starts with a compact current-airport row immediately below
-its drag handle and above every icon button. Click the ICAO text to edit it;
-vSMR trims the value, converts it to uppercase, ignores an empty result, and
-persists the accepted airport in the ASR under `Airport`.
+Profile, display, AVISO, alert, group, mode, CPDLC, and PDC reminder fields update the current in-memory draft as they are edited. There is no separate per-section Update, Apply, or Revert step. The single global `Save` action validates the complete draft, writes the affected data, and applies the saved configuration to the open vSMR radar screens. Closing and reopening the Control Center preserves pending field values; Reload asks before discarding unsaved, invalid, or unfinished edits.
 
-Below the airport row, the draggable Runtime Menu retains five icon buttons
-and owns:
+Runtime actions such as changing the active profile or mode, toggling a group or inset, and loading an inset preset are immediate operational actions. Connect/Disconnect, Poll, Check now, and Run/Stop are likewise explicit live actions rather than configuration edits.
 
-- display-mode selection
+If a Profiles or AVISO file changes outside vSMR while edits are pending, the Control Center refuses to overwrite it and asks for a reload. A normal save rotates validated backups and rolls back the other document if a multi-file transaction cannot complete.
+
+### Profiles and modes
+
+Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
+
+The bundled profile database uses schema 2. Older supported keys are normalized during loading and saving for compatibility.
+
+### Tags and structured rules
+
+Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state.
+
+Structured rules can match runway, custom, status, detail, and VACDM conditions, then override target, tag, or text colors. Rules are evaluated in profile order.
+
+### AVISO data
+
+vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
+
+The Control Center can:
+
+- load an AVISO or Profiles file from the computer
+- download a supported file from `github.com` or `raw.githubusercontent.com`
+- reload the active source
+- edit AVISO geometry styles and visibility, label text and styles
+- define groups and assign features to them
+- restore validated bundled defaults or `.bak` profile data
+
+A computer file is activated in place; it is not copied over the bundled airport file. A GitHub resource is validated and downloaded to a collision-safe file under `vSMR_Data\AVISO\` or `vSMR_Data\Profiles\`, then activated from that location. The Settings page always shows the actual active path.
+
+## Runtime Menu and Insets
+
+The compact Runtime Menu provides quick access to:
+
+- active airport
+- active profile and display mode
 - AVISO group visibility
-- AVISO, SRW 1, Weather, and Timer visibility
-- airport-specific inset preset load/save/update/rename/duplicate/reload/delete operations
-- the `Set default` / `Clear default` preset toggle and linked movement
-- active-profile selection
-- opening the Control Center
+- AVISO, SRW 1, METAR, and Timer inset visibility
+- inset reset actions
+- airport-specific inset presets and defaults
+- the Control Center
 
-Each inset row also has a compact Reset button that restores that window's
-position, pan, zoom, and snap layout without changing its visibility.
+The menu position and radar-window state are saved with the EuroScope ASR. Inset presets are stored by airport, not by profile, so switching profiles does not remove or replace the current airport's presets.
 
-The AVISO inset itself is limited to viewport interaction: its title/drag
-surface, resize handles/dividers, pan, and zoom. It has no
-duplicate close, preset, reload, or editor buttons. Show/hide and preset actions
-are performed from the Runtime Menu; AVISO editing and reload are performed in
-the Control Center.
+### Window movement, snapping, and resizing
 
-Top, top-left, and top-right AVISO snap layouts use the full radar area and
-start at its actual top edge. No space is reserved for a toolbar. Floating
-layouts still keep their title/drag surface reachable inside the radar area.
+Resizable inset windows can be dragged by their title bar and resized from every edge or corner. Resize hit areas extend beyond a one-pixel border and use the matching horizontal, vertical, or diagonal cursor.
 
-SRW 1 uses the same corner/split snapping, right-drag panning, and
-cursor-anchored mouse-wheel zoom as AVISO. Its former `Z` and `R` menus are
-removed. In floating mode `F` controls its altitude filter; after snapping, that
-filter control is hidden. Floating inset title bars use the Runtime Menu's dark
-striped chrome.
+When a window approaches a valid edge or corner, vSMR draws a preview of the exact target position and size before the mouse button is released.
 
-The Weather inset uses the same striped chrome, close action, free resize, and
-edge/corner snapping. It follows the active airport and displays the latest
-EuroScope METAR as a wind rose with active-runway head/crosswind components,
-QNH, UTC, and controller-local time. If EuroScope has not subscribed to that
-station, a bounded background request uses VATSIM's METAR endpoint instead;
-network work never runs on EuroScope's UI thread. The inset intentionally has
-no raw METAR block, map pan, wheel zoom, or SRW altitude filter.
+- Edge snapping an AVISO, SRW 1, or METAR inset creates a left, right, top, or bottom split and adjusts the main AVISO render area to the remaining space.
+- Corner snapping anchors the inset without expanding it to one quarter of the screen.
+- Floating and snapped windows remain resizable through the valid exposed edges and corners.
+- Moving or resizing an inset is persisted with the airport's ASR state.
 
-The Timer is a fixed-size striped inset with three independent countdown cells.
-Left-click `1M`, `2M`, or `3M` to start that countdown; right-click the same
-cell to reset it. `vSMR_Data\Audio\Alarm.wav` sounds once when any countdown reaches
-zero, including while the Timer inset is hidden. The compact window can be dragged and magnet-snapped to radar
-edges or corners without reserving space from the main AVISO view. Airport
-state and presets retain only its visibility and placement; active countdowns
-remain session state and are not reset by layout or preset operations.
+### AVISO inset
 
-Inset working state and preset/default lists are scoped by active airport.
-Changing from one ICAO to another snapshots the outgoing four windows and
-restores only the incoming airport's state or default preset. An airport with
-no prior state or default starts with all four insets hidden and reset.
+The AVISO inset is a second viewport of the active airport map. It supports independent pan and cursor-anchored wheel zoom while sharing the loaded AVISO document and group visibility with the main view.
 
-### FPS overlay
+### SRW 1
 
-The old grey top menu has been removed. The only optional top-edge diagnostic
-is a compact `FPS <value>` readout aligned to the top-right corner; component
-letters and timings are not shown. Toggle it with `Settings > Display > Show
-FPS` in the Control Center. The choice is applied live and persisted per radar
-screen in the ASR under `ShowFps`; an ASR without that key defaults to showing
-the counter.
+SRW 1 is the secondary surface radar inset. It supports panning, cursor-anchored wheel zoom, snapping, resizing, and a floating altitude filter. The former SRW 2/Approach Path inset is no longer part of vSMR 2.0.
 
-### RIMCAS
+### METAR inset
 
-RIMCAS alert types, monitored runways, closed-runway state, and Normal/LVP
-visibility are configured on the Control Center `Alerts` page.
+The METAR inset follows the active airport and displays a compact wind rose, wind variation, runway headwind/crosswind components, QNH, UTC, and local controller time. It uses EuroScope weather data when available and can request a bounded fallback METAR without blocking EuroScope's UI thread.
 
-Supported RIMCAS alert labels in code:
+### Timer inset
+
+The Timer contains independent `1M`, `2M`, and `3M` countdowns:
+
+- left-click a duration to start it
+- right-click the same duration to reset it
+- `vSMR_Data\Audio\Alarm.wav` plays once when a countdown reaches zero
+
+Countdowns are session state. Presets store only Timer visibility and placement.
+
+## RIMCAS
+
+RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The Control Center `Alerts` page controls monitored arrival/departure runways, closed runways, Normal/LVP visibility, timers, thresholds, and colors.
+
+Current alert labels include:
 
 - `NO PUSH`
 - `NO TAXI`
@@ -379,527 +225,270 @@ Supported RIMCAS alert labels in code:
 - `HIGH SPD`
 - `EMERG`
 
-### Other interactions
-
-- Tags can be dragged.
-- Tag auto-deconfliction rotates and repositions tags to reduce overlap.
-- The plugin exposes a `Datalink clearance` tag item and a `Datalink menu` tag function to EuroScope.
-
-## vSMR Control Center
-
-The Control Center is a fixed 728 x 500 modeless window titled `vSMR`. It is
-owned by EuroScope, remains inside the EuroScope client area, and restores its
-position from `%LOCALAPPDATA%\vSMR\control-center-window.json`. Open it from
-the Runtime Menu gear or with one of the commands above.
-
-Its primary pages are:
-
-- `Display`, with `Colors`, `Icons`, `Tags`, and `Rules` tabs
-- `AVISO`, for geometry/text editing and data reload/import
-- `Alerts`, for RIMCAS types, runways, timers, visibility, and appearance
-- `Groups`, for AVISO group definition, membership, and ordering
-- `Modes`, for display-mode definitions and activation
-- `Profiles`, for profile filters, lifecycle, and activation
-- `Settings`, for data sources, FPS visibility, CPDLC connection, and PDC reminder automation
-
-Local `Update` buttons stage editor changes. `Revert` discards the current
-draft, while the global blue `Save` validates and persists staged profile and
-AVISO documents. Runtime profile/mode/group/inset actions remain immediate and
-are synchronized between the Control Center and Runtime Menu.
-
-Loading Profiles or AVISO from `Computer` activates that selected file in
-place; Save and Reload continue to use its absolute path and do not replace the
-bundled default. GitHub resources are validated, downloaded to collision-safe
-variant files under `vSMR_Data\Profiles\` or `vSMR_Data\AVISO\`, and activated
-from there. The read-only paths on Settings always show the actual active files.
-
-### Display editor
-
-The Display page provides a hierarchical profile-color editor, icon style and
-size controls, normal/detailed tag definitions with token insertion, global tag
-behavior and typography, and structured target/tag/text color rules.
-
-### AVISO, Alerts, and Groups
-
-AVISO geometry, text, source loading, and reload are centralized in the
-Control Center. Alert configuration likewise lives only on the Alerts page.
-Group definition and membership are edited here, while visibility remains a
-quick Runtime Menu operation.
-
-### Modes and Profiles
-
-The Modes page creates and edits display modes, including requirements and
-visible statuses. The Profiles page creates, duplicates, renames, deletes, and
-activates profiles and edits altitude, speed, range, and night-alpha filters.
-
-## Tag Definitions
-
-Tag definitions are profile-backed and depend on:
-
-- target type
-- target status
-- whether the tag is shown in normal or detailed mode
-
-Control Center tag-editor target types:
-
-- `departure`
-- `arrival`
-
-Compatibility notes:
-
-- legacy `airborne` and `uncorrelated` sections are still read and migrated for backward compatibility
-- airborne statuses are normalized into `departure`/`arrival` status definitions
-
-Supported statuses by type:
-
-- `departure`: `default`, `nofpl`, `push`, `stup`, `taxi`, `depa`, `airdep`, `airdep_onrunway`
-- `arrival`: `default`, `nofpl`, `airarr`, `airarr_onrunway`
-
-### Tag tokens
-
-Supported tag-definition tokens in code:
-
-- `callsign`
-- `actype`
-- `sctype`
-- `sqerror`
-- `deprwy`
-- `seprwy`
-- `arvrwy`
-- `srvrwy`
-- `gate`
-- `sate`
-- `flightlevel`
-- `gs`
-- `tobt`
-- `tsat`
-- `ttot`
-- `asat`
-- `aobt`
-- `atot`
-- `asrt`
-- `aort`
-- `ctot`
-- `event_booking`
-- `tendency`
-- `wake`
-- `ssr`
-- `asid`
-- `ssid`
-- `origin`
-- `dest`
-- `groundstatus`
-- `clearance`
-- `systemid`
-- `uk_stand`
-- `remark`
-- `scratchpad`
-
-## Structured Rules
-
-Structured rules are stored under `rules.items` in the active profile.
-Older `labels.rules.items` layouts are still read/migrated for compatibility.
-
-Each rule can define:
-
-- one or more criteria
-- optional tag-type filtering
-- optional status filtering
-- optional detail filtering
-- icon color override
-- tag color override
-- text color override
-
-### Rule sources and tokens
-
-| Source     | Tokens                                                                                   |
-| ---------- | ---------------------------------------------------------------------------------------- |
-| `vacdm`  | `tobt`, `tsat`, `ttot`, `asat`, `aobt`, `atot`, `asrt`, `aort`, `ctot` |
-| `runway` | `deprwy`, `seprwy`, `arvrwy`, `srvrwy`                                           |
-| `custom` | `asid`, `ssid`, `deprwy`, `seprwy`, `arvrwy`, `srvrwy`                       |
-
-### Rule conditions
-
-The condition dropdown is dynamic:
-
-- `runway`: `any`, `set`, `missing`
-- `custom`: `any`, `set`, `missing`, `in: ...`, `not_in: ...`
-- `tobt`: `any`, `set`, `missing`, `inactive`, `unconfirmed`, `confirmed`, `unconfirmed_delay`, `confirmed_delay`, `expired`
-- `tsat`: `any`, `set`, `missing`, `inactive`, `future`, `valid`, `expired`, `future_ctot`, `valid_ctot`, `expired_ctot`
-- other VACDM tokens: `any`, `set`, `missing`, `future`, `past`
-
-Context filters:
-
-- tag type (editor): `any`, `departure`, `arrival`
-- detail: `any`, `normal`, `detailed`
-- status (editor):
-  - departure: `Any`, `No Status`, `No FPL`, `Push`, `Startup`, `Taxi`, `Departure`, `Airborne`, `On Runway`
-  - arrival: `Any`, `On Ground`, `No FPL`, `Airborne`, `On Runway`
-
-## VACDM Integration
-
-VACDM pilot data is polled in the plugin and exposed to tag rendering and rule evaluation.
-
-Behavior visible in code:
-
-- polling is opt-in and starts only when `_vsmr.vacdm.server_url` is set in `vSMR_Profiles.json`
-- URL used by polling is `<SERVER_URL>/api/v1/pilots`
-- polling interval: 15 seconds
-- polling waits for a stable EuroScope network connection before fetching
-- callsign matching uses multiple normalized candidates
-- `TOBT` falls back to flight plan `EOBT` when backend data is missing
-
-VACDM values used by vSMR include:
-
-- `TOBT`
-- `TSAT`
-- `TTOT`
-- `ASAT`
-- `AOBT`
-- `ATOT`
-- `ASRT`
-- `AORT`
-- `CTOT`
-- event booking flag
-
-## CPDLC / Hoppie Integration
-
-CPDLC and CDM behavior remains native and is surfaced through the Control
-Center `Settings` page. Credentials never enter profile JSON, editor history,
-or the global Control Center save payload.
-
-Features:
-
-- live connection state and guarded connect/disconnect controls
-- automatically saved masked Hoppie-code replacement, logon callsign, and clearance-request sound
-- Hoppie login/logout with `.smr connect`
-- manual poll with `.smr poll`
-- explicit Run, Stop, and live Update controls for automatic PDC reminders, with configurable delay and resend cooldown
-- manual active-airport reminder checks equivalent to `.smr cdm`
-- read-only EuroScope `.cdm` alias path in the Settings data-files card
-- contextual disabled-state hints when the active airport or `.cdm` template is unavailable
-- datalink menu integration in tags
-- compact fixed PDC and Message windows with frameless striped vSMR chrome, kept inside EuroScope
-
-Saved EuroScope settings:
-
-- `cpdlc_logon`
-- `cpdlc_password`
-- `cpdlc_sound`
-- `cdm_auto_enabled`
-- `cdm_auto_delay_min`
-- `cdm_cooldown_min`
-
-The Hoppie code is encrypted for the current Windows user with DPAPI before it
-is persisted. A legacy plaintext value is migrated on load; if protection
-fails, vSMR removes the persistent copy instead of saving plaintext. The code,
-message payloads, and endpoint query strings are omitted from diagnostics.
-
-The notification sound is loaded from `vSMR_Data\Audio\Ding.wav`. If the file
-is unavailable, CPDLC remains operational and the missing path is written to the log.
-
-## Configuration Model
-
-The main profile file is a JSON array. Each profile object currently uses top-level sections such as:
-
-- `name`
-- `font`
-- `filters`
-- `sid_text_colors`
-- `labels`
-- `rimcas`
-- `targets`
-- `approach_insets`
-
-### `font`
-
-Controls:
-
-- available font list
-- font name
-- weight
-- size presets
-- active label font size
-
-### `filters`
-
-Controls:
-
-- altitude and speed visibility filters
-- radar range
-- night alpha
-- pro mode behavior
-- tower mode tag visibility (missing status, `NSTS`, `PUSH`, and `STUP` are icon-only)
-
-### `labels`
-
-Controls:
-
-- tag auto-deconfliction
-- leader line length
-- gate/speed behavior
-- squawk error color
-- per-type tag definitions
-- detailed definition linkage
-- structured color rules
-
-### `rimcas`
-
-Controls:
-
-- timers
-- stage-two threshold
-- warning/caution text and background colors
-- inactive alert list
-
-### `targets`
-
-Controls:
-
-- primary target display
-- icon style
-- ground icon behavior
-- history colors
-- base target color
-- fixed pixel icon size
-- fixed triangle scale
-- small icon boost and resolution presets
-
-### `approach_insets` (legacy SRW 1 key)
-
-Controls SRW 1 runway and extended-centreline styling. The key name is retained
-for profile compatibility:
-
-- extended line length
-- tick spacing
-- line color
-- runway color
-- background color
-
-## Legacy Sector Maps
-
-Bundled airports use the airport-specific `AVISO_*.geojson` files. vSMR no
-longer ships `vSMR_Maps.json`, because its bundled entries duplicated those
-AVISO airports. Existing installations may still supply this optional file as
-a compatibility fallback when an airport has no AVISO file. It is a JSON array
-whose entries can define:
-
-- `zoomLevel`
-- `element`
-- optional `active`
-
-The optional `active` string conditionally shows sector elements based on
-airport and runway configuration. For example:
+Always verify runway geometry, monitored directions, and alert timing for the active airport before operational use.
+
+## VACDM
+
+VACDM values are available to tags and structured rules:
+
+- TOBT, TSAT, TTOT
+- ASAT, AOBT, ATOT
+- ASRT, AORT, CTOT
+- event-booking state
+
+Configure the backend URL in the metadata object at the end of `vSMR_Profiles.json`:
+
+```json
+{
+  "_vsmr": {
+    "schema_version": 1,
+    "vacdm": {
+      "server_url": "https://your-vacdm-server.example"
+    }
+  }
+}
+```
+
+vSMR trims a trailing slash and requests `<server_url>/api/v1/pilots`. Polling is disabled when the URL is empty. TOBT falls back to the flight-plan EOBT when the backend has no value.
+
+## CPDLC and PDC
+
+The `Settings` page contains the CPDLC connection and automatic PDC reminder controls. It supports:
+
+- a Hoppie logon callsign and protected Hoppie code
+- connect/disconnect and manual polling
+- optional request notification sound
+- manual PDC eligibility checks for the active airport
+- automatic PDC reminders with a delay and resend cooldown
+- Run and Stop controls for reminder automation
+- compact vSMR-styled PDC and received-message windows
+- a `Datalink clearance` tag item and `Datalink menu` tag function
+
+The PDC window uses operational field names including `ADEP`, `ADES`, and `RWY`.
+
+CPDLC connection and reminder settings use a separate protected EuroScope settings store rather than profile JSON or AVISO. Their field changes remain pending until the same global `Save` action is pressed. The explicit Connect and PDC Run/Stop actions can first persist the settings required for that live operation; there is no separate Update action.
+
+The Hoppie code is encrypted with Windows DPAPI for the current Windows user before it is saved. It is excluded from profile JSON, editor history, diagnostics, and logs. Existing plaintext credentials are migrated when possible; vSMR does not deliberately fall back to saving plaintext.
+
+The CPDLC notification is `vSMR_Data\Audio\Ding.wav`. A missing audio file does not disable datalink operation.
+
+CPDLC and PDC require a valid local `.cdm` alias template. The resolved alias path is shown under `Settings -> Data files`.
+
+## EuroScope Commands
+
+Enter commands in lowercase as shown.
+
+| Command | Effect |
+| --- | --- |
+| `.smr` | Opens the Control Center Settings page; opens the legacy CPDLC dialog only when no vSMR radar screen exists |
+| `.smr editor` | Opens the Control Center |
+| `.smr vsmr` | Alias for `.smr editor` |
+| `.smr config` | Opens the Control Center Settings page |
+| `.smr profile` | Opens the Control Center Profiles page |
+| `.smr reload` | Reloads vSMR runtime data on all open vSMR screens |
+| `.smr aviso reload` | Reloads the active AVISO GeoJSON |
+| `.smr aviso editor` | Opens the AVISO editor |
+| `.smr connect` | Connects or disconnects Hoppie CPDLC |
+| `.smr poll` | Polls Hoppie messages immediately |
+| `.smr cdm` | Runs a manual PDC reminder scan for the active airport |
+| `.smr cdm auto status` | Shows automatic reminder state and delay |
+| `.smr cdm auto on` | Starts automatic reminders with the saved delay |
+| `.smr cdm auto off` | Stops automatic reminders |
+| `.smr cdm auto <minutes>` | Sets the delay and enables automatic reminders |
+| `.smr cdm cooldown status` | Shows the reminder resend cooldown |
+| `.smr cdm cooldown <minutes>` | Sets the reminder resend cooldown |
+| `.smr draw` | Toggles RIMCAS runway-area drawing |
+| `.smr status` | Prints current RIMCAS runway states |
+| `.smr log` | Toggles normal logging |
+| `.smr log normal` | Enables concise logging |
+| `.smr log verbose` | Enables detailed logging |
+| `.smr log off` | Disables logging |
+| `.smr log status` | Reports logging state and path |
+| `.smr diagnostics` | Writes a redacted diagnostics report |
+| `.smr diag` | Alias for `.smr diagnostics` |
+
+## Runtime Data
+
+The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
+
+| Path | Role |
+| --- | --- |
+| `vSMR_Profiles.json` | Profiles, display modes, tag definitions, rules, colors, filters, presets, and metadata |
+| `AVISO\AVISO_<ICAO>.geojson` | Airport-specific AVISO map data |
+| `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
+| `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
+| `aircraft_icons\*.png` | Silhouettes used by the `Icon (A320)` target style |
+| `Audio\Alarm.wav` | Timer expiry sound |
+| `Audio\Ding.wav` | CPDLC request sound |
+| `vSMR_webUI\` | Local Control Center application and bundled recovery defaults |
+| `Tools\` | Package install and rollback helpers |
+| `Licenses\` | Project/dependency licenses and asset provenance |
+| `Diagnostics\` | Redacted reports created by `.smr diagnostics` |
+| `RELEASE-METADATA.json` | Version, source, build, signing, and publishability information |
+| `SHA256SUMS.txt` | Exact package payload manifest |
+
+For compatibility, some loaders also inspect legacy flat locations beside the DLL. New installations should use the structured `vSMR_Data` layout.
+
+`vSMR_Maps.json` is no longer bundled because the supported airport maps are GeoJSON AVISO documents. A legacy maps file can still be loaded as a fallback for an airport without AVISO data.
+
+## Diagnostics and Troubleshooting
+
+### Create a support report
+
+Enter:
 
 ```text
-LFPG:DEP:26R:ARR:26L
+.smr diagnostics
 ```
 
-## Icons Aircraft Rendering
+The report is written to `vSMR_Data\Diagnostics\` or, if that directory is not writable, `%TEMP%\vSMR_Diagnostics\`. It includes version, data-source, runtime, and recent-log information while redacting known credentials and sensitive endpoint values.
 
-When `Icons` style is active (internally stored as `realistic`), vSMR can combine:
+Review every report before sharing it. Operational callsigns or local paths can still be present. Never share a Hoppie code or raw CPDLC message.
 
-- aircraft dimensions from `vSMR_Data\ICAO_Aircraft.json`
-- optional PNG silhouettes from `vSMR_Data\aircraft_icons\`
-- WTC-based fallbacks when dimensions are missing
+### Logging
 
-The bundled file uses the compact native schema and includes only records with
-valid positive length and wingspan values. The loader also accepts:
+`vsmr.log` is stored beside `vSMR.dll` when logging is enabled. At approximately 4 MiB it rotates to `vsmr.log.1`.
 
-- the alternate GNG-style schema
+- Use `normal` for routine troubleshooting.
+- Use `verbose` only while reproducing a difficult issue.
+- Turn logging off again after collecting the required information.
 
-### Runtime data validation
+### Common problems
 
-The repository includes a deterministic normalizer for profiles, aircraft
-dimensions, and every bundled AVISO file. Check committed data with:
+| Symptom | Check |
+| --- | --- |
+| `vSMR.dll` does not load | EuroScope is 32-bit and the x86 Visual C++ Redistributable is installed |
+| Control Center is blank or unavailable | The x86 WebView2 Evergreen Runtime is installed and `vSMR_Data\vSMR_webUI\` is complete |
+| Control Center opens off-screen | Close EuroScope and remove `%LOCALAPPDATA%\vSMR\control-center-window.json` |
+| Profiles fail to load | Validate `vSMR_Data\vSMR_Profiles.json`; inspect its `.bak` and the diagnostics report |
+| AVISO is missing | Confirm the active airport and active GeoJSON path on Settings |
+| Aircraft silhouettes are missing | Confirm `ICAO_Aircraft.json`, `aircraft_icons\`, and the active `Icon (A320)` target style |
+| VACDM values are empty | Confirm `_vsmr.vacdm.server_url`, network access, callsign matching, and backend data |
+| CPDLC cannot connect | Confirm EuroScope connectivity, callsign/code, Hoppie availability, and the sanitized error/log output |
+| PDC reminders are unavailable | Confirm the active airport, controller connection, and resolved `.cdm` alias path |
+| An inset layout is wrong after changing airports | Load or reset the preset for that airport; presets are intentionally airport-scoped |
 
-```powershell
-powershell -ExecutionPolicy Bypass -File vSMR\tools\normalize_runtime_data.ps1 -Mode Check
-```
-
-Maintainers can replace `Check` with `Write` to normalize imported data before
-reviewing it.
-
-The release gate also checks version consistency, compiler hardening, runtime
-data, build layout, licenses, and package manifests. Run it locally with:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\validate_release.ps1
-```
-
-## Building From Source
+## Building from Source
 
 ### Toolchain
 
-- Visual Studio 2022
-- An installed MSVC Win32 toolset with MFC (`v143` is used in CI)
+- Visual Studio 2022 with Desktop development with C++
+- MSVC x86 tools and MFC
+- Windows 10 SDK
 - C++17
-- `Release | Win32`
-- NuGet restore access to `Microsoft.Web.WebView2` version `1.0.4078.44`
+- NuGet restore access for `Microsoft.Web.WebView2` `1.0.4078.44`
+- The repository-provided EuroScope SDK header and import library under `lib\`
 
-### Important build notes
+The checked-in project targets `v143`; the packaging script can select a newer installed `vNNN` toolset when it is compatible. Releases are built as `Release | Win32`.
 
-- EuroScope support is Win32 only here
-- The project uses MFC
-- The project links against `EuroScopePlugInDll.lib`
-- The WebView2 loader is linked statically; do not deploy `WebView2Loader.dll`
-- The target computer needs the x86 Microsoft Visual C++ 2015-2022 Redistributable for the dynamically linked C++ and MFC runtimes
-- The x86 Evergreen Runtime remains required on the EuroScope computer
-- The Control Center resources are local, so normal operation does not require internet access
-- HTTP downloading is currently performed through WinHTTP (`HttpHelper.cpp`)
-- `winmm.lib` is linked for sound-related functionality
+### Validate source data
 
-### Build command
+Check that bundled profiles, aircraft data, and every AVISO file are canonical:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\package_release.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\verify_release_package.ps1 -ArchivePath artifacts\vSMR-2.0.0-beta.1.zip
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\normalize_runtime_data.ps1 -Mode Check
 ```
 
-`package_release.ps1` locates Visual Studio, selects the newest installed Win32
-toolset, restores NuGet packages, rebuilds `Release | Win32`, validates the
-output, and creates the archives. Use `-SkipBuild` only when packaging an
-already verified build, such as in CI; that mode also requires explicit
-`-Toolset` and `-PdbPath` provenance.
+Maintainers can use `-Mode Write` to normalize imported data before reviewing the resulting diff.
 
-Packaging rejects tracked or untracked source changes. `-AllowDirtySource` is
-available only for local, non-publishable verification artifacts; their release
-metadata records `source_dirty: true` and `publishable: false`. Verify such a
-local artifact with `verify_release_package.ps1 -AllowNonPublishable`; the
-normal verifier intentionally accepts only a clean 40-character Git commit.
+### Build and package
 
-Output:
+From the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1
+```
+
+The script:
+
+1. locates Visual Studio and MSBuild
+2. selects an installed Win32 toolset with MFC
+3. restores NuGet packages
+4. rebuilds `Release | Win32`
+5. validates versioning, compiler hardening, runtime data, licenses, and release layout
+6. stages a clean payload
+7. writes release metadata and SHA-256 manifests
+8. creates the user ZIP and a separate private-symbol archive
+
+A publishable package requires a clean Git working tree and a verifiable commit. For a local dirty-tree check only:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1 `
+  -AllowDirtySource -ForceNonPublishable
+```
+
+That artifact is explicitly marked `publishable: false`. Verify a normal package with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_package.ps1 `
+  -ArchivePath .\artifacts\vSMR-2.0.0-beta.1.zip
+```
+
+Add `-AllowNonPublishable` only when verifying a deliberately non-publishable local artifact.
+
+The user archive contains only:
 
 ```text
-Release\vSMR.dll
-Release\vSMR_Data\
-  vSMR_Profiles.json
-  ICAO_Aircraft.json
-  AVISO\
-  aircraft_icons\
-  Audio\
-  Licenses\
-    vSMR.txt
-    RapidJSON.txt
-    Microsoft.WebView2-LICENSE.txt
-    Microsoft.WebView2-NOTICE.txt
-    DEPENDENCIES.md
-    ASSET_PROVENANCE.md
-  Tools\
-    install_vsmr.ps1
-    restore_vsmr_backup.ps1
-  vSMR_webUI\
-    index.html
-    styles.css
-    app.js
-    data.js
-    defaults\
-      vSMR_Profiles.json
-      AVISO_LFPG.geojson
+vSMR.dll
+vSMR_Data\
 ```
 
-### Offline dependencies
+PDB files never enter the user package.
 
-For an offline build, download `Microsoft.Web.WebView2.1.0.4078.44.nupkg` on a connected computer, place it in a local NuGet feed, and restore with `/p:RestoreSources=C:\path\to\offline-feed` before building.
+### Offline builds and deployment
 
-For an offline EuroScope computer, download the **Evergreen Standalone Installer (x86)** on a connected computer and run it on the target machine. A silent installation can use:
+For an offline build, download `Microsoft.Web.WebView2.1.0.4078.44.nupkg` on a connected machine, place it in a local NuGet feed, and restore against that feed before building.
 
-```powershell
-MicrosoftEdgeWebView2RuntimeInstallerX86.exe /silent /install
+For an offline EuroScope machine, install the x86 WebView2 Evergreen Standalone Runtime in advance. The WebView2 loader is linked into `vSMR.dll`, but the Evergreen Runtime itself is not bundled.
+
+### Signing
+
+`package_release.ps1` can sign the staged DLL when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. `VSMR_REQUIRE_SIGNATURE=1` enables the signature-required release gate. Timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
+
+Do not describe a package as signed unless package verification confirms the signature.
+
+## Repository Layout
+
+```text
+vSMR.sln
+vSMR\
+  include\       C++ headers
+  src\           Plug-in, radar, inset, editor, and integration code
+  resources\     Windows resources, cursors, and DLL exports
+  data\          Runtime data copied to vSMR_Data in Release
+  vSMR_webUI\    Control Center HTML, CSS, and JavaScript source
+  tools\         Data, validation, packaging, and package-verification scripts
 ```
 
-Deploy `vSMR.dll` and `vSMR_Data\` together as shown above. The static loader removes the separate `WebView2Loader.dll` deployment dependency; it does not embed the Evergreen Runtime.
+Important implementation areas:
 
-### Release signing and provenance
+| Path | Responsibility |
+| --- | --- |
+| `vSMR/src/SMRPlugin.cpp` | Plug-in lifecycle, commands, CPDLC, VACDM, weather scheduling, diagnostics |
+| `vSMR/src/SMRRadar*.cpp` | Radar lifecycle, rendering, interaction, ASR state, tags, profiles, and Runtime Menu |
+| `vSMR/src/InsetWindow.cpp` | AVISO, SRW 1, METAR, and Timer insets; snapping and resizing |
+| `vSMR/src/Rimcas.cpp` | Runway monitoring and RIMCAS alert logic |
+| `vSMR/src/Config.cpp` | Profile loading, migration, validation, and persistence |
+| `vSMR/src/AvisoDocumentModel.cpp` | AVISO document validation and editing model |
+| `vSMR/src/VsmrControlCenter*.cpp` | Native WebView2 host and C++/JavaScript bridge |
+| `vSMR/vSMR_webUI/` | Control Center user interface |
+| `vSMR/tools/` | Release and runtime-data tooling |
 
-`package_release.ps1` signs the staged DLL when
-`VSMR_SIGNING_CERT_THUMBPRINT` (or `-CertificateThumbprint`) identifies an
-installed code-signing certificate. Set `VSMR_REQUIRE_SIGNATURE=1` for the
-public-release gate. An externally signed build is also accepted. Timestamping
-defaults to DigiCert's RFC 3161 service and can be changed with `-TimestampUrl`.
-The user ZIP never contains PDB files; a separate private symbols archive is
-created for crash analysis.
+## Beta Notes
 
-Every package contains `RELEASE-METADATA.json`, a payload `SHA256SUMS.txt`,
-third-party license texts, and the asset-provenance register. AppVeyor and
-GitHub Actions also publish an outer `.zip.sha256` file. Resolve every "verification required"
-entry in `ASSET_PROVENANCE.md` before promoting the beta to a production release.
+- The plug-in and runtime dependency path are x86 only.
+- Hoppie, VACDM, VATSIM weather fallback, and GitHub imports are external services and can fail independently of radar rendering.
+- Bundled airport data must be checked against current local procedures before use.
+- The asset provenance register contains media/data groups that require resolution before a production release. See `vSMR/data/Licenses/ASSET_PROVENANCE.md`.
+- Preserve the exact DLL, package checksum, and matching private symbols when investigating a crash.
 
-## Source Tree Guide
+## License and Credits
 
-This is the quickest code map for new contributors:
+vSMR is distributed under the GNU General Public License version 3. See [`LICENSE`](LICENSE). Packaged third-party notices and the asset provenance register are under `vSMR_Data\Licenses\`.
 
-| Path                                      | Responsibility                                                                         |
-| ----------------------------------------- | -------------------------------------------------------------------------------------- |
-| `vSMR/src/vSMR.cpp`                     | DLL entry point and EuroScope plugin export                                            |
-| `vSMR/src/SMRPlugin.cpp`, `vSMR/include/SMRPlugin.hpp` | Main plugin object, commands, CPDLC, VACDM polling, tag item registration |
-| `vSMR/src/SMRRadar.cpp`, `vSMR/include/SMRRadar.hpp` | Core radar screen lifecycle, rendering, target drawing, and optional FPS overlay |
-| `vSMR/src/SMRRadar_RadarAndCommands.cpp` | Radar-side command handling and some target geometry logic                            |
-| `vSMR/src/SMRRadar_ScreenInteraction.cpp` | Click handling, popup menus, dragging, tag interaction                               |
-| `vSMR/src/SMRRadar_FunctionCall.cpp`    | EuroScope popup callbacks retained by current runtime workflows                        |
-| `vSMR/src/SMRRadar_TagDefinitions.cpp`  | Tag token handling, type/status normalization, structured rule parsing and persistence |
-| `vSMR/src/SMRRadar_TagRendering.cpp`    | Tag drawing logic                                                                      |
-| `vSMR/src/SMRRadar_TargetsAndFonts.cpp` | Target display and font handling helpers                                               |
-| `vSMR/src/SMRRadar_AircraftAndAsr.cpp`  | Aircraft dimensions, realistic icon data, ASR persistence                              |
-| `vSMR/src/Config.cpp`, `vSMR/include/Config.hpp` | JSON config and map loading/saving                                           |
-| `vSMR/src/Rimcas.cpp`, `vSMR/include/Rimcas.hpp` | RIMCAS alerting and runway monitoring                                        |
-| `vSMR/src/ProfileEditorDialog.cpp`, `vSMR/include/ProfileEditorDialog.hpp` | Legacy native editor retained for compatibility; current entry points use the Control Center |
-| `vSMR/src/SMRRadar_ProfileEditorWindow.cpp` | Shared profile/mode editing APIs plus legacy editor lifecycle                       |
-| `vSMR/src/VsmrControlCenter*.cpp`, `vSMR/include/VsmrControlCenter*.hpp` | Fixed-size WebView2 Control Center host, bridge, lifecycle, and runtime synchronization |
-| `vSMR/src/SMRRadar_RuntimeMenu.cpp`     | Native airport row, five-icon Runtime Menu, and inset-preset operations                 |
-| `vSMR/src/InsetWindow.cpp`, `vSMR/include/InsetWindow.h` | AVISO, surface-radar, live-weather, and Timer inset windows             |
-| `vSMR/src/WeatherData.cpp`, `vSMR/include/WeatherData.hpp` | Thread-safe weather snapshot storage                                      |
-| `vSMR/src/CallsignLookup.cpp`, `vSMR/include/CallsignLookup.hpp` | Airline/callsign lookup from `ICAO_Airlines.txt`                     |
-| `vSMR/src/HttpHelper.cpp`, `vSMR/include/HttpHelper.hpp` | HTTP downloading helper (WinHTTP path used in current implementation)      |
-| `vSMR/src/DataLinkDialog.cpp`, `vSMR/include/DataLinkDialog.hpp` | CPDLC datalink dialog                                              |
-| `vSMR/src/CPDLCSettingsDialog.cpp`, `vSMR/include/CPDLCSettingsDialog.hpp` | CPDLC settings dialog                                  |
+This project continues work from:
 
-## Runtime Flow (Developer Quick Map)
+- <https://github.com/AlexisBalzano/vSMR>
+- <https://github.com/pierr3/vSMR>
 
-This is the high-level execution flow when EuroScope loads and runs the plugin:
-
-1. `SMRPlugin` is created, registers display/tag extensions, loads CPDLC settings, initializes VACDM polling configuration, and receives EuroScope METAR updates.
-2. EuroScope creates one `SMRRadar` instance per opened vSMR display window.
-3. `SMRRadar` loads profiles and runtime resources, then drives drawing and interaction in `OnRefresh`.
-4. `SMRPlugin::OnTimer` handles periodic tasks (CPDLC polling, VACDM and fallback-weather fetch scheduling, status blinking, and cleanup).
-5. Radar/profile state is persisted through profile JSON and ASR keys such as `Airport`, `ActiveProfile`, `ShowFps`, Runtime Menu position, and inset geometry/visibility.
-6. `.smr reload` reloads JSON config and reapplies profiles across currently opened radar windows.
-
-## Beta feedback and diagnostics
-
-Before reporting a defect, enter `.smr diagnostics`. The redacted report is
-written under `vSMR_Data\Diagnostics\`; when that directory is not writable it
-falls back to `%TEMP%\vSMR_Diagnostics\`. Attach that report, `vsmr.log` and
-`vsmr.log.1` where relevant, the matching package checksum, EuroScope/Windows
-versions, airport and reproduction steps. Review attachments for local paths or
-operational information before sharing them. Never attach a Hoppie code or raw
-CPDLC message.
-
-For a freeze or crash, also report whether CPDLC, VACDM, weather, a GitHub
-download, Control Center, and AVISO rendering were active. Preserve the exact
-build so maintainers can match it to the private PDB archive.
-
-## Known beta limitations
-
-- EuroScope and this plugin are Win32; only the x86 runtime/dependency path is supported.
-- The Control Center requires the x86 WebView2 Evergreen Runtime.
-- Hoppie, VACDM, VATSIM weather, and GitHub imports depend on external services and may fail independently of radar rendering.
-- The included airports are validation/sample data, not a substitute for local operational verification.
-- Aircraft icon, audio, AVISO, and aircraft-dimension provenance still has entries marked “verification required”; see the packaged asset register.
-- Authenticode is supported by the release pipeline but a public beta must not be described as signed unless package verification reports a valid signature.
-
-## Troubleshooting
-
-- If the plugin fails to load its profile data, validate `vSMR_Data\vSMR_Profiles.json` first.
-- If the Control Center restores outside the visible EuroScope area, remove
-  `%LOCALAPPDATA%\vSMR\control-center-window.json`; it will reopen centered and
-  clamped inside EuroScope.
-- If realistic icons do not appear, verify `targets.icon_style`, `vSMR_Data\ICAO_Aircraft.json`, and `vSMR_Data\aircraft_icons\`.
-- If airline names are missing, verify `ICAO_Airlines.txt` in one of the supported search paths.
-- If VACDM fields stay empty, verify that `_vsmr.vacdm.server_url` is set in `vSMR_Data\vSMR_Profiles.json`, then check callsign matching and backend data availability.
-- If `.smr profile`, `.smr editor`, or `.smr config` does nothing, make sure at
-  least one SMR radar screen is open and the x86 WebView2 Runtime is installed.
-
-## Credits
-
-Special thanks to Alexis.B, Baptiste.C, Steve.A and Yohannes.D.
+Special thanks to Alexis B., Baptiste C., Steve A., and Yohannes D.
