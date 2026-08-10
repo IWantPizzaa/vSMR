@@ -265,22 +265,7 @@
     <None Include="data\vSMR_Profiles.json">
       <Filter>Data</Filter>
     </None>
-    <None Include="data\AVISO\AVISO_LFBO.geojson">
-      <Filter>Data</Filter>
-    </None>
-    <None Include="data\AVISO\AVISO_LFLL.geojson">
-      <Filter>Data</Filter>
-    </None>
-    <None Include="data\AVISO\AVISO_LFML.geojson">
-      <Filter>Data</Filter>
-    </None>
-    <None Include="data\AVISO\AVISO_LFMN.geojson">
-      <Filter>Data</Filter>
-    </None>
-    <None Include="data\AVISO\AVISO_LFPG.geojson">
-      <Filter>Data</Filter>
-    </None>
-    <None Include="data\AVISO\AVISO_LFPO.geojson">
+    <None Include="data\AVISO\????.geojson">
       <Filter>Data</Filter>
     </None>
     <None Include="vSMR_webUI\app.js">

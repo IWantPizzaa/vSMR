@@ -1336,6 +1336,12 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 	const std::filesystem::path resourceFolder(ResolveWebResourceFolder());
 	const std::filesystem::path profilesPath =
 		resourceFolder / L"defaults" / L"vSMR_Profiles.json";
+	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->DataPath.empty()
+		? std::filesystem::path(Owner->DataPath)
+		: std::filesystem::path(
+			Owner != nullptr && !Owner->DllPath.empty()
+				? Owner->DllPath
+				: Logger::DLL_PATH) / "vSMR_Data";
 	std::string activeAirport = Owner != nullptr
 		? Owner->getActiveAirport()
 		: std::string();
@@ -1363,8 +1369,8 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 				return std::isalnum(character) != 0;
 			});
 	const std::filesystem::path avisoPath = hasNormalizedAirport
-		? resourceFolder / L"defaults" /
-			std::filesystem::path("AVISO_" + activeAirport + ".geojson")
+		? dataDirectory / "AVISO" /
+			std::filesystem::path(activeAirport + ".geojson")
 		: std::filesystem::path();
 	std::error_code avisoExistsError;
 	const bool hasMatchingAvisoDefault = !avisoPath.empty() &&

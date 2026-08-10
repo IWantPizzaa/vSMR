@@ -13,6 +13,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Changed the default AVISO lookup and editor save path to `vSMR_Data\AVISO\<ICAO>.geojson`. The canonical filename always takes priority, while legacy `AVISO_<ICAO>.geojson` files remain an upgrade fallback.
+- Expanded the bundled AVISO airport set to 396 airport files and updated build, recovery, validation, and packaging workflows to accept only exact four-character ICAO GeoJSON defaults; aggregate source files and local `.bak` files are excluded from release artifacts.
 - Applied effective LNUP state consistently to the main radar and AVISO target/tag renderers, Tower/display-mode filtering, status tokens, and structured color rules. Existing profiles inherit their initial LNUP presentation from Taxi, and all bundled profiles now contain explicit Line Up settings.
 - Updated RIMCAS so LNUP authorizes runway entry and taxi movement without authorizing takeoff: `RWY INC` and `NO TAXI` are suppressed, while `NO TKOF` still requires `DEPA`.
 
