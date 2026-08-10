@@ -356,6 +356,7 @@ $LfpgLabelStyles = @{
 
 $PaintKeys = @(
     "fill", "fill-opacity", "stroke", "stroke-opacity", "stroke-width",
+    "marker-color", "marker-size",
     "text-anchor", "text-color", "text-font", "text-halo-color",
     "text-halo-width", "text-size", "zoomLevel", "zoom_level"
 )
@@ -416,6 +417,96 @@ function ConvertTo-SafeIdPart {
     return $part.Trim(".")
 }
 
+function ConvertTo-AvisoDisplayName {
+    param([string]$Value)
+
+    $name = $Value -replace "^COLOR_", ""
+    $name = $name -creplace "([a-z0-9])([A-Z])", '$1 $2'
+    $name = $name -replace "[_-]+", " "
+    $name = ($name -replace "\s+", " ").Trim()
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return "AVISO objects"
+    }
+    return $name
+}
+
+function New-DerivedAvisoStyleInfo {
+    param($Properties, [string]$GeometryType)
+
+    $colorName = Get-FirstStringProperty $Properties @("color_name")
+    if ([string]::IsNullOrWhiteSpace($colorName)) {
+        throw "A feature without style_id must provide color_name so a deterministic style can be derived."
+    }
+
+    $geometryRole = Get-FirstStringProperty $Properties @("geometry_role")
+    if ([string]::IsNullOrWhiteSpace($geometryRole)) {
+        $geometryRole = if ($GeometryType -eq "Point") {
+            "point"
+        }
+        elseif ($GeometryType -like "*LineString") {
+            "linework"
+        }
+        else {
+            "filled_region"
+        }
+    }
+
+    $kind = if ($GeometryType -eq "Point" -and $geometryRole -eq "text_label") {
+        "label"
+    }
+    elseif ($GeometryType -eq "Point") {
+        "point"
+    }
+    elseif ($GeometryType -like "*LineString") {
+        "line"
+    }
+    else {
+        "area"
+    }
+
+    $colorId = ConvertTo-SafeIdPart (ConvertTo-AvisoDisplayName $colorName)
+    $roleId = ConvertTo-SafeIdPart $geometryRole
+    if ([string]::IsNullOrWhiteSpace($colorId) -or [string]::IsNullOrWhiteSpace($roleId)) {
+        throw "A deterministic AVISO style_id could not be derived from geometry_role '$geometryRole' and color_name '$colorName'."
+    }
+
+    $layer = if ($kind -eq "label") {
+        "Labels"
+    }
+    elseif ($kind -eq "point") {
+        "Reference points"
+    }
+    elseif ($geometryRole -eq "runway_centerline") {
+        "Runways"
+    }
+    elseif ($kind -eq "line") {
+        "Ground linework"
+    }
+    else {
+        "Airfield surfaces"
+    }
+
+    $objectType = if ($kind -eq "label") {
+        "Label"
+    }
+    elseif ($kind -eq "point") {
+        "Point"
+    }
+    elseif ($kind -eq "line") {
+        "Line"
+    }
+    else {
+        "Area"
+    }
+
+    return New-LfpgStyleInfo `
+        "$kind.$roleId.$colorId" `
+        $layer `
+        (ConvertTo-AvisoDisplayName $colorName) `
+        $objectType `
+        ""
+}
+
 function Test-HiddenAvisoFeature {
     param($Properties)
 
@@ -464,10 +555,10 @@ function Get-AvisoGroupIds {
 function Get-AvisoAirportFromFileName {
     param([string]$Name)
 
-    if ($Name -match "^AVISO_([A-Za-z0-9]{4})\.geojson$") {
+    if ($Name -match "^([A-Za-z0-9]{4})\.geojson$") {
         return $matches[1].ToUpperInvariant()
     }
-    throw "AVISO filename '$Name' must use AVISO_ICAO.geojson."
+    throw "AVISO filename '$Name' must use ICAO.geojson."
 }
 
 function Normalize-AvisoFile {
@@ -543,7 +634,8 @@ function Normalize-AvisoFile {
         }
 
         if ([string]::IsNullOrWhiteSpace($styleId)) {
-            throw "$($File.Name) contains a feature without style_id."
+            $info = New-DerivedAvisoStyleInfo $sourceProperties $geometryType
+            $styleId = $info.Id
         }
 
         $existingStyle = if ($styles.Contains($styleId)) { $styles[$styleId] } else { $null }
@@ -712,7 +804,11 @@ Normalize-Profiles (Join-Path $resolvedDataDirectory "vSMR_Profiles.json")
 Normalize-AircraftSpecs (Join-Path $resolvedDataDirectory "ICAO_Aircraft.json")
 
 $avisoDirectory = Join-Path $resolvedDataDirectory "AVISO"
-$avisoFiles = @(Get-ChildItem -File -LiteralPath $avisoDirectory | Where-Object Extension -eq ".geojson" | Sort-Object Name)
+$avisoFiles = @(
+    Get-ChildItem -File -LiteralPath $avisoDirectory |
+        Where-Object { $_.Name -match "^[A-Za-z0-9]{4}\.geojson$" } |
+        Sort-Object Name
+)
 if ($avisoFiles.Count -eq 0) {
     throw "No AVISO GeoJSON files were found."
 }
