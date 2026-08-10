@@ -2324,9 +2324,6 @@ input:focus, select:focus, textarea:focus {
   text-align: right;
   font: 8px/1 var(--mono);
 }
-#avisoGeometryApplyButton,
-#avisoTextApplyButton { min-width: 84px; }
-
 @media (max-width: 700px) {
   .aviso-style-row.geometry-select-row { grid-template-columns: 12px 15px minmax(0, 1fr) 34px; }
   .aviso-label-row { grid-template-columns: 12px 9px minmax(0, 1fr); }
@@ -2824,11 +2821,6 @@ input:focus, select:focus, textarea:focus {
 .scope-disabled {
   opacity: .5;
 }
-#avisoGeometryApplyButton,
-#avisoTextApplyButton {
-  min-width: 72px;
-}
-
 /* Compact modal used by the GitHub loader. */
 .compact-dialog {
   width: min(430px, calc(100vw - 24px));
@@ -6095,10 +6087,6 @@ html.host-mode .control-window.hidden {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.datalink-reminder-actions.has-update {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 @media (max-width: 680px) {
   .datalink-card-body { padding: 5px; }
 }
@@ -6674,4 +6662,37 @@ textarea:disabled {
 }
 .settings-recovery-actions .ui-button {
   min-width: 0;
+}
+
+/* Editors write through to the staged configuration, so only the global rail
+   Save action needs a persistence affordance. Reclaim the former footer rows. */
+.detail-panel,
+.mode-detail-panel,
+.profile-detail-panel,
+.full-editor-panel,
+.aviso-category-editor,
+.aviso-group-editor {
+  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr);
+}
+
+.tag-right-stack {
+  grid-template-rows: minmax(178px, 1fr) auto;
+}
+
+.page.alerts-page {
+  grid-template-rows: 28px minmax(0, 1fr);
+}
+
+.page.settings-page {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* Text scope remains useful, but it is a scope selector rather than an Apply
+   bar. Give the single control the full footer width. */
+.aviso-text-editor {
+  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr) var(--ui-actionbar-height);
+}
+
+.aviso-text-actions {
+  grid-template-columns: minmax(0, 1fr);
 }
