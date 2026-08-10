@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "Config.hpp"
 #include <algorithm>
+#include <cstdint>
+#include <iomanip>
 #include <mutex>
 
 namespace
@@ -15,6 +17,8 @@ namespace
 	const char* kAirportPresetStoresKey = "airports";
 	const char* kPresetItemsKey = "items";
 	const char* kDefaultPresetKey = "default";
+	constexpr int kCurrentProfileSchemaVersion = 2;
+	constexpr int kCurrentMetadataSchemaVersion = 1;
 	volatile LONG gTemporaryFileSequence = 0;
 	// Every CConfig instance points at the same persisted profiles file. Both
 	// ordinary saves and narrowly-scoped preset transactions participate in this
@@ -177,7 +181,11 @@ namespace
 		std::string message = "An error parsing vSMR ";
 		message += fileDescription;
 		message += " occurred.\nThe currently loaded data remains active.\nOnce fixed, reload the config by typing '.smr reload'";
+#if defined(VSMR_TEST_NO_UI)
+		::OutputDebugStringA(message.c_str());
+#else
 		AfxMessageBox(message.c_str(), MB_OK | MB_ICONERROR);
+#endif
 	}
 
 	void AdoptDocument(rapidjson::Document& destination, rapidjson::Document& source)
@@ -193,6 +201,207 @@ namespace
 	{
 		validationDocument.Parse<0>(serializedJson.c_str());
 		return !validationDocument.HasParseError() && validationDocument.IsArray();
+	}
+
+	std::string ContentRevision(const std::string& contents)
+	{
+		// A revision token only has to detect a stale editor snapshot; it is not a
+		// security primitive. FNV-1a is deterministic, fast, and avoids adding a
+		// crypto dependency to the 32-bit EuroScope plugin.
+		std::uint64_t hash = 14695981039346656037ULL;
+		for (const unsigned char byte : contents)
+		{
+			hash ^= static_cast<std::uint64_t>(byte);
+			hash *= 1099511628211ULL;
+		}
+		std::ostringstream output;
+		output << std::hex << std::setfill('0') << std::setw(16) << hash;
+		return output.str();
+	}
+
+	std::string FileRevision(const std::string& path)
+	{
+		std::string contents;
+		return ReadFileContents(path, contents)
+			? ContentRevision(contents)
+			: "missing";
+	}
+
+	bool HasFile(const std::string& path)
+	{
+		const DWORD attributes = ::GetFileAttributesA(path.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES &&
+			(attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+	}
+
+	bool RequireObjectMember(
+		const rapidjson::Value& object,
+		const char* key,
+		const std::string& context,
+		std::string& error)
+	{
+		if (!object.HasMember(key) || !object[key].IsObject())
+		{
+			error = context + " requires an object named '" + key + "'.";
+			return false;
+		}
+		return true;
+	}
+
+	bool ValidateOptionalMemberType(
+		const rapidjson::Value& object,
+		const char* key,
+		rapidjson::Type expectedType,
+		const std::string& context,
+		std::string& error)
+	{
+		if (!object.HasMember(key))
+			return true;
+		if (object[key].GetType() == expectedType)
+			return true;
+		error = context + " member '" + key + "' has the wrong JSON type.";
+		return false;
+	}
+
+	void EnsureEmptyObjectMember(
+		rapidjson::Value& object,
+		const char* key,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (object.HasMember(key))
+			return;
+		rapidjson::Value memberKey;
+		memberKey.SetString(key, allocator);
+		rapidjson::Value member(rapidjson::kObjectType);
+		object.AddMember(memberKey, member, allocator);
+	}
+
+	void SetIntegerMember(
+		rapidjson::Value& object,
+		const char* key,
+		int value,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (object.HasMember(key))
+			object[key].SetInt(value);
+		else
+		{
+			rapidjson::Value memberKey;
+			memberKey.SetString(key, allocator);
+			rapidjson::Value memberValue(value);
+			object.AddMember(memberKey, memberValue, allocator);
+		}
+	}
+
+	bool ValidatePresetRect(
+		const rapidjson::Value& object,
+		const std::string& context,
+		std::string& error)
+	{
+		if (!object.IsObject())
+		{
+			error = context + " must be an object.";
+			return false;
+		}
+		const char* coordinates[] = { "left", "top", "right", "bottom" };
+		bool anyCoordinate = false;
+		for (const char* key : coordinates)
+		{
+			if (!object.HasMember(key))
+				continue;
+			anyCoordinate = true;
+			if (!object[key].IsInt())
+			{
+				error = context + " rectangle member '" + key + "' must be an integer.";
+				return false;
+			}
+		}
+		if (!anyCoordinate)
+			return true;
+		for (const char* key : coordinates)
+		{
+			if (!object.HasMember(key))
+			{
+				error = context + " contains an incomplete rectangle.";
+				return false;
+			}
+		}
+		if (object["right"].GetInt() <= object["left"].GetInt() ||
+			object["bottom"].GetInt() <= object["top"].GetInt())
+		{
+			error = context + " rectangle must have positive width and height.";
+			return false;
+		}
+		return true;
+	}
+
+	bool ValidatePresetStore(
+		const rapidjson::Value& store,
+		const std::string& context,
+		std::string& error)
+	{
+		if (!store.IsObject())
+		{
+			error = context + " must be an object.";
+			return false;
+		}
+		if (store.HasMember(kDefaultPresetKey) && !store[kDefaultPresetKey].IsString())
+		{
+			error = context + " default preset must be a string.";
+			return false;
+		}
+		if (!store.HasMember(kPresetItemsKey))
+			return true;
+		if (!store[kPresetItemsKey].IsArray())
+		{
+			error = context + " items must be an array.";
+			return false;
+		}
+		std::unordered_set<std::string> names;
+		const rapidjson::Value& items = store[kPresetItemsKey];
+		for (rapidjson::SizeType index = 0; index < items.Size(); ++index)
+		{
+			const rapidjson::Value& preset = items[index];
+			const std::string presetContext = context + " preset #" + std::to_string(index + 1);
+			const std::string name = ReadStringMember(preset, "name");
+			if (!preset.IsObject() || TrimAsciiWhitespace(name).empty())
+			{
+				error = presetContext + " requires a non-empty name.";
+				return false;
+			}
+			std::string normalizedName = TrimAsciiWhitespace(name);
+			std::transform(normalizedName.begin(), normalizedName.end(), normalizedName.begin(), [](unsigned char c) {
+				return static_cast<char>(std::tolower(c));
+			});
+			if (!names.insert(normalizedName).second)
+			{
+				error = context + " contains duplicate preset names.";
+				return false;
+			}
+			for (const char* windowKey : { "secondary", "weather", "timer" })
+			{
+				if (preset.HasMember(windowKey) &&
+					!ValidatePresetRect(preset[windowKey], presetContext + " " + windowKey, error))
+					return false;
+			}
+			if (preset.HasMember("srw"))
+			{
+				if (!preset["srw"].IsArray())
+				{
+					error = presetContext + " SRW state must be an array.";
+					return false;
+				}
+				for (rapidjson::SizeType windowIndex = 0; windowIndex < preset["srw"].Size(); ++windowIndex)
+				{
+					if (!ValidatePresetRect(
+						preset["srw"][windowIndex],
+						presetContext + " SRW #" + std::to_string(windowIndex + 1),
+						error))
+						return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	bool EqualsNoCaseAscii(const std::string& left, const std::string& right)
@@ -489,6 +698,28 @@ namespace
 		}
 
 		const rapidjson::Value& sourceRoot = profile[kAvisoPresetsKey];
+		const bool hasFlatItems = sourceRoot.HasMember(kPresetItemsKey);
+		const bool hasFlatDefault = sourceRoot.HasMember(kDefaultPresetKey);
+		std::string flatAirportKey;
+		if (hasFlatItems || hasFlatDefault)
+		{
+			// Resolve ownership before mutating the canonical destination. A mixed
+			// scoped/unscoped legacy root with no explicit owner must be an atomic
+			// no-op, not a partially repeated migration.
+			flatAirportKey = NormalizeAirportKey(
+				ReadStringMember(sourceRoot, "airport"));
+			if (flatAirportKey.empty())
+				flatAirportKey = NormalizeAirportKey(
+					ReadStringMember(profile, "airport"));
+			if (flatAirportKey.size() != 4 ||
+				!std::all_of(
+					flatAirportKey.begin(),
+					flatAirportKey.end(),
+					[](unsigned char c) { return std::isalnum(c) != 0; }))
+			{
+				return false;
+			}
+		}
 		rapidjson::Value& destinationRoot =
 			EnsureObjectMember(metadata, kAvisoPresetsKey, allocator);
 		rapidjson::Value& destinationAirports =
@@ -519,15 +750,16 @@ namespace
 			}
 		}
 
-		const bool hasFlatItems = sourceRoot.HasMember(kPresetItemsKey);
-		const bool hasFlatDefault = sourceRoot.HasMember(kDefaultPresetKey);
 		if (hasFlatItems || hasFlatDefault)
 		{
-			const std::string airportKey = NormalizeAirportKey(activeAirport);
-			if (airportKey.empty())
-				return false;
+			// Flat legacy stores have no inherent airport scope. Only migrate one
+			// when the old data explicitly names its airport; the currently selected
+			// EuroScope airport is not evidence of ownership.
 			rapidjson::Value& destinationSection =
-				EnsureObjectMember(destinationAirports, airportKey.c_str(), allocator);
+				EnsureObjectMember(
+					destinationAirports,
+					flatAirportKey.c_str(),
+					allocator);
 			if (!MergePresetSection(
 				destinationSection,
 				sourceRoot,
@@ -537,6 +769,7 @@ namespace
 				return false;
 			}
 		}
+		(void)activeAirport;
 
 		return true;
 	}
@@ -843,8 +1076,11 @@ namespace
 		return succeeded;
 	}
 
-	bool BackupDestinationIfPresent(const std::string& destination)
+	bool StageDestinationBackupIfPresent(
+		const std::string& destination,
+		std::string& temporaryBackupPath)
 	{
+		temporaryBackupPath.clear();
 		const DWORD attributes = ::GetFileAttributesA(destination.c_str());
 		if (attributes == INVALID_FILE_ATTRIBUTES)
 		{
@@ -854,8 +1090,6 @@ namespace
 		if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
 			return false;
 
-		const std::string backupPath = destination + kBackupSuffix;
-		std::string temporaryBackupPath;
 		const int maximumAttempts = 128;
 		for (int attempt = 0; attempt < maximumAttempts; ++attempt)
 		{
@@ -872,21 +1106,13 @@ namespace
 		if (temporaryBackupPath.empty())
 			return false;
 
-		if (!::MoveFileExA(
-			temporaryBackupPath.c_str(),
-			backupPath.c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			::DeleteFileA(temporaryBackupPath.c_str());
-			return false;
-		}
-
 		return true;
 	}
 
 	bool PersistConfigDocument(
 		const std::string& destination,
-		const rapidjson::Document& source)
+		const rapidjson::Document& source,
+		bool backupExisting = true)
 	{
 		if (!source.IsArray())
 			return false;
@@ -914,7 +1140,11 @@ namespace
 			return false;
 		}
 
-		if (!BackupDestinationIfPresent(destination))
+		std::string temporaryBackupPath;
+		if (backupExisting &&
+			!StageDestinationBackupIfPresent(
+				destination,
+				temporaryBackupPath))
 		{
 			::DeleteFileA(temporaryPath.c_str());
 			return false;
@@ -926,17 +1156,324 @@ namespace
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
 			::DeleteFileA(temporaryPath.c_str());
+			if (!temporaryBackupPath.empty())
+				::DeleteFileA(temporaryBackupPath.c_str());
 			return false;
+		}
+
+		if (!temporaryBackupPath.empty())
+		{
+			const std::string backupPath = destination + kBackupSuffix;
+			if (!::MoveFileExA(
+				temporaryBackupPath.c_str(),
+				backupPath.c_str(),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			{
+				// The existing .bak has not been replaced. Use the staged old
+				// primary to roll the reported-failed transaction back exactly.
+				if (!::MoveFileExA(
+					temporaryBackupPath.c_str(),
+					destination.c_str(),
+					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+				{
+					// Preserve the staged old primary for manual recovery.
+					return false;
+				}
+				return false;
+			}
 		}
 
 		return true;
 	}
 }
 
+bool CConfig::validateAndMigrateProfilesDocument(
+	rapidjson::Document& profilesDocument,
+	string& error,
+	bool& migrated)
+{
+	error.clear();
+	migrated = false;
+	if (!profilesDocument.IsArray())
+	{
+		error = "vSMR_Profiles.json must contain a JSON array.";
+		return false;
+	}
+
+	std::unordered_set<std::string> normalizedNames;
+	std::vector<std::string> profileNames;
+	bool metadataSeen = false;
+	rapidjson::Value* metadata = nullptr;
+	auto& allocator = profilesDocument.GetAllocator();
+
+	for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+	{
+		rapidjson::Value& item = profilesDocument[index];
+		if (!item.IsObject())
+		{
+			error = "Every vSMR_Profiles.json entry must be an object.";
+			return false;
+		}
+
+		if (IsMetadataEntry(item))
+		{
+			if (metadataSeen)
+			{
+				error = "vSMR_Profiles.json contains more than one _vsmr metadata entry.";
+				return false;
+			}
+			metadataSeen = true;
+			metadata = &item[kMetadataWrapperKey];
+			continue;
+		}
+
+		if (!item.HasMember("name") || !item["name"].IsString())
+		{
+			error = "Every non-metadata entry requires a string profile name.";
+			return false;
+		}
+		const std::string name = TrimAsciiWhitespace(item["name"].GetString());
+		if (name.empty())
+		{
+			error = "Profile names cannot be empty.";
+			return false;
+		}
+		std::string normalizedName = name;
+		std::transform(normalizedName.begin(), normalizedName.end(), normalizedName.begin(), [](unsigned char c) {
+			return static_cast<char>(std::tolower(c));
+		});
+		if (!normalizedNames.insert(normalizedName).second)
+		{
+			error = "Profile names must be unique (case-insensitive).";
+			return false;
+		}
+		profileNames.push_back(name);
+		if (name != item["name"].GetString())
+		{
+			SetStringMember(item, "name", name, allocator);
+			migrated = true;
+		}
+
+		int schemaVersion = 1;
+		if (item.HasMember(kMetadataSchemaVersionKey))
+		{
+			if (!item[kMetadataSchemaVersionKey].IsInt())
+			{
+				error = "Profile '" + name + "' schema_version must be an integer.";
+				return false;
+			}
+			schemaVersion = item[kMetadataSchemaVersionKey].GetInt();
+		}
+		if (schemaVersion < 1)
+		{
+			error = "Profile '" + name + "' has an invalid schema_version.";
+			return false;
+		}
+		if (schemaVersion > kCurrentProfileSchemaVersion)
+		{
+			error = "Profile '" + name + "' uses unsupported future schema_version " +
+				std::to_string(schemaVersion) + ". This build supports up to " +
+				std::to_string(kCurrentProfileSchemaVersion) + ".";
+			return false;
+		}
+
+		const std::string context = "Profile '" + name + "'";
+		for (const char* key : { "approach_insets", "filters", "font", "labels", "maps", "rimcas", "rules", "targets" })
+		{
+			if (!ValidateOptionalMemberType(item, key, rapidjson::kObjectType, context, error))
+				return false;
+		}
+		if (!ValidateOptionalMemberType(item, "sid_text_colors", rapidjson::kArrayType, context, error))
+			return false;
+
+		if (schemaVersion < kCurrentProfileSchemaVersion)
+		{
+			// Version 1 allowed these core sections to be absent. Empty objects are a
+			// lossless migration because every reader already applies field defaults.
+			EnsureEmptyObjectMember(item, "labels", allocator);
+			EnsureEmptyObjectMember(item, "targets", allocator);
+			SetIntegerMember(item, kMetadataSchemaVersionKey, kCurrentProfileSchemaVersion, allocator);
+			migrated = true;
+		}
+		if (!RequireObjectMember(item, "labels", context, error) ||
+			!RequireObjectMember(item, "targets", context, error))
+			return false;
+
+		if (item.HasMember("filters") && item["filters"].HasMember("display_modes"))
+		{
+			const rapidjson::Value& displayModes = item["filters"]["display_modes"];
+			if (!displayModes.IsObject() ||
+				(displayModes.HasMember("active") && !displayModes["active"].IsString()) ||
+				(displayModes.HasMember("items") && !displayModes["items"].IsArray()))
+			{
+				error = context + " filters.display_modes has an invalid shape.";
+				return false;
+			}
+			if (displayModes.HasMember("items"))
+			{
+				std::unordered_set<std::string> modeNames;
+				for (rapidjson::SizeType modeIndex = 0; modeIndex < displayModes["items"].Size(); ++modeIndex)
+				{
+					const rapidjson::Value& mode = displayModes["items"][modeIndex];
+					const std::string modeName = TrimAsciiWhitespace(ReadStringMember(mode, "name"));
+					if (!mode.IsObject() || modeName.empty())
+					{
+						error = context + " contains a display mode without a valid name.";
+						return false;
+					}
+					std::string normalizedMode = modeName;
+					std::transform(normalizedMode.begin(), normalizedMode.end(), normalizedMode.begin(), [](unsigned char c) {
+						return static_cast<char>(std::tolower(c));
+					});
+					if (!modeNames.insert(normalizedMode).second)
+					{
+						error = context + " contains duplicate display mode names.";
+						return false;
+					}
+					if (mode.HasMember("statuses") && !mode["statuses"].IsObject())
+					{
+						error = context + " display-mode statuses must be an object.";
+						return false;
+					}
+				}
+			}
+		}
+
+		if (item.HasMember("rules") && item["rules"].HasMember("items") &&
+			!item["rules"]["items"].IsArray())
+		{
+			error = context + " rules.items must be an array.";
+			return false;
+		}
+		if (item.HasMember("rimcas"))
+		{
+			const rapidjson::Value& rimcas = item["rimcas"];
+			for (const char* key : { "inactive_alerts", "runways", "timer", "timer_lvp" })
+			{
+				if (!ValidateOptionalMemberType(rimcas, key, rapidjson::kArrayType, context + " rimcas", error))
+					return false;
+			}
+		}
+
+		if (item.HasMember(kAvisoPresetsKey) && !item[kAvisoPresetsKey].IsObject())
+		{
+			error = context + " aviso_presets must be an object.";
+			return false;
+		}
+	}
+
+	if (profileNames.empty())
+	{
+		error = "vSMR_Profiles.json contains no usable profiles.";
+		return false;
+	}
+
+	if (!metadataSeen)
+	{
+		rapidjson::Value wrapper(rapidjson::kObjectType);
+		rapidjson::Value metadataValue(rapidjson::kObjectType);
+		metadataValue.AddMember(kMetadataSchemaVersionKey, kCurrentMetadataSchemaVersion, allocator);
+		rapidjson::Value wrapperKey;
+		wrapperKey.SetString(kMetadataWrapperKey, allocator);
+		wrapper.AddMember(wrapperKey, metadataValue, allocator);
+		profilesDocument.PushBack(wrapper, allocator);
+		metadata = &profilesDocument[profilesDocument.Size() - 1][kMetadataWrapperKey];
+		migrated = true;
+	}
+
+	if (metadata == nullptr || !metadata->IsObject())
+	{
+		error = "The _vsmr metadata entry is invalid.";
+		return false;
+	}
+	int metadataSchema = 1;
+	if (metadata->HasMember(kMetadataSchemaVersionKey))
+	{
+		if (!(*metadata)[kMetadataSchemaVersionKey].IsInt())
+		{
+			error = "_vsmr.schema_version must be an integer.";
+			return false;
+		}
+		metadataSchema = (*metadata)[kMetadataSchemaVersionKey].GetInt();
+	}
+	if (metadataSchema < 1 || metadataSchema > kCurrentMetadataSchemaVersion)
+	{
+		error = metadataSchema > kCurrentMetadataSchemaVersion
+			? "The profiles file uses an unsupported future _vsmr schema_version."
+			: "The profiles file has an invalid _vsmr schema_version.";
+		return false;
+	}
+	if (!metadata->HasMember(kMetadataSchemaVersionKey))
+	{
+		SetIntegerMember(*metadata, kMetadataSchemaVersionKey, kCurrentMetadataSchemaVersion, allocator);
+		migrated = true;
+	}
+	if (metadata->HasMember(kLastActiveProfileKey) && !(*metadata)[kLastActiveProfileKey].IsString())
+	{
+		error = "_vsmr.last_active_profile must be a string.";
+		return false;
+	}
+	if (metadata->HasMember(kVacdmKey))
+	{
+		if (!(*metadata)[kVacdmKey].IsObject() ||
+			((*metadata)[kVacdmKey].HasMember(kVacdmServerUrlKey) &&
+				!(*metadata)[kVacdmKey][kVacdmServerUrlKey].IsString()))
+		{
+			error = "_vsmr.vacdm.server_url must be a string.";
+			return false;
+		}
+	}
+	if (metadata->HasMember(kAvisoPresetsKey))
+	{
+		const rapidjson::Value& presetRoot = (*metadata)[kAvisoPresetsKey];
+		if (!presetRoot.IsObject())
+		{
+			error = "_vsmr.aviso_presets must be an object.";
+			return false;
+		}
+		if (presetRoot.HasMember(kAirportPresetStoresKey))
+		{
+			if (!presetRoot[kAirportPresetStoresKey].IsObject())
+			{
+				error = "_vsmr.aviso_presets.airports must be an object.";
+				return false;
+			}
+			for (auto airport = presetRoot[kAirportPresetStoresKey].MemberBegin();
+				airport != presetRoot[kAirportPresetStoresKey].MemberEnd(); ++airport)
+			{
+				const std::string airportName = NormalizeAirportKey(airport->name.GetString());
+				if (airportName.empty() ||
+					!ValidatePresetStore(airport->value, "Inset presets for " + airportName, error))
+					return false;
+			}
+		}
+		// Flat stores are deliberately retained. They do not contain an airport
+		// identity, so assigning them to whichever airport happens to be active
+		// would silently corrupt their scope.
+		if (!ValidatePresetStore(presetRoot, "Legacy inset presets", error))
+			return false;
+	}
+
+	const std::string lastActive = TrimAsciiWhitespace(ReadStringMember(*metadata, kLastActiveProfileKey));
+	if (!lastActive.empty())
+	{
+		const bool exists = std::any_of(profileNames.begin(), profileNames.end(), [&](const std::string& name) {
+			return EqualsNoCaseAscii(name, lastActive);
+		});
+		if (!exists)
+		{
+			SetStringMember(*metadata, kLastActiveProfileKey, profileNames.front(), allocator);
+			migrated = true;
+		}
+	}
+	return true;
+}
+
 CConfig::CConfig(string configPath, string mapPath)
 {
 	config_path = configPath;
 	map_path = mapPath;
+	invalid_profile.SetObject();
 	loadConfig();
 	loadMap();
 
@@ -950,10 +1487,13 @@ bool CConfig::reload()
 {
 	string activeName = getActiveProfileName();
 	const bool configLoaded = loadConfig();
-	const bool mapLoaded = loadMap();
+	// Legacy map data is optional and independent from the profiles source.
+	// A bad obsolete map file must not turn a successful profile reload or
+	// backup recovery into a false failure.
+	loadMap();
 	if (!profiles.empty())
 		setActiveProfile(activeName.empty() ? profiles.begin()->first : activeName);
-	return configLoaded && mapLoaded;
+	return configLoaded;
 }
 
 bool CConfig::replaceInMemoryConfig(
@@ -979,6 +1519,9 @@ bool CConfig::replaceInMemoryConfig(
 		error = "Profiles state could not be parsed.";
 		return false;
 	}
+	bool migrated = false;
+	if (!validateAndMigrateProfilesDocument(parsed, error, migrated))
+		return false;
 
 	map<string, rapidjson::SizeType> replacementProfiles;
 	std::vector<string> normalizedNames;
@@ -1042,64 +1585,120 @@ vector<CConfig::mapData> CConfig::getMapElementsForZoomLevel(int zoomLevel)
 }
 
 bool CConfig::loadConfig() {
-	std::string serializedJson;
-	if (!ReadFileContents(config_path, serializedJson))
-	{
-		if (document.IsNull())
-			document.SetArray();
-		return false;
-	}
+	const bool hadUsableConfiguration = !profiles.empty() && document.IsArray();
+	config_revision = FileRevision(config_path);
+	config_healthy = false;
+	using_backup = false;
+	last_load_message.clear();
 
-	Document validationDocument;
-	if (!ParseValidatedArray(serializedJson, validationDocument))
+	auto parseCandidate = [&](
+		const std::string& serializedJson,
+		Document& candidate,
+		map<string, rapidjson::SizeType>& candidateProfiles,
+		bool& migrated,
+		std::string& error) -> bool
 	{
-		ReportLoadFailure("configuration");
-		if (document.IsNull())
-			document.SetArray();
-		return false;
-	}
-
-	map<string, rapidjson::SizeType> loadedProfiles;
-	std::unordered_set<string> normalizedProfileNames;
-	for (SizeType i = 0; i < validationDocument.Size(); i++) {
-		const Value& profile = validationDocument[i];
-		if (!IsProfileEntry(profile))
-			continue;
-		const string profileName = trimProfileName(profile["name"].GetString());
-		string normalizedName = profileName;
-		std::transform(
-			normalizedName.begin(),
-			normalizedName.end(),
-			normalizedName.begin(),
-			[](unsigned char character) {
-				return static_cast<char>(std::tolower(character));
-			});
-		if (profileName.empty() ||
-			!normalizedProfileNames.insert(normalizedName).second)
+		candidate.Parse<0>(serializedJson.c_str());
+		if (candidate.HasParseError() || !candidate.IsArray())
 		{
+			error = "The profiles file is not a valid JSON array.";
+			return false;
+		}
+		if (!validateAndMigrateProfilesDocument(candidate, error, migrated))
+			return false;
+		for (SizeType index = 0; index < candidate.Size(); ++index)
+		{
+			const Value& profile = candidate[index];
+			if (IsProfileEntry(profile))
+				candidateProfiles[trimProfileName(profile["name"].GetString())] = index;
+		}
+		return !candidateProfiles.empty();
+	};
+
+	std::string mainJson;
+	std::string mainError;
+	Document mainCandidate(&document.GetAllocator());
+	map<string, rapidjson::SizeType> mainProfiles;
+	bool mainMigrated = false;
+	const bool mainRead = ReadFileContents(config_path, mainJson);
+	const bool mainValid = mainRead && parseCandidate(
+		mainJson,
+		mainCandidate,
+		mainProfiles,
+		mainMigrated,
+		mainError);
+
+	if (mainValid)
+	{
+		if (mainMigrated && !PersistConfigDocument(config_path, mainCandidate))
+		{
+			// The source is semantically valid and the migration succeeded.  Keep
+			// that safe migrated view available in memory, but mark it unhealthy so
+			// the UI blocks writes until the user fixes permissions or restores a
+			// writable source.
+			AdoptDocument(document, mainCandidate);
+			profiles.swap(mainProfiles);
+			active_profile = profiles.begin()->second;
+			config_revision = ContentRevision(mainJson);
+			config_healthy = false;
+			using_backup = false;
+			last_load_message =
+				"The profiles file is valid but its schema migration could not be saved. "
+				"The migrated profiles are active read-only. Check folder permissions, then reload.";
 			ReportLoadFailure("configuration");
 			return false;
 		}
-		loadedProfiles.insert(pair<string, rapidjson::SizeType>(profileName, i));
+
+		AdoptDocument(document, mainCandidate);
+		profiles.swap(mainProfiles);
+		active_profile = profiles.begin()->second;
+		config_revision = mainMigrated
+			? FileRevision(config_path)
+			: ContentRevision(mainJson);
+		config_healthy = true;
+		using_backup = false;
+		if (mainMigrated)
+			last_load_message = "Profiles were migrated transactionally to schema version 2.";
+		return true;
 	}
-	if (loadedProfiles.empty())
+
+	const std::string failure = mainRead
+		? (mainError.empty() ? "The profiles file is invalid." : mainError)
+		: "The configured profiles file is missing or cannot be read.";
+	std::string backupJson;
+	std::string backupError;
+	Document backupCandidate(&document.GetAllocator());
+	map<string, rapidjson::SizeType> backupProfiles;
+	bool backupMigrated = false;
+	if (ReadFileContents(config_path + kBackupSuffix, backupJson) &&
+		parseCandidate(
+			backupJson,
+			backupCandidate,
+			backupProfiles,
+			backupMigrated,
+			backupError))
 	{
-		ReportLoadFailure("configuration");
+		AdoptDocument(document, backupCandidate);
+		profiles.swap(backupProfiles);
+		active_profile = profiles.begin()->second;
+		using_backup = true;
+		last_load_message = failure +
+			" A validated .bak copy is active in memory. Restore that backup or bundled defaults from Settings before saving other changes.";
+		ReportLoadFailure("configuration (recovered from backup)");
 		return false;
 	}
 
-	Document replacement(&document.GetAllocator());
-	replacement.Parse<0>(serializedJson.c_str());
-	if (replacement.HasParseError() || !replacement.IsArray())
+	last_load_message = failure +
+		" No validated backup is available. Restore bundled defaults from Settings.";
+	if (!hadUsableConfiguration)
 	{
-		ReportLoadFailure("configuration");
-		return false;
+		document.SetArray();
+		profiles.clear();
+		active_profile = 0;
+		invalid_profile.SetObject();
 	}
-
-	AdoptDocument(document, replacement);
-	profiles.swap(loadedProfiles);
-	active_profile = 0;
-	return true;
+	ReportLoadFailure("configuration");
+	return false;
 }
 
 bool CConfig::loadMap()
@@ -1146,8 +1745,7 @@ const Value& CConfig::getActiveProfile() {
 			return document[profiles.begin()->second];
 	}
 
-	static const Value emptyProfile(kObjectType);
-	return emptyProfile;
+	return invalid_profile;
 }
 
 const Value* CConfig::findSidDefinition(const string& sid, const string& airport)
@@ -1296,6 +1894,111 @@ size_t CConfig::getProfileCount() const
 	return profiles.size();
 }
 
+string CConfig::getConfigRevision() const
+{
+	return config_revision;
+}
+
+string CConfig::getPersistedConfigRevision() const
+{
+	return FileRevision(config_path);
+}
+
+string CConfig::getLastLoadMessage() const
+{
+	return last_load_message;
+}
+
+bool CConfig::isConfigHealthy() const
+{
+	return config_healthy && !profiles.empty();
+}
+
+bool CConfig::isUsingBackup() const
+{
+	return using_backup;
+}
+
+bool CConfig::isBackupAvailable() const
+{
+	std::string backupJson;
+	if (!ReadFileContents(config_path + kBackupSuffix, backupJson))
+		return false;
+	Document candidate;
+	candidate.Parse<0>(backupJson.c_str());
+	if (candidate.HasParseError())
+		return false;
+	std::string error;
+	bool migrated = false;
+	return validateAndMigrateProfilesDocument(candidate, error, migrated);
+}
+
+bool CConfig::restoreBackup(string& error)
+{
+	error.clear();
+	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
+	const std::string activeBefore = getActiveProfileName();
+	const std::string backupPath = config_path + kBackupSuffix;
+	std::string backupJson;
+	if (!ReadFileContents(backupPath, backupJson))
+	{
+		error = "No readable profiles backup is available.";
+		return false;
+	}
+
+	Document candidate;
+	candidate.Parse<0>(backupJson.c_str());
+	bool migrated = false;
+	if (candidate.HasParseError() ||
+		!validateAndMigrateProfilesDocument(candidate, error, migrated))
+	{
+		if (error.empty())
+			error = "The profiles backup contains invalid JSON.";
+		return false;
+	}
+
+	rapidjson::StringBuffer buffer;
+	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+	candidate.Accept(writer);
+	const std::string restoredJson(buffer.GetString(), buffer.Size());
+	std::string temporaryPath;
+	if (!WriteTemporaryFile(config_path, restoredJson, temporaryPath) ||
+		!::MoveFileExA(
+			temporaryPath.c_str(),
+			config_path.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		if (!temporaryPath.empty())
+			::DeleteFileA(temporaryPath.c_str());
+		error = "Unable to restore the profiles backup. Check folder permissions.";
+		return false;
+	}
+
+	map<string, rapidjson::SizeType> restoredProfiles;
+	for (rapidjson::SizeType index = 0; index < candidate.Size(); ++index)
+	{
+		if (IsProfileEntry(candidate[index]))
+			restoredProfiles[trimProfileName(candidate[index]["name"].GetString())] = index;
+	}
+	Document replacement(&document.GetAllocator());
+	replacement.Parse<0>(restoredJson.c_str());
+	if (replacement.HasParseError() || restoredProfiles.empty())
+	{
+		error = "The profiles backup was restored but could not be activated. Reload vSMR.";
+		return false;
+	}
+	AdoptDocument(document, replacement);
+	profiles.swap(restoredProfiles);
+	active_profile = profiles.begin()->second;
+	if (!activeBefore.empty())
+		setActiveProfile(activeBefore);
+	config_revision = ContentRevision(restoredJson);
+	config_healthy = true;
+	using_backup = false;
+	last_load_message = "Profiles backup restored.";
+	return true;
+}
+
 const Value* CConfig::findMetadata() const
 {
 	if (!document.IsArray())
@@ -1373,25 +2076,127 @@ bool CConfig::setVacdmServerUrl(const string& serverUrl)
 	return true;
 }
 
-bool CConfig::saveConfig(const vector<ProfileSaveIdentity>& profileIdentities)
+bool CConfig::saveConfig(
+	const vector<ProfileSaveIdentity>& profileIdentities,
+	const string& expectedRevision,
+	string* error,
+	bool allowRecoveryReplacement)
 {
 	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
+	if (error != nullptr)
+		error->clear();
 	if (!document.IsArray())
+	{
+		if (error != nullptr)
+			*error = "The in-memory profiles state is not an array.";
 		return false;
+	}
+
+	std::string currentJson;
+	const bool currentFileReadable = ReadFileContents(config_path, currentJson);
+	const std::string currentRevision = currentFileReadable
+		? ContentRevision(currentJson)
+		: "missing";
+	const std::string requiredRevision = expectedRevision.empty()
+		? config_revision
+		: expectedRevision;
+	if (!requiredRevision.empty() && requiredRevision != currentRevision)
+	{
+		if (error != nullptr)
+			*error =
+				"The profiles file changed in another vSMR window. Reload before saving so those changes are not overwritten.";
+		return false;
+	}
+	if (!config_healthy && !allowRecoveryReplacement)
+	{
+		if (error != nullptr)
+			*error = using_backup
+				? "A backup is active in memory. Restore it from Settings before saving other changes."
+				: "The profiles source is invalid. Restore a backup or bundled defaults from Settings before saving.";
+		return false;
+	}
+
+	Document validated;
+	rapidjson::StringBuffer candidateBuffer;
+	rapidjson::Writer<rapidjson::StringBuffer> candidateWriter(candidateBuffer);
+	document.Accept(candidateWriter);
+	validated.Parse<0>(candidateBuffer.GetString());
+	bool migrated = false;
+	std::string validationError;
+	if (validated.HasParseError() ||
+		!validateAndMigrateProfilesDocument(validated, validationError, migrated))
+	{
+		if (error != nullptr)
+			*error = validationError.empty()
+				? "The profiles state failed validation. Nothing was saved."
+				: validationError;
+		return false;
+	}
+	if (migrated)
+	{
+		Document replacement(&document.GetAllocator());
+		rapidjson::StringBuffer migratedBuffer;
+		rapidjson::Writer<rapidjson::StringBuffer> migratedWriter(migratedBuffer);
+		validated.Accept(migratedWriter);
+		replacement.Parse<0>(migratedBuffer.GetString());
+		if (replacement.HasParseError())
+		{
+			if (error != nullptr)
+				*error = "The migrated profiles state could not be prepared for saving.";
+			return false;
+		}
+		AdoptDocument(document, replacement);
+	}
 
 	// Preset stores are immediate, shared state. An ordinary save may originate
 	// from a screen whose full profile snapshot predates another screen's preset
 	// transaction, so refresh only these roots before persisting everything else.
 	std::string latestJson;
 	Document latestDocument;
-	if (ReadFileContents(config_path, latestJson) &&
-		ParseValidatedArray(latestJson, latestDocument) &&
-		!MergeLatestAvisoPresetRoots(document, latestDocument, profileIdentities))
+	bool currentProfilesValid = false;
+	if (currentFileReadable)
 	{
-		return false;
+		latestDocument.Parse<0>(currentJson.c_str());
+		bool latestMigrated = false;
+		std::string latestError;
+		if (latestDocument.HasParseError() ||
+			!validateAndMigrateProfilesDocument(latestDocument, latestError, latestMigrated))
+		{
+			// An explicitly confirmed recovery save may replace a damaged primary
+			// file, but it must never overwrite the known-good .bak with that damage.
+			if (config_healthy)
+			{
+				if (error != nullptr)
+					*error = "The profiles file became invalid on disk. Reload or restore a backup before saving.";
+				return false;
+			}
+		}
+		else
+		{
+			currentProfilesValid = true;
+			if (!MergeLatestAvisoPresetRoots(document, latestDocument, profileIdentities))
+			{
+				if (error != nullptr)
+					*error = "Unable to merge shared inset presets from the latest profiles file.";
+				return false;
+			}
+		}
 	}
 
-	return PersistConfigDocument(config_path, document);
+	// Back up only a primary file that was just validated.  During recovery a
+	// missing, unreadable, or corrupt primary must never replace the known-good
+	// .bak that allowed vSMR to recover.
+	if (!PersistConfigDocument(config_path, document, currentProfilesValid))
+	{
+		if (error != nullptr)
+			*error = "Unable to save vSMR_Profiles.json atomically.";
+		return false;
+	}
+	config_revision = FileRevision(config_path);
+	config_healthy = true;
+	using_backup = false;
+	last_load_message.clear();
+	return true;
 }
 
 bool CConfig::sharesConfigFileWith(const CConfig& other) const
@@ -1423,7 +2228,16 @@ bool CConfig::transactAvisoPresetStore(
 	{
 		return false;
 	}
-
+	const std::string previousRevision = ContentRevision(latestJson);
+	bool schemaMigrated = false;
+	std::string validationError;
+	if (!validateAndMigrateProfilesDocument(
+		latestDocument,
+		validationError,
+		schemaMigrated))
+	{
+		return false;
+	}
 	const bool migrated = MigrateProfileAvisoPresetRoots(
 		latestDocument,
 		// Profile identity is used only to choose deterministic precedence while
@@ -1437,11 +2251,12 @@ bool CConfig::transactAvisoPresetStore(
 	if (action == AvisoPresetTransactionAction::Abort)
 		return false;
 
-	if ((migrated || action == AvisoPresetTransactionAction::Save) &&
+	if ((schemaMigrated || migrated || action == AvisoPresetTransactionAction::Save) &&
 		!PersistConfigDocument(config_path, latestDocument))
 	{
 		return false;
 	}
+	const std::string persistedRevision = FileRevision(config_path);
 
 	bool ownerMerged = false;
 	for (CConfig* liveConfig : gLiveConfigs)
@@ -1450,6 +2265,8 @@ bool CConfig::transactAvisoPresetStore(
 			!EqualsNoCaseAscii(liveConfig->config_path, config_path))
 			continue;
 
+		const bool revisionWasCurrent =
+			liveConfig->config_revision == previousRevision;
 		if (!MergeLatestAvisoPresetRoots(
 			liveConfig->document,
 			latestDocument,
@@ -1457,11 +2274,154 @@ bool CConfig::transactAvisoPresetStore(
 		{
 			return false;
 		}
+		if (revisionWasCurrent)
+			liveConfig->config_revision = persistedRevision;
 		if (liveConfig == this)
 			ownerMerged = true;
 	}
 
 	return ownerMerged;
+}
+
+bool CConfig::assignUnscopedAvisoPresetsToAirport(
+	const string& preferredProfileName,
+	const string& airport,
+	size_t& assignedPresetCount,
+	string& error)
+{
+	assignedPresetCount = 0;
+	error.clear();
+	const std::string airportKey = NormalizeAirportKey(airport);
+	if (airportKey.size() != 4 ||
+		!std::all_of(airportKey.begin(), airportKey.end(), [](unsigned char c) {
+			return std::isalnum(c) != 0;
+		}))
+	{
+		error = "A valid four-character airport is required.";
+		return false;
+	}
+
+	std::lock_guard<std::mutex> writeGuard(gConfigSaveMutex);
+	std::string latestJson;
+	Document latestDocument;
+	if (!ReadFileContents(config_path, latestJson) ||
+		!ParseValidatedArray(latestJson, latestDocument))
+	{
+		error = "The current profiles file is unavailable or invalid.";
+		return false;
+	}
+	const std::string previousRevision = ContentRevision(latestJson);
+	bool schemaMigrated = false;
+	if (!validateAndMigrateProfilesDocument(
+		latestDocument,
+		error,
+		schemaMigrated))
+	{
+		return false;
+	}
+
+	auto& allocator = latestDocument.GetAllocator();
+	Value& metadata = EnsureMetadataValue(latestDocument);
+	Value& globalRoot = EnsureObjectMember(metadata, kAvisoPresetsKey, allocator);
+	Value& airportStores = EnsureObjectMember(globalRoot, kAirportPresetStoresKey, allocator);
+	Value& destination = EnsureObjectMember(airportStores, airportKey.c_str(), allocator);
+	bool assigned = false;
+
+	auto assignFlatStore = [&](
+		Value& sourceRoot,
+		const Value* parentProfile,
+		const std::string& sourceLabel) -> bool
+	{
+		const bool hasItems = sourceRoot.HasMember(kPresetItemsKey);
+		const bool hasDefault = sourceRoot.HasMember(kDefaultPresetKey);
+		if (!hasItems && !hasDefault)
+			return true;
+
+		std::string explicitAirport = NormalizeAirportKey(
+			ReadStringMember(sourceRoot, "airport"));
+		if (explicitAirport.empty() && parentProfile != nullptr)
+			explicitAirport = NormalizeAirportKey(
+				ReadStringMember(*parentProfile, "airport"));
+		const bool hasExplicitAirport = explicitAirport.size() == 4 &&
+			std::all_of(explicitAirport.begin(), explicitAirport.end(), [](unsigned char c) {
+				return std::isalnum(c) != 0;
+			});
+		if (hasExplicitAirport)
+			return true;
+
+		if (!PresetSectionCanBeMigrated(sourceRoot) ||
+			!MergePresetSection(destination, sourceRoot, sourceLabel, allocator))
+		{
+			error = "A legacy inset preset store could not be migrated safely.";
+			return false;
+		}
+		if (hasItems)
+			assignedPresetCount += sourceRoot[kPresetItemsKey].Size();
+		sourceRoot.RemoveMember(kPresetItemsKey);
+		if (hasDefault)
+			sourceRoot.RemoveMember(kDefaultPresetKey);
+		if (sourceRoot.HasMember("airport"))
+			sourceRoot.RemoveMember("airport");
+		assigned = true;
+		return true;
+	};
+
+	if (!assignFlatStore(globalRoot, nullptr, "Legacy"))
+		return false;
+	for (rapidjson::SizeType index = 0; index < latestDocument.Size(); ++index)
+	{
+		Value& profile = latestDocument[index];
+		if (!IsProfileEntry(profile) ||
+			!profile.HasMember(kAvisoPresetsKey) ||
+			!profile[kAvisoPresetsKey].IsObject())
+		{
+			continue;
+		}
+		Value& profileRoot = profile[kAvisoPresetsKey];
+		const std::string label = ReadStringMember(profile, "name");
+		if (!assignFlatStore(profileRoot, &profile, label))
+			return false;
+	}
+
+	if (!assigned)
+	{
+		error = "No unscoped legacy inset presets remain to assign.";
+		return false;
+	}
+
+	// Consolidate any already-scoped profile stores at the same time. After the
+	// explicit assignment, the canonical metadata root is the sole authority and
+	// ordinary stale-writer protection can safely remain strict.
+	MigrateProfileAvisoPresetRoots(
+		latestDocument,
+		trimProfileName(preferredProfileName),
+		airportKey);
+	if (!PersistConfigDocument(config_path, latestDocument))
+	{
+		error = "Unable to save the airport assignment atomically.";
+		return false;
+	}
+	const std::string persistedRevision = FileRevision(config_path);
+	for (CConfig* liveConfig : gLiveConfigs)
+	{
+		if (liveConfig == nullptr ||
+			!EqualsNoCaseAscii(liveConfig->config_path, config_path))
+		{
+			continue;
+		}
+		const bool revisionWasCurrent =
+			liveConfig->config_revision == previousRevision;
+		if (!MergeLatestAvisoPresetRoots(
+			liveConfig->document,
+			latestDocument,
+			{}))
+		{
+			continue;
+		}
+		if (revisionWasCurrent)
+			liveConfig->config_revision = persistedRevision;
+	}
+	return true;
 }
 
 unordered_set<string> CConfig::getInactiveAlert()

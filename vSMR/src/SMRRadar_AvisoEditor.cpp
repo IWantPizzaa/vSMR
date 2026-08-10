@@ -145,54 +145,35 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 			" error=" + validationError);
 		return false;
 	}
+	const AvisoValidationResult semanticValidation =
+		validationModel.ValidateAndRecalculate();
+	if (!semanticValidation.ok)
+	{
+		Logger::info(
+			"AVISO GeoJSON reload semantic validation failed path=" + path +
+			" error=" + semanticValidation.errorText);
+		return false;
+	}
 
 	AvisoGeoJsonResolvedAirport.clear();
 	AvisoGeoJsonResolvedDllPath.clear();
 	AvisoGeoJsonResolvedPath.clear();
-	AvisoGeoJsonFeatures.clear();
-	AvisoGeoJsonLabels.clear();
-	{
-		auto emptyVisibility = std::make_shared<const std::unordered_map<std::string, bool>>();
-		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
-		AvisoGeoJsonFeatureSnapshot.reset();
-		AvisoGeoJsonLabelSnapshot.reset();
-		AvisoGeoJsonSourceFeatureCount = 0;
-		AvisoRuntimeGroups.clear();
-		AvisoGroupVisibilitySnapshot = std::move(emptyVisibility);
-		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-	}
-	AvisoGeoJsonLoadedPath.clear();
-	AvisoGeoJsonViewInitializedPath.clear();
+	const bool previousLoadAttempted = AvisoGeoJsonLoadAttempted;
+	const unsigned long previousLastStatTick = AvisoGeoJsonLastStatTick;
+	AvisoGeoJsonLastFailedPath.clear();
+	AvisoGeoJsonLastFailedTick = 0;
+	AvisoGeoJsonLastFailedWriteTimeValid = false;
 	AvisoGeoJsonLastStatTick = 0;
 	AvisoGeoJsonLoadAttempted = false;
-	AvisoGeoJsonLoaded = false;
-	AvisoGeoJsonRenderDisabled = false;
-	AvisoGeoJsonRenderDisabledPath.clear();
-	AvisoGeoJsonHasBounds = false;
-	AvisoGeoJsonMinLongitude = 0.0;
-	AvisoGeoJsonMinLatitude = 0.0;
-	AvisoGeoJsonMaxLongitude = 0.0;
-	AvisoGeoJsonMaxLatitude = 0.0;
-	AvisoGeoJsonLastViewValid = false;
-	AvisoGeoJsonLastViewPath.clear();
-	AvisoGeoJsonLastViewChangeTick = 0;
-	ClearAvisoGeoJsonRasterCache();
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		++AvisoGeoJsonRenderLatestRequestId;
-		AvisoGeoJsonPendingRenderRequest.reset();
-		AvisoGeoJsonCompletedRenderResult.reset();
-		AvisoGeoJsonRenderLastRequestValid = false;
-	}
 
-	for (auto& kv : appWindows)
+	const bool loaded = EnsureAvisoGeoJsonLoaded(path, false);
+	if (!loaded)
 	{
-		CInsetWindow* appWindow = kv.second.get();
-		if (appWindow != nullptr && appWindow->IsAvisoViewport())
-			appWindow->ClearAvisoViewportCache();
+		// EnsureAvisoGeoJsonLoaded is transactional. Restore its throttle state as
+		// well so the current renderer remains the authoritative loaded source.
+		AvisoGeoJsonLoadAttempted = previousLoadAttempted;
+		AvisoGeoJsonLastStatTick = previousLastStatTick;
 	}
-
-	const bool loaded = EnsureAvisoGeoJsonLoaded(path);
 	if (AvisoEditorDialog && ::IsWindow(AvisoEditorDialog->GetSafeHwnd()) && AvisoEditorDialog->IsWindowVisible())
 		AvisoEditorDialog->SyncFromRadar();
 	RequestRefresh();

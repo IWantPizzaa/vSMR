@@ -2,6 +2,7 @@
 #include "VsmrControlCenterBridge.hpp"
 
 #include "AvisoDocumentModel.hpp"
+#include "HttpHelper.hpp"
 #include "InsetWindow.h"
 #include "SMRPlugin.hpp"
 #include "SMRRadar.hpp"
@@ -14,9 +15,13 @@
 #include "rapidjson/writer.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <mutex>
 #include <set>
 #include <sstream>
 #include <unordered_set>
@@ -28,6 +33,7 @@ namespace
 {
 	constexpr int kBridgeProtocolVersion = 1;
 	constexpr size_t kMaximumBridgeMessageBytes = 32u * 1024u * 1024u;
+	std::mutex gBridgeSaveTransactionMutex;
 
 	using Allocator = rapidjson::Document::AllocatorType;
 
@@ -359,6 +365,7 @@ namespace
 		if (type == "state.save" || type == "save.all") return VsmrBridgeAction::StateSave;
 		if (type == "state.reload" || type == "reload.all") return VsmrBridgeAction::StateReload;
 		if (type == "state.reset") return VsmrBridgeAction::StateReset;
+		if (type == "state.restore.backup") return VsmrBridgeAction::StateRestoreBackup;
 		if (type == "state.undo" || type == "undo") return VsmrBridgeAction::StateUndo;
 		if (type == "state.redo" || type == "redo") return VsmrBridgeAction::StateRedo;
 		if (type == "runtime.profile.change") return VsmrBridgeAction::RuntimeProfileChange;
@@ -377,6 +384,7 @@ namespace
 		if (type == "aviso.inset.preset.reset") return VsmrBridgeAction::InsetPresetReset;
 		if (type == "aviso.inset.preset.delete") return VsmrBridgeAction::InsetPresetDelete;
 		if (type == "aviso.inset.preset.linked") return VsmrBridgeAction::InsetPresetLinked;
+		if (type == "aviso.inset.preset.legacy.assign") return VsmrBridgeAction::InsetPresetLegacyAssign;
 		if (type == "alerts.update") return VsmrBridgeAction::AlertsUpdate;
 		if (type == "settings.update") return VsmrBridgeAction::SettingsUpdate;
 		if (type == "datalink.state.request") return VsmrBridgeAction::DatalinkStateRequest;
@@ -482,72 +490,54 @@ namespace
 
 	bool ValidateProfileArray(const rapidjson::Value& profiles, std::string& error)
 	{
-		if (!profiles.IsArray())
+		rapidjson::Document candidate;
+		candidate.Parse<0>(SerializeCompact(profiles).c_str());
+		if (candidate.HasParseError())
 		{
-			error = "Profiles state must be an array.";
+			error = "Profiles state could not be parsed.";
 			return false;
 		}
-
-		std::set<std::string> names;
-		size_t profileCount = 0;
-		for (rapidjson::SizeType i = 0; i < profiles.Size(); ++i)
-		{
-			const rapidjson::Value& item = profiles[i];
-			if (!IsProfileEntry(item))
-				continue;
-			++profileCount;
-			const std::string name = LowerAscii(TrimAscii(item["name"].GetString()));
-			if (!names.insert(name).second)
-			{
-				error = "Profile names must be unique.";
-				return false;
-			}
-		}
-		if (profileCount == 0)
-		{
-			error = "At least one named profile is required.";
-			return false;
-		}
-		return true;
+		bool migrated = false;
+		return CConfig::validateAndMigrateProfilesDocument(candidate, error, migrated);
 	}
 
-	bool RestoreBackupFileAtomically(const std::string& destination)
+	bool CreateRollbackSnapshot(
+		const std::string& source,
+		std::string& snapshotPath)
 	{
-		if (destination.empty())
+		snapshotPath.clear();
+		if (source.empty())
 			return false;
 
-		const std::string backupPath = destination + ".bak";
-		const DWORD backupAttributes = ::GetFileAttributesA(backupPath.c_str());
-		if (backupAttributes == INVALID_FILE_ATTRIBUTES ||
-			(backupAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
-			return false;
-
-		std::string temporaryPath;
 		for (int attempt = 0; attempt < 128; ++attempt)
 		{
 			std::ostringstream candidate;
-			candidate << destination
-				<< ".rollback."
+			candidate << source
+				<< ".transaction-rollback."
 				<< ::GetCurrentProcessId()
 				<< "."
 				<< ::GetTickCount()
 				<< "."
 				<< attempt;
-			temporaryPath = candidate.str();
-			if (::CopyFileA(backupPath.c_str(), temporaryPath.c_str(), TRUE))
+			const std::string candidatePath = candidate.str();
+			if (::CopyFileA(source.c_str(), candidatePath.c_str(), TRUE))
+			{
+				snapshotPath = candidatePath;
 				break;
+			}
 
 			const DWORD copyError = ::GetLastError();
-			temporaryPath.clear();
 			if (copyError != ERROR_FILE_EXISTS &&
 				copyError != ERROR_ALREADY_EXISTS)
+			{
 				return false;
+			}
 		}
-		if (temporaryPath.empty())
+		if (snapshotPath.empty())
 			return false;
 
-		HANDLE temporaryFile = ::CreateFileA(
-			temporaryPath.c_str(),
+		HANDLE snapshotFile = ::CreateFileA(
+			snapshotPath.c_str(),
 			GENERIC_WRITE,
 			0,
 			nullptr,
@@ -555,20 +545,41 @@ namespace
 			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
 			nullptr);
 		const bool flushed =
-			temporaryFile != INVALID_HANDLE_VALUE &&
-			::FlushFileBuffers(temporaryFile) != FALSE;
-		if (temporaryFile != INVALID_HANDLE_VALUE)
-			::CloseHandle(temporaryFile);
-		if (!flushed ||
-			!::MoveFileExA(
-				temporaryPath.c_str(),
-				destination.c_str(),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			snapshotFile != INVALID_HANDLE_VALUE &&
+			::FlushFileBuffers(snapshotFile) != FALSE;
+		if (snapshotFile != INVALID_HANDLE_VALUE)
+			::CloseHandle(snapshotFile);
+		if (!flushed)
 		{
-			::DeleteFileA(temporaryPath.c_str());
+			::DeleteFileA(snapshotPath.c_str());
+			snapshotPath.clear();
 			return false;
 		}
 		return true;
+	}
+
+	bool RestoreRollbackSnapshotAtomically(
+		const std::string& snapshotPath,
+		const std::string& destination)
+	{
+		return !snapshotPath.empty() &&
+			!destination.empty() &&
+			::MoveFileExA(
+				snapshotPath.c_str(),
+				destination.c_str(),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+	}
+
+	bool DeleteRollbackSnapshot(std::string& snapshotPath)
+	{
+		if (snapshotPath.empty())
+			return true;
+		const bool deleted =
+			::DeleteFileA(snapshotPath.c_str()) != FALSE ||
+			::GetLastError() == ERROR_FILE_NOT_FOUND;
+		if (deleted)
+			snapshotPath.clear();
+		return deleted;
 	}
 
 	void MergeProfileArrayPreservingTopLevelUnknowns(
@@ -751,33 +762,35 @@ namespace
 
 	bool IsAllowedGithubUrl(const std::string& value)
 	{
-		const std::string lowered = LowerAscii(TrimAscii(value));
-		return lowered.rfind("https://github.com/", 0) == 0 ||
-			lowered.rfind("https://www.github.com/", 0) == 0 ||
-			lowered.rfind("https://raw.githubusercontent.com/", 0) == 0;
+		const std::string url = TrimAscii(value);
+		return HttpHelper::IsHttpsUrlForHost(url, "github.com") ||
+			HttpHelper::IsHttpsUrlForHost(url, "www.github.com") ||
+			HttpHelper::IsHttpsUrlForHost(url, "raw.githubusercontent.com");
 	}
 
 	std::string NormalizeGithubRawUrl(const std::string& value)
 	{
 		std::string url = TrimAscii(value);
-		const std::string lowered = LowerAscii(url);
 		const std::string rawPrefix = "https://raw.githubusercontent.com/";
-		if (lowered.rfind(rawPrefix, 0) == 0)
+		if (HttpHelper::IsHttpsUrlForHost(url, "raw.githubusercontent.com"))
 			return url;
-
-		const std::string githubPrefix = lowered.rfind("https://www.github.com/", 0) == 0
-			? "https://www.github.com/"
-			: "https://github.com/";
-		if (lowered.rfind(githubPrefix, 0) != 0)
+		if (!HttpHelper::IsHttpsUrlForHost(url, "github.com") &&
+			!HttpHelper::IsHttpsUrlForHost(url, "www.github.com"))
 			return "";
 
-		std::string path = url.substr(githubPrefix.size());
+		const size_t authorityEnd = url.find('/', url.find("://") + 3);
+		if (authorityEnd == std::string::npos)
+			return "";
+		std::string path = url.substr(authorityEnd + 1);
+		const size_t suffix = path.find_first_of("?#");
+		if (suffix != std::string::npos)
+			path.resize(suffix);
 		const size_t blob = LowerAscii(path).find("/blob/");
 		if (blob == std::string::npos)
 			return "";
 		const std::string repository = path.substr(0, blob);
 		const std::string file = path.substr(blob + 6);
-		if (repository.empty() || file.empty())
+		if (repository.empty() || repository.find('/') == std::string::npos || file.empty())
 			return "";
 		return rawPrefix + repository + "/" + file;
 	}
@@ -788,6 +801,13 @@ struct VsmrControlCenterBridge::Impl
 	CSMRRadar* Owner = nullptr;
 	VsmrBridgeHostCallbacks Callbacks;
 	unsigned long long NativeMessageSequence = 0;
+	mutable std::string AvisoHealthCachePath;
+	mutable std::filesystem::file_time_type AvisoHealthCacheWriteTime{};
+	mutable std::uintmax_t AvisoHealthCacheSize = 0;
+	mutable bool AvisoHealthCacheExists = false;
+	mutable bool AvisoHealthCacheHealthy = false;
+	mutable std::string AvisoHealthCacheMessage;
+	mutable std::string AvisoHealthCacheDocumentJson;
 
 	explicit Impl(CSMRRadar* owner, VsmrBridgeHostCallbacks callbacks)
 		: Owner(owner), Callbacks(std::move(callbacks))
@@ -831,6 +851,117 @@ struct VsmrControlCenterBridge::Impl
 		message.AddMember("payload", payload, allocator);
 		AddString(message, "message", messageText, allocator);
 		Send(message);
+	}
+
+	std::string ContentRevision(const std::string& contents)
+	{
+		std::uint64_t hash = 14695981039346656037ULL;
+		for (const unsigned char byte : contents)
+		{
+			hash ^= static_cast<std::uint64_t>(byte);
+			hash *= 1099511628211ULL;
+		}
+		std::ostringstream output;
+		output << std::hex << std::setfill('0') << std::setw(16) << hash;
+		return output.str();
+	}
+
+	std::string FileRevision(const std::string& path)
+	{
+		std::string contents;
+		return ReadFileText(path, contents) ? ContentRevision(contents) : "missing";
+	}
+
+	void EvaluateAvisoHealth(
+		const std::string& path,
+		bool& healthy,
+		std::string& message) const
+	{
+		std::error_code fileError;
+		const std::filesystem::path filePath(path);
+		const bool exists = !path.empty() &&
+			std::filesystem::is_regular_file(filePath, fileError) &&
+			!fileError;
+		const std::uintmax_t size = exists
+			? std::filesystem::file_size(filePath, fileError)
+			: 0;
+		const std::filesystem::file_time_type writeTime = exists && !fileError
+			? std::filesystem::last_write_time(filePath, fileError)
+			: std::filesystem::file_time_type{};
+		const bool stampValid = !fileError;
+		if (stampValid &&
+			AvisoHealthCachePath == path &&
+			AvisoHealthCacheExists == exists &&
+			AvisoHealthCacheSize == size &&
+			AvisoHealthCacheWriteTime == writeTime)
+		{
+			healthy = AvisoHealthCacheHealthy;
+			message = AvisoHealthCacheMessage;
+			return;
+		}
+
+		healthy = false;
+		message = "The active airport AVISO source is missing or invalid; the previous overlay remains active when available.";
+		std::string validatedDocumentJson;
+		if (exists && stampValid && size <= kMaximumBridgeMessageBytes)
+		{
+			std::string avisoJson;
+			rapidjson::Document parsed;
+			if (ReadFileText(path, avisoJson) &&
+				!parsed.Parse<0>(avisoJson.c_str()).HasParseError() &&
+				parsed.IsObject() &&
+				parsed.HasMember("type") &&
+				parsed["type"].IsString() &&
+				std::strcmp(parsed["type"].GetString(), "FeatureCollection") == 0)
+			{
+				bool schemaSupported = true;
+				if (parsed.HasMember("metadata"))
+				{
+					const rapidjson::Value& metadata = parsed["metadata"];
+					schemaSupported = metadata.IsObject();
+					if (schemaSupported && metadata.HasMember("schema_version"))
+					{
+						const rapidjson::Value& schemaVersion = metadata["schema_version"];
+						schemaSupported = schemaVersion.IsInt() &&
+							schemaVersion.GetInt() >= 1 &&
+							schemaVersion.GetInt() <= 2;
+					}
+				}
+				if (schemaSupported)
+				{
+					AvisoDocumentModel validationModel;
+					CloneJsonValue(
+						parsed,
+						validationModel.MutableDocument(),
+						validationModel.MutableDocument().GetAllocator());
+					validationModel.MarkIndexesDirty();
+					const AvisoValidationResult validation =
+						validationModel.ValidateAndRecalculate();
+					healthy = validation.ok;
+					if (healthy)
+						validatedDocumentJson = SerializeCompact(
+							validationModel.GetDocument());
+					if (!healthy && !validation.errorText.empty())
+						message = validation.errorText;
+				}
+			}
+		}
+		else if (exists && size > kMaximumBridgeMessageBytes)
+		{
+			message = "The active airport AVISO source exceeds the supported 32 MB limit.";
+		}
+
+		AvisoHealthCachePath = path;
+		AvisoHealthCacheExists = exists;
+		AvisoHealthCacheSize = size;
+		AvisoHealthCacheWriteTime = writeTime;
+		AvisoHealthCacheHealthy = healthy;
+		AvisoHealthCacheMessage = healthy ? std::string() : message;
+		AvisoHealthCacheDocumentJson = healthy
+			? std::move(validatedDocumentJson)
+			: std::string();
+		if (healthy)
+			message.clear();
 	}
 
 	CSMRPlugin* DatalinkPlugin() const
@@ -910,6 +1041,38 @@ struct VsmrControlCenterBridge::Impl
 		settings.AddMember("showFps", Owner->ShowFps, allocator);
 		settings.AddMember("runtimeSync", true, allocator);
 		settings.AddMember("confirmDelete", true, allocator);
+
+		rapidjson::Value dataHealth(rapidjson::kObjectType);
+		const bool configHealthy =
+			Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isConfigHealthy();
+		dataHealth.AddMember("profilesHealthy", configHealthy, allocator);
+		dataHealth.AddMember(
+			"profilesUsingBackup",
+			Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isUsingBackup(),
+			allocator);
+		dataHealth.AddMember(
+			"profilesBackupAvailable",
+			Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isBackupAvailable(),
+			allocator);
+		AddString(
+			dataHealth,
+			"profilesMessage",
+			Owner->CurrentConfig != nullptr
+				? Owner->CurrentConfig->getLastLoadMessage()
+				: "vSMR configuration is not available.",
+			allocator);
+		const std::string avisoPath =
+			Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+		bool avisoHealthy = false;
+		std::string avisoHealthMessage;
+		EvaluateAvisoHealth(avisoPath, avisoHealthy, avisoHealthMessage);
+		dataHealth.AddMember("avisoHealthy", avisoHealthy, allocator);
+		AddString(
+			dataHealth,
+			"avisoMessage",
+			avisoHealthy ? "" : avisoHealthMessage,
+			allocator);
+		settings.AddMember("dataHealth", dataHealth, allocator);
 
 		bool rimcasEnabled = true;
 		if (Owner->CurrentConfig != nullptr)
@@ -1011,19 +1174,27 @@ struct VsmrControlCenterBridge::Impl
 
 		const std::string path =
 			Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
-		std::string source;
 		rapidjson::Document aviso;
-		if (!ReadFileText(path, source) ||
-			aviso.Parse<0>(source.c_str()).HasParseError() ||
-			!aviso.IsObject() ||
-			!aviso.HasMember("features") ||
-			!aviso["features"].IsArray())
+		bool healthy = false;
+		std::string validationError;
+		EvaluateAvisoHealth(path, healthy, validationError);
+		const bool valid = healthy &&
+			!AvisoHealthCacheDocumentJson.empty() &&
+			!aviso.Parse<0>(AvisoHealthCacheDocumentJson.c_str()).HasParseError() &&
+			aviso.IsObject();
+		if (!valid)
 		{
 			aviso.SetObject();
 			Allocator& allocator = aviso.GetAllocator();
 			AddString(aviso, "type", "FeatureCollection", allocator);
 			rapidjson::Value features(rapidjson::kArrayType);
 			aviso.AddMember("features", features, allocator);
+			if (!validationError.empty())
+			{
+				Logger::info(
+					"Control Center withheld invalid AVISO GeoJSON: " +
+					validationError);
+			}
 		}
 		const std::vector<CSMRRadar::AvisoGroup> runtimeGroups = Owner->GetAvisoGroups();
 		if (!runtimeGroups.empty())
@@ -1073,17 +1244,21 @@ struct VsmrControlCenterBridge::Impl
 
 	void SendAuthoritativeState(
 		const std::string& reason,
-		const std::string& requestId = "")
+		const std::string& requestId = "",
+		bool includeAviso = true)
 	{
 		if (Owner == nullptr || Owner->CurrentConfig == nullptr)
 		{
 			SendError(requestId, "vSMR configuration is not available.");
 			return;
 		}
-		const std::string avisoPath =
-			Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
-		if (!avisoPath.empty())
-			Owner->EnsureAvisoGeoJsonLoaded(avisoPath);
+		if (includeAviso)
+		{
+			const std::string avisoPath =
+				Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
+			if (!avisoPath.empty())
+				Owner->EnsureAvisoGeoJsonLoaded(avisoPath);
+		}
 
 		rapidjson::Document message;
 		MakeEnvelope(message, "state.authoritative", requestId);
@@ -1107,10 +1282,22 @@ struct VsmrControlCenterBridge::Impl
 			Owner->GetActiveProfileNameForEditor(),
 			allocator);
 		AddString(payload, "airport", Owner->getActiveAirport(), allocator);
+		AddString(
+			payload,
+			"configRevision",
+			Owner->CurrentConfig->getConfigRevision(),
+			allocator);
+		AddString(
+			payload,
+			"avisoRevision",
+			FileRevision(Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport())),
+			allocator);
+		payload.AddMember("avisoFollows", includeAviso, allocator);
 		AddString(payload, "reason", reason, allocator);
 		message.AddMember("payload", payload, allocator);
 		Send(message);
-		SendAvisoState(requestId);
+		if (includeAviso)
+			SendAvisoState(requestId);
 	}
 
 	void SendStagedAuthoritativeState(
@@ -1172,6 +1359,26 @@ struct VsmrControlCenterBridge::Impl
 			"airport",
 			stagedAirport.empty() ? Owner->getActiveAirport() : stagedAirport,
 			allocator);
+		// Staged editor content must never be paired with a revision observed
+		// after that content was captured. Echo only the caller's exact tokens;
+		// omitting absent tokens keeps unrelated group-only updates from blessing
+		// stale editor data with a newer disk revision.
+		const std::string stagedConfigRevision =
+			TrimAscii(ReadString(stagedState, "configRevision"));
+		const std::string stagedAvisoRevision =
+			TrimAscii(ReadString(stagedState, "avisoRevision"));
+		if (!stagedConfigRevision.empty())
+			AddString(
+				payload,
+				"configRevision",
+				stagedConfigRevision,
+				allocator);
+		if (!stagedAvisoRevision.empty())
+			AddString(
+				payload,
+				"avisoRevision",
+				stagedAvisoRevision,
+				allocator);
 		AddString(payload, "reason", reason, allocator);
 		message.AddMember("payload", payload, allocator);
 		Send(message);
@@ -1196,15 +1403,41 @@ struct VsmrControlCenterBridge::Impl
 			error = "Undo/redo payload is missing staged state.";
 			return false;
 		}
+		std::lock_guard<std::mutex> transactionLock(
+			gBridgeSaveTransactionMutex);
 
 		const rapidjson::Value& stagedState = (*payload)["state"];
 		const std::string stagedAirport = TrimAscii(ReadString(stagedState, "airport"));
+		const std::string expectedConfigRevision =
+			TrimAscii(ReadString(stagedState, "configRevision"));
+		const std::string persistedConfigRevision =
+			Owner->CurrentConfig->getPersistedConfigRevision();
+		if (expectedConfigRevision.empty() ||
+			expectedConfigRevision != persistedConfigRevision)
+		{
+			error = "The profiles file changed after this history entry was created. Reload the Control Center before continuing.";
+			return false;
+		}
 		if (stagedState.HasMember("aviso") &&
 			(stagedAirport.empty() ||
 				!EqualsNoCase(stagedAirport, TrimAscii(Owner->getActiveAirport()))))
 		{
 			error = "The active airport changed while these edits were staged. Reload the Control Center before continuing.";
 			return false;
+		}
+		if (stagedState.HasMember("aviso"))
+		{
+			const std::string expectedAvisoRevision =
+				TrimAscii(ReadString(stagedState, "avisoRevision"));
+			const std::string currentAvisoRevision = FileRevision(
+				Owner->GetAvisoGeoJsonEditorPathForAirport(
+					Owner->getActiveAirport()));
+			if (expectedAvisoRevision.empty() ||
+				expectedAvisoRevision != currentAvisoRevision)
+			{
+				error = "The AVISO file changed after this history entry was created. Reload the Control Center before continuing.";
+				return false;
+			}
 		}
 		if (!stagedState.HasMember("profiles"))
 		{
@@ -1215,106 +1448,34 @@ struct VsmrControlCenterBridge::Impl
 		if (!ValidateProfileArray(profiles, error))
 			return false;
 
-		std::string activeProfile = ReadString(stagedState, "activeProfile");
-		if (activeProfile.empty())
-			activeProfile = Owner->GetActiveProfileNameForEditor();
-
-		if (!Owner->CurrentConfig->replaceInMemoryConfig(
-			profiles,
-			activeProfile,
-			error))
-			return false;
-
-		// LoadProfile normally records the old RIMCAS selection first. Seed it
-		// with the staged selection so applying history cannot overwrite the
-		// profile that is being restored.
-		if (Owner->RimcasInstance != nullptr)
-			Owner->RimcasInstance->setInactiveAlerts(
-				Owner->CurrentConfig->getInactiveAlert());
-		Owner->LoadProfile(activeProfile);
-
-		// LoadProfile's session bookkeeping is intentionally mutable. Restore
-		// the exact editor document after the live renderer has consumed it.
-		if (!Owner->CurrentConfig->replaceInMemoryConfig(
-			profiles,
-			activeProfile,
-			error))
-			return false;
-
-		if (stagedState.HasMember("settings") &&
-			stagedState["settings"].IsObject())
-		{
-			const std::string resolution =
-				ReadString(stagedState["settings"], "resolutionPreset");
-			if (!resolution.empty() &&
-				!Owner->SetSmallTargetIconBoostResolutionPreset(
-					resolution,
-					false))
-			{
-				error = "The staged resolution preset is invalid.";
-				return false;
-			}
-
-			const rapidjson::Value& settings = stagedState["settings"];
-			if (settings.HasMember("showFps") && settings["showFps"].IsBool())
-			{
-				Owner->ShowFps = settings["showFps"].GetBool();
-				Owner->SaveDataToAsr(
-					"ShowFps",
-					"Show FPS counter",
-					Owner->ShowFps ? "1" : "0");
-			}
-		}
-
-		if (stagedState.HasMember("runtime") &&
-			stagedState["runtime"].IsObject() &&
-			stagedState["runtime"].HasMember("insets") &&
-			stagedState["runtime"]["insets"].IsObject())
-		{
-			const rapidjson::Value& insets = stagedState["runtime"]["insets"];
-			Owner->CancelInsetWindowInteractions();
-			const auto applyInsetVisibility = [&](int id, const char* key)
-			{
-				if (!insets.HasMember(key) || !insets[key].IsBool())
-					return;
-				const bool visible = ReadBool(insets, key, false);
-				Owner->appWindowDisplays[id] = visible;
-				if (!visible)
-				{
-					auto windowIt = Owner->appWindows.find(id);
-					if (windowIt != Owner->appWindows.end() && windowIt->second != nullptr)
-						windowIt->second->ResetAvisoInteractionState();
-				}
-			};
-			applyInsetVisibility(3, "aviso");
-			applyInsetVisibility(1, "srw1");
-			applyInsetVisibility(APPWINDOW_WEATHER - APPWINDOW_BASE, "weather");
-			applyInsetVisibility(APPWINDOW_TIMER - APPWINDOW_BASE, "timer");
-		}
-
+		// Prepare every fallible AVISO operation before changing the live profile,
+		// settings, or inset state. Undo/redo must be one logical transaction: a
+		// malformed group near the end of the payload cannot leave the earlier
+		// profile and UI changes applied.
+		const rapidjson::Value* stagedAviso = nullptr;
+		std::vector<CSMRRadar::AvisoGroup> stagedGroups;
+		bool hasStagedGroups = false;
 		if (stagedState.HasMember("aviso"))
 		{
-			const rapidjson::Value& stagedAviso = stagedState["aviso"];
-			if (!stagedAviso.IsObject() ||
-				!stagedAviso.HasMember("features") ||
-				!stagedAviso["features"].IsArray())
+			stagedAviso = &stagedState["aviso"];
+			if (!stagedAviso->IsObject() ||
+				!stagedAviso->HasMember("features") ||
+				!(*stagedAviso)["features"].IsArray())
 			{
 				error = "Undo/redo AVISO state must be a GeoJSON FeatureCollection.";
 				return false;
 			}
 
-			std::vector<CSMRRadar::AvisoGroup> stagedGroups;
-			bool hasStagedGroups = false;
-			if (stagedAviso.HasMember("vsmr_groups"))
+			if (stagedAviso->HasMember("vsmr_groups"))
 			{
-				if (!stagedAviso["vsmr_groups"].IsArray())
+				if (!(*stagedAviso)["vsmr_groups"].IsArray())
 				{
 					error = "Undo/redo AVISO groups must be an array.";
 					return false;
 				}
 
 				hasStagedGroups = true;
-				const rapidjson::Value& groupValues = stagedAviso["vsmr_groups"];
+				const rapidjson::Value& groupValues = (*stagedAviso)["vsmr_groups"];
 				std::unordered_set<std::string> seenIds;
 				std::unordered_map<std::string, bool> existingVisibility;
 				for (const CSMRRadar::AvisoGroup& existing : Owner->GetAvisoGroups())
@@ -1349,10 +1510,9 @@ struct VsmrControlCenterBridge::Impl
 					if (group.name.empty())
 						group.name = group.id;
 					const auto existing = existingVisibility.find(group.id);
-					group.visible =
-						existing != existingVisibility.end()
-							? existing->second
-							: true;
+					group.visible = existing != existingVisibility.end()
+						? existing->second
+						: true;
 					if (item.HasMember("visible"))
 					{
 						if (!item["visible"].IsBool())
@@ -1365,22 +1525,159 @@ struct VsmrControlCenterBridge::Impl
 					stagedGroups.push_back(std::move(group));
 				}
 			}
+		}
 
+		std::string activeProfile = ReadString(stagedState, "activeProfile");
+		if (activeProfile.empty())
+			activeProfile = Owner->GetActiveProfileNameForEditor();
+
+		rapidjson::Document previousProfiles;
+		CloneJsonValue(
+			Owner->CurrentConfig->document,
+			previousProfiles,
+			previousProfiles.GetAllocator());
+		const std::string previousActiveProfile = Owner->GetActiveProfileNameForEditor();
+		const bool previousShowFps = Owner->ShowFps;
+		const std::array<std::pair<int, bool>, 4> previousInsetVisibility = {{
+			{ 3, Owner->appWindowDisplays[3] },
+			{ 1, Owner->appWindowDisplays[1] },
+			{ APPWINDOW_WEATHER - APPWINDOW_BASE,
+				Owner->appWindowDisplays[APPWINDOW_WEATHER - APPWINDOW_BASE] },
+			{ APPWINDOW_TIMER - APPWINDOW_BASE,
+				Owner->appWindowDisplays[APPWINDOW_TIMER - APPWINDOW_BASE] }
+		}};
+		auto rollbackLiveState = [&]()
+		{
+			std::string ignored;
+			if (Owner->CurrentConfig->replaceInMemoryConfig(
+				previousProfiles,
+				previousActiveProfile,
+				ignored))
+			{
+				if (Owner->RimcasInstance != nullptr)
+					Owner->RimcasInstance->setInactiveAlerts(
+						Owner->CurrentConfig->getInactiveAlert());
+				Owner->LoadProfile(previousActiveProfile, false, false);
+				// LoadProfile records mutable session state; put the exact history
+				// document back after the renderer has consumed it.
+				Owner->CurrentConfig->replaceInMemoryConfig(
+					previousProfiles,
+					previousActiveProfile,
+					ignored);
+			}
+			Owner->ShowFps = previousShowFps;
+			for (const auto& visibility : previousInsetVisibility)
+				Owner->appWindowDisplays[visibility.first] = visibility.second;
+			Owner->CancelInsetWindowInteractions();
+			Owner->RequestRefresh();
+		};
+
+		if (!Owner->CurrentConfig->replaceInMemoryConfig(
+			profiles,
+			activeProfile,
+			error))
+			return false;
+
+		// LoadProfile normally records the old RIMCAS selection first. Seed it
+		// with the staged selection so applying history cannot overwrite the
+		// profile that is being restored.
+		if (Owner->RimcasInstance != nullptr)
+			Owner->RimcasInstance->setInactiveAlerts(
+				Owner->CurrentConfig->getInactiveAlert());
+		Owner->LoadProfile(activeProfile, false, false);
+
+		// LoadProfile's session bookkeeping is intentionally mutable. Restore
+		// the exact editor document after the live renderer has consumed it.
+		if (!Owner->CurrentConfig->replaceInMemoryConfig(
+			profiles,
+			activeProfile,
+			error))
+		{
+			rollbackLiveState();
+			return false;
+		}
+
+		if (stagedState.HasMember("settings") &&
+			stagedState["settings"].IsObject())
+		{
+			const std::string resolution =
+				ReadString(stagedState["settings"], "resolutionPreset");
+			if (!resolution.empty() &&
+				!Owner->SetSmallTargetIconBoostResolutionPreset(
+					resolution,
+					false))
+			{
+				error = "The staged resolution preset is invalid.";
+				rollbackLiveState();
+				return false;
+			}
+
+			const rapidjson::Value& settings = stagedState["settings"];
+			if (settings.HasMember("showFps") && settings["showFps"].IsBool())
+			{
+				Owner->ShowFps = settings["showFps"].GetBool();
+			}
+		}
+
+		if (stagedAviso != nullptr)
+		{
 			const std::string avisoPath =
 				Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
-			if (!avisoPath.empty())
-				Owner->EnsureAvisoGeoJsonLoaded(avisoPath);
-			if (!Owner->ApplyAvisoGroupMembershipSnapshot(stagedAviso, &error))
+			if (!avisoPath.empty() &&
+				!Owner->EnsureAvisoGeoJsonLoaded(avisoPath, false))
+			{
+				error = "Unable to load the active AVISO source for undo/redo.";
+				rollbackLiveState();
+				return false;
+			}
+			if (!Owner->ApplyAvisoGroupMembershipSnapshot(*stagedAviso, &error))
 			{
 				if (error.empty())
 					error = "Unable to apply undo/redo AVISO group membership.";
+				rollbackLiveState();
 				return false;
 			}
-			if (hasStagedGroups && !Owner->UpdateAvisoGroups(stagedGroups))
+			// UpdateAvisoGroups normalizes an already validated vector and cannot
+			// fail; keep all remaining UI mutations after this final fallible step.
+			if (hasStagedGroups)
+				Owner->UpdateAvisoGroups(stagedGroups);
+		}
+
+		if (stagedState.HasMember("runtime") &&
+			stagedState["runtime"].IsObject() &&
+			stagedState["runtime"].HasMember("insets") &&
+			stagedState["runtime"]["insets"].IsObject())
+		{
+			const rapidjson::Value& insets = stagedState["runtime"]["insets"];
+			Owner->CancelInsetWindowInteractions();
+			const auto applyInsetVisibility = [&](int id, const char* key)
 			{
-				error = "Unable to apply undo/redo AVISO groups.";
-				return false;
-			}
+				if (!insets.HasMember(key) || !insets[key].IsBool())
+					return;
+				const bool visible = ReadBool(insets, key, false);
+				Owner->appWindowDisplays[id] = visible;
+				if (!visible)
+				{
+					auto windowIt = Owner->appWindows.find(id);
+					if (windowIt != Owner->appWindows.end() && windowIt->second != nullptr)
+						windowIt->second->ResetAvisoInteractionState();
+				}
+			};
+			applyInsetVisibility(3, "aviso");
+			applyInsetVisibility(1, "srw1");
+			applyInsetVisibility(APPWINDOW_WEATHER - APPWINDOW_BASE, "weather");
+			applyInsetVisibility(APPWINDOW_TIMER - APPWINDOW_BASE, "timer");
+		}
+
+		if (stagedState.HasMember("settings") &&
+			stagedState["settings"].IsObject() &&
+			stagedState["settings"].HasMember("showFps") &&
+			stagedState["settings"]["showFps"].IsBool())
+		{
+			Owner->SaveDataToAsr(
+				"ShowFps",
+				"Show FPS counter",
+				Owner->ShowFps ? "1" : "0");
 		}
 
 		Owner->InvalidateStructuredTagRuleCache();
@@ -1394,7 +1691,7 @@ struct VsmrControlCenterBridge::Impl
 
 	bool SaveAll(
 		const rapidjson::Value* payload,
-		const std::string& requestId,
+		const std::string& /*requestId*/,
 		std::string& error)
 	{
 		error.clear();
@@ -1413,6 +1710,10 @@ struct VsmrControlCenterBridge::Impl
 			error = "Save payload is missing profiles.";
 			return false;
 		}
+		// Revision checks, both file writes, and rollback form one process-wide
+		// transaction.  Without this lock two Control Centers can both pass the
+		// AVISO revision check and then corrupt each other's backup/rollback.
+		std::lock_guard<std::mutex> transactionLock(gBridgeSaveTransactionMutex);
 		const std::string stagedAirport = TrimAscii(ReadString(*payload, "airport"));
 		if (payload->HasMember("aviso") &&
 			(stagedAirport.empty() ||
@@ -1425,6 +1726,24 @@ struct VsmrControlCenterBridge::Impl
 		const rapidjson::Value& incomingProfiles = (*payload)["profiles"];
 		if (!ValidateProfileArray(incomingProfiles, error))
 			return false;
+		const std::string expectedConfigRevision =
+			TrimAscii(ReadString(*payload, "configRevision"));
+		const std::string expectedAvisoRevision =
+			TrimAscii(ReadString(*payload, "avisoRevision"));
+		if (expectedConfigRevision.empty())
+		{
+			error = "The Control Center has not received an authoritative profiles revision. Reload before saving.";
+			return false;
+		}
+		if (payload->HasMember("aviso") && expectedAvisoRevision.empty())
+		{
+			error = "The Control Center has not received an authoritative AVISO revision. Reload before saving.";
+			return false;
+		}
+		const bool recoveryConfirmed =
+			ReadBool(*payload, "recoveryConfirmed", false);
+		const bool avisoRecoveryConfirmed =
+			ReadBool(*payload, "avisoRecoveryConfirmed", false);
 
 		std::vector<CConfig::ProfileSaveIdentity> profileIdentities;
 		if (payload->HasMember("profileIdentities"))
@@ -1494,6 +1813,7 @@ struct VsmrControlCenterBridge::Impl
 
 		std::unique_ptr<AvisoDocumentModel> avisoModel;
 		std::string avisoPath;
+		bool avisoSaveIsRecovery = false;
 		if (payload->HasMember("aviso"))
 		{
 			const rapidjson::Value& incomingAviso = (*payload)["aviso"];
@@ -1507,16 +1827,34 @@ struct VsmrControlCenterBridge::Impl
 
 			avisoPath =
 				Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport());
+			if (!expectedAvisoRevision.empty() &&
+				expectedAvisoRevision != FileRevision(avisoPath))
+			{
+				error =
+					"The active AVISO file changed in another vSMR window. Reload before saving so those changes are not overwritten.";
+				return false;
+			}
 			avisoModel = std::make_unique<AvisoDocumentModel>();
 			std::string loadError;
 			if (!avisoModel->LoadFromFile(avisoPath, loadError))
 			{
-				error = loadError.empty() ? "Unable to load current AVISO data." : loadError;
-				return false;
+				if (!avisoRecoveryConfirmed)
+				{
+					error = loadError.empty() ? "Unable to load current AVISO data." : loadError;
+					return false;
+				}
+				CloneJsonValue(
+					incomingAviso,
+					avisoModel->MutableDocument(),
+					avisoModel->MutableDocument().GetAllocator());
+				avisoSaveIsRecovery = true;
 			}
-			MergeAvisoPreservingCoordinates(
-				avisoModel->MutableDocument(),
-				incomingAviso);
+			else
+			{
+				MergeAvisoPreservingCoordinates(
+					avisoModel->MutableDocument(),
+					incomingAviso);
+			}
 			avisoModel->MarkIndexesDirty();
 			if (!avisoModel->ValidateLoadedFeatureCollection(error))
 				return false;
@@ -1529,60 +1867,226 @@ struct VsmrControlCenterBridge::Impl
 			previousProfiles.GetAllocator());
 		const std::string activeProfileBefore = Owner->GetActiveProfileNameForEditor();
 
-		CloneJsonValue(
-			mergedProfiles,
-			Owner->CurrentConfig->document,
-			Owner->CurrentConfig->document.GetAllocator());
-
 		bool avisoExistedBeforeSave = false;
+		std::string avisoRollbackSnapshotPath;
+		bool avisoBackupExistedBeforeSave = false;
+		std::string avisoBackupRollbackSnapshotPath;
 		if (avisoModel != nullptr)
 		{
 			const DWORD attributes = ::GetFileAttributesA(avisoPath.c_str());
 			avisoExistedBeforeSave =
 				attributes != INVALID_FILE_ATTRIBUTES &&
 				(attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
-			if (!avisoModel->SaveAtomically(avisoPath, error))
+			if (avisoExistedBeforeSave &&
+				!CreateRollbackSnapshot(avisoPath, avisoRollbackSnapshotPath))
+			{
+				error =
+					"Unable to create an exact AVISO rollback snapshot; no files were changed.";
+				return false;
+			}
+
+			// A normal AVISO save rotates the previous primary into .bak. Snapshot
+			// the pre-transaction backup too, so a later profiles failure restores
+			// the exact two-file recovery state rather than losing an older version.
+			if (!avisoSaveIsRecovery)
+			{
+				const std::string backupPath = avisoPath + ".bak";
+				const DWORD backupAttributes = ::GetFileAttributesA(backupPath.c_str());
+				avisoBackupExistedBeforeSave =
+					backupAttributes != INVALID_FILE_ATTRIBUTES &&
+					(backupAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+				if (avisoBackupExistedBeforeSave &&
+					!CreateRollbackSnapshot(
+						backupPath,
+						avisoBackupRollbackSnapshotPath))
+				{
+					DeleteRollbackSnapshot(avisoRollbackSnapshotPath);
+					error =
+						"Unable to snapshot the existing AVISO backup; no files were changed.";
+					return false;
+				}
+			}
+		}
+
+		CloneJsonValue(
+			mergedProfiles,
+			Owner->CurrentConfig->document,
+			Owner->CurrentConfig->document.GetAllocator());
+
+		if (avisoModel != nullptr)
+		{
+			if (!avisoModel->SaveAtomically(
+				avisoPath,
+				error,
+				!avisoSaveIsRecovery))
 			{
 				CloneJsonValue(
 					previousProfiles,
 					Owner->CurrentConfig->document,
 					Owner->CurrentConfig->document.GetAllocator());
+				bool primaryRestored = true;
+				if (avisoExistedBeforeSave)
+				{
+					primaryRestored = RestoreRollbackSnapshotAtomically(
+						avisoRollbackSnapshotPath,
+						avisoPath);
+					if (primaryRestored)
+						avisoRollbackSnapshotPath.clear();
+				}
+				else
+				{
+					primaryRestored =
+						::DeleteFileA(avisoPath.c_str()) != FALSE ||
+						::GetLastError() == ERROR_FILE_NOT_FOUND;
+				}
+
+				bool backupRestored = true;
+				if (!avisoSaveIsRecovery)
+				{
+					const std::string backupPath = avisoPath + ".bak";
+					if (avisoBackupExistedBeforeSave)
+					{
+						backupRestored = RestoreRollbackSnapshotAtomically(
+							avisoBackupRollbackSnapshotPath,
+							backupPath);
+						if (backupRestored)
+							avisoBackupRollbackSnapshotPath.clear();
+					}
+					else
+					{
+						backupRestored =
+							::DeleteFileA(backupPath.c_str()) != FALSE ||
+							::GetLastError() == ERROR_FILE_NOT_FOUND;
+					}
+				}
 				if (error.empty())
 					error = "Unable to save AVISO GeoJSON atomically.";
+				if (!primaryRestored)
+					error += " The exact old primary remains at " +
+						avisoRollbackSnapshotPath + ".";
+				if (!backupRestored)
+					error += " The exact old backup remains at " +
+						avisoBackupRollbackSnapshotPath + ".";
 				return false;
 			}
 		}
 
-		if (!Owner->CurrentConfig->saveConfig(profileIdentities))
+		std::string profileSaveError;
+		if (!Owner->CurrentConfig->saveConfig(
+			profileIdentities,
+			expectedConfigRevision,
+			&profileSaveError,
+			recoveryConfirmed))
 		{
 			CloneJsonValue(
 				previousProfiles,
 				Owner->CurrentConfig->document,
 				Owner->CurrentConfig->document.GetAllocator());
 			bool avisoRollbackOk = true;
+			bool avisoBackupRollbackOk = true;
 			if (avisoModel != nullptr)
 			{
 				if (avisoExistedBeforeSave)
-					avisoRollbackOk =
-						RestoreBackupFileAtomically(avisoPath);
+				{
+					avisoRollbackOk = RestoreRollbackSnapshotAtomically(
+						avisoRollbackSnapshotPath,
+						avisoPath);
+					if (avisoRollbackOk)
+						avisoRollbackSnapshotPath.clear();
+				}
 				else
 					avisoRollbackOk =
 						::DeleteFileA(avisoPath.c_str()) != FALSE ||
 						::GetLastError() == ERROR_FILE_NOT_FOUND;
+
+				if (!avisoSaveIsRecovery)
+				{
+					const std::string backupPath = avisoPath + ".bak";
+					if (avisoBackupExistedBeforeSave)
+					{
+						avisoBackupRollbackOk = RestoreRollbackSnapshotAtomically(
+							avisoBackupRollbackSnapshotPath,
+							backupPath);
+						if (avisoBackupRollbackOk)
+							avisoBackupRollbackSnapshotPath.clear();
+					}
+					else
+					{
+						avisoBackupRollbackOk =
+							::DeleteFileA(backupPath.c_str()) != FALSE ||
+							::GetLastError() == ERROR_FILE_NOT_FOUND;
+					}
+				}
 			}
-			error = "Unable to save vSMR_Profiles.json atomically.";
+			error = profileSaveError.empty()
+				? "Unable to save vSMR_Profiles.json atomically."
+				: profileSaveError;
 			if (!avisoRollbackOk)
-				error += " The AVISO rollback also failed; restore its .bak file before reloading.";
+			{
+				error += " The AVISO rollback also failed.";
+				if (!avisoRollbackSnapshotPath.empty())
+						error += " The exact pre-save file remains at " +
+							avisoRollbackSnapshotPath + ".";
+			}
+			if (!avisoBackupRollbackOk)
+			{
+				error += " The AVISO backup rollback also failed.";
+				if (!avisoBackupRollbackSnapshotPath.empty())
+					error += " The exact pre-save backup remains at " +
+						avisoBackupRollbackSnapshotPath + ".";
+			}
 			return false;
 		}
 
-		Owner->ReloadConfig();
+		if (!DeleteRollbackSnapshot(avisoRollbackSnapshotPath))
+		{
+			Logger::info(
+				"Warning: unable to remove completed AVISO transaction snapshot " +
+				avisoRollbackSnapshotPath);
+		}
+		if (!DeleteRollbackSnapshot(avisoBackupRollbackSnapshotPath))
+		{
+			Logger::info(
+				"Warning: unable to remove completed AVISO backup transaction snapshot " +
+				avisoBackupRollbackSnapshotPath);
+		}
+
+		bool reloadFailed = false;
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar->CurrentConfig == nullptr ||
+				!radar->CurrentConfig->sharesConfigFileWith(*Owner->CurrentConfig))
+			{
+				continue;
+			}
+
+			if (!radar->ReloadConfig())
+				reloadFailed = true;
+			if (avisoModel != nullptr &&
+				EqualsNoCase(
+					radar->GetAvisoGeoJsonEditorPathForAirport(radar->getActiveAirport()),
+					avisoPath))
+			{
+				radar->ForceReloadAvisoGeoJson();
+			}
+			radar->RequestRefresh();
+			if (radar != Owner && radar->VsmrControlCenterDialog != nullptr)
+				radar->VsmrControlCenterDialog->SyncFromRadar("external-save");
+		}
 		if (!activeProfileBefore.empty() &&
 			Owner->CurrentConfig->isItActiveProfile(activeProfileBefore) != 0)
 			Owner->LoadProfile(activeProfileBefore);
-		if (avisoModel != nullptr)
-			Owner->ForceReloadAvisoGeoJson();
-		Owner->RequestRefresh();
+		if (reloadFailed)
+		{
+			const std::string warning =
+				"The files were saved, but one or more radar windows could not reload them. Reload vSMR before editing again.";
+			Logger::info(warning);
+			Owner->GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"Configuration reload",
+				warning.c_str(),
+				true, true, false, false, false);
+		}
 		return true;
 	}
 
@@ -1756,6 +2260,58 @@ struct VsmrControlCenterBridge::Impl
 			error = "Inset preset operation failed.";
 		Owner->RequestRefresh();
 		return ok;
+	}
+
+	bool HandleLegacyPresetAssignment(
+		const rapidjson::Value* payload,
+		std::string& error)
+	{
+		if (Owner == nullptr || Owner->CurrentConfig == nullptr ||
+			payload == nullptr || !payload->IsObject())
+		{
+			error = "Legacy inset preset assignment is not available.";
+			return false;
+		}
+		const std::string airport = TrimAscii(ReadString(*payload, "airport"));
+		if (airport.empty() ||
+			!EqualsNoCase(airport, TrimAscii(Owner->getActiveAirport())))
+		{
+			error = "The active airport changed before the legacy presets were assigned.";
+			return false;
+		}
+
+		size_t assignedPresetCount = 0;
+		if (!Owner->CurrentConfig->assignUnscopedAvisoPresetsToAirport(
+			Owner->GetActiveProfileNameForEditor(),
+			airport,
+			assignedPresetCount,
+			error))
+		{
+			return false;
+		}
+
+		bool reloadFailed = false;
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar->CurrentConfig == nullptr ||
+				!radar->CurrentConfig->sharesConfigFileWith(*Owner->CurrentConfig))
+			{
+				continue;
+			}
+			if (!radar->ReloadConfig())
+				reloadFailed = true;
+			radar->RequestRefresh();
+			if (radar != Owner && radar->VsmrControlCenterDialog != nullptr)
+				radar->VsmrControlCenterDialog->SyncFromRadar("external-save");
+		}
+		if (reloadFailed)
+		{
+			Owner->GetPlugIn()->DisplayUserMessage(
+				"vSMR", "Inset preset migration",
+				"The assignment was saved, but one or more radar windows must be reloaded.",
+				true, true, false, false, false);
+		}
+		return true;
 	}
 
 	bool HandleAlerts(
@@ -2120,6 +2676,19 @@ struct VsmrControlCenterBridge::Impl
 				Allocator& allocator = saved.GetAllocator();
 				rapidjson::Value payload(rapidjson::kObjectType);
 				AddString(payload, "message", "Saved and reloaded", allocator);
+				AddString(
+					payload,
+					"configRevision",
+					Owner->CurrentConfig->getConfigRevision(),
+					allocator);
+				AddString(
+					payload,
+					"avisoRevision",
+					FileRevision(Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport())),
+					allocator);
+				rapidjson::Value settings;
+				BuildSettings(settings, allocator);
+				payload.AddMember("settings", settings, allocator);
 				saved.AddMember("payload", payload, allocator);
 				Send(saved);
 			}
@@ -2132,16 +2701,24 @@ struct VsmrControlCenterBridge::Impl
 				error = "vSMR radar state is not available.";
 				return false;
 			}
+			if (Callbacks.cancelPendingResources)
+				Callbacks.cancelPendingResources();
 			const bool configReloaded = Owner->ReloadConfig();
 			const bool avisoReloaded = Owner->ForceReloadAvisoGeoJson();
 			if (!configReloaded || !avisoReloaded)
 			{
+				// ReloadConfig may intentionally activate a validated backup or a
+				// read-only migrated document while returning false. Publish that exact
+				// recovery state before reporting the warning so the Web UI and native
+				// revision/health state cannot diverge. Keep the last rendered AVISO in
+				// the UI when its replacement failed validation.
+				SendAuthoritativeState("reload", envelope.id, avisoReloaded);
 				error =
 					!configReloaded && !avisoReloaded
-						? "Configuration and AVISO reload failed; the previously loaded data remains active."
+						? "Profiles did not reload normally and AVISO validation failed. The safest available profiles state and previous rendered overlay remain active; review Settings."
 						: !configReloaded
-							? "Configuration reload failed; the previously loaded data remains active."
-							: "AVISO reload failed; the previously loaded overlay remains active.";
+							? "Profiles did not reload normally. The safest available in-memory state is active; review the recovery status in Settings."
+							: "AVISO validation failed; the previous rendered overlay remains active.";
 				return false;
 			}
 			SendAuthoritativeState("reload", envelope.id);
@@ -2149,6 +2726,8 @@ struct VsmrControlCenterBridge::Impl
 			return true;
 		}
 		case VsmrBridgeAction::StateReset:
+			if (Callbacks.cancelPendingResources)
+				Callbacks.cancelPendingResources();
 			if (!Callbacks.requestResetDefaults)
 			{
 				error = "Bundled defaults are not available in this host.";
@@ -2156,6 +2735,40 @@ struct VsmrControlCenterBridge::Impl
 			}
 			Callbacks.requestResetDefaults(envelope.id);
 			return true;
+		case VsmrBridgeAction::StateRestoreBackup:
+		{
+			if (Owner == nullptr || Owner->CurrentConfig == nullptr)
+			{
+				error = "vSMR configuration is not available.";
+				return false;
+			}
+			if (Callbacks.cancelPendingResources)
+				Callbacks.cancelPendingResources();
+			if (!Owner->CurrentConfig->restoreBackup(error))
+				return false;
+
+			bool reloadFailed = false;
+			for (CSMRRadar* radar : RadarScreensOpened)
+			{
+				if (radar == nullptr || radar->CurrentConfig == nullptr ||
+					!radar->CurrentConfig->sharesConfigFileWith(*Owner->CurrentConfig))
+					continue;
+				if (!radar->ReloadConfig())
+					reloadFailed = true;
+				radar->RequestRefresh();
+				if (radar != Owner && radar->VsmrControlCenterDialog != nullptr)
+					radar->VsmrControlCenterDialog->SyncFromRadar("backup-restored");
+			}
+			if (reloadFailed)
+			{
+				SendAuthoritativeState("backup-restored", envelope.id);
+				error = "The profiles backup was restored, but one or more radar windows could not reload it. Reload vSMR.";
+				return false;
+			}
+			SendAuthoritativeState("backup-restored", envelope.id);
+			SendAck(envelope.id, envelope.type, "Profiles backup restored");
+			return true;
+		}
 		case VsmrBridgeAction::StateUndo:
 			return ApplyHistoryState(
 				envelope.payload,
@@ -2200,6 +2813,11 @@ struct VsmrControlCenterBridge::Impl
 			if (!HandlePreset(envelope.action, envelope.payload, error))
 				return false;
 			SendAuthoritativeState("preset", envelope.id);
+			return true;
+		case VsmrBridgeAction::InsetPresetLegacyAssign:
+			if (!HandleLegacyPresetAssignment(envelope.payload, error))
+				return false;
+			SendAuthoritativeState("legacy-preset-assigned", envelope.id);
 			return true;
 		case VsmrBridgeAction::AlertsUpdate:
 			if (!HandleAlerts(envelope.payload, error))
@@ -2418,11 +3036,34 @@ bool VsmrControlCenterBridge::ValidateLoadedResource(
 	if (normalizedResource == "aviso")
 	{
 		if (!parsed.IsObject() ||
+			!parsed.HasMember("type") ||
+			!parsed["type"].IsString() ||
+			std::strcmp(parsed["type"].GetString(), "FeatureCollection") != 0 ||
 			!parsed.HasMember("features") ||
 			!parsed["features"].IsArray())
 		{
 			error = "The selected AVISO file is not a GeoJSON FeatureCollection.";
 			return false;
+		}
+		if (parsed.HasMember("metadata") && !parsed["metadata"].IsObject())
+		{
+			error = "AVISO metadata must be an object.";
+			return false;
+		}
+		if (parsed.HasMember("metadata") && parsed["metadata"].IsObject() &&
+			parsed["metadata"].HasMember("schema_version"))
+		{
+			const rapidjson::Value& schemaVersion = parsed["metadata"]["schema_version"];
+			if (!schemaVersion.IsInt() || schemaVersion.GetInt() < 1)
+			{
+				error = "AVISO metadata.schema_version must be a positive integer.";
+				return false;
+			}
+			if (schemaVersion.GetInt() > 2)
+			{
+				error = "The AVISO file uses a future schema version that this build does not support.";
+				return false;
+			}
 		}
 
 		AvisoDocumentModel validationModel;
@@ -2464,7 +3105,18 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	rapidjson::Document parsed;
 	parsed.Parse<0>(jsonText.c_str());
 	const std::string normalizedResource = LowerAscii(resource);
+	if (normalizedResource == "profiles")
+	{
+		bool migrated = false;
+		std::string migrationError;
+		if (!CConfig::validateAndMigrateProfilesDocument(parsed, migrationError, migrated))
+		{
+			State->SendError(requestId, migrationError);
+			return false;
+		}
+	}
 	std::string normalizedEffectivePath;
+	std::string activatedAvisoRevision;
 	if (!effectivePath.empty())
 	{
 		std::string pathError;
@@ -2476,6 +3128,20 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 			State->SendError(
 				requestId,
 				pathError.empty() ? "The selected resource path is unavailable." : pathError);
+			return false;
+		}
+
+		// The file picker/download result is validated before this method runs.
+		// Reject a source that changed between that read and activation instead of
+		// pairing stale JSON with a newer revision token.
+		std::string activationJson;
+		if (!ReadFileText(normalizedEffectivePath, activationJson) ||
+			State->ContentRevision(activationJson) !=
+				State->ContentRevision(jsonText))
+		{
+			State->SendError(
+				requestId,
+				"The selected resource changed while it was loading. Select it again.");
 			return false;
 		}
 
@@ -2500,6 +3166,12 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 						: activationError);
 				return false;
 			}
+			// Return exactly what the native runtime activated, not the earlier
+			// picker buffer. Its revision now describes this same document.
+			CloneJsonValue(
+				State->Owner->CurrentConfig->document,
+				parsed,
+				parsed.GetAllocator());
 		}
 		else if (normalizedResource == "aviso")
 		{
@@ -2552,6 +3224,41 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 				return false;
 			}
 
+			std::string activatedJson;
+			std::string activatedValidationError;
+			if (!ReadFileText(normalizedEffectivePath, activatedJson) ||
+				!ValidateLoadedResource(
+					"aviso",
+					activatedJson,
+					activatedValidationError) ||
+				State->ContentRevision(activatedJson) !=
+					State->FileRevision(normalizedEffectivePath))
+			{
+				State->Owner->SetAvisoGeoJsonOverrideForAirport(
+					activeAirport,
+					hadPreviousOverride ? previousOverridePath : std::string());
+				State->Owner->ForceReloadAvisoGeoJson();
+				State->SendError(
+					requestId,
+					"The selected AVISO file changed during activation. Select it again.");
+				return false;
+			}
+			activatedAvisoRevision =
+				State->ContentRevision(activatedJson);
+			parsed.Parse<0>(activatedJson.c_str());
+			if (parsed.HasParseError() ||
+				DetectAvisoAirport(parsed, source) != activeAirport)
+			{
+				State->Owner->SetAvisoGeoJsonOverrideForAirport(
+					activeAirport,
+					hadPreviousOverride ? previousOverridePath : std::string());
+				State->Owner->ForceReloadAvisoGeoJson();
+				State->SendError(
+					requestId,
+					"The activated AVISO no longer matches the active airport.");
+				return false;
+			}
+
 			// The override is process-wide across radar screens. Do not publish it
 			// to other Control Centers until validation and renderer activation have
 			// both succeeded, otherwise a failed load briefly exposes the path that
@@ -2574,6 +3281,24 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 	rapidjson::Value payload(rapidjson::kObjectType);
 	AddString(payload, "resource", normalizedResource, allocator);
 	AddString(payload, "source", source, allocator);
+	if (State->Owner != nullptr && State->Owner->CurrentConfig != nullptr)
+	{
+		AddString(
+			payload,
+			"configRevision",
+			State->Owner->CurrentConfig->getConfigRevision(),
+			allocator);
+		AddString(
+			payload,
+			"avisoRevision",
+			activatedAvisoRevision.empty()
+				? State->FileRevision(State->Owner->GetAvisoGeoJsonEditorPathForAirport(State->Owner->getActiveAirport()))
+				: activatedAvisoRevision,
+			allocator);
+		rapidjson::Value settings;
+		State->BuildSettings(settings, allocator);
+		payload.AddMember("settings", settings, allocator);
+	}
 	if (!normalizedEffectivePath.empty())
 		AddString(payload, "path", normalizedEffectivePath, allocator);
 	rapidjson::Value data;

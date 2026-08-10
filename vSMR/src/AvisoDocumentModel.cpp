@@ -127,6 +127,33 @@ bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText)
 		errorText = "AVISO GeoJSON root must be an object.";
 		return false;
 	}
+	if (!Document.HasMember("type") ||
+		!Document["type"].IsString() ||
+		std::strcmp(Document["type"].GetString(), "FeatureCollection") != 0)
+	{
+		errorText = "AVISO GeoJSON type must be FeatureCollection.";
+		return false;
+	}
+	if (Document.HasMember("metadata"))
+	{
+		const rapidjson::Value& metadata = Document["metadata"];
+		if (!metadata.IsObject())
+		{
+			errorText = "AVISO metadata must be an object.";
+			return false;
+		}
+		if (metadata.HasMember("schema_version"))
+		{
+			const rapidjson::Value& schemaVersion = metadata["schema_version"];
+			if (!schemaVersion.IsInt() ||
+				schemaVersion.GetInt() < 1 ||
+				schemaVersion.GetInt() > 2)
+			{
+				errorText = "AVISO metadata.schema_version must be an integer from 1 to 2.";
+				return false;
+			}
+		}
+	}
 	if (!Document.HasMember("features") || !Document["features"].IsArray())
 	{
 		errorText = "AVISO GeoJSON must contain a features array.";
@@ -166,7 +193,10 @@ bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText)
 	return true;
 }
 
-bool AvisoDocumentModel::SaveAtomically(const std::string& path, std::string& errorText)
+bool AvisoDocumentModel::SaveAtomically(
+	const std::string& path,
+	std::string& errorText,
+	bool backupExisting)
 {
 	errorText.clear();
 	if (path.empty())
@@ -296,22 +326,20 @@ bool AvisoDocumentModel::SaveAtomically(const std::string& path, std::string& er
 		}
 		persistedInput.close();
 
-		if (std::filesystem::is_regular_file(outputPath))
+		std::filesystem::path backupPath;
+		std::filesystem::path backupTempPath;
+		const bool rotateBackup =
+			backupExisting && std::filesystem::is_regular_file(outputPath);
+		if (rotateBackup)
 		{
-			const std::filesystem::path backupPath =
-				outputPath.string() + ".bak";
-			const std::filesystem::path backupTempPath =
-				tempPath.string() + ".backup";
+			backupPath = outputPath.string() + ".bak";
+			backupTempPath = tempPath.string() + ".backup";
 			if (!::CopyFileA(
 				outputPath.string().c_str(),
 				backupTempPath.string().c_str(),
-				TRUE) ||
-				!::MoveFileExA(
-					backupTempPath.string().c_str(),
-					backupPath.string().c_str(),
-					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+				TRUE))
 			{
-				errorText = "Unable to create the AVISO backup file.";
+				errorText = "Unable to stage the AVISO backup file.";
 				std::error_code ignored;
 				std::filesystem::remove(backupTempPath, ignored);
 				std::filesystem::remove(tempPath, ignored);
@@ -324,7 +352,29 @@ bool AvisoDocumentModel::SaveAtomically(const std::string& path, std::string& er
 			const DWORD error = ::GetLastError();
 			errorText = "Unable to replace AVISO file atomically. Windows error " + std::to_string(error) + ".";
 			std::error_code ignored;
+			std::filesystem::remove(backupTempPath, ignored);
 			std::filesystem::remove(tempPath, ignored);
+			return false;
+		}
+
+		// Rotate the old primary into .bak only after the new primary is safely in
+		// place. If backup rotation fails, the staged old primary is also the exact
+		// rollback source, so a failed save cannot silently alter either file.
+		if (rotateBackup &&
+			!::MoveFileExA(
+				backupTempPath.string().c_str(),
+				backupPath.string().c_str(),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			const DWORD backupError = ::GetLastError();
+			const bool restored = ::MoveFileExA(
+				backupTempPath.string().c_str(),
+				outputPath.string().c_str(),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+			errorText = "Unable to rotate the AVISO backup. Windows error " +
+				std::to_string(backupError) + ".";
+			if (!restored)
+				errorText += " The old primary remains at " + backupTempPath.string() + ".";
 			return false;
 		}
 	}
@@ -599,6 +649,11 @@ void AvisoDocumentModel::MarkFeatureGeometryDirty(int featureIndex)
 AvisoValidationResult AvisoDocumentModel::ValidateAndRecalculate()
 {
 	AvisoValidationResult result;
+	if (!ValidateLoadedFeatureCollection(result.errorText))
+	{
+		result.ok = false;
+		return result;
+	}
 	if (!Document.IsObject())
 	{
 		result.ok = false;

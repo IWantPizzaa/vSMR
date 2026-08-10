@@ -51,13 +51,13 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,1,3,0
- PRODUCTVERSION 1,1,3,0
+ FILEVERSION 2,0,0,1
+ PRODUCTVERSION 2,0,0,1
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
- FILEFLAGS 0x1L
+ FILEFLAGS 0x3L
 #else
- FILEFLAGS 0x0L
+ FILEFLAGS 0x2L
 #endif
  FILEOS 0x40004L
  FILETYPE 0x2L
@@ -68,12 +68,12 @@ BEGIN
         BLOCK "040004b0"
         BEGIN
             VALUE "FileDescription", "vSMR Plugin for EuroScope"
-            VALUE "FileVersion", "1.1.3"
+            VALUE "FileVersion", "2.0.0-beta.1"
             VALUE "InternalName", "vSMR.dll"
             VALUE "LegalCopyright", "GNU GENERAL PUBLIC LICENSE"
             VALUE "OriginalFilename", "vSMR.dll"
             VALUE "ProductName", "vSMR"
-            VALUE "ProductVersion", "1.1.3"
+            VALUE "ProductVersion", "2.0.0-beta.1"
         END
     END
     BLOCK "VarFileInfo"

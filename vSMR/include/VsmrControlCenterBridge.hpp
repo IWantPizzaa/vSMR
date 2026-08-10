@@ -15,6 +15,7 @@ enum class VsmrBridgeAction
 	StateSave,
 	StateReload,
 	StateReset,
+	StateRestoreBackup,
 	StateUndo,
 	StateRedo,
 	RuntimeProfileChange,
@@ -33,6 +34,7 @@ enum class VsmrBridgeAction
 	InsetPresetReset,
 	InsetPresetDelete,
 	InsetPresetLinked,
+	InsetPresetLegacyAssign,
 	AlertsUpdate,
 	SettingsUpdate,
 	DatalinkStateRequest,
@@ -52,6 +54,7 @@ struct VsmrBridgeHostCallbacks
 	std::function<void()> beginWindowDrag;
 	std::function<void(const std::string& resource, const std::string& requestId)> requestComputerLoad;
 	std::function<void(const std::string& requestId)> requestResetDefaults;
+	std::function<void()> cancelPendingResources;
 	std::function<void(
 		const std::string& resource,
 		const std::string& url,

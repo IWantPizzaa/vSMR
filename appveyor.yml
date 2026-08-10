@@ -1,62 +1,103 @@
-# Notes:
-#   - Minimal appveyor.yml file is an empty file. All sections are optional.
-#   - Indent each level of configuration with 2 spaces. Do not use tabs!
-#   - All section names are case-sensitive.
-#   - Section names should be unique on each level.
+version: 2.0.0-beta.1.{build}
 
-#---------------------------------#
-#      general configuration      #
-#---------------------------------#
-
-# version format
-version: 1.5.{build}
-
-# branches to build
 branches:
-  # whitelist
   only:
     - main
     - master
     - dev
-
-  # blacklist
   except:
     - gh-pages
 
-# Maximum number of concurrent jobs for the project
 max_jobs: 1
-
-#---------------------------------#
-#    environment configuration    #
-#---------------------------------#
-
-# Build worker image (VM template)
+clone_depth: 20
 image: Visual Studio 2022
 
-#---------------------------------#
-#       build configuration       #
-#---------------------------------#
+environment:
+  VSMR_RELEASE_VERSION: 2.0.0-beta.1
 
-install:
-  - cmd: msbuild /version
-
-# build Configuration, i.e. Debug, Release, etc.
 configuration: Release
 platform: Win32
 
+install:
+  - cmd: where msbuild
+  - cmd: msbuild /version
+  - ps: Write-Host "PowerShell $($PSVersionTable.PSVersion) on $([Environment]::OSVersion.VersionString)"
+
+before_build:
+  - ps: >-
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\test_release.ps1"
+      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
+      -ExpectedVersion $env:VSMR_RELEASE_VERSION
+
 build_script:
-  - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /t:Restore /p:Configuration=Release /p:Platform=Win32
-  - cmd: msbuild "C:\projects\vsmr\vSMR.sln" /m /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143 /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
+  - cmd: >-
+      msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR.sln"
+      /t:Restore
+      /p:Configuration=Release
+      /p:Platform=Win32
+      /p:PlatformToolset=v143
+      /verbosity:minimal
+  - cmd: >-
+      msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR.sln"
+      /t:Rebuild
+      /m
+      /p:Configuration=Release
+      /p:Platform=Win32
+      /p:PlatformToolset=v143
+      /p:ContinuousIntegrationBuild=true
+      /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 after_build:
-  - cmd: mkdir vSMR-nightly
-  - cmd: copy /Y Release\vSMR.dll vSMR-nightly\
-  - cmd: xcopy Release\vSMR_Data vSMR-nightly\vSMR_Data\ /E /I /Y
-  - cmd: 7z a vSMR-nightly.zip %APPVEYOR_BUILD_FOLDER%\vSMR-nightly\
+  - ps: >-
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\test_release.ps1"
+      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
+      -ExpectedVersion $env:VSMR_RELEASE_VERSION
+      -BuildOutputDirectory "$env:APPVEYOR_BUILD_FOLDER\Release"
+  - ps: >-
+      $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\package_release.ps1"
+      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
+      -BuildOutputDirectory "$env:APPVEYOR_BUILD_FOLDER\Release"
+      -ArtifactsDirectory "$env:APPVEYOR_BUILD_FOLDER\artifacts"
+      -Version $env:VSMR_RELEASE_VERSION
+      -Configuration Release
+      -Platform Win32
+      -Toolset v143
+      -ForceNonPublishable:$isPullRequest
+  - ps: >-
+      $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\verify_release_package.ps1"
+      -ArchivePath "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-$($env:VSMR_RELEASE_VERSION).zip"
+      -ExpectedVersion $env:VSMR_RELEASE_VERSION
+      -AllowNonPublishable:$isPullRequest
+  - ps: >-
+      if (-not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER)) {
+        $base = "vSMR-$($env:VSMR_RELEASE_VERSION)";
+        $validationBase = "$base-pr-$($env:APPVEYOR_PULL_REQUEST_NUMBER)-validation-only";
+        $artifactRoot = "$env:APPVEYOR_BUILD_FOLDER\artifacts";
+        Move-Item -LiteralPath "$artifactRoot\$base.zip" -Destination "$artifactRoot\$validationBase.zip";
+        Move-Item -LiteralPath "$artifactRoot\$base-symbols.zip" -Destination "$artifactRoot\$validationBase-symbols.zip";
+        $hash = (Get-FileHash -LiteralPath "$artifactRoot\$validationBase.zip" -Algorithm SHA256).Hash.ToLowerInvariant();
+        [System.IO.File]::WriteAllText(
+          "$artifactRoot\$validationBase.zip.sha256",
+          "$hash  $validationBase.zip`n",
+          (New-Object System.Text.UTF8Encoding($false))
+        );
+        Remove-Item -LiteralPath "$artifactRoot\$base.zip.sha256" -Force;
+      }
 
-#---------------------------------#
-#      artifacts configuration    #
-#---------------------------------#
+test: off
 
 artifacts:
-  - path: vSMR-nightly.zip
+  - path: artifacts\vSMR-2.0.0-beta.1.zip
+    name: vSMR-2.0.0-beta.1
+  - path: artifacts\vSMR-2.0.0-beta.1.zip.sha256
+    name: vSMR-2.0.0-beta.1-sha256
+  - path: artifacts\vSMR-2.0.0-beta.1-symbols.zip
+    name: vSMR-2.0.0-beta.1-private-symbols
+  - path: artifacts\vSMR-2.0.0-beta.1-pr-*-validation-only.zip
+    name: vSMR-pr-validation-only
+  - path: artifacts\vSMR-2.0.0-beta.1-pr-*-validation-only.zip.sha256
+    name: vSMR-pr-validation-only-sha256
+  - path: artifacts\vSMR-2.0.0-beta.1-pr-*-validation-only-symbols.zip
+    name: vSMR-pr-validation-only-private-symbols

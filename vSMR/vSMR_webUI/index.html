@@ -47,6 +47,8 @@
 <button class="title-close" id="closeButton" title="Close" type="button">×</button>
 </header>
 <div class="window-shell">
+<div aria-live="polite" class="host-loading-overlay" hidden id="hostLoadingOverlay" role="status">Loading vSMR data...</div>
+<div aria-live="polite" class="operation-busy-overlay" hidden id="operationBusyOverlay" role="status">Applying vSMR changes...</div>
 <nav aria-label="Sections and global actions" class="page-rail">
 <button class="rail-button active" data-page="display" title="Display" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg>
@@ -91,6 +93,12 @@
 <div class="rail-spacer"></div>
 </nav>
 <div class="workspace">
+<section aria-live="assertive" class="persistent-status" hidden id="persistentStatus" role="alert">
+<span aria-hidden="true" class="persistent-status-mark">!</span>
+<span class="persistent-status-text" id="persistentStatusText"></span>
+<span class="persistent-status-actions" id="persistentStatusActions"></span>
+<button aria-label="Dismiss status" class="persistent-status-dismiss" data-action="dismiss-persistent-status" title="Dismiss" type="button">×</button>
+</section>
 <main class="page-stack">
 <section class="page active" data-page-panel="display">
 <nav aria-label="Profile editor sections" class="subtabs profile-subtabs">
@@ -591,6 +599,10 @@
 <div class="settings-file-heading"><strong>EuroScope alias</strong><small>.cdm template source</small></div>
 <input aria-label="EuroScope alias file" id="settingsAliasFile" readonly="" type="text"/>
 </section>
+<div class="settings-recovery-actions">
+<button class="ui-button" data-action="restore-profiles-backup" id="restoreProfilesBackupButton" type="button">Restore .bak</button>
+<button class="ui-button" data-action="restore-bundled-defaults" type="button">Bundled defaults</button>
+</div>
 </div>
 </fieldset>
 <fieldset class="compact-group settings-group display-group">

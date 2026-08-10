@@ -15,11 +15,14 @@
 #include "rapidjson/stringbuffer.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <mutex>
+#include <new>
 #include <sstream>
 #include <utility>
 
@@ -45,6 +48,7 @@ namespace
 	constexpr UINT kEuroScopeBoundsTimerIntervalMs = 250;
 	constexpr int kFixedWindowWidth = 728;
 	constexpr int kFixedWindowHeight = 500;
+	constexpr size_t kMaximumResourceBytes = 16u * 1024u * 1024u;
 	const wchar_t* kVirtualHostName = L"app.vsmr";
 	const wchar_t* kVirtualOriginPrefix = L"https://app.vsmr/";
 	const wchar_t* kAircraftIconVirtualHostName = L"icons.vsmr";
@@ -212,15 +216,28 @@ namespace
 			top + kFixedWindowHeight);
 	}
 
-	bool ReadTextFile(const std::filesystem::path& path, std::string& text)
+	bool ReadTextFile(
+		const std::filesystem::path& path,
+		std::string& text,
+		size_t maximumBytes = (std::numeric_limits<size_t>::max)())
 	{
 		text.clear();
 		std::ifstream input(path, std::ios::binary);
 		if (!input.is_open())
 			return false;
+		input.seekg(0, std::ios::end);
+		const std::streamoff length = input.tellg();
+		if (length < 0 || static_cast<unsigned long long>(length) > maximumBytes)
+			return false;
+		input.seekg(0, std::ios::beg);
 		std::ostringstream stream;
 		stream << input.rdbuf();
 		text = stream.str();
+		if (text.size() > maximumBytes)
+		{
+			text.clear();
+			return false;
+		}
 		return static_cast<bool>(input) || input.eof();
 	}
 
@@ -281,6 +298,7 @@ struct CVsmrControlCenterDialog::WebViewHostState
 	HWND dialogWindow = nullptr;
 	HINSTANCE moduleInstance = nullptr;
 	std::atomic<HWND> threadWindow{ nullptr };
+	std::atomic<DWORD> threadId{ 0 };
 	std::atomic<bool> stopRequested{ false };
 	std::atomic<int> clientWidth{ kFixedWindowWidth };
 	std::atomic<int> clientHeight{ kFixedWindowHeight };
@@ -311,6 +329,7 @@ struct CVsmrControlCenterDialog::GithubDownloadResult
 	std::string source;
 	std::string requestId;
 	std::string body;
+	bool failed = false;
 };
 
 BEGIN_MESSAGE_MAP(CVsmrControlCenterDialog, CDialogEx)
@@ -341,9 +360,8 @@ CVsmrControlCenterDialog::~CVsmrControlCenterDialog()
 {
 	if (LifetimeToken)
 		LifetimeToken->store(false);
+	StopGithubDownload();
 	StopWebViewThread();
-	if (GithubDownloadThread.joinable())
-		GithubDownloadThread.join();
 }
 
 void CVsmrControlCenterDialog::SetOwner(CSMRRadar* owner)
@@ -398,6 +416,9 @@ BOOL CVsmrControlCenterDialog::OnInitDialog()
 		[this](const std::string& requestId) {
 			RequestResetDefaults(requestId);
 		};
+	callbacks.cancelPendingResources = [this]() {
+		StopGithubDownload();
+	};
 	callbacks.requestGithubLoad =
 		[this](
 			const std::string& resource,
@@ -449,6 +470,7 @@ void CVsmrControlCenterDialog::InitializeWebView()
 	WebHost->dialogWindow = GetSafeHwnd();
 	WebHost->moduleInstance = AfxGetInstanceHandle();
 	WebHost->requestedPage.store(static_cast<int>(CurrentPage));
+	WebHost->stopRequested.store(false);
 	CRect client;
 	GetClientRect(&client);
 	WebHost->clientWidth.store((std::max)(0, client.Width()));
@@ -465,6 +487,10 @@ void CVsmrControlCenterDialog::InitializeWebView()
 		ShowFallback(
 			"Unable to start the WebView2 UI thread: " +
 			std::string(ex.what()));
+	}
+	catch (...)
+	{
+		ShowFallback("Unable to start the WebView2 UI thread.");
 	}
 }
 
@@ -543,6 +569,49 @@ void CVsmrControlCenterDialog::ReleaseWebViewHostWindowClass()
 
 void CVsmrControlCenterDialog::WebViewThreadMain()
 {
+	try
+	{
+		WebViewThreadMainImpl();
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info(
+			"Control Center WebView2 thread exception: " +
+			std::string(ex.what()));
+		ShowFallback("The Control Center browser stopped unexpectedly.");
+		if (WebHost)
+		{
+			const HWND threadWindow = WebHost->threadWindow.load();
+			ShutdownWebView();
+			if (::IsWindow(threadWindow))
+				::DestroyWindow(threadWindow);
+			WebHost->threadWindow.store(nullptr);
+			ReleaseWebViewHostWindowClass();
+		}
+	}
+	catch (...)
+	{
+		Logger::info("Control Center WebView2 thread exception: unknown");
+		ShowFallback("The Control Center browser stopped unexpectedly.");
+		if (WebHost)
+		{
+			const HWND threadWindow = WebHost->threadWindow.load();
+			ShutdownWebView();
+			if (::IsWindow(threadWindow))
+				::DestroyWindow(threadWindow);
+			WebHost->threadWindow.store(nullptr);
+			ReleaseWebViewHostWindowClass();
+		}
+	}
+	if (WebHost)
+		WebHost->threadId.store(0);
+}
+
+void CVsmrControlCenterDialog::WebViewThreadMainImpl()
+{
+	WebHost->threadId.store(::GetCurrentThreadId());
+	MSG queueSeed = {};
+	::PeekMessageW(&queueSeed, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
 	const HRESULT comResult = ::CoInitializeEx(
 		nullptr,
 		COINIT_APARTMENTTHREADED);
@@ -1110,12 +1179,37 @@ void CVsmrControlCenterDialog::StopWebViewThread()
 {
 	if (!WebViewThread.joinable())
 		return;
+	DWORD threadId = 0;
 	if (WebHost)
 	{
 		WebHost->stopRequested.store(true);
 		const HWND threadWindow = WebHost->threadWindow.load();
 		if (::IsWindow(threadWindow))
 			::PostMessage(threadWindow, kWebViewShutdownMessage, 0, 0);
+		threadId = WebHost->threadId.load();
+	}
+	const HANDLE threadHandle = WebViewThread.native_handle();
+	if (::WaitForSingleObject(threadHandle, 3000) == WAIT_TIMEOUT)
+	{
+		Logger::info(
+			"Control Center WebView2 creation is still pending after 3 seconds; requesting COM/I/O cancellation while keeping the STA message pump alive.");
+		if (WebHost)
+			threadId = WebHost->threadId.load();
+		if (threadId != 0)
+		{
+			::CoCancelCall(threadId, 0);
+			::CancelSynchronousIo(threadHandle);
+			const HWND threadWindow = WebHost != nullptr
+				? WebHost->threadWindow.load()
+				: nullptr;
+			if (::IsWindow(threadWindow))
+				::PostMessage(threadWindow, kWebViewShutdownMessage, 0, 0);
+		}
+		if (::WaitForSingleObject(threadHandle, 3000) == WAIT_TIMEOUT)
+		{
+			Logger::info(
+				"Control Center WebView2 thread is still stopping after cancellation; waiting for its outstanding callback to preserve safe DLL ownership.");
+		}
 	}
 	WebViewThread.join();
 }
@@ -1221,10 +1315,10 @@ void CVsmrControlCenterDialog::RequestComputerResource(
 	const std::filesystem::path path(
 		static_cast<LPCSTR>(dialog.GetPathName()));
 	std::string text;
-	if (!ReadTextFile(path, text))
+	if (!ReadTextFile(path, text, kMaximumResourceBytes))
 	{
 		if (Bridge)
-			Bridge->PushError(requestId, "Unable to read the selected file.");
+			Bridge->PushError(requestId, "Unable to read the selected file or it exceeds the 16 MB resource limit.");
 		return;
 	}
 	if (Bridge)
@@ -1242,18 +1336,57 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 	const std::filesystem::path resourceFolder(ResolveWebResourceFolder());
 	const std::filesystem::path profilesPath =
 		resourceFolder / L"defaults" / L"vSMR_Profiles.json";
-	const std::filesystem::path avisoPath =
-		resourceFolder / L"defaults" / L"AVISO_LFPG.geojson";
+	std::string activeAirport = Owner != nullptr
+		? Owner->getActiveAirport()
+		: std::string();
+	activeAirport.erase(
+		std::remove_if(
+			activeAirport.begin(),
+			activeAirport.end(),
+			[](unsigned char character) {
+				return std::isspace(character) != 0;
+			}),
+		activeAirport.end());
+	std::transform(
+		activeAirport.begin(),
+		activeAirport.end(),
+		activeAirport.begin(),
+		[](unsigned char character) {
+			return static_cast<char>(std::toupper(character));
+		});
+	const bool hasNormalizedAirport =
+		activeAirport.size() == 4 &&
+		std::all_of(
+			activeAirport.begin(),
+			activeAirport.end(),
+			[](unsigned char character) {
+				return std::isalnum(character) != 0;
+			});
+	const std::filesystem::path avisoPath = hasNormalizedAirport
+		? resourceFolder / L"defaults" /
+			std::filesystem::path("AVISO_" + activeAirport + ".geojson")
+		: std::filesystem::path();
+	std::error_code avisoExistsError;
+	const bool hasMatchingAvisoDefault = !avisoPath.empty() &&
+		std::filesystem::is_regular_file(avisoPath, avisoExistsError);
 
 	std::string profilesText;
 	std::string avisoText;
-	if (!ReadTextFile(profilesPath, profilesText) ||
-		!ReadTextFile(avisoPath, avisoText))
+	if (!ReadTextFile(profilesPath, profilesText, kMaximumResourceBytes))
 	{
 		if (Bridge)
 			Bridge->PushError(
 				requestId,
-				"The bundled profile or LFPG AVISO defaults are missing.");
+				"The bundled profile defaults are missing.");
+		return;
+	}
+	if (hasMatchingAvisoDefault && !ReadTextFile(avisoPath, avisoText, kMaximumResourceBytes))
+	{
+		if (Bridge)
+			Bridge->PushError(
+				requestId,
+				"The bundled " + activeAirport +
+				" AVISO default could not be read.");
 		return;
 	}
 
@@ -1264,7 +1397,16 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 	if (!Bridge->ValidateLoadedResource(
 			"profiles",
 			profilesText,
-			validationError) ||
+			validationError))
+	{
+		Bridge->PushError(
+			requestId,
+			validationError.empty()
+				? "The bundled profile defaults are invalid."
+				: validationError);
+		return;
+	}
+	if (hasMatchingAvisoDefault &&
 		!Bridge->ValidateLoadedResource(
 			"aviso",
 			avisoText,
@@ -1273,21 +1415,31 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 		Bridge->PushError(
 			requestId,
 			validationError.empty()
-				? "The bundled profile or LFPG AVISO defaults are invalid."
+				? "The bundled " + activeAirport +
+					" AVISO default is invalid."
 				: validationError);
 		return;
 	}
 
+	if (hasMatchingAvisoDefault)
+	{
+		// Stage the optional airport AVISO first.  Profiles are sent last so
+		// the Web UI treats their validated arrival as completion of the
+		// multi-resource recovery request and cannot save a half-staged reset.
+		if (!Bridge->HandleLoadedResource(
+			"aviso",
+			"bundled defaults",
+			requestId,
+			avisoText))
+		{
+			return;
+		}
+	}
 	Bridge->HandleLoadedResource(
 		"profiles",
 		"bundled defaults",
 		requestId,
 		profilesText);
-	Bridge->HandleLoadedResource(
-		"aviso",
-		"bundled defaults",
-		requestId,
-		avisoText);
 }
 
 void CVsmrControlCenterDialog::RequestGithubResource(
@@ -1295,6 +1447,17 @@ void CVsmrControlCenterDialog::RequestGithubResource(
 	const std::string& url,
 	const std::string& requestId)
 {
+	if ((resource != "profiles" && resource != "aviso") ||
+		!HttpHelper::IsHttpsUrlForHost(
+			url,
+			"raw.githubusercontent.com"))
+	{
+		if (Bridge)
+			Bridge->PushError(
+				requestId,
+				"Only HTTPS raw.githubusercontent.com file URLs are allowed.");
+		return;
+	}
 	if (GithubDownloadInProgress.exchange(true))
 	{
 		if (Bridge)
@@ -1305,34 +1468,118 @@ void CVsmrControlCenterDialog::RequestGithubResource(
 	}
 	if (GithubDownloadThread.joinable())
 		GithubDownloadThread.join();
+	GithubDownloadCancellationRequested.store(false, std::memory_order_release);
 
 	const HWND target = GetSafeHwnd();
 	std::weak_ptr<std::atomic<bool>> weakLifetime = LifetimeToken;
-	GithubDownloadThread = std::thread(
-		[target, weakLifetime, resource, url, requestId]()
-		{
-			HttpHelper helper;
-			auto result = std::make_unique<GithubDownloadResult>();
-			result->resource = resource;
-			result->source = url;
-			result->requestId = requestId;
-			result->body = helper.downloadStringFromURL(url);
+	try
+	{
+		GithubDownloadThread = std::thread(
+			[this, target, weakLifetime, resource, url, requestId]()
+			{
+				std::unique_ptr<GithubDownloadResult> result(
+					new (std::nothrow) GithubDownloadResult());
+				if (!result)
+				{
+					GithubDownloadInProgress.store(false, std::memory_order_release);
+					const auto lifetime = weakLifetime.lock();
+					if (lifetime && lifetime->load() && ::IsWindow(target))
+						::PostMessage(target, kGithubDownloadCompleteMessage, 1, 0);
+					return;
+				}
+				try
+				{
+					result->resource = resource;
+					result->source = url;
+					result->requestId = requestId;
+					HttpHelper helper;
+					result->body = helper.downloadStringFromURL(
+						url,
+						10000,
+						&GithubDownloadCancellationRequested,
+						kMaximumResourceBytes);
+				}
+				catch (const std::exception& ex)
+				{
+					result->failed = true;
+					Logger::info(
+						"Control Center GitHub download exception: " +
+						std::string(ex.what()));
+				}
+				catch (...)
+				{
+					result->failed = true;
+					Logger::info(
+						"Control Center GitHub download exception: unknown");
+				}
 
-			const auto lifetime = weakLifetime.lock();
-			if (!lifetime || !lifetime->load() || !::IsWindow(target))
-				return;
-			GithubDownloadResult* raw = result.release();
-			if (!::PostMessage(
-				target,
-				kGithubDownloadCompleteMessage,
-				0,
-				reinterpret_cast<LPARAM>(raw)))
-				delete raw;
-		});
+				if (GithubDownloadCancellationRequested.load(
+					std::memory_order_acquire))
+				{
+					return;
+				}
+				const auto lifetime = weakLifetime.lock();
+				if (!lifetime || !lifetime->load() || !::IsWindow(target))
+					return;
+				GithubDownloadResult* raw = result.release();
+				if (!::PostMessage(
+					target,
+					kGithubDownloadCompleteMessage,
+					0,
+					reinterpret_cast<LPARAM>(raw)))
+				{
+					delete raw;
+					GithubDownloadInProgress.store(
+						false,
+						std::memory_order_release);
+				}
+			});
+	}
+	catch (const std::exception& ex)
+	{
+		GithubDownloadInProgress.store(false);
+		Logger::info(
+			"Unable to start Control Center GitHub download: " +
+			std::string(ex.what()));
+		if (Bridge)
+			Bridge->PushError(requestId, "Unable to start the GitHub download.");
+	}
+	catch (...)
+	{
+		GithubDownloadInProgress.store(false);
+		Logger::info("Unable to start Control Center GitHub download: unknown");
+		if (Bridge)
+			Bridge->PushError(requestId, "Unable to start the GitHub download.");
+	}
+}
+
+void CVsmrControlCenterDialog::StopGithubDownload()
+{
+	GithubDownloadCancellationRequested.store(true, std::memory_order_release);
+	if (GithubDownloadThread.joinable())
+	{
+		::CancelSynchronousIo(GithubDownloadThread.native_handle());
+		GithubDownloadThread.join();
+	}
+	// The worker may have posted completion immediately before cancellation.
+	// Drain that owned payload before another request resets the cancellation
+	// flag, otherwise a stale download could activate after a reload.
+	MSG queued = {};
+	const HWND dialogWindow = GetSafeHwnd();
+	while (::IsWindow(dialogWindow) && ::PeekMessage(
+		&queued,
+		dialogWindow,
+		kGithubDownloadCompleteMessage,
+		kGithubDownloadCompleteMessage,
+		PM_REMOVE))
+	{
+		delete reinterpret_cast<GithubDownloadResult*>(queued.lParam);
+	}
+	GithubDownloadInProgress.store(false, std::memory_order_release);
 }
 
 LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
-	WPARAM,
+	WPARAM wParam,
 	LPARAM lParam)
 {
 	std::unique_ptr<GithubDownloadResult> result(
@@ -1340,8 +1587,22 @@ LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
 	GithubDownloadInProgress.store(false);
 	if (GithubDownloadThread.joinable())
 		GithubDownloadThread.join();
-	if (!result)
+	if (GithubDownloadCancellationRequested.load(std::memory_order_acquire))
 		return 0;
+	if (!result)
+	{
+		if (wParam != 0 && Bridge)
+			Bridge->PushError("", "GitHub download failed unexpectedly.");
+		return 0;
+	}
+	if (result->failed)
+	{
+		if (Bridge)
+			Bridge->PushError(
+				result->requestId,
+				"GitHub download failed unexpectedly.");
+		return 0;
+	}
 	if (result->body.empty())
 	{
 		if (Bridge)
@@ -1676,9 +1937,7 @@ void CVsmrControlCenterDialog::OnDestroy()
 	if (LifetimeToken)
 		LifetimeToken->store(false);
 	SaveWindowPlacement();
-	if (GithubDownloadThread.joinable())
-		GithubDownloadThread.join();
-	GithubDownloadInProgress.store(false);
+	StopGithubDownload();
 	StopWebViewThread();
 	Bridge.reset();
 	CDialogEx::OnDestroy();

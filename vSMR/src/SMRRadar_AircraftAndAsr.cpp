@@ -3,6 +3,9 @@
 #include "InsetWindow.h"
 #include "VsmrControlCenterDialog.hpp"
 
+#include <cerrno>
+#include <cstdlib>
+
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
@@ -29,6 +32,34 @@ namespace
 	{
 		const std::string normalized = NormalizeInsetAirport(airport);
 		return normalized.empty() ? "" : "Insets." + normalized + ".";
+	}
+
+	bool ParseAsrInt(const char* text, int minimum, int maximum, int& value)
+	{
+		if (text == nullptr || *text == '\0')
+			return false;
+		errno = 0;
+		char* end = nullptr;
+		const long parsed = std::strtol(text, &end, 10);
+		if (errno == ERANGE || end == text || *end != '\0' ||
+			parsed < minimum || parsed > maximum)
+			return false;
+		value = static_cast<int>(parsed);
+		return true;
+	}
+
+	bool ParseAsrDouble(const char* text, double minimum, double maximum, double& value)
+	{
+		if (text == nullptr || *text == '\0')
+			return false;
+		errno = 0;
+		char* end = nullptr;
+		const double parsed = std::strtod(text, &end);
+		if (errno == ERANGE || end == text || *end != '\0' ||
+			!std::isfinite(parsed) || parsed < minimum || parsed > maximum)
+			return false;
+		value = parsed;
+		return true;
 	}
 }
 
@@ -527,6 +558,13 @@ void CSMRRadar::ResetAllInsetWindowStates(bool preserveVisibility)
 
 void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 {
+	const std::string normalizedAirport = NormalizeInsetAirport(airport);
+	if (normalizedAirport.empty() ||
+		UnsupportedInsetAsrStateAirports.find(normalizedAirport) != UnsupportedInsetAsrStateAirports.end())
+	{
+		return;
+	}
+
 	const std::string prefix = AirportInsetAsrPrefix(airport);
 	if (prefix.empty())
 		return;
@@ -538,7 +576,6 @@ void CSMRRadar::SaveInsetStateToAsrForAirport(const std::string& airport)
 	};
 
 	save("Version", "Airport-specific inset state version", "3");
-	const std::string normalizedAirport = NormalizeInsetAirport(airport);
 	const auto avisoPath = AvisoGeoJsonOverridePaths.find(normalizedAirport);
 	save(
 		"AvisoFile",
@@ -712,6 +749,109 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	{
 		return readWithPrefix(readPrefix, suffix);
 	};
+	auto readInt = [&](const std::string& suffix, int minimum, int maximum, auto& target)
+	{
+		if (const char* value = read(suffix))
+		{
+			int parsed = 0;
+			if (ParseAsrInt(value, minimum, maximum, parsed))
+				target = parsed;
+			else
+				Logger::info("Ignored invalid inset ASR integer: " + readPrefix + suffix);
+		}
+	};
+	auto readDouble = [&](const std::string& suffix, double minimum, double maximum, double& target) -> bool
+	{
+		if (const char* value = read(suffix))
+		{
+			double parsed = 0.0;
+			if (ParseAsrDouble(value, minimum, maximum, parsed))
+			{
+				target = parsed;
+				return true;
+			}
+			Logger::info("Ignored invalid inset ASR number: " + readPrefix + suffix);
+		}
+		return false;
+	};
+	auto readDisplay = [&](const std::string& suffix, bool& target)
+	{
+		if (const char* value = read(suffix))
+		{
+			int parsed = 0;
+			if (ParseAsrInt(value, 0, 1, parsed))
+				target = parsed != 0;
+			else
+				Logger::info("Ignored invalid inset ASR visibility: " + readPrefix + suffix);
+		}
+	};
+	auto readRect = [&](const std::string& windowPrefix, RECT& target)
+	{
+		const char* raw[4] = {
+			read(windowPrefix + "TopLeftX"),
+			read(windowPrefix + "TopLeftY"),
+			read(windowPrefix + "BottomRightX"),
+			read(windowPrefix + "BottomRightY")
+		};
+		const bool any = std::any_of(std::begin(raw), std::end(raw), [](const char* value) {
+			return value != nullptr;
+		});
+		if (!any)
+			return;
+		int values[4] = {};
+		for (int index = 0; index < 4; ++index)
+		{
+			if (!ParseAsrInt(raw[index], -100000, 100000, values[index]))
+			{
+				Logger::info("Ignored incomplete or invalid inset ASR rectangle: " + readPrefix + windowPrefix);
+				return;
+			}
+		}
+		if (values[2] <= values[0] || values[3] <= values[1] ||
+			values[2] - values[0] > 20000 || values[3] - values[1] > 20000)
+		{
+			Logger::info("Ignored invalid inset ASR rectangle dimensions: " + readPrefix + windowPrefix);
+			return;
+		}
+		target.left = values[0];
+		target.top = values[1];
+		target.right = values[2];
+		target.bottom = values[3];
+	};
+
+	if (!readPrefix.empty())
+	{
+		int version = 0;
+		const char* rawVersion = read("Version");
+		if (rawVersion != nullptr && !ParseAsrInt(rawVersion, 1, 3, version))
+		{
+			errno = 0;
+			char* versionEnd = nullptr;
+			const unsigned long long numericVersion = std::strtoull(rawVersion, &versionEnd, 10);
+			const bool isFutureVersion =
+				rawVersion[0] != '-' &&
+				versionEnd != rawVersion &&
+				*versionEnd == '\0' &&
+				(errno == ERANGE || numericVersion > 3);
+			if (isFutureVersion)
+			{
+				UnsupportedInsetAsrStateAirports.insert(normalizedAirport);
+				Logger::info(
+					"Preserved unsupported future airport inset ASR state version for " +
+					normalizedAirport);
+				return false;
+			}
+
+			UnsupportedInsetAsrStateAirports.erase(normalizedAirport);
+			Logger::info("Ignored invalid airport inset ASR state version for " + normalizedAirport);
+			return false;
+		}
+		UnsupportedInsetAsrStateAirports.erase(normalizedAirport);
+	}
+	else
+	{
+		UnsupportedInsetAsrStateAirports.erase(normalizedAirport);
+	}
 
 	if (hasSessionAvisoPath)
 	{
@@ -733,6 +873,12 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		else
 		{
 			AvisoGeoJsonOverridePaths.erase(normalizedAirport);
+			GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"AVISO source",
+				("The saved AVISO source for " + normalizedAirport +
+					" is unavailable. vSMR will use the packaged airport AVISO when available.").c_str(),
+				true, true, false, false, false);
 		}
 	}
 
@@ -744,19 +890,18 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 
 		CInsetWindow* window = windowIt->second.get();
 		const std::string windowPrefix = "SRW" + std::to_string(id);
-		const char* value = nullptr;
-		if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
-		if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
-		if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
-		if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
-		if ((value = read(windowPrefix + "OffsetX")) != nullptr) window->m_Offset.x = atoi(value);
-		if ((value = read(windowPrefix + "OffsetY")) != nullptr) window->m_Offset.y = atoi(value);
-		if ((value = read(windowPrefix + "Filter")) != nullptr) window->m_Filter = std::clamp(atoi(value), 0, 66000);
-		if ((value = read(windowPrefix + "Scale")) != nullptr) window->m_Scale = std::clamp(atoi(value), 1, 2400);
-		if ((value = read(windowPrefix + "Rotation")) != nullptr) window->m_Rotation = atof(value);
-		if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
-			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
-		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[id] = atoi(value) != 0;
+		readRect(windowPrefix, window->m_Area);
+		readInt(windowPrefix + "OffsetX", -100000, 100000, window->m_Offset.x);
+		readInt(windowPrefix + "OffsetY", -100000, 100000, window->m_Offset.y);
+		readInt(windowPrefix + "Filter", 0, 66000, window->m_Filter);
+		readInt(windowPrefix + "Scale", 1, 2400, window->m_Scale);
+		readDouble(windowPrefix + "Rotation", -36000.0, 36000.0, window->m_Rotation);
+		int layoutMode = static_cast<int>(window->m_AvisoLayoutMode);
+		readInt(windowPrefix + "LayoutMode", 0, 8, layoutMode);
+		window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
+		bool visible = appWindowDisplays[id];
+		readDisplay(windowPrefix + "Display", visible);
+		appWindowDisplays[id] = visible;
 		window->ResetAvisoInteractionState();
 	}
 
@@ -766,27 +911,21 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	{
 		CInsetWindow* window = avisoWindowIt->second.get();
 		const std::string windowPrefix = "AVISO1";
-		const char* value = nullptr;
 		bool centerLoaded = false;
-		if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
-		if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
-		if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
-		if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
-		if ((value = read(windowPrefix + "CenterLat")) != nullptr)
-		{
-			window->m_AvisoCenterLatitude = std::clamp(atof(value), -85.0, 85.0);
-			centerLoaded = true;
-		}
-		if ((value = read(windowPrefix + "CenterLon")) != nullptr)
-		{
-			window->m_AvisoCenterLongitude = atof(value);
-			centerLoaded = true;
-		}
+		readRect(windowPrefix, window->m_Area);
+		const bool latitudeLoaded = readDouble(
+			windowPrefix + "CenterLat", -85.0, 85.0, window->m_AvisoCenterLatitude);
+		const bool longitudeLoaded = readDouble(
+			windowPrefix + "CenterLon", -180.0, 180.0, window->m_AvisoCenterLongitude);
+		centerLoaded = latitudeLoaded && longitudeLoaded;
 		window->m_AvisoViewInitialized = centerLoaded;
-		if ((value = read(windowPrefix + "Scale")) != nullptr) window->m_AvisoScale = std::clamp(atoi(value), 1, 2400);
-		if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
-			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
-		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[avisoWindowId] = atoi(value) != 0;
+		readInt(windowPrefix + "Scale", 1, 2400, window->m_AvisoScale);
+		int layoutMode = static_cast<int>(window->m_AvisoLayoutMode);
+		readInt(windowPrefix + "LayoutMode", 0, 8, layoutMode);
+		window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
+		bool visible = appWindowDisplays[avisoWindowId];
+		readDisplay(windowPrefix + "Display", visible);
+		appWindowDisplays[avisoWindowId] = visible;
 		window->ResetAvisoInteractionState();
 		window->ClearAvisoViewportCache();
 	}
@@ -797,14 +936,13 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	{
 		CInsetWindow* window = weatherWindowIt->second.get();
 		const std::string windowPrefix = "WEATHER1";
-		const char* value = nullptr;
-		if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
-		if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
-		if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
-		if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
-		if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
-			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
-		if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[weatherWindowId] = atoi(value) != 0;
+		readRect(windowPrefix, window->m_Area);
+		int layoutMode = static_cast<int>(window->m_AvisoLayoutMode);
+		readInt(windowPrefix + "LayoutMode", 0, 8, layoutMode);
+		window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
+		bool visible = appWindowDisplays[weatherWindowId];
+		readDisplay(windowPrefix + "Display", visible);
+		appWindowDisplays[weatherWindowId] = visible;
 		window->ResetAvisoInteractionState();
 	}
 
@@ -825,16 +963,13 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		else
 		{
 			CInsetWindow* window = timerWindowIt->second.get();
-			const char* value = nullptr;
-			if ((value = read(windowPrefix + "TopLeftX")) != nullptr) window->m_Area.left = atoi(value);
-			if ((value = read(windowPrefix + "TopLeftY")) != nullptr) window->m_Area.top = atoi(value);
-			if ((value = read(windowPrefix + "BottomRightX")) != nullptr) window->m_Area.right = atoi(value);
-			if ((value = read(windowPrefix + "BottomRightY")) != nullptr) window->m_Area.bottom = atoi(value);
-			if ((value = read(windowPrefix + "LayoutMode")) != nullptr)
-				window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(atoi(value), 0, 8));
-			else
-				window->m_AvisoLayoutMode = CInsetWindow::AvisoLayoutMode::Floating;
-			if ((value = read(windowPrefix + "Display")) != nullptr) appWindowDisplays[timerWindowId] = atoi(value) != 0;
+			readRect(windowPrefix, window->m_Area);
+			int layoutMode = static_cast<int>(CInsetWindow::AvisoLayoutMode::Floating);
+			readInt(windowPrefix + "LayoutMode", 0, 8, layoutMode);
+			window->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(layoutMode);
+			bool visible = appWindowDisplays[timerWindowId];
+			readDisplay(windowPrefix + "Display", visible);
+			appWindowDisplays[timerWindowId] = visible;
 			window->ResetAvisoInteractionState();
 		}
 	}
@@ -855,7 +990,12 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 			}
 		}
 		if (const char* linked = read("Linked"))
-			AvisoViewsLinked = !ActiveAvisoPresetName.empty() && atoi(linked) != 0;
+		{
+			int parsed = 0;
+			AvisoViewsLinked =
+				!ActiveAvisoPresetName.empty() &&
+				ParseAsrInt(linked, 0, 1, parsed) && parsed != 0;
+		}
 	}
 
 	return true;
@@ -918,6 +1058,12 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 			Logger::info(
 				"OnAsrContentLoaded: profiles source is unavailable path=" +
 				requestedProfilesPath + " error=" + profilePathError);
+			GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"Profiles source",
+				("The saved profiles source is unavailable. vSMR kept the current safe source. " +
+					profilePathError).c_str(),
+				true, true, false, false, false);
 		}
 	}
 	else if (!ConfigPath.empty())

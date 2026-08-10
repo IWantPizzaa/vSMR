@@ -238,7 +238,6 @@ void CSMRRadar::OnAsrContentToBeClosed(void)
 
 	const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
 	const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
-	WriteLastActiveProfileToConfig(profileToPersist);
 	SaveDataToAsr("ActiveProfile", "vSMR active profile", profileToPersist.c_str());
 
 	if (CurrentConfig != nullptr)
@@ -246,6 +245,7 @@ void CSMRRadar::OnAsrContentToBeClosed(void)
 		// Reload before writing shutdown state so stale radar instances do not overwrite
 		// edits already saved by another screen during the session.
 		CurrentConfig->reload();
+		WriteLastActiveProfileToConfig(profileToPersist);
 		if (RimcasInstance != nullptr)
 			CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
 		CurrentConfig->saveConfig();

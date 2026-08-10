@@ -48,7 +48,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		{
 			showAvisoPresetMessage("Renamed inset preset: " + GetActiveAvisoPresetName());
 			if (VsmrControlCenterDialog != nullptr)
-				VsmrControlCenterDialog->SyncFromRadar();
+				VsmrControlCenterDialog->SyncFromRadar("preset");
 			RequestRefresh();
 		}
 		else

@@ -2,6 +2,7 @@
 #include "HttpHelper.hpp"
 #include <winhttp.h>
 #include <algorithm>
+#include <cwctype>
 #include <vector>
 
 #pragma comment(lib, "winhttp.lib")
@@ -12,16 +13,91 @@
 
 namespace
 {
+	bool CrackValidatedHttpsUrl(
+		const std::string& url,
+		std::wstring* hostOut,
+		std::wstring* wideUrlOut = nullptr)
+	{
+		if (url.empty() || url.find('#') != std::string::npos)
+			return false;
+		for (const unsigned char character : url)
+		{
+			if (character <= 0x20 || character == 0x7f)
+				return false;
+		}
+
+		const int wideLength = ::MultiByteToWideChar(
+			CP_UTF8,
+			MB_ERR_INVALID_CHARS,
+			url.data(),
+			static_cast<int>(url.size()),
+			nullptr,
+			0);
+		if (wideLength <= 0)
+			return false;
+		std::wstring wideUrl(static_cast<size_t>(wideLength), L'\0');
+		if (::MultiByteToWideChar(
+			CP_UTF8,
+			MB_ERR_INVALID_CHARS,
+			url.data(),
+			static_cast<int>(url.size()),
+			wideUrl.data(),
+			wideLength) != wideLength)
+		{
+			return false;
+		}
+
+		URL_COMPONENTS components = {};
+		components.dwStructSize = sizeof(components);
+		components.dwSchemeLength = (DWORD)-1;
+		components.dwHostNameLength = (DWORD)-1;
+		components.dwUserNameLength = (DWORD)-1;
+		components.dwPasswordLength = (DWORD)-1;
+		components.dwUrlPathLength = (DWORD)-1;
+		components.dwExtraInfoLength = (DWORD)-1;
+		if (!::WinHttpCrackUrl(wideUrl.c_str(), 0, 0, &components) ||
+			components.nScheme != INTERNET_SCHEME_HTTPS ||
+			components.dwHostNameLength == 0 ||
+			components.dwUserNameLength != 0 ||
+			components.dwPasswordLength != 0)
+		{
+			return false;
+		}
+
+		std::wstring host(
+			components.lpszHostName,
+			components.dwHostNameLength);
+		if (host.empty() || host.front() == L'.' || host.back() == L'.' ||
+			host.front() == L'-' || host.back() == L'-')
+		{
+			return false;
+		}
+		for (const wchar_t character : host)
+		{
+			if (!(std::iswalnum(character) || character == L'.' || character == L'-'))
+				return false;
+		}
+
+		if (hostOut != nullptr)
+			*hostOut = std::move(host);
+		if (wideUrlOut != nullptr)
+			*wideUrlOut = std::move(wideUrl);
+		return true;
+	}
+
 	std::string DownloadStringWithWinHttp(
 		const std::string& url,
 		int timeoutMs,
-		const std::atomic<bool>* cancelRequested)
+		const std::atomic<bool>* cancelRequested,
+		size_t maxResponseBytes)
 	{
 		auto isCancelled = [cancelRequested]() -> bool
 		{
 			return cancelRequested != nullptr && cancelRequested->load(std::memory_order_acquire);
 		};
-		if (url.empty() || isCancelled())
+		std::wstring wideUrl;
+		if (url.empty() || isCancelled() || maxResponseBytes == 0 ||
+			!CrackValidatedHttpsUrl(url, nullptr, &wideUrl))
 			return "";
 		timeoutMs = std::clamp(timeoutMs, 1000, 30000);
 		const ULONGLONG startedAt = ::GetTickCount64();
@@ -33,7 +109,6 @@ namespace
 			return (std::max)(1, timeoutMs - static_cast<int>(elapsed));
 		};
 
-		std::wstring wideUrl(url.begin(), url.end());
 		URL_COMPONENTS components = {};
 		components.dwStructSize = sizeof(components);
 		components.dwSchemeLength = (DWORD)-1;
@@ -56,8 +131,9 @@ namespace
 		if (resource.empty())
 			resource = L"/";
 
-		const bool isSecure = (components.nScheme == INTERNET_SCHEME_HTTPS);
-		const DWORD requestFlags = isSecure ? WINHTTP_FLAG_SECURE : 0;
+		if (components.nScheme != INTERNET_SCHEME_HTTPS)
+			return "";
+		const DWORD requestFlags = WINHTTP_FLAG_SECURE;
 
 		HINTERNET session = WinHttpOpen(L"vSMR/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
 			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
@@ -92,6 +168,18 @@ namespace
 			WinHttpCloseHandle(session);
 			return "";
 		}
+		DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+		if (!::WinHttpSetOption(
+			request,
+			WINHTTP_OPTION_REDIRECT_POLICY,
+			&redirectPolicy,
+			sizeof(redirectPolicy)))
+		{
+			WinHttpCloseHandle(request);
+			WinHttpCloseHandle(connect);
+			WinHttpCloseHandle(session);
+			return "";
+		}
 
 		int remaining = remainingTimeoutMs();
 		if (isCancelled() || remaining == 0)
@@ -121,38 +209,101 @@ namespace
 		}
 
 		std::string response;
+		bool responseTooLarge = false;
+		bool responseComplete = false;
+		bool readFailed = false;
 		if (ok == TRUE && !isCancelled())
 		{
-			DWORD available = 0;
-			do
+			DWORD statusCode = 0;
+			DWORD statusCodeSize = sizeof(statusCode);
+			if (!::WinHttpQueryHeaders(
+				request,
+				WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+				WINHTTP_HEADER_NAME_BY_INDEX,
+				&statusCode,
+				&statusCodeSize,
+				WINHTTP_NO_HEADER_INDEX) ||
+				statusCode < 200 || statusCode >= 300)
+			{
+				ok = FALSE;
+			}
+
+			DWORD contentLength = 0;
+			DWORD contentLengthSize = sizeof(contentLength);
+			if (ok == TRUE && ::WinHttpQueryHeaders(
+				request,
+				WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+				WINHTTP_HEADER_NAME_BY_INDEX,
+				&contentLength,
+				&contentLengthSize,
+				WINHTTP_NO_HEADER_INDEX) &&
+				static_cast<size_t>(contentLength) > maxResponseBytes)
+			{
+				ok = FALSE;
+				responseTooLarge = true;
+			}
+		}
+		if (ok == TRUE && !isCancelled())
+		{
+			for (;;)
 			{
 				remaining = remainingTimeoutMs();
 				if (isCancelled() || remaining == 0)
+				{
+					readFailed = true;
 					break;
+				}
 				WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
-				available = 0;
+				DWORD available = 0;
 				if (!WinHttpQueryDataAvailable(request, &available))
+				{
+					readFailed = true;
 					break;
+				}
 				if (available == 0)
+				{
+					responseComplete = true;
 					break;
+				}
 
-				std::vector<char> buffer(available);
-				DWORD downloaded = 0;
-				if (!WinHttpReadData(request, buffer.data(), available, &downloaded))
+				const size_t remainingCapacity = maxResponseBytes - response.size();
+				if (remainingCapacity == 0)
+				{
+					responseTooLarge = true;
 					break;
+				}
+				const DWORD readCapacity = static_cast<DWORD>((std::min)(
+					static_cast<size_t>(available),
+					(std::min)(remainingCapacity + 1U, static_cast<size_t>(64U * 1024U))));
+				std::vector<char> buffer(readCapacity);
+				DWORD downloaded = 0;
+				if (!WinHttpReadData(request, buffer.data(), readCapacity, &downloaded))
+				{
+					readFailed = true;
+					break;
+				}
 
 				if (downloaded == 0)
+				{
+					readFailed = true;
 					break;
+				}
 
+				if (static_cast<size_t>(downloaded) > remainingCapacity)
+				{
+					responseTooLarge = true;
+					break;
+				}
 				response.append(buffer.data(), downloaded);
-			} while (available > 0 && !isCancelled());
+			}
 		}
 
 		WinHttpCloseHandle(request);
 		WinHttpCloseHandle(connect);
 		WinHttpCloseHandle(session);
 
-		return isCancelled() ? "" : response;
+		return isCancelled() || responseTooLarge || readFailed ||
+			!responseComplete ? "" : response;
 	}
 }
 
@@ -163,8 +314,52 @@ HttpHelper::HttpHelper()  {
 std::string HttpHelper::downloadStringFromURL(
 	std::string url,
 	int timeoutMs,
-	const std::atomic<bool>* cancelRequested) {
-	return DownloadStringWithWinHttp(url, timeoutMs, cancelRequested);
+	const std::atomic<bool>* cancelRequested,
+	size_t maxResponseBytes) {
+	return DownloadStringWithWinHttp(
+		url,
+		timeoutMs,
+		cancelRequested,
+		maxResponseBytes);
+}
+
+bool HttpHelper::IsValidHttpsUrl(
+	const std::string& url,
+	std::string* host)
+{
+	std::wstring wideHost;
+	if (!CrackValidatedHttpsUrl(url, &wideHost))
+		return false;
+	if (host != nullptr)
+	{
+		host->clear();
+		host->reserve(wideHost.size());
+		for (const wchar_t character : wideHost)
+		{
+			if (character > 0x7f)
+				return false;
+			host->push_back(static_cast<char>(std::towlower(character)));
+		}
+	}
+	return true;
+}
+
+bool HttpHelper::IsHttpsUrlForHost(
+	const std::string& url,
+	const std::string& expectedHost)
+{
+	std::string host;
+	if (!IsValidHttpsUrl(url, &host))
+		return false;
+	std::string normalizedExpectedHost = expectedHost;
+	std::transform(
+		normalizedExpectedHost.begin(),
+		normalizedExpectedHost.end(),
+		normalizedExpectedHost.begin(),
+		[](unsigned char character) {
+			return static_cast<char>(std::tolower(character));
+		});
+	return host == normalizedExpectedHost;
 }
 
 HttpHelper::~HttpHelper() {

@@ -56,6 +56,55 @@ namespace
 		return value;
 	}
 
+	void CloneJsonValue(
+		const rapidjson::Value& source,
+		rapidjson::Value& output,
+		rapidjson::Document::AllocatorType& allocator)
+	{
+		if (source.IsObject())
+		{
+			output.SetObject();
+			for (rapidjson::Value::ConstMemberIterator it = source.MemberBegin();
+				it != source.MemberEnd(); ++it)
+			{
+				rapidjson::Value key(
+					it->name.GetString(),
+					static_cast<rapidjson::SizeType>(it->name.GetStringLength()),
+					allocator);
+				rapidjson::Value value;
+				CloneJsonValue(it->value, value, allocator);
+				output.AddMember(key, value, allocator);
+			}
+			return;
+		}
+		if (source.IsArray())
+		{
+			output.SetArray();
+			for (rapidjson::SizeType i = 0; i < source.Size(); ++i)
+			{
+				rapidjson::Value value;
+				CloneJsonValue(source[i], value, allocator);
+				output.PushBack(value, allocator);
+			}
+			return;
+		}
+		if (source.IsString())
+		{
+			output.SetString(
+				source.GetString(),
+				static_cast<rapidjson::SizeType>(source.GetStringLength()),
+				allocator);
+			return;
+		}
+		if (source.IsBool()) { output.SetBool(source.GetBool()); return; }
+		if (source.IsInt()) { output.SetInt(source.GetInt()); return; }
+		if (source.IsUint()) { output.SetUint(source.GetUint()); return; }
+		if (source.IsInt64()) { output.SetInt64(source.GetInt64()); return; }
+		if (source.IsUint64()) { output.SetUint64(source.GetUint64()); return; }
+		if (source.IsDouble()) { output.SetDouble(source.GetDouble()); return; }
+		output.SetNull();
+	}
+
 	const rapidjson::Value* GetObjectMember(const rapidjson::Value& object, const char* key)
 	{
 		if (!object.IsObject() || key == nullptr || !object.HasMember(key) || !object[key].IsObject())
@@ -157,6 +206,30 @@ namespace
 		if (object[key].IsNumber())
 			return static_cast<int>(std::lround(object[key].GetDouble()));
 		return fallback;
+	}
+
+	bool ReadValidWindowRect(const rapidjson::Value& object, RECT& out)
+	{
+		if (!object.IsObject())
+			return false;
+		int values[4] = {};
+		const char* keys[4] = { "left", "top", "right", "bottom" };
+		for (int index = 0; index < 4; ++index)
+		{
+			if (!object.HasMember(keys[index]) || !object[keys[index]].IsInt())
+				return false;
+			values[index] = object[keys[index]].GetInt();
+			if (values[index] < -100000 || values[index] > 100000)
+				return false;
+		}
+		if (values[2] <= values[0] || values[3] <= values[1] ||
+			values[2] - values[0] > 20000 || values[3] - values[1] > 20000)
+			return false;
+		out.left = values[0];
+		out.top = values[1];
+		out.right = values[2];
+		out.bottom = values[3];
+		return true;
 	}
 
 	bool ReadBoolMember(const rapidjson::Value& object, const char* key, bool fallback)
@@ -276,57 +349,77 @@ namespace
 		{
 			return false;
 		}
-
-		// A legacy store has no airport identity. It can only be claimed while the
-		// complete airport map is empty; otherwise leave it untouched for explicit
-		// user resolution instead of allowing whichever airport opens next to claim
-		// it. Items and default are moved in the same persisted transaction.
-		rapidjson::Value* airports = nullptr;
-		if (legacySection.HasMember(kAirportPresetStoresKey))
+		// Never assign an unscoped legacy store to whichever airport happens to
+		// open first. A migration is automatic only when the legacy store itself
+		// explicitly identifies the same airport.
+		if (!legacySection.HasMember("airport") || !legacySection["airport"].IsString() ||
+			NormalizeAirportKey(legacySection["airport"].GetString()) != NormalizeAirportKey(airport))
 		{
-			if (!legacySection[kAirportPresetStoresKey].IsObject() ||
-				legacySection[kAirportPresetStoresKey].MemberBegin() !=
-					legacySection[kAirportPresetStoresKey].MemberEnd())
-			{
-				return false;
-			}
-			airports = &legacySection[kAirportPresetStoresKey];
-		}
-		else
-		{
-			rapidjson::Value airportsKey(kAirportPresetStoresKey, allocator);
-			rapidjson::Value airportsValue(rapidjson::kObjectType);
-			legacySection.AddMember(airportsKey, airportsValue, allocator);
-			airports = &legacySection[kAirportPresetStoresKey];
+			return false;
 		}
 
+		// The legacy root has an explicit owner, so merge it into that airport even
+		// when canonical stores for other airports already exist. Canonical entries
+		// win name collisions; otherwise every legacy item is retained. This avoids
+		// making an explicitly owned store disappear merely because another airport
+		// was opened first.
+		rapidjson::Value& airports =
+			EnsureObjectMember(legacySection, kAirportPresetStoresKey, allocator);
 		const std::string airportKey = NormalizeAirportKey(airport);
-		rapidjson::Value airportKeyValue;
-		airportKeyValue.SetString(
-			airportKey.c_str(),
-			static_cast<rapidjson::SizeType>(airportKey.size()),
-			allocator);
-		rapidjson::Value airportSection(rapidjson::kObjectType);
+		rapidjson::Value& airportSection =
+			EnsureObjectMember(airports, airportKey.c_str(), allocator);
+
 		if (hasItemsMember)
 		{
-			rapidjson::Value items;
-			items = legacySection[kPresetItemsKey];
-			rapidjson::Value itemsKey(kPresetItemsKey, allocator);
-			airportSection.AddMember(itemsKey, items, allocator);
+			const rapidjson::Value& legacyItems = legacySection[kPresetItemsKey];
+			rapidjson::Value& targetItems =
+				EnsureArrayMember(airportSection, kPresetItemsKey, allocator);
+			for (rapidjson::SizeType i = 0; i < legacyItems.Size(); ++i)
+			{
+				const rapidjson::Value& legacyItem = legacyItems[i];
+				bool duplicateName = false;
+				if (legacyItem.IsObject() && legacyItem.HasMember("name") &&
+					legacyItem["name"].IsString())
+				{
+					for (rapidjson::SizeType targetIndex = 0;
+						targetIndex < targetItems.Size(); ++targetIndex)
+					{
+						const rapidjson::Value& targetItem = targetItems[targetIndex];
+						if (targetItem.IsObject() && targetItem.HasMember("name") &&
+							targetItem["name"].IsString() &&
+							EqualsNoCase(
+								targetItem["name"].GetString(),
+								legacyItem["name"].GetString()))
+						{
+							duplicateName = true;
+							break;
+						}
+					}
+				}
+				if (!duplicateName)
+				{
+					rapidjson::Value itemCopy;
+					CloneJsonValue(legacyItem, itemCopy, allocator);
+					targetItems.PushBack(itemCopy, allocator);
+				}
+			}
 		}
-		if (hasDefaultMember)
+		if (hasDefaultMember && !airportSection.HasMember(kDefaultPresetKey))
 		{
 			rapidjson::Value defaultValue;
-			defaultValue = legacySection[kDefaultPresetKey];
+			CloneJsonValue(
+				legacySection[kDefaultPresetKey],
+				defaultValue,
+				allocator);
 			rapidjson::Value defaultKey(kDefaultPresetKey, allocator);
 			airportSection.AddMember(defaultKey, defaultValue, allocator);
 		}
-		airports->AddMember(airportKeyValue, airportSection, allocator);
 
 		if (hasItemsMember)
 			legacySection.RemoveMember(kPresetItemsKey);
 		if (hasDefaultMember)
 			legacySection.RemoveMember(kDefaultPresetKey);
+		legacySection.RemoveMember("airport");
 		return true;
 	}
 
@@ -390,7 +483,9 @@ namespace
 			return false;
 		}
 
-		if (minLat >= maxLat || minLon >= maxLon)
+		if (minLat < -90.0 || maxLat > 90.0 ||
+			minLon < -180.0 || maxLon > 180.0 ||
+			minLat >= maxLat || minLon >= maxLon)
 			return false;
 
 		out.valid = true;
@@ -420,11 +515,9 @@ namespace
 
 		if (const rapidjson::Value* secondary = GetObjectMember(value, "secondary"))
 		{
+			if (!ReadValidWindowRect(*secondary, out.secondaryArea))
+				return false;
 			out.secondaryVisible = ReadBoolMember(*secondary, "visible", true);
-			out.secondaryArea.left = ReadIntMember(*secondary, "left", out.secondaryArea.left);
-			out.secondaryArea.top = ReadIntMember(*secondary, "top", out.secondaryArea.top);
-			out.secondaryArea.right = ReadIntMember(*secondary, "right", out.secondaryArea.right);
-			out.secondaryArea.bottom = ReadIntMember(*secondary, "bottom", out.secondaryArea.bottom);
 			out.secondaryScale = std::clamp(ReadIntMember(*secondary, "scale", out.secondaryScale), 1, 2400);
 			ReadDoubleMember(*secondary, "center_latitude", out.secondaryCenterLatitude);
 			ReadDoubleMember(*secondary, "center_longitude", out.secondaryCenterLongitude);
@@ -445,12 +538,10 @@ namespace
 
 				CSMRRadar::AvisoPreset::SecondaryRadarWindow& window =
 					out.srw[static_cast<size_t>(id - 1)];
+				if (!ReadValidWindowRect(item, window.area))
+					return false;
 				window.valid = true;
 				window.visible = ReadBoolMember(item, "visible", window.visible);
-				window.area.left = ReadIntMember(item, "left", window.area.left);
-				window.area.top = ReadIntMember(item, "top", window.area.top);
-				window.area.right = ReadIntMember(item, "right", window.area.right);
-				window.area.bottom = ReadIntMember(item, "bottom", window.area.bottom);
 				window.offset.x = ReadIntMember(item, "offset_x", window.offset.x);
 				window.offset.y = ReadIntMember(item, "offset_y", window.offset.y);
 				window.scale = std::clamp(
@@ -471,12 +562,10 @@ namespace
 
 		if (const rapidjson::Value* weather = GetObjectMember(value, "weather"))
 		{
+			if (!ReadValidWindowRect(*weather, out.weather.area))
+				return false;
 			out.weather.valid = true;
 			out.weather.visible = ReadBoolMember(*weather, "visible", out.weather.visible);
-			out.weather.area.left = ReadIntMember(*weather, "left", out.weather.area.left);
-			out.weather.area.top = ReadIntMember(*weather, "top", out.weather.area.top);
-			out.weather.area.right = ReadIntMember(*weather, "right", out.weather.area.right);
-			out.weather.area.bottom = ReadIntMember(*weather, "bottom", out.weather.area.bottom);
 			if (weather->HasMember("layout_mode"))
 				out.weather.layoutMode = LayoutModeFromValue((*weather)["layout_mode"], out.weather.layoutMode);
 			else if (weather->HasMember("layout_mode_id"))
@@ -487,11 +576,9 @@ namespace
 		{
 			out.timer.valid = true;
 			out.timer.area = { 100, 180, 226, 208 };
+			if (!ReadValidWindowRect(*timer, out.timer.area))
+				return false;
 			out.timer.visible = ReadBoolMember(*timer, "visible", out.timer.visible);
-			out.timer.area.left = ReadIntMember(*timer, "left", out.timer.area.left);
-			out.timer.area.top = ReadIntMember(*timer, "top", out.timer.area.top);
-			out.timer.area.right = ReadIntMember(*timer, "right", out.timer.area.right);
-			out.timer.area.bottom = ReadIntMember(*timer, "bottom", out.timer.area.bottom);
 			if (timer->HasMember("layout_mode"))
 				out.timer.layoutMode = LayoutModeFromValue((*timer)["layout_mode"], out.timer.layoutMode);
 			else if (timer->HasMember("layout_mode_id"))
@@ -662,7 +749,7 @@ namespace
 			radar->SaveInsetStateToAsrForAirport(radar->getActiveAirport());
 			radar->RequestRefresh();
 			if (radar != source && radar->VsmrControlCenterDialog != nullptr)
-				radar->VsmrControlCenterDialog->SyncFromRadar();
+				radar->VsmrControlCenterDialog->SyncFromRadar("preset");
 		};
 
 		bool sourceSeen = false;

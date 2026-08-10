@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Default",
+    "schema_version": 2,
+    "labels": {},
+    "targets": {}
+  },
+  {
+    "_vsmr": {
+      "schema_version": 1,
+      "last_active_profile": "Default"
+    }
+  }
+]

@@ -15,6 +15,7 @@
 #include "SMRVacdmTagHelpers.hpp"
 #include "ProfileEditorDialog.hpp"
 #include "AvisoEditorDialog.hpp"
+#include "AvisoDocumentModel.hpp"
 #include "SMRPlugin.hpp"
 #include "VsmrControlCenterDialog.hpp"
 
@@ -31,7 +32,14 @@ HCURSOR smrCursor = NULL;
 bool standardCursor; // True when the default arrow cursor is active.
 bool customCursor; // True when the plugin-specific cursor theme is enabled.
 std::map<HWND, WNDPROC> gInsetWindowSourceProcs;
+std::map<HWND, CSMRRadar*> gInsetWindowRadarScreens;
 CSMRRadar* gWindowProcRadarScreen = nullptr;
+UINT AvisoWorkerRefreshMessage()
+{
+	static const UINT message =
+		::RegisterWindowMessageA("vSMR.2.AvisoWorkerRefresh");
+	return message;
+}
 void RestoreInsetWindowProcHooks();
 HHOOK gThreadMouseHook = nullptr;
 DWORD gThreadMouseHookThreadId = 0;
@@ -856,15 +864,27 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
+	for (auto radarIt = gInsetWindowRadarScreens.begin(); radarIt != gInsetWindowRadarScreens.end();)
+	{
+		if (radarIt->second == this)
+			radarIt = gInsetWindowRadarScreens.erase(radarIt);
+		else
+			++radarIt;
+	}
 	if (RadarScreensOpened.empty())
 		RestoreInsetWindowProcHooks();
 	customFonts.clear();
 	appWindows.clear();
+	AircraftIcons.clear();
+	RealisticIconBitmapCache.clear();
+	ClearAvisoGeoJsonRasterCache();
 
 	// Shutting down GDI+
 	if (m_gdiplusToken != 0)
+	{
 		GdiplusShutdown(m_gdiplusToken);
-	ClearAvisoGeoJsonRasterCache();
+		m_gdiplusToken = 0;
+	}
 }
 
 std::string CSMRRadar::DetectDefaultAirportFromAviso() const
@@ -967,16 +987,47 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	return rememberResolvedPath("");
 }
 
-bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
+bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
+	const std::string& path,
+	bool retainPreviousOnFailure)
 {
 	if (IsShutdownRequested())
 		return false;
 
 	if (path.empty())
 		return false;
-
 	const unsigned long nowTick = ::GetTickCount();
 	const unsigned long statRefreshIntervalMs = 500;
+
+	const auto canRetainPrevious = [&]()
+	{
+		if (!retainPreviousOnFailure ||
+			!AvisoGeoJsonLoaded ||
+			AvisoGeoJsonLoadedPath != path)
+		{
+			return false;
+		}
+		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
+		return AvisoGeoJsonFeatureSnapshot != nullptr &&
+			AvisoGeoJsonLabelSnapshot != nullptr &&
+			AvisoGroupVisibilitySnapshot != nullptr;
+	};
+	if (AvisoGeoJsonLastFailedPath == path &&
+		AvisoGeoJsonLastFailedTick != 0 &&
+		(nowTick - AvisoGeoJsonLastFailedTick) < statRefreshIntervalMs)
+	{
+		return canRetainPrevious();
+	}
+	const auto rememberFailedAttempt = [&](const fs::file_time_type* failedWriteTime)
+	{
+		AvisoGeoJsonLastFailedPath = path;
+		AvisoGeoJsonLastFailedTick = nowTick;
+		AvisoGeoJsonLastFailedWriteTimeValid = failedWriteTime != nullptr;
+		if (failedWriteTime != nullptr)
+			AvisoGeoJsonLastFailedWriteTime = *failedWriteTime;
+		return canRetainPrevious();
+	};
+
 	if (AvisoGeoJsonLoadAttempted &&
 		AvisoGeoJsonLoadedPath == path &&
 		AvisoGeoJsonLastStatTick != 0 &&
@@ -995,13 +1046,23 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 	{
 		Logger::info("AVISO GeoJSON stat failed path=" + path + " error=" + ex.what());
 		AvisoGeoJsonLastStatTick = nowTick;
-		return false;
+		return rememberFailedAttempt(nullptr);
 	}
 	catch (...)
 	{
 		Logger::info("AVISO GeoJSON stat failed path=" + path + " error=unknown");
 		AvisoGeoJsonLastStatTick = nowTick;
-		return false;
+		return rememberFailedAttempt(nullptr);
+	}
+
+	if (AvisoGeoJsonLastFailedPath == path &&
+		AvisoGeoJsonLastFailedWriteTimeValid &&
+		AvisoGeoJsonLastFailedWriteTime == writeTime)
+	{
+		// Stat periodically, but do not repeatedly parse an unchanged,
+		// multi-megabyte invalid source on EuroScope's UI thread.
+		AvisoGeoJsonLastFailedTick = nowTick;
+		return canRetainPrevious();
 	}
 
 	if (AvisoGeoJsonLoadAttempted &&
@@ -1011,48 +1072,11 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		return AvisoGeoJsonLoaded;
 	}
 
-	AvisoGeoJsonFeatures.clear();
-	AvisoGeoJsonLabels.clear();
-	{
-		auto emptyVisibility = std::make_shared<const std::unordered_map<std::string, bool>>();
-		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
-		AvisoGeoJsonFeatureSnapshot.reset();
-		AvisoGeoJsonLabelSnapshot.reset();
-		AvisoGeoJsonSourceFeatureCount = 0;
-		AvisoRuntimeGroups.clear();
-		AvisoGroupVisibilitySnapshot = std::move(emptyVisibility);
-		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-	}
-	AvisoGeoJsonLoadedPath = path;
-	AvisoGeoJsonViewInitializedPath.clear();
-	AvisoGeoJsonLoadedWriteTime = writeTime;
-	ClearAvisoGeoJsonRasterCache();
-	AvisoGeoJsonLastViewValid = false;
-	AvisoGeoJsonLastViewPath.clear();
-	AvisoGeoJsonLastViewChangeTick = 0;
-	AvisoGeoJsonLastStatTick = nowTick;
-	AvisoGeoJsonLoadAttempted = true;
-	AvisoGeoJsonLoaded = false;
-	AvisoGeoJsonRenderDisabled = false;
-	AvisoGeoJsonRenderDisabledPath.clear();
-	AvisoGeoJsonHasBounds = false;
-	AvisoGeoJsonMinLongitude = 0.0;
-	AvisoGeoJsonMinLatitude = 0.0;
-	AvisoGeoJsonMaxLongitude = 0.0;
-	AvisoGeoJsonMaxLatitude = 0.0;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		++AvisoGeoJsonRenderLatestRequestId;
-		AvisoGeoJsonPendingRenderRequest.reset();
-		AvisoGeoJsonCompletedRenderResult.reset();
-		AvisoGeoJsonRenderLastRequestValid = false;
-	}
-
 	std::ifstream input(path, std::ios::binary);
 	if (!input.is_open())
 	{
 		Logger::info("AVISO GeoJSON open failed path=" + path);
-		return false;
+		return rememberFailedAttempt(&writeTime);
 	}
 
 	std::stringstream buffer;
@@ -1066,7 +1090,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			"AVISO GeoJSON parse failed path=" + path +
 			" offset=" + std::to_string(document.GetErrorOffset()) +
 			" error=" + std::string(document.GetParseError()));
-		return false;
+		return rememberFailedAttempt(&writeTime);
 	}
 
 	if (!document.IsObject() ||
@@ -1074,16 +1098,30 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 		!document["features"].IsArray())
 	{
 		Logger::info("AVISO GeoJSON has no feature array path=" + path);
-		AvisoGeoJsonLoaded = true;
-		{
-			std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
-			AvisoGeoJsonFeatureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
-			AvisoGeoJsonLabelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
-		}
-		return true;
+		return rememberFailedAttempt(&writeTime);
+	}
+
+	AvisoDocumentModel validationModel;
+	rapidjson::Document& validationDocument = validationModel.MutableDocument();
+	validationDocument.Parse<0>(json.c_str());
+	const AvisoValidationResult validation =
+		validationModel.ValidateAndRecalculate();
+	if (!validation.ok)
+	{
+		Logger::info(
+			"AVISO GeoJSON validation failed path=" + path +
+			" error=" + validation.errorText);
+		return rememberFailedAttempt(&writeTime);
 	}
 
 	const Value& features = document["features"];
+	std::vector<AvisoFeature> parsedFeatures;
+	std::vector<AvisoLabel> parsedLabels;
+	bool parsedHasBounds = false;
+	double parsedMinLongitude = 0.0;
+	double parsedMinLatitude = 0.0;
+	double parsedMaxLongitude = 0.0;
+	double parsedMaxLatitude = 0.0;
 	std::unordered_map<std::string, const Value*> stylePaintById;
 	if (document.HasMember("styles") && document["styles"].IsObject())
 	{
@@ -1237,7 +1275,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			parsedLabel.textSize = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-size", 12.0f, 6.0f, 32.0f);
 			parsedLabel.haloWidth = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
 			parsedLabel.maxViewRangeKm = ParseAvisoZoomRangeKm(sharedPaint, properties);
-			AvisoGeoJsonLabels.push_back(std::move(parsedLabel));
+			parsedLabels.push_back(std::move(parsedLabel));
 			++labelCount;
 			continue;
 		}
@@ -1313,34 +1351,67 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(const std::string& path)
 			parsedFeature.minLongitude <= parsedFeature.maxLongitude &&
 			parsedFeature.minLatitude <= parsedFeature.maxLatitude)
 		{
-			if (!AvisoGeoJsonHasBounds)
+			if (!parsedHasBounds)
 			{
-				AvisoGeoJsonMinLongitude = parsedFeature.minLongitude;
-				AvisoGeoJsonMaxLongitude = parsedFeature.maxLongitude;
-				AvisoGeoJsonMinLatitude = parsedFeature.minLatitude;
-				AvisoGeoJsonMaxLatitude = parsedFeature.maxLatitude;
-				AvisoGeoJsonHasBounds = true;
+				parsedMinLongitude = parsedFeature.minLongitude;
+				parsedMaxLongitude = parsedFeature.maxLongitude;
+				parsedMinLatitude = parsedFeature.minLatitude;
+				parsedMaxLatitude = parsedFeature.maxLatitude;
+				parsedHasBounds = true;
 			}
 			else
 			{
-				AvisoGeoJsonMinLongitude = AvisoMin(AvisoGeoJsonMinLongitude, parsedFeature.minLongitude);
-				AvisoGeoJsonMaxLongitude = AvisoMax(AvisoGeoJsonMaxLongitude, parsedFeature.maxLongitude);
-				AvisoGeoJsonMinLatitude = AvisoMin(AvisoGeoJsonMinLatitude, parsedFeature.minLatitude);
-				AvisoGeoJsonMaxLatitude = AvisoMax(AvisoGeoJsonMaxLatitude, parsedFeature.maxLatitude);
+				parsedMinLongitude = AvisoMin(parsedMinLongitude, parsedFeature.minLongitude);
+				parsedMaxLongitude = AvisoMax(parsedMaxLongitude, parsedFeature.maxLongitude);
+				parsedMinLatitude = AvisoMin(parsedMinLatitude, parsedFeature.minLatitude);
+				parsedMaxLatitude = AvisoMax(parsedMaxLatitude, parsedFeature.maxLatitude);
 			}
-			AvisoGeoJsonFeatures.push_back(std::move(parsedFeature));
+			parsedFeatures.push_back(std::move(parsedFeature));
 		}
 	}
 
-	AvisoGeoJsonLoaded = true;
-	auto featureSnapshot = std::make_shared<const std::vector<AvisoFeature>>(AvisoGeoJsonFeatures);
-	auto labelSnapshot = std::make_shared<const std::vector<AvisoLabel>>(AvisoGeoJsonLabels);
-	{
-		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
-		visibility->reserve(parsedGroups.size());
-		for (const AvisoGroup& group : parsedGroups)
-			(*visibility)[group.id] = group.visible;
+	auto featureSnapshot =
+		std::make_shared<const std::vector<AvisoFeature>>(parsedFeatures);
+	auto labelSnapshot =
+		std::make_shared<const std::vector<AvisoLabel>>(parsedLabels);
+	auto visibility =
+		std::make_shared<std::unordered_map<std::string, bool>>();
+	visibility->reserve(parsedGroups.size());
+	for (const AvisoGroup& group : parsedGroups)
+		(*visibility)[group.id] = group.visible;
 
+	// Commit only after the replacement document has been fully read and parsed.
+	// A malformed on-disk update must never clear the last known-good overlay.
+	AvisoGeoJsonFeatures = std::move(parsedFeatures);
+	AvisoGeoJsonLabels = std::move(parsedLabels);
+	AvisoGeoJsonLoadedPath = path;
+	AvisoGeoJsonViewInitializedPath.clear();
+	AvisoGeoJsonLoadedWriteTime = writeTime;
+	AvisoGeoJsonLastViewValid = false;
+	AvisoGeoJsonLastViewPath.clear();
+	AvisoGeoJsonLastViewChangeTick = 0;
+	AvisoGeoJsonLastStatTick = nowTick;
+	AvisoGeoJsonLoadAttempted = true;
+	AvisoGeoJsonLoaded = true;
+	AvisoGeoJsonLastFailedPath.clear();
+	AvisoGeoJsonLastFailedTick = 0;
+	AvisoGeoJsonLastFailedWriteTimeValid = false;
+	AvisoGeoJsonRenderDisabled = false;
+	AvisoGeoJsonRenderDisabledPath.clear();
+	AvisoGeoJsonHasBounds = parsedHasBounds;
+	AvisoGeoJsonMinLongitude = parsedMinLongitude;
+	AvisoGeoJsonMinLatitude = parsedMinLatitude;
+	AvisoGeoJsonMaxLongitude = parsedMaxLongitude;
+	AvisoGeoJsonMaxLatitude = parsedMaxLatitude;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		++AvisoGeoJsonRenderLatestRequestId;
+		AvisoGeoJsonPendingRenderRequest.reset();
+		AvisoGeoJsonCompletedRenderResult.reset();
+		AvisoGeoJsonRenderLastRequestValid = false;
+	}
+	ClearAvisoGeoJsonRasterCache();
+	{
 		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
 		AvisoGeoJsonFeatureSnapshot = std::move(featureSnapshot);
 		AvisoGeoJsonLabelSnapshot = std::move(labelSnapshot);
@@ -1742,21 +1813,30 @@ void CSMRRadar::EnsureAvisoGeoJsonRenderThread()
 	if (IsShutdownRequested() || IsAvisoGeoJsonRenderStopRequested())
 		return;
 
-	bool shouldStart = false;
+	std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+	if (IsShutdownRequested() ||
+		AvisoGeoJsonRenderStop.load(std::memory_order_relaxed) ||
+		AvisoGeoJsonRenderThreadStarted)
 	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		if (!IsShutdownRequested() &&
-			!AvisoGeoJsonRenderStop.load(std::memory_order_relaxed) &&
-			!AvisoGeoJsonRenderThreadStarted)
-		{
-			AvisoGeoJsonRenderStop.store(false, std::memory_order_relaxed);
-			AvisoGeoJsonRenderThreadStarted = true;
-			shouldStart = true;
-		}
+		return;
 	}
 
-	if (shouldStart)
+	try
+	{
+		AvisoGeoJsonRenderStop.store(false, std::memory_order_relaxed);
 		AvisoGeoJsonRenderThread = std::thread(&CSMRRadar::AvisoGeoJsonRenderThreadMain, this);
+		AvisoGeoJsonRenderThreadStarted = true;
+	}
+	catch (const std::exception& ex)
+	{
+		AvisoGeoJsonRenderThreadStarted = false;
+		Logger::info("AVISO render worker start failed: " + std::string(ex.what()));
+	}
+	catch (...)
+	{
+		AvisoGeoJsonRenderThreadStarted = false;
+		Logger::info("AVISO render worker start failed: unknown exception");
+	}
 }
 
 void CSMRRadar::StopAvisoGeoJsonRenderThread()
@@ -1802,6 +1882,7 @@ bool CSMRRadar::IsShutdownRequested() const
 void CSMRRadar::BeginShutdown()
 {
 	ShutdownRequested.store(true, std::memory_order_relaxed);
+	AvisoRefreshHostWindow.store(nullptr, std::memory_order_release);
 	AvisoGeoJsonRenderStop.store(true, std::memory_order_relaxed);
 	StopAvisoGeoJsonRenderThread();
 
@@ -1837,7 +1918,9 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 	bool shouldNotify = false;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		if (IsShutdownRequested() || AvisoGeoJsonRenderStop.load(std::memory_order_relaxed))
+		if (IsShutdownRequested() ||
+			AvisoGeoJsonRenderStop.load(std::memory_order_relaxed) ||
+			!AvisoGeoJsonRenderThreadStarted)
 			return;
 
 		const bool sameRequest =
@@ -1951,48 +2034,98 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 
 void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 {
-	for (;;)
+	try
 	{
-		std::unique_ptr<AvisoRasterRenderRequest> request;
+		for (;;)
 		{
-			std::unique_lock<std::mutex> lock(AvisoGeoJsonRenderMutex);
-			AvisoGeoJsonRenderCondition.wait(lock, [&]() {
-				return IsAvisoGeoJsonRenderStopRequested() || AvisoGeoJsonPendingRenderRequest != nullptr;
-			});
-
-			if (IsAvisoGeoJsonRenderStopRequested())
-				return;
-
-			request = std::move(AvisoGeoJsonPendingRenderRequest);
-		}
-
-		if (request == nullptr)
-			continue;
-
-		std::unique_ptr<AvisoRasterRenderResult> result = RenderAvisoGeoJsonRaster(*request);
-		bool shouldRefresh = false;
-		{
-			std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-			if (IsAvisoGeoJsonRenderStopRequested())
-				return;
-
-			if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
+			std::unique_ptr<AvisoRasterRenderRequest> request;
 			{
-				AvisoGeoJsonCompletedRenderResult = std::move(result);
-				shouldRefresh = true;
-			}
-		}
+				std::unique_lock<std::mutex> lock(AvisoGeoJsonRenderMutex);
+				AvisoGeoJsonRenderCondition.wait(lock, [&]() {
+					return IsAvisoGeoJsonRenderStopRequested() || AvisoGeoJsonPendingRenderRequest != nullptr;
+				});
 
-		if (shouldRefresh)
-		{
+				if (IsAvisoGeoJsonRenderStopRequested())
+					return;
+
+				request = std::move(AvisoGeoJsonPendingRenderRequest);
+			}
+
+			if (request == nullptr)
+				continue;
+
+			std::unique_ptr<AvisoRasterRenderResult> result;
 			try
 			{
-				RequestRefresh();
+				result = RenderAvisoGeoJsonRaster(*request);
+			}
+			catch (CException* ex)
+			{
+				if (ex != nullptr)
+					ex->Delete();
+				Logger::info("AVISO render worker caught MFC exception");
+			}
+			catch (const std::exception& ex)
+			{
+				Logger::info("AVISO render worker caught exception: " + std::string(ex.what()));
 			}
 			catch (...)
 			{
+				Logger::info("AVISO render worker caught unknown exception");
 			}
+
+			bool shouldRefresh = false;
+			{
+				std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+				if (IsAvisoGeoJsonRenderStopRequested())
+					return;
+
+				if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
+				{
+					AvisoGeoJsonCompletedRenderResult = std::move(result);
+					shouldRefresh = true;
+				}
+			}
+
+			if (shouldRefresh)
+				RequestRefreshFromWorker();
 		}
+	}
+	catch (CException* ex)
+	{
+		if (ex != nullptr)
+			ex->Delete();
+		Logger::info("AVISO render worker stopped after MFC exception");
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info("AVISO render worker stopped after exception: " + std::string(ex.what()));
+	}
+	catch (...)
+	{
+		Logger::info("AVISO render worker stopped after unknown exception");
+	}
+}
+
+void CSMRRadar::RequestRefreshFromWorker()
+{
+	if (IsShutdownRequested())
+		return;
+
+	const HWND hostWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+	const UINT refreshMessage = AvisoWorkerRefreshMessage();
+	if (refreshMessage == 0 ||
+		hostWindow == nullptr ||
+		!::IsWindow(hostWindow))
+		return;
+
+	if (!::PostMessage(
+		hostWindow,
+		refreshMessage,
+		reinterpret_cast<WPARAM>(this),
+		0))
+	{
+		Logger::info("AVISO render worker could not post a UI refresh request");
 	}
 }
 
@@ -3395,7 +3528,11 @@ bool CSMRRadar::ReloadConfig() {
 	if (CurrentConfig->isItActiveProfile(activeProfile) == 0 && !CurrentConfig->getAllProfiles().empty()) {
 		activeProfile = CurrentConfig->getAllProfiles().front();
 	}
-	this->LoadProfile(activeProfile);
+	// A reload adopts disk as the authority. Recording the outgoing runtime
+	// alerts into the freshly loaded document would give each radar a divergent
+	// in-memory copy carrying the new revision token, allowing a later unrelated
+	// save to overwrite the authoritative alert state.
+	this->LoadProfile(activeProfile, false);
 	// Force map visibility recomputation on next frame even when zoom level is unchanged.
 	InvalidateAirportPositionCache();
 	InvalidateRunwayGeometryCache();
@@ -3410,7 +3547,10 @@ bool CSMRRadar::ReloadConfig() {
 	return reloadSucceeded;
 }
 
-void CSMRRadar::LoadProfile(string profileName, bool saveOutgoingState) {
+void CSMRRadar::LoadProfile(
+	string profileName,
+	bool saveOutgoingState,
+	bool persistNormalization) {
 	Logger::info(string(__FUNCSIG__));
 	// Record runtime changes only when switching within the same source. A new
 	// source must never inherit state from the file it is replacing.
@@ -3421,7 +3561,7 @@ void CSMRRadar::LoadProfile(string profileName, bool saveOutgoingState) {
 	CurrentConfig->setActiveProfile(profileName);
 	InvalidateRunwayGeometryCache();
 	InvalidateStructuredTagRuleCache();
-	EnsureTargetGroundStatusColorEntries();
+	EnsureTargetGroundStatusColorEntries(persistNormalization);
 
 	// Loading all the new data
 	const Value& activeProfile = CurrentConfig->getActiveProfile();
@@ -3858,11 +3998,11 @@ void CSMRRadar::InvalidateStructuredTagRuleCache()
 	StructuredTagRulesCacheValid = false;
 }
 
-void CSMRRadar::EnsureTargetGroundStatusColorEntries()
+void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 {
 	// Backward-compatible profile migration and normalization:
 	// ensure required nested objects, color entries and editor settings exist.
-	if (!CurrentConfig)
+	if (!CurrentConfig || CurrentConfig->getProfileCount() == 0)
 		return;
 
 	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
@@ -5320,7 +5460,10 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries()
 	migrateTypeDefinitions("airborne");
 	migrateTypeDefinitions("uncorrelated");
 
-	if (changed && !CurrentConfig->saveConfig())
+	// A validated backup or a migrated read-only source may be active in memory.
+	// Normalize that working copy for runtime use, but leave recovery to the
+	// explicit Settings flow instead of showing a spurious startup save error.
+	if (changed && persistChanges && CurrentConfig->isConfigHealthy() && !CurrentConfig->saveConfig())
 	{
 		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save status settings to vSMR_Profiles.json", true, true, false, false, false);
 	}
@@ -5951,7 +6094,29 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		const LRESULT result = forwardMessage();
 		gInsetWindowSourceProcs.erase(hwnd);
+		gInsetWindowRadarScreens.erase(hwnd);
 		return result;
+	}
+	const UINT workerRefreshMessage = AvisoWorkerRefreshMessage();
+	if (workerRefreshMessage != 0 && uMsg == workerRefreshMessage)
+	{
+		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
+		CSMRRadar* requestedRadar = reinterpret_cast<CSMRRadar*>(wParam);
+		if (requestedRadar != nullptr &&
+			radarIt != gInsetWindowRadarScreens.end() &&
+			radarIt->second == requestedRadar &&
+			!requestedRadar->IsShutdownRequested())
+		{
+			try
+			{
+				requestedRadar->RequestRefresh();
+			}
+			catch (...)
+			{
+				Logger::info("AVISO UI refresh request failed");
+			}
+		}
+		return 0;
 	}
 
 	switch (uMsg)
@@ -5996,6 +6161,7 @@ void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
 		// Another component may have subclassed above us. In that case our proc
 		// remains in its forwarding chain; installing it again would create a loop.
 		gWindowProcRadarScreen = radarScreen;
+		gInsetWindowRadarScreens[hwnd] = radarScreen;
 		return;
 	}
 	if (currentProc == nullptr || currentProc == WindowProc)
@@ -6014,6 +6180,7 @@ void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
 		return;
 
 	gInsetWindowSourceProcs.emplace(hwnd, sourceProc);
+	gInsetWindowRadarScreens[hwnd] = radarScreen;
 	gWindowProcRadarScreen = radarScreen;
 }
 
@@ -6030,6 +6197,7 @@ void RestoreInsetWindowProcHooks()
 			::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(entry.second));
 	}
 	gInsetWindowSourceProcs.clear();
+	gInsetWindowRadarScreens.clear();
 }
 
 bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
@@ -6198,6 +6366,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
 		insetHostWindow = ::GetActiveWindow();
 	EnsureInsetWindowProcHook(insetHostWindow, this);
+	AvisoRefreshHostWindow.store(insetHostWindow, std::memory_order_release);
 
 	if (Phase == REFRESH_PHASE_AFTER_LISTS) {
 		VSMR_REFRESH_LOG("Phase == REFRESH_PHASE_AFTER_LISTS");

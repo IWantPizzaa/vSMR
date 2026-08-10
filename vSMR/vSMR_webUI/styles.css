@@ -129,6 +129,7 @@ input, textarea { user-select: text; }
 .title-close:hover { background: #39454a; }
 
 .window-shell {
+	position: relative;
   display: grid;
   grid-template-columns: 43px minmax(0, 1fr);
   height: calc(100% - 19px);
@@ -6575,4 +6576,102 @@ textarea:disabled {
 .aviso-geometry-layout,
 .aviso-text-layout {
   padding: 0;
+}
+
+.host-loading-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 1000;
+	display: grid;
+	place-items: center;
+	background: rgba(20, 28, 30, 0.96);
+	color: var(--ui-text, #c8d4d7);
+	font-weight: 700;
+	letter-spacing: 0.02em;
+}
+
+.host-loading-overlay[hidden] {
+	display: none;
+}
+
+.operation-busy-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 999;
+	display: grid;
+	place-items: center;
+	background: rgba(20, 28, 30, 0.82);
+	color: var(--ui-text, #c8d4d7);
+	font-weight: 700;
+	letter-spacing: 0.02em;
+	cursor: wait;
+}
+
+.operation-busy-overlay[hidden] {
+	display: none;
+}
+
+/* Persistent native/data errors stay visible until acknowledged. */
+.workspace {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.persistent-status {
+  min-height: 27px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto 22px;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px 3px 6px;
+  border-bottom: 1px solid #71484a;
+  background: #3a292b;
+  color: #efc4c4;
+  font-size: 9px;
+}
+.persistent-status.info {
+  border-bottom-color: #49606a;
+  background: #26363c;
+  color: #c5dce5;
+}
+.persistent-status-mark {
+  width: 14px;
+  height: 14px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  text-align: center;
+  font-weight: 700;
+  line-height: 13px;
+}
+.persistent-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.persistent-status-actions {
+  display: flex;
+  gap: 3px;
+}
+.persistent-status-actions button,
+.persistent-status-dismiss {
+  min-height: 19px;
+  padding: 1px 6px;
+  border: 1px solid #11191b;
+  border-radius: var(--ui-control-radius);
+  background: #435258;
+  color: inherit;
+  font-size: 8px;
+}
+.persistent-status-dismiss {
+  width: 20px;
+  padding: 0;
+  font-size: 13px;
+}
+.settings-recovery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 2px;
+}
+.settings-recovery-actions .ui-button {
+  min-width: 0;
 }

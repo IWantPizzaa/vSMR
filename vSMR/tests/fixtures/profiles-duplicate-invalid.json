@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Default",
+    "schema_version": 2,
+    "labels": {},
+    "targets": {}
+  },
+  {
+    "name": "default",
+    "schema_version": 2,
+    "labels": {},
+    "targets": {}
+  }
+]

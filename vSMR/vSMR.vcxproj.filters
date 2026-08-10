@@ -304,9 +304,6 @@
     <None Include="resources\vSMR.rc2">
       <Filter>Resources</Filter>
     </None>
-    <None Include="tools\edit_tagdefs.ps1">
-      <Filter>Tools</Filter>
-    </None>
     <None Include="tools\normalize_runtime_data.ps1">
       <Filter>Tools</Filter>
     </None>
