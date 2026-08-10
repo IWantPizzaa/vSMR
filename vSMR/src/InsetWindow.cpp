@@ -39,6 +39,11 @@ namespace
 		return std::clamp(latitude, -85.0, 85.0);
 	}
 
+	BYTE ClampColorByte(int value)
+	{
+		return static_cast<BYTE>(std::clamp(value, 0, 255));
+	}
+
 	double AvisoCosLatitude(double latitude)
 	{
 		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
@@ -2103,9 +2108,9 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	return true;
 }
 
-void CInsetWindow::setAirport(string icao)
+void CInsetWindow::setAirport(string airportIcao)
 {
-	this->icao = icao;
+	icao = airportIcao;
 }
 
 void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int Button)
@@ -3380,7 +3385,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const double smallIconBoostResolutionScale = std::clamp(radar_screen->GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 		const double fixedTriangleScale = std::clamp(radar_screen->GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 		const double pixPerMeter = max(0.0, static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
-		const Color symbolWhiteColor = Color::White;
+		const Color symbolWhiteColor(255, 255, 255, 255);
 		const unsigned long long realisticIconCacheFrame = useRealisticIconStyle
 			? ++radar_screen->RealisticIconCacheFrame
 			: radar_screen->RealisticIconCacheFrame;
@@ -3508,7 +3513,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return targetColor;
 		};
 
-		auto drawConfiguredIcon = [&](CRadarTarget rt, CFlightPlan fp, const std::string& rtCallsign, const CRadarTargetPositionData& rtPositionData, const POINT& targetPoint, bool isCorrelated, bool isDepartureTarget, bool hasNoFlightPlan, bool isOnRunway) -> int
+		auto drawConfiguredIcon = [&](CRadarTarget rt, CFlightPlan fp, const std::string&, const CRadarTargetPositionData& rtPositionData, const POINT& targetPoint, bool isCorrelated, bool isDepartureTarget, bool hasNoFlightPlan, bool isOnRunway) -> int
 		{
 			const int reportedGs = rtPositionData.GetReportedGS();
 			if (useNovaIconStyle)
@@ -3757,6 +3762,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
 		int tagBlankWidth = 2;
 		int tagOneLineHeight = 10;
+		Gdiplus::StringFormat defaultStringFormat;
 		if (tagRegularFont != nullptr)
 		{
 			Gdiplus::FontFamily baseFamily;
@@ -3769,18 +3775,18 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			}
 
 			RectF fontMeasureRect;
-			gdi->MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &fontMeasureRect);
+			gdi->MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &defaultStringFormat, &fontMeasureRect);
 			tagBlankWidth = max(2, static_cast<int>(fontMeasureRect.GetRight()));
 
 			fontMeasureRect = RectF(0, 0, 0, 0);
 			gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-				tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &fontMeasureRect);
+				tagRegularFont, PointF(0, 0), &defaultStringFormat, &fontMeasureRect);
 			tagOneLineHeight = max(1, static_cast<int>(fontMeasureRect.GetBottom()));
 			if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
 			{
 				RectF boldMeasureRect;
 				gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-					tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasureRect);
+					tagBoldFont, PointF(0, 0), &defaultStringFormat, &boldMeasureRect);
 				tagOneLineHeight = max(tagOneLineHeight, static_cast<int>(boldMeasureRect.GetBottom()));
 			}
 		}
@@ -4076,7 +4082,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 						allEmpty = false;
 						wstring wstr(element.begin(), element.end());
 						Gdiplus::Font* measureFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
-						gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+						gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), measureFont, PointF(0, 0), &defaultStringFormat, &measureRect);
 						renderedElement.measuredWidth = static_cast<int>(measureRect.GetRight());
 						renderedElement.measuredHeight = static_cast<int>(measureRect.GetBottom());
 						tempTagWidth += renderedElement.measuredWidth;
@@ -4103,7 +4109,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				fallbackElement.token = "callsign";
 				fallbackElement.text = callsignText;
 				wstring wstr(callsignText.begin(), callsignText.end());
-				gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+				gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
 				fallbackElement.measuredWidth = static_cast<int>(measureRect.GetRight());
 				fallbackElement.measuredHeight = static_cast<int>(measureRect.GetBottom());
 				tagWidth = fallbackElement.measuredWidth;
@@ -4124,30 +4130,30 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			Color definedBackgroundColor = Color(255, 53, 126, 187);
 			Color definedBackgroundOnRunwayColor = definedBackgroundColor;
-			Color definedTextColor = Color::White;
+			Color definedTextColor = symbolWhiteColor;
 			if (colorTagType == CSMRRadar::TagTypes::Departure)
 			{
 				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_no_status_color", "gate_color", Color(255, 53, 126, 187));
 				definedBackgroundOnRunwayColor = getColorWithLegacy(colorTagLabelSection, "background_on_runway_color", "on_runway_color", definedBackgroundColor);
-				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", Color::White);
+				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", symbolWhiteColor);
 			}
 			else if (colorTagType == CSMRRadar::TagTypes::Arrival)
 			{
 				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_on_ground_color", "background_color", Color(255, 191, 87, 91));
 				definedBackgroundOnRunwayColor = getColorWithLegacy(colorTagLabelSection, "background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
-				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", Color::White);
+				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", symbolWhiteColor);
 			}
 			else if (colorTagType == CSMRRadar::TagTypes::Uncorrelated)
 			{
 				definedBackgroundColor = getColorWithLegacy(colorTagLabelSection, "background_on_ground_color", "background_color", Color(255, 150, 22, 135));
 				definedBackgroundOnRunwayColor = getColorWithLegacy(colorTagLabelSection, "background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
-				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", Color::White);
+				definedTextColor = getColorWithLegacy(colorTagLabelSection, "text_on_ground_color", "text_color", symbolWhiteColor);
 			}
 			else
 			{
 				definedBackgroundColor = getSectionColor(colorTagLabelSection, "background_color", Color(255, 53, 126, 187));
 				definedBackgroundOnRunwayColor = getSectionColor(colorTagLabelSection, "background_color_on_runway", definedBackgroundColor);
-				definedTextColor = getSectionColor(colorTagLabelSection, "text_color", Color::White);
+				definedTextColor = getSectionColor(colorTagLabelSection, "text_color", symbolWhiteColor);
 			}
 
 			if (colorTagType == CSMRRadar::TagTypes::Departure)
@@ -4270,12 +4276,20 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			if (tagColorRuleOverrides.hasTagColor)
 			{
-				definedBackgroundColor = Color(tagColorRuleOverrides.tagA, tagColorRuleOverrides.tagR, tagColorRuleOverrides.tagG, tagColorRuleOverrides.tagB);
+				definedBackgroundColor = Color(
+					ClampColorByte(tagColorRuleOverrides.tagA),
+					ClampColorByte(tagColorRuleOverrides.tagR),
+					ClampColorByte(tagColorRuleOverrides.tagG),
+					ClampColorByte(tagColorRuleOverrides.tagB));
 				definedBackgroundOnRunwayColor = definedBackgroundColor;
 			}
 			if (tagColorRuleOverrides.hasTextColor)
 			{
-				definedTextColor = Color(tagColorRuleOverrides.textA, tagColorRuleOverrides.textR, tagColorRuleOverrides.textG, tagColorRuleOverrides.textB);
+				definedTextColor = Color(
+					ClampColorByte(tagColorRuleOverrides.textA),
+					ClampColorByte(tagColorRuleOverrides.textR),
+					ClampColorByte(tagColorRuleOverrides.textG),
+					ClampColorByte(tagColorRuleOverrides.textB));
 			}
 
 			const CRimcas::RimcasAlertTypes rimcasStage = radar_screen->RimcasInstance != nullptr
@@ -4361,9 +4375,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					{
 						const Color customColor(
 							255,
-							renderedElement.colorR,
-							renderedElement.colorG,
-							renderedElement.colorB);
+							ClampColorByte(renderedElement.colorR),
+							ClampColorByte(renderedElement.colorG),
+							ClampColorByte(renderedElement.colorB));
 						tokenCustomBrush.reset(new SolidBrush(customColor));
 						drawBrush = tokenCustomBrush.get();
 					}
@@ -4372,7 +4386,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					const int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
 					gdi->DrawString(text.c_str(), wcslen(text.c_str()), drawFont,
 						PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
-						&Gdiplus::StringFormat(), drawBrush);
+						&defaultStringFormat, drawBrush);
 
 					int clickItemType = TAG_CITEM_NO;
 					auto clickIt = tagClickableMap.find(renderedElement.text);
@@ -4410,17 +4424,18 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			if (rimcasLabelOnlySetting && radar_screen->RimcasInstance != nullptr)
 			{
+				const Color aliceBlueColor(255, 240, 248, 255);
 				Color rimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(
 					rtCallsign,
-					Color::AliceBlue,
-					Color::AliceBlue,
+					aliceBlueColor,
+					aliceBlueColor,
 					rimcasStageOneColor,
 					rimcasStageTwoColor);
-				if (rimcasLabelColor.ToCOLORREF() != Color(Color::AliceBlue).ToCOLORREF())
+				if (rimcasLabelColor.ToCOLORREF() != aliceBlueColor.ToCOLORREF())
 				{
 					wstring alertText(L"ALERT");
 					RectF alertMeasure;
-					gdi->MeasureString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &alertMeasure);
+					gdi->MeasureString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &alertMeasure);
 					const int rimcasHeight = max(1, static_cast<int>(alertMeasure.GetBottom()));
 					CRect rimcasLabelRect(tagBackgroundRect.left, tagBackgroundRect.top - rimcasHeight, tagBackgroundRect.right, tagBackgroundRect.top);
 					SolidBrush rimcasBrush(rimcasLabelColor);
@@ -4803,7 +4818,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	const float centerX = static_cast<float>(roseBounds.left + roseBounds.Width() / 2);
 	const float centerY = static_cast<float>(roseBounds.top + roseBounds.Height() / 2);
 	const Gdiplus::RectF roseRect(centerX - radius, centerY - radius, radius * 2.0f, radius * 2.0f);
-	Gdiplus::SolidBrush roseBrush(Gdiplus::Color(255, GetRValue(control), GetGValue(control), GetBValue(control)));
+	Gdiplus::SolidBrush roseBrush(Gdiplus::Color(255, 36, 48, 51));
 	Gdiplus::Pen roseBorder(Gdiplus::Color(255, 17, 23, 25), 1.0f);
 	gdi->FillEllipse(&roseBrush, roseRect);
 	gdi->DrawEllipse(&roseBorder, roseRect);
@@ -4844,7 +4859,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		int sweep = weather.windVariationToDegrees - weather.windVariationFromDegrees;
 		if (sweep < 0)
 			sweep += 360;
-		Gdiplus::Pen variationPen(Gdiplus::Color(255, GetRValue(cyan), GetGValue(cyan), GetBValue(cyan)), 4.0f);
+		Gdiplus::Pen variationPen(Gdiplus::Color(255, 92, 180, 211), 4.0f);
 		Gdiplus::RectF variationRect(
 			roseRect.X + 3.0f,
 			roseRect.Y + 3.0f,
@@ -4872,7 +4887,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	}
 	else if (weather.hasWind && weather.windVariable && !weather.windCalm)
 	{
-		Gdiplus::Pen variablePen(Gdiplus::Color(255, GetRValue(cyan), GetGValue(cyan), GetBValue(cyan)), 1.5f);
+		Gdiplus::Pen variablePen(Gdiplus::Color(255, 92, 180, 211), 1.5f);
 		variablePen.SetDashStyle(Gdiplus::DashStyleDash);
 		Gdiplus::RectF variableRect(
 			roseRect.X + 4.0f,
@@ -5423,6 +5438,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
 	int blankWidth = 0;
 	int oneLineHeight = 0;
+	Gdiplus::StringFormat defaultStringFormat;
+	const Color whiteColor(255, 255, 255, 255);
+	const Color aliceBlueColor(255, 240, 248, 255);
 	if (tagRegularFont != nullptr)
 	{
 		Gdiplus::FontFamily baseFamily;
@@ -5439,18 +5457,18 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 
 		RectF measureRect;
-		gdi->MeasureString(L" ", 1, tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+		gdi->MeasureString(L" ", 1, tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
 		blankWidth = static_cast<int>(measureRect.GetRight());
 		measureRect = RectF(0, 0, 0, 0);
 		static const wchar_t kMetricSample[] = L"AZERTYUIOPQSDFGHJKLMWXCVBN";
 		gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
-			tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &measureRect);
+			tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
 		oneLineHeight = static_cast<int>(measureRect.GetBottom());
 		if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
 		{
 			RectF boldMeasureRect;
 			gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
-				tagBoldFont, PointF(0, 0), &Gdiplus::StringFormat(), &boldMeasureRect);
+				tagBoldFont, PointF(0, 0), &defaultStringFormat, &boldMeasureRect);
 			oneLineHeight = max(oneLineHeight, static_cast<int>(boldMeasureRect.GetBottom()));
 		}
 	}
@@ -5810,7 +5828,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					if (measureFont == nullptr)
 						measureFont = tagRegularFont;
 					gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()),
-						measureFont, PointF(0, 0), &Gdiplus::StringFormat(), &mesureRect);
+						measureFont, PointF(0, 0), &defaultStringFormat, &mesureRect);
 
 					renderedElement.measuredWidth = (int)mesureRect.GetRight();
 					renderedElement.measuredHeight = (int)mesureRect.GetBottom();
@@ -5869,30 +5887,30 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		Color definedBackgroundColor = Color(255, 53, 126, 187);
 		Color definedBackgroundOnRunwayColor = definedBackgroundColor;
-		Color definedTextColor = Color::White;
+		Color definedTextColor = whiteColor;
 		if (ColorTagType == CSMRRadar::TagTypes::Departure)
 		{
 			definedBackgroundColor = getColorWithLegacy("background_no_status_color", "gate_color", Color(255, 53, 126, 187));
 			definedBackgroundOnRunwayColor = getColorWithLegacy("background_on_runway_color", "on_runway_color", definedBackgroundColor);
-			definedTextColor = getColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+			definedTextColor = getColorWithLegacy("text_on_ground_color", "text_color", whiteColor);
 		}
 		else if (ColorTagType == CSMRRadar::TagTypes::Arrival)
 		{
 			definedBackgroundColor = getColorWithLegacy("background_on_ground_color", "background_color", Color(255, 191, 87, 91));
 			definedBackgroundOnRunwayColor = getColorWithLegacy("background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
-			definedTextColor = getColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+			definedTextColor = getColorWithLegacy("text_on_ground_color", "text_color", whiteColor);
 		}
 		else if (ColorTagType == CSMRRadar::TagTypes::Uncorrelated)
 		{
 			definedBackgroundColor = getColorWithLegacy("background_on_ground_color", "background_color", Color(255, 150, 22, 135));
 			definedBackgroundOnRunwayColor = getColorWithLegacy("background_on_runway_color", "background_color_on_runway", definedBackgroundColor);
-			definedTextColor = getColorWithLegacy("text_on_ground_color", "text_color", Color::White);
+			definedTextColor = getColorWithLegacy("text_on_ground_color", "text_color", whiteColor);
 		}
 		else
 		{
 			definedBackgroundColor = getColorFromSectionOrDefault(colorTagLabelSection, "background_color", Color(255, 53, 126, 187));
 			definedBackgroundOnRunwayColor = getColorFromSectionOrDefault(colorTagLabelSection, "background_color_on_runway", definedBackgroundColor);
-			definedTextColor = getColorFromSectionOrDefault(colorTagLabelSection, "text_color", Color::White);
+			definedTextColor = getColorFromSectionOrDefault(colorTagLabelSection, "text_color", whiteColor);
 		}
 		if (TagType == CSMRRadar::TagTypes::Departure) {
 			if (!TagReplacingMap["sid"].empty() && radar_screen->CurrentConfig->isSidColorAvail(TagReplacingMap["sid"], radar_screen->getActiveAirport())) {
@@ -6083,7 +6101,11 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					std::unique_ptr<SolidBrush> tokenCustomColorBrush;
 					if (renderedElement.hasCustomColor)
 					{
-						Color customColor(255, renderedElement.colorR, renderedElement.colorG, renderedElement.colorB);
+						Color customColor(
+							255,
+							ClampColorByte(renderedElement.colorR),
+							ClampColorByte(renderedElement.colorG),
+							ClampColorByte(renderedElement.colorB));
 						tokenCustomColorBrush.reset(new SolidBrush(customColor));
 						color = tokenCustomColorBrush.get();
 					}
@@ -6092,7 +6114,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
 					gdi->DrawString(welement.c_str(), wcslen(welement.c_str()), drawFont,
 						PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
-						&Gdiplus::StringFormat(), color);
+						&defaultStringFormat, color);
 
 					int clickItemType = TAG_CITEM_NO;
 					auto clickItemIt = TagClickableMap.find(element);
@@ -6123,30 +6145,34 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			RECT TagBackRectData = TagBackgroundRect;
 			POINT toDraw1, toDraw2;
 			if (LiangBarsky(TagBackRectData, RtPoint, TagBackgroundRect.CenterPoint(), toDraw1, toDraw2))
-				gdi->DrawLine(&Pen(Color::White), PointF(Gdiplus::REAL(RtPoint.x), Gdiplus::REAL(RtPoint.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
+			{
+				Pen leaderPen(whiteColor);
+				gdi->DrawLine(&leaderPen, PointF(Gdiplus::REAL(RtPoint.x), Gdiplus::REAL(RtPoint.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
+			}
 
 			// If we use a RIMCAS label only, we display it, and adapt the rectangle
 			CRect oldCrectSave = TagBackgroundRect;
 
 			if (rimcasLabelOnly) {
-				Color RimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign, Color::AliceBlue, Color::AliceBlue,
+				Color RimcasLabelColor = radar_screen->RimcasInstance->GetAircraftColor(rtCallsign, aliceBlueColor, aliceBlueColor,
 					rimcasStageOneColor,
 					rimcasStageTwoColor);
 
-				if (RimcasLabelColor.ToCOLORREF() != Color(Color::AliceBlue).ToCOLORREF()) {
+				if (RimcasLabelColor.ToCOLORREF() != aliceBlueColor.ToCOLORREF()) {
 					int rimcas_height = 0;
 
 					wstring wrimcas_height = wstring(L"ALERT");
 
 					RectF RectRimcas_height;
 
-					gdi->MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), tagRegularFont, PointF(0, 0), &Gdiplus::StringFormat(), &RectRimcas_height);
+					gdi->MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &RectRimcas_height);
 					rimcas_height = int(RectRimcas_height.GetBottom());
 
 					// Drawing the rectangle
 
 					CRect RimcasLabelRect(TagBackgroundRect.left, TagBackgroundRect.top - rimcas_height, TagBackgroundRect.right, TagBackgroundRect.top);
-					gdi->FillRectangle(&SolidBrush(RimcasLabelColor), CopyRect(RimcasLabelRect));
+					SolidBrush rimcasLabelBrush(RimcasLabelColor);
+					gdi->FillRectangle(&rimcasLabelBrush, CopyRect(RimcasLabelRect));
 					TagBackgroundRect.top -= rimcas_height;
 
 					// Drawing the text
