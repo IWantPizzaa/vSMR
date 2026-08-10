@@ -2,6 +2,7 @@
 #include "Resource.h"
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
+#include "SMRGroundState.hpp"
 #include "VsmrControlCenterDialog.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
@@ -983,6 +984,66 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		StartTagFunction(rtCallsign, NULL, tagItemType, rtCallsign, menuContext, tagMenu, Pt, Area);
 		return true;
 	};
+	auto openGroundStatusPopup = [&]() -> bool
+	{
+		CRadarTarget rt = selectAseAndGetTarget();
+		if (!rt.IsValid())
+			return false;
+		CFlightPlan fp = rt.GetCorrelatedFlightPlan();
+		if (!fp.IsValid())
+			return false;
+
+		const char* callsign = fp.GetCallsign();
+		if (callsign == nullptr || callsign[0] == '\0')
+			return false;
+		PendingGroundStatusCallsign = callsign;
+		std::transform(
+			PendingGroundStatusCallsign.begin(),
+			PendingGroundStatusCallsign.end(),
+			PendingGroundStatusCallsign.begin(),
+			[](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+
+		const CRadarTargetPositionData position = rt.GetPosition();
+		const int reportedGs = position.IsValid() ? position.GetReportedGS() : 0;
+		const GroundStateCategory currentStatus = classifyGroundStateForCallsign(
+			callsign,
+			fp.GetGroundState(),
+			reportedGs,
+			false);
+		std::string rawStatus = fp.GetGroundState() != nullptr ? fp.GetGroundState() : "";
+		rawStatus.erase(
+			std::remove_if(rawStatus.begin(), rawStatus.end(), [](unsigned char c) { return std::isspace(c) != 0 || c == '-' || c == '_'; }),
+			rawStatus.end());
+		std::transform(rawStatus.begin(), rawStatus.end(), rawStatus.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+		const bool rawTaxiIn = rawStatus == "TXIN";
+		const bool rawParked = rawStatus == "PARK" || rawStatus == "PARKED";
+		const std::string activeAirport = getActiveAirport();
+		const char* origin = fp.GetFlightPlanData().GetOrigin();
+		const char* destination = fp.GetFlightPlanData().GetDestination();
+		const bool isDeparture = origin != nullptr && origin[0] != '\0' &&
+			!activeAirport.empty() && _stricmp(origin, activeAirport.c_str()) == 0;
+		const bool isArrival = !isDeparture && destination != nullptr && destination[0] != '\0' &&
+			!activeAirport.empty() && _stricmp(destination, activeAirport.c_str()) == 0;
+		openPopupListWithClose("vSMR ground status", [&]()
+		{
+			GetPlugIn()->AddPopupListElement("No Status", "", VSMR_GROUND_STATUS_SELECT, !rawParked && (currentStatus == GroundStateCategory::Gate || currentStatus == GroundStateCategory::Nsts || currentStatus == GroundStateCategory::Unknown));
+			if (isDeparture)
+			{
+				GetPlugIn()->AddPopupListElement("Startup", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Stup);
+				GetPlugIn()->AddPopupListElement("Push", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Push);
+				GetPlugIn()->AddPopupListElement("Taxi", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Taxi);
+				GetPlugIn()->AddPopupListElement("Line Up", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Lnup);
+				GetPlugIn()->AddPopupListElement("Departure", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Depa);
+			}
+			else if (isArrival)
+			{
+				GetPlugIn()->AddPopupListElement("Taxi In", "", VSMR_GROUND_STATUS_SELECT, rawTaxiIn);
+				GetPlugIn()->AddPopupListElement("Parked", "", VSMR_GROUND_STATUS_SELECT, rawParked);
+				GetPlugIn()->AddPopupListElement("Arrival", "", VSMR_GROUND_STATUS_SELECT, currentStatus == GroundStateCategory::Arr);
+			}
+		});
+		return true;
+	};
 	auto getMiddleTagMenu = [&](int objectType) -> int
 	{
 		switch (objectType)
@@ -1008,7 +1069,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		case TAG_CITEM_GATE:
 			return TAG_ITEM_FUNCTION_EDIT_SCRATCH_PAD;
 		case TAG_CITEM_GROUNDSTATUS:
-			return TAG_ITEM_FUNCTION_SET_GROUND_STATUS;
+			return 0;
 		case TAG_CITEM_CLEARANCE:
 			return TAG_ITEM_FUNCTION_SET_CLEARED_FLAG;
 		case TAG_CITEM_UKSTAND:
@@ -1144,8 +1205,12 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 	if (Button == BUTTON_LEFT) {
 		if (ObjectType == TAG_CITEM_CALLSIGN) {
-				// Shortcut: open ground status popup (clearance/push/taxi/depa) on callsign left-click.
-			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, TAG_ITEM_FUNCTION_SET_GROUND_STATUS, NULL, true);
+			// Keep the standard ground states and vSMR's session-local LNUP state
+			// in one menu so every selection consistently clears or sets LNUP.
+			(void)openGroundStatusPopup();
+		}
+		else if (ObjectType == TAG_CITEM_GROUNDSTATUS) {
+			(void)openGroundStatusPopup();
 		}
 		else if (ObjectType == TAG_CITEM_CLEARANCE) {
 			(void)startTagFunctionForObject(TAG_ITEM_TYPE_CLEARENCE, TAG_ITEM_FUNCTION_SET_CLEARED_FLAG, NULL, true);
@@ -1158,6 +1223,10 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	const int middleTagMenu = getMiddleTagMenu(ObjectType);
 	if (Button == BUTTON_MIDDLE && middleTagMenu != 0) {
 		(void)startTagFunctionForObject(TAG_ITEM_TYPE_CALLSIGN, middleTagMenu, NULL, false);
+	}
+	if (Button == BUTTON_RIGHT && ObjectType == TAG_CITEM_GROUNDSTATUS) {
+		(void)openGroundStatusPopup();
+		return;
 	}
 
 	const int rightTagMenu = getRightTagMenu(ObjectType);

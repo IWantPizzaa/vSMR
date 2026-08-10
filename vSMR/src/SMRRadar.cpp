@@ -18,6 +18,7 @@
 #include "AvisoDocumentModel.hpp"
 #include "SMRPlugin.hpp"
 #include "VsmrControlCenterDialog.hpp"
+#include "RdfOverlay.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -4557,6 +4558,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		statuses.AddMember("push", true, allocator);
 		statuses.AddMember("startup", true, allocator);
 		statuses.AddMember("taxi", true, allocator);
+		statuses.AddMember("lineup", true, allocator);
 		statuses.AddMember("departure", true, allocator);
 		statuses.AddMember("on_runway", true, allocator);
 		statuses.AddMember("airborne", true, allocator);
@@ -4578,6 +4580,28 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		addDisplayMode(items, "Pro + Tower", true);
 		displayModes.AddMember("items", items, allocator);
 		changed = true;
+	}
+	if (displayModes.HasMember("items") && displayModes["items"].IsArray())
+	{
+		Value& items = displayModes["items"];
+		for (SizeType i = 0; i < items.Size(); ++i)
+		{
+			if (!items[i].IsObject())
+				continue;
+			Value& statuses = ensureObjectMember(items[i], "statuses");
+			if (!statuses.HasMember("lineup") || !statuses["lineup"].IsBool())
+			{
+				const bool visible = statuses.HasMember("lnup") && statuses["lnup"].IsBool()
+					? statuses["lnup"].GetBool()
+					: (statuses.HasMember("taxi") && statuses["taxi"].IsBool() ? statuses["taxi"].GetBool() : true);
+				ensureBoolMember(statuses, "lineup", visible);
+			}
+			if (statuses.HasMember("lnup"))
+			{
+				statuses.RemoveMember("lnup");
+				changed = true;
+			}
+		}
 	}
 	std::string activeDisplayMode = "Normal";
 	if (legacyProModeEnabled && legacyTowerModeEnabled)
@@ -4812,6 +4836,24 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	migrateTargetIconColor(departureIcons, "push", 253, 218, 13, 255, "push");
 	migrateTargetIconColor(departureIcons, "startup", 253, 218, 13, 255, "stup");
 	migrateTargetIconColor(departureIcons, "taxi", 240, 240, 240, 255, "taxi");
+	if ((!departureIcons.HasMember("lineup") || !departureIcons["lineup"].IsObject()) && legacyGroundIcons != nullptr)
+	{
+		const Value* legacyLineupColor = nullptr;
+		if (legacyGroundIcons->HasMember("lnup") && (*legacyGroundIcons)["lnup"].IsObject())
+			legacyLineupColor = &(*legacyGroundIcons)["lnup"];
+		else if (legacyGroundIcons->HasMember("lineup") && (*legacyGroundIcons)["lineup"].IsObject())
+			legacyLineupColor = &(*legacyGroundIcons)["lineup"];
+		if (legacyLineupColor != nullptr)
+			replaceColorMember(departureIcons, "lineup", *legacyLineupColor);
+	}
+	if ((!departureIcons.HasMember("lineup") || !departureIcons["lineup"].IsObject()) &&
+		departureIcons.HasMember("taxi") && departureIcons["taxi"].IsObject())
+	{
+		Value taxiColorCopy;
+		cloneJsonValue(taxiColorCopy, departureIcons["taxi"], cloneJsonValue);
+		replaceColorMember(departureIcons, "lineup", taxiColorCopy);
+	}
+	ensureColorMember(departureIcons, "lineup", 240, 240, 240, 255);
 
 	migrateTargetIconColor(arrivalIcons, "airborne", 120, 190, 240, 255, "airborne_arrival");
 	migrateTargetIconColor(arrivalIcons, "gate", 165, 165, 165, 255, "arrival_gate", "gate");
@@ -4862,6 +4904,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	renameMemberIfPresent(departureLabel, "push_color", "background_push_color");
 	renameMemberIfPresent(departureLabel, "startup_color", "background_startup_color");
 	renameMemberIfPresent(departureLabel, "taxi_color", "background_taxi_color");
+	renameMemberIfPresent(departureLabel, "lineup_color", "background_lineup_color");
+	renameMemberIfPresent(departureLabel, "lnup_color", "background_lineup_color");
 	renameMemberIfPresent(departureLabel, "departure_color", "background_departure_color");
 	if (departureLabel.HasMember("status_background_colors") && departureLabel["status_background_colors"].IsObject())
 	{
@@ -4874,6 +4918,10 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 			replaceColorMember(departureLabel, "background_startup_color", departureStatusColors["stup"]);
 		if (departureStatusColors.HasMember("taxi") && departureStatusColors["taxi"].IsObject())
 			replaceColorMember(departureLabel, "background_taxi_color", departureStatusColors["taxi"]);
+		if (departureStatusColors.HasMember("lnup") && departureStatusColors["lnup"].IsObject())
+			replaceColorMember(departureLabel, "background_lineup_color", departureStatusColors["lnup"]);
+		else if (departureStatusColors.HasMember("lineup") && departureStatusColors["lineup"].IsObject())
+			replaceColorMember(departureLabel, "background_lineup_color", departureStatusColors["lineup"]);
 		if (departureStatusColors.HasMember("depa") && departureStatusColors["depa"].IsObject())
 			replaceColorMember(departureLabel, "background_departure_color", departureStatusColors["depa"]);
 		departureLabel.RemoveMember("status_background_colors");
@@ -4885,6 +4933,14 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	ensureColorMember(departureLabel, "background_push_color", 253, 218, 13, 255);
 	ensureColorMember(departureLabel, "background_startup_color", 253, 218, 13, 255);
 	ensureColorMember(departureLabel, "background_taxi_color", 240, 240, 240, 255);
+	if ((!departureLabel.HasMember("background_lineup_color") || !departureLabel["background_lineup_color"].IsObject()) &&
+		departureLabel.HasMember("background_taxi_color") && departureLabel["background_taxi_color"].IsObject())
+	{
+		Value taxiColorCopy;
+		cloneJsonValue(taxiColorCopy, departureLabel["background_taxi_color"], cloneJsonValue);
+		replaceColorMember(departureLabel, "background_lineup_color", taxiColorCopy);
+	}
+	ensureColorMember(departureLabel, "background_lineup_color", 240, 240, 240, 255);
 	ensureColorMember(departureLabel, "background_departure_color", 240, 240, 240, 255);
 	ensureColorMember(departureLabel, "background_no_fpl_color", 128, 128, 128, 255);
 	ensureColorMember(departureLabel, "background_no_sid_color", 53, 126, 187, 255);
@@ -4996,6 +5052,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	const Value* baseDefinition = (departureLabel.HasMember("definition") && departureLabel["definition"].IsArray()) ? &departureLabel["definition"] : nullptr;
 	ensureDefinitionArrayMember(departureLabel, "definition_detailed", baseDefinition);
 	Value& departureStatusDefinitions = ensureObjectMember(departureLabel, "status_definitions");
+	renameMemberIfPresent(departureStatusDefinitions, "lineup", "lnup");
 	if (departureStatusDefinitions.HasMember("nsts") && departureStatusDefinitions["nsts"].IsObject())
 	{
 		Value& departureNstsSection = departureStatusDefinitions["nsts"];
@@ -5021,7 +5078,20 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		ensureDefinitionArrayMember(statusSection, "definition_detailed", defaultDetailedDefinition);
 	};
 
+	if ((!departureStatusDefinitions.HasMember("lnup") || !departureStatusDefinitions["lnup"].IsObject()) &&
+		departureStatusDefinitions.HasMember("taxi") && departureStatusDefinitions["taxi"].IsObject())
+	{
+		if (departureStatusDefinitions.HasMember("lnup"))
+			departureStatusDefinitions.RemoveMember("lnup");
+		Value keyValue;
+		keyValue.SetString("lnup", allocator);
+		Value copiedValue;
+		cloneJsonValue(copiedValue, departureStatusDefinitions["taxi"], cloneJsonValue);
+		departureStatusDefinitions.AddMember(keyValue, copiedValue, allocator);
+		changed = true;
+	}
 	ensureStatusDefinitionEntries("taxi");
+	ensureStatusDefinitionEntries("lnup");
 	ensureStatusDefinitionEntries("push");
 	ensureStatusDefinitionEntries("stup");
 	ensureStatusDefinitionEntries("depa");
@@ -5847,7 +5917,15 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string gstat = "STS";
 	if (hasReceivedFlightPlanData && isAcCorrelated) {
 		const char* groundState = safeCString(fp.GetGroundState());
-		if (strlen(groundState) != 0)
+		std::string stateCallsign = stableCallsign;
+		if (stateCallsign.empty())
+			stateCallsign = safeString(radarTargetValid ? rt.GetCallsign() : nullptr);
+		if (stateCallsign.empty())
+			stateCallsign = safeString(fp.GetCallsign());
+		const GroundStateCategory observedState = classifyGroundState(groundState, reportedGs, false);
+		if (VsmrGroundState::IsLineupOverrideActive(stateCallsign.c_str(), observedState))
+			gstat = "LNUP";
+		else if (strlen(groundState) != 0)
 			gstat = groundState;
 	}
 
@@ -6955,6 +7033,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (tryGetFromSection("departure", "taxi"))
 				return resolvedColor;
 		}
+		else if (_stricmp(key, "lnup") == 0 || _stricmp(key, "lineup") == 0 || _stricmp(key, "line_up") == 0)
+		{
+			if (tryGetFromSection("departure", "lineup"))
+				return resolvedColor;
+		}
 		else if (_stricmp(key, "airborne_arrival") == 0 || _stricmp(key, "arrival_airborne") == 0)
 		{
 			if (tryGetFromSection("arrival", "airborne"))
@@ -7222,7 +7305,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		bool isOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
 		GroundStateCategory groundStateCat = GroundStateCategory::Unknown;
 		if (iconFp.IsValid()) {
-			groundStateCat = classifyGroundState(iconFp.GetGroundState(), reportedGs, isOnRunway);
+			groundStateCat = classifyGroundStateForCallsign(iconFp.GetCallsign(), iconFp.GetGroundState(), reportedGs, isOnRunway);
 		}
 
 		bool isDepartureTarget = false;
@@ -7264,6 +7347,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 						vacdmRuleStatus = "taxi";
 					else if (vacdmRuleType == "arrival")
 						vacdmRuleStatus = "default";
+					break;
+				case GroundStateCategory::Lnup:
+					if (vacdmRuleType == "departure")
+						vacdmRuleStatus = "lnup";
 					break;
 				case GroundStateCategory::Push:
 					if (vacdmRuleType == "departure")
@@ -7392,6 +7479,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			case GroundStateCategory::Taxi:
 				applyTargetTint(getGroundIconColor("taxi", Color(255, 240, 240, 240)));
 				break;
+			case GroundStateCategory::Lnup:
+				applyTargetTint(getGroundIconColor("lnup", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
+				break;
 			case GroundStateCategory::Depa:
 				applyTargetTint(getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
 				break;
@@ -7411,7 +7501,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				applyTargetTint(getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
 				break;
 			default:
-				// All other arrival on-ground states (taxi/arr/push/startup/unknown) use On Ground.
+				// All other arrival on-ground states (taxi/line-up/arr/push/startup/unknown) use On Ground.
 				applyTargetTint(getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
 				break;
 			}
@@ -7882,6 +7972,24 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		Logger::info("RenderTags: unknown C++ exception caught");
 	}
 	perfTagsMs += RefreshPerfNowMs() - perfTagsStartMs;
+
+	// RDF is resolved and projected on the EuroScope/UI thread.  Drawing it
+	// here keeps the main-view marker above vSMR targets and labels, while the
+	// inset renderers below can cover it with their own independently projected
+	// RDF overlays.
+	graphics.Flush(Gdiplus::FlushIntentionSync);
+	const CRect rdfMainArea = ResolveMainAvisoRenderArea();
+	if (!rdfMainArea.IsRectEmpty())
+	{
+		VsmrRdf::Draw(
+			hDC,
+			this,
+			rdfMainArea,
+			[this](const CPosition& position) -> POINT
+			{
+				return ConvertCoordFromPositionToPixel(position);
+			});
+	}
 
 	// Releasing the hDC after the drawing
 	graphics.ReleaseHDC(hDC);

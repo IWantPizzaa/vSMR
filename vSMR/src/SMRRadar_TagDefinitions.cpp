@@ -117,6 +117,8 @@ std::string CSMRRadar::NormalizeTagDefinitionDepartureStatus(const std::string& 
 		return "airarr_onrunway";
 	if (lowered == "taxi")
 		return "taxi";
+	if (compact == "lnup" || compact == "lineup" || compact == "l/up")
+		return "lnup";
 	if (lowered == "push")
 		return "push";
 	if (lowered == "stup" || lowered == "startup")
@@ -145,6 +147,8 @@ std::string CSMRRadar::TagDefinitionDepartureStatusLabel(const std::string& stat
 		return "Airborne Arrival On Runway";
 	if (normalized == "taxi")
 		return "Taxi";
+	if (normalized == "lnup")
+		return "Line Up";
 	if (normalized == "push")
 		return "Push";
 	if (normalized == "stup")
@@ -160,7 +164,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionStatusesForType(const std::s
 {
 	const std::string normalizedType = NormalizeTagDefinitionType(type);
 	if (normalizedType == "departure")
-		return { "default", "nofpl", "push", "stup", "taxi", "depa", "airdep", "airdep_onrunway" };
+		return { "default", "nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway" };
 	if (normalizedType == "arrival")
 		return { "default", "nofpl", "airarr", "airarr_onrunway" };
 	if (normalizedType == "airborne")
@@ -577,6 +581,8 @@ std::string CSMRRadar::GetTagEditorTargetColorPath() const
 			return "targets.departure.startup";
 		if (normalizedStatus == "taxi")
 			return "targets.departure.taxi";
+		if (normalizedStatus == "lnup")
+			return "targets.departure.lineup";
 		if (normalizedStatus == "depa")
 			return "targets.departure.departure";
 		if (normalizedStatus == "airdep" || normalizedStatus == "airdep_onrunway")
@@ -622,6 +628,8 @@ std::string CSMRRadar::GetTagEditorLabelColorPath() const
 			return "labels.departure.background_startup_color";
 		if (normalizedStatus == "taxi")
 			return "labels.departure.background_taxi_color";
+		if (normalizedStatus == "lnup")
+			return "labels.departure.background_lineup_color";
 		if (normalizedStatus == "depa")
 			return "labels.departure.background_departure_color";
 		if (normalizedStatus == "airdep")
