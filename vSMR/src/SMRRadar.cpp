@@ -60,6 +60,11 @@ namespace
 	std::mutex gSessionActiveProfileMutex;
 	std::string gSessionActiveProfileName;
 
+	BYTE ClampColorByte(int value)
+	{
+		return static_cast<BYTE>(std::clamp(value, 0, 255));
+	}
+
 	bool IsRegularFileNoThrow(const fs::path& path)
 	{
 		try
@@ -5577,6 +5582,8 @@ bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char compon
 
 map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign)
 {
+	(void)isASEL;
+	(void)ActiveAirport;
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	auto verboseStep = [&](const std::string& step)
@@ -6704,7 +6711,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				points.push_back({ REAL(toDraw.x), REAL(toDraw.y) });
 			}
 
-			Pen runwayPen(Color::White);
+			Pen runwayPen(Color(static_cast<Gdiplus::ARGB>(Color::White)));
 			graphics.DrawPolygon(&runwayPen, points.data(), static_cast<INT>(points.size()));
 		}
 
@@ -6858,7 +6865,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 		return it->second;
 	};
-	const Color frameSymbolWhiteColor = Gdiplus::Color::White;
+	const Color frameSymbolWhiteColor(static_cast<Gdiplus::ARGB>(Gdiplus::Color::White));
 	auto isValidColorObject = [](const Value& colorValue) -> bool
 	{
 		if (!colorValue.IsObject())
@@ -7412,7 +7419,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (vacdmColorRuleOverrides.hasTargetColor)
 		{
-			applyTargetTint(Color(vacdmColorRuleOverrides.targetA, vacdmColorRuleOverrides.targetR, vacdmColorRuleOverrides.targetG, vacdmColorRuleOverrides.targetB));
+			applyTargetTint(Color(
+				ClampColorByte(vacdmColorRuleOverrides.targetA),
+				ClampColorByte(vacdmColorRuleOverrides.targetR),
+				ClampColorByte(vacdmColorRuleOverrides.targetG),
+				ClampColorByte(vacdmColorRuleOverrides.targetB)));
 		}
 		if (useEmergencySymbolColor)
 			applyTargetTint(emergencySymbolColor);
@@ -7932,8 +7943,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (!acCallsign.empty() && RimcasInstance->AcColor.find(acCallsign) != RimcasInstance->AcColor.end())
 			{
 				CBrush RimcasBrush(RimcasInstance->GetAircraftColor(acCallsign,
-					Color::Black,
-					Color::Black,
+					Color(static_cast<Gdiplus::ARGB>(Color::Black)),
+					Color(static_cast<Gdiplus::ARGB>(Color::Black)),
 					rimcasStageOneColor,
 					rimcasStageTwoColor).ToCOLORREF()
 					);

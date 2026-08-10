@@ -7,7 +7,7 @@ All notable changes to this project are documented in this file.
 ## [2.0.0-beta.1] - 2026-08-10
 
 ### Added
-- Added a repeatable beta release pipeline with fixture-driven schema/migration and native core tests, clean staging, an exact package manifest, SHA-256 verification, build provenance, and a separate private-symbol archive.
+- Added a repeatable beta release pipeline with runtime-data and build validation, clean staging, an exact package manifest, SHA-256 verification, build provenance, and a separate private-symbol archive.
 - Added package-validated install and rollback helpers with complete timestamped backups, default preservation of user/imported data, and an explicit reset opt-in.
 - Added optional Authenticode signing and a signature-required public-release gate.
 - Added Windows DPAPI protection and plaintext migration for saved Hoppie codes, bounded network responses, HTTPS endpoint validation, redacted diagnostics export, and log rotation.

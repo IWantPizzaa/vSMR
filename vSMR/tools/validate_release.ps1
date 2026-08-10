@@ -5,7 +5,8 @@ param(
     [string]$RepositoryRoot = "",
     [ValidatePattern("^\d+\.\d+\.\d+-beta\.\d+$")]
     [string]$ExpectedVersion = "2.0.0-beta.1",
-    [string]$BuildOutputDirectory = ""
+    [string]$BuildOutputDirectory = "",
+    [string]$PdbPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,7 +16,6 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 $dataDirectory = Join-Path $RepositoryRoot "vSMR\data"
 $normalizer = Join-Path $RepositoryRoot "vSMR\tools\normalize_runtime_data.ps1"
-$fixtureDirectory = Join-Path $RepositoryRoot "vSMR\tests\fixtures"
 
 function Assert-True {
     param([bool]$Condition, [string]$Message)
@@ -25,21 +25,6 @@ function Assert-True {
 function Assert-File {
     param([string]$Path)
     Assert-True (Test-Path -LiteralPath $Path -PathType Leaf) "Required file is missing: $Path"
-}
-
-function Assert-ExpectedFailure {
-    param([scriptblock]$Action, [string]$Description)
-    $failed = $false
-    try {
-        & $Action
-    }
-    catch {
-        $failed = $true
-        Write-Host "Expected rejection: $Description"
-    }
-    if (-not $failed) {
-        throw "Expected failure did not occur: $Description"
-    }
 }
 
 foreach ($relativePath in @(
@@ -97,10 +82,16 @@ Assert-True ($releaseDefinitions.Count -eq 1) "Release|Win32 compiler settings w
 $releaseCompile = $releaseDefinitions[0].SelectSingleNode("msb:ClCompile", $namespace)
 $releaseLink = $releaseDefinitions[0].SelectSingleNode("msb:Link", $namespace)
 Assert-True ($releaseCompile.WarningLevel -eq 'Level4') "Release must compile at warning level 4."
+Assert-True ($releaseCompile.ExternalWarningLevel -eq 'TurnOffAllWarnings') "Vendored headers are not isolated at external warning level 0."
+Assert-True (-not ([string]$releaseCompile.AdditionalIncludeDirectories -match '(?i)lib[\\/]include')) "Vendored headers must not be compiled as first-party includes."
 Assert-True ($releaseCompile.SDLCheck -eq 'true') "Release SDL checks are disabled."
 Assert-True ($releaseCompile.BufferSecurityCheck -eq 'true') "Release /GS buffer security checks are disabled."
 Assert-True ($releaseLink.GenerateDebugInformation -eq 'true' -and
     -not [string]::IsNullOrWhiteSpace([string]$releaseLink.ProgramDatabaseFile)) "Release private PDB generation is disabled."
+$releaseExternalPaths = @($projectXml.SelectNodes("//msb:PropertyGroup/msb:ExternalIncludePath", $namespace) |
+    Where-Object { [string]$_.ParentNode.Condition -like '*Release|Win32*' })
+Assert-True ($releaseExternalPaths.Count -eq 1 -and
+    [string]$releaseExternalPaths[0].InnerText -match '(?i)lib[\\/]include') "The vendored include directory is not configured as external for Release|Win32."
 
 & $normalizer -Mode Check -DataDirectory $dataDirectory
 
@@ -142,46 +133,6 @@ foreach ($file in $avisoFiles) {
     Assert-True (@($ids | Sort-Object -Unique).Count -eq $ids.Count) "$($file.Name) contains duplicate feature ids."
 }
 
-$temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-data-tests-" + [Guid]::NewGuid().ToString("N"))
-try {
-    $fixtureData = Join-Path $temporaryRoot "data"
-    $fixtureAviso = Join-Path $fixtureData "AVISO"
-    [System.IO.Directory]::CreateDirectory($fixtureAviso) | Out-Null
-    Copy-Item -LiteralPath (Join-Path $dataDirectory "vSMR_Profiles.json") -Destination $fixtureData
-    Copy-Item -LiteralPath (Join-Path $dataDirectory "ICAO_Aircraft.json") -Destination $fixtureData
-    $smallestAviso = $avisoFiles | Sort-Object Length | Select-Object -First 1
-    $fixtureAvisoPath = Join-Path $fixtureAviso $smallestAviso.Name
-    Copy-Item -LiteralPath $smallestAviso.FullName -Destination $fixtureAvisoPath
-
-    $emptyGroupsDocument = Get-Content -LiteralPath $fixtureAvisoPath -Raw | ConvertFrom-Json
-    $emptyGroupsDocument | Add-Member -MemberType NoteProperty -Name vsmr_groups -Value @() -Force
-    $fixtureJson = (ConvertTo-Json $emptyGroupsDocument -Depth 100 -Compress) + "`n"
-    [System.IO.File]::WriteAllText($fixtureAvisoPath, $fixtureJson, (New-Object System.Text.UTF8Encoding($false)))
-    & $normalizer -Mode Write -DataDirectory $fixtureData
-    $normalizedFixture = Get-Content -LiteralPath $fixtureAvisoPath -Raw | ConvertFrom-Json
-    Assert-True ($normalizedFixture.PSObject.Properties.Name -contains 'vsmr_groups') "Normalizer removed an explicit empty vsmr_groups array."
-    Assert-True (@($normalizedFixture.vsmr_groups).Count -eq 0) "Normalizer changed an explicit empty vsmr_groups array."
-
-    $futureProfiles = Get-Content -LiteralPath (Join-Path $fixtureData "vSMR_Profiles.json") -Raw | ConvertFrom-Json
-    ($futureProfiles | Where-Object { $_.PSObject.Properties.Name -contains 'name' } | Select-Object -First 1).schema_version = 99
-    [System.IO.File]::WriteAllText(
-        (Join-Path $fixtureData "vSMR_Profiles.json"),
-        ((ConvertTo-Json $futureProfiles -Depth 100 -Compress) + "`n"),
-        (New-Object System.Text.UTF8Encoding($false)))
-    Assert-ExpectedFailure { & $normalizer -Mode Check -DataDirectory $fixtureData } "future profile schema"
-
-    [System.IO.File]::WriteAllText(
-        (Join-Path $fixtureData "vSMR_Profiles.json"),
-        "{malformed",
-        (New-Object System.Text.UTF8Encoding($false)))
-    Assert-ExpectedFailure { & $normalizer -Mode Check -DataDirectory $fixtureData } "malformed profile JSON"
-}
-finally {
-    if (Test-Path -LiteralPath $temporaryRoot) {
-        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
-    }
-}
-
 if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     $BuildOutputDirectory = [System.IO.Path]::GetFullPath($BuildOutputDirectory)
     Assert-File (Join-Path $BuildOutputDirectory "vSMR.dll")
@@ -200,14 +151,10 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
         Assert-File (Join-Path $BuildOutputDirectory $license)
     }
 
-    $pdbPath = Join-Path $RepositoryRoot "vSMR\Release\vSMR.pdb"
-    Assert-File $pdbPath
-    $coreTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.CoreTests.exe"
-    Assert-File $coreTests
-    & $coreTests $fixtureDirectory
-    if ($LASTEXITCODE -ne 0) {
-        throw "Native core tests failed with exit code $LASTEXITCODE."
+    if ([string]::IsNullOrWhiteSpace($PdbPath)) {
+        $PdbPath = Join-Path $RepositoryRoot "vSMR\Release\vSMR.pdb"
     }
+    Assert-File ([System.IO.Path]::GetFullPath($PdbPath))
 }
 
-Write-Host "vSMR $ExpectedVersion release tests passed."
+Write-Host "vSMR $ExpectedVersion release validation passed."

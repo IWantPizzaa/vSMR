@@ -55,6 +55,7 @@ void CRimcas::OnRefresh(CRadarTarget Rt, CRadarScreen* instance, bool isCorrelat
 }
 
 void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string runway_name2, vector<CPosition> Definition) {
+	(void)instance;
 	Logger::info(string(__FUNCSIG__));
 	string Name = runway_name1 + " / " + runway_name2;
 
@@ -147,6 +148,7 @@ string CRimcas::GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen* instance) {
 }
 
 string CRimcas::GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen* instance, bool isCorrelated) {
+	(void)isCorrelated;
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	const char* acCallsign = Ac.GetCallsign();

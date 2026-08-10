@@ -720,12 +720,11 @@ powershell -ExecutionPolicy Bypass -File vSMR\tools\normalize_runtime_data.ps1 -
 Maintainers can replace `Check` with `Write` to normalize imported data before
 reviewing it.
 
-The CI release gate also runs fixture-driven schema/migration, backup,
-concurrent-writer, weather, geometry, URL-validation, and package-manifest
-tests. Run the source/data gate locally with:
+The release gate also checks version consistency, compiler hardening, runtime
+data, build layout, licenses, and package manifests. Run it locally with:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\test_release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\validate_release.ps1
 ```
 
 ## Building From Source
@@ -733,7 +732,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\test_release.ps1
 ### Toolchain
 
 - Visual Studio 2022
-- MSVC toolset `v143`
+- An installed MSVC Win32 toolset with MFC (`v143` is used in CI)
 - C++17
 - `Release | Win32`
 - NuGet restore access to `Microsoft.Web.WebView2` version `1.0.4078.44`
@@ -753,12 +752,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\test_release.ps1
 ### Build command
 
 ```powershell
-msbuild vSMR.sln /t:Restore /p:Configuration=Release /p:Platform=Win32
-msbuild vSMR.sln /t:Rebuild /p:Configuration=Release /p:Platform=Win32
-powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\test_release.ps1 -BuildOutputDirectory Release
 powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\package_release.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File vSMR\tools\verify_release_package.ps1 -ArchivePath artifacts\vSMR-2.0.0-beta.1.zip
 ```
+
+`package_release.ps1` locates Visual Studio, selects the newest installed Win32
+toolset, restores NuGet packages, rebuilds `Release | Win32`, validates the
+output, and creates the archives. Use `-SkipBuild` only when packaging an
+already verified build, such as in CI; that mode also requires explicit
+`-Toolset` and `-PdbPath` provenance.
 
 Packaging rejects tracked or untracked source changes. `-AllowDirtySource` is
 available only for local, non-publishable verification artifacts; their release
