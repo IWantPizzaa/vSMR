@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a native TrackAudio RDF overlay for the main surface radar, AVISO inset, and SRW 1 inset. Each view uses its own projection, with white 20-pixel rings for normal transmissions and red rings for concurrent transmissions.
+- Added persistent `.smr rdf`, `.smr rdf status`, `.smr rdf on`, and `.smr rdf off` controls. Native RDF is enabled by default and connects to `ws://127.0.0.1:49080/ws`.
+- Added `vSMR_Data\Tools\RDF-vSMR-ground-view.patch` for official RDF commit `a4bd0ae5272088286acee1c2495ed3e4a2e627c6`. The GPL-3.0 compatibility patch prevents the external RDF from attaching to vSMR's `SMR radar display`, while leaving approach displays unchanged.
+- Added a native Line Up (`LNUP`) ground status. The vSMR ground-status menu publishes EuroScope-compatible `TAXI` while maintaining a shared session-local LNUP override, and exposes independent display-mode visibility, target color, tag color, tag definition, and structured-rule matching in both editors.
+
+### Changed
+
+- Applied effective LNUP state consistently to the main radar and AVISO target/tag renderers, Tower/display-mode filtering, status tokens, and structured color rules. Existing profiles inherit their initial LNUP presentation from Taxi, and all bundled profiles now contain explicit Line Up settings.
+- Updated RIMCAS so LNUP authorizes runway entry and taxi movement without authorizing takeoff: `RWY INC` and `NO TAXI` are suppressed, while `NO TKOF` still requires `DEPA`.
+
+### Compatibility
+
+- Documented why the official RDF's `.RDF ASR DRAW 0` setting is not a reliable concurrent-screen exclusion at the pinned revision: each screen refresh loads its ASR values into the plug-in's shared drawing state. The supplied creation-time display exclusion is required when external RDF and native vSMR RDF are used together.
+- EuroScope does not provide a native LNUP state. vSMR therefore publishes TAXI to EuroScope and other plug-ins, preserves the existing scratchpad content, and keeps LNUP only for the current vSMR session; restarting safely degrades it to TAXI.
+
+### Known limitations
+
+- Native vSMR RDF currently reads TrackAudio's loopback WebSocket only. Audio for VATSIM standalone hidden-window transmissions are not consumed by the native overlay.
+
 ## [2.0.0-beta.1] - 2026-08-10
 
 This beta is a major runtime, configuration, and distribution update. It is

@@ -15,3 +15,7 @@
 *.PDF	 diff=astextplain
 *.rtf	 diff=astextplain
 *.RTF	 diff=astextplain
+
+# Preserve CRLF in the upstream RDF patch because that repository tracks the
+# target source file with CRLF bytes and git apply matches those bytes exactly.
+vSMR/data/Tools/RDF-vSMR-ground-view.patch -text whitespace=cr-at-eol,-space-before-tab

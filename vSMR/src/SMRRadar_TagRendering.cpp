@@ -628,12 +628,16 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 		}
 		else if (fp.IsValid())
 		{
-			GroundStateCategory targetStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
+			GroundStateCategory targetStatus = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, targetOnRunway);
 			switch (targetStatus)
 			{
 			case GroundStateCategory::Taxi:
 				if (TagType == TagTypes::Departure)
 					statusDefinitionKey = "taxi";
+				break;
+			case GroundStateCategory::Lnup:
+				if (TagType == TagTypes::Departure)
+					statusDefinitionKey = "lnup";
 				break;
 			case GroundStateCategory::Push:
 				if (TagType == TagTypes::Departure)
@@ -977,7 +981,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				const Value& departureLabel = LabelsSettings["departure"];
 				GroundStateCategory departureStatus = GroundStateCategory::Unknown;
 				if (fp.IsValid())
-					departureStatus = classifyGroundState(fp.GetGroundState(), reportedGs, targetOnRunway);
+					departureStatus = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, targetOnRunway);
 
 				const char* statusColorKey = nullptr;
 				const char* legacyStatusColorKey = nullptr;
@@ -986,6 +990,10 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 				case GroundStateCategory::Taxi:
 					statusColorKey = "background_taxi_color";
 					legacyStatusColorKey = "taxi";
+					break;
+				case GroundStateCategory::Lnup:
+					statusColorKey = "background_lineup_color";
+					legacyStatusColorKey = "lnup";
 					break;
 				case GroundStateCategory::Push:
 					statusColorKey = "background_push_color";

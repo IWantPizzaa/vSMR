@@ -28,7 +28,7 @@ window.VSMR_DATA = {
               require_active_tobt: false,
               blocked_auto_correlate_squawks: ["2000", "2200", "1200", "7000"],
               statuses: {
-                no_status: true, push: true, startup: true, taxi: true,
+                no_status: true, push: true, startup: true, taxi: true, lineup: true,
                 departure: true, on_runway: true, airborne: true,
                 arrivals: true, no_fpl: true, uncorrelated: true
               }
@@ -41,7 +41,7 @@ window.VSMR_DATA = {
               require_active_tobt: false,
               blocked_auto_correlate_squawks: ["2000", "2200", "1200", "7000"],
               statuses: {
-                no_status: false, push: false, startup: false, taxi: true,
+                no_status: false, push: false, startup: false, taxi: true, lineup: true,
                 departure: true, on_runway: true, airborne: true,
                 arrivals: false, no_fpl: false, uncorrelated: false
               }
@@ -64,13 +64,19 @@ window.VSMR_DATA = {
           background_push_color: { r: 2, g: 124, b: 255, a: 100 },
           background_startup_color: { r: 2, g: 124, b: 255, a: 100 },
           background_taxi_color: { r: 2, g: 124, b: 255, a: 100 },
+          background_lineup_color: { r: 2, g: 124, b: 255, a: 100 },
           background_departure_color: { r: 80, g: 120, b: 200, a: 100 },
           background_airborne_color: { r: 80, g: 120, b: 200, a: 50 },
           text_on_ground_color: { r: 255, g: 255, b: 255, a: 255 },
           text_airborne_color: { r: 255, g: 255, b: 255, a: 255 },
           definition: [["b:callsign", "sctype"], ["asid", "deprwy"]],
           definition_detailed: [["b:callsign", "sctype"], ["asid", "deprwy"], ["scratchpad"]],
-          status_definitions: {}
+          status_definitions: {
+            lnup: {
+              definition: [["b:callsign", "sctype"], ["asid", "deprwy"]],
+              definition_detailed: [["b:callsign", "sctype"], ["asid", "deprwy"], ["scratchpad"]]
+            }
+          }
         },
         arrival: {
           background_on_ground_color: { r: 191, g: 87, b: 91, a: 100 },
@@ -126,7 +132,8 @@ window.VSMR_DATA = {
           no_status: { r: 165, g: 165, b: 165, a: 255 },
           push: { r: 160, g: 204, b: 0, a: 255 },
           startup: { r: 120, g: 153, b: 0, a: 255 },
-          taxi: { r: 204, g: 255, b: 0, a: 255 }
+          taxi: { r: 204, g: 255, b: 0, a: 255 },
+          lineup: { r: 204, g: 255, b: 0, a: 255 }
         },
         arrival: {
           airborne: { r: 255, g: 255, b: 255, a: 255 },
