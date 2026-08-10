@@ -257,7 +257,9 @@ The compatibility patch is a modification of the GPL-3.0-licensed official RDF p
 
 ## RIMCAS
 
-RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The Control Center `Alerts` page controls monitored arrival/departure runways, closed runways, Normal/LVP visibility, timers, thresholds, and colors.
+RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The Control Center `Alerts > RIMCAS runways` page controls vSMR's monitored arrival/departure runway pairs and closed-runway flags, plus Normal/LVP visibility, timers, thresholds, and colors. Every checkbox change enters the shared draft and is persisted and applied by the global `Save`; an explicitly empty runway list remains empty after reload.
+
+These RIMCAS choices are separate from EuroScope's `Active Airports/Runways` dialog. EuroScope remains authoritative for sector airport/runway activity because its plug-in API exposes that state read-only. After that dialog is accepted with `OK`, vSMR now reloads the selected ARR/DEP activity immediately for conditional sector maps, weather components, the main view, and insets. If EuroScope has exactly one active airport and the current vSMR airport is no longer active, vSMR adopts that unambiguous airport; when multiple airports are active, choose the airport for each surface screen from its Runtime Menu.
 
 `LNUP` authorizes runway entry and taxi movement for RIMCAS, so it suppresses `RWY INC` and `NO TAXI`. It does not authorize takeoff: `NO TKOF` remains active until the status changes to `DEPA`.
 
