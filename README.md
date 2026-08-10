@@ -25,7 +25,7 @@ vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` 
 - Hoppie CPDLC connection, message handling, PDC composition, and automatic PDC reminders
 - Transactional configuration writes, backups, diagnostics, and reproducible release packaging
 
-The package includes ready-to-use AVISO data for LFBO, LFLL, LFML, LFMN, LFPG, and LFPO, a normalized aircraft-dimension database, aircraft silhouettes, and five example profiles.
+The package includes a France-wide set of 396 airport-specific AVISO GeoJSON files, a normalized aircraft-dimension database, aircraft silhouettes, and five example profiles.
 
 ## Requirements
 
@@ -160,6 +160,8 @@ Structured rules can match runway, custom, status, detail, and VACDM conditions,
 ### AVISO data
 
 vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
+
+The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. The default lookup prefers that canonical name over the legacy filename; an explicitly selected local or GitHub source remains authoritative. A legacy `AVISO_<ICAO>.geojson` file is used only when no canonical file or explicit source exists, so older manual installations remain usable during migration.
 
 The Control Center can:
 
@@ -364,7 +366,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | Path | Role |
 | --- | --- |
 | `vSMR_Profiles.json` | Profiles, display modes, tag definitions, rules, colors, filters, presets, and metadata |
-| `AVISO\AVISO_<ICAO>.geojson` | Airport-specific AVISO map data |
+| `AVISO\<ICAO>.geojson` | Default airport-specific AVISO map data; legacy `AVISO_<ICAO>.geojson` files remain a compatibility fallback |
 | `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
 | `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
 | `aircraft_icons\*.png` | Silhouettes used by the `Icon (A320)` target style |

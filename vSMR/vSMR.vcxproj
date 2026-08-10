@@ -227,12 +227,7 @@
     <None Include="data\Audio\Ding.wav" />
     <None Include="data\ICAO_Aircraft.json" />
     <None Include="data\vSMR_Profiles.json" />
-    <None Include="data\AVISO\AVISO_LFBO.geojson" />
-    <None Include="data\AVISO\AVISO_LFLL.geojson" />
-    <None Include="data\AVISO\AVISO_LFML.geojson" />
-    <None Include="data\AVISO\AVISO_LFMN.geojson" />
-    <None Include="data\AVISO\AVISO_LFPG.geojson" />
-    <None Include="data\AVISO\AVISO_LFPO.geojson" />
+    <None Include="data\AVISO\????.geojson" />
     <None Include="vSMR_webUI\app.js">
       <Link>vSMR_webUI\app.js</Link>
     </None>
@@ -268,8 +263,9 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\app.js" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\data.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
-      <_VsmrDefaultAviso Include="$(MSBuildProjectDirectory)\data\AVISO\AVISO_*.geojson" />
-      <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*" />
+      <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
+        Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson" />
+      <_VsmrLegacyFlatAviso Include="$(OutDir)AVISO_*.geojson;$(OutDir)AVISO_*.geojson.bak" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
       <_VsmrWebView2License Include="$(PkgMicrosoft_Web_WebView2)\LICENSE.txt" />
@@ -277,12 +273,13 @@
     </ItemGroup>
     <RemoveDir Directories="$(OutDir)vSMR_Data;$(OutDir)vSMR_webUI;$(OutDir)THIRD_PARTY_LICENSES" />
     <Delete Files="$(OutDir)LICENSE" />
+    <Delete Files="@(_VsmrLegacyFlatAviso)" />
     <Delete Files="$(OutDir)$(TargetName).lib;$(OutDir)$(TargetName).exp;$(OutDir)$(TargetName).pdb;$(OutDir)$(TargetName).ilk" Condition="'$(Configuration)'=='Release'" />
     <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI" />
     <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI\defaults" />
     <MakeDir Directories="$(OutDir)vSMR_Data\Licenses" />
     <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrDefaultProfile);@(_VsmrDefaultAviso)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(OutDir)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrProjectLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\vSMR.txt" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\RapidJSON.txt" SkipUnchangedFiles="true" />
@@ -290,8 +287,12 @@
     <Copy SourceFiles="@(_VsmrWebView2Notice)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-NOTICE.txt" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
+    <ItemGroup>
+      <_VsmrLegacyFlatAviso Include="$(OutDir)AVISO_*.geojson;$(OutDir)AVISO_*.geojson.bak" />
+    </ItemGroup>
     <RemoveDir Directories="$(OutDir)vSMR_webUI;$(OutDir)vSMR_Data;$(OutDir)THIRD_PARTY_LICENSES" />
     <Delete Files="$(OutDir)LICENSE" />
+    <Delete Files="@(_VsmrLegacyFlatAviso)" />
     <Delete Files="$(OutDir)$(TargetName).lib;$(OutDir)$(TargetName).exp;$(OutDir)$(TargetName).pdb;$(OutDir)$(TargetName).ilk" Condition="'$(Configuration)'=='Release'" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

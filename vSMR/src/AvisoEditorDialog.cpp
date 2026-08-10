@@ -1480,7 +1480,7 @@ bool CAvisoEditorDialog::ImportAvisoGeoJsonText(const std::string& geoJsonText, 
 	const std::string airport = DetectAirportForAvisoImport(parsed, sourceHint);
 	if (airport.empty())
 	{
-		SetStatusText("Could not detect the airport ICAO. Use a filename like AVISO_LFBO.geojson or metadata.icao.");
+		SetStatusText("Could not detect the airport ICAO. Use a filename like LFBO.geojson or metadata.icao.");
 		return false;
 	}
 

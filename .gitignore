@@ -225,3 +225,7 @@ public/
 
 # Release-cli build output
 vSMR/Release_cli/
+
+# Local AVISO source/backup artifacts. Runtime defaults are exact ICAO.geojson files.
+/vSMR/data/AVISO/*.geojson.bak
+/vSMR/data/AVISO/ALL_FR_*.geojson

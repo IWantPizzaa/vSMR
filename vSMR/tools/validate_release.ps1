@@ -124,12 +124,16 @@ foreach ($record in $aircraftRecords) {
     Assert-True ([double]$record.Value.length -gt 0.0 -and [double]$record.Value.wingspan -gt 0.0) "Invalid aircraft dimensions for $($record.Name)."
 }
 
-$avisoFiles = @(Get-ChildItem -LiteralPath (Join-Path $dataDirectory "AVISO") -Filter "AVISO_*.geojson" -File)
+$avisoFiles = @(
+    Get-ChildItem -LiteralPath (Join-Path $dataDirectory "AVISO") -Filter "*.geojson" -File |
+        Where-Object { $_.Name -match '^[A-Za-z0-9]{4}\.geojson$' }
+)
 Assert-True ($avisoFiles.Count -gt 0) "No bundled AVISO files were found."
 foreach ($file in $avisoFiles) {
     $document = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
     Assert-True ($document.type -eq 'FeatureCollection') "$($file.Name) is not a FeatureCollection."
     Assert-True ([int]$document.metadata.schema_version -eq 2) "$($file.Name) is not AVISO schema 2."
+    Assert-True ([string]$document.metadata.airport -eq $file.BaseName.ToUpperInvariant()) "$($file.Name) metadata airport does not match its filename."
     Assert-True ([int]$document.metadata.feature_count -eq @($document.features).Count) "$($file.Name) feature count is stale."
     $ids = @($document.features | ForEach-Object { [string]$_.id })
     Assert-True (@($ids | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) "$($file.Name) contains an empty feature id."

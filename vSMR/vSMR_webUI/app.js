@@ -591,7 +591,7 @@
       externalEditConflict: false,
       settings: {
         profileFile: "vSMR_DATA\\vSMR_Profiles.json",
-        avisoFile: "vSMR_DATA\\AVISO\\AVISO_LFPG.geojson",
+        avisoFile: "vSMR_DATA\\AVISO\\LFPG.geojson",
         watchFiles: true,
         bridgeMode: "Auto detect",
         updateInterval: 250,

@@ -95,7 +95,7 @@ try {
         'vSMR_webUI\app.js',
         'vSMR_webUI\data.js',
         'vSMR_webUI\defaults\vSMR_Profiles.json',
-        'vSMR_webUI\defaults\AVISO_LFPG.geojson',
+        'AVISO\LFPG.geojson',
         'Licenses\vSMR.txt',
         'Licenses\RapidJSON.txt',
         'Licenses\Microsoft.WebView2-LICENSE.txt',
@@ -109,6 +109,19 @@ try {
     )
     foreach ($relativePath in $requiredRelativeFiles) {
         Assert-File (Join-Path $dataPath $relativePath)
+    }
+
+    $packagedAvisoFiles = @(
+        Get-ChildItem -LiteralPath (Join-Path $dataPath 'AVISO') -Filter '*.geojson' -File
+    )
+    if ($packagedAvisoFiles.Count -eq 0) {
+        throw 'The package does not contain any airport AVISO defaults.'
+    }
+    $nonCanonicalAvisoFiles = @(
+        $packagedAvisoFiles | Where-Object { $_.Name -notmatch '^[A-Za-z0-9]{4}\.geojson$' }
+    )
+    if ($nonCanonicalAvisoFiles.Count -ne 0) {
+        throw "The package contains noncanonical AVISO defaults: $($nonCanonicalAvisoFiles.Name -join ', ')."
     }
 
     $forbidden = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File | Where-Object {
@@ -210,7 +223,7 @@ try {
     [System.IO.File]::WriteAllText(
         (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json"),
         '[{"name":"User","schema_version":2,"labels":{},"targets":{}}]')
-    [System.IO.File]::WriteAllText((Join-Path $installTarget "vSMR_Data\AVISO\AVISO_TEST.geojson"), "user-aviso")
+    [System.IO.File]::WriteAllText((Join-Path $installTarget "vSMR_Data\AVISO\TEST.geojson"), "user-aviso")
     [System.IO.File]::WriteAllText((Join-Path $installTarget "vSMR_Data\user-import.bin"), "user-import")
     [System.IO.File]::WriteAllText((Join-Path $installTarget "vSMR_Data\vSMR_webUI\index.html"), "stale-ui")
     try {
@@ -334,7 +347,7 @@ try {
         & (Join-Path $dataPath "Tools\install_vsmr.ps1") -DestinationDirectory $installTarget -Confirm:$false
         $installation = Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\INSTALLATION.json") -Raw | ConvertFrom-Json
         if (-not $installation.user_data_preserved -or
-            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\AVISO\AVISO_TEST.geojson") -Raw) -ne 'user-aviso' -or
+            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\AVISO\TEST.geojson") -Raw) -ne 'user-aviso' -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\user-import.bin") -Raw) -ne 'user-import' -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json") -Raw) -notmatch '"User"' -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_webUI\index.html") -Raw) -eq 'stale-ui') {
@@ -414,7 +427,7 @@ try {
             -ReplaceUserData `
             -Confirm:$false
         if ((Test-Path -LiteralPath (Join-Path $installTarget "vSMR_Data\user-import.bin")) -or
-            (Test-Path -LiteralPath (Join-Path $installTarget "vSMR_Data\AVISO\AVISO_TEST.geojson")) -or
+            (Test-Path -LiteralPath (Join-Path $installTarget "vSMR_Data\AVISO\TEST.geojson")) -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json") -Raw) -match '"User"') {
             throw "Install helper ignored explicit -ReplaceUserData."
         }
