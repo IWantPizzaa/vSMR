@@ -2,6 +2,8 @@
   "use strict";
 
   const PROTOCOL_VERSION = 1;
+  const MAX_BRIDGE_MESSAGE_BYTES = 28 * 1024 * 1024;
+  const REQUEST_TIMEOUT_MS = 45000;
   const HISTORY_LIMIT = 12;
   const HOST_MODE = Boolean(window.chrome?.webview?.postMessage);
   const DATA = window.VSMR_DATA || { profiles: [], aviso: { type: "FeatureCollection", features: [], styles: {} } };
@@ -149,6 +151,10 @@
     return String(value || "").trim().toUpperCase();
   }
 
+  function isAirportCode(value) {
+    return /^[A-Z0-9]{4}$/.test(normalizeAirportCode(value));
+  }
+
   function normalizeAvisoPresetStore(store) {
     const normalized = store && typeof store === "object" && !Array.isArray(store) ? store : {};
     if (!Array.isArray(normalized.items)) normalized.items = [];
@@ -180,12 +186,17 @@
     const persistedAirportKey = Object.keys(root.airports).find(key => normalizeAirportCode(key) === airportCode);
     let store = persistedAirportKey ? root.airports[persistedAirportKey] : undefined;
     if (persistedAirportKey && persistedAirportKey !== airportCode) delete root.airports[persistedAirportKey];
-    const hasAirportStores = Object.keys(root.airports).length > 0;
     const hasLegacyStore = Array.isArray(root.items) || typeof root.default === "string";
-    if ((!store || typeof store !== "object" || Array.isArray(store)) && migrateLegacy && !hasAirportStores && hasLegacyStore) {
-      store = { default: String(root.default || ""), items: clone(Array.isArray(root.items) ? root.items : []) };
+    const legacyOwner = normalizeAirportCode(root.airport);
+    if (migrateLegacy && hasLegacyStore && isAirportCode(legacyOwner) && legacyOwner === airportCode) {
+      store = mergeAvisoPresetStore(
+        store && typeof store === "object" && !Array.isArray(store) ? store : {},
+        { default: String(root.default || ""), items: clone(Array.isArray(root.items) ? root.items : []) },
+        "Legacy"
+      );
       delete root.default;
       delete root.items;
+      delete root.airport;
     }
     if (!store || typeof store !== "object" || Array.isArray(store)) store = {};
     root.airports[airportCode] = normalizeAvisoPresetStore(store);
@@ -240,7 +251,7 @@
     return normalizeAvisoPresetStore(target);
   }
 
-  function migrateProfileAvisoPresetStores(metadata, records, preferredProfile, legacyAirport) {
+  function migrateProfileAvisoPresetStores(metadata, records, preferredProfile) {
     if (!metadata.aviso_presets || typeof metadata.aviso_presets !== "object" || Array.isArray(metadata.aviso_presets)) {
       metadata.aviso_presets = {};
     }
@@ -277,13 +288,13 @@
         if (migratedAllAirportStores) delete profileRoot.airports;
       }
 
-      const airportCode = normalizeAirportCode(legacyAirport);
+      const airportCode = normalizeAirportCode(profileRoot.airport || profile.airport);
       const hasLegacyItems = Object.hasOwn(profileRoot, "items");
       const hasLegacyDefault = Object.hasOwn(profileRoot, "default");
       const validLegacyStore =
         (!hasLegacyItems || Array.isArray(profileRoot.items)) &&
         (!hasLegacyDefault || typeof profileRoot.default === "string");
-      if (airportCode && validLegacyStore && (hasLegacyItems || hasLegacyDefault)) {
+      if (isAirportCode(airportCode) && validLegacyStore && (hasLegacyItems || hasLegacyDefault)) {
         const destination = metadataAvisoPresetStoreForAirport(metadata, airportCode, false);
         globalRoot.airports[airportCode] = mergeAvisoPresetStore(
           destination,
@@ -292,6 +303,7 @@
         );
         delete profileRoot.items;
         delete profileRoot.default;
+        delete profileRoot.airport;
       }
 
       if (Object.keys(profileRoot).length === 0) delete profile.aviso_presets;
@@ -299,6 +311,96 @@
     });
 
     return globalRoot;
+  }
+
+  function unscopedLegacyPresetSources() {
+    const sources = [];
+    const metadataRoot = state.metadata?.aviso_presets;
+    if (metadataRoot && typeof metadataRoot === "object" && !Array.isArray(metadataRoot)) {
+      const ownsAirport = isAirportCode(metadataRoot.airport);
+      const hasStore = Object.hasOwn(metadataRoot, "items") || Object.hasOwn(metadataRoot, "default");
+      if (!ownsAirport && hasStore && validAvisoPresetStoreShape(metadataRoot)) {
+        sources.push({ root: metadataRoot, label: "Legacy", profile: null });
+      }
+    }
+
+    state.profiles.forEach(record => {
+      const profile = record?.data;
+      const root = profile?.aviso_presets;
+      if (!root || typeof root !== "object" || Array.isArray(root)) return;
+      const ownsAirport = isAirportCode(root.airport || profile.airport);
+      const hasStore = Object.hasOwn(root, "items") || Object.hasOwn(root, "default");
+      if (!ownsAirport && hasStore && validAvisoPresetStoreShape(root)) {
+        sources.push({
+          root,
+          label: String(profile.name || "Profile").trim() || "Profile",
+          profile
+        });
+      }
+    });
+    return sources;
+  }
+
+  function legacyPresetAssignmentSummary() {
+    const sources = unscopedLegacyPresetSources();
+    return {
+      sources,
+      count: sources.reduce((total, source) =>
+        total + (Array.isArray(source.root.items) ? source.root.items.length : 0), 0)
+    };
+  }
+
+  function assignLegacyInsetPresetsToActiveAirport() {
+    const airport = activePresetAirport();
+    const summary = legacyPresetAssignmentSummary();
+    if (!isAirportCode(airport) || !summary.sources.length) return;
+	if (state.dirty || pending.save || pending.reload || pending.resource ||
+		runtimeCommandPending.size || splitAvisoContext) {
+	  showToast("Save or reload current edits before assigning legacy presets", "error");
+	  return;
+	}
+
+    const noun = summary.count === 1 ? "preset" : "presets";
+    if (!window.confirm(
+      `Assign ${summary.count} legacy inset ${noun} to ${airport}? ` +
+      "This one-time migration is saved immediately."
+    )) return;
+
+	if (HOST_MODE) {
+	  const requestId = postBridge("aviso.inset.preset.legacy.assign", { airport });
+	  if (!requestId) return;
+	  pending.reload = requestId;
+	  armPendingTimeout("reload", requestId);
+	  setStatus(`Assigning legacy inset presets to ${airport}...`, "info");
+	  updateCommandState();
+	  return;
+	}
+
+    const root = state.metadata.aviso_presets ||= {};
+    if (!root.airports || typeof root.airports !== "object" || Array.isArray(root.airports)) root.airports = {};
+    let destination = metadataAvisoPresetStoreForAirport(state.metadata, airport, false);
+
+    summary.sources.forEach(source => {
+      destination = mergeAvisoPresetStore(
+        destination,
+        {
+          items: Array.isArray(source.root.items) ? source.root.items : [],
+          default: typeof source.root.default === "string" ? source.root.default : ""
+        },
+        source.label
+      );
+      delete source.root.items;
+      delete source.root.default;
+      if (!isAirportCode(source.root.airport)) delete source.root.airport;
+      if (source.profile && Object.keys(source.root).length === 0)
+        delete source.profile.aviso_presets;
+    });
+    root.airports[airport] = normalizeAvisoPresetStore(destination);
+
+    setPersistentStatus("", "", [], "legacy-presets");
+    markDirty(`Legacy inset presets assigned to ${airport}`);
+    renderAll();
+    showToast(`Inset presets assigned to ${airport}`, "success");
   }
 
   function normalizeAvisoGroupId(value, fallback = "group") {
@@ -452,7 +554,7 @@
       || bundle.aviso?.metadata?.airport
       || inferAirport(bundle.aviso?.name)
       || inferAirport(preferred?.data?.name));
-    migrateProfileAvisoPresetStores(metadata, records, preferred?.id || preferred?.data?.name, initialAirport);
+    migrateProfileAvisoPresetStores(metadata, records, preferred?.id || preferred?.data?.name);
     const preferredPresetStore = metadataAvisoPresetStoreForAirport(metadata, initialAirport, true);
     const preferredPresetItems = preferredPresetStore.items;
     const preferredPresetName = String(preferredPresetStore.default || preferredPresetItems[0]?.name || "");
@@ -473,6 +575,11 @@
       aviso: normalizedAviso,
       airport: initialAirport,
       hostAirport: initialAirport,
+      configRevision: "",
+      avisoRevision: "",
+      recoveryConfirmed: false,
+      avisoRecoveryConfirmed: false,
+      externalEditConflict: false,
       settings: {
         profileFile: "vSMR_DATA\\vSMR_Profiles.json",
         avisoFile: "vSMR_DATA\\AVISO\\AVISO_LFPG.geojson",
@@ -484,7 +591,15 @@
         runtimeSync: true,
         confirmDelete: true,
         rimcas: true,
-        vacdm: true
+        vacdm: true,
+        dataHealth: {
+          profilesHealthy: true,
+          profilesUsingBackup: false,
+          profilesBackupAvailable: false,
+          profilesMessage: "",
+          avisoHealthy: true,
+          avisoMessage: ""
+        }
       },
       datalink: createPreviewDatalinkState(initialAirport, metadata),
       ui: {
@@ -535,6 +650,8 @@
   const drafts = { color: null, tag: null, rule: null, mode: null, profile: null, avisoGeometry: null, avisoTextStyle: null, avisoTextLabel: null, avisoGroup: null, alerts: null };
   let activeTagInput = null;
   let toastTimer = 0;
+  let persistentStatusState = null;
+  let dismissedPersistentStatusKey = "";
   let avisoGeometryRenderOrder = [];
   let avisoTextRenderOrder = [];
   let githubResourceType = "aviso";
@@ -543,6 +660,12 @@
   let insetPresetDialogMode = "capture";
   let outboundMessageSequence = 0;
   const pending = { save: "", reload: "", resource: null };
+  const runtimeCommandPending = new Map();
+  let hostAuthoritativeReady = !HOST_MODE;
+  let initialAuthoritativeMessageId = "";
+  const unappliedEditorSections = new Set();
+  let avisoGroupContentDirty = false;
+  const expiredRequestIds = new Set();
   const datalinkPending = { settings: null, connection: null, poll: null, scan: null };
   let datalinkDraft = null;
   let datalinkBaseline = null;
@@ -562,8 +685,86 @@
   const datalinkAutoSaveScopes = new Set();
   let lastDatalinkStateRequestAt = 0;
   let splitAvisoContext = null;
+	let ignoreNextUncorrelatedAviso = false;
   const history = { past: [], present: null, future: [] };
   let savedSnapshot = null;
+
+  const UNAPPLIED_EDITOR_SECTION_SELECTOR = [
+    "[data-profile-panel]",
+    "[data-aviso-panel]",
+    "[data-aviso-view-panel]",
+    "[data-alerts-panel]",
+    "[data-alerts-view-panel]",
+    "[data-page-panel]"
+  ].join(", ");
+
+  function editorSectionKey(element) {
+    if (!element?.closest) return "";
+    const panel = element.closest(UNAPPLIED_EDITOR_SECTION_SELECTOR);
+    if (!panel) return "";
+    const attributes = [
+      ["profilePanel", "profile"],
+      ["avisoPanel", "aviso"],
+      ["avisoViewPanel", "aviso"],
+      ["alertsPanel", "alerts"],
+      ["alertsViewPanel", "alerts"],
+      ["pagePanel", "page"]
+    ];
+    for (const [datasetKey, prefix] of attributes) {
+      if (panel.dataset[datasetKey] != null) return `${prefix}:${panel.dataset[datasetKey]}`;
+    }
+    return "";
+  }
+
+  function hasUnappliedEditorInputs() {
+    return unappliedEditorSections.size > 0;
+  }
+
+  function markEditorSectionUnapplied(element) {
+    const key = editorSectionKey(element);
+    if (!key) return false;
+    unappliedEditorSections.add(key);
+    updateCommandState();
+    return true;
+  }
+
+  function clearUnappliedEditorSection(element) {
+    const key = editorSectionKey(element);
+    if (!key) return false;
+    const changed = unappliedEditorSections.delete(key);
+    updateCommandState();
+    return changed;
+  }
+
+  function clearUnappliedEditorSectionsWithin(scope) {
+    if (!scope) return;
+    const keys = new Set([editorSectionKey(scope)]);
+    $$(UNAPPLIED_EDITOR_SECTION_SELECTOR, scope).forEach(panel => keys.add(editorSectionKey(panel)));
+    keys.delete("");
+    keys.forEach(key => unappliedEditorSections.delete(key));
+    updateCommandState();
+  }
+
+  function clearAllUnappliedEditorSections() {
+    unappliedEditorSections.clear();
+    updateCommandState();
+  }
+
+  function isProfileBoundEditorSection(key) {
+    return key.startsWith("profile:") || key === "page:modes" || key === "page:profiles" ||
+      key === "page:alerts" || key.startsWith("alerts:");
+  }
+
+  function hasUnappliedProfileEditorInputs() {
+    return Array.from(unappliedEditorSections).some(isProfileBoundEditorSection);
+  }
+
+  function discardUnappliedProfileEditorInputs() {
+    Array.from(unappliedEditorSections).filter(isProfileBoundEditorSection)
+      .forEach(key => unappliedEditorSections.delete(key));
+    ["color", "tag", "rule", "mode", "profile", "alerts"].forEach(key => { drafts[key] = null; });
+    updateCommandState();
+  }
 
   function activeProfileRecord() {
     return state.profiles.find(record => record.id === state.activeProfileId) || state.profiles[0];
@@ -608,12 +809,85 @@
   function postBridge(type, payload = {}) {
     const message = { version: PROTOCOL_VERSION, id: nextMessageId(), type, payload };
     try {
+      if (HOST_MODE) {
+        const encoded = new TextEncoder().encode(JSON.stringify(message));
+        if (encoded.byteLength > MAX_BRIDGE_MESSAGE_BYTES)
+          throw new Error("The request exceeds the 28 MB Control Center limit");
+      }
       if (window.chrome?.webview?.postMessage) window.chrome.webview.postMessage(message);
       else window.dispatchEvent(new CustomEvent("vsmr-control-center", { detail: message }));
     } catch (error) {
       console.warn("Bridge message failed", error);
+      const reason = error?.message || "unknown bridge error";
+      setStatus(`Could not send the request: ${reason}`, "error");
+      showToast("Could not send the request", "error");
+      return "";
     }
     return message.id;
+  }
+
+  function rebaseDisplayModeSelections(incomingRecords) {
+    const activeModes = new Map();
+    (incomingRecords || []).forEach(record => {
+      const name = String(record?.data?.name || "").trim().toLowerCase();
+      const active = String(record?.data?.filters?.display_modes?.active || "");
+      if (name && active) activeModes.set(name, active);
+    });
+    if (!activeModes.size) return;
+
+    const applySelections = records => {
+      let changed = false;
+      (records || []).forEach(record => {
+        const currentName = String(record?.data?.name || "").trim().toLowerCase();
+        const persistedName = String(record?.persistedName || "").trim().toLowerCase();
+        const active = activeModes.get(currentName) || activeModes.get(persistedName);
+        const displayModes = record?.data?.filters?.display_modes;
+        if (active && displayModes && displayModes.active !== active) {
+          displayModes.active = active;
+          changed = true;
+        }
+      });
+      return changed;
+    };
+
+    applySelections(state.profiles);
+    const snapshots = [history.present, ...history.past, ...history.future, savedSnapshot];
+    const visited = new Set();
+    snapshots.forEach(snapshot => {
+      if (!snapshot?.profiles || visited.has(snapshot)) return;
+      visited.add(snapshot);
+      try {
+        const records = JSON.parse(snapshot.profiles);
+        if (applySelections(records)) snapshot.profiles = JSON.stringify(records);
+      } catch (error) {
+        console.warn("Could not rebase display mode selections in editor history", error);
+      }
+    });
+  }
+
+  function armPendingTimeout(slot, requestId) {
+    if (!requestId) return;
+    window.setTimeout(() => {
+      const currentId = slot === "resource" ? pending.resource?.id : pending[slot];
+      if (currentId !== requestId) return;
+      if (slot === "resource") {
+        pending.resource = null;
+        state.recoveryConfirmed = false;
+        state.avisoRecoveryConfirmed = false;
+        setGithubRequestPending(false);
+      } else {
+        pending[slot] = "";
+      }
+      expiredRequestIds.add(requestId);
+      while (expiredRequestIds.size > 32)
+        expiredRequestIds.delete(expiredRequestIds.values().next().value);
+      state.externalEditConflict = true;
+	  clearSplitAvisoContext(requestId);
+      updateCommandState();
+      const message = "The native operation timed out. Its result was not confirmed; reload before saving again.";
+      setStatus(message, "error");
+      showToast("Native operation timed out", "error");
+    }, REQUEST_TIMEOUT_MS);
   }
 
   function snapshotChunk(value) {
@@ -624,6 +898,7 @@
     const historySettings = clone(state.settings);
     delete historySettings.profileFile;
     delete historySettings.avisoFile;
+    delete historySettings.dataHealth;
     const values = {
       profiles: state.profiles,
       metadata: state.metadata,
@@ -645,27 +920,128 @@
       .every(key => left[key] === right[key]);
   }
 
+  function resourceHasUnsavedChanges(resource) {
+    if (!savedSnapshot) return Boolean(state.dirty);
+    if (resource === "aviso")
+      return snapshotChunk(state.aviso) !== savedSnapshot.aviso;
+    if (resource === "profiles") {
+      const current = captureHistorySnapshot();
+      return ["profiles", "metadata", "profileExtras", "settings"]
+        .some(key => current[key] !== savedSnapshot[key]);
+    }
+    return Boolean(state.dirty);
+  }
+
+  function confirmResourceReplacement(resource) {
+    if (!resourceHasUnsavedChanges(resource)) return true;
+    const label = resource === "aviso" ? "AVISO" : "profiles";
+    return window.confirm(`Discard unsaved ${label} edits and load another file?`);
+  }
+
+  function workspaceBusyMessage() {
+    if (pending.save) return "Saving and reloading vSMR data...";
+    if (pending.reload) return "Reloading vSMR data...";
+    if (pending.resource) return "Loading and validating vSMR data...";
+    if (runtimeCommandPending.size) return "Applying vSMR changes...";
+	if (splitAvisoContext) return "Synchronizing vSMR data...";
+    return "";
+  }
+
+  function clearSplitAvisoContext(expectedId = null) {
+    const context = splitAvisoContext;
+    if (!context) return null;
+    const contextId = String(context.id || "");
+	if (expectedId !== null && contextId !== String(expectedId || "")) return null;
+    if (context.timer) window.clearTimeout(context.timer);
+    splitAvisoContext = null;
+    return context;
+  }
+
+  function stageSplitAvisoContext(context) {
+    clearSplitAvisoContext();
+	if (!context.id) ignoreNextUncorrelatedAviso = false;
+    splitAvisoContext = context;
+    context.timer = window.setTimeout(() => {
+      if (splitAvisoContext !== context) return;
+      splitAvisoContext = null;
+      const requestId = String(context.id || "");
+      if (requestId) expiredRequestIds.add(requestId);
+	  else ignoreNextUncorrelatedAviso = true;
+      state.externalEditConflict = true;
+      updateCommandState();
+      const message = "The authoritative AVISO update was incomplete. Reload before editing or saving.";
+      setStatus(message, "error");
+      showToast("vSMR synchronization timed out", "error");
+    }, REQUEST_TIMEOUT_MS);
+    updateCommandState();
+  }
+
+  function updateWorkspaceInterlock() {
+    const busyMessage = workspaceBusyMessage();
+    const operationBusy = Boolean(busyMessage);
+    const locked = !hostAuthoritativeReady || operationBusy;
+    const activeElement = document.activeElement;
+    if (locked && activeElement &&
+        (activeElement.closest?.(".page-rail") || activeElement.closest?.(".workspace"))) {
+      activeElement.blur();
+    }
+    [$(".page-rail"), $(".workspace")].forEach(element => {
+      if (!element) return;
+      element.inert = locked;
+      element.setAttribute("aria-disabled", String(locked));
+    });
+    const overlay = $("#operationBusyOverlay");
+    if (overlay) {
+      overlay.hidden = !hostAuthoritativeReady || !operationBusy;
+      overlay.textContent = busyMessage || "Applying vSMR changes...";
+    }
+    $("#controlWindow")?.setAttribute(
+      "aria-busy",
+      String(!hostAuthoritativeReady || operationBusy)
+    );
+  }
+
   function updateCommandState() {
-    const busy = Boolean(pending.save || pending.reload);
+    const busy = Boolean(
+	  pending.save || pending.reload || pending.resource ||
+	  runtimeCommandPending.size || splitAvisoContext
+	);
+    const unappliedWork = hasUnappliedEditorInputs() || avisoGroupContentDirty;
     const airportMismatch = Boolean(state.airport && state.hostAirport && state.airport !== state.hostAirport);
+    const profilesUnsafe = state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed;
+    const externalConflict = Boolean(state.externalEditConflict);
     const saveButton = $("#saveButton");
     const reloadButton = $("#reloadButton");
     const undoButton = $("#undoButton");
     const redoButton = $("#redoButton");
     if (saveButton) {
-      saveButton.disabled = !state.dirty || Boolean(pending.save) || airportMismatch;
+	  saveButton.disabled = !hostAuthoritativeReady || !state.dirty || busy || unappliedWork || airportMismatch || profilesUnsafe || externalConflict;
       saveButton.classList.toggle("pending", Boolean(pending.save));
-      saveButton.title = airportMismatch
+      saveButton.title = unappliedWork
+        ? "Apply or revert the open editor fields before saving"
+        : airportMismatch
         ? "Reload after changing airports before saving"
+        : externalConflict
+          ? "Another vSMR window changed the active data; reload before saving"
+        : profilesUnsafe
+          ? "Restore the profiles backup or bundled defaults before saving"
         : pending.save ? "Saving…" : state.dirty ? "Save changes" : "No changes to save";
     }
     if (reloadButton) {
-      reloadButton.disabled = busy;
+	  reloadButton.disabled = !hostAuthoritativeReady || busy;
       reloadButton.classList.toggle("pending", Boolean(pending.reload));
       reloadButton.title = pending.reload ? "Reloading…" : "Reload configuration";
     }
-    if (undoButton) undoButton.disabled = busy || airportMismatch || history.past.length === 0;
-    if (redoButton) redoButton.disabled = busy || airportMismatch || history.future.length === 0;
+	if (undoButton) undoButton.disabled = !hostAuthoritativeReady || busy || unappliedWork || airportMismatch || externalConflict || history.past.length === 0;
+	if (redoButton) redoButton.disabled = !hostAuthoritativeReady || busy || unappliedWork || airportMismatch || externalConflict || history.future.length === 0;
+    updateWorkspaceInterlock();
+  }
+
+  function setHostAuthoritativeReady(ready) {
+    hostAuthoritativeReady = !HOST_MODE || Boolean(ready);
+    const overlay = $("#hostLoadingOverlay");
+    if (overlay) overlay.hidden = hostAuthoritativeReady;
+    updateCommandState();
   }
 
   function updateDirtyState(message = "") {
@@ -706,7 +1082,8 @@
     const preservedActiveProfileId = state.activeProfileId;
     const preservedResourcePaths = {
       profileFile: state.settings.profileFile,
-      avisoFile: state.settings.avisoFile
+      avisoFile: state.settings.avisoFile,
+      dataHealth: clone(state.settings.dataHealth)
     };
     state.profiles = JSON.parse(snapshot.profiles);
     state.metadata = JSON.parse(snapshot.metadata);
@@ -718,6 +1095,8 @@
     if (!state.profiles.some(record => record.id === state.activeProfileId)) state.activeProfileId = state.profiles[0]?.id || "";
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
     Object.keys(drafts).forEach(key => drafts[key] = null);
+    clearAllUnappliedEditorSections();
+    avisoGroupContentDirty = false;
     history.present = snapshot;
     renderAll();
     updateDirtyState();
@@ -731,12 +1110,119 @@
     toastTimer = setTimeout(() => { toast.className = "toast"; }, 1800);
   }
 
+  function renderPersistentStatus() {
+    const region = $("#persistentStatus");
+    const text = $("#persistentStatusText");
+    const actions = $("#persistentStatusActions");
+    if (!region || !text || !actions) return;
+    const current = persistentStatusState;
+    const key = current ? `${current.type}|${current.message}` : "";
+    if (!current || !current.message || key === dismissedPersistentStatusKey) {
+      region.hidden = true;
+      actions.replaceChildren();
+      return;
+    }
+    region.hidden = false;
+    region.className = `persistent-status ${current.type === "info" ? "info" : "error"}`;
+    text.textContent = current.message;
+    text.title = current.message;
+    actions.replaceChildren();
+    (current.actions || []).forEach(action => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.action = action.action;
+      button.textContent = action.label;
+      if (action.disabled) button.disabled = true;
+      actions.append(button);
+    });
+  }
+
+  function setPersistentStatus(message, type = "error", actions = [], origin = "native") {
+    const normalized = String(message || "").trim();
+    if (!normalized) {
+      if (!origin || persistentStatusState?.origin === origin) {
+        persistentStatusState = null;
+        // Dismissal applies to one occurrence only.  If the condition clears,
+        // the same error must be visible should it happen again later.
+        dismissedPersistentStatusKey = "";
+      }
+      renderPersistentStatus();
+      return;
+    }
+    const nextKey = `${type}|${normalized}`;
+    // Native errors are discrete operation results.  Treat every delivery as a
+    // new occurrence so dismissing one failure cannot hide an identical failure
+    // from a later retry.
+    if (origin === "native" ||
+        (persistentStatusState && `${persistentStatusState.type}|${persistentStatusState.message}` !== nextKey))
+      dismissedPersistentStatusKey = "";
+    persistentStatusState = { message: normalized, type, actions, origin };
+    renderPersistentStatus();
+  }
+
+  function renderDataHealthStatus() {
+    const health = state.settings?.dataHealth || {};
+    if (health.profilesHealthy === false) {
+      const actions = [];
+      if (health.profilesBackupAvailable) actions.push({ label: "Restore .bak", action: "restore-profiles-backup" });
+      actions.push({ label: "Defaults", action: "restore-bundled-defaults" });
+      setPersistentStatus(
+        health.profilesMessage || "The profiles source is unavailable or invalid.",
+        "error",
+        actions,
+        "health"
+      );
+      return;
+    }
+    if (health.avisoHealthy === false) {
+      setPersistentStatus(
+        health.avisoMessage || "The active airport AVISO source is unavailable or invalid.",
+        "error",
+        [{ label: "Settings", action: "open-settings" }],
+        "health"
+      );
+      return;
+    }
+    const legacyPresets = legacyPresetAssignmentSummary();
+    if (legacyPresets.sources.length) {
+      const airport = activePresetAirport();
+      const countText = legacyPresets.count === 1
+        ? "1 legacy inset preset has no airport"
+        : `${legacyPresets.count} legacy inset presets have no airport`;
+      const actions = isAirportCode(airport)
+		? [{
+			label: `Assign to ${airport}`,
+			action: "assign-legacy-inset-presets",
+			disabled: Boolean(
+			  state.dirty || pending.save || pending.reload || pending.resource ||
+			  runtimeCommandPending.size || splitAvisoContext
+			)
+		  }]
+        : [];
+      setPersistentStatus(
+		`${countText}. Choose its airport explicitly${state.dirty ? " after saving or reloading current edits" : ""}.`,
+        "info",
+        actions,
+        "legacy-presets"
+      );
+      return;
+    }
+    if (persistentStatusState?.origin === "legacy-presets")
+      setPersistentStatus("", "", [], "legacy-presets");
+    if (health.profilesMessage) {
+      setPersistentStatus(health.profilesMessage, "info", [], "health");
+      return;
+    }
+    if (persistentStatusState?.origin === "health") setPersistentStatus("", "", [], "health");
+  }
+
   function setStatus(message, type = "") {
     const text = $("#statusText");
     const light = $("#statusLight");
     if (text) text.textContent = message;
     if (light) light.className = `status-light ${type}`.trim();
     document.documentElement.dataset.status = type || "ready";
+    if (type === "error") setPersistentStatus(message, "error", [], "native");
   }
   function markDirty(message = "Changes not saved") {
     recordHistoryState();
@@ -751,6 +1237,9 @@
     history.present = captureHistorySnapshot();
     savedSnapshot = history.present;
     state.dirty = false;
+    state.recoveryConfirmed = false;
+    state.avisoRecoveryConfirmed = false;
+    state.externalEditConflict = false;
     const dot = $("#dirtyDot");
     if (dot) { dot.classList.remove("dirty"); dot.title = "Saved"; }
     $("#saveButton")?.classList.remove("has-unsaved");
@@ -836,7 +1325,15 @@
   }
 
   function switchActiveProfile(profileId, syncFilters = true) {
-    if (!state.profiles.some(record => record.id === profileId)) return;
+    if (!state.profiles.some(record => record.id === profileId)) return false;
+    if (profileId === state.activeProfileId) {
+      setRailProfilePopoverOpen(false);
+      return true;
+    }
+	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+	  showToast("Save or reload current edits before switching profile", "error");
+	  return false;
+	}
     state.activeProfileId = profileId;
     state.ui.managedProfileId = profileId;
     const profile = activeProfile();
@@ -846,7 +1343,7 @@
     const modes = profile.filters?.display_modes?.items || [];
     state.ui.selectedModeIndex = Math.max(0, modes.findIndex(mode => mode.name === profile.filters?.display_modes?.active));
     state.ui.selectedTagId = "departure:taxi";
-    Object.keys(drafts).forEach(key => drafts[key] = null);
+    discardUnappliedProfileEditorInputs();
     renderAllProfileSections();
     drafts.alerts = null;
     if (state.ui.page === "alerts") renderAlerts();
@@ -854,12 +1351,134 @@
     setRailProfilePopoverOpen(false);
     renderRuntimeMenu();
     updateContext();
+    return true;
   }
 
-  function postActiveProfileChange() {
+  function captureRuntimeCommandRollback() {
+    return {
+      profiles: clone(state.profiles),
+      metadata: clone(state.metadata),
+      profileExtras: clone(state.profileExtras),
+      aviso: clone(state.aviso),
+      settings: clone(state.settings),
+      activeProfileId: state.activeProfileId,
+      airport: state.airport,
+      hostAirport: state.hostAirport,
+      ui: clone(state.ui),
+      runtime: clone(state.runtime),
+      datalink: clone(state.datalink),
+      drafts: clone(drafts),
+      historyPast: history.past.slice(),
+      historyPresent: history.present,
+      historyFuture: history.future.slice(),
+      savedSnapshot,
+      dirty: state.dirty,
+      unappliedEditorSections: Array.from(unappliedEditorSections),
+      avisoGroupContentDirty,
+      recoveryConfirmed: state.recoveryConfirmed,
+      avisoRecoveryConfirmed: state.avisoRecoveryConfirmed,
+      externalEditConflict: state.externalEditConflict,
+      configRevision: state.configRevision,
+      avisoRevision: state.avisoRevision
+    };
+  }
+
+  function restoreRuntimeCommandRollback(rollback) {
+    if (!rollback) return;
+    state.profiles = rollback.profiles;
+    state.metadata = rollback.metadata;
+    state.profileExtras = rollback.profileExtras;
+    state.aviso = rollback.aviso;
+    state.settings = rollback.settings;
+    state.activeProfileId = rollback.activeProfileId;
+    state.airport = rollback.airport;
+    state.hostAirport = rollback.hostAirport;
+    state.ui = rollback.ui;
+    state.runtime = rollback.runtime;
+    state.datalink = rollback.datalink;
+    Object.keys(drafts).forEach(key => { drafts[key] = rollback.drafts?.[key] ?? null; });
+    history.past.splice(0, history.past.length, ...rollback.historyPast);
+    history.present = rollback.historyPresent;
+    history.future.splice(0, history.future.length, ...rollback.historyFuture);
+    savedSnapshot = rollback.savedSnapshot;
+    state.dirty = rollback.dirty;
+    unappliedEditorSections.clear();
+    (rollback.unappliedEditorSections || []).forEach(key => unappliedEditorSections.add(String(key)));
+    avisoGroupContentDirty = Boolean(rollback.avisoGroupContentDirty);
+    state.recoveryConfirmed = Boolean(rollback.recoveryConfirmed);
+    state.avisoRecoveryConfirmed = Boolean(rollback.avisoRecoveryConfirmed);
+    state.externalEditConflict = Boolean(rollback.externalEditConflict);
+    state.configRevision = rollback.configRevision || "";
+    state.avisoRevision = rollback.avisoRevision || "";
+    renderAll();
+    updateDirtyState();
+  }
+
+  function postRuntimeCommand(type, payload, rollback) {
+	if (runtimeCommandPending.size || splitAvisoContext || pending.save || pending.reload || pending.resource) {
+      restoreRuntimeCommandRollback(rollback);
+      setStatus("Wait for the current vSMR operation to finish.", "error");
+      return "";
+    }
+    const requestId = postBridge(type, payload);
+    if (!requestId) {
+      restoreRuntimeCommandRollback(rollback);
+      return "";
+    }
+    const timer = window.setTimeout(() => {
+      const pendingCommand = runtimeCommandPending.get(requestId);
+      if (!pendingCommand) return;
+      runtimeCommandPending.delete(requestId);
+      restoreRuntimeCommandRollback(pendingCommand.rollback);
+      expiredRequestIds.add(requestId);
+      state.externalEditConflict = true;
+	  clearSplitAvisoContext(requestId);
+      setStatus("The runtime change was not confirmed and has been reverted.", "error");
+      showToast("Runtime change timed out", "error");
+      updateCommandState();
+    }, REQUEST_TIMEOUT_MS);
+    runtimeCommandPending.set(requestId, {
+      rollback,
+      timer,
+      type,
+      unappliedAtSend: hasUnappliedEditorInputs() || avisoGroupContentDirty
+    });
+    updateCommandState();
+    return requestId;
+  }
+
+  function finishRuntimeCommand(requestId, restore = false) {
+    const pendingCommand = runtimeCommandPending.get(requestId);
+    if (!pendingCommand) return null;
+    window.clearTimeout(pendingCommand.timer);
+    runtimeCommandPending.delete(requestId);
+    if (restore) restoreRuntimeCommandRollback(pendingCommand.rollback);
+    updateCommandState();
+    return {
+      type: pendingCommand.type,
+      trustedCleanResponse: !restore && !pendingCommand.rollback?.dirty &&
+        !pendingCommand.unappliedAtSend && !hasUnappliedEditorInputs() && !avisoGroupContentDirty
+    };
+  }
+
+  function pendingRuntimeCommandInfo(requestId) {
+    const pendingCommand = runtimeCommandPending.get(requestId);
+    if (!pendingCommand) return null;
+    return {
+      type: pendingCommand.type,
+      trustedCleanResponse: !pendingCommand.rollback?.dirty &&
+        !pendingCommand.unappliedAtSend && !hasUnappliedEditorInputs() && !avisoGroupContentDirty
+    };
+  }
+
+  function postActiveProfileChange(rollback) {
     const record = activeProfileRecord();
     if (!record) return;
-    postBridge("runtime.profile.change", { profileId: record.id, profile: record.data.name });
+    postRuntimeCommand(
+      "runtime.profile.change",
+      { profileId: record.id, profile: record.data.name },
+      rollback
+    );
   }
 
   function activeModeName() {
@@ -1159,35 +1778,64 @@
   function setRuntimeMode(modeName) {
     const displayModes = activeProfile()?.filters?.display_modes;
     if (!displayModes?.items?.some(mode => mode.name === modeName)) return;
+	if (modeName === displayModes.active) {
+	  state.ui.runtimePopover = "";
+	  renderRuntimeMenu();
+	  return;
+	}
+	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+	  showToast("Save or reload current edits before changing mode", "error");
+	  return;
+	}
+	const modeEditor = $("[data-page-panel='modes']");
+	const modeSectionDirty = unappliedEditorSections.has(editorSectionKey(modeEditor));
+	if (modeSectionDirty &&
+		!window.confirm("Discard unapplied editor fields and change display mode?")) return;
+	const rollback = captureRuntimeCommandRollback();
+	drafts.mode = null;
+	clearUnappliedEditorSection(modeEditor);
     displayModes.active = modeName;
-    markDirty(`${modeName} set active`);
     state.ui.selectedModeIndex = Math.max(0, displayModes.items.findIndex(mode => mode.name === modeName));
     state.ui.runtimePopover = "";
     renderModes();
     renderRuntimeMenu();
-    postBridge("runtime.mode.change", { profile: activeProfile().name, mode: modeName });
+	postRuntimeCommand(
+	  "runtime.mode.change",
+	  { profile: activeProfile().name, mode: modeName },
+	  rollback
+	);
     showToast(`Mode: ${modeName}`, "success");
   }
 
   function toggleRuntimeGroup(groupId) {
     const group = avisoGroups().find(item => item.id === groupId);
     if (!group) return;
+	const rollback = captureRuntimeCommandRollback();
     group.visible = group.visible === false;
     if (drafts.avisoGroup?.id === group.id) drafts.avisoGroup.data.visible = group.visible;
     markDirty(`Group ${group.visible ? "shown" : "hidden"}`);
-    postBridge("aviso.group.visibility", { id: group.id, name: group.name, visible: group.visible });
+	postRuntimeCommand(
+	  "aviso.group.visibility",
+	  { id: group.id, name: group.name, visible: group.visible },
+	  rollback
+	);
     renderRuntimeMenu();
     if (state.ui.page === "groups") renderAvisoGroups();
   }
 
   function toggleInsetWindow(kind) {
     if (!["aviso", "srw1", "weather", "timer"].includes(kind)) return;
+	const rollback = captureRuntimeCommandRollback();
     state.runtime.insets ||= { aviso: false, srw1: false, weather: false, timer: false };
     state.runtime.insets[kind] = !state.runtime.insets[kind];
     if (kind === "aviso") state.runtime.avisoInsetVisible = state.runtime.insets[kind];
     const preset = activeAvisoPreset();
     const action = kind === "srw1" ? "display.srw.toggle" : "aviso.inset.toggle";
-    postBridge(action, { airport: activePresetAirport(), window: kind, visible: state.runtime.insets[kind], preset: preset?.name || "", profile: activeProfile().name });
+	postRuntimeCommand(
+	  action,
+	  { airport: activePresetAirport(), window: kind, visible: state.runtime.insets[kind], preset: preset?.name || "", profile: activeProfile().name },
+	  rollback
+	);
     renderRuntimeMenu();
     showToast(`${kind === "aviso" ? "AVISO inset" : kind === "weather" ? "Weather" : kind === "timer" ? "Timer" : kind.toUpperCase()} ${state.runtime.insets[kind] ? "shown" : "hidden"}`, "success");
   }
@@ -1195,10 +1843,15 @@
   function loadAvisoPreset(name) {
     const preset = avisoPresets().find(item => item.name === name);
     if (!preset) return;
+	const rollback = captureRuntimeCommandRollback();
     state.runtime.activeAvisoPreset = preset.name;
     state.runtime.activeAvisoPresetScope = activePresetScope();
     state.runtime.avisoInsetSnapshot = clone(preset);
-    postBridge("aviso.inset.preset.load", { airport: activePresetAirport(), preset: clone(preset) });
+	postRuntimeCommand(
+	  "aviso.inset.preset.load",
+	  { airport: activePresetAirport(), preset: clone(preset) },
+	  rollback
+	);
     renderRuntimeMenu();
     showToast(`Inset preset: ${preset.name}`, "success");
   }
@@ -1230,17 +1883,22 @@
     const linked = $("#insetPresetLinked").checked;
     const store = airportAvisoPresetStore();
     const current = activeAvisoPreset();
+	const rollback = captureRuntimeCommandRollback();
     if (insetPresetDialogMode === "rename") {
       if (!current) return;
       if (store.items.some(item => item !== current && item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
       const oldName = current.name;
-      postBridge("aviso.inset.preset.rename", { airport: activePresetAirport(), oldName, name, linked_movement: linked });
+	  postRuntimeCommand(
+		"aviso.inset.preset.rename",
+		{ airport: activePresetAirport(), oldName, name, linked_movement: linked },
+		rollback
+	  );
     } else {
       if (store.items.some(item => item.name.toLowerCase() === name.toLowerCase())) { showToast("A preset with this name already exists", "error"); return; }
-      postBridge("aviso.inset.preset.capture", {
+	  postRuntimeCommand("aviso.inset.preset.capture", {
         airport: activePresetAirport(),
         preset: { name, linked_movement: linked }
-      });
+      }, rollback);
     }
     dialog.close();
     renderRuntimeMenu();
@@ -1249,14 +1907,22 @@
   function updateAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    postBridge("aviso.inset.preset.update", { airport: activePresetAirport(), preset: clone(current) });
+	postRuntimeCommand(
+	  "aviso.inset.preset.update",
+	  { airport: activePresetAirport(), preset: clone(current) },
+	  captureRuntimeCommandRollback()
+	);
     renderRuntimeMenu();
   }
 
   function resetAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    postBridge("aviso.inset.preset.reset", { airport: activePresetAirport(), preset: current.name });
+	postRuntimeCommand(
+	  "aviso.inset.preset.reset",
+	  { airport: activePresetAirport(), preset: current.name },
+	  captureRuntimeCommandRollback()
+	);
     renderRuntimeMenu();
   }
 
@@ -1264,36 +1930,44 @@
     const current = activeAvisoPreset();
     if (!current) return;
     const name = uniqueInsetPresetName(`${current.name} copy`);
-    postBridge("aviso.inset.preset.duplicate", {
+	postRuntimeCommand("aviso.inset.preset.duplicate", {
       airport: activePresetAirport(),
       source: current.name,
       preset: { name }
-    });
+    }, captureRuntimeCommandRollback());
     renderRuntimeMenu();
   }
 
   function setDefaultAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current) return;
-    postBridge("aviso.inset.preset.default", { airport: activePresetAirport(), preset: current.name });
+	postRuntimeCommand(
+	  "aviso.inset.preset.default",
+	  { airport: activePresetAirport(), preset: current.name },
+	  captureRuntimeCommandRollback()
+	);
     renderRuntimeMenu();
   }
 
   function deleteAvisoPreset() {
     const current = activeAvisoPreset();
     if (!current || !confirmDelete(`Delete the inset preset “${current.name}”?`)) return;
-    postBridge("aviso.inset.preset.delete", { airport: activePresetAirport(), preset: current.name });
+	postRuntimeCommand(
+	  "aviso.inset.preset.delete",
+	  { airport: activePresetAirport(), preset: current.name },
+	  captureRuntimeCommandRollback()
+	);
     renderRuntimeMenu();
   }
 
   function toggleRuntimePresetLinked(checked) {
     const current = activeAvisoPreset();
     if (!current) return;
-    postBridge("aviso.inset.preset.linked", {
+	postRuntimeCommand("aviso.inset.preset.linked", {
       airport: activePresetAirport(),
       preset: current.name,
       linked_movement: Boolean(checked)
-    });
+    }, captureRuntimeCommandRollback());
     renderRuntimeMenu();
   }
 
@@ -1440,6 +2114,7 @@
 
   function setColorDraftFromRgb(r, g, b) {
     if (!drafts.color) return;
+    markEditorSectionUnapplied($("#colorSvPalette"));
     const rgb = { r: Math.round(clamp(r, 0, 255)), g: Math.round(clamp(g, 0, 255)), b: Math.round(clamp(b, 0, 255)) };
     const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
     drafts.color.hex = colorToHex(rgb);
@@ -1451,6 +2126,7 @@
 
   function setColorDraftFromHex(value) {
     if (!drafts.color) return;
+    markEditorSectionUnapplied($("#colorHex"));
     const normalized = normalizeHex(value, drafts.color.hex || "#ffffff");
     const rgb = hexToColor(normalized);
     const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
@@ -1463,6 +2139,7 @@
 
   function setColorDraftFromHsv(h, saturation, value) {
     if (!drafts.color) return;
+    markEditorSectionUnapplied($("#colorSvPalette"));
     drafts.color.h = ((Number(h) % 360) + 360) % 360;
     drafts.color.s = clamp(saturation, 0, 1);
     drafts.color.v = clamp(value, 0, 1);
@@ -1542,6 +2219,7 @@
     if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
     setAtPath(activeProfile(), entry.path, next);
     drafts.color = null;
+    clearUnappliedEditorSection($("#colorHex"));
     markDirty(`${entry.name} updated`);
     renderColors();
   }
@@ -1554,6 +2232,7 @@
     if (!isColorObject(original)) return;
     setAtPath(record.data, entry.path, clone(original));
     drafts.color = null;
+    clearUnappliedEditorSection($("#colorHex"));
     markDirty(`${entry.name} reset`);
     renderColors();
   }
@@ -1656,6 +2335,7 @@
     targets.small_icon_boost = $("#smallIconBoost").checked;
     targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset || targets.small_icon_boost_resolution_preset || "1080p";
     targets.small_icon_boost_factor = Number($("#smallIconBoostFactor").value);
+    clearUnappliedEditorSection($("#targetIconStyle"));
     markDirty("Target icon settings updated");
     renderIcons();
   }
@@ -1810,6 +2490,7 @@
     activeProfile().font.sizes ||= { one: 10, two: 11, three: 12, four: 13, five: 14 };
 
     drafts.tag = null;
+    clearUnappliedEditorSection($("#tagDefinitionEditor"));
     markDirty(`${entry.label} updated`);
     renderTags();
   }
@@ -1953,6 +2634,7 @@
     const rule = captureRuleDraft();
     rules()[state.ui.selectedRuleIndex] = clone(rule);
     drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule updated");
     renderRules();
   }
@@ -2013,6 +2695,7 @@
     }
     const squawks = drafts.mode.data.blocked_auto_correlate_squawks ||= [];
     if (!squawks.includes(code)) squawks.push(code);
+    markEditorSectionUnapplied(input);
     input.value = "";
     renderModeBlockedSquawkChips();
     input.focus();
@@ -2022,12 +2705,16 @@
   function removeModeBlockedSquawk(index) {
     if (!drafts.mode) return;
     const squawks = drafts.mode.data.blocked_auto_correlate_squawks ||= [];
-    if (index >= 0 && index < squawks.length) squawks.splice(index, 1);
+    if (index >= 0 && index < squawks.length) {
+      squawks.splice(index, 1);
+      markEditorSectionUnapplied($("#modeName"));
+    }
     renderModeBlockedSquawkChips();
   }
 
   function setModeStatusVisibility(visible) {
     $$("[data-mode-status]").forEach(input => { input.checked = Boolean(visible); });
+    markEditorSectionUnapplied($("#modeStatusGrid"));
   }
 
   function captureModeDraft() {
@@ -2057,6 +2744,7 @@
     modes()[state.ui.selectedModeIndex] = next;
     if (activeProfile().filters.display_modes.active === oldName) activeProfile().filters.display_modes.active = next.name;
     drafts.mode = null;
+    clearUnappliedEditorSection($("#modeName"));
     markDirty("Display mode updated");
     renderModes();
     renderRuntimeMenu();
@@ -2102,6 +2790,7 @@
     record.data = clone(captureProfileDraft());
     if (state.metadata.last_active_profile === oldName) state.metadata.last_active_profile = record.data.name;
     drafts.profile = null;
+    clearUnappliedEditorSection($("#profileName"));
     markDirty("Profile updated");
     renderGlobalProfileSelect();
     renderProfilesManager();
@@ -2256,6 +2945,7 @@
 
   function markControlTouched(element) {
     if (!element) return;
+    markEditorSectionUnapplied(element);
     element.dataset.touched = "true";
     element.dataset.mixed = "false";
     element.closest(".field")?.classList.remove("mixed");
@@ -2564,6 +3254,7 @@
     avisoGroups().push(group);
     state.ui.selectedAvisoGroupId = group.id;
     drafts.avisoGroup = null;
+    clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group created");
     postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
     renderAviso();
@@ -2580,6 +3271,7 @@
     });
     state.ui.selectedAvisoGroupId = copy.id;
     drafts.avisoGroup = null;
+    clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group copied");
     postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
     renderAviso();
@@ -2594,6 +3286,7 @@
     avisoFeatures().forEach(feature => setFeatureGroupMembership(feature, group.id, false));
     state.ui.selectedAvisoGroupId = avisoGroups()[Math.max(0, index - 1)]?.id || avisoGroups()[0]?.id || "";
     drafts.avisoGroup = null;
+    clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group deleted");
     postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
     renderAviso();
@@ -2614,6 +3307,7 @@
     group.visible = draft.data.visible !== false;
     group.accent = normalizeHex(draft.data.accent, group.accent || "#84b7d5");
     drafts.avisoGroup = null;
+    clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group updated");
     postBridge("aviso.groups.update", { groups: clone(avisoGroups()) });
     if (visibilityChanged) postBridge("aviso.group.visibility", { id: group.id, name: group.name, visible: group.visible });
@@ -2625,6 +3319,7 @@
     const group = selectedAvisoGroup();
     if (!group) return;
     drafts.avisoGroup = { id: group.id, original: clone(group), data: clone(group) };
+    clearUnappliedEditorSection($("#avisoGroupName"));
     renderAvisoGroupEditor();
   }
 
@@ -2700,6 +3395,7 @@
     const group = selectedAvisoGroup();
     if (!group) return;
     avisoGroupContentDraft = { groupId: group.id, members: new Set(avisoGroupMemberIndices(group.id)) };
+    avisoGroupContentDirty = false;
     state.ui.avisoGroupContentSearch = "";
     $("#avisoGroupContentSearch").value = "";
     renderAvisoGroupContentDialog();
@@ -2727,6 +3423,8 @@
     if (!avisoGroupContentDraft) return;
     const item = groupContentCandidates().find(candidate => candidate.key === key);
     if (!item) return;
+    avisoGroupContentDirty = true;
+    updateCommandState();
     const allSelected = item.indices.every(index => avisoGroupContentDraft.members.has(index));
     item.indices.forEach(index => {
       if (allSelected) avisoGroupContentDraft.members.delete(index);
@@ -2737,6 +3435,8 @@
 
   function setFilteredAvisoGroupContent(selected) {
     if (!avisoGroupContentDraft) return;
+    avisoGroupContentDirty = true;
+    updateCommandState();
     groupContentCandidates().forEach(item => item.indices.forEach(index => {
       if (selected) avisoGroupContentDraft.members.add(index);
       else avisoGroupContentDraft.members.delete(index);
@@ -2749,6 +3449,7 @@
     if (!group || !avisoGroupContentDraft) return;
     avisoFeatures().forEach((feature, index) => setFeatureGroupMembership(feature, group.id, avisoGroupContentDraft.members.has(index)));
     avisoGroupContentDraft = null;
+    avisoGroupContentDirty = false;
     $("#avisoGroupContentDialog").close();
     markDirty("AVISO group contents updated");
     postBridge("aviso.groups.update", { groups: clone(avisoGroups()), aviso: clone(state.aviso) });
@@ -2905,6 +3606,7 @@
     state.ui.selectedAvisoGeometryStyleId = next.includes(styleId) ? styleId : next[next.length - 1];
     if (!event.shiftKey) state.ui.avisoGeometrySelectionAnchorId = styleId;
     drafts.avisoGeometry = null;
+    clearUnappliedEditorSection($("#avisoGeometryVisible"));
     renderAvisoGeometry();
     setStatus(`${next.length} geometry style${next.length === 1 ? "" : "s"} selected`, "info");
   }
@@ -2956,6 +3658,7 @@
     });
 
     drafts.avisoGeometry = null;
+    clearUnappliedEditorSection($("#avisoGeometryVisible"));
     markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} updated`);
     showToast(`Updated ${updatedCount.toLocaleString()} geometry objects`, "success");
     renderAvisoGeometry();
@@ -3116,6 +3819,7 @@
     state.ui.selectedAvisoTextIndex = next.includes(index) ? index : next[next.length - 1];
     if (!event.shiftKey) state.ui.avisoTextSelectionAnchorIndex = index;
     drafts.avisoTextLabel = null;
+    clearUnappliedEditorSection($("#avisoTextValue"));
     renderAvisoText();
     setStatus(`${next.length} text label${next.length === 1 ? "" : "s"} selected`, "info");
   }
@@ -3179,6 +3883,7 @@
     });
 
     drafts.avisoTextLabel = null;
+    clearUnappliedEditorSection($("#avisoTextValue"));
     markDirty(`${updatedCount} AVISO label${updatedCount === 1 ? "" : "s"} updated`);
     showToast(`Updated ${updatedCount.toLocaleString()} text label${updatedCount === 1 ? "" : "s"}`, "success");
     renderAvisoText();
@@ -3209,6 +3914,7 @@
     });
 
     drafts.avisoTextStyle = null;
+    clearUnappliedEditorSection($("#avisoTextValue"));
     markDirty(scope === "all" ? "All AVISO text styles updated" : `${currentEntry.name} updated`);
     showToast(`Updated ${updatedCount.toLocaleString()} text labels`, "success");
     renderAvisoText();
@@ -3223,6 +3929,7 @@
       drafts.avisoTextLabel = null;
       renderAvisoTextEditor();
     }
+    clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryVisible") : $("#avisoTextValue"));
   }
 
 
@@ -3349,21 +4056,28 @@
     activeProfile().rimcas = clone(data.rimcas);
     state.runtime.alerts = { visibility: data.visibility, runways: clone(data.runways) };
     drafts.alerts = null;
+    clearUnappliedEditorSectionsWithin($("[data-page-panel='alerts']"));
     markDirty("Alert settings updated");
     postBridge("alerts.update", { profile: activeProfile().name, enabled: state.settings.rimcas, visibility: data.visibility, runways: clone(data.runways), rimcas: clone(data.rimcas) });
     renderAlerts();
     showToast("Alert settings updated", "success");
   }
 
-  function revertAlerts() { drafts.alerts = null; renderAlerts(); }
+  function revertAlerts() {
+    drafts.alerts = null;
+    clearUnappliedEditorSectionsWithin($("[data-page-panel='alerts']"));
+    renderAlerts();
+  }
 
   function setAllAlertTypes(active) {
     $$('[data-alert-type]').forEach(input => { input.checked = active; input.closest(".alert-toggle-card")?.classList.toggle("inactive", !active); });
+    markEditorSectionUnapplied($("#alertTypeGrid"));
   }
 
   function setAllAlertRunwayField(field, value = true) {
     captureAlertsDraft();
     ensureAlertsDraft().runways.forEach(runway => { runway[field] = value; });
+    markEditorSectionUnapplied($("#alertRunwayTable"));
     renderAlerts();
   }
 
@@ -3376,12 +4090,14 @@
     const data = ensureAlertsDraft();
     if (data.runways.some(row => row.id === normalized)) { showToast("This runway pair is already monitored", "error"); return; }
     data.runways.push({ id: normalized, arrival: true, departure: true, closed: false });
+    markEditorSectionUnapplied($("#alertRunwayTable"));
     renderAlerts();
   }
 
   function removeAlertRunway(index) {
     captureAlertsDraft();
     ensureAlertsDraft().runways.splice(index, 1);
+    markEditorSectionUnapplied($("#alertRunwayTable"));
     renderAlerts();
   }
 
@@ -3805,6 +4521,7 @@
     }
 
     const requestId = postBridge("datalink.settings.update", payload);
+    if (!requestId) return false;
     datalinkPending.settings = {
       id: requestId,
       action: "datalink.settings.update",
@@ -3816,6 +4533,7 @@
       revisions: { ...datalinkFieldRevisions },
       payload: clone(payload)
     };
+    armDatalinkPendingTimeout("settings", requestId);
     renderDatalink();
     if (!silent) {
       const pendingText = kind === "reminder-run"
@@ -3938,7 +4656,9 @@
     }
     const action = runtime.connected ? "datalink.connection.disconnect" : "datalink.connection.connect";
     const requestId = postBridge(action, {});
+    if (!requestId) return;
     datalinkPending.connection = { id: requestId, action };
+    armDatalinkPendingTimeout("connection", requestId);
     if (!HOST_MODE) {
       state.datalink.connecting = !runtime.connected;
       if (runtime.connected) state.datalink.connected = false;
@@ -3959,7 +4679,9 @@
     const runtime = state.datalink;
     if (!runtime.connected || runtime.pollInProgress || datalinkPending.poll) return;
     const requestId = postBridge("datalink.poll", {});
+    if (!requestId) return;
     datalinkPending.poll = { id: requestId, action: "datalink.poll" };
+    armDatalinkPendingTimeout("poll", requestId);
     if (!HOST_MODE) state.datalink.pollInProgress = true;
     renderDatalink();
     previewDatalinkAck("datalink.poll", requestId, "CPDLC message poll completed", 260);
@@ -3977,7 +4699,9 @@
     const runtime = state.datalink;
     if (datalinkPending.scan || !runtime.controllerConnected || !runtime.activeAirport || !runtime.cdmAliasReady) return;
     const requestId = postBridge("cdm.scan", {});
+    if (!requestId) return;
     datalinkPending.scan = { id: requestId, action: "cdm.scan" };
+    armDatalinkPendingTimeout("scan", requestId);
     renderDatalink();
     previewDatalinkAck("cdm.scan", requestId, `CDM reminder check completed for ${runtime.activeAirport}`, 260);
   }
@@ -3988,6 +4712,20 @@
     if (action === "datalink.poll") return "poll";
     if (action === "cdm.scan") return "scan";
     return "";
+  }
+
+  function armDatalinkPendingTimeout(slot, requestId) {
+    if (!slot || !requestId) return;
+    window.setTimeout(() => {
+      if (datalinkPending[slot]?.id !== requestId) return;
+      datalinkPending[slot] = null;
+      if (slot === "connection") state.datalink.connecting = false;
+      if (slot === "poll") state.datalink.pollInProgress = false;
+      renderDatalink();
+      const message = "The datalink operation timed out. Check the connection and try again.";
+      setStatus(message, "error");
+      showToast("Datalink operation timed out", "error");
+    }, REQUEST_TIMEOUT_MS);
   }
 
   function isDatalinkAction(action) {
@@ -4152,12 +4890,20 @@
     $("#settingsAvisoFile").title = settings.avisoFile;
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    const restoreBackup = $("#restoreProfilesBackupButton");
+    if (restoreBackup) {
+      restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
+      restoreBackup.title = restoreBackup.disabled
+        ? "No validated profiles backup is available"
+        : "Restore the last validated .bak copy";
+    }
     if (HOST_MODE) {
       ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {
         const control = $(selector);
         if (control) control.readOnly = true;
       });
     }
+    renderDataHealthStatus();
   }
 
   function applySettings() {
@@ -4171,6 +4917,7 @@
       record.data.targets ||= {};
       record.data.targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset;
     });
+    clearUnappliedEditorSection($("#settingsResolutionPreset"));
     markDirty("Settings updated");
     renderIcons();
     postBridge("settings.update", clone(state.settings));
@@ -4207,14 +4954,27 @@
       settings: clone(state.settings),
       runtime: clone(state.runtime),
       airport: state.airport,
-      activeProfile: activeProfile().name || ""
+      activeProfile: activeProfile().name || "",
+      configRevision: state.configRevision || "",
+      avisoRevision: state.avisoRevision || "",
+      recoveryConfirmed: Boolean(state.recoveryConfirmed),
+      avisoRecoveryConfirmed: Boolean(state.avisoRecoveryConfirmed)
     };
   }
 
   function saveAll() {
-    if (!state.dirty || pending.save || state.airport !== state.hostAirport) return;
+	if (!hostAuthoritativeReady || !state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport ||
+      (state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed)) return;
     const payload = serializeStatePayload(true);
+    // AVISO is an independent, potentially multi-megabyte resource.  Do not
+    // rewrite it (or make profile recovery depend on it) when only profiles or
+    // settings changed.  Resource imports and AVISO editor changes are already
+    // represented in the AVISO history chunk and will still be included.
+    if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
+      delete payload.aviso;
     pending.save = postBridge("state.save", payload);
+    if (!pending.save) return;
+    armPendingTimeout("save", pending.save);
     setStatus("Saving configuration…", "info");
     updateCommandState();
     if (!HOST_MODE) {
@@ -4229,9 +4989,12 @@
   }
 
   function requestReload() {
-    if (pending.reload || pending.save) return;
-    if (state.dirty && !window.confirm("Discard unsaved changes and reload configuration from disk?")) return;
+	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
+    if ((state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) &&
+        !window.confirm("Discard unsaved or unapplied changes and reload configuration from disk?")) return;
     pending.reload = postBridge("state.reload", {});
+    if (!pending.reload) return;
+    armPendingTimeout("reload", pending.reload);
     setStatus("Reloading configuration…", "info");
     updateCommandState();
     if (!HOST_MODE) {
@@ -4255,24 +5018,57 @@
     }
   }
 
+  function restoreProfilesBackup() {
+	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext || !state.settings?.dataHealth?.profilesBackupAvailable) return;
+    if (!window.confirm("Restore vSMR_Profiles.json from its validated .bak copy? Current unsaved edits will be discarded.")) return;
+    pending.reload = postBridge("state.restore.backup", {});
+    if (!pending.reload) return;
+    armPendingTimeout("reload", pending.reload);
+    setStatus("Restoring profiles backup...", "info");
+    updateCommandState();
+  }
+
+  function restoreBundledDefaults() {
+	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
+    if (!window.confirm("Load the bundled profiles and, when available, the AVISO default for the active airport? Review them, then press Save to replace the current data.")) return;
+    const id = postBridge("state.reset", {});
+    if (!id) return;
+    pending.resource = { id, resource: "defaults", source: "bundled defaults", kind: "defaults" };
+    armPendingTimeout("resource", id);
+    setStatus("Loading bundled defaults...", "info");
+    updateCommandState();
+  }
+
   function undoHistory() {
-    if (!history.past.length || pending.save || pending.reload || state.airport !== state.hostAirport) return;
+	if (!history.past.length || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport) return;
+	if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+	  showToast("Apply or revert the open editor fields before Undo", "error");
+	  return;
+	}
+	const rollback = captureRuntimeCommandRollback();
     const target = history.past.pop();
     history.future.push(history.present);
     if (history.future.length > HISTORY_LIMIT) history.future.shift();
+    state.recoveryConfirmed = false;
+    state.avisoRecoveryConfirmed = false;
     restoreHistorySnapshot(target);
-    postBridge("state.undo", { state: serializeStatePayload() });
-    showToast("Undone", "success");
+	postRuntimeCommand("state.undo", { state: serializeStatePayload() }, rollback);
   }
 
   function redoHistory() {
-    if (!history.future.length || pending.save || pending.reload || state.airport !== state.hostAirport) return;
+	if (!history.future.length || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport) return;
+	if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+	  showToast("Apply or revert the open editor fields before Redo", "error");
+	  return;
+	}
+	const rollback = captureRuntimeCommandRollback();
     const target = history.future.pop();
     history.past.push(history.present);
     if (history.past.length > HISTORY_LIMIT) history.past.shift();
+    state.recoveryConfirmed = false;
+    state.avisoRecoveryConfirmed = false;
     restoreHistorySnapshot(target);
-    postBridge("state.redo", { state: serializeStatePayload() });
-    showToast("Redone", "success");
+	postRuntimeCommand("state.redo", { state: serializeStatePayload() }, rollback);
   }
 
   function confirmDelete(message) {
@@ -4309,6 +5105,25 @@
   }
 
   function bindEvents() {
+    const trackUnappliedEditorInput = event => {
+      const control = event.target;
+      if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement ||
+          control instanceof HTMLTextAreaElement)) return;
+      if (control.matches(
+        '[type="search"], [type="file"], #avisoTextStyleSelect, #avisoTextApplyTarget, ' +
+        '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect'
+      ) ||
+          control.closest(".datalink-card, #runtimeMenu, .page-rail")) return;
+      if (!control.closest(
+        ".detail-panel, .full-editor-panel, .tag-definition-detail-panel, " +
+        ".tag-global-options-panel, .aviso-category-editor, .aviso-text-editor, " +
+        ".aviso-group-editor, [data-alerts-view-panel], .settings-layout"
+      )) return;
+      markEditorSectionUnapplied(control);
+    };
+    document.addEventListener("input", trackUnappliedEditorInput);
+    document.addEventListener("change", trackUnappliedEditorInput);
+
     document.addEventListener("click", event => {
       if (!event.target.closest("#ruleStatusDropdown")) setRuleStatusMenuOpen(false);
       if (!event.target.closest(".aviso-load-control")) setAvisoLoadMenuOpen(false);
@@ -4324,8 +5139,9 @@
       if (runtimeMode) { setRuntimeMode(runtimeMode.dataset.runtimeMode); return; }
       const runtimeProfile = event.target.closest("[data-runtime-profile]");
       if (runtimeProfile) {
-        switchActiveProfile(runtimeProfile.dataset.runtimeProfile);
-        postActiveProfileChange();
+		const rollback = captureRuntimeCommandRollback();
+		if (!switchActiveProfile(runtimeProfile.dataset.runtimeProfile)) return;
+		postActiveProfileChange(rollback);
         state.ui.runtimePopover = "";
         renderRuntimeMenu();
         showToast(`Profile: ${activeProfile().name}`, "success");
@@ -4354,6 +5170,7 @@
       if (avisoGroupRow) {
         state.ui.selectedAvisoGroupId = avisoGroupRow.dataset.avisoGroupId;
         drafts.avisoGroup = null;
+        clearUnappliedEditorSection($("#avisoGroupName"));
         renderAvisoGroups();
         return;
       }
@@ -4378,15 +5195,15 @@
         return;
       }
       const colorRow = event.target.closest("[data-color-path]");
-      if (colorRow) { state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; renderColors(); return; }
+      if (colorRow) { state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
       const tagRow = event.target.closest("[data-tag-id]");
-      if (tagRow) { state.ui.selectedTagId = tagRow.dataset.tagId; drafts.tag = null; renderTags(); return; }
+      if (tagRow) { state.ui.selectedTagId = tagRow.dataset.tagId; drafts.tag = null; clearUnappliedEditorSection($("#tagDefinitionEditor")); renderTags(); return; }
       const ruleRow = event.target.closest("[data-rule-index]");
-      if (ruleRow) { state.ui.selectedRuleIndex = Number(ruleRow.dataset.ruleIndex); drafts.rule = null; renderRules(); return; }
+      if (ruleRow) { state.ui.selectedRuleIndex = Number(ruleRow.dataset.ruleIndex); drafts.rule = null; clearUnappliedEditorSection($("#ruleName")); renderRules(); return; }
       const modeRow = event.target.closest("[data-mode-index]");
-      if (modeRow) { state.ui.selectedModeIndex = Number(modeRow.dataset.modeIndex); drafts.mode = null; renderModes(); return; }
+      if (modeRow) { state.ui.selectedModeIndex = Number(modeRow.dataset.modeIndex); drafts.mode = null; clearUnappliedEditorSection($("#modeName")); renderModes(); return; }
       const profileRow = event.target.closest("[data-managed-profile-id]");
-      if (profileRow) { state.ui.managedProfileId = profileRow.dataset.managedProfileId; drafts.profile = null; renderProfilesManager(); return; }
+      if (profileRow) { state.ui.managedProfileId = profileRow.dataset.managedProfileId; drafts.profile = null; clearUnappliedEditorSection($("#profileName")); renderProfilesManager(); return; }
       const avisoGeometryStyleRow = event.target.closest("[data-aviso-geometry-style]");
       if (avisoGeometryStyleRow) {
         const forceToggle = Boolean(event.target.closest('[data-aviso-selection-toggle="geometry"]'));
@@ -4404,6 +5221,7 @@
         state.ui.avisoTextSearch = "";
         drafts.avisoTextStyle = null;
         drafts.avisoTextLabel = null;
+        clearUnappliedEditorSection($("#avisoTextValue"));
         renderAvisoText();
         return;
       }
@@ -4418,8 +5236,12 @@
     });
 
     $("#globalProfileSelect").addEventListener("change", event => {
-      switchActiveProfile(event.target.value);
-      postActiveProfileChange();
+	  const rollback = captureRuntimeCommandRollback();
+	  if (!switchActiveProfile(event.target.value)) {
+		renderGlobalProfileSelect();
+		return;
+	  }
+	  postActiveProfileChange(rollback);
       setRailProfilePopoverOpen(false);
     });
     const syncDatalinkDraft = (...fields) => {
@@ -4479,6 +5301,7 @@
       state.ui.avisoTextSearch = "";
       drafts.avisoTextStyle = null;
       drafts.avisoTextLabel = null;
+      clearUnappliedEditorSection($("#avisoTextValue"));
       renderAvisoText();
     });
     $("#tagLabelFontSize").addEventListener("input", event => { $("#tagLabelFontSizeOutput").value = String(Math.round(clamp(event.target.value, 1, 5))); });
@@ -4603,7 +5426,11 @@
       state.ui.avisoGroupContentSearch = event.target.value;
       renderAvisoGroupContentDialog();
     });
-    $("#avisoGroupContentDialog").addEventListener("close", () => { avisoGroupContentDraft = null; });
+    $("#avisoGroupContentDialog").addEventListener("close", () => {
+      avisoGroupContentDraft = null;
+      avisoGroupContentDirty = false;
+      updateCommandState();
+    });
     const avisoGroupList = $("#avisoGroupList");
     avisoGroupList.addEventListener("dragstart", event => {
       const row = event.target.closest("[data-aviso-group-id]");
@@ -4723,11 +5550,13 @@
           state.ui.selectedAvisoGeometryStyleIds = ids;
           state.ui.selectedAvisoGeometryStyleId = ids[ids.length - 1];
           state.ui.avisoGeometrySelectionAnchorId = ids[0];
+          clearUnappliedEditorSection($("#avisoGeometryVisible"));
           renderAvisoGeometry();
         }
       } else if (event.key === "Escape") {
         const id = state.ui.selectedAvisoGeometryStyleId;
         state.ui.selectedAvisoGeometryStyleIds = id ? [id] : [];
+        clearUnappliedEditorSection($("#avisoGeometryVisible"));
         renderAvisoGeometry();
       }
     });
@@ -4740,11 +5569,13 @@
           state.ui.selectedAvisoTextIndices = indices;
           state.ui.selectedAvisoTextIndex = indices[indices.length - 1];
           state.ui.avisoTextSelectionAnchorIndex = indices[0];
+          clearUnappliedEditorSection($("#avisoTextValue"));
           renderAvisoText();
         }
       } else if (event.key === "Escape") {
         const index = Number(state.ui.selectedAvisoTextIndex);
         state.ui.selectedAvisoTextIndices = Number.isInteger(index) ? [index] : [];
+        clearUnappliedEditorSection($("#avisoTextValue"));
         renderAvisoText();
       }
     });
@@ -4763,6 +5594,15 @@
 
   function handleAction(action, button) {
     if (action === "open-control-center") openControlCenter();
+    else if (action === "open-settings") { openControlCenter(); setPage("settings"); }
+    else if (action === "dismiss-persistent-status") {
+      if (persistentStatusState)
+        dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;
+      renderPersistentStatus();
+    }
+    else if (action === "restore-profiles-backup") restoreProfilesBackup();
+    else if (action === "restore-bundled-defaults") restoreBundledDefaults();
+    else if (action === "assign-legacy-inset-presets") assignLegacyInsetPresetsToActiveAirport();
     else if (action === "close-runtime-popover") { state.ui.runtimePopover = ""; renderRuntimeMenu(); }
     else if (action === "save-inset-preset") openInsetPresetDialog("capture");
     else if (action === "rename-inset-preset") openInsetPresetDialog("rename");
@@ -4774,26 +5614,26 @@
     else if (action === "delete-inset-preset") deleteAvisoPreset();
     else if (action === "toggle-profile-menu") setRailProfilePopoverOpen($("#railProfilePopover").hidden);
     else if (action === "apply-color") applyColorDraft();
-    else if (action === "revert-color") { drafts.color = null; renderColorEditor(); }
+    else if (action === "revert-color") { drafts.color = null; clearUnappliedEditorSection(button); renderColorEditor(); }
     else if (action === "reset-color") resetSelectedColor();
     else if (action === "apply-icons") applyIcons();
-    else if (action === "revert-icons") renderIcons();
+    else if (action === "revert-icons") { clearUnappliedEditorSection(button); renderIcons(); }
 
     else if (action === "apply-tag") applyTag();
-    else if (action === "revert-tag") { drafts.tag = null; renderTagEditor(); }
+    else if (action === "revert-tag") { drafts.tag = null; clearUnappliedEditorSection(button); renderTagEditor(); }
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
     else if (action === "delete-rule") deleteRule();
-    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); renderRuleEditor(); }
+    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); markEditorSectionUnapplied(button); renderRuleEditor(); }
     else if (action === "delete-condition") deleteRuleCondition(Number(button.dataset.index));
     else if (action === "apply-rule") applyRule();
-    else if (action === "revert-rule") { drafts.rule = null; renderRuleEditor(); }
+    else if (action === "revert-rule") { drafts.rule = null; clearUnappliedEditorSection(button); renderRuleEditor(); }
     else if (action === "new-mode") createMode();
     else if (action === "duplicate-mode") duplicateMode();
     else if (action === "delete-mode") deleteMode();
     else if (action === "apply-mode") applyMode();
-    else if (action === "revert-mode") { drafts.mode = null; renderModeEditor(); }
+    else if (action === "revert-mode") { drafts.mode = null; clearUnappliedEditorSection(button); renderModeEditor(); }
     else if (action === "activate-mode") activateMode();
     else if (action === "add-mode-squawk") addModeBlockedSquawk();
     else if (action === "remove-mode-squawk") removeModeBlockedSquawk(Number(button.dataset.index));
@@ -4803,30 +5643,47 @@
     else if (action === "duplicate-profile") duplicateProfile();
     else if (action === "delete-profile") deleteProfile();
     else if (action === "apply-profile") applyProfile();
-    else if (action === "revert-profile") { drafts.profile = null; renderProfileEditor(); }
+    else if (action === "revert-profile") { drafts.profile = null; clearUnappliedEditorSection(button); renderProfileEditor(); }
     else if (action === "activate-profile") {
       const record = managedProfileRecord();
       if (record) {
-        switchActiveProfile(record.id);
-        postActiveProfileChange();
+		const rollback = captureRuntimeCommandRollback();
+		if (!switchActiveProfile(record.id)) return;
+		postActiveProfileChange(rollback);
       }
     }
     else if (action === "toggle-aviso-load-menu") setAvisoLoadMenuOpen($("#avisoLoadMenu").hidden);
     else if (action === "load-profiles-computer") {
+	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+		showToast("Apply or revert the open editor fields before loading another file", "error");
+		return;
+	  }
+	  if (!confirmResourceReplacement("profiles")) return;
       if (HOST_MODE) {
         postBridge("resource.computer.load", { resource: "profiles" });
         setStatus("Choose a profiles file…", "info");
       } else $("#profilesFileInput").click();
     }
     else if (action === "load-aviso-computer") {
+	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+		showToast("Apply or revert the open editor fields before loading another file", "error");
+		return;
+	  }
+	  if (!confirmResourceReplacement("aviso")) return;
       setAvisoLoadMenuOpen(false);
       if (HOST_MODE) {
         postBridge("resource.computer.load", { resource: "aviso" });
         setStatus("Choose an AVISO GeoJSON file…", "info");
       } else $("#avisoFileInput").click();
     }
-    else if (action === "load-profiles-github") openResourceGithubDialog("profiles");
-    else if (action === "load-aviso-github") { setAvisoLoadMenuOpen(false); openResourceGithubDialog("aviso"); }
+    else if (action === "load-profiles-github") {
+	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) showToast("Apply or revert the open editor fields before loading another file", "error");
+	  else openResourceGithubDialog("profiles");
+	}
+    else if (action === "load-aviso-github") {
+	  if (hasUnappliedEditorInputs() || avisoGroupContentDirty) showToast("Apply or revert the open editor fields before loading another file", "error");
+	  else { setAvisoLoadMenuOpen(false); openResourceGithubDialog("aviso"); }
+	}
     else if (action === "apply-aviso-geometry") applyAvisoGeometry();
     else if (action === "apply-aviso-text") applyAvisoTextScope();
     else if (action === "assign-aviso-geometry-group") assignAvisoSelectionToGroup("geometry");
@@ -4860,6 +5717,7 @@
     else if (action === "datalink-reminder-update") updatePdcReminders();
     else if (action === "apply-settings") applySettings();
     else if (action.startsWith("browse-")) { postBridge(action.replaceAll("-", ".")); showToast("Native file picker requested"); }
+
   }
 
   function insertTagToken() {
@@ -4870,6 +5728,7 @@
     const end = activeTagInput.selectionEnd ?? start;
     const prefix = start > 0 && !/\s$/.test(activeTagInput.value.slice(0, start)) ? " " : "";
     activeTagInput.value = activeTagInput.value.slice(0, start) + prefix + token + " " + activeTagInput.value.slice(end);
+    markEditorSectionUnapplied(activeTagInput);
     activeTagInput.focus();
   }
 
@@ -4877,6 +5736,7 @@
     rules().push({ source: "vacdm", token: "tsat", condition: "valid", criteria: [{ source: "vacdm", token: "tsat", condition: "valid" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule created");
     renderRules();
   }
@@ -4888,6 +5748,7 @@
     rules().splice(state.ui.selectedRuleIndex + 1, 0, copy);
     state.ui.selectedRuleIndex += 1;
     drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule copied");
     renderRules();
   }
@@ -4896,6 +5757,7 @@
     rules().splice(state.ui.selectedRuleIndex, 1);
     state.ui.selectedRuleIndex = Math.max(0, state.ui.selectedRuleIndex - 1);
     drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule deleted");
     renderRules();
   }
@@ -4904,6 +5766,7 @@
     if (!drafts.rule) return;
     drafts.rule.data.criteria.splice(index, 1);
     if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+    markEditorSectionUnapplied($("#ruleName"));
     renderRuleEditor();
   }
 
@@ -4922,6 +5785,7 @@
     });
     state.ui.selectedModeIndex = modes().length - 1;
     drafts.mode = null;
+    clearUnappliedEditorSection($("#modeName"));
     markDirty("Mode created");
     renderModes();
     renderRuntimeMenu();
@@ -4931,7 +5795,10 @@
     if (!item) return;
     const copy = clone(item); copy.name = `${item.name} copy`;
     modes().splice(state.ui.selectedModeIndex + 1, 0, copy);
-    state.ui.selectedModeIndex += 1; drafts.mode = null; markDirty("Mode copied"); renderModes(); renderRuntimeMenu();
+    state.ui.selectedModeIndex += 1;
+    drafts.mode = null;
+    clearUnappliedEditorSection($("#modeName"));
+    markDirty("Mode copied"); renderModes(); renderRuntimeMenu();
   }
   function deleteMode() {
     const items = modes();
@@ -4940,16 +5807,33 @@
     items.splice(state.ui.selectedModeIndex, 1);
     state.ui.selectedModeIndex = Math.max(0, state.ui.selectedModeIndex - 1);
     if (activeProfile().filters.display_modes.active === deleted.name) activeProfile().filters.display_modes.active = items[0].name;
-    drafts.mode = null; markDirty("Mode deleted"); renderModes(); renderRuntimeMenu();
+    drafts.mode = null;
+    clearUnappliedEditorSection($("#modeName"));
+    markDirty("Mode deleted"); renderModes(); renderRuntimeMenu();
   }
   function activateMode() {
     const mode = modes()[state.ui.selectedModeIndex];
     if (!mode) return;
+	if (mode.name === activeProfile()?.filters?.display_modes?.active) return;
+	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
+	  showToast("Save or reload current edits before changing mode", "error");
+	  return;
+	}
+	const modeEditor = $("[data-page-panel='modes']");
+	const modeSectionDirty = unappliedEditorSections.has(editorSectionKey(modeEditor));
+	if (modeSectionDirty &&
+		!window.confirm("Discard unapplied editor fields and change display mode?")) return;
+	const rollback = captureRuntimeCommandRollback();
+	drafts.mode = null;
+	clearUnappliedEditorSection(modeEditor);
     activeProfile().filters.display_modes.active = mode.name;
-    markDirty(`${mode.name} set active`);
     renderModes();
     renderRuntimeMenu();
-    postBridge("runtime.mode.change", { profile: activeProfile().name, mode: mode.name });
+	postRuntimeCommand(
+	  "runtime.mode.change",
+	  { profile: activeProfile().name, mode: mode.name },
+	  rollback
+	);
   }
 
   function createProfile() {
@@ -4959,6 +5843,7 @@
     state.profiles.push(record);
     state.ui.managedProfileId = record.id;
     drafts.profile = null;
+    clearUnappliedEditorSection($("#profileName"));
     markDirty("Profile created");
     renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
   }
@@ -4968,14 +5853,20 @@
     const record = { id: uid("profile"), persistedName: "", data, original: clone(data) };
     const index = state.profiles.indexOf(source) + 1;
     state.profiles.splice(index, 0, record);
-    state.ui.managedProfileId = record.id; drafts.profile = null; markDirty("Profile copied"); renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
+    state.ui.managedProfileId = record.id;
+    drafts.profile = null;
+    clearUnappliedEditorSection($("#profileName"));
+    markDirty("Profile copied"); renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
   }
   function deleteProfile() {
     if (state.profiles.length <= 1 || !confirmDelete("Delete this profile?")) return;
     const record = managedProfileRecord(); if (!record) return;
     const index = state.profiles.indexOf(record); state.profiles.splice(index, 1);
     if (record.id === state.activeProfileId) state.activeProfileId = state.profiles[Math.max(0, index - 1)].id;
-    state.ui.managedProfileId = state.activeProfileId; drafts.profile = null; markDirty("Profile deleted"); renderGlobalProfileSelect(); renderAllProfileSections(); renderRuntimeMenu();
+    state.ui.managedProfileId = state.activeProfileId;
+    drafts.profile = null;
+    clearUnappliedEditorSection($("#profileName"));
+    markDirty("Profile deleted"); renderGlobalProfileSelect(); renderAllProfileSections(); renderRuntimeMenu();
   }
 
 
@@ -4992,6 +5883,8 @@
     const raw = String(value || "").trim();
     if (!raw) throw new Error("Enter a GitHub file URL");
     const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password || url.port)
+      throw new Error("Use an HTTPS GitHub URL without credentials or a custom port");
     if (url.hostname === "raw.githubusercontent.com") return url.href;
     if (url.hostname !== "github.com" && url.hostname !== "www.github.com") throw new Error("Use a github.com or raw.githubusercontent.com URL");
     const parts = url.pathname.split("/").filter(Boolean);
@@ -5018,7 +5911,7 @@
     const { records, metadata, extras } = getProfileRecords(parsed);
     if (!records.length) throw new Error("No profiles were found in this file");
     const preferred = records.find(record => record.data.name === metadata.last_active_profile) || records[0];
-    migrateProfileAvisoPresetStores(metadata, records, preferred.id, activePresetAirport());
+    migrateProfileAvisoPresetStores(metadata, records, preferred.id);
     state.profiles = records;
     state.metadata = metadata;
     state.profileExtras = clone(extras);
@@ -5031,6 +5924,8 @@
     state.ui.selectedColorPath = colors[0]?.id || "";
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
     Object.keys(drafts).forEach(key => drafts[key] = null);
+    clearAllUnappliedEditorSections();
+    avisoGroupContentDirty = false;
     if (source) setResourceSource("profiles", source);
     renderGlobalProfileSelect();
     renderAllProfileSections();
@@ -5043,6 +5938,8 @@
   function applyAvisoPayload(parsed, source = "") {
     if (parsed?.type !== "FeatureCollection" || !Array.isArray(parsed.features)) throw new Error("Expected a GeoJSON FeatureCollection");
     state.aviso = normalizeAvisoData(parsed);
+    clearAllUnappliedEditorSections();
+    avisoGroupContentDirty = false;
     resetAvisoSelections();
     if (source) setResourceSource("aviso", source);
     renderAviso();
@@ -5084,8 +5981,11 @@
       const url = normalizeGithubRawUrl(sourceUrl);
       if (pending.resource) return;
       const resource = githubResourceType;
+	  if (!confirmResourceReplacement(resource)) return;
       const id = postBridge("resource.github.load", { resource, url });
+      if (!id) return;
       pending.resource = { id, resource, source: sourceUrl, kind: "github" };
+      armPendingTimeout("resource", id);
       setGithubRequestPending(true);
       setStatus(`Loading ${resource === "aviso" ? "AVISO GeoJSON" : "profiles"} from GitHub...`, "info");
       if (!HOST_MODE) {
@@ -5217,19 +6117,51 @@
     return payload || {};
   }
 
-  function applyAuthoritativeState(payload, reason = "update") {
+  function applyAuthoritativeState(payload, reason = "update", trustedRuntimeResponse = false) {
     const incoming = authoritativePayload(payload);
     const preservedUi = state.ui;
     const previousProfileName = activeProfile().name || "";
-    const previousHostAirport = state.hostAirport;
+    const previousHostAirport = normalizeAirportCode(state.hostAirport);
     const resourceSourceChanged = reason === "resource-source";
-    const supersededDirtyEditors = resourceSourceChanged && state.dirty;
+	const hasUnappliedEditorWork =
+	  (hasUnappliedEditorInputs() || avisoGroupContentDirty) && !trustedRuntimeResponse;
+    const externallyChangedDirtyEditors =
+	  (state.dirty || hasUnappliedEditorWork) &&
+	  ["resource-source", "external-save", "backup-restored", "profile", "mode"].includes(reason);
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
-    const preservesStagedEditors = state.dirty &&
-      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo", "resource-source"].includes(reason);
+	const preservesStagedEditors = (state.dirty || hasUnappliedEditorWork) &&
+      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason);
+    const hostAirportChanged = !preservesStagedEditors && typeof incoming.airport === "string" &&
+      incomingAirport !== previousHostAirport;
+    const profileModeReplacement = !preservesStagedEditors &&
+      ["profile", "mode"].includes(reason) && Array.isArray(incoming.profiles);
+    const resetsExternalHistory = !preservesStagedEditors && (
+      ["external-save", "backup-restored"].includes(reason) ||
+      profileModeReplacement || hostAirportChanged
+    );
     let avisoChanged = false;
+
+    // A background sync must not bless an older staged editor snapshot with a
+    // newer disk revision.  Keeping its old token makes the next save fail
+    // closed and directs the user to reload instead of overwriting another
+    // Control Center's changes.
+    if ((!preservesStagedEditors || reason === "preset") && typeof incoming.configRevision === "string")
+      state.configRevision = incoming.configRevision;
+    if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
+      state.avisoRevision = incoming.avisoRevision;
+    if (["initial", "reload", "save", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
+      state.recoveryConfirmed = false;
+    if (["initial", "reload", "save", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
+      state.avisoRecoveryConfirmed = false;
+    if (!preservesStagedEditors)
+      state.externalEditConflict = false;
+    else if (externallyChangedDirtyEditors)
+      state.externalEditConflict = true;
+    if (["initial", "reload", "save", "backup-restored"].includes(reason) &&
+      persistentStatusState?.origin === "native")
+      setPersistentStatus("", "", [], "native");
 
     if (Array.isArray(incoming.profiles)) {
       const normalized = getProfileRecords(incoming.profiles);
@@ -5238,12 +6170,12 @@
         migrateProfileAvisoPresetStores(
           normalized.metadata,
           normalized.records,
-          requestedProfile || previousProfileName,
-          incomingAirport
+          requestedProfile || previousProfileName
         );
         if (preservesStagedEditors) {
           assignAvisoPresetRoot(state.metadata, normalized.metadata.aviso_presets);
           rebasePresetStoreSnapshots(normalized.metadata.aviso_presets);
+          if (reason === "mode") rebaseDisplayModeSelections(normalized.records);
         }
         if (!preservesStagedEditors) {
           state.profiles = normalized.records;
@@ -5255,6 +6187,11 @@
           || state.profiles.find(record => record.data.name === state.metadata.last_active_profile)
           || state.profiles[0];
         state.activeProfileId = preferred?.id || "";
+      } else if (!preservesStagedEditors && incoming.settings?.dataHealth?.profilesHealthy === false) {
+        state.profiles = [];
+        state.metadata = normalized.metadata;
+        state.profileExtras = clone(normalized.extras);
+        state.activeProfileId = "";
       }
     }
     if (!preservesStagedEditors && incoming.aviso?.type === "FeatureCollection") {
@@ -5275,7 +6212,7 @@
       rebaseDatalinkDraftFromRuntime();
     }
     if (typeof incoming.airport === "string") {
-      state.hostAirport = incoming.airport.trim().toUpperCase();
+      state.hostAirport = incomingAirport;
       if (!preservesStagedEditors)
         state.airport = state.hostAirport;
     }
@@ -5301,9 +6238,24 @@
     if (HOST_MODE) state.ui.controlCenterOpen = true;
     if (!state.profiles.some(record => record.id === state.activeProfileId)) state.activeProfileId = state.profiles[0]?.id || "";
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
-    Object.keys(drafts).forEach(key => drafts[key] = null);
+	if (!preservesStagedEditors) {
+	  Object.keys(drafts).forEach(key => drafts[key] = null);
+	  clearAllUnappliedEditorSections();
+	  avisoGroupContentDirty = false;
+	}
     if (avisoChanged && reason !== "save") resetAvisoSelections();
-    renderAll();
+	// Preserve the live form controls as well as their staged data. Several
+	// editors intentionally keep input in the DOM until Update is pressed; a
+	// benign runtime/preset sync must not repaint those controls and erase it.
+	if (preservesStagedEditors && hasUnappliedEditorWork) {
+	  renderGlobalProfileSelect();
+	  renderRuntimeMenu();
+	  updateContext();
+	  updateCommandState();
+	} else {
+	  renderAll();
+	}
+    renderDataHealthStatus();
     if (preservesStagedEditors && state.airport && state.hostAirport &&
       state.airport !== state.hostAirport && previousHostAirport !== state.hostAirport) {
       const message = "The active airport changed. Reload before saving or using Undo/Redo.";
@@ -5311,13 +6263,8 @@
       showToast(message, "error");
     }
 
-    if (reason === "initial" || reason === "reload" || resourceSourceChanged) {
+    if (reason === "initial" || reason === "reload" || (resourceSourceChanged && !preservesStagedEditors) || resetsExternalHistory) {
       resetHistory(true);
-      if (supersededDirtyEditors) {
-        const message = "Data source changed; unsaved edits were replaced by the newly active file.";
-        setStatus(message, "info");
-        showToast(message, "info");
-      }
     } else if (reason === "save") {
       history.present = captureHistorySnapshot();
       markSaved(incoming.message || "Configuration saved");
@@ -5326,6 +6273,11 @@
       history.present = captureHistorySnapshot();
       if (!wasDirty) savedSnapshot = history.present;
       updateDirtyState();
+    }
+    if (externallyChangedDirtyEditors) {
+      const message = "Another vSMR window changed the active data. Your unsaved edits were retained; reload before saving.";
+      setStatus(message, "error");
+      showToast(message, "error");
     }
   }
 
@@ -5354,6 +6306,7 @@
     const pendingRequest = pending.resource;
     const matchesPending = Boolean(pendingRequest && messageMatchesRequest(message, pendingRequest.id));
     const source = String(message.payload.source || "");
+    const messageResource = String(message.payload.resource || "");
     const request = matchesPending ? pendingRequest : {
       id: message.id,
       resource: message.payload.resource,
@@ -5363,30 +6316,58 @@
         ? "github"
         : source === "bundled defaults" ? "defaults" : "computer"
     };
-    if (matchesPending) {
+    const completesRequest = !success || pendingRequest?.kind !== "defaults" || messageResource === "profiles";
+    if (matchesPending && completesRequest) {
       pending.resource = null;
       setGithubRequestPending(false);
     }
-    if (!success) return true;
+    if (!success) {
+      if (request.kind === "defaults") state.recoveryConfirmed = false;
+      if (String(message.payload.resource || request.resource) === "aviso")
+        state.avisoRecoveryConfirmed = false;
+      updateCommandState();
+      return true;
+    }
     const resource = String(message.payload.resource || request.resource);
     const data = message.payload.data;
     const resourceSource = source || request.source;
     const effectivePath = String(message.payload.path || "");
+    // Each resource has an independent optimistic-concurrency token. Loading
+    // one must never bless staged edits to the other with a newer revision.
+    if (resource === "profiles" && typeof message.payload.configRevision === "string")
+      state.configRevision = message.payload.configRevision;
+    if (resource === "aviso" && typeof message.payload.avisoRevision === "string")
+      state.avisoRevision = message.payload.avisoRevision;
+    if (message.payload.settings && typeof message.payload.settings === "object" && !Array.isArray(message.payload.settings))
+      state.settings = { ...state.settings, ...clone(message.payload.settings) };
     try {
       if (resource === "profiles") applyProfilesPayload(data, effectivePath);
       else if (resource === "aviso") applyAvisoPayload(data, effectivePath);
       else throw new Error("Unknown resource type");
+	  // A source switch is a revision boundary. Old history snapshots do not
+	  // carry file paths/revisions and must never be replayed into the new file.
+	  if (effectivePath) resetHistory(false);
+      if (resource === "profiles" && resourceSource === "bundled defaults")
+        state.recoveryConfirmed = true;
+      if (resource === "aviso") state.avisoRecoveryConfirmed = true;
+      if (matchesPending && persistentStatusState?.origin === "native")
+        setPersistentStatus("", "", [], "native");
+      renderDataHealthStatus();
       const dialog = $("#resourceGithubDialog");
       if (dialog.open && (!pendingRequest || matchesPending)) {
         if (typeof dialog.close === "function") dialog.close(); else dialog.removeAttribute("open");
       }
-      const sourceLabel = resourceSource === "bundled defaults"
+      const sourceLabel = request.kind === "defaults" || resourceSource === "bundled defaults"
         ? "bundled defaults"
         : request.kind === "computer" || resourceSource === "computer"
           ? "computer"
           : "GitHub";
       showToast(`${resource === "aviso" ? "GeoJSON" : "Profiles"} loaded from ${sourceLabel}`, "success");
+      updateCommandState();
     } catch (error) {
+      if (request.kind === "defaults") state.recoveryConfirmed = false;
+      if (resource === "aviso") state.avisoRecoveryConfirmed = false;
+      updateCommandState();
       setStatus(error.message || "The loaded resource is invalid", "error");
       showToast(error.message || "The loaded resource is invalid", "error");
     }
@@ -5397,29 +6378,95 @@
     const message = decodeHostMessage(input);
     if (!message) return;
     const payload = message.payload;
+    const responseId = String(message.requestId || message.id || payload.requestId || "");
+    if (responseId && expiredRequestIds.has(responseId)) return;
 
     if (message.type === "state.initial" || message.type === "initial.state") {
       applyAuthoritativeState(payload, "initial");
+	  if (payload.aviso?.type === "FeatureCollection") setHostAuthoritativeReady(true);
       setStatus(payload.message || "Configuration loaded");
       return;
     }
     if (message.type === "state.authoritative") {
-      const isReload = pending.reload && messageMatchesRequest(message, pending.reload);
-      if (isReload) pending.reload = "";
+	  const hasInlineAviso = payload.aviso?.type === "FeatureCollection";
+	  const avisoFollows = !hasInlineAviso && payload.avisoFollows !== false;
+	  const runtimeCommandInfo = !avisoFollows
+		? finishRuntimeCommand(responseId, false)
+		: pendingRuntimeCommandInfo(responseId);
+      const isReload = Boolean(pending.reload && messageMatchesRequest(message, pending.reload));
+      const isSave = Boolean(pending.save && messageMatchesRequest(message, pending.save));
+	  if (isReload && hasInlineAviso) pending.reload = "";
       const reason = isReload ? "reload" : String(payload.reason || "update");
-      splitAvisoContext = { id: message.id, reason };
-      applyAuthoritativeState(payload, reason);
-      if (isReload) showToast("Configuration reloaded", "success");
+	  if (HOST_MODE && reason === "initial") {
+		setHostAuthoritativeReady(false);
+		initialAuthoritativeMessageId = String(message.id || responseId || "");
+      }
+      const trustedRuntimeResponse = Boolean(runtimeCommandInfo?.trustedCleanResponse);
+	  if (avisoFollows) {
+		stageSplitAvisoContext({
+		  id: message.id,
+		  payload: clone(payload),
+		  reason,
+		  trustedRuntimeResponse,
+		  completesSave: isSave,
+		  completesReload: isReload,
+		  runtimeRequestId: runtimeCommandInfo ? responseId : ""
+		});
+		return;
+	  }
+	  clearSplitAvisoContext(responseId);
+      applyAuthoritativeState(
+		payload,
+		reason,
+		trustedRuntimeResponse
+	  );
+	  if (isSave && hasInlineAviso) {
+		pending.save = "";
+		showToast(payload.message || "Configuration saved", "success");
+	  }
+	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.undo") showToast("Undone", "success");
+	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.redo") showToast("Redone", "success");
+      if (isReload && hasInlineAviso) showToast("Configuration reloaded", "success");
       updateCommandState();
       return;
     }
     if (message.type === "state.aviso" || message.type === "aviso") {
+	  if (!message.id && ignoreNextUncorrelatedAviso) {
+		ignoreNextUncorrelatedAviso = false;
+		return;
+	  }
       const aviso = payload.aviso || payload.data || (payload.type === "FeatureCollection" ? payload : null);
       if (aviso?.type === "FeatureCollection") {
-        const contextMatches = splitAvisoContext && (!splitAvisoContext.id || !message.id || splitAvisoContext.id === message.id);
-        const reason = contextMatches ? splitAvisoContext.reason : state.dirty ? "update" : "initial";
-        splitAvisoContext = null;
-        applyAuthoritativeState({ aviso }, reason);
+		const context = clearSplitAvisoContext(message.id);
+		const reason = context ? context.reason : state.dirty ? "update" : "initial";
+		const trustedRuntimeResponse = Boolean(context?.trustedRuntimeResponse);
+		const completesSave = Boolean(context?.completesSave);
+		const completesReload = Boolean(context?.completesReload);
+		const runtimeRequestId = String(context?.runtimeRequestId || "");
+		const authoritativeState = context
+		  ? { ...context.payload, aviso }
+		  : { aviso };
+		applyAuthoritativeState(authoritativeState, reason, trustedRuntimeResponse);
+		if (completesSave) {
+		  pending.save = "";
+		  showToast("Configuration saved", "success");
+		}
+		if (completesReload) {
+		  pending.reload = "";
+		  showToast("Configuration reloaded", "success");
+		}
+		const completedRuntimeCommand = runtimeRequestId
+		  ? finishRuntimeCommand(runtimeRequestId, false)
+		  : null;
+		if (completedRuntimeCommand?.type === "state.undo") showToast("Undone", "success");
+		if (completedRuntimeCommand?.type === "state.redo") showToast("Redone", "success");
+		updateCommandState();
+		if (HOST_MODE && reason === "initial" &&
+			(!initialAuthoritativeMessageId || !message.id ||
+			 initialAuthoritativeMessageId === message.id)) {
+			initialAuthoritativeMessageId = "";
+			setHostAuthoritativeReady(true);
+		}
       }
       return;
     }
@@ -5446,15 +6493,22 @@
     }
     if (message.type === "state.saved" || message.type === "saved") {
       if (pending.save && !messageMatchesRequest(message, pending.save)) return;
-      pending.save = "";
       const savedState = authoritativePayload(payload);
-      if (savedState.profiles || savedState.aviso || savedState.settings || savedState.runtime) {
+      // Native sends this as a durable-write acknowledgement immediately
+      // before the authoritative state and split AVISO payload. Keep the
+      // workspace locked until that complete response is applied.
+      const completeSavedState = Boolean(
+        savedState.profiles || savedState.aviso || savedState.runtime
+      );
+      if (completeSavedState) {
+        pending.save = "";
         applyAuthoritativeState(savedState, "save");
+        updateCommandState();
+        showToast(payload.message || "Configuration saved", "success");
       } else {
-        markSaved(payload.message || "Configuration saved");
+        setStatus("Saved; reloading authoritative vSMR data...", "info");
+        updateCommandState();
       }
-      updateCommandState();
-      showToast(payload.message || "Configuration saved", "success");
       return;
     }
     if (message.type === "resource.loaded") {
@@ -5470,6 +6524,8 @@
     }
     if (message.type === "state.error" || message.type === "error") {
       if (finishDatalinkError(message)) return;
+	  finishRuntimeCommand(responseId, true);
+	  clearSplitAvisoContext(responseId);
       if (pending.save && messageMatchesRequest(message, pending.save)) pending.save = "";
       if (pending.reload && messageMatchesRequest(message, pending.reload)) pending.reload = "";
       if (pending.resource && messageMatchesRequest(message, pending.resource.id)) {
@@ -5531,6 +6587,7 @@
   bindEvents();
   renderAll();
   resetHistory(true);
+	setHostAuthoritativeReady(!HOST_MODE);
   window.setInterval(() => requestDatalinkState(), 1250);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.ui.page === "settings") requestDatalinkState(true);

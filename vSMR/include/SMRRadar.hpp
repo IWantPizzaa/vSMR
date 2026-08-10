@@ -248,10 +248,17 @@ public:
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
 	std::unordered_map<std::string, std::string> AvisoGeoJsonOverridePaths;
+	// A newer vSMR may own these airport-scoped ASR records.  Keep them
+	// untouched instead of silently replacing them with this build's schema.
+	std::unordered_set<std::string> UnsupportedInsetAsrStateAirports;
 	std::string AvisoGeoJsonLoadedPath;
 	std::string AvisoGeoJsonViewInitializedPath;
 	fs::file_time_type AvisoGeoJsonLoadedWriteTime;
 	unsigned long AvisoGeoJsonLastStatTick = 0;
+	std::string AvisoGeoJsonLastFailedPath;
+	fs::file_time_type AvisoGeoJsonLastFailedWriteTime;
+	unsigned long AvisoGeoJsonLastFailedTick = 0;
+	bool AvisoGeoJsonLastFailedWriteTimeValid = false;
 	HBITMAP AvisoGeoJsonRasterCache = nullptr;
 	std::string AvisoGeoJsonRasterCachePath;
 	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
@@ -289,6 +296,7 @@ public:
 	std::mutex AvisoGeoJsonRenderMutex;
 	std::condition_variable AvisoGeoJsonRenderCondition;
 	std::thread AvisoGeoJsonRenderThread;
+	std::atomic<HWND> AvisoRefreshHostWindow{ nullptr };
 	std::atomic<bool> ShutdownRequested{ false };
 	bool AvisoGeoJsonRenderThreadStarted = false;
 	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
@@ -494,8 +502,9 @@ public:
 
 	virtual void LoadProfile(
 		string profileName,
-		bool saveOutgoingState = true);
-	void EnsureTargetGroundStatusColorEntries();
+		bool saveOutgoingState = true,
+		bool persistNormalization = true);
+	void EnsureTargetGroundStatusColorEntries(bool persistChanges = true);
 	void RebuildProfileColorEntries();
 	bool IsProfileColorPathValid(const std::string& path, bool* hasAlpha = nullptr);
 	int GetProfileColorComponentValue(const std::string& path, char component, int fallback = 0);
@@ -643,7 +652,9 @@ public:
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
 	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
-	bool EnsureAvisoGeoJsonLoaded(const std::string& path);
+	bool EnsureAvisoGeoJsonLoaded(
+		const std::string& path,
+		bool retainPreviousOnFailure = true);
 	bool ForceReloadAvisoGeoJson();
 	std::vector<AvisoGroup> GetAvisoGroups() const;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> GetAvisoGroupVisibilitySnapshot(
@@ -669,6 +680,7 @@ public:
 	void EnsureAvisoGeoJsonRenderThread();
 	void StopAvisoGeoJsonRenderThread();
 	bool IsAvisoGeoJsonRenderStopRequested() const;
+	void RequestRefreshFromWorker();
 	void AvisoGeoJsonRenderThreadMain();
 	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
 	void ApplyCompletedAvisoGeoJsonRaster();

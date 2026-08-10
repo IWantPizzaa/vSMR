@@ -49,7 +49,10 @@ public:
 	bool LoadFromFile(const std::string& path, std::string& errorText);
 	void CreateEmptyFeatureCollection();
 	bool ValidateLoadedFeatureCollection(std::string& errorText) const;
-	bool SaveAtomically(const std::string& path, std::string& errorText);
+	bool SaveAtomically(
+		const std::string& path,
+		std::string& errorText,
+		bool backupExisting = true);
 
 	void MarkIndexesDirty();
 	void BuildIndexes();

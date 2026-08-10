@@ -93,7 +93,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
@@ -102,8 +102,8 @@
       <StringPooling>true</StringPooling>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <SDLCheck>false</SDLCheck>
-      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <SDLCheck>true</SDLCheck>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
       <AdditionalIncludeDirectories>$(ProjectDir)include;$(SolutionDir)\lib\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -111,8 +111,11 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
       <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <DataExecutionPrevention>true</DataExecutionPrevention>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
@@ -241,8 +244,10 @@
     <None Include="resources\cursors\move.cur" />
     <None Include="resources\vSMR.def" />
     <None Include="resources\vSMR.rc2" />
-    <None Include="tools\edit_tagdefs.ps1" />
     <None Include="tools\normalize_runtime_data.ps1" />
+    <None Include="tools\package_release.ps1" />
+    <None Include="tools\test_release.ps1" />
+    <None Include="tools\verify_release_package.ps1" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resources\vSMR.rc" />
@@ -257,12 +262,14 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\app.js" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\data.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
-      <_VsmrDefaultAviso Include="$(MSBuildProjectDirectory)\data\AVISO\AVISO_LFPG.geojson" />
+      <_VsmrDefaultAviso Include="$(MSBuildProjectDirectory)\data\AVISO\AVISO_*.geojson" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
+      <_VsmrWebView2License Include="$(PkgMicrosoft_Web_WebView2)\LICENSE.txt" />
+      <_VsmrWebView2Notice Include="$(PkgMicrosoft_Web_WebView2)\NOTICE.txt" />
     </ItemGroup>
-    <RemoveDir Directories="$(OutDir)vSMR_webUI;$(OutDir)THIRD_PARTY_LICENSES" />
+    <RemoveDir Directories="$(OutDir)vSMR_Data;$(OutDir)vSMR_webUI;$(OutDir)THIRD_PARTY_LICENSES" />
     <Delete Files="$(OutDir)LICENSE" />
     <Delete Files="$(OutDir)$(TargetName).lib;$(OutDir)$(TargetName).exp;$(OutDir)$(TargetName).pdb;$(OutDir)$(TargetName).ilk" Condition="'$(Configuration)'=='Release'" />
     <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI" />
@@ -273,6 +280,8 @@
     <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(OutDir)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrProjectLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\vSMR.txt" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\RapidJSON.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrWebView2License)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-LICENSE.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrWebView2Notice)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-NOTICE.txt" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
     <RemoveDir Directories="$(OutDir)vSMR_webUI;$(OutDir)vSMR_Data;$(OutDir)THIRD_PARTY_LICENSES" />

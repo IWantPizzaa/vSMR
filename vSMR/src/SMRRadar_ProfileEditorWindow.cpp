@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
 #include "ProfileEditorDialog.hpp"
+#include "VsmrControlCenterDialog.hpp"
 #include <cctype>
 #include <cstring>
 
@@ -859,41 +860,74 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 {
 	if (!CurrentConfig)
 		return false;
+	UNREFERENCED_PARAMETER(persistToDisk);
+
+	// Immediate profile changes are shared by every radar using this file. Start
+	// from the latest on-disk revision so a stale screen cannot mutate its local
+	// document and then report a profile that was never persisted.
+	if (!ReloadConfig())
+		return false;
+
+	const std::string canonicalName =
+		FindCanonicalProfileNameNoCase(CurrentConfig->getAllProfiles(), name);
+	if (canonicalName.empty())
+		return false;
+
+	// The active profile is session-global for radar screens sharing this source.
+	// Persist it once, then reload every live CConfig from that one authoritative
+	// write.  Saving independently from every screen races their revision tokens.
+	if (RimcasInstance != nullptr)
+		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
+	if (!CurrentConfig->setLastActiveProfileName(canonicalName) ||
+		!CurrentConfig->saveConfig())
+	{
+		// saveConfig is fail-closed on revision conflicts. Discard the staged
+		// metadata as well, otherwise this radar would display an unsaved profile.
+		ReloadConfig();
+		return false;
+	}
 
 	bool appliedToAnyRadar = false;
-	auto applyProfileToRadar = [&](CSMRRadar* radar) -> bool
+	for (CSMRRadar* radar : RadarScreensOpened)
 	{
-		if (radar == nullptr || radar->CurrentConfig == nullptr)
-			return false;
+		if (radar == nullptr || radar->CurrentConfig == nullptr ||
+			!radar->CurrentConfig->sharesConfigFileWith(*CurrentConfig))
+		{
+			continue;
+		}
 
-		const std::vector<std::string> radarProfileNames = radar->CurrentConfig->getAllProfiles();
-		const std::string canonicalName = FindCanonicalProfileNameNoCase(radarProfileNames, name);
-		if (canonicalName.empty())
-			return false;
+		if (!radar->ReloadConfig())
+			continue;
+		const std::string radarCanonicalName = FindCanonicalProfileNameNoCase(
+			radar->CurrentConfig->getAllProfiles(),
+			canonicalName);
+		if (radarCanonicalName.empty())
+			continue;
 
-		radar->LoadProfile(canonicalName);
+		radar->LoadProfile(radarCanonicalName, false);
 		radar->LoadCustomFont();
 		const std::string activeProfile = radar->CurrentConfig->getActiveProfileName();
 		RememberSessionActiveProfile(activeProfile);
-		radar->WriteLastActiveProfileToConfig(activeProfile);
 		radar->SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
 		radar->RequestRefresh();
-		return true;
-	};
+		if (radar->VsmrControlCenterDialog != nullptr)
+			radar->VsmrControlCenterDialog->SyncFromRadar("profile");
+		appliedToAnyRadar = true;
+	}
 
-	for (CSMRRadar* radar : RadarScreensOpened)
+	if (!appliedToAnyRadar && CurrentConfig != nullptr)
 	{
-		if (applyProfileToRadar(radar))
-			appliedToAnyRadar = true;
+		LoadProfile(canonicalName, false);
+		LoadCustomFont();
+		RememberSessionActiveProfile(CurrentConfig->getActiveProfileName());
+		SaveDataToAsr("ActiveProfile", "vSMR active profile", canonicalName.c_str());
+		RequestRefresh();
+		if (VsmrControlCenterDialog != nullptr)
+			VsmrControlCenterDialog->SyncFromRadar("profile");
+		appliedToAnyRadar = true;
 	}
 
 	if (!appliedToAnyRadar)
-		appliedToAnyRadar = applyProfileToRadar(this);
-
-	if (!appliedToAnyRadar)
-		return false;
-
-	if (persistToDisk && !CurrentConfig->saveConfig())
 		return false;
 	return true;
 }
@@ -942,6 +976,12 @@ bool CSMRRadar::SetProfileDisplayModeActiveForEditor(const std::string& profileN
 	if (!CurrentConfig || !CurrentConfig->document.IsArray())
 		return false;
 
+	// Mode activation is an immediate shared-file transaction. Rebase on the
+	// latest revision before editing so multiple radar screens cannot retain an
+	// unsaved local mode after a stale-write rejection.
+	if (!ReloadConfig() || !CurrentConfig->document.IsArray())
+		return false;
+
 	const rapidjson::SizeType targetIndex = FindProfileIndexNoCase(CurrentConfig->document, profileName);
 	if (targetIndex >= CurrentConfig->document.Size())
 		return false;
@@ -961,13 +1001,24 @@ bool CSMRRadar::SetProfileDisplayModeActiveForEditor(const std::string& profileN
 	rapidjson::Value& displayModes = profile["filters"]["display_modes"];
 	displayModes["active"].SetString(modes[modeIndex].name.c_str(), static_cast<rapidjson::SizeType>(modes[modeIndex].name.size()), CurrentConfig->document.GetAllocator());
 	if (!CurrentConfig->saveConfig())
+	{
+		ReloadConfig();
 		return false;
+	}
 
-	const std::string activeBefore = CurrentConfig->getActiveProfileName();
-	CurrentConfig->reload();
-	LoadProfile(activeBefore.empty() ? profileName : activeBefore);
-	InvalidateStructuredTagRuleCache();
-	RequestRefresh();
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar->CurrentConfig == nullptr ||
+			!radar->CurrentConfig->sharesConfigFileWith(*CurrentConfig))
+		{
+			continue;
+		}
+		radar->ReloadConfig();
+		radar->InvalidateStructuredTagRuleCache();
+		radar->RequestRefresh();
+		if (radar->VsmrControlCenterDialog != nullptr)
+			radar->VsmrControlCenterDialog->SyncFromRadar("mode");
+	}
 	return true;
 }
 

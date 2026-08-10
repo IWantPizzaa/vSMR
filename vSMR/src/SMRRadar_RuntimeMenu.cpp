@@ -1046,10 +1046,10 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (objectType != RUNTIME_MENU_RAIL && objectType != RUNTIME_MENU_POPUP)
 		return false;
 
-	auto syncControlCenter = [&]()
+	auto syncControlCenter = [&](const std::string& reason = "runtime")
 	{
 		if (VsmrControlCenterDialog != nullptr)
-			VsmrControlCenterDialog->SyncFromRadar();
+			VsmrControlCenterDialog->SyncFromRadar(reason);
 	};
 
 	const char* id = objectId != nullptr ? objectId : "";
@@ -1129,8 +1129,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		const std::vector<DisplayModeSettings> modes = GetProfileDisplayModesForEditor(activeProfile);
 		if (index < modes.size())
 		{
-			SetProfileDisplayModeActiveForEditor(activeProfile, modes[index].name);
-			syncControlCenter();
+			if (SetProfileDisplayModeActiveForEditor(activeProfile, modes[index].name))
+			{
+				syncControlCenter("mode");
+			}
+			else
+			{
+				GetPlugIn()->DisplayUserMessage(
+					"vSMR", "Display mode",
+					"The display mode could not be saved. vSMR reloaded the current file.",
+					true, true, false, false, false);
+			}
 		}
 		CloseRuntimeMenuPopup();
 		return true;
@@ -1140,8 +1149,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		const std::vector<std::string> profiles = GetOrderedProfileNamesForUi();
 		if (index < profiles.size())
 		{
-			SetActiveProfileForEditor(profiles[index], false);
-			syncControlCenter();
+			if (SetActiveProfileForEditor(profiles[index], false))
+			{
+				syncControlCenter("profile");
+			}
+			else
+			{
+				GetPlugIn()->DisplayUserMessage(
+					"vSMR", "Profile",
+					"The profile could not be saved. vSMR reloaded the current file.",
+					true, true, false, false, false);
+			}
 		}
 		CloseRuntimeMenuPopup();
 		return true;
@@ -1163,7 +1181,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (index < presets.size())
 		{
 			LoadAvisoPreset(presets[index].name);
-			syncControlCenter();
+			syncControlCenter("preset");
 		}
 		RequestRefresh();
 		return true;
@@ -1285,7 +1303,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	else
 		return true;
 
-	syncControlCenter();
+	syncControlCenter("preset");
 	RequestRefresh();
 	return true;
 }

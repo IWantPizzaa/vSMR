@@ -10,18 +10,23 @@
 #include <climits>
 #include <cerrno>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <filesystem>
 #include <deque>
 #include <set>
 #include <memory>
 #include <new>
+#include <limits>
+#include <wincrypt.h>
 #include "rapidjson/document.h"
 #include "WeatherData.hpp"
 
-bool Logger::ENABLED;
+#pragma comment(lib, "crypt32.lib")
+
+std::atomic<bool> Logger::ENABLED{ false };
 string Logger::DLL_PATH;
-Logger::Mode Logger::CURRENT_MODE = Logger::Mode::Normal;
+std::atomic<Logger::Mode> Logger::CURRENT_MODE{ Logger::Mode::Normal };
 
 // CPDLC/Hoppie connection state shared between timer and worker threads.
 std::atomic<bool> HoppieConnected(false);
@@ -32,7 +37,7 @@ std::atomic<unsigned long long> HoppiePollGeneration(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 std::atomic<bool> PluginShutdownRequested(false);
-CSMRPlugin* ActivePluginInstance = nullptr;
+std::atomic<CSMRPlugin*> ActivePluginInstance{ nullptr };
 
 string logonCode = "";
 string logonCallsign = "EGKK";
@@ -56,9 +61,7 @@ struct DatalinkPacket {
 	string climb;
 };
 
-DatalinkPacket DatalinkToSend;
-
-string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
+const string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
 
 struct AcarsMessage {
 	string from;
@@ -107,15 +110,9 @@ map<string, AcarsMessage> PendingMessages;
 std::mutex DatalinkStateMutex;
 std::atomic<int> CdmReminderCooldownMinutes(60);
 
-string tmessage;
-string tdest;
-string ttype;
-
 std::atomic<int> messageId(0);
 
 clock_t timer;
-
-string myfrequency;
 
 map<string, string> vStrips_Stands;
 
@@ -149,6 +146,10 @@ namespace
 	const std::time_t CdmWarningCooldownSeconds = 60;
 	const int CdmReminderQueueMaxSendAttempts = 20;
 	const int CdmMaximumMinutes = 24 * 60;
+	const size_t HoppieResponseLimitBytes = 1024U * 1024U;
+	const size_t VacdmResponseLimitBytes = 16U * 1024U * 1024U;
+	const size_t WeatherResponseLimitBytes = 4096U;
+	const char* ProtectedCredentialPrefix = "dpapi:";
 
 	std::filesystem::path ResolveRuntimeAudioPath(const wchar_t* fileName)
 	{
@@ -215,10 +216,30 @@ namespace
 
 	struct DatalinkPollRequest
 	{
+		CSMRPlugin* plugin = nullptr;
 		DatalinkCredentialsSnapshot credentials;
 		unsigned long long generation = 0;
 		unsigned long long pollGeneration = 0;
 		bool reportStatus = false;
+	};
+
+	struct DatalinkMessageRequest
+	{
+		DatalinkCredentialsSnapshot credentials;
+		unsigned long long generation = 0;
+		std::string destination;
+		std::string type;
+		std::string packet;
+		std::string callsign;
+	};
+
+	struct DatalinkClearanceRequest
+	{
+		DatalinkCredentialsSnapshot credentials;
+		unsigned long long generation = 0;
+		DatalinkPacket packet;
+		std::string fallbackFrequency;
+		int messageSequence = 0;
 	};
 
 	DatalinkCredentialsSnapshot SnapshotDatalinkCredentials()
@@ -281,6 +302,158 @@ namespace
 		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
 			--end;
 		return text.substr(start, end - start);
+	}
+
+	DATA_BLOB HoppieCredentialEntropy()
+	{
+		static char entropy[] = "vSMR CPDLC credential v1";
+		DATA_BLOB blob = {};
+		blob.pbData = reinterpret_cast<BYTE*>(entropy);
+		blob.cbData = static_cast<DWORD>(strlen(entropy));
+		return blob;
+	}
+
+	bool ProtectHoppieCredential(
+		const std::string& plaintext,
+		std::string& protectedValue)
+	{
+		protectedValue.clear();
+		if (plaintext.empty())
+			return true;
+		if (plaintext.size() > static_cast<size_t>((std::numeric_limits<DWORD>::max)()))
+			return false;
+
+		DATA_BLOB input = {};
+		input.pbData = reinterpret_cast<BYTE*>(
+			const_cast<char*>(plaintext.data()));
+		input.cbData = static_cast<DWORD>(plaintext.size());
+		DATA_BLOB entropy = HoppieCredentialEntropy();
+		DATA_BLOB encrypted = {};
+		if (!::CryptProtectData(
+			&input,
+			L"vSMR Hoppie code",
+			&entropy,
+			nullptr,
+			nullptr,
+			CRYPTPROTECT_UI_FORBIDDEN,
+			&encrypted))
+		{
+			return false;
+		}
+
+		DWORD encodedCharacters = 0;
+		const DWORD base64Flags =
+			CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF;
+		bool succeeded = ::CryptBinaryToStringA(
+			encrypted.pbData,
+			encrypted.cbData,
+			base64Flags,
+			nullptr,
+			&encodedCharacters) != FALSE;
+		std::string encoded;
+		if (succeeded && encodedCharacters > 0)
+		{
+			encoded.resize(encodedCharacters, '\0');
+			succeeded = ::CryptBinaryToStringA(
+				encrypted.pbData,
+				encrypted.cbData,
+				base64Flags,
+				encoded.data(),
+				&encodedCharacters) != FALSE;
+			if (succeeded)
+			{
+				while (!encoded.empty() && encoded.back() == '\0')
+					encoded.pop_back();
+			}
+		}
+		if (encrypted.pbData != nullptr)
+		{
+			::SecureZeroMemory(encrypted.pbData, encrypted.cbData);
+			::LocalFree(encrypted.pbData);
+		}
+		if (!succeeded || encoded.empty())
+			return false;
+		protectedValue = std::string(ProtectedCredentialPrefix) + encoded;
+		return true;
+	}
+
+	bool UnprotectHoppieCredential(
+		const std::string& storedValue,
+		std::string& plaintext,
+		bool& wasPlaintext)
+	{
+		plaintext.clear();
+		wasPlaintext = false;
+		if (storedValue.empty())
+			return true;
+
+		const size_t prefixLength = strlen(ProtectedCredentialPrefix);
+		if (storedValue.compare(0, prefixLength, ProtectedCredentialPrefix) != 0)
+		{
+			plaintext = TrimAsciiWhitespaceCopy(storedValue);
+			wasPlaintext = !plaintext.empty();
+			return true;
+		}
+
+		const std::string encoded = storedValue.substr(prefixLength);
+		if (encoded.empty())
+			return false;
+		DWORD decodedBytes = 0;
+		if (!::CryptStringToBinaryA(
+			encoded.c_str(),
+			static_cast<DWORD>(encoded.size()),
+			CRYPT_STRING_BASE64,
+			nullptr,
+			&decodedBytes,
+			nullptr,
+			nullptr) || decodedBytes == 0)
+		{
+			return false;
+		}
+
+		std::vector<BYTE> decoded(decodedBytes);
+		if (!::CryptStringToBinaryA(
+			encoded.c_str(),
+			static_cast<DWORD>(encoded.size()),
+			CRYPT_STRING_BASE64,
+			decoded.data(),
+			&decodedBytes,
+			nullptr,
+			nullptr))
+		{
+			::SecureZeroMemory(decoded.data(), decoded.size());
+			return false;
+		}
+
+		DATA_BLOB encrypted = {};
+		encrypted.pbData = decoded.data();
+		encrypted.cbData = decodedBytes;
+		DATA_BLOB entropy = HoppieCredentialEntropy();
+		DATA_BLOB output = {};
+		LPWSTR description = nullptr;
+		const bool succeeded = ::CryptUnprotectData(
+			&encrypted,
+			&description,
+			&entropy,
+			nullptr,
+			nullptr,
+			CRYPTPROTECT_UI_FORBIDDEN,
+			&output) != FALSE;
+		::SecureZeroMemory(decoded.data(), decoded.size());
+		if (description != nullptr)
+			::LocalFree(description);
+		if (!succeeded)
+			return false;
+
+		plaintext.assign(
+			reinterpret_cast<const char*>(output.pbData),
+			output.cbData);
+		if (output.pbData != nullptr)
+		{
+			::SecureZeroMemory(output.pbData, output.cbData);
+			::LocalFree(output.pbData);
+		}
+		return true;
 	}
 
 	std::string EncodeUrlQueryComponent(const std::string& text)
@@ -718,6 +891,21 @@ namespace
 		value = TrimAsciiWhitespaceCopy(value);
 		while (!value.empty() && value.back() == '/')
 			value.pop_back();
+		std::string host;
+		if (value.find('?') != std::string::npos ||
+			!HttpHelper::IsValidHttpsUrl(value, &host))
+		{
+			return "";
+		}
+		const bool numericHost = !host.empty() &&
+			std::all_of(host.begin(), host.end(), [](unsigned char character) {
+				return std::isdigit(character) != 0 || character == '.';
+			});
+		const bool localHost = host == "localhost" ||
+			(host.size() > 10 && host.compare(host.size() - 10, 10, ".localhost") == 0) ||
+			(host.size() > 6 && host.compare(host.size() - 6, 6, ".local") == 0);
+		if (numericHost || localHost || host.find('.') == std::string::npos)
+			return "";
 		return value;
 	}
 
@@ -1244,47 +1432,73 @@ namespace
 		return false;
 	}
 
-	bool SendDatalinkPacketMessage(const std::string& destination, const std::string& type, const std::string& packet, const std::string& callsign)
+	bool SendDatalinkPacketMessage(const DatalinkMessageRequest& request)
 	{
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+			request.generation != HoppieConnectionGeneration.load(
+				std::memory_order_acquire))
 			return false;
-		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
 
 		string raw;
 		string url = baseUrlDatalink;
 		url += "?logon=";
-		url += EncodeUrlQueryComponent(credentials.password);
+		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
-		url += EncodeUrlQueryComponent(credentials.callsign);
+		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=";
-		url += destination;
+		url += EncodeUrlQueryComponent(request.destination);
 		url += "&type=";
-		url += type;
+		url += EncodeUrlQueryComponent(request.type);
 		url += "&packet=";
-		url += packet;
+		url += EncodeUrlQueryComponent(request.packet);
 
-		size_t start_pos = 0;
-		while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
-			url.replace(start_pos, string(" ").length(), "%20");
-			start_pos += string("%20").length();
-		}
-
-		raw.assign(GetHttpHelper().downloadStringFromURL(url));
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		raw.assign(GetHttpHelper().downloadStringFromURL(
+			url,
+			6000,
+			&PluginShutdownRequested,
+			HoppieResponseLimitBytes));
+		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+			request.generation != HoppieConnectionGeneration.load(
+				std::memory_order_acquire))
 			return false;
 
 		if (!startsWith("ok", raw.c_str()))
 			return false;
 
-		if (!callsign.empty())
+		if (!request.callsign.empty())
 		{
 			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-			PendingMessages.erase(callsign);
-			RemoveCallsignUnlocked(AircraftMessage, callsign);
-			AddCallsignUniqueUnlocked(AircraftMessageSent, callsign);
+			PendingMessages.erase(request.callsign);
+			RemoveCallsignUnlocked(AircraftMessage, request.callsign);
+			AddCallsignUniqueUnlocked(AircraftMessageSent, request.callsign);
 		}
 
 		return true;
+	}
+
+	bool QueueDatalinkMessage(
+		CSMRPlugin* plugin,
+		const std::string& destination,
+		const std::string& type,
+		const std::string& packet,
+		const std::string& callsign)
+	{
+		if (plugin == nullptr ||
+			PluginShutdownRequested.load(std::memory_order_acquire))
+		{
+			return false;
+		}
+		DatalinkMessageRequest request;
+		request.credentials = SnapshotDatalinkCredentials();
+		request.generation = HoppieConnectionGeneration.load(
+			std::memory_order_acquire);
+		request.destination = destination;
+		request.type = type;
+		request.packet = packet;
+		request.callsign = callsign;
+		return plugin->QueueNetworkJob([request]() {
+			(void)SendDatalinkPacketMessage(request);
+		});
 	}
 }
 
@@ -1489,9 +1703,8 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 	}
 }
 
-void refreshVacdmDataImpl(void* arg)
+void refreshVacdmDataImpl()
 {
-	(void)arg;
 	unsigned long long sourceGeneration = 0;
 	const std::string pilotsUrl = ResolveVacdmPilotsUrl(&sourceGeneration);
 
@@ -1521,7 +1734,11 @@ void refreshVacdmDataImpl(void* arg)
 
 	try
 	{
-		std::string raw = GetHttpHelper().downloadStringFromURL(pilotsUrl);
+		std::string raw = GetHttpHelper().downloadStringFromURL(
+			pilotsUrl,
+			6000,
+			&PluginShutdownRequested,
+			VacdmResponseLimitBytes);
 		if (PluginShutdownRequested.load(std::memory_order_relaxed))
 			return;
 
@@ -1624,12 +1841,12 @@ void refreshVacdmDataImpl(void* arg)
 	}
 }
 
-void refreshVacdmData(void* arg)
+void refreshVacdmData()
 {
 #if defined(_MSC_VER)
 	__try
 	{
-		refreshVacdmDataImpl(arg);
+		refreshVacdmDataImpl();
 	}
 	__except (CaptureVacdmSehCode(static_cast<unsigned long>(GetExceptionCode())))
 	{
@@ -1637,15 +1854,22 @@ void refreshVacdmData(void* arg)
 		VacdmFetchInProgress.store(false);
 	}
 #else
-	refreshVacdmDataImpl(arg);
+	refreshVacdmDataImpl();
 #endif
 }
 
-void datalinkLogin(void * arg) {
-	std::unique_ptr<DatalinkLoginRequest> request(
-		static_cast<DatalinkLoginRequest*>(arg));
-	if (!request || PluginShutdownRequested.load(std::memory_order_relaxed))
+void datalinkLogin(DatalinkLoginRequest request) {
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
+	struct ResetConnectingFlag
+	{
+		unsigned long long generation = 0;
+		~ResetConnectingFlag()
+		{
+			if (generation == HoppieConnectionGeneration.load(std::memory_order_acquire))
+				HoppieConnecting.store(false, std::memory_order_release);
+		}
+	} resetConnecting{ request.generation };
 
 	bool connected = false;
 	std::string failureMessage;
@@ -1653,14 +1877,18 @@ void datalinkLogin(void * arg) {
 	{
 		string url = baseUrlDatalink;
 		url += "?logon=";
-		url += EncodeUrlQueryComponent(request->credentials.password);
+		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
-		url += EncodeUrlQueryComponent(request->credentials.callsign);
+		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=SERVER&type=PING";
-		const string raw = GetHttpHelper().downloadStringFromURL(url);
+		const string raw = GetHttpHelper().downloadStringFromURL(
+			url,
+			6000,
+			&PluginShutdownRequested,
+			HoppieResponseLimitBytes);
 		connected = IsHoppieOkResponse(raw);
 		if (!connected)
-			failureMessage = BuildHoppieLoginFailureMessage(raw, request->credentials.password);
+			failureMessage = BuildHoppieLoginFailureMessage(raw, request.credentials.password);
 	}
 	catch (const std::exception& exception)
 	{
@@ -1668,10 +1896,10 @@ void datalinkLogin(void * arg) {
 		failureMessage = "Connection failed before Hoppie replied.";
 		std::string exceptionDetail = RedactSensitiveValue(
 			exception.what(),
-			request->credentials.password);
+			request.credentials.password);
 		exceptionDetail = RedactSensitiveValue(
 			exceptionDetail,
-			EncodeUrlQueryComponent(request->credentials.password));
+			EncodeUrlQueryComponent(request.credentials.password));
 		Logger::info("CPDLC login exception: " + exceptionDetail);
 	}
 	catch (...)
@@ -1682,7 +1910,7 @@ void datalinkLogin(void * arg) {
 	}
 
 	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
 	{
 		return;
 	}
@@ -1708,46 +1936,26 @@ void datalinkLogin(void * arg) {
 	}
 };
 
-void sendDatalinkMessage(void * arg) {
-	(void)arg;
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-		return;
-
-	std::string localDest;
-	std::string localType;
-	std::string localMessage;
-	std::string localCallsign;
-
+void pollMessages(DatalinkPollRequest request) {
+	struct ResetPollFlag
 	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		localDest = tdest;
-		localType = ttype;
-		localMessage = tmessage;
-		localCallsign = DatalinkToSend.callsign;
-	}
-
-	(void)SendDatalinkPacketMessage(localDest, localType, localMessage, localCallsign);
-};
-
-void pollMessages(void * arg) {
-	std::unique_ptr<DatalinkPollRequest> request(
-		static_cast<DatalinkPollRequest*>(arg));
-	if (!request)
-	{
-		HoppiePollInProgress.store(false, std::memory_order_release);
-		return;
-	}
-
+		unsigned long long pollGeneration = 0;
+		~ResetPollFlag()
+		{
+			if (pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
+				HoppiePollInProgress.store(false, std::memory_order_release);
+		}
+	} resetPoll{ request.pollGeneration };
 	const auto completePoll = [&](bool succeeded)
 	{
-		if (request->pollGeneration ==
+		if (request.pollGeneration ==
 			HoppiePollGeneration.load(std::memory_order_acquire))
 		{
 			HoppiePollInProgress.store(false, std::memory_order_release);
 		}
-		if (!request->reportStatus ||
+		if (!request.reportStatus ||
 			PluginShutdownRequested.load(std::memory_order_relaxed) ||
-			request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+			request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
 		{
 			return;
 		}
@@ -1765,11 +1973,15 @@ void pollMessages(void * arg) {
 	{
 		string url = baseUrlDatalink;
 		url += "?logon=";
-		url += EncodeUrlQueryComponent(request->credentials.password);
+		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
-		url += EncodeUrlQueryComponent(request->credentials.callsign);
+		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=SERVER&type=POLL";
-		raw.assign(GetHttpHelper().downloadStringFromURL(url));
+		raw.assign(GetHttpHelper().downloadStringFromURL(
+			url,
+			6000,
+			&PluginShutdownRequested,
+			HoppieResponseLimitBytes));
 	}
 	catch (...)
 	{
@@ -1778,7 +1990,7 @@ void pollMessages(void * arg) {
 	}
 
 	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+		request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
 	{
 		completePoll(false);
 		return;
@@ -1803,7 +2015,7 @@ void pollMessages(void * arg) {
 	std::string token;
 	while ((pos = raw.find(delimiter)) != std::string::npos) {
 		if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-			request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+			request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
 		{
 			completePoll(false);
 			return;
@@ -1832,16 +2044,14 @@ void pollMessages(void * arg) {
 		if (message.type.find("telex") != std::string::npos || message.type.find("cpdlc") != std::string::npos) {
 			if (message.message.find("REQ") != std::string::npos || message.message.find("CLR") != std::string::npos || message.message.find("PDC") != std::string::npos || message.message.find("PREDEP") != std::string::npos || message.message.find("REQUEST") != std::string::npos) {
 				if (message.message.find("LOGON") != std::string::npos) {
-					{
-						std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-						tmessage = "UNABLE";
-						ttype = "CPDLC";
-						tdest = message.from;
-					}
-					if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-						_beginthread(sendDatalinkMessage, 0, NULL);
+					QueueDatalinkMessage(
+						request.plugin,
+						message.from,
+						"CPDLC",
+						"UNABLE",
+						"");
 				} else {
-					if (request->credentials.playSound) {
+					if (request.credentials.playSound) {
 						PlayRuntimeAudio(L"Ding.wav", "CPDLC notification");
 					}
 					std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -1896,22 +2106,24 @@ namespace
 			return false;
 		}
 
-		std::unique_ptr<DatalinkPollRequest> request(new (std::nothrow) DatalinkPollRequest());
-		if (!request)
+		CSMRPlugin* plugin = ActivePluginInstance.load(std::memory_order_acquire);
+		if (plugin == nullptr)
 		{
 			HoppiePollInProgress.store(false, std::memory_order_release);
-			error = "Unable to allocate the CPDLC poll request.";
+			error = "The CPDLC service is unavailable.";
 			return false;
 		}
-		request->credentials = SnapshotDatalinkCredentials();
-		request->generation = HoppieConnectionGeneration.load(std::memory_order_acquire);
-		request->pollGeneration =
+		DatalinkPollRequest request;
+		request.plugin = plugin;
+		request.credentials = SnapshotDatalinkCredentials();
+		request.generation = HoppieConnectionGeneration.load(std::memory_order_acquire);
+		request.pollGeneration =
 			HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
-		request->reportStatus = reportStatus;
+		request.reportStatus = reportStatus;
 		if (!HoppieConnected.load(std::memory_order_acquire) ||
-			request->generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
+			request.generation != HoppieConnectionGeneration.load(std::memory_order_acquire))
 		{
-			if (request->pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
+			if (request.pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
 				HoppiePollInProgress.store(false, std::memory_order_release);
 			error = "CPDLC disconnected before the poll could start.";
 			return false;
@@ -1920,15 +2132,11 @@ namespace
 		if (reportStatus)
 			SetDatalinkStatusMessage("Polling...");
 
-		DatalinkPollRequest* rawRequest = request.release();
-		const uintptr_t threadHandle = _beginthread(pollMessages, 0, rawRequest);
-		if (threadHandle == static_cast<uintptr_t>(-1L))
+		if (!plugin->QueueNetworkJob([request]() { pollMessages(request); }))
 		{
-			const unsigned long long failedPollGeneration = rawRequest->pollGeneration;
-			delete rawRequest;
-			if (failedPollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
+			if (request.pollGeneration == HoppiePollGeneration.load(std::memory_order_acquire))
 				HoppiePollInProgress.store(false, std::memory_order_release);
-			error = "Unable to start the CPDLC poll worker.";
+			error = "Unable to queue the CPDLC poll request.";
 			if (reportStatus)
 				SetDatalinkStatusMessage(error);
 			return false;
@@ -1937,75 +2145,69 @@ namespace
 	}
 }
 
-void sendDatalinkClearance(void * arg) {
-	(void)arg;
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+void sendDatalinkClearance(DatalinkClearanceRequest request) {
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+		request.generation != HoppieConnectionGeneration.load(
+			std::memory_order_acquire))
 		return;
-	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+	const DatalinkPacket& packet = request.packet;
 
-	DatalinkPacket packet;
-	std::string localFrequency;
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		packet = DatalinkToSend;
-		localFrequency = myfrequency;
-	}
-
-	string raw;
-	string url = baseUrlDatalink;
-	url += "?logon=";
-	url += EncodeUrlQueryComponent(credentials.password);
-	url += "&from=";
-	url += EncodeUrlQueryComponent(credentials.callsign);
-	url += "&to=";
-	url += packet.callsign;
-	url += "&type=CPDLC&packet=/data2/";
-	const int messageSequence = messageId.fetch_add(1) + 1;
-	url += std::to_string(messageSequence);
-	url += "//R/";
-	url += "CLR TO @";
-	url += packet.destination;
-	url += "@ RWY @";
-	url += packet.rwy;
-	url += "@ DEP @";
-	url += packet.sid;
-	url += "@ INIT CLB @";
-	url += packet.climb;
-	url += "@ SQUAWK @";
-	url += packet.squawk;
-	url += "@ ";
+	string payload = "/data2/";
+	payload += std::to_string(request.messageSequence);
+	payload += "//R/";
+	payload += "CLR TO @";
+	payload += packet.destination;
+	payload += "@ RWY @";
+	payload += packet.rwy;
+	payload += "@ DEP @";
+	payload += packet.sid;
+	payload += "@ INIT CLB @";
+	payload += packet.climb;
+	payload += "@ SQUAWK @";
+	payload += packet.squawk;
+	payload += "@ ";
 	if (packet.ctot != "no" && packet.ctot.size() > 3) {
-		url += "CTOT @";
-		url += packet.ctot;
-		url += "@ ";
+		payload += "CTOT @";
+		payload += packet.ctot;
+		payload += "@ ";
 	}
 	if (packet.asat != "no" && packet.asat.size() > 3) {
-		url += "TSAT @";
-		url += packet.asat;
-		url += "@ ";
+		payload += "TSAT @";
+		payload += packet.asat;
+		payload += "@ ";
 	}
 	if (packet.freq != "no" && packet.freq.size() > 5) {
-		url += "WHEN RDY CALL FREQ @";
-		url += packet.freq;
-		url += "@";
+		payload += "WHEN RDY CALL FREQ @";
+		payload += packet.freq;
+		payload += "@";
 	}
 	else {
-		url += "WHEN RDY CALL @";
-		url += localFrequency;
-		url += "@";
+		payload += "WHEN RDY CALL @";
+		payload += request.fallbackFrequency;
+		payload += "@";
 	}
-	url += " IF UNABLE CALL VOICE ";
+	payload += " IF UNABLE CALL VOICE ";
 	if (packet.message != "no" && packet.message.size() > 1)
-		url += packet.message;
+		payload += packet.message;
 
-	size_t start_pos = 0;
-	while ((start_pos = url.find(" ", start_pos)) != std::string::npos) {
-		url.replace(start_pos, string(" ").length(), "%20");
-		start_pos += string("%20").length();
-	}
+	string url = baseUrlDatalink;
+	url += "?logon=";
+	url += EncodeUrlQueryComponent(request.credentials.password);
+	url += "&from=";
+	url += EncodeUrlQueryComponent(request.credentials.callsign);
+	url += "&to=";
+	url += EncodeUrlQueryComponent(packet.callsign);
+	url += "&type=CPDLC&packet=";
+	url += EncodeUrlQueryComponent(payload);
 
-	raw.assign(GetHttpHelper().downloadStringFromURL(url));
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+	const string raw = GetHttpHelper().downloadStringFromURL(
+		url,
+		6000,
+		&PluginShutdownRequested,
+		HoppieResponseLimitBytes);
+	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
+		request.generation != HoppieConnectionGeneration.load(
+			std::memory_order_acquire))
 		return;
 
 	if (startsWith("ok", raw.c_str())) {
@@ -2066,10 +2268,349 @@ void CSMRPlugin::PublishActiveProfilesConfigPath(
 	}
 }
 
+bool CSMRPlugin::QueueNetworkJob(std::function<void()> job)
+{
+	if (!job || PluginShutdownRequested.load(std::memory_order_acquire) ||
+		NetworkCancellationRequested.load(std::memory_order_acquire))
+	{
+		return false;
+	}
+
+	std::unique_lock<std::mutex> lock(NetworkWorkerMutex);
+	if (NetworkWorkersStopping)
+		return false;
+	if (NetworkWorkers.empty())
+	{
+		try
+		{
+			NetworkWorkers.emplace_back(&CSMRPlugin::NetworkWorkerMain, this);
+			try
+			{
+				NetworkWorkers.emplace_back(&CSMRPlugin::NetworkWorkerMain, this);
+			}
+			catch (const std::exception& ex)
+			{
+				Logger::info(
+					"Network worker pool running with one worker: " +
+					std::string(ex.what()));
+			}
+		}
+		catch (const std::exception& ex)
+		{
+			Logger::info(
+				"Unable to start network worker: " +
+				std::string(ex.what()));
+			return false;
+		}
+		catch (...)
+		{
+			Logger::info("Unable to start network worker: unknown error");
+			return false;
+		}
+	}
+
+	try
+	{
+		NetworkJobs.emplace_back(std::move(job));
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info(
+			"Unable to queue network request: " +
+			std::string(ex.what()));
+		return false;
+	}
+	lock.unlock();
+	NetworkWorkerCondition.notify_one();
+	return true;
+}
+
+void CSMRPlugin::NetworkWorkerMain()
+{
+	try
+	{
+		for (;;)
+		{
+			std::function<void()> job;
+			{
+				std::unique_lock<std::mutex> lock(NetworkWorkerMutex);
+				NetworkWorkerCondition.wait(lock, [this]() {
+					return NetworkWorkersStopping || !NetworkJobs.empty();
+				});
+				if (NetworkWorkersStopping)
+					return;
+				job = std::move(NetworkJobs.front());
+				NetworkJobs.pop_front();
+			}
+
+			try
+			{
+				job();
+			}
+			catch (const std::exception& ex)
+			{
+				Logger::info(
+					"Network job exception: " +
+						std::string(ex.what()));
+			}
+			catch (...)
+			{
+				Logger::info("Network job exception: unknown");
+			}
+		}
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info(
+			"Network worker terminated by exception: " +
+			std::string(ex.what()));
+	}
+	catch (...)
+	{
+		Logger::info("Network worker terminated by unknown exception");
+	}
+}
+
+void CSMRPlugin::StopNetworkWorkers()
+{
+	NetworkCancellationRequested.store(true, std::memory_order_release);
+	{
+		std::lock_guard<std::mutex> lock(NetworkWorkerMutex);
+		NetworkWorkersStopping = true;
+		NetworkJobs.clear();
+	}
+	NetworkWorkerCondition.notify_all();
+	for (std::thread& worker : NetworkWorkers)
+	{
+		if (worker.joinable())
+			::CancelSynchronousIo(worker.native_handle());
+	}
+	for (std::thread& worker : NetworkWorkers)
+	{
+		if (worker.joinable())
+			worker.join();
+	}
+	NetworkWorkers.clear();
+}
+
+bool CSMRPlugin::WriteDiagnosticsReport(
+	std::string& reportPath,
+	std::string& error)
+{
+	reportPath.clear();
+	error.clear();
+	try
+	{
+		const std::filesystem::path pluginDirectory(Logger::DLL_PATH);
+		const std::filesystem::path dataDirectory =
+			pluginDirectory / "vSMR_Data";
+		const std::filesystem::path webUiDirectory =
+			dataDirectory / "vSMR_webUI";
+		std::filesystem::path diagnosticsDirectory =
+			dataDirectory / "Diagnostics";
+		std::error_code pathError;
+		std::filesystem::create_directories(diagnosticsDirectory, pathError);
+		if (pathError)
+		{
+			wchar_t temporaryPath[32768] = {};
+			const DWORD length = ::GetTempPathW(
+				static_cast<DWORD>(std::size(temporaryPath)),
+				temporaryPath);
+			if (length == 0 || length >= std::size(temporaryPath))
+			{
+				error = "Unable to resolve a writable diagnostics folder.";
+				return false;
+			}
+			diagnosticsDirectory =
+				std::filesystem::path(temporaryPath) / "vSMR_Diagnostics";
+			pathError.clear();
+			std::filesystem::create_directories(
+				diagnosticsDirectory,
+				pathError);
+			if (pathError)
+			{
+				error = "Unable to create a diagnostics folder.";
+				return false;
+			}
+		}
+
+		SYSTEMTIME utc = {};
+		::GetSystemTime(&utc);
+		char fileName[96] = {};
+		_snprintf_s(
+			fileName,
+			_TRUNCATE,
+			"vSMR_diagnostics_%04u%02u%02u_%02u%02u%02u_%lu.txt",
+			utc.wYear,
+			utc.wMonth,
+			utc.wDay,
+			utc.wHour,
+			utc.wMinute,
+			utc.wSecond,
+			static_cast<unsigned long>(::GetCurrentProcessId()));
+		const std::filesystem::path target = diagnosticsDirectory / fileName;
+		std::filesystem::path temporary = target;
+		temporary += ".tmp";
+
+		const std::filesystem::path logPath =
+			pluginDirectory / "vsmr.log";
+		bool logWritable = false;
+		{
+			std::ofstream logProbe(logPath, std::ios::binary | std::ios::app);
+			logWritable = logProbe.good();
+		}
+
+		const std::string profilesPath = GetActiveProfilesConfigPath();
+		const DatalinkControlState datalink = GetDatalinkControlState();
+		const DatalinkCredentialsSnapshot credentials =
+			SnapshotDatalinkCredentials();
+		const std::vector<std::string> recentLogMessages =
+			Logger::recent_messages();
+		size_t queuedNetworkJobs = 0;
+		size_t networkWorkerCount = 0;
+		{
+			std::lock_guard<std::mutex> lock(NetworkWorkerMutex);
+			queuedNetworkJobs = NetworkJobs.size();
+			networkWorkerCount = NetworkWorkers.size();
+		}
+		size_t queuedWeatherRequests = 0;
+		bool weatherWorkerRunning = false;
+		{
+			std::lock_guard<std::mutex> lock(WeatherFetchMutex);
+			queuedWeatherRequests = WeatherFetchQueue.size();
+			weatherWorkerRunning = WeatherFetchThread.joinable();
+		}
+
+		auto singleLine = [](std::string value) {
+			for (char& character : value)
+			{
+				if (character == '\r' || character == '\n' || character == '\t')
+					character = ' ';
+			}
+			if (value.size() > 512)
+				value.resize(512);
+			return value;
+		};
+		auto yesNo = [](bool value) { return value ? "yes" : "no"; };
+		std::error_code existsError;
+		std::ostringstream report;
+		report << "vSMR support diagnostics\n";
+		report << "version=" << MY_PLUGIN_VERSION << "\n";
+#if defined(_M_IX86)
+		report << "architecture=x86\n";
+#elif defined(_M_X64)
+		report << "architecture=x64\n";
+#else
+		report << "architecture=unknown\n";
+#endif
+		report << "process_id=" << ::GetCurrentProcessId() << "\n";
+		report << "generated_utc="
+			<< utc.wYear << '-'
+			<< std::setfill('0') << std::setw(2) << utc.wMonth << '-'
+			<< std::setw(2) << utc.wDay << 'T'
+			<< std::setw(2) << utc.wHour << ':'
+			<< std::setw(2) << utc.wMinute << ':'
+			<< std::setw(2) << utc.wSecond << "Z\n";
+		report << "plugin_directory=" << pluginDirectory.u8string() << "\n";
+		report << "data_directory=" << dataDirectory.u8string() << "\n";
+		report << "data_directory_exists="
+			<< yesNo(std::filesystem::is_directory(dataDirectory, existsError)) << "\n";
+		existsError.clear();
+		report << "webui_directory=" << webUiDirectory.u8string() << "\n";
+		report << "webui_directory_exists="
+			<< yesNo(std::filesystem::is_directory(webUiDirectory, existsError)) << "\n";
+		report << "profiles_path=" << profilesPath << "\n";
+		existsError.clear();
+		report << "profiles_exists="
+			<< yesNo(!profilesPath.empty() && std::filesystem::is_regular_file(
+				std::filesystem::path(profilesPath), existsError)) << "\n";
+		report << "logging_enabled=" << yesNo(Logger::ENABLED) << "\n";
+		report << "logging_mode=" << Logger::mode_name(Logger::get_mode()) << "\n";
+		report << "log_path=" << logPath.u8string() << "\n";
+		report << "log_writable=" << yesNo(logWritable) << "\n";
+		report << "active_airport=" << singleLine(datalink.activeAirport) << "\n";
+		report << "cpdlc_connected=" << yesNo(datalink.connected) << "\n";
+		report << "cpdlc_connecting=" << yesNo(datalink.connecting) << "\n";
+		report << "cpdlc_polling=" << yesNo(datalink.pollInProgress) << "\n";
+		report << "cpdlc_has_protected_code=" << yesNo(datalink.hasPassword) << "\n";
+		report << "cpdlc_status=" << singleLine(datalink.statusMessage) << "\n";
+		report << "vacdm_configured=" << yesNo(datalink.vacdmConfigured) << "\n";
+		report << "cdm_auto_enabled=" << yesNo(datalink.cdmAutoEnabled) << "\n";
+		report << "network_workers=" << networkWorkerCount << "\n";
+		report << "network_jobs_queued=" << queuedNetworkJobs << "\n";
+		report << "weather_worker_running=" << yesNo(weatherWorkerRunning) << "\n";
+		report << "weather_requests_queued=" << queuedWeatherRequests << "\n";
+		report << "radar_screens=" << RadarScreensOpened.size() << "\n";
+		report << "shutdown_requested="
+			<< yesNo(PluginShutdownRequested.load(std::memory_order_acquire)) << "\n";
+		report << "recent_log_entries="
+			<< (std::min)(recentLogMessages.size(), static_cast<size_t>(64))
+			<< "\n";
+		report << "Recent entries can contain operational callsigns; credentials are redacted.\n";
+		const size_t firstRecentEntry = recentLogMessages.size() > 64
+			? recentLogMessages.size() - 64
+			: 0;
+		for (size_t index = firstRecentEntry;
+			index < recentLogMessages.size();
+			++index)
+		{
+			std::string redacted = RedactSensitiveValue(
+				recentLogMessages[index],
+				credentials.password);
+			redacted = RedactSensitiveValue(
+				redacted,
+				EncodeUrlQueryComponent(credentials.password));
+			report << "recent_log=" << singleLine(redacted) << "\n";
+		}
+		report << "Secrets, message payloads, and endpoint query strings are intentionally omitted.\n";
+
+		{
+			std::ofstream output(
+				temporary,
+				std::ios::binary | std::ios::trunc);
+			if (!output)
+			{
+				error = "Unable to create the diagnostics report.";
+				return false;
+			}
+			output << report.str();
+			output.flush();
+			if (!output.good())
+			{
+				output.close();
+				std::filesystem::remove(temporary, pathError);
+				error = "Unable to write the diagnostics report.";
+				return false;
+			}
+		}
+		pathError.clear();
+		std::filesystem::rename(temporary, target, pathError);
+		if (pathError)
+		{
+			std::filesystem::remove(temporary, existsError);
+			error = "Unable to finalize the diagnostics report.";
+			return false;
+		}
+		reportPath = target.u8string();
+		return true;
+	}
+	catch (const std::exception& ex)
+	{
+		error = std::string("Diagnostics failed: ") + ex.what();
+		return false;
+	}
+	catch (...)
+	{
+		error = "Diagnostics failed unexpectedly.";
+		return false;
+	}
+}
+
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
 {
-	ActivePluginInstance = this;
+	ActivePluginInstance.store(this, std::memory_order_release);
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
+	NetworkCancellationRequested.store(false, std::memory_order_relaxed);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);
@@ -2104,15 +2645,57 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	VacdmLastFetchClock = 0;
 
 	const char * p_value;
+	bool migratePlaintextCredential = false;
+	std::string migratedProtectedCredential;
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		if ((p_value = GetDataFromSettings("cpdlc_logon")) != NULL)
 			logonCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(p_value));
 		if ((p_value = GetDataFromSettings("cpdlc_password")) != NULL)
-			logonCode = TrimAsciiWhitespaceCopy(p_value);
+		{
+			bool wasPlaintext = false;
+			std::string unprotectedCredential;
+			if (UnprotectHoppieCredential(
+				p_value,
+				unprotectedCredential,
+				wasPlaintext))
+			{
+				logonCode = std::move(unprotectedCredential);
+				migratePlaintextCredential = wasPlaintext;
+			}
+			else
+			{
+				logonCode.clear();
+				DatalinkStatusMessage =
+					"The saved Hoppie code could not be unlocked. Enter it again.";
+				Logger::info("CPDLC saved credential could not be decrypted");
+			}
+		}
 		if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
 			PlaySoundClr = bool(!!atoi(p_value));
+	}
+	if (migratePlaintextCredential)
+	{
+		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+		if (ProtectHoppieCredential(
+			credentials.password,
+			migratedProtectedCredential))
+		{
+			SaveDataToSettings(
+				"cpdlc_password",
+				"The protected CPDLC Hoppie code",
+				migratedProtectedCredential.c_str());
+			Logger::info("CPDLC saved credential migrated to Windows DPAPI protection");
+		}
+		else
+		{
+			SaveDataToSettings(
+				"cpdlc_password",
+				"The protected CPDLC Hoppie code",
+				"");
+			Logger::info("CPDLC plaintext credential migration failed; persistent copy removed");
+		}
 	}
 	if ((p_value = GetDataFromSettings("cdm_auto_enabled")) != NULL)
 		CdmAutoModeEnabled.store(bool(!!atoi(p_value)), std::memory_order_relaxed);
@@ -2158,14 +2741,29 @@ CSMRPlugin::~CSMRPlugin()
 	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
 	StopWeatherFetchWorker();
-	if (ActivePluginInstance == this)
-		ActivePluginInstance = nullptr;
+	StopNetworkWorkers();
+	CSMRPlugin* expectedActivePlugin = this;
+	ActivePluginInstance.compare_exchange_strong(
+		expectedActivePlugin,
+		nullptr,
+		std::memory_order_acq_rel);
 	VsmrWeather::Clear();
 
 	// Persist CPDLC settings via EuroScope's plugin settings storage.
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
 	SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", credentials.callsign.c_str());
-	SaveDataToSettings("cpdlc_password", "The CPDLC logon password", credentials.password.c_str());
+	std::string protectedCredential;
+	if (ProtectHoppieCredential(credentials.password, protectedCredential))
+	{
+		SaveDataToSettings(
+			"cpdlc_password",
+			"The protected CPDLC Hoppie code",
+			protectedCredential.c_str());
+	}
+	else
+	{
+		Logger::info("CPDLC credential was not persisted because DPAPI protection failed");
+	}
 	SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", credentials.playSound ? "1" : "0");
 	SaveDataToSettings("cdm_auto_enabled", "Enable automatic CDM reminder messaging", CdmAutoModeEnabled.load(std::memory_order_relaxed) ? "1" : "0");
 	int cdmAutoDelayToPersist = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
@@ -2263,7 +2861,20 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 		CdmAutoModeEnabled.load(std::memory_order_relaxed);
 	const int previousDelayMinutes =
 		CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-	std::string passwordToPersist;
+	std::string effectivePassword;
+	{
+		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
+		effectivePassword = replacePassword ? normalizedPassword : logonCode;
+	}
+	std::string protectedPasswordToPersist;
+	if (!ProtectHoppieCredential(
+		effectivePassword,
+		protectedPasswordToPersist))
+	{
+		error = "Windows could not protect the Hoppie code. Settings were not changed.";
+		Logger::info("CPDLC settings update rejected because DPAPI protection failed");
+		return false;
+	}
 	bool credentialsChanged = false;
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
@@ -2274,7 +2885,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 		if (replacePassword)
 			logonCode = normalizedPassword;
 		PlaySoundClr = playSound;
-		passwordToPersist = logonCode;
 	}
 	if (credentialsChanged &&
 		(HoppieConnected.load(std::memory_order_acquire) ||
@@ -2309,8 +2919,8 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 		normalizedCallsign.c_str());
 	SaveDataToSettings(
 		"cpdlc_password",
-		"The CPDLC logon password",
-		passwordToPersist.c_str());
+		"The protected CPDLC Hoppie code",
+		protectedPasswordToPersist.c_str());
 	SaveDataToSettings(
 		"cpdlc_sound",
 		"Play sound on clearance request",
@@ -2379,25 +2989,14 @@ bool CSMRPlugin::ConnectDatalink(std::string& error)
 	FailedToConnectMessage.store(false, std::memory_order_relaxed);
 	SetDatalinkStatusMessage("Connecting...");
 
-	std::unique_ptr<DatalinkLoginRequest> request(new (std::nothrow) DatalinkLoginRequest());
-	if (!request)
+	DatalinkLoginRequest request;
+	request.credentials = credentials;
+	request.generation = generation;
+	if (!QueueNetworkJob([request]() { datalinkLogin(request); }))
 	{
-		HoppieConnecting.store(false, std::memory_order_release);
-		error = "Unable to allocate the CPDLC connection request.";
-		SetDatalinkStatusMessage(error);
-		return false;
-	}
-	request->credentials = credentials;
-	request->generation = generation;
-
-	DatalinkLoginRequest* rawRequest = request.release();
-	const uintptr_t threadHandle = _beginthread(datalinkLogin, 0, rawRequest);
-	if (threadHandle == static_cast<uintptr_t>(-1L))
-	{
-		delete rawRequest;
 		HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 		HoppieConnecting.store(false, std::memory_order_release);
-		error = "Unable to start the CPDLC connection worker.";
+		error = "Unable to queue the CPDLC connection request.";
 		SetDatalinkStatusMessage(error);
 		return false;
 	}
@@ -2527,6 +3126,39 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		return commandLower.rfind(p, 0) == 0;
 	};
 
+	if (commandLower == ".smr diagnostics" || commandLower == ".smr diag")
+	{
+		std::string reportPath;
+		std::string error;
+		if (WriteDiagnosticsReport(reportPath, error))
+		{
+			const std::string message =
+				"Redacted diagnostics written to " + reportPath;
+			DisplayUserMessage(
+				"vSMR",
+				"Diagnostics",
+				message.c_str(),
+				true,
+				true,
+				false,
+				true,
+				false);
+			Logger::info("Diagnostics report written path=" + reportPath);
+		}
+		else
+		{
+			DisplayUserMessage(
+				"vSMR",
+				"Diagnostics",
+				error.c_str(),
+				true,
+				true,
+				false,
+				true,
+				false);
+		}
+		return true;
+	}
 	if (startsWithCommand(".smr connect"))
 	{
 		const DatalinkControlState state = GetDatalinkControlState();
@@ -3044,13 +3676,16 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 				AddCallsignUniqueUnlocked(AircraftStandby, fpCallsign);
-				DatalinkToSend.callsign = fpCallsign;
-				tmessage = "STANDBY";
-				ttype = "CPDLC";
-				tdest = fpCallsign;
 			}
-			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-				_beginthread(sendDatalinkMessage, 0, NULL);
+			if (!QueueDatalinkMessage(
+				this,
+				fpCallsign,
+				"CPDLC",
+				"STANDBY",
+				fpCallsign))
+			{
+				Logger::info("CPDLC STANDBY request could not be queued");
+			}
 		}
 	}
 
@@ -3085,15 +3720,15 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			if (dia.DoModal() != IDOK)
 				return;
 
+			if (!QueueDatalinkMessage(
+				this,
+				fpCallsign,
+				"TELEX",
+				static_cast<const char*>(dia.m_Message),
+				fpCallsign))
 			{
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				DatalinkToSend.callsign = fpCallsign;
-				tmessage = dia.m_Message;
-				ttype = "TELEX";
-				tdest = fpCallsign;
+				Logger::info("CPDLC free-text message could not be queued");
 			}
-			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-				_beginthread(sendDatalinkMessage, 0, NULL);
 		}
 	}
 
@@ -3107,18 +3742,20 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				DatalinkToSend.callsign = fpCallsign;
-				tmessage = "UNABLE CALL ON FREQ";
-				ttype = "CPDLC";
-				tdest = fpCallsign;
-
 				RemoveCallsignUnlocked(AircraftDemandingClearance, fpCallsign);
 				RemoveCallsignUnlocked(AircraftStandby, fpCallsign);
 				PendingMessages.erase(fpCallsign);
 			}
 
-			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-				_beginthread(sendDatalinkMessage, 0, NULL);
+			if (!QueueDatalinkMessage(
+				this,
+				fpCallsign,
+				"CPDLC",
+				"UNABLE CALL ON FREQ",
+				fpCallsign))
+			{
+				Logger::info("CPDLC voice fallback message could not be queued");
+			}
 		}
 
 	}
@@ -3183,24 +3820,25 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			if (dia.DoModal() != IDOK)
 				return;
 
-			{
-				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				DatalinkToSend.callsign = fpCallsign;
-				DatalinkToSend.destination = FlightPlan.GetFlightPlanData().GetDestination();
-				DatalinkToSend.rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
-				DatalinkToSend.sid = FlightPlan.GetFlightPlanData().GetSidName();
-				DatalinkToSend.asat = dia.m_TSAT;
-				DatalinkToSend.ctot = dia.m_CTOT;
-				DatalinkToSend.freq = dia.m_Freq;
-				DatalinkToSend.message = dia.m_Message;
-				DatalinkToSend.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
-				DatalinkToSend.climb = toReturn;
-
-				myfrequency = std::to_string(ControllerMyself().GetPrimaryFrequency()).substr(0, 7);
-			}
-
-			if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-				_beginthread(sendDatalinkClearance, 0, NULL);
+			DatalinkClearanceRequest request;
+			request.credentials = SnapshotDatalinkCredentials();
+			request.generation = HoppieConnectionGeneration.load(
+				std::memory_order_acquire);
+			request.packet.callsign = fpCallsign;
+			request.packet.destination = FlightPlan.GetFlightPlanData().GetDestination();
+			request.packet.rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
+			request.packet.sid = FlightPlan.GetFlightPlanData().GetSidName();
+			request.packet.asat = static_cast<const char*>(dia.m_TSAT);
+			request.packet.ctot = static_cast<const char*>(dia.m_CTOT);
+			request.packet.freq = static_cast<const char*>(dia.m_Freq);
+			request.packet.message = static_cast<const char*>(dia.m_Message);
+			request.packet.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
+			request.packet.climb = toReturn;
+			request.fallbackFrequency =
+				std::to_string(ControllerMyself().GetPrimaryFrequency()).substr(0, 7);
+			request.messageSequence = messageId.fetch_add(1) + 1;
+			if (!QueueNetworkJob([request]() { sendDatalinkClearance(request); }))
+				Logger::info("CPDLC clearance could not be queued");
 
 		}
 
@@ -3280,33 +3918,61 @@ void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
 
 void CSMRPlugin::WeatherFetchThreadMain()
 {
-	for (;;)
+	try
 	{
-		std::string station;
+		for (;;)
 		{
-			std::unique_lock<std::mutex> lock(WeatherFetchMutex);
-			WeatherFetchCondition.wait(lock, [this]() {
-				return WeatherFetchStop || !WeatherFetchQueue.empty();
-				});
-			if (WeatherFetchStop)
-				return;
+			std::string station;
+			{
+				std::unique_lock<std::mutex> lock(WeatherFetchMutex);
+				WeatherFetchCondition.wait(lock, [this]() {
+					return WeatherFetchStop || !WeatherFetchQueue.empty();
+					});
+				if (WeatherFetchStop)
+					return;
 
-			station = std::move(WeatherFetchQueue.front());
-			WeatherFetchQueue.pop_front();
-			WeatherFetchQueued.erase(station);
-		}
+				station = std::move(WeatherFetchQueue.front());
+				WeatherFetchQueue.pop_front();
+				WeatherFetchQueued.erase(station);
+			}
 
-		const std::time_t requestStartedUtc = std::time(nullptr);
-		const std::string url = "https://metar.vatsim.net/metar.php?id=" + station;
-		const std::string report = GetHttpHelper().downloadStringFromURL(
-			url,
-			3500,
-			&WeatherFetchCancellationRequested);
-		if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
-			!report.empty() && report.size() <= 4096)
-		{
-			VsmrWeather::Update(station, report, requestStartedUtc, true);
+			try
+			{
+				const std::time_t requestStartedUtc = std::time(nullptr);
+				const std::string url =
+					"https://metar.vatsim.net/metar.php?id=" + station;
+				const std::string report = GetHttpHelper().downloadStringFromURL(
+					url,
+					3500,
+					&WeatherFetchCancellationRequested,
+					WeatherResponseLimitBytes);
+				if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
+					!report.empty() && report.size() <= WeatherResponseLimitBytes)
+				{
+					VsmrWeather::Update(station, report, requestStartedUtc, true);
+				}
+			}
+			catch (const std::exception& ex)
+			{
+				Logger::info(
+					"Weather fetch exception: " +
+					std::string(ex.what()));
+			}
+			catch (...)
+			{
+				Logger::info("Weather fetch exception: unknown");
+			}
 		}
+	}
+	catch (const std::exception& ex)
+	{
+		Logger::info(
+			"Weather worker terminated by exception: " +
+			std::string(ex.what()));
+	}
+	catch (...)
+	{
+		Logger::info("Weather worker terminated by unknown exception");
 	}
 }
 
@@ -3399,12 +4065,11 @@ void CSMRPlugin::OnTimer(int Counter)
 			}
 			else
 			{
-				const uintptr_t threadHandle = _beginthread(refreshVacdmData, 0, NULL);
-				if (threadHandle == static_cast<uintptr_t>(-1L))
+				if (!QueueNetworkJob([]() { refreshVacdmData(); }))
 				{
 					VacdmFetchInProgress.store(false);
 					VacdmLastFetchClock = clock();
-					Logger::info("VACDM refresh thread start failed errno=" + std::to_string(errno));
+					Logger::info("VACDM refresh could not be queued");
 				}
 			}
 		}
@@ -3482,7 +4147,9 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
-	CSMRPlugin* pluginInstance = ActivePluginInstance;
+	CSMRPlugin* pluginInstance = ActivePluginInstance.exchange(
+		nullptr,
+		std::memory_order_acq_rel);
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -3491,7 +4158,10 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 	HoppiePollInProgress.store(false, std::memory_order_relaxed);
 	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
 	if (pluginInstance != nullptr)
+	{
 		pluginInstance->StopWeatherFetchWorker();
+		pluginInstance->StopNetworkWorkers();
+	}
 
 	const std::vector<CSMRRadar*> radarScreens = RadarScreensOpened;
 	for (auto* var : radarScreens)
@@ -3500,5 +4170,4 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 			var->EuroScopePlugInExitCustom();
 	}
 	VsmrWeather::Clear();
-	ActivePluginInstance = nullptr;
 }
