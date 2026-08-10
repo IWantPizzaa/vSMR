@@ -21,6 +21,7 @@ namespace
 }
 
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
+	(void)Area;
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
 	const bool hasItemString = (sItemString != nullptr && sItemString[0] != '\0');

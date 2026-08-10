@@ -3551,6 +3551,9 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 }
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
+	(void)RadarTarget;
+	(void)TagData;
+	(void)pFontSize;
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -3617,6 +3620,8 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
 {
+	(void)sItemString;
+	(void)Pt;
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
@@ -4130,6 +4135,10 @@ void CSMRPlugin::OnTimer(int Counter)
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
+	(void)NeedRadarContent;
+	(void)GeoReferenced;
+	(void)CanBeSaved;
+	(void)CanBeCreated;
 	Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return NULL;

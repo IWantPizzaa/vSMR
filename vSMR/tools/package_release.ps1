@@ -9,12 +9,15 @@ param(
     [string]$Version = "2.0.0-beta.1",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
-    [string]$Toolset = "v143",
+    [ValidatePattern("^(auto|v\d+)$")]
+    [string]$Toolset = "auto",
+    [string]$PdbPath = "",
     [string]$CertificateThumbprint = "",
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     [switch]$RequireSignature,
     [switch]$AllowDirtySource,
-    [switch]$ForceNonPublishable
+    [switch]$ForceNonPublishable,
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,6 +88,114 @@ function New-ZipArchive {
     Compress-Archive -Path (Join-Path $SourceDirectory "*") -DestinationPath $DestinationPath -CompressionLevel Optimal
 }
 
+function Get-VisualStudioInstallationPath {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+        return ""
+    }
+
+    $installation = @(
+        & $vswhere -latest -products * -requires Microsoft.Component.MSBuild Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.ATLMFC -property installationPath
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -First 1
+    return [string]$installation
+}
+
+function Resolve-MsBuildPath {
+    param([string]$VisualStudioInstallation)
+
+    if (-not [string]::IsNullOrWhiteSpace($VisualStudioInstallation)) {
+        $currentMsBuild = Join-Path $VisualStudioInstallation "MSBuild\Current\Bin\MSBuild.exe"
+        if (Test-Path -LiteralPath $currentMsBuild -PathType Leaf) {
+            return $currentMsBuild
+        }
+    }
+
+    $command = Get-Command msbuild.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -ne $command) {
+        return [string]$command.Source
+    }
+
+    throw "MSBuild was not found. Install Visual Studio with the Desktop development with C++ and MFC components."
+}
+
+function Resolve-AutomaticToolset {
+    param(
+        [string]$VisualStudioInstallation,
+        [string]$MsBuildPath,
+        [string]$TargetPlatform
+    )
+
+    if ([string]::IsNullOrWhiteSpace($VisualStudioInstallation)) {
+        $marker = "\MSBuild\"
+        $markerIndex = $MsBuildPath.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase)
+        if ($markerIndex -gt 0) {
+            $VisualStudioInstallation = $MsBuildPath.Substring(0, $markerIndex)
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($VisualStudioInstallation)) {
+        $vcTargetsRoot = Join-Path $VisualStudioInstallation "MSBuild\Microsoft\VC"
+        $toolsets = @(
+            Get-ChildItem -Path (Join-Path $vcTargetsRoot "*\Platforms\$TargetPlatform\PlatformToolsets\v*") -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^v\d+$' } |
+                Sort-Object @{ Expression = { [int]($_.Name.Substring(1)) }; Descending = $true }
+        )
+        if ($toolsets.Count -gt 0) {
+            return [string]$toolsets[0].Name
+        }
+    }
+
+    throw "No Visual C++ platform toolset was found for $TargetPlatform. Install the matching MSVC and MFC components or pass -Toolset explicitly."
+}
+
+$solutionPath = Join-Path $RepositoryRoot "vSMR.sln"
+if (-not $SkipBuild) {
+    Assert-File $solutionPath
+    $visualStudioInstallation = Get-VisualStudioInstallationPath
+    $msbuildPath = Resolve-MsBuildPath $visualStudioInstallation
+    if ($Toolset -eq "auto") {
+        $Toolset = Resolve-AutomaticToolset $visualStudioInstallation $msbuildPath $Platform
+    }
+
+    $outDir = $BuildOutputDirectory.TrimEnd([char[]]"\/") + "\"
+    $buildProperties = @(
+        "/p:Configuration=$Configuration",
+        "/p:Platform=$Platform",
+        "/p:PlatformToolset=$Toolset",
+        "/p:OutDir=$outDir"
+    )
+
+    Write-Host "Restoring vSMR with $Toolset..."
+    & $msbuildPath $solutionPath /t:Restore @buildProperties /verbosity:minimal
+    if ($LASTEXITCODE -ne 0) {
+        throw "NuGet restore failed with exit code $LASTEXITCODE."
+    }
+
+    Write-Host "Rebuilding $Configuration|$Platform..."
+    & $msbuildPath $solutionPath /t:Rebuild /m @buildProperties /verbosity:minimal
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release build failed with exit code $LASTEXITCODE."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($PdbPath)) {
+        $PdbPath = Join-Path $RepositoryRoot "vSMR\$Configuration\vSMR.pdb"
+    }
+}
+else {
+    if ($Toolset -eq "auto") {
+        throw "-SkipBuild requires an explicit -Toolset so release provenance matches the prebuilt DLL."
+    }
+    if ([string]::IsNullOrWhiteSpace($PdbPath)) {
+        throw "-SkipBuild requires -PdbPath pointing to the PDB produced with the prebuilt DLL."
+    }
+}
+$PdbPath = [System.IO.Path]::GetFullPath($PdbPath)
+Assert-File $PdbPath
+
+$validator = Join-Path $RepositoryRoot "vSMR\tools\validate_release.ps1"
+Assert-File $validator
+& $validator -RepositoryRoot $RepositoryRoot -ExpectedVersion $Version -BuildOutputDirectory $BuildOutputDirectory -PdbPath $PdbPath
+
 $dllPath = Join-Path $BuildOutputDirectory "vSMR.dll"
 $dataPath = Join-Path $BuildOutputDirectory "vSMR_Data"
 Assert-File $dllPath
@@ -101,12 +212,13 @@ if ((Test-PathEqualOrChild $stageParent $dataPath) -or
     throw "ArtifactsDirectory and its staging tree cannot overlap the vSMR_Data source."
 }
 [System.IO.Directory]::CreateDirectory($ArtifactsDirectory) | Out-Null
-[System.IO.Directory]::CreateDirectory($packageStage) | Out-Null
-[System.IO.Directory]::CreateDirectory($symbolStage) | Out-Null
+try {
+    [System.IO.Directory]::CreateDirectory($packageStage) | Out-Null
+    [System.IO.Directory]::CreateDirectory($symbolStage) | Out-Null
 
-Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
-Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
-$packagedDllPath = Join-Path $packageStage "vSMR.dll"
+    Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
+    Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
+    $packagedDllPath = Join-Path $packageStage "vSMR.dll"
 
 if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     $CertificateThumbprint = [string]$env:VSMR_SIGNING_CERT_THUMBPRINT
@@ -217,21 +329,15 @@ New-ZipArchive $packageStage $archivePath
 $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Utf8NoBom "$archivePath.sha256" "$archiveHash  $([System.IO.Path]::GetFileName($archivePath))`n"
 
-$pdbCandidates = @(
-    (Join-Path $RepositoryRoot "vSMR\Release\vSMR.pdb"),
-    (Join-Path $BuildOutputDirectory "vSMR.pdb")
-)
-$pdbPath = $pdbCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-if ([string]::IsNullOrWhiteSpace($pdbPath)) {
-    throw "Release PDB was not generated. Checked: $($pdbCandidates -join ', ')"
-}
-Copy-Item -LiteralPath $pdbPath -Destination (Join-Path $symbolStage "vSMR.pdb")
+Copy-Item -LiteralPath $PdbPath -Destination (Join-Path $symbolStage "vSMR.pdb")
 Copy-Item -LiteralPath $packagedDllPath -Destination (Join-Path $symbolStage "vSMR.dll")
 Write-Utf8NoBom (Join-Path $symbolStage "SYMBOLS-METADATA.json") ((ConvertTo-Json $metadata -Depth 10) + "`n")
 $symbolArchivePath = Join-Path $ArtifactsDirectory "vSMR-$Version-symbols.zip"
 New-ZipArchive $symbolStage $symbolArchivePath
-
-Remove-SafeDirectory $stageParent $ArtifactsDirectory
+}
+finally {
+    Remove-SafeDirectory $stageParent $ArtifactsDirectory
+}
 
 Write-Host "Created user package: $archivePath"
 Write-Host "Created package checksum: $archivePath.sha256"

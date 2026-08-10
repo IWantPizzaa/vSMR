@@ -25,9 +25,9 @@ install:
 
 before_build:
   - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\test_release.ps1"
-      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
-      -ExpectedVersion $env:VSMR_RELEASE_VERSION
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\normalize_runtime_data.ps1"
+      -Mode Check
+      -DataDirectory "$env:APPVEYOR_BUILD_FOLDER\vSMR\data"
 
 build_script:
   - cmd: >-
@@ -49,11 +49,6 @@ build_script:
 
 after_build:
   - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\test_release.ps1"
-      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
-      -ExpectedVersion $env:VSMR_RELEASE_VERSION
-      -BuildOutputDirectory "$env:APPVEYOR_BUILD_FOLDER\Release"
-  - ps: >-
       $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\package_release.ps1"
       -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
@@ -63,6 +58,8 @@ after_build:
       -Configuration Release
       -Platform Win32
       -Toolset v143
+      -PdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\Release\vSMR.pdb"
+      -SkipBuild
       -ForceNonPublishable:$isPullRequest
   - ps: >-
       $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);

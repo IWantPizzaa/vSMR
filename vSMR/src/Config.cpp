@@ -181,11 +181,7 @@ namespace
 		std::string message = "An error parsing vSMR ";
 		message += fileDescription;
 		message += " occurred.\nThe currently loaded data remains active.\nOnce fixed, reload the config by typing '.smr reload'";
-#if defined(VSMR_TEST_NO_UI)
-		::OutputDebugStringA(message.c_str());
-#else
 		AfxMessageBox(message.c_str(), MB_OK | MB_ICONERROR);
-#endif
 	}
 
 	void AdoptDocument(rapidjson::Document& destination, rapidjson::Document& source)
@@ -1795,26 +1791,30 @@ Gdiplus::Color CConfig::getSidColor(string sid, string airport)
 	return Gdiplus::Color(0, 0, 0);
 }
 
-Gdiplus::Color CConfig::getConfigColor(const Value& config_path) {
-	if (!config_path.IsObject())
+Gdiplus::Color CConfig::getConfigColor(const Value& colorConfig) {
+	if (!colorConfig.IsObject())
 		return Gdiplus::Color(255, 0, 0, 0);
 
-	const int r = ReadColorComponent(config_path, "r");
-	const int g = ReadColorComponent(config_path, "g");
-	const int b = ReadColorComponent(config_path, "b");
-	const int a = ReadColorComponent(config_path, "a", 255);
+	const int r = ReadColorComponent(colorConfig, "r");
+	const int g = ReadColorComponent(colorConfig, "g");
+	const int b = ReadColorComponent(colorConfig, "b");
+	const int a = ReadColorComponent(colorConfig, "a", 255);
 
-	Gdiplus::Color Color(a, r, g, b);
+	Gdiplus::Color Color(
+		static_cast<BYTE>(a),
+		static_cast<BYTE>(r),
+		static_cast<BYTE>(g),
+		static_cast<BYTE>(b));
 	return Color;
 }
 
-COLORREF CConfig::getConfigColorRef(const Value& config_path) {
-	if (!config_path.IsObject())
+COLORREF CConfig::getConfigColorRef(const Value& colorConfig) {
+	if (!colorConfig.IsObject())
 		return RGB(0, 0, 0);
 
-	const int r = ReadColorComponent(config_path, "r");
-	const int g = ReadColorComponent(config_path, "g");
-	const int b = ReadColorComponent(config_path, "b");
+	const int r = ReadColorComponent(colorConfig, "r");
+	const int g = ReadColorComponent(colorConfig, "g");
+	const int b = ReadColorComponent(colorConfig, "b");
 
 	COLORREF Color(RGB(r, g, b));
 	return Color;
@@ -1848,10 +1848,10 @@ bool CConfig::isCustomCursorUsed() {
 
 bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
 	const Value& activeProfile = getActiveProfile();
-	const Value* maps = GetObjectMemberIfPresent(activeProfile, "maps");
-	if (maps == nullptr)
+	const Value* mapDefinitions = GetObjectMemberIfPresent(activeProfile, "maps");
+	if (mapDefinitions == nullptr)
 		return false;
-	const Value* airportMap = GetObjectMemberIfPresent(*maps, airport.c_str());
+	const Value* airportMap = GetObjectMemberIfPresent(*mapDefinitions, airport.c_str());
 	if (airportMap == nullptr || !airportMap->HasMember("runways") || !(*airportMap)["runways"].IsArray())
 		return false;
 

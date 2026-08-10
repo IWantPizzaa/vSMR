@@ -254,7 +254,8 @@ namespace
 			objectValue.RemoveMember(key);
 		Value keyValue;
 		keyValue.SetString(key, allocator);
-		objectValue.AddMember(keyValue, Value(value), allocator);
+		Value boolValue(value);
+		objectValue.AddMember(keyValue, boolValue, allocator);
 	}
 
 	void WriteStringArrayMember(rapidjson::Value& objectValue, const char* key, const std::vector<std::string>& values, rapidjson::Document::AllocatorType& allocator)

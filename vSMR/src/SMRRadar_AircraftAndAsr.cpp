@@ -1034,6 +1034,7 @@ string CSMRRadar::setActiveAirport(string value, bool switchInsetContext)
 
 void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 {
+	(void)Loaded;
 	Logger::info(string(__FUNCSIG__));
 	const char * p_value;
 

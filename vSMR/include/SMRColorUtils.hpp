@@ -84,7 +84,11 @@ inline static Gdiplus::Color HsvToColor(double h, double s, double v, int a = 25
 	int g = ClampInt(static_cast<int>((gf + m) * 255.0 + 0.5), 0, 255);
 	int b = ClampInt(static_cast<int>((bf + m) * 255.0 + 0.5), 0, 255);
 	int alpha = ClampInt(a, 0, 255);
-	return Gdiplus::Color(alpha, r, g, b);
+	return Gdiplus::Color(
+		static_cast<BYTE>(alpha),
+		static_cast<BYTE>(r),
+		static_cast<BYTE>(g),
+		static_cast<BYTE>(b));
 }
 
 inline static std::vector<int> ExtractIntegers(const std::string& text)

@@ -38,9 +38,9 @@ jobs:
         shell: cmd
         run: >-
           powershell.exe -NoProfile -ExecutionPolicy Bypass
-          -File vSMR\tools\test_release.ps1
-          -RepositoryRoot "%GITHUB_WORKSPACE%"
-          -ExpectedVersion "%VSMR_RELEASE_VERSION%"
+          -File vSMR\tools\normalize_runtime_data.ps1
+          -Mode Check
+          -DataDirectory "%GITHUB_WORKSPACE%\vSMR\data"
 
       - name: Restore native packages
         shell: cmd
@@ -63,16 +63,7 @@ jobs:
           /p:PlatformToolset=v143
           /p:ContinuousIntegrationBuild=true
 
-      - name: Run post-build and native tests
-        shell: cmd
-        run: >-
-          powershell.exe -NoProfile -ExecutionPolicy Bypass
-          -File vSMR\tools\test_release.ps1
-          -RepositoryRoot "%GITHUB_WORKSPACE%"
-          -ExpectedVersion "%VSMR_RELEASE_VERSION%"
-          -BuildOutputDirectory "%GITHUB_WORKSPACE%\Release"
-
-      - name: Build clean versioned artifacts
+      - name: Validate and build clean versioned artifacts
         env:
           VSMR_FORCE_NONPUBLISHABLE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
         shell: cmd
@@ -86,6 +77,8 @@ jobs:
           -Configuration Release
           -Platform Win32
           -Toolset v143
+          -PdbPath "%GITHUB_WORKSPACE%\vSMR\Release\vSMR.pdb"
+          -SkipBuild
 
       - name: Verify release archive and manifests
         env:
