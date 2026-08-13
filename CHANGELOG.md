@@ -1,10 +1,10 @@
 # Changelog
 
-## [2.0.0-beta.1] - 2026-08-10
+## [2.0.0-beta.2] - 2026-08-14
 
 This beta is a major runtime, configuration, and distribution update. It is
-intended for controlled operational testing rather than clear
-production promotion.
+intended for controlled operational testing rather than unrestricted
+production use.
 
 ### Added
 
@@ -40,7 +40,7 @@ production promotion.
 - Unified AVISO and SRW interaction around right-drag panning and cursor-anchored wheel zoom. Removed the SRW `Z` range and `R` rotation menus; its floating `F` altitude control is hidden when docked.
 - Removed the Approach Path/SRW 2 inset and its rendering, persistence, preset, and runtime logic while retaining later inset IDs for compatibility.
 - Moved the Timer alarm and CPDLC notification sounds to `vSMR_Data\Audio` so both are replaceable runtime assets rather than DLL resources.
-- Canonicalized the five bundled profiles, all six AVISO airport files, and the 873 usable aircraft-dimension records for direct use by vSMR 2.0.
+- Canonicalized the five bundled profiles, all 396 airport-specific AVISO files, and the 873 usable aircraft-dimension records for direct use by vSMR 2.0.
 - Loading a local Profiles or AVISO file now activates that exact file. GitHub imports are validated and stored as collision-safe files under `vSMR_Data\Profiles` or `vSMR_Data\AVISO` instead of overwriting bundled airport/profile data.
 - Reduced radar and editor work through cached fonts, symbols and runway headings, immutable AVISO snapshots, indexed runway occupancy, shared target metadata, and deduplicated Control Center and group refreshes.
 - Reorganized deployment so a release root contains only `vSMR.dll` and `vSMR_Data\`; the Control Center UI, audio, icons, AVISO, licenses, tools, and data all live below `vSMR_Data`.
@@ -87,7 +87,7 @@ production promotion.
 
 ### Packaging and repository
 
-- Unified plugin, Windows resource, documentation, validation, and archive versioning as `2.0.0-beta.1`.
+- Unified plugin, Windows resource, documentation, validation, and archive versioning as `2.0.0-beta.2`.
 - Added repeatable Release/Win32 packaging with Visual Studio/toolset discovery, NuGet restore, a clean rebuild, runtime-data validation, clean staging, exact manifests, SHA-256 checks, Git provenance, package verification, and a separate private-symbol archive.
 - Added package-validated install and rollback helpers with complete timestamped backups, preservation of user/imported data by default, and explicit opt-in replacement of user data.
 - Added optional Authenticode signing and a signature-required public-release gate.
@@ -105,6 +105,10 @@ production promotion.
 - Some aircraft icon, audio, AVISO, and aircraft-dimension provenance entries still require verification; see `vSMR_Data\Licenses\ASSET_PROVENANCE.md` in the package.
 - Authenticode support does not mean a particular beta archive is signed. Treat it as signed only when package verification confirms a valid signature.
 - Native vSMR RDF currently reads TrackAudio's loopback WebSocket only. Audio for VATSIM standalone hidden-window transmissions are not consumed by the native overlay.
+
+## [2.0.0-beta.1] - 2026-08-10
+
+- Published the first vSMR 2.0 beta with the Control Center, native AVISO rendering and editing, common inset system, weather and timer insets, RIMCAS configuration, CPDLC/PDC workflows, transactional profile/AVISO persistence, and verified release packaging.
 
 ## [1.1.3] - 2026-06-20
 
