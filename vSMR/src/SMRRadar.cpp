@@ -855,7 +855,7 @@ CSMRRadar::CSMRRadar()
 	appWindows[weatherWindowId]->m_Area = { 300, 200, 606, 375 };
 	appWindows[timerWindowId] = std::make_unique<CInsetWindow>(APPWINDOW_TIMER);
 	appWindows[timerWindowId]->m_Mode = CInsetWindow::Mode::Timer;
-	appWindows[timerWindowId]->m_Area = { 100, 180, 226, 208 };
+	appWindows[timerWindowId]->m_Area = { 100, 180, 268, 208 };
 
 	Logger::info("Loading profile");
 
