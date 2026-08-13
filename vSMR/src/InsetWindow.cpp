@@ -29,8 +29,10 @@ namespace
 	constexpr int kInsetResizeInsidePx = 5;
 	constexpr int kInsetResizeCornerPx = 18;
 	constexpr int kInsetDragThresholdPx = 4;
-	constexpr int kTimerContentWidth = 168;
-	constexpr int kTimerContentHeight = 28;
+	constexpr int kTimerColumnCount = 2;
+	constexpr int kTimerRowCount = 2;
+	constexpr int kTimerContentWidth = 84;
+	constexpr int kTimerContentHeight = 56;
 
 	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
 	using ResizeRegion = CInsetWindow::ResizeRegion;
@@ -5162,11 +5164,13 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 	for (int durationMinutes = 1; durationMinutes <= timerCount; ++durationMinutes)
 	{
 		const int index = durationMinutes - 1;
+		const int column = index % kTimerColumnCount;
+		const int row = index / kTimerColumnCount;
 		CRect cell(
-			content.left + (content.Width() * index) / timerCount,
-			content.top,
-			content.left + (content.Width() * (index + 1)) / timerCount,
-			content.bottom);
+			content.left + (content.Width() * column) / kTimerColumnCount,
+			content.top + (content.Height() * row) / kTimerRowCount,
+			content.left + (content.Width() * (column + 1)) / kTimerColumnCount,
+			content.top + (content.Height() * (row + 1)) / kTimerRowCount);
 		const int remainingSeconds = GetTimerRemainingSeconds(durationMinutes, now);
 		const bool running = m_TimerDeadlineTicks[static_cast<size_t>(index)] != 0;
 		const bool expired = m_TimerExpired[static_cast<size_t>(index)];

@@ -14,7 +14,7 @@ intended for controlled operational testing rather than production promotion.
 - Added a common inset window system for AVISO, SRW 1, Weather, and Timer. Resizable insets support every edge and corner, practical hit areas, matching resize cursors, drag capture, Windows-style snap previews, edge splits, and size-preserving corner docking.
 - Added airport-scoped inset working state, named presets, default presets, linked main/inset movement, and per-inset Reset actions. Presets remain available when the active profile changes.
 - Added a native Weather inset with the latest EuroScope METAR, bounded VATSIM fallback retrieval, wind rose, active-runway wind components, QNH, UTC, and local time.
-- Added a striped Timer inset with independent 1, 2, 3, and 4 minute countdowns. Left-click starts a timer, right-click resets it, and `vSMR_Data\Audio\Alarm.wav` plays once at expiry.
+- Added a striped Timer inset with independent 1, 2, 3, and 4 minute countdowns arranged in a compact 2×2 grid. Left-click starts a timer, right-click resets it, and `vSMR_Data\Audio\Alarm.wav` plays once at expiry.
 - Added a built-in native AVISO editor for source selection, live reload, feature filtering, editable geometry coordinates, point-label positioning, deletion, visibility, group membership, style metadata, text, and fonts.
 - Added configurable display modes with target-status visibility and operational requirements, including the v1.1 Pro and Tower behaviors.
 - Added Hoppie CPDLC connection and polling, compact PDC/Message windows, datalink tag actions, and automatic CDM/PDC reminder scheduling with Run, Stop, cooldown, and manual check controls.
