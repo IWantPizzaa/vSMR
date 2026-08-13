@@ -2516,6 +2516,62 @@ input:focus, select:focus, textarea:focus {
   background: hsl(var(--hue-slider-value, 0), 100%, 50%);
   box-shadow: 0 0 0 1px #090c0d, 0 1px 3px rgba(0,0,0,.65);
 }
+.color-slider-row:not(.hue-slider-row) input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 8px;
+  background: transparent;
+}
+.color-slider-row:not(.hue-slider-row) input[type="range"]::-webkit-slider-runnable-track {
+  height: 7px;
+  border: 1px solid #090c0d;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--channel-low, #000), var(--channel-high, #fff));
+}
+.color-slider-row:not(.hue-slider-row) input[type="range"]::-moz-range-track {
+  height: 7px;
+  border: 1px solid #090c0d;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--channel-low, #000), var(--channel-high, #fff));
+}
+.opacity-channel input[type="range"]::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(90deg, var(--channel-low, transparent), var(--channel-high, #fff)),
+    conic-gradient(#727c7f 25%, #d6dcde 0 50%, #727c7f 0 75%, #d6dcde 0) 0 0 / 6px 6px;
+}
+.opacity-channel input[type="range"]::-moz-range-track {
+  background:
+    linear-gradient(90deg, var(--channel-low, transparent), var(--channel-high, #fff)),
+    conic-gradient(#727c7f 25%, #d6dcde 0 50%, #727c7f 0 75%, #d6dcde 0) 0 0 / 6px 6px;
+}
+.color-slider-row:not(.hue-slider-row) input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -4px;
+  border: 2px solid #dce8eb;
+  border-radius: 50%;
+  background: var(--channel-thumb, #fff);
+  box-shadow: 0 0 0 1px #090c0d, 0 1px 3px rgba(0,0,0,.65);
+}
+.color-slider-row:not(.hue-slider-row) input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #dce8eb;
+  border-radius: 50%;
+  background: var(--channel-thumb, #fff);
+  box-shadow: 0 0 0 1px #090c0d, 0 1px 3px rgba(0,0,0,.65);
+}
+.opacity-channel input[type="range"]::-webkit-slider-thumb {
+  background:
+    linear-gradient(var(--channel-thumb, transparent), var(--channel-thumb, transparent)),
+    conic-gradient(#727c7f 25%, #d6dcde 0 50%, #727c7f 0 75%, #d6dcde 0) 0 0 / 6px 6px;
+}
+.opacity-channel input[type="range"]::-moz-range-thumb {
+  background:
+    linear-gradient(var(--channel-thumb, transparent), var(--channel-thumb, transparent)),
+    conic-gradient(#727c7f 25%, #d6dcde 0 50%, #727c7f 0 75%, #d6dcde 0) 0 0 / 6px 6px;
+}
 .color-advanced {
   margin: 0;
 }

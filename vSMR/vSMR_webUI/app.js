@@ -2251,6 +2251,22 @@
     $("#colorRed").value = rgb.r;
     $("#colorGreen").value = rgb.g;
     $("#colorBlue").value = rgb.b;
+    const selectedRgb = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    const configureChannelSlider = (selector, low, high, thumb = selectedRgb) => {
+      const slider = $(selector);
+      slider.style.setProperty("--channel-low", low);
+      slider.style.setProperty("--channel-high", high);
+      slider.style.setProperty("--channel-thumb", thumb);
+    };
+    configureChannelSlider("#colorRed", `rgb(0, ${rgb.g}, ${rgb.b})`, `rgb(255, ${rgb.g}, ${rgb.b})`);
+    configureChannelSlider("#colorGreen", `rgb(${rgb.r}, 0, ${rgb.b})`, `rgb(${rgb.r}, 255, ${rgb.b})`);
+    configureChannelSlider("#colorBlue", `rgb(${rgb.r}, ${rgb.g}, 0)`, `rgb(${rgb.r}, ${rgb.g}, 255)`);
+    configureChannelSlider(
+      "#colorOpacity",
+      `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`,
+      selectedRgb,
+      `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity / 100})`
+    );
     $("#colorRedOutput").value = rgb.r;
     $("#colorGreenOutput").value = rgb.g;
     $("#colorBlueOutput").value = rgb.b;
