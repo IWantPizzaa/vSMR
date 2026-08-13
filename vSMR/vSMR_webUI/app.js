@@ -2246,6 +2246,7 @@
     $("#colorHex").value = hex.toUpperCase();
     $("#nativeColorPicker").value = hex;
     $("#colorHue").value = Math.round(drafts.color.h);
+    $("#colorHue").style.setProperty("--hue-slider-value", String(Math.round(drafts.color.h)));
     $("#colorHueOutput").value = `${Math.round(drafts.color.h)}°`;
     $("#colorRed").value = rgb.r;
     $("#colorGreen").value = rgb.g;
