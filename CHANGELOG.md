@@ -47,6 +47,9 @@ intended for controlled operational testing rather than production promotion.
 
 ### Fixed
 
+- Applied AVISO feature-level paint overrides after shared catalog defaults, so saved per-label text color, font, size, halo, anchor, and zoom changes now appear immediately after the main radar and inset renderers reload. The same precedence now covers feature-level geometry color, opacity, and width overrides.
+- Prevented a single AVISO edit from copying untouched paint or mixed visibility values into other labels/styles, rejected malformed hexadecimal colors instead of silently restoring the old value, and aligned both AVISO editors with the renderer's supported size and width ranges.
+- Preserved intentional feature-level AVISO paint overrides during runtime-data normalization and now reports when a successful save cannot be reloaded by one or more radar renderers.
 - Prevented the main AVISO display from briefly disappearing during zoom and prevented the AVISO inset from transiently stretching, shrinking, or changing aspect ratio while a new raster is rendered.
 - Stabilized split-panel resize rendering so the left radar view remains geographically anchored and the right AVISO inset does not twitch or rescale during drag.
 - Aligned visible resize cursors with the actual edge/corner hitboxes and reliably cleared resize state and cursor ownership when a drag is released or leaves the window.

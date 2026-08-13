@@ -172,6 +172,8 @@ The Control Center can:
 - define groups and assign features to them
 - restore validated bundled defaults or `.bak` profile data
 
+A reusable entry in the document's `styles` catalog supplies the default paint for every feature that references its `style_id`. Paint stored directly on a feature is a per-object override and takes precedence in the main radar and AVISO inset. Consequently, editing one selected label can override its text color, font, size, halo, or zoom without changing every other label in the shared style; `Current text group` and `All AVISO text` intentionally edit shared catalog styles. AVISO editor values use the renderer's supported ranges: text size 6–32, halo width 0–6, and line/outline width 0.25–8.
+
 A computer file is activated in place; it is not copied over the bundled airport file. A GitHub resource is validated and downloaded to a collision-safe file under `vSMR_Data\AVISO\` or `vSMR_Data\Profiles\`, then activated from that location. The Settings page always shows the actual active path.
 
 ## Runtime Menu and Insets

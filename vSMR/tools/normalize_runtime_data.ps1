@@ -710,7 +710,14 @@ function Normalize-AvisoFile {
                 continue
             }
             if (Test-JsonProperty $style.paint $paintKey) {
-                continue
+                # Catalog paint is the shared default; a differing feature value
+                # is an intentional per-object override and must survive a
+                # normalize pass. Redundant values are omitted canonically.
+                $sourcePaintJson = ConvertTo-Json -InputObject $sourceProperties.$paintKey -Depth 10 -Compress
+                $stylePaintJson = ConvertTo-Json -InputObject $style.paint.$paintKey -Depth 10 -Compress
+                if ($sourcePaintJson -ceq $stylePaintJson) {
+                    continue
+                }
             }
             $properties[$paintKey] = $sourceProperties.$paintKey
         }
