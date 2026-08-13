@@ -300,7 +300,12 @@ namespace
 
 	Gdiplus::Color ParseAvisoColorResolved(const Value* sharedPaint, const Value* inlineProperties, const char* colorProperty, const char* opacityProperty, const Gdiplus::Color& fallback)
 	{
-		const Value* colorSource = AvisoHasStringProperty(sharedPaint, colorProperty) ? sharedPaint : inlineProperties;
+		// A catalog style provides defaults for every feature that references it.
+		// Feature properties are the persisted per-object overrides used by both
+		// AVISO editors, so they must win when both locations define a paint key.
+		const Value* colorSource = AvisoHasStringProperty(inlineProperties, colorProperty)
+			? inlineProperties
+			: sharedPaint;
 		if (!AvisoHasStringProperty(colorSource, colorProperty))
 			return fallback;
 
@@ -320,10 +325,10 @@ namespace
 
 		double opacity = static_cast<double>(fallback.GetAlpha()) / 255.0;
 		const Value* opacitySource = nullptr;
-		if (AvisoHasNumberProperty(sharedPaint, opacityProperty))
-			opacitySource = sharedPaint;
-		else if (AvisoHasNumberProperty(inlineProperties, opacityProperty))
+		if (AvisoHasNumberProperty(inlineProperties, opacityProperty))
 			opacitySource = inlineProperties;
+		else if (AvisoHasNumberProperty(sharedPaint, opacityProperty))
+			opacitySource = sharedPaint;
 		if (opacitySource != nullptr)
 			opacity = (*opacitySource)[opacityProperty].GetDouble();
 
@@ -356,9 +361,9 @@ namespace
 
 	const char* GetAvisoStringPropertyResolved(const Value* sharedPaint, const Value* inlineProperties, std::initializer_list<const char*> keys)
 	{
-		if (const char* value = GetAvisoStringProperty(sharedPaint, keys))
+		if (const char* value = GetAvisoStringProperty(inlineProperties, keys))
 			return value;
-		return GetAvisoStringProperty(inlineProperties, keys);
+		return GetAvisoStringProperty(sharedPaint, keys);
 	}
 
 	bool IsAvisoFeatureVisible(const Value* properties)
@@ -548,28 +553,27 @@ namespace
 
 	float ParseAvisoFloatPropertyResolved(const Value* sharedPaint, const Value* inlineProperties, const char* key, float fallback, float minValue, float maxValue)
 	{
-		if (AvisoHasNumberProperty(sharedPaint, key))
-			return ParseAvisoFloatProperty(sharedPaint, key, fallback, minValue, maxValue);
-		return ParseAvisoFloatProperty(inlineProperties, key, fallback, minValue, maxValue);
+		if (AvisoHasNumberProperty(inlineProperties, key))
+			return ParseAvisoFloatProperty(inlineProperties, key, fallback, minValue, maxValue);
+		return ParseAvisoFloatProperty(sharedPaint, key, fallback, minValue, maxValue);
 	}
 
 	double ParseAvisoZoomRangeKm(const Value* sharedPaint, const Value* inlineProperties)
 	{
 		const Value* zoomValue = nullptr;
 		const char* aliases[] = { "zoomLevel", "zoom_level" };
-		for (const char* alias : aliases)
+		auto findZoomValue = [&](const Value* properties) -> const Value*
 		{
-			if (AvisoHasNumberProperty(sharedPaint, alias))
+			for (const char* alias : aliases)
 			{
-				zoomValue = &(*sharedPaint)[alias];
-				break;
+				if (AvisoHasNumberProperty(properties, alias))
+					return &(*properties)[alias];
 			}
-			if (AvisoHasNumberProperty(inlineProperties, alias))
-			{
-				zoomValue = &(*inlineProperties)[alias];
-				break;
-			}
-		}
+			return nullptr;
+		};
+		zoomValue = findZoomValue(inlineProperties);
+		if (zoomValue == nullptr)
+			zoomValue = findZoomValue(sharedPaint);
 
 		if (zoomValue == nullptr)
 			return 0.0;
@@ -600,9 +604,9 @@ namespace
 
 	float ParseAvisoStrokeWidthResolved(const Value* sharedPaint, const Value* inlineProperties, float fallback)
 	{
-		if (AvisoHasNumberProperty(sharedPaint, "stroke-width"))
-			return ParseAvisoStrokeWidth(sharedPaint, fallback);
-		return ParseAvisoStrokeWidth(inlineProperties, fallback);
+		if (AvisoHasNumberProperty(inlineProperties, "stroke-width"))
+			return ParseAvisoStrokeWidth(inlineProperties, fallback);
+		return ParseAvisoStrokeWidth(sharedPaint, fallback);
 	}
 
 	const Value* ResolveAvisoStylePaint(const Value* properties, const std::unordered_map<std::string, const Value*>& stylePaintById)

@@ -2083,6 +2083,7 @@ struct VsmrControlCenterBridge::Impl
 		}
 
 		bool reloadFailed = false;
+		bool avisoReloadFailed = false;
 		for (CSMRRadar* radar : RadarScreensOpened)
 		{
 			if (radar == nullptr || radar->CurrentConfig == nullptr ||
@@ -2098,7 +2099,8 @@ struct VsmrControlCenterBridge::Impl
 					radar->GetAvisoGeoJsonEditorPathForAirport(radar->getActiveAirport()),
 					avisoPath))
 			{
-				radar->ForceReloadAvisoGeoJson();
+				if (!radar->ForceReloadAvisoGeoJson())
+					avisoReloadFailed = true;
 			}
 			radar->RequestRefresh();
 			if (radar != Owner && radar->VsmrControlCenterDialog != nullptr)
@@ -2107,10 +2109,13 @@ struct VsmrControlCenterBridge::Impl
 		if (!activeProfileBefore.empty() &&
 			Owner->CurrentConfig->isItActiveProfile(activeProfileBefore) != 0)
 			Owner->LoadProfile(activeProfileBefore);
-		if (reloadFailed)
+		if (reloadFailed || avisoReloadFailed)
 		{
-			const std::string warning =
-				"The files were saved, but one or more radar windows could not reload them. Reload vSMR before editing again.";
+			const std::string warning = reloadFailed && avisoReloadFailed
+				? "The files were saved, but one or more radar windows could not reload their configuration or AVISO renderer. Reload vSMR before editing again."
+				: avisoReloadFailed
+					? "The files were saved, but one or more radar windows could not reload the AVISO renderer. Reload vSMR before editing again."
+					: "The files were saved, but one or more radar windows could not reload them. Reload vSMR before editing again.";
 			Logger::info(warning);
 			Owner->GetPlugIn()->DisplayUserMessage(
 				"vSMR",

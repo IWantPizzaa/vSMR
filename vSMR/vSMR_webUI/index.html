@@ -379,13 +379,13 @@
 </fieldset>
 <fieldset class="compact-group aviso-edit-group" id="avisoGeometryFillGroup">
 <legend>Fill</legend>
-<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryFillPair"><input aria-label="Fill color picker" id="avisoGeometryFillPicker" type="color"/><input id="avisoGeometryFillColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
+<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryFillPair"><input aria-label="Fill color picker" id="avisoGeometryFillPicker" type="color"/><input id="avisoGeometryFillColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
 </fieldset>
 <fieldset class="compact-group aviso-edit-group">
 <legend id="avisoGeometryStrokeLegend">Outline</legend>
 <div class="dense-form two-cols aviso-style-form">
-<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryStrokePair"><input aria-label="Line color picker" id="avisoGeometryStrokePicker" type="color"/><input id="avisoGeometryStrokeColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
-<label class="field"><span>Width</span><input id="avisoGeometryStrokeWidth" min="0" placeholder="Mixed" step="0.25" type="number"/></label>
+<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryStrokePair"><input aria-label="Line color picker" id="avisoGeometryStrokePicker" type="color"/><input id="avisoGeometryStrokeColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
+<label class="field"><span>Width</span><input id="avisoGeometryStrokeWidth" max="8" min="0.25" placeholder="Mixed" step="0.25" type="number"/></label>
 </div>
 </fieldset>
 <details class="advanced-disclosure" id="avisoGeometryAdvanced">
@@ -432,15 +432,15 @@
 <legend>Typography</legend>
 <div class="dense-form two-cols aviso-style-form">
 <label class="field"><span>Font</span><input id="avisoTextFont" list="avisoFontChoices" placeholder="Mixed" type="text"/></label>
-<label class="field"><span>Size</span><input id="avisoTextSize" max="80" min="1" placeholder="Mixed" step="1" type="number"/></label>
-<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoTextColorPair"><input aria-label="Text color picker" id="avisoTextColorPicker" type="color"/><input id="avisoTextColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
+<label class="field"><span>Size</span><input id="avisoTextSize" max="32" min="6" placeholder="Mixed" step="1" type="number"/></label>
+<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoTextColorPair"><input aria-label="Text color picker" id="avisoTextColorPicker" type="color"/><input id="avisoTextColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
 </div>
 </fieldset>
 <fieldset class="compact-group aviso-edit-group aviso-halo-group">
 <legend>Halo</legend>
 <div class="dense-form two-cols aviso-style-form">
-<label class="field"><span>Color</span><span class="aviso-color-pair" id="avisoTextHaloPair"><input aria-label="Halo color picker" id="avisoTextHaloPicker" type="color"/><input id="avisoTextHaloColor" placeholder="Mixed" spellcheck="false" type="text"/></span></label>
-<label class="field"><span>Width</span><input id="avisoTextHaloWidth" max="12" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
+<label class="field"><span>Color</span><span class="aviso-color-pair" id="avisoTextHaloPair"><input aria-label="Halo color picker" id="avisoTextHaloPicker" type="color"/><input id="avisoTextHaloColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
+<label class="field"><span>Width</span><input id="avisoTextHaloWidth" max="6" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
 </div>
 <div class="aviso-text-zoom-box">
 <div class="tag-options-subtitle">Zoom visibility</div>
