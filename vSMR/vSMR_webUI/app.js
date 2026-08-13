@@ -3732,10 +3732,12 @@
   function applyAvisoGeometry({ render = true, feedback = true } = {}) {
     const entries = selectedAvisoGeometryEntries();
     if (!entries.length) return;
-    const multi = entries.length > 1;
     const allArea = entries.every(entry => entry.objectType === "Area");
     const changed = {};
-    const shouldApply = selector => !multi || wasControlTouched(selector);
+    // Auto-registration invokes this function for the control that changed.
+    // Only copy controls touched in that gesture; otherwise editing one paint
+    // value also writes every displayed default and can flatten mixed data.
+    const shouldApply = selector => wasControlTouched(selector);
 
     if (allArea && shouldApply("#avisoGeometryFillColor") && $("#avisoGeometryFillColor").value) {
       changed.fill = normalizeHex($("#avisoGeometryFillColor").value, entries[0].paint.fill || "#000000").toUpperCase();
@@ -3747,14 +3749,14 @@
       changed.stroke = normalizeHex($("#avisoGeometryStrokeColor").value, entries[0].paint.stroke || entries[0].paint.fill || "#000000").toUpperCase();
     }
     if (shouldApply("#avisoGeometryStrokeWidth") && $("#avisoGeometryStrokeWidth").value !== "") {
-      changed["stroke-width"] = Math.max(0, Number($("#avisoGeometryStrokeWidth").value) || 0);
+      changed["stroke-width"] = clamp(Number($("#avisoGeometryStrokeWidth").value), 0.25, 8);
     }
     if (shouldApply("#avisoGeometryStrokeOpacity")) {
       changed["stroke-opacity"] = clamp(Number($("#avisoGeometryStrokeOpacity").value) / 100, 0, 1);
     }
 
     const visibility = $("#avisoGeometryVisible");
-    const applyVisibility = !multi || visibility.dataset.touched === "true";
+    const applyVisibility = visibility.dataset.touched === "true";
 
     if (!Object.keys(changed).length && !applyVisibility) {
       if (feedback) showToast("Change at least one shared geometry property");
@@ -3948,10 +3950,10 @@
       paint[key] = reader(control.value);
     };
     add("text-font", "#avisoTextFont", value => value.trim() || "Arial");
-    add("text-size", "#avisoTextSize", value => clamp(Number(value), 1, 80));
+    add("text-size", "#avisoTextSize", value => clamp(Number(value), 6, 32));
     add("text-color", "#avisoTextColor", value => normalizeHex(value, entry.paint["text-color"] || "#808080").toUpperCase());
     add("text-halo-color", "#avisoTextHaloColor", value => normalizeHex(value, entry.paint["text-halo-color"] || "#000000").toUpperCase());
-    add("text-halo-width", "#avisoTextHaloWidth", value => Math.max(0, Number(value) || 0));
+    add("text-halo-width", "#avisoTextHaloWidth", value => clamp(Number(value), 0, 6));
     add("zoomLevel", "#avisoTextZoomLevel", value => Math.round(clamp(value, 0, 14)));
     return paint;
   }
@@ -3962,9 +3964,12 @@
     const indices = textSelectionIndices(entry);
     if (!indices.length) return;
     const multi = indices.length > 1;
-    const paint = buildAvisoTextPaint(entry, multi);
+    // A selected-label edit must contain only fields changed by the user. The
+    // effective values shown for the other fields may come from a shared style
+    // or differ between selected labels and must not be copied implicitly.
+    const paint = buildAvisoTextPaint(entry, true);
     const visibility = $("#avisoTextVisible");
-    const applyVisibility = !multi || visibility.dataset.touched === "true";
+    const applyVisibility = visibility.dataset.touched === "true";
     let textChanged = false;
 
     if (!multi) {
@@ -4007,8 +4012,9 @@
   function applyAvisoTextStyle(scope = "style", { render = true, feedback = true } = {}) {
     const currentEntry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
     if (!currentEntry) return;
-    const selectedCount = textSelectionIndices(currentEntry).length;
-    const textPaint = buildAvisoTextPaint(currentEntry, selectedCount > 1);
+    // Group/all operations must never propagate untouched values from the
+    // currently displayed label into unrelated styles.
+    const textPaint = buildAvisoTextPaint(currentEntry, true);
     if (!Object.keys(textPaint).length) {
       if (feedback) showToast("Change at least one shared text style property");
       return false;
@@ -5242,6 +5248,7 @@
     if (!scope) return true;
     const sectionKey = editorSectionKey(control);
     if (sectionKey && !unappliedEditorSections.has(sectionKey)) return true;
+    if (control.checkValidity && !control.checkValidity()) return false;
     const result = withHistoryGesture(control, () => {
       if (scope === "colors") return applyColorDraft({ render: false });
       if (scope === "icons") return applyIcons({ render: false });
