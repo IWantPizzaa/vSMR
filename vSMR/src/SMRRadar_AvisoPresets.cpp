@@ -575,7 +575,7 @@ namespace
 		if (const rapidjson::Value* timer = GetObjectMember(value, "timer"))
 		{
 			out.timer.valid = true;
-			out.timer.area = { 100, 180, 226, 208 };
+			out.timer.area = { 100, 180, 268, 208 };
 			if (!ReadValidWindowRect(*timer, out.timer.area))
 				return false;
 			out.timer.visible = ReadBoolMember(*timer, "visible", out.timer.visible);
