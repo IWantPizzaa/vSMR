@@ -217,7 +217,7 @@ The METAR inset follows the active airport and displays a compact wind rose, win
 
 ### Timer inset
 
-The Timer contains independent `1M`, `2M`, `3M`, and `4M` countdowns:
+The Timer contains independent `1M`, `2M`, `3M`, and `4M` countdowns in a compact grid, with `1M`/`2M` on the top row and `3M`/`4M` below:
 
 - left-click a duration to start it
 - right-click the same duration to reset it
