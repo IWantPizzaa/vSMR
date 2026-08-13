@@ -1,4 +1,4 @@
-version: 2.0.0-beta.1.{build}
+version: 2.0.0-beta.2.{build}
 
 branches:
   only:
@@ -13,7 +13,7 @@ clone_depth: 20
 image: Visual Studio 2022
 
 environment:
-  VSMR_RELEASE_VERSION: 2.0.0-beta.1
+  VSMR_RELEASE_VERSION: 2.0.0-beta.2
 
 configuration: Release
 platform: Win32
@@ -86,15 +86,15 @@ after_build:
 test: off
 
 artifacts:
-  - path: artifacts\vSMR-2.0.0-beta.1.zip
-    name: vSMR-2.0.0-beta.1
-  - path: artifacts\vSMR-2.0.0-beta.1.zip.sha256
-    name: vSMR-2.0.0-beta.1-sha256
-  - path: artifacts\vSMR-2.0.0-beta.1-symbols.zip
-    name: vSMR-2.0.0-beta.1-private-symbols
-  - path: artifacts\vSMR-2.0.0-beta.1-pr-*-validation-only.zip
+  - path: artifacts\vSMR-2.0.0-beta.2.zip
+    name: vSMR-2.0.0-beta.2
+  - path: artifacts\vSMR-2.0.0-beta.2.zip.sha256
+    name: vSMR-2.0.0-beta.2-sha256
+  - path: artifacts\vSMR-2.0.0-beta.2-symbols.zip
+    name: vSMR-2.0.0-beta.2-private-symbols
+  - path: artifacts\vSMR-2.0.0-beta.2-pr-*-validation-only.zip
     name: vSMR-pr-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.1-pr-*-validation-only.zip.sha256
+  - path: artifacts\vSMR-2.0.0-beta.2-pr-*-validation-only.zip.sha256
     name: vSMR-pr-validation-only-sha256
-  - path: artifacts\vSMR-2.0.0-beta.1-pr-*-validation-only-symbols.zip
+  - path: artifacts\vSMR-2.0.0-beta.2-pr-*-validation-only-symbols.zip
     name: vSMR-pr-validation-only-private-symbols

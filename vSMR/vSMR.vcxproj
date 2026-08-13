@@ -263,7 +263,7 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\data.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
-        Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson" />
+        Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
       <_VsmrLegacyFlatAviso Include="$(OutDir)AVISO_*.geojson;$(OutDir)AVISO_*.geojson.bak" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />

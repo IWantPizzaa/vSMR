@@ -2,7 +2,7 @@
 
 vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement radar display for ground and low-level airport traffic. Version 2.0 adds a unified Control Center, AVISO editing, Windows-style inset windows, airport-scoped layouts, RIMCAS configuration, VACDM data, and Hoppie CPDLC/PDC workflows.
 
-Current version: **2.0.0-beta.1**
+Current version: **2.0.0-beta.2**
 
 This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not mix the DLL or data files from different builds.
 
@@ -40,7 +40,7 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 
 ### Install a release package
 
-1. Download the complete `vSMR-2.0.0-beta.1.zip` and its matching `.zip.sha256` file.
+1. Download the complete `vSMR-2.0.0-beta.2.zip` and its matching `.zip.sha256` file.
 2. Verify the ZIP checksum.
 3. Close EuroScope.
 4. Extract the package to a temporary directory.
@@ -483,7 +483,7 @@ That artifact is explicitly marked `publishable: false`. Verify a normal package
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_package.ps1 `
-  -ArchivePath .\artifacts\vSMR-2.0.0-beta.1.zip
+  -ArchivePath .\artifacts\vSMR-2.0.0-beta.2.zip
 ```
 
 Add `-AllowNonPublishable` only when verifying a deliberately non-publishable local artifact.
