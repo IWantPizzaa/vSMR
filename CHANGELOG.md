@@ -3,7 +3,8 @@
 ## [2.0.0-beta.1] - 2026-08-10
 
 This beta is a major runtime, configuration, and distribution update. It is
-intended for controlled operational testing rather than production promotion.
+intended for controlled operational testing rather than clear
+production promotion.
 
 ### Added
 
