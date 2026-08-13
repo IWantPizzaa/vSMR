@@ -27,6 +27,7 @@ intended for controlled operational testing rather than production promotion.
 
 ### Changed
 
+- Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
 - Replaced the previous editor and toolbar workflows with the Control Center, Runtime Menu, and optional compact FPS readout. The Control Center keeps its current page while open and restores its native window position across sessions.
 - Removed local `Update`, `Apply`, and `Revert` controls from Control Center editors. Profile, display, AVISO, alert, group, mode, CPDLC, and PDC reminder field changes now enter the shared draft automatically; the single global `Save` action validates, persists, and applies that draft.
 - Harmonized Control Center pages, Runtime Menu controls, inset title bars, and datalink dialogs around the same Cofrance/vSMR colors, spacing, typography, cards, buttons, and striped chrome.
@@ -47,6 +48,7 @@ intended for controlled operational testing rather than production promotion.
 
 ### Fixed
 
+- Removed the unsupported Visual C++ AVISO project-item wildcard. Runtime AVISO assets remain copied by the build target, without the Visual Studio IDE instability/performance warning.
 - Restored the Control Center color editor's full-spectrum hue rail and added a hue-colored, consistently positioned thumb instead of the browser-native monochrome slider.
 - Applied AVISO feature-level paint overrides after shared catalog defaults, so saved per-label text color, font, size, halo, anchor, and zoom changes now appear immediately after the main radar and inset renderers reload. The same precedence now covers feature-level geometry color, opacity, and width overrides.
 - Prevented a single AVISO edit from copying untouched paint or mixed visibility values into other labels/styles, rejected malformed hexadecimal colors instead of silently restoring the old value, and aligned both AVISO editors with the renderer's supported size and width ranges.

@@ -432,14 +432,16 @@ Review every report before sharing it. Operational callsigns or local paths can 
 
 ### Toolchain
 
-- Visual Studio 2022 with Desktop development with C++
-- MSVC x86 tools and MFC
+- Visual Studio or Microsoft C++ Build Tools with the `v145` toolset
+- MSVC x86 tools and MFC for `v145`
 - Windows 10 SDK
 - C++17
 - NuGet restore access for `Microsoft.Web.WebView2` `1.0.4078.44`
 - The repository-provided EuroScope SDK header and import library under `lib\`
 
-The checked-in project targets `v143`; the packaging script can select a newer installed `vNNN` toolset when it is compatible. Releases are built as `Release | Win32`.
+The checked-in Debug and Release configurations target `v145`. The packaging script detects the installed compatible `vNNN` toolset automatically; automated compatibility builds may override the project default explicitly. Releases are built as `Release | Win32`.
+
+The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file in `vSMR_Data`.
 
 ### Validate source data
 
