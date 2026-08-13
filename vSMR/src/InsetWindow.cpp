@@ -29,7 +29,7 @@ namespace
 	constexpr int kInsetResizeInsidePx = 5;
 	constexpr int kInsetResizeCornerPx = 18;
 	constexpr int kInsetDragThresholdPx = 4;
-	constexpr int kTimerContentWidth = 126;
+	constexpr int kTimerContentWidth = 168;
 	constexpr int kTimerContentHeight = 28;
 
 	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
@@ -2127,6 +2127,8 @@ void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int B
 		durationMinutes = 2;
 	else if (strcmp(sItemString, "timer.3m") == 0)
 		durationMinutes = 3;
+	else if (strcmp(sItemString, "timer.4m") == 0)
+		durationMinutes = 4;
 	if (durationMinutes == 0)
 		return;
 
@@ -2138,7 +2140,7 @@ void CInsetWindow::OnClickScreenObject(const char * sItemString, POINT Pt, int B
 
 void CInsetWindow::StartTimer(int durationMinutes)
 {
-	if (!IsTimer() || durationMinutes < 1 || durationMinutes > 3)
+	if (!IsTimer() || durationMinutes < 1 || durationMinutes > static_cast<int>(m_TimerDeadlineTicks.size()))
 		return;
 	const size_t index = static_cast<size_t>(durationMinutes - 1);
 	if (m_TimerDeadlineTicks[index] != 0)
@@ -2150,7 +2152,7 @@ void CInsetWindow::StartTimer(int durationMinutes)
 
 void CInsetWindow::ResetTimer(int durationMinutes)
 {
-	if (!IsTimer() || durationMinutes < 1 || durationMinutes > 3)
+	if (!IsTimer() || durationMinutes < 1 || durationMinutes > static_cast<int>(m_TimerDeadlineTicks.size()))
 		return;
 	const size_t index = static_cast<size_t>(durationMinutes - 1);
 	m_TimerDeadlineTicks[index] = 0;
@@ -2179,7 +2181,7 @@ bool CInsetWindow::UpdateTimerCountdowns()
 
 int CInsetWindow::GetTimerRemainingSeconds(int durationMinutes, unsigned long long now) const
 {
-	if (!IsTimer() || durationMinutes < 1 || durationMinutes > 3)
+	if (!IsTimer() || durationMinutes < 1 || durationMinutes > static_cast<int>(m_TimerDeadlineTicks.size()))
 		return 0;
 	const size_t index = static_cast<size_t>(durationMinutes - 1);
 	const unsigned long long deadline = m_TimerDeadlineTicks[index];
@@ -5156,13 +5158,14 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 	const int oldBkMode = ::SetBkMode(hDC, TRANSPARENT);
 	const unsigned long long now = ::GetTickCount64();
 
-	for (int durationMinutes = 1; durationMinutes <= 3; ++durationMinutes)
+	const int timerCount = static_cast<int>(m_TimerDeadlineTicks.size());
+	for (int durationMinutes = 1; durationMinutes <= timerCount; ++durationMinutes)
 	{
 		const int index = durationMinutes - 1;
 		CRect cell(
-			content.left + (content.Width() * index) / 3,
+			content.left + (content.Width() * index) / timerCount,
 			content.top,
-			content.left + (content.Width() * (index + 1)) / 3,
+			content.left + (content.Width() * (index + 1)) / timerCount,
 			content.bottom);
 		const int remainingSeconds = GetTimerRemainingSeconds(durationMinutes, now);
 		const bool running = m_TimerDeadlineTicks[static_cast<size_t>(index)] != 0;

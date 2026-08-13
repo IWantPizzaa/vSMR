@@ -534,7 +534,7 @@ void CSMRRadar::ResetInsetWindowState(int appWindowId, bool preserveVisibility)
 	}
 	else if (window->IsTimer())
 	{
-		window->m_Area = { 100, 180, 226, 208 };
+		window->m_Area = { 100, 180, 268, 208 };
 		window->m_AvisoLayoutMode = CInsetWindow::AvisoLayoutMode::Floating;
 	}
 	else
