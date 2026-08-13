@@ -1,6 +1,11 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
+# Canonical release data is serialized with LF regardless of Windows Git settings.
+vSMR/data/vSMR_Profiles.json text eol=lf
+vSMR/data/ICAO_Aircraft.json text eol=lf
+vSMR/data/AVISO/*.geojson text eol=lf
+
 # Custom for Visual Studio
 *.cs     diff=csharp
 
