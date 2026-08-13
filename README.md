@@ -141,6 +141,8 @@ If a Profiles or AVISO file changes outside vSMR while edits are pending, the Co
 
 Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
 
+The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. The hue thumb displays the currently selected hue while its position and degree readout cover the complete 0–360° range.
+
 ### Ground statuses and Line Up
 
 The vSMR ground-status menu offers only the statuses applicable at the active airport: departures get `No Status`, `Startup`, `Push`, `Taxi`, `Line Up`, and `Departure`; arrivals get `No Status`, `Taxi In`, `Parked`, and `Arrival`. Open it by left-clicking a callsign or ground-status tag item; right-clicking the ground-status item opens the same menu.
