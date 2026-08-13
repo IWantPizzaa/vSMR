@@ -265,9 +265,6 @@
     <None Include="data\vSMR_Profiles.json">
       <Filter>Data</Filter>
     </None>
-    <None Include="data\AVISO\????.geojson">
-      <Filter>Data</Filter>
-    </None>
     <None Include="vSMR_webUI\app.js">
       <Filter>Web UI</Filter>
     </None>
