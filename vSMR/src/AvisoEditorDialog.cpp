@@ -2747,7 +2747,7 @@ bool CAvisoEditorDialog::ApplyFieldsToFeature(int featureIndex, bool markDirty, 
 		return rollbackAndFail();
 	if (IsFieldDirty(kDirtyStrokeOpacity) && !setOptionalNumber("stroke-opacity", GetEditText(StrokeOpacityEdit), 0.0, 1.0))
 		return rollbackAndFail();
-	if (IsFieldDirty(kDirtyStrokeWidth) && !setOptionalNumber("stroke-width", GetEditText(StrokeWidthEdit), 0.0, 32.0))
+	if (IsFieldDirty(kDirtyStrokeWidth) && !setOptionalNumber("stroke-width", GetEditText(StrokeWidthEdit), 0.25, 8.0))
 		return rollbackAndFail();
 
 	const bool selectedTextTab = PropertyTabs.GetCurSel() == kPropertyTabText;
@@ -2774,13 +2774,13 @@ bool CAvisoEditorDialog::ApplyFieldsToFeature(int featureIndex, bool markDirty, 
 		setOptionalString("text-font", GetEditText(TextFontEdit).empty() ? "Arial" : GetEditText(TextFontEdit));
 	if (IsFieldDirty(kDirtyTextColor) && !setOptionalHex("text-color", GetEditText(TextColorEdit)))
 		return rollbackAndFail();
-	if (IsFieldDirty(kDirtyTextSize) && !setOptionalNumber("text-size", GetEditText(TextSizeEdit), 1.0, 128.0))
+	if (IsFieldDirty(kDirtyTextSize) && !setOptionalNumber("text-size", GetEditText(TextSizeEdit), 6.0, 32.0))
 		return rollbackAndFail();
 	if (!batchStyleOnly && IsFieldDirty(kDirtyTextAnchor))
 		setOptionalString("text-anchor", GetEditText(TextAnchorEdit).empty() ? "center" : GetEditText(TextAnchorEdit));
 	if (IsFieldDirty(kDirtyHaloColor) && !setOptionalHex("text-halo-color", GetEditText(HaloColorEdit)))
 		return rollbackAndFail();
-	if (IsFieldDirty(kDirtyHaloWidth) && !setOptionalNumber("text-halo-width", GetEditText(HaloWidthEdit), 0.0, 32.0))
+	if (IsFieldDirty(kDirtyHaloWidth) && !setOptionalNumber("text-halo-width", GetEditText(HaloWidthEdit), 0.0, 6.0))
 		return rollbackAndFail();
 
 	if (batchStyleOnly)
