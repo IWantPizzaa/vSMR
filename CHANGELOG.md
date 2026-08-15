@@ -10,8 +10,6 @@
 
 - Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
 - Updated the affected bundled AVISO label styles to use `#CCCCCC` text.
-- Bumped plugin, Windows resource, documentation, validation, and archive metadata to `2.0.0-beta.2`.
-- Pinned canonical profile, aircraft, and AVISO data to LF line endings so release validation is stable on Windows checkouts, and excluded AVISO aggregate/version source files from runtime packages.
 
 ### Fixed
 

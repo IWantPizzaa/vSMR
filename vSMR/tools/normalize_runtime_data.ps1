@@ -529,7 +529,7 @@ function Test-HiddenAvisoFeature {
 }
 
 function Get-AvisoGroupIds {
-    param($Properties)
+    param($Properties, [bool]$PreserveEmptyPlaceholder = $false)
 
     foreach ($key in @("vsmr_group_ids", "vsmr_groups", "group_ids", "group_id", "vsmr_group_id")) {
         if (-not (Test-JsonProperty $Properties $key)) {
@@ -547,9 +547,18 @@ function Get-AvisoGroupIds {
         elseif (-not [string]::IsNullOrWhiteSpace([string]$value)) {
             [void]$ids.Add([string]$value)
         }
-        return ,$ids.ToArray()
+        if ($ids.Count -gt 0) {
+            return $ids.ToArray()
+        }
+        if ($PreserveEmptyPlaceholder) {
+            return ,@()
+        }
+        return @()
     }
-    return ,@()
+    if ($PreserveEmptyPlaceholder) {
+        return ,@()
+    }
+    return @()
 }
 
 function Get-AvisoAirportFromFileName {
@@ -574,6 +583,7 @@ function Normalize-AvisoFile {
 
     $airport = Get-AvisoAirportFromFileName $File.Name
     $isLfpg = $airport -eq "LFPG"
+    $hasExplicitGroups = Test-JsonProperty $document "vsmr_groups"
     $styles = [ordered]@{}
 
     if ((Test-JsonProperty $document "metadata") -and
@@ -700,7 +710,15 @@ function Normalize-AvisoFile {
             $properties["visible"] = $false
         }
 
-        $groupIds = @(Get-AvisoGroupIds $sourceProperties)
+        # Older bundled documents without a group catalog contain a generated
+        # empty membership placeholder on every feature. Preserve that legacy
+        # shape until the document opts into groups, while group-enabled
+        # documents always receive the runtime's flat string-array format.
+        $groupIds = @(
+            Get-AvisoGroupIds `
+                $sourceProperties `
+                (-not $hasExplicitGroups)
+        )
         if ($groupIds.Count -gt 0) {
             $properties["vsmr_group_ids"] = $groupIds
         }
