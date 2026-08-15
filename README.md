@@ -155,7 +155,7 @@ The bundled profile database uses schema 2. Older supported keys are normalized 
 
 ### Tags and structured rules
 
-Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state. The Control Center token picker includes both `scratchpad` and the flight-strip annotation `remark` token.
+Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state. The Control Center token picker includes both `scratchpad` and the flight-strip annotation `remark` token. Tag backgrounds use compact text padding consistently in the main radar, AVISO inset, and SRW 1 inset.
 
 Structured rules can match runway, custom, status, detail, and VACDM conditions, then override target, tag, or text colors. Rules are evaluated in profile order.
 

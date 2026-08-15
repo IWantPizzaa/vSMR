@@ -4358,7 +4358,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				tagCenter.y - (tagHeight / 2),
 				tagCenter.x + (tagWidth / 2),
 				tagCenter.y + (tagHeight / 2));
-			tagBackgroundRect.InflateRect(3, 3);
+			const int tagPadding = 1;
+			tagBackgroundRect.InflateRect(tagPadding, tagPadding);
 			tagBackgroundRect.NormalizeRect();
 			if (!rectIntersectsViewport(tagBackgroundRect) && !pointInViewport(targetPoint, 20))
 				return;
@@ -4383,9 +4384,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			SolidBrush alertTextBrushStageOne(Color(255, 30, 30, 30));
 			SolidBrush alertTextBrushStageTwo(Color(255, 255, 255, 255));
 
-			const int textLeft = tagBackgroundRect.left + 3;
-			const int textTop = tagBackgroundRect.top + 3;
-			const int textWidth = max(0, tagBackgroundRect.Width() - 6);
+			const int textLeft = tagBackgroundRect.left + tagPadding;
+			const int textTop = tagBackgroundRect.top + tagPadding;
+			const int textWidth = max(0, tagBackgroundRect.Width() - (tagPadding * 2));
 			int heightOffset = 0;
 			for (auto&& line : renderedLines)
 			{
@@ -6066,7 +6067,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			windowAreaCRect.PtInRect(RtPoint) &&
 			windowAreaCRect.PtInRect(TagBackgroundRect.BottomRight())) {
 
-			const int padding = 3;
+			const int padding = 1;
 			TagBackgroundRect = CRect(TagBackgroundRect.left - padding, TagBackgroundRect.top - padding, TagBackgroundRect.right + padding, TagBackgroundRect.bottom + padding);
 			int textLeft = TagBackgroundRect.left + padding;
 			int textTop = TagBackgroundRect.top + padding;
