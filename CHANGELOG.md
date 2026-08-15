@@ -12,6 +12,7 @@
 
 - Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
 - Updated the affected bundled AVISO label styles to use `#CCCCCC` text.
+- Removed the rounded corners from the Runtime Menu's outer frame while retaining rounded action buttons and icons.
 
 ### Fixed
 
