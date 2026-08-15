@@ -10,6 +10,8 @@
 
 ### Changed
 
+- Reduced tag background padding in the main radar, AVISO inset, and SRW 1 inset so boxes fit their text more closely.
+
 - Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
 - Updated the affected bundled AVISO label styles to use `#CCCCCC` text.
 - Removed the rounded corners from the Runtime Menu's outer frame while retaining rounded action buttons and icons.
