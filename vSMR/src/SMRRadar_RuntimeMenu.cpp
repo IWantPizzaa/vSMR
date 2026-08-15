@@ -96,12 +96,30 @@ namespace
 		::RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, diameter, diameter);
 	}
 
+	void DrawSquareRect(HDC hdc, const CRect& rect, COLORREF fill, COLORREF border)
+	{
+		::SetDCBrushColor(hdc, fill);
+		::SetDCPenColor(hdc, border);
+		::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
+		::SelectObject(hdc, ::GetStockObject(DC_PEN));
+		::Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+	}
+
 	void DrawRoundedBorder(HDC hdc, const CRect& rect, COLORREF border, int diameter)
 	{
 		::SetDCPenColor(hdc, border);
 		::SelectObject(hdc, ::GetStockObject(NULL_BRUSH));
 		::SelectObject(hdc, ::GetStockObject(DC_PEN));
 		::RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, diameter, diameter);
+		::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
+	}
+
+	void DrawSquareBorder(HDC hdc, const CRect& rect, COLORREF border)
+	{
+		::SetDCPenColor(hdc, border);
+		::SelectObject(hdc, ::GetStockObject(NULL_BRUSH));
+		::SelectObject(hdc, ::GetStockObject(DC_PEN));
+		::Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
 		::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
 	}
 
@@ -327,7 +345,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const Gdiplus::GraphicsState initialGraphicsState = graphics.Save();
 	graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
-	DrawRoundedRect(hdc, RuntimeMenuArea, kRailBackground, kOuterBorder, kPanelCornerDiameter);
+	DrawSquareRect(hdc, RuntimeMenuArea, kRailBackground, kOuterBorder);
 
 	CRect dragArea(
 		RuntimeMenuArea.left + 1,
@@ -335,13 +353,11 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		RuntimeMenuArea.right - 1,
 		RuntimeMenuArea.top + kDragHeight);
 	const int dragClipDc = ::SaveDC(hdc);
-	HRGN railClip = ::CreateRoundRectRgn(
+	HRGN railClip = ::CreateRectRgn(
 		RuntimeMenuArea.left,
 		RuntimeMenuArea.top,
 		RuntimeMenuArea.right + 1,
-		RuntimeMenuArea.bottom + 1,
-		kPanelCornerDiameter,
-		kPanelCornerDiameter);
+		RuntimeMenuArea.bottom + 1);
 	if (railClip != nullptr)
 	{
 		::ExtSelectClipRgn(hdc, railClip, RGN_AND);
@@ -368,7 +384,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		::RestoreDC(hdc, stripeDc);
 	}
 	::RestoreDC(hdc, dragClipDc);
-	DrawRoundedBorder(hdc, RuntimeMenuArea, kOuterBorder, kPanelCornerDiameter);
+	DrawSquareBorder(hdc, RuntimeMenuArea, kOuterBorder);
 	AddScreenObject(
 		RUNTIME_MENU_RAIL,
 		"runtime.drag",
