@@ -441,7 +441,7 @@ Review every report before sharing it. Operational callsigns or local paths can 
 - NuGet restore access for `Microsoft.Web.WebView2` `1.0.4078.44`
 - The repository-provided EuroScope SDK header and import library under `lib\`
 
-The checked-in Debug and Release configurations target `v145`. The packaging script detects the installed compatible `vNNN` toolset automatically; automated compatibility builds may override the project default explicitly. Releases are built as `Release | Win32`.
+The solution exposes `Release | Win32` as its sole configuration, so a normal **Build Solution** or an MSBuild invocation without an explicit configuration produces the optimized DLL in `Release\vSMR.dll`. The project retains an explicit Debug configuration for targeted diagnostics, but it must be selected by building the project directly. Both configurations target `v145`. The packaging script detects the installed compatible `vNNN` toolset automatically; automated compatibility builds may override the project default explicitly.
 
 The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file in `vSMR_Data`.
 
