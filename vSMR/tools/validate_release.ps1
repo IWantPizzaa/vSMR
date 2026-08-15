@@ -31,6 +31,7 @@ foreach ($relativePath in @(
     "vSMR\include\SMRPlugin.hpp",
     "vSMR\resources\vSMR.rc",
     "vSMR\vSMR.vcxproj",
+    "vSMR.sln",
     "vSMR\data\vSMR_Profiles.json",
     "vSMR\data\ICAO_Aircraft.json",
     "vSMR\data\Licenses\DEPENDENCIES.md",
@@ -53,6 +54,7 @@ $ciText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "appveyor.yml
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "README.md"))
 $changelogText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "CHANGELOG.md"))
 $packageScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\tools\package_release.ps1"))
+$solutionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR.sln"))
 Assert-True ($headerText -match "MY_PLUGIN_VERSION\s+`"v$escapedVersion`"") "Plugin version macro is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Windows FileVersion is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Windows ProductVersion is inconsistent."
@@ -62,6 +64,8 @@ Assert-True ($readmeText.Contains($ExpectedVersion)) "README does not identify t
 Assert-True ($changelogText -match "\[$escapedVersion\]") "CHANGELOG has no beta release section."
 Assert-True ($packageScriptText -match '_vsmr-package-.+NewGuid') "Release packaging must use a private GUID staging directory."
 Assert-True (-not ($packageScriptText -match 'Join-Path\s+\$ArtifactsDirectory\s+"_staging"')) "Release packaging must not delete a caller-owned fixed _staging directory."
+Assert-True ($solutionText -match '(?m)^\s*Release\|Win32\s*=\s*Release\|Win32\s*$') "The solution does not expose Release|Win32."
+Assert-True (-not ($solutionText -match '(?m)^\s*Debug\|Win32\s*=\s*Debug\|Win32\s*$')) "The solution must default to its sole Release|Win32 configuration."
 
 $legacyThreads = @(
     Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot "vSMR\src"), (Join-Path $RepositoryRoot "vSMR\include") -Recurse -File |
