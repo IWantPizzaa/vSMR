@@ -1141,8 +1141,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled
 
 		// Drawing the tag background
 
-		// Slightly enlarge tag hitbox, center it, and draw rounded background.
-		const int padding = 3;
+		// Keep the tag hitbox compact while retaining a small text inset.
+		const int padding = 1;
 		const int tagBackgroundLeft = TagCenter.x - (TagWidth / 2) - padding;
 		const int tagBackgroundTop = TagCenter.y - (TagHeight / 2) - padding;
 		CRect TagBackgroundRect(tagBackgroundLeft, tagBackgroundTop, tagBackgroundLeft + TagWidth + (padding * 2), tagBackgroundTop + TagHeight + (padding * 2));
