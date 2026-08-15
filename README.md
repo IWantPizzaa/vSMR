@@ -190,7 +190,7 @@ The compact Runtime Menu provides quick access to:
 - airport-specific inset presets and defaults
 - the Control Center
 
-The menu position, minimized state, and radar-window state are saved with the EuroScope ASR. Right-click the striped top handle to collapse the Runtime Menu to that handle only; right-click it again to restore the airport and action buttons. Inset presets are stored by airport, not by profile, so switching profiles does not remove or replace the current airport's presets.
+The Runtime Menu uses a square outer frame while retaining rounded action buttons. Its position, minimized state, and radar-window state are saved with the EuroScope ASR. Right-click the striped top handle to collapse the Runtime Menu to that handle only; right-click it again to restore the airport and action buttons. Inset presets are stored by airport, not by profile, so switching profiles does not remove or replace the current airport's presets.
 
 ### Window movement, snapping, and resizing
 
