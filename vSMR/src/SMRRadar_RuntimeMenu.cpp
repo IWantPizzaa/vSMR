@@ -296,27 +296,28 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	chatArea.NormalizeRect();
 	if (!chatArea.IsRectEmpty() && chatArea.top > bounds.top && chatArea.top < bounds.bottom)
 		bounds.bottom = chatArea.top;
-	if (bounds.Width() < kRailWidth + 8 || bounds.Height() < kRailHeight + 8)
+	const int railHeight = RuntimeMenuMinimized ? kDragHeight : kRailHeight;
+	if (bounds.Width() < kRailWidth + 8 || bounds.Height() < railHeight + 8)
 		return;
 
 	if (!RuntimeMenuPositionInitialized)
 	{
 		RuntimeMenuPosition.x = bounds.left + 14;
-		RuntimeMenuPosition.y = bounds.top + ((bounds.Height() - kRailHeight) / 2);
+		RuntimeMenuPosition.y = bounds.top + ((bounds.Height() - railHeight) / 2);
 		RuntimeMenuPositionInitialized = true;
 	}
 
 	const LONG minLeft = bounds.left + 4;
 	const LONG maxLeft = bounds.right - kRailWidth - 4;
 	const LONG minTop = bounds.top + 4;
-	const LONG maxTop = bounds.bottom - kRailHeight - 4;
+	const LONG maxTop = bounds.bottom - railHeight - 4;
 	const LONG renderedLeft = std::clamp(RuntimeMenuPosition.x, minLeft, maxLeft);
 	const LONG renderedTop = std::clamp(RuntimeMenuPosition.y, minTop, maxTop);
 	RuntimeMenuArea = CRect(
 		renderedLeft,
 		renderedTop,
 		renderedLeft + kRailWidth,
-		renderedTop + kRailHeight);
+		renderedTop + railHeight);
 
 	const int savedDc = ::SaveDC(hdc);
 	::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
@@ -368,7 +369,24 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	::RestoreDC(hdc, dragClipDc);
 	DrawRoundedBorder(hdc, RuntimeMenuArea, kOuterBorder, kPanelCornerDiameter);
-	AddScreenObject(RUNTIME_MENU_RAIL, "runtime.drag", dragArea, true, "Drag vSMR runtime menu");
+	AddScreenObject(
+		RUNTIME_MENU_RAIL,
+		"runtime.drag",
+		dragArea,
+		true,
+		RuntimeMenuMinimized
+			? "Drag vSMR runtime menu; right-click to expand"
+			: "Drag vSMR runtime menu; right-click to minimize");
+
+	if (RuntimeMenuMinimized)
+	{
+		ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
+		RuntimeMenuPopupScrollOffset = 0;
+		RuntimeMenuPopupArea.SetRectEmpty();
+		graphics.Restore(initialGraphicsState);
+		::RestoreDC(hdc, savedDc);
+		return;
+	}
 
 	CRect airportArea(
 		RuntimeMenuArea.left + 4,
@@ -1053,6 +1071,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	};
 
 	const char* id = objectId != nullptr ? objectId : "";
+	if (button == BUTTON_RIGHT &&
+		objectType == RUNTIME_MENU_RAIL &&
+		std::strcmp(id, "runtime.drag") == 0)
+	{
+		RuntimeMenuMinimized = !RuntimeMenuMinimized;
+		ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
+		RuntimeMenuPopupScrollOffset = 0;
+		SaveRuntimeMenuPositionToAsr();
+		RequestRefresh();
+		return true;
+	}
 	if (button != BUTTON_LEFT)
 	{
 		if (objectType == RUNTIME_MENU_POPUP || std::strcmp(id, "runtime.drag") == 0)
@@ -1341,6 +1370,9 @@ void CSMRRadar::CloseRuntimeMenuPopup()
 
 void CSMRRadar::LoadRuntimeMenuPositionFromAsr()
 {
+	const char* minimizedText = GetDataFromAsr("RuntimeMenuMinimized");
+	RuntimeMenuMinimized = minimizedText != nullptr && std::atoi(minimizedText) != 0;
+
 	LONG x = 0;
 	LONG y = 0;
 	const char* xText = GetDataFromAsr("RuntimeMenuX");
@@ -1360,4 +1392,8 @@ void CSMRRadar::SaveRuntimeMenuPositionToAsr()
 	const std::string y = std::to_string(RuntimeMenuPosition.y);
 	SaveDataToAsr("RuntimeMenuX", "vSMR runtime menu X position", x.c_str());
 	SaveDataToAsr("RuntimeMenuY", "vSMR runtime menu Y position", y.c_str());
+	SaveDataToAsr(
+		"RuntimeMenuMinimized",
+		"vSMR runtime menu minimized state",
+		RuntimeMenuMinimized ? "1" : "0");
 }

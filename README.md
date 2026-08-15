@@ -155,7 +155,7 @@ The bundled profile database uses schema 2. Older supported keys are normalized 
 
 ### Tags and structured rules
 
-Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state.
+Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state. The Control Center token picker includes both `scratchpad` and the flight-strip annotation `remark` token.
 
 Structured rules can match runway, custom, status, detail, and VACDM conditions, then override target, tag, or text colors. Rules are evaluated in profile order.
 
@@ -190,7 +190,7 @@ The compact Runtime Menu provides quick access to:
 - airport-specific inset presets and defaults
 - the Control Center
 
-The menu position and radar-window state are saved with the EuroScope ASR. Inset presets are stored by airport, not by profile, so switching profiles does not remove or replace the current airport's presets.
+The menu position, minimized state, and radar-window state are saved with the EuroScope ASR. Right-click the striped top handle to collapse the Runtime Menu to that handle only; right-click it again to restore the airport and action buttons. Inset presets are stored by airport, not by profile, so switching profiles does not remove or replace the current airport's presets.
 
 ### Window movement, snapping, and resizing
 
@@ -319,6 +319,8 @@ The `Settings` page contains the CPDLC connection and automatic PDC reminder con
 - a `Datalink clearance` tag item and `Datalink menu` tag function
 
 The PDC window uses operational field names including `ADEP`, `ADES`, and `RWY`.
+
+Automatic CDM reminders preserve the contents, selection, and focus of EuroScope's command/message bar while vSMR submits the generated private message.
 
 CPDLC connection and reminder settings use a separate protected EuroScope settings store rather than profile JSON or AVISO. Their field changes remain pending until the same global `Save` action is pressed. The explicit Connect and PDC Run/Stop actions can first persist the settings required for that live operation; there is no separate Update action.
 

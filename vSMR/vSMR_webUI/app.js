@@ -52,7 +52,7 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_SOURCES = ["vacdm", "runway", "aircraft", "flightplan", "tag", "aviso"];
   const ALERT_TYPES = [
     { id: "NO PUSH", description: "Pushback not authorized" },

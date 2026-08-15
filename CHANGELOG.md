@@ -5,6 +5,8 @@
 ### Added
 
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
+- Added the `remark` flight-strip annotation to the Control Center tag-token list.
+- Added a persistent minimized Runtime Menu state: right-clicking the striped top handle now hides or restores all controls below it.
 
 ### Changed
 
@@ -19,6 +21,7 @@
 - Applied AVISO feature-level paint overrides after shared catalog defaults, so saved per-label text color, font, size, halo, anchor, and zoom changes now appear immediately after the main radar and inset renderers reload. The same precedence now covers feature-level geometry color, opacity, and width overrides.
 - Prevented a single AVISO edit from copying untouched paint or mixed visibility values into other labels/styles, rejected malformed hexadecimal colors instead of silently restoring the old value, and aligned both AVISO editors with the renderer's supported size and width ranges.
 - Preserved intentional feature-level AVISO paint overrides during runtime-data normalization and now reports when a successful save cannot be reloaded by one or more radar renderers.
+- Preserved text, selection, and focus in EuroScope's command/message bar when an automatic CDM reminder injects and submits its private-message command.
 
 ## [2.0.0-beta.1] - 2026-08-10
 
