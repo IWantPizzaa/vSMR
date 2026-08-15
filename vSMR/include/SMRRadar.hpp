@@ -369,6 +369,7 @@ public:
 	std::string PendingGroundStatusCallsign;
 	POINT RuntimeMenuPosition = { 14, 100 };
 	bool RuntimeMenuPositionInitialized = false;
+	bool RuntimeMenuMinimized = false;
 	bool InitialInsetStateRestorePending = false;
 	CRect InitialInsetStateRestoreBounds = { 0, 0, 0, 0 };
 	int InitialInsetStateRestoreStableFrames = 0;

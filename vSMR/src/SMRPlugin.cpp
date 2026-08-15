@@ -1458,6 +1458,47 @@ namespace
 		if (editControl == nullptr)
 			return false;
 
+		// EuroScope does not expose an API for sending a private chat message, so
+		// the CDM reminder uses its command edit. Preserve any command/message the
+		// controller is composing, including the selection, and restore it after
+		// the injected command is handled synchronously.
+		constexpr int kMaximumPreservedCommandCharacters = 64 * 1024;
+		const int originalTextLength = ::GetWindowTextLengthA(editControl);
+		if (originalTextLength < 0 || originalTextLength > kMaximumPreservedCommandCharacters)
+			return false;
+		std::vector<char> originalTextBuffer(static_cast<size_t>(originalTextLength) + 1U, '\0');
+		if (originalTextLength > 0 &&
+			::GetWindowTextA(
+				editControl,
+				originalTextBuffer.data(),
+				static_cast<int>(originalTextBuffer.size())) != originalTextLength)
+		{
+			return false;
+		}
+		const std::string originalText(originalTextBuffer.data(), static_cast<size_t>(originalTextLength));
+		DWORD selectionStart = 0;
+		DWORD selectionEnd = 0;
+		::SendMessageA(
+			editControl,
+			EM_GETSEL,
+			reinterpret_cast<WPARAM>(&selectionStart),
+			reinterpret_cast<LPARAM>(&selectionEnd));
+		HWND originalFocus = ::GetFocus();
+
+		auto restoreControllerInput = [&]()
+		{
+			if (!::IsWindow(editControl))
+				return;
+			::SetWindowTextA(editControl, originalText.c_str());
+			::SendMessageA(
+				editControl,
+				EM_SETSEL,
+				static_cast<WPARAM>(selectionStart),
+				static_cast<LPARAM>(selectionEnd));
+			if (originalFocus != nullptr && ::IsWindow(originalFocus) && ::GetFocus() != originalFocus)
+				::SetFocus(originalFocus);
+		};
+
 		DWORD_PTR messageResult = 0;
 		if (::SendMessageTimeoutA(
 			editControl,
@@ -1468,12 +1509,30 @@ namespace
 			250,
 			&messageResult) == 0)
 		{
+			restoreControllerInput();
 			return false;
 		}
 
-		const bool keyDownPosted = (::PostMessage(editControl, WM_KEYDOWN, VK_RETURN, 0) != 0);
-		const bool keyUpPosted = (::PostMessage(editControl, WM_KEYUP, VK_RETURN, 0) != 0);
-		return keyDownPosted && keyUpPosted;
+		DWORD_PTR keyDownResult = 0;
+		const bool keyDownHandled = ::SendMessageTimeoutA(
+			editControl,
+			WM_KEYDOWN,
+			VK_RETURN,
+			0,
+			SMTO_ABORTIFHUNG,
+			250,
+			&keyDownResult) != 0;
+		DWORD_PTR keyUpResult = 0;
+		const bool keyUpHandled = ::SendMessageTimeoutA(
+			editControl,
+			WM_KEYUP,
+			VK_RETURN,
+			0,
+			SMTO_ABORTIFHUNG,
+			250,
+			&keyUpResult) != 0;
+		restoreControllerInput();
+		return keyDownHandled && keyUpHandled;
 	}
 
 	bool SendPrivateChatMessageLikeDotMsg(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign, const std::string& message)
