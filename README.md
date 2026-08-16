@@ -184,7 +184,7 @@ A reusable entry in the document's `styles` catalog supplies the default paint f
 - A polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
 - A polygon with no connected owner in its chain is hidden.
 - DEL frequency points are ignored until dedicated DEL polygons are available.
-- Controller connection, disconnection, position, or primary-frequency changes invalidate the existing shared AVISO raster state, so the main display and AVISO inset update together.
+- Controller connection, disconnection, position, or primary-frequency changes update the main display and AVISO inset together. Takeover rules are cached when the GeoJSON loads, and routine updates from controllers outside those LFPG chains do not invalidate the AVISO raster, preventing periodic map flicker while connected.
 
 This dynamic behavior is enabled only for LFPG in beta.2. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
 
