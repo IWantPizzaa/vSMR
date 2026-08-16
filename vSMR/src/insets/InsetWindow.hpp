@@ -5,7 +5,6 @@
 #include <map>
 #include <memory>
 #include <GdiPlus.h>
-#include "shared/logging/Logger.hpp"
 
 using namespace std;
 using namespace EuroScopePlugIn;

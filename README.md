@@ -464,7 +464,7 @@ Keep the `.txt`, `.dmp`, exact `vSMR.dll`, `vSMRCrashHandler.dll`, and matching 
 
 ## Building from Source
 
-The implementation is organized by feature under `vSMR\src\`, with headers colocated beside their implementations. See the [project structure guide](docs/PROJECT_STRUCTURE.md) for feature ownership, include conventions, build boundaries, and the stable runtime/package layout.
+The implementation is organized by feature under `vSMR\src\`, with headers colocated beside their implementations. The Repository Layout section below summarizes feature ownership and the stable runtime/package boundary.
 
 ### Toolchain
 
@@ -580,7 +580,7 @@ vSMR\
     rdf\              Native TrackAudio RDF overlay
     crash\            WER registration, protocol, and breadcrumbs
       handler\         Packaged x86 out-of-process WER callback project
-  resources\          Resource scripts, cursors, audio, and exports
+  resources\          Windows resource scripts, cursors, and DLL exports
   data\               Runtime data copied to vSMR_Data in Release
   tools\              Data, release, and package-verification tools
     crash_harness\    Isolated crash-report harness and runner

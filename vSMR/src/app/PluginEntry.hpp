@@ -1,5 +1,4 @@
-// vSMR.h : main header file for the vSMR DLL
-//
+// Main application declarations for vSMR.dll.
 
 #pragma once
 #include "EuroScopePlugIn.h"
@@ -9,11 +8,11 @@
 	#error "include 'platform/windows/PrecompiledHeader.hpp' before including this file for PCH"
 #endif
 
-#include "platform/windows/ResourceIds.h"		// main symbols
+#include "platform/windows/ResourceIds.h"
 
 
 // CvSMRApp
-// See vSMR.cpp for the implementation of this class
+// See app/PluginEntry.cpp for the implementation of this class.
 //
 
 class CvSMRApp : public CWinApp

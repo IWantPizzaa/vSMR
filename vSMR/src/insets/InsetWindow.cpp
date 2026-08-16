@@ -9,6 +9,7 @@
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "shared/logging/Logger.hpp"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -5683,26 +5684,25 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		{
 			if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
 			{
-				m_TagAngles[rtCallsign] = 45.0; // TODO: Not the best, ah well
+				// Use a stable default leader angle until the tag is positioned manually.
+				m_TagAngles[rtCallsign] = 45.0;
 			}
 
 			TagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
 			TagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
 		}
-		// Drawing the tags, what a mess
+		// Build the replacement values used by the configured tag definition.
+		map<string, string> TagReplacingMap = CSMRRadar::GenerateTagData(
+			rt,
+			fp,
+			isASEL,
+			acIsCorrelatedForMode,
+			insetTagProModeEnabled,
+			insetTransitionAltitude,
+			insetUseAspeedForGate,
+			icao);
 
-			// ----- Generating the replacing map -----
-			map<string, string> TagReplacingMap = CSMRRadar::GenerateTagData(
-				rt,
-				fp,
-				isASEL,
-				acIsCorrelatedForMode,
-				insetTagProModeEnabled,
-				insetTransitionAltitude,
-				insetUseAspeedForGate,
-				icao);
-
-		// ----- Generating the clickable map -----
+		// Map displayed values to their clickable tag actions.
 		map<string, int> TagClickableMap;
 		TagClickableMap[TagReplacingMap["callsign"]] = TAG_CITEM_CALLSIGN;
 		TagClickableMap[TagReplacingMap["actype"]] = TAG_CITEM_FPBOX;

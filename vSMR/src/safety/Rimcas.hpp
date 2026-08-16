@@ -11,7 +11,6 @@
 #include <math.h>
 #include "radar/RadarUiSupport.hpp"
 #include <functional>
-#include "shared/logging/Logger.hpp"
 
 class CSMRRadar;
 using namespace std;
