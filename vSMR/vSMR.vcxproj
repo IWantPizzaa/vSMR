@@ -142,6 +142,7 @@
   <ItemGroup>
     <ClCompile Include="src\CallsignLookup.cpp" />
     <ClCompile Include="src\Config.cpp" />
+    <ClCompile Include="src\CrashReporter.cpp" />
     <ClCompile Include="src\CPDLCSettingsDialog.cpp" />
     <ClCompile Include="src\DataLinkDialog.cpp" />
     <ClCompile Include="src\HttpHelper.cpp" />
@@ -187,6 +188,7 @@
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
     <ClInclude Include="include\CallsignLookup.hpp" />
     <ClInclude Include="include\Config.hpp" />
+    <ClInclude Include="include\CrashReporter.hpp" />
     <ClInclude Include="include\Constant.hpp" />
     <ClInclude Include="include\CPDLCSettingsDialog.hpp" />
     <ClInclude Include="include\DataLinkDialog.hpp" />
