@@ -34,6 +34,7 @@ foreach ($relativePath in @(
     "vSMR.sln",
     "vSMR\data\vSMR_Profiles.json",
     "vSMR\data\ICAO_Aircraft.json",
+    "vSMR\data\AVISO\LFPG_Dyna.geojson",
     "vSMR\data\Licenses\DEPENDENCIES.md",
     "vSMR\data\Licenses\ASSET_PROVENANCE.md",
     "vSMR\vSMR_webUI\index.html",
@@ -142,6 +143,65 @@ foreach ($file in $avisoFiles) {
     $ids = @($document.features | ForEach-Object { [string]$_.id })
     Assert-True (@($ids | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) "$($file.Name) contains an empty feature id."
     Assert-True (@($ids | Sort-Object -Unique).Count -eq $ids.Count) "$($file.Name) contains duplicate feature ids."
+}
+
+$dynamicAvisoPath = Join-Path $dataDirectory "AVISO\LFPG_Dyna.geojson"
+$dynamicAviso = Get-Content -LiteralPath $dynamicAvisoPath -Raw | ConvertFrom-Json
+Assert-True ($dynamicAviso.type -eq 'FeatureCollection') "LFPG_Dyna.geojson is not a FeatureCollection."
+Assert-True ([int]$dynamicAviso.metadata.schema_version -eq 2 -and
+    [string]$dynamicAviso.metadata.airport -eq 'LFPG') "LFPG_Dyna.geojson metadata is not LFPG schema 2."
+$dynamicFeatures = @($dynamicAviso.features)
+Assert-True ([int]$dynamicAviso.metadata.feature_count -eq $dynamicFeatures.Count) "LFPG_Dyna.geojson feature count is stale."
+$dynamicIds = @($dynamicFeatures | ForEach-Object { [string]$_.id })
+Assert-True (@($dynamicIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) "LFPG_Dyna.geojson contains an empty feature id."
+Assert-True (@($dynamicIds | Sort-Object -Unique).Count -eq $dynamicIds.Count) "LFPG_Dyna.geojson contains duplicate feature ids."
+$dynamicAreas = @($dynamicFeatures | Where-Object {
+    [string]$_.properties.geometry_role -eq 'frequency_ownership_area'
+})
+$dynamicLabels = @($dynamicFeatures | Where-Object {
+    [string]$_.properties.feature_type -eq 'frequency_point'
+})
+Assert-True ($dynamicAreas.Count -gt 0) "LFPG_Dyna.geojson contains no frequency ownership areas."
+Assert-True ($dynamicLabels.Count -gt 0) "LFPG_Dyna.geojson contains no dynamic frequency labels."
+Assert-True (@($dynamicAreas | Where-Object { [string]$_.properties.service -eq 'DEL' }).Count -eq 0) "LFPG_Dyna.geojson must not define DEL polygons yet."
+foreach ($area in $dynamicAreas) {
+    $service = [string]$area.properties.service
+    $ownerKey = [string]$area.properties.owner_key
+    $chain = @($area.properties.takeover_chain)
+    Assert-True ($service -in @('RMP', 'GND', 'TWR')) "LFPG_Dyna.geojson contains unsupported polygon service '$service'."
+    Assert-True (-not [string]::IsNullOrWhiteSpace([string]$area.properties.frequency)) "LFPG_Dyna.geojson contains an area without a frequency."
+    Assert-True (-not [string]::IsNullOrWhiteSpace($ownerKey) -and $chain.Count -gt 0) "LFPG_Dyna.geojson contains an area without an ownership chain."
+    Assert-True ([string]$chain[0] -eq $ownerKey) "LFPG_Dyna.geojson area '$($area.id)' does not start its takeover chain with owner_key."
+    $sourceId = [string]$area.properties.dynamic_source_id
+    Assert-True (-not [string]::IsNullOrWhiteSpace($sourceId)) "LFPG_Dyna.geojson area '$($area.id)' has no dynamic source id."
+    Assert-True (@($dynamicLabels | Where-Object {
+        [string]$_.properties.parent_feature_id -eq $sourceId
+    }).Count -gt 0) "LFPG_Dyna.geojson area '$($area.id)' has no positioned frequency label."
+}
+foreach ($label in $dynamicLabels) {
+    $service = [string]$label.properties.service
+    Assert-True ($service -in @('DEL', 'RMP', 'GND', 'TWR')) "LFPG_Dyna.geojson contains unsupported label service '$service'."
+    Assert-True (-not [string]::IsNullOrWhiteSpace([string]$label.properties.frequency)) "LFPG_Dyna.geojson contains a dynamic label without a frequency."
+    if ($service -ne 'DEL') {
+        $chain = @($label.properties.takeover_chain)
+        Assert-True ($chain.Count -gt 0) "LFPG_Dyna.geojson contains a non-DEL label without a takeover chain."
+    }
+}
+$dynamicStyleIds = @($dynamicAviso.styles.PSObject.Properties.Name)
+foreach ($feature in $dynamicFeatures) {
+    $styleId = [string]$feature.properties.style_id
+    Assert-True (-not [string]::IsNullOrWhiteSpace($styleId) -and
+        $dynamicStyleIds -contains $styleId) "LFPG_Dyna.geojson feature '$($feature.id)' references missing style '$styleId'."
+}
+$baseLfpg = Get-Content -LiteralPath (Join-Path $dataDirectory "AVISO\LFPG.geojson") -Raw | ConvertFrom-Json
+$baseLfpgIds = @($baseLfpg.features | ForEach-Object { [string]$_.id } | Sort-Object)
+$dynamicExtensionIds = @($dynamicAreas.id) + @($dynamicLabels.id)
+$dynamicBaseIds = @($dynamicFeatures | Where-Object {
+    $dynamicExtensionIds -notcontains ([string]$_.id)
+} | ForEach-Object { [string]$_.id } | Sort-Object)
+Assert-True ($dynamicBaseIds.Count -eq $baseLfpgIds.Count) "LFPG_Dyna.geojson does not contain the complete base LFPG feature set."
+for ($index = 0; $index -lt $baseLfpgIds.Count; $index++) {
+    Assert-True ($dynamicBaseIds[$index] -ceq $baseLfpgIds[$index]) "LFPG_Dyna.geojson base LFPG feature identities differ."
 }
 
 if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {

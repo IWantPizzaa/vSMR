@@ -98,6 +98,25 @@ public:
 		double longitude = 0.0;
 		double latitude = 0.0;
 	};
+	struct AvisoFrequencyOwnershipMetadata
+	{
+		bool dynamicItem = false;
+		std::string service;
+		std::string ownerKey;
+		std::vector<std::string> takeoverChain;
+		std::string ruleKey;
+	};
+	struct AvisoFrequencyOwner
+	{
+		bool connected = false;
+		bool ownedByMe = false;
+		std::string positionId;
+		std::wstring frequencyLabel;
+	};
+	struct AvisoFrequencyOwnershipSnapshot
+	{
+		std::unordered_map<std::string, AvisoFrequencyOwner> ownersByRule;
+	};
 	struct AvisoGroup
 	{
 		std::string id;
@@ -111,6 +130,7 @@ public:
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;
 		std::vector<std::vector<AvisoPoint>> paths;
+		AvisoFrequencyOwnershipMetadata frequencyOwnership;
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
 		float strokeWidth = 1.0f;
@@ -125,6 +145,7 @@ public:
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;
+		AvisoFrequencyOwnershipMetadata frequencyOwnership;
 		std::wstring text;
 		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
@@ -188,6 +209,7 @@ public:
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
+		std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
@@ -242,8 +264,11 @@ public:
 	size_t AvisoGeoJsonSourceFeatureCount = 0;
 	std::vector<AvisoGroup> AvisoRuntimeGroups;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> AvisoGroupVisibilitySnapshot;
+	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> AvisoFrequencyOwnershipStateSnapshot;
 	mutable std::mutex AvisoGroupMutex;
 	std::atomic<unsigned long long> AvisoGroupGeneration{ 0 };
+	unsigned long AvisoFrequencyOwnershipLastRefreshTick = 0;
+	std::string AvisoFrequencyOwnershipLastSignature;
 	mutable std::string AvisoGeoJsonResolvedAirport;
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
@@ -670,7 +695,9 @@ public:
 		std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
 		std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
 		std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
+		std::shared_ptr<const AvisoFrequencyOwnershipSnapshot>& outFrequencyOwnership,
 		unsigned long long& outGeneration) const;
+	void RefreshAvisoFrequencyOwnership(bool force = false);
 	bool ApplyAvisoGroupMembershipSnapshot(
 		const rapidjson::Value& aviso,
 		std::string* outError = nullptr);

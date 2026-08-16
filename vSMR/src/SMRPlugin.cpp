@@ -4056,6 +4056,31 @@ void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar
 		VsmrWeather::Update(sStation, sFullMetar);
 }
 
+void CSMRPlugin::RefreshAvisoFrequencyOwnershipOverlays()
+{
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+	for (CSMRRadar* radar : RadarScreensOpened)
+	{
+		if (radar == nullptr || radar->IsShutdownRequested())
+			continue;
+		radar->RefreshAvisoFrequencyOwnership(true);
+		radar->RequestRefresh();
+	}
+}
+
+void CSMRPlugin::OnControllerPositionUpdate(CController Controller)
+{
+	(void)Controller;
+	RefreshAvisoFrequencyOwnershipOverlays();
+}
+
+void CSMRPlugin::OnControllerDisconnect(CController Controller)
+{
+	(void)Controller;
+	RefreshAvisoFrequencyOwnershipOverlays();
+}
+
 void CSMRPlugin::OnAirportRunwayActivityChanged()
 {
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))

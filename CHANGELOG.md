@@ -7,6 +7,7 @@
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.
 - Added a persistent minimized Runtime Menu state: right-clicking the striped top handle now hides or restores all controls below it.
+- Added LFPG dynamic frequency ownership from `LFPG_Dyna.geojson`: the first connected EuroScope position in each polygon's ordered takeover chain owns it, self-owned territory is visually distinct and label-free, other-owned territory shows the connected owner's actual primary frequency at the supplied GeoJSON point, unowned areas are hidden, and DEL points are intentionally ignored until polygons exist.
 
 ### Changed
 
