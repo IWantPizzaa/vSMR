@@ -4,6 +4,8 @@
 
 #include "Logger.h"
 #include "SMRRadar.hpp"
+#include "CrashReporter.hpp"
+#include "CrashRuntime.hpp"
 
 #include <winhttp.h>
 
@@ -159,6 +161,7 @@ namespace
 
 		void WorkerMain() noexcept
 		{
+			VsmrCrashRuntime::OwnedThreadRole crashThreadRole("RDF worker");
 			unsigned int retrySeconds = 1;
 			while (!ShouldStop())
 			{
@@ -403,6 +406,9 @@ namespace
 				ClearTransmissions();
 			if (previous == connected)
 				return;
+			VsmrCrashReporter::RecordState(
+				"rdf connection",
+				connected ? "connected" : "disconnected");
 			MarkChanged();
 
 			Logger::info(connected

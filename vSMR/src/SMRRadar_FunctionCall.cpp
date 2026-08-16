@@ -3,6 +3,7 @@
 #include "InsetWindow.h"
 #include "SMRGroundState.hpp"
 #include "VsmrControlCenterDialog.hpp"
+#include "CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
 extern std::vector<CSMRRadar*> RadarScreensOpened;
@@ -23,6 +24,9 @@ namespace
 }
 
 void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area) {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnFunctionCall",
+		reinterpret_cast<std::uintptr_t>(this));
 	(void)Area;
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;

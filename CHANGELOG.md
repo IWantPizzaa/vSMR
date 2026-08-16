@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added automatic vSMR-scoped crash reporting. Fatal exceptions executing inside `vSMR.dll` now produce a timestamped text summary and Windows minidump under `vSMR_Data\CrashReports` (with user/temp fallbacks) before normal EuroScope crash handling continues.
+- Added out-of-process, WER-based crash reporting with direct/stack/worker association, fixed-size per-screen and per-thread breadcrumbs, recent logs, build/PDB identity, and an isolated crash harness. Reports are kept locally and are never uploaded automatically.
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.
 - Added a persistent minimized Runtime Menu state: right-clicking the striped top handle now hides or restores all controls below it.
@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Moved crash-report generation out of EuroScope's failing thread and into the packaged `vSMRCrashHandler.dll`. `%LOCALAPPDATA%\vSMR\CrashReports` is now the preferred private location, with probed plug-in-data and temporary-directory fallbacks, at most 10 report sets under a 256 MiB trimming budget, and text summaries flushed before dump creation.
 - Made LFPG RMP activation service-wide: any connected reviewed RMP position activates all six RMP polygons, while their labels use the six area-specific GeoJSON `text-field`/`display_frequency` values and supplied coordinates instead of the connected controller's primary frequency. Removed the superseded static RMP frequency-label features.
 - Reduced tag background padding in the main radar, AVISO inset, and SRW 1 inset so boxes fit their text more closely.
 - Made `Release | Win32` the solution's sole configuration so an unspecified solution build cannot accidentally produce the much larger Debug DLL; the project-level Debug configuration remains available for explicit diagnostics.
@@ -21,6 +22,7 @@
 
 ### Fixed
 
+- Prevented handled first-chance exceptions from being mislabeled as fatal vSMR crashes, removed in-process DbgHelp/minidump work that could deadlock an unstable EuroScope process, and made existing-but-unwritable report directories fall through correctly.
 - Made shared LFPG dynamic ownership boundaries deterministic: polygon fills render first, followed by self-owned outlines and then external-territory outlines, preventing cyan and yellow borders from clipping each other according to GeoJSON feature order.
 - Prevented the LFPG AVISO map from flickering during normal network operation by caching its takeover rules and rebuilding its raster only when a resolved dynamic area's owner, self/other state, or displayed frequency actually changes; unrelated EuroScope controller updates no longer clear the map cache or rescan the full LFPG feature set.
 - Replaced the browser-native Red, Green, Blue, and Opacity controls with explicit color-preview rails and matching thumbs, including a checkerboard transparency preview consistent with the Hue slider.

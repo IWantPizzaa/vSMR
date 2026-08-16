@@ -7,6 +7,8 @@
 #include "SMRVacdmTagHelpers.hpp"
 #include "WeatherData.hpp"
 #include "RdfOverlay.hpp"
+#include "CrashReporter.hpp"
+#include "CrashRuntime.hpp"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -959,6 +961,7 @@ struct AvisoViewportState
 
 	void RenderThreadMain()
 	{
+		VsmrCrashRuntime::OwnedThreadRole crashThreadRole("inset AVISO render worker");
 		for (;;)
 		{
 			std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> request;
@@ -986,6 +989,9 @@ struct AvisoViewportState
 				renderPending.store(pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
 				continue;
 			}
+			VsmrCrashRuntime::RecordCurrentThreadCallback(
+				"AvisoViewportState::RenderThreadMain",
+				reinterpret_cast<std::uintptr_t>(radarScreen));
 
 			std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result;
 			try
@@ -5237,6 +5243,26 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 {
 	if (this->m_Id == -1)
 		return;
+
+	const char* insetName = "SRW1";
+	if (IsAvisoViewport())
+		insetName = "AVISO";
+	else if (IsWeather())
+		insetName = "WEATHER";
+	else if (IsTimer())
+		insetName = "TIMER";
+	if (radar_screen != nullptr)
+		radar_screen->PublishCrashRadarState("inset", insetName);
+	VsmrCrashReporter::RecordBreadcrumb("inset render", insetName);
+	struct RestoreCrashRadarState
+	{
+		CSMRRadar* radar = nullptr;
+		~RestoreCrashRadarState()
+		{
+			if (radar != nullptr)
+				radar->PublishCrashRadarState("main");
+		}
+	} restoreCrashRadarState{ radar_screen };
 
 	if (IsAvisoViewport())
 	{

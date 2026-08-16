@@ -36,6 +36,7 @@ build_script:
       /p:Configuration=Release
       /p:Platform=Win32
       /p:PlatformToolset=v143
+      /nodeReuse:false
       /verbosity:minimal
   - cmd: >-
       msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR.sln"
@@ -45,9 +46,16 @@ build_script:
       /p:Platform=Win32
       /p:PlatformToolset=v143
       /p:ContinuousIntegrationBuild=true
+      /nodeReuse:false
       /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 after_build:
+  - ps: >-
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\CrashHarness\run_crash_harness.ps1"
+      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
+      -Configuration Release
+      -Toolset v143
+      -SkipProductionHandlerBuild
   - ps: >-
       $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\package_release.ps1"
@@ -59,6 +67,7 @@ after_build:
       -Platform Win32
       -Toolset v143
       -PdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\Release\vSMR.pdb"
+      -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\crash_handler\obj\Release\vSMRCrashHandler.pdb"
       -SkipBuild
       -ForceNonPublishable:$isPullRequest
   - ps: >-

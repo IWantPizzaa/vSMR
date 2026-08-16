@@ -52,10 +52,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>$(SolutionDir)\lib\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <OutDir Condition="'$(VsmrReleaseOutputDirectory)' != ''">$(VsmrReleaseOutputDirectory)</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>$(SolutionDir)\lib\include;$(ExternalIncludePath)</ExternalIncludePath>
+    <OutDir Condition="'$(VsmrReleaseOutputDirectory)' != ''">$(VsmrReleaseOutputDirectory)</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -188,7 +190,10 @@
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
     <ClInclude Include="include\CallsignLookup.hpp" />
     <ClInclude Include="include\Config.hpp" />
+    <ClInclude Include="include\CrashReportProtocol.hpp" />
+    <ClInclude Include="include\CrashReportSupport.hpp" />
     <ClInclude Include="include\CrashReporter.hpp" />
+    <ClInclude Include="include\CrashRuntime.hpp" />
     <ClInclude Include="include\Constant.hpp" />
     <ClInclude Include="include\CPDLCSettingsDialog.hpp" />
     <ClInclude Include="include\DataLinkDialog.hpp" />
@@ -225,6 +230,14 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="crash_handler\vSMRCrashHandler.vcxproj">
+      <Project>{EF50604E-8F7D-4B20-8266-F17E732CA839}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <None Include="data\Audio\Alarm.wav" />
     <None Include="data\Audio\Ding.wav" />
     <None Include="data\ICAO_Aircraft.json" />
@@ -258,6 +271,9 @@
     <Error Text="Microsoft.Web.WebView2 1.0.4078.44 is not restored. Run MSBuild vSMR.sln /t:Restore before building." />
   </Target>
   <Target Name="CopyVsmrRuntimeAssets" AfterTargets="Build">
+    <PropertyGroup>
+      <_VsmrCrashHandlerPath>$(MSBuildProjectDirectory)\crash_handler\bin\$(Configuration)\vSMRCrashHandler.dll</_VsmrCrashHandlerPath>
+    </PropertyGroup>
     <ItemGroup>
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\index.html" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\styles.css" />
@@ -271,7 +287,9 @@
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
       <_VsmrWebView2License Include="$(PkgMicrosoft_Web_WebView2)\LICENSE.txt" />
       <_VsmrWebView2Notice Include="$(PkgMicrosoft_Web_WebView2)\NOTICE.txt" />
+      <_VsmrCrashHandler Include="$(_VsmrCrashHandlerPath)" />
     </ItemGroup>
+    <Error Condition="!Exists('$(_VsmrCrashHandlerPath)')" Text="The Win32 vSMR crash handler was not built: $(_VsmrCrashHandlerPath)" />
     <RemoveDir Directories="$(OutDir)vSMR_Data;$(OutDir)vSMR_webUI;$(OutDir)THIRD_PARTY_LICENSES" />
     <Delete Files="$(OutDir)LICENSE" />
     <Delete Files="@(_VsmrLegacyFlatAviso)" />
@@ -279,6 +297,7 @@
     <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI" />
     <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI\defaults" />
     <MakeDir Directories="$(OutDir)vSMR_Data\Licenses" />
+    <MakeDir Directories="$(OutDir)vSMR_Data\CrashReporter" />
     <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(OutDir)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
@@ -286,6 +305,7 @@
     <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\RapidJSON.txt" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrWebView2License)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-LICENSE.txt" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(_VsmrWebView2Notice)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-NOTICE.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrCrashHandler)" DestinationFolder="$(OutDir)vSMR_Data\CrashReporter" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
     <ItemGroup>

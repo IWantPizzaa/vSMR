@@ -1,8 +1,12 @@
 #include "stdafx.h"
 #include "SMRRadar.hpp"
+#include "CrashRuntime.hpp"
 
 void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnRadarTargetPositionUpdate",
+		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
@@ -200,6 +204,9 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 
 bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnCompileCommand",
+		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 	if (sCommandLine == nullptr)
 		return false;
@@ -248,6 +255,9 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 
 void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnFlightPlanDisconnect",
+		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 	if (!FlightPlan.IsValid() || FlightPlan.GetCallsign() == nullptr || FlightPlan.GetCallsign()[0] == '\0')
 		return;

@@ -159,7 +159,7 @@ $stageDll = Join-Path $stageRoot "vSMR.dll"
 Copy-Item -LiteralPath $PackageDll -Destination $stageDll
 
 if ($hadData -and -not $ReplaceUserData) {
-    $immutableNames = @('vSMR_webUI', 'Licenses', 'Tools', 'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json')
+    $immutableNames = @('vSMR_webUI', 'CrashReporter', 'Licenses', 'Tools', 'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json')
     foreach ($item in @(Get-ChildItem -LiteralPath $destinationData -Force)) {
         if ($immutableNames -contains $item.Name) { continue }
         $target = Join-Path $stageData $item.Name

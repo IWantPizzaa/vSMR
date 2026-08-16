@@ -6,6 +6,7 @@
 #include "SMRRadar.hpp"
 #include "VsmrControlCenterBridge.hpp"
 #include "VsmrResourceFiles.hpp"
+#include "CrashRuntime.hpp"
 
 #include "WebView2.h"
 #include <wrl.h>
@@ -569,6 +570,7 @@ void CVsmrControlCenterDialog::ReleaseWebViewHostWindowClass()
 
 void CVsmrControlCenterDialog::WebViewThreadMain()
 {
+	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("Control Center WebView worker");
 	try
 	{
 		WebViewThreadMainImpl();
@@ -1497,6 +1499,8 @@ void CVsmrControlCenterDialog::RequestGithubResource(
 		GithubDownloadThread = std::thread(
 			[this, target, weakLifetime, resource, url, requestId]()
 			{
+				VsmrCrashRuntime::OwnedThreadRole crashThreadRole(
+					"Control Center download worker");
 				std::unique_ptr<GithubDownloadResult> result(
 					new (std::nothrow) GithubDownloadResult());
 				if (!result)
