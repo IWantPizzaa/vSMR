@@ -196,7 +196,7 @@ FakesAssemblies/
 *.opt
 
 # html ui preview
-/vSMR/vSMR_webUI/vSMR_webUI.html
+/vSMR/src/control_center/web/vSMR_webUI.html
 
 #Custom
 

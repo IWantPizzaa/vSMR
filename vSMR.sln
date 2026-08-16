@@ -5,7 +5,7 @@ VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMR", "vSMR\vSMR.vcxproj", "{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMRCrashHandler", "vSMR\crash_handler\vSMRCrashHandler.vcxproj", "{EF50604E-8F7D-4B20-8266-F17E732CA839}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMRCrashHandler", "vSMR\src\crash\handler\vSMRCrashHandler.vcxproj", "{EF50604E-8F7D-4B20-8266-F17E732CA839}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

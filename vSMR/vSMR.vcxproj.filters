@@ -33,218 +33,78 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\CallsignLookup.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Config.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\CrashReporter.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\CPDLCSettingsDialog.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\DataLinkDialog.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\HttpHelper.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\InsetWindow.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\AvisoDocumentModel.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\AvisoEditorDialog.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\ProfileEditorDialog.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VsmrControlCenterDialog.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VsmrControlCenterBridge.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\VsmrResourceFiles.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\WeatherData.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Rimcas.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\RdfOverlay.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRGeometry.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRPlugin.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_AvisoEditor.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_AvisoPresets.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_ControlCenter.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_FunctionCall.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_RuntimeMenu.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_ScreenInteraction.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_TagDefinitions.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_TagRendering.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_TargetsAndFonts.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\SMRRadar_Utilities.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\stdafx.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
-    <ClCompile Include="src\vSMR.cpp">
-      <Filter>Source</Filter>
-    </ClCompile>
+    <ClCompile Include="src\aircraft\CallsignLookup.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoDocumentModel.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoEditorDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\config\RuntimeConfig.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\ControlCenterBridge.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\ControlCenterDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\RadarScreen.Integration.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\crash\CrashReporter.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\platform\windows\network\HttpHelper.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\Plugin.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\profiles\ProfileEditorDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarGeometry.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.Interaction.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.MenuActions.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.PresentationSettings.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.RuntimeMenu.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\rdf\RdfOverlay.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\safety\Rimcas.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\weather\WeatherStore.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\CallsignLookup.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Config.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\CrashReportProtocol.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\CrashReportSupport.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\CrashReporter.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\CrashRuntime.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Constant.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\CPDLCSettingsDialog.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\DataLinkDialog.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\HttpHelper.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\InsetWindow.h">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\AvisoDocumentModel.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\AvisoEditorDialog.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Logger.h">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\ProfileEditorDialog.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\VsmrControlCenterDialog.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\VsmrControlCenterBridge.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\VsmrResourceFiles.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\WeatherData.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\resource.h">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Rimcas.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\RdfOverlay.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRColorUtils.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRDataTypes.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRGeometry.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRGroundState.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRPlugin.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRProfileColorPaths.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRRadar.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRTagColorRules.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRTagDefinitionUtils.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRTextUtils.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\SMRVacdmTagHelpers.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\stdafx.h">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\targetver.h">
-      <Filter>Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="include\vSMR.hpp">
-      <Filter>Headers</Filter>
-    </ClInclude>
+    <ClInclude Include="src\aircraft\CallsignLookup.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\app\PluginEntry.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoDocumentModel.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoEditorDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\control_center\ControlCenterBridge.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\control_center\ControlCenterDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\control_center\RuntimeResourceFiles.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\crash\CrashReporter.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\crash\CrashReportProtocol.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\crash\CrashReportSupport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\crash\CrashRuntime.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\insets\InsetWindow.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\GdiColorUtils.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\network\HttpHelper.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\ResourceIds.h"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\plugin\Plugin.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\profiles\ProfileColorPaths.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\profiles\ProfileEditorDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarGeometry.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarScreen.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarUiSupport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\safety\Rimcas.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\logging\Logger.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\TextUtils.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagColorRules.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagDataTypes.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagDefinitionUtils.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\VacdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\weather\WeatherStore.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\document.h">
       <Filter>Third Party Headers</Filter>
     </ClInclude>
@@ -280,16 +140,16 @@
     <None Include="data\vSMR_Profiles.json">
       <Filter>Data</Filter>
     </None>
-    <None Include="vSMR_webUI\app.js">
+    <None Include="src\control_center\web\app.js">
       <Filter>Web UI</Filter>
     </None>
-    <None Include="vSMR_webUI\data.js">
+    <None Include="src\control_center\web\data.js">
       <Filter>Web UI</Filter>
     </None>
-    <None Include="vSMR_webUI\index.html">
+    <None Include="src\control_center\web\index.html">
       <Filter>Web UI</Filter>
     </None>
-    <None Include="vSMR_webUI\styles.css">
+    <None Include="src\control_center\web\styles.css">
       <Filter>Web UI</Filter>
     </None>
     <None Include="resources\cursors\arrow.cur">
@@ -308,6 +168,15 @@
       <Filter>Resources</Filter>
     </None>
     <None Include="tools\normalize_runtime_data.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\package_release.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\validate_release.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\verify_release_package.ps1">
       <Filter>Tools</Filter>
     </None>
   </ItemGroup>
