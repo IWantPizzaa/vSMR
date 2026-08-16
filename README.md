@@ -163,7 +163,7 @@ Structured rules can match runway, custom, status, detail, and VACDM conditions,
 
 vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
 
-The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. A legacy `AVISO_<ICAO>.geojson` file is used only when no current default or explicit source exists, so older manual installations remain usable during migration.
+The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna_fixed.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. The earlier `LFPG_Dyna.geojson` preview and legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
 
 The Control Center can:
 
@@ -178,13 +178,15 @@ A reusable entry in the document's `styles` catalog supplies the default paint f
 
 ### LFPG dynamic frequency ownership
 
-`LFPG_Dyna.geojson` extends the normal LFPG AVISO map with frequency ownership polygons and pre-positioned frequency labels. For each `frequency_ownership_area`, vSMR walks its ordered `takeover_chain` and selects the first position ID that EuroScope currently reports as a connected controller. No online-controller list or label position is hard-coded.
+`LFPG_Dyna_fixed.geojson` extends the normal LFPG AVISO map with frequency ownership polygons and pre-positioned frequency labels. For each non-RMP `frequency_ownership_area`, vSMR walks its ordered `takeover_chain` and selects the first position ID that EuroScope currently reports as a connected controller. No online-controller list or label position is hard-coded.
 
 - A polygon inherited by your own connected position is drawn in blue and its frequency label is hidden.
-- A polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
+- A non-RMP polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
 - At a shared edge, external-territory outlines are painted after self-owned outlines so cyan and yellow boundaries remain continuous instead of clipping each other.
 - A polygon with no connected owner in its chain is hidden.
 - DEL frequency points are ignored until dedicated DEL polygons are available.
+- LFPG RMP is resolved as one service: if any reviewed RMP position is connected, all six RMP polygons activate together. A local RMP controller owns all six and sees no RMP labels; another RMP controller activates all six area-specific labels.
+- RMP labels always use each `frequency_point` feature's `text-field` or `display_frequency` at its supplied coordinates. A connected controller's primary frequency is never substituted, so the six displayed values remain BD `121.640`, F `121.580`, ACE `121.930`, FDX `131.605`, KL `121.680`, and J `121.880`.
 - Controller connection, disconnection, position, or primary-frequency changes update the main display and AVISO inset together. Takeover rules are cached when the GeoJSON loads, and routine updates from controllers outside those LFPG chains do not invalidate the AVISO raster, preventing periodic map flicker while connected.
 
 This dynamic behavior is enabled only for LFPG in beta.2. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
@@ -388,7 +390,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | --- | --- |
 | `vSMR_Profiles.json` | Profiles, display modes, tag definitions, rules, colors, filters, presets, and metadata |
 | `AVISO\<ICAO>.geojson` | Default airport-specific AVISO map data; legacy `AVISO_<ICAO>.geojson` files remain a compatibility fallback |
-| `AVISO\LFPG_Dyna.geojson` | LFPG map plus dynamic controller ownership polygons and positioned frequency labels; preferred for LFPG when present |
+| `AVISO\LFPG_Dyna_fixed.geojson` | LFPG map plus dynamic controller ownership polygons and positioned, area-specific frequency labels; preferred for LFPG when present |
 | `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
 | `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
 | `aircraft_icons\*.png` | Silhouettes used by the `Icon (A320)` target style |

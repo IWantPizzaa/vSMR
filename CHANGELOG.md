@@ -7,10 +7,11 @@
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.
 - Added a persistent minimized Runtime Menu state: right-clicking the striped top handle now hides or restores all controls below it.
-- Added LFPG dynamic frequency ownership from `LFPG_Dyna.geojson`: the first connected EuroScope position in each polygon's ordered takeover chain owns it, self-owned territory is visually distinct and label-free, other-owned territory shows the connected owner's actual primary frequency at the supplied GeoJSON point, unowned areas are hidden, and DEL points are intentionally ignored until polygons exist.
+- Added LFPG dynamic frequency ownership from `LFPG_Dyna_fixed.geojson`: takeover chains determine non-RMP ownership, self-owned territory is visually distinct and label-free, unowned areas are hidden, and DEL points are intentionally ignored until polygons exist.
 
 ### Changed
 
+- Made LFPG RMP activation service-wide: any connected reviewed RMP position activates all six RMP polygons, while their labels use the six area-specific GeoJSON `text-field`/`display_frequency` values and supplied coordinates instead of the connected controller's primary frequency. Removed the superseded static RMP frequency-label features.
 - Reduced tag background padding in the main radar, AVISO inset, and SRW 1 inset so boxes fit their text more closely.
 - Made `Release | Win32` the solution's sole configuration so an unspecified solution build cannot accidentally produce the much larger Debug DLL; the project-level Debug configuration remains available for explicit diagnostics.
 - Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
