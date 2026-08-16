@@ -96,6 +96,7 @@ try {
         'vSMR_webUI\data.js',
         'vSMR_webUI\defaults\vSMR_Profiles.json',
         'AVISO\LFPG.geojson',
+        'AVISO\LFPG_Dyna.geojson',
         'Licenses\vSMR.txt',
         'Licenses\RapidJSON.txt',
         'Licenses\Microsoft.WebView2-LICENSE.txt',
@@ -118,7 +119,10 @@ try {
         throw 'The package does not contain any airport AVISO defaults.'
     }
     $nonCanonicalAvisoFiles = @(
-        $packagedAvisoFiles | Where-Object { $_.Name -notmatch '^[A-Za-z0-9]{4}\.geojson$' }
+        $packagedAvisoFiles | Where-Object {
+            $_.Name -notmatch '^[A-Za-z0-9]{4}\.geojson$' -and
+            $_.Name -cne 'LFPG_Dyna.geojson'
+        }
     )
     if ($nonCanonicalAvisoFiles.Count -ne 0) {
         throw "The package contains noncanonical AVISO defaults: $($nonCanonicalAvisoFiles.Name -join ', ')."

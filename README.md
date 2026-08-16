@@ -163,7 +163,7 @@ Structured rules can match runway, custom, status, detail, and VACDM conditions,
 
 vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
 
-The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. The default lookup prefers that canonical name over the legacy filename; an explicitly selected local or GitHub source remains authoritative. A legacy `AVISO_<ICAO>.geojson` file is used only when no canonical file or explicit source exists, so older manual installations remain usable during migration.
+The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. A legacy `AVISO_<ICAO>.geojson` file is used only when no current default or explicit source exists, so older manual installations remain usable during migration.
 
 The Control Center can:
 
@@ -175,6 +175,18 @@ The Control Center can:
 - restore validated bundled defaults or `.bak` profile data
 
 A reusable entry in the document's `styles` catalog supplies the default paint for every feature that references its `style_id`. Paint stored directly on a feature is a per-object override and takes precedence in the main radar and AVISO inset. Consequently, editing one selected label can override its text color, font, size, halo, or zoom without changing every other label in the shared style; `Current text group` and `All AVISO text` intentionally edit shared catalog styles. AVISO editor values use the renderer's supported ranges: text size 6–32, halo width 0–6, and line/outline width 0.25–8.
+
+### LFPG dynamic frequency ownership
+
+`LFPG_Dyna.geojson` extends the normal LFPG AVISO map with frequency ownership polygons and pre-positioned frequency labels. For each `frequency_ownership_area`, vSMR walks its ordered `takeover_chain` and selects the first position ID that EuroScope currently reports as a connected controller. No online-controller list or label position is hard-coded.
+
+- A polygon inherited by your own connected position is drawn in blue and its frequency label is hidden.
+- A polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
+- A polygon with no connected owner in its chain is hidden.
+- DEL frequency points are ignored until dedicated DEL polygons are available.
+- Controller connection, disconnection, position, or primary-frequency changes invalidate the existing shared AVISO raster state, so the main display and AVISO inset update together.
+
+This dynamic behavior is enabled only for LFPG in beta.2. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
 
 A computer file is activated in place; it is not copied over the bundled airport file. A GitHub resource is validated and downloaded to a collision-safe file under `vSMR_Data\AVISO\` or `vSMR_Data\Profiles\`, then activated from that location. The Settings page always shows the actual active path.
 
@@ -375,6 +387,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | --- | --- |
 | `vSMR_Profiles.json` | Profiles, display modes, tag definitions, rules, colors, filters, presets, and metadata |
 | `AVISO\<ICAO>.geojson` | Default airport-specific AVISO map data; legacy `AVISO_<ICAO>.geojson` files remain a compatibility fallback |
+| `AVISO\LFPG_Dyna.geojson` | LFPG map plus dynamic controller ownership polygons and positioned frequency labels; preferred for LFPG when present |
 | `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
 | `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
 | `aircraft_icons\*.png` | Silhouettes used by the `Icon (A320)` target style |
@@ -443,7 +456,7 @@ Review every report before sharing it. Operational callsigns or local paths can 
 
 The solution exposes `Release | Win32` as its sole configuration, so a normal **Build Solution** or an MSBuild invocation without an explicit configuration produces the optimized DLL in `Release\vSMR.dll`. The project retains an explicit Debug configuration for targeted diagnostics, but it must be selected by building the project directly. Both configurations target `v145`. The packaging script detects the installed compatible `vNNN` toolset automatically; automated compatibility builds may override the project default explicitly.
 
-The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file in `vSMR_Data`.
+The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file and the reviewed LFPG dynamic extension in `vSMR_Data`.
 
 ### Validate source data
 
