@@ -13,8 +13,8 @@
     "airport": "LFPG",
     "coordinate_reference_system": "WGS84",
     "coordinate_order": "longitude, latitude",
-    "feature_count": 4611,
-    "style_count": 52,
+    "feature_count": 4605,
+    "style_count": 51,
     "layer_counts": {
       "Airfield surfaces": 635,
       "Background": 1,
@@ -22,7 +22,7 @@
       "Dynamic frequency areas": 16,
       "Ground infrastructure": 148,
       "Guidance lines": 6,
-      "Labels": 1071,
+      "Labels": 1065,
       "Surface markings": 594,
       "Terrain": 1102
     },
@@ -47,7 +47,6 @@
       "Dynamic frequency label — RMP": 6,
       "Dynamic frequency label — TWR": 2,
       "Engine-test-area labels": 7,
-      "Frequency labels": 6,
       "Gate and stand labels": 500,
       "Grass": 1102,
       "Ground layout arrows — brown": 2,
@@ -67,7 +66,6 @@
       "Stand-entry lines": 1,
       "Stop points": 82,
       "Stop-bar lights": 1,
-      "TORA labels": 22,
       "Taxiway containment areas": 415,
       "Taxiway guidance lines": 1,
       "Taxiway labels": 488,
@@ -77,7 +75,8 @@
       "Terminal 1 aprons": 6,
       "Terminal labels": 30,
       "Terminal sides": 95,
-      "Terminals": 69
+      "Terminals": 69,
+      "TORA labels": 22
     }
   },
   "styles": {
@@ -133,19 +132,6 @@
         "zoomLevel": 9
       },
       "feature_count": 7
-    },
-    "label.lfpg.frequencies": {
-      "name": "Frequency labels",
-      "layer": "Labels",
-      "object_type": "Label",
-      "paint": {
-        "text-anchor": "center",
-        "text-color": "#CCCCCC",
-        "text-halo-color": "#000000",
-        "text-halo-width": 1,
-        "text-size": 12
-      },
-      "feature_count": 6
     },
     "label.lfpg.gates": {
       "name": "Gate and stand labels",
@@ -633,9 +619,9 @@
       "object_type": "Area",
       "paint": {
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -663,9 +649,9 @@
       "object_type": "Area",
       "paint": {
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -693,9 +679,9 @@
       "object_type": "Area",
       "paint": {
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -723,9 +709,9 @@
       "object_type": "Area",
       "paint": {
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -826647,132 +826633,6 @@
     },
     {
       "type": "Feature",
-      "id": "lfpg-text-0031",
-      "properties": {
-        "name": "121.580",
-        "layer": "Labels",
-        "category": "Frequency labels",
-        "object_type": "Label",
-        "style_id": "label.lfpg.frequencies",
-        "airport": "LFPG",
-        "geometry_role": "text_label",
-        "text-field": "121.580"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          2.576899,
-          49.005095
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "lfpg-text-0032",
-      "properties": {
-        "name": "121.640",
-        "layer": "Labels",
-        "category": "Frequency labels",
-        "object_type": "Label",
-        "style_id": "label.lfpg.frequencies",
-        "airport": "LFPG",
-        "geometry_role": "text_label",
-        "text-field": "121.640"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          2.564776,
-          49.004434
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "lfpg-text-0033",
-      "properties": {
-        "name": "121.680",
-        "layer": "Labels",
-        "category": "Frequency labels",
-        "object_type": "Label",
-        "style_id": "label.lfpg.frequencies",
-        "airport": "LFPG",
-        "geometry_role": "text_label",
-        "text-field": "121.680"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          2.587759,
-          49.004778
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "lfpg-text-0034",
-      "properties": {
-        "name": "121.880",
-        "layer": "Labels",
-        "category": "Frequency labels",
-        "object_type": "Label",
-        "style_id": "label.lfpg.frequencies",
-        "airport": "LFPG",
-        "geometry_role": "text_label",
-        "text-field": "121.880"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          2.602319,
-          49.005893
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "lfpg-text-0035",
-      "properties": {
-        "name": "121.930",
-        "layer": "Labels",
-        "category": "Frequency labels",
-        "object_type": "Label",
-        "style_id": "label.lfpg.frequencies",
-        "airport": "LFPG",
-        "geometry_role": "text_label",
-        "text-field": "121.930"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          2.571154,
-          49.003598
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "id": "lfpg-text-0036",
-      "properties": {
-        "name": "131.605",
-        "layer": "Labels",
-        "category": "Frequency labels",
-        "object_type": "Label",
-        "style_id": "label.lfpg.frequencies",
-        "airport": "LFPG",
-        "geometry_role": "text_label",
-        "text-field": "131.605"
-      },
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          2.498559,
-          49.011612
-        ]
-      }
-    },
-    {
-      "type": "Feature",
       "id": "lfpg-text-0037",
       "properties": {
         "name": "A01",
@@ -849691,9 +849551,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -849920,9 +849780,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -849987,7 +849847,7 @@
             ],
             [
               2.610833333,
-              49.0
+              49
             ],
             [
               2.610555556,
@@ -850080,9 +849940,9 @@
         "style_id": "frequency.area.twr",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850095,7 +849955,7 @@
           [
             [
               2.610833333,
-              49.0
+              49
             ],
             [
               2.571666667,
@@ -850123,7 +849983,7 @@
             ],
             [
               2.610833333,
-              49.0
+              49
             ]
           ]
         ]
@@ -850186,9 +850046,9 @@
         "style_id": "frequency.area.twr",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850300,9 +850160,9 @@
         "style_id": "frequency.area.rmp",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850414,9 +850274,9 @@
         "style_id": "frequency.area.rmp",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850517,9 +850377,9 @@
         "style_id": "frequency.area.rmp",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850636,9 +850496,9 @@
         "style_id": "frequency.area.rmp",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850755,9 +850615,9 @@
         "style_id": "frequency.area.rmp",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850866,9 +850726,9 @@
         "style_id": "frequency.area.rmp",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -850993,9 +850853,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -851096,9 +850956,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -851209,9 +851069,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -851400,9 +851260,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -851507,9 +851367,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -851712,9 +851572,9 @@
         "style_id": "frequency.area.gnd",
         "geometry_role": "frequency_ownership_area",
         "fill": "#FFD84D",
-        "fill-opacity": 0.0,
+        "fill-opacity": 0,
         "stroke": "#FFD84D",
-        "stroke-opacity": 1.0,
+        "stroke-opacity": 1,
         "stroke-width": 1.2,
         "stroke-dasharray": [
           3,
@@ -851727,7 +851587,7 @@
           [
             [
               2.610833333,
-              49.0
+              49
             ],
             [
               2.571666667,
@@ -851827,7 +851687,7 @@
             ],
             [
               2.610833333,
-              49.0
+              49
             ]
           ]
         ]
@@ -852139,8 +851999,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          2.589352564,
-          49.002777778
+          2.587759,
+          49.004778
         ]
       }
     },
@@ -852206,8 +852066,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          2.597936508,
-          49.007777778
+          2.602319,
+          49.005893
         ]
       }
     },
@@ -852264,8 +852124,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          2.499996693,
-          49.011666667
+          2.498559,
+          49.011612
         ]
       }
     },
@@ -852328,8 +852188,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          2.577704416,
-          49.006111111
+          2.576899,
+          49.005095
         ]
       }
     },
@@ -852392,8 +852252,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          2.564730159,
-          49.005555556
+          2.564776,
+          49.004434
         ]
       }
     },
@@ -852456,8 +852316,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          2.570756313,
-          49.001527778
+          2.571154,
+          49.003598
         ]
       }
     },
@@ -852932,8 +852792,8 @@
       "GND",
       "TWR"
     ],
-    "ownership_rule": "For each polygon, walk properties.takeover_chain from left to right. The first connected controller owns the polygon. The polygon's own frequency point represents its dedicated lower-level position.",
-    "display_rule_hint": "Do not display the frequency of an area owned by the local controller. Display frequency points for other connected owners; when a lower position opens, its polygons stop belonging to the higher controller and its frequency becomes visible to that higher controller.",
+    "ownership_rule": "For each polygon, walk properties.takeover_chain from left to right. The first connected controller owns the polygon, except that any connected LFPG RMP position activates all RMP polygons as one service.",
+    "display_rule_hint": "Do not display frequency points for areas owned by the local controller. When another LFPG RMP controller owns the RMP service, display all six area-specific frequency_point values at their supplied coordinates; never substitute that controller's primary frequency.",
     "frequency_source": "SIA AIP AD 2 LFPG COM 01, current AIRAC package 06 AUG 2026",
     "notes": [
       "DEL has no polygon in lf.json; its two points are airport-wide label anchors only.",

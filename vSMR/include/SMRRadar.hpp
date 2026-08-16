@@ -110,6 +110,7 @@ public:
 	{
 		bool connected = false;
 		bool ownedByMe = false;
+		bool useSourceFrequency = false;
 		std::string positionId;
 		std::wstring frequencyLabel;
 	};
@@ -267,6 +268,7 @@ public:
 	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> AvisoFrequencyOwnershipStateSnapshot;
 	std::map<std::string, AvisoFrequencyOwnershipMetadata> AvisoFrequencyOwnershipRules;
 	std::set<std::string> AvisoFrequencyOwnershipRelevantPositions;
+	std::map<std::string, std::set<std::string>> AvisoFrequencyOwnershipServicePositions;
 	mutable std::mutex AvisoGroupMutex;
 	std::atomic<unsigned long long> AvisoGroupGeneration{ 0 };
 	unsigned long AvisoFrequencyOwnershipLastRefreshTick = 0;
