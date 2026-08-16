@@ -51,7 +51,7 @@ build_script:
 
 after_build:
   - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\CrashHarness\run_crash_harness.ps1"
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\crash_harness\run_crash_harness.ps1"
       -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
       -Configuration Release
       -Toolset v143
@@ -67,7 +67,7 @@ after_build:
       -Platform Win32
       -Toolset v143
       -PdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\Release\vSMR.pdb"
-      -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\crash_handler\obj\Release\vSMRCrashHandler.pdb"
+      -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
       -SkipBuild
       -ForceNonPublishable:$isPullRequest
   - ps: >-

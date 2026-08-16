@@ -464,6 +464,8 @@ Keep the `.txt`, `.dmp`, exact `vSMR.dll`, `vSMRCrashHandler.dll`, and matching 
 
 ## Building from Source
 
+The implementation is organized by feature under `vSMR\src\`, with headers colocated beside their implementations. See the [project structure guide](docs/PROJECT_STRUCTURE.md) for feature ownership, include conventions, build boundaries, and the stable runtime/package layout.
+
 ### Toolchain
 
 - Visual Studio or Microsoft C++ Build Tools with the `v145` toolset
@@ -527,7 +529,7 @@ Add `-AllowNonPublishable` only when verifying a deliberately non-publishable lo
 The isolated Win32 harness exercises the production directory-selection and retention code, the packaged WER callback ABI, Unicode and paths longer than `MAX_PATH`, missing-DbgHelp text survival, concurrent callbacks, and repeated DLL loading without starting or crashing EuroScope:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\CrashHarness\run_crash_harness.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\crash_harness\run_crash_harness.ps1
 ```
 
 Add `-IncludeWerIntegration` to also launch disposable harness subprocesses for a handled access violation, a real unhandled access violation, and stack overflow. The handled exception must create no report; the two unhandled failures must create report pairs. The runner temporarily adds only its exact per-user WER allowlist value and restores the previous value when it finishes.
@@ -558,29 +560,51 @@ Do not describe a package as signed unless package verification confirms the sig
 ```text
 vSMR.sln
 vSMR\
-  crash_handler\ Packaged x86 out-of-process WER callback project
-  include\       C++ headers
-  src\           Plug-in, radar, inset, editor, and integration code
-  resources\     Windows resources, cursors, and DLL exports
-  data\          Runtime data copied to vSMR_Data in Release
-  vSMR_webUI\    Control Center HTML, CSS, and JavaScript source
-  tools\         Data, validation, packaging, and package-verification scripts
+  src\
+    app\              MFC application object and EuroScope plug-in entry
+    platform\windows\ Windows, GDI+, WinHTTP, PCH, and SDK integration
+    shared\           Feature-neutral text and logging support
+    config\           Runtime profile/configuration loading and persistence
+    plugin\           Process-wide EuroScope plug-in coordinator
+    aircraft\         Callsign lookup and ground-state domain support
+    radar\            Main radar-screen lifecycle, rendering, and interaction
+    tags\             Tag definitions, rendering, rules, and VACDM tag data
+    insets\           AVISO, SRW 1, METAR, and Timer inset windows
+    aviso\            AVISO document model, editor, presets, and integration
+    profiles\         Profile editor and profile color paths
+    control_center\   Native WebView2 host, bridge, and resource loading
+      web\             Control Center HTML, CSS, and JavaScript source
+    datalink\         CPDLC settings and datalink message dialogs
+    weather\          Shared weather parsing and cache
+    safety\           RIMCAS monitoring and alerts
+    rdf\              Native TrackAudio RDF overlay
+    crash\            WER registration, protocol, and breadcrumbs
+      handler\         Packaged x86 out-of-process WER callback project
+  resources\          Resource scripts, cursors, audio, and exports
+  data\               Runtime data copied to vSMR_Data in Release
+  tools\              Data, release, and package-verification tools
+    crash_harness\    Isolated crash-report harness and runner
 ```
 
 Important implementation areas:
 
 | Path | Responsibility |
 | --- | --- |
-| `vSMR/src/SMRPlugin.cpp` | Plug-in lifecycle, commands, CPDLC, VACDM, weather scheduling, diagnostics |
-| `vSMR/src/SMRRadar*.cpp` | Radar lifecycle, rendering, interaction, ASR state, tags, profiles, and Runtime Menu |
-| `vSMR/src/InsetWindow.cpp` | AVISO, SRW 1, METAR, and Timer insets; snapping and resizing |
-| `vSMR/src/Rimcas.cpp` | Runway monitoring and RIMCAS alert logic |
-| `vSMR/src/Config.cpp` | Profile loading, migration, validation, and persistence |
-| `vSMR/src/AvisoDocumentModel.cpp` | AVISO document validation and editing model |
-| `vSMR/src/VsmrControlCenter*.cpp` | Native WebView2 host and C++/JavaScript bridge |
-| `vSMR/src/CrashReporter.cpp` and `vSMR/crash_handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
-| `vSMR/vSMR_webUI/` | Control Center user interface |
-| `vSMR/tools/` | Release, runtime-data, package-verification, and isolated crash-harness tooling |
+| `vSMR/src/app/PluginEntry.cpp` | MFC application object and exported EuroScope initialization entry |
+| `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, commands, CPDLC, VACDM, weather scheduling, and diagnostics |
+| `vSMR/src/radar/RadarScreen.cpp` and `RadarScreen.*.cpp` | Radar lifecycle, rendering, interaction, ASR state, commands, and Runtime Menu |
+| `vSMR/src/insets/InsetWindow.cpp` | AVISO, SRW 1, METAR, and Timer insets; snapping and resizing |
+| `vSMR/src/safety/Rimcas.cpp` | Runway monitoring and RIMCAS alert logic |
+| `vSMR/src/config/RuntimeConfig.cpp` | Profile loading, migration, validation, and persistence |
+| `vSMR/src/aviso/` | AVISO document validation, editing, presets, and radar integration |
+| `vSMR/src/tags/` | Tag definitions, rendering, color rules, and VACDM tag helpers |
+| `vSMR/src/control_center/` | Native WebView2 host, C++/JavaScript bridge, and Control Center resource management |
+| `vSMR/src/control_center/web/` | Control Center HTML, CSS, and JavaScript source |
+| `vSMR/src/crash/CrashReporter.cpp` and `vSMR/src/crash/handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
+| `vSMR/tools/crash_harness/` | Isolated deterministic and real-WER crash-report validation harness |
+| `vSMR/tools/` | Runtime-data normalization, release packaging, and package verification |
+
+The source location `vSMR\src\control_center\web\` is a development detail. Builds still install those files as `vSMR_Data\vSMR_webUI\`, and the crash handler is still installed as `vSMR_Data\CrashReporter\vSMRCrashHandler.dll`. The reorganization does not change the user package or runtime data contract.
 
 ## Beta Notes
 
