@@ -113,32 +113,36 @@ function Get-PeExportNames {
 }
 
 foreach ($relativePath in @(
-    "vSMR\include\SMRPlugin.hpp",
-    "vSMR\include\CrashReportProtocol.hpp",
-    "vSMR\include\CrashReportSupport.hpp",
-    "vSMR\include\CrashReporter.hpp",
-    "vSMR\include\CrashRuntime.hpp",
+    "vSMR\src\plugin\Plugin.hpp",
+    "vSMR\src\platform\windows\PrecompiledHeader.cpp",
+    "vSMR\src\platform\windows\PrecompiledHeader.hpp",
+    "vSMR\src\platform\windows\ResourceIds.h",
+    "vSMR\src\platform\windows\WindowsTargetVersion.hpp",
+    "vSMR\src\crash\CrashReportProtocol.hpp",
+    "vSMR\src\crash\CrashReportSupport.hpp",
+    "vSMR\src\crash\CrashReporter.hpp",
+    "vSMR\src\crash\CrashRuntime.hpp",
     "vSMR\resources\vSMR.rc",
     "vSMR\vSMR.vcxproj",
-    "vSMR\crash_handler\CrashHandler.cpp",
-    "vSMR\crash_handler\vSMRCrashHandler.def",
-    "vSMR\crash_handler\vSMRCrashHandler.rc",
-    "vSMR\crash_handler\vSMRCrashHandler.vcxproj",
-    "vSMR\crash_handler\vSMRCrashHandler.vcxproj.filters",
-    "vSMR\tools\CrashHarness\CrashHarness.cpp",
-    "vSMR\tools\CrashHarness\run_crash_harness.ps1",
-    "vSMR\tools\CrashHarness\vSMRCrashHarness.vcxproj",
-    "vSMR\tools\CrashHarness\vSMRCrashHarness.vcxproj.filters",
+    "vSMR\src\crash\handler\CrashHandler.cpp",
+    "vSMR\src\crash\handler\vSMRCrashHandler.def",
+    "vSMR\src\crash\handler\vSMRCrashHandler.rc",
+    "vSMR\src\crash\handler\vSMRCrashHandler.vcxproj",
+    "vSMR\src\crash\handler\vSMRCrashHandler.vcxproj.filters",
+    "vSMR\tools\crash_harness\CrashHarness.cpp",
+    "vSMR\tools\crash_harness\run_crash_harness.ps1",
+    "vSMR\tools\crash_harness\vSMRCrashHarness.vcxproj",
+    "vSMR\tools\crash_harness\vSMRCrashHarness.vcxproj.filters",
     "vSMR.sln",
     "vSMR\data\vSMR_Profiles.json",
     "vSMR\data\ICAO_Aircraft.json",
     "vSMR\data\AVISO\LFPG_Dyna_fixed.geojson",
     "vSMR\data\Licenses\DEPENDENCIES.md",
     "vSMR\data\Licenses\ASSET_PROVENANCE.md",
-    "vSMR\vSMR_webUI\index.html",
-    "vSMR\vSMR_webUI\styles.css",
-    "vSMR\vSMR_webUI\app.js",
-    "vSMR\vSMR_webUI\data.js",
+    "vSMR\src\control_center\web\index.html",
+    "vSMR\src\control_center\web\styles.css",
+    "vSMR\src\control_center\web\app.js",
+    "vSMR\src\control_center\web\data.js",
     "appveyor.yml",
     "README.md",
     "CHANGELOG.md"
@@ -147,10 +151,10 @@ foreach ($relativePath in @(
 }
 
 $escapedVersion = [Regex]::Escape($ExpectedVersion)
-$headerText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\include\SMRPlugin.hpp"))
+$headerText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\plugin\Plugin.hpp"))
 $resourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\resources\vSMR.rc"))
-$crashHandlerResourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\crash_handler\vSMRCrashHandler.rc"))
-$crashHandlerDefinitionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\crash_handler\vSMRCrashHandler.def"))
+$crashHandlerResourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\crash\handler\vSMRCrashHandler.rc"))
+$crashHandlerDefinitionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\crash\handler\vSMRCrashHandler.def"))
 $ciText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "appveyor.yml"))
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "README.md"))
 $changelogText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "CHANGELOG.md"))
@@ -159,6 +163,8 @@ $solutionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR.s
 Assert-True ($headerText -match "MY_PLUGIN_VERSION\s+`"v$escapedVersion`"") "Plugin version macro is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Windows FileVersion is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Windows ProductVersion is inconsistent."
+Assert-True ($resourceText -match '(?m)^#include\s+"platform/windows/ResourceIds\.h"\s*$') "The resource compiler does not use the relocated resource-ID header."
+Assert-True ($resourceText -match '(?m)^#include\s+"platform/windows/WindowsTargetVersion\.hpp"\s*$') "The resource compiler does not use the relocated Windows target header."
 Assert-True ($crashHandlerResourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Crash-handler FileVersion is inconsistent."
 Assert-True ($crashHandlerResourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Crash-handler ProductVersion is inconsistent."
 $expectedCrashHandlerExports = @(
@@ -181,10 +187,10 @@ Assert-True ($packageScriptText -match '_vsmr-package-.+NewGuid') "Release packa
 Assert-True (-not ($packageScriptText -match 'Join-Path\s+\$ArtifactsDirectory\s+"_staging"')) "Release packaging must not delete a caller-owned fixed _staging directory."
 Assert-True ($solutionText -match '(?m)^\s*Release\|Win32\s*=\s*Release\|Win32\s*$') "The solution does not expose Release|Win32."
 Assert-True (-not ($solutionText -match '(?m)^\s*Debug\|Win32\s*=\s*Debug\|Win32\s*$')) "The solution must default to its sole Release|Win32 configuration."
-Assert-True ($solutionText -match 'vSMRCrashHandler.+vSMR\\crash_handler\\vSMRCrashHandler\.vcxproj') "The WER crash-handler project is missing from the solution."
+Assert-True ($solutionText -match 'vSMRCrashHandler.+vSMR\\src\\crash\\handler\\vSMRCrashHandler\.vcxproj') "The WER crash-handler project is missing from the solution."
 
 $legacyThreads = @(
-    Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot "vSMR\src"), (Join-Path $RepositoryRoot "vSMR\include") -Recurse -File |
+    Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot "vSMR\src") -Recurse -File |
         Where-Object { $_.Extension -in @('.cpp', '.hpp', '.h') } |
         Select-String -Pattern '_beginthread|_beginthreadex'
 )
@@ -198,21 +204,34 @@ $releaseDefinitions = @($projectXml.SelectNodes("//msb:ItemDefinitionGroup", $na
 Assert-True ($releaseDefinitions.Count -eq 1) "Release|Win32 compiler settings were not found uniquely."
 $releaseCompile = $releaseDefinitions[0].SelectSingleNode("msb:ClCompile", $namespace)
 $releaseLink = $releaseDefinitions[0].SelectSingleNode("msb:Link", $namespace)
+$releaseResourceCompile = $releaseDefinitions[0].SelectSingleNode("msb:ResourceCompile", $namespace)
 Assert-True ($releaseCompile.WarningLevel -eq 'Level4') "Release must compile at warning level 4."
 Assert-True ($releaseCompile.ExternalWarningLevel -eq 'TurnOffAllWarnings') "Vendored headers are not isolated at external warning level 0."
 Assert-True (-not ([string]$releaseCompile.AdditionalIncludeDirectories -match '(?i)lib[\\/]include')) "Vendored headers must not be compiled as first-party includes."
+Assert-True ([string]$releaseCompile.AdditionalIncludeDirectories -eq '$(ProjectDir)src;%(AdditionalIncludeDirectories)') "Release must use src as its sole first-party include root."
+Assert-True ([string]$releaseCompile.PrecompiledHeaderFile -eq 'platform/windows/PrecompiledHeader.hpp') "Release does not use the canonical feature-qualified PCH token."
+$mainPchFiles = @($projectXml.SelectNodes("//msb:ItemDefinitionGroup/msb:ClCompile/msb:PrecompiledHeaderFile", $namespace))
+Assert-True ($mainPchFiles.Count -eq 2 -and
+    @($mainPchFiles | Where-Object { [string]$_.InnerText -ne 'platform/windows/PrecompiledHeader.hpp' }).Count -eq 0) "Debug and Release must use the same feature-qualified PCH token."
 Assert-True ($releaseCompile.SDLCheck -eq 'true') "Release SDL checks are disabled."
 Assert-True ($releaseCompile.BufferSecurityCheck -eq 'true') "Release /GS buffer security checks are disabled."
+Assert-True ([string]$releaseResourceCompile.AdditionalIncludeDirectories -eq '$(ProjectDir)src;$(IntDir);%(AdditionalIncludeDirectories)') "Resource compilation must use src as its first-party include root."
 Assert-True ($releaseLink.GenerateDebugInformation -eq 'true' -and
     -not [string]::IsNullOrWhiteSpace([string]$releaseLink.ProgramDatabaseFile)) "Release private PDB generation is disabled."
 $releaseExternalPaths = @($projectXml.SelectNodes("//msb:PropertyGroup/msb:ExternalIncludePath", $namespace) |
     Where-Object { [string]$_.ParentNode.Condition -like '*Release|Win32*' })
 Assert-True ($releaseExternalPaths.Count -eq 1 -and
     [string]$releaseExternalPaths[0].InnerText -match '(?i)lib[\\/]include') "The vendored include directory is not configured as external for Release|Win32."
+$pchCreator = $projectXml.SelectSingleNode("//msb:ClCompile[@Include='src\platform\windows\PrecompiledHeader.cpp']", $namespace)
+$pchCreatorModes = if ($null -eq $pchCreator) { @() } else {
+    @($pchCreator.SelectNodes("msb:PrecompiledHeader", $namespace) | ForEach-Object { [string]$_.InnerText })
+}
+Assert-True ($null -ne $pchCreator -and $pchCreatorModes.Count -eq 2 -and
+    @($pchCreatorModes | Where-Object { $_ -ne 'Create' }).Count -eq 0) "The canonical PCH source must create the PCH in Debug and Release."
 $crashHandlerProjectReference = $projectXml.SelectSingleNode("//msb:ProjectReference[contains(@Include, 'vSMRCrashHandler.vcxproj')]", $namespace)
 Assert-True ($null -ne $crashHandlerProjectReference) "vSMR does not build the WER crash-handler dependency."
 
-[xml]$crashHandlerProjectXml = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\crash_handler\vSMRCrashHandler.vcxproj"))
+[xml]$crashHandlerProjectXml = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\crash\handler\vSMRCrashHandler.vcxproj"))
 $crashNamespace = New-Object System.Xml.XmlNamespaceManager($crashHandlerProjectXml.NameTable)
 $crashNamespace.AddNamespace("msb", "http://schemas.microsoft.com/developer/msbuild/2003")
 $crashReleaseConfiguration = @($crashHandlerProjectXml.SelectNodes("//msb:PropertyGroup", $crashNamespace) |
@@ -411,7 +430,7 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     }
     Assert-File ([System.IO.Path]::GetFullPath($PdbPath))
     if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
-        $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\crash_handler\obj\Release\vSMRCrashHandler.pdb"
+        $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
     }
     Assert-File ([System.IO.Path]::GetFullPath($CrashHandlerPdbPath))
 }

@@ -62,11 +62,12 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>platform/windows/PrecompiledHeader.hpp</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
@@ -93,13 +94,14 @@
     <ResourceCompile>
       <Culture>0x0409</Culture>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>platform/windows/PrecompiledHeader.hpp</PrecompiledHeaderFile>
       <Optimization>MaxSpeed</Optimization>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -109,7 +111,7 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <BufferSecurityCheck>true</BufferSecurityCheck>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -138,47 +140,47 @@
     <ResourceCompile>
       <Culture>0x0409</Culture>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir)include;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\CallsignLookup.cpp" />
-    <ClCompile Include="src\Config.cpp" />
-    <ClCompile Include="src\CrashReporter.cpp" />
-    <ClCompile Include="src\CPDLCSettingsDialog.cpp" />
-    <ClCompile Include="src\DataLinkDialog.cpp" />
-    <ClCompile Include="src\HttpHelper.cpp" />
-    <ClCompile Include="src\InsetWindow.cpp" />
-    <ClCompile Include="src\AvisoDocumentModel.cpp" />
-    <ClCompile Include="src\AvisoEditorDialog.cpp" />
-    <ClCompile Include="src\ProfileEditorDialog.cpp" />
-    <ClCompile Include="src\VsmrControlCenterDialog.cpp" />
-    <ClCompile Include="src\VsmrControlCenterBridge.cpp" />
-    <ClCompile Include="src\VsmrResourceFiles.cpp" />
-    <ClCompile Include="src\WeatherData.cpp" />
-    <ClCompile Include="src\Rimcas.cpp" />
-    <ClCompile Include="src\RdfOverlay.cpp" />
-    <ClCompile Include="src\SMRGeometry.cpp" />
-    <ClCompile Include="src\SMRPlugin.cpp" />
-    <ClCompile Include="src\SMRRadar.cpp" />
-    <ClCompile Include="src\SMRRadar_AircraftAndAsr.cpp" />
-    <ClCompile Include="src\SMRRadar_AvisoEditor.cpp" />
-    <ClCompile Include="src\SMRRadar_AvisoPresets.cpp" />
-    <ClCompile Include="src\SMRRadar_ControlCenter.cpp" />
-    <ClCompile Include="src\SMRRadar_FunctionCall.cpp" />
-    <ClCompile Include="src\SMRRadar_ProfileEditorWindow.cpp" />
-    <ClCompile Include="src\SMRRadar_RadarAndCommands.cpp" />
-    <ClCompile Include="src\SMRRadar_RuntimeMenu.cpp" />
-    <ClCompile Include="src\SMRRadar_ScreenInteraction.cpp" />
-    <ClCompile Include="src\SMRRadar_TagRendering.cpp" />
-    <ClCompile Include="src\SMRRadar_TagDefinitions.cpp" />
-    <ClCompile Include="src\SMRRadar_TargetsAndFonts.cpp" />
-    <ClCompile Include="src\SMRRadar_Utilities.cpp" />
-    <ClCompile Include="src\stdafx.cpp">
+    <ClCompile Include="src\aircraft\CallsignLookup.cpp" />
+    <ClCompile Include="src\app\PluginEntry.cpp" />
+    <ClCompile Include="src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="src\aviso\AvisoEditorDialog.cpp" />
+    <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
+    <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
+    <ClCompile Include="src\config\RuntimeConfig.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterDialog.cpp" />
+    <ClCompile Include="src\control_center\RadarScreen.Integration.cpp" />
+    <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp" />
+    <ClCompile Include="src\crash\CrashReporter.cpp" />
+    <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp" />
+    <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.cpp" />
+    <ClCompile Include="src\platform\windows\network\HttpHelper.cpp" />
+    <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\vSMR.cpp" />
+    <ClCompile Include="src\plugin\Plugin.cpp" />
+    <ClCompile Include="src\profiles\ProfileEditorDialog.cpp" />
+    <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp" />
+    <ClCompile Include="src\radar\RadarGeometry.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.Interaction.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.MenuActions.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.PresentationSettings.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.RuntimeMenu.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp" />
+    <ClCompile Include="src\rdf\RdfOverlay.cpp" />
+    <ClCompile Include="src\safety\Rimcas.cpp" />
+    <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp" />
+    <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp" />
+    <ClCompile Include="src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\lib\include\rapidjson\document.h" />
@@ -188,49 +190,49 @@
     <ClInclude Include="..\lib\include\rapidjson\reader.h" />
     <ClInclude Include="..\lib\include\rapidjson\stringbuffer.h" />
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
-    <ClInclude Include="include\CallsignLookup.hpp" />
-    <ClInclude Include="include\Config.hpp" />
-    <ClInclude Include="include\CrashReportProtocol.hpp" />
-    <ClInclude Include="include\CrashReportSupport.hpp" />
-    <ClInclude Include="include\CrashReporter.hpp" />
-    <ClInclude Include="include\CrashRuntime.hpp" />
-    <ClInclude Include="include\Constant.hpp" />
-    <ClInclude Include="include\CPDLCSettingsDialog.hpp" />
-    <ClInclude Include="include\DataLinkDialog.hpp" />
-    <ClInclude Include="include\HttpHelper.hpp" />
-    <ClInclude Include="include\InsetWindow.h" />
-    <ClInclude Include="include\AvisoDocumentModel.hpp" />
-    <ClInclude Include="include\AvisoEditorDialog.hpp" />
-    <ClInclude Include="include\Logger.h" />
-    <ClInclude Include="include\ProfileEditorDialog.hpp" />
-    <ClInclude Include="include\VsmrControlCenterDialog.hpp" />
-    <ClInclude Include="include\VsmrControlCenterBridge.hpp" />
-    <ClInclude Include="include\VsmrResourceFiles.hpp" />
-    <ClInclude Include="include\WeatherData.hpp" />
-    <ClInclude Include="include\resource.h" />
-    <ClInclude Include="include\Rimcas.hpp" />
-    <ClInclude Include="include\RdfOverlay.hpp" />
-    <ClInclude Include="include\SMRColorUtils.hpp" />
-    <ClInclude Include="include\SMRDataTypes.hpp" />
-    <ClInclude Include="include\SMRGeometry.hpp" />
-    <ClInclude Include="include\SMRGroundState.hpp" />
-    <ClInclude Include="include\SMRProfileColorPaths.hpp" />
-    <ClInclude Include="include\SMRPlugin.hpp" />
-    <ClInclude Include="include\SMRRadar.hpp" />
-    <ClInclude Include="include\SMRTagColorRules.hpp" />
-    <ClInclude Include="include\SMRTagDefinitionUtils.hpp" />
-    <ClInclude Include="include\SMRTextUtils.hpp" />
-    <ClInclude Include="include\SMRVacdmTagHelpers.hpp" />
-    <ClInclude Include="include\stdafx.h" />
-    <ClInclude Include="include\targetver.h" />
-    <ClInclude Include="include\vSMR.hpp" />
+    <ClInclude Include="src\aircraft\CallsignLookup.hpp" />
+    <ClInclude Include="src\aircraft\GroundState.hpp" />
+    <ClInclude Include="src\app\PluginEntry.hpp" />
+    <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
+    <ClInclude Include="src\aviso\AvisoEditorDialog.hpp" />
+    <ClInclude Include="src\config\RuntimeConfig.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterDialog.hpp" />
+    <ClInclude Include="src\control_center\RuntimeResourceFiles.hpp" />
+    <ClInclude Include="src\crash\CrashReporter.hpp" />
+    <ClInclude Include="src\crash\CrashReportProtocol.hpp" />
+    <ClInclude Include="src\crash\CrashReportSupport.hpp" />
+    <ClInclude Include="src\crash\CrashRuntime.hpp" />
+    <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp" />
+    <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
+    <ClInclude Include="src\insets\InsetWindow.hpp" />
+    <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />
+    <ClInclude Include="src\platform\windows\network\HttpHelper.hpp" />
+    <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp" />
+    <ClInclude Include="src\platform\windows\ResourceIds.h" />
+    <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp" />
+    <ClInclude Include="src\plugin\Plugin.hpp" />
+    <ClInclude Include="src\profiles\ProfileColorPaths.hpp" />
+    <ClInclude Include="src\profiles\ProfileEditorDialog.hpp" />
+    <ClInclude Include="src\radar\RadarGeometry.hpp" />
+    <ClInclude Include="src\radar\RadarScreen.hpp" />
+    <ClInclude Include="src\radar\RadarUiSupport.hpp" />
+    <ClInclude Include="src\rdf\RdfOverlay.hpp" />
+    <ClInclude Include="src\safety\Rimcas.hpp" />
+    <ClInclude Include="src\shared\logging\Logger.hpp" />
+    <ClInclude Include="src\shared\TextUtils.hpp" />
+    <ClInclude Include="src\tags\TagColorRules.hpp" />
+    <ClInclude Include="src\tags\TagDataTypes.hpp" />
+    <ClInclude Include="src\tags\TagDefinitionUtils.hpp" />
+    <ClInclude Include="src\tags\VacdmTagHelpers.hpp" />
+    <ClInclude Include="src\weather\WeatherStore.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectCapability Include="PackageReferences" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="crash_handler\vSMRCrashHandler.vcxproj">
+    <ProjectReference Include="src\crash\handler\vSMRCrashHandler.vcxproj">
       <Project>{EF50604E-8F7D-4B20-8266-F17E732CA839}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <LinkLibraryDependencies>false</LinkLibraryDependencies>
@@ -242,16 +244,16 @@
     <None Include="data\Audio\Ding.wav" />
     <None Include="data\ICAO_Aircraft.json" />
     <None Include="data\vSMR_Profiles.json" />
-    <None Include="vSMR_webUI\app.js">
+    <None Include="src\control_center\web\app.js">
       <Link>vSMR_webUI\app.js</Link>
     </None>
-    <None Include="vSMR_webUI\data.js">
+    <None Include="src\control_center\web\data.js">
       <Link>vSMR_webUI\data.js</Link>
     </None>
-    <None Include="vSMR_webUI\index.html">
+    <None Include="src\control_center\web\index.html">
       <Link>vSMR_webUI\index.html</Link>
     </None>
-    <None Include="vSMR_webUI\styles.css">
+    <None Include="src\control_center\web\styles.css">
       <Link>vSMR_webUI\styles.css</Link>
     </None>
     <None Include="resources\cursors\arrow.cur" />
@@ -272,13 +274,13 @@
   </Target>
   <Target Name="CopyVsmrRuntimeAssets" AfterTargets="Build">
     <PropertyGroup>
-      <_VsmrCrashHandlerPath>$(MSBuildProjectDirectory)\crash_handler\bin\$(Configuration)\vSMRCrashHandler.dll</_VsmrCrashHandlerPath>
+      <_VsmrCrashHandlerPath>$(MSBuildProjectDirectory)\src\crash\handler\bin\$(Configuration)\vSMRCrashHandler.dll</_VsmrCrashHandlerPath>
     </PropertyGroup>
     <ItemGroup>
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\index.html" />
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\styles.css" />
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\app.js" />
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\vSMR_webUI\data.js" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\index.html" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\styles.css" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\app.js" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\data.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
         Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />

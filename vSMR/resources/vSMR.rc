@@ -1,6 +1,6 @@
 // Microsoft Visual C++ generated resource script.
 //
-#include "resource.h"
+#include "platform/windows/ResourceIds.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -8,7 +8,7 @@
 // Generated from the TEXTINCLUDE 2 resource.
 //
 #ifndef APSTUDIO_INVOKED
-#include "targetver.h"
+#include "platform/windows/WindowsTargetVersion.hpp"
 #endif
 #include "afxres.h"
 #include "verrsrc.h"
@@ -101,13 +101,13 @@ LANGUAGE LANG_FRENCH, SUBLANG_FRENCH
 
 1 TEXTINCLUDE 
 BEGIN
-    "resource.h\0"
+    "platform/windows/ResourceIds.h\0"
 END
 
 2 TEXTINCLUDE 
 BEGIN
     "#ifndef APSTUDIO_INVOKED\r\n"
-    "#include ""targetver.h""\r\n"
+    "#include ""platform/windows/WindowsTargetVersion.hpp""\r\n"
     "#endif\r\n"
     "#include ""afxres.h""\r\n"
     "#include ""verrsrc.h""\r\n"

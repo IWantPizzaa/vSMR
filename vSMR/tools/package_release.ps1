@@ -182,7 +182,7 @@ if (-not $SkipBuild) {
         $PdbPath = Join-Path $RepositoryRoot "vSMR\$Configuration\vSMR.pdb"
     }
     if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
-        $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\crash_handler\obj\$Configuration\vSMRCrashHandler.pdb"
+        $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\src\crash\handler\obj\$Configuration\vSMRCrashHandler.pdb"
     }
 }
 else {
