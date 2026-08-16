@@ -38,6 +38,5 @@ END_MESSAGE_MAP()
 
 void CCPDLCSettingsDialog::OnBnClickedOk()
 {
-	// TODO: Add your control notification handler code here
 	CDialogEx::OnOK();
 }
