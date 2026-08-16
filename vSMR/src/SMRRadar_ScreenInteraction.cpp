@@ -4,6 +4,7 @@
 #include "InsetWindow.h"
 #include "SMRGroundState.hpp"
 #include "VsmrControlCenterDialog.hpp"
+#include "CrashRuntime.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 extern CPoint mouseLocation;
@@ -351,6 +352,9 @@ namespace
 
 void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnButtonDownScreenObject",
+		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
@@ -390,6 +394,9 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 
 void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnButtonUpScreenObject",
+		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(ObjectType);
 	UNREFERENCED_PARAMETER(sObjectId);
@@ -404,6 +411,9 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 }
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnMoveScreenObject",
+		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	if (HandleRuntimeMenuMove(ObjectType, sObjectId, Pt, Area, Released))
@@ -643,6 +653,9 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 
 void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnOverScreenObject",
+		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(Area);
@@ -940,6 +953,9 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 
 void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, int Button)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnClickScreenObject",
+		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
 	if (HandleRuntimeMenuClick(ObjectType, sObjectId, Pt, Area, Button))

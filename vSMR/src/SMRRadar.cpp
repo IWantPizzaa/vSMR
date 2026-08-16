@@ -20,6 +20,8 @@
 #include "SMRPlugin.hpp"
 #include "VsmrControlCenterDialog.hpp"
 #include "RdfOverlay.hpp"
+#include "CrashReporter.hpp"
+#include "CrashRuntime.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -923,11 +925,13 @@ CSMRRadar::CSMRRadar()
 	this->CSMRRadar::LoadProfile("Default", false);
 
 	this->CSMRRadar::LoadCustomFont();
+	PublishCrashRadarState("main");
 
 }
 
 CSMRRadar::~CSMRRadar()
 {
+	PublishCrashRadarState("closing", "none");
 	Logger::info(string(__FUNCSIG__));
 	BeginShutdown();
 	if (gWindowProcRadarScreen == this)
@@ -970,6 +974,76 @@ CSMRRadar::~CSMRRadar()
 		GdiplusShutdown(m_gdiplusToken);
 		m_gdiplusToken = 0;
 	}
+	VsmrCrashReporter::ClearRadarState(
+		reinterpret_cast<std::uintptr_t>(this));
+}
+
+void CSMRRadar::PublishCrashRadarState(
+	const char* radar,
+	const char* inset) const noexcept
+{
+	char visibleInsets[96]{};
+	if (inset == nullptr)
+	{
+		auto appendInset = [&](const char* name)
+		{
+			if (name == nullptr || name[0] == '\0')
+				return;
+			if (visibleInsets[0] != '\0')
+				strcat_s(visibleInsets, ",");
+			strcat_s(visibleInsets, name);
+		};
+
+		for (const auto& display : appWindowDisplays)
+		{
+			if (!display.second)
+				continue;
+			switch (display.first)
+			{
+			case APPWINDOW_ONE - APPWINDOW_BASE:
+				appendInset("SRW1");
+				break;
+			case APPWINDOW_AVISO - APPWINDOW_BASE:
+				appendInset("AVISO");
+				break;
+			case APPWINDOW_WEATHER - APPWINDOW_BASE:
+				appendInset("WEATHER");
+				break;
+			case APPWINDOW_TIMER - APPWINDOW_BASE:
+				appendInset("TIMER");
+				break;
+			default:
+				appendInset("OTHER");
+				break;
+			}
+		}
+		if (visibleInsets[0] == '\0')
+			strcpy_s(visibleInsets, "none");
+		inset = visibleInsets;
+	}
+
+	const char* const airportValue = ActiveAirport.c_str();
+	const char* const profileValue = CrashActiveProfile;
+	const char* const radarValue = radar != nullptr ? radar : "unknown";
+	const char* const insetValue = inset != nullptr ? inset : "unknown";
+	if (strcmp(CrashLastAirport, airportValue) == 0 &&
+		strcmp(CrashLastProfile, profileValue) == 0 &&
+		strcmp(CrashLastRadar, radarValue) == 0 &&
+		strcmp(CrashLastInset, insetValue) == 0)
+	{
+		return;
+	}
+
+	VsmrCrashReporter::RecordRadarState(
+		reinterpret_cast<std::uintptr_t>(this),
+		airportValue,
+		profileValue,
+		radarValue,
+		insetValue);
+	strncpy_s(CrashLastAirport, sizeof(CrashLastAirport), airportValue, _TRUNCATE);
+	strncpy_s(CrashLastProfile, sizeof(CrashLastProfile), profileValue, _TRUNCATE);
+	strncpy_s(CrashLastRadar, sizeof(CrashLastRadar), radarValue, _TRUNCATE);
+	strncpy_s(CrashLastInset, sizeof(CrashLastInset), insetValue, _TRUNCATE);
 }
 
 std::string CSMRRadar::DetectDefaultAirportFromAviso() const
@@ -2415,6 +2489,7 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 
 void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 {
+	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("main AVISO render worker");
 	try
 	{
 		for (;;)
@@ -2434,6 +2509,9 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 
 			if (request == nullptr)
 				continue;
+			VsmrCrashRuntime::RecordCurrentThreadCallback(
+				"CSMRRadar::AvisoGeoJsonRenderThreadMain",
+				reinterpret_cast<std::uintptr_t>(this));
 
 			std::unique_ptr<AvisoRasterRenderResult> result;
 			try
@@ -4053,6 +4131,13 @@ void CSMRRadar::LoadProfile(
 
 	// Loading the new profile
 	CurrentConfig->setActiveProfile(profileName);
+	const std::string effectiveProfileName = CurrentConfig->getActiveProfileName();
+	strncpy_s(
+		CrashActiveProfile,
+		sizeof(CrashActiveProfile),
+		effectiveProfileName.empty() ? "unavailable" : effectiveProfileName.c_str(),
+		_TRUNCATE);
+	PublishCrashRadarState("main");
 	InvalidateRunwayGeometryCache();
 	InvalidateStructuredTagRuleCache();
 	EnsureTargetGroundStatusColorEntries(persistNormalization);
@@ -6923,15 +7008,21 @@ void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnRefresh",
+		reinterpret_cast<std::uintptr_t>(this));
 	if (IsShutdownRequested())
 		return;
+	PublishCrashRadarState("main");
 
 	VSMR_REFRESH_LOG(string(__FUNCSIG__));
 	const char* refreshStage = "entry";
 	auto setRefreshStage = [&](const char* stage)
 	{
 		refreshStage = stage;
+		VsmrCrashReporter::RecordBreadcrumb("render stage", stage);
 	};
+	VsmrCrashReporter::RecordBreadcrumb("render stage", refreshStage);
 	auto logRefreshException = [&](const std::string& reason)
 	{
 		static DWORD lastLogTick = 0;
@@ -8960,6 +9051,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	}
 
 	dcDetach.Detach();
+	setRefreshStage("complete");
 
 	VSMR_REFRESH_LOG("END "+ string(__FUNCSIG__));
 

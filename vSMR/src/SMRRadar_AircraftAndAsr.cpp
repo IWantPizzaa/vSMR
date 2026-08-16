@@ -2,6 +2,7 @@
 #include "SMRRadar.hpp"
 #include "InsetWindow.h"
 #include "VsmrControlCenterDialog.hpp"
+#include "CrashRuntime.hpp"
 
 #include <cerrno>
 #include <cstdlib>
@@ -1014,6 +1015,7 @@ string CSMRRadar::setActiveAirport(
 		SaveInsetStateToAsrForAirport(ActiveAirport);
 
 	ActiveAirport = airport;
+	PublishCrashRadarState("main");
 	InvalidateRunwayGeometryCache();
 	LastMapActiveAirport.clear();
 	RunwayStatusLastRefreshTick = 0;
@@ -1038,6 +1040,9 @@ string CSMRRadar::setActiveAirport(
 
 void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnAsrContentLoaded",
+		reinterpret_cast<std::uintptr_t>(this));
 	(void)Loaded;
 	Logger::info(string(__FUNCSIG__));
 	const char * p_value;
@@ -1139,12 +1144,16 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	// Auto-detect active sector runways only for legacy profiles. An explicit
 	// profile runway array is authoritative, including when it is empty.
 	RefreshLegacyRimcasRunwayMonitoring();
+	PublishCrashRadarState("main");
 
 	// ReSharper restore CppZeroConstantCanBeReplacedWithNullptr
 }
 
 void CSMRRadar::OnAsrContentToBeSaved()
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnAsrContentToBeSaved",
+		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 
 	SaveDataToAsr("Airport", "Active airport for RIMCAS", getActiveAirport().c_str());

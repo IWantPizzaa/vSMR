@@ -3,6 +3,7 @@
 #include "SMRGroundState.hpp"
 #include "SMRTagColorRules.hpp"
 #include "SMRVacdmTagHelpers.hpp"
+#include "CrashRuntime.hpp"
 
 #include <algorithm>
 
@@ -232,6 +233,10 @@ int CSMRRadar::getIntFromCategory(string category)
 
 void CSMRRadar::OnAsrContentToBeClosed(void)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback(
+		"CSMRRadar::OnAsrContentToBeClosed",
+		reinterpret_cast<std::uintptr_t>(this));
+	PublishCrashRadarState("closing", "none");
 	BeginShutdown();
 	CloseVsmrControlCenterWindow();
 	CloseProfileEditorWindow(false);
