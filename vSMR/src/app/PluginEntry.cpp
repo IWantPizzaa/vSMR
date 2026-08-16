@@ -1,5 +1,4 @@
-// vSMR.cpp : Defines the initialization routines for the DLL.
-//
+// Defines the application and EuroScope plug-in entry points.
 
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "app/PluginEntry.hpp"

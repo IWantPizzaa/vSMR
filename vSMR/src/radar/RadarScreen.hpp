@@ -852,7 +852,7 @@ public:
 
 	//---OnAsrContentToBeClosed-----------------------------------------
 
-	void CSMRRadar::EuroScopePlugInExitCustom();
+	void EuroScopePlugInExitCustom();
 
 	virtual void OnAsrContentToBeClosed(void);
 };

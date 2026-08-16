@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "safety/Rimcas.hpp"
 #include "aircraft/GroundState.hpp"
+#include "shared/logging/Logger.hpp"
 
 namespace
 {
