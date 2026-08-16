@@ -12,7 +12,7 @@ release owner before a public production release.
 | CPDLC notification | `Audio/Ding.wav` | Added from the historical/project working data; creator and redistribution terms are not recorded in this repository | Verification required |
 | AVISO airport geometry | `AVISO/<ICAO>.geojson`, `AVISO/LFPG_Dyna_fixed.geojson` | Derived from project-maintained airport display and dynamic ownership data; source and contributor attribution are not recorded per airport | Verification required |
 | Aircraft dimensions | `ICAO_Aircraft.json` | Normalized from the project aircraft database; upstream data source and terms are not recorded | Verification required |
-| Control Center UI | `vSMR_webUI/*` | Maintained as part of this repository | Project license |
+| Control Center UI | `src/control_center/web/*` (packaged as `vSMR_webUI/*`) | Maintained as part of this repository | Project license |
 
 For each unresolved group, record the source URL or contributor, retrieval or
 creation date, applicable license/permission, and any required attribution.
