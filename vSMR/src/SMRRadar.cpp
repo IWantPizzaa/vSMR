@@ -2573,6 +2573,13 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		hasLastCoordinate = true;
 	};
 
+	struct DeferredOwnershipOutline
+	{
+		const AvisoFeature* feature = nullptr;
+		Color strokeColor;
+		bool ownedByMe = false;
+	};
+	std::vector<DeferredOwnershipOutline> deferredOwnershipOutlines;
 	std::vector<PointF> rasterPoints;
 	for (const AvisoFeature& feature : *request.features)
 	{
@@ -2583,6 +2590,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 		Color featureFillColor = feature.fillColor;
 		Color featureStrokeColor = feature.strokeColor;
+		bool ownedByMe = false;
 		if (feature.frequencyOwnership.dynamicItem)
 		{
 			if (feature.frequencyOwnership.ruleKey.empty() || request.frequencyOwnership == nullptr)
@@ -2596,6 +2604,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			}
 			if (ownership->second.ownedByMe)
 			{
+				ownedByMe = true;
 				// Keep inherited/self-owned territory visible but deliberately
 				// quieter and blue, while foreign ownership retains the source
 				// service color (yellow in the LFPG data set).
@@ -2616,6 +2625,15 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * rasterCoordinateScaleY;
 		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
 			continue;
+		const bool deferOwnershipOutline =
+			feature.polygon && feature.frequencyOwnership.dynamicItem &&
+			featureStrokeColor.GetAlpha() > 0 && feature.strokeWidth > 0.0f &&
+			!AvisoColorsEqual(featureFillColor, featureStrokeColor);
+		if (deferOwnershipOutline)
+		{
+			deferredOwnershipOutlines.push_back(
+				DeferredOwnershipOutline{ &feature, featureStrokeColor, ownedByMe });
+		}
 
 		if (feature.polygon)
 		{
@@ -2648,7 +2666,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
 				}
 
-				if (featureStrokeColor.GetAlpha() > 0 &&
+				if (!deferOwnershipOutline && featureStrokeColor.GetAlpha() > 0 &&
 					feature.strokeWidth > 0.0f &&
 					!AvisoColorsEqual(featureFillColor, featureStrokeColor))
 				{
@@ -2690,6 +2708,55 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				if (renderCancelled())
 					return nullptr;
 				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
+			}
+		}
+	}
+
+	// Ownership polygons share many exact edges. Drawing each complete polygon
+	// in source order lets a later cyan outline overwrite part of an external
+	// yellow boundary (or vice versa). Paint every fill above, then draw all
+	// self-owned outlines first and external outlines last. Shared boundaries
+	// are consequently continuous and consistently identify the other owner.
+	for (const bool drawSelfOwned : { true, false })
+	{
+		for (const DeferredOwnershipOutline& deferred : deferredOwnershipOutlines)
+		{
+			if (renderCancelled())
+				return nullptr;
+			if (deferred.feature == nullptr || deferred.ownedByMe != drawSelfOwned)
+				continue;
+
+			const AvisoFeature& feature = *deferred.feature;
+			Pen outlinePen(
+				deferred.strokeColor,
+				feature.strokeWidth * static_cast<float>(request.rasterScale));
+			outlinePen.SetLineJoin(LineJoinRound);
+			for (const std::vector<AvisoPoint>& ring : feature.paths)
+			{
+				if (ring.size() < 3)
+					continue;
+				rasterPoints.clear();
+				rasterPoints.reserve(ring.size());
+				AvisoPoint lastCoordinate{};
+				bool hasLastCoordinate = false;
+				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
+				{
+					if ((pointIndex & 0x3ff) == 0 && renderCancelled())
+						return nullptr;
+					appendRasterPoint(
+						rasterPoints,
+						lastCoordinate,
+						hasLastCoordinate,
+						ring[pointIndex],
+						pointIndex == 0);
+				}
+				if (rasterPoints.size() >= 3)
+				{
+					rasterGraphics.DrawPolygon(
+						&outlinePen,
+						rasterPoints.data(),
+						static_cast<INT>(rasterPoints.size()));
+				}
 			}
 		}
 	}
