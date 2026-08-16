@@ -1,0 +1,4 @@
+EXPORTS
+    OutOfProcessExceptionEventCallback
+    OutOfProcessExceptionEventSignatureCallback
+    OutOfProcessExceptionEventDebuggerLaunchCallback

@@ -143,7 +143,16 @@
     <ClInclude Include="include\Config.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
+    <ClInclude Include="include\CrashReportProtocol.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CrashReportSupport.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
     <ClInclude Include="include\CrashReporter.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CrashRuntime.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\Constant.hpp">

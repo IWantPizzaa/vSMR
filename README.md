@@ -400,7 +400,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | `Tools\` | Package install and rollback helpers |
 | `Licenses\` | Project/dependency licenses and asset provenance |
 | `Diagnostics\` | Redacted reports created by `.smr diagnostics` |
-| `CrashReports\` | Automatic vSMR fatal-exception summaries and Windows minidumps |
+| `CrashReporter\` | Packaged Windows Error Reporting callback used to create crash reports outside EuroScope |
 | `RELEASE-METADATA.json` | Version, source, build, signing, and publishability information |
 | `SHA256SUMS.txt` | Exact package payload manifest |
 
@@ -432,11 +432,17 @@ Review every report before sharing it. Operational callsigns or local paths can 
 
 ### Crash reports
 
-vSMR installs an always-on, best-effort crash observer when the DLL loads. If Windows raises a fatal exception while the failing instruction is inside `vSMR.dll`, vSMR writes a timestamped text summary and matching `.dmp` file to `vSMR_Data\CrashReports\`. If that location is not writable, it falls back to `%LOCALAPPDATA%\vSMR\CrashReports\` and then `%TEMP%\vSMR_CrashReports\`.
+vSMR registers the packaged `vSMR_Data\CrashReporter\vSMRCrashHandler.dll` with Windows Error Reporting (WER). When Windows identifies an unhandled fatal crash associated with vSMR, WER loads that callback in its reporting process. EuroScope's failing thread therefore performs no report-file I/O, stack walking, DbgHelp loading, or minidump writing. Handled first-chance exceptions are not reported as crashes, and normal EuroScope and Windows crash handling continues after the callback returns.
 
-The observer does not suppress the exception and does not replace EuroScope's crash handler: after writing the report, normal EuroScope and Windows exception handling continues. It deliberately ignores exceptions originating outside vSMR, so a crash in EuroScope or another plug-in may not create a vSMR report. Stack-exhaustion or severely corrupted-process failures may also prevent any in-process reporter from completing.
+Reports are stored in `%LOCALAPPDATA%\vSMR\CrashReports\` by default. Startup creates the directory and proves that it is writable with a temporary file; if that fails, vSMR tries `vSMR_Data\CrashReports\` and then `%TEMP%\vSMR\CrashReports\`. Cleanup also runs only during normal startup: vSMR retains at most 10 report sets within a 256 MiB total budget, prefers newer sets that fit, and removes stale temporary dump files.
 
-Keep the `.txt`, `.dmp`, exact `vSMR.dll`, and matching private PDB together when diagnosing a crash. Minidumps can contain callsigns, local paths, typed text, credentials, or other process memory. Review and share them only through a trusted private channel; do not attach a dump publicly without checking it first.
+The callback creates and flushes the `.txt` summary before attempting its matching `.dmp`. The summary records whether the exception instruction was inside `vSMR.dll`, whether vSMR was instead found on the crashing stack, or whether the crashing thread was a registered vSMR worker. A stack association is explicitly reported as correlation, not proof that vSMR caused the crash. If no such association is found, vSMR creates no report merely because the plug-in was loaded.
+
+Crash-safe diagnostics are prepared during normal execution in fixed-size memory: open radar screens and their airport/profile/inset state, the last EuroScope callbacks, vSMR worker roles, connection state, recent bounded log messages, and the exact DLL/Git/PDB/host-version identity. The external callback copies this block from the failed process and never calls live EuroScope, MFC, logger, or renderer objects. This also gives stack-overflow reports an independent healthy process and stack.
+
+Crash reporting remains best effort. It may be unavailable when WER is disabled by policy, a debugger or another WER runtime module takes control first, the callback module is missing or blocked, the process is terminated without crash dispatch, or corruption prevents Windows from starting its reporter. The registration state and selected report directory are included in `.smr diagnostics`.
+
+Keep the `.txt`, `.dmp`, exact `vSMR.dll`, `vSMRCrashHandler.dll`, and matching private PDBs together when diagnosing a crash. Minidumps and breadcrumbs can contain callsigns, local paths, typed text, credentials, or other process memory. Nothing is uploaded automatically. Review reports and share them only through a trusted private channel; do not attach a dump publicly without checking it first.
 
 ### Common problems
 
@@ -454,6 +460,7 @@ Keep the `.txt`, `.dmp`, exact `vSMR.dll`, and matching private PDB together whe
 | An inset layout is wrong after changing airports | Load or reset the preset for that airport; presets are intentionally airport-scoped |
 | Native RDF rings do not appear | TrackAudio is running and its WebSocket is available at `ws://127.0.0.1:49080/ws`; Audio for VATSIM standalone is not yet a native RDF source |
 | The external RDF draws over a vSMR surface view | Rebuild the official RDF at the pinned revision with `vSMR_Data\Tools\RDF-vSMR-ground-view.patch`; `.RDF ASR DRAW 0` alone is not reliable across concurrent screens |
+| No vSMR crash report is created | Check `crash_reporter_status` and `crash_report_directory` in `.smr diagnostics`; confirm `vSMR_Data\CrashReporter\vSMRCrashHandler.dll` is present and WER is not disabled by policy |
 
 ## Building from Source
 
@@ -515,6 +522,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_
 
 Add `-AllowNonPublishable` only when verifying a deliberately non-publishable local artifact.
 
+### Crash-report harness
+
+The isolated Win32 harness exercises the production directory-selection and retention code, the packaged WER callback ABI, Unicode and paths longer than `MAX_PATH`, missing-DbgHelp text survival, concurrent callbacks, and repeated DLL loading without starting or crashing EuroScope:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\CrashHarness\run_crash_harness.ps1
+```
+
+Add `-IncludeWerIntegration` to also launch disposable harness subprocesses for a handled access violation, a real unhandled access violation, and stack overflow. The handled exception must create no report; the two unhandled failures must create report pairs. The runner temporarily adds only its exact per-user WER allowlist value and restores the previous value when it finishes.
+
 The user archive contains only:
 
 ```text
@@ -532,7 +549,7 @@ For an offline EuroScope machine, install the x86 WebView2 Evergreen Standalone 
 
 ### Signing
 
-`package_release.ps1` can sign the staged DLL when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. `VSMR_REQUIRE_SIGNATURE=1` enables the signature-required release gate. Timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
+`package_release.ps1` can sign both staged DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. `VSMR_REQUIRE_SIGNATURE=1` requires valid signatures on both `vSMR.dll` and `vSMRCrashHandler.dll`. Timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
 
 Do not describe a package as signed unless package verification confirms the signature.
 
@@ -541,6 +558,7 @@ Do not describe a package as signed unless package verification confirms the sig
 ```text
 vSMR.sln
 vSMR\
+  crash_handler\ Packaged x86 out-of-process WER callback project
   include\       C++ headers
   src\           Plug-in, radar, inset, editor, and integration code
   resources\     Windows resources, cursors, and DLL exports
@@ -560,8 +578,9 @@ Important implementation areas:
 | `vSMR/src/Config.cpp` | Profile loading, migration, validation, and persistence |
 | `vSMR/src/AvisoDocumentModel.cpp` | AVISO document validation and editing model |
 | `vSMR/src/VsmrControlCenter*.cpp` | Native WebView2 host and C++/JavaScript bridge |
+| `vSMR/src/CrashReporter.cpp` and `vSMR/crash_handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
 | `vSMR/vSMR_webUI/` | Control Center user interface |
-| `vSMR/tools/` | Release and runtime-data tooling |
+| `vSMR/tools/` | Release, runtime-data, package-verification, and isolated crash-harness tooling |
 
 ## Beta Notes
 

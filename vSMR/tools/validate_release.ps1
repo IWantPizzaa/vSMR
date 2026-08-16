@@ -6,7 +6,8 @@ param(
     [ValidatePattern("^\d+\.\d+\.\d+-beta\.\d+$")]
     [string]$ExpectedVersion = "2.0.0-beta.2",
     [string]$BuildOutputDirectory = "",
-    [string]$PdbPath = ""
+    [string]$PdbPath = "",
+    [string]$CrashHandlerPdbPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,10 +28,107 @@ function Assert-File {
     Assert-True (Test-Path -LiteralPath $Path -PathType Leaf) "Required file is missing: $Path"
 }
 
+function Get-PeMachine {
+    param([string]$Path)
+    $stream = [System.IO.File]::OpenRead($Path)
+    $reader = New-Object System.IO.BinaryReader($stream)
+    try {
+        Assert-True ($reader.ReadUInt16() -eq 0x5A4D) "$Path has no DOS/PE header."
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadInt32()
+        Assert-True ($peOffset -ge 0 -and $peOffset -le ($stream.Length - 6)) "$Path has an invalid PE offset."
+        $stream.Position = $peOffset
+        Assert-True ($reader.ReadUInt32() -eq 0x00004550) "$Path has an invalid PE signature."
+        return $reader.ReadUInt16()
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Get-PeExportNames {
+    param([string]$Path)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 256 -or [BitConverter]::ToUInt16($bytes, 0) -ne 0x5A4D) {
+        throw "$Path has no DOS/PE header."
+    }
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($peOffset -lt 0 -or $peOffset + 24 -gt $bytes.Length -or
+        [BitConverter]::ToUInt32($bytes, $peOffset) -ne 0x00004550) {
+        throw "$Path has an invalid PE signature."
+    }
+    $sectionCount = [BitConverter]::ToUInt16($bytes, $peOffset + 6)
+    $optionalSize = [BitConverter]::ToUInt16($bytes, $peOffset + 20)
+    $optionalOffset = $peOffset + 24
+    if ($optionalOffset + $optionalSize -gt $bytes.Length) { throw "$Path has a truncated optional header." }
+    $magic = [BitConverter]::ToUInt16($bytes, $optionalOffset)
+    $dataDirectoryOffset = if ($magic -eq 0x010B) { $optionalOffset + 96 } elseif ($magic -eq 0x020B) { $optionalOffset + 112 } else { throw "$Path has an unsupported PE optional header." }
+    if ($dataDirectoryOffset + 8 -gt $optionalOffset + $optionalSize) { throw "$Path has no export data directory." }
+    $exportRva = [BitConverter]::ToUInt32($bytes, $dataDirectoryOffset)
+    if ($exportRva -eq 0) { return @() }
+    $sizeOfHeaders = [BitConverter]::ToUInt32($bytes, $optionalOffset + 60)
+    $sections = @()
+    $sectionOffset = $optionalOffset + $optionalSize
+    for ($index = 0; $index -lt $sectionCount; $index++) {
+        $offset = $sectionOffset + (40 * $index)
+        if ($offset + 40 -gt $bytes.Length) { throw "$Path has a truncated section table." }
+        $sections += [pscustomobject]@{
+            VirtualSize = [BitConverter]::ToUInt32($bytes, $offset + 8)
+            VirtualAddress = [BitConverter]::ToUInt32($bytes, $offset + 12)
+            RawSize = [BitConverter]::ToUInt32($bytes, $offset + 16)
+            RawOffset = [BitConverter]::ToUInt32($bytes, $offset + 20)
+        }
+    }
+    $rvaToOffset = {
+        param([uint32]$Rva)
+        if ($Rva -lt $sizeOfHeaders) { return [int]$Rva }
+        foreach ($section in $sections) {
+            $span = [Math]::Max([uint64]$section.VirtualSize, [uint64]$section.RawSize)
+            if ([uint64]$Rva -ge [uint64]$section.VirtualAddress -and
+                [uint64]$Rva -lt ([uint64]$section.VirtualAddress + $span)) {
+                return [int]([uint64]$section.RawOffset + ([uint64]$Rva - [uint64]$section.VirtualAddress))
+            }
+        }
+        throw ("RVA 0x{0:X8} is not backed by a PE section in $Path." -f $Rva)
+    }
+    $exportOffset = & $rvaToOffset $exportRva
+    if ($exportOffset + 40 -gt $bytes.Length) { throw "$Path has a truncated export directory." }
+    $nameCount = [BitConverter]::ToUInt32($bytes, $exportOffset + 24)
+    if ($nameCount -gt 4096) { throw "$Path has an unreasonable export-name count." }
+    $nameTableRva = [BitConverter]::ToUInt32($bytes, $exportOffset + 32)
+    $nameTableOffset = & $rvaToOffset $nameTableRva
+    $names = @()
+    for ($index = 0; $index -lt $nameCount; $index++) {
+        $entryOffset = $nameTableOffset + (4 * $index)
+        if ($entryOffset + 4 -gt $bytes.Length) { throw "$Path has a truncated export-name table." }
+        $nameRva = [BitConverter]::ToUInt32($bytes, $entryOffset)
+        $nameOffset = & $rvaToOffset $nameRva
+        $end = $nameOffset
+        while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) { $end++ }
+        if ($end -eq $bytes.Length) { throw "$Path has an unterminated export name." }
+        $names += [System.Text.Encoding]::ASCII.GetString($bytes, $nameOffset, $end - $nameOffset)
+    }
+    return $names
+}
+
 foreach ($relativePath in @(
     "vSMR\include\SMRPlugin.hpp",
+    "vSMR\include\CrashReportProtocol.hpp",
+    "vSMR\include\CrashReportSupport.hpp",
+    "vSMR\include\CrashReporter.hpp",
+    "vSMR\include\CrashRuntime.hpp",
     "vSMR\resources\vSMR.rc",
     "vSMR\vSMR.vcxproj",
+    "vSMR\crash_handler\CrashHandler.cpp",
+    "vSMR\crash_handler\vSMRCrashHandler.def",
+    "vSMR\crash_handler\vSMRCrashHandler.rc",
+    "vSMR\crash_handler\vSMRCrashHandler.vcxproj",
+    "vSMR\crash_handler\vSMRCrashHandler.vcxproj.filters",
+    "vSMR\tools\CrashHarness\CrashHarness.cpp",
+    "vSMR\tools\CrashHarness\run_crash_harness.ps1",
+    "vSMR\tools\CrashHarness\vSMRCrashHarness.vcxproj",
+    "vSMR\tools\CrashHarness\vSMRCrashHarness.vcxproj.filters",
     "vSMR.sln",
     "vSMR\data\vSMR_Profiles.json",
     "vSMR\data\ICAO_Aircraft.json",
@@ -51,6 +149,8 @@ foreach ($relativePath in @(
 $escapedVersion = [Regex]::Escape($ExpectedVersion)
 $headerText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\include\SMRPlugin.hpp"))
 $resourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\resources\vSMR.rc"))
+$crashHandlerResourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\crash_handler\vSMRCrashHandler.rc"))
+$crashHandlerDefinitionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\crash_handler\vSMRCrashHandler.def"))
 $ciText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "appveyor.yml"))
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "README.md"))
 $changelogText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "CHANGELOG.md"))
@@ -59,6 +159,20 @@ $solutionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR.s
 Assert-True ($headerText -match "MY_PLUGIN_VERSION\s+`"v$escapedVersion`"") "Plugin version macro is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Windows FileVersion is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Windows ProductVersion is inconsistent."
+Assert-True ($crashHandlerResourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Crash-handler FileVersion is inconsistent."
+Assert-True ($crashHandlerResourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Crash-handler ProductVersion is inconsistent."
+$expectedCrashHandlerExports = @(
+    'OutOfProcessExceptionEventCallback',
+    'OutOfProcessExceptionEventSignatureCallback',
+    'OutOfProcessExceptionEventDebuggerLaunchCallback'
+)
+$crashHandlerExportLines = @($crashHandlerDefinitionText -split "`r?`n" | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_) -and $_.Trim() -ne 'EXPORTS' -and -not $_.TrimStart().StartsWith(';')
+})
+Assert-True ($crashHandlerExportLines.Count -eq $expectedCrashHandlerExports.Count) "Crash handler must expose only the three WER callbacks."
+foreach ($exportName in $expectedCrashHandlerExports) {
+    Assert-True ($crashHandlerDefinitionText -match "(?m)^\s*$exportName\s*$") "Crash handler does not declare the exact public export $exportName."
+}
 Assert-True ($resourceText -match "(?s)#ifdef\s+_DEBUG\s+FILEFLAGS\s+0x3L\s+#else\s+FILEFLAGS\s+0x2L") "Windows beta resource is missing the prerelease flag."
 Assert-True ($ciText -match "(?m)^version:\s+$escapedVersion\.\{build\}\s*$") "AppVeyor version is inconsistent."
 Assert-True ($readmeText.Contains($ExpectedVersion)) "README does not identify the beta version."
@@ -67,6 +181,7 @@ Assert-True ($packageScriptText -match '_vsmr-package-.+NewGuid') "Release packa
 Assert-True (-not ($packageScriptText -match 'Join-Path\s+\$ArtifactsDirectory\s+"_staging"')) "Release packaging must not delete a caller-owned fixed _staging directory."
 Assert-True ($solutionText -match '(?m)^\s*Release\|Win32\s*=\s*Release\|Win32\s*$') "The solution does not expose Release|Win32."
 Assert-True (-not ($solutionText -match '(?m)^\s*Debug\|Win32\s*=\s*Debug\|Win32\s*$')) "The solution must default to its sole Release|Win32 configuration."
+Assert-True ($solutionText -match 'vSMRCrashHandler.+vSMR\\crash_handler\\vSMRCrashHandler\.vcxproj') "The WER crash-handler project is missing from the solution."
 
 $legacyThreads = @(
     Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot "vSMR\src"), (Join-Path $RepositoryRoot "vSMR\include") -Recurse -File |
@@ -94,6 +209,32 @@ $releaseExternalPaths = @($projectXml.SelectNodes("//msb:PropertyGroup/msb:Exter
     Where-Object { [string]$_.ParentNode.Condition -like '*Release|Win32*' })
 Assert-True ($releaseExternalPaths.Count -eq 1 -and
     [string]$releaseExternalPaths[0].InnerText -match '(?i)lib[\\/]include') "The vendored include directory is not configured as external for Release|Win32."
+$crashHandlerProjectReference = $projectXml.SelectSingleNode("//msb:ProjectReference[contains(@Include, 'vSMRCrashHandler.vcxproj')]", $namespace)
+Assert-True ($null -ne $crashHandlerProjectReference) "vSMR does not build the WER crash-handler dependency."
+
+[xml]$crashHandlerProjectXml = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\crash_handler\vSMRCrashHandler.vcxproj"))
+$crashNamespace = New-Object System.Xml.XmlNamespaceManager($crashHandlerProjectXml.NameTable)
+$crashNamespace.AddNamespace("msb", "http://schemas.microsoft.com/developer/msbuild/2003")
+$crashReleaseConfiguration = @($crashHandlerProjectXml.SelectNodes("//msb:PropertyGroup", $crashNamespace) |
+    Where-Object { [string]$_.Condition -like '*Release|Win32*' -and [string]$_.Label -eq 'Configuration' })
+$crashReleaseDefinitions = @($crashHandlerProjectXml.SelectNodes("//msb:ItemDefinitionGroup", $crashNamespace) |
+    Where-Object { [string]$_.Condition -like '*Release|Win32*' })
+Assert-True ($crashReleaseConfiguration.Count -eq 1 -and
+    [string]$crashReleaseConfiguration[0].ConfigurationType -eq 'DynamicLibrary') "The crash handler is not a Release|Win32 DLL."
+Assert-True ($crashReleaseDefinitions.Count -eq 1) "Crash-handler Release|Win32 settings were not found uniquely."
+$crashReleaseProperties = @($crashHandlerProjectXml.SelectNodes("//msb:PropertyGroup", $crashNamespace) |
+    Where-Object { [string]$_.Condition -like '*Release|Win32*' -and [string]$_.Label -ne 'Configuration' })
+Assert-True ($crashReleaseProperties.Count -eq 1 -and
+    [string]$crashReleaseProperties[0].OutDir -match '\$\(ProjectDir\)bin\\\$\(Configuration\)') "Crash-handler build output is not isolated from the release root."
+$crashReleaseCompile = $crashReleaseDefinitions[0].SelectSingleNode("msb:ClCompile", $crashNamespace)
+$crashReleaseLink = $crashReleaseDefinitions[0].SelectSingleNode("msb:Link", $crashNamespace)
+Assert-True ([string]$crashReleaseCompile.RuntimeLibrary -eq 'MultiThreaded') "The out-of-process crash handler must use the static Release CRT."
+Assert-True ([string]$crashReleaseCompile.WarningLevel -eq 'Level4') "The crash handler must compile at warning level 4."
+Assert-True ([string]$crashReleaseCompile.SDLCheck -eq 'true' -and
+    [string]$crashReleaseCompile.BufferSecurityCheck -eq 'true') "Crash-handler compiler hardening is incomplete."
+Assert-True ([string]$crashReleaseCompile.PrecompiledHeader -eq 'NotUsing') "The crash handler must remain independent of vSMR's MFC precompiled header."
+Assert-True ([string]$crashReleaseLink.GenerateDebugInformation -eq 'true' -and
+    -not [string]::IsNullOrWhiteSpace([string]$crashReleaseLink.ProgramDatabaseFile)) "Crash-handler private PDB generation is disabled."
 
 & $normalizer -Mode Check -DataDirectory $dataDirectory
 
@@ -243,6 +384,16 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     Assert-True (Test-Path -LiteralPath (Join-Path $BuildOutputDirectory "vSMR_Data") -PathType Container) "Built vSMR_Data is missing."
     $releaseRootNames = @(Get-ChildItem -LiteralPath $BuildOutputDirectory -Force | ForEach-Object Name | Sort-Object)
     Assert-True (($releaseRootNames -join '|') -eq 'vSMR.dll|vSMR_Data') "Release root must contain only vSMR.dll and vSMR_Data; found $($releaseRootNames -join ', ')."
+    $builtCrashHandler = Join-Path $BuildOutputDirectory "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
+    Assert-File $builtCrashHandler
+    Assert-True ((Get-PeMachine (Join-Path $BuildOutputDirectory "vSMR.dll")) -eq 0x014C) "Built vSMR.dll is not Win32/x86."
+    Assert-True ((Get-PeMachine $builtCrashHandler) -eq 0x014C) "Built vSMRCrashHandler.dll is not Win32/x86."
+    $crashHandlerVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($builtCrashHandler)
+    Assert-True ($crashHandlerVersion.FileVersion -eq $ExpectedVersion -and
+        $crashHandlerVersion.ProductVersion -eq $ExpectedVersion) "Built crash-handler version does not match $ExpectedVersion."
+    $builtCrashHandlerExports = @(Get-PeExportNames $builtCrashHandler | Sort-Object)
+    $expectedBuiltExports = @($expectedCrashHandlerExports | Sort-Object)
+    Assert-True (($builtCrashHandlerExports -join '|') -ceq ($expectedBuiltExports -join '|')) "Built crash-handler export table is not the exact three-name WER ABI."
 
     foreach ($license in @(
         "vSMR_Data\Licenses\vSMR.txt",
@@ -259,6 +410,10 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
         $PdbPath = Join-Path $RepositoryRoot "vSMR\Release\vSMR.pdb"
     }
     Assert-File ([System.IO.Path]::GetFullPath($PdbPath))
+    if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
+        $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\crash_handler\obj\Release\vSMRCrashHandler.pdb"
+    }
+    Assert-File ([System.IO.Path]::GetFullPath($CrashHandlerPdbPath))
 }
 
 Write-Host "vSMR $ExpectedVersion release validation passed."

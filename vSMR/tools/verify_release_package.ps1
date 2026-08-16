@@ -49,6 +49,96 @@ function Assert-File {
     }
 }
 
+function Get-PeMachine {
+    param([string]$Path)
+    $stream = [System.IO.File]::OpenRead($Path)
+    $reader = New-Object System.IO.BinaryReader($stream)
+    try {
+        if ($reader.ReadUInt16() -ne 0x5A4D) {
+            throw "$Path has no DOS/PE header."
+        }
+        $stream.Position = 0x3C
+        $peOffset = $reader.ReadInt32()
+        if ($peOffset -lt 0 -or $peOffset -gt ($stream.Length - 6)) {
+            throw "$Path has an invalid PE offset."
+        }
+        $stream.Position = $peOffset
+        if ($reader.ReadUInt32() -ne 0x00004550) {
+            throw "$Path has an invalid PE signature."
+        }
+        return $reader.ReadUInt16()
+    }
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Get-PeExportNames {
+    param([string]$Path)
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 256 -or [BitConverter]::ToUInt16($bytes, 0) -ne 0x5A4D) {
+        throw "$Path has no DOS/PE header."
+    }
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($peOffset -lt 0 -or $peOffset + 24 -gt $bytes.Length -or
+        [BitConverter]::ToUInt32($bytes, $peOffset) -ne 0x00004550) {
+        throw "$Path has an invalid PE signature."
+    }
+    $sectionCount = [BitConverter]::ToUInt16($bytes, $peOffset + 6)
+    $optionalSize = [BitConverter]::ToUInt16($bytes, $peOffset + 20)
+    $optionalOffset = $peOffset + 24
+    if ($optionalOffset + $optionalSize -gt $bytes.Length) { throw "$Path has a truncated optional header." }
+    $magic = [BitConverter]::ToUInt16($bytes, $optionalOffset)
+    $dataDirectoryOffset = if ($magic -eq 0x010B) { $optionalOffset + 96 } elseif ($magic -eq 0x020B) { $optionalOffset + 112 } else { throw "$Path has an unsupported PE optional header." }
+    if ($dataDirectoryOffset + 8 -gt $optionalOffset + $optionalSize) { throw "$Path has no export data directory." }
+    $exportRva = [BitConverter]::ToUInt32($bytes, $dataDirectoryOffset)
+    if ($exportRva -eq 0) { return @() }
+    $sizeOfHeaders = [BitConverter]::ToUInt32($bytes, $optionalOffset + 60)
+    $sections = @()
+    $sectionOffset = $optionalOffset + $optionalSize
+    for ($index = 0; $index -lt $sectionCount; $index++) {
+        $offset = $sectionOffset + (40 * $index)
+        if ($offset + 40 -gt $bytes.Length) { throw "$Path has a truncated section table." }
+        $sections += [pscustomobject]@{
+            VirtualSize = [BitConverter]::ToUInt32($bytes, $offset + 8)
+            VirtualAddress = [BitConverter]::ToUInt32($bytes, $offset + 12)
+            RawSize = [BitConverter]::ToUInt32($bytes, $offset + 16)
+            RawOffset = [BitConverter]::ToUInt32($bytes, $offset + 20)
+        }
+    }
+    $rvaToOffset = {
+        param([uint32]$Rva)
+        if ($Rva -lt $sizeOfHeaders) { return [int]$Rva }
+        foreach ($section in $sections) {
+            $span = [Math]::Max([uint64]$section.VirtualSize, [uint64]$section.RawSize)
+            if ([uint64]$Rva -ge [uint64]$section.VirtualAddress -and
+                [uint64]$Rva -lt ([uint64]$section.VirtualAddress + $span)) {
+                return [int]([uint64]$section.RawOffset + ([uint64]$Rva - [uint64]$section.VirtualAddress))
+            }
+        }
+        throw ("RVA 0x{0:X8} is not backed by a PE section in $Path." -f $Rva)
+    }
+    $exportOffset = & $rvaToOffset $exportRva
+    if ($exportOffset + 40 -gt $bytes.Length) { throw "$Path has a truncated export directory." }
+    $nameCount = [BitConverter]::ToUInt32($bytes, $exportOffset + 24)
+    if ($nameCount -gt 4096) { throw "$Path has an unreasonable export-name count." }
+    $nameTableRva = [BitConverter]::ToUInt32($bytes, $exportOffset + 32)
+    $nameTableOffset = & $rvaToOffset $nameTableRva
+    $names = @()
+    for ($index = 0; $index -lt $nameCount; $index++) {
+        $entryOffset = $nameTableOffset + (4 * $index)
+        if ($entryOffset + 4 -gt $bytes.Length) { throw "$Path has a truncated export-name table." }
+        $nameRva = [BitConverter]::ToUInt32($bytes, $entryOffset)
+        $nameOffset = & $rvaToOffset $nameRva
+        $end = $nameOffset
+        while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) { $end++ }
+        if ($end -eq $bytes.Length) { throw "$Path has an unterminated export name." }
+        $names += [System.Text.Encoding]::ASCII.GetString($bytes, $nameOffset, $end - $nameOffset)
+    }
+    return $names
+}
+
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
 try {
@@ -83,6 +173,7 @@ try {
 
     $dllPath = Join-Path $extractRoot "vSMR.dll"
     $dataPath = Join-Path $extractRoot "vSMR_Data"
+    $crashHandlerPath = Join-Path $dataPath "CrashReporter\vSMRCrashHandler.dll"
     Assert-File $dllPath
 
     $requiredRelativeFiles = @(
@@ -97,6 +188,7 @@ try {
         'vSMR_webUI\defaults\vSMR_Profiles.json',
         'AVISO\LFPG.geojson',
         'AVISO\LFPG_Dyna_fixed.geojson',
+        'CrashReporter\vSMRCrashHandler.dll',
         'Licenses\vSMR.txt',
         'Licenses\RapidJSON.txt',
         'Licenses\Microsoft.WebView2-LICENSE.txt',
@@ -129,52 +221,57 @@ try {
     }
 
     $forbidden = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File | Where-Object {
-        $_.Extension -in @('.pdb', '.lib', '.exp', '.obj', '.pch', '.ilk', '.log', '.bak', '.tmp')
+        $_.Extension -in @('.pdb', '.lib', '.exp', '.obj', '.pch', '.ilk', '.log', '.bak', '.tmp', '.dmp')
     })
     if ($forbidden.Count -gt 0) {
         throw "Development or user files leaked into the package: $($forbidden.FullName -join ', ')"
     }
 
-    $stream = [System.IO.File]::OpenRead($dllPath)
-    $reader = New-Object System.IO.BinaryReader($stream)
-    try {
-        if ($reader.ReadUInt16() -ne 0x5A4D) {
-            throw "vSMR.dll has no DOS/PE header."
-        }
-        $stream.Position = 0x3C
-        $peOffset = $reader.ReadInt32()
-        if ($peOffset -lt 0 -or $peOffset -gt ($stream.Length - 6)) {
-            throw "vSMR.dll has an invalid PE offset."
-        }
-        $stream.Position = $peOffset
-        if ($reader.ReadUInt32() -ne 0x00004550) {
-            throw "vSMR.dll has an invalid PE signature."
-        }
-        $machine = $reader.ReadUInt16()
-        if ($machine -ne 0x014C) {
-            throw ("vSMR.dll is not Win32/x86 (PE machine 0x{0:X4})." -f $machine)
-        }
+    $packagedDllLocations = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File -Filter '*.dll' |
+        ForEach-Object { $_.FullName.Substring($extractRoot.Length).TrimStart([char[]]"\/").Replace('\', '/') } |
+        Sort-Object)
+    if (($packagedDllLocations -join '|') -ne 'vSMR.dll|vSMR_Data/CrashReporter/vSMRCrashHandler.dll') {
+        throw "Package DLL allowlist mismatch: $($packagedDllLocations -join ', ')"
     }
-    finally {
-        $reader.Dispose()
-        $stream.Dispose()
+
+    foreach ($binary in @($dllPath, $crashHandlerPath)) {
+        $machine = Get-PeMachine $binary
+        if ($machine -ne 0x014C) {
+            throw ("$([System.IO.Path]::GetFileName($binary)) is not Win32/x86 (PE machine 0x{0:X4})." -f $machine)
+        }
     }
 
     $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dllPath)
     if ($versionInfo.FileVersion -ne $ExpectedVersion -or $versionInfo.ProductVersion -ne $ExpectedVersion) {
         throw "DLL version mismatch. FileVersion='$($versionInfo.FileVersion)', ProductVersion='$($versionInfo.ProductVersion)', expected '$ExpectedVersion'."
     }
+    $crashHandlerVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($crashHandlerPath)
+    if ($crashHandlerVersionInfo.FileVersion -ne $ExpectedVersion -or $crashHandlerVersionInfo.ProductVersion -ne $ExpectedVersion) {
+        throw "Crash-handler version mismatch. FileVersion='$($crashHandlerVersionInfo.FileVersion)', ProductVersion='$($crashHandlerVersionInfo.ProductVersion)', expected '$ExpectedVersion'."
+    }
+    $expectedCrashHandlerExports = @(
+        'OutOfProcessExceptionEventCallback',
+        'OutOfProcessExceptionEventDebuggerLaunchCallback',
+        'OutOfProcessExceptionEventSignatureCallback'
+    ) | Sort-Object
+    $actualCrashHandlerExports = @(Get-PeExportNames $crashHandlerPath | Sort-Object)
+    if (($actualCrashHandlerExports -join '|') -cne ($expectedCrashHandlerExports -join '|')) {
+        throw "Packaged crash handler does not expose the exact three-name WER ABI."
+    }
     if ($RequireSignature) {
-        $signature = Get-AuthenticodeSignature -LiteralPath $dllPath
-        if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-            throw "A valid Authenticode signature is required, but packaged vSMR.dll status is '$($signature.Status)'."
+        foreach ($binary in @($dllPath, $crashHandlerPath)) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $binary
+            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+                throw "A valid Authenticode signature is required, but packaged $([System.IO.Path]::GetFileName($binary)) status is '$($signature.Status)'."
+            }
         }
     }
 
     $metadataPath = Join-Path $dataPath "RELEASE-METADATA.json"
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
     if ($metadata.product -ne 'vSMR' -or $metadata.version -ne $ExpectedVersion -or
-        $metadata.channel -ne 'beta' -or [string]::IsNullOrWhiteSpace([string]$metadata.git_commit)) {
+        $metadata.channel -ne 'beta' -or [string]::IsNullOrWhiteSpace([string]$metadata.git_commit) -or
+        $null -eq $metadata.authenticode.crash_handler) {
         throw "RELEASE-METADATA.json is incomplete or inconsistent."
     }
     $commitIsVerified = [string]$metadata.git_commit -match '^[0-9a-fA-F]{40}$'
@@ -197,6 +294,9 @@ try {
             throw "Duplicate SHA256 manifest entry: $relativePath"
         }
         $manifestEntries[$relativePath] = $Matches[1]
+    }
+    if (-not $manifestEntries.ContainsKey('vSMR_Data/CrashReporter/vSMRCrashHandler.dll')) {
+        throw "SHA256SUMS.txt does not protect the WER crash handler."
     }
 
     $payloadFiles = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File | Where-Object {
@@ -223,7 +323,11 @@ try {
     $installTarget = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-install-verify-" + [Guid]::NewGuid().ToString("N"))
     [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\AVISO")) | Out-Null
     [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\vSMR_webUI")) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\CrashReporter")) | Out-Null
     [System.IO.File]::WriteAllText((Join-Path $installTarget "vSMR.dll"), "old-dll")
+    $installedCrashHandlerPath = Join-Path $installTarget "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
+    [System.IO.File]::WriteAllText($installedCrashHandlerPath, "old-crash-handler")
+    $packagedCrashHandlerHash = (Get-FileHash -LiteralPath $crashHandlerPath -Algorithm SHA256).Hash
     [System.IO.File]::WriteAllText(
         (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json"),
         '[{"name":"User","schema_version":2,"labels":{},"targets":{}}]')
@@ -344,7 +448,8 @@ try {
 
         & (Join-Path $dataPath "Tools\install_vsmr.ps1") -DestinationDirectory $installTarget -WhatIf
         if ((Test-Path -LiteralPath (Join-Path $installTarget "vSMR_Backups")) -or
-            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR.dll") -Raw) -ne 'old-dll') {
+            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR.dll") -Raw) -ne 'old-dll' -or
+            (Get-Content -LiteralPath $installedCrashHandlerPath -Raw) -ne 'old-crash-handler') {
             throw "Install helper mutated the destination during -WhatIf."
         }
 
@@ -354,11 +459,15 @@ try {
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\AVISO\TEST.geojson") -Raw) -ne 'user-aviso' -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\user-import.bin") -Raw) -ne 'user-import' -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json") -Raw) -notmatch '"User"' -or
-            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_webUI\index.html") -Raw) -eq 'stale-ui') {
+            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_webUI\index.html") -Raw) -eq 'stale-ui' -or
+            (Get-FileHash -LiteralPath $installedCrashHandlerPath -Algorithm SHA256).Hash -ne $packagedCrashHandlerHash) {
             throw "Install helper did not preserve user data and replace immutable assets correctly."
         }
         $rollbackBackup = [string]$installation.rollback_backup
         Assert-File (Join-Path $rollbackBackup "BACKUP-METADATA.json")
+        if ((Get-Content -LiteralPath (Join-Path $rollbackBackup "vSMR_Data\CrashReporter\vSMRCrashHandler.dll") -Raw) -ne 'old-crash-handler') {
+            throw "Install helper did not back up the previous crash handler."
+        }
 
 		$originalInstalledDllHash = (Get-FileHash -LiteralPath (Join-Path $installTarget "vSMR.dll") -Algorithm SHA256).Hash
 		foreach ($invalidCase in @('missing', 'wrong-type')) {
@@ -411,7 +520,8 @@ try {
             -Confirm:$false
         if ((Get-Content -LiteralPath (Join-Path $installTarget "vSMR.dll") -Raw) -ne 'old-dll' -or
             (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_webUI\index.html") -Raw) -ne 'stale-ui' -or
-            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\user-import.bin") -Raw) -ne 'user-import') {
+            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\user-import.bin") -Raw) -ne 'user-import' -or
+            (Get-Content -LiteralPath $installedCrashHandlerPath -Raw) -ne 'old-crash-handler') {
             throw "Rollback helper did not restore the pre-install tree."
         }
         $safetyBackup = Get-ChildItem -LiteralPath (Split-Path -Parent $rollbackBackup) -Directory |
@@ -423,7 +533,8 @@ try {
             -DestinationDirectory $installTarget `
             -BackupDirectory $safetyBackup.FullName `
             -Confirm:$false
-        if ((Get-Content -LiteralPath (Join-Path $installTarget "vSMR.dll") -Raw) -eq 'old-dll') {
+        if ((Get-Content -LiteralPath (Join-Path $installTarget "vSMR.dll") -Raw) -eq 'old-dll' -or
+            (Get-FileHash -LiteralPath $installedCrashHandlerPath -Algorithm SHA256).Hash -ne $packagedCrashHandlerHash) {
             throw "Rollback safety backup could not restore the pre-rollback installation."
         }
         & (Join-Path $dataPath "Tools\install_vsmr.ps1") `
@@ -432,7 +543,8 @@ try {
             -Confirm:$false
         if ((Test-Path -LiteralPath (Join-Path $installTarget "vSMR_Data\user-import.bin")) -or
             (Test-Path -LiteralPath (Join-Path $installTarget "vSMR_Data\AVISO\TEST.geojson")) -or
-            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json") -Raw) -match '"User"') {
+            (Get-Content -LiteralPath (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json") -Raw) -match '"User"' -or
+            (Get-FileHash -LiteralPath $installedCrashHandlerPath -Algorithm SHA256).Hash -ne $packagedCrashHandlerHash) {
             throw "Install helper ignored explicit -ReplaceUserData."
         }
     }

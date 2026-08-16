@@ -1,5 +1,6 @@
 #pragma once
 #include "stdafx.h"
+#include "CrashReporter.hpp"
 #include <string>
 #include <sstream>
 #include <iomanip>
@@ -139,6 +140,7 @@ public:
 	static void info(string message) {
 		if (Logger::should_skip_info_message(message))
 			return;
+		VsmrCrashReporter::RecordLog(message.c_str());
 
 		const std::string timestamp = Logger::build_local_timestamp();
 		const std::string formatted =

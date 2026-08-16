@@ -45,6 +45,9 @@ class CSMRRadar :
 public:
 	CSMRRadar();
 	virtual ~CSMRRadar();
+	void PublishCrashRadarState(
+		const char* radar = "main",
+		const char* inset = nullptr) const noexcept;
 
 	bool ReloadConfig();
 	bool SetProfilesConfigPath(
@@ -453,6 +456,11 @@ public:
 
 
 	string ActiveAirport = "EGKK";
+	char CrashActiveProfile[96] = "unavailable";
+	mutable char CrashLastAirport[16]{};
+	mutable char CrashLastProfile[96]{};
+	mutable char CrashLastRadar[96]{};
+	mutable char CrashLastInset[96]{};
 
 	void InvalidateAirportPositionCache();
 	void InvalidateRunwayGeometryCache();

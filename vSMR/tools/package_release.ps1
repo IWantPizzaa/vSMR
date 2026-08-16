@@ -12,6 +12,7 @@ param(
     [ValidatePattern("^(auto|v\d+)$")]
     [string]$Toolset = "auto",
     [string]$PdbPath = "",
+    [string]$CrashHandlerPdbPath = "",
     [string]$CertificateThumbprint = "",
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     [switch]$RequireSignature,
@@ -162,23 +163,26 @@ if (-not $SkipBuild) {
         "/p:Configuration=$Configuration",
         "/p:Platform=$Platform",
         "/p:PlatformToolset=$Toolset",
-        "/p:OutDir=$outDir"
+        "/p:VsmrReleaseOutputDirectory=$outDir"
     )
 
     Write-Host "Restoring vSMR with $Toolset..."
-    & $msbuildPath $solutionPath /t:Restore @buildProperties /verbosity:minimal
+    & $msbuildPath $solutionPath /t:Restore @buildProperties /nodeReuse:false /verbosity:minimal
     if ($LASTEXITCODE -ne 0) {
         throw "NuGet restore failed with exit code $LASTEXITCODE."
     }
 
     Write-Host "Rebuilding $Configuration|$Platform..."
-    & $msbuildPath $solutionPath /t:Rebuild /m @buildProperties /verbosity:minimal
+    & $msbuildPath $solutionPath /t:Rebuild /m @buildProperties /nodeReuse:false /verbosity:minimal
     if ($LASTEXITCODE -ne 0) {
         throw "Release build failed with exit code $LASTEXITCODE."
     }
 
     if ([string]::IsNullOrWhiteSpace($PdbPath)) {
         $PdbPath = Join-Path $RepositoryRoot "vSMR\$Configuration\vSMR.pdb"
+    }
+    if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
+        $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\crash_handler\obj\$Configuration\vSMRCrashHandler.pdb"
     }
 }
 else {
@@ -188,13 +192,23 @@ else {
     if ([string]::IsNullOrWhiteSpace($PdbPath)) {
         throw "-SkipBuild requires -PdbPath pointing to the PDB produced with the prebuilt DLL."
     }
+    if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
+        throw "-SkipBuild requires -CrashHandlerPdbPath pointing to the PDB produced with the prebuilt WER crash handler."
+    }
 }
 $PdbPath = [System.IO.Path]::GetFullPath($PdbPath)
 Assert-File $PdbPath
+$CrashHandlerPdbPath = [System.IO.Path]::GetFullPath($CrashHandlerPdbPath)
+Assert-File $CrashHandlerPdbPath
 
 $validator = Join-Path $RepositoryRoot "vSMR\tools\validate_release.ps1"
 Assert-File $validator
-& $validator -RepositoryRoot $RepositoryRoot -ExpectedVersion $Version -BuildOutputDirectory $BuildOutputDirectory -PdbPath $PdbPath
+& $validator `
+    -RepositoryRoot $RepositoryRoot `
+    -ExpectedVersion $Version `
+    -BuildOutputDirectory $BuildOutputDirectory `
+    -PdbPath $PdbPath `
+    -CrashHandlerPdbPath $CrashHandlerPdbPath
 
 $dllPath = Join-Path $BuildOutputDirectory "vSMR.dll"
 $dataPath = Join-Path $BuildOutputDirectory "vSMR_Data"
@@ -219,6 +233,8 @@ try {
     Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
     Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
     $packagedDllPath = Join-Path $packageStage "vSMR.dll"
+    $packagedCrashHandlerPath = Join-Path $packageStage "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
+    Assert-File $packagedCrashHandlerPath
 
 if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
     $CertificateThumbprint = [string]$env:VSMR_SIGNING_CERT_THUMBPRINT
@@ -239,15 +255,21 @@ if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
         throw "A signing certificate was configured, but signtool.exe was not found."
     }
     $normalizedThumbprint = ($CertificateThumbprint -replace '\s', '')
-    & $signTool sign /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $packagedDllPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Authenticode signing failed with exit code $LASTEXITCODE."
+    foreach ($binaryToSign in @($packagedDllPath, $packagedCrashHandlerPath)) {
+        & $signTool sign /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $binaryToSign
+        if ($LASTEXITCODE -ne 0) {
+            throw "Authenticode signing failed for '$binaryToSign' with exit code $LASTEXITCODE."
+        }
     }
 }
 
 $signature = Get-AuthenticodeSignature -LiteralPath $packagedDllPath
+$crashHandlerSignature = Get-AuthenticodeSignature -LiteralPath $packagedCrashHandlerPath
 if ($RequireSignature -and $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
     throw "A valid Authenticode signature is required, but vSMR.dll status is '$($signature.Status)'."
+}
+if ($RequireSignature -and $crashHandlerSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+    throw "A valid Authenticode signature is required, but vSMRCrashHandler.dll status is '$($crashHandlerSignature.Status)'."
 }
 
 $gitCommit = "unknown"
@@ -299,6 +321,11 @@ $metadata = [ordered]@{
         status = [string]$signature.Status
         subject = if ($null -ne $signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { "" }
         thumbprint = if ($null -ne $signature.SignerCertificate) { [string]$signature.SignerCertificate.Thumbprint } else { "" }
+        crash_handler = [ordered]@{
+            status = [string]$crashHandlerSignature.Status
+            subject = if ($null -ne $crashHandlerSignature.SignerCertificate) { [string]$crashHandlerSignature.SignerCertificate.Subject } else { "" }
+            thumbprint = if ($null -ne $crashHandlerSignature.SignerCertificate) { [string]$crashHandlerSignature.SignerCertificate.Thumbprint } else { "" }
+        }
     }
     ci = [ordered]@{
         provider = if ($githubCi) { "GitHub Actions" } elseif ($appveyorCi) { "AppVeyor" } else { "local" }
@@ -331,6 +358,8 @@ Write-Utf8NoBom "$archivePath.sha256" "$archiveHash  $([System.IO.Path]::GetFile
 
 Copy-Item -LiteralPath $PdbPath -Destination (Join-Path $symbolStage "vSMR.pdb")
 Copy-Item -LiteralPath $packagedDllPath -Destination (Join-Path $symbolStage "vSMR.dll")
+Copy-Item -LiteralPath $CrashHandlerPdbPath -Destination (Join-Path $symbolStage "vSMRCrashHandler.pdb")
+Copy-Item -LiteralPath $packagedCrashHandlerPath -Destination (Join-Path $symbolStage "vSMRCrashHandler.dll")
 Write-Utf8NoBom (Join-Path $symbolStage "SYMBOLS-METADATA.json") ((ConvertTo-Json $metadata -Depth 10) + "`n")
 $symbolArchivePath = Join-Path $ArtifactsDirectory "vSMR-$Version-symbols.zip"
 New-ZipArchive $symbolStage $symbolArchivePath

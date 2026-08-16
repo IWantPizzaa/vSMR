@@ -23,6 +23,7 @@
 #include "WeatherData.hpp"
 #include "RdfOverlay.hpp"
 #include "CrashReporter.hpp"
+#include "CrashRuntime.hpp"
 #include "SMRGroundState.hpp"
 #include "VsmrControlCenterDialog.hpp"
 
@@ -1972,7 +1973,6 @@ void refreshVacdmDataImpl()
 void refreshVacdmData()
 {
 #if defined(_MSC_VER)
-	VsmrCrashReporter::SetCurrentThreadSuppressed(true);
 	__try
 	{
 		refreshVacdmDataImpl();
@@ -1982,7 +1982,6 @@ void refreshVacdmData()
 		VacdmLastFetchClock = clock();
 		VacdmFetchInProgress.store(false);
 	}
-	VsmrCrashReporter::SetCurrentThreadSuppressed(false);
 #else
 	refreshVacdmDataImpl();
 #endif
@@ -2457,6 +2456,7 @@ bool CSMRPlugin::QueueNetworkJob(std::function<void()> job)
 
 void CSMRPlugin::NetworkWorkerMain()
 {
+	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("network worker");
 	try
 	{
 		for (;;)
@@ -2660,6 +2660,8 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		report << "log_writable=" << yesNo(logWritable) << "\n";
 		report << "crash_reporter_active="
 			<< yesNo(VsmrCrashReporter::IsInstalled()) << "\n";
+		report << "crash_reporter_status="
+			<< singleLine(VsmrCrashReporter::GetRegistrationStatus()) << "\n";
 		report << "crash_report_directory="
 			<< singleLine(VsmrCrashReporter::GetReportDirectory()) << "\n";
 		report << "active_airport=" << singleLine(datalink.activeAirport) << "\n";
@@ -3252,6 +3254,7 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 }
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnCompileCommand");
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return false;
@@ -3733,6 +3736,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 }
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnGetTagItem");
 	(void)RadarTarget;
 	(void)TagData;
 	(void)pFontSize;
@@ -3802,6 +3806,7 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
 	(void)sItemString;
 	(void)Pt;
 	if (Logger::is_verbose_mode())
@@ -4034,6 +4039,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanDisconnect");
 	Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
@@ -4059,6 +4065,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 
 void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnNewMetarReceived");
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
 		VsmrWeather::Update(sStation, sFullMetar);
 }
@@ -4078,18 +4085,21 @@ void CSMRPlugin::RefreshAvisoFrequencyOwnershipOverlays()
 
 void CSMRPlugin::OnControllerPositionUpdate(CController Controller)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerPositionUpdate");
 	(void)Controller;
 	RefreshAvisoFrequencyOwnershipOverlays();
 }
 
 void CSMRPlugin::OnControllerDisconnect(CController Controller)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerDisconnect");
 	(void)Controller;
 	RefreshAvisoFrequencyOwnershipOverlays();
 }
 
 void CSMRPlugin::OnAirportRunwayActivityChanged()
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnAirportRunwayActivityChanged");
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
@@ -4200,6 +4210,7 @@ void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
 
 void CSMRPlugin::WeatherFetchThreadMain()
 {
+	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("weather worker");
 	try
 	{
 		for (;;)
@@ -4260,6 +4271,7 @@ void CSMRPlugin::WeatherFetchThreadMain()
 
 void CSMRPlugin::OnTimer(int Counter)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnTimer");
 	(void)Counter;
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
@@ -4271,6 +4283,33 @@ void CSMRPlugin::OnTimer(int Counter)
 	static int lastConnectionType = -999;
 	static clock_t lastConnectionTypeChangeClock = 0;
 	const int currentConnectionType = GetConnectionType();
+	{
+		const CController myself = ControllerMyself();
+		const char* const callsign = myself.IsValid() && myself.GetCallsign() != nullptr
+			? myself.GetCallsign()
+			: "";
+		const char* const position = myself.IsValid() && myself.GetPositionId() != nullptr
+			? myself.GetPositionId()
+			: "";
+		char connectionState[192]{};
+		_snprintf_s(
+			connectionState,
+			sizeof(connectionState),
+			_TRUNCATE,
+			"type=%d controller=%d callsign=%.31s position=%.31s cpdlc=%d connecting=%d",
+			currentConnectionType,
+			myself.IsValid() && myself.IsController() ? 1 : 0,
+			callsign,
+			position,
+			HoppieConnected.load(std::memory_order_acquire) ? 1 : 0,
+			HoppieConnecting.load(std::memory_order_acquire) ? 1 : 0);
+		static char lastConnectionState[192]{};
+		if (strcmp(lastConnectionState, connectionState) != 0)
+		{
+			strcpy_s(lastConnectionState, connectionState);
+			VsmrCrashReporter::RecordState("connection", connectionState);
+		}
+	}
 	if (currentConnectionType != lastConnectionType)
 	{
 		Logger::info("EuroScope connection_type=" + std::to_string(currentConnectionType));
@@ -4413,6 +4452,7 @@ void CSMRPlugin::OnTimer(int Counter)
 
 CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnRadarScreenCreated");
 	(void)NeedRadarContent;
 	(void)GeoReferenced;
 	(void)CanBeSaved;
@@ -4434,6 +4474,7 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 
 void __declspec (dllexport) EuroScopePlugInExit(void)
 {
+	VsmrCrashRuntime::RecordEuroScopeCallback("EuroScopePlugInExit");
 	CSMRPlugin* pluginInstance = ActivePluginInstance.exchange(
 		nullptr,
 		std::memory_order_acq_rel);

@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "vSMR.hpp"
 #include "CrashReporter.hpp"
+#include "CrashRuntime.hpp"
 
 
 #ifdef _DEBUG
@@ -45,6 +46,7 @@ void __declspec (dllexport) EuroScopePlugInInit(EuroScopePlugIn::CPlugIn** ppPlu
 	AFX_MANAGE_STATE(AfxGetStaticModuleState())
 
 	const bool crashReporterInstalled = VsmrCrashReporter::Install(MY_PLUGIN_VERSION);
+	VsmrCrashRuntime::RecordEuroScopeCallback("EuroScopePlugInInit");
 	try
 	{
 		// create the instance
