@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "vSMR.hpp"
+#include "CrashReporter.hpp"
 
 
 #ifdef _DEBUG
@@ -43,6 +44,18 @@ void __declspec (dllexport) EuroScopePlugInInit(EuroScopePlugIn::CPlugIn** ppPlu
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState())
 
+	const bool crashReporterInstalled = VsmrCrashReporter::Install(MY_PLUGIN_VERSION);
+	try
+	{
 		// create the instance
-		* ppPlugInInstance = theApp.gpMyPlugin = new CSMRPlugin();
+		*ppPlugInInstance = theApp.gpMyPlugin = new CSMRPlugin();
+		Logger::info(crashReporterInstalled
+			? "Crash reporter active path=" + VsmrCrashReporter::GetReportDirectory()
+			: "Crash reporter could not be initialized");
+	}
+	catch (...)
+	{
+		VsmrCrashReporter::Remove();
+		throw;
+	}
 }

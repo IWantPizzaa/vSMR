@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added automatic vSMR-scoped crash reporting. Fatal exceptions executing inside `vSMR.dll` now produce a timestamped text summary and Windows minidump under `vSMR_Data\CrashReports` (with user/temp fallbacks) before normal EuroScope crash handling continues.
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.
 - Added a persistent minimized Runtime Menu state: right-clicking the striped top handle now hides or restores all controls below it.

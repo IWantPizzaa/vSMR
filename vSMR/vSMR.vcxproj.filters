@@ -39,6 +39,9 @@
     <ClCompile Include="src\Config.cpp">
       <Filter>Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\CrashReporter.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
     <ClCompile Include="src\CPDLCSettingsDialog.cpp">
       <Filter>Source</Filter>
     </ClCompile>
@@ -138,6 +141,9 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\Config.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CrashReporter.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\Constant.hpp">
