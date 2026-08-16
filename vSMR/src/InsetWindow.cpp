@@ -2595,11 +2595,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
+	std::shared_ptr<const CSMRRadar::AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
 	unsigned long long groupGeneration = 0;
+	radar_screen->RefreshAvisoFrequencyOwnership(false);
 	if (!radar_screen->GetAvisoRenderSnapshots(
 		featureSnapshot,
 		labelSnapshot,
 		groupVisibility,
+		frequencyOwnership,
 		groupGeneration))
 	{
 		drawCenteredMessage("AVISO unavailable");
@@ -3109,6 +3112,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.features = featureSnapshot;
 			request.labels = labelSnapshot;
 			request.groupVisibility = groupVisibility;
+			request.frequencyOwnership = frequencyOwnership;
 			request.rasterWidth = max(1, static_cast<int>((renderPixelWidth * rasterScale) + 0.5));
 			request.rasterHeight = max(1, static_cast<int>((renderPixelHeight * rasterScale) + 0.5));
 			request.rasterScale = rasterScale;
