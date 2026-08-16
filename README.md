@@ -400,6 +400,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | `Tools\` | Package install and rollback helpers |
 | `Licenses\` | Project/dependency licenses and asset provenance |
 | `Diagnostics\` | Redacted reports created by `.smr diagnostics` |
+| `CrashReports\` | Automatic vSMR fatal-exception summaries and Windows minidumps |
 | `RELEASE-METADATA.json` | Version, source, build, signing, and publishability information |
 | `SHA256SUMS.txt` | Exact package payload manifest |
 
@@ -428,6 +429,14 @@ Review every report before sharing it. Operational callsigns or local paths can 
 - Use `normal` for routine troubleshooting.
 - Use `verbose` only while reproducing a difficult issue.
 - Turn logging off again after collecting the required information.
+
+### Crash reports
+
+vSMR installs an always-on, best-effort crash observer when the DLL loads. If Windows raises a fatal exception while the failing instruction is inside `vSMR.dll`, vSMR writes a timestamped text summary and matching `.dmp` file to `vSMR_Data\CrashReports\`. If that location is not writable, it falls back to `%LOCALAPPDATA%\vSMR\CrashReports\` and then `%TEMP%\vSMR_CrashReports\`.
+
+The observer does not suppress the exception and does not replace EuroScope's crash handler: after writing the report, normal EuroScope and Windows exception handling continues. It deliberately ignores exceptions originating outside vSMR, so a crash in EuroScope or another plug-in may not create a vSMR report. Stack-exhaustion or severely corrupted-process failures may also prevent any in-process reporter from completing.
+
+Keep the `.txt`, `.dmp`, exact `vSMR.dll`, and matching private PDB together when diagnosing a crash. Minidumps can contain callsigns, local paths, typed text, credentials, or other process memory. Review and share them only through a trusted private channel; do not attach a dump publicly without checking it first.
 
 ### Common problems
 

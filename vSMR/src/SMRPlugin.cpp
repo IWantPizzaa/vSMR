@@ -22,6 +22,7 @@
 #include "rapidjson/document.h"
 #include "WeatherData.hpp"
 #include "RdfOverlay.hpp"
+#include "CrashReporter.hpp"
 #include "SMRGroundState.hpp"
 #include "VsmrControlCenterDialog.hpp"
 
@@ -1971,6 +1972,7 @@ void refreshVacdmDataImpl()
 void refreshVacdmData()
 {
 #if defined(_MSC_VER)
+	VsmrCrashReporter::SetCurrentThreadSuppressed(true);
 	__try
 	{
 		refreshVacdmDataImpl();
@@ -1980,6 +1982,7 @@ void refreshVacdmData()
 		VacdmLastFetchClock = clock();
 		VacdmFetchInProgress.store(false);
 	}
+	VsmrCrashReporter::SetCurrentThreadSuppressed(false);
 #else
 	refreshVacdmDataImpl();
 #endif
@@ -2655,6 +2658,10 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		report << "logging_mode=" << Logger::mode_name(Logger::get_mode()) << "\n";
 		report << "log_path=" << logPath.u8string() << "\n";
 		report << "log_writable=" << yesNo(logWritable) << "\n";
+		report << "crash_reporter_active="
+			<< yesNo(VsmrCrashReporter::IsInstalled()) << "\n";
+		report << "crash_report_directory="
+			<< singleLine(VsmrCrashReporter::GetReportDirectory()) << "\n";
 		report << "active_airport=" << singleLine(datalink.activeAirport) << "\n";
 		report << "cpdlc_connected=" << yesNo(datalink.connected) << "\n";
 		report << "cpdlc_connecting=" << yesNo(datalink.connecting) << "\n";
@@ -4452,4 +4459,5 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 			var->EuroScopePlugInExitCustom();
 	}
 	VsmrWeather::Clear();
+	VsmrCrashReporter::Remove();
 }
