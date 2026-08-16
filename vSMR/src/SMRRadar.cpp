@@ -1519,6 +1519,20 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		std::make_shared<std::unordered_map<std::string, bool>>();
 	auto frequencyOwnership =
 		std::make_shared<AvisoFrequencyOwnershipSnapshot>();
+	std::map<std::string, AvisoFrequencyOwnershipMetadata> frequencyOwnershipRules;
+	std::set<std::string> frequencyOwnershipRelevantPositions;
+	auto registerFrequencyOwnershipRule = [&](const AvisoFrequencyOwnershipMetadata& metadata)
+	{
+		if (!metadata.dynamicItem || metadata.ruleKey.empty())
+			return;
+		frequencyOwnershipRules.emplace(metadata.ruleKey, metadata);
+		frequencyOwnershipRelevantPositions.insert(
+			metadata.takeoverChain.begin(), metadata.takeoverChain.end());
+	};
+	for (const AvisoFeature& feature : parsedFeatures)
+		registerFrequencyOwnershipRule(feature.frequencyOwnership);
+	for (const AvisoLabel& label : parsedLabels)
+		registerFrequencyOwnershipRule(label.frequencyOwnership);
 	visibility->reserve(parsedGroups.size());
 	for (const AvisoGroup& group : parsedGroups)
 		(*visibility)[group.id] = group.visible;
@@ -1562,6 +1576,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		AvisoRuntimeGroups = parsedGroups;
 		AvisoGroupVisibilitySnapshot = visibility;
 		AvisoFrequencyOwnershipStateSnapshot = frequencyOwnership;
+		AvisoFrequencyOwnershipRules = std::move(frequencyOwnershipRules);
+		AvisoFrequencyOwnershipRelevantPositions = std::move(frequencyOwnershipRelevantPositions);
 		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
 	}
 	AvisoFrequencyOwnershipLastRefreshTick = 0;
@@ -1633,6 +1649,14 @@ void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
 	{
 		const bool enabledForAirport =
 			SupportsDynamicAvisoFrequencyOwnership(getActiveAirport());
+		std::map<std::string, AvisoFrequencyOwnershipMetadata> rules;
+		std::set<std::string> relevantPositions;
+		if (enabledForAirport)
+		{
+			std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+			rules = AvisoFrequencyOwnershipRules;
+			relevantPositions = AvisoFrequencyOwnershipRelevantPositions;
+		}
 
 		struct ConnectedController
 		{
@@ -1660,7 +1684,7 @@ void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
 			if (rawPosition == nullptr || rawPosition[0] == '\0')
 				return;
 			const std::string position = ToUpperAscii(TrimAvisoAirportCode(rawPosition));
-			if (position.empty())
+			if (position.empty() || relevantPositions.find(position) == relevantPositions.end())
 				return;
 			const char* rawCallsign = controller.GetCallsign();
 			const std::string callsign = rawCallsign != nullptr
@@ -1683,42 +1707,12 @@ void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
 		}
 		registerController(myself);
 
-		std::ostringstream signature;
-		signature << (enabledForAirport ? "LFPG|" : "DISABLED|") << AvisoGeoJsonLoadedPath;
-		for (const auto& entry : connectedByPosition)
-		{
-			signature << '|' << entry.first << ':'
-				<< std::fixed << std::setprecision(3) << entry.second.frequency << ':'
-				<< (entry.second.mine ? 'M' : 'O');
-		}
-		const std::string nextSignature = signature.str();
-		if (nextSignature == AvisoFrequencyOwnershipLastSignature)
-			return;
-
 		auto nextSnapshot = std::make_shared<AvisoFrequencyOwnershipSnapshot>();
 		if (enabledForAirport)
 		{
-			std::map<std::string, const AvisoFrequencyOwnershipMetadata*> rules;
-			for (const AvisoFeature& feature : AvisoGeoJsonFeatures)
-			{
-				if (feature.frequencyOwnership.dynamicItem &&
-					!feature.frequencyOwnership.ruleKey.empty())
-				{
-					rules.emplace(feature.frequencyOwnership.ruleKey, &feature.frequencyOwnership);
-				}
-			}
-			for (const AvisoLabel& label : AvisoGeoJsonLabels)
-			{
-				if (label.frequencyOwnership.dynamicItem &&
-					!label.frequencyOwnership.ruleKey.empty())
-				{
-					rules.emplace(label.frequencyOwnership.ruleKey, &label.frequencyOwnership);
-				}
-			}
-
 			for (const auto& ruleEntry : rules)
 			{
-				const AvisoFrequencyOwnershipMetadata& rule = *ruleEntry.second;
+				const AvisoFrequencyOwnershipMetadata& rule = ruleEntry.second;
 				for (const std::string& position : rule.takeoverChain)
 				{
 					const auto connected = connectedByPosition.find(position);
@@ -1743,6 +1737,31 @@ void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
 			}
 		}
 
+		// Key the raster refresh to what is actually rendered. EuroScope can
+		// publish frequent updates for unrelated controllers; including the
+		// complete online list here caused the large AVISO bitmap to be cleared
+		// and rebuilt even though no LFPG ownership had changed.
+		std::ostringstream signature;
+		signature << (enabledForAirport ? "LFPG|" : "DISABLED|") << AvisoGeoJsonLoadedPath;
+		for (const auto& ruleEntry : rules)
+		{
+			signature << '|' << ruleEntry.first << '=';
+			const auto ownership = nextSnapshot->ownersByRule.find(ruleEntry.first);
+			if (ownership == nextSnapshot->ownersByRule.end() || !ownership->second.connected)
+			{
+				signature << "NONE";
+				continue;
+			}
+			signature << ownership->second.positionId << ':'
+				<< (ownership->second.ownedByMe ? 'M' : 'O') << ':';
+			const std::wstring& frequency = ownership->second.frequencyLabel;
+			for (const wchar_t character : frequency)
+				signature << static_cast<char>(character);
+		}
+		const std::string nextSignature = signature.str();
+		if (nextSignature == AvisoFrequencyOwnershipLastSignature)
+			return;
+
 		{
 			std::lock_guard<std::mutex> guard(AvisoGroupMutex);
 			AvisoFrequencyOwnershipStateSnapshot = nextSnapshot;
@@ -1753,7 +1772,7 @@ void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
 		Logger::info(
 			"AVISO dynamic frequency ownership refreshed airport=" + getActiveAirport() +
 			" controllers=" + std::to_string(connectedByPosition.size()) +
-			" owned_areas=" + std::to_string(nextSnapshot->ownersByRule.size()));
+			" resolved_rules=" + std::to_string(nextSnapshot->ownersByRule.size()));
 	}
 	catch (const std::exception& ex)
 	{

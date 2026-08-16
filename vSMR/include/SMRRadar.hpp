@@ -265,6 +265,8 @@ public:
 	std::vector<AvisoGroup> AvisoRuntimeGroups;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> AvisoGroupVisibilitySnapshot;
 	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> AvisoFrequencyOwnershipStateSnapshot;
+	std::map<std::string, AvisoFrequencyOwnershipMetadata> AvisoFrequencyOwnershipRules;
+	std::set<std::string> AvisoFrequencyOwnershipRelevantPositions;
 	mutable std::mutex AvisoGroupMutex;
 	std::atomic<unsigned long long> AvisoGroupGeneration{ 0 };
 	unsigned long AvisoFrequencyOwnershipLastRefreshTick = 0;
