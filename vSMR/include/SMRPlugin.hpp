@@ -106,6 +106,11 @@ public:
 
 	void OnAirportRunwayActivityChanged() override;
 
+	//---OnControllerPositionUpdate/Disconnect----------------------
+
+	void OnControllerPositionUpdate(CController Controller) override;
+	void OnControllerDisconnect(CController Controller) override;
+
 	//---OnRadarScreenCreated------------------------------------------
 
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
@@ -117,6 +122,7 @@ private:
 	void NetworkWorkerMain();
 	void QueueWeatherFetch(const std::string& station);
 	void WeatherFetchThreadMain();
+	void RefreshAvisoFrequencyOwnershipOverlays();
 
 	std::mutex NetworkWorkerMutex;
 	std::condition_variable NetworkWorkerCondition;
