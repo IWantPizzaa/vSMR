@@ -182,6 +182,7 @@ A reusable entry in the document's `styles` catalog supplies the default paint f
 
 - A polygon inherited by your own connected position is drawn in blue and its frequency label is hidden.
 - A polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
+- At a shared edge, external-territory outlines are painted after self-owned outlines so cyan and yellow boundaries remain continuous instead of clipping each other.
 - A polygon with no connected owner in its chain is hidden.
 - DEL frequency points are ignored until dedicated DEL polygons are available.
 - Controller connection, disconnection, position, or primary-frequency changes update the main display and AVISO inset together. Takeover rules are cached when the GeoJSON loads, and routine updates from controllers outside those LFPG chains do not invalidate the AVISO raster, preventing periodic map flicker while connected.
