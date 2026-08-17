@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Unified Runtime Menu and Control Center navigation symbols: Settings now shares one gear, Groups uses an eye, Modes uses slider controls, and the Control Center Display page uses a monitor.
 - Cleaned post-reorganization source metadata by removing an orphan dialog declaration, narrowing public header dependencies, and replacing stale generated file comments without changing runtime behavior.
 - Reorganized the C++ and Control Center sources into a feature-oriented `vSMR/src/` tree with colocated headers and implementations and qualified project includes. This is a behavior-neutral source-layout change; the installed `vSMR_Data` structure and public/runtime interfaces are unchanged.
 - Moved crash-report generation out of EuroScope's failing thread and into the packaged `vSMRCrashHandler.dll`. `%LOCALAPPDATA%\vSMR\CrashReports` is now the preferred private location, with probed plug-in-data and temporary-directory fallbacks, at most 10 report sets under a 256 MiB trimming budget, and text summaries flushed before dump creation.

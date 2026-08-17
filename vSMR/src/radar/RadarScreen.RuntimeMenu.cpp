@@ -179,27 +179,25 @@ namespace
 
 		if (kind == "mode")
 		{
-			graphics.DrawEllipse(&pen, centerX - 8.0f, centerY - 8.0f, 16.0f, 16.0f);
-			graphics.DrawLine(&pen, centerX, centerY - 8.0f, centerX, centerY - 5.0f);
-			graphics.DrawLine(&pen, centerX, centerY + 5.0f, centerX, centerY + 8.0f);
-			graphics.DrawLine(&pen, centerX - 8.0f, centerY, centerX - 5.0f, centerY);
-			graphics.DrawLine(&pen, centerX + 5.0f, centerY, centerX + 8.0f, centerY);
-			graphics.DrawLine(&pen, centerX, centerY, centerX + 4.0f, centerY - 4.0f);
-			graphics.DrawEllipse(&pen, centerX - 1.5f, centerY - 1.5f, 3.0f, 3.0f);
+			graphics.DrawLine(&pen, centerX - 8.0f, centerY - 6.0f, centerX - 5.0f, centerY - 6.0f);
+			graphics.DrawLine(&pen, centerX - 1.0f, centerY - 6.0f, centerX + 8.0f, centerY - 6.0f);
+			graphics.DrawEllipse(&pen, centerX - 5.0f, centerY - 8.0f, 4.0f, 4.0f);
+			graphics.DrawLine(&pen, centerX - 8.0f, centerY, centerX + 2.0f, centerY);
+			graphics.DrawLine(&pen, centerX + 6.0f, centerY, centerX + 8.0f, centerY);
+			graphics.DrawEllipse(&pen, centerX + 2.0f, centerY - 2.0f, 4.0f, 4.0f);
+			graphics.DrawLine(&pen, centerX - 8.0f, centerY + 6.0f, centerX - 3.0f, centerY + 6.0f);
+			graphics.DrawLine(&pen, centerX + 1.0f, centerY + 6.0f, centerX + 8.0f, centerY + 6.0f);
+			graphics.DrawEllipse(&pen, centerX - 3.0f, centerY + 4.0f, 4.0f, 4.0f);
 			return;
 		}
 
 		if (kind == "groups")
 		{
-			const Gdiplus::PointF first(centerX - 5.0f, centerY - 4.0f);
-			const Gdiplus::PointF second(centerX + 5.0f, centerY - 4.0f);
-			const Gdiplus::PointF third(centerX, centerY + 5.0f);
-			graphics.DrawLine(&pen, first, second);
-			graphics.DrawLine(&pen, first.X + 1.5f, first.Y + 1.5f, third.X - 1.0f, third.Y - 2.0f);
-			graphics.DrawLine(&pen, second.X - 1.5f, second.Y + 1.5f, third.X + 1.0f, third.Y - 2.0f);
-			graphics.DrawEllipse(&pen, first.X - 2.5f, first.Y - 2.5f, 5.0f, 5.0f);
-			graphics.DrawEllipse(&pen, second.X - 2.5f, second.Y - 2.5f, 5.0f, 5.0f);
-			graphics.DrawEllipse(&pen, third.X - 2.5f, third.Y - 2.5f, 5.0f, 5.0f);
+			Gdiplus::GraphicsPath eyePath;
+			eyePath.AddBezier(centerX - 8.5f, centerY, centerX - 5.3f, centerY - 5.0f, centerX + 5.3f, centerY - 5.0f, centerX + 8.5f, centerY);
+			eyePath.AddBezier(centerX + 8.5f, centerY, centerX + 5.3f, centerY + 5.0f, centerX - 5.3f, centerY + 5.0f, centerX - 8.5f, centerY);
+			graphics.DrawPath(&pen, &eyePath);
+			graphics.DrawEllipse(&pen, centerX - 2.75f, centerY - 2.75f, 5.5f, 5.5f);
 			return;
 		}
 
@@ -231,8 +229,8 @@ namespace
 			const double angle = (static_cast<double>(i) * M_PI) / 4.0;
 			const float innerX = centerX + static_cast<float>(7.0 * std::cos(angle));
 			const float innerY = centerY + static_cast<float>(7.0 * std::sin(angle));
-			const float outerX = centerX + static_cast<float>(9.2 * std::cos(angle));
-			const float outerY = centerY + static_cast<float>(9.2 * std::sin(angle));
+			const float outerX = centerX + static_cast<float>(9.0 * std::cos(angle));
+			const float outerY = centerY + static_cast<float>(9.0 * std::sin(angle));
 			graphics.DrawLine(&pen, innerX, innerY, outerX, outerY);
 		}
 	}
