@@ -62,27 +62,26 @@ bool CSMRRadar::IsCorrelated(CFlightPlan fp, CRadarTarget rt)
 	return IsCorrelatedWithSettings(fp, rt, BuildCorrelationSettings());
 }
 
-bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget rt, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings) const
+bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const
 {
 	if (settings.requireClearance && (!fp.IsValid() || !fp.GetClearenceFlag()))
 		return false;
 
 	if (settings.requireValidTsat || settings.requireActiveTobt)
 	{
-		VacdmPilotData pilotData;
-		if (!TryGetVacdmPilotDataForTarget(rt, fp, pilotData))
+		if (capturedVacdmData == nullptr)
 			return false;
 
 		if (settings.requireValidTsat)
 		{
-			const std::string tsatState = ResolveVacdmRuleStateName("tsat", &pilotData);
+			const std::string tsatState = ResolveVacdmRuleStateName("tsat", capturedVacdmData);
 			if (tsatState != "valid" && tsatState != "valid_ctot")
 				return false;
 		}
 
 		if (settings.requireActiveTobt)
 		{
-			const std::string tobtState = ResolveVacdmRuleStateName("tobt", &pilotData);
+			const std::string tobtState = ResolveVacdmRuleStateName("tobt", capturedVacdmData);
 			if (tobtState != "confirmed" &&
 				tobtState != "unconfirmed" &&
 				tobtState != "confirmed_delay" &&

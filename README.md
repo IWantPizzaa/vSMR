@@ -161,6 +161,12 @@ Normal and detailed tag definitions can be customized for departure and arrival 
 
 Structured rules can match runway, custom, status, detail, and VACDM conditions, then override target, tag, or text colors. Rules are evaluated in profile order.
 
+### Shared radar scene
+
+Each radar screen builds one immutable `RadarScene` on EuroScope's UI thread for every rendered frame. The capture owns plain-value target coordinates, flight-plan and ground-state classification, effective colors and icon styles, preformatted normal and detailed tag elements, finalized RIMCAS state, LFPG dynamic-frequency ownership, and the connected-controller and active-airport state. The main radar, AVISO inset, SRW 1 inset, and native RDF overlay consume that same snapshot instead of repeating EuroScope target and flight-plan lookups independently.
+
+Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` diagnostic includes scene-build time, captured target/tag/controller counts, a conservative lower bound for scene-owned capacity, and the scene builder's EuroScope lookup counts.
+
 ### AVISO data
 
 vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
@@ -571,6 +577,7 @@ vSMR\
     config\           Runtime profile/configuration loading and persistence
     plugin\           Process-wide EuroScope plug-in coordinator
     aircraft\         Callsign lookup and ground-state domain support
+    scene\            Immutable per-radar frame capture shared by viewports
     radar\            Main radar-screen lifecycle, rendering, and interaction
     tags\             Tag definitions, rendering, rules, and VACDM tag data
     insets\           AVISO, SRW 1, METAR, and Timer inset windows
@@ -596,6 +603,7 @@ Important implementation areas:
 | --- | --- |
 | `vSMR/src/app/PluginEntry.cpp` | MFC application object and exported EuroScope initialization entry |
 | `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, commands, CPDLC, VACDM, weather scheduling, and diagnostics |
+| `vSMR/src/scene/` | Immutable per-frame target, tag, RIMCAS, ownership, controller, and airport state shared by radar viewports |
 | `vSMR/src/radar/RadarScreen.cpp` and `RadarScreen.*.cpp` | Radar lifecycle, rendering, interaction, ASR state, commands, and Runtime Menu |
 | `vSMR/src/insets/InsetWindow.cpp` | AVISO, SRW 1, METAR, and Timer insets; snapping and resizing |
 | `vSMR/src/safety/Rimcas.cpp` | Runway monitoring and RIMCAS alert logic |
