@@ -2370,7 +2370,6 @@ input:focus, select:focus, textarea:focus {
   align-items: stretch;
 }
 .color-preview-card {
-  position: relative;
   min-width: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) 18px;
@@ -2378,20 +2377,6 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid #080b0c;
   border-radius: 5px;
   background: #283639;
-  cursor: pointer;
-}
-.color-preview-card:hover {
-  border-color: #5e8697;
-}
-.color-preview-card input[type="color"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  cursor: pointer;
 }
 .color-preview-swatch {
   display: block;
