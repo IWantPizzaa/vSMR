@@ -28,6 +28,7 @@
 
 ### Fixed
 
+- Made Control Center performance exports prefer the documented `vSMR_Data\Diagnostics` directory, while retaining `%LOCALAPPDATA%` and temporary-directory fallbacks when the installation data folder is not writable.
 - Replaced the Symbols page's generic square-like NOVA preview with a clean white filled primary-return silhouette without decorative center or trailing marks, retained `Show primary target` behavior, normalized the NOVA, Icon, and Triangle preview sizes, and shortened the aircraft-silhouette style label from `Icon (A320)` to `Icon`.
 - Prevented handled first-chance exceptions from being mislabeled as fatal vSMR crashes, removed in-process DbgHelp/minidump work that could deadlock an unstable EuroScope process, and made existing-but-unwritable report directories fall through correctly.
 - Made shared LFPG dynamic ownership boundaries deterministic: polygon fills render first, followed by self-owned outlines and then external-territory outlines, preventing cyan and yellow borders from clipping each other according to GeoJSON feature order.
