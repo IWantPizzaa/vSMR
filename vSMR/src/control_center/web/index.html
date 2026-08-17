@@ -17,7 +17,7 @@
 <header aria-label="Drag vSMR menu" class="runtime-titlebar" id="runtimeDragHandle" title="Drag"></header>
 <div class="runtime-menu-list">
 <button aria-expanded="false" aria-haspopup="menu" aria-label="Mode" class="runtime-menu-button" data-runtime-popover="mode" id="runtimeModeButton" title="Mode" type="button">
-<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
+<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4"></path></svg>
 <span aria-hidden="true" class="runtime-corner-indicator"></span>
 </button>
 <button aria-expanded="false" aria-haspopup="menu" aria-label="Groups" class="runtime-menu-button" data-runtime-popover="groups" id="runtimeGroupsButton" title="Groups" type="button">
@@ -25,7 +25,7 @@
 <span aria-hidden="true" class="runtime-corner-indicator"></span>
 </button>
 <button aria-expanded="false" aria-haspopup="menu" aria-label="Insets" class="runtime-menu-button runtime-inset-button" data-runtime-popover="inset" id="runtimeInsetButton" title="Insets" type="button">
-<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><rect x="8" y="8" width="8" height="8"></rect><path d="M8 11H4M20 13h-4"></path></svg>
+<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12"></rect><path d="M12 17v4M8 21h8"></path></svg>
 <span aria-hidden="true" class="runtime-inset-indicators"><i data-inset-indicator="aviso"></i><i data-inset-indicator="srw1"></i><i data-inset-indicator="weather"></i><i data-inset-indicator="timer"></i></span>
 </button>
 <button aria-expanded="false" aria-haspopup="menu" aria-label="Profile" class="runtime-menu-button" data-runtime-popover="profile" id="runtimeProfileButton" title="Profile" type="button">
@@ -33,7 +33,7 @@
 <span aria-hidden="true" class="runtime-corner-indicator"></span>
 </button>
 <button aria-label="Open Control Center" class="runtime-menu-button runtime-settings-button" data-action="open-control-center" title="Open Control Center" type="button">
-<svg aria-hidden="true" class="settings-gear-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.64 5.64l1.42 1.42M16.94 16.94l1.42 1.42M18.36 5.64l-1.42 1.42M7.06 16.94l-1.42 1.42"></path></svg>
+<svg aria-hidden="true" class="settings-sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
 </button>
 </div>
 <section aria-label="Quick control choices" class="runtime-popover" hidden="" id="runtimePopover">
@@ -51,7 +51,7 @@
 <div aria-live="polite" class="operation-busy-overlay" hidden id="operationBusyOverlay" role="status">Applying vSMR changes...</div>
 <nav aria-label="Sections and global actions" class="page-rail">
 <button class="rail-button active" data-page="display" title="Display" type="button">
-<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12"></rect><path d="M12 17v4M8 21h8"></path></svg>
+<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 21v-6.5L3 12v-2l7 1V4a2 2 0 0 1 4 0v7l7-1v2l-7 2.5V21l-2-1z"></path></svg>
 </button>
 <button class="rail-button" data-page="aviso" title="AVISO" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 6l4-2 6 2 4-2v14l-4 2-6-2-4 2z"></path><path d="M9 4v14M15 6v14"></path></svg>
@@ -62,8 +62,8 @@
 <button class="rail-button" data-page="groups" title="Groups" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg>
 </button>
-<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
-<svg aria-hidden="true" class="settings-gear-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.64 5.64l1.42 1.42M16.94 16.94l1.42 1.42M18.36 5.64l-1.42 1.42M7.06 16.94l-1.42 1.42"></path></svg>
+<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4"></path></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
+<svg aria-hidden="true" class="settings-sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
 </button>
 <div aria-hidden="true" class="rail-separator"></div>
 <button aria-label="Undo" class="rail-button rail-action-button" disabled="" id="undoButton" title="Undo" type="button">
