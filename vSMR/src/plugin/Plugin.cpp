@@ -2457,6 +2457,21 @@ bool CSMRPlugin::QueueNetworkJob(std::function<void()> job)
 void CSMRPlugin::NetworkWorkerMain()
 {
 	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("network worker");
+	{
+		std::lock_guard<std::mutex> lock(NetworkWorkerMutex);
+		++NetworkWorkerThreadsRunning;
+	}
+	struct RunningWorkerGuard
+	{
+		std::mutex& mutex;
+		std::size_t& count;
+		~RunningWorkerGuard()
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (count > 0)
+				--count;
+		}
+	} runningWorkerGuard{ NetworkWorkerMutex, NetworkWorkerThreadsRunning };
 	try
 	{
 		for (;;)
@@ -2471,7 +2486,19 @@ void CSMRPlugin::NetworkWorkerMain()
 					return;
 				job = std::move(NetworkJobs.front());
 				NetworkJobs.pop_front();
+				++NetworkJobsInFlight;
 			}
+			struct InFlightJobGuard
+			{
+				std::mutex& mutex;
+				std::size_t& count;
+				~InFlightJobGuard()
+				{
+					std::lock_guard<std::mutex> lock(mutex);
+					if (count > 0)
+						--count;
+				}
+			} inFlightJobGuard{ NetworkWorkerMutex, NetworkJobsInFlight };
 
 			try
 			{
@@ -2520,7 +2547,30 @@ void CSMRPlugin::StopNetworkWorkers()
 		if (worker.joinable())
 			worker.join();
 	}
-	NetworkWorkers.clear();
+	{
+		std::lock_guard<std::mutex> lock(NetworkWorkerMutex);
+		NetworkWorkers.clear();
+		NetworkWorkerThreadsRunning = 0;
+		NetworkJobsInFlight = 0;
+	}
+}
+
+WorkerQueueSnapshot CSMRPlugin::GetWorkerQueueSnapshot()
+{
+	WorkerQueueSnapshot snapshot;
+	{
+		std::lock_guard<std::mutex> lock(NetworkWorkerMutex);
+		snapshot.networkWorkers = NetworkWorkerThreadsRunning;
+		snapshot.networkQueued = NetworkJobs.size();
+		snapshot.networkInFlight = NetworkJobsInFlight;
+	}
+	{
+		std::lock_guard<std::mutex> lock(WeatherFetchMutex);
+		snapshot.weatherWorkerRunning = WeatherWorkerRunning;
+		snapshot.weatherQueued = WeatherFetchQueue.size();
+		snapshot.weatherInFlight = WeatherFetchesInFlight;
+	}
+	return snapshot;
 }
 
 bool CSMRPlugin::WriteDiagnosticsReport(
@@ -2596,20 +2646,7 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 			SnapshotDatalinkCredentials();
 		const std::vector<std::string> recentLogMessages =
 			Logger::recent_messages();
-		size_t queuedNetworkJobs = 0;
-		size_t networkWorkerCount = 0;
-		{
-			std::lock_guard<std::mutex> lock(NetworkWorkerMutex);
-			queuedNetworkJobs = NetworkJobs.size();
-			networkWorkerCount = NetworkWorkers.size();
-		}
-		size_t queuedWeatherRequests = 0;
-		bool weatherWorkerRunning = false;
-		{
-			std::lock_guard<std::mutex> lock(WeatherFetchMutex);
-			queuedWeatherRequests = WeatherFetchQueue.size();
-			weatherWorkerRunning = WeatherFetchThread.joinable();
-		}
+		const WorkerQueueSnapshot workerQueues = GetWorkerQueueSnapshot();
 
 		auto singleLine = [](std::string value) {
 			for (char& character : value)
@@ -2672,10 +2709,12 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		report << "cpdlc_status=" << singleLine(datalink.statusMessage) << "\n";
 		report << "vacdm_configured=" << yesNo(datalink.vacdmConfigured) << "\n";
 		report << "cdm_auto_enabled=" << yesNo(datalink.cdmAutoEnabled) << "\n";
-		report << "network_workers=" << networkWorkerCount << "\n";
-		report << "network_jobs_queued=" << queuedNetworkJobs << "\n";
-		report << "weather_worker_running=" << yesNo(weatherWorkerRunning) << "\n";
-		report << "weather_requests_queued=" << queuedWeatherRequests << "\n";
+		report << "network_workers=" << workerQueues.networkWorkers << "\n";
+		report << "network_jobs_queued=" << workerQueues.networkQueued << "\n";
+		report << "network_jobs_in_flight=" << workerQueues.networkInFlight << "\n";
+		report << "weather_worker_running=" << yesNo(workerQueues.weatherWorkerRunning) << "\n";
+		report << "weather_requests_queued=" << workerQueues.weatherQueued << "\n";
+		report << "weather_requests_in_flight=" << workerQueues.weatherInFlight << "\n";
 		report << "radar_screens=" << RadarScreensOpened.size() << "\n";
 		report << "shutdown_requested="
 			<< yesNo(PluginShutdownRequested.load(std::memory_order_acquire)) << "\n";
@@ -2933,6 +2972,11 @@ void CSMRPlugin::StopWeatherFetchWorker()
 	{
 		::CancelSynchronousIo(WeatherFetchThread.native_handle());
 		WeatherFetchThread.join();
+	}
+	{
+		std::lock_guard<std::mutex> guard(WeatherFetchMutex);
+		WeatherWorkerRunning = false;
+		WeatherFetchesInFlight = 0;
 	}
 }
 
@@ -4194,6 +4238,7 @@ void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
 		try
 		{
 			WeatherFetchThread = std::thread(&CSMRPlugin::WeatherFetchThreadMain, this);
+			WeatherWorkerRunning = true;
 		}
 		catch (const std::system_error&)
 		{
@@ -4211,6 +4256,16 @@ void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
 void CSMRPlugin::WeatherFetchThreadMain()
 {
 	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("weather worker");
+	struct RunningWeatherGuard
+	{
+		std::mutex& mutex;
+		bool& running;
+		~RunningWeatherGuard()
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			running = false;
+		}
+	} runningWeatherGuard{ WeatherFetchMutex, WeatherWorkerRunning };
 	try
 	{
 		for (;;)
@@ -4227,7 +4282,19 @@ void CSMRPlugin::WeatherFetchThreadMain()
 				station = std::move(WeatherFetchQueue.front());
 				WeatherFetchQueue.pop_front();
 				WeatherFetchQueued.erase(station);
+				++WeatherFetchesInFlight;
 			}
+			struct InFlightWeatherGuard
+			{
+				std::mutex& mutex;
+				std::size_t& count;
+				~InFlightWeatherGuard()
+				{
+					std::lock_guard<std::mutex> lock(mutex);
+					if (count > 0)
+						--count;
+				}
+			} inFlightWeatherGuard{ WeatherFetchMutex, WeatherFetchesInFlight };
 
 			try
 			{

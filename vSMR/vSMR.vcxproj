@@ -158,6 +158,7 @@
     <ClCompile Include="src\crash\CrashReporter.cpp" />
     <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp" />
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
+    <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp">
@@ -206,6 +207,7 @@
     <ClInclude Include="src\crash\CrashRuntime.hpp" />
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp" />
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
+    <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp" />

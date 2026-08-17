@@ -864,9 +864,15 @@ struct AvisoViewportState
 				AvisoPointWithinTolerance(lastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.25) &&
 				AvisoPointWithinTolerance(lastRequestProjectedBottomRight, request.projectedBottomRight, 0.25);
 			if (sameRequest)
+			{
+				radarScreen->PerformanceDiagnostics.RecordAvisoRequestCoalesced(
+					VsmrPerformance::AvisoViewport::Inset);
 				return;
+			}
 
 			request.requestId = ++nextRequestId;
+			request.performanceQueuedAtMilliseconds =
+				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
 			latestRequestId = request.requestId;
 			lastRequestValid = true;
 			lastRequestPath = request.path;
@@ -881,9 +887,14 @@ struct AvisoViewportState
 			lastRequestProjectedTopRight = request.projectedTopRight;
 			lastRequestProjectedBottomLeft = request.projectedBottomLeft;
 			lastRequestProjectedBottomRight = request.projectedBottomRight;
+			const bool supersededPendingRequest =
+				pendingRenderRequest != nullptr || renderInFlight;
 			pendingRenderRadar = radarScreen;
 			pendingRenderRequest = std::make_unique<CSMRRadar::AvisoRasterRenderRequest>(std::move(request));
 			renderPending.store(true, std::memory_order_relaxed);
+			radarScreen->PerformanceDiagnostics.RecordAvisoRequestQueued(
+				VsmrPerformance::AvisoViewport::Inset,
+				supersededPendingRequest);
 
 			if (!renderThreadStarted)
 			{
@@ -980,6 +991,12 @@ struct AvisoViewportState
 				reinterpret_cast<std::uintptr_t>(radarScreen));
 
 			std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result;
+			const std::uint64_t renderStartMilliseconds =
+				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
+			const double queueWaitMilliseconds = request->performanceQueuedAtMilliseconds == 0
+				? 0.0
+				: static_cast<double>(renderStartMilliseconds - request->performanceQueuedAtMilliseconds);
+			const auto renderStart = std::chrono::steady_clock::now();
 			try
 			{
 				result = radarScreen->RenderAvisoGeoJsonRaster(*request);
@@ -994,8 +1011,16 @@ struct AvisoViewportState
 			{
 				result.reset();
 			}
+			const double rebuildMilliseconds = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - renderStart).count();
+			radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuild(
+				VsmrPerformance::AvisoViewport::Inset,
+				rebuildMilliseconds,
+				queueWaitMilliseconds,
+				result != nullptr);
 
 			bool shouldRefresh = false;
+			bool discardedResult = false;
 			{
 				std::lock_guard<std::mutex> guard(renderMutex);
 				if (renderStopRequested)
@@ -1006,12 +1031,23 @@ struct AvisoViewportState
 					!radarScreen->IsShutdownRequested() &&
 					!radarScreen->IsAvisoGeoJsonRenderStopRequested())
 				{
+					if (completedRenderResult != nullptr)
+						discardedResult = true;
 					completedRenderResult = std::move(result);
 					shouldRefresh = true;
+				}
+				else if (result != nullptr)
+				{
+					discardedResult = true;
 				}
 
 				renderInFlight = false;
 				renderPending.store(pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
+			}
+			if (discardedResult)
+			{
+				radarScreen->PerformanceDiagnostics.RecordAvisoResultDiscarded(
+					VsmrPerformance::AvisoViewport::Inset);
 			}
 
 			if (shouldRefresh)
@@ -1064,6 +1100,17 @@ struct AvisoViewportState
 	Gdiplus::PointF lastRequestProjectedTopRight;
 	Gdiplus::PointF lastRequestProjectedBottomLeft;
 	Gdiplus::PointF lastRequestProjectedBottomRight;
+
+	VsmrPerformance::AvisoQueueDepth PerformanceQueueDepth()
+	{
+		std::lock_guard<std::mutex> guard(renderMutex);
+		VsmrPerformance::AvisoQueueDepth result;
+		result.pending = pendingRenderRequest != nullptr ? 1U : 0U;
+		result.inFlight = renderInFlight ? 1U : 0U;
+		result.completed = completedRenderResult != nullptr ? 1U : 0U;
+		result.workers = renderThreadStarted ? 1U : 0U;
+		return result;
+	}
 };
 
 CInsetWindow::CInsetWindow(int Id)
@@ -1177,6 +1224,29 @@ void CInsetWindow::ClearAvisoViewportCache()
 		m_AvisoState->InvalidateRenderRequests();
 		m_AvisoState->ClearCache();
 	}
+}
+
+VsmrPerformance::AvisoQueueDepth CInsetWindow::GetAvisoPerformanceQueueDepth()
+{
+	return m_AvisoState != nullptr
+		? m_AvisoState->PerformanceQueueDepth()
+		: VsmrPerformance::AvisoQueueDepth{};
+}
+
+std::size_t CInsetWindow::GetAvisoPerformanceBitmapCount(
+	std::uint64_t* estimatedBytes) const
+{
+	if (estimatedBytes != nullptr)
+		*estimatedBytes = 0;
+	if (m_AvisoState == nullptr || m_AvisoState->cacheBitmap == nullptr)
+		return 0;
+	if (estimatedBytes != nullptr &&
+		m_AvisoState->cacheWidth > 0 && m_AvisoState->cacheHeight > 0)
+	{
+		*estimatedBytes = static_cast<std::uint64_t>(m_AvisoState->cacheWidth) *
+			static_cast<std::uint64_t>(m_AvisoState->cacheHeight) * 4ULL;
+	}
+	return 1;
 }
 
 void CInsetWindow::CancelAvisoViewportRender()
@@ -2742,6 +2812,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			result.renderMinLatitude <= displayMinLat + coverageToleranceLat &&
 			result.renderMaxLatitude >= displayMaxLat - coverageToleranceLat;
 	};
+	bool completedResultApplied = false;
 	if (completedRenderResult != nullptr && completedResultMatchesCurrentView(*completedRenderResult))
 	{
 		std::lock_guard<std::mutex> groupGuard(radar_screen->AvisoGroupMutex);
@@ -2768,7 +2839,18 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_AvisoState->projectedBottomLeft = completedRenderResult->projectedBottomLeft;
 			m_AvisoState->projectedBottomRight = completedRenderResult->projectedBottomRight;
 			m_AvisoState->anchorValid = true;
+			completedResultApplied = true;
 		}
+	}
+	if (completedResultApplied)
+	{
+		radar_screen->PerformanceDiagnostics.RecordAvisoResultApplied(
+			VsmrPerformance::AvisoViewport::Inset);
+	}
+	else if (completedRenderResult != nullptr)
+	{
+		radar_screen->PerformanceDiagnostics.RecordAvisoResultDiscarded(
+			VsmrPerformance::AvisoViewport::Inset);
 	}
 
 	auto drawCache = [&]() -> bool
@@ -3069,6 +3151,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	bool cacheDrawn = drawCache();
 	if (!cacheDrawn)
 		cacheDrawn = drawCacheFallbackDuringInteraction();
+	bool updateRequested = false;
 	if (!cacheDrawn || !cacheHasWorkingMargin())
 	{
 		const double overscanRatio = 0.75;
@@ -3129,9 +3212,21 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.projectedBottomLeft = projectedBottomLeft;
 			request.projectedBottomRight = projectedBottomRight;
 
+			updateRequested = true;
 			m_AvisoState->QueueRender(radar_screen, std::move(request));
 		}
 	}
+	const bool delayedByAvisoUpdate = updateRequested &&
+		m_AvisoState->renderPending.load(std::memory_order_relaxed);
+	radar_screen->PerformanceDiagnostics.RecordAvisoCacheOutcome(
+		VsmrPerformance::AvisoViewport::Inset,
+		cacheDrawn
+			? (delayedByAvisoUpdate
+				? VsmrPerformance::AvisoCacheOutcome::Preview
+				: VsmrPerformance::AvisoCacheOutcome::Exact)
+			: VsmrPerformance::AvisoCacheOutcome::Miss,
+		delayedByAvisoUpdate,
+		!cacheDrawn);
 
 	if (!cacheDrawn)
 		drawCenteredMessage(m_AvisoState->renderPending.load(std::memory_order_relaxed) ? "Rendering AVISO" : "AVISO unavailable");

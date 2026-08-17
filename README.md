@@ -127,7 +127,7 @@ The page rail contains:
 | `Groups` | AVISO group creation, ordering, membership, and default visibility |
 | `Modes` | Display-mode filters and requirements |
 | `Profiles` | Profile creation, duplication, naming, deletion, activation, and filters |
-| `Settings` | Data sources, display settings, CPDLC connection, and PDC reminder controls |
+| `Settings` | General data/display/datalink settings and live performance diagnostics |
 
 ### Editing and saving
 
@@ -165,7 +165,7 @@ Structured rules can match runway, custom, status, detail, and VACDM conditions,
 
 Each radar screen builds one immutable `RadarScene` on EuroScope's UI thread for every rendered frame. The capture owns plain-value target coordinates, flight-plan and ground-state classification, effective colors and icon styles, preformatted normal and detailed tag elements, finalized RIMCAS state, LFPG dynamic-frequency ownership, and the connected-controller and active-airport state. The main radar, AVISO inset, SRW 1 inset, and native RDF overlay consume that same snapshot instead of repeating EuroScope target and flight-plan lookups independently.
 
-Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` diagnostic includes scene-build time, captured target/tag/controller counts, a conservative lower bound for scene-owned capacity, and the scene builder's EuroScope lookup counts.
+Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` log remains available, while the Control Center Performance page exposes the same render pipeline through bounded rolling statistics and named cache/worker counters.
 
 ### AVISO data
 
@@ -409,7 +409,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | `vSMR_webUI\` | Local Control Center application and bundled recovery defaults |
 | `Tools\` | Package install and rollback helpers |
 | `Licenses\` | Project/dependency licenses and asset provenance |
-| `Diagnostics\` | Redacted reports created by `.smr diagnostics` |
+| `Diagnostics\` | Redacted support reports and exported performance reports |
 | `CrashReporter\` | Packaged Windows Error Reporting callback used to create crash reports outside EuroScope |
 | `RELEASE-METADATA.json` | Version, source, build, signing, and publishability information |
 | `SHA256SUMS.txt` | Exact package payload manifest |
@@ -431,6 +431,24 @@ Enter:
 The report is written to `vSMR_Data\Diagnostics\` or, if that directory is not writable, `%TEMP%\vSMR_Diagnostics\`. It includes version, data-source, runtime, and recent-log information while redacting known credentials and sensitive endpoint values.
 
 Review every report before sharing it. Operational callsigns or local paths can still be present. Never share a Hoppie code or raw CPDLC message.
+
+### Performance diagnostics
+
+Open `Control Center > Settings > Performance` to inspect the active radar screen without enabling verbose logging. vSMR retains at most 2,048 raw frame samples in a fixed per-radar ring and computes statistics only when the page requests a snapshot. The selectable 30-second, 2-minute, and 10-minute windows are therefore also bounded by the samples actually retained; the page reports the real sample count and observed span.
+
+The panel includes (counter totals are since the last reset; timing distributions follow the selected window):
+
+- average, median, P95, and maximum vSMR frame-callback time, plus a bounded frame/AVISO trend
+- scene capture, AVISO draw, target, RIMCAS, tag, inset, instrumented EuroScope lookup, and AVISO raster-rebuild timings
+- separate fresh/preview/miss outcomes for the main and inset AVISO caches, request coalescing/superseding, and aircraft source/scaled/rotated cache rates
+- processed and main-view visible target counts, with the underlying capture/filter counts retained in exported samples
+- the EuroScope process-wide GDI-object count and separately attributed vSMR bitmap-cache counts
+- AVISO, network, and weather worker activity and pending/in-flight depth
+- frames that used an older AVISO raster or had no raster while a newer update was pending
+
+`Reset` starts a new collection generation for that radar screen. `Export report` writes a versioned JSON snapshot to `%LOCALAPPDATA%\vSMR\Diagnostics\` when possible, then uses a probed `vSMR_Data\Diagnostics\` or temporary-directory fallback. The report contains the airport and profile names plus timing/resource counters and bounded numeric samples; it does not collect target/controller callsigns, typed messages, or credentials. The reported frame duration is vSMR's measured render-pipeline interval inside `REFRESH_PHASE_BEFORE_TAGS`, not the complete callback or EuroScope display-present interval; diagnostic stage rows can overlap and are not additive. The GDI count covers the whole EuroScope process, not only vSMR.
+
+These measurements are the evidence gate for any later Direct2D/AVISO prototype. This release does not change the current GDI/GDI+ renderer.
 
 ### Logging
 
@@ -591,6 +609,7 @@ vSMR\
     rdf\              Native TrackAudio RDF overlay
     crash\            WER registration, protocol, and breadcrumbs
       handler\         Packaged x86 out-of-process WER callback project
+    diagnostics\      Bounded performance collection, statistics, and report serialization
   resources\          Windows resource scripts, cursors, and DLL exports
   data\               Runtime data copied to vSMR_Data in Release
   tools\              Data, release, and package-verification tools
@@ -613,6 +632,7 @@ Important implementation areas:
 | `vSMR/src/control_center/` | Native WebView2 host, C++/JavaScript bridge, and Control Center resource management |
 | `vSMR/src/control_center/web/` | Control Center HTML, CSS, and JavaScript source |
 | `vSMR/src/crash/CrashReporter.cpp` and `vSMR/src/crash/handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
+| `vSMR/src/diagnostics/` | Per-radar performance samples, aggregate statistics, cache/worker counters, and JSON reports |
 | `vSMR/tools/crash_harness/` | Isolated deterministic and real-WER crash-report validation harness |
 | `vSMR/tools/` | Runtime-data normalization, release packaging, and package verification |
 

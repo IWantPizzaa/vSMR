@@ -978,6 +978,122 @@ CSMRRadar::~CSMRRadar()
 		reinterpret_cast<std::uintptr_t>(this));
 }
 
+void CSMRRadar::SamplePerformanceResourcesIfDue(bool force)
+{
+	const std::uint64_t now = VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
+	if (!force && PerformanceLastResourceSampleMilliseconds != 0 &&
+		now - PerformanceLastResourceSampleMilliseconds < 1000)
+	{
+		return;
+	}
+	PerformanceLastResourceSampleMilliseconds = now;
+
+	VsmrPerformance::ResourceSample sample;
+	sample.timestampMilliseconds = now;
+	sample.processGdiObjects = static_cast<std::uint32_t>(
+		::GetGuiResources(::GetCurrentProcess(), GR_GDIOBJECTS));
+	auto addBitmap = [&](Gdiplus::Bitmap* bitmap, std::size_t& categoryCount)
+	{
+		if (bitmap == nullptr)
+			return;
+		++categoryCount;
+		++sample.ownedBitmapCount;
+		sample.estimatedBitmapBytes += static_cast<std::uint64_t>(bitmap->GetWidth()) *
+			static_cast<std::uint64_t>(bitmap->GetHeight()) * 4ULL;
+	};
+	for (const auto& aircraftIcon : AircraftIcons)
+		addBitmap(aircraftIcon.second.get(), sample.aircraftBitmapCount);
+	for (const auto& realisticIcon : RealisticIconBitmapCache)
+		addBitmap(realisticIcon.second.bitmap.get(), sample.realisticIconBitmapCount);
+	if (AvisoGeoJsonRasterCache != nullptr)
+	{
+		sample.mainAvisoBitmapCount = 1;
+		++sample.ownedBitmapCount;
+		if (AvisoGeoJsonRasterWidth > 0 && AvisoGeoJsonRasterHeight > 0)
+		{
+			sample.estimatedBitmapBytes += static_cast<std::uint64_t>(AvisoGeoJsonRasterWidth) *
+				static_cast<std::uint64_t>(AvisoGeoJsonRasterHeight) * 4ULL;
+		}
+	}
+	for (const auto& appWindow : appWindows)
+	{
+		if (appWindow.second == nullptr)
+			continue;
+		std::uint64_t estimatedBytes = 0;
+		const std::size_t bitmapCount = appWindow.second->GetAvisoPerformanceBitmapCount(&estimatedBytes);
+		sample.insetAvisoBitmapCount += bitmapCount;
+		sample.ownedBitmapCount += bitmapCount;
+		sample.estimatedBitmapBytes += estimatedBytes;
+	}
+	PerformanceDiagnostics.RecordResources(sample);
+}
+
+VsmrPerformance::Snapshot CSMRRadar::GetPerformanceSnapshot(
+	std::uint32_t windowSeconds,
+	std::size_t maximumSeriesPoints)
+{
+	SamplePerformanceResourcesIfDue();
+	VsmrPerformance::AvisoQueueDepth mainQueue;
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		mainQueue.pending = AvisoGeoJsonPendingRenderRequest != nullptr ? 1U : 0U;
+		mainQueue.inFlight = AvisoGeoJsonRenderInFlight ? 1U : 0U;
+		mainQueue.completed = AvisoGeoJsonCompletedRenderResult != nullptr ? 1U : 0U;
+		mainQueue.workers = AvisoGeoJsonRenderThreadStarted ? 1U : 0U;
+	}
+	VsmrPerformance::AvisoQueueDepth insetQueue;
+	for (const auto& appWindow : appWindows)
+	{
+		if (appWindow.second == nullptr)
+			continue;
+		const VsmrPerformance::AvisoQueueDepth windowQueue =
+			appWindow.second->GetAvisoPerformanceQueueDepth();
+		insetQueue.pending += windowQueue.pending;
+		insetQueue.inFlight += windowQueue.inFlight;
+		insetQueue.completed += windowQueue.completed;
+		insetQueue.workers += windowQueue.workers;
+	}
+
+	std::size_t realisticScaledEntries = 0;
+	std::size_t realisticRotatedEntries = 0;
+	for (const auto& item : RealisticIconBitmapCache)
+	{
+		if (item.first.rfind("s|", 0) == 0)
+			++realisticScaledEntries;
+		else if (item.first.rfind("r|", 0) == 0)
+			++realisticRotatedEntries;
+	}
+	return PerformanceDiagnostics.GetSnapshot(
+		windowSeconds,
+		maximumSeriesPoints,
+		mainQueue,
+		insetQueue,
+		AircraftIcons.size(),
+		realisticScaledEntries,
+		realisticRotatedEntries);
+}
+
+void CSMRRadar::ResetPerformanceDiagnostics()
+{
+	PerformanceDiagnostics.Reset();
+	PerformanceLastResourceSampleMilliseconds = 0;
+	SamplePerformanceResourcesIfDue(true);
+}
+
+std::string CSMRRadar::BuildPerformanceReportJson(
+	std::uint32_t windowSeconds,
+	std::size_t maximumSeriesPoints)
+{
+	const VsmrPerformance::Snapshot snapshot = GetPerformanceSnapshot(
+		windowSeconds,
+		maximumSeriesPoints);
+	return VsmrPerformance::BuildJsonReport(
+		snapshot,
+		MY_PLUGIN_VERSION,
+		getActiveAirport(),
+		CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string());
+}
+
 void CSMRRadar::PublishCrashRadarState(
 	const char* radar,
 	const char* inset) const noexcept
@@ -2341,6 +2457,7 @@ void CSMRRadar::StopAvisoGeoJsonRenderThread()
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
 		AvisoGeoJsonRenderThreadStarted = false;
+		AvisoGeoJsonRenderInFlight = false;
 		AvisoGeoJsonRenderLastRequestValid = false;
 	}
 }
@@ -2414,9 +2531,15 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.25) &&
 			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedBottomRight, request.projectedBottomRight, 0.25);
 		if (sameRequest)
+		{
+			PerformanceDiagnostics.RecordAvisoRequestCoalesced(
+				VsmrPerformance::AvisoViewport::Main);
 			return;
+		}
 
 		request.requestId = ++AvisoGeoJsonRenderNextRequestId;
+		request.performanceQueuedAtMilliseconds =
+			VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
 		AvisoGeoJsonRenderLatestRequestId = request.requestId;
 		AvisoGeoJsonRenderLastRequestValid = true;
 		AvisoGeoJsonRenderLastRequestPath = request.path;
@@ -2431,7 +2554,12 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		AvisoGeoJsonRenderLastRequestProjectedTopRight = request.projectedTopRight;
 		AvisoGeoJsonRenderLastRequestProjectedBottomLeft = request.projectedBottomLeft;
 		AvisoGeoJsonRenderLastRequestProjectedBottomRight = request.projectedBottomRight;
+		const bool supersededPendingRequest =
+			AvisoGeoJsonPendingRenderRequest != nullptr || AvisoGeoJsonRenderInFlight;
 		AvisoGeoJsonPendingRenderRequest = std::make_unique<AvisoRasterRenderRequest>(std::move(request));
+		PerformanceDiagnostics.RecordAvisoRequestQueued(
+			VsmrPerformance::AvisoViewport::Main,
+			supersededPendingRequest);
 		shouldNotify = true;
 	}
 
@@ -2480,32 +2608,38 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 	if (result == nullptr || result->bitmap == nullptr)
 		return;
 
+	bool resultApplied = false;
 	{
 		std::lock_guard<std::mutex> groupGuard(AvisoGroupMutex);
-		if (result->groupGeneration != AvisoGroupGeneration.load(std::memory_order_relaxed))
-			return;
-
-		ClearAvisoGeoJsonRasterCache();
-		AvisoGeoJsonRasterCache = result->bitmap;
-		result->bitmap = nullptr;
-		AvisoGeoJsonRasterCachePath = result->path;
-		AvisoGeoJsonRasterGroupGeneration = result->groupGeneration;
-		AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
-		AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
-		AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
-		AvisoGeoJsonRasterMaxLatitude = result->displayMaxLatitude;
-		AvisoGeoJsonRasterWidth = result->rasterWidth;
-		AvisoGeoJsonRasterHeight = result->rasterHeight;
-		AvisoGeoJsonRasterAnchorLongitude = result->renderMinLongitude;
-		AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
-		AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
-		AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
-		AvisoGeoJsonRasterProjectedTopLeft = result->projectedTopLeft;
-		AvisoGeoJsonRasterProjectedTopRight = result->projectedTopRight;
-		AvisoGeoJsonRasterProjectedBottomLeft = result->projectedBottomLeft;
-		AvisoGeoJsonRasterProjectedBottomRight = result->projectedBottomRight;
-		AvisoGeoJsonRasterAnchorValid = true;
+		if (result->groupGeneration == AvisoGroupGeneration.load(std::memory_order_relaxed))
+		{
+			ClearAvisoGeoJsonRasterCache();
+			AvisoGeoJsonRasterCache = result->bitmap;
+			result->bitmap = nullptr;
+			AvisoGeoJsonRasterCachePath = result->path;
+			AvisoGeoJsonRasterGroupGeneration = result->groupGeneration;
+			AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
+			AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
+			AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
+			AvisoGeoJsonRasterMaxLatitude = result->displayMaxLatitude;
+			AvisoGeoJsonRasterWidth = result->rasterWidth;
+			AvisoGeoJsonRasterHeight = result->rasterHeight;
+			AvisoGeoJsonRasterAnchorLongitude = result->renderMinLongitude;
+			AvisoGeoJsonRasterAnchorLatitude = result->renderMaxLatitude;
+			AvisoGeoJsonRasterBottomRightLongitude = result->renderMaxLongitude;
+			AvisoGeoJsonRasterBottomRightLatitude = result->renderMinLatitude;
+			AvisoGeoJsonRasterProjectedTopLeft = result->projectedTopLeft;
+			AvisoGeoJsonRasterProjectedTopRight = result->projectedTopRight;
+			AvisoGeoJsonRasterProjectedBottomLeft = result->projectedBottomLeft;
+			AvisoGeoJsonRasterProjectedBottomRight = result->projectedBottomRight;
+			AvisoGeoJsonRasterAnchorValid = true;
+			resultApplied = true;
+		}
 	}
+	if (resultApplied)
+		PerformanceDiagnostics.RecordAvisoResultApplied(VsmrPerformance::AvisoViewport::Main);
+	else
+		PerformanceDiagnostics.RecordAvisoResultDiscarded(VsmrPerformance::AvisoViewport::Main);
 }
 
 void CSMRRadar::AvisoGeoJsonRenderThreadMain()
@@ -2526,6 +2660,7 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 					return;
 
 				request = std::move(AvisoGeoJsonPendingRenderRequest);
+				AvisoGeoJsonRenderInFlight = request != nullptr;
 			}
 
 			if (request == nullptr)
@@ -2535,6 +2670,12 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 				reinterpret_cast<std::uintptr_t>(this));
 
 			std::unique_ptr<AvisoRasterRenderResult> result;
+			const std::uint64_t renderStartMilliseconds =
+				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
+			const double queueWaitMilliseconds = request->performanceQueuedAtMilliseconds == 0
+				? 0.0
+				: static_cast<double>(renderStartMilliseconds - request->performanceQueuedAtMilliseconds);
+			const auto renderStart = std::chrono::steady_clock::now();
 			try
 			{
 				result = RenderAvisoGeoJsonRaster(*request);
@@ -2553,19 +2694,41 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 			{
 				Logger::info("AVISO render worker caught unknown exception");
 			}
+			const double rebuildMilliseconds = std::chrono::duration<double, std::milli>(
+				std::chrono::steady_clock::now() - renderStart).count();
+			PerformanceDiagnostics.RecordAvisoRasterBuild(
+				VsmrPerformance::AvisoViewport::Main,
+				rebuildMilliseconds,
+				queueWaitMilliseconds,
+				result != nullptr);
 
 			bool shouldRefresh = false;
+			bool discardedResult = false;
+			bool stopRequested = false;
 			{
 				std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
 				if (IsAvisoGeoJsonRenderStopRequested())
-					return;
-
-				if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
 				{
+					stopRequested = true;
+					discardedResult = result != nullptr;
+				}
+				else if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
+				{
+					if (AvisoGeoJsonCompletedRenderResult != nullptr)
+						discardedResult = true;
 					AvisoGeoJsonCompletedRenderResult = std::move(result);
 					shouldRefresh = true;
 				}
+				else if (result != nullptr)
+				{
+					discardedResult = true;
+				}
+				AvisoGeoJsonRenderInFlight = false;
 			}
+			if (discardedResult)
+				PerformanceDiagnostics.RecordAvisoResultDiscarded(VsmrPerformance::AvisoViewport::Main);
+			if (stopRequested)
+				return;
 
 			if (shouldRefresh)
 				RequestRefreshFromWorker();
@@ -2585,6 +2748,8 @@ void CSMRRadar::AvisoGeoJsonRenderThreadMain()
 	{
 		Logger::info("AVISO render worker stopped after unknown exception");
 	}
+	std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+	AvisoGeoJsonRenderInFlight = false;
 }
 
 void CSMRRadar::RequestRefreshFromWorker()
@@ -3752,7 +3917,21 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 
 	ApplyCompletedAvisoGeoJsonRaster();
 	if (cacheMatchesCurrentView() && drawRasterCacheTransformed())
+	{
+		PerformanceDiagnostics.RecordAvisoCacheOutcome(
+			VsmrPerformance::AvisoViewport::Main,
+			VsmrPerformance::AvisoCacheOutcome::Exact,
+			false,
+			false);
 		return;
+	}
+	auto avisoRasterUpdatePending = [&]() -> bool
+	{
+		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
+		return AvisoGeoJsonPendingRenderRequest != nullptr ||
+			AvisoGeoJsonRenderInFlight ||
+			AvisoGeoJsonCompletedRenderResult != nullptr;
+	};
 
 	const double overscanRatio = 0.75;
 	const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
@@ -3824,13 +4003,34 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	// the compatibility/margin check still decides whether to refresh it.
 	if (drawRasterCacheTransformed())
 	{
+		bool updateRequested = false;
 		if (!rasterCacheHasWorkingMargin())
+		{
+			updateRequested = true;
 			QueueAvisoGeoJsonRasterRender(std::move(request));
+		}
+		const bool delayedByAvisoUpdate = updateRequested && avisoRasterUpdatePending();
+		PerformanceDiagnostics.RecordAvisoCacheOutcome(
+			VsmrPerformance::AvisoViewport::Main,
+			delayedByAvisoUpdate
+				? VsmrPerformance::AvisoCacheOutcome::Preview
+				: VsmrPerformance::AvisoCacheOutcome::Exact,
+			delayedByAvisoUpdate,
+			false);
 		return;
 	}
 
 	QueueAvisoGeoJsonRasterRender(std::move(request));
-	if (drawRasterCacheViewportAligned())
+	const bool fallbackCacheDrawn = drawRasterCacheViewportAligned();
+	const bool delayedByAvisoUpdate = avisoRasterUpdatePending();
+	PerformanceDiagnostics.RecordAvisoCacheOutcome(
+		VsmrPerformance::AvisoViewport::Main,
+		fallbackCacheDrawn
+			? VsmrPerformance::AvisoCacheOutcome::Preview
+			: VsmrPerformance::AvisoCacheOutcome::Miss,
+		delayedByAvisoUpdate,
+		!fallbackCacheDrawn);
+	if (fallbackCacheDrawn)
 		return;
 }
 
@@ -7129,6 +7329,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		FpsLastSampleTick = fpsNowTick;
 	}
 	const double perfFrameStartMs = RefreshPerfNowMs();
+	PerformanceDiagnostics.BeginFrame();
 	double perfAvisoMs = 0.0;
 	double perfTargetsMs = 0.0;
 	double perfRimcasMs = 0.0;
@@ -7624,6 +7825,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	setRefreshStage("radar target loop");
 	const double perfRimcasBeforeTargetsMs = perfRimcasMs;
 	const double perfTargetsStartMs = RefreshPerfNowMs();
+	std::size_t frameVisibleTargetCount = 0;
+	CRect frameVisibleRadarArea(RadarArea);
+	frameVisibleRadarArea.NormalizeRect();
 	static const std::vector<VsmrScene::Target> emptySceneTargets;
 	const std::vector<VsmrScene::Target>& sceneTargets = frameScene != nullptr
 		? frameScene->targets
@@ -7652,6 +7856,11 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		const bool AcisCorrelated = sceneTarget.correlated;
 		POINT acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
+		if (acPosPix.x >= frameVisibleRadarArea.left && acPosPix.x < frameVisibleRadarArea.right &&
+			acPosPix.y >= frameVisibleRadarArea.top && acPosPix.y < frameVisibleRadarArea.bottom)
+		{
+			++frameVisibleTargetCount;
+		}
 
 		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
 		if (drawLegacyPrimarySymbol && sceneTarget.style.showPrimaryReturn && !sceneTarget.primaryReturnPolygon.empty()) {
@@ -8523,6 +8732,30 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	PerfLastRimcasMs = perfRimcasMs;
 	PerfLastTagsMs = perfTagsMs;
 	PerfLastSrwMs = perfSrwMs;
+	VsmrPerformance::FrameSample performanceFrame;
+	performanceFrame.frameId = frameScene != nullptr ? frameScene->frameId : RadarSceneFrameId;
+	performanceFrame.timestampMilliseconds =
+		VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
+	performanceFrame.frameMilliseconds = PerfLastFrameMs;
+	performanceFrame.sceneMilliseconds = PerfLastSceneBuildMs;
+	performanceFrame.avisoMilliseconds = PerfLastAvisoMs;
+	performanceFrame.targetsMilliseconds = PerfLastTargetsMs;
+	performanceFrame.rimcasMilliseconds = PerfLastRimcasMs;
+	performanceFrame.tagsMilliseconds = PerfLastTagsMs;
+	performanceFrame.srwMilliseconds = PerfLastSrwMs;
+	performanceFrame.visibleTargets = frameVisibleTargetCount;
+	performanceFrame.visibleTags = tagAreas.size();
+	if (frameScene != nullptr)
+	{
+		performanceFrame.euroScopeLookupMilliseconds = frameScene->stats.sdkLookupMilliseconds;
+		performanceFrame.processedTargets = frameScene->stats.sdkTargetEnumerations;
+		performanceFrame.capturedTargets = frameScene->stats.targetCount;
+		performanceFrame.radarFilteredTargets = frameScene->stats.radarFilteredTargetCount;
+		performanceFrame.iconTargets = frameScene->stats.iconTargetCount;
+		performanceFrame.tagTargets = frameScene->stats.tagTargetCount;
+	}
+	PerformanceDiagnostics.RecordFrame(performanceFrame);
+	SamplePerformanceResourcesIfDue();
 	const unsigned long perfNowTick = ::GetTickCount();
 	if (PerfLastLogTick == 0 || perfNowTick - PerfLastLogTick >= 2000)
 	{

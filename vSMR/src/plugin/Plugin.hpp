@@ -48,6 +48,16 @@ struct DatalinkControlState
 	std::string statusMessage;
 };
 
+struct WorkerQueueSnapshot
+{
+	std::size_t networkWorkers = 0;
+	std::size_t networkQueued = 0;
+	std::size_t networkInFlight = 0;
+	bool weatherWorkerRunning = false;
+	std::size_t weatherQueued = 0;
+	std::size_t weatherInFlight = 0;
+};
+
 class CSMRPlugin :
 	public EuroScopePlugIn::CPlugIn
 {
@@ -77,6 +87,7 @@ public:
 	bool QueueNetworkJob(std::function<void()> job);
 	void StopNetworkWorkers();
 	void StopWeatherFetchWorker();
+	WorkerQueueSnapshot GetWorkerQueueSnapshot();
 
 	//---OnCompileCommand------------------------------------------
 
@@ -128,6 +139,8 @@ private:
 	std::condition_variable NetworkWorkerCondition;
 	std::vector<std::thread> NetworkWorkers;
 	std::deque<std::function<void()>> NetworkJobs;
+	std::size_t NetworkWorkerThreadsRunning = 0;
+	std::size_t NetworkJobsInFlight = 0;
 	std::atomic<bool> NetworkCancellationRequested{ false };
 	bool NetworkWorkersStopping = false;
 
@@ -136,7 +149,9 @@ private:
 	std::thread WeatherFetchThread;
 	std::atomic<bool> WeatherFetchCancellationRequested{ false };
 	bool WeatherFetchStop = false;
+	bool WeatherWorkerRunning = false;
 	std::deque<std::string> WeatherFetchQueue;
+	std::size_t WeatherFetchesInFlight = 0;
 	std::set<std::string> WeatherFetchQueued;
 	std::map<std::string, std::time_t> WeatherLastAttemptUtc;
 };

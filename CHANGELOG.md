@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added a live Control Center performance-diagnostics panel with bounded per-radar sampling; average, median, P95, and maximum timings; AVISO and aircraft-cache rates; raster rebuild and worker depth data; target and EuroScope-lookup metrics; process GDI and vSMR bitmap counts; delayed-AVISO-frame tracking; reset controls; and exportable JSON reports. This establishes a measurable baseline before any future Direct2D AVISO prototype.
 - Added out-of-process, WER-based crash reporting with direct/stack/worker association, fixed-size per-screen and per-thread breadcrumbs, recent logs, build/PDB identity, and an isolated crash harness. Reports are kept locally and are never uploaded automatically.
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.

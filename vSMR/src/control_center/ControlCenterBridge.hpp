@@ -43,6 +43,9 @@ enum class VsmrBridgeAction
 	DatalinkDisconnect,
 	DatalinkPoll,
 	CdmScan,
+	PerformanceStateRequest,
+	PerformanceReset,
+	PerformanceReportExport,
 	ResourceComputerLoad,
 	ResourceGithubLoad
 };

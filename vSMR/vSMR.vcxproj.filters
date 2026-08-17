@@ -47,6 +47,7 @@
     <ClCompile Include="src\crash\CrashReporter.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
@@ -85,6 +86,7 @@
     <ClInclude Include="src\crash\CrashRuntime.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp"><Filter>Headers</Filter></ClInclude>

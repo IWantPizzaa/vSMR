@@ -557,6 +557,12 @@
 </div>
 </section>
 <section class="page settings-page" data-page-panel="settings">
+<nav aria-label="Settings sections" class="subtabs settings-subtabs" id="settingsSubtabs" role="tablist">
+<button aria-controls="settingsPanelGeneral" aria-selected="true" class="active" data-settings-tab="general" id="settingsTabGeneral" role="tab" tabindex="0" type="button">General</button>
+<button aria-controls="settingsPanelPerformance" aria-selected="false" data-settings-tab="performance" id="settingsTabPerformance" role="tab" tabindex="-1" type="button">Performance</button>
+</nav>
+<div class="settings-view-stack">
+<section aria-labelledby="settingsTabGeneral" class="settings-view active" data-settings-panel="general" id="settingsPanelGeneral" role="tabpanel">
 <div class="settings-layout">
 <div class="settings-column settings-files-column">
 <fieldset class="compact-group settings-group files-group">
@@ -617,6 +623,90 @@
 <div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button></div>
 </section>
 </div>
+</div>
+</section>
+<section aria-labelledby="settingsTabPerformance" class="settings-view performance-view" data-settings-panel="performance" hidden id="settingsPanelPerformance" role="tabpanel">
+<div class="performance-layout">
+<div class="performance-toolbar">
+<span aria-live="polite" class="performance-state-badge waiting" id="performanceStateBadge" role="status">Awaiting data</span>
+<label class="performance-window-field" for="performanceWindowSeconds"><span>Window</span><select id="performanceWindowSeconds"><option value="30">30 seconds</option><option selected value="120">2 minutes</option><option value="600">10 minutes</option></select></label>
+<span class="performance-toolbar-spacer"></span>
+<button class="ui-button" data-action="performance-reset" id="performanceResetButton" type="button">Reset</button>
+<button class="ui-button primary" data-action="performance-export" id="performanceExportButton" type="button">Export report</button>
+</div>
+<p aria-live="polite" class="performance-notice" id="performanceNotice" role="status">Waiting for the first performance sample...</p>
+<section aria-label="Frame-time summary" class="performance-summary-grid">
+<article class="performance-summary-card"><span>Average</span><strong><output id="performanceFrameAverage">--</output><small> ms</small></strong></article>
+<article class="performance-summary-card"><span>Median</span><strong><output id="performanceFrameMedian">--</output><small> ms</small></strong></article>
+<article class="performance-summary-card"><span>P95</span><strong><output id="performanceFrameP95">--</output><small> ms</small></strong></article>
+<article class="performance-summary-card"><span>Maximum</span><strong><output id="performanceFrameMaximum">--</output><small> ms</small></strong></article>
+</section>
+<section class="panel performance-trend-panel">
+<div class="panel-title"><span>Frame-time trend</span><small id="performanceTrendCaption">No samples</small></div>
+<div class="performance-trend-body">
+<svg aria-labelledby="performanceTrendTitle performanceTrendDescription" class="performance-trend-chart" id="performanceTrendChart" preserveAspectRatio="none" role="img" viewBox="0 0 600 118">
+<title id="performanceTrendTitle">Frame-time trend</title>
+<desc id="performanceTrendDescription">No performance samples are available.</desc>
+<path aria-hidden="true" class="performance-trend-grid" d="M0 29.5H600M0 59H600M0 88.5H600"></path>
+<polyline class="performance-trend-line aviso" id="performanceAvisoTrend" points=""></polyline>
+<polyline class="performance-trend-line frame" id="performanceFrameTrend" points=""></polyline>
+</svg>
+<div aria-hidden="true" class="performance-trend-legend"><span><i class="frame"></i>Frame</span><span><i class="aviso"></i>AVISO</span><span id="performanceTrendScale">0-0 ms</span></div>
+</div>
+</section>
+<section class="panel performance-timing-panel">
+<div class="panel-title"><span>Timing breakdown</span><small id="performanceSampleCaption">0 samples</small></div>
+<div class="performance-table-scroll">
+<table class="performance-table">
+<caption class="visually-hidden">Timing statistics in milliseconds</caption>
+<thead><tr><th scope="col">Stage</th><th scope="col">Latest</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">P95</th><th scope="col">Maximum</th></tr></thead>
+<tbody id="performanceTimingRows"></tbody>
+</table>
+</div>
+<p class="performance-method-note">Stage timings are diagnostic slices and can overlap. AVISO raster rebuilds run on a worker thread.</p>
+</section>
+<div class="performance-detail-grid">
+<section class="panel performance-cache-panel">
+<div class="panel-title"><span>Cache activity</span><small>Since reset</small></div>
+<div class="performance-table-scroll">
+<table class="performance-table compact">
+<caption class="visually-hidden">Cache hit and miss rates</caption>
+<thead><tr><th scope="col">Cache</th><th scope="col">Fresh / hit</th><th scope="col">Preview</th><th scope="col">Miss</th><th scope="col">Hit rate</th></tr></thead>
+<tbody id="performanceCacheRows"></tbody>
+</table>
+</div>
+</section>
+<section class="panel performance-queues-panel">
+<div class="panel-title"><span>Worker queues</span><small>Current</small></div>
+<div class="performance-table-scroll">
+<table class="performance-table compact">
+<caption class="visually-hidden">Current named worker queue depths and activity</caption>
+<thead><tr><th scope="col">Queue</th><th scope="col">Pending</th><th scope="col">In flight</th><th scope="col">Workers</th><th scope="col">Completed waiting</th></tr></thead>
+<tbody id="performanceQueueRows"></tbody>
+</table>
+</div>
+</section>
+<section class="panel performance-counter-panel">
+<div class="panel-title"><span>Targets and resources</span><small>Current / average or sampled peak</small></div>
+<dl class="performance-counter-list">
+<div><dt>Processed targets</dt><dd id="performanceTargetsProcessed">--</dd></div>
+<div><dt>Visible targets</dt><dd id="performanceTargetsVisible">--</dd></div>
+<div><dt>Process-wide GDI objects</dt><dd id="performanceGdiObjects">--</dd></div>
+<div><dt>vSMR cached bitmaps</dt><dd id="performanceCachedBitmaps">--</dd></div>
+</dl>
+</section>
+<section class="panel performance-counter-panel">
+<div class="panel-title"><span>AVISO worker</span><small id="performanceWorkerState">Idle</small></div>
+<dl class="performance-counter-list">
+<div><dt>Pending / in flight</dt><dd id="performanceWorkerDepth">--</dd></div>
+<div><dt>Raster rebuild (window)</dt><dd id="performanceRasterRebuild">--</dd></div>
+<div><dt>Delayed / fallback frames (reset)</dt><dd id="performanceAvisoDelayed">--</dd></div>
+<div><dt>Completed / superseded (reset)</dt><dd id="performanceAvisoRebuilds">--</dd></div>
+</dl>
+</section>
+</div>
+</div>
+</section>
 </div>
 </section>
 </main>
