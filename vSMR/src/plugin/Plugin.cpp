@@ -4122,6 +4122,8 @@ void CSMRPlugin::RefreshAvisoFrequencyOwnershipOverlays()
 	{
 		if (radar == nullptr || radar->IsShutdownRequested())
 			continue;
+		radar->MarkPerformanceRefreshReason(
+			VsmrPerformance::FrameRefreshReason::ControllerUpdate);
 		radar->RefreshAvisoFrequencyOwnership(true);
 		radar->RequestRefresh();
 	}
@@ -4198,6 +4200,8 @@ void CSMRPlugin::OnAirportRunwayActivityChanged()
 		radar->RefreshLegacyRimcasRunwayMonitoring();
 		radar->LastMapRunwayStatuses.clear();
 		radar->LastMapActiveAirport.clear();
+		radar->MarkPerformanceRefreshReason(
+			VsmrPerformance::FrameRefreshReason::AirportUpdate);
 		radar->RequestRefresh();
 		if ((adoptAirport || !radar->RimcasRunwaysExplicitlyConfigured) &&
 			radar->VsmrControlCenterDialog != nullptr)

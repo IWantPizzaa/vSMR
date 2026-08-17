@@ -119,10 +119,13 @@ public:
 	void FloatAvisoViewport(POINT Pt, const RECT* layoutBounds);
 	bool ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier);
 	void ClearAvisoViewportCache();
+	void InvalidateAvisoViewportRendering();
 	void CancelAvisoViewportRender();
 	void ResetAvisoInteractionState();
 	VsmrPerformance::AvisoQueueDepth GetAvisoPerformanceQueueDepth();
 	std::size_t GetAvisoPerformanceBitmapCount(std::uint64_t* estimatedBytes = nullptr) const;
+	double GetLastRdfRenderMilliseconds() const noexcept;
+	double GetLastChromeRenderMilliseconds() const noexcept;
 	
 private:
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
@@ -142,7 +145,16 @@ private:
 	std::array<HFONT, 7> m_WeatherFonts = {};
 	std::array<int, 7> m_WeatherFontHeights = {};
 	HFONT m_TimerFont = nullptr;
+	const Gdiplus::Font* m_SrwFontSource = nullptr;
+	Gdiplus::REAL m_SrwFontSize = 0.0f;
+	INT m_SrwFontStyle = 0;
+	std::wstring m_SrwFontFamily;
+	std::unique_ptr<Gdiplus::Font> m_SrwBoldFont;
+	int m_SrwBlankWidth = 0;
+	int m_SrwLineHeight = 0;
 	std::unique_ptr<AvisoViewportState> m_AvisoState;
+	double m_LastRdfRenderMilliseconds = 0.0;
+	double m_LastChromeRenderMilliseconds = 0.0;
 	bool m_WindowMoveActive = false;
 	bool m_WindowMoveStartedSnapped = false;
 	bool m_WindowMoveDetached = false;

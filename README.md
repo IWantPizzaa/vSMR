@@ -167,6 +167,8 @@ Each radar screen builds one immutable `RadarScene` on EuroScope's UI thread for
 
 Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` log remains available, while the Control Center Performance page exposes the same render pipeline through bounded rolling statistics and named cache/worker counters.
 
+AVISO sources are parsed and validated once, then prewarmed after the airport-scoped ASR state is restored so the large LFPG source does not perform its cold load inside the first rendered scene. Cache-backed view changes use a short sliding debounce and cancellable geometry passes; the last same-source raster remains available as a transformed preview until the replacement is ready. Half-viewport overscan and hard raster-size limits reduce retained bitmap memory, and SRW caches its derived bold font and typography measurements instead of rebuilding them each frame.
+
 ### AVISO data
 
 vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
@@ -438,15 +440,16 @@ Open `Control Center > Settings > Performance` to inspect the active radar scree
 
 The panel includes (counter totals are since the last reset; timing distributions follow the selected window):
 
-- average, median, P95, and maximum vSMR frame-callback time, plus a bounded frame/AVISO trend
-- scene capture, AVISO draw, target, RIMCAS, tag, inset, instrumented EuroScope lookup, and AVISO raster-rebuild timings
-- separate fresh/preview/miss outcomes for the main and inset AVISO caches, request coalescing/superseding, and aircraft source/scaled/rotated cache rates
+- average, median, P95, and maximum vSMR frame-callback time, plus a bounded frame/main-AVISO trend
+- scene capture and its AVISO-load, ownership, target-capture, and finalization slices; separate main AVISO, AVISO inset, SRW, RDF, inset-chrome, target, RIMCAS, tag, instrumented EuroScope lookup, and AVISO raster-rebuild timings
+- refresh-cause counts plus the reason and measured stage context for frames at or above the 16 ms diagnostic spike threshold
+- separate fresh/preview/miss outcomes for the main and inset AVISO caches; queued, coalesced, debounced, superseded, cancelled, applied, and discarded AVISO work; and aircraft source/scaled/rotated cache rates
 - processed and main-view visible target counts, with the underlying capture/filter counts retained in exported samples
-- the EuroScope process-wide GDI-object count and separately attributed vSMR bitmap-cache counts
+- the EuroScope process-wide GDI-object count, separately attributed vSMR bitmap-cache counts, and current/observed-peak estimated bitmap memory
 - AVISO, network, and weather worker activity and pending/in-flight depth
 - frames that used an older AVISO raster or had no raster while a newer update was pending
 
-`Reset` starts a new collection generation for that radar screen. `Export report` writes a versioned JSON snapshot to `vSMR_Data\Diagnostics\` when that directory is writable, then uses `%LOCALAPPDATA%\vSMR\Diagnostics\` or a temporary-directory fallback. The successful export message shows the exact path used. The report contains the airport and profile names plus timing/resource counters and bounded numeric samples; it does not collect target/controller callsigns, typed messages, or credentials. The reported frame duration is vSMR's measured render-pipeline interval inside `REFRESH_PHASE_BEFORE_TAGS`, not the complete callback or EuroScope display-present interval; diagnostic stage rows can overlap and are not additive. The GDI count covers the whole EuroScope process, not only vSMR.
+`Reset` starts a new collection generation for that radar screen. `Export report` writes a versioned JSON snapshot to `vSMR_Data\Diagnostics\` when that directory is writable, then uses `%LOCALAPPDATA%\vSMR\Diagnostics\` or a temporary-directory fallback. The successful export message shows the exact path used. The report contains the airport and profile names plus timing/resource counters and bounded numeric samples; it does not collect target/controller callsigns, typed messages, or credentials. A frame can record more than one refresh cause, while callbacks without an attributed cause remain `Unspecified`. The 16 ms spike threshold is a diagnostic marker rather than a claimed display-refresh deadline. The reported frame duration is vSMR's measured render-pipeline interval inside `REFRESH_PHASE_BEFORE_TAGS`, not the complete callback or EuroScope display-present interval; diagnostic stage rows can overlap and are not additive. The GDI count covers the whole EuroScope process, not only vSMR, and bitmap memory is an estimate of tracked cached pixel storage rather than total graphics-driver or process memory.
 
 These measurements are the evidence gate for any later Direct2D/AVISO prototype. This release does not change the current GDI/GDI+ renderer.
 
