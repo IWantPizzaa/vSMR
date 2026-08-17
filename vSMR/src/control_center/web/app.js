@@ -2358,13 +2358,12 @@
     let caption = "";
     let usesAircraftImage = false;
     if (style === "nova") {
-      // NOVA combines the generated primary-return polygon with a small
-      // secondary marker at the reported target position.
+      // The preview focuses on the generated primary-return silhouette.
       const showPrimaryTarget = $("#showPrimaryTarget")?.checked ?? true;
       const primaryReturn = showPrimaryTarget
         ? `<path class="nova-primary-return" d="M0-44C-7-44-10-42-13-35L-16-22C-17-16-20-11-25-6L-44 12-43 24-16 12-11 20-11 35-5 45H5L11 35 11 20 16 12 43 24 44 12 25-6C20-11 17-16 16-22L13-35C10-42 7-44 0-44Z"/>`
         : "";
-      symbol = `<svg class="icon-preview-vector nova" viewBox="-52 -50 104 104" aria-hidden="true"><path class="nova-trail" d="M0 2V52"/>${primaryReturn}<path class="nova-center-mark" d="M-3 0H3M0-3V3"/></svg>`;
+      symbol = `<svg class="icon-preview-vector nova" viewBox="-52 -50 104 104" aria-hidden="true">${primaryReturn}</svg>`;
       caption = "NOVA";
     } else if (style === "triangle" || style === "arrow") {
       // Keep every style legible at the same preview footprint while still
