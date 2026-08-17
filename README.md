@@ -141,7 +141,7 @@ If a Profiles or AVISO file changes outside vSMR while edits are pending, the Co
 
 Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
 
-The Symbols page previews NOVA, Icon, and Triangle at a consistent visual size. NOVA uses a clean white filled primary-return silhouette with its center marker; disabling `Show primary target` removes the filled return from both the preview and radar display.
+The Symbols page previews NOVA, Icon, and Triangle at a consistent visual size. NOVA uses a clean white filled primary-return silhouette without decorative center or trailing marks; disabling `Show primary target` removes the filled return from both the preview and radar display.
 
 The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. Every slider uses a color-preview rail and matching thumb: hue covers the complete 0–360° spectrum, each RGB rail previews that channel in the current color, and opacity fades from transparent to the selected RGB color over a checkerboard. The adjacent swatch is a preview only; all color changes stay in this editor instead of opening a second system color picker.
 
