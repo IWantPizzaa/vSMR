@@ -141,7 +141,7 @@ If a Profiles or AVISO file changes outside vSMR while edits are pending, the Co
 
 Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
 
-The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. Every slider uses a color-preview rail and matching thumb: hue covers the complete 0–360° spectrum, each RGB rail previews that channel in the current color, and opacity fades from transparent to the selected RGB color over a checkerboard.
+The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. Every slider uses a color-preview rail and matching thumb: hue covers the complete 0–360° spectrum, each RGB rail previews that channel in the current color, and opacity fades from transparent to the selected RGB color over a checkerboard. The adjacent swatch is a preview only; all color changes stay in this editor instead of opening a second system color picker.
 
 ### Ground statuses and Line Up
 
