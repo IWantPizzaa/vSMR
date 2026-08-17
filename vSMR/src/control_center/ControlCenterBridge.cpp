@@ -296,10 +296,10 @@ namespace
 		const std::filesystem::path localAppData = EnvironmentDirectory(L"LOCALAPPDATA");
 		const std::filesystem::path temporaryBase = TemporaryDirectory();
 		const std::array<std::filesystem::path, 3> candidates = {
+			dataDirectory.empty() ? std::filesystem::path{} : dataDirectory / L"Diagnostics",
 			localAppData.empty()
 				? std::filesystem::path{}
 				: localAppData / L"vSMR" / L"Diagnostics",
-			dataDirectory.empty() ? std::filesystem::path{} : dataDirectory / L"Diagnostics",
 			temporaryBase.empty()
 				? std::filesystem::path{}
 				: temporaryBase / L"vSMR" / L"Diagnostics"
