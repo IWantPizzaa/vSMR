@@ -2361,21 +2361,20 @@
       // NOVA combines the generated primary-return polygon with a small
       // secondary marker at the reported target position.
       const showPrimaryTarget = $("#showPrimaryTarget")?.checked ?? true;
-      const novaColor = colorToHex(activeProfile().targets?.target_color, "#fff249");
       const primaryReturn = showPrimaryTarget
-        ? `<path class="nova-primary-return" d="M-7-43L5-44 11-36 12-27 17-16 24-7 33 2 45 11 43 23 31 18 16 11 12 19 12 34 6 44-5 46-11 35-12 20-16 10-29 17-45 24-46 14-35 3-25-5-20-16-16-27-13-38Z"/>`
+        ? `<path class="nova-primary-return" d="M0-44C-7-44-10-42-13-35L-16-22C-17-16-20-11-25-6L-44 12-43 24-16 12-11 20-11 35-5 45H5L11 35 11 20 16 12 43 24 44 12 25-6C20-11 17-16 16-22L13-35C10-42 7-44 0-44Z"/>`
         : "";
-      symbol = `<svg class="icon-preview-vector nova" style="--nova-color:${escapeHtml(novaColor)}" viewBox="-52 -50 104 104" aria-hidden="true"><path class="nova-trail" d="M0 2V52"/>${primaryReturn}<path class="nova-center-mark" d="M-3 0H3M0-3V3"/></svg>`;
+      symbol = `<svg class="icon-preview-vector nova" viewBox="-52 -50 104 104" aria-hidden="true"><path class="nova-trail" d="M0 2V52"/>${primaryReturn}<path class="nova-center-mark" d="M-3 0H3M0-3V3"/></svg>`;
       caption = "NOVA";
     } else if (style === "triangle" || style === "arrow") {
-      // Native north-facing triangle: tip, right base, rear notch, left base.
-      const triangleScale = Math.max(
-        .1,
-        (fixed ? resolutionScale : 1) * configuredBoost * Math.max(.1, fixedScale)
+      // Keep every style legible at the same preview footprint while still
+      // reflecting the configured Triangle scale within the card bounds.
+      const triangleScale = clamp(
+        (fixed ? resolutionScale : 1) * configuredBoost * Math.max(.1, fixedScale),
+        .5,
+        1.22
       );
-      const length = 20 * triangleScale;
-      const halfWidth = 12 * triangleScale;
-      symbol = `<svg class="icon-preview-vector triangle" viewBox="-48 -48 96 96" aria-hidden="true"><path d="M0 ${(-length).toFixed(2)} L${halfWidth.toFixed(2)} ${(length * .33).toFixed(2)} L0 ${(length * .05).toFixed(2)} L${(-halfWidth).toFixed(2)} ${(length * .33).toFixed(2)} Z"/></svg>`;
+      symbol = `<svg class="icon-preview-vector triangle" viewBox="-52 -52 104 104" aria-hidden="true"><path transform="scale(${triangleScale.toFixed(3)})" d="M0-42 38 36 0 13-38 36Z"/></svg>`;
       caption = "Triangle";
     } else if (style === "diamond") {
       symbol = `<svg class="icon-preview-vector diamond" viewBox="-48 -48 96 96" aria-hidden="true"><rect x="-12" y="-12" width="24" height="24" rx="5.3" transform="rotate(45)"/></svg>`;
@@ -2384,11 +2383,9 @@
       // Fixed-size realistic icons use an 18px medium-jet reference at 1080p.
       // Without fixed sizing, one preview pixel per metre is representative;
       // the live radar supplies the actual zoom-dependent pixels-per-metre.
-      const aircraftPixelsPerMeter = fixed
-        ? (18 * resolutionScale / 40) * configuredBoost
-        : configuredBoost;
-      const aircraftWidth = 35.8 * aircraftPixelsPerMeter;
-      const aircraftHeight = 37.6 * aircraftPixelsPerMeter;
+      const aircraftPreviewScale = clamp((fixed ? resolutionScale : 1) * configuredBoost, .5, 1.18);
+      const aircraftHeight = 82 * aircraftPreviewScale;
+      const aircraftWidth = aircraftHeight * (35.8 / 37.6);
       symbol = `<img class="icon-preview-aircraft" data-aircraft-icon alt="" width="${aircraftWidth.toFixed(2)}" height="${aircraftHeight.toFixed(2)}">`;
       caption = "Icon";
       usesAircraftImage = true;
