@@ -178,6 +178,7 @@
     <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp" />
     <ClCompile Include="src\rdf\RdfOverlay.cpp" />
     <ClCompile Include="src\safety\Rimcas.cpp" />
+    <ClCompile Include="src\scene\RadarScene.cpp" />
     <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp" />
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp" />
     <ClCompile Include="src\weather\WeatherStore.cpp" />
@@ -219,6 +220,8 @@
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
     <ClInclude Include="src\safety\Rimcas.hpp" />
+    <ClInclude Include="src\scene\RadarScene.hpp" />
+    <ClInclude Include="src\aviso\FrequencyOwnership.hpp" />
     <ClInclude Include="src\shared\logging\Logger.hpp" />
     <ClInclude Include="src\shared\TextUtils.hpp" />
     <ClInclude Include="src\tags\TagColorRules.hpp" />

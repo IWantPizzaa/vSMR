@@ -13,6 +13,10 @@
 #include <functional>
 
 class CSMRRadar;
+namespace VsmrScene {
+	struct RadarScene;
+	struct Target;
+}
 using namespace std;
 using namespace Gdiplus;
 using namespace EuroScopePlugIn;
@@ -114,8 +118,8 @@ public:
 		return (winding_number != 0);
 	}
 
-	string GetAcInRunwayArea(CRadarTarget Ac, CRadarScreen *instance);
-	string GetAcInRunwayAreaSoon(CRadarTarget Ac, CRadarScreen *instance, bool isCorrelated);
+	string GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen *instance);
+	string GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen *instance);
 	void AddRunwayArea(CRadarScreen *instance, string runway_name1, string runway_name2, vector<CPosition> Definition);
 	void SetRunwayStatus(string runway, RunwayStatus status) { RunwayStatuses[runway] = status; }
 	const map<string, RunwayStatus>& GetRunwayStatuses() const { return RunwayStatuses; }
@@ -126,14 +130,14 @@ public:
 	const unordered_set<string>& GetInactiveAlerts() const { return inactiveAlerts; }
 
 	bool isAcOnRunway(const string& callsign);
-	string AcOnRunwayFunc(CRadarTarget Rt, CRadarScreen* instance);
-	void CheckForMovementAlert(CRadarTarget Rt, CRadarScreen* instance, bool isLVP);
+	string AcOnRunwayFunc(const VsmrScene::Target& Rt, CRadarScreen* instance);
+	void CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* instance);
 
 	vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
 
-	void OnRefreshBegin(bool isLVP);
-	void OnRefresh(CRadarTarget Rt, CRadarScreen *instance, bool isCorrelated, bool isLVP);
-	void OnRefreshEnd(CRadarScreen *instance, int threshold);
+	void OnRefreshBegin(bool isLVP, int transitionAltitude = 0);
+	void OnRefresh(const VsmrScene::Target& Rt, CRadarScreen *instance);
+	void OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold);
 	void Reset();
 
 	RimcasAlertTypes getAlert(const string& callsign);
@@ -182,4 +186,7 @@ public:
 	}
 
 	map<string, bool> ClosedRunway;
+
+private:
+	int TransitionAltitude = 0;
 };

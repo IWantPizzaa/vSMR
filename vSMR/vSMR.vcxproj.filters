@@ -64,6 +64,7 @@
     <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\rdf\RdfOverlay.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\safety\Rimcas.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\scene\RadarScene.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\weather\WeatherStore.cpp"><Filter>Source</Filter></ClCompile>
@@ -98,6 +99,8 @@
     <ClInclude Include="src\radar\RadarUiSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\safety\Rimcas.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\scene\RadarScene.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\FrequencyOwnership.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\logging\Logger.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\TextUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.hpp"><Filter>Headers</Filter></ClInclude>

@@ -1,0 +1,1183 @@
+#include "platform/windows/PrecompiledHeader.hpp"
+
+#include "scene/RadarScene.hpp"
+
+#include "radar/RadarScreen.hpp"
+#include "shared/TextUtils.hpp"
+#include "tags/TagColorRules.hpp"
+#include "tags/TagDefinitionUtils.hpp"
+#include "tags/VacdmTagHelpers.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstring>
+#include <sstream>
+#include <unordered_map>
+
+namespace
+{
+	using namespace EuroScopePlugIn;
+	using namespace VsmrScene;
+
+	std::string CopyText(const char* text)
+	{
+		return text != nullptr ? text : "";
+	}
+
+	GeoPoint CopyPosition(const CPosition& position)
+	{
+		GeoPoint result;
+		result.latitude = position.m_Latitude;
+		result.longitude = position.m_Longitude;
+		result.valid = std::isfinite(result.latitude) && std::isfinite(result.longitude);
+		return result;
+	}
+
+	VsmrScene::Color CopyColor(const Gdiplus::Color& color)
+	{
+		return VsmrScene::Color{ color.GetAlpha(), color.GetR(), color.GetG(), color.GetB() };
+	}
+
+	std::size_t EstimateStringHeapBytes(const std::string& value)
+	{
+		const std::uintptr_t objectBegin = reinterpret_cast<std::uintptr_t>(&value);
+		const std::uintptr_t objectEnd = objectBegin + sizeof(value);
+		const std::uintptr_t dataAddress = reinterpret_cast<std::uintptr_t>(value.data());
+		if (dataAddress >= objectBegin && dataAddress < objectEnd)
+			return 0;
+		return value.capacity() + 1;
+	}
+
+	std::size_t EstimateTagVariantHeapBytes(const TagVariant& variant)
+	{
+		std::size_t bytes = variant.lines.capacity() * sizeof(TagLine);
+		for (const TagLine& line : variant.lines)
+		{
+			bytes += line.elements.capacity() * sizeof(TagElement);
+			for (const TagElement& element : line.elements)
+				bytes += EstimateStringHeapBytes(element.token) + EstimateStringHeapBytes(element.text);
+		}
+		return bytes;
+	}
+
+	int ActionForTagToken(const std::string& token)
+	{
+		const std::string key = ToLowerAsciiCopy(token);
+		if (key == "callsign") return TAG_CITEM_CALLSIGN;
+		if (key == "systemid") return TAG_CITEM_MANUALCORRELATE;
+		if (key == "actype" || key == "sctype" || key == "sqerror" || key == "wake" || key == "origin" || key == "dest") return TAG_CITEM_FPBOX;
+		if (key == "deprwy" || key == "seprwy" || key == "arvrwy" || key == "srvrwy") return TAG_CITEM_RWY;
+		if (key == "gate" || key == "sate") return TAG_CITEM_GATE;
+		if (key == "asid" || key == "ssid" || key == "sid" || key == "shid") return TAG_CITEM_SID;
+		if (key == "groundstatus" || key == "gstatus") return TAG_CITEM_GROUNDSTATUS;
+		if (key == "clearance" || key == "cleared") return TAG_CITEM_CLEARANCE;
+		if (key == "uk_stand") return TAG_CITEM_UKSTAND;
+		if (key == "remark") return TAG_CITEM_REMARK;
+		if (key == "scratchpad") return TAG_CITEM_SCRATCHPAD;
+		return TAG_CITEM_NO;
+	}
+
+	const rapidjson::Value* ResolveTagDefinition(
+		const rapidjson::Value& labels,
+		const std::string& type,
+		const std::string& status,
+		bool detailed)
+	{
+		if (!labels.IsObject() || !labels.HasMember(type.c_str()) || !labels[type.c_str()].IsObject())
+			return nullptr;
+
+		const rapidjson::Value& section = labels[type.c_str()];
+		bool inheritDetailed = false;
+		auto readInheritance = [&](const rapidjson::Value& object, bool& value) -> bool
+		{
+			if (object.HasMember("definition_detailed_inherits_normal") && object["definition_detailed_inherits_normal"].IsBool())
+			{
+				value = object["definition_detailed_inherits_normal"].GetBool();
+				return true;
+			}
+			if (object.HasMember("definition_detailed_same_as_definition") && object["definition_detailed_same_as_definition"].IsBool())
+			{
+				value = object["definition_detailed_same_as_definition"].GetBool();
+				return true;
+			}
+			return false;
+		};
+
+		readInheritance(labels, inheritDetailed);
+		readInheritance(section, inheritDetailed);
+		const rapidjson::Value* statusSection = nullptr;
+		if (!status.empty() && status != "default" &&
+			section.HasMember("status_definitions") && section["status_definitions"].IsObject())
+		{
+			const rapidjson::Value& statuses = section["status_definitions"];
+			auto findStatus = [&](const std::string& key) -> const rapidjson::Value*
+			{
+				if (statuses.HasMember(key.c_str()) && statuses[key.c_str()].IsObject())
+					return &statuses[key.c_str()];
+				return nullptr;
+			};
+			statusSection = findStatus(status);
+			if (statusSection == nullptr && status == "airdep_onrunway")
+				statusSection = findStatus("airdep");
+			else if (statusSection == nullptr && status == "airarr_onrunway")
+				statusSection = findStatus("airarr");
+			if (statusSection != nullptr)
+				readInheritance(*statusSection, inheritDetailed);
+		}
+
+		const char* key = (detailed && !inheritDetailed) ? "definition_detailed" : "definition";
+		const char* legacyKey = (detailed && !inheritDetailed) ? "definitionDetailled" : nullptr;
+		auto fromObject = [&](const rapidjson::Value& object) -> const rapidjson::Value*
+		{
+			if (object.HasMember(key) && object[key].IsArray())
+				return &object[key];
+			if (legacyKey != nullptr && object.HasMember(legacyKey) && object[legacyKey].IsArray())
+				return &object[legacyKey];
+			return nullptr;
+		};
+
+		if (statusSection != nullptr)
+		{
+			if (const rapidjson::Value* definition = fromObject(*statusSection))
+				return definition;
+		}
+		if (const rapidjson::Value* definition = fromObject(section))
+			return definition;
+
+		if (detailed && !inheritDetailed)
+		{
+			if (statusSection != nullptr && statusSection->HasMember("definition") && (*statusSection)["definition"].IsArray())
+				return &(*statusSection)["definition"];
+			if (section.HasMember("definition") && section["definition"].IsArray())
+				return &section["definition"];
+		}
+		return nullptr;
+	}
+
+	TagVariant BuildTagVariant(
+		const rapidjson::Value& labels,
+		const Target& target,
+		bool detailed)
+	{
+		TagVariant result;
+		const rapidjson::Value* definition = ResolveTagDefinition(
+			labels,
+			target.tag.definitionType,
+			target.tag.status,
+			detailed);
+		if (definition == nullptr)
+			return result;
+
+		result.lines.reserve(definition->Size());
+		for (rapidjson::SizeType lineIndex = 0; lineIndex < definition->Size(); ++lineIndex)
+		{
+			const rapidjson::Value& definitionLine = (*definition)[lineIndex];
+			std::vector<std::string> rawTokens;
+			if (definitionLine.IsArray())
+			{
+				rawTokens.reserve(definitionLine.Size());
+				for (rapidjson::SizeType tokenIndex = 0; tokenIndex < definitionLine.Size(); ++tokenIndex)
+				{
+					if (definitionLine[tokenIndex].IsString())
+						rawTokens.emplace_back(definitionLine[tokenIndex].GetString());
+				}
+			}
+			else if (definitionLine.IsString())
+			{
+				rawTokens.emplace_back(definitionLine.GetString());
+			}
+			else
+			{
+				continue;
+			}
+
+			TagLine line;
+			bool hasVisibleElement = false;
+			line.elements.reserve(rawTokens.size());
+			for (const std::string& rawToken : rawTokens)
+			{
+				DefinitionTokenStyleData styled = ParseDefinitionTokenStyle(rawToken);
+				VacdmColorRuleDefinition vacdmRule;
+				RunwayColorRuleDefinition runwayRule;
+				if (TryParseVacdmColorRuleToken(styled.token, vacdmRule) ||
+					TryParseRunwayColorRuleToken(styled.token, runwayRule))
+				{
+					continue;
+				}
+
+				TagElement element;
+				element.token = styled.token;
+				element.bold = styled.bold;
+				element.hasCustomColor = styled.hasCustomColor;
+				element.customColor = VsmrScene::Color{
+					255,
+					static_cast<std::uint8_t>(std::clamp(styled.colorR, 0, 255)),
+					static_cast<std::uint8_t>(std::clamp(styled.colorG, 0, 255)),
+					static_cast<std::uint8_t>(std::clamp(styled.colorB, 0, 255)) };
+				element.clearanceToken = IsClearanceDefinitionToken(styled.token);
+				element.action = ActionForTagToken(styled.token);
+				if (element.clearanceToken)
+					element.action = TAG_CITEM_CLEARANCE;
+
+				if (element.clearanceToken)
+				{
+					std::string notClearedText;
+					std::string clearedText;
+					TryParseClearanceTokenDisplay(styled.token, notClearedText, clearedText);
+					if (target.hasFlightPlan && target.correlated)
+						element.text = target.tag.clearanceReceived ? clearedText : notClearedText;
+				}
+				else
+				{
+					auto exact = target.tag.tokens.find(styled.token);
+					if (exact != target.tag.tokens.end())
+					{
+						element.text = exact->second;
+					}
+					else
+					{
+						element.text = styled.token;
+						for (const auto& replacement : target.tag.tokens)
+						{
+							if (replacement.first.empty())
+								continue;
+							size_t offset = 0;
+							while ((offset = element.text.find(replacement.first, offset)) != std::string::npos)
+							{
+								element.text.replace(offset, replacement.first.size(), replacement.second);
+								offset += replacement.second.size();
+							}
+						}
+					}
+				}
+				if (!detailed && ToLowerAsciiCopy(element.token) == "scratchpad" && element.text == "...")
+					element.text.clear();
+
+				hasVisibleElement = hasVisibleElement || !element.text.empty();
+				line.elements.push_back(std::move(element));
+			}
+			if (hasVisibleElement)
+				result.lines.push_back(std::move(line));
+		}
+		return result;
+	}
+
+	std::string BuildBottomLine(
+		CSMRRadar& radar,
+		const CFlightPlan& flightPlan,
+		const CRadarTargetPositionData& position,
+		int transitionAltitude)
+	{
+		if (!flightPlan.IsValid())
+			return "";
+
+		const CFlightPlanData flightData = flightPlan.GetFlightPlanData();
+		const CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
+		const std::string callsign = CopyText(flightPlan.GetCallsign());
+		std::string result = callsign;
+		const std::string callsignCode = callsign.substr(0, std::min<std::size_t>(3, callsign.size()));
+		result += " (" + (radar.Callsigns != nullptr ? radar.Callsigns->getCallsign(callsignCode) : "") + ")";
+		result += " (" + CopyText(flightPlan.GetPilotName()) + "): ";
+		result += CopyText(flightData.GetAircraftFPType());
+		result += " ";
+
+		if (!flightData.IsReceived())
+			return result;
+
+		const std::string assignedSquawk = CopyText(assignedData.GetSquawk());
+		const std::string reportedSquawk = position.IsValid() ? CopyText(position.GetSquawk()) : "----";
+		if (!assignedSquawk.empty() && reportedSquawk.rfind(assignedSquawk, 0) != 0)
+			result += assignedSquawk + ":" + reportedSquawk;
+		else
+			result += "I:" + reportedSquawk;
+
+		result += " " + CopyText(flightData.GetOrigin()) + "==>" + CopyText(flightData.GetDestination());
+		result += " (" + CopyText(flightData.GetAlternate()) + ") at ";
+		int finalAltitude = assignedData.GetFinalAltitude();
+		if (finalAltitude == 0)
+			finalAltitude = flightData.GetFinalAltitude();
+		if (finalAltitude > transitionAltitude)
+			result += "FL" + std::to_string(finalAltitude / 100);
+		else
+			result += std::to_string(finalAltitude) + "ft";
+		result += " Route: " + CopyText(flightData.GetRoute());
+		return result;
+	}
+
+	std::string ResolveTagStatus(const Target& target)
+	{
+		if (target.role == TargetRole::Uncorrelated)
+			return "default";
+		if (target.airborne)
+		{
+			if (target.role == TargetRole::AirborneDeparture)
+				return target.rimcas.onRunway ? "airdep_onrunway" : "airdep";
+			return target.rimcas.onRunway ? "airarr_onrunway" : "airarr";
+		}
+		if (!target.flightPlanDataReceived)
+			return "nofpl";
+		if (target.role != TargetRole::Departure)
+			return "default";
+		switch (target.groundState)
+		{
+		case GroundStateCategory::Taxi: return "taxi";
+		case GroundStateCategory::Lnup: return "lnup";
+		case GroundStateCategory::Push: return "push";
+		case GroundStateCategory::Stup: return "stup";
+		case GroundStateCategory::Nsts: return "nsts";
+		case GroundStateCategory::Depa: return "depa";
+		default: return "default";
+		}
+	}
+
+	std::string ResolveConfiguredTagStatus(
+		const rapidjson::Value& labels,
+		const std::string& type,
+		const std::string& status)
+	{
+		if (status != "airdep_onrunway" && status != "airarr_onrunway")
+			return status;
+		if (!labels.IsObject() || !labels.HasMember(type.c_str()) || !labels[type.c_str()].IsObject())
+			return status == "airdep_onrunway" ? "airdep" : "airarr";
+		const rapidjson::Value& section = labels[type.c_str()];
+		if (!section.HasMember("status_definitions") || !section["status_definitions"].IsObject())
+			return status == "airdep_onrunway" ? "airdep" : "airarr";
+		const rapidjson::Value& statuses = section["status_definitions"];
+		if (statuses.HasMember(status.c_str()) && statuses[status.c_str()].IsObject())
+			return status;
+		return status == "airdep_onrunway" ? "airdep" : "airarr";
+	}
+}
+
+const VsmrScene::Target* VsmrScene::RadarScene::FindTarget(const std::string& callsign) const noexcept
+{
+	const auto found = targetIndex.find(ToUpperAsciiCopy(callsign));
+	if (found == targetIndex.end() || found->second >= targets.size())
+		return nullptr;
+	return &targets[found->second];
+}
+
+const VsmrScene::RadarScene* CSMRRadar::GetCurrentRadarScene() const noexcept
+{
+	return CurrentRadarScene.get();
+}
+
+std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
+	bool rimcasEnabled,
+	bool useRedEmergencySymbols,
+	bool lowVisibilityProcedures,
+	int rimcasStageTwoSpeedThreshold,
+	double* outRimcasMilliseconds)
+{
+	using namespace VsmrScene;
+	using Clock = std::chrono::steady_clock;
+	const auto buildStart = Clock::now();
+	if (outRimcasMilliseconds != nullptr)
+		*outRimcasMilliseconds = 0.0;
+
+	RadarSceneBuildBufferIndex = (RadarSceneBuildBufferIndex + 1) % RadarSceneBuffers.size();
+	std::shared_ptr<RadarScene>& buildBuffer = RadarSceneBuffers[RadarSceneBuildBufferIndex];
+	if (buildBuffer == nullptr || buildBuffer.use_count() != 1)
+		buildBuffer = std::make_shared<RadarScene>();
+	auto scene = buildBuffer;
+	scene->airport = AirportState{};
+	scene->targetPresentation = TargetPresentation{};
+	scene->controllers.clear();
+	scene->targets.clear();
+	scene->targetIndex.clear();
+	scene->frequencyOwnership.reset();
+	scene->avisoGeneration = 0;
+	scene->stats = BuildStats{};
+	scene->frameId = ++RadarSceneFrameId;
+	scene->captureTick = ::GetTickCount();
+	scene->airport.icao = getActiveAirport();
+	scene->airport.lowVisibilityProcedures = lowVisibilityProcedures;
+	scene->airport.transitionAltitude = GetPlugIn() != nullptr ? GetPlugIn()->GetTransitionAltitude() : 0;
+	CPosition airportPosition;
+	if (TryGetActiveAirportPosition(airportPosition))
+		scene->airport.referencePosition = CopyPosition(airportPosition);
+	if (RimcasInstance != nullptr)
+	{
+		for (const auto& runway : RimcasInstance->GetRunwayStatuses())
+			scene->airport.runwayStatuses[runway.first] = static_cast<int>(runway.second);
+	}
+
+	const std::string avisoPath = ResolveAvisoGeoJsonPathForAirport(scene->airport.icao);
+	if (!avisoPath.empty())
+		EnsureAvisoGeoJsonLoaded(avisoPath);
+
+	CPlugIn* plugin = GetPlugIn();
+	if (plugin == nullptr)
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
+		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+		CurrentRadarScene = scene;
+		return CurrentRadarScene;
+	}
+
+	const CController myself = plugin->ControllerMyself();
+	const std::string myCallsign = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetCallsign())) : "";
+	const std::string myPosition = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetPositionId())) : "";
+	auto captureController = [&](const CController& controller)
+	{
+		if (!controller.IsValid() || !controller.IsController())
+			return;
+		ControllerState captured;
+		captured.callsign = ToUpperAsciiCopy(CopyText(controller.GetCallsign()));
+		captured.positionId = ToUpperAsciiCopy(CopyText(controller.GetPositionId()));
+		captured.primaryFrequency = controller.GetPrimaryFrequency();
+		captured.mine = (!myCallsign.empty() && captured.callsign == myCallsign) ||
+			(!myPosition.empty() && captured.positionId == myPosition);
+		auto duplicate = std::find_if(scene->controllers.begin(), scene->controllers.end(), [&](const ControllerState& item)
+		{
+			return item.callsign == captured.callsign && item.positionId == captured.positionId;
+		});
+		if (duplicate == scene->controllers.end())
+			scene->controllers.push_back(std::move(captured));
+	};
+	std::size_t controllerGuard = 0;
+	for (CController controller = plugin->ControllerSelectFirst();
+		controller.IsValid() && controllerGuard < 4096;
+		controller = plugin->ControllerSelectNext(controller), ++controllerGuard)
+	{
+		captureController(controller);
+	}
+	captureController(myself);
+	RefreshAvisoFrequencyOwnership(false, &scene->controllers);
+	{
+		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
+		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
+		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+	}
+
+	const DisplayModeSettings displaySettings = GetActiveDisplayModeSettings();
+	const CorrelationSettings correlationSettings = BuildCorrelationSettings();
+	const std::string airportUpper = ToUpperAsciiCopy(scene->airport.icao);
+	const bool proModeEnabled = displaySettings.requireAssignedSquawk;
+	const bool towerModeEnabled = displaySettings.towerFilter;
+	bool useSpeedForGates = false;
+	const rapidjson::Value* labels = nullptr;
+	const rapidjson::Value* targetsConfig = nullptr;
+	if (CurrentConfig != nullptr)
+	{
+		const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject() && profile.HasMember("labels") && profile["labels"].IsObject())
+		{
+			labels = &profile["labels"];
+			if (labels->HasMember("use_speed_for_gate") && (*labels)["use_speed_for_gate"].IsBool())
+				useSpeedForGates = (*labels)["use_speed_for_gate"].GetBool();
+			else if (labels->HasMember("use_aspeed_for_gate") && (*labels)["use_aspeed_for_gate"].IsBool())
+				useSpeedForGates = (*labels)["use_aspeed_for_gate"].GetBool();
+		}
+		if (profile.IsObject() && profile.HasMember("targets") && profile["targets"].IsObject())
+			targetsConfig = &profile["targets"];
+	}
+
+	const std::string configuredIconStyle = GetActiveTargetIconStyle();
+	IconStyle sceneIconStyle = IconStyle::Triangle;
+	if (configuredIconStyle == "nova") sceneIconStyle = IconStyle::Nova;
+	else if (configuredIconStyle == "realistic") sceneIconStyle = IconStyle::Realistic;
+	else if (configuredIconStyle == "diamond") sceneIconStyle = IconStyle::Diamond;
+	const bool showPrimaryReturn = targetsConfig != nullptr && targetsConfig->HasMember("show_primary_target") &&
+		(*targetsConfig)["show_primary_target"].IsBool() && (*targetsConfig)["show_primary_target"].GetBool();
+	scene->targetPresentation.icon = sceneIconStyle;
+	scene->targetPresentation.showPrimaryReturn = showPrimaryReturn;
+	scene->targetPresentation.smallIconBoostEnabled = GetSmallTargetIconBoostEnabled();
+	scene->targetPresentation.fixedPixelSize = GetFixedPixelTargetIconSizeEnabled();
+	scene->targetPresentation.smallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
+	scene->targetPresentation.resolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
+	scene->targetPresentation.fixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
+
+	const CRadarTarget selectedTarget = plugin->RadarTargetSelectASEL();
+	const std::string selectedCallsign = selectedTarget.IsValid() ? CopyText(selectedTarget.GetCallsign()) : "";
+
+	double rimcasMilliseconds = 0.0;
+	if (RimcasInstance != nullptr)
+	{
+		const auto rimcasBeginStart = Clock::now();
+		RimcasInstance->OnRefreshBegin(lowVisibilityProcedures, scene->airport.transitionAltitude);
+		rimcasMilliseconds += std::chrono::duration<double, std::milli>(Clock::now() - rimcasBeginStart).count();
+	}
+
+	scene->targets.reserve(CurrentRadarScene != nullptr ? CurrentRadarScene->targets.size() : 64);
+	for (CRadarTarget radarTarget = plugin->RadarTargetSelectFirst();
+		radarTarget.IsValid();
+		radarTarget = plugin->RadarTargetSelectNext(radarTarget))
+	{
+		++scene->stats.sdkTargetEnumerations;
+		if (!radarTarget.IsValid())
+			continue;
+		const CRadarTargetPositionData position = radarTarget.GetPosition();
+		if (!position.IsValid())
+			continue;
+		const std::string callsign = CopyText(radarTarget.GetCallsign());
+		if (callsign.empty())
+			continue;
+
+		Target target;
+		target.callsign = callsign;
+		target.normalizedCallsign = ToUpperAsciiCopy(callsign);
+		target.systemId = CopyText(radarTarget.GetSystemID());
+		target.position = CopyPosition(position.GetPosition());
+		const CRadarTargetPositionData previousPosition = radarTarget.GetPreviousPosition(position);
+		if (previousPosition.IsValid())
+		{
+			target.previousPosition = CopyPosition(previousPosition.GetPosition());
+			target.previousFlightLevel = previousPosition.GetFlightLevel();
+		}
+		target.reportedGroundSpeed = position.GetReportedGS();
+		target.groundSpeed = radarTarget.GetGS();
+		target.pressureAltitude = position.GetPressureAltitude();
+		target.flightLevel = position.GetFlightLevel();
+		target.reportedSquawk = CopyText(position.GetSquawk());
+		target.transponderModeC = position.GetTransponderC();
+		target.reportedHeadingDegrees = position.GetReportedHeading();
+		target.trackHeadingDegrees = radarTarget.GetTrackHeading();
+		target.headingTrueDegrees = static_cast<double>(position.GetReportedHeadingTrueNorth());
+		if (!std::isfinite(target.headingTrueDegrees) || target.headingTrueDegrees < 0.0 || target.headingTrueDegrees >= 360.0)
+			target.headingTrueDegrees = target.trackHeadingDegrees;
+		target.headingProbe = CopyPosition(Haversine(position.GetPosition(), target.headingTrueDegrees, 50.0));
+		target.selected = !selectedCallsign.empty() && selectedCallsign == callsign;
+		target.passesRadarFilter = isVisible(radarTarget);
+
+		const CFlightPlan flightPlan = plugin->FlightPlanSelect(callsign.c_str());
+		++scene->stats.sdkFlightPlanLookups;
+		target.hasFlightPlan = flightPlan.IsValid();
+		if (flightPlan.IsValid())
+		{
+			const CFlightPlanData flightData = flightPlan.GetFlightPlanData();
+			const CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
+			target.flightPlanDataReceived = flightData.IsReceived();
+			target.origin = CopyText(flightData.GetOrigin());
+			target.destination = CopyText(flightData.GetDestination());
+			target.planType = CopyText(flightData.GetPlanType());
+			target.aircraftType = CopyText(flightData.GetAircraftFPType());
+			if (target.aircraftType.size() > 4)
+				target.aircraftType.resize(4);
+			target.wakeCategory = flightData.GetAircraftWtc();
+			target.assignedSquawk = CopyText(assignedData.GetSquawk());
+			target.groundStateText = CopyText(flightPlan.GetGroundState());
+			target.tag.clearanceReceived = flightPlan.GetClearenceFlag();
+		}
+
+		target.correlated = IsCorrelatedWithSettings(flightPlan, radarTarget, correlationSettings);
+		const bool hasAssignedSquawk = !target.assignedSquawk.empty();
+		const bool hasReportedSquawk = !target.reportedSquawk.empty();
+		const bool wrongSquawk = hasAssignedSquawk && hasReportedSquawk && target.assignedSquawk != target.reportedSquawk;
+		if (proModeEnabled && !hasAssignedSquawk)
+			target.correlated = false;
+		const bool keepIconForSquawkMismatch = proModeEnabled && (wrongSquawk || !hasAssignedSquawk);
+		target.iconVisible = target.passesRadarFilter &&
+			(target.correlated || target.reportedGroundSpeed >= 1 || keepIconForSquawkMismatch);
+
+		target.towerModeGroundStateText = target.groundStateText;
+		target.towerModeArrival = target.hasFlightPlan && !airportUpper.empty() &&
+			_stricmp(target.destination.c_str(), airportUpper.c_str()) == 0;
+		const bool needsCorrelatedFlightPlan = towerModeEnabled ||
+			(rimcasEnabled && RimcasInstance != nullptr && target.passesRadarFilter);
+		if (needsCorrelatedFlightPlan)
+		{
+			++scene->stats.sdkCorrelatedFlightPlanLookups;
+			const CFlightPlan correlatedFlightPlan = radarTarget.GetCorrelatedFlightPlan();
+			target.hasCorrelatedFlightPlan = correlatedFlightPlan.IsValid();
+			if (correlatedFlightPlan.IsValid())
+			{
+				target.towerModeGroundStateText = CopyText(correlatedFlightPlan.GetGroundState());
+				const std::string correlatedDestination = CopyText(correlatedFlightPlan.GetFlightPlanData().GetDestination());
+				target.towerModeArrival = !airportUpper.empty() &&
+					_stricmp(correlatedDestination.c_str(), airportUpper.c_str()) == 0;
+			}
+		}
+
+		if (rimcasEnabled && RimcasInstance != nullptr && target.passesRadarFilter)
+		{
+			const auto rimcasTargetStart = Clock::now();
+			RimcasInstance->OnRefresh(target, this);
+			rimcasMilliseconds += std::chrono::duration<double, std::milli>(Clock::now() - rimcasTargetStart).count();
+		}
+
+		target.rimcas.onRunway = RimcasInstance != nullptr && RimcasInstance->isAcOnRunway(callsign);
+		target.groundState = target.hasFlightPlan
+			? classifyGroundStateForCallsign(callsign.c_str(), target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway)
+			: GroundStateCategory::Unknown;
+		target.airborne = target.reportedGroundSpeed > 50;
+		target.departure = target.hasFlightPlan && target.correlated && !airportUpper.empty() &&
+			_stricmp(target.origin.c_str(), airportUpper.c_str()) == 0;
+		target.arrival = target.hasFlightPlan && target.correlated && !target.departure && !airportUpper.empty() &&
+			_stricmp(target.destination.c_str(), airportUpper.c_str()) == 0;
+		if (!target.correlated && target.reportedGroundSpeed >= 3)
+			target.role = TargetRole::Uncorrelated;
+		else if (target.airborne)
+			target.role = target.arrival ? TargetRole::AirborneArrival : TargetRole::AirborneDeparture;
+		else
+			target.role = target.arrival ? TargetRole::Arrival : TargetRole::Departure;
+
+		++scene->stats.vacdmLookups;
+		target.hasVacdmData = TryGetVacdmPilotDataForTarget(radarTarget, flightPlan, target.vacdmData);
+		const VacdmPilotData* capturedVacdmData = target.hasVacdmData ? &target.vacdmData : nullptr;
+		target.passesDisplayMode = ShouldDisplayTargetForDisplayMode(
+			flightPlan,
+			target.correlated,
+			target.reportedGroundSpeed,
+			target.rimcas.onRunway,
+			displaySettings,
+			capturedVacdmData);
+		bool tagVisible = target.passesRadarFilter && target.passesDisplayMode;
+		if (proModeEnabled && (!hasAssignedSquawk || wrongSquawk))
+			tagVisible = false;
+		if (!target.correlated && target.reportedGroundSpeed < 3)
+			tagVisible = false;
+		if (towerModeEnabled && !target.towerModeArrival &&
+			!shouldDisplayTagInTowerMode(target.towerModeGroundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway))
+		{
+			tagVisible = false;
+		}
+		target.tagVisible = tagVisible;
+
+		target.bottomLine = BuildBottomLine(*this, flightPlan, position, scene->airport.transitionAltitude);
+		const int* capturedPreviousFlightLevel = target.previousPosition.valid
+			? &target.previousFlightLevel
+			: nullptr;
+		target.tag.tokens = GenerateTagData(
+			radarTarget,
+			flightPlan,
+			target.selected,
+			target.correlated,
+			proModeEnabled,
+			scene->airport.transitionAltitude,
+			useSpeedForGates,
+			scene->airport.icao,
+			callsign,
+			capturedVacdmData,
+			capturedPreviousFlightLevel);
+		switch (target.role)
+		{
+		case TargetRole::Arrival:
+		case TargetRole::AirborneArrival:
+			target.tag.definitionType = "arrival";
+			break;
+		case TargetRole::Uncorrelated:
+			target.tag.definitionType = "uncorrelated";
+			break;
+		default:
+			target.tag.definitionType = "departure";
+			break;
+		}
+
+		target.style.icon = sceneIconStyle;
+		target.style.showPrimaryReturn = showPrimaryReturn;
+		std::string aircraftKey = ToLowerAsciiCopy(target.aircraftType);
+		auto fallbackAircraftKey = [](char wake) -> std::string
+		{
+			switch (std::toupper(static_cast<unsigned char>(wake)))
+			{
+			case 'L': return "c172";
+			case 'H': return "b77w";
+			case 'J': return "a388";
+			default: return "a320";
+			}
+		};
+		if (sceneIconStyle == IconStyle::Realistic && GetAircraftIcon(aircraftKey) == nullptr)
+			aircraftKey = fallbackAircraftKey(target.wakeCategory);
+		target.style.assetKey = aircraftKey;
+		auto spec = AircraftSpecs.find(ToLowerAsciiCopy(target.aircraftType));
+		if (spec == AircraftSpecs.end())
+			spec = AircraftSpecs.find(aircraftKey);
+		if (spec != AircraftSpecs.end())
+		{
+			target.style.lengthMeters = spec->second.length;
+			target.style.wingspanMeters = spec->second.wingspan;
+		}
+		if (target.style.lengthMeters <= 0.0 || target.style.wingspanMeters <= 0.0)
+		{
+			switch (std::toupper(static_cast<unsigned char>(target.wakeCategory)))
+			{
+			case 'L': target.style.lengthMeters = 28.0; target.style.wingspanMeters = 28.0; break;
+			case 'H': target.style.lengthMeters = 60.0; target.style.wingspanMeters = 60.0; break;
+			case 'J': target.style.lengthMeters = 72.0; target.style.wingspanMeters = 80.0; break;
+			default: target.style.lengthMeters = 40.0; target.style.wingspanMeters = 36.0; break;
+			}
+		}
+		const auto primaryReturn = Patatoides.find(callsign);
+		if (primaryReturn != Patatoides.end())
+		{
+			target.primaryReturnPolygon.reserve(primaryReturn->second.points.size());
+			for (const auto& point : primaryReturn->second.points)
+				target.primaryReturnPolygon.push_back(GeoPoint{ point.second.x, point.second.y, true });
+		}
+
+		scene->targetIndex.emplace(target.normalizedCallsign, scene->targets.size());
+		scene->targets.push_back(std::move(target));
+	}
+
+	if (rimcasEnabled && RimcasInstance != nullptr)
+	{
+		const auto rimcasEndStart = Clock::now();
+		RimcasInstance->OnRefreshEnd(*scene, std::clamp(rimcasStageTwoSpeedThreshold, 0, 250));
+		rimcasMilliseconds += std::chrono::duration<double, std::milli>(Clock::now() - rimcasEndStart).count();
+	}
+	if (outRimcasMilliseconds != nullptr)
+		*outRimcasMilliseconds = rimcasMilliseconds;
+
+	const Gdiplus::Color whiteColor(static_cast<Gdiplus::ARGB>(Gdiplus::Color::White));
+	static const std::vector<StructuredTagColorRule> emptyStructuredRules;
+	const std::vector<StructuredTagColorRule>& structuredRules = displaySettings.structuredRulesEnabled
+		? GetStructuredTagColorRules()
+		: emptyStructuredRules;
+	struct TagDefinitionColorRules
+	{
+		std::vector<VacdmColorRuleDefinition> vacdm;
+		std::vector<RunwayColorRuleDefinition> runway;
+	};
+	std::unordered_map<std::string, TagDefinitionColorRules> tagDefinitionColorRuleCache;
+	auto resolveTagDefinitionColorRules = [&](const std::string& type, const std::string& status, bool detailed) -> const TagDefinitionColorRules&
+	{
+		const std::string key = type + "|" + status + (detailed ? "|d" : "|n");
+		auto found = tagDefinitionColorRuleCache.find(key);
+		if (found == tagDefinitionColorRuleCache.end())
+		{
+			TagDefinitionColorRules rules;
+			if (labels != nullptr)
+			{
+				const rapidjson::Value* definition = ResolveTagDefinition(*labels, type, status, detailed);
+				if (definition != nullptr)
+				{
+					const std::vector<std::string> lines = ConvertDefinitionValueToLineTexts(*definition);
+					CollectVacdmColorRulesFromLineTexts(lines, rules.vacdm);
+					CollectRunwayColorRulesFromLineTexts(lines, rules.runway);
+				}
+			}
+			found = tagDefinitionColorRuleCache.emplace(key, std::move(rules)).first;
+		}
+		return found->second;
+	};
+	bool airborneUseDepartureArrivalColoring = false;
+	if (labels != nullptr)
+	{
+		if (labels->HasMember("use_departure_arrival_coloring") && (*labels)["use_departure_arrival_coloring"].IsBool())
+		{
+			// The current top-level setting is authoritative when present. The nested
+			// value remains a compatibility fallback for older profiles only.
+			airborneUseDepartureArrivalColoring = (*labels)["use_departure_arrival_coloring"].GetBool();
+		}
+		else if (labels->HasMember("airborne") && (*labels)["airborne"].IsObject() &&
+			(*labels)["airborne"].HasMember("use_departure_arrival_coloring") &&
+			(*labels)["airborne"]["use_departure_arrival_coloring"].IsBool())
+		{
+			airborneUseDepartureArrivalColoring = (*labels)["airborne"]["use_departure_arrival_coloring"].GetBool();
+		}
+	}
+	auto isColorObject = [](const rapidjson::Value& value) -> bool
+	{
+		return value.IsObject() && value.HasMember("r") && value["r"].IsInt() &&
+			value.HasMember("g") && value["g"].IsInt() && value.HasMember("b") && value["b"].IsInt();
+	};
+	auto readColor = [&](const rapidjson::Value& object, const char* key, Gdiplus::Color& output) -> bool
+	{
+		if (CurrentConfig == nullptr || key == nullptr || !object.HasMember(key) || !isColorObject(object[key]))
+			return false;
+		output = CurrentConfig->getConfigColor(object[key]);
+		return true;
+	};
+	auto groundColor = [&](const char* key, const Gdiplus::Color& fallback) -> Gdiplus::Color
+	{
+		if (targetsConfig == nullptr)
+			return fallback;
+		Gdiplus::Color resolved;
+		auto section = [&](const char* sectionKey, const char* colorKey) -> bool
+		{
+			return targetsConfig->HasMember(sectionKey) && (*targetsConfig)[sectionKey].IsObject() &&
+				readColor((*targetsConfig)[sectionKey], colorKey, resolved);
+		};
+		if ((_stricmp(key, "nofpl") == 0 || _stricmp(key, "no_fpl") == 0) && section("departure", "no_fpl")) return resolved;
+		if ((_stricmp(key, "nsts") == 0 || _stricmp(key, "no_status") == 0) && section("departure", "no_status")) return resolved;
+		if (_stricmp(key, "push") == 0 && section("departure", "push")) return resolved;
+		if ((_stricmp(key, "stup") == 0 || _stricmp(key, "startup") == 0) && section("departure", "startup")) return resolved;
+		if (_stricmp(key, "taxi") == 0 && section("departure", "taxi")) return resolved;
+		if ((_stricmp(key, "lnup") == 0 || _stricmp(key, "lineup") == 0) && section("departure", "lineup")) return resolved;
+		if ((_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0) && section("departure", "departure")) return resolved;
+		if (_stricmp(key, "departure_gate") == 0 && section("departure", "gate")) return resolved;
+		if (_stricmp(key, "airborne_departure") == 0 && section("departure", "airborne")) return resolved;
+		if (_stricmp(key, "arrival_gate") == 0 && section("arrival", "gate")) return resolved;
+		if ((_stricmp(key, "arr") == 0 || _stricmp(key, "on_ground") == 0) && section("arrival", "on_ground")) return resolved;
+		if (_stricmp(key, "airborne_arrival") == 0 && section("arrival", "airborne")) return resolved;
+		if (_stricmp(key, "gate") == 0 && (section("departure", "gate") || section("arrival", "gate"))) return resolved;
+		if (targetsConfig->HasMember("ground_icons") && (*targetsConfig)["ground_icons"].IsObject() &&
+			readColor((*targetsConfig)["ground_icons"], key, resolved)) return resolved;
+		return fallback;
+	};
+	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> VacdmColorRuleOverrides
+	{
+		const TagDefinitionColorRules& definitionRules = resolveTagDefinitionColorRules(
+			target.tag.definitionType,
+			target.tag.status,
+			detailed);
+		const VacdmPilotData* pilotData = target.hasVacdmData ? &target.vacdmData : nullptr;
+		VacdmColorRuleOverrides overrides = EvaluateVacdmColorRules(definitionRules.vacdm, pilotData);
+		MergeColorRuleOverrides(overrides, EvaluateRunwayColorRules(definitionRules.runway, target.tag.tokens));
+
+		VacdmColorRuleOverrides structuredOverrides = EvaluateStructuredTagColorRules(
+			structuredRules,
+			target.tag.definitionType,
+			target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
+			detailed,
+			target.tag.tokens,
+			pilotData);
+		if (detailed)
+		{
+			const VacdmColorRuleOverrides normalStructuredOverrides = EvaluateStructuredTagColorRules(
+				structuredRules,
+				target.tag.definitionType,
+				target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
+				false,
+				target.tag.tokens,
+				pilotData);
+			MergeMissingColorRuleOverrides(structuredOverrides, normalStructuredOverrides);
+		}
+		MergeColorRuleOverrides(overrides, structuredOverrides);
+		return overrides;
+	};
+	auto resolveBaseTagPalette = [&](const Target& target) -> TagPalette
+	{
+		TagPalette palette;
+		if (labels == nullptr || CurrentConfig == nullptr)
+			return palette;
+
+		std::string colorTypeKey = "departure";
+		switch (target.role)
+		{
+		case TargetRole::Arrival:
+			colorTypeKey = "arrival";
+			break;
+		case TargetRole::AirborneArrival:
+			colorTypeKey = airborneUseDepartureArrivalColoring ? "arrival" : "airborne";
+			break;
+		case TargetRole::AirborneDeparture:
+			colorTypeKey = airborneUseDepartureArrivalColoring ? "departure" : "airborne";
+			break;
+		case TargetRole::Uncorrelated:
+			colorTypeKey = "uncorrelated";
+			break;
+		default:
+			break;
+		}
+
+		const rapidjson::Value* colorSection = nullptr;
+		if (labels->HasMember(colorTypeKey.c_str()) && (*labels)[colorTypeKey.c_str()].IsObject())
+			colorSection = &(*labels)[colorTypeKey.c_str()];
+		auto colorWithLegacy = [&](const char* preferredKey, const char* legacyKey, const Gdiplus::Color& fallback) -> Gdiplus::Color
+		{
+			Gdiplus::Color resolved;
+			if (colorSection != nullptr && readColor(*colorSection, preferredKey, resolved))
+				return resolved;
+			if (legacyKey != nullptr && colorSection != nullptr && readColor(*colorSection, legacyKey, resolved))
+				return resolved;
+			return fallback;
+		};
+		auto colorOrDefault = [&](const char* key, const Gdiplus::Color& fallback) -> Gdiplus::Color
+		{
+			Gdiplus::Color resolved;
+			return colorSection != nullptr && readColor(*colorSection, key, resolved) ? resolved : fallback;
+		};
+
+		Gdiplus::Color background(255, 53, 126, 187);
+		Gdiplus::Color backgroundOnRunway = background;
+		Gdiplus::Color text = whiteColor;
+		if (colorTypeKey == "departure")
+		{
+			background = colorWithLegacy("background_no_status_color", "gate_color", Gdiplus::Color(255, 53, 126, 187));
+			backgroundOnRunway = colorWithLegacy("background_on_runway_color", "on_runway_color", background);
+			text = colorWithLegacy("text_on_ground_color", "text_color", whiteColor);
+		}
+		else if (colorTypeKey == "arrival")
+		{
+			background = colorWithLegacy("background_on_ground_color", "background_color", Gdiplus::Color(255, 191, 87, 91));
+			backgroundOnRunway = colorWithLegacy("background_on_runway_color", "background_color_on_runway", background);
+			text = colorWithLegacy("text_on_ground_color", "text_color", whiteColor);
+		}
+		else if (colorTypeKey == "uncorrelated")
+		{
+			background = colorWithLegacy("background_on_ground_color", "background_color", Gdiplus::Color(255, 150, 22, 135));
+			backgroundOnRunway = colorWithLegacy("background_on_runway_color", "background_color_on_runway", background);
+			text = colorWithLegacy("text_on_ground_color", "text_color", whiteColor);
+		}
+		else
+		{
+			background = colorOrDefault("background_color", Gdiplus::Color(255, 53, 126, 187));
+			backgroundOnRunway = colorOrDefault("background_color_on_runway", background);
+			text = colorOrDefault("text_color", whiteColor);
+		}
+
+		const auto tagValue = [&](const char* key) -> const std::string&
+		{
+			static const std::string empty;
+			const auto found = target.tag.tokens.find(key);
+			return found != target.tag.tokens.end() ? found->second : empty;
+		};
+		if (colorTypeKey == "departure")
+		{
+			const std::string& assignedSid = !tagValue("asid").empty() ? tagValue("asid") : tagValue("sid");
+			if (!assignedSid.empty() && CurrentConfig->isSidColorAvail(assignedSid, scene->airport.icao))
+				background = CurrentConfig->getSidColor(assignedSid, scene->airport.icao);
+			if (target.hasFlightPlan && !target.planType.empty() && target.planType[0] == 'I' && assignedSid.empty())
+				background = colorWithLegacy("background_no_sid_color", "nosid_color", background);
+
+			if (labels->HasMember("departure") && (*labels)["departure"].IsObject())
+			{
+				const rapidjson::Value& departureSection = (*labels)["departure"];
+				const char* statusColorKey = "background_no_status_color";
+				const char* legacyStatusColorKey = "nsts";
+				switch (target.groundState)
+				{
+				case GroundStateCategory::Taxi: statusColorKey = "background_taxi_color"; legacyStatusColorKey = "taxi"; break;
+				case GroundStateCategory::Lnup: statusColorKey = "background_lineup_color"; legacyStatusColorKey = "lnup"; break;
+				case GroundStateCategory::Push: statusColorKey = "background_push_color"; legacyStatusColorKey = "push"; break;
+				case GroundStateCategory::Stup: statusColorKey = "background_startup_color"; legacyStatusColorKey = "stup"; break;
+				case GroundStateCategory::Depa: statusColorKey = "background_departure_color"; legacyStatusColorKey = "depa"; break;
+				default: break;
+				}
+				Gdiplus::Color statusColor;
+				if (readColor(departureSection, statusColorKey, statusColor))
+				{
+					background = statusColor;
+				}
+				else if (departureSection.HasMember("status_background_colors") &&
+					departureSection["status_background_colors"].IsObject() &&
+					readColor(departureSection["status_background_colors"], legacyStatusColorKey, statusColor))
+				{
+					background = statusColor;
+				}
+			}
+		}
+		if (tagValue("actype") == "NoFPL")
+			background = colorWithLegacy("background_no_fpl_color", "nofpl_color", background);
+
+		const bool isAirborneRole = target.role == TargetRole::AirborneDeparture || target.role == TargetRole::AirborneArrival;
+		if (isAirborneRole && target.hasFlightPlan && target.correlated)
+		{
+			const bool departure = target.role == TargetRole::AirborneDeparture;
+			const char* runwaySectionKey = departure ? "departure" : "arrival";
+			if (labels->HasMember(runwaySectionKey) && (*labels)[runwaySectionKey].IsObject())
+			{
+				const rapidjson::Value& runwaySection = (*labels)[runwaySectionKey];
+				readColor(runwaySection, "background_airborne_color", background);
+				readColor(runwaySection, "text_airborne_color", text);
+				if (!readColor(runwaySection, "background_on_runway_color", backgroundOnRunway) &&
+					(!departure || !readColor(runwaySection, "on_runway_color", backgroundOnRunway)))
+				{
+					readColor(runwaySection, "background_color_on_runway", backgroundOnRunway);
+				}
+			}
+			else if (labels->HasMember("airborne") && (*labels)["airborne"].IsObject())
+			{
+				const rapidjson::Value& airborneSection = (*labels)["airborne"];
+				readColor(airborneSection, departure ? "departure_background_color" : "arrival_background_color", background);
+				readColor(airborneSection, departure ? "departure_text_color" : "arrival_text_color", text);
+				readColor(airborneSection,
+					departure ? "departure_background_color_on_runway" : "arrival_background_color_on_runway",
+					backgroundOnRunway);
+			}
+		}
+
+		palette.background = CopyColor(background);
+		palette.backgroundOnRunway = CopyColor(backgroundOnRunway);
+		palette.text = CopyColor(text);
+		return palette;
+	};
+	auto applyTagColorRules = [](TagPalette& palette, const VacdmColorRuleOverrides& overrides)
+	{
+		auto channel = [](int value) -> std::uint8_t
+		{
+			return static_cast<std::uint8_t>(std::clamp(value, 0, 255));
+		};
+		if (overrides.hasTagColor)
+		{
+			palette.background = VsmrScene::Color{
+				channel(overrides.tagA), channel(overrides.tagR), channel(overrides.tagG), channel(overrides.tagB) };
+			palette.backgroundOnRunway = palette.background;
+		}
+		if (overrides.hasTextColor)
+		{
+			palette.text = VsmrScene::Color{
+				channel(overrides.textA), channel(overrides.textR), channel(overrides.textG), channel(overrides.textB) };
+			palette.textRuleApplied = true;
+		}
+	};
+	Gdiplus::Color squawkErrorColor(255, 255, 0, 0);
+	if (labels != nullptr)
+		readColor(*labels, "squawk_error_color", squawkErrorColor);
+	const VsmrScene::Color capturedSquawkErrorColor = CopyColor(squawkErrorColor);
+	auto applyTagElementColors = [&](Target& target, TagVariant& variant, const TagPalette& palette)
+	{
+		const auto sqError = target.tag.tokens.find("sqerror");
+		const std::string* sqErrorText = sqError != target.tag.tokens.end() && !sqError->second.empty()
+			? &sqError->second
+			: nullptr;
+		for (TagLine& line : variant.lines)
+		{
+			for (TagElement& element : line.elements)
+			{
+				element.effectiveColor = palette.text;
+				const std::string& token = element.token;
+				if (sqErrorText != nullptr && element.text == *sqErrorText)
+				{
+					element.effectiveColor = capturedSquawkErrorColor;
+				}
+				else if (!palette.textRuleApplied && target.hasVacdmData && (token == "tobt" || token == "tsat"))
+				{
+					int red = 255;
+					int green = 255;
+					int blue = 255;
+					const bool resolved = token == "tobt"
+						? TryResolveVacdmTobtTextColor(target.vacdmData, red, green, blue)
+						: (token == "tsat" && TryResolveVacdmTsatTextColor(target.vacdmData, red, green, blue));
+					if (resolved)
+					{
+						element.effectiveColor = VsmrScene::Color{
+							255,
+							static_cast<std::uint8_t>(std::clamp(red, 0, 255)),
+							static_cast<std::uint8_t>(std::clamp(green, 0, 255)),
+							static_cast<std::uint8_t>(std::clamp(blue, 0, 255)) };
+					}
+				}
+				else if (element.clearanceToken)
+				{
+					element.effectiveColor = target.tag.clearanceReceived
+						? VsmrScene::Color{ 255, 95, 225, 120 }
+						: VsmrScene::Color{ 255, 235, 70, 70 };
+				}
+				if (element.hasCustomColor)
+					element.effectiveColor = element.customColor;
+			}
+		}
+	};
+
+	for (Target& target : scene->targets)
+	{
+		target.rimcas.onRunway = RimcasInstance != nullptr && RimcasInstance->isAcOnRunway(target.callsign);
+		target.rimcas.alertStage = RimcasInstance != nullptr ? static_cast<int>(RimcasInstance->getAlert(target.callsign)) : 0;
+		target.rimcas.movementAlert = RimcasInstance != nullptr ? static_cast<int>(RimcasInstance->getMovementAlert(target.callsign)) : 0;
+		if (RimcasInstance != nullptr)
+			target.rimcas.severity = static_cast<int>(RimcasInstance->getAlertSeverity(static_cast<CRimcas::RimcasAlerts>(target.rimcas.movementAlert)));
+		target.groundState = target.hasFlightPlan
+			? classifyGroundStateForCallsign(target.callsign.c_str(), target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway)
+			: GroundStateCategory::Unknown;
+		target.tag.status = ResolveTagStatus(target);
+		if (labels != nullptr)
+			target.tag.status = ResolveConfiguredTagStatus(*labels, target.tag.definitionType, target.tag.status);
+		if (labels != nullptr)
+		{
+			target.tag.normal = BuildTagVariant(*labels, target, false);
+			target.tag.detailed = BuildTagVariant(*labels, target, true);
+		}
+		const VacdmColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
+		const VacdmColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
+		target.tag.normalPalette = resolveBaseTagPalette(target);
+		target.tag.detailedPalette = target.tag.normalPalette;
+		applyTagColorRules(target.tag.normalPalette, normalTagColorOverrides);
+		applyTagColorRules(target.tag.detailedPalette, detailedTagColorOverrides);
+		applyTagElementColors(target, target.tag.normal, target.tag.normalPalette);
+		applyTagElementColors(target, target.tag.detailed, target.tag.detailedPalette);
+		Gdiplus::Color primaryReturnColor(255, 255, 242, 73);
+		if (targetsConfig != nullptr)
+			readColor(*targetsConfig, "target_color", primaryReturnColor);
+		target.style.primaryReturnColor = CopyColor(primaryReturnColor);
+
+		Gdiplus::Color color = whiteColor;
+		if (!target.hasFlightPlan || (!target.airborne && !target.flightPlanDataReceived))
+			color = groundColor("nofpl", groundColor("gate", Gdiplus::Color(255, 128, 128, 128)));
+		else if (target.airborne)
+			color = target.role == TargetRole::AirborneDeparture
+				? groundColor("airborne_departure", groundColor("depa", Gdiplus::Color(255, 240, 240, 240)))
+				: groundColor("airborne_arrival", groundColor("arr", Gdiplus::Color(255, 120, 190, 240)));
+		else if (target.role == TargetRole::Departure)
+		{
+			switch (target.groundState)
+			{
+			case GroundStateCategory::Gate: color = groundColor("departure_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165))); break;
+			case GroundStateCategory::Push: color = groundColor("push", Gdiplus::Color(255, 253, 218, 13)); break;
+			case GroundStateCategory::Stup: color = groundColor("stup", Gdiplus::Color(255, 253, 218, 13)); break;
+			case GroundStateCategory::Taxi: color = groundColor("taxi", Gdiplus::Color(255, 240, 240, 240)); break;
+			case GroundStateCategory::Lnup: color = groundColor("lnup", groundColor("taxi", Gdiplus::Color(255, 240, 240, 240))); break;
+			case GroundStateCategory::Depa: color = groundColor("depa", groundColor("taxi", Gdiplus::Color(255, 240, 240, 240))); break;
+			case GroundStateCategory::Nsts: color = groundColor("nsts", groundColor("departure_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165)))); break;
+			default: break;
+			}
+		}
+		else
+		{
+			color = (target.groundState == GroundStateCategory::Gate || target.groundState == GroundStateCategory::Nsts)
+				? groundColor("arrival_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165)))
+				: groundColor("arr", groundColor("arrival_gate", groundColor("gate", Gdiplus::Color(255, 165, 165, 165))));
+		}
+
+		if (normalTagColorOverrides.hasTargetColor)
+		{
+			color = Gdiplus::Color(
+				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetA, 0, 255)),
+				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetR, 0, 255)),
+				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetG, 0, 255)),
+				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetB, 0, 255)));
+		}
+
+		if (rimcasEnabled && useRedEmergencySymbols && target.rimcas.movementAlert == static_cast<int>(CRimcas::EMERG))
+		{
+			color = Gdiplus::Color(255, 255, 0, 0);
+			target.style.primaryReturnColor = CopyColor(color);
+		}
+		target.style.color = CopyColor(color);
+
+		scene->stats.tagElementCount += [&]()
+		{
+			std::size_t count = 0;
+			for (const TagLine& line : target.tag.normal.lines) count += line.elements.size();
+			for (const TagLine& line : target.tag.detailed.lines) count += line.elements.size();
+			return count;
+		}();
+	}
+
+	scene->stats.targetCount = scene->targets.size();
+	scene->stats.controllerCount = scene->controllers.size();
+	std::size_t estimatedBytes = sizeof(RadarScene) + scene->targets.capacity() * sizeof(Target) +
+		scene->controllers.capacity() * sizeof(ControllerState);
+	estimatedBytes += EstimateStringHeapBytes(scene->airport.icao);
+	for (const ControllerState& controller : scene->controllers)
+		estimatedBytes += EstimateStringHeapBytes(controller.callsign) + EstimateStringHeapBytes(controller.positionId);
+	for (const Target& target : scene->targets)
+	{
+		const std::string* targetStrings[] = {
+			&target.callsign,
+			&target.normalizedCallsign,
+			&target.systemId,
+			&target.bottomLine,
+			&target.origin,
+			&target.destination,
+			&target.planType,
+			&target.aircraftType,
+			&target.assignedSquawk,
+			&target.reportedSquawk,
+			&target.groundStateText,
+			&target.towerModeGroundStateText,
+			&target.style.assetKey,
+			&target.tag.definitionType,
+			&target.tag.status,
+			&target.vacdmData.callsign,
+			&target.vacdmData.tobtState
+		};
+		for (const std::string* value : targetStrings)
+			estimatedBytes += EstimateStringHeapBytes(*value);
+		estimatedBytes +=
+			target.primaryReturnPolygon.capacity() * sizeof(GeoPoint);
+		for (const auto& token : target.tag.tokens)
+			estimatedBytes += EstimateStringHeapBytes(token.first) + EstimateStringHeapBytes(token.second);
+		estimatedBytes += EstimateTagVariantHeapBytes(target.tag.normal);
+		estimatedBytes += EstimateTagVariantHeapBytes(target.tag.detailed);
+	}
+	scene->stats.lowerBoundOwnedBytes = estimatedBytes;
+	scene->stats.buildMilliseconds = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
+	PerfLastSceneBuildMs = scene->stats.buildMilliseconds;
+	CurrentRadarScene = scene;
+	return CurrentRadarScene;
+}

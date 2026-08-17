@@ -534,8 +534,8 @@ namespace VsmrRdf
 		if (callsigns.empty())
 			return;
 
-		EuroScopePlugIn::CPlugIn* plugin = radar->GetPlugIn();
-		if (plugin == nullptr)
+		const VsmrScene::RadarScene* scene = radar->GetCurrentRadarScene();
+		if (scene == nullptr)
 			return;
 
 		std::vector<POINT> positions;
@@ -544,18 +544,24 @@ namespace VsmrRdf
 		{
 			for (const std::string& callsign : callsigns)
 			{
-				EuroScopePlugIn::CRadarTarget target = plugin->RadarTargetSelect(callsign.c_str());
-				if (!target.IsValid() && !callsign.empty() &&
-					callsign.back() >= 'A' && callsign.back() <= 'Z' &&
-					plugin->ControllerSelect(callsign.c_str()).IsValid())
+				const VsmrScene::Target* target = scene->FindTarget(callsign);
+				if (target == nullptr && !callsign.empty() &&
+					callsign.back() >= 'A' && callsign.back() <= 'Z')
 				{
-					const std::string baseCallsign = callsign.substr(0, callsign.size() - 1);
-					target = plugin->RadarTargetSelect(baseCallsign.c_str());
+					const auto controller = std::find_if(scene->controllers.begin(), scene->controllers.end(), [&](const VsmrScene::ControllerState& item)
+					{
+						return _stricmp(item.callsign.c_str(), callsign.c_str()) == 0;
+					});
+					if (controller != scene->controllers.end())
+						target = scene->FindTarget(callsign.substr(0, callsign.size() - 1));
 				}
 
-				if (!target.IsValid() || !target.GetPosition().IsValid())
+				if (target == nullptr || !target->position.valid)
 					continue;
-				positions.push_back(projector(target.GetPosition().GetPosition()));
+				EuroScopePlugIn::CPosition position;
+				position.m_Latitude = target->position.latitude;
+				position.m_Longitude = target->position.longitude;
+				positions.push_back(projector(position));
 			}
 		}
 		catch (...)

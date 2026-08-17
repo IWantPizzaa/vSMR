@@ -1735,7 +1735,9 @@ bool CSMRRadar::GetAvisoRenderSnapshots(
 		outGroupVisibility != nullptr && outFrequencyOwnership != nullptr;
 }
 
-void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
+void CSMRRadar::RefreshAvisoFrequencyOwnership(
+	bool force,
+	const std::vector<VsmrScene::ControllerState>* capturedControllers)
 {
 	if (IsShutdownRequested() || !AvisoGeoJsonLoaded)
 		return;
@@ -1770,48 +1772,67 @@ void CSMRRadar::RefreshAvisoFrequencyOwnership(bool force)
 			double frequency = 0.0;
 		};
 		std::map<std::string, ConnectedController> connectedByPosition;
-		CPlugIn* plugin = GetPlugIn();
-		if (plugin == nullptr)
-			return;
-
-		const CController myself = plugin->ControllerMyself();
-		const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr
-			? ToUpperAscii(TrimAvisoAirportCode(myself.GetCallsign()))
-			: std::string();
-		const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr
-			? ToUpperAscii(TrimAvisoAirportCode(myself.GetPositionId()))
-			: std::string();
-
-		auto registerController = [&](const CController& controller)
+		auto registerControllerData = [&](
+			const std::string& rawPosition,
+			double primaryFrequency,
+			bool mine)
 		{
-			if (!controller.IsValid() || !controller.IsController())
-				return;
-			const char* rawPosition = controller.GetPositionId();
-			if (rawPosition == nullptr || rawPosition[0] == '\0')
+			if (rawPosition.empty())
 				return;
 			const std::string position = ToUpperAscii(TrimAvisoAirportCode(rawPosition));
 			if (position.empty() || relevantPositions.find(position) == relevantPositions.end())
 				return;
-			const char* rawCallsign = controller.GetCallsign();
-			const std::string callsign = rawCallsign != nullptr
-				? ToUpperAscii(TrimAvisoAirportCode(rawCallsign))
-				: std::string();
-			const bool mine =
-				(!myCallsign.empty() && callsign == myCallsign) ||
-				(!myPosition.empty() && position == myPosition);
-			const ConnectedController candidate{ mine, controller.GetPrimaryFrequency() };
+			const ConnectedController candidate{ mine, primaryFrequency };
 			auto existing = connectedByPosition.find(position);
 			if (existing == connectedByPosition.end() || mine)
 				connectedByPosition[position] = candidate;
 		};
 
-		CController controller = plugin->ControllerSelectFirst();
-		for (size_t guard = 0; controller.IsValid() && guard < 4096; ++guard)
+		if (capturedControllers != nullptr)
 		{
-			registerController(controller);
-			controller = plugin->ControllerSelectNext(controller);
+			for (const VsmrScene::ControllerState& controller : *capturedControllers)
+			{
+				registerControllerData(
+					controller.positionId,
+					controller.primaryFrequency,
+					controller.mine);
+			}
 		}
-		registerController(myself);
+		else
+		{
+			CPlugIn* plugin = GetPlugIn();
+			if (plugin == nullptr)
+				return;
+
+			const CController myself = plugin->ControllerMyself();
+			const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr
+				? ToUpperAscii(TrimAvisoAirportCode(myself.GetCallsign()))
+				: std::string();
+			const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr
+				? ToUpperAscii(TrimAvisoAirportCode(myself.GetPositionId()))
+				: std::string();
+			auto registerController = [&](const CController& controller)
+			{
+				if (!controller.IsValid() || !controller.IsController())
+					return;
+				const std::string callsign = controller.GetCallsign() != nullptr ? controller.GetCallsign() : "";
+				const std::string position = controller.GetPositionId() != nullptr ? controller.GetPositionId() : "";
+				const std::string normalizedCallsign = ToUpperAscii(TrimAvisoAirportCode(callsign));
+				const std::string normalizedPosition = ToUpperAscii(TrimAvisoAirportCode(position));
+				const bool mine =
+					(!myCallsign.empty() && normalizedCallsign == myCallsign) ||
+					(!myPosition.empty() && normalizedPosition == myPosition);
+				registerControllerData(position, controller.GetPrimaryFrequency(), mine);
+			};
+
+			CController controller = plugin->ControllerSelectFirst();
+			for (size_t guard = 0; controller.IsValid() && guard < 4096; ++guard)
+			{
+				registerController(controller);
+				controller = plugin->ControllerSelectNext(controller);
+			}
+			registerController(myself);
+		}
 
 		auto nextSnapshot = std::make_shared<AvisoFrequencyOwnershipSnapshot>();
 		if (enabledForAirport)
@@ -3138,7 +3159,6 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
 	unsigned long long groupGeneration = 0;
-	RefreshAvisoFrequencyOwnership(false);
 	if (!GetAvisoRenderSnapshots(
 		featureSnapshot,
 		labelSnapshot,
@@ -3147,6 +3167,11 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		groupGeneration))
 	{
 		return;
+	}
+	if (const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
+		scene != nullptr && scene->avisoGeneration == groupGeneration)
+	{
+		frequencyOwnership = scene->frequencyOwnership;
 	}
 
 	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
@@ -6280,7 +6305,7 @@ bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char compon
 	return true;
 }
 
-map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign)
+map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign, const VacdmPilotData* capturedVacdmData, const int* capturedPreviousFlightLevel)
 {
 	(void)isASEL;
 	(void)ActiveAirport;
@@ -6486,15 +6511,8 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ----- Tendency -------
 	string tendency = "-";
 	int delta_fl = 0;
-	{
-		if (hasRadarTarget)
-		{
-			CRadarTargetPositionData currentPos = rtPos;
-			CRadarTargetPositionData previousPos = rt.GetPreviousPosition(currentPos);
-			if (currentPos.IsValid() && previousPos.IsValid())
-				delta_fl = currentPos.GetFlightLevel() - previousPos.GetFlightLevel();
-		}
-	}
+	if (hasRadarTarget && capturedPreviousFlightLevel != nullptr)
+		delta_fl = rtPos.GetFlightLevel() - *capturedPreviousFlightLevel;
 	if (abs(delta_fl) >= 50) {
 		if (delta_fl < 0) {
 			tendency = "|";
@@ -6596,9 +6614,9 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string aort = "";
 	string ctot = "";
 	string eventBooking = "";
-	VacdmPilotData vacdmPilot;
-	if (TryGetVacdmPilotDataForTarget(rt, fp, vacdmPilot))
+	if (capturedVacdmData != nullptr)
 	{
+		const VacdmPilotData& vacdmPilot = *capturedVacdmData;
 		if (vacdmPilot.hasTobt)
 			tobt = FormatVacdmTimeToken(vacdmPilot.tobtUtc);
 		if (vacdmPilot.hasTsat)
@@ -7369,6 +7387,42 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		Logger::info("AVISO GeoJSON render disabled path=" + disabledPath + " reason=" + reason);
 	};
 
+	// Capture all EuroScope-derived frame data once, finalize RIMCAS, and then
+	// publish an immutable scene before any viewport renders traffic.  Main,
+	// AVISO, and SRW projections consume this same snapshot later in the frame.
+	bool frameRimcasEnabled = true;
+	bool frameUseRedEmergencySymbols = true;
+	int rimcasStageTwoSpeedThreshold = 25;
+	if (CurrentConfig != nullptr)
+	{
+		const Value& profile = CurrentConfig->getActiveProfile();
+		if (profile.IsObject() && profile.HasMember("rimcas") && profile["rimcas"].IsObject())
+		{
+			const Value& rimcas = profile["rimcas"];
+			if (rimcas.HasMember("enabled") && rimcas["enabled"].IsBool())
+				frameRimcasEnabled = rimcas["enabled"].GetBool();
+			if (rimcas.HasMember("use_red_symbol_for_emergencies") && rimcas["use_red_symbol_for_emergencies"].IsBool())
+				frameUseRedEmergencySymbols = rimcas["use_red_symbol_for_emergencies"].GetBool();
+			if (rimcas.HasMember("stage_two_speed_threshold_kt") && rimcas["stage_two_speed_threshold_kt"].IsInt())
+				rimcasStageTwoSpeedThreshold = rimcas["stage_two_speed_threshold_kt"].GetInt();
+			else if (rimcas.HasMember("rimcas_stage_two_speed_threshold") && rimcas["rimcas_stage_two_speed_threshold"].IsInt())
+				rimcasStageTwoSpeedThreshold = rimcas["rimcas_stage_two_speed_threshold"].GetInt();
+		}
+	}
+	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
+	RimcasEnabled = frameRimcasEnabled;
+	RimcasUseRedEmergencySymbols = frameUseRedEmergencySymbols;
+	setRefreshStage("shared radar scene build");
+	double sceneRimcasMilliseconds = 0.0;
+	const std::shared_ptr<const VsmrScene::RadarScene> frameSceneOwner = BuildRadarScene(
+		frameRimcasEnabled,
+		frameUseRedEmergencySymbols,
+		isLVP,
+		rimcasStageTwoSpeedThreshold,
+		&sceneRimcasMilliseconds);
+	const VsmrScene::RadarScene* frameScene = frameSceneOwner.get();
+	perfRimcasMs += sceneRimcasMilliseconds;
+
 	const double perfAvisoStartMs = RefreshPerfNowMs();
 	try
 	{
@@ -7400,30 +7454,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		disableAvisoGeoJsonRender("unknown exception");
 	}
 	perfAvisoMs += RefreshPerfNowMs() - perfAvisoStartMs;
-
-	// Missing profile keys retain the legacy behavior: RIMCAS and emergency
-	// symbol coloring are enabled.
-	bool frameRimcasEnabled = true;
-	bool frameUseRedEmergencySymbols = true;
-	if (CurrentConfig != nullptr)
-	{
-		const Value& profile = CurrentConfig->getActiveProfile();
-		if (profile.IsObject() &&
-			profile.HasMember("rimcas") &&
-			profile["rimcas"].IsObject())
-		{
-			const Value& rimcas = profile["rimcas"];
-			if (rimcas.HasMember("enabled") && rimcas["enabled"].IsBool())
-				frameRimcasEnabled = rimcas["enabled"].GetBool();
-			if (rimcas.HasMember("use_red_symbol_for_emergencies") &&
-				rimcas["use_red_symbol_for_emergencies"].IsBool())
-			{
-				frameUseRedEmergencySymbols = rimcas["use_red_symbol_for_emergencies"].GetBool();
-			}
-		}
-	}
-	RimcasEnabled = frameRimcasEnabled;
-	RimcasUseRedEmergencySymbols = frameUseRedEmergencySymbols;
 
 	VSMR_REFRESH_LOG("Runway overlay loop");
 	setRefreshStage("runway overlay draw");
@@ -7467,11 +7497,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		graphics.FillPolygon(&closedRunwayBrush, points.data(), static_cast<INT>(points.size()));
 	}
 
-	setRefreshStage("RIMCAS refresh begin");
-	const double perfRimcasBeginStartMs = RefreshPerfNowMs();
-	RimcasInstance->OnRefreshBegin(isLVP);
-	perfRimcasMs += RefreshPerfNowMs() - perfRimcasBeginStartMs;
-
 #pragma region symbols
 	// Drawing the symbols
 	VSMR_REFRESH_LOG("Symbols loop");
@@ -7510,223 +7535,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			framePixPerMeter = pixPerMeterY;
 	}
 
-	const std::string frameIconStyle = GetActiveTargetIconStyle();
-	const bool frameUseNovaIconStyle = (frameIconStyle == "nova");
-	const bool frameUseDiamondIconStyle = (frameIconStyle == "diamond");
-	const bool frameUseRealisticIconStyle = (frameIconStyle == "realistic");
+	const VsmrScene::TargetPresentation defaultTargetPresentation;
+	const VsmrScene::TargetPresentation& frameTargetPresentation = frameScene != nullptr
+		? frameScene->targetPresentation
+		: defaultTargetPresentation;
+	const bool frameUseNovaIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Nova;
+	const bool frameUseDiamondIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Diamond;
+	const bool frameUseRealisticIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Realistic;
 	const bool frameUseFastRealisticBitmapRendering = frameUseRealisticIconStyle;
 	const unsigned long long frameRealisticIconCacheFrame = frameUseRealisticIconStyle ? ++RealisticIconCacheFrame : RealisticIconCacheFrame;
-	const bool frameSmallIconBoostEnabled = GetSmallTargetIconBoostEnabled();
-	const bool frameFixedPixelIconSize = GetFixedPixelTargetIconSizeEnabled();
-	const double frameSmallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
-	const double frameSmallIconBoostResolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
-	const double frameFixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
-	const DisplayModeSettings frameDisplayModeSettings = GetActiveDisplayModeSettings();
-	bool frameProModeEnabled = frameDisplayModeSettings.requireAssignedSquawk;
-	bool frameTowerModeEnabled = frameDisplayModeSettings.towerFilter;
-	bool frameUseAspeedForGate = false;
-	if (CurrentConfig != nullptr)
-	{
-		const Value& profile = CurrentConfig->getActiveProfile();
-		if (profile.IsObject())
-		{
-			if (profile.HasMember("labels") &&
-				profile["labels"].IsObject() &&
-				profile["labels"].HasMember("use_speed_for_gate") &&
-				profile["labels"]["use_speed_for_gate"].IsBool())
-			{
-				frameUseAspeedForGate = profile["labels"]["use_speed_for_gate"].GetBool();
-			}
-			else if (profile.HasMember("labels") &&
-				profile["labels"].IsObject() &&
-				profile["labels"].HasMember("use_aspeed_for_gate") &&
-				profile["labels"]["use_aspeed_for_gate"].IsBool())
-			{
-				frameUseAspeedForGate = profile["labels"]["use_aspeed_for_gate"].GetBool();
-			}
-		}
-	}
-	const CorrelationSettings frameCorrelationSettings = BuildCorrelationSettings();
-	const int frameTransitionAltitude = GetPlugIn()->GetTransitionAltitude();
-	const std::string frameActiveAirport = getActiveAirport();
-	const std::string frameActiveAirportUpper = ToUpperAsciiCopy(frameActiveAirport);
-	static const std::vector<StructuredTagColorRule> emptyStructuredTagRules;
-	const std::vector<StructuredTagColorRule>& frameStructuredTagRules =
-		frameDisplayModeSettings.structuredRulesEnabled ? GetStructuredTagColorRules() : emptyStructuredTagRules;
-	CRadarTarget frameAselTarget = GetPlugIn()->RadarTargetSelectASEL();
-	FrameTagDataCache frameTagDataCache;
-	FrameVacdmLookupCache frameVacdmLookupCache;
-	std::unordered_map<std::string, std::vector<VacdmColorRuleDefinition>> frameIconVacdmRuleCache;
-	auto getCachedVacdmLookup = [&](CRadarTarget radarTarget, CFlightPlan flightPlan, VacdmPilotData& outData) -> bool
-	{
-		const std::string callsign = radarTarget.IsValid() && radarTarget.GetCallsign() != nullptr
-			? ToUpperAsciiCopy(radarTarget.GetCallsign())
-			: std::string();
-		if (callsign.empty())
-			return false;
-
-		auto it = frameVacdmLookupCache.find(callsign);
-		if (it == frameVacdmLookupCache.end())
-		{
-			FrameVacdmLookupResult lookup;
-			lookup.hasData = TryGetVacdmPilotDataForTarget(radarTarget, flightPlan, lookup.data);
-			it = frameVacdmLookupCache.emplace(callsign, std::move(lookup)).first;
-		}
-
-		if (!it->second.hasData)
-			return false;
-
-		outData = it->second.data;
-		return true;
-	};
-	auto getCachedIconVacdmColorRules = [&](const std::string& type, const std::string& status) -> const std::vector<VacdmColorRuleDefinition>&
-	{
-		const std::string cacheKey = type + "|" + status;
-		auto it = frameIconVacdmRuleCache.find(cacheKey);
-		if (it == frameIconVacdmRuleCache.end())
-		{
-			std::vector<VacdmColorRuleDefinition> rules;
-			const std::vector<std::string> definitionLines =
-				GetTagDefinitionLineStrings(type, false, TagDefinitionEditorMaxLines, false, status);
-			CollectVacdmColorRulesFromLineTexts(definitionLines, rules);
-			it = frameIconVacdmRuleCache.emplace(cacheKey, std::move(rules)).first;
-		}
-		return it->second;
-	};
+	const bool frameSmallIconBoostEnabled = frameTargetPresentation.smallIconBoostEnabled;
+	const bool frameFixedPixelIconSize = frameTargetPresentation.fixedPixelSize;
+	const double frameSmallIconBoostFactor = frameTargetPresentation.smallIconBoostFactor;
+	const double frameSmallIconBoostResolutionScale = frameTargetPresentation.resolutionScale;
+	const double frameFixedTriangleScale = frameTargetPresentation.fixedTriangleScale;
 	const Color frameSymbolWhiteColor(static_cast<Gdiplus::ARGB>(Gdiplus::Color::White));
-	auto isValidColorObject = [](const Value& colorValue) -> bool
-	{
-		if (!colorValue.IsObject())
-			return false;
-		if (!colorValue.HasMember("r") || !colorValue["r"].IsInt())
-			return false;
-		if (!colorValue.HasMember("g") || !colorValue["g"].IsInt())
-			return false;
-		if (!colorValue.HasMember("b") || !colorValue["b"].IsInt())
-			return false;
-		if (colorValue.HasMember("a") && !colorValue["a"].IsInt())
-			return false;
-		return true;
-	};
-	const Value* targetsConfig = nullptr;
-	if (CurrentConfig != nullptr)
-	{
-		const Value& profile = CurrentConfig->getActiveProfile();
-		if (profile.IsObject() && profile.HasMember("targets") && profile["targets"].IsObject())
-			targetsConfig = &profile["targets"];
-	}
-	auto tryReadColorFromObject = [&](const Value& parentObject, const char* key, Color& outColor) -> bool
-	{
-		if (key == nullptr || key[0] == '\0')
-			return false;
-		if (!parentObject.HasMember(key))
-			return false;
-		const Value& iconColor = parentObject[key];
-		if (!isValidColorObject(iconColor))
-			return false;
-		outColor = CurrentConfig->getConfigColor(iconColor);
-		return true;
-	};
-	auto getGroundIconColor = [&](const char* key, Color fallback) -> Color
-	{
-		if (targetsConfig == nullptr || key == nullptr || key[0] == '\0')
-			return fallback;
-
-		const Value& targets = *targetsConfig;
-		Color resolvedColor;
-		auto tryGetFromSection = [&](const char* sectionKey, const char* sectionColorKey) -> bool
-		{
-			if (sectionKey == nullptr || sectionColorKey == nullptr)
-				return false;
-			if (!targets.HasMember(sectionKey) || !targets[sectionKey].IsObject())
-				return false;
-			return tryReadColorFromObject(targets[sectionKey], sectionColorKey, resolvedColor);
-		};
-
-		if (_stricmp(key, "airborne_departure") == 0 || _stricmp(key, "departure_airborne") == 0)
-		{
-			if (tryGetFromSection("departure", "airborne"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "depa") == 0 || _stricmp(key, "departure") == 0)
-		{
-			if (tryGetFromSection("departure", "departure"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "departure_gate") == 0)
-		{
-			if (tryGetFromSection("departure", "gate"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "nofpl") == 0 || _stricmp(key, "no_fpl") == 0)
-		{
-			if (tryGetFromSection("departure", "no_fpl"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "nsts") == 0 || _stricmp(key, "no_status") == 0)
-		{
-			if (tryGetFromSection("departure", "no_status"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "push") == 0)
-		{
-			if (tryGetFromSection("departure", "push"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "stup") == 0 || _stricmp(key, "startup") == 0)
-		{
-			if (tryGetFromSection("departure", "startup"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "taxi") == 0)
-		{
-			if (tryGetFromSection("departure", "taxi"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "lnup") == 0 || _stricmp(key, "lineup") == 0 || _stricmp(key, "line_up") == 0)
-		{
-			if (tryGetFromSection("departure", "lineup"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "airborne_arrival") == 0 || _stricmp(key, "arrival_airborne") == 0)
-		{
-			if (tryGetFromSection("arrival", "airborne"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "arrival_gate") == 0)
-		{
-			if (tryGetFromSection("arrival", "gate"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "arr") == 0 || _stricmp(key, "arrival_taxi") == 0 || _stricmp(key, "on_ground") == 0)
-		{
-			if (tryGetFromSection("arrival", "on_ground"))
-				return resolvedColor;
-		}
-		else if (_stricmp(key, "gate") == 0)
-		{
-			if (tryGetFromSection("departure", "gate"))
-				return resolvedColor;
-			if (tryGetFromSection("arrival", "gate"))
-				return resolvedColor;
-		}
-		else
-		{
-			// Also support direct access to already-migrated section keys when used internally.
-			if (tryGetFromSection("departure", key))
-				return resolvedColor;
-			if (tryGetFromSection("arrival", key))
-				return resolvedColor;
-		}
-
-		if (targets.HasMember("ground_icons") && targets["ground_icons"].IsObject() &&
-			tryReadColorFromObject(targets["ground_icons"], key, resolvedColor))
-		{
-			return resolvedColor;
-		}
-
-		return fallback;
-	};
 	auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
 	{
 		if (!std::isfinite(value))
@@ -7737,36 +7560,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			return maxValue;
 		return value;
 	};
-	const bool frameShowLegacyPrimaryTarget = (targetsConfig != nullptr &&
-		targetsConfig->HasMember("show_primary_target") &&
-		(*targetsConfig)["show_primary_target"].IsBool())
-		? (*targetsConfig)["show_primary_target"].GetBool()
-		: false;
-	auto getLegacyTargetColor = [&](const char* key, const Color& fallbackColor) -> Color
-	{
-		if (targetsConfig != nullptr &&
-			key != nullptr &&
-			key[0] != '\0' &&
-			targetsConfig->HasMember(key) &&
-			(*targetsConfig)[key].IsObject())
-		{
-			return CurrentConfig->getConfigColor((*targetsConfig)[key]);
-		}
-		return fallbackColor;
-	};
 	std::vector<PointF> framePatatoidePolygonPoints;
-	auto drawPatatoidePolygon = [&](const std::map<int, POINT2>& sourcePoints, const Color& fillColor)
+	auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor)
 	{
 		if (sourcePoints.empty())
 			return;
 
 		framePatatoidePolygonPoints.clear();
 		framePatatoidePolygonPoints.reserve(sourcePoints.size());
-		for (const auto& sourcePoint : sourcePoints)
+		for (const VsmrScene::GeoPoint& sourcePoint : sourcePoints)
 		{
+			if (!sourcePoint.valid)
+				continue;
 			CPosition pos;
-			pos.m_Latitude = sourcePoint.second.x;
-			pos.m_Longitude = sourcePoint.second.y;
+			pos.m_Latitude = sourcePoint.latitude;
+			pos.m_Longitude = sourcePoint.longitude;
 			POINT point = ConvertCoordFromPositionToPixel(pos);
 			framePatatoidePolygonPoints.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
 		}
@@ -7813,28 +7621,25 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
 		graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
 	}
-	EuroScopePlugIn::CRadarTarget rt;
 	setRefreshStage("radar target loop");
 	const double perfRimcasBeforeTargetsMs = perfRimcasMs;
 	const double perfTargetsStartMs = RefreshPerfNowMs();
-	for (rt = GetPlugIn()->RadarTargetSelectFirst();
-		rt.IsValid();
-		rt = GetPlugIn()->RadarTargetSelectNext(rt))
+	static const std::vector<VsmrScene::Target> emptySceneTargets;
+	const std::vector<VsmrScene::Target>& sceneTargets = frameScene != nullptr
+		? frameScene->targets
+		: emptySceneTargets;
+	auto scenePosition = [](const VsmrScene::GeoPoint& source) -> CPosition
 	{
-		if (!rt.IsValid() || !rt.GetPosition().IsValid())
+		CPosition position;
+		position.m_Latitude = source.latitude;
+		position.m_Longitude = source.longitude;
+		return position;
+	};
+	for (const VsmrScene::Target& sceneTarget : sceneTargets)
+	{
+		if (!sceneTarget.iconVisible || !sceneTarget.position.valid)
 			continue;
-		const char* rtCallsignRaw = rt.GetCallsign();
-		if (rtCallsignRaw == nullptr || rtCallsignRaw[0] == '\0')
-		{
-			static bool loggedMissingRefreshCallsign = false;
-			if (!loggedMissingRefreshCallsign)
-			{
-				Logger::info("OnRefresh: skipped target with missing callsign");
-				loggedMissingRefreshCallsign = true;
-			}
-			continue;
-		}
-		const std::string rtCallsign = rtCallsignRaw;
+		const std::string& rtCallsign = sceneTarget.callsign;
 		auto iconVerboseStep = [&](const std::string& step)
 		{
 			if (!Logger::is_verbose_mode())
@@ -7842,234 +7647,39 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			Logger::info("IconRender: " + rtCallsign + " " + step);
 		};
 
-		CRadarTargetPositionData RtPos = rt.GetPosition();
-		if (!RtPos.IsValid())
-			continue;
-
-		int reportedGs = RtPos.GetReportedGS();
-		bool isAcDisplayed = isVisible(rt);
-
-		if (!isAcDisplayed)
-			continue;
+		const CPosition targetPosition = scenePosition(sceneTarget.position);
 		iconVerboseStep("begin");
 
-		CFlightPlan iconFp = GetPlugIn()->FlightPlanSelect(rtCallsign.c_str());
-		bool AcisCorrelated = IsCorrelatedWithSettings(iconFp, rt, frameCorrelationSettings);
-		if (frameRimcasEnabled)
-		{
-			const double perfRimcasTargetStartMs = RefreshPerfNowMs();
-			RimcasInstance->OnRefresh(rt, this, AcisCorrelated, isLVP);
-			perfRimcasMs += RefreshPerfNowMs() - perfRimcasTargetStartMs;
-		}
-		const bool useEmergencySymbolColor =
-			frameRimcasEnabled &&
-			frameUseRedEmergencySymbols &&
-			RimcasInstance->getMovementAlert(rtCallsign) == CRimcas::EMERG;
-		const Color emergencySymbolColor(255, 255, 0, 0);
-
-		POINT acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
+		const bool AcisCorrelated = sceneTarget.correlated;
+		POINT acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
 
 		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
-		if (drawLegacyPrimarySymbol && frameShowLegacyPrimaryTarget) {
-			const Color primaryTargetColor = useEmergencySymbolColor
-				? emergencySymbolColor
-				: getLegacyTargetColor("target_color", Color(255, 255, 242, 73));
+		if (drawLegacyPrimarySymbol && sceneTarget.style.showPrimaryReturn && !sceneTarget.primaryReturnPolygon.empty()) {
+			const Color primaryTargetColor(
+				sceneTarget.style.primaryReturnColor.alpha,
+				sceneTarget.style.primaryReturnColor.red,
+				sceneTarget.style.primaryReturnColor.green,
+				sceneTarget.style.primaryReturnColor.blue);
 			drawPatatoidePolygon(
-				Patatoides[rtCallsign].points,
+				sceneTarget.primaryReturnPolygon,
 				primaryTargetColor);
 		}
-		acPosPix = ConvertCoordFromPositionToPixel(RtPos.GetPosition());
-
-		const bool proModeEnabled = frameProModeEnabled;
-		const char* assignedSquawk = iconFp.IsValid() ? iconFp.GetControllerAssignedData().GetSquawk() : nullptr;
-		const char* reportedSquawk = RtPos.GetSquawk();
-		const bool hasAssignedSquawk = (assignedSquawk != nullptr && assignedSquawk[0] != '\0');
-		const bool hasReportedSquawk = (reportedSquawk != nullptr && reportedSquawk[0] != '\0');
-		const bool isWrongSquawk = hasAssignedSquawk && hasReportedSquawk &&
-			strcmp(assignedSquawk, reportedSquawk) != 0;
-		if (proModeEnabled && !hasAssignedSquawk)
-			AcisCorrelated = false;
-
-		const bool keepIconForSquawkMismatch = proModeEnabled && (isWrongSquawk || !hasAssignedSquawk);
-
-		if (!AcisCorrelated && reportedGs < 1 && !keepIconForSquawkMismatch)
-			continue;
+		acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
 
 		// Prefer the aircraft-reported heading to keep icon orientation aligned with the nose (even when moving backwards)
-		double headingDeg = double(RtPos.GetReportedHeadingTrueNorth());
-		if (headingDeg < 0.0 || headingDeg >= 360.0)
-			headingDeg = rt.GetTrackHeading();
+		const double headingDeg = sceneTarget.headingTrueDegrees;
 
 		// Icon sizing based on real dimensions and zoom
 		int iconSize = 40;
 		const bool useNovaIconStyle = frameUseNovaIconStyle;
 		const bool useDiamondIconStyle = frameUseDiamondIconStyle;
 		const bool useRealisticIconStyle = frameUseRealisticIconStyle;
-		char wtc = iconFp.IsValid() ? iconFp.GetFlightPlanData().GetAircraftWtc() : '\0';
-		std::string acType;
-		if (iconFp.IsValid())
-		{
-			const char* acTypeRaw = iconFp.GetFlightPlanData().GetAircraftFPType();
-			acType = (acTypeRaw != nullptr) ? acTypeRaw : "";
-		}
-		if (acType.size() > 4)
-			acType = acType.substr(0, 4);
-		std::string acTypeLower = acType;
-		std::transform(acTypeLower.begin(), acTypeLower.end(), acTypeLower.begin(), ::tolower);
-
-		auto fallbackTypeForWtc = [](char wtcChar) {
-			switch (std::toupper(static_cast<unsigned char>(wtcChar))) {
-			case 'L': return std::string("c172");
-			case 'M': return std::string("a320");
-			case 'H': return std::string("b77w");
-			case 'J': return std::string("a388"); // super / heavy
-			default: return std::string("a320");  // sensible large default
-			}
-		};
-
-		std::string iconType;
+		const std::string& iconType = sceneTarget.style.assetKey;
 		Gdiplus::Bitmap* iconBmp = nullptr;
-		auto specIt = AircraftSpecs.end();
 		if (useRealisticIconStyle)
-		{
-			// Pick an icon type, first the actual FP type, then WTC fallback if missing.
-			iconType = acTypeLower;
 			iconBmp = GetAircraftIcon(iconType);
-			if (iconBmp == nullptr)
-			{
-				iconType = fallbackTypeForWtc(wtc);
-				iconBmp = GetAircraftIcon(iconType);
-			}
 
-			// Pick specs for sizing: prefer actual type, else icon type, else WTC fallback.
-			specIt = AircraftSpecs.find(acTypeLower);
-			if (specIt == AircraftSpecs.end())
-				specIt = AircraftSpecs.find(iconType);
-			if (specIt == AircraftSpecs.end())
-			{
-				std::string specFallback = fallbackTypeForWtc(wtc);
-				specIt = AircraftSpecs.find(specFallback);
-			}
-		}
-
-		bool isOnRunway = RimcasInstance->isAcOnRunway(rtCallsign);
-		GroundStateCategory groundStateCat = GroundStateCategory::Unknown;
-		if (iconFp.IsValid()) {
-			groundStateCat = classifyGroundStateForCallsign(iconFp.GetCallsign(), iconFp.GetGroundState(), reportedGs, isOnRunway);
-		}
-
-		bool isDepartureTarget = false;
-		if (iconFp.IsValid() && AcisCorrelated)
-		{
-			const char* originRaw = iconFp.GetFlightPlanData().GetOrigin();
-			if (originRaw != nullptr && originRaw[0] != '\0' && !frameActiveAirportUpper.empty())
-				isDepartureTarget = (_stricmp(originRaw, frameActiveAirportUpper.c_str()) == 0);
-		}
-		const bool hasNoFlightPlan = !iconFp.IsValid();
-		const bool isAirborneTarget = (reportedGs > 50);
-
-		std::string vacdmRuleType = "departure";
-		if (!AcisCorrelated && reportedGs >= 3)
-			vacdmRuleType = "uncorrelated";
-		else if (!isDepartureTarget)
-			vacdmRuleType = "arrival";
-
-		std::string vacdmRuleStatus = "default";
-		if (vacdmRuleType == "departure" || vacdmRuleType == "arrival")
-		{
-			if (isAirborneTarget)
-			{
-				if (vacdmRuleType == "departure")
-					vacdmRuleStatus = isOnRunway ? "airdep_onrunway" : "airdep";
-				else
-					vacdmRuleStatus = isOnRunway ? "airarr_onrunway" : "airarr";
-			}
-			else if (hasNoFlightPlan)
-			{
-				vacdmRuleStatus = "nofpl";
-			}
-			else
-			{
-				switch (groundStateCat)
-				{
-				case GroundStateCategory::Taxi:
-					if (vacdmRuleType == "departure")
-						vacdmRuleStatus = "taxi";
-					else if (vacdmRuleType == "arrival")
-						vacdmRuleStatus = "default";
-					break;
-				case GroundStateCategory::Lnup:
-					if (vacdmRuleType == "departure")
-						vacdmRuleStatus = "lnup";
-					break;
-				case GroundStateCategory::Push:
-					if (vacdmRuleType == "departure")
-						vacdmRuleStatus = "push";
-					break;
-				case GroundStateCategory::Stup:
-					if (vacdmRuleType == "departure")
-						vacdmRuleStatus = "stup";
-					break;
-				case GroundStateCategory::Nsts:
-					if (vacdmRuleType == "departure")
-						vacdmRuleStatus = "default";
-					break;
-				case GroundStateCategory::Depa:
-					if (vacdmRuleType == "departure")
-						vacdmRuleStatus = "depa";
-					break;
-				case GroundStateCategory::Arr:
-					if (vacdmRuleType == "arrival")
-						vacdmRuleStatus = "default";
-					break;
-				default:
-					break;
-				}
-			}
-		}
-
-		VacdmPilotData vacdmRulePilotData;
-		const bool hasVacdmRulePilotData = getCachedVacdmLookup(rt, iconFp, vacdmRulePilotData);
-		const std::vector<VacdmColorRuleDefinition>& vacdmColorRules =
-			getCachedIconVacdmColorRules(vacdmRuleType, vacdmRuleStatus);
-		VacdmColorRuleOverrides vacdmColorRuleOverrides =
-			EvaluateVacdmColorRules(vacdmColorRules, hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
-		const char* frameAselCallsign = frameAselTarget.IsValid() ? frameAselTarget.GetCallsign() : nullptr;
-		const bool iconIsAseL = (frameAselCallsign != nullptr && strcmp(frameAselCallsign, rtCallsign.c_str()) == 0);
-		const std::string targetCallsign = ToUpperAsciiCopy(rtCallsign);
-		auto tagDataIt = frameTagDataCache.find(targetCallsign);
-		if (tagDataIt == frameTagDataCache.end())
-		{
-			TagReplacingMap generatedTagData = GenerateTagData(
-				rt,
-				iconFp,
-				iconIsAseL,
-				AcisCorrelated,
-				proModeEnabled,
-				frameTransitionAltitude,
-				frameUseAspeedForGate,
-				frameActiveAirport,
-				rtCallsign);
-			tagDataIt = frameTagDataCache.emplace(targetCallsign, std::move(generatedTagData)).first;
-		}
-		iconVerboseStep("after_tag_data");
-		const TagReplacingMap& iconReplacingMap = tagDataIt->second;
-		const VacdmColorRuleOverrides structuredIconColorRuleOverrides = EvaluateStructuredTagColorRules(
-			frameStructuredTagRules,
-			vacdmRuleType,
-			vacdmRuleStatus,
-			"normal",
-			iconReplacingMap,
-			hasVacdmRulePilotData ? &vacdmRulePilotData : nullptr);
-		iconVerboseStep("after_structured_rules");
-		if (structuredIconColorRuleOverrides.hasTargetColor)
-		{
-			vacdmColorRuleOverrides.hasTargetColor = true;
-			vacdmColorRuleOverrides.targetR = structuredIconColorRuleOverrides.targetR;
-			vacdmColorRuleOverrides.targetG = structuredIconColorRuleOverrides.targetG;
-			vacdmColorRuleOverrides.targetB = structuredIconColorRuleOverrides.targetB;
-			vacdmColorRuleOverrides.targetA = structuredIconColorRuleOverrides.targetA;
-		}
+		iconVerboseStep("after_scene_data");
 
 		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
 		const bool fixedPixelIconSize = frameFixedPixelIconSize;
@@ -8095,102 +7705,33 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			std::string iconDrawMode = useNovaIconStyle ? "nova" : (canUseRealisticIcon ? "realistic" : "symbol");
 			Logger::info("IconRender: " + rtCallsign + " mode=" + iconDrawMode + " icon_type=" + iconType);
 		}
-		Color targetTintColor = frameSymbolWhiteColor;
-		bool applyTargetTintColor = false;
-		auto applyTargetTint = [&](const Color& color)
-		{
-			targetTintColor = color;
-			applyTargetTintColor = true;
-		};
-		if (hasNoFlightPlan)
-		{
-			applyTargetTint(getGroundIconColor("nofpl", getGroundIconColor("gate", Color(255, 128, 128, 128))));
-		}
-		else if (isAirborneTarget)
-		{
-			if (isDepartureTarget)
-				applyTargetTint(getGroundIconColor("airborne_departure", getGroundIconColor("depa", Color(255, 240, 240, 240))));
-			else
-				applyTargetTint(getGroundIconColor("airborne_arrival", getGroundIconColor("arr", Color(255, 120, 190, 240))));
-		}
-		else if (isDepartureTarget)
-		{
-			switch (groundStateCat)
-			{
-			case GroundStateCategory::Gate:
-				applyTargetTint(getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
-				break;
-			case GroundStateCategory::Push:
-				applyTargetTint(getGroundIconColor("push", Color(255, 253, 218, 13)));
-				break;
-			case GroundStateCategory::Stup:
-				applyTargetTint(getGroundIconColor("stup", Color(255, 253, 218, 13)));
-				break;
-			case GroundStateCategory::Taxi:
-				applyTargetTint(getGroundIconColor("taxi", Color(255, 240, 240, 240)));
-				break;
-			case GroundStateCategory::Lnup:
-				applyTargetTint(getGroundIconColor("lnup", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
-				break;
-			case GroundStateCategory::Depa:
-				applyTargetTint(getGroundIconColor("depa", getGroundIconColor("taxi", Color(255, 240, 240, 240))));
-				break;
-			case GroundStateCategory::Nsts:
-				applyTargetTint(getGroundIconColor("nsts", getGroundIconColor("departure_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
-				break;
-			default:
-				break;
-			}
-		}
-		else
-		{
-			switch (groundStateCat)
-			{
-			case GroundStateCategory::Gate:
-			case GroundStateCategory::Nsts:
-				applyTargetTint(getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165))));
-				break;
-			default:
-				// All other arrival on-ground states (taxi/line-up/arr/push/startup/unknown) use On Ground.
-				applyTargetTint(getGroundIconColor("arr", getGroundIconColor("arrival_gate", getGroundIconColor("gate", Color(255, 165, 165, 165)))));
-				break;
-			}
-		}
-
-		if (vacdmColorRuleOverrides.hasTargetColor)
-		{
-			applyTargetTint(Color(
-				ClampColorByte(vacdmColorRuleOverrides.targetA),
-				ClampColorByte(vacdmColorRuleOverrides.targetR),
-				ClampColorByte(vacdmColorRuleOverrides.targetG),
-				ClampColorByte(vacdmColorRuleOverrides.targetB)));
-		}
-		if (useEmergencySymbolColor)
-			applyTargetTint(emergencySymbolColor);
+		Color targetTintColor(
+			sceneTarget.style.color.alpha,
+			sceneTarget.style.color.red,
+			sceneTarget.style.color.green,
+			sceneTarget.style.color.blue);
+		const bool applyTargetTintColor = true;
 
 		if (useNovaIconStyle)
 		{
 			const Color novaSymbolColor = applyTargetTintColor ? targetTintColor : frameSymbolWhiteColor;
-			CPen novaSymbolPen(PS_SOLID, 1, novaSymbolColor.ToCOLORREF());
-			CPen* previousNovaSymbolPen = dc.SelectObject(&novaSymbolPen);
-			if (RtPos.GetTransponderC()) {
-				dc.MoveTo({ acPosPix.x, acPosPix.y - 6 });
-				dc.LineTo({ acPosPix.x - 6, acPosPix.y });
-				dc.LineTo({ acPosPix.x, acPosPix.y + 6 });
-				dc.LineTo({ acPosPix.x + 6, acPosPix.y });
-				dc.LineTo({ acPosPix.x, acPosPix.y - 6 });
+			Pen novaSymbolPen(novaSymbolColor, 1.0f);
+			if (sceneTarget.transponderModeC) {
+				PointF novaPoints[] = {
+					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y - 6)),
+					PointF(static_cast<REAL>(acPosPix.x - 6), static_cast<REAL>(acPosPix.y)),
+					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y + 6)),
+					PointF(static_cast<REAL>(acPosPix.x + 6), static_cast<REAL>(acPosPix.y)),
+					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y - 6))
+				};
+				graphics.DrawLines(&novaSymbolPen, novaPoints, static_cast<INT>(_countof(novaPoints)));
 			}
 			else {
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x - 4, acPosPix.y - 4);
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x + 4, acPosPix.y - 4);
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x - 4, acPosPix.y + 4);
-				dc.MoveTo(acPosPix.x, acPosPix.y);
-				dc.LineTo(acPosPix.x + 4, acPosPix.y + 4);
+				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x - 4, acPosPix.y - 4);
+				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x + 4, acPosPix.y - 4);
+				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x - 4, acPosPix.y + 4);
+				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x + 4, acPosPix.y + 4);
 			}
-			dc.SelectObject(previousNovaSymbolPen);
 			iconSize = 12;
 		}
 		else if (canUseRealisticIcon) {
@@ -8200,50 +7741,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			double drawH = iconSize;
 			const double pixPerMeter = std::isfinite(framePixPerMeter) ? framePixPerMeter : 0.0;
 
-			// Use real-world dimensions when available; otherwise WTC defaults (no generic fallback)
-			double lengthMeters = 0.0;
-			double spanMeters = 0.0;
-
-			auto wtcFallbackDims = [](char w, double& lenOut, double& spanOut) {
-				switch (std::toupper(static_cast<unsigned char>(w))) {
-				case 'L': lenOut = 28.0; spanOut = 28.0; break;
-				case 'M': lenOut = 40.0; spanOut = 36.0; break;
-				case 'H': lenOut = 60.0; spanOut = 60.0; break;
-				case 'J': lenOut = 72.0; spanOut = 80.0; break;
-				default: lenOut = 40.0; spanOut = 36.0; break;
-				}
-			};
-
-			if (specIt != AircraftSpecs.end()) {
-				if (specIt->second.length > 0)
-					lengthMeters = specIt->second.length;
-				if (specIt->second.wingspan > 0)
-					spanMeters = specIt->second.wingspan;
-			}
-
-			// Small fallback table to avoid heavy dynamic initialization in the hot render loop.
-			if (lengthMeters <= 0 || spanMeters <= 0) {
-				static const std::unordered_map<std::string, std::pair<double, double>> lightFallbackDims = {
-					{ "a320", {37.6, 35.8} },
-					{ "a321", {44.5, 35.8} },
-					{ "b738", {39.5, 35.8} },
-					{ "b77w", {73.9, 64.8} },
-					{ "a388", {73.0, 79.8} },
-					{ "c172", {8.2, 10.9} }
-				};
-				auto itHard = lightFallbackDims.find(acTypeLower);
-				if (itHard == lightFallbackDims.end())
-					itHard = lightFallbackDims.find(iconType);
-				if (itHard != lightFallbackDims.end()) {
-					lengthMeters = itHard->second.first;
-					spanMeters = itHard->second.second;
-				}
-			}
-
-			// If still missing, fill from WTC defaults
-			if (lengthMeters <= 0 || spanMeters <= 0) {
-				wtcFallbackDims(wtc, lengthMeters, spanMeters);
-			}
+			const double lengthMeters = sceneTarget.style.lengthMeters;
+			const double spanMeters = sceneTarget.style.wingspanMeters;
 			iconVerboseStep(
 				"realistic_dims len=" + std::to_string(lengthMeters) +
 				" span=" + std::to_string(spanMeters));
@@ -8316,7 +7815,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			}
 
 			// Screen-relative heading from pixel forward vector (handles rotated display)
-			CPosition nosePosDraw = Haversine(RtPos.GetPosition(), headingDeg, 50.0);
+			CPosition nosePosDraw = scenePosition(sceneTarget.headingProbe);
 			POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
 			double fx = double(nosePixDraw.x - acPosPix.x);
 			double fy = double(nosePixDraw.y - acPosPix.y);
@@ -8343,6 +7842,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					acPosPix.x - rotatedRealisticIcon->centerX,
 					acPosPix.y - rotatedRealisticIcon->centerY);
 				iconVerboseStep("after_realistic_draw_rotated_cached");
+				iconSize = max(
+					static_cast<int>(rotatedRealisticIcon->bitmap->GetWidth()),
+					static_cast<int>(rotatedRealisticIcon->bitmap->GetHeight()));
 			}
 			else
 			{
@@ -8380,8 +7882,14 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					iconVerboseStep("after_realistic_draw_plain_fallback");
 				}
 				graphics.Restore(state);
+
+				const double rotationRadians = rotationDeg * M_PI / 180.0;
+				const double absCos = std::abs(std::cos(rotationRadians));
+				const double absSin = std::abs(std::sin(rotationRadians));
+				const int rotatedWidth = static_cast<int>(std::ceil(drawPixelW * absCos + drawPixelH * absSin));
+				const int rotatedHeight = static_cast<int>(std::ceil(drawPixelW * absSin + drawPixelH * absCos));
+				iconSize = max(rotatedWidth, rotatedHeight);
 			}
-			iconSize = max(drawPixelW, drawPixelH);
 		}
 		else
 		{
@@ -8474,7 +7982,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				diamondPath.AddArc(rectX, rectY + rectH - d, d, d, 90, 90);
 				diamondPath.CloseFigure();
 
-				CPosition nosePosDraw = Haversine(RtPos.GetPosition(), headingDeg, 50.0);
+				CPosition nosePosDraw = scenePosition(sceneTarget.headingProbe);
 				POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
 				double fx = double(nosePixDraw.x - acPosPix.x);
 				double fy = double(nosePixDraw.y - acPosPix.y);
@@ -8498,7 +8006,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					return BetterHarversine(start, wrap360(bearingDeg), distanceMeters);
 				};
 
-				CPosition acPos = RtPos.GetPosition();
+				CPosition acPos = targetPosition;
 				CPosition tipPos = move(acPos, headingDeg, lenMetersUsed);
 				CPosition basePos = move(acPos, headingDeg + 180.0, lenMetersUsed * 0.33);
 				CPosition notchPos = move(acPos, headingDeg + 180.0, lenMetersUsed * 0.05);
@@ -8552,13 +8060,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		const char* hoverText = "";
 		if (AcisCorrelated)
 		{
-			hoverTextStorage = GetBottomLine(rtCallsign.c_str());
+			hoverTextStorage = sceneTarget.bottomLine;
 			hoverText = hoverTextStorage.c_str();
 		}
 		else
 		{
-			const char* systemIdText = rt.GetSystemID();
-			hoverText = (systemIdText != nullptr) ? systemIdText : "";
+			hoverText = sceneTarget.systemId.c_str();
 		}
 		iconVerboseStep("before_add_screen_object");
 		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
@@ -8577,41 +8084,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	tagAreas.clear();
 	tagCollisionAreas.clear();
 
-	int rimcasStageTwoSpeedThreshold = 25;
-	if (CurrentConfig != nullptr)
-	{
-		const Value& profile = CurrentConfig->getActiveProfile();
-		if (profile.IsObject() &&
-			profile.HasMember("rimcas") &&
-			profile["rimcas"].IsObject())
-		{
-			const Value& rimcas = profile["rimcas"];
-			if (rimcas.HasMember("stage_two_speed_threshold_kt") && rimcas["stage_two_speed_threshold_kt"].IsInt())
-			{
-				rimcasStageTwoSpeedThreshold = rimcas["stage_two_speed_threshold_kt"].GetInt();
-			}
-			else if (rimcas.HasMember("rimcas_stage_two_speed_threshold") && rimcas["rimcas_stage_two_speed_threshold"].IsInt())
-			{
-				rimcasStageTwoSpeedThreshold = rimcas["rimcas_stage_two_speed_threshold"].GetInt();
-			}
-		}
-	}
-	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
-	setRefreshStage("RIMCAS refresh end");
-	if (frameRimcasEnabled)
-	{
-		const double perfRimcasEndStartMs = RefreshPerfNowMs();
-		RimcasInstance->OnRefreshEnd(this, rimcasStageTwoSpeedThreshold);
-		perfRimcasMs += RefreshPerfNowMs() - perfRimcasEndStartMs;
-	}
-
 	graphics.SetSmoothingMode(SmoothingModeDefault);
 
 	const double perfTagsStartMs = RefreshPerfNowMs();
 	try
 	{
 		setRefreshStage("tag rendering");
-		RenderTags(graphics, dc, frameProModeEnabled, frameTowerModeEnabled, frameTagDataCache, frameVacdmLookupCache);
+		RenderTags(graphics, dc);
 	}
 	catch (const std::exception& ex)
 	{
@@ -8698,14 +8177,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			const auto timeEntryIt = runwayTimeTable.find(Time);
 			const std::string acCallsign = (timeEntryIt != runwayTimeTable.end()) ? timeEntryIt->second : "";
 			tempS = std::to_string(Time) + ": " + acCallsign;
-			if (!acCallsign.empty() && RimcasInstance->AcColor.find(acCallsign) != RimcasInstance->AcColor.end())
+			const VsmrScene::Target* sceneTarget = frameScene != nullptr
+				? frameScene->FindTarget(acCallsign)
+				: nullptr;
+			if (sceneTarget != nullptr &&
+				sceneTarget->rimcas.alertStage != static_cast<int>(CRimcas::NoAlert))
 			{
-				CBrush RimcasBrush(RimcasInstance->GetAircraftColor(acCallsign,
-					Color(static_cast<Gdiplus::ARGB>(Color::Black)),
-					Color(static_cast<Gdiplus::ARGB>(Color::Black)),
-					rimcasStageOneColor,
-					rimcasStageTwoColor).ToCOLORREF()
-					);
+				const Color alertColor = sceneTarget->rimcas.alertStage == static_cast<int>(CRimcas::StageOne)
+					? rimcasStageOneColor
+					: rimcasStageTwoColor;
+				CBrush RimcasBrush(alertColor.ToCOLORREF());
 
 				CRect TempRect = { CRectTime.left, CRectTime.top + TopOffset, CRectTime.right, CRectTime.top + TopOffset + TextHeight };
 				TempRect.NormalizeRect();
@@ -8796,15 +8277,17 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			bool rotateAntiClockwise = false;
 			(void)intersectsAnyOtherTag(callsign, currentRect, &rotateAntiClockwise);
 
-			CRadarTarget deconflictTarget = GetPlugIn()->RadarTargetSelect(callsign.c_str());
-			if (!deconflictTarget.IsValid() || !deconflictTarget.GetPosition().IsValid())
+			const VsmrScene::Target* deconflictTarget = frameScene != nullptr
+				? frameScene->FindTarget(callsign)
+				: nullptr;
+			if (deconflictTarget == nullptr || !deconflictTarget->position.valid)
 			{
 				staleTagCallsigns.push_back(callsign);
 				if (Logger::is_verbose_mode())
 				{
 					Logger::info(
 						"OnRefresh deconfliction: pruned stale tag state callsign=" + callsign +
-						" target_valid=" + std::string(deconflictTarget.IsValid() ? "1" : "0"));
+						" target_valid=" + std::string(deconflictTarget != nullptr ? "1" : "0"));
 				}
 				continue;
 			}
@@ -8819,7 +8302,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			if (leaderLengthIt != TagLeaderLineLength.end())
 				leaderLength = leaderLengthIt->second;
 
-			const POINT acPosPix = ConvertCoordFromPositionToPixel(deconflictTarget.GetPosition().GetPosition());
+			CPosition deconflictPosition;
+			deconflictPosition.m_Latitude = deconflictTarget->position.latitude;
+			deconflictPosition.m_Longitude = deconflictTarget->position.longitude;
+			const POINT acPosPix = ConvertCoordFromPositionToPixel(deconflictPosition);
 			const int width = currentRect.Width();
 			const int height = currentRect.Height();
 
@@ -9043,11 +8529,22 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		PerfLastLogTick = perfNowTick;
 		Logger::info(
 			"FramePerf ms frame=" + std::to_string(static_cast<int>(PerfLastFrameMs + 0.5)) +
+			" scene=" + std::to_string(static_cast<int>(PerfLastSceneBuildMs + 0.5)) +
 			" aviso=" + std::to_string(static_cast<int>(PerfLastAvisoMs + 0.5)) +
 			" targets=" + std::to_string(static_cast<int>(PerfLastTargetsMs + 0.5)) +
 			" rimcas=" + std::to_string(static_cast<int>(PerfLastRimcasMs + 0.5)) +
 			" tags=" + std::to_string(static_cast<int>(PerfLastTagsMs + 0.5)) +
-			" srw=" + std::to_string(static_cast<int>(PerfLastSrwMs + 0.5)));
+			" srw=" + std::to_string(static_cast<int>(PerfLastSrwMs + 0.5)) +
+			(frameScene != nullptr
+				? " scene_targets=" + std::to_string(frameScene->stats.targetCount) +
+				  " scene_tags=" + std::to_string(frameScene->stats.tagElementCount) +
+				  " scene_controllers=" + std::to_string(frameScene->stats.controllerCount) +
+				  " scene_bytes_lower=" + std::to_string(frameScene->stats.lowerBoundOwnedBytes) +
+				  " scene_es_targets=" + std::to_string(frameScene->stats.sdkTargetEnumerations) +
+				  " scene_es_fp=" + std::to_string(frameScene->stats.sdkFlightPlanLookups) +
+				  " scene_es_correlated_fp=" + std::to_string(frameScene->stats.sdkCorrelatedFlightPlanLookups) +
+				  " scene_vacdm=" + std::to_string(frameScene->stats.vacdmLookups)
+				: " scene_unavailable=1"));
 	}
 
 	dcDetach.Detach();
