@@ -2616,12 +2616,16 @@ input:focus, select:focus, textarea:focus {
   overflow: visible;
 }
 .icon-preview-vector.nova {
-  width: 40px;
-  height: 40px;
+  width: 64px;
+  height: 64px;
   fill: none;
   stroke: #fff;
-  stroke-width: 1;
+  stroke-width: 1.4;
   shape-rendering: geometricPrecision;
+}
+.icon-preview-vector.nova .icon-preview-fill {
+  fill: #fff;
+  stroke: none;
 }
 .icon-preview-vector.triangle,
 .icon-preview-vector.diamond {

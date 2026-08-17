@@ -10,7 +10,7 @@ vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` 
 
 ## Highlights
 
-- Configurable surface radar with native `NOVA`, `Icon (A320)`, and `Triangle` target rendering
+- Configurable surface radar with native `NOVA`, `Icon`, and `Triangle` target rendering
 - Normal and detailed tags with status-specific layouts, drag positioning, and optional auto-deconfliction
 - Structured rules for target, tag, and text colors
 - Schema-2 profiles with reusable display modes
@@ -395,7 +395,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | `AVISO\LFPG_Dyna_fixed.geojson` | LFPG map plus dynamic controller ownership polygons and positioned, area-specific frequency labels; preferred for LFPG when present |
 | `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
 | `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
-| `aircraft_icons\*.png` | Silhouettes used by the `Icon (A320)` target style |
+| `aircraft_icons\*.png` | Aircraft-type silhouettes used by the `Icon` target style |
 | `Audio\Alarm.wav` | Timer expiry sound |
 | `Audio\Ding.wav` | CPDLC request sound |
 | `vSMR_webUI\` | Local Control Center application and bundled recovery defaults |
@@ -455,7 +455,7 @@ Keep the `.txt`, `.dmp`, exact `vSMR.dll`, `vSMRCrashHandler.dll`, and matching 
 | Control Center opens off-screen | Close EuroScope and remove `%LOCALAPPDATA%\vSMR\control-center-window.json` |
 | Profiles fail to load | Validate `vSMR_Data\vSMR_Profiles.json`; inspect its `.bak` and the diagnostics report |
 | AVISO is missing | Confirm the active airport and active GeoJSON path on Settings |
-| Aircraft silhouettes are missing | Confirm `ICAO_Aircraft.json`, `aircraft_icons\`, and the active `Icon (A320)` target style |
+| Aircraft silhouettes are missing | Confirm `ICAO_Aircraft.json`, `aircraft_icons\`, and the active `Icon` target style |
 | VACDM values are empty | Confirm `_vsmr.vacdm.server_url`, network access, callsign matching, and backend data |
 | CPDLC cannot connect | Confirm EuroScope connectivity, callsign/code, Hoppie availability, and the sanitized error/log output |
 | PDC reminders are unavailable | Confirm the active airport, controller connection, and resolved `.cdm` alias path |
