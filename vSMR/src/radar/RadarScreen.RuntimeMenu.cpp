@@ -177,7 +177,7 @@ namespace
 		const float centerX = static_cast<float>(rect.left + rect.Width() / 2);
 		const float centerY = static_cast<float>(rect.top + rect.Height() / 2);
 
-		if (kind == "mode")
+		if (kind == "settings")
 		{
 			graphics.DrawLine(&pen, centerX - 8.0f, centerY - 6.0f, centerX - 5.0f, centerY - 6.0f);
 			graphics.DrawLine(&pen, centerX - 1.0f, centerY - 6.0f, centerX + 8.0f, centerY - 6.0f);
@@ -188,6 +188,30 @@ namespace
 			graphics.DrawLine(&pen, centerX - 8.0f, centerY + 6.0f, centerX - 3.0f, centerY + 6.0f);
 			graphics.DrawLine(&pen, centerX + 1.0f, centerY + 6.0f, centerX + 8.0f, centerY + 6.0f);
 			graphics.DrawEllipse(&pen, centerX - 3.0f, centerY + 4.0f, 4.0f, 4.0f);
+			return;
+		}
+
+		if (kind == "mode")
+		{
+			const Gdiplus::PointF topLayer[] = {
+				Gdiplus::PointF(centerX, centerY - 8.0f),
+				Gdiplus::PointF(centerX + 8.0f, centerY - 4.0f),
+				Gdiplus::PointF(centerX, centerY),
+				Gdiplus::PointF(centerX - 8.0f, centerY - 4.0f)
+			};
+			const Gdiplus::PointF middleLayer[] = {
+				Gdiplus::PointF(centerX - 8.0f, centerY),
+				Gdiplus::PointF(centerX, centerY + 4.0f),
+				Gdiplus::PointF(centerX + 8.0f, centerY)
+			};
+			const Gdiplus::PointF bottomLayer[] = {
+				Gdiplus::PointF(centerX - 8.0f, centerY + 4.0f),
+				Gdiplus::PointF(centerX, centerY + 8.0f),
+				Gdiplus::PointF(centerX + 8.0f, centerY + 4.0f)
+			};
+			graphics.DrawPolygon(&pen, topLayer, 4);
+			graphics.DrawLines(&pen, middleLayer, 3);
+			graphics.DrawLines(&pen, bottomLayer, 3);
 			return;
 		}
 
@@ -203,10 +227,9 @@ namespace
 
 		if (kind == "insets")
 		{
-			graphics.DrawRectangle(&pen, centerX - 8.0f, centerY - 7.0f, 16.0f, 14.0f);
-			graphics.DrawRectangle(&pen, centerX - 4.0f, centerY - 4.0f, 8.0f, 8.0f);
-			graphics.DrawLine(&pen, centerX - 8.0f, centerY - 1.0f, centerX - 4.0f, centerY - 1.0f);
-			graphics.DrawLine(&pen, centerX + 4.0f, centerY + 1.0f, centerX + 8.0f, centerY + 1.0f);
+			graphics.DrawRectangle(&pen, centerX - 8.0f, centerY - 7.0f, 16.0f, 12.0f);
+			graphics.DrawLine(&pen, centerX, centerY + 5.0f, centerX, centerY + 9.0f);
+			graphics.DrawLine(&pen, centerX - 4.0f, centerY + 9.0f, centerX + 4.0f, centerY + 9.0f);
 			return;
 		}
 
@@ -221,18 +244,6 @@ namespace
 			return;
 		}
 
-		// Control Center/settings gear.
-		graphics.DrawEllipse(&pen, centerX - 7.0f, centerY - 7.0f, 14.0f, 14.0f);
-		graphics.DrawEllipse(&pen, centerX - 3.0f, centerY - 3.0f, 6.0f, 6.0f);
-		for (int i = 0; i < 8; ++i)
-		{
-			const double angle = (static_cast<double>(i) * M_PI) / 4.0;
-			const float innerX = centerX + static_cast<float>(7.0 * std::cos(angle));
-			const float innerY = centerY + static_cast<float>(7.0 * std::sin(angle));
-			const float outerX = centerX + static_cast<float>(9.0 * std::cos(angle));
-			const float outerY = centerY + static_cast<float>(9.0 * std::sin(angle));
-			graphics.DrawLine(&pen, innerX, innerY, outerX, outerY);
-		}
 	}
 
 	bool ParseIndexedObjectId(const char* objectId, const char* prefix, size_t& outIndex)

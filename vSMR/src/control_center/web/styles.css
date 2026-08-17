@@ -5898,7 +5898,7 @@ html.host-mode .control-window.hidden {
 
 
 /* Shared Settings glyph: centered, unclipped, and matched to the native Runtime Menu. */
-.settings-gear-icon {
+.settings-sliders-icon {
   display: block;
   overflow: visible;
   fill: none;
@@ -5912,12 +5912,12 @@ html.host-mode .control-window.hidden {
   border-top-color: #070a0b;
   padding: 7px;
 }
-.runtime-icon-rail .runtime-settings-button .settings-gear-icon {
+.runtime-icon-rail .runtime-settings-button .settings-sliders-icon {
   width: 23px;
   height: 23px;
   transform: none;
 }
-.page-rail .rail-settings .settings-gear-icon {
+.page-rail .rail-settings .settings-sliders-icon {
   width: 20px;
   height: 20px;
 }
