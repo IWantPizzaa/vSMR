@@ -2616,16 +2616,24 @@ input:focus, select:focus, textarea:focus {
   overflow: visible;
 }
 .icon-preview-vector.nova {
-  width: 64px;
-  height: 64px;
+  width: 96px;
+  height: 96px;
   fill: none;
-  stroke: #fff;
-  stroke-width: 1.4;
   shape-rendering: geometricPrecision;
 }
-.icon-preview-vector.nova .icon-preview-fill {
-  fill: #fff;
+.icon-preview-vector.nova .nova-primary-return {
+  fill: var(--nova-color, #fff249);
   stroke: none;
+}
+.icon-preview-vector.nova .nova-trail {
+  fill: none;
+  stroke: #5e8fa6;
+  stroke-width: .8;
+}
+.icon-preview-vector.nova .nova-center-mark {
+  fill: none;
+  stroke: #f8fbfc;
+  stroke-width: .8;
 }
 .icon-preview-vector.triangle,
 .icon-preview-vector.diamond {
