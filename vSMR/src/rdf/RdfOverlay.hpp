@@ -28,8 +28,8 @@ namespace VsmrRdf
 	void SetEnabled(bool enabled);
 	Status GetStatus();
 
-	// Resolves callsigns through EuroScope on the caller (UI) thread and draws
-	// into the supplied viewport using that viewport's coordinate projector.
+	// Resolves transmitting callsigns from the radar's immutable frame scene and
+	// draws into the supplied viewport using that viewport's projector.
 	void Draw(
 		HDC dc,
 		CSMRRadar* radar,

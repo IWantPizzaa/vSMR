@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Introduced one immutable, per-radar `RadarScene` capture for each rendered frame and migrated the main radar, AVISO inset, SRW 1 inset, and native RDF overlay to its shared target, classification, icon/color, preformatted tag, finalized RIMCAS, dynamic-ownership, controller, and airport state. Viewports now repeat fewer EuroScope lookups, stay visually consistent, and report scene timing and size metrics through `FramePerf`.
 - Unified Runtime Menu and Control Center navigation symbols: Settings uses shared slider controls, Groups uses layered views, Modes uses an eye, Insets uses a monitor, and the Control Center Display page uses an aircraft.
 - Made the Control Center color swatch preview-only, removing the redundant system color picker because the complete color editor is already available beside it.
 - Cleaned post-reorganization source metadata by removing an orphan dialog declaration, narrowing public header dependencies, and replacing stale generated file comments without changing runtime behavior.

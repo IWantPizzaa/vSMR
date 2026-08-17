@@ -29,12 +29,6 @@ struct VacdmPilotData
 	bool hasBooking = false;
 };
 
-struct FrameVacdmLookupResult
-{
-	bool hasData = false;
-	VacdmPilotData data;
-};
-
 struct StructuredTagColorRule
 {
 	struct Criterion
