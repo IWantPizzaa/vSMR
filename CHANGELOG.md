@@ -26,7 +26,7 @@
 
 ### Fixed
 
-- Replaced the Symbols page's generic square-like NOVA preview with the recognizable NOVA crosshair and shortened the aircraft-silhouette style label from `Icon (A320)` to `Icon`.
+- Replaced the Symbols page's generic square-like NOVA preview with its filled primary-return silhouette, configured target color, center marker, and `Show primary target` behavior; also shortened the aircraft-silhouette style label from `Icon (A320)` to `Icon`.
 - Prevented handled first-chance exceptions from being mislabeled as fatal vSMR crashes, removed in-process DbgHelp/minidump work that could deadlock an unstable EuroScope process, and made existing-but-unwritable report directories fall through correctly.
 - Made shared LFPG dynamic ownership boundaries deterministic: polygon fills render first, followed by self-owned outlines and then external-territory outlines, preventing cyan and yellow borders from clipping each other according to GeoJSON feature order.
 - Prevented the LFPG AVISO map from flickering during normal network operation by caching its takeover rules and rebuilding its raster only when a resolved dynamic area's owner, self/other state, or displayed frequency actually changes; unrelated EuroScope controller updates no longer clear the map cache or rescan the full LFPG feature set.

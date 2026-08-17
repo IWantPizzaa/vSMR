@@ -2358,8 +2358,14 @@
     let caption = "";
     let usesAircraftImage = false;
     if (style === "nova") {
-      // Use the recognizable NOVA crosshair instead of a generic diamond/square preview.
-      symbol = `<svg class="icon-preview-vector nova" viewBox="-24 -24 48 48" aria-hidden="true"><circle cx="0" cy="0" r="11"/><path d="M-19 0H19M0-19V19"/><circle class="icon-preview-fill" cx="0" cy="0" r="3"/></svg>`;
+      // NOVA combines the generated primary-return polygon with a small
+      // secondary marker at the reported target position.
+      const showPrimaryTarget = $("#showPrimaryTarget")?.checked ?? true;
+      const novaColor = colorToHex(activeProfile().targets?.target_color, "#fff249");
+      const primaryReturn = showPrimaryTarget
+        ? `<path class="nova-primary-return" d="M-7-43L5-44 11-36 12-27 17-16 24-7 33 2 45 11 43 23 31 18 16 11 12 19 12 34 6 44-5 46-11 35-12 20-16 10-29 17-45 24-46 14-35 3-25-5-20-16-16-27-13-38Z"/>`
+        : "";
+      symbol = `<svg class="icon-preview-vector nova" style="--nova-color:${escapeHtml(novaColor)}" viewBox="-52 -50 104 104" aria-hidden="true"><path class="nova-trail" d="M0 2V52"/>${primaryReturn}<path class="nova-center-mark" d="M-3 0H3M0-3V3"/></svg>`;
       caption = "NOVA";
     } else if (style === "triangle" || style === "arrow") {
       // Native north-facing triangle: tip, right base, rear notch, left base.
