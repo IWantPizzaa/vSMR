@@ -2625,16 +2625,6 @@ input:focus, select:focus, textarea:focus {
   fill: #fff;
   stroke: none;
 }
-.icon-preview-vector.nova .nova-trail {
-  fill: none;
-  stroke: #6e9caf;
-  stroke-width: .8;
-}
-.icon-preview-vector.nova .nova-center-mark {
-  fill: none;
-  stroke: #1f292c;
-  stroke-width: 1;
-}
 .icon-preview-vector.triangle,
 .icon-preview-vector.diamond {
   fill: #fff;
