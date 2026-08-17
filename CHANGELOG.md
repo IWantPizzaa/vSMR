@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added a live Control Center performance-diagnostics panel with bounded per-radar sampling; average, median, P95, and maximum timings; AVISO and aircraft-cache rates; raster rebuild and worker depth data; target and EuroScope-lookup metrics; process GDI and vSMR bitmap counts; delayed-AVISO-frame tracking; reset controls; and exportable JSON reports. This establishes a measurable baseline before any future Direct2D AVISO prototype.
+- Added a live Control Center performance-diagnostics panel with bounded per-radar sampling; average, median, P95, and maximum timings; distinct main AVISO, AVISO inset, SRW, RDF, inset-chrome, and scene-stage measurements; refresh-cause and 16 ms frame-spike context; AVISO/aircraft cache rates and queued, coalesced, debounced, superseded, cancelled, applied, and discarded work counters; raster rebuild and named-worker depth data; target and instrumented EuroScope-lookup metrics; process GDI counts plus attributed bitmap counts and estimated memory; delayed-AVISO-frame tracking; reset controls; and exportable JSON reports. This establishes a measurable baseline before any future Direct2D AVISO prototype.
 - Added out-of-process, WER-based crash reporting with direct/stack/worker association, fixed-size per-screen and per-thread breadcrumbs, recent logs, build/PDB identity, and an isolated crash harness. Reports are kept locally and are never uploaded automatically.
 - Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.
@@ -13,6 +13,7 @@
 
 ### Changed
 
+- Reduced AVISO raster churn by debouncing cache-backed view changes, cancelling superseded builds during geometry traversal, coalescing subpixel-equivalent requests, retrying transient failures, and retaining a same-source transformed raster through pan, zoom, preset, group, and ownership updates. AVISO data is now parsed once and prewarmed before the first rendered frame, raster overscan is smaller and hard allocation limits are enforced, while SRW reuses its bold font and measured typography metrics across frames.
 - Introduced one immutable, per-radar `RadarScene` capture for each rendered frame and migrated the main radar, AVISO inset, SRW 1 inset, and native RDF overlay to its shared target, classification, icon/color, preformatted tag, finalized RIMCAS, dynamic-ownership, controller, and airport state. Viewports now repeat fewer EuroScope lookups, stay visually consistent, and report scene timing and size metrics through `FramePerf`.
 - Unified Runtime Menu and Control Center navigation symbols: Settings uses shared slider controls, Groups uses layered views, Modes uses an eye, Insets uses a monitor, and the Control Center Display page uses an aircraft.
 - Made the Control Center color swatch preview-only, removing the redundant system color picker because the complete color editor is already available beside it.

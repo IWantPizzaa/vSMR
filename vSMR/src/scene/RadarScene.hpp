@@ -205,13 +205,21 @@ namespace VsmrScene
 		std::size_t tagTargetCount = 0;
 		std::size_t lowerBoundOwnedBytes = 0;
 		double sdkLookupMilliseconds = 0.0;
+		// These slices are non-overlapping portions of BuildRadarScene except that
+		// sdkLookupMilliseconds is an attribution nested within the relevant slice.
+		double avisoLoadMilliseconds = 0.0;
+		double controllerOwnershipMilliseconds = 0.0;
+		double targetCaptureMilliseconds = 0.0;
+		double finalizeMilliseconds = 0.0;
 		double buildMilliseconds = 0.0;
+		std::uint32_t refreshReasonMask = 0;
 	};
 
 	struct RadarScene
 	{
 		std::uint64_t frameId = 0;
 		unsigned long captureTick = 0;
+		std::string profileName;
 		AirportState airport;
 		TargetPresentation targetPresentation;
 		std::vector<ControllerState> controllers;
@@ -219,6 +227,8 @@ namespace VsmrScene
 		std::unordered_map<std::string, std::size_t> targetIndex;
 		std::shared_ptr<const VsmrAviso::FrequencyOwnershipSnapshot> frequencyOwnership;
 		std::uint64_t avisoGeneration = 0;
+		std::uint64_t controllerFingerprint = 0;
+		std::uint64_t targetFingerprint = 0;
 		BuildStats stats;
 
 		const Target* FindTarget(const std::string& callsign) const noexcept;

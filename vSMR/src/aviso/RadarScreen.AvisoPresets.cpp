@@ -971,7 +971,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 
 		SetDisplayArea(downLeft, upRight);
 		RadarViewZoomLevel = -1;
-		ClearAvisoGeoJsonRasterCache();
+		InvalidateAvisoGroupRendering();
 		AvisoGeoJsonLastViewValid = false;
 	}
 
@@ -985,7 +985,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		avisoWindow->m_AvisoLayoutMode = static_cast<CInsetWindow::AvisoLayoutMode>(std::clamp(preset.secondaryLayoutMode, 0, 8));
 		avisoWindow->m_AvisoViewInitialized = true;
 		avisoWindow->ResetAvisoInteractionState();
-		avisoWindow->ClearAvisoViewportCache();
+		avisoWindow->InvalidateAvisoViewportRendering();
 	}
 
 	appWindowDisplays[APPWINDOW_AVISO - APPWINDOW_BASE] = preset.secondaryVisible;
@@ -1466,5 +1466,5 @@ void CSMRRadar::SyncLinkedAvisoSecondaryToMainView()
 	avisoWindow->m_AvisoCenterLongitude = centerLon;
 	avisoWindow->m_AvisoScale = linkedScale;
 	avisoWindow->m_AvisoViewInitialized = true;
-	avisoWindow->ClearAvisoViewportCache();
+	avisoWindow->InvalidateAvisoViewportRendering();
 }

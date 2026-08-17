@@ -723,8 +723,23 @@ namespace
 		const std::string& title,
 		bool showFilter,
 		POINT mouseLocation,
-		bool allowResize = true)
+		bool allowResize = true,
+		double* elapsedMilliseconds = nullptr)
 	{
+		const auto chromeStarted = std::chrono::steady_clock::now();
+		struct AccumulateChromeTime
+		{
+			double* destination = nullptr;
+			std::chrono::steady_clock::time_point started;
+			~AccumulateChromeTime() noexcept
+			{
+				if (destination != nullptr)
+				{
+					*destination += std::chrono::duration<double, std::milli>(
+						std::chrono::steady_clock::now() - started).count();
+				}
+			}
+		} accumulateChromeTime{ elapsedMilliseconds, chromeStarted };
 		if (radarScreen == nullptr)
 			return;
 
@@ -816,6 +831,7 @@ struct AvisoViewportState
 		completedRenderResult.reset();
 		pendingRenderRadar = nullptr;
 		latestRequestId = ++nextRequestId;
+		cancellationToken->store(latestRequestId, std::memory_order_release);
 		lastRequestValid = false;
 		renderPending.store(false, std::memory_order_relaxed);
 	}
@@ -826,6 +842,20 @@ struct AvisoViewportState
 		std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = std::move(completedRenderResult);
 		renderPending.store(renderInFlight || pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
 		return result;
+	}
+
+	void AllowRetryForDiscardedResult(std::uint64_t requestId)
+	{
+		std::lock_guard<std::mutex> guard(renderMutex);
+		// Do not invalidate a newer request that was queued after this completed
+		// raster. If this is still the latest request, however, coalescing it would
+		// otherwise prevent the current viewport from ever trying the view again.
+		if (latestRequestId == requestId &&
+			pendingRenderRequest == nullptr &&
+			!renderInFlight)
+		{
+			lastRequestValid = false;
+		}
 	}
 
 	void QueueRender(CSMRRadar* radarScreen, CSMRRadar::AvisoRasterRenderRequest request)
@@ -849,20 +879,28 @@ struct AvisoViewportState
 			if (renderStopRequested)
 				return;
 
+			const double longitudeTolerance = max(
+				std::abs(request.displayMaxLongitude - request.displayMinLongitude) /
+					static_cast<double>((std::max)(request.rasterWidth, 1)) * 0.5,
+				1e-10);
+			const double latitudeTolerance = max(
+				std::abs(request.displayMaxLatitude - request.displayMinLatitude) /
+					static_cast<double>((std::max)(request.rasterHeight, 1)) * 0.5,
+				1e-10);
 			const bool sameRequest =
 				lastRequestValid &&
 				lastRequestPath == request.path &&
 				lastRequestGroupGeneration == request.groupGeneration &&
-				lastRequestRasterWidth == request.rasterWidth &&
-				lastRequestRasterHeight == request.rasterHeight &&
-				AvisoWithinTolerance(lastRequestMinLongitude, request.displayMinLongitude, 1e-10) &&
-				AvisoWithinTolerance(lastRequestMinLatitude, request.displayMinLatitude, 1e-10) &&
-				AvisoWithinTolerance(lastRequestMaxLongitude, request.displayMaxLongitude, 1e-10) &&
-				AvisoWithinTolerance(lastRequestMaxLatitude, request.displayMaxLatitude, 1e-10) &&
-				AvisoPointWithinTolerance(lastRequestProjectedTopLeft, request.projectedTopLeft, 0.25) &&
-				AvisoPointWithinTolerance(lastRequestProjectedTopRight, request.projectedTopRight, 0.25) &&
-				AvisoPointWithinTolerance(lastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.25) &&
-				AvisoPointWithinTolerance(lastRequestProjectedBottomRight, request.projectedBottomRight, 0.25);
+				std::abs(lastRequestRasterWidth - request.rasterWidth) <= 2 &&
+				std::abs(lastRequestRasterHeight - request.rasterHeight) <= 2 &&
+				AvisoWithinTolerance(lastRequestMinLongitude, request.displayMinLongitude, longitudeTolerance) &&
+				AvisoWithinTolerance(lastRequestMinLatitude, request.displayMinLatitude, latitudeTolerance) &&
+				AvisoWithinTolerance(lastRequestMaxLongitude, request.displayMaxLongitude, longitudeTolerance) &&
+				AvisoWithinTolerance(lastRequestMaxLatitude, request.displayMaxLatitude, latitudeTolerance) &&
+				AvisoPointWithinTolerance(lastRequestProjectedTopLeft, request.projectedTopLeft, 0.75) &&
+				AvisoPointWithinTolerance(lastRequestProjectedTopRight, request.projectedTopRight, 0.75) &&
+				AvisoPointWithinTolerance(lastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.75) &&
+				AvisoPointWithinTolerance(lastRequestProjectedBottomRight, request.projectedBottomRight, 0.75);
 			if (sameRequest)
 			{
 				radarScreen->PerformanceDiagnostics.RecordAvisoRequestCoalesced(
@@ -873,7 +911,11 @@ struct AvisoViewportState
 			request.requestId = ++nextRequestId;
 			request.performanceQueuedAtMilliseconds =
 				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
+			if (request.debounceMilliseconds == 0 && cacheBitmap != nullptr)
+				request.debounceMilliseconds = 24;
+			request.cancellationToken = cancellationToken;
 			latestRequestId = request.requestId;
+			cancellationToken->store(request.requestId, std::memory_order_release);
 			lastRequestValid = true;
 			lastRequestPath = request.path;
 			lastRequestMinLongitude = request.displayMinLongitude;
@@ -936,6 +978,7 @@ struct AvisoViewportState
 		{
 			std::lock_guard<std::mutex> guard(renderMutex);
 			renderStopRequested = true;
+			cancellationToken->fetch_add(1, std::memory_order_release);
 			pendingRenderRequest.reset();
 			completedRenderResult.reset();
 			pendingRenderRadar = nullptr;
@@ -971,6 +1014,40 @@ struct AvisoViewportState
 
 				if (renderStopRequested)
 					return;
+				while (pendingRenderRequest != nullptr &&
+					pendingRenderRequest->debounceMilliseconds > 0)
+				{
+					const std::uint64_t observedRequestId = pendingRenderRequest->requestId;
+					const std::uint64_t readyAt =
+						pendingRenderRequest->performanceQueuedAtMilliseconds +
+						pendingRenderRequest->debounceMilliseconds;
+					const std::uint64_t now =
+						VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
+					if (now >= readyAt)
+						break;
+					renderCondition.wait_for(
+						lock,
+						std::chrono::milliseconds(
+							static_cast<long long>(readyAt - now)),
+						[&]() {
+							return renderStopRequested ||
+								pendingRenderRequest == nullptr ||
+								pendingRenderRequest->requestId != observedRequestId;
+						});
+					if (renderStopRequested)
+						return;
+					if (pendingRenderRequest != nullptr &&
+						pendingRenderRequest->requestId != observedRequestId)
+					{
+						if (pendingRenderRadar != nullptr)
+						{
+							pendingRenderRadar->PerformanceDiagnostics.RecordAvisoRequestDebounced(
+								VsmrPerformance::AvisoViewport::Inset);
+						}
+						continue;
+					}
+					break;
+				}
 
 				request = std::move(pendingRenderRequest);
 				radarScreen = pendingRenderRadar;
@@ -1013,16 +1090,33 @@ struct AvisoViewportState
 			}
 			const double rebuildMilliseconds = std::chrono::duration<double, std::milli>(
 				std::chrono::steady_clock::now() - renderStart).count();
-			radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuild(
-				VsmrPerformance::AvisoViewport::Inset,
-				rebuildMilliseconds,
-				queueWaitMilliseconds,
-				result != nullptr);
+			const bool renderCancelled = result == nullptr &&
+				radarScreen->IsAvisoRasterRenderRequestCancelled(*request);
+			if (renderCancelled)
+			{
+				radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuildCancelled(
+					VsmrPerformance::AvisoViewport::Inset);
+			}
+			else
+			{
+				radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuild(
+					VsmrPerformance::AvisoViewport::Inset,
+					rebuildMilliseconds,
+					queueWaitMilliseconds,
+					result != nullptr);
+			}
 
 			bool shouldRefresh = false;
 			bool discardedResult = false;
 			{
 				std::lock_guard<std::mutex> guard(renderMutex);
+				if (result == nullptr &&
+					!renderCancelled &&
+					request->requestId == latestRequestId)
+				{
+					// Let an identical frame retry after a transient render failure.
+					lastRequestValid = false;
+				}
 				if (renderStopRequested)
 					return;
 
@@ -1077,13 +1171,14 @@ struct AvisoViewportState
 	std::atomic<bool> renderPending{ false };
 	unsigned long long nextRequestId = 0;
 	unsigned long long latestRequestId = 0;
+	std::shared_ptr<std::atomic<std::uint64_t>> cancellationToken =
+		std::make_shared<std::atomic<std::uint64_t>>(0);
 	std::mutex renderMutex;
 	std::condition_variable renderCondition;
 	std::thread renderThread;
 	bool renderThreadStarted = false;
 	bool renderStopRequested = false;
 	bool renderInFlight = false;
-	unsigned long lastZoomInteractionTick = 0;
 	CSMRRadar* pendingRenderRadar = nullptr;
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> pendingRenderRequest;
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
@@ -1185,6 +1280,14 @@ void CInsetWindow::ReleaseCachedFonts()
 		::DeleteObject(m_TimerFont);
 		m_TimerFont = nullptr;
 	}
+
+	m_SrwFontSource = nullptr;
+	m_SrwFontSize = 0.0f;
+	m_SrwFontStyle = 0;
+	m_SrwFontFamily.clear();
+	m_SrwBoldFont.reset();
+	m_SrwBlankWidth = 0;
+	m_SrwLineHeight = 0;
 }
 
 bool CInsetWindow::IsAvisoViewport() const
@@ -1226,6 +1329,12 @@ void CInsetWindow::ClearAvisoViewportCache()
 	}
 }
 
+void CInsetWindow::InvalidateAvisoViewportRendering()
+{
+	if (m_AvisoState != nullptr)
+		m_AvisoState->InvalidateRenderRequests();
+}
+
 VsmrPerformance::AvisoQueueDepth CInsetWindow::GetAvisoPerformanceQueueDepth()
 {
 	return m_AvisoState != nullptr
@@ -1247,6 +1356,16 @@ std::size_t CInsetWindow::GetAvisoPerformanceBitmapCount(
 			static_cast<std::uint64_t>(m_AvisoState->cacheHeight) * 4ULL;
 	}
 	return 1;
+}
+
+double CInsetWindow::GetLastRdfRenderMilliseconds() const noexcept
+{
+	return m_LastRdfRenderMilliseconds;
+}
+
+double CInsetWindow::GetLastChromeRenderMilliseconds() const noexcept
+{
+	return m_LastChromeRenderMilliseconds;
 }
 
 void CInsetWindow::CancelAvisoViewportRender()
@@ -2168,8 +2287,6 @@ bool CInsetWindow::ZoomAvisoAtPoint(POINT Pt, double scaleMultiplier)
 	m_AvisoCenterLongitude = anchorLongitude - (dx * newLonDegreesPerPixel);
 	m_AvisoCenterLatitude = ClampAvisoLatitude(anchorLatitude + (dy * newLatDegreesPerPixel));
 	m_AvisoScrollSelected = true;
-	if (m_AvisoState != nullptr)
-		m_AvisoState->lastZoomInteractionTick = ::GetTickCount();
 	return true;
 }
 
@@ -2640,7 +2757,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_Area,
 			"AVISO",
 			false,
-			mouseLocation);
+			mouseLocation,
+			true,
+			&m_LastChromeRenderMilliseconds);
 	};
 
 	const std::string airport = radar_screen->getActiveAirport();
@@ -2719,11 +2838,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	const double scaleX = static_cast<double>(viewportWidth) / lonSpan;
 	const double scaleY = static_cast<double>(viewportHeight) / latSpan;
 	const double screenRotationDeg = ResolveAvisoViewportScreenRotationDeg(radar_screen, m_AvisoCenterLatitude, m_AvisoCenterLongitude);
-	const unsigned long nowTick = ::GetTickCount();
-	const unsigned long zoomPreviewMs = 320;
-	const bool avisoZoomRecentlyChanged =
-		m_AvisoState->lastZoomInteractionTick != 0 &&
-		(nowTick - m_AvisoState->lastZoomInteractionTick) < zoomPreviewMs;
 	m_AvisoState->screenRotationDeg = screenRotationDeg;
 	const CPoint viewportCenterPoint = viewportRect.CenterPoint();
 	const Gdiplus::PointF viewportCenter(
@@ -2851,6 +2965,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	{
 		radar_screen->PerformanceDiagnostics.RecordAvisoResultDiscarded(
 			VsmrPerformance::AvisoViewport::Inset);
+		m_AvisoState->AllowRetryForDiscardedResult(completedRenderResult->requestId);
 	}
 
 	auto drawCache = [&]() -> bool
@@ -2976,17 +3091,15 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		::DeleteDC(sourceDc);
 		return blended != FALSE;
 	};
-	auto drawCacheFallbackDuringInteraction = [&]() -> bool
+	auto drawPreviousCacheViewportAligned = [&]() -> bool
 	{
-		// A resize must never stretch a clamped source crop to the new aspect
-		// ratio. The normal geo-aligned cache path above is size-independent.
+		// Retain a geographically covered previous raster while the definitive
+		// view is debounced or rebuilt. A resize must not stretch a clamped crop
+		// to a new aspect ratio; the normal geo-aligned path handles that case.
 		if (m_WindowResizeActive)
-			return false;
-		if (!m_Grip && !m_AvisoRightPanning && !avisoZoomRecentlyChanged)
 			return false;
 		if (m_AvisoState->cacheBitmap == nullptr ||
 			m_AvisoState->cachePath != path ||
-			m_AvisoState->cacheGroupGeneration != groupGeneration ||
 			m_AvisoState->cacheWidth <= 0 ||
 			m_AvisoState->cacheHeight <= 0 ||
 			!m_AvisoState->anchorValid)
@@ -3150,11 +3263,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 	bool cacheDrawn = drawCache();
 	if (!cacheDrawn)
-		cacheDrawn = drawCacheFallbackDuringInteraction();
+		cacheDrawn = drawPreviousCacheViewportAligned();
 	bool updateRequested = false;
 	if (!cacheDrawn || !cacheHasWorkingMargin())
 	{
-		const double overscanRatio = 0.75;
+		// Half a viewport of overscan still doubles each raster dimension and
+		// comfortably exceeds the 25% refresh margin, while avoiding the 56%
+		// extra bitmap area produced by the previous 75% margin.
+		const double overscanRatio = 0.50;
 		const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
 		const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
 		const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
@@ -3172,7 +3288,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
 		{
 			const double targetRasterScale = 1.0;
-			const double minRasterScale = 0.50;
 			const double maxRasterSide = 6400.0;
 			const double maxRasterPixels = 18000000.0;
 			double rasterScale = targetRasterScale;
@@ -3183,7 +3298,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
 			if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
 				rasterScale = pixelLimitedScale;
-			rasterScale = std::clamp(rasterScale, minRasterScale, targetRasterScale);
+			// Keep the allocation caps hard even on unusually large desktops.
+			rasterScale = min(rasterScale, targetRasterScale);
 
 			CSMRRadar::AvisoRasterRenderRequest request;
 			request.groupGeneration = groupGeneration;
@@ -3192,8 +3308,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.labels = labelSnapshot;
 			request.groupVisibility = groupVisibility;
 			request.frequencyOwnership = frequencyOwnership;
-			request.rasterWidth = max(1, static_cast<int>((renderPixelWidth * rasterScale) + 0.5));
-			request.rasterHeight = max(1, static_cast<int>((renderPixelHeight * rasterScale) + 0.5));
+			request.rasterWidth = max(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
+			request.rasterHeight = max(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;
 			request.displayMinLongitude = displayMinLon;
 			request.displayMinLatitude = displayMinLat;
@@ -3967,6 +4083,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	// RDF plugin only knows the parent radar transform, which is why its marker
 	// cannot be reused for this inset.
 	gdi->Flush(Gdiplus::FlushIntentionSync);
+	const auto rdfStarted = std::chrono::steady_clock::now();
 	VsmrRdf::Draw(
 		hDC,
 		radar_screen,
@@ -3981,6 +4098,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				static_cast<LONG>(std::lround(static_cast<double>(projected.Y)))
 			};
 		});
+	m_LastRdfRenderMilliseconds += std::chrono::duration<double, std::milli>(
+		std::chrono::steady_clock::now() - rdfStarted).count();
 
 	drawChrome();
 
@@ -4445,7 +4564,9 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		m_Area,
 		"Metar",
 		false,
-		mouseLocation);
+		mouseLocation,
+		true,
+		&m_LastChromeRenderMilliseconds);
 
 	dc.Detach();
 }
@@ -4561,13 +4682,16 @@ void CInsetWindow::renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphi
 		"Timer",
 		false,
 		mouseLocation,
-		false);
+		false,
+		&m_LastChromeRenderMilliseconds);
 
 	dc.Detach();
 }
 
 void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation)
 {
+	m_LastRdfRenderMilliseconds = 0.0;
+	m_LastChromeRenderMilliseconds = 0.0;
 	if (this->m_Id == -1)
 		return;
 
@@ -4797,42 +4921,69 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
 	Gdiplus::Font* tagRegularFont = (fontIt != radar_screen->customFonts.end()) ? fontIt->second.get() : nullptr;
 	Gdiplus::Font* tagBoldFont = tagRegularFont;
-	std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
-	int blankWidth = 0;
-	int oneLineHeight = 0;
+	int blankWidth = m_SrwBlankWidth;
+	int oneLineHeight = m_SrwLineHeight;
 	Gdiplus::StringFormat defaultStringFormat;
 	const Color whiteColor(255, 255, 255, 255);
 	const Color aliceBlueColor(255, 240, 248, 255);
 	if (tagRegularFont != nullptr)
 	{
 		Gdiplus::FontFamily baseFamily;
-		if (tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
+		WCHAR familyName[LF_FACESIZE] = {};
+		const bool familyAvailable =
+			tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok &&
+			baseFamily.GetFamilyName(familyName) == Gdiplus::Ok;
+		const std::wstring currentFamily = familyAvailable ? familyName : L"";
+		const Gdiplus::REAL currentSize = tagRegularFont->GetSize();
+		const INT currentStyle = tagRegularFont->GetStyle();
+		const bool fontChanged =
+			m_SrwFontSource != tagRegularFont ||
+			std::abs(static_cast<double>(m_SrwFontSize - currentSize)) > 0.001 ||
+			m_SrwFontStyle != currentStyle ||
+			m_SrwFontFamily != currentFamily;
+		if (fontChanged)
 		{
-			const INT boldStyle = tagRegularFont->GetStyle() | Gdiplus::FontStyleBold;
-			tagBoldFontOwned = std::make_unique<Gdiplus::Font>(
-				&baseFamily,
-				tagRegularFont->GetSize(),
-				boldStyle,
-				Gdiplus::UnitPixel);
-			if (tagBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
-				tagBoldFont = tagBoldFontOwned.get();
-		}
+			m_SrwFontSource = tagRegularFont;
+			m_SrwFontSize = currentSize;
+			m_SrwFontStyle = currentStyle;
+			m_SrwFontFamily = currentFamily;
+			m_SrwBoldFont.reset();
+			if (familyAvailable)
+			{
+				const INT boldStyle = currentStyle | Gdiplus::FontStyleBold;
+				m_SrwBoldFont = std::make_unique<Gdiplus::Font>(
+					&baseFamily,
+					currentSize,
+					boldStyle,
+					Gdiplus::UnitPixel);
+				if (m_SrwBoldFont->GetLastStatus() != Gdiplus::Ok)
+					m_SrwBoldFont.reset();
+			}
 
-		RectF measureRect;
-		gdi->MeasureString(L" ", 1, tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
-		blankWidth = static_cast<int>(measureRect.GetRight());
-		measureRect = RectF(0, 0, 0, 0);
-		static const wchar_t kMetricSample[] = L"AZERTYUIOPQSDFGHJKLMWXCVBN";
-		gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
-			tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
-		oneLineHeight = static_cast<int>(measureRect.GetBottom());
-		if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
-		{
-			RectF boldMeasureRect;
+			Gdiplus::Font* metricBoldFont = m_SrwBoldFont != nullptr
+				? m_SrwBoldFont.get()
+				: tagRegularFont;
+			RectF measureRect;
+			gdi->MeasureString(L" ", 1, tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
+			m_SrwBlankWidth = static_cast<int>(measureRect.GetRight());
+			measureRect = RectF(0, 0, 0, 0);
+			static const wchar_t kMetricSample[] = L"AZERTYUIOPQSDFGHJKLMWXCVBN";
 			gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
-				tagBoldFont, PointF(0, 0), &defaultStringFormat, &boldMeasureRect);
-			oneLineHeight = max(oneLineHeight, static_cast<int>(boldMeasureRect.GetBottom()));
+				tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
+			m_SrwLineHeight = static_cast<int>(measureRect.GetBottom());
+			if (metricBoldFont != tagRegularFont)
+			{
+				RectF boldMeasureRect;
+				gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
+					metricBoldFont, PointF(0, 0), &defaultStringFormat, &boldMeasureRect);
+				m_SrwLineHeight = max(
+					m_SrwLineHeight,
+					static_cast<int>(boldMeasureRect.GetBottom()));
+			}
 		}
+		tagBoldFont = m_SrwBoldFont != nullptr ? m_SrwBoldFont.get() : tagRegularFont;
+		blankWidth = m_SrwBlankWidth;
+		oneLineHeight = m_SrwLineHeight;
 	}
 
 	const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
@@ -5405,6 +5556,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	if (m_AirportPositionValid)
 	{
 		gdi->Flush(Gdiplus::FlushIntentionSync);
+		const auto rdfStarted = std::chrono::steady_clock::now();
 		VsmrRdf::Draw(
 			hDC,
 			radar_screen,
@@ -5413,6 +5565,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			{
 				return projectPoint(position);
 			});
+		m_LastRdfRenderMilliseconds += std::chrono::duration<double, std::milli>(
+			std::chrono::steady_clock::now() - rdfStarted).count();
 	}
 
 	gdi->Restore(srwGraphicsState);
@@ -5430,7 +5584,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		m_Area,
 		title,
 		true,
-		mouseLocation);
+		mouseLocation,
+		true,
+		&m_LastChromeRenderMilliseconds);
 
 	dc.Detach();
 }
