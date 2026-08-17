@@ -73,7 +73,11 @@ Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
 
 	auto it = AircraftIcons.find(ac);
 	if (it != AircraftIcons.end())
+	{
+		PerformanceDiagnostics.RecordAircraftSourceCache(true);
 		return it->second.get();
+	}
+	PerformanceDiagnostics.RecordAircraftSourceCache(false);
 
 	const fs::path candidate = fs::path(IconsPath) / (ac + ".png");
 	if (!fs::exists(candidate))
@@ -163,9 +167,11 @@ Gdiplus::Bitmap* CSMRRadar::GetCachedRealisticIconBitmap(
 	auto cachedBitmap = RealisticIconBitmapCache.find(outCacheKey);
 	if (cachedBitmap != RealisticIconBitmapCache.end())
 	{
+		PerformanceDiagnostics.RecordRealisticScaledCache(true);
 		cachedBitmap->second.lastUsedFrame = cacheFrame;
 		return cachedBitmap->second.bitmap.get();
 	}
+	PerformanceDiagnostics.RecordRealisticScaledCache(false);
 
 	TrimRealisticIconBitmapCache(std::string(), cacheFrame);
 
@@ -252,9 +258,11 @@ CSMRRadar::RealisticIconCacheEntry* CSMRRadar::GetCachedRotatedRealisticIconBitm
 	auto cachedBitmap = RealisticIconBitmapCache.find(cacheKey);
 	if (cachedBitmap != RealisticIconBitmapCache.end())
 	{
+		PerformanceDiagnostics.RecordRealisticRotatedCache(true);
 		cachedBitmap->second.lastUsedFrame = cacheFrame;
 		return &cachedBitmap->second;
 	}
+	PerformanceDiagnostics.RecordRealisticRotatedCache(false);
 
 	TrimRealisticIconBitmapCache(scaledCacheKey, cacheFrame);
 

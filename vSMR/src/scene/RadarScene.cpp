@@ -391,9 +391,20 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->stats = BuildStats{};
 	scene->frameId = ++RadarSceneFrameId;
 	scene->captureTick = ::GetTickCount();
+	auto measureSdkLookup = [&](auto&& callback)
+	{
+		const auto lookupStart = Clock::now();
+		auto result = callback();
+		scene->stats.sdkLookupMilliseconds += std::chrono::duration<double, std::milli>(
+			Clock::now() - lookupStart).count();
+		return result;
+	};
+	CPlugIn* plugin = GetPlugIn();
 	scene->airport.icao = getActiveAirport();
 	scene->airport.lowVisibilityProcedures = lowVisibilityProcedures;
-	scene->airport.transitionAltitude = GetPlugIn() != nullptr ? GetPlugIn()->GetTransitionAltitude() : 0;
+	scene->airport.transitionAltitude = plugin != nullptr
+		? measureSdkLookup([&]() { return plugin->GetTransitionAltitude(); })
+		: 0;
 	CPosition airportPosition;
 	if (TryGetActiveAirportPosition(airportPosition))
 		scene->airport.referencePosition = CopyPosition(airportPosition);
@@ -407,17 +418,19 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (!avisoPath.empty())
 		EnsureAvisoGeoJsonLoaded(avisoPath);
 
-	CPlugIn* plugin = GetPlugIn();
 	if (plugin == nullptr)
 	{
 		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
 		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
 		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+		scene->stats.buildMilliseconds = std::chrono::duration<double, std::milli>(
+			Clock::now() - buildStart).count();
+		PerfLastSceneBuildMs = scene->stats.buildMilliseconds;
 		CurrentRadarScene = scene;
 		return CurrentRadarScene;
 	}
 
-	const CController myself = plugin->ControllerMyself();
+	const CController myself = measureSdkLookup([&]() { return plugin->ControllerMyself(); });
 	const std::string myCallsign = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetCallsign())) : "";
 	const std::string myPosition = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetPositionId())) : "";
 	auto captureController = [&](const CController& controller)
@@ -438,11 +451,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			scene->controllers.push_back(std::move(captured));
 	};
 	std::size_t controllerGuard = 0;
-	for (CController controller = plugin->ControllerSelectFirst();
-		controller.IsValid() && controllerGuard < 4096;
-		controller = plugin->ControllerSelectNext(controller), ++controllerGuard)
+	CController controller = measureSdkLookup([&]() { return plugin->ControllerSelectFirst(); });
+	for (; controller.IsValid() && controllerGuard < 4096; ++controllerGuard)
 	{
+		++scene->stats.sdkControllerEnumerations;
 		captureController(controller);
+		controller = measureSdkLookup([&]() { return plugin->ControllerSelectNext(controller); });
 	}
 	captureController(myself);
 	RefreshAvisoFrequencyOwnership(false, &scene->controllers);
@@ -490,7 +504,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->targetPresentation.resolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 	scene->targetPresentation.fixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 
-	const CRadarTarget selectedTarget = plugin->RadarTargetSelectASEL();
+	const CRadarTarget selectedTarget = measureSdkLookup([&]() { return plugin->RadarTargetSelectASEL(); });
 	const std::string selectedCallsign = selectedTarget.IsValid() ? CopyText(selectedTarget.GetCallsign()) : "";
 
 	double rimcasMilliseconds = 0.0;
@@ -502,9 +516,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	}
 
 	scene->targets.reserve(CurrentRadarScene != nullptr ? CurrentRadarScene->targets.size() : 64);
-	for (CRadarTarget radarTarget = plugin->RadarTargetSelectFirst();
-		radarTarget.IsValid();
-		radarTarget = plugin->RadarTargetSelectNext(radarTarget))
+	CRadarTarget radarTarget = measureSdkLookup([&]() { return plugin->RadarTargetSelectFirst(); });
+	for (; radarTarget.IsValid();
+		radarTarget = measureSdkLookup([&]() { return plugin->RadarTargetSelectNext(radarTarget); }))
 	{
 		++scene->stats.sdkTargetEnumerations;
 		if (!radarTarget.IsValid())
@@ -521,7 +535,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.normalizedCallsign = ToUpperAsciiCopy(callsign);
 		target.systemId = CopyText(radarTarget.GetSystemID());
 		target.position = CopyPosition(position.GetPosition());
-		const CRadarTargetPositionData previousPosition = radarTarget.GetPreviousPosition(position);
+		++scene->stats.sdkPreviousPositionLookups;
+		const CRadarTargetPositionData previousPosition = measureSdkLookup(
+			[&]() { return radarTarget.GetPreviousPosition(position); });
 		if (previousPosition.IsValid())
 		{
 			target.previousPosition = CopyPosition(previousPosition.GetPosition());
@@ -541,9 +557,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.headingProbe = CopyPosition(Haversine(position.GetPosition(), target.headingTrueDegrees, 50.0));
 		target.selected = !selectedCallsign.empty() && selectedCallsign == callsign;
 		target.passesRadarFilter = isVisible(radarTarget);
+		if (target.passesRadarFilter)
+			++scene->stats.radarFilteredTargetCount;
 
-		const CFlightPlan flightPlan = plugin->FlightPlanSelect(callsign.c_str());
 		++scene->stats.sdkFlightPlanLookups;
+		const CFlightPlan flightPlan = measureSdkLookup(
+			[&]() { return plugin->FlightPlanSelect(callsign.c_str()); });
 		target.hasFlightPlan = flightPlan.IsValid();
 		if (flightPlan.IsValid())
 		{
@@ -571,6 +590,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		const bool keepIconForSquawkMismatch = proModeEnabled && (wrongSquawk || !hasAssignedSquawk);
 		target.iconVisible = target.passesRadarFilter &&
 			(target.correlated || target.reportedGroundSpeed >= 1 || keepIconForSquawkMismatch);
+		if (target.iconVisible)
+			++scene->stats.iconTargetCount;
 
 		target.towerModeGroundStateText = target.groundStateText;
 		target.towerModeArrival = target.hasFlightPlan && !airportUpper.empty() &&
@@ -580,7 +601,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		if (needsCorrelatedFlightPlan)
 		{
 			++scene->stats.sdkCorrelatedFlightPlanLookups;
-			const CFlightPlan correlatedFlightPlan = radarTarget.GetCorrelatedFlightPlan();
+			const CFlightPlan correlatedFlightPlan = measureSdkLookup(
+				[&]() { return radarTarget.GetCorrelatedFlightPlan(); });
 			target.hasCorrelatedFlightPlan = correlatedFlightPlan.IsValid();
 			if (correlatedFlightPlan.IsValid())
 			{
@@ -635,6 +657,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			tagVisible = false;
 		}
 		target.tagVisible = tagVisible;
+		if (target.tagVisible)
+			++scene->stats.tagTargetCount;
 
 		target.bottomLine = BuildBottomLine(*this, flightPlan, position, scene->airport.transitionAltitude);
 		const int* capturedPreviousFlightLevel = target.previousPosition.valid
@@ -1143,8 +1167,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	std::size_t estimatedBytes = sizeof(RadarScene) + scene->targets.capacity() * sizeof(Target) +
 		scene->controllers.capacity() * sizeof(ControllerState);
 	estimatedBytes += EstimateStringHeapBytes(scene->airport.icao);
-	for (const ControllerState& controller : scene->controllers)
-		estimatedBytes += EstimateStringHeapBytes(controller.callsign) + EstimateStringHeapBytes(controller.positionId);
+	for (const ControllerState& controllerState : scene->controllers)
+		estimatedBytes += EstimateStringHeapBytes(controllerState.callsign) + EstimateStringHeapBytes(controllerState.positionId);
 	for (const Target& target : scene->targets)
 	{
 		const std::string* targetStrings[] = {

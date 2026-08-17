@@ -19,6 +19,19 @@
     settings: "Settings"
   };
   const PROFILE_TITLES = { colors: "Colors", icons: "Icons", tags: "Tags", rules: "Rules" };
+  const SETTINGS_TITLES = { general: "General", performance: "Performance" };
+  const PERFORMANCE_REQUEST_TIMEOUT_MS = 4000;
+  const PERFORMANCE_TIMINGS = [
+    ["frame", "Frame"],
+    ["scene", "Scene capture"],
+    ["aviso", "AVISO draw"],
+    ["targets", "Targets"],
+    ["rimcas", "RIMCAS"],
+    ["tags", "Tags"],
+    ["srw", "Insets"],
+    ["euroScopeLookups", "Instrumented ES lookups"],
+    ["avisoRasterRebuild", "AVISO raster rebuild"]
+  ];
   const MAP_ZOOM_LABELS = [
     "All ranges", "34 km or closer", "28 km or closer", "22 km or closer", "18 km or closer",
     "14 km or closer", "12 km or closer", "9.5 km or closer", "8 km or closer", "6 km or closer",
@@ -637,7 +650,8 @@
         runtimePopover: "",
         avisoGeometrySearch: "",
         avisoTextSearch: "",
-        alertsView: "active"
+        alertsView: "active",
+        settingsView: "general"
       },
       runtime: {
         avisoInsetVisible: false,
@@ -693,6 +707,15 @@
   let globalSaveAfterDatalink = false;
   let discardDatalinkDraftOnReload = false;
   let lastDatalinkStateRequestAt = 0;
+  const performanceDiagnostics = {
+    snapshot: null,
+    supported: HOST_MODE ? null : false,
+    windowSeconds: 120,
+    lastRequestAt: 0,
+    lastUpdatedAt: 0,
+    error: "",
+    pending: { state: null, reset: null, export: null }
+  };
   let splitAvisoContext = null;
 	let ignoreNextUncorrelatedAviso = false;
   const history = { past: [], present: null, future: [], gestureKey: "" };
@@ -1332,6 +1355,8 @@
       const viewLabel = state.ui.avisoView === "text" ? "Text" : "Geometry";
       suffix = `${state.aviso?.metadata?.airport || inferAirport(state.aviso?.name) || "AVISO"} · ${viewLabel}`;
     }
+    if (state.ui.page === "settings")
+      suffix = `Settings · ${SETTINGS_TITLES[state.ui.settingsView] || SETTINGS_TITLES.general}`;
     context.textContent = `${profileName} · ${suffix}`;
   }
   function setPage(page) {
@@ -1349,10 +1374,48 @@
     if (page === "modes") renderModes();
     if (page === "profiles") renderProfilesManager();
     if (page === "settings") {
+      syncSettingsViewSelection();
+      if (state.ui.settingsView === "performance") {
+        renderPerformanceDiagnostics();
+        requestPerformanceState(true);
+      } else {
+        renderSettings();
+        renderDatalink();
+        requestDatalinkState();
+      }
+    }
+    updateContext();
+  }
+
+  function syncSettingsViewSelection() {
+    const view = SETTINGS_TITLES[state.ui.settingsView] ? state.ui.settingsView : "general";
+    state.ui.settingsView = view;
+    $$('[data-settings-tab]').forEach(button => {
+      const selected = button.dataset.settingsTab === view;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    $$('[data-settings-panel]').forEach(panel => {
+      const selected = panel.dataset.settingsPanel === view;
+      panel.classList.toggle("active", selected);
+      panel.hidden = !selected;
+    });
+  }
+
+  function setSettingsView(view, focusTab = false) {
+    if (!SETTINGS_TITLES[view]) return;
+    state.ui.settingsView = view;
+    syncSettingsViewSelection();
+    if (view === "performance") {
+      renderPerformanceDiagnostics();
+      requestPerformanceState(true);
+    } else {
       renderSettings();
       renderDatalink();
-      requestDatalinkState();
+      requestDatalinkState(true);
     }
+    if (focusTab) $(`[data-settings-tab="${view}"]`)?.focus();
     updateContext();
   }
 
@@ -4538,14 +4601,15 @@
         showToast(message, "error");
       }
     }
-    if (state.ui.page === "settings") {
+    if (state.ui.page === "settings" && state.ui.settingsView === "general") {
       renderDatalink();
       updateContext();
     }
   }
 
   function requestDatalinkState(force = false) {
-    if (state.ui.page !== "settings" || !state.ui.controlCenterOpen || document.hidden) return;
+    if (state.ui.page !== "settings" || state.ui.settingsView !== "general" ||
+        !state.ui.controlCenterOpen || document.hidden) return;
     const now = Date.now();
     if (!force && now - lastDatalinkStateRequestAt < 900) return;
     lastDatalinkStateRequestAt = now;
@@ -4926,6 +4990,309 @@
     return true;
   }
 
+  function performanceFinite(...values) {
+    for (const value of values) {
+      if (value == null || value === "") continue;
+      const number = Number(value);
+      if (Number.isFinite(number)) return number;
+    }
+    return null;
+  }
+
+  function performanceStats(value) {
+    const source = typeof value === "number" ? { latest: value } : value;
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      return { latest: null, average: null, median: null, p95: null, max: null };
+    }
+    return {
+      latest: performanceFinite(source.latest, source.current, source.value),
+      average: performanceFinite(source.average, source.avg, source.mean),
+      median: performanceFinite(source.median, source.p50),
+      p95: performanceFinite(source.p95, source.percentile95),
+      max: performanceFinite(source.max, source.maximum, source.peak)
+    };
+  }
+
+  function formatPerformanceMs(value) {
+    const number = performanceFinite(value);
+    if (number == null) return "--";
+    return number.toFixed(Math.abs(number) < 10 ? 2 : 1);
+  }
+
+  function formatPerformanceCount(value) {
+    const number = performanceFinite(value);
+    return number == null ? "--" : Math.max(0, Math.round(number)).toLocaleString();
+  }
+
+  function formatPerformancePair(current, comparison) {
+    const first = formatPerformanceCount(current);
+    const second = formatPerformanceCount(comparison);
+    if (first === "--" && second === "--") return "--";
+    return second === "--" ? first : `${first} / ${second}`;
+  }
+
+  function performanceTiming(snapshot, key) {
+    const timings = snapshot?.timings || snapshot?.statistics?.timings || {};
+    if (key === "euroScopeLookups")
+      return timings[key] || timings.euroscopeLookups || timings.sdkLookups || null;
+    if (key === "avisoRasterRebuild")
+      return timings[key] || timings.rasterRebuild || null;
+    return timings[key] || null;
+  }
+
+  function performanceViewActive() {
+    return state.ui.controlCenterOpen && state.ui.page === "settings" &&
+      state.ui.settingsView === "performance" && !document.hidden;
+  }
+
+  function expirePerformanceRequest(slot, now = Date.now()) {
+    const pendingRequest = performanceDiagnostics.pending[slot];
+    const timeout = slot === "state" ? PERFORMANCE_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+    if (!pendingRequest || now - pendingRequest.startedAt < timeout) return false;
+    performanceDiagnostics.pending[slot] = null;
+    if (slot === "state" && !performanceDiagnostics.snapshot)
+      performanceDiagnostics.error = "Still waiting for performance data from vSMR.";
+    return true;
+  }
+
+  function requestPerformanceState(force = false) {
+    if (!HOST_MODE || !performanceViewActive() || performanceDiagnostics.supported === false) return;
+    const now = Date.now();
+    expirePerformanceRequest("state", now);
+    if (performanceDiagnostics.pending.state) return;
+    if (!force && now - performanceDiagnostics.lastRequestAt < 900) return;
+    performanceDiagnostics.lastRequestAt = now;
+    const id = postBridge("performance.state.request", {
+      windowSeconds: performanceDiagnostics.windowSeconds,
+      maxSeriesPoints: 120
+    });
+    if (!id) return;
+    performanceDiagnostics.pending.state = { id, startedAt: now };
+    renderPerformanceDiagnostics();
+  }
+
+  function resetPerformanceDiagnostics() {
+    if (!HOST_MODE) {
+      showToast("Performance diagnostics require the native Control Center", "error");
+      return;
+    }
+    if (performanceDiagnostics.pending.reset) return;
+    const id = postBridge("performance.reset", {});
+    if (!id) return;
+    performanceDiagnostics.pending.reset = { id, startedAt: Date.now() };
+    renderPerformanceDiagnostics();
+  }
+
+  function exportPerformanceReport() {
+    if (!HOST_MODE) {
+      showToast("Performance report export requires the native Control Center", "error");
+      return;
+    }
+    if (!performanceDiagnostics.snapshot || performanceDiagnostics.pending.export) return;
+    const id = postBridge("performance.report.export", {
+      windowSeconds: performanceDiagnostics.windowSeconds,
+      format: "json"
+    });
+    if (!id) return;
+    performanceDiagnostics.pending.export = { id, startedAt: Date.now() };
+    renderPerformanceDiagnostics();
+  }
+
+  function performanceMessageSlot(message) {
+    for (const slot of ["state", "reset", "export"]) {
+      const request = performanceDiagnostics.pending[slot];
+      if (request?.id && messageMatchesRequest(message, request.id)) return slot;
+    }
+    return "";
+  }
+
+  function finishPerformanceAck(message) {
+    const action = String(message.payload?.action || "");
+    let slot = performanceMessageSlot(message);
+    if (!slot && action === "performance.reset") slot = "reset";
+    if (!slot && action === "performance.report.export") slot = "export";
+    if (!slot) return false;
+    performanceDiagnostics.pending[slot] = null;
+    performanceDiagnostics.supported = true;
+    const text = String(message.payload?.message ||
+      (slot === "reset" ? "Performance samples reset" : "Performance report exported"));
+    if (slot === "reset") {
+      performanceDiagnostics.snapshot = null;
+      performanceDiagnostics.lastUpdatedAt = 0;
+      performanceDiagnostics.error = "";
+      window.setTimeout(() => requestPerformanceState(true), 0);
+    }
+    const path = String(message.payload?.path || "");
+    const statusText = slot === "export" && path && !message.payload?.cancelled
+      ? `Performance report exported to ${path}`
+      : text;
+    const toastText = slot === "export" && path ? "Performance report exported" : text;
+    setStatus(statusText, "info");
+    if (!message.payload?.cancelled) showToast(toastText, "success");
+    renderPerformanceDiagnostics();
+    return true;
+  }
+
+  function finishPerformanceError(message) {
+    const slot = performanceMessageSlot(message);
+    if (!slot) return false;
+    performanceDiagnostics.pending[slot] = null;
+    const text = String(message.payload?.message || message.payload?.error || "Performance diagnostics failed");
+    performanceDiagnostics.error = text;
+    if (slot === "state" && /unsupported|unknown|not available/i.test(text))
+      performanceDiagnostics.supported = false;
+    setStatus(text, "error");
+    showToast(text, "error");
+    renderPerformanceDiagnostics();
+    return true;
+  }
+
+  function applyPerformanceState(payload) {
+    const incoming = payload?.performance || payload?.diagnostics || payload?.state || payload;
+    if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return;
+    const seconds = performanceFinite(incoming.window?.seconds, incoming.windowSeconds);
+    if ([30, 120, 600].includes(seconds) && seconds !== performanceDiagnostics.windowSeconds)
+      return;
+    performanceDiagnostics.pending.state = null;
+    performanceDiagnostics.snapshot = clone(incoming);
+    performanceDiagnostics.lastUpdatedAt = Date.now();
+    performanceDiagnostics.error = "";
+    performanceDiagnostics.supported = true;
+    if (state.ui.page === "settings" && state.ui.settingsView === "performance")
+      renderPerformanceDiagnostics();
+  }
+
+  function renderPerformanceTrend(snapshot) {
+    const frameLine = $("#performanceFrameTrend");
+    const avisoLine = $("#performanceAvisoTrend");
+    if (!frameLine || !avisoLine) return;
+    const series = Array.isArray(snapshot?.series) ? snapshot.series.slice(-120) : [];
+    const points = series.map((entry, index) => ({
+      offset: performanceFinite(entry?.offsetMs, index) ?? index,
+      frame: performanceFinite(entry?.frameMs, entry?.frame),
+      aviso: performanceFinite(entry?.avisoMs, entry?.aviso)
+    })).filter(point => point.frame != null || point.aviso != null)
+      .sort((left, right) => left.offset - right.offset);
+    const values = points.flatMap(point => [point.frame, point.aviso])
+      .filter(value => value != null && value >= 0);
+    const maximum = values.length ? Math.max(...values, 16.7) : 0;
+    const scaleMaximum = maximum > 0 ? Math.ceil(maximum / 5) * 5 : 0;
+    const offsetMinimum = points.length ? points[0].offset : 0;
+    const offsetMaximum = points.length ? points[points.length - 1].offset : offsetMinimum;
+    const offsetSpan = Math.max(1, offsetMaximum - offsetMinimum);
+    const buildPoints = key => points.filter(point => point[key] != null).map((point, index, filtered) => {
+      const x = offsetMaximum === offsetMinimum
+        ? (filtered.length <= 1 ? 600 : index * 600 / (filtered.length - 1))
+        : (point.offset - offsetMinimum) * 600 / offsetSpan;
+      const y = scaleMaximum > 0 ? 118 - Math.min(scaleMaximum, Math.max(0, point[key])) * 118 / scaleMaximum : 118;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    frameLine.setAttribute("points", buildPoints("frame"));
+    avisoLine.setAttribute("points", buildPoints("aviso"));
+    $("#performanceTrendScale").textContent = `0-${formatPerformanceMs(scaleMaximum)} ms`;
+    $("#performanceTrendCaption").textContent = points.length
+      ? `${points.length.toLocaleString()} points`
+      : "No samples";
+    const description = $("#performanceTrendDescription");
+    if (description) description.textContent = points.length
+      ? `Frame and AVISO time across ${points.length} downsampled performance points, scaled to ${formatPerformanceMs(scaleMaximum)} milliseconds.`
+      : "No performance samples are available.";
+  }
+
+  function renderPerformanceDiagnostics() {
+    expirePerformanceRequest("reset");
+    expirePerformanceRequest("export");
+    const snapshot = performanceDiagnostics.snapshot;
+    const available = Boolean(snapshot && snapshot.available !== false);
+    const directPreview = !HOST_MODE;
+    const badge = $("#performanceStateBadge");
+    if (!badge) return;
+
+    let badgeText = "Awaiting data";
+    let badgeClass = "waiting";
+    let noticeText = "Waiting for the first performance sample...";
+    if (directPreview) {
+      badgeText = "Unavailable";
+      badgeClass = "unavailable";
+      noticeText = "Performance diagnostics are available only in the native Control Center while a radar screen is active.";
+    } else if (performanceDiagnostics.error) {
+      badgeText = "Diagnostics error";
+      badgeClass = "error";
+      noticeText = performanceDiagnostics.error;
+    } else if (available) {
+      badgeText = "Live";
+      badgeClass = "live";
+      noticeText = "";
+    } else if (snapshot?.available === false) {
+      badgeText = "Unavailable";
+      badgeClass = "unavailable";
+      noticeText = String(snapshot.message || "Performance diagnostics are not available for this radar screen.");
+    }
+    badge.className = `performance-state-badge ${badgeClass}`;
+    badge.textContent = badgeText;
+    const notice = $("#performanceNotice");
+    notice.textContent = noticeText;
+    notice.hidden = !noticeText;
+
+    ensureSelectValue($("#performanceWindowSeconds"), String(performanceDiagnostics.windowSeconds));
+    $("#performanceWindowSeconds").disabled = directPreview;
+    const resetButton = $("#performanceResetButton");
+    resetButton.disabled = directPreview || Boolean(performanceDiagnostics.pending.reset);
+    resetButton.textContent = performanceDiagnostics.pending.reset ? "Resetting..." : "Reset";
+    const exportButton = $("#performanceExportButton");
+    exportButton.disabled = directPreview || !available || Boolean(performanceDiagnostics.pending.export);
+    exportButton.textContent = performanceDiagnostics.pending.export ? "Exporting..." : "Export report";
+
+    const frame = performanceStats(performanceTiming(snapshot, "frame"));
+    $("#performanceFrameAverage").textContent = formatPerformanceMs(frame.average);
+    $("#performanceFrameMedian").textContent = formatPerformanceMs(frame.median);
+    $("#performanceFrameP95").textContent = formatPerformanceMs(frame.p95);
+    $("#performanceFrameMaximum").textContent = formatPerformanceMs(frame.max);
+
+    $("#performanceTimingRows").innerHTML = PERFORMANCE_TIMINGS.map(([key, label]) => {
+      const stats = performanceStats(performanceTiming(snapshot, key));
+      return `<tr><th scope="row">${escapeHtml(label)}</th><td>${formatPerformanceMs(stats.latest)}</td><td>${formatPerformanceMs(stats.average)}</td><td>${formatPerformanceMs(stats.median)}</td><td>${formatPerformanceMs(stats.p95)}</td><td>${formatPerformanceMs(stats.max)}</td></tr>`;
+    }).join("");
+    const sampleCount = performanceFinite(snapshot?.window?.samples, snapshot?.sampleCount) || 0;
+    const overwritten = performanceFinite(snapshot?.window?.overwritten, snapshot?.window?.dropped, snapshot?.droppedSamples) || 0;
+    const observedSeconds = performanceFinite(snapshot?.window?.observedSeconds);
+    $("#performanceSampleCaption").textContent = `${Math.round(sampleCount).toLocaleString()} samples${observedSeconds != null ? ` · ${observedSeconds.toFixed(observedSeconds < 10 ? 1 : 0)} s observed` : ""}${overwritten ? ` · ${Math.round(overwritten).toLocaleString()} overwritten` : ""}`;
+
+    const caches = Array.isArray(snapshot?.caches) ? snapshot.caches : [];
+    $("#performanceCacheRows").innerHTML = caches.length ? caches.map(cache => {
+      const hits = performanceFinite(cache?.hits) || 0;
+      const previewHits = performanceFinite(cache?.previewHits) || 0;
+      const misses = performanceFinite(cache?.misses) || 0;
+      const explicitRate = performanceFinite(cache?.hitRate, cache?.rate);
+      const rate = explicitRate == null ? (hits + previewHits + misses > 0 ? (hits + previewHits) / (hits + previewHits + misses) : null) : explicitRate;
+      const percent = rate == null ? "--" : `${(rate <= 1 ? rate * 100 : rate).toFixed(1)}%`;
+      return `<tr><th scope="row">${escapeHtml(cache?.name || "Cache")}</th><td>${formatPerformanceCount(hits)}</td><td>${formatPerformanceCount(previewHits)}</td><td>${formatPerformanceCount(misses)}</td><td>${percent}</td></tr>`;
+    }).join("") : '<tr class="performance-empty-row"><td colspan="5">No cache samples</td></tr>';
+
+    const processed = performanceStats(snapshot?.targets?.processed);
+    const visible = performanceStats(snapshot?.targets?.visible);
+    $("#performanceTargetsProcessed").textContent = formatPerformancePair(processed.latest, processed.average);
+    $("#performanceTargetsVisible").textContent = formatPerformancePair(visible.latest, visible.average);
+    const graphics = snapshot?.graphics || {};
+    $("#performanceGdiObjects").textContent = formatPerformancePair(graphics.processGdiObjects, graphics.peakProcessGdiObjects);
+    $("#performanceCachedBitmaps").textContent = formatPerformancePair(graphics.vsmrCachedBitmaps, graphics.peakVsmrCachedBitmaps);
+
+    const worker = snapshot?.worker || {};
+    const queues = Array.isArray(worker.queues) ? worker.queues : [];
+    $("#performanceQueueRows").innerHTML = queues.length ? queues.map(queue =>
+      `<tr><th scope="row">${escapeHtml(queue?.name || queue?.id || "Worker")}</th><td>${formatPerformanceCount(queue?.pendingDepth)}</td><td>${formatPerformanceCount(queue?.inFlight)}</td><td>${formatPerformanceCount(queue?.workers)}</td><td>${formatPerformanceCount(queue?.completedWaiting)}</td></tr>`
+    ).join("") : '<tr class="performance-empty-row"><td colspan="5">No worker queue samples</td></tr>';
+    $("#performanceWorkerState").textContent = worker.active === true ? "Active" : "Idle";
+    $("#performanceWorkerDepth").textContent = formatPerformancePair(worker.pendingDepth, worker.inFlight);
+    const rasterStats = performanceStats(performanceTiming(snapshot, "avisoRasterRebuild"));
+    const aviso = snapshot?.aviso || {};
+    const latestRaster = performanceFinite(rasterStats.latest, aviso.lastRebuildMilliseconds, rasterStats.average);
+    $("#performanceRasterRebuild").textContent = latestRaster == null ? "--" : `${formatPerformanceMs(latestRaster)} ms`;
+    $("#performanceAvisoDelayed").textContent = formatPerformancePair(aviso.framesDelayed, aviso.framesUsingFallback);
+    $("#performanceAvisoRebuilds").textContent = formatPerformancePair(aviso.rebuildsCompleted, worker.supersededRequests);
+    renderPerformanceTrend(snapshot);
+  }
+
   function renderSettings() {
     const settings = state.settings;
     $("#settingsProfileFile").value = settings.profileFile;
@@ -5223,7 +5590,7 @@
   function applyQueryState() {
     const params = new URLSearchParams(window.VSMR_PREVIEW_QUERY || location.search);
     const requestedPage = params.get("page");
-    const page = ["datalink", "cpdlc", "cdm"].includes(requestedPage) ? "settings" : requestedPage;
+    const page = ["datalink", "cpdlc", "cdm", "performance", "diagnostics"].includes(requestedPage) ? "settings" : requestedPage;
     const tab = params.get("tab");
     if (PAGE_TITLES[page]) state.ui.page = page;
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
@@ -5234,6 +5601,8 @@
     if (ui === "runtime") state.ui.controlCenterOpen = false;
     if (["mode", "groups", "inset", "profile"].includes(params.get("popup"))) state.ui.runtimePopover = params.get("popup");
     if (["active", "runways", "timing", "appearance"].includes(params.get("alerts"))) state.ui.alertsView = params.get("alerts");
+    const settingsView = params.get("settings") || (["performance", "diagnostics"].includes(requestedPage) ? "performance" : "");
+    if (SETTINGS_TITLES[settingsView]) state.ui.settingsView = settingsView;
     if (params.get("tag")) state.ui.selectedTagId = params.get("tag");
     if (params.get("profile")) {
       const match = state.profiles.find(record => record.data.name.toLowerCase() === params.get("profile").toLowerCase());
@@ -5375,7 +5744,7 @@
     document.addEventListener("click", event => {
       const guardedEditorAction = event.target.closest(
         "#controlWindow button[data-action], #controlWindow button[data-page], " +
-        "#controlWindow button[data-profile-tab], #controlWindow [data-tree-toggle], " +
+        "#controlWindow button[data-profile-tab], #controlWindow button[data-settings-tab], #controlWindow [data-tree-toggle], " +
         "#controlWindow [data-color-path], #controlWindow [data-tag-id], " +
         "#controlWindow [data-rule-index], #controlWindow [data-mode-index], " +
         "#controlWindow [data-managed-profile-id], #controlWindow [data-aviso-group-id], " +
@@ -5441,6 +5810,8 @@
       if (pageButton) { if (stageFocusedEditorValue()) setPage(pageButton.dataset.page); return; }
       const tabButton = event.target.closest("[data-profile-tab]");
       if (tabButton) { if (stageFocusedEditorValue()) setProfileTab(tabButton.dataset.profileTab); return; }
+      const settingsTabButton = event.target.closest("[data-settings-tab]");
+      if (settingsTabButton) { if (stageFocusedEditorValue()) setSettingsView(settingsTabButton.dataset.settingsTab); return; }
       const avisoViewButton = event.target.closest("[data-aviso-view]");
       if (avisoViewButton) { if (stageFocusedEditorValue()) { state.ui.avisoView = avisoViewButton.dataset.avisoView; renderAviso(); } return; }
       const alertsViewButton = event.target.closest("[data-alerts-view]");
@@ -5868,6 +6239,29 @@
     });
 
 
+    $("#settingsSubtabs").addEventListener("keydown", event => {
+      const current = event.target.closest("[data-settings-tab]");
+      if (!current || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const tabs = $$('[data-settings-tab]', $("#settingsSubtabs"));
+      const currentIndex = Math.max(0, tabs.indexOf(current));
+      let nextIndex = currentIndex;
+      if (event.key === "ArrowLeft") nextIndex = (currentIndex + tabs.length - 1) % tabs.length;
+      if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = tabs.length - 1;
+      event.preventDefault();
+      if (stageFocusedEditorValue()) setSettingsView(tabs[nextIndex].dataset.settingsTab, true);
+    });
+    $("#performanceWindowSeconds").addEventListener("change", event => {
+      const seconds = Number(event.target.value);
+      if (![30, 120, 600].includes(seconds)) return;
+      performanceDiagnostics.windowSeconds = seconds;
+      performanceDiagnostics.snapshot = null;
+      performanceDiagnostics.error = "";
+      performanceDiagnostics.pending.state = null;
+      renderPerformanceDiagnostics();
+      requestPerformanceState(true);
+    });
     $("#saveButton").addEventListener("pointerdown", event => {
       if (!stageFocusedEditorValue()) event.preventDefault();
     });
@@ -5892,6 +6286,8 @@
     }
     else if (action === "restore-profiles-backup") restoreProfilesBackup();
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
+    else if (action === "performance-reset") resetPerformanceDiagnostics();
+    else if (action === "performance-export") exportPerformanceReport();
     else if (action === "assign-legacy-inset-presets") assignLegacyInsetPresetsToActiveAirport();
     else if (action === "close-runtime-popover") { state.ui.runtimePopover = ""; renderRuntimeMenu(); }
     else if (action === "save-inset-preset") openInsetPresetDialog("capture");
@@ -6733,6 +7129,10 @@
       }
       return;
     }
+    if (message.type === "performance.state") {
+      applyPerformanceState(payload);
+      return;
+    }
     if (message.type === "datalink.state") {
       const incomingDatalink = payload.datalink || payload.state?.datalink || payload.state || payload;
       if (datalinkPending.connection?.id && messageMatchesRequest(message, datalinkPending.connection.id)) {
@@ -6751,6 +7151,7 @@
       return;
     }
     if (message.type === "state.ack") {
+      if (finishPerformanceAck(message)) return;
       if (finishDatalinkAck(message)) return;
       return;
     }
@@ -6786,6 +7187,7 @@
       return;
     }
     if (message.type === "state.error" || message.type === "error") {
+      if (finishPerformanceError(message)) return;
       if (finishDatalinkError(message)) return;
 	  finishRuntimeCommand(responseId, true);
 	  clearSplitAvisoContext(responseId);
@@ -6850,15 +7252,17 @@
   bindEvents();
   renderAll();
   resetHistory(true);
-	setHostAuthoritativeReady(!HOST_MODE);
+  setHostAuthoritativeReady(!HOST_MODE);
   window.setInterval(() => requestDatalinkState(), 1250);
+  window.setInterval(() => requestPerformanceState(), 1000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.ui.page === "settings") requestDatalinkState(true);
+    if (!document.hidden && performanceViewActive()) requestPerformanceState(true);
   });
   setStatus(HOST_MODE ? "Waiting for configuration…" : "Bundled LFPG preview loaded");
   postBridge("ui.ready", {
     hostMode: HOST_MODE,
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink"]
+    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink", "performance-diagnostics"]
   });
 })();
