@@ -54,6 +54,8 @@ public:
 	std::string BuildPerformanceReportJson(
 		std::uint32_t windowSeconds = 0,
 		std::size_t maximumSeriesPoints = VsmrPerformance::MaximumFrameSamples);
+	void MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason reason) noexcept;
 	void SamplePerformanceResourcesIfDue(bool force = false);
 	void PublishCrashRadarState(
 		const char* radar = "main",
@@ -202,6 +204,8 @@ public:
 	{
 		unsigned long long requestId = 0;
 		std::uint64_t performanceQueuedAtMilliseconds = 0;
+		std::uint32_t debounceMilliseconds = 0;
+		std::shared_ptr<std::atomic<std::uint64_t>> cancellationToken;
 		unsigned long long groupGeneration = 0;
 		std::string path;
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
@@ -327,6 +331,8 @@ public:
 	bool AvisoGeoJsonRenderThreadStarted = false;
 	bool AvisoGeoJsonRenderInFlight = false;
 	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
+	std::shared_ptr<std::atomic<std::uint64_t>> AvisoGeoJsonRenderCancellationToken =
+		std::make_shared<std::atomic<std::uint64_t>>(0);
 	std::unique_ptr<AvisoRasterRenderRequest> AvisoGeoJsonPendingRenderRequest;
 	std::unique_ptr<AvisoRasterRenderResult> AvisoGeoJsonCompletedRenderResult;
 	unsigned long long AvisoGeoJsonRenderNextRequestId = 0;
@@ -353,6 +359,20 @@ public:
 	double PerfLastRimcasMs = 0.0;
 	double PerfLastTagsMs = 0.0;
 	double PerfLastSrwMs = 0.0;
+	double PerfLastAvisoInsetMs = 0.0;
+	double PerfLastRdfMs = 0.0;
+	double PerfLastInsetChromeMs = 0.0;
+	struct AvisoLoadPerformance
+	{
+		std::string path;
+		double readMilliseconds = 0.0;
+		double parseMilliseconds = 0.0;
+		double validateMilliseconds = 0.0;
+		double convertCommitMilliseconds = 0.0;
+		double totalMilliseconds = 0.0;
+		bool success = false;
+	};
+	AvisoLoadPerformance LastAvisoLoadPerformance;
 	unsigned long PerfLastLogTick = 0;
 	std::shared_ptr<const VsmrScene::RadarScene> CurrentRadarScene;
 	std::array<std::shared_ptr<VsmrScene::RadarScene>, 2> RadarSceneBuffers;
@@ -361,6 +381,13 @@ public:
 	double PerfLastSceneBuildMs = 0.0;
 	VsmrPerformance::PerformanceDiagnostics PerformanceDiagnostics;
 	std::uint64_t PerformanceLastResourceSampleMilliseconds = 0;
+	std::atomic<std::uint32_t> PendingPerformanceRefreshReasonMask{
+		VsmrPerformance::RefreshReasonMask(VsmrPerformance::FrameRefreshReason::Initial) };
+	bool PerformanceLastMainViewValid = false;
+	double PerformanceLastMainViewMinLongitude = 0.0;
+	double PerformanceLastMainViewMinLatitude = 0.0;
+	double PerformanceLastMainViewMaxLongitude = 0.0;
+	double PerformanceLastMainViewMaxLatitude = 0.0;
 
 	map<int, bool> appWindowDisplays;
 
@@ -739,7 +766,9 @@ public:
 	void AvisoGeoJsonRenderThreadMain();
 	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
 	void ApplyCompletedAvisoGeoJsonRaster();
+	bool IsAvisoRasterRenderRequestCancelled(const AvisoRasterRenderRequest& request) const noexcept;
 	std::unique_ptr<AvisoRasterRenderResult> RenderAvisoGeoJsonRaster(const AvisoRasterRenderRequest& request) const;
+	bool PrewarmAvisoForActiveAirport();
 	std::vector<AvisoPreset> GetAvisoPresets() const;
 	std::string GetDefaultAvisoPresetName() const;
 	std::string GetActiveAvisoPresetName() const;

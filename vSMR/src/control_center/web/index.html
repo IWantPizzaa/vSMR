@@ -651,7 +651,7 @@
 <polyline class="performance-trend-line aviso" id="performanceAvisoTrend" points=""></polyline>
 <polyline class="performance-trend-line frame" id="performanceFrameTrend" points=""></polyline>
 </svg>
-<div aria-hidden="true" class="performance-trend-legend"><span><i class="frame"></i>Frame</span><span><i class="aviso"></i>AVISO</span><span id="performanceTrendScale">0-0 ms</span></div>
+<div aria-hidden="true" class="performance-trend-legend"><span><i class="frame"></i>Frame</span><span><i class="aviso"></i>Main AVISO</span><span id="performanceTrendScale">0-0 ms</span></div>
 </div>
 </section>
 <section class="panel performance-timing-panel">
@@ -664,6 +664,27 @@
 </table>
 </div>
 <p class="performance-method-note">Stage timings are diagnostic slices and can overlap. AVISO raster rebuilds run on a worker thread.</p>
+</section>
+<section class="panel performance-refresh-panel">
+<div class="panel-title"><span>Refresh causes and frame spikes</span><small id="performanceSpikeSummary">No spikes</small></div>
+<div class="performance-refresh-body">
+<dl class="performance-counter-list performance-spike-list">
+<div><dt>Latest refresh reason</dt><dd id="performanceRefreshLatest">--</dd></div>
+<div><dt>Latest spike</dt><dd id="performanceSpikeLatest">--</dd></div>
+<div><dt>Worst spike</dt><dd id="performanceSpikeWorst">--</dd></div>
+<div><dt>Processed / visible targets at spike</dt><dd id="performanceSpikeTargets">--</dd></div>
+<div><dt>Main / inset AVISO at spike</dt><dd id="performanceSpikeAviso">--</dd></div>
+<div class="performance-spike-context-row"><dt>Latest spike context</dt><dd id="performanceSpikeContext">--</dd></div>
+</dl>
+<div class="performance-table-scroll performance-refresh-reasons">
+<table class="performance-table compact">
+<caption class="visually-hidden">Refresh reason counts in the selected window</caption>
+<thead><tr><th scope="col">Refresh reason</th><th scope="col">Frames</th></tr></thead>
+<tbody id="performanceRefreshReasonRows"></tbody>
+</table>
+<p class="performance-method-note">Counts can overlap when one frame has more than one cause.</p>
+</div>
+</div>
 </section>
 <div class="performance-detail-grid">
 <section class="panel performance-cache-panel">
@@ -693,6 +714,8 @@
 <div><dt>Visible targets</dt><dd id="performanceTargetsVisible">--</dd></div>
 <div><dt>Process-wide GDI objects</dt><dd id="performanceGdiObjects">--</dd></div>
 <div><dt>vSMR cached bitmaps</dt><dd id="performanceCachedBitmaps">--</dd></div>
+<div><dt>Estimated bitmap memory</dt><dd id="performanceBitmapMemory">--</dd></div>
+<div><dt>Main / inset AVISO bitmaps</dt><dd id="performanceAvisoBitmaps">--</dd></div>
 </dl>
 </section>
 <section class="panel performance-counter-panel">
@@ -701,7 +724,11 @@
 <div><dt>Pending / in flight</dt><dd id="performanceWorkerDepth">--</dd></div>
 <div><dt>Raster rebuild (window)</dt><dd id="performanceRasterRebuild">--</dd></div>
 <div><dt>Delayed / fallback frames (reset)</dt><dd id="performanceAvisoDelayed">--</dd></div>
-<div><dt>Completed / superseded (reset)</dt><dd id="performanceAvisoRebuilds">--</dd></div>
+<div><dt>Completed / failed builds (reset)</dt><dd id="performanceAvisoRebuilds">--</dd></div>
+<div><dt>Queued / coalesced (reset)</dt><dd id="performanceAvisoRequests">--</dd></div>
+<div><dt>Debounced / superseded (reset)</dt><dd id="performanceAvisoDebounce">--</dd></div>
+<div><dt>Cancelled builds / discarded results (reset)</dt><dd id="performanceAvisoCancellations">--</dd></div>
+<div><dt>Applied results (reset)</dt><dd id="performanceAvisoResults">--</dd></div>
 </dl>
 </section>
 </div>

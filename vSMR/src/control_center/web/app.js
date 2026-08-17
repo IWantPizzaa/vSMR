@@ -24,11 +24,18 @@
   const PERFORMANCE_TIMINGS = [
     ["frame", "Frame"],
     ["scene", "Scene capture"],
-    ["aviso", "AVISO draw"],
+    ["sceneAvisoLoad", "Scene · AVISO load"],
+    ["sceneControllerOwnership", "Scene · controller ownership"],
+    ["sceneTargetCapture", "Scene · target capture"],
+    ["sceneFinalize", "Scene · finalize"],
+    ["aviso", "Main AVISO"],
+    ["avisoInset", "AVISO inset"],
     ["targets", "Targets"],
     ["rimcas", "RIMCAS"],
     ["tags", "Tags"],
-    ["srw", "Insets"],
+    ["srw", "SRW"],
+    ["rdf", "RDF"],
+    ["insetChrome", "Inset chrome"],
     ["euroScopeLookups", "Instrumented ES lookups"],
     ["avisoRasterRebuild", "AVISO raster rebuild"]
   ];
@@ -5024,6 +5031,28 @@
     return number == null ? "--" : Math.max(0, Math.round(number)).toLocaleString();
   }
 
+  function formatPerformanceBytes(value) {
+    const number = performanceFinite(value);
+    if (number == null) return "--";
+    const bytes = Math.max(0, number);
+    if (bytes < 1024) return `${Math.round(bytes).toLocaleString()} B`;
+    const units = ["KiB", "MiB", "GiB"];
+    let scaled = bytes / 1024;
+    let unit = units[0];
+    for (let index = 1; index < units.length && scaled >= 1024; ++index) {
+      scaled /= 1024;
+      unit = units[index];
+    }
+    return `${scaled.toFixed(scaled < 10 ? 2 : scaled < 100 ? 1 : 0)} ${unit}`;
+  }
+
+  function formatPerformanceLabel(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "--";
+    return text.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/[_-]+/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+  }
+
   function formatPerformancePair(current, comparison) {
     const first = formatPerformanceCount(current);
     const second = formatPerformanceCount(comparison);
@@ -5037,7 +5066,70 @@
       return timings[key] || timings.euroscopeLookups || timings.sdkLookups || null;
     if (key === "avisoRasterRebuild")
       return timings[key] || timings.rasterRebuild || null;
+    if (key === "avisoInset")
+      return timings[key] || timings.insetAviso || null;
+    if (key === "insetChrome")
+      return timings[key] || timings.insetsChrome || null;
     return timings[key] || null;
+  }
+
+  function renderPerformanceRefreshContext(snapshot) {
+    const refresh = snapshot?.refresh || snapshot?.refreshContext || {};
+    const spikeContainer = refresh.spike && typeof refresh.spike === "object" ? refresh.spike : {};
+    const spike = refresh.latestSpike || spikeContainer.latest || snapshot?.latestSpike || {};
+    const latestReason = refresh.latestReason || refresh.lastReason || snapshot?.latestFrame?.refreshReason;
+    $("#performanceRefreshLatest").textContent = formatPerformanceLabel(latestReason);
+
+    const spikeCount = performanceFinite(refresh.spikeCount, spikeContainer.count);
+    const threshold = performanceFinite(refresh.spikeThresholdMilliseconds, spikeContainer.thresholdMilliseconds, spikeContainer.thresholdMs);
+    const summaryParts = [];
+    if (spikeCount != null) summaryParts.push(`${formatPerformanceCount(spikeCount)} spike${spikeCount === 1 ? "" : "s"}`);
+    if (threshold != null) summaryParts.push(`at or above ${formatPerformanceMs(threshold)} ms`);
+    $("#performanceSpikeSummary").textContent = summaryParts.join(" · ") || "No spike data";
+
+    const spikeFrame = performanceFinite(spike.frameMilliseconds, spike.frameMs);
+    const spikeReason = spike.reason || spike.refreshReason;
+    const spikeAge = performanceFinite(spike.ageMilliseconds, spike.ageMs);
+    const latestParts = [];
+    if (spikeFrame != null) latestParts.push(`${formatPerformanceMs(spikeFrame)} ms`);
+    if (spikeReason) latestParts.push(formatPerformanceLabel(spikeReason));
+    if (spikeAge != null) latestParts.push(`${Math.max(0, Math.round(spikeAge / 1000)).toLocaleString()} s ago`);
+    $("#performanceSpikeLatest").textContent = latestParts.join(" · ") || "--";
+    const worstSpike = refresh.worstSpike || spikeContainer.worst || {};
+    const worstFrame = performanceFinite(worstSpike.frameMilliseconds, worstSpike.frameMs);
+    const worstReason = worstSpike.reason || worstSpike.refreshReason;
+    $("#performanceSpikeWorst").textContent = worstFrame == null
+      ? "--"
+      : `${formatPerformanceMs(worstFrame)} ms${worstReason ? ` · ${formatPerformanceLabel(worstReason)}` : ""}`;
+    $("#performanceSpikeTargets").textContent = formatPerformancePair(
+      performanceFinite(spike.processedTargets, spike.targets?.processed),
+      performanceFinite(spike.visibleTargets, spike.targets?.visible));
+    const spikeMainAviso = performanceFinite(spike.avisoMilliseconds, spike.timings?.aviso);
+    const spikeInsetAviso = performanceFinite(spike.avisoInsetMilliseconds, spike.timings?.avisoInset);
+    $("#performanceSpikeAviso").textContent = spikeMainAviso == null && spikeInsetAviso == null
+      ? "--"
+      : `${formatPerformanceMs(spikeMainAviso)} / ${formatPerformanceMs(spikeInsetAviso)} ms`;
+
+    const contextParts = [];
+    const contextText = String(spike.context || "").trim();
+    if (contextText) contextParts.push(contextText);
+    const activeInsets = Array.isArray(spike.activeInsets) ? spike.activeInsets.filter(Boolean) : [];
+    if (activeInsets.length) contextParts.push(`Insets: ${activeInsets.join(", ")}`);
+    if (spike.avisoGeneration != null) contextParts.push(`AVISO generation ${spike.avisoGeneration}`);
+    const context = contextParts.join(" · ") || "--";
+    const contextOutput = $("#performanceSpikeContext");
+    contextOutput.textContent = context;
+    contextOutput.title = context === "--" ? "" : context;
+
+    const rawReasons = refresh.reasonCounts || refresh.reasons || [];
+    const reasons = Array.isArray(rawReasons)
+      ? rawReasons
+      : Object.entries(rawReasons).map(([reason, count]) => ({ reason, count }));
+    $("#performanceRefreshReasonRows").innerHTML = reasons.length ? reasons.map(item => {
+      const reason = typeof item === "string" ? item : item?.reason || item?.name || item?.id;
+      const count = typeof item === "string" ? null : performanceFinite(item?.count, item?.frames, item?.samples);
+      return `<tr><th scope="row">${escapeHtml(formatPerformanceLabel(reason))}</th><td>${formatPerformanceCount(count)}</td></tr>`;
+    }).join("") : '<tr class="performance-empty-row"><td colspan="2">No refresh reason samples</td></tr>';
   }
 
   function performanceViewActive() {
@@ -5195,7 +5287,7 @@
       : "No samples";
     const description = $("#performanceTrendDescription");
     if (description) description.textContent = points.length
-      ? `Frame and AVISO time across ${points.length} downsampled performance points, scaled to ${formatPerformanceMs(scaleMaximum)} milliseconds.`
+      ? `Frame and main AVISO time across ${points.length} downsampled performance points, scaled to ${formatPerformanceMs(scaleMaximum)} milliseconds.`
       : "No performance samples are available.";
   }
 
@@ -5276,6 +5368,14 @@
     const graphics = snapshot?.graphics || {};
     $("#performanceGdiObjects").textContent = formatPerformancePair(graphics.processGdiObjects, graphics.peakProcessGdiObjects);
     $("#performanceCachedBitmaps").textContent = formatPerformancePair(graphics.vsmrCachedBitmaps, graphics.peakVsmrCachedBitmaps);
+    const bitmapBytes = performanceFinite(graphics.estimatedBitmapBytes, graphics.bitmapBytes);
+    const peakBitmapBytes = performanceFinite(graphics.peakEstimatedBitmapBytes, graphics.peakBitmapBytes);
+    $("#performanceBitmapMemory").textContent = peakBitmapBytes == null
+      ? formatPerformanceBytes(bitmapBytes)
+      : `${formatPerformanceBytes(bitmapBytes)} / ${formatPerformanceBytes(peakBitmapBytes)}`;
+    $("#performanceAvisoBitmaps").textContent = formatPerformancePair(
+      performanceFinite(graphics.mainAvisoBitmapCount, graphics.avisoBitmaps?.main),
+      performanceFinite(graphics.insetAvisoBitmapCount, graphics.avisoBitmaps?.inset));
 
     const worker = snapshot?.worker || {};
     const queues = Array.isArray(worker.queues) ? worker.queues : [];
@@ -5289,7 +5389,14 @@
     const latestRaster = performanceFinite(rasterStats.latest, aviso.lastRebuildMilliseconds, rasterStats.average);
     $("#performanceRasterRebuild").textContent = latestRaster == null ? "--" : `${formatPerformanceMs(latestRaster)} ms`;
     $("#performanceAvisoDelayed").textContent = formatPerformancePair(aviso.framesDelayed, aviso.framesUsingFallback);
-    $("#performanceAvisoRebuilds").textContent = formatPerformancePair(aviso.rebuildsCompleted, worker.supersededRequests);
+    $("#performanceAvisoRebuilds").textContent = formatPerformancePair(aviso.rebuildsCompleted, aviso.rasterBuildFailures);
+    $("#performanceAvisoRequests").textContent = formatPerformancePair(aviso.requestsQueued, aviso.requestsCoalesced);
+    $("#performanceAvisoDebounce").textContent = formatPerformancePair(aviso.requestsDebounced, aviso.requestsSuperseded);
+    $("#performanceAvisoCancellations").textContent = formatPerformancePair(
+      performanceFinite(aviso.rasterBuildsCancelled, aviso.buildsCancelled, aviso.requestsCancelled),
+      aviso.resultsDiscarded);
+    $("#performanceAvisoResults").textContent = formatPerformanceCount(aviso.resultsApplied);
+    renderPerformanceRefreshContext(snapshot);
     renderPerformanceTrend(snapshot);
   }
 
