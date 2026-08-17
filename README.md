@@ -205,7 +205,7 @@ The compact Runtime Menu provides quick access to:
 - airport-specific inset presets and defaults
 - the Control Center
 
-The Runtime Menu and Control Center use the same slider-control symbol for Settings, eye for AVISO Groups, and layered-view symbol for display Modes. Insets use a monitor symbol, while the Control Center Display page uses an aircraft.
+The Runtime Menu and Control Center use the same slider-control symbol for Settings, layered-view symbol for AVISO Groups, and eye symbol for display Modes. Insets use a monitor symbol, while the Control Center Display page uses an aircraft.
 
 The Runtime Menu uses a square outer frame while retaining rounded action buttons. Its position, minimized state, and radar-window state are saved with the EuroScope ASR. Right-click the striped top handle to collapse the Runtime Menu to that handle only; right-click it again to restore the airport and action buttons. Inset presets are stored by airport, not by profile, so switching profiles does not remove or replace the current airport's presets.
 

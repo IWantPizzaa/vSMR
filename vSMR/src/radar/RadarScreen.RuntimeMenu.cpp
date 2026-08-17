@@ -191,7 +191,7 @@ namespace
 			return;
 		}
 
-		if (kind == "mode")
+		if (kind == "groups")
 		{
 			const Gdiplus::PointF topLayer[] = {
 				Gdiplus::PointF(centerX, centerY - 8.0f),
@@ -215,7 +215,7 @@ namespace
 			return;
 		}
 
-		if (kind == "groups")
+		if (kind == "mode")
 		{
 			Gdiplus::GraphicsPath eyePath;
 			eyePath.AddBezier(centerX - 8.5f, centerY, centerX - 5.3f, centerY - 5.0f, centerX + 5.3f, centerY - 5.0f, centerX + 8.5f, centerY);
