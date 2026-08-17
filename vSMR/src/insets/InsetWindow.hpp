@@ -1,5 +1,6 @@
 #pragma once
 #include "EuroScopePlugIn.h"
+#include "diagnostics/PerformanceDiagnostics.hpp"
 #include <array>
 #include <string>
 #include <map>
@@ -120,6 +121,8 @@ public:
 	void ClearAvisoViewportCache();
 	void CancelAvisoViewportRender();
 	void ResetAvisoInteractionState();
+	VsmrPerformance::AvisoQueueDepth GetAvisoPerformanceQueueDepth();
+	std::size_t GetAvisoPerformanceBitmapCount(std::uint64_t* estimatedBytes = nullptr) const;
 	
 private:
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
