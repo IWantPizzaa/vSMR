@@ -389,6 +389,8 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 
 	SelectAvisoViewport(this, appWindow);
 	appWindow->BeginAvisoPan(Pt);
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::InsetPanZoom);
 	RequestRefresh();
 }
 
@@ -405,7 +407,11 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 
 	if (Button == BUTTON_RIGHT)
 	{
-		EndAvisoViewportPans(this);
+		if (EndAvisoViewportPans(this))
+		{
+			MarkPerformanceRefreshReason(
+				VsmrPerformance::FrameRefreshReason::InsetPanZoom);
+		}
 		RequestRefresh();
 	}
 }
@@ -493,6 +499,8 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 				ApplyMoveCursor();
 			}
 			mouseLocation = Pt;
+			MarkPerformanceRefreshReason(
+				VsmrPerformance::FrameRefreshReason::InsetMoveResize);
 			RequestRefresh();
 			return;
 		}
@@ -661,6 +669,8 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 	UNREFERENCED_PARAMETER(Area);
 	UNREFERENCED_PARAMETER(sObjectId);
 	mouseLocation = Pt;
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::Hover);
 	CInsetWindow* activeWindowInteraction = ActiveInsetWindowInteraction(this);
 	if (activeWindowInteraction != nullptr)
 	{
@@ -699,11 +709,17 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 		if ((::GetAsyncKeyState(VK_RBUTTON) & 0x8000) == 0)
 		{
 			activePanViewport->EndAvisoPan();
+			MarkPerformanceRefreshReason(
+				VsmrPerformance::FrameRefreshReason::InsetPanZoom);
 			RequestRefresh();
 			return;
 		}
 
-		activePanViewport->UpdateAvisoPan(Pt);
+		if (activePanViewport->UpdateAvisoPan(Pt))
+		{
+			MarkPerformanceRefreshReason(
+				VsmrPerformance::FrameRefreshReason::InsetPanZoom);
+		}
 		RequestRefresh();
 		return;
 	}
@@ -766,6 +782,8 @@ bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)
 		}
 		RestoreInsetCursor();
 		SaveInsetStateToAsrForAirport(getActiveAirport());
+		MarkPerformanceRefreshReason(
+			VsmrPerformance::FrameRefreshReason::InsetMoveResize);
 		RequestRefresh();
 	}
 
@@ -842,6 +860,8 @@ void CSMRRadar::CancelInsetWindowInteractions()
 	if (changed)
 	{
 		SaveInsetStateToAsrForAirport(getActiveAirport());
+		MarkPerformanceRefreshReason(
+			VsmrPerformance::FrameRefreshReason::InsetMoveResize);
 		RequestRefresh();
 	}
 }
@@ -928,7 +948,11 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 			mouseLocation = insetPoint;
 			SelectAvisoViewport(radar, appWindow);
 			if (appWindow->ZoomAvisoAtPoint(insetPoint, scaleMultiplier))
+			{
+				radar->MarkPerformanceRefreshReason(
+					VsmrPerformance::FrameRefreshReason::InsetPanZoom);
 				radar->RequestRefresh();
+			}
 			return true;
 		}
 
@@ -958,6 +982,8 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		reinterpret_cast<std::uintptr_t>(this));
 	Logger::info(string(__FUNCSIG__));
 	mouseLocation = Pt;
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::UserActionExternal);
 	if (HandleRuntimeMenuClick(ObjectType, sObjectId, Pt, Area, Button))
 		return;
 	if (ActiveRuntimeMenuPopup != RuntimeMenuPopup::None)

@@ -11,6 +11,8 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 		Logger::info(string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
 		return;
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::TargetOrFlightPlanUpdate);
 	const char* callsignRaw = RadarTarget.GetCallsign();
 	if (callsignRaw == nullptr || callsignRaw[0] == '\0')
 	{
@@ -261,6 +263,8 @@ void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	Logger::info(string(__FUNCSIG__));
 	if (!FlightPlan.IsValid() || FlightPlan.GetCallsign() == nullptr || FlightPlan.GetCallsign()[0] == '\0')
 		return;
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::TargetOrFlightPlanUpdate);
 
 	const string callsign = FlightPlan.GetCallsign();
 	Patatoides.erase(callsign);

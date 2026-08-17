@@ -14,6 +14,57 @@ namespace
 {
 	using VsmrPerformance::Distribution;
 	using VsmrPerformance::FrameSample;
+	using VsmrPerformance::FrameRefreshReason;
+	using VsmrPerformance::RefreshReasonCounters;
+
+	struct RefreshReasonDescriptor
+	{
+		FrameRefreshReason reason;
+		const char* name;
+		std::uint64_t RefreshReasonCounters::* counter;
+	};
+
+	// Ordering is also the primary-reason priority. Specific view/configuration
+	// causes precede inferred background target changes and the generic fallback.
+	const RefreshReasonDescriptor RefreshReasonDescriptors[] = {
+		{ FrameRefreshReason::Initial, "initial", &RefreshReasonCounters::initial },
+		{ FrameRefreshReason::MainViewChanged, "mainViewChanged", &RefreshReasonCounters::mainViewChanged },
+		{ FrameRefreshReason::InsetPanZoom, "insetPanZoom", &RefreshReasonCounters::insetPanZoom },
+		{ FrameRefreshReason::InsetMoveResize, "insetMoveResize", &RefreshReasonCounters::insetMoveResize },
+		{ FrameRefreshReason::ProfileUpdate, "profileUpdate", &RefreshReasonCounters::profileUpdate },
+		{ FrameRefreshReason::AirportUpdate, "airportUpdate", &RefreshReasonCounters::airportUpdate },
+		{ FrameRefreshReason::ControllerUpdate, "controllerUpdate", &RefreshReasonCounters::controllerUpdate },
+		{ FrameRefreshReason::AvisoWorkerUpdate, "avisoWorkerUpdate", &RefreshReasonCounters::avisoWorkerUpdate },
+		{ FrameRefreshReason::AvisoDataChanged, "avisoDataChanged", &RefreshReasonCounters::avisoDataChanged },
+		{ FrameRefreshReason::Hover, "hover", &RefreshReasonCounters::hover },
+		{ FrameRefreshReason::TargetOrFlightPlanUpdate, "targetOrFlightPlanUpdate", &RefreshReasonCounters::targetOrFlightPlanUpdate },
+		{ FrameRefreshReason::UserActionExternal, "userActionExternal", &RefreshReasonCounters::userActionExternal }
+	};
+
+	bool HasRefreshReason(std::uint32_t mask, FrameRefreshReason reason) noexcept
+	{
+		return (mask & VsmrPerformance::RefreshReasonMask(reason)) != 0;
+	}
+
+	void CountRefreshReasons(std::uint32_t mask, RefreshReasonCounters& counters) noexcept
+	{
+		if (mask == 0)
+		{
+			++counters.unspecified;
+			return;
+		}
+		bool matched = false;
+		for (const RefreshReasonDescriptor& descriptor : RefreshReasonDescriptors)
+		{
+			if (HasRefreshReason(mask, descriptor.reason))
+			{
+				++(counters.*descriptor.counter);
+				matched = true;
+			}
+		}
+		if (!matched)
+			++counters.unspecified;
+	}
 
 	Distribution CalculateDistribution(std::vector<double> values)
 	{
@@ -123,8 +174,10 @@ namespace
 			<< ",\"requestsQueued\":" << aviso.requestsQueued
 			<< ",\"requestsCoalesced\":" << aviso.requestsCoalesced
 			<< ",\"requestsSuperseded\":" << aviso.requestsSuperseded
+			<< ",\"requestsDebounced\":" << aviso.requestsDebounced
 			<< ",\"rasterBuilds\":" << aviso.rasterBuilds
 			<< ",\"rasterBuildFailures\":" << aviso.rasterBuildFailures
+			<< ",\"rasterBuildsCancelled\":" << aviso.rasterBuildsCancelled
 			<< ",\"resultsApplied\":" << aviso.resultsApplied
 			<< ",\"resultsDiscarded\":" << aviso.resultsDiscarded
 			<< ",\"queue\":{\"pending\":" << aviso.queue.pending
@@ -137,6 +190,95 @@ namespace
 		WriteDistribution(output, aviso.queueWaitMilliseconds);
 		output << '}';
 	}
+
+	void WriteFrameSample(std::ostringstream& output, const FrameSample& frame)
+	{
+		output << "{\"frameId\":" << frame.frameId
+			<< ",\"timestampMilliseconds\":" << frame.timestampMilliseconds
+			<< ",\"frame\":" << frame.frameMilliseconds
+			<< ",\"scene\":" << frame.sceneMilliseconds
+			<< ",\"aviso\":" << frame.avisoMilliseconds
+			<< ",\"targets\":" << frame.targetsMilliseconds
+			<< ",\"rimcas\":" << frame.rimcasMilliseconds
+			<< ",\"tags\":" << frame.tagsMilliseconds
+			<< ",\"srw\":" << frame.srwMilliseconds
+			<< ",\"avisoInset\":" << frame.avisoInsetMilliseconds
+			<< ",\"rdf\":" << frame.rdfMilliseconds
+			<< ",\"insetChrome\":" << frame.insetChromeMilliseconds
+			<< ",\"sceneAvisoLoad\":" << frame.sceneAvisoLoadMilliseconds
+			<< ",\"sceneControllerOwnership\":" << frame.sceneControllerOwnershipMilliseconds
+			<< ",\"sceneTargetCapture\":" << frame.sceneTargetCaptureMilliseconds
+			<< ",\"sceneFinalize\":" << frame.sceneFinalizeMilliseconds
+			<< ",\"euroScopeLookups\":" << frame.euroScopeLookupMilliseconds
+			<< ",\"refreshReasonMask\":" << frame.refreshReasonMask
+			<< ",\"refreshReasonPrimary\":\""
+			<< VsmrPerformance::PrimaryRefreshReasonName(frame.refreshReasonMask) << "\""
+			<< ",\"refreshReasons\":[";
+		const std::vector<std::string> reasonNames =
+			VsmrPerformance::RefreshReasonNames(frame.refreshReasonMask);
+		for (std::size_t index = 0; index < reasonNames.size(); ++index)
+		{
+			if (index != 0)
+				output << ',';
+			output << '\"' << reasonNames[index] << '\"';
+		}
+		output << "]"
+			<< ",\"processedTargets\":" << frame.processedTargets
+			<< ",\"capturedTargets\":" << frame.capturedTargets
+			<< ",\"radarFilteredTargets\":" << frame.radarFilteredTargets
+			<< ",\"iconTargets\":" << frame.iconTargets
+			<< ",\"tagTargets\":" << frame.tagTargets
+			<< ",\"visibleTargets\":" << frame.visibleTargets
+			<< ",\"visibleTags\":" << frame.visibleTags << '}';
+	}
+
+	void WriteRefreshReasonCounters(
+		std::ostringstream& output,
+		const RefreshReasonCounters& counters)
+	{
+		output << "{\"unspecified\":" << counters.unspecified
+			<< ",\"initial\":" << counters.initial
+			<< ",\"mainViewChanged\":" << counters.mainViewChanged
+			<< ",\"insetPanZoom\":" << counters.insetPanZoom
+			<< ",\"insetMoveResize\":" << counters.insetMoveResize
+			<< ",\"hover\":" << counters.hover
+			<< ",\"targetOrFlightPlanUpdate\":" << counters.targetOrFlightPlanUpdate
+			<< ",\"controllerUpdate\":" << counters.controllerUpdate
+			<< ",\"profileUpdate\":" << counters.profileUpdate
+			<< ",\"airportUpdate\":" << counters.airportUpdate
+			<< ",\"avisoWorkerUpdate\":" << counters.avisoWorkerUpdate
+			<< ",\"userActionExternal\":" << counters.userActionExternal
+			<< ",\"avisoDataChanged\":" << counters.avisoDataChanged << '}';
+	}
+}
+
+std::vector<std::string> VsmrPerformance::RefreshReasonNames(std::uint32_t mask)
+{
+	std::vector<std::string> names;
+	if (mask == 0)
+	{
+		names.emplace_back("unspecified");
+		return names;
+	}
+	names.reserve(sizeof(RefreshReasonDescriptors) / sizeof(RefreshReasonDescriptors[0]));
+	for (const RefreshReasonDescriptor& descriptor : RefreshReasonDescriptors)
+	{
+		if (HasRefreshReason(mask, descriptor.reason))
+			names.emplace_back(descriptor.name);
+	}
+	if (names.empty())
+		names.emplace_back("unspecified");
+	return names;
+}
+
+const char* VsmrPerformance::PrimaryRefreshReasonName(std::uint32_t mask) noexcept
+{
+	for (const RefreshReasonDescriptor& descriptor : RefreshReasonDescriptors)
+	{
+		if (HasRefreshReason(mask, descriptor.reason))
+			return descriptor.name;
+	}
+	return "unspecified";
 }
 
 VsmrPerformance::PerformanceDiagnostics::PerformanceDiagnostics()
@@ -301,6 +443,19 @@ void VsmrPerformance::PerformanceDiagnostics::RecordAvisoRequestCoalesced(
 	}
 }
 
+void VsmrPerformance::PerformanceDiagnostics::RecordAvisoRequestDebounced(
+	AvisoViewport viewport) noexcept
+{
+	try
+	{
+		std::lock_guard<std::mutex> guard(Mutex);
+		++AvisoFor(viewport).requestsDebounced;
+	}
+	catch (...)
+	{
+	}
+}
+
 void VsmrPerformance::PerformanceDiagnostics::RecordAvisoRasterBuild(
 	AvisoViewport viewport,
 	double rebuildMilliseconds,
@@ -326,6 +481,19 @@ void VsmrPerformance::PerformanceDiagnostics::RecordAvisoRasterBuild(
 		counters.buildSampleCount = (std::min)(
 			counters.buildSampleCount + 1,
 			counters.buildSamples.size());
+	}
+	catch (...)
+	{
+	}
+}
+
+void VsmrPerformance::PerformanceDiagnostics::RecordAvisoRasterBuildCancelled(
+	AvisoViewport viewport) noexcept
+{
+	try
+	{
+		std::lock_guard<std::mutex> guard(Mutex);
+		++AvisoFor(viewport).rasterBuildsCancelled;
 	}
 	catch (...)
 	{
@@ -463,7 +631,32 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 	result.rimcas = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.rimcasMilliseconds; });
 	result.tags = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.tagsMilliseconds; });
 	result.srw = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.srwMilliseconds; });
+	result.avisoInset = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.avisoInsetMilliseconds; });
+	result.rdf = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.rdfMilliseconds; });
+	result.insetChrome = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.insetChromeMilliseconds; });
+	result.sceneAvisoLoad = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneAvisoLoadMilliseconds; });
+	result.sceneControllerOwnership = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneControllerOwnershipMilliseconds; });
+	result.sceneTargetCapture = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneTargetCaptureMilliseconds; });
+	result.sceneFinalize = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneFinalizeMilliseconds; });
 	result.euroScopeLookups = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.euroScopeLookupMilliseconds; });
+	for (const FrameSample& sample : frames)
+	{
+		CountRefreshReasons(sample.refreshReasonMask, result.refresh.reasons);
+		if (!std::isfinite(sample.frameMilliseconds) ||
+			sample.frameMilliseconds < result.refresh.spikeThresholdMilliseconds)
+		{
+			continue;
+		}
+		++result.refresh.spikeCount;
+		result.refresh.latestSpike = sample;
+		result.refresh.hasLatestSpike = true;
+		if (!result.refresh.hasWorstSpike ||
+			sample.frameMilliseconds > result.refresh.worstSpike.frameMilliseconds)
+		{
+			result.refresh.worstSpike = sample;
+			result.refresh.hasWorstSpike = true;
+		}
+	}
 
 	auto fillAviso = [&](const AvisoCounters& source, const AvisoQueueDepth& queue, AvisoSnapshot& destination)
 	{
@@ -475,8 +668,10 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 		destination.requestsQueued = source.requestsQueued;
 		destination.requestsCoalesced = source.requestsCoalesced;
 		destination.requestsSuperseded = source.requestsSuperseded;
+		destination.requestsDebounced = source.requestsDebounced;
 		destination.rasterBuilds = source.rasterBuilds;
 		destination.rasterBuildFailures = source.rasterBuildFailures;
+		destination.rasterBuildsCancelled = source.rasterBuildsCancelled;
 		destination.resultsApplied = source.resultsApplied;
 		destination.resultsDiscarded = source.resultsDiscarded;
 		destination.queue = queue;
@@ -569,7 +764,7 @@ std::string VsmrPerformance::BuildJsonReport(
 	std::ostringstream output;
 	output.imbue(std::locale::classic());
 	output << std::setprecision(6) << std::fixed;
-	output << "{\n  \"schemaVersion\": 1,"
+	output << "{\n  \"schemaVersion\": 2,"
 		<< "\n  \"generatedUtcMilliseconds\": " << PerformanceDiagnostics::UtcMilliseconds() << ','
 		<< "\n  \"version\": \"" << EscapeJson(version) << "\","
 		<< "\n  \"airport\": \"" << EscapeJson(airport) << "\","
@@ -604,6 +799,13 @@ std::string VsmrPerformance::BuildJsonReport(
 		{ "rimcas", &snapshot.rimcas },
 		{ "tags", &snapshot.tags },
 		{ "srw", &snapshot.srw },
+		{ "avisoInset", &snapshot.avisoInset },
+		{ "rdf", &snapshot.rdf },
+		{ "insetChrome", &snapshot.insetChrome },
+		{ "sceneAvisoLoad", &snapshot.sceneAvisoLoad },
+		{ "sceneControllerOwnership", &snapshot.sceneControllerOwnership },
+		{ "sceneTargetCapture", &snapshot.sceneTargetCapture },
+		{ "sceneFinalize", &snapshot.sceneFinalize },
 		{ "euroScopeLookups", &snapshot.euroScopeLookups },
 		{ "avisoRasterRebuild", &snapshot.avisoRasterRebuild }
 	};
@@ -624,7 +826,25 @@ std::string VsmrPerformance::BuildJsonReport(
 		<< "\"delayed\":" << snapshot.avisoDelayedFrames
 		<< ",\"usingFallback\":" << snapshot.avisoFallbackFrames
 		<< ",\"blankWhileDelayed\":" << snapshot.avisoBlankDelayedFrames
-		<< "},\n  \"caches\": {"
+		<< "},\n  \"refresh\": {"
+		<< "\"reasonScope\":\"selectedRetainedFrameWindow\""
+		<< ",\"reasonCountsMayOverlap\":true"
+		<< ",\"reasonCounts\":";
+	WriteRefreshReasonCounters(output, snapshot.refresh.reasons);
+	output << ",\"spikeThresholdMilliseconds\":" << snapshot.refresh.spikeThresholdMilliseconds
+		<< ",\"spikeComparison\":\">=\""
+		<< ",\"spikeCount\":" << snapshot.refresh.spikeCount
+		<< ",\"worstSpike\":";
+	if (snapshot.refresh.hasWorstSpike)
+		WriteFrameSample(output, snapshot.refresh.worstSpike);
+	else
+		output << "null";
+	output << ",\"latestSpike\":";
+	if (snapshot.refresh.hasLatestSpike)
+		WriteFrameSample(output, snapshot.refresh.latestSpike);
+	else
+		output << "null";
+	output << "},\n  \"caches\": {"
 		<< "\n    \"aircraftSource\": {\"hits\":" << snapshot.aircraftSourceCache.hits
 		<< ",\"misses\":" << snapshot.aircraftSourceCache.misses
 		<< ",\"hitRate\":" << snapshot.aircraftSourceCache.hitRate
@@ -652,23 +872,8 @@ std::string VsmrPerformance::BuildJsonReport(
 		const FrameSample& frame = snapshot.series[index];
 		if (index != 0)
 			output << ',';
-		output << "\n    {\"frameId\":" << frame.frameId
-			<< ",\"timestampMilliseconds\":" << frame.timestampMilliseconds
-			<< ",\"frame\":" << frame.frameMilliseconds
-			<< ",\"scene\":" << frame.sceneMilliseconds
-			<< ",\"aviso\":" << frame.avisoMilliseconds
-			<< ",\"targets\":" << frame.targetsMilliseconds
-			<< ",\"rimcas\":" << frame.rimcasMilliseconds
-			<< ",\"tags\":" << frame.tagsMilliseconds
-			<< ",\"srw\":" << frame.srwMilliseconds
-			<< ",\"euroScopeLookups\":" << frame.euroScopeLookupMilliseconds
-			<< ",\"processedTargets\":" << frame.processedTargets
-			<< ",\"capturedTargets\":" << frame.capturedTargets
-			<< ",\"radarFilteredTargets\":" << frame.radarFilteredTargets
-			<< ",\"iconTargets\":" << frame.iconTargets
-			<< ",\"tagTargets\":" << frame.tagTargets
-			<< ",\"visibleTargets\":" << frame.visibleTargets
-			<< ",\"visibleTags\":" << frame.visibleTags << '}';
+		output << "\n    ";
+		WriteFrameSample(output, frame);
 	}
 	output << "\n  ]\n}\n";
 	return output.str();

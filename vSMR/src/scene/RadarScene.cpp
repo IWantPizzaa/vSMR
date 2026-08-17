@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <sstream>
 #include <unordered_map>
 
@@ -348,6 +349,115 @@ namespace
 			return status;
 		return status == "airdep_onrunway" ? "airdep" : "airarr";
 	}
+
+	template <typename T>
+	void HashSceneValue(std::uint64_t& seed, const T& value)
+	{
+		const std::uint64_t hashed = static_cast<std::uint64_t>(std::hash<T>{}(value));
+		seed ^= hashed + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+	}
+
+	std::uint64_t FingerprintController(const ControllerState& controller)
+	{
+		std::uint64_t result = 0xcbf29ce484222325ULL;
+		HashSceneValue(result, controller.callsign);
+		HashSceneValue(result, controller.positionId);
+		HashSceneValue(result, controller.primaryFrequency);
+		HashSceneValue(result, controller.mine);
+		return result;
+	}
+
+	std::uint64_t FingerprintControllers(const std::vector<ControllerState>& controllers)
+	{
+		std::uint64_t xorValue = 0;
+		std::uint64_t sumValue = 0;
+		for (const ControllerState& controller : controllers)
+		{
+			const std::uint64_t item = FingerprintController(controller);
+			xorValue ^= item;
+			sumValue += item;
+		}
+		std::uint64_t result = 0xcbf29ce484222325ULL;
+		HashSceneValue(result, controllers.size());
+		HashSceneValue(result, xorValue);
+		HashSceneValue(result, sumValue);
+		return result;
+	}
+
+	std::uint64_t FingerprintTarget(const Target& target)
+	{
+		std::uint64_t result = 0xcbf29ce484222325ULL;
+		HashSceneValue(result, target.normalizedCallsign);
+		HashSceneValue(result, target.systemId);
+		HashSceneValue(result, target.position.valid);
+		HashSceneValue(result, target.position.latitude);
+		HashSceneValue(result, target.position.longitude);
+		HashSceneValue(result, target.reportedGroundSpeed);
+		HashSceneValue(result, target.pressureAltitude);
+		HashSceneValue(result, target.flightLevel);
+		HashSceneValue(result, target.reportedHeadingDegrees);
+		HashSceneValue(result, target.origin);
+		HashSceneValue(result, target.destination);
+		HashSceneValue(result, target.planType);
+		HashSceneValue(result, target.aircraftType);
+		HashSceneValue(result, target.assignedSquawk);
+		HashSceneValue(result, target.reportedSquawk);
+		HashSceneValue(result, target.groundStateText);
+		HashSceneValue(result, target.hasFlightPlan);
+		HashSceneValue(result, target.correlated);
+		HashSceneValue(result, target.selected);
+		HashSceneValue(result, target.iconVisible);
+		HashSceneValue(result, target.tagVisible);
+		HashSceneValue(result, static_cast<int>(target.groundState));
+		HashSceneValue(result, static_cast<int>(target.role));
+		HashSceneValue(result, target.tag.clearanceReceived);
+		HashSceneValue(result, target.hasVacdmData);
+		HashSceneValue(result, target.vacdmData.tobtState);
+		HashSceneValue(result, target.vacdmData.tobtUtc);
+		HashSceneValue(result, target.vacdmData.tsatUtc);
+		HashSceneValue(result, target.vacdmData.ttotUtc);
+		return result;
+	}
+
+	std::uint64_t FingerprintTargets(const std::vector<Target>& targets)
+	{
+		std::uint64_t xorValue = 0;
+		std::uint64_t sumValue = 0;
+		for (const Target& target : targets)
+		{
+			const std::uint64_t item = FingerprintTarget(target);
+			xorValue ^= item;
+			sumValue += item;
+		}
+		std::uint64_t result = 0xcbf29ce484222325ULL;
+		HashSceneValue(result, targets.size());
+		HashSceneValue(result, xorValue);
+		HashSceneValue(result, sumValue);
+		return result;
+	}
+
+	std::uint32_t InferRefreshReasonMask(
+		const RadarScene* previous,
+		const RadarScene& current) noexcept
+	{
+		using VsmrPerformance::FrameRefreshReason;
+		using VsmrPerformance::RefreshReasonMask;
+		if (previous == nullptr)
+			return RefreshReasonMask(FrameRefreshReason::Initial);
+
+		std::uint32_t result = 0;
+		if (previous->airport.icao != current.airport.icao)
+			result |= RefreshReasonMask(FrameRefreshReason::AirportUpdate);
+		if (previous->profileName != current.profileName)
+			result |= RefreshReasonMask(FrameRefreshReason::ProfileUpdate);
+		if (previous->avisoGeneration != current.avisoGeneration)
+			result |= RefreshReasonMask(FrameRefreshReason::AvisoDataChanged);
+		if (previous->controllerFingerprint != current.controllerFingerprint)
+			result |= RefreshReasonMask(FrameRefreshReason::ControllerUpdate);
+		if (previous->targetFingerprint != current.targetFingerprint)
+			result |= RefreshReasonMask(FrameRefreshReason::TargetOrFlightPlanUpdate);
+		return result;
+	}
 }
 
 const VsmrScene::Target* VsmrScene::RadarScene::FindTarget(const std::string& callsign) const noexcept
@@ -373,6 +483,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	using namespace VsmrScene;
 	using Clock = std::chrono::steady_clock;
 	const auto buildStart = Clock::now();
+	const std::shared_ptr<const RadarScene> previousScene = CurrentRadarScene;
 	if (outRimcasMilliseconds != nullptr)
 		*outRimcasMilliseconds = 0.0;
 
@@ -388,6 +499,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->targetIndex.clear();
 	scene->frequencyOwnership.reset();
 	scene->avisoGeneration = 0;
+	scene->controllerFingerprint = 0;
+	scene->targetFingerprint = 0;
 	scene->stats = BuildStats{};
 	scene->frameId = ++RadarSceneFrameId;
 	scene->captureTick = ::GetTickCount();
@@ -401,6 +514,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	};
 	CPlugIn* plugin = GetPlugIn();
 	scene->airport.icao = getActiveAirport();
+	scene->profileName = CurrentConfig != nullptr
+		? CurrentConfig->getActiveProfileName()
+		: std::string();
 	scene->airport.lowVisibilityProcedures = lowVisibilityProcedures;
 	scene->airport.transitionAltitude = plugin != nullptr
 		? measureSdkLookup([&]() { return plugin->GetTransitionAltitude(); })
@@ -414,15 +530,21 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			scene->airport.runwayStatuses[runway.first] = static_cast<int>(runway.second);
 	}
 
+	const auto avisoLoadStart = Clock::now();
 	const std::string avisoPath = ResolveAvisoGeoJsonPathForAirport(scene->airport.icao);
 	if (!avisoPath.empty())
 		EnsureAvisoGeoJsonLoaded(avisoPath);
+	scene->stats.avisoLoadMilliseconds = std::chrono::duration<double, std::milli>(
+		Clock::now() - avisoLoadStart).count();
 
 	if (plugin == nullptr)
 	{
 		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
 		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
 		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
+		scene->controllerFingerprint = FingerprintControllers(scene->controllers);
+		scene->targetFingerprint = FingerprintTargets(scene->targets);
+		scene->stats.refreshReasonMask = InferRefreshReasonMask(previousScene.get(), *scene);
 		scene->stats.buildMilliseconds = std::chrono::duration<double, std::milli>(
 			Clock::now() - buildStart).count();
 		PerfLastSceneBuildMs = scene->stats.buildMilliseconds;
@@ -430,6 +552,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		return CurrentRadarScene;
 	}
 
+	const auto controllerOwnershipStart = Clock::now();
 	const CController myself = measureSdkLookup([&]() { return plugin->ControllerMyself(); });
 	const std::string myCallsign = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetCallsign())) : "";
 	const std::string myPosition = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetPositionId())) : "";
@@ -465,6 +588,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
 		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
 	}
+	scene->stats.controllerOwnershipMilliseconds = std::chrono::duration<double, std::milli>(
+		Clock::now() - controllerOwnershipStart).count();
+	scene->controllerFingerprint = FingerprintControllers(scene->controllers);
 
 	const DisplayModeSettings displaySettings = GetActiveDisplayModeSettings();
 	const CorrelationSettings correlationSettings = BuildCorrelationSettings();
@@ -504,6 +630,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->targetPresentation.resolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
 	scene->targetPresentation.fixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
 
+	const auto targetCaptureStart = Clock::now();
 	const CRadarTarget selectedTarget = measureSdkLookup([&]() { return plugin->RadarTargetSelectASEL(); });
 	const std::string selectedCallsign = selectedTarget.IsValid() ? CopyText(selectedTarget.GetCallsign()) : "";
 
@@ -735,7 +862,10 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		scene->targetIndex.emplace(target.normalizedCallsign, scene->targets.size());
 		scene->targets.push_back(std::move(target));
 	}
+	scene->stats.targetCaptureMilliseconds = std::chrono::duration<double, std::milli>(
+		Clock::now() - targetCaptureStart).count();
 
+	const auto finalizeStart = Clock::now();
 	if (rimcasEnabled && RimcasInstance != nullptr)
 	{
 		const auto rimcasEndStart = Clock::now();
@@ -1166,7 +1296,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->stats.controllerCount = scene->controllers.size();
 	std::size_t estimatedBytes = sizeof(RadarScene) + scene->targets.capacity() * sizeof(Target) +
 		scene->controllers.capacity() * sizeof(ControllerState);
-	estimatedBytes += EstimateStringHeapBytes(scene->airport.icao);
+	estimatedBytes += EstimateStringHeapBytes(scene->airport.icao) +
+		EstimateStringHeapBytes(scene->profileName);
 	for (const ControllerState& controllerState : scene->controllers)
 		estimatedBytes += EstimateStringHeapBytes(controllerState.callsign) + EstimateStringHeapBytes(controllerState.positionId);
 	for (const Target& target : scene->targets)
@@ -1200,6 +1331,10 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		estimatedBytes += EstimateTagVariantHeapBytes(target.tag.detailed);
 	}
 	scene->stats.lowerBoundOwnedBytes = estimatedBytes;
+	scene->targetFingerprint = FingerprintTargets(scene->targets);
+	scene->stats.refreshReasonMask = InferRefreshReasonMask(previousScene.get(), *scene);
+	scene->stats.finalizeMilliseconds = std::chrono::duration<double, std::milli>(
+		Clock::now() - finalizeStart).count();
 	scene->stats.buildMilliseconds = std::chrono::duration<double, std::milli>(Clock::now() - buildStart).count();
 	PerfLastSceneBuildMs = scene->stats.buildMilliseconds;
 	CurrentRadarScene = scene;

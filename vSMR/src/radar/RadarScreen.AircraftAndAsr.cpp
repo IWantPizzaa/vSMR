@@ -1023,6 +1023,8 @@ string CSMRRadar::setActiveAirport(
 		SaveInsetStateToAsrForAirport(ActiveAirport);
 
 	ActiveAirport = airport;
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::AirportUpdate);
 	PublishCrashRadarState("main");
 	InvalidateRunwayGeometryCache();
 	LastMapActiveAirport.clear();
@@ -1042,6 +1044,10 @@ string CSMRRadar::setActiveAirport(
 		if (syncControlCenter && VsmrControlCenterDialog != nullptr)
 			VsmrControlCenterDialog->SyncFromRadar();
 	}
+	// ASR loading restores its airport-scoped AVISO override later in the same
+	// callback, so defer that prewarm to OnAsrContentLoaded's final state.
+	if (switchInsetContext)
+		PrewarmAvisoForActiveAirport();
 
 	return ActiveAirport;
 }
@@ -1152,6 +1158,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	// Auto-detect active sector runways only for legacy profiles. An explicit
 	// profile runway array is authoritative, including when it is empty.
 	RefreshLegacyRimcasRunwayMonitoring();
+	PrewarmAvisoForActiveAirport();
 	PublishCrashRadarState("main");
 
 	// ReSharper restore CppZeroConstantCanBeReplacedWithNullptr

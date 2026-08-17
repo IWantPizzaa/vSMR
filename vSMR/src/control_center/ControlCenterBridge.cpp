@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <locale>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -466,6 +467,27 @@ namespace
 		rapidjson::Value key;
 		key.SetString(name, allocator);
 		timings.AddMember(key, item, allocator);
+	}
+
+	std::vector<std::string> PerformanceRefreshReasonLabels(std::uint32_t mask)
+	{
+		std::vector<std::string> labels = VsmrPerformance::RefreshReasonNames(mask);
+		if (labels.empty())
+			labels.emplace_back("unspecified");
+		return labels;
+	}
+
+	std::string JoinPerformanceRefreshReasons(std::uint32_t mask)
+	{
+		const std::vector<std::string> labels = PerformanceRefreshReasonLabels(mask);
+		std::ostringstream output;
+		for (std::size_t index = 0; index < labels.size(); ++index)
+		{
+			if (index != 0)
+				output << " + ";
+			output << labels[index];
+		}
+		return output.str();
 	}
 
 	void AddCacheItem(
@@ -1099,6 +1121,7 @@ struct VsmrControlCenterBridge::Impl
 	mutable std::string AvisoHealthCacheDocumentJson;
 	std::uint32_t PeakProcessGdiObjects = 0;
 	std::size_t PeakVsmrCachedBitmaps = 0;
+	std::uint64_t PeakEstimatedBitmapBytes = 0;
 	std::size_t PeakAvisoPendingDepth = 0;
 	std::uint64_t LastPerformanceGeneration = 0;
 
@@ -1234,6 +1257,7 @@ struct VsmrControlCenterBridge::Impl
 		{
 			PeakProcessGdiObjects = 0;
 			PeakVsmrCachedBitmaps = 0;
+			PeakEstimatedBitmapBytes = 0;
 			PeakAvisoPendingDepth = 0;
 			LastPerformanceGeneration = snapshot.generation;
 		}
@@ -1286,6 +1310,49 @@ struct VsmrControlCenterBridge::Impl
 		AddDistribution(timings, "rimcas", snapshot.rimcas, snapshot.latestFrame.rimcasMilliseconds, hasLatest, allocator);
 		AddDistribution(timings, "tags", snapshot.tags, snapshot.latestFrame.tagsMilliseconds, hasLatest, allocator);
 		AddDistribution(timings, "srw", snapshot.srw, snapshot.latestFrame.srwMilliseconds, hasLatest, allocator);
+		AddDistribution(
+			timings,
+			"avisoInset",
+			snapshot.avisoInset,
+			snapshot.latestFrame.avisoInsetMilliseconds,
+			hasLatest,
+			allocator);
+		AddDistribution(timings, "rdf", snapshot.rdf, snapshot.latestFrame.rdfMilliseconds, hasLatest, allocator);
+		AddDistribution(
+			timings,
+			"insetChrome",
+			snapshot.insetChrome,
+			snapshot.latestFrame.insetChromeMilliseconds,
+			hasLatest,
+			allocator);
+		AddDistribution(
+			timings,
+			"sceneAvisoLoad",
+			snapshot.sceneAvisoLoad,
+			snapshot.latestFrame.sceneAvisoLoadMilliseconds,
+			hasLatest,
+			allocator);
+		AddDistribution(
+			timings,
+			"sceneControllerOwnership",
+			snapshot.sceneControllerOwnership,
+			snapshot.latestFrame.sceneControllerOwnershipMilliseconds,
+			hasLatest,
+			allocator);
+		AddDistribution(
+			timings,
+			"sceneTargetCapture",
+			snapshot.sceneTargetCapture,
+			snapshot.latestFrame.sceneTargetCaptureMilliseconds,
+			hasLatest,
+			allocator);
+		AddDistribution(
+			timings,
+			"sceneFinalize",
+			snapshot.sceneFinalize,
+			snapshot.latestFrame.sceneFinalizeMilliseconds,
+			hasLatest,
+			allocator);
 		AddDistribution(
 			timings,
 			"euroScopeLookups",
@@ -1355,18 +1422,127 @@ struct VsmrControlCenterBridge::Impl
 		AddTargetSummary(targets, "visible", snapshot, true, allocator);
 		payload.AddMember("targets", targets, allocator);
 
+		rapidjson::Value refresh(rapidjson::kObjectType);
+		if (snapshot.hasLatestFrame)
+		{
+			AddString(
+				refresh,
+				"latestReason",
+				JoinPerformanceRefreshReasons(snapshot.latestFrame.refreshReasonMask),
+				allocator);
+			rapidjson::Value latestReasons(rapidjson::kArrayType);
+			for (const std::string& label : PerformanceRefreshReasonLabels(snapshot.latestFrame.refreshReasonMask))
+			{
+				rapidjson::Value value;
+				value.SetString(label.c_str(), static_cast<rapidjson::SizeType>(label.size()), allocator);
+				latestReasons.PushBack(value, allocator);
+			}
+			refresh.AddMember("latestReasons", latestReasons, allocator);
+		}
+		rapidjson::Value reasonCounts(rapidjson::kArrayType);
+		auto addRefreshReasonCount = [&](const char* id, const char* label, std::uint64_t count)
+		{
+			if (count == 0)
+				return;
+			rapidjson::Value item(rapidjson::kObjectType);
+			AddString(item, "id", id, allocator);
+			AddString(item, "reason", label, allocator);
+			AddUint64(item, "count", count, allocator);
+			reasonCounts.PushBack(item, allocator);
+		};
+		addRefreshReasonCount("unspecified", "Unspecified", snapshot.refresh.reasons.unspecified);
+		addRefreshReasonCount("initial", "Initial frame", snapshot.refresh.reasons.initial);
+		addRefreshReasonCount("mainViewChanged", "Main view changed", snapshot.refresh.reasons.mainViewChanged);
+		addRefreshReasonCount("insetPanZoom", "Inset pan or zoom", snapshot.refresh.reasons.insetPanZoom);
+		addRefreshReasonCount("insetMoveResize", "Inset move or resize", snapshot.refresh.reasons.insetMoveResize);
+		addRefreshReasonCount("hover", "Hover", snapshot.refresh.reasons.hover);
+		addRefreshReasonCount(
+			"targetOrFlightPlanUpdate",
+			"Target or flight-plan update",
+			snapshot.refresh.reasons.targetOrFlightPlanUpdate);
+		addRefreshReasonCount("controllerUpdate", "Controller update", snapshot.refresh.reasons.controllerUpdate);
+		addRefreshReasonCount("profileUpdate", "Profile update", snapshot.refresh.reasons.profileUpdate);
+		addRefreshReasonCount("airportUpdate", "Airport update", snapshot.refresh.reasons.airportUpdate);
+		addRefreshReasonCount("avisoWorkerUpdate", "AVISO worker update", snapshot.refresh.reasons.avisoWorkerUpdate);
+		addRefreshReasonCount("userActionExternal", "User or external action", snapshot.refresh.reasons.userActionExternal);
+		addRefreshReasonCount("avisoDataChanged", "AVISO data changed", snapshot.refresh.reasons.avisoDataChanged);
+		refresh.AddMember("reasonCounts", reasonCounts, allocator);
+		AddString(refresh, "reasonScope", "selectedRetainedFrameWindow", allocator);
+		refresh.AddMember("reasonCountsMayOverlap", true, allocator);
+		refresh.AddMember("spikeThresholdMilliseconds", snapshot.refresh.spikeThresholdMilliseconds, allocator);
+		AddString(refresh, "spikeComparison", ">=", allocator);
+		AddUint64(refresh, "spikeCount", snapshot.refresh.spikeCount, allocator);
+		auto addSpike = [&](const char* name, bool present, const VsmrPerformance::FrameSample& sample)
+		{
+			if (!present)
+				return;
+			rapidjson::Value spike(rapidjson::kObjectType);
+			AddUint64(spike, "frameId", sample.frameId, allocator);
+			spike.AddMember("frameMilliseconds", sample.frameMilliseconds, allocator);
+			AddUint64(
+				spike,
+				"ageMilliseconds",
+				observedEnd >= sample.timestampMilliseconds
+					? observedEnd - sample.timestampMilliseconds
+					: 0,
+				allocator);
+			AddString(spike, "reason", JoinPerformanceRefreshReasons(sample.refreshReasonMask), allocator);
+			AddString(spike, "primaryReason", VsmrPerformance::PrimaryRefreshReasonName(sample.refreshReasonMask), allocator);
+			AddSize(spike, "processedTargets", sample.processedTargets, allocator);
+			AddSize(spike, "visibleTargets", sample.visibleTargets, allocator);
+			spike.AddMember("avisoMilliseconds", sample.avisoMilliseconds, allocator);
+			spike.AddMember("avisoInsetMilliseconds", sample.avisoInsetMilliseconds, allocator);
+
+			const std::pair<const char*, double> stages[] = {
+				{ "Scene capture", sample.sceneMilliseconds },
+				{ "Main AVISO", sample.avisoMilliseconds },
+				{ "AVISO inset", sample.avisoInsetMilliseconds },
+				{ "Targets", sample.targetsMilliseconds },
+				{ "RIMCAS", sample.rimcasMilliseconds },
+				{ "Tags", sample.tagsMilliseconds },
+				{ "SRW", sample.srwMilliseconds },
+				{ "RDF", sample.rdfMilliseconds },
+				{ "Inset chrome", sample.insetChromeMilliseconds }
+			};
+			const std::pair<const char*, double>* dominantStage = &stages[0];
+			for (const auto& stage : stages)
+			{
+				if (stage.second > dominantStage->second)
+					dominantStage = &stage;
+			}
+			std::ostringstream context;
+			context.imbue(std::locale::classic());
+			context << "Largest measured slice: " << dominantStage->first << " "
+				<< std::fixed << std::setprecision(2) << dominantStage->second << " ms";
+			AddString(spike, "context", context.str(), allocator);
+			rapidjson::Value key;
+			key.SetString(name, allocator);
+			refresh.AddMember(key, spike, allocator);
+		};
+		addSpike("worstSpike", snapshot.refresh.hasWorstSpike, snapshot.refresh.worstSpike);
+		addSpike("latestSpike", snapshot.refresh.hasLatestSpike, snapshot.refresh.latestSpike);
+		payload.AddMember("refresh", refresh, allocator);
+
 		PeakProcessGdiObjects = (std::max)(
 			PeakProcessGdiObjects,
 			snapshot.resources.processGdiObjects);
 		PeakVsmrCachedBitmaps = (std::max)(
 			PeakVsmrCachedBitmaps,
 			snapshot.resources.ownedBitmapCount);
+		PeakEstimatedBitmapBytes = (std::max)(
+			PeakEstimatedBitmapBytes,
+			snapshot.resources.estimatedBitmapBytes);
 		rapidjson::Value graphics(rapidjson::kObjectType);
 		graphics.AddMember("processGdiObjects", snapshot.resources.processGdiObjects, allocator);
 		AddSize(graphics, "vsmrCachedBitmaps", snapshot.resources.ownedBitmapCount, allocator);
 		graphics.AddMember("peakProcessGdiObjects", PeakProcessGdiObjects, allocator);
 		AddSize(graphics, "peakVsmrCachedBitmaps", PeakVsmrCachedBitmaps, allocator);
 		AddUint64(graphics, "estimatedBitmapBytes", snapshot.resources.estimatedBitmapBytes, allocator);
+		AddUint64(graphics, "peakEstimatedBitmapBytes", PeakEstimatedBitmapBytes, allocator);
+		AddSize(graphics, "aircraftBitmapCount", snapshot.resources.aircraftBitmapCount, allocator);
+		AddSize(graphics, "realisticIconBitmapCount", snapshot.resources.realisticIconBitmapCount, allocator);
+		AddSize(graphics, "mainAvisoBitmapCount", snapshot.resources.mainAvisoBitmapCount, allocator);
+		AddSize(graphics, "insetAvisoBitmapCount", snapshot.resources.insetAvisoBitmapCount, allocator);
 		payload.AddMember("graphics", graphics, allocator);
 
 		const std::size_t avisoPendingDepth =
@@ -1451,6 +1627,69 @@ struct VsmrControlCenterBridge::Impl
 			"blankDelayedFrames",
 			snapshot.avisoBlankDelayedFrames,
 			allocator);
+		AddUint64(
+			aviso,
+			"requestsQueued",
+			snapshot.mainAviso.requestsQueued + snapshot.insetAviso.requestsQueued,
+			allocator);
+		AddUint64(
+			aviso,
+			"requestsCoalesced",
+			snapshot.mainAviso.requestsCoalesced + snapshot.insetAviso.requestsCoalesced,
+			allocator);
+		AddUint64(
+			aviso,
+			"requestsSuperseded",
+			snapshot.mainAviso.requestsSuperseded + snapshot.insetAviso.requestsSuperseded,
+			allocator);
+		AddUint64(
+			aviso,
+			"requestsDebounced",
+			snapshot.mainAviso.requestsDebounced + snapshot.insetAviso.requestsDebounced,
+			allocator);
+		AddUint64(
+			aviso,
+			"rasterBuilds",
+			totalBuilds,
+			allocator);
+		AddUint64(
+			aviso,
+			"rasterBuildFailures",
+			failedBuilds,
+			allocator);
+		AddUint64(
+			aviso,
+			"rasterBuildsCancelled",
+			snapshot.mainAviso.rasterBuildsCancelled + snapshot.insetAviso.rasterBuildsCancelled,
+			allocator);
+		AddUint64(
+			aviso,
+			"resultsApplied",
+			snapshot.mainAviso.resultsApplied + snapshot.insetAviso.resultsApplied,
+			allocator);
+		AddUint64(
+			aviso,
+			"resultsDiscarded",
+			snapshot.mainAviso.resultsDiscarded + snapshot.insetAviso.resultsDiscarded,
+			allocator);
+		auto addAvisoViewport = [&](const char* name, const VsmrPerformance::AvisoSnapshot& source)
+		{
+			rapidjson::Value viewport(rapidjson::kObjectType);
+			AddUint64(viewport, "requestsQueued", source.requestsQueued, allocator);
+			AddUint64(viewport, "requestsCoalesced", source.requestsCoalesced, allocator);
+			AddUint64(viewport, "requestsSuperseded", source.requestsSuperseded, allocator);
+			AddUint64(viewport, "requestsDebounced", source.requestsDebounced, allocator);
+			AddUint64(viewport, "rasterBuilds", source.rasterBuilds, allocator);
+			AddUint64(viewport, "rasterBuildFailures", source.rasterBuildFailures, allocator);
+			AddUint64(viewport, "rasterBuildsCancelled", source.rasterBuildsCancelled, allocator);
+			AddUint64(viewport, "resultsApplied", source.resultsApplied, allocator);
+			AddUint64(viewport, "resultsDiscarded", source.resultsDiscarded, allocator);
+			rapidjson::Value key;
+			key.SetString(name, allocator);
+			aviso.AddMember(key, viewport, allocator);
+		};
+		addAvisoViewport("main", snapshot.mainAviso);
+		addAvisoViewport("inset", snapshot.insetAviso);
 		payload.AddMember("aviso", aviso, allocator);
 
 		rapidjson::Value series(rapidjson::kArrayType);
@@ -1472,7 +1711,12 @@ struct VsmrControlCenterBridge::Impl
 				allocator);
 			point.AddMember("frameMs", sample.frameMilliseconds, allocator);
 			point.AddMember("avisoMs", sample.avisoMilliseconds, allocator);
+			point.AddMember("avisoInsetMs", sample.avisoInsetMilliseconds, allocator);
 			point.AddMember("sceneMs", sample.sceneMilliseconds, allocator);
+			point.AddMember("srwMs", sample.srwMilliseconds, allocator);
+			point.AddMember("rdfMs", sample.rdfMilliseconds, allocator);
+			point.AddMember("insetChromeMs", sample.insetChromeMilliseconds, allocator);
+			point.AddMember("refreshReasonMask", sample.refreshReasonMask, allocator);
 			series.PushBack(point, allocator);
 		}
 		payload.AddMember("series", series, allocator);
@@ -3657,6 +3901,7 @@ struct VsmrControlCenterBridge::Impl
 			Owner->ResetPerformanceDiagnostics();
 			PeakProcessGdiObjects = 0;
 			PeakVsmrCachedBitmaps = 0;
+			PeakEstimatedBitmapBytes = 0;
 			PeakAvisoPendingDepth = 0;
 			LastPerformanceGeneration = 0;
 			SendAck(envelope.id, envelope.type, "Performance sample reset");

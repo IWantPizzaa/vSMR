@@ -26,6 +26,30 @@ namespace VsmrPerformance
 		Miss
 	};
 
+	// A frame can have more than one cause (for example, an inset resize can
+	// coincide with a controller update), so these values are stable bit flags.
+	enum class FrameRefreshReason : std::uint32_t
+	{
+		None = 0,
+		Initial = 1U << 0,
+		MainViewChanged = 1U << 1,
+		InsetPanZoom = 1U << 2,
+		InsetMoveResize = 1U << 3,
+		Hover = 1U << 4,
+		TargetOrFlightPlanUpdate = 1U << 5,
+		ControllerUpdate = 1U << 6,
+		ProfileUpdate = 1U << 7,
+		AirportUpdate = 1U << 8,
+		AvisoWorkerUpdate = 1U << 9,
+		UserActionExternal = 1U << 10,
+		AvisoDataChanged = 1U << 11
+	};
+
+	constexpr std::uint32_t RefreshReasonMask(FrameRefreshReason reason) noexcept
+	{
+		return static_cast<std::uint32_t>(reason);
+	}
+
 	struct Distribution
 	{
 		std::size_t sampleCount = 0;
@@ -46,7 +70,15 @@ namespace VsmrPerformance
 		double rimcasMilliseconds = 0.0;
 		double tagsMilliseconds = 0.0;
 		double srwMilliseconds = 0.0;
+		double avisoInsetMilliseconds = 0.0;
+		double rdfMilliseconds = 0.0;
+		double insetChromeMilliseconds = 0.0;
+		double sceneAvisoLoadMilliseconds = 0.0;
+		double sceneControllerOwnershipMilliseconds = 0.0;
+		double sceneTargetCaptureMilliseconds = 0.0;
+		double sceneFinalizeMilliseconds = 0.0;
 		double euroScopeLookupMilliseconds = 0.0;
+		std::uint32_t refreshReasonMask = 0;
 		std::size_t processedTargets = 0;
 		std::size_t capturedTargets = 0;
 		std::size_t radarFilteredTargets = 0;
@@ -82,8 +114,10 @@ namespace VsmrPerformance
 		std::uint64_t requestsQueued = 0;
 		std::uint64_t requestsCoalesced = 0;
 		std::uint64_t requestsSuperseded = 0;
+		std::uint64_t requestsDebounced = 0;
 		std::uint64_t rasterBuilds = 0;
 		std::uint64_t rasterBuildFailures = 0;
+		std::uint64_t rasterBuildsCancelled = 0;
 		std::uint64_t resultsApplied = 0;
 		std::uint64_t resultsDiscarded = 0;
 		AvisoQueueDepth queue;
@@ -101,6 +135,34 @@ namespace VsmrPerformance
 		std::size_t mainAvisoBitmapCount = 0;
 		std::size_t insetAvisoBitmapCount = 0;
 		std::uint64_t estimatedBitmapBytes = 0;
+	};
+
+	struct RefreshReasonCounters
+	{
+		std::uint64_t unspecified = 0;
+		std::uint64_t initial = 0;
+		std::uint64_t mainViewChanged = 0;
+		std::uint64_t insetPanZoom = 0;
+		std::uint64_t insetMoveResize = 0;
+		std::uint64_t hover = 0;
+		std::uint64_t targetOrFlightPlanUpdate = 0;
+		std::uint64_t controllerUpdate = 0;
+		std::uint64_t profileUpdate = 0;
+		std::uint64_t airportUpdate = 0;
+		std::uint64_t avisoWorkerUpdate = 0;
+		std::uint64_t userActionExternal = 0;
+		std::uint64_t avisoDataChanged = 0;
+	};
+
+	struct RefreshSnapshot
+	{
+		RefreshReasonCounters reasons;
+		double spikeThresholdMilliseconds = 16.0;
+		std::uint64_t spikeCount = 0;
+		bool hasWorstSpike = false;
+		FrameSample worstSpike;
+		bool hasLatestSpike = false;
+		FrameSample latestSpike;
 	};
 
 	struct Snapshot
@@ -122,6 +184,13 @@ namespace VsmrPerformance
 		Distribution rimcas;
 		Distribution tags;
 		Distribution srw;
+		Distribution avisoInset;
+		Distribution rdf;
+		Distribution insetChrome;
+		Distribution sceneAvisoLoad;
+		Distribution sceneControllerOwnership;
+		Distribution sceneTargetCapture;
+		Distribution sceneFinalize;
 		Distribution euroScopeLookups;
 		Distribution avisoRasterRebuild;
 		AvisoSnapshot mainAviso;
@@ -133,6 +202,7 @@ namespace VsmrPerformance
 		std::uint64_t avisoDelayedFrames = 0;
 		std::uint64_t avisoFallbackFrames = 0;
 		std::uint64_t avisoBlankDelayedFrames = 0;
+		RefreshSnapshot refresh;
 	};
 
 	class PerformanceDiagnostics
@@ -150,11 +220,13 @@ namespace VsmrPerformance
 			bool blank) noexcept;
 		void RecordAvisoRequestQueued(AvisoViewport viewport, bool superseded) noexcept;
 		void RecordAvisoRequestCoalesced(AvisoViewport viewport) noexcept;
+		void RecordAvisoRequestDebounced(AvisoViewport viewport) noexcept;
 		void RecordAvisoRasterBuild(
 			AvisoViewport viewport,
 			double rebuildMilliseconds,
 			double queueWaitMilliseconds,
 			bool succeeded) noexcept;
+		void RecordAvisoRasterBuildCancelled(AvisoViewport viewport) noexcept;
 		void RecordAvisoResultApplied(AvisoViewport viewport) noexcept;
 		void RecordAvisoResultDiscarded(AvisoViewport viewport) noexcept;
 		void RecordAircraftSourceCache(bool hit) noexcept;
@@ -203,8 +275,10 @@ namespace VsmrPerformance
 			std::uint64_t requestsQueued = 0;
 			std::uint64_t requestsCoalesced = 0;
 			std::uint64_t requestsSuperseded = 0;
+			std::uint64_t requestsDebounced = 0;
 			std::uint64_t rasterBuilds = 0;
 			std::uint64_t rasterBuildFailures = 0;
+			std::uint64_t rasterBuildsCancelled = 0;
 			std::uint64_t resultsApplied = 0;
 			std::uint64_t resultsDiscarded = 0;
 			std::array<AvisoBuildSample, MaximumAvisoBuildSamples> buildSamples{};
@@ -242,4 +316,7 @@ namespace VsmrPerformance
 		const std::string& version,
 		const std::string& airport,
 		const std::string& profile);
+
+	std::vector<std::string> RefreshReasonNames(std::uint32_t mask);
+	const char* PrimaryRefreshReasonName(std::uint32_t mask) noexcept;
 }
