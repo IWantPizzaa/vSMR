@@ -2358,8 +2358,8 @@
     let caption = "";
     let usesAircraftImage = false;
     if (style === "nova") {
-      // Native Mode-C NOVA target: a one-pixel diamond with six-pixel arms.
-      symbol = `<svg class="icon-preview-vector nova" viewBox="-20 -20 40 40" aria-hidden="true"><path d="M0-6L-6 0 0 6 6 0Z"/></svg>`;
+      // Use the recognizable NOVA crosshair instead of a generic diamond/square preview.
+      symbol = `<svg class="icon-preview-vector nova" viewBox="-24 -24 48 48" aria-hidden="true"><circle cx="0" cy="0" r="11"/><path d="M-19 0H19M0-19V19"/><circle class="icon-preview-fill" cx="0" cy="0" r="3"/></svg>`;
       caption = "NOVA";
     } else if (style === "triangle" || style === "arrow") {
       // Native north-facing triangle: tip, right base, rear notch, left base.
@@ -2384,7 +2384,7 @@
       const aircraftWidth = 35.8 * aircraftPixelsPerMeter;
       const aircraftHeight = 37.6 * aircraftPixelsPerMeter;
       symbol = `<img class="icon-preview-aircraft" data-aircraft-icon alt="" width="${aircraftWidth.toFixed(2)}" height="${aircraftHeight.toFixed(2)}">`;
-      caption = "Icon · A320";
+      caption = "Icon";
       usesAircraftImage = true;
     }
 
