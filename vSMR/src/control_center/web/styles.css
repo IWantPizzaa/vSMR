@@ -2622,18 +2622,18 @@ input:focus, select:focus, textarea:focus {
   shape-rendering: geometricPrecision;
 }
 .icon-preview-vector.nova .nova-primary-return {
-  fill: var(--nova-color, #fff249);
+  fill: #fff;
   stroke: none;
 }
 .icon-preview-vector.nova .nova-trail {
   fill: none;
-  stroke: #5e8fa6;
+  stroke: #6e9caf;
   stroke-width: .8;
 }
 .icon-preview-vector.nova .nova-center-mark {
   fill: none;
-  stroke: #f8fbfc;
-  stroke-width: .8;
+  stroke: #1f292c;
+  stroke-width: 1;
 }
 .icon-preview-vector.triangle,
 .icon-preview-vector.diamond {
@@ -2642,6 +2642,8 @@ input:focus, select:focus, textarea:focus {
 }
 .icon-preview-aircraft {
   display: block;
+  max-width: 96px;
+  max-height: 96px;
   object-fit: fill;
   image-rendering: auto;
 }
