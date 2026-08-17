@@ -17,6 +17,7 @@
 #include "config/RuntimeConfig.hpp"
 #include "safety/Rimcas.hpp"
 #include "radar/RadarGeometry.hpp"
+#include "scene/RadarScene.hpp"
 #include <memory>
 #include <thread>
 #include <mutex>
@@ -101,26 +102,9 @@ public:
 		double longitude = 0.0;
 		double latitude = 0.0;
 	};
-	struct AvisoFrequencyOwnershipMetadata
-	{
-		bool dynamicItem = false;
-		std::string service;
-		std::string ownerKey;
-		std::vector<std::string> takeoverChain;
-		std::string ruleKey;
-	};
-	struct AvisoFrequencyOwner
-	{
-		bool connected = false;
-		bool ownedByMe = false;
-		bool useSourceFrequency = false;
-		std::string positionId;
-		std::wstring frequencyLabel;
-	};
-	struct AvisoFrequencyOwnershipSnapshot
-	{
-		std::unordered_map<std::string, AvisoFrequencyOwner> ownersByRule;
-	};
+	using AvisoFrequencyOwnershipMetadata = VsmrAviso::FrequencyOwnershipMetadata;
+	using AvisoFrequencyOwner = VsmrAviso::FrequencyOwner;
+	using AvisoFrequencyOwnershipSnapshot = VsmrAviso::FrequencyOwnershipSnapshot;
 	struct AvisoGroup
 	{
 		std::string id;
@@ -359,6 +343,11 @@ public:
 	double PerfLastTagsMs = 0.0;
 	double PerfLastSrwMs = 0.0;
 	unsigned long PerfLastLogTick = 0;
+	std::shared_ptr<const VsmrScene::RadarScene> CurrentRadarScene;
+	std::array<std::shared_ptr<VsmrScene::RadarScene>, 2> RadarSceneBuffers;
+	std::size_t RadarSceneBuildBufferIndex = 0;
+	std::uint64_t RadarSceneFrameId = 0;
+	double PerfLastSceneBuildMs = 0.0;
 
 	map<int, bool> appWindowDisplays;
 
@@ -489,10 +478,8 @@ public:
 
 	//---GenerateTagData--------------------------------------------
 
-	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign = "");
+	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign = "", const VacdmPilotData* capturedVacdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
 	using TagReplacingMap = std::map<std::string, std::string>;
-	using FrameTagDataCache = std::unordered_map<std::string, TagReplacingMap>;
-	using FrameVacdmLookupCache = std::unordered_map<std::string, FrameVacdmLookupResult>;
 
 	//---IsCorrelatedFuncs---------------------------------------------
 
@@ -536,7 +523,7 @@ public:
 	bool IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const CorrelationSettings& settings) const;
 	virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt);
 	DisplayModeSettings GetActiveDisplayModeSettings() const;
-	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, CRadarTarget rt, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings) const;
+	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const;
 
 	//---LoadCustomFont--------------------------------------------
 
@@ -686,6 +673,13 @@ public:
 	//---OnRefresh------------------------------------------------------
 
 	virtual void OnRefresh(HDC hDC, int Phase);
+	std::shared_ptr<const VsmrScene::RadarScene> BuildRadarScene(
+		bool rimcasEnabled,
+		bool useRedEmergencySymbols,
+		bool lowVisibilityProcedures,
+		int rimcasStageTwoSpeedThreshold,
+		double* outRimcasMilliseconds = nullptr);
+	const VsmrScene::RadarScene* GetCurrentRadarScene() const noexcept;
 	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
 	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
@@ -709,7 +703,9 @@ public:
 		std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
 		std::shared_ptr<const AvisoFrequencyOwnershipSnapshot>& outFrequencyOwnership,
 		unsigned long long& outGeneration) const;
-	void RefreshAvisoFrequencyOwnership(bool force = false);
+	void RefreshAvisoFrequencyOwnership(
+		bool force = false,
+		const std::vector<VsmrScene::ControllerState>* capturedControllers = nullptr);
 	bool ApplyAvisoGroupMembershipSnapshot(
 		const rapidjson::Value& aviso,
 		std::string* outError = nullptr);
@@ -760,7 +756,7 @@ public:
 	void CloseAvisoEditorWindow();
 	void DestroyAvisoEditorWindow();
 	void OnAvisoEditorWindowClosed();
-	void RenderTags(Graphics& graphics, CDC& dc, bool frameProModeEnabled, bool frameTowerModeEnabled, const FrameTagDataCache& frameTagDataCache, const FrameVacdmLookupCache& frameVacdmLookupCache);
+	void RenderTags(Graphics& graphics, CDC& dc);
 
 	//---OnClickScreenObject-----------------------------------------
 
