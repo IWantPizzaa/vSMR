@@ -5897,15 +5897,15 @@ html.host-mode .control-window.hidden {
 }
 
 
-/* Settings icon correction: centered, unclipped and visually consistent. */
+/* Shared Settings glyph: centered, unclipped, and matched to the native Runtime Menu. */
 .settings-gear-icon {
   display: block;
   overflow: visible;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.45;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
 }
 .runtime-icon-rail .runtime-settings-button {
   margin-top: 0;
