@@ -195,10 +195,16 @@ namespace VsmrScene
 		std::size_t tagElementCount = 0;
 		std::size_t controllerCount = 0;
 		std::size_t sdkTargetEnumerations = 0;
+		std::size_t sdkControllerEnumerations = 0;
 		std::size_t sdkFlightPlanLookups = 0;
 		std::size_t sdkCorrelatedFlightPlanLookups = 0;
+		std::size_t sdkPreviousPositionLookups = 0;
 		std::size_t vacdmLookups = 0;
+		std::size_t radarFilteredTargetCount = 0;
+		std::size_t iconTargetCount = 0;
+		std::size_t tagTargetCount = 0;
 		std::size_t lowerBoundOwnedBytes = 0;
+		double sdkLookupMilliseconds = 0.0;
 		double buildMilliseconds = 0.0;
 	};
 

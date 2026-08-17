@@ -15,6 +15,7 @@
 #include "radar/RadarUiSupport.hpp"
 #include "aircraft/CallsignLookup.hpp"
 #include "config/RuntimeConfig.hpp"
+#include "diagnostics/PerformanceDiagnostics.hpp"
 #include "safety/Rimcas.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "scene/RadarScene.hpp"
@@ -46,6 +47,14 @@ class CSMRRadar :
 public:
 	CSMRRadar();
 	virtual ~CSMRRadar();
+	VsmrPerformance::Snapshot GetPerformanceSnapshot(
+		std::uint32_t windowSeconds = 60,
+		std::size_t maximumSeriesPoints = 240);
+	void ResetPerformanceDiagnostics();
+	std::string BuildPerformanceReportJson(
+		std::uint32_t windowSeconds = 0,
+		std::size_t maximumSeriesPoints = VsmrPerformance::MaximumFrameSamples);
+	void SamplePerformanceResourcesIfDue(bool force = false);
 	void PublishCrashRadarState(
 		const char* radar = "main",
 		const char* inset = nullptr) const noexcept;
@@ -192,6 +201,7 @@ public:
 	struct AvisoRasterRenderRequest
 	{
 		unsigned long long requestId = 0;
+		std::uint64_t performanceQueuedAtMilliseconds = 0;
 		unsigned long long groupGeneration = 0;
 		std::string path;
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
@@ -315,6 +325,7 @@ public:
 	std::atomic<HWND> AvisoRefreshHostWindow{ nullptr };
 	std::atomic<bool> ShutdownRequested{ false };
 	bool AvisoGeoJsonRenderThreadStarted = false;
+	bool AvisoGeoJsonRenderInFlight = false;
 	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
 	std::unique_ptr<AvisoRasterRenderRequest> AvisoGeoJsonPendingRenderRequest;
 	std::unique_ptr<AvisoRasterRenderResult> AvisoGeoJsonCompletedRenderResult;
@@ -348,6 +359,8 @@ public:
 	std::size_t RadarSceneBuildBufferIndex = 0;
 	std::uint64_t RadarSceneFrameId = 0;
 	double PerfLastSceneBuildMs = 0.0;
+	VsmrPerformance::PerformanceDiagnostics PerformanceDiagnostics;
+	std::uint64_t PerformanceLastResourceSampleMilliseconds = 0;
 
 	map<int, bool> appWindowDisplays;
 
