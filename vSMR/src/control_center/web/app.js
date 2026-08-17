@@ -2244,7 +2244,6 @@
     const opacity = Math.round(clamp(drafts.color.opacity, 0, 100));
 
     $("#colorHex").value = hex.toUpperCase();
-    $("#nativeColorPicker").value = hex;
     $("#colorHue").value = Math.round(drafts.color.h);
     $("#colorHue").style.setProperty("--hue-slider-value", String(Math.round(drafts.color.h)));
     $("#colorHueOutput").value = `${Math.round(drafts.color.h)}°`;
@@ -5571,7 +5570,6 @@
 
     $("#colorSearch").addEventListener("input", renderColors);
     $("#colorHex").addEventListener("input", event => setColorDraftFromHex(event.target.value));
-    $("#nativeColorPicker").addEventListener("input", event => setColorDraftFromHex(event.target.value));
     $("#colorHue").addEventListener("input", event => setColorDraftFromHsv(Number(event.target.value), drafts.color?.s ?? 0, drafts.color?.v ?? 1));
     [["colorRed", "r"], ["colorGreen", "g"], ["colorBlue", "b"]].forEach(([id]) => {
       $("#" + id).addEventListener("input", () => setColorDraftFromRgb($("#colorRed").value, $("#colorGreen").value, $("#colorBlue").value));
