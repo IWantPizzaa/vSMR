@@ -6,6 +6,8 @@
 
 namespace
 {
+	constexpr std::chrono::seconds DepartureStationaryAlertGracePeriod(25);
+
 	CPosition ToEuroScopePosition(const VsmrScene::GeoPoint& source)
 	{
 		CPosition position;
@@ -37,6 +39,8 @@ void CRimcas::Reset() {
 	MonitoredRunwayArr.clear();
 	MonitoredRunwayDep.clear();
 	ApproachingAircrafts.clear();
+	DepartureStatusObservations.clear();
+	RefreshSequence = 0;
 }
 
 void CRimcas::OnRefreshBegin(bool isLVP, int transitionAltitude) {
@@ -51,6 +55,16 @@ void CRimcas::OnRefreshBegin(bool isLVP, int transitionAltitude) {
 	this->IsLVP = isLVP;
 	this->TransitionAltitude = transitionAltitude;
 	movementAlerts.clear();
+	++RefreshSequence;
+	for (auto observationIt = DepartureStatusObservations.begin(); observationIt != DepartureStatusObservations.end();)
+	{
+		// An entry not observed during the preceding completed refresh no longer
+		// represents a continuous DEPA state.
+		if (observationIt->second.lastSeenRefresh + 1 < RefreshSequence)
+			observationIt = DepartureStatusObservations.erase(observationIt);
+		else
+			++observationIt;
+	}
 }
 
 void CRimcas::OnRefresh(const VsmrScene::Target& Rt, CRadarScreen* instance) {
@@ -408,6 +422,21 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 	const bool lineupAuthorized = groundStateCategory == GroundStateCategory::Lnup;
 	const bool taxiAuthorized = groundStateCategory == GroundStateCategory::Taxi || departureAuthorized || lineupAuthorized;
 	const bool pushAuthorized = groundStateCategory == GroundStateCategory::Push || groundStateCategory == GroundStateCategory::Taxi || lineupAuthorized;
+	bool departureStationaryAlertGraceActive = false;
+	if (departureAuthorized)
+	{
+		const auto now = std::chrono::steady_clock::now();
+		auto observationResult = DepartureStatusObservations.emplace(
+			Rt.callsign,
+			DepartureStatusObservation{ now, RefreshSequence });
+		observationResult.first->second.lastSeenRefresh = RefreshSequence;
+		departureStationaryAlertGraceActive =
+			now - observationResult.first->second.enteredAt < DepartureStationaryAlertGracePeriod;
+	}
+	else
+	{
+		DepartureStatusObservations.erase(Rt.callsign);
+	}
 
 	// RWY CLSD
 	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
@@ -455,7 +484,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 
 	// STAT RPA
 	if (inactiveAlerts.find("STAT RPA") == inactiveAlerts.end()) {
-		if (departureAuthorized && 0 == groundspeed) {
+		if (departureAuthorized && !departureStationaryAlertGraceActive && 0 == groundspeed) {
 			movementAlerts[Rt.callsign] = STATRPA;
 			return;
 		}

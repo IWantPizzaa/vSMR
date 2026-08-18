@@ -7,6 +7,9 @@
 #include <string>
 #include <utility>
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
+#include <unordered_map>
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "radar/RadarUiSupport.hpp"
@@ -58,6 +61,13 @@ public:
 	map<string, bool> MonitoredRunwayDep;
 	map<string, bool> MonitoredRunwayArr;
 	map<string, RimcasAlertTypes> AcColor;
+
+	struct DepartureStatusObservation {
+		std::chrono::steady_clock::time_point enteredAt;
+		std::uint64_t lastSeenRefresh = 0;
+	};
+	std::unordered_map<string, DepartureStatusObservation> DepartureStatusObservations;
+	std::uint64_t RefreshSequence = 0;
 
 	bool IsLVP = false;
 

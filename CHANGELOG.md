@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Added a 25-second `STAT RPA` grace period after an aircraft newly enters `DEPA`, preventing normal takeoff-clearance readback and initial movement delays from immediately raising a stationary-runway-protected-area alert.
+
 ## [2.0.0-beta.2] - 2026-08-14
 
 ### Added
