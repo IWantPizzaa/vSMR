@@ -4347,6 +4347,84 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	gdi->DrawEllipse(&roseBorder, roseRect);
 
 	const double pi = 3.14159265358979323846;
+	const Gdiplus::Color variationColor(230, 92, 180, 211);
+	const float variationOuterRadius = max(2.0f, radius - 3.0f);
+	const float variationBandWidth = std::clamp(static_cast<float>(5.0 * weatherScale), 4.0f, 9.0f);
+	const float variationInnerRadius = max(1.0f, variationOuterRadius - variationBandWidth);
+	const Gdiplus::RectF variationOuterRect(
+		centerX - variationOuterRadius,
+		centerY - variationOuterRadius,
+		variationOuterRadius * 2.0f,
+		variationOuterRadius * 2.0f);
+	const Gdiplus::RectF variationInnerRect(
+		centerX - variationInnerRadius,
+		centerY - variationInnerRadius,
+		variationInnerRadius * 2.0f,
+		variationInnerRadius * 2.0f);
+	if (weather.hasWindVariation)
+	{
+		int sweep = weather.windVariationToDegrees - weather.windVariationFromDegrees;
+		if (sweep < 0)
+			sweep += 360;
+		if (sweep > 0)
+		{
+			const Gdiplus::REAL startAngle = static_cast<Gdiplus::REAL>(
+				windFlowDirection(weather.windVariationFromDegrees) - 90);
+			Gdiplus::GraphicsPath variationBand;
+			variationBand.AddArc(variationOuterRect, startAngle, static_cast<Gdiplus::REAL>(sweep));
+			variationBand.AddArc(
+				variationInnerRect,
+				startAngle + static_cast<Gdiplus::REAL>(sweep),
+				-static_cast<Gdiplus::REAL>(sweep));
+			variationBand.CloseFigure();
+
+			Gdiplus::SolidBrush variationFill(Gdiplus::Color(72, 92, 180, 211));
+			Gdiplus::Pen variationOutline(Gdiplus::Color(170, 92, 180, 211), 1.0f);
+			variationOutline.SetLineJoin(Gdiplus::LineJoinRound);
+			gdi->FillPath(&variationFill, &variationBand);
+			gdi->DrawPath(&variationOutline, &variationBand);
+
+			Gdiplus::Pen variationEdge(variationColor, 2.0f);
+			variationEdge.SetStartCap(Gdiplus::LineCapRound);
+			variationEdge.SetEndCap(Gdiplus::LineCapRound);
+			gdi->DrawArc(
+				&variationEdge,
+				variationOuterRect,
+				startAngle,
+				static_cast<Gdiplus::REAL>(sweep));
+
+			Gdiplus::SolidBrush endpointBrush(variationColor);
+			const float endpointRadius = (variationOuterRadius + variationInnerRadius) * 0.5f;
+			const float endpointDotRadius = std::clamp(static_cast<float>(1.7 * weatherScale), 1.5f, 3.0f);
+			for (int endpoint : { weather.windVariationFromDegrees, weather.windVariationToDegrees })
+			{
+				const double endpointAngle = (static_cast<double>(windFlowDirection(endpoint)) - 90.0) * pi / 180.0;
+				const Gdiplus::PointF endpointPoint(
+					centerX + static_cast<float>(std::cos(endpointAngle) * endpointRadius),
+					centerY + static_cast<float>(std::sin(endpointAngle) * endpointRadius));
+				gdi->FillEllipse(
+					&endpointBrush,
+					endpointPoint.X - endpointDotRadius,
+					endpointPoint.Y - endpointDotRadius,
+					endpointDotRadius * 2.0f,
+					endpointDotRadius * 2.0f);
+			}
+		}
+	}
+	else if (weather.hasWind && weather.windVariable && !weather.windCalm)
+	{
+		Gdiplus::GraphicsPath variableBand(Gdiplus::FillModeAlternate);
+		variableBand.AddEllipse(variationOuterRect);
+		variableBand.AddEllipse(variationInnerRect);
+		Gdiplus::SolidBrush variableFill(Gdiplus::Color(45, 92, 180, 211));
+		gdi->FillPath(&variableFill, &variableBand);
+
+		Gdiplus::Pen variableEdge(variationColor, 1.8f);
+		variableEdge.SetDashStyle(Gdiplus::DashStyleDash);
+		variableEdge.SetDashCap(Gdiplus::DashCapRound);
+		gdi->DrawEllipse(&variableEdge, variationOuterRect);
+	}
+
 	Gdiplus::Pen minorTick(Gdiplus::Color(255, 92, 108, 113), 1.0f);
 	Gdiplus::Pen majorTick(Gdiplus::Color(255, 151, 169, 174), 1.0f);
 	for (int degrees = 0; degrees < 360; degrees += 10)
@@ -4375,49 +4453,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 				labelY + labelHalfHeight);
 			drawText(labelArea, degrees == 0 ? "36" : std::to_string(degrees / 10), compassFont, mutedText, DT_CENTER);
 		}
-	}
-
-	if (weather.hasWindVariation)
-	{
-		int sweep = weather.windVariationToDegrees - weather.windVariationFromDegrees;
-		if (sweep < 0)
-			sweep += 360;
-		Gdiplus::Pen variationPen(Gdiplus::Color(255, 92, 180, 211), 4.0f);
-		Gdiplus::RectF variationRect(
-			roseRect.X + 3.0f,
-			roseRect.Y + 3.0f,
-			max(1.0f, roseRect.Width - 6.0f),
-			max(1.0f, roseRect.Height - 6.0f));
-		gdi->DrawArc(
-			&variationPen,
-			variationRect,
-			static_cast<Gdiplus::REAL>(windFlowDirection(weather.windVariationFromDegrees) - 90),
-			static_cast<Gdiplus::REAL>(sweep));
-		for (int endpoint : { weather.windVariationFromDegrees, weather.windVariationToDegrees })
-		{
-			const double endpointAngle = (static_cast<double>(windFlowDirection(endpoint)) - 90.0) * pi / 180.0;
-			const float endpointRadius = max(1.0f, radius - 5.0f);
-			const Gdiplus::PointF endpointPoint(
-				centerX + static_cast<float>(std::cos(endpointAngle) * endpointRadius),
-				centerY + static_cast<float>(std::sin(endpointAngle) * endpointRadius));
-			gdi->DrawLine(
-				&variationPen,
-				endpointPoint.X - static_cast<float>(std::cos(endpointAngle) * 7.0),
-				endpointPoint.Y - static_cast<float>(std::sin(endpointAngle) * 7.0),
-				endpointPoint.X + static_cast<float>(std::cos(endpointAngle) * 2.0),
-				endpointPoint.Y + static_cast<float>(std::sin(endpointAngle) * 2.0));
-		}
-	}
-	else if (weather.hasWind && weather.windVariable && !weather.windCalm)
-	{
-		Gdiplus::Pen variablePen(Gdiplus::Color(255, 92, 180, 211), 1.5f);
-		variablePen.SetDashStyle(Gdiplus::DashStyleDash);
-		Gdiplus::RectF variableRect(
-			roseRect.X + 4.0f,
-			roseRect.Y + 4.0f,
-			max(1.0f, roseRect.Width - 8.0f),
-			max(1.0f, roseRect.Height - 8.0f));
-		gdi->DrawEllipse(&variablePen, variableRect);
 	}
 
 	const int peakWind = weather.hasWindGust
