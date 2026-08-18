@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Replaced the METAR inset's heavy variable-wind arc with a translucent range band, highlighted endpoints, and a dedicated full-ring `VRB` treatment that leaves compass ticks readable.
 - Refreshed the Control Center Groups list immediately after creating, duplicating, or deleting an AVISO group.
 - Moved inset close buttons to the far-right title-bar edge while preserving resize-corner interaction.
 - Reversed the METAR wind needle and variation arc to point toward airflow while retaining standard direction-from values and runway-component calculations.
