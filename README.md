@@ -181,7 +181,7 @@ The Control Center can:
 - download a supported file from `github.com` or `raw.githubusercontent.com`
 - reload the active source
 - edit AVISO geometry styles and visibility, label text and styles
-- define groups and assign features to them
+- define groups and assign features to them, with create, duplicate, and delete actions reflected in the list immediately
 - restore validated bundled defaults or `.bak` profile data
 
 A reusable entry in the document's `styles` catalog supplies the default paint for every feature that references its `style_id`. Paint stored directly on a feature is a per-object override and takes precedence in the main radar and AVISO inset. Consequently, editing one selected label can override its text color, font, size, halo, or zoom without changing every other label in the shared style; `Current text group` and `All AVISO text` intentionally edit shared catalog styles. AVISO editor values use the renderer's supported ranges: text size 6–32, halo width 0–6, and line/outline width 0.25–8.
@@ -221,7 +221,7 @@ The Runtime Menu uses a square outer frame while retaining rounded action button
 
 ### Window movement, snapping, and resizing
 
-Resizable inset windows can be dragged by their title bar and resized from every edge or corner. Resize hit areas extend beyond a one-pixel border and use the matching horizontal, vertical, or diagonal cursor.
+Resizable inset windows can be dragged by their title bar and resized from every edge or corner. Resize hit areas extend beyond a one-pixel border and use the matching horizontal, vertical, or diagonal cursor. The close button stays against the far-right title-bar edge while taking priority over the overlapping resize corner.
 
 When a window approaches a valid edge or corner, vSMR draws a preview of the exact target position and size before the mouse button is released.
 
@@ -240,7 +240,7 @@ SRW 1 is the secondary surface radar inset. It supports panning, cursor-anchored
 
 ### METAR inset
 
-The METAR inset follows the active airport and displays a compact wind rose, wind variation, runway headwind/crosswind components, QNH, UTC, and local controller time. It uses EuroScope weather data when available and can request a bounded fallback METAR without blocking EuroScope's UI thread.
+The METAR inset follows the active airport and displays a compact wind rose, wind variation, runway headwind/crosswind components, QNH, UTC, and local controller time. Numeric bearings retain the standard meteorological direction-from convention, while the rose needle and variation arc point toward the direction the air is moving. It uses EuroScope weather data when available and can request a bounded fallback METAR without blocking EuroScope's UI thread.
 
 ### Timer inset
 

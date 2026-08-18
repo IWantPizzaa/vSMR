@@ -3473,10 +3473,11 @@
     const group = { id: uniqueAvisoGroupId(`group-${number}`), name: `Group ${number}`, visible: true, accent: "#84b7d5" };
     avisoGroups().push(group);
     state.ui.selectedAvisoGroupId = group.id;
+    state.ui.avisoGroupSearch = "";
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group created", ["aviso"]);
-    renderAviso();
+    renderAvisoGroups();
     renderRuntimeMenu();
   }
 
@@ -3492,7 +3493,7 @@
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group copied", ["aviso"]);
-    renderAviso();
+    renderAvisoGroups();
     renderRuntimeMenu();
   }
 
@@ -3506,7 +3507,7 @@
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group deleted", ["aviso"]);
-    renderAviso();
+    renderAvisoGroups();
     renderRuntimeMenu();
   }
 

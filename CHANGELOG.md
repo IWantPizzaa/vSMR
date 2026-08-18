@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Refreshed the Control Center Groups list immediately after creating, duplicating, or deleting an AVISO group.
+- Moved inset close buttons to the far-right title-bar edge while preserving resize-corner interaction.
+- Reversed the METAR wind needle and variation arc to point toward airflow while retaining standard direction-from values and runway-component calculations.
 - Added a 25-second `STAT RPA` grace period after an aircraft newly enters `DEPA`, preventing normal takeoff-clearance readback and initial movement delays from immediately raising a stationary-runway-protected-area alert.
 
 ## [2.0.0-beta.2] - 2026-08-14

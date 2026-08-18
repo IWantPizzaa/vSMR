@@ -184,9 +184,9 @@ namespace
 	constexpr int kInsetToolbarButtonGap = 2;
 	constexpr int kInsetToolbarRightMargin = 3;
 
-	int InsetToolbarRightOffset(int buttonIndexFromRight, bool allowResize = true)
+	int InsetToolbarRightOffset(int buttonIndexFromRight)
 	{
-		return kInsetToolbarRightMargin + (allowResize ? kInsetResizeCornerPx : 0) +
+		return kInsetToolbarRightMargin +
 			buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
 	}
 
@@ -438,13 +438,13 @@ namespace
 		return CRect(area.left, area.top, area.right, min(area.bottom, area.top + kAvisoViewportTopBarHeight));
 	}
 
-	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue, bool allowResize = true)
+	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue)
 	{
 		const CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		return CRect(
-			titleBar.right - InsetToolbarRightOffset(0, allowResize) - kInsetToolbarButtonSize,
+			titleBar.right - InsetToolbarRightOffset(0) - kInsetToolbarButtonSize,
 			titleBar.top + 1,
-			titleBar.right - InsetToolbarRightOffset(0, allowResize),
+			titleBar.right - InsetToolbarRightOffset(0),
 			titleBar.bottom - 1);
 	}
 
@@ -473,7 +473,7 @@ namespace
 			moveRect.top = min(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
 		}
 
-		CRect closeButton = InsetCloseButtonRect(mode, areaValue, allowResize);
+		CRect closeButton = InsetCloseButtonRect(mode, areaValue);
 		closeButton.NormalizeRect();
 		moveRect.right = min(moveRect.right, closeButton.left);
 		if (showFilter && mode == AvisoLayoutMode::Floating)
@@ -547,7 +547,9 @@ namespace
 		case ResizeRegion::TopLeft:
 			return CRect(frame.left - outside, frame.top - outside, frame.left + corner, frame.top + corner);
 		case ResizeRegion::TopRight:
-			return CRect(frame.right - corner, frame.top - outside, frame.right + outside + 1, frame.top + corner);
+			// The close button owns the inside of the top-right title-bar corner.
+			// Keep diagonal resize available immediately outside the top edge.
+			return CRect(frame.right - corner, frame.top - outside, frame.right + outside + 1, frame.top + 1);
 		case ResizeRegion::BottomLeft:
 			return CRect(frame.left - outside, frame.bottom - corner, frame.left + corner, frame.bottom + outside + 1);
 		case ResizeRegion::BottomRight:
@@ -767,7 +769,7 @@ namespace
 			dc,
 			"X",
 			titleBar,
-			InsetToolbarRightOffset(0, allowResize),
+			InsetToolbarRightOffset(0),
 			mouseLocation);
 		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
 	}
@@ -4200,6 +4202,10 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		std::snprintf(buffer, sizeof(buffer), "%03d-%03d", std::clamp(from, 0, 360), std::clamp(to, 0, 360));
 		return buffer;
 	};
+	auto windFlowDirection = [](int meteorologicalDirection) -> int
+	{
+		return (meteorologicalDirection + 180) % 360;
+	};
 	auto formatClock = [](const SYSTEMTIME& time) -> std::string
 	{
 		char buffer[10] = {};
@@ -4385,11 +4391,11 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		gdi->DrawArc(
 			&variationPen,
 			variationRect,
-			static_cast<Gdiplus::REAL>(weather.windVariationFromDegrees - 90),
+			static_cast<Gdiplus::REAL>(windFlowDirection(weather.windVariationFromDegrees) - 90),
 			static_cast<Gdiplus::REAL>(sweep));
 		for (int endpoint : { weather.windVariationFromDegrees, weather.windVariationToDegrees })
 		{
-			const double endpointAngle = (static_cast<double>(endpoint) - 90.0) * pi / 180.0;
+			const double endpointAngle = (static_cast<double>(windFlowDirection(endpoint)) - 90.0) * pi / 180.0;
 			const float endpointRadius = max(1.0f, radius - 5.0f);
 			const Gdiplus::PointF endpointPoint(
 				centerX + static_cast<float>(std::cos(endpointAngle) * endpointRadius),
@@ -4424,7 +4430,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 			: (peakWind < 30 ? RGB(230, 135, 55) : RGB(235, 90, 90)));
 	if (weather.hasWind && !weather.windVariable && !weather.windCalm)
 	{
-		const double angle = (static_cast<double>(weather.windDirectionDegrees) - 90.0) * pi / 180.0;
+		const double angle = (static_cast<double>(windFlowDirection(weather.windDirectionDegrees)) - 90.0) * pi / 180.0;
 		const float lineRadius = max(8.0f, radius - 16.0f);
 		const Gdiplus::PointF tip(
 			centerX + static_cast<float>(std::cos(angle) * lineRadius),
