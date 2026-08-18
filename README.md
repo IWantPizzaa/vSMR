@@ -294,6 +294,8 @@ These RIMCAS choices are separate from EuroScope's `Active Airports/Runways` dia
 
 `LNUP` authorizes runway entry and taxi movement for RIMCAS, so it suppresses `RWY INC` and `NO TAXI`. It does not authorize takeoff: `NO TKOF` remains active until the status changes to `DEPA`.
 
+When an aircraft newly enters `DEPA`, `STAT RPA` has a 25-second grace period before a stationary target can trigger it. This allows time for the takeoff-clearance readback and initial movement; leaving and later re-entering `DEPA` starts a new grace period. Other RIMCAS alerts remain active during this interval.
+
 Current alert labels include:
 
 - `NO PUSH`
