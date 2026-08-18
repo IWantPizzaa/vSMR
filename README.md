@@ -240,7 +240,7 @@ SRW 1 is the secondary surface radar inset. It supports panning, cursor-anchored
 
 ### METAR inset
 
-The METAR inset follows the active airport and displays a compact wind rose, wind variation, runway headwind/crosswind components, QNH, UTC, and local controller time. Numeric bearings retain the standard meteorological direction-from convention, while the rose needle and variation arc point toward the direction the air is moving. It uses EuroScope weather data when available and can request a bounded fallback METAR without blocking EuroScope's UI thread.
+The METAR inset follows the active airport and displays a compact wind rose, wind variation, runway headwind/crosswind components, QNH, UTC, and local controller time. Numeric bearings retain the standard meteorological direction-from convention, while the rose needle points toward the direction the air is moving. A reported variation range is shown as a translucent compass band with highlighted endpoints; unrestricted `VRB` wind uses a full dashed band. It uses EuroScope weather data when available and can request a bounded fallback METAR without blocking EuroScope's UI thread.
 
 ### Timer inset
 
