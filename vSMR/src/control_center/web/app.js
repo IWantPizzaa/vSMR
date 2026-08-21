@@ -19,26 +19,6 @@
     settings: "Settings"
   };
   const PROFILE_TITLES = { colors: "Colors", icons: "Icons", tags: "Tags", rules: "Rules" };
-  const SETTINGS_TITLES = { general: "General", performance: "Performance", updates: "Updates" };
-  const PERFORMANCE_REQUEST_TIMEOUT_MS = 4000;
-  const PERFORMANCE_TIMINGS = [
-    ["frame", "Frame"],
-    ["scene", "Scene capture"],
-    ["sceneAvisoLoad", "Scene · AVISO load"],
-    ["sceneControllerOwnership", "Scene · controller ownership"],
-    ["sceneTargetCapture", "Scene · target capture"],
-    ["sceneFinalize", "Scene · finalize"],
-    ["aviso", "Main AVISO"],
-    ["avisoInset", "AVISO inset"],
-    ["targets", "Targets"],
-    ["rimcas", "RIMCAS"],
-    ["tags", "Tags"],
-    ["srw", "SRW"],
-    ["rdf", "RDF"],
-    ["insetChrome", "Inset chrome"],
-    ["euroScopeLookups", "Instrumented ES lookups"],
-    ["avisoRasterRebuild", "AVISO raster rebuild"]
-  ];
   const MAP_ZOOM_LABELS = [
     "All ranges", "34 km or closer", "28 km or closer", "22 km or closer", "18 km or closer",
     "14 km or closer", "12 km or closer", "9.5 km or closer", "8 km or closer", "6 km or closer",
@@ -550,6 +530,7 @@
       cdmDelayMinutes: readMinutes("cdmDelayMinutes", 5),
       cdmCooldownMinutes: readMinutes("cdmCooldownMinutes", 60),
       vacdmConfigured: readBool("vacdmConfigured"),
+      vacdmReady: readBool("vacdmReady"),
       activeAirport: normalizeAirportCode(readString("activeAirport")),
       cdmAliasPath: readString("cdmAliasPath"),
       cdmAliasReady: readBool("cdmAliasReady"),
@@ -567,6 +548,7 @@
       cdmDelayMinutes: 5,
       cdmCooldownMinutes: 60,
       vacdmConfigured: Boolean(String(metadata?.vacdm?.server_url || "").trim()),
+      vacdmReady: Boolean(String(metadata?.vacdm?.server_url || "").trim()),
       activeAirport,
       cdmAliasPath: "C:\\EuroScope\\Alias\\alias.txt",
       cdmAliasReady: true,
@@ -657,8 +639,7 @@
         runtimePopover: "",
         avisoGeometrySearch: "",
         avisoTextSearch: "",
-        alertsView: "active",
-        settingsView: "general"
+        alertsView: "active"
       },
       runtime: {
         avisoInsetVisible: false,
@@ -714,15 +695,6 @@
   let globalSaveAfterDatalink = false;
   let discardDatalinkDraftOnReload = false;
   let lastDatalinkStateRequestAt = 0;
-  const performanceDiagnostics = {
-    snapshot: null,
-    supported: HOST_MODE ? null : false,
-    windowSeconds: 120,
-    lastRequestAt: 0,
-    lastUpdatedAt: 0,
-    error: "",
-    pending: { state: null, reset: null, export: null }
-  };
   const updateCenter = {
     config: {
       schema_version: 1,
@@ -1392,8 +1364,7 @@
       const viewLabel = state.ui.avisoView === "text" ? "Text" : "Geometry";
       suffix = `${state.aviso?.metadata?.airport || inferAirport(state.aviso?.name) || "AVISO"} · ${viewLabel}`;
     }
-    if (state.ui.page === "settings")
-      suffix = `Settings · ${SETTINGS_TITLES[state.ui.settingsView] || SETTINGS_TITLES.general}`;
+    if (state.ui.page === "settings") suffix = "Settings";
     context.textContent = `${profileName} · ${suffix}`;
   }
   function setPage(page) {
@@ -1411,54 +1382,12 @@
     if (page === "modes") renderModes();
     if (page === "profiles") renderProfilesManager();
     if (page === "settings") {
-      syncSettingsViewSelection();
-      if (state.ui.settingsView === "performance") {
-        renderPerformanceDiagnostics();
-        requestPerformanceState(true);
-      } else if (state.ui.settingsView === "updates") {
-        renderUpdateCenter();
-        requestUpdateState(true);
-      } else {
-        renderSettings();
-        renderDatalink();
-        requestDatalinkState();
-      }
-    }
-    updateContext();
-  }
-
-  function syncSettingsViewSelection() {
-    const view = SETTINGS_TITLES[state.ui.settingsView] ? state.ui.settingsView : "general";
-    state.ui.settingsView = view;
-    $$('[data-settings-tab]').forEach(button => {
-      const selected = button.dataset.settingsTab === view;
-      button.classList.toggle("active", selected);
-      button.setAttribute("aria-selected", String(selected));
-      button.tabIndex = selected ? 0 : -1;
-    });
-    $$('[data-settings-panel]').forEach(panel => {
-      const selected = panel.dataset.settingsPanel === view;
-      panel.classList.toggle("active", selected);
-      panel.hidden = !selected;
-    });
-  }
-
-  function setSettingsView(view, focusTab = false) {
-    if (!SETTINGS_TITLES[view]) return;
-    state.ui.settingsView = view;
-    syncSettingsViewSelection();
-    if (view === "performance") {
-      renderPerformanceDiagnostics();
-      requestPerformanceState(true);
-    } else if (view === "updates") {
-      renderUpdateCenter();
-      requestUpdateState(true);
-    } else {
       renderSettings();
       renderDatalink();
-      requestDatalinkState(true);
+      renderUpdateCenter();
+      requestDatalinkState();
+      requestUpdateState(true);
     }
-    if (focusTab) $(`[data-settings-tab="${view}"]`)?.focus();
     updateContext();
   }
 
@@ -4589,28 +4518,51 @@
     const reminderOperation = pendingReminderOperation || String(datalinkQueuedReminderAction?.kind || "");
     const reminderActionBusy = cdmSettingsBusy || Boolean(datalinkQueuedReminderAction);
     const reminderRunning = Boolean(runtime.cdmAutoEnabled);
+    const reminderReady = runtime.controllerConnected && Boolean(runtime.activeAirport) &&
+      runtime.vacdmConfigured && runtime.vacdmReady && runtime.cdmAliasReady;
+    const reminderUnavailableReason = !runtime.controllerConnected
+      ? "EuroScope is not connected as a controller"
+      : !runtime.activeAirport
+        ? "Select an active airport first"
+        : !runtime.vacdmConfigured
+          ? "Configure a vACDM server for the active profile"
+          : !runtime.vacdmReady
+            ? "Wait for a current vACDM snapshot"
+            : !runtime.cdmAliasReady
+              ? "Add a valid .cdm entry to the EuroScope alias file"
+              : "";
+    const reminderWaiting = reminderRunning && !reminderReady;
+    const reminderTransitioning = reminderOperation === "reminder-run" || reminderOperation === "reminder-stop";
     const reminderBadge = $("#datalinkReminderState");
     const reminderLabel = reminderOperation === "reminder-run"
       ? "Starting"
       : reminderOperation === "reminder-stop"
         ? "Stopping"
-        : reminderRunning ? "Running" : "Stopped";
-    reminderBadge.className = `datalink-state-badge ${reminderRunning ? "connected" : reminderOperation === "reminder-run" ? "connecting" : "disconnected"}`;
+        : reminderWaiting ? "Waiting"
+          : reminderRunning ? "Running" : "Stopped";
+    reminderBadge.className = `datalink-state-badge ${reminderWaiting || reminderTransitioning ? "connecting" : reminderRunning ? "connected" : "disconnected"}`;
     $("span", reminderBadge).textContent = reminderLabel;
-    reminderBadge.title = reminderRunning
-      ? "Automatic PDC reminders are running"
-      : "Automatic PDC reminders are stopped";
+    reminderBadge.title = reminderOperation === "reminder-run"
+      ? "Starting automatic PDC reminders"
+      : reminderOperation === "reminder-stop"
+        ? "Stopping automatic PDC reminders"
+        : reminderWaiting
+          ? `Automatic PDC reminders are enabled but waiting: ${reminderUnavailableReason}`
+      : reminderRunning
+        ? "Automatic PDC reminders are running"
+        : "Automatic PDC reminders are stopped";
 
     const scanButton = $("#datalinkScanButton");
-    scanButton.disabled = !runtime.controllerConnected || !runtime.activeAirport || !runtime.cdmAliasReady || Boolean(datalinkPending.scan);
+    scanButton.disabled = !reminderReady || Boolean(datalinkPending.scan);
     scanButton.textContent = datalinkPending.scan ? "Checking..." : "Check now";
     scanButton.title = !runtime.controllerConnected
       ? "EuroScope is not connected as a controller"
       : !runtime.activeAirport ? "Select an active airport first"
+        : !runtime.vacdmConfigured ? "Configure a vACDM server for the active profile"
+        : !runtime.vacdmReady ? "Wait for a current vACDM snapshot"
         : !runtime.cdmAliasReady ? "Add a valid .cdm entry to the EuroScope alias file"
           : "Check eligible departures now";
 
-    const reminderReady = runtime.controllerConnected && Boolean(runtime.activeAirport) && runtime.cdmAliasReady;
     const reminderToggleButton = $("#datalinkReminderToggleButton");
     reminderToggleButton.textContent = reminderOperation === "reminder-run"
       ? "Starting..."
@@ -4622,13 +4574,14 @@
     reminderToggleButton.disabled = reminderActionBusy || (!reminderRunning && !reminderReady);
     reminderToggleButton.title = reminderRunning
       ? "Stop automatic PDC reminders"
-      : !runtime.controllerConnected ? "EuroScope is not connected as a controller"
-        : !runtime.activeAirport ? "Select an active airport first"
-          : !runtime.cdmAliasReady ? "Add a valid .cdm entry to the EuroScope alias file"
-            : "Start automatic PDC reminders";
+      : reminderUnavailableReason || "Start automatic PDC reminders";
 
-    $("#datalinkCdmDelay").disabled = reminderActionBusy;
-    $("#datalinkCdmCooldown").disabled = reminderActionBusy;
+    const delayInput = $("#datalinkCdmDelay");
+    const cooldownInput = $("#datalinkCdmCooldown");
+    delayInput.disabled = reminderActionBusy || reminderRunning;
+    cooldownInput.disabled = reminderActionBusy || reminderRunning;
+    delayInput.title = reminderRunning ? "Stop reminders before changing the delay" : "Delay before the first automatic reminder";
+    cooldownInput.title = reminderRunning ? "Stop reminders before changing the cooldown" : "Delay before an automatic reminder may be repeated; 0 sends only once per eligibility period";
     datalinkControlsInitialized = true;
   }
 
@@ -4645,15 +4598,14 @@
         showToast(message, "error");
       }
     }
-    if (state.ui.page === "settings" && state.ui.settingsView === "general") {
+    if (state.ui.page === "settings") {
       renderDatalink();
       updateContext();
     }
   }
 
   function requestDatalinkState(force = false) {
-    if (state.ui.page !== "settings" || state.ui.settingsView !== "general" ||
-        !state.ui.controlCenterOpen || document.hidden) return;
+    if (state.ui.page !== "settings" || !state.ui.controlCenterOpen || document.hidden) return;
     const now = Date.now();
     if (!force && now - lastDatalinkStateRequestAt < 900) return;
     lastDatalinkStateRequestAt = now;
@@ -4882,7 +4834,8 @@
 
   function scanCdmReminders() {
     const runtime = state.datalink;
-    if (datalinkPending.scan || !runtime.controllerConnected || !runtime.activeAirport || !runtime.cdmAliasReady) return;
+    if (datalinkPending.scan || !runtime.controllerConnected || !runtime.activeAirport ||
+        !runtime.vacdmConfigured || !runtime.vacdmReady || !runtime.cdmAliasReady) return;
     const requestId = postBridge("cdm.scan", {});
     if (!requestId) return;
     datalinkPending.scan = { id: requestId, action: "cdm.scan" };
@@ -5034,412 +4987,8 @@
     return true;
   }
 
-  function performanceFinite(...values) {
-    for (const value of values) {
-      if (value == null || value === "") continue;
-      const number = Number(value);
-      if (Number.isFinite(number)) return number;
-    }
-    return null;
-  }
-
-  function performanceStats(value) {
-    const source = typeof value === "number" ? { latest: value } : value;
-    if (!source || typeof source !== "object" || Array.isArray(source)) {
-      return { latest: null, average: null, median: null, p95: null, max: null };
-    }
-    return {
-      latest: performanceFinite(source.latest, source.current, source.value),
-      average: performanceFinite(source.average, source.avg, source.mean),
-      median: performanceFinite(source.median, source.p50),
-      p95: performanceFinite(source.p95, source.percentile95),
-      max: performanceFinite(source.max, source.maximum, source.peak)
-    };
-  }
-
-  function formatPerformanceMs(value) {
-    const number = performanceFinite(value);
-    if (number == null) return "--";
-    return number.toFixed(Math.abs(number) < 10 ? 2 : 1);
-  }
-
-  function formatPerformanceCount(value) {
-    const number = performanceFinite(value);
-    return number == null ? "--" : Math.max(0, Math.round(number)).toLocaleString();
-  }
-
-  function formatPerformanceBytes(value) {
-    const number = performanceFinite(value);
-    if (number == null) return "--";
-    const bytes = Math.max(0, number);
-    if (bytes < 1024) return `${Math.round(bytes).toLocaleString()} B`;
-    const units = ["KiB", "MiB", "GiB"];
-    let scaled = bytes / 1024;
-    let unit = units[0];
-    for (let index = 1; index < units.length && scaled >= 1024; ++index) {
-      scaled /= 1024;
-      unit = units[index];
-    }
-    return `${scaled.toFixed(scaled < 10 ? 2 : scaled < 100 ? 1 : 0)} ${unit}`;
-  }
-
-  function formatPerformanceLabel(value) {
-    const text = String(value ?? "").trim();
-    if (!text) return "--";
-    return text.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-      .replace(/[_-]+/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
-  }
-
-  function formatPerformancePair(current, comparison) {
-    const first = formatPerformanceCount(current);
-    const second = formatPerformanceCount(comparison);
-    if (first === "--" && second === "--") return "--";
-    return second === "--" ? first : `${first} / ${second}`;
-  }
-
-  function performanceTiming(snapshot, key) {
-    const timings = snapshot?.timings || snapshot?.statistics?.timings || {};
-    if (key === "euroScopeLookups")
-      return timings[key] || timings.euroscopeLookups || timings.sdkLookups || null;
-    if (key === "avisoRasterRebuild")
-      return timings[key] || timings.rasterRebuild || null;
-    if (key === "avisoInset")
-      return timings[key] || timings.insetAviso || null;
-    if (key === "insetChrome")
-      return timings[key] || timings.insetsChrome || null;
-    return timings[key] || null;
-  }
-
-  function renderPerformanceRefreshContext(snapshot) {
-    const refresh = snapshot?.refresh || snapshot?.refreshContext || {};
-    const spikeContainer = refresh.spike && typeof refresh.spike === "object" ? refresh.spike : {};
-    const spike = refresh.latestSpike || spikeContainer.latest || snapshot?.latestSpike || {};
-    const latestReason = refresh.latestReason || refresh.lastReason || snapshot?.latestFrame?.refreshReason;
-    $("#performanceRefreshLatest").textContent = formatPerformanceLabel(latestReason);
-
-    const spikeCount = performanceFinite(refresh.spikeCount, spikeContainer.count);
-    const threshold = performanceFinite(refresh.spikeThresholdMilliseconds, spikeContainer.thresholdMilliseconds, spikeContainer.thresholdMs);
-    const summaryParts = [];
-    if (spikeCount != null) summaryParts.push(`${formatPerformanceCount(spikeCount)} spike${spikeCount === 1 ? "" : "s"}`);
-    if (threshold != null) summaryParts.push(`at or above ${formatPerformanceMs(threshold)} ms`);
-    $("#performanceSpikeSummary").textContent = summaryParts.join(" · ") || "No spike data";
-
-    const spikeFrame = performanceFinite(spike.frameMilliseconds, spike.frameMs);
-    const spikeReason = spike.reason || spike.refreshReason;
-    const spikeAge = performanceFinite(spike.ageMilliseconds, spike.ageMs);
-    const latestParts = [];
-    if (spikeFrame != null) latestParts.push(`${formatPerformanceMs(spikeFrame)} ms`);
-    if (spikeReason) latestParts.push(formatPerformanceLabel(spikeReason));
-    if (spikeAge != null) latestParts.push(`${Math.max(0, Math.round(spikeAge / 1000)).toLocaleString()} s ago`);
-    $("#performanceSpikeLatest").textContent = latestParts.join(" · ") || "--";
-    const worstSpike = refresh.worstSpike || spikeContainer.worst || {};
-    const worstFrame = performanceFinite(worstSpike.frameMilliseconds, worstSpike.frameMs);
-    const worstReason = worstSpike.reason || worstSpike.refreshReason;
-    $("#performanceSpikeWorst").textContent = worstFrame == null
-      ? "--"
-      : `${formatPerformanceMs(worstFrame)} ms${worstReason ? ` · ${formatPerformanceLabel(worstReason)}` : ""}`;
-    $("#performanceSpikeTargets").textContent = formatPerformancePair(
-      performanceFinite(spike.processedTargets, spike.targets?.processed),
-      performanceFinite(spike.visibleTargets, spike.targets?.visible));
-    const spikeMainAviso = performanceFinite(spike.avisoMilliseconds, spike.timings?.aviso);
-    const spikeInsetAviso = performanceFinite(spike.avisoInsetMilliseconds, spike.timings?.avisoInset);
-    $("#performanceSpikeAviso").textContent = spikeMainAviso == null && spikeInsetAviso == null
-      ? "--"
-      : `${formatPerformanceMs(spikeMainAviso)} / ${formatPerformanceMs(spikeInsetAviso)} ms`;
-
-    const contextParts = [];
-    const contextText = String(spike.context || "").trim();
-    if (contextText) contextParts.push(contextText);
-    const activeInsets = Array.isArray(spike.activeInsets) ? spike.activeInsets.filter(Boolean) : [];
-    if (activeInsets.length) contextParts.push(`Insets: ${activeInsets.join(", ")}`);
-    if (spike.avisoGeneration != null) contextParts.push(`AVISO generation ${spike.avisoGeneration}`);
-    const context = contextParts.join(" · ") || "--";
-    const contextOutput = $("#performanceSpikeContext");
-    contextOutput.textContent = context;
-    contextOutput.title = context === "--" ? "" : context;
-
-    const rawReasons = refresh.reasonCounts || refresh.reasons || [];
-    const reasons = Array.isArray(rawReasons)
-      ? rawReasons
-      : Object.entries(rawReasons).map(([reason, count]) => ({ reason, count }));
-    $("#performanceRefreshReasonRows").innerHTML = reasons.length ? reasons.map(item => {
-      const reason = typeof item === "string" ? item : item?.reason || item?.name || item?.id;
-      const count = typeof item === "string" ? null : performanceFinite(item?.count, item?.frames, item?.samples);
-      return `<tr><th scope="row">${escapeHtml(formatPerformanceLabel(reason))}</th><td>${formatPerformanceCount(count)}</td></tr>`;
-    }).join("") : '<tr class="performance-empty-row"><td colspan="2">No refresh reason samples</td></tr>';
-  }
-
-  function performanceViewActive() {
-    return state.ui.controlCenterOpen && state.ui.page === "settings" &&
-      state.ui.settingsView === "performance" && !document.hidden;
-  }
-
-  function expirePerformanceRequest(slot, now = Date.now()) {
-    const pendingRequest = performanceDiagnostics.pending[slot];
-    const timeout = slot === "state" ? PERFORMANCE_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
-    if (!pendingRequest || now - pendingRequest.startedAt < timeout) return false;
-    performanceDiagnostics.pending[slot] = null;
-    if (slot === "state" && !performanceDiagnostics.snapshot)
-      performanceDiagnostics.error = "Still waiting for performance data from vSMR.";
-    return true;
-  }
-
-  function requestPerformanceState(force = false) {
-    if (!HOST_MODE || !performanceViewActive() || performanceDiagnostics.supported === false) return;
-    const now = Date.now();
-    expirePerformanceRequest("state", now);
-    if (performanceDiagnostics.pending.state) return;
-    if (!force && now - performanceDiagnostics.lastRequestAt < 900) return;
-    performanceDiagnostics.lastRequestAt = now;
-    const id = postBridge("performance.state.request", {
-      windowSeconds: performanceDiagnostics.windowSeconds,
-      maxSeriesPoints: 120
-    });
-    if (!id) return;
-    performanceDiagnostics.pending.state = { id, startedAt: now };
-    renderPerformanceDiagnostics();
-  }
-
-  function resetPerformanceDiagnostics() {
-    if (!HOST_MODE) {
-      showToast("Performance diagnostics require the native Control Center", "error");
-      return;
-    }
-    if (performanceDiagnostics.pending.reset) return;
-    const id = postBridge("performance.reset", {});
-    if (!id) return;
-    performanceDiagnostics.pending.reset = { id, startedAt: Date.now() };
-    renderPerformanceDiagnostics();
-  }
-
-  function exportPerformanceReport() {
-    if (!HOST_MODE) {
-      showToast("Performance report export requires the native Control Center", "error");
-      return;
-    }
-    if (!performanceDiagnostics.snapshot || performanceDiagnostics.pending.export) return;
-    const id = postBridge("performance.report.export", {
-      windowSeconds: performanceDiagnostics.windowSeconds,
-      format: "json"
-    });
-    if (!id) return;
-    performanceDiagnostics.pending.export = { id, startedAt: Date.now() };
-    renderPerformanceDiagnostics();
-  }
-
-  function performanceMessageSlot(message) {
-    for (const slot of ["state", "reset", "export"]) {
-      const request = performanceDiagnostics.pending[slot];
-      if (request?.id && messageMatchesRequest(message, request.id)) return slot;
-    }
-    return "";
-  }
-
-  function finishPerformanceAck(message) {
-    const action = String(message.payload?.action || "");
-    let slot = performanceMessageSlot(message);
-    if (!slot && action === "performance.reset") slot = "reset";
-    if (!slot && action === "performance.report.export") slot = "export";
-    if (!slot) return false;
-    performanceDiagnostics.pending[slot] = null;
-    performanceDiagnostics.supported = true;
-    const text = String(message.payload?.message ||
-      (slot === "reset" ? "Performance samples reset" : "Performance report exported"));
-    if (slot === "reset") {
-      performanceDiagnostics.snapshot = null;
-      performanceDiagnostics.lastUpdatedAt = 0;
-      performanceDiagnostics.error = "";
-      window.setTimeout(() => requestPerformanceState(true), 0);
-    }
-    const path = String(message.payload?.path || "");
-    const statusText = slot === "export" && path && !message.payload?.cancelled
-      ? `Performance report exported to ${path}`
-      : text;
-    const toastText = slot === "export" && path ? "Performance report exported" : text;
-    setStatus(statusText, "info");
-    if (!message.payload?.cancelled) showToast(toastText, "success");
-    renderPerformanceDiagnostics();
-    return true;
-  }
-
-  function finishPerformanceError(message) {
-    const slot = performanceMessageSlot(message);
-    if (!slot) return false;
-    performanceDiagnostics.pending[slot] = null;
-    const text = String(message.payload?.message || message.payload?.error || "Performance diagnostics failed");
-    performanceDiagnostics.error = text;
-    if (slot === "state" && /unsupported|unknown|not available/i.test(text))
-      performanceDiagnostics.supported = false;
-    setStatus(text, "error");
-    showToast(text, "error");
-    renderPerformanceDiagnostics();
-    return true;
-  }
-
-  function applyPerformanceState(payload) {
-    const incoming = payload?.performance || payload?.diagnostics || payload?.state || payload;
-    if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return;
-    const seconds = performanceFinite(incoming.window?.seconds, incoming.windowSeconds);
-    if ([30, 120, 600].includes(seconds) && seconds !== performanceDiagnostics.windowSeconds)
-      return;
-    performanceDiagnostics.pending.state = null;
-    performanceDiagnostics.snapshot = clone(incoming);
-    performanceDiagnostics.lastUpdatedAt = Date.now();
-    performanceDiagnostics.error = "";
-    performanceDiagnostics.supported = true;
-    if (state.ui.page === "settings" && state.ui.settingsView === "performance")
-      renderPerformanceDiagnostics();
-  }
-
-  function renderPerformanceTrend(snapshot) {
-    const frameLine = $("#performanceFrameTrend");
-    const avisoLine = $("#performanceAvisoTrend");
-    if (!frameLine || !avisoLine) return;
-    const series = Array.isArray(snapshot?.series) ? snapshot.series.slice(-120) : [];
-    const points = series.map((entry, index) => ({
-      offset: performanceFinite(entry?.offsetMs, index) ?? index,
-      frame: performanceFinite(entry?.frameMs, entry?.frame),
-      aviso: performanceFinite(entry?.avisoMs, entry?.aviso)
-    })).filter(point => point.frame != null || point.aviso != null)
-      .sort((left, right) => left.offset - right.offset);
-    const values = points.flatMap(point => [point.frame, point.aviso])
-      .filter(value => value != null && value >= 0);
-    const maximum = values.length ? Math.max(...values, 16.7) : 0;
-    const scaleMaximum = maximum > 0 ? Math.ceil(maximum / 5) * 5 : 0;
-    const offsetMinimum = points.length ? points[0].offset : 0;
-    const offsetMaximum = points.length ? points[points.length - 1].offset : offsetMinimum;
-    const offsetSpan = Math.max(1, offsetMaximum - offsetMinimum);
-    const buildPoints = key => points.filter(point => point[key] != null).map((point, index, filtered) => {
-      const x = offsetMaximum === offsetMinimum
-        ? (filtered.length <= 1 ? 600 : index * 600 / (filtered.length - 1))
-        : (point.offset - offsetMinimum) * 600 / offsetSpan;
-      const y = scaleMaximum > 0 ? 118 - Math.min(scaleMaximum, Math.max(0, point[key])) * 118 / scaleMaximum : 118;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(" ");
-    frameLine.setAttribute("points", buildPoints("frame"));
-    avisoLine.setAttribute("points", buildPoints("aviso"));
-    $("#performanceTrendScale").textContent = `0-${formatPerformanceMs(scaleMaximum)} ms`;
-    $("#performanceTrendCaption").textContent = points.length
-      ? `${points.length.toLocaleString()} points`
-      : "No samples";
-    const description = $("#performanceTrendDescription");
-    if (description) description.textContent = points.length
-      ? `Frame and main AVISO time across ${points.length} downsampled performance points, scaled to ${formatPerformanceMs(scaleMaximum)} milliseconds.`
-      : "No performance samples are available.";
-  }
-
-  function renderPerformanceDiagnostics() {
-    expirePerformanceRequest("reset");
-    expirePerformanceRequest("export");
-    const snapshot = performanceDiagnostics.snapshot;
-    const available = Boolean(snapshot && snapshot.available !== false);
-    const directPreview = !HOST_MODE;
-    const badge = $("#performanceStateBadge");
-    if (!badge) return;
-
-    let badgeText = "Awaiting data";
-    let badgeClass = "waiting";
-    let noticeText = "Waiting for the first performance sample...";
-    if (directPreview) {
-      badgeText = "Unavailable";
-      badgeClass = "unavailable";
-      noticeText = "Performance diagnostics are available only in the native Control Center while a radar screen is active.";
-    } else if (performanceDiagnostics.error) {
-      badgeText = "Diagnostics error";
-      badgeClass = "error";
-      noticeText = performanceDiagnostics.error;
-    } else if (available) {
-      badgeText = "Live";
-      badgeClass = "live";
-      noticeText = "";
-    } else if (snapshot?.available === false) {
-      badgeText = "Unavailable";
-      badgeClass = "unavailable";
-      noticeText = String(snapshot.message || "Performance diagnostics are not available for this radar screen.");
-    }
-    badge.className = `performance-state-badge ${badgeClass}`;
-    badge.textContent = badgeText;
-    const notice = $("#performanceNotice");
-    notice.textContent = noticeText;
-    notice.hidden = !noticeText;
-
-    ensureSelectValue($("#performanceWindowSeconds"), String(performanceDiagnostics.windowSeconds));
-    $("#performanceWindowSeconds").disabled = directPreview;
-    const resetButton = $("#performanceResetButton");
-    resetButton.disabled = directPreview || Boolean(performanceDiagnostics.pending.reset);
-    resetButton.textContent = performanceDiagnostics.pending.reset ? "Resetting..." : "Reset";
-    const exportButton = $("#performanceExportButton");
-    exportButton.disabled = directPreview || !available || Boolean(performanceDiagnostics.pending.export);
-    exportButton.textContent = performanceDiagnostics.pending.export ? "Exporting..." : "Export report";
-
-    const frame = performanceStats(performanceTiming(snapshot, "frame"));
-    $("#performanceFrameAverage").textContent = formatPerformanceMs(frame.average);
-    $("#performanceFrameMedian").textContent = formatPerformanceMs(frame.median);
-    $("#performanceFrameP95").textContent = formatPerformanceMs(frame.p95);
-    $("#performanceFrameMaximum").textContent = formatPerformanceMs(frame.max);
-
-    $("#performanceTimingRows").innerHTML = PERFORMANCE_TIMINGS.map(([key, label]) => {
-      const stats = performanceStats(performanceTiming(snapshot, key));
-      return `<tr><th scope="row">${escapeHtml(label)}</th><td>${formatPerformanceMs(stats.latest)}</td><td>${formatPerformanceMs(stats.average)}</td><td>${formatPerformanceMs(stats.median)}</td><td>${formatPerformanceMs(stats.p95)}</td><td>${formatPerformanceMs(stats.max)}</td></tr>`;
-    }).join("");
-    const sampleCount = performanceFinite(snapshot?.window?.samples, snapshot?.sampleCount) || 0;
-    const overwritten = performanceFinite(snapshot?.window?.overwritten, snapshot?.window?.dropped, snapshot?.droppedSamples) || 0;
-    const observedSeconds = performanceFinite(snapshot?.window?.observedSeconds);
-    $("#performanceSampleCaption").textContent = `${Math.round(sampleCount).toLocaleString()} samples${observedSeconds != null ? ` · ${observedSeconds.toFixed(observedSeconds < 10 ? 1 : 0)} s observed` : ""}${overwritten ? ` · ${Math.round(overwritten).toLocaleString()} overwritten` : ""}`;
-
-    const caches = Array.isArray(snapshot?.caches) ? snapshot.caches : [];
-    $("#performanceCacheRows").innerHTML = caches.length ? caches.map(cache => {
-      const hits = performanceFinite(cache?.hits) || 0;
-      const previewHits = performanceFinite(cache?.previewHits) || 0;
-      const misses = performanceFinite(cache?.misses) || 0;
-      const explicitRate = performanceFinite(cache?.hitRate, cache?.rate);
-      const rate = explicitRate == null ? (hits + previewHits + misses > 0 ? (hits + previewHits) / (hits + previewHits + misses) : null) : explicitRate;
-      const percent = rate == null ? "--" : `${(rate <= 1 ? rate * 100 : rate).toFixed(1)}%`;
-      return `<tr><th scope="row">${escapeHtml(cache?.name || "Cache")}</th><td>${formatPerformanceCount(hits)}</td><td>${formatPerformanceCount(previewHits)}</td><td>${formatPerformanceCount(misses)}</td><td>${percent}</td></tr>`;
-    }).join("") : '<tr class="performance-empty-row"><td colspan="5">No cache samples</td></tr>';
-
-    const processed = performanceStats(snapshot?.targets?.processed);
-    const visible = performanceStats(snapshot?.targets?.visible);
-    $("#performanceTargetsProcessed").textContent = formatPerformancePair(processed.latest, processed.average);
-    $("#performanceTargetsVisible").textContent = formatPerformancePair(visible.latest, visible.average);
-    const graphics = snapshot?.graphics || {};
-    $("#performanceGdiObjects").textContent = formatPerformancePair(graphics.processGdiObjects, graphics.peakProcessGdiObjects);
-    $("#performanceCachedBitmaps").textContent = formatPerformancePair(graphics.vsmrCachedBitmaps, graphics.peakVsmrCachedBitmaps);
-    const bitmapBytes = performanceFinite(graphics.estimatedBitmapBytes, graphics.bitmapBytes);
-    const peakBitmapBytes = performanceFinite(graphics.peakEstimatedBitmapBytes, graphics.peakBitmapBytes);
-    $("#performanceBitmapMemory").textContent = peakBitmapBytes == null
-      ? formatPerformanceBytes(bitmapBytes)
-      : `${formatPerformanceBytes(bitmapBytes)} / ${formatPerformanceBytes(peakBitmapBytes)}`;
-    $("#performanceAvisoBitmaps").textContent = formatPerformancePair(
-      performanceFinite(graphics.mainAvisoBitmapCount, graphics.avisoBitmaps?.main),
-      performanceFinite(graphics.insetAvisoBitmapCount, graphics.avisoBitmaps?.inset));
-
-    const worker = snapshot?.worker || {};
-    const queues = Array.isArray(worker.queues) ? worker.queues : [];
-    $("#performanceQueueRows").innerHTML = queues.length ? queues.map(queue =>
-      `<tr><th scope="row">${escapeHtml(queue?.name || queue?.id || "Worker")}</th><td>${formatPerformanceCount(queue?.pendingDepth)}</td><td>${formatPerformanceCount(queue?.inFlight)}</td><td>${formatPerformanceCount(queue?.workers)}</td><td>${formatPerformanceCount(queue?.completedWaiting)}</td></tr>`
-    ).join("") : '<tr class="performance-empty-row"><td colspan="5">No worker queue samples</td></tr>';
-    $("#performanceWorkerState").textContent = worker.active === true ? "Active" : "Idle";
-    $("#performanceWorkerDepth").textContent = formatPerformancePair(worker.pendingDepth, worker.inFlight);
-    const rasterStats = performanceStats(performanceTiming(snapshot, "avisoRasterRebuild"));
-    const aviso = snapshot?.aviso || {};
-    const latestRaster = performanceFinite(rasterStats.latest, aviso.lastRebuildMilliseconds, rasterStats.average);
-    $("#performanceRasterRebuild").textContent = latestRaster == null ? "--" : `${formatPerformanceMs(latestRaster)} ms`;
-    $("#performanceAvisoDelayed").textContent = formatPerformancePair(aviso.framesDelayed, aviso.framesUsingFallback);
-    $("#performanceAvisoRebuilds").textContent = formatPerformancePair(aviso.rebuildsCompleted, aviso.rasterBuildFailures);
-    $("#performanceAvisoRequests").textContent = formatPerformancePair(aviso.requestsQueued, aviso.requestsCoalesced);
-    $("#performanceAvisoDebounce").textContent = formatPerformancePair(aviso.requestsDebounced, aviso.requestsSuperseded);
-    $("#performanceAvisoCancellations").textContent = formatPerformancePair(
-      performanceFinite(aviso.rasterBuildsCancelled, aviso.buildsCancelled, aviso.requestsCancelled),
-      aviso.resultsDiscarded);
-    $("#performanceAvisoResults").textContent = formatPerformanceCount(aviso.resultsApplied);
-    renderPerformanceRefreshContext(snapshot);
-    renderPerformanceTrend(snapshot);
-  }
-
   function updateViewActive() {
-    return state.ui.controlCenterOpen && state.ui.page === "settings" &&
-      state.ui.settingsView === "updates" && !document.hidden;
+    return state.ui.controlCenterOpen && state.ui.page === "settings" && !document.hidden;
   }
 
   function formatUpdateTime(value, fallback = "Never") {
@@ -5513,8 +5062,7 @@
     updateCenter.available = payload.available !== false;
     updateCenter.configWritable = payload.configWritable !== false;
     updateCenter.configError = String(payload.configError || "");
-    if (state.ui.page === "settings" && state.ui.settingsView === "updates")
-      renderUpdateCenter();
+    if (state.ui.page === "settings") renderUpdateCenter();
   }
 
   function submitUpdateSettings(changes, successMessage = "Update settings saved") {
@@ -5634,6 +5182,7 @@
     if (!badge) return;
     expireUpdateRequest("settings");
     expireUpdateRequest("action");
+
     const updater = updateCenter.state || {};
     const config = updateCenter.config || {};
     const status = String(updater.status || "idle").toLowerCase();
@@ -5643,17 +5192,22 @@
 
     badge.className = `update-state-badge ${directPreview ? "preview" : updateStatusClass(status)}`;
     badge.textContent = directPreview ? "Preview" : updateStatusLabel(status);
+
+    const installed = String(updater.installed_version || "--");
+    const available = String(updater.available_version || "").trim();
+    $("#updateVersionSummary").textContent = available
+      ? `Installed ${installed} · Available ${available}`
+      : `Installed ${installed}`;
+
     const errorText = String(updater.error || updateCenter.configError || "").trim();
-    const noticeText = errorText || String(updater.message || "Updates are checked before the vSMR runtime loads.");
     const notice = $("#updateNotice");
     notice.classList.toggle("error", Boolean(errorText));
-    notice.textContent = noticeText;
-
-    $("#updateInstalledVersion").textContent = String(updater.installed_version || "--");
-    $("#updateAvailableVersion").textContent = String(updater.available_version || "--");
-    $("#updateSelectedChannel").textContent = config.channel === "stable" ? "Stable" : "Beta";
-    $("#updateLastChecked").textContent = formatUpdateTime(updater.last_checked_utc);
-    $("#updateNextCheck").textContent = `Next check: ${formatUpdateTime(updater.next_check_utc, config.auto_check === false ? "Disabled" : "Next startup")}`;
+    notice.textContent = errorText || String(
+      updater.message ||
+      (config.auto_check === false
+        ? "Automatic update checks are disabled."
+        : `Last checked: ${formatUpdateTime(updater.last_checked_utc)}`)
+    );
 
     ensureSelectValue($("#updateChannel"), config.channel === "stable" ? "stable" : "beta");
     $("#updateAutoCheck").checked = config.auto_check !== false;
@@ -5664,34 +5218,20 @@
     $("#updateAutoDownload").disabled = !writable || busy || config.auto_check === false;
     $("#updateAutoInstall").disabled = !writable || busy || config.auto_download === false;
 
-    const percent = Math.round(clamp(updater.download_percent, 0, 100));
-    const progress = $("#updateProgress");
-    progress.value = percent;
-    progress.textContent = `${percent}%`;
-    $("#updateProgressPercent").textContent = `${percent}%`;
-    $("#updateProgressLabel").textContent = updateStatusLabel(status);
-    $("#updateSelectedVersion").textContent = String(updater.selected_version || updater.available_version || "--");
-    const skipped = String(config.skipped_version || "");
-    $("#updateSkippedVersion").textContent = skipped || "None";
-    $("#updateActivationState").textContent = status === "deferred"
-      ? "Manual package update required"
-      : updater.restart_required ? "Next EuroScope startup"
-        : status === "updated" ? "Updated this startup" : "Current runtime";
-
-    const availableVersion = String(updater.available_version || "");
-    const skipButton = $("#updateSkipButton");
-    skipButton.disabled = !writable || busy || !availableVersion || availableVersion === skipped;
-    skipButton.title = availableVersion ? `Ignore ${availableVersion} on this channel` : "No update is available to skip";
-    const clearSkipButton = $("#updateClearSkipButton");
-    clearSkipButton.disabled = !writable || busy || !skipped;
-
     const pendingAction = Boolean(updateCenter.pending.action);
     const checkButton = $("#updateCheckButton");
     checkButton.disabled = !updateCenter.available || pendingAction;
     checkButton.textContent = pendingAction ? "Queuing..." : "Check on next startup";
+
     const retryButton = $("#updateRetryButton");
     retryButton.hidden = !["error", "rate_limited"].includes(status);
     retryButton.disabled = !updateCenter.available || pendingAction;
+
+    const clearSkipButton = $("#updateClearSkipButton");
+    const skippedVersion = String(config.skipped_version || "").trim();
+    clearSkipButton.hidden = !skippedVersion;
+    clearSkipButton.disabled = !writable || busy;
+    clearSkipButton.title = skippedVersion ? `Resume offering ${skippedVersion}` : "No release is skipped";
 
     const releaseLink = $("#updateReleaseLink");
     const releaseUrl = safeReleaseUrl(updater.release_url);
@@ -6007,9 +5547,6 @@
     if (ui === "runtime") state.ui.controlCenterOpen = false;
     if (["mode", "groups", "inset", "profile"].includes(params.get("popup"))) state.ui.runtimePopover = params.get("popup");
     if (["active", "runways", "timing", "appearance"].includes(params.get("alerts"))) state.ui.alertsView = params.get("alerts");
-    const settingsView = params.get("settings") ||
-      (["performance", "diagnostics"].includes(requestedPage) ? "performance" : requestedPage === "updates" ? "updates" : "");
-    if (SETTINGS_TITLES[settingsView]) state.ui.settingsView = settingsView;
     if (params.get("tag")) state.ui.selectedTagId = params.get("tag");
     if (params.get("profile")) {
       const match = state.profiles.find(record => record.data.name.toLowerCase() === params.get("profile").toLowerCase());
@@ -6023,7 +5560,7 @@
     if (control.matches(
       '[type="search"], [type="file"], #avisoTextStyleSelect, #avisoTextApplyTarget, ' +
       '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect, #modeBlockedSquawkInput'
-    ) || control.closest(".datalink-card, .updates-view, #runtimeMenu, .page-rail, dialog")) return "";
+    ) || control.closest(".datalink-card, .updater-general-group, #runtimeMenu, .page-rail, dialog")) return "";
 
     const profilePanel = control.closest("[data-profile-panel]")?.dataset.profilePanel;
     if (["colors", "icons", "tags", "rules"].includes(profilePanel)) return profilePanel;
@@ -6151,7 +5688,7 @@
     document.addEventListener("click", event => {
       const guardedEditorAction = event.target.closest(
         "#controlWindow button[data-action], #controlWindow button[data-page], " +
-        "#controlWindow button[data-profile-tab], #controlWindow button[data-settings-tab], #controlWindow [data-tree-toggle], " +
+        "#controlWindow button[data-profile-tab], #controlWindow [data-tree-toggle], " +
         "#controlWindow [data-color-path], #controlWindow [data-tag-id], " +
         "#controlWindow [data-rule-index], #controlWindow [data-mode-index], " +
         "#controlWindow [data-managed-profile-id], #controlWindow [data-aviso-group-id], " +
@@ -6217,8 +5754,6 @@
       if (pageButton) { if (stageFocusedEditorValue()) setPage(pageButton.dataset.page); return; }
       const tabButton = event.target.closest("[data-profile-tab]");
       if (tabButton) { if (stageFocusedEditorValue()) setProfileTab(tabButton.dataset.profileTab); return; }
-      const settingsTabButton = event.target.closest("[data-settings-tab]");
-      if (settingsTabButton) { if (stageFocusedEditorValue()) setSettingsView(settingsTabButton.dataset.settingsTab); return; }
       const avisoViewButton = event.target.closest("[data-aviso-view]");
       if (avisoViewButton) { if (stageFocusedEditorValue()) { state.ui.avisoView = avisoViewButton.dataset.avisoView; renderAviso(); } return; }
       const alertsViewButton = event.target.closest("[data-alerts-view]");
@@ -6645,30 +6180,6 @@
       }
     });
 
-
-    $("#settingsSubtabs").addEventListener("keydown", event => {
-      const current = event.target.closest("[data-settings-tab]");
-      if (!current || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-      const tabs = $$('[data-settings-tab]', $("#settingsSubtabs"));
-      const currentIndex = Math.max(0, tabs.indexOf(current));
-      let nextIndex = currentIndex;
-      if (event.key === "ArrowLeft") nextIndex = (currentIndex + tabs.length - 1) % tabs.length;
-      if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
-      if (event.key === "Home") nextIndex = 0;
-      if (event.key === "End") nextIndex = tabs.length - 1;
-      event.preventDefault();
-      if (stageFocusedEditorValue()) setSettingsView(tabs[nextIndex].dataset.settingsTab, true);
-    });
-    $("#performanceWindowSeconds").addEventListener("change", event => {
-      const seconds = Number(event.target.value);
-      if (![30, 120, 600].includes(seconds)) return;
-      performanceDiagnostics.windowSeconds = seconds;
-      performanceDiagnostics.snapshot = null;
-      performanceDiagnostics.error = "";
-      performanceDiagnostics.pending.state = null;
-      renderPerformanceDiagnostics();
-      requestPerformanceState(true);
-    });
     $("#updateChannel").addEventListener("change", event => {
       submitUpdateSettings({ channel: event.target.value === "stable" ? "stable" : "beta" }, "Update channel saved");
     });
@@ -6705,8 +6216,6 @@
     }
     else if (action === "restore-profiles-backup") restoreProfilesBackup();
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
-    else if (action === "performance-reset") resetPerformanceDiagnostics();
-    else if (action === "performance-export") exportPerformanceReport();
     else if (action === "update-check") requestUpdateAction("check_now");
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-release-open") openUpdateRelease();
@@ -7556,10 +7065,6 @@
       }
       return;
     }
-    if (message.type === "performance.state") {
-      applyPerformanceState(payload);
-      return;
-    }
     if (message.type === "update.state") {
       applyUpdateState(payload, message);
       return;
@@ -7583,7 +7088,6 @@
     }
     if (message.type === "state.ack") {
       if (finishUpdateAck(message)) return;
-      if (finishPerformanceAck(message)) return;
       if (finishDatalinkAck(message)) return;
       return;
     }
@@ -7620,7 +7124,6 @@
     }
     if (message.type === "state.error" || message.type === "error") {
       if (finishUpdateError(message)) return;
-      if (finishPerformanceError(message)) return;
       if (finishDatalinkError(message)) return;
 	  finishRuntimeCommand(responseId, true);
 	  clearSplitAvisoContext(responseId);
@@ -7688,17 +7191,15 @@
   resetHistory(true);
   setHostAuthoritativeReady(!HOST_MODE);
   window.setInterval(() => requestDatalinkState(), 1250);
-  window.setInterval(() => requestPerformanceState(), 1000);
   window.setInterval(() => requestUpdateState(), 1500);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.ui.page === "settings") requestDatalinkState(true);
-    if (!document.hidden && performanceViewActive()) requestPerformanceState(true);
     if (!document.hidden && updateViewActive()) requestUpdateState(true);
   });
   setStatus(HOST_MODE ? "Waiting for configuration…" : "Bundled LFPG preview loaded");
   postBridge("ui.ready", {
     hostMode: HOST_MODE,
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink", "performance-diagnostics", "startup-updates"]
+    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink", "startup-updates"]
   });
 })();
