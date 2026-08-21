@@ -42,6 +42,7 @@ struct DatalinkControlState
 	int cdmDelayMinutes = 5;
 	int cdmCooldownMinutes = 60;
 	bool vacdmConfigured = false;
+	bool vacdmReady = false;
 	std::string activeAirport;
 	std::string cdmAliasPath;
 	bool cdmAliasReady = false;
@@ -74,7 +75,8 @@ public:
 		bool cdmAutoEnabled,
 		int delayMinutes,
 		int cooldownMinutes,
-		std::string& error);
+		std::string& error,
+		bool updateConnectionSettings = true);
 	bool ConnectDatalink(std::string& error);
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);

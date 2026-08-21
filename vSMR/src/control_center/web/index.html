@@ -557,13 +557,8 @@
 </div>
 </section>
 <section class="page settings-page" data-page-panel="settings">
-<nav aria-label="Settings sections" class="subtabs settings-subtabs" id="settingsSubtabs" role="tablist">
-<button aria-controls="settingsPanelGeneral" aria-selected="true" class="active" data-settings-tab="general" id="settingsTabGeneral" role="tab" tabindex="0" type="button">General</button>
-<button aria-controls="settingsPanelPerformance" aria-selected="false" data-settings-tab="performance" id="settingsTabPerformance" role="tab" tabindex="-1" type="button">Performance</button>
-<button aria-controls="settingsPanelUpdates" aria-selected="false" data-settings-tab="updates" id="settingsTabUpdates" role="tab" tabindex="-1" type="button">Updates</button>
-</nav>
 <div class="settings-view-stack">
-<section aria-labelledby="settingsTabGeneral" class="settings-view active" data-settings-panel="general" id="settingsPanelGeneral" role="tabpanel">
+<section class="settings-view active" id="settingsPanelGeneral">
 <div class="settings-layout">
 <div class="settings-column settings-files-column">
 <fieldset class="compact-group settings-group files-group">
@@ -623,166 +618,25 @@
 </div>
 <div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button></div>
 </section>
-</div>
-</div>
-</section>
-<section aria-labelledby="settingsTabPerformance" class="settings-view performance-view" data-settings-panel="performance" hidden id="settingsPanelPerformance" role="tabpanel">
-<div class="performance-layout">
-<div class="performance-toolbar">
-<span aria-live="polite" class="performance-state-badge waiting" id="performanceStateBadge" role="status">Awaiting data</span>
-<label class="performance-window-field" for="performanceWindowSeconds"><span>Window</span><select id="performanceWindowSeconds"><option value="30">30 seconds</option><option selected value="120">2 minutes</option><option value="600">10 minutes</option></select></label>
-<span class="performance-toolbar-spacer"></span>
-<button class="ui-button" data-action="performance-reset" id="performanceResetButton" type="button">Reset</button>
-<button class="ui-button primary" data-action="performance-export" id="performanceExportButton" type="button">Export report</button>
-</div>
-<p aria-live="polite" class="performance-notice" id="performanceNotice" role="status">Waiting for the first performance sample...</p>
-<section aria-label="Frame-time summary" class="performance-summary-grid">
-<article class="performance-summary-card"><span>Average</span><strong><output id="performanceFrameAverage">--</output><small> ms</small></strong></article>
-<article class="performance-summary-card"><span>Median</span><strong><output id="performanceFrameMedian">--</output><small> ms</small></strong></article>
-<article class="performance-summary-card"><span>P95</span><strong><output id="performanceFrameP95">--</output><small> ms</small></strong></article>
-<article class="performance-summary-card"><span>Maximum</span><strong><output id="performanceFrameMaximum">--</output><small> ms</small></strong></article>
-</section>
-<section class="panel performance-trend-panel">
-<div class="panel-title"><span>Frame-time trend</span><small id="performanceTrendCaption">No samples</small></div>
-<div class="performance-trend-body">
-<svg aria-labelledby="performanceTrendTitle performanceTrendDescription" class="performance-trend-chart" id="performanceTrendChart" preserveAspectRatio="none" role="img" viewBox="0 0 600 118">
-<title id="performanceTrendTitle">Frame-time trend</title>
-<desc id="performanceTrendDescription">No performance samples are available.</desc>
-<path aria-hidden="true" class="performance-trend-grid" d="M0 29.5H600M0 59H600M0 88.5H600"></path>
-<polyline class="performance-trend-line aviso" id="performanceAvisoTrend" points=""></polyline>
-<polyline class="performance-trend-line frame" id="performanceFrameTrend" points=""></polyline>
-</svg>
-<div aria-hidden="true" class="performance-trend-legend"><span><i class="frame"></i>Frame</span><span><i class="aviso"></i>Main AVISO</span><span id="performanceTrendScale">0-0 ms</span></div>
-</div>
-</section>
-<section class="panel performance-timing-panel">
-<div class="panel-title"><span>Timing breakdown</span><small id="performanceSampleCaption">0 samples</small></div>
-<div class="performance-table-scroll">
-<table class="performance-table">
-<caption class="visually-hidden">Timing statistics in milliseconds</caption>
-<thead><tr><th scope="col">Stage</th><th scope="col">Latest</th><th scope="col">Average</th><th scope="col">Median</th><th scope="col">P95</th><th scope="col">Maximum</th></tr></thead>
-<tbody id="performanceTimingRows"></tbody>
-</table>
-</div>
-<p class="performance-method-note">Stage timings are diagnostic slices and can overlap. AVISO raster rebuilds run on a worker thread.</p>
-</section>
-<section class="panel performance-refresh-panel">
-<div class="panel-title"><span>Refresh causes and frame spikes</span><small id="performanceSpikeSummary">No spikes</small></div>
-<div class="performance-refresh-body">
-<dl class="performance-counter-list performance-spike-list">
-<div><dt>Latest refresh reason</dt><dd id="performanceRefreshLatest">--</dd></div>
-<div><dt>Latest spike</dt><dd id="performanceSpikeLatest">--</dd></div>
-<div><dt>Worst spike</dt><dd id="performanceSpikeWorst">--</dd></div>
-<div><dt>Processed / visible targets at spike</dt><dd id="performanceSpikeTargets">--</dd></div>
-<div><dt>Main / inset AVISO at spike</dt><dd id="performanceSpikeAviso">--</dd></div>
-<div class="performance-spike-context-row"><dt>Latest spike context</dt><dd id="performanceSpikeContext">--</dd></div>
-</dl>
-<div class="performance-table-scroll performance-refresh-reasons">
-<table class="performance-table compact">
-<caption class="visually-hidden">Refresh reason counts in the selected window</caption>
-<thead><tr><th scope="col">Refresh reason</th><th scope="col">Frames</th></tr></thead>
-<tbody id="performanceRefreshReasonRows"></tbody>
-</table>
-<p class="performance-method-note">Counts can overlap when one frame has more than one cause.</p>
-</div>
-</div>
-</section>
-<div class="performance-detail-grid">
-<section class="panel performance-cache-panel">
-<div class="panel-title"><span>Cache activity</span><small>Since reset</small></div>
-<div class="performance-table-scroll">
-<table class="performance-table compact">
-<caption class="visually-hidden">Cache hit and miss rates</caption>
-<thead><tr><th scope="col">Cache</th><th scope="col">Fresh / hit</th><th scope="col">Preview</th><th scope="col">Miss</th><th scope="col">Hit rate</th></tr></thead>
-<tbody id="performanceCacheRows"></tbody>
-</table>
-</div>
-</section>
-<section class="panel performance-queues-panel">
-<div class="panel-title"><span>Worker queues</span><small>Current</small></div>
-<div class="performance-table-scroll">
-<table class="performance-table compact">
-<caption class="visually-hidden">Current named worker queue depths and activity</caption>
-<thead><tr><th scope="col">Queue</th><th scope="col">Pending</th><th scope="col">In flight</th><th scope="col">Workers</th><th scope="col">Completed waiting</th></tr></thead>
-<tbody id="performanceQueueRows"></tbody>
-</table>
-</div>
-</section>
-<section class="panel performance-counter-panel">
-<div class="panel-title"><span>Targets and resources</span><small>Current / average or sampled peak</small></div>
-<dl class="performance-counter-list">
-<div><dt>Processed targets</dt><dd id="performanceTargetsProcessed">--</dd></div>
-<div><dt>Visible targets</dt><dd id="performanceTargetsVisible">--</dd></div>
-<div><dt>Process-wide GDI objects</dt><dd id="performanceGdiObjects">--</dd></div>
-<div><dt>vSMR cached bitmaps</dt><dd id="performanceCachedBitmaps">--</dd></div>
-<div><dt>Estimated bitmap memory</dt><dd id="performanceBitmapMemory">--</dd></div>
-<div><dt>Main / inset AVISO bitmaps</dt><dd id="performanceAvisoBitmaps">--</dd></div>
-</dl>
-</section>
-<section class="panel performance-counter-panel">
-<div class="panel-title"><span>AVISO worker</span><small id="performanceWorkerState">Idle</small></div>
-<dl class="performance-counter-list">
-<div><dt>Pending / in flight</dt><dd id="performanceWorkerDepth">--</dd></div>
-<div><dt>Raster rebuild (window)</dt><dd id="performanceRasterRebuild">--</dd></div>
-<div><dt>Delayed / fallback frames (reset)</dt><dd id="performanceAvisoDelayed">--</dd></div>
-<div><dt>Completed / failed builds (reset)</dt><dd id="performanceAvisoRebuilds">--</dd></div>
-<div><dt>Queued / coalesced (reset)</dt><dd id="performanceAvisoRequests">--</dd></div>
-<div><dt>Debounced / superseded (reset)</dt><dd id="performanceAvisoDebounce">--</dd></div>
-<div><dt>Cancelled builds / discarded results (reset)</dt><dd id="performanceAvisoCancellations">--</dd></div>
-<div><dt>Applied results (reset)</dt><dd id="performanceAvisoResults">--</dd></div>
-</dl>
-</section>
-</div>
-</div>
-</section>
-<section aria-labelledby="settingsTabUpdates" class="settings-view updates-view" data-settings-panel="updates" hidden id="settingsPanelUpdates" role="tabpanel">
-<div class="updates-layout">
-<div class="updates-toolbar">
+<fieldset class="compact-group settings-group updater-general-group">
+<legend>Automatic updates</legend>
+<div class="updater-general-heading">
 <span aria-live="polite" class="update-state-badge waiting" id="updateStateBadge" role="status">Awaiting state</span>
-<span class="updates-toolbar-spacer"></span>
-<button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
-<button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
+<span id="updateVersionSummary">Installed --</span>
 </div>
-<p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
-<section aria-label="Update summary" class="update-summary-grid">
-<article class="update-summary-card"><span>Installed</span><strong id="updateInstalledVersion">--</strong></article>
-<article class="update-summary-card"><span>Available</span><strong id="updateAvailableVersion">--</strong></article>
-<article class="update-summary-card"><span>Channel</span><strong id="updateSelectedChannel">--</strong></article>
-<article class="update-summary-card"><span>Last checked</span><strong id="updateLastChecked">Never</strong></article>
-</section>
-<div class="updates-detail-grid">
-<section class="panel update-preferences-panel">
-<div class="panel-title"><span>Automatic updates</span><small>Stored outside profile history</small></div>
-<div class="update-preferences-body">
 <label class="field update-channel-field"><span>Release channel</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
 <label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
 <label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates automatically</span></label>
 <label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate the verified runtime before vSMR loads</span></label>
-<p>These preferences are saved immediately in <code>%LOCALAPPDATA%\vSMR\Updater</code>. They are not included in profile Save, Undo, or Redo.</p>
-</div>
-</section>
-<section class="panel update-progress-panel">
-<div class="panel-title"><span>Startup updater</span><small id="updateNextCheck">Next check: --</small></div>
-<div class="update-progress-body">
-<div class="update-progress-heading"><strong id="updateProgressLabel">Idle</strong><output id="updateProgressPercent">0%</output></div>
-<progress id="updateProgress" max="100" value="0">0%</progress>
-<dl class="update-detail-list">
-<div><dt>Selected release</dt><dd id="updateSelectedVersion">--</dd></div>
-<div><dt>Skipped release</dt><dd id="updateSkippedVersion">None</dd></div>
-<div><dt>Activation</dt><dd id="updateActivationState">Current runtime</dd></div>
-</dl>
-<div class="update-actions">
-<button class="ui-button" data-action="update-skip" disabled id="updateSkipButton" type="button">Skip available version</button>
-<button class="ui-button" data-action="update-clear-skip" disabled id="updateClearSkipButton" type="button">Clear skipped version</button>
+<p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
+<div class="updater-general-actions">
+<button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
+<button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
+<button class="ui-button" data-action="update-clear-skip" hidden id="updateClearSkipButton" type="button">Clear skipped release</button>
 <button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
 </div>
+</fieldset>
 </div>
-</section>
-</div>
-<section class="panel update-security-panel">
-<div class="panel-title"><span>Safe startup</span><small>Fail-open and signed</small></div>
-<p>vSMR uses a stable loader and a shadow-loaded runtime. A release is activated only after its signed manifest, archive hash, package manifest, architecture, and loader compatibility have been verified. If GitHub or verification fails, the installed runtime loads normally. A release requiring a newer loader is left for manual full-package installation.</p>
-</section>
 </div>
 </section>
 </div>
