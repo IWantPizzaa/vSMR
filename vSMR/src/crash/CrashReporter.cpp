@@ -396,7 +396,7 @@ namespace
 
 namespace VsmrCrashReporter
 {
-	bool Install(const char* version)
+	bool Install(const char* version, const wchar_t* installRoot)
 	{
 		std::lock_guard<std::mutex> guard(gLifecycleMutex);
 		if (gInstalled.load(std::memory_order_acquire))
@@ -414,7 +414,10 @@ namespace VsmrCrashReporter
 				return false;
 			}
 
-			const std::filesystem::path moduleDirectory = std::filesystem::path(modulePath).parent_path();
+			const std::filesystem::path moduleDirectory =
+				installRoot != nullptr && *installRoot != L'\0'
+				? std::filesystem::path(installRoot)
+				: std::filesystem::path(modulePath).parent_path();
 			const std::filesystem::path selectedDirectory =
 				VsmrCrashSupport::SelectReportDirectory(moduleDirectory);
 			if (selectedDirectory.empty())

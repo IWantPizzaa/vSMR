@@ -1,4 +1,4 @@
-// Main application declarations for vSMR.dll.
+// Main application declarations for the versioned vSMR runtime DLL.
 
 #pragma once
 #include "EuroScopePlugIn.h"
