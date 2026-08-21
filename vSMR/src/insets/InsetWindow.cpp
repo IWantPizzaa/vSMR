@@ -4183,8 +4183,8 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		return -max(1, static_cast<int>(std::lround(static_cast<double>(pixels) * rawTextScale)));
 	};
-	HFONT rawFont = GetWeatherFont(7, scaledRawFontHeight(10), FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT rawBoldFont = GetWeatherFont(8, scaledRawFontHeight(10), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT rawFont = GetWeatherFont(7, scaledRawFontHeight(12), FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT rawBoldFont = GetWeatherFont(8, scaledRawFontHeight(12), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HGDIOBJ originalFont = ::GetCurrentObject(hDC, OBJ_FONT);
 
 	auto drawText = [&](const CRect& source, const std::string& value, HFONT font, COLORREF color, UINT flags)
@@ -4512,33 +4512,52 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		}
 	}
 
+	const float centerTextHalfWidth = min(
+		max(10.0f, radius * 0.68f),
+		static_cast<float>(42.0 * weatherScale));
+	const float centerTextHalfHeight = min(
+		max(10.0f, radius * 0.62f),
+		static_cast<float>(29.0 * weatherScale));
 	if (weather.hasWind && !weather.windVariable && !weather.windCalm)
 	{
 		const double angle = (static_cast<double>(windFlowDirection(weather.windDirectionDegrees)) - 90.0) * pi / 180.0;
-		const float lineRadius = max(8.0f, radius - 16.0f);
+		const float directionX = static_cast<float>(std::cos(angle));
+		const float directionY = static_cast<float>(std::sin(angle));
+		const float horizontalBoundary = std::abs(directionX) > 0.001f
+			? centerTextHalfWidth / std::abs(directionX)
+			: radius;
+		const float verticalBoundary = std::abs(directionY) > 0.001f
+			? centerTextHalfHeight / std::abs(directionY)
+			: radius;
+		const float startRadius = min(horizontalBoundary, verticalBoundary) + max(1.5f, radius * 0.035f);
+		const float lineRadius = max(startRadius + 2.0f, radius - max(4.0f, radius * 0.12f));
+		const Gdiplus::PointF start(
+			centerX + directionX * startRadius,
+			centerY + directionY * startRadius);
 		const Gdiplus::PointF tip(
-			centerX + static_cast<float>(std::cos(angle) * lineRadius),
-			centerY + static_cast<float>(std::sin(angle) * lineRadius));
+			centerX + directionX * lineRadius,
+			centerY + directionY * lineRadius);
 		const Gdiplus::Color needleColor(255, GetRValue(windColor), GetGValue(windColor), GetBValue(windColor));
-		Gdiplus::Pen needlePen(needleColor, 2.2f);
-		gdi->DrawLine(&needlePen, Gdiplus::PointF(centerX, centerY), tip);
+		const float needleWidth = std::clamp(radius * 0.052f, 1.8f, 5.5f);
+		Gdiplus::Pen needlePen(needleColor, needleWidth);
+		needlePen.SetStartCap(Gdiplus::LineCapRound);
+		gdi->DrawLine(&needlePen, start, tip);
 		const double leftAngle = angle + 2.55;
 		const double rightAngle = angle - 2.55;
+		const float arrowLength = std::clamp(radius * 0.17f, 6.0f, 18.0f);
 		Gdiplus::PointF arrow[] = {
 			tip,
 			Gdiplus::PointF(
-				tip.X + static_cast<float>(std::cos(leftAngle) * 7.0),
-				tip.Y + static_cast<float>(std::sin(leftAngle) * 7.0)),
+				tip.X + static_cast<float>(std::cos(leftAngle) * arrowLength),
+				tip.Y + static_cast<float>(std::sin(leftAngle) * arrowLength)),
 			Gdiplus::PointF(
-				tip.X + static_cast<float>(std::cos(rightAngle) * 7.0),
-				tip.Y + static_cast<float>(std::sin(rightAngle) * 7.0))
+				tip.X + static_cast<float>(std::cos(rightAngle) * arrowLength),
+				tip.Y + static_cast<float>(std::sin(rightAngle) * arrowLength))
 		};
 		Gdiplus::SolidBrush arrowBrush(needleColor);
 		gdi->FillPolygon(&arrowBrush, arrow, static_cast<INT>(_countof(arrow)));
 	}
 
-	const float centerTextHalfWidth = min(radius - 8.0f, static_cast<float>(42.0 * weatherScale));
-	const float centerTextHalfHeight = min(radius - 8.0f, static_cast<float>(29.0 * weatherScale));
 	Gdiplus::SolidBrush centerPlate(Gdiplus::Color(225, 36, 48, 51));
 	gdi->FillRectangle(
 		&centerPlate,
@@ -4733,7 +4752,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		::SetBkMode(hDC, TRANSPARENT);
 		int cursorX = rawBounds.left;
 		int cursorY = rawBounds.top;
-		const int lineHeight = max(14, static_cast<int>(std::lround(15.0 * rawTextScale)));
+		const int lineHeight = max(17, static_cast<int>(std::lround(18.0 * rawTextScale)));
 		std::istringstream report(weather.rawReport);
 		std::string token;
 		size_t tokenIndex = 0;
