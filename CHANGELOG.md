@@ -2,33 +2,18 @@
 
 ## [Unreleased]
 
+## [2.0.0-beta.3] - 2026-08-21
+
 ### Added
 
 - Added a normally fail-open, same-startup updater built around a stable `vSMR.dll` bootstrap and shadow-loaded `vSMR_Data\Runtime\vSMR.Runtime.dll`. Discovery, network, signature, compatibility, and pre-transaction failures leave the proven installed runtime available; an inconsistent durable install/rollback journal fails closed. It selects Stable or Beta GitHub releases, requires a pinned detached-CMS manifest signature, validates archive and internal package hashes, enforces Win32/runtime/loader compatibility, transactionally activates compatible runtime/data updates before creating the EuroScope plug-in, and rolls back to the previous runtime when initialization fails. Releases requiring a newer loader are reported for manual full-package installation.
 - Added `Settings -> Updates` status and preferences for automatic checks, downloads, activation, channel selection, skipped releases, manual full-package update notices, and next-startup check/retry requests. Update settings, durable recovery state, and status use the deterministic `%LOCALAPPDATA%\vSMR\Updater` journal and remain outside profile Save/Undo history; unwritable storage is reported instead of silently switching journals.
-
-### Changed
-
-- Extended release packages, symbols, metadata, CI validation, install/rollback helpers, and package verification for the stable loader, nested canonical runtime, signed external update manifest, durable transaction outcomes, verified backup runtimes, and explicit preserve-loader transactions.
-
-### Fixed
-
-- Replaced the METAR inset's heavy variable-wind arc with a translucent range band, highlighted endpoints, and a dedicated full-ring `VRB` treatment that leaves compass ticks readable.
-- Refreshed the Control Center Groups list immediately after creating, duplicating, or deleting an AVISO group.
-- Moved inset close buttons to the far-right title-bar edge while preserving resize-corner interaction.
-- Reversed the METAR wind needle and variation arc to point toward airflow while retaining standard direction-from values and runway-component calculations.
-- Added a 25-second `STAT RPA` grace period after an aircraft newly enters `DEPA`, preventing normal takeoff-clearance readback and initial movement delays from immediately raising a stationary-runway-protected-area alert.
-
-## [2.0.0-beta.2] - 2026-08-14
-
-### Added
-
 - Added a live Control Center performance-diagnostics panel with bounded per-radar sampling; average, median, P95, and maximum timings; distinct main AVISO, AVISO inset, SRW, RDF, inset-chrome, and scene-stage measurements; refresh-cause and 16 ms frame-spike context; AVISO/aircraft cache rates and queued, coalesced, debounced, superseded, cancelled, applied, and discarded work counters; raster rebuild and named-worker depth data; target and instrumented EuroScope-lookup metrics; process GDI counts plus attributed bitmap counts and estimated memory; delayed-AVISO-frame tracking; reset controls; and exportable JSON reports. This establishes a measurable baseline before any future Direct2D AVISO prototype.
 - Added out-of-process, WER-based crash reporting with direct/stack/worker association, fixed-size per-screen and per-thread breadcrumbs, recent logs, build/PDB identity, and an isolated crash harness. Reports are kept locally and are never uploaded automatically.
-- Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.
 - Added a persistent minimized Runtime Menu state: right-clicking the striped top handle now hides or restores all controls below it.
 - Added LFPG dynamic frequency ownership from `LFPG_Dyna_fixed.geojson`: takeover chains determine non-RMP ownership, self-owned territory is visually distinct and label-free, unowned areas are hidden, and DEL points are intentionally ignored until polygons exist.
+- Added separate west/east LFPG ground-layout groups containing the new brown, yellow-centerline, and green directional arrows.
 
 ### Changed
 
@@ -42,9 +27,9 @@
 - Made LFPG RMP activation service-wide: any connected reviewed RMP position activates all six RMP polygons, while their labels use the six area-specific GeoJSON `text-field`/`display_frequency` values and supplied coordinates instead of the connected controller's primary frequency. Removed the superseded static RMP frequency-label features.
 - Reduced tag background padding in the main radar, AVISO inset, and SRW 1 inset so boxes fit their text more closely.
 - Made `Release | Win32` the solution's sole configuration so an unspecified solution build cannot accidentally produce the much larger Debug DLL; the project-level Debug configuration remains available for explicit diagnostics.
-- Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
-- Updated the affected bundled AVISO label styles to use `#CCCCCC` text.
 - Removed the rounded corners from the Runtime Menu's outer frame while retaining rounded action buttons and icons.
+- Extended release packages, symbols, metadata, CI validation, install/rollback helpers, and package verification for the stable loader, nested canonical runtime, signed external update manifest, durable transaction outcomes, verified backup runtimes, and explicit preserve-loader transactions.
+- Bumped plug-in, Windows-resource, documentation, validation, and archive metadata to `2.0.0-beta.3`; the deliberately stable bootstrap-loader file version remains `1.0.0`.
 
 ### Fixed
 
@@ -53,13 +38,34 @@
 - Prevented handled first-chance exceptions from being mislabeled as fatal vSMR crashes, removed in-process DbgHelp/minidump work that could deadlock an unstable EuroScope process, and made existing-but-unwritable report directories fall through correctly.
 - Made shared LFPG dynamic ownership boundaries deterministic: polygon fills render first, followed by self-owned outlines and then external-territory outlines, preventing cyan and yellow borders from clipping each other according to GeoJSON feature order.
 - Prevented the LFPG AVISO map from flickering during normal network operation by caching its takeover rules and rebuilding its raster only when a resolved dynamic area's owner, self/other state, or displayed frequency actually changes; unrelated EuroScope controller updates no longer clear the map cache or rescan the full LFPG feature set.
+- Replaced the METAR inset's heavy variable-wind arc with a translucent range band, highlighted endpoints, and a dedicated full-ring `VRB` treatment that leaves compass ticks readable.
+- Refreshed the Control Center Groups list immediately after creating, duplicating, or deleting an AVISO group.
+- Moved inset close buttons to the far-right title-bar edge while preserving resize-corner interaction.
+- Reversed the METAR wind needle and variation arc to point toward airflow while retaining standard direction-from values and runway-component calculations.
+- Added a 25-second `STAT RPA` grace period after an aircraft newly enters `DEPA`, preventing normal takeoff-clearance readback and initial movement delays from immediately raising a stationary-runway-protected-area alert.
+- Preserved text, selection, and focus in EuroScope's command/message bar when an automatic CDM reminder injects and submits its private-message command.
+
+## [2.0.0-beta.2] - 2026-08-14
+
+### Added
+
+- Added an independent four-minute countdown to the Timer inset and arranged the 1, 2, 3, and 4 minute timers in a compact 2×2 grid.
+
+### Changed
+
+- Retargeted the checked-in Debug and Release projects to MSVC `v145`; build automation can still request another installed compatible toolset explicitly.
+- Updated the affected bundled AVISO label styles to use `#CCCCCC` text.
+- Bumped plugin, Windows resource, documentation, validation, and archive metadata to `2.0.0-beta.2`.
+- Pinned canonical profile, aircraft, and AVISO data to LF line endings so release validation is stable on Windows checkouts, and excluded AVISO aggregate/version source files from runtime packages.
+
+### Fixed
+
 - Replaced the browser-native Red, Green, Blue, and Opacity controls with explicit color-preview rails and matching thumbs, including a checkerboard transparency preview consistent with the Hue slider.
 - Removed the unsupported Visual C++ AVISO project-item wildcard. Runtime AVISO assets remain copied by the build target, without the Visual Studio IDE instability/performance warning.
 - Restored the Control Center color editor's full-spectrum hue rail and added a hue-colored, consistently positioned thumb instead of the browser-native monochrome slider.
 - Applied AVISO feature-level paint overrides after shared catalog defaults, so saved per-label text color, font, size, halo, anchor, and zoom changes now appear immediately after the main radar and inset renderers reload. The same precedence now covers feature-level geometry color, opacity, and width overrides.
 - Prevented a single AVISO edit from copying untouched paint or mixed visibility values into other labels/styles, rejected malformed hexadecimal colors instead of silently restoring the old value, and aligned both AVISO editors with the renderer's supported size and width ranges.
 - Preserved intentional feature-level AVISO paint overrides during runtime-data normalization and now reports when a successful save cannot be reloaded by one or more radar renderers.
-- Preserved text, selection, and focus in EuroScope's command/message bar when an automatic CDM reminder injects and submits its private-message command.
 
 ## [2.0.0-beta.1] - 2026-08-10
 

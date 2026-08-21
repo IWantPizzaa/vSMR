@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ArchivePath,
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$ExpectedVersion = "2.0.0-beta.2",
+    [string]$ExpectedVersion = "2.0.0-beta.3",
     [string]$ChecksumPath = "",
     [string]$UpdateManifestPath = "",
     [string]$UpdateSignaturePath = "",

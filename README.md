@@ -2,7 +2,7 @@
 
 vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement radar display for ground and low-level airport traffic. Version 2.0 adds a unified Control Center, AVISO editing, Windows-style inset windows, airport-scoped layouts, RIMCAS configuration, VACDM data, and Hoppie CPDLC/PDC workflows.
 
-Current version: **2.0.0-beta.2**
+Current version: **2.0.0-beta.3**
 
 This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not manually mix runtime binaries or package data from different builds. The deliberately stable top-level loader is the only versioned exception and its compatibility is managed by the signed updater.
 
@@ -41,7 +41,7 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 
 ### Install a release package
 
-1. Download the complete `vSMR-2.0.0-beta.2.zip` and its matching `.zip.sha256` file.
+1. Download the complete `vSMR-2.0.0-beta.3.zip` and its matching `.zip.sha256` file.
 2. Verify the ZIP checksum.
 3. Close EuroScope.
 4. Extract the package to a temporary directory.
@@ -234,7 +234,7 @@ A reusable entry in the document's `styles` catalog supplies the default paint f
 - RMP labels always use each `frequency_point` feature's `text-field` or `display_frequency` at its supplied coordinates. A connected controller's primary frequency is never substituted, so the six displayed values remain BD `121.640`, F `121.580`, ACE `121.930`, FDX `131.605`, KL `121.680`, and J `121.880`.
 - Controller connection, disconnection, position, or primary-frequency changes update the main display and AVISO inset together. Takeover rules are cached when the GeoJSON loads, and routine updates from controllers outside those LFPG chains do not invalidate the AVISO raster, preventing periodic map flicker while connected.
 
-This dynamic behavior is enabled only for LFPG in beta.2. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
+This dynamic behavior is enabled only for LFPG in beta.3. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
 
 A computer file is activated in place; it is not copied over the bundled airport file. A GitHub resource is validated and downloaded to a collision-safe file under `vSMR_Data\AVISO\` or `vSMR_Data\Profiles\`, then activated from that location. The Settings page always shows the actual active path.
 
@@ -588,7 +588,7 @@ That artifact is explicitly marked `publishable: false`. Verify a normal package
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_package.ps1 `
-  -ArchivePath .\artifacts\vSMR-2.0.0-beta.2.zip
+  -ArchivePath .\artifacts\vSMR-2.0.0-beta.3.zip
 ```
 
 Add `-AllowNonPublishable` only when verifying a deliberately non-publishable local artifact.
