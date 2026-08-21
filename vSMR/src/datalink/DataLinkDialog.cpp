@@ -49,6 +49,24 @@ namespace
 	const int kButtonCornerRadiusAt96Dpi = 6;
 	const UINT_PTR kDatalinkEditSubclassId = 1;
 
+	bool IsValidOptionalHhmm(const CString& rawValue)
+	{
+		CString value(rawValue);
+		value.Trim();
+		if (value.IsEmpty())
+			return true;
+		if (value.GetLength() != 4)
+			return false;
+		for (int index = 0; index < value.GetLength(); ++index)
+		{
+			if (_istdigit(value[index]) == 0)
+				return false;
+		}
+		const int hour = (value[0] - _T('0')) * 10 + (value[1] - _T('0'));
+		const int minute = (value[2] - _T('0')) * 10 + (value[3] - _T('0'));
+		return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+	}
+
 	CWnd* ResolveEuroScopeOwner(CWnd* requestedParent)
 	{
 		CWnd* candidate = requestedParent != NULL ? requestedParent : AfxGetMainWnd();
@@ -737,7 +755,7 @@ BOOL CDataLinkDialog::OnInitDialog()
 	ConstrainToEuroScopeClient();
 	Invalidate(TRUE);
 
-	if (CWnd* initialFocus = GetDlgItem(m_ResolvedMode == DialogMode::Message ? IDC_MESSAGE : IDC_CTOT))
+	if (CWnd* initialFocus = GetDlgItem(m_ResolvedMode == DialogMode::Message ? IDC_MESSAGE : IDC_TSAT))
 		initialFocus->SetFocus();
 
 	return FALSE;
@@ -1248,6 +1266,28 @@ void CDataLinkDialog::OnBnClickedOk()
 {
 	if (!UpdateData(TRUE))
 		return;
+	m_TSAT.Trim();
+	m_CTOT.Trim();
+	if (!IsValidOptionalHhmm(m_TSAT))
+	{
+		MessageBox(
+			_T("TSAT must be a valid four-digit UTC time (HHMM), or left empty."),
+			_T("Invalid TSAT"),
+			MB_OK | MB_ICONWARNING);
+		if (CWnd* field = GetDlgItem(IDC_TSAT))
+			field->SetFocus();
+		return;
+	}
+	if (!IsValidOptionalHhmm(m_CTOT))
+	{
+		MessageBox(
+			_T("CTOT must be a valid four-digit UTC time (HHMM), or left empty."),
+			_T("Invalid CTOT"),
+			MB_OK | MB_ICONWARNING);
+		if (CWnd* field = GetDlgItem(IDC_CTOT))
+			field->SetFocus();
+		return;
+	}
 
 	if (m_CTOT.IsEmpty())
 		m_CTOT = _T("no");
