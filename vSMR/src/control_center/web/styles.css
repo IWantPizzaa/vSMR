@@ -6898,3 +6898,127 @@ textarea:disabled {
   color: var(--ui-text);
   text-decoration: none;
 }
+
+/* The native Control Center is intentionally fixed-size. Keep every General
+   setting visible without introducing a page scrollbar. */
+.settings-page .settings-layout {
+  gap: 3px;
+  padding: 3px;
+  overflow: hidden;
+}
+
+.settings-page .settings-column {
+  gap: 3px;
+}
+
+.settings-page .settings-group {
+  padding: calc(var(--ui-panel-title-height) + 3px) 5px 4px;
+}
+
+.settings-page .settings-file-list {
+  gap: 0;
+}
+
+.settings-page .settings-file-row {
+  gap: 2px;
+  padding: 2px 0 4px;
+}
+
+.settings-page .settings-file-row + .settings-file-row {
+  padding-top: 4px;
+}
+
+.settings-page .settings-file-actions,
+.settings-page .settings-recovery-actions {
+  gap: 3px;
+}
+
+.settings-page .settings-file-actions .ui-button,
+.settings-page .settings-recovery-actions .ui-button,
+.settings-page .datalink-card-actions .ui-button,
+.settings-page .updater-general-actions .ui-button {
+  min-height: 20px;
+  height: 20px;
+}
+
+.settings-page .display-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 4px 8px;
+}
+
+.settings-page .display-group > .field {
+  min-width: 0;
+}
+
+.settings-page .display-group > .check-field {
+  align-self: center;
+  margin: 0 2px 1px 0;
+}
+
+.settings-page .datalink-card {
+  grid-template-rows: var(--ui-panel-title-height) auto 27px;
+}
+
+.settings-page .datalink-card-body {
+  padding: 4px 5px;
+}
+
+.settings-page .datalink-connection-form {
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.settings-page .datalink-sound-option {
+  margin-top: 3px;
+}
+
+.settings-page .datalink-card-actions {
+  min-height: 27px;
+  height: 27px;
+  padding: 3px 5px;
+}
+
+.settings-page .datalink-cdm-form {
+  gap: 4px;
+}
+
+.settings-page .updater-general-group {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 3px 6px;
+}
+
+.settings-page .updater-general-heading,
+.settings-page .updater-general-group .update-channel-field {
+  min-width: 0;
+}
+
+.settings-page .updater-general-group .update-channel-field {
+  grid-template-columns: minmax(0, 1fr) 76px;
+}
+
+.settings-page .updater-general-group > .check-field {
+  min-width: 0;
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.15;
+}
+
+.settings-page .updater-general-group > .check-field:nth-of-type(2) {
+  grid-column: 1 / -1;
+}
+
+.settings-page .update-notice,
+.settings-page .updater-general-actions {
+  grid-column: 1 / -1;
+}
+
+.settings-page .update-notice {
+  max-height: 22px;
+  overflow: hidden;
+}
+
+.settings-page .updater-general-actions {
+  flex-wrap: nowrap;
+}
