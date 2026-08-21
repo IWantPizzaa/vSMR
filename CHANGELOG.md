@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Restored the shorter historical one-second timer alarm sound for the upcoming 2.0.0-beta.4 release.
+
 ## [2.0.0-beta.3] - 2026-08-21
 
 ### Added
