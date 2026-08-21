@@ -11,6 +11,10 @@ namespace VsmrWeather
 	struct Snapshot
 	{
 		std::string icao;
+		// Normalized, single-space raw report used by the responsive METAR
+		// inset. It is captured with the parsed values so every viewport sees
+		// one coherent weather observation.
+		std::string rawReport;
 		// UTC time at which EuroScope delivered this report.
 		std::time_t receivedUtc = 0;
 		// UTC observation time decoded from DDHHMMZ when present.
