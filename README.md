@@ -121,9 +121,9 @@ vSMR-<version>.update.json.p7s
 
 The manifest must explicitly declare itself publishable. Its detached CMS signature is checked against the updater's pinned signing certificate, followed by the archive size and SHA-256, the package's internal `SHA256SUMS.txt`, Win32 architecture, runtime ABI, and minimum-loader version. Legacy, validation-only, or incomplete releases without this signed publishable manifest are ignored by automatic updating.
 
-Open `Settings -> Updates` in the Control Center to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by the global Save, Undo, or Redo commands. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
+Open `Settings` in the Control Center and use the compact `Automatic updates` group to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by the global Save, Undo, or Redo commands. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
 
-Updater configuration, durable recovery state, and non-secret status use the deterministic `%LOCALAPPDATA%\vSMR\Updater\` location. If it cannot be written, update preferences and next-startup actions report the failure instead of switching journals. No GitHub token is required or stored. A prerelease build initially follows the Beta channel; a stable build initially follows Stable. Skipping a release applies only to the selected channel and can be cleared from the same page.
+Updater configuration, durable recovery state, and non-secret status use the deterministic `%LOCALAPPDATA%\vSMR\Updater\` location. If it cannot be written, update preferences and next-startup actions report the failure instead of switching journals. No GitHub token is required or stored. A prerelease build initially follows the Beta channel; a stable build initially follows Stable. A previously skipped release can be cleared from the compact updater controls.
 
 Compatible releases update the canonical runtime and `vSMR_Data` while preserving the already loaded top-level loader. vSMR never schedules an automatic replacement of that loader. If a signed release requires a newer loader, the installed runtime remains available and the Control Center asks for a manual full-package installation after EuroScope has been closed.
 
@@ -162,7 +162,7 @@ The page rail contains:
 | `Groups` | AVISO group creation, ordering, membership, and default visibility |
 | `Modes` | Display-mode filters and requirements |
 | `Profiles` | Profile creation, duplication, naming, deletion, activation, and filters |
-| `Settings` | General data/display/datalink settings and live performance diagnostics |
+| `Settings` | General data, display, datalink, PDC-reminder, and automatic-update settings |
 
 ### Editing and saving
 
@@ -200,7 +200,7 @@ Structured rules can match runway, custom, status, detail, and VACDM conditions,
 
 Each radar screen builds one immutable `RadarScene` on EuroScope's UI thread for every rendered frame. The capture owns plain-value target coordinates, flight-plan and ground-state classification, effective colors and icon styles, preformatted normal and detailed tag elements, finalized RIMCAS state, LFPG dynamic-frequency ownership, and the connected-controller and active-airport state. The main radar, AVISO inset, SRW 1 inset, and native RDF overlay consume that same snapshot instead of repeating EuroScope target and flight-plan lookups independently.
 
-Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` log remains available, while the Control Center Performance page exposes the same render pipeline through bounded rolling statistics and named cache/worker counters.
+Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` log and native bounded diagnostics collection remain available for troubleshooting, but are intentionally not exposed as a Settings subpage.
 
 AVISO sources are parsed and validated once, then prewarmed after the airport-scoped ASR state is restored so the large LFPG source does not perform its cold load inside the first rendered scene. Cache-backed view changes use a short sliding debounce and cancellable geometry passes; the last same-source raster remains available as a transformed preview until the replacement is ready. Half-viewport overscan and hard raster-size limits reduce retained bitmap memory, and SRW caches its derived bold font and typography measurements instead of rebuilding them each frame.
 
@@ -382,6 +382,10 @@ The `Settings` page contains the CPDLC connection and automatic PDC reminder con
 - compact vSMR-styled PDC and received-message windows
 - a `Datalink clearance` tag item and `Datalink menu` tag function
 
+Automatic reminders always start stopped when vSMR is loaded. `Run` applies the displayed delay for the current EuroScope session only and requires a connected controller, an active airport, a valid `.cdm` alias, and a current successful vACDM snapshot. The full delay starts when an eligible no-status departure is first observed without a submitted TOBT; an old or expired placeholder never bypasses it. Submitting a TOBT cancels the pending reminder, and removing that TOBT starts a fresh full delay. Stop reminders before changing the delay or cooldown. A cooldown of `0` means no repeat while the aircraft remains in the same eligibility period.
+
+The PDC window places TSAT before the optional CTOT field and pre-fills both from the current vACDM snapshot when those values exist. TSAT is emitted first in the clearance, and both optional times must be valid four-digit UTC `HHMM` values. Opening the PDC composer immediately suppresses any queued reminder for that callsign; cancelling or a failed transmission releases suppression, while a successful clearance retains it.
+
 The PDC window uses operational field names including `ADEP`, `ADES`, and `RWY`.
 
 Automatic CDM reminders preserve the contents, selection, and focus of EuroScope's command/message bar while vSMR submits the generated private message.
@@ -471,25 +475,6 @@ Enter:
 The report is written to `vSMR_Data\Diagnostics\` or, if that directory is not writable, `%TEMP%\vSMR_Diagnostics\`. It includes version, data-source, runtime, and recent-log information while redacting known credentials and sensitive endpoint values.
 
 Review every report before sharing it. Operational callsigns or local paths can still be present. Never share a Hoppie code or raw CPDLC message.
-
-### Performance diagnostics
-
-Open `Control Center > Settings > Performance` to inspect the active radar screen without enabling verbose logging. vSMR retains at most 2,048 raw frame samples in a fixed per-radar ring and computes statistics only when the page requests a snapshot. The selectable 30-second, 2-minute, and 10-minute windows are therefore also bounded by the samples actually retained; the page reports the real sample count and observed span.
-
-The panel includes (counter totals are since the last reset; timing distributions follow the selected window):
-
-- average, median, P95, and maximum vSMR frame-callback time, plus a bounded frame/main-AVISO trend
-- scene capture and its AVISO-load, ownership, target-capture, and finalization slices; separate main AVISO, AVISO inset, SRW, RDF, inset-chrome, target, RIMCAS, tag, instrumented EuroScope lookup, and AVISO raster-rebuild timings
-- refresh-cause counts plus the reason and measured stage context for frames at or above the 16 ms diagnostic spike threshold
-- separate fresh/preview/miss outcomes for the main and inset AVISO caches; queued, coalesced, debounced, superseded, cancelled, applied, and discarded AVISO work; and aircraft source/scaled/rotated cache rates
-- processed and main-view visible target counts, with the underlying capture/filter counts retained in exported samples
-- the EuroScope process-wide GDI-object count, separately attributed vSMR bitmap-cache counts, and current/observed-peak estimated bitmap memory
-- AVISO, network, and weather worker activity and pending/in-flight depth
-- frames that used an older AVISO raster or had no raster while a newer update was pending
-
-`Reset` starts a new collection generation for that radar screen. `Export report` writes a versioned JSON snapshot to `vSMR_Data\Diagnostics\` when that directory is writable, then uses `%LOCALAPPDATA%\vSMR\Diagnostics\` or a temporary-directory fallback. The successful export message shows the exact path used. The report contains the airport and profile names plus timing/resource counters and bounded numeric samples; it does not collect target/controller callsigns, typed messages, or credentials. A frame can record more than one refresh cause, while callbacks without an attributed cause remain `Unspecified`. The 16 ms spike threshold is a diagnostic marker rather than a claimed display-refresh deadline. The reported frame duration is vSMR's measured render-pipeline interval inside `REFRESH_PHASE_BEFORE_TAGS`, not the complete callback or EuroScope display-present interval; diagnostic stage rows can overlap and are not additive. The GDI count covers the whole EuroScope process, not only vSMR, and bitmap memory is an estimate of tracked cached pixel storage rather than total graphics-driver or process memory.
-
-These measurements are the evidence gate for any later Direct2D/AVISO prototype. This release does not change the current GDI/GDI+ renderer.
 
 ### Logging
 

@@ -2467,6 +2467,7 @@ struct VsmrControlCenterBridge::Impl
 		datalink.AddMember("cdmDelayMinutes", state.cdmDelayMinutes, allocator);
 		datalink.AddMember("cdmCooldownMinutes", state.cdmCooldownMinutes, allocator);
 		datalink.AddMember("vacdmConfigured", state.vacdmConfigured, allocator);
+		datalink.AddMember("vacdmReady", state.vacdmReady, allocator);
 		AddString(datalink, "activeAirport", state.activeAirport, allocator);
 		AddString(datalink, "cdmAliasPath", state.cdmAliasPath, allocator);
 		datalink.AddMember("cdmAliasReady", state.cdmAliasReady, allocator);
@@ -3969,6 +3970,10 @@ struct VsmrControlCenterBridge::Impl
 			? ReadString(*payload, "logonCallsign")
 			: current.logonCallsign;
 		const bool replacePassword = ReadBool(*payload, "replacePassword", false);
+		const bool updatesConnectionSettings =
+			payload->HasMember("logonCallsign") ||
+			payload->HasMember("playSound") ||
+			replacePassword;
 		const std::string password = replacePassword
 			? ReadString(*payload, "password")
 			: "";
@@ -3986,7 +3991,8 @@ struct VsmrControlCenterBridge::Impl
 			ReadBool(*payload, "cdmAutoEnabled", current.cdmAutoEnabled),
 			ReadInt(*payload, "cdmDelayMinutes", current.cdmDelayMinutes),
 			ReadInt(*payload, "cdmCooldownMinutes", current.cdmCooldownMinutes),
-			error);
+			error,
+			updatesConnectionSettings);
 	}
 
 	bool HandleAvisoGroups(
