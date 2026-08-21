@@ -4179,12 +4179,8 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	HFONT qnhFont = GetWeatherFont(5, scaledFontHeight(19), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HFONT compassFont = GetWeatherFont(6, scaledFontHeight(8), FW_NORMAL, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 	const double rawTextScale = std::clamp(weatherScale, 0.95, 1.65);
-	auto scaledRawFontHeight = [rawTextScale](int pixels) -> int
-	{
-		return -max(1, static_cast<int>(std::lround(static_cast<double>(pixels) * rawTextScale)));
-	};
-	HFONT rawFont = GetWeatherFont(7, scaledRawFontHeight(12), FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT rawBoldFont = GetWeatherFont(8, scaledRawFontHeight(12), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT rawFont = nullptr;
+	HFONT rawBoldFont = nullptr;
 	HGDIOBJ originalFont = ::GetCurrentObject(hDC, OBJ_FONT);
 
 	auto drawText = [&](const CRect& source, const std::string& value, HFONT font, COLORREF color, UINT flags)
@@ -4344,6 +4340,45 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		rawPanel = CRect(inner.left, inner.bottom - rawHeight, inner.right, inner.bottom);
 		primary.bottom = max(primary.top, rawPanel.top - gap);
+
+		const int availableRawWidth = max(1, rawPanel.Width() - 8);
+		const int availableRawHeight = max(1, rawPanel.Height() - 6);
+		const int maximumRawPixels = std::clamp(
+			static_cast<int>(std::lround(19.0 * rawTextScale)),
+			12,
+			28);
+		int selectedRawPixels = 12;
+		for (int candidatePixels = maximumRawPixels; candidatePixels >= 12; --candidatePixels)
+		{
+			const int estimatedCharacterWidth = max(1, static_cast<int>(std::lround(candidatePixels * 0.61)));
+			const int estimatedSpaceWidth = estimatedCharacterWidth;
+			const int candidateLineHeight = max(candidatePixels + 4, static_cast<int>(std::lround(candidatePixels * 1.42)));
+			int estimatedLines = 1;
+			int lineWidth = 0;
+			std::istringstream report(weather.rawReport);
+			std::string reportToken;
+			while (report >> reportToken)
+			{
+				const int tokenWidth = max(estimatedCharacterWidth, static_cast<int>(reportToken.size()) * estimatedCharacterWidth);
+				const int requiredWidth = lineWidth == 0 ? tokenWidth : estimatedSpaceWidth + tokenWidth;
+				if (lineWidth > 0 && lineWidth + requiredWidth > availableRawWidth)
+				{
+					++estimatedLines;
+					lineWidth = tokenWidth;
+				}
+				else
+				{
+					lineWidth += requiredWidth;
+				}
+			}
+			if (estimatedLines * candidateLineHeight <= availableRawHeight)
+			{
+				selectedRawPixels = candidatePixels;
+				break;
+			}
+		}
+		rawFont = GetWeatherFont(7, -selectedRawPixels, FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
+		rawBoldFont = GetWeatherFont(8, -selectedRawPixels, FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	}
 	const int primaryWidth = max(1, primary.Width());
 	const int primaryHeight = max(1, primary.Height());
@@ -4539,20 +4574,30 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 			centerY + directionY * lineRadius);
 		const Gdiplus::Color needleColor(255, GetRValue(windColor), GetGValue(windColor), GetBValue(windColor));
 		const float needleWidth = std::clamp(radius * 0.052f, 1.8f, 5.5f);
+		const float arrowLength = std::clamp(radius * 0.20f, 7.0f, 19.0f);
+		const float arrowHalfWidth = std::clamp(radius * 0.105f, 3.8f, 10.0f);
+		const Gdiplus::PointF arrowBase(
+			tip.X - directionX * arrowLength,
+			tip.Y - directionY * arrowLength);
+		const Gdiplus::PointF perpendicular(-directionY, directionX);
+		const float shaftEndRadius = max(
+			startRadius,
+			lineRadius - arrowLength + needleWidth * 0.4f);
+		const Gdiplus::PointF shaftEnd(
+			centerX + directionX * shaftEndRadius,
+			centerY + directionY * shaftEndRadius);
 		Gdiplus::Pen needlePen(needleColor, needleWidth);
 		needlePen.SetStartCap(Gdiplus::LineCapRound);
-		gdi->DrawLine(&needlePen, start, tip);
-		const double leftAngle = angle + 2.55;
-		const double rightAngle = angle - 2.55;
-		const float arrowLength = std::clamp(radius * 0.17f, 6.0f, 18.0f);
+		needlePen.SetEndCap(Gdiplus::LineCapRound);
+		gdi->DrawLine(&needlePen, start, shaftEnd);
 		Gdiplus::PointF arrow[] = {
 			tip,
 			Gdiplus::PointF(
-				tip.X + static_cast<float>(std::cos(leftAngle) * arrowLength),
-				tip.Y + static_cast<float>(std::sin(leftAngle) * arrowLength)),
+				arrowBase.X + perpendicular.X * arrowHalfWidth,
+				arrowBase.Y + perpendicular.Y * arrowHalfWidth),
 			Gdiplus::PointF(
-				tip.X + static_cast<float>(std::cos(rightAngle) * arrowLength),
-				tip.Y + static_cast<float>(std::sin(rightAngle) * arrowLength))
+				arrowBase.X - perpendicular.X * arrowHalfWidth,
+				arrowBase.Y - perpendicular.Y * arrowHalfWidth)
 		};
 		Gdiplus::SolidBrush arrowBrush(needleColor);
 		gdi->FillPolygon(&arrowBrush, arrow, static_cast<INT>(_countof(arrow)));
@@ -4752,7 +4797,11 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		::SetBkMode(hDC, TRANSPARENT);
 		int cursorX = rawBounds.left;
 		int cursorY = rawBounds.top;
-		const int lineHeight = max(17, static_cast<int>(std::lround(18.0 * rawTextScale)));
+		TEXTMETRICA rawMetrics = {};
+		if (rawFont != nullptr)
+			::SelectObject(hDC, rawFont);
+		::GetTextMetricsA(hDC, &rawMetrics);
+		const int lineHeight = max(16, rawMetrics.tmHeight + max(3, rawMetrics.tmExternalLeading + 2));
 		std::istringstream report(weather.rawReport);
 		std::string token;
 		size_t tokenIndex = 0;
