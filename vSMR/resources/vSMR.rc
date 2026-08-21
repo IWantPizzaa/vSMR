@@ -67,11 +67,11 @@ BEGIN
     BEGIN
         BLOCK "040004b0"
         BEGIN
-            VALUE "FileDescription", "vSMR Plugin for EuroScope"
+            VALUE "FileDescription", "vSMR Runtime for EuroScope"
             VALUE "FileVersion", "2.0.0-beta.2"
-            VALUE "InternalName", "vSMR.dll"
+            VALUE "InternalName", "vSMR.Runtime.dll"
             VALUE "LegalCopyright", "GNU GENERAL PUBLIC LICENSE"
-            VALUE "OriginalFilename", "vSMR.dll"
+            VALUE "OriginalFilename", "vSMR.Runtime.dll"
             VALUE "ProductName", "vSMR"
             VALUE "ProductVersion", "2.0.0-beta.2"
         END

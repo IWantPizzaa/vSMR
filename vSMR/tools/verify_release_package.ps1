@@ -4,9 +4,15 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ArchivePath,
-    [ValidatePattern("^\d+\.\d+\.\d+-beta\.\d+$")]
+    [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
     [string]$ExpectedVersion = "2.0.0-beta.2",
     [string]$ChecksumPath = "",
+    [string]$UpdateManifestPath = "",
+    [string]$UpdateSignaturePath = "",
+    [ValidatePattern("^\d+\.\d+\.\d+$")]
+    [string]$ExpectedLoaderVersion = "1.0.0",
+    [ValidateRange(1, 65535)]
+    [int]$ExpectedRuntimeAbi = 1,
     [switch]$RequireSignature,
     [switch]$AllowNonPublishable
 )
@@ -40,6 +46,20 @@ if ($archiveHash -ne $Matches[1]) {
 }
 if ($env:VSMR_REQUIRE_SIGNATURE -eq '1' -or $env:VSMR_REQUIRE_SIGNATURE -eq 'true') {
     $RequireSignature = $true
+}
+if ([string]::IsNullOrWhiteSpace($UpdateManifestPath)) {
+    $UpdateManifestPath = Join-Path (Split-Path -Parent $ArchivePath) "vSMR-$ExpectedVersion.update.json"
+}
+$UpdateManifestPath = [System.IO.Path]::GetFullPath($UpdateManifestPath)
+if (-not (Test-Path -LiteralPath $UpdateManifestPath -PathType Leaf)) {
+    throw "Update manifest not found: $UpdateManifestPath"
+}
+if ([string]::IsNullOrWhiteSpace($UpdateSignaturePath)) {
+    $UpdateSignaturePath = "$UpdateManifestPath.p7s"
+}
+$UpdateSignaturePath = [System.IO.Path]::GetFullPath($UpdateSignaturePath)
+if ($RequireSignature -and -not (Test-Path -LiteralPath $UpdateSignaturePath -PathType Leaf)) {
+    throw "Detached update signature not found: $UpdateSignaturePath"
 }
 
 function Assert-File {
@@ -139,6 +159,111 @@ function Get-PeExportNames {
     return $names
 }
 
+function Get-CertificateDerSha256 {
+    param([Parameter(Mandatory = $true)]$Certificate)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($Certificate.RawData))).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $sha256.Dispose() }
+}
+
+function Test-VersionEquals {
+    param([string]$Actual, [string]$Expected)
+    if ([string]::IsNullOrWhiteSpace($Actual)) { return $false }
+    return $Actual -eq $Expected -or $Actual -eq "$Expected.0"
+}
+
+function Write-TestReleaseMetadata {
+    param(
+        [Parameter(Mandatory = $true)][string]$DataDirectory,
+        [Parameter(Mandatory = $true)][string]$RuntimePath,
+        [string]$Version = '1.9.9'
+    )
+    $metadata = [ordered]@{
+        schema_version = 1
+        product = 'vSMR'
+        version = $Version
+        runtime = [ordered]@{
+            relative_path = 'vSMR_Data/Runtime/vSMR.Runtime.dll'
+            size = [int64](Get-Item -LiteralPath $RuntimePath).Length
+            sha256 = (Get-FileHash -LiteralPath $RuntimePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $DataDirectory 'RELEASE-METADATA.json'),
+        ((ConvertTo-Json $metadata -Depth 5) + "`n"),
+        (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Read-AndVerifyDetachedCms {
+    param(
+        [Parameter(Mandatory = $true)][string]$ContentPath,
+        [Parameter(Mandatory = $true)][string]$SignaturePath,
+        [switch]$ValidateCertificate
+    )
+    Add-Type -AssemblyName System.Security
+    $content = [System.IO.File]::ReadAllBytes($ContentPath)
+    $contentInfo = New-Object System.Security.Cryptography.Pkcs.ContentInfo -ArgumentList (,$content)
+    $signedCms = New-Object System.Security.Cryptography.Pkcs.SignedCms -ArgumentList $contentInfo, $true
+    $signedCms.Decode([System.IO.File]::ReadAllBytes($SignaturePath))
+    $signedCms.CheckSignature(-not [bool]$ValidateCertificate)
+    if ($signedCms.SignerInfos.Count -ne 1 -or $null -eq $signedCms.SignerInfos[0].Certificate) {
+        throw "Detached update signature must contain exactly one signer certificate."
+    }
+    return $signedCms.SignerInfos[0].Certificate
+}
+
+$updateManifestBytes = [System.IO.File]::ReadAllBytes($UpdateManifestPath)
+if ($updateManifestBytes.Length -eq 0 -or
+    ($updateManifestBytes.Length -ge 3 -and $updateManifestBytes[0] -eq 0xEF -and
+        $updateManifestBytes[1] -eq 0xBB -and $updateManifestBytes[2] -eq 0xBF)) {
+    throw "Update manifest must be non-empty UTF-8 without a BOM."
+}
+$updateManifest = [System.Text.Encoding]::UTF8.GetString($updateManifestBytes) | ConvertFrom-Json
+$expectedChannel = if ($ExpectedVersion.Contains('-')) { 'beta' } else { 'stable' }
+if ([int]$updateManifest.schema_version -ne 1 -or
+    $updateManifest.product -ne 'vSMR' -or
+    $updateManifest.version -ne $ExpectedVersion -or
+    $updateManifest.channel -ne $expectedChannel -or
+    $updateManifest.publishable -isnot [bool] -or
+    $updateManifest.archive.name -ne [System.IO.Path]::GetFileName($ArchivePath) -or
+    [int64]$updateManifest.archive.size -ne [int64](Get-Item -LiteralPath $ArchivePath).Length -or
+    [string]$updateManifest.archive.sha256 -ne $archiveHash.ToLowerInvariant() -or
+    $updateManifest.loader.name -ne 'vSMR.dll' -or
+    $updateManifest.loader.version -ne $ExpectedLoaderVersion -or
+    [int]$updateManifest.runtime_abi -ne $ExpectedRuntimeAbi -or
+    $updateManifest.runtime_relative_path -ne 'vSMR_Data/Runtime/vSMR.Runtime.dll' -or
+    [string]::IsNullOrWhiteSpace([string]$updateManifest.minimum_loader_version)) {
+    throw "The external update manifest is incomplete or inconsistent with the release archive."
+}
+$minimumLoaderVersion = $null
+$packagedLoaderVersion = $null
+if (-not [Version]::TryParse([string]$updateManifest.minimum_loader_version, [ref]$minimumLoaderVersion) -or
+    -not [Version]::TryParse([string]$updateManifest.loader.version, [ref]$packagedLoaderVersion) -or
+    $packagedLoaderVersion -lt $minimumLoaderVersion) {
+    throw "Update manifest minimum_loader_version is invalid or newer than its packaged loader."
+}
+if ($RequireSignature -and -not [bool]$updateManifest.publishable) {
+    throw "A signature-required update manifest must explicitly set publishable=true."
+}
+if ([bool]$updateManifest.publishable) {
+    $RequireSignature = $true
+    if (-not (Test-Path -LiteralPath $UpdateSignaturePath -PathType Leaf)) {
+        throw "A publishable update manifest requires its detached CMS signature."
+    }
+}
+$updateSigner = $null
+if (Test-Path -LiteralPath $UpdateSignaturePath -PathType Leaf) {
+    if (-not [bool]$updateManifest.publishable) {
+        throw "A non-publishable update manifest must never carry a detached production signature."
+    }
+    $updateSigner = Read-AndVerifyDetachedCms `
+        -ContentPath $UpdateManifestPath `
+        -SignaturePath $UpdateSignaturePath `
+        -ValidateCertificate:$RequireSignature
+}
+
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
 try {
@@ -173,6 +298,7 @@ try {
 
     $dllPath = Join-Path $extractRoot "vSMR.dll"
     $dataPath = Join-Path $extractRoot "vSMR_Data"
+    $runtimePath = Join-Path $dataPath "Runtime\vSMR.Runtime.dll"
     $crashHandlerPath = Join-Path $dataPath "CrashReporter\vSMRCrashHandler.dll"
     Assert-File $dllPath
 
@@ -188,6 +314,7 @@ try {
         'vSMR_webUI\defaults\vSMR_Profiles.json',
         'AVISO\LFPG.geojson',
         'AVISO\LFPG_Dyna_fixed.geojson',
+        'Runtime\vSMR.Runtime.dll',
         'CrashReporter\vSMRCrashHandler.dll',
         'Licenses\vSMR.txt',
         'Licenses\RapidJSON.txt',
@@ -230,11 +357,11 @@ try {
     $packagedDllLocations = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File -Filter '*.dll' |
         ForEach-Object { $_.FullName.Substring($extractRoot.Length).TrimStart([char[]]"\/").Replace('\', '/') } |
         Sort-Object)
-    if (($packagedDllLocations -join '|') -ne 'vSMR.dll|vSMR_Data/CrashReporter/vSMRCrashHandler.dll') {
+    if (($packagedDllLocations -join '|') -ne 'vSMR.dll|vSMR_Data/CrashReporter/vSMRCrashHandler.dll|vSMR_Data/Runtime/vSMR.Runtime.dll') {
         throw "Package DLL allowlist mismatch: $($packagedDllLocations -join ', ')"
     }
 
-    foreach ($binary in @($dllPath, $crashHandlerPath)) {
+    foreach ($binary in @($dllPath, $runtimePath, $crashHandlerPath)) {
         $machine = Get-PeMachine $binary
         if ($machine -ne 0x014C) {
             throw ("$([System.IO.Path]::GetFileName($binary)) is not Win32/x86 (PE machine 0x{0:X4})." -f $machine)
@@ -242,8 +369,13 @@ try {
     }
 
     $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dllPath)
-    if ($versionInfo.FileVersion -ne $ExpectedVersion -or $versionInfo.ProductVersion -ne $ExpectedVersion) {
-        throw "DLL version mismatch. FileVersion='$($versionInfo.FileVersion)', ProductVersion='$($versionInfo.ProductVersion)', expected '$ExpectedVersion'."
+    if (-not (Test-VersionEquals $versionInfo.FileVersion $ExpectedLoaderVersion) -or
+        $versionInfo.ProductVersion -ne $ExpectedVersion) {
+        throw "Loader version mismatch. FileVersion='$($versionInfo.FileVersion)' (expected '$ExpectedLoaderVersion'), ProductVersion='$($versionInfo.ProductVersion)' (expected '$ExpectedVersion')."
+    }
+    $runtimeVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($runtimePath)
+    if ($runtimeVersionInfo.FileVersion -ne $ExpectedVersion -or $runtimeVersionInfo.ProductVersion -ne $ExpectedVersion) {
+        throw "Runtime version mismatch. FileVersion='$($runtimeVersionInfo.FileVersion)', ProductVersion='$($runtimeVersionInfo.ProductVersion)', expected '$ExpectedVersion'."
     }
     $crashHandlerVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($crashHandlerPath)
     if ($crashHandlerVersionInfo.FileVersion -ne $ExpectedVersion -or $crashHandlerVersionInfo.ProductVersion -ne $ExpectedVersion) {
@@ -258,8 +390,21 @@ try {
     if (($actualCrashHandlerExports -join '|') -cne ($expectedCrashHandlerExports -join '|')) {
         throw "Packaged crash handler does not expose the exact three-name WER ABI."
     }
+    $expectedRuntimeExports = @('VsmrRuntimeCreate', 'VsmrRuntimeGetAbiVersion', 'VsmrRuntimeShutdown') | Sort-Object
+    $actualRuntimeExports = @(Get-PeExportNames $runtimePath | Sort-Object)
+    if (($actualRuntimeExports -join '|') -cne ($expectedRuntimeExports -join '|')) {
+        throw "Packaged runtime does not expose the exact three-name loader ABI."
+    }
+    $expectedLoaderExports = @(
+        '?EuroScopePlugInExit@@YAXXZ',
+        '?EuroScopePlugInInit@@YAXPAPAVCPlugIn@EuroScopePlugIn@@@Z'
+    )
+    $loaderExports = @(Get-PeExportNames $dllPath | Sort-Object)
+    if (($loaderExports -join '|') -cne (($expectedLoaderExports | Sort-Object) -join '|')) {
+        throw "Packaged loader must expose only the exact decorated x86 EuroScope SDK entry points."
+    }
     if ($RequireSignature) {
-        foreach ($binary in @($dllPath, $crashHandlerPath)) {
+        foreach ($binary in @($dllPath, $runtimePath, $crashHandlerPath)) {
             $signature = Get-AuthenticodeSignature -LiteralPath $binary
             if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
                 throw "A valid Authenticode signature is required, but packaged $([System.IO.Path]::GetFileName($binary)) status is '$($signature.Status)'."
@@ -267,12 +412,53 @@ try {
         }
     }
 
+    $packagedLoaderHash = (Get-FileHash -LiteralPath $dllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $packagedRuntimeHash = (Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ([string]$updateManifest.loader.sha256 -ne $packagedLoaderHash -or
+        [int64]$updateManifest.loader.size -ne [int64](Get-Item -LiteralPath $dllPath).Length) {
+        throw "Update manifest loader hash or size does not match the packaged loader."
+    }
+
     $metadataPath = Join-Path $dataPath "RELEASE-METADATA.json"
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
     if ($metadata.product -ne 'vSMR' -or $metadata.version -ne $ExpectedVersion -or
-        $metadata.channel -ne 'beta' -or [string]::IsNullOrWhiteSpace([string]$metadata.git_commit) -or
+        $metadata.channel -ne $expectedChannel -or [string]::IsNullOrWhiteSpace([string]$metadata.git_commit) -or
+        $metadata.runtime.version -ne $ExpectedVersion -or
+        [int]$metadata.runtime.abi -ne $ExpectedRuntimeAbi -or
+        $metadata.runtime.relative_path -ne 'vSMR_Data/Runtime/vSMR.Runtime.dll' -or
+        [int64]$metadata.runtime.size -ne [int64](Get-Item -LiteralPath $runtimePath).Length -or
+        [string]$metadata.runtime.sha256 -ne $packagedRuntimeHash -or
+        $metadata.loader.version -ne $ExpectedLoaderVersion -or
+        [int]$metadata.loader.runtime_abi -ne $ExpectedRuntimeAbi -or
+        $metadata.loader.relative_path -ne 'vSMR.dll' -or
+        [int64]$metadata.loader.size -ne [int64](Get-Item -LiteralPath $dllPath).Length -or
+        [string]$metadata.loader.sha256 -ne $packagedLoaderHash -or
+        $metadata.automatic_update.minimum_loader_version -ne $updateManifest.minimum_loader_version -or
+        $metadata.automatic_update.publishable -isnot [bool] -or
+        [bool]$metadata.automatic_update.publishable -ne [bool]$updateManifest.publishable -or
+        $null -eq $metadata.authenticode.runtime -or
         $null -eq $metadata.authenticode.crash_handler) {
         throw "RELEASE-METADATA.json is incomplete or inconsistent."
+    }
+    if ($RequireSignature -and (-not [bool]$metadata.publishable -or
+        -not [bool]$metadata.automatic_update.publishable)) {
+        throw "A remotely publishable archive must mark both source and automatic-update provenance as publishable."
+    }
+    $configuredSignerPin = ([string]$metadata.automatic_update.signer_cert_der_sha256).ToLowerInvariant()
+    if ($null -ne $updateSigner) {
+        $cmsSignerPin = Get-CertificateDerSha256 $updateSigner
+        if ([string]::IsNullOrWhiteSpace($configuredSignerPin) -or $cmsSignerPin -ne $configuredSignerPin) {
+            throw "Detached update manifest signer does not match RELEASE-METADATA.json's certificate pin."
+        }
+        $loaderSignature = Get-AuthenticodeSignature -LiteralPath $dllPath
+        if ($loaderSignature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and
+            $null -ne $loaderSignature.SignerCertificate -and
+            (Get-CertificateDerSha256 $loaderSignature.SignerCertificate) -ne $cmsSignerPin) {
+            throw "Detached update manifest signer does not match the loader's Authenticode signer."
+        }
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($configuredSignerPin) -and $RequireSignature) {
+        throw "Release metadata declares an updater signer pin but the detached signature is missing."
     }
     $commitIsVerified = [string]$metadata.git_commit -match '^[0-9a-fA-F]{40}$'
     $sourceIsClean = $metadata.source_dirty -is [bool] -and -not [bool]$metadata.source_dirty
@@ -297,6 +483,10 @@ try {
     }
     if (-not $manifestEntries.ContainsKey('vSMR_Data/CrashReporter/vSMRCrashHandler.dll')) {
         throw "SHA256SUMS.txt does not protect the WER crash handler."
+    }
+    if (-not $manifestEntries.ContainsKey('vSMR_Data/Runtime/vSMR.Runtime.dll') -or
+        -not $manifestEntries.ContainsKey('vSMR.dll')) {
+        throw "SHA256SUMS.txt does not protect the loader and canonical runtime."
     }
 
     $payloadFiles = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File | Where-Object {
@@ -324,9 +514,14 @@ try {
     [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\AVISO")) | Out-Null
     [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\vSMR_webUI")) | Out-Null
     [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\CrashReporter")) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $installTarget "vSMR_Data\Runtime")) | Out-Null
     [System.IO.File]::WriteAllText((Join-Path $installTarget "vSMR.dll"), "old-dll")
     $installedCrashHandlerPath = Join-Path $installTarget "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
     [System.IO.File]::WriteAllText($installedCrashHandlerPath, "old-crash-handler")
+    Copy-Item -LiteralPath $crashHandlerPath -Destination (Join-Path $installTarget "vSMR_Data\Runtime\vSMR.Runtime.dll")
+    Write-TestReleaseMetadata `
+        -DataDirectory (Join-Path $installTarget "vSMR_Data") `
+        -RuntimePath (Join-Path $installTarget "vSMR_Data\Runtime\vSMR.Runtime.dll")
     $packagedCrashHandlerHash = (Get-FileHash -LiteralPath $crashHandlerPath -Algorithm SHA256).Hash
     [System.IO.File]::WriteAllText(
         (Join-Path $installTarget "vSMR_Data\vSMR_Profiles.json"),
@@ -465,6 +660,11 @@ try {
         }
         $rollbackBackup = [string]$installation.rollback_backup
         Assert-File (Join-Path $rollbackBackup "BACKUP-METADATA.json")
+        $transactionOutcome = Get-Content -LiteralPath (Join-Path $rollbackBackup "TRANSACTION-OUTCOME.json") -Raw | ConvertFrom-Json
+        if ($transactionOutcome.status -ne 'committed' -or
+            $transactionOutcome.transaction_id -ne $installation.transaction_id) {
+            throw "Install helper did not record a durable committed transaction outcome."
+        }
         if ((Get-Content -LiteralPath (Join-Path $rollbackBackup "vSMR_Data\CrashReporter\vSMRCrashHandler.dll") -Raw) -ne 'old-crash-handler') {
             throw "Install helper did not back up the previous crash handler."
         }
@@ -529,6 +729,10 @@ try {
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
         if ($null -eq $safetyBackup) { throw "Rollback helper did not create a safety backup." }
+        $rollbackOutcome = Get-Content -LiteralPath (Join-Path $safetyBackup.FullName "TRANSACTION-OUTCOME.json") -Raw | ConvertFrom-Json
+        if ($rollbackOutcome.status -ne 'committed' -or [bool]$rollbackOutcome.loader_preserved) {
+            throw "Rollback helper did not record a durable committed full-restore outcome."
+        }
         & (Join-Path $dataPath "Tools\restore_vsmr_backup.ps1") `
             -DestinationDirectory $installTarget `
             -BackupDirectory $safetyBackup.FullName `
@@ -551,6 +755,106 @@ try {
     finally {
         if (Test-Path -LiteralPath $installTarget) {
             Remove-Item -LiteralPath $installTarget -Recurse -Force
+        }
+    }
+
+    # Exercise the same-launch updater path separately. It must validate the
+    # complete package, replace immutable runtime/data, and never mutate the
+    # already-loaded root loader during either install or rollback.
+    $runtimeInstallTarget = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-runtime-install-verify-" + [Guid]::NewGuid().ToString("N"))
+    [System.IO.Directory]::CreateDirectory((Join-Path $runtimeInstallTarget "vSMR_Data\Runtime")) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $runtimeInstallTarget "vSMR_Data\AVISO")) | Out-Null
+    $runtimeTargetLoader = Join-Path $runtimeInstallTarget "vSMR.dll"
+    $runtimeTargetRuntime = Join-Path $runtimeInstallTarget "vSMR_Data\Runtime\vSMR.Runtime.dll"
+    [System.IO.File]::WriteAllText($runtimeTargetLoader, "preserved-loader")
+    Copy-Item -LiteralPath $crashHandlerPath -Destination $runtimeTargetRuntime
+    $previousRuntimeHash = (Get-FileHash -LiteralPath $runtimeTargetRuntime -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-TestReleaseMetadata `
+        -DataDirectory (Join-Path $runtimeInstallTarget "vSMR_Data") `
+        -RuntimePath $runtimeTargetRuntime
+    [System.IO.File]::WriteAllText((Join-Path $runtimeInstallTarget "vSMR_Data\AVISO\USER.geojson"), "user-aviso")
+    $preservedLoaderHash = (Get-FileHash -LiteralPath $runtimeTargetLoader -Algorithm SHA256).Hash.ToLowerInvariant()
+    $packagedRuntimeHash = (Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    try {
+        & (Join-Path $dataPath "Tools\install_vsmr.ps1") `
+            -DestinationDirectory $runtimeInstallTarget `
+            -PreserveLoader `
+            -Confirm:$false
+        $runtimeInstallation = Get-Content -LiteralPath (Join-Path $runtimeInstallTarget "vSMR_Data\INSTALLATION.json") -Raw | ConvertFrom-Json
+        if ((Get-FileHash -LiteralPath $runtimeTargetLoader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $preservedLoaderHash -or
+            (Get-FileHash -LiteralPath $runtimeTargetRuntime -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedRuntimeHash -or
+            (Get-Content -LiteralPath (Join-Path $runtimeInstallTarget "vSMR_Data\AVISO\USER.geojson") -Raw) -ne 'user-aviso' -or
+            -not [bool]$runtimeInstallation.loader_preserved -or
+            [string]$runtimeInstallation.validation_scope -ne 'runtime_and_data' -or
+            [string]$runtimeInstallation.package_loader_sha256 -ne $packagedLoaderHash -or
+            [string]$runtimeInstallation.installed_loader_sha256 -ne $preservedLoaderHash -or
+            [bool]$runtimeInstallation.loader_matches_package) {
+            throw "Runtime-update install did not preserve the loader, replace the runtime, preserve user data, and record scoped validation correctly."
+        }
+        $runtimeRollbackBackup = [string]$runtimeInstallation.rollback_backup
+        $runtimeTransactionOutcome = Get-Content -LiteralPath (Join-Path $runtimeRollbackBackup "TRANSACTION-OUTCOME.json") -Raw | ConvertFrom-Json
+        if ($runtimeTransactionOutcome.status -ne 'committed' -or
+            $runtimeTransactionOutcome.transaction_id -ne $runtimeInstallation.transaction_id -or
+            -not [bool]$runtimeTransactionOutcome.loader_preserved) {
+            throw "Runtime-update install did not record a durable committed preserve-loader outcome."
+        }
+        if ((Get-Content -LiteralPath (Join-Path $runtimeRollbackBackup "vSMR.dll") -Raw) -ne 'preserved-loader' -or
+            (Get-FileHash -LiteralPath (Join-Path $runtimeRollbackBackup "vSMR_Data\Runtime\vSMR.Runtime.dll") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $previousRuntimeHash) {
+            throw "Runtime-update install did not create a complete rollback backup."
+        }
+
+        $tamperedRuntimeBackup = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-tampered-rollback-" + [Guid]::NewGuid().ToString("N"))
+        Copy-Item -LiteralPath $runtimeRollbackBackup -Destination $tamperedRuntimeBackup -Recurse
+        try {
+            [System.IO.File]::AppendAllText(
+                (Join-Path $tamperedRuntimeBackup "vSMR_Data\Runtime\vSMR.Runtime.dll"),
+                "tampered")
+            $tamperedRejected = $false
+            try {
+                & (Join-Path $dataPath "Tools\restore_vsmr_backup.ps1") `
+                    -DestinationDirectory $runtimeInstallTarget `
+                    -BackupDirectory $tamperedRuntimeBackup `
+                    -RuntimeUpdate `
+                    -Confirm:$false
+            }
+            catch { $tamperedRejected = $_.Exception.Message -match 'canonical runtime' }
+            if (-not $tamperedRejected -or
+                (Get-FileHash -LiteralPath $runtimeTargetLoader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $preservedLoaderHash -or
+                (Get-FileHash -LiteralPath $runtimeTargetRuntime -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedRuntimeHash) {
+                throw "Runtime-update rollback did not reject a tampered backup before mutating the active installation."
+            }
+        }
+        finally {
+            if (Test-Path -LiteralPath $tamperedRuntimeBackup) {
+                Remove-Item -LiteralPath $tamperedRuntimeBackup -Recurse -Force
+            }
+        }
+
+        & (Join-Path $dataPath "Tools\restore_vsmr_backup.ps1") `
+            -DestinationDirectory $runtimeInstallTarget `
+            -BackupDirectory $runtimeRollbackBackup `
+            -RuntimeUpdate `
+            -Confirm:$false
+        if ((Get-FileHash -LiteralPath $runtimeTargetLoader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $preservedLoaderHash -or
+            (Get-FileHash -LiteralPath $runtimeTargetRuntime -Algorithm SHA256).Hash.ToLowerInvariant() -ne $previousRuntimeHash -or
+            (Get-Content -LiteralPath (Join-Path $runtimeInstallTarget "vSMR_Data\AVISO\USER.geojson") -Raw) -ne 'user-aviso') {
+            throw "Runtime-update rollback did not preserve the loader and restore the previous runtime/data tree."
+        }
+        $runtimeSafetyBackup = Get-ChildItem -LiteralPath (Split-Path -Parent $runtimeRollbackBackup) -Directory |
+            Where-Object { $_.Name -like 'vSMR-before-rollback-*' } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+        if ($null -eq $runtimeSafetyBackup) {
+            throw "Runtime-update rollback did not create a safety backup."
+        }
+        $runtimeRollbackOutcome = Get-Content -LiteralPath (Join-Path $runtimeSafetyBackup.FullName "TRANSACTION-OUTCOME.json") -Raw | ConvertFrom-Json
+        if ($runtimeRollbackOutcome.status -ne 'committed' -or -not [bool]$runtimeRollbackOutcome.loader_preserved) {
+            throw "Runtime-update rollback did not record a durable committed preserve-loader outcome."
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $runtimeInstallTarget) {
+            Remove-Item -LiteralPath $runtimeInstallTarget -Recurse -Force
         }
     }
 

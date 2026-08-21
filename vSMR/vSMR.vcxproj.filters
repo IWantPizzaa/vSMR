@@ -31,10 +31,14 @@
     <Filter Include="Web UI">
       <UniqueIdentifier>{7D1798B1-43DA-48C3-A415-DFBEE9C1344A}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Bootstrap">
+      <UniqueIdentifier>{B3062277-8EFC-4AF0-83CE-0112011B2BFB}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\aircraft\CallsignLookup.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\bootstrap\RuntimeContext.cpp"><Filter>Bootstrap</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoEditorDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp"><Filter>Source</Filter></ClCompile>
@@ -74,6 +78,8 @@
     <ClInclude Include="src\aircraft\CallsignLookup.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\app\PluginEntry.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>
+    <ClInclude Include="src\bootstrap\RuntimeContext.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoEditorDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
