@@ -5,15 +5,24 @@ param(
     [string]$RepositoryRoot = "",
     [string]$BuildOutputDirectory = "",
     [string]$ArtifactsDirectory = "",
-    [ValidatePattern("^\d+\.\d+\.\d+-beta\.\d+$")]
+    [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
     [string]$Version = "2.0.0-beta.2",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
     [ValidatePattern("^(auto|v\d+)$")]
     [string]$Toolset = "auto",
     [string]$PdbPath = "",
+    [string]$LoaderPdbPath = "",
     [string]$CrashHandlerPdbPath = "",
     [string]$CertificateThumbprint = "",
+    [ValidatePattern("^(|[0-9a-fA-F]{64})$")]
+    [string]$UpdateSignerCertSha256 = "",
+    [ValidatePattern("^\d+\.\d+\.\d+$")]
+    [string]$LoaderVersion = "1.0.0",
+    [ValidatePattern("^\d+\.\d+\.\d+$")]
+    [string]$MinimumLoaderVersion = "1.0.0",
+    [ValidateRange(1, 65535)]
+    [int]$RuntimeAbi = 1,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     [switch]$RequireSignature,
     [switch]$AllowDirtySource,
@@ -38,6 +47,16 @@ if ([string]::IsNullOrWhiteSpace($ArtifactsDirectory)) {
     $ArtifactsDirectory = Join-Path $RepositoryRoot "artifacts"
 }
 $ArtifactsDirectory = [System.IO.Path]::GetFullPath($ArtifactsDirectory)
+
+if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+    $CertificateThumbprint = [string]$env:VSMR_SIGNING_CERT_THUMBPRINT
+}
+if ([string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
+    $UpdateSignerCertSha256 = [string]$env:VSMR_UPDATE_SIGNER_CERT_SHA256
+}
+if ($env:VSMR_REQUIRE_SIGNATURE -eq '1' -or $env:VSMR_REQUIRE_SIGNATURE -eq 'true') {
+    $RequireSignature = $true
+}
 
 function Test-PathEqualOrChild {
     param([string]$Path, [string]$Parent)
@@ -149,6 +168,60 @@ function Resolve-AutomaticToolset {
     throw "No Visual C++ platform toolset was found for $TargetPlatform. Install the matching MSVC and MFC components or pass -Toolset explicitly."
 }
 
+function Resolve-CodeSigningCertificate {
+    param([string]$Thumbprint)
+    if ([string]::IsNullOrWhiteSpace($Thumbprint)) { return $null }
+    $normalized = ($Thumbprint -replace '\s', '').ToUpperInvariant()
+    foreach ($storePath in @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\My')) {
+        $certificate = Get-ChildItem -LiteralPath $storePath -ErrorAction SilentlyContinue |
+            Where-Object { $_.Thumbprint -eq $normalized -and $_.HasPrivateKey } |
+            Select-Object -First 1
+        if ($null -ne $certificate) { return $certificate }
+    }
+    throw "The configured code-signing certificate with thumbprint '$normalized' and a private key was not found."
+}
+
+function Get-CertificateDerSha256 {
+    param([Parameter(Mandatory = $true)]$Certificate)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($Certificate.RawData))).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $sha256.Dispose() }
+}
+
+function Write-DetachedCmsSignature {
+    param(
+        [Parameter(Mandatory = $true)][string]$ContentPath,
+        [Parameter(Mandatory = $true)][string]$SignaturePath,
+        [Parameter(Mandatory = $true)]$Certificate
+    )
+    Add-Type -AssemblyName System.Security
+    $contentBytes = [System.IO.File]::ReadAllBytes($ContentPath)
+    $contentInfo = New-Object System.Security.Cryptography.Pkcs.ContentInfo -ArgumentList (,$contentBytes)
+    $signedCms = New-Object System.Security.Cryptography.Pkcs.SignedCms -ArgumentList $contentInfo, $true
+    $signer = New-Object System.Security.Cryptography.Pkcs.CmsSigner -ArgumentList (,$Certificate)
+    $signer.IncludeOption = [System.Security.Cryptography.X509Certificates.X509IncludeOption]::EndCertOnly
+    $signer.DigestAlgorithm = New-Object System.Security.Cryptography.Oid('2.16.840.1.101.3.4.2.1')
+    $signedCms.ComputeSignature($signer, $false)
+    [System.IO.File]::WriteAllBytes($SignaturePath, $signedCms.Encode())
+}
+
+$signingCertificate = Resolve-CodeSigningCertificate $CertificateThumbprint
+if ($null -ne $signingCertificate) {
+    $certificateDerSha256 = Get-CertificateDerSha256 $signingCertificate
+    if ([string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
+        $UpdateSignerCertSha256 = $certificateDerSha256
+    }
+    elseif ($UpdateSignerCertSha256.ToLowerInvariant() -ne $certificateDerSha256) {
+        throw "VSMR_UPDATE_SIGNER_CERT_SHA256 does not match the configured code-signing certificate."
+    }
+}
+$UpdateSignerCertSha256 = $UpdateSignerCertSha256.ToLowerInvariant()
+if ($RequireSignature -and ($null -eq $signingCertificate -or [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256))) {
+    throw "A publishable automatic-update release requires a code-signing certificate and pinned DER SHA-256."
+}
+
 $solutionPath = Join-Path $RepositoryRoot "vSMR.sln"
 if (-not $SkipBuild) {
     Assert-File $solutionPath
@@ -165,6 +238,9 @@ if (-not $SkipBuild) {
         "/p:PlatformToolset=$Toolset",
         "/p:VsmrReleaseOutputDirectory=$outDir"
     )
+    if (-not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
+        $buildProperties += "/p:VsmrUpdateSignerCertSha256=$UpdateSignerCertSha256"
+    }
 
     Write-Host "Restoring vSMR with $Toolset..."
     & $msbuildPath $solutionPath /t:Restore @buildProperties /nodeReuse:false /verbosity:minimal
@@ -179,7 +255,10 @@ if (-not $SkipBuild) {
     }
 
     if ([string]::IsNullOrWhiteSpace($PdbPath)) {
-        $PdbPath = Join-Path $RepositoryRoot "vSMR\$Configuration\vSMR.pdb"
+        $PdbPath = Join-Path $RepositoryRoot "vSMR\obj\$Configuration\Runtime\vSMR.Runtime.pdb"
+    }
+    if ([string]::IsNullOrWhiteSpace($LoaderPdbPath)) {
+        $LoaderPdbPath = Join-Path $RepositoryRoot "vSMR\src\bootstrap\loader\obj\$Configuration\vSMR.pdb"
     }
     if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
         $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\src\crash\handler\obj\$Configuration\vSMRCrashHandler.pdb"
@@ -190,7 +269,10 @@ else {
         throw "-SkipBuild requires an explicit -Toolset so release provenance matches the prebuilt DLL."
     }
     if ([string]::IsNullOrWhiteSpace($PdbPath)) {
-        throw "-SkipBuild requires -PdbPath pointing to the PDB produced with the prebuilt DLL."
+        throw "-SkipBuild requires -PdbPath pointing to the prebuilt runtime PDB."
+    }
+    if ([string]::IsNullOrWhiteSpace($LoaderPdbPath)) {
+        throw "-SkipBuild requires -LoaderPdbPath pointing to the prebuilt loader PDB."
     }
     if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
         throw "-SkipBuild requires -CrashHandlerPdbPath pointing to the PDB produced with the prebuilt WER crash handler."
@@ -198,6 +280,8 @@ else {
 }
 $PdbPath = [System.IO.Path]::GetFullPath($PdbPath)
 Assert-File $PdbPath
+$LoaderPdbPath = [System.IO.Path]::GetFullPath($LoaderPdbPath)
+Assert-File $LoaderPdbPath
 $CrashHandlerPdbPath = [System.IO.Path]::GetFullPath($CrashHandlerPdbPath)
 Assert-File $CrashHandlerPdbPath
 
@@ -208,7 +292,11 @@ Assert-File $validator
     -ExpectedVersion $Version `
     -BuildOutputDirectory $BuildOutputDirectory `
     -PdbPath $PdbPath `
-    -CrashHandlerPdbPath $CrashHandlerPdbPath
+    -LoaderPdbPath $LoaderPdbPath `
+    -CrashHandlerPdbPath $CrashHandlerPdbPath `
+    -ExpectedLoaderVersion $LoaderVersion `
+    -ExpectedRuntimeAbi $RuntimeAbi `
+    -UpdateSignerCertSha256 $UpdateSignerCertSha256
 
 $dllPath = Join-Path $BuildOutputDirectory "vSMR.dll"
 $dataPath = Join-Path $BuildOutputDirectory "vSMR_Data"
@@ -233,16 +321,12 @@ try {
     Copy-Item -LiteralPath $dllPath -Destination (Join-Path $packageStage "vSMR.dll")
     Copy-Item -LiteralPath $dataPath -Destination (Join-Path $packageStage "vSMR_Data") -Recurse
     $packagedDllPath = Join-Path $packageStage "vSMR.dll"
+    $packagedRuntimePath = Join-Path $packageStage "vSMR_Data\Runtime\vSMR.Runtime.dll"
     $packagedCrashHandlerPath = Join-Path $packageStage "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
+    Assert-File $packagedRuntimePath
     Assert-File $packagedCrashHandlerPath
 
-if ([string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
-    $CertificateThumbprint = [string]$env:VSMR_SIGNING_CERT_THUMBPRINT
-}
-if ($env:VSMR_REQUIRE_SIGNATURE -eq '1' -or $env:VSMR_REQUIRE_SIGNATURE -eq 'true') {
-    $RequireSignature = $true
-}
-if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
+if ($null -ne $signingCertificate) {
     $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
     if ([string]::IsNullOrWhiteSpace($signTool)) {
         $kitsBin = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
@@ -255,7 +339,7 @@ if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
         throw "A signing certificate was configured, but signtool.exe was not found."
     }
     $normalizedThumbprint = ($CertificateThumbprint -replace '\s', '')
-    foreach ($binaryToSign in @($packagedDllPath, $packagedCrashHandlerPath)) {
+    foreach ($binaryToSign in @($packagedDllPath, $packagedRuntimePath, $packagedCrashHandlerPath)) {
         & $signTool sign /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $binaryToSign
         if ($LASTEXITCODE -ne 0) {
             throw "Authenticode signing failed for '$binaryToSign' with exit code $LASTEXITCODE."
@@ -264,12 +348,22 @@ if (-not [string]::IsNullOrWhiteSpace($CertificateThumbprint)) {
 }
 
 $signature = Get-AuthenticodeSignature -LiteralPath $packagedDllPath
+$runtimeSignature = Get-AuthenticodeSignature -LiteralPath $packagedRuntimePath
 $crashHandlerSignature = Get-AuthenticodeSignature -LiteralPath $packagedCrashHandlerPath
 if ($RequireSignature -and $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
     throw "A valid Authenticode signature is required, but vSMR.dll status is '$($signature.Status)'."
 }
+if ($RequireSignature -and $runtimeSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+    throw "A valid Authenticode signature is required, but vSMR.Runtime.dll status is '$($runtimeSignature.Status)'."
+}
 if ($RequireSignature -and $crashHandlerSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
     throw "A valid Authenticode signature is required, but vSMRCrashHandler.dll status is '$($crashHandlerSignature.Status)'."
+}
+if (-not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
+    $loaderAscii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($packagedDllPath))
+    if (-not $loaderAscii.Contains($UpdateSignerCertSha256)) {
+        throw "The packaged loader does not contain the configured VSMR_UPDATE_SIGNER_CERT_SHA256 pin. Rebuild with the same pin before packaging."
+    }
 }
 
 $gitCommit = "unknown"
@@ -304,12 +398,24 @@ $forcedNonPublishable = $ForceNonPublishable -or
     ($githubCi -and -not $trustedGithubRef) -or
     $appveyorPullRequest
 $publishable = $gitProvenanceVerified -and -not $sourceDirty -and -not $forcedNonPublishable
+$updateChannel = if ($Version.Contains('-')) { 'beta' } else { 'stable' }
+$packagedLoaderHash = (Get-FileHash -LiteralPath $packagedDllPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$packagedRuntimeHash = (Get-FileHash -LiteralPath $packagedRuntimePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$allBinarySignaturesValid =
+    $signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and
+    $runtimeSignature.Status -eq [System.Management.Automation.SignatureStatus]::Valid -and
+    $crashHandlerSignature.Status -eq [System.Management.Automation.SignatureStatus]::Valid
+$updatePublishable = $publishable -and $allBinarySignaturesValid -and
+    -not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)
+if ($RequireSignature -and -not $updatePublishable) {
+    throw "A signature-required release must be clean, publishable, Authenticode-signed, and pinned to its detached-manifest signer."
+}
 
 $metadata = [ordered]@{
     schema_version = 1
     product = "vSMR"
     version = $Version
-    channel = "beta"
+    channel = $updateChannel
     git_commit = $gitCommit
     source_dirty = [bool]$sourceDirty
     publishable = [bool]$publishable
@@ -317,10 +423,35 @@ $metadata = [ordered]@{
     configuration = $Configuration
     platform = $Platform
     toolset = $Toolset
+    runtime = [ordered]@{
+        version = $Version
+        abi = $RuntimeAbi
+        relative_path = "vSMR_Data/Runtime/vSMR.Runtime.dll"
+        size = [int64](Get-Item -LiteralPath $packagedRuntimePath).Length
+        sha256 = $packagedRuntimeHash
+    }
+    loader = [ordered]@{
+        version = $LoaderVersion
+        runtime_abi = $RuntimeAbi
+        relative_path = "vSMR.dll"
+        size = [int64](Get-Item -LiteralPath $packagedDllPath).Length
+        sha256 = $packagedLoaderHash
+    }
+    automatic_update = [ordered]@{
+        manifest_schema_version = 1
+        minimum_loader_version = $MinimumLoaderVersion
+        signer_cert_der_sha256 = $UpdateSignerCertSha256
+        publishable = [bool]$updatePublishable
+    }
     authenticode = [ordered]@{
         status = [string]$signature.Status
         subject = if ($null -ne $signature.SignerCertificate) { [string]$signature.SignerCertificate.Subject } else { "" }
         thumbprint = if ($null -ne $signature.SignerCertificate) { [string]$signature.SignerCertificate.Thumbprint } else { "" }
+        runtime = [ordered]@{
+            status = [string]$runtimeSignature.Status
+            subject = if ($null -ne $runtimeSignature.SignerCertificate) { [string]$runtimeSignature.SignerCertificate.Subject } else { "" }
+            thumbprint = if ($null -ne $runtimeSignature.SignerCertificate) { [string]$runtimeSignature.SignerCertificate.Thumbprint } else { "" }
+        }
         crash_handler = [ordered]@{
             status = [string]$crashHandlerSignature.Status
             subject = if ($null -ne $crashHandlerSignature.SignerCertificate) { [string]$crashHandlerSignature.SignerCertificate.Subject } else { "" }
@@ -356,8 +487,47 @@ New-ZipArchive $packageStage $archivePath
 $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Utf8NoBom "$archivePath.sha256" "$archiveHash  $([System.IO.Path]::GetFileName($archivePath))`n"
 
-Copy-Item -LiteralPath $PdbPath -Destination (Join-Path $symbolStage "vSMR.pdb")
-Copy-Item -LiteralPath $packagedDllPath -Destination (Join-Path $symbolStage "vSMR.dll")
+$updateManifest = [ordered]@{
+    schema_version = 1
+    product = "vSMR"
+    version = $Version
+    channel = $updateChannel
+    publishable = [bool]$updatePublishable
+    archive = [ordered]@{
+        name = [System.IO.Path]::GetFileName($archivePath)
+        size = [int64](Get-Item -LiteralPath $archivePath).Length
+        sha256 = $archiveHash
+    }
+    loader = [ordered]@{
+        name = "vSMR.dll"
+        version = $LoaderVersion
+        size = [int64](Get-Item -LiteralPath $packagedDllPath).Length
+        sha256 = $packagedLoaderHash
+    }
+    minimum_loader_version = $MinimumLoaderVersion
+    runtime_abi = $RuntimeAbi
+    runtime_relative_path = "vSMR_Data/Runtime/vSMR.Runtime.dll"
+}
+$updateManifestPath = Join-Path $ArtifactsDirectory "vSMR-$Version.update.json"
+$updateSignaturePath = "$updateManifestPath.p7s"
+Write-Utf8NoBom $updateManifestPath ((ConvertTo-Json $updateManifest -Depth 10) + "`n")
+if ($null -ne $signingCertificate -and $updatePublishable) {
+    Write-DetachedCmsSignature `
+        -ContentPath $updateManifestPath `
+        -SignaturePath $updateSignaturePath `
+        -Certificate $signingCertificate
+}
+elseif (Test-Path -LiteralPath $updateSignaturePath) {
+    Remove-Item -LiteralPath $updateSignaturePath -Force
+}
+if ($RequireSignature -and -not (Test-Path -LiteralPath $updateSignaturePath -PathType Leaf)) {
+    throw "The signed update manifest was not created."
+}
+
+Copy-Item -LiteralPath $LoaderPdbPath -Destination (Join-Path $symbolStage "vSMR.Loader.pdb")
+Copy-Item -LiteralPath $packagedDllPath -Destination (Join-Path $symbolStage "vSMR.Loader.dll")
+Copy-Item -LiteralPath $PdbPath -Destination (Join-Path $symbolStage "vSMR.Runtime.pdb")
+Copy-Item -LiteralPath $packagedRuntimePath -Destination (Join-Path $symbolStage "vSMR.Runtime.dll")
 Copy-Item -LiteralPath $CrashHandlerPdbPath -Destination (Join-Path $symbolStage "vSMRCrashHandler.pdb")
 Copy-Item -LiteralPath $packagedCrashHandlerPath -Destination (Join-Path $symbolStage "vSMRCrashHandler.dll")
 Write-Utf8NoBom (Join-Path $symbolStage "SYMBOLS-METADATA.json") ((ConvertTo-Json $metadata -Depth 10) + "`n")
@@ -370,4 +540,10 @@ finally {
 
 Write-Host "Created user package: $archivePath"
 Write-Host "Created package checksum: $archivePath.sha256"
+Write-Host "Created update manifest: $updateManifestPath"
+if (Test-Path -LiteralPath $updateSignaturePath -PathType Leaf) {
+    Write-Host "Created detached update signature: $updateSignaturePath"
+} else {
+    Write-Warning "No detached update signature was created; automatic updating will ignore this local artifact."
+}
 Write-Host "Created private symbols: $symbolArchivePath"

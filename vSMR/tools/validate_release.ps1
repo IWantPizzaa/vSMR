@@ -3,11 +3,18 @@
 [CmdletBinding()]
 param(
     [string]$RepositoryRoot = "",
-    [ValidatePattern("^\d+\.\d+\.\d+-beta\.\d+$")]
+    [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
     [string]$ExpectedVersion = "2.0.0-beta.2",
     [string]$BuildOutputDirectory = "",
     [string]$PdbPath = "",
-    [string]$CrashHandlerPdbPath = ""
+    [string]$LoaderPdbPath = "",
+    [string]$CrashHandlerPdbPath = "",
+    [ValidatePattern("^\d+\.\d+\.\d+$")]
+    [string]$ExpectedLoaderVersion = "1.0.0",
+    [ValidateRange(1, 65535)]
+    [int]$ExpectedRuntimeAbi = 1,
+    [ValidatePattern("^(|[0-9a-fA-F]{64})$")]
+    [string]$UpdateSignerCertSha256 = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -114,6 +121,13 @@ function Get-PeExportNames {
 
 foreach ($relativePath in @(
     "vSMR\src\plugin\Plugin.hpp",
+    "vSMR\src\bootstrap\RuntimeApi.hpp",
+    "vSMR\src\bootstrap\loader\BootstrapLoader.cpp",
+    "vSMR\src\bootstrap\loader\LoaderResources.rc",
+    "vSMR\src\bootstrap\loader\LoaderVersion.hpp",
+    "vSMR\src\bootstrap\loader\vSMRLoader.vcxproj",
+    "vSMR\src\updater\UpdaterCore.cpp",
+    "vSMR\src\updater\UpdaterCore.hpp",
     "vSMR\src\platform\windows\PrecompiledHeader.cpp",
     "vSMR\src\platform\windows\PrecompiledHeader.hpp",
     "vSMR\src\platform\windows\ResourceIds.h",
@@ -122,6 +136,7 @@ foreach ($relativePath in @(
     "vSMR\src\crash\CrashReportSupport.hpp",
     "vSMR\src\crash\CrashReporter.hpp",
     "vSMR\src\crash\CrashRuntime.hpp",
+    "vSMR\resources\vSMR.def",
     "vSMR\resources\vSMR.rc",
     "vSMR\vSMR.vcxproj",
     "vSMR\src\crash\handler\CrashHandler.cpp",
@@ -153,6 +168,12 @@ foreach ($relativePath in @(
 $escapedVersion = [Regex]::Escape($ExpectedVersion)
 $headerText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\plugin\Plugin.hpp"))
 $resourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\resources\vSMR.rc"))
+$runtimeDefinitionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\resources\vSMR.def"))
+$runtimeApiText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\bootstrap\RuntimeApi.hpp"))
+$loaderSourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\bootstrap\loader\BootstrapLoader.cpp"))
+$controlCenterBridgeText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\control_center\ControlCenterBridge.cpp"))
+$loaderResourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\bootstrap\loader\LoaderResources.rc"))
+$loaderVersionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\bootstrap\loader\LoaderVersion.hpp"))
 $crashHandlerResourceText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\crash\handler\vSMRCrashHandler.rc"))
 $crashHandlerDefinitionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\crash\handler\vSMRCrashHandler.def"))
 $ciText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "appveyor.yml"))
@@ -163,6 +184,38 @@ $solutionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR.s
 Assert-True ($headerText -match "MY_PLUGIN_VERSION\s+`"v$escapedVersion`"") "Plugin version macro is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Windows FileVersion is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Windows ProductVersion is inconsistent."
+$escapedLoaderVersion = [Regex]::Escape($ExpectedLoaderVersion)
+Assert-True ($loaderVersionText -match "Value\[\]\s*=\s*`"$escapedLoaderVersion`"") "Loader implementation version is inconsistent."
+Assert-True ($loaderResourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedLoaderVersion\.0`"") "Loader FileVersion is inconsistent."
+Assert-True ($loaderResourceText -match "VALUE\s+`"ProductVersion`",\s+`"$escapedVersion`"") "Loader ProductVersion is inconsistent."
+Assert-True ($runtimeApiText -match "AbiVersion\s*=\s*$ExpectedRuntimeAbi" ) "Runtime ABI constant is inconsistent."
+$expectedRuntimeDefinitionExports = @('VsmrRuntimeCreate', 'VsmrRuntimeGetAbiVersion', 'VsmrRuntimeShutdown')
+$expectedLoaderExports = @(
+    '?EuroScopePlugInExit@@YAXXZ',
+    '?EuroScopePlugInInit@@YAXPAPAVCPlugIn@EuroScopePlugIn@@@Z'
+)
+$runtimeDefinitionExports = @($runtimeDefinitionText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne 'EXPORTS' -and $_ -ne 'LIBRARY' -and -not $_.StartsWith(';')
+})
+$actualRuntimeDefinitionExportText = (($runtimeDefinitionExports | Sort-Object) -join '|')
+$expectedRuntimeDefinitionExportText = (($expectedRuntimeDefinitionExports | Sort-Object) -join '|')
+Assert-True ($actualRuntimeDefinitionExportText -ceq $expectedRuntimeDefinitionExportText) "Runtime definition must expose only the exact three-name loader ABI."
+Assert-True ($loaderSourceText -match '__declspec\s*\(\s*dllexport\s*\)\s+EuroScopePlugInInit') "Loader does not explicitly export EuroScopePlugInInit."
+Assert-True ($loaderSourceText -match '__declspec\s*\(\s*dllexport\s*\)\s+EuroScopePlugInExit') "Loader does not explicitly export EuroScopePlugInExit."
+Assert-True ($loaderSourceText -match 'kRuntimeShadowMutexWaitMs\s*=\s*\d+U' -and
+    $loaderSourceText -match 'WAIT_ABANDONED') "Runtime-shadow synchronization is not bounded or crash-tolerant."
+Assert-True ($loaderSourceText -match '(?s)shadowCacheGuard\.Acquire\s*\(.*?CreateVerifiedShadowCopy\s*\(.*?LoadLibraryExW\s*\(.*?shadowCacheGuard\.Release\s*\(') "Runtime-shadow synchronization does not cover copy, pruning, and LoadLibrary."
+Assert-True ($loaderSourceText -match '(?s)FileHandleGuard\s+shadowLease\s*\(\s*::CreateFileW\s*\(.*?GENERIC_READ\s*,\s*FILE_SHARE_READ\s*,.*?ResolveHandlePath\s*\(\s*shadowLease\.Get\(\).*?HashFileSha256\s*\(\s*resolvedShadowPath.*?LoadLibraryExW\s*\(\s*resolvedShadowPath\.c_str\(\).*?LOAD_LIBRARY_SEARCH_DEFAULT_DIRS\s*\).*?shadowLease\.Reset\s*\(\s*\)') "The finalized runtime shadow is not deny-write/delete leased, handle-resolved, rehashed, and safely loaded."
+Assert-True ($loaderSourceText -notmatch 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR') "The runtime loader must not resolve dependencies beside a Temp-fallback shadow DLL."
+Assert-True ($loaderSourceText -match '(?s)RuntimeShadowDirectories\s*\(.*?CSIDL_LOCAL_APPDATA.*?GetEnvironmentVariableW\s*\(.*?LOCALAPPDATA.*?GetTempPathW\s*\(' -and
+    $loaderSourceText -match '(?s)for\s*\([^)]*directory\s*:\s*directories\).*?CreateVerifiedShadowCopyInDirectory\s*\(') "Runtime-shadow storage does not fall back from unwritable LocalAppData to Temp."
+$updaterDirectorySource = [Regex]::Match(
+    $controlCenterBridgeText,
+    '(?s)std::filesystem::path\s+UpdaterDirectory\s*\(\s*\).*?(?=std::string\s+InstalledVersion)').Value
+Assert-True (-not [string]::IsNullOrWhiteSpace($updaterDirectorySource) -and
+    $updaterDirectorySource -match 'FOLDERID_LocalAppData' -and
+    $updaterDirectorySource -match 'EnvironmentDirectory\s*\(\s*L"LOCALAPPDATA"' -and
+    $updaterDirectorySource -notmatch 'TemporaryDirectory|GetTempPath') "Control Center must keep updater config/state/action on the deterministic LocalAppData journal."
 Assert-True ($resourceText -match '(?m)^#include\s+"platform/windows/ResourceIds\.h"\s*$') "The resource compiler does not use the relocated resource-ID header."
 Assert-True ($resourceText -match '(?m)^#include\s+"platform/windows/WindowsTargetVersion\.hpp"\s*$') "The resource compiler does not use the relocated Windows target header."
 Assert-True ($crashHandlerResourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Crash-handler FileVersion is inconsistent."
@@ -185,9 +238,22 @@ Assert-True ($readmeText.Contains($ExpectedVersion)) "README does not identify t
 Assert-True ($changelogText -match "\[$escapedVersion\]") "CHANGELOG has no beta release section."
 Assert-True ($packageScriptText -match '_vsmr-package-.+NewGuid') "Release packaging must use a private GUID staging directory."
 Assert-True (-not ($packageScriptText -match 'Join-Path\s+\$ArtifactsDirectory\s+"_staging"')) "Release packaging must not delete a caller-owned fixed _staging directory."
+Assert-True ($packageScriptText -match 'SignedCms' -and
+    $packageScriptText -match 'Write-DetachedCmsSignature' -and
+    $packageScriptText -match '\.p7s') "Release packaging does not create a detached CMS update signature."
+Assert-True ($packageScriptText -match 'minimum_loader_version' -and
+    $packageScriptText -match 'vSMR_Data/Runtime/vSMR\.Runtime\.dll') "Release packaging does not emit the loader/runtime update contract."
+$installScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\data\Tools\install_vsmr.ps1"))
+$restoreScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\data\Tools\restore_vsmr_backup.ps1"))
+Assert-True ($installScriptText -match '\[switch\]\$PreserveLoader' -and
+    $installScriptText -match 'validation_scope' -and
+    $installScriptText -match 'installed_loader_sha256') "Installer lacks preserve-loader mode or scoped live-install provenance."
+Assert-True ($restoreScriptText -match '\[switch\]\$PreserveLoader') "Rollback helper lacks preserve-loader mode."
 Assert-True ($solutionText -match '(?m)^\s*Release\|Win32\s*=\s*Release\|Win32\s*$') "The solution does not expose Release|Win32."
 Assert-True (-not ($solutionText -match '(?m)^\s*Debug\|Win32\s*=\s*Debug\|Win32\s*$')) "The solution must default to its sole Release|Win32 configuration."
 Assert-True ($solutionText -match 'vSMRCrashHandler.+vSMR\\src\\crash\\handler\\vSMRCrashHandler\.vcxproj') "The WER crash-handler project is missing from the solution."
+Assert-True ($solutionText -match '"vSMR\.Runtime",\s+"vSMR\\vSMR\.vcxproj"') "The runtime project is missing or ambiguously named in the solution."
+Assert-True ($solutionText -match '"vSMR",\s+"vSMR\\src\\bootstrap\\loader\\vSMRLoader\.vcxproj"') "The stable loader project is missing from the solution."
 
 $legacyThreads = @(
     Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot "vSMR\src") -Recurse -File |
@@ -230,6 +296,32 @@ Assert-True ($null -ne $pchCreator -and $pchCreatorModes.Count -eq 2 -and
     @($pchCreatorModes | Where-Object { $_ -ne 'Create' }).Count -eq 0) "The canonical PCH source must create the PCH in Debug and Release."
 $crashHandlerProjectReference = $projectXml.SelectSingleNode("//msb:ProjectReference[contains(@Include, 'vSMRCrashHandler.vcxproj')]", $namespace)
 Assert-True ($null -ne $crashHandlerProjectReference) "vSMR does not build the WER crash-handler dependency."
+Assert-True ([string]$projectXml.Project.PropertyGroup[1].TargetName -eq 'vSMR.Runtime' -or
+    @($projectXml.SelectNodes("//msb:PropertyGroup/msb:TargetName", $namespace) | Where-Object { [string]$_.InnerText -eq 'vSMR.Runtime' }).Count -eq 2) "Runtime output is not named vSMR.Runtime.dll."
+Assert-True (@($projectXml.SelectNodes("//msb:PropertyGroup/msb:OutDir", $namespace) | Where-Object {
+    [string]$_.InnerText -eq '$(ProjectDir)bin\$(Configuration)\Runtime\'
+}).Count -eq 2) "Runtime private build output is not isolated below bin/<Configuration>/Runtime."
+Assert-True ($projectXml.OuterXml -match 'vSMR_Data\\Runtime\\vSMR\.Runtime\.dll') "Runtime project does not copy its canonical DLL under vSMR_Data/Runtime."
+
+[xml]$loaderProjectXml = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\bootstrap\loader\vSMRLoader.vcxproj"))
+$loaderNamespace = New-Object System.Xml.XmlNamespaceManager($loaderProjectXml.NameTable)
+$loaderNamespace.AddNamespace("msb", "http://schemas.microsoft.com/developer/msbuild/2003")
+$loaderReleaseDefinitions = @($loaderProjectXml.SelectNodes("//msb:ItemDefinitionGroup", $loaderNamespace) |
+    Where-Object { [string]$_.Condition -like '*Release|Win32*' })
+Assert-True ($loaderReleaseDefinitions.Count -eq 1) "Loader Release|Win32 settings were not found uniquely."
+$loaderReleaseCompile = $loaderReleaseDefinitions[0].SelectSingleNode("msb:ClCompile", $loaderNamespace)
+$loaderReleaseLink = $loaderReleaseDefinitions[0].SelectSingleNode("msb:Link", $loaderNamespace)
+Assert-True ([string]$loaderReleaseCompile.RuntimeLibrary -eq 'MultiThreaded') "Stable loader must use the static Release CRT."
+Assert-True ([string]$loaderReleaseCompile.WarningLevel -eq 'Level4' -and
+    [string]$loaderReleaseCompile.SDLCheck -eq 'true' -and
+    [string]$loaderReleaseCompile.BufferSecurityCheck -eq 'true') "Loader compiler hardening is incomplete."
+Assert-True ([string]$loaderReleaseCompile.PreprocessorDefinitions -match 'VSMR_UPDATE_SIGNER_CERT_SHA256') "Loader does not compile the updater signer-certificate pin."
+Assert-True ([string]$loaderReleaseLink.GenerateDebugInformation -eq 'true' -and
+    -not [string]::IsNullOrWhiteSpace([string]$loaderReleaseLink.ProgramDatabaseFile)) "Loader private PDB generation is disabled."
+Assert-True (@($loaderProjectXml.SelectNodes("//msb:PropertyGroup/msb:TargetName", $loaderNamespace) | Where-Object {
+    [string]$_.InnerText -eq 'vSMR'
+}).Count -eq 2) "Loader output is not the stable root vSMR.dll."
+Assert-True ($loaderProjectXml.OuterXml -match 'UpdaterCore\.cpp') "Stable loader does not include the updater core."
 
 [xml]$crashHandlerProjectXml = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\src\crash\handler\vSMRCrashHandler.vcxproj"))
 $crashNamespace = New-Object System.Xml.XmlNamespaceManager($crashHandlerProjectXml.NameTable)
@@ -404,15 +496,33 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     $releaseRootNames = @(Get-ChildItem -LiteralPath $BuildOutputDirectory -Force | ForEach-Object Name | Sort-Object)
     Assert-True (($releaseRootNames -join '|') -eq 'vSMR.dll|vSMR_Data') "Release root must contain only vSMR.dll and vSMR_Data; found $($releaseRootNames -join ', ')."
     $builtCrashHandler = Join-Path $BuildOutputDirectory "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
+    $builtRuntime = Join-Path $BuildOutputDirectory "vSMR_Data\Runtime\vSMR.Runtime.dll"
+    $builtLoader = Join-Path $BuildOutputDirectory "vSMR.dll"
+    Assert-File $builtRuntime
     Assert-File $builtCrashHandler
-    Assert-True ((Get-PeMachine (Join-Path $BuildOutputDirectory "vSMR.dll")) -eq 0x014C) "Built vSMR.dll is not Win32/x86."
+    Assert-True ((Get-PeMachine $builtLoader) -eq 0x014C) "Built vSMR.dll is not Win32/x86."
+    Assert-True ((Get-PeMachine $builtRuntime) -eq 0x014C) "Built vSMR.Runtime.dll is not Win32/x86."
     Assert-True ((Get-PeMachine $builtCrashHandler) -eq 0x014C) "Built vSMRCrashHandler.dll is not Win32/x86."
+    $loaderVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($builtLoader)
+    Assert-True (($loaderVersion.FileVersion -eq $ExpectedLoaderVersion -or $loaderVersion.FileVersion -eq "$ExpectedLoaderVersion.0") -and
+        $loaderVersion.ProductVersion -eq $ExpectedVersion) "Built loader implementation/product versions are inconsistent."
+    $runtimeVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($builtRuntime)
+    Assert-True ($runtimeVersion.FileVersion -eq $ExpectedVersion -and
+        $runtimeVersion.ProductVersion -eq $ExpectedVersion) "Built runtime version does not match $ExpectedVersion."
     $crashHandlerVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($builtCrashHandler)
     Assert-True ($crashHandlerVersion.FileVersion -eq $ExpectedVersion -and
         $crashHandlerVersion.ProductVersion -eq $ExpectedVersion) "Built crash-handler version does not match $ExpectedVersion."
     $builtCrashHandlerExports = @(Get-PeExportNames $builtCrashHandler | Sort-Object)
     $expectedBuiltExports = @($expectedCrashHandlerExports | Sort-Object)
     Assert-True (($builtCrashHandlerExports -join '|') -ceq ($expectedBuiltExports -join '|')) "Built crash-handler export table is not the exact three-name WER ABI."
+    $builtRuntimeExports = @(Get-PeExportNames $builtRuntime | Sort-Object)
+    Assert-True (($builtRuntimeExports -join '|') -ceq (($expectedRuntimeDefinitionExports | Sort-Object) -join '|')) "Built runtime export table is not the exact three-name loader ABI."
+    $builtLoaderExports = @(Get-PeExportNames $builtLoader | Sort-Object)
+    Assert-True (($builtLoaderExports -join '|') -ceq (($expectedLoaderExports | Sort-Object) -join '|')) "Built loader export table is not the exact decorated x86 EuroScope SDK ABI."
+    if (-not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
+        $loaderAscii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($builtLoader))
+        Assert-True ($loaderAscii.Contains($UpdateSignerCertSha256.ToLowerInvariant())) "Built loader does not contain the configured updater signer certificate pin."
+    }
 
     foreach ($license in @(
         "vSMR_Data\Licenses\vSMR.txt",
@@ -426,9 +536,13 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     }
 
     if ([string]::IsNullOrWhiteSpace($PdbPath)) {
-        $PdbPath = Join-Path $RepositoryRoot "vSMR\Release\vSMR.pdb"
+        $PdbPath = Join-Path $RepositoryRoot "vSMR\obj\Release\Runtime\vSMR.Runtime.pdb"
     }
     Assert-File ([System.IO.Path]::GetFullPath($PdbPath))
+    if ([string]::IsNullOrWhiteSpace($LoaderPdbPath)) {
+        $LoaderPdbPath = Join-Path $RepositoryRoot "vSMR\src\bootstrap\loader\obj\Release\vSMR.pdb"
+    }
+    Assert-File ([System.IO.Path]::GetFullPath($LoaderPdbPath))
     if ([string]::IsNullOrWhiteSpace($CrashHandlerPdbPath)) {
         $CrashHandlerPdbPath = Join-Path $RepositoryRoot "vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
     }
