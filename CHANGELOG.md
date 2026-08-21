@@ -18,7 +18,7 @@
 ### Changed
 
 - Compacted the single Control Center Settings page so every data, display, CPDLC, PDC-reminder, and updater option fits in the fixed window without page scrolling.
-- Redesigned the METAR inset around responsive wide, stacked, and compact layouts; added a wrapped raw report with highlighted wind, variation, visibility, weather, cloud, and QNH tokens; removed local controller time; and retained only space-efficient operational summaries.
+- Redesigned the METAR inset around responsive wide, stacked, and compact layouts; added a larger wrapped raw report with highlighted wind, variation, visibility, weather, cloud, and QNH tokens; removed local controller time; and prioritized readable QNH, variation, and runway-component summaries at smaller window sizes.
 - Simplified the Control Center Settings page to a single General view, removed the live Performance tab, and moved the compact automatic-update controls into General settings.
 - Prioritized TSAT ahead of CTOT in the PDC window and clearance payload, pre-filled current vACDM TSAT/CTOT values when available, and rejected invalid optional UTC `HHMM` entries.
 - Reduced AVISO raster churn by debouncing cache-backed view changes, cancelling superseded builds during geometry traversal, coalescing subpixel-equivalent requests, retrying transient failures, and retaining a same-source transformed raster through pan, zoom, preset, group, and ownership updates. AVISO data is now parsed once and prewarmed before the first rendered frame, raster overscan is smaller and hard allocation limits are enforced, while SRW reuses its bold font and measured typography metrics across frames.
