@@ -3,8 +3,8 @@
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,0,0,2
- PRODUCTVERSION 2,0,0,2
+ FILEVERSION 2,0,0,3
+ PRODUCTVERSION 2,0,0,3
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG | VS_FF_PRERELEASE
@@ -21,12 +21,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "vSMR contributors"
             VALUE "FileDescription", "vSMR out-of-process WER crash handler"
-            VALUE "FileVersion", "2.0.0-beta.2"
+            VALUE "FileVersion", "2.0.0-beta.3"
             VALUE "InternalName", "vSMRCrashHandler.dll"
             VALUE "LegalCopyright", "GNU General Public License version 3"
             VALUE "OriginalFilename", "vSMRCrashHandler.dll"
             VALUE "ProductName", "vSMR"
-            VALUE "ProductVersion", "2.0.0-beta.2"
+            VALUE "ProductVersion", "2.0.0-beta.3"
         END
     END
     BLOCK "VarFileInfo"
