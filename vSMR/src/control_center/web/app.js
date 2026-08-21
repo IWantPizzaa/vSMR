@@ -19,7 +19,7 @@
     settings: "Settings"
   };
   const PROFILE_TITLES = { colors: "Colors", icons: "Icons", tags: "Tags", rules: "Rules" };
-  const SETTINGS_TITLES = { general: "General", performance: "Performance" };
+  const SETTINGS_TITLES = { general: "General", performance: "Performance", updates: "Updates" };
   const PERFORMANCE_REQUEST_TIMEOUT_MS = 4000;
   const PERFORMANCE_TIMINGS = [
     ["frame", "Frame"],
@@ -723,6 +723,36 @@
     error: "",
     pending: { state: null, reset: null, export: null }
   };
+  const updateCenter = {
+    config: {
+      schema_version: 1,
+      auto_check: true,
+      auto_download: true,
+      auto_install: true,
+      channel: "beta",
+      skipped_version: ""
+    },
+    state: {
+      schema_version: 1,
+      status: "idle",
+      installed_version: String(DATA.version || "Preview"),
+      selected_version: "",
+      available_version: "",
+      download_percent: 0,
+      last_checked_utc: "",
+      next_check_utc: "",
+      message: "Updates are checked before the vSMR runtime loads.",
+      error_code: "",
+      error: "",
+      restart_required: false,
+      release_url: ""
+    },
+    available: !HOST_MODE,
+    configWritable: !HOST_MODE,
+    configError: "",
+    lastRequestAt: 0,
+    pending: { state: null, settings: null, action: null }
+  };
   let splitAvisoContext = null;
 	let ignoreNextUncorrelatedAviso = false;
   const history = { past: [], present: null, future: [], gestureKey: "" };
@@ -1385,6 +1415,9 @@
       if (state.ui.settingsView === "performance") {
         renderPerformanceDiagnostics();
         requestPerformanceState(true);
+      } else if (state.ui.settingsView === "updates") {
+        renderUpdateCenter();
+        requestUpdateState(true);
       } else {
         renderSettings();
         renderDatalink();
@@ -1417,6 +1450,9 @@
     if (view === "performance") {
       renderPerformanceDiagnostics();
       requestPerformanceState(true);
+    } else if (view === "updates") {
+      renderUpdateCenter();
+      requestUpdateState(true);
     } else {
       renderSettings();
       renderDatalink();
@@ -5401,6 +5437,268 @@
     renderPerformanceTrend(snapshot);
   }
 
+  function updateViewActive() {
+    return state.ui.controlCenterOpen && state.ui.page === "settings" &&
+      state.ui.settingsView === "updates" && !document.hidden;
+  }
+
+  function formatUpdateTime(value, fallback = "Never") {
+    const raw = String(value || "").trim();
+    if (!raw) return fallback;
+    const timestamp = new Date(raw);
+    if (Number.isNaN(timestamp.getTime())) return raw;
+    return timestamp.toLocaleString([], {
+      year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit"
+    });
+  }
+
+  function updateStatusLabel(status) {
+    const labels = {
+      idle: "Idle",
+      checking: "Checking",
+      rate_limited: "Rate limited",
+      downloading: "Downloading",
+      verifying: "Verifying",
+      installing: "Installing",
+      updated: "Updated",
+      up_to_date: "Up to date",
+      deferred: "Manual update",
+      error: "Update error"
+    };
+    return labels[String(status || "").toLowerCase()] || "Awaiting state";
+  }
+
+  function updateStatusClass(status) {
+    const normalized = String(status || "").toLowerCase();
+    if (["checking", "downloading", "verifying", "installing"].includes(normalized)) return "active";
+    if (["updated", "up_to_date"].includes(normalized)) return "live";
+    if (["rate_limited", "deferred"].includes(normalized)) return "warning";
+    if (normalized === "error") return "error";
+    return "waiting";
+  }
+
+  function expireUpdateRequest(slot, now = Date.now()) {
+    const request = updateCenter.pending[slot];
+    if (!request || now - request.startedAt < REQUEST_TIMEOUT_MS) return false;
+    updateCenter.pending[slot] = null;
+    if (slot === "settings" && request.previous) updateCenter.config = request.previous;
+    updateCenter.configError = slot === "state"
+      ? "Still waiting for updater state from vSMR."
+      : "The updater request timed out; no radar state was changed.";
+    return true;
+  }
+
+  function requestUpdateState(force = false) {
+    if (!HOST_MODE || !updateViewActive()) return;
+    const now = Date.now();
+    expireUpdateRequest("state", now);
+    if (updateCenter.pending.state) return;
+    if (!force && now - updateCenter.lastRequestAt < 1400) return;
+    updateCenter.lastRequestAt = now;
+    const id = postBridge("update.state.request", {});
+    if (!id) return;
+    updateCenter.pending.state = { id, startedAt: now };
+  }
+
+  function applyUpdateState(payload, message = null) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
+    if (message && updateCenter.pending.state?.id && messageMatchesRequest(message, updateCenter.pending.state.id))
+      updateCenter.pending.state = null;
+    if (message && updateCenter.pending.settings?.id && messageMatchesRequest(message, updateCenter.pending.settings.id))
+      updateCenter.pending.settings = null;
+    if (payload.config && typeof payload.config === "object" && !Array.isArray(payload.config))
+      updateCenter.config = { ...updateCenter.config, ...clone(payload.config) };
+    if (payload.state && typeof payload.state === "object" && !Array.isArray(payload.state))
+      updateCenter.state = { ...updateCenter.state, ...clone(payload.state) };
+    updateCenter.available = payload.available !== false;
+    updateCenter.configWritable = payload.configWritable !== false;
+    updateCenter.configError = String(payload.configError || "");
+    if (state.ui.page === "settings" && state.ui.settingsView === "updates")
+      renderUpdateCenter();
+  }
+
+  function submitUpdateSettings(changes, successMessage = "Update settings saved") {
+    if (updateCenter.pending.settings || !updateCenter.configWritable) return;
+    const previous = clone(updateCenter.config);
+    updateCenter.config = { ...updateCenter.config, ...changes };
+    const payload = {
+      auto_check: updateCenter.config.auto_check !== false,
+      auto_download: updateCenter.config.auto_download !== false,
+      auto_install: updateCenter.config.auto_install !== false,
+      channel: updateCenter.config.channel === "stable" ? "stable" : "beta",
+      skipped_version: String(updateCenter.config.skipped_version || "")
+    };
+    if (!HOST_MODE) {
+      renderUpdateCenter();
+      showToast(successMessage, "success");
+      return;
+    }
+    const id = postBridge("update.settings.update", payload);
+    if (!id) {
+      updateCenter.config = previous;
+      renderUpdateCenter();
+      return;
+    }
+    updateCenter.pending.settings = { id, startedAt: Date.now(), previous, successMessage };
+    renderUpdateCenter();
+  }
+
+  function requestUpdateAction(action) {
+    if (updateCenter.pending.action || !updateCenter.available) return;
+    if (!HOST_MODE) {
+      updateCenter.state.message = action === "retry_update"
+        ? "Update retry queued for the next startup."
+        : "Update check queued for the next startup.";
+      renderUpdateCenter();
+      showToast(updateCenter.state.message, "success");
+      return;
+    }
+    const id = postBridge("update.action.request", { action });
+    if (!id) return;
+    updateCenter.pending.action = { id, action, startedAt: Date.now() };
+    renderUpdateCenter();
+  }
+
+  function openUpdateRelease() {
+    const url = safeReleaseUrl(updateCenter.state?.release_url);
+    if (!url) return;
+    if (!HOST_MODE) {
+      showToast("Release links open through the native vSMR host.", "info");
+      return;
+    }
+    postBridge("update.release.open", { url });
+  }
+
+  function updateMessageSlot(message) {
+    for (const slot of ["state", "settings", "action"]) {
+      const request = updateCenter.pending[slot];
+      if (request?.id && messageMatchesRequest(message, request.id)) return slot;
+    }
+    return "";
+  }
+
+  function finishUpdateAck(message) {
+    const action = String(message.payload?.action || "");
+    let slot = updateMessageSlot(message);
+    if (!slot && action === "update.settings.update") slot = "settings";
+    if (!slot && action === "update.action.request") slot = "action";
+    if (!slot) return false;
+    const request = updateCenter.pending[slot];
+    updateCenter.pending[slot] = null;
+    const text = String(message.payload?.message || request?.successMessage || "Updater request saved");
+    setStatus(text, "info");
+    showToast(text, "success");
+    renderUpdateCenter();
+    return true;
+  }
+
+  function finishUpdateError(message) {
+    const slot = updateMessageSlot(message);
+    if (!slot) return false;
+    const request = updateCenter.pending[slot];
+    updateCenter.pending[slot] = null;
+    if (slot === "settings" && request?.previous) updateCenter.config = request.previous;
+    const text = String(message.payload?.message || message.payload?.error || "Updater request failed");
+    updateCenter.configError = text;
+    setStatus(text, "error");
+    showToast(text, "error");
+    renderUpdateCenter();
+    return true;
+  }
+
+  function safeReleaseUrl(value) {
+    try {
+      const raw = String(value || "").trim();
+      if (raw.includes("%") || /(?:^|\/)\.{1,2}(?:\/|$)/.test(raw)) return "";
+      const url = new URL(raw);
+      if (url.protocol !== "https:" || url.hostname !== "github.com" || url.port ||
+        url.username || url.password || url.search || url.hash) return "";
+
+      const releasesPath = "/IWantPizzaa/vSMR/releases";
+      if (url.pathname === releasesPath || url.pathname === `${releasesPath}/latest`) {
+        return url.href;
+      }
+
+      const tagPrefix = `${releasesPath}/tag/`;
+      if (!url.pathname.startsWith(tagPrefix)) return "";
+      const tag = url.pathname.slice(tagPrefix.length);
+      if (!tag || tag === "." || tag === ".." || !/^[A-Za-z0-9._+~-]+$/.test(tag)) return "";
+      return url.href;
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function renderUpdateCenter() {
+    const badge = $("#updateStateBadge");
+    if (!badge) return;
+    expireUpdateRequest("settings");
+    expireUpdateRequest("action");
+    const updater = updateCenter.state || {};
+    const config = updateCenter.config || {};
+    const status = String(updater.status || "idle").toLowerCase();
+    const directPreview = !HOST_MODE;
+    const writable = directPreview || (updateCenter.available && updateCenter.configWritable);
+    const busy = Boolean(updateCenter.pending.settings);
+
+    badge.className = `update-state-badge ${directPreview ? "preview" : updateStatusClass(status)}`;
+    badge.textContent = directPreview ? "Preview" : updateStatusLabel(status);
+    const errorText = String(updater.error || updateCenter.configError || "").trim();
+    const noticeText = errorText || String(updater.message || "Updates are checked before the vSMR runtime loads.");
+    const notice = $("#updateNotice");
+    notice.classList.toggle("error", Boolean(errorText));
+    notice.textContent = noticeText;
+
+    $("#updateInstalledVersion").textContent = String(updater.installed_version || "--");
+    $("#updateAvailableVersion").textContent = String(updater.available_version || "--");
+    $("#updateSelectedChannel").textContent = config.channel === "stable" ? "Stable" : "Beta";
+    $("#updateLastChecked").textContent = formatUpdateTime(updater.last_checked_utc);
+    $("#updateNextCheck").textContent = `Next check: ${formatUpdateTime(updater.next_check_utc, config.auto_check === false ? "Disabled" : "Next startup")}`;
+
+    ensureSelectValue($("#updateChannel"), config.channel === "stable" ? "stable" : "beta");
+    $("#updateAutoCheck").checked = config.auto_check !== false;
+    $("#updateAutoDownload").checked = config.auto_download !== false;
+    $("#updateAutoInstall").checked = config.auto_install !== false;
+    $("#updateChannel").disabled = !writable || busy;
+    $("#updateAutoCheck").disabled = !writable || busy;
+    $("#updateAutoDownload").disabled = !writable || busy || config.auto_check === false;
+    $("#updateAutoInstall").disabled = !writable || busy || config.auto_download === false;
+
+    const percent = Math.round(clamp(updater.download_percent, 0, 100));
+    const progress = $("#updateProgress");
+    progress.value = percent;
+    progress.textContent = `${percent}%`;
+    $("#updateProgressPercent").textContent = `${percent}%`;
+    $("#updateProgressLabel").textContent = updateStatusLabel(status);
+    $("#updateSelectedVersion").textContent = String(updater.selected_version || updater.available_version || "--");
+    const skipped = String(config.skipped_version || "");
+    $("#updateSkippedVersion").textContent = skipped || "None";
+    $("#updateActivationState").textContent = status === "deferred"
+      ? "Manual package update required"
+      : updater.restart_required ? "Next EuroScope startup"
+        : status === "updated" ? "Updated this startup" : "Current runtime";
+
+    const availableVersion = String(updater.available_version || "");
+    const skipButton = $("#updateSkipButton");
+    skipButton.disabled = !writable || busy || !availableVersion || availableVersion === skipped;
+    skipButton.title = availableVersion ? `Ignore ${availableVersion} on this channel` : "No update is available to skip";
+    const clearSkipButton = $("#updateClearSkipButton");
+    clearSkipButton.disabled = !writable || busy || !skipped;
+
+    const pendingAction = Boolean(updateCenter.pending.action);
+    const checkButton = $("#updateCheckButton");
+    checkButton.disabled = !updateCenter.available || pendingAction;
+    checkButton.textContent = pendingAction ? "Queuing..." : "Check on next startup";
+    const retryButton = $("#updateRetryButton");
+    retryButton.hidden = !["error", "rate_limited"].includes(status);
+    retryButton.disabled = !updateCenter.available || pendingAction;
+
+    const releaseLink = $("#updateReleaseLink");
+    const releaseUrl = safeReleaseUrl(updater.release_url);
+    releaseLink.hidden = !releaseUrl;
+    releaseLink.title = releaseUrl || "No release notes are available";
+  }
+
   function renderSettings() {
     const settings = state.settings;
     $("#settingsProfileFile").value = settings.profileFile;
@@ -5698,7 +5996,7 @@
   function applyQueryState() {
     const params = new URLSearchParams(window.VSMR_PREVIEW_QUERY || location.search);
     const requestedPage = params.get("page");
-    const page = ["datalink", "cpdlc", "cdm", "performance", "diagnostics"].includes(requestedPage) ? "settings" : requestedPage;
+    const page = ["datalink", "cpdlc", "cdm", "performance", "diagnostics", "updates"].includes(requestedPage) ? "settings" : requestedPage;
     const tab = params.get("tab");
     if (PAGE_TITLES[page]) state.ui.page = page;
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
@@ -5709,7 +6007,8 @@
     if (ui === "runtime") state.ui.controlCenterOpen = false;
     if (["mode", "groups", "inset", "profile"].includes(params.get("popup"))) state.ui.runtimePopover = params.get("popup");
     if (["active", "runways", "timing", "appearance"].includes(params.get("alerts"))) state.ui.alertsView = params.get("alerts");
-    const settingsView = params.get("settings") || (["performance", "diagnostics"].includes(requestedPage) ? "performance" : "");
+    const settingsView = params.get("settings") ||
+      (["performance", "diagnostics"].includes(requestedPage) ? "performance" : requestedPage === "updates" ? "updates" : "");
     if (SETTINGS_TITLES[settingsView]) state.ui.settingsView = settingsView;
     if (params.get("tag")) state.ui.selectedTagId = params.get("tag");
     if (params.get("profile")) {
@@ -5724,7 +6023,7 @@
     if (control.matches(
       '[type="search"], [type="file"], #avisoTextStyleSelect, #avisoTextApplyTarget, ' +
       '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect, #modeBlockedSquawkInput'
-    ) || control.closest(".datalink-card, #runtimeMenu, .page-rail, dialog")) return "";
+    ) || control.closest(".datalink-card, .updates-view, #runtimeMenu, .page-rail, dialog")) return "";
 
     const profilePanel = control.closest("[data-profile-panel]")?.dataset.profilePanel;
     if (["colors", "icons", "tags", "rules"].includes(profilePanel)) return profilePanel;
@@ -6370,6 +6669,18 @@
       renderPerformanceDiagnostics();
       requestPerformanceState(true);
     });
+    $("#updateChannel").addEventListener("change", event => {
+      submitUpdateSettings({ channel: event.target.value === "stable" ? "stable" : "beta" }, "Update channel saved");
+    });
+    $("#updateAutoCheck").addEventListener("change", event => {
+      submitUpdateSettings({ auto_check: event.target.checked }, "Automatic update checks saved");
+    });
+    $("#updateAutoDownload").addEventListener("change", event => {
+      submitUpdateSettings({ auto_download: event.target.checked }, "Automatic download preference saved");
+    });
+    $("#updateAutoInstall").addEventListener("change", event => {
+      submitUpdateSettings({ auto_install: event.target.checked }, "Automatic activation preference saved");
+    });
     $("#saveButton").addEventListener("pointerdown", event => {
       if (!stageFocusedEditorValue()) event.preventDefault();
     });
@@ -6396,6 +6707,14 @@
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "performance-reset") resetPerformanceDiagnostics();
     else if (action === "performance-export") exportPerformanceReport();
+    else if (action === "update-check") requestUpdateAction("check_now");
+    else if (action === "update-retry") requestUpdateAction("retry_update");
+    else if (action === "update-release-open") openUpdateRelease();
+    else if (action === "update-skip") {
+      const version = String(updateCenter.state?.available_version || "");
+      if (version) submitUpdateSettings({ skipped_version: version }, `${version} skipped`);
+    }
+    else if (action === "update-clear-skip") submitUpdateSettings({ skipped_version: "" }, "Skipped update cleared");
     else if (action === "assign-legacy-inset-presets") assignLegacyInsetPresetsToActiveAirport();
     else if (action === "close-runtime-popover") { state.ui.runtimePopover = ""; renderRuntimeMenu(); }
     else if (action === "save-inset-preset") openInsetPresetDialog("capture");
@@ -7241,6 +7560,10 @@
       applyPerformanceState(payload);
       return;
     }
+    if (message.type === "update.state") {
+      applyUpdateState(payload, message);
+      return;
+    }
     if (message.type === "datalink.state") {
       const incomingDatalink = payload.datalink || payload.state?.datalink || payload.state || payload;
       if (datalinkPending.connection?.id && messageMatchesRequest(message, datalinkPending.connection.id)) {
@@ -7259,6 +7582,7 @@
       return;
     }
     if (message.type === "state.ack") {
+      if (finishUpdateAck(message)) return;
       if (finishPerformanceAck(message)) return;
       if (finishDatalinkAck(message)) return;
       return;
@@ -7295,6 +7619,7 @@
       return;
     }
     if (message.type === "state.error" || message.type === "error") {
+      if (finishUpdateError(message)) return;
       if (finishPerformanceError(message)) return;
       if (finishDatalinkError(message)) return;
 	  finishRuntimeCommand(responseId, true);
@@ -7348,6 +7673,7 @@
       if (snapshot && typeof snapshot === "object") state.runtime.avisoInsetSnapshot = clone(snapshot);
     },
     setDatalinkState(datalink) { applyDatalinkRuntimeState(datalink); },
+    setUpdateState(payload) { applyUpdateState(payload); },
     setAlertsState,
     getState: serializeStatePayload
   };
@@ -7363,14 +7689,16 @@
   setHostAuthoritativeReady(!HOST_MODE);
   window.setInterval(() => requestDatalinkState(), 1250);
   window.setInterval(() => requestPerformanceState(), 1000);
+  window.setInterval(() => requestUpdateState(), 1500);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.ui.page === "settings") requestDatalinkState(true);
     if (!document.hidden && performanceViewActive()) requestPerformanceState(true);
+    if (!document.hidden && updateViewActive()) requestUpdateState(true);
   });
   setStatus(HOST_MODE ? "Waiting for configuration…" : "Bundled LFPG preview loaded");
   postBridge("ui.ready", {
     hostMode: HOST_MODE,
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink", "performance-diagnostics"]
+    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "datalink", "performance-diagnostics", "startup-updates"]
   });
 })();

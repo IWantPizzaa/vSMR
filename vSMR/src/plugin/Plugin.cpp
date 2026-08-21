@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/Plugin.hpp"
+#include "bootstrap/RuntimeContext.hpp"
 #include "insets/InsetWindow.hpp"
 #include <atomic>
 #include <mutex>
@@ -223,6 +224,9 @@ namespace
 
 	std::filesystem::path ResolveRuntimeAudioPath(const wchar_t* fileName)
 	{
+		if (VsmrRuntimeContext::IsConfigured())
+			return VsmrRuntimeContext::DataRoot() / L"Audio" / fileName;
+
 		std::wstring modulePathBuffer(32768, L'\0');
 		const DWORD modulePathLength = ::GetModuleFileNameW(
 			HINSTANCE(&__ImageBase),
@@ -2890,9 +2894,15 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
 
-	GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
-	DllPath = DllPathFile;
-	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
+	if (VsmrRuntimeContext::IsConfigured())
+	{
+		DllPath = VsmrRuntimeContext::InstallRootNarrow();
+	}
+	else
+	{
+		GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
+		DllPath = std::filesystem::path(DllPathFile).parent_path().string();
+	}
 	Logger::DLL_PATH = DllPath;
 	{
 		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
@@ -4541,14 +4551,13 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 	return NULL;
 }
 
-//---EuroScopePlugInExit-----------------------------------------------
+//---Runtime shutdown--------------------------------------------------
 
-void __declspec (dllexport) EuroScopePlugInExit(void)
+bool VsmrShutdownPlugin()
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("EuroScopePlugInExit");
-	CSMRPlugin* pluginInstance = ActivePluginInstance.exchange(
-		nullptr,
-		std::memory_order_acq_rel);
+	CSMRPlugin* const pluginInstance = ActivePluginInstance.load(
+		std::memory_order_acquire);
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	VsmrGroundState::ClearAllLineupOverrides();
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -4571,5 +4580,16 @@ void __declspec (dllexport) EuroScopePlugInExit(void)
 			var->EuroScopePlugInExitCustom();
 	}
 	VsmrWeather::Clear();
+	if (!RadarScreensOpened.empty())
+	{
+		// EuroScope normally closes every CRadarScreen before unloading the
+		// plug-in. If that ordering is violated, keep both the plug-in object and
+		// its DLL alive so a late radar callback cannot dereference freed code or
+		// state. The loader treats false as a process-lifetime retained generation.
+		return false;
+	}
+
+	delete pluginInstance;
 	VsmrCrashReporter::Remove();
+	return true;
 }

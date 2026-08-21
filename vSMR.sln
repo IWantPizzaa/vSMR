@@ -3,7 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.21005.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMR", "vSMR\vSMR.vcxproj", "{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMR.Runtime", "vSMR\vSMR.vcxproj", "{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMR", "vSMR\src\bootstrap\loader\vSMRLoader.vcxproj", "{7AB341C5-3BCB-4591-AB16-D9A673E77438}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vSMRCrashHandler", "vSMR\src\crash\handler\vSMRCrashHandler.vcxproj", "{EF50604E-8F7D-4B20-8266-F17E732CA839}"
 EndProject
@@ -14,6 +16,8 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}.Release|Win32.ActiveCfg = Release|Win32
 		{6DE02EC4-F0B1-4BA2-AED5-D261FEC4D758}.Release|Win32.Build.0 = Release|Win32
+		{7AB341C5-3BCB-4591-AB16-D9A673E77438}.Release|Win32.ActiveCfg = Release|Win32
+		{7AB341C5-3BCB-4591-AB16-D9A673E77438}.Release|Win32.Build.0 = Release|Win32
 		{EF50604E-8F7D-4B20-8266-F17E732CA839}.Release|Win32.ActiveCfg = Release|Win32
 		{EF50604E-8F7D-4B20-8266-F17E732CA839}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection

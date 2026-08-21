@@ -560,6 +560,7 @@
 <nav aria-label="Settings sections" class="subtabs settings-subtabs" id="settingsSubtabs" role="tablist">
 <button aria-controls="settingsPanelGeneral" aria-selected="true" class="active" data-settings-tab="general" id="settingsTabGeneral" role="tab" tabindex="0" type="button">General</button>
 <button aria-controls="settingsPanelPerformance" aria-selected="false" data-settings-tab="performance" id="settingsTabPerformance" role="tab" tabindex="-1" type="button">Performance</button>
+<button aria-controls="settingsPanelUpdates" aria-selected="false" data-settings-tab="updates" id="settingsTabUpdates" role="tab" tabindex="-1" type="button">Updates</button>
 </nav>
 <div class="settings-view-stack">
 <section aria-labelledby="settingsTabGeneral" class="settings-view active" data-settings-panel="general" id="settingsPanelGeneral" role="tabpanel">
@@ -732,6 +733,56 @@
 </dl>
 </section>
 </div>
+</div>
+</section>
+<section aria-labelledby="settingsTabUpdates" class="settings-view updates-view" data-settings-panel="updates" hidden id="settingsPanelUpdates" role="tabpanel">
+<div class="updates-layout">
+<div class="updates-toolbar">
+<span aria-live="polite" class="update-state-badge waiting" id="updateStateBadge" role="status">Awaiting state</span>
+<span class="updates-toolbar-spacer"></span>
+<button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
+<button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
+</div>
+<p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
+<section aria-label="Update summary" class="update-summary-grid">
+<article class="update-summary-card"><span>Installed</span><strong id="updateInstalledVersion">--</strong></article>
+<article class="update-summary-card"><span>Available</span><strong id="updateAvailableVersion">--</strong></article>
+<article class="update-summary-card"><span>Channel</span><strong id="updateSelectedChannel">--</strong></article>
+<article class="update-summary-card"><span>Last checked</span><strong id="updateLastChecked">Never</strong></article>
+</section>
+<div class="updates-detail-grid">
+<section class="panel update-preferences-panel">
+<div class="panel-title"><span>Automatic updates</span><small>Stored outside profile history</small></div>
+<div class="update-preferences-body">
+<label class="field update-channel-field"><span>Release channel</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
+<label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
+<label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates automatically</span></label>
+<label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate the verified runtime before vSMR loads</span></label>
+<p>These preferences are saved immediately in <code>%LOCALAPPDATA%\vSMR\Updater</code>. They are not included in profile Save, Undo, or Redo.</p>
+</div>
+</section>
+<section class="panel update-progress-panel">
+<div class="panel-title"><span>Startup updater</span><small id="updateNextCheck">Next check: --</small></div>
+<div class="update-progress-body">
+<div class="update-progress-heading"><strong id="updateProgressLabel">Idle</strong><output id="updateProgressPercent">0%</output></div>
+<progress id="updateProgress" max="100" value="0">0%</progress>
+<dl class="update-detail-list">
+<div><dt>Selected release</dt><dd id="updateSelectedVersion">--</dd></div>
+<div><dt>Skipped release</dt><dd id="updateSkippedVersion">None</dd></div>
+<div><dt>Activation</dt><dd id="updateActivationState">Current runtime</dd></div>
+</dl>
+<div class="update-actions">
+<button class="ui-button" data-action="update-skip" disabled id="updateSkipButton" type="button">Skip available version</button>
+<button class="ui-button" data-action="update-clear-skip" disabled id="updateClearSkipButton" type="button">Clear skipped version</button>
+<button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
+</div>
+</div>
+</section>
+</div>
+<section class="panel update-security-panel">
+<div class="panel-title"><span>Safe startup</span><small>Fail-open and signed</small></div>
+<p>vSMR uses a stable loader and a shadow-loaded runtime. A release is activated only after its signed manifest, archive hash, package manifest, architecture, and loader compatibility have been verified. If GitHub or verification fails, the installed runtime loads normally. A release requiring a newer loader is left for manual full-package installation.</p>
+</section>
 </div>
 </section>
 </div>

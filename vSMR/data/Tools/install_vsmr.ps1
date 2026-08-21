@@ -5,7 +5,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$DestinationDirectory,
     [string]$BackupRoot = "",
-    [switch]$ReplaceUserData
+    [switch]$ReplaceUserData,
+    [switch]$PreserveLoader,
+    [switch]$RuntimeUpdate
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,6 +27,7 @@ $PackageRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $PackageData = Join-Path $PackageRoot "vSMR_Data"
 $PackageDll = Join-Path $PackageRoot "vSMR.dll"
 $DestinationDirectory = Resolve-NonRootDirectoryPath $DestinationDirectory "DestinationDirectory"
+$preserveTopLevelLoader = [bool]($PreserveLoader -or $RuntimeUpdate)
 
 function Assert-File([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Required file is missing: $Path" }
@@ -52,6 +55,23 @@ function Copy-DirectoryContents([string]$Source, [string]$Destination) {
     }
 }
 
+function Write-TransactionOutcome([string]$Path, [string]$Status, [string]$TransactionId, [string]$RollbackBackup, [bool]$LoaderPreserved) {
+    $outcome = [ordered]@{
+        schema_version = 1
+        kind = "vSMR install transaction outcome"
+        transaction_id = $TransactionId
+        status = $Status
+        recorded_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+        destination = $DestinationDirectory
+        rollback_backup = $RollbackBackup
+        loader_preserved = $LoaderPreserved
+    }
+    [System.IO.File]::WriteAllText(
+        $Path,
+        ((ConvertTo-Json $outcome -Depth 5) + "`n"),
+        $Utf8NoBom)
+}
+
 $destinationDll = Join-Path $DestinationDirectory "vSMR.dll"
 $destinationData = Join-Path $DestinationDirectory "vSMR_Data"
 if (Test-PathEqualOrChild $DestinationDirectory $PackageRoot) {
@@ -64,6 +84,9 @@ if (Test-PathEqualOrChild $PackageRoot $destinationData) {
 Assert-File $PackageDll
 Assert-File (Join-Path $PackageData "RELEASE-METADATA.json")
 Assert-File (Join-Path $PackageData "SHA256SUMS.txt")
+Assert-File (Join-Path $PackageData "Runtime\vSMR.Runtime.dll")
+Assert-File (Join-Path $PackageData "CrashReporter\vSMRCrashHandler.dll")
+Assert-File (Join-Path $PackageData "Tools\restore_vsmr_backup.ps1")
 if (-not (Test-Path -LiteralPath $DestinationDirectory -PathType Container)) {
     throw "Destination plugin directory does not exist: $DestinationDirectory"
 }
@@ -93,6 +116,10 @@ if ($unlisted.Count -gt 0) { throw "Package contains unlisted files: $($unlisted
 
 $releaseMetadata = Get-Content -LiteralPath (Join-Path $PackageData "RELEASE-METADATA.json") -Raw | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace([string]$releaseMetadata.version)) { throw "Package release metadata has no version." }
+if ([string]$releaseMetadata.loader.relative_path -ne 'vSMR.dll' -or
+    [string]$releaseMetadata.runtime.relative_path -ne 'vSMR_Data/Runtime/vSMR.Runtime.dll') {
+    throw "Package release metadata has an invalid loader/runtime layout."
+}
 
 if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
     $BackupRoot = Join-Path $DestinationDirectory "vSMR_Backups"
@@ -109,9 +136,25 @@ $backupDirectory = Join-Path $BackupRoot ("vSMR-before-" + $releaseMetadata.vers
 Assert-ChildPath $backupDirectory $BackupRoot
 $hadDll = Test-Path -LiteralPath $destinationDll -PathType Leaf
 $hadData = Test-Path -LiteralPath $destinationData -PathType Container
+if ($preserveTopLevelLoader -and -not $hadDll) {
+    throw "Runtime-update mode requires an existing top-level vSMR.dll loader."
+}
+$packageLoaderHash = (Get-FileHash -LiteralPath $PackageDll -Algorithm SHA256).Hash.ToLowerInvariant()
+$packageLoaderVersion = [string]$releaseMetadata.loader.version
+if ([string]::IsNullOrWhiteSpace($packageLoaderVersion)) {
+    $packageLoaderVersion = [string](([System.Diagnostics.FileVersionInfo]::GetVersionInfo($PackageDll)).FileVersion)
+}
+$installedLoaderHash = if ($preserveTopLevelLoader) {
+    (Get-FileHash -LiteralPath $destinationDll -Algorithm SHA256).Hash.ToLowerInvariant()
+} else { $packageLoaderHash }
+$installedLoaderVersion = if ($preserveTopLevelLoader) {
+    [string](([System.Diagnostics.FileVersionInfo]::GetVersionInfo($destinationDll)).FileVersion)
+} else { $packageLoaderVersion }
+$loaderMatchesPackage = $installedLoaderHash -eq $packageLoaderHash
 
 # Confirm before creating even a backup so -WhatIf is genuinely non-mutating.
-if (-not $PSCmdlet.ShouldProcess($DestinationDirectory, "Install vSMR $($releaseMetadata.version); create rollback backup under $BackupRoot")) {
+$installMode = if ($preserveTopLevelLoader) { "runtime/data update while preserving the loaded vSMR.dll loader" } else { "complete loader/runtime update" }
+if (-not $PSCmdlet.ShouldProcess($DestinationDirectory, "Install vSMR $($releaseMetadata.version) as a $installMode; create rollback backup under $BackupRoot")) {
     Write-Host "Installation skipped; no files were changed."
     return
 }
@@ -138,6 +181,7 @@ $backupMetadata = [ordered]@{
     installing_version = [string]$releaseMetadata.version
     had_dll = [bool]$hadDll
     had_data = [bool]$hadData
+    loader_preserved = $preserveTopLevelLoader
     profile_schema_versions = $profileSchemas
 }
 [System.IO.File]::WriteAllText(
@@ -146,6 +190,8 @@ $backupMetadata = [ordered]@{
     $Utf8NoBom)
 
 $operationId = [Guid]::NewGuid().ToString("N")
+$transactionOutcomePath = Join-Path $backupDirectory "TRANSACTION-OUTCOME.json"
+Write-TransactionOutcome $transactionOutcomePath "prepared" $operationId $backupDirectory $preserveTopLevelLoader
 $stageRoot = Join-Path $DestinationDirectory (".vsmr-install-" + $operationId)
 $oldDataSwap = Join-Path $DestinationDirectory (".vsmr-previous-data-" + $operationId)
 $oldDllSwap = Join-Path $DestinationDirectory (".vsmr-previous-dll-" + $operationId)
@@ -156,10 +202,10 @@ Assert-ChildPath $oldDllSwap $DestinationDirectory
 $stageData = Join-Path $stageRoot "vSMR_Data"
 Copy-Item -LiteralPath $PackageData -Destination $stageData -Recurse
 $stageDll = Join-Path $stageRoot "vSMR.dll"
-Copy-Item -LiteralPath $PackageDll -Destination $stageDll
+if (-not $preserveTopLevelLoader) { Copy-Item -LiteralPath $PackageDll -Destination $stageDll }
 
 if ($hadData -and -not $ReplaceUserData) {
-    $immutableNames = @('vSMR_webUI', 'CrashReporter', 'Licenses', 'Tools', 'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json')
+    $immutableNames = @('vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools', 'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json')
     foreach ($item in @(Get-ChildItem -LiteralPath $destinationData -Force)) {
         if ($immutableNames -contains $item.Name) { continue }
         $target = Join-Path $stageData $item.Name
@@ -179,7 +225,15 @@ $installationMetadata = [ordered]@{
     installed_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     source_commit = [string]$releaseMetadata.git_commit
     user_data_preserved = -not [bool]$ReplaceUserData
+    loader_preserved = $preserveTopLevelLoader
+    validation_scope = if ($preserveTopLevelLoader) { "runtime_and_data" } else { "full_package" }
+    package_loader_version = $packageLoaderVersion
+    package_loader_sha256 = $packageLoaderHash
+    installed_loader_version = $installedLoaderVersion
+    installed_loader_sha256 = $installedLoaderHash
+    loader_matches_package = $loaderMatchesPackage
     rollback_backup = $backupDirectory
+    transaction_id = $operationId
 }
 [System.IO.File]::WriteAllText(
     (Join-Path $stageData "INSTALLATION.json"),
@@ -188,26 +242,55 @@ $installationMetadata = [ordered]@{
 
 $dataSwapped = $false
 $dllSwapped = $false
+$transactionCommitted = $false
 try {
     if ($hadData) { Move-Item -LiteralPath $destinationData -Destination $oldDataSwap }
     Move-Item -LiteralPath $stageData -Destination $destinationData
     $dataSwapped = $true
-    if ($hadDll) { Move-Item -LiteralPath $destinationDll -Destination $oldDllSwap }
-    Move-Item -LiteralPath $stageDll -Destination $destinationDll
-    $dllSwapped = $true
+    if (-not $preserveTopLevelLoader) {
+        if ($hadDll) { Move-Item -LiteralPath $destinationDll -Destination $oldDllSwap }
+        Move-Item -LiteralPath $stageDll -Destination $destinationDll
+        $dllSwapped = $true
+    }
+    Write-TransactionOutcome $transactionOutcomePath "committed" $operationId $backupDirectory $preserveTopLevelLoader
+    $transactionCommitted = $true
 }
 catch {
-    if ($dllSwapped -and (Test-Path -LiteralPath $destinationDll)) { Remove-Item -LiteralPath $destinationDll -Force }
-    if (Test-Path -LiteralPath $oldDllSwap) { Move-Item -LiteralPath $oldDllSwap -Destination $destinationDll }
-    if ($dataSwapped -and (Test-Path -LiteralPath $destinationData)) { Remove-Item -LiteralPath $destinationData -Recurse -Force }
-    if (Test-Path -LiteralPath $oldDataSwap) { Move-Item -LiteralPath $oldDataSwap -Destination $destinationData }
-    throw
+    $installError = $_
+    try {
+        if ($dllSwapped -and (Test-Path -LiteralPath $destinationDll)) { Remove-Item -LiteralPath $destinationDll -Force }
+        if (Test-Path -LiteralPath $oldDllSwap) { Move-Item -LiteralPath $oldDllSwap -Destination $destinationDll }
+        if ($dataSwapped -and (Test-Path -LiteralPath $destinationData)) { Remove-Item -LiteralPath $destinationData -Recurse -Force }
+        if (Test-Path -LiteralPath $oldDataSwap) { Move-Item -LiteralPath $oldDataSwap -Destination $destinationData }
+        Write-TransactionOutcome $transactionOutcomePath "rolled_back" $operationId $backupDirectory $preserveTopLevelLoader
+    }
+    catch {
+        Write-Warning "Install rollback or transaction-journal update was incomplete: $($_.Exception.Message)"
+    }
+    throw $installError
 }
 finally {
-    if (Test-Path -LiteralPath $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
+    try {
+        if (Test-Path -LiteralPath $stageRoot) { Remove-Item -LiteralPath $stageRoot -Recurse -Force }
+    }
+    catch {
+        Write-Warning "vSMR was not changed by staging cleanup, but temporary files remain at '$stageRoot': $($_.Exception.Message)"
+    }
 }
 
-if (Test-Path -LiteralPath $oldDllSwap) { Remove-Item -LiteralPath $oldDllSwap -Force }
-if (Test-Path -LiteralPath $oldDataSwap) { Remove-Item -LiteralPath $oldDataSwap -Recurse -Force }
+if (-not $transactionCommitted) {
+    throw "The install transaction did not reach its durable committed outcome."
+}
+foreach ($obsoleteSwap in @($oldDllSwap, $oldDataSwap)) {
+    try {
+        if (Test-Path -LiteralPath $obsoleteSwap) {
+            Remove-Item -LiteralPath $obsoleteSwap -Recurse -Force
+        }
+    }
+    catch {
+        Write-Warning "vSMR was installed successfully, but obsolete pre-swap files could not be removed from '$obsoleteSwap': $($_.Exception.Message)"
+    }
+}
 Write-Host "Installed vSMR $($releaseMetadata.version)."
+if ($preserveTopLevelLoader) { Write-Host "Preserved the loaded top-level vSMR.dll loader." }
 Write-Host "Rollback backup: $backupDirectory"

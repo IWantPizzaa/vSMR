@@ -156,3 +156,8 @@ private:
 	std::map<std::string, std::time_t> WeatherLastAttemptUtc;
 };
 
+// Called by the runtime ABI when EuroScope unloads the plug-in. Returns true
+// only after every radar screen has already released itself and the plug-in
+// instance has been deleted, as required by the EuroScope SDK contract.
+bool VsmrShutdownPlugin();
+

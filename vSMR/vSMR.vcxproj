@@ -52,12 +52,20 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>$(SolutionDir)\lib\include;$(ExternalIncludePath)</ExternalIncludePath>
-    <OutDir Condition="'$(VsmrReleaseOutputDirectory)' != ''">$(VsmrReleaseOutputDirectory)</OutDir>
+    <OutDir>$(ProjectDir)bin\$(Configuration)\Runtime\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\Runtime\</IntDir>
+    <TargetName>vSMR.Runtime</TargetName>
+    <VsmrDistributionDirectory Condition="'$(VsmrReleaseOutputDirectory)' != ''">$(VsmrReleaseOutputDirectory)</VsmrDistributionDirectory>
+    <VsmrDistributionDirectory Condition="'$(VsmrReleaseOutputDirectory)' == ''">$(SolutionDir)$(Configuration)\</VsmrDistributionDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>$(SolutionDir)\lib\include;$(ExternalIncludePath)</ExternalIncludePath>
-    <OutDir Condition="'$(VsmrReleaseOutputDirectory)' != ''">$(VsmrReleaseOutputDirectory)</OutDir>
+    <OutDir>$(ProjectDir)bin\$(Configuration)\Runtime\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\Runtime\</IntDir>
+    <TargetName>vSMR.Runtime</TargetName>
+    <VsmrDistributionDirectory Condition="'$(VsmrReleaseOutputDirectory)' != ''">$(VsmrReleaseOutputDirectory)</VsmrDistributionDirectory>
+    <VsmrDistributionDirectory Condition="'$(VsmrReleaseOutputDirectory)' == ''">$(SolutionDir)$(Configuration)\</VsmrDistributionDirectory>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -146,6 +154,7 @@
   <ItemGroup>
     <ClCompile Include="src\aircraft\CallsignLookup.cpp" />
     <ClCompile Include="src\app\PluginEntry.cpp" />
+    <ClCompile Include="src\bootstrap\RuntimeContext.cpp" />
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp" />
     <ClCompile Include="src\aviso\AvisoEditorDialog.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
@@ -195,6 +204,8 @@
     <ClInclude Include="src\aircraft\CallsignLookup.hpp" />
     <ClInclude Include="src\aircraft\GroundState.hpp" />
     <ClInclude Include="src\app\PluginEntry.hpp" />
+    <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
+    <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="src\aviso\AvisoEditorDialog.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
@@ -289,39 +300,40 @@
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
         Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
-      <_VsmrLegacyFlatAviso Include="$(OutDir)AVISO_*.geojson;$(OutDir)AVISO_*.geojson.bak" />
+      <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson;$(VsmrDistributionDirectory)AVISO_*.geojson.bak" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
       <_VsmrWebView2License Include="$(PkgMicrosoft_Web_WebView2)\LICENSE.txt" />
       <_VsmrWebView2Notice Include="$(PkgMicrosoft_Web_WebView2)\NOTICE.txt" />
       <_VsmrCrashHandler Include="$(_VsmrCrashHandlerPath)" />
+      <_VsmrRuntimeBinary Include="$(TargetPath)" />
     </ItemGroup>
     <Error Condition="!Exists('$(_VsmrCrashHandlerPath)')" Text="The Win32 vSMR crash handler was not built: $(_VsmrCrashHandlerPath)" />
-    <RemoveDir Directories="$(OutDir)vSMR_Data;$(OutDir)vSMR_webUI;$(OutDir)THIRD_PARTY_LICENSES" />
-    <Delete Files="$(OutDir)LICENSE" />
+    <RemoveDir Directories="$(VsmrDistributionDirectory)vSMR_Data;$(VsmrDistributionDirectory)vSMR_webUI;$(VsmrDistributionDirectory)THIRD_PARTY_LICENSES" />
+    <Delete Files="$(VsmrDistributionDirectory)LICENSE" />
     <Delete Files="@(_VsmrLegacyFlatAviso)" />
-    <Delete Files="$(OutDir)$(TargetName).lib;$(OutDir)$(TargetName).exp;$(OutDir)$(TargetName).pdb;$(OutDir)$(TargetName).ilk" Condition="'$(Configuration)'=='Release'" />
-    <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI" />
-    <MakeDir Directories="$(OutDir)vSMR_Data\vSMR_webUI\defaults" />
-    <MakeDir Directories="$(OutDir)vSMR_Data\Licenses" />
-    <MakeDir Directories="$(OutDir)vSMR_Data\CrashReporter" />
-    <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFolder="$(OutDir)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(OutDir)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrProjectLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\vSMR.txt" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\RapidJSON.txt" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrWebView2License)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-LICENSE.txt" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrWebView2Notice)" DestinationFiles="$(OutDir)vSMR_Data\Licenses\Microsoft.WebView2-NOTICE.txt" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_VsmrCrashHandler)" DestinationFolder="$(OutDir)vSMR_Data\CrashReporter" SkipUnchangedFiles="true" />
+    <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI" />
+    <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI\defaults" />
+    <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Licenses" />
+    <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\CrashReporter" />
+    <MakeDir Directories="$(VsmrDistributionDirectory)vSMR_Data\Runtime" />
+    <Copy SourceFiles="@(_VsmrWebUiAsset)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrDefaultProfile)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\vSMR_webUI\defaults" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrRuntimeData)" DestinationFiles="@(_VsmrRuntimeData-&gt;'$(VsmrDistributionDirectory)vSMR_Data\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrProjectLicense)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\vSMR.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrRapidJsonLicense)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\RapidJSON.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrWebView2License)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\Microsoft.WebView2-LICENSE.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrWebView2Notice)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Licenses\Microsoft.WebView2-NOTICE.txt" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrCrashHandler)" DestinationFolder="$(VsmrDistributionDirectory)vSMR_Data\CrashReporter" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_VsmrRuntimeBinary)" DestinationFiles="$(VsmrDistributionDirectory)vSMR_Data\Runtime\vSMR.Runtime.dll" SkipUnchangedFiles="true" />
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
     <ItemGroup>
-      <_VsmrLegacyFlatAviso Include="$(OutDir)AVISO_*.geojson;$(OutDir)AVISO_*.geojson.bak" />
+      <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson;$(VsmrDistributionDirectory)AVISO_*.geojson.bak" />
     </ItemGroup>
-    <RemoveDir Directories="$(OutDir)vSMR_webUI;$(OutDir)vSMR_Data;$(OutDir)THIRD_PARTY_LICENSES" />
-    <Delete Files="$(OutDir)LICENSE" />
+    <RemoveDir Directories="$(VsmrDistributionDirectory)vSMR_webUI;$(VsmrDistributionDirectory)vSMR_Data;$(VsmrDistributionDirectory)THIRD_PARTY_LICENSES" />
+    <Delete Files="$(VsmrDistributionDirectory)LICENSE" />
     <Delete Files="@(_VsmrLegacyFlatAviso)" />
-    <Delete Files="$(OutDir)$(TargetName).lib;$(OutDir)$(TargetName).exp;$(OutDir)$(TargetName).pdb;$(OutDir)$(TargetName).ilk" Condition="'$(Configuration)'=='Release'" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!-- VS 2022 restores native PackageReference items but can select the managed buildTransitive entry point. -->

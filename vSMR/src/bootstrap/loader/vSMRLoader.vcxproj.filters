@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source">
+      <UniqueIdentifier>{A2CA2ABC-E9D7-4F0A-92A6-F18BFA7CEEF9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Headers">
+      <UniqueIdentifier>{43D55415-D02E-4664-927C-BA21CB5AFE1C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{FB5287FB-199B-49AB-9B48-8FE5F3D0288D}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="BootstrapLoader.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterCore.cpp"><Filter>Source</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\RuntimeApi.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="LoaderVersion.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="..\..\updater\UpdaterCore.hpp"><Filter>Headers</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="LoaderResources.rc"><Filter>Resources</Filter></ResourceCompile>
+  </ItemGroup>
+</Project>

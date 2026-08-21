@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/ResourceIds.h"
+#include "bootstrap/RuntimeContext.hpp"
 #include "radar/RadarScreen.hpp"
 #include "insets/InsetWindow.hpp"
 #include <fstream>
@@ -832,9 +833,15 @@ CSMRRadar::CSMRRadar()
 	}
 
 	// Getting the DLL file folder
-	GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
-	DllPath = DllPathFile;
-	DllPath.resize(DllPath.size() - strlen("vSMR.dll"));
+	if (VsmrRuntimeContext::IsConfigured())
+	{
+		DllPath = VsmrRuntimeContext::InstallRootNarrow();
+	}
+	else
+	{
+		GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
+		DllPath = fs::path(DllPathFile).parent_path().string();
+	}
 	
 	DataPath = ResolvePluginDataDirectoryPath(DllPath);
 	ConfigPath = ResolvePluginFilePath(DllPath, "vSMR_Profiles.json");

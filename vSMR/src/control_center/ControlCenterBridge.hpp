@@ -46,6 +46,10 @@ enum class VsmrBridgeAction
 	PerformanceStateRequest,
 	PerformanceReset,
 	PerformanceReportExport,
+	UpdateStateRequest,
+	UpdateSettingsUpdate,
+	UpdateActionRequest,
+	UpdateReleaseOpen,
 	ResourceComputerLoad,
 	ResourceGithubLoad
 };

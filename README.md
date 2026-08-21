@@ -4,7 +4,7 @@ vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement
 
 Current version: **2.0.0-beta.2**
 
-This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not mix the DLL or data files from different builds.
+This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not manually mix runtime binaries or package data from different builds. The deliberately stable top-level loader is the only versioned exception and its compatibility is managed by the signed updater.
 
 vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` and create a vSMR radar screen.
 
@@ -23,6 +23,7 @@ vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` 
 - Airport-specific inset state and presets that remain available when the active profile changes
 - VACDM time and state integration
 - Hoppie CPDLC connection, message handling, PDC composition, and automatic PDC reminders
+- Signed GitHub release updates that can activate a new runtime during the same EuroScope startup
 - Transactional configuration writes, backups, diagnostics, and reproducible release packaging
 
 The package includes a France-wide set of 396 airport-specific AVISO GeoJSON files, a normalized aircraft-dimension database, aircraft silhouettes, and five example profiles.
@@ -34,7 +35,7 @@ The package includes a France-wide set of 396 airport-specific AVISO GeoJSON fil
 - The x86 [Microsoft Edge WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - A complete matching release containing both `vSMR.dll` and `vSMR_Data\`
 
-WebView2 hosts the local Control Center. The UI itself does not require a web server or an internet connection. Internet access is only required for enabled external features such as Hoppie CPDLC, VACDM, fallback METAR retrieval, or GitHub data imports.
+WebView2 hosts the local Control Center. The UI itself does not require a web server or an internet connection. Internet access is only required for enabled external features such as automatic release checks, Hoppie CPDLC, VACDM, fallback METAR retrieval, or GitHub data imports.
 
 ## Installation
 
@@ -56,7 +57,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vs
   -DestinationDirectory "C:\path\to\EuroScope\Plugins"
 ```
 
-The installer validates the package manifest before copying files and creates a complete timestamped rollback backup. On an upgrade, it replaces the DLL and immutable package resources while preserving existing user data by default, including profiles, AVISO files, imported resources, aircraft data and icons, audio, and unknown files under `vSMR_Data`.
+The installer validates the package manifest before copying files and creates a complete timestamped rollback backup. Its backup also carries a durable prepared/committed/rolled-back transaction outcome, so a harmless cleanup failure after a successful atomic swap is not reported as a failed install. On an upgrade, it replaces the DLL and immutable package resources while preserving existing user data by default, including profiles, AVISO files, imported resources, aircraft data and icons, audio, and unknown files under `vSMR_Data`.
+
+`-PreserveLoader` (also accepted as `-RuntimeUpdate`) is reserved for the verified startup-updater path. It still validates and backs up the complete extracted package, but atomically replaces only `vSMR_Data` so the currently loaded top-level loader is never moved. `INSTALLATION.json` records the packaged and actually installed loader versions/hashes and whether validation covered the full package or runtime/data only.
 
 Use `-ReplaceUserData` only when deliberately resetting user-managed data to the bundled defaults.
 
@@ -66,6 +69,8 @@ For a manual clean installation, place the two package entries together:
 EuroScope\Plugins\
   vSMR.dll
   vSMR_Data\
+    Runtime\
+      vSMR.Runtime.dll
     vSMR_Profiles.json
     ICAO_Aircraft.json
     AVISO\
@@ -98,7 +103,37 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\restore_vs
   -BackupDirectory "C:\path\to\the\vSMR-backup"
 ```
 
-The rollback helper validates that the backup belongs to the selected installation and creates a safety backup of the current installation before restoring it.
+The rollback helper validates that the backup belongs to the selected installation, verifies any canonical Win32 runtime against the size and SHA-256 recorded in that backup's release metadata, and creates a safety backup of the current installation before restoring it. Runtime-update rollback requires this verified runtime/metadata pair; a normal manual rollback can still restore a pre-split legacy backup that has neither file.
+
+### Automatic updates
+
+The first release using this loader/runtime split must be installed once with the normal full-package procedure above. An earlier monolithic `vSMR.dll` cannot acquire a bootstrap loader retroactively. Same-launch automatic runtime updates are available after that one manual migration.
+
+The top-level `vSMR.dll` is a small, stable bootstrap loader. The complete plug-in implementation is stored as `vSMR_Data\Runtime\vSMR.Runtime.dll`. At the beginning of EuroScope startup, before the real vSMR plug-in object is created, the loader can check the project's GitHub Releases feed, validate an update, transactionally install its runtime and package-owned data, and load a unique shadow copy of the selected runtime. A compatible runtime update can therefore become active during that same EuroScope launch without trying to overwrite a DLL that Windows has already loaded.
+
+Ordinary update discovery and validation failures fail open. Offline operation, GitHub rate limits, timeouts, missing release assets, invalid signatures, hash failures, incompatible loader requirements, or pre-transaction installation errors leave the proven installed runtime available. A malformed or inconsistent durable install/rollback journal instead fails closed, because the loader will not guess which runtime is safe. vSMR never replaces files from an unsigned or incomplete remote release. Production update assets are:
+
+```text
+vSMR-<version>.zip
+vSMR-<version>.update.json
+vSMR-<version>.update.json.p7s
+```
+
+The manifest must explicitly declare itself publishable. Its detached CMS signature is checked against the updater's pinned signing certificate, followed by the archive size and SHA-256, the package's internal `SHA256SUMS.txt`, Win32 architecture, runtime ABI, and minimum-loader version. Legacy, validation-only, or incomplete releases without this signed publishable manifest are ignored by automatic updating.
+
+Open `Settings -> Updates` in the Control Center to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by the global Save, Undo, or Redo commands. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
+
+Updater configuration, durable recovery state, and non-secret status use the deterministic `%LOCALAPPDATA%\vSMR\Updater\` location. If it cannot be written, update preferences and next-startup actions report the failure instead of switching journals. No GitHub token is required or stored. A prerelease build initially follows the Beta channel; a stable build initially follows Stable. Skipping a release applies only to the selected channel and can be cleared from the same page.
+
+Compatible releases update the canonical runtime and `vSMR_Data` while preserving the already loaded top-level loader. vSMR never schedules an automatic replacement of that loader. If a signed release requires a newer loader, the installed runtime remains available and the Control Center asks for a manual full-package installation after EuroScope has been closed.
+
+Maintainers can exercise the updater without contacting GitHub or changing a live installation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\updater_harness\run_updater_harness.ps1
+```
+
+The harness builds a disposable loader and test executable, uses isolated install/feed/storage directories, and checks release selection, signature verification and rejection, cancellation, concurrent sessions, transaction recovery, rollback, Unicode paths, and runtime-shadow protection. It also verifies that the test seam never writes the production `%LOCALAPPDATA%\vSMR\Updater` state. A local unsigned package can be validated with `verify_release_package.ps1 -AllowNonPublishable`, but production automatic updates intentionally ignore it. Test the complete GitHub path only with a signed higher-version release and a disposable EuroScope installation or VM.
 
 ## First Run
 
@@ -415,8 +450,9 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | `Licenses\` | Project/dependency licenses and asset provenance |
 | `Diagnostics\` | Redacted support reports and exported performance reports |
 | `CrashReporter\` | Packaged Windows Error Reporting callback used to create crash reports outside EuroScope |
+| `Runtime\vSMR.Runtime.dll` | Canonical versioned plug-in implementation selected and shadow-loaded by the stable bootstrap loader |
 | `RELEASE-METADATA.json` | Version, source, build, signing, and publishability information |
-| `SHA256SUMS.txt` | Exact package payload manifest |
+| `SHA256SUMS.txt` | Exact extracted-package payload manifest; a preserved older loader or user-data merge is recorded separately in `INSTALLATION.json` |
 
 For compatibility, some loaders also inspect legacy flat locations beside the DLL. New installations should use the structured `vSMR_Data` layout.
 
@@ -469,13 +505,13 @@ vSMR registers the packaged `vSMR_Data\CrashReporter\vSMRCrashHandler.dll` with 
 
 Reports are stored in `%LOCALAPPDATA%\vSMR\CrashReports\` by default. Startup creates the directory and proves that it is writable with a temporary file; if that fails, vSMR tries `vSMR_Data\CrashReports\` and then `%TEMP%\vSMR\CrashReports\`. Cleanup also runs only during normal startup: vSMR retains at most 10 report sets within a 256 MiB total budget, prefers newer sets that fit, and removes stale temporary dump files.
 
-The callback creates and flushes the `.txt` summary before attempting its matching `.dmp`. The summary records whether the exception instruction was inside `vSMR.dll`, whether vSMR was instead found on the crashing stack, or whether the crashing thread was a registered vSMR worker. A stack association is explicitly reported as correlation, not proof that vSMR caused the crash. If no such association is found, vSMR creates no report merely because the plug-in was loaded.
+The callback creates and flushes the `.txt` summary before attempting its matching `.dmp`. The summary records whether the exception instruction was inside the loaded `vSMR.Runtime.dll` shadow, whether that runtime was instead found on the crashing stack, or whether the crashing thread was a registered vSMR worker. A stack association is explicitly reported as correlation, not proof that vSMR caused the crash. If no such association is found, vSMR creates no report merely because the plug-in was loaded.
 
 Crash-safe diagnostics are prepared during normal execution in fixed-size memory: open radar screens and their airport/profile/inset state, the last EuroScope callbacks, vSMR worker roles, connection state, recent bounded log messages, and the exact DLL/Git/PDB/host-version identity. The external callback copies this block from the failed process and never calls live EuroScope, MFC, logger, or renderer objects. This also gives stack-overflow reports an independent healthy process and stack.
 
 Crash reporting remains best effort. It may be unavailable when WER is disabled by policy, a debugger or another WER runtime module takes control first, the callback module is missing or blocked, the process is terminated without crash dispatch, or corruption prevents Windows from starting its reporter. The registration state and selected report directory are included in `.smr diagnostics`.
 
-Keep the `.txt`, `.dmp`, exact `vSMR.dll`, `vSMRCrashHandler.dll`, and matching private PDBs together when diagnosing a crash. Minidumps and breadcrumbs can contain callsigns, local paths, typed text, credentials, or other process memory. Nothing is uploaded automatically. Review reports and share them only through a trusted private channel; do not attach a dump publicly without checking it first.
+Keep the `.txt`, `.dmp`, exact `vSMR.Runtime.dll` binary that produced the loaded shadow, `vSMRCrashHandler.dll`, and their matching private PDBs together when diagnosing a crash. Also keep the top-level `vSMR.dll` and its matching PDB when startup or update loading may be involved. Minidumps and breadcrumbs can contain callsigns, local paths, typed text, credentials, or other process memory. Nothing is uploaded automatically. Review reports and share them only through a trusted private channel; do not attach a dump publicly without checking it first.
 
 ### Common problems
 
@@ -538,8 +574,8 @@ The script:
 4. rebuilds `Release | Win32`
 5. validates versioning, compiler hardening, runtime data, licenses, and release layout
 6. stages a clean payload
-7. writes release metadata and SHA-256 manifests
-8. creates the user ZIP and a separate private-symbol archive
+7. writes release metadata and the internal SHA-256 package manifest
+8. creates the user ZIP, external update manifest, detached signature for a publishable release, and separate private-symbol archive
 
 A publishable package requires a clean Git working tree and a verifiable commit. For a local dirty-tree check only:
 
@@ -580,13 +616,15 @@ PDB files never enter the user package.
 
 For an offline build, download `Microsoft.Web.WebView2.1.0.4078.44.nupkg` on a connected machine, place it in a local NuGet feed, and restore against that feed before building.
 
-For an offline EuroScope machine, install the x86 WebView2 Evergreen Standalone Runtime in advance. The WebView2 loader is linked into `vSMR.dll`, but the Evergreen Runtime itself is not bundled.
+For an offline EuroScope machine, install the x86 WebView2 Evergreen Standalone Runtime in advance. The WebView2 loader is linked into `vSMR_Data\Runtime\vSMR.Runtime.dll`, but the Evergreen Runtime itself is not bundled.
 
 ### Signing
 
-`package_release.ps1` can sign both staged DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. `VSMR_REQUIRE_SIGNATURE=1` requires valid signatures on both `vSMR.dll` and `vSMRCrashHandler.dll`. Timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
+`package_release.ps1` can Authenticode-sign the bootstrap loader, runtime, and crash-handler DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. For a clean publishable build, the same certificate creates the detached CMS signature over the exact UTF-8 update manifest; validation-only builds are never given that production signature. Production builds inject the SHA-256 of the certificate's DER encoding through `VSMR_UPDATE_SIGNER_CERT_SHA256`; the packaged loader and manifest signer must agree. `VSMR_REQUIRE_SIGNATURE=1` requires all binary and manifest signatures. Authenticode timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
 
 Do not describe a package as signed unless package verification confirms the signature.
+
+AppVeyor treats ordinary branch and pull-request builds as renamed validation-only artifacts. Only the matching version tag (with an optional `v` prefix) can request publishable output, and that build fails unless both signing-certificate inputs are available.
 
 ## Repository Layout
 
@@ -594,7 +632,10 @@ Do not describe a package as signed unless package verification confirms the sig
 vSMR.sln
 vSMR\
   src\
-    app\              MFC application object and EuroScope plug-in entry
+    app\              MFC application object and runtime ABI entry points
+    bootstrap\        Stable-loader/runtime ABI and shadow-load context
+      loader\         Small EuroScope-facing bootstrap loader
+    updater\          Signed release discovery, verification, staging, and rollback
     platform\windows\ Windows, GDI+, WinHTTP, PCH, and SDK integration
     shared\           Feature-neutral text and logging support
     config\           Runtime profile/configuration loading and persistence
@@ -625,7 +666,7 @@ Important implementation areas:
 
 | Path | Responsibility |
 | --- | --- |
-| `vSMR/src/app/PluginEntry.cpp` | MFC application object and exported EuroScope initialization entry |
+| `vSMR/src/app/PluginEntry.cpp` | MFC application object and exported runtime-ABI create/shutdown entries |
 | `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, commands, CPDLC, VACDM, weather scheduling, and diagnostics |
 | `vSMR/src/scene/` | Immutable per-frame target, tag, RIMCAS, ownership, controller, and airport state shared by radar viewports |
 | `vSMR/src/radar/RadarScreen.cpp` and `RadarScreen.*.cpp` | Radar lifecycle, rendering, interaction, ASR state, commands, and Runtime Menu |

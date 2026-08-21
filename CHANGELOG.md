@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a normally fail-open, same-startup updater built around a stable `vSMR.dll` bootstrap and shadow-loaded `vSMR_Data\Runtime\vSMR.Runtime.dll`. Discovery, network, signature, compatibility, and pre-transaction failures leave the proven installed runtime available; an inconsistent durable install/rollback journal fails closed. It selects Stable or Beta GitHub releases, requires a pinned detached-CMS manifest signature, validates archive and internal package hashes, enforces Win32/runtime/loader compatibility, transactionally activates compatible runtime/data updates before creating the EuroScope plug-in, and rolls back to the previous runtime when initialization fails. Releases requiring a newer loader are reported for manual full-package installation.
+- Added `Settings -> Updates` status and preferences for automatic checks, downloads, activation, channel selection, skipped releases, manual full-package update notices, and next-startup check/retry requests. Update settings, durable recovery state, and status use the deterministic `%LOCALAPPDATA%\vSMR\Updater` journal and remain outside profile Save/Undo history; unwritable storage is reported instead of silently switching journals.
+
+### Changed
+
+- Extended release packages, symbols, metadata, CI validation, install/rollback helpers, and package verification for the stable loader, nested canonical runtime, signed external update manifest, durable transaction outcomes, verified backup runtimes, and explicit preserve-loader transactions.
+
 ### Fixed
 
 - Replaced the METAR inset's heavy variable-wind arc with a translucent range band, highlighted endpoints, and a dedicated full-ring `VRB` treatment that leaves compass ticks readable.

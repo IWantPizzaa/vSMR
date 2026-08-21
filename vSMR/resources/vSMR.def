@@ -3,4 +3,6 @@
 LIBRARY
 
 EXPORTS
-    ; Explicit exports can go here
+	VsmrRuntimeGetAbiVersion
+	VsmrRuntimeCreate
+	VsmrRuntimeShutdown

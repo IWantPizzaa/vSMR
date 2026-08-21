@@ -1,7 +1,8 @@
 #pragma once
 
-// This header is shared by vSMR.dll, the out-of-process WER callback DLL, and
-// the isolated crash harness. Keep it independent of MFC and the EuroScope SDK.
+// This header is shared by vSMR.Runtime.dll, the out-of-process WER callback
+// DLL, and the isolated crash harness. Keep it independent of MFC and the
+// EuroScope SDK.
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN

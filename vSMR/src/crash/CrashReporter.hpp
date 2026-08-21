@@ -7,7 +7,7 @@ namespace VsmrCrashReporter
 {
 	// Registers vSMR's out-of-process Windows Error Reporting callback. No
 	// exception handler or dump writer is installed inside EuroScope.
-	bool Install(const char* version);
+	bool Install(const char* version, const wchar_t* installRoot = nullptr);
 	void Remove();
 	bool IsInstalled();
 	std::string GetReportDirectory();

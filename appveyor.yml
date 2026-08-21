@@ -25,6 +25,19 @@ install:
 
 before_build:
   - ps: >-
+      $isReleaseTag = $env:APPVEYOR_REPO_TAG -eq 'true' -and
+        $env:APPVEYOR_REPO_TAG_NAME -in @($env:VSMR_RELEASE_VERSION, "v$($env:VSMR_RELEASE_VERSION)");
+      $hasSigningMaterial = -not [string]::IsNullOrWhiteSpace($env:VSMR_SIGNING_CERT_THUMBPRINT) -and
+        -not [string]::IsNullOrWhiteSpace($env:VSMR_UPDATE_SIGNER_CERT_SHA256);
+      if ($isReleaseTag -and -not $hasSigningMaterial) {
+        throw "Release tag $($env:APPVEYOR_REPO_TAG_NAME) requires VSMR_SIGNING_CERT_THUMBPRINT and VSMR_UPDATE_SIGNER_CERT_SHA256.";
+      }
+      Set-AppveyorBuildVariable -Name VSMR_CI_PUBLISHABLE_RELEASE -Value $(if ($isReleaseTag) { '1' } else { '0' })
+  - ps: >-
+      if (-not [string]::IsNullOrWhiteSpace($env:VSMR_UPDATE_SIGNER_CERT_SHA256)) {
+        $env:VsmrUpdateSignerCertSha256 = $env:VSMR_UPDATE_SIGNER_CERT_SHA256.ToLowerInvariant()
+      }
+  - ps: >-
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\normalize_runtime_data.ps1"
       -Mode Check
       -DataDirectory "$env:APPVEYOR_BUILD_FOLDER\vSMR\data"
@@ -36,6 +49,7 @@ build_script:
       /p:Configuration=Release
       /p:Platform=Win32
       /p:PlatformToolset=v143
+      /p:VsmrUpdateSignerCertSha256=%VSMR_UPDATE_SIGNER_CERT_SHA256%
       /nodeReuse:false
       /verbosity:minimal
   - cmd: >-
@@ -46,6 +60,7 @@ build_script:
       /p:Platform=Win32
       /p:PlatformToolset=v143
       /p:ContinuousIntegrationBuild=true
+      /p:VsmrUpdateSignerCertSha256=%VSMR_UPDATE_SIGNER_CERT_SHA256%
       /nodeReuse:false
       /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
@@ -57,7 +72,11 @@ after_build:
       -Toolset v143
       -SkipProductionHandlerBuild
   - ps: >-
-      $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\updater_harness\run_updater_harness.ps1"
+      -MSBuildPath (Get-Command msbuild.exe).Source
+      -Toolset v143
+  - ps: >-
+      $validationOnly = $env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1';
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\package_release.ps1"
       -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
       -BuildOutputDirectory "$env:APPVEYOR_BUILD_FOLDER\Release"
@@ -66,20 +85,31 @@ after_build:
       -Configuration Release
       -Platform Win32
       -Toolset v143
-      -PdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\Release\vSMR.pdb"
+      -PdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\obj\Release\Runtime\vSMR.Runtime.pdb"
+      -LoaderPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\bootstrap\loader\obj\Release\vSMR.pdb"
       -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
+      -UpdateSignerCertSha256 ([string]$env:VSMR_UPDATE_SIGNER_CERT_SHA256)
       -SkipBuild
-      -ForceNonPublishable:$isPullRequest
+      -RequireSignature:(-not $validationOnly)
+      -ForceNonPublishable:$validationOnly
   - ps: >-
-      $isPullRequest = -not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER);
+      $validationOnly = $env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1';
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\verify_release_package.ps1"
       -ArchivePath "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-$($env:VSMR_RELEASE_VERSION).zip"
       -ExpectedVersion $env:VSMR_RELEASE_VERSION
-      -AllowNonPublishable:$isPullRequest
+      -ExpectedLoaderVersion 1.0.0
+      -ExpectedRuntimeAbi 1
+      -RequireSignature:(-not $validationOnly)
+      -AllowNonPublishable:$validationOnly
   - ps: >-
-      if (-not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER)) {
+      if ($env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1') {
         $base = "vSMR-$($env:VSMR_RELEASE_VERSION)";
-        $validationBase = "$base-pr-$($env:APPVEYOR_PULL_REQUEST_NUMBER)-validation-only";
+        $buildLabel = if (-not [string]::IsNullOrWhiteSpace($env:APPVEYOR_PULL_REQUEST_NUMBER)) {
+          "pr-$($env:APPVEYOR_PULL_REQUEST_NUMBER)"
+        } else {
+          (($env:APPVEYOR_REPO_BRANCH -replace '[^A-Za-z0-9_.-]', '-') + "-$($env:APPVEYOR_BUILD_NUMBER)")
+        };
+        $validationBase = "$base-$buildLabel-validation-only";
         $artifactRoot = "$env:APPVEYOR_BUILD_FOLDER\artifacts";
         Move-Item -LiteralPath "$artifactRoot\$base.zip" -Destination "$artifactRoot\$validationBase.zip";
         Move-Item -LiteralPath "$artifactRoot\$base-symbols.zip" -Destination "$artifactRoot\$validationBase-symbols.zip";
@@ -90,6 +120,13 @@ after_build:
           (New-Object System.Text.UTF8Encoding($false))
         );
         Remove-Item -LiteralPath "$artifactRoot\$base.zip.sha256" -Force;
+        Remove-Item -LiteralPath "$artifactRoot\$base.update.json" -Force -ErrorAction SilentlyContinue;
+        Remove-Item -LiteralPath "$artifactRoot\$base.update.json.p7s" -Force -ErrorAction SilentlyContinue;
+      }
+  - ps: >-
+      $signaturePath = "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-$($env:VSMR_RELEASE_VERSION).update.json.p7s";
+      if (Test-Path -LiteralPath $signaturePath -PathType Leaf) {
+        Push-AppveyorArtifact $signaturePath -FileName ([System.IO.Path]::GetFileName($signaturePath)) -DeploymentName "vSMR update signature";
       }
 
 test: off
@@ -101,9 +138,11 @@ artifacts:
     name: vSMR-2.0.0-beta.2-sha256
   - path: artifacts\vSMR-2.0.0-beta.2-symbols.zip
     name: vSMR-2.0.0-beta.2-private-symbols
-  - path: artifacts\vSMR-2.0.0-beta.2-pr-*-validation-only.zip
-    name: vSMR-pr-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.2-pr-*-validation-only.zip.sha256
-    name: vSMR-pr-validation-only-sha256
-  - path: artifacts\vSMR-2.0.0-beta.2-pr-*-validation-only-symbols.zip
-    name: vSMR-pr-validation-only-private-symbols
+  - path: artifacts\vSMR-2.0.0-beta.2.update.json
+    name: vSMR-2.0.0-beta.2-update-manifest
+  - path: artifacts\vSMR-2.0.0-beta.2-*-validation-only.zip
+    name: vSMR-validation-only
+  - path: artifacts\vSMR-2.0.0-beta.2-*-validation-only.zip.sha256
+    name: vSMR-validation-only-sha256
+  - path: artifacts\vSMR-2.0.0-beta.2-*-validation-only-symbols.zip
+    name: vSMR-validation-only-private-symbols
