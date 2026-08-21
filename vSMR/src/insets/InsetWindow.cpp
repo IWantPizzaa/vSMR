@@ -7,11 +7,15 @@
 #include "crash/CrashRuntime.hpp"
 #include "shared/logging/Logger.hpp"
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 namespace
@@ -4174,6 +4178,8 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	HFONT gustFont = GetWeatherFont(4, scaledFontHeight(11), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HFONT qnhFont = GetWeatherFont(5, scaledFontHeight(17), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HFONT compassFont = GetWeatherFont(6, scaledFontHeight(8), FW_NORMAL, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT rawFont = GetWeatherFont(7, scaledFontHeight(8), FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT rawBoldFont = GetWeatherFont(8, scaledFontHeight(8), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HGDIOBJ originalFont = ::GetCurrentObject(hDC, OBJ_FONT);
 
 	auto drawText = [&](const CRect& source, const std::string& value, HFONT font, COLORREF color, UINT flags)
@@ -4206,10 +4212,15 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		return (meteorologicalDirection + 180) % 360;
 	};
-	auto formatClock = [](const SYSTEMTIME& time) -> std::string
+	auto formatObservationTime = [](std::time_t value) -> std::string
 	{
-		char buffer[10] = {};
-		std::snprintf(buffer, sizeof(buffer), "%02u:%02u:%02u", time.wHour, time.wMinute, time.wSecond);
+		if (value <= 0)
+			return "----Z";
+		std::tm utc = {};
+		if (::gmtime_s(&utc, &value) != 0)
+			return "----Z";
+		char buffer[12] = {};
+		std::snprintf(buffer, sizeof(buffer), "%02d%02dZ", utc.tm_hour, utc.tm_min);
 		return buffer;
 	};
 
@@ -4265,11 +4276,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		considerRunway(runway.runwayNameB, runway.trueHeadingB, runway.trueHeadingBValid);
 	}
 
-	SYSTEMTIME utcTime = {};
-	SYSTEMTIME localTime = {};
-	::GetSystemTime(&utcTime);
-	::GetLocalTime(&localTime);
-
 	std::string qnhValue = weather.hasQnh ? std::to_string(weather.qnhHpa) : "----";
 	std::string variationValue = "---";
 	if (weather.hasWindVariation)
@@ -4291,46 +4297,85 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 			: std::to_string(std::abs(cross)) + (cross > 0 ? "R" : "L");
 	}
 
+	const int peakWind = weather.hasWindGust
+		? max(weather.windSpeedKnots, weather.windGustKnots)
+		: weather.windSpeedKnots;
+	const COLORREF windColor = peakWind < 10
+		? RGB(94, 193, 137)
+		: (peakWind < 20
+			? RGB(224, 189, 71)
+			: (peakWind < 30 ? RGB(230, 135, 55) : RGB(235, 90, 90)));
+	std::string directionValue = hasSnapshot ? "NO WIND" : "WAIT";
+	std::string speedValue;
+	std::string gustValue;
+	if (weather.hasWind)
+	{
+		directionValue = weather.windCalm
+			? "CALM"
+			: (weather.windVariable ? "VRB" : formatDegrees(weather.windDirectionDegrees));
+		speedValue = std::to_string(weather.windSpeedKnots) + " KT";
+		if (weather.hasWindGust)
+			gustValue = "G" + std::to_string(weather.windGustKnots);
+	}
+
 	const int padding = 4;
 	const int gap = 4;
 	CRect inner(content);
 	inner.DeflateRect(padding, padding);
-	const int innerWidth = max(1, inner.Width());
-	const bool stackedLayout = innerWidth < 230;
+	const bool hasRawReport = hasSnapshot && !weather.rawReport.empty();
+	int rawHeight = 0;
+	if (hasRawReport && inner.Height() >= 58)
+		rawHeight = std::clamp(inner.Height() / 3, 28, 64);
+	CRect rawPanel;
+	CRect primary(inner);
+	if (rawHeight > 0)
+	{
+		rawPanel = CRect(inner.left, inner.bottom - rawHeight, inner.right, inner.bottom);
+		primary.bottom = max(primary.top, rawPanel.top - gap);
+	}
+	const int primaryWidth = max(1, primary.Width());
+	const int primaryHeight = max(1, primary.Height());
+	const bool compactLayout = primaryWidth < 165 || primaryHeight < 78;
+	const bool stackedLayout = !compactLayout && primaryWidth < 230 && primaryHeight >= 142;
 	CRect windPanel;
 	CRect statsPanel;
-	if (stackedLayout)
+	if (compactLayout)
 	{
-		const int availableHeight = max(1, inner.Height() - gap);
-		const int maximumWindHeight = max(1, availableHeight - 72);
-		const int minimumWindHeight = min(86, maximumWindHeight);
+		windPanel = primary;
+	}
+	else if (stackedLayout)
+	{
+		const int availableHeight = max(1, primaryHeight - gap);
+		const int maximumWindHeight = max(1, availableHeight - 52);
+		const int minimumWindHeight = min(82, maximumWindHeight);
 		const int windHeight = std::clamp(
-			min(innerWidth, maximumWindHeight),
+			min(primaryWidth, maximumWindHeight),
 			minimumWindHeight,
 			maximumWindHeight);
-		windPanel = CRect(inner.left, inner.top, inner.right, inner.top + windHeight);
-		statsPanel = CRect(inner.left, windPanel.bottom + gap, inner.right, inner.bottom);
+		windPanel = CRect(primary.left, primary.top, primary.right, primary.top + windHeight);
+		statsPanel = CRect(primary.left, windPanel.bottom + gap, primary.right, primary.bottom);
 	}
 	else
 	{
-		const int minimumStatsWidth = 112;
-		const int availableWidth = max(1, innerWidth - gap);
+		const int minimumStatsWidth = 104;
+		const int availableWidth = max(1, primaryWidth - gap);
 		const int maximumWindWidth = max(1, availableWidth - minimumStatsWidth);
-		const int minimumWindWidth = min(150, maximumWindWidth);
+		const int minimumWindWidth = min(116, maximumWindWidth);
 		const int windWidth = std::clamp(
 			static_cast<int>(std::lround(static_cast<double>(availableWidth) * 0.55)),
 			minimumWindWidth,
 			maximumWindWidth);
-		windPanel = CRect(inner.left, inner.top, inner.left + windWidth, inner.bottom);
-		statsPanel = CRect(windPanel.right + gap, inner.top, inner.right, inner.bottom);
+		windPanel = CRect(primary.left, primary.top, primary.left + windWidth, primary.bottom);
+		statsPanel = CRect(windPanel.right + gap, primary.top, primary.right, primary.bottom);
 	}
-	if (statsPanel.Width() < 1)
-		statsPanel.left = max(inner.left, statsPanel.right - 1);
-	if (statsPanel.Height() < 1)
-		statsPanel.top = max(inner.top, statsPanel.bottom - 1);
 	fillAndBorder(windPanel, panel);
-	fillAndBorder(statsPanel, panel);
+	if (!statsPanel.IsRectEmpty())
+		fillAndBorder(statsPanel, panel);
+	if (!rawPanel.IsRectEmpty())
+		fillAndBorder(rawPanel, control);
 
+	if (!compactLayout)
+	{
 	CRect roseBounds(
 		windPanel.left + 4,
 		windPanel.top + 4,
@@ -4455,14 +4500,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		}
 	}
 
-	const int peakWind = weather.hasWindGust
-		? max(weather.windSpeedKnots, weather.windGustKnots)
-		: weather.windSpeedKnots;
-	COLORREF windColor = peakWind < 10
-		? RGB(94, 193, 137)
-		: (peakWind < 20
-			? RGB(224, 189, 71)
-			: (peakWind < 30 ? RGB(230, 135, 55) : RGB(235, 90, 90)));
 	if (weather.hasWind && !weather.windVariable && !weather.windCalm)
 	{
 		const double angle = (static_cast<double>(windFlowDirection(weather.windDirectionDegrees)) - 90.0) * pi / 180.0;
@@ -4498,18 +4535,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		centerTextHalfWidth * 2.0f,
 		centerTextHalfHeight * 2.0f);
 
-	std::string directionValue = hasSnapshot ? "NO WIND" : "WAIT";
-	std::string speedValue = "";
-	std::string gustValue = "";
-	if (weather.hasWind)
-	{
-		directionValue = weather.windCalm
-			? "CALM"
-			: (weather.windVariable ? "VRB" : formatDegrees(weather.windDirectionDegrees));
-		speedValue = std::to_string(weather.windSpeedKnots) + " KT";
-		if (weather.hasWindGust)
-			gustValue = "G" + std::to_string(weather.windGustKnots);
-	}
 	CRect directionArea(
 		static_cast<int>(centerX - centerTextHalfWidth),
 		static_cast<int>(centerY - 25.0 * weatherScale),
@@ -4541,12 +4566,33 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		if (stale)
 			footer = "STALE";
 		else if (footer.empty() && referenceRunway.valid)
-			footer = "RWY " + referenceRunway.name;
+			footer = formatObservationTime(weather.observationUtc) + "  RWY " + referenceRunway.name;
 		else if (footer.empty())
-			footer = "NO ACTIVE RWY";
+			footer = formatObservationTime(weather.observationUtc) + "  NO ACTIVE RWY";
 	}
 	CRect footerArea(windPanel.left + 4, windPanel.bottom - max(12, static_cast<int>(14.0 * weatherScale)), windPanel.right - 4, windPanel.bottom - 2);
 	drawText(footerArea, footer, labelFont, stale ? RGB(230, 135, 55) : mutedText, DT_CENTER);
+	}
+	else
+	{
+		CRect compactTop(windPanel);
+		compactTop.DeflateRect(5, 3);
+		const int split = compactTop.top + max(18, compactTop.Height() / 2);
+		CRect windLine(compactTop.left, compactTop.top, compactTop.right, min(compactTop.bottom, split));
+		CRect detailLine(compactTop.left, windLine.bottom, compactTop.right, compactTop.bottom);
+		std::string windSummary = directionValue;
+		if (!speedValue.empty())
+			windSummary += "  " + speedValue;
+		if (!gustValue.empty())
+			windSummary += " " + gustValue;
+		drawText(windLine, windSummary, valueFont, weather.hasWind ? windColor : mutedText, DT_LEFT);
+		std::string detailSummary = "QNH " + qnhValue;
+		if (weather.hasWindVariation)
+			detailSummary += "  VAR " + variationValue;
+		if (referenceRunway.valid)
+			detailSummary += "  " + headValue + "/" + crossValue;
+		drawText(detailLine, detailSummary, labelFont, text, DT_LEFT);
+	}
 
 	const struct StatCell
 	{
@@ -4556,35 +4602,156 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		{ "QNH", qnhValue },
 		{ "VAR", variationValue },
 		{ "HEAD", headValue },
-		{ "XWIND", crossValue },
-		{ "UTC", formatClock(utcTime) },
-		{ "LOCAL", formatClock(localTime) }
+		{ "XWIND", crossValue }
 	};
-	const int statsWidth = max(1, statsPanel.Width());
-	const int statsHeight = max(1, statsPanel.Height());
-	const int firstColumnWidth = statsWidth / 2;
-	for (int row = 0; row < 3; ++row)
+	if (!statsPanel.IsRectEmpty())
 	{
-		const int rowTop = statsPanel.top + (statsHeight * row) / 3;
-		const int rowBottom = statsPanel.top + (statsHeight * (row + 1)) / 3;
-		for (int column = 0; column < 2; ++column)
+		const int statsWidth = max(1, statsPanel.Width());
+		const int statsHeight = max(1, statsPanel.Height());
+		const int firstColumnWidth = statsWidth / 2;
+		for (int row = 0; row < 2; ++row)
 		{
-			const int index = row * 2 + column;
-			const int left = column == 0 ? statsPanel.left : statsPanel.left + firstColumnWidth;
-			const int right = column == 0 ? statsPanel.left + firstColumnWidth : statsPanel.right;
-			CRect cell(left, rowTop, right, rowBottom);
-			dc.FillSolidRect(cell, panelSoft);
-			dc.Draw3dRect(cell, innerBorder, outerBorder);
-			const int desiredHeaderHeight = max(
-				10,
-				static_cast<int>(std::lround(15.0 * weatherScale)));
-			const int headerHeight = min(desiredHeaderHeight, max(10, cell.Height() / 3));
-			CRect header(cell.left + 1, cell.top + 1, cell.right - 1, min(cell.bottom - 1, cell.top + headerHeight));
-			dc.FillSolidRect(header, panelHeader);
-			CRect labelArea(header.left + 3, header.top, header.right - 2, header.bottom);
-			CRect valueArea(cell.left + 2, header.bottom, cell.right - 2, cell.bottom - 1);
-			drawText(labelArea, cells[index].label, labelFont, mutedText, DT_LEFT);
-			drawText(valueArea, cells[index].value, index == 0 ? qnhFont : valueFont, text, DT_CENTER);
+			const int rowTop = statsPanel.top + (statsHeight * row) / 2;
+			const int rowBottom = statsPanel.top + (statsHeight * (row + 1)) / 2;
+			for (int column = 0; column < 2; ++column)
+			{
+				const int index = row * 2 + column;
+				const int left = column == 0 ? statsPanel.left : statsPanel.left + firstColumnWidth;
+				const int right = column == 0 ? statsPanel.left + firstColumnWidth : statsPanel.right;
+				CRect cell(left, rowTop, right, rowBottom);
+				dc.FillSolidRect(cell, panelSoft);
+				dc.Draw3dRect(cell, innerBorder, outerBorder);
+				const int desiredHeaderHeight = max(
+					10,
+					static_cast<int>(std::lround(14.0 * weatherScale)));
+				const int headerHeight = min(desiredHeaderHeight, max(9, cell.Height() / 3));
+				CRect header(cell.left + 1, cell.top + 1, cell.right - 1, min(cell.bottom - 1, cell.top + headerHeight));
+				dc.FillSolidRect(header, panelHeader);
+				CRect labelArea(header.left + 3, header.top, header.right - 2, header.bottom);
+				CRect valueArea(cell.left + 2, header.bottom, cell.right - 2, cell.bottom - 1);
+				drawText(labelArea, cells[index].label, labelFont, mutedText, DT_LEFT);
+				drawText(valueArea, cells[index].value, index == 0 ? qnhFont : valueFont, text, DT_CENTER);
+			}
+		}
+	}
+
+	if (!rawPanel.IsRectEmpty() && hasRawReport)
+	{
+		auto allDigits = [](const std::string& token, size_t first, size_t count) -> bool
+		{
+			if (first > token.size() || count > token.size() - first)
+				return false;
+			for (size_t index = first; index < first + count; ++index)
+			{
+				if (std::isdigit(static_cast<unsigned char>(token[index])) == 0)
+					return false;
+			}
+			return true;
+		};
+		auto beginsWith = [](const std::string& token, const char* prefix) -> bool
+		{
+			const size_t length = std::strlen(prefix);
+			return token.size() >= length && token.compare(0, length, prefix) == 0;
+		};
+		auto containsWeatherCode = [](const std::string& token) -> bool
+		{
+			static const char* codes[] = {
+				"RA", "SN", "DZ", "TS", "FG", "BR", "HZ", "SH", "FZ", "GR", "GS", "SQ"
+			};
+			for (const char* code : codes)
+			{
+				if (token.find(code) != std::string::npos)
+					return true;
+			}
+			return false;
+		};
+
+		CRect rawBounds(rawPanel);
+		rawBounds.DeflateRect(4, 3);
+		::SetBkMode(hDC, TRANSPARENT);
+		int cursorX = rawBounds.left;
+		int cursorY = rawBounds.top;
+		const int lineHeight = max(11, static_cast<int>(std::lround(12.0 * weatherScale)));
+		std::istringstream report(weather.rawReport);
+		std::string token;
+		size_t tokenIndex = 0;
+		while (report >> token)
+		{
+			const bool qnhToken = token.size() == 5 &&
+				(token[0] == 'Q' || token[0] == 'A') && allDigits(token, 1, 4);
+			const bool windToken =
+				(token.size() >= 7 && token.compare(token.size() - 2, 2, "KT") == 0) ||
+				(token.size() >= 8 && token.compare(token.size() - 3, 3, "MPS") == 0) ||
+				(token.size() == 7 && token[3] == 'V' && allDigits(token, 0, 3) && allDigits(token, 4, 3));
+			const bool visibilityToken = token == "CAVOK" ||
+				(token.size() == 4 && allDigits(token, 0, 4));
+			const bool cloudToken = beginsWith(token, "FEW") || beginsWith(token, "SCT") ||
+				beginsWith(token, "BKN") || beginsWith(token, "OVC") || beginsWith(token, "VV");
+			const size_t temperatureSeparator = token.find('/');
+			const bool temperatureToken = temperatureSeparator != std::string::npos &&
+				temperatureSeparator > 0 && temperatureSeparator + 1 < token.size() &&
+				token.size() <= 7;
+			const bool weatherToken = tokenIndex > 2 && !windToken && !cloudToken &&
+				!temperatureToken && containsWeatherCode(token);
+			COLORREF tokenColor = text;
+			COLORREF tokenFill = control;
+			bool highlighted = false;
+			if (qnhToken)
+			{
+				tokenColor = RGB(245, 214, 122);
+				tokenFill = RGB(67, 58, 35);
+				highlighted = true;
+			}
+			else if (windToken)
+			{
+				tokenColor = windColor;
+				tokenFill = RGB(40, 58, 61);
+				highlighted = true;
+			}
+			else if (visibilityToken)
+			{
+				tokenColor = token == "CAVOK" || std::atoi(token.c_str()) >= 5000
+					? RGB(116, 207, 151)
+					: (std::atoi(token.c_str()) >= 1500 ? RGB(245, 214, 122) : RGB(241, 116, 116));
+				tokenFill = RGB(38, 59, 52);
+				highlighted = true;
+			}
+			else if (weatherToken)
+			{
+				tokenColor = RGB(241, 164, 92);
+				tokenFill = RGB(64, 47, 35);
+				highlighted = true;
+			}
+			else if (cloudToken)
+			{
+				tokenColor = cyan;
+			}
+			else if (temperatureToken)
+			{
+				tokenColor = RGB(205, 190, 230);
+			}
+
+			HFONT tokenFont = highlighted ? rawBoldFont : rawFont;
+			if (tokenFont != nullptr)
+				::SelectObject(hDC, tokenFont);
+			SIZE tokenSize = {};
+			::GetTextExtentPoint32A(hDC, token.c_str(), static_cast<int>(token.size()), &tokenSize);
+			const int tokenWidth = max(1, tokenSize.cx);
+			if (cursorX > rawBounds.left && cursorX + tokenWidth > rawBounds.right)
+			{
+				cursorX = rawBounds.left;
+				cursorY += lineHeight;
+			}
+			if (cursorY + lineHeight > rawBounds.bottom)
+				break;
+			if (highlighted)
+				dc.FillSolidRect(CRect(cursorX - 1, cursorY, min(rawBounds.right, cursorX + tokenWidth + 2), cursorY + lineHeight), tokenFill);
+			::SetTextColor(hDC, tokenColor);
+			::TextOutA(hDC, cursorX, cursorY + max(0, (lineHeight - tokenSize.cy) / 2), token.c_str(), static_cast<int>(token.size()));
+			SIZE spaceSize = {};
+			::GetTextExtentPoint32A(hDC, " ", 1, &spaceSize);
+			cursorX += tokenWidth + max(3, spaceSize.cx);
+			++tokenIndex;
 		}
 	}
 

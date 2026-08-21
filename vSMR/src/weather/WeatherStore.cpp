@@ -300,6 +300,12 @@ namespace VsmrWeather
 		const std::vector<std::string> tokens = TokenizeReport(report);
 		for (const std::string& token : tokens)
 		{
+			if (!parsed.rawReport.empty())
+				parsed.rawReport.push_back(' ');
+			parsed.rawReport += token;
+		}
+		for (const std::string& token : tokens)
+		{
 			if (parsed.observationUtc == 0)
 			{
 				std::time_t observationUtc = 0;

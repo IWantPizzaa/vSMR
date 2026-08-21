@@ -142,8 +142,8 @@ private:
 	bool m_AirportPositionValid = false;
 	std::array<unsigned long long, 4> m_TimerDeadlineTicks = { 0, 0, 0, 0 };
 	std::array<bool, 4> m_TimerExpired = { false, false, false, false };
-	std::array<HFONT, 7> m_WeatherFonts = {};
-	std::array<int, 7> m_WeatherFontHeights = {};
+	std::array<HFONT, 9> m_WeatherFonts = {};
+	std::array<int, 9> m_WeatherFontHeights = {};
 	HFONT m_TimerFont = nullptr;
 	const Gdiplus::Font* m_SrwFontSource = nullptr;
 	Gdiplus::REAL m_SrwFontSize = 0.0f;
