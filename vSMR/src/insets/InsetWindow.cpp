@@ -4171,15 +4171,20 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		return -max(1, static_cast<int>(std::lround(static_cast<double>(pixels) * weatherScale)));
 	};
-	HFONT labelFont = GetWeatherFont(0, scaledFontHeight(8), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT valueFont = GetWeatherFont(1, scaledFontHeight(11), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT directionFont = GetWeatherFont(2, scaledFontHeight(20), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT speedFont = GetWeatherFont(3, scaledFontHeight(15), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT gustFont = GetWeatherFont(4, scaledFontHeight(11), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT qnhFont = GetWeatherFont(5, scaledFontHeight(17), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT labelFont = GetWeatherFont(0, scaledFontHeight(9), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT valueFont = GetWeatherFont(1, scaledFontHeight(13), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+	HFONT directionFont = GetWeatherFont(2, scaledFontHeight(22), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT speedFont = GetWeatherFont(3, scaledFontHeight(16), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT gustFont = GetWeatherFont(4, scaledFontHeight(12), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT qnhFont = GetWeatherFont(5, scaledFontHeight(19), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HFONT compassFont = GetWeatherFont(6, scaledFontHeight(8), FW_NORMAL, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
-	HFONT rawFont = GetWeatherFont(7, scaledFontHeight(8), FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
-	HFONT rawBoldFont = GetWeatherFont(8, scaledFontHeight(8), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
+	const double rawTextScale = std::clamp(weatherScale, 0.95, 1.65);
+	auto scaledRawFontHeight = [rawTextScale](int pixels) -> int
+	{
+		return -max(1, static_cast<int>(std::lround(static_cast<double>(pixels) * rawTextScale)));
+	};
+	HFONT rawFont = GetWeatherFont(7, scaledRawFontHeight(10), FW_NORMAL, FIXED_PITCH | FF_MODERN, "Consolas");
+	HFONT rawBoldFont = GetWeatherFont(8, scaledRawFontHeight(10), FW_BOLD, FIXED_PITCH | FF_MODERN, "Consolas");
 	HGDIOBJ originalFont = ::GetCurrentObject(hDC, OBJ_FONT);
 
 	auto drawText = [&](const CRect& source, const std::string& value, HFONT font, COLORREF color, UINT flags)
@@ -4325,7 +4330,14 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	const bool hasRawReport = hasSnapshot && !weather.rawReport.empty();
 	int rawHeight = 0;
 	if (hasRawReport && inner.Height() >= 58)
-		rawHeight = std::clamp(inner.Height() / 3, 28, 64);
+	{
+		const int minimumRawHeight = max(34, static_cast<int>(std::lround(42.0 * rawTextScale)));
+		const int maximumRawHeight = max(minimumRawHeight, static_cast<int>(std::lround(92.0 * rawTextScale)));
+		rawHeight = std::clamp(
+			static_cast<int>(std::lround(static_cast<double>(inner.Height()) * 0.42)),
+			minimumRawHeight,
+			min(maximumRawHeight, max(minimumRawHeight, inner.Height() - 38)));
+	}
 	CRect rawPanel;
 	CRect primary(inner);
 	if (rawHeight > 0)
@@ -4561,17 +4573,19 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		footer = hasSnapshot ? "NO CURRENT WEATHER" : "WAITING FOR METAR";
 	}
-	else
+	else if (stale)
 	{
-		if (stale)
-			footer = "STALE";
-		else if (footer.empty() && referenceRunway.valid)
-			footer = formatObservationTime(weather.observationUtc) + "  RWY " + referenceRunway.name;
-		else if (footer.empty())
-			footer = formatObservationTime(weather.observationUtc) + "  NO ACTIVE RWY";
+		footer = "STALE  " + formatObservationTime(weather.observationUtc);
 	}
-	CRect footerArea(windPanel.left + 4, windPanel.bottom - max(12, static_cast<int>(14.0 * weatherScale)), windPanel.right - 4, windPanel.bottom - 2);
-	drawText(footerArea, footer, labelFont, stale ? RGB(230, 135, 55) : mutedText, DT_CENTER);
+	if (!footer.empty())
+	{
+		CRect footerArea(
+			windPanel.left + 4,
+			windPanel.bottom - max(14, static_cast<int>(16.0 * weatherScale)),
+			windPanel.right - 4,
+			windPanel.bottom - 2);
+		drawText(footerArea, footer, labelFont, stale ? RGB(230, 135, 55) : mutedText, DT_CENTER);
+	}
 	}
 	else
 	{
@@ -4608,29 +4622,77 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	{
 		const int statsWidth = max(1, statsPanel.Width());
 		const int statsHeight = max(1, statsPanel.Height());
-		const int firstColumnWidth = statsWidth / 2;
-		for (int row = 0; row < 2; ++row)
+		const bool priorityRows = statsWidth < static_cast<int>(std::lround(160.0 * weatherScale));
+		if (priorityRows)
 		{
-			const int rowTop = statsPanel.top + (statsHeight * row) / 2;
-			const int rowBottom = statsPanel.top + (statsHeight * (row + 1)) / 2;
-			for (int column = 0; column < 2; ++column)
+			struct PriorityRow
 			{
-				const int index = row * 2 + column;
-				const int left = column == 0 ? statsPanel.left : statsPanel.left + firstColumnWidth;
-				const int right = column == 0 ? statsPanel.left + firstColumnWidth : statsPanel.right;
-				CRect cell(left, rowTop, right, rowBottom);
+				std::string label;
+				std::string value;
+				HFONT font = nullptr;
+			};
+			const std::string runwayLabel = referenceRunway.valid
+				? "RWY" + referenceRunway.name
+				: "COMP";
+			const std::string componentValue = referenceRunway.valid
+				? headValue + " / X" + crossValue
+				: "---";
+			const PriorityRow rows[] = {
+				{ "QNH", qnhValue, qnhFont },
+				{ "VAR", variationValue, valueFont },
+				{ runwayLabel, componentValue, valueFont }
+			};
+			const int rowWeights[] = { 40, 30, 30 };
+			int rowTop = statsPanel.top;
+			int accumulatedWeight = 0;
+			for (int row = 0; row < 3; ++row)
+			{
+				accumulatedWeight += rowWeights[row];
+				const int rowBottom = row == 2
+					? statsPanel.bottom
+					: statsPanel.top + (statsHeight * accumulatedWeight) / 100;
+				CRect cell(statsPanel.left, rowTop, statsPanel.right, rowBottom);
 				dc.FillSolidRect(cell, panelSoft);
 				dc.Draw3dRect(cell, innerBorder, outerBorder);
-				const int desiredHeaderHeight = max(
-					10,
-					static_cast<int>(std::lround(14.0 * weatherScale)));
-				const int headerHeight = min(desiredHeaderHeight, max(9, cell.Height() / 3));
-				CRect header(cell.left + 1, cell.top + 1, cell.right - 1, min(cell.bottom - 1, cell.top + headerHeight));
-				dc.FillSolidRect(header, panelHeader);
-				CRect labelArea(header.left + 3, header.top, header.right - 2, header.bottom);
-				CRect valueArea(cell.left + 2, header.bottom, cell.right - 2, cell.bottom - 1);
-				drawText(labelArea, cells[index].label, labelFont, mutedText, DT_LEFT);
-				drawText(valueArea, cells[index].value, index == 0 ? qnhFont : valueFont, text, DT_CENTER);
+				const int labelWidth = std::clamp(
+					static_cast<int>(std::lround(static_cast<double>(statsWidth) * 0.37)),
+					38,
+					max(38, statsWidth - 42));
+				CRect labelArea(cell.left + 1, cell.top + 1, min(cell.right - 1, cell.left + labelWidth), cell.bottom - 1);
+				CRect valueArea(labelArea.right, cell.top + 1, cell.right - 2, cell.bottom - 1);
+				dc.FillSolidRect(labelArea, panelHeader);
+				labelArea.left += 3;
+				drawText(labelArea, rows[row].label, labelFont, mutedText, DT_LEFT);
+				drawText(valueArea, rows[row].value, rows[row].font, text, DT_CENTER);
+				rowTop = rowBottom;
+			}
+		}
+		else
+		{
+			const int firstColumnWidth = statsWidth / 2;
+			for (int row = 0; row < 2; ++row)
+			{
+				const int rowTop = statsPanel.top + (statsHeight * row) / 2;
+				const int rowBottom = statsPanel.top + (statsHeight * (row + 1)) / 2;
+				for (int column = 0; column < 2; ++column)
+				{
+					const int index = row * 2 + column;
+					const int left = column == 0 ? statsPanel.left : statsPanel.left + firstColumnWidth;
+					const int right = column == 0 ? statsPanel.left + firstColumnWidth : statsPanel.right;
+					CRect cell(left, rowTop, right, rowBottom);
+					dc.FillSolidRect(cell, panelSoft);
+					dc.Draw3dRect(cell, innerBorder, outerBorder);
+					const int desiredHeaderHeight = max(
+						11,
+						static_cast<int>(std::lround(15.0 * weatherScale)));
+					const int headerHeight = min(desiredHeaderHeight, max(10, cell.Height() / 3));
+					CRect header(cell.left + 1, cell.top + 1, cell.right - 1, min(cell.bottom - 1, cell.top + headerHeight));
+					dc.FillSolidRect(header, panelHeader);
+					CRect labelArea(header.left + 3, header.top, header.right - 2, header.bottom);
+					CRect valueArea(cell.left + 2, header.bottom, cell.right - 2, cell.bottom - 1);
+					drawText(labelArea, cells[index].label, labelFont, mutedText, DT_LEFT);
+					drawText(valueArea, cells[index].value, index == 0 ? qnhFont : valueFont, text, DT_CENTER);
+				}
 			}
 		}
 	}
@@ -4671,7 +4733,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		::SetBkMode(hDC, TRANSPARENT);
 		int cursorX = rawBounds.left;
 		int cursorY = rawBounds.top;
-		const int lineHeight = max(11, static_cast<int>(std::lround(12.0 * weatherScale)));
+		const int lineHeight = max(14, static_cast<int>(std::lround(15.0 * rawTextScale)));
 		std::istringstream report(weather.rawReport);
 		std::string token;
 		size_t tokenIndex = 0;
