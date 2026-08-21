@@ -1,4 +1,4 @@
-version: 2.0.0-beta.2.{build}
+version: 2.0.0-beta.3.{build}
 
 branches:
   only:
@@ -13,7 +13,7 @@ clone_depth: 20
 image: Visual Studio 2022
 
 environment:
-  VSMR_RELEASE_VERSION: 2.0.0-beta.2
+  VSMR_RELEASE_VERSION: 2.0.0-beta.3
 
 configuration: Release
 platform: Win32
@@ -132,17 +132,17 @@ after_build:
 test: off
 
 artifacts:
-  - path: artifacts\vSMR-2.0.0-beta.2.zip
-    name: vSMR-2.0.0-beta.2
-  - path: artifacts\vSMR-2.0.0-beta.2.zip.sha256
-    name: vSMR-2.0.0-beta.2-sha256
-  - path: artifacts\vSMR-2.0.0-beta.2-symbols.zip
-    name: vSMR-2.0.0-beta.2-private-symbols
-  - path: artifacts\vSMR-2.0.0-beta.2.update.json
-    name: vSMR-2.0.0-beta.2-update-manifest
-  - path: artifacts\vSMR-2.0.0-beta.2-*-validation-only.zip
+  - path: artifacts\vSMR-2.0.0-beta.3.zip
+    name: vSMR-2.0.0-beta.3
+  - path: artifacts\vSMR-2.0.0-beta.3.zip.sha256
+    name: vSMR-2.0.0-beta.3-sha256
+  - path: artifacts\vSMR-2.0.0-beta.3-symbols.zip
+    name: vSMR-2.0.0-beta.3-private-symbols
+  - path: artifacts\vSMR-2.0.0-beta.3.update.json
+    name: vSMR-2.0.0-beta.3-update-manifest
+  - path: artifacts\vSMR-2.0.0-beta.3-*-validation-only.zip
     name: vSMR-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.2-*-validation-only.zip.sha256
+  - path: artifacts\vSMR-2.0.0-beta.3-*-validation-only.zip.sha256
     name: vSMR-validation-only-sha256
-  - path: artifacts\vSMR-2.0.0-beta.2-*-validation-only-symbols.zip
+  - path: artifacts\vSMR-2.0.0-beta.3-*-validation-only-symbols.zip
     name: vSMR-validation-only-private-symbols

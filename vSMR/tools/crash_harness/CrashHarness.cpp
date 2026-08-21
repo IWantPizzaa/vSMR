@@ -55,7 +55,7 @@ namespace
 
 		VsmrCrashProtocol::CopyText(gSharedState.reportDirectory, reportDirectory);
 		VsmrCrashProtocol::CopyText(gSharedState.modulePath, modulePath.data());
-		VsmrCrashProtocol::CopyText(gSharedState.pluginVersion, "2.0.0-beta.2-harness");
+		VsmrCrashProtocol::CopyText(gSharedState.pluginVersion, "2.0.0-beta.3-harness");
 		VsmrCrashProtocol::CopyText(gSharedState.gitCommit, "harness");
 		VsmrCrashProtocol::CopyText(gSharedState.dllSha256, "harness");
 		VsmrCrashProtocol::CopyText(gSharedState.pdbIdentity, "harness");
