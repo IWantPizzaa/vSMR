@@ -1136,6 +1136,20 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		int appWindowId = ObjectType - APPWINDOW_BASE;
 		auto appWindowIt = appWindows.find(appWindowId);
 		CInsetWindow* appWindow = (appWindowIt != appWindows.end() && appWindowIt->second != nullptr) ? appWindowIt->second.get() : nullptr;
+		if (appWindow != nullptr && appWindow->IsSecondaryRadar() && Button == BUTTON_RIGHT)
+		{
+			const auto tagAreaIt = appWindow->m_TagAreas.find(objectId);
+			if (tagAreaIt != appWindow->m_TagAreas.end() && tagAreaIt->second.PtInRect(Pt))
+			{
+				(void)startTagFunctionForObject(
+					TAG_ITEM_TYPE_CALLSIGN,
+					TAG_ITEM_FUNCTION_HANDOFF_POPUP_MENU,
+					NULL,
+					false);
+				RequestRefresh();
+				return;
+			}
+		}
 		if (appWindow != nullptr && appWindow->IsTimer() &&
 			strncmp(objectId, "timer.", 6) == 0)
 		{
