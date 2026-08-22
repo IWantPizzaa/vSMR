@@ -276,8 +276,9 @@
     <None Include="resources\cursors\cursor1.cur" />
     <None Include="resources\cursors\move.cur" />
     <None Include="resources\vSMR.def" />
-    <None Include="resources\vSMR.rc2" />
-    <None Include="tools\normalize_runtime_data.ps1" />
+	<None Include="resources\vSMR.rc2" />
+	<None Include="tools\merge_aviso_day_palette.ps1" />
+	<None Include="tools\normalize_runtime_data.ps1" />
     <None Include="tools\package_release.ps1" />
     <None Include="tools\validate_release.ps1" />
     <None Include="tools\verify_release_package.ps1" />

@@ -1006,8 +1006,6 @@ input[type="checkbox"]:checked::after {
 .font-size-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-top: 5px; }
 .font-size-row label { display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 2px; align-items: center; }
 .font-size-row label span { color: var(--muted); text-align: center; }
-.profile-filter-grid { padding: 0; gap: 4px; }
-.profile-filter-grid .field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-active-mark { color: #79c7ef; font-weight: 700; }
 .selection-row.active .profile-active-mark { color: #173440; }
 
@@ -2557,17 +2555,6 @@ input:focus, select:focus, textarea:focus {
     linear-gradient(var(--channel-thumb, transparent), var(--channel-thumb, transparent)),
     conic-gradient(#727c7f 25%, #d6dcde 0 50%, #727c7f 0 75%, #d6dcde 0) 0 0 / 6px 6px;
 }
-.color-advanced {
-  margin: 0;
-}
-.color-advanced .advanced-body {
-  grid-template-columns: 115px minmax(0, 1fr);
-  align-items: end;
-}
-.color-advanced .field {
-  margin: 0;
-}
-
 /* Icon page: visible symbol preview plus one coherent parameter group. */
 .icon-settings-grid {
   padding: 5px;
@@ -3024,48 +3011,6 @@ input:focus, select:focus, textarea:focus {
 }
 .rail-action-button {
   position: relative;
-}
-.rail-save-button,
-.rail-save-button:hover {
-  border-color: #071013;
-  background: var(--accent);
-  color: #f4f8f9;
-}
-.rail-save-button:hover {
-  background: #63a7c3;
-}
-.rail-save-button.has-unsaved {
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.16);
-}
-.rail-dirty-dot {
-  position: absolute;
-  right: 3px;
-  top: 3px;
-  width: 5px;
-  height: 5px;
-  border: 1px solid #121819;
-  border-radius: 50%;
-  background: transparent;
-  opacity: 0;
-}
-.rail-dirty-dot.dirty {
-  background: #e0bd72;
-  opacity: 1;
-}
-.rail-save-button:disabled {
-  border-color: var(--ui-outer-border, #050708);
-  background: #293438;
-  color: #718086;
-  box-shadow: none;
-}
-.rail-action-button.pending .rail-dirty-dot {
-  background: var(--accent);
-  opacity: 1;
-  animation: rail-pending-pulse .8s ease-in-out infinite alternate;
-}
-@keyframes rail-pending-pulse {
-  from { opacity: .35; }
-  to { opacity: 1; }
 }
 
 /* All profile master lists use the same visual column width. */
@@ -3902,11 +3847,6 @@ input:focus, select:focus, textarea:focus {
 .profiles-page .profile-detail-scroll {
   align-content: start;
 }
-.profiles-page .profile-filter-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-}
-
 /* Text zoom visibility sits directly inside the Halo card. */
 .aviso-text-zoom-box {
   margin-top: 7px;
@@ -4177,55 +4117,34 @@ input:focus, select:focus, textarea:focus {
   grid-template-rows: 22px 42px 30px minmax(0, 1fr);
 }
 
-/* Alerts page follows the same compact master/editor visual language. */
+/* RIMCAS is one compact operational editor. */
 .page.alerts-page {
-  grid-template-rows: 28px minmax(0, 1fr) 30px;
+  grid-template-rows: minmax(0, 1fr);
 }
-.alerts-subtabs button {
-  flex: 1 1 25%;
-}
-.alerts-view-stack,
-.alerts-view {
+.alerts-layout,
+.alerts-control-column,
+.alerts-runways-box {
   min-width: 0;
   min-height: 0;
 }
-.alerts-view-stack {
-  position: relative;
-  overflow: hidden;
-}
-.alerts-view {
-  display: none;
+.alerts-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, .82fr) minmax(330px, 1.18fr);
+  gap: 4px;
   height: 100%;
   padding: 4px;
-  overflow: auto;
+  overflow: hidden;
 }
-.alerts-view.active {
-  display: block;
-}
-.alerts-active-layout,
-.alerts-runways-layout,
-.alerts-timing-layout {
-  min-width: 0;
-  min-height: 0;
+.alerts-control-column {
   display: grid;
-  gap: 5px;
+  grid-template-rows: auto auto;
+  gap: 4px;
   align-content: start;
 }
-.alerts-runway-note {
+.alerts-layout .compact-group {
   margin: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  background: var(--panel-alt);
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
 }
-.alert-global-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.alert-types-box legend,
-.alert-global-box legend {
+.alert-types-box legend {
   width: calc(100% - 10px);
 }
 .legend-tools {
@@ -4246,16 +4165,16 @@ input:focus, select:focus, textarea:focus {
 .alert-toggle-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  gap: 3px;
 }
 .alert-toggle-card {
   min-width: 0;
-  min-height: 48px;
+  min-height: 27px;
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr);
-  gap: 6px;
+  gap: 4px;
   align-items: center;
-  padding: 5px 6px;
+  padding: 3px 4px;
   border: 1px solid #111719;
   border-radius: 4px;
   background: #29373a;
@@ -4267,21 +4186,37 @@ input:focus, select:focus, textarea:focus {
   opacity: .55;
   background: #232e31;
 }
-.alert-toggle-card > span {
+.alert-toggle-card strong {
   min-width: 0;
+  overflow: hidden;
+  color: #d4dfe1;
+  font: 700 8px/1 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alerts-timing-box {
+  display: grid;
+  gap: 5px;
+}
+.alert-timing-mode {
   display: grid;
   gap: 2px;
 }
-.alert-toggle-card strong {
-  color: #d4dfe1;
-  font: 700 9px/1 var(--mono);
+.alert-timing-mode > strong {
+  color: #9fb0b4;
+  font: 700 8px/1 var(--mono);
+  text-transform: uppercase;
 }
-.alert-toggle-card small {
+.alert-threshold-field {
+  width: 100%;
+  max-width: 150px;
+  margin: 0;
+}
+.alerts-runways-box {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 5px;
   overflow: hidden;
-  color: #85969b;
-  font-size: 7.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .alerts-runway-toolbar {
   min-width: 0;
@@ -4299,7 +4234,8 @@ input:focus, select:focus, textarea:focus {
 }
 .alert-runway-table {
   min-width: 0;
-  overflow: hidden;
+  min-height: 0;
+  overflow: auto;
   border: 1px solid #111719;
   border-radius: 5px;
   background: #20292c;
@@ -4361,13 +4297,6 @@ input:focus, select:focus, textarea:focus {
   background: #704247;
   color: #fff;
 }
-.alerts-timing-layout {
-  grid-template-columns: 1fr 1fr;
-}
-.alerts-timing-layout .alert-threshold-box {
-  grid-column: 1 / -1;
-  max-width: 230px;
-}
 .alert-timer-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -4378,29 +4307,6 @@ input:focus, select:focus, textarea:focus {
 }
 .alert-timer-row input {
   text-align: center;
-}
-.alerts-appearance-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-}
-.alert-color-list {
-  display: grid;
-  gap: 5px;
-}
-.alert-color-pair {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 4px;
-}
-.alert-color-pair input[type="color"] {
-  width: 28px;
-  padding: 1px;
-}
-.alert-color-pair input[type="text"] {
-  width: 100%;
-  font-family: var(--mono);
 }
 
 /* Groups right-hand editor: settings first, operational content below. */
@@ -4505,8 +4411,6 @@ input:focus, select:focus, textarea:focus {
     border-top: 1px solid #3c4a4e;
     border-left: 0;
   }
-  .alert-toggle-grid,
-  .alerts-appearance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ==========================================================================
@@ -4614,12 +4518,10 @@ input:focus, select:focus, textarea:focus {
   color: var(--accent-text);
   font-weight: 700;
 }
-.profile-subtabs,
-.alerts-subtabs {
+.profile-subtabs {
   padding-inline: 3px;
 }
-.profile-subtabs button,
-.alerts-subtabs button {
+.profile-subtabs button {
   flex: 1 1 0;
   min-width: 0;
 }
@@ -4699,9 +4601,6 @@ input:focus, select:focus, textarea:focus {
 }
 .aviso-group-list-panel {
   grid-template-rows: var(--ui-title-height) 32px minmax(0, 1fr);
-}
-.page.alerts-page {
-  grid-template-rows: 28px minmax(0, 1fr) var(--ui-action-height);
 }
 .page.settings-page {
   grid-template-rows: minmax(0, 1fr) var(--ui-action-height);
@@ -5088,8 +4987,7 @@ input[type="range"] {
 .aviso-text-style-selector-row .field {
   gap: 2px;
 }
-.aviso-color-pair input[type="color"],
-.alert-color-pair input[type="color"] {
+.aviso-color-pair input[type="color"] {
   height: var(--ui-control-height);
 }
 .aviso-text-zoom-box {
@@ -5133,18 +5031,6 @@ input[type="range"] {
 }
 
 /* Alerts ------------------------------------------------------------------ */
-.alerts-view {
-  padding: var(--ui-gap);
-}
-.alerts-active-layout,
-.alerts-runways-layout,
-.alerts-timing-layout,
-.alerts-appearance-grid {
-  gap: 5px;
-}
-.alert-toggle-card {
-  min-height: 48px;
-}
 .alert-runway-header {
   min-height: var(--ui-title-height);
   background: var(--ui-section-head);
@@ -5284,8 +5170,7 @@ input[type="range"] {
 .control-window { border-radius: 2px; }
 .page-rail { gap: 2px; }
 .subpage,
-.standalone-manager-page,
-.alerts-view { padding: var(--ui-page-padding); }
+.standalone-manager-page { padding: var(--ui-page-padding); }
 .split-layout,
 .aviso-geometry-layout,
 .aviso-text-layout,
@@ -5460,15 +5345,12 @@ select:disabled {
 }
 .compact-apply-scope select { width: 100%; }
 
-/* Colors: a single Color card, no extra box around its channel sliders. */
+/* Colors: the outer detail panel is the only container. */
 .color-detail-scroll {
-  padding: 0;
+  padding: 7px;
   gap: 0;
 }
-.color-editor-card {
-  margin-top: 5px;
-  padding-bottom: 7px;
-}
+.color-editor-body { min-width: 0; }
 .color-picker-workbench { gap: 6px; }
 .color-channel-sliders {
   margin-top: 7px;
@@ -5478,8 +5360,6 @@ select:disabled {
   border-radius: 0;
   background: transparent;
 }
-.color-advanced { margin: 5px 6px; }
-
 /* Icons: the two parameter groups are siblings separated by one divider,
    not cards inside another card. */
 .icon-settings-grid {
@@ -5507,8 +5387,7 @@ select:disabled {
 }
 .conditions-group,
 .output-group { margin-top: 5px; }
-.profile-main-fields,
-.profile-filter-grid { gap: 5px 6px; }
+.profile-main-fields { gap: 5px 6px; }
 
 /* AVISO detail cards follow the same hierarchy as every other editor. */
 .aviso-editor-scroll { padding: 0 0 5px; }
@@ -5605,15 +5484,11 @@ select:disabled {
 .settings-watch-row { margin-top: 7px !important; }
 
 /* Alert layouts use the same card header and control dimensions. */
-.alert-global-box,
 .alert-types-box,
-.alerts-timing-layout .compact-group,
-.alerts-appearance-grid .compact-group {
+.alerts-timing-box,
+.alerts-runways-box {
   margin: 0;
 }
-.alerts-active-layout,
-.alerts-timing-layout,
-.alerts-appearance-grid { gap: 4px; }
 .legend-tools button {
   min-height: 18px;
   height: 18px;
@@ -5911,60 +5786,6 @@ html.host-mode .control-window.hidden {
   height: 20px;
 }
 
-/* Mode squawk chips ------------------------------------------------------- */
-.mode-squawk-field {
-  min-width: 0;
-}
-.mode-squawk-editor {
-  min-height: var(--ui-control-height);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px 38px;
-  gap: 3px;
-  align-items: center;
-}
-.mode-squawk-chips {
-  min-width: 0;
-  min-height: var(--ui-control-height);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  align-items: center;
-  padding: 2px 3px;
-  border: 1px solid var(--ui-border-inner);
-  border-radius: var(--ui-radius-control);
-  background: #1d272a;
-}
-.mode-squawk-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  min-height: 18px;
-  padding-left: 5px;
-  border: 1px solid #43585e;
-  border-radius: 9px;
-  background: #32444a;
-  color: #d7e3e6;
-  font: 8px/1 var(--mono);
-}
-.mode-squawk-chip button {
-  width: 17px;
-  height: 17px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #a8b8bd;
-}
-.mode-squawk-chip button:hover {
-  background: #4b5f65;
-  color: #fff;
-}
-.mode-squawk-empty {
-  padding-inline: 3px;
-  color: var(--faint);
-  font-size: 8px;
-}
-
 /* Group list is metadata-only; visibility remains a runtime-rail action. */
 .aviso-group-row {
   grid-template-columns: minmax(0, 1fr) 42px;
@@ -6201,14 +6022,9 @@ html.host-mode .control-window.hidden {
   background: var(--ui-button-hover);
 }
 
-.page-rail .rail-button.active,
-.page-rail .rail-save-button:not(:disabled) {
+.page-rail .rail-button.active {
   background: var(--ui-accent);
   color: var(--ui-accent-text);
-}
-
-.page-rail .rail-save-button:not(:disabled):hover {
-  background: var(--ui-accent-hover);
 }
 
 /* Top-level panels and their headers. */
@@ -6678,6 +6494,10 @@ textarea:disabled {
 .workspace {
   grid-template-rows: auto minmax(0, 1fr);
 }
+
+.workspace > .persistent-status { grid-row: 1; }
+.workspace > .page-stack { grid-row: 2; }
+
 .persistent-status {
   min-height: 27px;
   display: grid;
@@ -6739,8 +6559,7 @@ textarea:disabled {
   min-width: 0;
 }
 
-/* Editors write through to the staged configuration, so only the global rail
-   Save action needs a persistence affordance. Reclaim the former footer rows. */
+/* Editors persist automatically, so the old footer action rows stay reclaimed. */
 .detail-panel,
 .mode-detail-panel,
 .profile-detail-panel,
@@ -6754,22 +6573,144 @@ textarea:disabled {
   grid-template-rows: minmax(178px, 1fr) auto;
 }
 
-.page.alerts-page {
-  grid-template-rows: 28px minmax(0, 1fr);
-}
-
 .page.settings-page {
   grid-template-rows: minmax(0, 1fr);
 }
 
-/* Text scope remains useful, but it is a scope selector rather than an Apply
-   bar. Give the single control the full footer width. */
-.aviso-text-editor {
-  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr) var(--ui-actionbar-height);
+/* Text mirrors Geometry: a searchable style tree drives one group-level
+   editor. Individual label strings are intentionally absent. */
+.aviso-view-stack {
+  display: grid;
+  min-height: 0;
 }
 
-.aviso-text-actions {
-  grid-template-columns: minmax(0, 1fr);
+.aviso-view-stack > .aviso-view {
+  grid-area: 1 / 1;
+  height: auto;
+}
+
+.aviso-text-editor {
+  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr);
+}
+
+.aviso-text-style-panel {
+  grid-template-rows: var(--ui-panel-title-height) 30px minmax(0, 1fr);
+}
+
+.aviso-text-layout > .panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.aviso-style-list-panel .aviso-style-tree {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.aviso-style-list-panel .aviso-style-box {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.aviso-text-style-panel .aviso-text-style-row {
+  min-height: 28px;
+  grid-template-columns: 12px 15px minmax(0, 1fr) max-content;
+  gap: 3px;
+  padding-inline: 4px;
+}
+
+.aviso-text-style-row .aviso-style-copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.aviso-text-style-row .aviso-style-count {
+  min-width: 22px;
+  text-align: right;
+}
+
+.aviso-flat-style-editor .aviso-wide-check {
+  display: flex;
+  color: var(--ui-text, #c8d4d7);
+}
+
+.aviso-text-editor-scroll {
+  min-height: 0;
+  display: block;
+  padding: 0;
+  overflow: auto;
+}
+
+.aviso-geometry-editor-scroll {
+  padding: 0;
+}
+
+.aviso-flat-style-editor {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  padding: 7px;
+}
+
+.aviso-flat-style-editor > .aviso-wide-check {
+  margin: 0 0 6px;
+}
+
+.aviso-flat-style-editor > .aviso-style-form {
+  padding: 0;
+}
+
+.aviso-geometry-properties > .advanced-disclosure {
+  margin-top: 8px;
+}
+
+.aviso-flat-style-editor .aviso-wide-check input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  min-height: 13px;
+  padding: 0;
+}
+
+.aviso-toolbar .aviso-subtabs button {
+  box-sizing: border-box;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  flex: 0 0 112px;
+}
+
+@media (max-width: 700px) {
+  .aviso-toolbar .aviso-subtabs button {
+    width: 88px;
+    min-width: 88px;
+    max-width: 88px;
+    flex-basis: 88px;
+  }
+}
+
+/* Every color channel remains draggable and also has a normal text field for
+   precise entry and copy/paste. The internal JSON path is no longer exposed. */
+.color-editor-body > .color-hex-field {
+  margin: 7px 0 0;
+}
+
+.color-channel-value {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  min-height: 20px;
+  padding: 1px 3px;
+  text-align: right;
+  font: 9px/1 var(--mono);
 }
 
 /* General settings -------------------------------------------------------- */
@@ -6955,6 +6896,19 @@ textarea:disabled {
 .settings-page .display-group > .check-field {
   align-self: center;
   margin: 0 2px 1px 0;
+}
+
+.settings-page .display-group > .aviso-palette-field {
+  grid-column: 1 / -1;
+}
+
+.settings-page .aviso-palette-control {
+  display: flex;
+  width: 100%;
+}
+
+.settings-page .aviso-palette-control button {
+  flex: 1 1 50%;
 }
 
 .settings-page .datalink-card {

@@ -141,7 +141,7 @@ The harness builds a disposable loader and test executable, uses isolated instal
 2. Open the Runtime Menu and set the four-letter active airport ICAO.
 3. Choose a profile and display mode.
 4. Open the Control Center from the Runtime Menu or enter `.smr`.
-5. On `Settings`, verify the active Profiles and AVISO paths.
+5. On `Settings`, verify the active Profiles and AVISO paths and select the AVISO Day or Night palette.
 6. On `Alerts`, verify monitored arrival/departure runways and RIMCAS behavior.
 7. Configure the required inset windows and save an airport preset if desired.
 8. Enter `.smr diagnostics` and confirm that the report identifies the expected version and data sources.
@@ -157,12 +157,12 @@ The page rail contains:
 | Page | Purpose |
 | --- | --- |
 | `Display` | Profile colors, target symbols, tags, typography, and structured rules |
-| `AVISO` | Geometry styling and visibility, label editing, style selection, reload, and source loading |
-| `Alerts` | RIMCAS runways, alert types, timers, visibility, and colors |
+| `AVISO` | Grouped geometry and text styling, visibility, reload, and source loading |
+| `Alerts` | One-page RIMCAS runway, alert-type, timing, and visibility configuration |
 | `Groups` | AVISO group creation, ordering, membership, and default visibility |
 | `Modes` | Display-mode filters and requirements |
 | `Profiles` | Profile creation, duplication, naming, deletion, activation, and filters |
-| `Settings` | General data, display, datalink, PDC-reminder, and automatic-update settings |
+| `Settings` | General data, display, AVISO Day/Night palette, datalink, PDC-reminder, and automatic-update settings |
 
 ### Editing and saving
 
@@ -176,9 +176,9 @@ If a Profiles or AVISO file changes outside vSMR while edits are pending, the Co
 
 Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
 
-The Symbols page previews NOVA, Icon, and Triangle at a consistent visual size. NOVA uses a clean white filled primary-return silhouette without decorative center or trailing marks; disabling `Show primary target` removes the filled return from both the preview and radar display.
+The Symbols page previews NOVA, Icon, and Triangle at a consistent visual size. NOVA uses a clean white filled primary-return silhouette without decorative center or trailing marks.
 
-The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. Every slider uses a color-preview rail and matching thumb: hue covers the complete 0–360° spectrum, each RGB rail previews that channel in the current color, and opacity fades from transparent to the selected RGB color over a checkerboard. The adjacent swatch is a preview only; all color changes stay in this editor instead of opening a second system color picker.
+The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. Hex, Hue, Red, Green, Blue, and Opacity also have direct text fields for precise entry and copy/paste. The adjacent swatch is a preview only; all color changes stay in this editor instead of opening a second system color picker.
 
 ### Ground statuses and Line Up
 
@@ -208,6 +208,10 @@ AVISO sources are parsed and validated once, then prewarmed after the airport-sc
 
 vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO documents can contain metadata, reusable styles, object/layer information, labels, and group membership.
 
+Bundled documents declare `metadata.default_color_palette` as `night` and list `night` and `day` in `metadata.color_palettes`. Existing `paint` values remain the complete Night palette. A style can store only its changed Day colors under `paint.palette-overrides.day`, while a feature-level override uses `properties.palette-overrides.day`; every missing Day value inherits the Night value. This keeps both themes in one GeoJSON without duplicating geometry or unchanged colors, and AVISO files without palette metadata remain compatible as Night-only documents.
+
+The Day/Night selector is in the Settings Display group and is saved with the radar screen's ASR state. Saving the setting invalidates the existing AVISO rasters and switches the main view and AVISO inset together without reparsing the source document. Geometry and Text editor swatches and color fields follow the selected palette: Night edits update base paint, while Day edits update `palette-overrides.day`. Visibility, opacity, width, typography, halo width, and zoom remain common to both palettes.
+
 The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna_fixed.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. The earlier `LFPG_Dyna.geojson` preview and legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
 
 The Control Center can:
@@ -215,11 +219,11 @@ The Control Center can:
 - load an AVISO or Profiles file from the computer
 - download a supported file from `github.com` or `raw.githubusercontent.com`
 - reload the active source
-- edit AVISO geometry styles and visibility, label text and styles
+- edit AVISO geometry styles, grouped label styles, and visibility
 - define groups and assign features to them, with create, duplicate, and delete actions reflected in the list immediately
 - restore validated bundled defaults or `.bak` profile data
 
-A reusable entry in the document's `styles` catalog supplies the default paint for every feature that references its `style_id`. Paint stored directly on a feature is a per-object override and takes precedence in the main radar and AVISO inset. Consequently, editing one selected label can override its text color, font, size, halo, or zoom without changing every other label in the shared style; `Current text group` and `All AVISO text` intentionally edit shared catalog styles. AVISO editor values use the renderer's supported ranges: text size 6–32, halo width 0–6, and line/outline width 0.25–8.
+A reusable entry in the document's `styles` catalog supplies the default paint for every feature that references its `style_id`. Paint stored directly on a feature is a per-object override and takes precedence in the main radar and AVISO inset. The AVISO Text page intentionally exposes only grouped text styles, mirroring Geometry: select one or more groups to change their visibility, font, size, color, halo, or zoom. Individual label strings are displayed from the source data but are not editable in the Control Center. AVISO editor values use the renderer's supported ranges: text size 6–32, halo width 0–6, and line/outline width 0.25–8.
 
 ### LFPG dynamic frequency ownership
 
@@ -323,7 +327,7 @@ The compatibility patch is a modification of the GPL-3.0-licensed official RDF p
 
 ## RIMCAS
 
-RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The Control Center `Alerts > RIMCAS runways` page controls vSMR's monitored arrival/departure runway pairs and closed-runway flags, plus Normal/LVP visibility, timers, thresholds, and colors. Every checkbox change enters the shared draft and is persisted and applied by the global `Save`; an explicitly empty runway list remains empty after reload.
+RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The single Control Center `Alerts` page controls monitored arrival/departure runway pairs, closed-runway flags, active alert types, Normal/LVP visibility, timers, and thresholds. RIMCAS colors are edited on `Display > Colors`. RIMCAS processing, label-only alert presentation, and red emergency symbols are always active and are no longer profile options. Every change enters the shared draft and is persisted and applied by the global `Save`; an explicitly empty runway list remains empty after reload.
 
 These RIMCAS choices are separate from EuroScope's `Active Airports/Runways` dialog. EuroScope remains authoritative for sector airport/runway activity because its plug-in API exposes that state read-only. After that dialog is accepted with `OK`, vSMR now reloads the selected ARR/DEP activity immediately for conditional sector maps, weather components, the main view, and insets. If EuroScope has exactly one active airport and the current vSMR airport is no longer active, vSMR adopts that unambiguous airport; when multiple airports are active, choose the airport for each surface screen from its Runtime Menu.
 
@@ -542,6 +546,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\normalize_runti
 ```
 
 Maintainers can use `-Mode Write` to normalize imported data before reviewing the resulting diff.
+
+To merge a color-only Day source into the existing Night-based documents, use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\merge_aviso_day_palette.ps1 -DaySource C:\path\to\day-aviso.zip
+```
+
+The importer reads and writes UTF-8 explicitly and stops if feature data, geometry, style catalogs, or non-color paint differ. Run the normalizer afterwards so the airport files remain canonical.
 
 ### Build and package
 

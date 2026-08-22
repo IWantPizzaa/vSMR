@@ -343,33 +343,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		const Color definedBackgroundOnRunwayColor = ToGdiColor(tagPalette.backgroundOnRunway);
 		verboseTargetStep(rtCallsign, "after_color_resolution");
 
-		Color rimcasStageOneColor(255, 160, 90, 30);
-		Color rimcasStageTwoColor(255, 150, 0, 0);
-		bool rimcasLabelOnly = true;
-		if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
-		{
-			const Value& rimcasSection = activeProfile["rimcas"];
-			if (rimcasSection.HasMember("background_color_stage_one") && rimcasSection["background_color_stage_one"].IsObject())
-				rimcasStageOneColor = CurrentConfig->getConfigColor(rimcasSection["background_color_stage_one"]);
-			if (rimcasSection.HasMember("background_color_stage_two") && rimcasSection["background_color_stage_two"].IsObject())
-				rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasSection["background_color_stage_two"]);
-			if (rimcasSection.HasMember("rimcas_label_only") && rimcasSection["rimcas_label_only"].IsBool())
-				rimcasLabelOnly = rimcasSection["rimcas_label_only"].GetBool();
-		}
-
-		auto resolveRimcasBackground = [&](bool includeAlertStage) -> Color
-		{
-			if (includeAlertStage && rimcasStage == CRimcas::StageOne)
-				return rimcasStageOneColor;
-			if (includeAlertStage && rimcasStage == CRimcas::StageTwo)
-				return rimcasStageTwoColor;
-			return sceneTarget.rimcas.onRunway ? definedBackgroundOnRunwayColor : definedBackgroundColor;
-		};
-		Color TagBackgroundColor = resolveRimcasBackground(true);
-
-		// We need to figure out if the tag color changes according to RIMCAS alerts, or not
-		if (rimcasLabelOnly)
-			TagBackgroundColor = resolveRimcasBackground(false);
+		const Color TagBackgroundColor = sceneTarget.rimcas.onRunway
+			? definedBackgroundOnRunwayColor
+			: definedBackgroundColor;
 
 		verboseTargetStep(rtCallsign, "after_background_color");
 

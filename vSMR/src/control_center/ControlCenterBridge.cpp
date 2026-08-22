@@ -2514,6 +2514,7 @@ struct VsmrControlCenterBridge::Impl
 			Owner->GetSmallTargetIconBoostResolutionPreset(),
 			allocator);
 		settings.AddMember("showFps", Owner->ShowFps, allocator);
+		AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 		settings.AddMember("runtimeSync", true, allocator);
 		settings.AddMember("confirmDelete", true, allocator);
 
@@ -2549,16 +2550,6 @@ struct VsmrControlCenterBridge::Impl
 			allocator);
 		settings.AddMember("dataHealth", dataHealth, allocator);
 
-		bool rimcasEnabled = true;
-		if (Owner->CurrentConfig != nullptr)
-		{
-			const rapidjson::Value& profile = Owner->CurrentConfig->getActiveProfile();
-			if (profile.IsObject() &&
-				profile.HasMember("rimcas") &&
-				profile["rimcas"].IsObject())
-				rimcasEnabled = ReadBool(profile["rimcas"], "enabled", true);
-		}
-		settings.AddMember("rimcas", rimcasEnabled, allocator);
 		settings.AddMember(
 			"vacdm",
 			Owner->CurrentConfig != nullptr &&
@@ -3097,8 +3088,8 @@ struct VsmrControlCenterBridge::Impl
 				rollbackLiveState();
 				return false;
 			}
-			// ShowFps remains staged in the editor response below. Unlike profile
-			// data, it is ASR state and is applied only by a successful SaveAll.
+			// ASR display settings remain staged in the editor response below.
+			// Unlike profile data, they are applied only by a successful SaveAll.
 		}
 
 		if (stagedAviso != nullptr)
@@ -3184,6 +3175,8 @@ struct VsmrControlCenterBridge::Impl
 
 		bool hasStagedShowFps = false;
 		bool stagedShowFps = Owner->ShowFps;
+		bool hasStagedAvisoColorPalette = false;
+		std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
 		if (payload->HasMember("settings"))
 		{
 			const rapidjson::Value& settings = (*payload)["settings"];
@@ -3201,6 +3194,22 @@ struct VsmrControlCenterBridge::Impl
 				}
 				hasStagedShowFps = true;
 				stagedShowFps = settings["showFps"].GetBool();
+			}
+			if (settings.HasMember("avisoColorPalette"))
+			{
+				if (!settings["avisoColorPalette"].IsString())
+				{
+					error = "AVISO color palette must be day or night.";
+					return false;
+				}
+				stagedAvisoColorPalette = TrimAscii(settings["avisoColorPalette"].GetString());
+				if (!EqualsNoCase(stagedAvisoColorPalette, "day") &&
+					!EqualsNoCase(stagedAvisoColorPalette, "night"))
+				{
+					error = "AVISO color palette must be day or night.";
+					return false;
+				}
+				hasStagedAvisoColorPalette = true;
 			}
 		}
 		// Revision checks, both file writes, and rollback form one process-wide
@@ -3544,9 +3553,8 @@ struct VsmrControlCenterBridge::Impl
 				avisoBackupRollbackSnapshotPath);
 		}
 
-		// Display settings are staged with the rest of the Control Center draft,
-		// but ShowFps is ASR state rather than profile JSON. Commit it only after
-		// the profiles/AVISO transaction succeeds so a failed Save changes no
+		// Display settings are ASR state rather than profile JSON. Commit them only
+		// after the profiles/AVISO transaction succeeds so a failed Save changes no
 		// live or persisted display state.
 		if (hasStagedShowFps)
 		{
@@ -3556,6 +3564,8 @@ struct VsmrControlCenterBridge::Impl
 				"Show FPS counter",
 				Owner->ShowFps ? "1" : "0");
 		}
+		if (hasStagedAvisoColorPalette)
+			Owner->SetAvisoColorPalette(stagedAvisoColorPalette, true);
 
 		bool reloadFailed = false;
 		bool avisoReloadFailed = false;
@@ -3566,6 +3576,12 @@ struct VsmrControlCenterBridge::Impl
 			{
 				continue;
 			}
+
+			// The Control Center belongs to one RadarScreen, but AVISO can be
+			// visible on another open screen (or one of its insets). Keep the
+			// display palette synchronized for every screen using this config.
+			if (hasStagedAvisoColorPalette && radar != Owner)
+				radar->SetAvisoColorPalette(stagedAvisoColorPalette, false);
 
 			if (!radar->ReloadConfig())
 				reloadFailed = true;
@@ -3927,6 +3943,16 @@ struct VsmrControlCenterBridge::Impl
 				"ShowFps",
 				"Show FPS counter",
 				Owner->ShowFps ? "1" : "0");
+		}
+
+		if (payload->HasMember("avisoColorPalette"))
+		{
+			if (!(*payload)["avisoColorPalette"].IsString() ||
+				!Owner->SetAvisoColorPalette((*payload)["avisoColorPalette"].GetString(), true))
+			{
+				error = "AVISO color palette must be day or night.";
+				return false;
+			}
 		}
 
 		if (Owner->CurrentConfig != nullptr &&

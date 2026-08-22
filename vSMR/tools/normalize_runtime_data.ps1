@@ -187,6 +187,20 @@ function Normalize-Profiles {
                 @($property.Value.PSObject.Properties).Count -eq 0) {
                 continue
             }
+            if ($property.Name -eq "rimcas" -and $property.Value -is [pscustomobject]) {
+                $rimcas = ConvertTo-CanonicalValue $property.Value
+                foreach ($obsoleteOption in @("enabled", "rimcas_label_only", "use_red_symbol_for_emergencies")) {
+                    $rimcas.PSObject.Properties.Remove($obsoleteOption)
+                }
+                $normalized[$property.Name] = $rimcas
+                continue
+            }
+            if ($property.Name -eq "approach_insets" -and $property.Value -is [pscustomobject]) {
+                $approachInsets = ConvertTo-CanonicalValue $property.Value
+                $approachInsets.PSObject.Properties.Remove("background_color")
+                $normalized[$property.Name] = $approachInsets
+                continue
+            }
             $normalized[$property.Name] = ConvertTo-CanonicalValue $property.Value
         }
 
@@ -358,7 +372,8 @@ $PaintKeys = @(
     "fill", "fill-opacity", "stroke", "stroke-opacity", "stroke-width",
     "marker-color", "marker-size",
     "text-anchor", "text-color", "text-font", "text-halo-color",
-    "text-halo-width", "text-size", "zoomLevel", "zoom_level"
+    "text-halo-width", "text-size", "zoomLevel", "zoom_level",
+    "palette-overrides"
 )
 
 function New-NormalizedPaint {
@@ -367,7 +382,12 @@ function New-NormalizedPaint {
     $paint = [ordered]@{}
     foreach ($key in $PaintKeys) {
         if (Test-JsonProperty $Source $key) {
-            $paint[$key] = $Source.$key
+            $paint[$key] = if ($key -eq "palette-overrides") {
+                ConvertTo-CanonicalValue $Source.$key
+            }
+            else {
+                $Source.$key
+            }
         }
     }
     return [pscustomobject]$paint
@@ -408,6 +428,98 @@ function New-NormalizedStyle {
         object_type = $objectType
         paint = New-NormalizedPaint $paintSource
     }
+}
+
+function Get-AvisoLabelZoomLevel {
+    param(
+        [string]$StyleId,
+        [System.Collections.IEnumerable]$Features
+    )
+
+    $normalizedStyleId = $StyleId.ToLowerInvariant()
+
+    # Keep the operational hierarchy stable across airports. Wide-area
+    # annotations must remain available while viewing their associated
+    # airspace; progressively denser surface detail appears closer in.
+    if ($normalizedStyleId -match "(^|\.)(amsr|tma)(\.|$)") { return 0 }
+    if ($normalizedStyleId -match "vfr[._-]?points?") { return 1 }
+    if ($normalizedStyleId -match "circuit") { return 6 }
+    if ($normalizedStyleId -match "active[._-]?configuration") { return 6 }
+    if ($normalizedStyleId -match "frequenc|terminal") { return 7 }
+    if ($normalizedStyleId -match "tora|engine[._-]?test") { return 9 }
+    if ($normalizedStyleId -match "taxiway") { return 9 }
+    if ($normalizedStyleId -match "gate|stand") { return 12 }
+
+    $labelFeatures = @(
+        $Features | Where-Object {
+            $_.geometry.type -eq "Point" -and
+            [string]$_.properties.style_id -eq $StyleId
+        }
+    )
+    if ($labelFeatures.Count -le 1) {
+        return 5
+    }
+
+    # Imported airport files often use one generic style for a mixture of
+    # stands, taxiways and building names. Derive a conservative threshold
+    # from the tenth-percentile nearest-neighbour spacing, adjusted for label
+    # length. This reflects local crowding instead of the airport's total
+    # label count or geographic extent (both are frequently misleading).
+    $nearestDistancesMetres = New-Object System.Collections.ArrayList
+    foreach ($feature in $labelFeatures) {
+        $coordinates = $feature.geometry.coordinates
+        $longitude = [double]$coordinates[0]
+        $latitude = [double]$coordinates[1]
+        $nearest = [double]::PositiveInfinity
+
+        foreach ($other in $labelFeatures) {
+            if ([object]::ReferenceEquals($feature, $other)) {
+                continue
+            }
+            $otherCoordinates = $other.geometry.coordinates
+            $otherLongitude = [double]$otherCoordinates[0]
+            $otherLatitude = [double]$otherCoordinates[1]
+            $averageLatitudeRadians = (($latitude + $otherLatitude) * 0.5) * [Math]::PI / 180.0
+            $dx = ($longitude - $otherLongitude) * 111000.0 * [Math]::Cos($averageLatitudeRadians)
+            $dy = ($latitude - $otherLatitude) * 111000.0
+            $distance = [Math]::Sqrt(($dx * $dx) + ($dy * $dy))
+            if ($distance -lt $nearest) {
+                $nearest = $distance
+            }
+        }
+
+        if (-not [double]::IsInfinity($nearest)) {
+            [void]$nearestDistancesMetres.Add($nearest)
+        }
+    }
+
+    if ($nearestDistancesMetres.Count -eq 0) {
+        return 5
+    }
+
+    $sortedDistances = @($nearestDistancesMetres.ToArray() | Sort-Object)
+    $percentileIndex = [Math]::Floor(($sortedDistances.Count - 1) * 0.10)
+    $spacingMetres = [double]$sortedDistances[$percentileIndex]
+    $averageCharacters = [double](
+        $labelFeatures |
+            ForEach-Object { ([string]$_.properties.'text-field').Length } |
+            Measure-Object -Average
+    ).Average
+    $spacingPerCharacter = $spacingMetres / [Math]::Max($averageCharacters, 2.0)
+
+    if ($spacingPerCharacter -le 6.0) { return 12 }
+    if ($spacingPerCharacter -le 8.0) { return 11 }
+    if ($spacingPerCharacter -le 11.0) { return 10 }
+    if ($spacingPerCharacter -le 16.0) { return 9 }
+    if ($spacingPerCharacter -le 24.0) { return 8 }
+    if ($spacingPerCharacter -le 36.0) { return 7 }
+    if ($spacingPerCharacter -le 55.0) { return 6 }
+    if ($spacingPerCharacter -le 85.0) { return 5 }
+    if ($spacingPerCharacter -le 130.0) { return 4 }
+    if ($spacingPerCharacter -le 200.0) { return 3 }
+    if ($spacingPerCharacter -le 350.0) { return 2 }
+    if ($spacingPerCharacter -le 600.0) { return 1 }
+    return 0
 }
 
 function ConvertTo-SafeIdPart {
@@ -737,7 +849,12 @@ function Normalize-AvisoFile {
                     continue
                 }
             }
-            $properties[$paintKey] = $sourceProperties.$paintKey
+            $properties[$paintKey] = if ($paintKey -eq "palette-overrides") {
+                ConvertTo-CanonicalValue $sourceProperties.$paintKey
+            }
+            else {
+                $sourceProperties.$paintKey
+            }
         }
 
         $featureId = Get-FirstStringProperty $feature @("id")
@@ -774,11 +891,24 @@ function Normalize-AvisoFile {
             throw "$($File.Name) references missing style '$styleId'."
         }
         $style = $styles[$styleId]
+        $normalizedPaint = New-NormalizedPaint $style.paint
+        if ([string]$style.object_type -eq "Label") {
+            $labelZoomLevel = Get-AvisoLabelZoomLevel $styleId $normalizedFeatures
+            if (Test-JsonProperty $normalizedPaint "zoomLevel") {
+                $normalizedPaint.zoomLevel = $labelZoomLevel
+            }
+            else {
+                $normalizedPaint | Add-Member -MemberType NoteProperty -Name "zoomLevel" -Value $labelZoomLevel
+            }
+            # Re-run the canonical paint order so zoomLevel remains before the
+            # optional palette-overrides object.
+            $normalizedPaint = New-NormalizedPaint $normalizedPaint
+        }
         $normalizedStyles[$styleId] = [pscustomobject][ordered]@{
             name = [string]$style.name
             layer = [string]$style.layer
             object_type = [string]$style.object_type
-            paint = New-NormalizedPaint $style.paint
+            paint = $normalizedPaint
             feature_count = $styleCounts[$styleId]
         }
     }
@@ -794,6 +924,8 @@ function Normalize-AvisoFile {
         airport = $airport
         coordinate_reference_system = "WGS84"
         coordinate_order = "longitude, latitude"
+        default_color_palette = "night"
+        color_palettes = @("night", "day")
         feature_count = $normalizedFeatures.Count
         style_count = $normalizedStyles.Count
         layer_counts = [pscustomobject]$normalizedLayerCounts
@@ -820,6 +952,52 @@ function Normalize-AvisoFile {
     Set-NormalizedFile $File.FullName $content "$($File.Name) ($($normalizedFeatures.Count) features, $($normalizedStyles.Count) styles)"
 }
 
+function Normalize-AvisoSupplementalFile {
+    param([System.IO.FileInfo]$File, $BaseDocument)
+
+    $document = Read-JsonFile $File.FullName
+    if (-not ($document -is [pscustomobject]) -or
+        [string](Get-JsonProperty $document "type" "") -ne "FeatureCollection" -or
+        -not (Test-JsonProperty $document "styles") -or
+        -not (Test-JsonProperty $document "features")) {
+        throw "$($File.Name) must be a GeoJSON FeatureCollection."
+    }
+
+    foreach ($styleProperty in @($document.styles.PSObject.Properties)) {
+        $style = $styleProperty.Value
+        if ([string]$style.object_type -ne "Label") {
+            continue
+        }
+
+        $zoomLevel = $null
+        $baseStyleProperty = if ($null -ne $BaseDocument) {
+            $BaseDocument.styles.PSObject.Properties[$styleProperty.Name]
+        }
+        else {
+            $null
+        }
+        if ($null -ne $baseStyleProperty -and
+            (Test-JsonProperty $baseStyleProperty.Value.paint "zoomLevel")) {
+            $zoomLevel = [int]$baseStyleProperty.Value.paint.zoomLevel
+        }
+        else {
+            $zoomLevel = Get-AvisoLabelZoomLevel $styleProperty.Name $document.features
+        }
+
+        $paint = New-NormalizedPaint $style.paint
+        if (Test-JsonProperty $paint "zoomLevel") {
+            $paint.zoomLevel = $zoomLevel
+        }
+        else {
+            $paint | Add-Member -MemberType NoteProperty -Name "zoomLevel" -Value $zoomLevel
+        }
+        $style.paint = New-NormalizedPaint $paint
+    }
+
+    $content = ConvertTo-CompactJson $document
+    Set-NormalizedFile $File.FullName $content "$($File.Name) supplemental label visibility"
+}
+
 $resolvedDataDirectory = [System.IO.Path]::GetFullPath($DataDirectory)
 if (-not (Test-Path -LiteralPath $resolvedDataDirectory -PathType Container)) {
     throw "Data directory not found: $resolvedDataDirectory"
@@ -839,6 +1017,23 @@ if ($avisoFiles.Count -eq 0) {
 }
 foreach ($file in $avisoFiles) {
     Normalize-AvisoFile $file
+}
+
+$supplementalAvisoFiles = @(
+    Get-ChildItem -File -LiteralPath $avisoDirectory |
+        Where-Object { $_.Name -match "^[A-Za-z0-9]{4}_Dyna(?:_fixed)?\.geojson$" } |
+        Sort-Object Name
+)
+foreach ($file in $supplementalAvisoFiles) {
+    $airport = ([System.IO.Path]::GetFileNameWithoutExtension($file.Name) -split "_")[0].ToUpperInvariant()
+    $basePath = Join-Path $avisoDirectory "$airport.geojson"
+    $baseDocument = if (Test-Path -LiteralPath $basePath -PathType Leaf) {
+        Read-JsonFile $basePath
+    }
+    else {
+        $null
+    }
+    Normalize-AvisoSupplementalFile $file $baseDocument
 }
 
 Write-Host "Runtime data $($Mode.ToLowerInvariant()) completed successfully."

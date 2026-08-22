@@ -132,6 +132,8 @@ public:
 		AvisoFrequencyOwnershipMetadata frequencyOwnership;
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
+		Gdiplus::Color dayFillColor = Gdiplus::Color(217, 53, 66, 82);
+		Gdiplus::Color dayStrokeColor = Gdiplus::Color(191, 140, 152, 170);
 		float strokeWidth = 1.0f;
 		int minimumZoomLevel = 0;
 		double minLongitude = 0.0;
@@ -152,6 +154,8 @@ public:
 		std::string textAnchor = "center";
 		Gdiplus::Color textColor = Gdiplus::Color(255, 128, 128, 128);
 		Gdiplus::Color haloColor = Gdiplus::Color(255, 0, 0, 0);
+		Gdiplus::Color dayTextColor = Gdiplus::Color(255, 128, 128, 128);
+		Gdiplus::Color dayHaloColor = Gdiplus::Color(255, 0, 0, 0);
 		float textSize = 12.0f;
 		float haloWidth = 1.0f;
 		double maxMetersPerPixel = 0.0;
@@ -213,6 +217,7 @@ public:
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 		std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
+		bool useDayPalette = false;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
@@ -244,6 +249,7 @@ public:
 
 		unsigned long long requestId = 0;
 		unsigned long long groupGeneration = 0;
+		bool useDayPalette = false;
 		HBITMAP bitmap = nullptr;
 		std::string path;
 		int rasterWidth = 0;
@@ -294,6 +300,7 @@ public:
 	HBITMAP AvisoGeoJsonRasterCache = nullptr;
 	std::string AvisoGeoJsonRasterCachePath;
 	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
+	bool AvisoGeoJsonRasterUseDayPalette = false;
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
 	double AvisoGeoJsonRasterMinLatitude = 0.0;
 	double AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -341,6 +348,7 @@ public:
 	unsigned long long AvisoGeoJsonRenderLatestRequestId = 0;
 	bool AvisoGeoJsonRenderLastRequestValid = false;
 	std::string AvisoGeoJsonRenderLastRequestPath;
+	bool AvisoGeoJsonRenderLastRequestUseDayPalette = false;
 	double AvisoGeoJsonRenderLastRequestMinLongitude = 0.0;
 	double AvisoGeoJsonRenderLastRequestMinLatitude = 0.0;
 	double AvisoGeoJsonRenderLastRequestMaxLongitude = 0.0;
@@ -413,8 +421,6 @@ public:
 	static const int TagDefinitionEditorMaxLines = 4;
 
 	bool isLVP = false;
-	bool RimcasEnabled = true;
-	bool RimcasUseRedEmergencySymbols = true;
 	bool RimcasRunwaysExplicitlyConfigured = false;
 
 	map<string, RECT> TimePopupAreas;
@@ -444,6 +450,9 @@ public:
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
+	bool AvisoUseDayColorPalette = false;
+	COLORREF InactiveSectorBackgroundColor = RGB(10, 26, 38);
+	unsigned long InactiveSectorBackgroundSampleTick = 0;
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;
@@ -716,8 +725,6 @@ public:
 
 	virtual void OnRefresh(HDC hDC, int Phase);
 	std::shared_ptr<const VsmrScene::RadarScene> BuildRadarScene(
-		bool rimcasEnabled,
-		bool useRedEmergencySymbols,
 		bool lowVisibilityProcedures,
 		int rimcasStageTwoSpeedThreshold,
 		double* outRimcasMilliseconds = nullptr);
@@ -755,9 +762,13 @@ public:
 	bool ToggleAvisoGroupVisibility(const std::string& groupId, bool* outVisible = nullptr);
 	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility);
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
+	std::string GetAvisoColorPalette() const;
+	bool SetAvisoColorPalette(const std::string& palette, bool persistToAsr = true);
 	void InvalidateAvisoGroupRendering();
 	void ClearAvisoGeoJsonRasterCache();
 	CRect ResolveMainAvisoRenderArea();
+	COLORREF GetInactiveSectorBackgroundColor() const noexcept;
+	void UpdateInactiveSectorBackgroundColor(HDC hDC, const RECT& radarArea);
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
 	bool IsShutdownRequested() const;

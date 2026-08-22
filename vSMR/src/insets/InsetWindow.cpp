@@ -448,6 +448,16 @@ namespace
 		return frame;
 	}
 
+	void DrawRadarInsetBorder(CDC& dc, AvisoLayoutMode mode, const RECT& areaValue)
+	{
+		CRect frame = InsetFrameRect(mode, areaValue);
+		frame.NormalizeRect();
+		if (frame.IsRectEmpty())
+			return;
+		CBrush borderBrush(RGB(0, 0, 0));
+		dc.FrameRect(frame, &borderBrush);
+	}
+
 	CRect InsetContentRect(AvisoLayoutMode mode, const RECT& areaValue)
 	{
 		CRect content(areaValue);
@@ -920,6 +930,7 @@ struct AvisoViewportState
 			const bool sameRequest =
 				lastRequestValid &&
 				lastRequestPath == request.path &&
+				lastRequestUseDayPalette == request.useDayPalette &&
 				lastRequestGroupGeneration == request.groupGeneration &&
 				std::abs(lastRequestRasterWidth - request.rasterWidth) <= 2 &&
 				std::abs(lastRequestRasterHeight - request.rasterHeight) <= 2 &&
@@ -948,6 +959,7 @@ struct AvisoViewportState
 			cancellationToken->store(request.requestId, std::memory_order_release);
 			lastRequestValid = true;
 			lastRequestPath = request.path;
+			lastRequestUseDayPalette = request.useDayPalette;
 			lastRequestMinLongitude = request.displayMinLongitude;
 			lastRequestMinLatitude = request.displayMinLatitude;
 			lastRequestMaxLongitude = request.displayMaxLongitude;
@@ -1214,6 +1226,7 @@ struct AvisoViewportState
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
 	bool lastRequestValid = false;
 	string lastRequestPath;
+	bool lastRequestUseDayPalette = false;
 	double lastRequestMinLongitude = 0.0;
 	double lastRequestMinLatitude = 0.0;
 	double lastRequestMaxLongitude = 0.0;
@@ -2760,7 +2773,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		renderWindow = ::GetActiveWindow();
 	UpdateAvisoScreenArea(renderWindow);
 
-	dc.FillSolidRect(viewportRect, RGB(10, 26, 38));
+	dc.FillSolidRect(viewportRect, radar_screen->GetInactiveSectorBackgroundColor());
 	radar_screen->AddScreenObject(m_Id, "window", viewportRect, false, "");
 	radar_screen->AddScreenObject(m_Id, "viewport", viewportRect, false, "");
 
@@ -2790,6 +2803,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			mouseLocation,
 			true,
 			&m_LastChromeRenderMilliseconds);
+		DrawRadarInsetBorder(dc, m_AvisoLayoutMode, m_Area);
 	};
 
 	const std::string airport = radar_screen->getActiveAirport();
@@ -3338,6 +3352,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.labels = labelSnapshot;
 			request.groupVisibility = groupVisibility;
 			request.frequencyOwnership = frequencyOwnership;
+			request.useDayPalette = radar_screen->AvisoUseDayColorPalette;
 			request.rasterWidth = max(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
 			request.rasterHeight = max(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;
@@ -3445,12 +3460,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				return nullptr;
 			return &activeProfile[key];
 		};
-		auto getSectionBool = [&](const Value* section, const char* key, bool fallback) -> bool
-		{
-			if (section != nullptr && section->HasMember(key) && (*section)[key].IsBool())
-				return (*section)[key].GetBool();
-			return fallback;
-		};
 		auto getSectionColor = [&](const Value* section, const char* key, const Color& fallback) -> Color
 		{
 			if (radar_screen->CurrentConfig != nullptr &&
@@ -3463,7 +3472,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			return fallback;
 		};
 		const Value* rimcasSection = getProfileObjectSection("rimcas");
-		const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
 		const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 		const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
 		const VsmrScene::RadarScene* targetScene = radar_screen->GetCurrentRadarScene();
@@ -3903,19 +3911,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			const CRimcas::RimcasAlertTypes rimcasStage =
 				static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
-			auto resolveRimcasBackground = [&](bool includeAlertStage) -> Color
-			{
-				if (includeAlertStage && rimcasStage == CRimcas::StageOne)
-					return rimcasStageOneColor;
-				if (includeAlertStage && rimcasStage == CRimcas::StageTwo)
-					return rimcasStageTwoColor;
-				return sceneTarget.rimcas.onRunway ? definedBackgroundOnRunwayColor : definedBackgroundColor;
-			};
-			Color tagBackgroundColor = resolveRimcasBackground(true);
-			if (rimcasLabelOnlySetting)
-			{
-				tagBackgroundColor = resolveRimcasBackground(false);
-			}
+			const Color tagBackgroundColor = sceneTarget.rimcas.onRunway
+				? definedBackgroundOnRunwayColor
+				: definedBackgroundColor;
 			CRect tagBackgroundRect(
 				tagCenter.x - (tagWidth / 2),
 				tagCenter.y - (tagHeight / 2),
@@ -3996,7 +3994,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
 			}
 
-			if (rimcasLabelOnlySetting)
 			{
 				const Color aliceBlueColor(255, 240, 248, 255);
 				const Color rimcasLabelColor = rimcasStage == CRimcas::StageOne
@@ -5130,12 +5127,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			return (*section)[key].GetDouble();
 		return fallback;
 	};
-	const auto getSectionBool = [&](const Value* section, const char* key, bool fallback) -> bool
-	{
-		if (section != nullptr && section->HasMember(key) && (*section)[key].IsBool())
-			return (*section)[key].GetBool();
-		return fallback;
-	};
 	const auto getSectionColorRef = [&](const Value* section, const char* key, const COLORREF fallback) -> COLORREF
 	{
 		if (section != nullptr && section->HasMember(key) && (*section)[key].IsObject())
@@ -5153,13 +5144,11 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	const Value* filterSection = getProfileObjectSection("filters");
 	const Value* rimcasSection = getProfileObjectSection("rimcas");
 
-	const COLORREF qBackgroundColor = getSectionColorRef(srwInsetSection, "background_color", RGB(30, 30, 30));
 	const COLORREF srwRunwayColor = getSectionColorRef(srwInsetSection, "runway_color", RGB(255, 255, 255));
 	const COLORREF srwExtendedLineColor = getSectionColorRef(srwInsetSection, "extended_lines_color", RGB(180, 180, 180));
 	const double srwExtendedLineLengthNm = max(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
 	const int srwExtendedLineTickSpacingNm = max(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
 	const int radarRangeNm = max(1, getSectionInt(filterSection, "radar_range_nm", 999));
-	const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
 	const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
@@ -5168,7 +5157,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	windowAreaCRect.NormalizeRect();
 
 	// We create the radar
-	dc.FillSolidRect(windowAreaCRect, qBackgroundColor);
+	dc.FillSolidRect(windowAreaCRect, radar_screen->GetInactiveSectorBackgroundColor());
 	radar_screen->AddScreenObject(m_Id, "window", windowAreaCRect, false, "");
 
 	// Keep every SRW drawing primitive and hit target inside the usable content
@@ -5727,25 +5716,13 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		// Pfiou, done with that, now we can draw the actual rectangle.
 
-		// We need to figure out if the tag color changes according to RIMCAS alerts, or not
-		bool rimcasLabelOnly = rimcasLabelOnlySetting;
-
 		const VsmrScene::TagPalette& tagPalette = sceneTarget.tag.normalPalette;
 		const Color definedBackgroundColor = SceneColorToGdi(tagPalette.background);
 		const Color definedBackgroundOnRunwayColor = SceneColorToGdi(tagPalette.backgroundOnRunway);
 
-		auto resolveRimcasBackground = [&](bool includeAlertStage) -> Color
-		{
-			if (includeAlertStage && rimcasStage == CRimcas::StageOne)
-				return rimcasStageOneColor;
-			if (includeAlertStage && rimcasStage == CRimcas::StageTwo)
-				return rimcasStageTwoColor;
-			return sceneTarget.rimcas.onRunway ? definedBackgroundOnRunwayColor : definedBackgroundColor;
-		};
-		Color TagBackgroundColor = resolveRimcasBackground(true);
-
-		if (rimcasLabelOnly)
-			TagBackgroundColor = resolveRimcasBackground(false);
+		Color TagBackgroundColor = sceneTarget.rimcas.onRunway
+			? definedBackgroundOnRunwayColor
+			: definedBackgroundColor;
 
 		CRect TagBackgroundRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
 		const int padding = 1;
@@ -5852,10 +5829,10 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				gdi->DrawLine(&leaderPen, PointF(Gdiplus::REAL(RtPoint.x), Gdiplus::REAL(RtPoint.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
 			}
 
-			// If we use a RIMCAS label only, we display it, and adapt the rectangle
+			// RIMCAS always uses a separate alert label above the normal tag.
 			CRect oldCrectSave = TagBackgroundRect;
 
-			if (rimcasLabelOnly) {
+			{
 				const Color RimcasLabelColor = rimcasStage == CRimcas::StageOne
 					? rimcasStageOneColor
 					: (rimcasStage == CRimcas::StageTwo ? rimcasStageTwoColor : aliceBlueColor);
@@ -5936,6 +5913,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		mouseLocation,
 		true,
 		&m_LastChromeRenderMilliseconds);
+	DrawRadarInsetBorder(dc, m_AvisoLayoutMode, m_Area);
 
 	dc.Detach();
 }

@@ -1134,6 +1134,10 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
 		ShowFps = atoi(p_value) != 0;
 
+	AvisoUseDayColorPalette = false;
+	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
+		SetAvisoColorPalette(p_value, false);
+
 	LoadRuntimeMenuPositionFromAsr();
 
 	ResetAllInsetWindowStates(false);
@@ -1182,6 +1186,10 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 
 	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
+	SaveDataToAsr(
+		"AvisoColorPalette",
+		"AVISO day/night color palette",
+		GetAvisoColorPalette().c_str());
 
 	SaveRuntimeMenuPositionToAsr();
 	if (!InitialInsetStateRestorePending)
