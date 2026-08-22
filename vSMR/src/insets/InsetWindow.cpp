@@ -40,6 +40,30 @@ namespace
 	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
 	using ResizeRegion = CInsetWindow::ResizeRegion;
 
+	void FillTagBackground(
+		Gdiplus::Graphics* graphics,
+		Gdiplus::SolidBrush& brush,
+		CRect backgroundRect,
+		bool roundedCorners)
+	{
+		if (!roundedCorners)
+		{
+			graphics->FillRectangle(&brush, CopyRect(backgroundRect));
+			return;
+		}
+
+		const Gdiplus::Rect roundedRect = CopyRect(backgroundRect);
+		Gdiplus::GraphicsPath roundedPath;
+		const int radius = 4;
+		const int diameter = radius * 2;
+		roundedPath.AddArc(roundedRect.X, roundedRect.Y, diameter, diameter, 180, 90);
+		roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.Y, diameter, diameter, 270, 90);
+		roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.GetBottom() - diameter, diameter, diameter, 0, 90);
+		roundedPath.AddArc(roundedRect.X, roundedRect.GetBottom() - diameter, diameter, diameter, 90, 90);
+		roundedPath.CloseFigure();
+		graphics->FillPath(&brush, &roundedPath);
+	}
+
 	double ClampAvisoLatitude(double latitude)
 	{
 		return std::clamp(latitude, -85.0, 85.0);
@@ -3745,6 +3769,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
 		int tagBlankWidth = 2;
 		int tagOneLineHeight = 10;
+		const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 		Gdiplus::StringFormat defaultStringFormat;
 		if (tagRegularFont != nullptr)
 		{
@@ -3907,17 +3932,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			if (!clippedTagRect.IsRectEmpty())
 				radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTagRect, true, bottomLine.c_str());
 
-			Gdiplus::GraphicsPath roundedPath;
-			const int radius = 4;
-			const int diameter = radius * 2;
-			Rect roundedRect = CopyRect(tagBackgroundRect);
-			roundedPath.AddArc(roundedRect.X, roundedRect.Y, diameter, diameter, 180, 90);
-			roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.Y, diameter, diameter, 270, 90);
-			roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.GetBottom() - diameter, diameter, diameter, 0, 90);
-			roundedPath.AddArc(roundedRect.X, roundedRect.GetBottom() - diameter, diameter, diameter, 90, 90);
-			roundedPath.CloseFigure();
 			SolidBrush tagBackgroundBrush(tagBackgroundColor);
-			gdi->FillPath(&tagBackgroundBrush, &roundedPath);
+			FillTagBackground(gdi, tagBackgroundBrush, tagBackgroundRect, roundedTagCornersEnabled);
 
 			const int textLeft = tagBackgroundRect.left + tagPadding;
 			const int textTop = tagBackgroundRect.top + tagPadding;
@@ -5144,6 +5160,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	const int srwExtendedLineTickSpacingNm = max(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
 	const int radarRangeNm = max(1, getSectionInt(filterSection, "radar_range_nm", 999));
 	const bool rimcasLabelOnlySetting = getSectionBool(rimcasSection, "rimcas_label_only", true);
+	const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
 
@@ -5756,22 +5773,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					TagBackgroundColor.GetB());
 			}
 
-			// Slightly enlarge tag hitbox and draw rounded background.
-			auto MakeRoundedRect = [](GraphicsPath &path, Rect r, int radius) {
-				path.Reset();
-				int d = radius * 2;
-				path.AddArc(r.X, r.Y, d, d, 180, 90);
-				path.AddArc(r.GetRight() - d, r.Y, d, d, 270, 90);
-				path.AddArc(r.GetRight() - d, r.GetBottom() - d, d, d, 0, 90);
-				path.AddArc(r.X, r.GetBottom() - d, d, d, 90, 90);
-				path.CloseFigure();
-			};
-			Rect RoundedRect = CopyRect(TagBackgroundRect);
-			GraphicsPath roundedPath;
-			MakeRoundedRect(roundedPath, RoundedRect, 4);
-
 			SolidBrush TagBackgroundBrush(TagBackgroundColor);
-			gdi->FillPath(&TagBackgroundBrush, &roundedPath);
+			FillTagBackground(gdi, TagBackgroundBrush, TagBackgroundRect, roundedTagCornersEnabled);
 
 			auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
 			{
