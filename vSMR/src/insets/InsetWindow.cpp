@@ -3329,6 +3329,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.renderScreenTop = renderScreenTop;
 			request.scaleX = scaleX;
 			request.scaleY = scaleY;
+			CPosition insetDownLeft;
+			insetDownLeft.m_Latitude = displayMinLat;
+			insetDownLeft.m_Longitude = displayMinLon;
+			CPosition insetUpRight;
+			insetUpRight.m_Latitude = displayMaxLat;
+			insetUpRight.m_Longitude = displayMaxLon;
+			request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
+				SMRGeometry::DistanceMeters(insetDownLeft, insetUpRight));
 			request.projectedTopLeft = projectedTopLeft;
 			request.projectedTopRight = projectedTopRight;
 			request.projectedBottomLeft = projectedBottomLeft;
