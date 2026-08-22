@@ -4,7 +4,8 @@
 
 ### Changed
 
-- Restored the shorter historical one-second timer alarm sound for the upcoming 2.0.0-beta.4 release.
+- Restored the ESTimer alarm sound.
+- Fixed AVISO `zoomLevel` visibility to use the same corner-to-corner viewport distance as the radar zoom level, and applied the rule consistently to labels, lines, and polygons at every airport.
 
 ## [2.0.0-beta.3] - 2026-08-21
 

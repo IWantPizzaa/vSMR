@@ -133,6 +133,7 @@ public:
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
 		float strokeWidth = 1.0f;
+		int minimumZoomLevel = 0;
 		double minLongitude = 0.0;
 		double minLatitude = 0.0;
 		double maxLongitude = 0.0;
@@ -154,7 +155,7 @@ public:
 		float textSize = 12.0f;
 		float haloWidth = 1.0f;
 		double maxMetersPerPixel = 0.0;
-		double maxViewRangeKm = 0.0;
+		int minimumZoomLevel = 0;
 	};
 	struct AvisoMainViewPreset
 	{
@@ -227,6 +228,7 @@ public:
 		double renderScreenTop = 0.0;
 		double scaleX = 1.0;
 		double scaleY = 1.0;
+		int viewportZoomLevel = 0;
 		Gdiplus::PointF projectedTopLeft;
 		Gdiplus::PointF projectedTopRight;
 		Gdiplus::PointF projectedBottomLeft;

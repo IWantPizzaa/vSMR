@@ -622,7 +622,7 @@ namespace
 		return ParseAvisoFloatProperty(sharedPaint, key, fallback, minValue, maxValue);
 	}
 
-	double ParseAvisoZoomRangeKm(const Value* sharedPaint, const Value* inlineProperties)
+	int ParseAvisoMinimumZoomLevel(const Value* sharedPaint, const Value* inlineProperties)
 	{
 		const Value* zoomValue = nullptr;
 		const char* aliases[] = { "zoomLevel", "zoom_level" };
@@ -640,15 +640,10 @@ namespace
 			zoomValue = findZoomValue(sharedPaint);
 
 		if (zoomValue == nullptr)
-			return 0.0;
+			return 0;
 
 		const int level = static_cast<int>(std::lround(std::clamp(zoomValue->GetDouble(), 0.0, 14.0)));
-		static const double maxViewRangeKmByLevel[] = {
-			0.0, 34.0, 28.0, 22.0, 18.0,
-			14.0, 12.0, 9.5, 8.0, 6.0,
-			5.0, 4.0, 3.0, 2.5, 2.0
-		};
-		return maxViewRangeKmByLevel[level];
+		return level;
 	}
 
 	float ParseAvisoStrokeWidth(const Value* properties, float fallback)
@@ -1671,7 +1666,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			parsedLabel.haloColor = ParseAvisoColorResolved(sharedPaint, properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
 			parsedLabel.textSize = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-size", 12.0f, 6.0f, 32.0f);
 			parsedLabel.haloWidth = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
-			parsedLabel.maxViewRangeKm = ParseAvisoZoomRangeKm(sharedPaint, properties);
+			parsedLabel.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
 			parsedLabels.push_back(std::move(parsedLabel));
 			++labelCount;
 			continue;
@@ -1685,6 +1680,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
 		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
 		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
+		parsedFeature.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
 		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();
 		parsedFeature.minLatitude = (std::numeric_limits<double>::max)();
 		parsedFeature.maxLongitude = std::numeric_limits<double>::lowest();
@@ -3005,6 +3001,12 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		return nullptr;
 	if (renderCancelled())
 		return nullptr;
+	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
+	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) /
+		AvisoMax(request.scaleX * lonSpan, 1.0);
+	const double metersPerPixelLat = (latSpan * 110540.0) /
+		AvisoMax(request.scaleY * latSpan, 1.0);
+	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
 
 	auto projectScreenPoint = [&](double longitude, double latitude) -> PointF
 	{
@@ -3082,6 +3084,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		if (renderCancelled())
 			return nullptr;
 		if (!IsAvisoGroupedItemVisible(feature.groupIds, request.groupVisibility.get()))
+			continue;
+		if (feature.minimumZoomLevel > 0 && request.viewportZoomLevel < feature.minimumZoomLevel)
 			continue;
 
 		Color featureFillColor = feature.fillColor;
@@ -3257,16 +3261,9 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		}
 	}
 
-	const double centerLatitudeRadians = ((displayMinLat + displayMaxLat) * 0.5) * 3.14159265358979323846 / 180.0;
-	const double metersPerPixelLon = (lonSpan * 111320.0 * std::cos(centerLatitudeRadians)) / AvisoMax(request.scaleX * lonSpan, 1.0);
-	const double metersPerPixelLat = (latSpan * 110540.0) / AvisoMax(request.scaleY * latSpan, 1.0);
-	const double metersPerPixel = AvisoMax(metersPerPixelLon, metersPerPixelLat);
-	const double horizontalViewKm = lonSpan * 111.320 * std::cos(centerLatitudeRadians);
-	const double verticalViewKm = latSpan * 110.540;
-	const double viewRangeKm = AvisoMax(horizontalViewKm, verticalViewKm) * 0.5;
 	auto isDenseLabelVisible = [&](const AvisoLabel& label) -> bool
 	{
-		if (label.maxViewRangeKm > 0.0 && viewRangeKm > label.maxViewRangeKm)
+		if (label.minimumZoomLevel > 0 && request.viewportZoomLevel < label.minimumZoomLevel)
 			return false;
 		if (label.maxMetersPerPixel > 0.0 && metersPerPixel > label.maxMetersPerPixel)
 			return false;
@@ -4164,6 +4161,10 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.renderScreenTop = renderScreenTop;
 	request.scaleX = scaleX;
 	request.scaleY = scaleY;
+	request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
+		SMRGeometry::DistanceMeters(
+			makeDisplayPosition(fullDisplayMinLat, fullDisplayMinLon),
+			makeDisplayPosition(fullDisplayMaxLat, fullDisplayMaxLon)));
 	request.projectedTopLeft = projectedTopLeft;
 	request.projectedTopRight = projectedTopRight;
 	request.projectedBottomLeft = projectedBottomLeft;
