@@ -5,6 +5,8 @@
   const MAX_BRIDGE_MESSAGE_BYTES = 28 * 1024 * 1024;
   const REQUEST_TIMEOUT_MS = 45000;
   const HISTORY_LIMIT = 12;
+  const AUTOSAVE_DEBOUNCE_MS = 650;
+  const AUTOSAVE_RETRY_MS = 250;
   const HOST_MODE = Boolean(window.chrome?.webview?.postMessage);
   const DATA = window.VSMR_DATA || { profiles: [], aviso: { type: "FeatureCollection", features: [], styles: {} } };
   const DEFAULT_DATA = JSON.parse(JSON.stringify(DATA));
@@ -54,30 +56,20 @@
   };
   const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_SOURCES = ["vacdm", "runway", "aircraft", "flightplan", "tag", "aviso"];
-  const ALERT_TYPES = [
-    { id: "NO PUSH", description: "Pushback not authorized" },
-    { id: "NO TAXI", description: "Taxi movement not authorized" },
-    { id: "NO TKOF", description: "Take-off not authorized" },
-    { id: "STAT RPA", description: "Stationary runway protected-area alert" },
-    { id: "RWY INC", description: "Runway incursion" },
-    { id: "RWY TYPE", description: "Runway use or aircraft-type mismatch" },
-    { id: "RWY CLSD", description: "Movement on a closed runway" },
-    { id: "HIGH SPD", description: "High-speed movement" },
-    { id: "EMERG", description: "Emergency squawk or emergency state" }
-  ];
+  const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
   const DEFAULT_ALERT_RUNWAYS = [
     { id: "09L / 27R", arrival: true, departure: true, closed: false },
     { id: "09R / 27L", arrival: true, departure: true, closed: false },
     { id: "08L / 26R", arrival: false, departure: false, closed: false },
     { id: "08R / 26L", arrival: false, departure: false, closed: false }
   ];
-  const ALERT_COLOR_FIELDS = [
-    ["alertStageOne", "background_color_stage_one", "#a05a1e"],
-    ["alertStageTwo", "background_color_stage_two", "#960000"],
-    ["alertCautionText", "caution_alert_text_color", "#000000"],
-    ["alertCautionBg", "caution_alert_background_color", "#ffff00"],
-    ["alertWarningText", "warning_alert_text_color", "#ffffff"],
-    ["alertWarningBg", "warning_alert_background_color", "#ff0000"]
+  const ALERT_COLOR_DEFAULTS = [
+    ["background_color_stage_one", "#a05a1e"],
+    ["background_color_stage_two", "#960000"],
+    ["caution_alert_text_color", "#000000"],
+    ["caution_alert_background_color", "#ffff00"],
+    ["warning_alert_text_color", "#ffffff"],
+    ["warning_alert_background_color", "#ff0000"]
   ];
   const DEFAULT_AVISO_GROUP_BLUEPRINTS = [
     { id: "runway-details", name: "Runway details", accent: "#d9d9d9", styles: ["surface.runway", "marking.runway", "line.runway_centerline", "label.tora"] },
@@ -365,7 +357,7 @@
     if (!isAirportCode(airport) || !summary.sources.length) return;
 	if (state.dirty || pending.save || pending.reload || pending.resource ||
 		runtimeCommandPending.size || splitAvisoContext) {
-	  showToast("Save or reload current edits before assigning legacy presets", "error");
+	  showToast("Wait for automatic saving or revert current edits before assigning legacy presets", "error");
 	  return;
 	}
 
@@ -489,11 +481,14 @@
     let metadata = { schema_version: 1, last_active_profile: "", vacdm: { server_url: "https://cdm.vatsim.fr" } };
     (Array.isArray(sourceProfiles) ? sourceProfiles : []).forEach((entry, index) => {
       if (entry && typeof entry === "object" && entry.name) {
+        const data = clone(entry);
+        if (data.approach_insets && typeof data.approach_insets === "object")
+          delete data.approach_insets.background_color;
         records.push({
           id: `profile-${index}-${String(entry.name).replace(/\W+/g, "-").toLowerCase()}`,
           persistedName: String(entry.name),
-          data: clone(entry),
-          original: clone(entry)
+          data,
+          original: clone(data)
         });
       } else if (entry?._vsmr && typeof entry._vsmr === "object" && !Array.isArray(entry._vsmr)) {
         metadata = clone(entry._vsmr);
@@ -599,9 +594,9 @@
         updateInterval: 250,
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
+        avisoColorPalette: "night",
         runtimeSync: true,
         confirmDelete: true,
-        rimcas: true,
         vacdm: true,
         dataHealth: {
           profilesHealthy: true,
@@ -626,9 +621,8 @@
         selectedAvisoGeometryStyleIds: defaultGeometryStyleId ? [defaultGeometryStyleId] : [],
         avisoGeometrySelectionAnchorId: defaultGeometryStyleId,
         selectedAvisoTextStyleId: defaultTextStyleId,
-        selectedAvisoTextIndex: defaultTextIndex >= 0 ? defaultTextIndex : 0,
-        selectedAvisoTextIndices: defaultTextIndex >= 0 ? [defaultTextIndex] : [],
-        avisoTextSelectionAnchorIndex: defaultTextIndex >= 0 ? defaultTextIndex : 0,
+        selectedAvisoTextStyleIds: defaultTextStyleId ? [defaultTextStyleId] : [],
+        avisoTextSelectionAnchorId: defaultTextStyleId,
         selectedAvisoGroupId: normalizedAviso.vsmr_groups?.[0]?.id || "",
         avisoGroupSearch: "",
         avisoGroupMemberSearch: "",
@@ -638,8 +632,7 @@
         controlCenterOpen: HOST_MODE,
         runtimePopover: "",
         avisoGeometrySearch: "",
-        avisoTextSearch: "",
-        alertsView: "active"
+        avisoTextSearch: ""
       },
       runtime: {
         avisoInsetVisible: false,
@@ -658,7 +651,7 @@
 
   let state = createState();
   const treeState = { colors: new Set(), tags: new Set() };
-  const drafts = { color: null, tag: null, rule: null, mode: null, profile: null, avisoGeometry: null, avisoTextStyle: null, avisoTextLabel: null, avisoGroup: null, alerts: null };
+  const drafts = { color: null, tag: null, rule: null, mode: null, profile: null, avisoGeometry: null, avisoTextStyle: null, avisoGroup: null, alerts: null };
   let activeTagInput = null;
   let toastTimer = 0;
   let persistentStatusState = null;
@@ -733,6 +726,8 @@
   let historyGestureSequence = 0;
   const historyGestureIds = new WeakMap();
   let deferredHistoryGesture = null;
+  let autosaveTimer = 0;
+  let autosaveQueued = false;
 
   function beginHistoryGesture(control) {
     if (!control || typeof control !== "object") return "";
@@ -774,8 +769,6 @@
     "[data-profile-panel]",
     "[data-aviso-panel]",
     "[data-aviso-view-panel]",
-    "[data-alerts-panel]",
-    "[data-alerts-view-panel]",
     "[data-page-panel]"
   ].join(", ");
 
@@ -787,8 +780,6 @@
       ["profilePanel", "profile"],
       ["avisoPanel", "aviso"],
       ["avisoViewPanel", "aviso"],
-      ["alertsPanel", "alerts"],
-      ["alertsViewPanel", "alerts"],
       ["pagePanel", "page"]
     ];
     for (const [datasetKey, prefix] of attributes) {
@@ -800,7 +791,7 @@
   function hasUnappliedEditorInputs() {
     // Input events are tracked until their change/blur boundary. This protects
     // a value that is still being typed from an asynchronous host repaint; it
-    // never blocks Save, Undo or navigation.
+    // never blocks automatic saving, Undo or navigation.
     return unappliedEditorSections.size > 0;
   }
 
@@ -808,10 +799,8 @@
     const key = editorSectionKey(element);
     if (!key) return false;
     unappliedEditorSections.add(key);
-    const dot = $("#dirtyDot");
-    if (dot) { dot.classList.add("dirty"); dot.title = "Unsaved changes"; }
-    $("#saveButton")?.classList.add("has-unsaved");
     updateCommandState();
+    scheduleAutosave();
     return true;
   }
 
@@ -1104,26 +1093,13 @@
     const airportMismatch = Boolean(state.airport && state.hostAirport && state.airport !== state.hostAirport);
     const profilesUnsafe = state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed;
     const externalConflict = Boolean(state.externalEditConflict);
-    const stagedChanges = state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges();
-    const saveButton = $("#saveButton");
     const reloadButton = $("#reloadButton");
     const undoButton = $("#undoButton");
     const redoButton = $("#redoButton");
-    if (saveButton) {
-	  saveButton.disabled = !hostAuthoritativeReady || !stagedChanges || busy || airportMismatch || profilesUnsafe || externalConflict;
-      saveButton.classList.toggle("pending", Boolean(pending.save || globalSaveAfterDatalink));
-      saveButton.title = airportMismatch
-        ? "Reload after changing airports before saving"
-        : externalConflict
-          ? "Another vSMR window changed the active data; reload before saving"
-        : profilesUnsafe
-          ? "Restore the profiles backup or bundled defaults before saving"
-        : pending.save || globalSaveAfterDatalink ? "Saving…" : stagedChanges ? "Save changes" : "No changes to save";
-    }
     if (reloadButton) {
 	  reloadButton.disabled = !hostAuthoritativeReady || busy;
       reloadButton.classList.toggle("pending", Boolean(pending.reload));
-      reloadButton.title = pending.reload ? "Reloading…" : "Reload configuration";
+      reloadButton.title = pending.reload ? "Reverting…" : "Revert to saved configuration";
     }
 	if (undoButton) undoButton.disabled = !hostAuthoritativeReady || busy || airportMismatch || externalConflict || history.past.length === 0;
 	if (redoButton) redoButton.disabled = !hostAuthoritativeReady || busy || airportMismatch || externalConflict || history.future.length === 0;
@@ -1140,12 +1116,6 @@
   function updateDirtyState(message = "") {
     state.dirty = !snapshotsEqual(history.present, savedSnapshot);
     const visuallyDirty = state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges();
-    const dot = $("#dirtyDot");
-    if (dot) {
-      dot.classList.toggle("dirty", visuallyDirty);
-      dot.title = visuallyDirty ? "Unsaved changes" : "Saved";
-    }
-    $("#saveButton")?.classList.toggle("has-unsaved", visuallyDirty);
     updateCommandState();
     if (message) setStatus(message, visuallyDirty ? "info" : "");
   }
@@ -1333,9 +1303,10 @@
     document.documentElement.dataset.status = type || "ready";
     if (type === "error") setPersistentStatus(message, "error", [], "native");
   }
-  function markDirty(message = "Changes not saved", changedChunks = null, gestureKey = activeHistoryGestureKey) {
+  function markDirty(message = "Saving automatically…", changedChunks = null, gestureKey = activeHistoryGestureKey) {
     recordHistoryState(changedChunks, gestureKey);
     updateDirtyState(message);
+    scheduleAutosave();
   }
 
   function markSaved(message = "Saved") {
@@ -1352,6 +1323,8 @@
     state.externalEditConflict = false;
     updateDirtyState();
     setStatus(message);
+    if (!hasAutosaveWork()) cancelAutosave();
+    else scheduleAutosave();
   }
 
   function updateContext() {
@@ -1441,7 +1414,7 @@
       return true;
     }
 	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-	  showToast("Save or reload current edits before switching profile", "error");
+	  showToast("Wait for automatic saving or revert current edits before switching profile", "error");
 	  return false;
 	}
     state.activeProfileId = profileId;
@@ -1704,7 +1677,7 @@
 
   function closeControlCenter() {
     // Closing only hides the Control Center. Keep the in-memory form draft so
-    // reopening restores it; persistence remains the global Save button's job.
+    // reopening restores it; automatic persistence remains the Control Center's job.
     if (datalinkControlsInitialized && datalinkDraft && datalinkBaseline)
       captureDatalinkDraftFromControls();
     finalizeControlCenterClose();
@@ -1904,7 +1877,7 @@
 	  return;
 	}
 	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-	  showToast("Save or reload current edits before changing mode", "error");
+	  showToast("Wait for automatic saving or revert current edits before changing mode", "error");
 	  return;
 	}
 	const modeEditor = $("[data-page-panel='modes']");
@@ -2281,7 +2254,7 @@
     $("#colorHex").value = hex.toUpperCase();
     $("#colorHue").value = Math.round(drafts.color.h);
     $("#colorHue").style.setProperty("--hue-slider-value", String(Math.round(drafts.color.h)));
-    $("#colorHueOutput").value = `${Math.round(drafts.color.h)}°`;
+    $("#colorHueOutput").value = String(Math.round(drafts.color.h));
     $("#colorRed").value = rgb.r;
     $("#colorGreen").value = rgb.g;
     $("#colorBlue").value = rgb.b;
@@ -2305,7 +2278,7 @@
     $("#colorGreenOutput").value = rgb.g;
     $("#colorBlueOutput").value = rgb.b;
     $("#colorOpacity").value = opacity;
-    $("#colorOpacityOutput").value = `${opacity}%`;
+    $("#colorOpacityOutput").value = String(opacity);
 
     const palette = $("#colorSvPalette");
     palette.style.setProperty("--palette-hue", String(Math.round(drafts.color.h)));
@@ -2349,7 +2322,6 @@
     }
     $("#selectedColorPath").textContent = entry.name;
     $("#selectedColorGroup").textContent = entry.group;
-    $("#colorJsonPath").value = entry.id;
     syncColorEditorControls();
   }
   function applyColorDraft({ render = true } = {}) {
@@ -2394,8 +2366,7 @@
     let usesAircraftImage = false;
     if (style === "nova") {
       // The preview focuses on the generated primary-return silhouette.
-      const showPrimaryTarget = $("#showPrimaryTarget")?.checked ?? true;
-      const primaryReturn = showPrimaryTarget
+      const primaryReturn = activeProfile().targets?.show_primary_target !== false
         ? `<path class="nova-primary-return" d="M0-44C-7-44-10-42-13-35L-16-22C-17-16-20-11-25-6L-44 12-43 24-16 12-11 20-11 35-5 45H5L11 35 11 20 16 12 43 24 44 12 25-6C20-11 17-16 16-22L13-35C10-42 7-44 0-44Z"/>`
         : "";
       symbol = `<svg class="icon-preview-vector nova" viewBox="-52 -50 104 104" aria-hidden="true">${primaryReturn}</svg>`;
@@ -2447,7 +2418,6 @@
     const targets = profile.targets ||= {};
     $("#iconProfileCaption").textContent = profile.name || "";
     ensureSelectValue($("#targetIconStyle"), targets.icon_style || "realistic");
-    $("#showPrimaryTarget").checked = targets.show_primary_target !== false;
     $("#fixedPixelIconSize").checked = Boolean(targets.fixed_pixel_icon_size);
     $("#fixedPixelIconScale").value = targets.fixed_pixel_icon_scale ?? 1;
     $("#fixedPixelIconScaleOutput").value = `${Number(targets.fixed_pixel_icon_scale ?? 1).toFixed(2)}×`;
@@ -2471,7 +2441,6 @@
   function applyIcons({ render = true } = {}) {
     const targets = activeProfile().targets ||= {};
     targets.icon_style = $("#targetIconStyle").value;
-    targets.show_primary_target = $("#showPrimaryTarget").checked;
     targets.fixed_pixel_icon_size = $("#fixedPixelIconSize").checked;
     targets.fixed_pixel_icon_scale = Number($("#fixedPixelIconScale").value);
     targets.small_icon_boost = $("#smallIconBoost").checked;
@@ -2830,12 +2799,10 @@
     const data = drafts.mode.data;
     $("#modePropertiesCaption").textContent = data.name || "Mode properties";
     $("#modeName").value = data.name || "";
-    data.blocked_auto_correlate_squawks ||= [];
     data.statuses ||= {};
     if (typeof data.statuses.lineup !== "boolean")
       data.statuses.lineup = typeof data.statuses.lnup === "boolean" ? data.statuses.lnup : (typeof data.statuses.taxi === "boolean" ? data.statuses.taxi : true);
     delete data.statuses.lnup;
-    renderModeBlockedSquawkChips();
     $("#reqSquawk").checked = Boolean(data.require_assigned_squawk);
     $("#modeAcceptPilotSquawk").checked = data.accept_pilot_squawk !== false;
     $("#reqClearance").checked = Boolean(data.require_clearance);
@@ -2847,48 +2814,9 @@
     $("[data-action='activate-mode']").textContent = data.name === activeProfile().filters?.display_modes?.active ? "Active" : "Set active";
   }
 
-  function renderModeBlockedSquawkChips() {
-    const container = $("#modeBlockedSquawkChips");
-    if (!container || !drafts.mode) return;
-    const squawks = drafts.mode.data.blocked_auto_correlate_squawks || [];
-    container.innerHTML = squawks.length
-      ? squawks.map((code, index) => `<span class="mode-squawk-chip"><span>${escapeHtml(code)}</span><button aria-label="Remove ${escapeHtml(code)}" data-action="remove-mode-squawk" data-index="${index}" title="Remove" type="button">×</button></span>`).join("")
-      : `<span class="mode-squawk-empty">No blocked codes</span>`;
-  }
-
-  function addModeBlockedSquawk() {
-    if (!drafts.mode) return false;
-    const input = $("#modeBlockedSquawkInput");
-    const code = String(input?.value || "").trim();
-    if (!/^[0-7]{4}$/.test(code)) {
-      input?.setCustomValidity("Use four octal digits (0-7)");
-      showToast("Squawks must be four octal digits (0–7)", "error");
-      input?.focus();
-      return false;
-    }
-    input.setCustomValidity("");
-    const squawks = drafts.mode.data.blocked_auto_correlate_squawks ||= [];
-    if (!squawks.includes(code)) squawks.push(code);
-    input.value = "";
-    renderModeBlockedSquawkChips();
-    applyMode({ render: false, includePendingSquawk: false });
-    input.focus();
-    return true;
-  }
-
-  function removeModeBlockedSquawk(index) {
-    if (!drafts.mode) return;
-    const squawks = drafts.mode.data.blocked_auto_correlate_squawks ||= [];
-    if (index >= 0 && index < squawks.length) {
-      squawks.splice(index, 1);
-    }
-    renderModeBlockedSquawkChips();
-    applyMode({ render: false, includePendingSquawk: false });
-  }
-
   function setModeStatusVisibility(visible) {
     $$("[data-mode-status]").forEach(input => { input.checked = Boolean(visible); });
-    applyMode({ render: false, includePendingSquawk: false });
+    applyMode({ render: false });
   }
 
   function captureModeDraft() {
@@ -2909,10 +2837,9 @@
     return mode;
   }
 
-  function applyMode({ render = true, includePendingSquawk = true } = {}) {
+  function applyMode({ render = true } = {}) {
     const current = modes()[state.ui.selectedModeIndex];
     if (!current || !drafts.mode) return;
-    if (includePendingSquawk && String($("#modeBlockedSquawkInput").value || "").trim() && !addModeBlockedSquawk()) return;
     const oldName = current.name;
     const next = clone(captureModeDraft());
     modes()[state.ui.selectedModeIndex] = next;
@@ -2942,11 +2869,6 @@
     const profile = drafts.profile.data;
     $("#profilePropertiesCaption").textContent = profile.name || "Profile properties";
     $("#profileName").value = profile.name || "";
-    $("#profileSchema").value = profile.schema_version ?? 2;
-    profile.filters ||= {};
-    $("#profileMaxAltitude").value = profile.filters.max_altitude_ft ?? 5500;
-    $("#profileMaxSpeed").value = profile.filters.max_speed_kt ?? 250;
-    $("#profileRadarRange").value = profile.filters.radar_range_nm ?? 999;
     $("[data-action='activate-profile']").textContent = record.id === state.activeProfileId ? "Active" : "Set active";
   }
 
@@ -2954,10 +2876,6 @@
     if (!drafts.profile) return null;
     const profile = drafts.profile.data;
     profile.name = $("#profileName").value.trim() || "Profile";
-    profile.filters ||= {};
-    profile.filters.max_altitude_ft = Number($("#profileMaxAltitude").value) || 0;
-    profile.filters.max_speed_kt = Number($("#profileMaxSpeed").value) || 0;
-    profile.filters.radar_range_nm = Number($("#profileRadarRange").value) || 0;
     return profile;
   }
 
@@ -3001,6 +2919,7 @@
 
   const AVISO_GEOMETRY_PAINT_KEYS = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity"];
   const AVISO_TEXT_PAINT_KEYS = ["text-font", "text-size", "text-color", "text-anchor", "text-halo-color", "text-halo-width", "zoomLevel"];
+  const AVISO_PALETTE_COLOR_KEYS = new Set(["fill", "stroke", "marker-color", "text-color", "text-halo-color"]);
   const AVISO_TEXT_DEFAULTS = {
     "text-font": "Arial",
     "text-size": 12,
@@ -3025,6 +2944,43 @@
 
   function avisoStyleSlug(value) {
     return String(value || "style").toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "") || "style";
+  }
+
+  function activeAvisoColorPalette() {
+    return state.settings.avisoColorPalette === "day" ? "day" : "night";
+  }
+
+  function avisoPaletteOverride(paint, palette = activeAvisoColorPalette()) {
+    if (palette !== "day" || !paint || typeof paint !== "object") return null;
+    const overrides = paint["palette-overrides"];
+    const selected = overrides && typeof overrides === "object" ? overrides.day : null;
+    return selected && typeof selected === "object" ? selected : null;
+  }
+
+  function effectiveAvisoPaintValue(sharedPaint, inlinePaint, key, fallback = undefined) {
+    if (activeAvisoColorPalette() === "day" && AVISO_PALETTE_COLOR_KEYS.has(key)) {
+      const inlineDay = avisoPaletteOverride(inlinePaint, "day");
+      if (inlineDay?.[key] != null) return inlineDay[key];
+      // Match the native renderer: an intentional feature-level Night color
+      // remains authoritative until that feature receives its own Day value.
+      if (inlinePaint?.[key] != null) return inlinePaint[key];
+      const sharedDay = avisoPaletteOverride(sharedPaint, "day");
+      if (sharedDay?.[key] != null) return sharedDay[key];
+    }
+    return inlinePaint?.[key] ?? sharedPaint?.[key] ?? fallback;
+  }
+
+  function applyAvisoPaintChanges(target, changes) {
+    if (!target || typeof target !== "object") return;
+    const dayColors = {};
+    Object.entries(changes).forEach(([key, value]) => {
+      if (activeAvisoColorPalette() === "day" && AVISO_PALETTE_COLOR_KEYS.has(key)) dayColors[key] = value;
+      else target[key] = value;
+    });
+    if (!Object.keys(dayColors).length) return;
+    if (!target["palette-overrides"] || typeof target["palette-overrides"] !== "object") target["palette-overrides"] = {};
+    if (!target["palette-overrides"].day || typeof target["palette-overrides"].day !== "object") target["palette-overrides"].day = {};
+    Object.assign(target["palette-overrides"].day, dayColors);
   }
 
   function collectAvisoStyleEntries() {
@@ -3052,10 +3008,12 @@
       const properties = entry.firstFeature?.properties || {};
       const style = entry.style || catalog[entry.id] || {};
       const objectType = style.object_type || inferAvisoObjectType(entry.firstFeature);
-      const paint = clone(style.paint || {});
+      const sharedPaint = style.paint && typeof style.paint === "object" ? style.paint : {};
       const paintKeys = objectType === "Label" ? AVISO_TEXT_PAINT_KEYS : AVISO_GEOMETRY_PAINT_KEYS;
+      const paint = {};
       paintKeys.forEach(key => {
-        if (paint[key] == null && properties[key] != null) paint[key] = properties[key];
+        const value = effectiveAvisoPaintValue(sharedPaint, properties, key);
+        if (value != null) paint[key] = clone(value);
       });
       return {
         id: entry.id,
@@ -3201,19 +3159,26 @@
     return entries.filter(entry => selected.has(entry.id));
   }
 
-  function textSelectionIndices(entry) {
-    if (!entry) return [];
-    const valid = new Set(entry.indices);
-    let indices = Array.isArray(state.ui.selectedAvisoTextIndices)
-      ? state.ui.selectedAvisoTextIndices.map(Number).filter(index => valid.has(index))
+  function textStyleSelectionIds(entries = avisoStyleEntries("text")) {
+    const valid = new Set(entries.map(entry => entry.id));
+    let ids = Array.isArray(state.ui.selectedAvisoTextStyleIds)
+      ? state.ui.selectedAvisoTextStyleIds.filter(id => valid.has(id))
       : [];
-    if (!indices.length && valid.has(Number(state.ui.selectedAvisoTextIndex))) indices = [Number(state.ui.selectedAvisoTextIndex)];
-    if (!indices.length && entry.indices.length) indices = [entry.indices[0]];
-    indices = uniqueValues(indices);
-    state.ui.selectedAvisoTextIndices = indices;
-    if (!indices.includes(Number(state.ui.selectedAvisoTextIndex))) state.ui.selectedAvisoTextIndex = indices[indices.length - 1] ?? entry.indices[0] ?? 0;
-    if (!valid.has(Number(state.ui.avisoTextSelectionAnchorIndex))) state.ui.avisoTextSelectionAnchorIndex = state.ui.selectedAvisoTextIndex;
-    return indices;
+    if (!ids.length && valid.has(state.ui.selectedAvisoTextStyleId)) ids = [state.ui.selectedAvisoTextStyleId];
+    if (!ids.length) {
+      const fallback = preferredAvisoStyleId("text");
+      if (fallback) ids = [fallback];
+    }
+    ids = uniqueValues(ids);
+    state.ui.selectedAvisoTextStyleIds = ids;
+    if (!ids.includes(state.ui.selectedAvisoTextStyleId)) state.ui.selectedAvisoTextStyleId = ids[ids.length - 1] || "";
+    if (!valid.has(state.ui.avisoTextSelectionAnchorId)) state.ui.avisoTextSelectionAnchorId = state.ui.selectedAvisoTextStyleId;
+    return ids;
+  }
+
+  function selectedAvisoTextEntries(entries = avisoStyleEntries("text")) {
+    const selected = new Set(textStyleSelectionIds(entries));
+    return entries.filter(entry => selected.has(entry.id));
   }
 
   function updateMultiSelection(current, clicked, ordered, event, anchor, forceToggle = false) {
@@ -3243,15 +3208,12 @@
   function resetAvisoSelections() {
     const geometryId = preferredAvisoStyleId("geometry");
     const textId = preferredAvisoStyleId("text");
-    const textEntry = avisoStyleEntry(textId, "text");
-    const textIndex = textEntry?.indices[0] ?? 0;
     state.ui.selectedAvisoGeometryStyleId = geometryId;
     state.ui.selectedAvisoGeometryStyleIds = geometryId ? [geometryId] : [];
     state.ui.avisoGeometrySelectionAnchorId = geometryId;
     state.ui.selectedAvisoTextStyleId = textId;
-    state.ui.selectedAvisoTextIndex = textIndex;
-    state.ui.selectedAvisoTextIndices = textEntry ? [textIndex] : [];
-    state.ui.avisoTextSelectionAnchorIndex = textIndex;
+    state.ui.selectedAvisoTextStyleIds = textId ? [textId] : [];
+    state.ui.avisoTextSelectionAnchorId = textId;
     state.ui.selectedAvisoGroupId = avisoGroups()[0]?.id || "";
     state.ui.avisoGeometrySearch = "";
     state.ui.avisoTextSearch = "";
@@ -3260,7 +3222,6 @@
     state.ui.avisoGroupMemberFilter = "all";
     drafts.avisoGeometry = null;
     drafts.avisoTextStyle = null;
-    drafts.avisoTextLabel = null;
     drafts.avisoGroup = null;
     avisoGroupContentDraft = null;
   }
@@ -3274,14 +3235,9 @@
     return entries.filter(entry => !search || [entry.name, entry.layer, entry.id, entry.objectType].join(" ").toLowerCase().includes(search));
   }
 
-  function filteredAvisoTextIndices(entry) {
-    const features = avisoFeatures();
+  function filteredAvisoTextEntries(entries = avisoStyleEntries("text")) {
     const search = String(state.ui.avisoTextSearch || "").trim().toLowerCase();
-    return (entry?.indices || []).filter(index => {
-      if (!search) return true;
-      const properties = features[index]?.properties || {};
-      return [properties["text-field"], properties.name, properties.section].join(" ").toLowerCase().includes(search);
-    });
+    return entries.filter(entry => !search || [entry.name, entry.layer, entry.id].join(" ").toLowerCase().includes(search));
   }
 
   function uniqueAvisoGroupId(name = "group") {
@@ -3538,7 +3494,7 @@
     if (!group) return;
     const indices = kind === "geometry"
       ? uniqueValues(selectedAvisoGeometryEntries().flatMap(entry => entry.indices))
-      : textSelectionIndices(avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text"));
+      : uniqueValues(selectedAvisoTextEntries().flatMap(entry => entry.indices));
     indices.forEach(index => setFeatureGroupMembership(avisoFeatures()[index], group.id, true));
     markDirty(`${indices.length} AVISO feature${indices.length === 1 ? "" : "s"} added to ${group.name}`, ["aviso"]);
     showToast(`Added ${indices.length.toLocaleString()} feature${indices.length === 1 ? "" : "s"} to ${group.name}`, "success");
@@ -3641,18 +3597,10 @@
     const airport = state.aviso?.metadata?.airport || inferAirport(state.aviso?.name) || "AVISO";
 
     geometrySelectionIds(geometryEntries);
-    if (!textEntries.some(entry => entry.id === state.ui.selectedAvisoTextStyleId)) {
-      state.ui.selectedAvisoTextStyleId = preferredAvisoStyleId("text");
-      const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
-      const index = entry?.indices[0] ?? 0;
-      state.ui.selectedAvisoTextIndex = index;
-      state.ui.selectedAvisoTextIndices = entry ? [index] : [];
-      state.ui.avisoTextSelectionAnchorIndex = index;
-      drafts.avisoTextStyle = null;
-      drafts.avisoTextLabel = null;
-    }
+    textStyleSelectionIds(textEntries);
 
-    $("#avisoDatasetCaption").textContent = airport;
+    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    $("#avisoDatasetCaption").textContent = `${airport} · ${paletteLabel}`;
     $("#avisoGeometryTabCount").textContent = `(${geometryObjectCount.toLocaleString()})`;
     $("#avisoTextTabCount").textContent = `(${textObjectCount.toLocaleString()})`;
     $$('[data-aviso-view]').forEach(button => button.classList.toggle("active", button.dataset.avisoView === state.ui.avisoView));
@@ -3711,15 +3659,11 @@
     const allArea = types.length === 1 && types[0] === "Area";
     const allLine = types.length === 1 && types[0] === "Line";
     const mixedTypes = types.length > 1;
-    const objectCount = entries.reduce((sum, entry) => sum + entry.count, 0);
     const allIndices = uniqueValues(entries.flatMap(entry => entry.indices));
     const visibilityValues = allIndices.map(index => avisoFeatures()[index]?.properties?.visible !== false);
 
     $("#avisoGeometryCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} geometry styles`;
     $("#avisoGeometrySelectionMeta").textContent = entries.length === 1 ? entries[0].id : "Multiple selection";
-    $("#avisoGeometryKind").textContent = mixedTypes ? "Mixed" : types[0] || "—";
-    $("#avisoGeometryLayer").textContent = layers.length === 1 ? layers[0] : `${layers.length} layers`;
-    $("#avisoGeometryObjectCount").textContent = `${objectCount.toLocaleString()} object${objectCount === 1 ? "" : "s"}`;
     $("#avisoGeometryVisibleLabel").textContent = entries.length === 1 ? "Show this category" : "Show selected categories";
     $("#avisoGeometryAdvancedInfo").textContent = `${entries.length} style${entries.length === 1 ? "" : "s"} · ${types.join(" + ")} · ${layers.length} layer${layers.length === 1 ? "" : "s"}`;
 
@@ -3731,7 +3675,9 @@
 
     $("#avisoGeometryFillGroup").hidden = !allArea;
     $("#avisoGeometryFillOpacityField").hidden = !allArea;
-    $("#avisoGeometryStrokeLegend").textContent = allArea ? "Outline" : allLine ? "Line" : "Line / outline";
+    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    $("#avisoGeometryFillColorLabel").textContent = `Fill color · ${paletteLabel}`;
+    $("#avisoGeometryStrokeLegend").textContent = `${allArea ? "Outline" : allLine ? "Line" : "Line / outline"} color · ${paletteLabel}`;
 
     setCommonCheckbox("#avisoGeometryVisible", visibilityValues);
 
@@ -3820,12 +3766,12 @@
     let updatedCount = 0;
     entries.forEach(entry => {
       const style = ensureAvisoCatalogStyle(entry);
-      Object.assign(style.paint, changed);
+      applyAvisoPaintChanges(style.paint, changed);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        Object.assign(properties, changed);
+        applyAvisoPaintChanges(properties, changed);
         if (applyVisibility) properties.visible = visibility.checked;
         updatedCount += 1;
       });
@@ -3841,109 +3787,76 @@
 
   function effectiveAvisoTextValue(index, entry, key) {
     const properties = avisoFeatures()[index]?.properties || {};
-    return properties[key] ?? entry.paint[key] ?? AVISO_TEXT_DEFAULTS[key];
+    const sharedPaint = state.aviso?.styles?.[entry.id]?.paint || {};
+    return effectiveAvisoPaintValue(sharedPaint, properties, key, AVISO_TEXT_DEFAULTS[key]);
   }
 
   function renderAvisoText() {
-    const entries = avisoStyleEntries("text");
-    if (!entries.some(entry => entry.id === state.ui.selectedAvisoTextStyleId)) {
-      state.ui.selectedAvisoTextStyleId = preferredAvisoStyleId("text");
-      const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text") || entries[0];
-      const index = entry?.indices[0] ?? 0;
-      state.ui.selectedAvisoTextIndex = index;
-      state.ui.selectedAvisoTextIndices = entry ? [index] : [];
-      state.ui.avisoTextSelectionAnchorIndex = index;
-      drafts.avisoTextStyle = null;
-      drafts.avisoTextLabel = null;
-    }
-    const selectedEntry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text") || entries[0];
-    if (!selectedEntry) return;
-
-    const styleSelect = $("#avisoTextStyleSelect");
-    styleSelect.innerHTML = entries.map(entry => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.name)} · ${entry.count.toLocaleString()}</option>`).join("");
-    styleSelect.value = selectedEntry.id;
-    $("#avisoTextStyleCount").textContent = `${entries.length} styles`;
-
-    const selectedIndices = textSelectionIndices(selectedEntry);
-    const selectedSet = new Set(selectedIndices);
-    const features = avisoFeatures();
-    const filtered = filteredAvisoTextIndices(selectedEntry);
-    const renderLimit = 500;
-    const shown = filtered.slice(0, renderLimit);
-    avisoTextRenderOrder = shown.slice();
+    const allEntries = avisoStyleEntries("text");
+    const selectedIds = new Set(textStyleSelectionIds(allEntries));
+    const filtered = filteredAvisoTextEntries(allEntries);
+    avisoTextRenderOrder = filtered.map(entry => entry.id);
 
     $("#avisoTextSearch").value = state.ui.avisoTextSearch;
-    $("#avisoTextLabelCount").textContent = `(${selectedEntry.count.toLocaleString()})`;
-    $("#avisoTextSelectionCount").textContent = `${selectedIndices.length} selected`;
-    $("#avisoTextSelectionCount").title = filtered.length === selectedEntry.count ? "" : `${filtered.length.toLocaleString()} matching labels`;
-    $("#avisoTextLabelList").innerHTML = shown.map(index => {
-      const properties = features[index]?.properties || {};
-      const label = properties["text-field"] || properties.name || `Label ${index + 1}`;
-      const selected = selectedSet.has(index);
-      const current = index === Number(state.ui.selectedAvisoTextIndex);
-      return `<button type="button" role="option" aria-selected="${selected}" class="aviso-label-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-text-index="${index}">
-        <span class="aviso-select-box" data-aviso-selection-toggle="text" aria-hidden="true"></span>
-        <span class="visibility-dot ${properties.visible !== false ? "visible" : ""}"></span>
-        <span>${escapeHtml(label)}</span>
-      </button>`;
-    }).join("") + (filtered.length > renderLimit ? `<div class="aviso-list-message">Showing first ${renderLimit.toLocaleString()} labels</div>` : "") || `<div class="aviso-list-message">No matching labels</div>`;
+    $("#avisoTextStyleCount").textContent = `(${allEntries.length})`;
+    $("#avisoTextSelectionCount").textContent = `${selectedIds.size} selected`;
 
-    renderAvisoTextEditor(selectedEntry);
+    const grouped = new Map();
+    filtered.forEach(entry => {
+      if (!grouped.has(entry.layer)) grouped.set(entry.layer, []);
+      grouped.get(entry.layer).push(entry);
+    });
+
+    $("#avisoTextStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
+      <section class="aviso-style-section">
+        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span><small>${entries.length}</small></div>
+        <div class="aviso-style-box">
+          ${entries.map(entry => {
+            const selected = selectedIds.has(entry.id);
+            const current = entry.id === state.ui.selectedAvisoTextStyleId;
+            return `<button type="button" role="option" aria-selected="${selected}" title="${escapeHtml(entry.name)}" class="aviso-style-row aviso-text-style-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-text-style="${escapeHtml(entry.id)}">
+              <span class="aviso-select-box" data-aviso-selection-toggle="text" aria-hidden="true"></span>
+              <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
+              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
+              <span class="aviso-style-count">${entry.count.toLocaleString()}</span>
+            </button>`;
+          }).join("")}
+        </div>
+      </section>`).join("") || `<div class="aviso-list-message">No matching text styles</div>`;
+
+    renderAvisoTextEditor(allEntries);
   }
 
-  function renderAvisoTextEditor(entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text")) {
-    if (!entry) return;
-    const indices = textSelectionIndices(entry);
-    if (!indices.length) return;
-    const features = avisoFeatures();
-    const primaryFeature = features[state.ui.selectedAvisoTextIndex] || features[indices[0]];
-    const primaryProperties = primaryFeature?.properties || {};
-    const multi = indices.length > 1;
-    const primaryText = primaryProperties["text-field"] || primaryProperties.name || "";
+  function renderAvisoTextEditor(allEntries = avisoStyleEntries("text")) {
+    const entries = selectedAvisoTextEntries(allEntries);
+    if (!entries.length) {
+      $("#avisoTextCaption").textContent = "No text style selected";
+      return;
+    }
 
-    $("#avisoTextCaption").textContent = multi ? `${indices.length} labels selected` : (primaryText || "Text label");
-    $("#avisoTextStyleCaption").textContent = entry.name;
+    const items = entries.flatMap(entry => entry.indices.map(index => ({ index, entry })));
+    const values = key => items.map(item => effectiveAvisoTextValue(item.index, item.entry, key));
 
-    const textInput = $("#avisoTextValue");
-    textInput.value = multi ? "" : primaryText;
-    textInput.placeholder = multi ? "Multiple labels selected" : "Label text";
-    textInput.title = multi ? "Text content is individual and cannot be batch edited." : "";
-    textInput.dataset.touched = "false";
+    $("#avisoTextCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} text styles`;
+    $("#avisoTextSelectionMeta").textContent = entries.length === 1 ? entries[0].id : "Multiple selection";
+    $("#avisoTextVisibleLabel").textContent = entries.length === 1 ? "Show this text style" : "Show selected text styles";
+    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    $("#avisoTextColorLabel").textContent = `Text color · ${paletteLabel}`;
+    $("#avisoTextHaloColorLabel").textContent = `Halo color · ${paletteLabel}`;
 
-    setCommonCheckbox("#avisoTextVisible", indices.map(index => features[index]?.properties?.visible !== false));
-    setCommonInput(
-      "#avisoTextFont",
-      commonValue(indices.map(index => effectiveAvisoTextValue(index, entry, "text-font")), value => String(value || "Arial")),
-      value => String(value || "Arial")
-    );
-    setCommonInput(
-      "#avisoTextSize",
-      commonValue(indices.map(index => effectiveAvisoTextValue(index, entry, "text-size")), value => Number(value)),
-      value => String(value)
+    setCommonCheckbox("#avisoTextVisible", items.map(item => avisoFeatures()[item.index]?.properties?.visible !== false));
+    setCommonInput("#avisoTextFont", commonValue(values("text-font"), value => String(value || "Arial")), value => String(value || "Arial"));
+    setCommonInput("#avisoTextSize", commonValue(values("text-size"), value => Number(value)), value => String(value));
+    setCommonColor(
+      "#avisoTextColor", "#avisoTextColorPicker", "#avisoTextColorPair",
+      commonValue(values("text-color"), value => normalizeHex(value, "#808080")), "#808080"
     );
     setCommonColor(
-      "#avisoTextColor",
-      "#avisoTextColorPicker",
-      "#avisoTextColorPair",
-      commonValue(indices.map(index => effectiveAvisoTextValue(index, entry, "text-color")), value => normalizeHex(value, "#808080")),
-      "#808080"
+      "#avisoTextHaloColor", "#avisoTextHaloPicker", "#avisoTextHaloPair",
+      commonValue(values("text-halo-color"), value => normalizeHex(value, "#000000")), "#000000"
     );
-    setCommonColor(
-      "#avisoTextHaloColor",
-      "#avisoTextHaloPicker",
-      "#avisoTextHaloPair",
-      commonValue(indices.map(index => effectiveAvisoTextValue(index, entry, "text-halo-color")), value => normalizeHex(value, "#000000")),
-      "#000000"
-    );
-    setCommonInput(
-      "#avisoTextHaloWidth",
-      commonValue(indices.map(index => effectiveAvisoTextValue(index, entry, "text-halo-width")), value => Number(value)),
-      value => String(value)
-    );
-    const zoomCommon = commonValue(
-      indices.map(index => effectiveAvisoTextValue(index, entry, "zoomLevel")),
-      value => Math.round(clamp(value ?? 6, 0, 14))
-    );
+    setCommonInput("#avisoTextHaloWidth", commonValue(values("text-halo-width"), value => Number(value)), value => String(value));
+    const zoomCommon = commonValue(values("zoomLevel"), value => Math.round(clamp(value ?? 6, 0, 14)));
     setCommonInput("#avisoTextZoomLevel", zoomCommon, value => String(value));
     const zoomSlider = $("#avisoTextZoomSlider");
     resetControlFlags(zoomSlider, zoomCommon.mixed);
@@ -3952,46 +3865,18 @@
       ? "Mixed zoom levels"
       : (MAP_ZOOM_LABELS[Math.round(clamp(zoomCommon.value ?? 6, 0, 14))] || "Zoom visibility");
 
-    const scope = $("#avisoTextApplyTarget");
-    scope.options[0].textContent = multi ? `Selected labels (${indices.length})` : "Selected label";
-    scope.options[1].textContent = `Current text group (${entry.count.toLocaleString()})`;
-    const allTextCount = avisoFeatures().filter(isAvisoTextFeature).length;
-    scope.options[2].textContent = `All AVISO text (${allTextCount.toLocaleString()})`;
-    if (!["selection", "group", "all"].includes(scope.value)) scope.value = "selection";
-    updateAvisoTextApplyScopeUI(entry, indices);
-  }
-  function updateAvisoTextApplyScopeUI(entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text"), indices = entry ? textSelectionIndices(entry) : []) {
-    if (!entry || !indices.length) return;
-    const scope = $("#avisoTextApplyTarget").value;
-    const selectionScope = scope === "selection";
-    const multi = indices.length > 1;
-    const textInput = $("#avisoTextValue");
-    const visible = $("#avisoTextVisible");
-    textInput.disabled = !selectionScope || multi;
-    visible.disabled = !selectionScope;
-    textInput.closest(".field")?.classList.toggle("scope-disabled", !selectionScope);
-    visible.closest(".check-field")?.classList.toggle("scope-disabled", !selectionScope);
   }
 
-  function applyAvisoTextScope(options = {}) {
-    const scope = $("#avisoTextApplyTarget").value;
-    if (scope === "group") return applyAvisoTextStyle("style", options);
-    if (scope === "all") return applyAvisoTextStyle("all", options);
-    return applyAvisoTextSelection(options);
-  }
-
-  function selectAvisoTextLabel(index, event, forceToggle = false) {
-    const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
-    if (!entry) return;
-    const current = textSelectionIndices(entry);
-    const next = updateMultiSelection(current, index, avisoTextRenderOrder, event, Number(state.ui.avisoTextSelectionAnchorIndex), forceToggle);
-    state.ui.selectedAvisoTextIndices = next;
-    state.ui.selectedAvisoTextIndex = next.includes(index) ? index : next[next.length - 1];
-    if (!event.shiftKey) state.ui.avisoTextSelectionAnchorIndex = index;
-    drafts.avisoTextLabel = null;
-    clearUnappliedEditorSection($("#avisoTextValue"));
+  function selectAvisoTextStyle(styleId, event, forceToggle = false) {
+    const current = textStyleSelectionIds();
+    const next = updateMultiSelection(current, styleId, avisoTextRenderOrder, event, state.ui.avisoTextSelectionAnchorId, forceToggle);
+    state.ui.selectedAvisoTextStyleIds = next;
+    state.ui.selectedAvisoTextStyleId = next.includes(styleId) ? styleId : next[next.length - 1];
+    if (!event.shiftKey) state.ui.avisoTextSelectionAnchorId = styleId;
+    drafts.avisoTextStyle = null;
+    clearUnappliedEditorSection($("#avisoTextVisible"));
     renderAvisoText();
-    setStatus(`${next.length} text label${next.length === 1 ? "" : "s"} selected`, "info");
+    setStatus(`${next.length} text style${next.length === 1 ? "" : "s"} selected`, "info");
   }
 
   function buildAvisoTextPaint(entry, onlyTouched) {
@@ -4012,85 +3897,36 @@
     return paint;
   }
 
-  function applyAvisoTextSelection({ render = true, feedback = true } = {}) {
-    const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
-    if (!entry) return;
-    const indices = textSelectionIndices(entry);
-    if (!indices.length) return;
-    const multi = indices.length > 1;
-    // A selected-label edit must contain only fields changed by the user. The
-    // effective values shown for the other fields may come from a shared style
-    // or differ between selected labels and must not be copied implicitly.
-    const paint = buildAvisoTextPaint(entry, true);
+  function applyAvisoTextStyles({ render = true, feedback = true } = {}) {
+    const targets = selectedAvisoTextEntries();
+    if (!targets.length) return;
+    // Only propagate controls touched by the current gesture. Effective values
+    // from one text group must not flatten other selected groups implicitly.
+    const textPaint = buildAvisoTextPaint(targets[0], true);
     const visibility = $("#avisoTextVisible");
     const applyVisibility = visibility.dataset.touched === "true";
-    let textChanged = false;
-
-    if (!multi) {
-      const index = indices[0];
-      const properties = avisoFeatures()[index]?.properties;
-      if (properties) {
-        const previousText = properties["text-field"] || "";
-        const nextText = $("#avisoTextValue").value;
-        if (nextText !== previousText) {
-          properties["text-field"] = nextText;
-          if (!properties.name || properties.name === previousText) properties.name = nextText;
-          textChanged = true;
-        }
-      }
-    }
-
-    if (!Object.keys(paint).length && !applyVisibility && !textChanged) {
+    if (!Object.keys(textPaint).length && !applyVisibility) {
       if (feedback) showToast("Change at least one shared text property");
       return false;
     }
 
     let updatedCount = 0;
-    indices.forEach(index => {
-      const properties = avisoFeatures()[index]?.properties;
-      if (!properties) return;
-      properties.style_id ||= entry.id;
-      Object.assign(properties, paint);
-      if (applyVisibility) properties.visible = visibility.checked;
-      updatedCount += 1;
-    });
-
-    drafts.avisoTextLabel = null;
-    clearUnappliedEditorSection($("#avisoTextValue"));
-    markDirty(`${updatedCount} AVISO label${updatedCount === 1 ? "" : "s"} updated`, ["aviso"]);
-    if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} text label${updatedCount === 1 ? "" : "s"}`, "success");
-    if (render) renderAvisoText();
-    return true;
-  }
-
-  function applyAvisoTextStyle(scope = "style", { render = true, feedback = true } = {}) {
-    const currentEntry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
-    if (!currentEntry) return;
-    // Group/all operations must never propagate untouched values from the
-    // currently displayed label into unrelated styles.
-    const textPaint = buildAvisoTextPaint(currentEntry, true);
-    if (!Object.keys(textPaint).length) {
-      if (feedback) showToast("Change at least one shared text style property");
-      return false;
-    }
-
-    const targets = scope === "all" ? avisoStyleEntries("text") : [currentEntry];
-    let updatedCount = 0;
     targets.forEach(entry => {
       const style = ensureAvisoCatalogStyle(entry);
-      Object.assign(style.paint, textPaint);
+      applyAvisoPaintChanges(style.paint, textPaint);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        Object.assign(properties, textPaint);
+        applyAvisoPaintChanges(properties, textPaint);
+        if (applyVisibility) properties.visible = visibility.checked;
         updatedCount += 1;
       });
     });
 
     drafts.avisoTextStyle = null;
-    clearUnappliedEditorSection($("#avisoTextValue"));
-    markDirty(scope === "all" ? "All AVISO text styles updated" : `${currentEntry.name} updated`, ["aviso"]);
+    clearUnappliedEditorSection($("#avisoTextVisible"));
+    markDirty(`${targets.length} text style${targets.length === 1 ? "" : "s"} updated`, ["aviso"]);
     if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} text labels`, "success");
     if (render) renderAvisoText();
     return true;
@@ -4102,10 +3938,9 @@
       renderAvisoGeometryEditor();
     } else {
       drafts.avisoTextStyle = null;
-      drafts.avisoTextLabel = null;
       renderAvisoTextEditor();
     }
-    clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryVisible") : $("#avisoTextValue"));
+    clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryVisible") : $("#avisoTextVisible"));
   }
 
 
@@ -4120,12 +3955,12 @@
     if (!Array.isArray(rimcas.timer) || rimcas.timer.length !== 5) rimcas.timer = [60, 45, 30, 15, 0];
     if (!Array.isArray(rimcas.timer_lvp) || rimcas.timer_lvp.length !== 5) rimcas.timer_lvp = [120, 90, 60, 30, 0];
     rimcas.stage_two_speed_threshold_kt = Number.isFinite(Number(rimcas.stage_two_speed_threshold_kt)) ? Number(rimcas.stage_two_speed_threshold_kt) : 25;
-    rimcas.enabled = rimcas.enabled !== false;
-    rimcas.rimcas_label_only = rimcas.rimcas_label_only !== false;
-    rimcas.use_red_symbol_for_emergencies = rimcas.use_red_symbol_for_emergencies !== false;
+    delete rimcas.enabled;
+    delete rimcas.rimcas_label_only;
+    delete rimcas.use_red_symbol_for_emergencies;
     if (!Array.isArray(rimcas.inactive_alerts)) rimcas.inactive_alerts = [];
     if (!Array.isArray(rimcas.runways)) rimcas.runways = [];
-    ALERT_COLOR_FIELDS.forEach(([, key, fallback]) => { if (!isColorObject(rimcas[key])) rimcas[key] = hexToColor(fallback); });
+    ALERT_COLOR_DEFAULTS.forEach(([key, fallback]) => { if (!isColorObject(rimcas[key])) rimcas[key] = hexToColor(fallback); });
     return rimcas;
   }
 
@@ -4150,7 +3985,6 @@
       drafts.alerts = {
         profileId,
         data: {
-          enabled: rimcas.enabled !== false && state.settings.rimcas !== false,
           visibility: profileVisibility === "lvp" ? "lvp" : "normal",
           runways: clone(profileRunways),
           rimcas
@@ -4160,22 +3994,10 @@
     return drafts.alerts.data;
   }
 
-  function setAlertsView(view) {
-    if (!["active", "runways", "timing", "appearance"].includes(view)) return;
-    captureAlertsDraft();
-    state.ui.alertsView = view;
-    renderAlerts();
-  }
-
   function renderAlerts() {
     const data = ensureAlertsDraft();
-    $$('[data-alerts-view]').forEach(button => button.classList.toggle("active", button.dataset.alertsView === state.ui.alertsView));
-    $$('[data-alerts-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.alertsViewPanel === state.ui.alertsView));
-    $("#alertRimcasEnabled").checked = data.enabled;
-    $("#alertLabelOnly").checked = Boolean(data.rimcas.rimcas_label_only);
-    $("#alertRedEmergency").checked = Boolean(data.rimcas.use_red_symbol_for_emergencies);
     const inactive = new Set((data.rimcas.inactive_alerts || []).map(String));
-    $("#alertTypeGrid").innerHTML = ALERT_TYPES.map(alert => `<label class="alert-toggle-card ${inactive.has(alert.id) ? "inactive" : ""}"><input type="checkbox" data-alert-type="${escapeHtml(alert.id)}" ${inactive.has(alert.id) ? "" : "checked"}><span><strong>${escapeHtml(alert.id)}</strong><small>${escapeHtml(alert.description)}</small></span></label>`).join("");
+    $("#alertTypeGrid").innerHTML = ALERT_TYPES.map(alert => `<label class="alert-toggle-card ${inactive.has(alert) ? "inactive" : ""}"><input type="checkbox" data-alert-type="${escapeHtml(alert)}" ${inactive.has(alert) ? "" : "checked"}><strong>${escapeHtml(alert)}</strong></label>`).join("");
 
     $("#alertVisibilityMode").value = data.visibility;
     const runwayRowsHtml = data.runways.map((runway, index) => `<div class="alert-runway-row" data-alert-runway-index="${index}">
@@ -4190,11 +4012,6 @@
     renderAlertTimerRow("#alertTimerNormal", data.rimcas.timer);
     renderAlertTimerRow("#alertTimerLvp", data.rimcas.timer_lvp);
     $("#alertSpeedThreshold").value = data.rimcas.stage_two_speed_threshold_kt;
-    ALERT_COLOR_FIELDS.forEach(([prefix, key, fallback]) => {
-      const hex = colorToHex(data.rimcas[key], fallback);
-      $(`#${prefix}Picker`).value = hex;
-      $(`#${prefix}Color`).value = hex.toUpperCase();
-    });
   }
 
   function renderAlertTimerRow(selector, values) {
@@ -4205,10 +4022,9 @@
   function captureAlertsDraft() {
     if (!drafts.alerts || drafts.alerts.profileId !== state.activeProfileId) return ensureAlertsDraft();
     const data = drafts.alerts.data;
-    if ($("#alertRimcasEnabled")) data.enabled = $("#alertRimcasEnabled").checked;
-    data.rimcas.enabled = data.enabled;
-    if ($("#alertLabelOnly")) data.rimcas.rimcas_label_only = $("#alertLabelOnly").checked;
-    if ($("#alertRedEmergency")) data.rimcas.use_red_symbol_for_emergencies = $("#alertRedEmergency").checked;
+    delete data.rimcas.enabled;
+    delete data.rimcas.rimcas_label_only;
+    delete data.rimcas.use_red_symbol_for_emergencies;
     const alertChecks = $$('[data-alert-type]');
     if (alertChecks.length) data.rimcas.inactive_alerts = alertChecks.filter(input => !input.checked).map(input => input.dataset.alertType);
     if ($("#alertVisibilityMode")) data.visibility = $("#alertVisibilityMode").value === "lvp" ? "lvp" : "normal";
@@ -4229,23 +4045,17 @@
     if ($("#alertSpeedThreshold")) data.rimcas.stage_two_speed_threshold_kt = Math.max(0, Math.round(Number($("#alertSpeedThreshold").value) || 0));
     data.rimcas.visibility = data.visibility;
     data.rimcas.runways = clone(data.runways);
-    ALERT_COLOR_FIELDS.forEach(([prefix, key, fallback]) => {
-      const input = $(`#${prefix}Color`);
-      if (input) data.rimcas[key] = hexToColor(normalizeHex(input.value, fallback), data.rimcas[key]?.a ?? 255);
-    });
     return data;
   }
 
   function applyAlerts({ render = true, feedback = true } = {}) {
     const data = captureAlertsDraft();
-    state.settings.rimcas = data.enabled;
-    data.rimcas.enabled = data.enabled;
     data.rimcas.visibility = data.visibility;
     data.rimcas.runways = clone(data.runways);
     activeProfile().rimcas = clone(data.rimcas);
     state.runtime.alerts = { visibility: data.visibility, runways: clone(data.runways) };
     clearUnappliedEditorSectionsWithin($("[data-page-panel='alerts']"));
-    markDirty("Alert settings updated", ["profiles", "settings"]);
+    markDirty("Alert settings updated", ["profiles"]);
     if (render) renderAlerts();
     if (feedback) showToast("Alert settings updated", "success");
   }
@@ -5247,6 +5057,12 @@
     $("#settingsAvisoFile").title = settings.avisoFile;
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
+    $$('[data-aviso-color-palette]').forEach(button => {
+      const active = button.dataset.avisoColorPalette === avisoColorPalette;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
     const restoreBackup = $("#restoreProfilesBackupButton");
     if (restoreBackup) {
       restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
@@ -5320,17 +5136,9 @@
 
   function stageFocusedEditorValue() {
     const active = document.activeElement;
-    const pendingSquawk = $("#modeBlockedSquawkInput");
-    if (String(pendingSquawk?.value || "").trim()) {
-      if (!withHistoryGesture(pendingSquawk, addModeBlockedSquawk)) {
-        revealInvalidEditorControl(pendingSquawk);
-        return false;
-      }
-    } else {
-      if (!stageEditorControl(active)) {
-        revealInvalidEditorControl(active);
-        return false;
-      }
+    if (!stageEditorControl(active)) {
+      revealInvalidEditorControl(active);
+      return false;
     }
     if (active?.checkValidity && !active.checkValidity()) {
       revealInvalidEditorControl(active);
@@ -5353,16 +5161,53 @@
 
   function revealInvalidEditorControl(control) {
     if (!control) return;
-    if (control.id === "modeBlockedSquawkInput" && state.ui.page !== "modes") setPage("modes");
-    else if (control.id === "avisoGroupName" && state.ui.page !== "groups") setPage("groups");
+    if (control.id === "avisoGroupName" && state.ui.page !== "groups") setPage("groups");
     control.scrollIntoView?.({ block: "nearest" });
     control.focus?.({ preventScroll: true });
     control.reportValidity?.();
   }
 
+  function hasAutosaveWork() {
+    return state.dirty || hasUnappliedEditorInputs() || hasDatalinkDraftChanges();
+  }
+
+  function cancelAutosave(clearQueued = true) {
+    if (autosaveTimer) window.clearTimeout(autosaveTimer);
+    autosaveTimer = 0;
+    if (clearQueued) autosaveQueued = false;
+  }
+
+  function scheduleAutosave(delay = AUTOSAVE_DEBOUNCE_MS) {
+    autosaveQueued = true;
+    if (autosaveTimer) window.clearTimeout(autosaveTimer);
+    autosaveTimer = window.setTimeout(runAutosave, delay);
+  }
+
+  function runAutosave() {
+    autosaveTimer = 0;
+    if (!autosaveQueued || !hasAutosaveWork()) {
+      autosaveQueued = false;
+      return;
+    }
+    const busy = Boolean(
+      pending.save || pending.reload || pending.resource || runtimeCommandPending.size ||
+      splitAvisoContext || datalinkPending.settings || globalSaveAfterDatalink
+    );
+    if (busy) {
+      scheduleAutosave(AUTOSAVE_RETRY_MS);
+      return;
+    }
+    if (!hostAuthoritativeReady || state.externalEditConflict || state.airport !== state.hostAirport ||
+        (state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed)) {
+      return;
+    }
+    autosaveQueued = false;
+    saveAll({ automatic: true });
+  }
+
   function startConfigurationSave() {
 	if (!hostAuthoritativeReady || !state.dirty || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport ||
-      (state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed)) return;
+      (state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed)) return false;
     const payload = serializeStatePayload(true);
     // AVISO is an independent, potentially multi-megabyte resource.  Do not
     // rewrite it (or make profile recovery depend on it) when only profiles or
@@ -5371,7 +5216,7 @@
     if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
       delete payload.aviso;
     pending.save = postBridge("state.save", payload);
-    if (!pending.save) return;
+    if (!pending.save) return false;
     armPendingTimeout("save", pending.save);
     setStatus("Saving configuration…", "info");
     updateCommandState();
@@ -5384,6 +5229,7 @@
         payload: { requestId, state: payload, message: "Preview state saved" }
       }), 0);
     }
+    return true;
   }
 
   function requestReload() {
@@ -5396,6 +5242,7 @@
     } else if (hasUnsaved && !window.confirm("Discard unsaved changes and reload configuration from disk?")) {
       return;
     }
+    cancelAutosave();
     discardDatalinkDraftOnReload = true;
     pending.reload = postBridge("state.reload", {});
     if (!pending.reload) {
@@ -5431,7 +5278,8 @@
     globalSaveAfterDatalink = false;
     if (hasDatalinkDraftChanges()) {
       updateDirtyState();
-      setStatus("Datalink settings changed while saving; press Save again", "error");
+      setStatus("Datalink settings changed while saving; saving the latest values…", "info");
+      scheduleAutosave();
       return;
     }
     if (state.dirty) {
@@ -5440,23 +5288,27 @@
     }
     updateDirtyState();
     setStatus("Datalink settings saved");
-    showToast("Datalink settings saved", "success");
   }
 
-  function saveAll() {
-    if (!stageFocusedEditorValue()) return;
+  function saveAll({ automatic = false } = {}) {
+    if (automatic) {
+      const active = document.activeElement;
+      if (!stageEditorControl(active) || (active?.checkValidity && !active.checkValidity())) return false;
+      if (hasUnappliedEditorInputs()) return false;
+    } else if (!stageFocusedEditorValue()) return false;
 	flushDeferredHistoryGesture();
     if (datalinkControlsInitialized) captureDatalinkDraftFromControls();
     const dirty = datalinkDirtyParts();
     if (dirty.connection && datalinkDraft?.password) datalinkPasswordCommitReady = true;
     if (dirty.connection && !datalinkDraft?.logonCallsign) {
+      if (automatic) return false;
       setPage("settings");
       $("#datalinkLogonCallsign")?.classList.add("invalid");
       $("#datalinkLogonCallsign")?.focus();
       showToast("Enter a CPDLC logon callsign before saving", "error");
-      return;
+      return false;
     }
-    if (datalinkPending.settings || globalSaveAfterDatalink) return;
+    if (datalinkPending.settings || globalSaveAfterDatalink) return false;
     if (dirty.connection || dirty.cdm) {
       globalSaveAfterDatalink = true;
       const submitted = submitDatalinkSettings({
@@ -5469,9 +5321,10 @@
       if (!submitted) globalSaveAfterDatalink = false;
       updateDirtyState();
       if (submitted) setStatus("Saving datalink settings...", "info");
-      return;
+      return submitted;
     }
-    startConfigurationSave();
+    if (!state.dirty) return true;
+    return startConfigurationSave();
   }
 
   function restoreProfilesBackup() {
@@ -5486,7 +5339,7 @@
 
   function restoreBundledDefaults() {
 	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
-    if (!window.confirm("Load the bundled profiles and, when available, the AVISO default for the active airport? Review them, then press Save to replace the current data.")) return;
+    if (!window.confirm("Load the bundled profiles and, when available, the AVISO default for the active airport? Valid changes will be saved automatically.")) return;
     const id = postBridge("state.reset", {});
     if (!id) return;
     pending.resource = { id, resource: "defaults", source: "bundled defaults", kind: "defaults" };
@@ -5505,7 +5358,8 @@
     state.recoveryConfirmed = false;
     state.avisoRecoveryConfirmed = false;
     restoreHistorySnapshot(target);
-	postRuntimeCommand("state.undo", { state: serializeStatePayload() }, rollback);
+    updateDirtyState("Undoing change…");
+	if (postRuntimeCommand("state.undo", { state: serializeStatePayload() }, rollback)) scheduleAutosave();
   }
 
   function redoHistory() {
@@ -5518,7 +5372,8 @@
     state.recoveryConfirmed = false;
     state.avisoRecoveryConfirmed = false;
     restoreHistorySnapshot(target);
-	postRuntimeCommand("state.redo", { state: serializeStatePayload() }, rollback);
+    updateDirtyState("Redoing change…");
+	if (postRuntimeCommand("state.redo", { state: serializeStatePayload() }, rollback)) scheduleAutosave();
   }
 
   function confirmDelete(message) {
@@ -5542,11 +5397,11 @@
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
     const avisoView = params.get("aviso") || params.get("view");
     if (["geometry", "text"].includes(avisoView)) state.ui.avisoView = avisoView;
+    if (["day", "night"].includes(params.get("palette"))) state.settings.avisoColorPalette = params.get("palette");
     const ui = params.get("ui");
     if (ui === "control" || params.get("control") === "1" || PAGE_TITLES[page]) state.ui.controlCenterOpen = true;
     if (ui === "runtime") state.ui.controlCenterOpen = false;
     if (["mode", "groups", "inset", "profile"].includes(params.get("popup"))) state.ui.runtimePopover = params.get("popup");
-    if (["active", "runways", "timing", "appearance"].includes(params.get("alerts"))) state.ui.alertsView = params.get("alerts");
     if (params.get("tag")) state.ui.selectedTagId = params.get("tag");
     if (params.get("profile")) {
       const match = state.profiles.find(record => record.data.name.toLowerCase() === params.get("profile").toLowerCase());
@@ -5558,8 +5413,8 @@
     if (!(control instanceof HTMLInputElement || control instanceof HTMLSelectElement ||
         control instanceof HTMLTextAreaElement)) return "";
     if (control.matches(
-      '[type="search"], [type="file"], #avisoTextStyleSelect, #avisoTextApplyTarget, ' +
-      '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect, #modeBlockedSquawkInput'
+      '[type="search"], [type="file"], ' +
+      '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect'
     ) || control.closest(".datalink-card, .updater-general-group, #runtimeMenu, .page-rail, dialog")) return "";
 
     const profilePanel = control.closest("[data-profile-panel]")?.dataset.profilePanel;
@@ -5585,10 +5440,10 @@
       if (scope === "icons") return applyIcons({ render: false });
       if (scope === "tags") return applyTag({ render: false });
       if (scope === "rules") return applyRule({ render: false });
-      if (scope === "modes") return applyMode({ render: false, includePendingSquawk: false });
+      if (scope === "modes") return applyMode({ render: false });
       if (scope === "profiles") return applyProfile({ render: false });
       if (scope === "aviso-geometry") return applyAvisoGeometry({ render: false, feedback: false });
-      if (scope === "aviso-text") return applyAvisoTextScope({ render: false, feedback: false });
+      if (scope === "aviso-text") return applyAvisoTextStyles({ render: false, feedback: false });
       if (scope === "groups") return applyAvisoGroup({ render: false, feedback: false });
       if (scope === "alerts") return applyAlerts({ render: false, feedback: false });
       if (scope === "settings") return applySettings({ render: false });
@@ -5661,11 +5516,11 @@
 
   function bindEvents() {
     document.addEventListener("focusin", event => {
-      if (editorControlScope(event.target) || event.target.id === "modeBlockedSquawkInput" || event.target.id === "colorSvPalette")
+      if (editorControlScope(event.target) || event.target.id === "colorSvPalette")
         beginHistoryGesture(event.target);
     });
     document.addEventListener("pointerdown", event => {
-      if (editorControlScope(event.target) || event.target.id === "modeBlockedSquawkInput" || event.target.id === "colorSvPalette")
+      if (editorControlScope(event.target) || event.target.id === "colorSvPalette")
         beginHistoryGesture(event.target);
     }, true);
     document.addEventListener("focusout", event => {
@@ -5692,8 +5547,7 @@
         "#controlWindow [data-color-path], #controlWindow [data-tag-id], " +
         "#controlWindow [data-rule-index], #controlWindow [data-mode-index], " +
         "#controlWindow [data-managed-profile-id], #controlWindow [data-aviso-group-id], " +
-        "#controlWindow [data-aviso-geometry-style], #controlWindow [data-aviso-text-style], " +
-        "#controlWindow [data-aviso-text-index]"
+        "#controlWindow [data-aviso-geometry-style], #controlWindow [data-aviso-text-style]"
       );
       if (guardedEditorAction && hasUnappliedEditorInputs() && !stageFocusedEditorValue()) {
         event.preventDefault();
@@ -5756,8 +5610,6 @@
       if (tabButton) { if (stageFocusedEditorValue()) setProfileTab(tabButton.dataset.profileTab); return; }
       const avisoViewButton = event.target.closest("[data-aviso-view]");
       if (avisoViewButton) { if (stageFocusedEditorValue()) { state.ui.avisoView = avisoViewButton.dataset.avisoView; renderAviso(); } return; }
-      const alertsViewButton = event.target.closest("[data-alerts-view]");
-      if (alertsViewButton) { if (stageFocusedEditorValue()) setAlertsView(alertsViewButton.dataset.alertsView); return; }
       const treeToggle = event.target.closest("[data-tree-toggle]");
       if (treeToggle) {
         if (!stageFocusedEditorValue()) return;
@@ -5790,24 +5642,8 @@
       const avisoTextStyleRow = event.target.closest("[data-aviso-text-style]");
       if (avisoTextStyleRow) {
         if (!stageFocusedEditorValue()) return;
-        state.ui.selectedAvisoTextStyleId = avisoTextStyleRow.dataset.avisoTextStyle;
-        const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
-        const index = entry?.indices?.[0] ?? 0;
-        state.ui.selectedAvisoTextIndex = index;
-        state.ui.selectedAvisoTextIndices = entry ? [index] : [];
-        state.ui.avisoTextSelectionAnchorIndex = index;
-        state.ui.avisoTextSearch = "";
-        drafts.avisoTextStyle = null;
-        drafts.avisoTextLabel = null;
-        clearUnappliedEditorSection($("#avisoTextValue"));
-        renderAvisoText();
-        return;
-      }
-      const avisoTextRow = event.target.closest("[data-aviso-text-index]");
-      if (avisoTextRow) {
-        if (!stageFocusedEditorValue()) return;
         const forceToggle = Boolean(event.target.closest('[data-aviso-selection-toggle="text"]'));
-        selectAvisoTextLabel(Number(avisoTextRow.dataset.avisoTextIndex), event, forceToggle);
+        selectAvisoTextStyle(avisoTextStyleRow.dataset.avisoTextStyle, event, forceToggle);
         return;
       }
       const actionButton = event.target.closest("[data-action]");
@@ -5831,6 +5667,7 @@
         if (before?.[field] !== after?.[field]) datalinkFieldRevisions[field] += 1;
       });
       renderDatalink();
+      scheduleAutosave();
     };
     $("#datalinkLogonCallsign").addEventListener("input", event => {
       const selection = event.target.selectionStart;
@@ -5864,27 +5701,13 @@
         syncDatalinkDraft(field);
       });
     });
-    $("#avisoTextStyleSelect").addEventListener("change", event => {
-      if (!stageFocusedEditorValue()) {
-        event.target.value = state.ui.selectedAvisoTextStyleId;
-        return;
-      }
-      state.ui.selectedAvisoTextStyleId = event.target.value;
-      const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
-      const index = entry?.indices?.[0] ?? 0;
-      state.ui.selectedAvisoTextIndex = index;
-      state.ui.selectedAvisoTextIndices = entry ? [index] : [];
-      state.ui.avisoTextSelectionAnchorIndex = index;
-      state.ui.avisoTextSearch = "";
-      drafts.avisoTextStyle = null;
-      drafts.avisoTextLabel = null;
-      clearUnappliedEditorSection($("#avisoTextValue"));
-      renderAvisoText();
-    });
     $("#tagLabelFontSize").addEventListener("input", event => { $("#tagLabelFontSizeOutput").value = String(Math.round(clamp(event.target.value, 1, 5))); });
 
     $("#colorSearch").addEventListener("input", renderColors);
-    $("#colorHex").addEventListener("input", event => setColorDraftFromHex(event.target.value));
+    $("#colorHex").addEventListener("input", event => {
+      if (/^#?[0-9a-f]{6}$/i.test(event.target.value.trim())) setColorDraftFromHex(event.target.value);
+    });
+    $("#colorHex").addEventListener("change", event => setColorDraftFromHex(event.target.value));
     $("#colorHue").addEventListener("input", event => setColorDraftFromHsv(Number(event.target.value), drafts.color?.s ?? 0, drafts.color?.v ?? 1));
     [["colorRed", "r"], ["colorGreen", "g"], ["colorBlue", "b"]].forEach(([id]) => {
       $("#" + id).addEventListener("input", () => setColorDraftFromRgb($("#colorRed").value, $("#colorGreen").value, $("#colorBlue").value));
@@ -5892,6 +5715,26 @@
     $("#colorOpacity").addEventListener("input", event => {
       if (!drafts.color) return;
       drafts.color.opacity = Number(event.target.value);
+      syncColorEditorControls();
+    });
+    $("#colorHueOutput").addEventListener("input", event => {
+      if (event.target.value.trim() === "") return;
+      const value = Number(event.target.value);
+      if (Number.isFinite(value)) setColorDraftFromHsv(value, drafts.color?.s ?? 0, drafts.color?.v ?? 1);
+    });
+    [["colorRedOutput", "r"], ["colorGreenOutput", "g"], ["colorBlueOutput", "b"]].forEach(([id]) => {
+      $("#" + id).addEventListener("input", event => {
+        if (event.target.value.trim() === "") return;
+        const values = [$("#colorRedOutput").value, $("#colorGreenOutput").value, $("#colorBlueOutput").value].map(Number);
+        if (values.every(Number.isFinite)) setColorDraftFromRgb(...values);
+      });
+    });
+    $("#colorOpacityOutput").addEventListener("input", event => {
+      if (!drafts.color || event.target.value.trim() === "") return;
+      const value = Number(event.target.value);
+      if (!Number.isFinite(value)) return;
+      markEditorSectionUnapplied(event.target);
+      drafts.color.opacity = clamp(value, 0, 100);
       syncColorEditorControls();
     });
     const colorPalette = $("#colorSvPalette");
@@ -5932,7 +5775,6 @@
     $("#fixedPixelIconSize").addEventListener("change", updateIconDependencies);
     $("#smallIconBoost").addEventListener("change", updateIconDependencies);
     ["targetIconStyle"].forEach(id => $("#" + id).addEventListener("change", renderIconSymbolPreview));
-    $("#showPrimaryTarget").addEventListener("change", renderIconSymbolPreview);
 
     $("#tagLineGrid").addEventListener("focusin", event => { if (event.target.matches(".tag-line-input")) activeTagInput = event.target; });
     $("#tagDetailedInherits").addEventListener("change", event => {
@@ -5974,27 +5816,6 @@
     $("#ruleStatusDropdown").addEventListener("keydown", event => {
       if (event.key === "Escape") { setRuleStatusMenuOpen(false); $("#ruleStatusButton").focus(); }
     });
-    $("#modeBlockedSquawkInput").addEventListener("keydown", event => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        withHistoryGesture(event.target, addModeBlockedSquawk);
-      }
-    });
-    $("#modeBlockedSquawkInput").addEventListener("input", event => {
-      const value = String(event.target.value || "").trim();
-      event.target.setCustomValidity(!value || /^[0-7]{4}$/.test(value) ? "" : "Use four octal digits (0-7)");
-      markEditorSectionUnapplied(event.target);
-    });
-    $("#modeBlockedSquawkInput").addEventListener("change", event => {
-      if (String(event.target.value || "").trim()) {
-        if (!withHistoryGesture(event.target, addModeBlockedSquawk)) event.target.reportValidity?.();
-      } else {
-        event.target.setCustomValidity("");
-        clearUnappliedEditorSection(event.target);
-        updateDirtyState();
-      }
-    });
-
     $("#avisoGeometrySearch").addEventListener("input", event => {
       state.ui.avisoGeometrySearch = event.target.value;
       renderAvisoGeometry();
@@ -6126,16 +5947,9 @@
         markControlTouched(event.target);
       });
     });
-    $("#avisoTextApplyTarget").addEventListener("change", () => updateAvisoTextApplyScopeUI());
     document.addEventListener("change", event => {
       if (event.target.matches("#runtimePresetLinked")) toggleRuntimePresetLinked(event.target.checked);
       if (event.target.matches("[data-alert-type]")) event.target.closest(".alert-toggle-card")?.classList.toggle("inactive", !event.target.checked);
-    });
-    ALERT_COLOR_FIELDS.forEach(([prefix]) => {
-      const picker = $(`#${prefix}Picker`);
-      const text = $(`#${prefix}Color`);
-      picker.addEventListener("input", () => { text.value = picker.value.toUpperCase(); });
-      text.addEventListener("input", () => { picker.value = normalizeHex(text.value, picker.value); });
     });
     $("#resourceGithubLoadConfirm").addEventListener("click", loadResourceFromGithub);
     $("#resourceGithubUrl").addEventListener("keydown", event => {
@@ -6160,22 +5974,21 @@
         renderAvisoGeometry();
       }
     });
-    $("#avisoTextLabelList").addEventListener("keydown", event => {
-      const entry = avisoStyleEntry(state.ui.selectedAvisoTextStyleId, "text");
+    $("#avisoTextStyleList").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const indices = filteredAvisoTextIndices(entry);
-        if (indices.length) {
-          state.ui.selectedAvisoTextIndices = indices;
-          state.ui.selectedAvisoTextIndex = indices[indices.length - 1];
-          state.ui.avisoTextSelectionAnchorIndex = indices[0];
-          clearUnappliedEditorSection($("#avisoTextValue"));
+        const ids = filteredAvisoTextEntries().map(entry => entry.id);
+        if (ids.length) {
+          state.ui.selectedAvisoTextStyleIds = ids;
+          state.ui.selectedAvisoTextStyleId = ids[ids.length - 1];
+          state.ui.avisoTextSelectionAnchorId = ids[0];
+          clearUnappliedEditorSection($("#avisoTextVisible"));
           renderAvisoText();
         }
       } else if (event.key === "Escape") {
-        const index = Number(state.ui.selectedAvisoTextIndex);
-        state.ui.selectedAvisoTextIndices = Number.isInteger(index) ? [index] : [];
-        clearUnappliedEditorSection($("#avisoTextValue"));
+        const id = state.ui.selectedAvisoTextStyleId;
+        state.ui.selectedAvisoTextStyleIds = id ? [id] : [];
+        clearUnappliedEditorSection($("#avisoTextVisible"));
         renderAvisoText();
       }
     });
@@ -6192,10 +6005,6 @@
     $("#updateAutoInstall").addEventListener("change", event => {
       submitUpdateSettings({ auto_install: event.target.checked }, "Automatic activation preference saved");
     });
-    $("#saveButton").addEventListener("pointerdown", event => {
-      if (!stageFocusedEditorValue()) event.preventDefault();
-    });
-    $("#saveButton").addEventListener("click", saveAll);
     $("#reloadButton").addEventListener("click", requestReload);
     $("#undoButton").addEventListener("click", undoHistory);
     $("#redoButton").addEventListener("click", redoHistory);
@@ -6209,6 +6018,15 @@
   function handleAction(action, button) {
     if (action === "open-control-center") openControlCenter();
     else if (action === "open-settings") { openControlCenter(); setPage("settings"); }
+    else if (action === "set-aviso-palette") {
+      const palette = button.dataset.avisoColorPalette === "day" ? "day" : "night";
+      if (state.settings.avisoColorPalette !== palette) {
+        state.settings.avisoColorPalette = palette;
+        renderSettings();
+        renderAviso();
+        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
+      }
+    }
     else if (action === "dismiss-persistent-status") {
       if (persistentStatusState)
         dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;
@@ -6246,11 +6064,6 @@
     else if (action === "duplicate-mode") duplicateMode();
     else if (action === "delete-mode") deleteMode();
     else if (action === "activate-mode") activateMode();
-    else if (action === "add-mode-squawk") {
-      const input = $("#modeBlockedSquawkInput");
-      if (String(input?.value || "").trim()) withHistoryGesture(input, addModeBlockedSquawk);
-    }
-    else if (action === "remove-mode-squawk") removeModeBlockedSquawk(Number(button.dataset.index));
     else if (action === "mode-statuses-all") setModeStatusVisibility(true);
     else if (action === "mode-statuses-none") setModeStatusVisibility(false);
     else if (action === "new-profile") createProfile();
@@ -6408,7 +6221,7 @@
     if (!mode) return;
 	if (mode.name === activeProfile()?.filters?.display_modes?.active) return;
 	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
-	  showToast("Save or reload current edits before changing mode", "error");
+	  showToast("Wait for automatic saving or revert current edits before changing mode", "error");
 	  return;
 	}
 	const modeEditor = $("[data-page-panel='modes']");
@@ -6841,7 +6654,7 @@
 	}
     if (avisoChanged && reason !== "save") resetAvisoSelections();
 	// A benign runtime/preset sync must not repaint the focused editor while
-	// local staged changes are waiting for the global Save action.
+	// local staged changes are waiting for automatic persistence.
 	if (preservesStagedEditors) {
 	  renderGlobalProfileSelect();
 	  renderRuntimeMenu();
@@ -6870,7 +6683,7 @@
       updateDirtyState();
     }
     if (externallyChangedDirtyEditors) {
-      const message = "Another vSMR window changed the active data. Your unsaved edits were retained; reload before saving.";
+      const message = "Another vSMR window changed the active data. Your unsaved edits were retained; revert before editing further.";
       setStatus(message, "error");
       showToast(message, "error");
     }
@@ -7017,7 +6830,6 @@
 	  );
 	  if (isSave && hasInlineAviso) {
 		pending.save = "";
-		showToast(payload.message || "Configuration saved", "success");
 	  }
 	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.undo") showToast("Undone", "success");
 	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.redo") showToast("Redone", "success");
@@ -7044,7 +6856,6 @@
 		applyAuthoritativeState(authoritativeState, reason, trustedRuntimeResponse);
 		if (completesSave) {
 		  pending.save = "";
-		  showToast("Configuration saved", "success");
 		}
 		if (completesReload) {
 		  pending.reload = "";
@@ -7104,7 +6915,6 @@
         pending.save = "";
         applyAuthoritativeState(savedState, "save");
         updateCommandState();
-        showToast(payload.message || "Configuration saved", "success");
       } else {
         setStatus("Saved; reloading authoritative vSMR data...", "info");
         updateCommandState();

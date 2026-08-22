@@ -474,8 +474,6 @@ const VsmrScene::RadarScene* CSMRRadar::GetCurrentRadarScene() const noexcept
 }
 
 std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
-	bool rimcasEnabled,
-	bool useRedEmergencySymbols,
 	bool lowVisibilityProcedures,
 	int rimcasStageTwoSpeedThreshold,
 	double* outRimcasMilliseconds)
@@ -724,7 +722,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.towerModeArrival = target.hasFlightPlan && !airportUpper.empty() &&
 			_stricmp(target.destination.c_str(), airportUpper.c_str()) == 0;
 		const bool needsCorrelatedFlightPlan = towerModeEnabled ||
-			(rimcasEnabled && RimcasInstance != nullptr && target.passesRadarFilter);
+			(RimcasInstance != nullptr && target.passesRadarFilter);
 		if (needsCorrelatedFlightPlan)
 		{
 			++scene->stats.sdkCorrelatedFlightPlanLookups;
@@ -740,7 +738,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			}
 		}
 
-		if (rimcasEnabled && RimcasInstance != nullptr && target.passesRadarFilter)
+		if (RimcasInstance != nullptr && target.passesRadarFilter)
 		{
 			const auto rimcasTargetStart = Clock::now();
 			RimcasInstance->OnRefresh(target, this);
@@ -866,7 +864,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		Clock::now() - targetCaptureStart).count();
 
 	const auto finalizeStart = Clock::now();
-	if (rimcasEnabled && RimcasInstance != nullptr)
+	if (RimcasInstance != nullptr)
 	{
 		const auto rimcasEndStart = Clock::now();
 		RimcasInstance->OnRefreshEnd(*scene, std::clamp(rimcasStageTwoSpeedThreshold, 0, 250));
@@ -1276,7 +1274,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				static_cast<BYTE>(std::clamp(normalTagColorOverrides.targetB, 0, 255)));
 		}
 
-		if (rimcasEnabled && useRedEmergencySymbols && target.rimcas.movementAlert == static_cast<int>(CRimcas::EMERG))
+		if (target.rimcas.movementAlert == static_cast<int>(CRimcas::EMERG))
 		{
 			color = Gdiplus::Color(255, 255, 0, 0);
 			target.style.primaryReturnColor = CopyColor(color);

@@ -2,8 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a persisted Day/Night AVISO color mode in Settings. Both the main view and AVISO inset now select compact Day overrides from the same GeoJSON document, while existing base paint remains the Night palette and older/custom schema-2 files continue to work unchanged.
+
 ### Changed
 
+- Replaced the Control Center's manual Save action with debounced automatic persistence for editor and datalink changes. Undo and Redo are persisted after runtime confirmation, while Revert cancels queued writes before restoring the configuration from disk.
+- Made AVISO and SRW inset content inherit EuroScope's live Sector / Inactive Sector Background color, added a thin black outer frame to both radar insets, and removed the obsolete per-profile SRW background override.
+- Made the AVISO Geometry and Text editors palette-aware: their swatches and color fields now show the active Day or Night values and write color changes only to that palette, while visibility, opacity, width, typography, and zoom remain shared.
+- Consolidated the four RIMCAS tabs into one scroll-free Alerts page for alert types, runway monitoring, visibility, and timing. Removed duplicate explanations and appearance controls; RIMCAS processing, label-only alerts, and red emergency symbols are now unconditional, while alert colors remain centralized on the Colors page.
+- Reworked AVISO Geometry and Text as matching flat group-style editors: both now use full-height searchable group lists without redundant nested borders or summary cards, support mixed multi-group styling, and Text no longer exposes individual labels or editable label content.
+- Simplified the profile Colors editor by removing the internal JSON-path disclosure and exposing Hex, Hue, Red, Green, Blue, and Opacity as copy/paste-friendly text fields alongside the visual palette and sliders.
+- Removed obsolete Control Center surface area: the nested Color container, the Icons primary-return toggle, the Modes blocked-squawk editor, and the Profiles radar-filter and schema-metadata sections. Active persisted filter, autocorrelation, schema, and primary-return data remains runtime-compatible without being rewritten by these editors.
+- Merged the supplied Day AVISO palette into the bundled airport data without duplicating geometry files, supplemented the accidentally unchanged LFML export with the shared LFBO/LFLL Day surface colors, and added a strict UTF-8 palette-import tool plus release validation for palette metadata and color overrides. LFMN intentionally retains identical Day and Night colors.
 - Restored the ESTimer alarm sound.
 - Fixed AVISO `zoomLevel` visibility to use the same corner-to-corner viewport distance as the radar zoom level, and applied the rule consistently to labels, lines, and polygons at every airport.
 - Made right-clicking an SRW tag background open EuroScope's Assume/Handoff list, and synchronized AVISO inset and SRW tag corners with the active profile's rounded-corners setting.
@@ -43,6 +55,7 @@
 
 ### Fixed
 
+- Synchronized AVISO Day/Night changes across every open radar screen sharing the Control Center configuration, and made stale main-view raster previews palette-aware so LFPG cannot continue displaying its previous Night bitmap during a slower Day rebuild.
 - Made automatic PDC reminders session-only and fail-safe: every eligible aircraft now receives the complete monotonic delay, including aircraft with expired placeholder TOBTs; startup, stale/unavailable vACDM data, missing controller/airport state, TOBT removal, delay changes, and Stop now reset or re-arm the scheduler predictably.
 - Prevented reminder floods and duplicates by defining zero cooldown as one reminder per eligibility period, spacing command-injection retries, stopping after an exhausted automatic retry batch, treating successful key-down submission as sent, and suppressing reminders while the PDC composer or transmission is active.
 - Made Control Center performance exports prefer the documented `vSMR_Data\Diagnostics` directory, while retaining `%LOCALAPPDATA%` and temporary-directory fallbacks when the installation data folder is not writable.
