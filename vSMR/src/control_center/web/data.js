@@ -103,8 +103,6 @@ window.VSMR_DATA = {
         }
       },
       rimcas: {
-        rimcas_label_only: true,
-        use_red_symbol_for_emergencies: true,
         timer: [60, 45, 30, 15, 0],
         timer_lvp: [120, 90, 60, 30, 0],
         stage_two_speed_threshold_kt: 25,
@@ -146,8 +144,7 @@ window.VSMR_DATA = {
         extended_lines_length: 15,
         extended_lines_ticks_spacing: 1,
         extended_lines_color: { r: 255, g: 255, b: 255, a: 255 },
-        runway_color: { r: 0, g: 0, b: 0, a: 255 },
-        background_color: { r: 75, g: 75, b: 75, a: 255 }
+        runway_color: { r: 0, g: 0, b: 0, a: 255 }
       },
       rules: { version: 1, items: [] }
     },
@@ -178,7 +175,7 @@ window.VSMR_DATA = {
   aviso: {
     type: "FeatureCollection",
     name: "LFPG AVISO preview",
-    metadata: { airport: "LFPG", bundled_preview: true },
+    metadata: { airport: "LFPG", bundled_preview: true, default_color_palette: "night", color_palettes: ["night", "day"] },
     styles: {
       "surface.taxiway": {
         name: "Taxiways",
@@ -187,6 +184,7 @@ window.VSMR_DATA = {
         paint: {
           fill: "#273438", "fill-opacity": 1,
           stroke: "#526065", "stroke-width": 1, "stroke-opacity": 1,
+          "palette-overrides": { day: { fill: "#8A807F", stroke: "#595E5B" } },
           visible: true
         }
       },
@@ -206,6 +204,7 @@ window.VSMR_DATA = {
         paint: {
           "text-font": "Tahoma", "text-size": 12,
           "text-color": "#84b7d5", "text-halo-color": "#101719",
+          "palette-overrides": { day: { "text-color": "#203033", "text-halo-color": "#DDE5E5" } },
           "text-halo-width": 1, zoomLevel: 6, visible: true
         }
       }

@@ -386,6 +386,43 @@ $avisoFiles = @(
         Where-Object { $_.Name -match '^[A-Za-z0-9]{4}\.geojson$' }
 )
 Assert-True ($avisoFiles.Count -gt 0) "No bundled AVISO files were found."
+$avisoPaletteStyleCount = 0
+$avisoPaletteColorCount = 0
+$avisoPaletteColorKeys = @('fill', 'stroke', 'marker-color', 'text-color', 'text-halo-color')
+function Assert-AvisoPaletteData {
+    param($Document, [string]$Name)
+
+    Assert-True ([string]$Document.metadata.default_color_palette -eq 'night') "$Name does not declare Night as its base AVISO palette."
+    $palettes = @($Document.metadata.color_palettes)
+    Assert-True ($palettes.Count -eq 2 -and [string]$palettes[0] -eq 'night' -and [string]$palettes[1] -eq 'day') "$Name must declare Night and Day AVISO palettes."
+
+    foreach ($styleProperty in @($Document.styles.PSObject.Properties)) {
+        $paint = $styleProperty.Value.paint
+        if ([string]$styleProperty.Value.object_type -eq 'Label') {
+            Assert-True ($null -ne $paint -and
+                $paint.PSObject.Properties.Name -contains 'zoomLevel') "$Name label style '$($styleProperty.Name)' has no zoom visibility threshold."
+            $zoomLevel = $paint.zoomLevel
+            Assert-True (($zoomLevel -is [int]) -or ($zoomLevel -is [long])) "$Name label style '$($styleProperty.Name)' has a non-integer zoom visibility threshold."
+            Assert-True ([int]$zoomLevel -ge 0 -and [int]$zoomLevel -le 14) "$Name label style '$($styleProperty.Name)' has an out-of-range zoom visibility threshold."
+        }
+        if ($null -eq $paint -or
+            -not ($paint.PSObject.Properties.Name -contains 'palette-overrides')) {
+            continue
+        }
+        $overrides = $paint.'palette-overrides'
+        Assert-True ($overrides -is [pscustomobject]) "$Name style '$($styleProperty.Name)' has invalid palette-overrides."
+        foreach ($paletteProperty in @($overrides.PSObject.Properties)) {
+            Assert-True ($paletteProperty.Name -eq 'day') "$Name style '$($styleProperty.Name)' has an unsupported '$($paletteProperty.Name)' palette override."
+            Assert-True ($paletteProperty.Value -is [pscustomobject]) "$Name style '$($styleProperty.Name)' has an invalid Day palette."
+            $script:avisoPaletteStyleCount++
+            foreach ($colorProperty in @($paletteProperty.Value.PSObject.Properties)) {
+                Assert-True ($colorProperty.Name -in $script:avisoPaletteColorKeys) "$Name style '$($styleProperty.Name)' has unsupported Day property '$($colorProperty.Name)'."
+                Assert-True ([string]$colorProperty.Value -match '^#[0-9A-Fa-f]{6}$') "$Name style '$($styleProperty.Name)' has invalid Day color '$($colorProperty.Value)'."
+                $script:avisoPaletteColorCount++
+            }
+        }
+    }
+}
 foreach ($file in $avisoFiles) {
     $document = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
     Assert-True ($document.type -eq 'FeatureCollection') "$($file.Name) is not a FeatureCollection."
@@ -395,6 +432,7 @@ foreach ($file in $avisoFiles) {
     $ids = @($document.features | ForEach-Object { [string]$_.id })
     Assert-True (@($ids | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) "$($file.Name) contains an empty feature id."
     Assert-True (@($ids | Sort-Object -Unique).Count -eq $ids.Count) "$($file.Name) contains duplicate feature ids."
+    Assert-AvisoPaletteData $document $file.Name
 }
 
 $dynamicAvisoPath = Join-Path $dataDirectory "AVISO\LFPG_Dyna_fixed.geojson"
@@ -407,6 +445,8 @@ Assert-True ([int]$dynamicAviso.metadata.feature_count -eq $dynamicFeatures.Coun
 $dynamicIds = @($dynamicFeatures | ForEach-Object { [string]$_.id })
 Assert-True (@($dynamicIds | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) "LFPG_Dyna_fixed.geojson contains an empty feature id."
 Assert-True (@($dynamicIds | Sort-Object -Unique).Count -eq $dynamicIds.Count) "LFPG_Dyna_fixed.geojson contains duplicate feature ids."
+Assert-AvisoPaletteData $dynamicAviso 'LFPG_Dyna_fixed.geojson'
+Assert-True ($avisoPaletteStyleCount -eq 35 -and $avisoPaletteColorCount -eq 70) "Bundled AVISO Day palette must contain 35 style overrides and 70 color fields."
 $dynamicAreas = @($dynamicFeatures | Where-Object {
     [string]$_.properties.geometry_role -eq 'frequency_ownership_area'
 })

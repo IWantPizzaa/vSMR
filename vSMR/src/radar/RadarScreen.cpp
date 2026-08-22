@@ -348,6 +348,68 @@ namespace
 		return Gdiplus::Color(alpha, static_cast<BYTE>(red), static_cast<BYTE>(green), static_cast<BYTE>(blue));
 	}
 
+	const Value* GetAvisoPalettePaint(const Value* paint, const char* palette)
+	{
+		if (paint == nullptr ||
+			!paint->IsObject() ||
+			palette == nullptr ||
+			!paint->HasMember("palette-overrides") ||
+			!(*paint)["palette-overrides"].IsObject())
+		{
+			return nullptr;
+		}
+
+		const Value& palettes = (*paint)["palette-overrides"];
+		if (!palettes.HasMember(palette) || !palettes[palette].IsObject())
+			return nullptr;
+		return &palettes[palette];
+	}
+
+	Gdiplus::Color ParseAvisoPaletteColorResolved(
+		const Value* sharedPaint,
+		const Value* inlineProperties,
+		const char* palette,
+		const char* colorProperty,
+		const Gdiplus::Color& fallback)
+	{
+		// Palette-specific feature overrides win over palette-specific catalog
+		// defaults. An intentional feature-level base color remains authoritative
+		// in both modes unless that feature also supplies a Day override. All other
+		// missing overrides inherit the effective base (night) color, keeping older
+		// and custom schema-2 AVISO documents compatible.
+		const Value* inlinePalette = GetAvisoPalettePaint(inlineProperties, palette);
+		const Value* sharedPalette = GetAvisoPalettePaint(sharedPaint, palette);
+		const Value* colorSource = nullptr;
+		if (AvisoHasStringProperty(inlinePalette, colorProperty))
+			colorSource = inlinePalette;
+		else if (AvisoHasStringProperty(inlineProperties, colorProperty))
+			return fallback;
+		else
+			colorSource = sharedPalette;
+		if (!AvisoHasStringProperty(colorSource, colorProperty))
+			return fallback;
+
+		const char* hex = (*colorSource)[colorProperty].GetString();
+		if (hex == nullptr || hex[0] != '#' || std::strlen(hex) != 7)
+			return fallback;
+
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		if (!TryParseHexByte(hex + 1, red) ||
+			!TryParseHexByte(hex + 3, green) ||
+			!TryParseHexByte(hex + 5, blue))
+		{
+			return fallback;
+		}
+
+		return Gdiplus::Color(
+			fallback.GetAlpha(),
+			static_cast<BYTE>(red),
+			static_cast<BYTE>(green),
+			static_cast<BYTE>(blue));
+	}
+
 	const char* GetAvisoStringProperty(const Value* properties, std::initializer_list<const char*> keys)
 	{
 		if (properties == nullptr || !properties->IsObject())
@@ -1664,6 +1726,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 			parsedLabel.textColor = ParseAvisoColorResolved(sharedPaint, properties, "text-color", nullptr, Gdiplus::Color(255, 128, 128, 128));
 			parsedLabel.haloColor = ParseAvisoColorResolved(sharedPaint, properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
+			parsedLabel.dayTextColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "text-color", parsedLabel.textColor);
+			parsedLabel.dayHaloColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "text-halo-color", parsedLabel.haloColor);
 			parsedLabel.textSize = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-size", 12.0f, 6.0f, 32.0f);
 			parsedLabel.haloWidth = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
 			parsedLabel.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
@@ -1679,6 +1743,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.frequencyOwnership = ReadAvisoFrequencyOwnershipMetadata(properties);
 		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
 		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
+		parsedFeature.dayFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "fill", parsedFeature.fillColor);
+		parsedFeature.dayStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "stroke", parsedFeature.strokeColor);
 		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
 		parsedFeature.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
 		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();
@@ -2306,6 +2372,52 @@ void CSMRRadar::InvalidateAvisoGroupRendering()
 	}
 }
 
+std::string CSMRRadar::GetAvisoColorPalette() const
+{
+	return AvisoUseDayColorPalette ? "day" : "night";
+}
+
+bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persistToAsr)
+{
+	std::string palette = rawPalette;
+	palette.erase(
+		palette.begin(),
+		std::find_if(
+			palette.begin(),
+			palette.end(),
+			[](unsigned char value) { return !std::isspace(value); }));
+	palette.erase(
+		std::find_if(
+			palette.rbegin(),
+			palette.rend(),
+			[](unsigned char value) { return !std::isspace(value); }).base(),
+		palette.end());
+	std::transform(
+		palette.begin(),
+		palette.end(),
+		palette.begin(),
+		[](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+	if (palette != "day" && palette != "night")
+		return false;
+
+	const bool useDayPalette = palette == "day";
+	if (AvisoUseDayColorPalette != useDayPalette)
+	{
+		AvisoUseDayColorPalette = useDayPalette;
+		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
+		InvalidateAvisoGroupRendering();
+	}
+
+	if (persistToAsr)
+	{
+		SaveDataToAsr(
+			"AvisoColorPalette",
+			"AVISO day/night color palette",
+			GetAvisoColorPalette().c_str());
+	}
+	return true;
+}
+
 bool CSMRRadar::SetAvisoGroupVisibility(const std::string& rawGroupId, bool visible)
 {
 	const std::string& groupId = rawGroupId;
@@ -2608,6 +2720,7 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		const bool sameRequest =
 			AvisoGeoJsonRenderLastRequestValid &&
 			AvisoGeoJsonRenderLastRequestPath == request.path &&
+			AvisoGeoJsonRenderLastRequestUseDayPalette == request.useDayPalette &&
 			AvisoGeoJsonRenderLastRequestGroupGeneration == request.groupGeneration &&
 			std::abs(AvisoGeoJsonRenderLastRequestRasterWidth - request.rasterWidth) <= 2 &&
 			std::abs(AvisoGeoJsonRenderLastRequestRasterHeight - request.rasterHeight) <= 2 &&
@@ -2636,6 +2749,7 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		AvisoGeoJsonRenderCancellationToken->store(request.requestId, std::memory_order_release);
 		AvisoGeoJsonRenderLastRequestValid = true;
 		AvisoGeoJsonRenderLastRequestPath = request.path;
+		AvisoGeoJsonRenderLastRequestUseDayPalette = request.useDayPalette;
 		AvisoGeoJsonRenderLastRequestMinLongitude = request.displayMinLongitude;
 		AvisoGeoJsonRenderLastRequestMinLatitude = request.displayMinLatitude;
 		AvisoGeoJsonRenderLastRequestMaxLongitude = request.displayMaxLongitude;
@@ -2670,6 +2784,7 @@ void CSMRRadar::ClearAvisoGeoJsonRasterCache()
 
 	AvisoGeoJsonRasterCachePath.clear();
 	AvisoGeoJsonRasterGroupGeneration = 0;
+	AvisoGeoJsonRasterUseDayPalette = false;
 	AvisoGeoJsonRasterMinLongitude = 0.0;
 	AvisoGeoJsonRasterMinLatitude = 0.0;
 	AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -2711,6 +2826,7 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 			result->bitmap = nullptr;
 			AvisoGeoJsonRasterCachePath = result->path;
 			AvisoGeoJsonRasterGroupGeneration = result->groupGeneration;
+			AvisoGeoJsonRasterUseDayPalette = result->useDayPalette;
 			AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
 			AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
 			AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
@@ -3088,8 +3204,8 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		if (feature.minimumZoomLevel > 0 && request.viewportZoomLevel < feature.minimumZoomLevel)
 			continue;
 
-		Color featureFillColor = feature.fillColor;
-		Color featureStrokeColor = feature.strokeColor;
+		Color featureFillColor = request.useDayPalette ? feature.dayFillColor : feature.fillColor;
+		Color featureStrokeColor = request.useDayPalette ? feature.dayStrokeColor : feature.strokeColor;
 		bool ownedByMe = false;
 		if (feature.frequencyOwnership.dynamicItem)
 		{
@@ -3360,16 +3476,18 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			if (textPath.GetPointCount() <= 0)
 				continue;
 
-			if (label.haloWidth > 0.0f && label.haloColor.GetAlpha() > 0)
+			const Color labelHaloColor = request.useDayPalette ? label.dayHaloColor : label.haloColor;
+			const Color labelTextColor = request.useDayPalette ? label.dayTextColor : label.textColor;
+			if (label.haloWidth > 0.0f && labelHaloColor.GetAlpha() > 0)
 			{
-				Pen haloPen(label.haloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * 2.0f), 1.0)));
+				Pen haloPen(labelHaloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * 2.0f), 1.0)));
 				haloPen.SetLineJoin(LineJoinRound);
 				rasterGraphics.DrawPath(&haloPen, &textPath);
 			}
 
-			if (label.textColor.GetAlpha() > 0)
+			if (labelTextColor.GetAlpha() > 0)
 			{
-				SolidBrush textBrush(label.textColor);
+				SolidBrush textBrush(labelTextColor);
 				rasterGraphics.FillPath(&textBrush, &textPath);
 			}
 		}
@@ -3381,6 +3499,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	auto result = std::make_unique<AvisoRasterRenderResult>();
 	result->requestId = request.requestId;
 	result->groupGeneration = request.groupGeneration;
+	result->useDayPalette = request.useDayPalette;
 	result->bitmap = dibBitmap.Release();
 	result->path = request.path;
 	result->rasterWidth = request.rasterWidth;
@@ -3450,6 +3569,62 @@ CRect CSMRRadar::ResolveMainAvisoRenderArea()
 	if (availableRight <= availableLeft || availableBottom <= availableTop)
 		return CRect(0, 0, 0, 0);
 	return CRect(availableLeft, availableTop, availableRight, availableBottom);
+}
+
+COLORREF CSMRRadar::GetInactiveSectorBackgroundColor() const noexcept
+{
+	return InactiveSectorBackgroundColor;
+}
+
+void CSMRRadar::UpdateInactiveSectorBackgroundColor(HDC hDC, const RECT& radarArea)
+{
+	if (hDC == nullptr)
+		return;
+
+	const unsigned long nowTick = ::GetTickCount();
+	if (InactiveSectorBackgroundSampleTick != 0 &&
+		nowTick - InactiveSectorBackgroundSampleTick < 500)
+	{
+		return;
+	}
+	InactiveSectorBackgroundSampleTick = nowTick;
+
+	CRect area(radarArea);
+	area.NormalizeRect();
+	if (area.Width() < 8 || area.Height() < 8)
+		return;
+
+	// EuroScope does not expose the Sector/Inactive Sector Background colour
+	// through its plug-in API. Before vSMR draws anything, the most frequent
+	// pixel in a sparse radar-area sample is the actual background EuroScope
+	// already rendered, including live symbology changes.
+	std::unordered_map<COLORREF, int> frequencies;
+	constexpr int columns = 17;
+	constexpr int rows = 11;
+	for (int row = 0; row < rows; ++row)
+	{
+		const int y = area.top + ((row * 2 + 1) * area.Height()) / (rows * 2);
+		for (int column = 0; column < columns; ++column)
+		{
+			const int x = area.left + ((column * 2 + 1) * area.Width()) / (columns * 2);
+			const COLORREF color = ::GetPixel(hDC, x, y);
+			if (color != CLR_INVALID)
+				++frequencies[color];
+		}
+	}
+
+	int bestCount = 0;
+	COLORREF bestColor = InactiveSectorBackgroundColor;
+	for (const auto& [color, count] : frequencies)
+	{
+		if (count > bestCount)
+		{
+			bestCount = count;
+			bestColor = color;
+		}
+	}
+	if (bestCount >= 3)
+		InactiveSectorBackgroundColor = bestColor;
 }
 
 void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
@@ -3880,6 +4055,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	{
 		if (AvisoGeoJsonRasterCache == nullptr ||
 			AvisoGeoJsonRasterCachePath != path ||
+			AvisoGeoJsonRasterUseDayPalette != AvisoUseDayColorPalette ||
 			AvisoGeoJsonRasterWidth <= 0 ||
 			AvisoGeoJsonRasterHeight <= 0 ||
 			!AvisoGeoJsonRasterAnchorValid)
@@ -4146,6 +4322,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.labels = labelSnapshot;
 	request.groupVisibility = groupVisibility;
 	request.frequencyOwnership = frequencyOwnership;
+	request.useDayPalette = AvisoUseDayColorPalette;
 	request.rasterWidth = rasterWidth;
 	request.rasterHeight = rasterHeight;
 	request.rasterScale = rasterScale;
@@ -4547,18 +4724,9 @@ void CSMRRadar::LoadProfile(
 	if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
 		rimcasConfig = &activeProfile["rimcas"];
 
-	RimcasEnabled = true;
-	RimcasUseRedEmergencySymbols = true;
 	RimcasRunwaysExplicitlyConfigured = false;
 	if (rimcasConfig != nullptr)
 	{
-		if (rimcasConfig->HasMember("enabled") && (*rimcasConfig)["enabled"].IsBool())
-			RimcasEnabled = (*rimcasConfig)["enabled"].GetBool();
-		if (rimcasConfig->HasMember("use_red_symbol_for_emergencies") &&
-			(*rimcasConfig)["use_red_symbol_for_emergencies"].IsBool())
-		{
-			RimcasUseRedEmergencySymbols = (*rimcasConfig)["use_red_symbol_for_emergencies"].GetBool();
-		}
 		if (rimcasConfig->HasMember("visibility") && (*rimcasConfig)["visibility"].IsString())
 		{
 			std::string visibility = (*rimcasConfig)["visibility"].GetString();
@@ -4648,9 +4816,6 @@ void CSMRRadar::LoadProfile(
 	// Inactive alerts
 	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
 	RimcasInstance->setInactiveAlerts(inactiveAlerts);
-	if (!RimcasEnabled)
-		RimcasInstance->OnRefreshBegin(isLVP);
-
 	auto readCountdownDefinition = [&](const Value* arrayValue, const std::vector<int>& fallback) -> std::vector<int>
 	{
 		std::vector<int> values;
@@ -5661,8 +5826,9 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 
 	Value& rimcas = ensureObjectMember(profile, "rimcas");
 	renameMemberIfPresent(rimcas, "rimcas_stage_two_speed_threshold", "stage_two_speed_threshold_kt");
-	ensureBoolMember(rimcas, "rimcas_label_only", true);
-	ensureBoolMember(rimcas, "use_red_symbol_for_emergencies", true);
+	changed = rimcas.RemoveMember("enabled") || changed;
+	changed = rimcas.RemoveMember("rimcas_label_only") || changed;
+	changed = rimcas.RemoveMember("use_red_symbol_for_emergencies") || changed;
 	ensureIntArrayMember(rimcas, "timer", { 60, 45, 30, 15, 0 });
 	ensureIntArrayMember(rimcas, "timer_lvp", { 120, 90, 60, 30, 0 });
 	ensureIntMember(rimcas, "stage_two_speed_threshold_kt", 25, 0, 250);
@@ -7732,6 +7898,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	normalizedChatArea.NormalizeRect();
 	if (!normalizedChatArea.IsRectEmpty())
 		RadarArea.bottom = normalizedChatArea.top;
+	UpdateInactiveSectorBackgroundColor(hDC, RadarArea);
 	CRect insetLayoutBounds(RadarArea);
 	insetLayoutBounds.NormalizeRect();
 	if (InitialInsetStateRestorePending && !insetLayoutBounds.IsRectEmpty())
@@ -7795,8 +7962,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	// Capture all EuroScope-derived frame data once, finalize RIMCAS, and then
 	// publish an immutable scene before any viewport renders traffic.  Main,
 	// AVISO, and SRW projections consume this same snapshot later in the frame.
-	bool frameRimcasEnabled = true;
-	bool frameUseRedEmergencySymbols = true;
 	int rimcasStageTwoSpeedThreshold = 25;
 	if (CurrentConfig != nullptr)
 	{
@@ -7804,10 +7969,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (profile.IsObject() && profile.HasMember("rimcas") && profile["rimcas"].IsObject())
 		{
 			const Value& rimcas = profile["rimcas"];
-			if (rimcas.HasMember("enabled") && rimcas["enabled"].IsBool())
-				frameRimcasEnabled = rimcas["enabled"].GetBool();
-			if (rimcas.HasMember("use_red_symbol_for_emergencies") && rimcas["use_red_symbol_for_emergencies"].IsBool())
-				frameUseRedEmergencySymbols = rimcas["use_red_symbol_for_emergencies"].GetBool();
 			if (rimcas.HasMember("stage_two_speed_threshold_kt") && rimcas["stage_two_speed_threshold_kt"].IsInt())
 				rimcasStageTwoSpeedThreshold = rimcas["stage_two_speed_threshold_kt"].GetInt();
 			else if (rimcas.HasMember("rimcas_stage_two_speed_threshold") && rimcas["rimcas_stage_two_speed_threshold"].IsInt())
@@ -7815,13 +7976,9 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 	}
 	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
-	RimcasEnabled = frameRimcasEnabled;
-	RimcasUseRedEmergencySymbols = frameUseRedEmergencySymbols;
 	setRefreshStage("shared radar scene build");
 	double sceneRimcasMilliseconds = 0.0;
 	const std::shared_ptr<const VsmrScene::RadarScene> frameSceneOwner = BuildRadarScene(
-		frameRimcasEnabled,
-		frameUseRedEmergencySymbols,
 		isLVP,
 		rimcasStageTwoSpeedThreshold,
 		&sceneRimcasMilliseconds);
@@ -7877,9 +8034,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			Pen runwayPen(Color(static_cast<Gdiplus::ARGB>(Color::White)));
 			graphics.DrawPolygon(&runwayPen, points.data(), static_cast<INT>(points.size()));
 		}
-
-		if (!frameRimcasEnabled)
-			continue;
 
 		const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(runway.displayName);
 		if (closedRunwayIt == RimcasInstance->ClosedRunway.end() || !closedRunwayIt->second)
