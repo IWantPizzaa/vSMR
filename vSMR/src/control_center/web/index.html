@@ -83,12 +83,8 @@
 </label>
 </div>
 </div>
-<button aria-label="Reload configuration" class="rail-button rail-action-button" id="reloadButton" title="Reload configuration" type="button">
+<button aria-label="Revert to saved configuration" class="rail-button rail-action-button" id="reloadButton" title="Revert to saved configuration" type="button">
 <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M19 7v5h-5M5 17v-5h5M7.1 8.1A7 7 0 0 1 18.5 10M16.9 15.9A7 7 0 0 1 5.5 14"></path></svg>
-</button>
-<button aria-label="Save" class="rail-button rail-action-button rail-save-button" id="saveButton" title="Save" type="button">
-<svg aria-hidden="true" viewbox="0 0 24 24"><path d="M4 4h13l3 3v13H4zm3 0v6h9V4M7 20v-7h10v7"></path></svg>
-<span aria-hidden="true" class="rail-dirty-dot" id="dirtyDot" title="Saved"></span>
 </button>
 <div class="rail-spacer"></div>
 </nav>
@@ -118,8 +114,7 @@
 <section class="panel detail-panel">
 <div class="panel-title"><span id="selectedColorPath">Color</span><small id="selectedColorGroup"></small></div>
 <div class="detail-scroll color-detail-scroll">
-<fieldset class="compact-group color-editor-card">
-<legend>Color</legend>
+<div class="color-editor-body">
 <div class="color-picker-workbench">
 <div aria-label="Saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" aria-valuetext="Saturation 0%, brightness 100%" class="color-sv-palette" id="colorSvPalette" role="slider" tabindex="0">
 <span aria-hidden="true" class="color-palette-cursor" id="colorPaletteCursor"></span>
@@ -128,21 +123,15 @@
 <span aria-hidden="true" class="color-preview-swatch" id="colorSwatch"></span>
 </div>
 </div>
+<label class="field color-hex-field"><span>Hex</span><input id="colorHex" maxlength="7" spellcheck="false" type="text"/></label>
 <div aria-label="HSRGBA channels" class="color-channel-sliders">
-<label class="color-slider-row hue-slider-row"><span>Hue</span><input id="colorHue" max="360" min="0" step="1" type="range"/><output id="colorHueOutput">0°</output></label>
-<label class="color-slider-row red-channel"><span>Red</span><input id="colorRed" max="255" min="0" step="1" type="range"/><output id="colorRedOutput">0</output></label>
-<label class="color-slider-row green-channel"><span>Green</span><input id="colorGreen" max="255" min="0" step="1" type="range"/><output id="colorGreenOutput">0</output></label>
-<label class="color-slider-row blue-channel"><span>Blue</span><input id="colorBlue" max="255" min="0" step="1" type="range"/><output id="colorBlueOutput">0</output></label>
-<label class="color-slider-row opacity-channel"><span>Opacity</span><input id="colorOpacity" max="100" min="0" step="1" type="range"/><output id="colorOpacityOutput">100%</output></label>
+<label class="color-slider-row hue-slider-row"><span>Hue</span><input id="colorHue" max="360" min="0" step="1" type="range"/><input aria-label="Hue value" class="color-channel-value" id="colorHueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row red-channel"><span>Red</span><input id="colorRed" max="255" min="0" step="1" type="range"/><input aria-label="Red value" class="color-channel-value" id="colorRedOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row green-channel"><span>Green</span><input id="colorGreen" max="255" min="0" step="1" type="range"/><input aria-label="Green value" class="color-channel-value" id="colorGreenOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row blue-channel"><span>Blue</span><input id="colorBlue" max="255" min="0" step="1" type="range"/><input aria-label="Blue value" class="color-channel-value" id="colorBlueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row opacity-channel"><span>Opacity</span><input id="colorOpacity" max="100" min="0" step="1" type="range"/><input aria-label="Opacity percentage" class="color-channel-value" id="colorOpacityOutput" inputmode="numeric" maxlength="3" type="text"/></label>
 </div>
-</fieldset>
-<details class="advanced-disclosure color-advanced">
-<summary><span>Advanced</span><small>HEX &amp; internal path</small></summary>
-<div class="advanced-body">
-<label class="field color-hex-field"><span>Hex</span><input id="colorHex" spellcheck="false" type="text"/></label>
-<label class="field"><span>JSON path</span><input id="colorJsonPath" readonly="" type="text"/></label>
 </div>
-</details>
 </div>
 </section>
 </div>
@@ -157,7 +146,6 @@
 <div aria-label="Target icon preview" class="icon-symbol-preview" id="iconSymbolPreview"></div>
 <div class="icon-symbol-controls">
 <label class="field"><span>Icon style</span><select id="targetIconStyle"><option value="nova">NOVA</option><option value="realistic">Icon</option><option value="triangle">Triangle</option></select></label>
-<label class="check-field"><input id="showPrimaryTarget" type="checkbox"/><span>Show primary target</span></label>
 </div>
 </div>
 </fieldset>
@@ -282,9 +270,8 @@
 <div class="detail-scroll mode-detail-scroll">
 <fieldset class="compact-group editor-section-card">
 <legend>Mode</legend>
-<div class="dense-form two-cols section-form">
+<div class="dense-form section-form">
 <label class="field"><span>Name</span><input id="modeName" type="text"/></label>
-<div class="field mode-squawk-field"><span>Blocked squawks</span><div class="mode-squawk-editor"><div class="mode-squawk-chips" id="modeBlockedSquawkChips"></div><input aria-label="Add blocked squawk" id="modeBlockedSquawkInput" inputmode="numeric" maxlength="4" placeholder="Add code" type="text"/><button class="ui-button" data-action="add-mode-squawk" type="button">Add</button></div></div>
 </div>
 </fieldset>
 <fieldset class="compact-group">
@@ -321,18 +308,6 @@
 <label class="field"><span>Name</span><input id="profileName" type="text"/></label>
 </div>
 </fieldset>
-<fieldset class="compact-group">
-<legend>Radar filters</legend>
-<div class="dense-form three-cols profile-filter-grid">
-<label class="field"><span>Max alt (ft)</span><input id="profileMaxAltitude" step="100" type="number"/></label>
-<label class="field"><span>Max speed</span><input id="profileMaxSpeed" step="5" type="number"/></label>
-<label class="field"><span>Range (NM)</span><input id="profileRadarRange" step="1" type="number"/></label>
-</div>
-</fieldset>
-<details class="advanced-disclosure profile-advanced">
-<summary><span>Advanced</span><small>Profile metadata</small></summary>
-<div class="advanced-body"><label class="field"><span>Schema version</span><input id="profileSchema" readonly="" type="number"/></label></div>
-</details>
 </div>
 </section>
 </div>
@@ -365,28 +340,15 @@
 </aside>
 <section class="panel aviso-category-editor">
 <div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><small id="avisoGeometrySelectionMeta"></small></div>
-<div class="detail-scroll aviso-editor-scroll">
-<div class="aviso-style-summary">
-<span class="aviso-kind-badge" id="avisoGeometryKind">Area</span>
-<span id="avisoGeometryLayer">—</span>
-<span id="avisoGeometryObjectCount">—</span>
-</div>
-<div class="selection-compatibility" hidden="" id="avisoGeometryCompatibility"></div>
-<fieldset class="compact-group aviso-edit-group">
-<legend>Visibility</legend>
+<div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
+<div class="aviso-flat-style-editor aviso-geometry-properties">
 <label class="check-field aviso-wide-check"><input id="avisoGeometryVisible" type="checkbox"/><span id="avisoGeometryVisibleLabel">Show this category</span></label>
-</fieldset>
-<fieldset class="compact-group aviso-edit-group" id="avisoGeometryFillGroup">
-<legend>Fill</legend>
-<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryFillPair"><input aria-label="Fill color picker" id="avisoGeometryFillPicker" type="color"/><input id="avisoGeometryFillColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
-</fieldset>
-<fieldset class="compact-group aviso-edit-group">
-<legend id="avisoGeometryStrokeLegend">Outline</legend>
+<div class="selection-compatibility" hidden="" id="avisoGeometryCompatibility"></div>
 <div class="dense-form two-cols aviso-style-form">
-<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoGeometryStrokePair"><input aria-label="Line color picker" id="avisoGeometryStrokePicker" type="color"/><input id="avisoGeometryStrokeColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
+<label class="field full" id="avisoGeometryFillGroup"><span id="avisoGeometryFillColorLabel">Fill color</span><span class="aviso-color-pair" id="avisoGeometryFillPair"><input aria-label="Fill color picker" id="avisoGeometryFillPicker" type="color"/><input id="avisoGeometryFillColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
+<label class="field"><span id="avisoGeometryStrokeLegend">Outline color</span><span class="aviso-color-pair" id="avisoGeometryStrokePair"><input aria-label="Line color picker" id="avisoGeometryStrokePicker" type="color"/><input id="avisoGeometryStrokeColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
 <label class="field"><span>Width</span><input id="avisoGeometryStrokeWidth" max="8" min="0.25" placeholder="Mixed" step="0.25" type="number"/></label>
 </div>
-</fieldset>
 <details class="advanced-disclosure" id="avisoGeometryAdvanced">
 <summary><span>Advanced</span><small>Opacity &amp; groups</small></summary>
 <div class="advanced-body">
@@ -400,45 +362,30 @@
 </div>
 </details>
 </div>
+</div>
 </section>
 </div>
 </section>
 <section class="aviso-view active" data-aviso-view-panel="text">
-<div class="aviso-text-layout aviso-text-single-style-layout">
-<aside class="panel aviso-text-label-panel aviso-text-master-panel">
+<div class="aviso-text-layout">
+<aside class="panel aviso-style-list-panel aviso-text-style-panel">
 <div class="panel-title">
-<span>Labels <small id="avisoTextLabelCount"></small></span>
+<span>Text styles <small id="avisoTextStyleCount"></small></span>
 <small class="selection-caption" id="avisoTextSelectionCount">1 selected</small>
 </div>
-<div class="aviso-text-style-selector-row">
-<label class="field"><span>Style</span><select aria-label="Text style" id="avisoTextStyleSelect"></select></label>
-<small id="avisoTextStyleCount"></small>
-</div>
-<div class="search-row"><input aria-label="Find text label" id="avisoTextSearch" placeholder="Find label…" type="search"/></div>
-<div aria-label="Text labels" aria-multiselectable="true" class="scroll-list aviso-label-list" id="avisoTextLabelList" role="listbox" tabindex="0"></div>
+<div class="search-row"><input aria-label="Find text style" id="avisoTextSearch" placeholder="Find text style…" type="search"/></div>
+<div aria-label="Text styles" aria-multiselectable="true" class="scroll-list aviso-style-tree" id="avisoTextStyleList" role="listbox" tabindex="0"></div>
 </aside>
 <section class="panel aviso-text-editor">
-<div class="panel-title"><span id="avisoTextCaption">Text label</span><small id="avisoTextStyleCaption"></small></div>
+<div class="panel-title"><span id="avisoTextCaption">Text style</span><small id="avisoTextSelectionMeta"></small></div>
 <div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
-<fieldset class="compact-group aviso-edit-group">
-<legend>Label</legend>
-<div class="dense-form aviso-style-form aviso-label-form">
-<label class="field"><span>Text</span><input id="avisoTextValue" placeholder="Label text" type="text"/></label>
-<label class="check-field aviso-wide-check"><input id="avisoTextVisible" type="checkbox"/><span>Visible</span></label>
-</div>
-</fieldset>
-<fieldset class="compact-group aviso-edit-group">
-<legend>Typography</legend>
+<div class="aviso-flat-style-editor aviso-text-properties">
+<label class="check-field aviso-wide-check"><input id="avisoTextVisible" type="checkbox"/><span id="avisoTextVisibleLabel">Show this text style</span></label>
 <div class="dense-form two-cols aviso-style-form">
 <label class="field"><span>Font</span><input id="avisoTextFont" list="avisoFontChoices" placeholder="Mixed" type="text"/></label>
 <label class="field"><span>Size</span><input id="avisoTextSize" max="32" min="6" placeholder="Mixed" step="1" type="number"/></label>
-<label class="field full"><span>Color</span><span class="aviso-color-pair" id="avisoTextColorPair"><input aria-label="Text color picker" id="avisoTextColorPicker" type="color"/><input id="avisoTextColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
-</div>
-</fieldset>
-<fieldset class="compact-group aviso-edit-group aviso-halo-group">
-<legend>Halo</legend>
-<div class="dense-form two-cols aviso-style-form">
-<label class="field"><span>Color</span><span class="aviso-color-pair" id="avisoTextHaloPair"><input aria-label="Halo color picker" id="avisoTextHaloPicker" type="color"/><input id="avisoTextHaloColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
+<label class="field full"><span id="avisoTextColorLabel">Text color</span><span class="aviso-color-pair" id="avisoTextColorPair"><input aria-label="Text color picker" id="avisoTextColorPicker" type="color"/><input id="avisoTextColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
+<label class="field"><span id="avisoTextHaloColorLabel">Halo color</span><span class="aviso-color-pair" id="avisoTextHaloPair"><input aria-label="Halo color picker" id="avisoTextHaloPicker" type="color"/><input id="avisoTextHaloColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
 <label class="field"><span>Width</span><input id="avisoTextHaloWidth" max="6" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
 </div>
 <div class="aviso-text-zoom-box">
@@ -448,10 +395,7 @@
 <label class="field aviso-text-zoom-range"><span id="avisoTextZoomMeaning">12 km or closer</span><input id="avisoTextZoomSlider" max="14" min="0" step="1" type="range"/></label>
 </div>
 </div>
-</fieldset>
 </div>
-<div class="actionbar bottom-actions aviso-text-actions">
-<label class="compact-apply-scope"><span>Edit</span><select aria-label="Text editing scope" id="avisoTextApplyTarget"><option value="selection">Selected label</option><option value="group">Current text group</option><option value="all">All AVISO text</option></select></label>
 </div>
 </section>
 </div>
@@ -461,71 +405,27 @@
 <option value="Arial"></option><option value="Tahoma"></option><option value="Segoe UI"></option><option value="Verdana"></option><option value="Consolas"></option>
 </datalist>
 </section><section class="page alerts-page" data-page-panel="alerts">
-<nav aria-label="Alert settings" class="subtabs alerts-subtabs">
-<button class="active" data-alerts-view="active" type="button">Active alerts</button>
-<button data-alerts-view="runways" type="button">RIMCAS runways</button>
-<button data-alerts-view="timing" type="button">Timing</button>
-<button data-alerts-view="appearance" type="button">Appearance</button>
-</nav>
-<div class="alerts-view-stack">
-<section class="alerts-view active" data-alerts-view-panel="active">
-<div class="alerts-active-layout">
-<fieldset class="compact-group alert-global-box">
-<legend>RIMCAS</legend>
-<div class="feature-grid alert-global-grid">
-<label class="check-field"><input id="alertRimcasEnabled" type="checkbox"/><span>Enabled</span></label>
-<label class="check-field"><input id="alertLabelOnly" type="checkbox"/><span>Label only</span></label>
-<label class="check-field"><input id="alertRedEmergency" type="checkbox"/><span>Red emergency symbol</span></label>
-</div>
-</fieldset>
+<div class="alerts-layout">
+<div class="alerts-control-column">
 <fieldset class="compact-group alert-types-box">
 <legend><span>Active alert types</span><span class="legend-tools"><button data-action="alerts-enable-all" type="button">All</button><button data-action="alerts-disable-all" type="button">None</button></span></legend>
 <div class="alert-toggle-grid" id="alertTypeGrid"></div>
 </fieldset>
+<fieldset class="compact-group alerts-timing-box">
+<legend>Conflict timing</legend>
+<div class="alert-timing-mode"><strong>Normal</strong><div class="alert-timer-row" id="alertTimerNormal"></div></div>
+<div class="alert-timing-mode"><strong>LVP</strong><div class="alert-timer-row" id="alertTimerLvp"></div></div>
+<label class="field alert-threshold-field"><span>Stage-two speed (kt)</span><input id="alertSpeedThreshold" min="0" step="1" type="number"/></label>
+</fieldset>
 </div>
-</section>
-<section class="alerts-view" data-alerts-view-panel="runways">
-<div class="alerts-runways-layout">
-<p class="alerts-runway-note">These ARR, DEP, and Closed selections configure vSMR RIMCAS monitoring. They do not change EuroScope's separate Active Airports/Runways selections.</p>
+<fieldset class="compact-group alerts-runways-box">
+<legend>RIMCAS runways</legend>
 <div class="alerts-runway-toolbar">
 <label class="field alert-visibility-field"><span>Visibility</span><select id="alertVisibilityMode"><option value="normal">Normal</option><option value="lvp">Low visibility (LVP)</option></select></label>
 <span class="mini-tools"><button class="wide" data-action="alert-runways-all-arr" type="button">All ARR</button><button class="wide" data-action="alert-runways-all-dep" type="button">All DEP</button><button class="wide" data-action="alert-runways-open-all" type="button">Open all</button><button data-action="new-alert-runway" title="Add runway pair" type="button">+</button></span>
 </div>
 <div class="alert-runway-table" id="alertRunwayTable"></div>
-</div>
-</section>
-<section class="alerts-view" data-alerts-view-panel="timing">
-<div class="alerts-timing-layout">
-<fieldset class="compact-group">
-<legend>Conflict countdown · normal</legend>
-<div class="alert-timer-row" id="alertTimerNormal"></div>
 </fieldset>
-<fieldset class="compact-group">
-<legend>Conflict countdown · LVP</legend>
-<div class="alert-timer-row" id="alertTimerLvp"></div>
-</fieldset>
-<fieldset class="compact-group alert-threshold-box">
-<legend>Stage two</legend>
-<label class="field"><span>Speed threshold (kt)</span><input id="alertSpeedThreshold" min="0" step="1" type="number"/></label>
-</fieldset>
-</div>
-</section>
-<section class="alerts-view" data-alerts-view-panel="appearance">
-<div class="alerts-appearance-grid">
-<fieldset class="compact-group"><legend>Aircraft stages</legend><div class="alert-color-list">
-<label class="field"><span>Stage one</span><span class="alert-color-pair"><input id="alertStageOnePicker" type="color"/><input id="alertStageOneColor" spellcheck="false" type="text"/></span></label>
-<label class="field"><span>Stage two</span><span class="alert-color-pair"><input id="alertStageTwoPicker" type="color"/><input id="alertStageTwoColor" spellcheck="false" type="text"/></span></label>
-</div></fieldset>
-<fieldset class="compact-group"><legend>Caution label</legend><div class="alert-color-list">
-<label class="field"><span>Text</span><span class="alert-color-pair"><input id="alertCautionTextPicker" type="color"/><input id="alertCautionTextColor" spellcheck="false" type="text"/></span></label>
-<label class="field"><span>Background</span><span class="alert-color-pair"><input id="alertCautionBgPicker" type="color"/><input id="alertCautionBgColor" spellcheck="false" type="text"/></span></label>
-</div></fieldset>
-<fieldset class="compact-group"><legend>Warning label</legend><div class="alert-color-list">
-<label class="field"><span>Text</span><span class="alert-color-pair"><input id="alertWarningTextPicker" type="color"/><input id="alertWarningTextColor" spellcheck="false" type="text"/></span></label>
-<label class="field"><span>Background</span><span class="alert-color-pair"><input id="alertWarningBgPicker" type="color"/><input id="alertWarningBgColor" spellcheck="false" type="text"/></span></label>
-</div></fieldset>
-</div>
-</section>
 </div>
 </section>
 <section class="page groups-page" data-page-panel="groups">
@@ -594,6 +494,7 @@
 <legend>Display</legend>
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
 <label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
+<div class="field aviso-palette-field"><span>AVISO palette</span><div aria-label="AVISO color palette" class="segmented-control aviso-palette-control" role="group"><button data-action="set-aviso-palette" data-aviso-color-palette="day" type="button">Day</button><button data-action="set-aviso-palette" data-aviso-color-palette="night" type="button">Night</button></div></div>
 </fieldset>
 </div>
 <div class="settings-column settings-datalink-column">
