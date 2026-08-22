@@ -6,6 +6,7 @@
 
 - Restored the ESTimer alarm sound.
 - Fixed AVISO `zoomLevel` visibility to use the same corner-to-corner viewport distance as the radar zoom level, and applied the rule consistently to labels, lines, and polygons at every airport.
+- Made right-clicking an SRW tag background open EuroScope's Assume/Handoff list, and synchronized AVISO inset and SRW tag corners with the active profile's rounded-corners setting.
 
 ## [2.0.0-beta.3] - 2026-08-21
 
