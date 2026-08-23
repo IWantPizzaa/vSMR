@@ -69,6 +69,57 @@ function Assert-File {
     }
 }
 
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Path)) | Out-Null
+    [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Set-TestAvisoPackagePolicy {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackageRoot,
+        [Parameter(Mandatory = $true)][string]$Version,
+        [Parameter(Mandatory = $true)][ValidateSet('none', 'selected', 'all')][string]$Update,
+        [string[]]$Replace = @(),
+        [Parameter(Mandatory = $true)][ValidateSet('preserve', 'protect_setting', 'replace')][string]$ModifiedFiles
+    )
+    $packageData = Join-Path $PackageRoot 'vSMR_Data'
+    $policy = [ordered]@{
+        schema_version = 1
+        release = $Version
+        aviso = [ordered]@{
+            update = $Update
+            replace = @($Replace)
+            delete = @()
+            modified_files = $ModifiedFiles
+        }
+    }
+    Write-Utf8NoBom `
+        (Join-Path $packageData 'AVISO-UPDATE-POLICY.json') `
+        ((ConvertTo-Json $policy -Depth 5) + "`n")
+
+    $inventoryFiles = [ordered]@{}
+    foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $packageData 'AVISO') -Filter '*.geojson' -File | Sort-Object Name)) {
+        $inventoryFiles[$file.Name] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $inventory = [ordered]@{
+        schema_version = 1
+        release = $Version
+        files = $inventoryFiles
+    }
+    Write-Utf8NoBom `
+        (Join-Path $packageData 'AVISO-INVENTORY.json') `
+        ((ConvertTo-Json $inventory -Depth 5) + "`n")
+
+    $manifestPath = Join-Path $packageData 'SHA256SUMS.txt'
+    $hashLines = foreach ($file in @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -File | Sort-Object FullName)) {
+        if ($file.FullName -eq $manifestPath) { continue }
+        $relativePath = $file.FullName.Substring($PackageRoot.Length).TrimStart([char[]]'\/').Replace('\', '/')
+        '{0}  {1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $relativePath
+    }
+    Write-Utf8NoBom $manifestPath (($hashLines -join "`n") + "`n")
+}
+
 function Get-PeMachine {
     param([string]$Path)
     $stream = [System.IO.File]::OpenRead($Path)
@@ -312,6 +363,8 @@ try {
         'vSMR_webUI\app.js',
         'vSMR_webUI\data.js',
         'vSMR_webUI\defaults\vSMR_Profiles.json',
+        'AVISO-UPDATE-POLICY.json',
+        'AVISO-INVENTORY.json',
         'AVISO\LFPG.geojson',
         'Runtime\vSMR.Runtime.dll',
         'CrashReporter\vSMRCrashHandler.dll',
@@ -343,6 +396,88 @@ try {
     )
     if ($nonCanonicalAvisoFiles.Count -ne 0) {
         throw "The package contains noncanonical AVISO defaults: $($nonCanonicalAvisoFiles.Name -join ', ')."
+    }
+
+    $avisoPolicy = Get-Content -LiteralPath (Join-Path $dataPath 'AVISO-UPDATE-POLICY.json') -Raw | ConvertFrom-Json
+    $avisoInventory = Get-Content -LiteralPath (Join-Path $dataPath 'AVISO-INVENTORY.json') -Raw | ConvertFrom-Json
+    if ([int]$avisoPolicy.schema_version -ne 1 -or
+        [string]$avisoPolicy.release -ne $ExpectedVersion -or
+        $avisoPolicy.aviso -isnot [pscustomobject] -or
+        [string]$avisoPolicy.aviso.update -notin @('none', 'selected', 'all') -or
+        [string]$avisoPolicy.aviso.modified_files -notin @('preserve', 'protect_setting', 'replace')) {
+        throw 'The packaged AVISO update policy is invalid.'
+    }
+    $avisoPolicyPropertyNames = @($avisoPolicy.aviso.PSObject.Properties | ForEach-Object { $_.Name })
+    if ($avisoPolicyPropertyNames -notcontains 'replace' -or $avisoPolicy.aviso.replace -isnot [System.Array] -or
+        $avisoPolicyPropertyNames -notcontains 'delete' -or $avisoPolicy.aviso.delete -isnot [System.Array]) {
+        throw 'The packaged AVISO update policy must contain explicit replace and delete JSON arrays.'
+    }
+    $avisoPolicyReplace = @($avisoPolicy.aviso.replace | ForEach-Object { [string]$_ })
+    $avisoPolicyDelete = @($avisoPolicy.aviso.delete | ForEach-Object { [string]$_ })
+    foreach ($name in @($avisoPolicyReplace) + @($avisoPolicyDelete)) {
+        if ($name -notmatch '^[A-Za-z0-9]{4}\.geojson$') {
+            throw "The packaged AVISO update policy contains unsafe or noncanonical filename '$name'."
+        }
+    }
+    $normalizedAvisoPolicyReplace = @($avisoPolicyReplace | ForEach-Object { $_.ToUpperInvariant() })
+    $normalizedAvisoPolicyDelete = @($avisoPolicyDelete | ForEach-Object { $_.ToUpperInvariant() })
+    if (@($normalizedAvisoPolicyReplace | Sort-Object -Unique).Count -ne $normalizedAvisoPolicyReplace.Count -or
+        @($normalizedAvisoPolicyDelete | Sort-Object -Unique).Count -ne $normalizedAvisoPolicyDelete.Count) {
+        throw 'The packaged AVISO update policy contains duplicate filenames.'
+    }
+    $avisoPolicyOverlap = @($normalizedAvisoPolicyReplace | Where-Object { $normalizedAvisoPolicyDelete -contains $_ })
+    if ($avisoPolicyOverlap.Count -ne 0) {
+        throw "The packaged AVISO update policy both replaces and deletes: $($avisoPolicyOverlap -join ', ')."
+    }
+    $packagedAvisoFileNames = @($packagedAvisoFiles | ForEach-Object { $_.Name })
+    if ([string]$avisoPolicy.aviso.update -eq 'selected') {
+        if ($avisoPolicyReplace.Count -eq 0) {
+            throw 'A selected AVISO update policy must name at least one replacement.'
+        }
+        foreach ($name in $avisoPolicyReplace) {
+            if ($packagedAvisoFileNames -notcontains $name) {
+                throw "Selected AVISO replacement is not bundled: $name."
+            }
+        }
+    }
+    elseif ($avisoPolicyReplace.Count -ne 0) {
+        throw "AVISO update mode '$($avisoPolicy.aviso.update)' must leave replace empty."
+    }
+    foreach ($name in $avisoPolicyDelete) {
+        if ($packagedAvisoFileNames -contains $name) {
+            throw "Deleted AVISO '$name' is still bundled."
+        }
+    }
+    if ([int]$avisoInventory.schema_version -ne 1 -or
+        [string]$avisoInventory.release -ne $ExpectedVersion -or
+        $avisoInventory.files -isnot [pscustomobject]) {
+        throw 'The packaged AVISO inventory is invalid.'
+    }
+    $inventoryProperties = @($avisoInventory.files.PSObject.Properties)
+    if ($inventoryProperties.Count -ne $packagedAvisoFiles.Count) {
+        throw "The AVISO inventory lists $($inventoryProperties.Count) files, but the package contains $($packagedAvisoFiles.Count)."
+    }
+    foreach ($property in $inventoryProperties) {
+        $name = [string]$property.Name
+        $expectedHash = [string]$property.Value
+        if ($name -notmatch '^[A-Za-z0-9]{4}\.geojson$' -or $expectedHash -notmatch '^[0-9a-f]{64}$') {
+            throw "The AVISO inventory entry '$name' is invalid."
+        }
+        $file = $packagedAvisoFiles | Where-Object { $_.Name -ceq $name } | Select-Object -First 1
+        if ($null -eq $file) {
+            throw "The AVISO inventory references a missing or differently-cased file: $name."
+        }
+        $actualHash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -cne $expectedHash) {
+            throw "The AVISO inventory hash does not match $name."
+        }
+    }
+    if ($ExpectedVersion -eq '2.0.0-beta.4' -and
+        ([string]$avisoPolicy.aviso.update -ne 'all' -or
+            [string]$avisoPolicy.aviso.modified_files -ne 'replace' -or
+            $avisoPolicyDelete.Count -ne 1 -or
+            $avisoPolicyDelete[0] -ne 'LFMM.geojson')) {
+        throw 'Beta 4 must replace all AVISOs and delete LFMM.geojson for the Night/Day schema migration.'
     }
 
     $forbidden = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File | Where-Object {
@@ -753,6 +888,163 @@ try {
     finally {
         if (Test-Path -LiteralPath $installTarget) {
             Remove-Item -LiteralPath $installTarget -Recurse -Force
+        }
+    }
+
+    # Verify AVISO release migrations and the same-version manual reload path
+    # in an isolated installation with a real inventory baseline.
+    $avisoInstallTarget = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-aviso-install-verify-" + [Guid]::NewGuid().ToString("N"))
+    [System.IO.Directory]::CreateDirectory($avisoInstallTarget) | Out-Null
+    try {
+        $installHelper = Join-Path $dataPath "Tools\install_vsmr.ps1"
+        $packagedLfpg = Join-Path $dataPath "AVISO\LFPG.geojson"
+        $installedLfpg = Join-Path $avisoInstallTarget "vSMR_Data\AVISO\LFPG.geojson"
+        $customAviso = Join-Path $avisoInstallTarget "vSMR_Data\AVISO\CUSTOM.geojson"
+        $packagedLfpgHash = (Get-FileHash -LiteralPath $packagedLfpg -Algorithm SHA256).Hash.ToLowerInvariant()
+
+        & $installHelper -DestinationDirectory $avisoInstallTarget -Confirm:$false
+        if ((Get-FileHash -LiteralPath $installedLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgHash) {
+            throw "Clean installation did not establish the packaged AVISO inventory baseline."
+        }
+
+        if ($ExpectedVersion -eq '2.0.0-beta.4') {
+            [System.IO.File]::WriteAllText($installedLfpg, 'locally-modified-before-migration')
+            [System.IO.File]::WriteAllText((Join-Path $avisoInstallTarget 'vSMR_Data\AVISO\LFMM.geojson'), 'obsolete-map')
+            & $installHelper -DestinationDirectory $avisoInstallTarget -Confirm:$false
+            $migrationReport = Get-Content -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+            if ((Get-FileHash -LiteralPath $installedLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgHash -or
+                (Test-Path -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO\LFMM.geojson')) -or
+                @($migrationReport.updated) -notcontains 'LFPG.geojson' -or
+                @($migrationReport.deleted) -notcontains 'LFMM.geojson') {
+                throw "Beta 4 did not perform its mandatory all-map migration and LFMM deletion."
+            }
+        }
+
+        [System.IO.File]::WriteAllText($installedLfpg, 'locally-modified-before-manual-reload')
+        [System.IO.File]::WriteAllText($customAviso, 'unknown-custom-map')
+        & $installHelper -DestinationDirectory $avisoInstallTarget -ReloadAviso -Confirm:$false
+        $protectedReloadReport = Get-Content -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+        $protectedReloadInventory = Get-Content -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO-INVENTORY.json') -Raw | ConvertFrom-Json
+        $incomingLfpg = Join-Path $avisoInstallTarget "vSMR_Data\AVISO_Updates\$ExpectedVersion\LFPG.geojson"
+        if ((Get-Content -LiteralPath $installedLfpg -Raw) -ne 'locally-modified-before-manual-reload' -or
+            (Get-Content -LiteralPath $customAviso -Raw) -ne 'unknown-custom-map' -or
+            -not (Test-Path -LiteralPath $incomingLfpg -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $incomingLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgHash -or
+            [string]$protectedReloadReport.operation -ne 'manual_reload' -or
+            [string]$protectedReloadInventory.files.'LFPG.geojson' -ne $packagedLfpgHash -or
+            @($protectedReloadReport.preserved_modified) -notcontains 'LFPG.geojson') {
+            throw "Manual AVISO reload did not protect a locally modified map and retain its verified incoming copy."
+        }
+
+        & $installHelper -DestinationDirectory $avisoInstallTarget -ReloadAviso -ReplaceModifiedAviso -Confirm:$false
+        $replacementReloadReport = Get-Content -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+        if ((Get-FileHash -LiteralPath $installedLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgHash -or
+            (Get-Content -LiteralPath $customAviso -Raw) -ne 'unknown-custom-map' -or
+            @($replacementReloadReport.updated) -notcontains 'LFPG.geojson') {
+            throw "Manual AVISO reload did not replace a modified bundled map when protection was disabled."
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $avisoInstallTarget) {
+            Remove-Item -LiteralPath $avisoInstallTarget -Recurse -Force
+        }
+    }
+
+    # Exercise future no-map and selected-map policies with a deliberately
+    # small package. LFML is added to the package only after the initial
+    # install, proving that an unselected new default is not introduced.
+    $futurePolicyPackageRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-aviso-policy-package-" + [Guid]::NewGuid().ToString("N"))
+    $futurePolicyInstallTarget = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-aviso-policy-install-" + [Guid]::NewGuid().ToString("N"))
+    try {
+        $futurePolicyData = Join-Path $futurePolicyPackageRoot 'vSMR_Data'
+        foreach ($directory in @('Runtime', 'CrashReporter', 'Tools', 'AVISO')) {
+            [System.IO.Directory]::CreateDirectory((Join-Path $futurePolicyData $directory)) | Out-Null
+        }
+        [System.IO.Directory]::CreateDirectory($futurePolicyInstallTarget) | Out-Null
+        Copy-Item -LiteralPath $dllPath -Destination (Join-Path $futurePolicyPackageRoot 'vSMR.dll')
+        Copy-Item -LiteralPath $runtimePath -Destination (Join-Path $futurePolicyData 'Runtime\vSMR.Runtime.dll')
+        Copy-Item -LiteralPath $crashHandlerPath -Destination (Join-Path $futurePolicyData 'CrashReporter\vSMRCrashHandler.dll')
+        Copy-Item -LiteralPath (Join-Path $dataPath 'Tools\install_vsmr.ps1') -Destination (Join-Path $futurePolicyData 'Tools\install_vsmr.ps1')
+        Copy-Item -LiteralPath (Join-Path $dataPath 'Tools\restore_vsmr_backup.ps1') -Destination (Join-Path $futurePolicyData 'Tools\restore_vsmr_backup.ps1')
+        Copy-Item -LiteralPath (Join-Path $dataPath 'RELEASE-METADATA.json') -Destination (Join-Path $futurePolicyData 'RELEASE-METADATA.json')
+        Copy-Item -LiteralPath (Join-Path $dataPath 'AVISO\LFPG.geojson') -Destination (Join-Path $futurePolicyData 'AVISO\LFPG.geojson')
+
+        Set-TestAvisoPackagePolicy `
+            -PackageRoot $futurePolicyPackageRoot `
+            -Version $ExpectedVersion `
+            -Update all `
+            -ModifiedFiles protect_setting
+        $futureInstallHelper = Join-Path $futurePolicyData 'Tools\install_vsmr.ps1'
+        & $futureInstallHelper -DestinationDirectory $futurePolicyInstallTarget -Confirm:$false
+
+        $futureInstalledLfpg = Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO\LFPG.geojson'
+        $futureInstalledLfml = Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO\LFML.geojson'
+        $futureCustomAviso = Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO\MY_CUSTOM.geojson'
+        $futurePackagedLfpg = Join-Path $futurePolicyData 'AVISO\LFPG.geojson'
+        $futurePackagedLfpgHash = (Get-FileHash -LiteralPath $futurePackagedLfpg -Algorithm SHA256).Hash.ToLowerInvariant()
+        [System.IO.File]::WriteAllText($futureInstalledLfpg, 'locally-modified-future-policy')
+        [System.IO.File]::WriteAllText($futureCustomAviso, 'future-custom-map')
+        Copy-Item -LiteralPath (Join-Path $dataPath 'AVISO\LFML.geojson') -Destination (Join-Path $futurePolicyData 'AVISO\LFML.geojson')
+
+        Set-TestAvisoPackagePolicy `
+            -PackageRoot $futurePolicyPackageRoot `
+            -Version $ExpectedVersion `
+            -Update none `
+            -ModifiedFiles protect_setting
+        & $futureInstallHelper -DestinationDirectory $futurePolicyInstallTarget -Confirm:$false
+        $noneReport = Get-Content -LiteralPath (Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+        $noneInventory = Get-Content -LiteralPath (Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO-INVENTORY.json') -Raw | ConvertFrom-Json
+        if ((Get-Content -LiteralPath $futureInstalledLfpg -Raw) -ne 'locally-modified-future-policy' -or
+            (Test-Path -LiteralPath $futureInstalledLfml) -or
+            (Get-Content -LiteralPath $futureCustomAviso -Raw) -ne 'future-custom-map' -or
+            @($noneReport.updated).Count -ne 0 -or
+            @($noneReport.added).Count -ne 0 -or
+            @($noneInventory.files.PSObject.Properties.Name) -contains 'LFML.geojson') {
+            throw "An AVISO update=none policy changed a map or introduced a newly bundled default."
+        }
+
+        Set-TestAvisoPackagePolicy `
+            -PackageRoot $futurePolicyPackageRoot `
+            -Version $ExpectedVersion `
+            -Update selected `
+            -Replace @('LFPG.geojson') `
+            -ModifiedFiles protect_setting
+        & $futureInstallHelper -DestinationDirectory $futurePolicyInstallTarget -Confirm:$false
+        $selectedProtectedReport = Get-Content -LiteralPath (Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+        $selectedProtectedInventory = Get-Content -LiteralPath (Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO-INVENTORY.json') -Raw | ConvertFrom-Json
+        $selectedIncomingLfpg = Join-Path $futurePolicyInstallTarget "vSMR_Data\AVISO_Updates\$ExpectedVersion\LFPG.geojson"
+        if ((Get-Content -LiteralPath $futureInstalledLfpg -Raw) -ne 'locally-modified-future-policy' -or
+            (Test-Path -LiteralPath $futureInstalledLfml) -or
+            (Get-Content -LiteralPath $futureCustomAviso -Raw) -ne 'future-custom-map' -or
+            @($selectedProtectedReport.preserved_modified) -notcontains 'LFPG.geojson' -or
+            @($selectedProtectedReport.added) -contains 'LFML.geojson' -or
+            @($selectedProtectedInventory.files.PSObject.Properties.Name) -contains 'LFML.geojson' -or
+            -not (Test-Path -LiteralPath $selectedIncomingLfpg -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $selectedIncomingLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $futurePackagedLfpgHash) {
+            throw "A selected AVISO policy did not protect the edited selected map or introduced an unselected map."
+        }
+
+        & $futureInstallHelper `
+            -DestinationDirectory $futurePolicyInstallTarget `
+            -ReplaceModifiedAviso `
+            -Confirm:$false
+        $selectedReplaceReport = Get-Content -LiteralPath (Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+        $selectedReplaceInventory = Get-Content -LiteralPath (Join-Path $futurePolicyInstallTarget 'vSMR_Data\AVISO-INVENTORY.json') -Raw | ConvertFrom-Json
+        if ((Get-FileHash -LiteralPath $futureInstalledLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $futurePackagedLfpgHash -or
+            (Test-Path -LiteralPath $futureInstalledLfml) -or
+            (Get-Content -LiteralPath $futureCustomAviso -Raw) -ne 'future-custom-map' -or
+            @($selectedReplaceReport.updated) -notcontains 'LFPG.geojson' -or
+            [string]$selectedReplaceInventory.files.'LFPG.geojson' -ne $futurePackagedLfpgHash -or
+            @($selectedReplaceInventory.files.PSObject.Properties.Name) -contains 'LFML.geojson') {
+            throw "A selected AVISO policy did not overwrite only its selected map when protection was disabled."
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $futurePolicyPackageRoot) {
+            Remove-Item -LiteralPath $futurePolicyPackageRoot -Recurse -Force
+        }
+        if (Test-Path -LiteralPath $futurePolicyInstallTarget) {
+            Remove-Item -LiteralPath $futurePolicyInstallTarget -Recurse -Force
         }
     }
 

@@ -6925,6 +6925,10 @@ textarea:disabled {
   line-height: 1.15;
 }
 
+.settings-page .updater-general-group > .update-aviso-protection {
+  grid-column: 1 / -1;
+}
+
 .settings-page .updater-general-group > .check-field:nth-of-type(2) {
   grid-column: 1 / -1;
 }
