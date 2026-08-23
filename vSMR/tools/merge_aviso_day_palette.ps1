@@ -182,10 +182,7 @@ try {
 
     $currentFiles = @(
         Get-ChildItem -LiteralPath $resolvedDataDirectory -Filter "*.geojson" -File |
-            Where-Object {
-                $_.Name -match "^[A-Za-z0-9]{4}\.geojson$" -or
-                $_.Name -eq "LFPG_Dyna.geojson"
-            } |
+            Where-Object { $_.Name -match "^[A-Za-z0-9]{4}\.geojson$" } |
             Sort-Object Name
     )
     if ($currentFiles.Count -eq 0) {
@@ -215,8 +212,7 @@ try {
         }
 
         $currentText = [System.IO.File]::ReadAllText($currentFile.FullName, [System.Text.Encoding]::UTF8)
-        $wasPrettyPrinted = $currentFile.Name -eq "LFPG_Dyna.geojson" -or
-            $currentText -match "^\s*\{\s*`r?`n"
+        $wasPrettyPrinted = $currentText -match "^\s*\{\s*`r?`n"
         $current = $currentText | ConvertFrom-Json
         $dayText = [System.IO.File]::ReadAllText($dayFilesByName[$currentFile.Name], [System.Text.Encoding]::UTF8)
         $day = $dayText | ConvertFrom-Json
@@ -302,7 +298,7 @@ try {
         $compactJson = ConvertTo-Json -InputObject $current -Depth 100 -Compress
         if ($wasPrettyPrinted) {
             # Windows PowerShell escapes apostrophes even though JSON does not
-            # require it. Preserve the human-readable dynamic source format.
+            # require it. Preserve the source's human-readable format.
             $compactJson = $compactJson.Replace('\u0027', "'")
         }
         $json = if ($wasPrettyPrinted) { Format-JsonTwoSpace $compactJson } else { $compactJson + "`n" }

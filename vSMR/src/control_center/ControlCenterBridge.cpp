@@ -1596,9 +1596,9 @@ struct VsmrControlCenterBridge::Impl
 			allocator);
 		AddDistribution(
 			timings,
-			"sceneControllerOwnership",
-			snapshot.sceneControllerOwnership,
-			snapshot.latestFrame.sceneControllerOwnershipMilliseconds,
+			"sceneControllerCapture",
+			snapshot.sceneControllerCapture,
+			snapshot.latestFrame.sceneControllerCaptureMilliseconds,
 			hasLatest,
 			allocator);
 		AddDistribution(

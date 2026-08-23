@@ -235,7 +235,6 @@
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
     <ClInclude Include="src\safety\Rimcas.hpp" />
     <ClInclude Include="src\scene\RadarScene.hpp" />
-    <ClInclude Include="src\aviso\FrequencyOwnership.hpp" />
     <ClInclude Include="src\shared\logging\Logger.hpp" />
     <ClInclude Include="src\shared\TextUtils.hpp" />
     <ClInclude Include="src\tags\TagColorRules.hpp" />

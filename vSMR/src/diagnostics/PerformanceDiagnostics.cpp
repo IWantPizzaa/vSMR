@@ -206,7 +206,7 @@ namespace
 			<< ",\"rdf\":" << frame.rdfMilliseconds
 			<< ",\"insetChrome\":" << frame.insetChromeMilliseconds
 			<< ",\"sceneAvisoLoad\":" << frame.sceneAvisoLoadMilliseconds
-			<< ",\"sceneControllerOwnership\":" << frame.sceneControllerOwnershipMilliseconds
+			<< ",\"sceneControllerCapture\":" << frame.sceneControllerCaptureMilliseconds
 			<< ",\"sceneTargetCapture\":" << frame.sceneTargetCaptureMilliseconds
 			<< ",\"sceneFinalize\":" << frame.sceneFinalizeMilliseconds
 			<< ",\"euroScopeLookups\":" << frame.euroScopeLookupMilliseconds
@@ -635,7 +635,7 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 	result.rdf = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.rdfMilliseconds; });
 	result.insetChrome = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.insetChromeMilliseconds; });
 	result.sceneAvisoLoad = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneAvisoLoadMilliseconds; });
-	result.sceneControllerOwnership = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneControllerOwnershipMilliseconds; });
+	result.sceneControllerCapture = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneControllerCaptureMilliseconds; });
 	result.sceneTargetCapture = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneTargetCaptureMilliseconds; });
 	result.sceneFinalize = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneFinalizeMilliseconds; });
 	result.euroScopeLookups = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.euroScopeLookupMilliseconds; });
@@ -803,7 +803,7 @@ std::string VsmrPerformance::BuildJsonReport(
 		{ "rdf", &snapshot.rdf },
 		{ "insetChrome", &snapshot.insetChrome },
 		{ "sceneAvisoLoad", &snapshot.sceneAvisoLoad },
-		{ "sceneControllerOwnership", &snapshot.sceneControllerOwnership },
+		{ "sceneControllerCapture", &snapshot.sceneControllerCapture },
 		{ "sceneTargetCapture", &snapshot.sceneTargetCapture },
 		{ "sceneFinalize", &snapshot.sceneFinalize },
 		{ "euroScopeLookups", &snapshot.euroScopeLookups },

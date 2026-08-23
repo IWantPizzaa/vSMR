@@ -112,7 +112,6 @@ input, textarea { user-select: text; }
 }
 .titlebar > span {
   padding: 0 7px;
-  background: rgba(16, 20, 22, .88);
 }
 .title-close {
   position: absolute;
@@ -3153,7 +3152,6 @@ input:focus, select:focus, textarea:focus {
 }
 .runtime-titlebar > span {
   padding: 0 7px;
-  background: rgba(16,20,22,.9);
 }
 .runtime-menu-list {
   display: grid;

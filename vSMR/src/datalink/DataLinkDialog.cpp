@@ -35,7 +35,6 @@ namespace
 	const COLORREF kDisabledTextColor = RGB(91, 107, 112);
 	const COLORREF kTitleBackgroundColor = RGB(9, 12, 13);
 	const COLORREF kTitleStripeColor = RGB(23, 29, 31);
-	const COLORREF kTitlePadColor = RGB(16, 20, 22);
 	const COLORREF kTitleTextColor = RGB(211, 221, 224);
 	const COLORREF kCloseBackgroundColor = RGB(21, 27, 29);
 	const COLORREF kCloseHoverColor = RGB(57, 69, 74);
@@ -1218,7 +1217,6 @@ void CDataLinkDialog::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT lpDrawItemStruct)
 			rect.top,
 			rect.CenterPoint().x + (titleSize.cx + 1) / 2 + 7,
 			rect.bottom);
-		dc.FillSolidRect(titleRect, kTitlePadColor);
 		dc.SetBkMode(TRANSPARENT);
 		dc.SetTextColor(kTitleTextColor);
 		dc.DrawText(title, titleRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);

@@ -155,13 +155,6 @@ namespace
 		return value;
 	}
 
-	bool SupportsDynamicAvisoFrequencyOwnership(const std::string& airport)
-	{
-		// The renderer and ownership model are airport-agnostic. Enable the
-		// feature only where its source data has been operationally reviewed.
-		return ToUpperAscii(TrimAvisoAirportCode(airport)) == "LFPG";
-	}
-
 	void PushUniquePath(std::vector<fs::path>& paths, const fs::path& path)
 	{
 		if (path.empty())
@@ -438,59 +431,6 @@ namespace
 		if (const char* value = GetAvisoStringProperty(inlineProperties, keys))
 			return value;
 		return GetAvisoStringProperty(sharedPaint, keys);
-	}
-
-	CSMRRadar::AvisoFrequencyOwnershipMetadata ReadAvisoFrequencyOwnershipMetadata(
-		const Value* properties)
-	{
-		CSMRRadar::AvisoFrequencyOwnershipMetadata metadata;
-		if (properties == nullptr || !properties->IsObject())
-			return metadata;
-
-		const char* geometryRole = GetAvisoStringProperty(properties, { "geometry_role" });
-		const char* dynamicRole = GetAvisoStringProperty(properties, { "dynamic_role" });
-		const char* featureType = GetAvisoStringProperty(properties, { "feature_type" });
-		const bool ownershipArea = geometryRole != nullptr &&
-			ToUpperAscii(TrimAvisoAirportCode(geometryRole)) == "FREQUENCY_OWNERSHIP_AREA";
-		const bool ownershipLabel =
-			(featureType != nullptr &&
-				ToUpperAscii(TrimAvisoAirportCode(featureType)) == "FREQUENCY_POINT") ||
-			(dynamicRole != nullptr &&
-				ToUpperAscii(TrimAvisoAirportCode(dynamicRole)).find("FREQUENCY") != std::string::npos);
-		if (!ownershipArea && !ownershipLabel)
-			return metadata;
-
-		metadata.dynamicItem = true;
-		if (const char* service = GetAvisoStringProperty(properties, { "service" }))
-			metadata.service = ToUpperAscii(TrimAvisoAirportCode(service));
-		if (const char* ownerKey = GetAvisoStringProperty(properties, { "owner_key" }))
-			metadata.ownerKey = ToUpperAscii(TrimAvisoAirportCode(ownerKey));
-
-		if (properties->HasMember("takeover_chain") && (*properties)["takeover_chain"].IsArray())
-		{
-			const Value& chain = (*properties)["takeover_chain"];
-			for (SizeType index = 0; index < chain.Size(); ++index)
-			{
-				if (!chain[index].IsString())
-					continue;
-				const std::string key = ToUpperAscii(TrimAvisoAirportCode(chain[index].GetString()));
-				if (!key.empty() &&
-					std::find(metadata.takeoverChain.begin(), metadata.takeoverChain.end(), key) == metadata.takeoverChain.end())
-				{
-					metadata.takeoverChain.push_back(key);
-				}
-			}
-		}
-
-		if (metadata.service == "DEL" || metadata.takeoverChain.empty())
-			return metadata;
-
-		std::ostringstream key;
-		key << metadata.service << '|' << metadata.ownerKey;
-		for (const std::string& position : metadata.takeoverChain)
-			key << '|' << position;
-		metadata.ruleKey = key.str();
-		return metadata;
 	}
 
 	bool IsAvisoFeatureVisible(const Value* properties)
@@ -1292,43 +1232,6 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	try
 	{
 		const std::vector<fs::path> searchDirectories = BuildAvisoGeoJsonSearchDirectories(DllPath, DataPath);
-		if (SupportsDynamicAvisoFrequencyOwnership(airportUpper))
-		{
-			for (const fs::path& searchDirectory : searchDirectories)
-			{
-				const fs::path dynamicPath = searchDirectory / (airportUpper + "_Dyna.geojson");
-				if (IsRegularFileNoThrow(dynamicPath))
-					return rememberResolvedPath(dynamicPath.string());
-			}
-
-			const std::string expectedDynamicStem = airportUpper + "_DYNA";
-			for (const fs::path& searchDirectory : searchDirectories)
-			{
-				if (!IsDirectoryNoThrow(searchDirectory))
-					continue;
-				for (const auto& entry : fs::directory_iterator(searchDirectory))
-				{
-					if (!entry.is_regular_file())
-						continue;
-					const fs::path path = entry.path();
-					if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
-						ToUpperAscii(path.stem().string()) == expectedDynamicStem)
-					{
-						return rememberResolvedPath(path.string());
-					}
-				}
-			}
-
-			// Retain the beta.3 filename as a compatibility fallback for manual
-			// installations that update only the DLL.
-			for (const fs::path& searchDirectory : searchDirectories)
-			{
-				const fs::path legacyDynamicPath = searchDirectory / (airportUpper + "_Dyna_fixed.geojson");
-				if (IsRegularFileNoThrow(legacyDynamicPath))
-					return rememberResolvedPath(legacyDynamicPath.string());
-			}
-		}
-
 		for (const fs::path& searchDirectory : searchDirectories)
 		{
 			const fs::path exactPath = searchDirectory / (airportUpper + ".geojson");
@@ -1710,7 +1613,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			parsedLabel.sourceFeatureIndex = static_cast<int>(i);
 			parsedLabel.sourceFeatureId = sourceFeatureId;
 			parsedLabel.groupIds = groupIds;
-			parsedLabel.frequencyOwnership = ReadAvisoFrequencyOwnershipMetadata(properties);
 			parsedLabel.text = AvisoUtf8ToWide(rawText);
 			if (parsedLabel.text.empty())
 				continue;
@@ -1741,7 +1643,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.sourceFeatureIndex = static_cast<int>(i);
 		parsedFeature.sourceFeatureId = sourceFeatureId;
 		parsedFeature.groupIds = groupIds;
-		parsedFeature.frequencyOwnership = ReadAvisoFrequencyOwnershipMetadata(properties);
 		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
 		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
 		parsedFeature.dayFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "fill", parsedFeature.fillColor);
@@ -1837,42 +1738,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		std::make_shared<const std::vector<AvisoLabel>>(parsedLabels);
 	auto visibility =
 		std::make_shared<std::unordered_map<std::string, bool>>();
-	auto frequencyOwnership =
-		std::make_shared<AvisoFrequencyOwnershipSnapshot>();
-	std::map<std::string, AvisoFrequencyOwnershipMetadata> frequencyOwnershipRules;
-	std::set<std::string> frequencyOwnershipRelevantPositions;
-	std::map<std::string, std::set<std::string>> frequencyOwnershipServicePositions;
-	auto registerFrequencyOwnershipRule = [&](const AvisoFrequencyOwnershipMetadata& metadata)
-	{
-		if (!metadata.dynamicItem || metadata.ruleKey.empty())
-			return;
-		frequencyOwnershipRules.emplace(metadata.ruleKey, metadata);
-		frequencyOwnershipRelevantPositions.insert(
-			metadata.takeoverChain.begin(), metadata.takeoverChain.end());
-	};
-	for (const AvisoFeature& feature : parsedFeatures)
-		registerFrequencyOwnershipRule(feature.frequencyOwnership);
-	for (const AvisoLabel& label : parsedLabels)
-		registerFrequencyOwnershipRule(label.frequencyOwnership);
-	std::map<std::string, std::string> directOwnerServices;
-	for (const auto& ruleEntry : frequencyOwnershipRules)
-	{
-		const AvisoFrequencyOwnershipMetadata& rule = ruleEntry.second;
-		if (!rule.ownerKey.empty() && !rule.service.empty())
-			directOwnerServices.emplace(rule.ownerKey, rule.service);
-	}
-	for (const auto& ruleEntry : frequencyOwnershipRules)
-	{
-		const AvisoFrequencyOwnershipMetadata& rule = ruleEntry.second;
-		auto& servicePositions = frequencyOwnershipServicePositions[rule.service];
-		for (const std::string& position : rule.takeoverChain)
-		{
-			const auto directOwner = directOwnerServices.find(position);
-			if (directOwner != directOwnerServices.end() && directOwner->second != rule.service)
-				break;
-			servicePositions.insert(position);
-		}
-	}
 	visibility->reserve(parsedGroups.size());
 	for (const AvisoGroup& group : parsedGroups)
 		(*visibility)[group.id] = group.visible;
@@ -1920,14 +1785,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		AvisoGeoJsonSourceFeatureCount = static_cast<size_t>(features.Size());
 		AvisoRuntimeGroups = parsedGroups;
 		AvisoGroupVisibilitySnapshot = visibility;
-		AvisoFrequencyOwnershipStateSnapshot = frequencyOwnership;
-		AvisoFrequencyOwnershipRules = std::move(frequencyOwnershipRules);
-		AvisoFrequencyOwnershipRelevantPositions = std::move(frequencyOwnershipRelevantPositions);
-		AvisoFrequencyOwnershipServicePositions = std::move(frequencyOwnershipServicePositions);
 		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
 	}
-	AvisoFrequencyOwnershipLastRefreshTick = 0;
-	AvisoFrequencyOwnershipLastSignature.clear();
 	for (auto& appWindow : appWindows)
 	{
 		if (appWindow.second != nullptr && appWindow.second->IsAvisoViewport())
@@ -1981,225 +1840,17 @@ bool CSMRRadar::GetAvisoRenderSnapshots(
 	std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
 	std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
 	std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
-	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot>& outFrequencyOwnership,
 	unsigned long long& outGeneration) const
 {
 	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
 	outFeatures = AvisoGeoJsonFeatureSnapshot;
 	outLabels = AvisoGeoJsonLabelSnapshot;
 	outGroupVisibility = AvisoGroupVisibilitySnapshot;
-	outFrequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
 	outGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
 	return outFeatures != nullptr && outLabels != nullptr &&
-		outGroupVisibility != nullptr && outFrequencyOwnership != nullptr;
+		outGroupVisibility != nullptr;
 }
 
-void CSMRRadar::RefreshAvisoFrequencyOwnership(
-	bool force,
-	const std::vector<VsmrScene::ControllerState>* capturedControllers)
-{
-	if (IsShutdownRequested() || !AvisoGeoJsonLoaded)
-		return;
-
-	const unsigned long nowTick = ::GetTickCount();
-	const unsigned long refreshIntervalMs = 500;
-	if (!force && AvisoFrequencyOwnershipLastRefreshTick != 0 &&
-		(nowTick - AvisoFrequencyOwnershipLastRefreshTick) < refreshIntervalMs)
-	{
-		return;
-	}
-	AvisoFrequencyOwnershipLastRefreshTick = nowTick;
-
-	try
-	{
-		const bool enabledForAirport =
-			SupportsDynamicAvisoFrequencyOwnership(getActiveAirport());
-		std::map<std::string, AvisoFrequencyOwnershipMetadata> rules;
-		std::set<std::string> relevantPositions;
-		std::map<std::string, std::set<std::string>> servicePositions;
-		if (enabledForAirport)
-		{
-			std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-			rules = AvisoFrequencyOwnershipRules;
-			relevantPositions = AvisoFrequencyOwnershipRelevantPositions;
-			servicePositions = AvisoFrequencyOwnershipServicePositions;
-		}
-
-		struct ConnectedController
-		{
-			bool mine = false;
-			double frequency = 0.0;
-		};
-		std::map<std::string, ConnectedController> connectedByPosition;
-		auto registerControllerData = [&](
-			const std::string& rawPosition,
-			double primaryFrequency,
-			bool mine)
-		{
-			if (rawPosition.empty())
-				return;
-			const std::string position = ToUpperAscii(TrimAvisoAirportCode(rawPosition));
-			if (position.empty() || relevantPositions.find(position) == relevantPositions.end())
-				return;
-			const ConnectedController candidate{ mine, primaryFrequency };
-			auto existing = connectedByPosition.find(position);
-			if (existing == connectedByPosition.end() || mine)
-				connectedByPosition[position] = candidate;
-		};
-
-		if (capturedControllers != nullptr)
-		{
-			for (const VsmrScene::ControllerState& controller : *capturedControllers)
-			{
-				registerControllerData(
-					controller.positionId,
-					controller.primaryFrequency,
-					controller.mine);
-			}
-		}
-		else
-		{
-			CPlugIn* plugin = GetPlugIn();
-			if (plugin == nullptr)
-				return;
-
-			const CController myself = plugin->ControllerMyself();
-			const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr
-				? ToUpperAscii(TrimAvisoAirportCode(myself.GetCallsign()))
-				: std::string();
-			const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr
-				? ToUpperAscii(TrimAvisoAirportCode(myself.GetPositionId()))
-				: std::string();
-			auto registerController = [&](const CController& controller)
-			{
-				if (!controller.IsValid() || !controller.IsController())
-					return;
-				const std::string callsign = controller.GetCallsign() != nullptr ? controller.GetCallsign() : "";
-				const std::string position = controller.GetPositionId() != nullptr ? controller.GetPositionId() : "";
-				const std::string normalizedCallsign = ToUpperAscii(TrimAvisoAirportCode(callsign));
-				const std::string normalizedPosition = ToUpperAscii(TrimAvisoAirportCode(position));
-				const bool mine =
-					(!myCallsign.empty() && normalizedCallsign == myCallsign) ||
-					(!myPosition.empty() && normalizedPosition == myPosition);
-				registerControllerData(position, controller.GetPrimaryFrequency(), mine);
-			};
-
-			CController controller = plugin->ControllerSelectFirst();
-			for (size_t guard = 0; controller.IsValid() && guard < 4096; ++guard)
-			{
-				registerController(controller);
-				controller = plugin->ControllerSelectNext(controller);
-			}
-			registerController(myself);
-		}
-
-		auto nextSnapshot = std::make_shared<AvisoFrequencyOwnershipSnapshot>();
-		if (enabledForAirport)
-		{
-			const ConnectedController* connectedRmp = nullptr;
-			std::string connectedRmpPosition;
-			const auto rmpPositions = servicePositions.find("RMP");
-			if (rmpPositions != servicePositions.end())
-			{
-				for (const std::string& position : rmpPositions->second)
-				{
-					const auto connected = connectedByPosition.find(position);
-					if (connected == connectedByPosition.end())
-						continue;
-					if (connectedRmp == nullptr || connected->second.mine)
-					{
-						connectedRmp = &connected->second;
-						connectedRmpPosition = position;
-					}
-					if (connected->second.mine)
-						break;
-				}
-			}
-
-			for (const auto& ruleEntry : rules)
-			{
-				const AvisoFrequencyOwnershipMetadata& rule = ruleEntry.second;
-				if (rule.service == "RMP" && connectedRmp != nullptr)
-				{
-					AvisoFrequencyOwner owner;
-					owner.connected = true;
-					owner.ownedByMe = connectedRmp->mine;
-					owner.useSourceFrequency = true;
-					owner.positionId = connectedRmpPosition;
-					nextSnapshot->ownersByRule.emplace(ruleEntry.first, std::move(owner));
-					continue;
-				}
-				for (const std::string& position : rule.takeoverChain)
-				{
-					const auto connected = connectedByPosition.find(position);
-					if (connected == connectedByPosition.end())
-						continue;
-
-					AvisoFrequencyOwner owner;
-					owner.connected = true;
-					owner.ownedByMe = connected->second.mine;
-					owner.positionId = position;
-					const double frequency = connected->second.frequency;
-					if (std::isfinite(frequency) && frequency >= 100.0 && frequency < 190.0)
-					{
-						std::ostringstream formatted;
-						formatted << std::fixed << std::setprecision(3) << frequency;
-						const std::string text = formatted.str();
-						owner.frequencyLabel.assign(text.begin(), text.end());
-					}
-					nextSnapshot->ownersByRule.emplace(ruleEntry.first, std::move(owner));
-					break;
-				}
-			}
-		}
-
-		// Key the raster refresh to what is actually rendered. EuroScope can
-		// publish frequent updates for unrelated controllers; including the
-		// complete online list here caused the large AVISO bitmap to be cleared
-		// and rebuilt even though no LFPG ownership had changed.
-		std::ostringstream signature;
-		signature << (enabledForAirport ? "LFPG|" : "DISABLED|") << AvisoGeoJsonLoadedPath;
-		for (const auto& ruleEntry : rules)
-		{
-			signature << '|' << ruleEntry.first << '=';
-			const auto ownership = nextSnapshot->ownersByRule.find(ruleEntry.first);
-			if (ownership == nextSnapshot->ownersByRule.end() || !ownership->second.connected)
-			{
-				signature << "NONE";
-				continue;
-			}
-			signature << ownership->second.positionId << ':'
-				<< (ownership->second.ownedByMe ? 'M' : 'O') << ':'
-				<< (ownership->second.useSourceFrequency ? 'S' : 'C') << ':';
-			const std::wstring& frequency = ownership->second.frequencyLabel;
-			for (const wchar_t character : frequency)
-				signature << static_cast<char>(character);
-		}
-		const std::string nextSignature = signature.str();
-		if (nextSignature == AvisoFrequencyOwnershipLastSignature)
-			return;
-
-		{
-			std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-			AvisoFrequencyOwnershipStateSnapshot = nextSnapshot;
-			AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-		}
-		AvisoFrequencyOwnershipLastSignature = nextSignature;
-		InvalidateAvisoGroupRendering();
-		Logger::info(
-			"AVISO dynamic frequency ownership refreshed airport=" + getActiveAirport() +
-			" controllers=" + std::to_string(connectedByPosition.size()) +
-			" resolved_rules=" + std::to_string(nextSnapshot->ownersByRule.size()));
-	}
-	catch (const std::exception& ex)
-	{
-		Logger::info("AVISO dynamic frequency ownership refresh failed: " + std::string(ex.what()));
-	}
-	catch (...)
-	{
-		Logger::info("AVISO dynamic frequency ownership refresh failed: unknown exception");
-	}
-}
 
 bool CSMRRadar::ApplyAvisoGroupMembershipSnapshot(
 	const rapidjson::Value& aviso,
@@ -3200,27 +2851,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 		Color featureFillColor = request.useDayPalette ? feature.dayFillColor : feature.fillColor;
 		Color featureStrokeColor = request.useDayPalette ? feature.dayStrokeColor : feature.strokeColor;
-		if (feature.frequencyOwnership.dynamicItem)
-		{
-			if (feature.frequencyOwnership.ruleKey.empty() || request.frequencyOwnership == nullptr)
-				continue;
-			const auto ownership = request.frequencyOwnership->ownersByRule.find(
-				feature.frequencyOwnership.ruleKey);
-			if (ownership == request.frequencyOwnership->ownersByRule.end() ||
-				!ownership->second.connected)
-			{
-				continue;
-			}
-			if (ownership->second.ownedByMe)
-			{
-				// Keep inherited/self-owned territory visible but deliberately
-				// quieter and blue, while foreign ownership retains the source
-				// service color (yellow in the LFPG data set).
-				if (!feature.polygon)
-					featureStrokeColor = Color(featureStrokeColor.GetAlpha(), 79, 195, 247);
-				featureFillColor = Color(featureFillColor.GetAlpha(), 79, 195, 247);
-			}
-		}
 
 		if (feature.maxLatitude < request.renderMinLatitude ||
 			feature.minLatitude > request.renderMaxLatitude ||
@@ -3349,23 +2979,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				continue;
 
 			const std::wstring* renderedText = &label.text;
-			if (label.frequencyOwnership.dynamicItem)
-			{
-				if (label.frequencyOwnership.ruleKey.empty() || request.frequencyOwnership == nullptr)
-					continue;
-				const auto ownership = request.frequencyOwnership->ownersByRule.find(
-					label.frequencyOwnership.ruleKey);
-				if (ownership == request.frequencyOwnership->ownersByRule.end() ||
-					!ownership->second.connected ||
-					ownership->second.ownedByMe ||
-					(!ownership->second.useSourceFrequency && ownership->second.frequencyLabel.empty()))
-				{
-					continue;
-				}
-				renderedText = ownership->second.useSourceFrequency
-					? &label.text
-					: &ownership->second.frequencyLabel;
-			}
 
 			if (label.position.latitude < request.renderMinLatitude ||
 				label.position.latitude > request.renderMaxLatitude ||
@@ -3610,21 +3223,14 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	std::shared_ptr<const std::vector<AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
-	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
 	unsigned long long groupGeneration = 0;
 	if (!GetAvisoRenderSnapshots(
 		featureSnapshot,
 		labelSnapshot,
 		groupVisibility,
-		frequencyOwnership,
 		groupGeneration))
 	{
 		return;
-	}
-	if (const VsmrScene::RadarScene* scene = GetCurrentRadarScene();
-		scene != nullptr && scene->avisoGeneration == groupGeneration)
-	{
-		frequencyOwnership = scene->frequencyOwnership;
 	}
 
 	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
@@ -4277,7 +3883,6 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.features = featureSnapshot;
 	request.labels = labelSnapshot;
 	request.groupVisibility = groupVisibility;
-	request.frequencyOwnership = frequencyOwnership;
 	request.useDayPalette = AvisoUseDayColorPalette;
 	request.rasterWidth = rasterWidth;
 	request.rasterHeight = rasterHeight;
@@ -9026,8 +8631,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	if (frameScene != nullptr)
 	{
 		performanceFrame.sceneAvisoLoadMilliseconds = frameScene->stats.avisoLoadMilliseconds;
-		performanceFrame.sceneControllerOwnershipMilliseconds =
-			frameScene->stats.controllerOwnershipMilliseconds;
+		performanceFrame.sceneControllerCaptureMilliseconds =
+			frameScene->stats.controllerCaptureMilliseconds;
 		performanceFrame.sceneTargetCaptureMilliseconds = frameScene->stats.targetCaptureMilliseconds;
 		performanceFrame.sceneFinalizeMilliseconds = frameScene->stats.finalizeMilliseconds;
 		performanceFrame.euroScopeLookupMilliseconds = frameScene->stats.sdkLookupMilliseconds;

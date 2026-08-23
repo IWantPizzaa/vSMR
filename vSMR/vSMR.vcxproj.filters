@@ -109,7 +109,6 @@
     <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\safety\Rimcas.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\scene\RadarScene.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\aviso\FrequencyOwnership.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\logging\Logger.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\TextUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.hpp"><Filter>Headers</Filter></ClInclude>
