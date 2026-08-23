@@ -134,22 +134,16 @@
 <div aria-label="Target icon preview" class="icon-symbol-preview" id="iconSymbolPreview"></div>
 <div class="icon-symbol-controls">
 <label class="field"><span>Icon style</span><select id="targetIconStyle"><option value="nova">NOVA</option><option value="realistic">Icon</option><option value="triangle">Triangle</option></select></label>
+<label class="field"><span>Symbol size</span><span class="range-control"><input id="targetSymbolScale" max="1.5" min="0.5" step="0.05" type="range"/><output id="targetSymbolScaleOutput">1.00×</output></span></label>
 </div>
 </div>
 </fieldset>
-<fieldset class="compact-group icon-parameters-group">
-<legend>Parameters</legend>
-<div class="icon-size-options">
-<section class="icon-parameter-block">
-<strong>Fixed pixel size</strong>
-<label class="check-field"><input id="fixedPixelIconSize" type="checkbox"/><span>Enable</span></label>
-<label class="field"><span>Scale</span><span class="range-control"><input id="fixedPixelIconScale" max="2" min="0.25" step="0.05" type="range"/><output id="fixedPixelIconScaleOutput">1.00×</output></span></label>
-</section>
-<section class="icon-parameter-block">
-<strong>Small icon boost</strong>
-<label class="check-field"><input id="smallIconBoost" type="checkbox"/><span>Enable</span></label>
-<label class="field"><span>Factor</span><span class="range-control"><input id="smallIconBoostFactor" max="2" min="0.5" step="0.05" type="range"/><output id="smallIconBoostFactorOutput">1.00×</output></span></label>
-</section>
+<fieldset class="compact-group icon-trail-group">
+<legend>Position trail</legend>
+<div class="icon-trail-options">
+<label class="check-field icon-trail-enable"><input id="targetTrailEnabled" type="checkbox"/><span>Show moving-aircraft trail</span></label>
+<label class="field icon-trail-value"><span>Ground points</span><span class="range-control"><input id="targetTrailGroundPoints" max="16" min="0" step="1" type="range"/><output id="targetTrailGroundPointsOutput">4</output></span></label>
+<label class="field icon-trail-value"><span>Airborne points</span><span class="range-control"><input id="targetTrailAirbornePoints" max="16" min="0" step="1" type="range"/><output id="targetTrailAirbornePointsOutput">8</output></span></label>
 </div>
 </fieldset>
 </div>
@@ -341,11 +335,11 @@
 <div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
 <div class="aviso-flat-style-editor aviso-geometry-properties">
 <div class="color-editor-body aviso-color-editor-body" id="avisoGeometryColorEditor">
-<div class="aviso-color-editor-heading" id="avisoGeometryColorLabel">Fill color</div>
 <div class="color-picker-workbench">
 <div aria-label="Geometry color saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" class="color-sv-palette" id="avisoGeometryColorSvPalette" role="slider" tabindex="0"><span aria-hidden="true" class="color-palette-cursor" id="avisoGeometryColorPaletteCursor"></span></div>
 <div aria-label="Geometry color preview" class="color-preview-card"><span aria-hidden="true" class="color-preview-swatch" id="avisoGeometryColorSwatch"></span></div>
 </div>
+<div class="aviso-color-editor-heading" id="avisoGeometryColorLabel">Fill color</div>
 <label class="field color-hex-field"><span>Hex</span><input id="avisoGeometryColorHex" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" type="text"/></label>
 <div aria-label="Geometry HSRGBA channels" class="color-channel-sliders">
 <label class="color-slider-row hue-slider-row"><span>Hue</span><input id="avisoGeometryColorHue" max="360" min="0" step="1" type="range"/><input aria-label="Geometry hue value" class="color-channel-value" id="avisoGeometryColorHueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
@@ -372,17 +366,12 @@
 <div class="panel-title"><span id="avisoTextCaption">Text style</span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
 <div class="aviso-flat-style-editor aviso-text-properties">
-<div class="dense-form two-cols aviso-style-form">
-<label class="field"><span>Font</span><input id="avisoTextFont" list="avisoFontChoices" placeholder="Mixed" type="text"/></label>
-<label class="field"><span>Size</span><input id="avisoTextSize" max="32" min="6" placeholder="Mixed" step="1" type="number"/></label>
-<label class="field"><span>Halo width</span><input id="avisoTextHaloWidth" max="6" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
-</div>
 <div class="color-editor-body aviso-color-editor-body" id="avisoTextColorEditor">
-<div class="aviso-color-editor-toolbar"><div class="aviso-color-editor-heading" id="avisoTextColorLabel">Text color</div><div aria-label="Text paint color" class="aviso-color-target-switch"><button class="active" data-action="select-aviso-text-color" data-color-target="text" type="button">Text</button><button data-action="select-aviso-text-color" data-color-target="halo" type="button">Halo</button></div></div>
 <div class="color-picker-workbench">
 <div aria-label="Text color saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" class="color-sv-palette" id="avisoTextColorSvPalette" role="slider" tabindex="0"><span aria-hidden="true" class="color-palette-cursor" id="avisoTextColorPaletteCursor"></span></div>
 <div aria-label="Text color preview" class="color-preview-card"><span aria-hidden="true" class="color-preview-swatch" id="avisoTextColorSwatch"></span></div>
 </div>
+<div class="aviso-color-editor-toolbar"><div class="aviso-color-editor-heading" id="avisoTextColorLabel">Text color</div><div aria-label="Text paint color" class="aviso-color-target-switch"><button class="active" data-action="select-aviso-text-color" data-color-target="text" type="button">Text</button><button data-action="select-aviso-text-color" data-color-target="halo" type="button">Halo</button></div></div>
 <label class="field color-hex-field"><span>Hex</span><input id="avisoTextColorHex" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" type="text"/></label>
 <div aria-label="Text HSRGB channels" class="color-channel-sliders">
 <label class="color-slider-row hue-slider-row"><span>Hue</span><input id="avisoTextColorHue" max="360" min="0" step="1" type="range"/><input aria-label="Text hue value" class="color-channel-value" id="avisoTextColorHueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
@@ -390,6 +379,11 @@
 <label class="color-slider-row green-channel"><span>Green</span><input id="avisoTextColorGreen" max="255" min="0" step="1" type="range"/><input aria-label="Text green value" class="color-channel-value" id="avisoTextColorGreenOutput" inputmode="numeric" maxlength="3" type="text"/></label>
 <label class="color-slider-row blue-channel"><span>Blue</span><input id="avisoTextColorBlue" max="255" min="0" step="1" type="range"/><input aria-label="Text blue value" class="color-channel-value" id="avisoTextColorBlueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
 </div>
+</div>
+<div class="dense-form two-cols aviso-style-form">
+<label class="field"><span>Font</span><input id="avisoTextFont" list="avisoFontChoices" placeholder="Mixed" type="text"/></label>
+<label class="field"><span>Size</span><input id="avisoTextSize" max="32" min="6" placeholder="Mixed" step="1" type="number"/></label>
+<label class="field"><span>Halo width</span><input id="avisoTextHaloWidth" max="6" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
 </div>
 <div class="aviso-text-zoom-box">
 <div class="tag-options-subtitle">Zoom visibility</div>

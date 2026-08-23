@@ -4,10 +4,14 @@
 
 ### Added
 
+- Added configurable moving-aircraft position trails to the main radar, AVISO inset, and SRW. The Icons page controls trail visibility plus separate ground and airborne history lengths; NOVA uses compact vSMR history dots, Icon uses filled bubbles that grey and fade with age, and Triangle uses shrinking hollow circles.
 - Added a persisted Day/Night AVISO color mode in Settings. Both the main view and AVISO inset now select compact Day overrides from the same GeoJSON document, while existing base paint remains the Night palette and older/custom schema-2 files continue to work unchanged.
 
 ### Changed
 
+- Restored the original NOVA target presentation: a configurable yellow irregular primary return, three cyan afterglow silhouettes for moving targets, white position-history dots, and a white Mode C diamond or non-Mode C cross. Icon and Arrow symbols now always follow radar zoom and their real-world dimensions; a centered `1.00×` scale slider provides a proportional 0.50–1.50 size adjustment without replacing zoom scaling, while the obsolete fixed-pixel and small-icon-boost controls are removed.
+- Standardized Profile Colors and AVISO Geometry/Text on the same compact palette and preview dimensions and vertical placement, with AVISO color-target and typography information arranged below the palette.
+- Removed polygon outlines from AVISO rendering so edited area fills no longer retain an unrelated source stroke color; line features continue to render with their primary stroke color.
 - Aligned LFPG dynamic AVISO runtime selection, bundled-default restoration, documentation, palette tooling, and release validation with the beta.4 canonical `LFPG_Dyna.geojson` filename while retaining the beta.3 filename as a runtime compatibility fallback.
 - Made automatic configuration and datalink saves fully background operations: the Control Center remains editable without a saving overlay, newer edits made during an in-flight save are preserved and queued for the next write, and only foreground operations retain the workspace interlock. Removed the redundant active-profile picker from the left rail and preloaded the hidden WebView2 Control Center after ASR initialization for a near-immediate first open.
 - Simplified Control Center list chrome by removing redundant item counts, selection counts, Hex labels, type badges, scope/path metadata, and secondary descriptions from Colors, Icons, Tags, Rules, Modes, Profiles, AVISO Geometry/Text, and Groups. Rules now uses the same bottom New/Duplicate/trash toolbar as the other managers, while RIMCAS Alerts no longer shows bulk alert-type toggles or the stage-two speed editor.
@@ -28,6 +32,9 @@
 - Fixed AVISO `zoomLevel` visibility to use the same corner-to-corner viewport distance as the radar zoom level, and applied the rule consistently to labels, lines, and polygons at every airport.
 - Made right-clicking an SRW tag background open EuroScope's Assume/Handoff list, and synchronized AVISO inset and SRW tag corners with the active profile's rounded-corners setting.
 - Fixed RIMCAS alert-type changes being replaced by the previous live selection during autosave, restored EuroScope runway inheritance for profiles containing an empty runway list, and removed the redundant Groups search field.
+- Prevented the moving main-view and inset AVISO caches from rescaling a near-native source by a single pixel, eliminating the transient vertical and horizontal centre seams during panning.
+- Corrected the CPDLC clearance Next Frequency selection to use the lowest staffed departure position that issues the clearance: Delivery, then RMP, Ground, Tower, Approach/Departure, and Center fallback. LFPG north/south positions follow the departure runway complex when equivalent positions are online.
+- Changed the fallback inactive-sector background used by AVISO and SRW insets to `#434A4F` until EuroScope's live inactive-sector color can be sampled.
 
 ## [2.0.0-beta.3] - 2026-08-21
 
@@ -64,6 +71,7 @@
 
 ### Fixed
 
+- Kept AVISO and SRW inset fills locked to EuroScope's inactive-sector background while the main view is zoomed into an active sector, and prevented the METAR center plate from masking the wind arrow.
 - Synchronized AVISO Day/Night changes across every open radar screen sharing the Control Center configuration, and made stale main-view raster previews palette-aware so LFPG cannot continue displaying its previous Night bitmap during a slower Day rebuild.
 - Made automatic PDC reminders session-only and fail-safe: every eligible aircraft now receives the complete monotonic delay, including aircraft with expired placeholder TOBTs; startup, stale/unavailable vACDM data, missing controller/airport state, TOBT removal, delay changes, and Stop now reset or re-arm the scheduler predictably.
 - Prevented reminder floods and duplicates by defining zero cooldown as one reminder per eligibility period, spacing command-injection retries, stopping after an exhausted automatic retry batch, treating successful key-down submission as sent, and suppressing reminders while the PDC composer or transmission is active.

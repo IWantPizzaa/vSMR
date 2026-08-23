@@ -6,6 +6,7 @@
 #include <mutex>
 #include <ctime>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <climits>
@@ -383,6 +384,245 @@ namespace
 		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
 			--end;
 		return text.substr(start, end - start);
+	}
+
+	enum class PdcControllerFacility
+	{
+		Unknown = 0,
+		Delivery,
+		Ramp,
+		Ground,
+		Tower,
+		Approach,
+		Departure,
+		Center
+	};
+
+	PdcControllerFacility DetectPdcControllerFacility(const std::string& rawIdentity)
+	{
+		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
+		std::string token;
+		auto classifyToken = [](const std::string& value) -> PdcControllerFacility
+		{
+			if (value == "DEL" || value == "DELIVERY") return PdcControllerFacility::Delivery;
+			if (value == "RMP" || value == "RAMP") return PdcControllerFacility::Ramp;
+			if (value == "GND" || value == "GROUND") return PdcControllerFacility::Ground;
+			if (value == "TWR" || value == "TOWER") return PdcControllerFacility::Tower;
+			if (value == "APP" || value == "APPROACH") return PdcControllerFacility::Approach;
+			if (value == "DEP" || value == "DEPARTURE") return PdcControllerFacility::Departure;
+			if (value == "CTR" || value == "CENTER" || value == "CENTRE") return PdcControllerFacility::Center;
+			return PdcControllerFacility::Unknown;
+		};
+
+		for (size_t index = 0; index <= identity.size(); ++index)
+		{
+			const char c = index < identity.size() ? identity[index] : '_';
+			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
+			{
+				token.push_back(c);
+				continue;
+			}
+			const PdcControllerFacility facility = classifyToken(token);
+			if (facility != PdcControllerFacility::Unknown)
+				return facility;
+			token.clear();
+		}
+		return PdcControllerFacility::Unknown;
+	}
+
+	int PdcFacilityClearancePriority(PdcControllerFacility facility)
+	{
+		// The lowest staffed position in the departure chain issues the PDC and
+		// must therefore be the frequency printed in it.
+		switch (facility)
+		{
+		case PdcControllerFacility::Delivery: return 600;
+		case PdcControllerFacility::Ramp: return 500;
+		case PdcControllerFacility::Ground: return 400;
+		case PdcControllerFacility::Tower: return 300;
+		case PdcControllerFacility::Departure:
+		case PdcControllerFacility::Approach: return 200;
+		case PdcControllerFacility::Center: return 100;
+		default: return -1;
+		}
+	}
+
+	const char* PdcFacilityName(PdcControllerFacility facility)
+	{
+		switch (facility)
+		{
+		case PdcControllerFacility::Delivery: return "delivery";
+		case PdcControllerFacility::Ramp: return "ramp";
+		case PdcControllerFacility::Ground: return "ground";
+		case PdcControllerFacility::Tower: return "tower";
+		case PdcControllerFacility::Approach: return "approach";
+		case PdcControllerFacility::Departure: return "departure";
+		case PdcControllerFacility::Center: return "center";
+		default: return "unknown";
+		}
+	}
+
+	bool PdcControllerMatchesAirport(const std::string& rawIdentity, const std::string& airport)
+	{
+		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
+		if (airport.size() != 4 || identity.size() < airport.size() || identity.compare(0, airport.size(), airport) != 0)
+			return false;
+		return identity.size() == airport.size() ||
+			std::isalnum(static_cast<unsigned char>(identity[airport.size()])) == 0;
+	}
+
+	bool PdcIdentityHasToken(const std::string& rawIdentity, const std::string& expectedToken)
+	{
+		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
+		std::string token;
+		for (size_t index = 0; index <= identity.size(); ++index)
+		{
+			const char c = index < identity.size() ? identity[index] : '_';
+			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
+			{
+				token.push_back(c);
+				continue;
+			}
+			if (token == expectedToken)
+				return true;
+			token.clear();
+		}
+		return false;
+	}
+
+	int PdcRunwaySectorAffinity(
+		const std::string& airport,
+		const std::string& runway,
+		const std::string& callsign,
+		const std::string& positionId)
+	{
+		// CDG has separate north/south local positions. Its 08/26 runway complex
+		// is north and its 09/27 complex is south; use that only as a tie-breaker
+		// when more than one valid local controller is connected.
+		if (airport != "LFPG" || runway.size() < 2)
+			return 0;
+		const int runwayNumber = std::isdigit(static_cast<unsigned char>(runway[0])) != 0 &&
+			std::isdigit(static_cast<unsigned char>(runway[1])) != 0
+			? (runway[0] - '0') * 10 + (runway[1] - '0')
+			: -1;
+		const char* expectedSector =
+			(runwayNumber == 8 || runwayNumber == 26) ? "N" :
+			(runwayNumber == 9 || runwayNumber == 27) ? "S" : nullptr;
+		if (expectedSector == nullptr)
+			return 0;
+		return PdcIdentityHasToken(callsign, expectedSector) ||
+			PdcIdentityHasToken(positionId, expectedSector) ? 50 : 0;
+	}
+
+	std::string FormatPdcFrequency(double frequency)
+	{
+		if (!std::isfinite(frequency) || frequency <= 0.0)
+			return "";
+		std::ostringstream formatted;
+		formatted << std::fixed << std::setprecision(3) << frequency;
+		return formatted.str();
+	}
+
+	struct PdcFrequencySelection
+	{
+		double frequency = 0.0;
+		std::string controller;
+		std::string source;
+	};
+
+	PdcFrequencySelection ResolvePdcNextFrequency(
+		EuroScopePlugIn::CPlugIn* plugIn,
+		const CFlightPlan& flightPlan)
+	{
+		PdcFrequencySelection selection;
+		if (plugIn == nullptr || !flightPlan.IsValid())
+			return selection;
+
+		const char* originRaw = flightPlan.GetFlightPlanData().GetOrigin();
+		std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
+		if (origin.size() > 4)
+			origin.resize(4);
+		const char* runwayRaw = flightPlan.GetFlightPlanData().GetDepartureRwy();
+		const std::string runway = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(runwayRaw != nullptr ? runwayRaw : ""));
+
+		const CController myself = plugIn->ControllerMyself();
+		const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr ? myself.GetCallsign() : "";
+		const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr ? myself.GetPositionId() : "";
+		const char* coordinatedRaw = flightPlan.GetCoordinatedNextController();
+		const std::string coordinatedId = TrimAsciiWhitespaceCopy(coordinatedRaw != nullptr ? coordinatedRaw : "");
+		CController coordinated;
+		if (!coordinatedId.empty())
+			coordinated = plugIn->ControllerSelect(coordinatedId.c_str());
+
+		// PDC is issued by the lowest staffed departure position. EuroScope's
+		// coordinated controller describes the next handoff and can consequently
+		// skip the Tower that is currently issuing clearances.
+		if (origin.size() == 4)
+		{
+			int bestScore = -1;
+			auto considerController = [&](const CController& controller)
+			{
+				if (!controller.IsValid() || !controller.IsController() || controller.GetPrimaryFrequency() <= 0.0)
+					return;
+				const std::string callsign = controller.GetCallsign() != nullptr ? controller.GetCallsign() : "";
+				const std::string position = controller.GetPositionId() != nullptr ? controller.GetPositionId() : "";
+				if (!PdcControllerMatchesAirport(callsign, origin) && !PdcControllerMatchesAirport(position, origin))
+					return;
+
+				PdcControllerFacility facility = DetectPdcControllerFacility(callsign);
+				if (facility == PdcControllerFacility::Unknown)
+					facility = DetectPdcControllerFacility(position);
+				int score = PdcFacilityClearancePriority(facility);
+				if (score < 0)
+					return;
+				score += PdcRunwaySectorAffinity(origin, runway, callsign, position);
+				if ((!myCallsign.empty() && ToUpperAsciiCopy(callsign) == ToUpperAsciiCopy(myCallsign)) ||
+					(!myPosition.empty() && ToUpperAsciiCopy(position) == ToUpperAsciiCopy(myPosition)))
+					score += 10;
+				if (!coordinatedId.empty() &&
+					(ToUpperAsciiCopy(callsign) == ToUpperAsciiCopy(coordinatedId) ||
+					 ToUpperAsciiCopy(position) == ToUpperAsciiCopy(coordinatedId)))
+					score += 5;
+
+				if (score > bestScore ||
+					(score == bestScore && ToUpperAsciiCopy(callsign) < ToUpperAsciiCopy(selection.controller)))
+				{
+					bestScore = score;
+					selection.frequency = controller.GetPrimaryFrequency();
+					selection.controller = callsign;
+					selection.source = std::string("lowest connected origin ") + PdcFacilityName(facility);
+				}
+			};
+
+			// ControllerSelectFirst normally includes the user's own position, but
+			// considering it explicitly keeps the clearance frequency correct if it does not.
+			considerController(myself);
+			std::size_t controllerGuard = 0;
+			for (CController controller = plugIn->ControllerSelectFirst();
+				controller.IsValid() && controllerGuard < 4096;
+				controller = plugIn->ControllerSelectNext(controller), ++controllerGuard)
+			{
+				considerController(controller);
+			}
+			if (bestScore >= 0)
+				return selection;
+		}
+
+		if (coordinated.IsValid() && coordinated.GetPrimaryFrequency() > 0.0)
+		{
+			selection.frequency = coordinated.GetPrimaryFrequency();
+			selection.controller = coordinated.GetCallsign() != nullptr ? coordinated.GetCallsign() : coordinatedId;
+			selection.source = "coordinated controller fallback";
+			return selection;
+		}
+
+		if (myself.IsValid() && myself.GetPrimaryFrequency() > 0.0)
+		{
+			selection.frequency = myself.GetPrimaryFrequency();
+			selection.controller = myCallsign;
+			selection.source = "own frequency fallback";
+		}
+		return selection;
 	}
 
 	DATA_BLOB HoppieCredentialEntropy()
@@ -4280,10 +4520,15 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			dia.m_Departure = FlightPlan.GetFlightPlanData().GetSidName();
 			dia.m_Rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
 			dia.m_SSR = FlightPlan.GetControllerAssignedData().GetSquawk();
-			string freq = std::to_string(ControllerMyself().GetPrimaryFrequency());
-			if (ControllerSelect(FlightPlan.GetCoordinatedNextController()).GetPrimaryFrequency() != 0)
-				freq = std::to_string(ControllerSelect(FlightPlan.GetCoordinatedNextController()).GetPrimaryFrequency());
-			freq = freq.substr(0, 7);
+			const PdcFrequencySelection frequencySelection = ResolvePdcNextFrequency(this, FlightPlan);
+			string freq = FormatPdcFrequency(frequencySelection.frequency);
+			if (freq.empty())
+				freq = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
+			Logger::info(
+				std::string("CPDLC PDC next frequency selected: callsign=") + fpCallsign +
+				" controller=" + (frequencySelection.controller.empty() ? "none" : frequencySelection.controller) +
+				" frequency=" + (freq.empty() ? "none" : freq) +
+				" source=" + (frequencySelection.source.empty() ? "none" : frequencySelection.source));
 			dia.m_Freq = freq.c_str();
 			AcarsMessage msg;
 			{
@@ -4344,8 +4589,9 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			request.packet.message = static_cast<const char*>(dia.m_Message);
 			request.packet.squawk = FlightPlan.GetControllerAssignedData().GetSquawk();
 			request.packet.climb = toReturn;
-			request.fallbackFrequency =
-				std::to_string(ControllerMyself().GetPrimaryFrequency()).substr(0, 7);
+			request.fallbackFrequency = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
+			if (request.fallbackFrequency.empty())
+				request.fallbackFrequency = freq;
 			request.messageSequence = messageId.fetch_add(1) + 1;
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);

@@ -79,6 +79,9 @@ public:
 
 	struct Patatoide_Points {
 		map<int, POINT2> points;
+		map<int, POINT2> historyOnePoints;
+		map<int, POINT2> historyTwoPoints;
+		map<int, POINT2> historyThreePoints;
 	};
 
 	map<string, Patatoide_Points> Patatoides;
@@ -451,7 +454,7 @@ public:
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
 	bool AvisoUseDayColorPalette = false;
-	COLORREF InactiveSectorBackgroundColor = RGB(10, 26, 38);
+	COLORREF InactiveSectorBackgroundColor = RGB(67, 74, 79);
 	unsigned long InactiveSectorBackgroundSampleTick = 0;
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;

@@ -229,6 +229,7 @@
     <ClInclude Include="src\profiles\ProfileColorPaths.hpp" />
     <ClInclude Include="src\profiles\ProfileEditorDialog.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
+    <ClInclude Include="src\radar\TargetTrailRenderer.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />

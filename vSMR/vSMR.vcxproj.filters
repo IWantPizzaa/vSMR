@@ -103,6 +103,7 @@
     <ClInclude Include="src\profiles\ProfileColorPaths.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\profiles\ProfileEditorDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarGeometry.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\TargetTrailRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreen.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarUiSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
