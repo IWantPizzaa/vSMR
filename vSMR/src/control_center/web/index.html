@@ -523,10 +523,12 @@
 <label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
 <label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates</span></label>
 <label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate verified runtime before load</span></label>
+<label class="check-field update-aviso-protection" title="Keep locally edited AVISOs during manual reloads and optional release migrations. Required schema migrations can still replace them after creating a complete backup."><input id="updateProtectModifiedAviso" type="checkbox"/><span>Protect locally edited AVISOs</span></label>
 <p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
 <div class="updater-general-actions">
 <button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
 <button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
+<button class="ui-button" data-action="update-reload-aviso" id="updateReloadAvisoButton" title="Reload all bundled AVISOs from the installed GitHub release on the next EuroScope startup. With protection enabled, edited maps stay active and their verified release copies are kept separately." type="button">Reload AVISOs</button>
 <button class="ui-button" data-action="update-clear-skip" hidden id="updateClearSkipButton" type="button">Clear skipped release</button>
 <button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
 </div>

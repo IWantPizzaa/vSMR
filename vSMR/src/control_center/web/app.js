@@ -706,6 +706,7 @@
       auto_check: true,
       auto_download: true,
       auto_install: true,
+      protect_modified_aviso: true,
       channel: "beta",
       skipped_version: ""
     },
@@ -4918,6 +4919,7 @@
       auto_check: updateCenter.config.auto_check !== false,
       auto_download: updateCenter.config.auto_download !== false,
       auto_install: updateCenter.config.auto_install !== false,
+      protect_modified_aviso: updateCenter.config.protect_modified_aviso !== false,
       channel: updateCenter.config.channel === "stable" ? "stable" : "beta",
       skipped_version: String(updateCenter.config.skipped_version || "")
     };
@@ -4939,9 +4941,11 @@
   function requestUpdateAction(action) {
     if (updateCenter.pending.action || !updateCenter.available) return;
     if (!HOST_MODE) {
-      updateCenter.state.message = action === "retry_update"
-        ? "Update retry queued for the next startup."
-        : "Update check queued for the next startup.";
+      updateCenter.state.message = action === "reload_aviso"
+        ? "AVISO reload queued for the next startup."
+        : action === "retry_update"
+          ? "Update retry queued for the next startup."
+          : "Update check queued for the next startup.";
       renderUpdateCenter();
       showToast(updateCenter.state.message, "success");
       return;
@@ -5058,15 +5062,22 @@
     $("#updateAutoCheck").checked = config.auto_check !== false;
     $("#updateAutoDownload").checked = config.auto_download !== false;
     $("#updateAutoInstall").checked = config.auto_install !== false;
+    $("#updateProtectModifiedAviso").checked = config.protect_modified_aviso !== false;
     $("#updateChannel").disabled = !writable || busy;
     $("#updateAutoCheck").disabled = !writable || busy;
     $("#updateAutoDownload").disabled = !writable || busy || config.auto_check === false;
     $("#updateAutoInstall").disabled = !writable || busy || config.auto_download === false;
+    $("#updateProtectModifiedAviso").disabled = !writable || busy;
 
     const pendingAction = Boolean(updateCenter.pending.action);
+    const pendingActionName = String(updateCenter.pending.action?.action || "");
     const checkButton = $("#updateCheckButton");
-    checkButton.disabled = !updateCenter.available || pendingAction;
-    checkButton.textContent = pendingAction ? "Queuing..." : "Check on next startup";
+    checkButton.disabled = !updateCenter.available || pendingAction || busy;
+    checkButton.textContent = pendingActionName === "check_now" ? "Queuing..." : "Check on next startup";
+
+    const reloadAvisoButton = $("#updateReloadAvisoButton");
+    reloadAvisoButton.disabled = !updateCenter.available || pendingAction || busy;
+    reloadAvisoButton.textContent = pendingActionName === "reload_aviso" ? "Queuing..." : "Reload AVISOs";
 
     const retryButton = $("#updateRetryButton");
     retryButton.hidden = !["error", "rate_limited"].includes(status);
@@ -6186,6 +6197,9 @@
     $("#updateAutoInstall").addEventListener("change", event => {
       submitUpdateSettings({ auto_install: event.target.checked }, "Automatic activation preference saved");
     });
+    $("#updateProtectModifiedAviso").addEventListener("change", event => {
+      submitUpdateSettings({ protect_modified_aviso: event.target.checked }, "AVISO edit protection saved");
+    });
     $("#reloadButton").addEventListener("click", requestReload);
     $("#undoButton").addEventListener("click", undoHistory);
     $("#redoButton").addEventListener("click", redoHistory);
@@ -6217,6 +6231,11 @@
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "update-check") requestUpdateAction("check_now");
     else if (action === "update-retry") requestUpdateAction("retry_update");
+    else if (action === "update-reload-aviso") {
+      if (updateCenter.config.protect_modified_aviso === false &&
+        !window.confirm("AVISO edit protection is disabled. Reloading will replace locally modified bundled AVISOs with the installed GitHub release copies on the next startup. Continue?")) return;
+      requestUpdateAction("reload_aviso");
+    }
     else if (action === "update-release-open") openUpdateRelease();
     else if (action === "update-skip") {
       const version = String(updateCenter.state?.available_version || "");
