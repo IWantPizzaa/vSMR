@@ -5,7 +5,7 @@
   const MAX_BRIDGE_MESSAGE_BYTES = 28 * 1024 * 1024;
   const REQUEST_TIMEOUT_MS = 45000;
   const HISTORY_LIMIT = 12;
-  const AUTOSAVE_DEBOUNCE_MS = 650;
+  const AUTOSAVE_DEBOUNCE_MS = 300;
   const AUTOSAVE_RETRY_MS = 250;
   const HOST_MODE = Boolean(window.chrome?.webview?.postMessage);
   const DATA = window.VSMR_DATA || { profiles: [], aviso: { type: "FeatureCollection", features: [], styles: {} } };
@@ -41,7 +41,7 @@
   };
   const TAG_STATUS_ORDER = ["nofpl", "push", "stup", "taxi", "lnup", "depa", "airdep", "airdep_onrunway", "airarr", "airarr_onrunway"];
   const COLOR_FAMILY_ORDER = ["Tags", "Targets", "RIMCAS", "SRW 1"];
-  const COLOR_SECTION_ORDER = ["General", "Departure", "Arrival", "Uncorrelated", "Airborne"];
+  const COLOR_SECTION_ORDER = ["Departure", "Arrival", "Uncorrelated", "Airborne", "General"];
   const TAG_STATUS_COLOR_KEYS = {
     departure: {
       default: "background_no_status_color", taxi: "background_taxi_color", lnup: "background_lineup_color", push: "background_push_color",
@@ -77,6 +77,10 @@
     { id: "holding-positions", name: "Holding positions", accent: "#e18956", styles: ["marking.holding_cat_i", "marking.holding_cat_iii", "marking.holding_permanent", "marking.stop_point", "lighting.stop_bar"] },
     { id: "stands-and-gates", name: "Stands & gates", accent: "#84b7d5", styles: ["label.gates_stands", "line.stand_entry", "line.stand_entry_dashed"] },
     { id: "vfr-points", name: "VFR points", accent: "#8eb68d", styles: ["label.vfr_points"] }
+  ];
+  const SCROLL_CUE_LIST_IDS = [
+    "colorTree", "tagDefinitionList", "avisoGeometryStyleList", "avisoTextStyleList",
+    "ruleList", "modeList", "avisoGroupList", "profileList"
   ];
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -623,16 +627,14 @@
         selectedAvisoTextStyleId: defaultTextStyleId,
         selectedAvisoTextStyleIds: defaultTextStyleId ? [defaultTextStyleId] : [],
         avisoTextSelectionAnchorId: defaultTextStyleId,
+        avisoTextColorTarget: "text",
         selectedAvisoGroupId: normalizedAviso.vsmr_groups?.[0]?.id || "",
-        avisoGroupSearch: "",
         avisoGroupMemberSearch: "",
         avisoGroupMemberFilter: "all",
         avisoGroupContentType: "text",
         avisoGroupContentSearch: "",
         controlCenterOpen: HOST_MODE,
-        runtimePopover: "",
-        avisoGeometrySearch: "",
-        avisoTextSearch: ""
+        runtimePopover: ""
       },
       runtime: {
         avisoInsetVisible: false,
@@ -722,6 +724,7 @@
 	let ignoreNextUncorrelatedAviso = false;
   const history = { past: [], present: null, future: [], gestureKey: "" };
   let savedSnapshot = null;
+  let saveInFlightSnapshot = null;
   let activeHistoryGestureKey = "";
   let historyGestureSequence = 0;
   const historyGestureIds = new WeakMap();
@@ -953,6 +956,7 @@
         setGithubRequestPending(false);
       } else {
         pending[slot] = "";
+        if (slot === "save") saveInFlightSnapshot = null;
       }
       expiredRequestIds.add(requestId);
       while (expiredRequestIds.size > 32)
@@ -1020,9 +1024,8 @@
   }
 
   function workspaceBusyMessage() {
-    if (globalSaveAfterDatalink || datalinkPending.settings?.kind === "global-save")
-      return "Saving datalink settings...";
-    if (pending.save) return "Saving and reloading vSMR data...";
+    // Automatic persistence is deliberately non-modal: users can continue
+    // editing while the current snapshot is written in the background.
     if (pending.reload) return "Reloading vSMR data...";
     if (pending.resource) return "Loading and validating vSMR data...";
     if (runtimeCommandPending.size) return "Applying vSMR changes...";
@@ -1378,41 +1381,9 @@
     $$('[data-profile-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.profilePanel === tab));
   }
 
-  function profileRailLabel(name) {
-    const airport = inferAirport(name);
-    if (airport) return airport;
-    const words = String(name || "Profile").trim().split(/\s+/).filter(Boolean);
-    const initials = words.map(word => word[0]).join("").slice(0, 4).toUpperCase();
-    return initials || "PROF";
-  }
-
-  function setRailProfilePopoverOpen(open) {
-    const popover = $("#railProfilePopover");
-    const button = $("#railProfileButton");
-    if (!popover || !button) return;
-    popover.hidden = !open;
-    button.setAttribute("aria-expanded", String(open));
-    button.classList.toggle("open", open);
-  }
-
-  function renderGlobalProfileSelect() {
-    const select = $("#globalProfileSelect");
-    if (!select) return;
-    select.innerHTML = state.profiles.map(record => `<option value="${escapeHtml(record.id)}">${escapeHtml(record.data.name)}</option>`).join("");
-    select.value = state.activeProfileId;
-    const name = activeProfile().name || "Profile";
-    const shortLabel = $("#railProfileShort");
-    if (shortLabel) shortLabel.textContent = profileRailLabel(name);
-    const button = $("#railProfileButton");
-    if (button) button.title = `Active profile: ${name}`;
-  }
-
   function switchActiveProfile(profileId, syncFilters = true) {
     if (!state.profiles.some(record => record.id === profileId)) return false;
-    if (profileId === state.activeProfileId) {
-      setRailProfilePopoverOpen(false);
-      return true;
-    }
+    if (profileId === state.activeProfileId) return true;
 	if (state.dirty || hasUnappliedEditorInputs() || avisoGroupContentDirty) {
 	  showToast("Wait for automatic saving or revert current edits before switching profile", "error");
 	  return false;
@@ -1430,8 +1401,6 @@
     renderAllProfileSections();
     drafts.alerts = null;
     if (state.ui.page === "alerts") renderAlerts();
-    renderGlobalProfileSelect();
-    setRailProfilePopoverOpen(false);
     renderRuntimeMenu();
     updateContext();
     return true;
@@ -2096,10 +2065,22 @@
         const index = COLOR_SECTION_ORDER.indexOf(value || "");
         return index < 0 ? 999 : index;
       };
+      const tagColorOrder = entry => {
+        if (entry.family !== "Tags" || !TAG_SCOPES.includes(String(entry.path[1] || ""))) return 999;
+        const scope = String(entry.path[1]);
+        const statusKeys = ["default", ...TAG_STATUS_ORDER]
+          .map(status => TAG_STATUS_COLOR_KEYS[scope]?.[status])
+          .filter(Boolean);
+        const trailingKeys = ["text_on_ground_color", "text_airborne_color", "text_color", "background_no_sid_color"];
+        const orderedKeys = [...new Set([...statusKeys, ...trailingKeys])];
+        const index = orderedKeys.indexOf(entry.key);
+        return index < 0 ? 999 : index;
+      };
       return familyOrder(a.family) - familyOrder(b.family)
         || sectionOrder(a.section) - sectionOrder(b.section)
         || a.family.localeCompare(b.family)
         || a.section.localeCompare(b.section)
+        || tagColorOrder(a) - tagColorOrder(b)
         || a.name.localeCompare(b.name);
     });
   }
@@ -2127,13 +2108,9 @@
 
   function renderColors() {
     const entries = collectProfileColors(activeProfile());
-    const search = $("#colorSearch").value.trim().toLowerCase();
-    const searching = Boolean(search);
-    const filtered = entries.filter(entry => !search || `${entry.family} ${entry.section} ${entry.name} ${entry.key} ${entry.id}`.toLowerCase().includes(search));
-    $("#colorCountCaption").textContent = `(${entries.length})`;
 
     const groups = new Map();
-    filtered.forEach(entry => {
+    entries.forEach(entry => {
       const caption = entry.section ? `${entry.family} · ${entry.section}` : entry.family;
       const key = `${entry.family}:${entry.section || "general"}`;
       if (!groups.has(key)) groups.set(key, { key, caption, family: entry.family, section: entry.section, items: [] });
@@ -2142,23 +2119,19 @@
 
     $("#colorTree").innerHTML = [...groups.values()].map(group => {
       const groupKey = `colors:${group.key}`;
-      const collapsed = !searching && treeState.colors.has(groupKey);
+      const collapsed = treeState.colors.has(groupKey);
       const accent = colorToHex(group.items[0]?.color, "#5096b4");
       const rows = group.items.map(entry => {
         const hex = colorToHex(entry.color).toUpperCase();
-        const opacity = Math.round((entry.color.a ?? 255) / 255 * 100);
-        const opacityText = opacity === 100 ? "" : ` · ${opacity}%`;
-        return `<button type="button" class="menu-tree-row color-menu-row ${entry.id === state.ui.selectedColorPath ? "active" : ""}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(`${entry.id} · ${hex}${opacityText}`)}">
+        return `<button type="button" class="menu-tree-row color-menu-row ${entry.id === state.ui.selectedColorPath ? "active" : ""}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
           <span class="menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
           <span class="menu-row-title">${escapeHtml(entry.name)}</span>
-          <span class="menu-row-meta"><code>${hex}</code>${opacity === 100 ? "" : `<small>${opacity}%</small>`}</span>
         </button>`;
       }).join("");
       return `<section class="menu-tree-section color-menu-section" style="--menu-accent:${accent}">
         <button type="button" class="menu-tree-caption" data-tree-toggle="colors" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
           <span class="menu-tree-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
           <span class="menu-tree-caption-text">${escapeHtml(group.caption)}</span>
-          <span class="menu-tree-count">${group.items.length}</span>
         </button>
         <div class="menu-tree-box" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
@@ -2203,6 +2176,127 @@
       g: Math.round((gp + m) * 255),
       b: Math.round((bp + m) * 255)
     };
+  }
+
+  function createAvisoColorDraft(signature, colorResult, fallback, opacityResult = null) {
+    const hex = normalizeHex(colorResult?.value, fallback);
+    const rgb = hexToColor(hex);
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    return {
+      signature,
+      hex,
+      h: hsv.h,
+      s: hsv.s,
+      v: hsv.v,
+      colorMixed: Boolean(colorResult?.mixed),
+      opacity: Math.round(clamp(opacityResult?.value ?? 100, 0, 100)),
+      opacityMixed: Boolean(opacityResult?.mixed)
+    };
+  }
+
+  function syncAvisoColorEditor(prefix, draft, includeOpacity = false) {
+    if (!draft) return;
+    const rgb = hexToColor(draft.hex);
+    const hex = normalizeHex(draft.hex);
+    const opacity = Math.round(clamp(draft.opacity, 0, 100));
+    const selectedRgb = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    const element = suffix => $("#" + prefix + suffix);
+
+    const hexInput = element("Hex");
+    hexInput.value = draft.colorMixed ? "" : hex.toUpperCase();
+    hexInput.placeholder = draft.colorMixed ? "Mixed" : "#RRGGBB";
+    element("Hue").value = Math.round(draft.h);
+    element("Hue").style.setProperty("--hue-slider-value", String(Math.round(draft.h)));
+    element("HueOutput").value = draft.colorMixed ? "" : String(Math.round(draft.h));
+    element("Red").value = rgb.r;
+    element("Green").value = rgb.g;
+    element("Blue").value = rgb.b;
+    element("RedOutput").value = draft.colorMixed ? "" : String(rgb.r);
+    element("GreenOutput").value = draft.colorMixed ? "" : String(rgb.g);
+    element("BlueOutput").value = draft.colorMixed ? "" : String(rgb.b);
+
+    const configureChannel = (suffix, low, high, thumb = selectedRgb) => {
+      const slider = element(suffix);
+      slider.style.setProperty("--channel-low", low);
+      slider.style.setProperty("--channel-high", high);
+      slider.style.setProperty("--channel-thumb", thumb);
+    };
+    configureChannel("Red", `rgb(0, ${rgb.g}, ${rgb.b})`, `rgb(255, ${rgb.g}, ${rgb.b})`);
+    configureChannel("Green", `rgb(${rgb.r}, 0, ${rgb.b})`, `rgb(${rgb.r}, 255, ${rgb.b})`);
+    configureChannel("Blue", `rgb(${rgb.r}, ${rgb.g}, 0)`, `rgb(${rgb.r}, ${rgb.g}, 255)`);
+
+    if (includeOpacity) {
+      element("Opacity").value = opacity;
+      element("OpacityOutput").value = draft.opacityMixed ? "" : String(opacity);
+      configureChannel(
+        "Opacity",
+        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`,
+        selectedRgb,
+        `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity / 100})`
+      );
+    }
+
+    const palette = element("SvPalette");
+    palette.style.setProperty("--palette-hue", String(Math.round(draft.h)));
+    palette.setAttribute("aria-valuenow", String(Math.round(draft.v * 100)));
+    palette.setAttribute("aria-valuetext", `Saturation ${Math.round(draft.s * 100)}%, brightness ${Math.round(draft.v * 100)}%`);
+    const cursor = element("PaletteCursor");
+    cursor.style.left = `${draft.s * 100}%`;
+    cursor.style.top = `${(1 - draft.v) * 100}%`;
+    const editor = element("Editor");
+    editor?.classList.toggle("mixed", draft.colorMixed || (includeOpacity && draft.opacityMixed));
+    const swatch = element("Swatch");
+    swatch.style.setProperty("--swatch-color", `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${includeOpacity ? opacity / 100 : 1})`);
+    swatch.style.setProperty("--swatch-solid", hex);
+  }
+
+  function initializeAvisoColorControls(prefix, draft, includeOpacity = false) {
+    ["Hex", "Hue", "HueOutput", "Red", "RedOutput", "Green", "GreenOutput", "Blue", "BlueOutput"]
+      .forEach(suffix => resetControlFlags($("#" + prefix + suffix), draft.colorMixed));
+    if (includeOpacity) {
+      resetControlFlags($("#" + prefix + "Opacity"), draft.opacityMixed);
+      resetControlFlags($("#" + prefix + "OpacityOutput"), draft.opacityMixed);
+    }
+    syncAvisoColorEditor(prefix, draft, includeOpacity);
+  }
+
+  function updateAvisoColorDraftFromRgb(draft, prefix, r, g, b, includeOpacity = false) {
+    if (!draft) return;
+    const rgb = { r: Math.round(clamp(r, 0, 255)), g: Math.round(clamp(g, 0, 255)), b: Math.round(clamp(b, 0, 255)) };
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    draft.hex = colorToHex(rgb);
+    draft.h = hsv.h;
+    draft.s = hsv.s;
+    draft.v = hsv.v;
+    draft.colorMixed = false;
+    markControlTouched($("#" + prefix + "Hex"));
+    syncAvisoColorEditor(prefix, draft, includeOpacity);
+  }
+
+  function updateAvisoColorDraftFromHex(draft, prefix, value, includeOpacity = false) {
+    if (!draft) return;
+    const normalized = normalizeHex(value, draft.hex || "#ffffff");
+    const rgb = hexToColor(normalized);
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    draft.hex = normalized;
+    draft.h = hsv.h;
+    draft.s = hsv.s;
+    draft.v = hsv.v;
+    draft.colorMixed = false;
+    markControlTouched($("#" + prefix + "Hex"));
+    syncAvisoColorEditor(prefix, draft, includeOpacity);
+  }
+
+  function updateAvisoColorDraftFromHsv(draft, prefix, h, saturation, value, includeOpacity = false) {
+    if (!draft) return;
+    draft.h = ((Number(h) % 360) + 360) % 360;
+    draft.s = clamp(saturation, 0, 1);
+    draft.v = clamp(value, 0, 1);
+    const rgb = hsvToRgb(draft.h, draft.s, draft.v);
+    draft.hex = colorToHex(rgb);
+    draft.colorMixed = false;
+    markControlTouched($("#" + prefix + "Hex"));
+    syncAvisoColorEditor(prefix, draft, includeOpacity);
   }
 
   function setColorDraftFromRgb(r, g, b) {
@@ -2321,7 +2415,6 @@
       };
     }
     $("#selectedColorPath").textContent = entry.name;
-    $("#selectedColorGroup").textContent = entry.group;
     syncColorEditorControls();
   }
   function applyColorDraft({ render = true } = {}) {
@@ -2334,19 +2427,6 @@
     clearUnappliedEditorSection($("#colorHex"));
     markDirty(`${entry.name} updated`, ["profiles"]);
     if (render) renderColors();
-  }
-
-  function resetSelectedColor() {
-    const entry = selectedColorEntry();
-    const record = activeProfileRecord();
-    if (!entry || !record) return;
-    const original = getAtPath(record.original, entry.path);
-    if (!isColorObject(original)) return;
-    setAtPath(record.data, entry.path, clone(original));
-    drafts.color = null;
-    clearUnappliedEditorSection($("#colorHex"));
-    markDirty(`${entry.name} reset`, ["profiles"]);
-    renderColors();
   }
 
   function renderIconSymbolPreview() {
@@ -2416,7 +2496,6 @@
   function renderIcons() {
     const profile = activeProfile();
     const targets = profile.targets ||= {};
-    $("#iconProfileCaption").textContent = profile.name || "";
     ensureSelectValue($("#targetIconStyle"), targets.icon_style || "realistic");
     $("#fixedPixelIconSize").checked = Boolean(targets.fixed_pixel_icon_size);
     $("#fixedPixelIconScale").value = targets.fixed_pixel_icon_scale ?? 1;
@@ -2504,7 +2583,6 @@
 
   function renderTags() {
     const definitions = tagDefinitions();
-    $("#tagCountCaption").textContent = `(${definitions.length})`;
     const groups = new Map();
     definitions.forEach(entry => {
       if (!groups.has(entry.group)) groups.set(entry.group, []);
@@ -2523,7 +2601,6 @@
         <button type="button" class="menu-tree-caption" data-tree-toggle="tags" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
           <span class="menu-tree-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
           <span class="menu-tree-caption-text">${escapeHtml(group)}</span>
-          <span class="menu-tree-count">${items.length}</span>
         </button>
         <div class="menu-tree-box" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
@@ -2536,7 +2613,6 @@
     const entry = selectedTagDefinition();
     if (!entry) return;
     $("#tagEditorCaption").textContent = entry.label;
-    $("#tagEditorScope").textContent = entry.group;
     if (!drafts.tag || drafts.tag.id !== entry.id) drafts.tag = { id: entry.id, data: clone(entry.target) };
     const data = drafts.tag.data;
     const inherits = Boolean(data.definition_detailed_inherits_normal);
@@ -2556,12 +2632,8 @@
     const labels = activeProfile().labels ||= {};
     $("#tagRoundedCorners").checked = Boolean(labels.rounded_corners);
     $("#tagAutoDeconfliction").checked = Boolean(labels.auto_deconfliction);
-    $("#tagUseSpeedGate").checked = Boolean(labels.use_speed_for_gate);
-    $("#tagDepartureArrivalColors").checked = Boolean(labels.use_departure_arrival_coloring);
-    $("#tagLeaderLineLength").value = labels.leader_line_length ?? 0;
     const labelSize = Math.round(clamp(activeProfile().font?.label_font_size ?? 1, 1, 5));
     $("#tagLabelFontSize").value = labelSize;
-    if ($("#tagLabelFontSizeOutput")) $("#tagLabelFontSizeOutput").value = String(labelSize);
 
     const profile = activeProfile();
     profile.font ||= {};
@@ -2597,9 +2669,6 @@
     const labels = activeProfile().labels ||= {};
     labels.rounded_corners = $("#tagRoundedCorners").checked;
     labels.auto_deconfliction = $("#tagAutoDeconfliction").checked;
-    labels.use_speed_for_gate = $("#tagUseSpeedGate").checked;
-    labels.use_departure_arrival_coloring = $("#tagDepartureArrivalColors").checked;
-    labels.leader_line_length = Math.round(Number($("#tagLeaderLineLength").value) || 0);
     activeProfile().font ||= {};
     activeProfile().font.label_font_size = Math.round(clamp($("#tagLabelFontSize").value, 1, 5));
     activeProfile().font.font_name = $("#profileFontName").value || "Arial";
@@ -2692,8 +2761,8 @@
   function renderRules() {
     const items = rules();
     state.ui.selectedRuleIndex = items.length ? Math.min(items.length - 1, Math.max(0, state.ui.selectedRuleIndex)) : 0;
-    $("#ruleCountCaption").textContent = `(${items.length})`;
-    $("#ruleList").innerHTML = items.map((rule, index) => `<button type="button" class="selection-row ${index === state.ui.selectedRuleIndex ? "active" : ""}" data-rule-index="${index}"><span>${escapeHtml(ruleLabel(rule, index))}</span></button>`).join("") || `<div class="aviso-list-message">No rules</div>`;
+    const rows = items.map((rule, index) => `<button type="button" class="selection-row menu-tree-row manager-menu-row simple-manager-row ${index === state.ui.selectedRuleIndex ? "active" : ""}" data-rule-index="${index}"><span class="menu-row-title">${escapeHtml(ruleLabel(rule, index))}</span></button>`).join("");
+    $("#ruleList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No rules</div>`;
     renderRuleEditor();
   }
   function renderRuleEditor() {
@@ -2787,8 +2856,8 @@
     const items = modes();
     const activeName = activeProfile().filters?.display_modes?.active;
     if (items.length && (state.ui.selectedModeIndex >= items.length || state.ui.selectedModeIndex < 0)) state.ui.selectedModeIndex = Math.max(0, items.findIndex(mode => mode.name === activeName));
-    $("#modeCountCaption").textContent = `(${items.length})`;
-    $("#modeList").innerHTML = items.map((mode, index) => `<button type="button" class="selection-row ${index === state.ui.selectedModeIndex ? "active" : ""}" data-mode-index="${index}"><span>${escapeHtml(mode.name || `Mode ${index + 1}`)}</span><span class="mode-active-mark">${mode.name === activeName ? "●" : ""}</span></button>`).join("") || `<div class="aviso-list-message">No modes</div>`;
+    const rows = items.map((mode, index) => `<button type="button" class="selection-row menu-tree-row manager-menu-row ${index === state.ui.selectedModeIndex ? "active" : ""}" data-mode-index="${index}"><span class="menu-row-title">${escapeHtml(mode.name || `Mode ${index + 1}`)}</span><span class="mode-active-mark">${mode.name === activeName ? "●" : ""}</span></button>`).join("");
+    $("#modeList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No modes</div>`;
     renderModeEditor();
   }
 
@@ -2857,8 +2926,8 @@
 
   function renderProfilesManager() {
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
-    $("#profileCountCaption").textContent = `(${state.profiles.length})`;
-    $("#profileList").innerHTML = state.profiles.map(record => `<button type="button" class="selection-row ${record.id === state.ui.managedProfileId ? "active" : ""}" data-managed-profile-id="${escapeHtml(record.id)}"><span>${escapeHtml(record.data.name)}</span><span class="profile-active-mark">${record.id === state.activeProfileId ? "●" : ""}</span></button>`).join("");
+    const rows = state.profiles.map(record => `<button type="button" class="selection-row menu-tree-row manager-menu-row ${record.id === state.ui.managedProfileId ? "active" : ""}" data-managed-profile-id="${escapeHtml(record.id)}"><span class="menu-row-title">${escapeHtml(record.data.name)}</span><span class="profile-active-mark">${record.id === state.activeProfileId ? "●" : ""}</span></button>`).join("");
+    $("#profileList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No profiles</div>`;
     renderProfileEditor();
   }
 
@@ -2887,7 +2956,6 @@
     if (state.metadata.last_active_profile === oldName) state.metadata.last_active_profile = record.data.name;
     clearUnappliedEditorSection($("#profileName"));
     markDirty("Profile updated", ["profiles", "metadata"]);
-    renderGlobalProfileSelect();
     if (render) {
       renderProfilesManager();
       if (record.id === state.activeProfileId) renderAllProfileSections();
@@ -3022,7 +3090,6 @@
         objectType,
         paint,
         indices: entry.indices,
-        count: entry.indices.length || Number(style.feature_count) || 0,
         isText: objectType === "Label" || isAvisoTextFeature(entry.firstFeature)
       };
     }).sort((a, b) => a.layer.localeCompare(b.layer) || a.name.localeCompare(b.name));
@@ -3103,40 +3170,6 @@
     if (result.mixed) input.placeholder = "Mixed";
   }
 
-  function setCommonCheckbox(selector, values) {
-    const checkbox = $(selector);
-    const yes = values.filter(Boolean).length;
-    const mixed = yes > 0 && yes < values.length;
-    checkbox.checked = yes > 0;
-    checkbox.indeterminate = mixed;
-    checkbox.dataset.mixed = mixed ? "true" : "false";
-    checkbox.dataset.touched = "false";
-  }
-
-  function setCommonColor(textSelector, pickerSelector, pairSelector, result, fallback) {
-    const text = $(textSelector);
-    const picker = $(pickerSelector);
-    const pair = $(pairSelector);
-    const representative = normalizeHex(result.value, fallback);
-    text.value = result.mixed ? "" : representative.toUpperCase();
-    text.placeholder = result.mixed ? "Mixed" : "#RRGGBB";
-    picker.value = representative;
-    resetControlFlags(text, result.mixed);
-    resetControlFlags(picker, result.mixed);
-    pair.classList.toggle("mixed", result.mixed);
-    pair.title = result.mixed ? "Selected items use different colors" : "";
-  }
-
-  function setCommonRange(selector, outputSelector, result, fallback = 100) {
-    const range = $(selector);
-    const output = $(outputSelector);
-    const value = Math.round(clamp(result.value ?? fallback, 0, 100));
-    range.value = value;
-    output.value = result.mixed ? "Mixed" : `${value}%`;
-    resetControlFlags(range, result.mixed);
-    range.closest(".range-control")?.classList.toggle("mixed", result.mixed);
-  }
-
   function geometrySelectionIds(entries = avisoStyleEntries("geometry")) {
     const valid = new Set(entries.map(entry => entry.id));
     let ids = Array.isArray(state.ui.selectedAvisoGeometryStyleIds)
@@ -3215,9 +3248,6 @@
     state.ui.selectedAvisoTextStyleIds = textId ? [textId] : [];
     state.ui.avisoTextSelectionAnchorId = textId;
     state.ui.selectedAvisoGroupId = avisoGroups()[0]?.id || "";
-    state.ui.avisoGeometrySearch = "";
-    state.ui.avisoTextSearch = "";
-    state.ui.avisoGroupSearch = "";
     state.ui.avisoGroupMemberSearch = "";
     state.ui.avisoGroupMemberFilter = "all";
     drafts.avisoGeometry = null;
@@ -3230,14 +3260,34 @@
     return normalizeHex(entry.paint[entry.isText ? "text-color" : (entry.objectType === "Area" ? "fill" : "stroke")], "#6d7a7f");
   }
 
-  function filteredAvisoGeometryEntries(entries = avisoStyleEntries("geometry")) {
-    const search = String(state.ui.avisoGeometrySearch || "").trim().toLowerCase();
-    return entries.filter(entry => !search || [entry.name, entry.layer, entry.id, entry.objectType].join(" ").toLowerCase().includes(search));
+  function avisoStyleVisibility(entry) {
+    const values = entry.indices.map(index => avisoFeatures()[index]?.properties?.visible !== false);
+    const visibleCount = values.filter(Boolean).length;
+    return {
+      allVisible: visibleCount === values.length,
+      mixed: visibleCount > 0 && visibleCount < values.length
+    };
   }
 
-  function filteredAvisoTextEntries(entries = avisoStyleEntries("text")) {
-    const search = String(state.ui.avisoTextSearch || "").trim().toLowerCase();
-    return entries.filter(entry => !search || [entry.name, entry.layer, entry.id].join(" ").toLowerCase().includes(search));
+  function avisoStyleVisibilityControl(entry, kind) {
+    const visibility = avisoStyleVisibility(entry);
+    const action = visibility.allVisible ? "Hide" : "Show";
+    return `<span class="aviso-style-eye ${visibility.allVisible ? "is-on" : "is-off"} ${visibility.mixed ? "is-mixed" : ""}" data-aviso-style-visibility="${kind}" data-aviso-style-id="${escapeHtml(entry.id)}" role="button" aria-label="${action} ${escapeHtml(entry.name)}" title="${action} ${escapeHtml(entry.name)}">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z"></path><circle cx="12" cy="12" r="2.6"></circle>${visibility.allVisible || visibility.mixed ? "" : '<path class="aviso-eye-slash" d="M4 4l16 16"></path>'}</svg>
+    </span>`;
+  }
+
+  function toggleAvisoStyleVisibility(kind, styleId) {
+    const entry = avisoStyleEntries(kind).find(item => item.id === styleId);
+    if (!entry) return;
+    const visible = !avisoStyleVisibility(entry).allVisible;
+    entry.indices.forEach(index => {
+      const properties = avisoFeatures()[index]?.properties;
+      if (properties) properties.visible = visible;
+    });
+    markDirty(`${entry.name} ${visible ? "shown" : "hidden"}`, ["aviso"]);
+    if (kind === "geometry") renderAvisoGeometry();
+    else renderAvisoText();
   }
 
   function uniqueAvisoGroupId(name = "group") {
@@ -3269,9 +3319,7 @@
         kind: "text",
         id: String(index),
         name: avisoFeatureDisplayName(index),
-        subtitle: properties.category || properties.style_id || "Text",
-        count: 1,
-        total: 1
+        subtitle: properties.category || properties.style_id || "Text"
       });
     });
 
@@ -3283,9 +3331,7 @@
         kind: entry.objectType.toLowerCase(),
         id: entry.id,
         name: entry.name,
-        subtitle: entry.layer,
-        count: selected.length,
-        total: entry.indices.length
+        subtitle: entry.layer
       });
     });
 
@@ -3308,43 +3354,19 @@
     return drafts.avisoGroup;
   }
 
-  function renderAvisoGroupTargets() {
-    const groups = avisoGroups();
-    [["#avisoGeometryGroupTarget", "#avisoGeometryGroupAdd"], ["#avisoTextGroupTarget", "#avisoTextGroupAdd"]].forEach(([selectSelector, buttonSelector]) => {
-      const select = $(selectSelector);
-      const button = $(buttonSelector);
-      if (!select || !button) return;
-      const previous = select.value;
-      select.innerHTML = groups.length
-        ? groups.map(group => `<option value="${escapeHtml(group.id)}">${escapeHtml(group.name)}</option>`).join("")
-        : `<option value="">Create a group first</option>`;
-      if (groups.some(group => group.id === previous)) select.value = previous;
-      else select.value = groups[0]?.id || "";
-      select.disabled = !groups.length;
-      button.disabled = !groups.length;
-    });
-  }
-
   function renderAvisoGroups() {
     const groups = avisoGroups();
     const groupIndex = buildAvisoGroupIndex();
-    const search = String(state.ui.avisoGroupSearch || "").trim().toLowerCase();
-    const filtered = groups.filter(group => !search || `${group.name} ${group.id}`.toLowerCase().includes(search));
     const selected = selectedAvisoGroup();
 
-    $("#avisoGroupSearch").value = state.ui.avisoGroupSearch;
-    $("#avisoGroupCount").textContent = `(${groups.length})`;
-    $("#avisoGroupList").innerHTML = filtered.length ? `<div class="aviso-group-box">${filtered.map(group => {
-      const counts = avisoGroupCounts(group.id, groupIndex);
+    $("#avisoGroupList").innerHTML = groups.length ? `<div class="aviso-group-box menu-tree-box manager-menu-box">${groups.map(group => {
       const active = group.id === selected?.id;
-      return `<div class="aviso-group-row ${active ? "active" : ""}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="${search ? "false" : "true"}" title="${search ? "Clear the search to reorder groups" : "Drag to reorder"}">
-        <span class="aviso-group-row-copy"><strong>${escapeHtml(group.name)}</strong></span>
-        <span class="aviso-group-row-count">${counts.total.toLocaleString()}</span>
+      return `<div class="aviso-group-row menu-tree-row manager-menu-row simple-manager-row ${active ? "active" : ""}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="true" title="Drag to reorder">
+        <span class="aviso-group-row-copy menu-row-title"><strong>${escapeHtml(group.name)}</strong></span>
       </div>`;
-    }).join("")}</div>` : `<div class="aviso-list-message">${groups.length ? "No matching groups" : "No groups yet"}</div>`;
+    }).join("")}</div>` : `<div class="aviso-list-message">No groups yet</div>`;
 
     renderAvisoGroupEditor(groupIndex);
-    renderAvisoGroupTargets();
   }
 
   function renderAvisoGroupEditor(groupIndex = buildAvisoGroupIndex()) {
@@ -3354,7 +3376,6 @@
     nameControl?.setCustomValidity("");
     if (!group) {
       $("#avisoGroupCaption").textContent = "No group selected";
-      $("#avisoGroupSelectionMeta").textContent = "";
       $("#avisoGroupName").value = "";
       $("#avisoGroupName").disabled = true;
       $("#avisoGroupId").value = "";
@@ -3369,7 +3390,6 @@
     const counts = avisoGroupCounts(group.id, groupIndex);
 
     $("#avisoGroupCaption").textContent = draft.name || group.name;
-    $("#avisoGroupSelectionMeta").textContent = `${counts.total.toLocaleString()} item${counts.total === 1 ? "" : "s"}`;
     $("#avisoGroupName").value = draft.name || "";
     $("#avisoGroupId").value = group.id;
 
@@ -3379,11 +3399,8 @@
       !search || `${row.name} ${row.subtitle} ${row.id}`.toLowerCase().includes(search)
     );
     $("#avisoGroupMemberList").innerHTML = rows.length ? rows.map(row => {
-      const kindLabel = row.kind === "text" ? "TXT" : row.kind === "line" ? "LIN" : "AREA";
       return `<div class="aviso-group-member-row">
-        <span class="aviso-member-kind ${row.kind}">${kindLabel}</span>
-        <span class="aviso-member-copy"><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.subtitle)}</small></span>
-        <span class="aviso-member-count">${row.count === row.total ? row.count.toLocaleString() : `${row.count}/${row.total}`}</span>
+        <strong class="aviso-member-name">${escapeHtml(row.name)}</strong>
         <button class="aviso-member-remove" type="button" data-action="remove-aviso-group-member" data-member-kind="${row.kind === "text" ? "feature" : "style"}" data-member-id="${escapeHtml(row.id)}" title="Remove from group">×</button>
       </div>`;
     }).join("") : `<div class="aviso-group-empty">${counts.total ? "No members match your search." : "This group is empty. Add text, lines or areas."}</div>`;
@@ -3394,7 +3411,6 @@
     const group = { id: uniqueAvisoGroupId(`group-${number}`), name: `Group ${number}`, visible: true, accent: "#84b7d5" };
     avisoGroups().push(group);
     state.ui.selectedAvisoGroupId = group.id;
-    state.ui.avisoGroupSearch = "";
     drafts.avisoGroup = null;
     clearUnappliedEditorSection($("#avisoGroupName"));
     markDirty("AVISO group created", ["aviso"]);
@@ -3487,20 +3503,6 @@
     renderRuntimeMenu();
   }
 
-  function assignAvisoSelectionToGroup(kind) {
-    const selector = kind === "geometry" ? "#avisoGeometryGroupTarget" : "#avisoTextGroupTarget";
-    const groupId = $(selector)?.value;
-    const group = avisoGroups().find(item => item.id === groupId);
-    if (!group) return;
-    const indices = kind === "geometry"
-      ? uniqueValues(selectedAvisoGeometryEntries().flatMap(entry => entry.indices))
-      : uniqueValues(selectedAvisoTextEntries().flatMap(entry => entry.indices));
-    indices.forEach(index => setFeatureGroupMembership(avisoFeatures()[index], group.id, true));
-    markDirty(`${indices.length} AVISO feature${indices.length === 1 ? "" : "s"} added to ${group.name}`, ["aviso"]);
-    showToast(`Added ${indices.length.toLocaleString()} feature${indices.length === 1 ? "" : "s"} to ${group.name}`, "success");
-    renderRuntimeMenu();
-  }
-
   function groupContentCandidates(type = state.ui.avisoGroupContentType, searchValue = state.ui.avisoGroupContentSearch) {
     const search = String(searchValue || "").trim().toLowerCase();
     if (type === "text") {
@@ -3511,8 +3513,7 @@
           indices: [item.index],
           kind: "text",
           name: avisoFeatureDisplayName(item.index),
-          subtitle: properties.category || properties.style_id || "Text",
-          count: 1
+          subtitle: properties.category || properties.style_id || "Text"
         };
       }).filter(item => !search || `${item.name} ${item.subtitle}`.toLowerCase().includes(search));
     }
@@ -3522,8 +3523,7 @@
       indices: entry.indices.slice(),
       kind: type,
       name: entry.name,
-      subtitle: entry.layer,
-      count: entry.indices.length
+      subtitle: entry.layer
     })).filter(item => !search || `${item.name} ${item.subtitle} ${item.key}`.toLowerCase().includes(search));
   }
 
@@ -3545,13 +3545,11 @@
     $$('[data-aviso-group-content-type]').forEach(button => button.classList.toggle("active", button.dataset.avisoGroupContentType === state.ui.avisoGroupContentType));
     $("#avisoGroupContentSearch").value = state.ui.avisoGroupContentSearch;
     const candidates = groupContentCandidates();
-    const selectedTotal = avisoGroupContentDraft.members.size;
-    $("#avisoGroupContentSummary").textContent = `${selectedTotal.toLocaleString()} features assigned · ${candidates.length.toLocaleString()} items shown`;
     $("#avisoGroupContentList").innerHTML = candidates.length ? `<div class="group-content-box">${candidates.map(item => {
       const selectedCount = item.indices.filter(index => avisoGroupContentDraft.members.has(index)).length;
       const selected = selectedCount === item.indices.length;
       const partial = selectedCount > 0 && !selected;
-      return `<button type="button" class="group-content-row ${selected ? "selected" : ""} ${partial ? "partial" : ""}" data-group-content-key="${escapeHtml(item.key)}"><span class="group-content-check">${selected ? "✓" : partial ? "−" : ""}</span><span class="aviso-member-kind">${item.kind === "text" ? "TXT" : item.kind === "line" ? "LIN" : "AREA"}</span><span class="group-content-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.subtitle)}</small></span><span class="group-content-count">${partial ? `${selectedCount}/${item.count}` : item.count.toLocaleString()}</span></button>`;
+      return `<button type="button" class="group-content-row ${selected ? "selected" : ""} ${partial ? "partial" : ""}" data-group-content-key="${escapeHtml(item.key)}"><span class="group-content-check">${selected ? "✓" : partial ? "−" : ""}</span><strong class="group-content-name">${escapeHtml(item.name)}</strong></button>`;
     }).join("")}</div>` : `<div class="aviso-group-empty">No matching ${state.ui.avisoGroupContentType} content.</div>`;
   }
 
@@ -3589,11 +3587,8 @@
   }
 
   function renderAviso() {
-    const features = avisoFeatures();
     const geometryEntries = avisoStyleEntries("geometry");
     const textEntries = avisoStyleEntries("text");
-    const geometryObjectCount = features.filter(feature => !isAvisoTextFeature(feature)).length;
-    const textObjectCount = features.length - geometryObjectCount;
     const airport = state.aviso?.metadata?.airport || inferAirport(state.aviso?.name) || "AVISO";
 
     geometrySelectionIds(geometryEntries);
@@ -3601,48 +3596,39 @@
 
     const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
     $("#avisoDatasetCaption").textContent = `${airport} · ${paletteLabel}`;
-    $("#avisoGeometryTabCount").textContent = `(${geometryObjectCount.toLocaleString()})`;
-    $("#avisoTextTabCount").textContent = `(${textObjectCount.toLocaleString()})`;
     $$('[data-aviso-view]').forEach(button => button.classList.toggle("active", button.dataset.avisoView === state.ui.avisoView));
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));
 
     if (state.ui.avisoView === "geometry") renderAvisoGeometry();
     else renderAvisoText();
-    renderAvisoGroupTargets();
   }
 
   function renderAvisoGeometry() {
     const allEntries = avisoStyleEntries("geometry");
     const selectedIds = new Set(geometrySelectionIds(allEntries));
-    const filtered = filteredAvisoGeometryEntries(allEntries);
-    avisoGeometryRenderOrder = filtered.map(entry => entry.id);
-
-    $("#avisoGeometrySearch").value = state.ui.avisoGeometrySearch;
-    $("#avisoGeometryStyleCount").textContent = `(${allEntries.length})`;
-    $("#avisoGeometrySelectionCount").textContent = `${selectedIds.size} selected`;
+    avisoGeometryRenderOrder = allEntries.map(entry => entry.id);
 
     const grouped = new Map();
-    filtered.forEach(entry => {
+    allEntries.forEach(entry => {
       if (!grouped.has(entry.layer)) grouped.set(entry.layer, []);
       grouped.get(entry.layer).push(entry);
     });
 
     $("#avisoGeometryStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
-      <section class="aviso-style-section">
-        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span><small>${entries.length}</small></div>
-        <div class="aviso-style-box">
+      <section class="aviso-style-section menu-tree-section">
+        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span></div>
+        <div class="aviso-style-box menu-tree-box">
           ${entries.map(entry => {
             const selected = selectedIds.has(entry.id);
             const current = entry.id === state.ui.selectedAvisoGeometryStyleId;
-            return `<button type="button" role="option" aria-selected="${selected}" class="aviso-style-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-geometry-style="${escapeHtml(entry.id)}">
-              <span class="aviso-select-box" data-aviso-selection-toggle="geometry" aria-hidden="true"></span>
+            return `<button type="button" role="option" aria-selected="${selected}" class="aviso-style-row menu-tree-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-geometry-style="${escapeHtml(entry.id)}">
+              ${avisoStyleVisibilityControl(entry, "geometry")}
               <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
-              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong><small>${escapeHtml(entry.objectType)}</small></span>
-              <span class="aviso-style-count">${entry.count.toLocaleString()}</span>
+              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
             </button>`;
           }).join("")}
         </div>
-      </section>`).join("") || `<div class="aviso-list-message">No matching geometry styles</div>`;
+      </section>`).join("") || `<div class="aviso-list-message">No geometry styles</div>`;
 
     renderAvisoGeometryEditor(allEntries);
   }
@@ -3655,66 +3641,26 @@
     }
 
     const types = uniqueValues(entries.map(entry => entry.objectType));
-    const layers = uniqueValues(entries.map(entry => entry.layer));
-    const allArea = types.length === 1 && types[0] === "Area";
-    const allLine = types.length === 1 && types[0] === "Line";
-    const mixedTypes = types.length > 1;
-    const allIndices = uniqueValues(entries.flatMap(entry => entry.indices));
-    const visibilityValues = allIndices.map(index => avisoFeatures()[index]?.properties?.visible !== false);
-
     $("#avisoGeometryCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} geometry styles`;
-    $("#avisoGeometrySelectionMeta").textContent = entries.length === 1 ? entries[0].id : "Multiple selection";
-    $("#avisoGeometryVisibleLabel").textContent = entries.length === 1 ? "Show this category" : "Show selected categories";
-    $("#avisoGeometryAdvancedInfo").textContent = `${entries.length} style${entries.length === 1 ? "" : "s"} · ${types.join(" + ")} · ${layers.length} layer${layers.length === 1 ? "" : "s"}`;
-
-    const compatibility = $("#avisoGeometryCompatibility");
-    compatibility.hidden = !mixedTypes;
-    compatibility.innerHTML = mixedTypes
-      ? `<strong>Area and line styles selected.</strong> Fill is hidden; only shared line / outline properties can be changed.`
-      : "";
-
-    $("#avisoGeometryFillGroup").hidden = !allArea;
-    $("#avisoGeometryFillOpacityField").hidden = !allArea;
     const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
-    $("#avisoGeometryFillColorLabel").textContent = `Fill color · ${paletteLabel}`;
-    $("#avisoGeometryStrokeLegend").textContent = `${allArea ? "Outline" : allLine ? "Line" : "Line / outline"} color · ${paletteLabel}`;
+    const colorKind = types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
+    $("#avisoGeometryColorLabel").textContent = `${colorKind} color · ${paletteLabel}`;
 
-    setCommonCheckbox("#avisoGeometryVisible", visibilityValues);
-
-    if (allArea) {
-      setCommonColor(
-        "#avisoGeometryFillColor",
-        "#avisoGeometryFillPicker",
-        "#avisoGeometryFillPair",
-        commonValue(entries.map(entry => entry.paint.fill || entry.paint.stroke || "#000000"), value => normalizeHex(value, "#000000")),
-        "#000000"
-      );
-      setCommonRange(
-        "#avisoGeometryFillOpacity",
-        "#avisoGeometryFillOpacityOutput",
-        commonValue(entries.map(entry => Number(entry.paint["fill-opacity"] ?? 1) * 100), value => Math.round(Number(value) * 100) / 100),
-        100
-      );
+    const colorResult = commonValue(
+      entries.map(entry => entry.objectType === "Line" ? (entry.paint.stroke || entry.paint.fill || "#000000") : (entry.paint.fill || entry.paint.stroke || "#000000")),
+      value => normalizeHex(value, "#000000")
+    );
+    const opacityResult = commonValue(
+      entries.map(entry => Number(entry.paint[entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity"] ?? 1) * 100),
+      value => Math.round(Number(value) * 100) / 100
+    );
+    const signature = `${activeAvisoColorPalette()}|${entries.map(entry => entry.id).join("|")}`;
+    if (!drafts.avisoGeometry || drafts.avisoGeometry.signature !== signature) {
+      drafts.avisoGeometry = createAvisoColorDraft(signature, colorResult, "#000000", opacityResult);
+      initializeAvisoColorControls("avisoGeometryColor", drafts.avisoGeometry, true);
+    } else {
+      syncAvisoColorEditor("avisoGeometryColor", drafts.avisoGeometry, true);
     }
-
-    setCommonColor(
-      "#avisoGeometryStrokeColor",
-      "#avisoGeometryStrokePicker",
-      "#avisoGeometryStrokePair",
-      commonValue(entries.map(entry => entry.paint.stroke || entry.paint.fill || "#000000"), value => normalizeHex(value, "#000000")),
-      "#000000"
-    );
-    setCommonInput(
-      "#avisoGeometryStrokeWidth",
-      commonValue(entries.map(entry => Number(entry.paint["stroke-width"] ?? (entry.objectType === "Line" ? 1.5 : 0.5))), value => Number(value)),
-      value => String(value)
-    );
-    setCommonRange(
-      "#avisoGeometryStrokeOpacity",
-      "#avisoGeometryStrokeOpacityOutput",
-      commonValue(entries.map(entry => Number(entry.paint["stroke-opacity"] ?? 1) * 100), value => Math.round(Number(value) * 100) / 100),
-      100
-    );
   }
 
   function selectAvisoGeometryStyle(styleId, event, forceToggle = false) {
@@ -3724,7 +3670,7 @@
     state.ui.selectedAvisoGeometryStyleId = next.includes(styleId) ? styleId : next[next.length - 1];
     if (!event.shiftKey) state.ui.avisoGeometrySelectionAnchorId = styleId;
     drafts.avisoGeometry = null;
-    clearUnappliedEditorSection($("#avisoGeometryVisible"));
+    clearUnappliedEditorSection($("#avisoGeometryColorHex"));
     renderAvisoGeometry();
     setStatus(`${next.length} geometry style${next.length === 1 ? "" : "s"} selected`, "info");
   }
@@ -3732,56 +3678,46 @@
   function applyAvisoGeometry({ render = true, feedback = true } = {}) {
     const entries = selectedAvisoGeometryEntries();
     if (!entries.length) return;
-    const allArea = entries.every(entry => entry.objectType === "Area");
-    const changed = {};
-    // Auto-registration invokes this function for the control that changed.
-    // Only copy controls touched in that gesture; otherwise editing one paint
-    // value also writes every displayed default and can flatten mixed data.
-    const shouldApply = selector => wasControlTouched(selector);
+    const colorTouched = wasControlTouched("#avisoGeometryColorHex");
+    const opacityTouched = wasControlTouched("#avisoGeometryColorOpacity") || wasControlTouched("#avisoGeometryColorOpacityOutput");
 
-    if (allArea && shouldApply("#avisoGeometryFillColor") && $("#avisoGeometryFillColor").value) {
-      changed.fill = normalizeHex($("#avisoGeometryFillColor").value, entries[0].paint.fill || "#000000").toUpperCase();
-    }
-    if (allArea && shouldApply("#avisoGeometryFillOpacity")) {
-      changed["fill-opacity"] = clamp(Number($("#avisoGeometryFillOpacity").value) / 100, 0, 1);
-    }
-    if (shouldApply("#avisoGeometryStrokeColor") && $("#avisoGeometryStrokeColor").value) {
-      changed.stroke = normalizeHex($("#avisoGeometryStrokeColor").value, entries[0].paint.stroke || entries[0].paint.fill || "#000000").toUpperCase();
-    }
-    if (shouldApply("#avisoGeometryStrokeWidth") && $("#avisoGeometryStrokeWidth").value !== "") {
-      changed["stroke-width"] = clamp(Number($("#avisoGeometryStrokeWidth").value), 0.25, 8);
-    }
-    if (shouldApply("#avisoGeometryStrokeOpacity")) {
-      changed["stroke-opacity"] = clamp(Number($("#avisoGeometryStrokeOpacity").value) / 100, 0, 1);
-    }
-
-    const visibility = $("#avisoGeometryVisible");
-    const applyVisibility = visibility.dataset.touched === "true";
-
-    if (!Object.keys(changed).length && !applyVisibility) {
-      if (feedback) showToast("Change at least one shared geometry property");
-      return false;
+    if (!colorTouched && !opacityTouched) {
+      if (feedback) showToast("Change the geometry color or opacity");
+      if (feedback) return false;
+      clearUnappliedEditorSection($("#avisoGeometryColorHex"));
+      return true;
     }
 
     let updatedCount = 0;
     entries.forEach(entry => {
+      const colorKey = entry.objectType === "Line" ? "stroke" : "fill";
+      const opacityKey = entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity";
+      const changes = {};
+      if (colorTouched && drafts.avisoGeometry)
+        changes[colorKey] = normalizeHex(drafts.avisoGeometry.hex, entry.paint[colorKey] || "#000000").toUpperCase();
+      if (opacityTouched && drafts.avisoGeometry)
+        changes[opacityKey] = clamp(Number(drafts.avisoGeometry.opacity) / 100, 0, 1);
       const style = ensureAvisoCatalogStyle(entry);
-      applyAvisoPaintChanges(style.paint, changed);
+      applyAvisoPaintChanges(style.paint, changes);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, changed);
-        if (applyVisibility) properties.visible = visibility.checked;
+        applyAvisoPaintChanges(properties, changes);
         updatedCount += 1;
       });
     });
 
-    drafts.avisoGeometry = null;
-    clearUnappliedEditorSection($("#avisoGeometryVisible"));
+    resetControlFlags($("#avisoGeometryColorHex"));
+    resetControlFlags($("#avisoGeometryColorOpacity"));
+    resetControlFlags($("#avisoGeometryColorOpacityOutput"));
+    clearUnappliedEditorSection($("#avisoGeometryColorHex"));
     markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} updated`, ["aviso"]);
     if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} geometry objects`, "success");
-    if (render) renderAvisoGeometry();
+    if (render) {
+      drafts.avisoGeometry = null;
+      renderAvisoGeometry();
+    }
     return true;
   }
 
@@ -3794,35 +3730,29 @@
   function renderAvisoText() {
     const allEntries = avisoStyleEntries("text");
     const selectedIds = new Set(textStyleSelectionIds(allEntries));
-    const filtered = filteredAvisoTextEntries(allEntries);
-    avisoTextRenderOrder = filtered.map(entry => entry.id);
-
-    $("#avisoTextSearch").value = state.ui.avisoTextSearch;
-    $("#avisoTextStyleCount").textContent = `(${allEntries.length})`;
-    $("#avisoTextSelectionCount").textContent = `${selectedIds.size} selected`;
+    avisoTextRenderOrder = allEntries.map(entry => entry.id);
 
     const grouped = new Map();
-    filtered.forEach(entry => {
+    allEntries.forEach(entry => {
       if (!grouped.has(entry.layer)) grouped.set(entry.layer, []);
       grouped.get(entry.layer).push(entry);
     });
 
     $("#avisoTextStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
-      <section class="aviso-style-section">
-        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span><small>${entries.length}</small></div>
-        <div class="aviso-style-box">
+      <section class="aviso-style-section menu-tree-section">
+        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span></div>
+        <div class="aviso-style-box menu-tree-box">
           ${entries.map(entry => {
             const selected = selectedIds.has(entry.id);
             const current = entry.id === state.ui.selectedAvisoTextStyleId;
-            return `<button type="button" role="option" aria-selected="${selected}" title="${escapeHtml(entry.name)}" class="aviso-style-row aviso-text-style-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-text-style="${escapeHtml(entry.id)}">
-              <span class="aviso-select-box" data-aviso-selection-toggle="text" aria-hidden="true"></span>
+            return `<button type="button" role="option" aria-selected="${selected}" title="${escapeHtml(entry.name)}" class="aviso-style-row menu-tree-row aviso-text-style-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-text-style="${escapeHtml(entry.id)}">
+              ${avisoStyleVisibilityControl(entry, "text")}
               <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
               <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
-              <span class="aviso-style-count">${entry.count.toLocaleString()}</span>
             </button>`;
           }).join("")}
         </div>
-      </section>`).join("") || `<div class="aviso-list-message">No matching text styles</div>`;
+      </section>`).join("") || `<div class="aviso-list-message">No text styles</div>`;
 
     renderAvisoTextEditor(allEntries);
   }
@@ -3838,24 +3768,24 @@
     const values = key => items.map(item => effectiveAvisoTextValue(item.index, item.entry, key));
 
     $("#avisoTextCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} text styles`;
-    $("#avisoTextSelectionMeta").textContent = entries.length === 1 ? entries[0].id : "Multiple selection";
-    $("#avisoTextVisibleLabel").textContent = entries.length === 1 ? "Show this text style" : "Show selected text styles";
     const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
-    $("#avisoTextColorLabel").textContent = `Text color · ${paletteLabel}`;
-    $("#avisoTextHaloColorLabel").textContent = `Halo color · ${paletteLabel}`;
+    const colorTarget = state.ui.avisoTextColorTarget === "halo" ? "halo" : "text";
+    const colorKey = colorTarget === "halo" ? "text-halo-color" : "text-color";
+    const colorFallback = colorTarget === "halo" ? "#000000" : "#808080";
+    $("#avisoTextColorLabel").textContent = `${colorTarget === "halo" ? "Halo" : "Text"} color · ${paletteLabel}`;
+    $$("[data-color-target]", $("#avisoTextColorEditor")).forEach(button => button.classList.toggle("active", button.dataset.colorTarget === colorTarget));
 
-    setCommonCheckbox("#avisoTextVisible", items.map(item => avisoFeatures()[item.index]?.properties?.visible !== false));
     setCommonInput("#avisoTextFont", commonValue(values("text-font"), value => String(value || "Arial")), value => String(value || "Arial"));
     setCommonInput("#avisoTextSize", commonValue(values("text-size"), value => Number(value)), value => String(value));
-    setCommonColor(
-      "#avisoTextColor", "#avisoTextColorPicker", "#avisoTextColorPair",
-      commonValue(values("text-color"), value => normalizeHex(value, "#808080")), "#808080"
-    );
-    setCommonColor(
-      "#avisoTextHaloColor", "#avisoTextHaloPicker", "#avisoTextHaloPair",
-      commonValue(values("text-halo-color"), value => normalizeHex(value, "#000000")), "#000000"
-    );
     setCommonInput("#avisoTextHaloWidth", commonValue(values("text-halo-width"), value => Number(value)), value => String(value));
+    const colorResult = commonValue(values(colorKey), value => normalizeHex(value, colorFallback));
+    const signature = `${activeAvisoColorPalette()}|${colorTarget}|${entries.map(entry => entry.id).join("|")}`;
+    if (!drafts.avisoTextStyle || drafts.avisoTextStyle.signature !== signature) {
+      drafts.avisoTextStyle = createAvisoColorDraft(signature, colorResult, colorFallback);
+      initializeAvisoColorControls("avisoTextColor", drafts.avisoTextStyle);
+    } else {
+      syncAvisoColorEditor("avisoTextColor", drafts.avisoTextStyle);
+    }
     const zoomCommon = commonValue(values("zoomLevel"), value => Math.round(clamp(value ?? 6, 0, 14)));
     setCommonInput("#avisoTextZoomLevel", zoomCommon, value => String(value));
     const zoomSlider = $("#avisoTextZoomSlider");
@@ -3874,7 +3804,7 @@
     state.ui.selectedAvisoTextStyleId = next.includes(styleId) ? styleId : next[next.length - 1];
     if (!event.shiftKey) state.ui.avisoTextSelectionAnchorId = styleId;
     drafts.avisoTextStyle = null;
-    clearUnappliedEditorSection($("#avisoTextVisible"));
+    clearUnappliedEditorSection($("#avisoTextFont"));
     renderAvisoText();
     setStatus(`${next.length} text style${next.length === 1 ? "" : "s"} selected`, "info");
   }
@@ -3890,8 +3820,11 @@
     };
     add("text-font", "#avisoTextFont", value => value.trim() || "Arial");
     add("text-size", "#avisoTextSize", value => clamp(Number(value), 6, 32));
-    add("text-color", "#avisoTextColor", value => normalizeHex(value, entry.paint["text-color"] || "#808080").toUpperCase());
-    add("text-halo-color", "#avisoTextHaloColor", value => normalizeHex(value, entry.paint["text-halo-color"] || "#000000").toUpperCase());
+    if ((!onlyTouched || wasControlTouched("#avisoTextColorHex")) && drafts.avisoTextStyle) {
+      const colorKey = state.ui.avisoTextColorTarget === "halo" ? "text-halo-color" : "text-color";
+      const fallback = colorKey === "text-halo-color" ? "#000000" : "#808080";
+      paint[colorKey] = normalizeHex(drafts.avisoTextStyle.hex, entry.paint[colorKey] || fallback).toUpperCase();
+    }
     add("text-halo-width", "#avisoTextHaloWidth", value => clamp(Number(value), 0, 6));
     add("zoomLevel", "#avisoTextZoomLevel", value => Math.round(clamp(value, 0, 14)));
     return paint;
@@ -3903,11 +3836,11 @@
     // Only propagate controls touched by the current gesture. Effective values
     // from one text group must not flatten other selected groups implicitly.
     const textPaint = buildAvisoTextPaint(targets[0], true);
-    const visibility = $("#avisoTextVisible");
-    const applyVisibility = visibility.dataset.touched === "true";
-    if (!Object.keys(textPaint).length && !applyVisibility) {
+    if (!Object.keys(textPaint).length) {
       if (feedback) showToast("Change at least one shared text property");
-      return false;
+      if (feedback) return false;
+      clearUnappliedEditorSection($("#avisoTextFont"));
+      return true;
     }
 
     let updatedCount = 0;
@@ -3919,16 +3852,18 @@
         if (!properties) return;
         properties.style_id ||= entry.id;
         applyAvisoPaintChanges(properties, textPaint);
-        if (applyVisibility) properties.visible = visibility.checked;
         updatedCount += 1;
       });
     });
 
-    drafts.avisoTextStyle = null;
-    clearUnappliedEditorSection($("#avisoTextVisible"));
+    resetControlFlags($("#avisoTextColorHex"));
+    clearUnappliedEditorSection($("#avisoTextFont"));
     markDirty(`${targets.length} text style${targets.length === 1 ? "" : "s"} updated`, ["aviso"]);
     if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} text labels`, "success");
-    if (render) renderAvisoText();
+    if (render) {
+      drafts.avisoTextStyle = null;
+      renderAvisoText();
+    }
     return true;
   }
 
@@ -3940,7 +3875,7 @@
       drafts.avisoTextStyle = null;
       renderAvisoTextEditor();
     }
-    clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryVisible") : $("#avisoTextVisible"));
+    clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryColorHex") : $("#avisoTextFont"));
   }
 
 
@@ -3971,13 +3906,14 @@
       const hasConfiguredRunways = Boolean(
         profile?.rimcas &&
         Object.prototype.hasOwnProperty.call(profile.rimcas, "runways") &&
-        Array.isArray(profile.rimcas.runways)
+        Array.isArray(profile.rimcas.runways) &&
+        profile.rimcas.runways.length
       );
       const rimcas = ensureProfileRimcas();
       const runtimeAlerts = state.runtime.alerts ||= { visibility: "normal", runways: clone(DEFAULT_ALERT_RUNWAYS) };
       if (!Array.isArray(runtimeAlerts.runways)) runtimeAlerts.runways = clone(DEFAULT_ALERT_RUNWAYS);
-      // An explicitly saved empty array means "monitor no runway pairs". Only
-      // legacy profiles with no runways member inherit the current runtime list.
+      // Empty arrays were written by older editors even when runway monitoring
+      // was meant to follow EuroScope. Only actual rows override the runtime list.
       const profileRunways = hasConfiguredRunways ? rimcas.runways : runtimeAlerts.runways;
       const profileVisibility = ["normal", "lvp"].includes(rimcas.visibility)
         ? rimcas.visibility
@@ -4011,7 +3947,6 @@
 
     renderAlertTimerRow("#alertTimerNormal", data.rimcas.timer);
     renderAlertTimerRow("#alertTimerLvp", data.rimcas.timer_lvp);
-    $("#alertSpeedThreshold").value = data.rimcas.stage_two_speed_threshold_kt;
   }
 
   function renderAlertTimerRow(selector, values) {
@@ -4042,7 +3977,6 @@
     const lvpInputs = $$("#alertTimerLvp [data-alert-timer-index]");
     if (normalInputs.length) data.rimcas.timer = normalInputs.map(input => Math.max(0, Math.round(Number(input.value) || 0)));
     if (lvpInputs.length) data.rimcas.timer_lvp = lvpInputs.map(input => Math.max(0, Math.round(Number(input.value) || 0)));
-    if ($("#alertSpeedThreshold")) data.rimcas.stage_two_speed_threshold_kt = Math.max(0, Math.round(Number($("#alertSpeedThreshold").value) || 0));
     data.rimcas.visibility = data.visibility;
     data.rimcas.runways = clone(data.runways);
     return data;
@@ -4064,11 +3998,6 @@
     drafts.alerts = null;
     clearUnappliedEditorSectionsWithin($("[data-page-panel='alerts']"));
     renderAlerts();
-  }
-
-  function setAllAlertTypes(active) {
-    $$('[data-alert-type]').forEach(input => { input.checked = active; input.closest(".alert-toggle-card")?.classList.toggle("inactive", !active); });
-    applyAlerts({ render: false, feedback: false });
   }
 
   function setAllAlertRunwayField(field, value = true) {
@@ -5215,8 +5144,13 @@
     // represented in the AVISO history chunk and will still be included.
     if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
       delete payload.aviso;
+    const submittedSnapshot = captureHistorySnapshot();
     pending.save = postBridge("state.save", payload);
-    if (!pending.save) return false;
+    if (!pending.save) {
+      saveInFlightSnapshot = null;
+      return false;
+    }
+    saveInFlightSnapshot = submittedSnapshot;
     armPendingTimeout("save", pending.save);
     setStatus("Saving configuration…", "info");
     updateCommandState();
@@ -5381,7 +5315,6 @@
   }
 
   function renderAll() {
-    renderGlobalProfileSelect();
     syncProfileTabSelection();
     setPage(state.ui.page);
     renderRuntimeMenu();
@@ -5414,7 +5347,7 @@
         control instanceof HTMLTextAreaElement)) return "";
     if (control.matches(
       '[type="search"], [type="file"], ' +
-      '#avisoGeometryGroupTarget, #avisoTextGroupTarget, #tagTokenSelect'
+      '#tagTokenSelect'
     ) || control.closest(".datalink-card, .updater-general-group, #runtimeMenu, .page-rail, dialog")) return "";
 
     const profilePanel = control.closest("[data-profile-panel]")?.dataset.profilePanel;
@@ -5460,11 +5393,8 @@
     const row = entry && $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
     if (!entry || !row) return;
     const hex = colorToHex(entry.color).toUpperCase();
-    const opacity = Math.round((entry.color.a ?? 255) / 255 * 100);
     row.style.setProperty("--node-color", hex);
-    row.title = `${entry.id} Â· ${hex}${opacity === 100 ? "" : ` Â· ${opacity}%`}`;
-    const meta = $(".menu-row-meta", row);
-    if (meta) meta.innerHTML = `<code>${hex}</code>${opacity === 100 ? "" : `<small>${opacity}%</small>`}`;
+    row.title = entry.name;
   }
 
   function performDeferredDerivedRefresh(scope) {
@@ -5514,13 +5444,156 @@
       deferDerivedRefreshUntilFocusout(scope, control);
   }
 
+  function bindAvisoColorEditor(prefix, draftName, scope, includeOpacity, apply) {
+    const element = suffix => $("#" + prefix + suffix);
+    const draft = () => drafts[draftName];
+    const syncRgbOutputs = () => {
+      const current = hexToColor(draft()?.hex || "#000000");
+      const values = ["Red", "Green", "Blue"].map((channel, index) => {
+        const value = element(channel + "Output").value.trim();
+        return value === "" ? [current.r, current.g, current.b][index] : Number(value);
+      });
+      if (values.every(Number.isFinite)) updateAvisoColorDraftFromRgb(draft(), prefix, ...values, includeOpacity);
+    };
+
+    element("Hex").addEventListener("input", event => {
+      if (/^#?[0-9a-f]{6}$/i.test(event.target.value.trim()))
+        updateAvisoColorDraftFromHex(draft(), prefix, event.target.value, includeOpacity);
+    });
+    element("Hex").addEventListener("change", event => {
+      if (/^#?[0-9a-f]{6}$/i.test(event.target.value.trim()))
+        updateAvisoColorDraftFromHex(draft(), prefix, event.target.value, includeOpacity);
+    });
+    element("Hue").addEventListener("input", event => updateAvisoColorDraftFromHsv(draft(), prefix, Number(event.target.value), draft()?.s ?? 0, draft()?.v ?? 1, includeOpacity));
+    ["Red", "Green", "Blue"].forEach(suffix => {
+      element(suffix).addEventListener("input", () => updateAvisoColorDraftFromRgb(draft(), prefix, element("Red").value, element("Green").value, element("Blue").value, includeOpacity));
+    });
+    element("HueOutput").addEventListener("input", event => {
+      if (event.target.value.trim() === "") return;
+      const value = Number(event.target.value);
+      if (Number.isFinite(value)) updateAvisoColorDraftFromHsv(draft(), prefix, value, draft()?.s ?? 0, draft()?.v ?? 1, includeOpacity);
+    });
+    ["RedOutput", "GreenOutput", "BlueOutput"].forEach(suffix => {
+      element(suffix).addEventListener("input", event => {
+        if (event.target.value.trim() !== "") syncRgbOutputs();
+      });
+    });
+    if (includeOpacity) {
+      const updateOpacity = value => {
+        if (!draft() || !Number.isFinite(Number(value))) return;
+        draft().opacity = Math.round(clamp(Number(value), 0, 100));
+        draft().opacityMixed = false;
+        markControlTouched(element("Opacity"));
+        markControlTouched(element("OpacityOutput"));
+        syncAvisoColorEditor(prefix, draft(), true);
+      };
+      element("Opacity").addEventListener("input", event => updateOpacity(event.target.value));
+      element("OpacityOutput").addEventListener("input", event => {
+        if (event.target.value.trim() !== "") updateOpacity(event.target.value);
+      });
+    }
+
+    const palette = element("SvPalette");
+    const updateFromPointer = event => {
+      if (!draft()) return;
+      const rect = palette.getBoundingClientRect();
+      const saturation = clamp((event.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      const value = 1 - clamp((event.clientY - rect.top) / Math.max(1, rect.height), 0, 1);
+      updateAvisoColorDraftFromHsv(draft(), prefix, draft().h, saturation, value, includeOpacity);
+    };
+    palette.addEventListener("pointerdown", event => {
+      palette.setPointerCapture(event.pointerId);
+      palette.dataset.dragging = "true";
+      updateFromPointer(event);
+    });
+    palette.addEventListener("pointermove", event => {
+      if (palette.dataset.dragging === "true") updateFromPointer(event);
+    });
+    const stopDrag = event => {
+      const changed = palette.dataset.dragging === "true";
+      palette.dataset.dragging = "false";
+      if (event.pointerId != null && palette.hasPointerCapture?.(event.pointerId)) palette.releasePointerCapture(event.pointerId);
+      if (!changed) return;
+      withHistoryGesture(palette, () => apply({ render: false, feedback: false }));
+      performDeferredDerivedRefresh(scope);
+    };
+    palette.addEventListener("pointerup", stopDrag);
+    palette.addEventListener("pointercancel", stopDrag);
+    palette.addEventListener("keydown", event => {
+      if (!draft() || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const step = event.shiftKey ? .05 : .01;
+      const nextS = draft().s + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0);
+      const nextV = draft().v + (event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0);
+      updateAvisoColorDraftFromHsv(draft(), prefix, draft().h, nextS, nextV, includeOpacity);
+      withHistoryGesture(palette, () => apply({ render: false, feedback: false }));
+      performDeferredDerivedRefresh(scope);
+    });
+  }
+
+  const scrollCueObservers = [];
+
+  function updateScrollCues(list) {
+    const shell = list?.closest(".scroll-cue-shell");
+    if (!shell) return;
+    if (list.clientHeight <= 0) {
+      shell.classList.remove("can-scroll-up", "can-scroll-down");
+      return;
+    }
+    const tolerance = 2;
+    shell.classList.toggle("can-scroll-up", list.scrollTop > tolerance);
+    shell.classList.toggle(
+      "can-scroll-down",
+      list.scrollTop + list.clientHeight < list.scrollHeight - tolerance
+    );
+  }
+
+  function initializeScrollCues() {
+    SCROLL_CUE_LIST_IDS.forEach(id => {
+      const list = $("#" + id);
+      if (!list || list.closest(".scroll-cue-shell")) return;
+      const shell = document.createElement("div");
+      shell.className = "scroll-cue-shell";
+      list.parentNode.insertBefore(shell, list);
+      shell.appendChild(list);
+      list.classList.add("scroll-cued-list");
+
+      const top = document.createElement("div");
+      top.className = "scroll-edge-cue scroll-edge-cue-top";
+      top.setAttribute("aria-hidden", "true");
+      top.innerHTML = "<span>▲</span>";
+      const bottom = document.createElement("div");
+      bottom.className = "scroll-edge-cue scroll-edge-cue-bottom";
+      bottom.setAttribute("aria-hidden", "true");
+      bottom.innerHTML = "<span>▼</span>";
+      shell.append(top, bottom);
+
+      let updateFrame = 0;
+      const scheduleUpdate = () => {
+        if (updateFrame) return;
+        updateFrame = window.requestAnimationFrame(() => {
+          updateFrame = 0;
+          updateScrollCues(list);
+        });
+      };
+      list.addEventListener("scroll", scheduleUpdate, { passive: true });
+      const mutationObserver = new MutationObserver(scheduleUpdate);
+      mutationObserver.observe(list, { childList: true, subtree: true });
+      const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(scheduleUpdate) : null;
+      resizeObserver?.observe(list);
+      resizeObserver?.observe(shell);
+      scrollCueObservers.push({ mutationObserver, resizeObserver });
+      scheduleUpdate();
+    });
+  }
+
   function bindEvents() {
     document.addEventListener("focusin", event => {
-      if (editorControlScope(event.target) || event.target.id === "colorSvPalette")
+      if (editorControlScope(event.target) || event.target.matches?.(".color-sv-palette"))
         beginHistoryGesture(event.target);
     });
     document.addEventListener("pointerdown", event => {
-      if (editorControlScope(event.target) || event.target.id === "colorSvPalette")
+      if (editorControlScope(event.target) || event.target.matches?.(".color-sv-palette"))
         beginHistoryGesture(event.target);
     }, true);
     document.addEventListener("focusout", event => {
@@ -5555,7 +5628,6 @@
       }
       if (!event.target.closest("#ruleStatusDropdown")) setRuleStatusMenuOpen(false);
       if (!event.target.closest(".aviso-load-control")) setAvisoLoadMenuOpen(false);
-      if (!event.target.closest(".rail-profile-control")) setRailProfilePopoverOpen(false);
       if (!event.target.closest("#runtimeMenu") && state.ui.runtimePopover) {
         state.ui.runtimePopover = "";
         renderRuntimeMenu();
@@ -5632,33 +5704,31 @@
       if (modeRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedModeIndex = Number(modeRow.dataset.modeIndex); drafts.mode = null; clearUnappliedEditorSection($("#modeName")); renderModes(); return; }
       const profileRow = event.target.closest("[data-managed-profile-id]");
       if (profileRow) { if (!stageFocusedEditorValue()) return; state.ui.managedProfileId = profileRow.dataset.managedProfileId; drafts.profile = null; clearUnappliedEditorSection($("#profileName")); renderProfilesManager(); return; }
+      const styleVisibilityToggle = event.target.closest("[data-aviso-style-visibility]");
+      if (styleVisibilityToggle) {
+        if (!stageFocusedEditorValue()) return;
+        toggleAvisoStyleVisibility(
+          styleVisibilityToggle.dataset.avisoStyleVisibility,
+          styleVisibilityToggle.dataset.avisoStyleId
+        );
+        return;
+      }
       const avisoGeometryStyleRow = event.target.closest("[data-aviso-geometry-style]");
       if (avisoGeometryStyleRow) {
         if (!stageFocusedEditorValue()) return;
-        const forceToggle = Boolean(event.target.closest('[data-aviso-selection-toggle="geometry"]'));
-        selectAvisoGeometryStyle(avisoGeometryStyleRow.dataset.avisoGeometryStyle, event, forceToggle);
+        selectAvisoGeometryStyle(avisoGeometryStyleRow.dataset.avisoGeometryStyle, event);
         return;
       }
       const avisoTextStyleRow = event.target.closest("[data-aviso-text-style]");
       if (avisoTextStyleRow) {
         if (!stageFocusedEditorValue()) return;
-        const forceToggle = Boolean(event.target.closest('[data-aviso-selection-toggle="text"]'));
-        selectAvisoTextStyle(avisoTextStyleRow.dataset.avisoTextStyle, event, forceToggle);
+        selectAvisoTextStyle(avisoTextStyleRow.dataset.avisoTextStyle, event);
         return;
       }
       const actionButton = event.target.closest("[data-action]");
       if (actionButton) handleAction(actionButton.dataset.action, actionButton);
     });
 
-    $("#globalProfileSelect").addEventListener("change", event => {
-	  const rollback = captureRuntimeCommandRollback();
-	  if (!switchActiveProfile(event.target.value)) {
-		renderGlobalProfileSelect();
-		return;
-	  }
-	  postActiveProfileChange(rollback);
-      setRailProfilePopoverOpen(false);
-    });
     const syncDatalinkDraft = (...fields) => {
       if (!datalinkDraft) resetDatalinkDraftFromRuntime();
       const before = clone(datalinkDraft);
@@ -5701,9 +5771,10 @@
         syncDatalinkDraft(field);
       });
     });
-    $("#tagLabelFontSize").addEventListener("input", event => { $("#tagLabelFontSizeOutput").value = String(Math.round(clamp(event.target.value, 1, 5))); });
+    $("#tagLabelFontSize").addEventListener("change", event => {
+      event.target.value = String(Math.round(clamp(event.target.value, 1, 5)));
+    });
 
-    $("#colorSearch").addEventListener("input", renderColors);
     $("#colorHex").addEventListener("input", event => {
       if (/^#?[0-9a-f]{6}$/i.test(event.target.value.trim())) setColorDraftFromHex(event.target.value);
     });
@@ -5816,19 +5887,6 @@
     $("#ruleStatusDropdown").addEventListener("keydown", event => {
       if (event.key === "Escape") { setRuleStatusMenuOpen(false); $("#ruleStatusButton").focus(); }
     });
-    $("#avisoGeometrySearch").addEventListener("input", event => {
-      state.ui.avisoGeometrySearch = event.target.value;
-      renderAvisoGeometry();
-    });
-    $("#avisoTextSearch").addEventListener("input", event => {
-      state.ui.avisoTextSearch = event.target.value;
-      renderAvisoText();
-    });
-    $("#avisoGroupSearch").addEventListener("input", event => {
-      captureAvisoGroupDraft();
-      state.ui.avisoGroupSearch = event.target.value;
-      renderAvisoGroups();
-    });
     $("#avisoGroupMemberSearch").addEventListener("input", event => {
       captureAvisoGroupDraft();
       state.ui.avisoGroupMemberSearch = event.target.value;
@@ -5856,7 +5914,7 @@
     const avisoGroupList = $("#avisoGroupList");
     avisoGroupList.addEventListener("dragstart", event => {
       const row = event.target.closest("[data-aviso-group-id]");
-      if (!row || String(state.ui.avisoGroupSearch || "").trim()) {
+      if (!row) {
         event.preventDefault();
         return;
       }
@@ -5899,33 +5957,9 @@
       $$(".aviso-group-row", avisoGroupList).forEach(item => item.classList.remove("dragging", "drop-target", "drop-after"));
     });
 
-    [
-      ["avisoGeometryFillColor", "avisoGeometryFillPicker", "avisoGeometryFillPair"],
-      ["avisoGeometryStrokeColor", "avisoGeometryStrokePicker", "avisoGeometryStrokePair"],
-      ["avisoTextColor", "avisoTextColorPicker", "avisoTextColorPair"],
-      ["avisoTextHaloColor", "avisoTextHaloPicker", "avisoTextHaloPair"]
-    ].forEach(([textId, pickerId, pairId]) => {
-      $("#" + textId).addEventListener("input", event => {
-        $("#" + pickerId).value = normalizeHex(event.target.value, $("#" + pickerId).value || "#808080");
-        markControlTouched(event.target);
-        markControlTouched($("#" + pickerId));
-        $("#" + pairId).classList.remove("mixed");
-      });
-      $("#" + pickerId).addEventListener("input", event => {
-        $("#" + textId).value = event.target.value.toUpperCase();
-        markControlTouched(event.target);
-        markControlTouched($("#" + textId));
-        $("#" + pairId).classList.remove("mixed");
-      });
-    });
-    ["avisoGeometryFillOpacity", "avisoGeometryStrokeOpacity"].forEach(id => {
-      $("#" + id).addEventListener("input", event => {
-        $("#" + id + "Output").value = `${Math.round(Number(event.target.value))}%`;
-        event.target.closest(".range-control")?.classList.remove("mixed");
-        markControlTouched(event.target);
-      });
-    });
-    ["avisoGeometryStrokeWidth", "avisoTextFont", "avisoTextSize", "avisoTextHaloWidth"].forEach(id => {
+    bindAvisoColorEditor("avisoGeometryColor", "avisoGeometry", "aviso-geometry", true, applyAvisoGeometry);
+    bindAvisoColorEditor("avisoTextColor", "avisoTextStyle", "aviso-text", false, applyAvisoTextStyles);
+    ["avisoTextFont", "avisoTextSize", "avisoTextHaloWidth"].forEach(id => {
       $("#" + id).addEventListener("input", event => markControlTouched(event.target));
       $("#" + id).addEventListener("change", event => markControlTouched(event.target));
     });
@@ -5941,12 +5975,6 @@
     };
     $("#avisoTextZoomLevel").addEventListener("input", () => syncAvisoTextZoom("avisoTextZoomLevel"));
     $("#avisoTextZoomSlider").addEventListener("input", () => syncAvisoTextZoom("avisoTextZoomSlider"));
-    ["avisoGeometryVisible", "avisoTextVisible"].forEach(id => {
-      $("#" + id).addEventListener("change", event => {
-        event.target.indeterminate = false;
-        markControlTouched(event.target);
-      });
-    });
     document.addEventListener("change", event => {
       if (event.target.matches("#runtimePresetLinked")) toggleRuntimePresetLinked(event.target.checked);
       if (event.target.matches("[data-alert-type]")) event.target.closest(".alert-toggle-card")?.classList.toggle("inactive", !event.target.checked);
@@ -5959,36 +5987,36 @@
     $("#avisoGeometryStyleList").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const ids = filteredAvisoGeometryEntries().map(entry => entry.id);
+        const ids = avisoStyleEntries("geometry").map(entry => entry.id);
         if (ids.length) {
           state.ui.selectedAvisoGeometryStyleIds = ids;
           state.ui.selectedAvisoGeometryStyleId = ids[ids.length - 1];
           state.ui.avisoGeometrySelectionAnchorId = ids[0];
-          clearUnappliedEditorSection($("#avisoGeometryVisible"));
+          clearUnappliedEditorSection($("#avisoGeometryColorHex"));
           renderAvisoGeometry();
         }
       } else if (event.key === "Escape") {
         const id = state.ui.selectedAvisoGeometryStyleId;
         state.ui.selectedAvisoGeometryStyleIds = id ? [id] : [];
-        clearUnappliedEditorSection($("#avisoGeometryVisible"));
+        clearUnappliedEditorSection($("#avisoGeometryColorHex"));
         renderAvisoGeometry();
       }
     });
     $("#avisoTextStyleList").addEventListener("keydown", event => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
-        const ids = filteredAvisoTextEntries().map(entry => entry.id);
+        const ids = avisoStyleEntries("text").map(entry => entry.id);
         if (ids.length) {
           state.ui.selectedAvisoTextStyleIds = ids;
           state.ui.selectedAvisoTextStyleId = ids[ids.length - 1];
           state.ui.avisoTextSelectionAnchorId = ids[0];
-          clearUnappliedEditorSection($("#avisoTextVisible"));
+          clearUnappliedEditorSection($("#avisoTextFont"));
           renderAvisoText();
         }
       } else if (event.key === "Escape") {
         const id = state.ui.selectedAvisoTextStyleId;
         state.ui.selectedAvisoTextStyleIds = id ? [id] : [];
-        clearUnappliedEditorSection($("#avisoTextVisible"));
+        clearUnappliedEditorSection($("#avisoTextFont"));
         renderAvisoText();
       }
     });
@@ -6052,8 +6080,14 @@
     else if (action === "duplicate-inset-preset") duplicateAvisoPreset();
     else if (action === "default-inset-preset") setDefaultAvisoPreset();
     else if (action === "delete-inset-preset") deleteAvisoPreset();
-    else if (action === "toggle-profile-menu") setRailProfilePopoverOpen($("#railProfilePopover").hidden);
-    else if (action === "reset-color") resetSelectedColor();
+    else if (action === "select-aviso-text-color") {
+      const target = button.dataset.colorTarget === "halo" ? "halo" : "text";
+      if (target !== state.ui.avisoTextColorTarget) {
+        state.ui.avisoTextColorTarget = target;
+        drafts.avisoTextStyle = null;
+        renderAvisoTextEditor();
+      }
+    }
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
@@ -6099,7 +6133,6 @@
     else if (action === "load-aviso-github") {
 	  setAvisoLoadMenuOpen(false); openResourceGithubDialog("aviso");
 	}
-    else if (action === "assign-aviso-geometry-group") assignAvisoSelectionToGroup("geometry");
     else if (action === "new-aviso-group") createAvisoGroup();
     else if (action === "duplicate-aviso-group") duplicateAvisoGroup();
     else if (action === "delete-aviso-group") deleteAvisoGroup();
@@ -6109,8 +6142,6 @@
     else if (action === "clear-filtered-group-content") setFilteredAvisoGroupContent(false);
     else if (action === "toggle-aviso-group-visibility") toggleRuntimeGroup(button.dataset.groupId);
     else if (action === "remove-aviso-group-member") removeAvisoGroupMember(button);
-    else if (action === "alerts-enable-all") setAllAlertTypes(true);
-    else if (action === "alerts-disable-all") setAllAlertTypes(false);
     else if (action === "alert-runways-all-arr") setAllAlertRunwayField("arrival", true);
     else if (action === "alert-runways-all-dep") setAllAlertRunwayField("departure", true);
     else if (action === "alert-runways-open-all") setAllAlertRunwayField("closed", false);
@@ -6250,7 +6281,7 @@
     drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
     markDirty("Profile created", ["profiles"]);
-    renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
+    renderProfilesManager(); renderRuntimeMenu();
   }
   function duplicateProfile() {
     const source = managedProfileRecord(); if (!source) return;
@@ -6261,7 +6292,7 @@
     state.ui.managedProfileId = record.id;
     drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
-    markDirty("Profile copied", ["profiles"]); renderGlobalProfileSelect(); renderProfilesManager(); renderRuntimeMenu();
+    markDirty("Profile copied", ["profiles"]); renderProfilesManager(); renderRuntimeMenu();
   }
   function deleteProfile() {
     if (state.profiles.length <= 1 || !confirmDelete("Delete this profile?")) return;
@@ -6271,7 +6302,7 @@
     state.ui.managedProfileId = state.activeProfileId;
     drafts.profile = null;
     clearUnappliedEditorSection($("#profileName"));
-    markDirty("Profile deleted", ["profiles", "metadata"]); renderGlobalProfileSelect(); renderAllProfileSections(); renderRuntimeMenu();
+    markDirty("Profile deleted", ["profiles", "metadata"]); renderAllProfileSections(); renderRuntimeMenu();
   }
 
 
@@ -6332,7 +6363,6 @@
     clearAllUnappliedEditorSections();
     avisoGroupContentDirty = false;
     if (source) setResourceSource("profiles", source);
-    renderGlobalProfileSelect();
     renderAllProfileSections();
     renderSettings();
     renderRuntimeMenu();
@@ -6530,14 +6560,19 @@
     const resourceSourceChanged = reason === "resource-source";
 	const hasUnappliedEditorWork =
 	  (hasUnappliedEditorInputs() || avisoGroupContentDirty) && !trustedRuntimeResponse;
+    const preservesNewerSaveEdits = Boolean(
+      reason === "save" && saveInFlightSnapshot &&
+      (!snapshotsEqual(captureHistorySnapshot(), saveInFlightSnapshot) ||
+        hasUnappliedEditorWork || hasDatalinkDraftChanges())
+    );
     const externallyChangedDirtyEditors =
 	  (state.dirty || hasUnappliedEditorWork) &&
 	  ["resource-source", "external-save", "backup-restored", "profile", "mode"].includes(reason);
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
-	const preservesStagedEditors = (state.dirty || hasUnappliedEditorWork) &&
-      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason);
+	const preservesStagedEditors = preservesNewerSaveEdits || ((state.dirty || hasUnappliedEditorWork) &&
+      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason));
     const hostAirportChanged = !preservesStagedEditors && typeof incoming.airport === "string" &&
       incomingAirport !== previousHostAirport;
     const profileModeReplacement = !preservesStagedEditors &&
@@ -6552,9 +6587,9 @@
     // newer disk revision.  Keeping its old token makes the next save fail
     // closed and directs the user to reload instead of overwriting another
     // Control Center's changes.
-    if ((!preservesStagedEditors || reason === "preset") && typeof incoming.configRevision === "string")
+    if ((!preservesStagedEditors || reason === "preset" || reason === "save") && typeof incoming.configRevision === "string")
       state.configRevision = incoming.configRevision;
-    if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
+    if ((!preservesStagedEditors || reason === "save") && typeof incoming.avisoRevision === "string")
       state.avisoRevision = incoming.avisoRevision;
     if (["initial", "reload", "save", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
       state.recoveryConfirmed = false;
@@ -6614,7 +6649,8 @@
     }
     if (incoming.datalink && typeof incoming.datalink === "object" && !Array.isArray(incoming.datalink)) {
       state.datalink = normalizeDatalinkRuntimeState(incoming.datalink, state.datalink);
-      rebaseDatalinkDraftFromRuntime();
+      if (!(preservesNewerSaveEdits && hasDatalinkDraftChanges()))
+        rebaseDatalinkDraftFromRuntime();
     }
     if (reason === "reload" && discardDatalinkDraftOnReload) {
       resetDatalinkDraftFromRuntime();
@@ -6656,7 +6692,6 @@
 	// A benign runtime/preset sync must not repaint the focused editor while
 	// local staged changes are waiting for automatic persistence.
 	if (preservesStagedEditors) {
-	  renderGlobalProfileSelect();
 	  renderRuntimeMenu();
 	  updateContext();
 	  updateCommandState();
@@ -6675,7 +6710,15 @@
       resetHistory(true);
     } else if (reason === "save") {
       history.present = captureHistorySnapshot();
-      markSaved(incoming.message || "Configuration saved");
+      if (preservesNewerSaveEdits) {
+        savedSnapshot = saveInFlightSnapshot;
+        saveInFlightSnapshot = null;
+        updateDirtyState("Saved previous changes; newer edits are queued…");
+        scheduleAutosave();
+      } else {
+        saveInFlightSnapshot = null;
+        markSaved(incoming.message || "Configuration saved");
+      }
     } else {
       const wasDirty = state.dirty;
       history.present = captureHistorySnapshot();
@@ -6828,7 +6871,7 @@
 		reason,
 		trustedRuntimeResponse
 	  );
-	  if (isSave && hasInlineAviso) {
+	  if (isSave && !avisoFollows) {
 		pending.save = "";
 	  }
 	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.undo") showToast("Undone", "success");
@@ -6906,8 +6949,8 @@
       if (pending.save && !messageMatchesRequest(message, pending.save)) return;
       const savedState = authoritativePayload(payload);
       // Native sends this as a durable-write acknowledgement immediately
-      // before the authoritative state and split AVISO payload. Keep the
-      // workspace locked until that complete response is applied.
+      // before the authoritative state and split AVISO payload. The submitted
+      // snapshot remains in flight, but the editor stays available.
       const completeSavedState = Boolean(
         savedState.profiles || savedState.aviso || savedState.runtime
       );
@@ -6916,7 +6959,7 @@
         applyAuthoritativeState(savedState, "save");
         updateCommandState();
       } else {
-        setStatus("Saved; reloading authoritative vSMR data...", "info");
+        setStatus("Saved; synchronizing vSMR data...", "info");
         updateCommandState();
       }
       return;
@@ -6937,7 +6980,10 @@
       if (finishDatalinkError(message)) return;
 	  finishRuntimeCommand(responseId, true);
 	  clearSplitAvisoContext(responseId);
-      if (pending.save && messageMatchesRequest(message, pending.save)) pending.save = "";
+      if (pending.save && messageMatchesRequest(message, pending.save)) {
+        pending.save = "";
+        saveInFlightSnapshot = null;
+      }
       if (pending.reload && messageMatchesRequest(message, pending.reload)) pending.reload = "";
       if (pending.resource && messageMatchesRequest(message, pending.resource.id)) {
         pending.resource = null;
@@ -6996,6 +7042,7 @@
   }
 
   applyQueryState();
+  initializeScrollCues();
   bindEvents();
   renderAll();
   resetHistory(true);

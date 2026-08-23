@@ -1,7 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
-#include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -213,8 +213,7 @@ bool AvisoDocumentModel::SaveAtomically(
 	}
 
 	rapidjson::StringBuffer buffer;
-	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
-	writer.SetIndent('\t', 1);
+	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
 	Document.Accept(writer);
 	std::string serializedJson(buffer.GetString(), buffer.Size());
 	PatchSerializedCoordinates(serializedJson);
@@ -310,13 +309,8 @@ bool AvisoDocumentModel::SaveAtomically(
 		std::ostringstream persistedBuffer;
 		persistedBuffer << persistedInput.rdbuf();
 		const std::string persistedJson = persistedBuffer.str();
-		rapidjson::Document persistedValidation;
 		if (persistedInput.bad() ||
-			persistedJson != serializedJson ||
-			persistedValidation.Parse<0>(persistedJson.c_str()).HasParseError() ||
-			!persistedValidation.IsObject() ||
-			!persistedValidation.HasMember("features") ||
-			!persistedValidation["features"].IsArray())
+			persistedJson != serializedJson)
 		{
 			errorText = "AVISO temp-file validation failed.";
 			persistedInput.close();
