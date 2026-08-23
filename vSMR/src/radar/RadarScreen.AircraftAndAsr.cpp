@@ -1134,6 +1134,15 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
 		ShowFps = atoi(p_value) != 0;
 
+	EuroScopeScreenRotationDegrees = DetectEuroScopeScreenRotationDegrees();
+	ScreenRotationDegrees = EuroScopeScreenRotationDegrees;
+	if ((p_value = GetDataFromAsr("ScreenRotation")) != NULL)
+	{
+		const double storedRotation = atof(p_value);
+		if (std::isfinite(storedRotation) && storedRotation >= 0.0 && storedRotation <= 359.9)
+			SetScreenRotationDegrees(storedRotation, false);
+	}
+
 	AvisoUseDayColorPalette = false;
 	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
@@ -1191,6 +1200,9 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	SaveDataToAsr("FontSize", "vSMR font size", std::to_string(currentFontSize).c_str());
 
 	SaveDataToAsr("ShowFps", "Show FPS counter", ShowFps ? "1" : "0");
+	char screenRotation[16] = {};
+	sprintf_s(screenRotation, "%.1f", ScreenRotationDegrees);
+	SaveDataToAsr("ScreenRotation", "vSMR screen rotation", screenRotation);
 	SaveDataToAsr(
 		"AvisoColorPalette",
 		"AVISO day/night color palette",
