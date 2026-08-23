@@ -4,7 +4,7 @@
 param(
     [string]$RepositoryRoot = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$ExpectedVersion = "2.0.0-beta.3",
+    [string]$ExpectedVersion = "2.0.0-beta.4",
     [string]$BuildOutputDirectory = "",
     [string]$PdbPath = "",
     [string]$LoaderPdbPath = "",

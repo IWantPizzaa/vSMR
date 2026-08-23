@@ -18,6 +18,7 @@
     groups: "Groups",
     modes: "Modes",
     profiles: "Profiles",
+    datalink: "CPDLC / PDC",
     settings: "Settings"
   };
   const PROFILE_TITLES = { colors: "Colors", icons: "Icons", tags: "Tags", rules: "Rules" };
@@ -1340,11 +1341,12 @@
       const viewLabel = state.ui.avisoView === "text" ? "Text" : "Geometry";
       suffix = `${state.aviso?.metadata?.airport || inferAirport(state.aviso?.name) || "AVISO"} · ${viewLabel}`;
     }
+    if (state.ui.page === "datalink") suffix = "CPDLC / PDC";
     if (state.ui.page === "settings") suffix = "Settings";
     context.textContent = `${profileName} · ${suffix}`;
   }
   function setPage(page) {
-    if (["datalink", "cpdlc", "cdm"].includes(page)) page = "settings";
+    if (["cpdlc", "cdm"].includes(page)) page = "datalink";
     if (!PAGE_TITLES[page]) return;
     state.ui.page = page;
     $$(".rail-button[data-page]").forEach(button => button.classList.toggle("active", button.dataset.page === page));
@@ -1357,11 +1359,13 @@
     if (page === "groups") renderAvisoGroups();
     if (page === "modes") renderModes();
     if (page === "profiles") renderProfilesManager();
+    if (page === "datalink") {
+      renderDatalink();
+      requestDatalinkState();
+    }
     if (page === "settings") {
       renderSettings();
-      renderDatalink();
       renderUpdateCenter();
-      requestDatalinkState();
       requestUpdateState(true);
     }
     updateContext();
@@ -3576,13 +3580,16 @@
   function renderAviso() {
     const geometryEntries = avisoStyleEntries("geometry");
     const textEntries = avisoStyleEntries("text");
-    const airport = state.aviso?.metadata?.airport || inferAirport(state.aviso?.name) || "AVISO";
 
     geometrySelectionIds(geometryEntries);
     textStyleSelectionIds(textEntries);
 
-    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
-    $("#avisoDatasetCaption").textContent = `${airport} · ${paletteLabel}`;
+    const avisoColorPalette = activeAvisoColorPalette();
+    $$('[data-aviso-color-palette]').forEach(button => {
+      const active = button.dataset.avisoColorPalette === avisoColorPalette;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
     $$('[data-aviso-view]').forEach(button => button.classList.toggle("active", button.dataset.avisoView === state.ui.avisoView));
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));
 
@@ -4324,14 +4331,14 @@
         showToast(message, "error");
       }
     }
-    if (state.ui.page === "settings") {
+    if (state.ui.page === "datalink") {
       renderDatalink();
       updateContext();
     }
   }
 
   function requestDatalinkState(force = false) {
-    if (state.ui.page !== "settings" || !state.ui.controlCenterOpen || document.hidden) return;
+    if (state.ui.page !== "datalink" || !state.ui.controlCenterOpen || document.hidden) return;
     const now = Date.now();
     if (!force && now - lastDatalinkStateRequestAt < 900) return;
     lastDatalinkStateRequestAt = now;
@@ -5311,7 +5318,9 @@
   function applyQueryState() {
     const params = new URLSearchParams(window.VSMR_PREVIEW_QUERY || location.search);
     const requestedPage = params.get("page");
-    const page = ["datalink", "cpdlc", "cdm", "performance", "diagnostics", "updates"].includes(requestedPage) ? "settings" : requestedPage;
+    const page = ["datalink", "cpdlc", "cdm"].includes(requestedPage)
+      ? "datalink"
+      : ["performance", "diagnostics", "updates"].includes(requestedPage) ? "settings" : requestedPage;
     const tab = params.get("tab");
     if (PAGE_TITLES[page]) state.ui.page = page;
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
@@ -5614,7 +5623,6 @@
         return;
       }
       if (!event.target.closest("#ruleStatusDropdown")) setRuleStatusMenuOpen(false);
-      if (!event.target.closest(".aviso-load-control")) setAvisoLoadMenuOpen(false);
       if (!event.target.closest("#runtimeMenu") && state.ui.runtimePopover) {
         state.ui.runtimePopover = "";
         renderRuntimeMenu();
@@ -6101,7 +6109,6 @@
 		postActiveProfileChange(rollback);
       }
     }
-    else if (action === "toggle-aviso-load-menu") setAvisoLoadMenuOpen($("#avisoLoadMenu").hidden);
     else if (action === "load-profiles-computer") {
 	  if (!confirmResourceReplacement("profiles")) return;
       if (HOST_MODE) {
@@ -6111,7 +6118,6 @@
     }
     else if (action === "load-aviso-computer") {
 	  if (!confirmResourceReplacement("aviso")) return;
-      setAvisoLoadMenuOpen(false);
       if (HOST_MODE) {
         postBridge("resource.computer.load", { resource: "aviso" });
         setStatus("Choose an AVISO GeoJSON file…", "info");
@@ -6121,7 +6127,7 @@
 	  openResourceGithubDialog("profiles");
 	}
     else if (action === "load-aviso-github") {
-	  setAvisoLoadMenuOpen(false); openResourceGithubDialog("aviso");
+	  openResourceGithubDialog("aviso");
 	}
     else if (action === "new-aviso-group") createAvisoGroup();
     else if (action === "duplicate-aviso-group") duplicateAvisoGroup();
@@ -6295,15 +6301,6 @@
     markDirty("Profile deleted", ["profiles", "metadata"]); renderAllProfileSections(); renderRuntimeMenu();
   }
 
-
-  function setAvisoLoadMenuOpen(open) {
-    const menu = $("#avisoLoadMenu");
-    const button = $("#avisoLoadButton");
-    if (!menu || !button) return;
-    menu.hidden = !open;
-    button.setAttribute("aria-expanded", String(open));
-    $(".aviso-load-control")?.classList.toggle("open", open);
-  }
 
   function normalizeGithubRawUrl(value) {
     const raw = String(value || "").trim();
@@ -6926,7 +6923,7 @@
       }
       if (payload.message) {
         state.datalink.statusMessage = String(payload.message);
-        if (state.ui.page === "settings") renderDatalink();
+        if (state.ui.page === "datalink") renderDatalink();
       }
       return;
     }
@@ -7040,7 +7037,7 @@
   window.setInterval(() => requestDatalinkState(), 1250);
   window.setInterval(() => requestUpdateState(), 1500);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && state.ui.page === "settings") requestDatalinkState(true);
+    if (!document.hidden && state.ui.page === "datalink") requestDatalinkState(true);
     if (!document.hidden && updateViewActive()) requestUpdateState(true);
   });
   setStatus(HOST_MODE ? "Waiting for configuration…" : "Bundled LFPG preview loaded");
