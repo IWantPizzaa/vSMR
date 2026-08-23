@@ -1159,11 +1159,16 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		insetWindow->ResetAvisoInteractionState();
 	}
 
-	// Auto-detect active sector runways only for legacy profiles. An explicit
-	// profile runway array is authoritative, including when it is empty.
+	// Auto-detect active sector runways when no runway rows are configured.
 	RefreshLegacyRimcasRunwayMonitoring();
 	PrewarmAvisoForActiveAirport();
 	PublishCrashRadarState("main");
+
+	// Create the hidden Control Center as soon as the radar/ASR state is ready.
+	// WebView2 and the initial authoritative payload then load in the background,
+	// so the first user-open only has to reveal the already initialized window.
+	if (!EnsureVsmrControlCenterWindowCreated())
+		Logger::info("Control Center preload deferred until its first open.");
 
 	// ReSharper restore CppZeroConstantCanBeReplacedWithNullptr
 }

@@ -8,7 +8,15 @@
 
 ### Changed
 
+- Aligned LFPG dynamic AVISO runtime selection, bundled-default restoration, documentation, palette tooling, and release validation with the beta.4 canonical `LFPG_Dyna.geojson` filename while retaining the beta.3 filename as a runtime compatibility fallback.
+- Made automatic configuration and datalink saves fully background operations: the Control Center remains editable without a saving overlay, newer edits made during an in-flight save are preserved and queued for the next write, and only foreground operations retain the workspace interlock. Removed the redundant active-profile picker from the left rail and preloaded the hidden WebView2 Control Center after ASR initialization for a near-immediate first open.
+- Simplified Control Center list chrome by removing redundant item counts, selection counts, Hex labels, type badges, scope/path metadata, and secondary descriptions from Colors, Icons, Tags, Rules, Modes, Profiles, AVISO Geometry/Text, and Groups. Rules now uses the same bottom New/Duplicate/trash toolbar as the other managers, while RIMCAS Alerts no longer shows bulk alert-type toggles or the stage-two speed editor.
+- Reorganized General Settings into a full-width Display row, balanced Data files and CPDLC/PDC sections, and a full-width updater row. Moved the New, Duplicate, and Delete actions for Modes, Profiles, and Groups into larger bottom list toolbars, with a trash-can icon for deletion.
 - Replaced the Control Center's manual Save action with debounced automatic persistence for editor and datalink changes. Undo and Redo are persisted after runtime confirmation, while Revert cancels queued writes before restoring the configuration from disk.
+- Accelerated routine Control Center autosaves with a shorter 300 ms debounce, retained validated in-memory owner configuration, compact AVISO writes without a redundant second parse, and compact authoritative profile/revision responses instead of reloading and retransmitting the multi-megabyte AVISO document after every adjustment.
+- Simplified Profile Colors by removing its search and per-color reset controls, and ordered tag colors by the same scope and status sequence as Tag Definitions. AVISO Geometry now exposes only the primary area-fill or line color and opacity through the full visual/Hex/HSRGB editor, while Text reuses that editor with a compact Text/Halo switch.
+- Unified the Profile Colors, Tag Definitions, AVISO Geometry/Text styles, Modes, Groups, and Profiles master lists around the same padded surface, rounded inner boxes, compact rows, and selection styling. Their visible scrollbars are replaced by directional top/bottom edge fades and small arrows that appear only when more content exists.
+- Simplified Tag options to rounded corners, automatic deconfliction, and a compact Typography row with numeric label font size. AVISO Geometry/Text lists no longer use searches, selection checkboxes, object-type labels, or category/feature counts; per-style eyes now control visibility directly.
 - Made AVISO and SRW inset content inherit EuroScope's live Sector / Inactive Sector Background color, added a thin black outer frame to both radar insets, and removed the obsolete per-profile SRW background override.
 - Made the AVISO Geometry and Text editors palette-aware: their swatches and color fields now show the active Day or Night values and write color changes only to that palette, while visibility, opacity, width, typography, and zoom remain shared.
 - Consolidated the four RIMCAS tabs into one scroll-free Alerts page for alert types, runway monitoring, visibility, and timing. Removed duplicate explanations and appearance controls; RIMCAS processing, label-only alerts, and red emergency symbols are now unconditional, while alert colors remain centralized on the Colors page.
@@ -19,6 +27,7 @@
 - Restored the ESTimer alarm sound.
 - Fixed AVISO `zoomLevel` visibility to use the same corner-to-corner viewport distance as the radar zoom level, and applied the rule consistently to labels, lines, and polygons at every airport.
 - Made right-clicking an SRW tag background open EuroScope's Assume/Handoff list, and synchronized AVISO inset and SRW tag corners with the active profile's rounded-corners setting.
+- Fixed RIMCAS alert-type changes being replaced by the previous live selection during autosave, restored EuroScope runway inheritance for profiles containing an empty runway list, and removed the redundant Groups search field.
 
 ## [2.0.0-beta.3] - 2026-08-21
 
