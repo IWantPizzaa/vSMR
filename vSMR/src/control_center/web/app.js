@@ -2433,50 +2433,38 @@
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
     const style = String($("#targetIconStyle")?.value || activeProfile().targets?.icon_style || "realistic").toLowerCase();
-    const fixed = $("#fixedPixelIconSize")?.checked ?? false;
-    const boost = $("#smallIconBoost")?.checked ?? false;
-    const fixedScale = Number($("#fixedPixelIconScale")?.value || 1);
-    const boostFactor = Number($("#smallIconBoostFactor")?.value || 1);
-    const resolution = state.settings.resolutionPreset || activeProfile().targets?.small_icon_boost_resolution_preset || "1080p";
-    const resolutionScale = resolution === "4k" ? 1.55 : resolution === "2k" ? 1.25 : 1;
-    const configuredBoost = boost ? Math.max(.5, boostFactor) : 1;
+    const symbolScale = clamp($("#targetSymbolScale")?.value ?? activeProfile().targets?.symbol_scale ?? 1, 0.5, 1.5);
+    const trailEnabled = $("#targetTrailEnabled")?.checked ?? activeProfile().targets?.trail_enabled !== false;
 
     let symbol = "";
     let caption = "";
     let usesAircraftImage = false;
     if (style === "nova") {
-      // The preview focuses on the generated primary-return silhouette.
-      const primaryReturn = activeProfile().targets?.show_primary_target !== false
-        ? `<path class="nova-primary-return" d="M0-44C-7-44-10-42-13-35L-16-22C-17-16-20-11-25-6L-44 12-43 24-16 12-11 20-11 35-5 45H5L11 35 11 20 16 12 43 24 44 12 25-6C20-11 17-16 16-22L13-35C10-42 7-44 0-44Z"/>`
+      const shape = "M0-38-8-35-10-18-38 6-36 17-11 8-7 32 0 39 7 32 11 8 36 17 38 6 10-18 8-35Z";
+      const afterglow = trailEnabled
+        ? `<path class="nova-afterglow oldest" transform="translate(-15 8)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(-10 5)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(-5 2)" d="${shape}"/>`
         : "";
-      symbol = `<svg class="icon-preview-vector nova" viewBox="-52 -50 104 104" aria-hidden="true">${primaryReturn}</svg>`;
+      symbol = `<svg class="icon-preview-vector nova" viewBox="-62 -52 124 108" aria-hidden="true">${afterglow}<path class="nova-primary-return" d="${shape}"/><path class="nova-secondary-return" d="M0-7 7 0 0 7-7 0Z"/></svg>`;
       caption = "NOVA";
     } else if (style === "triangle" || style === "arrow") {
-      // Keep every style legible at the same preview footprint while still
-      // reflecting the configured Triangle scale within the card bounds.
-      const triangleScale = clamp(
-        (fixed ? resolutionScale : 1) * configuredBoost * Math.max(.1, fixedScale),
-        .5,
-        1.22
-      );
-      symbol = `<svg class="icon-preview-vector triangle" viewBox="-52 -52 104 104" aria-hidden="true"><path transform="scale(${triangleScale.toFixed(3)})" d="M0-42 38 36 0 13-38 36Z"/></svg>`;
+      symbol = `<svg class="icon-preview-vector triangle" viewBox="-52 -52 104 104" aria-hidden="true"><path d="M0-42 38 36 0 13-38 36Z"/></svg>`;
       caption = "Triangle";
     } else if (style === "diamond") {
       symbol = `<svg class="icon-preview-vector diamond" viewBox="-48 -48 96 96" aria-hidden="true"><rect x="-12" y="-12" width="24" height="24" rx="5.3" transform="rotate(45)"/></svg>`;
       caption = "Diamond";
     } else {
-      // Fixed-size realistic icons use an 18px medium-jet reference at 1080p.
-      // Without fixed sizing, one preview pixel per metre is representative;
-      // the live radar supplies the actual zoom-dependent pixels-per-metre.
-      const aircraftPreviewScale = clamp((fixed ? resolutionScale : 1) * configuredBoost, .5, 1.18);
-      const aircraftHeight = 82 * aircraftPreviewScale;
+      const aircraftHeight = 82;
       const aircraftWidth = aircraftHeight * (35.8 / 37.6);
       symbol = `<img class="icon-preview-aircraft" data-aircraft-icon alt="" width="${aircraftWidth.toFixed(2)}" height="${aircraftHeight.toFixed(2)}">`;
       caption = "Icon";
       usesAircraftImage = true;
     }
 
-    preview.innerHTML = `<div class="icon-preview-stage">${symbol}</div><span>${escapeHtml(caption)}</span>`;
+    const trailClass = style === "nova" ? "nova" : style === "realistic" ? "realistic" : "triangle";
+    const trail = trailEnabled
+      ? `<span class="icon-preview-trail ${trailClass}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
+      : "";
+    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-symbol" style="--icon-preview-scale:${symbolScale}">${symbol}</span>${trail}</div><span>${escapeHtml(caption)}</span>`;
 
     if (usesAircraftImage) {
       const aircraftImage = preview.querySelector("[data-aircraft-icon]");
@@ -2497,34 +2485,33 @@
     const profile = activeProfile();
     const targets = profile.targets ||= {};
     ensureSelectValue($("#targetIconStyle"), targets.icon_style || "realistic");
-    $("#fixedPixelIconSize").checked = Boolean(targets.fixed_pixel_icon_size);
-    $("#fixedPixelIconScale").value = targets.fixed_pixel_icon_scale ?? 1;
-    $("#fixedPixelIconScaleOutput").value = `${Number(targets.fixed_pixel_icon_scale ?? 1).toFixed(2)}×`;
-    $("#smallIconBoost").checked = Boolean(targets.small_icon_boost);
+    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.5, 1.5);
+    $("#targetSymbolScale").value = symbolScale;
+    $("#targetSymbolScaleOutput").value = `${symbolScale.toFixed(2)}×`;
     targets.small_icon_boost_resolution_preset ||= state.settings.resolutionPreset || "1080p";
-    $("#smallIconBoostFactor").value = targets.small_icon_boost_factor ?? 1;
-    $("#smallIconBoostFactorOutput").value = `${Number(targets.small_icon_boost_factor ?? 1).toFixed(2)}×`;
+    $("#targetTrailEnabled").checked = targets.trail_enabled !== false;
+    $("#targetTrailGroundPoints").value = clamp(targets.trail_ground_points ?? 4, 0, 16);
+    $("#targetTrailGroundPointsOutput").value = String(Math.round(clamp(targets.trail_ground_points ?? 4, 0, 16)));
+    $("#targetTrailAirbornePoints").value = clamp(targets.trail_airborne_points ?? 8, 0, 16);
+    $("#targetTrailAirbornePointsOutput").value = String(Math.round(clamp(targets.trail_airborne_points ?? 8, 0, 16)));
     updateIconDependencies();
     renderIconSymbolPreview();
   }
   function updateIconDependencies() {
-    const fixedEnabled = $("#fixedPixelIconSize").checked;
-    const boostEnabled = $("#smallIconBoost").checked;
-    $("#fixedPixelIconScale").disabled = !fixedEnabled;
-    $("#smallIconBoostFactor").disabled = !boostEnabled;
-    // Resolution is a global display setting and is edited on the Settings page.
-    $("#fixedPixelIconSize").closest(".icon-parameter-block")?.classList.toggle("is-disabled", !fixedEnabled);
-    $("#smallIconBoost").closest(".icon-parameter-block")?.classList.toggle("is-disabled", !boostEnabled);
+    const trailEnabled = $("#targetTrailEnabled").checked;
+    $("#targetTrailGroundPoints").disabled = !trailEnabled;
+    $("#targetTrailAirbornePoints").disabled = !trailEnabled;
+    $$(".icon-trail-value").forEach(field => field.classList.toggle("is-disabled", !trailEnabled));
     renderIconSymbolPreview();
   }
   function applyIcons({ render = true } = {}) {
     const targets = activeProfile().targets ||= {};
     targets.icon_style = $("#targetIconStyle").value;
-    targets.fixed_pixel_icon_size = $("#fixedPixelIconSize").checked;
-    targets.fixed_pixel_icon_scale = Number($("#fixedPixelIconScale").value);
-    targets.small_icon_boost = $("#smallIconBoost").checked;
+    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.5, 1.5);
     targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset || targets.small_icon_boost_resolution_preset || "1080p";
-    targets.small_icon_boost_factor = Number($("#smallIconBoostFactor").value);
+    targets.trail_enabled = $("#targetTrailEnabled").checked;
+    targets.trail_ground_points = Math.round(clamp($("#targetTrailGroundPoints").value, 0, 16));
+    targets.trail_airborne_points = Math.round(clamp($("#targetTrailAirbornePoints").value, 0, 16));
     clearUnappliedEditorSection($("#targetIconStyle"));
     markDirty("Target icon settings updated", ["profiles"]);
     if (render) renderIcons();
@@ -5839,12 +5826,15 @@
       refreshEditorDerivedVisuals("colors");
     });
 
-    ["fixedPixelIconScale", "smallIconBoostFactor"].forEach(id => $("#" + id).addEventListener("input", event => {
-      $("#" + id + "Output").value = `${Number(event.target.value).toFixed(2)}×`;
+    $("#targetSymbolScale").addEventListener("input", event => {
+      const scale = clamp(event.target.value, 0.5, 1.5);
+      $("#targetSymbolScaleOutput").value = `${scale.toFixed(2)}×`;
       renderIconSymbolPreview();
+    });
+    ["targetTrailGroundPoints", "targetTrailAirbornePoints"].forEach(id => $("#" + id).addEventListener("input", event => {
+      $("#" + id + "Output").value = String(Math.round(Number(event.target.value)));
     }));
-    $("#fixedPixelIconSize").addEventListener("change", updateIconDependencies);
-    $("#smallIconBoost").addEventListener("change", updateIconDependencies);
+    $("#targetTrailEnabled").addEventListener("change", updateIconDependencies);
     ["targetIconStyle"].forEach(id => $("#" + id).addEventListener("change", renderIconSymbolPreview));
 
     $("#tagLineGrid").addEventListener("focusin", event => { if (event.target.matches(".tag-line-input")) activeTagInput = event.target; });

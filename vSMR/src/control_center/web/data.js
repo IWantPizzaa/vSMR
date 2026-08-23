@@ -115,13 +115,12 @@ window.VSMR_DATA = {
         inactive_alerts: []
       },
       targets: {
-        show_primary_target: true,
         icon_style: "realistic",
-        small_icon_boost: true,
-        small_icon_boost_factor: 1,
+        symbol_scale: 1,
         small_icon_boost_resolution_preset: "1080p",
-        fixed_pixel_icon_size: false,
-        fixed_pixel_icon_scale: 1,
+        trail_enabled: true,
+        trail_ground_points: 4,
+        trail_airborne_points: 8,
         departure: {
           airborne: { r: 255, g: 255, b: 255, a: 255 },
           departure: { r: 214, g: 255, b: 160, a: 255 },

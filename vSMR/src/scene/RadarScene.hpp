@@ -4,6 +4,7 @@
 #include "aviso/FrequencyOwnership.hpp"
 #include "tags/TagDataTypes.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -111,11 +112,10 @@ namespace VsmrScene
 	{
 		IconStyle icon = IconStyle::Nova;
 		bool showPrimaryReturn = false;
-		bool smallIconBoostEnabled = false;
-		bool fixedPixelSize = false;
-		double smallIconBoostFactor = 1.0;
-		double resolutionScale = 1.0;
-		double fixedTriangleScale = 1.0;
+		bool trailEnabled = true;
+		int trailGroundPointCount = 4;
+		int trailAirbornePointCount = 8;
+		double symbolScale = 1.0;
 	};
 
 	struct Target
@@ -136,7 +136,9 @@ namespace VsmrScene
 		GeoPoint position;
 		GeoPoint previousPosition;
 		GeoPoint headingProbe;
+		std::vector<GeoPoint> trailPositions;
 		std::vector<GeoPoint> primaryReturnPolygon;
+		std::array<std::vector<GeoPoint>, 3> primaryReturnAfterglow;
 
 		int reportedGroundSpeed = 0;
 		int groundSpeed = 0;

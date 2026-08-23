@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/TargetTrailRenderer.hpp"
 #include "weather/WeatherStore.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
@@ -3104,11 +3105,16 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		}
 
 		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
-		const bool nearNativeScale =
-			std::abs(static_cast<double>(destWidthInt - sourceWidthInt)) <= 1.0 &&
-			std::abs(static_cast<double>(destHeightInt - sourceHeightInt)) <= 1.0;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
-		if (!nearNativeScale)
+		// Preserve native axes exactly. A one-pixel AlphaBlend rescale can split
+		// an overscanned raster at its centre while the inset is moving.
+		const int blendDestWidth =
+			std::abs(destWidthInt - sourceWidthInt) <= 1 ? sourceWidthInt : destWidthInt;
+		const int blendDestHeight =
+			std::abs(destHeightInt - sourceHeightInt) <= 1 ? sourceHeightInt : destHeightInt;
+		const bool scaled =
+			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
+		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
+		if (scaled)
 			::SetBrushOrgEx(hDC, 0, 0, nullptr);
 
 		BLENDFUNCTION blend = {};
@@ -3119,8 +3125,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			hDC,
 			destLeft,
 			destTop,
-			destWidthInt,
-			destHeightInt,
+			blendDestWidth,
+			blendDestHeight,
 			sourceDc,
 			sourceXInt,
 			sourceYInt,
@@ -3239,11 +3245,14 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		}
 
 		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
-		const bool nearNativeScale =
-			std::abs(static_cast<double>(viewportRect.Width() - sourceWidthInt)) <= 1.0 &&
-			std::abs(static_cast<double>(viewportRect.Height() - sourceHeightInt)) <= 1.0;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
-		if (!nearNativeScale)
+		const int blendDestWidth =
+			std::abs(viewportRect.Width() - sourceWidthInt) <= 1 ? sourceWidthInt : viewportRect.Width();
+		const int blendDestHeight =
+			std::abs(viewportRect.Height() - sourceHeightInt) <= 1 ? sourceHeightInt : viewportRect.Height();
+		const bool scaled =
+			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
+		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
+		if (scaled)
 			::SetBrushOrgEx(hDC, 0, 0, nullptr);
 
 		BLENDFUNCTION blend = {};
@@ -3254,8 +3263,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			hDC,
 			viewportRect.left,
 			viewportRect.top,
-			viewportRect.Width(),
-			viewportRect.Height(),
+			blendDestWidth,
+			blendDestHeight,
 			sourceDc,
 			sourceXInt,
 			sourceYInt,
@@ -3482,11 +3491,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const bool useNovaIconStyle = targetPresentation.icon == VsmrScene::IconStyle::Nova;
 		const bool useDiamondIconStyle = targetPresentation.icon == VsmrScene::IconStyle::Diamond;
 		const bool useRealisticIconStyle = targetPresentation.icon == VsmrScene::IconStyle::Realistic;
-		const bool smallIconBoostEnabled = targetPresentation.smallIconBoostEnabled;
-		const bool fixedPixelIconSize = targetPresentation.fixedPixelSize;
-		const double smallIconBoostFactor = targetPresentation.smallIconBoostFactor;
-		const double smallIconBoostResolutionScale = targetPresentation.resolutionScale;
-		const double fixedTriangleScale = targetPresentation.fixedTriangleScale;
 		const double pixPerMeter = max(0.0, static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
 		const Color symbolWhiteColor(255, 255, 255, 255);
 		const unsigned long long realisticIconCacheFrame = useRealisticIconStyle
@@ -3512,7 +3516,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			{ viewportRect.left, viewportRect.bottom }
 		};
 		std::vector<PointF> patatoidePolygonPoints;
-		auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor)
+		auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor, double symbolScale)
 		{
 			if (sourcePoints.size() < 3)
 				return;
@@ -3529,6 +3533,23 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 			if (patatoidePolygonPoints.size() < 3)
 				return;
+			if (std::abs(symbolScale - 1.0) > 0.0001)
+			{
+				REAL centerX = 0.0f;
+				REAL centerY = 0.0f;
+				for (const PointF& point : patatoidePolygonPoints)
+				{
+					centerX += point.X;
+					centerY += point.Y;
+				}
+				centerX /= static_cast<REAL>(patatoidePolygonPoints.size());
+				centerY /= static_cast<REAL>(patatoidePolygonPoints.size());
+				for (PointF& point : patatoidePolygonPoints)
+				{
+					point.X = centerX + static_cast<REAL>((point.X - centerX) * symbolScale);
+					point.Y = centerY + static_cast<REAL>((point.Y - centerY) * symbolScale);
+				}
+			}
 
 			SolidBrush polygonBrush(fillColor);
 			gdi->FillPolygon(&polygonBrush, patatoidePolygonPoints.data(), static_cast<INT>(patatoidePolygonPoints.size()));
@@ -3543,26 +3564,27 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				sceneTarget.style.color.blue);
 			if (useNovaIconStyle)
 			{
-				Pen novaSymbolPen(targetColor, 1.0f);
+				Pen novaSymbolPen(symbolWhiteColor, 1.0f);
+				const REAL novaScale = static_cast<REAL>(targetPresentation.symbolScale);
 				if (sceneTarget.transponderModeC)
 				{
 					PointF novaPoints[] = {
-						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y - 6)),
-						PointF(static_cast<REAL>(targetPoint.x - 6), static_cast<REAL>(targetPoint.y)),
-						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y + 6)),
-						PointF(static_cast<REAL>(targetPoint.x + 6), static_cast<REAL>(targetPoint.y)),
-						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y - 6))
+						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y) - 6.0f * novaScale),
+						PointF(static_cast<REAL>(targetPoint.x) - 6.0f * novaScale, static_cast<REAL>(targetPoint.y)),
+						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y) + 6.0f * novaScale),
+						PointF(static_cast<REAL>(targetPoint.x) + 6.0f * novaScale, static_cast<REAL>(targetPoint.y)),
+						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y) - 6.0f * novaScale)
 					};
 					gdi->DrawLines(&novaSymbolPen, novaPoints, static_cast<INT>(_countof(novaPoints)));
 				}
 				else
 				{
-					gdi->DrawLine(&novaSymbolPen, targetPoint.x, targetPoint.y, targetPoint.x - 4, targetPoint.y - 4);
-					gdi->DrawLine(&novaSymbolPen, targetPoint.x, targetPoint.y, targetPoint.x + 4, targetPoint.y - 4);
-					gdi->DrawLine(&novaSymbolPen, targetPoint.x, targetPoint.y, targetPoint.x - 4, targetPoint.y + 4);
-					gdi->DrawLine(&novaSymbolPen, targetPoint.x, targetPoint.y, targetPoint.x + 4, targetPoint.y + 4);
+					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) - 4.0f * novaScale, static_cast<REAL>(targetPoint.y) - 4.0f * novaScale);
+					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) + 4.0f * novaScale, static_cast<REAL>(targetPoint.y) - 4.0f * novaScale);
+					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) - 4.0f * novaScale, static_cast<REAL>(targetPoint.y) + 4.0f * novaScale);
+					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) + 4.0f * novaScale, static_cast<REAL>(targetPoint.y) + 4.0f * novaScale);
 				}
-				return 18;
+				return static_cast<int>(std::ceil(18.0 * targetPresentation.symbolScale));
 			}
 			const double headingDeg = sceneTarget.headingTrueDegrees;
 
@@ -3586,29 +3608,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				const double lengthMeters = sceneTarget.style.lengthMeters;
 				const double spanMeters = sceneTarget.style.wingspanMeters;
 
-				double drawW = spanMeters * pixPerMeter;
-				double drawH = lengthMeters * pixPerMeter;
-				if (fixedPixelIconSize)
-				{
-					const double configuredFactor = smallIconBoostEnabled ? smallIconBoostFactor : 1.0;
-					const double pxPerMeterFixed = (18.0 * smallIconBoostResolutionScale) / 40.0;
-					drawW = spanMeters * pxPerMeterFixed * configuredFactor;
-					drawH = lengthMeters * pxPerMeterFixed * configuredFactor;
-				}
-				else if (smallIconBoostEnabled && pixPerMeter > 0.0)
-				{
-					const double referenceScreenSize = 40.0 * pixPerMeter;
-					const double boostStartSize = 14.0 * smallIconBoostResolutionScale;
-					if (referenceScreenSize < boostStartSize)
-					{
-						const double boostedReferenceSize = 18.0 * smallIconBoostFactor * smallIconBoostResolutionScale;
-						const double zoomBoostScale = std::clamp(boostedReferenceSize / max(0.01, referenceScreenSize), 1.0, 6.0 * smallIconBoostFactor * smallIconBoostResolutionScale);
-						drawW *= zoomBoostScale;
-						drawH *= zoomBoostScale;
-					}
-				}
-				drawW = AvisoFinitePositive(drawW, 24.0, 12.0, 1200.0);
-				drawH = AvisoFinitePositive(drawH, 24.0, 12.0, 1200.0);
+				double drawW = spanMeters * pixPerMeter * targetPresentation.symbolScale;
+				double drawH = lengthMeters * pixPerMeter * targetPresentation.symbolScale;
+				drawW = AvisoFinitePositive(drawW, 1.0, 1.0, 1200.0);
+				drawH = AvisoFinitePositive(drawH, 1.0, 1.0, 1200.0);
 
 				int drawPixelW = 0;
 				int drawPixelH = 0;
@@ -3678,36 +3681,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				}
 			}
 
-			double lenPx = 20.0;
-			double halfWidthPx = 12.0;
-			double lenMetersUsed = 20.0;
-			double halfWidthMetersUsed = 12.0;
-			if (fixedPixelIconSize)
-			{
-				const double fixedScale = (smallIconBoostEnabled ? smallIconBoostFactor : 1.0) * smallIconBoostResolutionScale;
-				lenPx = std::clamp(lenPx * fixedScale, 6.0, 160.0);
-				halfWidthPx = std::clamp(halfWidthPx * fixedScale, 3.0, 80.0);
-			}
-			else if (pixPerMeter > 0.0)
-			{
-				lenPx = std::clamp(pixPerMeter * 20.0, 6.0, 120.0);
-				halfWidthPx = std::clamp(pixPerMeter * 12.0, 3.0, 60.0);
-				if (smallIconBoostEnabled)
-				{
-					const double currentExtent = lenPx + halfWidthPx;
-					const double targetMinExtent = 14.0 * smallIconBoostFactor * smallIconBoostResolutionScale;
-					const double boostScale = std::clamp(targetMinExtent / max(0.01, currentExtent), 1.0, 2.0 * smallIconBoostFactor * smallIconBoostResolutionScale);
-					lenPx *= boostScale;
-					halfWidthPx *= boostScale;
-				}
-			}
-			lenPx = AvisoFinitePositive(lenPx * fixedTriangleScale, 20.0, 1.0, 220.0);
-			halfWidthPx = AvisoFinitePositive(halfWidthPx * fixedTriangleScale, 12.0, 1.0, 110.0);
-			if (pixPerMeter > 0.0)
-			{
-				lenMetersUsed = lenPx / pixPerMeter;
-				halfWidthMetersUsed = halfWidthPx / pixPerMeter;
-			}
+			const double lenPx = AvisoFinitePositive(pixPerMeter * 20.0 * targetPresentation.symbolScale, 1.0, 0.5, 220.0);
+			const double halfWidthPx = AvisoFinitePositive(pixPerMeter * 12.0 * targetPresentation.symbolScale, 0.5, 0.35, 110.0);
+			const double lenMetersUsed = 20.0 * targetPresentation.symbolScale;
+			const double halfWidthMetersUsed = 12.0 * targetPresentation.symbolScale;
 
 			if (useDiamondIconStyle)
 			{
@@ -4040,12 +4017,29 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			if (!pointInViewport(targetPoint, 180))
 				continue;
 
+			VsmrTargetTrail::Draw(
+				*gdi,
+				sceneTarget,
+				[&](const VsmrScene::GeoPoint& history) -> POINT
+				{
+					CPosition position;
+					position.m_Latitude = history.latitude;
+					position.m_Longitude = history.longitude;
+					return projectTargetPosition(position);
+				},
+				[&](const POINT& point, int margin) -> bool
+				{
+					return pointInViewport(point, margin);
+				},
+				targetPresentation.symbolScale);
+
 			if (useNovaIconStyle && sceneTarget.style.showPrimaryReturn && !sceneTarget.primaryReturnPolygon.empty())
 			{
 				const VsmrScene::Color& primaryColor = sceneTarget.style.primaryReturnColor;
 				drawPatatoidePolygon(
 					sceneTarget.primaryReturnPolygon,
-					Color(primaryColor.alpha, primaryColor.red, primaryColor.green, primaryColor.blue));
+					Color(primaryColor.alpha, primaryColor.red, primaryColor.green, primaryColor.blue),
+					targetPresentation.symbolScale);
 			}
 			const int iconSize = drawConfiguredIcon(sceneTarget, targetPoint);
 
@@ -4574,6 +4568,15 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	const float centerTextHalfHeight = min(
 		max(10.0f, radius * 0.62f),
 		static_cast<float>(29.0 * weatherScale));
+	// The opaque text plate belongs below the wind needle. Drawing it first keeps
+	// the shaft and arrowhead visible at every compass size and direction.
+	Gdiplus::SolidBrush centerPlate(Gdiplus::Color(225, 36, 48, 51));
+	gdi->FillRectangle(
+		&centerPlate,
+		centerX - centerTextHalfWidth,
+		centerY - centerTextHalfHeight,
+		centerTextHalfWidth * 2.0f,
+		centerTextHalfHeight * 2.0f);
 	if (weather.hasWind && !weather.windVariable && !weather.windCalm)
 	{
 		const double angle = (static_cast<double>(windFlowDirection(weather.windDirectionDegrees)) - 90.0) * pi / 180.0;
@@ -4623,14 +4626,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		Gdiplus::SolidBrush arrowBrush(needleColor);
 		gdi->FillPolygon(&arrowBrush, arrow, static_cast<INT>(_countof(arrow)));
 	}
-
-	Gdiplus::SolidBrush centerPlate(Gdiplus::Color(225, 36, 48, 51));
-	gdi->FillRectangle(
-		&centerPlate,
-		centerX - centerTextHalfWidth,
-		centerY - centerTextHalfHeight,
-		centerTextHalfWidth * 2.0f,
-		centerTextHalfHeight * 2.0f);
 
 	CRect directionArea(
 		static_cast<int>(centerX - centerTextHalfWidth),
@@ -5378,9 +5373,17 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					CPosition sourcePosition;
 					sourcePosition.m_Latitude = source.latitude;
 					sourcePosition.m_Longitude = source.longitude;
-					const POINT point = projectPoint(sourcePosition);
-					outline.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
-				}
+						const POINT point = projectPoint(sourcePosition);
+						outline.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
+					}
+					if (std::abs(targetPresentation.symbolScale - 1.0) > 0.0001)
+					{
+						for (PointF& point : outline)
+						{
+							point.X = static_cast<REAL>(center.x) + static_cast<REAL>((point.X - center.x) * targetPresentation.symbolScale);
+							point.Y = static_cast<REAL>(center.y) + static_cast<REAL>((point.Y - center.y) * targetPresentation.symbolScale);
+						}
+					}
 				if (outline.size() >= 3)
 				{
 					const VsmrScene::Color& primary = target.style.primaryReturnColor;
@@ -5388,26 +5391,27 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					gdi->FillPolygon(&primaryBrush, outline.data(), static_cast<INT>(outline.size()));
 				}
 			}
-			Pen symbolPen(drawColor, 1.0f);
+			Pen symbolPen(Color(255, 255, 255, 255), 1.0f);
+			const REAL novaScale = static_cast<REAL>(targetPresentation.symbolScale);
 			if (target.transponderModeC)
 			{
 				PointF points[] = {
-					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y - 5)),
-					PointF(static_cast<REAL>(center.x - 5), static_cast<REAL>(center.y)),
-					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y + 5)),
-					PointF(static_cast<REAL>(center.x + 5), static_cast<REAL>(center.y)),
-					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y - 5))
+					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y) - 5.0f * novaScale),
+					PointF(static_cast<REAL>(center.x) - 5.0f * novaScale, static_cast<REAL>(center.y)),
+					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y) + 5.0f * novaScale),
+					PointF(static_cast<REAL>(center.x) + 5.0f * novaScale, static_cast<REAL>(center.y)),
+					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y) - 5.0f * novaScale)
 				};
 				gdi->DrawLines(&symbolPen, points, static_cast<INT>(_countof(points)));
 			}
 			else
 			{
-				gdi->DrawLine(&symbolPen, center.x, center.y, center.x - 4, center.y - 4);
-				gdi->DrawLine(&symbolPen, center.x, center.y, center.x + 4, center.y - 4);
-				gdi->DrawLine(&symbolPen, center.x, center.y, center.x - 4, center.y + 4);
-				gdi->DrawLine(&symbolPen, center.x, center.y, center.x + 4, center.y + 4);
+				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) - 4.0f * novaScale, static_cast<REAL>(center.y) - 4.0f * novaScale);
+				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) + 4.0f * novaScale, static_cast<REAL>(center.y) - 4.0f * novaScale);
+				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) - 4.0f * novaScale, static_cast<REAL>(center.y) + 4.0f * novaScale);
+				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) + 4.0f * novaScale, static_cast<REAL>(center.y) + 4.0f * novaScale);
 			}
-			return 12;
+			return static_cast<int>(std::ceil(12.0 * targetPresentation.symbolScale));
 		}
 
 		if (target.style.icon == VsmrScene::IconStyle::Realistic)
@@ -5417,33 +5421,10 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				sourceBitmap->GetWidth() > 0 && sourceBitmap->GetHeight() > 0)
 			{
 				const double pixelsPerMeter = max(0.0, forwardLength / 50.0);
-				double drawWidth = target.style.wingspanMeters * pixelsPerMeter;
-				double drawHeight = target.style.lengthMeters * pixelsPerMeter;
-				if (targetPresentation.fixedPixelSize)
-				{
-					const double configuredFactor = targetPresentation.smallIconBoostEnabled
-						? targetPresentation.smallIconBoostFactor : 1.0;
-					const double fixedPixelsPerMeter = (18.0 * targetPresentation.resolutionScale) / 40.0;
-					drawWidth = target.style.wingspanMeters * fixedPixelsPerMeter * configuredFactor;
-					drawHeight = target.style.lengthMeters * fixedPixelsPerMeter * configuredFactor;
-				}
-				else if (targetPresentation.smallIconBoostEnabled && pixelsPerMeter > 0.0)
-				{
-					const double referenceScreenSize = 40.0 * pixelsPerMeter;
-					const double boostStartSize = 14.0 * targetPresentation.resolutionScale;
-					if (referenceScreenSize < boostStartSize)
-					{
-						const double boostedReferenceSize = 18.0 * targetPresentation.smallIconBoostFactor * targetPresentation.resolutionScale;
-						const double boostScale = std::clamp(
-							boostedReferenceSize / max(0.01, referenceScreenSize),
-							1.0,
-							6.0 * targetPresentation.smallIconBoostFactor * targetPresentation.resolutionScale);
-						drawWidth *= boostScale;
-						drawHeight *= boostScale;
-					}
-				}
-				drawWidth = std::clamp(drawWidth, 4.0, 1200.0);
-				drawHeight = std::clamp(drawHeight, 4.0, 1200.0);
+				double drawWidth = target.style.wingspanMeters * pixelsPerMeter * targetPresentation.symbolScale;
+				double drawHeight = target.style.lengthMeters * pixelsPerMeter * targetPresentation.symbolScale;
+				drawWidth = std::clamp(drawWidth, 1.0, 1200.0);
+				drawHeight = std::clamp(drawHeight, 1.0, 1200.0);
 				int pixelWidth = 0;
 				int pixelHeight = 0;
 				std::string cacheKey;
@@ -5503,34 +5484,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 
 		const double pixelsPerMeter = max(0.0, forwardLength / 50.0);
-		double lengthPixels = 20.0;
-		double halfWidthPixels = 12.0;
-		if (targetPresentation.fixedPixelSize)
-		{
-			const double configuredFactor = targetPresentation.smallIconBoostEnabled
-				? targetPresentation.smallIconBoostFactor : 1.0;
-			const double fixedScale = configuredFactor * targetPresentation.resolutionScale;
-			lengthPixels = std::clamp(lengthPixels * fixedScale, 6.0, 160.0);
-			halfWidthPixels = std::clamp(halfWidthPixels * fixedScale, 3.0, 80.0);
-		}
-		else if (pixelsPerMeter > 0.0)
-		{
-			lengthPixels = std::clamp(20.0 * pixelsPerMeter, 6.0, 120.0);
-			halfWidthPixels = std::clamp(12.0 * pixelsPerMeter, 3.0, 60.0);
-			if (targetPresentation.smallIconBoostEnabled)
-			{
-				const double currentExtent = lengthPixels + halfWidthPixels;
-				const double minimumExtent = 14.0 * targetPresentation.smallIconBoostFactor * targetPresentation.resolutionScale;
-				const double boostScale = std::clamp(
-					minimumExtent / max(0.01, currentExtent),
-					1.0,
-					2.0 * targetPresentation.smallIconBoostFactor * targetPresentation.resolutionScale);
-				lengthPixels *= boostScale;
-				halfWidthPixels *= boostScale;
-			}
-		}
-		lengthPixels = std::clamp(lengthPixels * targetPresentation.fixedTriangleScale, 1.0, 220.0);
-		halfWidthPixels = std::clamp(halfWidthPixels * targetPresentation.fixedTriangleScale, 1.0, 110.0);
+		const double lengthPixels = std::clamp(20.0 * pixelsPerMeter * targetPresentation.symbolScale, 0.5, 220.0);
+		const double halfWidthPixels = std::clamp(12.0 * pixelsPerMeter * targetPresentation.symbolScale, 0.35, 110.0);
 
 		SolidBrush symbolBrush(drawColor);
 		if (target.style.icon == VsmrScene::IconStyle::Diamond)
@@ -5588,6 +5543,24 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		int renderedIconSize = 12;
 		if (windowAreaCRect.PtInRect(RtPoint)) {
+			VsmrTargetTrail::Draw(
+				*gdi,
+				sceneTarget,
+				[&](const VsmrScene::GeoPoint& history) -> POINT
+				{
+					CPosition position;
+					position.m_Latitude = history.latitude;
+					position.m_Longitude = history.longitude;
+					return projectPoint(position);
+				},
+				[&](const POINT& point, int margin) -> bool
+				{
+					return point.x >= windowAreaCRect.left - margin &&
+						point.x <= windowAreaCRect.right + margin &&
+						point.y >= windowAreaCRect.top - margin &&
+						point.y <= windowAreaCRect.bottom + margin;
+				},
+				targetPresentation.symbolScale);
 			renderedIconSize = max(12, drawSceneTargetSymbol(sceneTarget, RtPoint));
 			CRect TargetArea(
 				RtPoint.x - renderedIconSize / 2,
