@@ -3367,6 +3367,27 @@ struct VsmrControlCenterBridge::Impl
 			Owner->CurrentConfig->document,
 			previousProfiles,
 			previousProfiles.GetAllocator());
+		const auto profileIndexesMatch = [](const rapidjson::Value& left, const rapidjson::Value& right)
+		{
+			if (!left.IsArray() || !right.IsArray() || left.Size() != right.Size())
+				return false;
+			for (rapidjson::SizeType index = 0; index < left.Size(); ++index)
+			{
+				const bool leftIsProfile = IsProfileEntry(left[index]);
+				const bool rightIsProfile = IsProfileEntry(right[index]);
+				if (leftIsProfile != rightIsProfile)
+					return false;
+				if (leftIsProfile && !EqualsNoCase(
+					TrimAscii(left[index]["name"].GetString()),
+					TrimAscii(right[index]["name"].GetString())))
+				{
+					return false;
+				}
+			}
+			return true;
+		};
+		const bool ownerProfileIndexesRemainStable =
+			profileIndexesMatch(previousProfiles, mergedProfiles);
 		const std::string activeProfileBefore = Owner->GetActiveProfileNameForEditor();
 
 		bool avisoExistedBeforeSave = false;
@@ -3583,8 +3604,15 @@ struct VsmrControlCenterBridge::Impl
 			if (hasStagedAvisoColorPalette && radar != Owner)
 				radar->SetAvisoColorPalette(stagedAvisoColorPalette, false);
 
-			if (!radar->ReloadConfig())
-				reloadFailed = true;
+			// The owner's document is already the validated data written by
+			// saveConfig. If profile indices did not change, reparsing that same file
+			// only adds latency to frequent autosaves. Other radar screens still
+			// reload so their independent CConfig instances receive the update.
+			if (radar != Owner || !ownerProfileIndexesRemainStable)
+			{
+				if (!radar->ReloadConfig())
+					reloadFailed = true;
+			}
 			if (avisoModel != nullptr &&
 				EqualsNoCase(
 					radar->GetAvisoGeoJsonEditorPathForAirport(radar->getActiveAirport()),
@@ -3599,7 +3627,12 @@ struct VsmrControlCenterBridge::Impl
 		}
 		if (!activeProfileBefore.empty() &&
 			Owner->CurrentConfig->isItActiveProfile(activeProfileBefore) != 0)
-			Owner->LoadProfile(activeProfileBefore);
+		{
+			// The staged profile is already authoritative. Saving the outgoing
+			// runtime RIMCAS state here would overwrite a just-edited alert list
+			// before the browser receives the post-save snapshot.
+			Owner->LoadProfile(activeProfileBefore, false);
+		}
 		if (reloadFailed || avisoReloadFailed)
 		{
 			const std::string warning = reloadFailed && avisoReloadFailed
@@ -4217,7 +4250,7 @@ struct VsmrControlCenterBridge::Impl
 				MakeEnvelope(saved, "state.saved", envelope.id);
 				Allocator& allocator = saved.GetAllocator();
 				rapidjson::Value payload(rapidjson::kObjectType);
-				AddString(payload, "message", "Saved and reloaded", allocator);
+				AddString(payload, "message", "Saved", allocator);
 				AddString(
 					payload,
 					"configRevision",
@@ -4234,7 +4267,11 @@ struct VsmrControlCenterBridge::Impl
 				saved.AddMember("payload", payload, allocator);
 				Send(saved);
 			}
-			SendAuthoritativeState("save", envelope.id);
+			// The browser already owns the AVISO document it just saved. Returning
+			// that multi-megabyte resource after every small autosave dominated the
+			// visible save time. Profiles/revisions remain authoritative, while AVISO
+			// is sent only for initial load, explicit reload, and external changes.
+			SendAuthoritativeState("save", envelope.id, false);
 			return true;
 		case VsmrBridgeAction::StateReload:
 		{

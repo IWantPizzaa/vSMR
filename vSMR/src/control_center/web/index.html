@@ -72,17 +72,6 @@
 <button aria-label="Redo" class="rail-button rail-action-button" disabled="" id="redoButton" title="Redo" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 7 5 5-5 5M19 12h-8a6 6 0 0 0-6 6"></path></svg>
 </button>
-<div class="rail-profile-control">
-<button aria-expanded="false" aria-haspopup="listbox" class="rail-button rail-profile-button" data-action="toggle-profile-menu" id="railProfileButton" title="Active profile" type="button">
-<span class="rail-profile-short" id="railProfileShort">LFPG</span>
-</button>
-<div class="rail-profile-popover" hidden="" id="railProfilePopover">
-<label class="rail-profile-selector">
-<span>Active profile</span>
-<select aria-label="Active profile" id="globalProfileSelect"></select>
-</label>
-</div>
-</div>
 <button aria-label="Revert to saved configuration" class="rail-button rail-action-button" id="reloadButton" title="Revert to saved configuration" type="button">
 <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M19 7v5h-5M5 17v-5h5M7.1 8.1A7 7 0 0 1 18.5 10M16.9 15.9A7 7 0 0 1 5.5 14"></path></svg>
 </button>
@@ -107,12 +96,11 @@
 <section class="subpage active" data-profile-panel="colors">
 <div class="split-layout split-master color-layout">
 <aside class="panel master-panel">
-<div class="panel-title"><span>Profile colors <small id="colorCountCaption"></small></span><button class="title-tool" data-action="reset-color" title="Reset selected color" type="button">↺</button></div>
-<div class="search-row"><input aria-label="Find color" id="colorSearch" placeholder="Find color…" type="search"/></div>
-<div class="scroll-list visual-tree color-definition-tree" id="colorTree"></div>
+<div class="panel-title"><span>Profile colors</span></div>
+<div class="scroll-list visual-tree unified-master-list color-definition-tree" id="colorTree"></div>
 </aside>
 <section class="panel detail-panel">
-<div class="panel-title"><span id="selectedColorPath">Color</span><small id="selectedColorGroup"></small></div>
+<div class="panel-title"><span id="selectedColorPath">Color</span></div>
 <div class="detail-scroll color-detail-scroll">
 <div class="color-editor-body">
 <div class="color-picker-workbench">
@@ -138,7 +126,7 @@
 </section>
 <section class="subpage" data-profile-panel="icons">
 <section class="panel full-editor-panel">
-<div class="panel-title"><span>Target icons</span><small id="iconProfileCaption"></small></div>
+<div class="panel-title"><span>Target icons</span></div>
 <div class="profile-settings-scroll icon-settings-grid">
 <fieldset class="compact-group icon-symbol-group">
 <legend>Symbol</legend>
@@ -170,12 +158,12 @@
 <section class="subpage" data-profile-panel="tags">
 <div class="split-layout split-master tag-layout">
 <aside class="panel master-panel">
-<div class="panel-title"><span>Tag definitions <small id="tagCountCaption"></small></span></div>
-<div class="scroll-list visual-tree tag-definition-tree" id="tagDefinitionList"></div>
+<div class="panel-title"><span>Tag definitions</span></div>
+<div class="scroll-list visual-tree unified-master-list tag-definition-tree" id="tagDefinitionList"></div>
 </aside>
 <div class="tag-right-stack">
 <section class="panel tag-definition-detail-panel">
-<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><small id="tagEditorScope"></small></div>
+<div class="panel-title"><span id="tagEditorCaption">Tag definition</span></div>
 <div class="detail-scroll tag-definition-detail-scroll">
 <div class="tag-editor-panel" id="tagDefinitionEditor">
 <label class="check-field inherit-row"><input id="tagDetailedInherits" type="checkbox"/><span>Detailed tag inherits normal</span></label>
@@ -189,17 +177,13 @@
 </div>
 </section>
 <section class="panel tag-global-options-panel">
-<div class="panel-title"><span>Tag options</span><small>Global · active profile</small></div>
+<div class="panel-title"><span>Tag options</span></div>
 <div class="tag-global-options-body" id="tagOptionsEditor">
 <div class="tag-options-block">
 <div class="tag-options-subtitle">Behaviour</div>
 <div class="dense-form two-cols">
 <label class="check-field check-in-form"><input id="tagRoundedCorners" type="checkbox"/><span>Rounded corners</span></label>
 <label class="check-field check-in-form"><input id="tagAutoDeconfliction" type="checkbox"/><span>Auto deconfliction</span></label>
-<label class="check-field check-in-form"><input id="tagUseSpeedGate" type="checkbox"/><span>Speed-based gate</span></label>
-<label class="check-field check-in-form"><input id="tagDepartureArrivalColors" type="checkbox"/><span>Departure / arrival colors</span></label>
-<label class="field"><span>Leader line</span><input id="tagLeaderLineLength" min="0" step="1" type="number"/></label>
-<label class="field"><span>Label size</span><span class="range-control"><input id="tagLabelFontSize" max="5" min="1" step="1" type="range"/><output id="tagLabelFontSizeOutput">1</output></span></label>
 </div>
 </div>
 <div class="tag-options-block tag-typography-block">
@@ -207,6 +191,7 @@
 <div class="dense-form three-cols tag-font-grid">
 <label class="field span-2"><span>Typeface</span><select id="profileFontName"></select></label>
 <label class="field"><span>Weight</span><select id="profileFontWeight"><option>Regular</option><option>Bold</option><option>Italic</option></select></label>
+<label class="field"><span>Label font size</span><input id="tagLabelFontSize" max="5" min="1" step="1" type="number"/></label>
 </div>
 </div>
 </div>
@@ -216,9 +201,14 @@
 </section>
 <section class="subpage" data-profile-panel="rules">
 <div class="split-layout split-master rules-layout">
-<aside class="panel master-panel">
-<div class="panel-title"><span>Rules <small id="ruleCountCaption"></small></span><span class="mini-tools list-tools"><button aria-label="New rule" data-action="new-rule" title="New" type="button">+</button><button aria-label="Duplicate rule" data-action="duplicate-rule" title="Duplicate" type="button">⧉</button><button aria-label="Delete rule" data-action="delete-rule" title="Delete" type="button">−</button></span></div>
-<div class="scroll-list selection-list" id="ruleList"></div>
+<aside class="panel master-panel manager-list-panel">
+<div class="panel-title"><span>Rules</span></div>
+<div class="scroll-list selection-list visual-tree unified-master-list" id="ruleList"></div>
+<div class="master-list-actions">
+<button aria-label="New rule" data-action="new-rule" title="New rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button aria-label="Duplicate rule" data-action="duplicate-rule" title="Duplicate rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="delete" aria-label="Delete rule" data-action="delete-rule" title="Delete rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+</div>
 </aside>
 <section class="panel detail-panel">
 <div class="panel-title"><span id="ruleFormCaption">Rule</span></div>
@@ -261,9 +251,14 @@
 </div>
 </section><section class="page standalone-manager-page modes-page" data-page-panel="modes">
 <div class="split-layout split-master modes-layout">
-<aside class="panel master-panel">
-<div class="panel-title"><span>Modes <small id="modeCountCaption"></small></span><span class="mini-tools list-tools"><button aria-label="New mode" data-action="new-mode" title="New" type="button">+</button><button aria-label="Duplicate mode" data-action="duplicate-mode" title="Duplicate" type="button">⧉</button><button aria-label="Delete mode" data-action="delete-mode" title="Delete" type="button">−</button></span></div>
-<div class="scroll-list selection-list" id="modeList"></div>
+<aside class="panel master-panel manager-list-panel">
+<div class="panel-title"><span>Modes</span></div>
+<div class="scroll-list selection-list visual-tree unified-master-list" id="modeList"></div>
+<div class="master-list-actions">
+<button aria-label="New mode" data-action="new-mode" title="New mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button aria-label="Duplicate mode" data-action="duplicate-mode" title="Duplicate mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="delete" aria-label="Delete mode" data-action="delete-mode" title="Delete mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+</div>
 </aside>
 <section class="panel detail-panel mode-detail-panel">
 <div class="panel-title"><span id="modePropertiesCaption">Mode properties</span><button class="title-tool" data-action="activate-mode" title="Set active mode" type="button">Set active</button></div>
@@ -295,9 +290,14 @@
 </div>
 </section><section class="page standalone-manager-page profiles-page" data-page-panel="profiles">
 <div class="split-layout split-master profiles-layout">
-<aside class="panel master-panel">
-<div class="panel-title"><span>Profiles <small id="profileCountCaption"></small></span><span class="mini-tools list-tools"><button aria-label="New profile" data-action="new-profile" title="New" type="button">+</button><button aria-label="Duplicate profile" data-action="duplicate-profile" title="Duplicate" type="button">⧉</button><button aria-label="Delete profile" data-action="delete-profile" title="Delete" type="button">−</button></span></div>
-<div class="scroll-list selection-list" id="profileList"></div>
+<aside class="panel master-panel manager-list-panel">
+<div class="panel-title"><span>Profiles</span></div>
+<div class="scroll-list selection-list visual-tree unified-master-list" id="profileList"></div>
+<div class="master-list-actions">
+<button aria-label="New profile" data-action="new-profile" title="New profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button aria-label="Duplicate profile" data-action="duplicate-profile" title="Duplicate profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="delete" aria-label="Delete profile" data-action="delete-profile" title="Delete profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+</div>
 </aside>
 <section class="panel detail-panel profile-detail-panel">
 <div class="panel-title"><span id="profilePropertiesCaption">Profile properties</span><button class="title-tool" data-action="activate-profile" type="button">Set active</button></div>
@@ -315,8 +315,8 @@
 <section class="page aviso-page" data-page-panel="aviso">
 <div class="aviso-toolbar">
 <nav aria-label="AVISO editor sections" class="subtabs aviso-subtabs">
-<button data-aviso-view="geometry" type="button">Geometry <small id="avisoGeometryTabCount"></small></button>
-<button class="active" data-aviso-view="text" type="button">Text <small id="avisoTextTabCount"></small></button>
+<button data-aviso-view="geometry" type="button">Geometry</button>
+<button class="active" data-aviso-view="text" type="button">Text</button>
 </nav>
 <span class="dataset-caption" id="avisoDatasetCaption">LFPG</span>
 <div class="aviso-load-control">
@@ -332,35 +332,29 @@
 <div class="aviso-geometry-layout">
 <aside class="panel aviso-style-list-panel">
 <div class="panel-title">
-<span>Geometry styles <small id="avisoGeometryStyleCount"></small></span>
-<small class="selection-caption" id="avisoGeometrySelectionCount">1 selected</small>
+<span>Geometry styles</span>
 </div>
-<div class="search-row"><input aria-label="Find geometry style" id="avisoGeometrySearch" placeholder="Find surface or line…" type="search"/></div>
-<div aria-label="Geometry styles" aria-multiselectable="true" class="scroll-list aviso-style-tree" id="avisoGeometryStyleList" role="listbox" tabindex="0"></div>
+<div aria-label="Geometry styles" aria-multiselectable="true" class="scroll-list visual-tree unified-master-list aviso-style-tree" id="avisoGeometryStyleList" role="listbox" tabindex="0"></div>
 </aside>
 <section class="panel aviso-category-editor">
-<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span><small id="avisoGeometrySelectionMeta"></small></div>
+<div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
 <div class="aviso-flat-style-editor aviso-geometry-properties">
-<label class="check-field aviso-wide-check"><input id="avisoGeometryVisible" type="checkbox"/><span id="avisoGeometryVisibleLabel">Show this category</span></label>
-<div class="selection-compatibility" hidden="" id="avisoGeometryCompatibility"></div>
-<div class="dense-form two-cols aviso-style-form">
-<label class="field full" id="avisoGeometryFillGroup"><span id="avisoGeometryFillColorLabel">Fill color</span><span class="aviso-color-pair" id="avisoGeometryFillPair"><input aria-label="Fill color picker" id="avisoGeometryFillPicker" type="color"/><input id="avisoGeometryFillColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
-<label class="field"><span id="avisoGeometryStrokeLegend">Outline color</span><span class="aviso-color-pair" id="avisoGeometryStrokePair"><input aria-label="Line color picker" id="avisoGeometryStrokePicker" type="color"/><input id="avisoGeometryStrokeColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
-<label class="field"><span>Width</span><input id="avisoGeometryStrokeWidth" max="8" min="0.25" placeholder="Mixed" step="0.25" type="number"/></label>
+<div class="color-editor-body aviso-color-editor-body" id="avisoGeometryColorEditor">
+<div class="aviso-color-editor-heading" id="avisoGeometryColorLabel">Fill color</div>
+<div class="color-picker-workbench">
+<div aria-label="Geometry color saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" class="color-sv-palette" id="avisoGeometryColorSvPalette" role="slider" tabindex="0"><span aria-hidden="true" class="color-palette-cursor" id="avisoGeometryColorPaletteCursor"></span></div>
+<div aria-label="Geometry color preview" class="color-preview-card"><span aria-hidden="true" class="color-preview-swatch" id="avisoGeometryColorSwatch"></span></div>
 </div>
-<details class="advanced-disclosure" id="avisoGeometryAdvanced">
-<summary><span>Advanced</span><small>Opacity &amp; groups</small></summary>
-<div class="advanced-body">
-<label class="field aviso-range-field" id="avisoGeometryFillOpacityField"><span>Fill opacity</span><span class="range-control"><input id="avisoGeometryFillOpacity" max="100" min="0" type="range"/><output id="avisoGeometryFillOpacityOutput">100%</output></span></label>
-<label class="field aviso-range-field"><span>Line / outline opacity</span><span class="range-control"><input id="avisoGeometryStrokeOpacity" max="100" min="0" type="range"/><output id="avisoGeometryStrokeOpacityOutput">100%</output></span></label>
-<div class="aviso-group-assignment">
-<label class="field"><span>Add selection to group</span><select id="avisoGeometryGroupTarget"></select></label>
-<button class="ui-button" data-action="assign-aviso-geometry-group" id="avisoGeometryGroupAdd" type="button">Add</button>
+<label class="field color-hex-field"><span>Hex</span><input id="avisoGeometryColorHex" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" type="text"/></label>
+<div aria-label="Geometry HSRGBA channels" class="color-channel-sliders">
+<label class="color-slider-row hue-slider-row"><span>Hue</span><input id="avisoGeometryColorHue" max="360" min="0" step="1" type="range"/><input aria-label="Geometry hue value" class="color-channel-value" id="avisoGeometryColorHueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row red-channel"><span>Red</span><input id="avisoGeometryColorRed" max="255" min="0" step="1" type="range"/><input aria-label="Geometry red value" class="color-channel-value" id="avisoGeometryColorRedOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row green-channel"><span>Green</span><input id="avisoGeometryColorGreen" max="255" min="0" step="1" type="range"/><input aria-label="Geometry green value" class="color-channel-value" id="avisoGeometryColorGreenOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row blue-channel"><span>Blue</span><input id="avisoGeometryColorBlue" max="255" min="0" step="1" type="range"/><input aria-label="Geometry blue value" class="color-channel-value" id="avisoGeometryColorBlueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row opacity-channel"><span>Opacity</span><input id="avisoGeometryColorOpacity" max="100" min="0" step="1" type="range"/><input aria-label="Geometry opacity percentage" class="color-channel-value" id="avisoGeometryColorOpacityOutput" inputmode="numeric" maxlength="3" type="text"/></label>
 </div>
-<div class="aviso-advanced-meta" id="avisoGeometryAdvancedInfo"></div>
 </div>
-</details>
 </div>
 </div>
 </section>
@@ -370,23 +364,32 @@
 <div class="aviso-text-layout">
 <aside class="panel aviso-style-list-panel aviso-text-style-panel">
 <div class="panel-title">
-<span>Text styles <small id="avisoTextStyleCount"></small></span>
-<small class="selection-caption" id="avisoTextSelectionCount">1 selected</small>
+<span>Text styles</span>
 </div>
-<div class="search-row"><input aria-label="Find text style" id="avisoTextSearch" placeholder="Find text style…" type="search"/></div>
-<div aria-label="Text styles" aria-multiselectable="true" class="scroll-list aviso-style-tree" id="avisoTextStyleList" role="listbox" tabindex="0"></div>
+<div aria-label="Text styles" aria-multiselectable="true" class="scroll-list visual-tree unified-master-list aviso-style-tree" id="avisoTextStyleList" role="listbox" tabindex="0"></div>
 </aside>
 <section class="panel aviso-text-editor">
-<div class="panel-title"><span id="avisoTextCaption">Text style</span><small id="avisoTextSelectionMeta"></small></div>
+<div class="panel-title"><span id="avisoTextCaption">Text style</span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
 <div class="aviso-flat-style-editor aviso-text-properties">
-<label class="check-field aviso-wide-check"><input id="avisoTextVisible" type="checkbox"/><span id="avisoTextVisibleLabel">Show this text style</span></label>
 <div class="dense-form two-cols aviso-style-form">
 <label class="field"><span>Font</span><input id="avisoTextFont" list="avisoFontChoices" placeholder="Mixed" type="text"/></label>
 <label class="field"><span>Size</span><input id="avisoTextSize" max="32" min="6" placeholder="Mixed" step="1" type="number"/></label>
-<label class="field full"><span id="avisoTextColorLabel">Text color</span><span class="aviso-color-pair" id="avisoTextColorPair"><input aria-label="Text color picker" id="avisoTextColorPicker" type="color"/><input id="avisoTextColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
-<label class="field"><span id="avisoTextHaloColorLabel">Halo color</span><span class="aviso-color-pair" id="avisoTextHaloPair"><input aria-label="Halo color picker" id="avisoTextHaloPicker" type="color"/><input id="avisoTextHaloColor" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" title="Enter a color as #RRGGBB" type="text"/></span></label>
-<label class="field"><span>Width</span><input id="avisoTextHaloWidth" max="6" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
+<label class="field"><span>Halo width</span><input id="avisoTextHaloWidth" max="6" min="0" placeholder="Mixed" step="0.5" type="number"/></label>
+</div>
+<div class="color-editor-body aviso-color-editor-body" id="avisoTextColorEditor">
+<div class="aviso-color-editor-toolbar"><div class="aviso-color-editor-heading" id="avisoTextColorLabel">Text color</div><div aria-label="Text paint color" class="aviso-color-target-switch"><button class="active" data-action="select-aviso-text-color" data-color-target="text" type="button">Text</button><button data-action="select-aviso-text-color" data-color-target="halo" type="button">Halo</button></div></div>
+<div class="color-picker-workbench">
+<div aria-label="Text color saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" class="color-sv-palette" id="avisoTextColorSvPalette" role="slider" tabindex="0"><span aria-hidden="true" class="color-palette-cursor" id="avisoTextColorPaletteCursor"></span></div>
+<div aria-label="Text color preview" class="color-preview-card"><span aria-hidden="true" class="color-preview-swatch" id="avisoTextColorSwatch"></span></div>
+</div>
+<label class="field color-hex-field"><span>Hex</span><input id="avisoTextColorHex" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" type="text"/></label>
+<div aria-label="Text HSRGB channels" class="color-channel-sliders">
+<label class="color-slider-row hue-slider-row"><span>Hue</span><input id="avisoTextColorHue" max="360" min="0" step="1" type="range"/><input aria-label="Text hue value" class="color-channel-value" id="avisoTextColorHueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row red-channel"><span>Red</span><input id="avisoTextColorRed" max="255" min="0" step="1" type="range"/><input aria-label="Text red value" class="color-channel-value" id="avisoTextColorRedOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row green-channel"><span>Green</span><input id="avisoTextColorGreen" max="255" min="0" step="1" type="range"/><input aria-label="Text green value" class="color-channel-value" id="avisoTextColorGreenOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+<label class="color-slider-row blue-channel"><span>Blue</span><input id="avisoTextColorBlue" max="255" min="0" step="1" type="range"/><input aria-label="Text blue value" class="color-channel-value" id="avisoTextColorBlueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
+</div>
 </div>
 <div class="aviso-text-zoom-box">
 <div class="tag-options-subtitle">Zoom visibility</div>
@@ -408,14 +411,13 @@
 <div class="alerts-layout">
 <div class="alerts-control-column">
 <fieldset class="compact-group alert-types-box">
-<legend><span>Active alert types</span><span class="legend-tools"><button data-action="alerts-enable-all" type="button">All</button><button data-action="alerts-disable-all" type="button">None</button></span></legend>
+<legend>Active alert types</legend>
 <div class="alert-toggle-grid" id="alertTypeGrid"></div>
 </fieldset>
 <fieldset class="compact-group alerts-timing-box">
 <legend>Conflict timing</legend>
 <div class="alert-timing-mode"><strong>Normal</strong><div class="alert-timer-row" id="alertTimerNormal"></div></div>
 <div class="alert-timing-mode"><strong>LVP</strong><div class="alert-timer-row" id="alertTimerLvp"></div></div>
-<label class="field alert-threshold-field"><span>Stage-two speed (kt)</span><input id="alertSpeedThreshold" min="0" step="1" type="number"/></label>
 </fieldset>
 </div>
 <fieldset class="compact-group alerts-runways-box">
@@ -431,12 +433,16 @@
 <section class="page groups-page" data-page-panel="groups">
 <div class="aviso-groups-layout">
 <aside class="panel aviso-group-list-panel">
-<div class="panel-title"><span>Groups <small id="avisoGroupCount"></small></span><span class="mini-tools list-tools"><button aria-label="New group" data-action="new-aviso-group" title="New" type="button">+</button><button aria-label="Duplicate group" data-action="duplicate-aviso-group" title="Duplicate" type="button">⧉</button><button aria-label="Delete group" data-action="delete-aviso-group" title="Delete" type="button">−</button></span></div>
-<div class="search-row"><input aria-label="Find AVISO group" id="avisoGroupSearch" placeholder="Find group…" type="search"/></div>
-<div aria-label="AVISO groups" class="scroll-list aviso-group-list" id="avisoGroupList" role="listbox"></div>
+<div class="panel-title"><span>Groups</span></div>
+<div aria-label="AVISO groups" class="scroll-list visual-tree unified-master-list aviso-group-list" id="avisoGroupList" role="listbox"></div>
+<div class="master-list-actions">
+<button aria-label="New group" data-action="new-aviso-group" title="New group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button aria-label="Duplicate group" data-action="duplicate-aviso-group" title="Duplicate group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="delete" aria-label="Delete group" data-action="delete-aviso-group" title="Delete group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+</div>
 </aside>
 <section class="panel aviso-group-editor">
-<div class="panel-title"><span id="avisoGroupCaption">Group</span><small id="avisoGroupSelectionMeta"></small></div>
+<div class="panel-title"><span id="avisoGroupCaption">Group</span></div>
 <div class="detail-scroll aviso-group-editor-scroll redesigned-group-editor">
 <fieldset class="compact-group group-settings-card">
 <legend>Group</legend>
@@ -465,7 +471,7 @@
 <legend>Data files</legend>
 <div class="settings-file-list">
 <section class="settings-file-row">
-<div class="settings-file-heading"><strong>Profiles</strong><small>vSMR_Profiles.json</small></div>
+<div class="settings-file-heading"><strong>Profiles</strong></div>
 <input aria-label="Profiles source" id="settingsProfileFile" type="text"/>
 <div class="settings-file-actions">
 <button class="ui-button" data-action="load-profiles-computer" type="button">Computer…</button>
@@ -473,7 +479,7 @@
 </div>
 </section>
 <section class="settings-file-row">
-<div class="settings-file-heading"><strong>AVISO GeoJSON</strong><small>FeatureCollection</small></div>
+<div class="settings-file-heading"><strong>AVISO GeoJSON</strong></div>
 <input aria-label="AVISO GeoJSON source" id="settingsAvisoFile" type="text"/>
 <div class="settings-file-actions">
 <button class="ui-button" data-action="load-aviso-computer" type="button">Computer…</button>
@@ -481,7 +487,7 @@
 </div>
 </section>
 <section class="settings-file-row settings-alias-file-row">
-<div class="settings-file-heading"><strong>EuroScope alias</strong><small>.cdm template source</small></div>
+<div class="settings-file-heading"><strong>EuroScope alias</strong></div>
 <input aria-label="EuroScope alias file" id="settingsAliasFile" readonly="" type="text"/>
 </section>
 <div class="settings-recovery-actions">
@@ -561,7 +567,6 @@
 <button class="ui-button" data-action="select-filtered-group-content" type="button">Select shown</button>
 <button class="ui-button" data-action="clear-filtered-group-content" type="button">Clear shown</button>
 </div>
-<div class="aviso-group-content-summary" id="avisoGroupContentSummary"></div>
 <div class="scroll-list aviso-group-content-list" id="avisoGroupContentList"></div>
 </div>
 <div class="actionbar compact-dialog-actions"><button class="ui-button primary" type="submit" value="close">Close</button></div>

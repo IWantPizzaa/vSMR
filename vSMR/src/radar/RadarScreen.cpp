@@ -1295,12 +1295,12 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 		{
 			for (const fs::path& searchDirectory : searchDirectories)
 			{
-				const fs::path dynamicPath = searchDirectory / (airportUpper + "_Dyna_fixed.geojson");
+				const fs::path dynamicPath = searchDirectory / (airportUpper + "_Dyna.geojson");
 				if (IsRegularFileNoThrow(dynamicPath))
 					return rememberResolvedPath(dynamicPath.string());
 			}
 
-			const std::string expectedDynamicStem = airportUpper + "_DYNA_FIXED";
+			const std::string expectedDynamicStem = airportUpper + "_DYNA";
 			for (const fs::path& searchDirectory : searchDirectories)
 			{
 				if (!IsDirectoryNoThrow(searchDirectory))
@@ -1318,11 +1318,11 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 				}
 			}
 
-			// Retain the beta.2 preview filename as a compatibility fallback for
-			// manual installations that update only the DLL.
+			// Retain the beta.3 filename as a compatibility fallback for manual
+			// installations that update only the DLL.
 			for (const fs::path& searchDirectory : searchDirectories)
 			{
-				const fs::path legacyDynamicPath = searchDirectory / (airportUpper + "_Dyna.geojson");
+				const fs::path legacyDynamicPath = searchDirectory / (airportUpper + "_Dyna_fixed.geojson");
 				if (IsRegularFileNoThrow(legacyDynamicPath))
 					return rememberResolvedPath(legacyDynamicPath.string());
 			}
@@ -4741,7 +4741,9 @@ void CSMRRadar::LoadProfile(
 				isLVP = false;
 		}
 
-		if (rimcasConfig->HasMember("runways") && (*rimcasConfig)["runways"].IsArray())
+		if (rimcasConfig->HasMember("runways") &&
+			(*rimcasConfig)["runways"].IsArray() &&
+			!(*rimcasConfig)["runways"].Empty())
 		{
 			RimcasRunwaysExplicitlyConfigured = true;
 			RimcasInstance->MonitoredRunwayArr.clear();
@@ -5149,9 +5151,9 @@ void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
 		return;
 	}
 
-	// Legacy profiles without a `rimcas.runways` member follow EuroScope's
-	// current runway activity. Explicit profile rows, including an empty array,
-	// remain authoritative and are never overwritten here.
+	// Profiles without configured runway rows follow EuroScope's current runway
+	// activity. Older editor versions commonly persisted an empty array, so it
+	// must retain the same inherited behavior as a missing member.
 	CPlugIn* plugin = GetPlugIn();
 	struct ActiveSectorSelectionGuard
 	{

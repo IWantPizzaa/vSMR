@@ -184,7 +184,7 @@ try {
         Get-ChildItem -LiteralPath $resolvedDataDirectory -Filter "*.geojson" -File |
             Where-Object {
                 $_.Name -match "^[A-Za-z0-9]{4}\.geojson$" -or
-                $_.Name -eq "LFPG_Dyna_fixed.geojson"
+                $_.Name -eq "LFPG_Dyna.geojson"
             } |
             Sort-Object Name
     )
@@ -215,7 +215,7 @@ try {
         }
 
         $currentText = [System.IO.File]::ReadAllText($currentFile.FullName, [System.Text.Encoding]::UTF8)
-        $wasPrettyPrinted = $currentFile.Name -eq "LFPG_Dyna_fixed.geojson" -or
+        $wasPrettyPrinted = $currentFile.Name -eq "LFPG_Dyna.geojson" -or
             $currentText -match "^\s*\{\s*`r?`n"
         $current = $currentText | ConvertFrom-Json
         $dayText = [System.IO.File]::ReadAllText($dayFilesByName[$currentFile.Name], [System.Text.Encoding]::UTF8)

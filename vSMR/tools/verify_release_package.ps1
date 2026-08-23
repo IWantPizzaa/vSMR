@@ -313,7 +313,7 @@ try {
         'vSMR_webUI\data.js',
         'vSMR_webUI\defaults\vSMR_Profiles.json',
         'AVISO\LFPG.geojson',
-        'AVISO\LFPG_Dyna_fixed.geojson',
+        'AVISO\LFPG_Dyna.geojson',
         'Runtime\vSMR.Runtime.dll',
         'CrashReporter\vSMRCrashHandler.dll',
         'Licenses\vSMR.txt',
@@ -340,7 +340,7 @@ try {
     $nonCanonicalAvisoFiles = @(
         $packagedAvisoFiles | Where-Object {
             $_.Name -notmatch '^[A-Za-z0-9]{4}\.geojson$' -and
-            $_.Name -cne 'LFPG_Dyna_fixed.geojson'
+            $_.Name -cne 'LFPG_Dyna.geojson'
         }
     )
     if ($nonCanonicalAvisoFiles.Count -ne 0) {

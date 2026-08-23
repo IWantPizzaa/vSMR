@@ -212,7 +212,7 @@ Bundled documents declare `metadata.default_color_palette` as `night` and list `
 
 The Day/Night selector is in the Settings Display group and is saved with the radar screen's ASR state. Saving the setting invalidates the existing AVISO rasters and switches the main view and AVISO inset together without reparsing the source document. Geometry and Text editor swatches and color fields follow the selected palette: Night edits update base paint, while Day edits update `palette-overrides.day`. Visibility, opacity, width, typography, halo width, and zoom remain common to both palettes.
 
-The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna_fixed.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. The earlier `LFPG_Dyna.geojson` preview and legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
+The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. The earlier `LFPG_Dyna_fixed.geojson` and legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
 
 The Control Center can:
 
@@ -227,7 +227,7 @@ A reusable entry in the document's `styles` catalog supplies the default paint f
 
 ### LFPG dynamic frequency ownership
 
-`LFPG_Dyna_fixed.geojson` extends the normal LFPG AVISO map with frequency ownership polygons and pre-positioned frequency labels. For each non-RMP `frequency_ownership_area`, vSMR walks its ordered `takeover_chain` and selects the first position ID that EuroScope currently reports as a connected controller. No online-controller list or label position is hard-coded.
+`LFPG_Dyna.geojson` extends the normal LFPG AVISO map with frequency ownership polygons and pre-positioned frequency labels. For each non-RMP `frequency_ownership_area`, vSMR walks its ordered `takeover_chain` and selects the first position ID that EuroScope currently reports as a connected controller. No online-controller list or label position is hard-coded.
 
 - A polygon inherited by your own connected position is drawn in blue and its frequency label is hidden.
 - A non-RMP polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
@@ -447,7 +447,7 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | --- | --- |
 | `vSMR_Profiles.json` | Profiles, display modes, tag definitions, rules, colors, filters, presets, and metadata |
 | `AVISO\<ICAO>.geojson` | Default airport-specific AVISO map data; legacy `AVISO_<ICAO>.geojson` files remain a compatibility fallback |
-| `AVISO\LFPG_Dyna_fixed.geojson` | LFPG map plus dynamic controller ownership polygons and positioned, area-specific frequency labels; preferred for LFPG when present |
+| `AVISO\LFPG_Dyna.geojson` | LFPG map plus dynamic controller ownership polygons and positioned, area-specific frequency labels; preferred for LFPG when present |
 | `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
 | `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
 | `aircraft_icons\*.png` | Aircraft-type silhouettes used by the `Icon` target style |

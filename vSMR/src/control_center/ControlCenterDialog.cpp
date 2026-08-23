@@ -1375,7 +1375,7 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 	{
 		const std::filesystem::path avisoDirectory = dataDirectory / "AVISO";
 		const std::filesystem::path dynamicPath =
-			avisoDirectory / std::filesystem::path(activeAirport + "_Dyna_fixed.geojson");
+			avisoDirectory / std::filesystem::path(activeAirport + "_Dyna.geojson");
 		std::error_code dynamicExistsError;
 		if (activeAirport == "LFPG" &&
 			std::filesystem::is_regular_file(dynamicPath, dynamicExistsError))
@@ -1384,8 +1384,19 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 		}
 		else
 		{
-			avisoPath = avisoDirectory /
-				std::filesystem::path(activeAirport + ".geojson");
+			const std::filesystem::path legacyDynamicPath =
+				avisoDirectory / std::filesystem::path(activeAirport + "_Dyna_fixed.geojson");
+			std::error_code legacyDynamicExistsError;
+			if (activeAirport == "LFPG" &&
+				std::filesystem::is_regular_file(legacyDynamicPath, legacyDynamicExistsError))
+			{
+				avisoPath = legacyDynamicPath;
+			}
+			else
+			{
+				avisoPath = avisoDirectory /
+					std::filesystem::path(activeAirport + ".geojson");
+			}
 		}
 	}
 	std::error_code avisoExistsError;
