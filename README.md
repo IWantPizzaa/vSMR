@@ -176,7 +176,7 @@ If a Profiles or AVISO file changes outside vSMR while edits are pending, the Co
 
 Profiles control fonts, target symbols, target/tag colors, definitions, structured rules, filters, RIMCAS appearance, and SRW 1 styling. Display modes select status visibility and operational requirements without duplicating a complete profile.
 
-The Symbols page previews NOVA, Icon, and Triangle at a consistent visual size. NOVA uses a clean white filled primary-return silhouette without decorative center or trailing marks.
+The Icons page previews NOVA, Icon, and Triangle and configures their size and position trails. `1.00×` is the normal symbol size—and the aircraft's real-world dimensions for Icon—while the slider proportionally adjusts it from `0.50×` to `1.50×` without disabling zoom scaling. NOVA follows the original vSMR presentation with an irregular primary return, three cyan afterglow returns, white history dots, and a white diamond/cross secondary return. Only moving aircraft above 5 kt receive a trail; Icon uses filled bubbles that grey and fade with age, while Triangle uses shrinking hollow circles.
 
 The color editor combines saturation/brightness selection with RGB, opacity, and a full-spectrum hue slider. Hex, Hue, Red, Green, Blue, and Opacity also have direct text fields for precise entry and copy/paste. The adjacent swatch is a preview only; all color changes stay in this editor instead of opening a second system color picker.
 

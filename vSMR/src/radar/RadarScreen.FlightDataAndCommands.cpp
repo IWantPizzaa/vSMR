@@ -28,7 +28,11 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 
 	CRadarTargetPositionData RtPos = RadarTarget.GetPosition();
 
-	Patatoides[callsign].points.clear();
+	Patatoide_Points& primaryReturn = Patatoides[callsign];
+	primaryReturn.historyThreePoints = std::move(primaryReturn.historyTwoPoints);
+	primaryReturn.historyTwoPoints = std::move(primaryReturn.historyOnePoints);
+	primaryReturn.historyOnePoints = std::move(primaryReturn.points);
+	primaryReturn.points.clear();
 
 	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(callsign.c_str());
 
@@ -126,14 +130,14 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 		double dist, rndHeading;
 		dist = startPoint.DistanceTo(endPoint);
 
-		Patatoides[callsign].points[i * 7] = { startPoint.m_Latitude, startPoint.m_Longitude };
+		primaryReturn.points[i * 7] = { startPoint.m_Latitude, startPoint.m_Longitude };
 		lastPoint = startPoint;
 
 		for (int k = 1; k < 7; k++){
 
 			rndHeading = float(fmod(lastPoint.DirectionTo(endPoint) + (-25.0 + (rand() % 50 + 1)), 360));
 			newPoint = Haversine(lastPoint, rndHeading, dist * 200);
-			Patatoides[callsign].points[(i * 7) + k] = { newPoint.m_Latitude, newPoint.m_Longitude };
+			primaryReturn.points[(i * 7) + k] = { newPoint.m_Latitude, newPoint.m_Longitude };
 			lastPoint = newPoint;
 		}
 	}

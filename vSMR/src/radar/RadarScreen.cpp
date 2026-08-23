@@ -2,6 +2,7 @@
 #include "platform/windows/ResourceIds.h"
 #include "bootstrap/RuntimeContext.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/TargetTrailRenderer.hpp"
 #include "insets/InsetWindow.hpp"
 #include <fstream>
 #include <iomanip>
@@ -3187,13 +3188,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		hasLastCoordinate = true;
 	};
 
-	struct DeferredOwnershipOutline
-	{
-		const AvisoFeature* feature = nullptr;
-		Color strokeColor;
-		bool ownedByMe = false;
-	};
-	std::vector<DeferredOwnershipOutline> deferredOwnershipOutlines;
 	std::vector<PointF> rasterPoints;
 	for (const AvisoFeature& feature : *request.features)
 	{
@@ -3206,7 +3200,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 
 		Color featureFillColor = request.useDayPalette ? feature.dayFillColor : feature.fillColor;
 		Color featureStrokeColor = request.useDayPalette ? feature.dayStrokeColor : feature.strokeColor;
-		bool ownedByMe = false;
 		if (feature.frequencyOwnership.dynamicItem)
 		{
 			if (feature.frequencyOwnership.ruleKey.empty() || request.frequencyOwnership == nullptr)
@@ -3220,11 +3213,11 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			}
 			if (ownership->second.ownedByMe)
 			{
-				ownedByMe = true;
 				// Keep inherited/self-owned territory visible but deliberately
 				// quieter and blue, while foreign ownership retains the source
 				// service color (yellow in the LFPG data set).
-				featureStrokeColor = Color(featureStrokeColor.GetAlpha(), 79, 195, 247);
+				if (!feature.polygon)
+					featureStrokeColor = Color(featureStrokeColor.GetAlpha(), 79, 195, 247);
 				featureFillColor = Color(featureFillColor.GetAlpha(), 79, 195, 247);
 			}
 		}
@@ -3241,16 +3234,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		const double featurePixelHeight = (feature.maxLatitude - feature.minLatitude) * request.scaleY * rasterCoordinateScaleY;
 		if (featurePixelWidth < 0.5 && featurePixelHeight < 0.5)
 			continue;
-		const bool deferOwnershipOutline =
-			feature.polygon && feature.frequencyOwnership.dynamicItem &&
-			featureStrokeColor.GetAlpha() > 0 && feature.strokeWidth > 0.0f &&
-			!AvisoColorsEqual(featureFillColor, featureStrokeColor);
-		if (deferOwnershipOutline)
-		{
-			deferredOwnershipOutlines.push_back(
-				DeferredOwnershipOutline{ &feature, featureStrokeColor, ownedByMe });
-		}
-
 		if (feature.polygon)
 		{
 			for (const std::vector<AvisoPoint>& ring : feature.paths)
@@ -3280,15 +3263,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				{
 					SolidBrush fillBrush(featureFillColor);
 					rasterGraphics.FillPolygon(&fillBrush, rasterPoints.data(), static_cast<INT>(rasterPoints.size()), FillModeAlternate);
-				}
-
-				if (!deferOwnershipOutline && featureStrokeColor.GetAlpha() > 0 &&
-					feature.strokeWidth > 0.0f &&
-					!AvisoColorsEqual(featureFillColor, featureStrokeColor))
-				{
-					Pen outlinePen(featureStrokeColor, feature.strokeWidth * static_cast<float>(request.rasterScale));
-					outlinePen.SetLineJoin(LineJoinRound);
-					rasterGraphics.DrawPolygon(&outlinePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
 				}
 			}
 			continue;
@@ -3324,55 +3298,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 				if (renderCancelled())
 					return nullptr;
 				rasterGraphics.DrawLines(&linePen, rasterPoints.data(), static_cast<INT>(rasterPoints.size()));
-			}
-		}
-	}
-
-	// Ownership polygons share many exact edges. Drawing each complete polygon
-	// in source order lets a later cyan outline overwrite part of an external
-	// yellow boundary (or vice versa). Paint every fill above, then draw all
-	// self-owned outlines first and external outlines last. Shared boundaries
-	// are consequently continuous and consistently identify the other owner.
-	for (const bool drawSelfOwned : { true, false })
-	{
-		for (const DeferredOwnershipOutline& deferred : deferredOwnershipOutlines)
-		{
-			if (renderCancelled())
-				return nullptr;
-			if (deferred.feature == nullptr || deferred.ownedByMe != drawSelfOwned)
-				continue;
-
-			const AvisoFeature& feature = *deferred.feature;
-			Pen outlinePen(
-				deferred.strokeColor,
-				feature.strokeWidth * static_cast<float>(request.rasterScale));
-			outlinePen.SetLineJoin(LineJoinRound);
-			for (const std::vector<AvisoPoint>& ring : feature.paths)
-			{
-				if (ring.size() < 3)
-					continue;
-				rasterPoints.clear();
-				rasterPoints.reserve(ring.size());
-				AvisoPoint lastCoordinate{};
-				bool hasLastCoordinate = false;
-				for (size_t pointIndex = 0; pointIndex < ring.size(); ++pointIndex)
-				{
-					if ((pointIndex & 0xff) == 0 && renderCancelled())
-						return nullptr;
-					appendRasterPoint(
-						rasterPoints,
-						lastCoordinate,
-						hasLastCoordinate,
-						ring[pointIndex],
-						pointIndex == 0);
-				}
-				if (rasterPoints.size() >= 3)
-				{
-					rasterGraphics.DrawPolygon(
-						&outlinePen,
-						rasterPoints.data(),
-						static_cast<INT>(rasterPoints.size()));
-				}
 			}
 		}
 	}
@@ -3594,10 +3519,28 @@ void CSMRRadar::UpdateInactiveSectorBackgroundColor(HDC hDC, const RECT& radarAr
 	if (area.Width() < 8 || area.Height() < 8)
 		return;
 
+	// At close zoom levels an active sector can cover every sampled pixel. It
+	// must never replace the cached inactive-sector background used by insets.
+	// Refresh the sample only from a sufficiently wide overview where the outer
+	// radar band represents EuroScope's inactive background.
+	CPosition displaySouthWest;
+	CPosition displayNorthEast;
+	GetDisplayArea(&displaySouthWest, &displayNorthEast);
+	if (!std::isfinite(displaySouthWest.m_Latitude) ||
+		!std::isfinite(displaySouthWest.m_Longitude) ||
+		!std::isfinite(displayNorthEast.m_Latitude) ||
+		!std::isfinite(displayNorthEast.m_Longitude))
+	{
+		return;
+	}
+	const int sampleZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
+		Haversine(displaySouthWest, displayNorthEast));
+	if (sampleZoomLevel > 3)
+		return;
+
 	// EuroScope does not expose the Sector/Inactive Sector Background colour
-	// through its plug-in API. Before vSMR draws anything, the most frequent
-	// pixel in a sparse radar-area sample is the actual background EuroScope
-	// already rendered, including live symbology changes.
+	// through its plug-in API. Before vSMR draws anything, sample the outer band
+	// of a wide radar view, avoiding active-sector fill in the centre.
 	std::unordered_map<COLORREF, int> frequencies;
 	constexpr int columns = 17;
 	constexpr int rows = 11;
@@ -3606,6 +3549,10 @@ void CSMRRadar::UpdateInactiveSectorBackgroundColor(HDC hDC, const RECT& radarAr
 		const int y = area.top + ((row * 2 + 1) * area.Height()) / (rows * 2);
 		for (int column = 0; column < columns; ++column)
 		{
+			const bool inOuterBand = row < 2 || row >= rows - 2 ||
+				column < 2 || column >= columns - 2;
+			if (!inOuterBand)
+				continue;
 			const int x = area.left + ((column * 2 + 1) * area.Width()) / (columns * 2);
 			const COLORREF color = ::GetPixel(hDC, x, y);
 			if (color != CLR_INVALID)
@@ -4019,11 +3966,17 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		}
 
 		::IntersectClipRect(hDC, radarArea.left, radarArea.top, radarArea.right, radarArea.bottom);
-		const bool nearNativeScale =
-			std::abs(static_cast<double>(destWidthInt - sourceWidthInt)) <= 1.0 &&
-			std::abs(static_cast<double>(destHeightInt - sourceHeightInt)) <= 1.0;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
-		if (!nearNativeScale)
+		// AlphaBlend can introduce a one-pixel seam through the centre of a
+		// near-native bitmap when only one side of the destination is rounded.
+		// Keep each native axis strictly 1:1 and stretch only real zoom previews.
+		const int blendDestWidth =
+			std::abs(destWidthInt - sourceWidthInt) <= 1 ? sourceWidthInt : destWidthInt;
+		const int blendDestHeight =
+			std::abs(destHeightInt - sourceHeightInt) <= 1 ? sourceHeightInt : destHeightInt;
+		const bool scaled =
+			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
+		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
+		if (scaled)
 			::SetBrushOrgEx(hDC, 0, 0, nullptr);
 
 		BLENDFUNCTION blend = {};
@@ -4034,8 +3987,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 			hDC,
 			destLeft,
 			destTop,
-			destWidthInt,
-			destHeightInt,
+			blendDestWidth,
+			blendDestHeight,
 			sourceDc,
 			sourceXInt,
 			sourceYInt,
@@ -4184,11 +4137,14 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		}
 
 		::IntersectClipRect(hDC, radarArea.left, radarArea.top, radarArea.right, radarArea.bottom);
-		const bool nearNativeScale =
-			std::abs(static_cast<double>(destWidthInt - sourceWidthInt)) <= 1.0 &&
-			std::abs(static_cast<double>(destHeightInt - sourceHeightInt)) <= 1.0;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, nearNativeScale ? COLORONCOLOR : HALFTONE);
-		if (!nearNativeScale)
+		const int blendDestWidth =
+			std::abs(destWidthInt - sourceWidthInt) <= 1 ? sourceWidthInt : destWidthInt;
+		const int blendDestHeight =
+			std::abs(destHeightInt - sourceHeightInt) <= 1 ? sourceHeightInt : destHeightInt;
+		const bool scaled =
+			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
+		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
+		if (scaled)
 			::SetBrushOrgEx(hDC, 0, 0, nullptr);
 
 		BLENDFUNCTION blend = {};
@@ -4199,8 +4155,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 			hDC,
 			destLeft,
 			destTop,
-			destWidthInt,
-			destHeightInt,
+			blendDestWidth,
+			blendDestHeight,
 			sourceDc,
 			sourceXInt,
 			sourceYInt,
@@ -5958,7 +5914,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 
 	Value& targets = ensureObjectMember(profile, "targets");
 	renameMemberIfPresent(targets, "small_icon_boost_resolution", "small_icon_boost_resolution_preset");
-	renameMemberIfPresent(targets, "fixed_pixel_triangle_scale", "fixed_pixel_icon_scale");
 	if (!targets.HasMember("icon_style") || !targets["icon_style"].IsString())
 	{
 		if (targets.HasMember("icon_style"))
@@ -5980,12 +5935,17 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 			changed = true;
 		}
 	}
-	ensureBoolMember(targets, "small_icon_boost", false);
-	ensureDoubleMember(targets, "small_icon_boost_factor", 1.0, 0.5, 4.0);
 	ensureResolutionPresetMember(targets, "small_icon_boost_resolution_preset", "1080p");
-	ensureBoolMember(targets, "fixed_pixel_icon_size", false);
-	ensureDoubleMember(targets, "fixed_pixel_icon_scale", 1.0, 0.1, 3.0);
-	ensureBoolMember(targets, "show_primary_target", true);
+	ensureBoolMember(targets, "trail_enabled", true);
+	ensureIntMember(targets, "trail_ground_points", 4, 0, 16);
+	ensureIntMember(targets, "trail_airborne_points", 8, 0, 16);
+	ensureDoubleMember(targets, "symbol_scale", 1.0, 0.5, 1.5);
+	changed = targets.RemoveMember("small_icon_boost") || changed;
+	changed = targets.RemoveMember("small_icon_boost_factor") || changed;
+	changed = targets.RemoveMember("fixed_pixel_icon_size") || changed;
+	changed = targets.RemoveMember("fixed_pixel_icon_scale") || changed;
+	changed = targets.RemoveMember("fixed_pixel_triangle_scale") || changed;
+	changed = targets.RemoveMember("show_primary_target") || changed;
 	ensureColorMember(targets, "target_color", 255, 242, 73, 255);
 	changed = targets.RemoveMember("history_one_color") || changed;
 	changed = targets.RemoveMember("history_two_color") || changed;
@@ -8105,11 +8065,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const bool frameUseRealisticIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Realistic;
 	const bool frameUseFastRealisticBitmapRendering = frameUseRealisticIconStyle;
 	const unsigned long long frameRealisticIconCacheFrame = frameUseRealisticIconStyle ? ++RealisticIconCacheFrame : RealisticIconCacheFrame;
-	const bool frameSmallIconBoostEnabled = frameTargetPresentation.smallIconBoostEnabled;
-	const bool frameFixedPixelIconSize = frameTargetPresentation.fixedPixelSize;
-	const double frameSmallIconBoostFactor = frameTargetPresentation.smallIconBoostFactor;
-	const double frameSmallIconBoostResolutionScale = frameTargetPresentation.resolutionScale;
-	const double frameFixedTriangleScale = frameTargetPresentation.fixedTriangleScale;
 	const Color frameSymbolWhiteColor(static_cast<Gdiplus::ARGB>(Gdiplus::Color::White));
 	auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
 	{
@@ -8122,7 +8077,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		return value;
 	};
 	std::vector<PointF> framePatatoidePolygonPoints;
-	auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor)
+	auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor, double symbolScale)
 	{
 		if (sourcePoints.empty())
 			return;
@@ -8142,6 +8097,23 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (framePatatoidePolygonPoints.size() < 3)
 			return;
+		if (std::abs(symbolScale - 1.0) > 0.0001)
+		{
+			REAL centerX = 0.0f;
+			REAL centerY = 0.0f;
+			for (const PointF& point : framePatatoidePolygonPoints)
+			{
+				centerX += point.X;
+				centerY += point.Y;
+			}
+			centerX /= static_cast<REAL>(framePatatoidePolygonPoints.size());
+			centerY /= static_cast<REAL>(framePatatoidePolygonPoints.size());
+			for (PointF& point : framePatatoidePolygonPoints)
+			{
+				point.X = centerX + static_cast<REAL>((point.X - centerX) * symbolScale);
+				point.Y = centerY + static_cast<REAL>((point.Y - centerY) * symbolScale);
+			}
+		}
 
 		SolidBrush polygonBrush(fillColor);
 		graphics.FillPolygon(&polygonBrush, framePatatoidePolygonPoints.data(), static_cast<INT>(framePatatoidePolygonPoints.size()));
@@ -8223,6 +8195,21 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		}
 
 		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
+		VsmrTargetTrail::Draw(
+			graphics,
+			sceneTarget,
+			[&](const VsmrScene::GeoPoint& history) -> POINT
+			{
+				return ConvertCoordFromPositionToPixel(scenePosition(history));
+			},
+			[&](const POINT& point, int margin) -> bool
+			{
+				return point.x >= frameVisibleRadarArea.left - margin &&
+					point.x <= frameVisibleRadarArea.right + margin &&
+					point.y >= frameVisibleRadarArea.top - margin &&
+					point.y <= frameVisibleRadarArea.bottom + margin;
+			},
+			frameTargetPresentation.symbolScale);
 		if (drawLegacyPrimarySymbol && sceneTarget.style.showPrimaryReturn && !sceneTarget.primaryReturnPolygon.empty()) {
 			const Color primaryTargetColor(
 				sceneTarget.style.primaryReturnColor.alpha,
@@ -8231,7 +8218,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				sceneTarget.style.primaryReturnColor.blue);
 			drawPatatoidePolygon(
 				sceneTarget.primaryReturnPolygon,
-				primaryTargetColor);
+				primaryTargetColor,
+				frameTargetPresentation.symbolScale);
 		}
 		acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
 
@@ -8250,8 +8238,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		iconVerboseStep("after_scene_data");
 
-		const bool smallIconBoostEnabled = frameSmallIconBoostEnabled;
-		const bool fixedPixelIconSize = frameFixedPixelIconSize;
 		UINT iconBmpWidth = 0;
 		UINT iconBmpHeight = 0;
 		bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
@@ -8283,25 +8269,26 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		if (useNovaIconStyle)
 		{
-			const Color novaSymbolColor = applyTargetTintColor ? targetTintColor : frameSymbolWhiteColor;
+			const Color novaSymbolColor = frameSymbolWhiteColor;
 			Pen novaSymbolPen(novaSymbolColor, 1.0f);
+			const REAL novaScale = static_cast<REAL>(frameTargetPresentation.symbolScale);
 			if (sceneTarget.transponderModeC) {
 				PointF novaPoints[] = {
-					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y - 6)),
-					PointF(static_cast<REAL>(acPosPix.x - 6), static_cast<REAL>(acPosPix.y)),
-					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y + 6)),
-					PointF(static_cast<REAL>(acPosPix.x + 6), static_cast<REAL>(acPosPix.y)),
-					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y - 6))
+					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y) - 6.0f * novaScale),
+					PointF(static_cast<REAL>(acPosPix.x) - 6.0f * novaScale, static_cast<REAL>(acPosPix.y)),
+					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y) + 6.0f * novaScale),
+					PointF(static_cast<REAL>(acPosPix.x) + 6.0f * novaScale, static_cast<REAL>(acPosPix.y)),
+					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y) - 6.0f * novaScale)
 				};
 				graphics.DrawLines(&novaSymbolPen, novaPoints, static_cast<INT>(_countof(novaPoints)));
 			}
 			else {
-				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x - 4, acPosPix.y - 4);
-				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x + 4, acPosPix.y - 4);
-				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x - 4, acPosPix.y + 4);
-				graphics.DrawLine(&novaSymbolPen, acPosPix.x, acPosPix.y, acPosPix.x + 4, acPosPix.y + 4);
+				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) - 4.0f * novaScale, static_cast<REAL>(acPosPix.y) - 4.0f * novaScale);
+				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) + 4.0f * novaScale, static_cast<REAL>(acPosPix.y) - 4.0f * novaScale);
+				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) - 4.0f * novaScale, static_cast<REAL>(acPosPix.y) + 4.0f * novaScale);
+				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) + 4.0f * novaScale, static_cast<REAL>(acPosPix.y) + 4.0f * novaScale);
 			}
-			iconSize = 12;
+			iconSize = static_cast<int>(std::ceil(12.0 * frameTargetPresentation.symbolScale));
 		}
 		else if (canUseRealisticIcon) {
 
@@ -8316,48 +8303,16 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				"realistic_dims len=" + std::to_string(lengthMeters) +
 				" span=" + std::to_string(spanMeters));
 
-			if (fixedPixelIconSize)
-			{
-				const double configuredFactor = smallIconBoostEnabled ? frameSmallIconBoostFactor : 1.0;
-				const double resolutionScale = frameSmallIconBoostResolutionScale;
-				const double referenceAircraftMeters = 40.0; // medium-jet baseline
-				const double referencePixels = 18.0 * resolutionScale;
-				const double pxPerMeterFixed = referencePixels / referenceAircraftMeters;
-				drawW = spanMeters * pxPerMeterFixed * configuredFactor;
-				drawH = lengthMeters * pxPerMeterFixed * configuredFactor;
-			}
-			else
-			{
-				if (pixPerMeter > 0.0) {
-					drawW = spanMeters * pixPerMeter;
-					drawH = lengthMeters * pixPerMeter;
-				}
-
-				// Optional readability boost (realistic icons only):
-				// apply one zoom-based factor for all aircraft so relative real-size differences stay intact.
-				if (smallIconBoostEnabled && pixPerMeter > 0.0)
-				{
-					const double configuredFactor = frameSmallIconBoostFactor;
-					const double resolutionScale = frameSmallIconBoostResolutionScale;
-					const double referenceAircraftMeters = 40.0; // medium-jet baseline for zoom trigger
-					const double referenceScreenSize = referenceAircraftMeters * pixPerMeter;
-					const double boostStartSize = 14.0 * resolutionScale;
-					const double boostedReferenceSize = 18.0 * configuredFactor * resolutionScale;
-					if (referenceScreenSize < boostStartSize)
-					{
-						const double safeRefSize = max(0.01, referenceScreenSize);
-						const double zoomBoostScale = std::clamp(boostedReferenceSize / safeRefSize, 1.0, 6.0 * configuredFactor * resolutionScale);
-						drawW *= zoomBoostScale;
-						drawH *= zoomBoostScale;
-					}
-				}
+			if (pixPerMeter > 0.0) {
+				drawW = spanMeters * pixPerMeter * frameTargetPresentation.symbolScale;
+				drawH = lengthMeters * pixPerMeter * frameTargetPresentation.symbolScale;
 			}
 
-			// Clamp sizes to keep visible but not giant
-			double minSize = 4.0;
+			// Preserve true zoom scaling. A one-pixel floor only keeps the bitmap API valid.
+			double minSize = 1.0;
 			double maxSize = 1200.0;
-			drawW = sanitizeFinitePositive(drawW, 24.0, minSize, maxSize);
-			drawH = sanitizeFinitePositive(drawH, 24.0, minSize, maxSize);
+			drawW = sanitizeFinitePositive(drawW, 1.0, minSize, maxSize);
+			drawH = sanitizeFinitePositive(drawH, 1.0, minSize, maxSize);
 			iconVerboseStep(
 				"realistic_size w=" + std::to_string(drawW) +
 				" h=" + std::to_string(drawH));
@@ -8466,63 +8421,12 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 			const double lenMetersBase = 20.0;
 			const double halfWidthMetersBase = 12.0;
-			const double symbolSizeScale = frameFixedTriangleScale;
-			double lenPx = 20.0;
-			double halfWidthPx = 12.0;
-			double lenMetersUsed = lenMetersBase;
-			double halfWidthMetersUsed = halfWidthMetersBase;
-
-			if (fixedPixelIconSize)
-			{
-				const double configuredFactor = smallIconBoostEnabled ? frameSmallIconBoostFactor : 1.0;
-				const double resolutionScale = frameSmallIconBoostResolutionScale;
-				const double fixedScale = configuredFactor * resolutionScale;
-				lenPx = std::clamp(lenPx * fixedScale, 6.0, 160.0);
-				halfWidthPx = std::clamp(halfWidthPx * fixedScale, 3.0, 80.0);
-				if (pixPerMeter > 0.0)
-				{
-					lenMetersUsed = lenPx / pixPerMeter;
-					halfWidthMetersUsed = halfWidthPx / pixPerMeter;
-				}
-			}
-			else
-			{
-				if (pixPerMeter > 0.0) {
-					lenPx = std::clamp(pixPerMeter * lenMetersBase, 6.0, 120.0);
-					halfWidthPx = std::clamp(pixPerMeter * halfWidthMetersBase, 3.0, 60.0);
-					lenMetersUsed = lenPx / pixPerMeter;
-					halfWidthMetersUsed = halfWidthPx / pixPerMeter;
-				}
-
-				// Optional readability boost for tiny triangle symbols when zoomed out.
-				if (smallIconBoostEnabled)
-				{
-					const double configuredFactor = frameSmallIconBoostFactor;
-					const double resolutionScale = frameSmallIconBoostResolutionScale;
-					const double currentExtent = lenPx + halfWidthPx;
-					if (currentExtent > 0.0)
-					{
-						const double targetMinExtent = 14.0 * configuredFactor * resolutionScale;
-						const double boostScale = std::clamp(targetMinExtent / currentExtent, 1.0, 2.0 * configuredFactor * resolutionScale);
-						lenPx *= boostScale;
-						halfWidthPx *= boostScale;
-						if (pixPerMeter > 0.0)
-						{
-							lenMetersUsed = lenPx / pixPerMeter;
-							halfWidthMetersUsed = halfWidthPx / pixPerMeter;
-						}
-					}
-				}
-			}
-
-			// Fixed Size scale always applies to arrow/diamond symbols, regardless of fixed-pixel mode.
-			lenPx = sanitizeFinitePositive(lenPx * symbolSizeScale, 20.0, 1.0, 220.0);
-			halfWidthPx = sanitizeFinitePositive(halfWidthPx * symbolSizeScale, 12.0, 1.0, 110.0);
-			if (pixPerMeter > 0.0)
-			{
-				lenMetersUsed = lenPx / pixPerMeter;
-				halfWidthMetersUsed = halfWidthPx / pixPerMeter;
-			}
+			const double lenPx = sanitizeFinitePositive(
+				pixPerMeter * lenMetersBase * frameTargetPresentation.symbolScale, 1.0, 0.5, 220.0);
+			const double halfWidthPx = sanitizeFinitePositive(
+				pixPerMeter * halfWidthMetersBase * frameTargetPresentation.symbolScale, 0.5, 0.35, 110.0);
+			const double lenMetersUsed = lenMetersBase * frameTargetPresentation.symbolScale;
+			const double halfWidthMetersUsed = halfWidthMetersBase * frameTargetPresentation.symbolScale;
 
 			auto wrap360 = [](double deg) {
 				double wrapped = fmod(deg, 360.0);

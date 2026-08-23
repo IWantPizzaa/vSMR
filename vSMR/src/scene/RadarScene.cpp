@@ -618,15 +618,25 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (configuredIconStyle == "nova") sceneIconStyle = IconStyle::Nova;
 	else if (configuredIconStyle == "realistic") sceneIconStyle = IconStyle::Realistic;
 	else if (configuredIconStyle == "diamond") sceneIconStyle = IconStyle::Diamond;
-	const bool showPrimaryReturn = targetsConfig != nullptr && targetsConfig->HasMember("show_primary_target") &&
-		(*targetsConfig)["show_primary_target"].IsBool() && (*targetsConfig)["show_primary_target"].GetBool();
+	// NOVA's aircraft-shaped primary return is intrinsic to the style. The old
+	// hidden toggle must not reduce it to only the secondary diamond/X symbol.
+	const bool showPrimaryReturn = sceneIconStyle == IconStyle::Nova;
 	scene->targetPresentation.icon = sceneIconStyle;
 	scene->targetPresentation.showPrimaryReturn = showPrimaryReturn;
-	scene->targetPresentation.smallIconBoostEnabled = GetSmallTargetIconBoostEnabled();
-	scene->targetPresentation.fixedPixelSize = GetFixedPixelTargetIconSizeEnabled();
-	scene->targetPresentation.smallIconBoostFactor = std::clamp(GetSmallTargetIconBoostFactor(), 0.5, 4.0);
-	scene->targetPresentation.resolutionScale = std::clamp(GetSmallTargetIconBoostResolutionScale(), 1.0, 2.0);
-	scene->targetPresentation.fixedTriangleScale = std::clamp(GetFixedPixelTriangleIconScale(), 0.1, 3.0);
+	auto configuredTrailPointCount = [&](const char* key, int fallback) -> int
+	{
+		if (targetsConfig == nullptr || !targetsConfig->HasMember(key) || !(*targetsConfig)[key].IsInt())
+			return fallback;
+		return std::clamp((*targetsConfig)[key].GetInt(), 0, 16);
+	};
+	scene->targetPresentation.trailEnabled = targetsConfig == nullptr ||
+		!targetsConfig->HasMember("trail_enabled") ||
+		!(*targetsConfig)["trail_enabled"].IsBool() ||
+		(*targetsConfig)["trail_enabled"].GetBool();
+	scene->targetPresentation.trailGroundPointCount = configuredTrailPointCount("trail_ground_points", 4);
+	scene->targetPresentation.trailAirbornePointCount = configuredTrailPointCount("trail_airborne_points", 8);
+	if (targetsConfig != nullptr && targetsConfig->HasMember("symbol_scale") && (*targetsConfig)["symbol_scale"].IsNumber())
+		scene->targetPresentation.symbolScale = std::clamp((*targetsConfig)["symbol_scale"].GetDouble(), 0.5, 1.5);
 
 	const auto targetCaptureStart = Clock::now();
 	const CRadarTarget selectedTarget = measureSdkLookup([&]() { return plugin->RadarTargetSelectASEL(); });
@@ -660,6 +670,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.normalizedCallsign = ToUpperAsciiCopy(callsign);
 		target.systemId = CopyText(radarTarget.GetSystemID());
 		target.position = CopyPosition(position.GetPosition());
+		target.reportedGroundSpeed = position.GetReportedGS();
+		target.groundSpeed = radarTarget.GetGS();
 		++scene->stats.sdkPreviousPositionLookups;
 		const CRadarTargetPositionData previousPosition = measureSdkLookup(
 			[&]() { return radarTarget.GetPreviousPosition(position); });
@@ -668,8 +680,24 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.previousPosition = CopyPosition(previousPosition.GetPosition());
 			target.previousFlightLevel = previousPosition.GetFlightLevel();
 		}
-		target.reportedGroundSpeed = position.GetReportedGS();
-		target.groundSpeed = radarTarget.GetGS();
+		const int effectiveGroundSpeed = (std::max)(target.reportedGroundSpeed, target.groundSpeed);
+		if (scene->targetPresentation.trailEnabled && effectiveGroundSpeed > 5 && previousPosition.IsValid())
+		{
+			const int requestedPointCount = effectiveGroundSpeed > 50
+				? scene->targetPresentation.trailAirbornePointCount
+				: scene->targetPresentation.trailGroundPointCount;
+			target.trailPositions.reserve(static_cast<std::size_t>(requestedPointCount));
+			CRadarTargetPositionData trailPosition = previousPosition;
+			for (int index = 0; index < requestedPointCount && trailPosition.IsValid(); ++index)
+			{
+				target.trailPositions.push_back(CopyPosition(trailPosition.GetPosition()));
+				if (index + 1 >= requestedPointCount)
+					break;
+				++scene->stats.sdkPreviousPositionLookups;
+				trailPosition = measureSdkLookup(
+					[&]() { return radarTarget.GetPreviousPosition(trailPosition); });
+			}
+		}
 		target.pressureAltitude = position.GetPressureAltitude();
 		target.flightLevel = position.GetFlightLevel();
 		target.reportedSquawk = CopyText(position.GetSquawk());
@@ -852,9 +880,19 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		const auto primaryReturn = Patatoides.find(callsign);
 		if (primaryReturn != Patatoides.end())
 		{
-			target.primaryReturnPolygon.reserve(primaryReturn->second.points.size());
-			for (const auto& point : primaryReturn->second.points)
-				target.primaryReturnPolygon.push_back(GeoPoint{ point.second.x, point.second.y, true });
+			auto capturePolygon = [](const std::map<int, POINT2>& source, std::vector<GeoPoint>& destination)
+			{
+				destination.reserve(source.size());
+				for (const auto& point : source)
+					destination.push_back(GeoPoint{ point.second.x, point.second.y, true });
+			};
+			capturePolygon(primaryReturn->second.points, target.primaryReturnPolygon);
+			if (scene->targetPresentation.trailEnabled && effectiveGroundSpeed > 5)
+			{
+				capturePolygon(primaryReturn->second.historyOnePoints, target.primaryReturnAfterglow[0]);
+				capturePolygon(primaryReturn->second.historyTwoPoints, target.primaryReturnAfterglow[1]);
+				capturePolygon(primaryReturn->second.historyThreePoints, target.primaryReturnAfterglow[2]);
+			}
 		}
 
 		scene->targetIndex.emplace(target.normalizedCallsign, scene->targets.size());
@@ -1322,7 +1360,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		for (const std::string* value : targetStrings)
 			estimatedBytes += EstimateStringHeapBytes(*value);
 		estimatedBytes +=
-			target.primaryReturnPolygon.capacity() * sizeof(GeoPoint);
+			(target.trailPositions.capacity() + target.primaryReturnPolygon.capacity()) * sizeof(GeoPoint);
+		for (const std::vector<GeoPoint>& afterglow : target.primaryReturnAfterglow)
+			estimatedBytes += afterglow.capacity() * sizeof(GeoPoint);
 		for (const auto& token : target.tag.tokens)
 			estimatedBytes += EstimateStringHeapBytes(token.first) + EstimateStringHeapBytes(token.second);
 		estimatedBytes += EstimateTagVariantHeapBytes(target.tag.normal);
