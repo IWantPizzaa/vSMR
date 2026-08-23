@@ -135,7 +135,7 @@ private:
 	void NetworkWorkerMain();
 	void QueueWeatherFetch(const std::string& station);
 	void WeatherFetchThreadMain();
-	void RefreshAvisoFrequencyOwnershipOverlays();
+	void RefreshControllerDependentOverlays();
 
 	std::mutex NetworkWorkerMutex;
 	std::condition_variable NetworkWorkerCondition;

@@ -195,11 +195,11 @@ The bundled profile database uses schema 2. Older supported keys are normalized 
 
 Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state. The Control Center token picker includes both `scratchpad` and the flight-strip annotation `remark` token. Tag backgrounds use compact text padding consistently in the main radar, AVISO inset, and SRW 1 inset.
 
-Structured rules can match runway, custom, status, detail, and VACDM conditions, then override target, tag, or text colors. Rules are evaluated in profile order.
+Structured rules can match runway, custom, and VACDM conditions, then override target, tag, or text colors. The Match editor presents supported sources, tokens, and conditions as lists instead of accepting free-form values. Rules are evaluated in profile order.
 
 ### Shared radar scene
 
-Each radar screen builds one immutable `RadarScene` on EuroScope's UI thread for every rendered frame. The capture owns plain-value target coordinates, flight-plan and ground-state classification, effective colors and icon styles, preformatted normal and detailed tag elements, finalized RIMCAS state, LFPG dynamic-frequency ownership, and the connected-controller and active-airport state. The main radar, AVISO inset, SRW 1 inset, and native RDF overlay consume that same snapshot instead of repeating EuroScope target and flight-plan lookups independently.
+Each radar screen builds one immutable `RadarScene` on EuroScope's UI thread for every rendered frame. The capture owns plain-value target coordinates, flight-plan and ground-state classification, effective colors and icon styles, preformatted normal and detailed tag elements, finalized RIMCAS state, and the connected-controller and active-airport state. The main radar, AVISO inset, SRW 1 inset, and native RDF overlay consume that same snapshot instead of repeating EuroScope target and flight-plan lookups independently.
 
 Viewports still own projection, clipping, font measurement, tag placement, and interactive hit areas because those depend on their individual size, pan, and zoom. AVISO's background raster workers also remain separate and receive only their existing immutable map snapshots; they never access EuroScope objects or the live radar scene. The periodic `FramePerf` log and native bounded diagnostics collection remain available for troubleshooting, but are intentionally not exposed as a Settings subpage.
 
@@ -213,7 +213,7 @@ Bundled documents declare `metadata.default_color_palette` as `night` and list `
 
 The Night/Day selector is in the AVISO editor toolbar and is saved with the radar screen's ASR state. Selecting a palette invalidates the existing AVISO rasters and switches the main view and AVISO inset together without reparsing the source document. Geometry and Text editor swatches and color fields follow the selected palette: Night edits update base paint, while Day edits update `palette-overrides.day`. Visibility, opacity, width, typography, halo width, and zoom remain common to both palettes.
 
-The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. The earlier `LFPG_Dyna_fixed.geojson` and legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
+The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. An explicitly selected local or GitHub source remains authoritative. Legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
 
 The Control Center can:
 
@@ -225,21 +225,6 @@ The Control Center can:
 - restore validated bundled defaults or `.bak` profile data
 
 A reusable entry in the document's `styles` catalog supplies the default paint for every feature that references its `style_id`. Paint stored directly on a feature is a per-object override and takes precedence in the main radar and AVISO inset. The AVISO Text page intentionally exposes only grouped text styles, mirroring Geometry: select one or more groups to change their visibility, font, size, color, halo, or zoom. Individual label strings are displayed from the source data but are not editable in the Control Center. AVISO editor values use the renderer's supported ranges: text size 6–32, halo width 0–6, and line/outline width 0.25–8.
-
-### LFPG dynamic frequency ownership
-
-`LFPG_Dyna.geojson` extends the normal LFPG AVISO map with frequency ownership polygons and pre-positioned frequency labels. For each non-RMP `frequency_ownership_area`, vSMR walks its ordered `takeover_chain` and selects the first position ID that EuroScope currently reports as a connected controller. No online-controller list or label position is hard-coded.
-
-- A polygon inherited by your own connected position is drawn in blue and its frequency label is hidden.
-- A non-RMP polygon owned by another connected position retains its source service color and shows that controller's current EuroScope primary frequency at the GeoJSON label point.
-- At a shared edge, external-territory outlines are painted after self-owned outlines so cyan and yellow boundaries remain continuous instead of clipping each other.
-- A polygon with no connected owner in its chain is hidden.
-- DEL frequency points are ignored until dedicated DEL polygons are available.
-- LFPG RMP is resolved as one service: if any reviewed RMP position is connected, all six RMP polygons activate together. A local RMP controller owns all six and sees no RMP labels; another RMP controller activates all six area-specific labels.
-- RMP labels always use each `frequency_point` feature's `text-field` or `display_frequency` at its supplied coordinates. A connected controller's primary frequency is never substituted, so the six displayed values remain BD `121.640`, F `121.580`, ACE `121.930`, FDX `131.605`, KL `121.680`, and J `121.880`.
-- Controller connection, disconnection, position, or primary-frequency changes update the main display and AVISO inset together. Takeover rules are cached when the GeoJSON loads, and routine updates from controllers outside those LFPG chains do not invalidate the AVISO raster, preventing periodic map flicker while connected.
-
-This dynamic behavior is enabled only for LFPG in beta.4. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
 
 A computer file is activated in place; it is not copied over the bundled airport file. A GitHub resource is validated and downloaded to a collision-safe file under `vSMR_Data\AVISO\` or `vSMR_Data\Profiles\`, then activated from that location. The Settings page always shows the actual active path.
 
@@ -450,7 +435,6 @@ The normal runtime root is `vSMR_Data` beside `vSMR.dll`.
 | --- | --- |
 | `vSMR_Profiles.json` | Profiles, display modes, tag definitions, rules, colors, filters, presets, and metadata |
 | `AVISO\<ICAO>.geojson` | Default airport-specific AVISO map data; legacy `AVISO_<ICAO>.geojson` files remain a compatibility fallback |
-| `AVISO\LFPG_Dyna.geojson` | LFPG map plus dynamic controller ownership polygons and positioned, area-specific frequency labels; preferred for LFPG when present |
 | `Profiles\*.json` | Collision-safe downloaded/imported profile variants |
 | `ICAO_Aircraft.json` | Aircraft length and wingspan lookup |
 | `aircraft_icons\*.png` | Aircraft-type silhouettes used by the `Icon` target style |
@@ -538,7 +522,7 @@ The implementation is organized by feature under `vSMR\src\`, with headers coloc
 
 The solution exposes `Release | Win32` as its sole configuration, so a normal **Build Solution** or an MSBuild invocation without an explicit configuration produces the optimized DLL in `Release\vSMR.dll`. The project retains an explicit Debug configuration for targeted diagnostics, but it must be selected by building the project directly. Both configurations target `v145`. The packaging script detects the installed compatible `vNNN` toolset automatically; automated compatibility builds may override the project default explicitly.
 
-The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file and the reviewed LFPG dynamic extension in `vSMR_Data`.
+The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file in `vSMR_Data`.
 
 ### Validate source data
 

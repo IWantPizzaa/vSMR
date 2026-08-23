@@ -271,12 +271,6 @@ namespace
 		const CSize titleSize = dc.GetTextExtent(title.c_str());
 		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
 		const int titleY = topBar.top + max(0, (topBar.Height() - titleSize.cy) / 2);
-		CRect titlePad(
-			titleX - 3,
-			topBar.top + 1,
-			titleX + titleSize.cx + 3,
-			topBar.bottom - 1);
-		dc.FillSolidRect(titlePad, RGB(16, 20, 22));
 		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.TextOutA(titleX, titleY, title.c_str());
@@ -2821,13 +2815,11 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
-	std::shared_ptr<const CSMRRadar::AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
 	unsigned long long groupGeneration = 0;
 	if (!radar_screen->GetAvisoRenderSnapshots(
 		featureSnapshot,
 		labelSnapshot,
 		groupVisibility,
-		frequencyOwnership,
 		groupGeneration))
 	{
 		drawCenteredMessage("AVISO unavailable");
@@ -2835,12 +2827,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
-	if (const VsmrScene::RadarScene* scene = radar_screen->GetCurrentRadarScene();
-		scene != nullptr && scene->avisoGeneration == groupGeneration)
-	{
-		frequencyOwnership = scene->frequencyOwnership;
-	}
-
 	if (!m_AvisoViewInitialized)
 	{
 		CPosition airportPosition;
@@ -3360,7 +3346,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.features = featureSnapshot;
 			request.labels = labelSnapshot;
 			request.groupVisibility = groupVisibility;
-			request.frequencyOwnership = frequencyOwnership;
 			request.useDayPalette = radar_screen->AvisoUseDayColorPalette;
 			request.rasterWidth = max(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
 			request.rasterHeight = max(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
