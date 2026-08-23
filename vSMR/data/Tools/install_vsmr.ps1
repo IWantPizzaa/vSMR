@@ -6,6 +6,8 @@ param(
     [string]$DestinationDirectory,
     [string]$BackupRoot = "",
     [switch]$ReplaceUserData,
+    [switch]$ReloadAviso,
+    [switch]$ReplaceModifiedAviso,
     [switch]$PreserveLoader,
     [switch]$RuntimeUpdate
 )
@@ -84,6 +86,8 @@ if (Test-PathEqualOrChild $PackageRoot $destinationData) {
 Assert-File $PackageDll
 Assert-File (Join-Path $PackageData "RELEASE-METADATA.json")
 Assert-File (Join-Path $PackageData "SHA256SUMS.txt")
+Assert-File (Join-Path $PackageData "AVISO-UPDATE-POLICY.json")
+Assert-File (Join-Path $PackageData "AVISO-INVENTORY.json")
 Assert-File (Join-Path $PackageData "Runtime\vSMR.Runtime.dll")
 Assert-File (Join-Path $PackageData "CrashReporter\vSMRCrashHandler.dll")
 Assert-File (Join-Path $PackageData "Tools\restore_vsmr_backup.ps1")
@@ -115,10 +119,112 @@ $unlisted = @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -File | Where-Obj
 if ($unlisted.Count -gt 0) { throw "Package contains unlisted files: $($unlisted.FullName -join ', ')" }
 
 $releaseMetadata = Get-Content -LiteralPath (Join-Path $PackageData "RELEASE-METADATA.json") -Raw | ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace([string]$releaseMetadata.version)) { throw "Package release metadata has no version." }
+if ([string]$releaseMetadata.version -notmatch '^\d+\.\d+\.\d+(?:-beta\.\d+)?$') {
+    throw "Package release metadata has an invalid version."
+}
 if ([string]$releaseMetadata.loader.relative_path -ne 'vSMR.dll' -or
     [string]$releaseMetadata.runtime.relative_path -ne 'vSMR_Data/Runtime/vSMR.Runtime.dll') {
     throw "Package release metadata has an invalid loader/runtime layout."
+}
+
+$avisoPolicy = Get-Content -LiteralPath (Join-Path $PackageData "AVISO-UPDATE-POLICY.json") -Raw | ConvertFrom-Json
+$avisoInventory = Get-Content -LiteralPath (Join-Path $PackageData "AVISO-INVENTORY.json") -Raw | ConvertFrom-Json
+$supportedAvisoUpdates = @('none', 'selected', 'all')
+$supportedModifiedFilePolicies = @('preserve', 'protect_setting', 'replace')
+if ([int]$avisoPolicy.schema_version -ne 1 -or
+    [string]$avisoPolicy.release -ne [string]$releaseMetadata.version -or
+    $avisoPolicy.aviso -isnot [pscustomobject] -or
+    $supportedAvisoUpdates -notcontains [string]$avisoPolicy.aviso.update -or
+    $supportedModifiedFilePolicies -notcontains [string]$avisoPolicy.aviso.modified_files -or
+    $avisoPolicy.aviso.replace -isnot [System.Array] -or
+    $avisoPolicy.aviso.delete -isnot [System.Array] -or
+    [int]$avisoInventory.schema_version -ne 1 -or
+    [string]$avisoInventory.release -ne [string]$releaseMetadata.version -or
+    $null -eq $avisoInventory.files) {
+    throw "The packaged AVISO update policy or inventory is invalid."
+}
+
+function Assert-AvisoFileName([string]$Name) {
+    if ([string]::IsNullOrWhiteSpace($Name) -or
+        [System.IO.Path]::IsPathRooted($Name) -or
+        [System.IO.Path]::GetFileName($Name) -ne $Name -or
+        $Name.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+        -not $Name.EndsWith('.geojson', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unsafe AVISO update filename: $Name"
+    }
+}
+
+function ConvertTo-AvisoHashTable($Inventory) {
+    $result = @{}
+    if ($null -eq $Inventory -or $null -eq $Inventory.files) { return $result }
+    foreach ($property in @($Inventory.files.PSObject.Properties)) {
+        $result[[string]$property.Name] = ([string]$property.Value).ToLowerInvariant()
+    }
+    return $result
+}
+
+function Read-LegacyAvisoHashTable([string]$ManifestPath) {
+    $result = @{}
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { return $result }
+    foreach ($line in @(Get-Content -LiteralPath $ManifestPath)) {
+        if ($line -match '^([0-9a-fA-F]{64})  vSMR_Data[\\/]+AVISO[\\/]+([^\\/]+\.geojson)$') {
+            $name = [string]$Matches[2]
+            try { Assert-AvisoFileName $name }
+            catch { continue }
+            $result[$name] = ([string]$Matches[1]).ToLowerInvariant()
+        }
+    }
+    return $result
+}
+
+$policyReplaceNames = @($avisoPolicy.aviso.replace | ForEach-Object { [string]$_ })
+$policyDeleteNames = @($avisoPolicy.aviso.delete | ForEach-Object { [string]$_ })
+foreach ($name in @($policyReplaceNames) + @($policyDeleteNames)) {
+    Assert-AvisoFileName ([string]$name)
+}
+$duplicatePolicyNames = @($policyReplaceNames + $policyDeleteNames |
+    Group-Object { $_.ToLowerInvariant() } | Where-Object { $_.Count -gt 1 })
+if ($duplicatePolicyNames.Count -gt 0) {
+    throw "The AVISO update policy contains duplicate or overlapping filenames."
+}
+if ([string]$avisoPolicy.aviso.update -eq 'selected' -and $policyReplaceNames.Count -eq 0) {
+    throw "A selected AVISO update policy must name at least one replacement."
+}
+if ([string]$avisoPolicy.aviso.update -ne 'selected' -and $policyReplaceNames.Count -gt 0) {
+    throw "Only a selected AVISO update policy may contain replacement filenames."
+}
+
+$packageInventoryTable = ConvertTo-AvisoHashTable $avisoInventory
+foreach ($property in @($avisoInventory.files.PSObject.Properties)) {
+    Assert-AvisoFileName ([string]$property.Name)
+    if ([string]$property.Value -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "Invalid AVISO inventory hash for $($property.Name)."
+    }
+    $inventoryFile = Join-Path $PackageData "AVISO\$($property.Name)"
+    Assert-File $inventoryFile
+    $inventoryHash = (Get-FileHash -LiteralPath $inventoryFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($inventoryHash -ne ([string]$property.Value).ToLowerInvariant()) {
+        throw "AVISO inventory hash mismatch for $($property.Name)."
+    }
+}
+$packagedAvisoFiles = @(Get-ChildItem -LiteralPath (Join-Path $PackageData 'AVISO') -Filter '*.geojson' -File)
+if ($packagedAvisoFiles.Count -ne $packageInventoryTable.Count) {
+    throw "The AVISO inventory does not describe every packaged GeoJSON file."
+}
+foreach ($file in $packagedAvisoFiles) {
+    if (-not $packageInventoryTable.ContainsKey($file.Name)) {
+        throw "Packaged AVISO is missing from the inventory: $($file.Name)"
+    }
+}
+foreach ($name in $policyReplaceNames) {
+    if (-not $packageInventoryTable.ContainsKey($name)) {
+        throw "Selected AVISO replacement is not bundled: $name"
+    }
+}
+foreach ($name in $policyDeleteNames) {
+    if ($packageInventoryTable.ContainsKey($name)) {
+        throw "An AVISO cannot be both bundled and scheduled for deletion: $name"
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
@@ -205,7 +311,12 @@ $stageDll = Join-Path $stageRoot "vSMR.dll"
 if (-not $preserveTopLevelLoader) { Copy-Item -LiteralPath $PackageDll -Destination $stageDll }
 
 if ($hadData -and -not $ReplaceUserData) {
-    $immutableNames = @('vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools', 'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json')
+    $immutableNames = @(
+        'vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools',
+        'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json',
+        'AVISO-UPDATE-POLICY.json', 'AVISO-INVENTORY.json', 'AVISO-UPDATE-REPORT.json',
+        'AVISO'
+    )
     foreach ($item in @(Get-ChildItem -LiteralPath $destinationData -Force)) {
         if ($immutableNames -contains $item.Name) { continue }
         $target = Join-Path $stageData $item.Name
@@ -218,6 +329,164 @@ if ($hadData -and -not $ReplaceUserData) {
     }
 }
 
+$avisoReport = [ordered]@{
+    schema_version = 1
+    release = [string]$releaseMetadata.version
+    operation = if ($ReloadAviso) { 'manual_reload' } else { 'release_update' }
+    policy = if ($ReloadAviso) { 'all' } else { [string]$avisoPolicy.aviso.update }
+    modified_file_policy = if ($ReloadAviso) { 'protect_setting' } else { [string]$avisoPolicy.aviso.modified_files }
+    protected_modified_files = $false
+    baseline_source = 'none'
+    updated = @()
+    added = @()
+    preserved_modified = @()
+    deleted = @()
+    preserved_deleted_modified = @()
+    custom_preserved = @()
+}
+
+if ($hadData -and -not $ReplaceUserData) {
+    $installedAviso = Join-Path $destinationData 'AVISO'
+    $stageAviso = Join-Path $stageData 'AVISO'
+    if (Test-Path -LiteralPath $stageAviso) {
+        Remove-Item -LiteralPath $stageAviso -Recurse -Force
+    }
+    [System.IO.Directory]::CreateDirectory($stageAviso) | Out-Null
+    if (Test-Path -LiteralPath $installedAviso -PathType Container) {
+        Copy-DirectoryContents $installedAviso $stageAviso
+    }
+
+    $oldBaseline = @{}
+    $oldInventoryPath = Join-Path $destinationData 'AVISO-INVENTORY.json'
+    if (Test-Path -LiteralPath $oldInventoryPath -PathType Leaf) {
+        try {
+            $candidateInventory = Get-Content -LiteralPath $oldInventoryPath -Raw | ConvertFrom-Json
+            if ([int]$candidateInventory.schema_version -eq 1 -and $null -ne $candidateInventory.files) {
+                foreach ($property in @($candidateInventory.files.PSObject.Properties)) {
+                    Assert-AvisoFileName ([string]$property.Name)
+                    if ([string]$property.Value -notmatch '^[0-9a-fA-F]{64}$') {
+                        throw "Invalid installed AVISO inventory entry."
+                    }
+                }
+                $oldBaseline = ConvertTo-AvisoHashTable $candidateInventory
+                $avisoReport.baseline_source = 'inventory'
+            }
+        }
+        catch {
+            $oldBaseline = @{}
+        }
+    }
+    if ($oldBaseline.Count -eq 0) {
+        $oldBaseline = Read-LegacyAvisoHashTable (Join-Path $destinationData 'SHA256SUMS.txt')
+        if ($oldBaseline.Count -gt 0) { $avisoReport.baseline_source = 'legacy_sha256sums' }
+    }
+    $effectiveBaseline = @{}
+    foreach ($name in @($oldBaseline.Keys)) {
+        if (Test-Path -LiteralPath (Join-Path $stageAviso $name) -PathType Leaf) {
+            $effectiveBaseline[$name] = [string]$oldBaseline[$name]
+        }
+    }
+
+    $replaceNames = @()
+    $effectiveUpdate = if ($ReloadAviso) { 'all' } else { [string]$avisoPolicy.aviso.update }
+    if ($effectiveUpdate -eq 'all') {
+        $replaceNames = @($avisoInventory.files.PSObject.Properties | ForEach-Object { [string]$_.Name })
+    }
+    elseif ($effectiveUpdate -eq 'selected') {
+        $replaceNames = @($policyReplaceNames)
+    }
+
+    $modifiedPolicy = if ($ReloadAviso) { 'protect_setting' } else { [string]$avisoPolicy.aviso.modified_files }
+    $protectModified = $modifiedPolicy -eq 'preserve' -or
+        ($modifiedPolicy -eq 'protect_setting' -and -not [bool]$ReplaceModifiedAviso)
+    $avisoReport.protected_modified_files = [bool]$protectModified
+    $incomingDirectory = Join-Path $stageData ("AVISO_Updates\" + [string]$releaseMetadata.version)
+
+    foreach ($name in @($replaceNames | Sort-Object -Unique)) {
+        Assert-AvisoFileName $name
+        $packageFile = Join-Path $PackageData "AVISO\$name"
+        Assert-File $packageFile
+        $installedFile = Join-Path $installedAviso $name
+        $stageFile = Join-Path $stageAviso $name
+        $installedExists = Test-Path -LiteralPath $installedFile -PathType Leaf
+        $modified = $false
+        if ($installedExists) {
+            $modified = -not $oldBaseline.ContainsKey($name)
+            if (-not $modified) {
+                $installedHash = (Get-FileHash -LiteralPath $installedFile -Algorithm SHA256).Hash.ToLowerInvariant()
+                $modified = $installedHash -ne [string]$oldBaseline[$name]
+            }
+        }
+
+        if ($installedExists -and $modified -and $protectModified) {
+            [System.IO.Directory]::CreateDirectory($incomingDirectory) | Out-Null
+            Copy-Item -LiteralPath $packageFile -Destination (Join-Path $incomingDirectory $name) -Force
+            $avisoReport.preserved_modified += $name
+            continue
+        }
+
+        [System.IO.Directory]::CreateDirectory($stageAviso) | Out-Null
+        Copy-Item -LiteralPath $packageFile -Destination $stageFile -Force
+        $effectiveBaseline[$name] = [string]$packageInventoryTable[$name]
+        if ($installedExists) { $avisoReport.updated += $name } else { $avisoReport.added += $name }
+    }
+
+    foreach ($name in @($policyDeleteNames | Sort-Object -Unique)) {
+        Assert-AvisoFileName $name
+        $installedFile = Join-Path $installedAviso $name
+        $stageFile = Join-Path $stageAviso $name
+        if (-not (Test-Path -LiteralPath $stageFile -PathType Leaf)) { continue }
+
+        $modified = -not $oldBaseline.ContainsKey($name)
+        if (-not $modified -and (Test-Path -LiteralPath $installedFile -PathType Leaf)) {
+            $installedHash = (Get-FileHash -LiteralPath $installedFile -Algorithm SHA256).Hash.ToLowerInvariant()
+            $modified = $installedHash -ne [string]$oldBaseline[$name]
+        }
+        if ($modified -and $protectModified) {
+            $avisoReport.preserved_deleted_modified += $name
+            continue
+        }
+        Remove-Item -LiteralPath $stageFile -Force
+        $effectiveBaseline.Remove($name)
+        $avisoReport.deleted += $name
+    }
+
+    $knownNames = @{}
+    foreach ($name in @($packageInventoryTable.Keys) + @($oldBaseline.Keys) + @($policyDeleteNames)) {
+        $knownNames[[string]$name] = $true
+    }
+    if (Test-Path -LiteralPath $installedAviso -PathType Container) {
+        $avisoReport.custom_preserved = @(Get-ChildItem -LiteralPath $installedAviso -Filter '*.geojson' -File |
+            Where-Object { -not $knownNames.ContainsKey($_.Name) } |
+            ForEach-Object { $_.Name } | Sort-Object)
+    }
+
+    $effectiveInventoryFiles = [ordered]@{}
+    foreach ($name in @($effectiveBaseline.Keys | Sort-Object)) {
+        if (Test-Path -LiteralPath (Join-Path $stageAviso $name) -PathType Leaf) {
+            $effectiveInventoryFiles[$name] = [string]$effectiveBaseline[$name]
+        }
+    }
+    $effectiveInventory = [ordered]@{
+        schema_version = 1
+        release = [string]$releaseMetadata.version
+        files = $effectiveInventoryFiles
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stageData 'AVISO-INVENTORY.json'),
+        ((ConvertTo-Json $effectiveInventory -Depth 5) + "`n"),
+        $Utf8NoBom)
+}
+else {
+    $avisoReport.protected_modified_files = $false
+    $avisoReport.added = @($avisoInventory.files.PSObject.Properties | ForEach-Object { [string]$_.Name })
+}
+
+[System.IO.File]::WriteAllText(
+    (Join-Path $stageData 'AVISO-UPDATE-REPORT.json'),
+    ((ConvertTo-Json $avisoReport -Depth 8) + "`n"),
+    $Utf8NoBom)
+
 $installationMetadata = [ordered]@{
     schema_version = 1
     product = "vSMR"
@@ -225,6 +494,8 @@ $installationMetadata = [ordered]@{
     installed_utc = [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     source_commit = [string]$releaseMetadata.git_commit
     user_data_preserved = -not [bool]$ReplaceUserData
+    aviso_reload = [bool]$ReloadAviso
+    aviso_modified_files_protected = [bool]$avisoReport.protected_modified_files
     loader_preserved = $preserveTopLevelLoader
     validation_scope = if ($preserveTopLevelLoader) { "runtime_and_data" } else { "full_package" }
     package_loader_version = $packageLoaderVersion

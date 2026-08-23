@@ -215,12 +215,14 @@ namespace vsmr::updater::harness
 		bool autoCheck,
 		bool autoDownload,
 		bool autoInstall,
-		const char* channel = "beta")
+		const char* channel = "beta",
+		bool protectModifiedAviso = true)
 	{
 		std::ostringstream json;
 		json << "{\"schema_version\":1,\"auto_check\":" << (autoCheck ? "true" : "false")
 			<< ",\"auto_download\":" << (autoDownload ? "true" : "false")
 			<< ",\"auto_install\":" << (autoInstall ? "true" : "false")
+			<< ",\"protect_modified_aviso\":" << (protectModifiedAviso ? "true" : "false")
 			<< ",\"channel\":\"" << channel << "\",\"skipped_version\":\"\"}\n";
 		WriteUtf8(environment.storage / L"config.json", json.str());
 	}
@@ -295,6 +297,52 @@ namespace vsmr::updater::harness
 		std::string version;
 		Require(ReadReleaseVersion(environment.install / L"vSMR_Data", version), "active version unreadable");
 		return version;
+	}
+
+	std::string RequiredText(const fs::path& path)
+	{
+		std::string value;
+		Require(ReadText(path, value, 1024 * 1024), "required text fixture could not be read");
+		return value;
+	}
+
+	bool JsonStringArrayContains(
+		const rapidjson::Value& object,
+		const char* member,
+		const char* expected)
+	{
+		if (!object.IsObject() || !object.HasMember(member) || !object[member].IsArray())
+			return false;
+		const rapidjson::Value& values = object[member];
+		for (rapidjson::SizeType index = 0; index < values.Size(); ++index)
+		{
+			const rapidjson::Value& item = values[index];
+			if (item.IsString() && std::string(item.GetString(), item.GetStringLength()) == expected)
+				return true;
+		}
+		return false;
+	}
+
+	void RequireAvisoReloadReport(
+		const Environment& environment,
+		bool expectedProtection,
+		const char* expectedResultMember)
+	{
+		const std::string json = RequiredText(
+			environment.install / L"vSMR_Data" / L"AVISO-UPDATE-REPORT.json");
+		rapidjson::Document document;
+		document.Parse<0>(json.c_str());
+		Require(!document.HasParseError() && document.IsObject(), "AVISO reload report is invalid");
+		Require(JsonString(document, "operation") == "manual_reload",
+			"installer did not record manual AVISO reload semantics");
+		Require(JsonString(document, "policy") == "all",
+			"manual AVISO reload did not request all packaged maps");
+		Require(document.HasMember("protected_modified_files") &&
+			document["protected_modified_files"].IsBool() &&
+			document["protected_modified_files"].GetBool() == expectedProtection,
+			"installer did not receive the requested AVISO protection setting");
+		Require(JsonStringArrayContains(document, expectedResultMember, "TEST.geojson"),
+			"AVISO reload report did not record TEST.geojson in the expected result");
 	}
 
 	void EditJson(const fs::path& path, const std::function<void(rapidjson::Document&)>& edit)
@@ -379,9 +427,9 @@ namespace vsmr::updater::harness
 		const auto releases = ParseReleases(bytes);
 		Require(releases.size() == 2, "release JSON parsing failed");
 		const auto stableSelected = SelectRelease(
-			releases, ParseSemVer("2.0.0"), UpdateChannel::Stable, "", scratch);
+			releases, ParseSemVer("2.0.0"), UpdateChannel::Stable, "", scratch, false);
 		const auto betaSelected = SelectRelease(
-			releases, ParseSemVer("2.0.0"), UpdateChannel::Beta, "", scratch);
+			releases, ParseSemVer("2.0.0"), UpdateChannel::Beta, "", scratch, false);
 		Require(stableSelected && stableSelected->version.normalized == "2.0.1",
 			"GitHub prerelease flag incorrectly affected stable selection");
 		Require(betaSelected && betaSelected->version.normalized == "2.1.0-beta.1",
@@ -580,6 +628,62 @@ namespace vsmr::updater::harness
 			Require(result.status == StartupStatus::UpdateAvailable, "auto_install=false was ignored");
 			Require(ActiveVersion(environment) == kOldVersion, "auto_install=false mutated installation");
 			Require(!fs::exists(environment.storage / L"backups"), "backup created before install permission");
+		});
+
+		Run("AVISO reload selects installed release and honors protection", failures, [&]() {
+			const Environment environment = CreateEnvironment(inputs, "aviso-reload");
+			AddManifest(inputs, environment, kNewVersion);
+			const StartupResult initial = PrepareUpdateBeforeRuntimeLoad(Options(environment));
+			Require(initial.status == StartupStatus::Updated && initial.updateActivated &&
+				ActiveVersion(environment) == kNewVersion,
+				"could not establish the installed release for AVISO reload");
+			Require(ConfirmRuntimeHealthy(initial), "initial AVISO fixture update was not confirmed healthy");
+
+			const fs::path avisoPath = environment.install /
+				L"vSMR_Data" / L"AVISO" / L"TEST.geojson";
+			const std::string packagedAviso = RequiredText(avisoPath);
+			const std::string locallyModified = "{\"locally_modified\":true}\n";
+			WriteUtf8(avisoPath, locallyModified);
+
+			// A newer fixture is deliberately present. reload_aviso must choose the
+			// exact installed beta.4 manifest, even on the stable channel. The beta.5
+			// manifest points at a beta.4 package and would fail package validation if
+			// it were selected accidentally.
+			AddManifest(inputs, environment, "2.0.0-beta.5");
+			WriteConfig(environment, false, false, false, "stable", true);
+			WriteAction(environment, "reload_aviso");
+			const StartupResult protectedReload =
+				PrepareUpdateBeforeRuntimeLoad(Options(environment, kNewVersion));
+			Require(protectedReload.status == StartupStatus::Updated &&
+				protectedReload.updateActivated && protectedReload.selectedVersion == kNewVersion &&
+				ActiveVersion(environment) == kNewVersion,
+				"queued AVISO reload did not install the exact current release");
+			Require(protectedReload.message.find(L"AVISO data was reloaded") != std::wstring::npos,
+				"AVISO reload did not expose a clear completion message");
+			Require(RequiredText(avisoPath) == locallyModified,
+				"protected AVISO reload overwrote a locally modified map");
+			Require(RequiredText(environment.install / L"vSMR_Data" / L"AVISO_Updates" /
+				Utf8ToWide(kNewVersion) / L"TEST.geojson") == packagedAviso,
+				"protected AVISO reload did not retain the incoming official map");
+			RequireAvisoReloadReport(environment, true, "preserved_modified");
+			Require(ConfirmRuntimeHealthy(protectedReload),
+				"protected AVISO reload was not confirmed healthy");
+
+			const std::string secondLocalEdit = "{\"locally_modified\":\"overwrite me\"}\n";
+			WriteUtf8(avisoPath, secondLocalEdit);
+			WriteConfig(environment, false, false, false, "stable", false);
+			WriteAction(environment, "reload_aviso");
+			const StartupResult replacingReload =
+				PrepareUpdateBeforeRuntimeLoad(Options(environment, kNewVersion));
+			Require(replacingReload.status == StartupStatus::Updated &&
+				replacingReload.updateActivated && replacingReload.selectedVersion == kNewVersion &&
+				ActiveVersion(environment) == kNewVersion,
+				"explicit replacing AVISO reload did not complete");
+			Require(RequiredText(avisoPath) == packagedAviso,
+				"disabled AVISO protection did not restore the official map");
+			RequireAvisoReloadReport(environment, false, "updated");
+			Require(ConfirmRuntimeHealthy(replacingReload),
+				"replacing AVISO reload was not confirmed healthy");
 		});
 
 		Run("archive hash mismatch", failures, [&]() {

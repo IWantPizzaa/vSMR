@@ -7,6 +7,7 @@
 - Added a persisted 0.0-359.9 degree main-screen rotation setting that rotates AVISO, aircraft, trails, tags, RIMCAS overlays, and their interaction coordinates together.
 - Added configurable moving-aircraft position trails to the main radar, AVISO inset, and SRW. The Icons page controls trail visibility plus separate ground and airborne history lengths; NOVA uses compact vSMR history dots, Icon uses filled bubbles that grey and fade with age, and Triangle uses shrinking hollow circles.
 - Added a persisted Night/Day AVISO color mode. Both the main view and AVISO inset select compact Day overrides from the same GeoJSON document, while existing base paint remains the Night palette and older/custom schema-2 files continue to work unchanged.
+- Added release-controlled AVISO migrations with `none`, selected-airport, and all-airport modes, an official hash inventory for detecting local edits, complete rollback backups, and a default-on protection setting with a manual verified AVISO reload action.
 
 ### Changed
 
@@ -15,6 +16,7 @@
 - Removed polygon outlines from AVISO rendering so edited area fills no longer retain an unrelated source stroke color; line features continue to render with their primary stroke color.
 - Removed LFPG Dyna data selection and controller-ownership rendering; LFPG now uses only its standard airport GeoJSON.
 - Replaced the bundled LFPG and LFMN AVISO documents and default profiles with the supplied data, removed AMSR, TMA, and VFR labels from every bundled airport map, and standardized gate/stand labels at zoom 9 and taxiway labels at zoom 7 outside LFPG and LFMN.
+- Marked beta 4 as a mandatory all-airport AVISO replacement for the Night/Day migration and removed the obsolete `LFMM.geojson`; later releases must explicitly choose whether to update no maps, selected maps, or every map.
 - Made automatic configuration and datalink saves fully background operations and preloaded the hidden WebView2 Control Center after ASR initialization for a near-immediate first open.
 - Accelerated routine Control Center autosaves with a shorter 300 ms debounce, retained validated in-memory owner configuration, compact AVISO writes without a redundant second parse, and compact authoritative profile/revision responses.
 - Made AVISO and SRW inset content inherit EuroScope's live Sector / Inactive Sector Background color, added a thin black outer frame to both radar insets, and removed the obsolete per-profile SRW background override.

@@ -149,6 +149,7 @@ foreach ($relativePath in @(
     "vSMR\tools\crash_harness\vSMRCrashHarness.vcxproj",
     "vSMR\tools\crash_harness\vSMRCrashHarness.vcxproj.filters",
     "vSMR.sln",
+    "vSMR\data\AVISO-UPDATE-POLICY.json",
     "vSMR\data\vSMR_Profiles.json",
     "vSMR\data\ICAO_Aircraft.json",
     "vSMR\data\Licenses\DEPENDENCIES.md",
@@ -159,6 +160,7 @@ foreach ($relativePath in @(
     "vSMR\src\control_center\web\data.js",
     "appveyor.yml",
     "README.md",
+    "UPDATER.md",
     "CHANGELOG.md"
 )) {
     Assert-File (Join-Path $RepositoryRoot $relativePath)
@@ -242,11 +244,16 @@ Assert-True ($packageScriptText -match 'SignedCms' -and
     $packageScriptText -match '\.p7s') "Release packaging does not create a detached CMS update signature."
 Assert-True ($packageScriptText -match 'minimum_loader_version' -and
     $packageScriptText -match 'vSMR_Data/Runtime/vSMR\.Runtime\.dll') "Release packaging does not emit the loader/runtime update contract."
+Assert-True ($packageScriptText -match 'AVISO-UPDATE-POLICY\.json' -and
+    $packageScriptText -match 'AVISO-INVENTORY\.json') "Release packaging does not validate the AVISO policy and generate its inventory."
 $installScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\data\Tools\install_vsmr.ps1"))
 $restoreScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\data\Tools\restore_vsmr_backup.ps1"))
 Assert-True ($installScriptText -match '\[switch\]\$PreserveLoader' -and
     $installScriptText -match 'validation_scope' -and
     $installScriptText -match 'installed_loader_sha256') "Installer lacks preserve-loader mode or scoped live-install provenance."
+Assert-True ($installScriptText -match '\[switch\]\$ReloadAviso' -and
+    $installScriptText -match '\[switch\]\$ReplaceModifiedAviso' -and
+    $installScriptText -match 'AVISO-UPDATE-REPORT\.json') "Installer lacks AVISO reload, modified-file protection, or migration reporting."
 Assert-True ($restoreScriptText -match '\[switch\]\$PreserveLoader') "Rollback helper lacks preserve-loader mode."
 Assert-True ($solutionText -match '(?m)^\s*Release\|Win32\s*=\s*Release\|Win32\s*$') "The solution does not expose Release|Win32."
 Assert-True (-not ($solutionText -match '(?m)^\s*Debug\|Win32\s*=\s*Debug\|Win32\s*$')) "The solution must default to its sole Release|Win32 configuration."
@@ -381,10 +388,52 @@ foreach ($record in $aircraftRecords) {
 }
 
 $avisoFiles = @(
+    # The build deliberately excludes the aggregate ALL_FR_* and _LFXX
+    # sources; only canonical four-character airport files are packaged.
     Get-ChildItem -LiteralPath (Join-Path $dataDirectory "AVISO") -Filter "*.geojson" -File |
         Where-Object { $_.Name -match '^[A-Za-z0-9]{4}\.geojson$' }
 )
 Assert-True ($avisoFiles.Count -gt 0) "No bundled AVISO files were found."
+$avisoFileNames = @($avisoFiles | ForEach-Object { $_.Name })
+$avisoPolicyPath = Join-Path $dataDirectory "AVISO-UPDATE-POLICY.json"
+$avisoPolicy = Get-Content -LiteralPath $avisoPolicyPath -Raw | ConvertFrom-Json
+Assert-True ([int]$avisoPolicy.schema_version -eq 1) "AVISO update policy is not schema 1."
+Assert-True ([string]$avisoPolicy.release -eq $ExpectedVersion) "AVISO update policy does not target $ExpectedVersion."
+Assert-True ($avisoPolicy.aviso -is [pscustomobject]) "AVISO update policy has no aviso object."
+$avisoPolicyPropertyNames = @($avisoPolicy.aviso.PSObject.Properties | ForEach-Object { $_.Name })
+Assert-True ($avisoPolicyPropertyNames -contains 'replace' -and $avisoPolicy.aviso.replace -is [System.Array]) "AVISO update policy replace must be an explicit JSON array."
+Assert-True ($avisoPolicyPropertyNames -contains 'delete' -and $avisoPolicy.aviso.delete -is [System.Array]) "AVISO update policy delete must be an explicit JSON array."
+$avisoUpdateMode = [string]$avisoPolicy.aviso.update
+$avisoModifiedFilePolicy = [string]$avisoPolicy.aviso.modified_files
+Assert-True ($avisoUpdateMode -in @('none', 'selected', 'all')) "AVISO update policy has unsupported update mode '$avisoUpdateMode'."
+Assert-True ($avisoModifiedFilePolicy -in @('preserve', 'protect_setting', 'replace')) "AVISO update policy has unsupported modified-files mode '$avisoModifiedFilePolicy'."
+$avisoPolicyReplace = @($avisoPolicy.aviso.replace | ForEach-Object { [string]$_ })
+$avisoPolicyDelete = @($avisoPolicy.aviso.delete | ForEach-Object { [string]$_ })
+foreach ($name in @($avisoPolicyReplace) + @($avisoPolicyDelete)) {
+    Assert-True ($name -match '^[A-Za-z0-9]{4}\.geojson$') "AVISO update policy contains unsafe or noncanonical filename '$name'."
+}
+$normalizedAvisoPolicyReplace = @($avisoPolicyReplace | ForEach-Object { $_.ToUpperInvariant() })
+$normalizedAvisoPolicyDelete = @($avisoPolicyDelete | ForEach-Object { $_.ToUpperInvariant() })
+Assert-True (@($normalizedAvisoPolicyReplace | Sort-Object -Unique).Count -eq $normalizedAvisoPolicyReplace.Count) "AVISO update policy contains duplicate replacement filenames."
+Assert-True (@($normalizedAvisoPolicyDelete | Sort-Object -Unique).Count -eq $normalizedAvisoPolicyDelete.Count) "AVISO update policy contains duplicate deletion filenames."
+$avisoPolicyOverlap = @($normalizedAvisoPolicyReplace | Where-Object { $normalizedAvisoPolicyDelete -contains $_ })
+Assert-True ($avisoPolicyOverlap.Count -eq 0) "AVISO update policy both replaces and deletes: $($avisoPolicyOverlap -join ', ')."
+if ($avisoUpdateMode -eq 'selected') {
+    Assert-True ($avisoPolicyReplace.Count -gt 0) "Selected AVISO updates require at least one replacement filename."
+    foreach ($name in $avisoPolicyReplace) {
+        Assert-True ($avisoFileNames -contains $name) "Selected AVISO replacement is not bundled: $name."
+    }
+}
+else {
+    Assert-True ($avisoPolicyReplace.Count -eq 0) "AVISO update mode '$avisoUpdateMode' must leave replace empty."
+}
+foreach ($name in $avisoPolicyDelete) {
+    Assert-True ($avisoFileNames -notcontains $name) "Deleted AVISO '$name' is still bundled."
+}
+if ($ExpectedVersion -eq '2.0.0-beta.4') {
+    Assert-True ($avisoUpdateMode -eq 'all' -and $avisoModifiedFilePolicy -eq 'replace') "Beta 4 must replace every AVISO, including locally modified files, for the Night/Day schema migration."
+    Assert-True ($avisoPolicyDelete.Count -eq 1 -and $avisoPolicyDelete[0] -eq 'LFMM.geojson') "Beta 4 must remove LFMM.geojson and no other AVISO file."
+}
 $avisoPaletteStyleCount = 0
 $avisoPaletteColorCount = 0
 $avisoPaletteColorKeys = @('fill', 'stroke', 'marker-color', 'text-color', 'text-halo-color')
@@ -483,6 +532,7 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     $BuildOutputDirectory = [System.IO.Path]::GetFullPath($BuildOutputDirectory)
     Assert-File (Join-Path $BuildOutputDirectory "vSMR.dll")
     Assert-True (Test-Path -LiteralPath (Join-Path $BuildOutputDirectory "vSMR_Data") -PathType Container) "Built vSMR_Data is missing."
+    Assert-File (Join-Path $BuildOutputDirectory "vSMR_Data\AVISO-UPDATE-POLICY.json")
     $releaseRootNames = @(Get-ChildItem -LiteralPath $BuildOutputDirectory -Force | ForEach-Object Name | Sort-Object)
     Assert-True (($releaseRootNames -join '|') -eq 'vSMR.dll|vSMR_Data') "Release root must contain only vSMR.dll and vSMR_Data; found $($releaseRootNames -join ', ')."
     $builtCrashHandler = Join-Path $BuildOutputDirectory "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"

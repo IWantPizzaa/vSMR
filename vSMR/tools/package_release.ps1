@@ -323,48 +323,114 @@ try {
     $packagedDllPath = Join-Path $packageStage "vSMR.dll"
     $packagedRuntimePath = Join-Path $packageStage "vSMR_Data\Runtime\vSMR.Runtime.dll"
     $packagedCrashHandlerPath = Join-Path $packageStage "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
+    $packagedAvisoPolicyPath = Join-Path $packageStage "vSMR_Data\AVISO-UPDATE-POLICY.json"
+    $packagedAvisoInventoryPath = Join-Path $packageStage "vSMR_Data\AVISO-INVENTORY.json"
     Assert-File $packagedRuntimePath
     Assert-File $packagedCrashHandlerPath
+    Assert-File $packagedAvisoPolicyPath
 
-if ($null -ne $signingCertificate) {
-    $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
-    if ([string]::IsNullOrWhiteSpace($signTool)) {
-        $kitsBin = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
-        $signTool = Get-ChildItem -LiteralPath $kitsBin -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '\\x86\\signtool\.exe$' } |
-            Sort-Object FullName -Descending |
-            Select-Object -ExpandProperty FullName -First 1
+    $avisoPolicy = Get-Content -LiteralPath $packagedAvisoPolicyPath -Raw | ConvertFrom-Json
+    $supportedAvisoUpdates = @('none', 'selected', 'all')
+    $supportedModifiedFilePolicies = @('preserve', 'protect_setting', 'replace')
+    if ([int]$avisoPolicy.schema_version -ne 1 -or
+        [string]$avisoPolicy.release -ne $Version -or
+        $avisoPolicy.aviso -isnot [pscustomobject] -or
+        $supportedAvisoUpdates -notcontains [string]$avisoPolicy.aviso.update -or
+        $supportedModifiedFilePolicies -notcontains [string]$avisoPolicy.aviso.modified_files -or
+        $avisoPolicy.aviso.replace -isnot [System.Array] -or
+        $avisoPolicy.aviso.delete -isnot [System.Array]) {
+        throw "AVISO-UPDATE-POLICY.json is invalid or does not target release $Version."
     }
-    if ([string]::IsNullOrWhiteSpace($signTool)) {
-        throw "A signing certificate was configured, but signtool.exe was not found."
-    }
-    $normalizedThumbprint = ($CertificateThumbprint -replace '\s', '')
-    foreach ($binaryToSign in @($packagedDllPath, $packagedRuntimePath, $packagedCrashHandlerPath)) {
-        & $signTool sign /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $binaryToSign
-        if ($LASTEXITCODE -ne 0) {
-            throw "Authenticode signing failed for '$binaryToSign' with exit code $LASTEXITCODE."
+    $policyReplaceNames = @($avisoPolicy.aviso.replace | ForEach-Object { [string]$_ })
+    $policyDeleteNames = @($avisoPolicy.aviso.delete | ForEach-Object { [string]$_ })
+    foreach ($name in @($policyReplaceNames) + @($policyDeleteNames)) {
+        if ([string]::IsNullOrWhiteSpace([string]$name) -or
+            [System.IO.Path]::IsPathRooted([string]$name) -or
+            [System.IO.Path]::GetFileName([string]$name) -ne [string]$name -or
+            ([string]$name).IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+            -not ([string]$name).EndsWith('.geojson', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "AVISO update policy contains an unsafe filename: $name"
         }
     }
-}
-
-$signature = Get-AuthenticodeSignature -LiteralPath $packagedDllPath
-$runtimeSignature = Get-AuthenticodeSignature -LiteralPath $packagedRuntimePath
-$crashHandlerSignature = Get-AuthenticodeSignature -LiteralPath $packagedCrashHandlerPath
-if ($RequireSignature -and $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-    throw "A valid Authenticode signature is required, but vSMR.dll status is '$($signature.Status)'."
-}
-if ($RequireSignature -and $runtimeSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-    throw "A valid Authenticode signature is required, but vSMR.Runtime.dll status is '$($runtimeSignature.Status)'."
-}
-if ($RequireSignature -and $crashHandlerSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
-    throw "A valid Authenticode signature is required, but vSMRCrashHandler.dll status is '$($crashHandlerSignature.Status)'."
-}
-if (-not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
-    $loaderAscii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($packagedDllPath))
-    if (-not $loaderAscii.Contains($UpdateSignerCertSha256)) {
-        throw "The packaged loader does not contain the configured VSMR_UPDATE_SIGNER_CERT_SHA256 pin. Rebuild with the same pin before packaging."
+    $duplicatePolicyNames = @($policyReplaceNames + $policyDeleteNames |
+        Group-Object { $_.ToLowerInvariant() } | Where-Object { $_.Count -gt 1 })
+    if ($duplicatePolicyNames.Count -gt 0) {
+        throw "AVISO update policy contains duplicate or overlapping filenames."
     }
-}
+    if ([string]$avisoPolicy.aviso.update -eq 'selected' -and $policyReplaceNames.Count -eq 0) {
+        throw "A selected AVISO update policy must name at least one replacement."
+    }
+    if ([string]$avisoPolicy.aviso.update -ne 'selected' -and $policyReplaceNames.Count -gt 0) {
+        throw "Only a selected AVISO update policy may contain replacement filenames."
+    }
+    if ([string]$avisoPolicy.aviso.update -eq 'selected') {
+        foreach ($name in $policyReplaceNames) {
+            Assert-File (Join-Path $packageStage "vSMR_Data\AVISO\$name")
+        }
+    }
+
+    $avisoInventoryFiles = [ordered]@{}
+    foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $packageStage "vSMR_Data\AVISO") -Filter '*.geojson' -File | Sort-Object Name)) {
+        $avisoInventoryFiles[$file.Name] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    if ($avisoInventoryFiles.Count -eq 0) {
+        throw "The release package contains no AVISO GeoJSON files."
+    }
+    $avisoInventory = [ordered]@{
+        schema_version = 1
+        release = $Version
+        files = $avisoInventoryFiles
+    }
+    Write-Utf8NoBom $packagedAvisoInventoryPath ((ConvertTo-Json $avisoInventory -Depth 5) + "`n")
+
+    foreach ($name in $policyDeleteNames) {
+        $bundledWithSameName = @($avisoInventoryFiles.Keys | Where-Object {
+            ([string]$_).Equals($name, [System.StringComparison]::OrdinalIgnoreCase)
+        })
+        if ($bundledWithSameName.Count -gt 0) {
+            throw "An AVISO cannot be both bundled and scheduled for deletion: $name"
+        }
+    }
+
+    if ($null -ne $signingCertificate) {
+        $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1
+        if ([string]::IsNullOrWhiteSpace($signTool)) {
+            $kitsBin = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+            $signTool = Get-ChildItem -LiteralPath $kitsBin -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\x86\\signtool\.exe$' } |
+                Sort-Object FullName -Descending |
+                Select-Object -ExpandProperty FullName -First 1
+        }
+        if ([string]::IsNullOrWhiteSpace($signTool)) {
+            throw "A signing certificate was configured, but signtool.exe was not found."
+        }
+        $normalizedThumbprint = ($CertificateThumbprint -replace '\s', '')
+        foreach ($binaryToSign in @($packagedDllPath, $packagedRuntimePath, $packagedCrashHandlerPath)) {
+            & $signTool sign /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $binaryToSign
+            if ($LASTEXITCODE -ne 0) {
+                throw "Authenticode signing failed for '$binaryToSign' with exit code $LASTEXITCODE."
+            }
+        }
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $packagedDllPath
+    $runtimeSignature = Get-AuthenticodeSignature -LiteralPath $packagedRuntimePath
+    $crashHandlerSignature = Get-AuthenticodeSignature -LiteralPath $packagedCrashHandlerPath
+    if ($RequireSignature -and $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+        throw "A valid Authenticode signature is required, but vSMR.dll status is '$($signature.Status)'."
+    }
+    if ($RequireSignature -and $runtimeSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+        throw "A valid Authenticode signature is required, but vSMR.Runtime.dll status is '$($runtimeSignature.Status)'."
+    }
+    if ($RequireSignature -and $crashHandlerSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+        throw "A valid Authenticode signature is required, but vSMRCrashHandler.dll status is '$($crashHandlerSignature.Status)'."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
+        $loaderAscii = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($packagedDllPath))
+        if (-not $loaderAscii.Contains($UpdateSignerCertSha256)) {
+            throw "The packaged loader does not contain the configured VSMR_UPDATE_SIGNER_CERT_SHA256 pin. Rebuild with the same pin before packaging."
+        }
+    }
 
 $gitCommit = "unknown"
 $sourceDirty = $true

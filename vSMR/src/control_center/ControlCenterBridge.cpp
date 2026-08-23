@@ -483,6 +483,7 @@ namespace
 		config.AddMember("auto_check", true, allocator);
 		config.AddMember("auto_download", true, allocator);
 		config.AddMember("auto_install", true, allocator);
+		config.AddMember("protect_modified_aviso", true, allocator);
 		AddString(config, "channel", DefaultUpdateChannel(), allocator);
 		AddString(config, "skipped_version", "", allocator);
 	}
@@ -530,6 +531,11 @@ namespace
 		SetBoolMember(config, "auto_check", ReadBool(config, "auto_check", true), config.GetAllocator());
 		SetBoolMember(config, "auto_download", ReadBool(config, "auto_download", true), config.GetAllocator());
 		SetBoolMember(config, "auto_install", ReadBool(config, "auto_install", true), config.GetAllocator());
+		SetBoolMember(
+			config,
+			"protect_modified_aviso",
+			ReadBool(config, "protect_modified_aviso", true),
+			config.GetAllocator());
 		SetStringMember(
 			config,
 			"skipped_version",
@@ -2131,7 +2137,8 @@ struct VsmrControlCenterBridge::Impl
 		};
 		if (!applyBoolean("auto_check") ||
 			!applyBoolean("auto_download") ||
-			!applyBoolean("auto_install"))
+			!applyBoolean("auto_install") ||
+			!applyBoolean("protect_modified_aviso"))
 		{
 			return false;
 		}
@@ -2188,7 +2195,7 @@ struct VsmrControlCenterBridge::Impl
 			return false;
 		}
 		action = LowerAscii(TrimAscii(ReadString(*payload, "action")));
-		if (action != "check_now" && action != "retry_update")
+		if (action != "check_now" && action != "retry_update" && action != "reload_aviso")
 		{
 			error = "Unsupported updater action.";
 			return false;
@@ -4589,7 +4596,9 @@ struct VsmrControlCenterBridge::Impl
 				envelope.type,
 				requestedAction == "retry_update"
 					? "Update retry queued for the next startup"
-					: "Update check queued for the next startup");
+					: requestedAction == "reload_aviso"
+						? "AVISO reload queued for the next startup"
+						: "Update check queued for the next startup");
 			SendUpdateState(envelope.id);
 			return true;
 		}

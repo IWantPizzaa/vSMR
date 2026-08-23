@@ -57,7 +57,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vs
   -DestinationDirectory "C:\path\to\EuroScope\Plugins"
 ```
 
-The installer validates the package manifest before copying files and creates a complete timestamped rollback backup. Its backup also carries a durable prepared/committed/rolled-back transaction outcome, so a harmless cleanup failure after a successful atomic swap is not reported as a failed install. On an upgrade, it replaces the DLL and immutable package resources while preserving existing user data by default, including profiles, AVISO files, imported resources, aircraft data and icons, audio, and unknown files under `vSMR_Data`.
+The installer validates the package manifest before copying files and creates a complete timestamped rollback backup. Its backup also carries a durable prepared/committed/rolled-back transaction outcome, so a harmless cleanup failure after a successful atomic swap is not reported as a failed install. On an upgrade, it replaces the DLL and immutable package resources while preserving profiles, imported resources, aircraft data and icons, audio, and unknown files under `vSMR_Data`. Bundled AVISO files follow the release's explicit `AVISO-UPDATE-POLICY.json`: a release can update none, a named selection, or all of them. Unknown custom airport filenames are always retained unless `-ReplaceUserData` is deliberately used.
+
+Each release package carries an `AVISO-INVENTORY.json` containing the official hash of every bundled airport map. This lets the next installer distinguish an untouched bundled map from one edited locally. Depending on the release policy, a locally modified map is preserved, follows the user's `Protect locally modified AVISOs` setting, or is replaced for a mandatory data migration. A protected map's incoming release copy is saved under `vSMR_Data\AVISO_Updates\<version>\`, and `AVISO-UPDATE-REPORT.json` records the result. The installed effective inventory adopts new hashes only for maps actually replaced and retains prior baselines for maps left untouched.
 
 `-PreserveLoader` (also accepted as `-RuntimeUpdate`) is reserved for the verified startup-updater path. It still validates and backs up the complete extracted package, but atomically replaces only `vSMR_Data` so the currently loaded top-level loader is never moved. `INSTALLATION.json` records the packaged and actually installed loader versions/hashes and whether validation covered the full package or runtime/data only.
 
@@ -122,6 +124,8 @@ vSMR-<version>.update.json.p7s
 The manifest must explicitly declare itself publishable. Its detached CMS signature is checked against the updater's pinned signing certificate, followed by the archive size and SHA-256, the package's internal `SHA256SUMS.txt`, Win32 architecture, runtime ABI, and minimum-loader version. Legacy, validation-only, or incomplete releases without this signed publishable manifest are ignored by automatic updating.
 
 Open `Settings` in the Control Center and use the compact `Automatic updates` group to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by profile Undo, Redo, or Revert. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
+
+`Reload AVISOs` queues the installed version's verified GitHub release for the next EuroScope startup and reapplies every bundled airport map without requiring a newer plug-in version. `Protect locally modified AVISOs` is enabled by default: maps whose current hash differs from their installed inventory baseline remain active, while their official replacements are placed under `AVISO_Updates`. Turning protection off deliberately restores those maps to the release copies. A release marked as a mandatory `replace` migration, such as beta 4's Night/Day data conversion, overrides this preference; the complete pre-update backup remains available for rollback.
 
 Updater configuration, durable recovery state, and non-secret status use the deterministic `%LOCALAPPDATA%\vSMR\Updater\` location. If it cannot be written, update preferences and next-startup actions report the failure instead of switching journals. No GitHub token is required or stored. A prerelease build initially follows the Beta channel; a stable build initially follows Stable. A previously skipped release can be cleared from the compact updater controls.
 
@@ -214,6 +218,8 @@ Bundled documents declare `metadata.default_color_palette` as `night` and list `
 The Night/Day selector is in the AVISO editor toolbar and is saved with the radar screen's ASR state. Selecting a palette invalidates the existing AVISO rasters and switches the main view and AVISO inset together without reparsing the source document. Geometry and Text editor swatches and color fields follow the selected palette: Night edits update base paint, while Day edits update `palette-overrides.day`. Visibility, opacity, width, typography, halo width, and zoom remain common to both palettes.
 
 The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. An explicitly selected local or GitHub source remains authoritative. Legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
+
+Release AVISO changes are opt-in at publication time. Maintainers select `none`, `selected`, or `all` in `vSMR\data\AVISO-UPDATE-POLICY.json`; packaging then generates the matching official-hash inventory. See [UPDATER.md](UPDATER.md) for the policy recipes, modified-file safeguards, and beta 4 migration rule.
 
 The Control Center can:
 
@@ -546,6 +552,9 @@ The importer reads and writes UTF-8 explicitly and stops if feature data, geomet
 
 From the repository root:
 
+1. Set the release version and AVISO behavior in `vSMR\data\AVISO-UPDATE-POLICY.json`. Use `none` for the normal no-map-update case, `selected` with explicit filenames for a partial map update, or `all` only when every bundled map must be refreshed. See [UPDATER.md](UPDATER.md).
+2. Run the packaging command:
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1
 ```
@@ -557,8 +566,8 @@ The script:
 3. restores NuGet packages
 4. rebuilds `Release | Win32`
 5. validates versioning, compiler hardening, runtime data, licenses, and release layout
-6. stages a clean payload
-7. writes release metadata and the internal SHA-256 package manifest
+6. validates the release-owned AVISO update policy and stages a clean payload
+7. generates the official AVISO hash inventory, release metadata, and internal SHA-256 package manifest
 8. creates the user ZIP, external update manifest, detached signature for a publishable release, and separate private-symbol archive
 
 A publishable package requires a clean Git working tree and a verifiable commit. For a local dirty-tree check only:

@@ -173,6 +173,7 @@ namespace vsmr::updater
 			bool autoCheck = true;
 			bool autoDownload = true;
 			bool autoInstall = true;
+			bool protectModifiedAviso = true;
 			UpdateChannel channel = UpdateChannel::Beta;
 			std::string skippedVersion;
 		};
@@ -875,6 +876,7 @@ namespace vsmr::updater
 			config.autoCheck = JsonBool(document, "auto_check", true);
 			config.autoDownload = JsonBool(document, "auto_download", true);
 			config.autoInstall = JsonBool(document, "auto_install", true);
+			config.protectModifiedAviso = JsonBool(document, "protect_modified_aviso", true);
 			config.skippedVersion = JsonString(document, "skipped_version");
 			const std::string channel = ToLowerAscii(JsonString(document, "channel"));
 			if (channel == "stable")
@@ -903,7 +905,7 @@ namespace vsmr::updater
 					result.action = ToLowerAscii(JsonString(document, "action"));
 					result.valid = !result.requestId.empty() &&
 						(result.action == "check_now" || result.action == "retry_update" ||
-						 result.action == "clear_status");
+						 result.action == "reload_aviso" || result.action == "clear_status");
 				}
 			}
 			::DeleteFileW(processingPath.c_str());
@@ -1358,14 +1360,20 @@ namespace vsmr::updater
 			const SemVer& installed,
 			UpdateChannel channel,
 			const std::string& skippedVersion,
-			const fs::path& storageRoot)
+			const fs::path& storageRoot,
+			bool selectInstalledVersion)
 		{
 			std::optional<Release> selected;
 			for (const auto& release : releases)
 			{
-				if (!ChannelAccepts(release.version, channel) ||
-					CompareSemVer(release.version, installed) <= 0 ||
-					release.version.normalized == skippedVersion ||
+				const int comparison = CompareSemVer(release.version, installed);
+				if (selectInstalledVersion)
+				{
+					if (comparison != 0)
+						continue;
+				}
+				else if (!ChannelAccepts(release.version, channel) ||
+					comparison <= 0 || release.version.normalized == skippedVersion ||
 					IsRegularFile(storageRoot / L"quarantine" /
 						(Utf8ToWide(release.version.normalized) + L".json")))
 				{
@@ -1836,6 +1844,7 @@ namespace vsmr::updater
 			UpdateChannel channel,
 			const std::string& skippedVersion,
 			const fs::path& storageRoot,
+			bool selectInstalledVersion,
 			std::string& error)
 		{
 			if (options.testFeedDirectory.empty())
@@ -1865,10 +1874,18 @@ namespace vsmr::updater
 				if (!ReadBytes(candidate.manifestPath, candidate.manifestBytes, kMaximumManifestBytes))
 					continue;
 				std::string parseError;
-				if (!ParseManifest(candidate.manifestBytes, candidate.manifest, parseError) ||
-					!ChannelAccepts(candidate.manifest.version, channel) ||
-					CompareSemVer(candidate.manifest.version, installed) <= 0 ||
-					candidate.manifest.version.normalized == skippedVersion ||
+				if (!ParseManifest(candidate.manifestBytes, candidate.manifest, parseError))
+				{
+					continue;
+				}
+				const int comparison = CompareSemVer(candidate.manifest.version, installed);
+				if (selectInstalledVersion)
+				{
+					if (comparison != 0)
+						continue;
+				}
+				else if (!ChannelAccepts(candidate.manifest.version, channel) ||
+					comparison <= 0 || candidate.manifest.version.normalized == skippedVersion ||
 					IsRegularFile(storageRoot / L"quarantine" /
 						(Utf8ToWide(candidate.manifest.version.normalized) + L".json")))
 				{
@@ -2327,6 +2344,8 @@ finally { $zip.Dispose() }
 			Context& context,
 			const fs::path& packageRoot,
 			bool preserveLoader,
+			bool reloadAviso,
+			bool replaceModifiedAviso,
 			HANDLE installationSessionLock,
 			std::string& error)
 		{
@@ -2345,6 +2364,10 @@ finally { $zip.Dispose() }
 			};
 			if (preserveLoader)
 				arguments.push_back(L"-PreserveLoader");
+			if (reloadAviso)
+				arguments.push_back(L"-ReloadAviso");
+			if (replaceModifiedAviso)
+				arguments.push_back(L"-ReplaceModifiedAviso");
 			DWORD exitCode = 0;
 			ULONGLONG lastPulse = 0;
 			if (!RunProcess(
@@ -2354,7 +2377,9 @@ finally { $zip.Dispose() }
 					if (now - lastPulse >= 1000)
 					{
 						lastPulse = now;
-						Report(context, ProgressStage::Installing, -1, L"Installing vSMR update...");
+						Report(
+							context, ProgressStage::Installing, -1,
+							reloadAviso ? L"Reloading AVISO data..." : L"Installing vSMR update...");
 					}
 				},
 				{ installationSessionLock }))
@@ -3040,9 +3065,11 @@ finally { $zip.Dispose() }
 			const Action action = ConsumeAction(context.storageRoot);
 			if (action.valid)
 				context.state.lastActionRequestId = action.requestId;
+			const bool forceAvisoReload = action.valid && action.action == "reload_aviso";
 			const bool forceDiscovery = action.valid &&
-				(action.action == "check_now" || action.action == "retry_update");
+				(action.action == "check_now" || action.action == "retry_update" || forceAvisoReload);
 			const bool forceRetryInstall = action.valid && action.action == "retry_update";
+			const bool forceExplicitInstall = forceRetryInstall || forceAvisoReload;
 			if (forceRetryInstall && ParseSemVer(previousState.availableVersion).valid)
 			{
 				// An explicit retry is the only operation allowed to clear a runtime
@@ -3067,7 +3094,10 @@ finally { $zip.Dispose() }
 			context.state.status = "checking";
 			context.state.error.clear();
 			context.state.errorCode.clear();
-			if (!Report(context, ProgressStage::Checking, -1, L"Checking for vSMR updates..."))
+			const wchar_t* checkingMessage = forceAvisoReload
+				? L"Finding the installed vSMR release for AVISO reload..."
+				: L"Checking for vSMR updates...";
+			if (!Report(context, ProgressStage::Checking, -1, checkingMessage))
 				return FailedOpen(context, result, "cancelled", L"Update check cancelled.", "idle");
 
 			const SemVer installed = ParseSemVer(startupOptions.currentVersion);
@@ -3081,13 +3111,19 @@ finally { $zip.Dispose() }
 			{
 				fixture = SelectFixture(
 					startupOptions, installed, config.channel,
-					config.skippedVersion, context.storageRoot, error);
+					config.skippedVersion, context.storageRoot, forceAvisoReload, error);
 				context.state.lastCheckedUtc = UtcNow();
 				context.state.nextCheckUtc = UtcAfterSeconds(kMinimumCheckIntervalSeconds);
 				if (!fixture)
 				{
 					if (!error.empty())
 						return FailedOpen(context, result, error, L"The local updater fixture could not be loaded.");
+					if (forceAvisoReload)
+					{
+						return FailedOpen(
+							context, result, "installed_release_not_found",
+							L"The installed vSMR release is not available in the updater fixture; AVISOs were not changed.");
+					}
 					context.state.status = "up_to_date";
 					context.state.message = "vSMR is up to date.";
 					PersistState(context);
@@ -3114,9 +3150,15 @@ finally { $zip.Dispose() }
 				context.state.nextCheckUtc = UtcAfterSeconds(kMinimumCheckIntervalSeconds);
 				remoteRelease = SelectRelease(
 					releases, installed, config.channel,
-					config.skippedVersion, context.storageRoot);
+					config.skippedVersion, context.storageRoot, forceAvisoReload);
 				if (!remoteRelease)
 				{
+					if (forceAvisoReload)
+					{
+						return FailedOpen(
+							context, result, "installed_release_not_found",
+							L"The installed vSMR release is not available on GitHub; AVISOs were not changed.");
+					}
 					context.state.status = "up_to_date";
 					context.state.message = "vSMR is up to date.";
 					context.state.error.clear();
@@ -3152,7 +3194,7 @@ finally { $zip.Dispose() }
 			}
 			context.state.availableVersion = result.availableVersion;
 			context.state.selectedVersion = result.availableVersion;
-			if (!config.autoDownload && !forceRetryInstall)
+			if (!config.autoDownload && !forceExplicitInstall)
 			{
 				result.status = StartupStatus::UpdateAvailable;
 				result.message = L"A vSMR update is available; automatic download is disabled.";
@@ -3163,7 +3205,10 @@ finally { $zip.Dispose() }
 			}
 
 			context.state.status = "downloading";
-			if (!Report(context, ProgressStage::Downloading, 0, L"Downloading vSMR update..."))
+			const wchar_t* downloadMessage = forceAvisoReload
+				? L"Downloading the signed release for AVISO reload..."
+				: L"Downloading vSMR update...";
+			if (!Report(context, ProgressStage::Downloading, 0, downloadMessage))
 				return FailedOpen(context, result, "cancelled", L"Update download cancelled.", "idle");
 			if (fixture)
 			{
@@ -3223,7 +3268,7 @@ finally { $zip.Dispose() }
 				return result;
 			}
 
-			if (!config.autoInstall && !forceRetryInstall)
+			if (!config.autoInstall && !forceExplicitInstall)
 			{
 				result.status = StartupStatus::UpdateAvailable;
 				result.message = L"A verified vSMR update is ready for the next startup.";
@@ -3254,7 +3299,9 @@ finally { $zip.Dispose() }
 			}
 
 			context.state.status = "installing";
-			Report(context, ProgressStage::Installing, -1, L"Installing vSMR update...");
+			Report(
+				context, ProgressStage::Installing, -1,
+				forceAvisoReload ? L"Reloading AVISO data..." : L"Installing vSMR update...");
 			result.selectedVersion = manifest.version.normalized;
 			result.availableVersion = manifest.version.normalized;
 			result.previousRuntimePath = startupOptions.canonicalRuntimePath;
@@ -3272,7 +3319,9 @@ finally { $zip.Dispose() }
 					context, result, "install_journal_unavailable",
 					L"The updater could not create its durable installation journal.");
 			}
-			if (!RunInstaller(context, packageRoot, true, sessionLock.get(), error))
+			if (!RunInstaller(
+				context, packageRoot, true, forceAvisoReload,
+				!config.protectModifiedAviso, sessionLock.get(), error))
 			{
 				std::string activeVersion;
 				std::string activeRuntimeHash;
@@ -3341,7 +3390,9 @@ finally { $zip.Dispose() }
 			result.rollbackBackupPath = fs::absolute(rollbackBackup).lexically_normal();
 			result.previousRuntimePath = result.rollbackBackupPath /
 				L"vSMR_Data" / L"Runtime" / L"vSMR.Runtime.dll";
-			result.message = L"vSMR was updated and will start with the new runtime.";
+			result.message = forceAvisoReload
+				? L"AVISO data was reloaded from the installed signed vSMR release."
+				: L"vSMR was updated and will start with the new runtime.";
 			if (!IsRegularFile(result.previousRuntimePath) ||
 				!WriteHealthMarker(startupOptions, context.storageRoot, result))
 			{
