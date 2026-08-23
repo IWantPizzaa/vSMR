@@ -2,7 +2,7 @@
 
 vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement radar display for ground and low-level airport traffic. Version 2.0 adds a unified Control Center, AVISO editing, Windows-style inset windows, airport-scoped layouts, RIMCAS configuration, VACDM data, and Hoppie CPDLC/PDC workflows.
 
-Current version: **2.0.0-beta.3**
+Current version: **2.0.0-beta.4**
 
 This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not manually mix runtime binaries or package data from different builds. The deliberately stable top-level loader is the only versioned exception and its compatibility is managed by the signed updater.
 
@@ -41,7 +41,7 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 
 ### Install a release package
 
-1. Download the complete `vSMR-2.0.0-beta.3.zip` and its matching `.zip.sha256` file.
+1. Download the complete `vSMR-2.0.0-beta.4.zip` and its matching `.zip.sha256` file.
 2. Verify the ZIP checksum.
 3. Close EuroScope.
 4. Extract the package to a temporary directory.
@@ -121,7 +121,7 @@ vSMR-<version>.update.json.p7s
 
 The manifest must explicitly declare itself publishable. Its detached CMS signature is checked against the updater's pinned signing certificate, followed by the archive size and SHA-256, the package's internal `SHA256SUMS.txt`, Win32 architecture, runtime ABI, and minimum-loader version. Legacy, validation-only, or incomplete releases without this signed publishable manifest are ignored by automatic updating.
 
-Open `Settings` in the Control Center and use the compact `Automatic updates` group to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by the global Save, Undo, or Redo commands. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
+Open `Settings` in the Control Center and use the compact `Automatic updates` group to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by profile Undo, Redo, or Revert. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
 
 Updater configuration, durable recovery state, and non-secret status use the deterministic `%LOCALAPPDATA%\vSMR\Updater\` location. If it cannot be written, update preferences and next-startup actions report the failure instead of switching journals. No GitHub token is required or stored. A prerelease build initially follows the Beta channel; a stable build initially follows Stable. A previously skipped release can be cleared from the compact updater controls.
 
@@ -141,7 +141,7 @@ The harness builds a disposable loader and test executable, uses isolated instal
 2. Open the Runtime Menu and set the four-letter active airport ICAO.
 3. Choose a profile and display mode.
 4. Open the Control Center from the Runtime Menu or enter `.smr`.
-5. On `Settings`, verify the active Profiles and AVISO paths and select the AVISO Day or Night palette.
+5. On `Settings`, verify the active Profiles and AVISO paths; select the AVISO Night or Day palette from the AVISO editor toolbar.
 6. On `Alerts`, verify monitored arrival/departure runways and RIMCAS behavior.
 7. Configure the required inset windows and save an airport preset if desired.
 8. Enter `.smr diagnostics` and confirm that the report identifies the expected version and data sources.
@@ -157,20 +157,21 @@ The page rail contains:
 | Page | Purpose |
 | --- | --- |
 | `Display` | Profile colors, target symbols, tags, typography, and structured rules |
-| `AVISO` | Grouped geometry and text styling, visibility, reload, and source loading |
+| `AVISO` | Grouped geometry and text styling, visibility, and Night/Day palette selection |
 | `Alerts` | One-page RIMCAS runway, alert-type, timing, and visibility configuration |
 | `Groups` | AVISO group creation, ordering, membership, and default visibility |
 | `Modes` | Display-mode filters and requirements |
 | `Profiles` | Profile creation, duplication, naming, deletion, activation, and filters |
-| `Settings` | General data, display, AVISO Day/Night palette, datalink, PDC-reminder, and automatic-update settings |
+| `CPDLC / PDC` | Hoppie connection and automatic PDC-reminder controls |
+| `Settings` | Profiles/AVISO sources, display preferences, and automatic updates |
 
 ### Editing and saving
 
-Profile, display, AVISO, alert, group, mode, CPDLC, and PDC reminder fields update the current in-memory draft as they are edited. There is no separate per-section Update, Apply, or Revert step. The single global `Save` action validates the complete draft, writes the affected data, and applies the saved configuration to the open vSMR radar screens. Closing and reopening the Control Center preserves pending field values; Reload asks before discarding unsaved, invalid, or unfinished edits.
+Profile, display, AVISO, alert, group, mode, CPDLC, and PDC-reminder fields are validated and saved automatically after a short debounce. The Control Center stays editable while the background write completes, and a newer edit made during that write is queued rather than discarded. Undo and Redo apply and persist history snapshots; Revert cancels queued writes before restoring the last validated files.
 
 Runtime actions such as changing the active profile or mode, toggling a group or inset, and loading an inset preset are immediate operational actions. Connect/Disconnect, Poll, Check now, and Run/Stop are likewise explicit live actions rather than configuration edits.
 
-If a Profiles or AVISO file changes outside vSMR while edits are pending, the Control Center refuses to overwrite it and asks for a reload. A normal save rotates validated backups and rolls back the other document if a multi-file transaction cannot complete.
+If a Profiles or AVISO file changes outside vSMR while edits are pending, the Control Center refuses to overwrite it and asks for a reload. Automatic saves rotate validated backups and roll back the other document if a multi-file transaction cannot complete.
 
 ### Profiles and modes
 
@@ -210,7 +211,7 @@ vSMR uses GeoJSON `FeatureCollection` files for airport maps. Schema-2 AVISO doc
 
 Bundled documents declare `metadata.default_color_palette` as `night` and list `night` and `day` in `metadata.color_palettes`. Existing `paint` values remain the complete Night palette. A style can store only its changed Day colors under `paint.palette-overrides.day`, while a feature-level override uses `properties.palette-overrides.day`; every missing Day value inherits the Night value. This keeps both themes in one GeoJSON without duplicating geometry or unchanged colors, and AVISO files without palette metadata remain compatible as Night-only documents.
 
-The Day/Night selector is in the Settings Display group and is saved with the radar screen's ASR state. Saving the setting invalidates the existing AVISO rasters and switches the main view and AVISO inset together without reparsing the source document. Geometry and Text editor swatches and color fields follow the selected palette: Night edits update base paint, while Day edits update `palette-overrides.day`. Visibility, opacity, width, typography, halo width, and zoom remain common to both palettes.
+The Night/Day selector is in the AVISO editor toolbar and is saved with the radar screen's ASR state. Selecting a palette invalidates the existing AVISO rasters and switches the main view and AVISO inset together without reparsing the source document. Geometry and Text editor swatches and color fields follow the selected palette: Night edits update base paint, while Day edits update `palette-overrides.day`. Visibility, opacity, width, typography, halo width, and zoom remain common to both palettes.
 
 The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. LFPG additionally prefers `vSMR_Data\AVISO\LFPG_Dyna.geojson` when present so its reviewed dynamic-frequency features share the same AVISO document and renderer. An explicitly selected local or GitHub source remains authoritative. The earlier `LFPG_Dyna_fixed.geojson` and legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
 
@@ -238,7 +239,7 @@ A reusable entry in the document's `styles` catalog supplies the default paint f
 - RMP labels always use each `frequency_point` feature's `text-field` or `display_frequency` at its supplied coordinates. A connected controller's primary frequency is never substituted, so the six displayed values remain BD `121.640`, F `121.580`, ACE `121.930`, FDX `131.605`, KL `121.680`, and J `121.880`.
 - Controller connection, disconnection, position, or primary-frequency changes update the main display and AVISO inset together. Takeover rules are cached when the GeoJSON loads, and routine updates from controllers outside those LFPG chains do not invalidate the AVISO raster, preventing periodic map flicker while connected.
 
-This dynamic behavior is enabled only for LFPG in beta.3. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
+This dynamic behavior is enabled only for LFPG in beta.4. The ownership metadata and shared renderer path are generic, but another airport must be explicitly enabled after its data has been reviewed.
 
 A computer file is activated in place; it is not copied over the bundled airport file. A GitHub resource is validated and downloaded to a collision-safe file under `vSMR_Data\AVISO\` or `vSMR_Data\Profiles\`, then activated from that location. The Settings page always shows the actual active path.
 
@@ -375,7 +376,7 @@ vSMR trims a trailing slash and requests `<server_url>/api/v1/pilots`. Polling i
 
 ## CPDLC and PDC
 
-The `Settings` page contains the CPDLC connection and automatic PDC reminder controls. It supports:
+The dedicated `CPDLC / PDC` page contains the Hoppie connection and automatic PDC-reminder controls. It supports:
 
 - a Hoppie logon callsign and protected Hoppie code
 - connect/disconnect and manual polling
@@ -390,11 +391,13 @@ Automatic reminders always start stopped when vSMR is loaded. `Run` applies the 
 
 The PDC window places TSAT before the optional CTOT field and pre-fills both from the current vACDM snapshot when those values exist. TSAT is emitted first in the clearance, and both optional times must be valid four-digit UTC `HHMM` values. Opening the PDC composer immediately suppresses any queued reminder for that callsign; cancelling or a failed transmission releases suppression, while a successful clearance retains it.
 
+The clearance frequency uses the lowest staffed departure position at the origin: Delivery, RMP, Ground, Tower, Approach/Departure, then Center fallback. At LFPG, equivalent north/south positions are selected from the departure runway complex.
+
 The PDC window uses operational field names including `ADEP`, `ADES`, and `RWY`.
 
 Automatic CDM reminders preserve the contents, selection, and focus of EuroScope's command/message bar while vSMR submits the generated private message.
 
-CPDLC connection and reminder settings use a separate protected EuroScope settings store rather than profile JSON or AVISO. Their field changes remain pending until the same global `Save` action is pressed. The explicit Connect and PDC Run/Stop actions can first persist the settings required for that live operation; there is no separate Update action.
+CPDLC connection and reminder settings use a separate protected EuroScope settings store rather than profile JSON or AVISO. Their valid field changes are saved automatically in the background. The explicit Connect and PDC Run/Stop actions persist any settings required for that live operation first; there is no separate Update action.
 
 The Hoppie code is encrypted with Windows DPAPI for the current Windows user before it is saved. It is excluded from profile JSON, editor history, diagnostics, and logs. Existing plaintext credentials are migrated when possible; vSMR does not deliberately fall back to saving plaintext.
 
@@ -585,7 +588,7 @@ That artifact is explicitly marked `publishable: false`. Verify a normal package
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_package.ps1 `
-  -ArchivePath .\artifacts\vSMR-2.0.0-beta.3.zip
+  -ArchivePath .\artifacts\vSMR-2.0.0-beta.4.zip
 ```
 
 Add `-AllowNonPublishable` only when verifying a deliberately non-publishable local artifact.

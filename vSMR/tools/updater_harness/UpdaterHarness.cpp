@@ -12,8 +12,8 @@
 
 namespace vsmr::updater::harness
 {
-	constexpr char kOldVersion[] = "2.0.0-beta.2";
-	constexpr char kNewVersion[] = "2.0.0-beta.3";
+	constexpr char kOldVersion[] = "2.0.0-beta.3";
+	constexpr char kNewVersion[] = "2.0.0-beta.4";
 
 	struct Inputs
 	{
@@ -794,7 +794,7 @@ namespace vsmr::updater::harness
 				"rollback returned wrong runtime");
 			Require(ActiveVersion(environment) == kOldVersion, "rollback did not restore old data");
 			Require(!IsRegularFile(result.healthMarkerPath), "rollback left health marker");
-			const fs::path quarantine = environment.storage / L"quarantine" / L"2.0.0-beta.3.json";
+			const fs::path quarantine = environment.storage / L"quarantine" / L"2.0.0-beta.4.json";
 			Require(IsRegularFile(quarantine), "runtime-create failure was not quarantined");
 			WriteAction(environment, "retry_update");
 			const StartupResult retry = PrepareUpdateBeforeRuntimeLoad(options);
@@ -817,7 +817,7 @@ namespace vsmr::updater::harness
 				recovered.errorCode == "interrupted_update_rolled_back",
 				"installing journal was not reconciled");
 			Require(ActiveVersion(environment) == kOldVersion, "installing reconciliation did not restore old data");
-			Require(!IsRegularFile(environment.storage / L"quarantine" / L"2.0.0-beta.3.json"),
+			Require(!IsRegularFile(environment.storage / L"quarantine" / L"2.0.0-beta.4.json"),
 				"interrupted installation incorrectly quarantined a valid release");
 		});
 

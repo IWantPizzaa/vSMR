@@ -134,7 +134,7 @@ try {
     $metadata = [ordered]@{
         schema_version = 1
         product = "vSMR"
-        version = "2.0.0-beta.3"
+        version = "2.0.0-beta.4"
         publishable = $true
         git_commit = "offline-updater-harness"
         loader = [ordered]@{
@@ -145,7 +145,7 @@ try {
         }
         runtime = [ordered]@{
             relative_path = "vSMR_Data/Runtime/vSMR.Runtime.dll"
-            version = "2.0.0-beta.3"
+            version = "2.0.0-beta.4"
             abi = 1
             size = [int64](Get-Item -LiteralPath $RuntimePath).Length
             sha256 = (Get-FileHash -LiteralPath $RuntimePath -Algorithm SHA256).Hash.ToLowerInvariant()

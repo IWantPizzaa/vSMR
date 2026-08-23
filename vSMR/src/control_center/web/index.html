@@ -62,7 +62,7 @@
 <button class="rail-button" data-page="groups" title="Groups" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4"></path></svg>
 </button>
-<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
+<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button" data-page="datalink" title="CPDLC / PDC" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 7l8 6 8-6"></path><path d="M8 16h8"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
 <svg aria-hidden="true" class="settings-sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
 </button>
 <div aria-hidden="true" class="rail-separator"></div>
@@ -312,14 +312,7 @@
 <button data-aviso-view="geometry" type="button">Geometry</button>
 <button class="active" data-aviso-view="text" type="button">Text</button>
 </nav>
-<span class="dataset-caption" id="avisoDatasetCaption">LFPG</span>
-<div class="aviso-load-control">
-<button aria-expanded="false" aria-haspopup="menu" class="ui-button" data-action="toggle-aviso-load-menu" id="avisoLoadButton" type="button">Load GeoJSON…</button>
-<div class="compact-popup-menu" hidden="" id="avisoLoadMenu" role="menu">
-<button data-action="load-aviso-computer" role="menuitem" type="button">From computer…</button>
-<button data-action="load-aviso-github" role="menuitem" type="button">From GitHub…</button>
-</div>
-</div>
+<div aria-label="AVISO color palette" class="segmented-control aviso-palette-control aviso-toolbar-palette" role="group"><button data-action="set-aviso-palette" data-aviso-color-palette="night" type="button">Night</button><button data-action="set-aviso-palette" data-aviso-color-palette="day" type="button">Day</button></div>
 </div>
 <div class="aviso-view-stack">
 <section class="aviso-view" data-aviso-view-panel="geometry">
@@ -456,11 +449,35 @@
 </section>
 </div>
 </section>
+<section class="page datalink-page" data-page-panel="datalink">
+<div class="datalink-page-layout">
+<section class="panel datalink-card datalink-connection-card">
+<div class="panel-title datalink-card-title"><span>CPDLC connection</span><span class="datalink-state-badge disconnected" id="datalinkConnectionState"><i aria-hidden="true"></i><span>Disconnected</span></span></div>
+<div class="datalink-card-body">
+<div class="dense-form datalink-connection-form">
+<label class="field"><span>Logon callsign</span><input autocomplete="off" id="datalinkLogonCallsign" maxlength="8" spellcheck="false" type="text"/></label>
+<label class="field datalink-password-field"><span>Hoppie code</span><span class="datalink-password-control"><input autocomplete="new-password" id="datalinkPassword" spellcheck="false" type="password"/><button aria-label="Show Hoppie code" data-action="toggle-datalink-password" id="datalinkPasswordToggle" title="Show code" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.8 12s3.5-5 9.2-5 9.2 5 9.2 5-3.5 5-9.2 5-9.2-5-9.2-5z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button></span></label>
+</div>
+<label class="check-field datalink-sound-option"><input id="datalinkPlaySound" type="checkbox"/><span>Sound on clearance request</span></label>
+</div>
+<div class="datalink-card-actions"><button class="ui-button" data-action="datalink-poll" id="datalinkPollButton" type="button">Poll</button><button class="ui-button primary" data-action="datalink-toggle-connection" id="datalinkConnectButton" type="button">Connect</button></div>
+</section>
+<section class="panel datalink-card datalink-cdm-card">
+<div class="panel-title datalink-card-title"><span>PDC reminders</span><span class="datalink-state-badge disconnected" id="datalinkReminderState"><i aria-hidden="true"></i><span>Stopped</span></span></div>
+<div class="datalink-card-body">
+<div class="dense-form two-cols datalink-cdm-form">
+<label class="field"><span>Delay</span><span class="number-unit"><input id="datalinkCdmDelay" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
+<label class="field"><span>Resend cooldown</span><span class="number-unit"><input id="datalinkCdmCooldown" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
+</div>
+</div>
+<div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button></div>
+</section>
+</div>
+</section>
 <section class="page settings-page" data-page-panel="settings">
 <div class="settings-view-stack">
 <section class="settings-view active" id="settingsPanelGeneral">
 <div class="settings-layout">
-<div class="settings-column settings-files-column">
 <fieldset class="compact-group settings-group files-group">
 <legend>Data files</legend>
 <div class="settings-file-list">
@@ -494,31 +511,7 @@
 <legend>Display</legend>
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
 <label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
-<div class="field aviso-palette-field"><span>AVISO palette</span><div aria-label="AVISO color palette" class="segmented-control aviso-palette-control" role="group"><button data-action="set-aviso-palette" data-aviso-color-palette="day" type="button">Day</button><button data-action="set-aviso-palette" data-aviso-color-palette="night" type="button">Night</button></div></div>
 </fieldset>
-</div>
-<div class="settings-column settings-datalink-column">
-<section class="panel datalink-card datalink-connection-card">
-<div class="panel-title datalink-card-title"><span>CPDLC connection</span><span class="datalink-state-badge disconnected" id="datalinkConnectionState"><i aria-hidden="true"></i><span>Disconnected</span></span></div>
-<div class="datalink-card-body">
-<div class="dense-form datalink-connection-form">
-<label class="field"><span>Logon callsign</span><input autocomplete="off" id="datalinkLogonCallsign" maxlength="8" spellcheck="false" type="text"/></label>
-<label class="field datalink-password-field"><span>Hoppie code</span><span class="datalink-password-control"><input autocomplete="new-password" id="datalinkPassword" spellcheck="false" type="password"/><button aria-label="Show Hoppie code" data-action="toggle-datalink-password" id="datalinkPasswordToggle" title="Show code" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.8 12s3.5-5 9.2-5 9.2 5 9.2 5-3.5 5-9.2 5-9.2-5-9.2-5z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button></span></label>
-</div>
-<label class="check-field datalink-sound-option"><input id="datalinkPlaySound" type="checkbox"/><span>Sound on clearance request</span></label>
-</div>
-<div class="datalink-card-actions"><button class="ui-button" data-action="datalink-poll" id="datalinkPollButton" type="button">Poll</button><button class="ui-button primary" data-action="datalink-toggle-connection" id="datalinkConnectButton" type="button">Connect</button></div>
-</section>
-<section class="panel datalink-card datalink-cdm-card">
-<div class="panel-title datalink-card-title"><span>PDC reminders</span><span class="datalink-state-badge disconnected" id="datalinkReminderState"><i aria-hidden="true"></i><span>Stopped</span></span></div>
-<div class="datalink-card-body">
-<div class="dense-form two-cols datalink-cdm-form">
-<label class="field"><span>Delay</span><span class="number-unit"><input id="datalinkCdmDelay" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
-<label class="field"><span>Resend cooldown</span><span class="number-unit"><input id="datalinkCdmCooldown" max="1440" min="0" step="1" type="number"/><em>min</em></span></label>
-</div>
-</div>
-<div class="datalink-card-actions datalink-reminder-actions"><button class="ui-button" data-action="datalink-scan" id="datalinkScanButton" type="button">Check now</button><button class="ui-button primary" data-action="datalink-reminder-toggle" id="datalinkReminderToggleButton" type="button">Run</button></div>
-</section>
 <fieldset class="compact-group settings-group updater-general-group">
 <legend>Automatic updates</legend>
 <div class="updater-general-heading">
@@ -537,7 +530,6 @@
 <button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
 </div>
 </fieldset>
-</div>
 </div>
 </section>
 </div>

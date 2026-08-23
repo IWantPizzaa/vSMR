@@ -7256,63 +7256,124 @@ textarea:disabled {
   stroke-linejoin: round;
 }
 
-/* Settings are arranged by workflow: display spans the top, data sources sit
-   beside the operational CPDLC/PDC cards, and updater controls span the bottom. */
-.settings-page .settings-layout {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-areas:
-    "display display"
-    "files cpdlc"
-    "files pdc"
-    "updates updates";
-  grid-template-rows: max-content max-content max-content max-content;
-  align-items: stretch;
-  align-content: start;
+/* Beta.4 navigation: palette selection belongs beside the AVISO color
+   editors, datalink has an operational page, and Settings contains only
+   display, source, and updater preferences. */
+.aviso-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.settings-page .settings-column {
-  display: contents;
+.aviso-toolbar-palette {
+  width: 170px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.aviso-toolbar-palette button {
+  min-width: 0;
+  height: var(--ui-control-height);
+}
+
+.page[data-page-panel="datalink"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.datalink-page-layout {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  gap: 4px;
+  align-content: start;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.datalink-page .datalink-card {
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-panel-bg);
+  grid-template-rows: var(--ui-panel-title-height) auto var(--ui-actionbar-height);
+}
+
+.datalink-page .datalink-card-title {
+  height: var(--ui-panel-title-height);
+  min-height: var(--ui-panel-title-height);
+  border-bottom: 1px solid var(--ui-inner-border);
+  border-radius: calc(var(--ui-panel-radius) - 1px) calc(var(--ui-panel-radius) - 1px) 0 0;
+  background: var(--ui-panel-title-bg);
+}
+
+.datalink-page .datalink-card-body {
+  padding: 9px;
+}
+
+.datalink-page .datalink-connection-form {
+  gap: 9px;
+}
+
+.datalink-page .datalink-sound-option {
+  margin-top: 10px;
+}
+
+.datalink-page .datalink-cdm-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.datalink-page .datalink-card-actions {
+  min-height: var(--ui-actionbar-height);
+  height: var(--ui-actionbar-height);
+}
+
+.settings-page .settings-layout {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+  grid-template-areas:
+    "files display"
+    "files updates";
+  grid-template-rows: max-content minmax(0, 1fr);
+  align-items: start;
+  align-content: stretch;
 }
 
 .settings-page .files-group { grid-area: files; }
 .settings-page .display-group { grid-area: display; }
-.settings-page .datalink-connection-card { grid-area: cpdlc; }
-.settings-page .datalink-cdm-card { grid-area: pdc; }
-.settings-page .updater-general-group { grid-area: updates; }
-
-.settings-page .display-group {
-  grid-template-columns: minmax(180px, 1fr) auto minmax(260px, 1.15fr);
-  align-items: end;
-  gap: 4px 10px;
+.settings-page .updater-general-group {
+  grid-area: updates;
+  align-self: stretch;
 }
 
-.settings-page .display-group > .aviso-palette-field {
-  grid-column: auto;
+.settings-page .display-group {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 5px 10px;
 }
 
 .settings-page .updater-general-group {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 8px;
 }
 
-.settings-page .updater-general-heading {
-  grid-column: 1 / 3;
-}
-
-.settings-page .updater-general-group .update-channel-field {
-  grid-column: 3;
-}
-
-.settings-page .updater-general-group > .check-field {
-  grid-column: auto !important;
-}
-
-.settings-page .update-notice {
-  grid-column: 1 / 3;
-  align-self: center;
+.settings-page .updater-general-heading,
+.settings-page .updater-general-group .update-channel-field,
+.settings-page .updater-general-group > .check-field,
+.settings-page .update-notice,
+.settings-page .updater-general-actions {
+  grid-column: 1 / -1 !important;
 }
 
 .settings-page .updater-general-actions {
-  grid-column: 3;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 700px) {
+  .aviso-toolbar-palette { width: 145px; }
+  .datalink-page-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-page .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "display" "files" "updates";
+    grid-template-rows: max-content max-content max-content;
+    overflow-y: auto;
+  }
 }
