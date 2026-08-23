@@ -7342,9 +7342,13 @@ textarea:disabled {
 }
 
 .settings-page .display-group {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 5px 10px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	align-items: end;
+	gap: 5px 10px;
+}
+
+.settings-page .display-group > .check-field {
+	grid-column: 1 / -1;
 }
 
 .settings-page .updater-general-group {
