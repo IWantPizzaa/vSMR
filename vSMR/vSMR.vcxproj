@@ -203,6 +203,7 @@
     <ClInclude Include="..\lib\include\rapidjson\writer.h" />
     <ClInclude Include="src\aircraft\CallsignLookup.hpp" />
     <ClInclude Include="src\aircraft\GroundState.hpp" />
+    <ClInclude Include="src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="src\app\PluginEntry.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />

@@ -37,7 +37,6 @@ struct DatalinkControlState
 	bool controllerConnected = false;
 	std::string logonCallsign;
 	bool hasPassword = false;
-	bool playSound = false;
 	bool cdmAutoEnabled = false;
 	int cdmDelayMinutes = 5;
 	int cdmCooldownMinutes = 60;
@@ -71,7 +70,6 @@ public:
 		const std::string& callsign,
 		const std::string& password,
 		bool replacePassword,
-		bool playSound,
 		bool cdmAutoEnabled,
 		int delayMinutes,
 		int cooldownMinutes,
@@ -81,6 +79,7 @@ public:
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);
 	bool RunCdmReminderScan(std::string& result, std::string& error);
+	bool EditDatalinkCredentials(std::string& error);
 	static std::string GetActiveProfilesConfigPath(
 		bool* selectionClaimed = nullptr);
 	static void PublishActiveProfilesConfigPath(
@@ -102,6 +101,10 @@ public:
 	//---OnGetTagItem------------------------------------------
 
 	virtual void OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize);
+
+	//---OnFlightPlanControllerAssignedDataUpdate-------------------
+
+	void OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType) override;
 
 	//---OnFlightPlanDisconnect------------------------------------------
 

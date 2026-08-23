@@ -20,7 +20,6 @@
 #define IDC_CLB                         7015
 #define IDC_SSR                         7016
 #define IDC_FREQ                        7017
-#define IDC_LOGON                       7017
 #define IDC_PASSWORD                    7018
 #define IDC_SOUND                       7019
 #define IDC_ORIG                        7020

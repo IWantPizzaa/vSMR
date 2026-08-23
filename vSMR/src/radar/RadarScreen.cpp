@@ -12,6 +12,7 @@
 #include <limits>
 #include "rapidjson/document.h"
 #include "aircraft/GroundState.hpp"
+#include "aircraft/HoldingPoint.hpp"
 #include "profiles/ProfileColorPaths.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -904,7 +905,6 @@ CSMRRadar::CSMRRadar()
 		ActiveAirport = avisoDefaultAirport;
 		Logger::info("CSMRRadar::CSMRRadar() default active airport from AVISO file=" + ActiveAirport);
 	}
-
 	// Set up the native inset windows.
 	const int srwWindowId = APPWINDOW_ONE - APPWINDOW_BASE;
 	const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
@@ -934,113 +934,16 @@ CSMRRadar::CSMRRadar()
 
 }
 
-namespace
-{
-	POINT RotateMainScreenPoint(POINT point, const RECT& area, double degrees)
-	{
-		if (std::abs(degrees) < 0.0001)
-			return point;
-
-		const double centerX =
-			(static_cast<double>(area.left) + static_cast<double>(area.right)) * 0.5;
-		const double centerY =
-			(static_cast<double>(area.top) + static_cast<double>(area.bottom)) * 0.5;
-		const double radians = degrees * M_PI / 180.0;
-		const double cosine = std::cos(radians);
-		const double sine = std::sin(radians);
-		const double offsetX = static_cast<double>(point.x) - centerX;
-		const double offsetY = static_cast<double>(point.y) - centerY;
-
-		return {
-			static_cast<LONG>(std::lround(centerX + offsetX * cosine - offsetY * sine)),
-			static_cast<LONG>(std::lround(centerY + offsetX * sine + offsetY * cosine))
-		};
-	}
-}
-
 POINT CSMRRadar::ConvertCoordFromPositionToPixel(CPosition position)
 {
-	const POINT projected =
-		EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(position);
-	// EuroScope already applies the ASR's native DisplayRotation before the
-	// plug-in sees a coordinate. Apply only the difference so this setting is
-	// absolute and an existing rotated ASR is not rotated a second time.
-	return RotateMainScreenPoint(
-		projected,
-		GetRadarArea(),
-		ScreenRotationDegrees - EuroScopeScreenRotationDegrees);
+	// EuroScope owns the display transform. Using it directly keeps drawing,
+	// hit-testing, zooming and native panning in one coordinate system.
+	return EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(position);
 }
 
 CPosition CSMRRadar::ConvertCoordFromPixelToPosition(POINT point)
 {
-	const POINT unrotated =
-		RotateMainScreenPoint(
-			point,
-			GetRadarArea(),
-			EuroScopeScreenRotationDegrees - ScreenRotationDegrees);
-	return EuroScopePlugIn::CRadarScreen::ConvertCoordFromPixelToPosition(unrotated);
-}
-
-double CSMRRadar::DetectEuroScopeScreenRotationDegrees()
-{
-	CPosition displayA;
-	CPosition displayB;
-	GetDisplayArea(&displayA, &displayB);
-	const double centerLatitude =
-		(displayA.m_Latitude + displayB.m_Latitude) * 0.5;
-	const double centerLongitude =
-		(displayA.m_Longitude + displayB.m_Longitude) * 0.5;
-	const double latitudeSpan = std::abs(displayB.m_Latitude - displayA.m_Latitude);
-	const double sampleDelta = std::clamp(latitudeSpan * 0.05, 0.0001, 0.05);
-
-	CPosition center;
-	center.m_Latitude = centerLatitude;
-	center.m_Longitude = centerLongitude;
-	CPosition north = center;
-	north.m_Latitude = std::clamp(centerLatitude + sampleDelta, -89.9, 89.9);
-
-	const POINT centerPixel =
-		EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(center);
-	const POINT northPixel =
-		EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(north);
-	const double dx = static_cast<double>(northPixel.x - centerPixel.x);
-	const double dy = static_cast<double>(northPixel.y - centerPixel.y);
-	if ((dx * dx) + (dy * dy) < 4.0)
-		return 0.0;
-
-	double degrees = std::atan2(dx, -dy) * 180.0 / M_PI;
-	if (!std::isfinite(degrees))
-		return 0.0;
-	if (degrees < 0.0)
-		degrees += 360.0;
-	const double rounded = std::round(degrees * 10.0) / 10.0;
-	return rounded >= 360.0 ? 0.0 : rounded;
-}
-
-bool CSMRRadar::SetScreenRotationDegrees(double degrees, bool persistToAsr)
-{
-	if (!std::isfinite(degrees) || degrees < 0.0 || degrees > 359.9)
-		return false;
-
-	const double rounded = std::round(degrees * 10.0) / 10.0;
-	if (std::abs(ScreenRotationDegrees - rounded) < 0.0001)
-		return true;
-
-	ScreenRotationDegrees = rounded;
-	ClearAvisoGeoJsonRasterCache();
-	if (persistToAsr)
-	{
-		char value[16] = {};
-		sprintf_s(value, "%.1f", ScreenRotationDegrees);
-		SaveDataToAsr("ScreenRotation", "vSMR screen rotation", value);
-	}
-	RequestRefresh();
-	return true;
-}
-
-double CSMRRadar::GetScreenRotationDegrees() const noexcept
-{
-	return ScreenRotationDegrees;
+	return EuroScopePlugIn::CRadarScreen::ConvertCoordFromPixelToPosition(point);
 }
 
 CSMRRadar::~CSMRRadar()
@@ -6568,6 +6471,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// origin: origin aerodrome
 	// dest: destination aerodrome
 	// clearance: departure/startup clearance flag ([ ] / [x]), clickable toggle
+	// holdingpoint: synchronized holding point from the HP scratchpad field
 	// ----
 
 	auto safeCString = [](const char* text) -> const char*
@@ -6586,6 +6490,10 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	const bool hasFlightPlan = fp.IsValid();
 	const bool hasReceivedFlightPlanData = hasFlightPlan && fp.GetFlightPlanData().IsReceived();
+	std::string rawScratchpad;
+	if (hasFlightPlan)
+		rawScratchpad = safeString(fp.GetControllerAssignedData().GetScratchPadString());
+	const std::string userScratchpad = VsmrHoldingPoint::WithoutHoldingPoint(rawScratchpad);
 	const int reportedGs = hasRadarTarget ? rtPos.GetReportedGS() : 0;
 	bool IsPrimary = hasRadarTarget ? !rtPos.GetTransponderC() : true;
 	bool isAirborne = reportedGs > 50;
@@ -6698,7 +6606,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		if (useSpeedForGates)
 			gate = std::to_string(fp.GetControllerAssignedData().GetAssignedSpeed());
 		else
-			gate = safeString(fp.GetControllerAssignedData().GetScratchPadString());
+			gate = userScratchpad;
 	}
 
 	replaceAll(gate, "STAND=", "");
@@ -6815,9 +6723,15 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ----- Scratchpad -------
 	string scratchpad;
 	if (hasFlightPlan)
-		scratchpad = safeString(fp.GetControllerAssignedData().GetScratchPadString());
+		scratchpad = userScratchpad;
 	if (scratchpad.length() == 0)
 		scratchpad = "...";
+
+	// ----- Holding point (synchronized through EuroScope scratchpad) -------
+	const std::string holdingPointCallsign = !stableCallsign.empty()
+		? stableCallsign
+		: (hasFlightPlan ? safeString(fp.GetCallsign()) : "");
+	string holdingpoint = VsmrHoldingPoint::Resolve(holdingPointCallsign, rawScratchpad);
 
 	// ----- VACDM fields -------
 	string tobt = "";
@@ -6937,6 +6851,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	TagReplacingMap["uk_stand"] = uk_stand;
 	TagReplacingMap["remark"] = remark;
 	TagReplacingMap["scratchpad"] = scratchpad;
+	TagReplacingMap["holdingpoint"] = holdingpoint;
 	verboseStep(
 		"done callsign=" + TagReplacingMap["callsign"] +
 		" actype=" + TagReplacingMap["actype"] +
@@ -7067,7 +6982,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 		return 0;
 	}
-
 	switch (uMsg)
 	{
 	case WM_MOUSEWHEEL:
@@ -7872,6 +7786,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const double perfRimcasBeforeTargetsMs = perfRimcasMs;
 	const double perfTargetsStartMs = RefreshPerfNowMs();
 	std::size_t frameVisibleTargetCount = 0;
+	targetAreas.clear();
 	CRect frameVisibleRadarArea(RadarArea);
 	frameVisibleRadarArea.NormalizeRect();
 	static const std::vector<VsmrScene::Target> emptySceneTargets;
@@ -8255,7 +8170,13 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			hoverText = sceneTarget.systemId.c_str();
 		}
 		iconVerboseStep("before_add_screen_object");
-		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), { acPosPix.x - hitSize / 2, acPosPix.y - hitSize / 2, acPosPix.x + hitSize / 2, acPosPix.y + hitSize / 2 }, false, hoverText);
+		const CRect targetArea(
+			acPosPix.x - hitSize / 2,
+			acPosPix.y - hitSize / 2,
+			acPosPix.x + hitSize / 2,
+			acPosPix.y + hitSize / 2);
+		targetAreas[rtCallsign] = targetArea;
+		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), targetArea, false, hoverText);
 		iconVerboseStep("after_add_screen_object");
 	}
 	perfTargetsMs += AvisoMax(0.0, (RefreshPerfNowMs() - perfTargetsStartMs) - (perfRimcasMs - perfRimcasBeforeTargetsMs));
