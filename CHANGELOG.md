@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added a persisted 0.0-359.9 degree main-screen rotation setting that rotates AVISO, aircraft, trails, tags, RIMCAS overlays, and their interaction coordinates together.
 - Added configurable moving-aircraft position trails to the main radar, AVISO inset, and SRW. The Icons page controls trail visibility plus separate ground and airborne history lengths; NOVA uses compact vSMR history dots, Icon uses filled bubbles that grey and fade with age, and Triangle uses shrinking hollow circles.
 - Added a persisted Night/Day AVISO color mode. Both the main view and AVISO inset select compact Day overrides from the same GeoJSON document, while existing base paint remains the Night palette and older/custom schema-2 files continue to work unchanged.
 

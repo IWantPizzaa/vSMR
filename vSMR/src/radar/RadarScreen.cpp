@@ -934,6 +934,115 @@ CSMRRadar::CSMRRadar()
 
 }
 
+namespace
+{
+	POINT RotateMainScreenPoint(POINT point, const RECT& area, double degrees)
+	{
+		if (std::abs(degrees) < 0.0001)
+			return point;
+
+		const double centerX =
+			(static_cast<double>(area.left) + static_cast<double>(area.right)) * 0.5;
+		const double centerY =
+			(static_cast<double>(area.top) + static_cast<double>(area.bottom)) * 0.5;
+		const double radians = degrees * M_PI / 180.0;
+		const double cosine = std::cos(radians);
+		const double sine = std::sin(radians);
+		const double offsetX = static_cast<double>(point.x) - centerX;
+		const double offsetY = static_cast<double>(point.y) - centerY;
+
+		return {
+			static_cast<LONG>(std::lround(centerX + offsetX * cosine - offsetY * sine)),
+			static_cast<LONG>(std::lround(centerY + offsetX * sine + offsetY * cosine))
+		};
+	}
+}
+
+POINT CSMRRadar::ConvertCoordFromPositionToPixel(CPosition position)
+{
+	const POINT projected =
+		EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(position);
+	// EuroScope already applies the ASR's native DisplayRotation before the
+	// plug-in sees a coordinate. Apply only the difference so this setting is
+	// absolute and an existing rotated ASR is not rotated a second time.
+	return RotateMainScreenPoint(
+		projected,
+		GetRadarArea(),
+		ScreenRotationDegrees - EuroScopeScreenRotationDegrees);
+}
+
+CPosition CSMRRadar::ConvertCoordFromPixelToPosition(POINT point)
+{
+	const POINT unrotated =
+		RotateMainScreenPoint(
+			point,
+			GetRadarArea(),
+			EuroScopeScreenRotationDegrees - ScreenRotationDegrees);
+	return EuroScopePlugIn::CRadarScreen::ConvertCoordFromPixelToPosition(unrotated);
+}
+
+double CSMRRadar::DetectEuroScopeScreenRotationDegrees()
+{
+	CPosition displayA;
+	CPosition displayB;
+	GetDisplayArea(&displayA, &displayB);
+	const double centerLatitude =
+		(displayA.m_Latitude + displayB.m_Latitude) * 0.5;
+	const double centerLongitude =
+		(displayA.m_Longitude + displayB.m_Longitude) * 0.5;
+	const double latitudeSpan = std::abs(displayB.m_Latitude - displayA.m_Latitude);
+	const double sampleDelta = std::clamp(latitudeSpan * 0.05, 0.0001, 0.05);
+
+	CPosition center;
+	center.m_Latitude = centerLatitude;
+	center.m_Longitude = centerLongitude;
+	CPosition north = center;
+	north.m_Latitude = std::clamp(centerLatitude + sampleDelta, -89.9, 89.9);
+
+	const POINT centerPixel =
+		EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(center);
+	const POINT northPixel =
+		EuroScopePlugIn::CRadarScreen::ConvertCoordFromPositionToPixel(north);
+	const double dx = static_cast<double>(northPixel.x - centerPixel.x);
+	const double dy = static_cast<double>(northPixel.y - centerPixel.y);
+	if ((dx * dx) + (dy * dy) < 4.0)
+		return 0.0;
+
+	double degrees = std::atan2(dx, -dy) * 180.0 / M_PI;
+	if (!std::isfinite(degrees))
+		return 0.0;
+	if (degrees < 0.0)
+		degrees += 360.0;
+	const double rounded = std::round(degrees * 10.0) / 10.0;
+	return rounded >= 360.0 ? 0.0 : rounded;
+}
+
+bool CSMRRadar::SetScreenRotationDegrees(double degrees, bool persistToAsr)
+{
+	if (!std::isfinite(degrees) || degrees < 0.0 || degrees > 359.9)
+		return false;
+
+	const double rounded = std::round(degrees * 10.0) / 10.0;
+	if (std::abs(ScreenRotationDegrees - rounded) < 0.0001)
+		return true;
+
+	ScreenRotationDegrees = rounded;
+	ClearAvisoGeoJsonRasterCache();
+	if (persistToAsr)
+	{
+		char value[16] = {};
+		sprintf_s(value, "%.1f", ScreenRotationDegrees);
+		SaveDataToAsr("ScreenRotation", "vSMR screen rotation", value);
+	}
+	RequestRefresh();
+	return true;
+}
+
+double CSMRRadar::GetScreenRotationDegrees() const noexcept
+{
+	return ScreenRotationDegrees;
+}
+
 CSMRRadar::~CSMRRadar()
 {
 	PublishCrashRadarState("closing", "none");

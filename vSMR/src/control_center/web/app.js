@@ -605,6 +605,7 @@
         updateInterval: 250,
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
+        screenRotation: 0.0,
         avisoColorPalette: "night",
         runtimeSync: true,
         confirmDelete: true,
@@ -5091,6 +5092,7 @@
     $("#settingsAvisoFile").title = settings.avisoFile;
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    $("#settingsScreenRotation").value = clamp(settings.screenRotation ?? 0, 0, 359.9).toFixed(1);
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
     $$('[data-aviso-color-palette]').forEach(button => {
       const active = button.dataset.avisoColorPalette === avisoColorPalette;
@@ -5118,7 +5120,8 @@
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
-      showFps: $("#settingsShowFps").checked
+      showFps: $("#settingsShowFps").checked,
+      screenRotation: Math.round(clamp($("#settingsScreenRotation").value, 0, 359.9) * 10) / 10
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
