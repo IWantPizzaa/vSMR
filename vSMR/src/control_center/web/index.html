@@ -62,7 +62,7 @@
 <button class="rail-button" data-page="groups" title="Groups" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4"></path></svg>
 </button>
-<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button" data-page="datalink" title="CPDLC / PDC" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4zM4 7l8 6 8-6"></path><path d="M8 16h8"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
+<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
 <svg aria-hidden="true" class="settings-sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
 </button>
 <div aria-hidden="true" class="rail-separator"></div>
@@ -449,7 +449,7 @@
 </section>
 </div>
 </section>
-<section class="page datalink-page" data-page-panel="datalink">
+<section aria-hidden="true" class="page datalink-page" data-page-panel="datalink" hidden="">
 <div class="datalink-page-layout">
 <section class="panel datalink-card datalink-connection-card">
 <div class="panel-title datalink-card-title"><span>CPDLC connection</span><span class="datalink-state-badge disconnected" id="datalinkConnectionState"><i aria-hidden="true"></i><span>Disconnected</span></span></div>
@@ -458,7 +458,6 @@
 <label class="field"><span>Logon callsign</span><input autocomplete="off" id="datalinkLogonCallsign" maxlength="8" spellcheck="false" type="text"/></label>
 <label class="field datalink-password-field"><span>Hoppie code</span><span class="datalink-password-control"><input autocomplete="new-password" id="datalinkPassword" spellcheck="false" type="password"/><button aria-label="Show Hoppie code" data-action="toggle-datalink-password" id="datalinkPasswordToggle" title="Show code" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.8 12s3.5-5 9.2-5 9.2 5 9.2 5-3.5 5-9.2 5-9.2-5-9.2-5z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button></span></label>
 </div>
-<label class="check-field datalink-sound-option"><input id="datalinkPlaySound" type="checkbox"/><span>Sound on clearance request</span></label>
 </div>
 <div class="datalink-card-actions"><button class="ui-button" data-action="datalink-poll" id="datalinkPollButton" type="button">Poll</button><button class="ui-button primary" data-action="datalink-toggle-connection" id="datalinkConnectButton" type="button">Connect</button></div>
 </section>
@@ -478,6 +477,34 @@
 <div class="settings-view-stack">
 <section class="settings-view active" id="settingsPanelGeneral">
 <div class="settings-layout">
+<div class="settings-column settings-primary-column">
+<fieldset class="compact-group settings-group display-group">
+<legend>Display</legend>
+<label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
+<label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
+</fieldset>
+<fieldset class="compact-group settings-group updater-general-group">
+<legend>Automatic updates</legend>
+<div class="updater-general-heading">
+<span aria-live="polite" class="update-state-badge waiting" id="updateStateBadge" role="status">Awaiting state</span>
+<span id="updateVersionSummary">Installed --</span>
+</div>
+<label class="field update-channel-field"><span>Channel</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
+<label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
+<label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates</span></label>
+<label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate verified runtime before load</span></label>
+<label class="check-field update-aviso-protection" title="Keep locally edited AVISOs during manual reloads and optional release migrations. Required schema migrations can still replace them after creating a complete backup."><input id="updateProtectModifiedAviso" type="checkbox"/><span>Protect locally edited AVISOs</span></label>
+<p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
+<div class="updater-general-actions">
+<button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
+<button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
+<button class="ui-button" data-action="update-reload-aviso" id="updateReloadAvisoButton" title="Reload all bundled AVISOs from the installed GitHub release on the next EuroScope startup. With protection enabled, edited maps stay active and their verified release copies are kept separately." type="button">Reload AVISOs</button>
+<button class="ui-button" data-action="update-clear-skip" hidden id="updateClearSkipButton" type="button">Clear skipped release</button>
+<button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
+</div>
+</fieldset>
+</div>
+<div class="settings-column settings-data-column">
 <fieldset class="compact-group settings-group files-group">
 <legend>Data files</legend>
 <div class="settings-file-list">
@@ -507,32 +534,7 @@
 </div>
 </div>
 </fieldset>
-<fieldset class="compact-group settings-group display-group">
-<legend>Display</legend>
-<label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
-<label class="field"><span>Rotate screen (&deg;)</span><input id="settingsScreenRotation" max="359.9" min="0" step="0.1" type="number"/></label>
-<label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
-</fieldset>
-<fieldset class="compact-group settings-group updater-general-group">
-<legend>Automatic updates</legend>
-<div class="updater-general-heading">
-<span aria-live="polite" class="update-state-badge waiting" id="updateStateBadge" role="status">Awaiting state</span>
-<span id="updateVersionSummary">Installed --</span>
 </div>
-<label class="field update-channel-field"><span>Channel</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
-<label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
-<label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates</span></label>
-<label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate verified runtime before load</span></label>
-<label class="check-field update-aviso-protection" title="Keep locally edited AVISOs during manual reloads and optional release migrations. Required schema migrations can still replace them after creating a complete backup."><input id="updateProtectModifiedAviso" type="checkbox"/><span>Protect locally edited AVISOs</span></label>
-<p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
-<div class="updater-general-actions">
-<button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
-<button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
-<button class="ui-button" data-action="update-reload-aviso" id="updateReloadAvisoButton" title="Reload all bundled AVISOs from the installed GitHub release on the next EuroScope startup. With protection enabled, edited maps stay active and their verified release copies are kept separately." type="button">Reload AVISOs</button>
-<button class="ui-button" data-action="update-clear-skip" hidden id="updateClearSkipButton" type="button">Clear skipped release</button>
-<button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>
-</div>
-</fieldset>
 </div>
 </section>
 </div>

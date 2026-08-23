@@ -12,9 +12,7 @@ public:
 	CCPDLCSettingsDialog(CWnd* pParent = NULL);   // standard constructor
 	virtual ~CCPDLCSettingsDialog();
 
-	CString m_Logon;
 	CString m_Password;
-	int m_Sound;
 
 // Dialog Data
 	enum { IDD = IDD_DIALOG2 };
