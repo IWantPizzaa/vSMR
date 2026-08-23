@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
+#include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 
 #include <cstdlib>
@@ -20,8 +21,8 @@ namespace
 		kDragHeight +
 		(kRailPadding * 2) +
 		kAirportRowHeight +
-		(kButtonSize * 5) +
-		(kButtonGap * 5);
+		(kButtonSize * 6) +
+		(kButtonGap * 6);
 	constexpr int kPopupGap = 4;
 	constexpr int kPopupHeaderHeight = 23;
 	constexpr int kPopupRowHeight = 28;
@@ -33,6 +34,8 @@ namespace
 	constexpr int kControlCornerDiameter = 6;
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
+	constexpr int kDatalinkPopupWidth = 220;
+	constexpr int kDatalinkPopupHeight = 230;
 	constexpr int kStandardPopupWidth = 170;
 
 	const COLORREF kOuterBorder = RGB(5, 7, 8);
@@ -188,6 +191,16 @@ namespace
 			graphics.DrawLine(&pen, centerX - 8.0f, centerY + 6.0f, centerX - 3.0f, centerY + 6.0f);
 			graphics.DrawLine(&pen, centerX + 1.0f, centerY + 6.0f, centerX + 8.0f, centerY + 6.0f);
 			graphics.DrawEllipse(&pen, centerX - 3.0f, centerY + 4.0f, 4.0f, 4.0f);
+			return;
+		}
+
+		if (kind == "datalink")
+		{
+			graphics.DrawRectangle(&pen, centerX - 9.0f, centerY - 6.5f, 18.0f, 13.0f);
+			graphics.DrawLine(&pen, centerX - 9.0f, centerY - 6.5f, centerX, centerY + 0.5f);
+			graphics.DrawLine(&pen, centerX + 9.0f, centerY - 6.5f, centerX, centerY + 0.5f);
+			graphics.DrawLine(&pen, centerX - 9.0f, centerY + 6.5f, centerX - 2.0f, centerY + 0.5f);
+			graphics.DrawLine(&pen, centerX + 9.0f, centerY + 6.5f, centerX + 2.0f, centerY + 0.5f);
 			return;
 		}
 
@@ -455,6 +468,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.groups", "groups", "Groups", RuntimeMenuPopup::Groups },
 		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
+		{ "runtime.button.datalink", "datalink", "CPDLC / PDC", RuntimeMenuPopup::Datalink },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 
@@ -467,7 +481,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			buttonTop,
 			RuntimeMenuArea.left + 4 + kButtonSize,
 			buttonTop + kButtonSize);
-		const bool popupButton = index < 4;
+		const bool popupButton = button.popup != RuntimeMenuPopup::None;
 		const bool open = popupButton && ActiveRuntimeMenuPopup == button.popup;
 		const bool hover = PointInside(buttonArea, mouseLocation);
 		const COLORREF fill = open ? kAccent : (hover ? kButtonHover : kButtonBackground);
@@ -573,12 +587,25 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			entries.push_back(entry);
 		}
 	}
+	else if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink)
+	{
+		title = "CPDLC / PDC";
+	}
 
 	const bool insetPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
+	const bool datalinkPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
+	CSMRPlugin* datalinkPlugin = datalinkPopup
+		? static_cast<CSMRPlugin*>(GetPlugIn())
+		: nullptr;
+	const DatalinkControlState datalinkState = datalinkPlugin != nullptr
+		? datalinkPlugin->GetDatalinkControlState()
+		: DatalinkControlState();
 	const std::vector<AvisoPreset> insetPresets = insetPopup
 		? GetAvisoPresets()
 		: std::vector<AvisoPreset>();
-	const int popupWidth = insetPopup ? kInsetPopupWidth : kStandardPopupWidth;
+	const int popupWidth = datalinkPopup
+		? kDatalinkPopupWidth
+		: (insetPopup ? kInsetPopupWidth : kStandardPopupWidth);
 	if (bounds.Width() < popupWidth + 8)
 	{
 		RuntimeMenuPopupArea.SetRectEmpty();
@@ -590,7 +617,11 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	int visibleRows = 0;
 	bool showPager = false;
 	bool insetPopupTooShort = false;
-	if (!insetPopup)
+	if (datalinkPopup)
+	{
+		popupHeight = kDatalinkPopupHeight;
+	}
+	else if (!insetPopup)
 	{
 		const int maximumHeight = (std::max)(80, bounds.Height() - 8);
 		int rowCapacity = (maximumHeight - kPopupHeaderHeight - (kPopupPadding * 2)) / kPopupRowHeight;
@@ -701,6 +732,19 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 	HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
 	CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
+	if (datalinkPopup)
+	{
+		const COLORREF statusColor = datalinkState.connected
+			? RGB(103, 190, 143)
+			: RGB(172, 102, 102);
+		::SetDCBrushColor(hdc, statusColor);
+		::SetDCPenColor(hdc, kOuterBorder);
+		::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
+		::SelectObject(hdc, ::GetStockObject(DC_PEN));
+		const int dotTop = titleArea.top + ((titleArea.Height() - 8) / 2);
+		::Ellipse(hdc, titleArea.left + 7, dotTop, titleArea.left + 15, dotTop + 8);
+		titleText.left += 13;
+	}
 	DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, RGB(217, 226, 228));
 	CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
 	DrawRoundedRect(
@@ -741,7 +785,189 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	};
 
 	int contentTop = titleArea.bottom + kPopupPadding;
-	if (!insetPopup)
+	if (datalinkPopup)
+	{
+		CSMRPlugin* plugin = datalinkPlugin;
+		const DatalinkControlState& state = datalinkState;
+		auto drawRuntimeButton = [&](
+			const char* id,
+			const CRect& buttonArea,
+			const std::string& label,
+			bool enabled,
+			bool primary,
+			bool danger,
+			const std::string& tooltip)
+		{
+			const bool hover = enabled && PointInside(buttonArea, mouseLocation);
+			COLORREF fill = enabled ? kButtonBackground : kDisabledBackground;
+			COLORREF foreground = enabled ? kText : kDisabledText;
+			if (enabled && primary)
+			{
+				fill = hover ? kAccentHover : kAccent;
+				foreground = kAccentText;
+			}
+			else if (enabled && danger)
+			{
+				fill = hover ? kDangerHover : kButtonBackground;
+				foreground = hover ? RGB(255, 240, 240) : kDangerText;
+			}
+			else if (hover)
+			{
+				fill = kButtonHover;
+			}
+			DrawRoundedRect(hdc, buttonArea, fill, kOuterBorder, kControlCornerDiameter);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, buttonArea, label, foreground, DT_CENTER);
+			if (enabled)
+				addPopupScreenObject(id, buttonArea, tooltip.c_str());
+		};
+		auto drawSectionLabel = [&](const std::string& label)
+		{
+			::SelectObject(hdc, actionFont);
+			CRect sectionArea(
+				RuntimeMenuPopupArea.left + 6,
+				contentTop,
+				RuntimeMenuPopupArea.right - 6,
+				contentTop + 18);
+			DrawTextEllipsis(hdc, sectionArea, label, RGB(159, 176, 181));
+			contentTop += 18;
+		};
+		auto twoColumnAreas = [&](int height, CRect& left, CRect& right)
+		{
+			const int gap = 3;
+			const int availableWidth = RuntimeMenuPopupArea.Width() - (kPopupPadding * 2) - gap;
+			const int leftWidth = availableWidth / 2;
+			left = CRect(
+				RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop,
+				RuntimeMenuPopupArea.left + kPopupPadding + leftWidth,
+				contentTop + height);
+			right = CRect(
+				left.right + gap,
+				contentTop,
+				RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + height);
+		};
+
+		auto drawCredentialRow = [&](
+			const std::string& label,
+			const char* id,
+			const std::string& value,
+			const std::string& tooltip)
+		{
+			CRect labelArea;
+			CRect valueArea;
+			twoColumnAreas(24, labelArea, valueArea);
+			labelArea.left += 4;
+			::SelectObject(hdc, rowFont);
+			DrawTextEllipsis(hdc, labelArea, label, kText);
+			drawRuntimeButton(
+				id,
+				valueArea,
+				value,
+				plugin != nullptr && !state.connected && !state.connecting,
+				false,
+				false,
+				tooltip);
+			contentTop += 28;
+		};
+		drawCredentialRow(
+			"Login",
+			"runtime.datalink.callsign",
+			state.logonCallsign.empty() ? "Set..." : state.logonCallsign,
+			"Edit the CPDLC login callsign");
+		drawCredentialRow(
+			"Password",
+			"runtime.datalink.credentials",
+			state.hasPassword ? "Change..." : "Set...",
+			"Edit the Hoppie logon password");
+
+		CRect pollArea;
+		CRect connectionArea;
+		twoColumnAreas(24, pollArea, connectionArea);
+		drawRuntimeButton(
+			"runtime.datalink.poll",
+			pollArea,
+			state.pollInProgress ? "Polling..." : "Poll",
+			plugin != nullptr && state.connected && !state.pollInProgress,
+			false,
+			false,
+			"Poll Hoppie messages now");
+		const bool canConnect = state.controllerConnected && !state.logonCallsign.empty() && state.hasPassword;
+		drawRuntimeButton(
+			"runtime.datalink.connection",
+			connectionArea,
+			state.connected ? "Disconnect" : (state.connecting ? "Cancel" : "Connect"),
+			plugin != nullptr && (state.connected || state.connecting || canConnect),
+			!state.connected && !state.connecting,
+			state.connected,
+			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
+		contentTop += 30;
+
+		drawSectionLabel("PDC REMINDERS");
+		const bool canEditTiming = plugin != nullptr && !state.cdmAutoEnabled;
+		auto drawTimingRow = [&](const char* name, const char* idPrefix, int value)
+		{
+			const int left = RuntimeMenuPopupArea.left + kPopupPadding;
+			const int right = RuntimeMenuPopupArea.right - kPopupPadding;
+			CRect nameArea(left + 4, contentTop, left + 65, contentTop + 30);
+			::SelectObject(hdc, rowFont);
+			DrawTextEllipsis(hdc, nameArea, name, kText);
+
+			CRect minusArea(left + 66, contentTop + 2, left + 90, contentTop + 28);
+			CRect valueArea(left + 93, contentTop + 2, left + 143, contentTop + 28);
+			CRect plusArea(left + 146, contentTop + 2, left + 170, contentTop + 28);
+			CRect unitArea(left + 174, contentTop, right, contentTop + 30);
+			const std::string prefix(idPrefix);
+			const std::string decrementId = prefix + ".decrement";
+			const std::string incrementId = prefix + ".increment";
+			drawRuntimeButton(
+				decrementId.c_str(), minusArea, "-",
+				canEditTiming && value > 0, false, false,
+				std::string("Decrease ") + name);
+			drawRuntimeButton(
+				idPrefix, valueArea, std::to_string(value),
+				canEditTiming, false, false,
+				std::string("Edit ") + name);
+			drawRuntimeButton(
+				incrementId.c_str(), plusArea, "+",
+				canEditTiming && value < 1440, false, false,
+				std::string("Increase ") + name);
+			::SelectObject(hdc, rowFont);
+			DrawTextEllipsis(hdc, unitArea, "min", kMutedText, DT_CENTER);
+			contentTop += 33;
+		};
+		drawTimingRow("Delay", "runtime.datalink.delay", state.cdmDelayMinutes);
+		drawTimingRow("Cooldown", "runtime.datalink.cooldown", state.cdmCooldownMinutes);
+		contentTop += 3;
+
+		CRect scanArea;
+		CRect reminderArea;
+		twoColumnAreas(24, scanArea, reminderArea);
+		const bool reminderReady =
+			state.controllerConnected &&
+			!state.activeAirport.empty() &&
+			state.vacdmConfigured &&
+			state.vacdmReady &&
+			state.cdmAliasReady;
+		drawRuntimeButton(
+			"runtime.datalink.scan",
+			scanArea,
+			"Check now",
+			plugin != nullptr && reminderReady,
+			false,
+			false,
+			"Check eligible departures now");
+		drawRuntimeButton(
+			"runtime.datalink.reminders",
+			reminderArea,
+			state.cdmAutoEnabled ? "Stop" : "Run",
+			plugin != nullptr && (state.cdmAutoEnabled || reminderReady),
+			!state.cdmAutoEnabled,
+			state.cdmAutoEnabled,
+			state.cdmAutoEnabled ? "Stop automatic PDC reminders" : "Start automatic PDC reminders");
+	}
+	else if (!insetPopup)
 	{
 		if (entries.empty())
 		{
@@ -1136,6 +1362,8 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			togglePopup(RuntimeMenuPopup::Insets);
 		else if (std::strcmp(id, "runtime.button.profile") == 0)
 			togglePopup(RuntimeMenuPopup::Profile);
+		else if (std::strcmp(id, "runtime.button.datalink") == 0)
+			togglePopup(RuntimeMenuPopup::Datalink);
 		else if (std::strcmp(id, "runtime.button.control-center") == 0)
 		{
 			CloseRuntimeMenuPopup();
@@ -1151,6 +1379,151 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	}
 	if (std::strcmp(id, "runtime.popup") == 0)
 		return true;
+
+	CSMRPlugin* datalinkPlugin = static_cast<CSMRPlugin*>(GetPlugIn());
+	auto showDatalinkMessage = [&](const std::string& message, bool error)
+	{
+		if (!message.empty())
+		{
+			GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"CPDLC / PDC",
+				message.c_str(),
+				true,
+				true,
+				false,
+				true,
+				false);
+		}
+		if (error)
+			RequestRefresh();
+	};
+	if (std::strcmp(id, "runtime.datalink.credentials") == 0)
+	{
+		std::string error;
+		if (datalinkPlugin == nullptr || !datalinkPlugin->EditDatalinkCredentials(error))
+			showDatalinkMessage(error.empty() ? "The CPDLC service is unavailable." : error, true);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.datalink.callsign") == 0)
+	{
+		if (datalinkPlugin != nullptr)
+		{
+			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
+			GetPlugIn()->OpenPopupEdit(
+				area,
+				RUNTIME_DATALINK_CALLSIGN_EDIT,
+				state.logonCallsign.c_str());
+		}
+		return true;
+	}
+	if (std::strcmp(id, "runtime.datalink.connection") == 0)
+	{
+		std::string error;
+		if (datalinkPlugin == nullptr)
+			error = "The CPDLC service is unavailable.";
+		else
+		{
+			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
+			if (state.connected || state.connecting)
+				datalinkPlugin->DisconnectDatalink(error);
+			else
+				datalinkPlugin->ConnectDatalink(error);
+		}
+		if (!error.empty())
+			showDatalinkMessage(error, true);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.datalink.poll") == 0)
+	{
+		std::string error;
+		if (datalinkPlugin == nullptr || !datalinkPlugin->PollDatalink(error))
+			showDatalinkMessage(error.empty() ? "The CPDLC service is unavailable." : error, true);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.datalink.delay") == 0 ||
+		std::strcmp(id, "runtime.datalink.cooldown") == 0)
+	{
+		if (datalinkPlugin != nullptr)
+		{
+			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
+			const bool editDelay = std::strcmp(id, "runtime.datalink.delay") == 0;
+			const int currentValue = editDelay ? state.cdmDelayMinutes : state.cdmCooldownMinutes;
+			GetPlugIn()->OpenPopupEdit(
+				area,
+				editDelay ? RUNTIME_DATALINK_DELAY_EDIT : RUNTIME_DATALINK_COOLDOWN_EDIT,
+				std::to_string(currentValue).c_str());
+		}
+		return true;
+	}
+	const bool decrementDelay = std::strcmp(id, "runtime.datalink.delay.decrement") == 0;
+	const bool incrementDelay = std::strcmp(id, "runtime.datalink.delay.increment") == 0;
+	const bool decrementCooldown = std::strcmp(id, "runtime.datalink.cooldown.decrement") == 0;
+	const bool incrementCooldown = std::strcmp(id, "runtime.datalink.cooldown.increment") == 0;
+	if (decrementDelay || incrementDelay || decrementCooldown || incrementCooldown)
+	{
+		std::string error;
+		if (datalinkPlugin == nullptr)
+			error = "The PDC reminder service is unavailable.";
+		else
+		{
+			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
+			const int delayDelta = incrementDelay ? 1 : (decrementDelay ? -1 : 0);
+			const int cooldownDelta = incrementCooldown ? 1 : (decrementCooldown ? -1 : 0);
+			const int delay = std::clamp(state.cdmDelayMinutes + delayDelta, 0, 1440);
+			const int cooldown = std::clamp(state.cdmCooldownMinutes + cooldownDelta, 0, 1440);
+			datalinkPlugin->UpdateDatalinkControlSettings(
+				state.logonCallsign,
+				"",
+				false,
+				state.cdmAutoEnabled,
+				delay,
+				cooldown,
+				error,
+				false);
+		}
+		if (!error.empty())
+			showDatalinkMessage(error, true);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.datalink.reminders") == 0)
+	{
+		std::string error;
+		if (datalinkPlugin == nullptr)
+			error = "The PDC reminder service is unavailable.";
+		else
+		{
+			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
+			datalinkPlugin->UpdateDatalinkControlSettings(
+				state.logonCallsign,
+				"",
+				false,
+				!state.cdmAutoEnabled,
+				state.cdmDelayMinutes,
+				state.cdmCooldownMinutes,
+				error,
+				false);
+		}
+		if (!error.empty())
+			showDatalinkMessage(error, true);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.datalink.scan") == 0)
+	{
+		std::string result;
+		std::string error;
+		if (datalinkPlugin == nullptr || !datalinkPlugin->RunCdmReminderScan(result, error))
+			showDatalinkMessage(error.empty() ? "The PDC reminder service is unavailable." : error, true);
+		else
+			showDatalinkMessage(result, false);
+		RequestRefresh();
+		return true;
+	}
 	if (std::strcmp(id, "runtime.page.previous") == 0)
 	{
 		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 5);

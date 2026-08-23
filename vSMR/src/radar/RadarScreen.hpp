@@ -49,9 +49,6 @@ public:
 	virtual ~CSMRRadar();
 	POINT ConvertCoordFromPositionToPixel(CPosition position);
 	CPosition ConvertCoordFromPixelToPosition(POINT point);
-	bool SetScreenRotationDegrees(double degrees, bool persistToAsr = true);
-	double GetScreenRotationDegrees() const noexcept;
-	double DetectEuroScopeScreenRotationDegrees();
 	VsmrPerformance::Snapshot GetPerformanceSnapshot(
 		std::uint32_t windowSeconds = 60,
 		std::size_t maximumSeriesPoints = 240);
@@ -399,6 +396,7 @@ public:
 
 	map<string, CRect> tagAreas;
 	map<string, CRect> tagCollisionAreas;
+	map<string, CRect> targetAreas;
 	map<string, double> TagAngles;
 	map<string, int> TagLeaderLineLength;
 	map<string, CRect> previousTagSize;
@@ -428,7 +426,8 @@ public:
 		Mode,
 		Groups,
 		Insets,
-		Profile
+		Profile,
+		Datalink
 	};
 	RuntimeMenuPopup ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 	std::string PendingGroundStatusCallsign;
@@ -446,8 +445,6 @@ public:
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
-	double ScreenRotationDegrees = 0.0;
-	double EuroScopeScreenRotationDegrees = 0.0;
 	bool AvisoUseDayColorPalette = false;
 	COLORREF InactiveSectorBackgroundColor = RGB(67, 74, 79);
 	unsigned long InactiveSectorBackgroundSampleTick = 0;
