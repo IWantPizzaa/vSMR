@@ -4647,7 +4647,7 @@ void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar
 		VsmrWeather::Update(sStation, sFullMetar);
 }
 
-void CSMRPlugin::RefreshAvisoFrequencyOwnershipOverlays()
+void CSMRPlugin::RefreshControllerDependentOverlays()
 {
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
@@ -4657,7 +4657,6 @@ void CSMRPlugin::RefreshAvisoFrequencyOwnershipOverlays()
 			continue;
 		radar->MarkPerformanceRefreshReason(
 			VsmrPerformance::FrameRefreshReason::ControllerUpdate);
-		radar->RefreshAvisoFrequencyOwnership(true);
 		radar->RequestRefresh();
 	}
 }
@@ -4666,14 +4665,14 @@ void CSMRPlugin::OnControllerPositionUpdate(CController Controller)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerPositionUpdate");
 	(void)Controller;
-	RefreshAvisoFrequencyOwnershipOverlays();
+	RefreshControllerDependentOverlays();
 }
 
 void CSMRPlugin::OnControllerDisconnect(CController Controller)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerDisconnect");
 	(void)Controller;
-	RefreshAvisoFrequencyOwnershipOverlays();
+	RefreshControllerDependentOverlays();
 }
 
 void CSMRPlugin::OnAirportRunwayActivityChanged()

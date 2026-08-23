@@ -116,9 +116,6 @@ public:
 		double longitude = 0.0;
 		double latitude = 0.0;
 	};
-	using AvisoFrequencyOwnershipMetadata = VsmrAviso::FrequencyOwnershipMetadata;
-	using AvisoFrequencyOwner = VsmrAviso::FrequencyOwner;
-	using AvisoFrequencyOwnershipSnapshot = VsmrAviso::FrequencyOwnershipSnapshot;
 	struct AvisoGroup
 	{
 		std::string id;
@@ -132,7 +129,6 @@ public:
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;
 		std::vector<std::vector<AvisoPoint>> paths;
-		AvisoFrequencyOwnershipMetadata frequencyOwnership;
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
 		Gdiplus::Color dayFillColor = Gdiplus::Color(217, 53, 66, 82);
@@ -150,7 +146,6 @@ public:
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;
-		AvisoFrequencyOwnershipMetadata frequencyOwnership;
 		std::wstring text;
 		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
@@ -219,7 +214,6 @@ public:
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
-		std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> frequencyOwnership;
 		bool useDayPalette = false;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
@@ -277,14 +271,8 @@ public:
 	size_t AvisoGeoJsonSourceFeatureCount = 0;
 	std::vector<AvisoGroup> AvisoRuntimeGroups;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> AvisoGroupVisibilitySnapshot;
-	std::shared_ptr<const AvisoFrequencyOwnershipSnapshot> AvisoFrequencyOwnershipStateSnapshot;
-	std::map<std::string, AvisoFrequencyOwnershipMetadata> AvisoFrequencyOwnershipRules;
-	std::set<std::string> AvisoFrequencyOwnershipRelevantPositions;
-	std::map<std::string, std::set<std::string>> AvisoFrequencyOwnershipServicePositions;
 	mutable std::mutex AvisoGroupMutex;
 	std::atomic<unsigned long long> AvisoGroupGeneration{ 0 };
-	unsigned long AvisoFrequencyOwnershipLastRefreshTick = 0;
-	std::string AvisoFrequencyOwnershipLastSignature;
 	mutable std::string AvisoGeoJsonResolvedAirport;
 	mutable std::string AvisoGeoJsonResolvedDllPath;
 	mutable std::string AvisoGeoJsonResolvedPath;
@@ -753,11 +741,7 @@ public:
 		std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
 		std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
 		std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
-		std::shared_ptr<const AvisoFrequencyOwnershipSnapshot>& outFrequencyOwnership,
 		unsigned long long& outGeneration) const;
-	void RefreshAvisoFrequencyOwnership(
-		bool force = false,
-		const std::vector<VsmrScene::ControllerState>* capturedControllers = nullptr);
 	bool ApplyAvisoGroupMembershipSnapshot(
 		const rapidjson::Value& aviso,
 		std::string* outError = nullptr);

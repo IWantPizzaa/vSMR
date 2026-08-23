@@ -640,6 +640,38 @@ function Test-HiddenAvisoFeature {
     return $false
 }
 
+function Test-ProhibitedAvisoLabel {
+    param(
+        [string]$GeometryType,
+        [string]$ObjectType,
+        [string]$GeometryRole,
+        [string]$StyleId,
+        [string]$Category,
+        [string]$Layer,
+        [string]$Name,
+        $SourceProperties,
+        $Style
+    )
+
+    $isLabel = $GeometryType -eq "Point" -and (
+        $ObjectType -eq "Label" -or
+        $GeometryRole -eq "text_label"
+    )
+    if (-not $isLabel) {
+        return $false
+    }
+
+    $identity = @(
+        $StyleId,
+        $Category,
+        $Layer,
+        $Name,
+        (Get-FirstStringProperty $SourceProperties @("label_class", "text-field", "text", "label")),
+        (Get-FirstStringProperty $Style @("name", "layer"))
+    ) -join " "
+    return $identity -match '(?i)(^|[^A-Z0-9])(AMSR|TMA|VFR)([^A-Z0-9]|$)'
+}
+
 function Get-AvisoGroupIds {
     param($Properties, [bool]$PreserveEmptyPlaceholder = $false)
 
@@ -782,6 +814,15 @@ function Normalize-AvisoFile {
             $objectType = if ($geometryType -eq "Point") { "Label" } elseif ($geometryType -like "*LineString") { "Line" } else { "Area" }
         }
 
+        $geometryRole = Get-FirstStringProperty $sourceProperties @("geometry_role")
+        if ([string]::IsNullOrWhiteSpace($geometryRole) -or $geometryRole -in @("aviso_region", "aviso_linework")) {
+            $geometryRole = if ($geometryType -eq "Point") { "text_label" } elseif ($geometryType -like "*LineString") { "linework" } else { "filled_region" }
+        }
+        $sourceName = Get-FirstStringProperty $sourceProperties @("name")
+        if (Test-ProhibitedAvisoLabel $geometryType $objectType $geometryRole $styleId $category $layer $sourceName $sourceProperties $style) {
+            continue
+        }
+
         if (-not $nameCounters.ContainsKey($styleId)) {
             $nameCounters[$styleId] = 0
         }
@@ -793,11 +834,6 @@ function Normalize-AvisoFile {
         }
         elseif ([string]::IsNullOrWhiteSpace($name)) {
             $name = "{0} {1:D3}" -f $category, $nameCounters[$styleId]
-        }
-
-        $geometryRole = Get-FirstStringProperty $sourceProperties @("geometry_role")
-        if ([string]::IsNullOrWhiteSpace($geometryRole) -or $geometryRole -in @("aviso_region", "aviso_linework")) {
-            $geometryRole = if ($geometryType -eq "Point") { "text_label" } elseif ($geometryType -like "*LineString") { "linework" } else { "filled_region" }
         }
 
         $properties = [ordered]@{
@@ -893,7 +929,21 @@ function Normalize-AvisoFile {
         $style = $styles[$styleId]
         $normalizedPaint = New-NormalizedPaint $style.paint
         if ([string]$style.object_type -eq "Label") {
-            $labelZoomLevel = Get-AvisoLabelZoomLevel $styleId $normalizedFeatures
+            $labelIdentity = "$styleId $($style.name)"
+            $preserveSuppliedZoom = $airport -in @("LFPG", "LFMN") -and
+                (Test-JsonProperty $normalizedPaint "zoomLevel")
+            if ($preserveSuppliedZoom) {
+                $labelZoomLevel = [int]$normalizedPaint.zoomLevel
+            }
+            elseif ($airport -notin @("LFPG", "LFMN") -and $labelIdentity -match '(?i)gate|stand') {
+                $labelZoomLevel = 9
+            }
+            elseif ($airport -notin @("LFPG", "LFMN") -and $labelIdentity -match '(?i)taxiway') {
+                $labelZoomLevel = 7
+            }
+            else {
+                $labelZoomLevel = Get-AvisoLabelZoomLevel $styleId $normalizedFeatures
+            }
             if (Test-JsonProperty $normalizedPaint "zoomLevel") {
                 $normalizedPaint.zoomLevel = $labelZoomLevel
             }
@@ -944,7 +994,13 @@ function Normalize-AvisoFile {
         if (-not ($document.vsmr_groups -is [System.Array])) {
             throw "$($File.Name) vsmr_groups must be an array."
         }
-        $root["vsmr_groups"] = ConvertTo-CanonicalValue $document.vsmr_groups
+        $groups = @($document.vsmr_groups | Where-Object {
+            $identity = ([string]$_.id) + " " + ([string]$_.name)
+            $identity -notmatch '(?i)(^|[^A-Z0-9])(AMSR|TMA|VFR)([^A-Z0-9]|$)'
+        })
+        if ($groups.Count -gt 0) {
+            $root["vsmr_groups"] = ConvertTo-CanonicalValue $groups
+        }
     }
     $root["features"] = $normalizedFeatures.ToArray()
 
@@ -952,51 +1008,6 @@ function Normalize-AvisoFile {
     Set-NormalizedFile $File.FullName $content "$($File.Name) ($($normalizedFeatures.Count) features, $($normalizedStyles.Count) styles)"
 }
 
-function Normalize-AvisoSupplementalFile {
-    param([System.IO.FileInfo]$File, $BaseDocument)
-
-    $document = Read-JsonFile $File.FullName
-    if (-not ($document -is [pscustomobject]) -or
-        [string](Get-JsonProperty $document "type" "") -ne "FeatureCollection" -or
-        -not (Test-JsonProperty $document "styles") -or
-        -not (Test-JsonProperty $document "features")) {
-        throw "$($File.Name) must be a GeoJSON FeatureCollection."
-    }
-
-    foreach ($styleProperty in @($document.styles.PSObject.Properties)) {
-        $style = $styleProperty.Value
-        if ([string]$style.object_type -ne "Label") {
-            continue
-        }
-
-        $zoomLevel = $null
-        $baseStyleProperty = if ($null -ne $BaseDocument) {
-            $BaseDocument.styles.PSObject.Properties[$styleProperty.Name]
-        }
-        else {
-            $null
-        }
-        if ($null -ne $baseStyleProperty -and
-            (Test-JsonProperty $baseStyleProperty.Value.paint "zoomLevel")) {
-            $zoomLevel = [int]$baseStyleProperty.Value.paint.zoomLevel
-        }
-        else {
-            $zoomLevel = Get-AvisoLabelZoomLevel $styleProperty.Name $document.features
-        }
-
-        $paint = New-NormalizedPaint $style.paint
-        if (Test-JsonProperty $paint "zoomLevel") {
-            $paint.zoomLevel = $zoomLevel
-        }
-        else {
-            $paint | Add-Member -MemberType NoteProperty -Name "zoomLevel" -Value $zoomLevel
-        }
-        $style.paint = New-NormalizedPaint $paint
-    }
-
-    $content = ConvertTo-CompactJson $document
-    Set-NormalizedFile $File.FullName $content "$($File.Name) supplemental label visibility"
-}
 
 $resolvedDataDirectory = [System.IO.Path]::GetFullPath($DataDirectory)
 if (-not (Test-Path -LiteralPath $resolvedDataDirectory -PathType Container)) {
@@ -1019,21 +1030,5 @@ foreach ($file in $avisoFiles) {
     Normalize-AvisoFile $file
 }
 
-$supplementalAvisoFiles = @(
-    Get-ChildItem -File -LiteralPath $avisoDirectory |
-        Where-Object { $_.Name -match "^[A-Za-z0-9]{4}_Dyna(?:_fixed)?\.geojson$" } |
-        Sort-Object Name
-)
-foreach ($file in $supplementalAvisoFiles) {
-    $airport = ([System.IO.Path]::GetFileNameWithoutExtension($file.Name) -split "_")[0].ToUpperInvariant()
-    $basePath = Join-Path $avisoDirectory "$airport.geojson"
-    $baseDocument = if (Test-Path -LiteralPath $basePath -PathType Leaf) {
-        Read-JsonFile $basePath
-    }
-    else {
-        $null
-    }
-    Normalize-AvisoSupplementalFile $file $baseDocument
-}
 
 Write-Host "Runtime data $($Mode.ToLowerInvariant()) completed successfully."
