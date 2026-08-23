@@ -2469,7 +2469,6 @@ struct VsmrControlCenterBridge::Impl
 		datalink.AddMember("controllerConnected", state.controllerConnected, allocator);
 		AddString(datalink, "logonCallsign", state.logonCallsign, allocator);
 		datalink.AddMember("hasPassword", state.hasPassword, allocator);
-		datalink.AddMember("playSound", state.playSound, allocator);
 		datalink.AddMember("cdmAutoEnabled", state.cdmAutoEnabled, allocator);
 		datalink.AddMember("cdmDelayMinutes", state.cdmDelayMinutes, allocator);
 		datalink.AddMember("cdmCooldownMinutes", state.cdmCooldownMinutes, allocator);
@@ -2512,6 +2511,11 @@ struct VsmrControlCenterBridge::Impl
 			"avisoFile",
 			Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport()),
 			allocator);
+		CSMRPlugin* plugin = DatalinkPlugin();
+		const std::string aliasPath = plugin != nullptr
+			? plugin->GetDatalinkControlState().cdmAliasPath
+			: std::string();
+		AddString(settings, "aliasFile", aliasPath, allocator);
 		settings.AddMember("watchFiles", true, allocator);
 		AddString(settings, "bridgeMode", "Native WebView2", allocator);
 		settings.AddMember("updateInterval", 250, allocator);
@@ -2521,7 +2525,6 @@ struct VsmrControlCenterBridge::Impl
 			Owner->GetSmallTargetIconBoostResolutionPreset(),
 			allocator);
 		settings.AddMember("showFps", Owner->ShowFps, allocator);
-		settings.AddMember("screenRotation", Owner->GetScreenRotationDegrees(), allocator);
 		AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 		settings.AddMember("runtimeSync", true, allocator);
 		settings.AddMember("confirmDelete", true, allocator);
@@ -3183,8 +3186,6 @@ struct VsmrControlCenterBridge::Impl
 
 		bool hasStagedShowFps = false;
 		bool stagedShowFps = Owner->ShowFps;
-		bool hasStagedScreenRotation = false;
-		double stagedScreenRotation = Owner->GetScreenRotationDegrees();
 		bool hasStagedAvisoColorPalette = false;
 		std::string stagedAvisoColorPalette = Owner->GetAvisoColorPalette();
 		if (payload->HasMember("settings"))
@@ -3204,22 +3205,6 @@ struct VsmrControlCenterBridge::Impl
 				}
 				hasStagedShowFps = true;
 				stagedShowFps = settings["showFps"].GetBool();
-			}
-			if (settings.HasMember("screenRotation"))
-			{
-				if (!settings["screenRotation"].IsNumber())
-				{
-					error = "Screen rotation must be a number from 0.0 to 359.9 degrees.";
-					return false;
-				}
-				stagedScreenRotation = settings["screenRotation"].GetDouble();
-				if (!std::isfinite(stagedScreenRotation) ||
-					stagedScreenRotation < 0.0 || stagedScreenRotation > 359.9)
-				{
-					error = "Screen rotation must be a number from 0.0 to 359.9 degrees.";
-					return false;
-				}
-				hasStagedScreenRotation = true;
 			}
 			if (settings.HasMember("avisoColorPalette"))
 			{
@@ -3611,8 +3596,6 @@ struct VsmrControlCenterBridge::Impl
 				"Show FPS counter",
 				Owner->ShowFps ? "1" : "0");
 		}
-		if (hasStagedScreenRotation)
-			Owner->SetScreenRotationDegrees(stagedScreenRotation, true);
 		if (hasStagedAvisoColorPalette)
 			Owner->SetAvisoColorPalette(stagedAvisoColorPalette, true);
 
@@ -4006,18 +3989,6 @@ struct VsmrControlCenterBridge::Impl
 				Owner->ShowFps ? "1" : "0");
 		}
 
-		if (payload->HasMember("screenRotation"))
-		{
-			if (!(*payload)["screenRotation"].IsNumber() ||
-				!Owner->SetScreenRotationDegrees(
-					(*payload)["screenRotation"].GetDouble(),
-					true))
-			{
-				error = "Screen rotation must be a number from 0.0 to 359.9 degrees.";
-				return false;
-			}
-		}
-
 		if (payload->HasMember("avisoColorPalette"))
 		{
 			if (!(*payload)["avisoColorPalette"].IsString() ||
@@ -4071,7 +4042,6 @@ struct VsmrControlCenterBridge::Impl
 		const bool replacePassword = ReadBool(*payload, "replacePassword", false);
 		const bool updatesConnectionSettings =
 			payload->HasMember("logonCallsign") ||
-			payload->HasMember("playSound") ||
 			replacePassword;
 		const std::string password = replacePassword
 			? ReadString(*payload, "password")
@@ -4086,7 +4056,6 @@ struct VsmrControlCenterBridge::Impl
 			callsign,
 			password,
 			replacePassword,
-			ReadBool(*payload, "playSound", current.playSound),
 			ReadBool(*payload, "cdmAutoEnabled", current.cdmAutoEnabled),
 			ReadInt(*payload, "cdmDelayMinutes", current.cdmDelayMinutes),
 			ReadInt(*payload, "cdmCooldownMinutes", current.cdmCooldownMinutes),

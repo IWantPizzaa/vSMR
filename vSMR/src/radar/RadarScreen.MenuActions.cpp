@@ -2,6 +2,7 @@
 #include "radar/RadarScreen.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aircraft/GroundState.hpp"
+#include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
 
@@ -155,6 +156,101 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 				VsmrControlCenterDialog->SyncFromRadar();
 			RequestRefresh();
 		}
+		return;
+	}
+
+	if (FunctionId == RUNTIME_DATALINK_CALLSIGN_EDIT)
+	{
+		if (!hasItemString)
+			return;
+		const std::string callsign = NormalizeAirportInput(itemString);
+		const bool callsignValid =
+			!callsign.empty() &&
+			callsign.size() <= 16 &&
+			std::all_of(callsign.begin(), callsign.end(), [](unsigned char value)
+			{
+				return std::isalnum(value) != 0 || value == '_' || value == '-';
+			});
+		if (!callsignValid)
+		{
+			showConfigError("Enter a login callsign of 1 to 16 letters, numbers, underscores or hyphens.");
+			return;
+		}
+
+		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
+		if (plugin == nullptr)
+		{
+			showConfigError("The CPDLC service is unavailable.");
+			return;
+		}
+		const DatalinkControlState state = plugin->GetDatalinkControlState();
+		std::string error;
+		if (!plugin->UpdateDatalinkControlSettings(
+			callsign,
+			"",
+			false,
+			state.cdmAutoEnabled,
+			state.cdmDelayMinutes,
+			state.cdmCooldownMinutes,
+			error,
+			true))
+		{
+			showConfigError(error.c_str());
+			return;
+		}
+		RequestRefresh();
+		return;
+	}
+
+	if (FunctionId == RUNTIME_DATALINK_DELAY_EDIT ||
+		FunctionId == RUNTIME_DATALINK_COOLDOWN_EDIT)
+	{
+		if (!hasItemString)
+			return;
+		char* end = nullptr;
+		errno = 0;
+		const long parsed = std::strtol(itemString, &end, 10);
+		while (end != nullptr && *end != '\0' && std::isspace(static_cast<unsigned char>(*end)))
+			++end;
+		if (errno != 0 || end == itemString || (end != nullptr && *end != '\0') || parsed < 0 || parsed > 1440)
+		{
+			showConfigError("Enter a whole number from 0 to 1440 minutes.");
+			return;
+		}
+
+		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
+		if (plugin == nullptr)
+		{
+			showConfigError("The PDC reminder service is unavailable.");
+			return;
+		}
+		const DatalinkControlState state = plugin->GetDatalinkControlState();
+		if (state.cdmAutoEnabled)
+		{
+			showConfigError("Stop automatic PDC reminders before changing their timing.");
+			return;
+		}
+		const int delayMinutes = FunctionId == RUNTIME_DATALINK_DELAY_EDIT
+			? static_cast<int>(parsed)
+			: state.cdmDelayMinutes;
+		const int cooldownMinutes = FunctionId == RUNTIME_DATALINK_COOLDOWN_EDIT
+			? static_cast<int>(parsed)
+			: state.cdmCooldownMinutes;
+		std::string error;
+		if (!plugin->UpdateDatalinkControlSettings(
+			state.logonCallsign,
+			"",
+			false,
+			state.cdmAutoEnabled,
+			delayMinutes,
+			cooldownMinutes,
+			error,
+			false))
+		{
+			showConfigError(error.c_str());
+			return;
+		}
+		RequestRefresh();
 		return;
 	}
 

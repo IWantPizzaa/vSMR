@@ -4,13 +4,17 @@
 
 ### Added
 
-- Added a persisted 0.0-359.9 degree main-screen rotation setting that rotates AVISO, aircraft, trails, tags, RIMCAS overlays, and their interaction coordinates together.
+- Synchronized AVISO, aircraft, trails, tags, RIMCAS overlays and hit-testing with EuroScope's native Rotate screen setting; native EuroScope panning and zooming now remain in the same coordinate system.
 - Added configurable moving-aircraft position trails to the main radar, AVISO inset, and SRW. The Icons page controls trail visibility plus separate ground and airborne history lengths; NOVA uses compact vSMR history dots, Icon uses filled bubbles that grey and fade with age, and Triangle uses shrinking hollow circles.
 - Added a persisted Night/Day AVISO color mode. Both the main view and AVISO inset select compact Day overrides from the same GeoJSON document, while existing base paint remains the Night palette and older/custom schema-2 files continue to work unchanged.
 - Added release-controlled AVISO migrations with `none`, selected-airport, and all-airport modes, an official hash inventory for detecting local edits, complete rollback backups, and a default-on protection setting with a manual verified AVISO reload action.
+- Added a synchronized `holdingpoint` tag token and EuroScope list item. Empty values omit their normal-tag row and use a clickable `HP` placeholder only in the detailed tag; either mouse button opens the editor, and assigned values remain visible while EuroScope synchronizes them through the scratchpad without changing unrelated scratchpad text.
 
 ### Changed
 
+- Moved CPDLC connection and PDC reminder controls from the Control Center into a compact native runtime-menu popup, while keeping the AVISO Day/Night selector with the AVISO editor.
+- Split CPDLC credentials into an editable runtime login callsign and a password-only secure dialog, and replaced PDC timing fields with compact minute steppers.
+- Made the CPDLC clearance-request notification sound unconditional and removed its obsolete setting and persisted state.
 - UI changes across the Control Center.
 - Restored the original NOVA target presentation: a configurable yellow irregular primary return, three cyan afterglow silhouettes for moving targets, white position-history dots, and a white Mode C diamond or non-Mode C cross. Icon and Triangle symbols follow radar zoom and their real-world dimensions; the centered symbol-scale slider applies a proportional 0.50–1.50 adjustment.
 - Removed polygon outlines from AVISO rendering so edited area fills no longer retain an unrelated source stroke color; line features continue to render with their primary stroke color.
@@ -44,7 +48,7 @@
 
 ### Changed
 
-- Compacted the single Control Center Settings page so every data, display, CPDLC, PDC-reminder, and updater option fits in the fixed window without page scrolling.
+- Compacted the single Control Center Settings page so every data, display, and updater option fits in the fixed window without page scrolling.
 - Redesigned the METAR inset around responsive wide, stacked, and compact layouts; added a larger wrapped raw report with highlighted wind, variation, visibility, weather, cloud, and QNH tokens; removed local controller time; and prioritized readable QNH, variation, and runway-component summaries at smaller window sizes.
 - Simplified the Control Center Settings page to a single General view, removed the live Performance tab, and moved the compact automatic-update controls into General settings.
 - Prioritized TSAT ahead of CTOT in the PDC window and clearance payload, pre-filled current vACDM TSAT/CTOT values when available, and rejected invalid optional UTC `HHMM` entries.
@@ -64,6 +68,8 @@
 
 ### Fixed
 
+- Prevented rotated AVISO views from disappearing during panning by retaining the valid raster instead of invalidating it from subpixel changes in an inferred rotation angle.
+- Coalesced synchronized scratchpad/holding-point redraw notifications onto EuroScope's normal UI timer, preventing network update bursts from recursively flooding every open radar with immediate full-frame refreshes.
 - Kept AVISO and SRW inset fills locked to EuroScope's inactive-sector background while the main view is zoomed into an active sector, and prevented the METAR center plate from masking the wind arrow.
 - Synchronized AVISO Day/Night changes across every open radar screen sharing the Control Center configuration, and made stale main-view raster previews palette-aware so LFPG cannot continue displaying its previous Night bitmap during a slower Day rebuild.
 - Made automatic PDC reminders session-only and fail-safe: every eligible aircraft now receives the complete monotonic delay, including aircraft with expired placeholder TOBTs; startup, stale/unavailable vACDM data, missing controller/airport state, TOBT removal, delay changes, and Stop now reset or re-arm the scheduler predictably.

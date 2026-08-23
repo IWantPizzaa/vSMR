@@ -27,6 +27,7 @@
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "aircraft/GroundState.hpp"
+#include "aircraft/HoldingPoint.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 
 #pragma comment(lib, "crypt32.lib")
@@ -45,13 +46,13 @@ std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 std::atomic<bool> PluginShutdownRequested(false);
 std::atomic<CSMRPlugin*> ActivePluginInstance{ nullptr };
+std::atomic<bool> ScratchpadRefreshPending(false);
 
 string logonCode = "";
 string logonCallsign = "EGKK";
 
 bool BLINK = false;
 
-bool PlaySoundClr = false;
 std::string DatalinkStatusMessage = "Disconnected.";
 std::mutex DatalinkControlMutex;
 
@@ -136,6 +137,8 @@ namespace
 {
 	std::mutex LineupOverrideMutex;
 	std::map<std::string, std::chrono::steady_clock::time_point> LineupOverrides;
+	std::mutex HoldingPointEditMutex;
+	std::string PendingHoldingPointCallsign;
 
 	std::string NormalizeLineupCallsign(const char* callsign)
 	{
@@ -287,7 +290,6 @@ namespace
 	{
 		std::string callsign;
 		std::string password;
-		bool playSound = false;
 	};
 
 	struct DatalinkLoginRequest
@@ -330,7 +332,6 @@ namespace
 		DatalinkCredentialsSnapshot snapshot;
 		snapshot.callsign = logonCallsign;
 		snapshot.password = logonCode;
-		snapshot.playSound = PlaySoundClr;
 		return snapshot;
 	}
 
@@ -2568,9 +2569,7 @@ void pollMessages(DatalinkPollRequest request) {
 						"UNABLE",
 						"");
 				} else {
-					if (request.credentials.playSound) {
-						PlayRuntimeAudio(L"Ding.wav", "CPDLC notification");
-					}
+					PlayRuntimeAudio(L"Ding.wav", "CPDLC notification");
 					std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 					AddCallsignUniqueUnlocked(AircraftDemandingClearance, message.from);
 				}
@@ -3184,6 +3183,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 {
 	ActivePluginInstance.store(this, std::memory_order_release);
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
+	ScratchpadRefreshPending.store(false, std::memory_order_relaxed);
+	VsmrHoldingPoint::ClearPending();
 	NetworkCancellationRequested.store(false, std::memory_order_relaxed);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -3196,7 +3197,6 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		logonCallsign = "EGKK";
 		logonCode.clear();
-		PlaySoundClr = false;
 		DatalinkStatusMessage = "Disconnected.";
 	}
 	CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
@@ -3213,6 +3213,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 	RegisterTagItemType("Datalink clearance", TAG_ITEM_DATALINK_STS);
 	RegisterTagItemFunction("Datalink menu", TAG_FUNC_DATALINK_MENU);
+	RegisterTagItemType("Holding Point", TAG_ITEM_HOLDING_POINT);
+	RegisterTagItemFunction("Holding Point", TAG_FUNC_HOLDING_POINT_EDIT);
 
 	messageId.store(rand() % 10000 + 1789);
 
@@ -3247,8 +3249,6 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 				Logger::info("CPDLC saved credential could not be decrypted");
 			}
 		}
-		if ((p_value = GetDataFromSettings("cpdlc_sound")) != NULL)
-			PlaySoundClr = bool(!!atoi(p_value));
 	}
 	if (migratePlaintextCredential)
 	{
@@ -3352,7 +3352,6 @@ CSMRPlugin::~CSMRPlugin()
 	{
 		Logger::info("CPDLC credential was not persisted because DPAPI protection failed");
 	}
-	SaveDataToSettings("cpdlc_sound", "Play sound on clearance request", credentials.playSound ? "1" : "0");
 	// Run/Stop is deliberately session-only. Persist a safe value for older builds.
 	SaveDataToSettings("cdm_auto_enabled", "Enable automatic CDM reminder messaging", "0");
 	int cdmAutoDelayToPersist = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
@@ -3398,7 +3397,6 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 		state.logonCallsign = logonCallsign;
 		state.hasPassword = !TrimAsciiWhitespaceCopy(logonCode).empty();
-		state.playSound = PlaySoundClr;
 		state.statusMessage = DatalinkStatusMessage;
 	}
 	state.cdmAutoEnabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
@@ -3420,7 +3418,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 	const std::string& callsign,
 	const std::string& password,
 	bool replacePassword,
-	bool playSound,
 	bool cdmAutoEnabled,
 	int delayMinutes,
 	int cooldownMinutes,
@@ -3508,9 +3505,10 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 			std::lock_guard<std::mutex> guard(DatalinkControlMutex);
 			effectivePassword = replacePassword ? normalizedPassword : logonCode;
 		}
-		if (!ProtectHoppieCredential(
-			effectivePassword,
-			protectedPasswordToPersist))
+		if (!effectivePassword.empty() &&
+			!ProtectHoppieCredential(
+				effectivePassword,
+				protectedPasswordToPersist))
 		{
 			error = "Windows could not protect the Hoppie code. Settings were not changed.";
 			Logger::info("CPDLC settings update rejected because DPAPI protection failed");
@@ -3527,7 +3525,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 		logonCallsign = normalizedCallsign;
 		if (replacePassword)
 			logonCode = normalizedPassword;
-		PlaySoundClr = playSound;
 	}
 	if (credentialsChanged &&
 		(HoppieConnected.load(std::memory_order_acquire) ||
@@ -3567,10 +3564,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 			"cpdlc_password",
 			"The protected CPDLC Hoppie code",
 			protectedPasswordToPersist.c_str());
-		SaveDataToSettings(
-			"cpdlc_sound",
-			"Play sound on clearance request",
-			playSound ? "1" : "0");
 	}
 	SaveDataToSettings(
 		"cdm_auto_enabled",
@@ -3778,6 +3771,56 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 	return true;
 }
 
+bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
+{
+	AFX_MANAGE_STATE(AfxGetStaticModuleState());
+	error.clear();
+	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
+	auto applyValues = [&](const CCPDLCSettingsDialog& dialog) -> bool
+	{
+		const DatalinkControlState state = GetDatalinkControlState();
+		return UpdateDatalinkControlSettings(
+			state.logonCallsign,
+			static_cast<const char*>(CStringA(dialog.m_Password)),
+			true,
+			state.cdmAutoEnabled,
+			state.cdmDelayMinutes,
+			state.cdmCooldownMinutes,
+			error);
+	};
+
+	CCPDLCSettingsDialog dialog(AfxGetMainWnd());
+	dialog.m_Password = credentials.password.c_str();
+	INT_PTR dialogResult = dialog.DoModal();
+	if (dialogResult == IDOK)
+		return applyValues(dialog);
+
+	if (dialogResult == -1)
+	{
+		CCPDLCSettingsDialog fallbackDialog(nullptr);
+		fallbackDialog.m_Password = credentials.password.c_str();
+		dialogResult = fallbackDialog.DoModal();
+		if (dialogResult == IDOK)
+			return applyValues(fallbackDialog);
+	}
+
+	if (dialogResult == -1)
+	{
+		const DWORD lastError = ::GetLastError();
+		const HRSRC dialogResource = ::FindResource(
+			AfxGetResourceHandle(),
+			MAKEINTRESOURCE(CCPDLCSettingsDialog::IDD),
+			RT_DIALOG);
+		error = "Failed to open CPDLC credentials window (GetLastError=" +
+			std::to_string(static_cast<unsigned long>(lastError)) +
+			", resource=" + std::string(dialogResource != nullptr ? "ok" : "missing") + ").";
+		return false;
+	}
+
+	// Cancel is a successful no-op.
+	return true;
+}
+
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnCompileCommand");
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
@@ -3953,7 +3996,6 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			state.logonCallsign,
 			"",
 			false,
-			state.playSound,
 			state.cdmAutoEnabled,
 			state.cdmDelayMinutes,
 			parsedCooldownMinutes,
@@ -4006,7 +4048,6 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 				state.logonCallsign,
 				"",
 				false,
-				state.playSound,
 				false,
 				state.cdmDelayMinutes,
 				state.cdmCooldownMinutes,
@@ -4028,7 +4069,6 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 				state.logonCallsign,
 				"",
 				false,
-				state.playSound,
 				true,
 				state.cdmDelayMinutes,
 				state.cdmCooldownMinutes,
@@ -4063,7 +4103,6 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			state.logonCallsign,
 			"",
 			false,
-			state.playSound,
 			true,
 			parsedDelayMinutes,
 			state.cdmCooldownMinutes,
@@ -4200,65 +4239,9 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			return true;
 		}
 
-		const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
-		auto applyCpdlcDialogValues = [&](const CCPDLCSettingsDialog& dialog) -> bool
-		{
-			const DatalinkControlState state = GetDatalinkControlState();
-			std::string updateError;
-			if (UpdateDatalinkControlSettings(
-				static_cast<const char*>(CStringA(dialog.m_Logon)),
-				static_cast<const char*>(CStringA(dialog.m_Password)),
-				true,
-				dialog.m_Sound != 0,
-				state.cdmAutoEnabled,
-				state.cdmDelayMinutes,
-				state.cdmCooldownMinutes,
-				updateError))
-			{
-				return true;
-			}
-			DisplayUserMessage("CPDLC", "Error", updateError.c_str(), true, true, false, true, false);
-			return false;
-		};
-
-		CCPDLCSettingsDialog dia(AfxGetMainWnd());
-		dia.m_Logon = credentials.callsign.c_str();
-		dia.m_Password = credentials.password.c_str();
-		dia.m_Sound = int(credentials.playSound);
-
-		INT_PTR dialogResult = dia.DoModal();
-		if (dialogResult == -1)
-		{
-			CCPDLCSettingsDialog diaNoParent(nullptr);
-			diaNoParent.m_Logon = credentials.callsign.c_str();
-			diaNoParent.m_Password = credentials.password.c_str();
-			diaNoParent.m_Sound = int(credentials.playSound);
-			dialogResult = diaNoParent.DoModal();
-			if (dialogResult == IDOK)
-			{
-				if (!applyCpdlcDialogValues(diaNoParent))
-					return true;
-			}
-		}
-		else if (dialogResult == IDOK)
-		{
-			if (!applyCpdlcDialogValues(dia))
-				return true;
-		}
-
-		if (dialogResult == -1)
-		{
-			const DWORD lastError = ::GetLastError();
-			const HRSRC dlgResource = ::FindResource(AfxGetResourceHandle(), MAKEINTRESOURCE(CCPDLCSettingsDialog::IDD), RT_DIALOG);
-			std::string detail = "Failed to open CPDLC settings window";
-			detail += " (GetLastError=" + std::to_string(static_cast<unsigned long>(lastError));
-			detail += ", resource=" + std::string(dlgResource != nullptr ? "ok" : "missing") + ")";
-			DisplayUserMessage("CPDLC", "Error", detail.c_str(), true, true, false, true, false);
-			return true;
-		}
-		if (dialogResult != IDOK)
-			return true;
-
+		std::string error;
+		if (!EditDatalinkCredentials(error) && !error.empty())
+			DisplayUserMessage("CPDLC", "Error", error.c_str(), true, true, false, true, false);
 		return true;
 	}
 	return false;
@@ -4274,6 +4257,25 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		strcpy_s(sItemString, 16, "");
+		return;
+	}
+
+	if (ItemCode == TAG_ITEM_HOLDING_POINT)
+	{
+		if (pColorCode != nullptr)
+			*pColorCode = TAG_COLOR_DEFAULT;
+		strcpy_s(sItemString, 16, "");
+		if (!FlightPlan.IsValid())
+			return;
+
+		const char* rawScratchpad = FlightPlan.GetControllerAssignedData().GetScratchPadString();
+		const char* callsign = FlightPlan.GetCallsign();
+		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
+			callsign != nullptr ? callsign : "",
+			rawScratchpad != nullptr ? rawScratchpad : "");
+		// A single space keeps an empty EuroScope list item clickable without
+		// displaying the old "HP" placeholder.
+		strcpy_s(sItemString, 16, holdingPoint.empty() ? " " : holdingPoint.c_str());
 		return;
 	}
 
@@ -4336,12 +4338,84 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
-	(void)sItemString;
 	(void)Pt;
 	if (Logger::is_verbose_mode())
 		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
+
+	if (FunctionId == TAG_FUNC_HOLDING_POINT_EDIT)
+	{
+		CFlightPlan flightPlan = FlightPlanSelectASEL();
+		if (!flightPlan.IsValid())
+		{
+			DisplayUserMessage("vSMR", "Holding Point", "Select a correlated aircraft first.", true, true, false, false, false);
+			return;
+		}
+
+		const char* callsign = flightPlan.GetCallsign();
+		if (callsign == nullptr || callsign[0] == '\0')
+			return;
+		{
+			std::lock_guard<std::mutex> guard(HoldingPointEditMutex);
+			PendingHoldingPointCallsign = callsign;
+		}
+
+		const char* rawScratchpad = flightPlan.GetControllerAssignedData().GetScratchPadString();
+		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
+			callsign,
+			rawScratchpad != nullptr ? rawScratchpad : "");
+		OpenPopupEdit(Area, TAG_FUNC_HOLDING_POINT_COMMIT, holdingPoint.c_str());
+		return;
+	}
+
+	if (FunctionId == TAG_FUNC_HOLDING_POINT_COMMIT)
+	{
+		std::string callsign;
+		{
+			std::lock_guard<std::mutex> guard(HoldingPointEditMutex);
+			callsign.swap(PendingHoldingPointCallsign);
+		}
+		if (callsign.empty())
+			return;
+
+		std::string holdingPoint;
+		std::string error;
+		if (!VsmrHoldingPoint::Normalize(sItemString != nullptr ? sItemString : "", holdingPoint, &error))
+		{
+			DisplayUserMessage("vSMR", "Holding Point", error.c_str(), true, true, false, false, false);
+			return;
+		}
+
+		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
+		if (!flightPlan.IsValid())
+		{
+			DisplayUserMessage("vSMR", "Holding Point", "The selected flight plan is no longer available.", true, true, false, false, false);
+			return;
+		}
+
+		CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
+		const char* rawScratchpad = assignedData.GetScratchPadString();
+		const std::string currentScratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
+		const std::string updatedScratchpad = VsmrHoldingPoint::Write(currentScratchpad, holdingPoint);
+		if (updatedScratchpad != currentScratchpad && !assignedData.SetScratchPadString(updatedScratchpad.c_str()))
+		{
+			DisplayUserMessage(
+				"vSMR",
+				"Holding Point",
+				"EuroScope rejected the scratchpad update. Shorten the existing scratchpad text and try again.",
+				true, true, false, false, false);
+			return;
+		}
+		VsmrHoldingPoint::RememberPending(callsign, holdingPoint);
+
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+		}
+		return;
+	}
 
 	if (FunctionId == TAG_FUNC_DATALINK_MENU) {
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
@@ -4628,6 +4702,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	if (normalizedCallsign.empty())
 		return;
 	VsmrGroundState::ClearLineupOverride(normalizedCallsign.c_str());
+	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -4638,6 +4713,30 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		if (CdmReminderCooldownMinutes.load(std::memory_order_relaxed) == 0)
 			AircraftCdmTobtReminderSentAt.erase(normalizedCallsign);
 	}
+}
+
+void CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType)
+{
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate");
+	if (DataType != CTR_DATA_TYPE_SCRATCH_PAD_STRING ||
+		PluginShutdownRequested.load(std::memory_order_relaxed))
+	{
+		return;
+	}
+	if (FlightPlan.IsValid())
+	{
+		const char* callsign = FlightPlan.GetCallsign();
+		const char* scratchpad = FlightPlan.GetControllerAssignedData().GetScratchPadString();
+		(void)VsmrHoldingPoint::Resolve(
+			callsign != nullptr ? callsign : "",
+			scratchpad != nullptr ? scratchpad : "");
+	}
+
+	// EuroScope may dispatch synchronized scratchpad updates in bursts and may
+	// invoke this callback while it still owns internal flight-plan state. Never
+	// enter radar rendering from here. The normal UI timer consumes this flag and
+	// coalesces any number of updates into one refresh for each open screen.
+	ScratchpadRefreshPending.store(true, std::memory_order_release);
 }
 
 void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar)
@@ -4883,6 +4982,40 @@ void CSMRPlugin::OnTimer(int Counter)
 		Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	VsmrRdf::OnTimer();
+	for (const std::string& callsign : VsmrHoldingPoint::KnownCallsigns())
+	{
+		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
+		if (!flightPlan.IsValid())
+			continue;
+
+		CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
+		const char* rawScratchpad = assignedData.GetScratchPadString();
+		const std::string scratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
+		const std::optional<std::string> restore = VsmrHoldingPoint::ObserveAssumption(
+			callsign,
+			scratchpad,
+			flightPlan.GetState() == FLIGHT_PLAN_STATE_ASSUMED);
+		if (!restore.has_value())
+			continue;
+
+		const std::string updatedScratchpad = VsmrHoldingPoint::Write(scratchpad, *restore);
+		if (updatedScratchpad != scratchpad && assignedData.SetScratchPadString(updatedScratchpad.c_str()))
+		{
+			VsmrHoldingPoint::RememberPending(callsign, *restore);
+			ScratchpadRefreshPending.store(true, std::memory_order_release);
+		}
+	}
+	if (ScratchpadRefreshPending.exchange(false, std::memory_order_acq_rel))
+	{
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar->IsShutdownRequested())
+				continue;
+			radar->MarkPerformanceRefreshReason(
+				VsmrPerformance::FrameRefreshReason::ControllerUpdate);
+			radar->RequestRefresh();
+		}
+	}
 	static int lastConnectionType = -999;
 	static clock_t lastConnectionTypeChangeClock = 0;
 	const int currentConnectionType = GetConnectionType();

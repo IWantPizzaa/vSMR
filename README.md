@@ -197,7 +197,11 @@ The bundled profile database uses schema 2. Older supported keys are normalized 
 
 ### Tags and structured rules
 
-Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state. The Control Center token picker includes both `scratchpad` and the flight-strip annotation `remark` token. Tag backgrounds use compact text padding consistently in the main radar, AVISO inset, and SRW 1 inset.
+Normal and detailed tag definitions can be customized for departure and arrival states. Supported data includes callsign and aircraft information, runway and stand fields, flight-plan values, ground status, scratchpad/remarks, VACDM times, event booking, and datalink clearance state. The Control Center token picker includes `holdingpoint`, `scratchpad`, and the flight-strip annotation `remark` token. An unassigned `holdingpoint` creates no empty row in the normal tag; the detailed tag displays a clickable `HP` editor placeholder. Once assigned, values such as `A3` replace that placeholder in both layouts and are carried in EuroScope's synchronized scratchpad as `HP:A3`, without an additional service. vSMR hides this field from its ordinary scratchpad and gate tokens and preserves other scratchpad text when the holding point changes.
+
+To add the field to any EuroScope aircraft list, select `vSMR / Holding Point` as the Tag Item Type. Select the identically named `vSMR / Holding Point` function for both the left- and right-button actions; EuroScope configures these actions per list column. Entering an empty value clears only the holding point. Values are case-insensitive, normalized to uppercase, and may contain up to eight letters, numbers, hyphens, or slashes.
+
+Tag backgrounds use compact text padding consistently in the main radar, AVISO inset, and SRW 1 inset.
 
 Structured rules can match runway, custom, and VACDM conditions, then override target, tag, or text colors. The Match editor presents supported sources, tokens, and conditions as lists instead of accepting free-form values. Rules are evaluated in profile order.
 

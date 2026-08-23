@@ -76,6 +76,7 @@ namespace
 		if (key == "uk_stand") return TAG_CITEM_UKSTAND;
 		if (key == "remark") return TAG_CITEM_REMARK;
 		if (key == "scratchpad") return TAG_CITEM_SCRATCHPAD;
+		if (key == "holdingpoint") return TAG_CITEM_HOLDINGPOINT;
 		return TAG_CITEM_NO;
 	}
 
@@ -254,6 +255,12 @@ namespace
 				}
 				if (!detailed && ToLowerAsciiCopy(element.token) == "scratchpad" && element.text == "...")
 					element.text.clear();
+				if (detailed &&
+					element.action == TAG_CITEM_HOLDINGPOINT &&
+					element.text.empty())
+				{
+					element.text = "HP";
+				}
 
 				hasVisibleElement = hasVisibleElement || !element.text.empty();
 				line.elements.push_back(std::move(element));

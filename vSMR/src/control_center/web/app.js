@@ -18,7 +18,6 @@
     groups: "Groups",
     modes: "Modes",
     profiles: "Profiles",
-    datalink: "CPDLC / PDC",
     settings: "Settings"
   };
   const PROFILE_TITLES = { colors: "Colors", icons: "Icons", tags: "Tags", rules: "Rules" };
@@ -55,7 +54,7 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_SOURCES = ["vacdm", "runway", "custom"];
   const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom" };
   const RULE_SOURCE_TOKENS = {
@@ -531,7 +530,6 @@
       controllerConnected: readBool("controllerConnected"),
       logonCallsign: readString("logonCallsign").trim().toUpperCase().slice(0, 8),
       hasPassword: readBool("hasPassword"),
-      playSound: readBool("playSound"),
       cdmAutoEnabled: readBool("cdmAutoEnabled"),
       cdmDelayMinutes: readMinutes("cdmDelayMinutes", 5),
       cdmCooldownMinutes: readMinutes("cdmCooldownMinutes", 60),
@@ -549,7 +547,6 @@
       controllerConnected: true,
       logonCallsign: activeAirport || "LFPG",
       hasPassword: true,
-      playSound: true,
       cdmAutoEnabled: false,
       cdmDelayMinutes: 5,
       cdmCooldownMinutes: 60,
@@ -600,12 +597,12 @@
       settings: {
         profileFile: "vSMR_DATA\\vSMR_Profiles.json",
         avisoFile: "vSMR_DATA\\AVISO\\LFPG.geojson",
+        aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         watchFiles: true,
         bridgeMode: "Auto detect",
         updateInterval: 250,
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
-        screenRotation: 0.0,
         avisoColorPalette: "night",
         runtimeSync: true,
         confirmDelete: true,
@@ -691,7 +688,6 @@
   const datalinkFieldRevisions = {
     logonCallsign: 0,
     password: 0,
-    playSound: 0,
     cdmDelayMinutes: 0,
     cdmCooldownMinutes: 0
   };
@@ -1356,7 +1352,7 @@
     context.textContent = `${profileName} · ${suffix}`;
   }
   function setPage(page) {
-    if (["cpdlc", "cdm"].includes(page)) page = "datalink";
+    if (["datalink", "cpdlc", "cdm"].includes(page)) page = "settings";
     if (!PAGE_TITLES[page]) return;
     state.ui.page = page;
     $$(".rail-button[data-page]").forEach(button => button.classList.toggle("active", button.dataset.page === page));
@@ -4139,7 +4135,6 @@
       logonCallsign: String(runtime?.logonCallsign || "").trim().toUpperCase().slice(0, 8),
       password: "",
       replacePassword: false,
-      playSound: Boolean(runtime?.playSound),
       cdmAutoEnabled: Boolean(runtime?.cdmAutoEnabled),
       cdmDelayMinutes: Math.round(clamp(runtime?.cdmDelayMinutes ?? 5, 0, 1440)),
       cdmCooldownMinutes: Math.round(clamp(runtime?.cdmCooldownMinutes ?? 60, 0, 1440))
@@ -4152,7 +4147,6 @@
       logonCallsign: String(form.logonCallsign || "").trim().toUpperCase().slice(0, 8),
       password,
       replacePassword: Boolean(password),
-      playSound: Boolean(form.playSound),
       cdmAutoEnabled: Boolean(form.cdmAutoEnabled),
       cdmDelayMinutes: Math.round(clamp(form.cdmDelayMinutes, 0, 1440)),
       cdmCooldownMinutes: Math.round(clamp(form.cdmCooldownMinutes, 0, 1440))
@@ -4162,15 +4156,14 @@
   function datalinkDirtyFields(draft = datalinkDraft, baseline = datalinkBaseline) {
     if (!draft || !baseline) {
       return {
-        connection: { logonCallsign: false, password: false, playSound: false },
+        connection: { logonCallsign: false, password: false },
         cdm: { delay: false, cooldown: false }
       };
     }
     return {
       connection: {
         logonCallsign: draft.logonCallsign !== baseline.logonCallsign,
-        password: Boolean(draft.replacePassword && draft.password),
-        playSound: draft.playSound !== baseline.playSound
+        password: Boolean(draft.replacePassword && draft.password)
       },
       cdm: {
         delay: draft.cdmDelayMinutes !== baseline.cdmDelayMinutes,
@@ -4196,7 +4189,6 @@
     if (!request) return fields;
     fields.connection.logonCallsign ||= datalinkFieldChangedSinceRequest(request, "logonCallsign");
     fields.connection.password ||= datalinkFieldChangedSinceRequest(request, "password");
-    fields.connection.playSound ||= datalinkFieldChangedSinceRequest(request, "playSound");
     fields.cdm.delay ||= datalinkFieldChangedSinceRequest(request, "cdmDelayMinutes");
     fields.cdm.cooldown ||= datalinkFieldChangedSinceRequest(request, "cdmCooldownMinutes");
     return fields;
@@ -4204,7 +4196,7 @@
 
   function datalinkScopeChangedSinceRequest(request, scope) {
     const fields = scope === "connection"
-      ? ["logonCallsign", "password", "playSound"]
+      ? ["logonCallsign", "password"]
       : ["cdmDelayMinutes", "cdmCooldownMinutes"];
     return fields.some(field => Number(request?.revisions?.[field] ?? -1) !== datalinkFieldRevisions[field]);
   }
@@ -4224,7 +4216,7 @@
 
   function datalinkHasSavableConnectionChanges() {
     const fields = datalinkEffectiveDirtyFields().connection;
-    return fields.logonCallsign || fields.playSound || (fields.password && datalinkPasswordCommitReady);
+    return fields.logonCallsign || (fields.password && datalinkPasswordCommitReady);
   }
 
   function refreshDatalinkDirtyState() {
@@ -4254,8 +4246,6 @@
       nextDraft.replacePassword = false;
       datalinkPasswordCommitReady = false;
     }
-    if (!dirty.connection.playSound)
-      nextDraft.playSound = nextBaseline.playSound;
     if (!dirty.cdm.delay)
       nextDraft.cdmDelayMinutes = nextBaseline.cdmDelayMinutes;
     if (!dirty.cdm.cooldown)
@@ -4273,7 +4263,6 @@
     datalinkDraft = normalizeDatalinkForm({
       logonCallsign: callsign.value,
       password: $("#datalinkPassword").value,
-      playSound: $("#datalinkPlaySound").checked,
       cdmAutoEnabled: Boolean(state.datalink?.cdmAutoEnabled),
       cdmDelayMinutes: $("#datalinkCdmDelay").value,
       cdmCooldownMinutes: $("#datalinkCdmCooldown").value
@@ -4321,7 +4310,6 @@
       ? "Saved Hoppie code is hidden"
       : datalinkPasswordVisible ? "Hide Hoppie code" : "Show Hoppie code");
 
-    $("#datalinkPlaySound").checked = draft.playSound;
     setDatalinkInputValue($("#datalinkCdmDelay"), draft.cdmDelayMinutes);
     setDatalinkInputValue($("#datalinkCdmCooldown"), draft.cdmCooldownMinutes);
 
@@ -4488,7 +4476,6 @@
     const dirtyFields = datalinkDirtyFields();
     const requestIncludesConnection = includeConnection && (
       dirtyFields.connection.logonCallsign ||
-      dirtyFields.connection.playSound ||
       (dirtyFields.connection.password && datalinkPasswordCommitReady));
     const requestIncludesCdm = Boolean(includeCdm);
     if (!requestIncludesConnection && !requestIncludesCdm) return false;
@@ -4503,8 +4490,6 @@
     if (requestIncludesConnection) {
       if (dirtyFields.connection.logonCallsign)
         payload.logonCallsign = draft.logonCallsign;
-      if (dirtyFields.connection.playSound)
-        payload.playSound = draft.playSound;
       if (dirtyFields.connection.password && datalinkPasswordCommitReady) {
         payload.password = draft.password;
         payload.replacePassword = true;
@@ -4626,7 +4611,6 @@
       const dirtyFields = datalinkEffectiveDirtyFields().connection;
       const pendingCoversDraft = pendingConnectionSave &&
         (!dirtyFields.logonCallsign || pendingConnectionSave.payload.logonCallsign === datalinkDraft.logonCallsign) &&
-        (!dirtyFields.playSound || pendingConnectionSave.payload.playSound === datalinkDraft.playSound) &&
         (!dirtyFields.password || !datalinkPasswordCommitReady ||
           (pendingConnectionSave.payload.replacePassword && pendingConnectionSave.submitted.password === datalinkDraft.password));
       if (!pendingCoversDraft && !datalinkPending.settings &&
@@ -4737,7 +4721,6 @@
       const changedAfterSubmit = {
         logonCallsign: datalinkFieldChangedSinceRequest(request, "logonCallsign"),
         password: datalinkFieldChangedSinceRequest(request, "password"),
-        playSound: datalinkFieldChangedSinceRequest(request, "playSound"),
         cdmDelayMinutes: datalinkFieldChangedSinceRequest(request, "cdmDelayMinutes"),
         cdmCooldownMinutes: datalinkFieldChangedSinceRequest(request, "cdmCooldownMinutes")
       };
@@ -4745,8 +4728,6 @@
       if (request.includeConnection) {
         if (Object.hasOwn(request.payload, "logonCallsign"))
           applied.logonCallsign = request.payload.logonCallsign;
-        if (Object.hasOwn(request.payload, "playSound"))
-          applied.playSound = request.payload.playSound;
         if (request.payload.replacePassword) applied.hasPassword = true;
       }
       if (request.includeCdm) {
@@ -4762,9 +4743,6 @@
         if (!changedAfterSubmit.logonCallsign && (!currentDirty.connection.logonCallsign ||
           (Object.hasOwn(request.payload, "logonCallsign") && current.logonCallsign === submitted.logonCallsign)))
           current.logonCallsign = nextBaseline.logonCallsign;
-        if (!changedAfterSubmit.playSound && (!currentDirty.connection.playSound ||
-          (Object.hasOwn(request.payload, "playSound") && current.playSound === submitted.playSound)))
-          current.playSound = nextBaseline.playSound;
         if (!changedAfterSubmit.password && request.payload.replacePassword && current.password === submitted.password) {
           current.password = "";
           current.replacePassword = false;
@@ -5099,11 +5077,13 @@
     const settings = state.settings;
     $("#settingsProfileFile").value = settings.profileFile;
     $("#settingsAvisoFile").value = settings.avisoFile;
+    const aliasFile = String(settings.aliasFile || "").trim();
+    $("#settingsAliasFile").value = aliasFile || "No alias file found";
     $("#settingsProfileFile").title = settings.profileFile;
     $("#settingsAvisoFile").title = settings.avisoFile;
+    $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
-    $("#settingsScreenRotation").value = clamp(settings.screenRotation ?? 0, 0, 359.9).toFixed(1);
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
     $$('[data-aviso-color-palette]').forEach(button => {
       const active = button.dataset.avisoColorPalette === avisoColorPalette;
@@ -5131,8 +5111,7 @@
       profileFile: $("#settingsProfileFile").value,
       avisoFile: $("#settingsAvisoFile").value,
       resolutionPreset: $("#settingsResolutionPreset").value || "1080p",
-      showFps: $("#settingsShowFps").checked,
-      screenRotation: Math.round(clamp($("#settingsScreenRotation").value, 0, 359.9) * 10) / 10
+      showFps: $("#settingsShowFps").checked
     });
     state.profiles.forEach(record => {
       record.data.targets ||= {};
@@ -5885,9 +5864,6 @@
         syncDatalinkDraft("password");
         datalinkPasswordCommitReady = true;
       }
-    });
-    $("#datalinkPlaySound").addEventListener("change", () => {
-      syncDatalinkDraft("playSound");
     });
     [["#datalinkCdmDelay", "cdmDelayMinutes"], ["#datalinkCdmCooldown", "cdmCooldownMinutes"]].forEach(([selector, field]) => {
       $(selector).addEventListener("input", () => {

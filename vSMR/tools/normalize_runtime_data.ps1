@@ -422,6 +422,28 @@ function New-NormalizedStyle {
         Get-FirstStringProperty $SourceStyle @("object_type")
     }
 
+    # object_type is a vSMR semantic type, not the raw GeoJSON geometry type.
+    # Some imported schema-2 files incorrectly use Polygon/Point here. The
+    # raster renderer can still paint their geometry, but labels are skipped
+    # and the Control Center requests the wrong color key for its swatches.
+    $objectType = [string]$objectType
+    switch ($objectType.ToUpperInvariant()) {
+        { $_ -in @("POLYGON", "MULTIPOLYGON", "AREA") } { $objectType = "Area"; break }
+        { $_ -in @("LINESTRING", "MULTILINESTRING", "LINE") } { $objectType = "Line"; break }
+        "LABEL" { $objectType = "Label"; break }
+        "POINT" {
+            if ((Test-JsonProperty $paintSource "text-color") -or
+                (Test-JsonProperty $paintSource "text-size") -or
+                (Test-JsonProperty $paintSource "text-font")) {
+                $objectType = "Label"
+            }
+            else {
+                $objectType = "Point"
+            }
+            break
+        }
+    }
+
     return [pscustomobject][ordered]@{
         name = $name
         layer = $layer
@@ -813,9 +835,30 @@ function Normalize-AvisoFile {
         if ([string]::IsNullOrWhiteSpace($objectType)) {
             $objectType = if ($geometryType -eq "Point") { "Label" } elseif ($geometryType -like "*LineString") { "Line" } else { "Area" }
         }
+		$sourceGeometryRole = Get-FirstStringProperty $sourceProperties @("geometry_role")
 
-        $geometryRole = Get-FirstStringProperty $sourceProperties @("geometry_role")
-        if ([string]::IsNullOrWhiteSpace($geometryRole) -or $geometryRole -in @("aviso_region", "aviso_linework")) {
+        # Canonicalize imported geometry names to the semantic types consumed
+        # by both the renderer and the web editor. A Point carrying label text
+        # paint/role is a Label, while marker-style reference points remain Point.
+        if ($geometryType -eq "Point" -and (
+            [string]$style.object_type -eq "Label" -or
+            [string]$objectType -eq "Label" -or
+            $sourceGeometryRole -in @("label", "text_label"))) {
+            $objectType = "Label"
+        }
+        elseif ($geometryType -like "*LineString") {
+            $objectType = "Line"
+        }
+        elseif ($geometryType -like "*Polygon") {
+            $objectType = "Area"
+        }
+
+        $geometryRole = $sourceGeometryRole
+        if ($geometryType -eq "Point" -and $objectType -eq "Label" -and
+            ([string]::IsNullOrWhiteSpace($geometryRole) -or $geometryRole -in @("label", "point"))) {
+            $geometryRole = "text_label"
+        }
+        elseif ([string]::IsNullOrWhiteSpace($geometryRole) -or $geometryRole -in @("aviso_region", "aviso_linework")) {
             $geometryRole = if ($geometryType -eq "Point") { "text_label" } elseif ($geometryType -like "*LineString") { "linework" } else { "filled_region" }
         }
         $sourceName = Get-FirstStringProperty $sourceProperties @("name")

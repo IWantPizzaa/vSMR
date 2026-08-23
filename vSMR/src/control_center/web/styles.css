@@ -7329,20 +7329,23 @@ textarea:disabled {
 }
 
 .settings-page .settings-layout {
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
-  grid-template-areas:
-    "files display"
-    "files updates";
-  grid-template-rows: max-content minmax(0, 1fr);
-  align-items: start;
-  align-content: stretch;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-rows: minmax(0, 1fr);
+	align-items: start;
+	align-content: stretch;
 }
 
-.settings-page .files-group { grid-area: files; }
-.settings-page .display-group { grid-area: display; }
+.settings-page .settings-primary-column,
+.settings-page .settings-data-column {
+	min-width: 0;
+	display: grid;
+	grid-auto-rows: max-content;
+	align-content: start;
+	gap: 3px;
+}
+
 .settings-page .updater-general-group {
-  grid-area: updates;
-  align-self: stretch;
+	align-self: stretch;
 }
 
 .settings-page .display-group {
@@ -7376,10 +7379,9 @@ textarea:disabled {
 @media (max-width: 700px) {
   .aviso-toolbar-palette { width: 145px; }
   .datalink-page-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .settings-page .settings-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "display" "files" "updates";
-    grid-template-rows: max-content max-content max-content;
-    overflow-y: auto;
-  }
+	.settings-page .settings-layout {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: max-content max-content;
+		overflow-y: auto;
+	}
 }

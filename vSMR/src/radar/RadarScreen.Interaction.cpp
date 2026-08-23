@@ -467,6 +467,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		case TAG_CITEM_UKSTAND:
 		case TAG_CITEM_REMARK:
 		case TAG_CITEM_SCRATCHPAD:
+		case TAG_CITEM_HOLDINGPOINT:
 			return true;
 		default:
 			return false;
@@ -1122,6 +1123,23 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 			return 0;
 		}
 	};
+	if ((Button == BUTTON_LEFT || Button == BUTTON_RIGHT) &&
+		ObjectType == TAG_CITEM_HOLDINGPOINT)
+	{
+		CRadarTarget target = selectAseAndGetTarget();
+		CFlightPlan flightPlan = target.IsValid()
+			? target.GetCorrelatedFlightPlan()
+			: CFlightPlan();
+		if (flightPlan.IsValid())
+		{
+			// This is a vSMR-rendered tag cell, so dispatch the vSMR function
+			// directly. StartTagFunction is intended for EuroScope-owned tag
+			// items and does not reliably open an edit from this screen object.
+			GetPlugIn()->OnFunctionCall(TAG_FUNC_HOLDING_POINT_EDIT, "", Pt, Area);
+		}
+		RequestRefresh();
+		return;
+	}
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
 	if (Button == BUTTON_RIGHT &&

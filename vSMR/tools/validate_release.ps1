@@ -481,8 +481,23 @@ foreach ($file in $avisoFiles) {
     $ids = @($document.features | ForEach-Object { [string]$_.id })
     Assert-True (@($ids | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) "$($file.Name) contains an empty feature id."
     Assert-True (@($ids | Sort-Object -Unique).Count -eq $ids.Count) "$($file.Name) contains duplicate feature ids."
+    foreach ($styleProperty in @($document.styles.PSObject.Properties)) {
+        Assert-True ([string]$styleProperty.Value.object_type -in @('Area', 'Line', 'Label', 'Point')) "$($file.Name) style '$($styleProperty.Name)' uses non-semantic object_type '$($styleProperty.Value.object_type)'."
+    }
     foreach ($feature in @($document.features)) {
         $properties = $feature.properties
+        $geometryType = [string]$feature.geometry.type
+        $objectType = [string]$properties.object_type
+        if ($geometryType -in @('Polygon', 'MultiPolygon')) {
+            Assert-True ($objectType -eq 'Area') "$($file.Name) feature '$($feature.id)' must use object_type Area."
+        }
+        elseif ($geometryType -in @('LineString', 'MultiLineString')) {
+            Assert-True ($objectType -eq 'Line') "$($file.Name) feature '$($feature.id)' must use object_type Line."
+        }
+        elseif ($geometryType -eq 'Point' -and $objectType -eq 'Label') {
+            Assert-True ($objectType -eq 'Label') "$($file.Name) text feature '$($feature.id)' must use object_type Label."
+            Assert-True ([string]$properties.geometry_role -eq 'text_label') "$($file.Name) text feature '$($feature.id)' must use geometry_role text_label."
+        }
         $isLabel = [string]$feature.geometry.type -eq 'Point' -and (
             [string]$properties.object_type -eq 'Label' -or
             [string]$properties.geometry_role -eq 'text_label'

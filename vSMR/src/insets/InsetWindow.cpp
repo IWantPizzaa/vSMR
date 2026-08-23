@@ -5669,9 +5669,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			TagWidth = max(TagWidth, TempTagWidth);
 			ReplacedLabelLines.push_back(std::move(renderedLine));
 		}
-		if (TagHeight > 0)
-			TagHeight = TagHeight - 2;
-
 		// Pfiou, done with that, now we can draw the actual rectangle.
 
 		const VsmrScene::TagPalette& tagPalette = sceneTarget.tag.normalPalette;
@@ -5693,7 +5690,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 			int textLeft = TagBackgroundRect.left + padding;
 			int textTop = TagBackgroundRect.top + padding;
-			int textWidth = max(0, TagBackgroundRect.Width() - (padding * 2));
 
 			// SRW keeps its lower-opacity presentation, but preserves the semantic
 			// color already resolved by the shared scene (including status and rules).
@@ -5736,13 +5732,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			int heightOffset = 0;
 			for (auto&& line : ReplacedLabelLines)
 			{
-				int lineWidth = 0;
-				for (auto&& renderedElement : line)
-					lineWidth += renderedElement.measuredWidth;
-				if (!line.empty())
-					lineWidth += blankWidth * (int(line.size()) - 1);
-
-				int widthOffset = max(0, (textWidth - lineWidth) / 2);
+				int widthOffset = 0;
 				for (auto&& renderedElement : line)
 				{
 					const std::string& element = renderedElement.text;

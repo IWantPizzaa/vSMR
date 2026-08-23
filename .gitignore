@@ -203,6 +203,7 @@ FakesAssemblies/
 ipch/
 package/
 /artifacts/
+/.diagnostics/
 /vSMR/version.txt
 /vSMR/SectorFileProviderDescriptor.txt
 /vSMR/ipaddr.txt
@@ -229,3 +230,5 @@ vSMR/Release_cli/
 # Local AVISO source/backup artifacts. Runtime defaults are exact ICAO.geojson files.
 /vSMR/data/AVISO/*.geojson.bak
 /vSMR/data/AVISO/ALL_FR_*.geojson
+/vSMR/tools/procdump.zip
+/vSMR/tools/procdump/
