@@ -74,7 +74,7 @@ namespace VsmrPerformance
 		double rdfMilliseconds = 0.0;
 		double insetChromeMilliseconds = 0.0;
 		double sceneAvisoLoadMilliseconds = 0.0;
-		double sceneControllerOwnershipMilliseconds = 0.0;
+		double sceneControllerCaptureMilliseconds = 0.0;
 		double sceneTargetCaptureMilliseconds = 0.0;
 		double sceneFinalizeMilliseconds = 0.0;
 		double euroScopeLookupMilliseconds = 0.0;
@@ -188,7 +188,7 @@ namespace VsmrPerformance
 		Distribution rdf;
 		Distribution insetChrome;
 		Distribution sceneAvisoLoad;
-		Distribution sceneControllerOwnership;
+		Distribution sceneControllerCapture;
 		Distribution sceneTargetCapture;
 		Distribution sceneFinalize;
 		Distribution euroScopeLookups;

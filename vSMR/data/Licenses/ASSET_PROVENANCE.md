@@ -10,7 +10,7 @@ release owner before a public production release.
 | Aircraft silhouettes | `aircraft_icons/*.png` | Imported from the historical vSMR data set; individual creator and redistribution terms are not recorded in this repository | Verification required |
 | Timer alarm | `Audio/Alarm.wav` | Restored from the historical ESTimers installation; creator and redistribution terms are not recorded in this repository | Verification required |
 | CPDLC notification | `Audio/Ding.wav` | Added from the historical/project working data; creator and redistribution terms are not recorded in this repository | Verification required |
-| AVISO airport geometry | `AVISO/<ICAO>.geojson`, `AVISO/LFPG_Dyna.geojson` | Derived from project-maintained airport display and dynamic ownership data; source and contributor attribution are not recorded per airport | Verification required |
+| AVISO airport geometry | `AVISO/<ICAO>.geojson` | Derived from project-maintained airport display data; source and contributor attribution are not recorded per airport | Verification required |
 | Aircraft dimensions | `ICAO_Aircraft.json` | Normalized from the project aircraft database; upstream data source and terms are not recorded | Verification required |
 | Control Center UI | `src/control_center/web/*` (packaged as `vSMR_webUI/*`) | Maintained as part of this repository | Project license |
 

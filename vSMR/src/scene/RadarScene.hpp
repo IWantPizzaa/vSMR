@@ -1,7 +1,6 @@
 #pragma once
 
 #include "aircraft/GroundState.hpp"
-#include "aviso/FrequencyOwnership.hpp"
 #include "tags/TagDataTypes.hpp"
 
 #include <array>
@@ -210,7 +209,7 @@ namespace VsmrScene
 		// These slices are non-overlapping portions of BuildRadarScene except that
 		// sdkLookupMilliseconds is an attribution nested within the relevant slice.
 		double avisoLoadMilliseconds = 0.0;
-		double controllerOwnershipMilliseconds = 0.0;
+		double controllerCaptureMilliseconds = 0.0;
 		double targetCaptureMilliseconds = 0.0;
 		double finalizeMilliseconds = 0.0;
 		double buildMilliseconds = 0.0;
@@ -227,7 +226,6 @@ namespace VsmrScene
 		std::vector<ControllerState> controllers;
 		std::vector<Target> targets;
 		std::unordered_map<std::string, std::size_t> targetIndex;
-		std::shared_ptr<const VsmrAviso::FrequencyOwnershipSnapshot> frequencyOwnership;
 		std::uint64_t avisoGeneration = 0;
 		std::uint64_t controllerFingerprint = 0;
 		std::uint64_t targetFingerprint = 0;

@@ -495,7 +495,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->controllers.clear();
 	scene->targets.clear();
 	scene->targetIndex.clear();
-	scene->frequencyOwnership.reset();
 	scene->avisoGeneration = 0;
 	scene->controllerFingerprint = 0;
 	scene->targetFingerprint = 0;
@@ -538,7 +537,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (plugin == nullptr)
 	{
 		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
 		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
 		scene->controllerFingerprint = FingerprintControllers(scene->controllers);
 		scene->targetFingerprint = FingerprintTargets(scene->targets);
@@ -550,7 +548,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		return CurrentRadarScene;
 	}
 
-	const auto controllerOwnershipStart = Clock::now();
+	const auto controllerCaptureStart = Clock::now();
 	const CController myself = measureSdkLookup([&]() { return plugin->ControllerMyself(); });
 	const std::string myCallsign = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetCallsign())) : "";
 	const std::string myPosition = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetPositionId())) : "";
@@ -580,14 +578,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		controller = measureSdkLookup([&]() { return plugin->ControllerSelectNext(controller); });
 	}
 	captureController(myself);
-	RefreshAvisoFrequencyOwnership(false, &scene->controllers);
 	{
 		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		scene->frequencyOwnership = AvisoFrequencyOwnershipStateSnapshot;
 		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
 	}
-	scene->stats.controllerOwnershipMilliseconds = std::chrono::duration<double, std::milli>(
-		Clock::now() - controllerOwnershipStart).count();
+	scene->stats.controllerCaptureMilliseconds = std::chrono::duration<double, std::milli>(
+		Clock::now() - controllerCaptureStart).count();
 	scene->controllerFingerprint = FingerprintControllers(scene->controllers);
 
 	const DisplayModeSettings displaySettings = GetActiveDisplayModeSettings();

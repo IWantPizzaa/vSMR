@@ -56,7 +56,13 @@
     uncorrelated: { default: "background_on_ground_color" }
   };
   const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["vacdm", "runway", "aircraft", "flightplan", "tag", "aviso"];
+  const RULE_SOURCES = ["vacdm", "runway", "custom"];
+  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom" };
+  const RULE_SOURCE_TOKENS = {
+    vacdm: ["tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot"],
+    runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
+    custom: ["asid", "ssid"]
+  };
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
   const DEFAULT_ALERT_RUNWAYS = [
     { id: "09L / 27R", arrival: true, departure: true, closed: false },
@@ -619,6 +625,8 @@
         avisoView: "text",
         selectedColorPath: "labels.departure.background_taxi_color",
         selectedTagId: "departure:taxi",
+        selectedTagIds: ["departure:taxi"],
+        tagSelectionAnchorId: "departure:taxi",
         selectedRuleIndex: 0,
         selectedModeIndex: 0,
         managedProfileId: preferred?.id || "",
@@ -1401,6 +1409,8 @@
     const modes = profile.filters?.display_modes?.items || [];
     state.ui.selectedModeIndex = Math.max(0, modes.findIndex(mode => mode.name === profile.filters?.display_modes?.active));
     state.ui.selectedTagId = "departure:taxi";
+    state.ui.selectedTagIds = [state.ui.selectedTagId];
+    state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
     discardUnappliedProfileEditorInputs();
     renderAllProfileSections();
     drafts.alerts = null;
@@ -2059,7 +2069,20 @@
       if (Array.isArray(value)) value.forEach((item, index) => visit(item, [...path, index]));
       else Object.entries(value).forEach(([key, child]) => visit(child, [...path, key]));
     }
-    roots.forEach(root => visit(profile?.[root], [root]));
+    roots.forEach(root => {
+      if (root !== "targets") {
+        visit(profile?.[root], [root]);
+        return;
+      }
+      const targets = profile?.targets;
+      const iconStyle = String(targets?.icon_style || "realistic").toLowerCase();
+      if (iconStyle === "nova") {
+        visit(targets?.target_color, ["targets", "target_color"]);
+      } else {
+        visit(targets?.departure, ["targets", "departure"]);
+        visit(targets?.arrival, ["targets", "arrival"]);
+      }
+    });
     return entries.sort((a, b) => {
       const familyOrder = value => {
         const index = COLOR_FAMILY_ORDER.indexOf(value);
@@ -2107,7 +2130,9 @@
 
   function selectedColorEntry() {
     const entries = collectProfileColors(activeProfile());
-    return entries.find(entry => entry.id === state.ui.selectedColorPath) || entries[0];
+    const selected = entries.find(entry => entry.id === state.ui.selectedColorPath) || entries[0];
+    if (selected && state.ui.selectedColorPath !== selected.id) state.ui.selectedColorPath = selected.id;
+    return selected;
   }
 
   function renderColors() {
@@ -2115,7 +2140,9 @@
 
     const groups = new Map();
     entries.forEach(entry => {
-      const caption = entry.section ? `${entry.family} · ${entry.section}` : entry.family;
+      const caption = entry.family === "Targets" && entry.section === "General"
+        ? "Target"
+        : entry.section ? `${entry.family} · ${entry.section}` : entry.family;
       const key = `${entry.family}:${entry.section || "general"}`;
       if (!groups.has(key)) groups.set(key, { key, caption, family: entry.family, section: entry.section, items: [] });
       groups.get(key).items.push(entry);
@@ -2565,15 +2592,47 @@
     });
     return result;
   }
-  function selectedTagDefinition() {
+  function tagSelectionIds(definitions = tagDefinitions()) {
+    const valid = new Set(definitions.map(entry => entry.id));
+    let ids = Array.isArray(state.ui.selectedTagIds)
+      ? state.ui.selectedTagIds.filter(id => valid.has(id))
+      : [];
+    if (!ids.length && valid.has(state.ui.selectedTagId)) ids = [state.ui.selectedTagId];
+    if (!ids.length && definitions[0]) ids = [definitions[0].id];
+    ids = uniqueValues(ids);
+    state.ui.selectedTagIds = ids;
+    if (!ids.includes(state.ui.selectedTagId)) state.ui.selectedTagId = ids[ids.length - 1] || "";
+    if (!valid.has(state.ui.tagSelectionAnchorId)) state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
+    return ids;
+  }
+
+  function selectedTagDefinitions(definitions = tagDefinitions()) {
+    const selected = new Set(tagSelectionIds(definitions));
+    return definitions.filter(entry => selected.has(entry.id));
+  }
+
+  function selectedTagDefinition(definitions = tagDefinitions()) {
+    const selected = selectedTagDefinitions(definitions);
+    return selected.find(entry => entry.id === state.ui.selectedTagId) || selected[selected.length - 1] || definitions[0];
+  }
+
+  function selectTagDefinition(tagId, event) {
     const definitions = tagDefinitions();
-    const selected = definitions.find(entry => entry.id === state.ui.selectedTagId) || definitions[0];
-    if (selected && selected.id !== state.ui.selectedTagId) state.ui.selectedTagId = selected.id;
-    return selected;
+    const ordered = definitions.map(entry => entry.id);
+    const current = tagSelectionIds(definitions);
+    const next = updateMultiSelection(current, tagId, ordered, event, state.ui.tagSelectionAnchorId);
+    state.ui.selectedTagIds = next;
+    state.ui.selectedTagId = next.includes(tagId) ? tagId : next[next.length - 1];
+    if (!event.shiftKey) state.ui.tagSelectionAnchorId = tagId;
+    drafts.tag = null;
+    clearUnappliedEditorSection($("#tagDefinitionEditor"));
+    renderTags();
+    setStatus(`${next.length} tag definition${next.length === 1 ? "" : "s"} selected`, "info");
   }
 
   function renderTags() {
     const definitions = tagDefinitions();
+    const selectedIds = new Set(tagSelectionIds(definitions));
     const groups = new Map();
     definitions.forEach(entry => {
       if (!groups.has(entry.group)) groups.set(entry.group, []);
@@ -2585,7 +2644,7 @@
       const collapsed = treeState.tags.has(groupKey);
       const accentEntry = items.find(item => item.color);
       const accent = accentEntry ? colorToHex(accentEntry.color) : "#5096b4";
-      const rows = items.map(entry => `<button type="button" class="menu-tree-row tag-menu-row ${entry.id === state.ui.selectedTagId ? "active" : ""}" data-tag-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.label)}">
+      const rows = items.map(entry => `<button type="button" role="option" aria-selected="${selectedIds.has(entry.id)}" class="menu-tree-row tag-menu-row ${selectedIds.has(entry.id) ? "active" : ""} ${entry.id === state.ui.selectedTagId ? "current" : ""}" data-tag-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.label)}">
         <span class="menu-row-title">${escapeHtml(entry.label)}</span>
       </button>`).join("");
       return `<section class="menu-tree-section tag-menu-section" style="--menu-accent:${accent}">
@@ -2601,10 +2660,14 @@
   }
 
   function renderTagEditor() {
-    const entry = selectedTagDefinition();
+    const definitions = tagDefinitions();
+    const entries = selectedTagDefinitions(definitions);
+    const entry = selectedTagDefinition(definitions);
     if (!entry) return;
-    $("#tagEditorCaption").textContent = entry.label;
-    if (!drafts.tag || drafts.tag.id !== entry.id) drafts.tag = { id: entry.id, data: clone(entry.target) };
+    $("#tagEditorCaption").textContent = entries.length === 1 ? entry.label : `${entries.length} tag definitions`;
+    const signature = entries.map(item => item.id).join("|");
+    if (!drafts.tag || drafts.tag.signature !== signature || drafts.tag.id !== entry.id)
+      drafts.tag = { id: entry.id, signature, data: clone(entry.target) };
     const data = drafts.tag.data;
     const inherits = Boolean(data.definition_detailed_inherits_normal);
     $("#tagDetailedInherits").checked = inherits;
@@ -2647,15 +2710,20 @@
       ? clone(data.definition)
       : rows.map(row => parse($("input[data-kind='detailed']", row))).filter(line => line.length);
     data.definition_detailed_inherits_normal = $("#tagDetailedInherits").checked;
-    drafts.tag = { id: entry.id, data };
+    drafts.tag = { id: entry.id, signature: tagSelectionIds().join("|"), data };
   }
 
-  function applyTag({ render = true } = {}) {
+  function applyTag({ render = true, applyContent = true } = {}) {
+    const entries = selectedTagDefinitions();
     const entry = selectedTagDefinition();
-    if (!entry) return;
-    captureTagDraft();
-    Object.keys(entry.target).forEach(key => delete entry.target[key]);
-    Object.assign(entry.target, clone(drafts.tag.data));
+    if (!entry || !entries.length) return;
+    if (applyContent) {
+      captureTagDraft();
+      entries.forEach(targetEntry => {
+        Object.keys(targetEntry.target).forEach(key => delete targetEntry.target[key]);
+        Object.assign(targetEntry.target, clone(drafts.tag.data));
+      });
+    }
 
     const labels = activeProfile().labels ||= {};
     labels.rounded_corners = $("#tagRoundedCorners").checked;
@@ -2667,7 +2735,7 @@
     activeProfile().font.sizes ||= { one: 10, two: 11, three: 12, four: 13, five: 14 };
 
     clearUnappliedEditorSection($("#tagDefinitionEditor"));
-    markDirty(`${entry.label} updated`, ["profiles"]);
+    markDirty(`${entries.length === 1 ? entry.label : `${entries.length} tag definitions`} updated`, ["profiles"]);
     if (render) renderTags();
   }
 
@@ -2679,6 +2747,49 @@
 
   function ruleLabel(rule, index) {
     return String(rule?.name || "").trim() || `Rule ${index + 1}`;
+  }
+  function normalizeRuleSourceUi(source) {
+    const normalized = String(source || "").trim().toLowerCase();
+    if (normalized === "runway" || normalized === "rwy") return "runway";
+    if (["custom", "sid", "list", "sidlist"].includes(normalized)) return "custom";
+    return "vacdm";
+  }
+  function ruleTokensForSource(source) {
+    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.vacdm;
+  }
+  function ruleConditionsFor(source, token, selected = "") {
+    const normalizedSource = normalizeRuleSourceUi(source);
+    const normalizedToken = String(token || "").trim().toLowerCase();
+    let values;
+    if (normalizedSource === "runway")
+      values = ["any", "set", "missing"];
+    else if (normalizedSource === "custom")
+      values = ["any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A"];
+    else if (normalizedToken === "tobt")
+      values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
+    else if (normalizedToken === "tsat")
+      values = ["any", "set", "missing", "inactive", "future", "valid", "expired", "future_ctot", "valid_ctot", "expired_ctot"];
+    else
+      values = ["any", "set", "missing", "future", "past"];
+
+    if (normalizedSource !== "vacdm") {
+      rules().forEach(rule => {
+        const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [rule];
+        criteria.forEach(criterion => {
+          if (normalizeRuleSourceUi(criterion.source) === normalizedSource &&
+              String(criterion.token || "").trim().toLowerCase() === normalizedToken &&
+              String(criterion.condition || "").trim()) {
+            values.push(String(criterion.condition).trim());
+          }
+        });
+      });
+    }
+    if (String(selected || "").trim()) values.push(String(selected).trim());
+    return uniqueValues(values);
+  }
+  function ruleSelectOptions(values, selected, labels = null) {
+    const desired = String(selected || "").toLowerCase();
+    return values.map(value => `<option value="${escapeHtml(value)}" ${String(value).toLowerCase() === desired ? "selected" : ""}>${escapeHtml(labels?.[value] || value)}</option>`).join("");
   }
   function selectedRuleStatuses(rule) {
     const valid = new Set(RULE_STATUSES);
@@ -2772,9 +2883,9 @@
     const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "vacdm", token: rule.token || "", condition: rule.condition || "" }];
     $("#criteriaList").innerHTML = criteria.map((criterion, index) => `
       <div class="criterion-row" data-criterion-index="${index}">
-        <select data-field="source">${RULE_SOURCES.map(source => `<option ${source === criterion.source ? "selected" : ""}>${source}</option>`).join("")}</select>
-        <input data-field="token" type="text" value="${escapeHtml(criterion.token || "")}" placeholder="token">
-        <input data-field="condition" type="text" value="${escapeHtml(criterion.condition || "")}" placeholder="condition">
+        <select aria-label="Rule source" data-field="source">${ruleSelectOptions(RULE_SOURCES, normalizeRuleSourceUi(criterion.source), RULE_SOURCE_LABELS)}</select>
+        <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
+        <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, criterion.condition), criterion.condition || "any")}</select>
         <button type="button" data-action="delete-condition" data-index="${index}">×</button>
       </div>`).join("");
     ensureSelectValue($("#ruleTagType"), rule.tag_type || "any");
@@ -5331,7 +5442,11 @@
     if (ui === "control" || params.get("control") === "1" || PAGE_TITLES[page]) state.ui.controlCenterOpen = true;
     if (ui === "runtime") state.ui.controlCenterOpen = false;
     if (["mode", "groups", "inset", "profile"].includes(params.get("popup"))) state.ui.runtimePopover = params.get("popup");
-    if (params.get("tag")) state.ui.selectedTagId = params.get("tag");
+    if (params.get("tag")) {
+      state.ui.selectedTagId = params.get("tag");
+      state.ui.selectedTagIds = [state.ui.selectedTagId];
+      state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
+    }
     if (params.get("profile")) {
       const match = state.profiles.find(record => record.data.name.toLowerCase() === params.get("profile").toLowerCase());
       if (match) { state.activeProfileId = match.id; state.ui.managedProfileId = match.id; }
@@ -5367,7 +5482,10 @@
     const result = withHistoryGesture(control, () => {
       if (scope === "colors") return applyColorDraft({ render: false });
       if (scope === "icons") return applyIcons({ render: false });
-      if (scope === "tags") return applyTag({ render: false });
+      if (scope === "tags") return applyTag({
+        render: false,
+        applyContent: Boolean(control.closest("#tagDefinitionEditor"))
+      });
       if (scope === "rules") return applyRule({ render: false });
       if (scope === "modes") return applyMode({ render: false });
       if (scope === "profiles") return applyProfile({ render: false });
@@ -5692,7 +5810,7 @@
       const colorRow = event.target.closest("[data-color-path]");
       if (colorRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
       const tagRow = event.target.closest("[data-tag-id]");
-      if (tagRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedTagId = tagRow.dataset.tagId; drafts.tag = null; clearUnappliedEditorSection($("#tagDefinitionEditor")); renderTags(); return; }
+      if (tagRow) { if (!stageFocusedEditorValue()) return; selectTagDefinition(tagRow.dataset.tagId, event); return; }
       const ruleRow = event.target.closest("[data-rule-index]");
       if (ruleRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedRuleIndex = Number(ruleRow.dataset.ruleIndex); drafts.rule = null; clearUnappliedEditorSection($("#ruleName")); renderRules(); return; }
       const modeRow = event.target.closest("[data-mode-index]");
@@ -5851,6 +5969,20 @@
       drafts.tag.data.definition_detailed_inherits_normal = $("#tagDetailedInherits").checked;
       withHistoryGesture(event.target, () => applyTag({ render: false }));
       renderTagEditor();
+    });
+
+    $("#criteriaList").addEventListener("change", event => {
+      const field = event.target.dataset.field;
+      if (!field || !["source", "token"].includes(field)) return;
+      const row = event.target.closest(".criterion-row");
+      const source = $("[data-field='source']", row);
+      const token = $("[data-field='token']", row);
+      const condition = $("[data-field='condition']", row);
+      if (field === "source") {
+        const tokens = ruleTokensForSource(source.value);
+        token.innerHTML = ruleSelectOptions(tokens, tokens[0]);
+      }
+      condition.innerHTML = ruleSelectOptions(ruleConditionsFor(source.value, token.value), "any");
     });
 
     ["Target", "Tag", "Text"].forEach(kind => {
@@ -6016,6 +6148,26 @@
         state.ui.selectedAvisoTextStyleIds = id ? [id] : [];
         clearUnappliedEditorSection($("#avisoTextFont"));
         renderAvisoText();
+      }
+    });
+    $("#tagDefinitionList").addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const ids = tagDefinitions().map(entry => entry.id);
+        if (ids.length) {
+          state.ui.selectedTagIds = ids;
+          state.ui.selectedTagId = ids[ids.length - 1];
+          state.ui.tagSelectionAnchorId = ids[0];
+          drafts.tag = null;
+          clearUnappliedEditorSection($("#tagDefinitionEditor"));
+          renderTags();
+        }
+      } else if (event.key === "Escape") {
+        const id = state.ui.selectedTagId;
+        state.ui.selectedTagIds = id ? [id] : [];
+        drafts.tag = null;
+        clearUnappliedEditorSection($("#tagDefinitionEditor"));
+        renderTags();
       }
     });
 
@@ -6343,6 +6495,8 @@
     state.ui.selectedRuleIndex = 0;
     state.ui.selectedModeIndex = Math.max(0, (preferred.data.filters?.display_modes?.items || []).findIndex(mode => mode.name === preferred.data.filters?.display_modes?.active));
     state.ui.selectedTagId = "departure:taxi";
+    state.ui.selectedTagIds = [state.ui.selectedTagId];
+    state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
     const colors = collectProfileColors(preferred.data);
     state.ui.selectedColorPath = colors[0]?.id || "";
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
