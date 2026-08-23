@@ -116,6 +116,7 @@ try {
     [System.IO.Directory]::CreateDirectory((Join-Path $PackageData "Runtime")) | Out-Null
     [System.IO.Directory]::CreateDirectory((Join-Path $PackageData "CrashReporter")) | Out-Null
     [System.IO.Directory]::CreateDirectory((Join-Path $PackageData "Tools")) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $PackageData "AVISO")) | Out-Null
     [System.IO.File]::Copy($LoaderBinary, (Join-Path $PackageRoot "vSMR.dll"), $true)
     $RuntimePath = Join-Path $PackageData "Runtime\vSMR.Runtime.dll"
     [System.IO.File]::Copy($LoaderBinary, $RuntimePath, $true)
@@ -153,6 +154,28 @@ try {
         automatic_update = [ordered]@{ publishable = $true }
     }
     Write-Utf8NoBom (Join-Path $PackageData "RELEASE-METADATA.json") ((ConvertTo-Json $metadata -Depth 10) + "`n")
+
+    $HarnessAvisoPath = Join-Path $PackageData "AVISO\TEST.geojson"
+    Write-Utf8NoBom $HarnessAvisoPath '{"type":"FeatureCollection","features":[]}'
+    $avisoPolicy = [ordered]@{
+        schema_version = 1
+        release = "2.0.0-beta.4"
+        aviso = [ordered]@{
+            update = "all"
+            replace = @()
+            delete = @()
+            modified_files = "protect_setting"
+        }
+    }
+    Write-Utf8NoBom (Join-Path $PackageData "AVISO-UPDATE-POLICY.json") ((ConvertTo-Json $avisoPolicy -Depth 5) + "`n")
+    $avisoInventory = [ordered]@{
+        schema_version = 1
+        release = "2.0.0-beta.4"
+        files = [ordered]@{
+            'TEST.geojson' = (Get-FileHash -LiteralPath $HarnessAvisoPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    Write-Utf8NoBom (Join-Path $PackageData "AVISO-INVENTORY.json") ((ConvertTo-Json $avisoInventory -Depth 5) + "`n")
 
     $hashLines = foreach ($file in @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -File | Sort-Object FullName)) {
         if ($file.FullName -eq (Join-Path $PackageData "SHA256SUMS.txt")) { continue }
