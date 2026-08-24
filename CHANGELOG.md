@@ -8,7 +8,8 @@
 - Added configurable moving-aircraft position trails to the main radar, AVISO inset, and SRW. The Icons page controls trail visibility plus separate ground and airborne history lengths; NOVA uses compact vSMR history dots, Icon uses filled bubbles that grey and fade with age, and Triangle uses shrinking hollow circles.
 - Added a persisted Night/Day AVISO color mode. Both the main view and AVISO inset select compact Day overrides from the same GeoJSON document, while existing base paint remains the Night palette and older/custom schema-2 files continue to work unchanged.
 - Added release-controlled AVISO migrations with `none`, selected-airport, and all-airport modes, an official hash inventory for detecting local edits, complete rollback backups, and a default-on protection setting with a manual verified AVISO reload action.
-- Added a synchronized `holdingpoint` tag token and EuroScope list item. Empty values omit their normal-tag row and use a clickable `HP` placeholder only in the detailed tag; either mouse button opens the editor, and assigned values remain visible while EuroScope synchronizes them through the scratchpad without changing unrelated scratchpad text.
+- Added a synchronized `holdingpoint` tag token and EuroScope list item. Empty values omit their normal-tag row and use a clickable `HP` placeholder only in the detailed tag; either mouse button opens its selector, and assigned values remain visible while EuroScope synchronizes them through the scratchpad without changing unrelated scratchpad text.
+- Added runway-aware holding-point selection to radar tags and EuroScope lists, with official airport/runway choices plus a leading `[...]` option for manual entry.
 
 ### Changed
 
