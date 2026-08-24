@@ -4,7 +4,7 @@ vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement
 
 Current version: **2.0.0-beta.4**
 
-This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not manually mix runtime binaries or package data from different builds. The deliberately stable top-level loader is the only versioned exception and its compatibility is managed by the signed updater.
+This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not manually mix runtime binaries or package data from different builds. The deliberately stable top-level loader is the only versioned exception; authenticated updater releases manage its runtime compatibility.
 
 vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` and create a vSMR radar screen.
 
@@ -49,7 +49,9 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 6. In EuroScope, open `Other Settings -> Plug-ins` and load `vSMR.dll`.
 7. Open a vSMR radar screen, select the active airport, and review the active profile, AVISO, groups, RIMCAS runways, and inset layout.
 
-**Beta.3 to beta.4 is a mandatory manual migration.** Beta.4 requires bootstrap loader `1.1.0`; beta.3 has loader `1.0.0` and therefore cannot activate beta.4 automatically. Close EuroScope and install the complete beta.4 package without `-PreserveLoader`. Once loader `1.1.0` is installed, later compatible releases can again update runtime/data at startup.
+**Beta.3 to beta.4 is a mandatory manual migration.** Beta.4 requires bootstrap loader `1.1.0`; beta.3 has loader `1.0.0` and therefore cannot activate beta.4 automatically. Close EuroScope and install the complete beta.4 package without `-PreserveLoader`. A trusted loader `1.1.0` build can activate later compatible runtime/data releases at startup.
+
+The unsigned beta.4 package is a manual-install release. Its binaries and update manifest are deliberately marked non-publishable, so the automatic updater will not install beta.4 or trust a future update from this build. Automatic updating becomes available again only after manually installing a release whose loader is Authenticode-signed or built with the matching pinned release-certificate hash.
 
 The recommended installer is included in every package:
 
@@ -226,7 +228,9 @@ The Night/Day selector is in the AVISO editor toolbar and is saved with the rada
 
 The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for example `vSMR_Data\AVISO\LFPG.geojson`. An explicitly selected local or GitHub source remains authoritative. Legacy `AVISO_<ICAO>.geojson` names remain compatibility fallbacks for manual installations that update only the DLL.
 
-Release AVISO changes are opt-in at publication time. Maintainers select `none`, `selected`, or `all` in `vSMR\data\AVISO-UPDATE-POLICY.json`; packaging then generates the matching official-hash inventory. See [UPDATER.md](UPDATER.md) for the policy recipes, modified-file safeguards, and beta 4 migration rule.
+Release AVISO changes are opt-in at publication time. Maintainers select `none`, `selected`, or `all` in `vSMR\data\AVISO-UPDATE-POLICY.json`; packaging then generates the matching official-hash inventory. `none` is the normal code-only default, `selected` replaces only the canonical filenames listed in `replace`, and `all` refreshes every bundled airport. The mandatory `replace` and `delete` arrays must be present even when empty.
+
+`modified_files` controls locally edited maps: `preserve` always keeps them and stages the incoming copy under `AVISO_Updates`, `protect_setting` follows the user's default-on protection toggle, and `replace` forces a migration despite local changes. Use `replace` only for incompatible data migrations. Beta.4 intentionally uses `all` plus `replace` so every bundled map receives the Night/Day schema, and deletes the obsolete `LFMM.geojson` and `LFPG_Dyna_fixed.geojson`. Normal releases must choose a narrower policy explicitly rather than copying this migration policy.
 
 The Control Center can:
 
@@ -559,7 +563,7 @@ The importer reads and writes UTF-8 explicitly and stops if feature data, geomet
 
 From the repository root:
 
-1. Set the release version and AVISO behavior in `vSMR\data\AVISO-UPDATE-POLICY.json`. Use `none` for the normal no-map-update case, `selected` with explicit filenames for a partial map update, or `all` only when every bundled map must be refreshed. See [UPDATER.md](UPDATER.md).
+1. Set the exact release version and AVISO behavior in `vSMR\data\AVISO-UPDATE-POLICY.json`. Use `none` for a normal code-only release, `selected` with explicit canonical filenames for a partial map update, or `all` only when every bundled map must be refreshed. Choose `preserve`, `protect_setting`, or `replace` deliberately for locally modified files, and list obsolete canonical maps in `delete` only after removing them from the bundled AVISO directory.
 2. After committing the release and creating the matching version tag, run the fail-closed release command:
 
 ```powershell
@@ -579,21 +583,20 @@ The script:
 7. generates the official AVISO hash inventory, release metadata, and internal SHA-256 package manifest
 8. creates the user ZIP, external update manifest, detached signature for a publishable release, and separate private-symbol archive
 
-A publishable package requires a clean tagged Git commit, a trusted code-signing certificate with a private key, and the matching certificate pin. The release driver always requires and verifies all of these inputs. For a local dirty-tree check only, use the lower-level packager:
+A publishable automatic-update package requires a clean tagged Git commit, a trusted code-signing certificate with a private key, and the matching certificate pin. The release driver always requires and verifies all of these inputs. To create an explicitly unsigned manual-install package, use the lower-level packager from a clean tagged release commit:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1 `
-  -AllowDirtySource -ForceNonPublishable
+  -Version 2.0.0-beta.4 -ForceNonPublishable
 ```
 
-That artifact is explicitly marked `publishable: false`. Verify a normal package with:
+Use `-AllowDirtySource` only for local development checks. An unsigned artifact is explicitly marked `publishable: false`, has no detached `.p7s` signature, and must be installed manually. Verify it with:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_package.ps1 `
-  -ArchivePath .\artifacts\vSMR-2.0.0-beta.4.zip
+  -ArchivePath .\artifacts\vSMR-2.0.0-beta.4.zip `
+  -AllowNonPublishable
 ```
-
-Add `-AllowNonPublishable` only when verifying a deliberately non-publishable local artifact.
 
 ### Crash-report harness
 
