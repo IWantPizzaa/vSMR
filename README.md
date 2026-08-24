@@ -41,14 +41,15 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 
 ### Install a release package
 
-1. Download the complete `vSMR-2.0.0-beta.4.zip` and its matching `.zip.sha256` file.
-2. Verify the ZIP checksum.
-3. Close EuroScope.
-4. Extract the package to a temporary directory.
-5. Install the x86 Visual C++ Redistributable and x86 WebView2 Evergreen Runtime if required.
-6. Install the matched DLL and data directory into the EuroScope plug-in directory.
-7. In EuroScope, open `Other Settings -> Plug-ins` and load `vSMR.dll`.
-8. Open a vSMR radar screen, select the active airport, and review the active profile, AVISO, groups, RIMCAS runways, and inset layout.
+1. Download the complete `vSMR-2.0.0-beta.4.zip`.
+2. Close EuroScope.
+3. Extract the package to a temporary directory.
+4. Install the x86 Visual C++ Redistributable and x86 WebView2 Evergreen Runtime if required.
+5. Install the matched DLL and data directory into the EuroScope plug-in directory.
+6. In EuroScope, open `Other Settings -> Plug-ins` and load `vSMR.dll`.
+7. Open a vSMR radar screen, select the active airport, and review the active profile, AVISO, groups, RIMCAS runways, and inset layout.
+
+**Beta.3 to beta.4 is a mandatory manual migration.** Beta.4 requires bootstrap loader `1.1.0`; beta.3 has loader `1.0.0` and therefore cannot activate beta.4 automatically. Close EuroScope and install the complete beta.4 package without `-PreserveLoader`. Once loader `1.1.0` is installed, later compatible releases can again update runtime/data at startup.
 
 The recommended installer is included in every package:
 
@@ -201,6 +202,8 @@ Normal and detailed tag definitions can be customized for departure and arrival 
 
 To add the field to any EuroScope aircraft list, select `vSMR / Holding Point` as the Tag Item Type. Select the identically named `vSMR / Holding Point` function for both the left- and right-button actions; EuroScope configures these actions per list column. Entering an empty value clears only the holding point. Values are case-insensitive, normalized to uppercase, and may contain up to eight letters, numbers, hyphens, or slashes.
 
+The bundled runway/holding-point catalogue is generated from the `intersections` mappings in the French vACC [vSID configurations](https://github.com/rmaure06/vsid-configurations). Maintainers can regenerate `airports_hp.json` from a checked-out upstream tree with `vSMR\tools\import_vsid_holding_points.ps1 -SourceDirectory <path>`; the importer validates airport/runway identifiers, normalizes values, and removes duplicate points while preserving their upstream order.
+
 Tag backgrounds use compact text padding consistently in the main radar, AVISO inset, and SRW 1 inset.
 
 Structured rules can match runway, custom, and VACDM conditions, then override target, tag, or text colors. The Match editor presents supported sources, tokens, and conditions as lists instead of accepting free-form values. Rules are evaluated in profile order.
@@ -323,7 +326,7 @@ The compatibility patch is a modification of the GPL-3.0-licensed official RDF p
 
 ## RIMCAS
 
-RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The single Control Center `Alerts` page controls monitored arrival/departure runway pairs, closed-runway flags, active alert types, Normal/LVP visibility, timers, and thresholds. RIMCAS colors are edited on `Display > Colors`. RIMCAS processing, label-only alert presentation, and red emergency symbols are always active and are no longer profile options. Every change enters the shared draft and is persisted and applied by the global `Save`; an explicitly empty runway list remains empty after reload.
+RIMCAS uses configured runway geometry and target movement to produce runway and movement alerts. The single Control Center `Alerts` page controls monitored arrival/departure runway pairs, closed-runway flags, active alert types, Normal/LVP visibility, timers, and thresholds. RIMCAS colors are edited on `Display > Colors`. RIMCAS processing, label-only alert presentation, and red emergency symbols are always active and are no longer profile options. Changes save automatically in the background; an explicitly empty runway list remains empty after reload.
 
 These RIMCAS choices are separate from EuroScope's `Active Airports/Runways` dialog. EuroScope remains authoritative for sector airport/runway activity because its plug-in API exposes that state read-only. After that dialog is accepted with `OK`, vSMR now reloads the selected ARR/DEP activity immediately for conditional sector maps, weather components, the main view, and insets. If EuroScope has exactly one active airport and the current vSMR airport is no longer active, vSMR adopts that unambiguous airport; when multiple airports are active, choose the airport for each surface screen from its Runtime Menu.
 
@@ -371,11 +374,11 @@ vSMR trims a trailing slash and requests `<server_url>/api/v1/pilots`. Polling i
 
 ## CPDLC and PDC
 
-The dedicated `CPDLC / PDC` page contains the Hoppie connection and automatic PDC-reminder controls. It supports:
+The compact Runtime Menu `CPDLC / PDC` popup contains the Hoppie connection and automatic PDC-reminder controls. It supports:
 
 - a Hoppie logon callsign and protected Hoppie code
 - connect/disconnect and manual polling
-- optional request notification sound
+- request notification sound on every incoming clearance request
 - manual PDC eligibility checks for the active airport
 - automatic PDC reminders with a delay and resend cooldown
 - Run and Stop controls for reminder automation
@@ -557,10 +560,12 @@ The importer reads and writes UTF-8 explicitly and stops if feature data, geomet
 From the repository root:
 
 1. Set the release version and AVISO behavior in `vSMR\data\AVISO-UPDATE-POLICY.json`. Use `none` for the normal no-map-update case, `selected` with explicit filenames for a partial map update, or `all` only when every bundled map must be refreshed. See [UPDATER.md](UPDATER.md).
-2. Run the packaging command:
+2. After committing the release and creating the matching version tag, run the fail-closed release command:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_github_release.ps1 `
+  -Version 2.0.0-beta.4 `
+  -PublishedBeta3ArchivePath C:\path\to\vSMR-2.0.0-beta.3.zip
 ```
 
 The script:
@@ -574,7 +579,7 @@ The script:
 7. generates the official AVISO hash inventory, release metadata, and internal SHA-256 package manifest
 8. creates the user ZIP, external update manifest, detached signature for a publishable release, and separate private-symbol archive
 
-A publishable package requires a clean Git working tree and a verifiable commit. For a local dirty-tree check only:
+A publishable package requires a clean tagged Git commit, a trusted code-signing certificate with a private key, and the matching certificate pin. The release driver always requires and verifies all of these inputs. For a local dirty-tree check only, use the lower-level packager:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1 `
@@ -617,7 +622,7 @@ For an offline EuroScope machine, install the x86 WebView2 Evergreen Standalone 
 
 ### Signing
 
-`package_release.ps1` can Authenticode-sign the bootstrap loader, runtime, and crash-handler DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. For a clean publishable build, the same certificate creates the detached CMS signature over the exact UTF-8 update manifest; validation-only builds are never given that production signature. Production builds inject the SHA-256 of the certificate's DER encoding through `VSMR_UPDATE_SIGNER_CERT_SHA256`; the packaged loader and manifest signer must agree. `VSMR_REQUIRE_SIGNATURE=1` requires all binary and manifest signatures. Authenticode timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
+`package_release.ps1` is signature-required by default. It Authenticode-signs the bootstrap loader, runtime, and crash-handler DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. For a clean publishable build, the same certificate creates the detached CMS signature over the exact UTF-8 update manifest; validation-only builds require the explicit `-ForceNonPublishable` switch and are never given that production signature. Production builds inject the SHA-256 of the certificate's DER encoding through `VSMR_UPDATE_SIGNER_CERT_SHA256`; the packaged loader and manifest signer must agree. Authenticode timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
 
 Do not describe a package as signed unless package verification confirms the signature.
 
@@ -687,7 +692,7 @@ The source location `vSMR\src\control_center\web\` is a development detail. Buil
 - Hoppie, VACDM, VATSIM weather fallback, and GitHub imports are external services and can fail independently of radar rendering.
 - Bundled airport data must be checked against current local procedures before use.
 - The asset provenance register contains media/data groups that require resolution before a production release. See `vSMR/data/Licenses/ASSET_PROVENANCE.md`.
-- Preserve the exact DLL, package checksum, and matching private symbols when investigating a crash.
+- Preserve the exact DLL, release ZIP, and matching private symbols when investigating a crash.
 
 ## License and Credits
 

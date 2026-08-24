@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <cctype>
 #include <limits>
+#include <commctrl.h>
 #include "rapidjson/document.h"
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
@@ -17,14 +18,14 @@
 #include "tags/TagColorRules.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 #include "tags/VacdmTagHelpers.hpp"
-#include "profiles/ProfileEditorDialog.hpp"
-#include "aviso/AvisoEditorDialog.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
+
+#pragma comment(lib, "comctl32.lib")
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -38,9 +39,8 @@ bool initCursor = true;
 HCURSOR smrCursor = NULL;
 bool standardCursor; // True when the default arrow cursor is active.
 bool customCursor; // True when the plugin-specific cursor theme is enabled.
-std::map<HWND, WNDPROC> gInsetWindowSourceProcs;
-std::map<HWND, CSMRRadar*> gInsetWindowRadarScreens;
-CSMRRadar* gWindowProcRadarScreen = nullptr;
+constexpr UINT_PTR kInsetWindowSubclassId = 0x56534D52u; // "VSMR"
+std::map<HWND, std::vector<CSMRRadar*>> gInsetWindowRadarScreens;
 UINT AvisoWorkerRefreshMessage()
 {
 	static const UINT message =
@@ -48,17 +48,24 @@ UINT AvisoWorkerRefreshMessage()
 	return message;
 }
 void RestoreInsetWindowProcHooks();
+void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen);
 HHOOK gThreadMouseHook = nullptr;
 DWORD gThreadMouseHookThreadId = 0;
 DWORD gLastThreadHookError = 0xFFFFFFFF;
 HHOOK gThreadKeyboardHook = nullptr;
 DWORD gThreadKeyboardHookThreadId = 0;
 DWORD gLastThreadKeyboardHookError = 0xFFFFFFFF;
-bool gAvisoWheelRoutingEnabled = false;
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK InsetWindowSubclassProc(
+	HWND hwnd,
+	UINT uMsg,
+	WPARAM wParam,
+	LPARAM lParam,
+	UINT_PTR subclassId,
+	DWORD_PTR referenceData);
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam);
 void UnhookAvisoThreadHooks();
+bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
 
 map<string, string> CSMRRadar::vStripsStands;
 
@@ -951,14 +958,7 @@ CSMRRadar::~CSMRRadar()
 	PublishCrashRadarState("closing", "none");
 	Logger::info(string(__FUNCSIG__));
 	BeginShutdown();
-	if (gWindowProcRadarScreen == this)
-		gWindowProcRadarScreen = nullptr;
-	UnhookAvisoThreadHooks();
 	CloseVsmrControlCenterWindow();
-	CloseAvisoEditorWindow();
-	DestroyAvisoEditorWindow();
-	CloseProfileEditorWindow(false);
-	DestroyProfileEditorWindow();
 	DestroyVsmrControlCenterWindow();
 	try {
 		//this->OnAsrContentToBeSaved();
@@ -970,15 +970,12 @@ CSMRRadar::~CSMRRadar()
 		AfxMessageBox(string("Error occurred " + s.str()).c_str());
 	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
-	for (auto radarIt = gInsetWindowRadarScreens.begin(); radarIt != gInsetWindowRadarScreens.end();)
-	{
-		if (radarIt->second == this)
-			radarIt = gInsetWindowRadarScreens.erase(radarIt);
-		else
-			++radarIt;
-	}
+	RemoveInsetWindowProcHooksForRadar(this);
 	if (RadarScreensOpened.empty())
+	{
 		RestoreInsetWindowProcHooks();
+		UnhookAvisoThreadHooks();
+	}
 	customFonts.clear();
 	appWindows.clear();
 	AircraftIcons.clear();
@@ -2327,6 +2324,15 @@ bool CSMRRadar::IsAvisoGeoJsonRenderStopRequested() const
 bool CSMRRadar::IsShutdownRequested() const
 {
 	return ShutdownRequested.load(std::memory_order_relaxed);
+}
+
+bool CSMRRadar::CanUnloadRuntimeCallbacks() noexcept
+{
+	// A failed Win32 callback removal must retain the DLL. Otherwise Windows may
+	// dispatch into unmapped code after EuroScope completes plug-in shutdown.
+	return gInsetWindowRadarScreens.empty() &&
+		gThreadMouseHook == nullptr &&
+		gThreadKeyboardHook == nullptr;
 }
 
 void CSMRRadar::BeginShutdown()
@@ -4415,17 +4421,6 @@ void CSMRRadar::LoadProfile(
 	const std::vector<int> RimcasLVP = readCountdownDefinition(rimcasTimerLvp, defaultRimcasTimerLvp);
 	RimcasInstance->setCountdownDefinition(RimcasNorm, RimcasLVP);
 
-	int leaderLineLength = 50;
-	if (activeProfile.IsObject() &&
-		activeProfile.HasMember("labels") &&
-		activeProfile["labels"].IsObject() &&
-		activeProfile["labels"].HasMember("leader_line_length") &&
-		activeProfile["labels"]["leader_line_length"].IsInt())
-	{
-		leaderLineLength = activeProfile["labels"]["leader_line_length"].GetInt();
-	}
-	LeaderLineDefaultlenght = std::clamp(leaderLineLength, 0, 500);
-
 	customCursor = CurrentConfig->isCustomCursorUsed();
 	currentFontSize = GetActiveLabelFontSize();
 
@@ -4442,8 +4437,6 @@ void CSMRRadar::LoadProfile(
 	if (!RimcasRunwaysExplicitlyConfigured)
 		RefreshLegacyRimcasRunwayMonitoring();
 
-	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
-		ProfileEditorDialog->SyncFromRadar();
 }
 
 void CSMRRadar::InvalidateAirportPositionCache()
@@ -5258,42 +5251,26 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		changed = true;
 	};
 
-	const std::vector<std::string> defaultDoNotAutocorrelateSquawks = {
-		"2000", "2200", "1200", "7000"
-	};
-
 	ensureIntMember(profile, "schema_version", 2, 2, 9999);
 
 	Value& filters = ensureObjectMember(profile, "filters");
-	renameMemberIfPresent(filters, "hide_above_alt", "max_altitude_ft");
-	renameMemberIfPresent(filters, "hide_above_spd", "max_speed_kt");
+	changed = filters.RemoveMember("hide_above_alt") || changed;
+	changed = filters.RemoveMember("hide_above_spd") || changed;
+	changed = filters.RemoveMember("max_altitude_ft") || changed;
+	changed = filters.RemoveMember("max_speed_kt") || changed;
+	changed = filters.RemoveMember("radar_range_nm") || changed;
 	changed = filters.RemoveMember("night_alpha_setting") || changed;
 	changed = filters.RemoveMember("night_overlay_alpha") || changed;
-	ensureIntMember(filters, "max_altitude_ft", 5500, 0, 80000);
-	ensureIntMember(filters, "max_speed_kt", 250, 0, 2000);
-	ensureIntMember(filters, "radar_range_nm", 999, 1, 9999);
 	bool legacyProModeEnabled = false;
 	bool legacyTowerModeEnabled = false;
-	std::vector<std::string> legacyBlockedSquawks = defaultDoNotAutocorrelateSquawks;
 	if (filters.HasMember("pro_mode") && filters["pro_mode"].IsObject())
 	{
 		Value& proMode = filters["pro_mode"];
 		renameMemberIfPresent(proMode, "enable", "enabled");
-		renameMemberIfPresent(proMode, "do_not_autocorrelate_squawks", "blocked_auto_correlate_squawks");
+		changed = proMode.RemoveMember("do_not_autocorrelate_squawks") || changed;
+		changed = proMode.RemoveMember("blocked_auto_correlate_squawks") || changed;
 		if (proMode.HasMember("enabled") && proMode["enabled"].IsBool())
 			legacyProModeEnabled = proMode["enabled"].GetBool();
-		if (proMode.HasMember("blocked_auto_correlate_squawks") && proMode["blocked_auto_correlate_squawks"].IsArray())
-		{
-			std::vector<std::string> blockedSquawks;
-			const Value& squawks = proMode["blocked_auto_correlate_squawks"];
-			for (SizeType i = 0; i < squawks.Size(); ++i)
-			{
-				if (squawks[i].IsString() && squawks[i].GetStringLength() > 0)
-					blockedSquawks.push_back(squawks[i].GetString());
-			}
-			if (!blockedSquawks.empty())
-				legacyBlockedSquawks = blockedSquawks;
-		}
 	}
 	if (filters.HasMember("tower_mode") && filters["tower_mode"].IsObject())
 	{
@@ -5314,14 +5291,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		mode.AddMember("require_clearance", false, allocator);
 		mode.AddMember("require_valid_tsat", false, allocator);
 		mode.AddMember("require_active_tobt", false, allocator);
-		Value blockedSquawks(kArrayType);
-		for (const std::string& squawk : legacyBlockedSquawks)
-		{
-			Value squawkValue;
-			squawkValue.SetString(squawk.c_str(), static_cast<SizeType>(squawk.size()), allocator);
-			blockedSquawks.PushBack(squawkValue, allocator);
-		}
-		mode.AddMember("blocked_auto_correlate_squawks", blockedSquawks, allocator);
 		Value statuses(kObjectType);
 		statuses.AddMember("no_status", true, allocator);
 		statuses.AddMember("push", true, allocator);
@@ -5357,6 +5326,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		{
 			if (!items[i].IsObject())
 				continue;
+			changed = items[i].RemoveMember("do_not_autocorrelate_squawks") || changed;
+			changed = items[i].RemoveMember("blocked_auto_correlate_squawks") || changed;
 			Value& statuses = ensureObjectMember(items[i], "statuses");
 			if (!statuses.HasMember("lineup") || !statuses["lineup"].IsBool())
 			{
@@ -5400,13 +5371,13 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	}
 
 	Value& rimcas = ensureObjectMember(profile, "rimcas");
-	renameMemberIfPresent(rimcas, "rimcas_stage_two_speed_threshold", "stage_two_speed_threshold_kt");
+	changed = rimcas.RemoveMember("rimcas_stage_two_speed_threshold") || changed;
+	changed = rimcas.RemoveMember("stage_two_speed_threshold_kt") || changed;
 	changed = rimcas.RemoveMember("enabled") || changed;
 	changed = rimcas.RemoveMember("rimcas_label_only") || changed;
 	changed = rimcas.RemoveMember("use_red_symbol_for_emergencies") || changed;
 	ensureIntArrayMember(rimcas, "timer", { 60, 45, 30, 15, 0 });
 	ensureIntArrayMember(rimcas, "timer_lvp", { 120, 90, 60, 30, 0 });
-	ensureIntMember(rimcas, "stage_two_speed_threshold_kt", 25, 0, 250);
 	ensureColorMember(rimcas, "background_color_stage_one", 160, 90, 30, 255);
 	ensureColorMember(rimcas, "background_color_stage_two", 150, 0, 0, 255);
 	ensureColorMember(rimcas, "caution_alert_text_color", 0, 0, 0, 255);
@@ -5652,12 +5623,13 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	}
 
 	Value& labels = ensureObjectMember(profile, "labels");
-	renameMemberIfPresent(labels, "use_aspeed_for_gate", "use_speed_for_gate");
+	changed = labels.RemoveMember("use_aspeed_for_gate") || changed;
+	changed = labels.RemoveMember("use_speed_for_gate") || changed;
+	changed = labels.RemoveMember("leader_line_length") || changed;
+	changed = labels.RemoveMember("use_departure_arrival_coloring") || changed;
 	renameMemberIfPresent(labels, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 	ensureBoolMember(labels, "auto_deconfliction", true);
 	ensureBoolMember(labels, "rounded_corners", true);
-	ensureBoolMember(labels, "use_speed_for_gate", false);
-	ensureIntMember(labels, "leader_line_length", 50, 0, 500);
 	ensureBoolMember(labels, "definition_detailed_inherits_normal", false);
 	if (labels.HasMember("sid_text_colors"))
 	{
@@ -5740,18 +5712,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	}
 
 	Value& airborneLabel = ensureObjectMember(labels, "airborne");
-	if ((!labels.HasMember("use_departure_arrival_coloring") || !labels["use_departure_arrival_coloring"].IsBool()) &&
-		airborneLabel.HasMember("use_departure_arrival_coloring") &&
-		airborneLabel["use_departure_arrival_coloring"].IsBool())
-	{
-		if (labels.HasMember("use_departure_arrival_coloring"))
-			labels.RemoveMember("use_departure_arrival_coloring");
-		Value keyValue;
-		keyValue.SetString("use_departure_arrival_coloring", allocator);
-		Value boolValue(airborneLabel["use_departure_arrival_coloring"].GetBool());
-		labels.AddMember(keyValue, boolValue, allocator);
-		changed = true;
-	}
 	if (airborneLabel.HasMember("departure_background_color") && airborneLabel["departure_background_color"].IsObject())
 		replaceColorMember(departureLabel, "background_airborne_color", airborneLabel["departure_background_color"]);
 	if (airborneLabel.HasMember("departure_text_color") && airborneLabel["departure_text_color"].IsObject())
@@ -5814,7 +5774,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		airborneLabel.RemoveMember("use_departure_arrival_coloring");
 		changed = true;
 	}
-	ensureBoolMember(labels, "use_departure_arrival_coloring", false);
 
 	Value& uncorrelatedLabel = ensureObjectMember(labels, "uncorrelated");
 	renameMemberIfPresent(uncorrelatedLabel, "background_color", "background_on_ground_color");
@@ -6424,7 +6383,7 @@ bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char compon
 	return true;
 }
 
-map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign, const VacdmPilotData* capturedVacdmData, const int* capturedPreviousFlightLevel)
+map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign, const VacdmPilotData* capturedVacdmData, const int* capturedPreviousFlightLevel)
 {
 	(void)isASEL;
 	(void)ActiveAirport;
@@ -6448,7 +6407,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// seprwy: Departure runway that changes to speed if speed > 25kts *
 	// arvrwy: Arrival runway *
 	// srvrwy: Speed that changes to arrival runway if speed < 25kts *
-	// gate: Gate, from speed or scratchpad *
+	// gate: Gate from scratchpad *
 	// sate: Gate, from speed or scratchpad that changes to speed if speed > 25kts *
 	// flightlevel: Flightlevel/Pressure altitude of the ac *
 	// gs: Ground speed of the ac *
@@ -6602,12 +6561,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ----- Gate -------
 	string gate;
 	if (hasFlightPlan)
-	{
-		if (useSpeedForGates)
-			gate = std::to_string(fp.GetControllerAssignedData().GetAssignedSpeed());
-		else
-			gate = userScratchpad;
-	}
+		gate = userScratchpad;
 
 	replaceAll(gate, "STAND=", "");
 	if (gate.size() > 4)
@@ -6867,7 +6821,12 @@ void UnhookAvisoMouseHook()
 	if (gThreadMouseHook == nullptr)
 		return;
 
-	::UnhookWindowsHookEx(gThreadMouseHook);
+	if (!::UnhookWindowsHookEx(gThreadMouseHook))
+	{
+		Logger::info("AVISO viewport thread wheel hook removal failed error=" +
+			std::to_string(::GetLastError()));
+		return;
+	}
 	gThreadMouseHook = nullptr;
 	gThreadMouseHookThreadId = 0;
 }
@@ -6877,7 +6836,12 @@ void UnhookAvisoKeyboardHook()
 	if (gThreadKeyboardHook == nullptr)
 		return;
 
-	::UnhookWindowsHookEx(gThreadKeyboardHook);
+	if (!::UnhookWindowsHookEx(gThreadKeyboardHook))
+	{
+		Logger::info("AVISO viewport thread keyboard hook removal failed error=" +
+			std::to_string(::GetLastError()));
+		return;
+	}
 	gThreadKeyboardHook = nullptr;
 	gThreadKeyboardHookThreadId = 0;
 }
@@ -6890,8 +6854,6 @@ void UnhookAvisoThreadHooks()
 
 void ClearAvisoWheelRoutingState(bool cancelWindowInteractions = false)
 {
-	gAvisoWheelRoutingEnabled = false;
-
 	for (CSMRRadar* radarScreen : RadarScreensOpened)
 	{
 		if (radarScreen == nullptr)
@@ -6942,34 +6904,36 @@ bool IsMouseButtonDownMessage(WPARAM message)
 	}
 }
 
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK InsetWindowSubclassProc(
+	HWND hwnd,
+	UINT uMsg,
+	WPARAM wParam,
+	LPARAM lParam,
+	UINT_PTR subclassId,
+	DWORD_PTR referenceData)
 {
-	const auto sourceProcIt = gInsetWindowSourceProcs.find(hwnd);
-	const WNDPROC sourceProc = sourceProcIt != gInsetWindowSourceProcs.end()
-		? sourceProcIt->second
-		: nullptr;
-	const auto forwardMessage = [&]() -> LRESULT
-	{
-		return sourceProc != nullptr
-			? ::CallWindowProc(sourceProc, hwnd, uMsg, wParam, lParam)
-			: ::DefWindowProc(hwnd, uMsg, wParam, lParam);
-	};
+	UNREFERENCED_PARAMETER(referenceData);
+
+	if (subclassId != kInsetWindowSubclassId)
+		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
+
 	if (uMsg == WM_NCDESTROY)
 	{
-		const LRESULT result = forwardMessage();
-		gInsetWindowSourceProcs.erase(hwnd);
+		::RemoveWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId);
 		gInsetWindowRadarScreens.erase(hwnd);
-		return result;
+		return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 	}
+
 	const UINT workerRefreshMessage = AvisoWorkerRefreshMessage();
 	if (workerRefreshMessage != 0 && uMsg == workerRefreshMessage)
 	{
 		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
 		CSMRRadar* requestedRadar = reinterpret_cast<CSMRRadar*>(wParam);
-		if (requestedRadar != nullptr &&
+		const bool registered =
+			requestedRadar != nullptr &&
 			radarIt != gInsetWindowRadarScreens.end() &&
-			radarIt->second == requestedRadar &&
-			!requestedRadar->IsShutdownRequested())
+			std::find(radarIt->second.begin(), radarIt->second.end(), requestedRadar) != radarIt->second.end();
+		if (registered && !requestedRadar->IsShutdownRequested())
 		{
 			try
 			{
@@ -6982,33 +6946,54 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 		return 0;
 	}
+
 	switch (uMsg)
 	{
 	case WM_MOUSEWHEEL:
-		if (gAvisoWheelRoutingEnabled && gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleAvisoMouseWheel(hwnd, wParam, lParam))
+	{
+		const int wheelDelta = static_cast<short>(HIWORD(wParam));
+		const POINTS wheelPoint = MAKEPOINTS(lParam);
+		const POINT screenPoint = {
+			static_cast<LONG>(wheelPoint.x),
+			static_cast<LONG>(wheelPoint.y) };
+		if (TryHandleAvisoWheel(screenPoint, wheelDelta, hwnd))
 			return 0;
 		break;
+	}
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
 		if (IsEuroScopeViewSwitchKey(wParam))
 			ClearAvisoWheelRoutingState(true);
 		break;
 	case WM_SETCURSOR:
-		if (gWindowProcRadarScreen != nullptr && gWindowProcRadarScreen->HandleInsetSetCursor(hwnd))
-			return true;
+	{
+		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
+		if (radarIt != gInsetWindowRadarScreens.end())
+		{
+			for (CSMRRadar* radarScreen : radarIt->second)
+			{
+				if (radarScreen != nullptr &&
+					!radarScreen->IsShutdownRequested() &&
+					radarScreen->HandleInsetSetCursor(hwnd))
+				{
+					return TRUE;
+				}
+			}
+		}
 		// SetCursor(nullptr) explicitly hides the pointer. If cursor setup has not
 		// completed (or a custom resource failed), let EuroScope choose its cursor.
 		if (smrCursor != nullptr)
 		{
 			::SetCursor(smrCursor);
-			return true;
+			return TRUE;
 		}
 		break;
+	}
 	default:
-		return forwardMessage();
+		break;
 	}
 
-	return forwardMessage();
+	return ::DefSubclassProc(hwnd, uMsg, wParam, lParam);
 }
 
 void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
@@ -7016,59 +7001,89 @@ void EnsureInsetWindowProcHook(HWND hwnd, CSMRRadar* radarScreen)
 	if (hwnd == nullptr || !::IsWindow(hwnd) || radarScreen == nullptr)
 		return;
 
-	const WNDPROC currentProc = reinterpret_cast<WNDPROC>(
-		::GetWindowLongPtr(hwnd, GWLP_WNDPROC));
-	const auto existing = gInsetWindowSourceProcs.find(hwnd);
-	if (existing != gInsetWindowSourceProcs.end())
+	auto existing = gInsetWindowRadarScreens.find(hwnd);
+	if (existing == gInsetWindowRadarScreens.end())
 	{
-		// Another component may have subclassed above us. In that case our proc
-		// remains in its forwarding chain; installing it again would create a loop.
-		gWindowProcRadarScreen = radarScreen;
-		gInsetWindowRadarScreens[hwnd] = radarScreen;
-		return;
+		if (!::SetWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId, 0))
+		{
+			Logger::info("Inset window subclass installation failed error=" +
+				std::to_string(::GetLastError()));
+			return;
+		}
+		existing = gInsetWindowRadarScreens.emplace(
+			hwnd,
+			std::vector<CSMRRadar*>{}).first;
 	}
-	if (currentProc == nullptr || currentProc == WindowProc)
+
+	auto& radarScreens = existing->second;
+	if (std::find(radarScreens.begin(), radarScreens.end(), radarScreen) == radarScreens.end())
+		radarScreens.push_back(radarScreen);
+}
+
+void RemoveInsetWindowProcHooksForRadar(CSMRRadar* radarScreen)
+{
+	if (radarScreen == nullptr)
 		return;
 
-	::SetLastError(ERROR_SUCCESS);
-	const WNDPROC previousProc = reinterpret_cast<WNDPROC>(
-		::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc)));
-	if (previousProc == nullptr && ::GetLastError() != ERROR_SUCCESS)
+	for (auto it = gInsetWindowRadarScreens.begin(); it != gInsetWindowRadarScreens.end();)
 	{
-		Logger::info("Inset window procedure hook installation failed error=" + std::to_string(::GetLastError()));
-		return;
-	}
-	const WNDPROC sourceProc = previousProc != nullptr ? previousProc : currentProc;
-	if (sourceProc == WindowProc)
-		return;
+		auto& radarScreens = it->second;
+		radarScreens.erase(
+			std::remove(radarScreens.begin(), radarScreens.end(), radarScreen),
+			radarScreens.end());
+		if (!radarScreens.empty())
+		{
+			++it;
+			continue;
+		}
 
-	gInsetWindowSourceProcs.emplace(hwnd, sourceProc);
-	gInsetWindowRadarScreens[hwnd] = radarScreen;
-	gWindowProcRadarScreen = radarScreen;
+		const HWND hwnd = it->first;
+		if (hwnd == nullptr || !::IsWindow(hwnd) ||
+			::RemoveWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId))
+		{
+			it = gInsetWindowRadarScreens.erase(it);
+			continue;
+		}
+
+		// Keep the empty registry entry so runtime unload remains blocked while
+		// Windows may still call this DLL through a live subclass callback.
+		Logger::info("Inset window subclass removal failed error=" +
+			std::to_string(::GetLastError()));
+		++it;
+	}
 }
 
 void RestoreInsetWindowProcHooks()
 {
-	for (const auto& entry : gInsetWindowSourceProcs)
+	for (auto it = gInsetWindowRadarScreens.begin(); it != gInsetWindowRadarScreens.end();)
 	{
-		HWND hwnd = entry.first;
-		if (hwnd == nullptr || !::IsWindow(hwnd))
+		const HWND hwnd = it->first;
+		if (hwnd == nullptr || !::IsWindow(hwnd) ||
+			::RemoveWindowSubclass(hwnd, InsetWindowSubclassProc, kInsetWindowSubclassId))
+		{
+			it = gInsetWindowRadarScreens.erase(it);
 			continue;
-		const WNDPROC currentProc = reinterpret_cast<WNDPROC>(
-			::GetWindowLongPtr(hwnd, GWLP_WNDPROC));
-		if (currentProc == WindowProc)
-			::SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(entry.second));
+		}
+
+		Logger::info("Inset window subclass removal failed error=" +
+			std::to_string(::GetLastError()));
+		++it;
 	}
-	gInsetWindowSourceProcs.clear();
-	gInsetWindowRadarScreens.clear();
 }
 
 bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 {
-	if (!gAvisoWheelRoutingEnabled || gWindowProcRadarScreen == nullptr || wheelDelta == 0)
+	if (wheelDelta == 0)
 		return false;
 
-	return gWindowProcRadarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd);
+	for (CSMRRadar* radarScreen : RadarScreensOpened)
+	{
+		if (radarScreen == nullptr || radarScreen->IsShutdownRequested())
+			continue;
+		if (radarScreen->HandleAvisoMouseWheelAtScreenPoint(screenPoint, wheelDelta, sourceHwnd))
+			return true;
+	}
+	return false;
 }
 
 LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
@@ -7076,7 +7091,7 @@ LRESULT CALLBACK MouseMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 	if (code >= 0 && IsMouseButtonDownMessage(wParam))
 		ClearAvisoWheelRoutingState();
 
-	if (code >= 0 && gWindowProcRadarScreen != nullptr && wParam == WM_MOUSEWHEEL && lParam != 0)
+	if (code >= 0 && wParam == WM_MOUSEWHEEL && lParam != 0)
 	{
 		MOUSEHOOKSTRUCTEX* mouseData = reinterpret_cast<MOUSEHOOKSTRUCTEX*>(lParam);
 		const int wheelDelta = static_cast<short>(HIWORD(mouseData->mouseData));
@@ -7101,10 +7116,8 @@ LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 
 void EnsureAvisoWheelHooks(CSMRRadar* radarScreen)
 {
-	if (radarScreen == nullptr)
+	if (radarScreen == nullptr || radarScreen->IsShutdownRequested())
 		return;
-
-	gWindowProcRadarScreen = radarScreen;
 
 	const DWORD currentThreadId = ::GetCurrentThreadId();
 	if (gThreadMouseHook != nullptr && gThreadMouseHookThreadId != currentThreadId)
@@ -7220,7 +7233,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 				0,
 				LR_SHARED));
 			if (loadedCursor != nullptr)
-				smrCursor = CopyCursor(loadedCursor);
+				smrCursor = loadedCursor;
 			// EuroScope/MFC can still override the cursor occasionally; we therefore reapply it via window proc hook.
 
 		}
@@ -7552,25 +7565,10 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	// Capture all EuroScope-derived frame data once, finalize RIMCAS, and then
 	// publish an immutable scene before any viewport renders traffic.  Main,
 	// AVISO, and SRW projections consume this same snapshot later in the frame.
-	int rimcasStageTwoSpeedThreshold = 25;
-	if (CurrentConfig != nullptr)
-	{
-		const Value& profile = CurrentConfig->getActiveProfile();
-		if (profile.IsObject() && profile.HasMember("rimcas") && profile["rimcas"].IsObject())
-		{
-			const Value& rimcas = profile["rimcas"];
-			if (rimcas.HasMember("stage_two_speed_threshold_kt") && rimcas["stage_two_speed_threshold_kt"].IsInt())
-				rimcasStageTwoSpeedThreshold = rimcas["stage_two_speed_threshold_kt"].GetInt();
-			else if (rimcas.HasMember("rimcas_stage_two_speed_threshold") && rimcas["rimcas_stage_two_speed_threshold"].IsInt())
-				rimcasStageTwoSpeedThreshold = rimcas["rimcas_stage_two_speed_threshold"].GetInt();
-		}
-	}
-	rimcasStageTwoSpeedThreshold = std::clamp(rimcasStageTwoSpeedThreshold, 0, 250);
 	setRefreshStage("shared radar scene build");
 	double sceneRimcasMilliseconds = 0.0;
 	const std::shared_ptr<const VsmrScene::RadarScene> frameSceneOwner = BuildRadarScene(
 		isLVP,
-		rimcasStageTwoSpeedThreshold,
 		&sceneRimcasMilliseconds);
 	const VsmrScene::RadarScene* frameScene = frameSceneOwner.get();
 	perfRimcasMs += sceneRimcasMilliseconds;
@@ -8484,8 +8482,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 	SyncLinkedAvisoSecondaryToMainView();
 
-	bool insetRenderedForWheel = false;
-	gAvisoWheelRoutingEnabled = false;
 	CInsetWindow* activeInsetWindow = nullptr;
 	for (const auto& display : appWindowDisplays)
 	{
@@ -8528,8 +8524,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			perfAvisoInsetMs += insetElapsedMs;
 		perfRdfMs += appWindow->GetLastRdfRenderMilliseconds();
 		perfInsetChromeMs += appWindow->GetLastChromeRenderMilliseconds();
-		if (appWindow->m_AvisoScreenAreaValid)
-			insetRenderedForWheel = true;
 	};
 	for (std::map<int, bool>::iterator it = appWindowDisplays.begin(); it != appWindowDisplays.end(); ++it)
 	{
@@ -8549,8 +8543,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		activeInsetWindow->RenderSnapPreview(graphics);
 	if (foregroundInsetWindow != nullptr)
 		renderInsetWindow(foregroundInsetWindow);
-	gAvisoWheelRoutingEnabled = insetRenderedForWheel;
-
 	setRefreshStage("fps overlay");
 	if (ShowFps)
 	{
@@ -8745,13 +8737,8 @@ void CSMRRadar::EuroScopePlugInExitCustom()
 
 		BeginShutdown();
 		CloseVsmrControlCenterWindow();
-		CloseAvisoEditorWindow();
-		DestroyAvisoEditorWindow();
-		CloseProfileEditorWindow(false);
-		DestroyProfileEditorWindow();
 		DestroyVsmrControlCenterWindow();
 
 		RestoreInsetWindowProcHooks();
 		UnhookAvisoThreadHooks();
-		gWindowProcRadarScreen = nullptr;
 }

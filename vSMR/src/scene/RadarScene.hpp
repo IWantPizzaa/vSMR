@@ -159,7 +159,6 @@ namespace VsmrScene
 		bool arrival = false;
 		bool towerModeArrival = false;
 		bool airborne = false;
-		bool passesRadarFilter = false;
 		bool passesDisplayMode = false;
 		bool iconVisible = false;
 		bool tagVisible = false;

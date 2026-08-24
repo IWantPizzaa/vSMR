@@ -14,6 +14,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$AvisoFileNamePattern = '^[A-Za-z0-9]{4}(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$'
 
 function Resolve-NonRootDirectoryPath([string]$Path, [string]$Description) {
     if ([string]::IsNullOrWhiteSpace($Path)) { throw "$Description cannot be empty." }
@@ -88,6 +89,7 @@ Assert-File (Join-Path $PackageData "RELEASE-METADATA.json")
 Assert-File (Join-Path $PackageData "SHA256SUMS.txt")
 Assert-File (Join-Path $PackageData "AVISO-UPDATE-POLICY.json")
 Assert-File (Join-Path $PackageData "AVISO-INVENTORY.json")
+Assert-File (Join-Path $PackageData "airports_hp.json")
 Assert-File (Join-Path $PackageData "Runtime\vSMR.Runtime.dll")
 Assert-File (Join-Path $PackageData "CrashReporter\vSMRCrashHandler.dll")
 Assert-File (Join-Path $PackageData "Tools\restore_vsmr_backup.ps1")
@@ -149,7 +151,7 @@ function Assert-AvisoFileName([string]$Name) {
         [System.IO.Path]::IsPathRooted($Name) -or
         [System.IO.Path]::GetFileName($Name) -ne $Name -or
         $Name.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
-        -not $Name.EndsWith('.geojson', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $Name -notmatch $AvisoFileNamePattern) {
         throw "Unsafe AVISO update filename: $Name"
     }
 }
@@ -256,6 +258,17 @@ $installedLoaderHash = if ($preserveTopLevelLoader) {
 $installedLoaderVersion = if ($preserveTopLevelLoader) {
     [string](([System.Diagnostics.FileVersionInfo]::GetVersionInfo($destinationDll)).FileVersion)
 } else { $packageLoaderVersion }
+$minimumLoaderVersionText = [string]$releaseMetadata.automatic_update.minimum_loader_version
+$minimumLoaderVersion = $null
+$parsedInstalledLoaderVersion = $null
+if (-not [Version]::TryParse($minimumLoaderVersionText, [ref]$minimumLoaderVersion)) {
+    throw "Package release metadata has an invalid minimum loader version."
+}
+if ($preserveTopLevelLoader -and
+    (-not [Version]::TryParse($installedLoaderVersion, [ref]$parsedInstalledLoaderVersion) -or
+        $parsedInstalledLoaderVersion -lt $minimumLoaderVersion)) {
+    throw "manual_loader_update_required: installed loader '$installedLoaderVersion' is older than required '$minimumLoaderVersionText'; run a complete manual installation without -PreserveLoader."
+}
 $loaderMatchesPackage = $installedLoaderHash -eq $packageLoaderHash
 
 # Confirm before creating even a backup so -WhatIf is genuinely non-mutating.
@@ -315,7 +328,7 @@ if ($hadData -and -not $ReplaceUserData) {
         'vSMR_webUI', 'CrashReporter', 'Licenses', 'Runtime', 'Tools',
         'RELEASE-METADATA.json', 'SHA256SUMS.txt', 'INSTALLATION.json',
         'AVISO-UPDATE-POLICY.json', 'AVISO-INVENTORY.json', 'AVISO-UPDATE-REPORT.json',
-        'AVISO'
+        'airports_hp.json', 'AVISO'
     )
     foreach ($item in @(Get-ChildItem -LiteralPath $destinationData -Force)) {
         if ($immutableNames -contains $item.Name) { continue }

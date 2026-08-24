@@ -20,6 +20,7 @@ namespace
 {
 	using namespace EuroScopePlugIn;
 	using namespace VsmrScene;
+	constexpr int kRimcasStageTwoSpeedThresholdKt = 25;
 
 	std::string CopyText(const char* text)
 	{
@@ -482,7 +483,6 @@ const VsmrScene::RadarScene* CSMRRadar::GetCurrentRadarScene() const noexcept
 
 std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	bool lowVisibilityProcedures,
-	int rimcasStageTwoSpeedThreshold,
 	double* outRimcasMilliseconds)
 {
 	using namespace VsmrScene;
@@ -598,20 +598,13 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	const std::string airportUpper = ToUpperAsciiCopy(scene->airport.icao);
 	const bool proModeEnabled = displaySettings.requireAssignedSquawk;
 	const bool towerModeEnabled = displaySettings.towerFilter;
-	bool useSpeedForGates = false;
 	const rapidjson::Value* labels = nullptr;
 	const rapidjson::Value* targetsConfig = nullptr;
 	if (CurrentConfig != nullptr)
 	{
 		const rapidjson::Value& profile = CurrentConfig->getActiveProfile();
 		if (profile.IsObject() && profile.HasMember("labels") && profile["labels"].IsObject())
-		{
 			labels = &profile["labels"];
-			if (labels->HasMember("use_speed_for_gate") && (*labels)["use_speed_for_gate"].IsBool())
-				useSpeedForGates = (*labels)["use_speed_for_gate"].GetBool();
-			else if (labels->HasMember("use_aspeed_for_gate") && (*labels)["use_aspeed_for_gate"].IsBool())
-				useSpeedForGates = (*labels)["use_aspeed_for_gate"].GetBool();
-		}
 		if (profile.IsObject() && profile.HasMember("targets") && profile["targets"].IsObject())
 			targetsConfig = &profile["targets"];
 	}
@@ -712,9 +705,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.headingTrueDegrees = target.trackHeadingDegrees;
 		target.headingProbe = CopyPosition(Haversine(position.GetPosition(), target.headingTrueDegrees, 50.0));
 		target.selected = !selectedCallsign.empty() && selectedCallsign == callsign;
-		target.passesRadarFilter = isVisible(radarTarget);
-		if (target.passesRadarFilter)
-			++scene->stats.radarFilteredTargetCount;
+		// Retain the historical diagnostics counter name, but all valid targets
+		// are now eligible; hidden profile filters no longer exist.
+		++scene->stats.radarFilteredTargetCount;
 
 		++scene->stats.sdkFlightPlanLookups;
 		const CFlightPlan flightPlan = measureSdkLookup(
@@ -744,16 +737,15 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		if (proModeEnabled && !hasAssignedSquawk)
 			target.correlated = false;
 		const bool keepIconForSquawkMismatch = proModeEnabled && (wrongSquawk || !hasAssignedSquawk);
-		target.iconVisible = target.passesRadarFilter &&
-			(target.correlated || target.reportedGroundSpeed >= 1 || keepIconForSquawkMismatch);
+		target.iconVisible =
+			target.correlated || target.reportedGroundSpeed >= 1 || keepIconForSquawkMismatch;
 		if (target.iconVisible)
 			++scene->stats.iconTargetCount;
 
 		target.towerModeGroundStateText = target.groundStateText;
 		target.towerModeArrival = target.hasFlightPlan && !airportUpper.empty() &&
 			_stricmp(target.destination.c_str(), airportUpper.c_str()) == 0;
-		const bool needsCorrelatedFlightPlan = towerModeEnabled ||
-			(RimcasInstance != nullptr && target.passesRadarFilter);
+		const bool needsCorrelatedFlightPlan = towerModeEnabled || RimcasInstance != nullptr;
 		if (needsCorrelatedFlightPlan)
 		{
 			++scene->stats.sdkCorrelatedFlightPlanLookups;
@@ -769,7 +761,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			}
 		}
 
-		if (RimcasInstance != nullptr && target.passesRadarFilter)
+		// Safety processing is deliberately independent of display visibility.
+		// A profile/display setting must never hide a target from RIMCAS.
+		if (RimcasInstance != nullptr)
 		{
 			const auto rimcasTargetStart = Clock::now();
 			RimcasInstance->OnRefresh(target, this);
@@ -802,7 +796,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.rimcas.onRunway,
 			displaySettings,
 			capturedVacdmData);
-		bool tagVisible = target.passesRadarFilter && target.passesDisplayMode;
+		bool tagVisible = target.passesDisplayMode;
 		if (proModeEnabled && (!hasAssignedSquawk || wrongSquawk))
 			tagVisible = false;
 		if (!target.correlated && target.reportedGroundSpeed < 3)
@@ -827,7 +821,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.correlated,
 			proModeEnabled,
 			scene->airport.transitionAltitude,
-			useSpeedForGates,
 			scene->airport.icao,
 			callsign,
 			capturedVacdmData,
@@ -908,7 +901,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (RimcasInstance != nullptr)
 	{
 		const auto rimcasEndStart = Clock::now();
-		RimcasInstance->OnRefreshEnd(*scene, std::clamp(rimcasStageTwoSpeedThreshold, 0, 250));
+		RimcasInstance->OnRefreshEnd(*scene, kRimcasStageTwoSpeedThresholdKt);
 		rimcasMilliseconds += std::chrono::duration<double, std::milli>(Clock::now() - rimcasEndStart).count();
 	}
 	if (outRimcasMilliseconds != nullptr)
@@ -946,22 +939,6 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		}
 		return found->second;
 	};
-	bool airborneUseDepartureArrivalColoring = false;
-	if (labels != nullptr)
-	{
-		if (labels->HasMember("use_departure_arrival_coloring") && (*labels)["use_departure_arrival_coloring"].IsBool())
-		{
-			// The current top-level setting is authoritative when present. The nested
-			// value remains a compatibility fallback for older profiles only.
-			airborneUseDepartureArrivalColoring = (*labels)["use_departure_arrival_coloring"].GetBool();
-		}
-		else if (labels->HasMember("airborne") && (*labels)["airborne"].IsObject() &&
-			(*labels)["airborne"].HasMember("use_departure_arrival_coloring") &&
-			(*labels)["airborne"]["use_departure_arrival_coloring"].IsBool())
-		{
-			airborneUseDepartureArrivalColoring = (*labels)["airborne"]["use_departure_arrival_coloring"].GetBool();
-		}
-	}
 	auto isColorObject = [](const rapidjson::Value& value) -> bool
 	{
 		return value.IsObject() && value.HasMember("r") && value["r"].IsInt() &&
@@ -1045,10 +1022,10 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			colorTypeKey = "arrival";
 			break;
 		case TargetRole::AirborneArrival:
-			colorTypeKey = airborneUseDepartureArrivalColoring ? "arrival" : "airborne";
+			colorTypeKey = "airborne";
 			break;
 		case TargetRole::AirborneDeparture:
-			colorTypeKey = airborneUseDepartureArrivalColoring ? "departure" : "airborne";
+			colorTypeKey = "airborne";
 			break;
 		case TargetRole::Uncorrelated:
 			colorTypeKey = "uncorrelated";

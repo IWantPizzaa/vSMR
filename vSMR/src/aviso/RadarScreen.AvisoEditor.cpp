@@ -1,7 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
-#include "aviso/AvisoEditorDialog.hpp"
 #include "insets/InsetWindow.hpp"
 
 #include <cctype>
@@ -49,24 +48,6 @@ namespace
 		}
 	}
 
-	CRect BuildDefaultAvisoEditorWindowRect()
-	{
-		CRect fallback(120, 120, 1060, 740);
-		CWnd* mainWindow = AfxGetMainWnd();
-		if (mainWindow != nullptr && ::IsWindow(mainWindow->GetSafeHwnd()))
-		{
-			CRect mainRect;
-			mainWindow->GetWindowRect(&mainRect);
-			if (!mainRect.IsRectEmpty())
-			{
-				fallback.left = mainRect.left + 80;
-				fallback.top = mainRect.top + 80;
-				fallback.right = fallback.left + 940;
-				fallback.bottom = fallback.top + 620;
-			}
-		}
-		return fallback;
-	}
 }
 
 std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const
@@ -182,66 +163,11 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 		AvisoGeoJsonLoadAttempted = previousLoadAttempted;
 		AvisoGeoJsonLastStatTick = previousLastStatTick;
 	}
-	if (AvisoEditorDialog && ::IsWindow(AvisoEditorDialog->GetSafeHwnd()) && AvisoEditorDialog->IsWindowVisible())
-		AvisoEditorDialog->SyncFromRadar();
 	RequestRefresh();
 	return loaded;
-}
-
-bool CSMRRadar::EnsureAvisoEditorWindowCreated()
-{
-	if (AvisoEditorDialog && ::IsWindow(AvisoEditorDialog->GetSafeHwnd()))
-	{
-		AvisoEditorDialog->SetOwner(this);
-		return true;
-	}
-
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-
-	AvisoEditorDialog = std::make_unique<CAvisoEditorDialog>(this, AfxGetMainWnd());
-	if (!AvisoEditorDialog->Create(CAvisoEditorDialog::IDD, AfxGetMainWnd()))
-	{
-		AvisoEditorDialog.reset();
-		return false;
-	}
-
-	const CRect windowRect = BuildDefaultAvisoEditorWindowRect();
-	AvisoEditorDialog->SetWindowPos(
-		nullptr,
-		windowRect.left,
-		windowRect.top,
-		max(820, windowRect.Width()),
-		max(520, windowRect.Height()),
-		SWP_NOZORDER | SWP_NOACTIVATE);
-	AvisoEditorDialog->ShowWindow(SW_HIDE);
-	return true;
 }
 
 void CSMRRadar::OpenAvisoEditorWindow()
 {
 	OpenVsmrControlCenterWindow("aviso");
-}
-
-void CSMRRadar::CloseAvisoEditorWindow()
-{
-	if (!AvisoEditorDialog || !::IsWindow(AvisoEditorDialog->GetSafeHwnd()))
-		return;
-
-	AvisoEditorDialog->ShowWindow(SW_HIDE);
-}
-
-void CSMRRadar::DestroyAvisoEditorWindow()
-{
-	if (!AvisoEditorDialog)
-		return;
-
-	if (::IsWindow(AvisoEditorDialog->GetSafeHwnd()))
-		AvisoEditorDialog->DestroyWindow();
-
-	AvisoEditorDialog.reset();
-}
-
-void CSMRRadar::OnAvisoEditorWindowClosed()
-{
-	RequestRefresh();
 }

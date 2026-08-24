@@ -6,18 +6,22 @@ param(
     [string]$ArchivePath,
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
     [string]$ExpectedVersion = "2.0.0-beta.4",
-    [string]$ChecksumPath = "",
     [string]$UpdateManifestPath = "",
     [string]$UpdateSignaturePath = "",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$ExpectedLoaderVersion = "1.0.0",
+    [string]$ExpectedLoaderVersion = "1.1.0",
     [ValidateRange(1, 65535)]
     [int]$ExpectedRuntimeAbi = 1,
     [switch]$RequireSignature,
-    [switch]$AllowNonPublishable
+    [switch]$AllowNonPublishable,
+    [string]$PublishedBeta3ArchivePath = "",
+    [switch]$RequirePublishedBeta3Migration
 )
 
 $ErrorActionPreference = "Stop"
+$AvisoFileNamePattern = '^(?<airport>[A-Za-z0-9]{4})(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$'
+$PublishedBeta3ArchiveSha256 = '348dc981253badabd4a697ff2acfe2536be6af6beb31fca20c694fdaa48c6905'
+$PublishedBeta3SourceCommit = '385b8ee4742eb6cccfbf9b96d17932abba204638'
 if ($env:VSMR_ALLOW_NONPUBLISHABLE -eq '1') { $AllowNonPublishable = $true }
 $ArchivePath = [System.IO.Path]::GetFullPath($ArchivePath)
 if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
@@ -26,24 +30,7 @@ if (-not (Test-Path -LiteralPath $ArchivePath -PathType Leaf)) {
 if ([System.IO.Path]::GetFileName($ArchivePath) -ne "vSMR-$ExpectedVersion.zip") {
     throw "Release archive must be named vSMR-$ExpectedVersion.zip."
 }
-if ([string]::IsNullOrWhiteSpace($ChecksumPath)) {
-    $ChecksumPath = "$ArchivePath.sha256"
-}
-$ChecksumPath = [System.IO.Path]::GetFullPath($ChecksumPath)
-if (-not (Test-Path -LiteralPath $ChecksumPath -PathType Leaf)) {
-    throw "Archive checksum file not found: $ChecksumPath"
-}
-$checksumLine = ([System.IO.File]::ReadAllText($ChecksumPath)).Trim()
-if ($checksumLine -notmatch '^([0-9a-fA-F]{64})  (.+)$') {
-    throw "Invalid outer SHA-256 checksum format: $ChecksumPath"
-}
-if ($Matches[2] -ne [System.IO.Path]::GetFileName($ArchivePath)) {
-    throw "Outer checksum names '$($Matches[2])' instead of '$([System.IO.Path]::GetFileName($ArchivePath))'."
-}
 $archiveHash = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash
-if ($archiveHash -ne $Matches[1]) {
-    throw "Outer SHA-256 checksum does not match the release archive."
-}
 if ($env:VSMR_REQUIRE_SIGNATURE -eq '1' -or $env:VSMR_REQUIRE_SIGNATURE -eq 'true') {
     $RequireSignature = $true
 }
@@ -365,6 +352,7 @@ try {
         'vSMR_webUI\defaults\vSMR_Profiles.json',
         'AVISO-UPDATE-POLICY.json',
         'AVISO-INVENTORY.json',
+        'airports_hp.json',
         'AVISO\LFPG.geojson',
         'Runtime\vSMR.Runtime.dll',
         'CrashReporter\vSMRCrashHandler.dll',
@@ -391,11 +379,66 @@ try {
     }
     $nonCanonicalAvisoFiles = @(
         $packagedAvisoFiles | Where-Object {
-            $_.Name -notmatch '^[A-Za-z0-9]{4}\.geojson$'
+            $_.Name -notmatch $AvisoFileNamePattern
         }
     )
     if ($nonCanonicalAvisoFiles.Count -ne 0) {
         throw "The package contains noncanonical AVISO defaults: $($nonCanonicalAvisoFiles.Name -join ', ')."
+    }
+    foreach ($file in $packagedAvisoFiles) {
+        $nameMatch = [Regex]::Match($file.Name, $AvisoFileNamePattern)
+        if (-not $nameMatch.Success) {
+            throw "The package contains an unsafe AVISO filename: $($file.Name)."
+        }
+        try {
+            $document = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        }
+        catch {
+            throw "Packaged AVISO $($file.Name) is not valid JSON: $($_.Exception.Message)"
+        }
+        $expectedAirport = $nameMatch.Groups['airport'].Value.ToUpperInvariant()
+        if ($document -isnot [pscustomobject] -or
+            [string]$document.type -ne 'FeatureCollection' -or
+            $document.features -isnot [System.Array] -or
+            $document.styles -isnot [pscustomobject] -or
+            [int]$document.metadata.schema_version -ne 2 -or
+            [string]$document.metadata.airport -ne $expectedAirport -or
+            [int]$document.metadata.feature_count -ne @($document.features).Count -or
+            [int]$document.metadata.style_count -ne @($document.styles.PSObject.Properties).Count) {
+            throw "Packaged AVISO $($file.Name) is not a consistent vSMR schema-2 FeatureCollection."
+        }
+        foreach ($feature in @($document.features)) {
+            $properties = $feature.properties
+            if ($file.Name -ceq 'LFMN.geojson' -and
+                $null -ne $properties -and
+                $properties.PSObject.Properties.Name -contains 'palette-overrides') {
+                throw "LFMN must render identically in Day and Night modes and cannot contain feature palette overrides."
+            }
+            if ($null -eq $properties -or
+                -not ($properties.PSObject.Properties.Name -contains 'vsmr_group_ids')) {
+                continue
+            }
+            if ($properties.vsmr_group_ids -isnot [System.Array]) {
+                throw "Packaged AVISO $($file.Name) feature '$($feature.id)' has non-array vsmr_group_ids."
+            }
+            $groupIds = @($properties.vsmr_group_ids)
+            $invalidGroupIds = @($groupIds | Where-Object {
+                $_ -isnot [string] -or [string]::IsNullOrWhiteSpace([string]$_)
+            })
+            if ($invalidGroupIds.Count -ne 0 -or
+                @($groupIds | Sort-Object -Unique).Count -ne $groupIds.Count) {
+                throw "Packaged AVISO $($file.Name) feature '$($feature.id)' has invalid vsmr_group_ids; only unique non-empty strings are allowed."
+            }
+        }
+        if ($file.Name -ceq 'LFMN.geojson') {
+            $lfmnOverrides = @($document.styles.PSObject.Properties | Where-Object {
+                $null -ne $_.Value.paint -and
+                $_.Value.paint.PSObject.Properties.Name -contains 'palette-overrides'
+            })
+            if ($lfmnOverrides.Count -ne 0) {
+                throw "LFMN must render identically in Day and Night modes and cannot contain palette overrides."
+            }
+        }
     }
 
     $avisoPolicy = Get-Content -LiteralPath (Join-Path $dataPath 'AVISO-UPDATE-POLICY.json') -Raw | ConvertFrom-Json
@@ -415,7 +458,7 @@ try {
     $avisoPolicyReplace = @($avisoPolicy.aviso.replace | ForEach-Object { [string]$_ })
     $avisoPolicyDelete = @($avisoPolicy.aviso.delete | ForEach-Object { [string]$_ })
     foreach ($name in @($avisoPolicyReplace) + @($avisoPolicyDelete)) {
-        if ($name -notmatch '^[A-Za-z0-9]{4}\.geojson$') {
+        if ($name -notmatch $AvisoFileNamePattern) {
             throw "The packaged AVISO update policy contains unsafe or noncanonical filename '$name'."
         }
     }
@@ -460,7 +503,7 @@ try {
     foreach ($property in $inventoryProperties) {
         $name = [string]$property.Name
         $expectedHash = [string]$property.Value
-        if ($name -notmatch '^[A-Za-z0-9]{4}\.geojson$' -or $expectedHash -notmatch '^[0-9a-f]{64}$') {
+        if ($name -notmatch $AvisoFileNamePattern -or $expectedHash -notmatch '^[0-9a-f]{64}$') {
             throw "The AVISO inventory entry '$name' is invalid."
         }
         $file = $packagedAvisoFiles | Where-Object { $_.Name -ceq $name } | Select-Object -First 1
@@ -475,9 +518,11 @@ try {
     if ($ExpectedVersion -eq '2.0.0-beta.4' -and
         ([string]$avisoPolicy.aviso.update -ne 'all' -or
             [string]$avisoPolicy.aviso.modified_files -ne 'replace' -or
-            $avisoPolicyDelete.Count -ne 1 -or
-            $avisoPolicyDelete[0] -ne 'LFMM.geojson')) {
-        throw 'Beta 4 must replace all AVISOs and delete LFMM.geojson for the Night/Day schema migration.'
+            $avisoPolicyDelete.Count -ne 2 -or
+            $avisoPolicyDelete -notcontains 'LFMM.geojson' -or
+            $avisoPolicyDelete -notcontains 'LFPG_Dyna_fixed.geojson' -or
+            $packagedAvisoFileNames -notcontains 'LFPG_Custom.geojson')) {
+        throw 'Beta 4 must bundle LFPG_Custom.geojson, replace all AVISOs, and delete LFMM.geojson plus LFPG_Dyna_fixed.geojson for the Night/Day schema migration.'
     }
 
     $forbidden = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -File | Where-Object {
@@ -891,6 +936,81 @@ try {
         }
     }
 
+    # A publishable beta.4 release must also migrate the exact beta.3 ZIP that
+    # was published on GitHub. Its digest and internal source provenance are
+    # pinned so a mutable/replaced release asset cannot silently become the
+    # migration fixture. Ordinary offline validation keeps the synthetic test
+    # below; the release driver makes this real fixture mandatory.
+    if ($RequirePublishedBeta3Migration -and [string]::IsNullOrWhiteSpace($PublishedBeta3ArchivePath)) {
+        throw "The published beta.3 migration gate requires -PublishedBeta3ArchivePath."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PublishedBeta3ArchivePath)) {
+        $PublishedBeta3ArchivePath = [System.IO.Path]::GetFullPath($PublishedBeta3ArchivePath)
+        Assert-File $PublishedBeta3ArchivePath
+        $publishedBeta3Hash = (Get-FileHash -LiteralPath $PublishedBeta3ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($publishedBeta3Hash -ne $PublishedBeta3ArchiveSha256) {
+            throw "Published beta.3 fixture hash mismatch: expected $PublishedBeta3ArchiveSha256, got $publishedBeta3Hash."
+        }
+        $publishedBeta3Install = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-published-beta3-migration-" + [Guid]::NewGuid().ToString("N"))
+        [System.IO.Directory]::CreateDirectory($publishedBeta3Install) | Out-Null
+        try {
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($PublishedBeta3ArchivePath, $publishedBeta3Install)
+            $beta3Data = Join-Path $publishedBeta3Install 'vSMR_Data'
+            $beta3Loader = Join-Path $publishedBeta3Install 'vSMR.dll'
+            $beta3MetadataPath = Join-Path $beta3Data 'RELEASE-METADATA.json'
+            $beta3Lfpg = Join-Path $beta3Data 'AVISO\LFPG.geojson'
+            $beta3Lfmm = Join-Path $beta3Data 'AVISO\LFMM.geojson'
+            $beta3Dyna = Join-Path $beta3Data 'AVISO\LFPG_Dyna_fixed.geojson'
+            foreach ($requiredBeta3Path in @(
+                $beta3Loader, $beta3MetadataPath, $beta3Lfpg, $beta3Lfmm, $beta3Dyna,
+                (Join-Path $beta3Data 'SHA256SUMS.txt'))) {
+                Assert-File $requiredBeta3Path
+            }
+            if ((Test-Path -LiteralPath (Join-Path $beta3Data 'AVISO-INVENTORY.json')) -or
+                (Test-Path -LiteralPath (Join-Path $beta3Data 'airports_hp.json'))) {
+                throw "Published beta.3 fixture no longer matches its legacy inventory/catalog layout."
+            }
+            $beta3Metadata = Get-Content -LiteralPath $beta3MetadataPath -Raw | ConvertFrom-Json
+            $beta3LoaderHash = (Get-FileHash -LiteralPath $beta3Loader -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ([string]$beta3Metadata.product -ne 'vSMR' -or
+                [string]$beta3Metadata.version -ne '2.0.0-beta.3' -or
+                [string]$beta3Metadata.git_commit -ne $PublishedBeta3SourceCommit -or
+                [string]$beta3Metadata.loader.version -ne '1.0.0' -or
+                [string]$beta3Metadata.loader.sha256 -ne $beta3LoaderHash -or
+                [string]$beta3Metadata.automatic_update.minimum_loader_version -ne '1.0.0' -or
+                [bool]$beta3Metadata.automatic_update.publishable) {
+                throw "Published beta.3 fixture has unexpected internal release metadata."
+            }
+
+            [System.IO.File]::WriteAllText($beta3Lfpg, 'locally-modified-published-beta3-lfpg')
+            & (Join-Path $dataPath 'Tools\install_vsmr.ps1') `
+                -DestinationDirectory $publishedBeta3Install `
+                -Confirm:$false
+            $publishedMigrationReport = Get-Content -LiteralPath (Join-Path $beta3Data 'AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+            $publishedInstallation = Get-Content -LiteralPath (Join-Path $beta3Data 'INSTALLATION.json') -Raw | ConvertFrom-Json
+            $publishedRollbackLoader = Join-Path ([string]$publishedInstallation.rollback_backup) 'vSMR.dll'
+            if ((Get-FileHash -LiteralPath $beta3Loader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLoaderHash -or
+                [bool]$publishedInstallation.loader_preserved -or
+                [string]$publishedMigrationReport.baseline_source -ne 'legacy_sha256sums' -or
+                (Test-Path -LiteralPath $beta3Lfmm) -or
+                (Test-Path -LiteralPath $beta3Dyna) -or
+                @($publishedMigrationReport.updated) -notcontains 'LFPG.geojson' -or
+                @($publishedMigrationReport.added) -notcontains 'LFPG_Custom.geojson' -or
+                @($publishedMigrationReport.deleted) -notcontains 'LFMM.geojson' -or
+                @($publishedMigrationReport.deleted) -notcontains 'LFPG_Dyna_fixed.geojson' -or
+                (Get-FileHash -LiteralPath (Join-Path $beta3Data 'airports_hp.json') -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+                    (Get-FileHash -LiteralPath (Join-Path $dataPath 'airports_hp.json') -Algorithm SHA256).Hash.ToLowerInvariant() -or
+                (Get-FileHash -LiteralPath $publishedRollbackLoader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $beta3LoaderHash) {
+                throw "The exact published beta.3 package did not complete the mandatory beta.4 loader, AVISO, catalog, and obsolete-file migration."
+            }
+        }
+        finally {
+            if (Test-Path -LiteralPath $publishedBeta3Install) {
+                Remove-Item -LiteralPath $publishedBeta3Install -Recurse -Force
+            }
+        }
+    }
+
     # Verify AVISO release migrations and the same-version manual reload path
     # in an isolated installation with a real inventory baseline.
     $avisoInstallTarget = Join-Path ([System.IO.Path]::GetTempPath()) ("vsmr-aviso-install-verify-" + [Guid]::NewGuid().ToString("N"))
@@ -899,8 +1019,12 @@ try {
         $installHelper = Join-Path $dataPath "Tools\install_vsmr.ps1"
         $packagedLfpg = Join-Path $dataPath "AVISO\LFPG.geojson"
         $installedLfpg = Join-Path $avisoInstallTarget "vSMR_Data\AVISO\LFPG.geojson"
+        $packagedHoldingPoints = Join-Path $dataPath "airports_hp.json"
+        $installedHoldingPoints = Join-Path $avisoInstallTarget "vSMR_Data\airports_hp.json"
+        $installedLoader = Join-Path $avisoInstallTarget "vSMR.dll"
         $customAviso = Join-Path $avisoInstallTarget "vSMR_Data\AVISO\CUSTOM.geojson"
         $packagedLfpgHash = (Get-FileHash -LiteralPath $packagedLfpg -Algorithm SHA256).Hash.ToLowerInvariant()
+        $packagedHoldingPointHash = (Get-FileHash -LiteralPath $packagedHoldingPoints -Algorithm SHA256).Hash.ToLowerInvariant()
 
         & $installHelper -DestinationDirectory $avisoInstallTarget -Confirm:$false
         if ((Get-FileHash -LiteralPath $installedLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgHash) {
@@ -908,15 +1032,53 @@ try {
         }
 
         if ($ExpectedVersion -eq '2.0.0-beta.4') {
+            # Deterministic beta.3 installation fixture. The published beta.3
+            # package contained both obsolete maps and a 1.0.0 loader, but did
+            # not contain LFPG_Custom or the package-owned holding-point catalog.
+            $packagedLfpgCustom = Join-Path $dataPath "AVISO\LFPG_Custom.geojson"
+            $installedLfpgCustom = Join-Path $avisoInstallTarget "vSMR_Data\AVISO\LFPG_Custom.geojson"
+            $packagedLfpgCustomHash = (Get-FileHash -LiteralPath $packagedLfpgCustom -Algorithm SHA256).Hash.ToLowerInvariant()
             [System.IO.File]::WriteAllText($installedLfpg, 'locally-modified-before-migration')
-            [System.IO.File]::WriteAllText((Join-Path $avisoInstallTarget 'vSMR_Data\AVISO\LFMM.geojson'), 'obsolete-map')
+            $legacyLfmm = Join-Path $avisoInstallTarget 'vSMR_Data\AVISO\LFMM.geojson'
+            $legacyDyna = Join-Path $avisoInstallTarget 'vSMR_Data\AVISO\LFPG_Dyna_fixed.geojson'
+            [System.IO.File]::WriteAllText($legacyLfmm, 'beta3-official-lfmm')
+            [System.IO.File]::WriteAllText($legacyDyna, 'beta3-official-lfpg-dyna-fixed')
+            if (Test-Path -LiteralPath $installedLfpgCustom -PathType Leaf) {
+                Remove-Item -LiteralPath $installedLfpgCustom -Force
+            }
+            $legacyInventoryPath = Join-Path $avisoInstallTarget 'vSMR_Data\AVISO-INVENTORY.json'
+            $legacyInventory = Get-Content -LiteralPath $legacyInventoryPath -Raw | ConvertFrom-Json
+            $legacyInventory.release = '2.0.0-beta.3'
+            $legacyInventory.files.PSObject.Properties.Remove('LFPG_Custom.geojson')
+            $legacyInventory.files | Add-Member -MemberType NoteProperty -Name 'LFMM.geojson' `
+                -Value (Get-FileHash -LiteralPath $legacyLfmm -Algorithm SHA256).Hash.ToLowerInvariant() -Force
+            $legacyInventory.files | Add-Member -MemberType NoteProperty -Name 'LFPG_Dyna_fixed.geojson' `
+                -Value (Get-FileHash -LiteralPath $legacyDyna -Algorithm SHA256).Hash.ToLowerInvariant() -Force
+            Write-Utf8NoBom $legacyInventoryPath ((ConvertTo-Json $legacyInventory -Depth 10) + "`n")
+            Write-Utf8NoBom $installedHoldingPoints "{`"fixture`":`"beta.3 catalog`"}`n"
+            [System.IO.File]::WriteAllText($installedLoader, 'deterministic-beta3-loader-1.0.0')
+
+            $beta3LoaderVersion = [Version]'1.0.0'
+            $beta4MinimumLoaderVersion = [Version]([string]$updateManifest.minimum_loader_version)
+            if ($beta3LoaderVersion -ge $beta4MinimumLoaderVersion -or
+                [string]$updateManifest.loader.version -ne '1.1.0') {
+                throw "Beta 4 does not enforce the mandatory manual migration from the beta.3 loader."
+            }
             & $installHelper -DestinationDirectory $avisoInstallTarget -Confirm:$false
             $migrationReport = Get-Content -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO-UPDATE-REPORT.json') -Raw | ConvertFrom-Json
+            $migrationInstallation = Get-Content -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\INSTALLATION.json') -Raw | ConvertFrom-Json
             if ((Get-FileHash -LiteralPath $installedLfpg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgHash -or
-                (Test-Path -LiteralPath (Join-Path $avisoInstallTarget 'vSMR_Data\AVISO\LFMM.geojson')) -or
+                (Get-FileHash -LiteralPath $installedLfpgCustom -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLfpgCustomHash -or
+                (Get-FileHash -LiteralPath $installedHoldingPoints -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedHoldingPointHash -or
+                (Get-FileHash -LiteralPath $installedLoader -Algorithm SHA256).Hash.ToLowerInvariant() -ne $packagedLoaderHash -or
+                [bool]$migrationInstallation.loader_preserved -or
+                (Test-Path -LiteralPath $legacyLfmm) -or
+                (Test-Path -LiteralPath $legacyDyna) -or
                 @($migrationReport.updated) -notcontains 'LFPG.geojson' -or
-                @($migrationReport.deleted) -notcontains 'LFMM.geojson') {
-                throw "Beta 4 did not perform its mandatory all-map migration and LFMM deletion."
+                @($migrationReport.added) -notcontains 'LFPG_Custom.geojson' -or
+                @($migrationReport.deleted) -notcontains 'LFMM.geojson' -or
+                @($migrationReport.deleted) -notcontains 'LFPG_Dyna_fixed.geojson') {
+                throw "Beta 4 did not perform its mandatory manual-loader, all-map, catalog, and obsolete-map migration."
             }
         }
 
@@ -967,6 +1129,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $dataPath 'Tools\install_vsmr.ps1') -Destination (Join-Path $futurePolicyData 'Tools\install_vsmr.ps1')
         Copy-Item -LiteralPath (Join-Path $dataPath 'Tools\restore_vsmr_backup.ps1') -Destination (Join-Path $futurePolicyData 'Tools\restore_vsmr_backup.ps1')
         Copy-Item -LiteralPath (Join-Path $dataPath 'RELEASE-METADATA.json') -Destination (Join-Path $futurePolicyData 'RELEASE-METADATA.json')
+        Copy-Item -LiteralPath (Join-Path $dataPath 'airports_hp.json') -Destination (Join-Path $futurePolicyData 'airports_hp.json')
         Copy-Item -LiteralPath (Join-Path $dataPath 'AVISO\LFPG.geojson') -Destination (Join-Path $futurePolicyData 'AVISO\LFPG.geojson')
 
         Set-TestAvisoPackagePolicy `
@@ -1056,13 +1219,29 @@ try {
     [System.IO.Directory]::CreateDirectory((Join-Path $runtimeInstallTarget "vSMR_Data\AVISO")) | Out-Null
     $runtimeTargetLoader = Join-Path $runtimeInstallTarget "vSMR.dll"
     $runtimeTargetRuntime = Join-Path $runtimeInstallTarget "vSMR_Data\Runtime\vSMR.Runtime.dll"
-    [System.IO.File]::WriteAllText($runtimeTargetLoader, "preserved-loader")
+    [System.IO.File]::WriteAllText($runtimeTargetLoader, "deterministic-beta3-loader-1.0.0")
     Copy-Item -LiteralPath $crashHandlerPath -Destination $runtimeTargetRuntime
     $previousRuntimeHash = (Get-FileHash -LiteralPath $runtimeTargetRuntime -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-TestReleaseMetadata `
         -DataDirectory (Join-Path $runtimeInstallTarget "vSMR_Data") `
         -RuntimePath $runtimeTargetRuntime
     [System.IO.File]::WriteAllText((Join-Path $runtimeInstallTarget "vSMR_Data\AVISO\USER.geojson"), "user-aviso")
+    $oldLoaderRejected = $false
+    try {
+        & (Join-Path $dataPath "Tools\install_vsmr.ps1") `
+            -DestinationDirectory $runtimeInstallTarget `
+            -PreserveLoader `
+            -Confirm:$false
+    }
+    catch {
+        $oldLoaderRejected = $_.Exception.Message -match 'manual_loader_update_required'
+    }
+    if (-not $oldLoaderRejected -or
+        (Get-Content -LiteralPath $runtimeTargetLoader -Raw) -ne 'deterministic-beta3-loader-1.0.0') {
+        throw "Beta 4 accepted or mutated an installation while asked to preserve a beta.3 loader."
+    }
+    Copy-Item -LiteralPath $dllPath -Destination $runtimeTargetLoader -Force
+    [System.IO.File]::AppendAllText($runtimeTargetLoader, 'compatible-loader-preservation-fixture')
     $preservedLoaderHash = (Get-FileHash -LiteralPath $runtimeTargetLoader -Algorithm SHA256).Hash.ToLowerInvariant()
     $packagedRuntimeHash = (Get-FileHash -LiteralPath $runtimePath -Algorithm SHA256).Hash.ToLowerInvariant()
     try {
@@ -1088,7 +1267,7 @@ try {
             -not [bool]$runtimeTransactionOutcome.loader_preserved) {
             throw "Runtime-update install did not record a durable committed preserve-loader outcome."
         }
-        if ((Get-Content -LiteralPath (Join-Path $runtimeRollbackBackup "vSMR.dll") -Raw) -ne 'preserved-loader' -or
+        if ((Get-FileHash -LiteralPath (Join-Path $runtimeRollbackBackup "vSMR.dll") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $preservedLoaderHash -or
             (Get-FileHash -LiteralPath (Join-Path $runtimeRollbackBackup "vSMR_Data\Runtime\vSMR.Runtime.dll") -Algorithm SHA256).Hash.ToLowerInvariant() -ne $previousRuntimeHash) {
             throw "Runtime-update install did not create a complete rollback backup."
         }
