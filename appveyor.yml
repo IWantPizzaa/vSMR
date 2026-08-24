@@ -5,6 +5,7 @@ branches:
     - main
     - master
     - dev
+    - /^v?2[.]0[.]0-beta[.]4$/
   except:
     - gh-pages
 
@@ -25,8 +26,25 @@ install:
 
 before_build:
   - ps: >-
-      $isReleaseTag = $env:APPVEYOR_REPO_TAG -eq 'true' -and
+      $isExpectedReleaseTag = $env:APPVEYOR_REPO_TAG -eq 'true' -and
         $env:APPVEYOR_REPO_TAG_NAME -in @($env:VSMR_RELEASE_VERSION, "v$($env:VSMR_RELEASE_VERSION)");
+      $isProtectedBranchCommit = $false;
+      if ($isExpectedReleaseTag) {
+        $releaseCommit = ([string](& git.exe -C $env:APPVEYOR_BUILD_FOLDER rev-parse HEAD)).Trim();
+        if ($LASTEXITCODE -ne 0 -or $releaseCommit -notmatch '^[0-9a-fA-F]{40}$') {
+          throw 'The tagged release commit could not be resolved.';
+        };
+        foreach ($releaseBranch in @('main', 'master')) {
+          & git.exe -C $env:APPVEYOR_BUILD_FOLDER fetch --no-tags --depth=1000 origin "+refs/heads/$releaseBranch`:refs/remotes/origin/$releaseBranch" 2>$null;
+          if ($LASTEXITCODE -ne 0) { continue };
+          & git.exe -C $env:APPVEYOR_BUILD_FOLDER merge-base --is-ancestor $releaseCommit "refs/remotes/origin/$releaseBranch";
+          if ($LASTEXITCODE -eq 0) { $isProtectedBranchCommit = $true; break };
+        };
+      };
+      if ($isExpectedReleaseTag -and -not $isProtectedBranchCommit) {
+        throw 'Publishable release tags must identify a commit contained in remote main or master.';
+      };
+      $isReleaseTag = $isExpectedReleaseTag -and $isProtectedBranchCommit;
       $hasSigningMaterial = -not [string]::IsNullOrWhiteSpace($env:VSMR_SIGNING_CERT_THUMBPRINT) -and
         -not [string]::IsNullOrWhiteSpace($env:VSMR_UPDATE_SIGNER_CERT_SHA256);
       if ($isReleaseTag -and -not $hasSigningMaterial) {
@@ -94,13 +112,21 @@ after_build:
       -ForceNonPublishable:$validationOnly
   - ps: >-
       $validationOnly = $env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1';
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\verify_release_package.ps1"
-      -ArchivePath "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-$($env:VSMR_RELEASE_VERSION).zip"
-      -ExpectedVersion $env:VSMR_RELEASE_VERSION
-      -ExpectedLoaderVersion 1.0.0
-      -ExpectedRuntimeAbi 1
-      -RequireSignature:(-not $validationOnly)
-      -AllowNonPublishable:$validationOnly
+      $verifyArguments = @{
+        ArchivePath = "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-$($env:VSMR_RELEASE_VERSION).zip";
+        ExpectedVersion = $env:VSMR_RELEASE_VERSION;
+        ExpectedLoaderVersion = '1.1.0';
+        ExpectedRuntimeAbi = 1;
+        RequireSignature = -not $validationOnly;
+        AllowNonPublishable = $validationOnly
+      };
+      if (-not $validationOnly) {
+        $beta3Fixture = "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-2.0.0-beta.3.published-fixture.zip";
+        Invoke-WebRequest -Uri 'https://github.com/IWantPizzaa/vSMR/releases/download/2.0.0-beta.3/vSMR-2.0.0-beta.3.zip' -OutFile $beta3Fixture -UseBasicParsing;
+        $verifyArguments.PublishedBeta3ArchivePath = $beta3Fixture;
+        $verifyArguments.RequirePublishedBeta3Migration = $true
+      };
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\verify_release_package.ps1" @verifyArguments
   - ps: >-
       if ($env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1') {
         $base = "vSMR-$($env:VSMR_RELEASE_VERSION)";
@@ -113,13 +139,6 @@ after_build:
         $artifactRoot = "$env:APPVEYOR_BUILD_FOLDER\artifacts";
         Move-Item -LiteralPath "$artifactRoot\$base.zip" -Destination "$artifactRoot\$validationBase.zip";
         Move-Item -LiteralPath "$artifactRoot\$base-symbols.zip" -Destination "$artifactRoot\$validationBase-symbols.zip";
-        $hash = (Get-FileHash -LiteralPath "$artifactRoot\$validationBase.zip" -Algorithm SHA256).Hash.ToLowerInvariant();
-        [System.IO.File]::WriteAllText(
-          "$artifactRoot\$validationBase.zip.sha256",
-          "$hash  $validationBase.zip`n",
-          (New-Object System.Text.UTF8Encoding($false))
-        );
-        Remove-Item -LiteralPath "$artifactRoot\$base.zip.sha256" -Force;
         Remove-Item -LiteralPath "$artifactRoot\$base.update.json" -Force -ErrorAction SilentlyContinue;
         Remove-Item -LiteralPath "$artifactRoot\$base.update.json.p7s" -Force -ErrorAction SilentlyContinue;
       }
@@ -134,15 +153,7 @@ test: off
 artifacts:
   - path: artifacts\vSMR-2.0.0-beta.4.zip
     name: vSMR-2.0.0-beta.4
-  - path: artifacts\vSMR-2.0.0-beta.4.zip.sha256
-    name: vSMR-2.0.0-beta.4-sha256
-  - path: artifacts\vSMR-2.0.0-beta.4-symbols.zip
-    name: vSMR-2.0.0-beta.4-private-symbols
   - path: artifacts\vSMR-2.0.0-beta.4.update.json
     name: vSMR-2.0.0-beta.4-update-manifest
   - path: artifacts\vSMR-2.0.0-beta.4-*-validation-only.zip
     name: vSMR-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.4-*-validation-only.zip.sha256
-    name: vSMR-validation-only-sha256
-  - path: artifacts\vSMR-2.0.0-beta.4-*-validation-only-symbols.zip
-    name: vSMR-validation-only-private-symbols

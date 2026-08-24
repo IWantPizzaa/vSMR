@@ -172,12 +172,12 @@ namespace vsmr::updater::harness
 			<< "  \"version\": \"" << version << "\",\n"
 			<< "  \"publishable\": true,\n"
 			<< "  \"git_commit\": \"offline-updater-harness\",\n"
-			<< "  \"loader\": {\"relative_path\": \"vSMR.dll\", \"version\": \"1.0.0\", \"size\": "
+			<< "  \"loader\": {\"relative_path\": \"vSMR.dll\", \"version\": \"1.1.0\", \"size\": "
 			<< Size(loader) << ", \"sha256\": \"" << Hash(loader) << "\"},\n"
 			<< "  \"runtime\": {\"relative_path\": \"vSMR_Data/Runtime/vSMR.Runtime.dll\", \"version\": \""
 			<< version << "\", \"abi\": 1, \"size\": " << Size(runtime)
 			<< ", \"sha256\": \"" << Hash(runtime) << "\"},\n"
-			<< "  \"automatic_update\": {\"publishable\": true}\n"
+			<< "  \"automatic_update\": {\"minimum_loader_version\": \"1.1.0\", \"publishable\": true}\n"
 			<< "}\n";
 		return json.str();
 	}
@@ -239,8 +239,8 @@ namespace vsmr::updater::harness
 		const Inputs& inputs,
 		const Environment& environment,
 		const std::string& version = kNewVersion,
-		const std::string& minimumLoaderVersion = "1.0.0",
-		const std::string& packagedLoaderVersion = "1.0.0",
+		const std::string& minimumLoaderVersion = "1.1.0",
+		const std::string& packagedLoaderVersion = "1.1.0",
 		bool corruptArchiveHash = false)
 	{
 		const std::string archiveName = "vSMR-" + version + ".zip";
@@ -281,7 +281,7 @@ namespace vsmr::updater::harness
 		options.canonicalRuntimePath = options.dataRoot / L"Runtime" / L"vSMR.Runtime.dll";
 		options.loaderPath = environment.install / L"vSMR.dll";
 		options.currentVersion = currentVersion;
-		options.loaderVersion = "1.0.0";
+		options.loaderVersion = "1.1.0";
 		options.defaultChannel = UpdateChannel::Beta;
 		options.hostProcessId = ::GetCurrentProcessId();
 		options.expectedRuntimeAbi = 1;
@@ -688,7 +688,7 @@ namespace vsmr::updater::harness
 
 		Run("archive hash mismatch", failures, [&]() {
 			const Environment environment = CreateEnvironment(inputs, "hash-mismatch");
-			AddManifest(inputs, environment, kNewVersion, "1.0.0", "1.0.0", true);
+			AddManifest(inputs, environment, kNewVersion, "1.1.0", "1.1.0", true);
 			const StartupResult result = PrepareUpdateBeforeRuntimeLoad(Options(environment));
 			Require(result.status == StartupStatus::FailedOpen && result.errorCode == "archive_hash_mismatch",
 				"archive hash mismatch was not rejected");
@@ -824,12 +824,14 @@ namespace vsmr::updater::harness
 			Require(static_cast<bool>(afterChild), "child did not release inherited lock on exit");
 		});
 
-		Run("minimum loader requires manual update", failures, [&]() {
-			const Environment environment = CreateEnvironment(inputs, "loader-too-old");
-			AddManifest(inputs, environment, kNewVersion, "9.0.0", "9.0.0");
-			const StartupResult result = PrepareUpdateBeforeRuntimeLoad(Options(environment));
+		Run("beta.3 loader requires beta.4 manual migration", failures, [&]() {
+			const Environment environment = CreateEnvironment(inputs, "beta3-loader-too-old");
+			AddManifest(inputs, environment, kNewVersion, "1.1.0", "1.1.0");
+			StartupOptions beta3Options = Options(environment);
+			beta3Options.loaderVersion = "1.0.0";
+			const StartupResult result = PrepareUpdateBeforeRuntimeLoad(beta3Options);
 			Require(result.status == StartupStatus::Deferred && result.loaderUpdateDeferred &&
-				result.errorCode == "manual_loader_update_required", "minimum loader did not defer manually");
+				result.errorCode == "manual_loader_update_required", "beta.3 loader did not defer for manual migration");
 			Require(ActiveVersion(environment) == kOldVersion, "loader-incompatible update mutated installation");
 		});
 

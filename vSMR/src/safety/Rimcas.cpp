@@ -7,6 +7,22 @@
 namespace
 {
 	constexpr std::chrono::seconds DepartureStationaryAlertGracePeriod(25);
+	constexpr bool IsRunwayOccupancyMonitored(bool arrivals, bool departures) noexcept
+	{
+		return arrivals || departures;
+	}
+
+	constexpr bool HasApproachingConflict(std::size_t runwayOccupantCount) noexcept
+	{
+		return runwayOccupantCount > 0;
+	}
+
+	// Compile-time regression coverage for the two asymmetric RIMCAS failures.
+	static_assert(IsRunwayOccupancyMonitored(true, false));
+	static_assert(IsRunwayOccupancyMonitored(false, true));
+	static_assert(!IsRunwayOccupancyMonitored(false, false));
+	static_assert(HasApproachingConflict(1));
+	static_assert(!HasApproachingConflict(0));
 
 	CPosition ToEuroScopePosition(const VsmrScene::GeoPoint& source)
 	{
@@ -143,8 +159,13 @@ string CRimcas::GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen* ins
 
 	for (std::map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
+		const auto monitoredArrIt = MonitoredRunwayArr.find(it->first);
+		const bool monitoredArr = monitoredArrIt != MonitoredRunwayArr.end() && monitoredArrIt->second;
 		const auto monitoredDepIt = MonitoredRunwayDep.find(it->first);
-		if (monitoredDepIt == MonitoredRunwayDep.end() || !monitoredDepIt->second)
+		const bool monitoredDep = monitoredDepIt != MonitoredRunwayDep.end() && monitoredDepIt->second;
+		// Runway occupancy is shared by arrival and departure conflict detection.
+		// Arrival-only monitoring must still see aircraft already on the runway.
+		if (!IsRunwayOccupancyMonitored(monitoredArr, monitoredDep))
 			continue;
 
 		const vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
@@ -371,7 +392,10 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 
 			for (auto& ac : ApproachingAircrafts)
 			{
-				if (ac.first == it->first && AcOnRunway.count(it->first) > 1)
+				// One runway occupant is sufficient to conflict with an approaching
+				// aircraft. Requiring two occupants made the alert asymmetric: the
+				// runway target was warned while the approaching target was not.
+				if (ac.first == it->first && HasApproachingConflict(AcOnRunway.count(it->first)))
 					AcColor[ac.second] = StageOne;
 
 				if (ac.first == it->first && isOnClosedRunway)

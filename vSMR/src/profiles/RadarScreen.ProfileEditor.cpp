@@ -1,6 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
-#include "profiles/ProfileEditorDialog.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include <cctype>
 #include <cstring>
@@ -14,23 +13,6 @@ namespace
 		if (value < minValue) return minValue;
 		if (value > maxValue) return maxValue;
 		return value;
-	}
-
-	CRect BuildDefaultProfileEditorWindowRect()
-	{
-		const int defaultWidth = 640;
-		const int defaultHeight = 520;
-
-		int left = 120;
-		int top = 120;
-		const int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-		const int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-		if (screenWidth > defaultWidth + 80)
-			left = (screenWidth - defaultWidth) / 2;
-		if (screenHeight > defaultHeight + 80)
-			top = (screenHeight - defaultHeight) / 2;
-
-		return CRect(left, top, left + defaultWidth, top + defaultHeight);
 	}
 
 	std::string TrimAsciiWhitespaceCopy(const std::string& text)
@@ -153,11 +135,6 @@ namespace
 		return invalidIndex;
 	}
 
-	std::vector<std::string> DefaultBlockedAutoCorrelateSquawks()
-	{
-		return { "2000", "2200", "1200", "7000" };
-	}
-
 	CSMRRadar::DisplayModeSettings MakeDisplayModeSettings(
 		const std::string& name,
 		bool requireAssignedSquawk,
@@ -168,7 +145,6 @@ namespace
 		settings.name = name;
 		settings.requireAssignedSquawk = requireAssignedSquawk;
 		settings.acceptPilotSquawk = true;
-		settings.blockedAutoCorrelateSquawks = DefaultBlockedAutoCorrelateSquawks();
 		settings.towerFilter = towerFilter;
 		settings.structuredRulesEnabled = structuredRulesEnabled;
 		return settings;
@@ -220,21 +196,6 @@ namespace
 		return fallback;
 	}
 
-	std::vector<std::string> ReadSquawkArray(const rapidjson::Value& objectValue, const char* key)
-	{
-		std::vector<std::string> values;
-		if (!objectValue.IsObject() || !objectValue.HasMember(key) || !objectValue[key].IsArray())
-			return values;
-
-		const rapidjson::Value& arrayValue = objectValue[key];
-		for (rapidjson::SizeType i = 0; i < arrayValue.Size(); ++i)
-		{
-			if (arrayValue[i].IsString() && arrayValue[i].GetStringLength() > 0)
-				values.push_back(arrayValue[i].GetString());
-		}
-		return values;
-	}
-
 	void WriteStringMember(rapidjson::Value& objectValue, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
 	{
 		using rapidjson::Value;
@@ -256,25 +217,6 @@ namespace
 		keyValue.SetString(key, allocator);
 		Value boolValue(value);
 		objectValue.AddMember(keyValue, boolValue, allocator);
-	}
-
-	void WriteStringArrayMember(rapidjson::Value& objectValue, const char* key, const std::vector<std::string>& values, rapidjson::Document::AllocatorType& allocator)
-	{
-		using rapidjson::Value;
-		if (objectValue.HasMember(key))
-			objectValue.RemoveMember(key);
-		Value keyValue;
-		keyValue.SetString(key, allocator);
-		Value arrayValue(rapidjson::kArrayType);
-		for (const std::string& value : values)
-		{
-			if (value.empty())
-				continue;
-			Value itemValue;
-			itemValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
-			arrayValue.PushBack(itemValue, allocator);
-		}
-		objectValue.AddMember(keyValue, arrayValue, allocator);
 	}
 
 	void WriteStatusVisibility(rapidjson::Value& modeValue, const CSMRRadar::DisplayModeStatusVisibility& statuses, rapidjson::Document::AllocatorType& allocator)
@@ -311,7 +253,6 @@ namespace
 		WriteBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
 		WriteBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
 		WriteBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
-		WriteStringArrayMember(modeValue, "blocked_auto_correlate_squawks", settings.blockedAutoCorrelateSquawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : settings.blockedAutoCorrelateSquawks, allocator);
 		WriteStatusVisibility(modeValue, settings.statuses, allocator);
 	}
 
@@ -335,11 +276,6 @@ namespace
 		settings.towerFilter = ReadBoolMember(modeValue, "tower_filter", ReadBoolMember(modeValue, "tower_mode", settings.towerFilter));
 		settings.structuredRulesEnabled = ReadBoolMember(modeValue, "structured_rules", ReadBoolMember(modeValue, "structured_rules_enabled", settings.structuredRulesEnabled));
 
-		std::vector<std::string> squawks = ReadSquawkArray(modeValue, "blocked_auto_correlate_squawks");
-		if (squawks.empty())
-			squawks = ReadSquawkArray(modeValue, "do_not_autocorrelate_squawks");
-		settings.blockedAutoCorrelateSquawks = squawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : squawks;
-
 		if (modeValue.HasMember("statuses") && modeValue["statuses"].IsObject())
 		{
 			const rapidjson::Value& statuses = modeValue["statuses"];
@@ -359,12 +295,11 @@ namespace
 		return settings;
 	}
 
-	void ReadLegacyDisplayModeFlags(const rapidjson::Value& filters, bool& outProModeEnabled, bool& outTowerModeEnabled, bool& outAcceptPilotSquawk, std::vector<std::string>& outBlockedSquawks)
+	void ReadLegacyDisplayModeFlags(const rapidjson::Value& filters, bool& outProModeEnabled, bool& outTowerModeEnabled, bool& outAcceptPilotSquawk)
 	{
 		outProModeEnabled = false;
 		outTowerModeEnabled = false;
 		outAcceptPilotSquawk = true;
-		outBlockedSquawks = DefaultBlockedAutoCorrelateSquawks();
 
 		if (!filters.IsObject())
 			return;
@@ -374,11 +309,6 @@ namespace
 			const rapidjson::Value& proMode = filters["pro_mode"];
 			outProModeEnabled = ReadBoolMember(proMode, "enabled", ReadBoolMember(proMode, "enable", false));
 			outAcceptPilotSquawk = ReadBoolMember(proMode, "accept_pilot_squawk", true);
-			std::vector<std::string> blocked = ReadSquawkArray(proMode, "blocked_auto_correlate_squawks");
-			if (blocked.empty())
-				blocked = ReadSquawkArray(proMode, "do_not_autocorrelate_squawks");
-			if (!blocked.empty())
-				outBlockedSquawks = blocked;
 		}
 
 		if (filters.HasMember("tower_mode") && filters["tower_mode"].IsObject())
@@ -393,8 +323,7 @@ namespace
 		bool legacyProModeEnabled = false;
 		bool legacyTowerModeEnabled = false;
 		bool acceptPilotSquawk = true;
-		std::vector<std::string> blockedSquawks;
-		ReadLegacyDisplayModeFlags(filters, legacyProModeEnabled, legacyTowerModeEnabled, acceptPilotSquawk, blockedSquawks);
+		ReadLegacyDisplayModeFlags(filters, legacyProModeEnabled, legacyTowerModeEnabled, acceptPilotSquawk);
 
 		std::vector<CSMRRadar::DisplayModeSettings> modes;
 		modes.push_back(MakeDisplayModeSettings("Normal", false, false));
@@ -402,10 +331,7 @@ namespace
 		modes.push_back(MakeDisplayModeSettings("Tower", false, true));
 		modes.push_back(MakeDisplayModeSettings("Pro + Tower", true, true));
 		for (CSMRRadar::DisplayModeSettings& mode : modes)
-		{
 			mode.acceptPilotSquawk = acceptPilotSquawk;
-			mode.blockedAutoCorrelateSquawks = blockedSquawks.empty() ? DefaultBlockedAutoCorrelateSquawks() : blockedSquawks;
-		}
 		return modes;
 	}
 
@@ -414,8 +340,7 @@ namespace
 		bool legacyProModeEnabled = false;
 		bool legacyTowerModeEnabled = false;
 		bool acceptPilotSquawk = true;
-		std::vector<std::string> blockedSquawks;
-		ReadLegacyDisplayModeFlags(filters, legacyProModeEnabled, legacyTowerModeEnabled, acceptPilotSquawk, blockedSquawks);
+		ReadLegacyDisplayModeFlags(filters, legacyProModeEnabled, legacyTowerModeEnabled, acceptPilotSquawk);
 		if (legacyProModeEnabled && legacyTowerModeEnabled)
 			return "Pro + Tower";
 		if (legacyProModeEnabled)
@@ -541,207 +466,9 @@ namespace
 	}
 }
 
-bool CSMRRadar::EnsureProfileEditorWindowCreated()
-{
-	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
-	{
-		ProfileEditorDialog->SetOwner(this);
-		return true;
-	}
-
-	AFX_MANAGE_STATE(AfxGetStaticModuleState());
-
-	ProfileEditorDialog = std::make_unique<CProfileEditorDialog>(this, AfxGetMainWnd());
-	if (!ProfileEditorDialog->Create(CProfileEditorDialog::IDD, AfxGetMainWnd()))
-	{
-		ProfileEditorDialog.reset();
-		return false;
-	}
-
-	const CRect windowRect = GetProfileEditorWindowRectFromConfig();
-	ProfileEditorDialog->SetWindowPos(
-		nullptr,
-		windowRect.left,
-		windowRect.top,
-		max(320, windowRect.Width()),
-		max(220, windowRect.Height()),
-		SWP_NOZORDER | SWP_NOACTIVATE);
-	ProfileEditorDialog->ShowWindow(SW_HIDE);
-	return true;
-}
-
-bool CSMRRadar::IsProfileEditorWindowVisible() const
-{
-	return ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()) && ProfileEditorDialog->IsWindowVisible();
-}
-
 void CSMRRadar::OpenProfileEditorWindow()
 {
 	OpenVsmrControlCenterWindow("profiles");
-}
-
-void CSMRRadar::CloseProfileEditorWindow(bool persistVisibility)
-{
-	if (!ProfileEditorDialog || !::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
-		return;
-
-	CRect windowRect;
-	ProfileEditorDialog->GetWindowRect(&windowRect);
-	PersistProfileEditorWindowLayout(windowRect, false, persistVisibility);
-	ProfileEditorDialog->ShowWindow(SW_HIDE);
-}
-
-void CSMRRadar::DestroyProfileEditorWindow()
-{
-	if (!ProfileEditorDialog)
-		return;
-
-	if (::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
-		ProfileEditorDialog->DestroyWindow();
-
-	ProfileEditorDialog.reset();
-}
-
-void CSMRRadar::OnProfileEditorWindowClosed()
-{
-	if (ProfileEditorDialog && ::IsWindow(ProfileEditorDialog->GetSafeHwnd()))
-	{
-		CRect windowRect;
-		ProfileEditorDialog->GetWindowRect(&windowRect);
-		PersistProfileEditorWindowLayout(windowRect, false, true);
-	}
-
-	RequestRefresh();
-}
-
-void CSMRRadar::OnProfileEditorWindowLayoutChanged(const CRect& windowRect)
-{
-	PersistProfileEditorWindowLayout(windowRect, true, false);
-}
-
-CRect CSMRRadar::GetProfileEditorWindowRectFromConfig() const
-{
-	CRect fallback = BuildDefaultProfileEditorWindowRect();
-
-	if (!CurrentConfig)
-		return fallback;
-
-	const Value& profile = CurrentConfig->getActiveProfile();
-	if (!profile.IsObject() || !profile.HasMember("ui_layout") || !profile["ui_layout"].IsObject())
-		return fallback;
-
-	const Value& uiLayout = profile["ui_layout"];
-	if (!uiLayout.HasMember("profile_editor_window") || !uiLayout["profile_editor_window"].IsObject())
-		return fallback;
-
-	const Value& window = uiLayout["profile_editor_window"];
-	auto readInt = [&](const char* key, int defaultValue) -> int
-	{
-		if (!window.HasMember(key) || !window[key].IsInt())
-			return defaultValue;
-		return window[key].GetInt();
-	};
-
-	const int x = readInt("x", fallback.left);
-	const int y = readInt("y", fallback.top);
-	const int width = max(320, readInt("width", fallback.Width()));
-	const int height = max(220, readInt("height", fallback.Height()));
-	return CRect(x, y, x + width, y + height);
-}
-
-bool CSMRRadar::PersistProfileEditorWindowLayout(const CRect& windowRect, bool visible, bool persistToDisk)
-{
-	if (!CurrentConfig)
-		return false;
-
-	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
-	if (!profile.IsObject())
-		return false;
-
-	auto& allocator = CurrentConfig->document.GetAllocator();
-	bool changed = false;
-
-	auto ensureObjectMember = [&](Value& parent, const char* key) -> Value&
-	{
-		if (!parent.HasMember(key) || !parent[key].IsObject())
-		{
-			if (parent.HasMember(key))
-				parent.RemoveMember(key);
-
-			Value keyValue;
-			keyValue.SetString(key, allocator);
-			Value objectValue(rapidjson::kObjectType);
-			parent.AddMember(keyValue, objectValue, allocator);
-			changed = true;
-		}
-
-		return parent[key];
-	};
-
-	auto upsertInt = [&](Value& parent, const char* key, int value)
-	{
-		if (!parent.HasMember(key) || !parent[key].IsInt())
-		{
-			if (parent.HasMember(key))
-				parent.RemoveMember(key);
-
-			Value keyValue;
-			keyValue.SetString(key, allocator);
-			Value intValue;
-			intValue.SetInt(value);
-			parent.AddMember(keyValue, intValue, allocator);
-			changed = true;
-			return;
-		}
-
-		if (parent[key].GetInt() != value)
-		{
-			parent[key].SetInt(value);
-			changed = true;
-		}
-	};
-
-	auto upsertBool = [&](Value& parent, const char* key, bool value)
-	{
-		if (!parent.HasMember(key) || !parent[key].IsBool())
-		{
-			if (parent.HasMember(key))
-				parent.RemoveMember(key);
-
-			Value keyValue;
-			keyValue.SetString(key, allocator);
-			Value boolValue;
-			boolValue.SetBool(value);
-			parent.AddMember(keyValue, boolValue, allocator);
-			changed = true;
-			return;
-		}
-
-		if (parent[key].GetBool() != value)
-		{
-			parent[key].SetBool(value);
-			changed = true;
-		}
-	};
-
-	Value& uiLayout = ensureObjectMember(profile, "ui_layout");
-	Value& profileEditorWindow = ensureObjectMember(uiLayout, "profile_editor_window");
-
-	const int width = max(320, windowRect.Width());
-	const int height = max(220, windowRect.Height());
-	upsertInt(profileEditorWindow, "x", windowRect.left);
-	upsertInt(profileEditorWindow, "y", windowRect.top);
-	upsertInt(profileEditorWindow, "width", width);
-	upsertInt(profileEditorWindow, "height", height);
-	upsertBool(profileEditorWindow, "visible", visible);
-
-	if (changed && persistToDisk && !CurrentConfig->saveConfig())
-	{
-		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save profile editor layout to vSMR_Profiles.json", true, true, false, false, false);
-		return false;
-	}
-
-	return true;
 }
 
 std::vector<std::string> CSMRRadar::GetProfileColorPathsForEditor()

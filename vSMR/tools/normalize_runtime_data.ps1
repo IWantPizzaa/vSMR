@@ -10,6 +10,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$AvisoFileNamePattern = '^(?<airport>[A-Za-z0-9]{4})(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$'
 if ([string]::IsNullOrWhiteSpace($DataDirectory)) {
     $DataDirectory = Join-Path $PSScriptRoot "..\data"
 }
@@ -695,7 +696,7 @@ function Test-ProhibitedAvisoLabel {
 }
 
 function Get-AvisoGroupIds {
-    param($Properties, [bool]$PreserveEmptyPlaceholder = $false)
+    param($Properties)
 
     foreach ($key in @("vsmr_group_ids", "vsmr_groups", "group_ids", "group_id", "vsmr_group_id")) {
         if (-not (Test-JsonProperty $Properties $key)) {
@@ -716,13 +717,7 @@ function Get-AvisoGroupIds {
         if ($ids.Count -gt 0) {
             return $ids.ToArray()
         }
-        if ($PreserveEmptyPlaceholder) {
-            return ,@()
-        }
         return @()
-    }
-    if ($PreserveEmptyPlaceholder) {
-        return ,@()
     }
     return @()
 }
@@ -730,10 +725,10 @@ function Get-AvisoGroupIds {
 function Get-AvisoAirportFromFileName {
     param([string]$Name)
 
-    if ($Name -match "^([A-Za-z0-9]{4})\.geojson$") {
-        return $matches[1].ToUpperInvariant()
+    if ($Name -match $AvisoFileNamePattern) {
+        return $matches['airport'].ToUpperInvariant()
     }
-    throw "AVISO filename '$Name' must use ICAO.geojson."
+    throw "AVISO filename '$Name' must use ICAO.geojson or ICAO_Safe-Variant.geojson."
 }
 
 function Normalize-AvisoFile {
@@ -901,21 +896,23 @@ function Normalize-AvisoFile {
             $properties["visible"] = $false
         }
 
-        # Older bundled documents without a group catalog contain a generated
-        # empty membership placeholder on every feature. Preserve that legacy
-        # shape until the document opts into groups, while group-enabled
-        # documents always receive the runtime's flat string-array format.
-        $groupIds = @(
-            Get-AvisoGroupIds `
-                $sourceProperties `
-                (-not $hasExplicitGroups)
-        )
+        # The runtime schema is always a flat string array. Older normalizer
+        # output used [ [] ] as an empty placeholder, which is not a valid
+        # vsmr_group_ids value. Legacy documents retain a real [] so their
+        # canonical shape remains explicit until they opt into a group catalog.
+        $groupIds = @(Get-AvisoGroupIds $sourceProperties)
         if ($groupIds.Count -gt 0) {
             $properties["vsmr_group_ids"] = $groupIds
+        }
+        elseif (-not $hasExplicitGroups) {
+            $properties["vsmr_group_ids"] = @()
         }
 
         foreach ($paintKey in $PaintKeys) {
             if (-not (Test-JsonProperty $sourceProperties $paintKey)) {
+                continue
+            }
+            if ($airport -eq "LFMN" -and $paintKey -eq "palette-overrides") {
                 continue
             }
             if (Test-JsonProperty $style.paint $paintKey) {
@@ -997,6 +994,11 @@ function Normalize-AvisoFile {
             # optional palette-overrides object.
             $normalizedPaint = New-NormalizedPaint $normalizedPaint
         }
+        if ($airport -eq "LFMN" -and (Test-JsonProperty $normalizedPaint "palette-overrides")) {
+            # LFMN intentionally uses one palette in both modes. Removing the
+            # override makes Day fall back exactly to the Night/base paint.
+            $normalizedPaint.PSObject.Properties.Remove("palette-overrides")
+        }
         $normalizedStyles[$styleId] = [pscustomobject][ordered]@{
             name = [string]$style.name
             layer = [string]$style.layer
@@ -1025,9 +1027,13 @@ function Normalize-AvisoFile {
         category_counts = [pscustomobject]$normalizedCategoryCounts
     }
 
+    $documentName = Get-FirstStringProperty $document @("name")
+    if ([string]::IsNullOrWhiteSpace($documentName)) {
+        $documentName = "$airport AVISO"
+    }
     $root = [ordered]@{
         type = "FeatureCollection"
-        name = "$airport AVISO"
+        name = $documentName
         bbox = Get-JsonProperty $document "bbox"
         metadata = $metadata
         styles = [pscustomobject]$normalizedStyles
@@ -1063,7 +1069,7 @@ Normalize-AircraftSpecs (Join-Path $resolvedDataDirectory "ICAO_Aircraft.json")
 $avisoDirectory = Join-Path $resolvedDataDirectory "AVISO"
 $avisoFiles = @(
     Get-ChildItem -File -LiteralPath $avisoDirectory |
-        Where-Object { $_.Name -match "^[A-Za-z0-9]{4}\.geojson$" } |
+        Where-Object { $_.Name -match $AvisoFileNamePattern } |
         Sort-Object Name
 )
 if ($avisoFiles.Count -eq 0) {

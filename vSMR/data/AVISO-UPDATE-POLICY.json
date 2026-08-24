@@ -5,7 +5,8 @@
     "update": "all",
     "replace": [],
     "delete": [
-      "LFMM.geojson"
+      "LFMM.geojson",
+      "LFPG_Dyna_fixed.geojson"
     ],
     "modified_files": "replace"
   }

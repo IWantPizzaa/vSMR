@@ -13,7 +13,7 @@ Before packaging a release, edit `vSMR\data\AVISO-UPDATE-POLICY.json` and set it
   "aviso": {
     "update": "all",
     "replace": [],
-    "delete": ["LFMM.geojson"],
+    "delete": ["LFMM.geojson", "LFPG_Dyna_fixed.geojson"],
     "modified_files": "replace"
   }
 }
@@ -65,7 +65,11 @@ To publish changes only to LFPG and LFML while protecting local edits:
 }
 ```
 
-Beta 4 uses `all` plus `replace` because every bundled GeoJSON must acquire compatible Night/Day palette data. It also deletes `LFMM.geojson`. Do not copy that policy into an ordinary release.
+Beta 4 uses `all` plus `replace` because every bundled GeoJSON must acquire compatible Night/Day palette data. It also deletes `LFMM.geojson` and `LFPG_Dyna_fixed.geojson`. Do not copy that policy into an ordinary release.
+
+## Mandatory beta.3 migration
+
+Beta.4 raises both the packaged and minimum bootstrap-loader version from `1.0.0` to `1.1.0`. A beta.3 installation must therefore be upgraded once with the complete beta.4 ZIP while EuroScope is closed. The updater and transactional installer deliberately refuse to preserve loader `1.0.0`; do not use `-PreserveLoader` for this migration. This boundary also prevents beta.4 from inheriting the beta.3 loader's obsolete release-verification behavior.
 
 ## Inventory and install results
 
@@ -88,8 +92,8 @@ With protection enabled, modified maps remain active and official copies go to `
 3. Remove every filename in `aviso.delete` from the bundled `vSMR\data\AVISO` directory.
 4. Normalize and validate runtime data.
 5. Commit all intended changes and confirm the worktree is clean for a publishable build.
-6. Run `vSMR\tools\package_release.ps1`.
-7. Run `vSMR\tools\verify_release_package.ps1` against the generated ZIP. Verification checks the policy, inventory coverage and hashes, installer preservation, manual reload protection, package manifests, binaries, and signatures.
-8. Upload the ZIP, update manifest, and detached manifest signature created by the release script. Use only assets from the same packaging run.
+6. Create the exact version tag at the release commit.
+7. Run `vSMR\tools\create_github_release.ps1 -Version <version>`. For beta.4, also pass `-PublishedBeta3ArchivePath <path-to-vSMR-2.0.0-beta.3.zip>`. The driver pins that published archive to SHA-256 `348dc981253badabd4a697ff2acfe2536be6af6beb31fca20c694fdaa48c6905` and internal source commit `385b8ee4742eb6cccfbf9b96d17932abba204638`; it fails unless the tag, clean commit, trusted certificate, embedded pin, binary signatures, detached manifest signature, real and synthetic migration fixtures, and final three-asset contract all verify.
+8. Upload only the ZIP, update manifest, and detached manifest signature printed by the release driver. Use only assets from the same run; the private symbols ZIP is not a public release asset.
 
 Validation rejects unsafe paths, duplicate or contradictory policy names, selected maps missing from the package, deleted maps still bundled, an inventory that does not cover the package exactly, and stale inventory hashes.

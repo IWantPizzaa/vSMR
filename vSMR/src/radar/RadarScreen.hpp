@@ -36,8 +36,6 @@ using namespace Gdiplus;
 using namespace EuroScopePlugIn;
 namespace fs = std::filesystem;
 
-class CProfileEditorDialog;
-class CAvisoEditorDialog;
 class CVsmrControlCenterDialog;
 class CInsetWindow;
 
@@ -47,6 +45,7 @@ class CSMRRadar :
 public:
 	CSMRRadar();
 	virtual ~CSMRRadar();
+	static bool CanUnloadRuntimeCallbacks() noexcept;
 	POINT ConvertCoordFromPositionToPixel(CPosition position);
 	CPosition ConvertCoordFromPixelToPosition(POINT point);
 	VsmrPerformance::Snapshot GetPerformanceSnapshot(
@@ -405,8 +404,6 @@ public:
 	vector<string> ProfileColorPaths;
 	map<string, bool> ProfileColorPathHasAlpha;
 	string SelectedProfileColorPath;
-	std::unique_ptr<CProfileEditorDialog> ProfileEditorDialog;
-	std::unique_ptr<CAvisoEditorDialog> AvisoEditorDialog;
 	std::unique_ptr<CVsmrControlCenterDialog> VsmrControlCenterDialog;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
@@ -524,7 +521,7 @@ public:
 
 	//---GenerateTagData--------------------------------------------
 
-	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, bool useSpeedForGates, string ActiveAirport, const std::string& stableCallsign = "", const VacdmPilotData* capturedVacdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
+	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign = "", const VacdmPilotData* capturedVacdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
 	using TagReplacingMap = std::map<std::string, std::string>;
 
 	//---IsCorrelatedFuncs---------------------------------------------
@@ -533,7 +530,6 @@ public:
 	{
 		bool proModeEnabled = false;
 		bool acceptPilotSquawk = true;
-		std::vector<std::string> blockedAutoCorrelateSquawks;
 	};
 
 	struct DisplayModeStatusVisibility
@@ -559,7 +555,6 @@ public:
 		bool requireClearance = false;
 		bool requireValidTsat = false;
 		bool requireActiveTobt = false;
-		std::vector<std::string> blockedAutoCorrelateSquawks;
 		bool towerFilter = false;
 		bool structuredRulesEnabled = true;
 		DisplayModeStatusVisibility statuses;
@@ -587,20 +582,12 @@ public:
 	int GetProfileColorComponentValue(const std::string& path, char component, int fallback = 0);
 	bool UpdateProfileColorComponent(const std::string& path, char component, int value);
 	void OpenProfileEditorWindow();
-	void CloseProfileEditorWindow(bool persistVisibility);
-	void DestroyProfileEditorWindow();
-	void OnProfileEditorWindowClosed();
-	void OnProfileEditorWindowLayoutChanged(const CRect& windowRect);
-	bool IsProfileEditorWindowVisible() const;
-	bool EnsureProfileEditorWindowCreated();
 	bool EnsureVsmrControlCenterWindowCreated();
 	void OpenVsmrControlCenterWindow();
 	void OpenVsmrControlCenterWindow(const std::string& pageName);
 	void CloseVsmrControlCenterWindow();
 	void DestroyVsmrControlCenterWindow();
 	void OnVsmrControlCenterWindowClosed();
-	bool PersistProfileEditorWindowLayout(const CRect& windowRect, bool visible, bool persistToDisk);
-	CRect GetProfileEditorWindowRectFromConfig() const;
 	std::vector<std::string> GetProfileColorPathsForEditor();
 	std::string GetSelectedProfileColorPathForEditor() const;
 	bool SelectProfileColorPathForEditor(const std::string& path);
@@ -654,14 +641,6 @@ public:
 	std::string NormalizeTargetIconStyle(const std::string& style) const;
 	std::string GetActiveTargetIconStyle() const;
 	bool SetActiveTargetIconStyle(const std::string& style, bool persistToDisk);
-	bool GetFixedPixelTargetIconSizeEnabled() const;
-	bool SetFixedPixelTargetIconSizeEnabled(bool enabled, bool persistToDisk);
-	double GetFixedPixelTriangleIconScale() const;
-	bool SetFixedPixelTriangleIconScale(double scale, bool persistToDisk);
-	bool GetSmallTargetIconBoostEnabled() const;
-	bool SetSmallTargetIconBoostEnabled(bool enabled, bool persistToDisk);
-	double GetSmallTargetIconBoostFactor() const;
-	bool SetSmallTargetIconBoostFactor(double factor, bool persistToDisk);
 	std::string NormalizeSmallTargetIconBoostResolutionPreset(const std::string& preset) const;
 	std::string GetSmallTargetIconBoostResolutionPreset() const;
 	bool SetSmallTargetIconBoostResolutionPreset(const std::string& preset, bool persistToDisk);
@@ -721,7 +700,6 @@ public:
 	virtual void OnRefresh(HDC hDC, int Phase);
 	std::shared_ptr<const VsmrScene::RadarScene> BuildRadarScene(
 		bool lowVisibilityProcedures,
-		int rimcasStageTwoSpeedThreshold,
 		double* outRimcasMilliseconds = nullptr);
 	const VsmrScene::RadarScene* GetCurrentRadarScene() const noexcept;
 	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
@@ -797,11 +775,7 @@ public:
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);
 	bool IsAvisoPresetLinkedMovementEnabled() const;
 	void SyncLinkedAvisoSecondaryToMainView();
-	bool EnsureAvisoEditorWindowCreated();
 	void OpenAvisoEditorWindow();
-	void CloseAvisoEditorWindow();
-	void DestroyAvisoEditorWindow();
-	void OnAvisoEditorWindowClosed();
 	void RenderTags(Graphics& graphics, CDC& dc);
 
 	//---OnClickScreenObject-----------------------------------------
@@ -839,8 +813,6 @@ public:
 	//---OnFlightPlanDisconnect---------------------------------------------
 
 	virtual void OnFlightPlanDisconnect(CFlightPlan FlightPlan);
-
-	virtual bool isVisible(CRadarTarget rt);
 
 	//---Haversine---------------------------------------------
 	// Heading in deg, distance in m

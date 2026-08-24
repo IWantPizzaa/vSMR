@@ -5121,14 +5121,12 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	};
 
 	const Value* srwInsetSection = getProfileObjectSection("approach_insets");
-	const Value* filterSection = getProfileObjectSection("filters");
 	const Value* rimcasSection = getProfileObjectSection("rimcas");
 
 	const COLORREF srwRunwayColor = getSectionColorRef(srwInsetSection, "runway_color", RGB(255, 255, 255));
 	const COLORREF srwExtendedLineColor = getSectionColorRef(srwInsetSection, "extended_lines_color", RGB(180, 180, 180));
 	const double srwExtendedLineLengthNm = max(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
 	const int srwExtendedLineTickSpacingNm = max(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
-	const int radarRangeNm = max(1, getSectionInt(filterSection, "radar_range_nm", 999));
 	const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
@@ -5508,8 +5506,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		RtPos2.m_Longitude = sceneTarget.position.longitude;
 		if (sceneTarget.groundSpeed < 60 ||
 			!m_AirportPositionValid ||
-			sceneTarget.pressureAltitude > m_Filter ||
-			RtPos2.DistanceTo(m_AirportPosition) > radarRangeNm)
+			sceneTarget.pressureAltitude > m_Filter)
 			continue;
 
 		if (!sceneTarget.passesDisplayMode)

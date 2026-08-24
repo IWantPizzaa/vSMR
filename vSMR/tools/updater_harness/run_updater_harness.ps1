@@ -130,6 +130,10 @@ try {
         (Join-Path $WorkspaceRoot "vSMR\data\Tools\restore_vsmr_backup.ps1"),
         (Join-Path $PackageData "Tools\restore_vsmr_backup.ps1"),
         $true)
+    [System.IO.File]::Copy(
+        (Join-Path $WorkspaceRoot "vSMR\data\airports_hp.json"),
+        (Join-Path $PackageData "airports_hp.json"),
+        $true)
 
     $PackageLoader = Join-Path $PackageRoot "vSMR.dll"
     $metadata = [ordered]@{
@@ -140,7 +144,7 @@ try {
         git_commit = "offline-updater-harness"
         loader = [ordered]@{
             relative_path = "vSMR.dll"
-            version = "1.0.0"
+            version = "1.1.0"
             size = [int64](Get-Item -LiteralPath $PackageLoader).Length
             sha256 = (Get-FileHash -LiteralPath $PackageLoader -Algorithm SHA256).Hash.ToLowerInvariant()
         }
@@ -151,7 +155,10 @@ try {
             size = [int64](Get-Item -LiteralPath $RuntimePath).Length
             sha256 = (Get-FileHash -LiteralPath $RuntimePath -Algorithm SHA256).Hash.ToLowerInvariant()
         }
-        automatic_update = [ordered]@{ publishable = $true }
+        automatic_update = [ordered]@{
+            minimum_loader_version = "1.1.0"
+            publishable = $true
+        }
     }
     Write-Utf8NoBom (Join-Path $PackageData "RELEASE-METADATA.json") ((ConvertTo-Json $metadata -Depth 10) + "`n")
 

@@ -18,9 +18,9 @@ param(
     [ValidatePattern("^(|[0-9a-fA-F]{64})$")]
     [string]$UpdateSignerCertSha256 = "",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$LoaderVersion = "1.0.0",
+    [string]$LoaderVersion = "1.1.0",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$MinimumLoaderVersion = "1.0.0",
+    [string]$MinimumLoaderVersion = "1.1.0",
     [ValidateRange(1, 65535)]
     [int]$RuntimeAbi = 1,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
@@ -32,6 +32,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$AvisoFileNamePattern = '^[A-Za-z0-9]{4}(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$'
 
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     $RepositoryRoot = Join-Path $PSScriptRoot "..\.."
@@ -55,6 +56,14 @@ if ([string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {
     $UpdateSignerCertSha256 = [string]$env:VSMR_UPDATE_SIGNER_CERT_SHA256
 }
 if ($env:VSMR_REQUIRE_SIGNATURE -eq '1' -or $env:VSMR_REQUIRE_SIGNATURE -eq 'true') {
+    $RequireSignature = $true
+}
+
+# The low-level packager is production-safe by default.  Creating an unsigned
+# validation artifact must be an explicit choice so a clean source tree cannot
+# accidentally produce release-looking assets without the trust chain.
+$explicitNonPublishable = $ForceNonPublishable -or $env:VSMR_FORCE_NONPUBLISHABLE -eq '1'
+if (-not $explicitNonPublishable) {
     $RequireSignature = $true
 }
 
@@ -172,11 +181,17 @@ function Resolve-CodeSigningCertificate {
     param([string]$Thumbprint)
     if ([string]::IsNullOrWhiteSpace($Thumbprint)) { return $null }
     $normalized = ($Thumbprint -replace '\s', '').ToUpperInvariant()
-    foreach ($storePath in @('Cert:\CurrentUser\My', 'Cert:\LocalMachine\My')) {
-        $certificate = Get-ChildItem -LiteralPath $storePath -ErrorAction SilentlyContinue |
+    foreach ($store in @(
+        [pscustomobject]@{ Path = 'Cert:\CurrentUser\My'; IsLocalMachine = $false },
+        [pscustomobject]@{ Path = 'Cert:\LocalMachine\My'; IsLocalMachine = $true }
+    )) {
+        $certificate = Get-ChildItem -LiteralPath $store.Path -ErrorAction SilentlyContinue |
             Where-Object { $_.Thumbprint -eq $normalized -and $_.HasPrivateKey } |
             Select-Object -First 1
-        if ($null -ne $certificate) { return $certificate }
+        if ($null -ne $certificate) {
+            $certificate | Add-Member -MemberType NoteProperty -Name VsmrIsLocalMachineStore -Value ([bool]$store.IsLocalMachine) -Force
+            return $certificate
+        }
     }
     throw "The configured code-signing certificate with thumbprint '$normalized' and a private key was not found."
 }
@@ -348,7 +363,7 @@ try {
             [System.IO.Path]::IsPathRooted([string]$name) -or
             [System.IO.Path]::GetFileName([string]$name) -ne [string]$name -or
             ([string]$name).IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
-            -not ([string]$name).EndsWith('.geojson', [System.StringComparison]::OrdinalIgnoreCase)) {
+            ([string]$name) -notmatch $AvisoFileNamePattern) {
             throw "AVISO update policy contains an unsafe filename: $name"
         }
     }
@@ -371,6 +386,9 @@ try {
 
     $avisoInventoryFiles = [ordered]@{}
     foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $packageStage "vSMR_Data\AVISO") -Filter '*.geojson' -File | Sort-Object Name)) {
+        if ($file.Name -notmatch $AvisoFileNamePattern) {
+            throw "Release package contains an unsafe or uncontrolled AVISO filename: $($file.Name)"
+        }
         $avisoInventoryFiles[$file.Name] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     if ($avisoInventoryFiles.Count -eq 0) {
@@ -405,8 +423,12 @@ try {
             throw "A signing certificate was configured, but signtool.exe was not found."
         }
         $normalizedThumbprint = ($CertificateThumbprint -replace '\s', '')
+        $signingStoreArguments = @()
+        if ([bool]$signingCertificate.VsmrIsLocalMachineStore) {
+            $signingStoreArguments += '/sm'
+        }
         foreach ($binaryToSign in @($packagedDllPath, $packagedRuntimePath, $packagedCrashHandlerPath)) {
-            & $signTool sign /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $binaryToSign
+            & $signTool sign @signingStoreArguments /sha1 $normalizedThumbprint /fd SHA256 /td SHA256 /tr $TimestampUrl $binaryToSign
             if ($LASTEXITCODE -ne 0) {
                 throw "Authenticode signing failed for '$binaryToSign' with exit code $LASTEXITCODE."
             }
@@ -551,7 +573,10 @@ Write-Utf8NoBom $payloadManifest (($hashLines -join "`n") + "`n")
 $archivePath = Join-Path $ArtifactsDirectory "vSMR-$Version.zip"
 New-ZipArchive $packageStage $archivePath
 $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Utf8NoBom "$archivePath.sha256" "$archiveHash  $([System.IO.Path]::GetFileName($archivePath))`n"
+$obsoleteChecksumPath = "$archivePath.sha256"
+if (Test-Path -LiteralPath $obsoleteChecksumPath -PathType Leaf) {
+    Remove-Item -LiteralPath $obsoleteChecksumPath -Force
+}
 
 $updateManifest = [ordered]@{
     schema_version = 1
@@ -605,7 +630,6 @@ finally {
 }
 
 Write-Host "Created user package: $archivePath"
-Write-Host "Created package checksum: $archivePath.sha256"
 Write-Host "Created update manifest: $updateManifestPath"
 if (Test-Path -LiteralPath $updateSignaturePath -PathType Leaf) {
     Write-Host "Created detached update signature: $updateSignaturePath"

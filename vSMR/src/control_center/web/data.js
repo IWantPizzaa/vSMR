@@ -11,13 +11,10 @@ window.VSMR_DATA = {
         available_fonts: ["EuroScope", "Consolas", "Segoe UI", "Tahoma", "Arial"],
         weight: "Regular",
         sizes: { one: 10, two: 11, three: 12, four: 13, five: 14 },
-        label_font_size: 1
-      },
-      filters: {
-        max_altitude_ft: 5500,
-        max_speed_kt: 250,
-        radar_range_nm: 999,
-        display_modes: {
+		label_font_size: 1
+	  },
+	  filters: {
+		display_modes: {
           active: "Normal",
           items: [
             {
@@ -26,7 +23,6 @@ window.VSMR_DATA = {
               require_clearance: false,
               require_valid_tsat: false,
               require_active_tobt: false,
-              blocked_auto_correlate_squawks: ["2000", "2200", "1200", "7000"],
               statuses: {
                 no_status: true, push: true, startup: true, taxi: true, lineup: true,
                 departure: true, on_runway: true, airborne: true,
@@ -39,7 +35,6 @@ window.VSMR_DATA = {
               require_clearance: false,
               require_valid_tsat: false,
               require_active_tobt: false,
-              blocked_auto_correlate_squawks: ["2000", "2200", "1200", "7000"],
               statuses: {
                 no_status: false, push: false, startup: false, taxi: true, lineup: true,
                 departure: true, on_runway: true, airborne: true,
@@ -51,9 +46,6 @@ window.VSMR_DATA = {
       },
       labels: {
         auto_deconfliction: true,
-        leader_line_length: 50,
-        use_speed_for_gate: false,
-        use_departure_arrival_coloring: true,
         definition_detailed_inherits_normal: false,
         rounded_corners: true,
         squawk_error_color: { r: 255, g: 70, b: 70, a: 255 },
@@ -105,7 +97,6 @@ window.VSMR_DATA = {
       rimcas: {
         timer: [60, 45, 30, 15, 0],
         timer_lvp: [120, 90, 60, 30, 0],
-        stage_two_speed_threshold_kt: 25,
         background_color_stage_one: { r: 160, g: 90, b: 30, a: 255 },
         background_color_stage_two: { r: 150, g: 0, b: 0, a: 255 },
         caution_alert_text_color: { r: 0, g: 0, b: 0, a: 255 },

@@ -10,7 +10,7 @@ param(
     [string]$LoaderPdbPath = "",
     [string]$CrashHandlerPdbPath = "",
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$ExpectedLoaderVersion = "1.0.0",
+    [string]$ExpectedLoaderVersion = "1.1.0",
     [ValidateRange(1, 65535)]
     [int]$ExpectedRuntimeAbi = 1,
     [ValidatePattern("^(|[0-9a-fA-F]{64})$")]
@@ -24,6 +24,7 @@ if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 $dataDirectory = Join-Path $RepositoryRoot "vSMR\data"
 $normalizer = Join-Path $RepositoryRoot "vSMR\tools\normalize_runtime_data.ps1"
+$AvisoFileNamePattern = '^(?<airport>[A-Za-z0-9]{4})(?:_[A-Za-z0-9][A-Za-z0-9_-]{0,47})?\.geojson$'
 
 function Assert-True {
     param([bool]$Condition, [string]$Message)
@@ -148,6 +149,8 @@ foreach ($relativePath in @(
     "vSMR\tools\crash_harness\run_crash_harness.ps1",
     "vSMR\tools\crash_harness\vSMRCrashHarness.vcxproj",
     "vSMR\tools\crash_harness\vSMRCrashHarness.vcxproj.filters",
+    "vSMR\tools\create_github_release.ps1",
+    "vSMR\tools\import_vsid_holding_points.ps1",
     "vSMR.sln",
     "vSMR\data\AVISO-UPDATE-POLICY.json",
     "vSMR\data\vSMR_Profiles.json",
@@ -182,6 +185,8 @@ $ciText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "appveyor.yml
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "README.md"))
 $changelogText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "CHANGELOG.md"))
 $packageScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\tools\package_release.ps1"))
+$verifyPackageScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\tools\verify_release_package.ps1"))
+$releaseDriverText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\tools\create_github_release.ps1"))
 $solutionText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR.sln"))
 Assert-True ($headerText -match "MY_PLUGIN_VERSION\s+`"v$escapedVersion`"") "Plugin version macro is inconsistent."
 Assert-True ($resourceText -match "VALUE\s+`"FileVersion`",\s+`"$escapedVersion`"") "Windows FileVersion is inconsistent."
@@ -247,11 +252,19 @@ Assert-True ($packageScriptText -match 'minimum_loader_version' -and
     $packageScriptText -match 'vSMR_Data/Runtime/vSMR\.Runtime\.dll') "Release packaging does not emit the loader/runtime update contract."
 Assert-True ($packageScriptText -match 'AVISO-UPDATE-POLICY\.json' -and
     $packageScriptText -match 'AVISO-INVENTORY\.json') "Release packaging does not validate the AVISO policy and generate its inventory."
+Assert-True (-not ($packageScriptText -match 'Write-Utf8NoBom\s+"?\$archivePath\.sha256')) "Release packaging must not create a redundant external .zip.sha256 asset."
+Assert-True (-not ($verifyPackageScriptText -match '\[string\]\$ChecksumPath')) "Release verification still depends on the obsolete external .zip.sha256 asset."
+Assert-True ($releaseDriverText -match 'VSMR_SIGNING_CERT_THUMBPRINT' -and
+    $releaseDriverText -match 'VSMR_UPDATE_SIGNER_CERT_SHA256' -and
+    $releaseDriverText -match '-RequireSignature' -and
+    $releaseDriverText -match '-RequirePublishedBeta3Migration' -and
+    $releaseDriverText -notmatch '(?m)^\s*-ForceNonPublishable(?:\s|$)') "The GitHub release driver is not fail-closed for signatures and the published beta.3 migration fixture."
 $installScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\data\Tools\install_vsmr.ps1"))
 $restoreScriptText = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot "vSMR\data\Tools\restore_vsmr_backup.ps1"))
 Assert-True ($installScriptText -match '\[switch\]\$PreserveLoader' -and
     $installScriptText -match 'validation_scope' -and
-    $installScriptText -match 'installed_loader_sha256') "Installer lacks preserve-loader mode or scoped live-install provenance."
+    $installScriptText -match 'installed_loader_sha256' -and
+    $installScriptText -match 'manual_loader_update_required') "Installer lacks minimum-loader enforcement, preserve-loader mode, or scoped live-install provenance."
 Assert-True ($installScriptText -match '\[switch\]\$ReloadAviso' -and
     $installScriptText -match '\[switch\]\$ReplaceModifiedAviso' -and
     $installScriptText -match 'AVISO-UPDATE-REPORT\.json') "Installer lacks AVISO reload, modified-file protection, or migration reporting."
@@ -391,14 +404,18 @@ foreach ($record in $aircraftRecords) {
 $holdingPointCatalog = Get-Content -LiteralPath (Join-Path $dataDirectory "airports_hp.json") -Raw | ConvertFrom-Json
 $holdingPointAirports = @($holdingPointCatalog.PSObject.Properties)
 Assert-True ($holdingPointAirports.Count -gt 0) "Holding-point catalog contains no airports."
+$holdingPointRunwayCount = 0
+$holdingPointValueCount = 0
 foreach ($airport in $holdingPointAirports) {
     Assert-True ($airport.Name -match '^[A-Z0-9]{4}$') "Invalid holding-point airport '$($airport.Name)'."
     $runways = @($airport.Value.PSObject.Properties)
     Assert-True ($runways.Count -gt 0) "Holding-point airport '$($airport.Name)' contains no runways."
+    $holdingPointRunwayCount += $runways.Count
     foreach ($runway in $runways) {
         Assert-True ($runway.Name -match '^\d{2}[LCR]?$') "Invalid runway '$($runway.Name)' for $($airport.Name)."
         $points = @($runway.Value)
         Assert-True ($points.Count -gt 0) "Runway $($airport.Name)/$($runway.Name) contains no holding points."
+        $holdingPointValueCount += $points.Count
         $uniquePoints = @{}
         foreach ($pointValue in $points) {
             $point = ([string]$pointValue).Trim().ToUpperInvariant()
@@ -408,12 +425,18 @@ foreach ($airport in $holdingPointAirports) {
         }
     }
 }
+if ($ExpectedVersion -eq '2.0.0-beta.4') {
+    Assert-True ($holdingPointAirports.Count -eq 73 -and
+        $holdingPointRunwayCount -eq 189 -and
+        $holdingPointValueCount -eq 455) "Beta 4 must contain the complete imported vSID holding-point catalogue (73 airports, 189 runways, 455 points)."
+}
 
 $avisoFiles = @(
     # The build deliberately excludes the aggregate ALL_FR_* and _LFXX
-    # sources; only canonical four-character airport files are packaged.
+    # sources. It packages canonical airport files and controlled variants
+    # such as LFPG_Custom.geojson.
     Get-ChildItem -LiteralPath (Join-Path $dataDirectory "AVISO") -Filter "*.geojson" -File |
-        Where-Object { $_.Name -match '^[A-Za-z0-9]{4}\.geojson$' }
+        Where-Object { $_.Name -match $AvisoFileNamePattern }
 )
 Assert-True ($avisoFiles.Count -gt 0) "No bundled AVISO files were found."
 $avisoFileNames = @($avisoFiles | ForEach-Object { $_.Name })
@@ -432,7 +455,7 @@ Assert-True ($avisoModifiedFilePolicy -in @('preserve', 'protect_setting', 'repl
 $avisoPolicyReplace = @($avisoPolicy.aviso.replace | ForEach-Object { [string]$_ })
 $avisoPolicyDelete = @($avisoPolicy.aviso.delete | ForEach-Object { [string]$_ })
 foreach ($name in @($avisoPolicyReplace) + @($avisoPolicyDelete)) {
-    Assert-True ($name -match '^[A-Za-z0-9]{4}\.geojson$') "AVISO update policy contains unsafe or noncanonical filename '$name'."
+    Assert-True ($name -match $AvisoFileNamePattern) "AVISO update policy contains unsafe or noncanonical filename '$name'."
 }
 $normalizedAvisoPolicyReplace = @($avisoPolicyReplace | ForEach-Object { $_.ToUpperInvariant() })
 $normalizedAvisoPolicyDelete = @($avisoPolicyDelete | ForEach-Object { $_.ToUpperInvariant() })
@@ -454,7 +477,10 @@ foreach ($name in $avisoPolicyDelete) {
 }
 if ($ExpectedVersion -eq '2.0.0-beta.4') {
     Assert-True ($avisoUpdateMode -eq 'all' -and $avisoModifiedFilePolicy -eq 'replace') "Beta 4 must replace every AVISO, including locally modified files, for the Night/Day schema migration."
-    Assert-True ($avisoPolicyDelete.Count -eq 1 -and $avisoPolicyDelete[0] -eq 'LFMM.geojson') "Beta 4 must remove LFMM.geojson and no other AVISO file."
+    Assert-True ($avisoFileNames -contains 'LFPG_Custom.geojson') "Beta 4 must bundle the controlled LFPG_Custom.geojson variant."
+    $requiredBeta4Deletes = @('LFMM.geojson', 'LFPG_Dyna_fixed.geojson')
+    Assert-True ($avisoPolicyDelete.Count -eq $requiredBeta4Deletes.Count -and
+        @($requiredBeta4Deletes | Where-Object { $avisoPolicyDelete -notcontains $_ }).Count -eq 0) "Beta 4 must remove LFMM.geojson and LFPG_Dyna_fixed.geojson and no other AVISO file."
 }
 $avisoPaletteStyleCount = 0
 $avisoPaletteColorCount = 0
@@ -479,6 +505,7 @@ function Assert-AvisoPaletteData {
             -not ($paint.PSObject.Properties.Name -contains 'palette-overrides')) {
             continue
         }
+        Assert-True ($Name -ne 'LFMN.geojson') "LFMN must render identically in Day and Night modes and cannot contain palette overrides."
         $overrides = $paint.'palette-overrides'
         Assert-True ($overrides -is [pscustomobject]) "$Name style '$($styleProperty.Name)' has invalid palette-overrides."
         foreach ($paletteProperty in @($overrides.PSObject.Properties)) {
@@ -495,9 +522,11 @@ function Assert-AvisoPaletteData {
 }
 foreach ($file in $avisoFiles) {
     $document = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+    Assert-True ($file.Name -match $AvisoFileNamePattern) "$($file.Name) is not a safe AVISO filename."
+    $expectedAirport = $Matches['airport'].ToUpperInvariant()
     Assert-True ($document.type -eq 'FeatureCollection') "$($file.Name) is not a FeatureCollection."
     Assert-True ([int]$document.metadata.schema_version -eq 2) "$($file.Name) is not AVISO schema 2."
-    Assert-True ([string]$document.metadata.airport -eq $file.BaseName.ToUpperInvariant()) "$($file.Name) metadata airport does not match its filename."
+    Assert-True ([string]$document.metadata.airport -eq $expectedAirport) "$($file.Name) metadata airport does not match its filename."
     Assert-True ([int]$document.metadata.feature_count -eq @($document.features).Count) "$($file.Name) feature count is stale."
     Assert-True ([int]$document.metadata.style_count -eq @($document.styles.PSObject.Properties).Count) "$($file.Name) style count is stale."
     $ids = @($document.features | ForEach-Object { [string]$_.id })
@@ -508,6 +537,16 @@ foreach ($file in $avisoFiles) {
     }
     foreach ($feature in @($document.features)) {
         $properties = $feature.properties
+        Assert-True ($expectedAirport -ne 'LFMN' -or
+            -not ($properties.PSObject.Properties.Name -contains 'palette-overrides')) "LFMN must render identically in Day and Night modes and cannot contain feature palette overrides."
+        if ($properties.PSObject.Properties.Name -contains 'vsmr_group_ids') {
+            Assert-True ($properties.vsmr_group_ids -is [System.Array]) "$($file.Name) feature '$($feature.id)' vsmr_group_ids must be an array."
+            $featureGroupIds = @($properties.vsmr_group_ids)
+            foreach ($groupId in $featureGroupIds) {
+                Assert-True ($groupId -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$groupId)) "$($file.Name) feature '$($feature.id)' vsmr_group_ids must contain only non-empty strings."
+            }
+            Assert-True (@($featureGroupIds | Sort-Object -Unique).Count -eq $featureGroupIds.Count) "$($file.Name) feature '$($feature.id)' contains duplicate vsmr_group_ids."
+        }
         $geometryType = [string]$feature.geometry.type
         $objectType = [string]$properties.object_type
         if ($geometryType -in @('Polygon', 'MultiPolygon')) {
@@ -543,7 +582,7 @@ foreach ($file in $avisoFiles) {
     }
     foreach ($styleProperty in @($document.styles.PSObject.Properties)) {
         if ([string]$styleProperty.Value.object_type -ne 'Label' -or
-            $file.BaseName -in @('LFPG', 'LFMN')) {
+            $expectedAirport -in @('LFPG', 'LFMN')) {
             continue
         }
         $identity = "$($styleProperty.Name) $($styleProperty.Value.name)"

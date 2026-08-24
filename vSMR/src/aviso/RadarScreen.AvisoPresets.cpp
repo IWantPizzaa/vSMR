@@ -2,8 +2,7 @@
 #include "radar/RadarScreen.hpp"
 #include "insets/InsetWindow.hpp"
 #include "control_center/ControlCenterDialog.hpp"
-
-#include <cctype>
+#include "shared/TextUtils.hpp"
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -14,47 +13,6 @@ namespace
 	const char* kPresetItemsKey = "items";
 	const char* kDefaultPresetKey = "default";
 	const rapidjson::SizeType kInvalidPresetIndex = static_cast<rapidjson::SizeType>(-1);
-
-	std::string TrimAsciiWhitespaceCopy(const std::string& text)
-	{
-		size_t start = 0;
-		while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
-			++start;
-
-		size_t end = text.size();
-		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
-			--end;
-		return text.substr(start, end - start);
-	}
-
-	bool EqualsNoCase(const std::string& a, const std::string& b)
-	{
-		if (a.size() != b.size())
-			return false;
-		for (size_t i = 0; i < a.size(); ++i)
-		{
-			if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i])))
-				return false;
-		}
-		return true;
-	}
-
-	std::string ToLowerAscii(std::string value)
-	{
-		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-			return static_cast<char>(std::tolower(c));
-		});
-		return value;
-	}
-
-	std::string NormalizeAirportKey(std::string value)
-	{
-		value = TrimAsciiWhitespaceCopy(value);
-		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-			return static_cast<char>(std::toupper(c));
-		});
-		return value;
-	}
 
 	void CloneJsonValue(
 		const rapidjson::Value& source,
@@ -270,7 +228,7 @@ namespace
 		if (!object.IsString())
 			return std::clamp(fallback, 0, 8);
 
-		const std::string value = ToLowerAscii(TrimAsciiWhitespaceCopy(object.GetString()));
+		const std::string value = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(object.GetString()));
 		if (value == "splitleft" || value == "split_left")
 			return 1;
 		if (value == "splitright" || value == "split_right")
@@ -294,7 +252,7 @@ namespace
 	{
 		const rapidjson::Value* section = GetObjectMember(container, kAvisoPresetsKey);
 		const rapidjson::Value* airports = section != nullptr ? GetObjectMember(*section, kAirportPresetStoresKey) : nullptr;
-		const std::string airportKey = NormalizeAirportKey(airport);
+		const std::string airportKey = NormalizeAirportKeyCopy(airport);
 		if (airports == nullptr || airportKey.empty() || !airports->HasMember(airportKey.c_str()) ||
 			!(*airports)[airportKey.c_str()].IsObject())
 		{
@@ -310,7 +268,7 @@ namespace
 	{
 		rapidjson::Value& section = EnsureObjectMember(container, kAvisoPresetsKey, allocator);
 		rapidjson::Value& airports = EnsureObjectMember(section, kAirportPresetStoresKey, allocator);
-		const std::string airportKey = NormalizeAirportKey(airport);
+		const std::string airportKey = NormalizeAirportKeyCopy(airport);
 		return EnsureObjectMember(airports, airportKey.c_str(), allocator);
 	}
 
@@ -335,7 +293,7 @@ namespace
 		rapidjson::Document::AllocatorType& allocator)
 	{
 		if (!container.IsObject() || !container.HasMember(kAvisoPresetsKey) ||
-			!container[kAvisoPresetsKey].IsObject() || NormalizeAirportKey(airport).empty())
+			!container[kAvisoPresetsKey].IsObject() || NormalizeAirportKeyCopy(airport).empty())
 		{
 			return false;
 		}
@@ -353,7 +311,7 @@ namespace
 		// open first. A migration is automatic only when the legacy store itself
 		// explicitly identifies the same airport.
 		if (!legacySection.HasMember("airport") || !legacySection["airport"].IsString() ||
-			NormalizeAirportKey(legacySection["airport"].GetString()) != NormalizeAirportKey(airport))
+			NormalizeAirportKeyCopy(legacySection["airport"].GetString()) != NormalizeAirportKeyCopy(airport))
 		{
 			return false;
 		}
@@ -365,7 +323,7 @@ namespace
 		// was opened first.
 		rapidjson::Value& airports =
 			EnsureObjectMember(legacySection, kAirportPresetStoresKey, allocator);
-		const std::string airportKey = NormalizeAirportKey(airport);
+		const std::string airportKey = NormalizeAirportKeyCopy(airport);
 		rapidjson::Value& airportSection =
 			EnsureObjectMember(airports, airportKey.c_str(), allocator);
 
@@ -387,7 +345,7 @@ namespace
 						const rapidjson::Value& targetItem = targetItems[targetIndex];
 						if (targetItem.IsObject() && targetItem.HasMember("name") &&
 							targetItem["name"].IsString() &&
-							EqualsNoCase(
+							AsciiCaseInsensitiveEquals(
 								targetItem["name"].GetString(),
 								legacyItem["name"].GetString()))
 						{
@@ -433,7 +391,7 @@ namespace
 			if (!items[i].IsObject() || !items[i].HasMember("name") || !items[i]["name"].IsString())
 				continue;
 
-			if (EqualsNoCase(items[i]["name"].GetString(), name))
+			if (AsciiCaseInsensitiveEquals(items[i]["name"].GetString(), name))
 				return i;
 		}
 
@@ -712,13 +670,13 @@ namespace
 			if (radar == nullptr || radar->IsShutdownRequested() ||
 				radar->CurrentConfig == nullptr ||
 				!radar->CurrentConfig->sharesConfigFileWith(*source->CurrentConfig) ||
-				!EqualsNoCase(NormalizeAirportKey(radar->getActiveAirport()), airport))
+				!AsciiCaseInsensitiveEquals(NormalizeAirportKeyCopy(radar->getActiveAirport()), airport))
 			{
 				return;
 			}
 
 			if (!renamedFrom.empty() && !renamedTo.empty() &&
-				EqualsNoCase(radar->ActiveAvisoPresetName, renamedFrom))
+				AsciiCaseInsensitiveEquals(radar->ActiveAvisoPresetName, renamedFrom))
 			{
 				radar->ActiveAvisoPresetName = renamedTo;
 			}
@@ -730,7 +688,7 @@ namespace
 					presets.begin(),
 					presets.end(),
 					[&](const CSMRRadar::AvisoPreset& preset) {
-						return EqualsNoCase(preset.name, radar->ActiveAvisoPresetName);
+						return AsciiCaseInsensitiveEquals(preset.name, radar->ActiveAvisoPresetName);
 					});
 				if (active == presets.end())
 				{
@@ -818,7 +776,7 @@ bool CSMRRadar::SaveAvisoPreset(
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	if (activeProfileName.empty() || airport.empty())
 		return false;
 
@@ -1059,7 +1017,7 @@ bool CSMRRadar::RenameAvisoPreset(
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	if (activeProfileName.empty() || airport.empty())
 		return false;
 
@@ -1093,14 +1051,14 @@ bool CSMRRadar::RenameAvisoPreset(
 			rapidjson::Value& section = EnsureAirportPresetSection(sharedMetadata, airport, allocator);
 			const std::string defaultName = TrimAsciiWhitespaceCopy(
 				ReadStringMember(section, kDefaultPresetKey));
-			if (!defaultName.empty() && EqualsNoCase(defaultName, oldCanonicalName))
+			if (!defaultName.empty() && AsciiCaseInsensitiveEquals(defaultName, oldCanonicalName))
 				SetStringMember(section, kDefaultPresetKey, trimmedNewName, allocator);
 			return CConfig::AvisoPresetTransactionAction::Save;
 		});
 	if (!renamed)
 		return false;
 
-	if (EqualsNoCase(ActiveAvisoPresetName, oldCanonicalName))
+	if (AsciiCaseInsensitiveEquals(ActiveAvisoPresetName, oldCanonicalName))
 		ActiveAvisoPresetName = trimmedNewName;
 	ReconcileLiveRadarPresetContexts(
 		this,
@@ -1120,7 +1078,7 @@ bool CSMRRadar::DuplicateAvisoPreset(const std::string& sourceName, const std::s
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	if (activeProfileName.empty() || airport.empty())
 		return false;
 
@@ -1168,7 +1126,7 @@ bool CSMRRadar::DeleteAvisoPreset(const std::string& name)
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	if (activeProfileName.empty() || airport.empty())
 		return false;
 
@@ -1191,7 +1149,7 @@ bool CSMRRadar::DeleteAvisoPreset(const std::string& name)
 
 			const std::string defaultName = TrimAsciiWhitespaceCopy(
 				ReadStringMember(section, kDefaultPresetKey));
-			if (!defaultName.empty() && EqualsNoCase(defaultName, canonicalName) &&
+			if (!defaultName.empty() && AsciiCaseInsensitiveEquals(defaultName, canonicalName) &&
 				section.HasMember(kDefaultPresetKey))
 			{
 				section.RemoveMember(kDefaultPresetKey);
@@ -1201,7 +1159,7 @@ bool CSMRRadar::DeleteAvisoPreset(const std::string& name)
 	if (!deleted)
 		return false;
 
-	if (EqualsNoCase(ActiveAvisoPresetName, canonicalName))
+	if (AsciiCaseInsensitiveEquals(ActiveAvisoPresetName, canonicalName))
 	{
 		ActiveAvisoPresetName.clear();
 		AvisoViewsLinked = false;
@@ -1221,7 +1179,7 @@ bool CSMRRadar::SetDefaultAvisoPreset(const std::string& name)
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	if (activeProfileName.empty() || airport.empty())
 		return false;
 
@@ -1242,7 +1200,7 @@ bool CSMRRadar::SetDefaultAvisoPreset(const std::string& name)
 			rapidjson::Value& section = EnsureAirportPresetSection(sharedMetadata, airport, allocator);
 			const std::string currentDefault = TrimAsciiWhitespaceCopy(
 				ReadStringMember(section, kDefaultPresetKey));
-			if (EqualsNoCase(currentDefault, preset.name))
+			if (AsciiCaseInsensitiveEquals(currentDefault, preset.name))
 			{
 				return migrated
 					? CConfig::AvisoPresetTransactionAction::Save
@@ -1263,7 +1221,7 @@ bool CSMRRadar::ClearDefaultAvisoPreset()
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	if (activeProfileName.empty() || airport.empty())
 		return false;
 
@@ -1304,7 +1262,7 @@ void CSMRRadar::ResetAvisoPresetStateForActiveAirport(bool applyDefaultPreset)
 	if (CurrentConfig != nullptr)
 	{
 		const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-		const std::string airport = NormalizeAirportKey(getActiveAirport());
+		const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 		if (!activeProfileName.empty() && !airport.empty())
 		{
 			CurrentConfig->transactAvisoPresetStore(
@@ -1359,7 +1317,7 @@ bool CSMRRadar::SetActiveAvisoPresetLinkedMovement(bool linked)
 		return false;
 
 	const std::string activeProfileName = CurrentConfig->getActiveProfileName();
-	const std::string airport = NormalizeAirportKey(getActiveAirport());
+	const std::string airport = NormalizeAirportKeyCopy(getActiveAirport());
 	const std::string presetName = ActiveAvisoPresetName;
 	if (activeProfileName.empty() || airport.empty())
 		return false;
