@@ -164,7 +164,6 @@ foreach ($relativePath in @(
     "vSMR\src\control_center\web\data.js",
     "appveyor.yml",
     "README.md",
-    "UPDATER.md",
     "CHANGELOG.md"
 )) {
     Assert-File (Join-Path $RepositoryRoot $relativePath)
