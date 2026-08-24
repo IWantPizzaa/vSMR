@@ -260,6 +260,7 @@
     <None Include="data\Audio\Alarm.wav" />
     <None Include="data\Audio\Ding.wav" />
     <None Include="data\ICAO_Aircraft.json" />
+    <None Include="data\airports_hp.json" />
     <None Include="data\vSMR_Profiles.json" />
     <None Include="src\control_center\web\app.js">
       <Link>vSMR_webUI\app.js</Link>

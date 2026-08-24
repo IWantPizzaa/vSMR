@@ -149,6 +149,9 @@
     <None Include="data\ICAO_Aircraft.json">
       <Filter>Data</Filter>
     </None>
+    <None Include="data\airports_hp.json">
+      <Filter>Data</Filter>
+    </None>
     <None Include="data\vSMR_Profiles.json">
       <Filter>Data</Filter>
     </None>
