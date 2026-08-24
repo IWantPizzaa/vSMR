@@ -959,12 +959,6 @@ namespace
 		if (type == "aviso.inset.preset.legacy.assign") return VsmrBridgeAction::InsetPresetLegacyAssign;
 		if (type == "alerts.update") return VsmrBridgeAction::AlertsUpdate;
 		if (type == "settings.update") return VsmrBridgeAction::SettingsUpdate;
-		if (type == "datalink.state.request") return VsmrBridgeAction::DatalinkStateRequest;
-		if (type == "datalink.settings.update") return VsmrBridgeAction::DatalinkSettingsUpdate;
-		if (type == "datalink.connection.connect") return VsmrBridgeAction::DatalinkConnect;
-		if (type == "datalink.connection.disconnect") return VsmrBridgeAction::DatalinkDisconnect;
-		if (type == "datalink.poll") return VsmrBridgeAction::DatalinkPoll;
-		if (type == "cdm.scan") return VsmrBridgeAction::CdmScan;
 		if (type == "performance.state.request") return VsmrBridgeAction::PerformanceStateRequest;
 		if (type == "performance.reset") return VsmrBridgeAction::PerformanceReset;
 		if (type == "performance.report.export") return VsmrBridgeAction::PerformanceReportExport;
@@ -1820,7 +1814,7 @@ struct VsmrControlCenterBridge::Impl
 		const std::size_t avisoCompleted =
 			snapshot.mainAviso.queue.completed + snapshot.insetAviso.queue.completed;
 		PeakAvisoPendingDepth = (std::max)(PeakAvisoPendingDepth, avisoPendingDepth);
-		CSMRPlugin* const plugin = DatalinkPlugin();
+		CSMRPlugin* const plugin = OwnerPlugin();
 		const WorkerQueueSnapshot pluginQueues = plugin != nullptr
 			? plugin->GetWorkerQueueSnapshot()
 			: WorkerQueueSnapshot{};
@@ -2296,7 +2290,7 @@ struct VsmrControlCenterBridge::Impl
 		Allocator& allocator = document.GetAllocator();
 		if (!document.HasMember("type"))
 			AddString(document, "type", "vSMR.performance-report", allocator);
-		CSMRPlugin* const plugin = DatalinkPlugin();
+		CSMRPlugin* const plugin = OwnerPlugin();
 		const WorkerQueueSnapshot queues = plugin != nullptr
 			? plugin->GetWorkerQueueSnapshot()
 			: WorkerQueueSnapshot{};
@@ -2445,56 +2439,11 @@ struct VsmrControlCenterBridge::Impl
 			message.clear();
 	}
 
-	CSMRPlugin* DatalinkPlugin() const
+	CSMRPlugin* OwnerPlugin() const
 	{
 		if (Owner == nullptr)
 			return nullptr;
 		return static_cast<CSMRPlugin*>(Owner->GetPlugIn());
-	}
-
-	void BuildDatalinkState(
-		rapidjson::Value& datalink,
-		Allocator& allocator) const
-	{
-		datalink.SetObject();
-		CSMRPlugin* plugin = DatalinkPlugin();
-		datalink.AddMember("available", plugin != nullptr, allocator);
-		if (plugin == nullptr)
-			return;
-
-		const DatalinkControlState state = plugin->GetDatalinkControlState();
-		datalink.AddMember("connected", state.connected, allocator);
-		datalink.AddMember("connecting", state.connecting, allocator);
-		datalink.AddMember("pollInProgress", state.pollInProgress, allocator);
-		datalink.AddMember("controllerConnected", state.controllerConnected, allocator);
-		AddString(datalink, "logonCallsign", state.logonCallsign, allocator);
-		datalink.AddMember("hasPassword", state.hasPassword, allocator);
-		datalink.AddMember("cdmAutoEnabled", state.cdmAutoEnabled, allocator);
-		datalink.AddMember("cdmDelayMinutes", state.cdmDelayMinutes, allocator);
-		datalink.AddMember("cdmCooldownMinutes", state.cdmCooldownMinutes, allocator);
-		datalink.AddMember("vacdmConfigured", state.vacdmConfigured, allocator);
-		datalink.AddMember("vacdmReady", state.vacdmReady, allocator);
-		AddString(datalink, "activeAirport", state.activeAirport, allocator);
-		AddString(datalink, "cdmAliasPath", state.cdmAliasPath, allocator);
-		datalink.AddMember("cdmAliasReady", state.cdmAliasReady, allocator);
-		AddString(datalink, "statusMessage", state.statusMessage, allocator);
-	}
-
-	void SendDatalinkState(
-		const std::string& requestId = "",
-		const std::string& messageText = "")
-	{
-		rapidjson::Document message;
-		MakeEnvelope(message, "datalink.state", requestId);
-		Allocator& allocator = message.GetAllocator();
-		rapidjson::Value payload(rapidjson::kObjectType);
-		rapidjson::Value datalink;
-		BuildDatalinkState(datalink, allocator);
-		payload.AddMember("datalink", datalink, allocator);
-		if (!messageText.empty())
-			AddString(payload, "message", messageText, allocator);
-		message.AddMember("payload", payload, allocator);
-		Send(message);
 	}
 
 	void BuildSettings(
@@ -2511,14 +2460,11 @@ struct VsmrControlCenterBridge::Impl
 			"avisoFile",
 			Owner->GetAvisoGeoJsonEditorPathForAirport(Owner->getActiveAirport()),
 			allocator);
-		CSMRPlugin* plugin = DatalinkPlugin();
+		CSMRPlugin* plugin = OwnerPlugin();
 		const std::string aliasPath = plugin != nullptr
 			? plugin->GetDatalinkControlState().cdmAliasPath
 			: std::string();
 		AddString(settings, "aliasFile", aliasPath, allocator);
-		settings.AddMember("watchFiles", true, allocator);
-		AddString(settings, "bridgeMode", "Native WebView2", allocator);
-		settings.AddMember("updateInterval", 250, allocator);
 		AddString(
 			settings,
 			"resolutionPreset",
@@ -2526,8 +2472,6 @@ struct VsmrControlCenterBridge::Impl
 			allocator);
 		settings.AddMember("showFps", Owner->ShowFps, allocator);
 		AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
-		settings.AddMember("runtimeSync", true, allocator);
-		settings.AddMember("confirmDelete", true, allocator);
 
 		rapidjson::Value dataHealth(rapidjson::kObjectType);
 		const bool configHealthy =
@@ -2560,20 +2504,6 @@ struct VsmrControlCenterBridge::Impl
 			avisoHealthy ? "" : avisoHealthMessage,
 			allocator);
 		settings.AddMember("dataHealth", dataHealth, allocator);
-
-		settings.AddMember(
-			"vacdm",
-			Owner->CurrentConfig != nullptr &&
-				!Owner->CurrentConfig->getVacdmServerUrl().empty(),
-			allocator);
-		rapidjson::Value capabilities(rapidjson::kObjectType);
-		capabilities.AddMember("nativeBridge", true, allocator);
-		capabilities.AddMember("atomicSave", true, allocator);
-		capabilities.AddMember("githubLoad", true, allocator);
-		capabilities.AddMember("groups", true, allocator);
-		capabilities.AddMember("datalink", true, allocator);
-		capabilities.AddMember("maps", false, allocator);
-		settings.AddMember("capabilities", capabilities, allocator);
 	}
 
 	void BuildRuntimeState(
@@ -2763,9 +2693,6 @@ struct VsmrControlCenterBridge::Impl
 		rapidjson::Value runtime;
 		BuildRuntimeState(runtime, allocator);
 		payload.AddMember("runtime", runtime, allocator);
-		rapidjson::Value datalink;
-		BuildDatalinkState(datalink, allocator);
-		payload.AddMember("datalink", datalink, allocator);
 		AddString(
 			payload,
 			"activeProfile",
@@ -2835,9 +2762,6 @@ struct VsmrControlCenterBridge::Impl
 		rapidjson::Value runtime;
 		BuildRuntimeState(runtime, allocator);
 		payload.AddMember("runtime", runtime, allocator);
-		rapidjson::Value datalink;
-		BuildDatalinkState(datalink, allocator);
-		payload.AddMember("datalink", datalink, allocator);
 		AddString(
 			payload,
 			"activeProfile",
@@ -4019,50 +3943,6 @@ struct VsmrControlCenterBridge::Impl
 		return true;
 	}
 
-	bool HandleDatalinkSettings(
-		const rapidjson::Value* payload,
-		std::string& error)
-	{
-		CSMRPlugin* plugin = DatalinkPlugin();
-		if (plugin == nullptr)
-		{
-			error = "The vSMR datalink service is not available.";
-			return false;
-		}
-		if (payload == nullptr || !payload->IsObject())
-		{
-			error = "Datalink settings payload must be an object.";
-			return false;
-		}
-
-		const DatalinkControlState current = plugin->GetDatalinkControlState();
-		const std::string callsign = payload->HasMember("logonCallsign")
-			? ReadString(*payload, "logonCallsign")
-			: current.logonCallsign;
-		const bool replacePassword = ReadBool(*payload, "replacePassword", false);
-		const bool updatesConnectionSettings =
-			payload->HasMember("logonCallsign") ||
-			replacePassword;
-		const std::string password = replacePassword
-			? ReadString(*payload, "password")
-			: "";
-		if (replacePassword && password.empty())
-		{
-			error = "Enter a Hoppie code before replacing the saved code.";
-			return false;
-		}
-
-		return plugin->UpdateDatalinkControlSettings(
-			callsign,
-			password,
-			replacePassword,
-			ReadBool(*payload, "cdmAutoEnabled", current.cdmAutoEnabled),
-			ReadInt(*payload, "cdmDelayMinutes", current.cdmDelayMinutes),
-			ReadInt(*payload, "cdmCooldownMinutes", current.cdmCooldownMinutes),
-			error,
-			updatesConnectionSettings);
-	}
-
 	bool HandleAvisoGroups(
 		VsmrBridgeAction action,
 		const rapidjson::Value* payload,
@@ -4417,69 +4297,6 @@ struct VsmrControlCenterBridge::Impl
 				return false;
 			SendAck(envelope.id, envelope.type, "Settings applied");
 			return true;
-		case VsmrBridgeAction::DatalinkStateRequest:
-			SendDatalinkState(envelope.id);
-			return true;
-		case VsmrBridgeAction::DatalinkSettingsUpdate:
-			if (!HandleDatalinkSettings(envelope.payload, error))
-				return false;
-			SendDatalinkState(envelope.id, "Datalink settings applied");
-			SendAck(envelope.id, envelope.type, "Datalink settings applied");
-			return true;
-		case VsmrBridgeAction::DatalinkConnect:
-		{
-			CSMRPlugin* plugin = DatalinkPlugin();
-			if (plugin == nullptr)
-			{
-				error = "The vSMR datalink service is not available.";
-				return false;
-			}
-			if (!plugin->ConnectDatalink(error))
-				return false;
-			SendDatalinkState(envelope.id, "Connecting to Hoppie");
-			return true;
-		}
-		case VsmrBridgeAction::DatalinkDisconnect:
-		{
-			CSMRPlugin* plugin = DatalinkPlugin();
-			if (plugin == nullptr)
-			{
-				error = "The vSMR datalink service is not available.";
-				return false;
-			}
-			if (!plugin->DisconnectDatalink(error))
-				return false;
-			SendDatalinkState(envelope.id, "Disconnected from Hoppie");
-			return true;
-		}
-		case VsmrBridgeAction::DatalinkPoll:
-		{
-			CSMRPlugin* plugin = DatalinkPlugin();
-			if (plugin == nullptr)
-			{
-				error = "The vSMR datalink service is not available.";
-				return false;
-			}
-			if (!plugin->PollDatalink(error))
-				return false;
-			SendDatalinkState(envelope.id, "Polling Hoppie messages");
-			return true;
-		}
-		case VsmrBridgeAction::CdmScan:
-		{
-			CSMRPlugin* plugin = DatalinkPlugin();
-			if (plugin == nullptr)
-			{
-				error = "The vSMR datalink service is not available.";
-				return false;
-			}
-			std::string result;
-			if (!plugin->RunCdmReminderScan(result, error))
-				return false;
-			SendDatalinkState(envelope.id, result);
-			SendAck(envelope.id, envelope.type, result);
-			return true;
-		}
 		case VsmrBridgeAction::PerformanceStateRequest:
 		{
 			const int requestedWindow = envelope.payload != nullptr

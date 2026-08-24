@@ -5387,6 +5387,12 @@ bool VsmrShutdownPlugin()
 		// state. The loader treats false as a process-lifetime retained generation.
 		return false;
 	}
+	if (!CSMRRadar::CanUnloadRuntimeCallbacks())
+	{
+		Logger::info(
+			"vSMR runtime unload retained: a Win32 subclass or thread hook is still active");
+		return false;
+	}
 
 	delete pluginInstance;
 	VsmrCrashReporter::Remove();

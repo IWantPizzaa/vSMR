@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
+#include "shared/TextUtils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -7,14 +8,6 @@
 
 namespace
 {
-	std::string ToUpperAscii(std::string value)
-	{
-		std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
-			return static_cast<char>(std::toupper(character));
-		});
-		return value;
-	}
-
 	std::string SanitizeFilePart(std::string value)
 	{
 		for (char& character : value)
@@ -27,20 +20,6 @@ namespace
 			value.erase(value.begin());
 		while (!value.empty() && value.back() == '_')
 			value.pop_back();
-		return value;
-	}
-
-	std::string NormalizeAirportCode(std::string value)
-	{
-		value = ToUpperAscii(value);
-		if (value.size() != 4)
-			return "";
-		for (const char character : value)
-		{
-			if (!((character >= 'A' && character <= 'Z') ||
-				(character >= '0' && character <= '9')))
-				return "";
-		}
 		return value;
 	}
 
@@ -74,10 +53,7 @@ namespace
 	{
 		const std::filesystem::path sourceName(SourceFileName(sourceUrl));
 		std::string stem = SanitizeFilePart(sourceName.stem().string());
-		std::string extension = sourceName.extension().string();
-		std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character) {
-			return static_cast<char>(std::tolower(character));
-		});
+		std::string extension = ToLowerAsciiCopy(sourceName.extension().string());
 
 		std::filesystem::path targetDirectory;
 		if (kind == VsmrResourceFiles::Kind::Aviso)
@@ -88,10 +64,10 @@ namespace
 			// The airport is runtime state, not a filename. Treat it as untrusted
 			// here because storage happens before the bridge validates the import.
 			// Only an ICAO-shaped token may participate in a target filename.
-			const std::string airportUpper = NormalizeAirportCode(airport);
+			const std::string airportUpper = NormalizeAirportCodeCopy(airport);
 			if (stem.empty())
 				stem = airportUpper.empty() ? "AVISO" : airportUpper;
-			else if (!airportUpper.empty() && ToUpperAscii(stem).find(airportUpper) == std::string::npos)
+			else if (!airportUpper.empty() && ToUpperAsciiCopy(stem).find(airportUpper) == std::string::npos)
 				stem = airportUpper + "_" + stem;
 		}
 		else
@@ -105,7 +81,7 @@ namespace
 		// GitHub downloads are always variants. Even a URL whose basename is the
 		// canonical <ICAO>.geojson or vSMR_Profiles.json can never target
 		// the user's original file.
-		const std::string upperStem = ToUpperAscii(stem);
+		const std::string upperStem = ToUpperAsciiCopy(stem);
 		if (upperStem.size() < 7 ||
 			upperStem.substr(upperStem.size() - 7) != "_GITHUB")
 		{

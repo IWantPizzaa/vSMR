@@ -443,7 +443,10 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 	{
 		if (!standardCursor)
 			return;
-		HCURSOR cursor = CopyCursor((HCURSOR)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(resourceId), IMAGE_CURSOR, 0, 0, LR_SHARED));
+		// LR_SHARED returns a borrowed system-managed handle; retaining it avoids
+		// leaking an allocated cursor copy on every interaction-state change.
+		HCURSOR cursor = reinterpret_cast<HCURSOR>(
+			::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(resourceId), IMAGE_CURSOR, 0, 0, LR_SHARED));
 		setCursorState(cursor, false);
 	};
 	auto setDefaultCursorIfNeeded = [&]()
@@ -883,9 +886,7 @@ bool CSMRRadar::HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam)
 
 bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelDelta, HWND sourceHwnd)
 {
-	UNREFERENCED_PARAMETER(sourceHwnd);
-
-	if (wheelDelta == 0)
+	if (wheelDelta == 0 || IsShutdownRequested())
 		return false;
 
 	const double scaleMultiplier = (wheelDelta > 0) ? 1.18 : (1.0 / 1.18);
@@ -910,54 +911,48 @@ bool CSMRRadar::HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelD
 	};
 	auto zoomViewportAtScreenPoint = [&](POINT point) -> bool
 	{
-		const HWND targetWindow = ::WindowFromPoint(point);
+		HWND targetWindow = ::WindowFromPoint(point);
+		if (targetWindow == nullptr)
+			targetWindow = sourceHwnd;
 		if (targetWindow == nullptr)
 			return false;
 
-		for (CSMRRadar* radar : RadarScreensOpened)
+		POINT insetPoint = {};
+		bool pointMapped = false;
+		for (auto it = appWindows.rbegin(); it != appWindows.rend(); ++it)
 		{
-			if (radar == nullptr)
+			const int appWindowId = it->first;
+			CInsetWindow* appWindow = it->second.get();
+			if (appWindow == nullptr || !IsAppWindowVisible(this, appWindowId))
+				continue;
+			if (!windowMatches(targetWindow, appWindow->m_AvisoRenderWindow))
 				continue;
 
-			POINT insetPoint = {};
-			bool pointMapped = false;
-			for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
-			{
-				const int appWindowId = it->first;
-				CInsetWindow* appWindow = it->second.get();
-				if (appWindow == nullptr || !IsAppWindowVisible(radar, appWindowId))
-					continue;
-				if (!windowMatches(targetWindow, appWindow->m_AvisoRenderWindow))
-					continue;
-
-				if (!appWindow->TryMapAvisoScreenPoint(point, insetPoint))
-					continue;
-				pointMapped = true;
-				break;
-			}
-			if (!pointMapped)
+			if (!appWindow->TryMapAvisoScreenPoint(point, insetPoint))
 				continue;
-
-			if (IsPointInRuntimeMenuOverlay(radar, insetPoint))
-				return true;
-			CInsetWindow* appWindow = TopmostVisibleInsetFrameAtPoint(radar, insetPoint);
-			if (appWindow == nullptr)
-				continue;
-			if (!appWindow->SupportsPanAndZoom())
-				return true;
-
-			mouseLocation = insetPoint;
-			SelectAvisoViewport(radar, appWindow);
-			if (appWindow->ZoomAvisoAtPoint(insetPoint, scaleMultiplier))
-			{
-				radar->MarkPerformanceRefreshReason(
-					VsmrPerformance::FrameRefreshReason::InsetPanZoom);
-				radar->RequestRefresh();
-			}
-			return true;
+			pointMapped = true;
+			break;
 		}
+		if (!pointMapped)
+			return false;
 
-		return false;
+		if (IsPointInRuntimeMenuOverlay(this, insetPoint))
+			return true;
+		CInsetWindow* appWindow = TopmostVisibleInsetFrameAtPoint(this, insetPoint);
+		if (appWindow == nullptr)
+			return false;
+		if (!appWindow->SupportsPanAndZoom())
+			return true;
+
+		mouseLocation = insetPoint;
+		SelectAvisoViewport(this, appWindow);
+		if (appWindow->ZoomAvisoAtPoint(insetPoint, scaleMultiplier))
+		{
+			MarkPerformanceRefreshReason(
+				VsmrPerformance::FrameRefreshReason::InsetPanZoom);
+			RequestRefresh();
+		}
+		return true;
 	};
 
 	if (zoomViewportAtScreenPoint(screenPoint))

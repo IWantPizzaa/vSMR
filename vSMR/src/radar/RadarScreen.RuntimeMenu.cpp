@@ -3,6 +3,7 @@
 #include "radar/RadarScreen.hpp"
 #include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "shared/TextUtils.hpp"
 
 #include <cstdlib>
 #include <limits>
@@ -281,18 +282,13 @@ namespace
 		return true;
 	}
 
-	bool EqualsNoCase(const std::string& left, const std::string& right)
-	{
-		return left.size() == right.size() && _stricmp(left.c_str(), right.c_str()) == 0;
-	}
-
 	std::string MakeUniquePresetName(const std::vector<CSMRRadar::AvisoPreset>& presets, const std::string& requested)
 	{
 		auto exists = [&](const std::string& candidate)
 		{
 			for (const CSMRRadar::AvisoPreset& preset : presets)
 			{
-				if (EqualsNoCase(preset.name, candidate))
+				if (AsciiCaseInsensitiveEquals(preset.name, candidate))
 					return true;
 			}
 			return false;
@@ -556,7 +552,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			entry.id = "runtime.mode." + std::to_string(index);
 			entry.label = modes[index].name;
 			entry.indicator = RuntimeIndicator::Selection;
-			entry.active = EqualsNoCase(modes[index].name, activeMode);
+			entry.active = AsciiCaseInsensitiveEquals(modes[index].name, activeMode);
 			entries.push_back(entry);
 		}
 	}
@@ -583,7 +579,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			entry.id = "runtime.profile." + std::to_string(index);
 			entry.label = profiles[index];
 			entry.indicator = RuntimeIndicator::Selection;
-			entry.active = EqualsNoCase(profiles[index], activeProfile);
+			entry.active = AsciiCaseInsensitiveEquals(profiles[index], activeProfile);
 			entries.push_back(entry);
 		}
 	}
@@ -1162,7 +1158,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				entry.id = "runtime.preset." + std::to_string(presetIndex);
 				entry.label = presets[static_cast<size_t>(presetIndex)].name;
 				entry.indicator = RuntimeIndicator::Selection;
-				entry.active = EqualsNoCase(entry.label, activePreset);
+				entry.active = AsciiCaseInsensitiveEquals(entry.label, activePreset);
 				CRect rowArea(
 					RuntimeMenuPopupArea.left + kPopupPadding,
 					contentTop,
@@ -1205,11 +1201,11 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			!activePreset.empty() &&
 			std::any_of(presets.begin(), presets.end(), [&](const AvisoPreset& preset)
 			{
-				return EqualsNoCase(preset.name, activePreset);
+				return AsciiCaseInsensitiveEquals(preset.name, activePreset);
 			});
 		const bool hasDefaultPreset = !defaultPreset.empty();
 		const bool clearDefaultAction =
-			hasDefaultPreset && (!hasActivePreset || EqualsNoCase(activePreset, defaultPreset));
+			hasDefaultPreset && (!hasActivePreset || AsciiCaseInsensitiveEquals(activePreset, defaultPreset));
 		const bool canChangeDefault = hasActivePreset || hasDefaultPreset;
 		CRect linkedArea(
 			RuntimeMenuPopupArea.left + kPopupPadding,
@@ -1685,7 +1681,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	const auto activePresetIt = std::find_if(
 		presets.begin(),
 		presets.end(),
-		[&](const AvisoPreset& preset) { return EqualsNoCase(preset.name, activePreset); });
+		[&](const AvisoPreset& preset) { return AsciiCaseInsensitiveEquals(preset.name, activePreset); });
 	if (activePresetIt == presets.end())
 		activePreset.clear();
 	else
@@ -1708,7 +1704,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	else if (std::strcmp(id, "runtime.preset.default") == 0)
 	{
 		if (!defaultPreset.empty() &&
-			(activePreset.empty() || EqualsNoCase(activePreset, defaultPreset)))
+			(activePreset.empty() || AsciiCaseInsensitiveEquals(activePreset, defaultPreset)))
 		{
 			ClearDefaultAvisoPreset();
 		}
