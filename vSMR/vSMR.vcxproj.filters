@@ -40,7 +40,6 @@
     <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp"><Filter>Bootstrap</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\aviso\AvisoEditorDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\config\RuntimeConfig.cpp"><Filter>Source</Filter></ClCompile>
@@ -56,7 +55,6 @@
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\profiles\ProfileEditorDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarGeometry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.cpp"><Filter>Source</Filter></ClCompile>
@@ -82,7 +80,6 @@
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\aviso\AvisoEditorDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterDialog.hpp"><Filter>Headers</Filter></ClInclude>
@@ -102,7 +99,6 @@
     <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\Plugin.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\profiles\ProfileColorPaths.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\profiles\ProfileEditorDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreen.hpp"><Filter>Headers</Filter></ClInclude>
@@ -189,6 +185,9 @@
       <Filter>Tools</Filter>
     </None>
     <None Include="tools\package_release.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\create_github_release.ps1">
       <Filter>Tools</Filter>
     </None>
     <None Include="tools\validate_release.ps1">
