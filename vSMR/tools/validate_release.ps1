@@ -152,6 +152,7 @@ foreach ($relativePath in @(
     "vSMR\data\AVISO-UPDATE-POLICY.json",
     "vSMR\data\vSMR_Profiles.json",
     "vSMR\data\ICAO_Aircraft.json",
+    "vSMR\data\airports_hp.json",
     "vSMR\data\Licenses\DEPENDENCIES.md",
     "vSMR\data\Licenses\ASSET_PROVENANCE.md",
     "vSMR\src\control_center\web\index.html",
@@ -387,6 +388,27 @@ foreach ($record in $aircraftRecords) {
     Assert-True ([double]$record.Value.length -gt 0.0 -and [double]$record.Value.wingspan -gt 0.0) "Invalid aircraft dimensions for $($record.Name)."
 }
 
+$holdingPointCatalog = Get-Content -LiteralPath (Join-Path $dataDirectory "airports_hp.json") -Raw | ConvertFrom-Json
+$holdingPointAirports = @($holdingPointCatalog.PSObject.Properties)
+Assert-True ($holdingPointAirports.Count -gt 0) "Holding-point catalog contains no airports."
+foreach ($airport in $holdingPointAirports) {
+    Assert-True ($airport.Name -match '^[A-Z0-9]{4}$') "Invalid holding-point airport '$($airport.Name)'."
+    $runways = @($airport.Value.PSObject.Properties)
+    Assert-True ($runways.Count -gt 0) "Holding-point airport '$($airport.Name)' contains no runways."
+    foreach ($runway in $runways) {
+        Assert-True ($runway.Name -match '^\d{2}[LCR]?$') "Invalid runway '$($runway.Name)' for $($airport.Name)."
+        $points = @($runway.Value)
+        Assert-True ($points.Count -gt 0) "Runway $($airport.Name)/$($runway.Name) contains no holding points."
+        $uniquePoints = @{}
+        foreach ($pointValue in $points) {
+            $point = ([string]$pointValue).Trim().ToUpperInvariant()
+            Assert-True ($point -match '^[A-Z0-9/-]{1,8}$') "Invalid holding point '$point' for $($airport.Name)/$($runway.Name)."
+            Assert-True (-not $uniquePoints.ContainsKey($point)) "Duplicate holding point '$point' for $($airport.Name)/$($runway.Name)."
+            $uniquePoints[$point] = $true
+        }
+    }
+}
+
 $avisoFiles = @(
     # The build deliberately excludes the aggregate ALL_FR_* and _LFXX
     # sources; only canonical four-character airport files are packaged.
@@ -548,6 +570,7 @@ if (-not [string]::IsNullOrWhiteSpace($BuildOutputDirectory)) {
     Assert-File (Join-Path $BuildOutputDirectory "vSMR.dll")
     Assert-True (Test-Path -LiteralPath (Join-Path $BuildOutputDirectory "vSMR_Data") -PathType Container) "Built vSMR_Data is missing."
     Assert-File (Join-Path $BuildOutputDirectory "vSMR_Data\AVISO-UPDATE-POLICY.json")
+    Assert-File (Join-Path $BuildOutputDirectory "vSMR_Data\airports_hp.json")
     $releaseRootNames = @(Get-ChildItem -LiteralPath $BuildOutputDirectory -Force | ForEach-Object Name | Sort-Object)
     Assert-True (($releaseRootNames -join '|') -eq 'vSMR.dll|vSMR_Data') "Release root must contain only vSMR.dll and vSMR_Data; found $($releaseRootNames -join ', ')."
     $builtCrashHandler = Join-Path $BuildOutputDirectory "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
