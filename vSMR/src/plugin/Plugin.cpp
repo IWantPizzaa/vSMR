@@ -139,6 +139,9 @@ namespace
 	std::map<std::string, std::chrono::steady_clock::time_point> LineupOverrides;
 	std::mutex HoldingPointEditMutex;
 	std::string PendingHoldingPointCallsign;
+	using HoldingPointRunways = std::map<std::string, std::vector<std::string>>;
+	std::mutex HoldingPointCatalogMutex;
+	std::map<std::string, HoldingPointRunways> HoldingPointCatalog;
 
 	std::string NormalizeLineupCallsign(const char* callsign)
 	{
@@ -148,6 +151,106 @@ namespace
 			normalized.end());
 		std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 		return normalized;
+	}
+
+	std::string NormalizeHoldingPointCatalogKey(const std::string& value)
+	{
+		std::string normalized = VsmrHoldingPoint::Trim(value);
+		normalized.erase(
+			std::remove_if(
+				normalized.begin(), normalized.end(),
+				[](unsigned char character) { return std::isspace(character) != 0; }),
+			normalized.end());
+		std::transform(
+			normalized.begin(), normalized.end(), normalized.begin(),
+			[](unsigned char character) { return static_cast<char>(std::toupper(character)); });
+		if (normalized.size() > 3 && normalized.compare(0, 3, "RWY") == 0)
+			normalized.erase(0, 3);
+		return normalized;
+	}
+
+	void LoadHoldingPointCatalog(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		if (!input.is_open())
+		{
+			Logger::info("Holding-point catalog not found: " + path.string());
+			return;
+		}
+
+		std::stringstream buffer;
+		buffer << input.rdbuf();
+		const std::string json = buffer.str();
+		rapidjson::Document document;
+		if (document.Parse<0>(json.c_str()).HasParseError() || !document.IsObject())
+		{
+			Logger::info("Holding-point catalog is invalid: " + path.string());
+			return;
+		}
+
+		std::map<std::string, HoldingPointRunways> loaded;
+		for (auto airport = document.MemberBegin(); airport != document.MemberEnd(); ++airport)
+		{
+			if (!airport->name.IsString() || !airport->value.IsObject())
+				continue;
+			const std::string airportKey = NormalizeHoldingPointCatalogKey(airport->name.GetString());
+			if (airportKey.empty())
+				continue;
+
+			HoldingPointRunways runways;
+			for (auto runway = airport->value.MemberBegin(); runway != airport->value.MemberEnd(); ++runway)
+			{
+				if (!runway->name.IsString() || !runway->value.IsArray())
+					continue;
+				const std::string runwayKey = NormalizeHoldingPointCatalogKey(runway->name.GetString());
+				if (runwayKey.empty())
+					continue;
+
+				std::vector<std::string> points;
+				for (rapidjson::SizeType index = 0; index < runway->value.Size(); ++index)
+				{
+					const rapidjson::Value& entry = runway->value[index];
+					if (!entry.IsString())
+						continue;
+					std::string point;
+					if (VsmrHoldingPoint::Normalize(entry.GetString(), point) &&
+						!point.empty() &&
+						std::find(points.begin(), points.end(), point) == points.end())
+					{
+						points.push_back(std::move(point));
+					}
+				}
+				if (!points.empty())
+					runways.emplace(runwayKey, std::move(points));
+			}
+			if (!runways.empty())
+				loaded.emplace(airportKey, std::move(runways));
+		}
+
+		{
+			std::lock_guard<std::mutex> guard(HoldingPointCatalogMutex);
+			HoldingPointCatalog = std::move(loaded);
+		}
+		Logger::info("Loaded holding-point catalog: " + path.string());
+	}
+
+	std::vector<std::string> HoldingPointsForFlightPlan(const CFlightPlan& flightPlan)
+	{
+		if (!flightPlan.IsValid())
+			return {};
+		const char* airportRaw = flightPlan.GetFlightPlanData().GetOrigin();
+		const char* runwayRaw = flightPlan.GetFlightPlanData().GetDepartureRwy();
+		const std::string airport = NormalizeHoldingPointCatalogKey(airportRaw != nullptr ? airportRaw : "");
+		const std::string runway = NormalizeHoldingPointCatalogKey(runwayRaw != nullptr ? runwayRaw : "");
+		if (airport.empty() || runway.empty())
+			return {};
+
+		std::lock_guard<std::mutex> guard(HoldingPointCatalogMutex);
+		const auto airportIt = HoldingPointCatalog.find(airport);
+		if (airportIt == HoldingPointCatalog.end())
+			return {};
+		const auto runwayIt = airportIt->second.find(runway);
+		return runwayIt != airportIt->second.end() ? runwayIt->second : std::vector<std::string>();
 	}
 }
 
@@ -3299,6 +3402,14 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	}
 	Logger::DLL_PATH = DllPath;
 	{
+		const std::filesystem::path installRoot(DllPath);
+		std::filesystem::path catalogPath = installRoot / "vSMR_Data" / "airports_hp.json";
+		std::error_code catalogError;
+		if (!std::filesystem::exists(catalogPath, catalogError))
+			catalogPath = installRoot / "airports_hp.json";
+		LoadHoldingPointCatalog(catalogPath);
+	}
+	{
 		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
 		ActiveProfilesConfigPath.clear();
 		ActiveProfilesConfigPathClaimed = false;
@@ -4343,6 +4454,45 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
+	auto applyHoldingPoint = [&](const std::string& callsign, const std::string& input) -> bool
+	{
+		std::string holdingPoint;
+		std::string error;
+		if (!VsmrHoldingPoint::Normalize(input, holdingPoint, &error))
+		{
+			DisplayUserMessage("vSMR", "Holding Point", error.c_str(), true, true, false, false, false);
+			return false;
+		}
+
+		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
+		if (!flightPlan.IsValid())
+		{
+			DisplayUserMessage("vSMR", "Holding Point", "The selected flight plan is no longer available.", true, true, false, false, false);
+			return false;
+		}
+
+		CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
+		const char* rawScratchpad = assignedData.GetScratchPadString();
+		const std::string currentScratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
+		const std::string updatedScratchpad = VsmrHoldingPoint::Write(currentScratchpad, holdingPoint);
+		if (updatedScratchpad != currentScratchpad && !assignedData.SetScratchPadString(updatedScratchpad.c_str()))
+		{
+			DisplayUserMessage(
+				"vSMR",
+				"Holding Point",
+				"EuroScope rejected the scratchpad update. Shorten the existing scratchpad text and try again.",
+				true, true, false, false, false);
+			return false;
+		}
+		VsmrHoldingPoint::RememberPending(callsign, holdingPoint);
+
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+		}
+		return true;
+	};
 
 	if (FunctionId == TAG_FUNC_HOLDING_POINT_EDIT)
 	{
@@ -4365,11 +4515,39 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
 			callsign,
 			rawScratchpad != nullptr ? rawScratchpad : "");
+		const char* runwayRaw = flightPlan.GetFlightPlanData().GetDepartureRwy();
+		const std::string runway = NormalizeHoldingPointCatalogKey(runwayRaw != nullptr ? runwayRaw : "");
+		const std::vector<std::string> holdingPoints = HoldingPointsForFlightPlan(flightPlan);
+		const std::string title = runway.empty() ? "Holding point" : "Holding point RWY " + runway;
+		OpenPopupList(Area, title.c_str(), 1);
+		AddPopupListElement("[...]", "", TAG_FUNC_HOLDING_POINT_MANUAL, false);
+		for (const std::string& point : holdingPoints)
+			AddPopupListElement(point.c_str(), "", TAG_FUNC_HOLDING_POINT_SELECT, point == holdingPoint);
+		return;
+	}
+
+	if (FunctionId == TAG_FUNC_HOLDING_POINT_MANUAL)
+	{
+		std::string callsign;
+		{
+			std::lock_guard<std::mutex> guard(HoldingPointEditMutex);
+			callsign = PendingHoldingPointCallsign;
+		}
+		if (callsign.empty())
+			return;
+		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
+		if (!flightPlan.IsValid())
+			return;
+		const char* rawScratchpad = flightPlan.GetControllerAssignedData().GetScratchPadString();
+		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
+			callsign,
+			rawScratchpad != nullptr ? rawScratchpad : "");
 		OpenPopupEdit(Area, TAG_FUNC_HOLDING_POINT_COMMIT, holdingPoint.c_str());
 		return;
 	}
 
-	if (FunctionId == TAG_FUNC_HOLDING_POINT_COMMIT)
+	if (FunctionId == TAG_FUNC_HOLDING_POINT_SELECT ||
+		FunctionId == TAG_FUNC_HOLDING_POINT_COMMIT)
 	{
 		std::string callsign;
 		{
@@ -4378,42 +4556,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		}
 		if (callsign.empty())
 			return;
-
-		std::string holdingPoint;
-		std::string error;
-		if (!VsmrHoldingPoint::Normalize(sItemString != nullptr ? sItemString : "", holdingPoint, &error))
-		{
-			DisplayUserMessage("vSMR", "Holding Point", error.c_str(), true, true, false, false, false);
-			return;
-		}
-
-		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
-		if (!flightPlan.IsValid())
-		{
-			DisplayUserMessage("vSMR", "Holding Point", "The selected flight plan is no longer available.", true, true, false, false, false);
-			return;
-		}
-
-		CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
-		const char* rawScratchpad = assignedData.GetScratchPadString();
-		const std::string currentScratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
-		const std::string updatedScratchpad = VsmrHoldingPoint::Write(currentScratchpad, holdingPoint);
-		if (updatedScratchpad != currentScratchpad && !assignedData.SetScratchPadString(updatedScratchpad.c_str()))
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"Holding Point",
-				"EuroScope rejected the scratchpad update. Shorten the existing scratchpad text and try again.",
-				true, true, false, false, false);
-			return;
-		}
-		VsmrHoldingPoint::RememberPending(callsign, holdingPoint);
-
-		for (CSMRRadar* radar : RadarScreensOpened)
-		{
-			if (radar != nullptr && !radar->IsShutdownRequested())
-				radar->RequestRefresh();
-		}
+		(void)applyHoldingPoint(callsign, sItemString != nullptr ? sItemString : "");
 		return;
 	}
 
