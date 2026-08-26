@@ -18,6 +18,7 @@
 - Fixed clean preloaded Control Centers retaining a stale profiles revision after another radar window saved, which caused a false “profiles file changed in another vSMR window” warning on the next edit.
 - Removed the RDF, CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces.
 - Changed holding-point synchronization to the stable `VSMRHP/<value>` remarks marker and clean up duplicated markers produced by EuroScope's rewriting of the former `HP:<value>` format.
+- Automatically removes the holding-point marker from flight-plan remarks when the correlated aircraft transitions to an airborne tag above 50 kt.
 
 ## [2.0.0-beta.4] - 2026-08-24
 
