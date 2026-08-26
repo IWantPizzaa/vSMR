@@ -192,6 +192,7 @@ namespace
 		bool found = false;
 		double nearestDistanceSeconds = 0.0;
 		std::time_t nearest = 0;
+		// DDHHMMZ has no month, so test the adjacent months around receipt time
 		for (int monthOffset = -1; monthOffset <= 1; ++monthOffset)
 		{
 			int candidateYear = received.tm_year + 1900;
@@ -304,6 +305,8 @@ namespace VsmrWeather
 				parsed.rawReport.push_back(' ');
 			parsed.rawReport += token;
 		}
+
+		// Extracting the first supported value from each METAR group
 		for (const std::string& token : tokens)
 		{
 			if (parsed.observationUtc == 0)
@@ -368,6 +371,7 @@ namespace VsmrWeather
 		const auto existing = WeatherCache().find(snapshot.icao);
 		if (existing != WeatherCache().end())
 		{
+			// Reject older reports and prefer EuroScope when timestamps are equal
 			const std::time_t incomingDataUtc = snapshot.observationUtc > 0
 				? snapshot.observationUtc
 				: snapshot.receivedUtc;

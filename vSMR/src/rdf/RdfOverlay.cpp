@@ -365,6 +365,7 @@ namespace
 
 			const FrequencyHz frequency = static_cast<FrequencyHz>(std::llround(rawFrequency));
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
+			// Tracking each frequency prevents one receiver from ending another active transmission
 			if (type == "kRxBegin")
 			{
 				if (Transmissions[callsign].insert(frequency).second)

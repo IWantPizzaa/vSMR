@@ -1176,6 +1176,7 @@ void __declspec(dllexport) EuroScopePlugInInit(
 			installRoot / kRuntimeRelativePath;
 		const std::string currentVersion = ReadRuntimeVersion(canonicalRuntimePath);
 
+		// Preparing updates before any runtime code enters EuroScope
 		ProgressWindow progress(reinterpret_cast<HINSTANCE>(&__ImageBase));
 		vsmr::updater::StartupOptions updateOptions;
 		updateOptions.installRoot = installRoot;
@@ -1220,6 +1221,7 @@ void __declspec(dllexport) EuroScopePlugInInit(
 			return;
 		}
 
+		// Locking the selected runtime/data generation for this EuroScope session
 		std::wstring lockError;
 		if (!AcquireSessionLock(installRoot, lockError))
 		{
@@ -1230,6 +1232,7 @@ void __declspec(dllexport) EuroScopePlugInInit(
 		const std::string selectedVersion = update.selectedVersion.empty()
 			? ReadRuntimeVersion(selectedRuntimePath)
 			: update.selectedVersion;
+		// Starting the selected runtime in a verified shadow copy
 		RuntimeAttempt runtime;
 		std::wstring runtimeError;
 		if (TryCreateRuntime(
@@ -1257,6 +1260,7 @@ void __declspec(dllexport) EuroScopePlugInInit(
 		AppendBootstrapLog(L"Runtime activation failed: " + runtimeError);
 		if (update.updateActivated)
 		{
+			// Restoring the previous complete runtime/data pair after a failed start
 			if (!vsmr::updater::MarkRuntimeUnhealthy(update))
 			{
 				AppendBootstrapLog(

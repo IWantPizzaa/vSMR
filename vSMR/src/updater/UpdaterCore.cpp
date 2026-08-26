@@ -3058,6 +3058,7 @@ finally { $zip.Dispose() }
 			}
 			CleanupNormalUpdaterState(context);
 
+			// Loading updater state and the next-startup action
 			const State previousState = LoadPreviousState(context.statePath);
 			context.state.lastCheckedUtc = previousState.lastCheckedUtc;
 			context.state.nextCheckUtc = previousState.nextCheckUtc;
@@ -3091,6 +3092,7 @@ finally { $zip.Dispose() }
 				return result;
 			}
 
+			// ----- Finding an eligible release -----
 			context.state.status = "checking";
 			context.state.error.clear();
 			context.state.errorCode.clear();
@@ -3204,6 +3206,7 @@ finally { $zip.Dispose() }
 				return result;
 			}
 
+			// ----- Downloading and staging the release -----
 			context.state.status = "downloading";
 			const wchar_t* downloadMessage = forceAvisoReload
 				? L"Downloading the signed release for AVISO reload..."
@@ -3285,6 +3288,7 @@ finally { $zip.Dispose() }
 					"deferred");
 			}
 
+			// ----- Installing the verified release -----
 			UniqueHandle sessionLock = AcquireExclusiveSessionLock(
 				context.sessionLockStorageRoot, startupOptions.installRoot);
 			if (!sessionLock)
@@ -3350,6 +3354,7 @@ finally { $zip.Dispose() }
 					L"The update transaction did not complete and a safe runtime could not be verified.");
 			}
 
+			// Verifying the installed runtime before activation
 			std::string installedVersion;
 			fs::path rollbackBackup;
 			std::string installedRuntimeHash;

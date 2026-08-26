@@ -28,6 +28,7 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 
 	CRadarTargetPositionData RtPos = RadarTarget.GetPosition();
 
+	// Retaining three previous primary returns for the NOVA afterglow
 	Patatoide_Points& primaryReturn = Patatoides[callsign];
 	primaryReturn.historyThreePoints = std::move(primaryReturn.historyTwoPoints);
 	primaryReturn.historyTwoPoints = std::move(primaryReturn.historyOnePoints);
@@ -41,6 +42,7 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 	float cabin_width = 4.0f;
 	float lenght = 38.0f;
 
+	// Scaling the return footprint by wake turbulence category
 	if (fp.IsValid()) {
 		char wtc = fp.GetFlightPlanData().GetAircraftWtc();
 
