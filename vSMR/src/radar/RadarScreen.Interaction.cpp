@@ -607,7 +607,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 				TagCenterPix.y = Pt.y + offIt->second.y;
 			}
 			else {
-				// Fallbacks
+				// Falling back to EuroScope's object rectangle when no drag offset was captured
 				CRect Temp = Area;
 				if (ObjectType == DRAWING_TAG)
 					TagCenterPix = Temp.CenterPoint();

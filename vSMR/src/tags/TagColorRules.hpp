@@ -1028,6 +1028,7 @@ namespace
 			bool ruleMatches = true;
 			if (!rule.criteria.empty())
 			{
+				// Every criterion must match before the rule can change a color channel
 				for (const StructuredTagColorRule::Criterion& criterion : rule.criteria)
 				{
 					if (!StructuredRuleCriterionMatches(criterion.source, criterion.token, criterion.condition, replacingMap, pilotData))
