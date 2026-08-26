@@ -105,6 +105,7 @@ public:
 	//---OnFlightPlanControllerAssignedDataUpdate-------------------
 
 	void OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType) override;
+	void OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan) override;
 
 	//---OnFlightPlanDisconnect------------------------------------------
 
