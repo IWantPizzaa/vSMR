@@ -53,7 +53,7 @@ public:
 	CInsetWindow(int Id);
 	virtual ~CInsetWindow();
 
-	// Definition
+	// View and layout state
 	int m_Id = -1, m_Scale = 15, m_Filter = 5500;
 	RECT m_Area = { 200, 200, 600, 500 };
 	POINT m_Offset = { 0, 0 }, m_OffsetInit = { 0, 0 }, m_OffsetDrag = { 0, 0 };

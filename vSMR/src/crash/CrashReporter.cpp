@@ -414,6 +414,7 @@ namespace VsmrCrashReporter
 				return false;
 			}
 
+			// Selecting a durable report directory before registering WER
 			const std::filesystem::path moduleDirectory =
 				installRoot != nullptr && *installRoot != L'\0'
 				? std::filesystem::path(installRoot)
@@ -438,6 +439,7 @@ namespace VsmrCrashReporter
 				return false;
 			}
 
+			// Capturing enough build identity to match reports with private symbols
 			gSharedState.moduleBase = reinterpret_cast<std::uintptr_t>(module);
 			gSharedState.moduleSize = moduleSize;
 			VsmrCrashProtocol::CopyText(gSharedState.reportDirectory, reportDirectoryNative.c_str());
@@ -454,6 +456,7 @@ namespace VsmrCrashReporter
 			VsmrCrashProtocol::CopyText(gSharedState.euroScopeVersion, hostVersion.empty() ? "unavailable" : hostVersion.c_str());
 			ReadBuildMetadata(moduleDirectory, gSharedState);
 
+			// EuroScope is x86 but Windows can consult either per-user registry view
 			const LONG registry32 = AddWerAllowlistValue(gHandlerPath, KEY_WOW64_32KEY);
 			const LONG registry64 = AddWerAllowlistValue(gHandlerPath, KEY_WOW64_64KEY);
 			if (registry32 != ERROR_SUCCESS && registry64 != ERROR_SUCCESS)
@@ -463,6 +466,7 @@ namespace VsmrCrashReporter
 				return false;
 			}
 
+			// The helper must never observe a partially initialized shared state
 			VsmrCrashProtocol::MarkReady(gSharedState);
 			const HRESULT registration = ::WerRegisterRuntimeExceptionModule(gHandlerPath.c_str(), &gSharedState);
 			if (FAILED(registration))

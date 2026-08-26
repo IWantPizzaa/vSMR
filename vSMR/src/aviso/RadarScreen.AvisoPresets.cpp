@@ -788,6 +788,7 @@ bool CSMRRadar::SaveAvisoPreset(
 	preset.name = presetName;
 	preset.linkedMovement = linkedMovementOverride.value_or(AvisoViewsLinked);
 
+	// Capturing the main AVISO view
 	CPosition displayA;
 	CPosition displayB;
 	GetDisplayArea(&displayA, &displayB);
@@ -798,6 +799,7 @@ bool CSMRRadar::SaveAvisoPreset(
 	preset.mainView.maxLongitude = (std::max)(displayA.m_Longitude, displayB.m_Longitude);
 	preset.mainView.zoomLevel = RadarViewZoomLevel;
 
+	// Capturing the inset layout
 	const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
 	const CInsetWindow* avisoWindow = GetSecondaryAvisoWindow(this);
 	if (avisoWindow == nullptr)
@@ -917,6 +919,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		return false;
 	CancelInsetWindowInteractions();
 
+	// Restoring the main AVISO view
 	if (preset.mainView.valid)
 	{
 		CPosition downLeft;
@@ -933,6 +936,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 		AvisoGeoJsonLastViewValid = false;
 	}
 
+	// Restoring the inset layout
 	CInsetWindow* avisoWindow = GetSecondaryAvisoWindow(this);
 	if (avisoWindow != nullptr)
 	{
@@ -1397,6 +1401,7 @@ void CSMRRadar::SyncLinkedAvisoSecondaryToMainView()
 	const double centerLat = (minLat + maxLat) * 0.5;
 	const double centerLon = (minLon + maxLon) * 0.5;
 
+	// Converting the main geographic bounds to the inset pixels-per-NM scale
 	CRect radarArea(GetRadarArea());
 	CRect chatArea(GetChatArea());
 	radarArea.NormalizeRect();

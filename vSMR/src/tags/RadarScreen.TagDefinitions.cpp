@@ -722,6 +722,7 @@ bool CSMRRadar::GetTagDefinitionArray(std::string type, bool detailed, rapidjson
 		}
 	};
 
+	// Resolving the status-specific section while retaining legacy profile fallbacks
 	if ((type == "departure" || type == "arrival" || type == "airborne") && normalizedStatus != "default")
 	{
 		if (!section.HasMember("status_definitions") || !section["status_definitions"].IsObject())
@@ -768,6 +769,7 @@ bool CSMRRadar::GetTagDefinitionArray(std::string type, bool detailed, rapidjson
 		if (!createIfMissing)
 			return false;
 
+		// New status definitions inherit the closest available parent definition
 		rapidjson::Value newArray(rapidjson::kArrayType);
 		if (detailed && targetSection != &section && section.HasMember("definition_detailed") && section["definition_detailed"].IsArray())
 		{
@@ -1444,6 +1446,7 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 
 		if (rule.criteria.empty())
 		{
+			// Migrating legacy single-criterion fields into the current list
 			std::string source = "vacdm";
 			if (item.HasMember("source") && item["source"].IsString())
 				source = item["source"].GetString();
@@ -1576,6 +1579,7 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		changed = true;
 	}
 
+	// Normalizing editor input before comparing or storing it
 	std::vector<StructuredTagColorRule> normalizedRules;
 	normalizedRules.reserve(rules.size());
 	for (const StructuredTagColorRule& rawRule : rules)
@@ -1655,6 +1659,7 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 		normalizedRules.push_back(normalizedRule);
 	}
 
+	// Avoiding a disk write when normalization produced no effective change
 	const std::vector<StructuredTagColorRule>& existingRules = GetStructuredTagColorRules();
 	if (existingRules.size() != normalizedRules.size())
 	{
@@ -1674,6 +1679,7 @@ bool CSMRRadar::SetStructuredTagColorRules(const std::vector<StructuredTagColorR
 
 	if (changed)
 	{
+		// Replacing persisted rules only after the complete normalized set is ready
 		if (rulesObject.HasMember("items"))
 			rulesObject.RemoveMember("items");
 

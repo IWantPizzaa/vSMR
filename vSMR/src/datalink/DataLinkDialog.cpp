@@ -599,6 +599,7 @@ BOOL CDataLinkDialog::OnInitDialog()
 
 	m_ResolvedMode = ResolveDialogMode();
 
+	// Styling the shared PDC and message controls
 	m_BackgroundBrush.CreateSolidBrush(kBackgroundColor);
 	m_PanelBrush.CreateSolidBrush(kPanelColor);
 	m_EditBrush.CreateSolidBrush(kControlColor);
@@ -645,6 +646,7 @@ BOOL CDataLinkDialog::OnInitDialog()
 		}
 	}
 
+	// Applying the custom edit appearance without replacing the MFC controls
 	for (CWnd* child = GetWindow(GW_CHILD); child != NULL; child = child->GetNextWindow())
 	{
 		if (!IsDatalinkEditControl(child->GetDlgCtrlID()))

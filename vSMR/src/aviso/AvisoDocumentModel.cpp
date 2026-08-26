@@ -242,6 +242,8 @@ bool AvisoDocumentModel::SaveAtomically(
 		return false;
 	}
 
+	// Keeping untouched coordinate arrays byte-for-byte stable avoids rewriting
+	// large airport datasets when only styles or metadata changed
 	rapidjson::StringBuffer buffer;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
 	Document.Accept(writer);
@@ -266,6 +268,7 @@ bool AvisoDocumentModel::SaveAtomically(
 		if (outputPath.has_parent_path())
 			std::filesystem::create_directories(outputPath.parent_path());
 
+		// Writing and verifying a temporary copy before replacing the active dataset
 		std::filesystem::path tempPath;
 		HANDLE output = INVALID_HANDLE_VALUE;
 		for (int attempt = 0; attempt < 128; ++attempt)
@@ -717,6 +720,7 @@ AvisoValidationResult AvisoDocumentModel::ValidateAndRecalculate()
 	double maxLongitude = 0.0;
 	double maxLatitude = 0.0;
 
+	// Collecting nested GeoJSON bounds while validating style references
 	std::function<void(const rapidjson::Value&)> collectBounds = [&](const rapidjson::Value& value)
 	{
 		if (!value.IsArray())
@@ -791,6 +795,7 @@ AvisoValidationResult AvisoDocumentModel::ValidateAndRecalculate()
 		collectBounds(feature["geometry"]["coordinates"]);
 	}
 
+	// Updating derived metadata only after every feature has passed validation
 	if (Document.HasMember("styles") && Document["styles"].IsObject())
 	{
 		rapidjson::Value& styles = Document["styles"];
@@ -1338,6 +1343,7 @@ void AvisoDocumentModel::CaptureOriginalCoordinatesJson(const std::string& sourc
 	if (!FindMatchingJsonBracket(sourceJson, arrayStart, '[', ']', arrayEnd))
 		return;
 
+	// Runtime identities let legacy features preserve coordinates without adding IDs
 	const rapidjson::Value* features = GetFeatureArray();
 	size_t featureIndex = 0;
 	for (size_t offset = arrayStart + 1; offset < arrayEnd && features != nullptr && featureIndex < features->Size();)
@@ -1391,6 +1397,7 @@ void AvisoDocumentModel::PatchSerializedCoordinates(std::string& serializedJson)
 	if (!FindMatchingJsonBracket(serializedJson, arrayStart, '[', ']', arrayEnd))
 		return;
 
+	// Restoring only coordinates whose geometry was not edited
 	const rapidjson::Value* features = GetFeatureArray();
 	size_t featureIndex = 0;
 	for (size_t offset = arrayStart + 1; offset < arrayEnd && features != nullptr && featureIndex < features->Size();)

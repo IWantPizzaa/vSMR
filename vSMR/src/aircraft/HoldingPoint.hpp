@@ -21,6 +21,7 @@ namespace VsmrHoldingPoint
 	inline constexpr std::size_t MaximumValueLength = 8;
 	inline constexpr auto PendingValueLifetime = std::chrono::seconds(15);
 
+	// Keeping local edits visible while EuroScope synchronizes the remarks
 	struct PendingValue
 	{
 		std::string value;
@@ -29,6 +30,7 @@ namespace VsmrHoldingPoint
 
 	inline std::mutex PendingValuesMutex;
 	inline std::unordered_map<std::string, PendingValue> PendingValues;
+	// Callsigns retained for airborne remark cleanup
 	inline std::unordered_set<std::string> CallsignsWithHoldingPoint;
 
 	inline std::string Trim(const std::string& value)
@@ -190,6 +192,7 @@ namespace VsmrHoldingPoint
 	{
 		const std::vector<std::string> existingTokens = SplitRemarks(remarks);
 		std::vector<std::string> tokens;
+		// Replacing every current and legacy marker while preserving other remarks
 		for (std::size_t index = 0; index < existingTokens.size(); ++index)
 		{
 			const std::string& token = existingTokens[index];
@@ -282,6 +285,7 @@ namespace VsmrHoldingPoint
 			return synchronizedValue;
 		}
 
+		// Keeping the optimistic value until EuroScope echoes it or the edit times out
 		if (std::chrono::steady_clock::now() - pending->second.submittedAt <= PendingValueLifetime)
 			return pending->second.value;
 

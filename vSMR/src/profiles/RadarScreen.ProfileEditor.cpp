@@ -413,6 +413,7 @@ namespace
 			}
 		}
 
+		// Profiles without display_modes retain the old Pro and Tower combinations
 		if (outModes.empty())
 			outModes = BuildLegacyDisplayModes(*filters);
 		if (FindDisplayModeIndexNoCase(outModes, outActiveName) < 0)

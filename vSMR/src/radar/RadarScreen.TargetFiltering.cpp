@@ -52,6 +52,7 @@ bool CSMRRadar::IsWithinAirborneDisplayLimits(
 	int pressureAltitudeFt,
 	const DisplayModeSettings& settings) const
 {
+	// Ground traffic is never filtered by airborne cruise limits
 	if (reportedGs <= 50)
 		return true;
 
@@ -67,6 +68,7 @@ bool CSMRRadar::IsWithinAirborneDisplayLimits(
 
 bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const
 {
+	// Applying filters which do not depend on the airport role
 	if (!IsWithinAirborneDisplayLimits(reportedGs, pressureAltitudeFt, settings))
 		return false;
 
@@ -104,6 +106,7 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 	if (!acIsCorrelated && reportedGs >= 3)
 		return settings.statuses.uncorrelated;
 
+	// Resolving arrival or departure role relative to the active airport
 	const std::string activeAirport = getActiveAirport();
 	const char* destination = fp.GetFlightPlanData().GetDestination();
 	const char* origin = fp.GetFlightPlanData().GetOrigin();
@@ -132,6 +135,7 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 	if (!isDeparture && destination != nullptr && destination[0] != '\0')
 		return settings.statuses.arrivals;
 
+	// Applying departure visibility by operational ground state
 	const GroundStateCategory targetStatus = classifyGroundStateForCallsign(fp.GetCallsign(), fp.GetGroundState(), reportedGs, targetOnRunway);
 	switch (targetStatus)
 	{

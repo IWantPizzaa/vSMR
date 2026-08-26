@@ -719,6 +719,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		return GetDataFromAsr(key.c_str());
 	};
 
+	// ----- Locating airport-scoped or legacy state -----
 	bool hasScopedState = readWithPrefix(scopedPrefix, "Version") != nullptr;
 	if (!hasScopedState)
 	{
@@ -828,6 +829,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		target.bottom = values[3];
 	};
 
+	// ----- Validating the stored schema version -----
 	if (!readPrefix.empty())
 	{
 		int version = 0;
@@ -891,6 +893,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		}
 	}
 
+	// ----- Restoring inset windows -----
 	for (const int id : { 1 })
 	{
 		const auto windowIt = appWindows.find(id);
@@ -983,6 +986,7 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 		}
 	}
 
+	// ----- Restoring preset state -----
 	ActiveAvisoPresetName.clear();
 	AvisoViewsLinked = false;
 	if (!readPrefix.empty())

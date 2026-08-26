@@ -1316,6 +1316,7 @@ namespace
 		if (hasVacdmData && HasSubmittedTobtState(pilotData))
 			return CdmQueueReminderOutcome::HasSubmittedTobt;
 
+		// Rechecking after the unlocked vACDM lookup before committing to the queue
 		{
 			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 			if (HasRecentCdmReminderUnlocked(normalizedCallsign, now))
@@ -2104,6 +2105,7 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 	const auto now = std::chrono::steady_clock::now();
 	const auto delay = std::chrono::minutes(delayMinutes);
 
+	// Collecting current reminder candidates
 	const std::vector<std::string> connectedCallsigns =
 		CollectFlightPlanCandidateCallsignsForActiveAirport(plugIn, activeAirport);
 	struct CandidateSnapshot
@@ -2126,6 +2128,7 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 	std::vector<std::string> callsignsToQueue;
 	callsignsToQueue.reserve(candidates.size());
 
+	// Updating the per-aircraft delay state
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		PruneCdmReminderHistoryUnlocked(now);
@@ -2200,6 +2203,7 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 		}
 	}
 
+	// Queuing aircraft whose full delay has elapsed
 	int queuedCount = 0;
 	std::string reminderMessage;
 	if (!callsignsToQueue.empty() && !TryLoadCdmReminderMessage(plugIn, reminderMessage))
@@ -2234,6 +2238,7 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 	const auto now = std::chrono::steady_clock::now();
 
 	QueuedCdmReminderMessage queuedReminder;
+	// Dropping stale sessions and taking the next ready reminder
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		PruneCdmReminderHistoryUnlocked(now);
@@ -2287,6 +2292,7 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 		}
 	}
 
+	// Rechecking eligibility immediately before UI injection
 	if (SendPrivateChatMessageLikeDotMsg(plugIn, callsign, message))
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -2294,6 +2300,7 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 		return;
 	}
 
+	// Retrying transient command-line injection failures
 	queuedReminder.sendAttempts += 1;
 	if (queuedReminder.sendAttempts >= CdmReminderQueueMaxSendAttempts)
 	{
@@ -2433,6 +2440,7 @@ void refreshVacdmDataImpl()
 		const size_t parsedPilotCount = parsedData.size();
 		const bool aselFound = !aselCallsign.empty() && parsedData.find(aselCallsign) != parsedData.end();
 
+		// Publishing only if the profile source is still current
 		{
 			std::lock_guard<std::mutex> sourceGuard(ProfilesSourceMutex);
 			if (ProfilesSourceGeneration != sourceGeneration)
@@ -3284,6 +3292,7 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 
 CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
 {
+	// Resetting process-wide session state
 	ActivePluginInstance.store(this, std::memory_order_release);
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
 	FlightDataRefreshPending.store(false, std::memory_order_relaxed);
@@ -3311,7 +3320,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	Logger::ENABLED = false;
 	Logger::set_mode(Logger::Mode::Normal);
 
-	// Register the plugin radar screen type.
+	// Registering the EuroScope display and tag items
 	RegisterDisplayType(MY_PLUGIN_VIEW_AVISO, false, true, true, true);
 
 	RegisterTagItemType("Datalink clearance", TAG_ITEM_DATALINK_STS);
@@ -3324,6 +3333,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	timer = clock();
 	VacdmLastFetchClock = 0;
 
+	// Loading and migrating persisted CPDLC settings
 	const char * p_value;
 	bool migratePlaintextCredential = false;
 	std::string migratedProtectedCredential;
@@ -3391,6 +3401,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	char DllPathFile[_MAX_PATH];
 	string DllPath;
 
+	// Resolving runtime data sources
 	if (VsmrRuntimeContext::IsConfigured())
 	{
 		DllPath = VsmrRuntimeContext::InstallRootNarrow();
@@ -3428,6 +3439,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 CSMRPlugin::~CSMRPlugin()
 {
+	// Stopping callbacks and workers before releasing shared state
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
 	ClearCdmAutoTrackingState(true);
@@ -3448,7 +3460,7 @@ CSMRPlugin::~CSMRPlugin()
 		std::memory_order_acq_rel);
 	VsmrWeather::Clear();
 
-	// Persist CPDLC settings via EuroScope's plugin settings storage.
+	// Persisting CPDLC settings through EuroScope
 	const DatalinkCredentialsSnapshot credentials = SnapshotDatalinkCredentials();
 	SaveDataToSettings("cpdlc_logon", "The CPDLC logon callsign", credentials.callsign.c_str());
 	std::string protectedCredential;
@@ -4202,6 +4214,8 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		Logger::info(string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
+
+	// ----- Handling holding point actions -----
 	auto applyHoldingPoint = [&](const std::string& callsign, const std::string& input) -> bool
 	{
 		std::string holdingPoint;
@@ -4314,6 +4328,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		return;
 	}
 
+	// ----- Handling CPDLC tag actions -----
 	if (FunctionId == TAG_FUNC_DATALINK_MENU) {
 		CFlightPlan FlightPlan = FlightPlanSelectASEL();
 
@@ -4459,6 +4474,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			if (fpCallsign == nullptr || fpCallsign[0] == '\0')
 				return;
 
+			// Reserving the aircraft while the controller composes its clearance
 			AFX_MANAGE_STATE(AfxGetStaticModuleState());
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -4482,6 +4498,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 				}
 			} compositionGuard{ fpCallsign };
 
+			// Prefilling the PDC from the flight plan and current vACDM snapshot
 			CDataLinkDialog dia;
 			dia.SetDialogMode(CDataLinkDialog::DialogMode::Pdc);
 			dia.m_Callsign = fpCallsign;
@@ -4546,6 +4563,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			if (dia.DoModal() != IDOK)
 				return;
 
+			// Queuing an immutable clearance snapshot
 			DatalinkClearanceRequest request;
 			request.credentials = SnapshotDatalinkCredentials();
 			request.generation = HoppieConnectionGeneration.load(
@@ -4892,6 +4910,8 @@ void CSMRPlugin::OnTimer(int Counter)
 		Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	VsmrRdf::OnTimer();
+
+	// ----- Cleaning airborne holding points -----
 	for (const std::string& callsign : VsmrHoldingPoint::KnownCallsigns())
 	{
 		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
@@ -4923,6 +4943,7 @@ void CSMRPlugin::OnTimer(int Counter)
 			FlightDataRefreshPending.store(true, std::memory_order_release);
 		}
 	}
+	// Refreshing screens after synchronized flight-plan changes
 	if (FlightDataRefreshPending.exchange(false, std::memory_order_acq_rel))
 	{
 		for (CSMRRadar* radar : RadarScreensOpened)
@@ -4934,6 +4955,7 @@ void CSMRPlugin::OnTimer(int Counter)
 			radar->RequestRefresh();
 		}
 	}
+	// ----- Updating connection state -----
 	static int lastConnectionType = -999;
 	static clock_t lastConnectionTypeChangeClock = 0;
 	const int currentConnectionType = GetConnectionType();
@@ -5012,6 +5034,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		DisplayUserMessage("CPDLC", "Server", "Automatically logged off!", true, true, false, true, false);
 	}
 
+	// ----- Polling CPDLC and vACDM -----
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
 		((clock() - timer) / CLOCKS_PER_SEC) > 10 &&
 		HoppieConnected.load()) {
@@ -5052,6 +5075,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		}
 	}
 
+	// ----- Processing PDC reminders -----
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		ProcessCdmAutoMode(this);
@@ -5073,6 +5097,7 @@ void CSMRPlugin::OnTimer(int Counter)
 			AircraftWilco.end());
 	}
 
+	// ----- Updating runtime insets -----
 	const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
 	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
 	bool timerAlarmDue = false;

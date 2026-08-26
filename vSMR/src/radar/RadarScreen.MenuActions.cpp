@@ -99,6 +99,8 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		auto assignedData = fp.GetControllerAssignedData();
 		const char* existingScratchpadRaw = assignedData.GetScratchPadString();
 		const std::string existingScratchpad = existingScratchpadRaw != nullptr ? existingScratchpadRaw : "";
+		// EuroScope exposes ground-status changes through this setter, so the
+		// controller's scratchpad text must be restored immediately afterward.
 		if (!assignedData.SetScratchPadString(euroScopeStatus))
 		{
 			PendingGroundStatusCallsign.clear();

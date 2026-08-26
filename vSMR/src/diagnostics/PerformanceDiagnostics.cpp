@@ -581,6 +581,7 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 	ResourceSample resources;
 	Snapshot result;
 	{
+		// Copying the ring buffers under one lock keeps the report internally consistent
 		std::lock_guard<std::mutex> guard(Mutex);
 		result.generation = Generation;
 		result.collectionStartedUtcMilliseconds = CollectionStartedUtcMilliseconds;
@@ -611,6 +612,7 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 		? 0
 		: result.windowEndMilliseconds - requestedDuration;
 
+	// Selecting the retained samples that belong to the requested time window
 	std::vector<FrameSample> frames;
 	frames.reserve(allFrames.size());
 	for (const FrameSample& sample : allFrames)
@@ -624,6 +626,7 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 		result.latestFrame = frames.back();
 	}
 
+	// Calculating timings and refresh spikes over the same frame population
 	result.frame = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.frameMilliseconds; });
 	result.scene = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.sceneMilliseconds; });
 	result.aviso = CalculateFrameDistribution(frames, [](const FrameSample& sample) { return sample.avisoMilliseconds; });
@@ -724,6 +727,7 @@ VsmrPerformance::Snapshot VsmrPerformance::PerformanceDiagnostics::GetSnapshot(
 	result.realisticRotatedCache.entries = realisticRotatedEntries;
 	result.resources = resources;
 
+	// Downsampling evenly while retaining the first and last observations
 	if (maximumSeriesPoints == 0 || frames.empty())
 	{
 		result.series.clear();

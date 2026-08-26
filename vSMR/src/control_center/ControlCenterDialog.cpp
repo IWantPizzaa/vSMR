@@ -614,6 +614,8 @@ void CVsmrControlCenterDialog::WebViewThreadMainImpl()
 	WebHost->threadId.store(::GetCurrentThreadId());
 	MSG queueSeed = {};
 	::PeekMessageW(&queueSeed, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+
+	// WebView2 must be created and driven from the same STA thread
 	const HRESULT comResult = ::CoInitializeEx(
 		nullptr,
 		COINIT_APARTMENTTHREADED);

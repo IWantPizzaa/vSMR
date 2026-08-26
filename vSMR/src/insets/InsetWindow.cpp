@@ -1043,6 +1043,7 @@ struct AvisoViewportState
 		{
 			std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> request;
 			CSMRRadar* radarScreen = nullptr;
+			// Debouncing rapid viewport changes
 			{
 				std::unique_lock<std::mutex> lock(renderMutex);
 				renderCondition.wait(lock, [&]() {
@@ -1104,6 +1105,7 @@ struct AvisoViewportState
 				"AvisoViewportState::RenderThreadMain",
 				reinterpret_cast<std::uintptr_t>(radarScreen));
 
+			// Rendering outside the state lock
 			std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result;
 			const std::uint64_t renderStartMilliseconds =
 				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
@@ -1143,6 +1145,7 @@ struct AvisoViewportState
 					result != nullptr);
 			}
 
+			// Publishing only the latest completed raster
 			bool shouldRefresh = false;
 			bool discardedResult = false;
 			{
@@ -2744,6 +2747,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	if (radar_screen->IsShutdownRequested())
 		return;
 
+	// ----- Preparing the viewport -----
 	CDC dc;
 	dc.Attach(hDC);
 	CRect layoutBounds(radar_screen->GetRadarArea());
@@ -2801,6 +2805,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		DrawRadarInsetBorder(dc, m_AvisoLayoutMode, m_Area);
 	};
 
+	// ----- Loading the AVISO data -----
 	const std::string airport = radar_screen->getActiveAirport();
 	const std::string path = radar_screen->ResolveAvisoGeoJsonPathForAirport(airport);
 	if (path.empty() ||
@@ -2828,6 +2833,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
+	// Initializing the view from the airport or dataset bounds
 	if (!m_AvisoViewInitialized)
 	{
 		CPosition airportPosition;
@@ -2845,6 +2851,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		m_AvisoCenterLatitude = ClampAvisoLatitude(m_AvisoCenterLatitude);
 	}
 
+	// ----- Resolving the cached raster -----
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult = m_AvisoState->TakeCompletedRender();
 
 	const int scale = max(1, m_AvisoScale);
@@ -3301,6 +3308,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			m_AvisoState->renderMaxLatitude >= displayMaxLat + requiredLatMargin;
 	};
 
+	// ----- Drawing or rebuilding the raster -----
 	bool cacheDrawn = drawCache();
 	if (!cacheDrawn)
 		cacheDrawn = drawPreviousCacheViewportAligned();
@@ -3395,6 +3403,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	if (!cacheDrawn)
 		drawCenteredMessage(m_AvisoState->renderPending.load(std::memory_order_relaxed) ? "Rendering AVISO" : "AVISO unavailable");
 
+	// ----- Drawing aircraft and tags -----
 	auto drawAircraft = [&]()
 	{
 		const int savedDc = ::SaveDC(hDC);
@@ -4226,6 +4235,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		return buffer;
 	};
 
+	// ----- Resolving weather and runway components -----
 	const std::string station = VsmrWeather::NormalizeIcao(radar_screen->getActiveAirport());
 	VsmrWeather::Snapshot weather;
 	const bool hasSnapshot = !station.empty() && VsmrWeather::TryGet(station, weather);
@@ -4244,6 +4254,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		double headwindScore = -1000000.0;
 	};
 	RunwayReference referenceRunway;
+	// Preferring active departures, then the strongest headwind among equals
 	const auto considerRunway = [&](const std::string& runwayName, double trueHeading, bool headingValid)
 	{
 		if (!headingValid || runwayName.empty() || weatherScene == nullptr)
@@ -4320,6 +4331,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 			gustValue = "G" + std::to_string(weather.windGustKnots);
 	}
 
+	// ----- Arranging the responsive panels -----
 	const int padding = 4;
 	const int gap = 4;
 	CRect inner(content);
@@ -4422,6 +4434,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	if (!rawPanel.IsRectEmpty())
 		fillAndBorder(rawPanel, control);
 
+	// ----- Drawing the wind display -----
 	if (!compactLayout)
 	{
 	CRect roseBounds(
@@ -4674,6 +4687,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		drawText(detailLine, detailSummary, labelFont, text, DT_LEFT);
 	}
 
+	// Drawing QNH, variation and runway components
 	const struct StatCell
 	{
 		const char* label;
@@ -4763,6 +4777,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		}
 	}
 
+	// ----- Drawing the raw METAR -----
 	if (!rawPanel.IsRectEmpty() && hasRawReport)
 	{
 		auto allDigits = [](const std::string& token, size_t first, size_t count) -> bool
@@ -5135,7 +5150,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	CRect windowAreaCRect = GetWindowContentRect();
 	windowAreaCRect.NormalizeRect();
 
-	// We create the radar
+	// ----- Preparing the SRW viewport -----
 	dc.FillSolidRect(windowAreaCRect, radar_screen->GetAvisoBackgroundColor());
 	radar_screen->AddScreenObject(m_Id, "window", windowAreaCRect, false, "");
 
@@ -5161,7 +5176,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	refPt.x += m_Offset.x;
 	refPt.y += m_Offset.y;
 
-	// Here we draw all runways for the airport
+	// ----- Drawing the active airport runways -----
 	CPen runwayPen(PS_SOLID, 1, srwRunwayColor);
 	CPen extendedCentreLinePen(PS_SOLID, 1, srwExtendedLineColor);
 	CSectorElement rwy;
@@ -5245,7 +5260,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		}
 	}
 
-	// Aircrafts
+	// ----- Drawing aircraft and tags -----
 
 	CPen WhitePen(PS_SOLID, 1, RGB(255, 255, 255));
 
@@ -5518,8 +5533,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			return sceneTarget.bottomLine.c_str();
 		};
 
-		// Filtering the targets
-
 		POINT RtPoint;
 
 		RtPoint = projectPoint(RtPos2);
@@ -5601,11 +5614,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			TagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
 			TagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
 		}
-		//
-		// ----- Now the hard part, drawing (using gdi+) -------
-		//	
-
-		// First we need to figure out the tag size
+		// Measuring the tag content
 
 		int TagWidth = 0, TagHeight = 0;
 		RectF mesureRect;
@@ -5667,7 +5676,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			TagWidth = max(TagWidth, TempTagWidth);
 			ReplacedLabelLines.push_back(std::move(renderedLine));
 		}
-		// Pfiou, done with that, now we can draw the actual rectangle.
+		// Drawing the tag
 
 		const VsmrScene::TagPalette& tagPalette = sceneTarget.tag.normalPalette;
 		const Color definedBackgroundColor = SceneColorToGdi(tagPalette.background);
@@ -5793,14 +5802,10 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 					gdi->MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &RectRimcas_height);
 					rimcas_height = int(RectRimcas_height.GetBottom());
 
-					// Drawing the rectangle
-
 					CRect RimcasLabelRect(TagBackgroundRect.left, TagBackgroundRect.top - rimcas_height, TagBackgroundRect.right, TagBackgroundRect.top);
 					SolidBrush rimcasLabelBrush(RimcasLabelColor);
 					gdi->FillRectangle(&rimcasLabelBrush, CopyRect(RimcasLabelRect));
 					TagBackgroundRect.top -= rimcas_height;
-
-					// Drawing the text
 
 					wstring rimcasw = wstring(L"ALERT");
 					StringFormat stformat;
@@ -5813,13 +5818,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				}
 			}
 
-			// Adding the tag screen object
-
-			//radar_screen->AddScreenObject(DRAWING_TAG, rt.GetCallsign(), TagBackgroundRect, true, GetBottomLine(rt.GetCallsign()).c_str());
-
 			TagBackgroundRect = oldCrectSave;
-
-			// Now adding the clickable zones
 		}
 	}
 

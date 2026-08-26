@@ -104,6 +104,7 @@ namespace VsmrRuntimeContext
 	{
 		try
 		{
+			// Validating loader-owned paths before exposing them to the runtime
 			if (context.structureSize < sizeof(VsmrRuntimeApi::BootstrapContext) ||
 				context.abiVersion != VsmrRuntimeApi::AbiVersion ||
 				!IsAbsoluteFile(context.loaderPath) ||
@@ -131,6 +132,7 @@ namespace VsmrRuntimeContext
 			if (configured.installRootNarrow.empty())
 				return false;
 
+			// The first loader context remains authoritative for this DLL generation
 			std::lock_guard<std::mutex> guard(gContextMutex);
 			if (gConfigured.load(std::memory_order_acquire))
 			{

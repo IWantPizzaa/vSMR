@@ -492,6 +492,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (outRimcasMilliseconds != nullptr)
 		*outRimcasMilliseconds = 0.0;
 
+	// ----- Preparing the scene buffer -----
 	RadarSceneBuildBufferIndex = (RadarSceneBuildBufferIndex + 1) % RadarSceneBuffers.size();
 	std::shared_ptr<RadarScene>& buildBuffer = RadarSceneBuffers[RadarSceneBuildBufferIndex];
 	if (buildBuffer == nullptr || buildBuffer.use_count() != 1)
@@ -516,6 +517,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			Clock::now() - lookupStart).count();
 		return result;
 	};
+
+	// ----- Capturing the airport and AVISO state -----
 	CPlugIn* plugin = GetPlugIn();
 	scene->airport.icao = getActiveAirport();
 	scene->profileName = CurrentConfig != nullptr
@@ -555,6 +558,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		return CurrentRadarScene;
 	}
 
+	// ----- Capturing controllers -----
 	const auto controllerCaptureStart = Clock::now();
 	const CController myself = measureSdkLookup([&]() { return plugin->ControllerMyself(); });
 	const std::string myCallsign = myself.IsValid() ? ToUpperAsciiCopy(CopyText(myself.GetCallsign())) : "";
@@ -593,6 +597,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		Clock::now() - controllerCaptureStart).count();
 	scene->controllerFingerprint = FingerprintControllers(scene->controllers);
 
+	// ----- Loading target presentation settings -----
 	const DisplayModeSettings displaySettings = GetActiveDisplayModeSettings();
 	const CorrelationSettings correlationSettings = BuildCorrelationSettings();
 	const std::string airportUpper = ToUpperAsciiCopy(scene->airport.icao);
@@ -634,6 +639,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	if (targetsConfig != nullptr && targetsConfig->HasMember("symbol_scale") && (*targetsConfig)["symbol_scale"].IsNumber())
 		scene->targetPresentation.symbolScale = std::clamp((*targetsConfig)["symbol_scale"].GetDouble(), 0.5, 1.5);
 
+	// ----- Capturing targets -----
 	const auto targetCaptureStart = Clock::now();
 	const CRadarTarget selectedTarget = measureSdkLookup([&]() { return plugin->RadarTargetSelectASEL(); });
 	const std::string selectedCallsign = selectedTarget.IsValid() ? CopyText(selectedTarget.GetCallsign()) : "";
@@ -902,6 +908,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->stats.targetCaptureMilliseconds = std::chrono::duration<double, std::milli>(
 		Clock::now() - targetCaptureStart).count();
 
+	// ----- Finalizing RIMCAS and tag presentation -----
 	const auto finalizeStart = Clock::now();
 	if (RimcasInstance != nullptr)
 	{
@@ -1313,6 +1320,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		}();
 	}
 
+	// ----- Collecting scene diagnostics -----
 	scene->stats.targetCount = scene->targets.size();
 	scene->stats.controllerCount = scene->controllers.size();
 	std::size_t estimatedBytes = sizeof(RadarScene) + scene->targets.capacity() * sizeof(Target) +

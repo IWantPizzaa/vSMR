@@ -354,6 +354,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		renderedLeft + kRailWidth,
 		renderedTop + railHeight);
 
+	// ----- Drawing the rail -----
 	const int savedDc = ::SaveDC(hdc);
 	::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
 	::SelectObject(hdc, ::GetStockObject(DC_PEN));
@@ -539,6 +540,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		return;
 	}
 
+	// ----- Building the popup -----
 	std::vector<RuntimePopupEntry> entries;
 	std::string title;
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Mode)
@@ -649,6 +651,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			popupHeight = kPopupHeaderHeight + 42;
 	}
 
+	// ----- Drawing the popup -----
 	const int popupRightCandidate = RuntimeMenuArea.right + kPopupGap;
 	int popupLeft = popupRightCandidate;
 	if (popupRightCandidate + popupWidth > bounds.right - 4)
@@ -781,6 +784,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	int contentTop = titleArea.bottom + kPopupPadding;
 	if (datalinkPopup)
 	{
+		// Drawing CPDLC and PDC controls
 		CSMRPlugin* plugin = datalinkPlugin;
 		const DatalinkControlState& state = datalinkState;
 		auto drawRuntimeButton = [&](
@@ -963,6 +967,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	else if (!insetPopup)
 	{
+		// Drawing mode, group, or profile choices
 		if (entries.empty())
 		{
 			::SelectObject(hdc, actionFont);
@@ -1048,6 +1053,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	else
 	{
+		// Drawing inset visibility and preset controls
 		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
 		const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
 		const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
@@ -1313,6 +1319,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 
 	if (objectType == RUNTIME_MENU_RAIL)
 	{
+		// Handling rail controls before popup actions
 		auto togglePopup = [&](RuntimeMenuPopup popup)
 		{
 			ActiveRuntimeMenuPopup = ActiveRuntimeMenuPopup == popup ? RuntimeMenuPopup::None : popup;
@@ -1351,6 +1358,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (std::strcmp(id, "runtime.popup") == 0)
 		return true;
 
+	// ----- Handling CPDLC and PDC actions -----
 	CSMRPlugin* datalinkPlugin = static_cast<CSMRPlugin*>(GetPlugIn());
 	auto showDatalinkMessage = [&](const std::string& message, bool error)
 	{
@@ -1520,6 +1528,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
+	// ----- Applying list selections -----
 	size_t index = 0;
 	if (ParseIndexedObjectId(id, "runtime.mode.", index))
 	{
@@ -1585,6 +1594,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
+	// ----- Handling inset actions -----
 	auto toggleAppWindow = [&](int appWindowId)
 	{
 		CancelInsetWindowInteractions();
@@ -1651,6 +1661,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
+	// ----- Handling preset actions -----
 	const std::vector<AvisoPreset> presets = GetAvisoPresets();
 	std::string activePreset = GetActiveAvisoPresetName();
 	const auto activePresetIt = std::find_if(
