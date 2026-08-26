@@ -1,6 +1,7 @@
 #pragma once
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "crash/CrashReporter.hpp"
+#include <filesystem>
 #include <string>
 #include <sstream>
 #include <iomanip>
@@ -155,20 +156,22 @@ public:
 		if (!Logger::ENABLED.load(std::memory_order_acquire) || Logger::DLL_PATH.length() == 0)
 			return;
 
-		const std::string logPath = Logger::DLL_PATH + "\\vsmr.log";
+		const std::filesystem::path logPath =
+			std::filesystem::u8path(Logger::DLL_PATH) / L"vsmr.log";
 		// Keep support logs bounded. Probe periodically so verbose rendering traces
 		// do not turn the size check itself into a hot path.
 		static unsigned long writesUntilSizeProbe = 0;
 		if (writesUntilSizeProbe == 0)
 		{
 			WIN32_FILE_ATTRIBUTE_DATA attributes = {};
-			if (::GetFileAttributesExA(logPath.c_str(), GetFileExInfoStandard, &attributes) &&
+			if (::GetFileAttributesExW(logPath.c_str(), GetFileExInfoStandard, &attributes) &&
 				attributes.nFileSizeHigh == 0 &&
 				attributes.nFileSizeLow >= 4U * 1024U * 1024U)
 			{
-				const std::string previousLogPath = logPath + ".1";
-				::DeleteFileA(previousLogPath.c_str());
-				::MoveFileExA(
+				std::filesystem::path previousLogPath = logPath;
+				previousLogPath += L".1";
+				::DeleteFileW(previousLogPath.c_str());
+				::MoveFileExW(
 					logPath.c_str(),
 					previousLogPath.c_str(),
 					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);

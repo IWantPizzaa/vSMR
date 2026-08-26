@@ -14,7 +14,6 @@
 #include "rapidjson/document.h"
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
-#include "profiles/ProfileColorPaths.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 #include "tags/VacdmTagHelpers.hpp"
@@ -24,6 +23,7 @@
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "shared/WindowsPathEncoding.hpp"
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -105,31 +105,31 @@ namespace
 
 	fs::path PluginDataDirectory(const std::string& dllPath)
 	{
-		return fs::path(dllPath) / "vSMR_Data";
+		return fs::u8path(dllPath) / "vSMR_Data";
 	}
 
 	std::string ResolvePluginDataDirectoryPath(const std::string& dllPath)
 	{
 		const fs::path dataDirectory = PluginDataDirectory(dllPath);
 		if (IsDirectoryNoThrow(dataDirectory))
-			return dataDirectory.string();
-		return fs::path(dllPath).string();
+			return dataDirectory.u8string();
+		return fs::u8path(dllPath).u8string();
 	}
 
 	std::string ResolvePluginFilePath(const std::string& dllPath, const char* fileName)
 	{
 		const fs::path dataPath = PluginDataDirectory(dllPath) / fileName;
 		if (IsRegularFileNoThrow(dataPath))
-			return dataPath.string();
-		return (fs::path(dllPath) / fileName).string();
+			return dataPath.u8string();
+		return (fs::u8path(dllPath) / fileName).u8string();
 	}
 
 	std::string ResolvePluginDirectoryPath(const std::string& dllPath, const char* directoryName)
 	{
 		const fs::path dataPath = PluginDataDirectory(dllPath) / directoryName;
 		if (IsDirectoryNoThrow(dataPath))
-			return dataPath.string();
-		return (fs::path(dllPath) / directoryName).string();
+			return dataPath.u8string();
+		return (fs::u8path(dllPath) / directoryName).u8string();
 	}
 
 	std::string TrimAvisoAirportCode(const std::string& value)
@@ -168,10 +168,10 @@ namespace
 		if (path.empty())
 			return;
 
-		const std::string normalized = ToUpperAscii(path.lexically_normal().string());
+		const std::string normalized = ToUpperAscii(path.lexically_normal().u8string());
 		for (const fs::path& existing : paths)
 		{
-			if (ToUpperAscii(existing.lexically_normal().string()) == normalized)
+			if (ToUpperAscii(existing.lexically_normal().u8string()) == normalized)
 				return;
 		}
 
@@ -181,8 +181,10 @@ namespace
 	std::vector<fs::path> BuildAvisoGeoJsonSearchDirectories(const std::string& dllPath, const std::string& dataPath)
 	{
 		std::vector<fs::path> directories;
-		const fs::path pluginDirectory(dllPath);
-		const fs::path resolvedDataDirectory = dataPath.empty() ? PluginDataDirectory(dllPath) : fs::path(dataPath);
+		const fs::path pluginDirectory = fs::u8path(dllPath);
+		const fs::path resolvedDataDirectory = dataPath.empty()
+			? PluginDataDirectory(dllPath)
+			: fs::u8path(dataPath);
 
 		PushUniquePath(directories, resolvedDataDirectory / "AVISO");
 		PushUniquePath(directories, resolvedDataDirectory);
@@ -204,10 +206,10 @@ namespace
 				continue;
 
 			const fs::path path = entry.path();
-			if (ToUpperAscii(path.extension().string()) != ".GEOJSON")
+			if (ToUpperAscii(path.extension().u8string()) != ".GEOJSON")
 				continue;
 
-			const std::string stem = ToUpperAscii(path.stem().string());
+			const std::string stem = ToUpperAscii(path.stem().u8string());
 			const auto isAirportCode = [](const std::string& value) {
 				return value.size() == 4 &&
 					std::all_of(value.begin(), value.end(), [](unsigned char character) {
@@ -861,12 +863,20 @@ CSMRRadar::CSMRRadar()
 	// Getting the DLL file folder
 	if (VsmrRuntimeContext::IsConfigured())
 	{
-		DllPath = VsmrRuntimeContext::InstallRootNarrow();
+		DllPath = VsmrRuntimeContext::InstallRootUtf8();
 	}
 	else
 	{
-		GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
-		DllPath = fs::path(DllPathFile).parent_path().string();
+		std::wstring modulePath(32768, L'\0');
+		const DWORD length = ::GetModuleFileNameW(
+			HINSTANCE(&__ImageBase),
+			modulePath.data(),
+			static_cast<DWORD>(modulePath.size()));
+		if (length > 0 && length < modulePath.size())
+		{
+			modulePath.resize(length);
+			DllPath = fs::path(modulePath).parent_path().u8string();
+		}
 	}
 	
 	DataPath = ResolvePluginDataDirectoryPath(DllPath);
@@ -876,12 +886,12 @@ CSMRRadar::CSMRRadar()
 			CSMRPlugin::GetActiveProfilesConfigPath();
 		std::error_code sessionPathError;
 		if (!sessionProfilesPath.empty() &&
-			fs::is_regular_file(fs::path(sessionProfilesPath), sessionPathError) &&
+			fs::is_regular_file(fs::u8path(sessionProfilesPath), sessionPathError) &&
 			!sessionPathError)
 		{
 			ConfigPath = fs::absolute(
-				fs::path(sessionProfilesPath),
-				sessionPathError).lexically_normal().string();
+				fs::u8path(sessionProfilesPath),
+				sessionPathError).lexically_normal().u8string();
 			if (sessionPathError)
 				ConfigPath = sessionProfilesPath;
 		}
@@ -901,15 +911,15 @@ CSMRRadar::CSMRRadar()
 	// 2. In the ICAO folder of a GNG package
 	// 3. In the working directory of EuroScope
 	std::vector<fs::path> possible_paths;
-	possible_paths.push_back(fs::path(DllPath) / "ICAO_Airlines.txt");
-	possible_paths.push_back(fs::path(DllPath).parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
-	possible_paths.push_back(fs::path(DllPath).parent_path().parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
+	possible_paths.push_back(fs::u8path(DllPath) / "ICAO_Airlines.txt");
+	possible_paths.push_back(fs::u8path(DllPath).parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
+	possible_paths.push_back(fs::u8path(DllPath).parent_path().parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
 
 	for (auto p : possible_paths) {
-		Logger::info("Trying to read callsigns from: " + p.string());
+		Logger::info("Trying to read callsigns from: " + p.u8string());
 		if (fs::exists(p)) {
 			Logger::info("Found callsign file!");
-			Callsigns->readFile(p.string());
+			Callsigns->readFile(p);
 
 			break;
 		}
@@ -1265,7 +1275,7 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 		{
 			const fs::path exactPath = searchDirectory / (airportUpper + ".geojson");
 			if (IsRegularFileNoThrow(exactPath))
-				return rememberResolvedPath(exactPath.string());
+				return rememberResolvedPath(exactPath.u8string());
 		}
 
 		const std::string expectedStem = airportUpper;
@@ -1280,10 +1290,10 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 					continue;
 
 				const fs::path path = entry.path();
-				if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
-					ToUpperAscii(path.stem().string()) == expectedStem)
+				if (ToUpperAscii(path.extension().u8string()) == ".GEOJSON" &&
+					ToUpperAscii(path.stem().u8string()) == expectedStem)
 				{
-					return rememberResolvedPath(path.string());
+					return rememberResolvedPath(path.u8string());
 				}
 			}
 		}
@@ -1302,10 +1312,10 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 					continue;
 
 				const fs::path path = entry.path();
-				if (ToUpperAscii(path.extension().string()) == ".GEOJSON" &&
-					ToUpperAscii(path.stem().string()) == legacyExpectedStem)
+				if (ToUpperAscii(path.extension().u8string()) == ".GEOJSON" &&
+					ToUpperAscii(path.stem().u8string()) == legacyExpectedStem)
 				{
-					return rememberResolvedPath(path.string());
+					return rememberResolvedPath(path.u8string());
 				}
 			}
 		}
@@ -1324,7 +1334,7 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 
 bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const std::string& path,
-	bool retainPreviousOnFailure)
+	bool retainPreviousOnFailure) try
 {
 	if (IsShutdownRequested())
 		return false;
@@ -1374,7 +1384,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	fs::file_time_type writeTime;
 	try
 	{
-		writeTime = fs::last_write_time(path);
+		writeTime = fs::last_write_time(fs::u8path(path));
 		AvisoGeoJsonLastStatTick = nowTick;
 	}
 	catch (const std::exception& ex)
@@ -1417,14 +1427,14 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		double startedMilliseconds = 0.0;
 		~PublishAvisoLoadPerformance() noexcept
 		{
-			if (owner == nullptr || sample == nullptr)
-				return;
-			sample->totalMilliseconds = AvisoMax(
-				0.0,
-				RefreshPerfNowMs() - startedMilliseconds);
-			owner->LastAvisoLoadPerformance = *sample;
 			try
 			{
+				if (owner == nullptr || sample == nullptr)
+					return;
+				sample->totalMilliseconds = AvisoMax(
+					0.0,
+					RefreshPerfNowMs() - startedMilliseconds);
+				owner->LastAvisoLoadPerformance = *sample;
 				Logger::info(
 					"AVISO load perf ms path=" + sample->path +
 					" success=" + std::string(sample->success ? "1" : "0") +
@@ -1441,19 +1451,21 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	} publishLoadPerformance{ this, &loadPerformance, loadStartMilliseconds };
 
 	const double readStartMilliseconds = RefreshPerfNowMs();
-	std::ifstream input(path, std::ios::binary);
-	if (!input.is_open())
+	std::string json;
+	std::string readError;
+	if (!AvisoDocumentModel::ReadBoundedSourceFile(
+		fs::u8path(path),
+		json,
+		readError))
 	{
 		loadPerformance.readMilliseconds = AvisoMax(
 			0.0,
 			RefreshPerfNowMs() - readStartMilliseconds);
-		Logger::info("AVISO GeoJSON open failed path=" + path);
+		Logger::info(
+			"AVISO GeoJSON read failed path=" + path +
+			" error=" + (readError.empty() ? "unknown" : readError));
 		return rememberFailedAttempt(&writeTime);
 	}
-
-	std::stringstream buffer;
-	buffer << input.rdbuf();
-	const std::string json = buffer.str();
 	loadPerformance.readMilliseconds = AvisoMax(
 		0.0,
 		RefreshPerfNowMs() - readStartMilliseconds);
@@ -1858,6 +1870,30 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		" styles=" + std::to_string(stylePaintById.size()) +
 		" missingStyles=" + std::to_string(missingStyleCount));
 	return true;
+}
+catch (const std::exception& exception)
+{
+	try
+	{
+		Logger::info(
+			"AVISO GeoJSON load stopped by exception path=" + path +
+			" error=" + exception.what());
+	}
+	catch (...)
+	{
+	}
+	return false;
+}
+catch (...)
+{
+	try
+	{
+		Logger::info("AVISO GeoJSON load stopped by unknown exception");
+	}
+	catch (...)
+	{
+	}
+	return false;
 }
 
 bool CSMRRadar::PrewarmAvisoForActiveAirport()
@@ -3186,7 +3222,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		bool sameFile = AvisoGeoJsonRenderDisabledPath.empty() || AvisoGeoJsonRenderDisabledPath == path;
 		try
 		{
-			sameFile = sameFile && AvisoGeoJsonLoadedPath == path && AvisoGeoJsonLoadedWriteTime == fs::last_write_time(path);
+			sameFile = sameFile && AvisoGeoJsonLoadedPath == path && AvisoGeoJsonLoadedWriteTime == fs::last_write_time(fs::u8path(path));
 		}
 		catch (...)
 		{
@@ -4041,14 +4077,10 @@ bool CSMRRadar::SetProfilesConfigPath(
 	auto normalizeExistingPath = [](const std::string& value, std::string& result) -> bool
 	{
 		result.clear();
-		std::error_code pathError;
-		const fs::path normalized = fs::absolute(fs::path(value), pathError).lexically_normal();
-		if (pathError || normalized.empty() ||
-			!fs::is_regular_file(normalized, pathError) || pathError)
-		{
+		fs::path normalized;
+		if (!VsmrWindowsPath::TryResolveExistingFile(value, normalized))
 			return false;
-		}
-		result = normalized.string();
+		result = normalized.u8string();
 		return true;
 	};
 
@@ -4399,9 +4431,6 @@ void CSMRRadar::LoadProfile(
 	// Reloading the fonts
 	this->LoadCustomFont();
 
-	ProfileColorPaths.clear();
-	ProfileColorPathHasAlpha.clear();
-	SelectedProfileColorPath.clear();
 	TagDefinitionEditorType = "departure";
 	TagDefinitionEditorDetailed = !GetTagDefinitionDetailedSameAsDefinition();
 	TagDefinitionEditorDepartureStatus = "default";
@@ -4745,7 +4774,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	if (!CurrentConfig || CurrentConfig->getProfileCount() == 0)
 		return;
 
-	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
+	Value& profile = CurrentConfig->getMutableActiveProfile();
 	if (!profile.IsObject())
 		return;
 
@@ -6257,112 +6286,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	{
 		GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save status settings to vSMR_Profiles.json", true, true, false, false, false);
 	}
-}
-
-void CSMRRadar::RebuildProfileColorEntries()
-{
-	ProfileColorPaths.clear();
-	ProfileColorPathHasAlpha.clear();
-
-	if (!CurrentConfig)
-		return;
-
-	const rapidjson::Value& activeProfile = CurrentConfig->getActiveProfile();
-	CollectProfileColorPaths(activeProfile, "", ProfileColorPaths, ProfileColorPathHasAlpha);
-	std::sort(ProfileColorPaths.begin(), ProfileColorPaths.end());
-}
-
-bool CSMRRadar::IsProfileColorPathValid(const std::string& path, bool* hasAlpha)
-{
-	if (hasAlpha)
-		*hasAlpha = false;
-
-	if (!CurrentConfig || path.empty())
-		return false;
-
-	std::vector<ProfileColorPathToken> tokens = ParseProfileColorPath(path);
-	if (tokens.empty())
-		return false;
-
-	rapidjson::Value& activeProfile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	rapidjson::Value* colorValue = ResolveProfilePath(activeProfile, tokens);
-	if (!colorValue)
-		return false;
-
-	return IsColorConfigObject(*colorValue, hasAlpha);
-}
-
-int CSMRRadar::GetProfileColorComponentValue(const std::string& path, char component, int fallback)
-{
-	if (!CurrentConfig || path.empty())
-		return fallback;
-
-	const char* componentKey = ColorComponentKey(component);
-	if (!componentKey)
-		return fallback;
-
-	std::vector<ProfileColorPathToken> tokens = ParseProfileColorPath(path);
-	if (tokens.empty())
-		return fallback;
-
-	rapidjson::Value& activeProfile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	rapidjson::Value* colorValue = ResolveProfilePath(activeProfile, tokens);
-	if (!colorValue)
-		return fallback;
-
-	bool hasAlpha = false;
-	if (!IsColorConfigObject(*colorValue, &hasAlpha))
-		return fallback;
-
-	const char normalized = NormalizeProfileColorComponent(component);
-	if (normalized == 'a' && !hasAlpha)
-		return fallback;
-
-	if (!colorValue->HasMember(componentKey) || !(*colorValue)[componentKey].IsInt())
-		return fallback;
-
-	return (*colorValue)[componentKey].GetInt();
-}
-
-bool CSMRRadar::UpdateProfileColorComponent(const std::string& path, char component, int value)
-{
-	if (!CurrentConfig || path.empty())
-		return false;
-
-	const char* componentKey = ColorComponentKey(component);
-	if (!componentKey)
-		return false;
-
-	std::vector<ProfileColorPathToken> tokens = ParseProfileColorPath(path);
-	if (tokens.empty())
-		return false;
-
-	rapidjson::Value& activeProfile = const_cast<rapidjson::Value&>(CurrentConfig->getActiveProfile());
-	rapidjson::Value* colorValue = ResolveProfilePath(activeProfile, tokens);
-	if (!colorValue)
-		return false;
-
-	bool hasAlpha = false;
-	if (!IsColorConfigObject(*colorValue, &hasAlpha))
-		return false;
-
-	const char normalized = NormalizeProfileColorComponent(component);
-	const int clamped = (value < 0) ? 0 : ((value > 255) ? 255 : value);
-	if (normalized == 'a' && !hasAlpha)
-	{
-		rapidjson::Value key;
-		key.SetString("a", CurrentConfig->document.GetAllocator());
-		rapidjson::Value alphaValue;
-		alphaValue.SetInt(clamped);
-		colorValue->AddMember(key, alphaValue, CurrentConfig->document.GetAllocator());
-		return true;
-	}
-
-	if (!colorValue->HasMember(componentKey) || !(*colorValue)[componentKey].IsInt())
-		return false;
-
-	(*colorValue)[componentKey].SetInt(clamped);
-	return true;
 }
 
 map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign, const VacdmPilotData* capturedVacdmData, const int* capturedPreviousFlightLevel)

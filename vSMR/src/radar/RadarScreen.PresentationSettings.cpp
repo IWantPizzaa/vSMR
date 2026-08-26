@@ -45,7 +45,7 @@ bool CSMRRadar::SetActiveTargetIconStyle(const std::string& style, bool persistT
 		return false;
 
 	const std::string normalizedStyle = NormalizeTargetIconStyle(style);
-	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
+	Value& profile = CurrentConfig->getMutableActiveProfile();
 	if (!profile.IsObject())
 		return false;
 
@@ -128,7 +128,7 @@ bool CSMRRadar::SetSmallTargetIconBoostResolutionPreset(const std::string& prese
 
 	const std::string normalizedPreset = NormalizeSmallTargetIconBoostResolutionPreset(preset);
 
-	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
+	Value& profile = CurrentConfig->getMutableActiveProfile();
 	if (!profile.IsObject())
 		return false;
 
@@ -274,7 +274,7 @@ bool CSMRRadar::SetActiveLabelFontSize(int size, bool persistToDisk)
 
 	size = std::clamp(size, 1, 5);
 
-	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
+	Value& profile = CurrentConfig->getMutableActiveProfile();
 	if (!profile.IsObject())
 		return false;
 
@@ -347,7 +347,7 @@ bool CSMRRadar::SetActiveTagFontName(const std::string& fontName, bool persistTo
 		return false;
 
 	const std::string normalizedFontName = fontName.empty() ? "EuroScope" : fontName;
-	Value& profile = const_cast<Value&>(CurrentConfig->getActiveProfile());
+	Value& profile = CurrentConfig->getMutableActiveProfile();
 	if (!profile.IsObject())
 		return false;
 

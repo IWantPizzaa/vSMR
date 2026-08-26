@@ -21,6 +21,9 @@ using namespace rapidjson;
 class CConfig
 {
 public:
+	inline static constexpr size_t MaximumSerializedInputBytes =
+		16U * 1024U * 1024U;
+
 	enum class AvisoPresetTransactionAction
 	{
 		Abort,
@@ -54,7 +57,8 @@ public:
 	CConfig(string configPath, string mapsPath);
 	virtual ~CConfig();
 
-	const Value& getActiveProfile();
+	const Value& getActiveProfile() const;
+	Value& getMutableActiveProfile();
 	bool isSidColorAvail(string sid, string airport);
 	Gdiplus::Color getSidColor(string sid, string airport);
 	const Value& getAirportMapIfAny(string airport);
@@ -65,7 +69,7 @@ public:
 	Gdiplus::Color getConfigColor(const Value& config_path);
 	COLORREF getConfigColorRef(const Value& config_path);
 
-	vector<string> getAllProfiles();
+	vector<string> getAllProfiles() const;
 	size_t getProfileCount() const;
 
 	bool saveConfig(
@@ -84,6 +88,9 @@ public:
 		rapidjson::Document& profilesDocument,
 		string& error,
 		bool& migrated);
+	static bool validateSerializedInputLimits(
+		const string& serializedJson,
+		string& error);
 	const Value* getSharedAvisoPresetContainer() const;
 	bool transactAvisoPresetStore(
 		const string& preferredProfileName,
@@ -140,9 +147,9 @@ public:
 			active_profile = profiles.begin()->second;
 	};
 
-	inline string getActiveProfileName() {
+	inline string getActiveProfileName() const {
 		string name;
-		for (std::map<string, rapidjson::SizeType>::iterator it = profiles.begin(); it != profiles.end(); ++it)
+		for (std::map<string, rapidjson::SizeType>::const_iterator it = profiles.begin(); it != profiles.end(); ++it)
 		{
 			if (it->second == active_profile) {
 				name = it->first;
@@ -168,9 +175,8 @@ protected:
 	rapidjson::SizeType active_profile = 0;
 	map<string, rapidjson::SizeType> profiles;
 	map<int, vector<mapData>> maps;
-	// Never return a const global sentinel from getActiveProfile(): a few legacy
-	// editor paths still use const_cast. Keeping the fail-closed object owned by
-	// this instance makes those writes harmless when no profile was loaded.
+	// Mutable callers receive this instance-owned fail-closed object when no
+	// profile is available, never a shared/global sentinel.
 	rapidjson::Value invalid_profile;
 	string config_revision;
 	string last_load_message;

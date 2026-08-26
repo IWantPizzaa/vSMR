@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "shared/JsonInputLimits.hpp"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
@@ -8,11 +9,222 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <map>
 #include <sstream>
+
+namespace
+{
+	constexpr size_t kMaximumAvisoFileBytes =
+		AvisoDocumentModel::MaximumSerializedInputBytes;
+	constexpr size_t kMaximumAvisoFeatures = 50000U;
+	constexpr size_t kMaximumAvisoCoordinates = 500000U;
+	constexpr size_t kMaximumAvisoStringBytes = 64U * 1024U;
+	constexpr size_t kMaximumAvisoJsonDepth = 64U;
+	constexpr size_t kMaximumAvisoJsonValues = 2000000U;
+	constexpr size_t kMaximumAvisoContainerEntries = 1000000U;
+
+	bool ValidateSourceTextLimits(const std::string& sourceJson, std::string& errorText)
+	{
+		if (sourceJson.size() > kMaximumAvisoFileBytes)
+		{
+			errorText = "AVISO GeoJSON exceeds the 32 MB file limit.";
+			return false;
+		}
+
+		size_t depth = 0;
+		size_t stringBytes = 0;
+		bool inString = false;
+		bool escaped = false;
+		for (const char character : sourceJson)
+		{
+			if (inString)
+			{
+				if (escaped)
+					escaped = false;
+				else if (character == '\\')
+					escaped = true;
+				else if (character == '"')
+				{
+					inString = false;
+					continue;
+				}
+				if (++stringBytes > kMaximumAvisoStringBytes)
+				{
+					errorText = "AVISO GeoJSON contains a string longer than 64 KB.";
+					return false;
+				}
+				continue;
+			}
+
+			if (character == '"')
+			{
+				inString = true;
+				stringBytes = 0;
+			}
+			else if (character == '{' || character == '[')
+			{
+				if (++depth > kMaximumAvisoJsonDepth)
+				{
+					errorText = "AVISO GeoJSON exceeds the maximum nesting depth of 64.";
+					return false;
+				}
+			}
+			else if ((character == '}' || character == ']') && depth > 0)
+			{
+				--depth;
+			}
+		}
+		return true;
+	}
+
+	bool ValidateSourceStreamingLimits(
+		const std::string& sourceJson,
+		std::string& errorText)
+	{
+		VsmrJsonInputLimits::Limits limits;
+		limits.maximumDepth = kMaximumAvisoJsonDepth;
+		limits.maximumValues = kMaximumAvisoJsonValues;
+		limits.maximumContainerEntries = kMaximumAvisoContainerEntries;
+		limits.maximumStringBytes = kMaximumAvisoStringBytes;
+		limits.maximumFeatures = kMaximumAvisoFeatures;
+		limits.maximumCoordinatePairs = kMaximumAvisoCoordinates;
+		return VsmrJsonInputLimits::Validate(sourceJson, limits, errorText);
+	}
+
+	bool ValidateJsonValueLimits(
+		const rapidjson::Value& value,
+		size_t depth,
+		size_t& valueCount,
+		std::string& errorText)
+	{
+		if (depth > kMaximumAvisoJsonDepth)
+		{
+			errorText = "AVISO GeoJSON exceeds the maximum nesting depth of 64.";
+			return false;
+		}
+		if (++valueCount > kMaximumAvisoJsonValues)
+		{
+			errorText = "AVISO GeoJSON contains too many JSON values.";
+			return false;
+		}
+		if (value.IsString() && value.GetStringLength() > kMaximumAvisoStringBytes)
+		{
+			errorText = "AVISO GeoJSON contains a string longer than 64 KB.";
+			return false;
+		}
+		if (value.IsArray())
+		{
+			if (value.Size() > kMaximumAvisoContainerEntries)
+			{
+				errorText = "AVISO GeoJSON contains an oversized array.";
+				return false;
+			}
+			for (rapidjson::SizeType index = 0; index < value.Size(); ++index)
+			{
+				if (!ValidateJsonValueLimits(value[index], depth + 1, valueCount, errorText))
+					return false;
+			}
+		}
+		else if (value.IsObject())
+		{
+			size_t memberCount = 0;
+			for (auto member = value.MemberBegin(); member != value.MemberEnd(); ++member)
+			{
+				if (++memberCount > kMaximumAvisoContainerEntries)
+				{
+					errorText = "AVISO GeoJSON contains an oversized object.";
+					return false;
+				}
+				if (member->name.GetStringLength() > kMaximumAvisoStringBytes)
+				{
+					errorText = "AVISO GeoJSON contains a property name longer than 64 KB.";
+					return false;
+				}
+				if (!ValidateJsonValueLimits(member->value, depth + 1, valueCount, errorText))
+					return false;
+			}
+		}
+		return true;
+	}
+
+	bool CountCoordinatePoints(
+		const rapidjson::Value& value,
+		size_t depth,
+		size_t& coordinateCount,
+		std::string& errorText)
+	{
+		if (!value.IsArray())
+			return true;
+		if (depth > 8U)
+		{
+			errorText = "AVISO geometry exceeds the supported coordinate nesting depth.";
+			return false;
+		}
+		if (value.Size() >= 2U &&
+			value[static_cast<rapidjson::SizeType>(0)].IsNumber() &&
+			value[static_cast<rapidjson::SizeType>(1)].IsNumber())
+		{
+			if (++coordinateCount > kMaximumAvisoCoordinates)
+			{
+				errorText = "AVISO GeoJSON exceeds the 500,000-coordinate limit.";
+				return false;
+			}
+			return true;
+		}
+		for (rapidjson::SizeType index = 0; index < value.Size(); ++index)
+		{
+			if (!CountCoordinatePoints(value[index], depth + 1, coordinateCount, errorText))
+				return false;
+		}
+		return true;
+	}
+
+	bool ValidateDocumentResourceLimits(
+		const rapidjson::Document& document,
+		std::string& errorText)
+	{
+		size_t valueCount = 0;
+		if (!ValidateJsonValueLimits(document, 0, valueCount, errorText))
+			return false;
+		if (!document.IsObject() || !document.HasMember("features") ||
+			!document["features"].IsArray())
+		{
+			return true;
+		}
+
+		const rapidjson::Value& features = document["features"];
+		if (features.Size() > kMaximumAvisoFeatures)
+		{
+			errorText = "AVISO GeoJSON exceeds the 50,000-feature limit.";
+			return false;
+		}
+		size_t coordinateCount = 0;
+		for (rapidjson::SizeType index = 0; index < features.Size(); ++index)
+		{
+			const rapidjson::Value& feature = features[index];
+			if (!feature.IsObject() || !feature.HasMember("geometry") ||
+				!feature["geometry"].IsObject() ||
+				!feature["geometry"].HasMember("coordinates"))
+			{
+				continue;
+			}
+			if (!CountCoordinatePoints(
+				feature["geometry"]["coordinates"],
+				0,
+				coordinateCount,
+				errorText))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
 
 rapidjson::Document& AvisoDocumentModel::MutableDocument()
 {
@@ -47,22 +259,15 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 
 	try
 	{
-		if (!std::filesystem::exists(path))
+		const std::filesystem::path sourcePath = std::filesystem::u8path(path);
+		if (!std::filesystem::exists(sourcePath))
 		{
 			ResetToEmpty();
 			return true;
 		}
 
-		std::ifstream input(path, std::ios::binary);
-		if (!input.is_open())
-		{
-			errorText = "Unable to open AVISO file.";
+		if (!ReadBoundedSourceFile(sourcePath, sourceJson, errorText))
 			return false;
-		}
-
-		std::stringstream buffer;
-		buffer << input.rdbuf();
-		sourceJson = buffer.str();
 		Document.Parse<0>(sourceJson.c_str());
 		if (Document.HasParseError())
 		{
@@ -95,6 +300,103 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 	return true;
 }
 
+bool AvisoDocumentModel::ValidateSerializedInputLimits(
+	const std::string& sourceJson,
+	std::string& errorText)
+{
+	errorText.clear();
+	return ValidateSourceTextLimits(sourceJson, errorText) &&
+		ValidateSourceStreamingLimits(sourceJson, errorText);
+}
+
+bool AvisoDocumentModel::ReadBoundedSourceFile(
+	const std::filesystem::path& path,
+	std::string& sourceJson,
+	std::string& errorText) noexcept
+{
+	sourceJson.clear();
+	errorText.clear();
+	try
+	{
+		std::ifstream input(path, std::ios::binary);
+		if (!input.is_open())
+		{
+			errorText = "Unable to open AVISO file.";
+			return false;
+		}
+
+		input.seekg(0, std::ios::end);
+		const std::streamoff length = input.tellg();
+		if (length < 0)
+		{
+			errorText = "Unable to determine the AVISO file size.";
+			return false;
+		}
+		if (static_cast<unsigned long long>(length) > kMaximumAvisoFileBytes)
+		{
+			errorText = "AVISO GeoJSON exceeds the 32 MB file limit.";
+			return false;
+		}
+		input.seekg(0, std::ios::beg);
+		if (!input.good())
+		{
+			errorText = "Unable to read AVISO file.";
+			return false;
+		}
+
+		sourceJson.resize(static_cast<size_t>(length));
+		if (length > 0)
+		{
+			input.read(sourceJson.data(), static_cast<std::streamsize>(length));
+			if (input.gcount() != length)
+			{
+				sourceJson.clear();
+				errorText = "AVISO file changed or became unreadable while loading.";
+				return false;
+			}
+		}
+		if (input.peek() != std::char_traits<char>::eof())
+		{
+			sourceJson.clear();
+			errorText = "AVISO file changed while loading.";
+			return false;
+		}
+		if (!ValidateSerializedInputLimits(sourceJson, errorText))
+		{
+			sourceJson.clear();
+			return false;
+		}
+		return true;
+	}
+	catch (const std::exception& exception)
+	{
+		sourceJson.clear();
+		try
+		{
+			errorText = "AVISO input validation failed: " +
+				std::string(exception.what());
+		}
+		catch (...)
+		{
+			errorText.clear();
+		}
+		return false;
+	}
+	catch (...)
+	{
+		sourceJson.clear();
+		try
+		{
+			errorText = "AVISO input validation failed.";
+		}
+		catch (...)
+		{
+			errorText.clear();
+		}
+		return false;
+	}
+}
+
 void AvisoDocumentModel::CreateEmptyFeatureCollection()
 {
 	if (!Document.IsObject())
@@ -122,6 +424,8 @@ void AvisoDocumentModel::CreateEmptyFeatureCollection()
 
 bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText) const
 {
+	if (!ValidateDocumentResourceLimits(Document, errorText))
+		return false;
 	if (!Document.IsObject())
 	{
 		errorText = "AVISO GeoJSON root must be an object.";
@@ -249,6 +553,10 @@ bool AvisoDocumentModel::SaveAtomically(
 	Document.Accept(writer);
 	std::string serializedJson(buffer.GetString(), buffer.Size());
 	PatchSerializedCoordinates(serializedJson);
+	if (!ValidateSourceTextLimits(serializedJson, errorText))
+		return false;
+	if (!ValidateSourceStreamingLimits(serializedJson, errorText))
+		return false;
 
 	rapidjson::Document validation;
 	if (validation.Parse<0>(serializedJson.c_str()).HasParseError() ||
@@ -264,7 +572,7 @@ bool AvisoDocumentModel::SaveAtomically(
 
 	try
 	{
-		const std::filesystem::path outputPath(path);
+		const std::filesystem::path outputPath = std::filesystem::u8path(path);
 		if (outputPath.has_parent_path())
 			std::filesystem::create_directories(outputPath.parent_path());
 
@@ -273,16 +581,16 @@ bool AvisoDocumentModel::SaveAtomically(
 		HANDLE output = INVALID_HANDLE_VALUE;
 		for (int attempt = 0; attempt < 128; ++attempt)
 		{
-			tempPath =
-				outputPath.string() +
-				".tmp." +
-				std::to_string(::GetCurrentProcessId()) +
-				"." +
-				std::to_string(::GetTickCount()) +
-				"." +
-				std::to_string(attempt);
-			output = ::CreateFileA(
-				tempPath.string().c_str(),
+			tempPath = outputPath;
+			tempPath +=
+				L".tmp." +
+				std::to_wstring(::GetCurrentProcessId()) +
+				L"." +
+				std::to_wstring(::GetTickCount()) +
+				L"." +
+				std::to_wstring(attempt);
+			output = ::CreateFileW(
+				tempPath.c_str(),
 				GENERIC_WRITE,
 				0,
 				nullptr,
@@ -359,11 +667,13 @@ bool AvisoDocumentModel::SaveAtomically(
 			backupExisting && std::filesystem::is_regular_file(outputPath);
 		if (rotateBackup)
 		{
-			backupPath = outputPath.string() + ".bak";
-			backupTempPath = tempPath.string() + ".backup";
-			if (!::CopyFileA(
-				outputPath.string().c_str(),
-				backupTempPath.string().c_str(),
+			backupPath = outputPath;
+			backupPath += L".bak";
+			backupTempPath = tempPath;
+			backupTempPath += L".backup";
+			if (!::CopyFileW(
+				outputPath.c_str(),
+				backupTempPath.c_str(),
 				TRUE))
 			{
 				errorText = "Unable to stage the AVISO backup file.";
@@ -374,7 +684,7 @@ bool AvisoDocumentModel::SaveAtomically(
 			}
 		}
 
-		if (!::MoveFileExA(tempPath.string().c_str(), outputPath.string().c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		if (!::MoveFileExW(tempPath.c_str(), outputPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
 			const DWORD error = ::GetLastError();
 			errorText = "Unable to replace AVISO file atomically. Windows error " + std::to_string(error) + ".";
@@ -388,20 +698,20 @@ bool AvisoDocumentModel::SaveAtomically(
 		// place. If backup rotation fails, the staged old primary is also the exact
 		// rollback source, so a failed save cannot silently alter either file.
 		if (rotateBackup &&
-			!::MoveFileExA(
-				backupTempPath.string().c_str(),
-				backupPath.string().c_str(),
+			!::MoveFileExW(
+				backupTempPath.c_str(),
+				backupPath.c_str(),
 				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
 			const DWORD backupError = ::GetLastError();
-			const bool restored = ::MoveFileExA(
-				backupTempPath.string().c_str(),
-				outputPath.string().c_str(),
+			const bool restored = ::MoveFileExW(
+				backupTempPath.c_str(),
+				outputPath.c_str(),
 				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
 			errorText = "Unable to rotate the AVISO backup. Windows error " +
 				std::to_string(backupError) + ".";
 			if (!restored)
-				errorText += " The old primary remains at " + backupTempPath.string() + ".";
+				errorText += " The old primary remains at " + backupTempPath.u8string() + ".";
 			return false;
 		}
 	}

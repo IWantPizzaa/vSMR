@@ -65,6 +65,8 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel Condition="'$(ContinuousIntegrationBuild)'=='true'">Level4</WarningLevel>
+      <TreatWarningAsError Condition="'$(ContinuousIntegrationBuild)'=='true'">true</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -96,6 +98,8 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel Condition="'$(ContinuousIntegrationBuild)'=='true'">Level4</WarningLevel>
+      <TreatWarningAsError Condition="'$(ContinuousIntegrationBuild)'=='true'">true</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

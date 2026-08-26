@@ -2,6 +2,7 @@
 
 #include "rapidjson/document.h"
 
+#include <filesystem>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -42,11 +43,21 @@ struct AvisoValidationResult
 class AvisoDocumentModel
 {
 public:
+	inline static constexpr size_t MaximumSerializedInputBytes =
+		32U * 1024U * 1024U;
+
 	rapidjson::Document& MutableDocument();
 	const rapidjson::Document& GetDocument() const;
 
 	void ResetToEmpty();
 	bool LoadFromFile(const std::string& path, std::string& errorText);
+	static bool ReadBoundedSourceFile(
+		const std::filesystem::path& path,
+		std::string& sourceJson,
+		std::string& errorText) noexcept;
+	static bool ValidateSerializedInputLimits(
+		const std::string& sourceJson,
+		std::string& errorText);
 	void CreateEmptyFeatureCollection();
 	bool ValidateLoadedFeatureCollection(std::string& errorText) const;
 	bool SaveAtomically(
