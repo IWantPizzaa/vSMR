@@ -387,11 +387,17 @@ namespace
 			errorCode);
 		Expect(!errorCode, "Profiles fixture copies to a Unicode path");
 
+		const std::wstring widePickerResult = selectedFile.wstring();
+		const std::filesystem::path selectedFromWidePicker(widePickerResult);
+		Expect(
+			selectedFromWidePicker.u8string() == selectedFile.u8string(),
+			"Wide file-picker path crosses the UTF-8 boundary without ACP loss");
+
 		std::string normalizedPath;
 		std::string error;
 		Expect(
 			VsmrResourceFiles::NormalizeExistingFilePath(
-				selectedFile.u8string(),
+				selectedFromWidePicker.u8string(),
 				normalizedPath,
 				error),
 			"Unicode selected-resource path normalizes");
