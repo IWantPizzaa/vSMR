@@ -1081,6 +1081,8 @@ namespace
 		snapshotPath.clear();
 		if (source.empty())
 			return false;
+		const std::filesystem::path nativeSource =
+			std::filesystem::u8path(source);
 
 		for (int attempt = 0; attempt < 128; ++attempt)
 		{
@@ -1093,7 +1095,10 @@ namespace
 				<< "."
 				<< attempt;
 			const std::string candidatePath = candidate.str();
-			if (::CopyFileA(source.c_str(), candidatePath.c_str(), TRUE))
+			if (::CopyFileW(
+				nativeSource.c_str(),
+				std::filesystem::u8path(candidatePath).c_str(),
+				TRUE))
 			{
 				snapshotPath = candidatePath;
 				break;
@@ -1109,8 +1114,8 @@ namespace
 		if (snapshotPath.empty())
 			return false;
 
-		HANDLE snapshotFile = ::CreateFileA(
-			snapshotPath.c_str(),
+		HANDLE snapshotFile = ::CreateFileW(
+			std::filesystem::u8path(snapshotPath).c_str(),
 			GENERIC_WRITE,
 			0,
 			nullptr,
@@ -1124,7 +1129,7 @@ namespace
 			::CloseHandle(snapshotFile);
 		if (!flushed)
 		{
-			::DeleteFileA(snapshotPath.c_str());
+			::DeleteFileW(std::filesystem::u8path(snapshotPath).c_str());
 			snapshotPath.clear();
 			return false;
 		}
@@ -1137,9 +1142,9 @@ namespace
 	{
 		return !snapshotPath.empty() &&
 			!destination.empty() &&
-			::MoveFileExA(
-				snapshotPath.c_str(),
-				destination.c_str(),
+			::MoveFileExW(
+				std::filesystem::u8path(snapshotPath).c_str(),
+				std::filesystem::u8path(destination).c_str(),
 				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
 	}
 
@@ -1148,7 +1153,7 @@ namespace
 		if (snapshotPath.empty())
 			return true;
 		const bool deleted =
-			::DeleteFileA(snapshotPath.c_str()) != FALSE ||
+			::DeleteFileW(std::filesystem::u8path(snapshotPath).c_str()) != FALSE ||
 			::GetLastError() == ERROR_FILE_NOT_FOUND;
 		if (deleted)
 			snapshotPath.clear();
@@ -1305,16 +1310,53 @@ namespace
 		}
 	}
 
-	bool ReadFileText(const std::string& path, std::string& text)
+	bool ReadFileText(
+		const std::string& path,
+		std::string& text,
+		size_t maximumBytes)
 	{
 		text.clear();
-		std::ifstream input(path, std::ios::binary);
-		if (!input.is_open())
+		try
+		{
+			std::ifstream input(
+				std::filesystem::u8path(path),
+				std::ios::binary);
+			if (!input.is_open())
+				return false;
+
+			input.seekg(0, std::ios::end);
+			const std::streamoff length = input.tellg();
+			if (length < 0 ||
+				static_cast<unsigned long long>(length) > maximumBytes)
+			{
+				return false;
+			}
+			input.seekg(0, std::ios::beg);
+			if (!input.good())
+				return false;
+
+			text.resize(static_cast<size_t>(length));
+			if (length > 0)
+			{
+				input.read(text.data(), static_cast<std::streamsize>(length));
+				if (input.gcount() != length)
+				{
+					text.clear();
+					return false;
+				}
+			}
+			if (input.peek() != std::char_traits<char>::eof())
+			{
+				text.clear();
+				return false;
+			}
+			return true;
+		}
+		catch (...)
+		{
+			text.clear();
 			return false;
-		std::ostringstream buffer;
-		buffer << input.rdbuf();
-		text = buffer.str();
-		return static_cast<bool>(input) || input.eof();
+		}
 	}
 
 	std::string RuntimeResourceFromType(
@@ -2344,7 +2386,12 @@ struct VsmrControlCenterBridge::Impl
 	std::string FileRevision(const std::string& path)
 	{
 		std::string contents;
-		return ReadFileText(path, contents) ? ContentRevision(contents) : "missing";
+		return ReadFileText(
+			path,
+			contents,
+			AvisoDocumentModel::MaximumSerializedInputBytes)
+			? ContentRevision(contents)
+			: "missing";
 	}
 
 	void EvaluateAvisoHealth(
@@ -2353,7 +2400,7 @@ struct VsmrControlCenterBridge::Impl
 		std::string& message) const
 	{
 		std::error_code fileError;
-		const std::filesystem::path filePath(path);
+		const std::filesystem::path filePath = std::filesystem::u8path(path);
 		const bool exists = !path.empty() &&
 			std::filesystem::is_regular_file(filePath, fileError) &&
 			!fileError;
@@ -2382,7 +2429,14 @@ struct VsmrControlCenterBridge::Impl
 		{
 			std::string avisoJson;
 			rapidjson::Document parsed;
-			if (ReadFileText(path, avisoJson) &&
+			std::string inputError;
+			if (ReadFileText(
+					path,
+					avisoJson,
+					AvisoDocumentModel::MaximumSerializedInputBytes) &&
+				AvisoDocumentModel::ValidateSerializedInputLimits(
+					avisoJson,
+					inputError) &&
 				!parsed.Parse<0>(avisoJson.c_str()).HasParseError() &&
 				parsed.IsObject() &&
 				parsed.HasMember("type") &&
@@ -3331,7 +3385,8 @@ struct VsmrControlCenterBridge::Impl
 		std::string avisoBackupRollbackSnapshotPath;
 		if (avisoModel != nullptr)
 		{
-			const DWORD attributes = ::GetFileAttributesA(avisoPath.c_str());
+			const DWORD attributes = ::GetFileAttributesW(
+				std::filesystem::u8path(avisoPath).c_str());
 			avisoExistedBeforeSave =
 				attributes != INVALID_FILE_ATTRIBUTES &&
 				(attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
@@ -3349,7 +3404,8 @@ struct VsmrControlCenterBridge::Impl
 			if (!avisoSaveIsRecovery)
 			{
 				const std::string backupPath = avisoPath + ".bak";
-				const DWORD backupAttributes = ::GetFileAttributesA(backupPath.c_str());
+				const DWORD backupAttributes = ::GetFileAttributesW(
+					std::filesystem::u8path(backupPath).c_str());
 				avisoBackupExistedBeforeSave =
 					backupAttributes != INVALID_FILE_ATTRIBUTES &&
 					(backupAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
@@ -3394,7 +3450,7 @@ struct VsmrControlCenterBridge::Impl
 				else
 				{
 					primaryRestored =
-						::DeleteFileA(avisoPath.c_str()) != FALSE ||
+						::DeleteFileW(std::filesystem::u8path(avisoPath).c_str()) != FALSE ||
 						::GetLastError() == ERROR_FILE_NOT_FOUND;
 				}
 
@@ -3413,7 +3469,7 @@ struct VsmrControlCenterBridge::Impl
 					else
 					{
 						backupRestored =
-							::DeleteFileA(backupPath.c_str()) != FALSE ||
+							::DeleteFileW(std::filesystem::u8path(backupPath).c_str()) != FALSE ||
 							::GetLastError() == ERROR_FILE_NOT_FOUND;
 					}
 				}
@@ -3454,7 +3510,7 @@ struct VsmrControlCenterBridge::Impl
 				}
 				else
 					avisoRollbackOk =
-						::DeleteFileA(avisoPath.c_str()) != FALSE ||
+						::DeleteFileW(std::filesystem::u8path(avisoPath).c_str()) != FALSE ||
 						::GetLastError() == ERROR_FILE_NOT_FOUND;
 
 				if (!avisoSaveIsRecovery)
@@ -3471,7 +3527,7 @@ struct VsmrControlCenterBridge::Impl
 					else
 					{
 						avisoBackupRollbackOk =
-							::DeleteFileA(backupPath.c_str()) != FALSE ||
+							::DeleteFileW(std::filesystem::u8path(backupPath).c_str()) != FALSE ||
 							::GetLastError() == ERROR_FILE_NOT_FOUND;
 					}
 				}
@@ -3822,8 +3878,7 @@ struct VsmrControlCenterBridge::Impl
 			return false;
 		}
 
-		rapidjson::Value& activeProfile =
-			const_cast<rapidjson::Value&>(Owner->CurrentConfig->getActiveProfile());
+		rapidjson::Value& activeProfile = Owner->CurrentConfig->getMutableActiveProfile();
 		if (!activeProfile.IsObject())
 		{
 			error = "The active profile is invalid.";
@@ -3927,8 +3982,7 @@ struct VsmrControlCenterBridge::Impl
 			payload->HasMember("rimcas") &&
 			(*payload)["rimcas"].IsBool())
 		{
-			rapidjson::Value& activeProfile =
-				const_cast<rapidjson::Value&>(Owner->CurrentConfig->getActiveProfile());
+			rapidjson::Value& activeProfile = Owner->CurrentConfig->getMutableActiveProfile();
 			rapidjson::Value& rimcas = EnsureObjectMember(
 				activeProfile,
 				"rimcas",
@@ -4353,7 +4407,7 @@ struct VsmrControlCenterBridge::Impl
 			std::string reportPath;
 			if (!WritePerformanceReportAtomically(
 				report,
-				std::filesystem::path(Owner->DataPath),
+				std::filesystem::u8path(Owner->DataPath),
 				reportPath,
 				error))
 			{
@@ -4523,6 +4577,23 @@ bool VsmrControlCenterBridge::ValidateLoadedResource(
 		return false;
 	}
 
+	const std::string normalizedResource = LowerAscii(resource);
+	if (normalizedResource == "profiles")
+	{
+		if (!CConfig::validateSerializedInputLimits(jsonText, error))
+			return false;
+	}
+	else if (normalizedResource == "aviso")
+	{
+		if (!AvisoDocumentModel::ValidateSerializedInputLimits(jsonText, error))
+			return false;
+	}
+	else
+	{
+		error = "Unknown resource type.";
+		return false;
+	}
+
 	rapidjson::Document parsed;
 	parsed.Parse<0>(jsonText.c_str());
 	if (parsed.HasParseError())
@@ -4531,7 +4602,6 @@ bool VsmrControlCenterBridge::ValidateLoadedResource(
 		return false;
 	}
 
-	const std::string normalizedResource = LowerAscii(resource);
 	if (normalizedResource == "profiles")
 		return ValidateProfileArray(parsed, error);
 	if (normalizedResource == "aviso")
@@ -4585,7 +4655,6 @@ bool VsmrControlCenterBridge::ValidateLoadedResource(
 		return true;
 	}
 
-	error = "Unknown resource type.";
 	return false;
 }
 
@@ -4636,7 +4705,13 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 		// Reject a source that changed between that read and activation instead of
 		// pairing stale JSON with a newer revision token.
 		std::string activationJson;
-		if (!ReadFileText(normalizedEffectivePath, activationJson) ||
+		const size_t maximumResourceBytes = normalizedResource == "profiles"
+			? CConfig::MaximumSerializedInputBytes
+			: AvisoDocumentModel::MaximumSerializedInputBytes;
+		if (!ReadFileText(
+				normalizedEffectivePath,
+				activationJson,
+				maximumResourceBytes) ||
 			State->ContentRevision(activationJson) !=
 				State->ContentRevision(jsonText))
 		{
@@ -4727,7 +4802,10 @@ bool VsmrControlCenterBridge::HandleLoadedResource(
 
 			std::string activatedJson;
 			std::string activatedValidationError;
-			if (!ReadFileText(normalizedEffectivePath, activatedJson) ||
+			if (!ReadFileText(
+					normalizedEffectivePath,
+					activatedJson,
+					AvisoDocumentModel::MaximumSerializedInputBytes) ||
 				!ValidateLoadedResource(
 					"aviso",
 					activatedJson,

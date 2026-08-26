@@ -8,6 +8,7 @@
 - Added per-display-mode maximum airborne altitude and ground-speed limits. Targets above either limit are omitted from the main AVISO and radar insets while RIMCAS safety processing remains active.
 - Added an airport-specific Night/Day background color to every AVISO, exposed as the first color in the Geometry editor and rendered consistently in the main view, AVISO inset, and SRW.
 - Added Copy and Paste actions to the Tag and Profile Color editors. Tag paste supports multi-selection and preserves normal/detailed layouts; color paste accepts 6- and 8-digit hex values including opacity.
+- Added native regression tests for profile and AVISO validation, holding-point synchronization, tag tokens, RIMCAS runway monitoring, and radar geometry. AppVeyor now runs the suite and treats compiler warnings as errors.
 
 ### Changed
 
@@ -19,6 +20,11 @@
 - Removed the RDF, CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces.
 - Changed holding-point synchronization to the stable `VSMRHP/<value>` remarks marker and clean up duplicated markers produced by EuroScope's rewriting of the former `HP:<value>` format.
 - Automatically removes the holding-point marker from flight-plan remarks when the correlated aircraft transitions to an airborne tag above 50 kt.
+- Hardened the native RDF worker with an exception boundary and race-safe RAII ownership for WinHTTP and WebSocket handles, preventing worker failures from terminating EuroScope.
+- Added strict size, depth, and item-count limits to profile and AVISO JSON loading, and made Windows installation paths Unicode-safe.
+- Restricted the Control Center to its trusted local document and bounded both inbound WebView messages and the pending message queue.
+- Made production packaging fail closed while bundled asset provenance remains unresolved; explicitly non-publishable local validation packages remain available.
+- Removed obsolete profile-color and tag-editor mutation paths that bypassed the live transactional editor model.
 
 ## [2.0.0-beta.4] - 2026-08-24
 

@@ -51,9 +51,10 @@ namespace
 		const std::string& sourceUrl,
 		const std::string& airport)
 	{
-		const std::filesystem::path sourceName(SourceFileName(sourceUrl));
-		std::string stem = SanitizeFilePart(sourceName.stem().string());
-		std::string extension = ToLowerAsciiCopy(sourceName.extension().string());
+		const std::filesystem::path sourceName =
+			std::filesystem::u8path(SourceFileName(sourceUrl));
+		std::string stem = SanitizeFilePart(sourceName.stem().u8string());
+		std::string extension = ToLowerAsciiCopy(sourceName.extension().u8string());
 
 		std::filesystem::path targetDirectory;
 		if (kind == VsmrResourceFiles::Kind::Aviso)
@@ -105,14 +106,16 @@ bool VsmrResourceFiles::NormalizeExistingFilePath(
 	}
 
 	std::error_code error;
-	const std::filesystem::path path = AbsoluteNormalizedPath(sourcePath, error);
+	const std::filesystem::path path = AbsoluteNormalizedPath(
+		std::filesystem::u8path(sourcePath),
+		error);
 	if (error || path.empty() ||
 		!std::filesystem::is_regular_file(path, error) || error)
 	{
 		errorText = "The selected file is no longer available.";
 		return false;
 	}
-	normalizedPath = path.string();
+	normalizedPath = path.u8string();
 	return true;
 }
 
@@ -134,7 +137,9 @@ bool VsmrResourceFiles::StoreGithubDownload(
 	}
 
 	std::error_code error;
-	const std::filesystem::path dataDirectory = AbsoluteNormalizedPath(dataPath, error);
+	const std::filesystem::path dataDirectory = AbsoluteNormalizedPath(
+		std::filesystem::u8path(dataPath),
+		error);
 	if (error || dataDirectory.empty())
 	{
 		errorText = "The vSMR_Data folder path is invalid.";
@@ -218,7 +223,10 @@ bool VsmrResourceFiles::StoreGithubDownload(
 		if (variant > 1)
 		{
 			candidate = basePath.parent_path() /
-				(basePath.stem().string() + "_" + std::to_string(variant) + basePath.extension().string());
+				std::filesystem::u8path(
+					basePath.stem().u8string() + "_" +
+					std::to_string(variant) +
+					basePath.extension().u8string());
 		}
 		error.clear();
 		if (std::filesystem::exists(candidate, error))
@@ -231,7 +239,7 @@ bool VsmrResourceFiles::StoreGithubDownload(
 			candidate.c_str(),
 			MOVEFILE_WRITE_THROUGH))
 		{
-			storedPath = candidate.lexically_normal().string();
+			storedPath = candidate.lexically_normal().u8string();
 			return true;
 		}
 

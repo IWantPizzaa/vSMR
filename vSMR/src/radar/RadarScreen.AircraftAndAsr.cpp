@@ -3,7 +3,10 @@
 #include "insets/InsetWindow.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "shared/WindowsPathEncoding.hpp"
 
+#include <ShlObj.h>
+#include <array>
 #include <cerrno>
 #include <cstdlib>
 
@@ -79,7 +82,7 @@ Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
 	}
 	PerformanceDiagnostics.RecordAircraftSourceCache(false);
 
-	const fs::path candidate = fs::path(IconsPath) / (ac + ".png");
+	const fs::path candidate = fs::u8path(IconsPath) / (ac + ".png");
 	if (!fs::exists(candidate))
 	{
 		AircraftIcons[ac] = nullptr;
@@ -326,21 +329,24 @@ void CSMRRadar::LoadAircraftSpecs() {
 		};
 
 	if (!DataPath.empty())
-		pushUniqueCandidate(fs::path(DataPath) / "ICAO_Aircraft.json");
-	pushUniqueCandidate(fs::path(DllPath) / "vSMR_Data" / "ICAO_Aircraft.json");
+		pushUniqueCandidate(fs::u8path(DataPath) / "ICAO_Aircraft.json");
+	pushUniqueCandidate(fs::u8path(DllPath) / "vSMR_Data" / "ICAO_Aircraft.json");
 
 	// Legacy flat AppData\Roaming\EuroScope\LFXX\Plugins fallback
-	char* appdata = nullptr;
-	size_t appdata_len = 0;
-	if (_dupenv_s(&appdata, &appdata_len, "APPDATA") == 0 && appdata != nullptr) {
-		fs::path roaming(appdata);
+	std::array<wchar_t, MAX_PATH> appData{};
+	if (SUCCEEDED(::SHGetFolderPathW(
+		nullptr,
+		CSIDL_APPDATA,
+		nullptr,
+		SHGFP_TYPE_CURRENT,
+		appData.data()))) {
+		fs::path roaming(appData.data());
 		pushUniqueCandidate(roaming / "EuroScope" / "LFXX" / "Plugins" / "ICAO_Aircraft.json");
-		free(appdata);
 	}
 
 	// Plugin folder and parent
-	pushUniqueCandidate(fs::path(DllPath) / "ICAO_Aircraft.json");
-	pushUniqueCandidate(fs::path(DllPath).parent_path() / "ICAO_Aircraft.json");
+	pushUniqueCandidate(fs::u8path(DllPath) / "ICAO_Aircraft.json");
+	pushUniqueCandidate(fs::u8path(DllPath).parent_path() / "ICAO_Aircraft.json");
 
 	auto getStringMember = [](const rapidjson::Value& obj, std::initializer_list<const char*> keys, std::string& out) -> bool {
 		for (auto k : keys) {
@@ -365,13 +371,13 @@ void CSMRRadar::LoadAircraftSpecs() {
 	int totalLoaded = 0;
 
 	for (auto& p : candidates) {
-		Logger::info("Trying to read aircraft specs from: " + p.string());
+		Logger::info("Trying to read aircraft specs from: " + p.u8string());
 		if (!fs::exists(p)) {
-			Logger::info("Specs file not found at: " + p.string());
+			Logger::info("Specs file not found at: " + p.u8string());
 			continue;
 		}
 
-		std::ifstream ifs(p.string(), std::ios::binary);
+		std::ifstream ifs(p, std::ios::binary);
 		std::stringstream ss;
 		ss << ifs.rdbuf();
 		ifs.close();
@@ -463,7 +469,7 @@ void CSMRRadar::LoadAircraftSpecs() {
 
 		rapidjson::Document doc;
 		if (doc.Parse<0>(sanitized.c_str()).HasParseError()) {
-			Logger::info("Parse error in ICAO_Aircraft.json at: " + p.string());
+			Logger::info("Parse error in ICAO_Aircraft.json at: " + p.u8string());
 			continue;
 		}
 		int loaded = 0;
@@ -499,10 +505,10 @@ void CSMRRadar::LoadAircraftSpecs() {
 				loadEntry(entry, it->name.GetString());
 			}
 		} else {
-			Logger::info("ICAO_Aircraft.json has unexpected root type at: " + p.string());
+			Logger::info("ICAO_Aircraft.json has unexpected root type at: " + p.u8string());
 		}
 
-		Logger::info("Loaded " + std::to_string(loaded) + " aircraft specs from " + p.string());
+		Logger::info("Loaded " + std::to_string(loaded) + " aircraft specs from " + p.u8string());
 		totalLoaded += loaded;
 		if (loaded > 0)
 			break;
@@ -688,10 +694,10 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 			continue;
 
 		std::error_code pathError;
-		const std::filesystem::path candidate(selectedPath->second);
+		const std::filesystem::path candidate = std::filesystem::u8path(selectedPath->second);
 		if (!std::filesystem::is_regular_file(candidate, pathError) || pathError)
 			continue;
-		sessionAvisoPath = std::filesystem::absolute(candidate, pathError).lexically_normal().string();
+		sessionAvisoPath = std::filesystem::absolute(candidate, pathError).lexically_normal().u8string();
 		if (pathError)
 			sessionAvisoPath = selectedPath->second;
 		break;
@@ -870,16 +876,12 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	}
 	else if (const char* selectedAvisoPath = read("AvisoFile"))
 	{
-		std::error_code pathError;
-		const std::filesystem::path sourcePath(selectedAvisoPath);
+		std::filesystem::path sourcePath;
 		if (selectedAvisoPath[0] != '\0' &&
-			std::filesystem::is_regular_file(sourcePath, pathError) &&
-			!pathError)
+			VsmrWindowsPath::TryResolveExistingFile(selectedAvisoPath, sourcePath))
 		{
 			AvisoGeoJsonOverridePaths[normalizedAirport] =
-				std::filesystem::absolute(sourcePath, pathError).lexically_normal().string();
-			if (pathError)
-				AvisoGeoJsonOverridePaths[normalizedAirport] = selectedAvisoPath;
+				sourcePath.u8string();
 		}
 		else
 		{
