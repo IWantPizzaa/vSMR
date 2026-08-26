@@ -85,8 +85,13 @@ private:
 	void StopWebViewThread();
 	void ShutdownWebView();
 	void ShowFallback(const std::string& message);
-	void QueueWebMessageForDialog(const std::string& json);
-	void SendJsonToWebView(const std::string& json);
+	bool QueueWebMessageForDialog(std::string json);
+	void LogRejectedWebMessage(const char* reason) noexcept;
+	void LogOutboundQueueIssue(const char* reason) noexcept;
+	void ReportWebViewCallbackFailure(
+		const char* callback,
+		const char* detail = nullptr) noexcept;
+	void SendJsonToWebView(const std::string& json) noexcept;
 	void BeginNativeWindowDrag();
 	void RequestComputerResource(
 		const std::string& resource,

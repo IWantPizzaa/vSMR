@@ -174,7 +174,7 @@ namespace
 		std::ifstream input(path, std::ios::binary);
 		if (!input.is_open())
 		{
-			Logger::info("Holding-point catalog not found: " + path.string());
+			Logger::info("Holding-point catalog not found: " + path.u8string());
 			return;
 		}
 
@@ -184,7 +184,7 @@ namespace
 		rapidjson::Document document;
 		if (document.Parse<0>(json.c_str()).HasParseError() || !document.IsObject())
 		{
-			Logger::info("Holding-point catalog is invalid: " + path.string());
+			Logger::info("Holding-point catalog is invalid: " + path.u8string());
 			return;
 		}
 
@@ -231,7 +231,7 @@ namespace
 			std::lock_guard<std::mutex> guard(HoldingPointCatalogMutex);
 			HoldingPointCatalog = std::move(loaded);
 		}
-		Logger::info("Loaded holding-point catalog: " + path.string());
+		Logger::info("Loaded holding-point catalog: " + path.u8string());
 	}
 
 	std::vector<std::string> HoldingPointsForFlightPlan(const CFlightPlan& flightPlan)
@@ -355,7 +355,7 @@ namespace
 		}
 		else if (!Logger::DLL_PATH.empty())
 		{
-			pluginDirectory = std::filesystem::path(Logger::DLL_PATH);
+			pluginDirectory = std::filesystem::u8path(Logger::DLL_PATH);
 		}
 
 		if (pluginDirectory.empty())
@@ -1417,7 +1417,8 @@ namespace
 
 	std::filesystem::path ResolveDefaultProfilesConfigPath()
 	{
-		const std::filesystem::path pluginDirectory(Logger::DLL_PATH);
+		const std::filesystem::path pluginDirectory =
+			std::filesystem::u8path(Logger::DLL_PATH);
 		const std::filesystem::path dataConfigPath = pluginDirectory / "vSMR_Data" / "vSMR_Profiles.json";
 
 		std::error_code ec;
@@ -1622,10 +1623,16 @@ namespace
 		std::vector<std::filesystem::path> candidates;
 
 		std::filesystem::path processDirectory;
-		char modulePath[MAX_PATH] = {};
-		const DWORD modulePathLength = ::GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
-		if (modulePathLength > 0 && modulePathLength < MAX_PATH)
-			processDirectory = std::filesystem::path(std::string(modulePath, modulePathLength)).parent_path();
+		std::wstring modulePath(32768, L'\0');
+		const DWORD modulePathLength = ::GetModuleFileNameW(
+			nullptr,
+			modulePath.data(),
+			static_cast<DWORD>(modulePath.size()));
+		if (modulePathLength > 0 && modulePathLength < modulePath.size())
+		{
+			modulePath.resize(modulePathLength);
+			processDirectory = std::filesystem::path(modulePath).parent_path();
+		}
 
 		if (plugIn != nullptr)
 		{
@@ -1650,7 +1657,8 @@ namespace
 
 		if (!Logger::DLL_PATH.empty())
 		{
-			const std::filesystem::path pluginDir(Logger::DLL_PATH);
+			const std::filesystem::path pluginDir =
+				std::filesystem::u8path(Logger::DLL_PATH);
 			AppendAliasPathCandidate(candidates, pluginDir / ".." / ".." / "Alias" / "alias.txt");
 			AppendAliasPathCandidate(candidates, pluginDir / ".." / "Alias" / "alias.txt");
 		}
@@ -2871,7 +2879,7 @@ void CSMRPlugin::PublishActiveProfilesConfigPath(
 {
 	std::string configuredVacdmServerUrl;
 	const bool vacdmConfigured = TryReadVacdmServerUrl(
-		std::filesystem::path(path),
+		std::filesystem::u8path(path),
 		configuredVacdmServerUrl);
 	{
 		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
@@ -3090,7 +3098,8 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 	error.clear();
 	try
 	{
-		const std::filesystem::path pluginDirectory(Logger::DLL_PATH);
+		const std::filesystem::path pluginDirectory =
+			std::filesystem::u8path(Logger::DLL_PATH);
 		const std::filesystem::path dataDirectory =
 			pluginDirectory / "vSMR_Data";
 		const std::filesystem::path webUiDirectory =
@@ -3199,7 +3208,7 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		existsError.clear();
 		report << "profiles_exists="
 			<< yesNo(!profilesPath.empty() && std::filesystem::is_regular_file(
-				std::filesystem::path(profilesPath), existsError)) << "\n";
+				std::filesystem::u8path(profilesPath), existsError)) << "\n";
 		report << "logging_enabled=" << yesNo(Logger::ENABLED) << "\n";
 		report << "logging_mode=" << Logger::mode_name(Logger::get_mode()) << "\n";
 		report << "log_path=" << logPath.u8string() << "\n";
@@ -3398,22 +3407,29 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 			CdmReminderCooldownMinutes.store(parsedCooldownMinutes, std::memory_order_relaxed);
 	}
 
-	char DllPathFile[_MAX_PATH];
 	string DllPath;
 
 	// Resolving runtime data sources
 	if (VsmrRuntimeContext::IsConfigured())
 	{
-		DllPath = VsmrRuntimeContext::InstallRootNarrow();
+		DllPath = VsmrRuntimeContext::InstallRootUtf8();
 	}
 	else
 	{
-		GetModuleFileNameA(HINSTANCE(&__ImageBase), DllPathFile, sizeof(DllPathFile));
-		DllPath = std::filesystem::path(DllPathFile).parent_path().string();
+		std::wstring modulePath(32768, L'\0');
+		const DWORD length = ::GetModuleFileNameW(
+			HINSTANCE(&__ImageBase),
+			modulePath.data(),
+			static_cast<DWORD>(modulePath.size()));
+		if (length > 0 && length < modulePath.size())
+		{
+			modulePath.resize(length);
+			DllPath = std::filesystem::path(modulePath).parent_path().u8string();
+		}
 	}
 	Logger::DLL_PATH = DllPath;
 	{
-		const std::filesystem::path installRoot(DllPath);
+		const std::filesystem::path installRoot = std::filesystem::u8path(DllPath);
 		std::filesystem::path catalogPath = installRoot / "vSMR_Data" / "airports_hp.json";
 		std::error_code catalogError;
 		if (!std::filesystem::exists(catalogPath, catalogError))
@@ -3428,7 +3444,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 		VacdmConfiguredServerUrl.clear();
 	}
 	PublishActiveProfilesConfigPath(
-		ResolveDefaultProfilesConfigPath().string(),
+		ResolveDefaultProfilesConfigPath().u8string(),
 		false);
 
 	bool rdfEnabled = true;

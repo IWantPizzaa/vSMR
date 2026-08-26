@@ -90,7 +90,6 @@ public:
 	std::map<std::string, CRimcas::RunwayStatus> LastMapRunwayStatuses;
 	std::string LastMapActiveAirport;
 
-	char DllPathFile[_MAX_PATH];
 	string DllPath;
 	string DataPath;
 	string ConfigPath;
@@ -400,9 +399,6 @@ public:
 	map<string, CRect> previousTagSize;
 	map<std::string, POINT> TagDragOffsetFromCenter;
 
-	vector<string> ProfileColorPaths;
-	map<string, bool> ProfileColorPathHasAlpha;
-	string SelectedProfileColorPath;
 	std::unique_ptr<CVsmrControlCenterDialog> VsmrControlCenterDialog;
 	std::string TagDefinitionEditorType = "departure";
 	bool TagDefinitionEditorDetailed = false;
@@ -579,24 +575,13 @@ public:
 		bool saveOutgoingState = true,
 		bool persistNormalization = true);
 	void EnsureTargetGroundStatusColorEntries(bool persistChanges = true);
-	void RebuildProfileColorEntries();
-	bool IsProfileColorPathValid(const std::string& path, bool* hasAlpha = nullptr);
-	int GetProfileColorComponentValue(const std::string& path, char component, int fallback = 0);
-	bool UpdateProfileColorComponent(const std::string& path, char component, int value);
-	void OpenProfileEditorWindow();
 	bool EnsureVsmrControlCenterWindowCreated();
 	void OpenVsmrControlCenterWindow();
 	void OpenVsmrControlCenterWindow(const std::string& pageName);
 	void CloseVsmrControlCenterWindow();
 	void DestroyVsmrControlCenterWindow();
 	void OnVsmrControlCenterWindowClosed();
-	std::vector<std::string> GetProfileColorPathsForEditor();
-	std::string GetSelectedProfileColorPathForEditor() const;
-	bool SelectProfileColorPathForEditor(const std::string& path);
-	bool GetSelectedProfileColorForEditor(int& r, int& g, int& b, int& a, bool& hasAlpha) const;
-	bool SetSelectedProfileColorForEditor(int r, int g, int b, int a, bool useAlpha, bool persistToDisk);
 	std::vector<std::string> GetOrderedProfileNamesForUi() const;
-	std::vector<std::string> GetProfileNamesForEditor() const;
 	std::string GetActiveProfileNameForEditor() const;
 	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);
 	std::string ReadLastActiveProfileFromConfig() const;
@@ -606,13 +591,6 @@ public:
 	std::vector<DisplayModeSettings> GetProfileDisplayModesForEditor(const std::string& profileName) const;
 	std::string GetActiveProfileDisplayModeForEditor(const std::string& profileName) const;
 	bool SetProfileDisplayModeActiveForEditor(const std::string& profileName, const std::string& modeName);
-	bool AddProfileDisplayModeForEditor(const std::string& profileName, const std::string& requestedName, bool duplicateSelectedMode, const std::string& selectedModeName, std::string* outCreatedName = nullptr);
-	bool RenameProfileDisplayModeForEditor(const std::string& profileName, const std::string& oldName, const std::string& newName);
-	bool DeleteProfileDisplayModeForEditor(const std::string& profileName, const std::string& modeName);
-	bool UpdateProfileDisplayModeForEditor(const std::string& profileName, const DisplayModeSettings& settings);
-	bool AddProfileForEditor(const std::string& requestedName, bool duplicateActiveProfile, std::string* outCreatedName = nullptr);
-	bool RenameProfileForEditor(const std::string& oldName, const std::string& newName);
-	bool DeleteProfileForEditor(const std::string& name);
 	std::vector<std::string> GetTagDefinitionTokens() const;
 	std::string NormalizeTagDefinitionType(const std::string& type) const;
 	std::string TagDefinitionTypeLabel(const std::string& type) const;
@@ -620,10 +598,7 @@ public:
 	std::string TagDefinitionDepartureStatusLabel(const std::string& status) const;
 	std::vector<std::string> GetTagDefinitionStatusesForType(const std::string& type) const;
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
-	bool GetTagAutoDeconflictionEnabledForEditor() const;
-	bool SetTagAutoDeconflictionEnabledForEditor(bool enabled, bool persistToDisk);
 	bool GetTagRoundedCornersEnabledForEditor() const;
-	bool SetTagRoundedCornersEnabledForEditor(bool enabled, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition() const;
 	bool SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status) const;

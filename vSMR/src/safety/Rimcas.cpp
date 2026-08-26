@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "safety/Rimcas.hpp"
+#include "safety/RimcasLogic.hpp"
 #include "aircraft/GroundState.hpp"
 #include "scene/RadarScene.hpp"
 #include "shared/logging/Logger.hpp"
@@ -7,17 +8,9 @@
 namespace
 {
 	constexpr std::chrono::seconds DepartureStationaryAlertGracePeriod(25);
-	constexpr bool IsRunwayOccupancyMonitored(bool arrivals, bool departures) noexcept
-	{
-		return arrivals || departures;
-	}
+	using VsmrRimcasLogic::HasApproachingConflict;
+	using VsmrRimcasLogic::IsRunwayOccupancyMonitored;
 
-	constexpr bool HasApproachingConflict(std::size_t runwayOccupantCount) noexcept
-	{
-		return runwayOccupantCount > 0;
-	}
-
-	// Compile-time regression coverage for the two asymmetric RIMCAS failures.
 	static_assert(IsRunwayOccupancyMonitored(true, false));
 	static_assert(IsRunwayOccupancyMonitored(false, true));
 	static_assert(!IsRunwayOccupancyMonitored(false, false));

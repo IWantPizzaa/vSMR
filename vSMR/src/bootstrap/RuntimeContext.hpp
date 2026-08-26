@@ -16,8 +16,6 @@ namespace VsmrRuntimeContext
 	const std::filesystem::path& CanonicalRuntimePath() noexcept;
 	const std::filesystem::path& LoadedRuntimePath() noexcept;
 
-	// The existing renderer/configuration code uses narrow paths. This returns
-	// the installation root using the current Windows ANSI code page, matching
-	// the behavior it had before the loader/runtime split.
-	const std::string& InstallRootNarrow() noexcept;
+	// Legacy string fields carry UTF-8 only at their filesystem boundary
+	const std::string& InstallRootUtf8() noexcept;
 }

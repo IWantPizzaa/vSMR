@@ -529,10 +529,12 @@ Before packaging, set the exact release version and AVISO behavior in `vSMR\data
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_release_package.ps1 `
-  -Version 2.0.0-beta.5
+  -Version 2.0.0-beta.4
 ```
 
-Use `-ForceNonPublishable` for an explicitly unsigned manual-install package and `-AllowDirtySource` only for local development checks.
+Use `-ForceNonPublishable` only for local validation packages and `-AllowDirtySource` only for local development checks. Publishable packages always rebuild the current source, run the native regression suite, and reject `-SkipBuild`.
+
+Publishable packaging also fails closed while any bundled asset is marked `Verification required` in `vSMR\data\Licenses\ASSET_PROVENANCE.md`. Resolve and document those entries before creating a public release; do not bypass this gate with `-ForceNonPublishable` for distributed builds.
 
 The user archive contains only:
 
@@ -542,6 +544,16 @@ vSMR_Data\
 ```
 
 PDB files never enter the user package.
+
+### Regression tests
+
+The `vSMR.Tests` project is part of the solution and runs automatically in AppVeyor. After a Release build, run it locally from the repository root with:
+
+```powershell
+.\vSMR\tests\bin\Release\vSMR.Tests.exe (Get-Location).Path
+```
+
+The CI build uses warning level 4 with warnings treated as errors. New parsing, synchronization, safety, and geometry behavior should receive a focused native regression before release.
 
 ### Offline builds and deployment
 
@@ -577,7 +589,7 @@ vSMR\
     tags\             Tag definitions, rendering, rules, and VACDM tag data
     insets\           AVISO, SRW 1, METAR, and Timer inset windows
     aviso\            AVISO document model, editor, presets, and integration
-    profiles\         Profile editor and profile color paths
+    profiles\         Profile editor integration
     control_center\   Native WebView2 host, bridge, and resource loading
       web\             Control Center HTML, CSS, and JavaScript source
     datalink\         CPDLC settings and datalink message dialogs

@@ -6,6 +6,7 @@
 #include "radar/RadarScreen.hpp"
 #include "control_center/ControlCenterBridge.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
+#include "control_center/WebMessageValidation.hpp"
 #include "crash/CrashRuntime.hpp"
 
 #include "WebView2.h"
@@ -18,6 +19,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <cwchar>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -50,6 +52,12 @@ namespace
 	constexpr int kFixedWindowWidth = 728;
 	constexpr int kFixedWindowHeight = 500;
 	constexpr size_t kMaximumResourceBytes = 16u * 1024u * 1024u;
+	constexpr size_t kMaximumQueuedInboundWebMessageBytes =
+		VsmrWebMessageValidation::MaximumInboundMessageBytes;
+	constexpr size_t kMaximumQueuedInboundWebMessages = 64;
+	constexpr size_t kMaximumQueuedOutboundWebMessageBytes =
+		64U * 1024U * 1024U;
+	constexpr size_t kMaximumQueuedOutboundWebMessages = 64;
 	const wchar_t* kVirtualHostName = L"app.vsmr";
 	const wchar_t* kVirtualOriginPrefix = L"https://app.vsmr/";
 	const wchar_t* kAircraftIconVirtualHostName = L"icons.vsmr";
@@ -82,41 +90,99 @@ namespace
 		return output;
 	}
 
-	std::string WideToUtf8(const std::wstring& value)
+	struct CoTaskMemStringDeleter
 	{
-		if (value.empty())
-			return {};
-		const int length = ::WideCharToMultiByte(
+		void operator()(wchar_t* value) const noexcept
+		{
+			::CoTaskMemFree(value);
+		}
+	};
+
+	using CoTaskMemString = std::unique_ptr<wchar_t, CoTaskMemStringDeleter>;
+
+	bool TryWideToUtf8Bounded(
+		const wchar_t* value,
+		size_t maximumBytes,
+		std::string& output)
+	{
+		output.clear();
+		if (value == nullptr || maximumBytes == 0)
+			return false;
+
+		size_t wideLength = 0;
+		while (wideLength <= maximumBytes && value[wideLength] != L'\0')
+			++wideLength;
+		if (wideLength == 0 || wideLength > maximumBytes ||
+			wideLength > static_cast<size_t>((std::numeric_limits<int>::max)()))
+		{
+			return false;
+		}
+
+		const int encodedLength = ::WideCharToMultiByte(
 			CP_UTF8,
 			WC_ERR_INVALID_CHARS,
-			value.data(),
-			static_cast<int>(value.size()),
+			value,
+			static_cast<int>(wideLength),
 			nullptr,
 			0,
 			nullptr,
 			nullptr);
-		if (length <= 0)
+		if (encodedLength <= 0 ||
+			static_cast<size_t>(encodedLength) > maximumBytes)
 		{
-			std::string fallback;
-			fallback.reserve(value.size());
-			for (wchar_t character : value)
-				fallback.push_back(
-					character >= 0 && character <= 0x7f
-						? static_cast<char>(character)
-						: '?');
-			return fallback;
+			return false;
 		}
-		std::string output(static_cast<size_t>(length), '\0');
-		::WideCharToMultiByte(
+
+		output.resize(static_cast<size_t>(encodedLength));
+		const int convertedLength = ::WideCharToMultiByte(
 			CP_UTF8,
 			WC_ERR_INVALID_CHARS,
-			value.data(),
-			static_cast<int>(value.size()),
+			value,
+			static_cast<int>(wideLength),
 			output.data(),
-			length,
+			encodedLength,
 			nullptr,
 			nullptr);
-		return output;
+		if (convertedLength != encodedLength)
+		{
+			output.clear();
+			return false;
+		}
+		return true;
+	}
+
+	bool EqualsCanonicalUri(
+		const wchar_t* observed,
+		const std::wstring& canonical) noexcept
+	{
+		return observed != nullptr && !canonical.empty() &&
+			std::wcsncmp(observed, canonical.c_str(), canonical.size()) == 0 &&
+			observed[canonical.size()] == L'\0';
+	}
+
+	bool IsCanonicalMainDocumentMessage(
+		ICoreWebView2* webView,
+		ICoreWebView2WebMessageReceivedEventArgs* args,
+		const std::wstring& canonicalDocumentUri) noexcept
+	{
+		if (webView == nullptr || args == nullptr || canonicalDocumentUri.empty())
+			return false;
+
+		LPWSTR rawMessageSource = nullptr;
+		if (FAILED(args->get_Source(&rawMessageSource)) ||
+			rawMessageSource == nullptr)
+		{
+			return false;
+		}
+		CoTaskMemString messageSource(rawMessageSource);
+
+		LPWSTR rawMainSource = nullptr;
+		if (FAILED(webView->get_Source(&rawMainSource)) || rawMainSource == nullptr)
+			return false;
+		CoTaskMemString mainSource(rawMainSource);
+
+		return EqualsCanonicalUri(messageSource.get(), canonicalDocumentUri) &&
+			EqualsCanonicalUri(mainSource.get(), canonicalDocumentUri);
 	}
 
 	std::wstring LocalAppDataPath()
@@ -250,8 +316,8 @@ namespace
 		{
 			if (path.has_parent_path())
 				std::filesystem::create_directories(path.parent_path());
-			const std::filesystem::path temp =
-				path.string() + ".tmp." + std::to_string(::GetCurrentProcessId());
+			std::filesystem::path temp = path;
+			temp += L".tmp." + std::to_wstring(::GetCurrentProcessId());
 			{
 				std::ofstream output(
 					temp,
@@ -292,10 +358,15 @@ struct CVsmrControlCenterDialog::WebViewHostState
 {
 	std::mutex crossThreadMutex;
 	std::deque<std::string> outboundJson;
+	size_t outboundJsonBytes = 0;
+	bool outboundNotificationPending = false;
 	std::deque<std::string> inboundJson;
+	size_t inboundJsonBytes = 0;
+	bool inboundNotificationPending = false;
 	std::deque<std::string> fallbackMessages;
 	std::wstring resourceFolder;
 	std::wstring userDataFolder;
+	std::wstring canonicalDocumentUri;
 	HWND dialogWindow = nullptr;
 	HINSTANCE moduleInstance = nullptr;
 	std::atomic<HWND> threadWindow{ nullptr };
@@ -307,6 +378,8 @@ struct CVsmrControlCenterDialog::WebViewHostState
 		static_cast<int>(CVsmrControlCenterDialog::Page::Display) };
 	std::atomic<bool> preservePageOnNextOpen{ false };
 	std::atomic<bool> pageReady{ false };
+	std::atomic<unsigned long> rejectedInboundMessages{ 0 };
+	std::atomic<unsigned long> outboundQueueIssues{ 0 };
 	bool windowClassAcquired = false;
 	bool environmentCreationPending = false;
 	bool controllerCreationPending = false;
@@ -678,18 +751,56 @@ void CVsmrControlCenterDialog::WebViewThreadMainImpl()
 				HRESULT result,
 				ICoreWebView2Environment* environment) -> HRESULT
 			{
-				WebHost->environmentCreationPending = false;
-				const auto lifetime = weakLifetime.lock();
-				HRESULT callbackResult = S_OK;
-				if (lifetime && lifetime->load() &&
-					!WebHost->stopRequested.load())
+				try
 				{
-					callbackResult = OnWebViewEnvironmentCreated(
-						result,
-						environment);
+					if (WebHost == nullptr)
+						return E_UNEXPECTED;
+					WebHost->environmentCreationPending = false;
+					const auto lifetime = weakLifetime.lock();
+					HRESULT callbackResult = S_OK;
+					if (lifetime && lifetime->load() &&
+						!WebHost->stopRequested.load())
+					{
+						callbackResult = OnWebViewEnvironmentCreated(
+							result,
+							environment);
+					}
+					MaybeStopWebViewThreadOnStaThread();
+					return callbackResult;
 				}
-				MaybeStopWebViewThreadOnStaThread();
-				return callbackResult;
+				catch (CException* exception)
+				{
+					if (exception != nullptr)
+						exception->Delete();
+					if (WebHost != nullptr)
+						WebHost->environmentCreationPending = false;
+					ReportWebViewCallbackFailure(
+						"environment completion",
+						"MFC exception");
+				}
+				catch (const std::exception& exception)
+				{
+					if (WebHost != nullptr)
+						WebHost->environmentCreationPending = false;
+					ReportWebViewCallbackFailure(
+						"environment completion",
+						exception.what());
+				}
+				catch (...)
+				{
+					if (WebHost != nullptr)
+						WebHost->environmentCreationPending = false;
+					ReportWebViewCallbackFailure(
+						"environment completion");
+				}
+				try
+				{
+					MaybeStopWebViewThreadOnStaThread();
+				}
+				catch (...)
+				{
+				}
+				return E_FAIL;
 			}).Get());
 	if (FAILED(createResult))
 	{
@@ -735,48 +846,73 @@ LRESULT CALLBACK CVsmrControlCenterDialog::WebViewThreadWindowProc(
 
 	if (dialog != nullptr)
 	{
-		switch (message)
+		try
 		{
-		case kWebViewResizeMessage:
-			dialog->ResizeWebViewOnStaThread();
-			return 0;
-		case kWebViewSendJsonMessage:
-			dialog->SendQueuedJsonOnStaThread();
-			return 0;
-		case kWebViewShowPageMessage:
-			dialog->ShowRequestedPageOnStaThread();
-			return 0;
-		case kWebViewParentMovedMessage:
-			dialog->NotifyWebViewParentMovedOnStaThread();
-			return 0;
-		case kWebViewShutdownMessage:
-			::ShowWindow(window, SW_HIDE);
-			dialog->MaybeStopWebViewThreadOnStaThread();
-			return 0;
-		case kWebViewBeginWindowDragMessage:
-		{
-			::ReleaseCapture();
-			POINT cursor = {};
-			::GetCursorPos(&cursor);
-			if (::IsWindow(dialog->WebHost->dialogWindow))
+			switch (message)
 			{
-				::PostMessage(
-					dialog->WebHost->dialogWindow,
-					WM_NCLBUTTONDOWN,
-					HTCAPTION,
-					MAKELPARAM(cursor.x, cursor.y));
+			case kWebViewResizeMessage:
+				dialog->ResizeWebViewOnStaThread();
+				return 0;
+			case kWebViewSendJsonMessage:
+				dialog->SendQueuedJsonOnStaThread();
+				return 0;
+			case kWebViewShowPageMessage:
+				dialog->ShowRequestedPageOnStaThread();
+				return 0;
+			case kWebViewParentMovedMessage:
+				dialog->NotifyWebViewParentMovedOnStaThread();
+				return 0;
+			case kWebViewShutdownMessage:
+				::ShowWindow(window, SW_HIDE);
+				dialog->MaybeStopWebViewThreadOnStaThread();
+				return 0;
+			case kWebViewBeginWindowDragMessage:
+			{
+				::ReleaseCapture();
+				POINT cursor = {};
+				::GetCursorPos(&cursor);
+				if (::IsWindow(dialog->WebHost->dialogWindow))
+				{
+					::PostMessage(
+						dialog->WebHost->dialogWindow,
+						WM_NCLBUTTONDOWN,
+						HTCAPTION,
+						MAKELPARAM(cursor.x, cursor.y));
+				}
+				return 0;
 			}
+			case kWebViewPageReadyMessage:
+				dialog->CompleteWebViewPageReadyOnStaThread();
+				return 0;
+			case WM_DESTROY:
+				dialog->WebHost->stopRequested.store(true);
+				dialog->MaybeStopWebViewThreadOnStaThread();
+				return 0;
+			default:
+				break;
+			}
+		}
+		catch (CException* exception)
+		{
+			if (exception != nullptr)
+				exception->Delete();
+			dialog->ReportWebViewCallbackFailure(
+				"STA window procedure",
+				"MFC exception");
 			return 0;
 		}
-		case kWebViewPageReadyMessage:
-			dialog->CompleteWebViewPageReadyOnStaThread();
+		catch (const std::exception& exception)
+		{
+			dialog->ReportWebViewCallbackFailure(
+				"STA window procedure",
+				exception.what());
 			return 0;
-		case WM_DESTROY:
-			dialog->WebHost->stopRequested.store(true);
-			dialog->MaybeStopWebViewThreadOnStaThread();
+		}
+		catch (...)
+		{
+			dialog->ReportWebViewCallbackFailure(
+				"STA window procedure");
 			return 0;
-		default:
-			break;
 		}
 	}
 
@@ -826,18 +962,56 @@ HRESULT CVsmrControlCenterDialog::OnWebViewEnvironmentCreated(
 				HRESULT controllerResult,
 				ICoreWebView2Controller* controller) -> HRESULT
 			{
-				WebHost->controllerCreationPending = false;
-				const auto lifetime = weakLifetime.lock();
-				HRESULT callbackResult = S_OK;
-				if (lifetime && lifetime->load() &&
-					!WebHost->stopRequested.load())
+				try
 				{
-					callbackResult = OnWebViewControllerCreated(
-						controllerResult,
-						controller);
+					if (WebHost == nullptr)
+						return E_UNEXPECTED;
+					WebHost->controllerCreationPending = false;
+					const auto lifetime = weakLifetime.lock();
+					HRESULT callbackResult = S_OK;
+					if (lifetime && lifetime->load() &&
+						!WebHost->stopRequested.load())
+					{
+						callbackResult = OnWebViewControllerCreated(
+							controllerResult,
+							controller);
+					}
+					MaybeStopWebViewThreadOnStaThread();
+					return callbackResult;
 				}
-				MaybeStopWebViewThreadOnStaThread();
-				return callbackResult;
+				catch (CException* exception)
+				{
+					if (exception != nullptr)
+						exception->Delete();
+					if (WebHost != nullptr)
+						WebHost->controllerCreationPending = false;
+					ReportWebViewCallbackFailure(
+						"controller completion",
+						"MFC exception");
+				}
+				catch (const std::exception& exception)
+				{
+					if (WebHost != nullptr)
+						WebHost->controllerCreationPending = false;
+					ReportWebViewCallbackFailure(
+						"controller completion",
+						exception.what());
+				}
+				catch (...)
+				{
+					if (WebHost != nullptr)
+						WebHost->controllerCreationPending = false;
+					ReportWebViewCallbackFailure(
+						"controller completion");
+				}
+				try
+				{
+					MaybeStopWebViewThreadOnStaThread();
+				}
+				catch (...)
+				{
+				}
+				return E_FAIL;
 			}).Get());
 	if (FAILED(createResult))
 	{
@@ -927,7 +1101,7 @@ void CVsmrControlCenterDialog::ConfigureWebView()
 		try
 		{
 			const std::filesystem::path iconFolder =
-				std::filesystem::absolute(std::filesystem::path(Owner->IconsPath));
+				std::filesystem::absolute(std::filesystem::u8path(Owner->IconsPath));
 			if (std::filesystem::is_regular_file(iconFolder / "a320.png"))
 			{
 				const HRESULT iconMappingResult = webView3->SetVirtualHostNameToFolderMapping(
@@ -1010,19 +1184,57 @@ void CVsmrControlCenterDialog::ConfigureWebView()
 	if (SUCCEEDED(WebHost->webView->add_WebMessageReceived(
 		Callback<ICoreWebView2WebMessageReceivedEventHandler>(
 			[this, weakLifetime](
-				ICoreWebView2*,
+				ICoreWebView2* webView,
 				ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT
 			{
-				const auto lifetime = weakLifetime.lock();
-				if (!lifetime || !lifetime->load() || args == nullptr)
-					return S_OK;
-				LPWSTR rawJson = nullptr;
-				if (SUCCEEDED(args->get_WebMessageAsJson(&rawJson)) &&
-					rawJson != nullptr)
+				try
 				{
-					QueueWebMessageForDialog(
-						WideToUtf8(std::wstring(rawJson)));
-					::CoTaskMemFree(rawJson);
+					const auto lifetime = weakLifetime.lock();
+					if (!lifetime || !lifetime->load() || args == nullptr ||
+						WebHost == nullptr)
+					{
+						return S_OK;
+					}
+					if (!IsCanonicalMainDocumentMessage(
+						webView,
+						args,
+						WebHost->canonicalDocumentUri))
+					{
+						LogRejectedWebMessage("non-canonical document source");
+						return S_OK;
+					}
+
+					LPWSTR rawJson = nullptr;
+					if (FAILED(args->get_WebMessageAsJson(&rawJson)) ||
+						rawJson == nullptr)
+					{
+						LogRejectedWebMessage("message body unavailable");
+						return S_OK;
+					}
+					CoTaskMemString ownedJson(rawJson);
+					std::string json;
+					if (!TryWideToUtf8Bounded(
+						ownedJson.get(),
+						VsmrWebMessageValidation::MaximumInboundMessageBytes,
+						json))
+					{
+						LogRejectedWebMessage("invalid encoding or message size");
+						return S_OK;
+					}
+					if (!VsmrWebMessageValidation::HasValidInboundWebMessageShape(json))
+					{
+						LogRejectedWebMessage("invalid JSON envelope");
+						return S_OK;
+					}
+					QueueWebMessageForDialog(std::move(json));
+				}
+				catch (const std::exception&)
+				{
+					LogRejectedWebMessage("validation exception");
+				}
+				catch (...)
+				{
+					LogRejectedWebMessage("unexpected validation failure");
 				}
 				return S_OK;
 			}).Get(),
@@ -1040,6 +1252,7 @@ void CVsmrControlCenterDialog::ConfigureWebView()
 		L"index.html?ui=control&hosted=1&page=" +
 		Utf8ToWide(PageName(static_cast<Page>(
 			WebHost->requestedPage.load())));
+	WebHost->canonicalDocumentUri = uri;
 	WebHost->webView->Navigate(uri.c_str());
 }
 
@@ -1100,6 +1313,8 @@ void CVsmrControlCenterDialog::SendQueuedJsonOnStaThread()
 	{
 		std::lock_guard<std::mutex> lock(WebHost->crossThreadMutex);
 		pending.swap(WebHost->outboundJson);
+		WebHost->outboundJsonBytes = 0;
+		WebHost->outboundNotificationPending = false;
 	}
 	for (const std::string& json : pending)
 	{
@@ -1170,6 +1385,7 @@ void CVsmrControlCenterDialog::ShutdownWebView()
 	WebHost->webView.Reset();
 	WebHost->controller.Reset();
 	WebHost->environment.Reset();
+	WebHost->canonicalDocumentUri.clear();
 	if (WebHost->comInitialized)
 	{
 		::CoUninitialize();
@@ -1245,37 +1461,195 @@ void CVsmrControlCenterDialog::ShowFallback(const std::string& message)
 	}
 }
 
-void CVsmrControlCenterDialog::QueueWebMessageForDialog(
-	const std::string& json)
+bool CVsmrControlCenterDialog::QueueWebMessageForDialog(
+	std::string json)
 {
-	if (!WebHost || json.empty())
-		return;
+	if (!WebHost || json.empty() ||
+		json.size() > VsmrWebMessageValidation::MaximumInboundMessageBytes)
+	{
+		return false;
+	}
 	const auto lifetime = LifetimeToken;
 	if (!lifetime || !lifetime->load())
-		return;
+		return false;
+
+	bool queueLimitReached = false;
+	bool shouldNotifyDialog = false;
 	{
 		std::lock_guard<std::mutex> lock(WebHost->crossThreadMutex);
-		WebHost->inboundJson.push_back(json);
+		queueLimitReached =
+			WebHost->inboundJson.size() >= kMaximumQueuedInboundWebMessages ||
+			WebHost->inboundJsonBytes >
+				kMaximumQueuedInboundWebMessageBytes - json.size();
+		if (!queueLimitReached)
+		{
+			const size_t jsonBytes = json.size();
+			WebHost->inboundJson.push_back(std::move(json));
+			WebHost->inboundJsonBytes += jsonBytes;
+			shouldNotifyDialog = !WebHost->inboundNotificationPending;
+			WebHost->inboundNotificationPending = true;
+		}
 	}
-	if (::IsWindow(WebHost->dialogWindow))
-		::PostMessage(
+	if (queueLimitReached)
+	{
+		LogRejectedWebMessage("inbound queue limit reached");
+		return false;
+	}
+	if (!shouldNotifyDialog)
+		return true;
+
+	if (!::IsWindow(WebHost->dialogWindow) ||
+		!::PostMessage(
 			WebHost->dialogWindow,
 			kWebViewMessageReceivedMessage,
 			0,
-			0);
+			0))
+	{
+		// The dialog can disappear between validation and notification
+		{
+			std::lock_guard<std::mutex> lock(WebHost->crossThreadMutex);
+			WebHost->inboundJson.clear();
+			WebHost->inboundJsonBytes = 0;
+			WebHost->inboundNotificationPending = false;
+		}
+		LogRejectedWebMessage("dialog notification failed");
+		return false;
+	}
+	return true;
 }
 
-void CVsmrControlCenterDialog::SendJsonToWebView(const std::string& json)
+void CVsmrControlCenterDialog::LogRejectedWebMessage(
+	const char* reason) noexcept
+{
+	if (!WebHost)
+		return;
+	const unsigned long rejected =
+		WebHost->rejectedInboundMessages.fetch_add(1) + 1;
+	// Log the first failure and powers of two to avoid a log-flood path
+	if (rejected != 1 && (rejected & (rejected - 1)) != 0)
+		return;
+	try
+	{
+		Logger::info(
+			"Control Center WebView2 rejected inbound message reason=" +
+			std::string(reason != nullptr ? reason : "unknown") +
+			" total=" + std::to_string(rejected));
+	}
+	catch (...)
+	{
+	}
+}
+
+void CVsmrControlCenterDialog::LogOutboundQueueIssue(
+	const char* reason) noexcept
+{
+	if (!WebHost)
+		return;
+	const unsigned long issueCount =
+		WebHost->outboundQueueIssues.fetch_add(1) + 1;
+	// Log the first failure and powers of two to avoid a log-flood path
+	if (issueCount != 1 && (issueCount & (issueCount - 1)) != 0)
+		return;
+	try
+	{
+		Logger::info(
+			"Control Center WebView2 outbound queue issue reason=" +
+			std::string(reason != nullptr ? reason : "unknown") +
+			" total=" + std::to_string(issueCount));
+	}
+	catch (...)
+	{
+	}
+}
+
+void CVsmrControlCenterDialog::ReportWebViewCallbackFailure(
+	const char* callback,
+	const char* detail) noexcept
+{
+	try
+	{
+		Logger::info(
+			"Control Center WebView2 callback failed callback=" +
+			std::string(callback != nullptr ? callback : "unknown") +
+			" reason=" +
+			std::string(detail != nullptr ? detail : "unknown"));
+	}
+	catch (...)
+	{
+	}
+
+	try
+	{
+		ShowFallback("The Control Center browser operation failed.");
+	}
+	catch (...)
+	{
+	}
+}
+
+void CVsmrControlCenterDialog::SendJsonToWebView(
+	const std::string& json) noexcept
 {
 	if (!WebHost || json.empty())
 		return;
+	if (json.size() > kMaximumQueuedOutboundWebMessageBytes)
+	{
+		LogOutboundQueueIssue("message exceeds queue byte limit");
+		return;
+	}
+
+	bool queueLimitReached = false;
+	bool shouldNotifyStaThread = false;
+	try
 	{
 		std::lock_guard<std::mutex> lock(WebHost->crossThreadMutex);
-		WebHost->outboundJson.push_back(json);
+		queueLimitReached =
+			WebHost->outboundJson.size() >=
+				kMaximumQueuedOutboundWebMessages ||
+			WebHost->outboundJsonBytes >
+				kMaximumQueuedOutboundWebMessageBytes - json.size();
+		if (!queueLimitReached)
+		{
+			WebHost->outboundJson.push_back(json);
+			WebHost->outboundJsonBytes += json.size();
+			shouldNotifyStaThread =
+				!WebHost->outboundNotificationPending;
+			WebHost->outboundNotificationPending = true;
+		}
 	}
+	catch (...)
+	{
+		LogOutboundQueueIssue("queue operation failed");
+		return;
+	}
+
+	if (queueLimitReached)
+	{
+		LogOutboundQueueIssue("queue limit reached");
+		return;
+	}
+	if (!shouldNotifyStaThread)
+		return;
+
 	const HWND threadWindow = WebHost->threadWindow.load();
-	if (::IsWindow(threadWindow))
-		::PostMessage(threadWindow, kWebViewSendJsonMessage, 0, 0);
+	if (!::IsWindow(threadWindow))
+	{
+		// Startup may not have created the STA window yet. Page-ready handling
+		// drains this bounded queue after the WebView has been initialized.
+		return;
+	}
+	if (!::PostMessage(threadWindow, kWebViewSendJsonMessage, 0, 0))
+	{
+		try
+		{
+			std::lock_guard<std::mutex> lock(WebHost->crossThreadMutex);
+			WebHost->outboundNotificationPending = false;
+		}
+		catch (...)
+		{
+		}
+		LogOutboundQueueIssue("STA notification failed; message retained");
+	}
 }
 
 void CVsmrControlCenterDialog::BeginNativeWindowDrag()
@@ -1328,10 +1702,10 @@ void CVsmrControlCenterDialog::RequestComputerResource(
 	if (Bridge)
 		Bridge->HandleLoadedResource(
 			resource,
-			path.string(),
+			path.u8string(),
 			requestId,
 			text,
-			path.string());
+			path.u8string());
 }
 
 void CVsmrControlCenterDialog::RequestResetDefaults(
@@ -1341,8 +1715,8 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 	const std::filesystem::path profilesPath =
 		resourceFolder / L"defaults" / L"vSMR_Profiles.json";
 	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->DataPath.empty()
-		? std::filesystem::path(Owner->DataPath)
-		: std::filesystem::path(
+		? std::filesystem::u8path(Owner->DataPath)
+		: std::filesystem::u8path(
 			Owner != nullptr && !Owner->DllPath.empty()
 				? Owner->DllPath
 				: Logger::DLL_PATH) / "vSMR_Data";
@@ -1644,8 +2018,8 @@ LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
 	}
 
 	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->DataPath.empty()
-		? std::filesystem::path(Owner->DataPath)
-		: std::filesystem::path(Logger::DLL_PATH) / "vSMR_Data";
+		? std::filesystem::u8path(Owner->DataPath)
+		: std::filesystem::u8path(Logger::DLL_PATH) / "vSMR_Data";
 	const VsmrResourceFiles::Kind kind = result->resource == "profiles"
 		? VsmrResourceFiles::Kind::Profiles
 		: VsmrResourceFiles::Kind::Aviso;
@@ -1653,7 +2027,7 @@ LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
 	std::string storageError;
 	if (!VsmrResourceFiles::StoreGithubDownload(
 		kind,
-		dataDirectory.string(),
+		dataDirectory.u8string(),
 		result->source,
 		Owner != nullptr ? Owner->getActiveAirport() : std::string(),
 		result->body,
@@ -1699,20 +2073,34 @@ LRESULT CVsmrControlCenterDialog::OnWebViewMessageReceived(WPARAM, LPARAM)
 	{
 		std::lock_guard<std::mutex> lock(WebHost->crossThreadMutex);
 		pending.swap(WebHost->inboundJson);
+		WebHost->inboundJsonBytes = 0;
+		WebHost->inboundNotificationPending = false;
 	}
 	bool uiReady = false;
 	for (const std::string& json : pending)
 	{
-		rapidjson::Document message;
-		message.Parse<0>(json.c_str());
-		uiReady = uiReady ||
-			(!message.HasParseError() &&
-				message.IsObject() &&
-				message.HasMember("type") &&
-				message["type"].IsString() &&
-				std::strcmp(message["type"].GetString(), "ui.ready") == 0);
-		if (Bridge && LifetimeToken && LifetimeToken->load())
-			Bridge->HandleWebMessage(json);
+		try
+		{
+			std::string selector;
+			if (!VsmrWebMessageValidation::TryGetInboundWebMessageSelector(
+				json,
+				selector))
+			{
+				LogRejectedWebMessage("queued message failed revalidation");
+				continue;
+			}
+			uiReady = uiReady || selector == "ui.ready";
+			if (Bridge && LifetimeToken && LifetimeToken->load())
+				Bridge->HandleWebMessage(json);
+		}
+		catch (const std::exception&)
+		{
+			LogRejectedWebMessage("message dispatch exception");
+		}
+		catch (...)
+		{
+			LogRejectedWebMessage("unexpected message dispatch failure");
+		}
 	}
 	if (uiReady)
 	{
@@ -1793,9 +2181,9 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	if (Owner != nullptr)
 	{
 		candidates.emplace_back(
-			std::filesystem::path(Owner->DataPath) / "vSMR_webUI");
+			std::filesystem::u8path(Owner->DataPath) / "vSMR_webUI");
 		candidates.emplace_back(
-			std::filesystem::path(Owner->DllPath) / "vSMR_webUI");
+			std::filesystem::u8path(Owner->DllPath) / "vSMR_webUI");
 	}
 	try
 	{

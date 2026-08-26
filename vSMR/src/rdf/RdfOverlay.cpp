@@ -17,7 +17,9 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
@@ -40,6 +42,48 @@ namespace
 	constexpr int RdfRingRadiusPixels = 20;
 
 	using FrequencyHz = std::int64_t;
+
+	class InternetHandle final
+	{
+	public:
+		InternetHandle() = default;
+		explicit InternetHandle(HINTERNET handle) noexcept : Handle(handle) {}
+		~InternetHandle() { Reset(); }
+
+		InternetHandle(const InternetHandle&) = delete;
+		InternetHandle& operator=(const InternetHandle&) = delete;
+
+		HINTERNET Get() const noexcept
+		{
+			return Handle;
+		}
+
+		explicit operator bool() const noexcept
+		{
+			return Handle != nullptr;
+		}
+
+		void Reset(HINTERNET handle = nullptr) noexcept
+		{
+			if (Handle != nullptr)
+				::WinHttpCloseHandle(Handle);
+			Handle = handle;
+		}
+
+	private:
+		HINTERNET Handle = nullptr;
+	};
+
+	struct InternetHandleCloser
+	{
+		void operator()(void* handle) const noexcept
+		{
+			if (handle != nullptr)
+				::WinHttpCloseHandle(handle);
+		}
+	};
+
+	using SharedInternetHandle = std::shared_ptr<void>;
 
 	class RdfService final
 	{
@@ -124,6 +168,31 @@ namespace
 		}
 
 	private:
+		class ActiveWebSocketPublication final
+		{
+		public:
+			ActiveWebSocketPublication(
+				RdfService& owner,
+				const SharedInternetHandle& webSocket) noexcept
+				: Owner(owner), WebSocket(webSocket)
+			{
+			}
+
+			~ActiveWebSocketPublication() noexcept
+			{
+				Owner.UnpublishActiveWebSocket(WebSocket);
+			}
+
+			ActiveWebSocketPublication(
+				const ActiveWebSocketPublication&) = delete;
+			ActiveWebSocketPublication& operator=(
+				const ActiveWebSocketPublication&) = delete;
+
+		private:
+			RdfService& Owner;
+			SharedInternetHandle WebSocket;
+		};
+
 		void EnsureWorkerLocked()
 		{
 			if (Worker.joinable())
@@ -137,7 +206,7 @@ namespace
 			WorkerRunning.store(true, std::memory_order_release);
 			try
 			{
-				Worker = std::thread(&RdfService::WorkerMain, this);
+				Worker = std::thread(&RdfService::WorkerEntry, this);
 			}
 			catch (...)
 			{
@@ -159,9 +228,27 @@ namespace
 			ClearTransmissions();
 		}
 
-		void WorkerMain() noexcept
+		void WorkerEntry() noexcept
 		{
 			VsmrCrashRuntime::OwnedThreadRole crashThreadRole("RDF worker");
+			try
+			{
+				WorkerMain();
+			}
+			catch (const std::exception& exception)
+			{
+				LogWorkerFailure(exception.what());
+			}
+			catch (...)
+			{
+				LogWorkerFailure(nullptr);
+			}
+
+			FinishWorker();
+		}
+
+		void WorkerMain()
+		{
 			unsigned int retrySeconds = 1;
 			while (!ShouldStop())
 			{
@@ -179,8 +266,51 @@ namespace
 					? 1U
 					: (std::min)(retrySeconds * 2U, 30U);
 			}
+		}
 
-			SetConnected(false);
+		void LogWorkerFailure(const char* detail) noexcept
+		{
+			VsmrCrashReporter::RecordState("rdf worker", "stopped by exception");
+			try
+			{
+				if (detail != nullptr && detail[0] != '\0')
+				{
+					Logger::info(
+						"RDF worker terminated by exception: " +
+						std::string(detail));
+				}
+				else
+				{
+					Logger::info("RDF worker terminated by unknown exception");
+				}
+			}
+			catch (...)
+			{
+				VsmrCrashReporter::RecordLog("RDF worker exception logging failed");
+			}
+		}
+
+		void FinishWorker() noexcept
+		{
+			ClearActiveWebSocket();
+			try
+			{
+				SetConnected(false);
+			}
+			catch (...)
+			{
+				Connected.store(false, std::memory_order_release);
+				try
+				{
+					ClearTransmissions();
+				}
+				catch (...)
+				{
+					VsmrCrashReporter::RecordState("rdf cleanup", "failed");
+				}
+				MarkChanged();
+				VsmrCrashReporter::RecordState("rdf connection", "disconnected");
+			}
 			WorkerRunning.store(false, std::memory_order_release);
 		}
 
@@ -190,53 +320,59 @@ namespace
 				!Enabled.load(std::memory_order_acquire);
 		}
 
-		bool RunConnection() noexcept
+		bool RunConnection()
 		{
-			HINTERNET session = ::WinHttpOpen(
+			InternetHandle session(::WinHttpOpen(
 				L"vSMR/2.0 RDF",
 				WINHTTP_ACCESS_TYPE_NO_PROXY,
 				WINHTTP_NO_PROXY_NAME,
 				WINHTTP_NO_PROXY_BYPASS,
-				0);
-			if (session == nullptr)
+				0));
+			if (!session)
 				return false;
 
 			::WinHttpSetTimeouts(
-				session,
+				session.Get(),
 				NetworkTimeoutMs,
 				NetworkTimeoutMs,
 				NetworkTimeoutMs,
 				NetworkTimeoutMs);
 
-			HINTERNET connection = nullptr;
-			HINTERNET request = nullptr;
-			HINTERNET webSocket = nullptr;
+			InternetHandle connection;
+			InternetHandle request;
+			SharedInternetHandle webSocket;
 			bool connectedOnce = false;
 
 			if (!ShouldStop())
-				connection = ::WinHttpConnect(session, TrackAudioHost, TrackAudioPort, 0);
-			if (connection != nullptr && !ShouldStop())
 			{
-				request = ::WinHttpOpenRequest(
-					connection,
+				connection.Reset(::WinHttpConnect(
+					session.Get(),
+					TrackAudioHost,
+					TrackAudioPort,
+					0));
+			}
+			if (connection && !ShouldStop())
+			{
+				request.Reset(::WinHttpOpenRequest(
+					connection.Get(),
 					L"GET",
 					TrackAudioPath,
 					nullptr,
 					WINHTTP_NO_REFERER,
 					WINHTTP_DEFAULT_ACCEPT_TYPES,
-					0);
+					0));
 			}
 
-			if (request != nullptr)
+			if (request)
 			{
 				const bool upgradeSet = ::WinHttpSetOption(
-					request,
+					request.Get(),
 					WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET,
 					nullptr,
 					0) != FALSE;
 				const bool requestSent = upgradeSet &&
 					::WinHttpSendRequest(
-						request,
+						request.Get(),
 						WINHTTP_NO_ADDITIONAL_HEADERS,
 						0,
 						WINHTTP_NO_REQUEST_DATA,
@@ -244,40 +380,37 @@ namespace
 						0,
 						0) != FALSE;
 				const bool responseReceived = requestSent &&
-					::WinHttpReceiveResponse(request, nullptr) != FALSE;
+					::WinHttpReceiveResponse(request.Get(), nullptr) != FALSE;
 				if (responseReceived && !ShouldStop())
-					webSocket = ::WinHttpWebSocketCompleteUpgrade(request, 0);
-
-				if (webSocket != nullptr)
 				{
-					::WinHttpCloseHandle(request);
-					request = nullptr;
+					const HINTERNET upgradedWebSocket =
+						::WinHttpWebSocketCompleteUpgrade(request.Get(), 0);
+					if (upgradedWebSocket != nullptr)
+					{
+						webSocket = SharedInternetHandle(
+							upgradedWebSocket,
+							InternetHandleCloser{});
+					}
+				}
+
+				if (webSocket)
+				{
+					request.Reset();
 					if (PublishActiveWebSocket(webSocket))
 					{
+						ActiveWebSocketPublication publication(
+							*this,
+							webSocket);
 						connectedOnce = true;
-						ReceiveMessages(webSocket);
-						UnpublishActiveWebSocket(webSocket);
+						ReceiveMessages(webSocket.get());
 					}
 				}
 			}
 
-			if (webSocket != nullptr)
-			{
-				::WinHttpCloseHandle(webSocket);
-				webSocket = nullptr;
-			}
-			if (request != nullptr)
-			{
-				::WinHttpCloseHandle(request);
-				request = nullptr;
-			}
-			if (connection != nullptr)
-				::WinHttpCloseHandle(connection);
-			::WinHttpCloseHandle(session);
 			return connectedOnce;
 		}
 
-		void ReceiveMessages(HINTERNET webSocket) noexcept
+		void ReceiveMessages(HINTERNET webSocket)
 		{
 			SetConnected(true);
 			std::vector<unsigned char> buffer(ReceiveBufferSize);
@@ -329,7 +462,7 @@ namespace
 			}
 		}
 
-		void ProcessMessage(const std::string& text) noexcept
+		void ProcessMessage(const std::string& text)
 		{
 			rapidjson::Document document;
 			document.Parse<0>(text.c_str());
@@ -431,32 +564,58 @@ namespace
 			Generation.fetch_add(1, std::memory_order_release);
 		}
 
-		bool PublishActiveWebSocket(HINTERNET webSocket)
+		bool PublishActiveWebSocket(const SharedInternetHandle& webSocket)
 		{
 			std::lock_guard<std::mutex> operationGuard(OperationMutex);
-			if (ShouldStop() || ActiveWebSocket != nullptr)
+			if (ShouldStop() || ActiveWebSocket)
 				return false;
 			ActiveWebSocket = webSocket;
 			return true;
 		}
 
-		void UnpublishActiveWebSocket(HINTERNET webSocket)
+		void UnpublishActiveWebSocket(
+			const SharedInternetHandle& webSocket) noexcept
 		{
-			std::lock_guard<std::mutex> operationGuard(OperationMutex);
-			if (ActiveWebSocket == webSocket)
-				ActiveWebSocket = nullptr;
+			try
+			{
+				std::lock_guard<std::mutex> operationGuard(OperationMutex);
+				if (ActiveWebSocket == webSocket)
+					ActiveWebSocket.reset();
+			}
+			catch (...)
+			{
+				VsmrCrashReporter::RecordState(
+					"rdf websocket unpublish",
+					"failed");
+			}
+		}
+
+		void ClearActiveWebSocket() noexcept
+		{
+			try
+			{
+				std::lock_guard<std::mutex> operationGuard(OperationMutex);
+				ActiveWebSocket.reset();
+			}
+			catch (...)
+			{
+				VsmrCrashReporter::RecordState("rdf websocket cleanup", "failed");
+			}
 		}
 
 		void ShutdownActiveWebSocket()
 		{
-			std::lock_guard<std::mutex> operationGuard(OperationMutex);
-			if (ActiveWebSocket != nullptr)
+			SharedInternetHandle webSocket;
 			{
-				// Shutdown operates only on the send side and is safe while the
-				// worker owns a pending receive. The worker remains the sole owner
-				// that closes the synchronous WinHTTP handle.
+				std::lock_guard<std::mutex> operationGuard(OperationMutex);
+				webSocket = ActiveWebSocket;
+			}
+			if (webSocket)
+			{
+				// Keeping shared ownership prevents the worker from closing the
+				// synchronous handle while shutdown interrupts its pending receive.
 				::WinHttpWebSocketShutdown(
-					ActiveWebSocket,
+					webSocket.get(),
 					WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS,
 					nullptr,
 					0);
@@ -476,7 +635,7 @@ namespace
 		std::atomic<std::uint64_t> Generation{ 0 };
 		std::uint64_t LastUiGeneration = 0;
 		std::map<std::string, std::set<FrequencyHz>> Transmissions;
-		HINTERNET ActiveWebSocket = nullptr;
+		SharedInternetHandle ActiveWebSocket;
 	};
 
 	RdfService& Service()

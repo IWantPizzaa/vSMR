@@ -1,23 +1,18 @@
 #pragma once
-#include <fstream>
-#include <string>
-#include <sstream>
-#include <map>
-#include <vector>
 
-using namespace std;
+#include <filesystem>
+#include <map>
+#include <string>
 
 class CCallsignLookup
 {
-private:
-	std::map<string, string> callsigns;
-
-
 public:
+	CCallsignLookup() = default;
+	~CCallsignLookup() = default;
 
-	CCallsignLookup();
-	void readFile(string fileName);
-	string getCallsign(string airlineCode);
+	void readFile(const std::filesystem::path& fileName);
+	std::string getCallsign(const std::string& airlineCode) const;
 
-	~CCallsignLookup();
+private:
+	std::map<std::string, std::string> callsigns;
 };
