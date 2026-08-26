@@ -178,22 +178,10 @@
     <None Include="resources\vSMR.rc2">
       <Filter>Resources</Filter>
     </None>
-    <None Include="tools\merge_aviso_day_palette.ps1">
+    <None Include="tools\build_project.ps1">
       <Filter>Tools</Filter>
     </None>
-    <None Include="tools\normalize_runtime_data.ps1">
-      <Filter>Tools</Filter>
-    </None>
-    <None Include="tools\package_release.ps1">
-      <Filter>Tools</Filter>
-    </None>
-    <None Include="tools\create_github_release.ps1">
-      <Filter>Tools</Filter>
-    </None>
-    <None Include="tools\validate_release.ps1">
-      <Filter>Tools</Filter>
-    </None>
-    <None Include="tools\verify_release_package.ps1">
+    <None Include="tools\create_release_package.ps1">
       <Filter>Tools</Filter>
     </None>
   </ItemGroup>

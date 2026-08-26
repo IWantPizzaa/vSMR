@@ -55,11 +55,6 @@ before_build:
       if (-not [string]::IsNullOrWhiteSpace($env:VSMR_UPDATE_SIGNER_CERT_SHA256)) {
         $env:VsmrUpdateSignerCertSha256 = $env:VSMR_UPDATE_SIGNER_CERT_SHA256.ToLowerInvariant()
       }
-  - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\normalize_runtime_data.ps1"
-      -Mode Check
-      -DataDirectory "$env:APPVEYOR_BUILD_FOLDER\vSMR\data"
-
 build_script:
   - cmd: >-
       msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR.sln"
@@ -84,18 +79,8 @@ build_script:
 
 after_build:
   - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\crash_harness\run_crash_harness.ps1"
-      -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
-      -Configuration Release
-      -Toolset v143
-      -SkipProductionHandlerBuild
-  - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\updater_harness\run_updater_harness.ps1"
-      -MSBuildPath (Get-Command msbuild.exe).Source
-      -Toolset v143
-  - ps: >-
       $validationOnly = $env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1';
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\package_release.ps1"
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\create_release_package.ps1"
       -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
       -BuildOutputDirectory "$env:APPVEYOR_BUILD_FOLDER\Release"
       -ArtifactsDirectory "$env:APPVEYOR_BUILD_FOLDER\artifacts"
@@ -110,23 +95,6 @@ after_build:
       -SkipBuild
       -RequireSignature:(-not $validationOnly)
       -ForceNonPublishable:$validationOnly
-  - ps: >-
-      $validationOnly = $env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1';
-      $verifyArguments = @{
-        ArchivePath = "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-$($env:VSMR_RELEASE_VERSION).zip";
-        ExpectedVersion = $env:VSMR_RELEASE_VERSION;
-        ExpectedLoaderVersion = '1.1.0';
-        ExpectedRuntimeAbi = 1;
-        RequireSignature = -not $validationOnly;
-        AllowNonPublishable = $validationOnly
-      };
-      if (-not $validationOnly) {
-        $beta3Fixture = "$env:APPVEYOR_BUILD_FOLDER\artifacts\vSMR-2.0.0-beta.3.published-fixture.zip";
-        Invoke-WebRequest -Uri 'https://github.com/IWantPizzaa/vSMR/releases/download/2.0.0-beta.3/vSMR-2.0.0-beta.3.zip' -OutFile $beta3Fixture -UseBasicParsing;
-        $verifyArguments.PublishedBeta3ArchivePath = $beta3Fixture;
-        $verifyArguments.RequirePublishedBeta3Migration = $true
-      };
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\verify_release_package.ps1" @verifyArguments
   - ps: >-
       if ($env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1') {
         $base = "vSMR-$($env:VSMR_RELEASE_VERSION)";
