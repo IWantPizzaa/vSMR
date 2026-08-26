@@ -208,7 +208,7 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 		if (monitoredArrIt == MonitoredRunwayArr.end() || !monitoredArrIt->second)
 			continue;
 
-		// We need to know when and if the AC is going to enter the runway within 5 minutes (by steps of 10 seconds
+		// We need to know whether the AC will enter the runway within 5 minutes, in 5-second steps
 
 		const vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
 		if (RunwayOnScreen == nullptr)
@@ -218,8 +218,8 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 		{
 			double distance = Ac.reportedGroundSpeed * 0.514444 * t;
 
-			// We tolerate up 2 degree variations to the runway at long range (> 120 s)
-			// And 3 degrees after (<= 120 t)
+			// We tolerate up to 2 degrees of variation at long range (> 120 s)
+			// And 3 degrees inside 120 s
 
 			bool isGoingToLand = false;
 			int AngleMin = -2;
@@ -268,7 +268,7 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 					}
 				}
 
-				// If the AC is xx seconds away from the runway, we consider him on it
+				// Near-final traffic counts as runway occupancy for Stage Two detection
 
 				int StageTwoTrigger = 20;
 				if (IsLVP)
@@ -447,6 +447,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 	const bool taxiAuthorized = groundStateCategory == GroundStateCategory::Taxi || departureAuthorized || lineupAuthorized;
 	const bool pushAuthorized = groundStateCategory == GroundStateCategory::Push || groundStateCategory == GroundStateCategory::Taxi || lineupAuthorized;
 	bool departureStationaryAlertGraceActive = false;
+	// Allowing time for the takeoff clearance readback before STAT RPA monitoring begins
 	if (departureAuthorized)
 	{
 		const auto now = std::chrono::steady_clock::now();
@@ -514,6 +515,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 		}
 	}
 
+	// Comparing track and heading distinguishes pushback from forward taxi
 	int headingDiffRaw = std::abs(static_cast<int>(Rt.trackHeadingDegrees) - Rt.reportedHeadingDegrees);
 	int headingDiff = headingDiffRaw % 360;
 	if (headingDiff > 180) headingDiff = 360 - headingDiff;
@@ -526,7 +528,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 		}
 	}
 
-	// HIGHS SPD
+	// HIGH SPD
 	if (inactiveAlerts.find("HIGH SPD") == inactiveAlerts.end()) {
 		int speedThreashold = IsLVP ? 25 : 35;
 		if (!departureAuthorized && speedThreashold < groundspeed && rwyOn == "") {

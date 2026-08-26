@@ -84,6 +84,7 @@ void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, co
 		catch (...) {}
 	}
 
+	// Keeping every open radar on the same airport-specific source
 	std::vector<CSMRRadar*> targets;
 	for (CSMRRadar* radar : RadarScreensOpened)
 	{
@@ -125,6 +126,7 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 	if (path.empty() || !IsRegularFileNoThrow(path))
 		return false;
 
+	// Validating before touching the renderer keeps the current dataset on failure
 	AvisoDocumentModel validationModel;
 	std::string validationError;
 	if (!validationModel.LoadFromFile(path, validationError))

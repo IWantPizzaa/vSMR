@@ -1117,6 +1117,7 @@ namespace
 		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
 		source.Accept(writer);
 
+		// Writing and verifying the replacement before touching the current file
 		const std::string serializedJson(buffer.GetString(), buffer.Size());
 		rapidjson::Document validationDocument;
 		if (!ParseValidatedArray(serializedJson, validationDocument))
@@ -1202,6 +1203,7 @@ bool CConfig::validateAndMigrateProfilesDocument(
 	rapidjson::Value* metadata = nullptr;
 	auto& allocator = profilesDocument.GetAllocator();
 
+	// Validating profile entries and locating the single metadata record
 	for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
 	{
 		rapidjson::Value& item = profilesDocument[index];
@@ -1364,6 +1366,7 @@ bool CConfig::validateAndMigrateProfilesDocument(
 		return false;
 	}
 
+	// Validating file-wide settings after all profile names are known
 	if (!metadataSeen)
 	{
 		rapidjson::Value wrapper(rapidjson::kObjectType);
@@ -1611,6 +1614,7 @@ bool CConfig::loadConfig() {
 		return !candidateProfiles.empty();
 	};
 
+	// Loading the primary profiles source
 	std::string mainJson;
 	std::string mainError;
 	Document mainCandidate(&document.GetAllocator());
@@ -1661,6 +1665,8 @@ bool CConfig::loadConfig() {
 	const std::string failure = mainRead
 		? (mainError.empty() ? "The profiles file is invalid." : mainError)
 		: "The configured profiles file is missing or cannot be read.";
+
+	// Falling back to the last validated backup without replacing the primary
 	std::string backupJson;
 	std::string backupError;
 	Document backupCandidate(&document.GetAllocator());
@@ -1704,7 +1710,8 @@ bool CConfig::loadMap()
 	{
 		if (mapDocument.IsNull())
 			mapDocument.SetArray();
-		return true; // no map defined
+		// Missing legacy map data is a valid empty configuration
+		return true;
 	}
 
 	Document validationDocument;
@@ -1843,7 +1850,8 @@ bool CConfig::isCustomCursorUsed() {
 	const Value& activeProfile = getActiveProfile();
 	if (activeProfile.IsObject() && activeProfile.HasMember("cursor") && activeProfile["cursor"].IsString())
 		return strcmp(activeProfile["cursor"].GetString(), "Default") != 0;
-	return true; // by default use custom one so we don't break compatibility for old json settings that don't have the entry
+	// Older profiles did not store this choice and used the custom cursor
+	return true;
 }
 
 bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
@@ -2458,7 +2466,6 @@ bool CConfig::setInactiveAlert(const unordered_set<string>& inactiveAlerts)
 			activeProfile.AddMember("rimcas", rimcasObject, document.GetAllocator());
 	}
 
-	// Modify the document in memory
 	Value& rimcas = activeProfile["rimcas"];
 	Value inactiveAlertArray(rapidjson::kArrayType);
 	for (const string& alert : inactiveAlerts) {

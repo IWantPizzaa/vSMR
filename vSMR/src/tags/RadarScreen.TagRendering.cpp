@@ -266,6 +266,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 			continue;
 		verboseTargetStep(rtCallsign, "after_tag_measurement");
 
+		// Measuring the normal layout keeps deconfliction stable while the detailed tag is shown
 		if (!measureSceneTagLines(sceneTarget.tag.normal, CollisionTagWidth, CollisionTagHeight, nullptr))
 		{
 			CollisionTagWidth = TagWidth;
@@ -429,7 +430,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 			graphics.DrawLine(&leaderLinePen, PointF(Gdiplus::REAL(acPosPix.x), Gdiplus::REAL(acPosPix.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
 		}
 
-		// If we use a RIMCAS label only, we display it, and adapt the rectangle
+		// Registering the current tag rectangle for RIMCAS and click handling
 		CRect oldCrectSave = TagBackgroundRect;
 		const std::string& tagBottomLine = sceneTarget.bottomLine;
 		const char* tagBottomLineText = tagBottomLine.c_str();

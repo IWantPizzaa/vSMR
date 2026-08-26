@@ -141,6 +141,7 @@ private:
 	void WeatherFetchThreadMain();
 	void RefreshControllerDependentOverlays();
 
+	// Shared network worker state
 	std::mutex NetworkWorkerMutex;
 	std::condition_variable NetworkWorkerCondition;
 	std::vector<std::thread> NetworkWorkers;
@@ -150,6 +151,7 @@ private:
 	std::atomic<bool> NetworkCancellationRequested{ false };
 	bool NetworkWorkersStopping = false;
 
+	// METAR fallback worker state
 	std::mutex WeatherFetchMutex;
 	std::condition_variable WeatherFetchCondition;
 	std::thread WeatherFetchThread;

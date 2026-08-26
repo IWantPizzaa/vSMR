@@ -39,6 +39,7 @@ inline static GroundStateCategory classifyGroundState(const std::string& rawStat
 	if (normalized.find("GATE") != std::string::npos || normalized.find("STAND") != std::string::npos || normalized.find("PARK") != std::string::npos || normalized.find("STBY") != std::string::npos)
 		return GroundStateCategory::Gate;
 
+	// Empty, stationary off-runway targets are treated as parked departures
 	if (normalized.empty() && reportedGs < 2 && !onRunway)
 		return GroundStateCategory::Gate;
 
@@ -87,6 +88,7 @@ inline static bool shouldDisplayTagInTowerMode(const char* rawState, int reporte
 	if (!hasStatusText)
 		return false;
 
+	// Tower mode starts at taxi; startup and push remain hidden
 	switch (classifyGroundState(rawState, reportedGs, onRunway))
 	{
 	case GroundStateCategory::Nsts:
