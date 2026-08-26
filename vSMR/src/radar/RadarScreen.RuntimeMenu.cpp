@@ -1245,6 +1245,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			bool enabled;
 			ActionTone tone;
 		} actions[] = {
+			{ "runtime.preset.none", "No preset", true, ActionTone::Normal },
 			{ "runtime.preset.save", "Save current", true, ActionTone::Primary },
 			{ "runtime.preset.update", "Update", hasActivePreset, ActionTone::Normal },
 			{ "runtime.preset.rename", "Rename", hasActivePreset, ActionTone::Normal },
@@ -1687,7 +1688,11 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	else
 		activePreset = activePresetIt->name;
 	const std::string defaultPreset = GetDefaultAvisoPresetName();
-	if (std::strcmp(id, "runtime.preset.save") == 0)
+	if (std::strcmp(id, "runtime.preset.none") == 0)
+	{
+		ActivateNoAvisoPreset();
+	}
+	else if (std::strcmp(id, "runtime.preset.save") == 0)
 	{
 		const std::string name = MakeUniquePresetName(presets, "Inset Preset");
 		SaveAvisoPreset(name, false, nullptr);

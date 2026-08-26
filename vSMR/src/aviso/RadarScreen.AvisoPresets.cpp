@@ -1282,6 +1282,28 @@ void CSMRRadar::ResetAvisoPresetStateForActiveAirport(bool applyDefaultPreset)
 		ApplyDefaultAvisoPresetIfConfigured();
 }
 
+void CSMRRadar::ActivateNoAvisoPreset()
+{
+	CancelInsetWindowInteractions();
+	ActiveAvisoPresetName.clear();
+	AvisoViewsLinked = false;
+
+	for (const int appWindowId : {
+		1,
+		APPWINDOW_AVISO - APPWINDOW_BASE,
+		APPWINDOW_WEATHER - APPWINDOW_BASE,
+		APPWINDOW_TIMER - APPWINDOW_BASE })
+	{
+		appWindowDisplays[appWindowId] = false;
+		const auto window = appWindows.find(appWindowId);
+		if (window != appWindows.end() && window->second != nullptr)
+			window->second->ResetAvisoInteractionState();
+	}
+
+	SaveInsetStateToAsrForAirport(getActiveAirport());
+	RequestRefresh();
+}
+
 bool CSMRRadar::UpdateActiveAvisoPreset()
 {
 	if (ActiveAvisoPresetName.empty())

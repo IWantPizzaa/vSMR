@@ -770,6 +770,7 @@ public:
 	bool ClearDefaultAvisoPreset();
 	bool ApplyDefaultAvisoPresetIfConfigured();
 	void ResetAvisoPresetStateForActiveAirport(bool applyDefaultPreset = true);
+	void ActivateNoAvisoPreset();
 	bool UpdateActiveAvisoPreset();
 	bool ResetActiveAvisoPreset();
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);
