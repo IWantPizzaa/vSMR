@@ -5,7 +5,7 @@
   const MAX_BRIDGE_MESSAGE_BYTES = 28 * 1024 * 1024;
   const REQUEST_TIMEOUT_MS = 45000;
   const HISTORY_LIMIT = 12;
-  const AUTOSAVE_DEBOUNCE_MS = 300;
+  const AUTOSAVE_DEBOUNCE_MS = 120;
   const AUTOSAVE_RETRY_MS = 250;
   const HOST_MODE = Boolean(window.chrome?.webview?.postMessage);
   const DATA = window.VSMR_DATA || { profiles: [], aviso: { type: "FeatureCollection", features: [], styles: {} } };
@@ -34,6 +34,9 @@
     airarr: "Airborne arrival", airarr_onrunway: "Arrival on runway"
   };
   const TAG_SCOPES = ["departure", "arrival", "uncorrelated", "airborne"];
+  // Airborne is retained in the profile schema only as an old-profile migration
+  // source. Runtime airborne definitions are owned by departure/arrival statuses.
+  const TAG_EDITOR_SCOPES = ["departure", "arrival", "uncorrelated"];
   const TAG_STATUS_LABELS = {
     default: "Default", taxi: "Taxi", lnup: "Line Up", push: "Push", stup: "Startup", nofpl: "No FPL", depa: "Departure",
     airdep: "Airborne departure", airdep_onrunway: "Departure on runway", airarr: "Airborne arrival",
@@ -62,6 +65,7 @@
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
     custom: ["asid", "ssid"]
   };
+  const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
   const DEFAULT_ALERT_RUNWAYS = [
     { id: "09L / 27R", arrival: true, departure: true, closed: false },
@@ -424,6 +428,13 @@
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
     if (!Array.isArray(aviso.features)) aviso.features = [];
     if (!aviso.styles || typeof aviso.styles !== "object" || Array.isArray(aviso.styles)) aviso.styles = {};
+    if (!aviso.metadata || typeof aviso.metadata !== "object" || Array.isArray(aviso.metadata)) aviso.metadata = {};
+    const sourceBackgroundColors = aviso.metadata.background_colors;
+    const nightBackground = normalizeHex(sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    aviso.metadata.background_colors = {
+      night: nightBackground,
+      day: normalizeHex(sourceBackgroundColors?.day, nightBackground).toUpperCase()
+    };
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
     const seen = new Set();
@@ -698,13 +709,39 @@
 	let ignoreNextUncorrelatedAviso = false;
   const history = { past: [], present: null, future: [], gestureKey: "" };
   let savedSnapshot = null;
-  let saveInFlightSnapshot = null;
+  // Exactly one immutable model snapshot may be written at a time. Any edits
+  // made while it is in flight remain in `state` and are sent by the next
+  // queue pass; a save acknowledgement never replaces the live model.
+  let saveInFlight = null;
   let activeHistoryGestureKey = "";
   let historyGestureSequence = 0;
   const historyGestureIds = new WeakMap();
   let deferredHistoryGesture = null;
   let autosaveTimer = 0;
   let autosaveQueued = false;
+  const editorClipboard = { tag: "", color: "" };
+
+  async function writeEditorClipboard(text, kind) {
+    editorClipboard[kind] = text;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.warn("System clipboard write was unavailable; using the vSMR clipboard", error);
+    }
+  }
+
+  async function readEditorClipboard(kind, promptLabel) {
+    try {
+      if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (String(text || "").trim()) return text;
+      }
+    } catch (error) {
+      console.warn("System clipboard read was unavailable; using the vSMR clipboard", error);
+    }
+    if (editorClipboard[kind]) return editorClipboard[kind];
+    return window.prompt(promptLabel, "") || "";
+  }
 
   function beginHistoryGesture(control) {
     if (!control || typeof control !== "object") return "";
@@ -930,7 +967,7 @@
         setGithubRequestPending(false);
       } else {
         pending[slot] = "";
-        if (slot === "save") saveInFlightSnapshot = null;
+        if (slot === "save") saveInFlight = null;
       }
       expiredRequestIds.add(requestId);
       while (expiredRequestIds.size > 32)
@@ -2387,6 +2424,36 @@
     if (render) renderColors();
   }
 
+  async function copyProfileColor() {
+    stageEditorControl(document.activeElement);
+    const entry = selectedColorEntry();
+    if (!entry) return;
+    const alpha = Math.round(clamp(entry.color.a ?? 255, 0, 255));
+    const value = `${colorToHex(entry.color).toUpperCase()}${alpha.toString(16).padStart(2, "0").toUpperCase()}`;
+    await writeEditorClipboard(value, "color");
+    showToast("Color copied", "success");
+  }
+
+  async function pasteProfileColor() {
+    const raw = String(await readEditorClipboard("color", "Paste a color such as #4A90E2 or #4A90E280") || "").trim();
+    const match = raw.match(/^#?([0-9a-f]{6})([0-9a-f]{2})?$/i);
+    if (!match) {
+      showToast("Paste a 6- or 8-digit hex color", "error");
+      return;
+    }
+    const entry = selectedColorEntry();
+    if (!entry) return;
+    if (!drafts.color || drafts.color.path !== entry.id) renderColorEditor();
+    setColorDraftFromHex(`#${match[1]}`);
+    drafts.color.opacity = match[2]
+      ? Math.round(parseInt(match[2], 16) / 255 * 100)
+      : 100;
+    syncColorEditorControls();
+    withHistoryGesture($("#colorHex"), () => applyColorDraft({ render: false }));
+    refreshEditorDerivedVisuals("colors");
+    showToast("Color pasted", "success");
+  }
+
   function renderIconSymbolPreview() {
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
@@ -2497,7 +2564,7 @@
   function tagDefinitions(profile = activeProfile()) {
     const labels = profile.labels || {};
     const result = [];
-    TAG_SCOPES.forEach(scope => {
+    TAG_EDITOR_SCOPES.forEach(scope => {
       const definition = labels[scope];
       if (!definition) return;
       result.push({
@@ -2681,6 +2748,70 @@
     if (render) renderTags();
   }
 
+  function normalizeClipboardTagLines(value) {
+    if (!Array.isArray(value)) return null;
+    return value.map(line => {
+      if (!Array.isArray(line)) return null;
+      return line.map(token => String(token || "").trim()).filter(Boolean);
+    }).filter(line => Array.isArray(line) && line.length);
+  }
+
+  async function copyTagDefinition() {
+    captureTagDraft();
+    const entry = selectedTagDefinition();
+    if (!entry || !drafts.tag?.data) return;
+    const content = tagDefinitionContent(drafts.tag.data);
+    const value = JSON.stringify({
+      vsmr: "tag-definition",
+      version: 1,
+      definition: content.definition,
+      definition_detailed: content.definition_detailed,
+      definition_detailed_inherits_normal: content.definition_detailed_inherits_normal
+    }, null, 2);
+    await writeEditorClipboard(value, "tag");
+    showToast("Tag definition copied", "success");
+  }
+
+  async function pasteTagDefinition() {
+    const raw = String(await readEditorClipboard("tag", "Paste a vSMR tag definition") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain a vSMR tag definition", "error");
+      return;
+    }
+    const normal = normalizeClipboardTagLines(parsed?.definition);
+    const detailed = normalizeClipboardTagLines(parsed?.definition_detailed);
+    if (!normal || !detailed) {
+      showToast("Clipboard does not contain a valid tag definition", "error");
+      return;
+    }
+    const entries = selectedTagDefinitions();
+    const entry = selectedTagDefinition();
+    if (!entry || !entries.length) return;
+    const inheritsNormal = Boolean(parsed.definition_detailed_inherits_normal);
+    const content = {
+      definition: normal,
+      definition_detailed: inheritsNormal ? clone(normal) : detailed,
+      definition_detailed_inherits_normal: inheritsNormal
+    };
+    entries.forEach(targetEntry => {
+      targetEntry.target.definition = clone(content.definition);
+      targetEntry.target.definition_detailed = clone(content.definition_detailed);
+      targetEntry.target.definition_detailed_inherits_normal = content.definition_detailed_inherits_normal;
+    });
+    drafts.tag = {
+      id: entry.id,
+      signature: tagSelectionIds().join("|"),
+      data: clone(content)
+    };
+    clearUnappliedEditorSection($("#tagDefinitionEditor"));
+    markDirty(`${entries.length === 1 ? entry.label : `${entries.length} tag definitions`} pasted`, ["profiles"]);
+    renderTagEditor();
+    showToast(`Tag definition pasted to ${entries.length} selection${entries.length === 1 ? "" : "s"}`, "success");
+  }
+
   function rules() {
     activeProfile().rules ||= { version: 1, items: [] };
     activeProfile().rules.items ||= [];
@@ -2703,10 +2834,8 @@
     const normalizedSource = normalizeRuleSourceUi(source);
     const normalizedToken = String(token || "").trim().toLowerCase();
     let values;
-    if (normalizedSource === "runway")
-      values = ["any", "set", "missing"];
-    else if (normalizedSource === "custom")
-      values = ["any", "set", "missing", "in: SID1X,SID2A", "not_in: SID1X,SID2A"];
+    if (normalizedSource === "runway" || normalizedSource === "custom")
+      values = ["any", "set", "missing", "in", "not_in"];
     else if (normalizedToken === "tobt")
       values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
     else if (normalizedToken === "tsat")
@@ -2714,20 +2843,39 @@
     else
       values = ["any", "set", "missing", "future", "past"];
 
-    if (normalizedSource !== "vacdm") {
-      rules().forEach(rule => {
-        const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [rule];
-        criteria.forEach(criterion => {
-          if (normalizeRuleSourceUi(criterion.source) === normalizedSource &&
-              String(criterion.token || "").trim().toLowerCase() === normalizedToken &&
-              String(criterion.condition || "").trim()) {
-            values.push(String(criterion.condition).trim());
-          }
-        });
-      });
-    }
     if (String(selected || "").trim()) values.push(String(selected).trim());
     return uniqueValues(values);
+  }
+  function parseRuleCondition(source, condition) {
+    const normalizedSource = normalizeRuleSourceUi(source);
+    const raw = String(condition || "").trim();
+    if (normalizedSource === "vacdm") return { operator: raw || "any", values: "" };
+    const simple = raw.toLowerCase();
+    if (["any", "set", "missing"].includes(simple)) return { operator: simple, values: "" };
+    const list = raw.match(/^(not_in|notin|not|in|list|sid)\s*:\s*(.*)$/i);
+    if (list) {
+      const operator = ["not_in", "notin", "not"].includes(list[1].toLowerCase()) ? "not_in" : "in";
+      return { operator, values: list[2].trim() };
+    }
+    return { operator: "in", values: raw };
+  }
+  function composeRuleCondition(source, operator, values) {
+    if (normalizeRuleSourceUi(source) === "vacdm") return String(operator || "any").trim();
+    const normalizedOperator = String(operator || "any").trim().toLowerCase();
+    if (!["in", "not_in"].includes(normalizedOperator)) return normalizedOperator || "any";
+    const list = String(values || "").trim();
+    return list ? `${normalizedOperator}: ${list}` : normalizedOperator;
+  }
+  function updateRuleConditionValueControl(row) {
+    const source = $("[data-field='source']", row)?.value || "vacdm";
+    const operator = $("[data-field='condition']", row)?.value || "any";
+    const input = $("[data-field='condition-values']", row);
+    if (!input) return;
+    const acceptsValues = normalizeRuleSourceUi(source) !== "vacdm" && ["in", "not_in"].includes(operator);
+    input.disabled = !acceptsValues;
+    input.placeholder = acceptsValues
+      ? (normalizeRuleSourceUi(source) === "runway" ? "09L, 27R" : "SID1X, SID2A")
+      : "";
   }
   function ruleSelectOptions(values, selected, labels = null) {
     const desired = String(selected || "").toLowerCase();
@@ -2823,13 +2971,18 @@
     const rule = drafts.rule.data;
     $("#ruleName").value = rule.name || "";
     const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "vacdm", token: rule.token || "", condition: rule.condition || "" }];
-    $("#criteriaList").innerHTML = criteria.map((criterion, index) => `
+    $("#criteriaList").innerHTML = criteria.map((criterion, index) => {
+      const parsedCondition = parseRuleCondition(criterion.source, criterion.condition);
+      return `
       <div class="criterion-row" data-criterion-index="${index}">
         <select aria-label="Rule source" data-field="source">${ruleSelectOptions(RULE_SOURCES, normalizeRuleSourceUi(criterion.source), RULE_SOURCE_LABELS)}</select>
         <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
-        <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, criterion.condition), criterion.condition || "any")}</select>
+        <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, parsedCondition.operator), parsedCondition.operator, { not_in: "not in" })}</select>
+        <input aria-label="Rule match values" data-field="condition-values" spellcheck="false" type="text" value="${escapeHtml(parsedCondition.values)}"/>
         <button type="button" data-action="delete-condition" data-index="${index}">×</button>
-      </div>`).join("");
+      </div>`;
+    }).join("");
+    $$("#criteriaList .criterion-row").forEach(updateRuleConditionValueControl);
     ensureSelectValue($("#ruleTagType"), rule.tag_type || "any");
     renderRuleStatusSelector(rule, disabled);
     ensureSelectValue($("#ruleDetail"), rule.detail || "any");
@@ -2855,11 +3008,18 @@
   function captureRuleDraft() {
     if (!drafts.rule) return null;
     const rule = drafts.rule.data;
-    const criteria = $$("#criteriaList .criterion-row").map(row => ({
-      source: $("[data-field='source']", row).value,
-      token: $("[data-field='token']", row).value.trim(),
-      condition: $("[data-field='condition']", row).value.trim()
-    })).filter(criterion => criterion.source || criterion.token || criterion.condition);
+    const criteria = $$("#criteriaList .criterion-row").map(row => {
+      const source = $("[data-field='source']", row).value;
+      return {
+        source,
+        token: $("[data-field='token']", row).value.trim(),
+        condition: composeRuleCondition(
+          source,
+          $("[data-field='condition']", row).value,
+          $("[data-field='condition-values']", row).value
+        )
+      };
+    }).filter(criterion => criterion.source || criterion.token || criterion.condition);
     rule.criteria = criteria.length ? criteria : [{ source: "vacdm", token: "", condition: "" }];
     const first = rule.criteria[0];
     rule.source = first.source;
@@ -2923,6 +3083,8 @@
     $("#reqTobt").checked = Boolean(data.require_active_tobt);
     $("#modeTowerFilter").checked = Boolean(data.tower_filter ?? data.tower_mode);
     $("#modeStructuredRules").checked = data.structured_rules !== false && data.structured_rules_enabled !== false;
+    $("#modeMaxAirborneAltitude").value = String(Math.round(clamp(data.max_airborne_altitude_ft ?? 5500, 0, 60000)));
+    $("#modeMaxAirborneSpeed").value = String(Math.round(clamp(data.max_airborne_speed_kt ?? 250, 0, 1000)));
     $("#modeStatusGrid").innerHTML = MODE_STATUSES.map(status => `<label class="check-field"><input type="checkbox" data-mode-status="${status}" ${data.statuses[status] ? "checked" : ""}><span>${escapeHtml(humanize(status))}</span></label>`).join("");
     $("[data-action='activate-mode']").textContent = data.name === activeProfile().filters?.display_modes?.active ? "Active" : "Set active";
   }
@@ -2943,6 +3105,8 @@
     mode.require_active_tobt = $("#reqTobt").checked;
     mode.tower_filter = $("#modeTowerFilter").checked;
     mode.structured_rules = $("#modeStructuredRules").checked;
+    mode.max_airborne_altitude_ft = Math.round(clamp(Number($("#modeMaxAirborneAltitude").value), 0, 60000));
+    mode.max_airborne_speed_kt = Math.round(clamp(Number($("#modeMaxAirborneSpeed").value), 0, 1000));
     delete mode.tower_mode;
     delete mode.structured_rules_enabled;
     mode.statuses ||= {};
@@ -3140,7 +3304,20 @@
   }
 
   function avisoStyleEntries(kind) {
-    return collectAvisoStyleEntries().filter(entry => kind === "text" ? entry.isText : !entry.isText);
+    const entries = collectAvisoStyleEntries().filter(entry => kind === "text" ? entry.isText : !entry.isText);
+    if (kind !== "geometry") return entries;
+    const palette = activeAvisoColorPalette();
+    const color = normalizeHex(state.aviso?.metadata?.background_colors?.[palette], "#434A4F");
+    return [{
+      id: AVISO_BACKGROUND_STYLE_ID,
+      name: "Background",
+      layer: "AVISO",
+      objectType: "Background",
+      paint: { fill: color },
+      indices: [],
+      isText: false,
+      isBackground: true
+    }, ...entries];
   }
 
   function avisoStyleEntry(styleId, kind) {
@@ -3148,6 +3325,7 @@
   }
 
   function ensureAvisoCatalogStyle(entry) {
+    if (entry?.isBackground) return null;
     state.aviso.styles ||= {};
     const style = state.aviso.styles[entry.id] ||= {
       name: entry.name,
@@ -3300,6 +3478,7 @@
   }
 
   function avisoPaintColor(entry) {
+    if (entry.isBackground) return normalizeHex(entry.paint.fill, "#434A4F");
     return normalizeHex(entry.paint[entry.isText ? "text-color" : (entry.objectType === "Area" ? "fill" : "stroke")], "#6d7a7f");
   }
 
@@ -3313,6 +3492,7 @@
   }
 
   function avisoStyleVisibilityControl(entry, kind) {
+    if (entry.isBackground) return `<span class="aviso-style-eye" aria-hidden="true"></span>`;
     const visibility = avisoStyleVisibility(entry);
     const action = visibility.allVisible ? "Hide" : "Show";
     return `<span class="aviso-style-eye ${visibility.allVisible ? "is-on" : "is-off"} ${visibility.mixed ? "is-mixed" : ""}" data-aviso-style-visibility="${kind}" data-aviso-style-id="${escapeHtml(entry.id)}" role="button" aria-label="${action} ${escapeHtml(entry.name)}" title="${action} ${escapeHtml(entry.name)}">
@@ -3681,10 +3861,12 @@
     }
 
     const types = uniqueValues(entries.map(entry => entry.objectType));
+    const backgroundOnly = entries.every(entry => entry.isBackground);
     $("#avisoGeometryCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} geometry styles`;
     const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
-    const colorKind = types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
+    const colorKind = backgroundOnly ? "Background" : types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
     $("#avisoGeometryColorLabel").textContent = `${colorKind} color · ${paletteLabel}`;
+    $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.toggleAttribute("hidden", backgroundOnly);
 
     const colorResult = commonValue(
       entries.map(entry => entry.objectType === "Line" ? (entry.paint.stroke || entry.paint.fill || "#000000") : (entry.paint.fill || entry.paint.stroke || "#000000")),
@@ -3737,6 +3919,13 @@
         changes[colorKey] = normalizeHex(drafts.avisoGeometry.hex, entry.paint[colorKey] || "#000000").toUpperCase();
       if (opacityTouched && drafts.avisoGeometry)
         changes[opacityKey] = clamp(Number(drafts.avisoGeometry.opacity) / 100, 0, 1);
+      if (entry.isBackground) {
+        if (colorTouched && changes.fill) {
+          state.aviso.metadata.background_colors[activeAvisoColorPalette()] = changes.fill;
+          updatedCount += 1;
+        }
+        return;
+      }
       const style = ensureAvisoCatalogStyle(entry);
       applyAvisoPaintChanges(style.paint, changes);
       entry.indices.forEach(index => {
@@ -3753,7 +3942,7 @@
     resetControlFlags($("#avisoGeometryColorOpacityOutput"));
     clearUnappliedEditorSection($("#avisoGeometryColorHex"));
     markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} updated`, ["aviso"]);
-    if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} geometry objects`, "success");
+    if (feedback) showToast(`Updated ${updatedCount.toLocaleString()} AVISO object${updatedCount === 1 ? "" : "s"}`, "success");
     if (render) {
       drafts.avisoGeometry = null;
       renderAvisoGeometry();
@@ -4498,24 +4687,59 @@
     if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
       delete payload.aviso;
     const submittedSnapshot = captureHistorySnapshot();
-    pending.save = postBridge("state.save", payload);
-    if (!pending.save) {
-      saveInFlightSnapshot = null;
-      return false;
-    }
-    saveInFlightSnapshot = submittedSnapshot;
+    const requestId = postBridge("state.save", payload);
+    if (!requestId) return false;
+    pending.save = requestId;
+    saveInFlight = { requestId, snapshot: submittedSnapshot };
     armPendingTimeout("save", pending.save);
     setStatus("Saving configuration…", "info");
     updateCommandState();
     if (!HOST_MODE) {
-      const requestId = pending.save;
       setTimeout(() => receiveHostMessage({
         version: PROTOCOL_VERSION,
         id: requestId,
         type: "state.saved",
-        payload: { requestId, state: payload, message: "Preview state saved" }
+        payload: {
+          requestId,
+          configRevision: state.configRevision || "preview-config",
+          avisoRevision: state.avisoRevision || "preview-aviso",
+          message: "Preview state saved"
+        }
       }), 0);
     }
+    return true;
+  }
+
+  function finishConfigurationSave(message, payload = {}) {
+    if (!pending.save || !messageMatchesRequest(message, pending.save)) return false;
+    const operation = saveInFlight;
+    pending.save = "";
+    saveInFlight = null;
+
+    // The acknowledgement only advances durable revision tokens and host-owned
+    // file metadata. The browser model is already newer-or-equal to the data
+    // written by native code and must never be replaced by an echo response.
+    if (typeof payload.configRevision === "string" && payload.configRevision)
+      state.configRevision = payload.configRevision;
+    if (typeof payload.avisoRevision === "string" && payload.avisoRevision)
+      state.avisoRevision = payload.avisoRevision;
+    if (payload.settings && typeof payload.settings === "object" && !Array.isArray(payload.settings)) {
+      ["profileFile", "avisoFile", "aliasFile", "dataHealth"].forEach(key => {
+        if (Object.hasOwn(payload.settings, key)) state.settings[key] = clone(payload.settings[key]);
+      });
+    }
+
+    if (operation?.snapshot) savedSnapshot = operation.snapshot;
+    history.present = captureHistorySnapshot();
+    const hasNewerEdits = !operation?.snapshot ||
+      !snapshotsEqual(history.present, operation.snapshot) || hasUnappliedEditorInputs();
+    if (hasNewerEdits) {
+      updateDirtyState("Saved previous changes; newer edits are queued…");
+      scheduleAutosave(0);
+    } else {
+      markSaved(payload.message || "Configuration saved");
+    }
+    updateCommandState();
     return true;
   }
 
@@ -4678,6 +4902,9 @@
     if (!scope) return true;
     const sectionKey = editorSectionKey(control);
     if (sectionKey && !unappliedEditorSections.has(sectionKey)) return true;
+    if (control.matches("#colorHex, #ruleTargetColor, #ruleTagColor, #ruleTextColor") &&
+        !/^#?[0-9a-f]{6}$/i.test(control.value.trim())) return false;
+    if (control.matches(".color-channel-value") && !/^\d{1,3}$/.test(control.value.trim())) return false;
     if (control.checkValidity && !control.checkValidity()) return false;
     const result = withHistoryGesture(control, () => {
       if (scope === "colors") return applyColorDraft({ render: false });
@@ -4915,7 +5142,12 @@
         flushDeferredHistoryGesture();
     });
     document.addEventListener("input", event => {
-      if (editorControlScope(event.target)) markEditorSectionUnapplied(event.target);
+      if (!editorControlScope(event.target)) return;
+      markEditorSectionUnapplied(event.target);
+      // Every valid editor input commits to the single live model immediately.
+      // Temporary partial values (for example an unfinished hex code) stay in
+      // the control without repainting and are committed as soon as valid.
+      stageEditorControl(event.target);
     });
     document.addEventListener("change", event => {
       // Do not depend on a preceding `input` event. WebView/keyboard/control
@@ -5131,7 +5363,7 @@
 
     $("#criteriaList").addEventListener("change", event => {
       const field = event.target.dataset.field;
-      if (!field || !["source", "token"].includes(field)) return;
+      if (!field || !["source", "token", "condition"].includes(field)) return;
       const row = event.target.closest(".criterion-row");
       const source = $("[data-field='source']", row);
       const token = $("[data-field='token']", row);
@@ -5140,7 +5372,11 @@
         const tokens = ruleTokensForSource(source.value);
         token.innerHTML = ruleSelectOptions(tokens, tokens[0]);
       }
-      condition.innerHTML = ruleSelectOptions(ruleConditionsFor(source.value, token.value), "any");
+      if (field === "source" || field === "token") {
+        condition.innerHTML = ruleSelectOptions(ruleConditionsFor(source.value, token.value), "any", { not_in: "not in" });
+        $("[data-field='condition-values']", row).value = "";
+      }
+      updateRuleConditionValueControl(row);
     });
 
     ["Target", "Tag", "Text"].forEach(kind => {
@@ -5150,6 +5386,7 @@
         $(`#rule${kind}Picker`).disabled = !enabled;
       });
       $(`#rule${kind}Color`).addEventListener("input", event => {
+        if (!/^#?[0-9a-f]{6}$/i.test(event.target.value.trim())) return;
         const hex = normalizeHex(event.target.value, "#ffffff");
         $(`#rule${kind}Picker`).value = hex;
         $(`#rule${kind}Picker`).closest("label").style.setProperty("--swatch-color", hex);
@@ -5403,6 +5640,10 @@
         renderAvisoTextEditor();
       }
     }
+    else if (action === "copy-profile-color") copyProfileColor();
+    else if (action === "paste-profile-color") pasteProfileColor();
+    else if (action === "copy-tag-definition") copyTagDefinition();
+    else if (action === "paste-tag-definition") pasteTagDefinition();
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
@@ -5524,7 +5765,9 @@
       require_valid_tsat: false,
       require_active_tobt: false,
       tower_filter: false,
-      structured_rules: true
+      structured_rules: true,
+      max_airborne_altitude_ft: 5500,
+      max_airborne_speed_kt: 250
     });
     state.ui.selectedModeIndex = modes().length - 1;
     drafts.mode = null;
@@ -5856,21 +6099,22 @@
     const previousProfileName = activeProfile().name || "";
     const previousHostAirport = normalizeAirportCode(state.hostAirport);
     const resourceSourceChanged = reason === "resource-source";
-	const hasUnappliedEditorWork =
+    const hasUnappliedEditorWork =
 	  hasUnappliedEditorInputs() && !trustedRuntimeResponse;
-    const preservesNewerSaveEdits = Boolean(
-      reason === "save" && saveInFlightSnapshot &&
-      (!snapshotsEqual(captureHistorySnapshot(), saveInFlightSnapshot) ||
-        hasUnappliedEditorWork)
-    );
+    // A hidden, preloaded Control Center can retain a focused input even though
+    // nobody is editing it. It must still consume saves made by another radar
+    // screen so its optimistic-concurrency token does not become stale. Actual
+    // edits are already protected below by dirty/unapplied editor state.
+    const preservesFocusedEditor = Boolean(editorControlScope(document.activeElement)) &&
+      ["update", "preset"].includes(reason);
     const externallyChangedDirtyEditors =
 	  (state.dirty || hasUnappliedEditorWork) &&
 	  ["resource-source", "external-save", "backup-restored", "profile", "mode"].includes(reason);
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
-	const preservesStagedEditors = preservesNewerSaveEdits || ((state.dirty || hasUnappliedEditorWork) &&
-      !["initial", "reload", "save", "undo", "redo", "state.undo", "state.redo"].includes(reason));
+	const preservesStagedEditors = preservesFocusedEditor || ((state.dirty || hasUnappliedEditorWork) &&
+      !["initial", "reload", "undo", "redo", "state.undo", "state.redo"].includes(reason));
     const hostAirportChanged = !preservesStagedEditors && typeof incoming.airport === "string" &&
       incomingAirport !== previousHostAirport;
     const profileModeReplacement = !preservesStagedEditors &&
@@ -5885,19 +6129,19 @@
     // newer disk revision.  Keeping its old token makes the next save fail
     // closed and directs the user to reload instead of overwriting another
     // Control Center's changes.
-    if ((!preservesStagedEditors || reason === "preset" || reason === "save") && typeof incoming.configRevision === "string")
+    if ((!preservesStagedEditors || reason === "preset") && typeof incoming.configRevision === "string")
       state.configRevision = incoming.configRevision;
-    if ((!preservesStagedEditors || reason === "save") && typeof incoming.avisoRevision === "string")
+    if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
       state.avisoRevision = incoming.avisoRevision;
-    if (["initial", "reload", "save", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
+    if (["initial", "reload", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
       state.recoveryConfirmed = false;
-    if (["initial", "reload", "save", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
+    if (["initial", "reload", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
       state.avisoRecoveryConfirmed = false;
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
     else if (externallyChangedDirtyEditors)
       state.externalEditConflict = true;
-    if (["initial", "reload", "save", "backup-restored"].includes(reason) &&
+    if (["initial", "reload", "backup-restored"].includes(reason) &&
       persistentStatusState?.origin === "native")
       setPersistentStatus("", "", [], "native");
 
@@ -5976,7 +6220,7 @@
 	  Object.keys(drafts).forEach(key => drafts[key] = null);
 	  clearAllUnappliedEditorSections();
 	}
-    if (avisoChanged && reason !== "save") resetAvisoSelections();
+    if (avisoChanged) resetAvisoSelections();
 	// A benign runtime/preset sync must not repaint the focused editor while
 	// local staged changes are waiting for automatic persistence.
 	if (preservesStagedEditors) {
@@ -5995,17 +6239,6 @@
 
     if (reason === "initial" || reason === "reload" || (resourceSourceChanged && !preservesStagedEditors) || resetsExternalHistory) {
       resetHistory(true);
-    } else if (reason === "save") {
-      history.present = captureHistorySnapshot();
-      if (preservesNewerSaveEdits) {
-        savedSnapshot = saveInFlightSnapshot;
-        saveInFlightSnapshot = null;
-        updateDirtyState("Saved previous changes; newer edits are queued…");
-        scheduleAutosave();
-      } else {
-        saveInFlightSnapshot = null;
-        markSaved(incoming.message || "Configuration saved");
-      }
     } else {
       const wasDirty = state.dirty;
       history.present = captureHistorySnapshot();
@@ -6128,11 +6361,10 @@
     if (message.type === "state.authoritative") {
 	  const hasInlineAviso = payload.aviso?.type === "FeatureCollection";
 	  const avisoFollows = !hasInlineAviso && payload.avisoFollows !== false;
-	  const runtimeCommandInfo = !avisoFollows
+      const runtimeCommandInfo = !avisoFollows
 		? finishRuntimeCommand(responseId, false)
 		: pendingRuntimeCommandInfo(responseId);
       const isReload = Boolean(pending.reload && messageMatchesRequest(message, pending.reload));
-      const isSave = Boolean(pending.save && messageMatchesRequest(message, pending.save));
 	  if (isReload && hasInlineAviso) pending.reload = "";
       const reason = isReload ? "reload" : String(payload.reason || "update");
 	  if (HOST_MODE && reason === "initial") {
@@ -6146,7 +6378,6 @@
 		  payload: clone(payload),
 		  reason,
 		  trustedRuntimeResponse,
-		  completesSave: isSave,
 		  completesReload: isReload,
 		  runtimeRequestId: runtimeCommandInfo ? responseId : ""
 		});
@@ -6158,9 +6389,6 @@
 		reason,
 		trustedRuntimeResponse
 	  );
-	  if (isSave && !avisoFollows) {
-		pending.save = "";
-	  }
 	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.undo") showToast("Undone", "success");
 	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.redo") showToast("Redone", "success");
       if (isReload && hasInlineAviso) showToast("Configuration reloaded", "success");
@@ -6177,16 +6405,12 @@
 		const context = clearSplitAvisoContext(message.id);
 		const reason = context ? context.reason : state.dirty ? "update" : "initial";
 		const trustedRuntimeResponse = Boolean(context?.trustedRuntimeResponse);
-		const completesSave = Boolean(context?.completesSave);
 		const completesReload = Boolean(context?.completesReload);
 		const runtimeRequestId = String(context?.runtimeRequestId || "");
 		const authoritativeState = context
 		  ? { ...context.payload, aviso }
 		  : { aviso };
 		applyAuthoritativeState(authoritativeState, reason, trustedRuntimeResponse);
-		if (completesSave) {
-		  pending.save = "";
-		}
 		if (completesReload) {
 		  pending.reload = "";
 		  showToast("Configuration reloaded", "success");
@@ -6215,22 +6439,8 @@
       return;
     }
     if (message.type === "state.saved" || message.type === "saved") {
-      if (pending.save && !messageMatchesRequest(message, pending.save)) return;
       const savedState = authoritativePayload(payload);
-      // Native sends this as a durable-write acknowledgement immediately
-      // before the authoritative state and split AVISO payload. The submitted
-      // snapshot remains in flight, but the editor stays available.
-      const completeSavedState = Boolean(
-        savedState.profiles || savedState.aviso || savedState.runtime
-      );
-      if (completeSavedState) {
-        pending.save = "";
-        applyAuthoritativeState(savedState, "save");
-        updateCommandState();
-      } else {
-        setStatus("Saved; synchronizing vSMR data...", "info");
-        updateCommandState();
-      }
+      finishConfigurationSave(message, savedState);
       return;
     }
     if (message.type === "resource.loaded") {
@@ -6250,7 +6460,7 @@
 	  clearSplitAvisoContext(responseId);
       if (pending.save && messageMatchesRequest(message, pending.save)) {
         pending.save = "";
-        saveInFlightSnapshot = null;
+        saveInFlight = null;
       }
       if (pending.reload && messageMatchesRequest(message, pending.reload)) pending.reload = "";
       if (pending.resource && messageMatchesRequest(message, pending.resource.id)) {

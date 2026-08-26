@@ -311,6 +311,26 @@ namespace
 			(*properties)[key].IsNumber();
 	}
 
+	COLORREF ParseAvisoOpaqueColor(const Value* value, COLORREF fallback)
+	{
+		if (value == nullptr || !value->IsString())
+			return fallback;
+		const char* hex = value->GetString();
+		if (hex == nullptr || hex[0] != '#' || std::strlen(hex) != 7)
+			return fallback;
+
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		if (!TryParseHexByte(hex + 1, red) ||
+			!TryParseHexByte(hex + 3, green) ||
+			!TryParseHexByte(hex + 5, blue))
+		{
+			return fallback;
+		}
+		return RGB(red, green, blue);
+	}
+
 	Gdiplus::Color ParseAvisoColorResolved(const Value* sharedPaint, const Value* inlineProperties, const char* colorProperty, const char* opacityProperty, const Gdiplus::Color& fallback)
 	{
 		// A catalog style provides defaults for every feature that references it.
@@ -1481,6 +1501,22 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const double convertCommitStartMilliseconds = RefreshPerfNowMs();
 
 	const Value& features = document["features"];
+	COLORREF parsedNightBackgroundColor = RGB(67, 74, 79);
+	COLORREF parsedDayBackgroundColor = RGB(67, 74, 79);
+	if (document.HasMember("metadata") && document["metadata"].IsObject())
+	{
+		const Value& metadata = document["metadata"];
+		if (metadata.HasMember("background_colors") && metadata["background_colors"].IsObject())
+		{
+			const Value& backgroundColors = metadata["background_colors"];
+			if (backgroundColors.HasMember("night"))
+				parsedNightBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["night"], parsedNightBackgroundColor);
+			if (backgroundColors.HasMember("day"))
+				parsedDayBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["day"], parsedNightBackgroundColor);
+			else
+				parsedDayBackgroundColor = parsedNightBackgroundColor;
+		}
+	}
 	std::vector<AvisoFeature> parsedFeatures;
 	std::vector<AvisoLabel> parsedLabels;
 	bool parsedHasBounds = false;
@@ -1775,6 +1811,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	AvisoGeoJsonMinLatitude = parsedMinLatitude;
 	AvisoGeoJsonMaxLongitude = parsedMaxLongitude;
 	AvisoGeoJsonMaxLatitude = parsedMaxLatitude;
+	AvisoNightBackgroundColor = parsedNightBackgroundColor;
+	AvisoDayBackgroundColor = parsedDayBackgroundColor;
 	{
 		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
 		AvisoGeoJsonRenderLatestRequestId = ++AvisoGeoJsonRenderNextRequestId;
@@ -3127,82 +3165,11 @@ CRect CSMRRadar::ResolveMainAvisoRenderArea()
 	return CRect(availableLeft, availableTop, availableRight, availableBottom);
 }
 
-COLORREF CSMRRadar::GetInactiveSectorBackgroundColor() const noexcept
+COLORREF CSMRRadar::GetAvisoBackgroundColor() const noexcept
 {
-	return InactiveSectorBackgroundColor;
-}
-
-void CSMRRadar::UpdateInactiveSectorBackgroundColor(HDC hDC, const RECT& radarArea)
-{
-	if (hDC == nullptr)
-		return;
-
-	const unsigned long nowTick = ::GetTickCount();
-	if (InactiveSectorBackgroundSampleTick != 0 &&
-		nowTick - InactiveSectorBackgroundSampleTick < 500)
-	{
-		return;
-	}
-	InactiveSectorBackgroundSampleTick = nowTick;
-
-	CRect area(radarArea);
-	area.NormalizeRect();
-	if (area.Width() < 8 || area.Height() < 8)
-		return;
-
-	// At close zoom levels an active sector can cover every sampled pixel. It
-	// must never replace the cached inactive-sector background used by insets.
-	// Refresh the sample only from a sufficiently wide overview where the outer
-	// radar band represents EuroScope's inactive background.
-	CPosition displaySouthWest;
-	CPosition displayNorthEast;
-	GetDisplayArea(&displaySouthWest, &displayNorthEast);
-	if (!std::isfinite(displaySouthWest.m_Latitude) ||
-		!std::isfinite(displaySouthWest.m_Longitude) ||
-		!std::isfinite(displayNorthEast.m_Latitude) ||
-		!std::isfinite(displayNorthEast.m_Longitude))
-	{
-		return;
-	}
-	const int sampleZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
-		Haversine(displaySouthWest, displayNorthEast));
-	if (sampleZoomLevel > 3)
-		return;
-
-	// EuroScope does not expose the Sector/Inactive Sector Background colour
-	// through its plug-in API. Before vSMR draws anything, sample the outer band
-	// of a wide radar view, avoiding active-sector fill in the centre.
-	std::unordered_map<COLORREF, int> frequencies;
-	constexpr int columns = 17;
-	constexpr int rows = 11;
-	for (int row = 0; row < rows; ++row)
-	{
-		const int y = area.top + ((row * 2 + 1) * area.Height()) / (rows * 2);
-		for (int column = 0; column < columns; ++column)
-		{
-			const bool inOuterBand = row < 2 || row >= rows - 2 ||
-				column < 2 || column >= columns - 2;
-			if (!inOuterBand)
-				continue;
-			const int x = area.left + ((column * 2 + 1) * area.Width()) / (columns * 2);
-			const COLORREF color = ::GetPixel(hDC, x, y);
-			if (color != CLR_INVALID)
-				++frequencies[color];
-		}
-	}
-
-	int bestCount = 0;
-	COLORREF bestColor = InactiveSectorBackgroundColor;
-	for (const auto& [color, count] : frequencies)
-	{
-		if (count > bestCount)
-		{
-			bestCount = count;
-			bestColor = color;
-		}
-	}
-	if (bestCount >= 3)
-		InactiveSectorBackgroundColor = bestColor;
+	return AvisoUseDayColorPalette
+		? AvisoDayBackgroundColor
+		: AvisoNightBackgroundColor;
 }
 
 void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
@@ -3233,11 +3200,16 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		AvisoGeoJsonRenderDisabledPath.clear();
 	}
 
-	if (!EnsureAvisoGeoJsonLoaded(path) ||
-		(AvisoGeoJsonFeatures.empty() && AvisoGeoJsonLabels.empty()))
+	if (!EnsureAvisoGeoJsonLoaded(path))
 	{
 		return;
 	}
+	CRect backgroundArea = ResolveMainAvisoRenderArea();
+	backgroundArea.NormalizeRect();
+	if (!backgroundArea.IsRectEmpty())
+		CDC::FromHandle(hDC)->FillSolidRect(backgroundArea, GetAvisoBackgroundColor());
+	if (AvisoGeoJsonFeatures.empty() && AvisoGeoJsonLabels.empty())
+		return;
 	std::shared_ptr<const std::vector<AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
@@ -5254,6 +5226,12 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	ensureIntMember(profile, "schema_version", 2, 2, 9999);
 
 	Value& filters = ensureObjectMember(profile, "filters");
+	int legacyMaximumAirborneAltitudeFt = 5500;
+	int legacyMaximumAirborneSpeedKt = 250;
+	if (filters.HasMember("max_altitude_ft") && filters["max_altitude_ft"].IsInt())
+		legacyMaximumAirborneAltitudeFt = std::clamp(filters["max_altitude_ft"].GetInt(), 0, 60000);
+	if (filters.HasMember("max_speed_kt") && filters["max_speed_kt"].IsInt())
+		legacyMaximumAirborneSpeedKt = std::clamp(filters["max_speed_kt"].GetInt(), 0, 1000);
 	changed = filters.RemoveMember("hide_above_alt") || changed;
 	changed = filters.RemoveMember("hide_above_spd") || changed;
 	changed = filters.RemoveMember("max_altitude_ft") || changed;
@@ -5291,6 +5269,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		mode.AddMember("require_clearance", false, allocator);
 		mode.AddMember("require_valid_tsat", false, allocator);
 		mode.AddMember("require_active_tobt", false, allocator);
+		mode.AddMember("max_airborne_altitude_ft", legacyMaximumAirborneAltitudeFt, allocator);
+		mode.AddMember("max_airborne_speed_kt", legacyMaximumAirborneSpeedKt, allocator);
 		Value statuses(kObjectType);
 		statuses.AddMember("no_status", true, allocator);
 		statuses.AddMember("push", true, allocator);
@@ -5328,6 +5308,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 				continue;
 			changed = items[i].RemoveMember("do_not_autocorrelate_squawks") || changed;
 			changed = items[i].RemoveMember("blocked_auto_correlate_squawks") || changed;
+			ensureIntMember(items[i], "max_airborne_altitude_ft", legacyMaximumAirborneAltitudeFt, 0, 60000);
+			ensureIntMember(items[i], "max_airborne_speed_kt", legacyMaximumAirborneSpeedKt, 0, 1000);
 			Value& statuses = ensureObjectMember(items[i], "statuses");
 			if (!statuses.HasMember("lineup") || !statuses["lineup"].IsBool())
 			{
@@ -7501,7 +7483,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	normalizedChatArea.NormalizeRect();
 	if (!normalizedChatArea.IsRectEmpty())
 		RadarArea.bottom = normalizedChatArea.top;
-	UpdateInactiveSectorBackgroundColor(hDC, RadarArea);
 	CRect insetLayoutBounds(RadarArea);
 	insetLayoutBounds.NormalizeRect();
 	if (InitialInsetStateRestorePending && !insetLayoutBounds.IsRectEmpty())
@@ -7609,20 +7590,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	setRefreshStage("runway overlay draw");
 	for (const auto& runway : CachedRunwayGeometries)
 	{
-		if (drawRunways && runway.rimcasDefinition.size() >= 3)
-		{
-			std::vector<PointF> points;
-			points.reserve(runway.rimcasDefinition.size());
-			for (const auto& point : runway.rimcasDefinition)
-			{
-				POINT toDraw = ConvertCoordFromPositionToPixel(point);
-				points.push_back({ REAL(toDraw.x), REAL(toDraw.y) });
-			}
-
-			Pen runwayPen(Color(static_cast<Gdiplus::ARGB>(Color::White)));
-			graphics.DrawPolygon(&runwayPen, points.data(), static_cast<INT>(points.size()));
-		}
-
 		const auto closedRunwayIt = RimcasInstance->ClosedRunway.find(runway.displayName);
 		if (closedRunwayIt == RimcasInstance->ClosedRunway.end() || !closedRunwayIt->second)
 			continue;
