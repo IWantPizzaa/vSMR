@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 
 #include "scene/RadarScene.hpp"
+#include "scene/TargetRoleLogic.hpp"
 
 #include "radar/RadarScreen.hpp"
 #include "shared/TextUtils.hpp"
@@ -784,11 +785,13 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.groundState = target.hasFlightPlan
 			? classifyGroundStateForCallsign(callsign.c_str(), target.groundStateText.c_str(), target.reportedGroundSpeed, target.rimcas.onRunway)
 			: GroundStateCategory::Unknown;
-		target.airborne = target.reportedGroundSpeed > 50;
 		target.departure = target.hasFlightPlan && target.correlated && !airportUpper.empty() &&
 			_stricmp(target.origin.c_str(), airportUpper.c_str()) == 0;
 		target.arrival = target.hasFlightPlan && target.correlated && !target.departure && !airportUpper.empty() &&
 			_stricmp(target.destination.c_str(), airportUpper.c_str()) == 0;
+		target.airborne = VsmrTargetRoleLogic::IsAirborneForTagRole(
+			target.arrival,
+			target.reportedGroundSpeed);
 		if (!target.correlated && target.reportedGroundSpeed >= 3)
 			target.role = TargetRole::Uncorrelated;
 		else if (target.airborne)

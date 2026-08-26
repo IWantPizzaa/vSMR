@@ -73,6 +73,7 @@
     <ClInclude Include="..\src\control_center\WebMessageValidation.hpp" />
     <ClInclude Include="..\src\radar\RadarGeometry.hpp" />
     <ClInclude Include="..\src\safety\RimcasLogic.hpp" />
+    <ClInclude Include="..\src\scene\TargetRoleLogic.hpp" />
     <ClInclude Include="..\src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="..\src\shared\RapidJsonStringViewStream.hpp" />
     <ClInclude Include="..\src\tags\TagDefinitionUtils.hpp" />

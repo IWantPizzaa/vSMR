@@ -9,6 +9,7 @@
 #include "control_center/WebMessageValidation.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
+#include "scene/TargetRoleLogic.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 
 #include "rapidjson/document.h"
@@ -97,6 +98,22 @@ namespace
 		Expect(!VsmrRimcasLogic::IsRunwayOccupancyMonitored(false, false), "RIMCAS ignores disabled runway");
 		Expect(VsmrRimcasLogic::HasApproachingConflict(1), "RIMCAS detects occupied approach conflict");
 		Expect(!VsmrRimcasLogic::HasApproachingConflict(0), "RIMCAS accepts empty runway");
+	}
+
+	void TestTargetRoleThresholds()
+	{
+		Expect(
+			!VsmrTargetRoleLogic::IsAirborneForTagRole(true, 40),
+			"arrival at 40 kt uses the arrived tag");
+		Expect(
+			VsmrTargetRoleLogic::IsAirborneForTagRole(true, 41),
+			"arrival above 40 kt keeps the airborne tag");
+		Expect(
+			!VsmrTargetRoleLogic::IsAirborneForTagRole(false, 50),
+			"departure retains the 50 kt ground threshold");
+		Expect(
+			VsmrTargetRoleLogic::IsAirborneForTagRole(false, 51),
+			"departure above 50 kt remains airborne");
 	}
 
 	void TestGeometry()
@@ -463,6 +480,7 @@ int wmain(int argc, wchar_t** argv)
 	TestHoldingPointRemarks();
 	TestTagTokens();
 	TestRimcasRules();
+	TestTargetRoleThresholds();
 	TestGeometry();
 	TestWebMessageValidation();
 	TestProfiles(repositoryRoot);
