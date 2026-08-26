@@ -17,6 +17,7 @@
 - Reworked Control Center persistence around one live model and a serialized latest-state save queue: every valid field is applied immediately, disk writes are lightly debounced, and acknowledgements advance revision tokens without repainting or replacing newer edits.
 - Fixed clean preloaded Control Centers retaining a stale profiles revision after another radar window saved, which caused a false “profiles file changed in another vSMR window” warning on the next edit.
 - Removed the RDF, CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces.
+- Changed holding-point synchronization to the stable `VSMRHP/<value>` remarks marker and clean up duplicated markers produced by EuroScope's rewriting of the former `HP:<value>` format.
 
 ## [2.0.0-beta.4] - 2026-08-24
 
