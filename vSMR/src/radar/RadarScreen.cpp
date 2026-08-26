@@ -6412,7 +6412,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// origin: origin aerodrome
 	// dest: destination aerodrome
 	// clearance: departure/startup clearance flag ([ ] / [x]), clickable toggle
-	// holdingpoint: synchronized holding point from the HP scratchpad field
+	// holdingpoint: synchronized holding point from the flight plan remarks
 	// ----
 
 	auto safeCString = [](const char* text) -> const char*
@@ -6434,6 +6434,8 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	std::string rawScratchpad;
 	if (hasFlightPlan)
 		rawScratchpad = safeString(fp.GetControllerAssignedData().GetScratchPadString());
+	// Hide markers left by older vSMR builds while otherwise preserving the
+	// controller scratchpad verbatim. New HP values are stored in FP remarks.
 	const std::string userScratchpad = VsmrHoldingPoint::WithoutHoldingPoint(rawScratchpad);
 	const int reportedGs = hasRadarTarget ? rtPos.GetReportedGS() : 0;
 	bool IsPrimary = hasRadarTarget ? !rtPos.GetTransponderC() : true;
@@ -6663,11 +6665,14 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	if (scratchpad.length() == 0)
 		scratchpad = "...";
 
-	// ----- Holding point (synchronized through EuroScope scratchpad) -------
+	// ----- Holding point (synchronized through flight plan remarks) -------
 	const std::string holdingPointCallsign = !stableCallsign.empty()
 		? stableCallsign
 		: (hasFlightPlan ? safeString(fp.GetCallsign()) : "");
-	string holdingpoint = VsmrHoldingPoint::Resolve(holdingPointCallsign, rawScratchpad);
+	const std::string flightPlanRemarks = hasFlightPlan
+		? safeString(fp.GetFlightPlanData().GetRemarks())
+		: std::string();
+	string holdingpoint = VsmrHoldingPoint::Resolve(holdingPointCallsign, flightPlanRemarks);
 
 	// ----- VACDM fields -------
 	string tobt = "";
