@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.0-beta.5] - Unreleased
+
+### Added
+
+- Added a **No preset** action to the Runtime Menu. It clears the active inset preset and linked-view state, hides AVISO, SRW, Weather, and Timer insets, and returns to the main AVISO-only layout.
+
+### Changed
+
+- Replaced the bundled **Custom LFPG** profile with the supplied updated configuration while retaining every other bundled profile and the shared profile metadata unchanged.
+
 ## [2.0.0-beta.4] - 2026-08-24
 
 ### Added
