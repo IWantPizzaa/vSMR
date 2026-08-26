@@ -15,6 +15,7 @@
 - Replaced the bundled profiles with the supplied five-profile configuration.
 - Tightened square-corner tag borders while preserving the existing rounded-tag dimensions.
 - Made runway and SID/custom rule matches use an operator selector plus an editable value list, including `in` and `not in` matching for both sources.
+- Changed arrival tag classification so aircraft at 40 kt or below use the arrived presentation, including while still on the runway.
 - Reworked Control Center persistence around one live model and a serialized latest-state save queue: every valid field is applied immediately, disk writes are lightly debounced, and acknowledgements advance revision tokens without repainting or replacing newer edits.
 - Fixed clean preloaded Control Centers retaining a stale profiles revision after another radar window saved, which caused a false “profiles file changed in another vSMR window” warning on the next edit.
 - Removed the RDF, CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces.
