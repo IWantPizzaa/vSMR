@@ -4270,6 +4270,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		const std::string title = runway.empty() ? "Holding point" : "Holding point RWY " + runway;
 		OpenPopupList(Area, title.c_str(), 1);
 		AddPopupListElement("[...]", "", TAG_FUNC_HOLDING_POINT_MANUAL, false);
+		AddPopupListElement("None", "", TAG_FUNC_HOLDING_POINT_CLEAR, holdingPoint.empty());
 		for (const std::string& point : holdingPoints)
 			AddPopupListElement(point.c_str(), "", TAG_FUNC_HOLDING_POINT_SELECT, point == holdingPoint);
 		return;
@@ -4296,6 +4297,7 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 	}
 
 	if (FunctionId == TAG_FUNC_HOLDING_POINT_SELECT ||
+		FunctionId == TAG_FUNC_HOLDING_POINT_CLEAR ||
 		FunctionId == TAG_FUNC_HOLDING_POINT_COMMIT)
 	{
 		std::string callsign;
@@ -4305,7 +4307,10 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		}
 		if (callsign.empty())
 			return;
-		(void)applyHoldingPoint(callsign, sItemString != nullptr ? sItemString : "");
+		const char* value = FunctionId == TAG_FUNC_HOLDING_POINT_CLEAR
+			? ""
+			: (sItemString != nullptr ? sItemString : "");
+		(void)applyHoldingPoint(callsign, value);
 		return;
 	}
 
