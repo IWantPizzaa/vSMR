@@ -306,6 +306,7 @@ if (-not $SkipBuild) {
         "/p:Configuration=$Configuration",
         "/p:Platform=$Platform",
         "/p:PlatformToolset=$Toolset",
+        "/p:ContinuousIntegrationBuild=true",
         "/p:VsmrReleaseOutputDirectory=$outDir"
     )
     if (-not [string]::IsNullOrWhiteSpace($UpdateSignerCertSha256)) {

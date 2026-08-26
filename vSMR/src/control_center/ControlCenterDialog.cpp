@@ -10,6 +10,7 @@
 #include "crash/CrashRuntime.hpp"
 
 #include "WebView2.h"
+#include <shobjidl_core.h>
 #include <wrl.h>
 
 #include "rapidjson/document.h"
@@ -306,6 +307,122 @@ namespace
 			return false;
 		}
 		return static_cast<bool>(input) || input.eof();
+	}
+
+	enum class ResourceFileDialogResult
+	{
+		Selected,
+		Cancelled,
+		Failed
+	};
+
+	class ScopedFileDialogComInitialization
+	{
+	public:
+		ScopedFileDialogComInitialization() noexcept
+			: Result(::CoInitializeEx(
+				nullptr,
+				COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))
+		{
+		}
+
+		~ScopedFileDialogComInitialization()
+		{
+			if (SUCCEEDED(Result))
+				::CoUninitialize();
+		}
+
+		bool IsAvailable() const noexcept
+		{
+			return SUCCEEDED(Result) || Result == RPC_E_CHANGED_MODE;
+		}
+
+	private:
+		HRESULT Result;
+	};
+
+	ResourceFileDialogResult SelectResourceFile(
+		HWND ownerWindow,
+		bool profiles,
+		std::filesystem::path& selectedPath) noexcept
+	{
+		selectedPath.clear();
+		try
+		{
+			ScopedFileDialogComInitialization comInitialization;
+			if (!comInitialization.IsAvailable())
+				return ResourceFileDialogResult::Failed;
+
+			ComPtr<IFileOpenDialog> dialog;
+			HRESULT result = ::CoCreateInstance(
+				CLSID_FileOpenDialog,
+				nullptr,
+				CLSCTX_INPROC_SERVER,
+				IID_PPV_ARGS(&dialog));
+			if (FAILED(result) || !dialog)
+				return ResourceFileDialogResult::Failed;
+
+			DWORD options = 0;
+			result = dialog->GetOptions(&options);
+			if (FAILED(result))
+				return ResourceFileDialogResult::Failed;
+			result = dialog->SetOptions(
+				options |
+				FOS_FILEMUSTEXIST |
+				FOS_FORCEFILESYSTEM |
+				FOS_NOCHANGEDIR |
+				FOS_PATHMUSTEXIST);
+			if (FAILED(result))
+				return ResourceFileDialogResult::Failed;
+
+			const COMDLG_FILTERSPEC profileFilters[] = {
+				{ L"vSMR profiles (*.json)", L"*.json" },
+				{ L"All files (*.*)", L"*.*" }
+			};
+			const COMDLG_FILTERSPEC avisoFilters[] = {
+				{ L"GeoJSON (*.geojson;*.json)", L"*.geojson;*.json" },
+				{ L"All files (*.*)", L"*.*" }
+			};
+			result = profiles
+				? dialog->SetFileTypes(
+					static_cast<UINT>(std::size(profileFilters)),
+					profileFilters)
+				: dialog->SetFileTypes(
+					static_cast<UINT>(std::size(avisoFilters)),
+					avisoFilters);
+			if (FAILED(result) ||
+				FAILED(dialog->SetDefaultExtension(
+					profiles ? L"json" : L"geojson")))
+			{
+				return ResourceFileDialogResult::Failed;
+			}
+
+			result = dialog->Show(ownerWindow);
+			if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+				return ResourceFileDialogResult::Cancelled;
+			if (FAILED(result))
+				return ResourceFileDialogResult::Failed;
+
+			ComPtr<IShellItem> item;
+			result = dialog->GetResult(&item);
+			if (FAILED(result) || !item)
+				return ResourceFileDialogResult::Failed;
+
+			PWSTR rawPath = nullptr;
+			result = item->GetDisplayName(SIGDN_FILESYSPATH, &rawPath);
+			if (FAILED(result) || rawPath == nullptr)
+				return ResourceFileDialogResult::Failed;
+			CoTaskMemString pathValue(rawPath);
+			selectedPath = std::filesystem::path(pathValue.get());
+			return selectedPath.empty()
+				? ResourceFileDialogResult::Failed
+				: ResourceFileDialogResult::Selected;
+		}
+		catch (...)
+		{
+			selectedPath.clear();
+			return ResourceFileDialogResult::Failed;
+		}
 	}
 
 	bool WriteTextFileAtomically(
@@ -1678,20 +1795,20 @@ void CVsmrControlCenterDialog::RequestComputerResource(
 	const std::string& requestId)
 {
 	const bool profiles = resource == "profiles";
-	CFileDialog dialog(
-		TRUE,
-		profiles ? "json" : "geojson",
-		nullptr,
-		OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY,
-		profiles
-			? "vSMR profiles (*.json)|*.json|All files (*.*)|*.*||"
-			: "GeoJSON (*.geojson;*.json)|*.geojson;*.json|All files (*.*)|*.*||",
-		this);
-	if (dialog.DoModal() != IDOK)
+	std::filesystem::path path;
+	const ResourceFileDialogResult selection = SelectResourceFile(
+		GetSafeHwnd(),
+		profiles,
+		path);
+	if (selection == ResourceFileDialogResult::Cancelled)
 		return;
+	if (selection != ResourceFileDialogResult::Selected)
+	{
+		if (Bridge)
+			Bridge->PushError(requestId, "Unable to open the Windows file picker.");
+		return;
+	}
 
-	const std::filesystem::path path(
-		static_cast<LPCSTR>(dialog.GetPathName()));
 	std::string text;
 	if (!ReadTextFile(path, text, kMaximumResourceBytes))
 	{
