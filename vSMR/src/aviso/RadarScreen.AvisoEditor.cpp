@@ -166,8 +166,3 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 	RequestRefresh();
 	return loaded;
 }
-
-void CSMRRadar::OpenAvisoEditorWindow()
-{
-	OpenVsmrControlCenterWindow("aviso");
-}

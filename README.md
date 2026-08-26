@@ -305,7 +305,7 @@ The native RDF client:
 - draws a white 20-pixel ring for a normal transmission
 - draws rings in red while more than one station is transmitting
 
-Use `.smr rdf` or `.smr rdf status` to show its state, `.smr rdf on` to enable it, and `.smr rdf off` to disable it.
+Its state is controlled from the RDF section of the Runtime menu.
 
 The native implementation currently consumes TrackAudio only. It does not receive the hidden-window RDF feed from the Audio for VATSIM standalone client. When only that standalone client is running, vSMR's native rings have no transmission source.
 
@@ -413,29 +413,9 @@ Enter commands in lowercase as shown.
 
 | Command | Effect |
 | --- | --- |
-| `.smr` | Opens the Control Center Settings page; opens the legacy CPDLC dialog only when no vSMR radar screen exists |
+| `.smr` | Opens the Control Center Settings page |
 | `.smr editor` | Opens the Control Center |
-| `.smr vsmr` | Alias for `.smr editor` |
-| `.smr config` | Opens the Control Center Settings page |
-| `.smr profile` | Opens the Control Center Profiles page |
 | `.smr reload` | Reloads vSMR runtime data on all open vSMR screens |
-| `.smr aviso reload` | Reloads the active AVISO GeoJSON |
-| `.smr aviso editor` | Opens the AVISO editor |
-| `.smr rdf` | Shows whether the native TrackAudio RDF overlay is enabled |
-| `.smr rdf status` | Shows whether the native TrackAudio RDF overlay is enabled |
-| `.smr rdf on` | Enables the native TrackAudio RDF overlay and saves the setting |
-| `.smr rdf off` | Disables the native TrackAudio RDF overlay and saves the setting |
-| `.smr connect` | Connects or disconnects Hoppie CPDLC |
-| `.smr poll` | Polls Hoppie messages immediately |
-| `.smr cdm` | Runs a manual PDC reminder scan for the active airport |
-| `.smr cdm auto status` | Shows automatic reminder state and delay |
-| `.smr cdm auto on` | Starts automatic reminders with the saved delay |
-| `.smr cdm auto off` | Stops automatic reminders |
-| `.smr cdm auto <minutes>` | Sets the delay and enables automatic reminders |
-| `.smr cdm cooldown status` | Shows the reminder resend cooldown |
-| `.smr cdm cooldown <minutes>` | Sets the reminder resend cooldown |
-| `.smr draw` | Toggles RIMCAS runway-area drawing |
-| `.smr status` | Prints current RIMCAS runway states |
 | `.smr log` | Toggles normal logging |
 | `.smr log normal` | Enables concise logging |
 | `.smr log verbose` | Enables detailed logging |

@@ -768,6 +768,29 @@ namespace
 	bool RunwayRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualRunwayRaw)
 	{
 		const std::string actualRunwayNormalized = NormalizeRunwayMatchText(actualRunwayRaw);
+		const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
+		const std::string expectedLower = ToLowerAsciiCopy(expectedTrimmed);
+		bool invert = false;
+		std::string listText = expectedTrimmed;
+		if (expectedLower.rfind("not_in:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(7);
+		}
+		else if (expectedLower.rfind("notin:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(6);
+		}
+		else if (expectedLower.rfind("not:", 0) == 0)
+		{
+			invert = true;
+			listText = expectedTrimmed.substr(4);
+		}
+		else if (expectedLower.rfind("in:", 0) == 0)
+		{
+			listText = expectedTrimmed.substr(3);
+		}
 		auto matchesSingleCondition = [&](const std::string& conditionRaw) -> bool
 		{
 			const std::string expectedCondition = NormalizeRunwayRuleConditionName(conditionRaw);
@@ -796,18 +819,19 @@ namespace
 			return false;
 		};
 
-		if (expectedConditionRaw.find(',') == std::string::npos &&
-			expectedConditionRaw.find(';') == std::string::npos &&
-			expectedConditionRaw.find('|') == std::string::npos)
+		if (listText.find(',') == std::string::npos &&
+			listText.find(';') == std::string::npos &&
+			listText.find('|') == std::string::npos)
 		{
-			return matchesSingleCondition(expectedConditionRaw);
+			const bool matches = matchesSingleCondition(listText);
+			return invert ? (!actualRunwayNormalized.empty() && !matches) : matches;
 		}
 
 		std::string token;
 		bool hasToken = false;
-		for (size_t i = 0; i <= expectedConditionRaw.size(); ++i)
+		for (size_t i = 0; i <= listText.size(); ++i)
 		{
-			const char ch = (i < expectedConditionRaw.size()) ? expectedConditionRaw[i] : ',';
+			const char ch = (i < listText.size()) ? listText[i] : ',';
 			if (ch == ',' || ch == ';' || ch == '|')
 			{
 				const std::string condition = NormalizeRunwayRuleConditionName(token);
@@ -816,14 +840,23 @@ namespace
 					continue;
 				hasToken = true;
 				if (matchesSingleCondition(condition))
-					return true;
+				{
+					if (!invert)
+						return true;
+					return false;
+				}
 				continue;
 			}
 
 			token.push_back(ch);
 		}
 
-		return !hasToken ? matchesSingleCondition(expectedConditionRaw) : false;
+		if (!hasToken)
+		{
+			const bool matches = matchesSingleCondition(listText);
+			return invert ? (!actualRunwayNormalized.empty() && !matches) : matches;
+		}
+		return invert && !actualRunwayNormalized.empty();
 	}
 
 	bool StructuredRuleContextMatches(const StructuredTagColorRule& rule, const std::string& tagTypeKey, const std::string& statusKey, const std::string& detailKey)
