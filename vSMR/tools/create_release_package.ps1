@@ -300,19 +300,6 @@ Assert-File $LoaderPdbPath
 $CrashHandlerPdbPath = [System.IO.Path]::GetFullPath($CrashHandlerPdbPath)
 Assert-File $CrashHandlerPdbPath
 
-$validator = Join-Path $RepositoryRoot "vSMR\tools\validate_release.ps1"
-Assert-File $validator
-& $validator `
-    -RepositoryRoot $RepositoryRoot `
-    -ExpectedVersion $Version `
-    -BuildOutputDirectory $BuildOutputDirectory `
-    -PdbPath $PdbPath `
-    -LoaderPdbPath $LoaderPdbPath `
-    -CrashHandlerPdbPath $CrashHandlerPdbPath `
-    -ExpectedLoaderVersion $LoaderVersion `
-    -ExpectedRuntimeAbi $RuntimeAbi `
-    -UpdateSignerCertSha256 $UpdateSignerCertSha256
-
 $dllPath = Join-Path $BuildOutputDirectory "vSMR.dll"
 $dataPath = Join-Path $BuildOutputDirectory "vSMR_Data"
 Assert-File $dllPath

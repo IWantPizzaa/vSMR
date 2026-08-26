@@ -53,11 +53,6 @@
     <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(VsmrCrashHarnessNoDbgHelp)'=='true'">
-    <TargetName>vSMRCrashHandlerNoDbgHelp</TargetName>
-    <OutDir>$(ProjectDir)..\..\..\tools\crash_harness\bin\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)-no-dbghelp\</IntDir>
-  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
@@ -118,11 +113,6 @@
       <Culture>0x0409</Culture>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(VsmrCrashHarnessNoDbgHelp)'=='true'">
-    <ClCompile>
-      <PreprocessorDefinitions>VSMR_CRASH_HARNESS_NO_DBGHELP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CrashHandler.cpp" />
