@@ -3982,258 +3982,12 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		}
 		return true;
 	}
-	if (startsWithCommand(".smr connect"))
-	{
-		const DatalinkControlState state = GetDatalinkControlState();
-		std::string error;
-		if (state.connected || state.connecting)
-		{
-			DisconnectDatalink(error);
-			DisplayUserMessage(
-				"CPDLC",
-				"Server",
-				state.connected ? "Logged off!" : "Connection attempt cancelled.",
-				true,
-				true,
-				false,
-				true,
-				false);
-		}
-		else if (!ConnectDatalink(error))
-		{
-			DisplayUserMessage("CPDLC", "Error", error.c_str(), true, true, false, true, false);
-		}
-
-		return true;
-	}
-	else if (startsWithCommand(".smr poll"))
-	{
-		std::string error;
-		if (!PollDatalink(error) && !error.empty())
-			DisplayUserMessage("CPDLC", "Error", error.c_str(), true, true, false, true, false);
-		return true;
-	}
-	else if (commandLower == ".smr reload") {
+	if (commandLower == ".smr reload") {
 		for (auto rd : RadarScreensOpened) {
 			if (rd != nullptr)
 				rd->ReloadConfig();
 		}
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR runtime data", true, true, false, true, false);
-		return true;
-	}
-	else if (commandLower == ".smr rdf" || startsWithCommand(".smr rdf "))
-	{
-		const std::string prefix = ".smr rdf";
-		const std::string argument = commandLower.size() > prefix.size()
-			? TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()))
-			: std::string();
-
-		if (argument == "on" || argument == "enable" || argument == "1")
-		{
-			VsmrRdf::SetEnabled(true);
-			SaveDataToSettings("rdf_enabled", "Enable the native vSMR RDF overlay", "1");
-		}
-		else if (argument == "off" || argument == "disable" || argument == "0")
-		{
-			VsmrRdf::SetEnabled(false);
-			SaveDataToSettings("rdf_enabled", "Enable the native vSMR RDF overlay", "0");
-		}
-		else if (!argument.empty() && argument != "status")
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"RDF",
-				"Usage: .smr rdf [on|off|status]",
-				true, true, false, true, false);
-			return true;
-		}
-
-		const VsmrRdf::Status status = VsmrRdf::GetStatus();
-		std::string message = "Native RDF ";
-		message += status.enabled ? "enabled" : "disabled";
-		message += ", TrackAudio ";
-		message += status.trackAudioConnected ? "connected" : "waiting";
-		message += ", active transmissions=" + std::to_string(status.activeTransmissionCount);
-		DisplayUserMessage("vSMR", "RDF", message.c_str(), true, true, false, true, false);
-		for (CSMRRadar* radar : RadarScreensOpened)
-		{
-			if (radar != nullptr && !radar->IsShutdownRequested())
-				radar->RequestRefresh();
-		}
-		return true;
-	}
-	else if (startsWithCommand(".smr cdm cooldown"))
-	{
-		const std::string prefix = ".smr cdm cooldown";
-		std::string argument = "";
-		if (commandLower.size() > prefix.size())
-			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
-
-		const auto publishCooldownStatus = [&](const char* action)
-		{
-			int cooldownMinutes = GetDatalinkControlState().cdmCooldownMinutes;
-			if (cooldownMinutes < 0)
-				cooldownMinutes = 0;
-			std::string message = std::string(action) + " CDM reminder cooldown: " + std::to_string(cooldownMinutes) + " minute";
-			if (cooldownMinutes != 1)
-				message += "s";
-			DisplayUserMessage("vSMR", "CDM", message.c_str(), true, true, false, true, false);
-		};
-
-		if (argument.empty() || argument == "status")
-		{
-			publishCooldownStatus("Status");
-			return true;
-		}
-
-		int parsedCooldownMinutes = 0;
-		if (!TryParseNonNegativeInt(argument, parsedCooldownMinutes))
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"CDM",
-				"Usage: .smr cdm cooldown <minutes>. Example: .smr cdm cooldown 60",
-				true,
-				true,
-				false,
-				true,
-				false);
-			return true;
-		}
-
-		const DatalinkControlState state = GetDatalinkControlState();
-		std::string updateError;
-		if (!UpdateDatalinkControlSettings(
-			state.logonCallsign,
-			"",
-			false,
-			state.cdmAutoEnabled,
-			state.cdmDelayMinutes,
-			parsedCooldownMinutes,
-			updateError,
-			false))
-		{
-			DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
-			return true;
-		}
-		publishCooldownStatus("Updated");
-		return true;
-	}
-	else if (startsWithCommand(".smr cdm auto"))
-	{
-		const std::string prefix = ".smr cdm auto";
-		std::string argument = "";
-		if (commandLower.size() > prefix.size())
-			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
-
-		const auto publishCdmAutoStatus = [&](const char* action)
-		{
-			const DatalinkControlState state = GetDatalinkControlState();
-			const bool enabled = state.cdmAutoEnabled;
-			int delayMinutes = state.cdmDelayMinutes;
-			if (delayMinutes < 0)
-				delayMinutes = 0;
-
-			std::string message = std::string(action) + " CDM auto mode: ";
-			message += enabled ? "enabled" : "disabled";
-			message += ", delay=" + std::to_string(delayMinutes) + " minute";
-			if (delayMinutes != 1)
-				message += "s";
-			if (enabled && delayMinutes == 0)
-				message += " (immediate)";
-
-			DisplayUserMessage("vSMR", "CDM", message.c_str(), true, true, false, true, false);
-		};
-
-		if (argument.empty() || argument == "status")
-		{
-			publishCdmAutoStatus("Status");
-			return true;
-		}
-
-		if (argument == "off" || argument == "disable")
-		{
-			const DatalinkControlState state = GetDatalinkControlState();
-			std::string updateError;
-			if (!UpdateDatalinkControlSettings(
-				state.logonCallsign,
-				"",
-				false,
-				false,
-				state.cdmDelayMinutes,
-				state.cdmCooldownMinutes,
-				updateError,
-				false))
-			{
-				DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
-				return true;
-			}
-			publishCdmAutoStatus("Updated");
-			return true;
-		}
-
-		if (argument == "on" || argument == "enable")
-		{
-			const DatalinkControlState state = GetDatalinkControlState();
-			std::string updateError;
-			if (!UpdateDatalinkControlSettings(
-				state.logonCallsign,
-				"",
-				false,
-				true,
-				state.cdmDelayMinutes,
-				state.cdmCooldownMinutes,
-				updateError,
-				false))
-			{
-				DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
-				return true;
-			}
-			publishCdmAutoStatus("Updated");
-			return true;
-		}
-
-		int parsedDelayMinutes = 0;
-		if (!TryParseNonNegativeInt(argument, parsedDelayMinutes))
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"CDM",
-				"Usage: .smr cdm auto <minutes|on|off>. Example: .smr cdm auto 5",
-				true,
-				true,
-				false,
-				true,
-				false);
-			return true;
-		}
-
-		const DatalinkControlState state = GetDatalinkControlState();
-		std::string updateError;
-		if (!UpdateDatalinkControlSettings(
-			state.logonCallsign,
-			"",
-			false,
-			true,
-			parsedDelayMinutes,
-			state.cdmCooldownMinutes,
-			updateError,
-			false))
-		{
-			DisplayUserMessage("vSMR", "CDM", updateError.c_str(), true, true, false, true, false);
-			return true;
-		}
-		publishCdmAutoStatus("Updated");
-		return true;
-	}
-	else if (commandLower == ".smr cdm")
-	{
-		std::string result;
-		std::string error;
-		if (RunCdmReminderScan(result, error))
-			DisplayUserMessage("vSMR", "CDM", result.c_str(), true, true, false, true, false);
-		else if (!error.empty())
-			DisplayUserMessage("vSMR", "CDM", error.c_str(), true, true, false, true, false);
 		return true;
 	}
 	else if (startsWithCommand(".smr log")) {
@@ -4318,18 +4072,14 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			false);
 		return true;
 	}
-	else if (commandLower == ".smr editor" || commandLower == ".smr vsmr" || commandLower == ".smr config" || commandLower == ".smr profile")
+	else if (commandLower == ".smr editor")
 	{
-		const std::string pageName =
-			commandLower == ".smr profile" ? "profiles" :
-			commandLower == ".smr config" ? "settings" :
-			"overview";
 		bool opened = false;
 		for (auto* rd : RadarScreensOpened)
 		{
 			if (rd == nullptr)
 				continue;
-			rd->OpenVsmrControlCenterWindow(pageName);
+			rd->OpenVsmrControlCenterWindow("overview");
 			opened = true;
 			break;
 		}
@@ -4350,9 +4100,7 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 			return true;
 		}
 
-		std::string error;
-		if (!EditDatalinkCredentials(error) && !error.empty())
-			DisplayUserMessage("CPDLC", "Error", error.c_str(), true, true, false, true, false);
+		DisplayUserMessage("vSMR", "Config", "No active SMR radar screen found to open the vSMR window.", true, true, false, true, false);
 		return true;
 	}
 	return false;

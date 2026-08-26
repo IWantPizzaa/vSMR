@@ -737,8 +737,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		if (proModeEnabled && !hasAssignedSquawk)
 			target.correlated = false;
 		const bool keepIconForSquawkMismatch = proModeEnabled && (wrongSquawk || !hasAssignedSquawk);
-		target.iconVisible =
-			target.correlated || target.reportedGroundSpeed >= 1 || keepIconForSquawkMismatch;
+		const bool withinAirborneDisplayLimits = IsWithinAirborneDisplayLimits(
+			target.reportedGroundSpeed,
+			target.pressureAltitude,
+			displaySettings);
+		target.iconVisible = withinAirborneDisplayLimits &&
+			(target.correlated || target.reportedGroundSpeed >= 1 || keepIconForSquawkMismatch);
 		if (target.iconVisible)
 			++scene->stats.iconTargetCount;
 
@@ -793,6 +797,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			flightPlan,
 			target.correlated,
 			target.reportedGroundSpeed,
+			target.pressureAltitude,
 			target.rimcas.onRunway,
 			displaySettings,
 			capturedVacdmData);

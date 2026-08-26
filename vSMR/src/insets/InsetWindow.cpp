@@ -2768,7 +2768,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		renderWindow = ::GetActiveWindow();
 	UpdateAvisoScreenArea(renderWindow);
 
-	dc.FillSolidRect(viewportRect, radar_screen->GetInactiveSectorBackgroundColor());
+	dc.FillSolidRect(viewportRect, radar_screen->GetAvisoBackgroundColor());
 	radar_screen->AddScreenObject(m_Id, "window", viewportRect, false, "");
 	radar_screen->AddScreenObject(m_Id, "viewport", viewportRect, false, "");
 
@@ -2812,6 +2812,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		dc.Detach();
 		return;
 	}
+	dc.FillSolidRect(viewportRect, radar_screen->GetAvisoBackgroundColor());
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<CSMRRadar::AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
@@ -3881,7 +3882,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				tagCenter.y - (tagHeight / 2),
 				tagCenter.x + (tagWidth / 2),
 				tagCenter.y + (tagHeight / 2));
-			const int tagPadding = 1;
+			const int tagPadding = roundedTagCornersEnabled ? 1 : 0;
 			tagBackgroundRect.InflateRect(tagPadding, tagPadding);
 			tagBackgroundRect.NormalizeRect();
 			if (!rectIntersectsViewport(tagBackgroundRect) && !pointInViewport(targetPoint, 20))
@@ -5135,7 +5136,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	windowAreaCRect.NormalizeRect();
 
 	// We create the radar
-	dc.FillSolidRect(windowAreaCRect, radar_screen->GetInactiveSectorBackgroundColor());
+	dc.FillSolidRect(windowAreaCRect, radar_screen->GetAvisoBackgroundColor());
 	radar_screen->AddScreenObject(m_Id, "window", windowAreaCRect, false, "");
 
 	// Keep every SRW drawing primitive and hit target inside the usable content
@@ -5677,7 +5678,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			: definedBackgroundColor;
 
 		CRect TagBackgroundRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
-		const int padding = 1;
+		const int padding = roundedTagCornersEnabled ? 1 : 0;
 		TagBackgroundRect.InflateRect(padding, padding);
 		CRect visibleTagRect;
 

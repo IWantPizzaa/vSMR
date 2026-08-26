@@ -100,7 +100,7 @@
 <div class="scroll-list visual-tree unified-master-list color-definition-tree" id="colorTree"></div>
 </aside>
 <section class="panel detail-panel">
-<div class="panel-title"><span id="selectedColorPath">Color</span></div>
+<div class="panel-title"><span id="selectedColorPath">Color</span><span class="mini-tools editor-copy-tools"><button class="wide" data-action="copy-profile-color" type="button">Copy</button><button class="wide" data-action="paste-profile-color" type="button">Paste</button></span></div>
 <div class="detail-scroll color-detail-scroll">
 <div class="color-editor-body">
 <div class="color-picker-workbench">
@@ -157,7 +157,7 @@
 </aside>
 <div class="tag-right-stack">
 <section class="panel tag-definition-detail-panel">
-<div class="panel-title"><span id="tagEditorCaption">Tag definition</span></div>
+<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><span class="mini-tools editor-copy-tools"><button class="wide" data-action="copy-tag-definition" type="button">Copy</button><button class="wide" data-action="paste-tag-definition" type="button">Paste</button></span></div>
 <div class="detail-scroll tag-definition-detail-scroll">
 <div class="tag-editor-panel" id="tagDefinitionEditor">
 <label class="check-field inherit-row"><input id="tagDetailedInherits" type="checkbox"/><span>Detailed tag inherits normal</span></label>
@@ -273,6 +273,13 @@
 <label class="check-field"><input id="reqTobt" type="checkbox"/><span>Active TOBT</span></label>
 <label class="check-field"><input id="modeTowerFilter" type="checkbox"/><span>Tower filter</span></label>
 <label class="check-field"><input id="modeStructuredRules" type="checkbox"/><span>Structured rules</span></label>
+</div>
+</fieldset>
+<fieldset class="compact-group">
+<legend>Airborne limits</legend>
+<div class="dense-form two-cols">
+<label class="field"><span>Max altitude (ft)</span><input id="modeMaxAirborneAltitude" max="60000" min="0" required step="100" type="number"/></label>
+<label class="field"><span>Max speed (kt)</span><input id="modeMaxAirborneSpeed" max="1000" min="0" required step="10" type="number"/></label>
 </div>
 </fieldset>
 <fieldset class="compact-group">

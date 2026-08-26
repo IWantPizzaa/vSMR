@@ -23,6 +23,8 @@ window.VSMR_DATA = {
               require_clearance: false,
               require_valid_tsat: false,
               require_active_tobt: false,
+              max_airborne_altitude_ft: 5500,
+              max_airborne_speed_kt: 250,
               statuses: {
                 no_status: true, push: true, startup: true, taxi: true, lineup: true,
                 departure: true, on_runway: true, airborne: true,
@@ -35,6 +37,8 @@ window.VSMR_DATA = {
               require_clearance: false,
               require_valid_tsat: false,
               require_active_tobt: false,
+              max_airborne_altitude_ft: 5500,
+              max_airborne_speed_kt: 250,
               statuses: {
                 no_status: false, push: false, startup: false, taxi: true, lineup: true,
                 departure: true, on_runway: true, airborne: true,
@@ -165,7 +169,7 @@ window.VSMR_DATA = {
   aviso: {
     type: "FeatureCollection",
     name: "LFPG AVISO preview",
-    metadata: { airport: "LFPG", bundled_preview: true, default_color_palette: "night", color_palettes: ["night", "day"] },
+    metadata: { airport: "LFPG", bundled_preview: true, default_color_palette: "night", color_palettes: ["night", "day"], background_colors: { night: "#434A4F", day: "#434A4F" } },
     styles: {
       "surface.taxiway": {
         name: "Taxiways",

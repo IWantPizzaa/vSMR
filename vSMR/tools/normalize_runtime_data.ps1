@@ -753,6 +753,24 @@ function Normalize-AvisoFile {
         throw "$($File.Name) uses an unsupported future schema_version."
     }
 
+    $backgroundNight = "#434A4F"
+    $backgroundDay = "#434A4F"
+    if ((Test-JsonProperty $document "metadata") -and
+        (Test-JsonProperty $document.metadata "background_colors")) {
+        $backgroundColors = $document.metadata.background_colors
+        if (-not ($backgroundColors -is [pscustomobject])) {
+            throw "$($File.Name) metadata.background_colors must be an object."
+        }
+        foreach ($palette in @("night", "day")) {
+            if (-not (Test-JsonProperty $backgroundColors $palette) -or
+                [string]$backgroundColors.$palette -notmatch '^#[0-9A-Fa-f]{6}$') {
+                throw "$($File.Name) metadata.background_colors.$palette must be a #RRGGBB color."
+            }
+        }
+        $backgroundNight = ([string]$backgroundColors.night).ToUpperInvariant()
+        $backgroundDay = ([string]$backgroundColors.day).ToUpperInvariant()
+    }
+
     if ((Test-JsonProperty $document "styles") -and $document.styles -is [pscustomobject]) {
         foreach ($property in $document.styles.PSObject.Properties) {
             $styles[$property.Name] = New-NormalizedStyle $property.Value $null $null
@@ -1021,6 +1039,10 @@ function Normalize-AvisoFile {
         coordinate_order = "longitude, latitude"
         default_color_palette = "night"
         color_palettes = @("night", "day")
+        background_colors = [pscustomobject][ordered]@{
+            night = $backgroundNight
+            day = $backgroundDay
+        }
         feature_count = $normalizedFeatures.Count
         style_count = $normalizedStyles.Count
         layer_counts = [pscustomobject]$normalizedLayerCounts

@@ -196,6 +196,13 @@ namespace
 		return fallback;
 	}
 
+	int ReadIntMember(const rapidjson::Value& objectValue, const char* key, int fallback, int minValue, int maxValue)
+	{
+		if (!objectValue.IsObject() || !objectValue.HasMember(key) || !objectValue[key].IsInt())
+			return std::clamp(fallback, minValue, maxValue);
+		return std::clamp(objectValue[key].GetInt(), minValue, maxValue);
+	}
+
 	void WriteStringMember(rapidjson::Value& objectValue, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
 	{
 		using rapidjson::Value;
@@ -217,6 +224,18 @@ namespace
 		keyValue.SetString(key, allocator);
 		Value boolValue(value);
 		objectValue.AddMember(keyValue, boolValue, allocator);
+	}
+
+	void WriteIntMember(rapidjson::Value& objectValue, const char* key, int value, rapidjson::Document::AllocatorType& allocator)
+	{
+		using rapidjson::Value;
+		if (objectValue.HasMember(key))
+			objectValue.RemoveMember(key);
+		Value keyValue;
+		keyValue.SetString(key, allocator);
+		Value intValue;
+		intValue.SetInt(value);
+		objectValue.AddMember(keyValue, intValue, allocator);
 	}
 
 	void WriteStatusVisibility(rapidjson::Value& modeValue, const CSMRRadar::DisplayModeStatusVisibility& statuses, rapidjson::Document::AllocatorType& allocator)
@@ -253,6 +272,8 @@ namespace
 		WriteBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
 		WriteBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
 		WriteBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
+		WriteIntMember(modeValue, "max_airborne_altitude_ft", std::clamp(settings.maximumAirborneAltitudeFt, 0, 60000), allocator);
+		WriteIntMember(modeValue, "max_airborne_speed_kt", std::clamp(settings.maximumAirborneSpeedKt, 0, 1000), allocator);
 		WriteStatusVisibility(modeValue, settings.statuses, allocator);
 	}
 
@@ -275,6 +296,8 @@ namespace
 		settings.acceptPilotSquawk = ReadBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk);
 		settings.towerFilter = ReadBoolMember(modeValue, "tower_filter", ReadBoolMember(modeValue, "tower_mode", settings.towerFilter));
 		settings.structuredRulesEnabled = ReadBoolMember(modeValue, "structured_rules", ReadBoolMember(modeValue, "structured_rules_enabled", settings.structuredRulesEnabled));
+		settings.maximumAirborneAltitudeFt = ReadIntMember(modeValue, "max_airborne_altitude_ft", settings.maximumAirborneAltitudeFt, 0, 60000);
+		settings.maximumAirborneSpeedKt = ReadIntMember(modeValue, "max_airborne_speed_kt", settings.maximumAirborneSpeedKt, 0, 1000);
 
 		if (modeValue.HasMember("statuses") && modeValue["statuses"].IsObject())
 		{

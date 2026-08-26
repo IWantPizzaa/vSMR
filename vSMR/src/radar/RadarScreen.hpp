@@ -70,7 +70,6 @@ public:
 
 	static map<string, string> vStripsStands;
 
-	bool drawRunways = false;
 	map<string, POINT> TagsOffsets;
 
 	typedef struct tagPOINT2 {
@@ -443,8 +442,8 @@ public:
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
 	bool AvisoUseDayColorPalette = false;
-	COLORREF InactiveSectorBackgroundColor = RGB(67, 74, 79);
-	unsigned long InactiveSectorBackgroundSampleTick = 0;
+	COLORREF AvisoNightBackgroundColor = RGB(67, 74, 79);
+	COLORREF AvisoDayBackgroundColor = RGB(67, 74, 79);
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;
@@ -557,6 +556,8 @@ public:
 		bool requireActiveTobt = false;
 		bool towerFilter = false;
 		bool structuredRulesEnabled = true;
+		int maximumAirborneAltitudeFt = 5500;
+		int maximumAirborneSpeedKt = 250;
 		DisplayModeStatusVisibility statuses;
 	};
 
@@ -564,7 +565,8 @@ public:
 	bool IsCorrelatedWithSettings(CFlightPlan fp, CRadarTarget rt, const CorrelationSettings& settings) const;
 	virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt);
 	DisplayModeSettings GetActiveDisplayModeSettings() const;
-	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const;
+	bool IsWithinAirborneDisplayLimits(int reportedGs, int pressureAltitudeFt, const DisplayModeSettings& settings) const;
+	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const;
 
 	//---LoadCustomFont--------------------------------------------
 
@@ -736,8 +738,7 @@ public:
 	void InvalidateAvisoGroupRendering();
 	void ClearAvisoGeoJsonRasterCache();
 	CRect ResolveMainAvisoRenderArea();
-	COLORREF GetInactiveSectorBackgroundColor() const noexcept;
-	void UpdateInactiveSectorBackgroundColor(HDC hDC, const RECT& radarArea);
+	COLORREF GetAvisoBackgroundColor() const noexcept;
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
 	bool IsShutdownRequested() const;
@@ -776,7 +777,6 @@ public:
 	bool SetActiveAvisoPresetLinkedMovement(bool linked);
 	bool IsAvisoPresetLinkedMovementEnabled() const;
 	void SyncLinkedAvisoSecondaryToMainView();
-	void OpenAvisoEditorWindow();
 	void RenderTags(Graphics& graphics, CDC& dc);
 
 	//---OnClickScreenObject-----------------------------------------

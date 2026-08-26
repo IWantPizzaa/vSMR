@@ -5,10 +5,18 @@
 ### Added
 
 - Added a **No preset** action to the Runtime Menu. It clears the active inset preset and linked-view state, hides AVISO, SRW, Weather, and Timer insets, and returns to the main AVISO-only layout.
+- Added per-display-mode maximum airborne altitude and ground-speed limits. Targets above either limit are omitted from the main AVISO and radar insets while RIMCAS safety processing remains active.
+- Added an airport-specific Night/Day background color to every AVISO, exposed as the first color in the Geometry editor and rendered consistently in the main view, AVISO inset, and SRW.
+- Added Copy and Paste actions to the Tag and Profile Color editors. Tag paste supports multi-selection and preserves normal/detailed layouts; color paste accepts 6- and 8-digit hex values including opacity.
 
 ### Changed
 
-- Replaced the bundled **Custom LFPG** profile with the supplied updated configuration while retaining every other bundled profile and the shared profile metadata unchanged.
+- Replaced the bundled profiles with the supplied five-profile configuration.
+- Tightened square-corner tag borders while preserving the existing rounded-tag dimensions.
+- Made runway and SID/custom rule matches use an operator selector plus an editable value list, including `in` and `not in` matching for both sources.
+- Reworked Control Center persistence around one live model and a serialized latest-state save queue: every valid field is applied immediately, disk writes are lightly debounced, and acknowledgements advance revision tokens without repainting or replacing newer edits.
+- Fixed clean preloaded Control Centers retaining a stale profiles revision after another radar window saved, which caused a false “profiles file changed in another vSMR window” warning on the next edit.
+- Removed the RDF, CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces.
 
 ## [2.0.0-beta.4] - 2026-08-24
 

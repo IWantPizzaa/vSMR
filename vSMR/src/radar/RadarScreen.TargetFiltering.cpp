@@ -47,8 +47,29 @@ bool CSMRRadar::IsCorrelated(CFlightPlan fp, CRadarTarget rt)
 	return IsCorrelatedWithSettings(fp, rt, BuildCorrelationSettings());
 }
 
-bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const
+bool CSMRRadar::IsWithinAirborneDisplayLimits(
+	int reportedGs,
+	int pressureAltitudeFt,
+	const DisplayModeSettings& settings) const
 {
+	if (reportedGs <= 50)
+		return true;
+
+	if (settings.maximumAirborneAltitudeFt > 0 &&
+		pressureAltitudeFt > settings.maximumAirborneAltitudeFt)
+	{
+		return false;
+	}
+
+	return settings.maximumAirborneSpeedKt <= 0 ||
+		reportedGs <= settings.maximumAirborneSpeedKt;
+}
+
+bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const
+{
+	if (!IsWithinAirborneDisplayLimits(reportedGs, pressureAltitudeFt, settings))
+		return false;
+
 	if (settings.requireClearance && (!fp.IsValid() || !fp.GetClearenceFlag()))
 		return false;
 

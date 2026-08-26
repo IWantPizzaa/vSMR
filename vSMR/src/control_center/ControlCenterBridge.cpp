@@ -4156,11 +4156,11 @@ struct VsmrControlCenterBridge::Impl
 				saved.AddMember("payload", payload, allocator);
 				Send(saved);
 			}
-			// The browser already owns the AVISO document it just saved. Returning
-			// that multi-megabyte resource after every small autosave dominated the
-			// visible save time. Profiles/revisions remain authoritative, while AVISO
-			// is sent only for initial load, explicit reload, and external changes.
-			SendAuthoritativeState("save", envelope.id, false);
+			// The browser owns the exact immutable snapshot that was accepted above.
+			// A compact durable-write acknowledgement is sufficient; echoing profiles
+			// back through an authoritative-state render can overwrite edits made while
+			// this save was in flight. Initial load, explicit reload and external saves
+			// remain authoritative synchronization boundaries.
 			return true;
 		case VsmrBridgeAction::StateReload:
 		{

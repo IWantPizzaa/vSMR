@@ -221,40 +221,10 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		ReloadConfig();
 		return true;
 	}
-	if (strcmp(sCommandLine, ".smr editor") == 0 || strcmp(sCommandLine, ".smr vsmr") == 0) {
+	if (strcmp(sCommandLine, ".smr editor") == 0) {
 		OpenVsmrControlCenterWindow();
 		return true;
 	}
-	if (strcmp(sCommandLine, ".smr aviso reload") == 0) {
-		const bool loaded = ForceReloadAvisoGeoJson();
-		GetPlugIn()->DisplayUserMessage("vSMR", "AVISO", loaded ? "Reloaded AVISO." : "No AVISO file loaded.", true, true, false, false, false);
-		return true;
-	}
-	if (strcmp(sCommandLine, ".smr aviso editor") == 0) {
-		OpenAvisoEditorWindow();
-		return true;
-	}
-	if (strcmp(sCommandLine, ".smr draw") == 0) {
-		// Draw runways areas on radar screen
-		drawRunways = !drawRunways;
-		RequestRefresh();
-		return true;
-	}
-	if (strcmp(sCommandLine, ".smr status") == 0) {
-		// Print runway status
-		string msg;
-		for (const auto& [runway, status] : RimcasInstance->RunwayStatuses) {
-			string rwyStatus;
-			if (status == CRimcas::RunwayStatus::ARR) rwyStatus = "ARR";
-			else if (status == CRimcas::RunwayStatus::DEP) rwyStatus = "DEP";
-			else if (status == CRimcas::RunwayStatus::BOTH) rwyStatus = "BOTH";
-			else if (status == CRimcas::RunwayStatus::CLSD) rwyStatus = "CLSD";
-			msg += " Runway " + runway + ": " + rwyStatus + "\n";
-		}
-		GetPlugIn()->DisplayUserMessage("vSMR", "", msg.c_str(), true, true, false, false, false);
-		return true;
-	}
-
 
 	return false;
 }

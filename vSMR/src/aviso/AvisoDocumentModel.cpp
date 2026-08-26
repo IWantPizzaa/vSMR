@@ -153,6 +153,36 @@ bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText)
 				return false;
 			}
 		}
+		if (metadata.HasMember("background_colors"))
+		{
+			const rapidjson::Value& colors = metadata["background_colors"];
+			if (!colors.IsObject())
+			{
+				errorText = "AVISO metadata.background_colors must be an object.";
+				return false;
+			}
+			auto isHexColor = [](const rapidjson::Value& value)
+			{
+				if (!value.IsString() || value.GetStringLength() != 7 || value.GetString()[0] != '#')
+					return false;
+				for (rapidjson::SizeType i = 1; i < value.GetStringLength(); ++i)
+				{
+					const unsigned char character = static_cast<unsigned char>(value.GetString()[i]);
+					if (!std::isxdigit(character))
+						return false;
+				}
+				return true;
+			};
+			for (const char* palette : { "night", "day" })
+			{
+				if (colors.HasMember(palette) && !isHexColor(colors[palette]))
+				{
+					errorText = std::string("AVISO metadata.background_colors.") + palette +
+						" must be a #RRGGBB color.";
+					return false;
+				}
+			}
+		}
 	}
 	if (!Document.HasMember("features") || !Document["features"].IsArray())
 	{

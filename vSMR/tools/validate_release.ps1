@@ -490,6 +490,11 @@ function Assert-AvisoPaletteData {
     Assert-True ([string]$Document.metadata.default_color_palette -eq 'night') "$Name does not declare Night as its base AVISO palette."
     $palettes = @($Document.metadata.color_palettes)
     Assert-True ($palettes.Count -eq 2 -and [string]$palettes[0] -eq 'night' -and [string]$palettes[1] -eq 'day') "$Name must declare Night and Day AVISO palettes."
+    $backgroundColors = $Document.metadata.background_colors
+    Assert-True ($null -ne $backgroundColors -and $backgroundColors -is [pscustomobject]) "$Name has no AVISO background palette."
+    foreach ($palette in @('night', 'day')) {
+        Assert-True ([string]$backgroundColors.$palette -match '^#[0-9A-Fa-f]{6}$') "$Name has an invalid $palette AVISO background color."
+    }
 
     foreach ($styleProperty in @($Document.styles.PSObject.Properties)) {
         $paint = $styleProperty.Value.paint
