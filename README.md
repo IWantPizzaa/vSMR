@@ -134,13 +134,7 @@ Updater configuration, durable recovery state, and non-secret status use the det
 
 Compatible releases update the canonical runtime and `vSMR_Data` while preserving the already loaded top-level loader. vSMR never schedules an automatic replacement of that loader. If a signed release requires a newer loader, the installed runtime remains available and the Control Center asks for a manual full-package installation after EuroScope has been closed.
 
-Maintainers can exercise the updater without contacting GitHub or changing a live installation:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\updater_harness\run_updater_harness.ps1
-```
-
-The harness builds a disposable loader and test executable, uses isolated install/feed/storage directories, and checks release selection, signature verification and rejection, cancellation, concurrent sessions, transaction recovery, rollback, Unicode paths, and runtime-shadow protection. It also verifies that the test seam never writes the production `%LOCALAPPDATA%\vSMR\Updater` state. A local unsigned package can be validated with `verify_release_package.ps1 -AllowNonPublishable`, but production automatic updates intentionally ignore it. Test the complete GitHub path only with a signed higher-version release and a disposable EuroScope installation or VM.
+Test the complete GitHub update path only with a signed higher-version release and a disposable EuroScope installation or VM.
 
 ## First Run
 
@@ -204,7 +198,7 @@ Normal and detailed tag definitions can be customized for departure and arrival 
 
 To add the field to any EuroScope aircraft list, select `vSMR / Holding Point` as the Tag Item Type. Select the identically named `vSMR / Holding Point` function for both the left- and right-button actions; EuroScope configures these actions per list column. Entering an empty value clears only the holding point. Values are case-insensitive, normalized to uppercase, and may contain up to eight letters, numbers, hyphens, or slashes.
 
-The bundled runway/holding-point catalogue is generated from the `intersections` mappings in the French vACC [vSID configurations](https://github.com/rmaure06/vsid-configurations). Maintainers can regenerate `airports_hp.json` from a checked-out upstream tree with `vSMR\tools\import_vsid_holding_points.ps1 -SourceDirectory <path>`; the importer validates airport/runway identifiers, normalizes values, and removes duplicate points while preserving their upstream order.
+The bundled runway/holding-point catalogue is generated from the `intersections` mappings in the French vACC [vSID configurations](https://github.com/rmaure06/vsid-configurations).
 
 Tag backgrounds use compact text padding consistently in the main radar, AVISO inset, and SRW 1 inset.
 
@@ -521,72 +515,24 @@ The solution exposes `Release | Win32` as its sole configuration, so a normal **
 
 The AVISO airport files are copied by the build target and intentionally are not expanded into hundreds of IDE project items. This avoids Visual C++'s unsupported project-item wildcard warning while retaining every canonical `data\AVISO\<ICAO>.geojson` file in `vSMR_Data`.
 
-### Validate source data
-
-Check that bundled profiles, aircraft data, and every AVISO file are canonical:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\normalize_runtime_data.ps1 -Mode Check
-```
-
-Maintainers can use `-Mode Write` to normalize imported data before reviewing the resulting diff.
-
-To merge a color-only Day source into the existing Night-based documents, use:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\merge_aviso_day_palette.ps1 -DaySource C:\path\to\day-aviso.zip
-```
-
-The importer reads and writes UTF-8 explicitly and stops if feature data, geometry, style catalogs, or non-color paint differ. Run the normalizer afterwards so the airport files remain canonical.
-
 ### Build and package
 
 From the repository root:
 
-1. Set the exact release version and AVISO behavior in `vSMR\data\AVISO-UPDATE-POLICY.json`. Use `none` for a normal code-only release, `selected` with explicit canonical filenames for a partial map update, or `all` only when every bundled map must be refreshed. Choose `preserve`, `protect_setting`, or `replace` deliberately for locally modified files, and list obsolete canonical maps in `delete` only after removing them from the bundled AVISO directory.
-2. After committing the release and creating the matching version tag, run the fail-closed release command:
+Force a complete optimized build, even when MSBuild considers the outputs current:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_github_release.ps1 `
-  -Version 2.0.0-beta.4 `
-  -PublishedBeta3ArchivePath C:\path\to\vSMR-2.0.0-beta.3.zip
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\build_project.ps1
 ```
 
-The script:
-
-1. locates Visual Studio and MSBuild
-2. selects an installed Win32 toolset with MFC
-3. restores NuGet packages
-4. rebuilds `Release | Win32`
-5. validates versioning, compiler hardening, runtime data, licenses, and release layout
-6. validates the release-owned AVISO update policy and stages a clean payload
-7. generates the official AVISO hash inventory, release metadata, and internal SHA-256 package manifest
-8. creates the user ZIP, external update manifest, detached signature for a publishable release, and separate private-symbol archive
-
-A publishable automatic-update package requires a clean tagged Git commit, a trusted code-signing certificate with a private key, and the matching certificate pin. The release driver always requires and verifies all of these inputs. To create an explicitly unsigned manual-install package, use the lower-level packager from a clean tagged release commit:
+Before packaging, set the exact release version and AVISO behavior in `vSMR\data\AVISO-UPDATE-POLICY.json`. A publishable automatic-update package requires a trusted code-signing certificate and matching certificate pin. Create the release assets with:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\package_release.ps1 `
-  -Version 2.0.0-beta.4 -ForceNonPublishable
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_release_package.ps1 `
+  -Version 2.0.0-beta.5
 ```
 
-Use `-AllowDirtySource` only for local development checks. An unsigned artifact is explicitly marked `publishable: false`, has no detached `.p7s` signature, and must be installed manually. Verify it with:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\verify_release_package.ps1 `
-  -ArchivePath .\artifacts\vSMR-2.0.0-beta.4.zip `
-  -AllowNonPublishable
-```
-
-### Crash-report harness
-
-The isolated Win32 harness exercises the production directory-selection and retention code, the packaged WER callback ABI, Unicode and paths longer than `MAX_PATH`, missing-DbgHelp text survival, concurrent callbacks, and repeated DLL loading without starting or crashing EuroScope:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\crash_harness\run_crash_harness.ps1
-```
-
-Add `-IncludeWerIntegration` to also launch disposable harness subprocesses for a handled access violation, a real unhandled access violation, and stack overflow. The handled exception must create no report; the two unhandled failures must create report pairs. The runner temporarily adds only its exact per-user WER allowlist value and restores the previous value when it finishes.
+Use `-ForceNonPublishable` for an explicitly unsigned manual-install package and `-AllowDirtySource` only for local development checks.
 
 The user archive contains only:
 
@@ -605,7 +551,7 @@ For an offline EuroScope machine, install the x86 WebView2 Evergreen Standalone 
 
 ### Signing
 
-`package_release.ps1` is signature-required by default. It Authenticode-signs the bootstrap loader, runtime, and crash-handler DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. For a clean publishable build, the same certificate creates the detached CMS signature over the exact UTF-8 update manifest; validation-only builds require the explicit `-ForceNonPublishable` switch and are never given that production signature. Production builds inject the SHA-256 of the certificate's DER encoding through `VSMR_UPDATE_SIGNER_CERT_SHA256`; the packaged loader and manifest signer must agree. Authenticode timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
+`create_release_package.ps1` is signature-required by default. It Authenticode-signs the bootstrap loader, runtime, and crash-handler DLLs when `VSMR_SIGNING_CERT_THUMBPRINT` or `-CertificateThumbprint` identifies an installed code-signing certificate. For a clean publishable build, the same certificate creates the detached CMS signature over the exact UTF-8 update manifest; validation-only builds require the explicit `-ForceNonPublishable` switch and are never given that production signature. Production builds inject the SHA-256 of the certificate's DER encoding through `VSMR_UPDATE_SIGNER_CERT_SHA256`; the packaged loader and manifest signer must agree. Authenticode timestamping defaults to DigiCert and can be changed with `-TimestampUrl`.
 
 Do not describe a package as signed unless package verification confirms the signature.
 
@@ -643,8 +589,7 @@ vSMR\
     diagnostics\      Bounded performance collection, statistics, and report serialization
   resources\          Windows resource scripts, cursors, and DLL exports
   data\               Runtime data copied to vSMR_Data in Release
-  tools\              Data, release, and package-verification tools
-    crash_harness\    Isolated crash-report harness and runner
+  tools\              Release build and packaging scripts
 ```
 
 Important implementation areas:
@@ -664,8 +609,7 @@ Important implementation areas:
 | `vSMR/src/control_center/web/` | Control Center HTML, CSS, and JavaScript source |
 | `vSMR/src/crash/CrashReporter.cpp` and `vSMR/src/crash/handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
 | `vSMR/src/diagnostics/` | Per-radar performance samples, aggregate statistics, cache/worker counters, and JSON reports |
-| `vSMR/tools/crash_harness/` | Isolated deterministic and real-WER crash-report validation harness |
-| `vSMR/tools/` | Runtime-data normalization, release packaging, and package verification |
+| `vSMR/tools/` | Forced Release builds and release-package creation |
 
 The source location `vSMR\src\control_center\web\` is a development detail. Builds still install those files as `vSMR_Data\vSMR_webUI\`, and the crash handler is still installed as `vSMR_Data\CrashReporter\vSMRCrashHandler.dll`. The reorganization does not change the user package or runtime data contract.
 
