@@ -46,7 +46,7 @@ std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 std::atomic<bool> PluginShutdownRequested(false);
 std::atomic<CSMRPlugin*> ActivePluginInstance{ nullptr };
-std::atomic<bool> ScratchpadRefreshPending(false);
+std::atomic<bool> FlightDataRefreshPending(false);
 
 string logonCode = "";
 string logonCallsign = "EGKK";
@@ -3286,7 +3286,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 {
 	ActivePluginInstance.store(this, std::memory_order_release);
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
-	ScratchpadRefreshPending.store(false, std::memory_order_relaxed);
+	FlightDataRefreshPending.store(false, std::memory_order_relaxed);
 	VsmrHoldingPoint::ClearPending();
 	NetworkCancellationRequested.store(false, std::memory_order_relaxed);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -4127,11 +4127,11 @@ void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, 
 		if (!FlightPlan.IsValid())
 			return;
 
-		const char* rawScratchpad = FlightPlan.GetControllerAssignedData().GetScratchPadString();
+		const char* rawRemarks = FlightPlan.GetFlightPlanData().GetRemarks();
 		const char* callsign = FlightPlan.GetCallsign();
 		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
 			callsign != nullptr ? callsign : "",
-			rawScratchpad != nullptr ? rawScratchpad : "");
+			rawRemarks != nullptr ? rawRemarks : "");
 		// A single space keeps an empty EuroScope list item clickable without
 		// displaying the old "HP" placeholder.
 		strcpy_s(sItemString, 16, holdingPoint.empty() ? " " : holdingPoint.c_str());
@@ -4219,16 +4219,17 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			return false;
 		}
 
-		CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
-		const char* rawScratchpad = assignedData.GetScratchPadString();
-		const std::string currentScratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
-		const std::string updatedScratchpad = VsmrHoldingPoint::Write(currentScratchpad, holdingPoint);
-		if (updatedScratchpad != currentScratchpad && !assignedData.SetScratchPadString(updatedScratchpad.c_str()))
+		CFlightPlanData flightPlanData = flightPlan.GetFlightPlanData();
+		const char* rawRemarks = flightPlanData.GetRemarks();
+		const std::string currentRemarks = rawRemarks != nullptr ? rawRemarks : "";
+		const std::string updatedRemarks = VsmrHoldingPoint::Write(currentRemarks, holdingPoint);
+		if (updatedRemarks != currentRemarks &&
+			(!flightPlanData.SetRemarks(updatedRemarks.c_str()) || !flightPlanData.AmendFlightPlan()))
 		{
 			DisplayUserMessage(
 				"vSMR",
 				"Holding Point",
-				"EuroScope rejected the scratchpad update. Shorten the existing scratchpad text and try again.",
+				"EuroScope rejected the flight plan remarks update. Shorten the remarks or check that you can amend this flight plan.",
 				true, true, false, false, false);
 			return false;
 		}
@@ -4259,10 +4260,10 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 			PendingHoldingPointCallsign = callsign;
 		}
 
-		const char* rawScratchpad = flightPlan.GetControllerAssignedData().GetScratchPadString();
+		const char* rawRemarks = flightPlan.GetFlightPlanData().GetRemarks();
 		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
 			callsign,
-			rawScratchpad != nullptr ? rawScratchpad : "");
+			rawRemarks != nullptr ? rawRemarks : "");
 		const char* runwayRaw = flightPlan.GetFlightPlanData().GetDepartureRwy();
 		const std::string runway = NormalizeHoldingPointCatalogKey(runwayRaw != nullptr ? runwayRaw : "");
 		const std::vector<std::string> holdingPoints = HoldingPointsForFlightPlan(flightPlan);
@@ -4286,10 +4287,10 @@ void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT 
 		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
 		if (!flightPlan.IsValid())
 			return;
-		const char* rawScratchpad = flightPlan.GetControllerAssignedData().GetScratchPadString();
+		const char* rawRemarks = flightPlan.GetFlightPlanData().GetRemarks();
 		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
 			callsign,
-			rawScratchpad != nullptr ? rawScratchpad : "");
+			rawRemarks != nullptr ? rawRemarks : "");
 		OpenPopupEdit(Area, TAG_FUNC_HOLDING_POINT_COMMIT, holdingPoint.c_str());
 		return;
 	}
@@ -4609,25 +4610,38 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 void CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate(CFlightPlan FlightPlan, int DataType)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanControllerAssignedDataUpdate");
+	(void)FlightPlan;
 	if (DataType != CTR_DATA_TYPE_SCRATCH_PAD_STRING ||
 		PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		return;
 	}
-	if (FlightPlan.IsValid())
-	{
-		const char* callsign = FlightPlan.GetCallsign();
-		const char* scratchpad = FlightPlan.GetControllerAssignedData().GetScratchPadString();
-		(void)VsmrHoldingPoint::Resolve(
-			callsign != nullptr ? callsign : "",
-			scratchpad != nullptr ? scratchpad : "");
-	}
-
 	// EuroScope may dispatch synchronized scratchpad updates in bursts and may
 	// invoke this callback while it still owns internal flight-plan state. Never
 	// enter radar rendering from here. The normal UI timer consumes this flag and
 	// coalesces any number of updates into one refresh for each open screen.
-	ScratchpadRefreshPending.store(true, std::memory_order_release);
+	FlightDataRefreshPending.store(true, std::memory_order_release);
+}
+
+void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
+{
+	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanFlightPlanDataUpdate");
+	if (PluginShutdownRequested.load(std::memory_order_relaxed))
+		return;
+
+	if (FlightPlan.IsValid())
+	{
+		const char* callsign = FlightPlan.GetCallsign();
+		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
+		(void)VsmrHoldingPoint::Resolve(
+			callsign != nullptr ? callsign : "",
+			remarks != nullptr ? remarks : "");
+	}
+
+	// Flight-plan amendments are synchronized between controllers. Defer the
+	// visual refresh to the timer so a burst of server updates never re-enters
+	// radar rendering from inside EuroScope's flight-plan callback.
+	FlightDataRefreshPending.store(true, std::memory_order_release);
 }
 
 void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar)
@@ -4873,30 +4887,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	VsmrRdf::OnTimer();
-	for (const std::string& callsign : VsmrHoldingPoint::KnownCallsigns())
-	{
-		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
-		if (!flightPlan.IsValid())
-			continue;
-
-		CFlightPlanControllerAssignedData assignedData = flightPlan.GetControllerAssignedData();
-		const char* rawScratchpad = assignedData.GetScratchPadString();
-		const std::string scratchpad = rawScratchpad != nullptr ? rawScratchpad : "";
-		const std::optional<std::string> restore = VsmrHoldingPoint::ObserveAssumption(
-			callsign,
-			scratchpad,
-			flightPlan.GetState() == FLIGHT_PLAN_STATE_ASSUMED);
-		if (!restore.has_value())
-			continue;
-
-		const std::string updatedScratchpad = VsmrHoldingPoint::Write(scratchpad, *restore);
-		if (updatedScratchpad != scratchpad && assignedData.SetScratchPadString(updatedScratchpad.c_str()))
-		{
-			VsmrHoldingPoint::RememberPending(callsign, *restore);
-			ScratchpadRefreshPending.store(true, std::memory_order_release);
-		}
-	}
-	if (ScratchpadRefreshPending.exchange(false, std::memory_order_acq_rel))
+	if (FlightDataRefreshPending.exchange(false, std::memory_order_acq_rel))
 	{
 		for (CSMRRadar* radar : RadarScreensOpened)
 		{

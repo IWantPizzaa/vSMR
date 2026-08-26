@@ -4,7 +4,6 @@
 #include <cctype>
 #include <chrono>
 #include <mutex>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -16,7 +15,6 @@ namespace VsmrHoldingPoint
 	inline constexpr const char* Marker = "HP:";
 	inline constexpr std::size_t MaximumValueLength = 8;
 	inline constexpr auto PendingValueLifetime = std::chrono::seconds(15);
-	inline constexpr auto AssumptionRestoreWindow = std::chrono::seconds(10);
 
 	struct PendingValue
 	{
@@ -24,18 +22,8 @@ namespace VsmrHoldingPoint
 		std::chrono::steady_clock::time_point submittedAt;
 	};
 
-	struct AssumptionState
-	{
-		bool initialized = false;
-		bool wasAssumed = false;
-		bool restoreAttempted = false;
-		std::chrono::steady_clock::time_point restoreUntil{};
-	};
-
 	inline std::mutex PendingValuesMutex;
 	inline std::unordered_map<std::string, PendingValue> PendingValues;
-	inline std::unordered_map<std::string, std::string> KnownValues;
-	inline std::unordered_map<std::string, AssumptionState> AssumptionStates;
 
 	inline std::string Trim(const std::string& value)
 	{
@@ -105,9 +93,9 @@ namespace VsmrHoldingPoint
 		return true;
 	}
 
-	inline std::vector<std::string> SplitScratchpad(const std::string& scratchpad)
+	inline std::vector<std::string> SplitRemarks(const std::string& remarks)
 	{
-		std::istringstream stream(scratchpad);
+		std::istringstream stream(remarks);
 		std::vector<std::string> tokens;
 		std::string token;
 		while (stream >> token)
@@ -115,7 +103,7 @@ namespace VsmrHoldingPoint
 		return tokens;
 	}
 
-	inline std::string JoinScratchpad(const std::vector<std::string>& tokens)
+	inline std::string JoinRemarks(const std::vector<std::string>& tokens)
 	{
 		std::string result;
 		for (const std::string& token : tokens)
@@ -127,9 +115,9 @@ namespace VsmrHoldingPoint
 		return result;
 	}
 
-	inline std::string Read(const std::string& scratchpad)
+	inline std::string Read(const std::string& remarks)
 	{
-		for (const std::string& token : SplitScratchpad(scratchpad))
+		for (const std::string& token : SplitRemarks(remarks))
 		{
 			if (!IsMarkerToken(token))
 				continue;
@@ -141,28 +129,28 @@ namespace VsmrHoldingPoint
 		return "";
 	}
 
-	inline std::string WithoutHoldingPoint(const std::string& scratchpad)
+	inline std::string WithoutHoldingPoint(const std::string& text)
 	{
 		std::vector<std::string> retained;
-		for (const std::string& token : SplitScratchpad(scratchpad))
+		for (const std::string& token : SplitRemarks(text))
 		{
 			if (!IsMarkerToken(token))
 				retained.push_back(token);
 		}
-		return JoinScratchpad(retained);
+		return JoinRemarks(retained);
 	}
 
-	inline std::string Write(const std::string& scratchpad, const std::string& normalizedValue)
+	inline std::string Write(const std::string& remarks, const std::string& normalizedValue)
 	{
 		std::vector<std::string> tokens;
-		for (const std::string& token : SplitScratchpad(scratchpad))
+		for (const std::string& token : SplitRemarks(remarks))
 		{
 			if (!IsMarkerToken(token))
 				tokens.push_back(token);
 		}
 		if (!normalizedValue.empty())
 			tokens.emplace_back(std::string(Marker) + normalizedValue);
-		return JoinScratchpad(tokens);
+		return JoinRemarks(tokens);
 	}
 
 	inline void RememberPending(const std::string& callsign, const std::string& normalizedValue)
@@ -173,10 +161,6 @@ namespace VsmrHoldingPoint
 
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		PendingValues[key] = { normalizedValue, std::chrono::steady_clock::now() };
-		if (normalizedValue.empty())
-			KnownValues.erase(key);
-		else
-			KnownValues[key] = normalizedValue;
 	}
 
 	inline void ForgetPending(const std::string& callsign)
@@ -187,82 +171,22 @@ namespace VsmrHoldingPoint
 
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		PendingValues.erase(key);
-		KnownValues.erase(key);
-		AssumptionStates.erase(key);
 	}
 
 	inline void ClearPending()
 	{
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		PendingValues.clear();
-		KnownValues.clear();
-		AssumptionStates.clear();
 	}
 
-	inline std::vector<std::string> KnownCallsigns()
+	inline std::string Resolve(const std::string& callsign, const std::string& remarks)
 	{
-		std::lock_guard<std::mutex> guard(PendingValuesMutex);
-		std::vector<std::string> callsigns;
-		callsigns.reserve(KnownValues.size());
-		for (const auto& entry : KnownValues)
-			callsigns.push_back(entry.first);
-		return callsigns;
-	}
-
-	// EuroScope can briefly remove controller-assigned scratchpad data when a
-	// flight is assumed. Preserve only a value that vSMR previously observed,
-	// and only during the short transition into the assumed state. An explicit
-	// edit to an empty value removes KnownValues and is therefore never restored.
-	inline std::optional<std::string> ObserveAssumption(
-		const std::string& callsign,
-		const std::string& scratchpad,
-		bool isAssumed)
-	{
-		const std::string key = NormalizeCallsign(callsign);
-		if (key.empty())
-			return std::nullopt;
-
-		const std::string synchronizedValue = Read(scratchpad);
-		const auto now = std::chrono::steady_clock::now();
-		std::lock_guard<std::mutex> guard(PendingValuesMutex);
-		if (!synchronizedValue.empty())
-			KnownValues[key] = synchronizedValue;
-
-		AssumptionState& state = AssumptionStates[key];
-		if (!state.initialized || (isAssumed && !state.wasAssumed))
-		{
-			state.initialized = true;
-			state.restoreAttempted = false;
-			state.restoreUntil = isAssumed ? now + AssumptionRestoreWindow : now;
-		}
-		else if (!isAssumed)
-		{
-			state.restoreAttempted = false;
-			state.restoreUntil = now;
-		}
-		state.wasAssumed = isAssumed;
-
-		if (!isAssumed || !synchronizedValue.empty() || state.restoreAttempted || now > state.restoreUntil)
-			return std::nullopt;
-
-		const auto known = KnownValues.find(key);
-		if (known == KnownValues.end() || known->second.empty())
-			return std::nullopt;
-
-		state.restoreAttempted = true;
-		return known->second;
-	}
-
-	inline std::string Resolve(const std::string& callsign, const std::string& scratchpad)
-	{
-		const std::string synchronizedValue = Read(scratchpad);
+		const std::string synchronizedValue = Read(remarks);
 		const std::string key = NormalizeCallsign(callsign);
 		if (key.empty())
 			return synchronizedValue;
 
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
-		if (!synchronizedValue.empty())
-			KnownValues[key] = synchronizedValue;
 		const auto pending = PendingValues.find(key);
 		if (pending == PendingValues.end())
 			return synchronizedValue;
