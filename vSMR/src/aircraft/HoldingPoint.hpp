@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,7 @@ namespace VsmrHoldingPoint
 
 	inline std::mutex PendingValuesMutex;
 	inline std::unordered_map<std::string, PendingValue> PendingValues;
+	inline std::unordered_set<std::string> CallsignsWithHoldingPoint;
 
 	inline std::string Trim(const std::string& value)
 	{
@@ -222,6 +224,10 @@ namespace VsmrHoldingPoint
 
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		PendingValues[key] = { normalizedValue, std::chrono::steady_clock::now() };
+		if (normalizedValue.empty())
+			CallsignsWithHoldingPoint.erase(key);
+		else
+			CallsignsWithHoldingPoint.insert(key);
 	}
 
 	inline void ForgetPending(const std::string& callsign)
@@ -232,12 +238,20 @@ namespace VsmrHoldingPoint
 
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		PendingValues.erase(key);
+		CallsignsWithHoldingPoint.erase(key);
 	}
 
 	inline void ClearPending()
 	{
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		PendingValues.clear();
+		CallsignsWithHoldingPoint.clear();
+	}
+
+	inline std::vector<std::string> KnownCallsigns()
+	{
+		std::lock_guard<std::mutex> guard(PendingValuesMutex);
+		return std::vector<std::string>(CallsignsWithHoldingPoint.begin(), CallsignsWithHoldingPoint.end());
 	}
 
 	inline std::string Resolve(const std::string& callsign, const std::string& remarks)
@@ -250,11 +264,21 @@ namespace VsmrHoldingPoint
 		std::lock_guard<std::mutex> guard(PendingValuesMutex);
 		const auto pending = PendingValues.find(key);
 		if (pending == PendingValues.end())
+		{
+			if (synchronizedValue.empty())
+				CallsignsWithHoldingPoint.erase(key);
+			else
+				CallsignsWithHoldingPoint.insert(key);
 			return synchronizedValue;
+		}
 
 		if (pending->second.value == synchronizedValue)
 		{
 			PendingValues.erase(pending);
+			if (synchronizedValue.empty())
+				CallsignsWithHoldingPoint.erase(key);
+			else
+				CallsignsWithHoldingPoint.insert(key);
 			return synchronizedValue;
 		}
 
@@ -262,6 +286,10 @@ namespace VsmrHoldingPoint
 			return pending->second.value;
 
 		PendingValues.erase(pending);
+		if (synchronizedValue.empty())
+			CallsignsWithHoldingPoint.erase(key);
+		else
+			CallsignsWithHoldingPoint.insert(key);
 		return synchronizedValue;
 	}
 }

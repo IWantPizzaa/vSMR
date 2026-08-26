@@ -4892,6 +4892,37 @@ void CSMRPlugin::OnTimer(int Counter)
 		Logger::info(string(__FUNCSIG__));
 	BLINK = !BLINK;
 	VsmrRdf::OnTimer();
+	for (const std::string& callsign : VsmrHoldingPoint::KnownCallsigns())
+	{
+		CFlightPlan flightPlan = FlightPlanSelect(callsign.c_str());
+		if (!flightPlan.IsValid() || !flightPlan.GetTrackingControllerIsMe())
+			continue;
+
+		CRadarTarget radarTarget = flightPlan.GetCorrelatedRadarTarget();
+		if (!radarTarget.IsValid())
+			continue;
+		const CRadarTargetPositionData position = radarTarget.GetPosition();
+		if (!position.IsValid() || position.GetReportedGS() <= 50)
+			continue;
+
+		CFlightPlanData flightPlanData = flightPlan.GetFlightPlanData();
+		const char* rawRemarks = flightPlanData.GetRemarks();
+		const std::string remarks = rawRemarks != nullptr ? rawRemarks : "";
+		if (VsmrHoldingPoint::Read(remarks).empty())
+		{
+			(void)VsmrHoldingPoint::Resolve(callsign, remarks);
+			continue;
+		}
+
+		const std::string updatedRemarks = VsmrHoldingPoint::Write(remarks, "");
+		if (updatedRemarks != remarks &&
+			flightPlanData.SetRemarks(updatedRemarks.c_str()) &&
+			flightPlanData.AmendFlightPlan())
+		{
+			VsmrHoldingPoint::RememberPending(callsign, "");
+			FlightDataRefreshPending.store(true, std::memory_order_release);
+		}
+	}
 	if (FlightDataRefreshPending.exchange(false, std::memory_order_acq_rel))
 	{
 		for (CSMRRadar* radar : RadarScreensOpened)
