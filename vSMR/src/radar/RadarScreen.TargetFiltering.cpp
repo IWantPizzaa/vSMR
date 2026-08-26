@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
 #include "aircraft/GroundState.hpp"
+#include "scene/TargetRoleLogic.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/VacdmTagHelpers.hpp"
 #include "crash/CrashRuntime.hpp"
@@ -124,7 +125,8 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 	if (isArrival && !settings.statuses.arrivals)
 		return false;
-	if (reportedGs > 50 && !settings.statuses.airborne)
+	if (VsmrTargetRoleLogic::IsAirborneForTagRole(isArrival, reportedGs) &&
+		!settings.statuses.airborne)
 		return false;
 	if (targetOnRunway && !settings.statuses.onRunway)
 		return false;

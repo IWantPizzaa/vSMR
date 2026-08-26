@@ -240,6 +240,7 @@
     <ClInclude Include="src\safety\Rimcas.hpp" />
     <ClInclude Include="src\safety\RimcasLogic.hpp" />
     <ClInclude Include="src\scene\RadarScene.hpp" />
+    <ClInclude Include="src\scene\TargetRoleLogic.hpp" />
     <ClInclude Include="src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="src\shared\logging\Logger.hpp" />
     <ClInclude Include="src\shared\RapidJsonStringViewStream.hpp" />
