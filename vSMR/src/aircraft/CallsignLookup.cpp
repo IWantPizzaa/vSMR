@@ -1,47 +1,37 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "aircraft/CallsignLookup.hpp"
 
-//
+#include <fstream>
+#include <sstream>
+#include <vector>
+
 // CCallsignLookup Class by Even Rognlien, used with permission
-//
 
-CCallsignLookup::CCallsignLookup() {}
-
-void CCallsignLookup::readFile(string fileName)
+void CCallsignLookup::readFile(const std::filesystem::path& fileName)
 {
+	std::ifstream input(fileName);
+	std::string line;
+	while (std::getline(input, line))
+	{
+		std::istringstream lineStream(line);
+		std::vector<std::string> tokens;
+		std::string token;
 
-	ifstream myfile;
+		while (std::getline(lineStream, token, '\t'))
+			tokens.push_back(token);
 
-	myfile.open(fileName);
-
-	if (myfile) {
-		string line;
-
-		while (getline(myfile, line)) {
-			istringstream iss(line);
-			vector<string> tokens;
-			string token;
-
-			while (std::getline(iss, token, '\t'))
-				tokens.push_back(token);
-
-			if (tokens.size() >= 3) {
-				callsigns[tokens.front()] = tokens.at(2);
-			}
+		if (tokens.size() >= 3)
+		{
+			callsigns[tokens.front()] = tokens[2];
 		}
 	}
-
-	myfile.close();
 }
 
-string CCallsignLookup::getCallsign(string airlineCode) {
-
-	if (callsigns.find(airlineCode) == callsigns.end())
+std::string CCallsignLookup::getCallsign(const std::string& airlineCode) const
+{
+	const auto found = callsigns.find(airlineCode);
+	if (found == callsigns.end())
 		return "";
 
-	return callsigns.find(airlineCode)->second;
-}
-
-CCallsignLookup::~CCallsignLookup()
-{
+	return found->second;
 }

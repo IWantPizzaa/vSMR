@@ -77,8 +77,15 @@ build_script:
       /nodeReuse:false
       /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
-after_build:
+test_script:
   - ps: >-
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tests\bin\Release\vSMR.Tests.exe" $env:APPVEYOR_BUILD_FOLDER;
+      if ($LASTEXITCODE -ne 0) { throw "vSMR regression tests failed with exit code $LASTEXITCODE." };
+      Set-AppveyorBuildVariable -Name VSMR_TESTS_PASSED -Value '1'
+
+after_test:
+  - ps: >-
+      if ($env:VSMR_TESTS_PASSED -ne '1') { throw 'Release packaging requires a successful vSMR regression run.' };
       $validationOnly = $env:VSMR_CI_PUBLISHABLE_RELEASE -ne '1';
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tools\create_release_package.ps1"
       -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER
@@ -92,7 +99,7 @@ after_build:
       -LoaderPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\bootstrap\loader\obj\Release\vSMR.pdb"
       -CrashHandlerPdbPath "$env:APPVEYOR_BUILD_FOLDER\vSMR\src\crash\handler\obj\Release\vSMRCrashHandler.pdb"
       -UpdateSignerCertSha256 ([string]$env:VSMR_UPDATE_SIGNER_CERT_SHA256)
-      -SkipBuild
+      -SkipBuild:$validationOnly
       -RequireSignature:(-not $validationOnly)
       -ForceNonPublishable:$validationOnly
   - ps: >-
@@ -115,8 +122,6 @@ after_build:
       if (Test-Path -LiteralPath $signaturePath -PathType Leaf) {
         Push-AppveyorArtifact $signaturePath -FileName ([System.IO.Path]::GetFileName($signaturePath)) -DeploymentName "vSMR update signature";
       }
-
-test: off
 
 artifacts:
   - path: artifacts\vSMR-2.0.0-beta.4.zip

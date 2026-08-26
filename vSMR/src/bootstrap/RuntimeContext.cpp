@@ -17,45 +17,12 @@ namespace
 		std::filesystem::path dataRoot;
 		std::filesystem::path canonicalRuntimePath;
 		std::filesystem::path loadedRuntimePath;
-		std::string installRootNarrow;
+		std::string installRootUtf8;
 	};
 
 	StoredContext gContext;
 	std::mutex gContextMutex;
 	std::atomic<bool> gConfigured{ false };
-
-	std::string ToAnsi(const std::wstring& value)
-	{
-		if (value.empty())
-			return {};
-		BOOL usedDefaultCharacter = FALSE;
-		const int required = ::WideCharToMultiByte(
-			CP_ACP,
-			WC_NO_BEST_FIT_CHARS,
-			value.c_str(),
-			static_cast<int>(value.size()),
-			nullptr,
-			0,
-			nullptr,
-			&usedDefaultCharacter);
-		if (required <= 0 || usedDefaultCharacter)
-			return {};
-		std::string converted(static_cast<std::size_t>(required), '\0');
-		usedDefaultCharacter = FALSE;
-		if (::WideCharToMultiByte(
-			CP_ACP,
-			WC_NO_BEST_FIT_CHARS,
-			value.c_str(),
-			static_cast<int>(value.size()),
-			converted.data(),
-			required,
-			nullptr,
-			&usedDefaultCharacter) <= 0 || usedDefaultCharacter)
-		{
-			return {};
-		}
-		return converted;
-	}
 
 	bool IsAbsoluteDirectory(const wchar_t* value)
 	{
@@ -128,8 +95,8 @@ namespace VsmrRuntimeContext
 				!IsContainedBy(configured.dataRoot, configured.installRoot) ||
 				!IsContainedBy(configured.canonicalRuntimePath, configured.dataRoot))
 				return false;
-			configured.installRootNarrow = ToAnsi(configured.installRoot.wstring());
-			if (configured.installRootNarrow.empty())
+			configured.installRootUtf8 = configured.installRoot.u8string();
+			if (configured.installRootUtf8.empty())
 				return false;
 
 			// The first loader context remains authoritative for this DLL generation
@@ -180,8 +147,8 @@ namespace VsmrRuntimeContext
 		return IsConfigured() ? gContext.loadedRuntimePath : EmptyPath();
 	}
 
-	const std::string& InstallRootNarrow() noexcept
+	const std::string& InstallRootUtf8() noexcept
 	{
-		return IsConfigured() ? gContext.installRootNarrow : EmptyString();
+		return IsConfigured() ? gContext.installRootUtf8 : EmptyString();
 	}
 }

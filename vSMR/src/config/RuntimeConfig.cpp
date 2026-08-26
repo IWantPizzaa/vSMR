@@ -1,7 +1,9 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "config/RuntimeConfig.hpp"
+#include "shared/JsonInputLimits.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <iomanip>
 #include <mutex>
 
@@ -19,6 +21,13 @@ namespace
 	const char* kDefaultPresetKey = "default";
 	constexpr int kCurrentProfileSchemaVersion = 2;
 	constexpr int kCurrentMetadataSchemaVersion = 1;
+	constexpr size_t kMaximumConfigFileBytes =
+		CConfig::MaximumSerializedInputBytes;
+	constexpr size_t kMaximumConfigStringBytes = 64U * 1024U;
+	constexpr size_t kMaximumConfigJsonDepth = 64U;
+	constexpr size_t kMaximumConfigJsonValues = 500000U;
+	constexpr size_t kMaximumConfigContainerEntries = 100000U;
+	constexpr size_t kMaximumProfiles = 256U;
 	volatile LONG gTemporaryFileSequence = 0;
 	// Every CConfig instance points at the same persisted profiles file. Both
 	// ordinary saves and narrowly-scoped preset transactions participate in this
@@ -128,8 +137,16 @@ namespace
 
 	rapidjson::Value* FindMetadataValue(rapidjson::Document& profilesDocument)
 	{
-		return const_cast<rapidjson::Value*>(
-			FindMetadataValue(static_cast<const rapidjson::Document&>(profilesDocument)));
+		if (!profilesDocument.IsArray())
+			return nullptr;
+
+		for (rapidjson::SizeType index = 0; index < profilesDocument.Size(); ++index)
+		{
+			rapidjson::Value& entry = profilesDocument[index];
+			if (IsMetadataEntry(entry))
+				return &entry[kMetadataWrapperKey];
+		}
+		return nullptr;
 	}
 
 	rapidjson::Value& EnsureMetadataValue(rapidjson::Document& profilesDocument)
@@ -157,22 +174,186 @@ namespace
 		return std::clamp(colorValue[key].GetInt(), 0, 255);
 	}
 
-	bool ReadFileContents(const std::string& path, std::string& contents)
+	bool ValidateJsonTextLimits(const std::string& contents, std::string* error)
 	{
-		std::ifstream input(path.c_str(), std::ios::binary);
+		auto fail = [&](const char* message)
+		{
+			if (error != nullptr)
+				*error = message;
+			return false;
+		};
+		if (contents.size() > kMaximumConfigFileBytes)
+			return fail("The JSON file exceeds the 16 MB configuration limit.");
+
+		size_t depth = 0;
+		size_t stringBytes = 0;
+		bool inString = false;
+		bool escaped = false;
+		for (const char character : contents)
+		{
+			if (inString)
+			{
+				if (escaped)
+					escaped = false;
+				else if (character == '\\')
+					escaped = true;
+				else if (character == '"')
+				{
+					inString = false;
+					continue;
+				}
+				if (++stringBytes > kMaximumConfigStringBytes)
+					return fail("The JSON file contains a string longer than 64 KB.");
+				continue;
+			}
+
+			if (character == '"')
+			{
+				inString = true;
+				stringBytes = 0;
+			}
+			else if (character == '{' || character == '[')
+			{
+				if (++depth > kMaximumConfigJsonDepth)
+					return fail("The JSON file exceeds the maximum nesting depth of 64.");
+			}
+			else if ((character == '}' || character == ']') && depth > 0)
+			{
+				--depth;
+			}
+		}
+		return true;
+	}
+
+	bool ValidateJsonValueLimits(
+		const rapidjson::Value& value,
+		size_t depth,
+		size_t& valueCount,
+		std::string* error)
+	{
+		auto fail = [&](const char* message)
+		{
+			if (error != nullptr)
+				*error = message;
+			return false;
+		};
+		if (depth > kMaximumConfigJsonDepth)
+			return fail("The JSON document exceeds the maximum nesting depth of 64.");
+		if (++valueCount > kMaximumConfigJsonValues)
+			return fail("The JSON document contains too many values.");
+		if (value.IsString() && value.GetStringLength() > kMaximumConfigStringBytes)
+			return fail("The JSON document contains a string longer than 64 KB.");
+		if (value.IsArray())
+		{
+			if (value.Size() > kMaximumConfigContainerEntries)
+				return fail("The JSON document contains an oversized array.");
+			for (rapidjson::SizeType index = 0; index < value.Size(); ++index)
+			{
+				if (!ValidateJsonValueLimits(value[index], depth + 1, valueCount, error))
+					return false;
+			}
+		}
+		else if (value.IsObject())
+		{
+			size_t memberCount = 0;
+			for (auto member = value.MemberBegin(); member != value.MemberEnd(); ++member)
+			{
+				if (++memberCount > kMaximumConfigContainerEntries)
+					return fail("The JSON document contains an oversized object.");
+				if (member->name.GetStringLength() > kMaximumConfigStringBytes)
+					return fail("The JSON document contains a property name longer than 64 KB.");
+				if (!ValidateJsonValueLimits(member->value, depth + 1, valueCount, error))
+					return false;
+			}
+		}
+		return true;
+	}
+
+	bool ValidateJsonDocumentLimits(const rapidjson::Value& value, std::string* error)
+	{
+		size_t valueCount = 0;
+		return ValidateJsonValueLimits(value, 0, valueCount, error);
+	}
+
+	bool ValidateJsonStreamingLimits(
+		const std::string& contents,
+		std::string* error)
+	{
+		VsmrJsonInputLimits::Limits limits;
+		limits.maximumDepth = kMaximumConfigJsonDepth;
+		limits.maximumValues = kMaximumConfigJsonValues;
+		limits.maximumContainerEntries = kMaximumConfigContainerEntries;
+		limits.maximumStringBytes = kMaximumConfigStringBytes;
+		std::string validationError;
+		if (VsmrJsonInputLimits::Validate(contents, limits, validationError))
+			return true;
+		if (error != nullptr)
+			*error = validationError;
+		return false;
+	}
+
+	bool ReadFileContents(
+		const std::string& path,
+		std::string& contents,
+		std::string* error = nullptr)
+	{
+		contents.clear();
+		if (error != nullptr)
+			error->clear();
+		std::ifstream input(std::filesystem::u8path(path), std::ios::binary);
 		if (!input.is_open())
+		{
+			if (error != nullptr)
+				*error = "The file is missing or cannot be opened.";
 			return false;
+		}
 
-		std::ostringstream stream;
-		stream << input.rdbuf();
-		if (input.bad())
+		input.seekg(0, std::ios::end);
+		const std::streamoff length = input.tellg();
+		if (length < 0)
+		{
+			if (error != nullptr)
+				*error = "The file size could not be determined.";
 			return false;
-
-		input.close();
-		if (input.fail())
+		}
+		if (static_cast<unsigned long long>(length) > kMaximumConfigFileBytes)
+		{
+			if (error != nullptr)
+				*error = "The file exceeds the 16 MB configuration limit.";
 			return false;
+		}
+		input.seekg(0, std::ios::beg);
+		if (!input.good())
+		{
+			if (error != nullptr)
+				*error = "The file could not be read.";
+			return false;
+		}
 
-		contents = stream.str();
+		contents.resize(static_cast<size_t>(length));
+		if (length > 0)
+		{
+			input.read(contents.data(), static_cast<std::streamsize>(length));
+			if (input.gcount() != length)
+			{
+				contents.clear();
+				if (error != nullptr)
+					*error = "The file changed or became unreadable while loading.";
+				return false;
+			}
+		}
+		if (input.peek() != std::char_traits<char>::eof())
+		{
+			contents.clear();
+			if (error != nullptr)
+				*error = "The file changed while loading.";
+			return false;
+		}
+		if (!ValidateJsonTextLimits(contents, error))
+		{
+			contents.clear();
+			return false;
+		}
 		return true;
 	}
 
@@ -193,10 +374,21 @@ namespace
 
 	bool ParseValidatedArray(
 		const std::string& serializedJson,
-		rapidjson::Document& validationDocument)
+		rapidjson::Document& validationDocument,
+		std::string* error = nullptr)
 	{
+		if (!ValidateJsonTextLimits(serializedJson, error))
+			return false;
+		if (!ValidateJsonStreamingLimits(serializedJson, error))
+			return false;
 		validationDocument.Parse<0>(serializedJson.c_str());
-		return !validationDocument.HasParseError() && validationDocument.IsArray();
+		if (validationDocument.HasParseError() || !validationDocument.IsArray())
+		{
+			if (error != nullptr)
+				*error = "The JSON document must be a valid array.";
+			return false;
+		}
+		return ValidateJsonDocumentLimits(validationDocument, error);
 	}
 
 	std::string ContentRevision(const std::string& contents)
@@ -225,7 +417,8 @@ namespace
 
 	bool HasFile(const std::string& path)
 	{
-		const DWORD attributes = ::GetFileAttributesA(path.c_str());
+		const std::filesystem::path nativePath = std::filesystem::u8path(path);
+		const DWORD attributes = ::GetFileAttributesW(nativePath.c_str());
 		return attributes != INVALID_FILE_ATTRIBUTES &&
 			(attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
 	}
@@ -1011,8 +1204,10 @@ namespace
 		for (int attempt = 0; attempt < maximumAttempts; ++attempt)
 		{
 			temporaryPath = BuildTemporaryPath(destination, "tmp");
-			output = ::CreateFileA(
-				temporaryPath.c_str(),
+			const std::filesystem::path nativeTemporaryPath =
+				std::filesystem::u8path(temporaryPath);
+			output = ::CreateFileW(
+				nativeTemporaryPath.c_str(),
 				GENERIC_WRITE,
 				0,
 				nullptr,
@@ -1065,7 +1260,7 @@ namespace
 
 		if (!succeeded)
 		{
-			::DeleteFileA(temporaryPath.c_str());
+			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
 			temporaryPath.clear();
 		}
 
@@ -1077,7 +1272,9 @@ namespace
 		std::string& temporaryBackupPath)
 	{
 		temporaryBackupPath.clear();
-		const DWORD attributes = ::GetFileAttributesA(destination.c_str());
+		const std::filesystem::path nativeDestination =
+			std::filesystem::u8path(destination);
+		const DWORD attributes = ::GetFileAttributesW(nativeDestination.c_str());
 		if (attributes == INVALID_FILE_ATTRIBUTES)
 		{
 			const DWORD error = ::GetLastError();
@@ -1090,7 +1287,10 @@ namespace
 		for (int attempt = 0; attempt < maximumAttempts; ++attempt)
 		{
 			temporaryBackupPath = BuildTemporaryPath(destination, "backup");
-			if (::CopyFileA(destination.c_str(), temporaryBackupPath.c_str(), TRUE))
+			if (::CopyFileW(
+				nativeDestination.c_str(),
+				std::filesystem::u8path(temporaryBackupPath).c_str(),
+				TRUE))
 				break;
 
 			const DWORD error = ::GetLastError();
@@ -1133,7 +1333,7 @@ namespace
 			persistedJson != serializedJson ||
 			!ParseValidatedArray(persistedJson, persistedValidationDocument))
 		{
-			::DeleteFileA(temporaryPath.c_str());
+			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
 			return false;
 		}
 
@@ -1143,34 +1343,34 @@ namespace
 				destination,
 				temporaryBackupPath))
 		{
-			::DeleteFileA(temporaryPath.c_str());
+			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
 			return false;
 		}
 
-		if (!::MoveFileExA(
-			temporaryPath.c_str(),
-			destination.c_str(),
+		if (!::MoveFileExW(
+			std::filesystem::u8path(temporaryPath).c_str(),
+			std::filesystem::u8path(destination).c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
-			::DeleteFileA(temporaryPath.c_str());
+			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
 			if (!temporaryBackupPath.empty())
-				::DeleteFileA(temporaryBackupPath.c_str());
+				::DeleteFileW(std::filesystem::u8path(temporaryBackupPath).c_str());
 			return false;
 		}
 
 		if (!temporaryBackupPath.empty())
 		{
 			const std::string backupPath = destination + kBackupSuffix;
-			if (!::MoveFileExA(
-				temporaryBackupPath.c_str(),
-				backupPath.c_str(),
+			if (!::MoveFileExW(
+				std::filesystem::u8path(temporaryBackupPath).c_str(),
+				std::filesystem::u8path(backupPath).c_str(),
 				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 			{
 				// The existing .bak has not been replaced. Use the staged old
 				// primary to roll the reported-failed transaction back exactly.
-				if (!::MoveFileExA(
-					temporaryBackupPath.c_str(),
-					destination.c_str(),
+				if (!::MoveFileExW(
+					std::filesystem::u8path(temporaryBackupPath).c_str(),
+					std::filesystem::u8path(destination).c_str(),
 					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 				{
 					// Preserve the staged old primary for manual recovery.
@@ -1184,6 +1384,15 @@ namespace
 	}
 }
 
+bool CConfig::validateSerializedInputLimits(
+	const string& serializedJson,
+	string& error)
+{
+	error.clear();
+	return ValidateJsonTextLimits(serializedJson, &error) &&
+		ValidateJsonStreamingLimits(serializedJson, &error);
+}
+
 bool CConfig::validateAndMigrateProfilesDocument(
 	rapidjson::Document& profilesDocument,
 	string& error,
@@ -1191,9 +1400,16 @@ bool CConfig::validateAndMigrateProfilesDocument(
 {
 	error.clear();
 	migrated = false;
+	if (!ValidateJsonDocumentLimits(profilesDocument, &error))
+		return false;
 	if (!profilesDocument.IsArray())
 	{
 		error = "vSMR_Profiles.json must contain a JSON array.";
+		return false;
+	}
+	if (profilesDocument.Size() > kMaximumProfiles + 1U)
+	{
+		error = "vSMR_Profiles.json exceeds the 256-profile limit.";
 		return false;
 	}
 
@@ -1246,6 +1462,11 @@ bool CConfig::validateAndMigrateProfilesDocument(
 			return false;
 		}
 		profileNames.push_back(name);
+		if (profileNames.size() > kMaximumProfiles)
+		{
+			error = "vSMR_Profiles.json exceeds the 256-profile limit.";
+			return false;
+		}
 		if (name != item["name"].GetString())
 		{
 			SetStringMember(item, "name", name, allocator);
@@ -1512,10 +1733,11 @@ bool CConfig::replaceInMemoryConfig(
 	replacementDocument.Accept(writer);
 
 	Document parsed(&document.GetAllocator());
-	parsed.Parse<0>(buffer.GetString());
-	if (parsed.HasParseError() || !parsed.IsArray())
+	const std::string serializedJson(buffer.GetString(), buffer.Size());
+	if (!ParseValidatedArray(serializedJson, parsed, &error))
 	{
-		error = "Profiles state could not be parsed.";
+		if (error.empty())
+			error = "Profiles state could not be parsed.";
 		return false;
 	}
 	bool migrated = false;
@@ -1597,10 +1819,10 @@ bool CConfig::loadConfig() {
 		bool& migrated,
 		std::string& error) -> bool
 	{
-		candidate.Parse<0>(serializedJson.c_str());
-		if (candidate.HasParseError() || !candidate.IsArray())
+		if (!ParseValidatedArray(serializedJson, candidate, &error))
 		{
-			error = "The profiles file is not a valid JSON array.";
+			if (error.empty())
+				error = "The profiles file is not a valid JSON array.";
 			return false;
 		}
 		if (!validateAndMigrateProfilesDocument(candidate, error, migrated))
@@ -1617,10 +1839,11 @@ bool CConfig::loadConfig() {
 	// Loading the primary profiles source
 	std::string mainJson;
 	std::string mainError;
+	std::string mainReadError;
 	Document mainCandidate(&document.GetAllocator());
 	map<string, rapidjson::SizeType> mainProfiles;
 	bool mainMigrated = false;
-	const bool mainRead = ReadFileContents(config_path, mainJson);
+	const bool mainRead = ReadFileContents(config_path, mainJson, &mainReadError);
 	const bool mainValid = mainRead && parseCandidate(
 		mainJson,
 		mainCandidate,
@@ -1664,7 +1887,9 @@ bool CConfig::loadConfig() {
 
 	const std::string failure = mainRead
 		? (mainError.empty() ? "The profiles file is invalid." : mainError)
-		: "The configured profiles file is missing or cannot be read.";
+		: (mainReadError.empty()
+			? "The configured profiles file is missing or cannot be read."
+			: mainReadError);
 
 	// Falling back to the last validated backup without replacing the primary
 	std::string backupJson;
@@ -1738,14 +1963,41 @@ bool CConfig::loadMap()
 	return true;
 }
 
-const Value& CConfig::getActiveProfile() {
+const Value& CConfig::getActiveProfile() const {
 	if (document.IsArray())
 	{
 		if (active_profile < document.Size() && IsProfileEntry(document[active_profile]))
 			return document[active_profile];
 
 		if (!profiles.empty())
-			return document[profiles.begin()->second];
+		{
+			const rapidjson::SizeType fallbackProfile = profiles.begin()->second;
+			if (fallbackProfile < document.Size() &&
+				IsProfileEntry(document[fallbackProfile]))
+			{
+				return document[fallbackProfile];
+			}
+		}
+	}
+
+	return invalid_profile;
+}
+
+Value& CConfig::getMutableActiveProfile() {
+	if (document.IsArray())
+	{
+		if (active_profile < document.Size() && IsProfileEntry(document[active_profile]))
+			return document[active_profile];
+
+		if (!profiles.empty())
+		{
+			const rapidjson::SizeType fallbackProfile = profiles.begin()->second;
+			if (fallbackProfile < document.Size() &&
+				IsProfileEntry(document[fallbackProfile]))
+			{
+				return document[fallbackProfile];
+			}
+		}
 	}
 
 	return invalid_profile;
@@ -1875,7 +2127,7 @@ bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
 	return false;
 }
 
-vector<string> CConfig::getAllProfiles() {
+vector<string> CConfig::getAllProfiles() const {
 	vector<string> toR;
 
 	if (document.IsArray()) {
@@ -1888,7 +2140,7 @@ vector<string> CConfig::getAllProfiles() {
 	}
 
 	if (toR.empty()) {
-		for (std::map<string, rapidjson::SizeType>::iterator it = profiles.begin(); it != profiles.end(); ++it)
+		for (std::map<string, rapidjson::SizeType>::const_iterator it = profiles.begin(); it != profiles.end(); ++it)
 		{
 			toR.push_back(it->first);
 		}
@@ -1933,8 +2185,7 @@ bool CConfig::isBackupAvailable() const
 	if (!ReadFileContents(config_path + kBackupSuffix, backupJson))
 		return false;
 	Document candidate;
-	candidate.Parse<0>(backupJson.c_str());
-	if (candidate.HasParseError())
+	if (!ParseValidatedArray(backupJson, candidate))
 		return false;
 	std::string error;
 	bool migrated = false;
@@ -1955,9 +2206,8 @@ bool CConfig::restoreBackup(string& error)
 	}
 
 	Document candidate;
-	candidate.Parse<0>(backupJson.c_str());
 	bool migrated = false;
-	if (candidate.HasParseError() ||
+	if (!ParseValidatedArray(backupJson, candidate, &error) ||
 		!validateAndMigrateProfilesDocument(candidate, error, migrated))
 	{
 		if (error.empty())
@@ -1971,13 +2221,13 @@ bool CConfig::restoreBackup(string& error)
 	const std::string restoredJson(buffer.GetString(), buffer.Size());
 	std::string temporaryPath;
 	if (!WriteTemporaryFile(config_path, restoredJson, temporaryPath) ||
-		!::MoveFileExA(
-			temporaryPath.c_str(),
-			config_path.c_str(),
+		!::MoveFileExW(
+			std::filesystem::u8path(temporaryPath).c_str(),
+			std::filesystem::u8path(config_path).c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 	{
 		if (!temporaryPath.empty())
-			::DeleteFileA(temporaryPath.c_str());
+			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
 		error = "Unable to restore the profiles backup. Check folder permissions.";
 		return false;
 	}
@@ -2128,10 +2378,10 @@ bool CConfig::saveConfig(
 	rapidjson::StringBuffer candidateBuffer;
 	rapidjson::Writer<rapidjson::StringBuffer> candidateWriter(candidateBuffer);
 	document.Accept(candidateWriter);
-	validated.Parse<0>(candidateBuffer.GetString());
+	const std::string candidateJson(candidateBuffer.GetString(), candidateBuffer.Size());
 	bool migrated = false;
 	std::string validationError;
-	if (validated.HasParseError() ||
+	if (!ParseValidatedArray(candidateJson, validated, &validationError) ||
 		!validateAndMigrateProfilesDocument(validated, validationError, migrated))
 	{
 		if (error != nullptr)
@@ -2164,10 +2414,9 @@ bool CConfig::saveConfig(
 	bool currentProfilesValid = false;
 	if (currentFileReadable)
 	{
-		latestDocument.Parse<0>(currentJson.c_str());
 		bool latestMigrated = false;
 		std::string latestError;
-		if (latestDocument.HasParseError() ||
+		if (!ParseValidatedArray(currentJson, latestDocument, &latestError) ||
 			!validateAndMigrateProfilesDocument(latestDocument, latestError, latestMigrated))
 		{
 			// An explicitly confirmed recovery save may replace a damaged primary

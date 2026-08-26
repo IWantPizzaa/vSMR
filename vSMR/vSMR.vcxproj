@@ -85,6 +85,8 @@
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel Condition="'$(ContinuousIntegrationBuild)'=='true'">Level4</WarningLevel>
+      <TreatWarningAsError Condition="'$(ContinuousIntegrationBuild)'=='true'">true</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -124,6 +126,8 @@
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <WarningLevel Condition="'$(ContinuousIntegrationBuild)'=='true'">Level4</WarningLevel>
+      <TreatWarningAsError Condition="'$(ContinuousIntegrationBuild)'=='true'">true</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -161,6 +165,9 @@
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp" />
+    <ClCompile Include="src\control_center\WebMessageValidation.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\control_center\RadarScreen.Integration.cpp" />
     <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp" />
     <ClCompile Include="src\crash\CrashReporter.cpp" />
@@ -210,6 +217,7 @@
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
     <ClInclude Include="src\control_center\ControlCenterDialog.hpp" />
     <ClInclude Include="src\control_center\RuntimeResourceFiles.hpp" />
+    <ClInclude Include="src\control_center\WebMessageValidation.hpp" />
     <ClInclude Include="src\crash\CrashReporter.hpp" />
     <ClInclude Include="src\crash\CrashReportProtocol.hpp" />
     <ClInclude Include="src\crash\CrashReportSupport.hpp" />
@@ -224,16 +232,19 @@
     <ClInclude Include="src\platform\windows\ResourceIds.h" />
     <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp" />
     <ClInclude Include="src\plugin\Plugin.hpp" />
-    <ClInclude Include="src\profiles\ProfileColorPaths.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
     <ClInclude Include="src\safety\Rimcas.hpp" />
+    <ClInclude Include="src\safety\RimcasLogic.hpp" />
     <ClInclude Include="src\scene\RadarScene.hpp" />
+    <ClInclude Include="src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="src\shared\logging\Logger.hpp" />
+    <ClInclude Include="src\shared\RapidJsonStringViewStream.hpp" />
     <ClInclude Include="src\shared\TextUtils.hpp" />
+    <ClInclude Include="src\shared\WindowsPathEncoding.hpp" />
     <ClInclude Include="src\tags\TagColorRules.hpp" />
     <ClInclude Include="src\tags\TagDataTypes.hpp" />
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp" />

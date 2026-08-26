@@ -66,6 +66,9 @@ $explicitNonPublishable = $ForceNonPublishable -or $env:VSMR_FORCE_NONPUBLISHABL
 if (-not $explicitNonPublishable) {
     $RequireSignature = $true
 }
+if ($SkipBuild -and -not $explicitNonPublishable) {
+    throw "-SkipBuild is allowed only for explicitly non-publishable validation packages. Publishable packages must rebuild and test the source they identify."
+}
 
 function Test-PathEqualOrChild {
     param([string]$Path, [string]$Parent)
@@ -79,6 +82,58 @@ function Assert-File {
     param([Parameter(Mandatory = $true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Required release file is missing: $Path"
+    }
+}
+
+if (-not $explicitNonPublishable) {
+    $assetProvenancePath = Join-Path $RepositoryRoot "vSMR\data\Licenses\ASSET_PROVENANCE.md"
+    Assert-File -Path $assetProvenancePath
+
+    $provenanceLines = @(Get-Content -LiteralPath $assetProvenancePath)
+    $headerIndex = -1
+    for ($lineIndex = 0; $lineIndex -lt $provenanceLines.Count; ++$lineIndex) {
+        if ($provenanceLines[$lineIndex] -match '^\|\s*Asset group\s*\|\s*Packaged path\s*\|\s*Current provenance record\s*\|\s*Release status\s*\|\s*$') {
+            $headerIndex = $lineIndex
+            break
+        }
+    }
+    if ($headerIndex -lt 0 -or $headerIndex + 1 -ge $provenanceLines.Count -or
+        $provenanceLines[$headerIndex + 1] -notmatch '^\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*-{3,}\s*\|\s*$') {
+        throw "ASSET_PROVENANCE.md does not contain the required four-column provenance table."
+    }
+
+    $resolvedStatuses = @(
+        'project license',
+        'license verified',
+        'permission documented',
+        'public domain',
+        'original asset'
+    )
+    $unresolvedAssetCount = 0
+    $provenanceRowCount = 0
+    for ($lineIndex = $headerIndex + 2; $lineIndex -lt $provenanceLines.Count; ++$lineIndex) {
+        $line = [string]$provenanceLines[$lineIndex]
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            break
+        }
+        if ($line -notmatch '^\|\s*(?<group>[^|]+?)\s*\|\s*(?<path>[^|]+?)\s*\|\s*(?<record>[^|]+?)\s*\|\s*(?<status>[^|]+?)\s*\|\s*$') {
+            throw "ASSET_PROVENANCE.md contains a malformed provenance row at line $($lineIndex + 1)."
+        }
+
+        ++$provenanceRowCount
+        $status = $Matches['status'].Trim().ToLowerInvariant()
+        if ($status -eq 'verification required') {
+            ++$unresolvedAssetCount
+        }
+        elseif ($resolvedStatuses -notcontains $status) {
+            throw "ASSET_PROVENANCE.md contains the unrecognized release status '$($Matches['status'].Trim())' at line $($lineIndex + 1)."
+        }
+    }
+    if ($provenanceRowCount -eq 0) {
+        throw "ASSET_PROVENANCE.md contains no asset records."
+    }
+    if ($unresolvedAssetCount -gt 0) {
+        throw "Refusing to create a publishable release while $unresolvedAssetCount bundled asset group(s) still require provenance verification. Resolve ASSET_PROVENANCE.md or use -ForceNonPublishable for a local validation package."
     }
 }
 
@@ -293,6 +348,16 @@ else {
         throw "-SkipBuild requires -CrashHandlerPdbPath pointing to the PDB produced with the prebuilt WER crash handler."
     }
 }
+
+if (-not $SkipBuild) {
+    $regressionTestPath = Join-Path $RepositoryRoot "vSMR\tests\bin\$Configuration\vSMR.Tests.exe"
+    Assert-File $regressionTestPath
+    Write-Host "Running vSMR regression tests before packaging..."
+    & $regressionTestPath $RepositoryRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "Regression tests failed with exit code $LASTEXITCODE. No package was created."
+    }
+}
 $PdbPath = [System.IO.Path]::GetFullPath($PdbPath)
 Assert-File $PdbPath
 $LoaderPdbPath = [System.IO.Path]::GetFullPath($LoaderPdbPath)
@@ -330,6 +395,15 @@ try {
     Assert-File $packagedRuntimePath
     Assert-File $packagedCrashHandlerPath
     Assert-File $packagedAvisoPolicyPath
+    if (-not $explicitNonPublishable) {
+        $packagedAssetProvenancePath = Join-Path $packageStage "vSMR_Data\Licenses\ASSET_PROVENANCE.md"
+        Assert-File $packagedAssetProvenancePath
+        $sourceProvenanceHash = (Get-FileHash -LiteralPath $assetProvenancePath -Algorithm SHA256).Hash
+        $packagedProvenanceHash = (Get-FileHash -LiteralPath $packagedAssetProvenancePath -Algorithm SHA256).Hash
+        if ($sourceProvenanceHash -ne $packagedProvenanceHash) {
+            throw "The packaged asset-provenance register does not match the validated source register."
+        }
+    }
 
     $avisoPolicy = Get-Content -LiteralPath $packagedAvisoPolicyPath -Raw | ConvertFrom-Json
     $supportedAvisoUpdates = @('none', 'selected', 'all')

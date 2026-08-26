@@ -61,10 +61,10 @@ std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& ai
 		return existingPath;
 
 	const std::filesystem::path dataDirectory = DataPath.empty()
-		? (std::filesystem::path(DllPath) / "vSMR_Data")
-		: std::filesystem::path(DataPath);
+		? (std::filesystem::u8path(DllPath) / "vSMR_Data")
+		: std::filesystem::u8path(DataPath);
 	const std::filesystem::path preferredPath = dataDirectory / "AVISO" / (airportUpper + ".geojson");
-	return preferredPath.string();
+	return preferredPath.u8string();
 }
 
 void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path)
@@ -79,7 +79,7 @@ void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, co
 		try
 		{
 			normalizedPath =
-				std::filesystem::absolute(std::filesystem::path(path)).lexically_normal().string();
+				std::filesystem::absolute(std::filesystem::u8path(path)).lexically_normal().u8string();
 		}
 		catch (...) {}
 	}
