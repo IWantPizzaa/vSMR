@@ -30,7 +30,6 @@ namespace
 	constexpr int kPopupPadding = 3;
 	constexpr int kPopupPagerHeight = 24;
 	constexpr int kPopupControlHeight = 22;
-	constexpr int kPopupLinkedSlotHeight = 26;
 	constexpr int kPopupActionHeight = 22;
 	constexpr int kControlCornerDiameter = 6;
 	constexpr int kPanelCornerDiameter = 8;
@@ -642,7 +641,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			19 +
 			(presetRows > 0 ? presetRows * kPopupRowHeight : 32) +
 			(presetPager ? kPopupPagerHeight : 0) +
-			kPopupLinkedSlotHeight +
 			(4 * kPopupActionHeight) +
 			(3 * 3) +
 			kPopupPadding;
@@ -1207,30 +1205,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		const bool clearDefaultAction =
 			hasDefaultPreset && (!hasActivePreset || AsciiCaseInsensitiveEquals(activePreset, defaultPreset));
 		const bool canChangeDefault = hasActivePreset || hasDefaultPreset;
-		CRect linkedArea(
-			RuntimeMenuPopupArea.left + kPopupPadding,
-			contentTop + 2,
-			RuntimeMenuPopupArea.right - kPopupPadding,
-			contentTop + 2 + kPopupControlHeight);
-		DrawRoundedRect(
-			hdc,
-			linkedArea,
-			hasActivePreset && PointInside(linkedArea, mouseLocation) ? kButtonHover : kCardBackground,
-			RGB(17, 23, 25),
-			kControlCornerDiameter);
-		CRect linkedIndicator(linkedArea.left + 4, linkedArea.top, linkedArea.left + 21, linkedArea.bottom);
-		DrawRuntimeSelectionIndicator(
-			graphics,
-			linkedIndicator,
-			hasActivePreset && IsAvisoPresetLinkedMovementEnabled(),
-			hasActivePreset ? kText : kDisabledText);
-		::SelectObject(hdc, rowFont);
-		CRect linkedText(linkedArea.left + 25, linkedArea.top, linkedArea.right - 4, linkedArea.bottom);
-		DrawTextEllipsis(hdc, linkedText, "Linked movement", hasActivePreset ? kText : kDisabledText);
-		if (hasActivePreset)
-			addPopupScreenObject("runtime.preset.linked", linkedArea, "Toggle linked movement");
-		contentTop += kPopupLinkedSlotHeight;
-
 		enum class ActionTone
 		{
 			Normal,
@@ -1726,8 +1700,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		ResetActiveAvisoPreset();
 	else if (std::strcmp(id, "runtime.preset.delete") == 0 && !activePreset.empty())
 		DeleteAvisoPreset(activePreset);
-	else if (std::strcmp(id, "runtime.preset.linked") == 0 && !activePreset.empty())
-		SetActiveAvisoPresetLinkedMovement(!IsAvisoPresetLinkedMovementEnabled());
 	else
 		return true;
 
