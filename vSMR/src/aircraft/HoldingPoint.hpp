@@ -12,7 +12,11 @@
 
 namespace VsmrHoldingPoint
 {
-	inline constexpr const char* Marker = "HP:";
+	// EuroScope rewrites ':' in flight-plan remarks, which turned HP:A3 into
+	// separate "HP A3" tokens. A slash follows the normal ICAO remarks shape
+	// and survives synchronization as one token.
+	inline constexpr const char* Marker = "VSMRHP/";
+	inline constexpr const char* LegacyMarker = "HP:";
 	inline constexpr std::size_t MaximumValueLength = 8;
 	inline constexpr auto PendingValueLifetime = std::chrono::seconds(15);
 
@@ -39,12 +43,36 @@ namespace VsmrHoldingPoint
 		return std::string(first, last);
 	}
 
-	inline bool IsMarkerToken(const std::string& token)
+	inline bool StartsWithAsciiCaseInsensitive(const std::string& value, const char* prefix)
 	{
-		return token.size() >= 3 &&
+		const std::size_t length = std::char_traits<char>::length(prefix);
+		if (value.size() < length)
+			return false;
+		for (std::size_t index = 0; index < length; ++index)
+		{
+			if (std::toupper(static_cast<unsigned char>(value[index])) !=
+				std::toupper(static_cast<unsigned char>(prefix[index])))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	inline std::size_t MarkerValueOffset(const std::string& token)
+	{
+		if (StartsWithAsciiCaseInsensitive(token, Marker))
+			return std::char_traits<char>::length(Marker);
+		if (StartsWithAsciiCaseInsensitive(token, LegacyMarker))
+			return std::char_traits<char>::length(LegacyMarker);
+		return std::string::npos;
+	}
+
+	inline bool IsBareLegacyMarker(const std::string& token)
+	{
+		return token.size() == 2 &&
 			std::toupper(static_cast<unsigned char>(token[0])) == 'H' &&
-			std::toupper(static_cast<unsigned char>(token[1])) == 'P' &&
-			token[2] == ':';
+			std::toupper(static_cast<unsigned char>(token[1])) == 'P';
 	}
 
 	inline std::string NormalizeCallsign(const std::string& callsign)
@@ -117,16 +145,32 @@ namespace VsmrHoldingPoint
 
 	inline std::string Read(const std::string& remarks)
 	{
-		for (const std::string& token : SplitRemarks(remarks))
+		const std::vector<std::string> tokens = SplitRemarks(remarks);
+		std::string latestValue;
+		for (std::size_t index = 0; index < tokens.size(); ++index)
 		{
-			if (!IsMarkerToken(token))
+			const std::size_t offset = MarkerValueOffset(tokens[index]);
+			if (offset != std::string::npos)
+			{
+				std::string value;
+				if (Normalize(tokens[index].substr(offset), value) && !value.empty())
+					latestValue = value;
 				continue;
+			}
 
-			std::string value;
-			if (Normalize(token.substr(3), value))
-				return value;
+			// Compatibility with remarks already rewritten by EuroScope from
+			// "HP:value" to "HP value". The last marker is the newest one.
+			if (IsBareLegacyMarker(tokens[index]) && index + 1 < tokens.size())
+			{
+				std::string value;
+				if (Normalize(tokens[index + 1], value) && !value.empty() && value != "/")
+				{
+					latestValue = value;
+					++index;
+				}
+			}
 		}
-		return "";
+		return latestValue;
 	}
 
 	inline std::string WithoutHoldingPoint(const std::string& text)
@@ -134,7 +178,7 @@ namespace VsmrHoldingPoint
 		std::vector<std::string> retained;
 		for (const std::string& token : SplitRemarks(text))
 		{
-			if (!IsMarkerToken(token))
+			if (MarkerValueOffset(token) == std::string::npos)
 				retained.push_back(token);
 		}
 		return JoinRemarks(retained);
@@ -142,11 +186,28 @@ namespace VsmrHoldingPoint
 
 	inline std::string Write(const std::string& remarks, const std::string& normalizedValue)
 	{
+		const std::vector<std::string> existingTokens = SplitRemarks(remarks);
 		std::vector<std::string> tokens;
-		for (const std::string& token : SplitRemarks(remarks))
+		for (std::size_t index = 0; index < existingTokens.size(); ++index)
 		{
-			if (!IsMarkerToken(token))
-				tokens.push_back(token);
+			const std::string& token = existingTokens[index];
+			if (MarkerValueOffset(token) != std::string::npos)
+				continue;
+
+			if (IsBareLegacyMarker(token) && index + 1 < existingTokens.size())
+			{
+				std::string legacyValue;
+				const bool rewrittenMarker =
+					(Normalize(existingTokens[index + 1], legacyValue) && !legacyValue.empty()) ||
+					existingTokens[index + 1] == "/";
+				if (rewrittenMarker)
+				{
+					++index;
+					continue;
+				}
+			}
+
+			tokens.push_back(token);
 		}
 		if (!normalizedValue.empty())
 			tokens.emplace_back(std::string(Marker) + normalizedValue);
