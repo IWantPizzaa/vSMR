@@ -108,6 +108,7 @@
     <ClInclude Include="src\safety\Rimcas.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\safety\RimcasLogic.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\scene\RadarScene.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\scene\TargetRoleLogic.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\JsonInputLimits.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\logging\Logger.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\RapidJsonStringViewStream.hpp"><Filter>Headers</Filter></ClInclude>
