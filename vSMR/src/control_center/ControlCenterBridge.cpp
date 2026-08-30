@@ -858,6 +858,8 @@ namespace
 	}
 }
 
+// Transport sequence, cached health data, and performance peaks are deliberately
+// owned per dialog instead of being shared across radar windows.
 class VsmrControlCenterBridgeImpl
 {
 	friend class VsmrControlCenterBridge;
