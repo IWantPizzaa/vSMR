@@ -529,8 +529,7 @@ bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText)
 
 bool AvisoDocumentModel::SaveAtomically(
 	const std::string& path,
-	std::string& errorText,
-	bool backupExisting)
+	std::string& errorText)
 {
 	errorText.clear();
 	if (path.empty())
@@ -661,57 +660,12 @@ bool AvisoDocumentModel::SaveAtomically(
 		}
 		persistedInput.close();
 
-		std::filesystem::path backupPath;
-		std::filesystem::path backupTempPath;
-		const bool rotateBackup =
-			backupExisting && std::filesystem::is_regular_file(outputPath);
-		if (rotateBackup)
-		{
-			backupPath = outputPath;
-			backupPath += L".bak";
-			backupTempPath = tempPath;
-			backupTempPath += L".backup";
-			if (!::CopyFileW(
-				outputPath.c_str(),
-				backupTempPath.c_str(),
-				TRUE))
-			{
-				errorText = "Unable to stage the AVISO backup file.";
-				std::error_code ignored;
-				std::filesystem::remove(backupTempPath, ignored);
-				std::filesystem::remove(tempPath, ignored);
-				return false;
-			}
-		}
-
 		if (!::MoveFileExW(tempPath.c_str(), outputPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
 			const DWORD error = ::GetLastError();
 			errorText = "Unable to replace AVISO file atomically. Windows error " + std::to_string(error) + ".";
 			std::error_code ignored;
-			std::filesystem::remove(backupTempPath, ignored);
 			std::filesystem::remove(tempPath, ignored);
-			return false;
-		}
-
-		// Rotate the old primary into .bak only after the new primary is safely in
-		// place. If backup rotation fails, the staged old primary is also the exact
-		// rollback source, so a failed save cannot silently alter either file.
-		if (rotateBackup &&
-			!::MoveFileExW(
-				backupTempPath.c_str(),
-				backupPath.c_str(),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			const DWORD backupError = ::GetLastError();
-			const bool restored = ::MoveFileExW(
-				backupTempPath.c_str(),
-				outputPath.c_str(),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
-			errorText = "Unable to rotate the AVISO backup. Windows error " +
-				std::to_string(backupError) + ".";
-			if (!restored)
-				errorText += " The old primary remains at " + backupTempPath.u8string() + ".";
 			return false;
 		}
 	}

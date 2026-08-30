@@ -4,7 +4,6 @@
   const PROTOCOL_VERSION = 1;
   const MAX_BRIDGE_MESSAGE_BYTES = 28 * 1024 * 1024;
   const REQUEST_TIMEOUT_MS = 45000;
-  const HISTORY_LIMIT = 12;
   const AUTOSAVE_DEBOUNCE_MS = 120;
   const AUTOSAVE_RETRY_MS = 250;
   const HOST_MODE = Boolean(window.chrome?.webview?.postMessage);
@@ -707,16 +706,11 @@
   };
   let splitAvisoContext = null;
 	let ignoreNextUncorrelatedAviso = false;
-  const history = { past: [], present: null, future: [], gestureKey: "" };
   let savedSnapshot = null;
   // Exactly one immutable model snapshot may be written at a time. Any edits
   // made while it is in flight remain in `state` and are sent by the next
   // queue pass; a save acknowledgement never replaces the live model.
   let saveInFlight = null;
-  let activeHistoryGestureKey = "";
-  let historyGestureSequence = 0;
-  const historyGestureIds = new WeakMap();
-  let deferredHistoryGesture = null;
   let autosaveTimer = 0;
   let autosaveQueued = false;
   const editorClipboard = { tag: "", color: "" };
@@ -741,42 +735,6 @@
     }
     if (editorClipboard[kind]) return editorClipboard[kind];
     return window.prompt(promptLabel, "") || "";
-  }
-
-  function beginHistoryGesture(control) {
-    if (!control || typeof control !== "object") return "";
-    historyGestureSequence += 1;
-    const key = `editor-${historyGestureSequence}`;
-    historyGestureIds.set(control, key);
-    return key;
-  }
-
-  function historyGestureKey(control) {
-    return historyGestureIds.get(control) || beginHistoryGesture(control);
-  }
-
-  function withHistoryGesture(control, callback) {
-    const previous = activeHistoryGestureKey;
-    activeHistoryGestureKey = historyGestureKey(control);
-    try {
-      return callback();
-    } finally {
-      activeHistoryGestureKey = previous;
-    }
-  }
-
-  function flushDeferredHistoryGesture(updateDirty = true) {
-    const deferred = deferredHistoryGesture;
-    if (!deferred) return false;
-    deferredHistoryGesture = null;
-    const next = captureHistorySnapshot(history.present, deferred.chunks);
-    if (!snapshotsEqual(next, history.present)) history.present = next;
-    history.future.length = 0;
-    history.gestureKey = deferred.key;
-    if (history.past.length && snapshotsEqual(history.present, history.past[history.past.length - 1]))
-      history.past.pop();
-    if (updateDirty) updateDirtyState();
-    return true;
   }
 
   const UNAPPLIED_EDITOR_SECTION_SELECTOR = [
@@ -805,7 +763,7 @@
   function hasUnappliedEditorInputs() {
     // Input events are tracked until their change/blur boundary. This protects
     // a value that is still being typed from an asynchronous host repaint; it
-    // never blocks automatic saving, Undo or navigation.
+    // never blocks automatic saving or navigation.
     return unappliedEditorSections.size > 0;
   }
 
@@ -875,18 +833,15 @@
   }
 
   function rebasePresetStoreSnapshots(root) {
-    const snapshots = [history.present, ...history.past, ...history.future, savedSnapshot];
-    const visited = new Set();
-    snapshots.forEach(snapshot => {
-      if (!snapshot?.metadata || visited.has(snapshot)) return;
-      visited.add(snapshot);
+    [savedSnapshot].forEach(snapshot => {
+      if (!snapshot?.metadata) return;
       try {
         const metadata = JSON.parse(snapshot.metadata);
         if (assignAvisoPresetRoot(metadata, root)) {
           snapshot.metadata = JSON.stringify(metadata);
         }
       } catch (error) {
-        console.warn("Could not rebase inset presets in editor history", error);
+        console.warn("Could not rebase inset presets in the saved editor snapshot", error);
       }
     });
   }
@@ -941,16 +896,13 @@
     };
 
     applySelections(state.profiles);
-    const snapshots = [history.present, ...history.past, ...history.future, savedSnapshot];
-    const visited = new Set();
-    snapshots.forEach(snapshot => {
-      if (!snapshot?.profiles || visited.has(snapshot)) return;
-      visited.add(snapshot);
+    [savedSnapshot].forEach(snapshot => {
+      if (!snapshot?.profiles) return;
       try {
         const records = JSON.parse(snapshot.profiles);
         if (applySelections(records)) snapshot.profiles = JSON.stringify(records);
       } catch (error) {
-        console.warn("Could not rebase display mode selections in editor history", error);
+        console.warn("Could not rebase display mode selections in the saved editor snapshot", error);
       }
     });
   }
@@ -985,32 +937,26 @@
     return JSON.stringify(value ?? null);
   }
 
-  function captureHistorySnapshot(reuse = history.present, changedChunks = null) {
-    const historySettings = clone(state.settings);
-    delete historySettings.profileFile;
-    delete historySettings.avisoFile;
-    delete historySettings.dataHealth;
+  function captureEditorSnapshot() {
+    const persistedSettings = clone(state.settings);
+    delete persistedSettings.profileFile;
+    delete persistedSettings.avisoFile;
+    delete persistedSettings.dataHealth;
     const values = {
       profiles: state.profiles,
       metadata: state.metadata,
       profileExtras: state.profileExtras,
       aviso: state.aviso,
-      settings: historySettings
+      settings: persistedSettings
     };
     const snapshot = {};
-    const changed = changedChunks ? new Set(changedChunks) : null;
     Object.entries(values).forEach(([key, value]) => {
-      if (reuse?.[key] != null && changed && !changed.has(key)) {
-        snapshot[key] = reuse[key];
-        return;
-      }
-      const encoded = snapshotChunk(value);
-      snapshot[key] = reuse?.[key] === encoded ? reuse[key] : encoded;
+      snapshot[key] = snapshotChunk(value);
     });
     return snapshot;
   }
 
-  function snapshotsEqual(left, right) {
+  function editorSnapshotsEqual(left, right) {
     if (!left || !right) return false;
     return ["profiles", "metadata", "profileExtras", "aviso", "settings"]
       .every(key => left[key] === right[key]);
@@ -1021,7 +967,7 @@
     if (resource === "aviso")
       return snapshotChunk(state.aviso) !== savedSnapshot.aviso;
     if (resource === "profiles") {
-      const current = captureHistorySnapshot();
+      const current = captureEditorSnapshot();
       return ["profiles", "metadata", "profileExtras", "settings"]
         .some(key => current[key] !== savedSnapshot[key]);
     }
@@ -1103,19 +1049,12 @@
 	  pending.save || pending.reload || pending.resource ||
 	  runtimeCommandPending.size || splitAvisoContext
 	);
-    const airportMismatch = Boolean(state.airport && state.hostAirport && state.airport !== state.hostAirport);
-    const profilesUnsafe = state.settings?.dataHealth?.profilesHealthy === false && !state.recoveryConfirmed;
-    const externalConflict = Boolean(state.externalEditConflict);
     const reloadButton = $("#reloadButton");
-    const undoButton = $("#undoButton");
-    const redoButton = $("#redoButton");
     if (reloadButton) {
 	  reloadButton.disabled = !hostAuthoritativeReady || busy;
       reloadButton.classList.toggle("pending", Boolean(pending.reload));
       reloadButton.title = pending.reload ? "Reverting…" : "Revert to saved configuration";
     }
-	if (undoButton) undoButton.disabled = !hostAuthoritativeReady || busy || airportMismatch || externalConflict || history.past.length === 0;
-	if (redoButton) redoButton.disabled = !hostAuthoritativeReady || busy || airportMismatch || externalConflict || history.future.length === 0;
     updateWorkspaceInterlock();
   }
 
@@ -1127,69 +1066,14 @@
   }
 
   function updateDirtyState(message = "") {
-    state.dirty = !snapshotsEqual(history.present, savedSnapshot);
+    state.dirty = !editorSnapshotsEqual(captureEditorSnapshot(), savedSnapshot);
     const visuallyDirty = state.dirty || hasUnappliedEditorInputs();
     updateCommandState();
     if (message) setStatus(message, visuallyDirty ? "info" : "");
   }
 
-  function recordHistoryState(changedChunks = null, gestureKey = "") {
-    if (gestureKey && history.gestureKey === gestureKey) {
-      const chunks = deferredHistoryGesture?.key === gestureKey
-        ? deferredHistoryGesture.chunks
-        : new Set();
-      (changedChunks || ["profiles", "metadata", "profileExtras", "aviso", "settings"])
-        .forEach(key => chunks.add(key));
-      deferredHistoryGesture = { key: gestureKey, chunks };
-      return true;
-    }
-    flushDeferredHistoryGesture(false);
-    const next = captureHistorySnapshot(history.present, changedChunks);
-    if (history.present && snapshotsEqual(next, history.present)) return false;
-    const coalesce = Boolean(gestureKey && history.gestureKey === gestureKey);
-    if (history.present && !coalesce) {
-      history.past.push(history.present);
-      if (history.past.length > HISTORY_LIMIT) history.past.splice(0, history.past.length - HISTORY_LIMIT);
-    }
-    history.present = next;
-    history.future.length = 0;
-    history.gestureKey = gestureKey;
-    return true;
-  }
-
-  function resetHistory(saved = true) {
-    history.past.length = 0;
-    history.future.length = 0;
-    history.gestureKey = "";
-    deferredHistoryGesture = null;
-    history.present = captureHistorySnapshot(null);
-    if (saved) savedSnapshot = history.present;
-    updateDirtyState();
-  }
-
-  function restoreHistorySnapshot(snapshot) {
-    if (!snapshot) return;
-    const preservedUi = state.ui;
-    const preservedActiveProfileId = state.activeProfileId;
-    const preservedResourcePaths = {
-      profileFile: state.settings.profileFile,
-      avisoFile: state.settings.avisoFile,
-      dataHealth: clone(state.settings.dataHealth)
-    };
-    state.profiles = JSON.parse(snapshot.profiles);
-    state.metadata = JSON.parse(snapshot.metadata);
-    state.profileExtras = JSON.parse(snapshot.profileExtras || "[]");
-    state.activeProfileId = preservedActiveProfileId;
-    state.aviso = JSON.parse(snapshot.aviso);
-    state.settings = { ...JSON.parse(snapshot.settings), ...preservedResourcePaths };
-    state.ui = preservedUi;
-    if (!state.profiles.some(record => record.id === state.activeProfileId)) state.activeProfileId = state.profiles[0]?.id || "";
-    if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
-    Object.keys(drafts).forEach(key => drafts[key] = null);
-    clearAllUnappliedEditorSections();
-    history.present = snapshot;
-    history.gestureKey = "";
-    renderAll();
+  function resetSavedSnapshot() {
+    savedSnapshot = captureEditorSnapshot();
     updateDirtyState();
   }
 
@@ -1311,9 +1195,10 @@
     document.documentElement.dataset.status = type || "ready";
     if (type === "error") setPersistentStatus(message, "error", [], "native");
   }
-  function markDirty(message = "Saving automatically…", changedChunks = null, gestureKey = activeHistoryGestureKey) {
-    recordHistoryState(changedChunks, gestureKey);
-    updateDirtyState(message);
+  function markDirty(message = "Saving automatically…") {
+    state.dirty = true;
+    updateCommandState();
+    if (message) setStatus(message, "info");
     scheduleAutosave();
   }
 
@@ -1322,9 +1207,7 @@
       record.original = clone(record.data);
       record.persistedName = String(record.data?.name || "");
     });
-    history.present = captureHistorySnapshot();
-    history.gestureKey = "";
-    savedSnapshot = history.present;
+    savedSnapshot = captureEditorSnapshot();
     state.dirty = false;
     state.recoveryConfirmed = false;
     state.avisoRecoveryConfirmed = false;
@@ -1405,9 +1288,6 @@
       ui: clone(state.ui),
       runtime: clone(state.runtime),
       drafts: clone(drafts),
-      historyPast: history.past.slice(),
-      historyPresent: history.present,
-      historyFuture: history.future.slice(),
       savedSnapshot,
       dirty: state.dirty,
       unappliedEditorSections: Array.from(unappliedEditorSections),
@@ -1432,9 +1312,6 @@
     state.ui = rollback.ui;
     state.runtime = rollback.runtime;
     Object.keys(drafts).forEach(key => { drafts[key] = rollback.drafts?.[key] ?? null; });
-    history.past.splice(0, history.past.length, ...rollback.historyPast);
-    history.present = rollback.historyPresent;
-    history.future.splice(0, history.future.length, ...rollback.historyFuture);
     savedSnapshot = rollback.savedSnapshot;
     state.dirty = rollback.dirty;
     unappliedEditorSections.clear();
@@ -2449,7 +2326,7 @@
       ? Math.round(parseInt(match[2], 16) / 255 * 100)
       : 100;
     syncColorEditorControls();
-    withHistoryGesture($("#colorHex"), () => applyColorDraft({ render: false }));
+    applyColorDraft({ render: false });
     refreshEditorDerivedVisuals("colors");
     showToast("Color pasted", "success");
   }
@@ -4683,10 +4560,10 @@
     // AVISO is an independent, potentially multi-megabyte resource.  Do not
     // rewrite it (or make profile recovery depend on it) when only profiles or
     // settings changed.  Resource imports and AVISO editor changes are already
-    // represented in the AVISO history chunk and will still be included.
+    // represented in the current AVISO snapshot and will still be included.
     if (savedSnapshot && snapshotChunk(state.aviso) === savedSnapshot.aviso)
       delete payload.aviso;
-    const submittedSnapshot = captureHistorySnapshot();
+    const submittedSnapshot = captureEditorSnapshot();
     const requestId = postBridge("state.save", payload);
     if (!requestId) return false;
     pending.save = requestId;
@@ -4730,9 +4607,9 @@
     }
 
     if (operation?.snapshot) savedSnapshot = operation.snapshot;
-    history.present = captureHistorySnapshot();
+    const currentSnapshot = captureEditorSnapshot();
     const hasNewerEdits = !operation?.snapshot ||
-      !snapshotsEqual(history.present, operation.snapshot) || hasUnappliedEditorInputs();
+      !editorSnapshotsEqual(currentSnapshot, operation.snapshot) || hasUnappliedEditorInputs();
     if (hasNewerEdits) {
       updateDirtyState("Saved previous changes; newer edits are queued…");
       scheduleAutosave(0);
@@ -4785,7 +4662,6 @@
       if (!stageEditorControl(active) || (active?.checkValidity && !active.checkValidity())) return false;
       if (hasUnappliedEditorInputs()) return false;
     } else if (!stageFocusedEditorValue()) return false;
-	flushDeferredHistoryGesture();
     if (!state.dirty) return true;
     return startConfigurationSave();
   }
@@ -4809,34 +4685,6 @@
     armPendingTimeout("resource", id);
     setStatus("Loading bundled defaults...", "info");
     updateCommandState();
-  }
-
-  function undoHistory() {
-	if (!history.past.length || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport) return;
-	flushDeferredHistoryGesture();
-	const rollback = captureRuntimeCommandRollback();
-    const target = history.past.pop();
-    history.future.push(history.present);
-    if (history.future.length > HISTORY_LIMIT) history.future.shift();
-    state.recoveryConfirmed = false;
-    state.avisoRecoveryConfirmed = false;
-    restoreHistorySnapshot(target);
-    updateDirtyState("Undoing change…");
-	if (postRuntimeCommand("state.undo", { state: serializeStatePayload() }, rollback)) scheduleAutosave();
-  }
-
-  function redoHistory() {
-	if (!history.future.length || pending.save || pending.reload || pending.resource || runtimeCommandPending.size || splitAvisoContext || state.externalEditConflict || state.airport !== state.hostAirport) return;
-	flushDeferredHistoryGesture();
-	const rollback = captureRuntimeCommandRollback();
-    const target = history.future.pop();
-    history.past.push(history.present);
-    if (history.past.length > HISTORY_LIMIT) history.past.shift();
-    state.recoveryConfirmed = false;
-    state.avisoRecoveryConfirmed = false;
-    restoreHistorySnapshot(target);
-    updateDirtyState("Redoing change…");
-	if (postRuntimeCommand("state.redo", { state: serializeStatePayload() }, rollback)) scheduleAutosave();
   }
 
   function confirmDelete(message) {
@@ -4906,7 +4754,7 @@
         !/^#?[0-9a-f]{6}$/i.test(control.value.trim())) return false;
     if (control.matches(".color-channel-value") && !/^\d{1,3}$/.test(control.value.trim())) return false;
     if (control.checkValidity && !control.checkValidity()) return false;
-    const result = withHistoryGesture(control, () => {
+    const result = (() => {
       if (scope === "colors") return applyColorDraft({ render: false });
       if (scope === "icons") return applyIcons({ render: false });
       if (scope === "tags") return applyTag({
@@ -4921,7 +4769,7 @@
       if (scope === "groups") return applyAvisoGroup({ render: false, feedback: false });
       if (scope === "alerts") return applyAlerts({ render: false, feedback: false });
       if (scope === "settings") return applySettings({ render: false });
-    });
+    })();
     if (result === false) return false;
     refreshEditorDerivedVisuals(scope, control);
     return true;
@@ -5055,7 +4903,7 @@
       palette.dataset.dragging = "false";
       if (event.pointerId != null && palette.hasPointerCapture?.(event.pointerId)) palette.releasePointerCapture(event.pointerId);
       if (!changed) return;
-      withHistoryGesture(palette, () => apply({ render: false, feedback: false }));
+      apply({ render: false, feedback: false });
       performDeferredDerivedRefresh(scope);
     };
     palette.addEventListener("pointerup", stopDrag);
@@ -5067,7 +4915,7 @@
       const nextS = draft().s + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0);
       const nextV = draft().v + (event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0);
       updateAvisoColorDraftFromHsv(draft(), prefix, draft().h, nextS, nextV, includeOpacity);
-      withHistoryGesture(palette, () => apply({ render: false, feedback: false }));
+      apply({ render: false, feedback: false });
       performDeferredDerivedRefresh(scope);
     });
   }
@@ -5129,18 +4977,6 @@
   }
 
   function bindEvents() {
-    document.addEventListener("focusin", event => {
-      if (editorControlScope(event.target) || event.target.matches?.(".color-sv-palette"))
-        beginHistoryGesture(event.target);
-    });
-    document.addEventListener("pointerdown", event => {
-      if (editorControlScope(event.target) || event.target.matches?.(".color-sv-palette"))
-        beginHistoryGesture(event.target);
-    }, true);
-    document.addEventListener("focusout", event => {
-      if (historyGestureIds.get(event.target) === deferredHistoryGesture?.key)
-        flushDeferredHistoryGesture();
-    });
     document.addEventListener("input", event => {
       if (!editorControlScope(event.target)) return;
       markEditorSectionUnapplied(event.target);
@@ -5325,7 +5161,7 @@
       colorPalette.dataset.dragging = "false";
       if (event.pointerId != null && colorPalette.hasPointerCapture?.(event.pointerId)) colorPalette.releasePointerCapture(event.pointerId);
       if (changed) {
-        withHistoryGesture(colorPalette, () => applyColorDraft({ render: false }));
+        applyColorDraft({ render: false });
         refreshEditorDerivedVisuals("colors");
       }
     };
@@ -5338,7 +5174,7 @@
       const nextS = drafts.color.s + (event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0);
       const nextV = drafts.color.v + (event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0);
       setColorDraftFromHsv(drafts.color.h, nextS, nextV);
-      withHistoryGesture(colorPalette, () => applyColorDraft({ render: false }));
+      applyColorDraft({ render: false });
       refreshEditorDerivedVisuals("colors");
     });
 
@@ -5357,7 +5193,7 @@
     $("#tagDetailedInherits").addEventListener("change", event => {
       captureTagDraft();
       drafts.tag.data.definition_detailed_inherits_normal = $("#tagDetailedInherits").checked;
-      withHistoryGesture(event.target, () => applyTag({ render: false }));
+      applyTag({ render: false });
       renderTagEditor();
     });
 
@@ -5581,8 +5417,6 @@
       submitUpdateSettings({ protect_modified_aviso: event.target.checked }, "AVISO edit protection saved");
     });
     $("#reloadButton").addEventListener("click", requestReload);
-    $("#undoButton").addEventListener("click", undoHistory);
-    $("#redoButton").addEventListener("click", redoHistory);
     $("#closeButton").addEventListener("click", closeControlCenter);
     $("#profilesFileInput").addEventListener("change", importProfilesFile);
     $("#avisoFileInput").addEventListener("change", importAvisoFile);
@@ -6114,12 +5948,12 @@
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
 	const preservesStagedEditors = preservesFocusedEditor || ((state.dirty || hasUnappliedEditorWork) &&
-      !["initial", "reload", "undo", "redo", "state.undo", "state.redo"].includes(reason));
+      !["initial", "reload"].includes(reason));
     const hostAirportChanged = !preservesStagedEditors && typeof incoming.airport === "string" &&
       incomingAirport !== previousHostAirport;
     const profileModeReplacement = !preservesStagedEditors &&
       ["profile", "mode"].includes(reason) && Array.isArray(incoming.profiles);
-    const resetsExternalHistory = !preservesStagedEditors && (
+    const resetsSavedBaseline = !preservesStagedEditors && (
       ["external-save", "backup-restored"].includes(reason) ||
       profileModeReplacement || hostAirportChanged
     );
@@ -6133,9 +5967,9 @@
       state.configRevision = incoming.configRevision;
     if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
       state.avisoRevision = incoming.avisoRevision;
-    if (["initial", "reload", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
+    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
       state.recoveryConfirmed = false;
-    if (["initial", "reload", "backup-restored", "resource-source", "undo", "redo", "state.undo", "state.redo"].includes(reason))
+    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
       state.avisoRecoveryConfirmed = false;
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
@@ -6232,17 +6066,17 @@
     renderDataHealthStatus();
     if (preservesStagedEditors && state.airport && state.hostAirport &&
       state.airport !== state.hostAirport && previousHostAirport !== state.hostAirport) {
-      const message = "The active airport changed. Reload before saving or using Undo/Redo.";
+      const message = "The active airport changed. Reload before saving.";
       setStatus(message, "error");
       showToast(message, "error");
     }
 
-    if (reason === "initial" || reason === "reload" || (resourceSourceChanged && !preservesStagedEditors) || resetsExternalHistory) {
-      resetHistory(true);
+    if (reason === "initial" || reason === "reload" || (resourceSourceChanged && !preservesStagedEditors) || resetsSavedBaseline) {
+      resetSavedSnapshot();
     } else {
       const wasDirty = state.dirty;
-      history.present = captureHistorySnapshot();
-      if (!wasDirty) savedSnapshot = history.present;
+      const currentSnapshot = captureEditorSnapshot();
+      if (!wasDirty) savedSnapshot = currentSnapshot;
       updateDirtyState();
     }
     if (externallyChangedDirtyEditors) {
@@ -6315,9 +6149,8 @@
       if (resource === "profiles") applyProfilesPayload(data, effectivePath);
       else if (resource === "aviso") applyAvisoPayload(data, effectivePath);
       else throw new Error("Unknown resource type");
-	  // A source switch is a revision boundary. Old history snapshots do not
-	  // carry file paths/revisions and must never be replayed into the new file.
-	  if (effectivePath) resetHistory(false);
+	  // A loaded source remains dirty until automatic persistence commits it
+	  if (effectivePath) updateDirtyState();
       if (resource === "profiles" && resourceSource === "bundled defaults")
         state.recoveryConfirmed = true;
       if (resource === "aviso") state.avisoRecoveryConfirmed = true;
@@ -6389,8 +6222,6 @@
 		reason,
 		trustedRuntimeResponse
 	  );
-	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.undo") showToast("Undone", "success");
-	  if (hasInlineAviso && runtimeCommandInfo?.type === "state.redo") showToast("Redone", "success");
       if (isReload && hasInlineAviso) showToast("Configuration reloaded", "success");
       updateCommandState();
       return;
@@ -6415,11 +6246,7 @@
 		  pending.reload = "";
 		  showToast("Configuration reloaded", "success");
 		}
-		const completedRuntimeCommand = runtimeRequestId
-		  ? finishRuntimeCommand(runtimeRequestId, false)
-		  : null;
-		if (completedRuntimeCommand?.type === "state.undo") showToast("Undone", "success");
-		if (completedRuntimeCommand?.type === "state.redo") showToast("Redone", "success");
+		if (runtimeRequestId) finishRuntimeCommand(runtimeRequestId, false);
 		updateCommandState();
 		if (HOST_MODE && reason === "initial" &&
 			(!initialAuthoritativeMessageId || !message.id ||
@@ -6522,7 +6349,7 @@
   initializeScrollCues();
   bindEvents();
   renderAll();
-  resetHistory(true);
+  resetSavedSnapshot();
   setHostAuthoritativeReady(!HOST_MODE);
   window.setInterval(() => requestUpdateState(), 1500);
   document.addEventListener("visibilitychange", () => {
@@ -6532,6 +6359,6 @@
   postBridge("ui.ready", {
     hostMode: HOST_MODE,
     protocolVersion: PROTOCOL_VERSION,
-    capabilities: ["state", "save", "reload", "undo", "redo", "github-import", "computer-import", "window-actions", "split-aviso", "startup-updates"]
+    capabilities: ["state", "save", "reload", "github-import", "computer-import", "window-actions", "split-aviso", "startup-updates"]
   });
 })();
