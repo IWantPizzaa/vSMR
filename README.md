@@ -410,6 +410,8 @@ Enter commands in lowercase as shown.
 | `.smr` | Opens the Control Center Settings page |
 | `.smr editor` | Opens the Control Center |
 | `.smr reload` | Reloads vSMR runtime data on all open vSMR screens |
+| `.smr rdf on` | Enables the native TrackAudio RDF overlay and remembers the setting |
+| `.smr rdf off` | Disables the native TrackAudio RDF overlay and remembers the setting |
 | `.smr log` | Toggles normal logging |
 | `.smr log normal` | Enables concise logging |
 | `.smr log verbose` | Enables detailed logging |
