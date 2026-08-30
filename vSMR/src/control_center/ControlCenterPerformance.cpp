@@ -425,6 +425,8 @@ namespace VsmrControlCenterPerformance
 			"generatedAtUtc",
 			FormatUtcMilliseconds(VsmrPerformance::PerformanceDiagnostics::UtcMilliseconds()),
 			allocator);
+		// A diagnostics reset advances the generation. Reset the presentation peaks
+		// with it so values from the previous sampling session are not retained.
 		if (peaks.generation != snapshot.generation)
 		{
 			peaks.processGdiObjects = 0;

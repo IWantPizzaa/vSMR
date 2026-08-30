@@ -26,6 +26,9 @@
 namespace
 {
 	constexpr std::uintmax_t kMaximumUpdaterJsonBytes = 256u * 1024u;
+	// Every radar window reads the same updater files. Hold this mutex across
+	// complete read-modify-write transactions so one window cannot overwrite
+	// settings that another window has just accepted.
 	std::mutex gUpdaterFileMutex;
 
 	using Allocator = rapidjson::Document::AllocatorType;
@@ -330,6 +333,9 @@ namespace
 			}
 			offset += written;
 		}
+		// Flush the complete temporary file before replacement. A crash therefore
+		// leaves either the previous document or the new document, never a partial
+		// updater configuration.
 		if (succeeded)
 			succeeded = ::FlushFileBuffers(output) != FALSE;
 		::CloseHandle(output);

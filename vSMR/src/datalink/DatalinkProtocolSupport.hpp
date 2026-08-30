@@ -8,6 +8,8 @@ namespace EuroScopePlugIn
 	class CPlugIn;
 }
 
+// These helpers contain protocol and credential rules only. Connection state
+// and worker lifetime remain owned by the plug-in coordinator.
 namespace VsmrDatalinkProtocol
 {
 	struct PdcFrequencySelection

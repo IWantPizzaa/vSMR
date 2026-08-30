@@ -142,6 +142,9 @@ namespace VsmrRadarTypes
 		InsetWindowState timer;
 	};
 
+	// Render requests own immutable snapshots because the raster worker can
+	// outlive the frame that queued it. The generation and cancellation token
+	// prevent an older result from replacing newer group or viewport state.
 	struct AvisoRasterRenderRequest
 	{
 		unsigned long long requestId = 0;
