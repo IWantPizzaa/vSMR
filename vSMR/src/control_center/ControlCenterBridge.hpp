@@ -5,6 +5,7 @@
 #include <string>
 
 class CSMRRadar;
+class VsmrControlCenterBridgeImpl;
 
 enum class VsmrBridgeAction
 {
@@ -82,6 +83,5 @@ public:
 		const std::string& effectivePath = "");
 
 private:
-	struct Impl;
-	std::unique_ptr<Impl> State;
+	std::unique_ptr<VsmrControlCenterBridgeImpl> State;
 };

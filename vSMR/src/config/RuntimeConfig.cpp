@@ -2,6 +2,7 @@
 #include "config/RuntimeConfig.hpp"
 #include "shared/JsonInputLimits.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <iomanip>
@@ -2117,6 +2118,26 @@ bool CConfig::isBackupAvailable() const
 	std::string error;
 	bool migrated = false;
 	return validateAndMigrateProfilesDocument(candidate, error, migrated);
+}
+
+std::int64_t CConfig::getBackupModifiedUnixSeconds() const
+{
+	std::error_code error;
+	const std::filesystem::file_time_type modified =
+		std::filesystem::last_write_time(
+			std::filesystem::u8path(config_path + kBackupSuffix),
+			error);
+	if (error)
+		return 0;
+
+	const std::chrono::system_clock::time_point systemModified =
+		std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+			modified - std::filesystem::file_time_type::clock::now() +
+			std::chrono::system_clock::now());
+	const std::int64_t seconds =
+		std::chrono::duration_cast<std::chrono::seconds>(
+			systemModified.time_since_epoch()).count();
+	return seconds > 0 ? seconds : 0;
 }
 
 bool CConfig::restoreBackup(string& error)

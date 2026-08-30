@@ -94,7 +94,7 @@ extern "C" bool __declspec(dllexport) VsmrRuntimeCreate(
 	}
 
 	const bool crashReporterInstalled = VsmrCrashReporter::Install(
-		MY_PLUGIN_VERSION,
+		VsmrPluginVersion,
 		VsmrRuntimeContext::InstallRoot().c_str());
 	VsmrCrashRuntime::RecordEuroScopeCallback("EuroScopePlugInInit");
 	try
