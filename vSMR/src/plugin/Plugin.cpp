@@ -4018,6 +4018,30 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR runtime data", true, true, false, true, false);
 		return true;
 	}
+	else if (commandLower == ".smr rdf on" || commandLower == ".smr rdf off")
+	{
+		const bool enabled = commandLower == ".smr rdf on";
+		VsmrRdf::SetEnabled(enabled);
+		SaveDataToSettings(
+			"rdf_enabled",
+			"Enable the native vSMR RDF overlay",
+			enabled ? "1" : "0");
+		DisplayUserMessage(
+			"vSMR",
+			"RDF",
+			enabled ? "Native RDF enabled" : "Native RDF disabled",
+			true,
+			true,
+			false,
+			true,
+			false);
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar != nullptr && !radar->IsShutdownRequested())
+				radar->RequestRefresh();
+		}
+		return true;
+	}
 	else if (startsWithCommand(".smr log")) {
 		const std::string prefix = ".smr log";
 		std::string argument = "";

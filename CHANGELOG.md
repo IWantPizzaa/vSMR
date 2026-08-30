@@ -18,7 +18,7 @@
 - Changed arrival tag classification so aircraft at 40 kt or below use the arrived presentation, including while still on the runway.
 - Reworked Control Center persistence around one live model and a serialized latest-state save queue: every valid field is applied immediately, disk writes are lightly debounced, and acknowledgements advance revision tokens without repainting or replacing newer edits.
 - Fixed clean preloaded Control Centers retaining a stale profiles revision after another radar window saved, which caused a false “profiles file changed in another vSMR window” warning on the next edit.
-- Removed the RDF, CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces.
+- Removed the CPDLC/PDC, RIMCAS debug, AVISO editor/reload, profile, config, and vSMR alias commands while retaining their supported Runtime and Control Center interfaces. Restored `.smr rdf on` and `.smr rdf off` for persistent native RDF control.
 - Changed holding-point synchronization to the stable `VSMRHP/<value>` remarks marker and clean up duplicated markers produced by EuroScope's rewriting of the former `HP:<value>` format.
 - Automatically removes the holding-point marker from flight-plan remarks when the correlated aircraft transitions to an airborne tag above 50 kt.
 - Hardened the native RDF worker with an exception boundary and race-safe RAII ownership for WinHTTP and WebSocket handles, preventing worker failures from terminating EuroScope.
