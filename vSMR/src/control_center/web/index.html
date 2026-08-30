@@ -457,19 +457,25 @@
 <div class="settings-column settings-primary-column">
 <fieldset class="compact-group settings-group display-group">
 <legend>Display</legend>
+<div class="settings-display-row">
 <label class="field"><span>Resolution</span><select id="settingsResolutionPreset"><option>1080p</option><option>2k</option><option>4k</option></select></label>
-<label class="check-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
+<label class="check-field settings-fps-field"><input id="settingsShowFps" type="checkbox"/><span>Show FPS</span></label>
+</div>
 </fieldset>
 <fieldset class="compact-group settings-group updater-general-group">
 <legend>Automatic updates</legend>
+<div class="updater-summary-row">
 <div class="updater-general-heading">
 <span id="updateVersionSummary">Installed --</span>
 </div>
 <label class="field update-channel-field"><span>Channel</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
+</div>
+<div class="updater-options">
 <label class="check-field"><input id="updateAutoCheck" type="checkbox"/><span>Check GitHub when EuroScope starts</span></label>
 <label class="check-field"><input id="updateAutoDownload" type="checkbox"/><span>Download verified updates</span></label>
 <label class="check-field"><input id="updateAutoInstall" type="checkbox"/><span>Activate verified runtime before load</span></label>
 <label class="check-field update-aviso-protection" title="Keep locally edited AVISOs during manual reloads and optional release migrations. Required schema migrations can still replace them after creating a complete backup."><input id="updateProtectModifiedAviso" type="checkbox"/><span>Protect locally edited AVISOs</span></label>
+</div>
 <p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
 <div class="updater-general-actions">
 <button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
