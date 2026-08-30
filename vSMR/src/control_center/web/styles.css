@@ -6452,10 +6452,12 @@ textarea:disabled {
 }
 
 .settings-page .settings-layout {
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-columns: minmax(285px, .9fr) minmax(320px, 1.1fr);
 	grid-template-rows: minmax(0, 1fr);
 	align-items: start;
 	align-content: stretch;
+	gap: 5px;
+	padding: 5px;
 }
 
 .settings-page .settings-primary-column,
@@ -6464,59 +6466,134 @@ textarea:disabled {
 	display: grid;
 	grid-auto-rows: max-content;
 	align-content: start;
-	gap: 3px;
-}
-
-.settings-page .updater-general-group {
-	align-self: stretch;
-}
-
-.settings-page .display-group {
-	grid-template-columns: minmax(0, 1fr);
-	align-items: end;
 	gap: 5px;
 }
 
-.settings-page .display-group > .field {
-	width: min(100%, 160px);
+.settings-page .settings-group {
+	padding: calc(var(--ui-panel-title-height) + 6px) 8px 7px;
 }
 
-.settings-page .display-group > .check-field {
-	grid-column: 1;
+.settings-page .display-group {
+	display: block;
+}
+
+.settings-page .settings-display-row {
+	display: grid;
+	grid-template-columns: minmax(150px, 180px) auto;
+	align-items: end;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.settings-page .settings-fps-field {
+	min-height: var(--ui-control-height);
+	margin: 0;
+	padding: 0 3px;
 }
 
 .settings-page .updater-general-group {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px 8px;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	align-self: stretch;
+	gap: 7px;
 }
 
-.settings-page .updater-general-heading,
-.settings-page .updater-general-group .update-channel-field,
-.settings-page .updater-general-group > .check-field,
-.settings-page .update-notice,
-.settings-page .updater-general-actions {
-  grid-column: 1 / -1 !important;
+.settings-page .updater-summary-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 128px;
+	align-items: end;
+	gap: 10px;
+	padding-bottom: 7px;
+	border-bottom: 1px solid var(--ui-inner-border);
 }
 
 .settings-page .updater-general-heading {
-  min-height: 16px;
-  padding: 0 2px;
+	min-width: 0;
+	min-height: var(--ui-control-height);
+	display: flex;
+	align-items: center;
+	padding: 0 3px;
 }
 
 .settings-page .updater-general-heading > span:last-child {
-  font-size: 9px;
+	color: var(--ui-text);
+	font: 9px/1.25 var(--mono);
+}
+
+.settings-page .updater-general-group .update-channel-field {
+	display: grid;
+	grid-template-columns: auto minmax(72px, 1fr);
+	align-items: center;
+	gap: 6px;
+}
+
+.settings-page .updater-options {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 2px;
+}
+
+.settings-page .updater-options .check-field {
+	min-height: 21px;
+	margin: 0;
+	padding: 2px 3px;
+	font-size: 9px;
+	line-height: 1.2;
+}
+
+.settings-page .update-notice {
+	max-height: none;
+	min-height: 24px;
+	margin: 0;
+	padding: 5px 7px;
+	overflow: hidden;
+	border-left: 2px solid #50656b;
+	background: rgba(8, 12, 13, .18);
+	font-size: 8px;
+	line-height: 1.35;
+}
+
+.settings-page .update-notice.error {
+	border-left-color: #c96f75;
 }
 
 .settings-page .updater-general-actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, max-content));
+	justify-content: start;
+	gap: 4px;
 }
 
-@media (max-width: 700px) {
+.settings-page .settings-file-row {
+	gap: 3px;
+	padding: 4px 0 8px;
+}
+
+.settings-page .settings-file-row + .settings-file-row {
+	padding-top: 7px;
+}
+
+.settings-page .settings-file-heading {
+	min-height: 12px;
+}
+
+.settings-page .settings-file-actions,
+.settings-page .settings-recovery-actions {
+	gap: 4px;
+}
+
+.settings-page .settings-recovery-actions {
+	padding-top: 7px;
+}
+
+@media (max-width: 620px) {
   .aviso-toolbar-palette { width: 145px; }
 	.settings-page .settings-layout {
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: max-content max-content;
 		overflow-y: auto;
+	}
+	.settings-page .updater-summary-row {
+		grid-template-columns: minmax(0, 1fr) 140px;
 	}
 }
