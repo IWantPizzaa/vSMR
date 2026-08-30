@@ -5,6 +5,8 @@
 class CSMRPlugin;
 class CSMRRadar;
 
+// EuroScope owns the callback boundary in CSMRPlugin. Keeping command dispatch
+// here leaves that callback responsible only for host-state and crash guards.
 class VsmrPluginCommandHandler final
 {
 public:

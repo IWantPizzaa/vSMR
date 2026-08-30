@@ -641,6 +641,9 @@ namespace
 
 }
 
+// Preset changes must be reconciled across radar windows that share one config
+// file. Keep that privileged coordination in a named friend instead of making
+// the underlying preset and inset containers public.
 struct VsmrRadarPresetAccess
 {
 	static CInsetWindow* GetSecondaryAvisoWindow(CSMRRadar* radar)

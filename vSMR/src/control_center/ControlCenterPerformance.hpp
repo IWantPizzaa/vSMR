@@ -27,6 +27,8 @@ struct VsmrControlCenterPerformanceContext
 	VsmrControlCenterWorkerQueues workerQueues;
 };
 
+// Peaks belong to one Control Center bridge. Sharing them between radar
+// windows would make a reset in one window change the report shown by another.
 struct VsmrControlCenterPerformancePeaks
 {
 	std::uint32_t processGdiObjects = 0;
