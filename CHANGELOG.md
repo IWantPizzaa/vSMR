@@ -14,6 +14,7 @@
 
 - Reworked Settings into a compact two-column Display/updates and Data files layout, and removed the updater status badge and manual next-startup update-check action.
 - Removed Control Center Undo/Redo and stopped normal profile and AVISO saves from automatically creating `.bak` files. Atomic replacement, failed-transaction rollback, Revert, and compatibility with existing profile backups remain available.
+- Fixed loading vSMR again during the same EuroScope session after a safe unload had temporarily retained the runtime while radar screens and callbacks were still closing.
 - Replaced the bundled profiles with the supplied five-profile configuration.
 - Moved the previous bundled `Default` profile to `Custom LFPG` and restored `Default` from the 2.0.0-beta.2 profile set.
 - Tightened square-corner tag borders while preserving the existing rounded-tag dimensions.

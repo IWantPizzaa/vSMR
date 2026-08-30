@@ -1139,6 +1139,48 @@ namespace
 			L"vSMR could not start",
 			MB_OK | MB_ICONERROR | MB_TASKMODAL);
 	}
+
+	bool ReleasePublishedRuntime(std::wstring& errorMessage) noexcept
+	{
+		errorMessage.clear();
+		bool runtimeReleased =
+			gRuntimeModule == nullptr &&
+			gRuntimeShutdown == nullptr &&
+			gPluginInstance == nullptr;
+		if (gRuntimeShutdown != nullptr)
+		{
+			try
+			{
+				runtimeReleased = gRuntimeShutdown();
+			}
+			catch (...)
+			{
+				runtimeReleased = false;
+			}
+		}
+
+		if (!runtimeReleased)
+		{
+			errorMessage =
+				L"The previous vSMR runtime still owns active EuroScope radar objects or callbacks.";
+			return false;
+		}
+
+		HMODULE const releasedModule = gRuntimeModule;
+		if (releasedModule != nullptr && !::FreeLibrary(releasedModule))
+		{
+			errorMessage = L"Windows could not unmap the released vSMR runtime: " +
+				WindowsErrorMessage(::GetLastError());
+			return false;
+		}
+
+		gPluginInstance = nullptr;
+		gRuntimeShutdown = nullptr;
+		gRuntimeModule = nullptr;
+		ReleaseSessionLockForRecovery();
+		gShutdownRequested = false;
+		return true;
+	}
 }
 
 void __declspec(dllexport) EuroScopePlugInInit(
@@ -1151,10 +1193,16 @@ void __declspec(dllexport) EuroScopePlugInInit(
 	std::lock_guard<std::mutex> guard(gLifecycleMutex);
 	if (gShutdownRequested)
 	{
-		ShowStartupFailure(
-			L"A previous vSMR runtime generation could not be released safely. "
-			L"Restart EuroScope before loading vSMR again.");
-		return;
+		std::wstring releaseError;
+		if (!ReleasePublishedRuntime(releaseError))
+		{
+			ShowStartupFailure(
+				releaseError +
+				L" Close its radar displays and load vSMR again, or restart EuroScope.");
+			return;
+		}
+		AppendBootstrapLog(
+			L"Released the retained runtime generation before an in-session reload.");
 	}
 	if (gPluginInstance != nullptr)
 	{
@@ -1332,39 +1380,11 @@ void __declspec(dllexport) EuroScopePlugInExit(void)
 	if (gShutdownRequested)
 		return;
 	gShutdownRequested = true;
-	bool runtimeReleased =
-		gRuntimeModule == nullptr &&
-		gRuntimeShutdown == nullptr &&
-		gPluginInstance == nullptr;
-	if (gRuntimeShutdown != nullptr)
-	{
-		try
-		{
-			runtimeReleased = gRuntimeShutdown();
-		}
-		catch (...)
-		{
-			runtimeReleased = false;
-		}
-	}
-
-	if (!runtimeReleased)
+	std::wstring releaseError;
+	if (!ReleasePublishedRuntime(releaseError))
 	{
 		AppendBootstrapLog(
-			L"Runtime shutdown retained its module because radar objects were still active.");
+			L"Runtime shutdown retained its module: " + releaseError);
 		return;
 	}
-
-	HMODULE const releasedModule = gRuntimeModule;
-	gPluginInstance = nullptr;
-	gRuntimeShutdown = nullptr;
-	gRuntimeModule = nullptr;
-	if (releasedModule != nullptr && !::FreeLibrary(releasedModule))
-	{
-		AppendBootstrapLog(
-			L"The released runtime module could not be unmapped: " +
-			WindowsErrorMessage(::GetLastError()));
-	}
-	ReleaseSessionLockForRecovery();
-	gShutdownRequested = false;
 }
