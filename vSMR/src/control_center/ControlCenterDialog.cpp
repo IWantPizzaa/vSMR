@@ -10,7 +10,6 @@
 #include "crash/CrashRuntime.hpp"
 
 #include "WebView2.h"
-#include <shobjidl_core.h>
 #include <wrl.h>
 
 #include "rapidjson/document.h"
@@ -18,6 +17,7 @@
 #include "rapidjson/stringbuffer.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstring>
 #include <cwchar>
@@ -316,31 +316,6 @@ namespace
 		Failed
 	};
 
-	class ScopedFileDialogComInitialization
-	{
-	public:
-		ScopedFileDialogComInitialization() noexcept
-			: Result(::CoInitializeEx(
-				nullptr,
-				COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))
-		{
-		}
-
-		~ScopedFileDialogComInitialization()
-		{
-			if (SUCCEEDED(Result))
-				::CoUninitialize();
-		}
-
-		bool IsAvailable() const noexcept
-		{
-			return SUCCEEDED(Result) || Result == RPC_E_CHANGED_MODE;
-		}
-
-	private:
-		HRESULT Result;
-	};
-
 	ResourceFileDialogResult SelectResourceFile(
 		HWND ownerWindow,
 		bool profiles,
@@ -349,71 +324,35 @@ namespace
 		selectedPath.clear();
 		try
 		{
-			ScopedFileDialogComInitialization comInitialization;
-			if (!comInitialization.IsAvailable())
-				return ResourceFileDialogResult::Failed;
+			std::array<wchar_t, 32768> pathBuffer{};
+			const wchar_t profileFilters[] =
+				L"vSMR profiles (*.json)\0*.json\0All files (*.*)\0*.*\0";
+			const wchar_t avisoFilters[] =
+				L"GeoJSON (*.geojson;*.json)\0*.geojson;*.json\0All files (*.*)\0*.*\0";
 
-			ComPtr<IFileOpenDialog> dialog;
-			HRESULT result = ::CoCreateInstance(
-				CLSID_FileOpenDialog,
-				nullptr,
-				CLSCTX_INPROC_SERVER,
-				IID_PPV_ARGS(&dialog));
-			if (FAILED(result) || !dialog)
-				return ResourceFileDialogResult::Failed;
+			OPENFILENAMEW dialog{};
+			dialog.lStructSize = sizeof(dialog);
+			dialog.hwndOwner = ownerWindow;
+			dialog.lpstrFilter = profiles ? profileFilters : avisoFilters;
+			dialog.nFilterIndex = 1;
+			dialog.lpstrFile = pathBuffer.data();
+			dialog.nMaxFile = static_cast<DWORD>(pathBuffer.size());
+			dialog.lpstrDefExt = profiles ? L"json" : L"geojson";
+			dialog.Flags =
+				OFN_EXPLORER |
+				OFN_FILEMUSTEXIST |
+				OFN_HIDEREADONLY |
+				OFN_NOCHANGEDIR |
+				OFN_PATHMUSTEXIST;
 
-			DWORD options = 0;
-			result = dialog->GetOptions(&options);
-			if (FAILED(result))
-				return ResourceFileDialogResult::Failed;
-			result = dialog->SetOptions(
-				options |
-				FOS_FILEMUSTEXIST |
-				FOS_FORCEFILESYSTEM |
-				FOS_NOCHANGEDIR |
-				FOS_PATHMUSTEXIST);
-			if (FAILED(result))
-				return ResourceFileDialogResult::Failed;
-
-			const COMDLG_FILTERSPEC profileFilters[] = {
-				{ L"vSMR profiles (*.json)", L"*.json" },
-				{ L"All files (*.*)", L"*.*" }
-			};
-			const COMDLG_FILTERSPEC avisoFilters[] = {
-				{ L"GeoJSON (*.geojson;*.json)", L"*.geojson;*.json" },
-				{ L"All files (*.*)", L"*.*" }
-			};
-			result = profiles
-				? dialog->SetFileTypes(
-					static_cast<UINT>(std::size(profileFilters)),
-					profileFilters)
-				: dialog->SetFileTypes(
-					static_cast<UINT>(std::size(avisoFilters)),
-					avisoFilters);
-			if (FAILED(result) ||
-				FAILED(dialog->SetDefaultExtension(
-					profiles ? L"json" : L"geojson")))
+			if (!::GetOpenFileNameW(&dialog))
 			{
-				return ResourceFileDialogResult::Failed;
+				return ::CommDlgExtendedError() == 0
+					? ResourceFileDialogResult::Cancelled
+					: ResourceFileDialogResult::Failed;
 			}
 
-			result = dialog->Show(ownerWindow);
-			if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED))
-				return ResourceFileDialogResult::Cancelled;
-			if (FAILED(result))
-				return ResourceFileDialogResult::Failed;
-
-			ComPtr<IShellItem> item;
-			result = dialog->GetResult(&item);
-			if (FAILED(result) || !item)
-				return ResourceFileDialogResult::Failed;
-
-			PWSTR rawPath = nullptr;
-			result = item->GetDisplayName(SIGDN_FILESYSPATH, &rawPath);
-			if (FAILED(result) || rawPath == nullptr)
-				return ResourceFileDialogResult::Failed;
-			CoTaskMemString pathValue(rawPath);
-			selectedPath = std::filesystem::path(pathValue.get());
+			selectedPath = std::filesystem::path(pathBuffer.data());
 			return selectedPath.empty()
 				? ResourceFileDialogResult::Failed
 				: ResourceFileDialogResult::Selected;
