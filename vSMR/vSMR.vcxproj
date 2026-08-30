@@ -164,6 +164,7 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterMessageProtocol.cpp" />
     <ClCompile Include="src\control_center\ControlCenterPerformance.cpp" />
     <ClCompile Include="src\control_center\ControlCenterUpdater.cpp" />
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp" />
@@ -185,9 +186,11 @@
     </ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp" />
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp" />
+    <ClCompile Include="src\plugin\PluginRuntimeServices.cpp" />
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp" />
     <ClCompile Include="src\radar\RadarGeometry.cpp" />
     <ClCompile Include="src\radar\RadarScreen.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.AvisoRendering.cpp" />
     <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp" />
     <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp" />
     <ClCompile Include="src\radar\RadarScreen.Interaction.cpp" />
@@ -219,6 +222,7 @@
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterMessageProtocol.hpp" />
     <ClInclude Include="src\control_center\ControlCenterPerformance.hpp" />
     <ClInclude Include="src\control_center\ControlCenterUpdater.hpp" />
     <ClInclude Include="src\control_center\ControlCenterDialog.hpp" />
@@ -245,6 +249,7 @@
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
     <ClInclude Include="src\radar\RadarScreenTypes.hpp" />
+    <ClInclude Include="src\radar\RadarScreenSupport.hpp" />
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
     <ClInclude Include="src\safety\Rimcas.hpp" />
@@ -282,6 +287,9 @@
     <None Include="data\vSMR_Profiles.json" />
     <None Include="src\control_center\web\app.js">
       <Link>vSMR_webUI\app.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-bundle.js">
+      <Link>vSMR_webUI\app-bundle.js</Link>
     </None>
     <None Include="src\control_center\web\app-model.js">
       <Link>vSMR_webUI\app-model.js</Link>

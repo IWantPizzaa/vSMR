@@ -1,7 +1,7 @@
 "use strict";
 
-// These ordered classic scripts share one lexical environment. Keep the
-// index.html load order stable; app.js performs the final host bootstrap.
+// Feature sources are assembled into app-bundle.js inside one private closure.
+// Only the supported window.vsmrControlCenter host API leaves that closure.
 
   const PROTOCOL_VERSION = 1;
   const MAX_BRIDGE_MESSAGE_BYTES = 28 * 1024 * 1024;

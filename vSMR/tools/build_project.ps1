@@ -18,6 +18,13 @@ if (-not (Test-Path -LiteralPath $solutionPath -PathType Leaf)) {
     throw "vSMR.sln was not found at '$solutionPath'."
 }
 
+$bundleScript = Join-Path $PSScriptRoot "build_control_center_bundle.ps1"
+Write-Host "Checking the generated Control Center bundle..."
+& $bundleScript -RepositoryRoot $RepositoryRoot -Check
+if ($LASTEXITCODE -ne 0) {
+    throw "The Control Center bundle is stale. Run '$bundleScript' and commit the result."
+}
+
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuildPath = ""
 if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
@@ -70,3 +77,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Release rebuild completed: $(Join-Path $RepositoryRoot 'Release\vSMR.dll')"
+
+$testScript = Join-Path $RepositoryRoot "vSMR\tests\run_tests.ps1"
+Write-Host "Running native and browser regression tests..."
+& $testScript -RepositoryRoot $RepositoryRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Regression tests failed with exit code $LASTEXITCODE."
+}

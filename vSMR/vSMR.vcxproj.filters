@@ -44,6 +44,7 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\config\RuntimeConfig.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\ControlCenterMessageProtocol.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterPerformance.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterUpdater.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp"><Filter>Source</Filter></ClCompile>
@@ -60,9 +61,11 @@
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\PluginRuntimeServices.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarGeometry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.AvisoRendering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.Interaction.cpp"><Filter>Source</Filter></ClCompile>
@@ -87,6 +90,7 @@
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\control_center\ControlCenterMessageProtocol.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterPerformance.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterUpdater.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterDialog.hpp"><Filter>Headers</Filter></ClInclude>
@@ -113,6 +117,7 @@
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreen.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreenTypes.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarScreenSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarUiSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\safety\Rimcas.hpp"><Filter>Headers</Filter></ClInclude>
@@ -168,6 +173,9 @@
       <Filter>Data</Filter>
     </None>
     <None Include="src\control_center\web\app.js">
+      <Filter>Web UI</Filter>
+    </None>
+    <None Include="src\control_center\web\app-bundle.js">
       <Filter>Web UI</Filter>
     </None>
     <None Include="src\control_center\web\app-model.js">

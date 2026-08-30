@@ -2256,21 +2256,11 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	{
 		try
 		{
-			const std::array<const char*, 14> requiredAssets = {
+			const std::array<const char*, 4> requiredAssets = {
 				"index.html",
 				"styles.css",
 				"data.js",
-				"app-model.js",
-				"app-workflow.js",
-				"app-runtime.js",
-				"app-profile-colors.js",
-				"app-profile-editor.js",
-				"app-aviso-editor.js",
-				"app-settings.js",
-				"app-persistence.js",
-				"app-events.js",
-				"app-actions.js",
-				"app.js"
+				"app-bundle.js"
 			};
 			const bool complete = std::all_of(
 				requiredAssets.begin(),
