@@ -13,6 +13,7 @@
 ### Changed
 
 - Replaced the bundled profiles with the supplied five-profile configuration.
+- Moved the previous bundled `Default` profile to `Custom LFPG` and restored `Default` from the 2.0.0-beta.2 profile set.
 - Tightened square-corner tag borders while preserving the existing rounded-tag dimensions.
 - Made runway and SID/custom rule matches use an operator selector plus an editable value list, including `in` and `not in` matching for both sources.
 - Changed arrival tag classification so aircraft at 40 kt or below use the arrived presentation, including while still on the runway.
