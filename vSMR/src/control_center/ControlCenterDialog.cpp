@@ -1152,12 +1152,12 @@ void CVsmrControlCenterDialog::ConfigureWebView()
 	// Expose the same aircraft silhouettes used by the native radar renderer.
 	// Mapping only the icon directory keeps the rest of vSMR_Data unavailable to
 	// the WebView while allowing the Control Center to preview the real A320 PNG.
-	if (Owner != nullptr && !Owner->IconsPath.empty())
+	if (Owner != nullptr && !Owner->GetIconsPath().empty())
 	{
 		try
 		{
 			const std::filesystem::path iconFolder =
-				std::filesystem::absolute(std::filesystem::u8path(Owner->IconsPath));
+				std::filesystem::absolute(std::filesystem::u8path(Owner->GetIconsPath()));
 			if (std::filesystem::is_regular_file(iconFolder / "a320.png"))
 			{
 				const HRESULT iconMappingResult = webView3->SetVirtualHostNameToFolderMapping(
@@ -1770,11 +1770,11 @@ void CVsmrControlCenterDialog::RequestResetDefaults(
 	const std::filesystem::path resourceFolder(ResolveWebResourceFolder());
 	const std::filesystem::path profilesPath =
 		resourceFolder / L"defaults" / L"vSMR_Profiles.json";
-	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->DataPath.empty()
-		? std::filesystem::u8path(Owner->DataPath)
+	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->GetDataPath().empty()
+		? std::filesystem::u8path(Owner->GetDataPath())
 		: std::filesystem::u8path(
-			Owner != nullptr && !Owner->DllPath.empty()
-				? Owner->DllPath
+			Owner != nullptr && !Owner->GetDllPath().empty()
+				? Owner->GetDllPath()
 				: Logger::DLL_PATH) / "vSMR_Data";
 	std::string activeAirport = Owner != nullptr
 		? Owner->getActiveAirport()
@@ -2073,8 +2073,8 @@ LRESULT CVsmrControlCenterDialog::OnGithubDownloadComplete(
 		return 0;
 	}
 
-	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->DataPath.empty()
-		? std::filesystem::u8path(Owner->DataPath)
+	const std::filesystem::path dataDirectory = Owner != nullptr && !Owner->GetDataPath().empty()
+		? std::filesystem::u8path(Owner->GetDataPath())
 		: std::filesystem::u8path(Logger::DLL_PATH) / "vSMR_Data";
 	const VsmrResourceFiles::Kind kind = result->resource == "profiles"
 		? VsmrResourceFiles::Kind::Profiles
@@ -2237,9 +2237,9 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	if (Owner != nullptr)
 	{
 		candidates.emplace_back(
-			std::filesystem::u8path(Owner->DataPath) / "vSMR_webUI");
+			std::filesystem::u8path(Owner->GetDataPath()) / "vSMR_webUI");
 		candidates.emplace_back(
-			std::filesystem::u8path(Owner->DllPath) / "vSMR_webUI");
+			std::filesystem::u8path(Owner->GetDllPath()) / "vSMR_webUI");
 	}
 	try
 	{
@@ -2256,10 +2256,30 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	{
 		try
 		{
-			if (std::filesystem::is_regular_file(candidate / "index.html") &&
-				std::filesystem::is_regular_file(candidate / "styles.css") &&
-				std::filesystem::is_regular_file(candidate / "app.js") &&
-				std::filesystem::is_regular_file(candidate / "data.js"))
+			const std::array<const char*, 14> requiredAssets = {
+				"index.html",
+				"styles.css",
+				"data.js",
+				"app-model.js",
+				"app-workflow.js",
+				"app-runtime.js",
+				"app-profile-colors.js",
+				"app-profile-editor.js",
+				"app-aviso-editor.js",
+				"app-settings.js",
+				"app-persistence.js",
+				"app-events.js",
+				"app-actions.js",
+				"app.js"
+			};
+			const bool complete = std::all_of(
+				requiredAssets.begin(),
+				requiredAssets.end(),
+				[&candidate](const char* name)
+				{
+					return std::filesystem::is_regular_file(candidate / name);
+				});
+			if (complete)
 				return std::filesystem::absolute(candidate).wstring();
 		}
 		catch (...)

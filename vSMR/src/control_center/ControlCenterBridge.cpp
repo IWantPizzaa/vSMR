@@ -7,34 +7,26 @@
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "control_center/ControlCenterPerformance.hpp"
+#include "control_center/ControlCenterUpdater.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
-#include "crash/CrashReportSupport.hpp"
-#include "diagnostics/PerformanceDiagnostics.hpp"
 
 #include "rapidjson/document.h"
-#include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
-#include <shlobj.h>
-#include <shellapi.h>
-
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <locale>
 #include <mutex>
 #include <set>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
-
-#pragma comment(lib, "shell32.lib")
 
 extern std::vector<CSMRRadar*> RadarScreensOpened;
 
@@ -42,9 +34,7 @@ namespace
 {
 	constexpr int kBridgeProtocolVersion = 1;
 	constexpr size_t kMaximumBridgeMessageBytes = 32u * 1024u * 1024u;
-	constexpr std::uintmax_t kMaximumUpdaterJsonBytes = 256u * 1024u;
 	std::mutex gBridgeSaveTransactionMutex;
-	std::mutex gUpdaterFileMutex;
 
 	using Allocator = rapidjson::Document::AllocatorType;
 
@@ -210,85 +200,6 @@ namespace
 		return object[key].GetInt();
 	}
 
-	std::uint32_t NormalizePerformanceWindowSeconds(int requested)
-	{
-		switch (requested)
-		{
-		case 30:
-		case 120:
-		case 600:
-			return static_cast<std::uint32_t>(requested);
-		default:
-			return 120;
-		}
-	}
-
-	std::size_t NormalizePerformanceSeriesPoints(int requested)
-	{
-		if (requested <= 0)
-			return 120;
-		return static_cast<std::size_t>((std::clamp)(requested, 1, 600));
-	}
-
-	std::string FormatUtcMilliseconds(std::uint64_t utcMilliseconds)
-	{
-		if (utcMilliseconds == 0)
-			return {};
-		const std::time_t seconds = static_cast<std::time_t>(utcMilliseconds / 1000ULL);
-		std::tm utc = {};
-		if (gmtime_s(&utc, &seconds) != 0)
-			return {};
-		char formatted[40] = {};
-		_snprintf_s(
-			formatted,
-			_TRUNCATE,
-			"%04d-%02d-%02dT%02d:%02d:%02d.%03lluZ",
-			utc.tm_year + 1900,
-			utc.tm_mon + 1,
-			utc.tm_mday,
-			utc.tm_hour,
-			utc.tm_min,
-			utc.tm_sec,
-			static_cast<unsigned long long>(utcMilliseconds % 1000ULL));
-		return formatted;
-	}
-
-	std::filesystem::path EnvironmentDirectory(const wchar_t* variable)
-	{
-		if (variable == nullptr || variable[0] == L'\0')
-			return {};
-		std::vector<wchar_t> buffer(512U);
-		for (;;)
-		{
-			const DWORD required = ::GetEnvironmentVariableW(
-				variable,
-				buffer.data(),
-				static_cast<DWORD>(buffer.size()));
-			if (required == 0 || required > 32768U)
-				return {};
-			if (required < buffer.size())
-				return std::filesystem::path(buffer.data());
-			buffer.resize(static_cast<std::size_t>(required) + 1U);
-		}
-	}
-
-	std::filesystem::path TemporaryDirectory()
-	{
-		std::vector<wchar_t> buffer(512U);
-		for (;;)
-		{
-			const DWORD required = ::GetTempPathW(
-				static_cast<DWORD>(buffer.size()),
-				buffer.data());
-			if (required == 0 || required > 32768U)
-				return {};
-			if (required < buffer.size())
-				return std::filesystem::path(buffer.data());
-			buffer.resize(static_cast<std::size_t>(required) + 1U);
-		}
-	}
-
-	std::string SerializePretty(const rapidjson::Value& value);
 	void AddString(
 		rapidjson::Value& object,
 		const char* key,
@@ -304,372 +215,6 @@ namespace
 		const char* key,
 		bool value,
 		Allocator& allocator);
-
-	std::filesystem::path UpdaterDirectory()
-	{
-		PWSTR knownFolder = nullptr;
-		if (SUCCEEDED(::SHGetKnownFolderPath(
-			FOLDERID_LocalAppData,
-			KF_FLAG_CREATE,
-			nullptr,
-			&knownFolder)) && knownFolder != nullptr)
-		{
-			const std::filesystem::path result =
-				std::filesystem::path(knownFolder) / L"vSMR" / L"Updater";
-			::CoTaskMemFree(knownFolder);
-			return result;
-		}
-		if (knownFolder != nullptr)
-			::CoTaskMemFree(knownFolder);
-
-		const std::filesystem::path fallback = EnvironmentDirectory(L"LOCALAPPDATA");
-		return fallback.empty()
-			? std::filesystem::path{}
-			: fallback / L"vSMR" / L"Updater";
-	}
-
-	std::string InstalledVersion()
-	{
-		std::string version = MY_PLUGIN_VERSION;
-		if (!version.empty() && (version.front() == 'v' || version.front() == 'V'))
-			version.erase(version.begin());
-		return version;
-	}
-
-	std::string DefaultUpdateChannel()
-	{
-		return InstalledVersion().find('-') == std::string::npos ? "stable" : "beta";
-	}
-
-	std::string CurrentUtcText()
-	{
-		SYSTEMTIME utc = {};
-		::GetSystemTime(&utc);
-		char text[32] = {};
-		_snprintf_s(
-			text,
-			_TRUNCATE,
-			"%04u-%02u-%02uT%02u:%02u:%02u.%03uZ",
-			utc.wYear,
-			utc.wMonth,
-			utc.wDay,
-			utc.wHour,
-			utc.wMinute,
-			utc.wSecond,
-			utc.wMilliseconds);
-		return text;
-	}
-
-	bool ReadUpdaterJson(
-		const std::filesystem::path& path,
-		rapidjson::Document& document,
-		bool& exists,
-		std::string& error)
-	{
-		exists = false;
-		error.clear();
-		document.SetObject();
-		std::error_code filesystemError;
-		if (!std::filesystem::exists(path, filesystemError))
-		{
-			if (filesystemError)
-				error = "Unable to inspect the updater state file.";
-			return !filesystemError;
-		}
-		exists = true;
-		const std::uintmax_t size = std::filesystem::file_size(path, filesystemError);
-		if (filesystemError || size == 0 || size > kMaximumUpdaterJsonBytes)
-		{
-			error = "The updater state file is empty or too large.";
-			return false;
-		}
-
-		std::ifstream input(path, std::ios::binary);
-		if (!input)
-		{
-			error = "Unable to read the updater state file.";
-			return false;
-		}
-		std::string json(
-			(std::istreambuf_iterator<char>(input)),
-			std::istreambuf_iterator<char>());
-		document.Parse<0>(json.c_str());
-		if (document.HasParseError() || !document.IsObject())
-		{
-			error = "The updater state file contains invalid JSON.";
-			return false;
-		}
-		return true;
-	}
-
-	bool WriteUpdaterJsonAtomically(
-		const std::filesystem::path& path,
-		const rapidjson::Value& document,
-		std::string& error)
-	{
-		error.clear();
-		const std::string json = SerializePretty(document) + "\n";
-		std::error_code filesystemError;
-		std::filesystem::create_directories(path.parent_path(), filesystemError);
-		if (filesystemError)
-		{
-			error = "Unable to create the updater settings directory.";
-			return false;
-		}
-
-		static volatile LONG temporarySequence = 0;
-		const LONG sequence = ::InterlockedIncrement(&temporarySequence);
-		const std::filesystem::path temporary = path.parent_path() /
-			(L"." + path.filename().wstring() + L"." +
-				std::to_wstring(::GetCurrentProcessId()) + L"." +
-				std::to_wstring(::GetTickCount64()) + L"." +
-				std::to_wstring(sequence) + L".tmp");
-		const std::wstring nativeTemporary = VsmrCrashSupport::MakeNativePath(temporary);
-		const std::wstring nativeTarget = VsmrCrashSupport::MakeNativePath(path);
-		HANDLE output = ::CreateFileW(
-			nativeTemporary.c_str(),
-			GENERIC_WRITE,
-			0,
-			nullptr,
-			CREATE_NEW,
-			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
-			nullptr);
-		if (output == INVALID_HANDLE_VALUE)
-		{
-			error = "Unable to create a temporary updater settings file.";
-			return false;
-		}
-
-		bool succeeded = true;
-		std::size_t offset = 0;
-		while (offset < json.size())
-		{
-			const DWORD requested = static_cast<DWORD>((std::min)(
-				json.size() - offset,
-				static_cast<std::size_t>(1024U * 1024U)));
-			DWORD written = 0;
-			if (::WriteFile(output, json.data() + offset, requested, &written, nullptr) == FALSE ||
-				written != requested)
-			{
-				succeeded = false;
-				break;
-			}
-			offset += written;
-		}
-		if (succeeded)
-			succeeded = ::FlushFileBuffers(output) != FALSE;
-		::CloseHandle(output);
-		if (succeeded)
-		{
-			succeeded = ::MoveFileExW(
-				nativeTemporary.c_str(),
-				nativeTarget.c_str(),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
-		}
-		if (!succeeded)
-		{
-			::DeleteFileW(nativeTemporary.c_str());
-			error = "Unable to commit the updater settings file.";
-			return false;
-		}
-		return true;
-	}
-
-	void BuildDefaultUpdaterConfig(rapidjson::Document& config)
-	{
-		config.SetObject();
-		Allocator& allocator = config.GetAllocator();
-		config.AddMember("schema_version", 1, allocator);
-		config.AddMember("auto_check", true, allocator);
-		config.AddMember("auto_download", true, allocator);
-		config.AddMember("auto_install", true, allocator);
-		config.AddMember("protect_modified_aviso", true, allocator);
-		AddString(config, "channel", DefaultUpdateChannel(), allocator);
-		AddString(config, "skipped_version", "", allocator);
-	}
-
-	bool LoadUpdaterConfig(
-		rapidjson::Document& config,
-		bool& writable,
-		std::string& error)
-	{
-		writable = true;
-		error.clear();
-		const std::filesystem::path directory = UpdaterDirectory();
-		if (directory.empty())
-		{
-			BuildDefaultUpdaterConfig(config);
-			writable = false;
-			error = "LOCALAPPDATA is unavailable; updater settings cannot be stored.";
-			return false;
-		}
-
-		bool exists = false;
-		if (!ReadUpdaterJson(directory / L"config.json", config, exists, error))
-		{
-			BuildDefaultUpdaterConfig(config);
-			writable = false;
-			return false;
-		}
-		if (!exists)
-		{
-			BuildDefaultUpdaterConfig(config);
-			return true;
-		}
-		if (!config.HasMember("schema_version") || !config["schema_version"].IsInt() ||
-			config["schema_version"].GetInt() != 1)
-		{
-			BuildDefaultUpdaterConfig(config);
-			writable = false;
-			error = "The updater configuration uses an unsupported schema version.";
-			return false;
-		}
-
-		const std::string channel = LowerAscii(ReadString(config, "channel"));
-		if (channel != "stable" && channel != "beta")
-			SetStringMember(config, "channel", DefaultUpdateChannel(), config.GetAllocator());
-		SetBoolMember(config, "auto_check", ReadBool(config, "auto_check", true), config.GetAllocator());
-		SetBoolMember(config, "auto_download", ReadBool(config, "auto_download", true), config.GetAllocator());
-		SetBoolMember(config, "auto_install", ReadBool(config, "auto_install", true), config.GetAllocator());
-		SetBoolMember(
-			config,
-			"protect_modified_aviso",
-			ReadBool(config, "protect_modified_aviso", true),
-			config.GetAllocator());
-		SetStringMember(
-			config,
-			"skipped_version",
-			ReadString(config, "skipped_version"),
-			config.GetAllocator());
-		return true;
-	}
-
-	bool WritePerformanceReportAtomically(
-		const std::string& reportJson,
-		const std::filesystem::path& dataDirectory,
-		std::string& reportPath,
-		std::string& error)
-	{
-		reportPath.clear();
-		error.clear();
-		if (reportJson.empty())
-		{
-			error = "The performance report is empty.";
-			return false;
-		}
-
-		const std::filesystem::path localAppData = EnvironmentDirectory(L"LOCALAPPDATA");
-		const std::filesystem::path temporaryBase = TemporaryDirectory();
-		const std::array<std::filesystem::path, 3> candidates = {
-			dataDirectory.empty() ? std::filesystem::path{} : dataDirectory / L"Diagnostics",
-			localAppData.empty()
-				? std::filesystem::path{}
-				: localAppData / L"vSMR" / L"Diagnostics",
-			temporaryBase.empty()
-				? std::filesystem::path{}
-				: temporaryBase / L"vSMR" / L"Diagnostics"
-		};
-		const std::filesystem::path directory =
-			VsmrCrashSupport::SelectFirstWritableDirectory(candidates);
-		if (directory.empty())
-		{
-			error = "No writable performance diagnostics folder is available.";
-			return false;
-		}
-
-		SYSTEMTIME utc = {};
-		::GetSystemTime(&utc);
-		char timestamp[40] = {};
-		_snprintf_s(
-			timestamp,
-			_TRUNCATE,
-			"%04u%02u%02u_%02u%02u%02u_%03u",
-			utc.wYear,
-			utc.wMonth,
-			utc.wDay,
-			utc.wHour,
-			utc.wMinute,
-			utc.wSecond,
-			utc.wMilliseconds);
-
-		static volatile LONG temporarySequence = 0;
-		const LONG sequence = ::InterlockedIncrement(&temporarySequence);
-		const std::wstring temporaryName =
-			L".vsmr-performance-" + std::to_wstring(::GetCurrentProcessId()) +
-			L"-" + std::to_wstring(::GetTickCount64()) +
-			L"-" + std::to_wstring(sequence) + L".tmp";
-		const std::filesystem::path temporary = directory / temporaryName;
-		const std::wstring nativeTemporary = VsmrCrashSupport::MakeNativePath(temporary);
-		HANDLE output = ::CreateFileW(
-			nativeTemporary.c_str(),
-			GENERIC_WRITE,
-			0,
-			nullptr,
-			CREATE_NEW,
-			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
-			nullptr);
-		if (output == INVALID_HANDLE_VALUE)
-		{
-			error = "Unable to create the temporary performance report.";
-			return false;
-		}
-
-		bool writeSucceeded = true;
-		std::size_t writtenTotal = 0;
-		while (writtenTotal < reportJson.size())
-		{
-			const DWORD requested = static_cast<DWORD>((std::min)(
-				reportJson.size() - writtenTotal,
-				static_cast<std::size_t>(1024U * 1024U)));
-			DWORD written = 0;
-			if (::WriteFile(
-				output,
-				reportJson.data() + writtenTotal,
-				requested,
-				&written,
-				nullptr) == FALSE || written != requested)
-			{
-				writeSucceeded = false;
-				break;
-			}
-			writtenTotal += written;
-		}
-		if (writeSucceeded)
-			writeSucceeded = ::FlushFileBuffers(output) != FALSE;
-		::CloseHandle(output);
-		if (!writeSucceeded)
-		{
-			::DeleteFileW(nativeTemporary.c_str());
-			error = "Unable to write the performance report.";
-			return false;
-		}
-
-		for (unsigned int suffix = 0; suffix < 1000; ++suffix)
-		{
-			std::string filename = "vSMR_performance_" + std::string(timestamp);
-			if (suffix > 0)
-				filename += "_" + std::to_string(suffix + 1);
-			filename += ".json";
-			const std::filesystem::path target = directory / filename;
-			const std::wstring nativeTarget = VsmrCrashSupport::MakeNativePath(target);
-			if (::MoveFileExW(
-				nativeTemporary.c_str(),
-				nativeTarget.c_str(),
-				MOVEFILE_WRITE_THROUGH) != FALSE)
-			{
-				reportPath = std::filesystem::path(
-					VsmrCrashSupport::DisplayPath(nativeTarget)).u8string();
-				return true;
-			}
-			const DWORD moveError = ::GetLastError();
-			if (moveError != ERROR_FILE_EXISTS && moveError != ERROR_ALREADY_EXISTS)
-				break;
-		}
-
-		::DeleteFileW(nativeTemporary.c_str());
-		error = "Unable to finalize the performance report.";
-		return false;
-	}
 
 	void AddString(
 		rapidjson::Value& object,
@@ -687,104 +232,17 @@ namespace
 		object.AddMember(keyValue, stringValue, allocator);
 	}
 
-	void AddUint64(
+	void AddInt64(
 		rapidjson::Value& object,
 		const char* key,
-		std::uint64_t value,
+		std::int64_t value,
 		Allocator& allocator)
 	{
 		rapidjson::Value keyValue;
 		keyValue.SetString(key, allocator);
 		rapidjson::Value number;
-		number.SetUint64(value);
+		number.SetInt64(value);
 		object.AddMember(keyValue, number, allocator);
-	}
-
-	void AddSize(
-		rapidjson::Value& object,
-		const char* key,
-		std::size_t value,
-		Allocator& allocator)
-	{
-		AddUint64(object, key, static_cast<std::uint64_t>(value), allocator);
-	}
-
-	void AddDistribution(
-		rapidjson::Value& timings,
-		const char* name,
-		const VsmrPerformance::Distribution& distribution,
-		double latest,
-		bool hasLatest,
-		Allocator& allocator)
-	{
-		rapidjson::Value item(rapidjson::kObjectType);
-		AddSize(item, "sampleCount", distribution.sampleCount, allocator);
-		if (distribution.sampleCount > 0)
-		{
-			if (hasLatest)
-				item.AddMember("latest", latest, allocator);
-			item.AddMember("average", distribution.average, allocator);
-			item.AddMember("median", distribution.median, allocator);
-			item.AddMember("p95", distribution.p95, allocator);
-			item.AddMember("max", distribution.maximum, allocator);
-		}
-		rapidjson::Value key;
-		key.SetString(name, allocator);
-		timings.AddMember(key, item, allocator);
-	}
-
-	std::vector<std::string> PerformanceRefreshReasonLabels(std::uint32_t mask)
-	{
-		std::vector<std::string> labels = VsmrPerformance::RefreshReasonNames(mask);
-		if (labels.empty())
-			labels.emplace_back("unspecified");
-		return labels;
-	}
-
-	std::string JoinPerformanceRefreshReasons(std::uint32_t mask)
-	{
-		const std::vector<std::string> labels = PerformanceRefreshReasonLabels(mask);
-		std::ostringstream output;
-		for (std::size_t index = 0; index < labels.size(); ++index)
-		{
-			if (index != 0)
-				output << " + ";
-			output << labels[index];
-		}
-		return output.str();
-	}
-
-	void AddCacheItem(
-		rapidjson::Value& caches,
-		const char* id,
-		const char* name,
-		std::uint64_t exactHits,
-		std::uint64_t previewHits,
-		std::uint64_t misses,
-		std::size_t entries,
-		Allocator& allocator)
-	{
-		rapidjson::Value item(rapidjson::kObjectType);
-		AddString(item, "id", id, allocator);
-		AddString(item, "name", name, allocator);
-		AddUint64(item, "hits", exactHits, allocator);
-		AddUint64(item, "previewHits", previewHits, allocator);
-		AddUint64(item, "misses", misses, allocator);
-		const std::uint64_t accesses = exactHits + previewHits + misses;
-		if (accesses > 0)
-			item.AddMember(
-				"hitRate",
-				static_cast<double>(exactHits + previewHits) /
-					static_cast<double>(accesses),
-				allocator);
-		else
-		{
-			rapidjson::Value nullValue;
-			nullValue.SetNull();
-			item.AddMember("hitRate", nullValue, allocator);
-		}
-		AddSize(item, "entries", entries, allocator);
-		caches.PushBack(item, allocator);
 	}
 
 	void SetStringMember(
@@ -915,15 +373,6 @@ namespace
 	{
 		rapidjson::StringBuffer buffer;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		value.Accept(writer);
-		return std::string(buffer.GetString(), buffer.Size());
-	}
-
-	std::string SerializePretty(const rapidjson::Value& value)
-	{
-		rapidjson::StringBuffer buffer;
-		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
-		writer.SetIndent('\t', 1);
 		value.Accept(writer);
 		return std::string(buffer.GetString(), buffer.Size());
 	}
@@ -1409,8 +858,11 @@ namespace
 	}
 }
 
-struct VsmrControlCenterBridge::Impl
+class VsmrControlCenterBridgeImpl
 {
+	friend class VsmrControlCenterBridge;
+
+public:
 	CSMRRadar* Owner = nullptr;
 	VsmrBridgeHostCallbacks Callbacks;
 	unsigned long long NativeMessageSequence = 0;
@@ -1421,13 +873,9 @@ struct VsmrControlCenterBridge::Impl
 	mutable bool AvisoHealthCacheHealthy = false;
 	mutable std::string AvisoHealthCacheMessage;
 	mutable std::string AvisoHealthCacheDocumentJson;
-	std::uint32_t PeakProcessGdiObjects = 0;
-	std::size_t PeakVsmrCachedBitmaps = 0;
-	std::uint64_t PeakEstimatedBitmapBytes = 0;
-	std::size_t PeakAvisoPendingDepth = 0;
-	std::uint64_t LastPerformanceGeneration = 0;
+	VsmrControlCenterPerformancePeaks PerformancePeaks;
 
-	explicit Impl(CSMRRadar* owner, VsmrBridgeHostCallbacks callbacks)
+	explicit VsmrControlCenterBridgeImpl(CSMRRadar* owner, VsmrBridgeHostCallbacks callbacks)
 		: Owner(owner), Callbacks(std::move(callbacks))
 	{
 	}
@@ -1482,546 +930,28 @@ struct VsmrControlCenterBridge::Impl
 			static_cast<std::size_t>(std::distance(RadarScreensOpened.begin(), found)) + 1U);
 	}
 
-	static std::uint64_t MonotonicToUtc(
-		const VsmrPerformance::Snapshot& snapshot,
-		std::uint64_t monotonicMilliseconds)
+	VsmrControlCenterPerformanceContext BuildPerformanceContext() const
 	{
-		if (snapshot.collectionStartedUtcMilliseconds == 0 ||
-			snapshot.collectionStartedMonotonicMilliseconds == 0)
+		VsmrControlCenterPerformanceContext context;
+		context.radarId = RadarIdentifier();
+		if (Owner != nullptr)
 		{
-			return 0;
-		}
-		if (monotonicMilliseconds >= snapshot.collectionStartedMonotonicMilliseconds)
-		{
-			return snapshot.collectionStartedUtcMilliseconds +
-				(monotonicMilliseconds - snapshot.collectionStartedMonotonicMilliseconds);
-		}
-		const std::uint64_t difference =
-			snapshot.collectionStartedMonotonicMilliseconds - monotonicMilliseconds;
-		return difference <= snapshot.collectionStartedUtcMilliseconds
-			? snapshot.collectionStartedUtcMilliseconds - difference
-			: 0;
-	}
-
-	void AddTargetSummary(
-		rapidjson::Value& targets,
-		const char* name,
-		const VsmrPerformance::Snapshot& snapshot,
-		bool visible,
-		Allocator& allocator) const
-	{
-		std::uint64_t total = 0;
-		std::size_t maximum = 0;
-		for (const VsmrPerformance::FrameSample& sample : snapshot.series)
-		{
-			const std::size_t value = visible
-				? sample.visibleTargets
-				: sample.processedTargets;
-			total += static_cast<std::uint64_t>(value);
-			maximum = (std::max)(maximum, value);
+			context.airport = Owner->getActiveAirport();
+			context.profile = Owner->GetActiveProfileNameForEditor();
 		}
 
-		rapidjson::Value summary(rapidjson::kObjectType);
-		if (!snapshot.series.empty())
-		{
-			const std::size_t latest = visible
-				? snapshot.latestFrame.visibleTargets
-				: snapshot.latestFrame.processedTargets;
-			AddSize(summary, "latest", latest, allocator);
-			summary.AddMember(
-				"average",
-				static_cast<double>(total) / static_cast<double>(snapshot.series.size()),
-				allocator);
-			AddSize(summary, "max", maximum, allocator);
-		}
-		rapidjson::Value key;
-		key.SetString(name, allocator);
-		targets.AddMember(key, summary, allocator);
-	}
-
-	void BuildPerformancePayload(
-		const VsmrPerformance::Snapshot& snapshot,
-		std::size_t maximumSeriesPoints,
-		rapidjson::Value& payload,
-		Allocator& allocator)
-	{
-		payload.SetObject();
-		payload.AddMember("schemaVersion", 1, allocator);
-		payload.AddMember("available", Owner != nullptr, allocator);
-		AddString(
-			payload,
-			"generatedAtUtc",
-			FormatUtcMilliseconds(VsmrPerformance::PerformanceDiagnostics::UtcMilliseconds()),
-			allocator);
-		if (Owner == nullptr)
-			return;
-		if (LastPerformanceGeneration != snapshot.generation)
-		{
-			PeakProcessGdiObjects = 0;
-			PeakVsmrCachedBitmaps = 0;
-			PeakEstimatedBitmapBytes = 0;
-			PeakAvisoPendingDepth = 0;
-			LastPerformanceGeneration = snapshot.generation;
-		}
-
-		rapidjson::Value source(rapidjson::kObjectType);
-		AddString(source, "airport", Owner->getActiveAirport(), allocator);
-		AddString(source, "profile", Owner->GetActiveProfileNameForEditor(), allocator);
-		AddString(source, "radarId", RadarIdentifier(), allocator);
-		payload.AddMember("source", source, allocator);
-
-		rapidjson::Value window(rapidjson::kObjectType);
-		window.AddMember("seconds", snapshot.windowSeconds, allocator);
-		AddSize(window, "samples", snapshot.frame.sampleCount, allocator);
-		const std::uint64_t retainedFrames = (std::min)(
-			snapshot.totalFrames,
-			static_cast<std::uint64_t>(VsmrPerformance::MaximumFrameSamples));
-		const std::uint64_t overwrittenFrames = snapshot.totalFrames - retainedFrames;
-		AddUint64(window, "overwritten", overwrittenFrames, allocator);
-		AddUint64(window, "dropped", overwrittenFrames, allocator);
-		const std::uint64_t observedStart = snapshot.series.empty()
-			? 0
-			: snapshot.series.front().timestampMilliseconds;
-		const std::uint64_t observedEnd = snapshot.series.empty()
-			? 0
-			: snapshot.series.back().timestampMilliseconds;
-		window.AddMember(
-			"observedSeconds",
-			observedEnd >= observedStart && observedStart != 0
-				? static_cast<double>(observedEnd - observedStart) / 1000.0
-				: 0.0,
-			allocator);
-		AddString(
-			window,
-			"fromUtc",
-			FormatUtcMilliseconds(MonotonicToUtc(snapshot, observedStart)),
-			allocator);
-		AddString(
-			window,
-			"toUtc",
-			FormatUtcMilliseconds(MonotonicToUtc(snapshot, observedEnd)),
-			allocator);
-		payload.AddMember("window", window, allocator);
-
-		rapidjson::Value timings(rapidjson::kObjectType);
-		const bool hasLatest = snapshot.hasLatestFrame;
-		AddDistribution(timings, "frame", snapshot.frame, snapshot.latestFrame.frameMilliseconds, hasLatest, allocator);
-		AddDistribution(timings, "scene", snapshot.scene, snapshot.latestFrame.sceneMilliseconds, hasLatest, allocator);
-		AddDistribution(timings, "aviso", snapshot.aviso, snapshot.latestFrame.avisoMilliseconds, hasLatest, allocator);
-		AddDistribution(timings, "targets", snapshot.targets, snapshot.latestFrame.targetsMilliseconds, hasLatest, allocator);
-		AddDistribution(timings, "rimcas", snapshot.rimcas, snapshot.latestFrame.rimcasMilliseconds, hasLatest, allocator);
-		AddDistribution(timings, "tags", snapshot.tags, snapshot.latestFrame.tagsMilliseconds, hasLatest, allocator);
-		AddDistribution(timings, "srw", snapshot.srw, snapshot.latestFrame.srwMilliseconds, hasLatest, allocator);
-		AddDistribution(
-			timings,
-			"avisoInset",
-			snapshot.avisoInset,
-			snapshot.latestFrame.avisoInsetMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(timings, "rdf", snapshot.rdf, snapshot.latestFrame.rdfMilliseconds, hasLatest, allocator);
-		AddDistribution(
-			timings,
-			"insetChrome",
-			snapshot.insetChrome,
-			snapshot.latestFrame.insetChromeMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(
-			timings,
-			"sceneAvisoLoad",
-			snapshot.sceneAvisoLoad,
-			snapshot.latestFrame.sceneAvisoLoadMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(
-			timings,
-			"sceneControllerCapture",
-			snapshot.sceneControllerCapture,
-			snapshot.latestFrame.sceneControllerCaptureMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(
-			timings,
-			"sceneTargetCapture",
-			snapshot.sceneTargetCapture,
-			snapshot.latestFrame.sceneTargetCaptureMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(
-			timings,
-			"sceneFinalize",
-			snapshot.sceneFinalize,
-			snapshot.latestFrame.sceneFinalizeMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(
-			timings,
-			"euroScopeLookups",
-			snapshot.euroScopeLookups,
-			snapshot.latestFrame.euroScopeLookupMilliseconds,
-			hasLatest,
-			allocator);
-		AddDistribution(
-			timings,
-			"avisoRasterRebuild",
-			snapshot.avisoRasterRebuild,
-			0.0,
-			false,
-			allocator);
-		payload.AddMember("timings", timings, allocator);
-
-		rapidjson::Value caches(rapidjson::kArrayType);
-		AddCacheItem(
-			caches,
-			"aviso-main",
-			"AVISO raster (main)",
-			snapshot.mainAviso.exactHits,
-			snapshot.mainAviso.previewHits,
-			snapshot.mainAviso.misses,
-			snapshot.resources.mainAvisoBitmapCount,
-			allocator);
-		AddCacheItem(
-			caches,
-			"aviso-insets",
-			"AVISO raster (insets)",
-			snapshot.insetAviso.exactHits,
-			snapshot.insetAviso.previewHits,
-			snapshot.insetAviso.misses,
-			snapshot.resources.insetAvisoBitmapCount,
-			allocator);
-		AddCacheItem(
-			caches,
-			"aircraft-source",
-			"Aircraft source bitmap",
-			snapshot.aircraftSourceCache.hits,
-			0,
-			snapshot.aircraftSourceCache.misses,
-			snapshot.aircraftSourceCache.entries,
-			allocator);
-		AddCacheItem(
-			caches,
-			"realistic-scaled",
-			"Realistic icon scale",
-			snapshot.realisticScaledCache.hits,
-			0,
-			snapshot.realisticScaledCache.misses,
-			snapshot.realisticScaledCache.entries,
-			allocator);
-		AddCacheItem(
-			caches,
-			"realistic-rotated",
-			"Realistic icon rotation",
-			snapshot.realisticRotatedCache.hits,
-			0,
-			snapshot.realisticRotatedCache.misses,
-			snapshot.realisticRotatedCache.entries,
-			allocator);
-		payload.AddMember("caches", caches, allocator);
-
-		rapidjson::Value targets(rapidjson::kObjectType);
-		AddTargetSummary(targets, "processed", snapshot, false, allocator);
-		AddTargetSummary(targets, "visible", snapshot, true, allocator);
-		payload.AddMember("targets", targets, allocator);
-
-		rapidjson::Value refresh(rapidjson::kObjectType);
-		if (snapshot.hasLatestFrame)
-		{
-			AddString(
-				refresh,
-				"latestReason",
-				JoinPerformanceRefreshReasons(snapshot.latestFrame.refreshReasonMask),
-				allocator);
-			rapidjson::Value latestReasons(rapidjson::kArrayType);
-			for (const std::string& label : PerformanceRefreshReasonLabels(snapshot.latestFrame.refreshReasonMask))
-			{
-				rapidjson::Value value;
-				value.SetString(label.c_str(), static_cast<rapidjson::SizeType>(label.size()), allocator);
-				latestReasons.PushBack(value, allocator);
-			}
-			refresh.AddMember("latestReasons", latestReasons, allocator);
-		}
-		rapidjson::Value reasonCounts(rapidjson::kArrayType);
-		auto addRefreshReasonCount = [&](const char* id, const char* label, std::uint64_t count)
-		{
-			if (count == 0)
-				return;
-			rapidjson::Value item(rapidjson::kObjectType);
-			AddString(item, "id", id, allocator);
-			AddString(item, "reason", label, allocator);
-			AddUint64(item, "count", count, allocator);
-			reasonCounts.PushBack(item, allocator);
-		};
-		addRefreshReasonCount("unspecified", "Unspecified", snapshot.refresh.reasons.unspecified);
-		addRefreshReasonCount("initial", "Initial frame", snapshot.refresh.reasons.initial);
-		addRefreshReasonCount("mainViewChanged", "Main view changed", snapshot.refresh.reasons.mainViewChanged);
-		addRefreshReasonCount("insetPanZoom", "Inset pan or zoom", snapshot.refresh.reasons.insetPanZoom);
-		addRefreshReasonCount("insetMoveResize", "Inset move or resize", snapshot.refresh.reasons.insetMoveResize);
-		addRefreshReasonCount("hover", "Hover", snapshot.refresh.reasons.hover);
-		addRefreshReasonCount(
-			"targetOrFlightPlanUpdate",
-			"Target or flight-plan update",
-			snapshot.refresh.reasons.targetOrFlightPlanUpdate);
-		addRefreshReasonCount("controllerUpdate", "Controller update", snapshot.refresh.reasons.controllerUpdate);
-		addRefreshReasonCount("profileUpdate", "Profile update", snapshot.refresh.reasons.profileUpdate);
-		addRefreshReasonCount("airportUpdate", "Airport update", snapshot.refresh.reasons.airportUpdate);
-		addRefreshReasonCount("avisoWorkerUpdate", "AVISO worker update", snapshot.refresh.reasons.avisoWorkerUpdate);
-		addRefreshReasonCount("userActionExternal", "User or external action", snapshot.refresh.reasons.userActionExternal);
-		addRefreshReasonCount("avisoDataChanged", "AVISO data changed", snapshot.refresh.reasons.avisoDataChanged);
-		refresh.AddMember("reasonCounts", reasonCounts, allocator);
-		AddString(refresh, "reasonScope", "selectedRetainedFrameWindow", allocator);
-		refresh.AddMember("reasonCountsMayOverlap", true, allocator);
-		refresh.AddMember("spikeThresholdMilliseconds", snapshot.refresh.spikeThresholdMilliseconds, allocator);
-		AddString(refresh, "spikeComparison", ">=", allocator);
-		AddUint64(refresh, "spikeCount", snapshot.refresh.spikeCount, allocator);
-		auto addSpike = [&](const char* name, bool present, const VsmrPerformance::FrameSample& sample)
-		{
-			if (!present)
-				return;
-			rapidjson::Value spike(rapidjson::kObjectType);
-			AddUint64(spike, "frameId", sample.frameId, allocator);
-			spike.AddMember("frameMilliseconds", sample.frameMilliseconds, allocator);
-			AddUint64(
-				spike,
-				"ageMilliseconds",
-				observedEnd >= sample.timestampMilliseconds
-					? observedEnd - sample.timestampMilliseconds
-					: 0,
-				allocator);
-			AddString(spike, "reason", JoinPerformanceRefreshReasons(sample.refreshReasonMask), allocator);
-			AddString(spike, "primaryReason", VsmrPerformance::PrimaryRefreshReasonName(sample.refreshReasonMask), allocator);
-			AddSize(spike, "processedTargets", sample.processedTargets, allocator);
-			AddSize(spike, "visibleTargets", sample.visibleTargets, allocator);
-			spike.AddMember("avisoMilliseconds", sample.avisoMilliseconds, allocator);
-			spike.AddMember("avisoInsetMilliseconds", sample.avisoInsetMilliseconds, allocator);
-
-			const std::pair<const char*, double> stages[] = {
-				{ "Scene capture", sample.sceneMilliseconds },
-				{ "Main AVISO", sample.avisoMilliseconds },
-				{ "AVISO inset", sample.avisoInsetMilliseconds },
-				{ "Targets", sample.targetsMilliseconds },
-				{ "RIMCAS", sample.rimcasMilliseconds },
-				{ "Tags", sample.tagsMilliseconds },
-				{ "SRW", sample.srwMilliseconds },
-				{ "RDF", sample.rdfMilliseconds },
-				{ "Inset chrome", sample.insetChromeMilliseconds }
-			};
-			const std::pair<const char*, double>* dominantStage = &stages[0];
-			for (const auto& stage : stages)
-			{
-				if (stage.second > dominantStage->second)
-					dominantStage = &stage;
-			}
-			std::ostringstream context;
-			context.imbue(std::locale::classic());
-			context << "Largest measured slice: " << dominantStage->first << " "
-				<< std::fixed << std::setprecision(2) << dominantStage->second << " ms";
-			AddString(spike, "context", context.str(), allocator);
-			rapidjson::Value key;
-			key.SetString(name, allocator);
-			refresh.AddMember(key, spike, allocator);
-		};
-		addSpike("worstSpike", snapshot.refresh.hasWorstSpike, snapshot.refresh.worstSpike);
-		addSpike("latestSpike", snapshot.refresh.hasLatestSpike, snapshot.refresh.latestSpike);
-		payload.AddMember("refresh", refresh, allocator);
-
-		PeakProcessGdiObjects = (std::max)(
-			PeakProcessGdiObjects,
-			snapshot.resources.processGdiObjects);
-		PeakVsmrCachedBitmaps = (std::max)(
-			PeakVsmrCachedBitmaps,
-			snapshot.resources.ownedBitmapCount);
-		PeakEstimatedBitmapBytes = (std::max)(
-			PeakEstimatedBitmapBytes,
-			snapshot.resources.estimatedBitmapBytes);
-		rapidjson::Value graphics(rapidjson::kObjectType);
-		graphics.AddMember("processGdiObjects", snapshot.resources.processGdiObjects, allocator);
-		AddSize(graphics, "vsmrCachedBitmaps", snapshot.resources.ownedBitmapCount, allocator);
-		graphics.AddMember("peakProcessGdiObjects", PeakProcessGdiObjects, allocator);
-		AddSize(graphics, "peakVsmrCachedBitmaps", PeakVsmrCachedBitmaps, allocator);
-		AddUint64(graphics, "estimatedBitmapBytes", snapshot.resources.estimatedBitmapBytes, allocator);
-		AddUint64(graphics, "peakEstimatedBitmapBytes", PeakEstimatedBitmapBytes, allocator);
-		AddSize(graphics, "aircraftBitmapCount", snapshot.resources.aircraftBitmapCount, allocator);
-		AddSize(graphics, "realisticIconBitmapCount", snapshot.resources.realisticIconBitmapCount, allocator);
-		AddSize(graphics, "mainAvisoBitmapCount", snapshot.resources.mainAvisoBitmapCount, allocator);
-		AddSize(graphics, "insetAvisoBitmapCount", snapshot.resources.insetAvisoBitmapCount, allocator);
-		payload.AddMember("graphics", graphics, allocator);
-
-		const std::size_t avisoPendingDepth =
-			snapshot.mainAviso.queue.pending + snapshot.insetAviso.queue.pending;
-		const std::size_t avisoInFlight =
-			snapshot.mainAviso.queue.inFlight + snapshot.insetAviso.queue.inFlight;
-		const std::size_t avisoCompleted =
-			snapshot.mainAviso.queue.completed + snapshot.insetAviso.queue.completed;
-		PeakAvisoPendingDepth = (std::max)(PeakAvisoPendingDepth, avisoPendingDepth);
 		CSMRPlugin* const plugin = OwnerPlugin();
-		const WorkerQueueSnapshot pluginQueues = plugin != nullptr
-			? plugin->GetWorkerQueueSnapshot()
-			: WorkerQueueSnapshot{};
-		rapidjson::Value worker(rapidjson::kObjectType);
-		worker.AddMember("active", avisoInFlight > 0, allocator);
-		AddSize(worker, "pendingDepth", avisoPendingDepth, allocator);
-		AddSize(worker, "inFlight", avisoInFlight, allocator);
-		AddSize(worker, "maxDepth", PeakAvisoPendingDepth, allocator);
-		AddUint64(
-			worker,
-			"supersededRequests",
-			snapshot.mainAviso.requestsSuperseded + snapshot.insetAviso.requestsSuperseded,
-			allocator);
-		rapidjson::Value queues(rapidjson::kArrayType);
-		auto addQueue = [&](const char* name, bool active, std::size_t pending, std::size_t inFlight, std::size_t workers, std::size_t completed)
+		if (plugin != nullptr)
 		{
-			rapidjson::Value queue(rapidjson::kObjectType);
-			AddString(queue, "name", name, allocator);
-			queue.AddMember("active", active, allocator);
-			AddSize(queue, "pendingDepth", pending, allocator);
-			AddSize(queue, "inFlight", inFlight, allocator);
-			AddSize(queue, "workers", workers, allocator);
-			AddSize(queue, "completedWaiting", completed, allocator);
-			queues.PushBack(queue, allocator);
-		};
-		addQueue(
-			"AVISO",
-			avisoInFlight > 0,
-			avisoPendingDepth,
-			avisoInFlight,
-			snapshot.mainAviso.queue.workers + snapshot.insetAviso.queue.workers,
-			avisoCompleted);
-		addQueue(
-			"Network",
-			pluginQueues.networkInFlight > 0,
-			pluginQueues.networkQueued,
-			pluginQueues.networkInFlight,
-			pluginQueues.networkWorkers,
-			0);
-		addQueue(
-			"Weather",
-			pluginQueues.weatherInFlight > 0,
-			pluginQueues.weatherQueued,
-			pluginQueues.weatherInFlight,
-			pluginQueues.weatherWorkerRunning ? 1U : 0U,
-			0);
-		worker.AddMember("queues", queues, allocator);
-		payload.AddMember("worker", worker, allocator);
-
-		rapidjson::Value aviso(rapidjson::kObjectType);
-		AddUint64(
-			aviso,
-			"framesDelayed",
-			snapshot.avisoDelayedFrames,
-			allocator);
-		AddUint64(
-			aviso,
-			"framesUsingFallback",
-			snapshot.avisoFallbackFrames,
-			allocator);
-		const std::uint64_t totalBuilds =
-			snapshot.mainAviso.rasterBuilds + snapshot.insetAviso.rasterBuilds;
-		const std::uint64_t failedBuilds =
-			snapshot.mainAviso.rasterBuildFailures + snapshot.insetAviso.rasterBuildFailures;
-		AddUint64(
-			aviso,
-			"rebuildsCompleted",
-			totalBuilds >= failedBuilds ? totalBuilds - failedBuilds : 0,
-			allocator);
-		AddUint64(
-			aviso,
-			"blankDelayedFrames",
-			snapshot.avisoBlankDelayedFrames,
-			allocator);
-		AddUint64(
-			aviso,
-			"requestsQueued",
-			snapshot.mainAviso.requestsQueued + snapshot.insetAviso.requestsQueued,
-			allocator);
-		AddUint64(
-			aviso,
-			"requestsCoalesced",
-			snapshot.mainAviso.requestsCoalesced + snapshot.insetAviso.requestsCoalesced,
-			allocator);
-		AddUint64(
-			aviso,
-			"requestsSuperseded",
-			snapshot.mainAviso.requestsSuperseded + snapshot.insetAviso.requestsSuperseded,
-			allocator);
-		AddUint64(
-			aviso,
-			"requestsDebounced",
-			snapshot.mainAviso.requestsDebounced + snapshot.insetAviso.requestsDebounced,
-			allocator);
-		AddUint64(
-			aviso,
-			"rasterBuilds",
-			totalBuilds,
-			allocator);
-		AddUint64(
-			aviso,
-			"rasterBuildFailures",
-			failedBuilds,
-			allocator);
-		AddUint64(
-			aviso,
-			"rasterBuildsCancelled",
-			snapshot.mainAviso.rasterBuildsCancelled + snapshot.insetAviso.rasterBuildsCancelled,
-			allocator);
-		AddUint64(
-			aviso,
-			"resultsApplied",
-			snapshot.mainAviso.resultsApplied + snapshot.insetAviso.resultsApplied,
-			allocator);
-		AddUint64(
-			aviso,
-			"resultsDiscarded",
-			snapshot.mainAviso.resultsDiscarded + snapshot.insetAviso.resultsDiscarded,
-			allocator);
-		auto addAvisoViewport = [&](const char* name, const VsmrPerformance::AvisoSnapshot& source)
-		{
-			rapidjson::Value viewport(rapidjson::kObjectType);
-			AddUint64(viewport, "requestsQueued", source.requestsQueued, allocator);
-			AddUint64(viewport, "requestsCoalesced", source.requestsCoalesced, allocator);
-			AddUint64(viewport, "requestsSuperseded", source.requestsSuperseded, allocator);
-			AddUint64(viewport, "requestsDebounced", source.requestsDebounced, allocator);
-			AddUint64(viewport, "rasterBuilds", source.rasterBuilds, allocator);
-			AddUint64(viewport, "rasterBuildFailures", source.rasterBuildFailures, allocator);
-			AddUint64(viewport, "rasterBuildsCancelled", source.rasterBuildsCancelled, allocator);
-			AddUint64(viewport, "resultsApplied", source.resultsApplied, allocator);
-			AddUint64(viewport, "resultsDiscarded", source.resultsDiscarded, allocator);
-			rapidjson::Value key;
-			key.SetString(name, allocator);
-			aviso.AddMember(key, viewport, allocator);
-		};
-		addAvisoViewport("main", snapshot.mainAviso);
-		addAvisoViewport("inset", snapshot.insetAviso);
-		payload.AddMember("aviso", aviso, allocator);
-
-		rapidjson::Value series(rapidjson::kArrayType);
-		const std::size_t availableSeries = snapshot.series.size();
-		const std::size_t wantedSeries = (std::min)(availableSeries, maximumSeriesPoints);
-		for (std::size_t index = 0; index < wantedSeries; ++index)
-		{
-			const std::size_t sourceIndex = wantedSeries <= 1
-				? availableSeries - 1
-				: (index * (availableSeries - 1)) / (wantedSeries - 1);
-			const VsmrPerformance::FrameSample& sample = snapshot.series[sourceIndex];
-			rapidjson::Value point(rapidjson::kObjectType);
-			AddUint64(
-				point,
-				"offsetMs",
-				sample.timestampMilliseconds >= observedStart
-					? sample.timestampMilliseconds - observedStart
-					: 0,
-				allocator);
-			point.AddMember("frameMs", sample.frameMilliseconds, allocator);
-			point.AddMember("avisoMs", sample.avisoMilliseconds, allocator);
-			point.AddMember("avisoInsetMs", sample.avisoInsetMilliseconds, allocator);
-			point.AddMember("sceneMs", sample.sceneMilliseconds, allocator);
-			point.AddMember("srwMs", sample.srwMilliseconds, allocator);
-			point.AddMember("rdfMs", sample.rdfMilliseconds, allocator);
-			point.AddMember("insetChromeMs", sample.insetChromeMilliseconds, allocator);
-			point.AddMember("refreshReasonMask", sample.refreshReasonMask, allocator);
-			series.PushBack(point, allocator);
+			const WorkerQueueSnapshot queues = plugin->GetWorkerQueueSnapshot();
+			context.workerQueues.networkWorkers = queues.networkWorkers;
+			context.workerQueues.networkQueued = queues.networkQueued;
+			context.workerQueues.networkInFlight = queues.networkInFlight;
+			context.workerQueues.weatherWorkerRunning = queues.weatherWorkerRunning;
+			context.workerQueues.weatherQueued = queues.weatherQueued;
+			context.workerQueues.weatherInFlight = queues.weatherInFlight;
 		}
-		payload.AddMember("series", series, allocator);
+		return context;
 	}
 
 	void SendPerformanceState(
@@ -2043,7 +973,13 @@ struct VsmrControlCenterBridge::Impl
 			const VsmrPerformance::Snapshot snapshot = Owner->GetPerformanceSnapshot(
 				windowSeconds,
 				VsmrPerformance::MaximumFrameSamples);
-			BuildPerformancePayload(snapshot, maximumSeriesPoints, payload, allocator);
+			VsmrControlCenterPerformance::BuildPayload(
+				snapshot,
+				BuildPerformanceContext(),
+				maximumSeriesPoints,
+				PerformancePeaks,
+				payload,
+				allocator);
 		}
 		message.AddMember("payload", payload, allocator);
 		Send(message);
@@ -2051,89 +987,11 @@ struct VsmrControlCenterBridge::Impl
 
 	void SendUpdateState(const std::string& requestId)
 	{
-		std::lock_guard<std::mutex> lock(gUpdaterFileMutex);
-		rapidjson::Document config;
-		bool configWritable = true;
-		std::string configError;
-		LoadUpdaterConfig(config, configWritable, configError);
-
-		rapidjson::Document updaterState;
-		updaterState.SetObject();
-		bool stateExists = false;
-		std::string stateError;
-		const std::filesystem::path directory = UpdaterDirectory();
-		const bool stateLoaded = !directory.empty() && ReadUpdaterJson(
-			directory / L"state.json",
-			updaterState,
-			stateExists,
-			stateError);
-		if (!stateLoaded || !stateExists ||
-			!updaterState.HasMember("schema_version") ||
-			!updaterState["schema_version"].IsInt() ||
-			updaterState["schema_version"].GetInt() != 1)
-		{
-			const bool invalidState = stateExists;
-			updaterState.SetObject();
-			Allocator& stateAllocator = updaterState.GetAllocator();
-			updaterState.AddMember("schema_version", 1, stateAllocator);
-			AddString(
-				updaterState,
-				"status",
-				invalidState ? "error" : "idle",
-				stateAllocator);
-			AddString(updaterState, "installed_version", InstalledVersion(), stateAllocator);
-			AddString(updaterState, "selected_version", "", stateAllocator);
-			AddString(updaterState, "available_version", "", stateAllocator);
-			updaterState.AddMember("download_percent", 0, stateAllocator);
-			AddString(updaterState, "last_checked_utc", "", stateAllocator);
-			AddString(updaterState, "next_check_utc", "", stateAllocator);
-			AddString(
-				updaterState,
-				"message",
-				invalidState
-					? "The updater state could not be read. The installed runtime remains active."
-					: "Updates are checked before the vSMR runtime loads.",
-				stateAllocator);
-			AddString(
-				updaterState,
-				"error_code",
-				invalidState ? "state_invalid" : "",
-				stateAllocator);
-			AddString(
-				updaterState,
-				"error",
-				invalidState
-					? (stateError.empty() ? "Unsupported updater state schema." : stateError)
-					: "",
-				stateAllocator);
-			updaterState.AddMember("restart_required", false, stateAllocator);
-			AddString(updaterState, "release_url", "", stateAllocator);
-		}
-		else if (!updaterState.HasMember("installed_version") ||
-			!updaterState["installed_version"].IsString())
-		{
-			AddString(
-				updaterState,
-				"installed_version",
-				InstalledVersion(),
-				updaterState.GetAllocator());
-		}
-
 		rapidjson::Document message;
 		MakeEnvelope(message, "update.state", requestId);
 		Allocator& allocator = message.GetAllocator();
-		rapidjson::Value payload(rapidjson::kObjectType);
-		payload.AddMember("schemaVersion", 1, allocator);
-		payload.AddMember("available", !directory.empty(), allocator);
-		payload.AddMember("configWritable", configWritable, allocator);
-		if (!configError.empty())
-			AddString(payload, "configError", configError, allocator);
-		rapidjson::Value configValue;
-		CloneJsonValue(config, configValue, allocator);
-		payload.AddMember("config", configValue, allocator);
-		rapidjson::Value stateValue;
-		CloneJsonValue(updaterState, stateValue, allocator);
-		payload.AddMember("state", stateValue, allocator);
+		rapidjson::Value payload;
+		VsmrControlCenterUpdater::BuildStatePayload(payload, allocator);
 		message.AddMember("payload", payload, allocator);
 		Send(message);
 	}
@@ -2142,79 +1000,7 @@ struct VsmrControlCenterBridge::Impl
 		const rapidjson::Value* payload,
 		std::string& error)
 	{
-		if (payload == nullptr || !payload->IsObject())
-		{
-			error = "Updater settings payload must be an object.";
-			return false;
-		}
-		std::lock_guard<std::mutex> lock(gUpdaterFileMutex);
-		rapidjson::Document config;
-		bool writable = true;
-		if (!LoadUpdaterConfig(config, writable, error) || !writable)
-		{
-			if (error.empty())
-				error = "Updater settings cannot be changed in this environment.";
-			return false;
-		}
-
-		auto applyBoolean = [&](const char* key)
-		{
-			if (!payload->HasMember(key))
-				return true;
-			if (!(*payload)[key].IsBool())
-			{
-				error = std::string("Updater setting '") + key + "' must be boolean.";
-				return false;
-			}
-			SetBoolMember(config, key, (*payload)[key].GetBool(), config.GetAllocator());
-			return true;
-		};
-		if (!applyBoolean("auto_check") ||
-			!applyBoolean("auto_download") ||
-			!applyBoolean("auto_install") ||
-			!applyBoolean("protect_modified_aviso"))
-		{
-			return false;
-		}
-
-		if (payload->HasMember("channel"))
-		{
-			if (!(*payload)["channel"].IsString())
-			{
-				error = "Updater channel must be 'stable' or 'beta'.";
-				return false;
-			}
-			const std::string channel = LowerAscii(TrimAscii((*payload)["channel"].GetString()));
-			if (channel != "stable" && channel != "beta")
-			{
-				error = "Updater channel must be 'stable' or 'beta'.";
-				return false;
-			}
-			SetStringMember(config, "channel", channel, config.GetAllocator());
-		}
-
-		if (payload->HasMember("skipped_version"))
-		{
-			if (!(*payload)["skipped_version"].IsString())
-			{
-				error = "Skipped updater version must be a string.";
-				return false;
-			}
-			const std::string skipped = TrimAscii((*payload)["skipped_version"].GetString());
-			if (skipped.size() > 64 || std::any_of(skipped.begin(), skipped.end(), [](unsigned char character) {
-				return std::isalnum(character) == 0 && character != '.' && character != '-' && character != '+';
-			}))
-			{
-				error = "Skipped updater version contains unsupported characters.";
-				return false;
-			}
-			SetStringMember(config, "skipped_version", skipped, config.GetAllocator());
-		}
-
-		return WriteUpdaterJsonAtomically(
-			UpdaterDirectory() / L"config.json",
-			config,
-			error);
+		return VsmrControlCenterUpdater::ApplySettings(payload, error);
 	}
 
 	bool HandleUpdateAction(
@@ -2223,133 +1009,18 @@ struct VsmrControlCenterBridge::Impl
 		std::string& action,
 		std::string& error)
 	{
-		if (payload == nullptr || !payload->IsObject())
-		{
-			error = "Updater action payload must be an object.";
-			return false;
-		}
-		action = LowerAscii(TrimAscii(ReadString(*payload, "action")));
-		if (action != "retry_update" && action != "reload_aviso")
-		{
-			error = "Unsupported updater action.";
-			return false;
-		}
-		if (requestId.empty())
-		{
-			error = "Updater action request ID is required.";
-			return false;
-		}
-
-		rapidjson::Document request;
-		request.SetObject();
-		Allocator& allocator = request.GetAllocator();
-		request.AddMember("schema_version", 1, allocator);
-		AddString(request, "request_id", requestId, allocator);
-		AddString(request, "action", action, allocator);
-		AddString(request, "requested_utc", CurrentUtcText(), allocator);
-		std::lock_guard<std::mutex> lock(gUpdaterFileMutex);
-		const std::filesystem::path directory = UpdaterDirectory();
-		if (directory.empty())
-		{
-			error = "LOCALAPPDATA is unavailable; the updater request cannot be queued.";
-			return false;
-		}
-		return WriteUpdaterJsonAtomically(directory / L"action.json", request, error);
+		return VsmrControlCenterUpdater::QueueAction(
+			payload,
+			requestId,
+			action,
+			error);
 	}
 
 	bool OpenUpdateRelease(
 		const rapidjson::Value* payload,
 		std::string& error)
 	{
-		if (payload == nullptr || !payload->IsObject() ||
-			!payload->HasMember("url") || !(*payload)["url"].IsString())
-		{
-			error = "A GitHub release URL is required.";
-			return false;
-		}
-		const std::string url = TrimAscii((*payload)["url"].GetString());
-		constexpr const char* kReleasesUrl =
-			"https://github.com/IWantPizzaa/vSMR/releases";
-		constexpr const char* kLatestUrl =
-			"https://github.com/IWantPizzaa/vSMR/releases/latest";
-		constexpr const char* kTagPrefix =
-			"https://github.com/IWantPizzaa/vSMR/releases/tag/";
-		if (url.empty() || url.size() > 512U)
-		{
-			error = "Only the official vSMR GitHub release page can be opened.";
-			return false;
-		}
-
-		bool supportedUrl = url == kReleasesUrl || url == kLatestUrl;
-		if (!supportedUrl &&
-			url.size() > std::strlen(kTagPrefix) &&
-			url.compare(0, std::strlen(kTagPrefix), kTagPrefix) == 0)
-		{
-			const std::string tag = url.substr(std::strlen(kTagPrefix));
-			supportedUrl = tag != "." && tag != "..";
-			for (const unsigned char character : tag)
-			{
-				if (std::isalnum(character) == 0 && character != '.' && character != '-' &&
-					character != '_' && character != '+' && character != '~')
-				{
-					supportedUrl = false;
-					break;
-				}
-			}
-		}
-		if (!supportedUrl)
-		{
-			error = "Only an official vSMR release, release tag, or latest-release URL can be opened.";
-			return false;
-		}
-		const HINSTANCE opened = ::ShellExecuteA(
-			nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-		if (reinterpret_cast<INT_PTR>(opened) <= 32)
-		{
-			error = "Windows could not open the GitHub release page.";
-			return false;
-		}
-		return true;
-	}
-
-	bool AddWorkerQueuesToPerformanceReport(
-		const std::string& nativeReport,
-		std::string& report,
-		std::string& error)
-	{
-		report.clear();
-		error.clear();
-		rapidjson::Document document;
-		document.Parse<0>(nativeReport.c_str());
-		if (document.HasParseError() || !document.IsObject())
-		{
-			error = "The native performance report could not be serialized.";
-			return false;
-		}
-
-		Allocator& allocator = document.GetAllocator();
-		if (!document.HasMember("type"))
-			AddString(document, "type", "vSMR.performance-report", allocator);
-		CSMRPlugin* const plugin = OwnerPlugin();
-		const WorkerQueueSnapshot queues = plugin != nullptr
-			? plugin->GetWorkerQueueSnapshot()
-			: WorkerQueueSnapshot{};
-		rapidjson::Value workerQueues(rapidjson::kObjectType);
-		rapidjson::Value network(rapidjson::kObjectType);
-		AddSize(network, "workers", queues.networkWorkers, allocator);
-		AddSize(network, "queued", queues.networkQueued, allocator);
-		AddSize(network, "inFlight", queues.networkInFlight, allocator);
-		workerQueues.AddMember("network", network, allocator);
-		rapidjson::Value weather(rapidjson::kObjectType);
-		weather.AddMember("workerRunning", queues.weatherWorkerRunning, allocator);
-		AddSize(weather, "queued", queues.weatherQueued, allocator);
-		AddSize(weather, "inFlight", queues.weatherInFlight, allocator);
-		workerQueues.AddMember("weather", weather, allocator);
-		if (document.HasMember("workerQueues"))
-			document.RemoveMember("workerQueues");
-		document.AddMember("workerQueues", workerQueues, allocator);
-		report = SerializePretty(document);
-		return !report.empty();
+		return VsmrControlCenterUpdater::OpenRelease(payload, error);
 	}
 
 	void SendPerformanceExportAck(
@@ -2533,9 +1204,18 @@ struct VsmrControlCenterBridge::Impl
 			"profilesUsingBackup",
 			Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isUsingBackup(),
 			allocator);
+		const bool profilesBackupAvailable =
+			Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isBackupAvailable();
 		dataHealth.AddMember(
 			"profilesBackupAvailable",
-			Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isBackupAvailable(),
+			profilesBackupAvailable,
+			allocator);
+		AddInt64(
+			dataHealth,
+			"profilesBackupModifiedUnixSeconds",
+			profilesBackupAvailable
+				? Owner->CurrentConfig->getBackupModifiedUnixSeconds()
+				: 0,
 			allocator);
 		AddString(
 			dataHealth,
@@ -3974,8 +2654,8 @@ struct VsmrControlCenterBridge::Impl
 				: 120;
 			SendPerformanceState(
 				envelope.id,
-				NormalizePerformanceWindowSeconds(requestedWindow),
-				NormalizePerformanceSeriesPoints(requestedPoints));
+				VsmrControlCenterPerformance::NormalizeWindowSeconds(requestedWindow),
+				VsmrControlCenterPerformance::NormalizeSeriesPoints(requestedPoints));
 			return true;
 		}
 		case VsmrBridgeAction::PerformanceReset:
@@ -3985,11 +2665,7 @@ struct VsmrControlCenterBridge::Impl
 				return false;
 			}
 			Owner->ResetPerformanceDiagnostics();
-			PeakProcessGdiObjects = 0;
-			PeakVsmrCachedBitmaps = 0;
-			PeakEstimatedBitmapBytes = 0;
-			PeakAvisoPendingDepth = 0;
-			LastPerformanceGeneration = 0;
+			PerformancePeaks.Reset();
 			SendAck(envelope.id, envelope.type, "Performance sample reset");
 			return true;
 		case VsmrBridgeAction::PerformanceReportExport:
@@ -4007,18 +2683,25 @@ struct VsmrControlCenterBridge::Impl
 				error = "Only JSON performance reports are supported.";
 				return false;
 			}
-			const std::uint32_t windowSeconds = NormalizePerformanceWindowSeconds(
+			const std::uint32_t windowSeconds =
+				VsmrControlCenterPerformance::NormalizeWindowSeconds(
 				envelope.payload != nullptr
 					? ReadInt(*envelope.payload, "windowSeconds", 120)
 					: 120);
 			const std::string nativeReport = Owner->BuildPerformanceReportJson(
 				windowSeconds,
 				VsmrPerformance::MaximumFrameSamples);
+			const VsmrControlCenterPerformanceContext performanceContext =
+				BuildPerformanceContext();
 			std::string report;
-			if (!AddWorkerQueuesToPerformanceReport(nativeReport, report, error))
+			if (!VsmrControlCenterPerformance::AddWorkerQueuesToReport(
+					nativeReport,
+					performanceContext.workerQueues,
+					report,
+					error))
 				return false;
 			std::string reportPath;
-			if (!WritePerformanceReportAtomically(
+			if (!VsmrControlCenterPerformance::WriteReportAtomically(
 				report,
 				std::filesystem::u8path(Owner->DataPath),
 				reportPath,
@@ -4121,7 +2804,7 @@ struct VsmrControlCenterBridge::Impl
 VsmrControlCenterBridge::VsmrControlCenterBridge(
 	CSMRRadar* owner,
 	VsmrBridgeHostCallbacks callbacks)
-	: State(std::make_unique<Impl>(owner, std::move(callbacks)))
+	: State(std::make_unique<VsmrControlCenterBridgeImpl>(owner, std::move(callbacks)))
 {
 }
 
