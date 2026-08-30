@@ -5974,53 +5974,6 @@ textarea:disabled {
   white-space: nowrap;
 }
 
-.update-state-badge {
-  min-width: 76px;
-  height: var(--ui-control-height);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  padding: 0 7px;
-  border: 1px solid #4b5b60;
-  border-radius: var(--ui-control-radius);
-  background: #2b383b;
-  color: #afbec2;
-  font-size: 8px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.update-state-badge.active {
-  border-color: #476d7e;
-  background: #263c45;
-  color: #b6dbea;
-}
-
-.update-state-badge.live {
-  border-color: #456c55;
-  background: #263b30;
-  color: #b8ddc3;
-}
-
-.update-state-badge.warning {
-  border-color: #75633e;
-  background: #413a29;
-  color: #e5d39b;
-}
-
-.update-state-badge.error {
-  border-color: #795052;
-  background: #472f31;
-  color: #f0babc;
-}
-
-.update-state-badge.preview {
-  border-color: #5c5c58;
-  background: #383835;
-  color: #c3c2b8;
-}
-
 .updater-general-group .update-channel-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 92px;
@@ -6519,13 +6472,17 @@ textarea:disabled {
 }
 
 .settings-page .display-group {
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-columns: minmax(0, 1fr);
 	align-items: end;
-	gap: 5px 10px;
+	gap: 5px;
+}
+
+.settings-page .display-group > .field {
+	width: min(100%, 160px);
 }
 
 .settings-page .display-group > .check-field {
-	grid-column: 1 / -1;
+	grid-column: 1;
 }
 
 .settings-page .updater-general-group {
@@ -6539,6 +6496,15 @@ textarea:disabled {
 .settings-page .update-notice,
 .settings-page .updater-general-actions {
   grid-column: 1 / -1 !important;
+}
+
+.settings-page .updater-general-heading {
+  min-height: 16px;
+  padding: 0 2px;
+}
+
+.settings-page .updater-general-heading > span:last-child {
+  font-size: 9px;
 }
 
 .settings-page .updater-general-actions {

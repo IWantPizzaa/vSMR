@@ -4146,31 +4146,6 @@
     });
   }
 
-  function updateStatusLabel(status) {
-    const labels = {
-      idle: "Idle",
-      checking: "Checking",
-      rate_limited: "Rate limited",
-      downloading: "Downloading",
-      verifying: "Verifying",
-      installing: "Installing",
-      updated: "Updated",
-      up_to_date: "Up to date",
-      deferred: "Manual update",
-      error: "Update error"
-    };
-    return labels[String(status || "").toLowerCase()] || "Awaiting state";
-  }
-
-  function updateStatusClass(status) {
-    const normalized = String(status || "").toLowerCase();
-    if (["checking", "downloading", "verifying", "installing"].includes(normalized)) return "active";
-    if (["updated", "up_to_date"].includes(normalized)) return "live";
-    if (["rate_limited", "deferred"].includes(normalized)) return "warning";
-    if (normalized === "error") return "error";
-    return "waiting";
-  }
-
   function expireUpdateRequest(slot, now = Date.now()) {
     const request = updateCenter.pending[slot];
     if (!request || now - request.startedAt < REQUEST_TIMEOUT_MS) return false;
@@ -4242,9 +4217,7 @@
     if (!HOST_MODE) {
       updateCenter.state.message = action === "reload_aviso"
         ? "AVISO reload queued for the next startup."
-        : action === "retry_update"
-          ? "Update retry queued for the next startup."
-          : "Update check queued for the next startup.";
+        : "Update retry queued for the next startup.";
       renderUpdateCenter();
       showToast(updateCenter.state.message, "success");
       return;
@@ -4326,24 +4299,20 @@
   }
 
   function renderUpdateCenter() {
-    const badge = $("#updateStateBadge");
-    if (!badge) return;
+    const versionSummary = $("#updateVersionSummary");
+    if (!versionSummary) return;
     expireUpdateRequest("settings");
     expireUpdateRequest("action");
 
     const updater = updateCenter.state || {};
     const config = updateCenter.config || {};
     const status = String(updater.status || "idle").toLowerCase();
-    const directPreview = !HOST_MODE;
-    const writable = directPreview || (updateCenter.available && updateCenter.configWritable);
+    const writable = !HOST_MODE || (updateCenter.available && updateCenter.configWritable);
     const busy = Boolean(updateCenter.pending.settings);
-
-    badge.className = `update-state-badge ${directPreview ? "preview" : updateStatusClass(status)}`;
-    badge.textContent = directPreview ? "Preview" : updateStatusLabel(status);
 
     const installed = String(updater.installed_version || "--");
     const available = String(updater.available_version || "").trim();
-    $("#updateVersionSummary").textContent = available
+    versionSummary.textContent = available
       ? `Installed ${installed} · Available ${available}`
       : `Installed ${installed}`;
 
@@ -4370,10 +4339,6 @@
 
     const pendingAction = Boolean(updateCenter.pending.action);
     const pendingActionName = String(updateCenter.pending.action?.action || "");
-    const checkButton = $("#updateCheckButton");
-    checkButton.disabled = !updateCenter.available || pendingAction || busy;
-    checkButton.textContent = pendingActionName === "check_now" ? "Queuing..." : "Check on next startup";
-
     const reloadAvisoButton = $("#updateReloadAvisoButton");
     reloadAvisoButton.disabled = !updateCenter.available || pendingAction || busy;
     reloadAvisoButton.textContent = pendingActionName === "reload_aviso" ? "Queuing..." : "Reload AVISOs";
@@ -5443,7 +5408,6 @@
     }
     else if (action === "restore-profiles-backup") restoreProfilesBackup();
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
-    else if (action === "update-check") requestUpdateAction("check_now");
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-reload-aviso") {
       if (updateCenter.config.protect_modified_aviso === false &&
