@@ -4,6 +4,7 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
+#include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
@@ -16,11 +17,14 @@
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -116,6 +120,105 @@ namespace
 			"departure above 50 kt remains airborne");
 	}
 
+	void TestRuntimeReleaseLifecycle()
+	{
+		using VsmrLoaderLifecycle::RuntimeReleaseResult;
+
+		void* module = nullptr;
+		void* plugin = nullptr;
+		std::function<bool()> shutdown;
+		int unloadCalls = 0;
+		auto unload = [&unloadCalls](void*)
+		{
+			++unloadCalls;
+			return true;
+		};
+		Expect(
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				module,
+				shutdown,
+				plugin,
+				unload) == RuntimeReleaseResult::Released &&
+			unloadCalls == 0,
+			"empty loader state is already released");
+
+		int moduleToken = 0;
+		int pluginToken = 0;
+		module = &moduleToken;
+		plugin = &pluginToken;
+		int shutdownCalls = 0;
+		bool shutdownAllowed = false;
+		shutdown = [&shutdownCalls, &shutdownAllowed]()
+		{
+			++shutdownCalls;
+			return shutdownAllowed;
+		};
+		Expect(
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				module,
+				shutdown,
+				plugin,
+				unload) == RuntimeReleaseResult::RuntimeRetained &&
+			module == &moduleToken &&
+			plugin == &pluginToken &&
+			shutdown &&
+			shutdownCalls == 1 &&
+			unloadCalls == 0,
+			"active runtime remains published while shutdown is unsafe");
+
+		shutdownAllowed = true;
+		Expect(
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				module,
+				shutdown,
+				plugin,
+				unload) == RuntimeReleaseResult::Released &&
+			module == nullptr &&
+			plugin == nullptr &&
+			!shutdown &&
+			shutdownCalls == 2 &&
+			unloadCalls == 1,
+			"retained runtime releases successfully on a later retry");
+
+		module = &moduleToken;
+		plugin = &pluginToken;
+		shutdown = []() -> bool
+		{
+			throw std::runtime_error("shutdown failure");
+		};
+		Expect(
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				module,
+				shutdown,
+				plugin,
+				unload) == RuntimeReleaseResult::RuntimeRetained &&
+			module == &moduleToken &&
+			plugin == &pluginToken,
+			"shutdown exceptions retain the published runtime");
+
+		shutdown = []() { return true; };
+		auto rejectUnload = [](void*) { return false; };
+		Expect(
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				module,
+				shutdown,
+				plugin,
+				rejectUnload) == RuntimeReleaseResult::ModuleUnloadFailed &&
+			module == &moduleToken &&
+			plugin == nullptr &&
+			!shutdown,
+			"failed module unmap retains only the inert module for another retry");
+		Expect(
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				module,
+				shutdown,
+				plugin,
+				unload) == RuntimeReleaseResult::Released &&
+			module == nullptr &&
+			unloadCalls == 2,
+			"inert module unload retries without invoking runtime shutdown again");
+	}
+
 	void TestGeometry()
 	{
 		Expect(SMRGeometry::ZoomLevelFromCrossDistance(2000.0) == 14, "zoom boundary 2000 m");
@@ -192,6 +295,61 @@ namespace
 		Expect(
 			!HasValidInboundWebMessageShape(embeddedNull),
 			"WebView bridge rejects embedded NUL bytes");
+	}
+
+	void TestControlCenterScriptLayout(const std::filesystem::path& repositoryRoot)
+	{
+		const std::filesystem::path webRoot =
+			repositoryRoot / "vSMR" / "src" / "control_center" / "web";
+		const std::array<const char*, 12> scripts = {
+			"data.js",
+			"app-model.js",
+			"app-workflow.js",
+			"app-runtime.js",
+			"app-profile-colors.js",
+			"app-profile-editor.js",
+			"app-aviso-editor.js",
+			"app-settings.js",
+			"app-persistence.js",
+			"app-events.js",
+			"app-actions.js",
+			"app.js"
+		};
+		const std::string index = ReadTextFile(webRoot / "index.html");
+		std::size_t previousPosition = 0;
+		bool foundPrevious = false;
+		for (const char* script : scripts)
+		{
+			const std::filesystem::path path = webRoot / script;
+			Expect(
+				std::filesystem::is_regular_file(path),
+				std::string("Control Center script exists: ") + script);
+			const std::string marker = std::string("<script src=\"") + script + "\"></script>";
+			const std::size_t position = index.find(marker);
+			Expect(
+				position != std::string::npos,
+				std::string("Control Center index loads: ") + script);
+			if (position != std::string::npos)
+			{
+				Expect(
+					!foundPrevious || position > previousPosition,
+					std::string("Control Center script order is stable at: ") + script);
+				previousPosition = position;
+				foundPrevious = true;
+			}
+
+			if (std::string(script) == "data.js" || !std::filesystem::is_regular_file(path))
+				continue;
+			const std::string source = ReadTextFile(path);
+			Expect(
+				source.rfind("\"use strict\";", 0) == 0,
+				std::string("Control Center script is strict: ") + script);
+			const std::size_t lineCount =
+				static_cast<std::size_t>(std::count(source.begin(), source.end(), '\n')) + 1U;
+			Expect(
+				lineCount <= 1000U,
+				std::string("Control Center feature script stays reviewable: ") + script);
+		}
 	}
 
 	void TestProfiles(const std::filesystem::path& repositoryRoot)
@@ -441,17 +599,22 @@ namespace
 		Expect(
 			!std::filesystem::exists(legacyProfilesBackup),
 			"Profiles save does not create a .bak file");
+		const std::string legacyProfilesContents = ReadTextFile(selectedFile);
 		{
 			std::ofstream backupOutput(legacyProfilesBackup, std::ios::binary | std::ios::trunc);
-			backupOutput << "legacy profiles backup";
+			backupOutput << legacyProfilesContents;
 		}
 		Expect(
 			unicodeConfig.saveConfig(
 				{},
 				unicodeConfig.getPersistedConfigRevision(),
 				&error) &&
-				ReadTextFile(legacyProfilesBackup) == "legacy profiles backup",
+				ReadTextFile(legacyProfilesBackup) == legacyProfilesContents,
 			"Profiles save leaves an existing .bak file untouched");
+		Expect(
+			unicodeConfig.isBackupAvailable() &&
+				unicodeConfig.getBackupModifiedUnixSeconds() > 0,
+			"Validated legacy profiles backup exposes its modification date");
 
 		const std::filesystem::path unicodeAvisoPath =
 			testRoot / L"a\u00E9roport_\u6D4B\u8BD5.geojson";
@@ -519,8 +682,10 @@ int wmain(int argc, wchar_t** argv)
 	TestTagTokens();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
+	TestRuntimeReleaseLifecycle();
 	TestGeometry();
 	TestWebMessageValidation();
+	TestControlCenterScriptLayout(repositoryRoot);
 	TestProfiles(repositoryRoot);
 	TestAviso(repositoryRoot);
 	TestUnicodeResourcePaths(repositoryRoot);

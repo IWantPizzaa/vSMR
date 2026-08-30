@@ -504,7 +504,7 @@
 <input aria-label="EuroScope alias file" id="settingsAliasFile" readonly="" type="text"/>
 </section>
 <div class="settings-recovery-actions">
-<button class="ui-button" data-action="restore-profiles-backup" id="restoreProfilesBackupButton" type="button">Restore .bak</button>
+<button class="ui-button" data-action="restore-profiles-backup" id="restoreProfilesBackupButton" type="button">Restore legacy .bak</button>
 <button class="ui-button" data-action="restore-bundled-defaults" type="button">Bundled defaults</button>
 </div>
 </div>
@@ -565,6 +565,16 @@
 <input accept="application/json,.json" hidden="" id="profilesFileInput" type="file"/>
 <input accept="application/json,.json,.geojson" hidden="" id="avisoFileInput" type="file"/>
 <script src="data.js"></script>
+<script src="app-model.js"></script>
+<script src="app-workflow.js"></script>
+<script src="app-runtime.js"></script>
+<script src="app-profile-colors.js"></script>
+<script src="app-profile-editor.js"></script>
+<script src="app-aviso-editor.js"></script>
+<script src="app-settings.js"></script>
+<script src="app-persistence.js"></script>
+<script src="app-events.js"></script>
+<script src="app-actions.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

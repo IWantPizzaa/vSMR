@@ -96,7 +96,7 @@ Do not copy only the DLL. The Control Center, default data, audio, licenses, and
 4. Run the packaged installer against the existing plug-in directory.
 5. Start EuroScope and verify the active airport and configuration before use.
 
-Legacy profile data is migrated to schema 2 when required. Invalid primary data is not silently overwritten, and normal profile writes do not create `.bak` files.
+Legacy profile data is migrated to schema 2 when required. Invalid primary data is not silently overwritten, and normal profile writes do not create `.bak` files. When a validated `.bak` from an older installation exists, the Control Center labels it as legacy data and shows its modification date before restoration.
 
 ### Roll back
 
@@ -611,7 +611,9 @@ Important implementation areas:
 | Path | Responsibility |
 | --- | --- |
 | `vSMR/src/app/PluginEntry.cpp` | MFC application object and exported runtime-ABI create/shutdown entries |
-| `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, commands, CPDLC, VACDM, weather scheduling, and diagnostics |
+| `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, CPDLC/VACDM coordination, weather scheduling, and diagnostics |
+| `vSMR/src/plugin/PluginCommandHandler.*` | EuroScope command parsing and dispatch |
+| `vSMR/src/datalink/DatalinkProtocolSupport.*` | PDC frequency selection, Hoppie protocol parsing, redaction, and protected credentials |
 | `vSMR/src/scene/` | Immutable per-frame target, tag, RIMCAS, ownership, controller, and airport state shared by radar viewports |
 | `vSMR/src/radar/RadarScreen.cpp` and `RadarScreen.*.cpp` | Radar lifecycle, rendering, interaction, ASR state, commands, and Runtime Menu |
 | `vSMR/src/insets/InsetWindow.cpp` | AVISO, SRW 1, METAR, and Timer insets; snapping and resizing |
@@ -619,8 +621,8 @@ Important implementation areas:
 | `vSMR/src/config/RuntimeConfig.cpp` | Profile loading, migration, validation, and persistence |
 | `vSMR/src/aviso/` | AVISO document validation, editing, presets, and radar integration |
 | `vSMR/src/tags/` | Tag definitions, rendering, color rules, and VACDM tag helpers |
-| `vSMR/src/control_center/` | Native WebView2 host, C++/JavaScript bridge, and Control Center resource management |
-| `vSMR/src/control_center/web/` | Control Center HTML, CSS, and JavaScript source |
+| `vSMR/src/control_center/` | Native WebView2 host and bridge, with updater and performance processing in dedicated modules |
+| `vSMR/src/control_center/web/` | Control Center HTML/CSS and load-ordered JavaScript feature controllers |
 | `vSMR/src/crash/CrashReporter.cpp` and `vSMR/src/crash/handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
 | `vSMR/src/diagnostics/` | Per-radar performance samples, aggregate statistics, cache/worker counters, and JSON reports |
 | `vSMR/tools/` | Forced Release builds and release-package creation |

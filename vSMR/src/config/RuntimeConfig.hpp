@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -83,6 +84,7 @@ public:
 	bool isConfigHealthy() const;
 	bool isUsingBackup() const;
 	bool isBackupAvailable() const;
+	std::int64_t getBackupModifiedUnixSeconds() const;
 	bool restoreBackup(string& error);
 	static bool validateAndMigrateProfilesDocument(
 		rapidjson::Document& profilesDocument,

@@ -1,5 +1,6 @@
 #pragma once
 #include "EuroScopePlugIn.h"
+#include "plugin/PluginMetadata.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 #include "datalink/CPDLCSettingsDialog.hpp"
 #include "datalink/DataLinkDialog.hpp"
@@ -20,11 +21,7 @@
 #include "radar/RadarScreen.hpp"
 #include "shared/logging/Logger.hpp"
 
-#define MY_PLUGIN_NAME      "vSMR"
-#define MY_PLUGIN_VERSION   "v2.0.0-beta.4"
-#define MY_PLUGIN_DEVELOPER "Mathias Derelle, Alexis Balzano, Pierre Ferran, Even Rognlien, Lionel Bischof, Daniel Lange, Juha Holopainen, Keanu Czirjak"
-#define MY_PLUGIN_COPYRIGHT "GPL v3"
-#define MY_PLUGIN_VIEW_AVISO  "SMR radar display"
+class VsmrPluginCommandHandler;
 
 using namespace std;
 using namespace EuroScopePlugIn;
@@ -133,6 +130,8 @@ public:
 	virtual CRadarScreen * OnRadarScreenCreated(const char * sDisplayName, bool NeedRadarContent, bool GeoReferenced, bool CanBeSaved, bool CanBeCreated);
 
 private:
+	friend class VsmrPluginCommandHandler;
+
 	bool WriteDiagnosticsReport(
 		std::string& reportPath,
 		std::string& error);
