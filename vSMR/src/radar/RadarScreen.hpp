@@ -96,6 +96,9 @@ public:
 	bool UpdateTimerInsetCountdowns();
 
 private:
+	// These collaborators implement tightly coupled rendering or same-screen
+	// coordination. Named friends keep mutable radar state private from every
+	// other consumer while avoiding public container accessors.
 	friend class CInsetWindow;
 	friend class VsmrControlCenterBridge;
 	friend class VsmrControlCenterBridgeImpl;

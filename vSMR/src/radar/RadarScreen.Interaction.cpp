@@ -13,6 +13,9 @@ extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
 
+// Anonymous interaction helpers cannot be friended directly. This named shim
+// exposes only the state needed for hit-testing and viewport selection within
+// this translation unit.
 struct VsmrRadarInteractionAccess
 {
 	static auto& Windows(CSMRRadar& radar) noexcept
