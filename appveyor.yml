@@ -79,7 +79,7 @@ build_script:
 
 test_script:
   - ps: >-
-      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tests\bin\Release\vSMR.Tests.exe" $env:APPVEYOR_BUILD_FOLDER;
+      & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tests\run_tests.ps1" -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER;
       if ($LASTEXITCODE -ne 0) { throw "vSMR regression tests failed with exit code $LASTEXITCODE." };
       Set-AppveyorBuildVariable -Name VSMR_TESTS_PASSED -Value '1'
 
