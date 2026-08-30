@@ -463,7 +463,6 @@
 <fieldset class="compact-group settings-group updater-general-group">
 <legend>Automatic updates</legend>
 <div class="updater-general-heading">
-<span aria-live="polite" class="update-state-badge waiting" id="updateStateBadge" role="status">Awaiting state</span>
 <span id="updateVersionSummary">Installed --</span>
 </div>
 <label class="field update-channel-field"><span>Channel</span><select id="updateChannel"><option value="stable">Stable</option><option value="beta">Beta</option></select></label>
@@ -474,7 +473,6 @@
 <p aria-live="polite" class="update-notice" id="updateNotice" role="status">Waiting for updater state...</p>
 <div class="updater-general-actions">
 <button class="ui-button" data-action="update-retry" hidden id="updateRetryButton" type="button">Retry next startup</button>
-<button class="ui-button primary" data-action="update-check" id="updateCheckButton" type="button">Check on next startup</button>
 <button class="ui-button" data-action="update-reload-aviso" id="updateReloadAvisoButton" title="Reload all bundled AVISOs from the installed GitHub release on the next EuroScope startup. With protection enabled, edited maps stay active and their verified release copies are kept separately." type="button">Reload AVISOs</button>
 <button class="ui-button" data-action="update-clear-skip" hidden id="updateClearSkipButton" type="button">Clear skipped release</button>
 <button class="ui-button update-release-link" data-action="update-release-open" hidden id="updateReleaseLink" type="button">Release notes</button>

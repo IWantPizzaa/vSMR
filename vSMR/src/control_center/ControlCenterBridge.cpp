@@ -2229,7 +2229,7 @@ struct VsmrControlCenterBridge::Impl
 			return false;
 		}
 		action = LowerAscii(TrimAscii(ReadString(*payload, "action")));
-		if (action != "check_now" && action != "retry_update" && action != "reload_aviso")
+		if (action != "retry_update" && action != "reload_aviso")
 		{
 			error = "Unsupported updater action.";
 			return false;
@@ -4049,9 +4049,7 @@ struct VsmrControlCenterBridge::Impl
 				envelope.type,
 				requestedAction == "retry_update"
 					? "Update retry queued for the next startup"
-					: requestedAction == "reload_aviso"
-						? "AVISO reload queued for the next startup"
-						: "Update check queued for the next startup");
+					: "AVISO reload queued for the next startup");
 			SendUpdateState(envelope.id);
 			return true;
 		}
