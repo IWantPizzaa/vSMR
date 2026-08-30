@@ -938,8 +938,6 @@ namespace
 		if (type == "state.reload" || type == "reload.all") return VsmrBridgeAction::StateReload;
 		if (type == "state.reset") return VsmrBridgeAction::StateReset;
 		if (type == "state.restore.backup") return VsmrBridgeAction::StateRestoreBackup;
-		if (type == "state.undo" || type == "undo") return VsmrBridgeAction::StateUndo;
-		if (type == "state.redo" || type == "redo") return VsmrBridgeAction::StateRedo;
 		if (type == "runtime.profile.change") return VsmrBridgeAction::RuntimeProfileChange;
 		if (type == "runtime.mode.change") return VsmrBridgeAction::RuntimeModeChange;
 		if (type == "aviso.group.visibility") return VsmrBridgeAction::RuntimeGroupVisibility;
@@ -2852,294 +2850,6 @@ struct VsmrControlCenterBridge::Impl
 		Send(message);
 	}
 
-	bool ApplyHistoryState(
-		const rapidjson::Value* payload,
-		const std::string& reason,
-		const std::string& requestId,
-		std::string& error)
-	{
-		if (Owner == nullptr || Owner->CurrentConfig == nullptr)
-		{
-			error = "vSMR configuration is not available.";
-			return false;
-		}
-		if (payload == nullptr ||
-			!payload->IsObject() ||
-			!payload->HasMember("state") ||
-			!(*payload)["state"].IsObject())
-		{
-			error = "Undo/redo payload is missing staged state.";
-			return false;
-		}
-		std::lock_guard<std::mutex> transactionLock(
-			gBridgeSaveTransactionMutex);
-
-		const rapidjson::Value& stagedState = (*payload)["state"];
-		const std::string stagedAirport = TrimAscii(ReadString(stagedState, "airport"));
-		const std::string expectedConfigRevision =
-			TrimAscii(ReadString(stagedState, "configRevision"));
-		const std::string persistedConfigRevision =
-			Owner->CurrentConfig->getPersistedConfigRevision();
-		if (expectedConfigRevision.empty() ||
-			expectedConfigRevision != persistedConfigRevision)
-		{
-			error = "The profiles file changed after this history entry was created. Reload the Control Center before continuing.";
-			return false;
-		}
-		if (stagedState.HasMember("aviso") &&
-			(stagedAirport.empty() ||
-				!EqualsNoCase(stagedAirport, TrimAscii(Owner->getActiveAirport()))))
-		{
-			error = "The active airport changed while these edits were staged. Reload the Control Center before continuing.";
-			return false;
-		}
-		if (stagedState.HasMember("aviso"))
-		{
-			const std::string expectedAvisoRevision =
-				TrimAscii(ReadString(stagedState, "avisoRevision"));
-			const std::string currentAvisoRevision = FileRevision(
-				Owner->GetAvisoGeoJsonEditorPathForAirport(
-					Owner->getActiveAirport()));
-			if (expectedAvisoRevision.empty() ||
-				expectedAvisoRevision != currentAvisoRevision)
-			{
-				error = "The AVISO file changed after this history entry was created. Reload the Control Center before continuing.";
-				return false;
-			}
-		}
-		if (!stagedState.HasMember("profiles"))
-		{
-			error = "Undo/redo state is missing profiles.";
-			return false;
-		}
-		const rapidjson::Value& profiles = stagedState["profiles"];
-		if (!ValidateProfileArray(profiles, error))
-			return false;
-
-		// Prepare every fallible AVISO operation before changing the live profile,
-		// settings, or inset state. Undo/redo must be one logical transaction: a
-		// malformed group near the end of the payload cannot leave the earlier
-		// profile and UI changes applied.
-		const rapidjson::Value* stagedAviso = nullptr;
-		std::vector<CSMRRadar::AvisoGroup> stagedGroups;
-		bool hasStagedGroups = false;
-		if (stagedState.HasMember("aviso"))
-		{
-			stagedAviso = &stagedState["aviso"];
-			if (!stagedAviso->IsObject() ||
-				!stagedAviso->HasMember("features") ||
-				!(*stagedAviso)["features"].IsArray())
-			{
-				error = "Undo/redo AVISO state must be a GeoJSON FeatureCollection.";
-				return false;
-			}
-
-			if (stagedAviso->HasMember("vsmr_groups"))
-			{
-				if (!(*stagedAviso)["vsmr_groups"].IsArray())
-				{
-					error = "Undo/redo AVISO groups must be an array.";
-					return false;
-				}
-
-				hasStagedGroups = true;
-				const rapidjson::Value& groupValues = (*stagedAviso)["vsmr_groups"];
-				std::unordered_set<std::string> seenIds;
-				std::unordered_map<std::string, bool> existingVisibility;
-				for (const CSMRRadar::AvisoGroup& existing : Owner->GetAvisoGroups())
-					existingVisibility[existing.id] = existing.visible;
-
-				stagedGroups.reserve(groupValues.Size());
-				for (rapidjson::SizeType index = 0; index < groupValues.Size(); ++index)
-				{
-					const rapidjson::Value& item = groupValues[index];
-					if (!item.IsObject())
-					{
-						error = "Each undo/redo AVISO group must be an object.";
-						return false;
-					}
-
-					CSMRRadar::AvisoGroup group;
-					group.id = ReadString(item, "id");
-					if (group.id.empty())
-						group.id = ReadString(item, "group_id");
-					if (group.id.empty())
-					{
-						error = "Each undo/redo AVISO group requires an id.";
-						return false;
-					}
-					if (!seenIds.insert(group.id).second)
-					{
-						error = "Undo/redo AVISO group ids must be unique.";
-						return false;
-					}
-
-					group.name = ReadString(item, "name");
-					if (group.name.empty())
-						group.name = group.id;
-					const auto existing = existingVisibility.find(group.id);
-					group.visible = existing != existingVisibility.end()
-						? existing->second
-						: true;
-					if (item.HasMember("visible"))
-					{
-						if (!item["visible"].IsBool())
-						{
-							error = "Undo/redo AVISO group visible values must be boolean.";
-							return false;
-						}
-						group.visible = item["visible"].GetBool();
-					}
-					stagedGroups.push_back(std::move(group));
-				}
-			}
-		}
-
-		std::string activeProfile = ReadString(stagedState, "activeProfile");
-		if (activeProfile.empty())
-			activeProfile = Owner->GetActiveProfileNameForEditor();
-
-		rapidjson::Document previousProfiles;
-		CloneJsonValue(
-			Owner->CurrentConfig->document,
-			previousProfiles,
-			previousProfiles.GetAllocator());
-		const std::string previousActiveProfile = Owner->GetActiveProfileNameForEditor();
-		const std::array<std::pair<int, bool>, 4> previousInsetVisibility = {{
-			{ 3, Owner->appWindowDisplays[3] },
-			{ 1, Owner->appWindowDisplays[1] },
-			{ APPWINDOW_WEATHER - APPWINDOW_BASE,
-				Owner->appWindowDisplays[APPWINDOW_WEATHER - APPWINDOW_BASE] },
-			{ APPWINDOW_TIMER - APPWINDOW_BASE,
-				Owner->appWindowDisplays[APPWINDOW_TIMER - APPWINDOW_BASE] }
-		}};
-		auto rollbackLiveState = [&]()
-		{
-			std::string ignored;
-			if (Owner->CurrentConfig->replaceInMemoryConfig(
-				previousProfiles,
-				previousActiveProfile,
-				ignored))
-			{
-				if (Owner->RimcasInstance != nullptr)
-					Owner->RimcasInstance->setInactiveAlerts(
-						Owner->CurrentConfig->getInactiveAlert());
-				Owner->LoadProfile(previousActiveProfile, false, false);
-				// LoadProfile records mutable session state; put the exact history
-				// document back after the renderer has consumed it.
-				Owner->CurrentConfig->replaceInMemoryConfig(
-					previousProfiles,
-					previousActiveProfile,
-					ignored);
-			}
-			for (const auto& visibility : previousInsetVisibility)
-				Owner->appWindowDisplays[visibility.first] = visibility.second;
-			Owner->CancelInsetWindowInteractions();
-			Owner->RequestRefresh();
-		};
-
-		if (!Owner->CurrentConfig->replaceInMemoryConfig(
-			profiles,
-			activeProfile,
-			error))
-			return false;
-
-		// LoadProfile normally records the old RIMCAS selection first. Seed it
-		// with the staged selection so applying history cannot overwrite the
-		// profile that is being restored.
-		if (Owner->RimcasInstance != nullptr)
-			Owner->RimcasInstance->setInactiveAlerts(
-				Owner->CurrentConfig->getInactiveAlert());
-		Owner->LoadProfile(activeProfile, false, false);
-
-		// LoadProfile's session bookkeeping is intentionally mutable. Restore
-		// the exact editor document after the live renderer has consumed it.
-		if (!Owner->CurrentConfig->replaceInMemoryConfig(
-			profiles,
-			activeProfile,
-			error))
-		{
-			rollbackLiveState();
-			return false;
-		}
-
-		if (stagedState.HasMember("settings") &&
-			stagedState["settings"].IsObject())
-		{
-			const std::string resolution =
-				ReadString(stagedState["settings"], "resolutionPreset");
-			if (!resolution.empty() &&
-				!Owner->SetSmallTargetIconBoostResolutionPreset(
-					resolution,
-					false))
-			{
-				error = "The staged resolution preset is invalid.";
-				rollbackLiveState();
-				return false;
-			}
-			// ASR display settings remain staged in the editor response below.
-			// Unlike profile data, they are applied only by a successful SaveAll.
-		}
-
-		if (stagedAviso != nullptr)
-		{
-			const std::string avisoPath =
-				Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
-			if (!avisoPath.empty() &&
-				!Owner->EnsureAvisoGeoJsonLoaded(avisoPath, false))
-			{
-				error = "Unable to load the active AVISO source for undo/redo.";
-				rollbackLiveState();
-				return false;
-			}
-			if (!Owner->ApplyAvisoGroupMembershipSnapshot(*stagedAviso, &error))
-			{
-				if (error.empty())
-					error = "Unable to apply undo/redo AVISO group membership.";
-				rollbackLiveState();
-				return false;
-			}
-			// UpdateAvisoGroups normalizes an already validated vector and cannot
-			// fail; keep all remaining UI mutations after this final fallible step.
-			if (hasStagedGroups)
-				Owner->UpdateAvisoGroups(stagedGroups);
-		}
-
-		if (stagedState.HasMember("runtime") &&
-			stagedState["runtime"].IsObject() &&
-			stagedState["runtime"].HasMember("insets") &&
-			stagedState["runtime"]["insets"].IsObject())
-		{
-			const rapidjson::Value& insets = stagedState["runtime"]["insets"];
-			Owner->CancelInsetWindowInteractions();
-			const auto applyInsetVisibility = [&](int id, const char* key)
-			{
-				if (!insets.HasMember(key) || !insets[key].IsBool())
-					return;
-				const bool visible = ReadBool(insets, key, false);
-				Owner->appWindowDisplays[id] = visible;
-				if (!visible)
-				{
-					auto windowIt = Owner->appWindows.find(id);
-					if (windowIt != Owner->appWindows.end() && windowIt->second != nullptr)
-						windowIt->second->ResetAvisoInteractionState();
-				}
-			};
-			applyInsetVisibility(3, "aviso");
-			applyInsetVisibility(1, "srw1");
-			applyInsetVisibility(APPWINDOW_WEATHER - APPWINDOW_BASE, "weather");
-			applyInsetVisibility(APPWINDOW_TIMER - APPWINDOW_BASE, "timer");
-		}
-
-		Owner->InvalidateStructuredTagRuleCache();
-		Owner->RequestRefresh();
-		SendStagedAuthoritativeState(
-			stagedState,
-			reason,
-			requestId);
-		return true;
-	}
-
 	bool SaveAll(
 		const rapidjson::Value* payload,
 		const std::string& /*requestId*/,
@@ -3203,7 +2913,7 @@ struct VsmrControlCenterBridge::Impl
 		}
 		// Revision checks, both file writes, and rollback form one process-wide
 		// transaction.  Without this lock two Control Centers can both pass the
-		// AVISO revision check and then corrupt each other's backup/rollback.
+		// AVISO revision check and then corrupt each other's transaction state.
 		std::lock_guard<std::mutex> transactionLock(gBridgeSaveTransactionMutex);
 		const std::string stagedAirport = TrimAscii(ReadString(*payload, "airport"));
 		if (payload->HasMember("aviso") &&
@@ -3304,7 +3014,6 @@ struct VsmrControlCenterBridge::Impl
 
 		std::unique_ptr<AvisoDocumentModel> avisoModel;
 		std::string avisoPath;
-		bool avisoSaveIsRecovery = false;
 		if (payload->HasMember("aviso"))
 		{
 			const rapidjson::Value& incomingAviso = (*payload)["aviso"];
@@ -3338,7 +3047,6 @@ struct VsmrControlCenterBridge::Impl
 					incomingAviso,
 					avisoModel->MutableDocument(),
 					avisoModel->MutableDocument().GetAllocator());
-				avisoSaveIsRecovery = true;
 			}
 			else
 			{
@@ -3381,8 +3089,6 @@ struct VsmrControlCenterBridge::Impl
 
 		bool avisoExistedBeforeSave = false;
 		std::string avisoRollbackSnapshotPath;
-		bool avisoBackupExistedBeforeSave = false;
-		std::string avisoBackupRollbackSnapshotPath;
 		if (avisoModel != nullptr)
 		{
 			const DWORD attributes = ::GetFileAttributesW(
@@ -3397,29 +3103,6 @@ struct VsmrControlCenterBridge::Impl
 					"Unable to create an exact AVISO rollback snapshot; no files were changed.";
 				return false;
 			}
-
-			// A normal AVISO save rotates the previous primary into .bak. Snapshot
-			// the pre-transaction backup too, so a later profiles failure restores
-			// the exact two-file recovery state rather than losing an older version.
-			if (!avisoSaveIsRecovery)
-			{
-				const std::string backupPath = avisoPath + ".bak";
-				const DWORD backupAttributes = ::GetFileAttributesW(
-					std::filesystem::u8path(backupPath).c_str());
-				avisoBackupExistedBeforeSave =
-					backupAttributes != INVALID_FILE_ATTRIBUTES &&
-					(backupAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
-				if (avisoBackupExistedBeforeSave &&
-					!CreateRollbackSnapshot(
-						backupPath,
-						avisoBackupRollbackSnapshotPath))
-				{
-					DeleteRollbackSnapshot(avisoRollbackSnapshotPath);
-					error =
-						"Unable to snapshot the existing AVISO backup; no files were changed.";
-					return false;
-				}
-			}
 		}
 
 		CloneJsonValue(
@@ -3431,8 +3114,7 @@ struct VsmrControlCenterBridge::Impl
 		{
 			if (!avisoModel->SaveAtomically(
 				avisoPath,
-				error,
-				!avisoSaveIsRecovery))
+				error))
 			{
 				CloneJsonValue(
 					previousProfiles,
@@ -3453,34 +3135,11 @@ struct VsmrControlCenterBridge::Impl
 						::DeleteFileW(std::filesystem::u8path(avisoPath).c_str()) != FALSE ||
 						::GetLastError() == ERROR_FILE_NOT_FOUND;
 				}
-
-				bool backupRestored = true;
-				if (!avisoSaveIsRecovery)
-				{
-					const std::string backupPath = avisoPath + ".bak";
-					if (avisoBackupExistedBeforeSave)
-					{
-						backupRestored = RestoreRollbackSnapshotAtomically(
-							avisoBackupRollbackSnapshotPath,
-							backupPath);
-						if (backupRestored)
-							avisoBackupRollbackSnapshotPath.clear();
-					}
-					else
-					{
-						backupRestored =
-							::DeleteFileW(std::filesystem::u8path(backupPath).c_str()) != FALSE ||
-							::GetLastError() == ERROR_FILE_NOT_FOUND;
-					}
-				}
 				if (error.empty())
 					error = "Unable to save AVISO GeoJSON atomically.";
 				if (!primaryRestored)
 					error += " The exact old primary remains at " +
 						avisoRollbackSnapshotPath + ".";
-				if (!backupRestored)
-					error += " The exact old backup remains at " +
-						avisoBackupRollbackSnapshotPath + ".";
 				return false;
 			}
 		}
@@ -3497,7 +3156,6 @@ struct VsmrControlCenterBridge::Impl
 				Owner->CurrentConfig->document,
 				Owner->CurrentConfig->document.GetAllocator());
 			bool avisoRollbackOk = true;
-			bool avisoBackupRollbackOk = true;
 			if (avisoModel != nullptr)
 			{
 				if (avisoExistedBeforeSave)
@@ -3512,25 +3170,6 @@ struct VsmrControlCenterBridge::Impl
 					avisoRollbackOk =
 						::DeleteFileW(std::filesystem::u8path(avisoPath).c_str()) != FALSE ||
 						::GetLastError() == ERROR_FILE_NOT_FOUND;
-
-				if (!avisoSaveIsRecovery)
-				{
-					const std::string backupPath = avisoPath + ".bak";
-					if (avisoBackupExistedBeforeSave)
-					{
-						avisoBackupRollbackOk = RestoreRollbackSnapshotAtomically(
-							avisoBackupRollbackSnapshotPath,
-							backupPath);
-						if (avisoBackupRollbackOk)
-							avisoBackupRollbackSnapshotPath.clear();
-					}
-					else
-					{
-						avisoBackupRollbackOk =
-							::DeleteFileW(std::filesystem::u8path(backupPath).c_str()) != FALSE ||
-							::GetLastError() == ERROR_FILE_NOT_FOUND;
-					}
-				}
 			}
 			error = profileSaveError.empty()
 				? "Unable to save vSMR_Profiles.json atomically."
@@ -3542,13 +3181,6 @@ struct VsmrControlCenterBridge::Impl
 						error += " The exact pre-save file remains at " +
 							avisoRollbackSnapshotPath + ".";
 			}
-			if (!avisoBackupRollbackOk)
-			{
-				error += " The AVISO backup rollback also failed.";
-				if (!avisoBackupRollbackSnapshotPath.empty())
-					error += " The exact pre-save backup remains at " +
-						avisoBackupRollbackSnapshotPath + ".";
-			}
 			return false;
 		}
 
@@ -3558,13 +3190,6 @@ struct VsmrControlCenterBridge::Impl
 				"Warning: unable to remove completed AVISO transaction snapshot " +
 				avisoRollbackSnapshotPath);
 		}
-		if (!DeleteRollbackSnapshot(avisoBackupRollbackSnapshotPath))
-		{
-			Logger::info(
-				"Warning: unable to remove completed AVISO backup transaction snapshot " +
-				avisoBackupRollbackSnapshotPath);
-		}
-
 		// Display settings are ASR state rather than profile JSON. Commit them only
 		// after the profiles/AVISO transaction succeeds so a failed Save changes no
 		// live or persisted display state.
@@ -4291,18 +3916,6 @@ struct VsmrControlCenterBridge::Impl
 			SendAck(envelope.id, envelope.type, "Profiles backup restored");
 			return true;
 		}
-		case VsmrBridgeAction::StateUndo:
-			return ApplyHistoryState(
-				envelope.payload,
-				"undo",
-				envelope.id,
-				error);
-		case VsmrBridgeAction::StateRedo:
-			return ApplyHistoryState(
-				envelope.payload,
-				"redo",
-				envelope.id,
-				error);
 		case VsmrBridgeAction::RuntimeProfileChange:
 			if (!HandleProfileChange(envelope.payload, error))
 				return false;

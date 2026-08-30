@@ -24,7 +24,7 @@ vSMR is a plug-in, not a standalone application. EuroScope must load `vSMR.dll` 
 - VACDM time and state integration
 - Hoppie CPDLC connection, message handling, PDC composition, and automatic PDC reminders
 - Signed GitHub release updates that can activate a new runtime during the same EuroScope startup
-- Transactional configuration writes, backups, diagnostics, and reproducible release packaging
+- Transactional configuration writes, diagnostics, and reproducible release packaging
 
 The package includes a France-wide set of 396 airport-specific AVISO GeoJSON files, a normalized aircraft-dimension database, aircraft silhouettes, and five example profiles.
 
@@ -96,7 +96,7 @@ Do not copy only the DLL. The Control Center, default data, audio, licenses, and
 4. Run the packaged installer against the existing plug-in directory.
 5. Start EuroScope and verify the active airport and configuration before use.
 
-Legacy profile data is migrated to schema 2 when required. The previous valid profile file is retained as `vSMR_Profiles.json.bak` when a migrated document is committed. Invalid primary data is not silently overwritten.
+Legacy profile data is migrated to schema 2 when required. Invalid primary data is not silently overwritten, and normal profile writes do not create `.bak` files.
 
 ### Roll back
 
@@ -126,7 +126,7 @@ vSMR-<version>.update.json.p7s
 
 The manifest must explicitly declare itself publishable. Its detached CMS signature is checked against the updater's pinned signing certificate, followed by the archive size and SHA-256, the package's internal `SHA256SUMS.txt`, Win32 architecture, runtime ABI, and minimum-loader version. Legacy, validation-only, or incomplete releases without this signed publishable manifest are ignored by automatic updating.
 
-Open `Settings` in the Control Center and use the compact `Automatic updates` group to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by profile Undo, Redo, or Revert. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
+Open `Settings` in the Control Center and use the compact `Automatic updates` group to select the Stable or Beta channel and independently enable automatic checks, downloads, and activation. These preferences are saved immediately outside profile configuration and are not affected by Revert. `Check on next startup` writes a bounded request for the loader to consume before the next runtime is selected; it does not imply that an already running runtime can replace itself.
 
 `Reload AVISOs` queues the installed version's verified GitHub release for the next EuroScope startup and reapplies every bundled airport map without requiring a newer plug-in version. `Protect locally modified AVISOs` is enabled by default: maps whose current hash differs from their installed inventory baseline remain active, while their official replacements are placed under `AVISO_Updates`. Turning protection off deliberately restores those maps to the release copies. A release marked as a mandatory `replace` migration, such as beta 4's Night/Day data conversion, overrides this preference; the complete pre-update backup remains available for rollback.
 
@@ -168,11 +168,11 @@ The page rail contains:
 
 ### Editing and saving
 
-Profile, display, AVISO, alert, group, mode, CPDLC, and PDC-reminder fields are validated and saved automatically after a short debounce. The Control Center stays editable while the background write completes, and a newer edit made during that write is queued rather than discarded. Undo and Redo apply and persist history snapshots; Revert cancels queued writes before restoring the last validated files.
+Profile, display, AVISO, alert, group, mode, CPDLC, and PDC-reminder fields are validated and saved automatically after a short debounce. The Control Center stays editable while the background write completes, and a newer edit made during that write is queued rather than discarded. Revert cancels queued writes before restoring the last validated files.
 
 Runtime actions such as changing the active profile or mode, toggling a group or inset, and loading an inset preset are immediate operational actions. Connect/Disconnect, Poll, Check now, and Run/Stop are likewise explicit live actions rather than configuration edits.
 
-If a Profiles or AVISO file changes outside vSMR while edits are pending, the Control Center refuses to overwrite it and asks for a reload. Automatic saves rotate validated backups and roll back the other document if a multi-file transaction cannot complete.
+If a Profiles or AVISO file changes outside vSMR while edits are pending, the Control Center refuses to overwrite it and asks for a reload. Automatic saves replace each file atomically without creating `.bak` copies, and roll back the other document if a multi-file transaction cannot complete.
 
 ### Profiles and modes
 

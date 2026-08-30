@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Removed Control Center Undo/Redo and stopped normal profile and AVISO saves from automatically creating `.bak` files. Atomic replacement, failed-transaction rollback, Revert, and compatibility with existing profile backups remain available.
 - Replaced the bundled profiles with the supplied five-profile configuration.
 - Moved the previous bundled `Default` profile to `Custom LFPG` and restored `Default` from the 2.0.0-beta.2 profile set.
 - Tightened square-corner tag borders while preserving the existing rounded-tag dimensions.
@@ -71,7 +72,7 @@
 ### Added
 
 - Added a normally fail-open, same-startup updater built around a stable `vSMR.dll` bootstrap and shadow-loaded `vSMR_Data\Runtime\vSMR.Runtime.dll`. Discovery, network, signature, compatibility, and pre-transaction failures leave the proven installed runtime available; an inconsistent durable install/rollback journal fails closed. It selects Stable or Beta GitHub releases, requires a pinned detached-CMS manifest signature, validates archive and internal package hashes, enforces Win32/runtime/loader compatibility, transactionally activates compatible runtime/data updates before creating the EuroScope plug-in, and rolls back to the previous runtime when initialization fails. Releases requiring a newer loader are reported for manual full-package installation.
-- Added compact automatic-update status and preferences to General settings for checks, downloads, activation, channel selection, clearing previously skipped releases, manual full-package update notices, and next-startup check/retry requests. Update settings, durable recovery state, and status use the deterministic `%LOCALAPPDATA%\vSMR\Updater` journal and remain outside profile Save/Undo history; unwritable storage is reported instead of silently switching journals.
+- Added compact automatic-update status and preferences to General settings for checks, downloads, activation, channel selection, clearing previously skipped releases, manual full-package update notices, and next-startup check/retry requests. Update settings, durable recovery state, and status use the deterministic `%LOCALAPPDATA%\vSMR\Updater` journal and remain outside profile persistence; unwritable storage is reported instead of silently switching journals.
 - Added bounded native performance diagnostics for render stages, scene capture, AVISO work, cache activity, worker queues, target processing, EuroScope lookups, GDI resources, bitmap memory, and refresh causes. The periodic `FramePerf` log remains available without adding a separate Settings page.
 - Added out-of-process, WER-based crash reporting with direct/stack/worker association, fixed-size per-screen and per-thread breadcrumbs, recent logs, build/PDB identity, and an isolated crash harness. Reports are kept locally and are never uploaded automatically.
 - Added the `remark` flight-strip annotation to the Control Center tag-token list.

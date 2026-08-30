@@ -62,8 +62,7 @@ public:
 	bool ValidateLoadedFeatureCollection(std::string& errorText) const;
 	bool SaveAtomically(
 		const std::string& path,
-		std::string& errorText,
-		bool backupExisting = true);
+		std::string& errorText);
 
 	void MarkIndexesDirty();
 	void BuildIndexes();
