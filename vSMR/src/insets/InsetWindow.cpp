@@ -4567,15 +4567,6 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 	const float centerTextHalfHeight = min(
 		max(10.0f, radius * 0.62f),
 		static_cast<float>(29.0 * weatherScale));
-	// The opaque text plate belongs below the wind needle. Drawing it first keeps
-	// the shaft and arrowhead visible at every compass size and direction.
-	Gdiplus::SolidBrush centerPlate(Gdiplus::Color(225, 36, 48, 51));
-	gdi->FillRectangle(
-		&centerPlate,
-		centerX - centerTextHalfWidth,
-		centerY - centerTextHalfHeight,
-		centerTextHalfWidth * 2.0f,
-		centerTextHalfHeight * 2.0f);
 	if (weather.hasWind && !weather.windVariable && !weather.windCalm)
 	{
 		const double angle = (static_cast<double>(windFlowDirection(weather.windDirectionDegrees)) - 90.0) * pi / 180.0;
@@ -4625,6 +4616,16 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Grap
 		Gdiplus::SolidBrush arrowBrush(needleColor);
 		gdi->FillPolygon(&arrowBrush, arrow, static_cast<INT>(_countof(arrow)));
 	}
+
+	// Keep the center values readable when a compact compass leaves too little
+	// room for the full arrowhead outside the text area.
+	Gdiplus::SolidBrush centerPlate(Gdiplus::Color(255, 36, 48, 51));
+	gdi->FillRectangle(
+		&centerPlate,
+		centerX - centerTextHalfWidth,
+		centerY - centerTextHalfHeight,
+		centerTextHalfWidth * 2.0f,
+		centerTextHalfHeight * 2.0f);
 
 	CRect directionArea(
 		static_cast<int>(centerX - centerTextHalfWidth),
