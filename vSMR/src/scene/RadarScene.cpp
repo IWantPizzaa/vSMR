@@ -287,7 +287,7 @@ namespace
 		const std::string callsign = CopyText(flightPlan.GetCallsign());
 		std::string result = callsign;
 		const std::string callsignCode = callsign.substr(0, std::min<std::size_t>(3, callsign.size()));
-		result += " (" + (radar.Callsigns != nullptr ? radar.Callsigns->getCallsign(callsignCode) : "") + ")";
+		result += " (" + radar.LookupCallsignName(callsignCode) + ")";
 		result += " (" + CopyText(flightPlan.GetPilotName()) + "): ";
 		result += CopyText(flightData.GetAircraftFPType());
 		result += " ";

@@ -6,6 +6,7 @@
 
 #include "bootstrap/RuntimeApi.hpp"
 #include "bootstrap/loader/LoaderVersion.hpp"
+#include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "updater/UpdaterCore.hpp"
 
 #include <algorithm>
@@ -1143,40 +1144,33 @@ namespace
 	bool ReleasePublishedRuntime(std::wstring& errorMessage) noexcept
 	{
 		errorMessage.clear();
-		bool runtimeReleased =
-			gRuntimeModule == nullptr &&
-			gRuntimeShutdown == nullptr &&
-			gPluginInstance == nullptr;
-		if (gRuntimeShutdown != nullptr)
-		{
-			try
-			{
-				runtimeReleased = gRuntimeShutdown();
-			}
-			catch (...)
-			{
-				runtimeReleased = false;
-			}
-		}
+		DWORD unloadError = ERROR_SUCCESS;
+		const VsmrLoaderLifecycle::RuntimeReleaseResult result =
+			VsmrLoaderLifecycle::TryReleasePublishedRuntime(
+				gRuntimeModule,
+				gRuntimeShutdown,
+				gPluginInstance,
+				[&unloadError](HMODULE module) noexcept
+				{
+					if (::FreeLibrary(module))
+						return true;
+					unloadError = ::GetLastError();
+					return false;
+				});
 
-		if (!runtimeReleased)
+		if (result == VsmrLoaderLifecycle::RuntimeReleaseResult::RuntimeRetained)
 		{
 			errorMessage =
 				L"The previous vSMR runtime still owns active EuroScope radar objects or callbacks.";
 			return false;
 		}
-
-		HMODULE const releasedModule = gRuntimeModule;
-		if (releasedModule != nullptr && !::FreeLibrary(releasedModule))
+		if (result == VsmrLoaderLifecycle::RuntimeReleaseResult::ModuleUnloadFailed)
 		{
 			errorMessage = L"Windows could not unmap the released vSMR runtime: " +
-				WindowsErrorMessage(::GetLastError());
+				WindowsErrorMessage(unloadError);
 			return false;
 		}
 
-		gPluginInstance = nullptr;
-		gRuntimeShutdown = nullptr;
-		gRuntimeModule = nullptr;
 		ReleaseSessionLockForRecovery();
 		gShutdownRequested = false;
 		return true;

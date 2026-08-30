@@ -639,7 +639,11 @@ namespace
 		}
 	}
 
-	CInsetWindow* GetSecondaryAvisoWindow(CSMRRadar* radar)
+}
+
+struct VsmrRadarPresetAccess
+{
+	static CInsetWindow* GetSecondaryAvisoWindow(CSMRRadar* radar)
 	{
 		if (radar == nullptr)
 			return nullptr;
@@ -651,12 +655,12 @@ namespace
 		return it->second.get();
 	}
 
-	const CInsetWindow* GetSecondaryAvisoWindow(const CSMRRadar* radar)
+	static const CInsetWindow* GetSecondaryAvisoWindow(const CSMRRadar* radar)
 	{
 		return GetSecondaryAvisoWindow(const_cast<CSMRRadar*>(radar));
 	}
 
-	void ReconcileLiveRadarPresetContexts(
+	static void ReconcileLiveRadarPresetContexts(
 		CSMRRadar* source,
 		const std::string& airport,
 		const std::string& renamedFrom = "",
@@ -719,7 +723,7 @@ namespace
 		if (!sourceSeen)
 			reconcile(source);
 	}
-}
+};
 
 std::vector<CSMRRadar::AvisoPreset> CSMRRadar::GetAvisoPresets() const
 {
@@ -801,7 +805,7 @@ bool CSMRRadar::SaveAvisoPreset(
 
 	// Capturing the inset layout
 	const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
-	const CInsetWindow* avisoWindow = GetSecondaryAvisoWindow(this);
+	const CInsetWindow* avisoWindow = VsmrRadarPresetAccess::GetSecondaryAvisoWindow(this);
 	if (avisoWindow == nullptr)
 		return false;
 
@@ -887,7 +891,7 @@ bool CSMRRadar::SaveAvisoPreset(
 
 	ActiveAvisoPresetName = presetName;
 	AvisoViewsLinked = preset.linkedMovement;
-	ReconcileLiveRadarPresetContexts(this, airport);
+	VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(this, airport);
 	if (outSavedName != nullptr)
 		*outSavedName = presetName;
 	return true;
@@ -937,7 +941,7 @@ bool CSMRRadar::LoadAvisoPreset(const std::string& name)
 	}
 
 	// Restoring the inset layout
-	CInsetWindow* avisoWindow = GetSecondaryAvisoWindow(this);
+	CInsetWindow* avisoWindow = VsmrRadarPresetAccess::GetSecondaryAvisoWindow(this);
 	if (avisoWindow != nullptr)
 	{
 		avisoWindow->m_Area = preset.secondaryArea;
@@ -1064,7 +1068,7 @@ bool CSMRRadar::RenameAvisoPreset(
 
 	if (AsciiCaseInsensitiveEquals(ActiveAvisoPresetName, oldCanonicalName))
 		ActiveAvisoPresetName = trimmedNewName;
-	ReconcileLiveRadarPresetContexts(
+	VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(
 		this,
 		airport,
 		oldCanonicalName,
@@ -1114,7 +1118,7 @@ bool CSMRRadar::DuplicateAvisoPreset(const std::string& sourceName, const std::s
 		return false;
 
 	ActiveAvisoPresetName = uniqueName;
-	ReconcileLiveRadarPresetContexts(this, airport);
+	VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(this, airport);
 	if (outSavedName != nullptr)
 		*outSavedName = uniqueName;
 	return true;
@@ -1168,7 +1172,7 @@ bool CSMRRadar::DeleteAvisoPreset(const std::string& name)
 		ActiveAvisoPresetName.clear();
 		AvisoViewsLinked = false;
 	}
-	ReconcileLiveRadarPresetContexts(this, airport);
+	VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(this, airport);
 
 	return true;
 }
@@ -1215,7 +1219,7 @@ bool CSMRRadar::SetDefaultAvisoPreset(const std::string& name)
 			return CConfig::AvisoPresetTransactionAction::Save;
 		});
 	if (saved)
-		ReconcileLiveRadarPresetContexts(this, airport);
+		VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(this, airport);
 	return saved;
 }
 
@@ -1249,7 +1253,7 @@ bool CSMRRadar::ClearDefaultAvisoPreset()
 				: CConfig::AvisoPresetTransactionAction::NoChange;
 		});
 	if (saved)
-		ReconcileLiveRadarPresetContexts(this, airport);
+		VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(this, airport);
 	return saved;
 }
 
@@ -1372,7 +1376,7 @@ bool CSMRRadar::SetActiveAvisoPresetLinkedMovement(bool linked)
 		return false;
 
 	AvisoViewsLinked = linked;
-	ReconcileLiveRadarPresetContexts(this, airport);
+	VsmrRadarPresetAccess::ReconcileLiveRadarPresetContexts(this, airport);
 	return true;
 }
 
@@ -1386,7 +1390,7 @@ void CSMRRadar::SyncLinkedAvisoSecondaryToMainView()
 	if (!AvisoViewsLinked)
 		return;
 
-	CInsetWindow* avisoWindow = GetSecondaryAvisoWindow(this);
+	CInsetWindow* avisoWindow = VsmrRadarPresetAccess::GetSecondaryAvisoWindow(this);
 	if (avisoWindow == nullptr)
 		return;
 

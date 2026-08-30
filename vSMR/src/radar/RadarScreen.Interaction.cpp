@@ -13,6 +13,40 @@ extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
 
+struct VsmrRadarInteractionAccess
+{
+	static auto& Windows(CSMRRadar& radar) noexcept
+	{
+		return radar.appWindows;
+	}
+
+	static const auto& Windows(const CSMRRadar& radar) noexcept
+	{
+		return radar.appWindows;
+	}
+
+	static bool IsWindowDisplayed(const CSMRRadar& radar, int appWindowId)
+	{
+		return radar.IsAppWindowDisplayed(appWindowId);
+	}
+
+	static bool IsPointInRuntimeMenuOverlay(const CSMRRadar& radar, POINT point)
+	{
+		if (!radar.RuntimeMenuArea.IsRectEmpty() && radar.RuntimeMenuArea.PtInRect(point))
+			return true;
+
+		return
+			radar.ActiveRuntimeMenuPopup != CSMRRadar::RuntimeMenuPopup::None &&
+			!radar.RuntimeMenuPopupArea.IsRectEmpty() &&
+			radar.RuntimeMenuPopupArea.PtInRect(point);
+	}
+
+	static void SetMainAvisoSelected(CSMRRadar& radar, bool selected) noexcept
+	{
+		radar.AvisoGeoJsonScrollSelected = selected;
+	}
+};
+
 namespace
 {
 	bool gInsetCursorOverride = false;
@@ -30,8 +64,7 @@ namespace
 		if (radar == nullptr)
 			return false;
 
-		const auto displayIt = radar->appWindowDisplays.find(appWindowId);
-		return displayIt != radar->appWindowDisplays.end() && displayIt->second;
+		return VsmrRadarInteractionAccess::IsWindowDisplayed(*radar, appWindowId);
 	}
 
 	HCURSOR LoadDefaultRadarCursor()
@@ -143,13 +176,7 @@ namespace
 		if (radar == nullptr)
 			return false;
 
-		if (!radar->RuntimeMenuArea.IsRectEmpty() && radar->RuntimeMenuArea.PtInRect(pt))
-			return true;
-
-		return
-			radar->ActiveRuntimeMenuPopup != CSMRRadar::RuntimeMenuPopup::None &&
-			!radar->RuntimeMenuPopupArea.IsRectEmpty() &&
-			radar->RuntimeMenuPopupArea.PtInRect(pt);
+		return VsmrRadarInteractionAccess::IsPointInRuntimeMenuOverlay(*radar, pt);
 	}
 
 	CRect AvisoViewportLayoutBounds(CSMRRadar* radar)
@@ -188,7 +215,7 @@ namespace
 	{
 		if (radar == nullptr || hwnd == nullptr || !::IsWindow(hwnd))
 			return false;
-		for (const auto& window : radar->appWindows)
+		for (const auto& window : VsmrRadarInteractionAccess::Windows(*radar))
 		{
 			if (!IsAppWindowVisible(radar, window.first) || window.second == nullptr)
 				continue;
@@ -213,7 +240,8 @@ namespace
 				frame.InflateRect(inflation, inflation);
 			return frame.PtInRect(pt) != FALSE;
 		};
-		for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
+		auto& windows = VsmrRadarInteractionAccess::Windows(*radar);
+		for (auto it = windows.rbegin(); it != windows.rend(); ++it)
 		{
 			CInsetWindow* appWindow = it->second.get();
 			if (appWindow != nullptr && appWindow->m_AvisoScrollSelected &&
@@ -222,7 +250,7 @@ namespace
 				return appWindow;
 			}
 		}
-		for (auto it = radar->appWindows.rbegin(); it != radar->appWindows.rend(); ++it)
+		for (auto it = windows.rbegin(); it != windows.rend(); ++it)
 		{
 			const int appWindowId = it->first;
 			CInsetWindow* appWindow = it->second.get();
@@ -254,7 +282,7 @@ namespace
 		if (radar == nullptr)
 			return nullptr;
 
-		for (auto& kv : radar->appWindows)
+		for (auto& kv : VsmrRadarInteractionAccess::Windows(*radar))
 		{
 			CInsetWindow* appWindow = kv.second.get();
 			if (appWindow != nullptr && appWindow->m_AvisoRightPanning)
@@ -268,7 +296,7 @@ namespace
 	{
 		if (radar == nullptr)
 			return nullptr;
-		for (auto& kv : radar->appWindows)
+		for (auto& kv : VsmrRadarInteractionAccess::Windows(*radar))
 		{
 			CInsetWindow* appWindow = kv.second.get();
 			if (appWindow != nullptr &&
@@ -285,8 +313,8 @@ namespace
 		if (radar == nullptr || selectedViewport == nullptr)
 			return;
 
-		radar->AvisoGeoJsonScrollSelected = false;
-		for (auto& kv : radar->appWindows)
+		VsmrRadarInteractionAccess::SetMainAvisoSelected(*radar, false);
+		for (auto& kv : VsmrRadarInteractionAccess::Windows(*radar))
 		{
 			CInsetWindow* appWindow = kv.second.get();
 			if (appWindow != nullptr)
@@ -299,8 +327,8 @@ namespace
 		if (radar == nullptr)
 			return;
 
-		radar->AvisoGeoJsonScrollSelected = true;
-		for (auto& kv : radar->appWindows)
+		VsmrRadarInteractionAccess::SetMainAvisoSelected(*radar, true);
+		for (auto& kv : VsmrRadarInteractionAccess::Windows(*radar))
 		{
 			CInsetWindow* appWindow = kv.second.get();
 			if (appWindow != nullptr)
@@ -337,7 +365,7 @@ namespace
 			return false;
 
 		bool endedPan = false;
-		for (auto& kv : radar->appWindows)
+		for (auto& kv : VsmrRadarInteractionAccess::Windows(*radar))
 		{
 			CInsetWindow* appWindow = kv.second.get();
 			if (appWindow != nullptr && appWindow->m_AvisoRightPanning)

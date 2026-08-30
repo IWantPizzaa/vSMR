@@ -118,6 +118,7 @@
   <ItemGroup>
     <ClInclude Include="..\RuntimeApi.hpp" />
     <ClInclude Include="LoaderVersion.hpp" />
+    <ClInclude Include="RuntimeReleaseState.hpp" />
     <ClInclude Include="..\..\updater\UpdaterCore.hpp" />
   </ItemGroup>
   <ItemGroup>

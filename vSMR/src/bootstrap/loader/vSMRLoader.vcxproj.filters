@@ -18,6 +18,7 @@
   <ItemGroup>
     <ClInclude Include="..\RuntimeApi.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="LoaderVersion.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="RuntimeReleaseState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\..\updater\UpdaterCore.hpp"><Filter>Headers</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>

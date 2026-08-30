@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/Plugin.hpp"
 #include "bootstrap/RuntimeContext.hpp"
+#include "datalink/DatalinkProtocolSupport.hpp"
 #include "insets/InsetWindow.hpp"
 #include <atomic>
 #include <mutex>
@@ -20,7 +21,6 @@
 #include <memory>
 #include <new>
 #include <limits>
-#include <wincrypt.h>
 #include "rapidjson/document.h"
 #include "weather/WeatherStore.hpp"
 #include "rdf/RdfOverlay.hpp"
@@ -29,8 +29,20 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "plugin/PluginCommandHandler.hpp"
+#include "shared/TextUtils.hpp"
+#include <chrono>
+#include <cstdint>
 
-#pragma comment(lib, "crypt32.lib")
+using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
+using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
+using VsmrDatalinkProtocol::FormatPdcFrequency;
+using VsmrDatalinkProtocol::IsHoppieOkResponse;
+using VsmrDatalinkProtocol::PdcFrequencySelection;
+using VsmrDatalinkProtocol::ProtectHoppieCredential;
+using VsmrDatalinkProtocol::RedactSensitiveValue;
+using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
+using VsmrDatalinkProtocol::UnprotectHoppieCredential;
 
 std::atomic<bool> Logger::ENABLED{ false };
 string Logger::DLL_PATH;
@@ -123,18 +135,31 @@ std::atomic<int> CdmReminderCooldownMinutes(60);
 
 std::atomic<int> messageId(0);
 
-clock_t timer;
+using PluginSteadyClock = std::chrono::steady_clock;
+using PluginSteadyTick = std::int64_t;
 
-map<string, string> vStrips_Stands;
-
-bool startThreadvStrips = true;
-
-char recv_buf[1024];
+PluginSteadyClock::time_point DatalinkLastPollAt;
 
 vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
 {
+	PluginSteadyTick CurrentSteadyTick() noexcept
+	{
+		return std::chrono::duration_cast<std::chrono::milliseconds>(
+			PluginSteadyClock::now().time_since_epoch()).count();
+	}
+
+	bool HasSteadyIntervalElapsed(
+		PluginSteadyTick now,
+		PluginSteadyTick previous,
+		std::chrono::seconds interval) noexcept
+	{
+		return previous == 0 ||
+			now - previous >=
+				std::chrono::duration_cast<std::chrono::milliseconds>(interval).count();
+	}
+
 	std::mutex LineupOverrideMutex;
 	std::map<std::string, std::chrono::steady_clock::time_point> LineupOverrides;
 	std::mutex HoldingPointEditMutex;
@@ -307,7 +332,7 @@ bool VsmrGroundState::IsLineupOverrideActive(const char* callsign, GroundStateCa
 std::mutex VacdmPilotsMutex;
 std::map<std::string, VacdmPilotData> VacdmPilots;
 std::atomic<bool> VacdmFetchInProgress(false);
-std::atomic<clock_t> VacdmLastFetchClock(0);
+std::atomic<PluginSteadyTick> VacdmLastFetchTick(0);
 const int VacdmFetchIntervalSeconds = 15;
 const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
 std::mutex ProfilesSourceMutex;
@@ -334,8 +359,6 @@ namespace
 	const size_t HoppieResponseLimitBytes = 1024U * 1024U;
 	const size_t VacdmResponseLimitBytes = 16U * 1024U * 1024U;
 	const size_t WeatherResponseLimitBytes = 4096U;
-	const char* ProtectedCredentialPrefix = "dpapi:";
-
 	std::filesystem::path ResolveRuntimeAudioPath(const wchar_t* fileName)
 	{
 		if (VsmrRuntimeContext::IsConfigured())
@@ -469,503 +492,6 @@ namespace
 	};
 
 	bool HasSubmittedTobtState(const VacdmPilotData& pilotData);
-
-	std::string ToUpperAsciiCopy(const std::string& text)
-	{
-		std::string normalized = text;
-		std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
-			return static_cast<char>(std::toupper(c));
-			});
-		return normalized;
-	}
-
-	std::string TrimAsciiWhitespaceCopy(const std::string& text)
-	{
-		size_t start = 0;
-		while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
-			++start;
-		size_t end = text.size();
-		while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0)
-			--end;
-		return text.substr(start, end - start);
-	}
-
-	enum class PdcControllerFacility
-	{
-		Unknown = 0,
-		Delivery,
-		Ramp,
-		Ground,
-		Tower,
-		Approach,
-		Departure,
-		Center
-	};
-
-	PdcControllerFacility DetectPdcControllerFacility(const std::string& rawIdentity)
-	{
-		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
-		std::string token;
-		auto classifyToken = [](const std::string& value) -> PdcControllerFacility
-		{
-			if (value == "DEL" || value == "DELIVERY") return PdcControllerFacility::Delivery;
-			if (value == "RMP" || value == "RAMP") return PdcControllerFacility::Ramp;
-			if (value == "GND" || value == "GROUND") return PdcControllerFacility::Ground;
-			if (value == "TWR" || value == "TOWER") return PdcControllerFacility::Tower;
-			if (value == "APP" || value == "APPROACH") return PdcControllerFacility::Approach;
-			if (value == "DEP" || value == "DEPARTURE") return PdcControllerFacility::Departure;
-			if (value == "CTR" || value == "CENTER" || value == "CENTRE") return PdcControllerFacility::Center;
-			return PdcControllerFacility::Unknown;
-		};
-
-		for (size_t index = 0; index <= identity.size(); ++index)
-		{
-			const char c = index < identity.size() ? identity[index] : '_';
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-			{
-				token.push_back(c);
-				continue;
-			}
-			const PdcControllerFacility facility = classifyToken(token);
-			if (facility != PdcControllerFacility::Unknown)
-				return facility;
-			token.clear();
-		}
-		return PdcControllerFacility::Unknown;
-	}
-
-	int PdcFacilityClearancePriority(PdcControllerFacility facility)
-	{
-		// The lowest staffed position in the departure chain issues the PDC and
-		// must therefore be the frequency printed in it.
-		switch (facility)
-		{
-		case PdcControllerFacility::Delivery: return 600;
-		case PdcControllerFacility::Ramp: return 500;
-		case PdcControllerFacility::Ground: return 400;
-		case PdcControllerFacility::Tower: return 300;
-		case PdcControllerFacility::Departure:
-		case PdcControllerFacility::Approach: return 200;
-		case PdcControllerFacility::Center: return 100;
-		default: return -1;
-		}
-	}
-
-	const char* PdcFacilityName(PdcControllerFacility facility)
-	{
-		switch (facility)
-		{
-		case PdcControllerFacility::Delivery: return "delivery";
-		case PdcControllerFacility::Ramp: return "ramp";
-		case PdcControllerFacility::Ground: return "ground";
-		case PdcControllerFacility::Tower: return "tower";
-		case PdcControllerFacility::Approach: return "approach";
-		case PdcControllerFacility::Departure: return "departure";
-		case PdcControllerFacility::Center: return "center";
-		default: return "unknown";
-		}
-	}
-
-	bool PdcControllerMatchesAirport(const std::string& rawIdentity, const std::string& airport)
-	{
-		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
-		if (airport.size() != 4 || identity.size() < airport.size() || identity.compare(0, airport.size(), airport) != 0)
-			return false;
-		return identity.size() == airport.size() ||
-			std::isalnum(static_cast<unsigned char>(identity[airport.size()])) == 0;
-	}
-
-	bool PdcIdentityHasToken(const std::string& rawIdentity, const std::string& expectedToken)
-	{
-		const std::string identity = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rawIdentity));
-		std::string token;
-		for (size_t index = 0; index <= identity.size(); ++index)
-		{
-			const char c = index < identity.size() ? identity[index] : '_';
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-			{
-				token.push_back(c);
-				continue;
-			}
-			if (token == expectedToken)
-				return true;
-			token.clear();
-		}
-		return false;
-	}
-
-	int PdcRunwaySectorAffinity(
-		const std::string& airport,
-		const std::string& runway,
-		const std::string& callsign,
-		const std::string& positionId)
-	{
-		// CDG has separate north/south local positions. Its 08/26 runway complex
-		// is north and its 09/27 complex is south; use that only as a tie-breaker
-		// when more than one valid local controller is connected.
-		if (airport != "LFPG" || runway.size() < 2)
-			return 0;
-		const int runwayNumber = std::isdigit(static_cast<unsigned char>(runway[0])) != 0 &&
-			std::isdigit(static_cast<unsigned char>(runway[1])) != 0
-			? (runway[0] - '0') * 10 + (runway[1] - '0')
-			: -1;
-		const char* expectedSector =
-			(runwayNumber == 8 || runwayNumber == 26) ? "N" :
-			(runwayNumber == 9 || runwayNumber == 27) ? "S" : nullptr;
-		if (expectedSector == nullptr)
-			return 0;
-		return PdcIdentityHasToken(callsign, expectedSector) ||
-			PdcIdentityHasToken(positionId, expectedSector) ? 50 : 0;
-	}
-
-	std::string FormatPdcFrequency(double frequency)
-	{
-		if (!std::isfinite(frequency) || frequency <= 0.0)
-			return "";
-		std::ostringstream formatted;
-		formatted << std::fixed << std::setprecision(3) << frequency;
-		return formatted.str();
-	}
-
-	struct PdcFrequencySelection
-	{
-		double frequency = 0.0;
-		std::string controller;
-		std::string source;
-	};
-
-	PdcFrequencySelection ResolvePdcNextFrequency(
-		EuroScopePlugIn::CPlugIn* plugIn,
-		const CFlightPlan& flightPlan)
-	{
-		PdcFrequencySelection selection;
-		if (plugIn == nullptr || !flightPlan.IsValid())
-			return selection;
-
-		const char* originRaw = flightPlan.GetFlightPlanData().GetOrigin();
-		std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
-		if (origin.size() > 4)
-			origin.resize(4);
-		const char* runwayRaw = flightPlan.GetFlightPlanData().GetDepartureRwy();
-		const std::string runway = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(runwayRaw != nullptr ? runwayRaw : ""));
-
-		const CController myself = plugIn->ControllerMyself();
-		const std::string myCallsign = myself.IsValid() && myself.GetCallsign() != nullptr ? myself.GetCallsign() : "";
-		const std::string myPosition = myself.IsValid() && myself.GetPositionId() != nullptr ? myself.GetPositionId() : "";
-		const char* coordinatedRaw = flightPlan.GetCoordinatedNextController();
-		const std::string coordinatedId = TrimAsciiWhitespaceCopy(coordinatedRaw != nullptr ? coordinatedRaw : "");
-		CController coordinated;
-		if (!coordinatedId.empty())
-			coordinated = plugIn->ControllerSelect(coordinatedId.c_str());
-
-		// PDC is issued by the lowest staffed departure position. EuroScope's
-		// coordinated controller describes the next handoff and can consequently
-		// skip the Tower that is currently issuing clearances.
-		if (origin.size() == 4)
-		{
-			int bestScore = -1;
-			auto considerController = [&](const CController& controller)
-			{
-				if (!controller.IsValid() || !controller.IsController() || controller.GetPrimaryFrequency() <= 0.0)
-					return;
-				const std::string callsign = controller.GetCallsign() != nullptr ? controller.GetCallsign() : "";
-				const std::string position = controller.GetPositionId() != nullptr ? controller.GetPositionId() : "";
-				if (!PdcControllerMatchesAirport(callsign, origin) && !PdcControllerMatchesAirport(position, origin))
-					return;
-
-				PdcControllerFacility facility = DetectPdcControllerFacility(callsign);
-				if (facility == PdcControllerFacility::Unknown)
-					facility = DetectPdcControllerFacility(position);
-				int score = PdcFacilityClearancePriority(facility);
-				if (score < 0)
-					return;
-				score += PdcRunwaySectorAffinity(origin, runway, callsign, position);
-				if ((!myCallsign.empty() && ToUpperAsciiCopy(callsign) == ToUpperAsciiCopy(myCallsign)) ||
-					(!myPosition.empty() && ToUpperAsciiCopy(position) == ToUpperAsciiCopy(myPosition)))
-					score += 10;
-				if (!coordinatedId.empty() &&
-					(ToUpperAsciiCopy(callsign) == ToUpperAsciiCopy(coordinatedId) ||
-					 ToUpperAsciiCopy(position) == ToUpperAsciiCopy(coordinatedId)))
-					score += 5;
-
-				if (score > bestScore ||
-					(score == bestScore && ToUpperAsciiCopy(callsign) < ToUpperAsciiCopy(selection.controller)))
-				{
-					bestScore = score;
-					selection.frequency = controller.GetPrimaryFrequency();
-					selection.controller = callsign;
-					selection.source = std::string("lowest connected origin ") + PdcFacilityName(facility);
-				}
-			};
-
-			// ControllerSelectFirst normally includes the user's own position, but
-			// considering it explicitly keeps the clearance frequency correct if it does not.
-			considerController(myself);
-			std::size_t controllerGuard = 0;
-			for (CController controller = plugIn->ControllerSelectFirst();
-				controller.IsValid() && controllerGuard < 4096;
-				controller = plugIn->ControllerSelectNext(controller), ++controllerGuard)
-			{
-				considerController(controller);
-			}
-			if (bestScore >= 0)
-				return selection;
-		}
-
-		if (coordinated.IsValid() && coordinated.GetPrimaryFrequency() > 0.0)
-		{
-			selection.frequency = coordinated.GetPrimaryFrequency();
-			selection.controller = coordinated.GetCallsign() != nullptr ? coordinated.GetCallsign() : coordinatedId;
-			selection.source = "coordinated controller fallback";
-			return selection;
-		}
-
-		if (myself.IsValid() && myself.GetPrimaryFrequency() > 0.0)
-		{
-			selection.frequency = myself.GetPrimaryFrequency();
-			selection.controller = myCallsign;
-			selection.source = "own frequency fallback";
-		}
-		return selection;
-	}
-
-	DATA_BLOB HoppieCredentialEntropy()
-	{
-		static char entropy[] = "vSMR CPDLC credential v1";
-		DATA_BLOB blob = {};
-		blob.pbData = reinterpret_cast<BYTE*>(entropy);
-		blob.cbData = static_cast<DWORD>(strlen(entropy));
-		return blob;
-	}
-
-	bool ProtectHoppieCredential(
-		const std::string& plaintext,
-		std::string& protectedValue)
-	{
-		protectedValue.clear();
-		if (plaintext.empty())
-			return true;
-		if (plaintext.size() > static_cast<size_t>((std::numeric_limits<DWORD>::max)()))
-			return false;
-
-		DATA_BLOB input = {};
-		input.pbData = reinterpret_cast<BYTE*>(
-			const_cast<char*>(plaintext.data()));
-		input.cbData = static_cast<DWORD>(plaintext.size());
-		DATA_BLOB entropy = HoppieCredentialEntropy();
-		DATA_BLOB encrypted = {};
-		if (!::CryptProtectData(
-			&input,
-			L"vSMR Hoppie code",
-			&entropy,
-			nullptr,
-			nullptr,
-			CRYPTPROTECT_UI_FORBIDDEN,
-			&encrypted))
-		{
-			return false;
-		}
-
-		DWORD encodedCharacters = 0;
-		const DWORD base64Flags =
-			CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF;
-		bool succeeded = ::CryptBinaryToStringA(
-			encrypted.pbData,
-			encrypted.cbData,
-			base64Flags,
-			nullptr,
-			&encodedCharacters) != FALSE;
-		std::string encoded;
-		if (succeeded && encodedCharacters > 0)
-		{
-			encoded.resize(encodedCharacters, '\0');
-			succeeded = ::CryptBinaryToStringA(
-				encrypted.pbData,
-				encrypted.cbData,
-				base64Flags,
-				encoded.data(),
-				&encodedCharacters) != FALSE;
-			if (succeeded)
-			{
-				while (!encoded.empty() && encoded.back() == '\0')
-					encoded.pop_back();
-			}
-		}
-		if (encrypted.pbData != nullptr)
-		{
-			::SecureZeroMemory(encrypted.pbData, encrypted.cbData);
-			::LocalFree(encrypted.pbData);
-		}
-		if (!succeeded || encoded.empty())
-			return false;
-		protectedValue = std::string(ProtectedCredentialPrefix) + encoded;
-		return true;
-	}
-
-	bool UnprotectHoppieCredential(
-		const std::string& storedValue,
-		std::string& plaintext,
-		bool& wasPlaintext)
-	{
-		plaintext.clear();
-		wasPlaintext = false;
-		if (storedValue.empty())
-			return true;
-
-		const size_t prefixLength = strlen(ProtectedCredentialPrefix);
-		if (storedValue.compare(0, prefixLength, ProtectedCredentialPrefix) != 0)
-		{
-			plaintext = TrimAsciiWhitespaceCopy(storedValue);
-			wasPlaintext = !plaintext.empty();
-			return true;
-		}
-
-		const std::string encoded = storedValue.substr(prefixLength);
-		if (encoded.empty())
-			return false;
-		DWORD decodedBytes = 0;
-		if (!::CryptStringToBinaryA(
-			encoded.c_str(),
-			static_cast<DWORD>(encoded.size()),
-			CRYPT_STRING_BASE64,
-			nullptr,
-			&decodedBytes,
-			nullptr,
-			nullptr) || decodedBytes == 0)
-		{
-			return false;
-		}
-
-		std::vector<BYTE> decoded(decodedBytes);
-		if (!::CryptStringToBinaryA(
-			encoded.c_str(),
-			static_cast<DWORD>(encoded.size()),
-			CRYPT_STRING_BASE64,
-			decoded.data(),
-			&decodedBytes,
-			nullptr,
-			nullptr))
-		{
-			::SecureZeroMemory(decoded.data(), decoded.size());
-			return false;
-		}
-
-		DATA_BLOB encrypted = {};
-		encrypted.pbData = decoded.data();
-		encrypted.cbData = decodedBytes;
-		DATA_BLOB entropy = HoppieCredentialEntropy();
-		DATA_BLOB output = {};
-		LPWSTR description = nullptr;
-		const bool succeeded = ::CryptUnprotectData(
-			&encrypted,
-			&description,
-			&entropy,
-			nullptr,
-			nullptr,
-			CRYPTPROTECT_UI_FORBIDDEN,
-			&output) != FALSE;
-		::SecureZeroMemory(decoded.data(), decoded.size());
-		if (description != nullptr)
-			::LocalFree(description);
-		if (!succeeded)
-			return false;
-
-		plaintext.assign(
-			reinterpret_cast<const char*>(output.pbData),
-			output.cbData);
-		if (output.pbData != nullptr)
-		{
-			::SecureZeroMemory(output.pbData, output.cbData);
-			::LocalFree(output.pbData);
-		}
-		return true;
-	}
-
-	std::string EncodeUrlQueryComponent(const std::string& text)
-	{
-		static const char hex[] = "0123456789ABCDEF";
-		std::string encoded;
-		encoded.reserve(text.size());
-		for (unsigned char c : text)
-		{
-			const bool isAsciiAlphaNumeric =
-				(c >= 'A' && c <= 'Z') ||
-				(c >= 'a' && c <= 'z') ||
-				(c >= '0' && c <= '9');
-			if (isAsciiAlphaNumeric || c == '-' || c == '_' || c == '.' || c == '~')
-			{
-				encoded.push_back(static_cast<char>(c));
-				continue;
-			}
-			encoded.push_back('%');
-			encoded.push_back(hex[(c >> 4) & 0x0F]);
-			encoded.push_back(hex[c & 0x0F]);
-		}
-		return encoded;
-	}
-
-	std::string NormalizeHoppieResponse(const std::string& raw)
-	{
-		std::string normalized = raw;
-		if (normalized.size() >= 3 &&
-			static_cast<unsigned char>(normalized[0]) == 0xEF &&
-			static_cast<unsigned char>(normalized[1]) == 0xBB &&
-			static_cast<unsigned char>(normalized[2]) == 0xBF)
-		{
-			normalized.erase(0, 3);
-		}
-		normalized = TrimAsciiWhitespaceCopy(normalized);
-		for (char& c : normalized)
-		{
-			if (c == '\r' || c == '\n' || c == '\t')
-				c = ' ';
-		}
-		return normalized;
-	}
-
-	bool IsHoppieOkResponse(const std::string& raw)
-	{
-		const std::string normalized = NormalizeHoppieResponse(raw);
-		if (normalized.size() < 2 ||
-			std::tolower(static_cast<unsigned char>(normalized[0])) != 'o' ||
-			std::tolower(static_cast<unsigned char>(normalized[1])) != 'k')
-		{
-			return false;
-		}
-		return normalized.size() == 2 ||
-			std::isspace(static_cast<unsigned char>(normalized[2])) != 0 ||
-			normalized[2] == '{';
-	}
-
-	std::string RedactSensitiveValue(std::string text, const std::string& secret)
-	{
-		if (secret.empty())
-			return text;
-		size_t position = 0;
-		while ((position = text.find(secret, position)) != std::string::npos)
-		{
-			text.replace(position, secret.size(), "<redacted>");
-			position += strlen("<redacted>");
-		}
-		return text;
-	}
-
-	std::string BuildHoppieLoginFailureMessage(
-		const std::string& raw,
-		const std::string& password)
-	{
-		std::string response = NormalizeHoppieResponse(raw);
-		response = RedactSensitiveValue(response, password);
-		response = RedactSensitiveValue(response, EncodeUrlQueryComponent(password));
-		if (response.empty())
-		{
-			return "Connection failed: Hoppie returned no response. Check the network or proxy and try again.";
-		}
-		const size_t maximumResponseLength = 160;
-		if (response.size() > maximumResponseLength)
-			response = response.substr(0, maximumResponseLength) + "...";
-		return "Hoppie rejected the connection: " + response;
-	}
 
 	std::string KeepAsciiAlnumCopy(const std::string& text)
 	{
@@ -2357,7 +1883,7 @@ void refreshVacdmDataImpl()
 					ProfilesSourceGeneration == sourceGeneration;
 			}
 			if (sourceStillCurrent)
-				VacdmLastFetchClock = clock();
+				VacdmLastFetchTick = CurrentSteadyTick();
 			VacdmFetchInProgress.store(false);
 		}
 	} reset{ sourceGeneration };
@@ -2487,7 +2013,7 @@ void refreshVacdmData()
 	}
 	__except (CaptureVacdmSehCode(static_cast<unsigned long>(GetExceptionCode())))
 	{
-		VacdmLastFetchClock = clock();
+		VacdmLastFetchTick = CurrentSteadyTick();
 		VacdmFetchInProgress.store(false);
 	}
 #else
@@ -2899,7 +2425,7 @@ void CSMRPlugin::PublishActiveProfilesConfigPath(
 		VacdmPilots.clear();
 	}
 
-	VacdmLastFetchClock.store(0, std::memory_order_relaxed);
+	VacdmLastFetchTick.store(0, std::memory_order_relaxed);
 	if (vacdmConfigured)
 	{
 		Logger::info(
@@ -3180,7 +2706,7 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		std::error_code existsError;
 		std::ostringstream report;
 		report << "vSMR support diagnostics\n";
-		report << "version=" << MY_PLUGIN_VERSION << "\n";
+		report << "version=" << VsmrPluginVersion << "\n";
 #if defined(_M_IX86)
 		report << "architecture=x86\n";
 #elif defined(_M_X64)
@@ -3299,10 +2825,14 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 	}
 }
 
-CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PLUGIN_NAME, MY_PLUGIN_VERSION, MY_PLUGIN_DEVELOPER, MY_PLUGIN_COPYRIGHT)
+CSMRPlugin::CSMRPlugin(void) :CPlugIn(
+	EuroScopePlugIn::COMPATIBILITY_CODE,
+	VsmrPluginName,
+	VsmrPluginVersion,
+	VsmrPluginDeveloper,
+	VsmrPluginCopyright)
 {
 	// Resetting process-wide session state
-	ActivePluginInstance.store(this, std::memory_order_release);
 	PluginShutdownRequested.store(false, std::memory_order_relaxed);
 	FlightDataRefreshPending.store(false, std::memory_order_relaxed);
 	VsmrHoldingPoint::ClearPending();
@@ -3330,7 +2860,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	Logger::set_mode(Logger::Mode::Normal);
 
 	// Registering the EuroScope display and tag items
-	RegisterDisplayType(MY_PLUGIN_VIEW_AVISO, false, true, true, true);
+	RegisterDisplayType(VsmrPluginAvisoDisplayName, false, true, true, true);
 
 	RegisterTagItemType("Datalink clearance", TAG_ITEM_DATALINK_STS);
 	RegisterTagItemFunction("Datalink menu", TAG_FUNC_DATALINK_MENU);
@@ -3339,8 +2869,8 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 
 	messageId.store(rand() % 10000 + 1789);
 
-	timer = clock();
-	VacdmLastFetchClock = 0;
+	DatalinkLastPollAt = PluginSteadyClock::now();
+	VacdmLastFetchTick = 0;
 
 	// Loading and migrating persisted CPDLC settings
 	const char * p_value;
@@ -3451,6 +2981,11 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(EuroScopePlugIn::COMPATIBILITY_CODE, MY_PL
 	if ((p_value = GetDataFromSettings("rdf_enabled")) != NULL)
 		rdfEnabled = atoi(p_value) != 0;
 	VsmrRdf::Start(this, rdfEnabled);
+
+	// Publish only after every potentially throwing initialization step has
+	// completed. A failed constructor must never leave a freed instance visible
+	// to runtime callbacks or shutdown recovery.
+	ActivePluginInstance.store(this, std::memory_order_release);
 }
 
 CSMRPlugin::~CSMRPlugin()
@@ -3965,197 +3500,10 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return false;
-
-	const std::string command = TrimAsciiWhitespaceCopy(sCommandLine == nullptr ? "" : std::string(sCommandLine));
-	std::string commandLower = command;
-	std::transform(commandLower.begin(), commandLower.end(), commandLower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	const auto startsWithCommand = [&](const char* prefix) -> bool
-	{
-		if (prefix == nullptr)
-			return false;
-		const std::string p(prefix);
-		return commandLower.rfind(p, 0) == 0;
-	};
-
-	if (commandLower == ".smr diagnostics" || commandLower == ".smr diag")
-	{
-		std::string reportPath;
-		std::string error;
-		if (WriteDiagnosticsReport(reportPath, error))
-		{
-			const std::string message =
-				"Redacted diagnostics written to " + reportPath;
-			DisplayUserMessage(
-				"vSMR",
-				"Diagnostics",
-				message.c_str(),
-				true,
-				true,
-				false,
-				true,
-				false);
-			Logger::info("Diagnostics report written path=" + reportPath);
-		}
-		else
-		{
-			DisplayUserMessage(
-				"vSMR",
-				"Diagnostics",
-				error.c_str(),
-				true,
-				true,
-				false,
-				true,
-				false);
-		}
-		return true;
-	}
-	if (commandLower == ".smr reload") {
-		for (auto rd : RadarScreensOpened) {
-			if (rd != nullptr)
-				rd->ReloadConfig();
-		}
-		DisplayUserMessage("vSMR", "Config", "Reloaded vSMR runtime data", true, true, false, true, false);
-		return true;
-	}
-	else if (commandLower == ".smr rdf on" || commandLower == ".smr rdf off")
-	{
-		const bool enabled = commandLower == ".smr rdf on";
-		VsmrRdf::SetEnabled(enabled);
-		SaveDataToSettings(
-			"rdf_enabled",
-			"Enable the native vSMR RDF overlay",
-			enabled ? "1" : "0");
-		DisplayUserMessage(
-			"vSMR",
-			"RDF",
-			enabled ? "Native RDF enabled" : "Native RDF disabled",
-			true,
-			true,
-			false,
-			true,
-			false);
-		for (CSMRRadar* radar : RadarScreensOpened)
-		{
-			if (radar != nullptr && !radar->IsShutdownRequested())
-				radar->RequestRefresh();
-		}
-		return true;
-	}
-	else if (startsWithCommand(".smr log")) {
-		const std::string prefix = ".smr log";
-		std::string argument = "";
-		if (commandLower.size() > prefix.size())
-			argument = TrimAsciiWhitespaceCopy(commandLower.substr(prefix.size()));
-
-		auto publishLogStatus = [&](const std::string& action)
-		{
-			std::string detail = action + " - vsmr.log ";
-			detail += Logger::ENABLED ? "enabled" : "disabled";
-			if (Logger::ENABLED)
-			{
-				detail += " (";
-				detail += Logger::mode_name(Logger::get_mode());
-				detail += ")";
-			}
-			detail += " at ";
-			detail += Logger::DLL_PATH;
-			detail += "\\vsmr.log";
-			DisplayUserMessage("vSMR", "Log", detail.c_str(), true, true, false, true, false);
-			if (Logger::ENABLED)
-			{
-				Logger::info("Logging active mode=" + std::string(Logger::mode_name(Logger::get_mode())));
-			}
-		};
-
-		if (argument.empty())
-		{
-			if (Logger::ENABLED)
-			{
-				Logger::ENABLED = false;
-			}
-			else
-			{
-				Logger::ENABLED = true;
-				Logger::set_mode(Logger::Mode::Normal);
-			}
-			publishLogStatus("Updated");
-			return true;
-		}
-
-		if (argument == "status")
-		{
-			publishLogStatus("Status");
-			return true;
-		}
-
-		if (argument == "off" || argument == "disable" || argument == "0")
-		{
-			Logger::ENABLED = false;
-			publishLogStatus("Updated");
-			return true;
-		}
-
-		if (argument == "on" || argument == "enable" || argument == "1" ||
-			argument == "normal" || argument == "n")
-		{
-			Logger::ENABLED = true;
-			Logger::set_mode(Logger::Mode::Normal);
-			publishLogStatus("Updated");
-			return true;
-		}
-
-		if (argument == "verbose" || argument == "v")
-		{
-			Logger::ENABLED = true;
-			Logger::set_mode(Logger::Mode::Verbose);
-			publishLogStatus("Updated");
-			return true;
-		}
-
-		DisplayUserMessage(
-			"vSMR",
-			"Log",
-			"Usage: .smr log [normal|verbose|off|status]",
-			true,
-			true,
-			false,
-			true,
-			false);
-		return true;
-	}
-	else if (commandLower == ".smr editor")
-	{
-		bool opened = false;
-		for (auto* rd : RadarScreensOpened)
-		{
-			if (rd == nullptr)
-				continue;
-			rd->OpenVsmrControlCenterWindow("overview");
-			opened = true;
-			break;
-		}
-
-		if (!opened)
-		{
-			DisplayUserMessage("vSMR", "Config", "No active SMR radar screen found to open the vSMR window.", true, true, false, true, false);
-		}
-		return true;
-	}
-	else if (commandLower == ".smr")
-	{
-		for (auto* rd : RadarScreensOpened)
-		{
-			if (rd == nullptr)
-				continue;
-			rd->OpenVsmrControlCenterWindow("settings");
-			return true;
-		}
-
-		DisplayUserMessage("vSMR", "Config", "No active SMR radar screen found to open the vSMR window.", true, true, false, true, false);
-		return true;
-	}
-	return false;
+	return VsmrPluginCommandHandler::Handle(
+		*this,
+		sCommandLine,
+		RadarScreensOpened);
 }
 
 void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
@@ -4793,20 +4141,7 @@ void CSMRPlugin::OnAirportRunwayActivityChanged()
 		// cached activity snapshot so map rules, RIMCAS and every inset repaint
 		// from the choices that were just accepted in EuroScope's dialog.
 		SelectScreenSectorfile(radar);
-		radar->RunwayStatusLastRefreshTick = 0;
-		radar->RunwayStatusLastAirport.clear();
-		radar->RefreshRunwayStatuses(true);
-		radar->RefreshLegacyRimcasRunwayMonitoring();
-		radar->LastMapRunwayStatuses.clear();
-		radar->LastMapActiveAirport.clear();
-		radar->MarkPerformanceRefreshReason(
-			VsmrPerformance::FrameRefreshReason::AirportUpdate);
-		radar->RequestRefresh();
-		if ((adoptAirport || !radar->RimcasRunwaysExplicitlyConfigured) &&
-			radar->VsmrControlCenterDialog != nullptr)
-		{
-			radar->VsmrControlCenterDialog->SyncFromRadar("runtime");
-		}
+		radar->RefreshAfterAirportRunwayActivityChange(adoptAirport);
 	}
 
 	// Leave the plug-in enumeration source in EuroScope's normal active-file
@@ -4997,7 +4332,7 @@ void CSMRPlugin::OnTimer(int Counter)
 	}
 	// ----- Updating connection state -----
 	static int lastConnectionType = -999;
-	static clock_t lastConnectionTypeChangeClock = 0;
+	static PluginSteadyClock::time_point lastConnectionTypeChangeAt{};
 	const int currentConnectionType = GetConnectionType();
 	{
 		const CController myself = ControllerMyself();
@@ -5031,7 +4366,7 @@ void CSMRPlugin::OnTimer(int Counter)
 	{
 		Logger::info("EuroScope connection_type=" + std::to_string(currentConnectionType));
 		lastConnectionType = currentConnectionType;
-		lastConnectionTypeChangeClock = clock();
+		lastConnectionTypeChangeAt = PluginSteadyClock::now();
 	}
 
 	const unsigned long pendingVacdmSehCode = VacdmLastSehCode.exchange(0, std::memory_order_relaxed);
@@ -5075,24 +4410,30 @@ void CSMRPlugin::OnTimer(int Counter)
 	}
 
 	// ----- Polling CPDLC and vACDM -----
+	const PluginSteadyClock::time_point timerNow = PluginSteadyClock::now();
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
-		((clock() - timer) / CLOCKS_PER_SEC) > 10 &&
+		timerNow - DatalinkLastPollAt > std::chrono::seconds(10) &&
 		HoppieConnected.load()) {
 		std::string pollError;
 		StartDatalinkPoll(false, pollError);
-		timer = clock();
+		DatalinkLastPollAt = timerNow;
 	}
 
 	const bool networkConnectionActive = (currentConnectionType != CONNECTION_TYPE_NO);
 	const bool vacdmPollingEnabled = VacdmPollingEnabled.load(std::memory_order_relaxed);
 	const bool connectionStableForVacdm = networkConnectionActive &&
-		(lastConnectionTypeChangeClock == 0 || ((clock() - lastConnectionTypeChangeClock) / CLOCKS_PER_SEC) >= 20);
+		(lastConnectionTypeChangeAt == PluginSteadyClock::time_point{} ||
+			timerNow - lastConnectionTypeChangeAt >= std::chrono::seconds(20));
 
-	const clock_t lastVacdmFetchClock = VacdmLastFetchClock.load();
+	const PluginSteadyTick vacdmNow = CurrentSteadyTick();
+	const PluginSteadyTick lastVacdmFetchTick = VacdmLastFetchTick.load();
 	if (vacdmPollingEnabled &&
 		!PluginShutdownRequested.load(std::memory_order_relaxed) &&
 		connectionStableForVacdm &&
-		(lastVacdmFetchClock == 0 || ((clock() - lastVacdmFetchClock) / CLOCKS_PER_SEC) >= VacdmFetchIntervalSeconds) &&
+		HasSteadyIntervalElapsed(
+			vacdmNow,
+			lastVacdmFetchTick,
+			std::chrono::seconds(VacdmFetchIntervalSeconds)) &&
 		!VacdmFetchInProgress.load())
 	{
 		bool expected = false;
@@ -5101,14 +4442,14 @@ void CSMRPlugin::OnTimer(int Counter)
 			if (PluginShutdownRequested.load(std::memory_order_relaxed))
 			{
 				VacdmFetchInProgress.store(false);
-				VacdmLastFetchClock = clock();
+				VacdmLastFetchTick = CurrentSteadyTick();
 			}
 			else
 			{
 				if (!QueueNetworkJob([]() { refreshVacdmData(); }))
 				{
 					VacdmFetchInProgress.store(false);
-					VacdmLastFetchClock = clock();
+					VacdmLastFetchTick = CurrentSteadyTick();
 					Logger::info("VACDM refresh could not be queued");
 				}
 			}
@@ -5146,20 +4487,16 @@ void CSMRPlugin::OnTimer(int Counter)
 		if (radar == nullptr || radar->IsShutdownRequested())
 			continue;
 		bool refresh = false;
-		const auto weatherDisplay = radar->appWindowDisplays.find(weatherWindowId);
-		if (weatherDisplay != radar->appWindowDisplays.end() && weatherDisplay->second)
+		if (radar->IsAppWindowDisplayed(weatherWindowId))
 		{
 			QueueWeatherFetch(radar->getActiveAirport());
 			refresh = true;
 		}
-		const auto timerDisplay = radar->appWindowDisplays.find(timerWindowId);
-		const auto timerWindow = radar->appWindows.find(timerWindowId);
-		if (timerWindow != radar->appWindows.end() && timerWindow->second != nullptr &&
-			timerWindow->second->UpdateTimerCountdowns())
+		if (radar->UpdateTimerInsetCountdowns())
 		{
 			timerAlarmDue = true;
 		}
-		if (timerDisplay != radar->appWindowDisplays.end() && timerDisplay->second)
+		if (radar->IsAppWindowDisplayed(timerWindowId))
 			refresh = true;
 		if (refresh)
 			radar->RequestRefresh();
@@ -5181,7 +4518,7 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return NULL;
 
-	if (sDisplayName != nullptr && !strcmp(sDisplayName, MY_PLUGIN_VIEW_AVISO)) {
+	if (sDisplayName != nullptr && !strcmp(sDisplayName, VsmrPluginAvisoDisplayName)) {
 		CSMRRadar* rd = new CSMRRadar();
 		RadarScreensOpened.push_back(rd);
 		return rd;

@@ -1133,7 +1133,7 @@ std::string CSMRRadar::BuildPerformanceReportJson(
 		maximumSeriesPoints);
 	return VsmrPerformance::BuildJsonReport(
 		snapshot,
-		MY_PLUGIN_VERSION,
+		VsmrPluginVersion,
 		getActiveAirport(),
 		CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string());
 }
@@ -4761,6 +4761,40 @@ void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
 	}
 }
 
+void CSMRRadar::RefreshAfterAirportRunwayActivityChange(bool activeAirportChanged)
+{
+	RunwayStatusLastRefreshTick = 0;
+	RunwayStatusLastAirport.clear();
+	RefreshRunwayStatuses(true);
+	RefreshLegacyRimcasRunwayMonitoring();
+	LastMapRunwayStatuses.clear();
+	LastMapActiveAirport.clear();
+	MarkPerformanceRefreshReason(
+		VsmrPerformance::FrameRefreshReason::AirportUpdate);
+	RequestRefresh();
+
+	if ((activeAirportChanged || !RimcasRunwaysExplicitlyConfigured) &&
+		VsmrControlCenterDialog != nullptr)
+	{
+		VsmrControlCenterDialog->SyncFromRadar("runtime");
+	}
+}
+
+bool CSMRRadar::IsAppWindowDisplayed(int appWindowId) const
+{
+	const auto display = appWindowDisplays.find(appWindowId);
+	return display != appWindowDisplays.end() && display->second;
+}
+
+bool CSMRRadar::UpdateTimerInsetCountdowns()
+{
+	const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
+	const auto timerWindow = appWindows.find(timerWindowId);
+	return timerWindow != appWindows.end() &&
+		timerWindow->second != nullptr &&
+		timerWindow->second->UpdateTimerCountdowns();
+}
+
 void CSMRRadar::InvalidateStructuredTagRuleCache()
 {
 	StructuredTagRulesCache.clear();
@@ -8236,8 +8270,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		if (recentMoveIt == RecentlyAutoMovedTags.end())
 			return false;
 
-		const double elapsedSeconds = ((double)clock() - recentMoveIt->second) / ((double)CLOCKS_PER_SEC);
-		if (elapsedSeconds >= 0.8)
+		if (std::chrono::steady_clock::now() - recentMoveIt->second >=
+			std::chrono::milliseconds(800))
 		{
 			RecentlyAutoMovedTags.erase(recentMoveIt);
 			return false;
@@ -8336,7 +8370,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 					TagsOffsets[callsign] = newOffset;
 
 					tagCollisionAreas[callsign] = newRectangle;
-					RecentlyAutoMovedTags[callsign] = clock();
+					RecentlyAutoMovedTags[callsign] = std::chrono::steady_clock::now();
 					break;
 				}
 

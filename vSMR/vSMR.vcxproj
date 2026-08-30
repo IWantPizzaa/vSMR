@@ -164,6 +164,8 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterPerformance.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterUpdater.cpp" />
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp" />
     <ClCompile Include="src\control_center\WebMessageValidation.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -172,6 +174,7 @@
     <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp" />
     <ClCompile Include="src\crash\CrashReporter.cpp" />
     <ClCompile Include="src\datalink\CPDLCSettingsDialog.cpp" />
+    <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp" />
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
@@ -181,6 +184,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp" />
+    <ClCompile Include="src\plugin\PluginCommandHandler.cpp" />
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp" />
     <ClCompile Include="src\radar\RadarGeometry.cpp" />
     <ClCompile Include="src\radar\RadarScreen.cpp" />
@@ -215,6 +219,8 @@
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterPerformance.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterUpdater.hpp" />
     <ClInclude Include="src\control_center\ControlCenterDialog.hpp" />
     <ClInclude Include="src\control_center\RuntimeResourceFiles.hpp" />
     <ClInclude Include="src\control_center\WebMessageValidation.hpp" />
@@ -223,6 +229,7 @@
     <ClInclude Include="src\crash\CrashReportSupport.hpp" />
     <ClInclude Include="src\crash\CrashRuntime.hpp" />
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp" />
+    <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
@@ -232,9 +239,12 @@
     <ClInclude Include="src\platform\windows\ResourceIds.h" />
     <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp" />
     <ClInclude Include="src\plugin\Plugin.hpp" />
+    <ClInclude Include="src\plugin\PluginCommandHandler.hpp" />
+    <ClInclude Include="src\plugin\PluginMetadata.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
+    <ClInclude Include="src\radar\RadarScreenTypes.hpp" />
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
     <ClInclude Include="src\safety\Rimcas.hpp" />
@@ -273,6 +283,36 @@
     <None Include="src\control_center\web\app.js">
       <Link>vSMR_webUI\app.js</Link>
     </None>
+    <None Include="src\control_center\web\app-model.js">
+      <Link>vSMR_webUI\app-model.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-workflow.js">
+      <Link>vSMR_webUI\app-workflow.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-runtime.js">
+      <Link>vSMR_webUI\app-runtime.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-profile-colors.js">
+      <Link>vSMR_webUI\app-profile-colors.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-profile-editor.js">
+      <Link>vSMR_webUI\app-profile-editor.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-aviso-editor.js">
+      <Link>vSMR_webUI\app-aviso-editor.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-settings.js">
+      <Link>vSMR_webUI\app-settings.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-persistence.js">
+      <Link>vSMR_webUI\app-persistence.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-events.js">
+      <Link>vSMR_webUI\app-events.js</Link>
+    </None>
+    <None Include="src\control_center\web\app-actions.js">
+      <Link>vSMR_webUI\app-actions.js</Link>
+    </None>
     <None Include="src\control_center\web\data.js">
       <Link>vSMR_webUI\data.js</Link>
     </None>
@@ -303,8 +343,7 @@
     <ItemGroup>
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\index.html" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\styles.css" />
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\app.js" />
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\data.js" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\*.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
         Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
