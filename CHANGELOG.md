@@ -24,7 +24,7 @@
 - Hardened the native RDF worker with an exception boundary and race-safe RAII ownership for WinHTTP and WebSocket handles, preventing worker failures from terminating EuroScope.
 - Added strict size, depth, and item-count limits to profile and AVISO JSON loading, and made Windows installation paths Unicode-safe.
 - Restricted the Control Center to its trusted local document and bounded both inbound WebView messages and the pending message queue.
-- Replaced the Control Center's MultiByte resource picker with the Unicode-native Windows file dialog so manually selected profile and AVISO paths retain every character.
+- Replaced the Control Center's MultiByte resource picker with a Unicode-native Win32 dialog that preserves every path character without changing EuroScope's COM apartment.
 - Made release-package rebuilds use the same warnings-as-errors compilation gate as CI.
 - Made production packaging fail closed while bundled asset provenance remains unresolved; explicitly non-publishable local validation packages remain available.
 - Removed obsolete profile-color and tag-editor mutation paths that bypassed the live transactional editor model.
