@@ -18,6 +18,7 @@
 - Hardened runtime lifetime handling by publishing only fully constructed plug-ins, using monotonic clocks for long-running polling, and covering retained-runtime reload transitions with regression tests.
 - Labeled profile `.bak` recovery as legacy data and now shows its modification date and age before restoration.
 - Split plug-in commands and datalink protocol support, Control Center updater and performance processing, radar data types, and Web UI feature controllers into dedicated modules. Radar mutable state is now private, and regression tests enforce the Control Center script order and per-feature size boundary.
+- Isolated the Control Center feature sources inside a generated private bundle, added headless browser coverage for initialization, host-state handling, event binding, and profile/AVISO saves, and extracted AVISO raster processing, plug-in runtime services, and bridge message routing from the remaining coordinators.
 - Replaced the bundled profiles with the supplied five-profile configuration.
 - Moved the previous bundled `Default` profile to `Custom LFPG` and restored `Default` from the 2.0.0-beta.2 profile set.
 - Tightened square-corner tag borders while preserving the existing rounded-tag dimensions.

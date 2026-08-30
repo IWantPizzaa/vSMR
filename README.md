@@ -549,10 +549,10 @@ PDB files never enter the user package.
 
 ### Regression tests
 
-The `vSMR.Tests` project is part of the solution and runs automatically in AppVeyor. After a Release build, run it locally from the repository root with:
+The `vSMR.Tests` project is part of the solution and runs automatically in AppVeyor. The test runner executes both the native suite and the headless Edge Control Center behavior suite. After a Release build, run it locally from the repository root with:
 
 ```powershell
-.\vSMR\tests\bin\Release\vSMR.Tests.exe (Get-Location).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tests\run_tests.ps1
 ```
 
 The CI build uses warning level 4 with warnings treated as errors. New parsing, synchronization, safety, and geometry behavior should receive a focused native regression before release.
@@ -611,18 +611,19 @@ Important implementation areas:
 | Path | Responsibility |
 | --- | --- |
 | `vSMR/src/app/PluginEntry.cpp` | MFC application object and exported runtime-ABI create/shutdown entries |
-| `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, CPDLC/VACDM coordination, weather scheduling, and diagnostics |
+| `vSMR/src/plugin/Plugin.cpp` | Plug-in lifecycle, CPDLC/VACDM coordination, and weather scheduling |
+| `vSMR/src/plugin/PluginRuntimeServices.cpp` | Bounded network-worker execution and redacted diagnostics export |
 | `vSMR/src/plugin/PluginCommandHandler.*` | EuroScope command parsing and dispatch |
 | `vSMR/src/datalink/DatalinkProtocolSupport.*` | PDC frequency selection, Hoppie protocol parsing, redaction, and protected credentials |
 | `vSMR/src/scene/` | Immutable per-frame target, tag, RIMCAS, ownership, controller, and airport state shared by radar viewports |
-| `vSMR/src/radar/RadarScreen.cpp` and `RadarScreen.*.cpp` | Radar lifecycle, rendering, interaction, ASR state, commands, and Runtime Menu |
+| `vSMR/src/radar/RadarScreen.cpp` and `RadarScreen.*.cpp` | Radar lifecycle, rendering, interaction, ASR state, commands, Runtime Menu, and isolated AVISO raster processing |
 | `vSMR/src/insets/InsetWindow.cpp` | AVISO, SRW 1, METAR, and Timer insets; snapping and resizing |
 | `vSMR/src/safety/Rimcas.cpp` | Runway monitoring and RIMCAS alert logic |
 | `vSMR/src/config/RuntimeConfig.cpp` | Profile loading, migration, validation, and persistence |
 | `vSMR/src/aviso/` | AVISO document validation, editing, presets, and radar integration |
 | `vSMR/src/tags/` | Tag definitions, rendering, color rules, and VACDM tag helpers |
-| `vSMR/src/control_center/` | Native WebView2 host and bridge, with updater and performance processing in dedicated modules |
-| `vSMR/src/control_center/web/` | Control Center HTML/CSS and load-ordered JavaScript feature controllers |
+| `vSMR/src/control_center/` | Native WebView2 host and bridge, with message protocol, updater, and performance processing in dedicated modules |
+| `vSMR/src/control_center/web/` | Control Center HTML/CSS and feature sources assembled into one private application bundle |
 | `vSMR/src/crash/CrashReporter.cpp` and `vSMR/src/crash/handler/` | Normal-runtime WER registration/breadcrumbs and out-of-process report generation |
 | `vSMR/src/diagnostics/` | Per-radar performance samples, aggregate statistics, cache/worker counters, and JSON reports |
 | `vSMR/tools/` | Forced Release builds and release-package creation |
