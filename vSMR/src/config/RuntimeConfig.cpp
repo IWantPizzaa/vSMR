@@ -1267,48 +1267,9 @@ namespace
 		return succeeded;
 	}
 
-	bool StageDestinationBackupIfPresent(
-		const std::string& destination,
-		std::string& temporaryBackupPath)
-	{
-		temporaryBackupPath.clear();
-		const std::filesystem::path nativeDestination =
-			std::filesystem::u8path(destination);
-		const DWORD attributes = ::GetFileAttributesW(nativeDestination.c_str());
-		if (attributes == INVALID_FILE_ATTRIBUTES)
-		{
-			const DWORD error = ::GetLastError();
-			return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
-		}
-		if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
-			return false;
-
-		const int maximumAttempts = 128;
-		for (int attempt = 0; attempt < maximumAttempts; ++attempt)
-		{
-			temporaryBackupPath = BuildTemporaryPath(destination, "backup");
-			if (::CopyFileW(
-				nativeDestination.c_str(),
-				std::filesystem::u8path(temporaryBackupPath).c_str(),
-				TRUE))
-				break;
-
-			const DWORD error = ::GetLastError();
-			if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS)
-				return false;
-			temporaryBackupPath.clear();
-		}
-
-		if (temporaryBackupPath.empty())
-			return false;
-
-		return true;
-	}
-
 	bool PersistConfigDocument(
 		const std::string& destination,
-		const rapidjson::Document& source,
-		bool backupExisting = true)
+		const rapidjson::Document& source)
 	{
 		if (!source.IsArray())
 			return false;
@@ -1337,47 +1298,13 @@ namespace
 			return false;
 		}
 
-		std::string temporaryBackupPath;
-		if (backupExisting &&
-			!StageDestinationBackupIfPresent(
-				destination,
-				temporaryBackupPath))
-		{
-			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
-			return false;
-		}
-
 		if (!::MoveFileExW(
 			std::filesystem::u8path(temporaryPath).c_str(),
 			std::filesystem::u8path(destination).c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
 			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
-			if (!temporaryBackupPath.empty())
-				::DeleteFileW(std::filesystem::u8path(temporaryBackupPath).c_str());
 			return false;
-		}
-
-		if (!temporaryBackupPath.empty())
-		{
-			const std::string backupPath = destination + kBackupSuffix;
-			if (!::MoveFileExW(
-				std::filesystem::u8path(temporaryBackupPath).c_str(),
-				std::filesystem::u8path(backupPath).c_str(),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-			{
-				// The existing .bak has not been replaced. Use the staged old
-				// primary to roll the reported-failed transaction back exactly.
-				if (!::MoveFileExW(
-					std::filesystem::u8path(temporaryBackupPath).c_str(),
-					std::filesystem::u8path(destination).c_str(),
-					MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-				{
-					// Preserve the staged old primary for manual recovery.
-					return false;
-				}
-				return false;
-			}
 		}
 
 		return true;
@@ -2411,7 +2338,6 @@ bool CConfig::saveConfig(
 	// transaction, so refresh only these roots before persisting everything else.
 	std::string latestJson;
 	Document latestDocument;
-	bool currentProfilesValid = false;
 	if (currentFileReadable)
 	{
 		bool latestMigrated = false;
@@ -2420,7 +2346,7 @@ bool CConfig::saveConfig(
 			!validateAndMigrateProfilesDocument(latestDocument, latestError, latestMigrated))
 		{
 			// An explicitly confirmed recovery save may replace a damaged primary
-			// file, but it must never overwrite the known-good .bak with that damage.
+			// file while ordinary saves still fail closed on external corruption
 			if (config_healthy)
 			{
 				if (error != nullptr)
@@ -2430,7 +2356,6 @@ bool CConfig::saveConfig(
 		}
 		else
 		{
-			currentProfilesValid = true;
 			if (!MergeLatestAvisoPresetRoots(document, latestDocument, profileIdentities))
 			{
 				if (error != nullptr)
@@ -2440,10 +2365,7 @@ bool CConfig::saveConfig(
 		}
 	}
 
-	// Back up only a primary file that was just validated.  During recovery a
-	// missing, unreadable, or corrupt primary must never replace the known-good
-	// .bak that allowed vSMR to recover.
-	if (!PersistConfigDocument(config_path, document, currentProfilesValid))
+	if (!PersistConfigDocument(config_path, document))
 	{
 		if (error != nullptr)
 			*error = "Unable to save vSMR_Profiles.json atomically.";
