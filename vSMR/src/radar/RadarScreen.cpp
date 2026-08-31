@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/ResourceIds.h"
 #include "bootstrap/RuntimeContext.hpp"
+#include "aviso/AvisoRasterBlitter.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
@@ -24,7 +25,10 @@
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "shared/RapidJsonUtils.hpp"
 #include "shared/WindowsPathEncoding.hpp"
+
+namespace TagColorRules = VsmrTagColorRules;
 
 #pragma comment(lib, "comctl32.lib")
 
@@ -1247,79 +1251,6 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		changed = true;
 	};
 
-	auto cloneJsonValue = [&](Value& destination, const Value& source, const auto& cloneRef) -> void
-	{
-		if (source.IsObject())
-		{
-			destination.SetObject();
-			for (auto member = source.MemberBegin(); member != source.MemberEnd(); ++member)
-			{
-				Value keyValue;
-				keyValue.SetString(member->name.GetString(), static_cast<rapidjson::SizeType>(strlen(member->name.GetString())), allocator);
-				Value childValue;
-				cloneRef(childValue, member->value, cloneRef);
-				destination.AddMember(keyValue, childValue, allocator);
-			}
-			return;
-		}
-
-		if (source.IsArray())
-		{
-			destination.SetArray();
-			for (rapidjson::SizeType i = 0; i < source.Size(); ++i)
-			{
-				Value childValue;
-				cloneRef(childValue, source[i], cloneRef);
-				destination.PushBack(childValue, allocator);
-			}
-			return;
-		}
-
-		if (source.IsString())
-		{
-			destination.SetString(source.GetString(), static_cast<rapidjson::SizeType>(strlen(source.GetString())), allocator);
-			return;
-		}
-
-		if (source.IsBool())
-		{
-			destination.SetBool(source.GetBool());
-			return;
-		}
-		if (source.IsInt())
-		{
-			destination.SetInt(source.GetInt());
-			return;
-		}
-		if (source.IsUint())
-		{
-			destination.SetUint(source.GetUint());
-			return;
-		}
-		if (source.IsInt64())
-		{
-			destination.SetInt64(source.GetInt64());
-			return;
-		}
-		if (source.IsUint64())
-		{
-			destination.SetUint64(source.GetUint64());
-			return;
-		}
-		if (source.IsDouble())
-		{
-			destination.SetDouble(source.GetDouble());
-			return;
-		}
-		if (source.IsNull())
-		{
-			destination.SetNull();
-			return;
-		}
-
-		destination.SetNull();
-	};
-
 	auto renameMemberIfPresent = [&](Value& parent, const char* oldKey, const char* newKey)
 	{
 		if (!parent.IsObject() || oldKey == nullptr || newKey == nullptr || strcmp(oldKey, newKey) == 0)
@@ -1337,7 +1268,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		Value keyValue;
 		keyValue.SetString(newKey, allocator);
 		Value copiedValue;
-		cloneJsonValue(copiedValue, parent[oldKey], cloneJsonValue);
+		VsmrRapidJson::CloneJsonValue(parent[oldKey], copiedValue, allocator);
 		parent.AddMember(keyValue, copiedValue, allocator);
 		parent.RemoveMember(oldKey);
 		changed = true;
@@ -1804,7 +1735,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		departureIcons.HasMember("taxi") && departureIcons["taxi"].IsObject())
 	{
 		Value taxiColorCopy;
-		cloneJsonValue(taxiColorCopy, departureIcons["taxi"], cloneJsonValue);
+		VsmrRapidJson::CloneJsonValue(departureIcons["taxi"], taxiColorCopy, allocator);
 		replaceColorMember(departureIcons, "lineup", taxiColorCopy);
 	}
 	ensureColorMember(departureIcons, "lineup", 240, 240, 240, 255);
@@ -1892,7 +1823,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		departureLabel.HasMember("background_taxi_color") && departureLabel["background_taxi_color"].IsObject())
 	{
 		Value taxiColorCopy;
-		cloneJsonValue(taxiColorCopy, departureLabel["background_taxi_color"], cloneJsonValue);
+		VsmrRapidJson::CloneJsonValue(departureLabel["background_taxi_color"], taxiColorCopy, allocator);
 		replaceColorMember(departureLabel, "background_lineup_color", taxiColorCopy);
 	}
 	ensureColorMember(departureLabel, "background_lineup_color", 240, 240, 240, 255);
@@ -2028,7 +1959,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		Value keyValue;
 		keyValue.SetString("lnup", allocator);
 		Value copiedValue;
-		cloneJsonValue(copiedValue, departureStatusDefinitions["taxi"], cloneJsonValue);
+		VsmrRapidJson::CloneJsonValue(departureStatusDefinitions["taxi"], copiedValue, allocator);
 		departureStatusDefinitions.AddMember(keyValue, copiedValue, allocator);
 		changed = true;
 	}
@@ -2129,7 +2060,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	bool hasLegacyLabelRules = false;
 	if (labels.HasMember("rules") && labels["rules"].IsObject())
 	{
-		cloneJsonValue(legacyLabelRules, labels["rules"], cloneJsonValue);
+		VsmrRapidJson::CloneJsonValue(labels["rules"], legacyLabelRules, allocator);
 		hasLegacyLabelRules = true;
 	}
 
@@ -2138,7 +2069,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	if (!structuredRulesHasItems && hasLegacyLabelRules &&
 		legacyLabelRules.HasMember("items") && legacyLabelRules["items"].IsArray())
 	{
-		cloneJsonValue(structuredRules, legacyLabelRules, cloneJsonValue);
+		VsmrRapidJson::CloneJsonValue(legacyLabelRules, structuredRules, allocator);
 		changed = true;
 	}
 
@@ -2402,8 +2333,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawToken);
 				const std::string baseToken = styledToken.token.empty() ? rawToken : styledToken.token;
 
-				VacdmColorRuleDefinition vacdmRuleToken;
-				if (TryParseVacdmColorRuleToken(baseToken, vacdmRuleToken))
+				TagColorRules::VacdmColorRuleDefinition vacdmRuleToken;
+				if (TagColorRules::TryParseVacdmColorRuleToken(baseToken, vacdmRuleToken))
 				{
 					appendStructuredRule("vacdm", vacdmRuleToken.token, vacdmRuleToken.expectedState, tagType, status, detail,
 						vacdmRuleToken.hasTargetColor, vacdmRuleToken.targetR, vacdmRuleToken.targetG, vacdmRuleToken.targetB,
@@ -2413,8 +2344,8 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 					continue;
 				}
 
-				RunwayColorRuleDefinition runwayRuleToken;
-				if (TryParseRunwayColorRuleToken(baseToken, runwayRuleToken))
+				TagColorRules::RunwayColorRuleDefinition runwayRuleToken;
+				if (TagColorRules::TryParseRunwayColorRuleToken(baseToken, runwayRuleToken))
 				{
 					appendStructuredRule("runway", runwayRuleToken.token, runwayRuleToken.expectedRunway, tagType, status, detail,
 						runwayRuleToken.hasTargetColor, runwayRuleToken.targetR, runwayRuleToken.targetG, runwayRuleToken.targetB,
@@ -3697,8 +3628,8 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 			{
 				const double candidateAngle = fmod(baseAngle + rotated, 360.0f);
 				POINT tagCenter;
-				tagCenter.x = long(acPosPix.x + float(leaderLength * cos(DegToRad(candidateAngle))));
-				tagCenter.y = long(acPosPix.y + float(leaderLength * sin(DegToRad(candidateAngle))));
+				tagCenter.x = long(acPosPix.x + float(leaderLength * cos(VsmrRadarUiSupport::DegToRad(candidateAngle))));
+				tagCenter.y = long(acPosPix.y + float(leaderLength * sin(VsmrRadarUiSupport::DegToRad(candidateAngle))));
 
 				CRect newRectangle(
 					tagCenter.x - (width / 2),

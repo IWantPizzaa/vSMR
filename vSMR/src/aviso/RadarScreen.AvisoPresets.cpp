@@ -3,64 +3,21 @@
 #include "radar/RadarScreen.Registry.hpp"
 #include "insets/InsetWindow.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "shared/RapidJsonUtils.hpp"
 #include "shared/TextUtils.hpp"
 
 namespace
 {
+	using VsmrRapidJson::AddString;
+	using VsmrRapidJson::CloneJsonValue;
+	using VsmrRapidJson::SetBoolMember;
+	using VsmrRapidJson::SetStringMember;
+
 	const char* kAvisoPresetsKey = "aviso_presets";
 	const char* kAirportPresetStoresKey = "airports";
 	const char* kPresetItemsKey = "items";
 	const char* kDefaultPresetKey = "default";
 	const rapidjson::SizeType kInvalidPresetIndex = static_cast<rapidjson::SizeType>(-1);
-
-	void CloneJsonValue(
-		const rapidjson::Value& source,
-		rapidjson::Value& output,
-		rapidjson::Document::AllocatorType& allocator)
-	{
-		if (source.IsObject())
-		{
-			output.SetObject();
-			for (rapidjson::Value::ConstMemberIterator it = source.MemberBegin();
-				it != source.MemberEnd(); ++it)
-			{
-				rapidjson::Value key(
-					it->name.GetString(),
-					static_cast<rapidjson::SizeType>(it->name.GetStringLength()),
-					allocator);
-				rapidjson::Value value;
-				CloneJsonValue(it->value, value, allocator);
-				output.AddMember(key, value, allocator);
-			}
-			return;
-		}
-		if (source.IsArray())
-		{
-			output.SetArray();
-			for (rapidjson::SizeType i = 0; i < source.Size(); ++i)
-			{
-				rapidjson::Value value;
-				CloneJsonValue(source[i], value, allocator);
-				output.PushBack(value, allocator);
-			}
-			return;
-		}
-		if (source.IsString())
-		{
-			output.SetString(
-				source.GetString(),
-				static_cast<rapidjson::SizeType>(source.GetStringLength()),
-				allocator);
-			return;
-		}
-		if (source.IsBool()) { output.SetBool(source.GetBool()); return; }
-		if (source.IsInt()) { output.SetInt(source.GetInt()); return; }
-		if (source.IsUint()) { output.SetUint(source.GetUint()); return; }
-		if (source.IsInt64()) { output.SetInt64(source.GetInt64()); return; }
-		if (source.IsUint64()) { output.SetUint64(source.GetUint64()); return; }
-		if (source.IsDouble()) { output.SetDouble(source.GetDouble()); return; }
-		output.SetNull();
-	}
 
 	const rapidjson::Value* GetObjectMember(const rapidjson::Value& object, const char* key)
 	{
@@ -104,14 +61,6 @@ namespace
 		return object[key];
 	}
 
-	void AddStringMember(rapidjson::Value& object, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
-	{
-		rapidjson::Value keyValue(key, allocator);
-		rapidjson::Value stringValue;
-		stringValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
-		object.AddMember(keyValue, stringValue, allocator);
-	}
-
 	void AddDoubleMember(rapidjson::Value& object, const char* key, double value, rapidjson::Document::AllocatorType& allocator)
 	{
 		object.AddMember(key, value, allocator);
@@ -125,20 +74,6 @@ namespace
 	void AddBoolMember(rapidjson::Value& object, const char* key, bool value, rapidjson::Document::AllocatorType& allocator)
 	{
 		object.AddMember(key, value, allocator);
-	}
-
-	void SetStringMember(rapidjson::Value& object, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
-	{
-		if (object.HasMember(key))
-			object.RemoveMember(key);
-		AddStringMember(object, key, value, allocator);
-	}
-
-	void SetBoolMember(rapidjson::Value& object, const char* key, bool value, rapidjson::Document::AllocatorType& allocator)
-	{
-		if (object.HasMember(key))
-			object.RemoveMember(key);
-		AddBoolMember(object, key, value, allocator);
 	}
 
 	bool ReadDoubleMember(const rapidjson::Value& object, const char* key, double& out)
@@ -548,7 +483,7 @@ namespace
 	void WriteAvisoPreset(const CSMRRadar::AvisoPreset& preset, rapidjson::Value& out, rapidjson::Document::AllocatorType& allocator)
 	{
 		out.SetObject();
-		AddStringMember(out, "name", preset.name, allocator);
+		AddString(out, "name", preset.name, allocator);
 		AddBoolMember(out, "linked_movement", preset.linkedMovement, allocator);
 
 		rapidjson::Value main(rapidjson::kObjectType);
@@ -569,7 +504,7 @@ namespace
 		AddDoubleMember(secondary, "center_latitude", preset.secondaryCenterLatitude, allocator);
 		AddDoubleMember(secondary, "center_longitude", preset.secondaryCenterLongitude, allocator);
 		AddIntMember(secondary, "scale", std::clamp(preset.secondaryScale, 1, 2400), allocator);
-		AddStringMember(secondary, "layout_mode", LayoutModeToString(preset.secondaryLayoutMode), allocator);
+		AddString(secondary, "layout_mode", LayoutModeToString(preset.secondaryLayoutMode), allocator);
 		AddIntMember(secondary, "layout_mode_id", std::clamp(preset.secondaryLayoutMode, 0, 8), allocator);
 		rapidjson::Value secondaryKey("secondary", allocator);
 		out.AddMember(secondaryKey, secondary, allocator);
@@ -602,7 +537,7 @@ namespace
 				std::clamp(window.filter, 0, 66000),
 				allocator);
 			AddDoubleMember(item, "rotation", window.rotation, allocator);
-			AddStringMember(item, "layout_mode", LayoutModeToString(window.layoutMode), allocator);
+			AddString(item, "layout_mode", LayoutModeToString(window.layoutMode), allocator);
 			AddIntMember(item, "layout_mode_id", std::clamp(window.layoutMode, 0, 8), allocator);
 			srw.PushBack(item, allocator);
 		}
@@ -617,7 +552,7 @@ namespace
 			AddIntMember(weather, "top", preset.weather.area.top, allocator);
 			AddIntMember(weather, "right", preset.weather.area.right, allocator);
 			AddIntMember(weather, "bottom", preset.weather.area.bottom, allocator);
-			AddStringMember(weather, "layout_mode", LayoutModeToString(preset.weather.layoutMode), allocator);
+			AddString(weather, "layout_mode", LayoutModeToString(preset.weather.layoutMode), allocator);
 			AddIntMember(weather, "layout_mode_id", std::clamp(preset.weather.layoutMode, 0, 8), allocator);
 			rapidjson::Value weatherKey("weather", allocator);
 			out.AddMember(weatherKey, weather, allocator);
@@ -631,7 +566,7 @@ namespace
 			AddIntMember(timer, "top", preset.timer.area.top, allocator);
 			AddIntMember(timer, "right", preset.timer.area.right, allocator);
 			AddIntMember(timer, "bottom", preset.timer.area.bottom, allocator);
-			AddStringMember(timer, "layout_mode", LayoutModeToString(preset.timer.layoutMode), allocator);
+			AddString(timer, "layout_mode", LayoutModeToString(preset.timer.layoutMode), allocator);
 			AddIntMember(timer, "layout_mode_id", std::clamp(preset.timer.layoutMode, 0, 8), allocator);
 			rapidjson::Value timerKey("timer", allocator);
 			out.AddMember(timerKey, timer, allocator);

@@ -3,6 +3,7 @@
 
 #include "crash/CrashReportSupport.hpp"
 #include "plugin/PluginMetadata.hpp"
+#include "shared/RapidJsonUtils.hpp"
 #include "shared/TextUtils.hpp"
 
 #include "rapidjson/prettywriter.h"
@@ -32,6 +33,10 @@ namespace
 	std::mutex gUpdaterFileMutex;
 
 	using Allocator = rapidjson::Document::AllocatorType;
+	using VsmrRapidJson::AddString;
+	using VsmrRapidJson::CloneJsonValue;
+	using VsmrRapidJson::SetBoolMember;
+	using VsmrRapidJson::SetStringMember;
 
 	std::string ReadString(const rapidjson::Value& object, const char* key)
 	{
@@ -51,107 +56,6 @@ namespace
 			return fallback;
 		}
 		return object[key].GetBool();
-	}
-
-	void AddString(
-		rapidjson::Value& object,
-		const char* key,
-		const std::string& value,
-		Allocator& allocator)
-	{
-		rapidjson::Value keyValue;
-		keyValue.SetString(key, allocator);
-		rapidjson::Value stringValue;
-		stringValue.SetString(
-			value.c_str(),
-			static_cast<rapidjson::SizeType>(value.size()),
-			allocator);
-		object.AddMember(keyValue, stringValue, allocator);
-	}
-
-	void SetStringMember(
-		rapidjson::Value& object,
-		const char* key,
-		const std::string& value,
-		Allocator& allocator)
-	{
-		rapidjson::Value stringValue;
-		stringValue.SetString(
-			value.c_str(),
-			static_cast<rapidjson::SizeType>(value.size()),
-			allocator);
-		if (object.HasMember(key))
-			object[key] = stringValue;
-		else
-		{
-			rapidjson::Value keyValue;
-			keyValue.SetString(key, allocator);
-			object.AddMember(keyValue, stringValue, allocator);
-		}
-	}
-
-	void SetBoolMember(
-		rapidjson::Value& object,
-		const char* key,
-		bool value,
-		Allocator& allocator)
-	{
-		if (object.HasMember(key))
-			object[key].SetBool(value);
-		else
-		{
-			rapidjson::Value keyValue;
-			keyValue.SetString(key, allocator);
-			rapidjson::Value boolValue;
-			boolValue.SetBool(value);
-			object.AddMember(keyValue, boolValue, allocator);
-		}
-	}
-
-	void CloneJsonValue(
-		const rapidjson::Value& source,
-		rapidjson::Value& destination,
-		Allocator& allocator)
-	{
-		if (source.IsObject())
-		{
-			destination.SetObject();
-			for (auto member = source.MemberBegin(); member != source.MemberEnd(); ++member)
-			{
-				rapidjson::Value key;
-				key.SetString(
-					member->name.GetString(),
-					member->name.GetStringLength(),
-					allocator);
-				rapidjson::Value value;
-				CloneJsonValue(member->value, value, allocator);
-				destination.AddMember(key, value, allocator);
-			}
-			return;
-		}
-		if (source.IsArray())
-		{
-			destination.SetArray();
-			for (rapidjson::SizeType index = 0; index < source.Size(); ++index)
-			{
-				rapidjson::Value value;
-				CloneJsonValue(source[index], value, allocator);
-				destination.PushBack(value, allocator);
-			}
-			return;
-		}
-		if (source.IsString())
-		{
-			destination.SetString(source.GetString(), source.GetStringLength(), allocator);
-			return;
-		}
-		if (source.IsBool()) { destination.SetBool(source.GetBool()); return; }
-		if (source.IsInt()) { destination.SetInt(source.GetInt()); return; }
-		if (source.IsUint()) { destination.SetUint(source.GetUint()); return; }
-		if (source.IsInt64()) { destination.SetInt64(source.GetInt64()); return; }
-		if (source.IsUint64()) { destination.SetUint64(source.GetUint64()); return; }
-		if (source.IsDouble()) { destination.SetDouble(source.GetDouble()); return; }
-		destination.SetNull();
 	}
 
 	std::string SerializePretty(const rapidjson::Value& value)

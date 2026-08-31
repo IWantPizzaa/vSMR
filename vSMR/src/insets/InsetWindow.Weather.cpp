@@ -12,6 +12,9 @@
 #include <sstream>
 #include <string>
 
+using VsmrRadarUiSupport::CopyRect;
+using VsmrRadarUiSupport::DegToRad;
+
 HFONT CInsetWindow::GetWeatherFont(
 	size_t index,
 	int height,

@@ -1,0 +1,404 @@
+/* Settings pages, updater controls, file status, and runtime-menu preview. */
+
+.settings-group > .check-field { margin-top: 4px; }
+
+.profile-settings-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.icon-settings-grid .field { margin: 3px 0; }
+
+.page[data-page-panel="settings"] { grid-template-rows: 28px minmax(0, 1fr); }
+
+.icon-settings-grid .compact-group {
+  margin: 0;
+  min-width: 0;
+}
+
+.rail-settings {
+  margin-top: 0;
+  border-top-color: #050708;
+}
+
+.settings-column {
+  min-width: 0;
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 4px;
+}
+
+.settings-file-heading {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.settings-file-heading strong {
+  color: #d4dfe1;
+  font-size: 9px;
+}
+
+.settings-file-heading small {
+  min-width: 0;
+  overflow: hidden;
+  color: #829399;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 7.5px/1 var(--mono);
+}
+
+.settings-file-row > input {
+  width: 100%;
+  min-width: 0;
+}
+
+.group-settings-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px;
+}
+
+.group-settings-grid .field { margin: 0; }
+
+.group-settings-name-only { padding-bottom: 7px; }
+
+.settings-group legend {
+  padding: 0 5px;
+  color: #c7d3d6;
+  font-weight: 700;
+}
+
+.settings-file-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.settings-file-actions .ui-button {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 4px;
+  height: var(--ui-control-height);
+}
+
+.settings-group > legend {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100% !important;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--ui-inner-border);
+  border-radius: calc(var(--ui-card-radius) - 1px) calc(var(--ui-card-radius) - 1px) 0 0;
+  background: var(--ui-card-title-bg);
+  color: #d1dcde;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.settings-group > legend .legend-tools {
+  float: none;
+  margin-left: auto;
+}
+
+.settings-group > .dense-form { padding: 0; }
+
+.icon-settings-grid {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.45fr);
+  padding: 4px;
+  gap: 4px;
+}
+
+.group-settings-card { margin-bottom: 0; }
+
+.settings-group {
+  box-shadow: none;
+  position: relative;
+  min-width: 0;
+  padding: 29px 7px 7px;
+  border: 1px solid var(--ui-inner-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-card-bg);
+  margin: 0;
+}
+
+.settings-file-list {
+  display: grid;
+  align-content: start;
+  gap: 0;
+}
+
+.settings-file-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  box-shadow: none;
+  padding: 4px 0 7px;
+  border: 0;
+  border-bottom: 1px solid #3b494d;
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-file-row + .settings-file-row { padding-top: 7px; }
+
+.settings-file-row:last-child {
+  padding-bottom: 4px;
+  border-bottom: 0;
+}
+
+.settings-watch-row { margin-top: 7px !important; }
+
+.settings-sliders-icon {
+  display: block;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.page-rail .rail-settings .settings-sliders-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.settings-layout {
+  min-height: 0;
+  display: grid;
+  overflow: auto;
+  gap: var(--ui-gap);
+  padding: var(--ui-gap);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  align-items: start;
+}
+
+.settings-page .settings-group > legend {
+  height: var(--ui-panel-title-height);
+  min-height: var(--ui-panel-title-height);
+  border-bottom: 1px solid var(--ui-inner-border);
+  border-radius: calc(var(--ui-panel-radius) - 1px) calc(var(--ui-panel-radius) - 1px) 0 0;
+  background: var(--ui-panel-title-bg);
+  color: var(--ui-text);
+  line-height: var(--ui-panel-title-height);
+}
+
+.settings-bottom-actions {
+  padding: 4px 5px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-bottom-actions > .ui-button {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-recovery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.settings-recovery-actions .ui-button { min-width: 0; }
+
+.page.settings-page { grid-template-rows: minmax(0, 1fr); }
+
+.settings-view {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-view-stack {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-view > .settings-layout {
+  width: 100%;
+  height: 100%;
+}
+
+.updater-general-group {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+}
+
+.updater-general-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.updater-general-heading > span:last-child {
+  overflow: hidden;
+  color: var(--ui-muted);
+  font: 8px/1.2 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.updater-general-group .update-channel-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  align-items: center;
+}
+
+.update-notice {
+  min-height: 0;
+  margin: 1px 0 0;
+  color: var(--ui-muted);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
+.update-notice.error { color: #edbdc0; }
+
+.updater-general-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.update-release-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-text);
+  text-decoration: none;
+}
+
+.settings-page .settings-column { gap: 3px; }
+
+.settings-page .settings-group {
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-panel-bg);
+  padding: calc(var(--ui-panel-title-height) + 3px) 5px 4px;
+}
+
+.settings-page .settings-file-list { gap: 0; }
+
+.settings-page .settings-file-row {
+  gap: 2px;
+  padding: 2px 0 4px;
+}
+
+.settings-page .settings-file-row + .settings-file-row { padding-top: 4px; }
+
+.settings-page .settings-file-actions,
+.settings-page .settings-recovery-actions {
+  gap: 3px;
+}
+
+.settings-page .settings-file-actions .ui-button,
+.settings-page .settings-recovery-actions .ui-button,
+.settings-page .updater-general-actions .ui-button {
+  min-height: 20px;
+  height: 20px;
+}
+
+.settings-page .updater-general-group > .check-field:nth-of-type(2) { grid-column: 1 / -1; }
+
+.settings-page .settings-layout {
+  gap: 3px;
+  padding: 3px;
+  overflow: hidden;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  align-items: start;
+  align-content: stretch;
+}
+
+.settings-page .settings-primary-column,
+.settings-page .settings-data-column {
+  min-width: 0;
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 3px;
+}
+
+.settings-page .display-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  gap: 5px;
+}
+
+.settings-page .display-group > .field {
+  min-width: 0;
+  width: min(100%, 160px);
+}
+
+.settings-page .display-group > .check-field {
+  align-self: center;
+  margin: 0 2px 1px 0;
+  grid-column: 1;
+}
+
+.settings-page .updater-general-group {
+  align-self: stretch;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 8px;
+}
+
+.settings-page .updater-general-group > .check-field {
+  min-width: 0;
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.15;
+  grid-column: 1 / -1 !important;
+}
+
+.settings-page .updater-general-group .update-channel-field {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  grid-column: 1 / -1 !important;
+}
+
+.settings-page .update-notice {
+  max-height: 22px;
+  overflow: hidden;
+  grid-column: 1 / -1 !important;
+}
+
+.settings-page .updater-general-heading {
+  min-width: 0;
+  grid-column: 1 / -1 !important;
+  min-height: 16px;
+  padding: 0 2px;
+}
+
+.settings-page .updater-general-heading > span:last-child { font-size: 9px; }
+
+.settings-page .updater-general-actions {
+  grid-column: 1 / -1 !important;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}

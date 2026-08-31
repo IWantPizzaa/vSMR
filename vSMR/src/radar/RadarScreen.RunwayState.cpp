@@ -112,8 +112,8 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 			if (configuredName == nullptr || configuredName[0] == '\0')
 				continue;
 
-			if (!startsWith(runwayNameA.c_str(), configuredName) &&
-				!startsWith(runwayNameB.c_str(), configuredName))
+			if (!VsmrRadarUiSupport::startsWith(runwayNameA.c_str(), configuredName) &&
+				!VsmrRadarUiSupport::startsWith(runwayNameB.c_str(), configuredName))
 			{
 				continue;
 			}
@@ -166,7 +166,8 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 	{
 		if (sectorHeading < 0 || sectorHeading > 360)
 			return;
-		heading = normalizeHeading(RadToDeg(TrueBearing(from, to)));
+		heading = normalizeHeading(VsmrRadarUiSupport::RadToDeg(
+			VsmrRadarUiSupport::TrueBearing(from, to)));
 		if (angularDistance(heading, static_cast<double>(sectorHeading)) > 90.0)
 			heading = normalizeHeading(heading + 180.0);
 		valid = true;
@@ -181,7 +182,7 @@ void CSMRRadar::EnsureRunwayGeometryCache()
 		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
 			continue;
 
-		if (!startsWith(activeAirport.c_str(), runwayAirportName))
+		if (!VsmrRadarUiSupport::startsWith(activeAirport.c_str(), runwayAirportName))
 			continue;
 
 		const char* runwayNameA = rwy.GetRunwayName(0);
@@ -250,7 +251,7 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 		if (runwayAirportName == nullptr || runwayAirportName[0] == '\0')
 			continue;
 
-		if (!startsWith(activeAirport.c_str(), runwayAirportName))
+		if (!VsmrRadarUiSupport::startsWith(activeAirport.c_str(), runwayAirportName))
 			continue;
 
 		const char* runwayNameA = rwy.GetRunwayName(0);

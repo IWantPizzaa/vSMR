@@ -16,8 +16,7 @@ bool CConfig::validateSerializedInputLimits(
 	string& error)
 {
 	error.clear();
-	return ValidateJsonTextLimits(serializedJson, &error) &&
-		ValidateJsonStreamingLimits(serializedJson, &error);
+	return ValidateJsonInputLimits(serializedJson, &error);
 }
 
 bool CConfig::validateAndMigrateProfilesDocument(
@@ -27,8 +26,22 @@ bool CConfig::validateAndMigrateProfilesDocument(
 {
 	error.clear();
 	migrated = false;
+	// Public DOM callers may not have passed through serialized input validation.
 	if (!ValidateJsonDocumentLimits(profilesDocument, &error))
 		return false;
+	return validateAndMigratePrevalidatedProfilesDocument(
+		profilesDocument,
+		error,
+		migrated);
+}
+
+bool CConfig::validateAndMigratePrevalidatedProfilesDocument(
+	rapidjson::Document& profilesDocument,
+	string& error,
+	bool& migrated)
+{
+	error.clear();
+	migrated = false;
 	if (!profilesDocument.IsArray())
 	{
 		error = "vSMR_Profiles.json must contain a JSON array.";
@@ -368,7 +381,7 @@ bool CConfig::replaceInMemoryConfig(
 		return false;
 	}
 	bool migrated = false;
-	if (!validateAndMigrateProfilesDocument(parsed, error, migrated))
+	if (!validateAndMigratePrevalidatedProfilesDocument(parsed, error, migrated))
 		return false;
 
 	map<string, rapidjson::SizeType> replacementProfiles;
@@ -439,20 +452,20 @@ bool CConfig::loadConfig() {
 	using_backup = false;
 	last_load_message.clear();
 
-	auto parseCandidate = [&](
+	auto parseSizeBoundedCandidate = [&](
 		const std::string& serializedJson,
 		Document& candidate,
 		map<string, rapidjson::SizeType>& candidateProfiles,
 		bool& migrated,
 		std::string& error) -> bool
 	{
-		if (!ParseValidatedArray(serializedJson, candidate, &error))
+		if (!ParseSizeBoundedArray(serializedJson, candidate, &error))
 		{
 			if (error.empty())
 				error = "The profiles file is not a valid JSON array.";
 			return false;
 		}
-		if (!validateAndMigrateProfilesDocument(candidate, error, migrated))
+		if (!validateAndMigratePrevalidatedProfilesDocument(candidate, error, migrated))
 			return false;
 		for (SizeType index = 0; index < candidate.Size(); ++index)
 		{
@@ -471,7 +484,7 @@ bool CConfig::loadConfig() {
 	map<string, rapidjson::SizeType> mainProfiles;
 	bool mainMigrated = false;
 	const bool mainRead = ReadFileContents(config_path, mainJson, &mainReadError);
-	const bool mainValid = mainRead && parseCandidate(
+	const bool mainValid = mainRead && parseSizeBoundedCandidate(
 		mainJson,
 		mainCandidate,
 		mainProfiles,
@@ -525,7 +538,7 @@ bool CConfig::loadConfig() {
 	map<string, rapidjson::SizeType> backupProfiles;
 	bool backupMigrated = false;
 	if (ReadFileContents(config_path + kBackupSuffix, backupJson) &&
-		parseCandidate(
+		parseSizeBoundedCandidate(
 			backupJson,
 			backupCandidate,
 			backupProfiles,
@@ -568,7 +581,7 @@ bool CConfig::loadMap()
 
 	Document validationDocument;
 	std::map<int, std::vector<mapData>> loadedMaps;
-	if (!ParseValidatedArray(serializedJson, validationDocument) ||
+	if (!ParseSizeBoundedArray(serializedJson, validationDocument) ||
 		!BuildMapIndex(validationDocument, loadedMaps))
 	{
 		ReportLoadFailure("maps");
@@ -657,7 +670,7 @@ const Value* CConfig::findSidDefinition(const string& sid, const string& airport
 			std::transform(currentSid.begin(), currentSid.end(), currentSid.begin(), [](unsigned char c) {
 				return static_cast<char>(std::toupper(c));
 			});
-			if (startsWith(sid.c_str(), currentSid.c_str()))
+			if (VsmrRadarUiSupport::startsWith(sid.c_str(), currentSid.c_str()))
 				return &sidDefinition;
 		}
 	}
@@ -748,7 +761,8 @@ bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
 		if (!runway.IsObject() || !runway.HasMember("runway_name") || !runway["runway_name"].IsString())
 			continue;
 		const char* runwayName = runway["runway_name"].GetString();
-		if (startsWith(name1.c_str(), runwayName) || startsWith(name2.c_str(), runwayName))
+		if (VsmrRadarUiSupport::startsWith(name1.c_str(), runwayName) ||
+			VsmrRadarUiSupport::startsWith(name2.c_str(), runwayName))
 			return true;
 	}
 	return false;
@@ -812,11 +826,11 @@ bool CConfig::isBackupAvailable() const
 	if (!ReadFileContents(config_path + kBackupSuffix, backupJson))
 		return false;
 	Document candidate;
-	if (!ParseValidatedArray(backupJson, candidate))
+	if (!ParseSizeBoundedArray(backupJson, candidate))
 		return false;
 	std::string error;
 	bool migrated = false;
-	return validateAndMigrateProfilesDocument(candidate, error, migrated);
+	return validateAndMigratePrevalidatedProfilesDocument(candidate, error, migrated);
 }
 
 std::int64_t CConfig::getBackupModifiedUnixSeconds() const
@@ -854,8 +868,8 @@ bool CConfig::restoreBackup(string& error)
 
 	Document candidate;
 	bool migrated = false;
-	if (!ParseValidatedArray(backupJson, candidate, &error) ||
-		!validateAndMigrateProfilesDocument(candidate, error, migrated))
+	if (!ParseSizeBoundedArray(backupJson, candidate, &error) ||
+		!validateAndMigratePrevalidatedProfilesDocument(candidate, error, migrated))
 	{
 		if (error.empty())
 			error = "The profiles backup contains invalid JSON.";
@@ -1029,7 +1043,7 @@ bool CConfig::saveConfig(
 	bool migrated = false;
 	std::string validationError;
 	if (!ParseValidatedArray(candidateJson, validated, &validationError) ||
-		!validateAndMigrateProfilesDocument(validated, validationError, migrated))
+		!validateAndMigratePrevalidatedProfilesDocument(validated, validationError, migrated))
 	{
 		if (error != nullptr)
 			*error = validationError.empty()
@@ -1062,8 +1076,8 @@ bool CConfig::saveConfig(
 	{
 		bool latestMigrated = false;
 		std::string latestError;
-		if (!ParseValidatedArray(currentJson, latestDocument, &latestError) ||
-			!validateAndMigrateProfilesDocument(latestDocument, latestError, latestMigrated))
+		if (!ParseSizeBoundedArray(currentJson, latestDocument, &latestError) ||
+			!validateAndMigratePrevalidatedProfilesDocument(latestDocument, latestError, latestMigrated))
 		{
 			// An explicitly confirmed recovery save may replace a damaged primary
 			// file while ordinary saves still fail closed on external corruption
@@ -1123,14 +1137,14 @@ bool CConfig::transactAvisoPresetStore(
 	std::string latestJson;
 	Document latestDocument;
 	if (!ReadFileContents(config_path, latestJson) ||
-		!ParseValidatedArray(latestJson, latestDocument))
+		!ParseSizeBoundedArray(latestJson, latestDocument))
 	{
 		return false;
 	}
 	const std::string previousRevision = ContentRevision(latestJson);
 	bool schemaMigrated = false;
 	std::string validationError;
-	if (!validateAndMigrateProfilesDocument(
+	if (!validateAndMigratePrevalidatedProfilesDocument(
 		latestDocument,
 		validationError,
 		schemaMigrated))
@@ -1204,14 +1218,14 @@ bool CConfig::assignUnscopedAvisoPresetsToAirport(
 	std::string latestJson;
 	Document latestDocument;
 	if (!ReadFileContents(config_path, latestJson) ||
-		!ParseValidatedArray(latestJson, latestDocument))
+		!ParseSizeBoundedArray(latestJson, latestDocument))
 	{
 		error = "The current profiles file is unavailable or invalid.";
 		return false;
 	}
 	const std::string previousRevision = ContentRevision(latestJson);
 	bool schemaMigrated = false;
-	if (!validateAndMigrateProfilesDocument(
+	if (!validateAndMigratePrevalidatedProfilesDocument(
 		latestDocument,
 		error,
 		schemaMigrated))

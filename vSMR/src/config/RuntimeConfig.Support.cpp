@@ -52,23 +52,6 @@ namespace VsmrRuntimeConfigInternal
 		return object[key].GetString();
 	}
 
-	void SetStringMember(rapidjson::Value& object, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
-	{
-		if (!object.IsObject() || key == nullptr)
-			return;
-
-		rapidjson::Value stringValue;
-		stringValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
-		if (object.HasMember(key))
-			object[key] = stringValue;
-		else
-		{
-			rapidjson::Value keyValue;
-			keyValue.SetString(key, allocator);
-			object.AddMember(keyValue, stringValue, allocator);
-		}
-	}
-
 	rapidjson::Value& EnsureObjectMember(rapidjson::Value& object, const char* key, rapidjson::Document::AllocatorType& allocator)
 	{
 		if (!object.IsObject())
@@ -164,57 +147,6 @@ namespace VsmrRuntimeConfigInternal
 		return std::clamp(colorValue[key].GetInt(), 0, 255);
 	}
 
-	bool ValidateJsonTextLimits(const std::string& contents, std::string* error)
-	{
-		auto fail = [&](const char* message)
-		{
-			if (error != nullptr)
-				*error = message;
-			return false;
-		};
-		if (contents.size() > kMaximumConfigFileBytes)
-			return fail("The JSON file exceeds the 16 MB configuration limit.");
-
-		size_t depth = 0;
-		size_t stringBytes = 0;
-		bool inString = false;
-		bool escaped = false;
-		for (const char character : contents)
-		{
-			if (inString)
-			{
-				if (escaped)
-					escaped = false;
-				else if (character == '\\')
-					escaped = true;
-				else if (character == '"')
-				{
-					inString = false;
-					continue;
-				}
-				if (++stringBytes > kMaximumConfigStringBytes)
-					return fail("The JSON file contains a string longer than 64 KB.");
-				continue;
-			}
-
-			if (character == '"')
-			{
-				inString = true;
-				stringBytes = 0;
-			}
-			else if (character == '{' || character == '[')
-			{
-				if (++depth > kMaximumConfigJsonDepth)
-					return fail("The JSON file exceeds the maximum nesting depth of 64.");
-			}
-			else if ((character == '}' || character == ']') && depth > 0)
-			{
-				--depth;
-			}
-		}
-		return true;
-	}
-
 	bool ValidateJsonValueLimits(
 		const rapidjson::Value& value,
 		size_t depth,
@@ -265,7 +197,7 @@ namespace VsmrRuntimeConfigInternal
 		return ValidateJsonValueLimits(value, 0, valueCount, error);
 	}
 
-	bool ValidateJsonStreamingLimits(
+	static bool ValidateJsonStructureLimits(
 		const std::string& contents,
 		std::string* error)
 	{
@@ -280,6 +212,27 @@ namespace VsmrRuntimeConfigInternal
 		if (error != nullptr)
 			*error = validationError;
 		return false;
+	}
+
+	static bool ValidateJsonInputSize(
+		std::uint64_t byteCount,
+		std::string* error)
+	{
+		if (byteCount <= kMaximumConfigFileBytes)
+			return true;
+		if (error != nullptr)
+			*error = "The JSON file exceeds the 16 MB configuration limit.";
+		return false;
+	}
+
+	bool ValidateJsonInputLimits(
+		const std::string& contents,
+		std::string* error)
+	{
+		if (!ValidateJsonInputSize(contents.size(), error))
+			return false;
+
+		return ValidateJsonStructureLimits(contents, error);
 	}
 
 	bool ReadFileContents(
@@ -306,12 +259,8 @@ namespace VsmrRuntimeConfigInternal
 				*error = "The file size could not be determined.";
 			return false;
 		}
-		if (static_cast<unsigned long long>(length) > kMaximumConfigFileBytes)
-		{
-			if (error != nullptr)
-				*error = "The file exceeds the 16 MB configuration limit.";
+		if (!ValidateJsonInputSize(static_cast<std::uint64_t>(length), error))
 			return false;
-		}
 		input.seekg(0, std::ios::beg);
 		if (!input.good())
 		{
@@ -339,11 +288,6 @@ namespace VsmrRuntimeConfigInternal
 				*error = "The file changed while loading.";
 			return false;
 		}
-		if (!ValidateJsonTextLimits(contents, error))
-		{
-			contents.clear();
-			return false;
-		}
 		return true;
 	}
 
@@ -362,14 +306,12 @@ namespace VsmrRuntimeConfigInternal
 		static_cast<rapidjson::Value&>(destination) = static_cast<rapidjson::Value&>(source);
 	}
 
-	bool ParseValidatedArray(
+	static bool ParseArrayAfterInputSizeValidation(
 		const std::string& serializedJson,
 		rapidjson::Document& validationDocument,
 		std::string* error)
 	{
-		if (!ValidateJsonTextLimits(serializedJson, error))
-			return false;
-		if (!ValidateJsonStreamingLimits(serializedJson, error))
+		if (!ValidateJsonStructureLimits(serializedJson, error))
 			return false;
 		validationDocument.Parse<0>(serializedJson.c_str());
 		if (validationDocument.HasParseError() || !validationDocument.IsArray())
@@ -378,7 +320,35 @@ namespace VsmrRuntimeConfigInternal
 				*error = "The JSON document must be a valid array.";
 			return false;
 		}
-		return ValidateJsonDocumentLimits(validationDocument, error);
+		// Resource limits were enforced by the streaming pass before this DOM was
+		// allocated; profile callers perform only schema and migration checks next.
+		return true;
+	}
+
+	bool ParseValidatedArray(
+		const std::string& serializedJson,
+		rapidjson::Document& validationDocument,
+		std::string* error)
+	{
+		if (!ValidateJsonInputSize(serializedJson.size(), error))
+			return false;
+		return ParseArrayAfterInputSizeValidation(
+			serializedJson,
+			validationDocument,
+			error);
+	}
+
+	bool ParseSizeBoundedArray(
+		const std::string& serializedJson,
+		rapidjson::Document& validationDocument,
+		std::string* error)
+	{
+		// ReadFileContents already rejected oversized or concurrently growing files.
+		// Keep that byte-boundary check single while retaining the structural pass.
+		return ParseArrayAfterInputSizeValidation(
+			serializedJson,
+			validationDocument,
+			error);
 	}
 
 	std::string ContentRevision(const std::string& contents)
@@ -636,24 +606,6 @@ namespace VsmrRuntimeConfigInternal
 		return nullptr;
 	}
 
-	bool CloneJsonValue(
-		const rapidjson::Value& source,
-		rapidjson::Document::AllocatorType& allocator,
-		rapidjson::Value& destination)
-	{
-		rapidjson::StringBuffer buffer;
-		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		source.Accept(writer);
-
-		rapidjson::Document clone(&allocator);
-		clone.Parse<0>(buffer.GetString());
-		if (clone.HasParseError())
-			return false;
-
-		destination = static_cast<rapidjson::Value&>(clone);
-		return true;
-	}
-
 	rapidjson::Value& EnsureArrayMember(
 		rapidjson::Value& object,
 		const char* key,
@@ -827,8 +779,7 @@ namespace VsmrRuntimeConfigInternal
 				if (existingIndex == static_cast<rapidjson::SizeType>(-1))
 				{
 					rapidjson::Value clonedPreset;
-					if (!CloneJsonValue(sourcePreset, allocator, clonedPreset))
-						return false;
+					CloneJsonValue(sourcePreset, clonedPreset, allocator);
 					destinationItems.PushBack(clonedPreset, allocator);
 				}
 				else if (JsonValuesEqual(destinationItems[existingIndex], sourcePreset))
@@ -842,8 +793,7 @@ namespace VsmrRuntimeConfigInternal
 						sourceName,
 						sourceProfile);
 					rapidjson::Value clonedPreset;
-					if (!CloneJsonValue(sourcePreset, allocator, clonedPreset))
-						return false;
+					CloneJsonValue(sourcePreset, clonedPreset, allocator);
 					SetStringMember(clonedPreset, "name", destinationName, allocator);
 					destinationItems.PushBack(clonedPreset, allocator);
 				}
@@ -1024,8 +974,7 @@ namespace VsmrRuntimeConfigInternal
 		}
 
 		rapidjson::Value clonedRoot;
-		if (!CloneJsonValue(authoritativeProfile[kAvisoPresetsKey], allocator, clonedRoot))
-			return false;
+		CloneJsonValue(authoritativeProfile[kAvisoPresetsKey], clonedRoot, allocator);
 
 		if (destinationProfile.HasMember(kAvisoPresetsKey))
 			destinationProfile[kAvisoPresetsKey] = clonedRoot;
@@ -1282,7 +1231,7 @@ namespace VsmrRuntimeConfigInternal
 		rapidjson::Document persistedValidationDocument;
 		if (!ReadFileContents(temporaryPath, persistedJson) ||
 			persistedJson != serializedJson ||
-			!ParseValidatedArray(persistedJson, persistedValidationDocument))
+			!ParseSizeBoundedArray(persistedJson, persistedValidationDocument))
 		{
 			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
 			return false;

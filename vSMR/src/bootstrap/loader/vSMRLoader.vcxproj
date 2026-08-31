@@ -115,6 +115,7 @@
     <ClCompile Include="BootstrapLoader.cpp" />
     <ClCompile Include="..\..\updater\UpdaterCore.cpp" />
     <ClCompile Include="..\..\updater\UpdaterTransport.cpp" />
+    <ClCompile Include="..\..\updater\UpdaterUrlPolicy.cpp" />
     <ClCompile Include="..\..\updater\UpdaterVerification.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -123,6 +124,7 @@
     <ClInclude Include="RuntimeReleaseState.hpp" />
     <ClInclude Include="..\..\updater\UpdaterCore.hpp" />
     <ClInclude Include="..\..\updater\UpdaterTransport.hpp" />
+    <ClInclude Include="..\..\updater\UpdaterUrlPolicy.hpp" />
     <ClInclude Include="..\..\updater\UpdaterVerification.hpp" />
   </ItemGroup>
   <ItemGroup>

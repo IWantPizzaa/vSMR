@@ -2,9 +2,12 @@
 #include "control_center/ControlCenterMessageProtocol.hpp"
 
 #include "shared/TextUtils.hpp"
+#include "shared/RapidJsonUtils.hpp"
 
 namespace
 {
+	using VsmrRapidJson::AddString;
+
 	std::string ReadString(const rapidjson::Value& object, const char* key)
 	{
 		if (!object.IsObject() || key == nullptr || !object.HasMember(key) ||
@@ -15,21 +18,6 @@ namespace
 		return object[key].GetString();
 	}
 
-	void AddString(
-		rapidjson::Value& object,
-		const char* key,
-		const std::string& value,
-		rapidjson::Document::AllocatorType& allocator)
-	{
-		rapidjson::Value keyValue;
-		keyValue.SetString(key, allocator);
-		rapidjson::Value stringValue;
-		stringValue.SetString(
-			value.c_str(),
-			static_cast<rapidjson::SizeType>(value.size()),
-			allocator);
-		object.AddMember(keyValue, stringValue, allocator);
-	}
 }
 
 VsmrBridgeAction VsmrControlCenterProtocol::ActionFromType(

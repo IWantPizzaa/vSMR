@@ -53,14 +53,17 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
-      <AdditionalDependencies>gdiplus.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>gdiplus.lib;msimg32.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AvisoRasterPipelineTests.cpp" />
     <ClCompile Include="RegressionTests.cpp" />
     <ClCompile Include="SharedRenderingTests.cpp" />
+    <ClCompile Include="TagColorRuleTests.cpp" />
+    <ClCompile Include="UpdaterUrlPolicyTests.cpp" />
     <ClCompile Include="..\src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="..\src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.Support.cpp" />
@@ -70,13 +73,19 @@
     <ClCompile Include="..\src\radar\RadarGeometry.cpp" />
     <ClCompile Include="..\src\rendering\TagRenderer.cpp" />
     <ClCompile Include="..\src\rendering\TargetSymbolRenderer.cpp" />
+    <ClCompile Include="..\src\tags\TagColorRuleParser.cpp" />
+    <ClCompile Include="..\src\tags\TagColorRules.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterUrlPolicy.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AvisoRasterPipelineTests.hpp" />
     <ClInclude Include="SharedRenderingTests.hpp" />
+    <ClInclude Include="TagColorRuleTests.hpp" />
+    <ClInclude Include="UpdaterUrlPolicyTests.hpp" />
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="..\src\aviso\AvisoDocumentModel.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.Internal.hpp" />
@@ -86,12 +95,17 @@
     <ClInclude Include="..\src\radar\RadarGeometry.hpp" />
     <ClInclude Include="..\src\rendering\TagRenderer.hpp" />
     <ClInclude Include="..\src\rendering\TargetSymbolRenderer.hpp" />
+    <ClInclude Include="..\src\shared\RapidJsonUtils.hpp" />
     <ClInclude Include="..\src\bootstrap\loader\RuntimeReleaseState.hpp" />
     <ClInclude Include="..\src\safety\RimcasLogic.hpp" />
     <ClInclude Include="..\src\scene\TargetRoleLogic.hpp" />
     <ClInclude Include="..\src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="..\src\shared\RapidJsonStringViewStream.hpp" />
+    <ClInclude Include="..\src\tags\TagColorRules.hpp" />
+    <ClInclude Include="..\src\tags\TagColorRules.Internal.hpp" />
+    <ClInclude Include="..\src\tags\TagDataTypes.hpp" />
     <ClInclude Include="..\src\tags\TagDefinitionUtils.hpp" />
+    <ClInclude Include="..\src\updater\UpdaterUrlPolicy.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

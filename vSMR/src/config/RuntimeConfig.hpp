@@ -172,6 +172,10 @@ public:
 		string& error);
 
 protected:
+	static bool validateAndMigratePrevalidatedProfilesDocument(
+		rapidjson::Document& profilesDocument,
+		string& error,
+		bool& migrated);
 	string config_path;
 	string map_path;
 	rapidjson::SizeType active_profile = 0;

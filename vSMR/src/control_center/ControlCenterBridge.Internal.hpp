@@ -1,5 +1,7 @@
 #pragma once
 
+#include "shared/RapidJsonUtils.hpp"
+
 #include "rapidjson/document.h"
 
 #include <cstddef>
@@ -24,11 +26,11 @@ namespace VsmrControlCenterBridgeInternal
 	std::string ReadString(const rapidjson::Value& object, const char* key);
 	bool ReadBool(const rapidjson::Value& object, const char* key, bool fallback);
 	int ReadInt(const rapidjson::Value& object, const char* key, int fallback);
-	void AddString(rapidjson::Value& object, const char* key, const std::string& value, Allocator& allocator);
+	using VsmrRapidJson::AddString;
 	void AddInt64(rapidjson::Value& object, const char* key, std::int64_t value, Allocator& allocator);
-	void SetStringMember(rapidjson::Value& object, const char* key, const std::string& value, Allocator& allocator);
-	void SetBoolMember(rapidjson::Value& object, const char* key, bool value, Allocator& allocator);
-	void CloneJsonValue(const rapidjson::Value& source, rapidjson::Value& destination, Allocator& allocator);
+	using VsmrRapidJson::SetStringMember;
+	using VsmrRapidJson::SetBoolMember;
+	using VsmrRapidJson::CloneJsonValue;
 	rapidjson::Value& EnsureObjectMember(rapidjson::Value& object, const char* key, Allocator& allocator);
 	void CopyOrReplaceMember(rapidjson::Value& destination, const char* key, const rapidjson::Value& source, Allocator& allocator);
 	std::string SerializeCompact(const rapidjson::Value& value);

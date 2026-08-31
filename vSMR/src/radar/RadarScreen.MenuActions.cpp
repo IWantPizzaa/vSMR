@@ -259,7 +259,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 	if (FunctionId > RIMCAS_UPDATEFILTER && FunctionId <= RIMCAS_UPDATEFILTER3) {
 		int id = FunctionId - RIMCAS_UPDATEFILTER;
 		const char* filterValue = itemString;
-		if (startsWith("UNL", filterValue))
+		if (VsmrRadarUiSupport::startsWith("UNL", filterValue))
 			filterValue = "66000";
 		CInsetWindow* appWindow = getAppWindowById(id);
 		if (appWindow != nullptr && appWindow->IsSecondaryRadar())

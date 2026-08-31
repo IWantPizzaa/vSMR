@@ -1,397 +1,100 @@
-/* Unified master-list language ------------------------------------------- */
-.unified-master-list,
-.unified-master-list.selection-list,
-.unified-master-list.aviso-group-list,
-.aviso-style-list-panel .unified-master-list.aviso-style-tree {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 4px 5px 6px;
-  border: 0;
-  border-radius: 0;
-  background: var(--ui-list-shell-bg, #20282b);
-  box-shadow: none;
+/* Responsive adaptations only; base component rules live with their owners. */
+
+@media (max-width: 790px) {
+  .control-window { min-width: 0; width: calc(100vw - 10px); height: calc(100vh - 10px); }
+  .split-master { grid-template-columns: 190px minmax(0, 1fr); }
+  .manager-layout { grid-template-columns: 135px 135px minmax(0, 1fr); }
+  .aviso-layout { grid-template-columns: minmax(320px, 1fr) minmax(270px, .8fr); }
+  .output-table { grid-template-columns: 72px minmax(0, 1fr); }
+  .three-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .span-2 { grid-column: span 1; }
 }
 
-.manager-menu-box,
-.aviso-style-list-panel .aviso-style-box {
-  overflow: hidden;
-  border: 1px solid var(--ui-outer-border, #050708);
-  border-radius: var(--ui-panel-radius, 5px);
-  background: var(--ui-list-bg, #29393b);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .025);
+@media (max-width: 750px) {
+  .control-window { width: calc(100vw - 8px); height: calc(100vh - 8px); min-width: 0; }
+  .split-master { grid-template-columns: 185px minmax(0, 1fr); }
+  .color-layout { grid-template-columns: 210px minmax(0, 1fr); }
+  .profile-subtabs button { padding-left: 4px; padding-right: 4px; }
 }
 
-.manager-menu-row,
-.selection-row.manager-menu-row,
-.aviso-group-row.manager-menu-row {
-  min-height: 26px;
-  padding: 3px 6px;
-  border-bottom: 1px solid var(--ui-inner-border, #263438);
-  background: var(--ui-list-bg, #29393b);
+@media (max-width: 720px) {
+  .runtime-menu { left: 8px; }
+  .runtime-menu.runtime-icon-rail { left: 8px; }
+  .aviso-member-toolbar { grid-template-columns: 1fr; }
+  .aviso-group-counts { grid-template-columns: repeat(2, 1fr); }
+  .tag-global-options-body { grid-template-columns: 1fr; }
+  .tag-options-block + .tag-options-block {
+    margin-top: 6px;
+    padding-top: 6px;
+    padding-left: 0;
+    border-top: 1px solid #3c4a4e;
+    border-left: 0;
+  }
 }
 
-.manager-menu-row {
-  grid-template-columns: minmax(0, 1fr) 14px;
-  gap: 4px;
-}
+@media (max-width: 700px) {
+  :root {
+    --profile-master-width: 204px;
+    --aviso-master-width: 226px;
+    --ui-master-width: 204px;
+  }
 
-.manager-menu-row.simple-manager-row {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.manager-menu-row:last-child,
-.aviso-group-row.manager-menu-row:last-child { border-bottom: 0; }
-
-.manager-menu-row:hover,
-.aviso-group-row.manager-menu-row:hover { background: var(--ui-list-hover, #334448); }
-
-.manager-menu-row.active,
-.aviso-group-row.manager-menu-row.active {
-  background: var(--ui-accent, var(--accent));
-  color: var(--ui-accent-text, var(--accent-text));
-}
-
-.manager-menu-row .menu-row-title,
-.simple-manager-row .aviso-group-row-copy {
-  text-align: center;
-  font: 600 10px/1.1 var(--mono);
-}
-
-.simple-manager-row .aviso-group-row-copy strong {
-  font: inherit;
-}
-
-.aviso-style-list-panel .aviso-style-section {
-  margin: 0 0 7px;
-}
-
-.aviso-style-list-panel .aviso-style-section:last-child { margin-bottom: 0; }
-
-.aviso-style-list-panel .aviso-style-section-title {
-  height: 20px;
-  min-height: 20px;
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  gap: 3px;
-  align-items: center;
-  padding: 0 2px;
-  color: #d4dde0;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.aviso-style-list-panel .aviso-style-section-title::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  justify-self: center;
-  background: var(--ui-accent, var(--accent));
-}
-
-.aviso-style-list-panel .aviso-style-section-title::after { display: none; }
-.aviso-style-list-panel .aviso-style-section-title span { order: initial; }
-.aviso-style-list-panel .aviso-style-section-title small {
-  order: initial;
-  margin: 0;
-  color: #91a1a5;
-  font: 9px/1 var(--mono);
-}
-
-.aviso-style-list-panel .aviso-style-row.menu-tree-row {
-  min-height: 28px;
-  padding: 3px 5px;
-  border-bottom: 1px solid var(--ui-inner-border, #263438);
-  background: var(--ui-list-bg, #29393b);
-}
-
-.aviso-style-list-panel .aviso-style-row.menu-tree-row:last-child { border-bottom: 0; }
-.aviso-style-list-panel .aviso-style-row.menu-tree-row:hover { background: var(--ui-list-hover, #334448); }
-.aviso-style-list-panel .aviso-style-row.menu-tree-row.active {
-  background: var(--ui-accent, var(--accent));
-  color: var(--ui-accent-text, var(--accent-text));
-}
-
-.aviso-style-list-panel .aviso-style-copy strong {
-  text-align: center;
-  font: 600 10px/1.1 var(--mono);
-}
-
-/* Scrollbars stay functional but are replaced visually by directional edge
-   fades. JavaScript only toggles the two directional state classes. */
-.scroll-cue-shell {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--ui-list-shell-bg, #20282b);
-}
-
-.scroll-cue-shell > .scroll-cued-list {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.scroll-cue-shell > .scroll-cued-list::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-}
-
-.scroll-edge-cue {
-  position: absolute;
-  z-index: 8;
-  left: 0;
-  right: 0;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 90ms linear;
-}
-
-.scroll-edge-cue span {
-  color: #b8d7e5;
-  font: 7px/1 var(--mono);
-  filter: drop-shadow(0 1px 1px #071013);
-}
-
-.scroll-edge-cue-top {
-  top: 0;
-  align-items: start;
-  padding-top: 2px;
-  background: linear-gradient(to bottom, var(--ui-list-shell-bg, #20282b) 12%, rgba(32, 40, 43, .82) 48%, transparent 100%);
-}
-
-.scroll-edge-cue-bottom {
-  bottom: 0;
-  align-items: end;
-  padding-bottom: 2px;
-  background: linear-gradient(to top, var(--ui-list-shell-bg, #20282b) 12%, rgba(32, 40, 43, .82) 48%, transparent 100%);
-}
-
-.scroll-cue-shell.can-scroll-up > .scroll-edge-cue-top,
-.scroll-cue-shell.can-scroll-down > .scroll-edge-cue-bottom { opacity: 1; }
-
-/* The Groups master no longer has a search row. */
-.aviso-group-list-panel {
-  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr);
-}
-
-/* Compact Tag options: the two remaining behaviours stay separate from the
-   profile typography controls, including the numeric label-font size. */
-.tag-global-options-body {
-  grid-template-columns: minmax(145px, .55fr) minmax(0, 1.45fr);
-}
-
-.tag-font-grid {
-  grid-template-columns: minmax(0, 1.45fr) minmax(70px, .75fr) minmax(74px, .8fr);
-}
-
-/* Geometry and Text no longer reserve a row for search. Visibility belongs to
-   each style row, next to its color preview. */
-.aviso-style-list-panel {
-  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr);
-}
-
-.aviso-style-list-panel .aviso-style-section-title {
-  grid-template-columns: 10px minmax(0, 1fr);
-}
-
-.aviso-style-row.geometry-select-row,
-.aviso-text-style-panel .aviso-text-style-row {
-  grid-template-columns: 18px 16px minmax(0, 1fr);
-}
-
-.aviso-style-eye {
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
-  justify-self: center;
-  border-radius: 2px;
-  color: #a9bdc3;
-  cursor: pointer;
-}
-
-.aviso-style-eye:hover {
-  background: rgba(255, 255, 255, .11);
-  color: #f0f7f9;
-}
-
-.aviso-style-eye svg {
-  width: 15px;
-  height: 15px;
-  overflow: visible;
-}
-
-.aviso-style-eye path,
-.aviso-style-eye circle {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.aviso-style-eye.is-off { color: #65767b; }
-.aviso-style-eye.is-mixed { color: #d4b66d; }
-.aviso-style-row.active .aviso-style-eye { color: #f0f8fa; }
-
-.aviso-flat-style-editor > .aviso-color-editor-body:first-child {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
+  .color-tree-row { grid-template-columns: 14px minmax(0, 1fr) 45px; }
+  .color-tree-value { display: none; }
+  .color-tree-value code { font-size: 8px; }
+  .tag-layout { grid-template-columns: 204px minmax(0, 1fr); }
+  .rules-layout { grid-template-columns: 184px minmax(0, 1fr); }
+  .menu-tree-row { grid-template-columns: 17px minmax(0, 1fr) 43px; }
+  .aviso-geometry-layout { grid-template-columns: 238px minmax(0, 1fr); }
+  .aviso-text-layout { grid-template-columns: 226px minmax(0, 1fr); }
+  .aviso-text-master { grid-template-rows: 172px minmax(0, 1fr); }
+  .aviso-style-row.geometry-select-row { grid-template-columns: 12px 15px minmax(0, 1fr) 34px; }
+  .aviso-label-row { grid-template-columns: 12px 9px minmax(0, 1fr); }
+  .advanced-action-grid { grid-template-columns: 1fr; }
+  .inline-color-workbench { grid-template-columns: 70px minmax(0, 1fr); }
+  .color-preview-swatch { min-height: 70px; }
+  .icon-settings-grid { grid-template-columns: 1fr; }
+  .icon-symbol-layout { grid-template-columns: 104px minmax(0, 1fr); }
+  .icon-symbol-preview { min-height: 112px; }
+  .color-picker-workbench { grid-template-columns: minmax(0, 1fr) 76px; }
+  .color-picker-workbench .color-sv-palette,
+  .color-picker-workbench .color-preview-card { min-height: 98px; }
+  .settings-layout { grid-template-columns: minmax(0, 1.15fr) minmax(190px, .85fr); }
+  .aviso-text-zoom-grid { grid-template-columns: 62px minmax(0, 1fr); }
+  .mini-tools button.wide {
+    min-width: 50px;
+    padding-inline: 4px;
+    font-size: 7.5px;
+  }
+  .tag-options-block + .tag-options-block { border-top-color: var(--ui-separator); }
+  .aviso-text-actions { grid-template-columns: 78px minmax(0, 1fr) 78px; }
+  .aviso-text-actions > .ui-button { width: 78px; }
+  .window-shell { grid-template-columns: 40px minmax(0, 1fr); }
+  .group-member-toolbar { grid-template-columns: minmax(0, 1fr) 46px 84px; }
+  .aviso-toolbar .aviso-subtabs button {
+    width: 88px;
+    min-width: 88px;
+    max-width: 88px;
+    flex-basis: 88px;
+  }
+  .aviso-toolbar-palette { width: 145px; }
+  .settings-page .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: max-content max-content;
+    overflow-y: auto;
+  }
 }
 
 @container (max-width: 420px) {
   .tag-global-options-body { grid-template-columns: minmax(0, 1fr); }
-  .tag-font-grid { grid-template-columns: minmax(0, 1fr) minmax(70px, .7fr) minmax(74px, .75fr); }
-}
-
-/* Manager creation actions belong to the list rather than its title. */
-.master-panel.manager-list-panel,
-.aviso-group-list-panel {
-  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr) 34px;
-}
-
-.master-list-actions {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
-  align-items: center;
-  padding: 3px 4px;
-  border-top: 1px solid var(--ui-inner-border, #263438);
-  background: var(--ui-toolbar-bg, #222d30);
-}
-
-.master-list-actions button {
-  width: 100%;
-  min-width: 0;
-  height: 27px;
-  min-height: 27px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--ui-control-border, #111719);
-  border-radius: var(--ui-control-radius, 3px);
-  background: var(--ui-control-bg, #2d3a3d);
-  color: var(--ui-text, #c8d4d7);
-}
-
-.master-list-actions button:hover {
-  background: var(--ui-list-hover, #334448);
-  color: #f2f8fa;
-}
-
-.master-list-actions button.delete:hover {
-  border-color: #74494d;
-  background: #704247;
-  color: #fff;
-}
-
-.master-list-actions svg {
-  width: 17px;
-  height: 17px;
-  overflow: visible;
-}
-
-.master-list-actions svg path,
-.master-list-actions svg rect {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* Beta.4 navigation: palette selection belongs beside the AVISO color
-   editors, and Settings contains display, source, and updater preferences. */
-.aviso-toolbar {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.aviso-toolbar-palette {
-  width: 170px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.aviso-toolbar-palette button {
-  min-width: 0;
-  height: var(--ui-control-height);
-}
-
-.settings-page .settings-layout {
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	grid-template-rows: minmax(0, 1fr);
-	align-items: start;
-	align-content: stretch;
-}
-
-.settings-page .settings-primary-column,
-.settings-page .settings-data-column {
-	min-width: 0;
-	display: grid;
-	grid-auto-rows: max-content;
-	align-content: start;
-	gap: 3px;
-}
-
-.settings-page .updater-general-group {
-	align-self: stretch;
-}
-
-.settings-page .display-group {
-	grid-template-columns: minmax(0, 1fr);
-	align-items: end;
-	gap: 5px;
-}
-
-.settings-page .display-group > .field {
-	width: min(100%, 160px);
-}
-
-.settings-page .display-group > .check-field {
-	grid-column: 1;
-}
-
-.settings-page .updater-general-group {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px 8px;
-}
-
-.settings-page .updater-general-heading,
-.settings-page .updater-general-group .update-channel-field,
-.settings-page .updater-general-group > .check-field,
-.settings-page .update-notice,
-.settings-page .updater-general-actions {
-  grid-column: 1 / -1 !important;
-}
-
-.settings-page .updater-general-heading {
-  min-height: 16px;
-  padding: 0 2px;
-}
-
-.settings-page .updater-general-heading > span:last-child {
-  font-size: 9px;
-}
-
-.settings-page .updater-general-actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 700px) {
-  .aviso-toolbar-palette { width: 145px; }
-	.settings-page .settings-layout {
-		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: max-content max-content;
-		overflow-y: auto;
-	}
+  .tag-options-block + .tag-options-block {
+    margin-top: 7px;
+    padding-top: 7px;
+    padding-left: 0;
+    border-top: 1px solid var(--ui-separator);
+    border-left: 0;
+  }
+  .tag-font-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(70px, .7fr) minmax(74px, .75fr);
+  }
 }

@@ -17,6 +17,8 @@
 #include <sstream>
 #include <unordered_map>
 
+namespace TagColorRules = VsmrTagColorRules;
+
 namespace
 {
 	using namespace EuroScopePlugIn;
@@ -202,10 +204,10 @@ namespace
 			for (const std::string& rawToken : rawTokens)
 			{
 				DefinitionTokenStyleData styled = ParseDefinitionTokenStyle(rawToken);
-				VacdmColorRuleDefinition vacdmRule;
-				RunwayColorRuleDefinition runwayRule;
-				if (TryParseVacdmColorRuleToken(styled.token, vacdmRule) ||
-					TryParseRunwayColorRuleToken(styled.token, runwayRule))
+				TagColorRules::VacdmColorRuleDefinition vacdmRule;
+				TagColorRules::RunwayColorRuleDefinition runwayRule;
+				if (TagColorRules::TryParseVacdmColorRuleToken(styled.token, vacdmRule) ||
+					TagColorRules::TryParseRunwayColorRuleToken(styled.token, runwayRule))
 				{
 					continue;
 				}
@@ -929,8 +931,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		: emptyStructuredRules;
 	struct TagDefinitionColorRules
 	{
-		std::vector<VacdmColorRuleDefinition> vacdm;
-		std::vector<RunwayColorRuleDefinition> runway;
+		std::vector<TagColorRules::VacdmColorRuleDefinition> vacdm;
+		std::vector<TagColorRules::RunwayColorRuleDefinition> runway;
 	};
 	std::unordered_map<std::string, TagDefinitionColorRules> tagDefinitionColorRuleCache;
 	auto resolveTagDefinitionColorRules = [&](const std::string& type, const std::string& status, bool detailed) -> const TagDefinitionColorRules&
@@ -945,9 +947,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				const rapidjson::Value* definition = ResolveTagDefinition(*labels, type, status, detailed);
 				if (definition != nullptr)
 				{
-					const std::vector<std::string> lines = ConvertDefinitionValueToLineTexts(*definition);
-					CollectVacdmColorRulesFromLineTexts(lines, rules.vacdm);
-					CollectRunwayColorRulesFromLineTexts(lines, rules.runway);
+					const std::vector<std::string> lines = TagColorRules::ConvertDefinitionValueToLineTexts(*definition);
+					TagColorRules::CollectVacdmColorRulesFromLineTexts(lines, rules.vacdm);
+					TagColorRules::CollectRunwayColorRulesFromLineTexts(lines, rules.runway);
 				}
 			}
 			found = tagDefinitionColorRuleCache.emplace(key, std::move(rules)).first;
@@ -993,17 +995,19 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			readColor((*targetsConfig)["ground_icons"], key, resolved)) return resolved;
 		return fallback;
 	};
-	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> VacdmColorRuleOverrides
+	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> TagColorRules::VacdmColorRuleOverrides
 	{
 		const TagDefinitionColorRules& definitionRules = resolveTagDefinitionColorRules(
 			target.tag.definitionType,
 			target.tag.status,
 			detailed);
 		const VacdmPilotData* pilotData = target.hasVacdmData ? &target.vacdmData : nullptr;
-		VacdmColorRuleOverrides overrides = EvaluateVacdmColorRules(definitionRules.vacdm, pilotData);
-		MergeColorRuleOverrides(overrides, EvaluateRunwayColorRules(definitionRules.runway, target.tag.tokens));
+		TagColorRules::VacdmColorRuleOverrides overrides = TagColorRules::EvaluateVacdmColorRules(definitionRules.vacdm, pilotData);
+		TagColorRules::MergeColorRuleOverrides(
+			overrides,
+			TagColorRules::EvaluateRunwayColorRules(definitionRules.runway, target.tag.tokens));
 
-		VacdmColorRuleOverrides structuredOverrides = EvaluateStructuredTagColorRules(
+		TagColorRules::VacdmColorRuleOverrides structuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
 			structuredRules,
 			target.tag.definitionType,
 			target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
@@ -1012,16 +1016,16 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			pilotData);
 		if (detailed)
 		{
-			const VacdmColorRuleOverrides normalStructuredOverrides = EvaluateStructuredTagColorRules(
+			const TagColorRules::VacdmColorRuleOverrides normalStructuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
 				structuredRules,
 				target.tag.definitionType,
 				target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
 				false,
 				target.tag.tokens,
 				pilotData);
-			MergeMissingColorRuleOverrides(structuredOverrides, normalStructuredOverrides);
+			TagColorRules::MergeMissingColorRuleOverrides(structuredOverrides, normalStructuredOverrides);
 		}
-		MergeColorRuleOverrides(overrides, structuredOverrides);
+		TagColorRules::MergeColorRuleOverrides(overrides, structuredOverrides);
 		return overrides;
 	};
 	auto resolveBaseTagPalette = [&](const Target& target) -> TagPalette
@@ -1171,7 +1175,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		palette.text = CopyColor(text);
 		return palette;
 	};
-	auto applyTagColorRules = [](TagPalette& palette, const VacdmColorRuleOverrides& overrides)
+	auto applyTagColorRules = [](TagPalette& palette, const TagColorRules::VacdmColorRuleOverrides& overrides)
 	{
 		auto channel = [](int value) -> std::uint8_t
 		{
@@ -1257,8 +1261,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.tag.normal = BuildTagVariant(*labels, target, false);
 			target.tag.detailed = BuildTagVariant(*labels, target, true);
 		}
-		const VacdmColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
-		const VacdmColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
+		const TagColorRules::VacdmColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
+		const TagColorRules::VacdmColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
 		target.tag.normalPalette = resolveBaseTagPalette(target);
 		target.tag.detailedPalette = target.tag.normalPalette;
 		applyTagColorRules(target.tag.normalPalette, normalTagColorOverrides);

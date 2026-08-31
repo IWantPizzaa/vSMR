@@ -28,61 +28,7 @@ namespace
 	constexpr size_t kMaximumAvisoJsonValues = 2000000U;
 	constexpr size_t kMaximumAvisoContainerEntries = 1000000U;
 
-	bool ValidateSourceTextLimits(const std::string& sourceJson, std::string& errorText)
-	{
-		if (sourceJson.size() > kMaximumAvisoFileBytes)
-		{
-			errorText = "AVISO GeoJSON exceeds the 32 MB file limit.";
-			return false;
-		}
-
-		size_t depth = 0;
-		size_t stringBytes = 0;
-		bool inString = false;
-		bool escaped = false;
-		for (const char character : sourceJson)
-		{
-			if (inString)
-			{
-				if (escaped)
-					escaped = false;
-				else if (character == '\\')
-					escaped = true;
-				else if (character == '"')
-				{
-					inString = false;
-					continue;
-				}
-				if (++stringBytes > kMaximumAvisoStringBytes)
-				{
-					errorText = "AVISO GeoJSON contains a string longer than 64 KB.";
-					return false;
-				}
-				continue;
-			}
-
-			if (character == '"')
-			{
-				inString = true;
-				stringBytes = 0;
-			}
-			else if (character == '{' || character == '[')
-			{
-				if (++depth > kMaximumAvisoJsonDepth)
-				{
-					errorText = "AVISO GeoJSON exceeds the maximum nesting depth of 64.";
-					return false;
-				}
-			}
-			else if ((character == '}' || character == ']') && depth > 0)
-			{
-				--depth;
-			}
-		}
-		return true;
-	}
-
-	bool ValidateSourceStreamingLimits(
+	bool ValidateSourceStructureAndCounts(
 		const std::string& sourceJson,
 		std::string& errorText)
 	{
@@ -276,7 +222,7 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 			MarkIndexesDirty();
 			return false;
 		}
-		if (!ValidateLoadedFeatureCollection(errorText))
+		if (!ValidateFeatureCollectionSchema(Document, errorText))
 		{
 			Document.SetObject();
 			MarkIndexesDirty();
@@ -305,8 +251,12 @@ bool AvisoDocumentModel::ValidateSerializedInputLimits(
 	std::string& errorText)
 {
 	errorText.clear();
-	return ValidateSourceTextLimits(sourceJson, errorText) &&
-		ValidateSourceStreamingLimits(sourceJson, errorText);
+	if (sourceJson.size() > kMaximumAvisoFileBytes)
+	{
+		errorText = "AVISO GeoJSON exceeds the 32 MB file limit.";
+		return false;
+	}
+	return ValidateSourceStructureAndCounts(sourceJson, errorText);
 }
 
 bool AvisoDocumentModel::ReadBoundedSourceFile(
@@ -361,7 +311,9 @@ bool AvisoDocumentModel::ReadBoundedSourceFile(
 			errorText = "AVISO file changed while loading.";
 			return false;
 		}
-		if (!ValidateSerializedInputLimits(sourceJson, errorText))
+		// The stream length was already bounded before allocation. Run the shared
+		// structural and resource-count validation once on the loaded bytes.
+		if (!ValidateSourceStructureAndCounts(sourceJson, errorText))
 		{
 			sourceJson.clear();
 			return false;
@@ -422,25 +374,25 @@ void AvisoDocumentModel::CreateEmptyFeatureCollection()
 	EnsureRuntimeFeatureIds();
 }
 
-bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText) const
+bool AvisoDocumentModel::ValidateFeatureCollectionSchema(
+	const rapidjson::Value& document,
+	std::string& errorText)
 {
-	if (!ValidateDocumentResourceLimits(Document, errorText))
-		return false;
-	if (!Document.IsObject())
+	if (!document.IsObject())
 	{
 		errorText = "AVISO GeoJSON root must be an object.";
 		return false;
 	}
-	if (!Document.HasMember("type") ||
-		!Document["type"].IsString() ||
-		std::strcmp(Document["type"].GetString(), "FeatureCollection") != 0)
+	if (!document.HasMember("type") ||
+		!document["type"].IsString() ||
+		std::strcmp(document["type"].GetString(), "FeatureCollection") != 0)
 	{
 		errorText = "AVISO GeoJSON type must be FeatureCollection.";
 		return false;
 	}
-	if (Document.HasMember("metadata"))
+	if (document.HasMember("metadata"))
 	{
-		const rapidjson::Value& metadata = Document["metadata"];
+		const rapidjson::Value& metadata = document["metadata"];
 		if (!metadata.IsObject())
 		{
 			errorText = "AVISO metadata must be an object.";
@@ -488,12 +440,12 @@ bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText)
 			}
 		}
 	}
-	if (!Document.HasMember("features") || !Document["features"].IsArray())
+	if (!document.HasMember("features") || !document["features"].IsArray())
 	{
 		errorText = "AVISO GeoJSON must contain a features array.";
 		return false;
 	}
-	const rapidjson::Value& features = Document["features"];
+	const rapidjson::Value& features = document["features"];
 	std::string duplicateId;
 	if (HasDuplicatePersistedFeatureIds(features, duplicateId))
 	{
@@ -527,6 +479,14 @@ bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText)
 	return true;
 }
 
+bool AvisoDocumentModel::ValidateLoadedFeatureCollection(std::string& errorText) const
+{
+	// Editor mutations do not pass through the serialized streaming validator.
+	if (!ValidateDocumentResourceLimits(Document, errorText))
+		return false;
+	return ValidateFeatureCollectionSchema(Document, errorText);
+}
+
 bool AvisoDocumentModel::SaveAtomically(
 	const std::string& path,
 	std::string& errorText)
@@ -552,17 +512,17 @@ bool AvisoDocumentModel::SaveAtomically(
 	Document.Accept(writer);
 	std::string serializedJson(buffer.GetString(), buffer.Size());
 	PatchSerializedCoordinates(serializedJson);
-	if (!ValidateSourceTextLimits(serializedJson, errorText))
+	if (serializedJson.size() > kMaximumAvisoFileBytes)
+	{
+		errorText = "AVISO GeoJSON exceeds the 32 MB file limit.";
 		return false;
-	if (!ValidateSourceStreamingLimits(serializedJson, errorText))
+	}
+	if (!ValidateSourceStructureAndCounts(serializedJson, errorText))
 		return false;
 
 	rapidjson::Document validation;
 	if (validation.Parse<0>(serializedJson.c_str()).HasParseError() ||
-		!validation.IsObject() ||
-		!validation.HasMember("features") ||
-		!validation["features"].IsArray() ||
-		!ValidateLoadedFeatureCollection(errorText))
+		!ValidateFeatureCollectionSchema(validation, errorText))
 	{
 		if (errorText.empty())
 			errorText = "AVISO save validation failed before writing.";
@@ -945,35 +905,8 @@ AvisoValidationResult AvisoDocumentModel::ValidateAndRecalculate()
 		result.ok = false;
 		return result;
 	}
-	if (!Document.IsObject())
-	{
-		result.ok = false;
-		result.errorText = "AVISO document root must be an object.";
-		return result;
-	}
-	if (!Document.HasMember("features") || !Document["features"].IsArray())
-	{
-		result.ok = false;
-		result.errorText = "AVISO document must contain a features array.";
-		return result;
-	}
-
 	const int featureCount = FeatureCount();
 	const rapidjson::Value* features = GetFeatureArray();
-	if (features == nullptr)
-	{
-		result.ok = false;
-		result.errorText = "AVISO document must contain a features array.";
-		return result;
-	}
-
-	std::string duplicateId;
-	if (HasDuplicatePersistedFeatureIds(*features, duplicateId))
-	{
-		result.ok = false;
-		result.errorText = "AVISO document contains duplicate feature id '" + duplicateId + "'.";
-		return result;
-	}
 
 	std::map<std::string, int> styleFeatureCounts;
 	std::map<std::string, int> layerCounts;
