@@ -148,8 +148,8 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 			const auto configuredLength = TagLeaderLineLength.find(callsign);
 			if (configuredLength != TagLeaderLineLength.end())
 				leaderLength = configuredLength->second;
-			tagCenter.x = long(targetPoint.x + float(leaderLength * cos(DegToRad(TagAngles[callsign]))));
-			tagCenter.y = long(targetPoint.y + float(leaderLength * sin(DegToRad(TagAngles[callsign]))));
+			tagCenter.x = long(targetPoint.x + float(leaderLength * cos(VsmrRadarUiSupport::DegToRad(TagAngles[callsign]))));
+			tagCenter.y = long(targetPoint.y + float(leaderLength * sin(VsmrRadarUiSupport::DegToRad(TagAngles[callsign]))));
 		}
 
 		const auto previousSize = previousTagSize.find(callsign);
@@ -170,8 +170,9 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		if (!VsmrTagRendering::MeasureLayout(fonts, variant, layout))
 			continue;
 		VsmrTagRendering::Layout collisionLayout;
-		if (!VsmrTagRendering::MeasureLayout(fonts, sceneTarget.tag.normal, collisionLayout))
-			collisionLayout = layout;
+		const VsmrTagRendering::Layout* collisionLayoutToUse = &layout;
+		if (detailed && VsmrTagRendering::MeasureLayout(fonts, sceneTarget.tag.normal, collisionLayout))
+			collisionLayoutToUse = &collisionLayout;
 
 		const bool isDeparture = sceneTarget.role == VsmrScene::TargetRole::Departure;
 		const CRimcas::RimcasAlerts movementAlert =
@@ -225,7 +226,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		collisionOptions.highlighted = false;
 		tagAreas[callsign] = painted.bounds;
 		tagCollisionAreas[callsign] =
-			VsmrTagRendering::CalculateBounds(fonts, collisionLayout, collisionOptions);
+			VsmrTagRendering::CalculateBounds(fonts, *collisionLayoutToUse, collisionOptions);
 		const char* bottomLine = sceneTarget.bottomLine.c_str();
 		AddScreenObject(DRAWING_TAG, callsign.c_str(), painted.bounds, true, bottomLine);
 		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)

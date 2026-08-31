@@ -2,6 +2,7 @@
 #include "rendering/TagRenderer.hpp"
 
 #include <algorithm>
+#include <limits>
 
 namespace
 {
@@ -197,12 +198,65 @@ namespace VsmrTagRendering
 		return lineHeight_;
 	}
 
+	const std::wstring& FontContext::Utf16Text(const std::string& text) const
+	{
+		const auto existing = decodedText_.find(text);
+		if (existing != decodedText_.end())
+			return existing->second;
+
+		std::wstring wide;
+		if (!text.empty() && text.size() <= static_cast<size_t>((std::numeric_limits<int>::max)()))
+		{
+			const int sourceLength = static_cast<int>(text.size());
+			auto decode = [&](UINT codePage, DWORD flags) -> bool
+			{
+				const int requiredLength = MultiByteToWideChar(
+					codePage,
+					flags,
+					text.data(),
+					sourceLength,
+					nullptr,
+					0);
+				if (requiredLength <= 0)
+					return false;
+
+				wide.resize(static_cast<size_t>(requiredLength));
+				return MultiByteToWideChar(
+					codePage,
+					flags,
+					text.data(),
+					sourceLength,
+					wide.data(),
+					requiredLength) == requiredLength;
+			};
+
+			// Scene text is UTF-8, while EuroScope callbacks may still expose text in
+			// the active Windows code page. Preserve those legacy annotations when
+			// the input is not valid UTF-8.
+			if (!decode(CP_UTF8, MB_ERR_INVALID_CHARS))
+			{
+				wide.clear();
+				decode(CP_ACP, 0);
+			}
+		}
+
+		return decodedText_.emplace(text, std::move(wide)).first->second;
+	}
+
 	Gdiplus::Size FontContext::Measure(const std::string& text, bool bold) const
 	{
 		if (!IsValid() || text.empty())
 			return Gdiplus::Size();
 
-		const std::wstring wide(text.begin(), text.end());
+		auto& measurements = bold ? boldMeasurements_ : regularMeasurements_;
+		const auto existing = measurements.find(text);
+		if (existing != measurements.end())
+			return existing->second;
+
+		const std::wstring& wide = Utf16Text(text);
+		if (wide.empty())
+			return Gdiplus::Size();
+
 		Gdiplus::RectF measured;
 		Gdiplus::Font* font = bold ? BoldFont() : RegularFont();
 		graphics_->MeasureString(
@@ -212,9 +266,11 @@ namespace VsmrTagRendering
 			Gdiplus::PointF(0.0f, 0.0f),
 			&format_,
 			&measured);
-		return Gdiplus::Size(
+		const Gdiplus::Size size(
 			static_cast<INT>(measured.GetRight()),
 			static_cast<INT>(measured.GetBottom()));
+		measurements.emplace(text, size);
+		return size;
 	}
 
 	bool MeasureLayout(
@@ -361,7 +417,7 @@ namespace VsmrTagRendering
 				? textLeft + (std::max)(0, textWidth - topBandSize.Width) / 2
 				: textLeft;
 			const int bandY = textTop + (std::max)(0, topBandHeight - topBandSize.Height + 1) / 2;
-			const std::wstring bandText(options.topBand->text.begin(), options.topBand->text.end());
+			const std::wstring& bandText = fonts.Utf16Text(options.topBand->text);
 			Gdiplus::SolidBrush bandTextBrush(options.topBand->textColor);
 			graphics.DrawString(
 				bandText.c_str(),
@@ -397,7 +453,7 @@ namespace VsmrTagRendering
 				if (!element.text.empty())
 				{
 					const int y = textTop + (std::max)(0, fonts.LineHeight() - element.height + 1) / 2;
-					const std::wstring text(element.text.begin(), element.text.end());
+					const std::wstring& text = fonts.Utf16Text(element.text);
 					Gdiplus::SolidBrush textBrush(ToGdiColor(element.color));
 					graphics.DrawString(
 						text.c_str(),
@@ -452,7 +508,7 @@ namespace VsmrTagRendering
 
 		Gdiplus::StringFormat format;
 		format.SetAlignment(Gdiplus::StringAlignmentCenter);
-		const std::wstring text(band.text.begin(), band.text.end());
+		const std::wstring& text = fonts.Utf16Text(band.text);
 		Gdiplus::SolidBrush textBrush(band.textColor);
 		graphics.DrawString(
 			text.c_str(),

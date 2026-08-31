@@ -1,0 +1,372 @@
+/* Reusable fields, buttons, toolbars, and action controls. */
+
+.ui-button:active { transform: translateY(1px); }
+
+.mini-tools button:active { transform: translateY(1px); }
+
+.title-tool:active { transform: translateY(1px); }
+
+.panel-title .mini-tools { margin-left: auto; }
+
+.title-tool {
+  width: 20px;
+  margin-left: auto;
+  border-color: #050708;
+  min-width: var(--ui-compact-height);
+  padding: 0 5px;
+  height: var(--ui-compact-height);
+  min-height: var(--ui-compact-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.mini-tools {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.field.full { grid-column: 1 / -1; }
+
+.range-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.range-control output {
+  min-width: 35px;
+  text-align: right;
+  color: #9bacb1;
+}
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: var(--ui-control-height);
+  padding-inline: 1px;
+}
+
+.check-in-form {
+  align-self: end;
+  margin-bottom: 1px;
+}
+
+.output-cell .check-field { min-width: 42px; }
+
+.output-cell > input { width: 100%; }
+
+.bottom-actions {
+  border-top: 1px solid var(--border);
+  background: #263034;
+  padding: 3px 5px;
+}
+
+.two-groups .check-field { min-height: 22px; }
+
+.ui-button {
+  border-color: #050708;
+  padding: 2px 8px;
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.mini-tools button {
+  border-color: #050708;
+  min-width: var(--ui-compact-height);
+  padding: 0 5px;
+  height: var(--ui-compact-height);
+  min-height: var(--ui-compact-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.actionbar {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr auto;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  background: #242f32;
+  border-top-color: #111719;
+}
+
+.check-field:hover { background: rgba(255,255,255,.025); }
+
+.advanced-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.advanced-action-grid .ui-button { min-width: 0; }
+
+.field.mixed input {
+  color: #9eacb0;
+  font-style: italic;
+}
+
+.field.mixed select {
+  color: #9eacb0;
+  font-style: italic;
+}
+
+.range-control.mixed output {
+  color: #9eacb0;
+  font-style: italic;
+}
+
+.equal-action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.equal-action-buttons .ui-button {
+  width: 100%;
+  min-width: 0;
+}
+
+.title-text-button {
+  min-width: 0;
+  height: 17px;
+  padding: 0 6px;
+  border: 1px solid #080b0c;
+  border-radius: 3px;
+  background: #2b393c;
+  color: #aebdc1;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.title-text-button:hover {
+  background: #3b5965;
+  color: #eef5f7;
+}
+
+.title-text-button.active {
+  background: #3b5965;
+  color: #eef5f7;
+}
+
+.rule-status-field {
+  position: relative;
+  min-width: 0;
+}
+
+.rail-action-button { position: relative; }
+
+.display-group .field { margin: 0; }
+
+.legend-tools {
+  float: right;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.legend-tools button {
+  min-width: 34px;
+  padding: 0 5px;
+  font-size: 7.5px;
+  height: var(--ui-compact-height);
+  min-height: var(--ui-compact-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+
+.field > span:first-child { color: #a8b7bc; }
+
+.ui-button:hover { background: #35474b; }
+
+.mini-tools button:hover { background: #35474b; }
+
+.title-tool:hover { background: #35474b; }
+
+.ui-button.primary:hover {
+  color: var(--accent-text);
+  font-weight: 700;
+  background: #94c4df;
+}
+
+.mini-tools button.wide {
+  min-width: 58px;
+  padding-inline: 6px;
+  font-size: 8px;
+}
+
+.compact-group legend {
+  padding: 0 5px;
+  color: #c7d3d6;
+  font-weight: 700;
+}
+
+.actionbar.bottom-actions {
+  gap: 5px;
+  min-height: var(--ui-actionbar-height);
+  height: var(--ui-actionbar-height);
+  padding: 3px 5px;
+  border-top: 1px solid var(--ui-inner-border);
+  background: var(--ui-toolbar-bg);
+}
+
+.group-name-editor .field { margin: 0; }
+
+.ui-button:disabled { opacity: .48; }
+
+.ui-button.danger:hover {
+  background: #704247;
+  color: #fff;
+}
+
+.mini-tools button[title="Delete"]:hover {
+  background: #704247;
+  color: #fff;
+}
+
+.compact-group > legend {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100% !important;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--ui-inner-border);
+  font-size: 9px;
+  font-weight: 700;
+  height: var(--ui-card-title-height);
+  min-height: var(--ui-card-title-height);
+  border-bottom-color: var(--ui-inner-border);
+  border-radius: calc(var(--ui-card-radius) - 1px) calc(var(--ui-card-radius) - 1px) 0 0;
+  background: var(--ui-card-title-bg);
+  color: var(--ui-text);
+  line-height: var(--ui-card-title-height);
+}
+
+.compact-group > legend .legend-tools {
+  float: none;
+  margin-left: auto;
+}
+
+.equal-action-buttons > .ui-button {
+  width: 100%;
+  min-width: 0;
+}
+
+.ui-button:not(:disabled):hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
+}
+
+.title-tool:not(:disabled):hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
+}
+
+.mini-tools button:not(:disabled):hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
+}
+
+.legend-tools button:not(:disabled):hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
+}
+
+.ui-button.primary {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+  font-weight: 700;
+}
+
+.ui-button.primary:not(:disabled):hover { background: var(--ui-accent-hover); }
+
+.ui-button.danger {
+  background: var(--ui-button-bg);
+  color: #e5a7a7;
+}
+
+.ui-button.danger:not(:disabled):hover {
+  background: var(--ui-danger-hover);
+  color: #fff0f0;
+}
+
+.mini-tools button[title="Delete"]:not(:disabled):hover {
+  background: var(--ui-danger-hover);
+  color: #fff0f0;
+}
+
+.ui-button:disabled:hover {
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.title-tool:disabled:hover {
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.mini-tools button:disabled:hover {
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.legend-tools button:disabled:hover {
+  background: var(--ui-button-bg);
+  color: var(--ui-text);
+}
+
+.ui-button.primary:disabled:hover {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+.ui-button.danger:disabled:hover {
+  background: var(--ui-button-bg);
+  color: #e5a7a7;
+}
+
+.mini-tools button[title="Delete"]:disabled:hover {
+  background: var(--ui-button-bg);
+  color: #e5a7a7;
+}
+
+.persistent-status-actions {
+  display: flex;
+  gap: 3px;
+}
+
+.persistent-status-actions button {
+  min-height: 19px;
+  padding: 1px 6px;
+  border: 1px solid #11191b;
+  border-radius: var(--ui-control-radius);
+  background: #435258;
+  color: inherit;
+  font-size: 8px;
+}

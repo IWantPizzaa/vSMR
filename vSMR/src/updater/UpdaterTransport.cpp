@@ -1,4 +1,5 @@
 #include "updater/UpdaterTransport.hpp"
+#include "updater/UpdaterUrlPolicy.hpp"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -11,7 +12,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cwctype>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -105,63 +105,6 @@ namespace vsmr::updater::transport
 					   : std::wstring();
 		}
 
-		std::wstring ToLowerWide(std::wstring value)
-		{
-			std::transform(value.begin(), value.end(), value.begin(),
-				[](wchar_t character) { return static_cast<wchar_t>(std::towlower(character)); });
-			return value;
-		}
-
-		bool EndsWithNoCase(const std::wstring& value, const std::wstring& suffix)
-		{
-			return suffix.size() <= value.size() &&
-				   ToLowerWide(value.substr(value.size() - suffix.size())) == ToLowerWide(suffix);
-		}
-
-		bool IsAllowedDownloadHost(const std::wstring& host)
-		{
-			const std::wstring normalized = ToLowerWide(host);
-			return normalized == L"api.github.com" || normalized == L"github.com" ||
-				   normalized == L"release-assets.githubusercontent.com" ||
-				   normalized == L"objects.githubusercontent.com" ||
-				   normalized == L"github-releases.githubusercontent.com" ||
-				   EndsWithNoCase(normalized, L".githubusercontent.com");
-		}
-
-		struct ParsedUrl
-		{
-			std::wstring host;
-			std::wstring resource;
-			INTERNET_PORT port = INTERNET_DEFAULT_HTTPS_PORT;
-		};
-
-		bool ParseAllowedHttpsUrl(const std::wstring& url, ParsedUrl& result)
-		{
-			if (url.empty() || url.find(L'#') != std::wstring::npos)
-				return false;
-			URL_COMPONENTS components{};
-			components.dwStructSize = sizeof(components);
-			components.dwSchemeLength = components.dwHostNameLength = components.dwUserNameLength =
-				components.dwPasswordLength = components.dwUrlPathLength = components.dwExtraInfoLength =
-					static_cast<DWORD>(-1);
-			if (!::WinHttpCrackUrl(url.c_str(), 0, 0, &components) || components.nScheme != INTERNET_SCHEME_HTTPS ||
-				components.dwHostNameLength == 0 || components.dwUserNameLength != 0 ||
-				components.dwPasswordLength != 0 || components.nPort != INTERNET_DEFAULT_HTTPS_PORT)
-				return false;
-			result.host.assign(components.lpszHostName, components.dwHostNameLength);
-			if (!IsAllowedDownloadHost(result.host))
-				return false;
-			result.resource.clear();
-			if (components.dwUrlPathLength > 0)
-				result.resource.assign(components.lpszUrlPath, components.dwUrlPathLength);
-			if (components.dwExtraInfoLength > 0)
-				result.resource.append(components.lpszExtraInfo, components.dwExtraInfoLength);
-			if (result.resource.empty())
-				result.resource = L"/";
-			result.port = components.nPort;
-			return true;
-		}
-
 		std::string QueryHeader(HINTERNET request, DWORD query, const wchar_t* name = WINHTTP_HEADER_NAME_BY_INDEX)
 		{
 			DWORD size = 0;
@@ -177,14 +120,13 @@ namespace vsmr::updater::transport
 		std::wstring ResolveRedirect(const std::wstring& currentUrl, const std::string& location)
 		{
 			const std::wstring wideLocation = Utf8ToWide(location);
-			if (wideLocation.empty())
-				return {};
-			if (wideLocation.rfind(L"https://", 0) == 0)
-				return wideLocation;
-			ParsedUrl current;
-			if (!ParseAllowedHttpsUrl(currentUrl, current) || wideLocation.front() != L'/')
-				return {};
-			return L"https://" + current.host + wideLocation;
+			std::wstring resolved;
+			return url_policy::TryResolveAllowedRedirect(
+				currentUrl,
+				wideLocation,
+				resolved)
+				? resolved
+				: std::wstring();
 		}
 	} // namespace
 
@@ -214,8 +156,8 @@ namespace vsmr::updater::transport
 				response.error = isCancelled() ? "cancelled" : "timeout";
 				return response;
 			}
-			ParsedUrl parsed;
-			if (!ParseAllowedHttpsUrl(url, parsed))
+			url_policy::ParsedHttpsUrl parsed;
+			if (!url_policy::TryParseAllowedHttpsUrl(url, parsed))
 			{
 				response.error = "unsafe_url";
 				return response;

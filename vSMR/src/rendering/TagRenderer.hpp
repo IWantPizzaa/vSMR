@@ -6,6 +6,7 @@
 #include <GdiPlus.h>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace VsmrTagRendering
@@ -55,6 +56,7 @@ namespace VsmrTagRendering
 		const Gdiplus::StringFormat& Format() const noexcept;
 		int BlankWidth() const noexcept;
 		int LineHeight() const noexcept;
+		const std::wstring& Utf16Text(const std::string& text) const;
 		Gdiplus::Size Measure(const std::string& text, bool bold = false) const;
 
 	private:
@@ -65,6 +67,9 @@ namespace VsmrTagRendering
 		Gdiplus::StringFormat format_;
 		int blankWidth_ = 2;
 		int lineHeight_ = 12;
+		mutable std::unordered_map<std::string, std::wstring> decodedText_;
+		mutable std::unordered_map<std::string, Gdiplus::Size> regularMeasurements_;
+		mutable std::unordered_map<std::string, Gdiplus::Size> boldMeasurements_;
 	};
 
 	struct TopBand

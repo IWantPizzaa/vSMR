@@ -1,0 +1,204 @@
+/* RIMCAS alert controls, runway rows, and timing editors. */
+
+.page.alerts-page { grid-template-rows: minmax(0, 1fr); }
+
+.alerts-layout {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(250px, .82fr) minmax(330px, 1.18fr);
+  gap: 4px;
+  height: 100%;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.alerts-control-column {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 4px;
+  align-content: start;
+}
+
+.alerts-runways-box {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 5px;
+  overflow: hidden;
+  margin: 0;
+}
+
+.alerts-layout .compact-group { margin: 0; }
+
+.alert-types-box legend { width: calc(100% - 10px); }
+
+.alert-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.alert-toggle-card {
+  min-width: 0;
+  min-height: 27px;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  padding: 3px 4px;
+  border: 1px solid var(--ui-border-inner);
+  box-shadow: none;
+  border-color: var(--ui-inner-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-card-bg);
+}
+
+.alert-toggle-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #d4dfe1;
+  font: 700 8px/1 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alerts-timing-box {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.alert-timing-mode {
+  display: grid;
+  gap: 2px;
+}
+
+.alert-timing-mode > strong {
+  color: #9fb0b4;
+  font: 700 8px/1 var(--mono);
+  text-transform: uppercase;
+}
+
+.alerts-runway-toolbar {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  gap: 5px;
+  align-items: end;
+}
+
+.alert-visibility-field {
+  max-width: 230px;
+  margin: 0;
+}
+
+.alerts-runway-toolbar .mini-tools { align-self: end; }
+
+.alert-runway-table {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--ui-border-inner);
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-list-shell-bg);
+  box-shadow: none;
+}
+
+.alert-runway-header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) 42px 42px 50px 22px;
+  align-items: center;
+  padding: 0 4px;
+  border-bottom: 1px solid #111719;
+  color: #a8b8bd;
+  font-size: 7.5px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  min-height: var(--ui-title-height);
+  background: var(--ui-section-head);
+}
+
+.alert-runway-header span:first-child { text-align: left; }
+
+.alert-runway-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) 42px 42px 50px 22px;
+  align-items: center;
+  padding: 4px;
+  border-bottom: 1px solid #263438;
+  min-height: 34px;
+  border-bottom-color: var(--ui-inner-border);
+  border-radius: 0;
+  background: var(--ui-list-bg);
+}
+
+.alert-runway-row > input {
+  width: 100%;
+  font-family: var(--mono);
+  text-align: center;
+}
+
+.alert-table-check {
+  display: grid;
+  place-items: center;
+}
+
+.alert-table-check input { margin: 0; }
+
+.alert-runway-remove:hover {
+  background: #704247;
+  color: #fff;
+}
+
+.alert-timer-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.alert-timer-row .field { margin: 0; }
+
+.alert-timer-row input { text-align: center; }
+
+.alert-runway-row:last-child { border-bottom: 0; }
+
+.alert-types-box { margin: 0; }
+
+.alert-runway-remove {
+  width: 18px;
+  padding: 0;
+  height: var(--ui-compact-height);
+  min-height: var(--ui-compact-height);
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-control-radius);
+  box-shadow: none;
+  background: var(--ui-button-bg);
+  color: #e5a7a7;
+}
+
+.alert-runway-remove:not(:disabled):hover {
+  background: var(--ui-danger-hover);
+  color: #fff0f0;
+}
+
+.alert-runway-row:hover { background: var(--ui-list-hover); }
+
+.alert-toggle-card:hover { background: var(--ui-list-hover); }
+
+.alert-toggle-card.inactive {
+  opacity: .55;
+  background: var(--ui-disabled-bg);
+}
+
+.alerts-runway-toolbar .mini-tools button {
+  height: var(--ui-control-height);
+  min-height: var(--ui-control-height);
+}

@@ -226,7 +226,7 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 			for (int a = AngleMin; a <= AngleMax; a++)
 			{
 				POINT PredictedPosition = instance->ConvertCoordFromPositionToPixel(
-					BetterHarversine(ToEuroScopePosition(Ac.position), fmod(Ac.trackHeadingDegrees + a, 360), distance));
+					VsmrRadarUiSupport::BetterHarversine(ToEuroScopePosition(Ac.position), fmod(Ac.trackHeadingDegrees + a, 360), distance));
 				isGoingToLand = Is_Inside(PredictedPosition, *RunwayOnScreen);
 
 				if (isGoingToLand)
@@ -290,14 +290,15 @@ vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float 
 	Logger::info(string(__FUNCSIG__));
 	vector<CPosition> out;
 
-	double RunwayBearing = RadToDeg(TrueBearing(Left, Right));
+	double RunwayBearing = VsmrRadarUiSupport::RadToDeg(
+		VsmrRadarUiSupport::TrueBearing(Left, Right));
 	float padding = hwidth * 4;
-	CPosition leftPadded = BetterHarversine(Left, fmod(RunwayBearing + 180, 360), padding);
-	CPosition rightPadded = BetterHarversine(Right, fmod(RunwayBearing, 360), padding);
-	out.push_back(BetterHarversine(leftPadded, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Left
-	out.push_back(BetterHarversine(rightPadded, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Right
-	out.push_back(BetterHarversine(rightPadded, fmod(RunwayBearing - 90, 360), hwidth)); // Top Right
-	out.push_back(BetterHarversine(leftPadded, fmod(RunwayBearing - 90, 360), hwidth)); // Top Left
+	CPosition leftPadded = VsmrRadarUiSupport::BetterHarversine(Left, fmod(RunwayBearing + 180, 360), padding);
+	CPosition rightPadded = VsmrRadarUiSupport::BetterHarversine(Right, fmod(RunwayBearing, 360), padding);
+	out.push_back(VsmrRadarUiSupport::BetterHarversine(leftPadded, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Left
+	out.push_back(VsmrRadarUiSupport::BetterHarversine(rightPadded, fmod(RunwayBearing + 90, 360), hwidth)); // Bottom Right
+	out.push_back(VsmrRadarUiSupport::BetterHarversine(rightPadded, fmod(RunwayBearing - 90, 360), hwidth)); // Top Right
+	out.push_back(VsmrRadarUiSupport::BetterHarversine(leftPadded, fmod(RunwayBearing - 90, 360), hwidth)); // Top Left
 
 	return out;
 }
