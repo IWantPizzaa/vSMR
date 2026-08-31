@@ -304,9 +304,9 @@
     if (entry.isBackground) return `<span class="aviso-style-eye" aria-hidden="true"></span>`;
     const visibility = avisoStyleVisibility(entry);
     const action = visibility.allVisible ? "Hide" : "Show";
-    return `<span class="aviso-style-eye ${visibility.allVisible ? "is-on" : "is-off"} ${visibility.mixed ? "is-mixed" : ""}" data-aviso-style-visibility="${kind}" data-aviso-style-id="${escapeHtml(entry.id)}" role="button" aria-label="${action} ${escapeHtml(entry.name)}" title="${action} ${escapeHtml(entry.name)}">
+    return `<button type="button" class="ui-button ui-button--compact ui-button--icon aviso-style-eye ${visibility.allVisible ? "is-on" : "is-off"} ${visibility.mixed ? "is-mixed" : ""}" data-aviso-style-visibility="${kind}" data-aviso-style-id="${escapeHtml(entry.id)}" aria-label="${action} ${escapeHtml(entry.name)}" title="${action} ${escapeHtml(entry.name)}">
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z"></path><circle cx="12" cy="12" r="2.6"></circle>${visibility.allVisible || visibility.mixed ? "" : '<path class="aviso-eye-slash" d="M4 4l16 16"></path>'}</svg>
-    </span>`;
+    </button>`;
   }
 
   function toggleAvisoStyleVisibility(kind, styleId) {
@@ -387,12 +387,13 @@
     const groupIndex = buildAvisoGroupIndex();
     const selected = selectedAvisoGroup();
 
-    $("#avisoGroupList").innerHTML = groups.length ? `<div class="aviso-group-box menu-tree-box manager-menu-box">${groups.map(group => {
+    $("#avisoGroupList").innerHTML = groups.length ? `<div class="ui-list__items aviso-group-box" role="presentation">${groups.map(group => {
       const active = group.id === selected?.id;
-      return `<div class="aviso-group-row menu-tree-row manager-menu-row simple-manager-row ${active ? "active" : ""}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="true" title="Drag to reorder">
-        <span class="aviso-group-row-copy menu-row-title"><strong>${escapeHtml(group.name)}</strong></span>
-      </div>`;
-    }).join("")}</div>` : `<div class="aviso-list-message">No groups yet</div>`;
+      return `<button type="button" class="${uiListRowClass("group", active, false, "aviso-group-row")}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="true" title="Drag to reorder">
+        <span class="ui-list__label aviso-group-row-copy">${escapeHtml(group.name)}</span>
+      </button>`;
+    }).join("")}</div>` : `<div class="ui-list__empty">No groups yet</div>`;
+    syncUiListFocus($("#avisoGroupList"));
 
     renderAvisoGroupEditor(groupIndex);
   }
@@ -407,7 +408,7 @@
       $("#avisoGroupName").value = "";
       $("#avisoGroupName").disabled = true;
       $("#avisoGroupId").value = "";
-      $("#avisoGroupMemberList").innerHTML = `<div class="aviso-group-empty">Create a group to combine text, line and area content.</div>`;
+      $("#avisoGroupMemberList").innerHTML = `<div class="ui-list__empty">Create a group to combine text, line and area content.</div>`;
       editor?.classList.add("empty");
       return;
     }
@@ -426,12 +427,12 @@
     const rows = avisoGroupMemberRows(group.id, groupIndex).filter(row =>
       !search || `${row.name} ${row.subtitle} ${row.id}`.toLowerCase().includes(search)
     );
-    $("#avisoGroupMemberList").innerHTML = rows.length ? rows.map(row => {
-      return `<div class="aviso-group-member-row">
-        <strong class="aviso-member-name">${escapeHtml(row.name)}</strong>
-        <button class="aviso-member-remove" type="button" data-action="remove-aviso-group-member" data-member-kind="${row.kind === "text" ? "feature" : "style"}" data-member-id="${escapeHtml(row.id)}" title="Remove from group">×</button>
+    $("#avisoGroupMemberList").innerHTML = rows.length ? `<div class="ui-list__items" role="list">${rows.map(row => {
+      return `<div class="${uiListRowClass("action", false, false, "aviso-group-member-row")}" role="listitem">
+        <strong class="ui-list__label aviso-member-name">${escapeHtml(row.name)}</strong>
+        <button aria-label="Remove ${escapeHtml(row.name)} from group" class="ui-button ui-button--compact ui-button--icon ui-button--destructive aviso-member-remove" type="button" data-action="remove-aviso-group-member" data-member-kind="${row.kind === "text" ? "feature" : "style"}" data-member-id="${escapeHtml(row.id)}" title="Remove from group">×</button>
       </div>`;
-    }).join("") : `<div class="aviso-group-empty">${counts.total ? "No members match your search." : "This group is empty. Add text, lines or areas."}</div>`;
+    }).join("")}</div>` : `<div class="ui-list__empty">${counts.total ? "No members match your search." : "This group is empty. Add text, lines or areas."}</div>`;
   }
 
   function createAvisoGroup() {
@@ -569,15 +570,15 @@
     const group = avisoGroups().find(item => item.id === avisoGroupContentDraft?.groupId) || selectedAvisoGroup();
     if (!group || !avisoGroupContentDraft) return;
     $("#avisoGroupContentTitle").textContent = `Content · ${group.name}`;
-    $$('[data-aviso-group-content-type]').forEach(button => button.classList.toggle("active", button.dataset.avisoGroupContentType === state.ui.avisoGroupContentType));
+    syncToggleButtons('[data-aviso-group-content-type]', state.ui.avisoGroupContentType, "avisoGroupContentType");
     $("#avisoGroupContentSearch").value = state.ui.avisoGroupContentSearch;
     const candidates = groupContentCandidates();
-    $("#avisoGroupContentList").innerHTML = candidates.length ? `<div class="group-content-box">${candidates.map(item => {
+    $("#avisoGroupContentList").innerHTML = candidates.length ? `<div aria-label="${escapeHtml(state.ui.avisoGroupContentType)} content" class="ui-list__items group-content-box" role="group">${candidates.map(item => {
       const selectedCount = item.indices.filter(index => avisoGroupContentDraft.members.has(index)).length;
       const selected = selectedCount === item.indices.length;
       const partial = selectedCount > 0 && !selected;
-      return `<button type="button" class="group-content-row ${selected ? "selected" : ""} ${partial ? "partial" : ""}" data-group-content-key="${escapeHtml(item.key)}"><span class="group-content-check">${selected ? "✓" : partial ? "−" : ""}</span><strong class="group-content-name">${escapeHtml(item.name)}</strong></button>`;
-    }).join("")}</div>` : `<div class="aviso-group-empty">No matching ${state.ui.avisoGroupContentType} content.</div>`;
+      return `<button type="button" class="${uiListRowClass("content", selected, false, `group-content-row ${partial ? "partial" : ""}`)}" data-group-content-key="${escapeHtml(item.key)}"><span class="ui-list__leading group-content-check">${selected ? "✓" : partial ? "−" : ""}</span><strong class="ui-list__label group-content-name">${escapeHtml(item.name)}</strong></button>`;
+    }).join("")}</div>` : `<div class="ui-list__empty">No matching ${state.ui.avisoGroupContentType} content.</div>`;
   }
 
   function toggleAvisoGroupContentCandidate(key) {
@@ -620,12 +621,8 @@
     textStyleSelectionIds(textEntries);
 
     const avisoColorPalette = activeAvisoColorPalette();
-    $$('[data-aviso-color-palette]').forEach(button => {
-      const active = button.dataset.avisoColorPalette === avisoColorPalette;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-    $$('[data-aviso-view]').forEach(button => button.classList.toggle("active", button.dataset.avisoView === state.ui.avisoView));
+    syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
+    syncTabButtons('[data-aviso-view]', state.ui.avisoView, "avisoView");
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));
 
     if (state.ui.avisoView === "geometry") renderAvisoGeometry();
@@ -644,20 +641,23 @@
     });
 
     $("#avisoGeometryStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
-      <section class="aviso-style-section menu-tree-section">
-        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span></div>
-        <div class="aviso-style-box menu-tree-box">
+      <section class="ui-list__section aviso-style-section">
+        <div class="ui-list__heading aviso-style-section-title"><span class="ui-list__heading-label">${escapeHtml(layer)}</span></div>
+        <div aria-label="${escapeHtml(layer)} geometry styles" class="ui-list__items aviso-style-box" role="list">
           ${entries.map(entry => {
             const selected = selectedIds.has(entry.id);
             const current = entry.id === state.ui.selectedAvisoGeometryStyleId;
-            return `<button type="button" role="option" aria-selected="${selected}" class="aviso-style-row menu-tree-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-geometry-style="${escapeHtml(entry.id)}">
+            return `<div class="${uiListRowClass("style", selected, current, "aviso-style-row")}" role="listitem">
               ${avisoStyleVisibilityControl(entry, "geometry")}
-              <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
-              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
-            </button>`;
+              <button aria-pressed="${selected}" class="ui-list__selection" data-aviso-geometry-style="${escapeHtml(entry.id)}" title="${escapeHtml(entry.name)}" type="button">
+                <span class="ui-list__leading aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
+                <span class="ui-list__label aviso-style-copy">${escapeHtml(entry.name)}</span>
+              </button>
+            </div>`;
           }).join("")}
         </div>
-      </section>`).join("") || `<div class="aviso-list-message">No geometry styles</div>`;
+      </section>`).join("") || `<div class="ui-list__empty">No geometry styles</div>`;
+    syncUiListFocus($("#avisoGeometryStyleList"));
 
     renderAvisoGeometryEditor(allEntries);
   }
@@ -777,20 +777,23 @@
     });
 
     $("#avisoTextStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
-      <section class="aviso-style-section menu-tree-section">
-        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span></div>
-        <div class="aviso-style-box menu-tree-box">
+      <section class="ui-list__section aviso-style-section">
+        <div class="ui-list__heading aviso-style-section-title"><span class="ui-list__heading-label">${escapeHtml(layer)}</span></div>
+        <div aria-label="${escapeHtml(layer)} text styles" class="ui-list__items aviso-style-box" role="list">
           ${entries.map(entry => {
             const selected = selectedIds.has(entry.id);
             const current = entry.id === state.ui.selectedAvisoTextStyleId;
-            return `<button type="button" role="option" aria-selected="${selected}" title="${escapeHtml(entry.name)}" class="aviso-style-row menu-tree-row aviso-text-style-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-text-style="${escapeHtml(entry.id)}">
+            return `<div class="${uiListRowClass("style", selected, current, "aviso-style-row")}" role="listitem">
               ${avisoStyleVisibilityControl(entry, "text")}
-              <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
-              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
-            </button>`;
+              <button aria-pressed="${selected}" class="ui-list__selection" data-aviso-text-style="${escapeHtml(entry.id)}" title="${escapeHtml(entry.name)}" type="button">
+                <span class="ui-list__leading aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
+                <span class="ui-list__label aviso-style-copy">${escapeHtml(entry.name)}</span>
+              </button>
+            </div>`;
           }).join("")}
         </div>
-      </section>`).join("") || `<div class="aviso-list-message">No text styles</div>`;
+      </section>`).join("") || `<div class="ui-list__empty">No text styles</div>`;
+    syncUiListFocus($("#avisoTextStyleList"));
 
     renderAvisoTextEditor(allEntries);
   }
@@ -811,7 +814,7 @@
     const colorKey = colorTarget === "halo" ? "text-halo-color" : "text-color";
     const colorFallback = colorTarget === "halo" ? "#000000" : "#808080";
     $("#avisoTextColorLabel").textContent = `${colorTarget === "halo" ? "Halo" : "Text"} color · ${paletteLabel}`;
-    $$("[data-color-target]", $("#avisoTextColorEditor")).forEach(button => button.classList.toggle("active", button.dataset.colorTarget === colorTarget));
+    syncToggleButtons("[data-color-target]", colorTarget, "colorTarget", $("#avisoTextColorEditor"));
 
     setCommonInput("#avisoTextFont", commonValue(values("text-font"), value => String(value || "Arial")), value => String(value || "Arial"));
     setCommonInput("#avisoTextSize", commonValue(values("text-size"), value => Number(value)), value => String(value));

@@ -126,7 +126,7 @@
       if (group) {
         $("#avisoGroupCaption").textContent = group.name;
         const row = $$("#avisoGroupList [data-aviso-group-id]").find(item => item.dataset.avisoGroupId === group.id);
-        const label = row && $("strong", row);
+        const label = row && $(".ui-list__label", row);
         if (label) label.textContent = group.name;
       }
     } else if (scope === "icons") renderIconSymbolPreview();
@@ -581,7 +581,7 @@
         return;
       }
       draggedAvisoGroupId = row.dataset.avisoGroupId;
-      row.classList.add("dragging");
+      row.classList.add("is-dragging");
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", draggedAvisoGroupId);
     });
@@ -590,9 +590,9 @@
       if (!row || !draggedAvisoGroupId || row.dataset.avisoGroupId === draggedAvisoGroupId) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      $$(".aviso-group-row.drop-target", avisoGroupList).forEach(item => item.classList.remove("drop-target", "drop-after"));
-      row.classList.add("drop-target");
-      if (event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) row.classList.add("drop-after");
+      $$(".aviso-group-row.is-drop-target", avisoGroupList).forEach(item => item.classList.remove("is-drop-target", "is-drop-after"));
+      row.classList.add("is-drop-target");
+      if (event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) row.classList.add("is-drop-after");
     });
     avisoGroupList.addEventListener("drop", event => {
       const target = event.target.closest("[data-aviso-group-id]");
@@ -601,7 +601,7 @@
       const groups = avisoGroups();
       const sourceIndex = groups.findIndex(group => group.id === draggedAvisoGroupId);
       const targetId = target.dataset.avisoGroupId;
-      const after = target.classList.contains("drop-after");
+      const after = target.classList.contains("is-drop-after");
       if (sourceIndex < 0) return;
       const [moved] = groups.splice(sourceIndex, 1);
       let insertionIndex = groups.findIndex(group => group.id === targetId);
@@ -616,7 +616,7 @@
     });
     avisoGroupList.addEventListener("dragend", () => {
       draggedAvisoGroupId = "";
-      $$(".aviso-group-row", avisoGroupList).forEach(item => item.classList.remove("dragging", "drop-target", "drop-after"));
+      $$(".aviso-group-row", avisoGroupList).forEach(item => item.classList.remove("is-dragging", "is-drop-target", "is-drop-after"));
     });
 
     bindAvisoColorEditor("avisoGeometryColor", "avisoGeometry", "aviso-geometry", true, applyAvisoGeometry);
@@ -644,6 +644,48 @@
     $("#resourceGithubLoadConfirm").addEventListener("click", loadResourceFromGithub);
     $("#resourceGithubUrl").addEventListener("keydown", event => {
       if (event.key === "Enter") { event.preventDefault(); loadResourceFromGithub(); }
+    });
+
+    document.addEventListener("keydown", event => {
+      const list = event.target.closest?.(".ui-list");
+      if (!list || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const listbox = event.target.closest?.('[role="listbox"]');
+      const rows = $$(
+        listbox ? '.ui-list__row[role="option"]:not(:disabled)' : ".ui-list__selection:not(:disabled)",
+        listbox || list
+      ).filter(row => !row.closest('[hidden]'));
+      if (!rows.length) return;
+      const focused = event.target.closest('.ui-list__row[role="option"], .ui-list__selection');
+      const selected = rows.find(row => row.classList.contains("is-current")
+        || row.closest(".ui-list__row")?.classList.contains("is-current"))
+        || rows.find(row => row.getAttribute("aria-selected") === "true")
+        || rows.find(row => row.getAttribute("aria-pressed") === "true");
+      const currentIndex = Math.max(0, rows.indexOf(focused || selected || rows[0]));
+      const nextIndex = event.key === "Home" ? 0
+        : event.key === "End" ? rows.length - 1
+          : event.key === "ArrowDown" ? Math.min(rows.length - 1, currentIndex + 1)
+            : Math.max(0, currentIndex - 1);
+      event.preventDefault();
+      rows.forEach(row => { row.tabIndex = -1; });
+      rows[nextIndex].tabIndex = 0;
+      rows[nextIndex].focus();
+    });
+
+    document.addEventListener("keydown", event => {
+      const tab = event.target.closest?.('[role="tab"]');
+      if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const tablist = tab.closest('[role="tablist"]');
+      if (!tablist) return;
+      const tabs = $$('[role="tab"]:not(:disabled)', tablist);
+      if (!tabs.length) return;
+      const currentIndex = Math.max(0, tabs.indexOf(tab));
+      const nextIndex = event.key === "Home" ? 0
+        : event.key === "End" ? tabs.length - 1
+          : event.key === "ArrowRight" ? (currentIndex + 1) % tabs.length
+            : (currentIndex - 1 + tabs.length) % tabs.length;
+      event.preventDefault();
+      tabs[nextIndex].focus();
+      tabs[nextIndex].click();
     });
 
     $("#avisoGeometryStyleList").addEventListener("keydown", event => {
