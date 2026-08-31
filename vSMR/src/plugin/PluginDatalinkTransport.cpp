@@ -45,6 +45,12 @@ using VsmrDatalinkProtocol::UnprotectHoppieCredential;
 
 #include "plugin/PluginRuntimeAudio.hpp"
 
+namespace
+{
+	bool CdmReminderSubmissionInFlight = false;
+	QueuedCdmReminderMessage CdmReminderBeingSubmitted;
+}
+
 HttpHelper& VsmrPluginRuntime::GetHttpHelper()
 {
 	static HttpHelper helper;
@@ -174,6 +180,7 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 				tracked.eligibility = CdmAutoEligibility::WaitingForMissingTobt;
 			}
 			if (tracked.eligibility == CdmAutoEligibility::RetryExhausted ||
+				HasCdmReminderSubmittedUnlocked(candidate.callsign) ||
 				HasRecentCdmReminderUnlocked(candidate.callsign, now) ||
 				IsCdmReminderQueuedUnlocked(candidate.callsign) ||
 				HasDatalinkClearanceSentUnlocked(candidate.callsign) ||
@@ -198,6 +205,7 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 	{
 		const CdmQueueReminderOutcome outcome =
 			TryQueueCdmReminderForCallsign(
+				plugIn,
 				callsign,
 				reminderMessage,
 				now,
@@ -218,6 +226,48 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 		return;
 
 	const auto now = std::chrono::steady_clock::now();
+	const CdmChatSubmissionStatus submissionStatus =
+		PollPrivateChatMessageSubmission();
+	if (CdmReminderSubmissionInFlight)
+	{
+		if (submissionStatus == CdmChatSubmissionStatus::Pending)
+			return;
+
+		const std::string submittedCallsign =
+			CdmReminderBeingSubmitted.callsign;
+		if (submissionStatus == CdmChatSubmissionStatus::Confirmed)
+		{
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			MarkCdmReminderSentUnlocked(submittedCallsign, now);
+			Logger::info(
+				"CDM reminder command consumed by EuroScope callsign=" +
+				submittedCallsign);
+		}
+		else
+		{
+			// An Enter key was posted, so retrying an unconfirmed result could send
+			// a duplicate. Keep automatic delivery one-shot and require an operator
+			// to review the aircraft before any manual follow-up.
+			Logger::info(
+				"CDM reminder submission became ambiguous; automatic retry suppressed callsign=" +
+				submittedCallsign);
+			plugIn->DisplayUserMessage(
+				"vSMR",
+				"CDM",
+				("Could not confirm the PDC reminder for " + submittedCallsign +
+					". It was not retried to avoid a duplicate.").c_str(),
+				true, true, false, true, false);
+		}
+		{
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			RemoveQueuedCdmReminderUnlocked(submittedCallsign);
+		}
+		CdmReminderSubmissionInFlight = false;
+		CdmReminderBeingSubmitted = {};
+		return;
+	}
+	if (submissionStatus != CdmChatSubmissionStatus::Idle)
+		return;
 
 	QueuedCdmReminderMessage queuedReminder;
 	// Dropping stale sessions and taking the next ready reminder
@@ -250,8 +300,12 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 	}
 
 	const std::string callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(queuedReminder.callsign));
+	const std::string queuedAirport = ToUpperAsciiCopy(
+		TrimAsciiWhitespaceCopy(queuedReminder.activeAirport));
 	const std::string message = TrimAsciiWhitespaceCopy(queuedReminder.message);
-	if (callsign.empty() || message.empty())
+	if (callsign.empty() || queuedAirport.empty() || message.empty())
+		return;
+	if (ResolveActiveAirportFilterUpper() != queuedAirport)
 		return;
 
 	{
@@ -267,6 +321,7 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		if (!CdmAutoModeEnabled.load(std::memory_order_relaxed) ||
 			queuedReminder.automaticSessionGeneration != CdmAutoSessionGeneration ||
+			HasCdmReminderSubmittedUnlocked(callsign) ||
 			HasDatalinkClearanceSentUnlocked(callsign) ||
 			HasDatalinkClearanceInFlightUnlocked(callsign))
 		{
@@ -274,11 +329,19 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 		}
 	}
 
-	// Rechecking eligibility immediately before UI injection
-	if (SendPrivateChatMessageLikeDotMsg(plugIn, callsign, message))
+	// Rechecking eligibility immediately before posting the command. A queued
+	// reminder is bound to the airport that was active when it was created.
+	if (ResolveActiveAirportFilterUpper() != queuedAirport ||
+		!IsCallsignEligibleForCdmReminderNow(plugIn, callsign))
+	{
+		return;
+	}
+	if (BeginPrivateChatMessageLikeDotMsg(plugIn, callsign, message))
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		MarkCdmReminderSentUnlocked(callsign, now);
+		MarkCdmReminderSubmittedUnlocked(callsign);
+		CdmReminderBeingSubmitted = queuedReminder;
+		CdmReminderSubmissionInFlight = true;
 		return;
 	}
 
@@ -286,15 +349,23 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 	queuedReminder.sendAttempts += 1;
 	if (queuedReminder.sendAttempts >= CdmReminderQueueMaxSendAttempts)
 	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		if (queuedReminder.automatic &&
-			queuedReminder.automaticSessionGeneration == CdmAutoSessionGeneration)
 		{
-			auto trackedIt = AircraftCdmAutoTracked.find(callsign);
-			if (trackedIt != AircraftCdmAutoTracked.end())
-				trackedIt->second.eligibility = CdmAutoEligibility::RetryExhausted;
+			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			if (queuedReminder.automatic &&
+				queuedReminder.automaticSessionGeneration == CdmAutoSessionGeneration)
+			{
+				auto trackedIt = AircraftCdmAutoTracked.find(callsign);
+				if (trackedIt != AircraftCdmAutoTracked.end())
+					trackedIt->second.eligibility = CdmAutoEligibility::RetryExhausted;
+			}
 		}
 		Logger::info("CDM reminder dropped after repeated UI injection failures callsign=" + callsign);
+		plugIn->DisplayUserMessage(
+			"vSMR",
+			"CDM",
+			("The PDC reminder for " + callsign +
+				" was not submitted because EuroScope's command line was unavailable.").c_str(),
+			true, true, false, true, false);
 		return;
 	}
 	queuedReminder.nextAttemptAt = now + std::chrono::seconds(CdmReminderRetryDelaySeconds);
