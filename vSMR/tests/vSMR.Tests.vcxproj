@@ -57,25 +57,35 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AvisoRasterPipelineTests.cpp" />
     <ClCompile Include="RegressionTests.cpp" />
+    <ClCompile Include="SharedRenderingTests.cpp" />
     <ClCompile Include="..\src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="..\src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="..\src\control_center\RuntimeResourceFiles.cpp" />
     <ClCompile Include="..\src\control_center\ControlCenterMessageProtocol.cpp" />
     <ClCompile Include="..\src\control_center\WebMessageValidation.cpp" />
     <ClCompile Include="..\src\radar\RadarGeometry.cpp" />
+    <ClCompile Include="..\src\rendering\TagRenderer.cpp" />
+    <ClCompile Include="..\src\rendering\TargetSymbolRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AvisoRasterPipelineTests.hpp" />
+    <ClInclude Include="SharedRenderingTests.hpp" />
     <ClInclude Include="..\src\aircraft\GroundState.hpp" />
     <ClInclude Include="..\src\aircraft\HoldingPoint.hpp" />
     <ClInclude Include="..\src\aviso\AvisoDocumentModel.hpp" />
+    <ClInclude Include="..\src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.hpp" />
     <ClInclude Include="..\src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="..\src\control_center\RuntimeResourceFiles.hpp" />
     <ClInclude Include="..\src\control_center\ControlCenterMessageProtocol.hpp" />
     <ClInclude Include="..\src\control_center\WebMessageValidation.hpp" />
     <ClInclude Include="..\src\radar\RadarGeometry.hpp" />
+    <ClInclude Include="..\src\rendering\TagRenderer.hpp" />
+    <ClInclude Include="..\src\rendering\TargetSymbolRenderer.hpp" />
     <ClInclude Include="..\src\bootstrap\loader\RuntimeReleaseState.hpp" />
     <ClInclude Include="..\src\safety\RimcasLogic.hpp" />
     <ClInclude Include="..\src\scene\TargetRoleLogic.hpp" />

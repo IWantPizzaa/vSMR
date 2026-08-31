@@ -160,6 +160,7 @@
     <ClCompile Include="src\app\PluginEntry.cpp" />
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp" />
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
@@ -196,6 +197,8 @@
     <ClCompile Include="src\plugin\PluginWeather.cpp" />
     <ClCompile Include="src\plugin\PluginRuntimeServices.cpp" />
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp" />
+    <ClCompile Include="src\rendering\TagRenderer.cpp" />
+    <ClCompile Include="src\rendering\TargetSymbolRenderer.cpp" />
     <ClCompile Include="src\radar\RadarGeometry.cpp" />
     <ClCompile Include="src\radar\RadarScreen.cpp" />
     <ClCompile Include="src\radar\RadarScreen.RunwayState.cpp" />
@@ -231,6 +234,7 @@
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
+    <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
@@ -260,8 +264,9 @@
     <ClInclude Include="src\plugin\PluginHttpSupport.hpp" />
     <ClInclude Include="src\plugin\PluginMetadata.hpp" />
     <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp" />
+    <ClInclude Include="src\rendering\TagRenderer.hpp" />
+    <ClInclude Include="src\rendering\TargetSymbolRenderer.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
-    <ClInclude Include="src\radar\TargetTrailRenderer.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
     <ClInclude Include="src\radar\RadarScreenTypes.hpp" />
     <ClInclude Include="src\radar\RadarScreen.AvisoRuntimeState.hpp" />
