@@ -26,6 +26,7 @@
 #include "shared/logging/Logger.hpp"
 #include "tags/TagDataTypes.hpp"
 #include <filesystem>
+#include <functional>
 #include <iostream>
 #include <optional>
 
@@ -315,6 +316,36 @@ private:
 	void RefreshRunwayStatuses(bool force);
 	void RefreshLegacyRimcasRunwayMonitoring();
 	VsmrTargetRendering::IconCacheCallbacks CreateTargetIconCacheCallbacks();
+	struct RefreshPerformance;
+	using RefreshStageCallback = std::function<void(const char*)>;
+	bool PrepareRefreshPhase(HDC hDC, int phase);
+	void RefreshSectorMap(RefreshPerformance& performance, const RefreshStageCallback& setRefreshStage);
+	void PrepareRefreshInsetLayout(CRect& insetLayoutBounds);
+	std::shared_ptr<const VsmrScene::RadarScene> BuildRefreshSceneAndRenderAviso(
+		HDC hDC, Gdiplus::Graphics& graphics, RefreshPerformance& performance,
+		const RefreshStageCallback& setRefreshStage);
+	void RenderClosedRunwayOverlays(
+		Gdiplus::Graphics& graphics, const RefreshStageCallback& setRefreshStage);
+	void RenderRefreshTargets(
+		Gdiplus::Graphics& graphics, CDC& dc, const RECT& radarArea,
+		const VsmrScene::RadarScene* frameScene, RefreshPerformance& performance,
+		const RefreshStageCallback& setRefreshStage);
+	void RenderRefreshRimcasPanels(
+		CDC& dc, const VsmrScene::RadarScene* frameScene, RefreshPerformance& performance,
+		const RefreshStageCallback& setRefreshStage);
+	void DeconflictRefreshTags(
+		const VsmrScene::RadarScene* frameScene, RefreshPerformance& performance,
+		const RefreshStageCallback& setRefreshStage);
+	void RenderRefreshInsets(
+		HDC hDC, Gdiplus::Graphics& graphics, RefreshPerformance& performance,
+		const RefreshStageCallback& setRefreshStage);
+	void RenderRefreshFpsOverlay(
+		CDC& dc, const RECT& radarArea, const RefreshStageCallback& setRefreshStage);
+	void RenderRefreshTagsAndRdf(
+		HDC hDC, Gdiplus::Graphics& graphics, CDC& dc, RefreshPerformance& performance,
+		const RefreshStageCallback& setRefreshStage);
+	void RecordRefreshPerformance(
+		const VsmrScene::RadarScene* frameScene, RefreshPerformance& performance);
 
 
 public:
@@ -600,33 +631,6 @@ public:
 	//---GetBottomLine---------------------------------------------
 
 	virtual string GetBottomLine(const char * Callsign);
-
-	//---LineIntersect---------------------------------------------
-
-	/*inline virtual POINT getIntersectionPoint(POINT lineA, POINT lineB, POINT lineC, POINT lineD) {
-
-		double x1 = lineA.x;
-		double y1 = lineA.y;
-		double x2 = lineB.x;
-		double y2 = lineB.y;
-
-		double x3 = lineC.x;
-		double y3 = lineC.y;
-		double x4 = lineD.x;
-		double y4 = lineD.y;
-
-		POINT p = { 0, 0 };
-
-		double d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-		if (d != 0) {
-			double xi = ((x3 - x4) * (x1 * y2 - y1 * x2) - (x1 - x2) * (x3 * y4 - y3 * x4)) / d;
-			double yi = ((y3 - y4) * (x1 * y2 - y1 * x2) - (y1 - y2) * (x3 * y4 - y3 * x4)) / d;
-
-			p = { (int)xi, (int)yi };
-
-		}
-		return p;
-	}*/
 
 	//---OnFunctionCall-------------------------------------------------
 
