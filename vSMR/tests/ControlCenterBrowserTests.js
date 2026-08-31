@@ -206,6 +206,28 @@
     colorsTab?.click();
     sampleSharedList("#colorTree", "Profile colors");
     sampleVisiblePrimitives();
+    const colorList = document.querySelector("#colorTree");
+    const colorScrollShell = colorList?.closest(".scroll-cue-shell");
+    expect(Boolean(colorScrollShell), "shared lists use the edge-fade scroll shell");
+    expect(getComputedStyle(colorList).scrollbarWidth === "none",
+      "shared lists hide the native scrollbar");
+    if (colorScrollShell && colorList) {
+      colorScrollShell.style.height = "56px";
+      const lowerCue = colorScrollShell.querySelector(".scroll-edge-cue-bottom");
+      if (lowerCue) lowerCue.style.transition = "none";
+      await waitFor(() => colorScrollShell.classList.contains("can-scroll-down"),
+        "overflowing lists expose the lower scroll cue");
+      await waitFor(() => Boolean(lowerCue) && Number.parseFloat(getComputedStyle(lowerCue).opacity) > 0,
+        "the lower list fade becomes visible");
+      const lowerCueStyle = lowerCue ? getComputedStyle(lowerCue) : null;
+      const lowerArrowStyle = lowerCue?.firstElementChild
+        ? getComputedStyle(lowerCue.firstElementChild) : null;
+      expect(Boolean(lowerCueStyle) && lowerCueStyle.backgroundImage.includes("linear-gradient"),
+        "overflowing lists use a visible edge fade instead of a scroll rail");
+      expect(Number.parseFloat(lowerArrowStyle?.borderTopWidth || "0") > 0,
+        "the lower list fade includes a small direction arrow");
+      colorScrollShell.style.height = "";
+    }
     const colorKeyboardList = Array.from(document.querySelectorAll('#colorTree [role="listbox"]'))
       .find(list => list.querySelectorAll('.ui-list__row[role="option"]').length > 1);
     const colorKeyboardRows = Array.from(colorKeyboardList?.querySelectorAll(
