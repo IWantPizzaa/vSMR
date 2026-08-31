@@ -23,8 +23,11 @@ namespace VsmrInsetWindowInternal
 	inline constexpr int kAvisoViewportTopBarHeight = 15;
 	inline constexpr int kAvisoSnapThresholdPx = 28;
 	inline constexpr int kAvisoCornerSnapThresholdPx = 48;
-	inline constexpr int kAvisoMinLayoutWidth = 300;
 	inline constexpr int kAvisoMinLayoutHeight = 120;
+	// Preserve the existing minimum content height and include the title bar so
+	// the smallest complete AVISO inset frame is square.
+	inline constexpr int kAvisoMinLayoutWidth =
+		kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
 	inline constexpr int kInsetResizeHitPx = 7;
 	inline constexpr int kInsetResizeInsidePx = 5;
 	inline constexpr int kInsetResizeCornerPx = 18;
