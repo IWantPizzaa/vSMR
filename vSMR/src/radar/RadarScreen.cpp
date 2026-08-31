@@ -1,16 +1,16 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/ResourceIds.h"
 #include "bootstrap/RuntimeContext.hpp"
+#include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "radar/RadarScreenSupport.hpp"
-#include "radar/TargetTrailRenderer.hpp"
+#include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-#include <unordered_map>
 #include <cctype>
 #include <limits>
 #include <commctrl.h>
@@ -384,14 +384,10 @@ VsmrPerformance::Snapshot CSMRRadar::GetPerformanceSnapshot(
 	std::size_t maximumSeriesPoints)
 {
 	SamplePerformanceResourcesIfDue();
-	VsmrPerformance::AvisoQueueDepth mainQueue;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		mainQueue.pending = AvisoGeoJsonPendingRenderRequest != nullptr ? 1U : 0U;
-		mainQueue.inFlight = AvisoGeoJsonRenderInFlight ? 1U : 0U;
-		mainQueue.completed = AvisoGeoJsonCompletedRenderResult != nullptr ? 1U : 0U;
-		mainQueue.workers = AvisoGeoJsonRenderThreadStarted ? 1U : 0U;
-	}
+	const VsmrPerformance::AvisoQueueDepth mainQueue =
+		AvisoGeoJsonRenderPipeline != nullptr
+		? AvisoGeoJsonRenderPipeline->QueueDepth()
+		: VsmrPerformance::AvisoQueueDepth{};
 	VsmrPerformance::AvisoQueueDepth insetQueue;
 	for (const auto& appWindow : appWindows)
 	{
@@ -3345,100 +3341,6 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 	const VsmrScene::TargetPresentation& frameTargetPresentation = frameScene != nullptr
 		? frameScene->targetPresentation
 		: defaultTargetPresentation;
-	const bool frameUseNovaIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Nova;
-	const bool frameUseDiamondIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Diamond;
-	const bool frameUseRealisticIconStyle = frameTargetPresentation.icon == VsmrScene::IconStyle::Realistic;
-	const bool frameUseFastRealisticBitmapRendering = frameUseRealisticIconStyle;
-	const unsigned long long frameRealisticIconCacheFrame = frameUseRealisticIconStyle ? ++RealisticIconCacheFrame : RealisticIconCacheFrame;
-	const Color frameSymbolWhiteColor(static_cast<Gdiplus::ARGB>(Gdiplus::Color::White));
-	auto sanitizeFinitePositive = [](double value, double fallback, double minValue, double maxValue) -> double
-	{
-		if (!std::isfinite(value))
-			return fallback;
-		if (value < minValue)
-			return minValue;
-		if (value > maxValue)
-			return maxValue;
-		return value;
-	};
-	std::vector<PointF> framePatatoidePolygonPoints;
-	auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor, double symbolScale)
-	{
-		if (sourcePoints.empty())
-			return;
-
-		framePatatoidePolygonPoints.clear();
-		framePatatoidePolygonPoints.reserve(sourcePoints.size());
-		for (const VsmrScene::GeoPoint& sourcePoint : sourcePoints)
-		{
-			if (!sourcePoint.valid)
-				continue;
-			CPosition pos;
-			pos.m_Latitude = sourcePoint.latitude;
-			pos.m_Longitude = sourcePoint.longitude;
-			POINT point = ConvertCoordFromPositionToPixel(pos);
-			framePatatoidePolygonPoints.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
-		}
-
-		if (framePatatoidePolygonPoints.size() < 3)
-			return;
-		if (std::abs(symbolScale - 1.0) > 0.0001)
-		{
-			REAL centerX = 0.0f;
-			REAL centerY = 0.0f;
-			for (const PointF& point : framePatatoidePolygonPoints)
-			{
-				centerX += point.X;
-				centerY += point.Y;
-			}
-			centerX /= static_cast<REAL>(framePatatoidePolygonPoints.size());
-			centerY /= static_cast<REAL>(framePatatoidePolygonPoints.size());
-			for (PointF& point : framePatatoidePolygonPoints)
-			{
-				point.X = centerX + static_cast<REAL>((point.X - centerX) * symbolScale);
-				point.Y = centerY + static_cast<REAL>((point.Y - centerY) * symbolScale);
-			}
-		}
-
-		SolidBrush polygonBrush(fillColor);
-		graphics.FillPolygon(&polygonBrush, framePatatoidePolygonPoints.data(), static_cast<INT>(framePatatoidePolygonPoints.size()));
-	};
-	std::unordered_map<unsigned int, std::unique_ptr<Gdiplus::ImageAttributes>> frameTintAttributesCache;
-	auto getCachedTintAttributes = [&](const Color& tintColor) -> Gdiplus::ImageAttributes*
-	{
-		const unsigned int tintKey =
-			(static_cast<unsigned int>(tintColor.GetAlpha()) << 24) |
-			(static_cast<unsigned int>(tintColor.GetR()) << 16) |
-			(static_cast<unsigned int>(tintColor.GetG()) << 8) |
-			static_cast<unsigned int>(tintColor.GetB());
-		auto itTint = frameTintAttributesCache.find(tintKey);
-		if (itTint != frameTintAttributesCache.end())
-			return itTint->second.get();
-
-		auto attrs = std::make_unique<Gdiplus::ImageAttributes>();
-		const Gdiplus::REAL tintAlpha = static_cast<Gdiplus::REAL>(tintColor.GetAlpha()) / 255.0f;
-		Gdiplus::ColorMatrix cm = {
-			{
-				{ static_cast<Gdiplus::REAL>(tintColor.GetR()) / 255.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-				{ 0.0f, static_cast<Gdiplus::REAL>(tintColor.GetG()) / 255.0f, 0.0f, 0.0f, 0.0f },
-				{ 0.0f, 0.0f, static_cast<Gdiplus::REAL>(tintColor.GetB()) / 255.0f, 0.0f, 0.0f },
-				{ 0.0f, 0.0f, 0.0f, tintAlpha, 0.0f },
-				{ 0.0f, 0.0f, 0.0f, 0.0f, 1.0f }
-			}
-		};
-		attrs->SetColorMatrix(&cm, ColorMatrixFlagsDefault, ColorAdjustTypeBitmap);
-		auto inserted = frameTintAttributesCache.emplace(tintKey, std::move(attrs));
-		return inserted.first->second.get();
-	};
-	const Gdiplus::InterpolationMode frameSavedInterpolationMode = graphics.GetInterpolationMode();
-	const Gdiplus::PixelOffsetMode frameSavedPixelOffsetMode = graphics.GetPixelOffsetMode();
-	const Gdiplus::CompositingQuality frameSavedCompositingQuality = graphics.GetCompositingQuality();
-	if (frameUseFastRealisticBitmapRendering)
-	{
-		graphics.SetInterpolationMode(Gdiplus::InterpolationModeLowQuality);
-		graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
-		graphics.SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
-	}
 	setRefreshStage("radar target loop");
 	const double perfRimcasBeforeTargetsMs = perfRimcasMs;
 	const double perfTargetsStartMs = RefreshPerfNowMs();
@@ -3457,391 +3359,106 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		position.m_Longitude = source.longitude;
 		return position;
 	};
-	for (const VsmrScene::Target& sceneTarget : sceneTargets)
 	{
-		if (!sceneTarget.iconVisible || !sceneTarget.position.valid)
-			continue;
-		const std::string& rtCallsign = sceneTarget.callsign;
-		auto iconVerboseStep = [&](const std::string& step)
+		VsmrTargetRendering::FrameSettings targetRenderSettings;
+		targetRenderSettings.presentation = frameTargetPresentation;
+		targetRenderSettings.pixelsPerMeter = framePixPerMeter;
+		targetRenderSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
 		{
-			if (!Logger::is_verbose_mode())
-				return;
-			Logger::info("IconRender: " + rtCallsign + " " + step);
+			return ConvertCoordFromPositionToPixel(scenePosition(point));
 		};
-
-		const CPosition targetPosition = scenePosition(sceneTarget.position);
-		iconVerboseStep("begin");
-
-		const bool AcisCorrelated = sceneTarget.correlated;
-		POINT acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
-		if (acPosPix.x >= frameVisibleRadarArea.left && acPosPix.x < frameVisibleRadarArea.right &&
-			acPosPix.y >= frameVisibleRadarArea.top && acPosPix.y < frameVisibleRadarArea.bottom)
+		targetRenderSettings.pointVisible = [&](const POINT& point, int margin) -> bool
 		{
-			++frameVisibleTargetCount;
-		}
+			return point.x >= frameVisibleRadarArea.left - margin &&
+				point.x <= frameVisibleRadarArea.right + margin &&
+				point.y >= frameVisibleRadarArea.top - margin &&
+				point.y <= frameVisibleRadarArea.bottom + margin;
+		};
+		targetRenderSettings.iconCache = CreateTargetIconCacheCallbacks();
 
-		const bool drawLegacyPrimarySymbol = frameUseNovaIconStyle;
-		VsmrTargetTrail::Draw(
-			graphics,
-			sceneTarget,
-			[&](const VsmrScene::GeoPoint& history) -> POINT
-			{
-				return ConvertCoordFromPositionToPixel(scenePosition(history));
-			},
-			[&](const POINT& point, int margin) -> bool
-			{
-				return point.x >= frameVisibleRadarArea.left - margin &&
-					point.x <= frameVisibleRadarArea.right + margin &&
-					point.y >= frameVisibleRadarArea.top - margin &&
-					point.y <= frameVisibleRadarArea.bottom + margin;
-			},
-			frameTargetPresentation.symbolScale);
-		if (drawLegacyPrimarySymbol && sceneTarget.style.showPrimaryReturn && !sceneTarget.primaryReturnPolygon.empty()) {
-			const Color primaryTargetColor(
-				sceneTarget.style.primaryReturnColor.alpha,
-				sceneTarget.style.primaryReturnColor.red,
-				sceneTarget.style.primaryReturnColor.green,
-				sceneTarget.style.primaryReturnColor.blue);
-			drawPatatoidePolygon(
-				sceneTarget.primaryReturnPolygon,
-				primaryTargetColor,
-				frameTargetPresentation.symbolScale);
-		}
-		acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
-
-		// Prefer the aircraft-reported heading to keep icon orientation aligned with the nose (even when moving backwards)
-		const double headingDeg = sceneTarget.headingTrueDegrees;
-
-		// Icon sizing based on real dimensions and zoom
-		int iconSize = 40;
-		const bool useNovaIconStyle = frameUseNovaIconStyle;
-		const bool useDiamondIconStyle = frameUseDiamondIconStyle;
-		const bool useRealisticIconStyle = frameUseRealisticIconStyle;
-		const std::string& iconType = sceneTarget.style.assetKey;
-		Gdiplus::Bitmap* iconBmp = nullptr;
-		if (useRealisticIconStyle)
-			iconBmp = GetAircraftIcon(iconType);
-
-		iconVerboseStep("after_scene_data");
-
-		UINT iconBmpWidth = 0;
-		UINT iconBmpHeight = 0;
-		bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
-		if (canUseRealisticIcon)
+		VsmrTargetRendering::Frame targetRenderer(graphics, std::move(targetRenderSettings));
+		for (const VsmrScene::Target& sceneTarget : sceneTargets)
 		{
-			const Gdiplus::Status bmpStatus = iconBmp->GetLastStatus();
-			iconBmpWidth = iconBmp->GetWidth();
-			iconBmpHeight = iconBmp->GetHeight();
-			if (bmpStatus != Gdiplus::Ok || iconBmpWidth == 0 || iconBmpHeight == 0)
+			if (!sceneTarget.iconVisible || !sceneTarget.position.valid)
+				continue;
+			const std::string& rtCallsign = sceneTarget.callsign;
+			auto iconVerboseStep = [&](const std::string& step)
 			{
-				iconVerboseStep(
-					"realistic_icon_disabled status=" + std::to_string(static_cast<int>(bmpStatus)) +
-					" w=" + std::to_string(static_cast<unsigned long long>(iconBmpWidth)) +
-					" h=" + std::to_string(static_cast<unsigned long long>(iconBmpHeight)));
-				canUseRealisticIcon = false;
-			}
-		}
-		if (Logger::is_verbose_mode())
-		{
-			std::string iconDrawMode = useNovaIconStyle ? "nova" : (canUseRealisticIcon ? "realistic" : "symbol");
-			Logger::info("IconRender: " + rtCallsign + " mode=" + iconDrawMode + " icon_type=" + iconType);
-		}
-		Color targetTintColor(
-			sceneTarget.style.color.alpha,
-			sceneTarget.style.color.red,
-			sceneTarget.style.color.green,
-			sceneTarget.style.color.blue);
-		const bool applyTargetTintColor = true;
-
-		if (useNovaIconStyle)
-		{
-			const Color novaSymbolColor = frameSymbolWhiteColor;
-			Pen novaSymbolPen(novaSymbolColor, 1.0f);
-			const REAL novaScale = static_cast<REAL>(frameTargetPresentation.symbolScale);
-			if (sceneTarget.transponderModeC) {
-				PointF novaPoints[] = {
-					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y) - 6.0f * novaScale),
-					PointF(static_cast<REAL>(acPosPix.x) - 6.0f * novaScale, static_cast<REAL>(acPosPix.y)),
-					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y) + 6.0f * novaScale),
-					PointF(static_cast<REAL>(acPosPix.x) + 6.0f * novaScale, static_cast<REAL>(acPosPix.y)),
-					PointF(static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y) - 6.0f * novaScale)
-				};
-				graphics.DrawLines(&novaSymbolPen, novaPoints, static_cast<INT>(_countof(novaPoints)));
-			}
-			else {
-				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) - 4.0f * novaScale, static_cast<REAL>(acPosPix.y) - 4.0f * novaScale);
-				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) + 4.0f * novaScale, static_cast<REAL>(acPosPix.y) - 4.0f * novaScale);
-				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) - 4.0f * novaScale, static_cast<REAL>(acPosPix.y) + 4.0f * novaScale);
-				graphics.DrawLine(&novaSymbolPen, static_cast<REAL>(acPosPix.x), static_cast<REAL>(acPosPix.y), static_cast<REAL>(acPosPix.x) + 4.0f * novaScale, static_cast<REAL>(acPosPix.y) + 4.0f * novaScale);
-			}
-			iconSize = static_cast<int>(std::ceil(12.0 * frameTargetPresentation.symbolScale));
-		}
-		else if (canUseRealisticIcon) {
-
-			// Compute on-screen size that scales with zoom (uniform for all aircraft)
-			double drawW = iconSize;
-			double drawH = iconSize;
-			const double pixPerMeter = std::isfinite(framePixPerMeter) ? framePixPerMeter : 0.0;
-
-			const double lengthMeters = sceneTarget.style.lengthMeters;
-			const double spanMeters = sceneTarget.style.wingspanMeters;
-			iconVerboseStep(
-				"realistic_dims len=" + std::to_string(lengthMeters) +
-				" span=" + std::to_string(spanMeters));
-
-			if (pixPerMeter > 0.0) {
-				drawW = spanMeters * pixPerMeter * frameTargetPresentation.symbolScale;
-				drawH = lengthMeters * pixPerMeter * frameTargetPresentation.symbolScale;
-			}
-
-			// Preserve true zoom scaling. A one-pixel floor only keeps the bitmap API valid.
-			double minSize = 1.0;
-			double maxSize = 1200.0;
-			drawW = sanitizeFinitePositive(drawW, 1.0, minSize, maxSize);
-			drawH = sanitizeFinitePositive(drawH, 1.0, minSize, maxSize);
-			iconVerboseStep(
-				"realistic_size w=" + std::to_string(drawW) +
-				" h=" + std::to_string(drawH));
-			int drawPixelW = 0;
-			int drawPixelH = 0;
-			std::string scaledRealisticIconCacheKey;
-			Gdiplus::Bitmap* cachedRealisticIcon = GetCachedRealisticIconBitmap(
-				iconType,
-				iconBmp,
-				iconBmpWidth,
-				iconBmpHeight,
-				applyTargetTintColor,
-				targetTintColor,
-				drawW,
-				drawH,
-				frameRealisticIconCacheFrame,
-				drawPixelW,
-				drawPixelH,
-				scaledRealisticIconCacheKey);
-			if (cachedRealisticIcon == nullptr)
-			{
-				drawPixelW = std::clamp(static_cast<int>(std::lround(drawW)), 1, 2048);
-				drawPixelH = std::clamp(static_cast<int>(std::lround(drawH)), 1, 2048);
-			}
-
-			// Screen-relative heading from pixel forward vector (handles rotated display)
-			CPosition nosePosDraw = scenePosition(sceneTarget.headingProbe);
-			POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
-			double fx = double(nosePixDraw.x - acPosPix.x);
-			double fy = double(nosePixDraw.y - acPosPix.y);
-			double screenHeadingDeg = atan2(fy, fx) * 180.0 / M_PI;
-			// Adjust because SVG nose is up; rotate so north = 0, east = 90, etc.
-			// GDI+ uses screen coords (Y grows down); negate to align with screen vector and SVG nose-up.
-			double rotationDeg = screenHeadingDeg + 90.0;
-			if (!std::isfinite(rotationDeg))
-				rotationDeg = 0.0;
-			iconVerboseStep("realistic_before_transform rot=" + std::to_string(rotationDeg));
-
-			RealisticIconCacheEntry* rotatedRealisticIcon = GetCachedRotatedRealisticIconBitmap(
-				scaledRealisticIconCacheKey,
-				cachedRealisticIcon,
-				drawPixelW,
-				drawPixelH,
-				rotationDeg,
-				frameRealisticIconCacheFrame);
-			if (rotatedRealisticIcon != nullptr && rotatedRealisticIcon->bitmap != nullptr)
-			{
-				iconVerboseStep("before_realistic_draw_rotated_cached");
-				graphics.DrawImage(
-					rotatedRealisticIcon->bitmap.get(),
-					acPosPix.x - rotatedRealisticIcon->centerX,
-					acPosPix.y - rotatedRealisticIcon->centerY);
-				iconVerboseStep("after_realistic_draw_rotated_cached");
-				iconSize = max(
-					static_cast<int>(rotatedRealisticIcon->bitmap->GetWidth()),
-					static_cast<int>(rotatedRealisticIcon->bitmap->GetHeight()));
-			}
-			else
-			{
-				GraphicsState state = graphics.Save();
-				Gdiplus::Matrix m;
-				m.Translate(Gdiplus::REAL(acPosPix.x), Gdiplus::REAL(acPosPix.y));
-				m.Rotate(Gdiplus::REAL(rotationDeg));
-				m.Translate(Gdiplus::REAL(-drawPixelW / 2.0), Gdiplus::REAL(-drawPixelH / 2.0));
-				graphics.SetTransform(&m);
-
-				if (cachedRealisticIcon != nullptr)
-				{
-					iconVerboseStep("before_realistic_draw_scaled_cached_fallback");
-					graphics.DrawImage(cachedRealisticIcon, 0, 0);
-					iconVerboseStep("after_realistic_draw_scaled_cached_fallback");
-				}
-				else if (applyTargetTintColor) {
-					iconVerboseStep("before_realistic_draw_tinted_fallback");
-					Gdiplus::ImageAttributes* attrs = getCachedTintAttributes(targetTintColor);
-					RectF dest(0.0f, 0.0f, static_cast<REAL>(drawPixelW), static_cast<REAL>(drawPixelH));
-					graphics.DrawImage(
-						iconBmp,
-						dest,
-						0.0f,
-						0.0f,
-						static_cast<Gdiplus::REAL>(iconBmpWidth),
-						static_cast<Gdiplus::REAL>(iconBmpHeight),
-						UnitPixel,
-						attrs);
-					iconVerboseStep("after_realistic_draw_tinted_fallback");
-				}
-				else {
-					iconVerboseStep("before_realistic_draw_plain_fallback");
-					graphics.DrawImage(iconBmp, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(drawPixelW), Gdiplus::REAL(drawPixelH));
-					iconVerboseStep("after_realistic_draw_plain_fallback");
-				}
-				graphics.Restore(state);
-
-				const double rotationRadians = rotationDeg * M_PI / 180.0;
-				const double absCos = std::abs(std::cos(rotationRadians));
-				const double absSin = std::abs(std::sin(rotationRadians));
-				const int rotatedWidth = static_cast<int>(std::ceil(drawPixelW * absCos + drawPixelH * absSin));
-				const int rotatedHeight = static_cast<int>(std::ceil(drawPixelW * absSin + drawPixelH * absCos));
-				iconSize = max(rotatedWidth, rotatedHeight);
-			}
-		}
-		else
-		{
-			const double pixPerMeter = std::isfinite(framePixPerMeter) ? framePixPerMeter : 0.0;
-
-			const double lenMetersBase = 20.0;
-			const double halfWidthMetersBase = 12.0;
-			const double lenPx = sanitizeFinitePositive(
-				pixPerMeter * lenMetersBase * frameTargetPresentation.symbolScale, 1.0, 0.5, 220.0);
-			const double halfWidthPx = sanitizeFinitePositive(
-				pixPerMeter * halfWidthMetersBase * frameTargetPresentation.symbolScale, 0.5, 0.35, 110.0);
-			const double lenMetersUsed = lenMetersBase * frameTargetPresentation.symbolScale;
-			const double halfWidthMetersUsed = halfWidthMetersBase * frameTargetPresentation.symbolScale;
-
-			auto wrap360 = [](double deg) {
-				double wrapped = fmod(deg, 360.0);
-				return wrapped < 0.0 ? wrapped + 360.0 : wrapped;
+				if (!Logger::is_verbose_mode())
+					return;
+				Logger::info("IconRender: " + rtCallsign + " " + step);
 			};
 
-			const Color drawColor = applyTargetTintColor ? targetTintColor : frameSymbolWhiteColor;
-			if (useDiamondIconStyle)
+			const CPosition targetPosition = scenePosition(sceneTarget.position);
+			iconVerboseStep("begin");
+
+			const bool AcisCorrelated = sceneTarget.correlated;
+			POINT acPosPix = ConvertCoordFromPositionToPixel(targetPosition);
+			if (acPosPix.x >= frameVisibleRadarArea.left && acPosPix.x < frameVisibleRadarArea.right &&
+				acPosPix.y >= frameVisibleRadarArea.top && acPosPix.y < frameVisibleRadarArea.bottom)
 			{
-				iconVerboseStep("before_symbol_diamond_draw");
-				// Rounded square rendered as a 45-degree rotated diamond.
-				const double diagonalPx = std::clamp(lenPx + halfWidthPx, 10.0, 220.0);
-				const double sidePx = diagonalPx / std::sqrt(2.0);
-				const double halfSide = sidePx / 2.0;
-				const Gdiplus::REAL rectX = static_cast<Gdiplus::REAL>(acPosPix.x - halfSide);
-				const Gdiplus::REAL rectY = static_cast<Gdiplus::REAL>(acPosPix.y - halfSide);
-				const Gdiplus::REAL rectW = static_cast<Gdiplus::REAL>(sidePx);
-				const Gdiplus::REAL rectH = static_cast<Gdiplus::REAL>(sidePx);
-				Gdiplus::REAL radius = std::clamp(static_cast<Gdiplus::REAL>(sidePx * 0.22), 2.0f, static_cast<Gdiplus::REAL>(sidePx / 2.0));
+				++frameVisibleTargetCount;
+			}
 
-				Gdiplus::GraphicsPath diamondPath;
-				const Gdiplus::REAL d = radius * 2.0f;
-				diamondPath.AddArc(rectX, rectY, d, d, 180, 90);
-				diamondPath.AddArc(rectX + rectW - d, rectY, d, d, 270, 90);
-				diamondPath.AddArc(rectX + rectW - d, rectY + rectH - d, d, d, 0, 90);
-				diamondPath.AddArc(rectX, rectY + rectH - d, d, d, 90, 90);
-				diamondPath.CloseFigure();
+			iconVerboseStep("after_scene_data");
+			const VsmrTargetRendering::DrawResult drawResult =
+				targetRenderer.DrawTarget(sceneTarget);
+			acPosPix = drawResult.center;
+			if (Logger::is_verbose_mode())
+			{
+				const char* iconDrawMode = sceneTarget.style.icon == VsmrScene::IconStyle::Nova
+					? "nova"
+					: (drawResult.realisticBitmapDrawn ? "realistic" : "symbol");
+				Logger::info(
+					"IconRender: " + rtCallsign +
+					" mode=" + iconDrawMode +
+					" icon_type=" + sceneTarget.style.assetKey);
+			}
+			iconVerboseStep("after_icon_draw");
+			if (mouseWithin({ acPosPix.x - 5, acPosPix.y - 5, acPosPix.x + 5, acPosPix.y + 5 })) {
+				dc.MoveTo(acPosPix.x, acPosPix.y - 8);
+				dc.LineTo(acPosPix.x - 6, acPosPix.y - 12);
+				dc.MoveTo(acPosPix.x, acPosPix.y - 8);
+				dc.LineTo(acPosPix.x + 6, acPosPix.y - 12);
 
-				CPosition nosePosDraw = scenePosition(sceneTarget.headingProbe);
-				POINT nosePixDraw = ConvertCoordFromPositionToPixel(nosePosDraw);
-				double fx = double(nosePixDraw.x - acPosPix.x);
-				double fy = double(nosePixDraw.y - acPosPix.y);
-				double screenHeadingDeg = atan2(fy, fx) * 180.0 / M_PI;
-				double rotationDeg = screenHeadingDeg + 45.0;
+				dc.MoveTo(acPosPix.x, acPosPix.y + 8);
+				dc.LineTo(acPosPix.x - 6, acPosPix.y + 12);
+				dc.MoveTo(acPosPix.x, acPosPix.y + 8);
+				dc.LineTo(acPosPix.x + 6, acPosPix.y + 12);
 
-				GraphicsState diamondState = graphics.Save();
-				Gdiplus::Matrix diamondTransform;
-				diamondTransform.RotateAt(static_cast<Gdiplus::REAL>(rotationDeg), PointF(static_cast<Gdiplus::REAL>(acPosPix.x), static_cast<Gdiplus::REAL>(acPosPix.y)));
-				graphics.MultiplyTransform(&diamondTransform);
-				SolidBrush diamondBrush(drawColor);
-				graphics.FillPath(&diamondBrush, &diamondPath);
-				graphics.Restore(diamondState);
-				iconVerboseStep("after_symbol_diamond_draw");
-				iconSize = int(max(12.0, diagonalPx));
+				dc.MoveTo(acPosPix.x - 8, acPosPix.y );
+				dc.LineTo(acPosPix.x - 12, acPosPix.y -6);
+				dc.MoveTo(acPosPix.x - 8, acPosPix.y);
+				dc.LineTo(acPosPix.x - 12 , acPosPix.y + 6);
+
+				dc.MoveTo(acPosPix.x + 8, acPosPix.y);
+				dc.LineTo(acPosPix.x + 12, acPosPix.y - 6);
+				dc.MoveTo(acPosPix.x + 8, acPosPix.y);
+				dc.LineTo(acPosPix.x + 12, acPosPix.y + 6);
+			}
+
+			std::string hoverTextStorage;
+			const char* hoverText = "";
+			if (AcisCorrelated)
+			{
+				hoverTextStorage = sceneTarget.bottomLine;
+				hoverText = hoverTextStorage.c_str();
 			}
 			else
 			{
-				iconVerboseStep("before_symbol_arrow_draw");
-				auto move = [&](const CPosition& start, double bearingDeg, double distanceMeters) {
-					return BetterHarversine(start, wrap360(bearingDeg), distanceMeters);
-				};
-
-				CPosition acPos = targetPosition;
-				CPosition tipPos = move(acPos, headingDeg, lenMetersUsed);
-				CPosition basePos = move(acPos, headingDeg + 180.0, lenMetersUsed * 0.33);
-				CPosition notchPos = move(acPos, headingDeg + 180.0, lenMetersUsed * 0.05);
-				CPosition rightPos = move(basePos, headingDeg + 90.0, halfWidthMetersUsed);
-				CPosition leftPos = move(basePos, headingDeg - 90.0, halfWidthMetersUsed);
-
-				POINT tip = ConvertCoordFromPositionToPixel(tipPos);
-				POINT right = ConvertCoordFromPositionToPixel(rightPos);
-				POINT notch = ConvertCoordFromPositionToPixel(notchPos);
-				POINT left = ConvertCoordFromPositionToPixel(leftPos);
-
-				PointF tri[4] = {
-					PointF(Gdiplus::REAL(tip.x), Gdiplus::REAL(tip.y)),
-					PointF(Gdiplus::REAL(right.x), Gdiplus::REAL(right.y)),
-					PointF(Gdiplus::REAL(notch.x), Gdiplus::REAL(notch.y)),
-					PointF(Gdiplus::REAL(left.x), Gdiplus::REAL(left.y))
-				};
-
-				SolidBrush arrowBrush(drawColor);
-				graphics.FillPolygon(&arrowBrush, tri, 4);
-				iconVerboseStep("after_symbol_arrow_draw");
-				iconSize = int(max(12.0, lenPx + halfWidthPx));
+				hoverText = sceneTarget.systemId.c_str();
 			}
+			iconVerboseStep("before_add_screen_object");
+			const CRect targetArea(
+				drawResult.hitBounds.left,
+				drawResult.hitBounds.top,
+				drawResult.hitBounds.right,
+				drawResult.hitBounds.bottom);
+			targetAreas[rtCallsign] = targetArea;
+			AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), targetArea, false, hoverText);
+			iconVerboseStep("after_add_screen_object");
 		}
-		iconVerboseStep("after_icon_draw");
-
-		if (mouseWithin({ acPosPix.x - 5, acPosPix.y - 5, acPosPix.x + 5, acPosPix.y + 5 })) {
-			dc.MoveTo(acPosPix.x, acPosPix.y - 8);
-			dc.LineTo(acPosPix.x - 6, acPosPix.y - 12);
-			dc.MoveTo(acPosPix.x, acPosPix.y - 8);
-			dc.LineTo(acPosPix.x + 6, acPosPix.y - 12);
-
-			dc.MoveTo(acPosPix.x, acPosPix.y + 8);
-			dc.LineTo(acPosPix.x - 6, acPosPix.y + 12);
-			dc.MoveTo(acPosPix.x, acPosPix.y + 8);
-			dc.LineTo(acPosPix.x + 6, acPosPix.y + 12);
-
-			dc.MoveTo(acPosPix.x - 8, acPosPix.y );
-			dc.LineTo(acPosPix.x - 12, acPosPix.y -6);
-			dc.MoveTo(acPosPix.x - 8, acPosPix.y);
-			dc.LineTo(acPosPix.x - 12 , acPosPix.y + 6);
-
-			dc.MoveTo(acPosPix.x + 8, acPosPix.y);
-			dc.LineTo(acPosPix.x + 12, acPosPix.y - 6);
-			dc.MoveTo(acPosPix.x + 8, acPosPix.y);
-			dc.LineTo(acPosPix.x + 12, acPosPix.y + 6);
-		}
-
-		int hitSize = max(iconSize, 12);
-		std::string hoverTextStorage;
-		const char* hoverText = "";
-		if (AcisCorrelated)
-		{
-			hoverTextStorage = sceneTarget.bottomLine;
-			hoverText = hoverTextStorage.c_str();
-		}
-		else
-		{
-			hoverText = sceneTarget.systemId.c_str();
-		}
-		iconVerboseStep("before_add_screen_object");
-		const CRect targetArea(
-			acPosPix.x - hitSize / 2,
-			acPosPix.y - hitSize / 2,
-			acPosPix.x + hitSize / 2,
-			acPosPix.y + hitSize / 2);
-		targetAreas[rtCallsign] = targetArea;
-		AddScreenObject(DRAWING_AC_SYMBOL, rtCallsign.c_str(), targetArea, false, hoverText);
-		iconVerboseStep("after_add_screen_object");
-	}
-	perfTargetsMs += AvisoMax(0.0, (RefreshPerfNowMs() - perfTargetsStartMs) - (perfRimcasMs - perfRimcasBeforeTargetsMs));
-	if (frameUseFastRealisticBitmapRendering)
-	{
-		graphics.SetInterpolationMode(frameSavedInterpolationMode);
-		graphics.SetPixelOffsetMode(frameSavedPixelOffsetMode);
-		graphics.SetCompositingQuality(frameSavedCompositingQuality);
+		perfTargetsMs += AvisoMax(0.0, (RefreshPerfNowMs() - perfTargetsStartMs) - (perfRimcasMs - perfRimcasBeforeTargetsMs));
 	}
 
 #pragma endregion Drawing of the symbols

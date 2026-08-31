@@ -1,19 +1,18 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
+#include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
-#include "radar/TargetTrailRenderer.hpp"
+#include "rendering/TagRenderer.hpp"
+#include "rendering/TargetSymbolRenderer.hpp"
 #include "rdf/RdfOverlay.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "shared/logging/Logger.hpp"
-#include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
-#include <thread>
 
 namespace
 {
@@ -35,30 +34,6 @@ namespace
 	using AvisoLayoutMode = CInsetWindow::AvisoLayoutMode;
 	using ResizeRegion = CInsetWindow::ResizeRegion;
 
-	void FillTagBackground(
-		Gdiplus::Graphics* graphics,
-		Gdiplus::SolidBrush& brush,
-		CRect backgroundRect,
-		bool roundedCorners)
-	{
-		if (!roundedCorners)
-		{
-			graphics->FillRectangle(&brush, CopyRect(backgroundRect));
-			return;
-		}
-
-		const Gdiplus::Rect roundedRect = CopyRect(backgroundRect);
-		Gdiplus::GraphicsPath roundedPath;
-		const int radius = 4;
-		const int diameter = radius * 2;
-		roundedPath.AddArc(roundedRect.X, roundedRect.Y, diameter, diameter, 180, 90);
-		roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.Y, diameter, diameter, 270, 90);
-		roundedPath.AddArc(roundedRect.GetRight() - diameter, roundedRect.GetBottom() - diameter, diameter, diameter, 0, 90);
-		roundedPath.AddArc(roundedRect.X, roundedRect.GetBottom() - diameter, diameter, diameter, 90, 90);
-		roundedPath.CloseFigure();
-		graphics->FillPath(&brush, &roundedPath);
-	}
-
 	double ClampAvisoLatitude(double latitude)
 	{
 		return std::clamp(latitude, -85.0, 85.0);
@@ -78,12 +53,6 @@ namespace
 	{
 		const double delta = left - right;
 		return delta >= -tolerance && delta <= tolerance;
-	}
-
-	bool AvisoPointWithinTolerance(const Gdiplus::PointF& left, const Gdiplus::PointF& right, double tolerance)
-	{
-		return AvisoWithinTolerance(static_cast<double>(left.X), static_cast<double>(right.X), tolerance) &&
-			AvisoWithinTolerance(static_cast<double>(left.Y), static_cast<double>(right.Y), tolerance);
 	}
 
 	bool AvisoProjectionTransformWithinTolerance(
@@ -801,13 +770,6 @@ namespace
 		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
 	}
 
-	double AvisoFinitePositive(double value, double fallback, double minValue, double maxValue)
-	{
-		if (!std::isfinite(value))
-			return fallback;
-		return std::clamp(value, minValue, maxValue);
-	}
-
 	bool AvisoRectIntersects(const CRect& one, const CRect& two)
 	{
 		CRect a(one);
@@ -822,7 +784,7 @@ struct AvisoViewportState
 {
 	~AvisoViewportState()
 	{
-		StopRenderThread();
+		StopRenderPipeline();
 		ClearCache();
 	}
 
@@ -855,332 +817,156 @@ struct AvisoViewportState
 
 	void InvalidateRenderRequests()
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
-		pendingRenderRequest.reset();
-		completedRenderResult.reset();
-		pendingRenderRadar = nullptr;
-		latestRequestId = ++nextRequestId;
-		cancellationToken->store(latestRequestId, std::memory_order_release);
-		lastRequestValid = false;
-		renderPending.store(false, std::memory_order_relaxed);
+		if (renderPipeline != nullptr)
+			renderPipeline->InvalidateRequests();
 	}
 
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> TakeCompletedRender()
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
-		std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result = std::move(completedRenderResult);
-		renderPending.store(renderInFlight || pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
-		return result;
+		return renderPipeline != nullptr
+			? renderPipeline->TakeCompleted()
+			: nullptr;
 	}
 
 	void AllowRetryForDiscardedResult(std::uint64_t requestId)
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
-		// Do not invalidate a newer request that was queued after this completed
-		// raster. If this is still the latest request, however, coalescing it would
-		// otherwise prevent the current viewport from ever trying the view again.
-		if (latestRequestId == requestId &&
-			pendingRenderRequest == nullptr &&
-			!renderInFlight)
-		{
-			lastRequestValid = false;
-		}
+		if (renderPipeline != nullptr)
+			renderPipeline->AllowRetryForDiscardedResult(requestId);
 	}
 
-	void QueueRender(CSMRRadar* radarScreen, CSMRRadar::AvisoRasterRenderRequest request)
+	void QueueRender(
+		CSMRRadar* radarScreen,
+		CSMRRadar::AvisoRasterRenderRequest request)
 	{
 		if (radarScreen == nullptr ||
 			request.path.empty() ||
 			request.features == nullptr ||
 			request.labels == nullptr ||
 			request.rasterWidth <= 0 ||
-			request.rasterHeight <= 0)
+			request.rasterHeight <= 0 ||
+			radarScreen->IsShutdownRequested() ||
+			radarScreen->IsAvisoGeoJsonRenderStopRequested())
 		{
 			return;
 		}
 
-		if (radarScreen->IsShutdownRequested() || radarScreen->IsAvisoGeoJsonRenderStopRequested())
-			return;
+		EnsureRenderPipeline(radarScreen);
+		if (renderPipeline != nullptr)
+			renderPipeline->Queue(std::move(request), cacheBitmap != nullptr);
+	}
 
-		bool shouldNotify = false;
+	void StopRenderPipeline()
+	{
+		if (renderPipeline != nullptr)
 		{
-			std::lock_guard<std::mutex> guard(renderMutex);
-			if (renderStopRequested)
-				return;
+			renderPipeline->Stop();
+			renderPipeline.reset();
+		}
+		renderRadar = nullptr;
+	}
 
-			const double longitudeTolerance = max(
-				std::abs(request.displayMaxLongitude - request.displayMinLongitude) /
-					static_cast<double>((std::max)(request.rasterWidth, 1)) * 0.5,
-				1e-10);
-			const double latitudeTolerance = max(
-				std::abs(request.displayMaxLatitude - request.displayMinLatitude) /
-					static_cast<double>((std::max)(request.rasterHeight, 1)) * 0.5,
-				1e-10);
-			const bool sameRequest =
-				lastRequestValid &&
-				lastRequestPath == request.path &&
-				lastRequestUseDayPalette == request.useDayPalette &&
-				lastRequestGroupGeneration == request.groupGeneration &&
-				std::abs(lastRequestRasterWidth - request.rasterWidth) <= 2 &&
-				std::abs(lastRequestRasterHeight - request.rasterHeight) <= 2 &&
-				AvisoWithinTolerance(lastRequestMinLongitude, request.displayMinLongitude, longitudeTolerance) &&
-				AvisoWithinTolerance(lastRequestMinLatitude, request.displayMinLatitude, latitudeTolerance) &&
-				AvisoWithinTolerance(lastRequestMaxLongitude, request.displayMaxLongitude, longitudeTolerance) &&
-				AvisoWithinTolerance(lastRequestMaxLatitude, request.displayMaxLatitude, latitudeTolerance) &&
-				AvisoPointWithinTolerance(lastRequestProjectedTopLeft, request.projectedTopLeft, 0.75) &&
-				AvisoPointWithinTolerance(lastRequestProjectedTopRight, request.projectedTopRight, 0.75) &&
-				AvisoPointWithinTolerance(lastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.75) &&
-				AvisoPointWithinTolerance(lastRequestProjectedBottomRight, request.projectedBottomRight, 0.75);
-			if (sameRequest)
-			{
-				radarScreen->PerformanceDiagnostics.RecordAvisoRequestCoalesced(
-					VsmrPerformance::AvisoViewport::Inset);
-				return;
-			}
+	bool HasPendingRender() const noexcept
+	{
+		return renderPipeline != nullptr && renderPipeline->HasPendingWork();
+	}
 
-			request.requestId = ++nextRequestId;
-			request.performanceQueuedAtMilliseconds =
-				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
-			if (request.debounceMilliseconds == 0 && cacheBitmap != nullptr)
-				request.debounceMilliseconds = 24;
-			request.cancellationToken = cancellationToken;
-			latestRequestId = request.requestId;
-			cancellationToken->store(request.requestId, std::memory_order_release);
-			lastRequestValid = true;
-			lastRequestPath = request.path;
-			lastRequestUseDayPalette = request.useDayPalette;
-			lastRequestMinLongitude = request.displayMinLongitude;
-			lastRequestMinLatitude = request.displayMinLatitude;
-			lastRequestMaxLongitude = request.displayMaxLongitude;
-			lastRequestMaxLatitude = request.displayMaxLatitude;
-			lastRequestRasterWidth = request.rasterWidth;
-			lastRequestRasterHeight = request.rasterHeight;
-			lastRequestGroupGeneration = request.groupGeneration;
-			lastRequestProjectedTopLeft = request.projectedTopLeft;
-			lastRequestProjectedTopRight = request.projectedTopRight;
-			lastRequestProjectedBottomLeft = request.projectedBottomLeft;
-			lastRequestProjectedBottomRight = request.projectedBottomRight;
-			const bool supersededPendingRequest =
-				pendingRenderRequest != nullptr || renderInFlight;
-			pendingRenderRadar = radarScreen;
-			pendingRenderRequest = std::make_unique<CSMRRadar::AvisoRasterRenderRequest>(std::move(request));
-			renderPending.store(true, std::memory_order_relaxed);
+	VsmrPerformance::AvisoQueueDepth PerformanceQueueDepth() const
+	{
+		return renderPipeline != nullptr
+			? renderPipeline->QueueDepth()
+			: VsmrPerformance::AvisoQueueDepth{};
+	}
+
+	void EnsureRenderPipeline(CSMRRadar* radarScreen)
+	{
+		if (radarScreen == nullptr)
+			return;
+		if (renderPipeline != nullptr && renderRadar == radarScreen)
+			return;
+		if (renderPipeline != nullptr)
+			StopRenderPipeline();
+
+		renderRadar = radarScreen;
+		VsmrAviso::AvisoRasterPipeline::Callbacks callbacks;
+		callbacks.render =
+			[radarScreen](const CSMRRadar::AvisoRasterRenderRequest& request)
+		{
+				return radarScreen->RenderAvisoGeoJsonRaster(request);
+			};
+		callbacks.isExternallyCancelled =
+			[radarScreen](const CSMRRadar::AvisoRasterRenderRequest& request)
+		{
+				return radarScreen->IsAvisoRasterRenderRequestCancelled(request);
+			};
+		callbacks.isExternalStopRequested = [radarScreen]()
+		{
+			return radarScreen->IsShutdownRequested() ||
+				radarScreen->IsAvisoGeoJsonRenderStopRequested();
+		};
+		callbacks.requestRefresh = [radarScreen]()
+		{
+			radarScreen->RequestRefreshFromWorker();
+		};
+		callbacks.workerThreadStarted = []()
+		{
+			ULONG stackGuarantee = 64U * 1024U;
+			::SetThreadStackGuarantee(&stackGuarantee);
+			VsmrCrashRuntime::RecordCurrentThreadRole("inset AVISO render worker");
+		};
+		callbacks.workerThreadStopped = []()
+		{
+			VsmrCrashRuntime::RecordCurrentThreadRole("inactive");
+		};
+		callbacks.renderStarted =
+			[radarScreen](const CSMRRadar::AvisoRasterRenderRequest&)
+		{
+				VsmrCrashRuntime::RecordCurrentThreadCallback(
+					"AvisoRasterPipeline::WorkerMain (inset)",
+					reinterpret_cast<std::uintptr_t>(radarScreen));
+			};
+		callbacks.reportError = [](const std::string& message)
+		{
+			Logger::info(message);
+		};
+		callbacks.diagnostics.requestQueued = [radarScreen](bool superseded)
+		{
 			radarScreen->PerformanceDiagnostics.RecordAvisoRequestQueued(
 				VsmrPerformance::AvisoViewport::Inset,
-				supersededPendingRequest);
-
-			if (!renderThreadStarted)
-			{
-				renderStopRequested = false;
-				try
-				{
-					renderThread = std::thread(&AvisoViewportState::RenderThreadMain, this);
-					renderThreadStarted = true;
-				}
-				catch (const std::exception& ex)
-				{
-					pendingRenderRequest.reset();
-					pendingRenderRadar = nullptr;
-					renderPending.store(false, std::memory_order_relaxed);
-					lastRequestValid = false;
-					Logger::info("Inset AVISO render worker start failed: " + std::string(ex.what()));
-					return;
-				}
-				catch (...)
-				{
-					pendingRenderRequest.reset();
-					pendingRenderRadar = nullptr;
-					renderPending.store(false, std::memory_order_relaxed);
-					lastRequestValid = false;
-					Logger::info("Inset AVISO render worker start failed: unknown exception");
-					return;
-				}
-			}
-			shouldNotify = true;
-		}
-
-		if (shouldNotify)
-			renderCondition.notify_one();
-	}
-
-	void StopRenderThread()
-	{
-		bool shouldJoin = false;
+				superseded);
+		};
+		callbacks.diagnostics.requestCoalesced = [radarScreen]()
 		{
-			std::lock_guard<std::mutex> guard(renderMutex);
-			renderStopRequested = true;
-			cancellationToken->fetch_add(1, std::memory_order_release);
-			pendingRenderRequest.reset();
-			completedRenderResult.reset();
-			pendingRenderRadar = nullptr;
-			renderInFlight = false;
-			renderPending.store(false, std::memory_order_relaxed);
-			shouldJoin = renderThreadStarted;
-		}
-
-		renderCondition.notify_all();
-		if (shouldJoin && renderThread.joinable())
-			renderThread.join();
-
+			radarScreen->PerformanceDiagnostics.RecordAvisoRequestCoalesced(
+				VsmrPerformance::AvisoViewport::Inset);
+		};
+		callbacks.diagnostics.requestDebounced = [radarScreen]()
 		{
-			std::lock_guard<std::mutex> guard(renderMutex);
-			renderThreadStarted = false;
-			renderStopRequested = false;
-			lastRequestValid = false;
-		}
-	}
-
-	void RenderThreadMain()
-	{
-		VsmrCrashRuntime::OwnedThreadRole crashThreadRole("inset AVISO render worker");
-		for (;;)
+			radarScreen->PerformanceDiagnostics.RecordAvisoRequestDebounced(
+				VsmrPerformance::AvisoViewport::Inset);
+		};
+		callbacks.diagnostics.rasterBuilt =
+			[radarScreen](double rebuildMilliseconds, double queueWaitMilliseconds, bool succeeded)
 		{
-			std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> request;
-			CSMRRadar* radarScreen = nullptr;
-			// Debouncing rapid viewport changes
-			{
-				std::unique_lock<std::mutex> lock(renderMutex);
-				renderCondition.wait(lock, [&]() {
-					return renderStopRequested || pendingRenderRequest != nullptr;
-				});
+			radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuild(
+				VsmrPerformance::AvisoViewport::Inset,
+				rebuildMilliseconds,
+				queueWaitMilliseconds,
+				succeeded);
+		};
+		callbacks.diagnostics.rasterBuildCancelled = [radarScreen]()
+		{
+			radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuildCancelled(
+				VsmrPerformance::AvisoViewport::Inset);
+		};
+		callbacks.diagnostics.resultDiscarded = [radarScreen]()
+		{
+			radarScreen->PerformanceDiagnostics.RecordAvisoResultDiscarded(
+				VsmrPerformance::AvisoViewport::Inset);
+		};
 
-				if (renderStopRequested)
-					return;
-				while (pendingRenderRequest != nullptr &&
-					pendingRenderRequest->debounceMilliseconds > 0)
-				{
-					const std::uint64_t observedRequestId = pendingRenderRequest->requestId;
-					const std::uint64_t readyAt =
-						pendingRenderRequest->performanceQueuedAtMilliseconds +
-						pendingRenderRequest->debounceMilliseconds;
-					const std::uint64_t now =
-						VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
-					if (now >= readyAt)
-						break;
-					renderCondition.wait_for(
-						lock,
-						std::chrono::milliseconds(
-							static_cast<long long>(readyAt - now)),
-						[&]() {
-							return renderStopRequested ||
-								pendingRenderRequest == nullptr ||
-								pendingRenderRequest->requestId != observedRequestId;
-						});
-					if (renderStopRequested)
-						return;
-					if (pendingRenderRequest != nullptr &&
-						pendingRenderRequest->requestId != observedRequestId)
-					{
-						if (pendingRenderRadar != nullptr)
-						{
-							pendingRenderRadar->PerformanceDiagnostics.RecordAvisoRequestDebounced(
-								VsmrPerformance::AvisoViewport::Inset);
-						}
-						continue;
-					}
-					break;
-				}
-
-				request = std::move(pendingRenderRequest);
-				radarScreen = pendingRenderRadar;
-				pendingRenderRadar = nullptr;
-				renderInFlight = request != nullptr;
-				renderPending.store(renderInFlight || pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
-			}
-
-			if (request == nullptr || radarScreen == nullptr)
-			{
-				std::lock_guard<std::mutex> guard(renderMutex);
-				renderInFlight = false;
-				renderPending.store(pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
-				continue;
-			}
-			VsmrCrashRuntime::RecordCurrentThreadCallback(
-				"AvisoViewportState::RenderThreadMain",
-				reinterpret_cast<std::uintptr_t>(radarScreen));
-
-			// Rendering outside the state lock
-			std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> result;
-			const std::uint64_t renderStartMilliseconds =
-				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
-			const double queueWaitMilliseconds = request->performanceQueuedAtMilliseconds == 0
-				? 0.0
-				: static_cast<double>(renderStartMilliseconds - request->performanceQueuedAtMilliseconds);
-			const auto renderStart = std::chrono::steady_clock::now();
-			try
-			{
-				result = radarScreen->RenderAvisoGeoJsonRaster(*request);
-			}
-			catch (CException* ex)
-			{
-				if (ex != nullptr)
-					ex->Delete();
-				Logger::info("Inset AVISO render worker caught MFC exception");
-			}
-			catch (...)
-			{
-				result.reset();
-			}
-			const double rebuildMilliseconds = std::chrono::duration<double, std::milli>(
-				std::chrono::steady_clock::now() - renderStart).count();
-			const bool renderCancelled = result == nullptr &&
-				radarScreen->IsAvisoRasterRenderRequestCancelled(*request);
-			if (renderCancelled)
-			{
-				radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuildCancelled(
-					VsmrPerformance::AvisoViewport::Inset);
-			}
-			else
-			{
-				radarScreen->PerformanceDiagnostics.RecordAvisoRasterBuild(
-					VsmrPerformance::AvisoViewport::Inset,
-					rebuildMilliseconds,
-					queueWaitMilliseconds,
-					result != nullptr);
-			}
-
-			// Publishing only the latest completed raster
-			bool shouldRefresh = false;
-			bool discardedResult = false;
-			{
-				std::lock_guard<std::mutex> guard(renderMutex);
-				if (result == nullptr &&
-					!renderCancelled &&
-					request->requestId == latestRequestId)
-				{
-					// Let an identical frame retry after a transient render failure.
-					lastRequestValid = false;
-				}
-				if (renderStopRequested)
-					return;
-
-				if (result != nullptr &&
-					result->requestId == latestRequestId &&
-					!radarScreen->IsShutdownRequested() &&
-					!radarScreen->IsAvisoGeoJsonRenderStopRequested())
-				{
-					if (completedRenderResult != nullptr)
-						discardedResult = true;
-					completedRenderResult = std::move(result);
-					shouldRefresh = true;
-				}
-				else if (result != nullptr)
-				{
-					discardedResult = true;
-				}
-
-				renderInFlight = false;
-				renderPending.store(pendingRenderRequest != nullptr || completedRenderResult != nullptr, std::memory_order_relaxed);
-			}
-			if (discardedResult)
-			{
-				radarScreen->PerformanceDiagnostics.RecordAvisoResultDiscarded(
-					VsmrPerformance::AvisoViewport::Inset);
-			}
-
-			if (shouldRefresh)
-				radarScreen->RequestRefreshFromWorker();
-		}
+		renderPipeline = std::make_unique<VsmrAviso::AvisoRasterPipeline>(
+			std::move(callbacks),
+			"inset AVISO render worker");
 	}
 
 	HBITMAP cacheBitmap = nullptr;
@@ -1202,45 +988,8 @@ struct AvisoViewportState
 	Gdiplus::PointF projectedBottomRight;
 	bool anchorValid = false;
 	double screenRotationDeg = 0.0;
-	std::atomic<bool> renderPending{ false };
-	unsigned long long nextRequestId = 0;
-	unsigned long long latestRequestId = 0;
-	std::shared_ptr<std::atomic<std::uint64_t>> cancellationToken =
-		std::make_shared<std::atomic<std::uint64_t>>(0);
-	std::mutex renderMutex;
-	std::condition_variable renderCondition;
-	std::thread renderThread;
-	bool renderThreadStarted = false;
-	bool renderStopRequested = false;
-	bool renderInFlight = false;
-	CSMRRadar* pendingRenderRadar = nullptr;
-	std::unique_ptr<CSMRRadar::AvisoRasterRenderRequest> pendingRenderRequest;
-	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult;
-	bool lastRequestValid = false;
-	string lastRequestPath;
-	bool lastRequestUseDayPalette = false;
-	double lastRequestMinLongitude = 0.0;
-	double lastRequestMinLatitude = 0.0;
-	double lastRequestMaxLongitude = 0.0;
-	double lastRequestMaxLatitude = 0.0;
-	int lastRequestRasterWidth = 0;
-	int lastRequestRasterHeight = 0;
-	unsigned long long lastRequestGroupGeneration = 0;
-	Gdiplus::PointF lastRequestProjectedTopLeft;
-	Gdiplus::PointF lastRequestProjectedTopRight;
-	Gdiplus::PointF lastRequestProjectedBottomLeft;
-	Gdiplus::PointF lastRequestProjectedBottomRight;
-
-	VsmrPerformance::AvisoQueueDepth PerformanceQueueDepth()
-	{
-		std::lock_guard<std::mutex> guard(renderMutex);
-		VsmrPerformance::AvisoQueueDepth result;
-		result.pending = pendingRenderRequest != nullptr ? 1U : 0U;
-		result.inFlight = renderInFlight ? 1U : 0U;
-		result.completed = completedRenderResult != nullptr ? 1U : 0U;
-		result.workers = renderThreadStarted ? 1U : 0U;
-		return result;
-	}
+	CSMRRadar* renderRadar = nullptr;
+	std::unique_ptr<VsmrAviso::AvisoRasterPipeline> renderPipeline;
 };
 
 CInsetWindow::CInsetWindow(int Id)
@@ -1387,7 +1136,7 @@ void CInsetWindow::CancelAvisoViewportRender()
 	if (m_AvisoState == nullptr)
 		return;
 
-	m_AvisoState->StopRenderThread();
+	m_AvisoState->StopRenderPipeline();
 }
 
 void CInsetWindow::ResetAvisoInteractionState()
@@ -3284,7 +3033,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		}
 	}
 	const bool delayedByAvisoUpdate = updateRequested &&
-		m_AvisoState->renderPending.load(std::memory_order_relaxed);
+		m_AvisoState->HasPendingRender();
 	radar_screen->PerformanceDiagnostics.RecordAvisoCacheOutcome(
 		VsmrPerformance::AvisoViewport::Inset,
 		cacheDrawn
@@ -3296,7 +3045,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		!cacheDrawn);
 
 	if (!cacheDrawn)
-		drawCenteredMessage(m_AvisoState->renderPending.load(std::memory_order_relaxed) ? "Rendering AVISO" : "AVISO unavailable");
+		drawCenteredMessage(m_AvisoState->HasPendingRender() ? "Rendering AVISO" : "AVISO unavailable");
 
 	// ----- Drawing aircraft and tags -----
 	auto drawAircraft = [&]()
@@ -3378,516 +3127,132 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const VsmrScene::TargetPresentation& targetPresentation = targetScene != nullptr
 			? targetScene->targetPresentation
 			: defaultTargetPresentation;
-		const bool useNovaIconStyle = targetPresentation.icon == VsmrScene::IconStyle::Nova;
-		const bool useDiamondIconStyle = targetPresentation.icon == VsmrScene::IconStyle::Diamond;
-		const bool useRealisticIconStyle = targetPresentation.icon == VsmrScene::IconStyle::Realistic;
-		const double pixPerMeter = max(0.0, static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
-		const Color symbolWhiteColor(255, 255, 255, 255);
-		const unsigned long long realisticIconCacheFrame = useRealisticIconStyle
-			? ++radar_screen->RealisticIconCacheFrame
-			: radar_screen->RealisticIconCacheFrame;
+		const double pixPerMeter = max(
+			0.0,
+			static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
 
-		const Gdiplus::InterpolationMode savedInterpolationMode = gdi->GetInterpolationMode();
-		const Gdiplus::PixelOffsetMode savedPixelOffsetMode = gdi->GetPixelOffsetMode();
-		const Gdiplus::CompositingQuality savedCompositingQuality = gdi->GetCompositingQuality();
-		if (useRealisticIconStyle)
+		VsmrTargetRendering::FrameSettings targetSettings;
+		targetSettings.presentation = targetPresentation;
+		targetSettings.pixelsPerMeter = pixPerMeter;
+		targetSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
 		{
-			gdi->SetInterpolationMode(Gdiplus::InterpolationModeLowQuality);
-			gdi->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighSpeed);
-			gdi->SetCompositingQuality(Gdiplus::CompositingQualityHighSpeed);
-		}
-
-		CPen symbolPen(PS_SOLID, 1, symbolWhiteColor.ToCOLORREF());
-
-		vector<POINT> appAreaVect = {
-			viewportRect.TopLeft(),
-			{ viewportRect.right, viewportRect.top },
-			viewportRect.BottomRight(),
-			{ viewportRect.left, viewportRect.bottom }
+			CPosition position;
+			position.m_Latitude = point.latitude;
+			position.m_Longitude = point.longitude;
+			return projectTargetPosition(position);
 		};
-		std::vector<PointF> patatoidePolygonPoints;
-		auto drawPatatoidePolygon = [&](const std::vector<VsmrScene::GeoPoint>& sourcePoints, const Color& fillColor, double symbolScale)
+		targetSettings.pointVisible = [&](const POINT& point, int margin) -> bool
 		{
-			if (sourcePoints.size() < 3)
-				return;
-
-			patatoidePolygonPoints.clear();
-			patatoidePolygonPoints.reserve(sourcePoints.size());
-			for (const VsmrScene::GeoPoint& sourcePoint : sourcePoints)
-			{
-				if (!sourcePoint.valid)
-					continue;
-				const Gdiplus::PointF point = projectPoint(sourcePoint.longitude, sourcePoint.latitude);
-				patatoidePolygonPoints.emplace_back(point);
-			}
-
-			if (patatoidePolygonPoints.size() < 3)
-				return;
-			if (std::abs(symbolScale - 1.0) > 0.0001)
-			{
-				REAL centerX = 0.0f;
-				REAL centerY = 0.0f;
-				for (const PointF& point : patatoidePolygonPoints)
-				{
-					centerX += point.X;
-					centerY += point.Y;
-				}
-				centerX /= static_cast<REAL>(patatoidePolygonPoints.size());
-				centerY /= static_cast<REAL>(patatoidePolygonPoints.size());
-				for (PointF& point : patatoidePolygonPoints)
-				{
-					point.X = centerX + static_cast<REAL>((point.X - centerX) * symbolScale);
-					point.Y = centerY + static_cast<REAL>((point.Y - centerY) * symbolScale);
-				}
-			}
-
-			SolidBrush polygonBrush(fillColor);
-			gdi->FillPolygon(&polygonBrush, patatoidePolygonPoints.data(), static_cast<INT>(patatoidePolygonPoints.size()));
+			return pointInViewport(point, margin);
 		};
+		targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
+		VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
+		VsmrTargetRendering::DrawOptions targetDrawOptions;
+		const double avisoSymbolScale = std::isfinite(targetPresentation.symbolScale)
+			? std::clamp(targetPresentation.symbolScale, 0.5, 1.5)
+			: 1.0;
+		targetDrawOptions.minimumHitSize = static_cast<int>(
+			std::ceil(18.0 * avisoSymbolScale));
 
-		auto drawConfiguredIcon = [&](const VsmrScene::Target& sceneTarget, const POINT& targetPoint) -> int
-		{
-			Color targetColor(
-				sceneTarget.style.color.alpha,
-				sceneTarget.style.color.red,
-				sceneTarget.style.color.green,
-				sceneTarget.style.color.blue);
-			if (useNovaIconStyle)
-			{
-				Pen novaSymbolPen(symbolWhiteColor, 1.0f);
-				const REAL novaScale = static_cast<REAL>(targetPresentation.symbolScale);
-				if (sceneTarget.transponderModeC)
-				{
-					PointF novaPoints[] = {
-						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y) - 6.0f * novaScale),
-						PointF(static_cast<REAL>(targetPoint.x) - 6.0f * novaScale, static_cast<REAL>(targetPoint.y)),
-						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y) + 6.0f * novaScale),
-						PointF(static_cast<REAL>(targetPoint.x) + 6.0f * novaScale, static_cast<REAL>(targetPoint.y)),
-						PointF(static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y) - 6.0f * novaScale)
-					};
-					gdi->DrawLines(&novaSymbolPen, novaPoints, static_cast<INT>(_countof(novaPoints)));
-				}
-				else
-				{
-					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) - 4.0f * novaScale, static_cast<REAL>(targetPoint.y) - 4.0f * novaScale);
-					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) + 4.0f * novaScale, static_cast<REAL>(targetPoint.y) - 4.0f * novaScale);
-					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) - 4.0f * novaScale, static_cast<REAL>(targetPoint.y) + 4.0f * novaScale);
-					gdi->DrawLine(&novaSymbolPen, static_cast<REAL>(targetPoint.x), static_cast<REAL>(targetPoint.y), static_cast<REAL>(targetPoint.x) + 4.0f * novaScale, static_cast<REAL>(targetPoint.y) + 4.0f * novaScale);
-				}
-				return static_cast<int>(std::ceil(18.0 * targetPresentation.symbolScale));
-			}
-			const double headingDeg = sceneTarget.headingTrueDegrees;
-
-			const std::string& iconType = sceneTarget.style.assetKey;
-			Gdiplus::Bitmap* iconBmp = nullptr;
-			if (useRealisticIconStyle)
-				iconBmp = radar_screen->GetAircraftIcon(iconType);
-
-			UINT iconBmpWidth = 0;
-			UINT iconBmpHeight = 0;
-			bool canUseRealisticIcon = useRealisticIconStyle && iconBmp != nullptr;
-			if (canUseRealisticIcon)
-			{
-				iconBmpWidth = iconBmp->GetWidth();
-				iconBmpHeight = iconBmp->GetHeight();
-				canUseRealisticIcon = iconBmp->GetLastStatus() == Gdiplus::Ok && iconBmpWidth > 0 && iconBmpHeight > 0;
-			}
-
-			if (canUseRealisticIcon)
-			{
-				const double lengthMeters = sceneTarget.style.lengthMeters;
-				const double spanMeters = sceneTarget.style.wingspanMeters;
-
-				double drawW = spanMeters * pixPerMeter * targetPresentation.symbolScale;
-				double drawH = lengthMeters * pixPerMeter * targetPresentation.symbolScale;
-				drawW = AvisoFinitePositive(drawW, 1.0, 1.0, 1200.0);
-				drawH = AvisoFinitePositive(drawH, 1.0, 1.0, 1200.0);
-
-				int drawPixelW = 0;
-				int drawPixelH = 0;
-				std::string scaledCacheKey;
-				Gdiplus::Bitmap* cachedIcon = radar_screen->GetCachedRealisticIconBitmap(
-					iconType,
-					iconBmp,
-					iconBmpWidth,
-					iconBmpHeight,
-					true,
-					targetColor,
-					drawW,
-					drawH,
-					realisticIconCacheFrame,
-					drawPixelW,
-					drawPixelH,
-					scaledCacheKey);
-				if (cachedIcon == nullptr)
-				{
-					drawPixelW = std::clamp(static_cast<int>(std::lround(drawW)), 1, 2048);
-					drawPixelH = std::clamp(static_cast<int>(std::lround(drawH)), 1, 2048);
-				}
-
-				CPosition nosePos;
-				nosePos.m_Latitude = sceneTarget.headingProbe.latitude;
-				nosePos.m_Longitude = sceneTarget.headingProbe.longitude;
-				POINT nosePix = projectTargetPosition(nosePos);
-				const double screenHeadingDeg = atan2(double(nosePix.y - targetPoint.y), double(nosePix.x - targetPoint.x)) * 180.0 / 3.14159265358979323846;
-				double rotationDeg = screenHeadingDeg + 90.0;
-				if (!std::isfinite(rotationDeg))
-					rotationDeg = 0.0;
-
-				CSMRRadar::RealisticIconCacheEntry* rotatedIcon = radar_screen->GetCachedRotatedRealisticIconBitmap(
-					scaledCacheKey,
-					cachedIcon,
-					drawPixelW,
-					drawPixelH,
-					rotationDeg,
-					realisticIconCacheFrame);
-				if (rotatedIcon != nullptr && rotatedIcon->bitmap != nullptr)
-				{
-					gdi->DrawImage(rotatedIcon->bitmap.get(), targetPoint.x - rotatedIcon->centerX, targetPoint.y - rotatedIcon->centerY);
-					return max(
-						static_cast<int>(rotatedIcon->bitmap->GetWidth()),
-						static_cast<int>(rotatedIcon->bitmap->GetHeight()));
-				}
-				else
-				{
-					GraphicsState state = gdi->Save();
-					Gdiplus::Matrix matrix;
-					matrix.Translate(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y));
-					matrix.Rotate(Gdiplus::REAL(rotationDeg));
-					matrix.Translate(Gdiplus::REAL(-drawPixelW / 2.0), Gdiplus::REAL(-drawPixelH / 2.0));
-					gdi->SetTransform(&matrix);
-					if (cachedIcon != nullptr)
-						gdi->DrawImage(cachedIcon, 0, 0);
-					else
-						gdi->DrawImage(iconBmp, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(drawPixelW), Gdiplus::REAL(drawPixelH));
-					gdi->Restore(state);
-
-					const double rotationRadians = rotationDeg * 3.14159265358979323846 / 180.0;
-					const double absCos = std::abs(std::cos(rotationRadians));
-					const double absSin = std::abs(std::sin(rotationRadians));
-					const int rotatedWidth = static_cast<int>(std::ceil(drawPixelW * absCos + drawPixelH * absSin));
-					const int rotatedHeight = static_cast<int>(std::ceil(drawPixelW * absSin + drawPixelH * absCos));
-					return max(rotatedWidth, rotatedHeight);
-				}
-			}
-
-			const double lenPx = AvisoFinitePositive(pixPerMeter * 20.0 * targetPresentation.symbolScale, 1.0, 0.5, 220.0);
-			const double halfWidthPx = AvisoFinitePositive(pixPerMeter * 12.0 * targetPresentation.symbolScale, 0.5, 0.35, 110.0);
-			const double lenMetersUsed = 20.0 * targetPresentation.symbolScale;
-			const double halfWidthMetersUsed = 12.0 * targetPresentation.symbolScale;
-
-			if (useDiamondIconStyle)
-			{
-				const double diagonalPx = std::clamp(lenPx + halfWidthPx, 10.0, 220.0);
-				const double sidePx = diagonalPx / std::sqrt(2.0);
-				const double halfSide = sidePx / 2.0;
-				const Gdiplus::REAL rectX = static_cast<Gdiplus::REAL>(targetPoint.x - halfSide);
-				const Gdiplus::REAL rectY = static_cast<Gdiplus::REAL>(targetPoint.y - halfSide);
-				const Gdiplus::REAL rectW = static_cast<Gdiplus::REAL>(sidePx);
-				const Gdiplus::REAL rectH = static_cast<Gdiplus::REAL>(sidePx);
-				Gdiplus::REAL radius = std::clamp(static_cast<Gdiplus::REAL>(sidePx * 0.22), 2.0f, static_cast<Gdiplus::REAL>(sidePx / 2.0));
-
-				Gdiplus::GraphicsPath diamondPath;
-				const Gdiplus::REAL diameter = radius * 2.0f;
-				diamondPath.AddArc(rectX, rectY, diameter, diameter, 180, 90);
-				diamondPath.AddArc(rectX + rectW - diameter, rectY, diameter, diameter, 270, 90);
-				diamondPath.AddArc(rectX + rectW - diameter, rectY + rectH - diameter, diameter, diameter, 0, 90);
-				diamondPath.AddArc(rectX, rectY + rectH - diameter, diameter, diameter, 90, 90);
-				diamondPath.CloseFigure();
-
-				CPosition nosePos;
-				nosePos.m_Latitude = sceneTarget.headingProbe.latitude;
-				nosePos.m_Longitude = sceneTarget.headingProbe.longitude;
-				POINT nosePix = projectTargetPosition(nosePos);
-				const double screenHeadingDeg = atan2(double(nosePix.y - targetPoint.y), double(nosePix.x - targetPoint.x)) * 180.0 / 3.14159265358979323846;
-				Gdiplus::GraphicsState state = gdi->Save();
-				Gdiplus::Matrix transform;
-				transform.RotateAt(static_cast<Gdiplus::REAL>(screenHeadingDeg + 45.0), PointF(static_cast<Gdiplus::REAL>(targetPoint.x), static_cast<Gdiplus::REAL>(targetPoint.y)));
-				gdi->MultiplyTransform(&transform);
-				SolidBrush brush(targetColor);
-				gdi->FillPath(&brush, &diamondPath);
-				gdi->Restore(state);
-				return int(max(12.0, diagonalPx));
-			}
-
-			auto wrap360 = [](double deg)
-			{
-				double wrapped = fmod(deg, 360.0);
-				return wrapped < 0.0 ? wrapped + 360.0 : wrapped;
-			};
-			CPosition acPos;
-			acPos.m_Latitude = sceneTarget.position.latitude;
-			acPos.m_Longitude = sceneTarget.position.longitude;
-			const CPosition tipPos = BetterHarversine(acPos, wrap360(headingDeg), lenMetersUsed);
-			const CPosition basePos = BetterHarversine(acPos, wrap360(headingDeg + 180.0), lenMetersUsed * 0.33);
-			const CPosition notchPos = BetterHarversine(acPos, wrap360(headingDeg + 180.0), lenMetersUsed * 0.05);
-			const CPosition rightPos = BetterHarversine(basePos, wrap360(headingDeg + 90.0), halfWidthMetersUsed);
-			const CPosition leftPos = BetterHarversine(basePos, wrap360(headingDeg - 90.0), halfWidthMetersUsed);
-			POINT tip = projectTargetPosition(tipPos);
-			POINT right = projectTargetPosition(rightPos);
-			POINT notch = projectTargetPosition(notchPos);
-			POINT left = projectTargetPosition(leftPos);
-			PointF arrow[4] = {
-				PointF(Gdiplus::REAL(tip.x), Gdiplus::REAL(tip.y)),
-				PointF(Gdiplus::REAL(right.x), Gdiplus::REAL(right.y)),
-				PointF(Gdiplus::REAL(notch.x), Gdiplus::REAL(notch.y)),
-				PointF(Gdiplus::REAL(left.x), Gdiplus::REAL(left.y))
-			};
-			SolidBrush arrowBrush(targetColor);
-			gdi->FillPolygon(&arrowBrush, arrow, 4);
-			return int(max(12.0, lenPx + halfWidthPx));
-		};
+		CPen symbolPen(PS_SOLID, 1, RGB(255, 255, 255));
 
 		auto tagFontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
-		Gdiplus::Font* tagRegularFont = (tagFontIt != radar_screen->customFonts.end()) ? tagFontIt->second.get() : nullptr;
-		Gdiplus::Font* tagBoldFont = tagRegularFont;
-		std::unique_ptr<Gdiplus::Font> tagBoldFontOwned;
-		int tagBlankWidth = 2;
-		int tagOneLineHeight = 10;
+		Gdiplus::Font* tagRegularFont =
+			tagFontIt != radar_screen->customFonts.end() ? tagFontIt->second.get() : nullptr;
+		VsmrTagRendering::FontContext tagFonts(*gdi, tagRegularFont, 2);
 		const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
-		Gdiplus::StringFormat defaultStringFormat;
-		if (tagRegularFont != nullptr)
-		{
-			Gdiplus::FontFamily baseFamily;
-			if (tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok)
-			{
-				const INT boldStyle = tagRegularFont->GetStyle() | Gdiplus::FontStyleBold;
-				tagBoldFontOwned.reset(new Gdiplus::Font(&baseFamily, tagRegularFont->GetSize(), boldStyle, Gdiplus::UnitPixel));
-				if (tagBoldFontOwned->GetLastStatus() == Gdiplus::Ok)
-					tagBoldFont = tagBoldFontOwned.get();
-			}
-
-			RectF fontMeasureRect;
-			gdi->MeasureString(L" ", wcslen(L" "), tagRegularFont, PointF(0, 0), &defaultStringFormat, &fontMeasureRect);
-			tagBlankWidth = max(2, static_cast<int>(fontMeasureRect.GetRight()));
-
-			fontMeasureRect = RectF(0, 0, 0, 0);
-			gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-				tagRegularFont, PointF(0, 0), &defaultStringFormat, &fontMeasureRect);
-			tagOneLineHeight = max(1, static_cast<int>(fontMeasureRect.GetBottom()));
-			if (tagBoldFont != nullptr && tagBoldFont != tagRegularFont)
-			{
-				RectF boldMeasureRect;
-				gdi->MeasureString(L"AZERTYUIOPQSDFGHJKLMWXCVBN", wcslen(L"AZERTYUIOPQSDFGHJKLMWXCVBN"),
-					tagBoldFont, PointF(0, 0), &defaultStringFormat, &boldMeasureRect);
-				tagOneLineHeight = max(tagOneLineHeight, static_cast<int>(boldMeasureRect.GetBottom()));
-			}
-		}
 
 		auto drawTag = [&](const VsmrScene::Target& sceneTarget, const POINT& targetPoint)
 		{
-			if (tagRegularFont == nullptr)
+			if (!tagFonts.IsValid())
 				return;
-			const std::string& rtCallsign = sceneTarget.callsign;
+
+			const std::string& callsign = sceneTarget.callsign;
 			const std::string& bottomLine = sceneTarget.bottomLine;
-			const int blankWidth = tagBlankWidth;
-			const int oneLineHeight = tagOneLineHeight;
-
-			RectF measureRect;
-
-			POINT tagCenter{};
-			m_TargetPoints[rtCallsign] = targetPoint;
-			auto customTagOffsetIt = m_TagOffsets.find(rtCallsign);
-			if (customTagOffsetIt != m_TagOffsets.end())
+			POINT tagCenter = {};
+			m_TargetPoints[callsign] = targetPoint;
+			const auto customOffset = m_TagOffsets.find(callsign);
+			if (customOffset != m_TagOffsets.end())
 			{
-				tagCenter.x = targetPoint.x + customTagOffsetIt->second.x;
-				tagCenter.y = targetPoint.y + customTagOffsetIt->second.y;
+				tagCenter.x = targetPoint.x + customOffset->second.x;
+				tagCenter.y = targetPoint.y + customOffset->second.y;
 			}
 			else
 			{
-				if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
-					m_TagAngles[rtCallsign] = 45.0;
-				const int leaderLength = 50;
-				tagCenter.x = long(targetPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
-				tagCenter.y = long(targetPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
+				if (m_TagAngles.find(callsign) == m_TagAngles.end())
+					m_TagAngles[callsign] = 45.0;
+				constexpr int leaderLength = 50;
+				tagCenter.x = long(targetPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[callsign]))));
+				tagCenter.y = long(targetPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[callsign]))));
 			}
 
-			const map<string, string>& tagReplacingMap = sceneTarget.tag.tokens;
-
-			struct RenderedTagElement
+			VsmrTagRendering::Layout layout;
+			if (!VsmrTagRendering::MeasureLayout(tagFonts, sceneTarget.tag.normal, layout))
 			{
-				std::string text;
-				int action = TAG_CITEM_NO;
-				bool bold = false;
-				VsmrScene::Color effectiveColor;
-				int measuredWidth = 0;
-				int measuredHeight = 0;
-			};
-			vector<vector<RenderedTagElement>> renderedLines;
-			int tagWidth = 0;
-			int tagHeight = 0;
-			for (const VsmrScene::TagLine& sceneLine : sceneTarget.tag.normal.lines)
-			{
-				if (sceneLine.elements.empty())
-					continue;
-
-				vector<RenderedTagElement> renderedLine;
-				renderedLine.reserve(sceneLine.elements.size());
-				int tempTagWidth = 0;
-				for (const VsmrScene::TagElement& sceneElement : sceneLine.elements)
-				{
-					RenderedTagElement renderedElement;
-					renderedElement.text = sceneElement.text;
-					renderedElement.action = sceneElement.action;
-					renderedElement.bold = sceneElement.bold;
-					renderedElement.effectiveColor = sceneElement.effectiveColor;
-					if (!sceneElement.text.empty())
-					{
-						wstring wstr(sceneElement.text.begin(), sceneElement.text.end());
-						Gdiplus::Font* measureFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
-						gdi->MeasureString(wstr.c_str(), static_cast<INT>(wstr.size()), measureFont, PointF(0, 0), &defaultStringFormat, &measureRect);
-						renderedElement.measuredWidth = static_cast<int>(measureRect.GetRight());
-						renderedElement.measuredHeight = static_cast<int>(measureRect.GetBottom());
-					}
-					tempTagWidth += renderedElement.measuredWidth;
-					renderedLine.push_back(std::move(renderedElement));
-				}
-
-				if (renderedLine.empty())
-					continue;
-				if (!renderedLine.empty())
-					tempTagWidth += blankWidth * (static_cast<int>(renderedLine.size()) - 1);
-				tagHeight += oneLineHeight;
-				tagWidth = max(tagWidth, tempTagWidth);
-				renderedLines.push_back(std::move(renderedLine));
+				VsmrScene::TagVariant fallback;
+				VsmrScene::TagLine line;
+				VsmrScene::TagElement element;
+				const auto token = sceneTarget.tag.tokens.find("callsign");
+				element.text = token != sceneTarget.tag.tokens.end() && !token->second.empty()
+					? token->second
+					: callsign;
+				element.action = TAG_CITEM_NO;
+				element.effectiveColor = sceneTarget.tag.normalPalette.text;
+				line.elements.push_back(std::move(element));
+				fallback.lines.push_back(std::move(line));
+				if (!VsmrTagRendering::MeasureLayout(tagFonts, fallback, layout))
+					return;
 			}
 
-			if (renderedLines.empty())
-			{
-				auto callsignIt = tagReplacingMap.find("callsign");
-				const std::string callsignText = (callsignIt != tagReplacingMap.end() && !callsignIt->second.empty())
-					? callsignIt->second
-					: rtCallsign;
-				RenderedTagElement fallbackElement;
-				fallbackElement.text = callsignText;
-				fallbackElement.effectiveColor = sceneTarget.tag.normalPalette.text;
-				wstring wstr(callsignText.begin(), callsignText.end());
-				gdi->MeasureString(wstr.c_str(), wcslen(wstr.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
-				fallbackElement.measuredWidth = static_cast<int>(measureRect.GetRight());
-				fallbackElement.measuredHeight = static_cast<int>(measureRect.GetBottom());
-				tagWidth = fallbackElement.measuredWidth;
-				tagHeight = oneLineHeight;
-				renderedLines.push_back({ fallbackElement });
-			}
-			if (tagHeight > 0)
-				tagHeight -= 2;
-
-			const VsmrScene::TagPalette& tagPalette = sceneTarget.tag.normalPalette;
-			const Color definedBackgroundColor = SceneColorToGdi(tagPalette.background);
-			const Color definedBackgroundOnRunwayColor = SceneColorToGdi(tagPalette.backgroundOnRunway);
-
-			const CRimcas::RimcasAlertTypes rimcasStage =
-				static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
-			const Color tagBackgroundColor = sceneTarget.rimcas.onRunway
-				? definedBackgroundOnRunwayColor
-				: definedBackgroundColor;
-			CRect tagBackgroundRect(
-				tagCenter.x - (tagWidth / 2),
-				tagCenter.y - (tagHeight / 2),
-				tagCenter.x + (tagWidth / 2),
-				tagCenter.y + (tagHeight / 2));
-			const int tagPadding = roundedTagCornersEnabled ? 1 : 0;
-			tagBackgroundRect.InflateRect(tagPadding, tagPadding);
-			tagBackgroundRect.NormalizeRect();
-			if (!rectIntersectsViewport(tagBackgroundRect) && !pointInViewport(targetPoint, 20))
+			const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
+			VsmrTagRendering::PaintOptions options;
+			options.targetPoint = targetPoint;
+			options.tagCenter = tagCenter;
+			options.background = SceneColorToGdi(
+				sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
+			options.leaderColor = Gdiplus::Color(255, 255, 255, 255);
+			options.roundedCorners = roundedTagCornersEnabled;
+			options.centerLines = true;
+			options.contentHeightTrim = 2;
+			options.symmetricBounds = true;
+			const CRect expectedBounds =
+				VsmrTagRendering::CalculateBounds(tagFonts, layout, options);
+			if (!rectIntersectsViewport(expectedBounds) && !pointInViewport(targetPoint, 20))
 				return;
 
-			m_TagAreas[rtCallsign] = tagBackgroundRect;
-			const CRect clippedTagRect = clipToViewport(tagBackgroundRect);
-			if (!clippedTagRect.IsRectEmpty())
-				radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTagRect, true, bottomLine.c_str());
+			const VsmrTagRendering::PaintResult painted =
+				VsmrTagRendering::Paint(*gdi, tagFonts, layout, options);
+			if (painted.bounds.IsRectEmpty())
+				return;
 
-			SolidBrush tagBackgroundBrush(tagBackgroundColor);
-			FillTagBackground(gdi, tagBackgroundBrush, tagBackgroundRect, roundedTagCornersEnabled);
-
-			const int textLeft = tagBackgroundRect.left + tagPadding;
-			const int textTop = tagBackgroundRect.top + tagPadding;
-			const int textWidth = max(0, tagBackgroundRect.Width() - (tagPadding * 2));
-			int heightOffset = 0;
-			for (auto&& line : renderedLines)
+			m_TagAreas[callsign] = painted.bounds;
+			const CRect clippedTag = clipToViewport(painted.bounds);
+			if (!clippedTag.IsRectEmpty())
+				radar_screen->AddScreenObject(m_Id, callsign.c_str(), clippedTag, true, bottomLine.c_str());
+			for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
 			{
-				int lineWidth = 0;
-				for (auto&& renderedElement : line)
-					lineWidth += renderedElement.measuredWidth;
-				if (!line.empty())
-					lineWidth += blankWidth * (static_cast<int>(line.size()) - 1);
-
-				int widthOffset = max(0, (textWidth - lineWidth) / 2);
-				for (auto&& renderedElement : line)
-				{
-					if (renderedElement.text.empty())
-					{
-						widthOffset += blankWidth;
-						continue;
-					}
-
-					Gdiplus::Font* drawFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
-					SolidBrush elementBrush(SceneColorToGdi(renderedElement.effectiveColor));
-
-					wstring text(renderedElement.text.begin(), renderedElement.text.end());
-					const int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
-					gdi->DrawString(text.c_str(), wcslen(text.c_str()), drawFont,
-						PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
-						&defaultStringFormat, &elementBrush);
-
-					const int clickItemType = renderedElement.action;
-
-					const int itemWidth = renderedElement.measuredWidth;
-					const int itemHeight = max(renderedElement.measuredHeight, oneLineHeight);
-					if (itemWidth > 0 && itemHeight > 0)
-					{
-						CRect itemRect(
-							textLeft + widthOffset,
-							textTop + heightOffset,
-							textLeft + widthOffset + itemWidth,
-							textTop + heightOffset + itemHeight);
-						const CRect clippedItemRect = clipToViewport(itemRect);
-						if (!clippedItemRect.IsRectEmpty())
-							radar_screen->AddScreenObject(clickItemType, rtCallsign.c_str(), clippedItemRect, true, bottomLine.c_str());
-					}
-
-					widthOffset += renderedElement.measuredWidth + blankWidth;
-				}
-				heightOffset += oneLineHeight;
+				const CRect clippedHit = clipToViewport(hit.area);
+				if (!clippedHit.IsRectEmpty())
+					radar_screen->AddScreenObject(hit.action, callsign.c_str(), clippedHit, true, bottomLine.c_str());
 			}
 
-			POINT toDraw1, toDraw2;
-			RECT tagRectData = tagBackgroundRect;
-			if (LiangBarsky(tagRectData, targetPoint, tagBackgroundRect.CenterPoint(), toDraw1, toDraw2))
-			{
-				Gdiplus::Pen leaderPen(symbolWhiteColor);
-				gdi->DrawLine(&leaderPen,
-					PointF(Gdiplus::REAL(targetPoint.x), Gdiplus::REAL(targetPoint.y)),
-					PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
-			}
+			const CRimcas::RimcasAlertTypes stage =
+				static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
+			if (stage != CRimcas::StageOne && stage != CRimcas::StageTwo)
+				return;
 
-			{
-				const Color aliceBlueColor(255, 240, 248, 255);
-				const Color rimcasLabelColor = rimcasStage == CRimcas::StageOne
-					? rimcasStageOneColor
-					: (rimcasStage == CRimcas::StageTwo ? rimcasStageTwoColor : aliceBlueColor);
-				if (rimcasLabelColor.ToCOLORREF() != aliceBlueColor.ToCOLORREF())
-				{
-					wstring alertText(L"ALERT");
-					RectF alertMeasure;
-					gdi->MeasureString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &alertMeasure);
-					const int rimcasHeight = max(1, static_cast<int>(alertMeasure.GetBottom()));
-					CRect rimcasLabelRect(tagBackgroundRect.left, tagBackgroundRect.top - rimcasHeight, tagBackgroundRect.right, tagBackgroundRect.top);
-					SolidBrush rimcasBrush(rimcasLabelColor);
-					gdi->FillRectangle(&rimcasBrush, CopyRect(rimcasLabelRect));
-					StringFormat stringFormat;
-					stringFormat.SetAlignment(StringAlignment::StringAlignmentCenter);
-					SolidBrush alertTextBrushStageOne(Color(255, 30, 30, 30));
-					SolidBrush alertTextBrushStageTwo(Color(255, 255, 255, 255));
-					SolidBrush* rimcasTextBrush = (rimcasStage == CRimcas::StageTwo)
-						? &alertTextBrushStageTwo
-						: &alertTextBrushStageOne;
-					gdi->DrawString(alertText.c_str(), wcslen(alertText.c_str()), tagRegularFont,
-						PointF(Gdiplus::REAL((rimcasLabelRect.left + rimcasLabelRect.right) / 2), Gdiplus::REAL(rimcasLabelRect.top)),
-						&stringFormat,
-						rimcasTextBrush);
-				}
-			}
+			VsmrTagRendering::DetachedTopBand alertBand;
+			alertBand.text = "ALERT";
+			alertBand.background =
+				stage == CRimcas::StageOne ? rimcasStageOneColor : rimcasStageTwoColor;
+			alertBand.textColor = stage == CRimcas::StageTwo
+				? Gdiplus::Color(255, 255, 255, 255)
+				: Gdiplus::Color(255, 30, 30, 30);
+			VsmrTagRendering::PaintDetachedTopBand(
+				*gdi,
+				tagFonts,
+				painted.bounds,
+				alertBand);
 		};
 
 		const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
@@ -3907,31 +3272,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			if (!pointInViewport(targetPoint, 180))
 				continue;
 
-			VsmrTargetTrail::Draw(
-				*gdi,
-				sceneTarget,
-				[&](const VsmrScene::GeoPoint& history) -> POINT
-				{
-					CPosition position;
-					position.m_Latitude = history.latitude;
-					position.m_Longitude = history.longitude;
-					return projectTargetPosition(position);
-				},
-				[&](const POINT& point, int margin) -> bool
-				{
-					return pointInViewport(point, margin);
-				},
-				targetPresentation.symbolScale);
-
-			if (useNovaIconStyle && sceneTarget.style.showPrimaryReturn && !sceneTarget.primaryReturnPolygon.empty())
-			{
-				const VsmrScene::Color& primaryColor = sceneTarget.style.primaryReturnColor;
-				drawPatatoidePolygon(
-					sceneTarget.primaryReturnPolygon,
-					Color(primaryColor.alpha, primaryColor.red, primaryColor.green, primaryColor.blue),
-					targetPresentation.symbolScale);
-			}
-			const int iconSize = drawConfiguredIcon(sceneTarget, targetPoint);
+			const VsmrTargetRendering::DrawResult renderedTarget =
+				targetRenderer.DrawTarget(sceneTarget, targetDrawOptions);
+			if (!renderedTarget.drawn)
+				continue;
 
 			if (mouseWithin(mouseLocation, { targetPoint.x - 5, targetPoint.y - 5, targetPoint.x + 5, targetPoint.y + 5 }))
 			{
@@ -3955,12 +3299,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				dc.SelectObject(oldPen);
 			}
 
-			const int hitSize = max(iconSize, 12);
-			CRect targetArea(
-				targetPoint.x - hitSize / 2,
-				targetPoint.y - hitSize / 2,
-				targetPoint.x + hitSize / 2,
-				targetPoint.y + hitSize / 2);
+			CRect targetArea(renderedTarget.hitBounds);
 			targetArea.NormalizeRect();
 			const CRect clippedTargetArea = clipToViewport(targetArea);
 			if (!clippedTargetArea.IsRectEmpty())
@@ -3977,12 +3316,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 				drawTag(sceneTarget, targetPoint);
 		}
 
-		if (useRealisticIconStyle)
-		{
-			gdi->SetInterpolationMode(savedInterpolationMode);
-			gdi->SetPixelOffsetMode(savedPixelOffsetMode);
-			gdi->SetCompositingQuality(savedCompositingQuality);
-		}
 		gdi->Restore(graphicsState);
 		::RestoreDC(hDC, savedDc);
 	};
@@ -4239,20 +3572,16 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	CPen WhitePen(PS_SOLID, 1, RGB(255, 255, 255));
 
 	auto fontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
-	Gdiplus::Font* tagRegularFont = (fontIt != radar_screen->customFonts.end()) ? fontIt->second.get() : nullptr;
+	Gdiplus::Font* tagRegularFont =
+		fontIt != radar_screen->customFonts.end() ? fontIt->second.get() : nullptr;
 	Gdiplus::Font* tagBoldFont = tagRegularFont;
-	int blankWidth = m_SrwBlankWidth;
-	int oneLineHeight = m_SrwLineHeight;
-	Gdiplus::StringFormat defaultStringFormat;
-	const Color whiteColor(255, 255, 255, 255);
-	const Color aliceBlueColor(255, 240, 248, 255);
 	if (tagRegularFont != nullptr)
 	{
-		Gdiplus::FontFamily baseFamily;
+		Gdiplus::FontFamily family;
 		WCHAR familyName[LF_FACESIZE] = {};
 		const bool familyAvailable =
-			tagRegularFont->GetFamily(&baseFamily) == Gdiplus::Ok &&
-			baseFamily.GetFamilyName(familyName) == Gdiplus::Ok;
+			tagRegularFont->GetFamily(&family) == Gdiplus::Ok &&
+			family.GetFamilyName(familyName) == Gdiplus::Ok;
 		const std::wstring currentFamily = familyAvailable ? familyName : L"";
 		const Gdiplus::REAL currentSize = tagRegularFont->GetSize();
 		const INT currentStyle = tagRegularFont->GetStyle();
@@ -4270,219 +3599,73 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			m_SrwBoldFont.reset();
 			if (familyAvailable)
 			{
-				const INT boldStyle = currentStyle | Gdiplus::FontStyleBold;
 				m_SrwBoldFont = std::make_unique<Gdiplus::Font>(
-					&baseFamily,
+					&family,
 					currentSize,
-					boldStyle,
+					currentStyle | Gdiplus::FontStyleBold,
 					Gdiplus::UnitPixel);
 				if (m_SrwBoldFont->GetLastStatus() != Gdiplus::Ok)
 					m_SrwBoldFont.reset();
 			}
 
-			Gdiplus::Font* metricBoldFont = m_SrwBoldFont != nullptr
-				? m_SrwBoldFont.get()
-				: tagRegularFont;
-			RectF measureRect;
-			gdi->MeasureString(L" ", 1, tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
-			m_SrwBlankWidth = static_cast<int>(measureRect.GetRight());
-			measureRect = RectF(0, 0, 0, 0);
-			static const wchar_t kMetricSample[] = L"AZERTYUIOPQSDFGHJKLMWXCVBN";
-			gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
-				tagRegularFont, PointF(0, 0), &defaultStringFormat, &measureRect);
-			m_SrwLineHeight = static_cast<int>(measureRect.GetBottom());
-			if (metricBoldFont != tagRegularFont)
-			{
-				RectF boldMeasureRect;
-				gdi->MeasureString(kMetricSample, _countof(kMetricSample) - 1,
-					metricBoldFont, PointF(0, 0), &defaultStringFormat, &boldMeasureRect);
-				m_SrwLineHeight = max(
-					m_SrwLineHeight,
-					static_cast<int>(boldMeasureRect.GetBottom()));
-			}
+			VsmrTagRendering::FontContext measured(*gdi, tagRegularFont);
+			m_SrwBlankWidth = measured.BlankWidth();
+			m_SrwLineHeight = measured.LineHeight();
 		}
 		tagBoldFont = m_SrwBoldFont != nullptr ? m_SrwBoldFont.get() : tagRegularFont;
-		blankWidth = m_SrwBlankWidth;
-		oneLineHeight = m_SrwLineHeight;
 	}
+	VsmrTagRendering::FontContext srwTagFonts(
+		*gdi,
+		tagRegularFont,
+		tagBoldFont,
+		m_SrwBlankWidth,
+		m_SrwLineHeight);
+	const Color whiteColor(255, 255, 255, 255);
+	const auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
+	{
+		if (radar_screen->CurrentConfig == nullptr)
+			return fallback;
+		const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
+		if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
+		{
+			const Value& rimcas = activeProfile["rimcas"];
+			if (rimcas.HasMember(key) && rimcas[key].IsObject())
+				return radar_screen->CurrentConfig->getConfigColor(rimcas[key]);
+		}
+		return fallback;
+	};
+	const Color alertTextCaution =
+		getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30));
+	const Color alertTextWarning =
+		getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255));
 
 	const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
 	const VsmrScene::TargetPresentation defaultTargetPresentation;
 	const VsmrScene::TargetPresentation& targetPresentation = radarScene != nullptr
 		? radarScene->targetPresentation
 		: defaultTargetPresentation;
-	auto drawSceneTargetSymbol = [&](const VsmrScene::Target& target, const POINT& center) -> int
+
+	VsmrTargetRendering::FrameSettings targetSettings;
+	targetSettings.presentation = targetPresentation;
+	targetSettings.pixelsPerMeter = max(0.0, m_Scale / kAvisoMetersPerNm);
+	// SRW paints tags in the same pass, so retain its caller-selected GDI+ modes.
+	targetSettings.optimizeRealisticBitmapQuality = false;
+	targetSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
 	{
-		const VsmrScene::Color& sceneColor = target.style.color;
-		const Color drawColor(sceneColor.alpha, sceneColor.red, sceneColor.green, sceneColor.blue);
-		CPosition headingPosition;
-		headingPosition.m_Latitude = target.headingProbe.latitude;
-		headingPosition.m_Longitude = target.headingProbe.longitude;
-		const POINT headingPoint = target.headingProbe.valid ? projectPoint(headingPosition) : POINT{ center.x, center.y - 10 };
-		double forwardX = static_cast<double>(headingPoint.x - center.x);
-		double forwardY = static_cast<double>(headingPoint.y - center.y);
-		double forwardLength = std::hypot(forwardX, forwardY);
-		if (!std::isfinite(forwardLength) || forwardLength < 0.01)
-		{
-			forwardX = 0.0;
-			forwardY = -1.0;
-			forwardLength = 1.0;
-		}
-		forwardX /= forwardLength;
-		forwardY /= forwardLength;
-		const double rightX = -forwardY;
-		const double rightY = forwardX;
-
-		if (target.style.icon == VsmrScene::IconStyle::Nova)
-		{
-			if (target.style.showPrimaryReturn && target.primaryReturnPolygon.size() >= 3)
-			{
-				std::vector<PointF> outline;
-				outline.reserve(target.primaryReturnPolygon.size());
-				for (const VsmrScene::GeoPoint& source : target.primaryReturnPolygon)
-				{
-					if (!source.valid)
-						continue;
-					CPosition sourcePosition;
-					sourcePosition.m_Latitude = source.latitude;
-					sourcePosition.m_Longitude = source.longitude;
-						const POINT point = projectPoint(sourcePosition);
-						outline.emplace_back(static_cast<REAL>(point.x), static_cast<REAL>(point.y));
-					}
-					if (std::abs(targetPresentation.symbolScale - 1.0) > 0.0001)
-					{
-						for (PointF& point : outline)
-						{
-							point.X = static_cast<REAL>(center.x) + static_cast<REAL>((point.X - center.x) * targetPresentation.symbolScale);
-							point.Y = static_cast<REAL>(center.y) + static_cast<REAL>((point.Y - center.y) * targetPresentation.symbolScale);
-						}
-					}
-				if (outline.size() >= 3)
-				{
-					const VsmrScene::Color& primary = target.style.primaryReturnColor;
-					SolidBrush primaryBrush(Color(primary.alpha, primary.red, primary.green, primary.blue));
-					gdi->FillPolygon(&primaryBrush, outline.data(), static_cast<INT>(outline.size()));
-				}
-			}
-			Pen symbolPen(Color(255, 255, 255, 255), 1.0f);
-			const REAL novaScale = static_cast<REAL>(targetPresentation.symbolScale);
-			if (target.transponderModeC)
-			{
-				PointF points[] = {
-					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y) - 5.0f * novaScale),
-					PointF(static_cast<REAL>(center.x) - 5.0f * novaScale, static_cast<REAL>(center.y)),
-					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y) + 5.0f * novaScale),
-					PointF(static_cast<REAL>(center.x) + 5.0f * novaScale, static_cast<REAL>(center.y)),
-					PointF(static_cast<REAL>(center.x), static_cast<REAL>(center.y) - 5.0f * novaScale)
-				};
-				gdi->DrawLines(&symbolPen, points, static_cast<INT>(_countof(points)));
-			}
-			else
-			{
-				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) - 4.0f * novaScale, static_cast<REAL>(center.y) - 4.0f * novaScale);
-				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) + 4.0f * novaScale, static_cast<REAL>(center.y) - 4.0f * novaScale);
-				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) - 4.0f * novaScale, static_cast<REAL>(center.y) + 4.0f * novaScale);
-				gdi->DrawLine(&symbolPen, static_cast<REAL>(center.x), static_cast<REAL>(center.y), static_cast<REAL>(center.x) + 4.0f * novaScale, static_cast<REAL>(center.y) + 4.0f * novaScale);
-			}
-			return static_cast<int>(std::ceil(12.0 * targetPresentation.symbolScale));
-		}
-
-		if (target.style.icon == VsmrScene::IconStyle::Realistic)
-		{
-			Gdiplus::Bitmap* sourceBitmap = radar_screen->GetAircraftIcon(target.style.assetKey);
-			if (sourceBitmap != nullptr && sourceBitmap->GetLastStatus() == Gdiplus::Ok &&
-				sourceBitmap->GetWidth() > 0 && sourceBitmap->GetHeight() > 0)
-			{
-				const double pixelsPerMeter = max(0.0, forwardLength / 50.0);
-				double drawWidth = target.style.wingspanMeters * pixelsPerMeter * targetPresentation.symbolScale;
-				double drawHeight = target.style.lengthMeters * pixelsPerMeter * targetPresentation.symbolScale;
-				drawWidth = std::clamp(drawWidth, 1.0, 1200.0);
-				drawHeight = std::clamp(drawHeight, 1.0, 1200.0);
-				int pixelWidth = 0;
-				int pixelHeight = 0;
-				std::string cacheKey;
-				Gdiplus::Bitmap* scaled = radar_screen->GetCachedRealisticIconBitmap(
-					target.style.assetKey,
-					sourceBitmap,
-					sourceBitmap->GetWidth(),
-					sourceBitmap->GetHeight(),
-					true,
-					drawColor,
-					drawWidth,
-					drawHeight,
-					radar_screen->RealisticIconCacheFrame,
-					pixelWidth,
-					pixelHeight,
-					cacheKey);
-				if (scaled == nullptr)
-				{
-					pixelWidth = std::clamp(static_cast<int>(std::lround(drawWidth)), 1, 2048);
-					pixelHeight = std::clamp(static_cast<int>(std::lround(drawHeight)), 1, 2048);
-				}
-				const double rotationDegrees = std::atan2(forwardY, forwardX) * 180.0 / 3.14159265358979323846 + 90.0;
-				CSMRRadar::RealisticIconCacheEntry* rotated = radar_screen->GetCachedRotatedRealisticIconBitmap(
-					cacheKey,
-					scaled,
-					pixelWidth,
-					pixelHeight,
-					rotationDegrees,
-					radar_screen->RealisticIconCacheFrame);
-				if (rotated != nullptr && rotated->bitmap != nullptr)
-				{
-					gdi->DrawImage(rotated->bitmap.get(), center.x - rotated->centerX, center.y - rotated->centerY);
-					return max(
-						static_cast<int>(rotated->bitmap->GetWidth()),
-						static_cast<int>(rotated->bitmap->GetHeight()));
-				}
-
-				GraphicsState state = gdi->Save();
-				Gdiplus::Matrix matrix;
-				matrix.Translate(Gdiplus::REAL(center.x), Gdiplus::REAL(center.y));
-				matrix.Rotate(Gdiplus::REAL(rotationDegrees));
-				matrix.Translate(Gdiplus::REAL(-pixelWidth / 2.0), Gdiplus::REAL(-pixelHeight / 2.0));
-				gdi->SetTransform(&matrix);
-				if (scaled != nullptr)
-					gdi->DrawImage(scaled, 0, 0);
-				else
-					gdi->DrawImage(sourceBitmap, Gdiplus::REAL(0), Gdiplus::REAL(0), Gdiplus::REAL(pixelWidth), Gdiplus::REAL(pixelHeight));
-				gdi->Restore(state);
-
-				const double rotationRadians = rotationDegrees * 3.14159265358979323846 / 180.0;
-				const double absCos = std::abs(std::cos(rotationRadians));
-				const double absSin = std::abs(std::sin(rotationRadians));
-				const int rotatedWidth = static_cast<int>(std::ceil(pixelWidth * absCos + pixelHeight * absSin));
-				const int rotatedHeight = static_cast<int>(std::ceil(pixelWidth * absSin + pixelHeight * absCos));
-				return max(rotatedWidth, rotatedHeight);
-			}
-		}
-
-		const double pixelsPerMeter = max(0.0, forwardLength / 50.0);
-		const double lengthPixels = std::clamp(20.0 * pixelsPerMeter * targetPresentation.symbolScale, 0.5, 220.0);
-		const double halfWidthPixels = std::clamp(12.0 * pixelsPerMeter * targetPresentation.symbolScale, 0.35, 110.0);
-
-		SolidBrush symbolBrush(drawColor);
-		if (target.style.icon == VsmrScene::IconStyle::Diamond)
-		{
-			const double halfDiagonal = std::clamp((lengthPixels + halfWidthPixels) / 2.0, 5.0, 110.0);
-			PointF diamond[] = {
-				PointF(static_cast<REAL>(center.x + forwardX * halfDiagonal), static_cast<REAL>(center.y + forwardY * halfDiagonal)),
-				PointF(static_cast<REAL>(center.x + rightX * halfDiagonal), static_cast<REAL>(center.y + rightY * halfDiagonal)),
-				PointF(static_cast<REAL>(center.x - forwardX * halfDiagonal), static_cast<REAL>(center.y - forwardY * halfDiagonal)),
-				PointF(static_cast<REAL>(center.x - rightX * halfDiagonal), static_cast<REAL>(center.y - rightY * halfDiagonal))
-			};
-			gdi->FillPolygon(&symbolBrush, diamond, static_cast<INT>(_countof(diamond)));
-			return static_cast<int>(std::ceil(halfDiagonal * 2.0));
-		}
-
-		PointF arrow[] = {
-			PointF(static_cast<REAL>(center.x + forwardX * lengthPixels), static_cast<REAL>(center.y + forwardY * lengthPixels)),
-			PointF(static_cast<REAL>(center.x - forwardX * lengthPixels * 0.33 + rightX * halfWidthPixels), static_cast<REAL>(center.y - forwardY * lengthPixels * 0.33 + rightY * halfWidthPixels)),
-			PointF(static_cast<REAL>(center.x - forwardX * lengthPixels * 0.05), static_cast<REAL>(center.y - forwardY * lengthPixels * 0.05)),
-			PointF(static_cast<REAL>(center.x - forwardX * lengthPixels * 0.33 - rightX * halfWidthPixels), static_cast<REAL>(center.y - forwardY * lengthPixels * 0.33 - rightY * halfWidthPixels))
-		};
-		gdi->FillPolygon(&symbolBrush, arrow, static_cast<INT>(_countof(arrow)));
-		return static_cast<int>(std::ceil(max(lengthPixels * 1.33, halfWidthPixels * 2.0)));
+		CPosition position;
+		position.m_Latitude = point.latitude;
+		position.m_Longitude = point.longitude;
+		return projectPoint(position);
 	};
+	targetSettings.pointVisible = [&](const POINT& point, int margin) -> bool
+	{
+		return point.x >= windowAreaCRect.left - margin &&
+			point.x <= windowAreaCRect.right + margin &&
+			point.y >= windowAreaCRect.top - margin &&
+			point.y <= windowAreaCRect.bottom + margin;
+	};
+	targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
+	VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
 
 	if (radarScene != nullptr)
 	for (const VsmrScene::Target& sceneTarget : radarScene->targets)
@@ -4513,30 +3696,16 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 		int renderedIconSize = 12;
 		if (windowAreaCRect.PtInRect(RtPoint)) {
-			VsmrTargetTrail::Draw(
-				*gdi,
-				sceneTarget,
-				[&](const VsmrScene::GeoPoint& history) -> POINT
-				{
-					CPosition position;
-					position.m_Latitude = history.latitude;
-					position.m_Longitude = history.longitude;
-					return projectPoint(position);
-				},
-				[&](const POINT& point, int margin) -> bool
-				{
-					return point.x >= windowAreaCRect.left - margin &&
-						point.x <= windowAreaCRect.right + margin &&
-						point.y >= windowAreaCRect.top - margin &&
-						point.y <= windowAreaCRect.bottom + margin;
-				},
-				targetPresentation.symbolScale);
-			renderedIconSize = max(12, drawSceneTargetSymbol(sceneTarget, RtPoint));
-			CRect TargetArea(
-				RtPoint.x - renderedIconSize / 2,
-				RtPoint.y - renderedIconSize / 2,
-				RtPoint.x + renderedIconSize / 2,
-				RtPoint.y + renderedIconSize / 2);
+			const VsmrTargetRendering::DrawResult renderedTarget =
+				targetRenderer.DrawTarget(sceneTarget);
+			if (!renderedTarget.drawn)
+				continue;
+			renderedIconSize = max(
+				12,
+				max(
+					renderedTarget.hitBounds.right - renderedTarget.hitBounds.left,
+					renderedTarget.hitBounds.bottom - renderedTarget.hitBounds.top));
+			CRect TargetArea(renderedTarget.hitBounds);
 			TargetArea.NormalizeRect();
 			const CRect clippedTargetArea = clipToWindowContent(TargetArea);
 			if (!clippedTargetArea.IsRectEmpty())
@@ -4567,232 +3736,84 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			dc.LineTo(RtPoint.x + 10, RtPoint.y + 4);
 			dc.SelectObject(previousHoverPen);
 		}
-		const int leaderLength = 50;
-
-		POINT TagCenter;
+		constexpr int leaderLength = 50;
+		POINT tagCenter = {};
 		m_TargetPoints[rtCallsign] = RtPoint;
-		auto customTagOffsetIt = m_TagOffsets.find(rtCallsign);
-		if (customTagOffsetIt != m_TagOffsets.end())
+		const auto customOffset = m_TagOffsets.find(rtCallsign);
+		if (customOffset != m_TagOffsets.end())
 		{
-			TagCenter.x = RtPoint.x + customTagOffsetIt->second.x;
-			TagCenter.y = RtPoint.y + customTagOffsetIt->second.y;
+			tagCenter.x = RtPoint.x + customOffset->second.x;
+			tagCenter.y = RtPoint.y + customOffset->second.y;
 		}
 		else
 		{
 			if (m_TagAngles.find(rtCallsign) == m_TagAngles.end())
 			{
-				// Use a stable default leader angle until the tag is positioned manually.
+				// Keep the default stable until the controller moves this tag.
 				m_TagAngles[rtCallsign] = 45.0;
 			}
-
-			TagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
-			TagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
+			tagCenter.x = long(RtPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[rtCallsign]))));
+			tagCenter.y = long(RtPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[rtCallsign]))));
 		}
-		// Measuring the tag content
 
-		int TagWidth = 0, TagHeight = 0;
-		RectF mesureRect;
-		if (tagRegularFont == nullptr)
+		if (!srwTagFonts.IsValid())
+			continue;
+		VsmrTagRendering::Layout layout;
+		if (!VsmrTagRendering::MeasureLayout(srwTagFonts, sceneTarget.tag.normal, layout))
 			continue;
 
-		struct RenderedTagElement
+		const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
+		VsmrTagRendering::PaintOptions options;
+		options.targetPoint = RtPoint;
+		options.tagCenter = tagCenter;
+		options.background = SceneColorToGdi(
+			sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
+		options.leaderColor = whiteColor;
+		options.roundedCorners = roundedTagCornersEnabled;
+		options.symmetricBounds = true;
+		options.backgroundAlphaNumerator =
+			rimcasStage == CRimcas::NoAlert ? 160U : 255U;
+		const CRect expectedBounds =
+			VsmrTagRendering::CalculateBounds(srwTagFonts, layout, options);
+		CRect visibleTag;
+		if (!windowAreaCRect.PtInRect(RtPoint) ||
+			!visibleTag.IntersectRect(windowAreaCRect, expectedBounds) ||
+			visibleTag.IsRectEmpty())
 		{
-			std::string text;
-			int action = TAG_CITEM_NO;
-			bool bold = false;
-			VsmrScene::Color effectiveColor;
-			int measuredWidth = 0;
-			int measuredHeight = 0;
-		};
-		vector<vector<RenderedTagElement>> ReplacedLabelLines;
-
-		for (const VsmrScene::TagLine& sceneLine : sceneTarget.tag.normal.lines)
-		{
-			if (sceneLine.elements.empty())
-				continue;
-
-			vector<RenderedTagElement> renderedLine;
-			renderedLine.reserve(sceneLine.elements.size());
-
-			int TempTagWidth = 0;
-
-			for (const VsmrScene::TagElement& sceneElement : sceneLine.elements)
-			{
-				RenderedTagElement renderedElement;
-				renderedElement.text = sceneElement.text;
-				renderedElement.action = sceneElement.action;
-				renderedElement.bold = sceneElement.bold;
-				renderedElement.effectiveColor = sceneElement.effectiveColor;
-				if (!sceneElement.text.empty())
-				{
-					mesureRect = RectF(0, 0, 0, 0);
-					wstring wstr(sceneElement.text.begin(), sceneElement.text.end());
-					Gdiplus::Font* measureFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
-					if (measureFont == nullptr)
-						measureFont = tagRegularFont;
-					gdi->MeasureString(wstr.c_str(), static_cast<INT>(wstr.size()),
-						measureFont, PointF(0, 0), &defaultStringFormat, &mesureRect);
-					renderedElement.measuredWidth = static_cast<int>(mesureRect.GetRight());
-					renderedElement.measuredHeight = static_cast<int>(mesureRect.GetBottom());
-				}
-				TempTagWidth += renderedElement.measuredWidth;
-
-				renderedLine.push_back(std::move(renderedElement));
-			}
-
-			if (renderedLine.empty())
-				continue;
-
-			if (!renderedLine.empty())
-				TempTagWidth += (int)blankWidth * (int(renderedLine.size()) - 1);
-
-			TagHeight += oneLineHeight;
-			TagWidth = max(TagWidth, TempTagWidth);
-			ReplacedLabelLines.push_back(std::move(renderedLine));
+			continue;
 		}
-		// Drawing the tag
 
-		const VsmrScene::TagPalette& tagPalette = sceneTarget.tag.normalPalette;
-		const Color definedBackgroundColor = SceneColorToGdi(tagPalette.background);
-		const Color definedBackgroundOnRunwayColor = SceneColorToGdi(tagPalette.backgroundOnRunway);
+		const VsmrTagRendering::PaintResult painted =
+			VsmrTagRendering::Paint(*gdi, srwTagFonts, layout, options);
+		if (painted.bounds.IsRectEmpty())
+			continue;
 
-		Color TagBackgroundColor = sceneTarget.rimcas.onRunway
-			? definedBackgroundOnRunwayColor
-			: definedBackgroundColor;
+		m_TagAreas[rtCallsign] = painted.bounds;
+		const CRect clippedTag = clipToWindowContent(painted.bounds);
+		if (!clippedTag.IsRectEmpty())
+			radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTag, true, getBottomLine());
+		for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
+		{
+			const CRect clippedHit = clipToWindowContent(hit.area);
+			if (!clippedHit.IsRectEmpty())
+				radar_screen->AddScreenObject(hit.action, rtCallsign.c_str(), clippedHit, true, getBottomLine());
+		}
 
-		CRect TagBackgroundRect(TagCenter.x - (TagWidth / 2), TagCenter.y - (TagHeight / 2), TagCenter.x + (TagWidth / 2), TagCenter.y + (TagHeight / 2));
-		const int padding = roundedTagCornersEnabled ? 1 : 0;
-		TagBackgroundRect.InflateRect(padding, padding);
-		CRect visibleTagRect;
-
-		if (windowAreaCRect.PtInRect(RtPoint) &&
-			visibleTagRect.IntersectRect(windowAreaCRect, TagBackgroundRect) &&
-			!visibleTagRect.IsRectEmpty()) {
-
-			int textLeft = TagBackgroundRect.left + padding;
-			int textTop = TagBackgroundRect.top + padding;
-
-			// SRW keeps its lower-opacity presentation, but preserves the semantic
-			// color already resolved by the shared scene (including status and rules).
-			if (rimcasStage == CRimcas::NoAlert)
-			{
-				const BYTE srwAlpha = static_cast<BYTE>(
-					(static_cast<unsigned int>(TagBackgroundColor.GetAlpha()) * 160u) / 255u);
-				TagBackgroundColor = Color(
-					srwAlpha,
-					TagBackgroundColor.GetR(),
-					TagBackgroundColor.GetG(),
-					TagBackgroundColor.GetB());
-			}
-
-			SolidBrush TagBackgroundBrush(TagBackgroundColor);
-			FillTagBackground(gdi, TagBackgroundBrush, TagBackgroundRect, roundedTagCornersEnabled);
-
-			auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
-			{
-				const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
-				if (activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
-				{
-					const Value& rimcas = activeProfile["rimcas"];
-					if (rimcas.HasMember(key) && rimcas[key].IsObject())
-						return radar_screen->CurrentConfig->getConfigColor(rimcas[key]);
-				}
-				return fallback;
-			};
-
-			SolidBrush AlertTextColorCaution(
-				getRimcasEditorColor("caution_alert_text_color", Color(255, 30, 30, 30)));
-			SolidBrush AlertTextColorWarning(
-				getRimcasEditorColor("warning_alert_text_color", Color(255, 255, 255, 255)));
-
-			m_TagAreas[rtCallsign] = TagBackgroundRect;
-			const CRect clippedTagArea = clipToWindowContent(TagBackgroundRect);
-			if (!clippedTagArea.IsRectEmpty())
-				radar_screen->AddScreenObject(m_Id, rtCallsign.c_str(), clippedTagArea, true, getBottomLine());
-
-			int heightOffset = 0;
-			for (auto&& line : ReplacedLabelLines)
-			{
-				int widthOffset = 0;
-				for (auto&& renderedElement : line)
-				{
-					const std::string& element = renderedElement.text;
-					Gdiplus::Font* drawFont = renderedElement.bold ? tagBoldFont : tagRegularFont;
-					if (drawFont == nullptr)
-						drawFont = tagRegularFont;
-
-					SolidBrush elementBrush(SceneColorToGdi(renderedElement.effectiveColor));
-
-					wstring welement = wstring(element.begin(), element.end());
-					int textOffsetY = max(0, (oneLineHeight - renderedElement.measuredHeight + 1) / 2);
-					gdi->DrawString(welement.c_str(), wcslen(welement.c_str()), drawFont,
-						PointF(Gdiplus::REAL(textLeft + widthOffset), Gdiplus::REAL(textTop + heightOffset + textOffsetY)),
-						&defaultStringFormat, &elementBrush);
-
-					const int clickItemType = renderedElement.action;
-
-					int itemWidth = renderedElement.measuredWidth;
-					int itemHeight = max(renderedElement.measuredHeight, oneLineHeight);
-					if (itemWidth > 0 && itemHeight > 0)
-					{
-						CRect ItemRect(textLeft + widthOffset, textTop + heightOffset,
-							textLeft + widthOffset + itemWidth, textTop + heightOffset + itemHeight);
-						const CRect clippedItemRect = clipToWindowContent(ItemRect);
-						if (!clippedItemRect.IsRectEmpty())
-							radar_screen->AddScreenObject(clickItemType, rtCallsign.c_str(), clippedItemRect, true, getBottomLine());
-					}
-
-					widthOffset += renderedElement.measuredWidth;
-					widthOffset += blankWidth;
-				}
-
-				heightOffset += oneLineHeight;
-			}
-
-			// Drawing the leader line
-			RECT TagBackRectData = TagBackgroundRect;
-			POINT toDraw1, toDraw2;
-			if (LiangBarsky(TagBackRectData, RtPoint, TagBackgroundRect.CenterPoint(), toDraw1, toDraw2))
-			{
-				Pen leaderPen(whiteColor);
-				gdi->DrawLine(&leaderPen, PointF(Gdiplus::REAL(RtPoint.x), Gdiplus::REAL(RtPoint.y)), PointF(Gdiplus::REAL(toDraw1.x), Gdiplus::REAL(toDraw1.y)));
-			}
-
-			// RIMCAS always uses a separate alert label above the normal tag.
-			CRect oldCrectSave = TagBackgroundRect;
-
-			{
-				const Color RimcasLabelColor = rimcasStage == CRimcas::StageOne
-					? rimcasStageOneColor
-					: (rimcasStage == CRimcas::StageTwo ? rimcasStageTwoColor : aliceBlueColor);
-
-				if (RimcasLabelColor.ToCOLORREF() != aliceBlueColor.ToCOLORREF()) {
-					int rimcas_height = 0;
-
-					wstring wrimcas_height = wstring(L"ALERT");
-
-					RectF RectRimcas_height;
-
-					gdi->MeasureString(wrimcas_height.c_str(), wcslen(wrimcas_height.c_str()), tagRegularFont, PointF(0, 0), &defaultStringFormat, &RectRimcas_height);
-					rimcas_height = int(RectRimcas_height.GetBottom());
-
-					CRect RimcasLabelRect(TagBackgroundRect.left, TagBackgroundRect.top - rimcas_height, TagBackgroundRect.right, TagBackgroundRect.top);
-					SolidBrush rimcasLabelBrush(RimcasLabelColor);
-					gdi->FillRectangle(&rimcasLabelBrush, CopyRect(RimcasLabelRect));
-					TagBackgroundRect.top -= rimcas_height;
-
-					wstring rimcasw = wstring(L"ALERT");
-					StringFormat stformat;
-					stformat.SetAlignment(StringAlignment::StringAlignmentCenter);
-					SolidBrush* rimcasTextBrush = (rimcasStage == CRimcas::StageTwo)
-						? &AlertTextColorWarning
-						: &AlertTextColorCaution;
-					gdi->DrawString(rimcasw.c_str(), wcslen(rimcasw.c_str()), tagRegularFont, PointF(Gdiplus::REAL((TagBackgroundRect.left + TagBackgroundRect.right) / 2), Gdiplus::REAL(TagBackgroundRect.top)), &stformat, rimcasTextBrush);
-
-				}
-			}
-
-			TagBackgroundRect = oldCrectSave;
+		if (rimcasStage == CRimcas::StageOne || rimcasStage == CRimcas::StageTwo)
+		{
+			VsmrTagRendering::DetachedTopBand alertBand;
+			alertBand.text = "ALERT";
+			alertBand.background = rimcasStage == CRimcas::StageOne
+				? rimcasStageOneColor
+				: rimcasStageTwoColor;
+			alertBand.textColor = rimcasStage == CRimcas::StageTwo
+				? alertTextWarning
+				: alertTextCaution;
+			VsmrTagRendering::PaintDetachedTopBand(
+				*gdi,
+				srwTagFonts,
+				painted.bounds,
+				alertBand);
 		}
 	}
 

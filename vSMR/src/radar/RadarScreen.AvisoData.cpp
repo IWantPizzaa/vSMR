@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
 #include "radar/RadarScreenSupport.hpp"
@@ -1269,16 +1270,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	AvisoGeoJsonMaxLatitude = parsedMaxLatitude;
 	AvisoNightBackgroundColor = parsedNightBackgroundColor;
 	AvisoDayBackgroundColor = parsedDayBackgroundColor;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		AvisoGeoJsonRenderLatestRequestId = ++AvisoGeoJsonRenderNextRequestId;
-		AvisoGeoJsonRenderCancellationToken->store(
-			AvisoGeoJsonRenderLatestRequestId,
-			std::memory_order_release);
-		AvisoGeoJsonPendingRenderRequest.reset();
-		AvisoGeoJsonCompletedRenderResult.reset();
-		AvisoGeoJsonRenderLastRequestValid = false;
-	}
+	if (AvisoGeoJsonRenderPipeline != nullptr)
+		AvisoGeoJsonRenderPipeline->InvalidateRequests();
 	if (loadedPathChanged)
 		ClearAvisoGeoJsonRasterCache();
 	{
@@ -1519,16 +1512,8 @@ bool CSMRRadar::ApplyAvisoGroupMembershipSnapshot(
 
 void CSMRRadar::InvalidateAvisoGroupRendering()
 {
-	{
-		std::lock_guard<std::mutex> renderGuard(AvisoGeoJsonRenderMutex);
-		AvisoGeoJsonRenderLatestRequestId = ++AvisoGeoJsonRenderNextRequestId;
-		AvisoGeoJsonRenderCancellationToken->store(
-			AvisoGeoJsonRenderLatestRequestId,
-			std::memory_order_release);
-		AvisoGeoJsonPendingRenderRequest.reset();
-		AvisoGeoJsonCompletedRenderResult.reset();
-		AvisoGeoJsonRenderLastRequestValid = false;
-	}
+	if (AvisoGeoJsonRenderPipeline != nullptr)
+		AvisoGeoJsonRenderPipeline->InvalidateRequests();
 
 	// Keep the last same-path raster as a stale preview while the new group or
 	// ownership generation is rebuilt. Exact-cache checks still reject it.

@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
+#include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
@@ -64,6 +65,66 @@ namespace
 		value = parsed;
 		return true;
 	}
+}
+
+VsmrTargetRendering::IconCacheCallbacks CSMRRadar::CreateTargetIconCacheCallbacks()
+{
+	VsmrTargetRendering::IconCacheCallbacks callbacks;
+	callbacks.beginFrame = [this]() -> std::uint64_t
+	{
+		return ++RealisticIconCacheFrame;
+	};
+	callbacks.getSourceBitmap = [this](const std::string& iconType) -> Gdiplus::Bitmap*
+	{
+		return GetAircraftIcon(iconType);
+	};
+	callbacks.getScaledBitmap = [this](
+		const std::string& iconType,
+		Gdiplus::Bitmap* sourceBitmap,
+		UINT sourceWidth,
+		UINT sourceHeight,
+		const Gdiplus::Color& tintColor,
+		double drawWidth,
+		double drawHeight,
+		std::uint64_t cacheFrame,
+		int& pixelWidth,
+		int& pixelHeight,
+		std::string& cacheKey) -> Gdiplus::Bitmap*
+	{
+		return GetCachedRealisticIconBitmap(
+			iconType,
+			sourceBitmap,
+			sourceWidth,
+			sourceHeight,
+			true,
+			tintColor,
+			drawWidth,
+			drawHeight,
+			cacheFrame,
+			pixelWidth,
+			pixelHeight,
+			cacheKey);
+	};
+	callbacks.getRotatedBitmap = [this](
+		const std::string& cacheKey,
+		Gdiplus::Bitmap* scaledBitmap,
+		int width,
+		int height,
+		double rotationDegrees,
+		std::uint64_t cacheFrame) -> VsmrTargetRendering::CachedBitmap
+	{
+		RealisticIconCacheEntry* cached = GetCachedRotatedRealisticIconBitmap(
+			cacheKey,
+			scaledBitmap,
+			width,
+			height,
+			rotationDegrees,
+			cacheFrame);
+		if (cached == nullptr)
+			return {};
+		return { cached->bitmap.get(), cached->centerX, cached->centerY };
+	};
+	return callbacks;
 }
 
 Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
