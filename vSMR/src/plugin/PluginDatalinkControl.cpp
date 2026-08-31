@@ -383,6 +383,7 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 		bool hasVacdmData = false;
 		const CdmQueueReminderOutcome outcome =
 			TryQueueCdmReminderForCallsign(
+				this,
 				callsign,
 				reminderMessage,
 				now,

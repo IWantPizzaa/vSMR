@@ -154,6 +154,7 @@
     <ClInclude Include="src\crash\CrashReportSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\crash\CrashRuntime.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp"><Filter>Headers</Filter></ClInclude>
+	<ClInclude Include="src\datalink\CdmReminderSafety.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>

@@ -12,6 +12,7 @@
 
 ### Changed
 
+- Made automatic PDC reminders fail closed around airport and ground eligibility: queued messages are bound to one unambiguous active airport, require a fresh nearly stationary target within 5 NM of that airport, and are submitted at most once per callsign during the plug-in session. EuroScope command submission now waits for the command bar to consume the posted `.msg`; ambiguous results are not retried automatically.
 - Reworked Settings into a compact two-column Display/updates and Data files layout, and removed the updater status badge and manual next-startup update-check action.
 - Removed Control Center Undo/Redo and stopped normal profile and AVISO saves from automatically creating `.bak` files. Atomic replacement, failed-transaction rollback, Revert, and compatibility with existing profile backups remain available.
 - Fixed loading vSMR again during the same EuroScope session after a safe unload had temporarily retained the runtime while radar screens and callbacks were still closing.

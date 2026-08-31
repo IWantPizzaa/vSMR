@@ -378,12 +378,14 @@ The compact Runtime Menu `CPDLC / PDC` popup contains the Hoppie connection and 
 - connect/disconnect and manual polling
 - request notification sound on every incoming clearance request
 - manual PDC eligibility checks for the active airport
-- automatic PDC reminders with a delay and resend cooldown
+- automatic one-shot PDC reminders with a delay, plus a cooldown for deliberate manual checks
 - Run and Stop controls for reminder automation
 - compact vSMR-styled PDC and received-message windows
 - a `Datalink clearance` tag item and `Datalink menu` tag function
 
-Automatic reminders always start stopped when vSMR is loaded. `Run` applies the displayed delay for the current EuroScope session only and requires a connected controller, an active airport, a valid `.cdm` alias, and a current successful vACDM snapshot. The full delay starts when an eligible no-status departure is first observed without a submitted TOBT; an old or expired placeholder never bypasses it. Submitting a TOBT cancels the pending reminder, and removing that TOBT starts a fresh full delay. Stop reminders before changing the delay or cooldown. A cooldown of `0` means no repeat while the aircraft remains in the same eligibility period.
+Automatic reminders always start stopped when vSMR is loaded. `Run` applies the displayed delay for the current EuroScope session only and requires a connected controller, one unambiguous active airport, a valid `.cdm` alias, and a current successful vACDM snapshot. The full delay starts when an eligible no-status departure is first observed without a submitted TOBT. Immediately before submission, vSMR requires the flight-plan origin to remain the active airport and requires a fresh, correlated, nearly stationary radar target within 5 NM of that airport. Simulated, stale, moving, climbing/descending, started, wrong-airport, or operationally advanced aircraft fail closed without a message.
+
+Automatic delivery is one-shot per callsign for the complete plug-in session, including after Stop/Run, airport changes, or a disconnect/reconnect. A manual `Check now` remains subject to the displayed cooldown, but a manual submission also prevents a later automatic duplicate. Submitting a TOBT or sending/opening a PDC cancels pending reminders. Stop reminders before changing the delay or cooldown.
 
 The PDC window places TSAT before the optional CTOT field and pre-fills both from the current vACDM snapshot when those values exist. TSAT is emitted first in the clearance, and both optional times must be valid four-digit UTC `HHMM` values. Opening the PDC composer immediately suppresses any queued reminder for that callsign; cancelling or a failed transmission releases suppression, while a successful clearance retains it.
 
@@ -391,7 +393,7 @@ The clearance frequency uses the lowest staffed departure position at the origin
 
 The PDC window uses operational field names including `ADEP`, `ADES`, and `RWY`.
 
-Automatic CDM reminders preserve the contents, selection, and focus of EuroScope's command/message bar while vSMR submits the generated private message.
+Automatic CDM reminders wait until EuroScope's command bar is empty, post the generated private-message command, and record success only after EuroScope consumes it. If consumption cannot be confirmed, vSMR warns the controller and suppresses automatic retry to avoid a duplicate.
 
 CPDLC connection and reminder settings use a separate protected EuroScope settings store rather than profile JSON or AVISO. Their valid field changes are saved automatically in the background. The explicit Connect and PDC Run/Stop actions persist any settings required for that live operation first; there is no separate Update action.
 
