@@ -131,10 +131,28 @@ public:
 
 private:
 	friend class VsmrPluginCommandHandler;
+	friend bool VsmrShutdownPlugin();
 
 	bool WriteDiagnosticsReport(
 		std::string& reportPath,
 		std::string& error);
+	void ResetDatalinkRuntime();
+	void LoadDatalinkSettings();
+	void ResetDatalinkProfileSource();
+	void BeginDatalinkShutdown();
+	void PersistDatalinkSettings();
+	static void PrepareDatalinkRuntimeForExit();
+	bool HandleHoldingPointFunctionCall(
+		int functionId,
+		const char* itemString,
+		RECT area);
+	void HandleDatalinkFunctionCall(
+		int functionId,
+		const char* itemString,
+		RECT area);
+	void ForgetDatalinkFlightPlan(const std::string& callsign);
+	void RunDatalinkTimerCycle();
+	void LoadHoldingPointCatalog(const std::string& path);
 	void NetworkWorkerMain();
 	void QueueWeatherFetch(const std::string& station);
 	void WeatherFetchThreadMain();

@@ -5,8 +5,13 @@
 #include <string>
 #include <vector>
 
-// Process-wide plugin state remains defined and owned by Plugin.cpp.
+class CSMRPlugin;
+
+// Process-wide state used by the small callback and worker implementation
+// units. Feature-specific state remains private to its owning source file.
 extern std::atomic<bool> PluginShutdownRequested;
+extern std::atomic<CSMRPlugin*> ActivePluginInstance;
+extern std::atomic<bool> FlightDataRefreshPending;
 extern bool BLINK;
 extern std::mutex DatalinkControlMutex;
 extern std::mutex DatalinkStateMutex;

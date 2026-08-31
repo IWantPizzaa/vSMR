@@ -160,6 +160,7 @@
     <ClCompile Include="src\app\PluginEntry.cpp" />
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp" />
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="src\aviso\AvisoFeatureMetadata.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
@@ -167,12 +168,20 @@
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.Commands.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.Persistence.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.Resources.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.Routing.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.Serialization.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.State.cpp" />
     <ClCompile Include="src\control_center\ControlCenterMessageProtocol.cpp" />
     <ClCompile Include="src\control_center\ControlCenterPerformance.cpp" />
     <ClCompile Include="src\control_center\ControlCenterUpdater.cpp" />
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterDialog.NativeResources.cpp" />
     <ClCompile Include="src\control_center\ControlCenterDialog.Resources.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterDialog.WebView.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterDialog.Window.cpp" />
     <ClCompile Include="src\control_center\WebMessageValidation.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -184,6 +193,10 @@
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.Aviso.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.Chrome.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.Interaction.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.SecondaryRadar.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Timer.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Weather.cpp" />
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp" />
@@ -192,6 +205,15 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp" />
+    <ClCompile Include="src\plugin\PluginDatalink.cpp" />
+    <ClCompile Include="src\plugin\PluginDatalinkCallbacks.cpp" />
+    <ClCompile Include="src\plugin\PluginDatalinkControl.cpp" />
+    <ClCompile Include="src\plugin\PluginDatalinkTransport.cpp" />
+    <ClCompile Include="src\plugin\PluginEuroScopeCallbacks.cpp" />
+    <ClCompile Include="src\plugin\PluginGroundState.cpp" />
+    <ClCompile Include="src\plugin\PluginLifecycle.cpp" />
+    <ClCompile Include="src\plugin\PluginRuntimeAudio.cpp" />
+    <ClCompile Include="src\plugin\PluginTimer.cpp" />
     <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp" />
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp" />
     <ClCompile Include="src\plugin\PluginTagCallbacks.cpp" />
@@ -205,13 +227,18 @@
     <ClCompile Include="src\radar\RadarScreen.RunwayState.cpp" />
     <ClCompile Include="src\radar\RadarScreen.TagData.cpp" />
     <ClCompile Include="src\radar\RadarScreen.AvisoData.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.AvisoGroups.cpp" />
     <ClCompile Include="src\radar\RadarScreen.AvisoRendering.cpp" />
     <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp" />
     <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp" />
     <ClCompile Include="src\radar\RadarScreen.Interaction.cpp" />
     <ClCompile Include="src\radar\RadarScreen.MenuActions.cpp" />
     <ClCompile Include="src\radar\RadarScreen.PresentationSettings.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.ProfileNormalization.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.ProfileSession.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.Refresh.cpp" />
     <ClCompile Include="src\radar\RadarScreen.RuntimeMenu.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.RuntimeMenuActions.cpp" />
     <ClCompile Include="src\radar\RadarScreen.TargetFiltering.cpp" />
     <ClCompile Include="src\rdf\RdfOverlay.cpp" />
     <ClCompile Include="src\safety\Rimcas.cpp" />
@@ -237,6 +264,7 @@
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
+    <ClInclude Include="src\aviso\AvisoFeatureMetadata.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
@@ -247,6 +275,7 @@
     <ClInclude Include="src\control_center\ControlCenterPerformance.hpp" />
     <ClInclude Include="src\control_center\ControlCenterUpdater.hpp" />
     <ClInclude Include="src\control_center\ControlCenterDialog.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterDialog.Internal.hpp" />
     <ClInclude Include="src\control_center\RuntimeResourceFiles.hpp" />
     <ClInclude Include="src\control_center\WebMessageValidation.hpp" />
     <ClInclude Include="src\crash\CrashReporter.hpp" />
@@ -258,16 +287,19 @@
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
+    <ClInclude Include="src\insets\InsetWindow.Internal.hpp" />
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp" />
     <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp" />
     <ClInclude Include="src\platform\windows\ResourceIds.h" />
     <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp" />
     <ClInclude Include="src\plugin\Plugin.hpp" />
+    <ClInclude Include="src\plugin\PluginDatalink.Internal.hpp" />
     <ClInclude Include="src\plugin\PluginCommandHandler.hpp" />
     <ClInclude Include="src\plugin\PluginHttpSupport.hpp" />
     <ClInclude Include="src\plugin\PluginMetadata.hpp" />
     <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp" />
+    <ClInclude Include="src\plugin\PluginRuntimeAudio.hpp" />
     <ClInclude Include="src\rendering\TagRenderer.hpp" />
     <ClInclude Include="src\rendering\TargetSymbolRenderer.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />

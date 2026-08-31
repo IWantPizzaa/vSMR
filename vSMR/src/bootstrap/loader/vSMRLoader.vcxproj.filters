@@ -13,7 +13,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BootstrapLoader.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterCoordinator.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="..\..\updater\UpdaterCore.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterHealth.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterManifest.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterPackage.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterProcess.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterReleaseModel.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterState.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="..\..\updater\UpdaterTransport.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="..\..\updater\UpdaterUrlPolicy.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="..\..\updater\UpdaterVerification.cpp"><Filter>Source</Filter></ClCompile>
@@ -23,6 +30,8 @@
     <ClInclude Include="LoaderVersion.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="RuntimeReleaseState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\..\updater\UpdaterCore.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="..\..\updater\UpdaterCore.Internal.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="..\..\updater\UpdaterReleaseModel.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\..\updater\UpdaterTransport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\..\updater\UpdaterUrlPolicy.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\..\updater\UpdaterVerification.hpp"><Filter>Headers</Filter></ClInclude>

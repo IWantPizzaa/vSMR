@@ -1,4 +1,5 @@
 #include "UpdaterUrlPolicyTests.hpp"
+#include "updater/UpdaterReleaseModel.hpp"
 #include "updater/UpdaterUrlPolicy.hpp"
 
 #include <array>
@@ -95,6 +96,41 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 			L"https://example.invalid/package.zip",
 			redirect),
 		"updater URL policy rejects redirects to an unapproved host",
+		failures);
+
+	using vsmr::updater::UpdateChannel;
+	using vsmr::updater::release_model::ChannelAccepts;
+	using vsmr::updater::release_model::CompareSemVer;
+	using vsmr::updater::release_model::ParseSemVer;
+	using vsmr::updater::release_model::SameSemVerIdentity;
+
+	const auto stable = ParseSemVer("v1.4.2");
+	const auto beta = ParseSemVer("1.4.3-beta.2");
+	Check(
+		stable.valid && stable.normalized == "1.4.2" &&
+		stable.major == 1 && stable.minor == 4 && stable.patch == 2,
+		"updater release model normalizes a valid prefixed version",
+		failures);
+	Check(
+		beta.valid && CompareSemVer(stable, beta) < 0 &&
+		!ChannelAccepts(beta, UpdateChannel::Stable) &&
+		ChannelAccepts(beta, UpdateChannel::Beta),
+		"updater release model orders versions and enforces channels",
+		failures);
+	Check(
+		CompareSemVer(ParseSemVer("1.0.0-rc.2"), ParseSemVer("1.0.0-rc.10")) < 0 &&
+		CompareSemVer(ParseSemVer("1.0.0-rc.10"), ParseSemVer("1.0.0")) < 0,
+		"updater release model follows semantic prerelease precedence",
+		failures);
+	Check(
+		!ParseSemVer("1.02.3").valid && !ParseSemVer("1.2").valid &&
+		!ParseSemVer("1.2.3-").valid && !ParseSemVer("1.2.3+").valid,
+		"updater release model rejects malformed versions",
+		failures);
+	Check(
+		SameSemVerIdentity("v1.2.3-beta", "1.2.3-beta") &&
+		!SameSemVerIdentity("1.2.3", "1.2.4"),
+		"updater release model compares normalized release identities",
 		failures);
 
 	return failures;

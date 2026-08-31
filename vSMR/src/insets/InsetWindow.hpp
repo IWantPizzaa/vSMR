@@ -128,6 +128,7 @@ public:
 	double GetLastChromeRenderMilliseconds() const noexcept;
 	
 private:
+	double GetAvisoViewportScreenRotationDeg() const noexcept;
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
