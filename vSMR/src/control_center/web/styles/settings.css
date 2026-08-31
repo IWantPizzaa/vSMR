@@ -9,8 +9,6 @@
 
 .icon-settings-grid .field { margin: 3px 0; }
 
-.page[data-page-panel="settings"] { grid-template-rows: 28px minmax(0, 1fr); }
-
 .icon-settings-grid .compact-group {
   margin: 0;
   min-width: 0;
@@ -68,12 +66,6 @@
 
 .group-settings-name-only { padding-bottom: 7px; }
 
-.settings-group legend {
-  padding: 0 5px;
-  color: #c7d3d6;
-  font-weight: 700;
-}
-
 .settings-file-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -87,33 +79,6 @@
   height: var(--ui-control-height);
 }
 
-.settings-group > legend {
-  position: absolute;
-  z-index: 1;
-  left: 0;
-  top: 0;
-  width: 100% !important;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 7px;
-  border-bottom: 1px solid var(--ui-inner-border);
-  border-radius: calc(var(--ui-card-radius) - 1px) calc(var(--ui-card-radius) - 1px) 0 0;
-  background: var(--ui-card-title-bg);
-  color: #d1dcde;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 22px;
-}
-
-.settings-group > legend .legend-tools {
-  float: none;
-  margin-left: auto;
-}
-
-.settings-group > .dense-form { padding: 0; }
-
 .icon-settings-grid {
   display: grid;
   align-content: start;
@@ -125,13 +90,6 @@
 .group-settings-card { margin-bottom: 0; }
 
 .settings-group {
-  box-shadow: none;
-  position: relative;
-  min-width: 0;
-  padding: 29px 7px 7px;
-  border: 1px solid var(--ui-inner-border);
-  border-radius: var(--ui-card-radius);
-  background: var(--ui-card-bg);
   margin: 0;
 }
 
@@ -189,27 +147,6 @@
   align-items: start;
 }
 
-.settings-page .settings-group > legend {
-  height: var(--ui-panel-title-height);
-  min-height: var(--ui-panel-title-height);
-  border-bottom: 1px solid var(--ui-inner-border);
-  border-radius: calc(var(--ui-panel-radius) - 1px) calc(var(--ui-panel-radius) - 1px) 0 0;
-  background: var(--ui-panel-title-bg);
-  color: var(--ui-text);
-  line-height: var(--ui-panel-title-height);
-}
-
-.settings-bottom-actions {
-  padding: 4px 5px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.settings-bottom-actions > .ui-button {
-  grid-column: 2;
-  width: 100%;
-  min-width: 0;
-}
-
 .settings-recovery-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -257,7 +194,7 @@
 
 .updater-general-heading > span:last-child {
   overflow: hidden;
-  color: var(--ui-muted);
+  color: var(--ui-muted-text);
   font: 8px/1.2 var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -272,7 +209,7 @@
 .update-notice {
   min-height: 0;
   margin: 1px 0 0;
-  color: var(--ui-muted);
+  color: var(--ui-muted-text);
   font-size: 8px;
   line-height: 1.35;
 }
@@ -295,13 +232,6 @@
 
 .settings-page .settings-column { gap: 3px; }
 
-.settings-page .settings-group {
-  border: 1px solid var(--ui-outer-border);
-  border-radius: var(--ui-panel-radius);
-  background: var(--ui-panel-bg);
-  padding: calc(var(--ui-panel-title-height) + 3px) 5px 4px;
-}
-
 .settings-page .settings-file-list { gap: 0; }
 
 .settings-page .settings-file-row {
@@ -314,13 +244,6 @@
 .settings-page .settings-file-actions,
 .settings-page .settings-recovery-actions {
   gap: 3px;
-}
-
-.settings-page .settings-file-actions .ui-button,
-.settings-page .settings-recovery-actions .ui-button,
-.settings-page .updater-general-actions .ui-button {
-  min-height: 20px;
-  height: 20px;
 }
 
 .settings-page .updater-general-group > .check-field:nth-of-type(2) { grid-column: 1 / -1; }

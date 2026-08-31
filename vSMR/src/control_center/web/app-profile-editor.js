@@ -197,18 +197,19 @@
       const collapsed = treeState.tags.has(groupKey);
       const accentEntry = items.find(item => item.color);
       const accent = accentEntry ? colorToHex(accentEntry.color) : "#5096b4";
-      const rows = items.map(entry => `<button type="button" role="option" aria-selected="${selectedIds.has(entry.id)}" class="menu-tree-row tag-menu-row ${selectedIds.has(entry.id) ? "active" : ""} ${entry.id === state.ui.selectedTagId ? "current" : ""}" data-tag-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.label)}">
-        <span class="menu-row-title">${escapeHtml(entry.label)}</span>
+      const rows = items.map(entry => `<button type="button" role="option" aria-selected="${selectedIds.has(entry.id)}" class="${uiListRowClass("tag", selectedIds.has(entry.id), entry.id === state.ui.selectedTagId, "tag-menu-row")}" data-tag-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.label)}">
+        <span class="ui-list__label menu-row-title">${escapeHtml(entry.label)}</span>
       </button>`).join("");
-      return `<section class="menu-tree-section tag-menu-section" style="--menu-accent:${accent}">
-        <button type="button" class="menu-tree-caption" data-tree-toggle="tags" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
-          <span class="menu-tree-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
-          <span class="menu-tree-caption-text">${escapeHtml(group)}</span>
+      return `<section class="ui-list__section tag-menu-section" style="--menu-accent:${accent}">
+        <button type="button" class="ui-list__heading" data-tree-toggle="tags" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
+          <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+          <span class="ui-list__heading-label">${escapeHtml(group)}</span>
         </button>
-        <div class="menu-tree-box" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group)} tag definitions" aria-multiselectable="true" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
-    }).join("") || `<div class="aviso-list-message">No tag definitions</div>`;
-    requestAnimationFrame(() => $("#tagDefinitionList .tag-menu-row.active")?.scrollIntoView({ block: "nearest" }));
+    }).join("") || `<div class="ui-list__empty">No tag definitions</div>`;
+    syncUiListFocus($("#tagDefinitionList"));
+    requestAnimationFrame(() => $("#tagDefinitionList .tag-menu-row.is-selected")?.scrollIntoView({ block: "nearest" }));
     renderTagEditor();
   }
 
@@ -499,8 +500,12 @@
   function renderRules() {
     const items = rules();
     state.ui.selectedRuleIndex = items.length ? Math.min(items.length - 1, Math.max(0, state.ui.selectedRuleIndex)) : 0;
-    const rows = items.map((rule, index) => `<button type="button" class="selection-row menu-tree-row manager-menu-row simple-manager-row ${index === state.ui.selectedRuleIndex ? "active" : ""}" data-rule-index="${index}"><span class="menu-row-title">${escapeHtml(ruleLabel(rule, index))}</span></button>`).join("");
-    $("#ruleList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No rules</div>`;
+    const rows = items.map((rule, index) => {
+      const selected = index === state.ui.selectedRuleIndex;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("manager", selected)}" data-rule-index="${index}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span></button>`;
+    }).join("");
+    $("#ruleList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No rules</div>`;
+    syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
   function renderRuleEditor() {
@@ -525,7 +530,7 @@
         <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
         <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, parsedCondition.operator), parsedCondition.operator, { not_in: "not in" })}</select>
         <input aria-label="Rule match values" data-field="condition-values" spellcheck="false" type="text" value="${escapeHtml(parsedCondition.values)}"/>
-        <button type="button" data-action="delete-condition" data-index="${index}">×</button>
+        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive" data-action="delete-condition" data-index="${index}" title="Delete condition">×</button>
       </div>`;
     }).join("");
     $$("#criteriaList .criterion-row").forEach(updateRuleConditionValueControl);
@@ -606,8 +611,12 @@
     const items = modes();
     const activeName = activeProfile().filters?.display_modes?.active;
     if (items.length && (state.ui.selectedModeIndex >= items.length || state.ui.selectedModeIndex < 0)) state.ui.selectedModeIndex = Math.max(0, items.findIndex(mode => mode.name === activeName));
-    const rows = items.map((mode, index) => `<button type="button" class="selection-row menu-tree-row manager-menu-row ${index === state.ui.selectedModeIndex ? "active" : ""}" data-mode-index="${index}"><span class="menu-row-title">${escapeHtml(mode.name || `Mode ${index + 1}`)}</span><span class="mode-active-mark">${mode.name === activeName ? "●" : ""}</span></button>`).join("");
-    $("#modeList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No modes</div>`;
+    const rows = items.map((mode, index) => {
+      const selected = index === state.ui.selectedModeIndex;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-mode-index="${index}"><span class="ui-list__label">${escapeHtml(mode.name || `Mode ${index + 1}`)}</span><span class="ui-list__trailing mode-active-mark">${mode.name === activeName ? "●" : ""}</span></button>`;
+    }).join("");
+    $("#modeList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No modes</div>`;
+    syncUiListFocus($("#modeList"));
     renderModeEditor();
   }
 
@@ -680,8 +689,12 @@
 
   function renderProfilesManager() {
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
-    const rows = state.profiles.map(record => `<button type="button" class="selection-row menu-tree-row manager-menu-row ${record.id === state.ui.managedProfileId ? "active" : ""}" data-managed-profile-id="${escapeHtml(record.id)}"><span class="menu-row-title">${escapeHtml(record.data.name)}</span><span class="profile-active-mark">${record.id === state.activeProfileId ? "●" : ""}</span></button>`).join("");
-    $("#profileList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No profiles</div>`;
+    const rows = state.profiles.map(record => {
+      const selected = record.id === state.ui.managedProfileId;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-managed-profile-id="${escapeHtml(record.id)}"><span class="ui-list__label">${escapeHtml(record.data.name)}</span><span class="ui-list__trailing profile-active-mark">${record.id === state.activeProfileId ? "●" : ""}</span></button>`;
+    }).join("");
+    $("#profileList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No profiles</div>`;
+    syncUiListFocus($("#profileList"));
     renderProfileEditor();
   }
 

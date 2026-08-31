@@ -30,12 +30,24 @@
   --ui-compact-height: 18px;
   --ui-panel-title-height: 23px;
   --ui-card-title-height: 22px;
+  --ui-toolbar-height: 29px;
   --ui-actionbar-height: 30px;
-  --ui-gap: 4px;
-  --ui-page-padding: 4px;
+  --ui-list-row-height: 28px;
+  --ui-list-heading-height: 18px;
+  --ui-space-1: 2px;
+  --ui-space-2: 4px;
+  --ui-space-3: 6px;
+  --ui-space-4: 8px;
+  --ui-space-5: 12px;
+  --ui-gap: var(--ui-space-2);
+  --ui-page-padding: var(--ui-space-2);
   --ui-panel-radius: 4px;
   --ui-card-radius: 4px;
   --ui-control-radius: 3px;
+  --ui-list-row-padding: 3px var(--ui-space-3);
+  --ui-font-size: 11px;
+  --ui-font-size-small: 9px;
+  --ui-font-size-compact: 8px;
   --profile-master-width: var(--ui-master-width);
   --aviso-master-width: var(--ui-master-width);
 
@@ -43,6 +55,10 @@
   --ui-outer-border: #050708;
   --ui-inner-border: #111719;
   --ui-divider: #3b494d;
+  --ui-control-border: var(--ui-outer-border);
+  --ui-control-border-hover: #35474a;
+  --ui-control-border-focus: #70abc5;
+  --ui-focus-ring: 0 0 0 1px rgba(132, 183, 213, .18);
   --ui-page-bg: #253033;
   --ui-panel-bg: #293639;
   --ui-panel-title-bg: #222d30;
@@ -64,24 +80,12 @@
   --ui-accent-text: #f4f8f9;
   --ui-disabled-bg: #1f2a2d;
   --ui-disabled-text: #5b6b70;
+  --ui-disabled-opacity: .48;
   --ui-danger-hover: #703337;
+  --ui-danger-text: #e5a7a7;
+  --ui-error: #c97878;
+  --ui-placeholder-text: #718086;
 
-  /* Compatibility aliases used by the older component rules. */
-  --ui-page: #253033;
-  --ui-panel: #293639;
-  --ui-panel-head: #212b2e;
-  --ui-section: #2c3a3d;
-  --ui-section-head: #273538;
-  --ui-control: #20292c;
-  --ui-list: #222d30;
-  --ui-list-row: #29383b;
-  --ui-separator: #3b494d;
-  --ui-title-height: var(--ui-panel-title-height);
-  --ui-action-height: var(--ui-actionbar-height);
-  --ui-radius-panel: var(--ui-panel-radius);
-  --ui-radius-control: var(--ui-control-radius);
-  --ui-border-outer: var(--ui-outer-border);
-  --ui-border-inner: var(--ui-inner-border);
 }
 
 html {
@@ -98,7 +102,7 @@ body {
   overflow: hidden;
   background: #3e3e3e;
   color: var(--text);
-  font: 11px/1.25 var(--font);
+  font: var(--ui-font-size)/1.25 var(--font);
   user-select: none;
 }
 
@@ -106,33 +110,27 @@ button {
   font: inherit;
   color: inherit;
   cursor: default;
-  border-radius: var(--ui-radius-control);
+  border-radius: var(--ui-control-radius);
 }
 
-input {
-  font: inherit;
-  user-select: text;
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea) {
   min-width: 0;
-  outline: none;
-  padding: 3px 5px;
-  height: var(--ui-control-height);
-  border: 1px solid var(--ui-border-outer);
-  background: var(--ui-control);
   min-height: var(--ui-control-height);
-  border-color: var(--ui-outer-border);
+  padding: 3px 5px;
+  border: 1px solid var(--ui-control-border);
   border-radius: var(--ui-control-radius);
+  outline: none;
   background-color: var(--ui-field-bg);
   color: var(--ui-text);
+  font: inherit;
+  user-select: text;
+}
+
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select) {
+  height: var(--ui-control-height);
 }
 
 select {
-  font: inherit;
-  min-width: 0;
-  outline: none;
-  padding: 3px 5px;
-  height: var(--ui-control-height);
-  border: 1px solid var(--ui-border-outer);
-  background: var(--ui-control);
   appearance: none;
   -webkit-appearance: none;
   padding-right: 21px;
@@ -140,27 +138,11 @@ select {
   background-repeat: no-repeat;
   background-position: right 5px center;
   background-size: 10px 7px;
-  min-height: var(--ui-control-height);
-  border-color: var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background-color: var(--ui-field-bg);
-  color: var(--ui-text);
 }
 
 textarea {
-  font: inherit;
-  user-select: text;
-  min-width: 0;
-  outline: none;
-  padding: 3px 5px;
   resize: none;
   line-height: 1.35;
-  border: 1px solid var(--ui-border-outer);
-  background: var(--ui-control);
-  border-color: var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background-color: var(--ui-field-bg);
-  color: var(--ui-text);
 }
 
 input[type="range"] {
@@ -203,61 +185,44 @@ input[type="checkbox"]:checked::after {
 
 [hidden] { display: none !important; }
 
-input:hover { border-color: #35464a; }
-
-select:hover { border-color: #35464a; }
-
-textarea:hover { border-color: #35464a; }
-
-input:focus {
-  border-color: var(--accent-soft);
-  box-shadow: 0 0 0 1px rgba(132, 183, 213, .18);
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea)::placeholder {
+  color: var(--ui-placeholder-text);
+  opacity: 1;
 }
 
-select:focus {
-  border-color: var(--accent-soft);
-  box-shadow: 0 0 0 1px rgba(132, 183, 213, .18);
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea):not(:disabled):hover {
+  border-color: var(--ui-control-border-hover);
 }
 
-textarea:focus {
-  border-color: var(--accent-soft);
-  box-shadow: 0 0 0 1px rgba(132, 183, 213, .18);
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea):focus-visible {
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+}
+
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea).is-invalid,
+:where(input:not([type="checkbox"]):not([type="range"]):not([type="color"]), select, textarea)[aria-invalid="true"] {
+  border-color: var(--ui-error);
 }
 
 select:disabled {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M2 2l4 4 4-4' fill='none' stroke='%236f7d82' stroke-width='1.5'/%3E%3C/svg%3E");
   cursor: default;
-  opacity: .48;
+  opacity: var(--ui-disabled-opacity);
 }
 
 input[type="color"] { height: var(--ui-control-height); }
 
-input:not(:disabled):hover {
-  border-color: var(--ui-button-hover);
-  background-color: var(--ui-field-bg);
-}
-
-select:not(:disabled):hover {
-  border-color: var(--ui-button-hover);
-  background-color: var(--ui-field-bg);
-}
-
-textarea:not(:disabled):hover {
-  border-color: var(--ui-button-hover);
-  background-color: var(--ui-field-bg);
-}
-
 button:disabled {
   cursor: default;
-  opacity: .48;
+  opacity: var(--ui-disabled-opacity);
 }
 
-input:disabled {
+:where(input, select, textarea):disabled {
   cursor: default;
-  opacity: .48;
+  opacity: var(--ui-disabled-opacity);
 }
 
-textarea:disabled {
-  cursor: default;
-  opacity: .48;
+:where(input, textarea)[readonly] {
+  background: var(--ui-disabled-bg);
+  color: var(--ui-muted-text);
 }

@@ -239,9 +239,9 @@
       const modes = activeProfile()?.filters?.display_modes?.items || [];
       const active = activeModeName();
       content.innerHTML = modes.length
-        ? `<div class="runtime-choice-box">${modes.map(mode => {
+        ? `<div class="ui-list__items runtime-choice-box">${modes.map(mode => {
             const selected = mode.name === active;
-            return `<button type="button" class="runtime-choice-row runtime-compact-row ${selected ? "active" : ""}" data-runtime-mode="${escapeHtml(mode.name)}">${runtimeSelectionIcon(selected)}<strong class="runtime-row-label">${escapeHtml(mode.name)}</strong></button>`;
+            return `<button type="button" class="${uiListRowClass("runtime", selected, false, "runtime-choice-row runtime-compact-row")}" data-runtime-mode="${escapeHtml(mode.name)}">${runtimeSelectionIcon(selected)}<strong class="ui-list__label runtime-row-label">${escapeHtml(mode.name)}</strong></button>`;
           }).join("")}</div>`
         : `<div class="runtime-popover-empty">No modes in this profile.</div>`;
       return;
@@ -249,9 +249,9 @@
 
     if (kind === "profile") {
       title.textContent = "Profile";
-      content.innerHTML = `<div class="runtime-choice-box">${state.profiles.map(record => {
+      content.innerHTML = `<div class="ui-list__items runtime-choice-box">${state.profiles.map(record => {
         const active = record.id === state.activeProfileId;
-        return `<button type="button" class="runtime-choice-row runtime-compact-row ${active ? "active" : ""}" data-runtime-profile="${escapeHtml(record.id)}">${runtimeSelectionIcon(active)}<strong class="runtime-row-label">${escapeHtml(record.data.name)}</strong></button>`;
+        return `<button type="button" class="${uiListRowClass("runtime", active, false, "runtime-choice-row runtime-compact-row")}" data-runtime-profile="${escapeHtml(record.id)}">${runtimeSelectionIcon(active)}<strong class="ui-list__label runtime-row-label">${escapeHtml(record.data.name)}</strong></button>`;
       }).join("")}</div>`;
       return;
     }
@@ -268,24 +268,24 @@
         ["timer", "Timer"]
       ].map(([id, label]) => {
         const visible = insetState(id);
-        return `<button type="button" class="runtime-choice-row runtime-compact-row runtime-inset-row ${visible ? "active" : ""}" data-runtime-inset="${id}">${runtimeVisibilityIcon(visible)}<strong class="runtime-row-label">${label}</strong></button>`;
+        return `<button type="button" class="${uiListRowClass("runtime", false, false, "runtime-choice-row runtime-compact-row runtime-inset-row")}" data-runtime-inset="${id}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${label}</strong></button>`;
       }).join("");
       const presetRows = presets.map(preset => {
         const active = preset.name === activePreset?.name;
-        return `<button type="button" class="runtime-choice-row runtime-compact-row runtime-preset-row ${active ? "active" : ""}" data-inset-preset="${escapeHtml(preset.name)}">${runtimeSelectionIcon(active)}<strong class="runtime-row-label">${escapeHtml(preset.name)}</strong></button>`;
+        return `<button type="button" class="${uiListRowClass("runtime", active, false, "runtime-choice-row runtime-compact-row runtime-preset-row")}" data-inset-preset="${escapeHtml(preset.name)}">${runtimeSelectionIcon(active)}<strong class="ui-list__label runtime-row-label">${escapeHtml(preset.name)}</strong></button>`;
       }).join("");
-      content.innerHTML = `<div class="runtime-choice-box">${insetRows}</div>
+      content.innerHTML = `<div class="ui-list__items runtime-choice-box">${insetRows}</div>
         <div class="runtime-section-heading"><span>Preset</span></div>
-        ${presetRows ? `<div class="runtime-choice-box runtime-preset-list">${presetRows}</div>` : `<div class="runtime-popover-empty">No inset presets.</div>`}
+        ${presetRows ? `<div class="ui-list__items runtime-choice-box runtime-preset-list">${presetRows}</div>` : `<div class="runtime-popover-empty">No inset presets.</div>`}
         <label class="runtime-linked-toggle"><input type="checkbox" id="runtimePresetLinked" ${activePreset?.linked_movement ? "checked" : ""} ${activePreset ? "" : "disabled"}><span>Linked movement</span></label>
         <div class="runtime-preset-actions">
-          <button class="ui-button primary" data-action="save-inset-preset" type="button">Save…</button>
+          <button class="ui-button ui-button--primary" data-action="save-inset-preset" type="button">Save…</button>
           <button class="ui-button" data-action="update-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Update</button>
           <button class="ui-button" data-action="reset-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Reset</button>
           <button class="ui-button" data-action="rename-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Rename…</button>
           <button class="ui-button" data-action="duplicate-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Duplicate</button>
           <button class="ui-button" data-action="default-inset-preset" type="button" ${activePreset ? "" : "disabled"}>${activePreset?.name === store.default ? "Default ✓" : "Set default"}</button>
-          <button class="ui-button danger runtime-preset-delete" data-action="delete-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Delete</button>
+          <button class="ui-button ui-button--destructive runtime-preset-delete" data-action="delete-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Delete</button>
         </div>`;
       return;
     }
@@ -293,10 +293,10 @@
     title.textContent = "Groups";
     const groupRows = avisoGroups().map(group => {
       const visible = group.visible !== false;
-      return `<button type="button" class="runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
+      return `<button type="button" class="${uiListRowClass("runtime", false, false, `runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}`)}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
     }).join("");
     content.innerHTML = groupRows
-      ? `<div class="runtime-choice-box">${groupRows}</div>`
+      ? `<div class="ui-list__items runtime-choice-box">${groupRows}</div>`
       : `<div class="runtime-popover-empty">No AVISO groups.</div>`;
   }
 

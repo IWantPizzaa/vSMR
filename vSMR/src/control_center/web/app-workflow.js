@@ -390,6 +390,7 @@
     (current.actions || []).forEach(action => {
       const button = document.createElement("button");
       button.type = "button";
+      button.className = "ui-button ui-button--compact";
       button.dataset.action = action.action;
       button.textContent = action.label;
       if (action.disabled) button.disabled = true;
@@ -530,7 +531,7 @@
 
   function syncProfileTabSelection() {
     const tab = state.ui.profileTab;
-    $$('[data-profile-tab]').forEach(button => button.classList.toggle("active", button.dataset.profileTab === tab));
+    syncTabButtons('[data-profile-tab]', tab, "profileTab");
     $$('[data-profile-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.profilePanel === tab));
   }
 

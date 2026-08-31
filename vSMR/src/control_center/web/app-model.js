@@ -102,6 +102,59 @@
     .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
+  // Renderers share one list-row contract; feature classes may add slots but
+  // never redefine the row box model or interaction states.
+  function uiListRowClass(kind, selected = false, current = false, extra = "") {
+    return [
+      "ui-list__row",
+      kind ? `ui-list__row--${kind}` : "",
+      selected ? "is-selected" : "",
+      current ? "is-current" : "",
+      extra
+    ].filter(Boolean).join(" ");
+  }
+
+  // Each list exposes one predictable keyboard entry point while retaining
+  // independent action buttons such as visibility and remove controls.
+  function syncUiListFocus(root = document) {
+    const listboxes = [
+      ...(root.matches?.('[role="listbox"]') ? [root] : []),
+      ...$$('[role="listbox"]', root)
+    ];
+    listboxes.forEach(listbox => {
+      const rows = $$('.ui-list__row[role="option"]:not(:disabled)', listbox)
+        .filter(row => !row.closest('[hidden]'));
+      const preferred = rows.find(row => row.classList.contains("is-current"))
+        || rows.find(row => row.getAttribute("aria-selected") === "true")
+        || rows[0];
+      rows.forEach(row => { row.tabIndex = row === preferred ? 0 : -1; });
+    });
+
+    const selectors = $$('.ui-list__selection:not(:disabled)', root)
+      .filter(button => !button.closest('[hidden]'));
+    const preferred = selectors.find(button => button.closest(".ui-list__row")?.classList.contains("is-current"))
+      || selectors.find(button => button.getAttribute("aria-pressed") === "true")
+      || selectors[0];
+    selectors.forEach(button => { button.tabIndex = button === preferred ? 0 : -1; });
+  }
+
+  function syncToggleButtons(selector, activeValue, dataKey, root = document) {
+    $$(selector, root).forEach(button => {
+      const active = button.dataset[dataKey] === activeValue;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  function syncTabButtons(selector, activeValue, dataKey) {
+    $$(selector).forEach(button => {
+      const active = button.dataset[dataKey] === activeValue;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+  }
+
   function clamp(value, min, max) {
     const number = Number(value);
     return Math.min(max, Math.max(min, Number.isFinite(number) ? number : min));

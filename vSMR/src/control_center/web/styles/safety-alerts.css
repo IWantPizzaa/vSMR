@@ -50,9 +50,8 @@
   gap: 4px;
   align-items: center;
   padding: 3px 4px;
-  border: 1px solid var(--ui-border-inner);
+  border: 1px solid var(--ui-inner-border);
   box-shadow: none;
-  border-color: var(--ui-inner-border);
   border-radius: var(--ui-card-radius);
   background: var(--ui-card-bg);
 }
@@ -102,8 +101,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--ui-border-inner);
-  border-color: var(--ui-outer-border);
+  border: 1px solid var(--ui-outer-border);
   border-radius: var(--ui-panel-radius);
   background: var(--ui-list-shell-bg);
   box-shadow: none;
@@ -115,14 +113,14 @@
   grid-template-columns: minmax(145px, 1fr) 42px 42px 50px 22px;
   align-items: center;
   padding: 0 4px;
-  border-bottom: 1px solid #111719;
+  border-bottom: 1px solid var(--ui-inner-border);
   color: #a8b8bd;
   font-size: 7.5px;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
-  min-height: var(--ui-title-height);
-  background: var(--ui-section-head);
+  min-height: var(--ui-panel-title-height);
+  background: var(--ui-card-title-bg);
 }
 
 .alert-runway-header span:first-child { text-align: left; }
@@ -133,9 +131,8 @@
   grid-template-columns: minmax(145px, 1fr) 42px 42px 50px 22px;
   align-items: center;
   padding: 4px;
-  border-bottom: 1px solid #263438;
+  border-bottom: 1px solid var(--ui-inner-border);
   min-height: 34px;
-  border-bottom-color: var(--ui-inner-border);
   border-radius: 0;
   background: var(--ui-list-bg);
 }
@@ -153,11 +150,6 @@
 
 .alert-table-check input { margin: 0; }
 
-.alert-runway-remove:hover {
-  background: #704247;
-  color: #fff;
-}
-
 .alert-timer-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -172,23 +164,6 @@
 
 .alert-types-box { margin: 0; }
 
-.alert-runway-remove {
-  width: 18px;
-  padding: 0;
-  height: var(--ui-compact-height);
-  min-height: var(--ui-compact-height);
-  border: 1px solid var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  box-shadow: none;
-  background: var(--ui-button-bg);
-  color: #e5a7a7;
-}
-
-.alert-runway-remove:not(:disabled):hover {
-  background: var(--ui-danger-hover);
-  color: #fff0f0;
-}
-
 .alert-runway-row:hover { background: var(--ui-list-hover); }
 
 .alert-toggle-card:hover { background: var(--ui-list-hover); }
@@ -196,9 +171,4 @@
 .alert-toggle-card.inactive {
   opacity: .55;
   background: var(--ui-disabled-bg);
-}
-
-.alerts-runway-toolbar .mini-tools button {
-  height: var(--ui-control-height);
-  min-height: var(--ui-control-height);
 }
