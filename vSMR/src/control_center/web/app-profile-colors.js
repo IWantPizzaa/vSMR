@@ -107,20 +107,22 @@
       const accent = colorToHex(group.items[0]?.color, "#5096b4");
       const rows = group.items.map(entry => {
         const hex = colorToHex(entry.color).toUpperCase();
-        return `<button type="button" class="menu-tree-row color-menu-row ${entry.id === state.ui.selectedColorPath ? "active" : ""}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
-          <span class="menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
-          <span class="menu-row-title">${escapeHtml(entry.name)}</span>
+        const selected = entry.id === state.ui.selectedColorPath;
+        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, false, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
+          <span class="ui-list__leading menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
+          <span class="ui-list__label menu-row-title">${escapeHtml(entry.name)}</span>
         </button>`;
       }).join("");
-      return `<section class="menu-tree-section color-menu-section" style="--menu-accent:${accent}">
-        <button type="button" class="menu-tree-caption" data-tree-toggle="colors" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
-          <span class="menu-tree-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
-          <span class="menu-tree-caption-text">${escapeHtml(group.caption)}</span>
+      return `<section class="ui-list__section color-menu-section" style="--menu-accent:${accent}">
+        <button type="button" class="ui-list__heading" data-tree-toggle="colors" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
+          <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+          <span class="ui-list__heading-label">${escapeHtml(group.caption)}</span>
         </button>
-        <div class="menu-tree-box" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group.caption)} colors" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
-    }).join("") || `<div class="aviso-list-message">No colors found</div>`;
-    requestAnimationFrame(() => $("#colorTree .color-menu-row.active")?.scrollIntoView({ block: "nearest" }));
+    }).join("") || `<div class="ui-list__empty">No colors found</div>`;
+    syncUiListFocus($("#colorTree"));
+    requestAnimationFrame(() => $("#colorTree .color-menu-row.is-selected")?.scrollIntoView({ block: "nearest" }));
     renderColorEditor();
   }
 

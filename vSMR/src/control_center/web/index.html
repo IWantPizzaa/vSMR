@@ -17,57 +17,57 @@
 <section aria-label="vSMR quick controls" class="runtime-menu runtime-icon-rail" id="runtimeMenu">
 <header aria-label="Drag vSMR menu" class="runtime-titlebar" id="runtimeDragHandle" title="Drag"></header>
 <div class="runtime-menu-list">
-<button aria-expanded="false" aria-haspopup="menu" aria-label="Mode" class="runtime-menu-button" data-runtime-popover="mode" id="runtimeModeButton" title="Mode" type="button">
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Mode" class="ui-button runtime-menu-button" data-runtime-popover="mode" id="runtimeModeButton" title="Mode" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg>
 <span aria-hidden="true" class="runtime-corner-indicator"></span>
 </button>
-<button aria-expanded="false" aria-haspopup="menu" aria-label="Groups" class="runtime-menu-button" data-runtime-popover="groups" id="runtimeGroupsButton" title="Groups" type="button">
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Groups" class="ui-button runtime-menu-button" data-runtime-popover="groups" id="runtimeGroupsButton" title="Groups" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4"></path></svg>
 <span aria-hidden="true" class="runtime-corner-indicator"></span>
 </button>
-<button aria-expanded="false" aria-haspopup="menu" aria-label="Insets" class="runtime-menu-button runtime-inset-button" data-runtime-popover="inset" id="runtimeInsetButton" title="Insets" type="button">
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Insets" class="ui-button runtime-menu-button runtime-inset-button" data-runtime-popover="inset" id="runtimeInsetButton" title="Insets" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="12"></rect><path d="M12 17v4M8 21h8"></path></svg>
 <span aria-hidden="true" class="runtime-inset-indicators"><i data-inset-indicator="aviso"></i><i data-inset-indicator="srw1"></i><i data-inset-indicator="weather"></i><i data-inset-indicator="timer"></i></span>
 </button>
-<button aria-expanded="false" aria-haspopup="menu" aria-label="Profile" class="runtime-menu-button" data-runtime-popover="profile" id="runtimeProfileButton" title="Profile" type="button">
+<button aria-expanded="false" aria-haspopup="menu" aria-label="Profile" class="ui-button runtime-menu-button" data-runtime-popover="profile" id="runtimeProfileButton" title="Profile" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg>
 <span aria-hidden="true" class="runtime-corner-indicator"></span>
 </button>
-<button aria-label="Open Control Center" class="runtime-menu-button runtime-settings-button" data-action="open-control-center" title="Open Control Center" type="button">
+<button aria-label="Open Control Center" class="ui-button runtime-menu-button runtime-settings-button" data-action="open-control-center" title="Open Control Center" type="button">
 <svg aria-hidden="true" class="settings-sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
 </button>
 </div>
 <section aria-label="Quick control choices" class="runtime-popover" hidden="" id="runtimePopover">
-<div class="runtime-popover-title"><span id="runtimePopoverTitle">Options</span><button data-action="close-runtime-popover" title="Close" type="button">×</button></div>
+<div class="runtime-popover-title"><span id="runtimePopoverTitle">Options</span><button class="ui-button ui-button--compact ui-button--icon" data-action="close-runtime-popover" title="Close" type="button">×</button></div>
 <div class="runtime-popover-content" id="runtimePopoverContent"></div>
 </section>
 </section>
 <section aria-label="vSMR" class="control-window hidden" id="controlWindow">
 <header class="titlebar" id="dragHandle">
 <span>vSMR</span>
-<button class="title-close" id="closeButton" title="Close" type="button">×</button>
+<button class="ui-button ui-button--compact ui-button--icon title-close" id="closeButton" title="Close" type="button">×</button>
 </header>
 <div class="window-shell">
 <div aria-live="polite" class="host-loading-overlay" hidden id="hostLoadingOverlay" role="status">Loading vSMR data...</div>
 <div aria-live="polite" class="operation-busy-overlay" hidden id="operationBusyOverlay" role="status">Applying vSMR changes...</div>
 <nav aria-label="Sections and global actions" class="page-rail">
-<button class="rail-button active" data-page="display" title="Display" type="button">
+<button class="ui-button ui-button--icon rail-button active" data-page="display" title="Display" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 21v-6.5L3 12v-2l7 1V4a2 2 0 0 1 4 0v7l7-1v2l-7 2.5V21l-2-1z"></path></svg>
 </button>
-<button class="rail-button" data-page="aviso" title="AVISO" type="button">
+<button class="ui-button ui-button--icon rail-button" data-page="aviso" title="AVISO" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 6l4-2 6 2 4-2v14l-4 2-6-2-4 2z"></path><path d="M9 4v14M15 6v14"></path></svg>
 </button>
-<button class="rail-button" data-page="alerts" title="Alerts" type="button">
+<button class="ui-button ui-button--icon rail-button" data-page="alerts" title="Alerts" type="button">
 <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M12 3 2.8 20h18.4zM12 8v6m0 3v.2"></path></svg>
 </button>
-<button class="rail-button" data-page="groups" title="Groups" type="button">
+<button class="ui-button ui-button--icon rail-button" data-page="groups" title="Groups" type="button">
 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m12 4 8 4-8 4-8-4zM4 12l8 4 8-4M4 16l8 4 8-4"></path></svg>
 </button>
-<button class="rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg></button><button class="rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="rail-button rail-settings" data-page="settings" title="Settings" type="button">
+<button class="ui-button ui-button--icon rail-button" data-page="modes" title="Modes" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 12s3.2-5 8.5-5 8.5 5 8.5 5-3.2 5-8.5 5-8.5-5-8.5-5z"></path><circle cx="12" cy="12" r="2.75"></circle></svg></button><button class="ui-button ui-button--icon rail-button" data-page="profiles" title="Profiles" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14"></rect><circle cx="9" cy="10" r="2"></circle><path d="M6.5 16c.7-2 4.3-2 5 0M14 9h3M14 12h3M14 15h3"></path></svg></button><button class="ui-button ui-button--icon rail-button rail-settings" data-page="settings" title="Settings" type="button">
 <svg aria-hidden="true" class="settings-sliders-icon" viewBox="0 0 24 24"><path d="M4 6h3M11 6h9M4 12h10M18 12h2M4 18h5M13 18h7"></path><circle cx="9" cy="6" r="2"></circle><circle cx="16" cy="12" r="2"></circle><circle cx="11" cy="18" r="2"></circle></svg>
 </button>
 <div aria-hidden="true" class="rail-separator"></div>
-<button aria-label="Revert to saved configuration" class="rail-button rail-action-button" id="reloadButton" title="Revert to saved configuration" type="button">
+<button aria-label="Revert to saved configuration" class="ui-button ui-button--icon rail-button rail-action-button" id="reloadButton" title="Revert to saved configuration" type="button">
 <svg aria-hidden="true" viewbox="0 0 24 24"><path d="M19 7v5h-5M5 17v-5h5M7.1 8.1A7 7 0 0 1 18.5 10M16.9 15.9A7 7 0 0 1 5.5 14"></path></svg>
 </button>
 <div class="rail-spacer"></div>
@@ -77,25 +77,25 @@
 <span aria-hidden="true" class="persistent-status-mark">!</span>
 <span class="persistent-status-text" id="persistentStatusText"></span>
 <span class="persistent-status-actions" id="persistentStatusActions"></span>
-<button aria-label="Dismiss status" class="persistent-status-dismiss" data-action="dismiss-persistent-status" title="Dismiss" type="button">×</button>
+<button aria-label="Dismiss status" class="ui-button ui-button--compact ui-button--icon persistent-status-dismiss" data-action="dismiss-persistent-status" title="Dismiss" type="button">×</button>
 </section>
 <main class="page-stack">
 <section class="page active" data-page-panel="display">
-<nav aria-label="Profile editor sections" class="subtabs profile-subtabs">
-<button class="active" data-profile-tab="colors" type="button">Colors</button>
-<button data-profile-tab="icons" type="button">Icons</button>
-<button data-profile-tab="tags" type="button">Tags</button>
-<button data-profile-tab="rules" type="button">Rules</button>
+<nav aria-label="Profile editor sections" class="ui-toolbar ui-tablist profile-subtabs" role="tablist">
+<button aria-controls="profilePanelColors" class="ui-button ui-button--tab active" data-profile-tab="colors" role="tab" type="button">Colors</button>
+<button aria-controls="profilePanelIcons" class="ui-button ui-button--tab" data-profile-tab="icons" role="tab" type="button">Icons</button>
+<button aria-controls="profilePanelTags" class="ui-button ui-button--tab" data-profile-tab="tags" role="tab" type="button">Tags</button>
+<button aria-controls="profilePanelRules" class="ui-button ui-button--tab" data-profile-tab="rules" role="tab" type="button">Rules</button>
 </nav>
 <div class="subpage-stack">
-<section class="subpage active" data-profile-panel="colors">
+<section class="subpage active" data-profile-panel="colors" id="profilePanelColors" role="tabpanel">
 <div class="split-layout split-master color-layout">
 <aside class="panel master-panel">
 <div class="panel-title"><span>Profile colors</span></div>
-<div class="scroll-list visual-tree unified-master-list color-definition-tree" id="colorTree"></div>
+<div aria-label="Profile colors" class="ui-list ui-list--grouped color-definition-tree" id="colorTree" role="region"></div>
 </aside>
 <section class="panel detail-panel">
-<div class="panel-title"><span id="selectedColorPath">Color</span><span class="mini-tools editor-copy-tools"><button class="wide" data-action="copy-profile-color" type="button">Copy</button><button class="wide" data-action="paste-profile-color" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="selectedColorPath">Color</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-profile-color" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-profile-color" type="button">Paste</button></span></div>
 <div class="detail-scroll color-detail-scroll">
 <div class="color-editor-body">
 <div class="color-picker-workbench">
@@ -119,7 +119,7 @@
 </section>
 </div>
 </section>
-<section class="subpage" data-profile-panel="icons">
+<section class="subpage" data-profile-panel="icons" id="profilePanelIcons" role="tabpanel">
 <section class="panel full-editor-panel">
 <div class="panel-title"><span>Target icons</span></div>
 <div class="profile-settings-scroll icon-settings-grid">
@@ -144,15 +144,15 @@
 </div>
 </section>
 </section>
-<section class="subpage" data-profile-panel="tags">
+<section class="subpage" data-profile-panel="tags" id="profilePanelTags" role="tabpanel">
 <div class="split-layout split-master tag-layout">
 <aside class="panel master-panel">
 <div class="panel-title"><span>Tag definitions</span></div>
-<div class="scroll-list visual-tree unified-master-list tag-definition-tree" id="tagDefinitionList" role="listbox" aria-multiselectable="true" tabindex="0"></div>
+<div aria-label="Tag definitions" class="ui-list ui-list--grouped ui-list--multiselect tag-definition-tree" id="tagDefinitionList" role="region"></div>
 </aside>
 <div class="tag-right-stack">
 <section class="panel tag-definition-detail-panel">
-<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><span class="mini-tools editor-copy-tools"><button class="wide" data-action="copy-tag-definition" type="button">Copy</button><button class="wide" data-action="paste-tag-definition" type="button">Paste</button></span></div>
+<div class="panel-title"><span id="tagEditorCaption">Tag definition</span><span class="mini-tools editor-copy-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="copy-tag-definition" type="button">Copy</button><button class="ui-button ui-button--compact ui-button--wide" data-action="paste-tag-definition" type="button">Paste</button></span></div>
 <div class="detail-scroll tag-definition-detail-scroll">
 <div class="tag-editor-panel" id="tagDefinitionEditor">
 <label class="check-field inherit-row"><input id="tagDetailedInherits" type="checkbox"/><span>Detailed tag inherits normal</span></label>
@@ -188,15 +188,15 @@
 </div>
 </div>
 </section>
-<section class="subpage" data-profile-panel="rules">
+<section class="subpage" data-profile-panel="rules" id="profilePanelRules" role="tabpanel">
 <div class="split-layout split-master rules-layout">
 <aside class="panel master-panel manager-list-panel">
 <div class="panel-title"><span>Rules</span></div>
-<div class="scroll-list selection-list visual-tree unified-master-list" id="ruleList"></div>
+<div aria-label="Rules" class="ui-list ui-list--manager" id="ruleList" role="listbox"></div>
 <div class="master-list-actions">
-<button aria-label="New rule" data-action="new-rule" title="New rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-<button aria-label="Duplicate rule" data-action="duplicate-rule" title="Duplicate rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
-<button class="delete" aria-label="Delete rule" data-action="delete-rule" title="Delete rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="New rule" data-action="new-rule" title="New rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="Duplicate rule" data-action="duplicate-rule" title="Duplicate rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="ui-button ui-button--icon ui-button--destructive" aria-label="Delete rule" data-action="delete-rule" title="Delete rule" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
 </div>
 </aside>
 <section class="panel detail-panel">
@@ -209,14 +209,14 @@
 <fieldset class="compact-group conditions-group">
 <legend>Match</legend>
 <div class="criteria-list" id="criteriaList"></div>
-<button class="inline-add" data-action="add-condition" type="button">+ condition</button>
+<button class="ui-button inline-add" data-action="add-condition" type="button">+ condition</button>
 </fieldset>
 <fieldset class="compact-group">
 <legend>Applies to</legend>
 <div class="dense-form three-cols compact-rule-scope">
 <label class="field"><span>Tag</span><select id="ruleTagType"><option>any</option><option>departure</option><option>arrival</option><option>airborne</option><option>uncorrelated</option></select></label>
 <div class="field rule-status-field"><span>Status</span><div class="checkbox-dropdown" id="ruleStatusDropdown">
-<button aria-expanded="false" aria-haspopup="listbox" class="checkbox-dropdown-button" id="ruleStatusButton" type="button">All statuses</button>
+<button aria-expanded="false" aria-haspopup="listbox" class="ui-field-control checkbox-dropdown-button" id="ruleStatusButton" type="button">All statuses</button>
 <div aria-multiselectable="true" class="checkbox-dropdown-menu" hidden="" id="ruleStatusMenu" role="listbox">
 <label class="checkbox-dropdown-all"><input id="ruleStatusAll" type="checkbox"/><span>All statuses</span></label>
 <div class="checkbox-dropdown-options" id="ruleStatusOptions"></div>
@@ -242,15 +242,15 @@
 <div class="split-layout split-master modes-layout">
 <aside class="panel master-panel manager-list-panel">
 <div class="panel-title"><span>Modes</span></div>
-<div class="scroll-list selection-list visual-tree unified-master-list" id="modeList"></div>
+<div aria-label="Modes" class="ui-list ui-list--manager" id="modeList" role="listbox"></div>
 <div class="master-list-actions">
-<button aria-label="New mode" data-action="new-mode" title="New mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-<button aria-label="Duplicate mode" data-action="duplicate-mode" title="Duplicate mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
-<button class="delete" aria-label="Delete mode" data-action="delete-mode" title="Delete mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="New mode" data-action="new-mode" title="New mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="Duplicate mode" data-action="duplicate-mode" title="Duplicate mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="ui-button ui-button--icon ui-button--destructive" aria-label="Delete mode" data-action="delete-mode" title="Delete mode" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
 </div>
 </aside>
 <section class="panel detail-panel mode-detail-panel">
-<div class="panel-title"><span id="modePropertiesCaption">Mode properties</span><button class="title-tool" data-action="activate-mode" title="Set active mode" type="button">Set active</button></div>
+<div class="panel-title"><span id="modePropertiesCaption">Mode properties</span><button class="ui-button ui-button--compact title-tool" data-action="activate-mode" title="Set active mode" type="button">Set active</button></div>
 <div class="detail-scroll mode-detail-scroll">
 <fieldset class="compact-group editor-section-card">
 <legend>Mode</legend>
@@ -278,7 +278,7 @@
 </div>
 </fieldset>
 <fieldset class="compact-group">
-<legend><span>Visible statuses</span><span class="legend-tools"><button data-action="mode-statuses-all" type="button">All</button><button data-action="mode-statuses-none" type="button">None</button></span></legend>
+<legend><span>Visible statuses</span><span class="legend-tools"><button class="ui-button ui-button--compact" data-action="mode-statuses-all" type="button">All</button><button class="ui-button ui-button--compact" data-action="mode-statuses-none" type="button">None</button></span></legend>
 <div class="mode-status-grid" id="modeStatusGrid"></div>
 </fieldset>
 </div>
@@ -288,15 +288,15 @@
 <div class="split-layout split-master profiles-layout">
 <aside class="panel master-panel manager-list-panel">
 <div class="panel-title"><span>Profiles</span></div>
-<div class="scroll-list selection-list visual-tree unified-master-list" id="profileList"></div>
+<div aria-label="Profiles" class="ui-list ui-list--manager" id="profileList" role="listbox"></div>
 <div class="master-list-actions">
-<button aria-label="New profile" data-action="new-profile" title="New profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-<button aria-label="Duplicate profile" data-action="duplicate-profile" title="Duplicate profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
-<button class="delete" aria-label="Delete profile" data-action="delete-profile" title="Delete profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="New profile" data-action="new-profile" title="New profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="Duplicate profile" data-action="duplicate-profile" title="Duplicate profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="ui-button ui-button--icon ui-button--destructive" aria-label="Delete profile" data-action="delete-profile" title="Delete profile" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
 </div>
 </aside>
 <section class="panel detail-panel profile-detail-panel">
-<div class="panel-title"><span id="profilePropertiesCaption">Profile properties</span><button class="title-tool" data-action="activate-profile" type="button">Set active</button></div>
+<div class="panel-title"><span id="profilePropertiesCaption">Profile properties</span><button class="ui-button ui-button--compact title-tool" data-action="activate-profile" type="button">Set active</button></div>
 <div class="detail-scroll profile-detail-scroll">
 <fieldset class="compact-group editor-section-card">
 <legend>Profile</legend>
@@ -309,23 +309,23 @@
 </div>
 </section>
 <section class="page aviso-page" data-page-panel="aviso">
-<div class="aviso-toolbar">
-<nav aria-label="AVISO editor sections" class="subtabs aviso-subtabs">
-<button data-aviso-view="geometry" type="button">Geometry</button>
-<button class="active" data-aviso-view="text" type="button">Text</button>
+<div class="ui-toolbar ui-toolbar--split aviso-toolbar">
+<nav aria-label="AVISO editor sections" class="ui-tablist aviso-subtabs" role="tablist">
+<button aria-controls="avisoPanelGeometry" class="ui-button ui-button--tab" data-aviso-view="geometry" role="tab" type="button">Geometry</button>
+<button aria-controls="avisoPanelText" class="ui-button ui-button--tab active" data-aviso-view="text" role="tab" type="button">Text</button>
 </nav>
-<div aria-label="AVISO color palette" class="segmented-control aviso-palette-control aviso-toolbar-palette" role="group"><button data-action="set-aviso-palette" data-aviso-color-palette="night" type="button">Night</button><button data-action="set-aviso-palette" data-aviso-color-palette="day" type="button">Day</button></div>
+<div aria-label="AVISO color palette" class="ui-toggle-group aviso-palette-control aviso-toolbar-palette" role="group"><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="night" type="button">Night</button><button class="ui-button ui-button--toggle" data-action="set-aviso-palette" data-aviso-color-palette="day" type="button">Day</button></div>
 </div>
 <div class="aviso-view-stack">
-<section class="aviso-view" data-aviso-view-panel="geometry">
-<div class="aviso-geometry-layout">
-<aside class="panel aviso-style-list-panel">
+<section class="aviso-view" data-aviso-view-panel="geometry" id="avisoPanelGeometry" role="tabpanel">
+<div class="split-layout aviso-geometry-layout">
+<aside class="panel master-panel aviso-style-list-panel">
 <div class="panel-title">
 <span>Geometry styles</span>
 </div>
-<div aria-label="Geometry styles" aria-multiselectable="true" class="scroll-list visual-tree unified-master-list aviso-style-tree" id="avisoGeometryStyleList" role="listbox" tabindex="0"></div>
+<div aria-label="Geometry styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoGeometryStyleList" role="region"></div>
 </aside>
-<section class="panel aviso-category-editor">
+<section class="panel detail-panel aviso-category-editor">
 <div class="panel-title"><span id="avisoGeometryCaption">Geometry style</span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-geometry-editor-scroll">
 <div class="aviso-flat-style-editor aviso-geometry-properties">
@@ -349,15 +349,15 @@
 </section>
 </div>
 </section>
-<section class="aviso-view active" data-aviso-view-panel="text">
-<div class="aviso-text-layout">
-<aside class="panel aviso-style-list-panel aviso-text-style-panel">
+<section class="aviso-view active" data-aviso-view-panel="text" id="avisoPanelText" role="tabpanel">
+<div class="split-layout aviso-text-layout">
+<aside class="panel master-panel aviso-style-list-panel aviso-text-style-panel">
 <div class="panel-title">
 <span>Text styles</span>
 </div>
-<div aria-label="Text styles" aria-multiselectable="true" class="scroll-list visual-tree unified-master-list aviso-style-tree" id="avisoTextStyleList" role="listbox" tabindex="0"></div>
+<div aria-label="Text styles" class="ui-list ui-list--grouped ui-list--multiselect aviso-style-tree" id="avisoTextStyleList" role="region"></div>
 </aside>
-<section class="panel aviso-text-editor">
+<section class="panel detail-panel aviso-text-editor">
 <div class="panel-title"><span id="avisoTextCaption">Text style</span></div>
 <div class="detail-scroll aviso-editor-scroll aviso-text-editor-scroll">
 <div class="aviso-flat-style-editor aviso-text-properties">
@@ -366,7 +366,7 @@
 <div aria-label="Text color saturation and brightness" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" class="color-sv-palette" id="avisoTextColorSvPalette" role="slider" tabindex="0"><span aria-hidden="true" class="color-palette-cursor" id="avisoTextColorPaletteCursor"></span></div>
 <div aria-label="Text color preview" class="color-preview-card"><span aria-hidden="true" class="color-preview-swatch" id="avisoTextColorSwatch"></span></div>
 </div>
-<div class="aviso-color-editor-toolbar"><div class="aviso-color-editor-heading" id="avisoTextColorLabel">Text color</div><div aria-label="Text paint color" class="aviso-color-target-switch"><button class="active" data-action="select-aviso-text-color" data-color-target="text" type="button">Text</button><button data-action="select-aviso-text-color" data-color-target="halo" type="button">Halo</button></div></div>
+<div class="aviso-color-editor-toolbar"><div class="aviso-color-editor-heading" id="avisoTextColorLabel">Text color</div><div aria-label="Text paint color" class="ui-toggle-group aviso-color-target-switch"><button class="ui-button ui-button--toggle active" data-action="select-aviso-text-color" data-color-target="text" type="button">Text</button><button class="ui-button ui-button--toggle" data-action="select-aviso-text-color" data-color-target="halo" type="button">Halo</button></div></div>
 <label class="field color-hex-field"><span>Hex</span><input id="avisoTextColorHex" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="Mixed" spellcheck="false" type="text"/></label>
 <div aria-label="Text HSRGB channels" class="color-channel-sliders">
 <label class="color-slider-row hue-slider-row"><span>Hue</span><input id="avisoTextColorHue" max="360" min="0" step="1" type="range"/><input aria-label="Text hue value" class="color-channel-value" id="avisoTextColorHueOutput" inputmode="numeric" maxlength="3" type="text"/></label>
@@ -413,24 +413,24 @@
 <legend>RIMCAS runways</legend>
 <div class="alerts-runway-toolbar">
 <label class="field alert-visibility-field"><span>Visibility</span><select id="alertVisibilityMode"><option value="normal">Normal</option><option value="lvp">Low visibility (LVP)</option></select></label>
-<span class="mini-tools"><button class="wide" data-action="alert-runways-all-arr" type="button">All ARR</button><button class="wide" data-action="alert-runways-all-dep" type="button">All DEP</button><button class="wide" data-action="alert-runways-open-all" type="button">Open all</button><button data-action="new-alert-runway" title="Add runway pair" type="button">+</button></span>
+<span class="mini-tools"><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-all-arr" type="button">All ARR</button><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-all-dep" type="button">All DEP</button><button class="ui-button ui-button--compact ui-button--wide" data-action="alert-runways-open-all" type="button">Open all</button><button class="ui-button ui-button--compact ui-button--icon" data-action="new-alert-runway" title="Add runway pair" type="button">+</button></span>
 </div>
 <div class="alert-runway-table" id="alertRunwayTable"></div>
 </fieldset>
 </div>
 </section>
 <section class="page groups-page" data-page-panel="groups">
-<div class="aviso-groups-layout">
-<aside class="panel aviso-group-list-panel">
+<div class="split-layout aviso-groups-layout">
+<aside class="panel master-panel manager-list-panel aviso-group-list-panel">
 <div class="panel-title"><span>Groups</span></div>
-<div aria-label="AVISO groups" class="scroll-list visual-tree unified-master-list aviso-group-list" id="avisoGroupList" role="listbox"></div>
+<div aria-label="AVISO groups" class="ui-list ui-list--manager aviso-group-list" id="avisoGroupList" role="listbox"></div>
 <div class="master-list-actions">
-<button aria-label="New group" data-action="new-aviso-group" title="New group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-<button aria-label="Duplicate group" data-action="duplicate-aviso-group" title="Duplicate group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
-<button class="delete" aria-label="Delete group" data-action="delete-aviso-group" title="Delete group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="New group" data-action="new-aviso-group" title="New group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="ui-button ui-button--icon" aria-label="Duplicate group" data-action="duplicate-aviso-group" title="Duplicate group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><rect height="12" rx="1" width="12" x="8" y="4"/><path d="M16 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/></svg></button>
+<button class="ui-button ui-button--icon ui-button--destructive" aria-label="Delete group" data-action="delete-aviso-group" title="Delete group" type="button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7"/></svg></button>
 </div>
 </aside>
-<section class="panel aviso-group-editor">
+<section class="panel detail-panel aviso-group-editor">
 <div class="panel-title"><span id="avisoGroupCaption">Group</span></div>
 <div class="detail-scroll aviso-group-editor-scroll redesigned-group-editor">
 <fieldset class="compact-group group-settings-card">
@@ -445,7 +445,7 @@
 <button class="ui-button" data-action="clear-aviso-group" type="button">Clear</button>
 <button class="ui-button" data-action="open-aviso-group-content" type="button">Add/remove…</button>
 </div>
-<div class="aviso-group-member-list" id="avisoGroupMemberList"></div>
+<div aria-label="Group members" class="ui-list aviso-group-member-list" id="avisoGroupMemberList" role="region"></div>
 </fieldset>
 </div>
 </section>
@@ -521,45 +521,45 @@
 </section>
 <div aria-live="polite" class="toast" id="toast" role="status"></div>
 <dialog class="compact-dialog aviso-group-content-dialog" id="avisoGroupContentDialog">
-<form class="compact-dialog-panel aviso-group-content-panel" id="avisoGroupContentForm" method="dialog">
-<div class="panel-title"><span id="avisoGroupContentTitle">Group content</span><button class="title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
+<form class="panel compact-dialog-panel aviso-group-content-panel" id="avisoGroupContentForm" method="dialog">
+<div class="panel-title"><span id="avisoGroupContentTitle">Group content</span><button class="ui-button ui-button--compact ui-button--icon title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
 <div class="aviso-group-content-body">
-<div aria-label="Content type" class="segmented-control aviso-group-content-tabs" role="group">
-<button class="active" data-aviso-group-content-type="text" type="button">Text</button>
-<button data-aviso-group-content-type="line" type="button">Lines</button>
-<button data-aviso-group-content-type="area" type="button">Areas</button>
+<div aria-label="Content type" class="ui-toggle-group aviso-group-content-tabs" role="group">
+<button class="ui-button ui-button--toggle active" data-aviso-group-content-type="text" type="button">Text</button>
+<button class="ui-button ui-button--toggle" data-aviso-group-content-type="line" type="button">Lines</button>
+<button class="ui-button ui-button--toggle" data-aviso-group-content-type="area" type="button">Areas</button>
 </div>
 <div class="aviso-group-content-search-row">
 <input aria-label="Find content" id="avisoGroupContentSearch" placeholder="Find content…" type="search"/>
 <button class="ui-button" data-action="select-filtered-group-content" type="button">Select shown</button>
 <button class="ui-button" data-action="clear-filtered-group-content" type="button">Clear shown</button>
 </div>
-<div class="scroll-list aviso-group-content-list" id="avisoGroupContentList"></div>
+<div aria-label="Available group content" class="ui-list aviso-group-content-list" id="avisoGroupContentList" role="region"></div>
 </div>
-<div class="actionbar compact-dialog-actions"><button class="ui-button primary" type="submit" value="close">Close</button></div>
+<div class="actionbar compact-dialog-actions"><button class="ui-button ui-button--primary" type="submit" value="close">Close</button></div>
 </form>
 </dialog>
 <dialog class="compact-dialog" id="insetPresetDialog">
-<form class="compact-dialog-panel" id="insetPresetForm" method="dialog">
-<div class="panel-title"><span id="insetPresetDialogTitle">Save inset preset</span><button class="title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
+<form class="panel compact-dialog-panel" id="insetPresetForm" method="dialog">
+<div class="panel-title"><span id="insetPresetDialogTitle">Save inset preset</span><button class="ui-button ui-button--compact ui-button--icon title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
 <div class="compact-dialog-body">
 <label class="field"><span>Name</span><input autocomplete="off" id="insetPresetName" maxlength="40" placeholder="New preset" type="text"/></label>
 <label class="check-field"><input id="insetPresetLinked" type="checkbox"/><span>Linked movement</span></label>
 <small>The native bridge supplies the current inset layout and compatible view state when available.</small>
 </div>
-<div class="actionbar compact-dialog-actions"><button class="ui-button" type="submit" value="cancel">Cancel</button><button class="ui-button primary" data-action="capture-inset-preset" id="insetPresetConfirm" type="button">Save</button></div>
+<div class="actionbar compact-dialog-actions"><button class="ui-button" type="submit" value="cancel">Cancel</button><button class="ui-button ui-button--primary" data-action="capture-inset-preset" id="insetPresetConfirm" type="button">Save</button></div>
 </form>
 </dialog>
 <dialog class="compact-dialog" id="resourceGithubDialog">
-<form class="compact-dialog-panel" id="resourceGithubForm" method="dialog">
-<div class="panel-title"><span id="resourceGithubTitle">Load from GitHub</span><button class="title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
+<form class="panel compact-dialog-panel" id="resourceGithubForm" method="dialog">
+<div class="panel-title"><span id="resourceGithubTitle">Load from GitHub</span><button class="ui-button ui-button--compact ui-button--icon title-close dialog-close" title="Close" type="submit" value="cancel">×</button></div>
 <div class="compact-dialog-body">
 <label class="field"><span>GitHub file URL</span><input autocomplete="off" id="resourceGithubUrl" placeholder="https://github.com/owner/repo/blob/branch/file.json" type="url"/></label>
 <small id="resourceGithubHint">Paste a GitHub file URL or a raw.githubusercontent.com URL.</small>
 </div>
 <div class="actionbar compact-dialog-actions">
 <button class="ui-button" type="submit" value="cancel">Cancel</button>
-<button class="ui-button primary" id="resourceGithubLoadConfirm" type="button">Load</button>
+<button class="ui-button ui-button--primary" id="resourceGithubLoadConfirm" type="button">Load</button>
 </div>
 </form>
 </dialog>

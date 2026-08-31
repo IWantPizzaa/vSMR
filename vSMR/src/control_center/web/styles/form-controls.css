@@ -1,63 +1,218 @@
-/* Reusable fields, buttons, toolbars, and action controls. */
+/* Shared form, button, toolbar, and action-control primitives. */
 
-.ui-button:active { transform: translateY(1px); }
-
-.mini-tools button:active { transform: translateY(1px); }
-
-.title-tool:active { transform: translateY(1px); }
-
-.panel-title .mini-tools { margin-left: auto; }
-
-.title-tool {
-  width: 20px;
-  margin-left: auto;
-  border-color: #050708;
-  min-width: var(--ui-compact-height);
-  padding: 0 5px;
-  height: var(--ui-compact-height);
-  min-height: var(--ui-compact-height);
-  border: 1px solid var(--ui-outer-border);
+/* Every ordinary action button uses this base. Modifiers change intent or size only. */
+.ui-button {
+  --ui-button-height: var(--ui-control-height);
+  --ui-button-padding: 0 var(--ui-space-4);
+  min-width: 0;
+  min-height: var(--ui-button-height);
+  height: var(--ui-button-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-1);
+  padding: var(--ui-button-padding);
+  border: 1px solid var(--ui-control-border);
   border-radius: var(--ui-control-radius);
   background: var(--ui-button-bg);
   color: var(--ui-text);
   box-shadow: none;
+  font: inherit;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.mini-tools {
-  display: inline-flex;
-  gap: 3px;
-  margin-left: auto;
+.ui-button:where(:not(:disabled)):hover {
+  background: var(--ui-button-hover);
+  color: var(--ui-text);
 }
+
+.ui-button:focus-visible {
+  outline: none;
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-button:not(:disabled):active { transform: translateY(1px); }
+
+.ui-button:disabled {
+  cursor: default;
+  opacity: var(--ui-disabled-opacity);
+}
+
+.ui-button--primary {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+  font-weight: 700;
+}
+
+.ui-button--primary:not(:disabled):hover {
+  background: var(--ui-accent-hover);
+  color: var(--ui-accent-text);
+}
+
+.ui-button--destructive { color: var(--ui-danger-text); }
+
+.ui-button--destructive:not(:disabled):hover {
+  background: var(--ui-danger-hover);
+  color: #fff0f0;
+}
+
+.ui-button--compact {
+  --ui-button-height: var(--ui-compact-height);
+  --ui-button-padding: 0 5px;
+  font-size: var(--ui-font-size-compact);
+}
+
+.ui-button--icon {
+  --ui-button-padding: 0;
+  width: var(--ui-button-height);
+  flex: 0 0 var(--ui-button-height);
+}
+
+.ui-button--wide { min-width: 58px; }
+
+.ui-button--tab {
+  --ui-button-padding: 0 9px;
+  color: #c4d0d4;
+}
+
+.ui-button--tab.active,
+.ui-button--tab[aria-selected="true"] {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+  font-weight: 700;
+}
+
+.ui-button--toggle {
+  --ui-button-height: 100%;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-right: 1px solid var(--ui-control-border);
+  border-radius: 0;
+  font-size: var(--ui-font-size-compact);
+}
+
+.ui-button--toggle:last-child { border-right: 0; }
+
+.ui-button--toggle.active,
+.ui-button--toggle[aria-pressed="true"] {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+  font-weight: 700;
+}
+
+.ui-toggle-group {
+  min-width: 0;
+  min-height: var(--ui-control-height);
+  height: var(--ui-control-height);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--ui-control-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-button-bg);
+}
+
+/* Select-like buttons use the same field states as native inputs. */
+.ui-field-control {
+  min-width: 0;
+  min-height: var(--ui-control-height);
+  height: var(--ui-control-height);
+  padding: 3px 5px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: var(--ui-control-radius);
+  outline: none;
+  background: var(--ui-field-bg);
+  color: var(--ui-text);
+  font: inherit;
+}
+
+.ui-field-control:not(:disabled):hover { border-color: var(--ui-control-border-hover); }
+
+.ui-field-control:focus-visible {
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
+}
+
+.ui-field-control:disabled { opacity: var(--ui-disabled-opacity); }
+
+:is(.mini-tools, .legend-tools, .persistent-status-actions) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.mini-tools { margin-left: auto; }
+
+:is(.mini-tools, .legend-tools) .ui-button {
+  --ui-button-height: var(--ui-compact-height);
+  --ui-button-padding: 0 5px;
+  font-size: var(--ui-font-size-compact);
+}
+
+.mini-tools .ui-button--wide {
+  min-width: 58px;
+  padding-inline: 6px;
+}
+
+.title-tool {
+  --ui-button-height: var(--ui-compact-height);
+  --ui-button-padding: 0 5px;
+  width: auto;
+  min-width: 44px;
+  margin-left: auto;
+  font-size: var(--ui-font-size-compact);
+}
+
+.legend-tools {
+  float: right;
+}
+
+.legend-tools .ui-button { min-width: 34px; }
 
 .field {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  min-width: 0;
   gap: 3px;
 }
 
 .field.full { grid-column: 1 / -1; }
 
+.field > span:first-child { color: #a8b7bc; }
+
+.field.mixed :is(input, select),
+.range-control.mixed output {
+  color: #9eacb0;
+  font-style: italic;
+}
+
 .range-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px;
+  gap: var(--ui-space-2);
   align-items: center;
 }
 
 .range-control output {
   min-width: 35px;
-  text-align: right;
   color: #9bacb1;
+  text-align: right;
 }
 
 .check-field {
+  min-height: var(--ui-control-height);
   display: flex;
   align-items: center;
   gap: 5px;
-  min-height: var(--ui-control-height);
   padding-inline: 1px;
 }
+
+.check-field:hover { background: rgba(255, 255, 255, .025); }
 
 .check-in-form {
   align-self: end;
@@ -68,183 +223,21 @@
 
 .output-cell > input { width: 100%; }
 
-.bottom-actions {
-  border-top: 1px solid var(--border);
-  background: #263034;
-  padding: 3px 5px;
-}
-
-.two-groups .check-field { min-height: 22px; }
-
-.ui-button {
-  border-color: #050708;
-  padding: 2px 8px;
-  height: var(--ui-control-height);
-  min-height: var(--ui-control-height);
-  border: 1px solid var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-  box-shadow: none;
-}
-
-.mini-tools button {
-  border-color: #050708;
-  min-width: var(--ui-compact-height);
-  padding: 0 5px;
-  height: var(--ui-compact-height);
-  min-height: var(--ui-compact-height);
-  border: 1px solid var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-  box-shadow: none;
-}
+.two-groups .check-field { min-height: var(--ui-control-height); }
 
 .actionbar {
+  min-width: 0;
   display: grid;
   grid-template-columns: auto 1fr 1fr auto;
-  gap: 4px;
   align-items: center;
-  min-width: 0;
-  background: #242f32;
-  border-top-color: #111719;
-}
-
-.check-field:hover { background: rgba(255,255,255,.025); }
-
-.advanced-action-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-
-.advanced-action-grid .ui-button { min-width: 0; }
-
-.field.mixed input {
-  color: #9eacb0;
-  font-style: italic;
-}
-
-.field.mixed select {
-  color: #9eacb0;
-  font-style: italic;
-}
-
-.range-control.mixed output {
-  color: #9eacb0;
-  font-style: italic;
-}
-
-.equal-action-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-}
-
-.equal-action-buttons .ui-button {
-  width: 100%;
-  min-width: 0;
-}
-
-.title-text-button {
-  min-width: 0;
-  height: 17px;
-  padding: 0 6px;
-  border: 1px solid #080b0c;
-  border-radius: 3px;
-  background: #2b393c;
-  color: #aebdc1;
-  font-size: 8px;
-  white-space: nowrap;
-}
-
-.title-text-button:hover {
-  background: #3b5965;
-  color: #eef5f7;
-}
-
-.title-text-button.active {
-  background: #3b5965;
-  color: #eef5f7;
-}
-
-.rule-status-field {
-  position: relative;
-  min-width: 0;
-}
-
-.rail-action-button { position: relative; }
-
-.display-group .field { margin: 0; }
-
-.legend-tools {
-  float: right;
-  display: inline-flex;
-  gap: 3px;
-}
-
-.legend-tools button {
-  min-width: 34px;
-  padding: 0 5px;
-  font-size: 7.5px;
-  height: var(--ui-compact-height);
-  min-height: var(--ui-compact-height);
-  border: 1px solid var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-  box-shadow: none;
-}
-
-.field > span:first-child { color: #a8b7bc; }
-
-.ui-button:hover { background: #35474b; }
-
-.mini-tools button:hover { background: #35474b; }
-
-.title-tool:hover { background: #35474b; }
-
-.ui-button.primary:hover {
-  color: var(--accent-text);
-  font-weight: 700;
-  background: #94c4df;
-}
-
-.mini-tools button.wide {
-  min-width: 58px;
-  padding-inline: 6px;
-  font-size: 8px;
-}
-
-.compact-group legend {
-  padding: 0 5px;
-  color: #c7d3d6;
-  font-weight: 700;
-}
-
-.actionbar.bottom-actions {
-  gap: 5px;
-  min-height: var(--ui-actionbar-height);
-  height: var(--ui-actionbar-height);
-  padding: 3px 5px;
-  border-top: 1px solid var(--ui-inner-border);
+  gap: var(--ui-space-2);
   background: var(--ui-toolbar-bg);
 }
 
-.group-name-editor .field { margin: 0; }
+.rule-status-field,
+.rail-action-button { position: relative; }
 
-.ui-button:disabled { opacity: .48; }
-
-.ui-button.danger:hover {
-  background: #704247;
-  color: #fff;
-}
-
-.mini-tools button[title="Delete"]:hover {
-  background: #704247;
-  color: #fff;
-}
+.display-group .field { margin: 0; }
 
 .compact-group > legend {
   position: absolute;
@@ -252,19 +245,18 @@
   left: 0;
   top: 0;
   width: 100% !important;
+  min-height: var(--ui-card-title-height);
+  height: var(--ui-card-title-height);
   display: flex;
   align-items: center;
   gap: 5px;
   padding: 0 7px;
   border-bottom: 1px solid var(--ui-inner-border);
-  font-size: 9px;
-  font-weight: 700;
-  height: var(--ui-card-title-height);
-  min-height: var(--ui-card-title-height);
-  border-bottom-color: var(--ui-inner-border);
   border-radius: calc(var(--ui-card-radius) - 1px) calc(var(--ui-card-radius) - 1px) 0 0;
   background: var(--ui-card-title-bg);
   color: var(--ui-text);
+  font-size: var(--ui-font-size-small);
+  font-weight: 700;
   line-height: var(--ui-card-title-height);
 }
 
@@ -273,100 +265,11 @@
   margin-left: auto;
 }
 
-.equal-action-buttons > .ui-button {
-  width: 100%;
-  min-width: 0;
-}
-
-.ui-button:not(:disabled):hover {
-  background: var(--ui-button-hover);
-  color: var(--ui-text);
-}
-
-.title-tool:not(:disabled):hover {
-  background: var(--ui-button-hover);
-  color: var(--ui-text);
-}
-
-.mini-tools button:not(:disabled):hover {
-  background: var(--ui-button-hover);
-  color: var(--ui-text);
-}
-
-.legend-tools button:not(:disabled):hover {
-  background: var(--ui-button-hover);
-  color: var(--ui-text);
-}
-
-.ui-button.primary {
-  background: var(--ui-accent);
-  color: var(--ui-accent-text);
-  font-weight: 700;
-}
-
-.ui-button.primary:not(:disabled):hover { background: var(--ui-accent-hover); }
-
-.ui-button.danger {
-  background: var(--ui-button-bg);
-  color: #e5a7a7;
-}
-
-.ui-button.danger:not(:disabled):hover {
-  background: var(--ui-danger-hover);
-  color: #fff0f0;
-}
-
-.mini-tools button[title="Delete"]:not(:disabled):hover {
-  background: var(--ui-danger-hover);
-  color: #fff0f0;
-}
-
-.ui-button:disabled:hover {
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-}
-
-.title-tool:disabled:hover {
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-}
-
-.mini-tools button:disabled:hover {
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-}
-
-.legend-tools button:disabled:hover {
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-}
-
-.ui-button.primary:disabled:hover {
-  background: var(--ui-accent);
-  color: var(--ui-accent-text);
-}
-
-.ui-button.danger:disabled:hover {
-  background: var(--ui-button-bg);
-  color: #e5a7a7;
-}
-
-.mini-tools button[title="Delete"]:disabled:hover {
-  background: var(--ui-button-bg);
-  color: #e5a7a7;
-}
-
-.persistent-status-actions {
-  display: flex;
-  gap: 3px;
-}
-
-.persistent-status-actions button {
-  min-height: 19px;
-  padding: 1px 6px;
-  border: 1px solid #11191b;
-  border-radius: var(--ui-control-radius);
+.persistent-status-actions .ui-button {
+  --ui-button-height: var(--ui-compact-height);
+  --ui-button-padding: 1px 6px;
+  border-color: #11191b;
   background: #435258;
   color: inherit;
-  font-size: 8px;
+  font-size: var(--ui-font-size-compact);
 }

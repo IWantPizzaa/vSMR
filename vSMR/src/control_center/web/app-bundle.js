@@ -107,6 +107,59 @@
     .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
+  // Renderers share one list-row contract; feature classes may add slots but
+  // never redefine the row box model or interaction states.
+  function uiListRowClass(kind, selected = false, current = false, extra = "") {
+    return [
+      "ui-list__row",
+      kind ? `ui-list__row--${kind}` : "",
+      selected ? "is-selected" : "",
+      current ? "is-current" : "",
+      extra
+    ].filter(Boolean).join(" ");
+  }
+
+  // Each list exposes one predictable keyboard entry point while retaining
+  // independent action buttons such as visibility and remove controls.
+  function syncUiListFocus(root = document) {
+    const listboxes = [
+      ...(root.matches?.('[role="listbox"]') ? [root] : []),
+      ...$$('[role="listbox"]', root)
+    ];
+    listboxes.forEach(listbox => {
+      const rows = $$('.ui-list__row[role="option"]:not(:disabled)', listbox)
+        .filter(row => !row.closest('[hidden]'));
+      const preferred = rows.find(row => row.classList.contains("is-current"))
+        || rows.find(row => row.getAttribute("aria-selected") === "true")
+        || rows[0];
+      rows.forEach(row => { row.tabIndex = row === preferred ? 0 : -1; });
+    });
+
+    const selectors = $$('.ui-list__selection:not(:disabled)', root)
+      .filter(button => !button.closest('[hidden]'));
+    const preferred = selectors.find(button => button.closest(".ui-list__row")?.classList.contains("is-current"))
+      || selectors.find(button => button.getAttribute("aria-pressed") === "true")
+      || selectors[0];
+    selectors.forEach(button => { button.tabIndex = button === preferred ? 0 : -1; });
+  }
+
+  function syncToggleButtons(selector, activeValue, dataKey, root = document) {
+    $$(selector, root).forEach(button => {
+      const active = button.dataset[dataKey] === activeValue;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+  }
+
+  function syncTabButtons(selector, activeValue, dataKey) {
+    $$(selector).forEach(button => {
+      const active = button.dataset[dataKey] === activeValue;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+  }
+
   function clamp(value, min, max) {
     const number = Number(value);
     return Math.min(max, Math.max(min, Number.isFinite(number) ? number : min));
@@ -1116,6 +1169,7 @@
     (current.actions || []).forEach(action => {
       const button = document.createElement("button");
       button.type = "button";
+      button.className = "ui-button ui-button--compact";
       button.dataset.action = action.action;
       button.textContent = action.label;
       if (action.disabled) button.disabled = true;
@@ -1256,7 +1310,7 @@
 
   function syncProfileTabSelection() {
     const tab = state.ui.profileTab;
-    $$('[data-profile-tab]').forEach(button => button.classList.toggle("active", button.dataset.profileTab === tab));
+    syncTabButtons('[data-profile-tab]', tab, "profileTab");
     $$('[data-profile-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.profilePanel === tab));
   }
 
@@ -1645,9 +1699,9 @@
       const modes = activeProfile()?.filters?.display_modes?.items || [];
       const active = activeModeName();
       content.innerHTML = modes.length
-        ? `<div class="runtime-choice-box">${modes.map(mode => {
+        ? `<div class="ui-list__items runtime-choice-box">${modes.map(mode => {
             const selected = mode.name === active;
-            return `<button type="button" class="runtime-choice-row runtime-compact-row ${selected ? "active" : ""}" data-runtime-mode="${escapeHtml(mode.name)}">${runtimeSelectionIcon(selected)}<strong class="runtime-row-label">${escapeHtml(mode.name)}</strong></button>`;
+            return `<button type="button" class="${uiListRowClass("runtime", selected, false, "runtime-choice-row runtime-compact-row")}" data-runtime-mode="${escapeHtml(mode.name)}">${runtimeSelectionIcon(selected)}<strong class="ui-list__label runtime-row-label">${escapeHtml(mode.name)}</strong></button>`;
           }).join("")}</div>`
         : `<div class="runtime-popover-empty">No modes in this profile.</div>`;
       return;
@@ -1655,9 +1709,9 @@
 
     if (kind === "profile") {
       title.textContent = "Profile";
-      content.innerHTML = `<div class="runtime-choice-box">${state.profiles.map(record => {
+      content.innerHTML = `<div class="ui-list__items runtime-choice-box">${state.profiles.map(record => {
         const active = record.id === state.activeProfileId;
-        return `<button type="button" class="runtime-choice-row runtime-compact-row ${active ? "active" : ""}" data-runtime-profile="${escapeHtml(record.id)}">${runtimeSelectionIcon(active)}<strong class="runtime-row-label">${escapeHtml(record.data.name)}</strong></button>`;
+        return `<button type="button" class="${uiListRowClass("runtime", active, false, "runtime-choice-row runtime-compact-row")}" data-runtime-profile="${escapeHtml(record.id)}">${runtimeSelectionIcon(active)}<strong class="ui-list__label runtime-row-label">${escapeHtml(record.data.name)}</strong></button>`;
       }).join("")}</div>`;
       return;
     }
@@ -1674,24 +1728,24 @@
         ["timer", "Timer"]
       ].map(([id, label]) => {
         const visible = insetState(id);
-        return `<button type="button" class="runtime-choice-row runtime-compact-row runtime-inset-row ${visible ? "active" : ""}" data-runtime-inset="${id}">${runtimeVisibilityIcon(visible)}<strong class="runtime-row-label">${label}</strong></button>`;
+        return `<button type="button" class="${uiListRowClass("runtime", false, false, "runtime-choice-row runtime-compact-row runtime-inset-row")}" data-runtime-inset="${id}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${label}</strong></button>`;
       }).join("");
       const presetRows = presets.map(preset => {
         const active = preset.name === activePreset?.name;
-        return `<button type="button" class="runtime-choice-row runtime-compact-row runtime-preset-row ${active ? "active" : ""}" data-inset-preset="${escapeHtml(preset.name)}">${runtimeSelectionIcon(active)}<strong class="runtime-row-label">${escapeHtml(preset.name)}</strong></button>`;
+        return `<button type="button" class="${uiListRowClass("runtime", active, false, "runtime-choice-row runtime-compact-row runtime-preset-row")}" data-inset-preset="${escapeHtml(preset.name)}">${runtimeSelectionIcon(active)}<strong class="ui-list__label runtime-row-label">${escapeHtml(preset.name)}</strong></button>`;
       }).join("");
-      content.innerHTML = `<div class="runtime-choice-box">${insetRows}</div>
+      content.innerHTML = `<div class="ui-list__items runtime-choice-box">${insetRows}</div>
         <div class="runtime-section-heading"><span>Preset</span></div>
-        ${presetRows ? `<div class="runtime-choice-box runtime-preset-list">${presetRows}</div>` : `<div class="runtime-popover-empty">No inset presets.</div>`}
+        ${presetRows ? `<div class="ui-list__items runtime-choice-box runtime-preset-list">${presetRows}</div>` : `<div class="runtime-popover-empty">No inset presets.</div>`}
         <label class="runtime-linked-toggle"><input type="checkbox" id="runtimePresetLinked" ${activePreset?.linked_movement ? "checked" : ""} ${activePreset ? "" : "disabled"}><span>Linked movement</span></label>
         <div class="runtime-preset-actions">
-          <button class="ui-button primary" data-action="save-inset-preset" type="button">Save…</button>
+          <button class="ui-button ui-button--primary" data-action="save-inset-preset" type="button">Save…</button>
           <button class="ui-button" data-action="update-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Update</button>
           <button class="ui-button" data-action="reset-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Reset</button>
           <button class="ui-button" data-action="rename-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Rename…</button>
           <button class="ui-button" data-action="duplicate-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Duplicate</button>
           <button class="ui-button" data-action="default-inset-preset" type="button" ${activePreset ? "" : "disabled"}>${activePreset?.name === store.default ? "Default ✓" : "Set default"}</button>
-          <button class="ui-button danger runtime-preset-delete" data-action="delete-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Delete</button>
+          <button class="ui-button ui-button--destructive runtime-preset-delete" data-action="delete-inset-preset" type="button" ${activePreset ? "" : "disabled"}>Delete</button>
         </div>`;
       return;
     }
@@ -1699,10 +1753,10 @@
     title.textContent = "Groups";
     const groupRows = avisoGroups().map(group => {
       const visible = group.visible !== false;
-      return `<button type="button" class="runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
+      return `<button type="button" class="${uiListRowClass("runtime", false, false, `runtime-choice-row runtime-compact-row ${visible ? "" : "muted"}`)}" data-runtime-group="${escapeHtml(group.id)}">${runtimeVisibilityIcon(visible)}<strong class="ui-list__label runtime-row-label">${escapeHtml(group.name)}</strong></button>`;
     }).join("");
     content.innerHTML = groupRows
-      ? `<div class="runtime-choice-box">${groupRows}</div>`
+      ? `<div class="ui-list__items runtime-choice-box">${groupRows}</div>`
       : `<div class="runtime-popover-empty">No AVISO groups.</div>`;
   }
 
@@ -2012,20 +2066,22 @@
       const accent = colorToHex(group.items[0]?.color, "#5096b4");
       const rows = group.items.map(entry => {
         const hex = colorToHex(entry.color).toUpperCase();
-        return `<button type="button" class="menu-tree-row color-menu-row ${entry.id === state.ui.selectedColorPath ? "active" : ""}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
-          <span class="menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
-          <span class="menu-row-title">${escapeHtml(entry.name)}</span>
+        const selected = entry.id === state.ui.selectedColorPath;
+        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, false, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
+          <span class="ui-list__leading menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
+          <span class="ui-list__label menu-row-title">${escapeHtml(entry.name)}</span>
         </button>`;
       }).join("");
-      return `<section class="menu-tree-section color-menu-section" style="--menu-accent:${accent}">
-        <button type="button" class="menu-tree-caption" data-tree-toggle="colors" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
-          <span class="menu-tree-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
-          <span class="menu-tree-caption-text">${escapeHtml(group.caption)}</span>
+      return `<section class="ui-list__section color-menu-section" style="--menu-accent:${accent}">
+        <button type="button" class="ui-list__heading" data-tree-toggle="colors" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
+          <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+          <span class="ui-list__heading-label">${escapeHtml(group.caption)}</span>
         </button>
-        <div class="menu-tree-box" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group.caption)} colors" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
-    }).join("") || `<div class="aviso-list-message">No colors found</div>`;
-    requestAnimationFrame(() => $("#colorTree .color-menu-row.active")?.scrollIntoView({ block: "nearest" }));
+    }).join("") || `<div class="ui-list__empty">No colors found</div>`;
+    syncUiListFocus($("#colorTree"));
+    requestAnimationFrame(() => $("#colorTree .color-menu-row.is-selected")?.scrollIntoView({ block: "nearest" }));
     renderColorEditor();
   }
 
@@ -2548,18 +2604,19 @@
       const collapsed = treeState.tags.has(groupKey);
       const accentEntry = items.find(item => item.color);
       const accent = accentEntry ? colorToHex(accentEntry.color) : "#5096b4";
-      const rows = items.map(entry => `<button type="button" role="option" aria-selected="${selectedIds.has(entry.id)}" class="menu-tree-row tag-menu-row ${selectedIds.has(entry.id) ? "active" : ""} ${entry.id === state.ui.selectedTagId ? "current" : ""}" data-tag-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.label)}">
-        <span class="menu-row-title">${escapeHtml(entry.label)}</span>
+      const rows = items.map(entry => `<button type="button" role="option" aria-selected="${selectedIds.has(entry.id)}" class="${uiListRowClass("tag", selectedIds.has(entry.id), entry.id === state.ui.selectedTagId, "tag-menu-row")}" data-tag-id="${escapeHtml(entry.id)}" title="${escapeHtml(entry.label)}">
+        <span class="ui-list__label menu-row-title">${escapeHtml(entry.label)}</span>
       </button>`).join("");
-      return `<section class="menu-tree-section tag-menu-section" style="--menu-accent:${accent}">
-        <button type="button" class="menu-tree-caption" data-tree-toggle="tags" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
-          <span class="menu-tree-caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
-          <span class="menu-tree-caption-text">${escapeHtml(group)}</span>
+      return `<section class="ui-list__section tag-menu-section" style="--menu-accent:${accent}">
+        <button type="button" class="ui-list__heading" data-tree-toggle="tags" data-tree-key="${escapeHtml(groupKey)}" aria-expanded="${!collapsed}">
+          <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+          <span class="ui-list__heading-label">${escapeHtml(group)}</span>
         </button>
-        <div class="menu-tree-box" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group)} tag definitions" aria-multiselectable="true" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
-    }).join("") || `<div class="aviso-list-message">No tag definitions</div>`;
-    requestAnimationFrame(() => $("#tagDefinitionList .tag-menu-row.active")?.scrollIntoView({ block: "nearest" }));
+    }).join("") || `<div class="ui-list__empty">No tag definitions</div>`;
+    syncUiListFocus($("#tagDefinitionList"));
+    requestAnimationFrame(() => $("#tagDefinitionList .tag-menu-row.is-selected")?.scrollIntoView({ block: "nearest" }));
     renderTagEditor();
   }
 
@@ -2850,8 +2907,12 @@
   function renderRules() {
     const items = rules();
     state.ui.selectedRuleIndex = items.length ? Math.min(items.length - 1, Math.max(0, state.ui.selectedRuleIndex)) : 0;
-    const rows = items.map((rule, index) => `<button type="button" class="selection-row menu-tree-row manager-menu-row simple-manager-row ${index === state.ui.selectedRuleIndex ? "active" : ""}" data-rule-index="${index}"><span class="menu-row-title">${escapeHtml(ruleLabel(rule, index))}</span></button>`).join("");
-    $("#ruleList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No rules</div>`;
+    const rows = items.map((rule, index) => {
+      const selected = index === state.ui.selectedRuleIndex;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("manager", selected)}" data-rule-index="${index}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span></button>`;
+    }).join("");
+    $("#ruleList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No rules</div>`;
+    syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
   function renderRuleEditor() {
@@ -2876,7 +2937,7 @@
         <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
         <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, parsedCondition.operator), parsedCondition.operator, { not_in: "not in" })}</select>
         <input aria-label="Rule match values" data-field="condition-values" spellcheck="false" type="text" value="${escapeHtml(parsedCondition.values)}"/>
-        <button type="button" data-action="delete-condition" data-index="${index}">×</button>
+        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive" data-action="delete-condition" data-index="${index}" title="Delete condition">×</button>
       </div>`;
     }).join("");
     $$("#criteriaList .criterion-row").forEach(updateRuleConditionValueControl);
@@ -2957,8 +3018,12 @@
     const items = modes();
     const activeName = activeProfile().filters?.display_modes?.active;
     if (items.length && (state.ui.selectedModeIndex >= items.length || state.ui.selectedModeIndex < 0)) state.ui.selectedModeIndex = Math.max(0, items.findIndex(mode => mode.name === activeName));
-    const rows = items.map((mode, index) => `<button type="button" class="selection-row menu-tree-row manager-menu-row ${index === state.ui.selectedModeIndex ? "active" : ""}" data-mode-index="${index}"><span class="menu-row-title">${escapeHtml(mode.name || `Mode ${index + 1}`)}</span><span class="mode-active-mark">${mode.name === activeName ? "●" : ""}</span></button>`).join("");
-    $("#modeList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No modes</div>`;
+    const rows = items.map((mode, index) => {
+      const selected = index === state.ui.selectedModeIndex;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-mode-index="${index}"><span class="ui-list__label">${escapeHtml(mode.name || `Mode ${index + 1}`)}</span><span class="ui-list__trailing mode-active-mark">${mode.name === activeName ? "●" : ""}</span></button>`;
+    }).join("");
+    $("#modeList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No modes</div>`;
+    syncUiListFocus($("#modeList"));
     renderModeEditor();
   }
 
@@ -3031,8 +3096,12 @@
 
   function renderProfilesManager() {
     if (!state.profiles.some(record => record.id === state.ui.managedProfileId)) state.ui.managedProfileId = state.activeProfileId;
-    const rows = state.profiles.map(record => `<button type="button" class="selection-row menu-tree-row manager-menu-row ${record.id === state.ui.managedProfileId ? "active" : ""}" data-managed-profile-id="${escapeHtml(record.id)}"><span class="menu-row-title">${escapeHtml(record.data.name)}</span><span class="profile-active-mark">${record.id === state.activeProfileId ? "●" : ""}</span></button>`).join("");
-    $("#profileList").innerHTML = rows ? `<div class="menu-tree-box manager-menu-box">${rows}</div>` : `<div class="aviso-list-message">No profiles</div>`;
+    const rows = state.profiles.map(record => {
+      const selected = record.id === state.ui.managedProfileId;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-managed-profile-id="${escapeHtml(record.id)}"><span class="ui-list__label">${escapeHtml(record.data.name)}</span><span class="ui-list__trailing profile-active-mark">${record.id === state.activeProfileId ? "●" : ""}</span></button>`;
+    }).join("");
+    $("#profileList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No profiles</div>`;
+    syncUiListFocus($("#profileList"));
     renderProfileEditor();
   }
 
@@ -3395,9 +3464,9 @@
     if (entry.isBackground) return `<span class="aviso-style-eye" aria-hidden="true"></span>`;
     const visibility = avisoStyleVisibility(entry);
     const action = visibility.allVisible ? "Hide" : "Show";
-    return `<span class="aviso-style-eye ${visibility.allVisible ? "is-on" : "is-off"} ${visibility.mixed ? "is-mixed" : ""}" data-aviso-style-visibility="${kind}" data-aviso-style-id="${escapeHtml(entry.id)}" role="button" aria-label="${action} ${escapeHtml(entry.name)}" title="${action} ${escapeHtml(entry.name)}">
+    return `<button type="button" class="ui-button ui-button--compact ui-button--icon aviso-style-eye ${visibility.allVisible ? "is-on" : "is-off"} ${visibility.mixed ? "is-mixed" : ""}" data-aviso-style-visibility="${kind}" data-aviso-style-id="${escapeHtml(entry.id)}" aria-label="${action} ${escapeHtml(entry.name)}" title="${action} ${escapeHtml(entry.name)}">
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.6-6 9.5-6 9.5 6 9.5 6-3.6 6-9.5 6-9.5-6-9.5-6z"></path><circle cx="12" cy="12" r="2.6"></circle>${visibility.allVisible || visibility.mixed ? "" : '<path class="aviso-eye-slash" d="M4 4l16 16"></path>'}</svg>
-    </span>`;
+    </button>`;
   }
 
   function toggleAvisoStyleVisibility(kind, styleId) {
@@ -3478,12 +3547,13 @@
     const groupIndex = buildAvisoGroupIndex();
     const selected = selectedAvisoGroup();
 
-    $("#avisoGroupList").innerHTML = groups.length ? `<div class="aviso-group-box menu-tree-box manager-menu-box">${groups.map(group => {
+    $("#avisoGroupList").innerHTML = groups.length ? `<div class="ui-list__items aviso-group-box" role="presentation">${groups.map(group => {
       const active = group.id === selected?.id;
-      return `<div class="aviso-group-row menu-tree-row manager-menu-row simple-manager-row ${active ? "active" : ""}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="true" title="Drag to reorder">
-        <span class="aviso-group-row-copy menu-row-title"><strong>${escapeHtml(group.name)}</strong></span>
-      </div>`;
-    }).join("")}</div>` : `<div class="aviso-list-message">No groups yet</div>`;
+      return `<button type="button" class="${uiListRowClass("group", active, false, "aviso-group-row")}" role="option" aria-selected="${active}" data-aviso-group-id="${escapeHtml(group.id)}" draggable="true" title="Drag to reorder">
+        <span class="ui-list__label aviso-group-row-copy">${escapeHtml(group.name)}</span>
+      </button>`;
+    }).join("")}</div>` : `<div class="ui-list__empty">No groups yet</div>`;
+    syncUiListFocus($("#avisoGroupList"));
 
     renderAvisoGroupEditor(groupIndex);
   }
@@ -3498,7 +3568,7 @@
       $("#avisoGroupName").value = "";
       $("#avisoGroupName").disabled = true;
       $("#avisoGroupId").value = "";
-      $("#avisoGroupMemberList").innerHTML = `<div class="aviso-group-empty">Create a group to combine text, line and area content.</div>`;
+      $("#avisoGroupMemberList").innerHTML = `<div class="ui-list__empty">Create a group to combine text, line and area content.</div>`;
       editor?.classList.add("empty");
       return;
     }
@@ -3517,12 +3587,12 @@
     const rows = avisoGroupMemberRows(group.id, groupIndex).filter(row =>
       !search || `${row.name} ${row.subtitle} ${row.id}`.toLowerCase().includes(search)
     );
-    $("#avisoGroupMemberList").innerHTML = rows.length ? rows.map(row => {
-      return `<div class="aviso-group-member-row">
-        <strong class="aviso-member-name">${escapeHtml(row.name)}</strong>
-        <button class="aviso-member-remove" type="button" data-action="remove-aviso-group-member" data-member-kind="${row.kind === "text" ? "feature" : "style"}" data-member-id="${escapeHtml(row.id)}" title="Remove from group">×</button>
+    $("#avisoGroupMemberList").innerHTML = rows.length ? `<div class="ui-list__items" role="list">${rows.map(row => {
+      return `<div class="${uiListRowClass("action", false, false, "aviso-group-member-row")}" role="listitem">
+        <strong class="ui-list__label aviso-member-name">${escapeHtml(row.name)}</strong>
+        <button aria-label="Remove ${escapeHtml(row.name)} from group" class="ui-button ui-button--compact ui-button--icon ui-button--destructive aviso-member-remove" type="button" data-action="remove-aviso-group-member" data-member-kind="${row.kind === "text" ? "feature" : "style"}" data-member-id="${escapeHtml(row.id)}" title="Remove from group">×</button>
       </div>`;
-    }).join("") : `<div class="aviso-group-empty">${counts.total ? "No members match your search." : "This group is empty. Add text, lines or areas."}</div>`;
+    }).join("")}</div>` : `<div class="ui-list__empty">${counts.total ? "No members match your search." : "This group is empty. Add text, lines or areas."}</div>`;
   }
 
   function createAvisoGroup() {
@@ -3660,15 +3730,15 @@
     const group = avisoGroups().find(item => item.id === avisoGroupContentDraft?.groupId) || selectedAvisoGroup();
     if (!group || !avisoGroupContentDraft) return;
     $("#avisoGroupContentTitle").textContent = `Content · ${group.name}`;
-    $$('[data-aviso-group-content-type]').forEach(button => button.classList.toggle("active", button.dataset.avisoGroupContentType === state.ui.avisoGroupContentType));
+    syncToggleButtons('[data-aviso-group-content-type]', state.ui.avisoGroupContentType, "avisoGroupContentType");
     $("#avisoGroupContentSearch").value = state.ui.avisoGroupContentSearch;
     const candidates = groupContentCandidates();
-    $("#avisoGroupContentList").innerHTML = candidates.length ? `<div class="group-content-box">${candidates.map(item => {
+    $("#avisoGroupContentList").innerHTML = candidates.length ? `<div aria-label="${escapeHtml(state.ui.avisoGroupContentType)} content" class="ui-list__items group-content-box" role="group">${candidates.map(item => {
       const selectedCount = item.indices.filter(index => avisoGroupContentDraft.members.has(index)).length;
       const selected = selectedCount === item.indices.length;
       const partial = selectedCount > 0 && !selected;
-      return `<button type="button" class="group-content-row ${selected ? "selected" : ""} ${partial ? "partial" : ""}" data-group-content-key="${escapeHtml(item.key)}"><span class="group-content-check">${selected ? "✓" : partial ? "−" : ""}</span><strong class="group-content-name">${escapeHtml(item.name)}</strong></button>`;
-    }).join("")}</div>` : `<div class="aviso-group-empty">No matching ${state.ui.avisoGroupContentType} content.</div>`;
+      return `<button type="button" class="${uiListRowClass("content", selected, false, `group-content-row ${partial ? "partial" : ""}`)}" data-group-content-key="${escapeHtml(item.key)}"><span class="ui-list__leading group-content-check">${selected ? "✓" : partial ? "−" : ""}</span><strong class="ui-list__label group-content-name">${escapeHtml(item.name)}</strong></button>`;
+    }).join("")}</div>` : `<div class="ui-list__empty">No matching ${state.ui.avisoGroupContentType} content.</div>`;
   }
 
   function toggleAvisoGroupContentCandidate(key) {
@@ -3711,12 +3781,8 @@
     textStyleSelectionIds(textEntries);
 
     const avisoColorPalette = activeAvisoColorPalette();
-    $$('[data-aviso-color-palette]').forEach(button => {
-      const active = button.dataset.avisoColorPalette === avisoColorPalette;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-    $$('[data-aviso-view]').forEach(button => button.classList.toggle("active", button.dataset.avisoView === state.ui.avisoView));
+    syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
+    syncTabButtons('[data-aviso-view]', state.ui.avisoView, "avisoView");
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));
 
     if (state.ui.avisoView === "geometry") renderAvisoGeometry();
@@ -3735,20 +3801,23 @@
     });
 
     $("#avisoGeometryStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
-      <section class="aviso-style-section menu-tree-section">
-        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span></div>
-        <div class="aviso-style-box menu-tree-box">
+      <section class="ui-list__section aviso-style-section">
+        <div class="ui-list__heading aviso-style-section-title"><span class="ui-list__heading-label">${escapeHtml(layer)}</span></div>
+        <div aria-label="${escapeHtml(layer)} geometry styles" class="ui-list__items aviso-style-box" role="list">
           ${entries.map(entry => {
             const selected = selectedIds.has(entry.id);
             const current = entry.id === state.ui.selectedAvisoGeometryStyleId;
-            return `<button type="button" role="option" aria-selected="${selected}" class="aviso-style-row menu-tree-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-geometry-style="${escapeHtml(entry.id)}">
+            return `<div class="${uiListRowClass("style", selected, current, "aviso-style-row")}" role="listitem">
               ${avisoStyleVisibilityControl(entry, "geometry")}
-              <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
-              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
-            </button>`;
+              <button aria-pressed="${selected}" class="ui-list__selection" data-aviso-geometry-style="${escapeHtml(entry.id)}" title="${escapeHtml(entry.name)}" type="button">
+                <span class="ui-list__leading aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
+                <span class="ui-list__label aviso-style-copy">${escapeHtml(entry.name)}</span>
+              </button>
+            </div>`;
           }).join("")}
         </div>
-      </section>`).join("") || `<div class="aviso-list-message">No geometry styles</div>`;
+      </section>`).join("") || `<div class="ui-list__empty">No geometry styles</div>`;
+    syncUiListFocus($("#avisoGeometryStyleList"));
 
     renderAvisoGeometryEditor(allEntries);
   }
@@ -3868,20 +3937,23 @@
     });
 
     $("#avisoTextStyleList").innerHTML = Array.from(grouped.entries()).map(([layer, entries]) => `
-      <section class="aviso-style-section menu-tree-section">
-        <div class="aviso-style-section-title"><span>${escapeHtml(layer)}</span></div>
-        <div class="aviso-style-box menu-tree-box">
+      <section class="ui-list__section aviso-style-section">
+        <div class="ui-list__heading aviso-style-section-title"><span class="ui-list__heading-label">${escapeHtml(layer)}</span></div>
+        <div aria-label="${escapeHtml(layer)} text styles" class="ui-list__items aviso-style-box" role="list">
           ${entries.map(entry => {
             const selected = selectedIds.has(entry.id);
             const current = entry.id === state.ui.selectedAvisoTextStyleId;
-            return `<button type="button" role="option" aria-selected="${selected}" title="${escapeHtml(entry.name)}" class="aviso-style-row menu-tree-row aviso-text-style-row geometry-select-row ${selected ? "active" : ""} ${current ? "current" : ""}" data-aviso-text-style="${escapeHtml(entry.id)}">
+            return `<div class="${uiListRowClass("style", selected, current, "aviso-style-row")}" role="listitem">
               ${avisoStyleVisibilityControl(entry, "text")}
-              <span class="aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
-              <span class="aviso-style-copy"><strong>${escapeHtml(entry.name)}</strong></span>
-            </button>`;
+              <button aria-pressed="${selected}" class="ui-list__selection" data-aviso-text-style="${escapeHtml(entry.id)}" title="${escapeHtml(entry.name)}" type="button">
+                <span class="ui-list__leading aviso-style-swatch" style="--aviso-swatch:${avisoPaintColor(entry)}"></span>
+                <span class="ui-list__label aviso-style-copy">${escapeHtml(entry.name)}</span>
+              </button>
+            </div>`;
           }).join("")}
         </div>
-      </section>`).join("") || `<div class="aviso-list-message">No text styles</div>`;
+      </section>`).join("") || `<div class="ui-list__empty">No text styles</div>`;
+    syncUiListFocus($("#avisoTextStyleList"));
 
     renderAvisoTextEditor(allEntries);
   }
@@ -3902,7 +3974,7 @@
     const colorKey = colorTarget === "halo" ? "text-halo-color" : "text-color";
     const colorFallback = colorTarget === "halo" ? "#000000" : "#808080";
     $("#avisoTextColorLabel").textContent = `${colorTarget === "halo" ? "Halo" : "Text"} color · ${paletteLabel}`;
-    $$("[data-color-target]", $("#avisoTextColorEditor")).forEach(button => button.classList.toggle("active", button.dataset.colorTarget === colorTarget));
+    syncToggleButtons("[data-color-target]", colorTarget, "colorTarget", $("#avisoTextColorEditor"));
 
     setCommonInput("#avisoTextFont", commonValue(values("text-font"), value => String(value || "Arial")), value => String(value || "Arial"));
     setCommonInput("#avisoTextSize", commonValue(values("text-size"), value => Number(value)), value => String(value));
@@ -4071,9 +4143,9 @@
       <label class="alert-table-check"><input data-alert-runway-arr="${index}" type="checkbox" ${runway.arrival ? "checked" : ""}><span></span></label>
       <label class="alert-table-check"><input data-alert-runway-dep="${index}" type="checkbox" ${runway.departure ? "checked" : ""}><span></span></label>
       <label class="alert-table-check"><input data-alert-runway-closed="${index}" type="checkbox" ${runway.closed ? "checked" : ""}><span></span></label>
-      <button class="alert-runway-remove" data-action="remove-alert-runway" data-index="${index}" title="Remove" type="button">×</button>
+      <button aria-label="Remove runway pair ${escapeHtml(runway.id)}" class="ui-button ui-button--compact ui-button--icon ui-button--destructive alert-runway-remove" data-action="remove-alert-runway" data-index="${index}" title="Remove" type="button">×</button>
     </div>`).join("");
-    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="aviso-list-message">No monitored runway pairs.</div>`}`;
+    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="ui-list__empty">No monitored runway pairs.</div>`}`;
 
     renderAlertTimerRow("#alertTimerNormal", data.rimcas.timer);
     renderAlertTimerRow("#alertTimerLvp", data.rimcas.timer_lvp);
@@ -4415,11 +4487,7 @@
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
-    $$('[data-aviso-color-palette]').forEach(button => {
-      const active = button.dataset.avisoColorPalette === avisoColorPalette;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
+    syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     const restoreBackup = $("#restoreProfilesBackupButton");
     if (restoreBackup) {
       restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
@@ -4840,7 +4908,7 @@
       if (group) {
         $("#avisoGroupCaption").textContent = group.name;
         const row = $$("#avisoGroupList [data-aviso-group-id]").find(item => item.dataset.avisoGroupId === group.id);
-        const label = row && $("strong", row);
+        const label = row && $(".ui-list__label", row);
         if (label) label.textContent = group.name;
       }
     } else if (scope === "icons") renderIconSymbolPreview();
@@ -5295,7 +5363,7 @@
         return;
       }
       draggedAvisoGroupId = row.dataset.avisoGroupId;
-      row.classList.add("dragging");
+      row.classList.add("is-dragging");
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", draggedAvisoGroupId);
     });
@@ -5304,9 +5372,9 @@
       if (!row || !draggedAvisoGroupId || row.dataset.avisoGroupId === draggedAvisoGroupId) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
-      $$(".aviso-group-row.drop-target", avisoGroupList).forEach(item => item.classList.remove("drop-target", "drop-after"));
-      row.classList.add("drop-target");
-      if (event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) row.classList.add("drop-after");
+      $$(".aviso-group-row.is-drop-target", avisoGroupList).forEach(item => item.classList.remove("is-drop-target", "is-drop-after"));
+      row.classList.add("is-drop-target");
+      if (event.clientY > row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2) row.classList.add("is-drop-after");
     });
     avisoGroupList.addEventListener("drop", event => {
       const target = event.target.closest("[data-aviso-group-id]");
@@ -5315,7 +5383,7 @@
       const groups = avisoGroups();
       const sourceIndex = groups.findIndex(group => group.id === draggedAvisoGroupId);
       const targetId = target.dataset.avisoGroupId;
-      const after = target.classList.contains("drop-after");
+      const after = target.classList.contains("is-drop-after");
       if (sourceIndex < 0) return;
       const [moved] = groups.splice(sourceIndex, 1);
       let insertionIndex = groups.findIndex(group => group.id === targetId);
@@ -5330,7 +5398,7 @@
     });
     avisoGroupList.addEventListener("dragend", () => {
       draggedAvisoGroupId = "";
-      $$(".aviso-group-row", avisoGroupList).forEach(item => item.classList.remove("dragging", "drop-target", "drop-after"));
+      $$(".aviso-group-row", avisoGroupList).forEach(item => item.classList.remove("is-dragging", "is-drop-target", "is-drop-after"));
     });
 
     bindAvisoColorEditor("avisoGeometryColor", "avisoGeometry", "aviso-geometry", true, applyAvisoGeometry);
@@ -5358,6 +5426,48 @@
     $("#resourceGithubLoadConfirm").addEventListener("click", loadResourceFromGithub);
     $("#resourceGithubUrl").addEventListener("keydown", event => {
       if (event.key === "Enter") { event.preventDefault(); loadResourceFromGithub(); }
+    });
+
+    document.addEventListener("keydown", event => {
+      const list = event.target.closest?.(".ui-list");
+      if (!list || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+      const listbox = event.target.closest?.('[role="listbox"]');
+      const rows = $$(
+        listbox ? '.ui-list__row[role="option"]:not(:disabled)' : ".ui-list__selection:not(:disabled)",
+        listbox || list
+      ).filter(row => !row.closest('[hidden]'));
+      if (!rows.length) return;
+      const focused = event.target.closest('.ui-list__row[role="option"], .ui-list__selection');
+      const selected = rows.find(row => row.classList.contains("is-current")
+        || row.closest(".ui-list__row")?.classList.contains("is-current"))
+        || rows.find(row => row.getAttribute("aria-selected") === "true")
+        || rows.find(row => row.getAttribute("aria-pressed") === "true");
+      const currentIndex = Math.max(0, rows.indexOf(focused || selected || rows[0]));
+      const nextIndex = event.key === "Home" ? 0
+        : event.key === "End" ? rows.length - 1
+          : event.key === "ArrowDown" ? Math.min(rows.length - 1, currentIndex + 1)
+            : Math.max(0, currentIndex - 1);
+      event.preventDefault();
+      rows.forEach(row => { row.tabIndex = -1; });
+      rows[nextIndex].tabIndex = 0;
+      rows[nextIndex].focus();
+    });
+
+    document.addEventListener("keydown", event => {
+      const tab = event.target.closest?.('[role="tab"]');
+      if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      const tablist = tab.closest('[role="tablist"]');
+      if (!tablist) return;
+      const tabs = $$('[role="tab"]:not(:disabled)', tablist);
+      if (!tabs.length) return;
+      const currentIndex = Math.max(0, tabs.indexOf(tab));
+      const nextIndex = event.key === "Home" ? 0
+        : event.key === "End" ? tabs.length - 1
+          : event.key === "ArrowRight" ? (currentIndex + 1) % tabs.length
+            : (currentIndex - 1 + tabs.length) % tabs.length;
+      event.preventDefault();
+      tabs[nextIndex].focus();
+      tabs[nextIndex].click();
     });
 
     $("#avisoGeometryStyleList").addEventListener("keydown", event => {
