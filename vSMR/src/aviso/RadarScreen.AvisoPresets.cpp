@@ -1,10 +1,9 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "insets/InsetWindow.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "shared/TextUtils.hpp"
-
-extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
 {

@@ -163,11 +163,14 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
+    <ClCompile Include="src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterBridge.State.cpp" />
     <ClCompile Include="src\control_center\ControlCenterMessageProtocol.cpp" />
     <ClCompile Include="src\control_center\ControlCenterPerformance.cpp" />
     <ClCompile Include="src\control_center\ControlCenterUpdater.cpp" />
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp" />
+    <ClCompile Include="src\control_center\ControlCenterDialog.Resources.cpp" />
     <ClCompile Include="src\control_center\WebMessageValidation.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -179,17 +182,25 @@
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.Timer.cpp" />
+    <ClCompile Include="src\insets\InsetWindow.Weather.cpp" />
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp" />
+    <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp" />
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp" />
+    <ClCompile Include="src\plugin\PluginTagCallbacks.cpp" />
+    <ClCompile Include="src\plugin\PluginWeather.cpp" />
     <ClCompile Include="src\plugin\PluginRuntimeServices.cpp" />
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp" />
     <ClCompile Include="src\radar\RadarGeometry.cpp" />
     <ClCompile Include="src\radar\RadarScreen.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.RunwayState.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.TagData.cpp" />
+    <ClCompile Include="src\radar\RadarScreen.AvisoData.cpp" />
     <ClCompile Include="src\radar\RadarScreen.AvisoRendering.cpp" />
     <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp" />
     <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp" />
@@ -221,7 +232,9 @@
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
+    <ClInclude Include="src\config\RuntimeConfig.Internal.hpp" />
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp" />
+    <ClInclude Include="src\control_center\ControlCenterBridge.Internal.hpp" />
     <ClInclude Include="src\control_center\ControlCenterMessageProtocol.hpp" />
     <ClInclude Include="src\control_center\ControlCenterPerformance.hpp" />
     <ClInclude Include="src\control_center\ControlCenterUpdater.hpp" />
@@ -244,11 +257,16 @@
     <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp" />
     <ClInclude Include="src\plugin\Plugin.hpp" />
     <ClInclude Include="src\plugin\PluginCommandHandler.hpp" />
+    <ClInclude Include="src\plugin\PluginHttpSupport.hpp" />
     <ClInclude Include="src\plugin\PluginMetadata.hpp" />
+    <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp" />
     <ClInclude Include="src\radar\RadarGeometry.hpp" />
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp" />
     <ClInclude Include="src\radar\RadarScreen.hpp" />
     <ClInclude Include="src\radar\RadarScreenTypes.hpp" />
+    <ClInclude Include="src\radar\RadarScreen.AvisoRuntimeState.hpp" />
+    <ClInclude Include="src\radar\RadarScreen.AvisoSupport.hpp" />
+    <ClInclude Include="src\radar\RadarScreen.Registry.hpp" />
     <ClInclude Include="src\radar\RadarScreenSupport.hpp" />
     <ClInclude Include="src\radar\RadarUiSupport.hpp" />
     <ClInclude Include="src\rdf\RdfOverlay.hpp" />
@@ -330,12 +348,26 @@
     <None Include="src\control_center\web\styles.css">
       <Link>vSMR_webUI\styles.css</Link>
     </None>
+    <None Include="src\control_center\web\styles\base-theme.css" />
+    <None Include="src\control_center\web\styles\shell-navigation.css" />
+    <None Include="src\control_center\web\styles\aviso-editor.css" />
+    <None Include="src\control_center\web\styles\editor-controls.css" />
+    <None Include="src\control_center\web\styles\navigation-settings.css" />
+    <None Include="src\control_center\web\styles\page-workspaces.css" />
+    <None Include="src\control_center\web\styles\component-system.css" />
+    <None Include="src\control_center\web\styles\visual-corrections.css" />
+    <None Include="src\control_center\web\styles\shared-theme.css" />
+    <None Include="src\control_center\web\styles\editor-workflows.css" />
+    <None Include="src\control_center\web\styles\responsive-polish.css" />
+    <None Include="src\control_center\web\styles\README.md" />
     <None Include="resources\cursors\arrow.cur" />
     <None Include="resources\cursors\cursor1.cur" />
     <None Include="resources\cursors\move.cur" />
     <None Include="resources\vSMR.def" />
 	<None Include="resources\vSMR.rc2" />
 	<None Include="tools\build_project.ps1" />
+    <None Include="tools\build_control_center_bundle.ps1" />
+    <None Include="tools\build_control_center_styles.ps1" />
     <None Include="tools\create_release_package.ps1" />
   </ItemGroup>
   <ItemGroup>

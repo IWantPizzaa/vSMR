@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aircraft/GroundState.hpp"
 #include "plugin/Plugin.hpp"
@@ -7,7 +8,6 @@
 #include "crash/CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
-extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
 {

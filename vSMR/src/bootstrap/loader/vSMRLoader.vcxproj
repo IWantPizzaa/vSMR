@@ -114,12 +114,16 @@
   <ItemGroup>
     <ClCompile Include="BootstrapLoader.cpp" />
     <ClCompile Include="..\..\updater\UpdaterCore.cpp" />
+    <ClCompile Include="..\..\updater\UpdaterTransport.cpp" />
+    <ClCompile Include="..\..\updater\UpdaterVerification.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\RuntimeApi.hpp" />
     <ClInclude Include="LoaderVersion.hpp" />
     <ClInclude Include="RuntimeReleaseState.hpp" />
     <ClInclude Include="..\..\updater\UpdaterCore.hpp" />
+    <ClInclude Include="..\..\updater\UpdaterTransport.hpp" />
+    <ClInclude Include="..\..\updater\UpdaterVerification.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="LoaderResources.rc" />

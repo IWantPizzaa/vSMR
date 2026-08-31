@@ -137,6 +137,14 @@ private:
 	HFONT GetWeatherFont(size_t index, int height, int weight, DWORD pitchAndFamily, const char* faceName);
 	HFONT GetTimerFont();
 	void ReleaseCachedFonts();
+	void DrawWindowChrome(
+		CDC& dc,
+		CSMRRadar* radarScreen,
+		AvisoLayoutMode mode,
+		const std::string& title,
+		bool showFilter,
+		POINT mouseLocation,
+		bool allowResize);
 	string icao;
 	CPosition m_AirportPosition;
 	bool m_AirportPositionValid = false;

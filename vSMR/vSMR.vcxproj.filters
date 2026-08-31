@@ -31,6 +31,9 @@
     <Filter Include="Web UI">
       <UniqueIdentifier>{7D1798B1-43DA-48C3-A415-DFBEE9C1344A}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Web UI\Styles">
+      <UniqueIdentifier>{FA3D3F5B-8920-4C33-A854-2430927C74BC}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Bootstrap">
       <UniqueIdentifier>{B3062277-8EFC-4AF0-83CE-0112011B2BFB}</UniqueIdentifier>
     </Filter>
@@ -43,11 +46,14 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\config\RuntimeConfig.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\config\RuntimeConfig.Support.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\ControlCenterBridge.State.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterMessageProtocol.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterPerformance.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterUpdater.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\ControlCenterDialog.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\control_center\ControlCenterDialog.Resources.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\WebMessageValidation.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\RadarScreen.Integration.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\control_center\RuntimeResourceFiles.cpp"><Filter>Source</Filter></ClCompile>
@@ -57,14 +63,22 @@
     <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\insets\InsetWindow.Timer.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\insets\InsetWindow.Weather.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\PluginControllerCallbacks.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginCommandHandler.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\PluginTagCallbacks.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\plugin\PluginWeather.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\PluginRuntimeServices.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\profiles\RadarScreen.ProfileEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarGeometry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.RunwayState.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.TagData.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\radar\RadarScreen.AvisoData.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.AvisoRendering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.AircraftAndAsr.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\radar\RadarScreen.FlightDataAndCommands.cpp"><Filter>Source</Filter></ClCompile>
@@ -89,7 +103,9 @@
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\config\RuntimeConfig.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\control_center\ControlCenterBridge.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterMessageProtocol.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterPerformance.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterUpdater.hpp"><Filter>Headers</Filter></ClInclude>
@@ -112,11 +128,16 @@
     <ClInclude Include="src\platform\windows\WindowsTargetVersion.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\Plugin.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\PluginCommandHandler.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\plugin\PluginHttpSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\plugin\PluginMetadata.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\plugin\Plugin.RuntimeState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarGeometry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\TargetTrailRenderer.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreen.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreenTypes.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarScreen.AvisoRuntimeState.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarScreen.AvisoSupport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\radar\RadarScreen.Registry.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarScreenSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\radar\RadarUiSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\rdf\RdfOverlay.hpp"><Filter>Headers</Filter></ClInclude>
@@ -217,6 +238,18 @@
     <None Include="src\control_center\web\styles.css">
       <Filter>Web UI</Filter>
     </None>
+    <None Include="src\control_center\web\styles\base-theme.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\shell-navigation.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\aviso-editor.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\editor-controls.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\navigation-settings.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\page-workspaces.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\component-system.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\visual-corrections.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\shared-theme.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\editor-workflows.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\responsive-polish.css"><Filter>Web UI\Styles</Filter></None>
+    <None Include="src\control_center\web\styles\README.md"><Filter>Web UI\Styles</Filter></None>
     <None Include="resources\cursors\arrow.cur">
       <Filter>Resources\Cursors</Filter>
     </None>
@@ -233,6 +266,12 @@
       <Filter>Resources</Filter>
     </None>
     <None Include="tools\build_project.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\build_control_center_bundle.ps1">
+      <Filter>Tools</Filter>
+    </None>
+    <None Include="tools\build_control_center_styles.ps1">
       <Filter>Tools</Filter>
     </None>
     <None Include="tools\create_release_package.ps1">
