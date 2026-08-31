@@ -9,11 +9,7 @@
 #include "radar/RadarScreenSupport.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
 #include "insets/InsetWindow.hpp"
-#include <fstream>
-#include <iomanip>
-#include <sstream>
 #include <cctype>
-#include <limits>
 #include <commctrl.h>
 #include "rapidjson/document.h"
 #include "tags/TagColorRules.hpp"
@@ -31,6 +27,42 @@
 namespace TagColorRules = VsmrTagColorRules;
 
 #pragma comment(lib, "comctl32.lib")
+
+namespace
+{
+	class RadarConstructionGuard final
+	{
+	public:
+		RadarConstructionGuard(ULONG_PTR& gdiplusToken, std::uintptr_t screenToken) noexcept :
+			GdiplusToken(gdiplusToken),
+			ScreenToken(screenToken)
+		{
+		}
+
+		~RadarConstructionGuard() noexcept
+		{
+			if (ConstructionComplete)
+				return;
+
+			VsmrCrashReporter::ClearRadarState(ScreenToken);
+			if (GdiplusToken != 0)
+			{
+				GdiplusShutdown(GdiplusToken);
+				GdiplusToken = 0;
+			}
+		}
+
+		void Complete() noexcept
+		{
+			ConstructionComplete = true;
+		}
+
+	private:
+		ULONG_PTR& GdiplusToken;
+		std::uintptr_t ScreenToken = 0;
+		bool ConstructionComplete = false;
+	};
+}
 
 CPoint mouseLocation(0, 0);
 string TagBeingDragged;
@@ -102,6 +134,9 @@ CSMRRadar::CSMRRadar()
 		m_gdiplusToken = 0;
 		Logger::info("CSMRRadar::CSMRRadar() GdiplusStartup failed status=" + std::to_string(static_cast<int>(gdiplusStatus)));
 	}
+	RadarConstructionGuard constructionGuard(
+		m_gdiplusToken,
+		reinterpret_cast<std::uintptr_t>(this));
 
 	// Getting the DLL file folder
 	if (VsmrRuntimeContext::IsConfigured())
@@ -158,9 +193,10 @@ CSMRRadar::CSMRRadar()
 	possible_paths.push_back(fs::u8path(DllPath).parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
 	possible_paths.push_back(fs::u8path(DllPath).parent_path().parent_path().parent_path() / "ICAO" / "ICAO_Airlines.txt");
 
-	for (auto p : possible_paths) {
+	for (const auto& p : possible_paths) {
 		Logger::info("Trying to read callsigns from: " + p.u8string());
-		if (fs::exists(p)) {
+		std::error_code callsignPathError;
+		if (fs::is_regular_file(p, callsignPathError) && !callsignPathError) {
 			Logger::info("Found callsign file!");
 			Callsigns->readFile(p);
 
@@ -209,8 +245,8 @@ CSMRRadar::CSMRRadar()
 
 	this->CSMRRadar::LoadProfile("Default", false);
 
-	this->CSMRRadar::LoadCustomFont();
 	PublishCrashRadarState("main");
+	constructionGuard.Complete();
 
 }
 
@@ -233,15 +269,6 @@ CSMRRadar::~CSMRRadar()
 	BeginShutdown();
 	CloseVsmrControlCenterWindow();
 	DestroyVsmrControlCenterWindow();
-	try {
-		//this->OnAsrContentToBeSaved();
-		//this->EuroScopePlugInExitCustom();
-	}
-	catch (exception &e) {
-		stringstream s;
-		s << e.what() << endl;
-		AfxMessageBox(string("Error occurred " + s.str()).c_str());
-	}
 	RadarScreensOpened.erase(std::remove(RadarScreensOpened.begin(), RadarScreensOpened.end(), this), RadarScreensOpened.end());
 	RemoveInsetWindowProcHooksForRadar(this);
 	if (RadarScreensOpened.empty())

@@ -4,12 +4,14 @@
 
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <atomic>
+#include <memory>
 #include <string>
 
 bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
@@ -112,10 +114,22 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return NULL;
 
-	if (sDisplayName != nullptr && !strcmp(sDisplayName, VsmrPluginAvisoDisplayName)) {
-		CSMRRadar* rd = new CSMRRadar();
-		RadarScreensOpened.push_back(rd);
-		return rd;
+	if (sDisplayName != nullptr && !strcmp(sDisplayName, VsmrPluginAvisoDisplayName))
+	{
+		try
+		{
+			// Keep ownership local until the screen is published in the registry.
+			// This also tears down a partially registered screen if allocation fails.
+			std::unique_ptr<CSMRRadar> radar = std::make_unique<CSMRRadar>();
+			RadarScreensOpened.push_back(radar.get());
+			return radar.release();
+		}
+		catch (...)
+		{
+			// Never let construction or registry allocation unwind into EuroScope.
+			VsmrCrashReporter::RecordState("radar creation", "failed");
+			return NULL;
+		}
 	}
 
 	return NULL;

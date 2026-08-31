@@ -61,6 +61,26 @@ namespace
         bool attached_ = true;
     };
 
+    class ScopedCdcTextColor
+    {
+    public:
+        ScopedCdcTextColor(CDC& dc, COLORREF color) :
+            Dc(dc),
+            PreviousColor(dc.SetTextColor(color))
+        {
+        }
+
+        ~ScopedCdcTextColor()
+        {
+            if (PreviousColor != CLR_INVALID && Dc.GetSafeHdc() != nullptr)
+                Dc.SetTextColor(PreviousColor);
+        }
+
+    private:
+        CDC& Dc;
+        COLORREF PreviousColor = CLR_INVALID;
+    };
+
     bool IsTagBeingDragged(const std::string& callsign)
     {
         return TagBeingDragged == callsign;
@@ -434,14 +454,13 @@ void CSMRRadar::RenderRefreshTargets(
 	// Cache current view scaling once per frame for configured icon sizing.
 	double framePixPerMeter = 0.0;
 	{
-		RECT frameScaleArea = GetRadarArea();
-		RECT chatArea = GetChatArea();
-		frameScaleArea.bottom = chatArea.top;
-		double pxW = (frameScaleArea.right - frameScaleArea.left > 0)
-			? double(frameScaleArea.right - frameScaleArea.left)
+		CRect frameScaleArea(radarArea);
+		frameScaleArea.NormalizeRect();
+		double pxW = (frameScaleArea.Width() > 0)
+			? double(frameScaleArea.Width())
 			: 1.0;
-		double pxH = (frameScaleArea.bottom - frameScaleArea.top > 0)
-			? double(frameScaleArea.bottom - frameScaleArea.top)
+		double pxH = (frameScaleArea.Height() > 0)
+			? double(frameScaleArea.Height())
 			: 1.0;
 
 		CPosition dispSW, dispNE;
@@ -605,33 +624,41 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 	const std::function<void(const char*)>& setRefreshStage)
 {
 	CBrush BrushGrey(RGB(150, 150, 150));
-	COLORREF oldColor = dc.SetTextColor(RGB(33, 33, 33));
+	ScopedCdcTextColor textColorGuard(dc, RGB(33, 33, 33));
 
 	int TextHeight = dc.GetTextExtent("60").cy;
 	VSMR_REFRESH_LOG("RIMCAS Loop");
 	setRefreshStage("RIMCAS list rendering");
 	const double perfRimcasListStartMs = RefreshPerfNowMs();
+	const vector<int>& TimeDefinition = isLVP
+		? RimcasInstance->CountdownDefinitionLVP
+		: RimcasInstance->CountdownDefinition;
+	Color rimcasStageOneColor(255, 160, 90, 30);
+	Color rimcasStageTwoColor(255, 150, 0, 0);
+	bool rimcasColorsResolved = false;
+	auto resolveRimcasColors = [&]()
+	{
+		if (rimcasColorsResolved)
+			return;
+		rimcasColorsResolved = true;
+		const Value& activeProfile = CurrentConfig->getActiveProfile();
+		if (!activeProfile.IsObject() || !activeProfile.HasMember("rimcas") || !activeProfile["rimcas"].IsObject())
+			return;
+
+		const Value& rimcasConfig = activeProfile["rimcas"];
+		if (rimcasConfig.HasMember("background_color_stage_one") && rimcasConfig["background_color_stage_one"].IsObject())
+			rimcasStageOneColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_one"]);
+		if (rimcasConfig.HasMember("background_color_stage_two") && rimcasConfig["background_color_stage_two"].IsObject())
+			rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_two"]);
+	};
+
 	for (std::map<string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
 	{
 		const auto timeTableIt = RimcasInstance->TimeTable.find(it->first);
 		if (!it->second || timeTableIt == RimcasInstance->TimeTable.end() || timeTableIt->second.empty())
 			continue;
 		const auto& runwayTimeTable = timeTableIt->second;
-
-		vector<int> TimeDefinition = RimcasInstance->CountdownDefinition;
-		if (isLVP)
-			TimeDefinition = RimcasInstance->CountdownDefinitionLVP;
-		Color rimcasStageOneColor(255, 160, 90, 30);
-		Color rimcasStageTwoColor(255, 150, 0, 0);
-		const Value& activeProfile = CurrentConfig->getActiveProfile();
-		if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
-		{
-			const Value& rimcasConfig = activeProfile["rimcas"];
-			if (rimcasConfig.HasMember("background_color_stage_one") && rimcasConfig["background_color_stage_one"].IsObject())
-				rimcasStageOneColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_one"]);
-			if (rimcasConfig.HasMember("background_color_stage_two") && rimcasConfig["background_color_stage_two"].IsObject())
-				rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_two"]);
-		}
+		resolveRimcasColors();
 
 		auto timePopupAreaIt = TimePopupAreas.find(it->first);
 		if (timePopupAreaIt == TimePopupAreas.end())
@@ -651,7 +678,7 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 
 		int TopOffset = TextHeight;
 		// Drawing the times
-		for (auto &Time : TimeDefinition)
+		for (const auto& Time : TimeDefinition)
 		{
 			dc.SetTextColor(RGB(33, 33, 33));
 
@@ -1207,8 +1234,6 @@ void CSMRRadar::RenderRefreshTagsAndRdf(
 		performance.rdfMilliseconds += RefreshPerfNowMs() - perfRdfStartMs;
 	}
 
-	// Releasing the hDC after the drawing
-	graphics.ReleaseHDC(hDC);
 }
 
 void CSMRRadar::OnRefresh(HDC hDC, int Phase)

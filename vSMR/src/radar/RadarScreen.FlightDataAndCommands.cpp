@@ -249,5 +249,7 @@ void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	TagLeaderLineLength.erase(callsign);
 	tagAreas.erase(callsign);
 	tagCollisionAreas.erase(callsign);
+	previousTagSize.erase(callsign);
 	TagDragOffsetFromCenter.erase(callsign);
+	RecentlyAutoMovedTags.erase(callsign);
 }

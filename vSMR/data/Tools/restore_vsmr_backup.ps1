@@ -45,16 +45,28 @@ function Test-PathEqualOrChild([string]$Path, [string]$Parent) {
         $resolvedPath.StartsWith($resolvedParent + '\', [System.StringComparison]::OrdinalIgnoreCase)
 }
 
-function Get-PeMachine([string]$Path) {
+function Get-FileSha256([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Get-PeMachine([string]$Path, [string]$Description) {
     $stream = [System.IO.File]::OpenRead($Path)
     $reader = New-Object System.IO.BinaryReader($stream)
     try {
-        if ($reader.ReadUInt16() -ne 0x5A4D) { throw "Backup runtime has no DOS/PE header." }
+        if ($reader.ReadUInt16() -ne 0x5A4D) { throw "$Description has no DOS/PE header." }
         $stream.Position = 0x3C
         $peOffset = $reader.ReadInt32()
-        if ($peOffset -lt 0 -or $peOffset -gt ($stream.Length - 6)) { throw "Backup runtime has an invalid PE offset." }
+        if ($peOffset -lt 0 -or $peOffset -gt ($stream.Length - 6)) { throw "$Description has an invalid PE offset." }
         $stream.Position = $peOffset
-        if ($reader.ReadUInt32() -ne 0x00004550) { throw "Backup runtime has an invalid PE signature." }
+        if ($reader.ReadUInt32() -ne 0x00004550) { throw "$Description has an invalid PE signature." }
         return $reader.ReadUInt16()
     }
     finally {
@@ -101,17 +113,26 @@ if ($metadata.had_dll -and -not (Test-Path -LiteralPath (Join-Path $BackupDirect
 if ($metadata.had_data -and -not (Test-Path -LiteralPath (Join-Path $BackupDirectory "vSMR_Data") -PathType Container)) {
     throw "Backup metadata expects vSMR_Data, but the directory is missing."
 }
+$hasBackupReleaseMetadata = $false
+$backupReleaseMetadata = $null
+$hasBackupInstallationMetadata = $false
+$backupInstallationMetadata = $null
 if ($metadata.had_data) {
     $backupData = Join-Path $BackupDirectory "vSMR_Data"
     $backupReleaseMetadataPath = Join-Path $backupData "RELEASE-METADATA.json"
+    $backupInstallationMetadataPath = Join-Path $backupData "INSTALLATION.json"
     $backupRuntimePath = Join-Path $backupData "Runtime\vSMR.Runtime.dll"
     $hasBackupReleaseMetadata = Test-Path -LiteralPath $backupReleaseMetadataPath -PathType Leaf
+    $hasBackupInstallationMetadata = Test-Path -LiteralPath $backupInstallationMetadataPath -PathType Leaf
     $hasBackupRuntime = Test-Path -LiteralPath $backupRuntimePath -PathType Leaf
     if ($preserveTopLevelLoader -and (-not $hasBackupReleaseMetadata -or -not $hasBackupRuntime)) {
         throw "Backup does not contain a verifiable canonical vSMR runtime."
     }
     if ($hasBackupReleaseMetadata -ne $hasBackupRuntime) {
         throw "Backup contains an incomplete canonical runtime/metadata pair."
+    }
+    if ($hasBackupInstallationMetadata -and (-not $hasBackupReleaseMetadata -or -not $hasBackupRuntime)) {
+        throw "Backup installation metadata has no canonical release/runtime pair."
     }
     if ($hasBackupRuntime) {
         $backupReleaseMetadata = Get-Content -LiteralPath $backupReleaseMetadataPath -Raw | ConvertFrom-Json
@@ -122,9 +143,94 @@ if ($metadata.had_data) {
             $expectedRuntimeSize -le 0 -or
             $expectedRuntimeHash -notmatch '^[0-9a-f]{64}$' -or
             [int64](Get-Item -LiteralPath $backupRuntimePath).Length -ne $expectedRuntimeSize -or
-            (Get-FileHash -LiteralPath $backupRuntimePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedRuntimeHash -or
-            (Get-PeMachine $backupRuntimePath) -ne 0x014C) {
+            (Get-FileSha256 $backupRuntimePath) -ne $expectedRuntimeHash -or
+            (Get-PeMachine $backupRuntimePath "Backup runtime") -ne 0x014C) {
             throw "Backup canonical runtime failed metadata, size, SHA-256, or Win32 validation."
+        }
+    }
+    if ($hasBackupInstallationMetadata) {
+        $backupInstallationMetadata = Get-Content -LiteralPath $backupInstallationMetadataPath -Raw | ConvertFrom-Json
+    }
+}
+
+if (-not $preserveTopLevelLoader -and $metadata.had_dll) {
+    $backupLoaderPath = Join-Path $BackupDirectory "vSMR.dll"
+    $backupLoaderSize = [int64](Get-Item -LiteralPath $backupLoaderPath).Length
+    $backupLoaderHash = Get-FileSha256 $backupLoaderPath
+    if ($backupLoaderSize -le 0 -or
+        (Get-PeMachine $backupLoaderPath "Backup loader") -ne 0x014C) {
+        throw "Backup loader is not a Win32 vSMR DLL."
+    }
+
+    if ($hasBackupInstallationMetadata) {
+        $installationFields = @($backupInstallationMetadata.PSObject.Properties.Name)
+        $installedLoaderHash = ([string]$backupInstallationMetadata.installed_loader_sha256).ToLowerInvariant()
+        $packageLoaderHash = ([string]$backupInstallationMetadata.package_loader_sha256).ToLowerInvariant()
+        $hasInstalledLoaderSize = $installationFields -contains 'installed_loader_size'
+        $hasInstalledLoaderPath = $installationFields -contains 'installed_loader_relative_path'
+        if (($backupInstallationMetadata.schema_version -isnot [int] -and
+                $backupInstallationMetadata.schema_version -isnot [long]) -or
+            [int64]$backupInstallationMetadata.schema_version -ne 1 -or
+            $backupInstallationMetadata.product -isnot [string] -or
+            [string]$backupInstallationMetadata.product -ne 'vSMR' -or
+            $backupInstallationMetadata.installed_loader_version -isnot [string] -or
+            [string]::IsNullOrWhiteSpace([string]$backupInstallationMetadata.installed_loader_version) -or
+            $backupInstallationMetadata.package_loader_version -isnot [string] -or
+            [string]::IsNullOrWhiteSpace([string]$backupInstallationMetadata.package_loader_version) -or
+            $backupInstallationMetadata.loader_preserved -isnot [bool] -or
+            $backupInstallationMetadata.loader_matches_package -isnot [bool] -or
+            $installedLoaderHash -notmatch '^[0-9a-f]{64}$' -or
+            $packageLoaderHash -notmatch '^[0-9a-f]{64}$' -or
+            ($hasInstalledLoaderPath -and
+                [string]$backupInstallationMetadata.installed_loader_relative_path -ne 'vSMR.dll') -or
+            ($hasInstalledLoaderSize -and
+                (($backupInstallationMetadata.installed_loader_size -isnot [int] -and
+                    $backupInstallationMetadata.installed_loader_size -isnot [long]) -or
+                    [int64]$backupInstallationMetadata.installed_loader_size -le 0))) {
+            throw "Backup installation metadata contains invalid loader identity fields."
+        }
+        if ($backupLoaderHash -ne $installedLoaderHash -or
+            ($hasInstalledLoaderSize -and
+                $backupLoaderSize -ne [int64]$backupInstallationMetadata.installed_loader_size)) {
+            throw "Backup loader failed installed-loader size or SHA-256 validation."
+        }
+        if ([bool]$backupInstallationMetadata.loader_matches_package -ne
+                ($installedLoaderHash -eq $packageLoaderHash) -or
+            (-not [bool]$backupInstallationMetadata.loader_preserved -and
+                -not [bool]$backupInstallationMetadata.loader_matches_package)) {
+            throw "Backup installation metadata has inconsistent loader state."
+        }
+
+        # A runtime-only update deliberately keeps the installed loader, so its
+        # bytes may differ from the loader recorded in the new release package.
+        if ($hasBackupReleaseMetadata) {
+            $expectedLoaderHash = ([string]$backupReleaseMetadata.loader.sha256).ToLowerInvariant()
+            $expectedLoaderSize = [int64]$backupReleaseMetadata.loader.size
+            if ([string]$backupReleaseMetadata.loader.relative_path -ne 'vSMR.dll' -or
+                $expectedLoaderHash -notmatch '^[0-9a-f]{64}$' -or
+                $expectedLoaderSize -le 0 -or
+                $packageLoaderHash -ne $expectedLoaderHash) {
+                throw "Backup installation metadata does not match its recorded release package."
+            }
+            if ([bool]$backupInstallationMetadata.loader_matches_package -and
+                ($backupLoaderHash -ne $expectedLoaderHash -or
+                    $backupLoaderSize -ne $expectedLoaderSize)) {
+                throw "Backup loader does not match its recorded release package."
+            }
+        }
+    }
+    elseif ($hasBackupReleaseMetadata) {
+        # Legacy installs did not record the actual installed-loader identity.
+        # Their release metadata is authoritative only because the loader was
+        # not yet independently preserved across runtime-only updates.
+        $expectedLoaderHash = ([string]$backupReleaseMetadata.loader.sha256).ToLowerInvariant()
+        $expectedLoaderSize = [int64]$backupReleaseMetadata.loader.size
+        if ([string]$backupReleaseMetadata.loader.relative_path -ne 'vSMR.dll' -or
+            $expectedLoaderSize -le 0 -or
+            $expectedLoaderHash -notmatch '^[0-9a-f]{64}$' -or
+            $backupLoaderSize -ne $expectedLoaderSize -or
+            $backupLoaderHash -ne $expectedLoaderHash) {
+            throw "Backup loader failed release metadata, size, or SHA-256 validation."
         }
     }
 }

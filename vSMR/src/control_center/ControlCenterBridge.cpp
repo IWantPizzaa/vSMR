@@ -3,6 +3,7 @@
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "control_center/ControlCenterMessageProtocol.hpp"
+#include "control_center/WebMessageValidation.hpp"
 
 #include "rapidjson/document.h"
 
@@ -10,7 +11,6 @@
 
 using VsmrControlCenterProtocol::DecodedEnvelope;
 using VsmrControlCenterProtocol::DecodeEnvelope;
-using VsmrControlCenterBridgeInternal::kMaximumBridgeMessageBytes;
 
 VsmrControlCenterBridge::VsmrControlCenterBridge(
 	CSMRRadar* owner,
@@ -28,7 +28,8 @@ void VsmrControlCenterBridge::SetOwner(CSMRRadar* owner)
 
 bool VsmrControlCenterBridge::HandleWebMessage(const std::string& messageJson)
 {
-	if (messageJson.empty() || messageJson.size() > kMaximumBridgeMessageBytes)
+	if (messageJson.empty() ||
+		messageJson.size() > VsmrWebMessageValidation::MaximumInboundMessageBytes)
 	{
 		State->SendError("", "Bridge message is empty or exceeds the 32 MB limit.");
 		return false;

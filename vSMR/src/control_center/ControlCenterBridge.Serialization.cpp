@@ -243,7 +243,8 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 	healthy = false;
 	message = "The active airport AVISO source is missing or invalid; the previous overlay remains active when available.";
 	std::string validatedDocumentJson;
-	if (exists && stampValid && size <= kMaximumBridgeMessageBytes)
+	if (exists && stampValid &&
+		size <= AvisoDocumentModel::MaximumSerializedInputBytes)
 	{
 		std::string avisoJson;
 		rapidjson::Document parsed;
@@ -293,7 +294,8 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 			}
 		}
 	}
-	else if (exists && size > kMaximumBridgeMessageBytes)
+	else if (exists &&
+		size > AvisoDocumentModel::MaximumSerializedInputBytes)
 	{
 		message = "The active airport AVISO source exceeds the supported 32 MB limit.";
 	}
