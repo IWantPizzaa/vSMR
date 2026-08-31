@@ -1,4 +1,6 @@
 #include "updater/UpdaterCore.hpp"
+#include "updater/UpdaterTransport.hpp"
+#include "updater/UpdaterVerification.hpp"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -7,10 +9,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <wincrypt.h>
 #include <winhttp.h>
-#include <wintrust.h>
-#include <softpub.h>
 #include <shlobj.h>
 #include <bcrypt.h>
 
@@ -34,15 +33,9 @@
 #include <utility>
 #include <vector>
 
-#pragma comment(lib, "crypt32.lib")
-#pragma comment(lib, "winhttp.lib")
-#pragma comment(lib, "wintrust.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "bcrypt.lib")
-
-#ifndef VSMR_UPDATE_SIGNER_CERT_SHA256
-#define VSMR_UPDATE_SIGNER_CERT_SHA256 ""
-#endif
 
 namespace fs = std::filesystem;
 
@@ -96,59 +89,6 @@ namespace vsmr::updater
 
 		private:
 			HANDLE value_ = nullptr;
-		};
-
-		class InternetHandle
-		{
-		public:
-			InternetHandle() = default;
-			explicit InternetHandle(HINTERNET value) noexcept : value_(value) {}
-			~InternetHandle() { reset(); }
-			InternetHandle(const InternetHandle&) = delete;
-			InternetHandle& operator=(const InternetHandle&) = delete;
-			InternetHandle(InternetHandle&& other) noexcept : value_(other.release()) {}
-			InternetHandle& operator=(InternetHandle&& other) noexcept
-			{
-				if (this != &other)
-					reset(other.release());
-				return *this;
-			}
-			HINTERNET get() const noexcept { return value_; }
-			explicit operator bool() const noexcept { return value_ != nullptr; }
-			HINTERNET release() noexcept
-			{
-				HINTERNET value = value_;
-				value_ = nullptr;
-				return value;
-			}
-			void reset(HINTERNET value = nullptr) noexcept
-			{
-				if (value_ != nullptr)
-					::WinHttpCloseHandle(value_);
-				value_ = value;
-			}
-
-		private:
-			HINTERNET value_ = nullptr;
-		};
-
-		class CertContextHandle
-		{
-		public:
-			CertContextHandle() = default;
-			explicit CertContextHandle(PCCERT_CONTEXT value) noexcept : value_(value) {}
-			~CertContextHandle()
-			{
-				if (value_ != nullptr)
-					::CertFreeCertificateContext(value_);
-			}
-			CertContextHandle(const CertContextHandle&) = delete;
-			CertContextHandle& operator=(const CertContextHandle&) = delete;
-			PCCERT_CONTEXT get() const noexcept { return value_; }
-			explicit operator bool() const noexcept { return value_ != nullptr; }
-
-		private:
-			PCCERT_CONTEXT value_ = nullptr;
 		};
 
 		struct SemVerIdentifier
@@ -235,16 +175,7 @@ namespace vsmr::updater
 			std::uint32_t runtimeAbi = 0;
 		};
 
-		struct HttpResponse
-		{
-			DWORD statusCode = 0;
-			std::vector<std::uint8_t> body;
-			std::string etag;
-			std::string retryAfter;
-			std::string rateLimitReset;
-			std::wstring finalUrl;
-			std::string error;
-		};
+		using HttpResponse = transport::Response;
 
 		fs::path GetProductionSessionLockStorageRoot() noexcept;
 
@@ -1023,64 +954,7 @@ namespace vsmr::updater
 			return true;
 		}
 
-		std::string QueryHeader(HINTERNET request, DWORD query)
-		{
-			DWORD size = 0;
-			::WinHttpQueryHeaders(
-				request, query, WINHTTP_HEADER_NAME_BY_INDEX,
-				nullptr, &size, WINHTTP_NO_HEADER_INDEX);
-			if (::GetLastError() != ERROR_INSUFFICIENT_BUFFER || size < sizeof(wchar_t))
-				return {};
-			std::vector<wchar_t> buffer(size / sizeof(wchar_t) + 1, L'\0');
-			if (!::WinHttpQueryHeaders(
-				request, query, WINHTTP_HEADER_NAME_BY_INDEX,
-				buffer.data(), &size, WINHTTP_NO_HEADER_INDEX))
-			{
-				return {};
-			}
-			return WideToUtf8(std::wstring(buffer.data()));
-		}
-
-		std::string QueryCustomHeader(HINTERNET request, const wchar_t* name)
-		{
-			DWORD size = 0;
-			::WinHttpQueryHeaders(
-				request, WINHTTP_QUERY_CUSTOM, name,
-				nullptr, &size, WINHTTP_NO_HEADER_INDEX);
-			if (::GetLastError() != ERROR_INSUFFICIENT_BUFFER || size < sizeof(wchar_t))
-				return {};
-			std::vector<wchar_t> buffer(size / sizeof(wchar_t) + 1, L'\0');
-			if (!::WinHttpQueryHeaders(
-				request, WINHTTP_QUERY_CUSTOM, name,
-				buffer.data(), &size, WINHTTP_NO_HEADER_INDEX))
-			{
-				return {};
-			}
-			return WideToUtf8(std::wstring(buffer.data()));
-		}
-
-		std::wstring ResolveRedirect(const std::wstring& currentUrl, const std::string& location)
-		{
-			const std::wstring wideLocation = Utf8ToWide(location);
-			if (wideLocation.empty())
-				return {};
-			if (wideLocation.rfind(L"https://", 0) == 0)
-				return wideLocation;
-			ParsedUrl current;
-			if (!ParseAllowedHttpsUrl(currentUrl, current))
-				return {};
-			if (wideLocation.front() == L'/')
-				return L"https://" + current.host + wideLocation;
-			return {};
-		}
-
-		bool WriteDownloadedChunk(HANDLE file, const BYTE* data, DWORD size)
-		{
-			DWORD written = 0;
-			return ::WriteFile(file, data, size, &written, nullptr) && written == size;
-		}
-
-		HttpResponse HttpGet(
+		HttpResponse HttpGetTransport(
 			Context& context,
 			const std::wstring& initialUrl,
 			DWORD timeoutMs,
@@ -1089,214 +963,20 @@ namespace vsmr::updater
 			const fs::path& outputFile = {},
 			std::uint64_t expectedSize = 0)
 		{
-			HttpResponse response;
-			std::wstring url = initialUrl;
-			const ULONGLONG started = ::GetTickCount64();
-			auto remaining = [&]() -> DWORD {
-				const ULONGLONG elapsed = ::GetTickCount64() - started;
-				if (elapsed >= timeoutMs)
-					return 0;
-				return timeoutMs - static_cast<DWORD>(elapsed);
-			};
-
-			InternetHandle session(::WinHttpOpen(
-				L"vSMR-Updater/1.0 (+https://github.com/IWantPizzaa/vSMR)",
-				WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-				WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
-			if (!session)
-			{
-				response.error = "winhttp_session";
-				return response;
-			}
-			::WinHttpSetTimeouts(session.get(), 3000, 3000, 3000, static_cast<int>(timeoutMs));
-
-			for (int redirect = 0; redirect <= 5; ++redirect)
-			{
-				if (context.cancelled || remaining() == 0)
-				{
-					response.error = context.cancelled ? "cancelled" : "timeout";
-					return response;
-				}
-				ParsedUrl parsed;
-				if (!ParseAllowedHttpsUrl(url, parsed))
-				{
-					response.error = "unsafe_url";
-					return response;
-				}
-				InternetHandle connection(::WinHttpConnect(
-					session.get(), parsed.host.c_str(), parsed.port, 0));
-				if (!connection)
-				{
-					response.error = "connect_failed";
-					return response;
-				}
-				InternetHandle request(::WinHttpOpenRequest(
-					connection.get(), L"GET", parsed.resource.c_str(), nullptr,
-					WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
-				if (!request)
-				{
-					response.error = "request_failed";
-					return response;
-				}
-				DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-				::WinHttpSetOption(request.get(), WINHTTP_OPTION_REDIRECT_POLICY,
-					&redirectPolicy, sizeof(redirectPolicy));
-				const DWORD operationRemaining = remaining();
-				::WinHttpSetTimeouts(request.get(), 3000, 3000, 3000, operationRemaining);
-
-				std::wstring headers =
-					L"Accept: application/vnd.github+json\r\n"
-					L"X-GitHub-Api-Version: 2022-11-28\r\n";
-				if (!ifNoneMatch.empty())
-					headers += L"If-None-Match: " + Utf8ToWide(ifNoneMatch) + L"\r\n";
-
-				std::uint64_t resumeOffset = 0;
-				if (!outputFile.empty())
-				{
-					std::error_code error;
-					resumeOffset = fs::file_size(outputFile, error);
-					if (error || resumeOffset >= maximumBytes ||
-						(expectedSize > 0 && resumeOffset >= expectedSize))
-					{
-						resumeOffset = 0;
-					}
-					if (resumeOffset > 0)
-						headers += L"Range: bytes=" + std::to_wstring(resumeOffset) + L"-\r\n";
-				}
-
-				BOOL ok = ::WinHttpSendRequest(
-					request.get(), headers.c_str(), static_cast<DWORD>(-1),
-					WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-				if (ok)
-					ok = ::WinHttpReceiveResponse(request.get(), nullptr);
-				if (!ok)
-				{
-					response.error = ::GetLastError() == ERROR_WINHTTP_TIMEOUT
-						? "timeout" : "network_error";
-					return response;
-				}
-				DWORD status = 0;
-				DWORD statusSize = sizeof(status);
-				if (!::WinHttpQueryHeaders(
-					request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-					WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize,
-					WINHTTP_NO_HEADER_INDEX))
-				{
-					response.error = "missing_status";
-					return response;
-				}
-				if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308)
-				{
-					const std::string location = QueryHeader(request.get(), WINHTTP_QUERY_LOCATION);
-					url = ResolveRedirect(url, location);
-					if (url.empty())
-					{
-						response.error = "unsafe_redirect";
-						return response;
-					}
-					continue;
-				}
-
-				response.statusCode = status;
-				response.etag = QueryHeader(request.get(), WINHTTP_QUERY_ETAG);
-				response.retryAfter = QueryHeader(request.get(), WINHTTP_QUERY_RETRY_AFTER);
-				response.rateLimitReset = QueryCustomHeader(request.get(), L"X-RateLimit-Reset");
-				response.finalUrl = url;
-				if (status == 304 || status == 403 || status == 429 || status < 200 || status >= 300)
-					return response;
-
-				const bool append = !outputFile.empty() && resumeOffset > 0 && status == 206;
-				if (!append)
-					resumeOffset = 0;
-				UniqueHandle file;
-				if (!outputFile.empty())
-				{
-					std::error_code error;
-					fs::create_directories(outputFile.parent_path(), error);
-					if (error)
-					{
-						response.error = "staging_directory";
-						return response;
-					}
-					file.reset(::CreateFileW(
-						outputFile.c_str(), GENERIC_WRITE, 0, nullptr,
-						append ? OPEN_EXISTING : CREATE_ALWAYS,
-						FILE_ATTRIBUTE_NORMAL, nullptr));
-					if (!file)
-					{
-						response.error = "staging_file";
-						return response;
-					}
-					if (append)
-						::SetFilePointer(file.get(), 0, nullptr, FILE_END);
-				}
-
-				std::uint64_t received = resumeOffset;
-				int lastPercent = -1;
-				std::array<BYTE, 64 * 1024> buffer{};
-				for (;;)
-				{
-					if (context.cancelled || remaining() == 0)
-					{
-						response.error = context.cancelled ? "cancelled" : "timeout";
-						return response;
-					}
-					DWORD read = 0;
-					if (!::WinHttpReadData(request.get(), buffer.data(),
-						static_cast<DWORD>(buffer.size()), &read))
-					{
-						response.error = "read_failed";
-						return response;
-					}
-					if (read == 0)
-						break;
-					if (received > maximumBytes - read)
-					{
-						response.error = "response_too_large";
-						return response;
-					}
-					received += read;
-					if (file)
-					{
-						if (!WriteDownloadedChunk(file.get(), buffer.data(), read))
-						{
-							response.error = "write_failed";
-							return response;
-						}
-					}
-					else
-					{
-						response.body.insert(response.body.end(), buffer.begin(), buffer.begin() + read);
-					}
-					if (expectedSize > 0 && !outputFile.empty())
-					{
-						const int percent = static_cast<int>((std::min)(100ULL, received * 100ULL / expectedSize));
-						if (percent >= lastPercent + 5)
-						{
-							lastPercent = percent;
-							if (!Report(context, ProgressStage::Downloading, percent,
-								L"Downloading vSMR update..."))
-							{
-								response.error = "cancelled";
-								return response;
-							}
-						}
-					}
-				}
-				if (file && !::FlushFileBuffers(file.get()))
-				{
-					response.error = "flush_failed";
-					return response;
-				}
-				if (expectedSize > 0 && received != expectedSize)
-				{
-					response.error = "size_mismatch";
-					return response;
-				}
-				return response;
-			}
-			response.error = "too_many_redirects";
-			return response;
+			transport::Request request;
+			request.initialUrl = initialUrl;
+			request.timeoutMs = timeoutMs;
+			request.maximumBytes = maximumBytes;
+			request.ifNoneMatch = ifNoneMatch;
+			request.outputFile = outputFile;
+			request.expectedSize = expectedSize;
+			return transport::HttpGet(
+				request,
+				[&context]() { return context.cancelled; },
+				[&context](int percent) {
+					return Report(context, ProgressStage::Downloading, percent,
+						L"Downloading vSMR update...");
+				});
 		}
 
 		const ReleaseAsset* FindAsset(const Release& release, const std::string& name)
@@ -1404,7 +1084,7 @@ namespace vsmr::updater
 				error = "deadline";
 				return false;
 			}
-			HttpResponse response = HttpGet(
+			HttpResponse response = HttpGetTransport(
 				context, kApiUrl, timeout, kMaximumMetadataBytes, etag);
 			std::vector<std::uint8_t> body;
 			if (response.statusCode == 304)
@@ -1445,223 +1125,6 @@ namespace vsmr::updater
 			if (releases.empty())
 			{
 				error = "release_response_invalid";
-				return false;
-			}
-			return true;
-		}
-
-		bool Sha256Bytes(const BYTE* bytes, std::size_t size, std::string& digest)
-		{
-			BCRYPT_ALG_HANDLE algorithm = nullptr;
-			BCRYPT_HASH_HANDLE hash = nullptr;
-			std::vector<BYTE> hashObject;
-			std::array<BYTE, 32> result{};
-			DWORD objectLength = 0;
-			DWORD resultLength = 0;
-			bool success = false;
-			if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
-				goto cleanup;
-			if (BCryptGetProperty(
-				algorithm, BCRYPT_OBJECT_LENGTH,
-				reinterpret_cast<PUCHAR>(&objectLength), sizeof(objectLength),
-				&resultLength, 0) < 0 || objectLength == 0)
-			{
-				goto cleanup;
-			}
-			hashObject.resize(objectLength);
-			if (BCryptCreateHash(
-				algorithm, &hash, hashObject.data(), objectLength,
-				nullptr, 0, 0) < 0)
-			{
-				goto cleanup;
-			}
-			while (size > 0)
-			{
-				const ULONG chunk = static_cast<ULONG>((std::min)(size, static_cast<std::size_t>(1024 * 1024)));
-				if (BCryptHashData(hash, const_cast<PUCHAR>(bytes), chunk, 0) < 0)
-					goto cleanup;
-				bytes += chunk;
-				size -= chunk;
-			}
-			if (BCryptFinishHash(hash, result.data(), static_cast<ULONG>(result.size()), 0) < 0)
-				goto cleanup;
-			digest = Hex(result.data(), static_cast<DWORD>(result.size()));
-			success = true;
-
-		cleanup:
-			if (hash != nullptr)
-				BCryptDestroyHash(hash);
-			if (algorithm != nullptr)
-				BCryptCloseAlgorithmProvider(algorithm, 0);
-			return success;
-		}
-
-		bool Sha256File(const fs::path& path, std::string& digest)
-		{
-			UniqueHandle file(::CreateFileW(
-				path.c_str(), GENERIC_READ, FILE_SHARE_READ,
-				nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
-			if (!file)
-				return false;
-			BCRYPT_ALG_HANDLE algorithm = nullptr;
-			BCRYPT_HASH_HANDLE hash = nullptr;
-			std::vector<BYTE> hashObject;
-			std::array<BYTE, 32> result{};
-			std::array<BYTE, 128 * 1024> buffer{};
-			DWORD objectLength = 0;
-			DWORD resultLength = 0;
-			bool success = false;
-			if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
-				goto cleanup;
-			if (BCryptGetProperty(
-				algorithm, BCRYPT_OBJECT_LENGTH,
-				reinterpret_cast<PUCHAR>(&objectLength), sizeof(objectLength),
-				&resultLength, 0) < 0 || objectLength == 0)
-			{
-				goto cleanup;
-			}
-			hashObject.resize(objectLength);
-			if (BCryptCreateHash(
-				algorithm, &hash, hashObject.data(), objectLength,
-				nullptr, 0, 0) < 0)
-			{
-				goto cleanup;
-			}
-			for (;;)
-			{
-				DWORD read = 0;
-				if (!::ReadFile(file.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr))
-					goto cleanup;
-				if (read == 0)
-					break;
-				if (BCryptHashData(hash, buffer.data(), read, 0) < 0)
-					goto cleanup;
-			}
-			if (BCryptFinishHash(hash, result.data(), static_cast<ULONG>(result.size()), 0) < 0)
-				goto cleanup;
-			digest = Hex(result.data(), static_cast<DWORD>(result.size()));
-			success = true;
-
-		cleanup:
-			if (hash != nullptr)
-				BCryptDestroyHash(hash);
-			if (algorithm != nullptr)
-				BCryptCloseAlgorithmProvider(algorithm, 0);
-			return success;
-		}
-
-		bool VerifyAuthenticodeAndGetSignerHash(
-			const fs::path& file,
-			std::string& signerCertificateSha256)
-		{
-			WINTRUST_FILE_INFO fileInfo{};
-			fileInfo.cbStruct = sizeof(fileInfo);
-			fileInfo.pcwszFilePath = file.c_str();
-			WINTRUST_DATA trustData{};
-			trustData.cbStruct = sizeof(trustData);
-			trustData.dwUIChoice = WTD_UI_NONE;
-			trustData.fdwRevocationChecks = WTD_REVOKE_NONE;
-			trustData.dwUnionChoice = WTD_CHOICE_FILE;
-			trustData.pFile = &fileInfo;
-			trustData.dwStateAction = WTD_STATEACTION_VERIFY;
-			trustData.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
-			GUID policy = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-			const LONG trustStatus = ::WinVerifyTrust(nullptr, &policy, &trustData);
-			trustData.dwStateAction = WTD_STATEACTION_CLOSE;
-			::WinVerifyTrust(nullptr, &policy, &trustData);
-			if (trustStatus != ERROR_SUCCESS)
-				return false;
-
-			HCERTSTORE store = nullptr;
-			HCRYPTMSG message = nullptr;
-			DWORD encoding = 0;
-			DWORD contentType = 0;
-			DWORD formatType = 0;
-			if (!::CryptQueryObject(
-				CERT_QUERY_OBJECT_FILE, file.c_str(),
-				CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
-				CERT_QUERY_FORMAT_FLAG_BINARY, 0,
-				&encoding, &contentType, &formatType,
-				&store, &message, nullptr))
-			{
-				return false;
-			}
-			DWORD signerSize = 0;
-			bool success = false;
-			if (::CryptMsgGetParam(message, CMSG_SIGNER_INFO_PARAM, 0, nullptr, &signerSize) && signerSize > 0)
-			{
-				std::vector<BYTE> signerBuffer(signerSize);
-				if (::CryptMsgGetParam(message, CMSG_SIGNER_INFO_PARAM, 0, signerBuffer.data(), &signerSize))
-				{
-					const auto signer = reinterpret_cast<PCMSG_SIGNER_INFO>(signerBuffer.data());
-					CERT_INFO certificateInfo{};
-					certificateInfo.Issuer = signer->Issuer;
-					certificateInfo.SerialNumber = signer->SerialNumber;
-					CertContextHandle certificate(::CertFindCertificateInStore(
-						store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0,
-						CERT_FIND_SUBJECT_CERT, &certificateInfo, nullptr));
-					if (certificate)
-						success = Sha256Bytes(
-							certificate.get()->pbCertEncoded,
-							certificate.get()->cbCertEncoded,
-							signerCertificateSha256);
-				}
-			}
-			if (message != nullptr)
-				::CryptMsgClose(message);
-			if (store != nullptr)
-				::CertCloseStore(store, 0);
-			return success;
-		}
-
-		std::string ResolveTrustedSignerHash(const StartupOptions& options)
-		{
-			std::string configured = ToLowerAscii(VSMR_UPDATE_SIGNER_CERT_SHA256);
-			configured.erase(std::remove_if(configured.begin(), configured.end(), [](unsigned char character) {
-				return std::isspace(character) != 0;
-			}), configured.end());
-			if (IsHex(configured, 64))
-				return configured;
-			std::string signer;
-			if (VerifyAuthenticodeAndGetSignerHash(options.loaderPath, signer) && IsHex(signer, 64))
-				return ToLowerAscii(signer);
-			return {};
-		}
-
-		bool VerifyDetachedCms(
-			const std::vector<std::uint8_t>& content,
-			const std::vector<std::uint8_t>& signature,
-			const std::string& expectedSignerSha256,
-			std::string& error)
-		{
-			if (!IsHex(expectedSignerSha256, 64))
-			{
-				error = "signature_required";
-				return false;
-			}
-			CRYPT_VERIFY_MESSAGE_PARA parameters{};
-			parameters.cbSize = sizeof(parameters);
-			parameters.dwMsgAndCertEncodingType = X509_ASN_ENCODING | PKCS_7_ASN_ENCODING;
-			const BYTE* contents[] = { content.data() };
-			DWORD contentSizes[] = { static_cast<DWORD>(content.size()) };
-			PCCERT_CONTEXT signerRaw = nullptr;
-			if (!::CryptVerifyDetachedMessageSignature(
-				&parameters, 0,
-				signature.data(), static_cast<DWORD>(signature.size()),
-				1, contents, contentSizes, &signerRaw))
-			{
-				error = "manifest_signature_invalid";
-				return false;
-			}
-			CertContextHandle signer(signerRaw);
-			std::string actualSigner;
-			if (!Sha256Bytes(
-				signer.get()->pbCertEncoded,
-				signer.get()->cbCertEncoded,
-				actualSigner) ||
-				ToLowerAscii(actualSigner) != ToLowerAscii(expectedSignerSha256))
-			{
-				error = "manifest_signer_mismatch";
 				return false;
 			}
 			return true;
@@ -1793,7 +1256,7 @@ namespace vsmr::updater
 				error = "deadline";
 				return false;
 			}
-			HttpResponse manifestResponse = HttpGet(
+			HttpResponse manifestResponse = HttpGetTransport(
 				context, manifestAsset->url, timeout, kMaximumManifestBytes);
 			if (manifestResponse.statusCode != 200 || !manifestResponse.error.empty() ||
 				manifestResponse.body.size() != manifestAsset->size)
@@ -1807,7 +1270,7 @@ namespace vsmr::updater
 				error = "deadline";
 				return false;
 			}
-			HttpResponse signatureResponse = HttpGet(
+			HttpResponse signatureResponse = HttpGetTransport(
 				context, signatureAsset->url, timeout, kMaximumSignatureBytes);
 			if (signatureResponse.statusCode != 200 || !signatureResponse.error.empty() ||
 				signatureResponse.body.size() != signatureAsset->size)
@@ -1815,7 +1278,7 @@ namespace vsmr::updater
 				error = signatureResponse.error.empty() ? "signature_download_failed" : signatureResponse.error;
 				return false;
 			}
-			if (!VerifyDetachedCms(
+			if (!verification::VerifyDetachedCms(
 				manifestResponse.body, signatureResponse.body,
 				trustedSigner, error))
 			{
@@ -2583,7 +2046,7 @@ finally { $zip.Dispose() }
 				L"vSMR_Data" / L"Runtime" / L"vSMR.Runtime.dll";
 			std::string expectedRuntimeHash;
 			if (!IsRegularFile(backupRuntime) || !IsX86PortableExecutable(backupRuntime) ||
-				!Sha256File(backupRuntime, expectedRuntimeHash) ||
+				!verification::Sha256File(backupRuntime, expectedRuntimeHash) ||
 				(!update.previousRuntimeSha256.empty() &&
 					ToLowerAscii(expectedRuntimeHash) != ToLowerAscii(update.previousRuntimeSha256)))
 			{
@@ -2626,7 +2089,7 @@ finally { $zip.Dispose() }
 			std::string restoredRuntimeHash;
 			if (!IsRegularFile(restoredRuntimePath) ||
 				!IsX86PortableExecutable(restoredRuntimePath) ||
-				!Sha256File(restoredRuntimePath, restoredRuntimeHash) ||
+				!verification::Sha256File(restoredRuntimePath, restoredRuntimeHash) ||
 				ToLowerAscii(restoredRuntimeHash) != ToLowerAscii(expectedRuntimeHash))
 			{
 				error = "restored_runtime_missing";
@@ -2717,7 +2180,7 @@ finally { $zip.Dispose() }
 				}
 			}
 			std::string loaderHash;
-			if (!Sha256File(packagedLoader, loaderHash) ||
+			if (!verification::Sha256File(packagedLoader, loaderHash) ||
 				ToLowerAscii(loaderHash) != manifest.loaderSha256)
 			{
 				error = "packaged_loader_hash_mismatch";
@@ -2748,7 +2211,7 @@ finally { $zip.Dispose() }
 				return false;
 			}
 			std::string digest;
-			if (!Sha256File(archive, digest) || ToLowerAscii(digest) != manifest.archiveSha256)
+			if (!verification::Sha256File(archive, digest) || ToLowerAscii(digest) != manifest.archiveSha256)
 			{
 				error = "archive_hash_mismatch";
 				return false;
@@ -2806,7 +2269,7 @@ finally { $zip.Dispose() }
 				error = "deadline";
 				return false;
 			}
-			HttpResponse response = HttpGet(
+			HttpResponse response = HttpGetTransport(
 				context, asset->url, timeout, kMaximumArchiveBytes,
 				{}, partial, manifest.archiveSize);
 			if ((response.statusCode != 200 && response.statusCode != 206) || !response.error.empty())
@@ -2974,7 +2437,7 @@ finally { $zip.Dispose() }
 						if (ReadReleaseVersion(startupOptions.dataRoot, activeVersion) &&
 							SameSemVerIdentity(activeVersion, unhealthy.previousVersion) &&
 							IsX86PortableExecutable(startupOptions.canonicalRuntimePath) &&
-							Sha256File(startupOptions.canonicalRuntimePath, activeRuntimeHash) &&
+							verification::Sha256File(startupOptions.canonicalRuntimePath, activeRuntimeHash) &&
 							ToLowerAscii(activeRuntimeHash) == ToLowerAscii(unhealthy.previousRuntimeSha256))
 						{
 							::DeleteFileW(pendingHealth.c_str());
@@ -3172,7 +2635,7 @@ finally { $zip.Dispose() }
 				result.availableVersion = remoteRelease->version.normalized;
 				context.state.availableVersion = result.availableVersion;
 				context.state.releaseUrl = remoteRelease->htmlUrl;
-				const std::string trustedSigner = ResolveTrustedSignerHash(startupOptions);
+				const std::string trustedSigner = verification::ResolveTrustedSignerHash(startupOptions);
 				if (trustedSigner.empty())
 				{
 					return FailedOpen(
@@ -3246,7 +2709,7 @@ finally { $zip.Dispose() }
 				return FailedOpen(context, result, error, L"The downloaded vSMR package failed validation.");
 			}
 			std::string expectedRuntimeHash;
-			if (!Sha256File(
+			if (!verification::Sha256File(
 				packageRoot / L"vSMR_Data" / L"Runtime" / L"vSMR.Runtime.dll",
 				expectedRuntimeHash))
 			{
@@ -3311,7 +2774,7 @@ finally { $zip.Dispose() }
 			result.previousRuntimePath = startupOptions.canonicalRuntimePath;
 			if (!ReadReleaseVersion(startupOptions.dataRoot, result.previousVersion))
 				result.previousVersion = startupOptions.currentVersion;
-			if (!Sha256File(startupOptions.canonicalRuntimePath, result.previousRuntimeSha256))
+			if (!verification::Sha256File(startupOptions.canonicalRuntimePath, result.previousRuntimeSha256))
 			{
 				return FailedOpen(
 					context, result, "current_runtime_hash_unavailable",
@@ -3332,7 +2795,7 @@ finally { $zip.Dispose() }
 				if (ReadReleaseVersion(startupOptions.dataRoot, activeVersion) &&
 					SameSemVerIdentity(activeVersion, result.previousVersion) &&
 					IsX86PortableExecutable(startupOptions.canonicalRuntimePath) &&
-					Sha256File(startupOptions.canonicalRuntimePath, activeRuntimeHash) &&
+					verification::Sha256File(startupOptions.canonicalRuntimePath, activeRuntimeHash) &&
 					ToLowerAscii(activeRuntimeHash) == ToLowerAscii(result.previousRuntimeSha256))
 				{
 					::DeleteFileW(result.healthMarkerPath.c_str());
@@ -3367,7 +2830,7 @@ finally { $zip.Dispose() }
 				!SameSemVerIdentity(installedVersion, manifest.version.normalized) ||
 				!IsRegularFile(startupOptions.canonicalRuntimePath) ||
 				!IsX86PortableExecutable(startupOptions.canonicalRuntimePath) ||
-				!Sha256File(startupOptions.canonicalRuntimePath, installedRuntimeHash) ||
+				!verification::Sha256File(startupOptions.canonicalRuntimePath, installedRuntimeHash) ||
 				ToLowerAscii(installedRuntimeHash) != ToLowerAscii(expectedRuntimeHash))
 			{
 				result.selectedVersion = manifest.version.normalized;

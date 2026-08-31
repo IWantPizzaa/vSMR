@@ -1,12 +1,12 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/ResourceIds.h"
 #include "radar/RadarScreen.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aircraft/GroundState.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashRuntime.hpp"
 
-extern std::vector<CSMRRadar*> RadarScreensOpened;
 extern CPoint mouseLocation;
 extern string TagBeingDragged;
 extern HCURSOR smrCursor;

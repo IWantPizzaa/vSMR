@@ -61,6 +61,7 @@ protected:
 private:
 	struct WebViewHostState;
 	struct GithubDownloadResult;
+	static constexpr UINT kGithubDownloadCompleteMessage = WM_APP + 0x552;
 
 	void InitializeWebView();
 	void WebViewThreadMain();
