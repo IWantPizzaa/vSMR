@@ -21,9 +21,7 @@
 #include "radar/RadarGeometry.hpp"
 #include "scene/RadarScene.hpp"
 #include <memory>
-#include <thread>
 #include <mutex>
-#include <condition_variable>
 #include <atomic>
 #include "shared/logging/Logger.hpp"
 #include "tags/TagDataTypes.hpp"
@@ -43,6 +41,14 @@ class VsmrControlCenterBridgeImpl;
 struct AvisoViewportState;
 struct VsmrRadarInteractionAccess;
 struct VsmrRadarPresetAccess;
+namespace VsmrTargetRendering
+{
+	struct IconCacheCallbacks;
+}
+namespace VsmrAviso
+{
+	class AvisoRasterPipeline;
+}
 
 class CSMRRadar :
 	public EuroScopePlugIn::CRadarScreen
@@ -188,34 +194,10 @@ private:
 	double AvisoGeoJsonMinLatitude = 0.0;
 	double AvisoGeoJsonMaxLongitude = 0.0;
 	double AvisoGeoJsonMaxLatitude = 0.0;
-	std::mutex AvisoGeoJsonRenderMutex;
-	std::condition_variable AvisoGeoJsonRenderCondition;
-	std::thread AvisoGeoJsonRenderThread;
+	std::unique_ptr<VsmrAviso::AvisoRasterPipeline> AvisoGeoJsonRenderPipeline;
 	std::atomic<HWND> AvisoRefreshHostWindow{ nullptr };
 	std::atomic<bool> ShutdownRequested{ false };
-	bool AvisoGeoJsonRenderThreadStarted = false;
-	bool AvisoGeoJsonRenderInFlight = false;
 	std::atomic<bool> AvisoGeoJsonRenderStop{ false };
-	std::shared_ptr<std::atomic<std::uint64_t>> AvisoGeoJsonRenderCancellationToken =
-		std::make_shared<std::atomic<std::uint64_t>>(0);
-	std::unique_ptr<AvisoRasterRenderRequest> AvisoGeoJsonPendingRenderRequest;
-	std::unique_ptr<AvisoRasterRenderResult> AvisoGeoJsonCompletedRenderResult;
-	unsigned long long AvisoGeoJsonRenderNextRequestId = 0;
-	unsigned long long AvisoGeoJsonRenderLatestRequestId = 0;
-	bool AvisoGeoJsonRenderLastRequestValid = false;
-	std::string AvisoGeoJsonRenderLastRequestPath;
-	bool AvisoGeoJsonRenderLastRequestUseDayPalette = false;
-	double AvisoGeoJsonRenderLastRequestMinLongitude = 0.0;
-	double AvisoGeoJsonRenderLastRequestMinLatitude = 0.0;
-	double AvisoGeoJsonRenderLastRequestMaxLongitude = 0.0;
-	double AvisoGeoJsonRenderLastRequestMaxLatitude = 0.0;
-	int AvisoGeoJsonRenderLastRequestRasterWidth = 0;
-	int AvisoGeoJsonRenderLastRequestRasterHeight = 0;
-	unsigned long long AvisoGeoJsonRenderLastRequestGroupGeneration = 0;
-	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedTopLeft;
-	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedTopRight;
-	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedBottomLeft;
-	Gdiplus::PointF AvisoGeoJsonRenderLastRequestProjectedBottomRight;
 	bool AvisoGeoJsonScrollSelected = false;
 	bool AvisoViewsLinked = false;
 	std::string ActiveAvisoPresetName;
@@ -330,6 +312,7 @@ private:
 	void EnsureRunwayGeometryCache();
 	void RefreshRunwayStatuses(bool force);
 	void RefreshLegacyRimcasRunwayMonitoring();
+	VsmrTargetRendering::IconCacheCallbacks CreateTargetIconCacheCallbacks();
 
 
 public:
@@ -525,11 +508,10 @@ public:
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
 	bool IsShutdownRequested() const;
-	void EnsureAvisoGeoJsonRenderThread();
-	void StopAvisoGeoJsonRenderThread();
+	void EnsureAvisoGeoJsonRenderPipeline();
+	void StopAvisoGeoJsonRenderPipeline();
 	bool IsAvisoGeoJsonRenderStopRequested() const;
 	void RequestRefreshFromWorker();
-	void AvisoGeoJsonRenderThreadMain();
 	void QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request);
 	void ApplyCompletedAvisoGeoJsonRaster();
 	bool IsAvisoRasterRenderRequestCancelled(const AvisoRasterRenderRequest& request) const noexcept;

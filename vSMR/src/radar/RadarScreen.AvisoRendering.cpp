@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
@@ -46,12 +47,6 @@ namespace
 	{
 		const double delta = left - right;
 		return delta >= -tolerance && delta <= tolerance;
-	}
-
-	bool AvisoPointWithinTolerance(const PointF& left, const PointF& right, double tolerance)
-	{
-		return AvisoWithinTolerance(left.X, right.X, tolerance) &&
-			AvisoWithinTolerance(left.Y, right.Y, tolerance);
 	}
 
 	class ScopedHBitmap
@@ -117,67 +112,97 @@ namespace
 	};
 }
 
-void CSMRRadar::EnsureAvisoGeoJsonRenderThread()
+void CSMRRadar::EnsureAvisoGeoJsonRenderPipeline()
 {
 	if (IsShutdownRequested() || IsAvisoGeoJsonRenderStopRequested())
 		return;
-
-	std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-	if (IsShutdownRequested() ||
-		AvisoGeoJsonRenderStop.load(std::memory_order_relaxed) ||
-		AvisoGeoJsonRenderThreadStarted)
-	{
+	if (AvisoGeoJsonRenderPipeline != nullptr)
 		return;
-	}
 
 	try
 	{
-		AvisoGeoJsonRenderStop.store(false, std::memory_order_relaxed);
-		AvisoGeoJsonRenderThread = std::thread(&CSMRRadar::AvisoGeoJsonRenderThreadMain, this);
-		AvisoGeoJsonRenderThreadStarted = true;
+		VsmrAviso::AvisoRasterPipeline::Callbacks callbacks;
+		callbacks.render = [this](const AvisoRasterRenderRequest& request) {
+			return RenderAvisoGeoJsonRaster(request);
+		};
+		callbacks.isExternallyCancelled = [this](const AvisoRasterRenderRequest& request) {
+			return request.groupGeneration !=
+				AvisoGroupGeneration.load(std::memory_order_relaxed);
+		};
+		callbacks.isExternalStopRequested = [this]() {
+			return IsAvisoGeoJsonRenderStopRequested();
+		};
+		callbacks.requestRefresh = [this]() {
+			RequestRefreshFromWorker();
+		};
+		callbacks.workerThreadStarted = []() {
+			ULONG stackGuarantee = 64U * 1024U;
+			::SetThreadStackGuarantee(&stackGuarantee);
+			VsmrCrashRuntime::RecordCurrentThreadRole("main AVISO render worker");
+		};
+		callbacks.workerThreadStopped = []() {
+			VsmrCrashRuntime::RecordCurrentThreadRole("inactive");
+		};
+		callbacks.renderStarted = [this](const AvisoRasterRenderRequest&) {
+			VsmrCrashRuntime::RecordCurrentThreadCallback(
+				"AvisoRasterPipeline::WorkerMain (main)",
+				reinterpret_cast<std::uintptr_t>(this));
+		};
+		callbacks.reportError = [](const std::string& message) {
+			Logger::info(message);
+		};
+		callbacks.diagnostics.requestQueued = [this](bool superseded) {
+			PerformanceDiagnostics.RecordAvisoRequestQueued(
+				VsmrPerformance::AvisoViewport::Main,
+				superseded);
+		};
+		callbacks.diagnostics.requestCoalesced = [this]() {
+			PerformanceDiagnostics.RecordAvisoRequestCoalesced(
+				VsmrPerformance::AvisoViewport::Main);
+		};
+		callbacks.diagnostics.requestDebounced = [this]() {
+			PerformanceDiagnostics.RecordAvisoRequestDebounced(
+				VsmrPerformance::AvisoViewport::Main);
+		};
+		callbacks.diagnostics.rasterBuilt = [this](
+			double rebuildMilliseconds,
+			double queueWaitMilliseconds,
+			bool succeeded) {
+			PerformanceDiagnostics.RecordAvisoRasterBuild(
+				VsmrPerformance::AvisoViewport::Main,
+				rebuildMilliseconds,
+				queueWaitMilliseconds,
+				succeeded);
+		};
+		callbacks.diagnostics.rasterBuildCancelled = [this]() {
+			PerformanceDiagnostics.RecordAvisoRasterBuildCancelled(
+				VsmrPerformance::AvisoViewport::Main);
+		};
+		callbacks.diagnostics.resultDiscarded = [this]() {
+			PerformanceDiagnostics.RecordAvisoResultDiscarded(
+				VsmrPerformance::AvisoViewport::Main);
+		};
+
+		AvisoGeoJsonRenderPipeline =
+			std::make_unique<VsmrAviso::AvisoRasterPipeline>(
+				std::move(callbacks),
+				"AVISO render worker");
 	}
 	catch (const std::exception& ex)
 	{
-		AvisoGeoJsonRenderThreadStarted = false;
-		Logger::info("AVISO render worker start failed: " + std::string(ex.what()));
+		Logger::info("AVISO render pipeline creation failed: " + std::string(ex.what()));
 	}
 	catch (...)
 	{
-		AvisoGeoJsonRenderThreadStarted = false;
-		Logger::info("AVISO render worker start failed: unknown exception");
+		Logger::info("AVISO render pipeline creation failed: unknown exception");
 	}
 }
 
-void CSMRRadar::StopAvisoGeoJsonRenderThread()
+void CSMRRadar::StopAvisoGeoJsonRenderPipeline()
 {
-	bool shouldJoin = false;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		AvisoGeoJsonRenderStop.store(true, std::memory_order_relaxed);
-		AvisoGeoJsonRenderCancellationToken->fetch_add(1, std::memory_order_release);
-		AvisoGeoJsonPendingRenderRequest.reset();
-		AvisoGeoJsonCompletedRenderResult.reset();
-		AvisoGeoJsonRenderLastRequestValid = false;
-		shouldJoin = AvisoGeoJsonRenderThreadStarted;
-	}
-
-	if (!shouldJoin)
-	{
-		if (AvisoGeoJsonRenderThread.joinable())
-			AvisoGeoJsonRenderThread.join();
-		return;
-	}
-
-	AvisoGeoJsonRenderCondition.notify_all();
-	if (AvisoGeoJsonRenderThread.joinable())
-		AvisoGeoJsonRenderThread.join();
-
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		AvisoGeoJsonRenderThreadStarted = false;
-		AvisoGeoJsonRenderInFlight = false;
-		AvisoGeoJsonRenderLastRequestValid = false;
-	}
+	AvisoGeoJsonRenderStop.store(true, std::memory_order_release);
+	if (AvisoGeoJsonRenderPipeline != nullptr)
+		AvisoGeoJsonRenderPipeline->Stop();
 }
 
 bool CSMRRadar::IsAvisoGeoJsonRenderStopRequested() const
@@ -204,7 +229,7 @@ void CSMRRadar::BeginShutdown()
 	ShutdownRequested.store(true, std::memory_order_relaxed);
 	AvisoRefreshHostWindow.store(nullptr, std::memory_order_release);
 	AvisoGeoJsonRenderStop.store(true, std::memory_order_relaxed);
-	StopAvisoGeoJsonRenderThread();
+	StopAvisoGeoJsonRenderPipeline();
 
 	for (auto& appWindow : appWindows)
 	{
@@ -231,81 +256,15 @@ void CSMRRadar::QueueAvisoGeoJsonRasterRender(AvisoRasterRenderRequest request)
 		return;
 	}
 
-	EnsureAvisoGeoJsonRenderThread();
+	EnsureAvisoGeoJsonRenderPipeline();
 	if (IsShutdownRequested() || IsAvisoGeoJsonRenderStopRequested())
 		return;
-
-	bool shouldNotify = false;
+	if (AvisoGeoJsonRenderPipeline != nullptr)
 	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		if (IsShutdownRequested() ||
-			AvisoGeoJsonRenderStop.load(std::memory_order_relaxed) ||
-			!AvisoGeoJsonRenderThreadStarted)
-			return;
-
-		const double longitudeTolerance = AvisoMax(
-			std::abs(request.displayMaxLongitude - request.displayMinLongitude) /
-				static_cast<double>((std::max)(request.rasterWidth, 1)) * 0.5,
-			1e-10);
-		const double latitudeTolerance = AvisoMax(
-			std::abs(request.displayMaxLatitude - request.displayMinLatitude) /
-				static_cast<double>((std::max)(request.rasterHeight, 1)) * 0.5,
-			1e-10);
-		const bool sameRequest =
-			AvisoGeoJsonRenderLastRequestValid &&
-			AvisoGeoJsonRenderLastRequestPath == request.path &&
-			AvisoGeoJsonRenderLastRequestUseDayPalette == request.useDayPalette &&
-			AvisoGeoJsonRenderLastRequestGroupGeneration == request.groupGeneration &&
-			std::abs(AvisoGeoJsonRenderLastRequestRasterWidth - request.rasterWidth) <= 2 &&
-			std::abs(AvisoGeoJsonRenderLastRequestRasterHeight - request.rasterHeight) <= 2 &&
-			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLongitude, request.displayMinLongitude, longitudeTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMinLatitude, request.displayMinLatitude, latitudeTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLongitude, request.displayMaxLongitude, longitudeTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRenderLastRequestMaxLatitude, request.displayMaxLatitude, latitudeTolerance) &&
-			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedTopLeft, request.projectedTopLeft, 0.75) &&
-			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedTopRight, request.projectedTopRight, 0.75) &&
-			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedBottomLeft, request.projectedBottomLeft, 0.75) &&
-			AvisoPointWithinTolerance(AvisoGeoJsonRenderLastRequestProjectedBottomRight, request.projectedBottomRight, 0.75);
-		if (sameRequest)
-		{
-			PerformanceDiagnostics.RecordAvisoRequestCoalesced(
-				VsmrPerformance::AvisoViewport::Main);
-			return;
-		}
-
-		request.requestId = ++AvisoGeoJsonRenderNextRequestId;
-		request.performanceQueuedAtMilliseconds =
-			VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
-		if (request.debounceMilliseconds == 0 && AvisoGeoJsonRasterCache != nullptr)
-			request.debounceMilliseconds = 24;
-		request.cancellationToken = AvisoGeoJsonRenderCancellationToken;
-		AvisoGeoJsonRenderLatestRequestId = request.requestId;
-		AvisoGeoJsonRenderCancellationToken->store(request.requestId, std::memory_order_release);
-		AvisoGeoJsonRenderLastRequestValid = true;
-		AvisoGeoJsonRenderLastRequestPath = request.path;
-		AvisoGeoJsonRenderLastRequestUseDayPalette = request.useDayPalette;
-		AvisoGeoJsonRenderLastRequestMinLongitude = request.displayMinLongitude;
-		AvisoGeoJsonRenderLastRequestMinLatitude = request.displayMinLatitude;
-		AvisoGeoJsonRenderLastRequestMaxLongitude = request.displayMaxLongitude;
-		AvisoGeoJsonRenderLastRequestMaxLatitude = request.displayMaxLatitude;
-		AvisoGeoJsonRenderLastRequestRasterWidth = request.rasterWidth;
-		AvisoGeoJsonRenderLastRequestRasterHeight = request.rasterHeight;
-		AvisoGeoJsonRenderLastRequestGroupGeneration = request.groupGeneration;
-		AvisoGeoJsonRenderLastRequestProjectedTopLeft = request.projectedTopLeft;
-		AvisoGeoJsonRenderLastRequestProjectedTopRight = request.projectedTopRight;
-		AvisoGeoJsonRenderLastRequestProjectedBottomLeft = request.projectedBottomLeft;
-		AvisoGeoJsonRenderLastRequestProjectedBottomRight = request.projectedBottomRight;
-		const bool supersededPendingRequest =
-			AvisoGeoJsonPendingRenderRequest != nullptr || AvisoGeoJsonRenderInFlight;
-		AvisoGeoJsonPendingRenderRequest = std::make_unique<AvisoRasterRenderRequest>(std::move(request));
-		PerformanceDiagnostics.RecordAvisoRequestQueued(
-			VsmrPerformance::AvisoViewport::Main,
-			supersededPendingRequest);
-		shouldNotify = true;
+		AvisoGeoJsonRenderPipeline->Queue(
+			std::move(request),
+			AvisoGeoJsonRasterCache != nullptr);
 	}
-
-	if (shouldNotify)
-		AvisoGeoJsonRenderCondition.notify_one();
 }
 
 void CSMRRadar::ClearAvisoGeoJsonRasterCache()
@@ -341,11 +300,10 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 	if (IsShutdownRequested())
 		return;
 
-	std::unique_ptr<AvisoRasterRenderResult> result;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		result = std::move(AvisoGeoJsonCompletedRenderResult);
-	}
+	std::unique_ptr<AvisoRasterRenderResult> result =
+		AvisoGeoJsonRenderPipeline != nullptr
+		? AvisoGeoJsonRenderPipeline->TakeCompleted()
+		: nullptr;
 
 	if (result == nullptr || result->bitmap == nullptr)
 		return;
@@ -383,166 +341,6 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 		PerformanceDiagnostics.RecordAvisoResultApplied(VsmrPerformance::AvisoViewport::Main);
 	else
 		PerformanceDiagnostics.RecordAvisoResultDiscarded(VsmrPerformance::AvisoViewport::Main);
-}
-
-void CSMRRadar::AvisoGeoJsonRenderThreadMain()
-{
-	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("main AVISO render worker");
-	try
-	{
-		for (;;)
-		{
-			std::unique_ptr<AvisoRasterRenderRequest> request;
-			{
-				std::unique_lock<std::mutex> lock(AvisoGeoJsonRenderMutex);
-				AvisoGeoJsonRenderCondition.wait(lock, [&]() {
-					return IsAvisoGeoJsonRenderStopRequested() || AvisoGeoJsonPendingRenderRequest != nullptr;
-				});
-
-				if (IsAvisoGeoJsonRenderStopRequested())
-					return;
-				while (AvisoGeoJsonPendingRenderRequest != nullptr &&
-					AvisoGeoJsonPendingRenderRequest->debounceMilliseconds > 0)
-				{
-					const std::uint64_t observedRequestId =
-						AvisoGeoJsonPendingRenderRequest->requestId;
-					const std::uint64_t readyAt =
-						AvisoGeoJsonPendingRenderRequest->performanceQueuedAtMilliseconds +
-						AvisoGeoJsonPendingRenderRequest->debounceMilliseconds;
-					const std::uint64_t now =
-						VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
-					if (now >= readyAt)
-						break;
-					AvisoGeoJsonRenderCondition.wait_for(
-						lock,
-						std::chrono::milliseconds(
-							static_cast<long long>(readyAt - now)),
-						[&]() {
-							return IsAvisoGeoJsonRenderStopRequested() ||
-								AvisoGeoJsonPendingRenderRequest == nullptr ||
-								AvisoGeoJsonPendingRenderRequest->requestId != observedRequestId;
-						});
-					if (IsAvisoGeoJsonRenderStopRequested())
-						return;
-					if (AvisoGeoJsonPendingRenderRequest != nullptr &&
-						AvisoGeoJsonPendingRenderRequest->requestId != observedRequestId)
-					{
-						PerformanceDiagnostics.RecordAvisoRequestDebounced(
-							VsmrPerformance::AvisoViewport::Main);
-						continue;
-					}
-					break;
-				}
-
-				request = std::move(AvisoGeoJsonPendingRenderRequest);
-				AvisoGeoJsonRenderInFlight = request != nullptr;
-			}
-
-			if (request == nullptr)
-				continue;
-			VsmrCrashRuntime::RecordCurrentThreadCallback(
-				"CSMRRadar::AvisoGeoJsonRenderThreadMain",
-				reinterpret_cast<std::uintptr_t>(this));
-
-			std::unique_ptr<AvisoRasterRenderResult> result;
-			const std::uint64_t renderStartMilliseconds =
-				VsmrPerformance::PerformanceDiagnostics::MonotonicMilliseconds();
-			const double queueWaitMilliseconds = request->performanceQueuedAtMilliseconds == 0
-				? 0.0
-				: static_cast<double>(renderStartMilliseconds - request->performanceQueuedAtMilliseconds);
-			const auto renderStart = std::chrono::steady_clock::now();
-			try
-			{
-				result = RenderAvisoGeoJsonRaster(*request);
-			}
-			catch (CException* ex)
-			{
-				if (ex != nullptr)
-					ex->Delete();
-				Logger::info("AVISO render worker caught MFC exception");
-			}
-			catch (const std::exception& ex)
-			{
-				Logger::info("AVISO render worker caught exception: " + std::string(ex.what()));
-			}
-			catch (...)
-			{
-				Logger::info("AVISO render worker caught unknown exception");
-			}
-			const double rebuildMilliseconds = std::chrono::duration<double, std::milli>(
-				std::chrono::steady_clock::now() - renderStart).count();
-			const bool renderCancelled =
-				result == nullptr && IsAvisoRasterRenderRequestCancelled(*request);
-			if (renderCancelled)
-			{
-				PerformanceDiagnostics.RecordAvisoRasterBuildCancelled(
-					VsmrPerformance::AvisoViewport::Main);
-			}
-			else
-			{
-				PerformanceDiagnostics.RecordAvisoRasterBuild(
-					VsmrPerformance::AvisoViewport::Main,
-					rebuildMilliseconds,
-					queueWaitMilliseconds,
-					result != nullptr);
-			}
-
-			bool shouldRefresh = false;
-			bool discardedResult = false;
-			bool stopRequested = false;
-			{
-				std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-				if (result == nullptr &&
-					!renderCancelled &&
-					request->requestId == AvisoGeoJsonRenderLatestRequestId)
-				{
-					// A transient allocation/GDI failure must be retryable. Leaving the
-					// request marked valid would coalesce every identical future frame.
-					AvisoGeoJsonRenderLastRequestValid = false;
-				}
-				if (IsAvisoGeoJsonRenderStopRequested())
-				{
-					stopRequested = true;
-					discardedResult = result != nullptr;
-				}
-				else if (result != nullptr && result->requestId == AvisoGeoJsonRenderLatestRequestId)
-				{
-					if (AvisoGeoJsonCompletedRenderResult != nullptr)
-						discardedResult = true;
-					AvisoGeoJsonCompletedRenderResult = std::move(result);
-					shouldRefresh = true;
-				}
-				else if (result != nullptr)
-				{
-					discardedResult = true;
-				}
-				AvisoGeoJsonRenderInFlight = false;
-			}
-			if (discardedResult)
-				PerformanceDiagnostics.RecordAvisoResultDiscarded(VsmrPerformance::AvisoViewport::Main);
-			if (stopRequested)
-				return;
-
-			if (shouldRefresh)
-				RequestRefreshFromWorker();
-		}
-	}
-	catch (CException* ex)
-	{
-		if (ex != nullptr)
-			ex->Delete();
-		Logger::info("AVISO render worker stopped after MFC exception");
-	}
-	catch (const std::exception& ex)
-	{
-		Logger::info("AVISO render worker stopped after exception: " + std::string(ex.what()));
-	}
-	catch (...)
-	{
-		Logger::info("AVISO render worker stopped after unknown exception");
-	}
-	std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-	AvisoGeoJsonRenderInFlight = false;
 }
 
 void CSMRRadar::RequestRefreshFromWorker()
@@ -1646,10 +1444,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	}
 	auto avisoRasterUpdatePending = [&]() -> bool
 	{
-		std::lock_guard<std::mutex> guard(AvisoGeoJsonRenderMutex);
-		return AvisoGeoJsonPendingRenderRequest != nullptr ||
-			AvisoGeoJsonRenderInFlight ||
-			AvisoGeoJsonCompletedRenderResult != nullptr;
+		return AvisoGeoJsonRenderPipeline != nullptr &&
+			AvisoGeoJsonRenderPipeline->HasPendingWork();
 	};
 
 	// Half a viewport of overscan still doubles each raster dimension and
