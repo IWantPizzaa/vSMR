@@ -7,7 +7,9 @@
 #include "bootstrap/RuntimeContext.hpp"
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashReporter.hpp"
+#include "datalink/CdmReminderSafety.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 #include "weather/WeatherStore.hpp"
@@ -68,6 +70,7 @@ vector<string> AircraftStandby;
 std::set<std::string> AircraftDatalinkClearedCallsigns;
 std::set<std::string> AircraftDatalinkClearanceInFlightCallsigns;
 map<string, std::chrono::steady_clock::time_point> AircraftCdmTobtReminderSentAt;
+std::set<std::string> AircraftCdmReminderSubmittedCallsigns;
 
 std::deque<QueuedCdmReminderMessage> CdmReminderMessageQueue;
 
@@ -238,27 +241,53 @@ bool HasSteadyIntervalElapsed(
 		return normalized.empty() || normalized == "NSTS" || normalized == "NOSTATUS";
 	}
 
-	bool IsGroundTargetForCdm(const CFlightPlan& fp)
-	{
-		CRadarTarget correlatedTarget = fp.GetCorrelatedRadarTarget();
-		if (!correlatedTarget.IsValid())
-			return false;
-		return correlatedTarget.GetGS() <= 60;
-	}
-
 	std::string ResolveActiveAirportFilterUpper()
 	{
+		std::string resolvedAirport;
 		for (auto* rd : RadarScreensOpened)
 		{
-			if (rd == nullptr)
+			if (rd == nullptr || rd->IsShutdownRequested())
 				continue;
 			std::string airport = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(rd->getActiveAirport()));
 			if (airport.size() > 4)
 				airport = airport.substr(0, 4);
-			return airport;
+			if (airport.empty())
+				continue;
+			if (airport.size() != 4)
+				return "";
+			if (resolvedAirport.empty())
+				resolvedAirport = airport;
+			else if (resolvedAirport != airport)
+				return "";
 		}
 
-		return "";
+		return resolvedAirport;
+	}
+
+	bool TryResolveActiveAirportPosition(
+		const std::string& activeAirport,
+		CPosition& outPosition)
+	{
+		if (activeAirport.empty() ||
+			ResolveActiveAirportFilterUpper() != activeAirport)
+		{
+			return false;
+		}
+
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar->IsShutdownRequested())
+				continue;
+			const std::string radarAirport = ToUpperAsciiCopy(
+				TrimAsciiWhitespaceCopy(radar->getActiveAirport()));
+			if (radarAirport == activeAirport &&
+				radar->TryGetActiveAirportPosition(outPosition))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	bool IsVacdmSnapshotReadyForCdm()
@@ -281,6 +310,12 @@ bool HasSteadyIntervalElapsed(
 	{
 		std::vector<std::string> candidateCallsigns;
 		if (plugIn == nullptr || activeAirportFilter.empty())
+			return candidateCallsigns;
+		if (ResolveActiveAirportFilterUpper() != activeAirportFilter)
+			return candidateCallsigns;
+
+		CPosition airportPosition;
+		if (!TryResolveActiveAirportPosition(activeAirportFilter, airportPosition))
 			return candidateCallsigns;
 
 		candidateCallsigns.reserve(256);
@@ -305,11 +340,32 @@ bool HasSteadyIntervalElapsed(
 
 			const char* originRaw = fp.GetFlightPlanData().GetOrigin();
 			const std::string origin = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(originRaw != nullptr ? originRaw : ""));
-			if (origin != activeAirportFilter)
-				continue;
-			if (!IsGroundTargetForCdm(fp))
-				continue;
-			if (!IsNoStatusGroundState(fp.GetGroundState()))
+			CRadarTarget correlatedTarget = fp.GetCorrelatedRadarTarget();
+			CRadarTargetPositionData targetPosition;
+			if (correlatedTarget.IsValid())
+				targetPosition = correlatedTarget.GetPosition();
+
+			VsmrCdmReminderSafety::EligibilitySnapshot safety;
+			safety.activeAirportResolved = true;
+			safety.originMatchesActiveAirport = origin == activeAirportFilter;
+			safety.flightPlanNotStarted =
+				fp.GetFPState() == FLIGHT_PLAN_STATE_NOT_STARTED;
+			safety.simulatedFlightPlan = fp.GetSimulated();
+			safety.radarTargetValid = correlatedTarget.IsValid();
+			safety.radarPositionValid = targetPosition.IsValid();
+			safety.noGroundStatus = IsNoStatusGroundState(fp.GetGroundState());
+			if (targetPosition.IsValid())
+			{
+				safety.positionAgeSeconds = targetPosition.GetReceivedTime();
+				safety.groundSpeedKnots = (std::max)(
+					correlatedTarget.GetGS(),
+					targetPosition.GetReportedGS());
+				safety.verticalSpeedFeetPerMinute =
+					correlatedTarget.GetVerticalSpeed();
+				safety.airportDistanceNauticalMiles =
+					airportPosition.DistanceTo(targetPosition.GetPosition());
+			}
+			if (!VsmrCdmReminderSafety::IsEligible(safety))
 				continue;
 
 			addUniqueCallsign(fpCallsignRaw);
@@ -378,16 +434,18 @@ bool HasSteadyIntervalElapsed(
 
 	bool QueueCdmReminderUnlocked(
 		const std::string& callsign,
+		const std::string& activeAirport,
 		const std::string& message,
 		bool automatic)
 	{
-		if (callsign.empty() || message.empty())
+		if (callsign.empty() || activeAirport.empty() || message.empty())
 			return false;
 		if (IsCdmReminderQueuedUnlocked(callsign))
 			return false;
 
 		QueuedCdmReminderMessage queued;
 		queued.callsign = callsign;
+		queued.activeAirport = activeAirport;
 		queued.message = message;
 		queued.sendAttempts = 0;
 		queued.automatic = automatic;
@@ -431,6 +489,21 @@ bool HasSteadyIntervalElapsed(
 			AircraftDatalinkClearanceInFlightCallsigns.end();
 	}
 
+	bool HasCdmReminderSubmittedUnlocked(const std::string& callsign)
+	{
+		const std::string normalizedCallsign = NormalizeCallsignForState(callsign);
+		return !normalizedCallsign.empty() &&
+			AircraftCdmReminderSubmittedCallsigns.find(normalizedCallsign) !=
+			AircraftCdmReminderSubmittedCallsigns.end();
+	}
+
+	void MarkCdmReminderSubmittedUnlocked(const std::string& callsign)
+	{
+		const std::string normalizedCallsign = NormalizeCallsignForState(callsign);
+		if (!normalizedCallsign.empty())
+			AircraftCdmReminderSubmittedCallsigns.insert(normalizedCallsign);
+	}
+
 	void MarkDatalinkClearanceInFlightUnlocked(const std::string& callsign)
 	{
 		const std::string normalizedCallsign = NormalizeCallsignForState(callsign);
@@ -468,6 +541,7 @@ bool HasSteadyIntervalElapsed(
 	}
 
 	CdmQueueReminderOutcome TryQueueCdmReminderForCallsign(
+		EuroScopePlugIn::CPlugIn* plugIn,
 		const std::string& callsign,
 		const std::string& reminderMessage,
 		std::chrono::steady_clock::time_point now,
@@ -481,11 +555,17 @@ bool HasSteadyIntervalElapsed(
 			*outHasVacdmData = false;
 
 		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-		if (normalizedCallsign.empty() || reminderMessage.empty())
+		const std::string activeAirport = ResolveActiveAirportFilterUpper();
+		if (plugIn == nullptr || normalizedCallsign.empty() ||
+			activeAirport.empty() || reminderMessage.empty())
+			return CdmQueueReminderOutcome::Failed;
+		if (!IsCallsignEligibleForCdmReminderNow(plugIn, normalizedCallsign))
 			return CdmQueueReminderOutcome::Failed;
 
 		{
 			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			if (automatic && HasCdmReminderSubmittedUnlocked(normalizedCallsign))
+				return CdmQueueReminderOutcome::AlreadyNotified;
 			if (HasRecentCdmReminderUnlocked(normalizedCallsign, now))
 				return CdmQueueReminderOutcome::AlreadyNotified;
 			if (IsCdmReminderQueuedUnlocked(normalizedCallsign))
@@ -506,8 +586,15 @@ bool HasSteadyIntervalElapsed(
 			return CdmQueueReminderOutcome::HasSubmittedTobt;
 
 		// Rechecking after the unlocked vACDM lookup before committing to the queue
+		if (ResolveActiveAirportFilterUpper() != activeAirport ||
+			!IsCallsignEligibleForCdmReminderNow(plugIn, normalizedCallsign))
+		{
+			return CdmQueueReminderOutcome::Failed;
+		}
 		{
 			std::lock_guard<std::mutex> guard(DatalinkStateMutex);
+			if (automatic && HasCdmReminderSubmittedUnlocked(normalizedCallsign))
+				return CdmQueueReminderOutcome::AlreadyNotified;
 			if (HasRecentCdmReminderUnlocked(normalizedCallsign, now))
 				return CdmQueueReminderOutcome::AlreadyNotified;
 			if (IsCdmReminderQueuedUnlocked(normalizedCallsign))
@@ -515,7 +602,11 @@ bool HasSteadyIntervalElapsed(
 			if (HasDatalinkClearanceSentUnlocked(normalizedCallsign) ||
 				HasDatalinkClearanceInFlightUnlocked(normalizedCallsign))
 				return CdmQueueReminderOutcome::AlreadyCleared;
-			if (!QueueCdmReminderUnlocked(normalizedCallsign, reminderMessage, automatic))
+			if (!QueueCdmReminderUnlocked(
+				normalizedCallsign,
+				activeAirport,
+				reminderMessage,
+				automatic))
 				return CdmQueueReminderOutcome::Failed;
 		}
 
@@ -560,6 +651,7 @@ bool HasSteadyIntervalElapsed(
 		CdmAutoTrackedAirport.clear();
 		CdmReminderMessageQueue.clear();
 		AircraftCdmTobtReminderSentAt.clear();
+		AircraftCdmReminderSubmittedCallsigns.clear();
 		AircraftDatalinkClearedCallsigns.clear();
 		AircraftDatalinkClearanceInFlightCallsigns.clear();
 		++CdmAutoSessionGeneration;
@@ -1042,6 +1134,15 @@ bool HasSteadyIntervalElapsed(
 		RECT rect = {};
 		if (!::GetWindowRect(hwnd, &rect))
 			return TRUE;
+		// Fail closed if the control is not in EuroScope's bottom command strip.
+		// Dialog and plug-in edit controls must never receive an automatic .msg.
+		if (rect.left < context->mainRect.left ||
+			rect.right > context->mainRect.right ||
+			rect.bottom < context->mainRect.bottom - 120 ||
+			rect.bottom > context->mainRect.bottom)
+		{
+			return TRUE;
+		}
 		const LONG style = ::GetWindowLong(hwnd, GWL_STYLE);
 		const int width = rect.right - rect.left;
 
@@ -1065,10 +1166,6 @@ bool HasSteadyIntervalElapsed(
 
 	HWND FindEuroScopeCommandEditControl()
 	{
-		HWND focusedWindow = ::GetFocus();
-		if (IsLikelyCommandEditControl(focusedWindow))
-			return focusedWindow;
-
 		MainWindowSearchContext mainContext;
 		mainContext.processId = ::GetCurrentProcessId();
 		::EnumWindows(EnumMainWindowsForCurrentProcess, reinterpret_cast<LPARAM>(&mainContext));
@@ -1081,119 +1178,116 @@ bool HasSteadyIntervalElapsed(
 		return editContext.bestEdit;
 	}
 
-	bool ExecuteEuroScopeCommandViaUi(const std::string& command)
+	struct PendingCdmChatCommand
 	{
-		const std::string trimmed = TrimAsciiWhitespaceCopy(command);
-		if (trimmed.empty())
+		HWND editControl = nullptr;
+		std::string command;
+		std::chrono::steady_clock::time_point startedAt;
+	};
+
+	PendingCdmChatCommand PendingCdmChatSubmission;
+
+	bool TryReadWindowText(HWND window, std::string& outText)
+	{
+		outText.clear();
+		if (window == nullptr || !::IsWindow(window))
 			return false;
 
-		HWND editControl = FindEuroScopeCommandEditControl();
-		if (editControl == nullptr)
-			return false;
-
-		// EuroScope does not expose an API for sending a private chat message, so
-		// the CDM reminder uses its command edit. Preserve any command/message the
-		// controller is composing, including the selection, and restore it after
-		// the injected command is handled synchronously.
 		constexpr int kMaximumPreservedCommandCharacters = 64 * 1024;
-		const int originalTextLength = ::GetWindowTextLengthA(editControl);
-		if (originalTextLength < 0 || originalTextLength > kMaximumPreservedCommandCharacters)
+		const int textLength = ::GetWindowTextLengthA(window);
+		if (textLength < 0 || textLength > kMaximumPreservedCommandCharacters)
 			return false;
-		std::vector<char> originalTextBuffer(static_cast<size_t>(originalTextLength) + 1U, '\0');
-		if (originalTextLength > 0 &&
+		std::vector<char> textBuffer(static_cast<size_t>(textLength) + 1U, '\0');
+		if (textLength > 0 &&
 			::GetWindowTextA(
-				editControl,
-				originalTextBuffer.data(),
-				static_cast<int>(originalTextBuffer.size())) != originalTextLength)
+				window,
+				textBuffer.data(),
+				static_cast<int>(textBuffer.size())) != textLength)
 		{
 			return false;
 		}
-		const std::string originalText(originalTextBuffer.data(), static_cast<size_t>(originalTextLength));
-		DWORD selectionStart = 0;
-		DWORD selectionEnd = 0;
-		::SendMessageA(
-			editControl,
-			EM_GETSEL,
-			reinterpret_cast<WPARAM>(&selectionStart),
-			reinterpret_cast<LPARAM>(&selectionEnd));
-		HWND originalFocus = ::GetFocus();
-
-		auto restoreControllerInput = [&]()
-		{
-			if (!::IsWindow(editControl))
-				return;
-			::SetWindowTextA(editControl, originalText.c_str());
-			::SendMessageA(
-				editControl,
-				EM_SETSEL,
-				static_cast<WPARAM>(selectionStart),
-				static_cast<LPARAM>(selectionEnd));
-			if (originalFocus != nullptr && ::IsWindow(originalFocus) && ::GetFocus() != originalFocus)
-				::SetFocus(originalFocus);
-		};
-
-		DWORD_PTR messageResult = 0;
-		if (::SendMessageTimeoutA(
-			editControl,
-			WM_SETTEXT,
-			0,
-			reinterpret_cast<LPARAM>(trimmed.c_str()),
-			SMTO_ABORTIFHUNG,
-			250,
-			&messageResult) == 0)
-		{
-			restoreControllerInput();
-			return false;
-		}
-
-		DWORD_PTR keyDownResult = 0;
-		const bool keyDownHandled = ::SendMessageTimeoutA(
-			editControl,
-			WM_KEYDOWN,
-			VK_RETURN,
-			0,
-			SMTO_ABORTIFHUNG,
-			250,
-			&keyDownResult) != 0;
-		DWORD_PTR keyUpResult = 0;
-		const bool keyUpHandled = ::SendMessageTimeoutA(
-			editControl,
-			WM_KEYUP,
-			VK_RETURN,
-			0,
-			SMTO_ABORTIFHUNG,
-			250,
-			&keyUpResult) != 0;
-		restoreControllerInput();
-		// EuroScope submits the command on key-down. A delayed key-up must not
-		// make us retry a message that was already sent.
-		if (keyDownHandled && !keyUpHandled)
-			Logger::info("CDM command key-up timed out after successful submission");
-		return keyDownHandled;
+		outText.assign(textBuffer.data(), static_cast<size_t>(textLength));
+		return true;
 	}
 
-	bool SendPrivateChatMessageLikeDotMsg(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign, const std::string& message)
+	CdmChatSubmissionStatus PollPrivateChatMessageSubmission()
 	{
-		if (plugIn == nullptr)
+		if (PendingCdmChatSubmission.editControl == nullptr)
+			return CdmChatSubmissionStatus::Idle;
+
+		std::string currentText;
+		if (!TryReadWindowText(PendingCdmChatSubmission.editControl, currentText))
+		{
+			PendingCdmChatSubmission = {};
+			return CdmChatSubmissionStatus::Ambiguous;
+		}
+
+		// EuroScope clears its command field only after it has consumed the
+		// posted Enter key. Do not report success merely because Windows queued
+		// the key message.
+		if (currentText != PendingCdmChatSubmission.command)
+		{
+			PendingCdmChatSubmission = {};
+			return CdmChatSubmissionStatus::Confirmed;
+		}
+
+		constexpr auto kSubmissionTimeout = std::chrono::seconds(4);
+		if (std::chrono::steady_clock::now() -
+			PendingCdmChatSubmission.startedAt < kSubmissionTimeout)
+		{
+			return CdmChatSubmissionStatus::Pending;
+		}
+
+		// The Enter key was already posted, so a timeout is ambiguous. Remove
+		// only the exact command inserted by vSMR and never retry it automatically.
+		::SetWindowTextA(PendingCdmChatSubmission.editControl, "");
+		PendingCdmChatSubmission = {};
+		return CdmChatSubmissionStatus::Ambiguous;
+	}
+
+	bool BeginPrivateChatMessageLikeDotMsg(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign, const std::string& message)
+	{
+		if (plugIn == nullptr ||
+			PendingCdmChatSubmission.editControl != nullptr)
 			return false;
 
 		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-		if (normalizedCallsign.empty() || message.empty())
+		const std::string normalizedMessage = TrimAsciiWhitespaceCopy(message);
+		if (normalizedCallsign.empty() || normalizedMessage.empty())
 			return false;
 
-		const std::string command = ".msg " + normalizedCallsign + " " + message;
-		if (ExecuteEuroScopeCommandViaUi(command))
-			return true;
-
-		static std::time_t lastInjectionWarningUtc = 0;
-		const std::time_t nowUtc = std::time(nullptr);
-		if (nowUtc > 0 && (lastInjectionWarningUtc == 0 || std::difftime(nowUtc, lastInjectionWarningUtc) >= static_cast<double>(CdmWarningCooldownSeconds)))
+		HWND editControl = FindEuroScopeCommandEditControl();
+		std::string existingText;
+		if (editControl == nullptr ||
+			!TryReadWindowText(editControl, existingText) ||
+			!existingText.empty())
 		{
-			lastInjectionWarningUtc = nowUtc;
-			plugIn->DisplayUserMessage("vSMR", "CDM", "Failed to inject .msg command into EuroScope command line.", true, true, false, true, false);
+			return false;
 		}
-		Logger::info("CDM .msg inject failed callsign=" + normalizedCallsign);
-		return false;
+
+		const std::string command =
+			".msg " + normalizedCallsign + " " + normalizedMessage;
+		if (!::SetWindowTextA(editControl, command.c_str()))
+			return false;
+
+		const bool keyDownPosted =
+			::PostMessageA(editControl, WM_KEYDOWN, VK_RETURN, 0) != FALSE;
+		const bool keyUpPosted =
+			::PostMessageA(editControl, WM_KEYUP, VK_RETURN, 0) != FALSE;
+		if (!keyDownPosted)
+		{
+			std::string currentText;
+			if (TryReadWindowText(editControl, currentText) && currentText == command)
+				::SetWindowTextA(editControl, "");
+			return false;
+		}
+		if (!keyUpPosted)
+			Logger::info("CDM command key-up could not be posted after key-down");
+
+		PendingCdmChatSubmission.editControl = editControl;
+		PendingCdmChatSubmission.command = command;
+		PendingCdmChatSubmission.startedAt = std::chrono::steady_clock::now();
+		return true;
 	}
 
 	bool SendDatalinkPacketMessage(const DatalinkMessageRequest& request)

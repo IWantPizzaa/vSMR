@@ -43,6 +43,7 @@ struct AcarsMessage
 struct QueuedCdmReminderMessage
 {
 	std::string callsign;
+	std::string activeAirport;
 	std::string message;
 	int sendAttempts = 0;
 	bool automatic = false;
@@ -71,6 +72,14 @@ enum class CdmQueueReminderOutcome
 	AlreadyCleared,
 	HasSubmittedTobt,
 	Failed
+};
+
+enum class CdmChatSubmissionStatus
+{
+	Idle = 0,
+	Pending,
+	Confirmed,
+	Ambiguous
 };
 
 struct DatalinkCredentialsSnapshot
@@ -128,6 +137,7 @@ extern const std::string baseUrlDatalink;
 extern std::set<std::string> AircraftDatalinkClearedCallsigns;
 extern std::set<std::string> AircraftDatalinkClearanceInFlightCallsigns;
 extern std::map<std::string, std::chrono::steady_clock::time_point> AircraftCdmTobtReminderSentAt;
+extern std::set<std::string> AircraftCdmReminderSubmittedCallsigns;
 extern std::deque<QueuedCdmReminderMessage> CdmReminderMessageQueue;
 extern std::atomic<bool> CdmAutoModeEnabled;
 extern std::atomic<int> CdmAutoDelayMinutes;
@@ -188,6 +198,7 @@ void MarkCdmReminderSentUnlocked(
 	const std::string& callsign,
 	std::chrono::steady_clock::time_point now);
 CdmQueueReminderOutcome TryQueueCdmReminderForCallsign(
+	EuroScopePlugIn::CPlugIn* plugIn,
 	const std::string& callsign,
 	const std::string& reminderMessage,
 	std::chrono::steady_clock::time_point now,
@@ -209,6 +220,8 @@ void RemoveQueuedCdmReminderUnlocked(const std::string& callsign);
 std::string NormalizeCallsignForState(const std::string& callsign);
 bool HasDatalinkClearanceSentUnlocked(const std::string& callsign);
 bool HasDatalinkClearanceInFlightUnlocked(const std::string& callsign);
+bool HasCdmReminderSubmittedUnlocked(const std::string& callsign);
+void MarkCdmReminderSubmittedUnlocked(const std::string& callsign);
 void MarkDatalinkClearanceInFlightUnlocked(const std::string& callsign);
 void ClearDatalinkClearanceInFlightUnlocked(const std::string& callsign);
 void MarkDatalinkClearanceSentUnlocked(const std::string& callsign);
@@ -234,10 +247,11 @@ bool TryLoadCdmReminderMessage(
 bool IsCallsignEligibleForCdmReminderNow(
 	EuroScopePlugIn::CPlugIn* plugIn,
 	const std::string& callsign);
-bool SendPrivateChatMessageLikeDotMsg(
+bool BeginPrivateChatMessageLikeDotMsg(
 	EuroScopePlugIn::CPlugIn* plugIn,
 	const std::string& callsign,
 	const std::string& message);
+CdmChatSubmissionStatus PollPrivateChatMessageSubmission();
 bool QueueDatalinkMessage(
 	CSMRPlugin* plugin,
 	const std::string& destination,
