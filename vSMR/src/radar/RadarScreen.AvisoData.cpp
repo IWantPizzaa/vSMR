@@ -1,11 +1,11 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
 #include "radar/RadarScreenSupport.hpp"
 #include "insets/InsetWindow.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
-#include "shared/TextUtils.hpp"
 
 #include <cctype>
 #include <limits>
@@ -15,12 +15,12 @@
 using VsmrAvisoSupport::AvisoMax;
 using VsmrAvisoSupport::AvisoMin;
 using VsmrAvisoSupport::ToUpperAscii;
+using VsmrAvisoFeatureMetadata::ReadFeatureIdentity;
+using VsmrAvisoFeatureMetadata::ReadGroupIds;
+using VsmrAvisoFeatureMetadata::TrimAirportCode;
 
 namespace
 {
-	std::mutex gSessionActiveProfileMutex;
-	std::string gSessionActiveProfileName;
-
 	BYTE ClampColorByte(int value)
 	{
 		return static_cast<BYTE>(std::clamp(value, 0, 255));
@@ -79,18 +79,6 @@ namespace
 		return (fs::u8path(dllPath) / directoryName).u8string();
 	}
 
-	std::string TrimAvisoAirportCode(const std::string& value)
-	{
-		size_t start = 0;
-		while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])) != 0)
-			++start;
-
-		size_t end = value.size();
-		while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0)
-			--end;
-
-		return value.substr(start, end - start);
-	}
 
 	void PushUniquePath(std::vector<fs::path>& paths, const fs::path& path)
 	{
@@ -404,7 +392,7 @@ namespace
 				return visible.GetBool();
 			if (visible.IsString())
 			{
-				const std::string value = ToUpperAscii(TrimAvisoAirportCode(visible.GetString()));
+				const std::string value = ToUpperAscii(TrimAirportCode(visible.GetString()));
 				if (value == "FALSE" || value == "0" || value == "NO" || value == "OFF" || value == "HIDDEN" || value == "NONE")
 					return false;
 			}
@@ -412,7 +400,7 @@ namespace
 
 		if (const char* visibility = GetAvisoStringProperty(properties, { "visibility" }))
 		{
-			const std::string value = ToUpperAscii(TrimAvisoAirportCode(visibility));
+			const std::string value = ToUpperAscii(TrimAirportCode(visibility));
 			if (value == "NONE" || value == "HIDDEN" || value == "FALSE" || value == "OFF" || value == "0")
 				return false;
 		}
@@ -420,100 +408,6 @@ namespace
 		return true;
 	}
 
-	void PushUniqueAvisoGroupId(std::vector<std::string>& groupIds, const std::string& rawGroupId)
-	{
-		const std::string& groupId = rawGroupId;
-		if (groupId.empty() ||
-			std::find(groupIds.begin(), groupIds.end(), groupId) != groupIds.end())
-		{
-			return;
-		}
-		groupIds.push_back(groupId);
-	}
-
-	bool TryReadAvisoFeatureGroupIds(
-		const Value* properties,
-		std::vector<std::string>& groupIds)
-	{
-		groupIds.clear();
-		if (properties == nullptr || !properties->IsObject())
-			return true;
-
-		const char* arrayKeys[] = {
-			"vsmr_group_ids",
-			"vsmr_groups",
-			"group_ids"
-		};
-		for (const char* key : arrayKeys)
-		{
-			if (!properties->HasMember(key))
-				continue;
-
-			const Value& value = (*properties)[key];
-			if (value.IsArray())
-			{
-				for (SizeType i = 0; i < value.Size(); ++i)
-				{
-					if (!value[i].IsString())
-						return false;
-					PushUniqueAvisoGroupId(groupIds, value[i].GetString());
-				}
-			}
-			else if (value.IsString())
-			{
-				PushUniqueAvisoGroupId(groupIds, value.GetString());
-			}
-			else
-			{
-				return false;
-			}
-
-			// The first present modern membership property is authoritative,
-			// including an explicitly empty array used to remove legacy membership.
-			return true;
-		}
-
-		const char* scalarKeys[] = {
-			"group_id",
-			"vsmr_group_id"
-		};
-		for (const char* key : scalarKeys)
-		{
-			if (!properties->HasMember(key))
-				continue;
-			const Value& value = (*properties)[key];
-			if (!value.IsString())
-				return false;
-			PushUniqueAvisoGroupId(groupIds, value.GetString());
-			return true;
-		}
-
-		return true;
-	}
-
-	std::vector<std::string> ReadAvisoFeatureGroupIds(const Value* properties)
-	{
-		std::vector<std::string> groupIds;
-		if (!TryReadAvisoFeatureGroupIds(properties, groupIds))
-			groupIds.clear();
-		return groupIds;
-	}
-
-	std::string ReadAvisoFeatureIdentity(const Value& feature)
-	{
-		if (!feature.IsObject())
-			return "";
-		if (feature.HasMember("id") && feature["id"].IsString())
-			return feature["id"].GetString();
-		if (feature.HasMember("properties") &&
-			feature["properties"].IsObject() &&
-			feature["properties"].HasMember("id") &&
-			feature["properties"]["id"].IsString())
-		{
-			return feature["properties"]["id"].GetString();
-		}
-		return "";
-	}
 
 	std::wstring AvisoUtf8ToWide(const char* text)
 	{
@@ -683,7 +577,7 @@ std::string CSMRRadar::DetectDefaultAirportFromAviso() const
 
 std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const
 {
-	const std::string airportUpper = ToUpperAscii(TrimAvisoAirportCode(airport));
+	const std::string airportUpper = ToUpperAscii(TrimAirportCode(airport));
 	if (DllPath.empty() || airportUpper.size() != 4 ||
 		!std::all_of(
 			airportUpper.begin(),
@@ -1003,7 +897,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 		AvisoGroup group;
 		group.id = id;
-		group.name = TrimAvisoAirportCode(rawName);
+		group.name = TrimAirportCode(rawName);
 		if (group.name.empty())
 			group.name = id;
 		group.visible = visible;
@@ -1071,8 +965,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		const Value* properties = nullptr;
 		if (featureValue.HasMember("properties") && featureValue["properties"].IsObject())
 			properties = &featureValue["properties"];
-		const std::string sourceFeatureId = ReadAvisoFeatureIdentity(featureValue);
-		const std::vector<std::string> groupIds = ReadAvisoFeatureGroupIds(properties);
+		const std::string sourceFeatureId = ReadFeatureIdentity(featureValue);
+		const std::vector<std::string> groupIds = ReadGroupIds(properties);
 		for (const std::string& groupId : groupIds)
 			addParsedGroup(groupId, groupId, true);
 		if (!IsAvisoFeatureVisible(properties))
@@ -1339,454 +1233,4 @@ bool CSMRRadar::PrewarmAvisoForActiveAirport()
 		return false;
 	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
 	return !path.empty() && EnsureAvisoGeoJsonLoaded(path, true);
-}
-
-std::vector<CSMRRadar::AvisoGroup> CSMRRadar::GetAvisoGroups() const
-{
-	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-	return AvisoRuntimeGroups;
-}
-
-std::shared_ptr<const std::unordered_map<std::string, bool>> CSMRRadar::GetAvisoGroupVisibilitySnapshot(
-	unsigned long long* outGeneration) const
-{
-	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-	if (outGeneration != nullptr)
-		*outGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
-	return AvisoGroupVisibilitySnapshot;
-}
-
-bool CSMRRadar::GetAvisoRenderSnapshots(
-	std::shared_ptr<const std::vector<AvisoFeature>>& outFeatures,
-	std::shared_ptr<const std::vector<AvisoLabel>>& outLabels,
-	std::shared_ptr<const std::unordered_map<std::string, bool>>& outGroupVisibility,
-	unsigned long long& outGeneration) const
-{
-	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-	outFeatures = AvisoGeoJsonFeatureSnapshot;
-	outLabels = AvisoGeoJsonLabelSnapshot;
-	outGroupVisibility = AvisoGroupVisibilitySnapshot;
-	outGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
-	return outFeatures != nullptr && outLabels != nullptr &&
-		outGroupVisibility != nullptr;
-}
-
-
-bool CSMRRadar::ApplyAvisoGroupMembershipSnapshot(
-	const rapidjson::Value& aviso,
-	std::string* outError)
-{
-	auto fail = [&](const std::string& message) -> bool
-	{
-		if (outError != nullptr)
-			*outError = message;
-		return false;
-	};
-	if (outError != nullptr)
-		outError->clear();
-
-	if (!aviso.IsObject() ||
-		!aviso.HasMember("features") ||
-		!aviso["features"].IsArray())
-	{
-		return fail("Staged AVISO state must contain a features array.");
-	}
-
-	std::shared_ptr<const std::vector<AvisoFeature>> baseFeatures;
-	std::shared_ptr<const std::vector<AvisoLabel>> baseLabels;
-	size_t sourceFeatureCount = 0;
-	unsigned long long baseGeneration = 0;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		baseFeatures = AvisoGeoJsonFeatureSnapshot;
-		baseLabels = AvisoGeoJsonLabelSnapshot;
-		sourceFeatureCount = AvisoGeoJsonSourceFeatureCount;
-		baseGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
-	}
-	if (baseFeatures == nullptr || baseLabels == nullptr)
-		return fail("No loaded AVISO renderer snapshot is available.");
-
-	const rapidjson::Value& stagedFeatures = aviso["features"];
-	const size_t stagedFeatureCount = static_cast<size_t>(stagedFeatures.Size());
-	std::vector<std::vector<std::string>> memberships(stagedFeatureCount);
-	std::vector<std::string> featureIds(stagedFeatureCount);
-	std::unordered_map<std::string, size_t> stagedIndexById;
-	stagedIndexById.reserve(stagedFeatureCount);
-	for (rapidjson::SizeType index = 0; index < stagedFeatures.Size(); ++index)
-	{
-		const rapidjson::Value& feature = stagedFeatures[index];
-		if (!feature.IsObject() ||
-			!feature.HasMember("properties") ||
-			!feature["properties"].IsObject())
-		{
-			return fail(
-				"Staged AVISO feature " + std::to_string(index + 1) +
-				" must contain a properties object.");
-		}
-
-		if (!TryReadAvisoFeatureGroupIds(
-			&feature["properties"],
-			memberships[static_cast<size_t>(index)]))
-		{
-			return fail(
-				"Staged AVISO feature " + std::to_string(index + 1) +
-				" has an invalid group membership value.");
-		}
-		const size_t featureIndex = static_cast<size_t>(index);
-		featureIds[featureIndex] = ReadAvisoFeatureIdentity(feature);
-		if (!featureIds[featureIndex].empty() &&
-			!stagedIndexById.emplace(featureIds[featureIndex], featureIndex).second)
-		{
-			return fail(
-				"Staged AVISO feature ids must be unique when applying group membership.");
-		}
-	}
-
-	auto featureSnapshot = std::make_shared<std::vector<AvisoFeature>>(*baseFeatures);
-	auto labelSnapshot = std::make_shared<std::vector<AvisoLabel>>(*baseLabels);
-	auto applyMembership = [&](auto& item) -> bool
-	{
-		if (item.sourceFeatureIndex < 0 ||
-			static_cast<size_t>(item.sourceFeatureIndex) >= sourceFeatureCount)
-		{
-			return false;
-		}
-
-		size_t stagedIndex = 0;
-		bool matched = false;
-		if (!item.sourceFeatureId.empty())
-		{
-			const auto found = stagedIndexById.find(item.sourceFeatureId);
-			if (found != stagedIndexById.end())
-			{
-				stagedIndex = found->second;
-				matched = true;
-			}
-		}
-		else
-		{
-			const size_t sourceIndex = static_cast<size_t>(item.sourceFeatureIndex);
-			if (sourceIndex < stagedFeatureCount &&
-				featureIds[sourceIndex].empty())
-			{
-				stagedIndex = sourceIndex;
-				matched = true;
-			}
-		}
-
-		// Geometry additions/deletions remain staged until Save. Leave any
-		// loaded item without a safe staged identity match unchanged.
-		if (matched)
-			item.groupIds = memberships[stagedIndex];
-		return true;
-	};
-	for (AvisoFeature& feature : *featureSnapshot)
-	{
-		if (!applyMembership(feature))
-			return fail("Staged AVISO feature identities do not match the loaded renderer.");
-	}
-	for (AvisoLabel& label : *labelSnapshot)
-	{
-		if (!applyMembership(label))
-			return fail("Staged AVISO feature identities do not match the loaded renderer.");
-	}
-
-	{
-		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		if (AvisoGroupGeneration.load(std::memory_order_relaxed) != baseGeneration ||
-			AvisoGeoJsonFeatureSnapshot != baseFeatures ||
-			AvisoGeoJsonLabelSnapshot != baseLabels ||
-			AvisoGeoJsonSourceFeatureCount != sourceFeatureCount)
-		{
-			return fail("AVISO renderer state changed while applying staged membership.");
-		}
-
-		AvisoGeoJsonFeatureSnapshot = featureSnapshot;
-		AvisoGeoJsonLabelSnapshot = labelSnapshot;
-		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-	}
-
-	InvalidateAvisoGroupRendering();
-	return true;
-}
-
-void CSMRRadar::InvalidateAvisoGroupRendering()
-{
-	if (AvisoGeoJsonRenderPipeline != nullptr)
-		AvisoGeoJsonRenderPipeline->InvalidateRequests();
-
-	// Keep the last same-path raster as a stale preview while the new group or
-	// ownership generation is rebuilt. Exact-cache checks still reject it.
-	AvisoGeoJsonLastViewValid = false;
-	AvisoGeoJsonLastViewPath.clear();
-	AvisoGeoJsonLastViewChangeTick = 0;
-
-	for (auto& appWindow : appWindows)
-	{
-		if (appWindow.second != nullptr && appWindow.second->IsAvisoViewport())
-			appWindow.second->InvalidateAvisoViewportRendering();
-	}
-
-	try
-	{
-		RequestRefresh();
-	}
-	catch (...)
-	{
-	}
-}
-
-std::string CSMRRadar::GetAvisoColorPalette() const
-{
-	return AvisoUseDayColorPalette ? "day" : "night";
-}
-
-bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persistToAsr)
-{
-	std::string palette = rawPalette;
-	palette.erase(
-		palette.begin(),
-		std::find_if(
-			palette.begin(),
-			palette.end(),
-			[](unsigned char value) { return !std::isspace(value); }));
-	palette.erase(
-		std::find_if(
-			palette.rbegin(),
-			palette.rend(),
-			[](unsigned char value) { return !std::isspace(value); }).base(),
-		palette.end());
-	std::transform(
-		palette.begin(),
-		palette.end(),
-		palette.begin(),
-		[](unsigned char value) { return static_cast<char>(std::tolower(value)); });
-	if (palette != "day" && palette != "night")
-		return false;
-
-	const bool useDayPalette = palette == "day";
-	if (AvisoUseDayColorPalette != useDayPalette)
-	{
-		AvisoUseDayColorPalette = useDayPalette;
-		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-		InvalidateAvisoGroupRendering();
-	}
-
-	if (persistToAsr)
-	{
-		SaveDataToAsr(
-			"AvisoColorPalette",
-			"AVISO day/night color palette",
-			GetAvisoColorPalette().c_str());
-	}
-	return true;
-}
-
-bool CSMRRadar::SetAvisoGroupVisibility(const std::string& rawGroupId, bool visible)
-{
-	const std::string& groupId = rawGroupId;
-	if (groupId.empty())
-		return false;
-
-	bool changed = false;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		auto found = std::find_if(
-			AvisoRuntimeGroups.begin(),
-			AvisoRuntimeGroups.end(),
-			[&](const AvisoGroup& group) { return group.id == groupId; });
-		if (found == AvisoRuntimeGroups.end())
-			return false;
-		if (found->visible == visible)
-			return true;
-
-		found->visible = visible;
-		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
-		visibility->reserve(AvisoRuntimeGroups.size());
-		for (const AvisoGroup& group : AvisoRuntimeGroups)
-			(*visibility)[group.id] = group.visible;
-		AvisoGroupVisibilitySnapshot = visibility;
-		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-		changed = true;
-	}
-
-	if (changed)
-		InvalidateAvisoGroupRendering();
-	return true;
-}
-
-bool CSMRRadar::ToggleAvisoGroupVisibility(const std::string& rawGroupId, bool* outVisible)
-{
-	const std::string& groupId = rawGroupId;
-	if (groupId.empty())
-		return false;
-
-	bool nextVisibility = true;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		auto found = std::find_if(
-			AvisoRuntimeGroups.begin(),
-			AvisoRuntimeGroups.end(),
-			[&](const AvisoGroup& group) { return group.id == groupId; });
-		if (found == AvisoRuntimeGroups.end())
-			return false;
-
-		found->visible = !found->visible;
-		nextVisibility = found->visible;
-		auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
-		visibility->reserve(AvisoRuntimeGroups.size());
-		for (const AvisoGroup& group : AvisoRuntimeGroups)
-			(*visibility)[group.id] = group.visible;
-		AvisoGroupVisibilitySnapshot = visibility;
-		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-	}
-
-	if (outVisible != nullptr)
-		*outVisible = nextVisibility;
-	InvalidateAvisoGroupRendering();
-	return true;
-}
-
-bool CSMRRadar::SetAvisoGroupVisibilities(
-	const std::vector<std::pair<std::string, bool>>& requestedVisibility)
-{
-	std::unordered_map<std::string, bool> visibilityById;
-	for (const auto& entry : requestedVisibility)
-	{
-		const std::string& groupId = entry.first;
-		if (!groupId.empty())
-			visibilityById[groupId] = entry.second;
-	}
-
-	if (visibilityById.empty())
-		return requestedVisibility.empty();
-
-	bool changed = false;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		for (const auto& requested : visibilityById)
-		{
-			const auto found = std::find_if(
-				AvisoRuntimeGroups.begin(),
-				AvisoRuntimeGroups.end(),
-				[&](const AvisoGroup& group) { return group.id == requested.first; });
-			if (found == AvisoRuntimeGroups.end())
-				return false;
-		}
-
-		for (AvisoGroup& group : AvisoRuntimeGroups)
-		{
-			const auto found = visibilityById.find(group.id);
-			if (found == visibilityById.end())
-				continue;
-			if (group.visible != found->second)
-			{
-				group.visible = found->second;
-				changed = true;
-			}
-		}
-
-		if (changed)
-		{
-			auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
-			visibility->reserve(AvisoRuntimeGroups.size());
-			for (const AvisoGroup& group : AvisoRuntimeGroups)
-				(*visibility)[group.id] = group.visible;
-			AvisoGroupVisibilitySnapshot = visibility;
-			AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-		}
-	}
-
-	if (changed)
-		InvalidateAvisoGroupRendering();
-	return true;
-}
-
-bool CSMRRadar::UpdateAvisoGroups(const std::vector<AvisoGroup>& groups)
-{
-	std::vector<AvisoGroup> normalizedGroups;
-	std::unordered_set<std::string> knownIds;
-	normalizedGroups.reserve(groups.size());
-	for (const AvisoGroup& source : groups)
-	{
-		AvisoGroup group = source;
-		if (group.id.empty() || !knownIds.insert(group.id).second)
-			continue;
-		group.name = TrimAvisoAirportCode(group.name);
-		if (group.name.empty())
-			group.name = group.id;
-		normalizedGroups.push_back(std::move(group));
-	}
-
-	bool changed = false;
-	{
-		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-		if (AvisoRuntimeGroups.size() != normalizedGroups.size())
-		{
-			changed = true;
-		}
-		else
-		{
-			for (size_t i = 0; i < normalizedGroups.size(); ++i)
-			{
-				if (AvisoRuntimeGroups[i].id != normalizedGroups[i].id ||
-					AvisoRuntimeGroups[i].name != normalizedGroups[i].name ||
-					AvisoRuntimeGroups[i].visible != normalizedGroups[i].visible)
-				{
-					changed = true;
-					break;
-				}
-			}
-		}
-
-		if (changed)
-		{
-			AvisoRuntimeGroups = std::move(normalizedGroups);
-			auto visibility = std::make_shared<std::unordered_map<std::string, bool>>();
-			visibility->reserve(AvisoRuntimeGroups.size());
-			for (const AvisoGroup& group : AvisoRuntimeGroups)
-				(*visibility)[group.id] = group.visible;
-			AvisoGroupVisibilitySnapshot = visibility;
-			AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
-		}
-	}
-
-	if (changed)
-		InvalidateAvisoGroupRendering();
-	return true;
-}
-
-void CSMRRadar::RememberSessionActiveProfile(const std::string& profileName)
-{
-	const std::string trimmed = TrimAsciiWhitespaceCopy(profileName);
-	if (trimmed.empty())
-		return;
-
-	std::lock_guard<std::mutex> guard(gSessionActiveProfileMutex);
-	gSessionActiveProfileName = trimmed;
-}
-
-std::string CSMRRadar::GetSessionActiveProfile(const std::string& fallbackProfile)
-{
-	std::lock_guard<std::mutex> guard(gSessionActiveProfileMutex);
-	if (!gSessionActiveProfileName.empty())
-		return gSessionActiveProfileName;
-	return fallbackProfile;
-}
-
-std::string CSMRRadar::ReadLastActiveProfileFromConfig() const
-{
-	if (CurrentConfig == nullptr)
-		return "";
-	return TrimAsciiWhitespaceCopy(CurrentConfig->getLastActiveProfileName());
-}
-
-void CSMRRadar::WriteLastActiveProfileToConfig(const std::string& profileName) const
-{
-	const std::string trimmedName = TrimAsciiWhitespaceCopy(profileName);
-	if (trimmedName.empty() || CurrentConfig == nullptr)
-		return;
-
-	if (CurrentConfig->setLastActiveProfileName(trimmedName))
-		CurrentConfig->saveConfig();
 }

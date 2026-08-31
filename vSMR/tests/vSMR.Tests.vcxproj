@@ -58,6 +58,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AvisoRasterPipelineTests.cpp" />
+    <ClCompile Include="ConfigurationRegressionTests.cpp" />
     <ClCompile Include="RegressionTests.cpp" />
     <ClCompile Include="SharedRenderingTests.cpp" />
     <ClCompile Include="TagColorRuleTests.cpp" />
@@ -75,10 +76,12 @@
     <ClCompile Include="..\src\rendering\TargetSymbolRenderer.cpp" />
     <ClCompile Include="..\src\tags\TagColorRuleParser.cpp" />
     <ClCompile Include="..\src\tags\TagColorRules.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterReleaseModel.cpp" />
     <ClCompile Include="..\src\updater\UpdaterUrlPolicy.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AvisoRasterPipelineTests.hpp" />
+    <ClInclude Include="ConfigurationRegressionTests.hpp" />
     <ClInclude Include="SharedRenderingTests.hpp" />
     <ClInclude Include="TagColorRuleTests.hpp" />
     <ClInclude Include="UpdaterUrlPolicyTests.hpp" />
@@ -105,6 +108,7 @@
     <ClInclude Include="..\src\tags\TagColorRules.Internal.hpp" />
     <ClInclude Include="..\src\tags\TagDataTypes.hpp" />
     <ClInclude Include="..\src\tags\TagDefinitionUtils.hpp" />
+    <ClInclude Include="..\src\updater\UpdaterReleaseModel.hpp" />
     <ClInclude Include="..\src\updater\UpdaterUrlPolicy.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
