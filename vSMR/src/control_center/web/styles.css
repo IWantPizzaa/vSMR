@@ -70,6 +70,8 @@
   --ui-field-bg: #20292c;
   --ui-list-shell-bg: #222d30;
   --ui-list-bg: #29383b;
+  --ui-list-fade-solid: rgba(41, 56, 59, .96);
+  --ui-list-fade-clear: rgba(41, 56, 59, 0);
   --ui-list-hover: #35474b;
   --ui-button-bg: #29393b;
   --ui-button-hover: #35474b;
@@ -1068,44 +1070,53 @@ button:disabled {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  padding-right: 12px !important;
-  scrollbar-width: auto;
+  scrollbar-width: none;
 }
 
 .scroll-cue-shell > .scroll-cued-list::-webkit-scrollbar {
-  width: 11px;
-  height: 11px;
+  display: none;
 }
 
 .scroll-edge-cue {
   position: absolute;
   z-index: 12;
   right: 1px;
-  width: 10px;
-  height: 10px;
+  left: 1px;
+  height: 20px;
   display: grid;
   place-items: center;
   pointer-events: none;
   opacity: 0;
-  background: #20292c;
   color: #d8e4e7;
   transition: opacity .12s ease;
 }
 
 .scroll-edge-cue span {
-  font: 9px/1 var(--mono);
-  transform: translateY(-1px);
+  width: 0;
+  height: 0;
+  border-right: 3px solid transparent;
+  border-left: 3px solid transparent;
+  font-size: 0;
+  filter: drop-shadow(0 1px 0 #080b0c);
 }
 
 .scroll-edge-cue-top {
-  top: 1px;
-  border-bottom: 1px solid #111719;
+  top: 0;
+  align-items: start;
+  padding-top: 3px;
+  background: linear-gradient(to bottom, var(--ui-list-fade-solid), var(--ui-list-fade-clear));
 }
 
 .scroll-edge-cue-bottom {
-  bottom: 1px;
-  border-top: 1px solid #111719;
+  bottom: 0;
+  align-items: end;
+  padding-bottom: 3px;
+  background: linear-gradient(to top, var(--ui-list-fade-solid), var(--ui-list-fade-clear));
 }
+
+.scroll-edge-cue-top span { border-bottom: 4px solid currentColor; }
+
+.scroll-edge-cue-bottom span { border-top: 4px solid currentColor; }
 
 .scroll-cue-shell.can-scroll-up > .scroll-edge-cue-top,
 .scroll-cue-shell.can-scroll-down > .scroll-edge-cue-bottom { opacity: 1; }

@@ -67,6 +67,8 @@
   --ui-field-bg: #20292c;
   --ui-list-shell-bg: #222d30;
   --ui-list-bg: #29383b;
+  --ui-list-fade-solid: rgba(41, 56, 59, .96);
+  --ui-list-fade-clear: rgba(41, 56, 59, 0);
   --ui-list-hover: #35474b;
   --ui-button-bg: #29393b;
   --ui-button-hover: #35474b;
