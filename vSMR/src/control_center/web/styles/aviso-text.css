@@ -1,0 +1,290 @@
+/* AVISO text style, label, and typography editors. */
+
+.aviso-text-master {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 180px minmax(0, 1fr);
+  gap: 3px;
+}
+
+.aviso-text-style-list {
+  min-height: 0;
+  padding: 4px 5px 6px;
+  background: #20282b;
+}
+
+.aviso-text-style-list > .aviso-style-box { margin: 0; }
+
+.aviso-text-swatch {
+  justify-self: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #050708;
+  border-radius: 1px;
+  background: var(--aviso-swatch, #6d7a7f);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+
+.aviso-text-style-row { min-height: 25px; }
+
+.aviso-label-row > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font: 600 10px/1.1 var(--mono);
+}
+
+.aviso-label-row .visibility-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #050708;
+  border-radius: 1px;
+  background: #667579;
+}
+
+.aviso-label-row .visibility-dot.visible { background: #7fa58d; }
+
+.aviso-text-summary { grid-template-columns: 17px minmax(0, 1fr) auto; }
+
+.aviso-text-actions .ui-button { white-space: nowrap; }
+
+.aviso-text-editor .aviso-edit-group {
+  margin-top: 3px;
+  margin-bottom: 3px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.aviso-label-form {
+  grid-template-columns: minmax(0, 1fr) 68px;
+  align-items: end;
+}
+
+.aviso-label-form .aviso-wide-check {
+  min-height: 22px;
+  margin-bottom: 0;
+}
+
+.aviso-text-editor .aviso-color-pair { grid-template-columns: 27px minmax(0, 1fr); }
+
+.aviso-label-row.active .aviso-select-box {
+  background: #d8edf5;
+  border-color: #0b171c;
+}
+
+.aviso-label-row.active .aviso-select-box::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 4px;
+  height: 2px;
+  border-left: 1px solid #18333f;
+  border-bottom: 1px solid #18333f;
+  transform: rotate(-45deg);
+}
+
+.aviso-label-row.current { box-shadow: inset 3px 0 0 #e7f5fb; }
+
+.aviso-label-list:focus-visible {
+  outline: 1px solid #7fb1c9;
+  outline-offset: -2px;
+}
+
+.aviso-text-editor input:disabled,
+.aviso-text-editor select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.aviso-text-actions .action-note {
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8fa1a6;
+  text-align: right;
+  font: 8px/1 var(--mono);
+}
+
+.aviso-text-zoom-grid {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 6px;
+  align-items: end;
+}
+
+.aviso-text-zoom-range input[type="range"] { width: 100%; }
+
+.aviso-text-zoom-range.mixed > span,
+.aviso-text-zoom-range .mixed + span {
+  color: #a6b4b8;
+}
+
+.aviso-text-style-selector-row > small {
+  min-width: 34px;
+  padding-bottom: 5px;
+  color: #84959a;
+  font: 8px/1 var(--mono);
+  text-align: right;
+}
+
+.aviso-text-label-panel .panel-title { background: var(--ui-panel-head); }
+
+.aviso-label-row:last-child { border-bottom: 0; }
+
+.aviso-text-style-selector-row .field {
+  margin: 0;
+  gap: 2px;
+}
+
+.aviso-text-actions {
+  grid-template-columns: 92px minmax(0, 1fr) 92px;
+  gap: 5px;
+}
+
+.aviso-text-actions > .ui-button {
+  min-width: 0;
+  width: 92px;
+}
+
+.aviso-text-zoom-box {
+  padding: 7px 0 1px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid #3b494d;
+}
+
+.aviso-text-zoom-box .tag-options-subtitle {
+  margin-bottom: 5px;
+  color: #b7c5c9;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.aviso-text-style-selector-row {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px;
+  border-bottom: 1px solid var(--ui-inner-border);
+  background: #253033;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.aviso-text-label-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  height: 100%;
+  grid-template-rows: var(--ui-panel-title-height) 42px 30px minmax(0, 1fr);
+}
+
+.aviso-label-list {
+  min-height: 0;
+  margin: 4px;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--ui-outer-border);
+  border-color: var(--ui-outer-border);
+  border-radius: var(--ui-panel-radius);
+  background: var(--ui-list-shell-bg);
+  box-shadow: none;
+}
+
+.aviso-label-row {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  align-items: center;
+  padding: 2px 6px;
+  border: 0;
+  color: #d0d9dc;
+  text-align: left;
+  grid-template-columns: 13px 10px minmax(0, 1fr);
+  border-bottom: 1px solid #263438;
+  min-height: 25px;
+  border-bottom-color: var(--ui-inner-border);
+  border-radius: 0;
+  background: var(--ui-list-bg);
+}
+
+.aviso-label-row:hover { background: var(--ui-list-hover); }
+
+.aviso-label-row.active {
+  background: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+.aviso-text-layout {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--ui-master-width) minmax(0, 1fr);
+  gap: var(--ui-gap);
+  padding: 0;
+}
+
+.aviso-text-editor {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  height: 100%;
+  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr);
+}
+
+.aviso-text-style-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: var(--ui-panel-title-height) 30px minmax(0, 1fr);
+}
+
+.aviso-text-layout > .panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.aviso-text-style-row .aviso-style-copy strong {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.aviso-text-style-row .aviso-style-count {
+  min-width: 22px;
+  text-align: right;
+}
+
+.aviso-text-editor-scroll {
+  min-height: 0;
+  display: block;
+  padding: 0;
+  overflow: auto;
+}
+
+.aviso-text-editor .aviso-style-form {
+  gap: 4px 6px;
+  grid-template-columns: minmax(0, 1fr) 68px 86px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid #3b494d;
+}
+
+.aviso-text-style-panel .aviso-text-style-row {
+  min-height: 28px;
+  gap: 3px;
+  padding-inline: 4px;
+  grid-template-columns: 18px 16px minmax(0, 1fr);
+}

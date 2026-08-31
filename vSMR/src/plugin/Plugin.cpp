@@ -1559,7 +1559,7 @@ namespace
 				std::memory_order_acquire))
 			return false;
 
-		if (!startsWith("ok", raw.c_str()))
+		if (!VsmrRadarUiSupport::startsWith("ok", raw.c_str()))
 			return false;
 
 		if (!request.callsign.empty())
@@ -2161,7 +2161,7 @@ void pollMessages(DatalinkPollRequest request) {
 		return;
 	}
 
-	if (!startsWith("ok", raw.c_str()))
+	if (!VsmrRadarUiSupport::startsWith("ok", raw.c_str()))
 	{
 		completePoll(false);
 		return;
@@ -2382,7 +2382,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 			std::memory_order_acquire))
 		return;
 
-	if (startsWith("ok", raw.c_str())) {
+	if (VsmrRadarUiSupport::startsWith("ok", raw.c_str())) {
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
 		RemoveCallsignUnlocked(AircraftDemandingClearance, packet.callsign);
 		RemoveCallsignUnlocked(AircraftStandby, packet.callsign);

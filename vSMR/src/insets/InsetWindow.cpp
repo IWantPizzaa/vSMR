@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "insets/InsetWindow.hpp"
+#include "aviso/AvisoRasterBlitter.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "rendering/TagRenderer.hpp"
@@ -16,6 +17,16 @@
 
 namespace
 {
+	using VsmrRadarUiSupport::BetterHarversine;
+	using VsmrRadarUiSupport::CopyRect;
+	using VsmrRadarUiSupport::DegToRad;
+	using VsmrRadarUiSupport::LiangBarsky;
+	using VsmrRadarUiSupport::RadToDeg;
+	using VsmrRadarUiSupport::TrueBearing;
+	using VsmrRadarUiSupport::mouseWithin;
+	using VsmrRadarUiSupport::rotate_point;
+	using VsmrRadarUiSupport::startsWith;
+
 	constexpr double kAvisoMetersPerNm = 1852.0;
 	constexpr double kAvisoLatMetersPerDegree = 110540.0;
 	constexpr double kAvisoLonMetersPerDegree = 111320.0;
@@ -990,6 +1001,7 @@ struct AvisoViewportState
 	double screenRotationDeg = 0.0;
 	CSMRRadar* renderRadar = nullptr;
 	std::unique_ptr<VsmrAviso::AvisoRasterPipeline> renderPipeline;
+	VsmrAviso::AvisoRasterBlitter rasterBlitter;
 };
 
 CInsetWindow::CInsetWindow(int Id)
@@ -2723,61 +2735,25 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (destWidthInt <= 0 || destHeightInt <= 0)
 			return false;
 
-		HDC sourceDc = ::CreateCompatibleDC(hDC);
-		if (sourceDc == nullptr)
-			return false;
-		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, m_AvisoState->cacheBitmap);
-		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
-		{
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		gdi->Flush(Gdiplus::FlushIntentionFlush);
-		const int savedDc = ::SaveDC(hDC);
-		if (savedDc == 0)
-		{
-			::SelectObject(sourceDc, oldBitmap);
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
-		// Preserve native axes exactly. A one-pixel AlphaBlend rescale can split
-		// an overscanned raster at its centre while the inset is moving.
-		const int blendDestWidth =
-			std::abs(destWidthInt - sourceWidthInt) <= 1 ? sourceWidthInt : destWidthInt;
-		const int blendDestHeight =
-			std::abs(destHeightInt - sourceHeightInt) <= 1 ? sourceHeightInt : destHeightInt;
-		const bool scaled =
-			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
-		if (scaled)
-			::SetBrushOrgEx(hDC, 0, 0, nullptr);
-
-		BLENDFUNCTION blend = {};
-		blend.BlendOp = AC_SRC_OVER;
-		blend.SourceConstantAlpha = 255;
-		blend.AlphaFormat = AC_SRC_ALPHA;
-		const BOOL blended = ::AlphaBlend(
-			hDC,
-			destLeft,
-			destTop,
-			blendDestWidth,
-			blendDestHeight,
-			sourceDc,
+		const RECT sourceRect = {
 			sourceXInt,
 			sourceYInt,
-			sourceWidthInt,
-			sourceHeightInt,
-			blend);
-
-		if (oldStretchMode != 0)
-			::SetStretchBltMode(hDC, oldStretchMode);
-		::RestoreDC(hDC, savedDc);
-		::SelectObject(sourceDc, oldBitmap);
-		::DeleteDC(sourceDc);
-		return blended != FALSE;
+			sourceRightInt,
+			sourceBottomInt
+		};
+		const RECT destinationRect = {
+			destLeft,
+			destTop,
+			destRightInt,
+			destBottomInt
+		};
+		return m_AvisoState->rasterBlitter.Blend(
+			*gdi,
+			hDC,
+			m_AvisoState->cacheBitmap,
+			sourceRect,
+			destinationRect,
+			viewportRect);
 	};
 	auto drawPreviousCacheViewportAligned = [&]() -> bool
 	{
@@ -2863,59 +2839,25 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
 			return false;
 
-		HDC sourceDc = ::CreateCompatibleDC(hDC);
-		if (sourceDc == nullptr)
-			return false;
-		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, m_AvisoState->cacheBitmap);
-		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
-		{
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		gdi->Flush(Gdiplus::FlushIntentionFlush);
-		const int savedDc = ::SaveDC(hDC);
-		if (savedDc == 0)
-		{
-			::SelectObject(sourceDc, oldBitmap);
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		::IntersectClipRect(hDC, viewportRect.left, viewportRect.top, viewportRect.right, viewportRect.bottom);
-		const int blendDestWidth =
-			std::abs(viewportRect.Width() - sourceWidthInt) <= 1 ? sourceWidthInt : viewportRect.Width();
-		const int blendDestHeight =
-			std::abs(viewportRect.Height() - sourceHeightInt) <= 1 ? sourceHeightInt : viewportRect.Height();
-		const bool scaled =
-			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
-		if (scaled)
-			::SetBrushOrgEx(hDC, 0, 0, nullptr);
-
-		BLENDFUNCTION blend = {};
-		blend.BlendOp = AC_SRC_OVER;
-		blend.SourceConstantAlpha = 255;
-		blend.AlphaFormat = AC_SRC_ALPHA;
-		const BOOL blended = ::AlphaBlend(
-			hDC,
-			viewportRect.left,
-			viewportRect.top,
-			blendDestWidth,
-			blendDestHeight,
-			sourceDc,
+		const RECT sourceRect = {
 			sourceXInt,
 			sourceYInt,
-			sourceWidthInt,
-			sourceHeightInt,
-			blend);
-
-		if (oldStretchMode != 0)
-			::SetStretchBltMode(hDC, oldStretchMode);
-		::RestoreDC(hDC, savedDc);
-		::SelectObject(sourceDc, oldBitmap);
-		::DeleteDC(sourceDc);
-		return blended != FALSE;
+			sourceRightInt,
+			sourceBottomInt
+		};
+		const RECT destinationRect = {
+			viewportRect.left,
+			viewportRect.top,
+			viewportRect.right,
+			viewportRect.bottom
+		};
+		return m_AvisoState->rasterBlitter.Blend(
+			*gdi,
+			hDC,
+			m_AvisoState->cacheBitmap,
+			sourceRect,
+			destinationRect,
+			viewportRect);
 	};
 
 	auto cacheHasWorkingMargin = [&]() -> bool

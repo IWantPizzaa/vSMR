@@ -137,7 +137,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	const char* assr = hasFlightPlan ? safeCString(fp.GetControllerAssignedData().GetSquawk()) : "";
 	const char* ssr = hasRadarTarget ? safeCString(rtPos.GetSquawk()) : "";
 	bool has_squawk_error = false;
-	if (strlen(assr) != 0 && strlen(ssr) != 0 && !startsWith(ssr, assr)) {
+	if (strlen(assr) != 0 && strlen(ssr) != 0 && !VsmrRadarUiSupport::startsWith(ssr, assr)) {
 		has_squawk_error = true;
 		sqerror = "A";
 		sqerror.append(assr);
@@ -186,7 +186,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	if (hasFlightPlan)
 		gate = userScratchpad;
 
-	replaceAll(gate, "STAND=", "");
+	VsmrRadarUiSupport::replaceAll(gate, "STAND=", "");
 	if (gate.size() > 4)
 		gate = gate.substr(0, 4);
 
@@ -207,7 +207,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		pfls = "A";
 		padding = 4;
 	}
-	string flightlevel = (pfls + padWithZeros(padding, fl)).substr(0, 3);
+	string flightlevel = (pfls + VsmrRadarUiSupport::padWithZeros(padding, fl)).substr(0, 3);
 
 	// ----- Tendency -------
 	string tendency = "-";

@@ -173,7 +173,7 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 			const char * ssr = "----";
 			if (rt.IsValid() && rt.GetPosition().IsValid())
 				ssr = safeCString(rt.GetPosition().GetSquawk());
-			if (strlen(assr) != 0 && !startsWith(ssr, assr)) {
+			if (strlen(assr) != 0 && !VsmrRadarUiSupport::startsWith(ssr, assr)) {
 				to_render += assr;
 				to_render += ":";
 				to_render += ssr;

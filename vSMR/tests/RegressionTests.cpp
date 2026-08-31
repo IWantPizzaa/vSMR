@@ -6,14 +6,19 @@
 #include "aviso/AvisoDocumentModel.hpp"
 #include "bootstrap/loader/RuntimeReleaseState.hpp"
 #include "config/RuntimeConfig.hpp"
+#include "config/RuntimeConfig.Internal.hpp"
 #include "control_center/ControlCenterMessageProtocol.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
+#include "shared/JsonInputLimits.hpp"
+#include "shared/RapidJsonUtils.hpp"
 #include "AvisoRasterPipelineTests.hpp"
 #include "SharedRenderingTests.hpp"
+#include "TagColorRuleTests.hpp"
+#include "UpdaterUrlPolicyTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 
 #include "rapidjson/document.h"
@@ -50,6 +55,192 @@ namespace
 		std::ostringstream buffer;
 		buffer << input.rdbuf();
 		return buffer.str();
+	}
+
+	void TestRapidJsonUtilities()
+	{
+		rapidjson::Document source;
+		source.Parse<0>("{\"name\":\"source\",\"enabled\":true,\"items\":[1,\"two\"]}");
+		const char embeddedNull[] = { 'a', '\0', 'b' };
+		rapidjson::Value embeddedValue;
+		embeddedValue.SetString(
+			embeddedNull,
+			static_cast<rapidjson::SizeType>(sizeof(embeddedNull)),
+			source.GetAllocator());
+		rapidjson::Value embeddedKey;
+		embeddedKey.SetString("embedded", source.GetAllocator());
+		source.AddMember(embeddedKey, embeddedValue, source.GetAllocator());
+		rapidjson::Document destination;
+		destination.SetObject();
+		rapidjson::Value clone;
+		VsmrRapidJson::CloneJsonValue(source, clone, destination.GetAllocator());
+		Expect(
+			clone.IsObject() && clone["name"].IsString() &&
+			std::string(clone["name"].GetString()) == "source" &&
+			clone["items"].IsArray() && clone["items"].Size() == 2U &&
+			clone["embedded"].IsString() &&
+			clone["embedded"].GetStringLength() == sizeof(embeddedNull),
+			"shared RapidJSON utility deep-copies objects and arrays");
+
+		VsmrRapidJson::SetStringMember(
+			source,
+			"name",
+			"changed",
+			source.GetAllocator());
+		Expect(
+			std::string(clone["name"].GetString()) == "source",
+			"shared RapidJSON clone owns copied strings");
+
+		char borrowedText[] = "borrowed";
+		rapidjson::Document borrowedSource;
+		borrowedSource.SetObject();
+		rapidjson::Value borrowedKey;
+		borrowedKey.SetString("value", borrowedSource.GetAllocator());
+		rapidjson::Value borrowedValue;
+		borrowedValue.SetString(
+			borrowedText,
+			static_cast<rapidjson::SizeType>(sizeof(borrowedText) - 1U));
+		borrowedSource.AddMember(borrowedKey, borrowedValue, borrowedSource.GetAllocator());
+		rapidjson::Value borrowedClone;
+		VsmrRapidJson::CloneJsonValue(
+			borrowedSource,
+			borrowedClone,
+			destination.GetAllocator());
+		borrowedText[0] = 'X';
+		Expect(
+			std::string(borrowedClone["value"].GetString()) == "borrowed",
+			"shared RapidJSON clone does not retain borrowed string storage");
+
+		VsmrRapidJson::SetBoolMember(
+			clone,
+			"enabled",
+			false,
+			destination.GetAllocator());
+		VsmrRapidJson::AddString(
+			clone,
+			"status",
+			"ok",
+			destination.GetAllocator());
+		Expect(
+			clone["enabled"].IsBool() && !clone["enabled"].GetBool() &&
+			clone["status"].IsString() && std::string(clone["status"].GetString()) == "ok",
+			"shared RapidJSON utility updates scalar members");
+	}
+
+	void TestJsonInputLimitBoundaries()
+	{
+		std::string error;
+		VsmrJsonInputLimits::Limits limits;
+		limits.maximumDepth = 2U;
+		Expect(
+			!VsmrJsonInputLimits::Validate("[[[]]]", limits, error),
+			"shared JSON validator enforces nesting depth");
+
+		limits = {};
+		limits.maximumStringBytes = 3U;
+		Expect(
+			!VsmrJsonInputLimits::Validate(R"json({"x":"four"})json", limits, error),
+			"shared JSON validator enforces string length");
+
+		limits = {};
+		limits.maximumValues = 2U;
+		Expect(
+			!VsmrJsonInputLimits::Validate("[1,2]", limits, error),
+			"shared JSON validator enforces total value count");
+
+		limits = {};
+		limits.maximumContainerEntries = 2U;
+		Expect(
+			!VsmrJsonInputLimits::Validate("[1,2,3]", limits, error),
+			"shared JSON validator enforces container size");
+
+		limits = {};
+		limits.maximumFeatures = 1U;
+		Expect(
+			!VsmrJsonInputLimits::Validate(
+				R"json({"features":[{},{}]})json",
+				limits,
+				error),
+			"shared JSON validator enforces AVISO feature count");
+
+		limits = {};
+		limits.maximumCoordinatePairs = 1U;
+		Expect(
+			!VsmrJsonInputLimits::Validate(
+				R"json({"coordinates":[[1,2],[3,4]]})json",
+				limits,
+				error),
+			"shared JSON validator enforces AVISO coordinate count");
+
+		std::string oversizedConfig(CConfig::MaximumSerializedInputBytes + 1U, ' ');
+		Expect(
+			!CConfig::validateSerializedInputLimits(oversizedConfig, error),
+			"configuration validation rejects oversized input before parsing");
+		rapidjson::Document oversizedConfigDocument;
+		std::string oversizedConfigParseError;
+		Expect(
+			!VsmrRuntimeConfigInternal::ParseValidatedArray(
+				oversizedConfig,
+				oversizedConfigDocument,
+				&oversizedConfigParseError) &&
+				oversizedConfigParseError.find("16 MB") != std::string::npos,
+			"configuration parser bounds arbitrary serialized input");
+		oversizedConfig.clear();
+		oversizedConfig.shrink_to_fit();
+
+		const std::filesystem::path boundedConfigPath =
+			std::filesystem::temp_directory_path() /
+			(L"vSMR_bounded_config_" +
+				std::to_wstring(::GetCurrentProcessId()) + L"_" +
+				std::to_wstring(::GetTickCount64()) + L".json");
+		{
+			std::ofstream output(boundedConfigPath, std::ios::binary | std::ios::trunc);
+			output << "[]";
+		}
+		std::string boundedContents;
+		std::string boundedError;
+		rapidjson::Document boundedDocument;
+		const bool boundedRead = VsmrRuntimeConfigInternal::ReadFileContents(
+			boundedConfigPath.u8string(),
+			boundedContents,
+			&boundedError);
+		Expect(
+			boundedRead &&
+				VsmrRuntimeConfigInternal::ParseSizeBoundedArray(
+					boundedContents,
+					boundedDocument,
+					&boundedError),
+			"configuration file pipeline parses bytes after the reader bounds their size");
+
+		const std::filesystem::path oversizedConfigPath =
+			boundedConfigPath.parent_path() /
+			(L"vSMR_oversized_config_" +
+				std::to_wstring(::GetCurrentProcessId()) + L"_" +
+				std::to_wstring(::GetTickCount64()) + L".json");
+		{
+			std::ofstream output(oversizedConfigPath, std::ios::binary | std::ios::trunc);
+			output.seekp(static_cast<std::streamoff>(CConfig::MaximumSerializedInputBytes));
+			output.put(' ');
+		}
+		boundedContents = "stale";
+		boundedError.clear();
+		Expect(
+			!VsmrRuntimeConfigInternal::ReadFileContents(
+				oversizedConfigPath.u8string(),
+				boundedContents,
+				&boundedError) &&
+				boundedContents.empty() &&
+				boundedError.find("16 MB") != std::string::npos,
+			"configuration reader rejects oversized files before allocation and parsing");
+		std::error_code cleanupError;
+		std::filesystem::remove(boundedConfigPath, cleanupError);
+		cleanupError.clear();
+		std::filesystem::remove(oversizedConfigPath, cleanupError);
+
+		std::string oversizedAviso(AvisoDocumentModel::MaximumSerializedInputBytes + 1U, ' ');
+		Expect(
+			!AvisoDocumentModel::ValidateSerializedInputLimits(oversizedAviso, error),
+			"AVISO validation rejects oversized input before parsing");
 	}
 
 	void TestGroundState()
@@ -356,19 +547,24 @@ namespace
 			"app-actions.js",
 			"app.js"
 		};
-		const std::array<const char*, 11> styleSources = {
-			"base-theme.css",
-			"shell-navigation.css",
-			"aviso-editor.css",
-			"editor-controls.css",
-			"navigation-settings.css",
-			"page-workspaces.css",
-			"component-system.css",
-			"visual-corrections.css",
-			"shared-theme.css",
-			"editor-workflows.css",
-			"responsive-polish.css"
-		};
+		std::vector<std::string> styleSources;
+		std::istringstream styleManifest(
+			ReadTextFile(webRoot / "styles" / "sources.txt"));
+		for (std::string sourceName; std::getline(styleManifest, sourceName);)
+		{
+			if (!sourceName.empty() && sourceName.back() == '\r')
+				sourceName.pop_back();
+			if (!sourceName.empty() && sourceName.front() != '#')
+				styleSources.push_back(sourceName);
+		}
+		Expect(!styleSources.empty(), "Control Center style manifest is not empty");
+		for (const char* retiredSource : {
+			"visual-corrections.css", "theme-foundations.css", "shared-theme.css" })
+		{
+			Expect(
+				!std::filesystem::exists(webRoot / "styles" / retiredSource),
+				std::string("Control Center override layer stays retired: ") + retiredSource);
+		}
 		const std::string index = ReadTextFile(webRoot / "index.html");
 		const std::string bundle = ReadTextFile(webRoot / "app-bundle.js");
 		const std::string styleBundle = ReadTextFile(webRoot / "styles.css");
@@ -432,22 +628,22 @@ namespace
 			"Control Center stylesheet is generated from focused sources");
 		previousSourcePosition = 0;
 		foundPreviousSource = false;
-		for (const char* sourceName : styleSources)
+		for (const std::string& sourceName : styleSources)
 		{
 			const std::filesystem::path path = webRoot / "styles" / sourceName;
 			Expect(
 				std::filesystem::is_regular_file(path),
-				std::string("Control Center style source exists: ") + sourceName);
-			const std::string marker = std::string("/* source: ") + sourceName + " */";
+				"Control Center style source exists: " + sourceName);
+			const std::string marker = "/* source: " + sourceName + " */";
 			const std::size_t position = styleBundle.find(marker);
 			Expect(
 				position != std::string::npos,
-				std::string("Control Center stylesheet includes: ") + sourceName);
+				"Control Center stylesheet includes: " + sourceName);
 			if (position != std::string::npos)
 			{
 				Expect(
 					!foundPreviousSource || position > previousSourcePosition,
-					std::string("Control Center style source order is stable at: ") + sourceName);
+					"Control Center style source order is stable at: " + sourceName);
 				previousSourcePosition = position;
 				foundPreviousSource = true;
 			}
@@ -459,7 +655,7 @@ namespace
 				static_cast<std::size_t>(std::count(source.begin(), source.end(), '\n')) + 1U;
 			Expect(
 				lineCount <= 1000U,
-				std::string("Control Center style source stays reviewable: ") + sourceName);
+				"Control Center style source stays reviewable: " + sourceName);
 		}
 	}
 
@@ -882,6 +1078,8 @@ int wmain(int argc, wchar_t** argv)
 		: std::filesystem::current_path();
 
 	TestGroundState();
+	TestRapidJsonUtilities();
+	TestJsonInputLimitBoundaries();
 	TestHoldingPointRemarks();
 	TestTagTokens();
 	TestRimcasRules();
@@ -890,6 +1088,10 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunSharedRenderingBehaviorTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunTagColorRuleTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunUpdaterUrlPolicyTests())
 		Expect(false, failure);
 	TestGeometry();
 	TestWebMessageValidation();

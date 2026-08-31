@@ -6,6 +6,8 @@
 #include "tags/VacdmTagHelpers.hpp"
 #include "crash/CrashRuntime.hpp"
 
+namespace TagColorRules = VsmrTagColorRules;
+
 CSMRRadar::CorrelationSettings CSMRRadar::BuildCorrelationSettings() const
 {
 	CorrelationSettings settings;
@@ -83,14 +85,14 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 		if (settings.requireValidTsat)
 		{
-			const std::string tsatState = ResolveVacdmRuleStateName("tsat", capturedVacdmData);
+			const std::string tsatState = TagColorRules::ResolveVacdmRuleStateName("tsat", capturedVacdmData);
 			if (tsatState != "valid" && tsatState != "valid_ctot")
 				return false;
 		}
 
 		if (settings.requireActiveTobt)
 		{
-			const std::string tobtState = ResolveVacdmRuleStateName("tobt", capturedVacdmData);
+			const std::string tobtState = TagColorRules::ResolveVacdmRuleStateName("tobt", capturedVacdmData);
 			if (tobtState != "confirmed" &&
 				tobtState != "unconfirmed" &&
 				tobtState != "confirmed_delay" &&

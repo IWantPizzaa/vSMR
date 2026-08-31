@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/RuntimeConfig.hpp"
+#include "shared/RapidJsonUtils.hpp"
 
 #include <mutex>
 
@@ -33,7 +34,8 @@ namespace VsmrRuntimeConfigInternal
 	bool IsProfileEntry(const rapidjson::Value& value);
 	bool IsMetadataEntry(const rapidjson::Value& value);
 	std::string ReadStringMember(const rapidjson::Value& object, const char* key);
-	void SetStringMember(rapidjson::Value& object, const char* key, const std::string& value, Allocator& allocator);
+	using VsmrRapidJson::SetStringMember;
+	using VsmrRapidJson::CloneJsonValue;
 	rapidjson::Value& EnsureObjectMember(rapidjson::Value& object, const char* key, Allocator& allocator);
 	std::string TrimAsciiWhitespace(std::string value);
 	std::string NormalizeAirportKey(std::string value);
@@ -41,13 +43,15 @@ namespace VsmrRuntimeConfigInternal
 	rapidjson::Value* FindMetadataValue(rapidjson::Document& profilesDocument);
 	rapidjson::Value& EnsureMetadataValue(rapidjson::Document& profilesDocument);
 	int ReadColorComponent(const rapidjson::Value& colorValue, const char* key, int fallback = 0);
-	bool ValidateJsonTextLimits(const std::string& contents, std::string* error);
+	bool ValidateJsonInputLimits(const std::string& contents, std::string* error);
 	bool ValidateJsonDocumentLimits(const rapidjson::Value& value, std::string* error);
-	bool ValidateJsonStreamingLimits(const std::string& contents, std::string* error);
 	bool ReadFileContents(const std::string& path, std::string& contents, std::string* error = nullptr);
 	void ReportLoadFailure(const char* fileDescription);
 	void AdoptDocument(rapidjson::Document& destination, rapidjson::Document& source);
+	// Arbitrary strings use ParseValidatedArray. The size-bounded path is only
+	// for bytes returned successfully by ReadFileContents.
 	bool ParseValidatedArray(const std::string& serializedJson, rapidjson::Document& validationDocument, std::string* error = nullptr);
+	bool ParseSizeBoundedArray(const std::string& serializedJson, rapidjson::Document& validationDocument, std::string* error = nullptr);
 	std::string ContentRevision(const std::string& contents);
 	std::string FileRevision(const std::string& path);
 	bool HasFile(const std::string& path);
@@ -60,7 +64,6 @@ namespace VsmrRuntimeConfigInternal
 	bool EqualsNoCaseAscii(const std::string& left, const std::string& right);
 	rapidjson::Value* FindProfileByName(rapidjson::Document& profilesDocument, const std::string& profileName);
 	const rapidjson::Value* FindProfileByName(const rapidjson::Document& profilesDocument, const std::string& profileName);
-	bool CloneJsonValue(const rapidjson::Value& source, Allocator& allocator, rapidjson::Value& destination);
 	rapidjson::Value& EnsureArrayMember(rapidjson::Value& object, const char* key, Allocator& allocator);
 	std::string ReadPresetName(const rapidjson::Value& preset);
 	rapidjson::SizeType FindPresetIndexNoCase(const rapidjson::Value& items, const std::string& name);

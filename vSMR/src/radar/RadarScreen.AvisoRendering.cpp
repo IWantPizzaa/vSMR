@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/AvisoRasterBlitter.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
@@ -1165,63 +1166,27 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		if (destWidthInt <= 0 || destHeightInt <= 0)
 			return false;
 
-		HDC sourceDc = ::CreateCompatibleDC(hDC);
-		if (sourceDc == nullptr)
-			return false;
-
-		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, AvisoGeoJsonRasterCache);
-		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
-		{
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		graphics.Flush(FlushIntentionFlush);
-		const int savedDc = ::SaveDC(hDC);
-		if (savedDc == 0)
-		{
-			::SelectObject(sourceDc, oldBitmap);
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		::IntersectClipRect(hDC, radarArea.left, radarArea.top, radarArea.right, radarArea.bottom);
-		// AlphaBlend can introduce a one-pixel seam through the centre of a
-		// near-native bitmap when only one side of the destination is rounded.
-		// Keep each native axis strictly 1:1 and stretch only real zoom previews.
-		const int blendDestWidth =
-			std::abs(destWidthInt - sourceWidthInt) <= 1 ? sourceWidthInt : destWidthInt;
-		const int blendDestHeight =
-			std::abs(destHeightInt - sourceHeightInt) <= 1 ? sourceHeightInt : destHeightInt;
-		const bool scaled =
-			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
-		if (scaled)
-			::SetBrushOrgEx(hDC, 0, 0, nullptr);
-
-		BLENDFUNCTION blend = {};
-		blend.BlendOp = AC_SRC_OVER;
-		blend.SourceConstantAlpha = 255;
-		blend.AlphaFormat = AC_SRC_ALPHA;
-		const BOOL blended = ::AlphaBlend(
-			hDC,
-			destLeft,
-			destTop,
-			blendDestWidth,
-			blendDestHeight,
-			sourceDc,
+		const RECT sourceRect = {
 			sourceXInt,
 			sourceYInt,
-			sourceWidthInt,
-			sourceHeightInt,
-			blend);
-
-		if (oldStretchMode != 0)
-			::SetStretchBltMode(hDC, oldStretchMode);
-		::RestoreDC(hDC, savedDc);
-		::SelectObject(sourceDc, oldBitmap);
-		::DeleteDC(sourceDc);
-		return blended != FALSE;
+			sourceRightInt,
+			sourceBottomInt
+		};
+		const RECT destinationRect = {
+			destLeft,
+			destTop,
+			destRightInt,
+			destBottomInt
+		};
+		if (AvisoRasterBlitterInstance == nullptr)
+			AvisoRasterBlitterInstance = std::make_unique<VsmrAviso::AvisoRasterBlitter>();
+		return AvisoRasterBlitterInstance->Blend(
+			graphics,
+			hDC,
+			AvisoGeoJsonRasterCache,
+			sourceRect,
+			destinationRect,
+			radarArea);
 	};
 
 	auto drawRasterCacheViewportAligned = [&]() -> bool
@@ -1337,59 +1302,27 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		if (destWidthInt <= 0 || destHeightInt <= 0)
 			return false;
 
-		HDC sourceDc = ::CreateCompatibleDC(hDC);
-		if (sourceDc == nullptr)
-			return false;
-		HGDIOBJ oldBitmap = ::SelectObject(sourceDc, AvisoGeoJsonRasterCache);
-		if (oldBitmap == nullptr || oldBitmap == HGDI_ERROR)
-		{
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		graphics.Flush(FlushIntentionFlush);
-		const int savedDc = ::SaveDC(hDC);
-		if (savedDc == 0)
-		{
-			::SelectObject(sourceDc, oldBitmap);
-			::DeleteDC(sourceDc);
-			return false;
-		}
-
-		::IntersectClipRect(hDC, radarArea.left, radarArea.top, radarArea.right, radarArea.bottom);
-		const int blendDestWidth =
-			std::abs(destWidthInt - sourceWidthInt) <= 1 ? sourceWidthInt : destWidthInt;
-		const int blendDestHeight =
-			std::abs(destHeightInt - sourceHeightInt) <= 1 ? sourceHeightInt : destHeightInt;
-		const bool scaled =
-			blendDestWidth != sourceWidthInt || blendDestHeight != sourceHeightInt;
-		const int oldStretchMode = ::SetStretchBltMode(hDC, scaled ? HALFTONE : COLORONCOLOR);
-		if (scaled)
-			::SetBrushOrgEx(hDC, 0, 0, nullptr);
-
-		BLENDFUNCTION blend = {};
-		blend.BlendOp = AC_SRC_OVER;
-		blend.SourceConstantAlpha = 255;
-		blend.AlphaFormat = AC_SRC_ALPHA;
-		const BOOL blended = ::AlphaBlend(
-			hDC,
-			destLeft,
-			destTop,
-			blendDestWidth,
-			blendDestHeight,
-			sourceDc,
+		const RECT sourceRect = {
 			sourceXInt,
 			sourceYInt,
-			sourceWidthInt,
-			sourceHeightInt,
-			blend);
-
-		if (oldStretchMode != 0)
-			::SetStretchBltMode(hDC, oldStretchMode);
-		::RestoreDC(hDC, savedDc);
-		::SelectObject(sourceDc, oldBitmap);
-		::DeleteDC(sourceDc);
-		return blended != FALSE;
+			sourceRightInt,
+			sourceBottomInt
+		};
+		const RECT destinationRect = {
+			destLeft,
+			destTop,
+			destRightInt,
+			destBottomInt
+		};
+		if (AvisoRasterBlitterInstance == nullptr)
+			AvisoRasterBlitterInstance = std::make_unique<VsmrAviso::AvisoRasterBlitter>();
+		return AvisoRasterBlitterInstance->Blend(
+			graphics,
+			hDC,
+			AvisoGeoJsonRasterCache,
+			sourceRect,
+			destinationRect,
+			radarArea);
 	};
 
 	auto rasterCacheHasCompatibleZoom = [&]() -> bool

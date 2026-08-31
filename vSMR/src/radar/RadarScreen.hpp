@@ -48,6 +48,7 @@ namespace VsmrTargetRendering
 namespace VsmrAviso
 {
 	class AvisoRasterPipeline;
+	class AvisoRasterBlitter;
 }
 
 class CSMRRadar :
@@ -160,6 +161,7 @@ private:
 	unsigned long AvisoGeoJsonLastFailedTick = 0;
 	bool AvisoGeoJsonLastFailedWriteTimeValid = false;
 	HBITMAP AvisoGeoJsonRasterCache = nullptr;
+	std::unique_ptr<VsmrAviso::AvisoRasterBlitter> AvisoRasterBlitterInstance;
 	std::string AvisoGeoJsonRasterCachePath;
 	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
 	bool AvisoGeoJsonRasterUseDayPalette = false;
