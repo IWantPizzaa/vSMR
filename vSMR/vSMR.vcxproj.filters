@@ -43,6 +43,7 @@
     <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp"><Filter>Bootstrap</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\aviso\AvisoRasterBlitter.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp"><Filter>Source</Filter></ClCompile>
@@ -95,6 +96,8 @@
     <ClCompile Include="src\scene\RadarScene.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\TagColorRuleParser.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\TagColorRules.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\weather\WeatherStore.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -105,6 +108,7 @@
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp"><Filter>Bootstrap</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp"><Filter>Headers</Filter></ClInclude>
@@ -153,9 +157,11 @@
     <ClInclude Include="src\shared\JsonInputLimits.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\logging\Logger.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\RapidJsonStringViewStream.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\RapidJsonUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\TextUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\WindowsPathEncoding.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagColorRules.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDataTypes.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\VacdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>

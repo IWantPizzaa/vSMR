@@ -1,0 +1,33 @@
+/* AVISO geometry category and geometry-style editors. */
+
+.aviso-category-editor input:disabled,
+.aviso-category-editor select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.aviso-geometry-layout {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--ui-master-width) minmax(0, 1fr);
+  gap: var(--ui-gap);
+  padding: 0;
+}
+
+.aviso-category-editor {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  height: 100%;
+  grid-template-rows: var(--ui-panel-title-height) minmax(0, 1fr);
+}
+
+.aviso-geometry-editor-scroll { padding: 0; }
+
+.aviso-geometry-properties > .advanced-disclosure { margin-top: 8px; }
+
+.aviso-geometry-properties .aviso-color-editor-heading { margin-top: 5px; }
+
+.aviso-style-row.geometry-select-row { grid-template-columns: 18px 16px minmax(0, 1fr); }

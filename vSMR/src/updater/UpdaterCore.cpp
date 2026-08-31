@@ -1,5 +1,6 @@
 #include "updater/UpdaterCore.hpp"
 #include "updater/UpdaterTransport.hpp"
+#include "updater/UpdaterUrlPolicy.hpp"
 #include "updater/UpdaterVerification.hpp"
 
 #ifndef NOMINMAX
@@ -9,7 +10,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <winhttp.h>
 #include <shlobj.h>
 #include <bcrypt.h>
 
@@ -34,7 +34,6 @@
 #include <vector>
 
 #pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "bcrypt.lib")
 
 namespace fs = std::filesystem;
@@ -901,59 +900,6 @@ namespace vsmr::updater
 			return ToLowerWide(value.substr(value.size() - suffix.size())) == ToLowerWide(suffix);
 		}
 
-		bool IsAllowedDownloadHost(const std::wstring& host)
-		{
-			const std::wstring normalized = ToLowerWide(host);
-			return normalized == L"api.github.com" ||
-				normalized == L"github.com" ||
-				normalized == L"release-assets.githubusercontent.com" ||
-				normalized == L"objects.githubusercontent.com" ||
-				normalized == L"github-releases.githubusercontent.com" ||
-				EndsWithNoCase(normalized, L".githubusercontent.com");
-		}
-
-		struct ParsedUrl
-		{
-			std::wstring host;
-			std::wstring resource;
-			INTERNET_PORT port = INTERNET_DEFAULT_HTTPS_PORT;
-		};
-
-		bool ParseAllowedHttpsUrl(const std::wstring& url, ParsedUrl& result)
-		{
-			if (url.empty() || url.find(L'#') != std::wstring::npos)
-				return false;
-			URL_COMPONENTS components{};
-			components.dwStructSize = sizeof(components);
-			components.dwSchemeLength = static_cast<DWORD>(-1);
-			components.dwHostNameLength = static_cast<DWORD>(-1);
-			components.dwUserNameLength = static_cast<DWORD>(-1);
-			components.dwPasswordLength = static_cast<DWORD>(-1);
-			components.dwUrlPathLength = static_cast<DWORD>(-1);
-			components.dwExtraInfoLength = static_cast<DWORD>(-1);
-			if (!::WinHttpCrackUrl(url.c_str(), 0, 0, &components) ||
-				components.nScheme != INTERNET_SCHEME_HTTPS ||
-				components.dwHostNameLength == 0 ||
-				components.dwUserNameLength != 0 ||
-				components.dwPasswordLength != 0 ||
-				components.nPort != INTERNET_DEFAULT_HTTPS_PORT)
-			{
-				return false;
-			}
-			result.host.assign(components.lpszHostName, components.dwHostNameLength);
-			if (!IsAllowedDownloadHost(result.host))
-				return false;
-			result.resource.clear();
-			if (components.dwUrlPathLength > 0)
-				result.resource.assign(components.lpszUrlPath, components.dwUrlPathLength);
-			if (components.dwExtraInfoLength > 0)
-				result.resource.append(components.lpszExtraInfo, components.dwExtraInfoLength);
-			if (result.resource.empty())
-				result.resource = L"/";
-			result.port = components.nPort;
-			return true;
-		}
-
 		HttpResponse HttpGetTransport(
 			Context& context,
 			const std::wstring& initialUrl,
@@ -1021,9 +967,10 @@ namespace vsmr::updater
 						asset.url = Utf8ToWide(JsonString(value, "browser_download_url"));
 						asset.size = JsonUint64(value, "size");
 						asset.digest = ToLowerAscii(JsonString(value, "digest"));
-						ParsedUrl parsed;
+						url_policy::ParsedHttpsUrl parsed;
 						if (asset.name.empty() || !names.insert(asset.name).second ||
-							asset.url.empty() || !ParseAllowedHttpsUrl(asset.url, parsed))
+							asset.url.empty() ||
+							!url_policy::TryParseAllowedHttpsUrl(asset.url, parsed))
 						{
 							continue;
 						}

@@ -160,6 +160,7 @@
     <ClCompile Include="src\app\PluginEntry.cpp" />
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp" />
     <ClCompile Include="src\aviso\AvisoDocumentModel.cpp" />
+    <ClCompile Include="src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
@@ -217,6 +218,8 @@
     <ClCompile Include="src\scene\RadarScene.cpp" />
     <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp" />
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp" />
+    <ClCompile Include="src\tags\TagColorRuleParser.cpp" />
+    <ClCompile Include="src\tags\TagColorRules.cpp" />
     <ClCompile Include="src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -234,6 +237,7 @@
     <ClInclude Include="src\bootstrap\RuntimeApi.hpp" />
     <ClInclude Include="src\bootstrap\RuntimeContext.hpp" />
     <ClInclude Include="src\aviso\AvisoDocumentModel.hpp" />
+    <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp" />
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.hpp" />
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp" />
@@ -282,9 +286,11 @@
     <ClInclude Include="src\shared\JsonInputLimits.hpp" />
     <ClInclude Include="src\shared\logging\Logger.hpp" />
     <ClInclude Include="src\shared\RapidJsonStringViewStream.hpp" />
+    <ClInclude Include="src\shared\RapidJsonUtils.hpp" />
     <ClInclude Include="src\shared\TextUtils.hpp" />
     <ClInclude Include="src\shared\WindowsPathEncoding.hpp" />
     <ClInclude Include="src\tags\TagColorRules.hpp" />
+    <ClInclude Include="src\tags\TagColorRules.Internal.hpp" />
     <ClInclude Include="src\tags\TagDataTypes.hpp" />
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp" />
     <ClInclude Include="src\tags\VacdmTagHelpers.hpp" />

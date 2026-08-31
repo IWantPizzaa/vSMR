@@ -24,6 +24,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "The generated Control Center stylesheet bundle is stale."
 }
 
+$styleOwnershipScript = Join-Path $PSScriptRoot "verify_control_center_style_ownership.ps1"
+& $styleOwnershipScript -RepositoryRoot $RepositoryRoot
+
 $nativeTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.Tests.exe"
 if (-not (Test-Path -LiteralPath $nativeTests -PathType Leaf)) {
     throw "Native regression test executable was not found: $nativeTests"

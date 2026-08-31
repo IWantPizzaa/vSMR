@@ -2,6 +2,7 @@
 #include "control_center/ControlCenterPerformance.hpp"
 
 #include "crash/CrashReportSupport.hpp"
+#include "shared/RapidJsonUtils.hpp"
 
 #include "rapidjson/prettywriter.h"
 #include "rapidjson/stringbuffer.h"
@@ -18,6 +19,7 @@
 namespace
 {
 	using Allocator = rapidjson::Document::AllocatorType;
+	using VsmrRapidJson::AddString;
 
 	std::string FormatUtcMilliseconds(std::uint64_t utcMilliseconds)
 	{
@@ -75,22 +77,6 @@ namespace
 				return std::filesystem::path(buffer.data());
 			buffer.resize(static_cast<std::size_t>(required) + 1U);
 		}
-	}
-
-	void AddString(
-		rapidjson::Value& object,
-		const char* key,
-		const std::string& value,
-		Allocator& allocator)
-	{
-		rapidjson::Value keyValue;
-		keyValue.SetString(key, allocator);
-		rapidjson::Value stringValue;
-		stringValue.SetString(
-			value.c_str(),
-			static_cast<rapidjson::SizeType>(value.size()),
-			allocator);
-		object.AddMember(keyValue, stringValue, allocator);
 	}
 
 	void AddUint64(

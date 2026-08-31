@@ -123,6 +123,9 @@ private:
 	static std::string BuildSearchText(const AvisoFeatureSummary& summary, const rapidjson::Value* properties);
 	static bool IsGeometryCoordinatesValid(const rapidjson::Value& geometry);
 	static bool HasDuplicatePersistedFeatureIds(const rapidjson::Value& features, std::string& duplicateId);
+	static bool ValidateFeatureCollectionSchema(
+		const rapidjson::Value& document,
+		std::string& errorText);
 	static bool FindMatchingJsonBracket(const std::string& json, size_t openOffset, char openChar, char closeChar, size_t& closeOffset);
 	static bool FindJsonStringKey(const std::string& json, size_t searchStart, size_t searchEnd, const char* key, size_t& keyOffset);
 	static bool FindCoordinatesJsonRangeFromFeatureText(const std::string& json, size_t featureStart, size_t featureEnd, size_t& coordinatesStart, size_t& coordinatesEnd);

@@ -2,6 +2,7 @@
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "shared/RapidJsonUtils.hpp"
 #include <cctype>
 #include <cstring>
 
@@ -126,29 +127,6 @@ namespace
 		return std::clamp(objectValue[key].GetInt(), minValue, maxValue);
 	}
 
-	void WriteStringMember(rapidjson::Value& objectValue, const char* key, const std::string& value, rapidjson::Document::AllocatorType& allocator)
-	{
-		using rapidjson::Value;
-		if (objectValue.HasMember(key))
-			objectValue.RemoveMember(key);
-		Value keyValue;
-		keyValue.SetString(key, allocator);
-		Value stringValue;
-		stringValue.SetString(value.c_str(), static_cast<rapidjson::SizeType>(value.size()), allocator);
-		objectValue.AddMember(keyValue, stringValue, allocator);
-	}
-
-	void WriteBoolMember(rapidjson::Value& objectValue, const char* key, bool value, rapidjson::Document::AllocatorType& allocator)
-	{
-		using rapidjson::Value;
-		if (objectValue.HasMember(key))
-			objectValue.RemoveMember(key);
-		Value keyValue;
-		keyValue.SetString(key, allocator);
-		Value boolValue(value);
-		objectValue.AddMember(keyValue, boolValue, allocator);
-	}
-
 	void WriteIntMember(rapidjson::Value& objectValue, const char* key, int value, rapidjson::Document::AllocatorType& allocator)
 	{
 		using rapidjson::Value;
@@ -170,31 +148,31 @@ namespace
 		Value keyValue;
 		keyValue.SetString("statuses", allocator);
 		Value statusValue(rapidjson::kObjectType);
-		WriteBoolMember(statusValue, "no_status", statuses.noStatus, allocator);
-		WriteBoolMember(statusValue, "push", statuses.push, allocator);
-		WriteBoolMember(statusValue, "startup", statuses.startup, allocator);
-		WriteBoolMember(statusValue, "taxi", statuses.taxi, allocator);
-		WriteBoolMember(statusValue, "lineup", statuses.lineup, allocator);
-		WriteBoolMember(statusValue, "departure", statuses.departure, allocator);
-		WriteBoolMember(statusValue, "on_runway", statuses.onRunway, allocator);
-		WriteBoolMember(statusValue, "airborne", statuses.airborne, allocator);
-		WriteBoolMember(statusValue, "arrivals", statuses.arrivals, allocator);
-		WriteBoolMember(statusValue, "no_fpl", statuses.noFlightPlan, allocator);
-		WriteBoolMember(statusValue, "uncorrelated", statuses.uncorrelated, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "no_status", statuses.noStatus, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "push", statuses.push, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "startup", statuses.startup, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "taxi", statuses.taxi, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "lineup", statuses.lineup, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "departure", statuses.departure, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "on_runway", statuses.onRunway, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "airborne", statuses.airborne, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "arrivals", statuses.arrivals, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "no_fpl", statuses.noFlightPlan, allocator);
+		VsmrRapidJson::SetBoolMember(statusValue, "uncorrelated", statuses.uncorrelated, allocator);
 		modeValue.AddMember(keyValue, statusValue, allocator);
 	}
 
 	void WriteDisplayModeValue(rapidjson::Value& modeValue, const CSMRRadar::DisplayModeSettings& settings, rapidjson::Document::AllocatorType& allocator)
 	{
 		modeValue.SetObject();
-		WriteStringMember(modeValue, "name", settings.name.empty() ? "Display Mode" : settings.name, allocator);
-		WriteBoolMember(modeValue, "require_assigned_squawk", settings.requireAssignedSquawk, allocator);
-		WriteBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk, allocator);
-		WriteBoolMember(modeValue, "require_clearance", settings.requireClearance, allocator);
-		WriteBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat, allocator);
-		WriteBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
-		WriteBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
-		WriteBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
+		VsmrRapidJson::SetStringMember(modeValue, "name", settings.name.empty() ? "Display Mode" : settings.name, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "require_assigned_squawk", settings.requireAssignedSquawk, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "require_clearance", settings.requireClearance, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
 		WriteIntMember(modeValue, "max_airborne_altitude_ft", std::clamp(settings.maximumAirborneAltitudeFt, 0, 60000), allocator);
 		WriteIntMember(modeValue, "max_airborne_speed_kt", std::clamp(settings.maximumAirborneSpeedKt, 0, 1000), allocator);
 		WriteStatusVisibility(modeValue, settings.statuses, allocator);
