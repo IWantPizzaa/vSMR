@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 
 namespace
 {
@@ -91,11 +90,6 @@ namespace SMRGeometry
 		if (distance <= 34000)
 			return 1;
 		return 0;
-	}
-
-	float RandomizeHeading(float originHeading)
-	{
-		return static_cast<float>(std::fmod(originHeading + static_cast<float>((std::rand() % 5) - 2), 360.0f));
 	}
 
 	int SectorElementCategoryFromName(const std::string& category)

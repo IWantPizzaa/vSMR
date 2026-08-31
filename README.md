@@ -2,7 +2,7 @@
 
 vSMR is a 32-bit EuroScope plug-in that provides a configurable surface movement radar display for ground and low-level airport traffic. Version 2.0 adds a unified Control Center, AVISO editing, Windows-style inset windows, airport-scoped layouts, RIMCAS configuration, VACDM data, and Hoppie CPDLC/PDC workflows.
 
-Current version: **2.0.0-beta.4**
+Current version: **2.0.0-beta.5**
 
 This is a beta release for controlled operational testing. Keep a known-good backup, verify the display and alert configuration for the active airport before controlling, and do not manually mix runtime binaries or package data from different builds. The deliberately stable top-level loader is the only versioned exception; authenticated updater releases manage its runtime compatibility.
 
@@ -41,7 +41,7 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 
 ### Install a release package
 
-1. Download the complete `vSMR-2.0.0-beta.4.zip`.
+1. Download the complete `vSMR-2.0.0-beta.5.zip`.
 2. Close EuroScope.
 3. Extract the package to a temporary directory.
 4. Install the x86 Visual C++ Redistributable and x86 WebView2 Evergreen Runtime if required.
@@ -49,9 +49,9 @@ WebView2 hosts the local Control Center. The UI itself does not require a web se
 6. In EuroScope, open `Other Settings -> Plug-ins` and load `vSMR.dll`.
 7. Open a vSMR radar screen, select the active airport, and review the active profile, AVISO, groups, RIMCAS runways, and inset layout.
 
-**Beta.3 to beta.4 is a mandatory manual migration.** Beta.4 requires bootstrap loader `1.1.0`; beta.3 has loader `1.0.0` and therefore cannot activate beta.4 automatically. Close EuroScope and install the complete beta.4 package without `-PreserveLoader`. A trusted loader `1.1.0` build can activate later compatible runtime/data releases at startup.
+**Beta.3 to beta.5 is a mandatory manual migration.** Beta.5 requires bootstrap loader `1.1.0`; beta.3 has loader `1.0.0` and therefore cannot activate beta.5 automatically. Close EuroScope and install the complete beta.5 package without `-PreserveLoader`. A trusted loader `1.1.0` build can activate later compatible runtime/data releases at startup.
 
-The unsigned beta.4 package is a manual-install release. Its binaries and update manifest are deliberately marked non-publishable, so the automatic updater will not install beta.4 or trust a future update from this build. Automatic updating becomes available again only after manually installing a release whose loader is Authenticode-signed or built with the matching pinned release-certificate hash.
+The unsigned beta.4 package was a manual-install release. Its binaries and update manifest were deliberately marked non-publishable, so beta.4 installations do not trust a later automatic update. Install beta.5 manually; automatic updating becomes available again only from a release whose loader is Authenticode-signed and built with the matching pinned release-certificate hash.
 
 The recommended installer is included in every package:
 
@@ -224,7 +224,7 @@ The default file for an active airport is `vSMR_Data\AVISO\<ICAO>.geojson`, for 
 
 Release AVISO changes are opt-in at publication time. Maintainers select `none`, `selected`, or `all` in `vSMR\data\AVISO-UPDATE-POLICY.json`; packaging then generates the matching official-hash inventory. `none` is the normal code-only default, `selected` replaces only the canonical filenames listed in `replace`, and `all` refreshes every bundled airport. The mandatory `replace` and `delete` arrays must be present even when empty.
 
-`modified_files` controls locally edited maps: `preserve` always keeps them and stages the incoming copy under `AVISO_Updates`, `protect_setting` follows the user's default-on protection toggle, and `replace` forces a migration despite local changes. Use `replace` only for incompatible data migrations. Beta.4 intentionally uses `all` plus `replace` so every bundled map receives the Night/Day schema, and deletes the obsolete `LFMM.geojson` and `LFPG_Dyna_fixed.geojson`. Normal releases must choose a narrower policy explicitly rather than copying this migration policy.
+`modified_files` controls locally edited maps: `preserve` always keeps them and stages the incoming copy under `AVISO_Updates`, `protect_setting` follows the user's default-on protection toggle, and `replace` forces a migration despite local changes. Use `replace` only for incompatible data migrations. Beta.4 intentionally used `all` plus `replace` so every bundled map received the Night/Day schema, and deleted the obsolete `LFMM.geojson` and `LFPG_Dyna_fixed.geojson`. Beta.5 updates all bundled airport backgrounds but uses `protect_setting`, so locally edited maps remain protected by default.
 
 The Control Center can:
 
@@ -533,7 +533,7 @@ Before packaging, set the exact release version and AVISO behavior in `vSMR\data
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR\tools\create_release_package.ps1 `
-  -Version 2.0.0-beta.4
+  -Version 2.0.0-beta.5
 ```
 
 Use `-ForceNonPublishable` only for local validation packages and `-AllowDirtySource` only for local development checks. Publishable packages always rebuild the current source, run the native regression suite, and reject `-SkipBuild`.

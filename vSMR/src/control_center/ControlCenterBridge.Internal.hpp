@@ -15,8 +15,6 @@
 
 namespace VsmrControlCenterBridgeInternal
 {
-	inline constexpr std::size_t kMaximumBridgeMessageBytes = 32u * 1024u * 1024u;
-
 	using Allocator = rapidjson::Document::AllocatorType;
 
 	std::mutex& BridgeSaveTransactionMutex();

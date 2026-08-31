@@ -41,6 +41,16 @@
       profilesHealthy: true,
       avisoHealthy: true
     };
+    const hostileProfileName = 'Profile <img id="vsmr-profile-injection" src=x>';
+    const hostileGroupName = 'Group <img id="vsmr-group-injection" src=x>';
+    if (authoritative.profiles[0]) authoritative.profiles[0].name = hostileProfileName;
+    authoritative.activeProfile = hostileProfileName;
+    authoritative.aviso.vsmr_groups = [{
+      id: "browser-hostile-group",
+      name: hostileGroupName,
+      visible: true,
+      accent: "#84b7d5"
+    }];
     api.receive({
       version: 1,
       id: "browser-state-1",
@@ -48,6 +58,14 @@
       payload: authoritative
     });
     expect(api.getState().airport === "TEST", "native authoritative state is applied");
+    const contentSecurityPolicy = document.querySelector(
+      'meta[http-equiv="Content-Security-Policy"]')?.content || "";
+    expect(contentSecurityPolicy.includes("default-src 'none'") &&
+      contentSecurityPolicy.includes("script-src 'self'") &&
+      contentSecurityPolicy.includes("style-src 'self' 'unsafe-inline'") &&
+      contentSecurityPolicy.includes("img-src 'self' data: https://icons.vsmr") &&
+      contentSecurityPolicy.includes("connect-src 'none'"),
+      "Control Center policy permits only its self-hosted UI, inline style variables and mapped icon host");
 
     const displayButton = document.querySelector('.rail-button[data-page="display"]');
     displayButton?.click();
@@ -56,6 +74,10 @@
     const outbound = [];
     window.addEventListener("vsmr-control-center", event => outbound.push(event.detail));
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
+    expect(!document.querySelector("#vsmr-profile-injection"),
+      "profile names are rendered as text rather than markup");
+    expect(document.querySelector("#profileList")?.textContent.includes(hostileProfileName),
+      "escaped profile names remain readable");
     const profileName = document.querySelector("#profileName");
     expect(Boolean(profileName), "profile editor is rendered");
     if (profileName) {
@@ -72,6 +94,10 @@
     const groupsButton = document.querySelector('.rail-button[data-page="groups"]');
     groupsButton?.click();
     expect(groupsButton?.classList.contains("active"), "AVISO groups page navigation is bound");
+    expect(!document.querySelector("#vsmr-group-injection"),
+      "AVISO group names are rendered as text rather than markup");
+    expect(document.querySelector("#avisoGroupList")?.textContent.includes(hostileGroupName),
+      "escaped AVISO group names remain readable");
     const newGroupButton = document.querySelector('[data-action="new-aviso-group"]');
     expect(Boolean(newGroupButton), "AVISO group action is rendered");
     newGroupButton?.click();

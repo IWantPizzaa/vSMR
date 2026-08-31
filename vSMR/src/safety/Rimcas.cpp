@@ -188,7 +188,8 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 	// Making sure the AC is airborne and not climbing, but below transition
 	if (Ac.groundSpeed < 50 ||
 		AltitudeDif > 50 ||
-		Ac.pressureAltitude > TransitionAltitude)
+		Ac.pressureAltitude > TransitionAltitude ||
+		!std::isfinite(Ac.trackHeadingDegrees))
 		return string_false;
 
 	// If the AC is already on the runway, then there is no point in this step
@@ -237,9 +238,9 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 			{
 				// The aircraft is going to be on the runway, we need to decide where it needs to be shown on the AIW
 				bool first = true;
-				vector<int> Definiton = CountdownDefinition;
-				if (IsLVP)
-					Definiton = CountdownDefinitionLVP;
+				const vector<int>& Definiton = IsLVP
+					? CountdownDefinitionLVP
+					: CountdownDefinition;
 				for (size_t k = 0; k < Definiton.size(); k++)
 				{
 					int Time = Definiton.at(k);
@@ -316,15 +317,18 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 		if (!monitoredArr && !monitoredDep)
 			continue;
 
-		bool isOnClosedRunway = false;
-		if (ClosedRunway.find(it->first) != ClosedRunway.end()) {
-			if (ClosedRunway[it->first])
-				isOnClosedRunway = true;
-		}
+		const auto closedRunwayIt = ClosedRunway.find(it->first);
+		const bool isOnClosedRunway =
+			closedRunwayIt != ClosedRunway.end() && closedRunwayIt->second;
 
-		bool isAnotherAcApproaching = ApproachingAircrafts.count(it->first) > 0;
+		const size_t runwayOccupantCount = AcOnRunway.count(it->first);
+		const auto approachingRange = ApproachingAircrafts.equal_range(it->first);
+		const bool isAnotherAcApproaching =
+			approachingRange.first != approachingRange.second;
+		const bool hasApproachingConflict =
+			HasApproachingConflict(runwayOccupantCount);
 
-		if (AcOnRunway.count(it->first) > 1 || isOnClosedRunway || isAnotherAcApproaching) {
+		if (runwayOccupantCount > 1 || isOnClosedRunway || isAnotherAcApproaching) {
 
 			auto AcOnRunwayRange = AcOnRunway.equal_range(it->first);
 
@@ -350,7 +354,7 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 						bool triggerStageTwo = false;
 						for (map<string, string>::iterator it3 = AcOnRunwayRange.first; it3 != AcOnRunwayRange.second; ++it3)
 						{
-							if (it3->second.empty())
+							if (it3->second.empty() || it3->second == it2->second)
 								continue;
 
 							const VsmrScene::Target* rd2 = scene.FindTarget(it3->second);
@@ -384,16 +388,18 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 				}
 			}
 
-			for (auto& ac : ApproachingAircrafts)
+			for (auto approachingIt = approachingRange.first;
+				approachingIt != approachingRange.second;
+				++approachingIt)
 			{
 				// One runway occupant is sufficient to conflict with an approaching
 				// aircraft. Requiring two occupants made the alert asymmetric: the
 				// runway target was warned while the approaching target was not.
-				if (ac.first == it->first && HasApproachingConflict(AcOnRunway.count(it->first)))
-					AcColor[ac.second] = StageOne;
+				if (hasApproachingConflict)
+					AcColor[approachingIt->second] = StageOne;
 
-				if (ac.first == it->first && isOnClosedRunway)
-					AcColor[ac.second] = StageTwo;
+				if (isOnClosedRunway)
+					AcColor[approachingIt->second] = StageTwo;
 			}
 		}
 
@@ -509,14 +515,22 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 		}
 	}
 
-	// Comparing track and heading distinguishes pushback from forward taxi
-	int headingDiffRaw = std::abs(static_cast<int>(Rt.trackHeadingDegrees) - Rt.reportedHeadingDegrees);
-	int headingDiff = headingDiffRaw % 360;
-	if (headingDiff > 180) headingDiff = 360 - headingDiff;
-	bool isReversing = headingDiff >= 100;
+	// Comparing track and heading distinguishes pushback from forward taxi.
+	// Direction-dependent alerts require a finite track from EuroScope.
+	const bool hasReliableHeading = std::isfinite(Rt.trackHeadingDegrees);
+	double headingDiff = 0.0;
+	if (hasReliableHeading)
+	{
+		headingDiff = std::fmod(
+			std::abs(Rt.trackHeadingDegrees - static_cast<double>(Rt.reportedHeadingDegrees)),
+			360.0);
+		if (headingDiff > 180.0)
+			headingDiff = 360.0 - headingDiff;
+	}
+	const bool isReversing = hasReliableHeading && headingDiff >= 100.0;
 	// NO PUSH
 	if (inactiveAlerts.find("NO PUSH") == inactiveAlerts.end()) {
-		if (!pushAuthorized && 2 < groundspeed && isReversing) {
+		if (hasReliableHeading && !pushAuthorized && 2 < groundspeed && isReversing) {
 			movementAlerts[Rt.callsign] = NOPUSH;
 			return;
 		}
@@ -541,7 +555,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 
 	// NO TAXI
 	if (inactiveAlerts.find("NO TAXI") == inactiveAlerts.end()) {
-		if (!taxiAuthorized && 5 < groundspeed && !isReversing) {
+		if (hasReliableHeading && !taxiAuthorized && 5 < groundspeed && !isReversing) {
 			movementAlerts[Rt.callsign] = NOTAXI;
 			return;
 		}

@@ -140,7 +140,11 @@ namespace
 		if (session == NULL)
 			return "";
 
-		WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+		if (!WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs))
+		{
+			WinHttpCloseHandle(session);
+			return "";
+		}
 		if (isCancelled() || remainingTimeoutMs() == 0)
 		{
 			WinHttpCloseHandle(session);
@@ -189,7 +193,13 @@ namespace
 			WinHttpCloseHandle(session);
 			return "";
 		}
-		WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
+		if (!WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining))
+		{
+			WinHttpCloseHandle(request);
+			WinHttpCloseHandle(connect);
+			WinHttpCloseHandle(session);
+			return "";
+		}
 		BOOL ok = WinHttpSendRequest(request,
 			L"Accept: application/json\r\n",
 			(DWORD)-1L,
@@ -200,8 +210,14 @@ namespace
 		remaining = remainingTimeoutMs();
 		if (ok == TRUE && !isCancelled() && remaining > 0)
 		{
-			WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
-			ok = WinHttpReceiveResponse(request, NULL);
+			ok = WinHttpSetTimeouts(
+				request,
+				remaining,
+				remaining,
+				remaining,
+				remaining);
+			if (ok == TRUE)
+				ok = WinHttpReceiveResponse(request, NULL);
 		}
 		else
 		{
@@ -253,7 +269,16 @@ namespace
 					readFailed = true;
 					break;
 				}
-				WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining);
+				if (!WinHttpSetTimeouts(
+						request,
+						remaining,
+						remaining,
+						remaining,
+						remaining))
+				{
+					readFailed = true;
+					break;
+				}
 				DWORD available = 0;
 				if (!WinHttpQueryDataAvailable(request, &available))
 				{
@@ -272,9 +297,13 @@ namespace
 					responseTooLarge = true;
 					break;
 				}
+				const size_t boundedReadCapacity =
+					remainingCapacity < static_cast<size_t>(64U * 1024U)
+					? remainingCapacity + 1U
+					: static_cast<size_t>(64U * 1024U);
 				const DWORD readCapacity = static_cast<DWORD>((std::min)(
 					static_cast<size_t>(available),
-					(std::min)(remainingCapacity + 1U, static_cast<size_t>(64U * 1024U))));
+					boundedReadCapacity));
 				std::vector<char> buffer(readCapacity);
 				DWORD downloaded = 0;
 				if (!WinHttpReadData(request, buffer.data(), readCapacity, &downloaded))

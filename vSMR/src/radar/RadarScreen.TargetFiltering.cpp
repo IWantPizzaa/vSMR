@@ -179,11 +179,6 @@ int CSMRRadar::getZoomLevelFromCrossDistance(double crossDistance)
 	return SMRGeometry::ZoomLevelFromCrossDistance(crossDistance);
 }
 
-float CSMRRadar::randomizeHeading(float originHead)
-{
-	return SMRGeometry::RandomizeHeading(originHead);
-}
-
 int CSMRRadar::getIntFromCategory(string category)
 {
 	return SMRGeometry::SectorElementCategoryFromName(category);

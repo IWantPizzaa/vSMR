@@ -36,6 +36,38 @@ function Assert-File([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Required file is missing: $Path" }
 }
 
+function Get-FileSha256([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Get-CertificateDerSha256($Certificate) {
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($Certificate.RawData))).Replace('-', '').ToLowerInvariant()
+    }
+    finally { $sha256.Dispose() }
+}
+
+function Assert-PublishableBinarySignature([string]$Path, [string]$Description, [string]$ExpectedSignerHash) {
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $signature.SignerCertificate) {
+        throw "Publishable package $Description does not have a valid Authenticode signature."
+    }
+    $actualSignerHash = Get-CertificateDerSha256 $signature.SignerCertificate
+    if ($actualSignerHash -ne $ExpectedSignerHash) {
+        throw "Publishable package $Description is not signed by the certificate pinned in release metadata."
+    }
+}
+
 function Assert-ChildPath([string]$Path, [string]$Parent) {
     $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
     $resolvedParent = [System.IO.Path]::GetFullPath($Parent).TrimEnd('\', '/')
@@ -111,7 +143,7 @@ foreach ($line in @(Get-Content -LiteralPath (Join-Path $PackageData "SHA256SUMS
 foreach ($relative in @($manifestEntries.Keys)) {
     $path = Join-Path $PackageRoot $relative
     Assert-File $path
-    $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-FileSha256 $path
     if ($actual -ne $manifestEntries[$relative]) { throw "Package hash mismatch: $relative" }
 }
 $unlisted = @(Get-ChildItem -LiteralPath $PackageRoot -Recurse -File | Where-Object {
@@ -127,6 +159,25 @@ if ([string]$releaseMetadata.version -notmatch '^\d+\.\d+\.\d+(?:-beta\.\d+)?$')
 if ([string]$releaseMetadata.loader.relative_path -ne 'vSMR.dll' -or
     [string]$releaseMetadata.runtime.relative_path -ne 'vSMR_Data/Runtime/vSMR.Runtime.dll') {
     throw "Package release metadata has an invalid loader/runtime layout."
+}
+
+$automaticUpdateMetadata = $releaseMetadata.automatic_update
+$hasPublishableMarker = $null -ne $automaticUpdateMetadata -and
+    $automaticUpdateMetadata.PSObject.Properties.Name -contains 'publishable'
+if ($hasPublishableMarker -and $automaticUpdateMetadata.publishable -isnot [bool]) {
+    throw "Package release metadata has an invalid automatic-update publishable marker."
+}
+if ($hasPublishableMarker -and [bool]$automaticUpdateMetadata.publishable) {
+    $expectedSignerHash = ([string]$automaticUpdateMetadata.signer_cert_der_sha256).ToLowerInvariant()
+    if ($expectedSignerHash -notmatch '^[0-9a-f]{64}$') {
+        throw "Publishable package release metadata has an invalid signer certificate pin."
+    }
+
+    # Automatic updates authenticate the outer archive. A manual installation
+    # reaches this script directly, so enforce the same pinned signer here too.
+    Assert-PublishableBinarySignature $PackageDll "loader" $expectedSignerHash
+    Assert-PublishableBinarySignature (Join-Path $PackageData "Runtime\vSMR.Runtime.dll") "runtime" $expectedSignerHash
+    Assert-PublishableBinarySignature (Join-Path $PackageData "CrashReporter\vSMRCrashHandler.dll") "crash handler" $expectedSignerHash
 }
 
 $avisoPolicy = Get-Content -LiteralPath (Join-Path $PackageData "AVISO-UPDATE-POLICY.json") -Raw | ConvertFrom-Json
@@ -204,7 +255,7 @@ foreach ($property in @($avisoInventory.files.PSObject.Properties)) {
     }
     $inventoryFile = Join-Path $PackageData "AVISO\$($property.Name)"
     Assert-File $inventoryFile
-    $inventoryHash = (Get-FileHash -LiteralPath $inventoryFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    $inventoryHash = Get-FileSha256 $inventoryFile
     if ($inventoryHash -ne ([string]$property.Value).ToLowerInvariant()) {
         throw "AVISO inventory hash mismatch for $($property.Name)."
     }
@@ -247,14 +298,19 @@ $hadData = Test-Path -LiteralPath $destinationData -PathType Container
 if ($preserveTopLevelLoader -and -not $hadDll) {
     throw "Runtime-update mode requires an existing top-level vSMR.dll loader."
 }
-$packageLoaderHash = (Get-FileHash -LiteralPath $PackageDll -Algorithm SHA256).Hash.ToLowerInvariant()
+$packageLoaderHash = Get-FileSha256 $PackageDll
 $packageLoaderVersion = [string]$releaseMetadata.loader.version
 if ([string]::IsNullOrWhiteSpace($packageLoaderVersion)) {
     $packageLoaderVersion = [string](([System.Diagnostics.FileVersionInfo]::GetVersionInfo($PackageDll)).FileVersion)
 }
 $installedLoaderHash = if ($preserveTopLevelLoader) {
-    (Get-FileHash -LiteralPath $destinationDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    Get-FileSha256 $destinationDll
 } else { $packageLoaderHash }
+$installedLoaderSize = if ($preserveTopLevelLoader) {
+    [int64](Get-Item -LiteralPath $destinationDll).Length
+} else {
+    [int64](Get-Item -LiteralPath $PackageDll).Length
+}
 $installedLoaderVersion = if ($preserveTopLevelLoader) {
     [string](([System.Diagnostics.FileVersionInfo]::GetVersionInfo($destinationDll)).FileVersion)
 } else { $packageLoaderVersion }
@@ -426,7 +482,7 @@ if ($hadData -and -not $ReplaceUserData) {
         if ($installedExists) {
             $modified = -not $oldBaseline.ContainsKey($name)
             if (-not $modified) {
-                $installedHash = (Get-FileHash -LiteralPath $installedFile -Algorithm SHA256).Hash.ToLowerInvariant()
+                $installedHash = Get-FileSha256 $installedFile
                 $modified = $installedHash -ne [string]$oldBaseline[$name]
             }
         }
@@ -452,7 +508,7 @@ if ($hadData -and -not $ReplaceUserData) {
 
         $modified = -not $oldBaseline.ContainsKey($name)
         if (-not $modified -and (Test-Path -LiteralPath $installedFile -PathType Leaf)) {
-            $installedHash = (Get-FileHash -LiteralPath $installedFile -Algorithm SHA256).Hash.ToLowerInvariant()
+            $installedHash = Get-FileSha256 $installedFile
             $modified = $installedHash -ne [string]$oldBaseline[$name]
         }
         if ($modified -and $protectModified) {
@@ -514,6 +570,8 @@ $installationMetadata = [ordered]@{
     package_loader_version = $packageLoaderVersion
     package_loader_sha256 = $packageLoaderHash
     installed_loader_version = $installedLoaderVersion
+    installed_loader_relative_path = "vSMR.dll"
+    installed_loader_size = $installedLoaderSize
     installed_loader_sha256 = $installedLoaderHash
     loader_matches_package = $loaderMatchesPackage
     rollback_backup = $backupDirectory

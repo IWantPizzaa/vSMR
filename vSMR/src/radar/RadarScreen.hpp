@@ -623,7 +623,6 @@ public:
 	//---GetZoomLevelFromCrossDistance-----------------------------
 	int maxZoomLevel = 14;
 	virtual int getZoomLevelFromCrossDistance(double crossDistance);
-	virtual float randomizeHeading(float originHead);
 
 	//---getIntFromCategory-------------------------------------------
 	virtual int getIntFromCategory(string category);

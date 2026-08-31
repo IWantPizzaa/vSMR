@@ -6,7 +6,7 @@ param(
     [string]$BuildOutputDirectory = "",
     [string]$ArtifactsDirectory = "",
     [ValidatePattern("^\d+\.\d+\.\d+(?:-beta\.\d+)?$")]
-    [string]$Version = "2.0.0-beta.4",
+    [string]$Version = "2.0.0-beta.5",
     [string]$Configuration = "Release",
     [string]$Platform = "Win32",
     [ValidatePattern("^(auto|v\d+)$")]
@@ -83,6 +83,13 @@ function Assert-File {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Required release file is missing: $Path"
     }
+}
+
+$projectLicensePath = Join-Path $RepositoryRoot "LICENSE"
+Assert-File -Path $projectLicensePath
+$projectLicenseText = [System.IO.File]::ReadAllText($projectLicensePath)
+if ($projectLicenseText -match '(?m)^(?:<<<<<<<|=======|>>>>>>>)') {
+    throw "The project license contains unresolved merge-conflict markers."
 }
 
 if (-not $explicitNonPublishable) {
@@ -405,9 +412,15 @@ try {
     $packagedCrashHandlerPath = Join-Path $packageStage "vSMR_Data\CrashReporter\vSMRCrashHandler.dll"
     $packagedAvisoPolicyPath = Join-Path $packageStage "vSMR_Data\AVISO-UPDATE-POLICY.json"
     $packagedAvisoInventoryPath = Join-Path $packageStage "vSMR_Data\AVISO-INVENTORY.json"
+    $packagedProjectLicensePath = Join-Path $packageStage "vSMR_Data\Licenses\vSMR.txt"
     Assert-File $packagedRuntimePath
     Assert-File $packagedCrashHandlerPath
     Assert-File $packagedAvisoPolicyPath
+    Assert-File $packagedProjectLicensePath
+    if ((Get-FileHash -LiteralPath $packagedProjectLicensePath -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath $projectLicensePath -Algorithm SHA256).Hash) {
+        throw "The packaged vSMR license does not match the reviewed project license."
+    }
     if (-not $explicitNonPublishable) {
         $packagedAssetProvenancePath = Join-Path $packageStage "vSMR_Data\Licenses\ASSET_PROVENANCE.md"
         Assert-File $packagedAssetProvenancePath

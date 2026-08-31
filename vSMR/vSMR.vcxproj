@@ -427,7 +427,8 @@
     <ItemGroup>
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\index.html" />
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\styles.css" />
-      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\*.js" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\data.js" />
+      <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\app-bundle.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
         Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />

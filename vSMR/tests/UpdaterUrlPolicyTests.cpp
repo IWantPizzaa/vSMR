@@ -1,5 +1,7 @@
 #include "UpdaterUrlPolicyTests.hpp"
+#include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterReleaseModel.hpp"
+#include "updater/UpdaterTransport.hpp"
 #include "updater/UpdaterUrlPolicy.hpp"
 
 #include <array>
@@ -96,6 +98,31 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 			L"https://example.invalid/package.zip",
 			redirect),
 		"updater URL policy rejects redirects to an unapproved host",
+		failures);
+
+	using vsmr::updater::transport::policy::ClassifyTimeoutSetup;
+	using vsmr::updater::transport::policy::TimeoutSetupStatus;
+	using vsmr::updater::transport::policy::WouldExceedMaximumBytes;
+	Check(
+		ClassifyTimeoutSetup(0, false) == TimeoutSetupStatus::DeadlineExpired &&
+		ClassifyTimeoutSetup(1000, false) == TimeoutSetupStatus::ConfigurationFailed &&
+		ClassifyTimeoutSetup(1000, true) == TimeoutSetupStatus::Ready,
+		"updater transport distinguishes deadline expiry from timeout configuration failure",
+		failures);
+	Check(
+		WouldExceedMaximumBytes(0, 1, 0) &&
+		!WouldExceedMaximumBytes(9, 1, 10) &&
+		!WouldExceedMaximumBytes(10, 0, 10) &&
+		WouldExceedMaximumBytes(10, 1, 10) &&
+		WouldExceedMaximumBytes(11, 0, 10),
+		"updater transport enforces byte limits without unsigned underflow",
+		failures);
+	using vsmr::updater::internal::ClassifyProcessFailureExitCode;
+	Check(
+		ClassifyProcessFailureExitCode(true, ERROR_SUCCESS) == ERROR_TIMEOUT &&
+		ClassifyProcessFailureExitCode(false, ERROR_ACCESS_DENIED) == ERROR_ACCESS_DENIED &&
+		ClassifyProcessFailureExitCode(false, ERROR_SUCCESS) == ERROR_GEN_FAILURE,
+		"updater process failures preserve Windows errors and classify deadline expiry",
 		failures);
 
 	using vsmr::updater::UpdateChannel;

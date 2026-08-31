@@ -197,7 +197,7 @@ void CVsmrControlCenterDialog::RestoreWindowPlacementOrDefault(
 		fallback.top + kFixedWindowHeight);
 	std::string text;
 	const std::filesystem::path path(WindowPlacementPath());
-	if (ReadTextFile(path, text))
+	if (ReadTextFile(path, text, kMaximumWindowPlacementBytes))
 	{
 		rapidjson::Document document;
 		document.Parse<0>(text.c_str());

@@ -28,6 +28,7 @@ namespace VsmrControlCenterDialogInternal
 	inline constexpr int kFixedWindowWidth = 728;
 	inline constexpr int kFixedWindowHeight = 500;
 	inline constexpr std::size_t kMaximumResourceBytes = 16u * 1024u * 1024u;
+	inline constexpr std::size_t kMaximumWindowPlacementBytes = 64u * 1024u;
 	inline constexpr std::size_t kMaximumQueuedInboundWebMessageBytes =
 		VsmrWebMessageValidation::MaximumInboundMessageBytes;
 	inline constexpr std::size_t kMaximumQueuedInboundWebMessages = 64;

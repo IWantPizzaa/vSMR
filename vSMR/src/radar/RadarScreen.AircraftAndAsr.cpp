@@ -132,7 +132,9 @@ Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
 	std::string ac = acTypeRaw;
 	if (ac.empty())
 		return nullptr;
-	std::transform(ac.begin(), ac.end(), ac.begin(), ::tolower);
+	std::transform(ac.begin(), ac.end(), ac.begin(), [](unsigned char value) {
+		return static_cast<char>(std::tolower(value));
+	});
 
 	auto it = AircraftIcons.find(ac);
 	if (it != AircraftIcons.end())
@@ -141,9 +143,17 @@ Gdiplus::Bitmap* CSMRRadar::GetAircraftIcon(const std::string& acTypeRaw)
 		return it->second.get();
 	}
 	PerformanceDiagnostics.RecordAircraftSourceCache(false);
+	if (!std::all_of(ac.begin(), ac.end(), [](unsigned char value) {
+		return std::isalnum(value) != 0;
+	}))
+	{
+		AircraftIcons[ac] = nullptr;
+		return nullptr;
+	}
 
 	const fs::path candidate = fs::u8path(IconsPath) / (ac + ".png");
-	if (!fs::exists(candidate))
+	std::error_code iconPathError;
+	if (!fs::is_regular_file(candidate, iconPathError) || iconPathError)
 	{
 		AircraftIcons[ac] = nullptr;
 		return nullptr;
@@ -430,14 +440,19 @@ void CSMRRadar::LoadAircraftSpecs() {
 
 	int totalLoaded = 0;
 
-	for (auto& p : candidates) {
+	for (const auto& p : candidates) {
 		Logger::info("Trying to read aircraft specs from: " + p.u8string());
-		if (!fs::exists(p)) {
+		std::error_code specPathError;
+		if (!fs::is_regular_file(p, specPathError) || specPathError) {
 			Logger::info("Specs file not found at: " + p.u8string());
 			continue;
 		}
 
 		std::ifstream ifs(p, std::ios::binary);
+		if (!ifs) {
+			Logger::info("Unable to open aircraft specs at: " + p.u8string());
+			continue;
+		}
 		std::stringstream ss;
 		ss << ifs.rdbuf();
 		ifs.close();
@@ -546,7 +561,9 @@ void CSMRRadar::LoadAircraftSpecs() {
 			if (!okCode || !okLen || !okSpan)
 				return;
 
-			std::transform(code.begin(), code.end(), code.begin(), ::tolower);
+			std::transform(code.begin(), code.end(), code.begin(), [](unsigned char value) {
+				return static_cast<char>(std::tolower(value));
+			});
 			AircraftSpec spec;
 			spec.length = length;
 			spec.wingspan = wingspan;
@@ -1174,13 +1191,11 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if (!persistedProfile.empty())
 	{
 		this->LoadProfile(persistedProfile);
-		LoadCustomFont();
 		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : persistedProfile;
 	}
 	else if ((p_value = GetDataFromAsr("ActiveProfile")) != NULL)
 	{
 		this->LoadProfile(string(p_value));
-		LoadCustomFont();
 		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string(p_value);
 	}
 	else if (CurrentConfig != nullptr)

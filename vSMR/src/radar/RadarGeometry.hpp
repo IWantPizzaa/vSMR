@@ -10,6 +10,5 @@ namespace SMRGeometry
 	EuroScopePlugIn::CPosition ProjectPosition(EuroScopePlugIn::CPosition origin, double headingDeg, double distanceMeters);
 	double DistanceMeters(EuroScopePlugIn::CPosition origin, EuroScopePlugIn::CPosition destination);
 	int ZoomLevelFromCrossDistance(double crossDistanceMeters);
-	float RandomizeHeading(float originHeading);
 	int SectorElementCategoryFromName(const std::string& category);
 }
