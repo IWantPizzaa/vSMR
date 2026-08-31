@@ -262,11 +262,21 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	std::vector<std::filesystem::path> candidates;
 	if (Owner != nullptr)
 	{
-		candidates.emplace_back(
-			std::filesystem::u8path(Owner->GetDataPath()) / "vSMR_webUI");
-		candidates.emplace_back(
-			std::filesystem::u8path(Owner->GetDllPath()) / "vSMR_webUI");
+		if (!Owner->GetDataPath().empty())
+		{
+			candidates.emplace_back(
+				std::filesystem::u8path(Owner->GetDataPath()) / "vSMR_webUI");
+		}
+		if (!Owner->GetDllPath().empty())
+		{
+			candidates.emplace_back(
+				std::filesystem::u8path(Owner->GetDllPath()) / "vSMR_webUI");
+		}
 	}
+#if defined(_DEBUG)
+	// Source-tree fallbacks are a developer convenience only. Release builds
+	// fail closed to the installed Owner paths so the privileged WebView origin
+	// can never be supplied by an unrelated current working directory.
 	try
 	{
 		candidates.emplace_back(
@@ -277,6 +287,7 @@ std::wstring CVsmrControlCenterDialog::ResolveWebResourceFolder() const
 	catch (...)
 	{
 	}
+#endif
 
 	for (const std::filesystem::path& candidate : candidates)
 	{

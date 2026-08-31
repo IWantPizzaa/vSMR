@@ -37,6 +37,16 @@
 - Made release-package rebuilds use the same warnings-as-errors compilation gate as CI.
 - Made production packaging fail closed while bundled asset provenance remains unresolved; explicitly non-publishable local validation packages remain available.
 - Removed obsolete profile-color and tag-editor mutation paths that bypassed the live transactional editor model.
+- Aligned beta.5 version metadata, documentation, CI artifact names, and package policy; CI now publishes separate symbol archives and the beta.5 AVISO refresh protects locally edited maps by default.
+- Reduced the installed Control Center payload to its generated bundle and runtime data, and removed development-only AVISO presets from the bundled profile configuration.
+- Restricted release WebView resource discovery to installed plug-in roots, added a restrictive local-content policy, and bounded placement-file and bridge-input reads with their owning subsystem limits.
+
+### Fixed
+
+- Restored the canonical GPLv3 license text and made packaging reject merge-conflicted or mismatched license copies.
+- Hardened updater transfers around timeout deadlines, redirects, response-size arithmetic, stream positioning, and process-launch errors; plug-in creation now remains exception-safe until EuroScope registration succeeds.
+- Made publishable manual installs verify the pinned Authenticode signer on every executable component, and made full rollback validate the backed-up loader and its recorded metadata before restoration.
+- Corrected radar graphics-context ownership, constructor cleanup, disconnected-aircraft cache cleanup, malformed optional-resource handling, and non-finite target geometry; reduced repeated RIMCAS parsing, copying, and lookups in refresh-sensitive paths.
 
 ## [2.0.0-beta.4] - 2026-08-24
 

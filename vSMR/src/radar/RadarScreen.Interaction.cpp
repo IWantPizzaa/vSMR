@@ -1255,7 +1255,6 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 
 		const char* rtCallsign = rt.GetCallsign();
 		const bool hasCallsign = (rtCallsign != nullptr && rtCallsign[0] != '\0');
-		//GetPlugIn()->SetASELAircraft(rt); // NOTE: This does NOT work eventhough the api says it should?
 		GetPlugIn()->SetASELAircraft(GetPlugIn()->FlightPlanSelect(objectId));  // make sure the correct aircraft is selected before calling 'StartTagFunction'
 		
 		if (rt.GetCorrelatedFlightPlan().IsValid() && hasCallsign) {

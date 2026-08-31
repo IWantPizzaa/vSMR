@@ -80,6 +80,7 @@ namespace vsmr::updater::internal
 		const std::function<void()>& pulse,
 		const std::vector<HANDLE>& handlesToInherit)
 	{
+		exitCode = ClassifyProcessFailureExitCode(false, ERROR_SUCCESS);
 		if (executable.empty() || !IsRegularFile(executable))
 			return false;
 		std::wstring commandLine = QuoteCommandLineArgument(executable.wstring());
@@ -150,6 +151,7 @@ namespace vsmr::updater::internal
 		inheritedDuplicates.clear();
 		if (!created)
 		{
+			exitCode = ClassifyProcessFailureExitCode(false, ::GetLastError());
 			return false;
 		}
 		UniqueHandle processHandle(process.hProcess);
@@ -161,11 +163,15 @@ namespace vsmr::updater::internal
 			if (wait == WAIT_OBJECT_0)
 				break;
 			if (wait != WAIT_TIMEOUT)
+			{
+				exitCode = ClassifyProcessFailureExitCode(false, ::GetLastError());
 				return false;
+			}
 			if (pulse)
 				pulse();
 			if (timeoutMs != INFINITE && ::GetTickCount64() - started >= timeoutMs)
 			{
+				exitCode = ClassifyProcessFailureExitCode(true, ERROR_SUCCESS);
 				if (terminateOnTimeout)
 				{
 					::TerminateProcess(processHandle.get(), ERROR_TIMEOUT);
@@ -174,7 +180,12 @@ namespace vsmr::updater::internal
 				return false;
 			}
 		}
-		return ::GetExitCodeProcess(processHandle.get(), &exitCode) && exitCode == 0;
+		if (!::GetExitCodeProcess(processHandle.get(), &exitCode))
+		{
+			exitCode = ClassifyProcessFailureExitCode(false, ::GetLastError());
+			return false;
+		}
+		return exitCode == 0;
 	}
 
 	bool IsPathBelow(const fs::path& child, const fs::path& parent)

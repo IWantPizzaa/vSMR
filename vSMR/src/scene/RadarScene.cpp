@@ -712,7 +712,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		target.headingTrueDegrees = static_cast<double>(position.GetReportedHeadingTrueNorth());
 		if (!std::isfinite(target.headingTrueDegrees) || target.headingTrueDegrees < 0.0 || target.headingTrueDegrees >= 360.0)
 			target.headingTrueDegrees = target.trackHeadingDegrees;
-		target.headingProbe = CopyPosition(Haversine(position.GetPosition(), target.headingTrueDegrees, 50.0));
+		if (std::isfinite(target.headingTrueDegrees))
+			target.headingProbe = CopyPosition(Haversine(position.GetPosition(), target.headingTrueDegrees, 50.0));
 		target.selected = !selectedCallsign.empty() && selectedCallsign == callsign;
 		// Retain the historical diagnostics counter name, but all valid targets
 		// are now eligible; hidden profile filters no longer exist.

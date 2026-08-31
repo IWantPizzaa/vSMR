@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <climits>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -128,6 +129,43 @@ namespace vsmr::updater::transport
 				? resolved
 				: std::wstring();
 		}
+
+		bool SetBoundedTimeouts(HINTERNET handle, DWORD remainingMs)
+		{
+			if (handle == nullptr || remainingMs == 0)
+				return false;
+			const int operationTimeout = static_cast<int>((std::min)(
+				remainingMs,
+				static_cast<DWORD>(INT_MAX)));
+			const int connectionTimeout = (std::min)(3000, operationTimeout);
+			return ::WinHttpSetTimeouts(
+				handle,
+				connectionTimeout,
+				connectionTimeout,
+				operationTimeout,
+				operationTimeout) != FALSE;
+		}
+
+		bool ApplyBoundedTimeouts(
+			HINTERNET handle,
+			DWORD remainingMs,
+			Response& response)
+		{
+			const bool configured = remainingMs != 0 &&
+				SetBoundedTimeouts(handle, remainingMs);
+			switch (policy::ClassifyTimeoutSetup(remainingMs, configured))
+			{
+			case policy::TimeoutSetupStatus::Ready:
+				return true;
+			case policy::TimeoutSetupStatus::DeadlineExpired:
+				response.error = "timeout";
+				return false;
+			case policy::TimeoutSetupStatus::ConfigurationFailed:
+			default:
+				response.error = "timeout_configuration";
+				return false;
+			}
+		}
 	} // namespace
 
 	Response HttpGet(const Request& parameters, const std::function<bool()>& isCancelled,
@@ -148,7 +186,9 @@ namespace vsmr::updater::transport
 			response.error = "winhttp_session";
 			return response;
 		}
-		::WinHttpSetTimeouts(session.get(), 3000, 3000, 3000, static_cast<int>(parameters.timeoutMs));
+		const DWORD sessionTimeout = remaining();
+		if (!ApplyBoundedTimeouts(session.get(), sessionTimeout, response))
+			return response;
 		for (int redirect = 0; redirect <= 5; ++redirect)
 		{
 			if (isCancelled() || remaining() == 0)
@@ -176,8 +216,18 @@ namespace vsmr::updater::transport
 				return response;
 			}
 			DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-			::WinHttpSetOption(request.get(), WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
-			::WinHttpSetTimeouts(request.get(), 3000, 3000, 3000, remaining());
+			if (!::WinHttpSetOption(
+					request.get(),
+					WINHTTP_OPTION_REDIRECT_POLICY,
+					&redirectPolicy,
+					sizeof(redirectPolicy)))
+			{
+				response.error = "redirect_policy";
+				return response;
+			}
+			const DWORD requestTimeout = remaining();
+			if (!ApplyBoundedTimeouts(request.get(), requestTimeout, response))
+				return response;
 			std::wstring headers = L"Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n";
 			if (!parameters.ifNoneMatch.empty())
 				headers += L"If-None-Match: " + Utf8ToWide(parameters.ifNoneMatch) + L"\r\n";
@@ -195,7 +245,12 @@ namespace vsmr::updater::transport
 			BOOL ok = ::WinHttpSendRequest(
 				request.get(), headers.c_str(), static_cast<DWORD>(-1), WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
 			if (ok)
+			{
+				const DWORD responseTimeout = remaining();
+				if (!ApplyBoundedTimeouts(request.get(), responseTimeout, response))
+					return response;
 				ok = ::WinHttpReceiveResponse(request.get(), nullptr);
+			}
 			if (!ok)
 			{
 				response.error = ::GetLastError() == ERROR_WINHTTP_TIMEOUT ? "timeout" : "network_error";
@@ -246,7 +301,14 @@ namespace vsmr::updater::transport
 					return response;
 				}
 				if (append)
-					::SetFilePointer(file.get(), 0, nullptr, FILE_END);
+				{
+					LARGE_INTEGER zero{};
+					if (!::SetFilePointerEx(file.get(), zero, nullptr, FILE_END))
+					{
+						response.error = "resume_seek_failed";
+						return response;
+					}
+				}
 			}
 			std::uint64_t received = resumeOffset;
 			int lastPercent = -1;
@@ -258,6 +320,9 @@ namespace vsmr::updater::transport
 					response.error = isCancelled() ? "cancelled" : "timeout";
 					return response;
 				}
+				const DWORD readTimeout = remaining();
+				if (!ApplyBoundedTimeouts(request.get(), readTimeout, response))
+					return response;
 				DWORD read = 0;
 				if (!::WinHttpReadData(request.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &read))
 				{
@@ -266,7 +331,10 @@ namespace vsmr::updater::transport
 				}
 				if (read == 0)
 					break;
-				if (received > parameters.maximumBytes - read)
+				if (policy::WouldExceedMaximumBytes(
+					received,
+					static_cast<std::uint64_t>(read),
+					parameters.maximumBytes))
 				{
 					response.error = "response_too_large";
 					return response;

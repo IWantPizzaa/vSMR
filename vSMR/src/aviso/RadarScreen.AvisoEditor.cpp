@@ -80,7 +80,11 @@ void CSMRRadar::SetAvisoGeoJsonOverrideForAirport(const std::string& airport, co
 			normalizedPath =
 				std::filesystem::absolute(std::filesystem::u8path(path)).lexically_normal().u8string();
 		}
-		catch (...) {}
+		catch (...)
+		{
+			// Preserve the caller-provided path when absolute normalization fails.
+			// The normal AVISO validation path will report an unavailable source.
+		}
 	}
 
 	// Keeping every open radar on the same airport-specific source
