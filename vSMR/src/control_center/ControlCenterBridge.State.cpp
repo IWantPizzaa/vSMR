@@ -2,6 +2,7 @@
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
+#include "aviso/AvisoFeatureMetadata.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
 
@@ -422,21 +423,10 @@ namespace VsmrControlCenterBridgeInternal
 		const rapidjson::Value& left,
 		const rapidjson::Value& right)
 	{
-		auto readId = [](const rapidjson::Value& feature) -> std::string
-		{
-			if (feature.IsObject() && feature.HasMember("id") && feature["id"].IsString())
-				return feature["id"].GetString();
-			if (feature.IsObject() &&
-				feature.HasMember("properties") &&
-				feature["properties"].IsObject() &&
-				feature["properties"].HasMember("id") &&
-				feature["properties"]["id"].IsString())
-				return feature["properties"]["id"].GetString();
-			return "";
-		};
-
-		const std::string leftId = readId(left);
-		const std::string rightId = readId(right);
+		const std::string leftId =
+			VsmrAvisoFeatureMetadata::ReadFeatureIdentity(left);
+		const std::string rightId =
+			VsmrAvisoFeatureMetadata::ReadFeatureIdentity(right);
 		if (leftId.empty() || rightId.empty())
 			return true;
 		return leftId == rightId;
