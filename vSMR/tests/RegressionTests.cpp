@@ -12,6 +12,8 @@
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
+#include "AvisoRasterPipelineTests.hpp"
+#include "SharedRenderingTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 
 #include "rapidjson/document.h"
@@ -461,6 +463,99 @@ namespace
 		}
 	}
 
+	void TestSharedRenderingProjectIntegration(const std::filesystem::path& repositoryRoot)
+	{
+		struct SharedSourcePair
+		{
+			const char* sourcePath;
+			const char* headerPath;
+			const char* projectSourcePath;
+			const char* projectHeaderPath;
+			const char* headerInclude;
+			const char* implementationMarker;
+			const char* declarationMarker;
+		};
+
+		const std::array<SharedSourcePair, 3> sharedSources = { {
+			{
+				"src/aviso/AvisoRasterPipeline.cpp",
+				"src/aviso/AvisoRasterPipeline.hpp",
+				"src\\aviso\\AvisoRasterPipeline.cpp",
+				"src\\aviso\\AvisoRasterPipeline.hpp",
+				"#include \"aviso/AvisoRasterPipeline.hpp\"",
+				"VsmrAviso::AvisoRasterPipeline::Queue",
+				"class AvisoRasterPipeline final"
+			},
+			{
+				"src/rendering/TagRenderer.cpp",
+				"src/rendering/TagRenderer.hpp",
+				"src\\rendering\\TagRenderer.cpp",
+				"src\\rendering\\TagRenderer.hpp",
+				"#include \"rendering/TagRenderer.hpp\"",
+				"namespace VsmrTagRendering",
+				"class FontContext final"
+			},
+			{
+				"src/rendering/TargetSymbolRenderer.cpp",
+				"src/rendering/TargetSymbolRenderer.hpp",
+				"src\\rendering\\TargetSymbolRenderer.cpp",
+				"src\\rendering\\TargetSymbolRenderer.hpp",
+				"#include \"rendering/TargetSymbolRenderer.hpp\"",
+				"namespace VsmrTargetRendering",
+				"class Frame final"
+			}
+		} };
+
+		const std::filesystem::path projectRoot = repositoryRoot / "vSMR";
+		const std::string project = ReadTextFile(projectRoot / "vSMR.vcxproj");
+		const std::string filters = ReadTextFile(projectRoot / "vSMR.vcxproj.filters");
+		for (const SharedSourcePair& sharedSource : sharedSources)
+		{
+			const std::filesystem::path sourcePath = projectRoot / sharedSource.sourcePath;
+			const std::filesystem::path headerPath = projectRoot / sharedSource.headerPath;
+			const std::string componentName = headerPath.stem().string();
+			const bool sourceExists = std::filesystem::is_regular_file(sourcePath);
+			const bool headerExists = std::filesystem::is_regular_file(headerPath);
+			Expect(sourceExists, componentName + " implementation source exists");
+			Expect(headerExists, componentName + " declaration header exists");
+
+			if (sourceExists)
+			{
+				const std::string source = ReadTextFile(sourcePath);
+				Expect(
+					source.find(sharedSource.headerInclude) != std::string::npos,
+					componentName + " implementation includes its declaration header");
+				Expect(
+					source.find(sharedSource.implementationMarker) != std::string::npos,
+					componentName + " implementation exposes its shared boundary");
+			}
+			if (headerExists)
+			{
+				const std::string header = ReadTextFile(headerPath);
+				Expect(
+					header.find(sharedSource.declarationMarker) != std::string::npos,
+					componentName + " header declares its shared boundary");
+			}
+
+			const std::string compileEntry =
+				std::string("<ClCompile Include=\"") + sharedSource.projectSourcePath + "\"";
+			const std::string includeEntry =
+				std::string("<ClInclude Include=\"") + sharedSource.projectHeaderPath + "\"";
+			Expect(
+				project.find(compileEntry) != std::string::npos,
+				componentName + " implementation is compiled by the main project");
+			Expect(
+				project.find(includeEntry) != std::string::npos,
+				componentName + " header is registered by the main project");
+			Expect(
+				filters.find(compileEntry + "><Filter>Source</Filter>") != std::string::npos,
+				componentName + " implementation uses the Source project filter");
+			Expect(
+				filters.find(includeEntry + "><Filter>Headers</Filter>") != std::string::npos,
+				componentName + " header uses the Headers project filter");
+		}
+	}
+
 	void TestProfiles(const std::filesystem::path& repositoryRoot)
 	{
 		const std::filesystem::path profilePath = repositoryRoot / "vSMR" / "data" / "vSMR_Profiles.json";
@@ -792,10 +887,15 @@ int wmain(int argc, wchar_t** argv)
 	TestRimcasRules();
 	TestTargetRoleThresholds();
 	TestRuntimeReleaseLifecycle();
+	for (const std::string& failure : RunAvisoRasterPipelineTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunSharedRenderingBehaviorTests())
+		Expect(false, failure);
 	TestGeometry();
 	TestWebMessageValidation();
 	TestControlCenterMessageProtocol();
 	TestControlCenterScriptLayout(repositoryRoot);
+	TestSharedRenderingProjectIntegration(repositoryRoot);
 	TestProfiles(repositoryRoot);
 	TestAviso(repositoryRoot);
 	TestUnicodeResourcePaths(repositoryRoot);
