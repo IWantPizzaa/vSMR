@@ -14,12 +14,16 @@
   <ItemGroup>
     <ClCompile Include="BootstrapLoader.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="..\..\updater\UpdaterCore.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterTransport.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="..\..\updater\UpdaterVerification.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\RuntimeApi.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="LoaderVersion.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="RuntimeReleaseState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\..\updater\UpdaterCore.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="..\..\updater\UpdaterTransport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="..\..\updater\UpdaterVerification.hpp"><Filter>Headers</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="LoaderResources.rc"><Filter>Resources</Filter></ResourceCompile>

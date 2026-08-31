@@ -4,6 +4,7 @@
 
 #include "shared/logging/Logger.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 
@@ -28,8 +29,6 @@
 #include <vector>
 
 #pragma comment(lib, "winhttp.lib")
-
-extern std::vector<CSMRRadar*> RadarScreensOpened;
 
 namespace
 {

@@ -293,6 +293,18 @@ if ($RequireSignature -and ($null -eq $signingCertificate -or [string]::IsNullOr
 }
 
 $solutionPath = Join-Path $RepositoryRoot "vSMR.sln"
+$webBundleChecks = @(
+    (Join-Path $RepositoryRoot "vSMR\tools\build_control_center_bundle.ps1"),
+    (Join-Path $RepositoryRoot "vSMR\tools\build_control_center_styles.ps1")
+)
+foreach ($bundleCheck in $webBundleChecks) {
+    Assert-File $bundleCheck
+    & $bundleCheck -RepositoryRoot $RepositoryRoot -Check
+    if ($LASTEXITCODE -ne 0) {
+        throw "A generated Control Center asset is stale. Run '$bundleCheck' and commit the result."
+    }
+}
+
 if (-not $SkipBuild) {
     Assert-File $solutionPath
     $visualStudioInstallation = Get-VisualStudioInstallationPath

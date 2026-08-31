@@ -18,6 +18,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "The generated Control Center bundle is stale."
 }
 
+$styleScript = Join-Path $RepositoryRoot "vSMR\tools\build_control_center_styles.ps1"
+& $styleScript -RepositoryRoot $RepositoryRoot -Check
+if ($LASTEXITCODE -ne 0) {
+    throw "The generated Control Center stylesheet bundle is stale."
+}
+
 $nativeTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.Tests.exe"
 if (-not (Test-Path -LiteralPath $nativeTests -PathType Leaf)) {
     throw "Native regression test executable was not found: $nativeTests"
