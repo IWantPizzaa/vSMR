@@ -81,13 +81,6 @@ namespace
 		HBITMAP bitmap_ = nullptr;
 	};
 
-	void OutputVsmrDebugLine(const std::string& message)
-	{
-		const std::string line = "[vSMR] " + message + "\n";
-		::OutputDebugStringA(line.c_str());
-		Logger::info(message);
-	}
-
 	class ScopedCdcDetach
 	{
 	public:

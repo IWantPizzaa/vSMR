@@ -8,6 +8,35 @@
 
 namespace vsmr::updater::transport
 {
+	namespace policy
+	{
+		enum class TimeoutSetupStatus
+		{
+			Ready,
+			DeadlineExpired,
+			ConfigurationFailed
+		};
+
+		constexpr TimeoutSetupStatus ClassifyTimeoutSetup(
+			std::uint32_t remainingMs,
+			bool configured) noexcept
+		{
+			return remainingMs == 0
+				? TimeoutSetupStatus::DeadlineExpired
+				: (configured
+					? TimeoutSetupStatus::Ready
+					: TimeoutSetupStatus::ConfigurationFailed);
+		}
+
+		constexpr bool WouldExceedMaximumBytes(
+			std::uint64_t received,
+			std::uint64_t incoming,
+			std::uint64_t maximum) noexcept
+		{
+			return received > maximum || incoming > maximum - received;
+		}
+	}
+
 	struct Response
 	{
 		std::uint32_t statusCode = 0;

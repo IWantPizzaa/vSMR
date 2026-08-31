@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "control_center/ControlCenterDialog.Internal.hpp"
 
 #include "platform/windows/network/HttpHelper.hpp"
 #include "shared/logging/Logger.hpp"
@@ -13,10 +14,7 @@
 #include <new>
 #include <utility>
 
-namespace
-{
-	constexpr size_t kMaximumResourceBytes = 16u * 1024u * 1024u;
-}
+using namespace VsmrControlCenterDialogInternal;
 
 struct CVsmrControlCenterDialog::GithubDownloadResult
 {

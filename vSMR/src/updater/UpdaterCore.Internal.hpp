@@ -36,6 +36,15 @@ namespace vsmr::updater::internal
 	inline constexpr DWORD kAssetMetadataTimeoutMs = 4000;
 	inline constexpr DWORD kArchiveTimeoutMs = 75000;
 
+	inline constexpr DWORD ClassifyProcessFailureExitCode(
+		bool timedOut,
+		DWORD windowsError) noexcept
+	{
+		return timedOut
+			? ERROR_TIMEOUT
+			: (windowsError != ERROR_SUCCESS ? windowsError : ERROR_GEN_FAILURE);
+	}
+
 	class UniqueHandle
 	{
 	public:

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "release": "2.0.0-beta.4",
+  "release": "2.0.0-beta.5",
   "aviso": {
     "update": "all",
     "replace": [],
@@ -8,6 +8,6 @@
       "LFMM.geojson",
       "LFPG_Dyna_fixed.geojson"
     ],
-    "modified_files": "replace"
+    "modified_files": "protect_setting"
   }
 }
