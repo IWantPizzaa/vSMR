@@ -1,0 +1,639 @@
+/* --------------------------------------------------------------------------
+   Page restructuring: Display / AVISO / Groups / Modes / Profiles / Settings
+   -------------------------------------------------------------------------- */
+
+/* The former Profiles workspace is now the focused Display editor. */
+.page[data-page-panel="display"] {
+  grid-template-rows: 28px minmax(0, 1fr);
+}
+
+/* Modes, Profiles and Groups are full pages, not subtabs. */
+.page[data-page-panel="modes"],
+.page[data-page-panel="profiles"],
+.page[data-page-panel="groups"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+.standalone-manager-page {
+  padding: 3px;
+}
+.standalone-manager-page > .split-layout,
+.groups-page > .aviso-groups-layout {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.groups-page > .aviso-groups-layout {
+  padding: 3px;
+}
+
+/* Six primary pages still fit comfortably in the compact left rail. */
+.page-rail {
+  gap: 3px;
+}
+.page-rail .rail-separator {
+  margin-top: 2px;
+}
+
+/* Four equal Display tabs. */
+.profile-subtabs button {
+  flex: 1 1 25%;
+}
+
+/* Tag options is now a permanent, clearly separated editor box. */
+.tag-options-box {
+  margin: 7px 0 1px;
+  padding: 6px;
+  border-color: #111719;
+  border-radius: 4px;
+  background: #263438;
+}
+.tag-options-box > legend {
+  color: #c5d1d4;
+  font-weight: 700;
+}
+.tag-options-content .dense-form,
+.tag-font-grid {
+  padding: 0;
+}
+.tag-font-options {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid #3c4a4e;
+}
+.tag-options-subtitle {
+  margin-bottom: 5px;
+  color: #9fb0b5;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.tag-font-size-row {
+  margin-top: 6px;
+}
+
+/* Profiles now only contains profile identity and radar behavior. */
+.profiles-page .profile-detail-scroll {
+  align-content: start;
+}
+/* Text zoom visibility sits directly inside the Halo card. */
+.aviso-text-zoom-box {
+  margin-top: 7px;
+  padding: 7px 0 1px;
+  border-top: 1px solid #3c4a4e;
+}
+.aviso-text-zoom-grid {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 6px;
+  align-items: end;
+}
+.aviso-text-zoom-range input[type="range"] {
+  width: 100%;
+}
+.aviso-text-zoom-range.mixed > span,
+.aviso-text-zoom-range .mixed + span {
+  color: #a6b4b8;
+}
+
+/* The AVISO toolbar has two editor views plus the dataset loader. */
+.aviso-toolbar .aviso-subtabs button {
+  min-width: 112px;
+}
+
+/* With Maps removed, the two data-source cards breathe without growing the UI. */
+.settings-file-list {
+  align-content: start;
+}
+
+@media (max-width: 700px) {
+  .aviso-text-zoom-grid {
+    grid-template-columns: 62px minmax(0, 1fr);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Runtime icon rail, inset presets, Alerts, global Tag options and Groups
+   -------------------------------------------------------------------------- */
+
+/* Normal controlling view: a deliberately tiny icon-only rail. */
+.runtime-menu.runtime-icon-rail {
+  left: 14px;
+  width: 48px;
+  border-radius: 2px;
+  background: #1e282b;
+}
+.runtime-icon-rail .runtime-titlebar {
+  height: 10px;
+  min-height: 10px;
+  border-bottom-color: #050708;
+}
+.runtime-icon-rail .runtime-menu-list {
+  gap: 3px;
+  padding: 3px;
+}
+.runtime-icon-rail .runtime-menu-button {
+  position: relative;
+  width: 40px;
+  min-height: 40px;
+  height: 40px;
+  display: grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  gap: 0;
+  padding: 7px;
+  border-radius: 3px;
+  text-align: center;
+}
+.runtime-icon-rail .runtime-menu-button svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.35;
+}
+.runtime-icon-rail .runtime-settings-button {
+  margin-top: 1px;
+  border-top-color: #526065;
+}
+.runtime-corner-indicator {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-top: 5px solid transparent;
+  border-right: 5px solid #819399;
+}
+.runtime-menu-button.open .runtime-corner-indicator,
+.runtime-menu-button.active .runtime-corner-indicator {
+  border-right-color: currentColor;
+}
+.runtime-inset-indicators {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  display: flex;
+  gap: 2px;
+  transform: translateX(-50%);
+}
+.runtime-inset-indicators i {
+  width: 4px;
+  height: 4px;
+  border: 1px solid #091012;
+  border-radius: 50%;
+  background: #58666a;
+}
+.runtime-inset-indicators i.active {
+  background: #edf8fb;
+  box-shadow: 0 0 0 1px rgba(132,183,213,.35);
+}
+.runtime-icon-rail .runtime-popover {
+  left: calc(100% + 4px);
+  top: 8px;
+  width: 286px;
+  max-height: min(458px, calc(100vh - 18px));
+}
+.runtime-icon-rail.popover-left .runtime-popover {
+  left: auto;
+  right: calc(100% + 4px);
+}
+.runtime-icon-rail .runtime-popover-content {
+  max-height: 430px;
+}
+.runtime-section-heading {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 5px;
+  padding: 0 5px;
+  color: #9fb0b5;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.runtime-section-heading small {
+  color: #7f9197;
+  font: 8px/1 var(--mono);
+}
+.runtime-inset-row .runtime-choice-marker {
+  border-radius: 50%;
+}
+.runtime-preset-list {
+  max-height: 142px;
+  overflow: auto;
+}
+.runtime-linked-toggle {
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 4px 7px;
+  border: 1px solid #111719;
+  border-radius: 4px;
+  background: #263438;
+}
+.runtime-preset-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 4px;
+}
+.runtime-preset-actions .ui-button {
+  min-width: 0;
+  padding-inline: 3px;
+  font-size: 8px;
+}
+.runtime-preset-actions .runtime-preset-delete {
+  grid-column: 3;
+}
+
+/* Seven primary pages plus global controls remain readable in the short rail. */
+.page-rail {
+  gap: 2px;
+  padding-block: 3px;
+}
+.page-rail .rail-button {
+  height: 34px;
+  width: 36px;
+  padding: 6px;
+}
+.page-rail .rail-separator {
+  margin-block: 0;
+}
+
+/* Tags: the selected definition and global options are genuinely independent. */
+.tag-layout {
+  grid-template-columns: var(--profile-master-width) minmax(0, 1fr);
+}
+.tag-right-stack {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(178px, 1fr) auto 30px;
+  gap: 3px;
+}
+.tag-definition-detail-panel,
+.tag-global-options-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.tag-definition-detail-panel {
+  display: grid;
+  grid-template-rows: 22px minmax(0, 1fr);
+}
+.tag-definition-detail-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+.tag-global-options-panel {
+  display: grid;
+  grid-template-rows: 22px auto;
+}
+.tag-global-options-body {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(150px, .65fr);
+  gap: 0;
+  padding: 5px 6px 6px;
+  background: #263236;
+}
+.tag-options-block {
+  min-width: 0;
+  padding-right: 7px;
+}
+.tag-options-block + .tag-options-block {
+  padding-right: 0;
+  padding-left: 7px;
+  border-left: 1px solid #3c4a4e;
+}
+.tag-global-options-body .dense-form {
+  padding: 0;
+}
+.tag-global-options-body .range-control {
+  grid-template-columns: minmax(70px, 1fr) 24px;
+}
+.tag-shared-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* AVISO Text keeps a single style control; the label list receives the height. */
+.aviso-text-style-selector-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: end;
+  padding: 4px 5px;
+  border-bottom: 1px solid #111719;
+  background: #263236;
+}
+.aviso-text-style-selector-row .field {
+  margin: 0;
+}
+.aviso-text-style-selector-row > small {
+  min-width: 34px;
+  padding-bottom: 5px;
+  color: #84959a;
+  font: 8px/1 var(--mono);
+  text-align: right;
+}
+.aviso-text-label-panel {
+  grid-template-rows: 22px 42px 30px minmax(0, 1fr);
+}
+
+/* RIMCAS is one compact operational editor. */
+.page.alerts-page {
+  grid-template-rows: minmax(0, 1fr);
+}
+.alerts-layout,
+.alerts-control-column,
+.alerts-runways-box {
+  min-width: 0;
+  min-height: 0;
+}
+.alerts-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, .82fr) minmax(330px, 1.18fr);
+  gap: 4px;
+  height: 100%;
+  padding: 4px;
+  overflow: hidden;
+}
+.alerts-control-column {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 4px;
+  align-content: start;
+}
+.alerts-layout .compact-group {
+  margin: 0;
+}
+.alert-types-box legend {
+  width: calc(100% - 10px);
+}
+.legend-tools {
+  float: right;
+  display: inline-flex;
+  gap: 3px;
+}
+.legend-tools button {
+  height: 18px;
+  min-width: 34px;
+  padding: 0 5px;
+  border: 1px solid #111719;
+  border-radius: 3px;
+  background: #2a383b;
+  color: #aebdc1;
+  font-size: 7.5px;
+}
+.alert-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+}
+.alert-toggle-card {
+  min-width: 0;
+  min-height: 27px;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 4px;
+  align-items: center;
+  padding: 3px 4px;
+  border: 1px solid #111719;
+  border-radius: 4px;
+  background: #29373a;
+}
+.alert-toggle-card:hover {
+  background: #324246;
+}
+.alert-toggle-card.inactive {
+  opacity: .55;
+  background: #232e31;
+}
+.alert-toggle-card strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #d4dfe1;
+  font: 700 8px/1 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alerts-timing-box {
+  display: grid;
+  gap: 5px;
+}
+.alert-timing-mode {
+  display: grid;
+  gap: 2px;
+}
+.alert-timing-mode > strong {
+  color: #9fb0b4;
+  font: 700 8px/1 var(--mono);
+  text-transform: uppercase;
+}
+.alerts-runways-box {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 5px;
+  overflow: hidden;
+}
+.alerts-runway-toolbar {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  gap: 5px;
+  align-items: end;
+}
+.alert-visibility-field {
+  max-width: 230px;
+  margin: 0;
+}
+.alerts-runway-toolbar .mini-tools {
+  align-self: end;
+}
+.alert-runway-table {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #111719;
+  border-radius: 5px;
+  background: #20292c;
+}
+.alert-runway-header,
+.alert-runway-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) 42px 42px 50px 22px;
+  align-items: center;
+}
+.alert-runway-header {
+  min-height: 22px;
+  padding: 0 4px;
+  border-bottom: 1px solid #111719;
+  background: #263438;
+  color: #a8b8bd;
+  font-size: 7.5px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+.alert-runway-header span:first-child {
+  text-align: left;
+}
+.alert-runway-row {
+  min-height: 34px;
+  padding: 4px;
+  border-bottom: 1px solid #29373a;
+}
+.alert-runway-row:last-child {
+  border-bottom: 0;
+}
+.alert-runway-row:hover {
+  background: #29383b;
+}
+.alert-runway-row > input {
+  width: 100%;
+  font-family: var(--mono);
+  text-align: center;
+}
+.alert-table-check {
+  display: grid;
+  place-items: center;
+}
+.alert-table-check input {
+  margin: 0;
+}
+.alert-runway-remove {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #111719;
+  border-radius: 3px;
+  background: #2a373a;
+  color: #bdc9cc;
+}
+.alert-runway-remove:hover {
+  background: #704247;
+  color: #fff;
+}
+.alert-timer-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+.alert-timer-row .field {
+  margin: 0;
+}
+.alert-timer-row input {
+  text-align: center;
+}
+
+/* Groups right-hand editor: settings first, operational content below. */
+.aviso-group-row {
+  grid-template-columns: 20px 4px minmax(0, 1fr) 38px;
+}
+.group-row-accent {
+  width: 4px;
+  height: 25px;
+  border-radius: 2px;
+  background: var(--group-accent, var(--accent));
+  box-shadow: 0 0 0 1px rgba(0,0,0,.45);
+}
+.redesigned-group-editor {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 5px;
+  padding: 5px;
+}
+.embedded-editor-card {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #111719;
+  border-radius: 5px;
+  background: #263438;
+}
+.embedded-editor-title {
+  min-height: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  padding: 3px 6px;
+  border-bottom: 1px solid #111719;
+  background: #2a393c;
+  color: #d0dbde;
+  font-size: 8.5px;
+  font-weight: 700;
+}
+.embedded-editor-title small {
+  color: #90a1a6;
+  font: 7.5px/1 var(--mono);
+}
+.embedded-editor-title .ui-button.compact {
+  min-height: 19px;
+  height: 19px;
+  padding: 0 6px;
+  font-size: 7.5px;
+}
+.group-settings-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px;
+}
+.group-settings-grid .field {
+  margin: 0;
+}
+.group-settings-name-only {
+  padding-bottom: 7px;
+}
+.group-members-card {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 24px 30px minmax(0, 1fr);
+}
+.group-member-search-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 50px;
+  gap: 4px;
+  padding: 3px 6px;
+  border-top: 1px solid #354347;
+}
+.group-member-search-row input,
+.group-member-search-row .ui-button {
+  min-width: 0;
+  height: 24px;
+}
+.group-member-search-row .ui-button {
+  padding-inline: 4px;
+}
+.group-members-card .aviso-group-member-list {
+  margin: 0 6px 6px;
+  border-radius: 4px;
+}
+.group-advanced-compact {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .runtime-menu.runtime-icon-rail { left: 8px; }
+  .tag-global-options-body { grid-template-columns: 1fr; }
+  .tag-options-block + .tag-options-block {
+    margin-top: 6px;
+    padding-top: 6px;
+    padding-left: 0;
+    border-top: 1px solid #3c4a4e;
+    border-left: 0;
+  }
+}

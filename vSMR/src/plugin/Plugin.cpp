@@ -1,5 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/Plugin.hpp"
+#include "plugin/PluginHttpSupport.hpp"
+#include "plugin/Plugin.RuntimeState.hpp"
 #include "bootstrap/RuntimeContext.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
 #include "insets/InsetWindow.hpp"
@@ -24,6 +26,7 @@
 #include "rapidjson/document.h"
 #include "weather/WeatherStore.hpp"
 #include "rdf/RdfOverlay.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "aircraft/GroundState.hpp"
@@ -358,7 +361,6 @@ namespace
 	const int VacdmSnapshotMaximumAgeSeconds = VacdmFetchIntervalSeconds * 4;
 	const size_t HoppieResponseLimitBytes = 1024U * 1024U;
 	const size_t VacdmResponseLimitBytes = 16U * 1024U * 1024U;
-	const size_t WeatherResponseLimitBytes = 4096U;
 	std::filesystem::path ResolveRuntimeAudioPath(const wchar_t* fileName)
 	{
 		if (VsmrRuntimeContext::IsConfigured())
@@ -474,12 +476,6 @@ namespace
 	}
 
 	bool StartDatalinkPoll(bool reportStatus, std::string& error);
-
-	HttpHelper& GetHttpHelper()
-	{
-		static HttpHelper helper;
-		return helper;
-	}
 
 	enum class CdmQueueReminderOutcome
 	{
@@ -1553,7 +1549,7 @@ namespace
 		url += "&packet=";
 		url += EncodeUrlQueryComponent(request.packet);
 
-		raw.assign(GetHttpHelper().downloadStringFromURL(
+		raw.assign(VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 			url,
 			6000,
 			&PluginShutdownRequested,
@@ -1601,6 +1597,12 @@ namespace
 			(void)SendDatalinkPacketMessage(request);
 		});
 	}
+}
+
+HttpHelper& VsmrPluginRuntime::GetHttpHelper()
+{
+	static HttpHelper helper;
+	return helper;
 }
 
 bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
@@ -1894,7 +1896,7 @@ void refreshVacdmDataImpl()
 
 	try
 	{
-		std::string raw = GetHttpHelper().downloadStringFromURL(
+		std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 			pilotsUrl,
 			6000,
 			&PluginShutdownRequested,
@@ -2044,7 +2046,7 @@ void datalinkLogin(DatalinkLoginRequest request) {
 		url += "&from=";
 		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=SERVER&type=PING";
-		const string raw = GetHttpHelper().downloadStringFromURL(
+		const string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 			url,
 			6000,
 			&PluginShutdownRequested,
@@ -2140,7 +2142,7 @@ void pollMessages(DatalinkPollRequest request) {
 		url += "&from=";
 		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=SERVER&type=POLL";
-		raw.assign(GetHttpHelper().downloadStringFromURL(
+		raw.assign(VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 			url,
 			6000,
 			&PluginShutdownRequested,
@@ -2370,7 +2372,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	url += "&type=CPDLC&packet=";
 	url += EncodeUrlQueryComponent(payload);
 
-	const string raw = GetHttpHelper().downloadStringFromURL(
+	const string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 		url,
 		6000,
 		&PluginShutdownRequested,
@@ -2652,28 +2654,6 @@ CSMRPlugin::~CSMRPlugin()
 	if (cdmCooldownToPersist < 0)
 		cdmCooldownToPersist = 0;
 	SaveDataToSettings("cdm_cooldown_min", "CDM reminder resend cooldown in minutes", std::to_string(cdmCooldownToPersist).c_str());
-}
-
-void CSMRPlugin::StopWeatherFetchWorker()
-{
-	WeatherFetchCancellationRequested.store(true, std::memory_order_release);
-	{
-		std::lock_guard<std::mutex> guard(WeatherFetchMutex);
-		WeatherFetchStop = true;
-		WeatherFetchQueue.clear();
-		WeatherFetchQueued.clear();
-	}
-	WeatherFetchCondition.notify_all();
-	if (WeatherFetchThread.joinable())
-	{
-		::CancelSynchronousIo(WeatherFetchThread.native_handle());
-		WeatherFetchThread.join();
-	}
-	{
-		std::lock_guard<std::mutex> guard(WeatherFetchMutex);
-		WeatherWorkerRunning = false;
-		WeatherFetchesInFlight = 0;
-	}
 }
 
 DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
@@ -3120,94 +3100,6 @@ bool CSMRPlugin::OnCompileCommand(const char * sCommandLine) {
 		*this,
 		sCommandLine,
 		RadarScreensOpened);
-}
-
-void CSMRPlugin::OnGetTagItem(CFlightPlan FlightPlan, CRadarTarget RadarTarget, int ItemCode, int TagData, char sItemString[16], int * pColorCode, COLORREF * pRGB, double * pFontSize) {
-	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnGetTagItem");
-	(void)RadarTarget;
-	(void)TagData;
-	(void)pFontSize;
-	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-	{
-		strcpy_s(sItemString, 16, "");
-		return;
-	}
-
-	if (ItemCode == TAG_ITEM_HOLDING_POINT)
-	{
-		if (pColorCode != nullptr)
-			*pColorCode = TAG_COLOR_DEFAULT;
-		strcpy_s(sItemString, 16, "");
-		if (!FlightPlan.IsValid())
-			return;
-
-		const char* rawRemarks = FlightPlan.GetFlightPlanData().GetRemarks();
-		const char* callsign = FlightPlan.GetCallsign();
-		const std::string holdingPoint = VsmrHoldingPoint::Resolve(
-			callsign != nullptr ? callsign : "",
-			rawRemarks != nullptr ? rawRemarks : "");
-		// A single space keeps an empty EuroScope list item clickable without
-		// displaying the old "HP" placeholder.
-		strcpy_s(sItemString, 16, holdingPoint.empty() ? " " : holdingPoint.c_str());
-		return;
-	}
-
-	if (ItemCode != TAG_ITEM_DATALINK_STS)
-		return;
-
-	*pColorCode = TAG_COLOR_RGB_DEFINED;
-	*pRGB = RGB(130, 130, 130);
-	strcpy_s(sItemString, 16, "-");
-
-	if (!FlightPlan.IsValid())
-		return;
-
-	const char* fpCallsign = FlightPlan.GetCallsign();
-	if (fpCallsign == nullptr || fpCallsign[0] == '\0')
-		return;
-
-	const std::string callsign = fpCallsign;
-	bool isDemanding = false;
-	bool isStandby = false;
-	bool hasMessage = false;
-	bool isWilco = false;
-	bool isMessageSent = false;
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		isDemanding = ContainsCallsignUnlocked(AircraftDemandingClearance, callsign);
-		isStandby = ContainsCallsignUnlocked(AircraftStandby, callsign);
-		hasMessage = ContainsCallsignUnlocked(AircraftMessage, callsign);
-		isWilco = ContainsCallsignUnlocked(AircraftWilco, callsign);
-		isMessageSent = ContainsCallsignUnlocked(AircraftMessageSent, callsign);
-	}
-
-	if (isDemanding) {
-		if (!BLINK)
-			*pRGB = RGB(255, 255, 0);
-		strcpy_s(sItemString, 16, isStandby ? "S" : "R");
-		return;
-	}
-
-	if (hasMessage) {
-		if (!BLINK)
-			*pRGB = RGB(255, 255, 0);
-		strcpy_s(sItemString, 16, "T");
-		return;
-	}
-
-	if (isWilco) {
-		*pRGB = RGB(0, 176, 0);
-		strcpy_s(sItemString, 16, "V");
-		return;
-	}
-
-	if (isMessageSent) {
-		*pRGB = RGB(255, 255, 0);
-		strcpy_s(sItemString, 16, "V");
-		return;
-	}
 }
 
 void CSMRPlugin::OnFunctionCall(int FunctionId, const char * sItemString, POINT Pt, RECT Area)
@@ -3669,225 +3561,6 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 	// visual refresh to the timer so a burst of server updates never re-enters
 	// radar rendering from inside EuroScope's flight-plan callback.
 	FlightDataRefreshPending.store(true, std::memory_order_release);
-}
-
-void CSMRPlugin::OnNewMetarReceived(const char* sStation, const char* sFullMetar)
-{
-	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnNewMetarReceived");
-	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-		VsmrWeather::Update(sStation, sFullMetar);
-}
-
-void CSMRPlugin::RefreshControllerDependentOverlays()
-{
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-		return;
-	for (CSMRRadar* radar : RadarScreensOpened)
-	{
-		if (radar == nullptr || radar->IsShutdownRequested())
-			continue;
-		radar->MarkPerformanceRefreshReason(
-			VsmrPerformance::FrameRefreshReason::ControllerUpdate);
-		radar->RequestRefresh();
-	}
-}
-
-void CSMRPlugin::OnControllerPositionUpdate(CController Controller)
-{
-	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerPositionUpdate");
-	(void)Controller;
-	RefreshControllerDependentOverlays();
-}
-
-void CSMRPlugin::OnControllerDisconnect(CController Controller)
-{
-	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnControllerDisconnect");
-	(void)Controller;
-	RefreshControllerDependentOverlays();
-}
-
-void CSMRPlugin::OnAirportRunwayActivityChanged()
-{
-	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnAirportRunwayActivityChanged");
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-		return;
-
-	Logger::info("EuroScope airport/runway activity changed");
-	for (CSMRRadar* radar : RadarScreensOpened)
-	{
-		if (radar == nullptr || radar->IsShutdownRequested())
-			continue;
-
-		// Radar screens may use different sector sources. Resolve the active
-		// airport set independently for each one so a unique airport from another
-		// screen can never replace this screen's surface airport.
-		std::set<std::string> activeAirports;
-		SelectScreenSectorfile(radar);
-		CSectorElement airport;
-		for (airport = SectorFileElementSelectFirst(SECTOR_ELEMENT_AIRPORT);
-			airport.IsValid();
-			airport = SectorFileElementSelectNext(airport, SECTOR_ELEMENT_AIRPORT))
-		{
-			const char* name = airport.GetName();
-			if (name == nullptr || name[0] == '\0' ||
-				(!airport.IsElementActive(true, 0) && !airport.IsElementActive(false, 0)))
-			{
-				continue;
-			}
-			std::string normalized(name);
-			std::transform(
-				normalized.begin(), normalized.end(), normalized.begin(),
-				[](unsigned char value) { return static_cast<char>(std::toupper(value)); });
-			activeAirports.insert(normalized);
-		}
-
-		const std::string radarAirport = radar->getActiveAirport();
-		const bool radarAirportStillActive = std::any_of(
-			activeAirports.begin(), activeAirports.end(),
-			[&](const std::string& candidate)
-			{
-				return _stricmp(candidate.c_str(), radarAirport.c_str()) == 0;
-			});
-		const bool adoptAirport = !radarAirportStillActive && activeAirports.size() == 1;
-		if (adoptAirport)
-			radar->setActiveAirport(*activeAirports.begin(), true, false);
-
-		// EuroScope exposes airport/runway activity as read-only sector data.
-		// Select this screen's sector source explicitly, then invalidate the
-		// cached activity snapshot so map rules, RIMCAS and every inset repaint
-		// from the choices that were just accepted in EuroScope's dialog.
-		SelectScreenSectorfile(radar);
-		radar->RefreshAfterAirportRunwayActivityChange(adoptAirport);
-	}
-
-	// Leave the plug-in enumeration source in EuroScope's normal active-file
-	// state for callbacks that are not associated with a particular screen.
-	SelectActiveSectorfile();
-}
-
-void CSMRPlugin::QueueWeatherFetch(const std::string& rawStation)
-{
-	const std::string station = VsmrWeather::NormalizeIcao(rawStation);
-	if (station.empty() || PluginShutdownRequested.load(std::memory_order_relaxed))
-		return;
-
-	VsmrWeather::Snapshot snapshot;
-	const bool hasSnapshot = VsmrWeather::TryGet(station, snapshot);
-	const std::time_t now = std::time(nullptr);
-	const std::time_t refreshInterval = hasSnapshot ? 5 * 60 : 60;
-
-	std::lock_guard<std::mutex> guard(WeatherFetchMutex);
-	if (WeatherFetchStop || WeatherFetchQueued.find(station) != WeatherFetchQueued.end())
-		return;
-
-	const auto lastAttempt = WeatherLastAttemptUtc.find(station);
-	if (lastAttempt != WeatherLastAttemptUtc.end() &&
-		now >= lastAttempt->second && now - lastAttempt->second < refreshInterval)
-	{
-		return;
-	}
-
-	if (!WeatherFetchThread.joinable())
-	{
-		try
-		{
-			WeatherFetchThread = std::thread(&CSMRPlugin::WeatherFetchThreadMain, this);
-			WeatherWorkerRunning = true;
-		}
-		catch (const std::system_error&)
-		{
-			WeatherLastAttemptUtc[station] = now;
-			return;
-		}
-	}
-
-	WeatherLastAttemptUtc[station] = now;
-	WeatherFetchQueued.insert(station);
-	WeatherFetchQueue.push_back(station);
-	WeatherFetchCondition.notify_one();
-}
-
-void CSMRPlugin::WeatherFetchThreadMain()
-{
-	VsmrCrashRuntime::OwnedThreadRole crashThreadRole("weather worker");
-	struct RunningWeatherGuard
-	{
-		std::mutex& mutex;
-		bool& running;
-		~RunningWeatherGuard()
-		{
-			std::lock_guard<std::mutex> lock(mutex);
-			running = false;
-		}
-	} runningWeatherGuard{ WeatherFetchMutex, WeatherWorkerRunning };
-	try
-	{
-		for (;;)
-		{
-			std::string station;
-			{
-				std::unique_lock<std::mutex> lock(WeatherFetchMutex);
-				WeatherFetchCondition.wait(lock, [this]() {
-					return WeatherFetchStop || !WeatherFetchQueue.empty();
-					});
-				if (WeatherFetchStop)
-					return;
-
-				station = std::move(WeatherFetchQueue.front());
-				WeatherFetchQueue.pop_front();
-				WeatherFetchQueued.erase(station);
-				++WeatherFetchesInFlight;
-			}
-			struct InFlightWeatherGuard
-			{
-				std::mutex& mutex;
-				std::size_t& count;
-				~InFlightWeatherGuard()
-				{
-					std::lock_guard<std::mutex> lock(mutex);
-					if (count > 0)
-						--count;
-				}
-			} inFlightWeatherGuard{ WeatherFetchMutex, WeatherFetchesInFlight };
-
-			try
-			{
-				const std::time_t requestStartedUtc = std::time(nullptr);
-				const std::string url =
-					"https://metar.vatsim.net/metar.php?id=" + station;
-				const std::string report = GetHttpHelper().downloadStringFromURL(
-					url,
-					3500,
-					&WeatherFetchCancellationRequested,
-					WeatherResponseLimitBytes);
-				if (!PluginShutdownRequested.load(std::memory_order_relaxed) &&
-					!report.empty() && report.size() <= WeatherResponseLimitBytes)
-				{
-					VsmrWeather::Update(station, report, requestStartedUtc, true);
-				}
-			}
-			catch (const std::exception& ex)
-			{
-				Logger::info(
-					"Weather fetch exception: " +
-					std::string(ex.what()));
-			}
-			catch (...)
-			{
-				Logger::info("Weather fetch exception: unknown");
-			}
-		}
-	}
-	catch (const std::exception& ex)
-	{
-		Logger::info(
-			"Weather worker terminated by exception: " +
-			std::string(ex.what()));
-	}
-	catch (...)
-	{
-		Logger::info("Weather worker terminated by unknown exception");
-	}
 }
 
 void CSMRPlugin::OnTimer(int Counter)

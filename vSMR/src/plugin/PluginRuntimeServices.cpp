@@ -1,11 +1,13 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "plugin/Plugin.hpp"
+#include "plugin/Plugin.RuntimeState.hpp"
 
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
 #include "plugin/PluginMetadata.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RadarScreen.Registry.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -13,12 +15,6 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-
-extern std::atomic<bool> PluginShutdownRequested;
-extern std::vector<CSMRRadar*> RadarScreensOpened;
-extern std::string logonCallsign;
-extern std::string logonCode;
-extern std::mutex DatalinkControlMutex;
 
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
 using VsmrDatalinkProtocol::RedactSensitiveValue;
