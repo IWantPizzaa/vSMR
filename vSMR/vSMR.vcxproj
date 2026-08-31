@@ -283,6 +283,7 @@
     <ClInclude Include="src\crash\CrashReportSupport.hpp" />
     <ClInclude Include="src\crash\CrashRuntime.hpp" />
     <ClInclude Include="src\datalink\CPDLCSettingsDialog.hpp" />
+	<ClInclude Include="src\datalink\CdmReminderSafety.hpp" />
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
