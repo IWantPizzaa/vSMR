@@ -61,9 +61,9 @@
       <label class="alert-table-check"><input data-alert-runway-arr="${index}" type="checkbox" ${runway.arrival ? "checked" : ""}><span></span></label>
       <label class="alert-table-check"><input data-alert-runway-dep="${index}" type="checkbox" ${runway.departure ? "checked" : ""}><span></span></label>
       <label class="alert-table-check"><input data-alert-runway-closed="${index}" type="checkbox" ${runway.closed ? "checked" : ""}><span></span></label>
-      <button class="alert-runway-remove" data-action="remove-alert-runway" data-index="${index}" title="Remove" type="button">×</button>
+      <button aria-label="Remove runway pair ${escapeHtml(runway.id)}" class="ui-button ui-button--compact ui-button--icon ui-button--destructive alert-runway-remove" data-action="remove-alert-runway" data-index="${index}" title="Remove" type="button">×</button>
     </div>`).join("");
-    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="aviso-list-message">No monitored runway pairs.</div>`}`;
+    $("#alertRunwayTable").innerHTML = `<div class="alert-runway-header"><span>Runway pair</span><span>ARR</span><span>DEP</span><span>Closed</span><span></span></div>${runwayRowsHtml || `<div class="ui-list__empty">No monitored runway pairs.</div>`}`;
 
     renderAlertTimerRow("#alertTimerNormal", data.rimcas.timer);
     renderAlertTimerRow("#alertTimerLvp", data.rimcas.timer_lvp);
@@ -405,11 +405,7 @@
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
-    $$('[data-aviso-color-palette]').forEach(button => {
-      const active = button.dataset.avisoColorPalette === avisoColorPalette;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-    });
+    syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     const restoreBackup = $("#restoreProfilesBackupButton");
     if (restoreBackup) {
       restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);

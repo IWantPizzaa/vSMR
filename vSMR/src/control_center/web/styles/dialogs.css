@@ -1,169 +1,8 @@
-/* Popup menus, dropdowns, disclosures, and compact dialogs. */
-
-.advanced-disclosure > summary::-webkit-details-marker { display: none; }
-
-.advanced-disclosure > summary::before {
-  content: "▶";
-  color: #8ea0a5;
-  font: 8px/1 var(--mono);
-  transform-origin: center;
-  transition: transform 80ms linear;
-}
-
-.advanced-disclosure[open] > summary::before { transform: rotate(90deg); }
-
-.advanced-disclosure > summary:hover { background: #334448; }
-
-.advanced-disclosure > summary small {
-  color: #8fa1a6;
-  font: 8px/1 var(--mono);
-  font-weight: 400;
-}
+/* Checkbox dropdown and compact-dialog layout extensions. */
 
 .checkbox-dropdown {
   position: relative;
   min-width: 0;
-}
-
-.checkbox-dropdown-button::after {
-  content: "▾";
-  color: #91a1a5;
-  text-align: center;
-}
-
-.checkbox-dropdown.open .checkbox-dropdown-button {
-  border-color: #709bae;
-  background: #26363a;
-}
-
-.checkbox-dropdown-menu label {
-  min-height: 22px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 5px;
-  border-radius: 3px;
-  color: #c8d3d6;
-  cursor: pointer;
-}
-
-.checkbox-dropdown-menu label:hover { background: #34464a; }
-
-.checkbox-dropdown-all {
-  margin-bottom: 3px;
-  border-bottom: 1px solid #3b484c;
-  border-radius: 3px 3px 0 0 !important;
-  color: #e2eaec !important;
-  font-weight: 600;
-}
-
-.checkbox-dropdown-options {
-  display: grid;
-  gap: 1px;
-}
-
-.compact-dialog {
-  width: min(430px, calc(100vw - 24px));
-  padding: 0;
-  overflow: visible;
-  border: 1px solid #050708;
-  border-radius: 5px;
-  background: #202a2d;
-  color: #cbd5d8;
-  box-shadow: 0 12px 40px rgba(0,0,0,.72);
-}
-
-.compact-dialog::backdrop { background: rgba(5,8,9,.64); }
-
-.compact-dialog .panel-title { border-radius: 4px 4px 0 0; }
-
-.dialog-close {
-  position: static;
-  justify-self: end;
-}
-
-.compact-dialog-body {
-  display: grid;
-  gap: 6px;
-  padding: 9px;
-}
-
-.compact-dialog-body .field { margin: 0; }
-
-.compact-dialog-body small {
-  color: #89999e;
-  font-size: 8px;
-}
-
-.compact-dialog-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-  padding: 4px 6px;
-}
-
-.segmented-control button:last-child { border-right: 0; }
-
-.checkbox-dropdown-button:hover { background: #35474b; }
-
-.advanced-body {
-  display: grid;
-  gap: 6px;
-  padding: 6px 7px 7px;
-  background: #273438;
-  border-top: 1px solid var(--ui-border-inner);
-}
-
-.compact-apply-scope {
-  color: #91a1a6;
-  font-size: 8px;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 5px;
-  align-items: center;
-}
-
-.compact-apply-scope > span {
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.compact-apply-scope select {
-  min-width: 0;
-  height: var(--ui-control-height);
-  width: 100%;
-}
-
-.advanced-disclosure {
-  margin: 5px 6px;
-  border: 1px solid var(--ui-border-inner);
-  box-shadow: none;
-  margin-inline: 7px;
-  overflow: hidden;
-  border-color: var(--ui-inner-border);
-  border-radius: var(--ui-card-radius);
-  background: var(--ui-card-bg);
-}
-
-.advanced-disclosure > summary {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
-  gap: 4px;
-  align-items: center;
-  list-style: none;
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 600;
-  user-select: none;
-  height: var(--ui-card-title-height);
-  min-height: var(--ui-card-title-height);
-  border-bottom-color: var(--ui-inner-border);
-  border-radius: calc(var(--ui-card-radius) - 1px) calc(var(--ui-card-radius) - 1px) 0 0;
-  background: var(--ui-card-title-bg);
-  color: var(--ui-text);
-  line-height: var(--ui-card-title-height);
-  padding: 0 7px;
 }
 
 .checkbox-dropdown-button {
@@ -176,52 +15,17 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border: 1px solid var(--ui-border-outer);
-  background: #2a383b;
-  box-shadow: none;
-  border-color: var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background-color: var(--ui-field-bg);
-  color: var(--ui-text);
-  height: var(--ui-control-height);
-  min-height: var(--ui-control-height);
 }
 
-.checkbox-dropdown-button:not(:disabled):hover {
-  border-color: var(--ui-button-hover);
-  background-color: var(--ui-field-bg);
+.checkbox-dropdown-button::after {
+  content: "▾";
+  color: var(--ui-muted-text);
+  text-align: center;
 }
 
-.segmented-control {
-  display: inline-flex;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid #101617;
-  height: var(--ui-control-height);
-  min-height: var(--ui-control-height);
-  border-color: var(--ui-outer-border);
-  border-radius: var(--ui-control-radius);
-  background: var(--ui-button-bg);
-}
-
-.segmented-control button {
-  min-width: 0;
-  padding: 0 7px;
-  font-size: 8px;
-  height: 100%;
-  min-height: 0;
-  border: 0;
-  border-right: 1px solid var(--ui-outer-border);
-  border-radius: 0;
-  background: var(--ui-button-bg);
-  color: var(--ui-text);
-}
-
-.segmented-control button:hover { background: var(--ui-button-hover); }
-
-.segmented-control button.active {
-  background: var(--ui-accent);
-  color: var(--ui-accent-text);
+.checkbox-dropdown.open .checkbox-dropdown-button {
+  border-color: var(--ui-control-border-focus);
+  box-shadow: var(--ui-focus-ring);
 }
 
 .checkbox-dropdown-menu {
@@ -233,51 +37,78 @@
   max-height: 224px;
   overflow: auto;
   padding: 3px;
-  border: 1px solid var(--ui-border-outer);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, .5);
-  border-color: var(--ui-outer-border);
+  border: 1px solid var(--ui-outer-border);
   border-radius: var(--ui-panel-radius);
   background: var(--ui-popup-bg);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .5);
 }
 
-.compact-popup-menu {
-  position: absolute;
-  z-index: 90;
-  top: calc(100% + 3px);
-  right: 0;
-  width: 142px;
-  overflow: hidden;
-  padding: 3px;
-  border: 1px solid var(--ui-border-outer);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, .5);
-  border-color: var(--ui-outer-border);
-  border-radius: var(--ui-panel-radius);
-  background: var(--ui-popup-bg);
+.checkbox-dropdown-menu label {
+  min-height: var(--ui-control-height);
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-3);
+  padding: 2px 5px;
+  border-radius: var(--ui-control-radius);
+  color: var(--ui-text);
+  cursor: pointer;
 }
+
+.checkbox-dropdown-menu label:hover { background: var(--ui-list-hover); }
+
+.checkbox-dropdown-all {
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--ui-divider);
+  border-radius: var(--ui-control-radius) var(--ui-control-radius) 0 0 !important;
+  color: var(--ui-text) !important;
+  font-weight: 600;
+}
+
+.checkbox-dropdown-options {
+  display: grid;
+  gap: 1px;
+}
+
+.compact-dialog {
+  width: min(430px, calc(100vw - 24px));
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .72);
+}
+
+.compact-dialog::backdrop { background: rgba(5, 8, 9, .64); }
 
 .compact-dialog-panel {
   display: grid;
-  grid-template-rows: 22px auto 30px;
+  grid-template-rows: var(--ui-panel-title-height) auto var(--ui-actionbar-height);
   margin: 0;
-  border: 1px solid var(--ui-border-outer);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, .5);
-  border-color: var(--ui-outer-border);
-  border-radius: var(--ui-panel-radius);
-  background: var(--ui-popup-bg);
 }
 
-.compact-popup-menu button {
-  width: 100%;
-  padding: 3px 7px;
-  text-align: left;
-  min-height: var(--ui-control-height);
-  border: 0;
-  border-radius: 2px;
-  background: var(--ui-list-bg);
-  color: var(--ui-text);
+.dialog-close {
+  --ui-button-height: var(--ui-compact-height);
+  position: static;
+  margin-left: auto;
 }
 
-.compact-popup-menu button:hover {
-  background: var(--ui-button-hover);
-  color: var(--ui-text);
+.compact-dialog-body {
+  display: grid;
+  gap: var(--ui-space-3);
+  padding: 9px;
+}
+
+.compact-dialog-body .field { margin: 0; }
+
+.compact-dialog-body small {
+  color: var(--ui-muted-text);
+  font-size: var(--ui-font-size-compact);
+}
+
+.compact-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: var(--ui-space-2) var(--ui-space-3);
 }

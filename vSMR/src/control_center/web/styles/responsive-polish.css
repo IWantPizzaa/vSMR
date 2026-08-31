@@ -2,26 +2,18 @@
 
 @media (max-width: 790px) {
   .control-window { min-width: 0; width: calc(100vw - 10px); height: calc(100vh - 10px); }
-  .split-master { grid-template-columns: 190px minmax(0, 1fr); }
-  .manager-layout { grid-template-columns: 135px 135px minmax(0, 1fr); }
-  .aviso-layout { grid-template-columns: minmax(320px, 1fr) minmax(270px, .8fr); }
-  .output-table { grid-template-columns: 72px minmax(0, 1fr); }
   .three-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .span-2 { grid-column: span 1; }
 }
 
 @media (max-width: 750px) {
   .control-window { width: calc(100vw - 8px); height: calc(100vh - 8px); min-width: 0; }
-  .split-master { grid-template-columns: 185px minmax(0, 1fr); }
-  .color-layout { grid-template-columns: 210px minmax(0, 1fr); }
   .profile-subtabs button { padding-left: 4px; padding-right: 4px; }
 }
 
 @media (max-width: 720px) {
   .runtime-menu { left: 8px; }
   .runtime-menu.runtime-icon-rail { left: 8px; }
-  .aviso-member-toolbar { grid-template-columns: 1fr; }
-  .aviso-group-counts { grid-template-columns: repeat(2, 1fr); }
   .tag-global-options-body { grid-template-columns: 1fr; }
   .tag-options-block + .tag-options-block {
     margin-top: 6px;
@@ -39,19 +31,6 @@
     --ui-master-width: 204px;
   }
 
-  .color-tree-row { grid-template-columns: 14px minmax(0, 1fr) 45px; }
-  .color-tree-value { display: none; }
-  .color-tree-value code { font-size: 8px; }
-  .tag-layout { grid-template-columns: 204px minmax(0, 1fr); }
-  .rules-layout { grid-template-columns: 184px minmax(0, 1fr); }
-  .menu-tree-row { grid-template-columns: 17px minmax(0, 1fr) 43px; }
-  .aviso-geometry-layout { grid-template-columns: 238px minmax(0, 1fr); }
-  .aviso-text-layout { grid-template-columns: 226px minmax(0, 1fr); }
-  .aviso-text-master { grid-template-rows: 172px minmax(0, 1fr); }
-  .aviso-style-row.geometry-select-row { grid-template-columns: 12px 15px minmax(0, 1fr) 34px; }
-  .aviso-label-row { grid-template-columns: 12px 9px minmax(0, 1fr); }
-  .advanced-action-grid { grid-template-columns: 1fr; }
-  .inline-color-workbench { grid-template-columns: 70px minmax(0, 1fr); }
   .color-preview-swatch { min-height: 70px; }
   .icon-settings-grid { grid-template-columns: 1fr; }
   .icon-symbol-layout { grid-template-columns: 104px minmax(0, 1fr); }
@@ -61,22 +40,15 @@
   .color-picker-workbench .color-preview-card { min-height: 98px; }
   .settings-layout { grid-template-columns: minmax(0, 1.15fr) minmax(190px, .85fr); }
   .aviso-text-zoom-grid { grid-template-columns: 62px minmax(0, 1fr); }
-  .mini-tools button.wide {
+  .ui-button--wide {
     min-width: 50px;
     padding-inline: 4px;
     font-size: 7.5px;
   }
-  .tag-options-block + .tag-options-block { border-top-color: var(--ui-separator); }
-  .aviso-text-actions { grid-template-columns: 78px minmax(0, 1fr) 78px; }
-  .aviso-text-actions > .ui-button { width: 78px; }
+  .tag-options-block + .tag-options-block { border-top-color: var(--ui-divider); }
   .window-shell { grid-template-columns: 40px minmax(0, 1fr); }
   .group-member-toolbar { grid-template-columns: minmax(0, 1fr) 46px 84px; }
-  .aviso-toolbar .aviso-subtabs button {
-    width: 88px;
-    min-width: 88px;
-    max-width: 88px;
-    flex-basis: 88px;
-  }
+  .aviso-toolbar { --aviso-tab-width: 88px; }
   .aviso-toolbar-palette { width: 145px; }
   .settings-page .settings-layout {
     grid-template-columns: minmax(0, 1fr);
@@ -91,7 +63,7 @@
     margin-top: 7px;
     padding-top: 7px;
     padding-left: 0;
-    border-top: 1px solid var(--ui-separator);
+    border-top: 1px solid var(--ui-divider);
     border-left: 0;
   }
   .tag-font-grid {
