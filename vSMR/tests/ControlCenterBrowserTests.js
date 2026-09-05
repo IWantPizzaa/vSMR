@@ -435,36 +435,39 @@
     const paletteButtons = Array.from(
       palette?.querySelectorAll(".ui-button.ui-button--toggle[data-aviso-color-palette]") || []
     );
-    expect(paletteButtons.length === 2, "Day/Night uses one two-option toggle component");
+    expect(paletteButtons.length === 3 &&
+      paletteButtons.map(button => button.dataset.avisoColorPalette).join(",") === "dark,light,real",
+      "AVISO uses one Dark/Light/Real toggle component");
     const paletteRects = paletteButtons.map(button => button.getBoundingClientRect());
-    expect(paletteRects.length === 2 &&
-      Math.abs(paletteRects[0].width - paletteRects[1].width) < .5 &&
-      Math.abs(paletteRects[0].height - paletteRects[1].height) < .5,
-      "Day/Night options have matching dimensions");
+    expect(paletteRects.length === 3 &&
+      paletteRects.every(rect => Math.abs(rect.width - paletteRects[0].width) < .5 &&
+        Math.abs(rect.height - paletteRects[0].height) < .5),
+      "AVISO palette options have matching dimensions");
     const paletteRect = palette?.getBoundingClientRect();
     expect(Boolean(paletteRect) && paletteRects.every(rect =>
       Math.abs(rect.top - (paletteRect.top + 1)) < .75 &&
       Math.abs(rect.bottom - (paletteRect.bottom - 1)) < .75),
-      "Day/Night options fill and align within the shared toggle boundary");
+      "AVISO palette options fill and align within the shared toggle boundary");
     expect(paletteButtons.every(button => {
       const style = getComputedStyle(button);
       return ["flex", "inline-flex"].includes(style.display) && style.alignItems === "center" &&
         style.justifyContent === "center";
-    }), "Day/Night labels use the shared centered button layout");
+    }), "AVISO palette labels use the shared centered button layout");
     const originalPaletteButton = paletteButtons.find(
       button => button.getAttribute("aria-pressed") === "true");
-    const alternatePaletteButton = paletteButtons.find(button => button !== originalPaletteButton);
+    const alternatePaletteButton = paletteButtons.find(
+      button => button.dataset.avisoColorPalette === "real");
     const originalUiTheme = document.documentElement.dataset.uiTheme;
     const originalPageBackground = getComputedStyle(document.documentElement)
       .getPropertyValue("--ui-page-bg").trim();
     expect(Boolean(originalPaletteButton) && paletteButtons.filter(
       button => button.getAttribute("aria-pressed") === "true").length === 1,
-      "Day/Night exposes exactly one active option");
+      "Dark/Light/Real exposes exactly one active option");
     alternatePaletteButton?.click();
     expect(alternatePaletteButton?.getAttribute("aria-pressed") === "true" &&
       originalPaletteButton?.getAttribute("aria-pressed") === "false" &&
       api.getState().settings?.avisoColorPalette === alternatePaletteButton?.dataset.avisoColorPalette,
-      "Day/Night updates visual, accessible, and application state together");
+      "Dark/Light/Real updates visual, accessible, and application state together");
     expect(document.documentElement.dataset.uiTheme === originalUiTheme &&
       getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() ===
         originalPageBackground,

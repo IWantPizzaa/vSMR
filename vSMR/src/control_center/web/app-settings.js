@@ -387,7 +387,7 @@
     $("#settingsShowFps").checked = settings.showFps !== false;
     const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
-    const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
+    const avisoColorPalette = normalizeAvisoColorPalette(settings.avisoColorPalette);
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     if (HOST_MODE) {
       ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {

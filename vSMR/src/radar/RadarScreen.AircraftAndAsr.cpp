@@ -1217,7 +1217,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("ShowFps")) != NULL)
 		ShowFps = atoi(p_value) != 0;
 
-	AvisoUseDayColorPalette = false;
+	AvisoColorPalette = "dark";
 	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
 

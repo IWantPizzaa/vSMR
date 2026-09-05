@@ -457,7 +457,7 @@ VsmrAviso::AvisoRasterPipeline::MakeRequestKey(const Request& request)
 {
 	RequestKey key;
 	key.path = request.path;
-	key.useDayPalette = request.useDayPalette;
+	key.colorPalette = request.colorPalette;
 	key.groupGeneration = request.groupGeneration;
 	key.rasterWidth = request.rasterWidth;
 	key.rasterHeight = request.rasterHeight;
@@ -486,7 +486,7 @@ bool VsmrAviso::AvisoRasterPipeline::RequestsMatch(
 		1e-10);
 
 	return previous.path == request.path &&
-		previous.useDayPalette == request.useDayPalette &&
+		previous.colorPalette == request.colorPalette &&
 		previous.groupGeneration == request.groupGeneration &&
 		std::abs(previous.rasterWidth - request.rasterWidth) <= 2 &&
 		std::abs(previous.rasterHeight - request.rasterHeight) <= 2 &&

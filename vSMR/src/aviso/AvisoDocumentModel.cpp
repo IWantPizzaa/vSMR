@@ -429,7 +429,7 @@ bool AvisoDocumentModel::ValidateFeatureCollectionSchema(
 				}
 				return true;
 			};
-			for (const char* palette : { "night", "day" })
+			for (const char* palette : { "dark", "light", "real", "night", "day" })
 			{
 				if (colors.HasMember(palette) && !isHexColor(colors[palette]))
 				{

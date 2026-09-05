@@ -81,7 +81,7 @@ namespace VsmrAviso
 		struct RequestKey
 		{
 			std::string path;
-			bool useDayPalette = false;
+			std::string colorPalette = "dark";
 			std::uint64_t groupGeneration = 0;
 			int rasterWidth = 0;
 			int rasterHeight = 0;
