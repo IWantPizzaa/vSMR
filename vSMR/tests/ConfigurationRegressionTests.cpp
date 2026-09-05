@@ -166,13 +166,7 @@ namespace
 				const char* colorKey = "fill";
 				const char* expectedLight = nullptr;
 				const char* expectedReal = nullptr;
-				if (std::string(airport) == "LFPG.geojson")
-				{
-					styleId = "polygon.lfpg.aviso.hardsurface2";
-					expectedLight = "#868686";
-					expectedReal = "#4A484B";
-				}
-				else if (std::string(airport) == "LFML.geojson")
+				if (std::string(airport) == "LFML.geojson")
 				{
 					styleId = "structure.building";
 					expectedLight = "#3C4446";
@@ -201,20 +195,23 @@ namespace
 					(*paint)["palette-overrides"].IsObject()
 					? &(*paint)["palette-overrides"]
 					: nullptr;
-				Expect(overrides != nullptr && overrides->HasMember("light") &&
-					(*overrides)["light"].IsObject() && (*overrides)["light"].HasMember(colorKey) &&
-					std::string((*overrides)["light"][colorKey].GetString()) == expectedLight &&
-					overrides->HasMember("real") && (*overrides)["real"].IsObject() &&
-					(*overrides)["real"].HasMember(colorKey) &&
-					std::string((*overrides)["real"][colorKey].GetString()) == expectedReal,
-					std::string("AVISO separates LFPG Custom Light colors from preserved Real colors: ") + airport);
+				if (styleId != nullptr)
+				{
+					Expect(overrides != nullptr && overrides->HasMember("light") &&
+						(*overrides)["light"].IsObject() && (*overrides)["light"].HasMember(colorKey) &&
+						std::string((*overrides)["light"][colorKey].GetString()) == expectedLight &&
+						overrides->HasMember("real") && (*overrides)["real"].IsObject() &&
+						(*overrides)["real"].HasMember(colorKey) &&
+						std::string((*overrides)["real"][colorKey].GetString()) == expectedReal,
+						std::string("AVISO separates Light and Real colors: ") + airport);
+				}
 			}
 			if (std::string(airport) == "LFPG.geojson")
 			{
 				const rapidjson::Document& document = model.GetDocument();
 				Expect(document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray() &&
-					document["vsmr_groups"].Size() == 2U,
-					"LFPG exposes the East and West arrow groups");
+					document["vsmr_groups"].Size() == 4U,
+					"LFPG exposes palette-scoped East and West arrow groups");
 				bool hasEastArrowGroup = false;
 				bool hasWestArrowGroup = false;
 				if (document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray())
@@ -255,7 +252,7 @@ namespace
 						}
 					}
 				}
-				Expect(directionalArrowFeatures == 6, "LFPG contains both directional-arrow groups");
+				Expect(directionalArrowFeatures == 12, "LFPG contains both directional-arrow groups in both map designs");
 
 				bool everyTextHaloIsOne = true;
 				int textHaloStyleCount = 0;
@@ -278,36 +275,33 @@ namespace
 							paint["text-halo-width"].GetDouble() == 1.0;
 					}
 				}
-				Expect(textHaloStyleCount == 6 && everyTextHaloIsOne,
+				Expect(textHaloStyleCount == 12 && everyTextHaloIsOne,
 					"LFPG text styles use a one-pixel halo");
+
+				const rapidjson::Value* customTaxiway =
+					document.HasMember("styles") && document["styles"].IsObject() &&
+					document["styles"].HasMember("custom.surface.taxiway")
+					? &document["styles"]["custom.surface.taxiway"]
+					: nullptr;
+				const rapidjson::Value* customTaxiwayPaint = customTaxiway != nullptr && customTaxiway->IsObject() &&
+					customTaxiway->HasMember("paint") && (*customTaxiway)["paint"].IsObject()
+					? &(*customTaxiway)["paint"]
+					: nullptr;
+				Expect(customTaxiway != nullptr && customTaxiway->HasMember("color_palettes") &&
+					(*customTaxiway)["color_palettes"].IsArray() &&
+					(*customTaxiway)["color_palettes"].Size() == 2U &&
+					customTaxiwayPaint != nullptr && customTaxiwayPaint->HasMember("fill") &&
+					std::string((*customTaxiwayPaint)["fill"].GetString()) == "#2F3949" &&
+					customTaxiwayPaint->HasMember("palette-overrides") &&
+					(*customTaxiwayPaint)["palette-overrides"].HasMember("light") &&
+					std::string((*customTaxiwayPaint)["palette-overrides"]["light"]["fill"].GetString()) == "#868686",
+					"LFPG embeds the Custom Dark and Light taxiway palette");
+				Expect(model.FeatureCount() == 8777U,
+					"LFPG contains the complete Real and Custom feature sets in one document");
 			}
 		}
-
-		AvisoDocumentModel lfpgCustom;
-		std::string lfpgCustomError;
-		const std::filesystem::path lfpgCustomPath = avisoRoot / "LFPG_Custom.geojson";
-		Expect(
-			lfpgCustom.LoadFromFile(lfpgCustomPath.u8string(), lfpgCustomError),
-			"LFPG Custom Dark/Light source validates");
-		Expect(
-			lfpgCustom.FeatureCount() > 4200U,
-			"LFPG Custom source retains its complete geometry and text feature set");
-		const rapidjson::Document& lfpgCustomDocument = lfpgCustom.GetDocument();
-		const rapidjson::Value* customTaxiwayPaint =
-			lfpgCustomDocument.HasMember("styles") && lfpgCustomDocument["styles"].IsObject() &&
-			lfpgCustomDocument["styles"].HasMember("surface.taxiway") &&
-			lfpgCustomDocument["styles"]["surface.taxiway"].IsObject() &&
-			lfpgCustomDocument["styles"]["surface.taxiway"].HasMember("paint")
-			? &lfpgCustomDocument["styles"]["surface.taxiway"]["paint"]
-			: nullptr;
-		Expect(
-			customTaxiwayPaint != nullptr && customTaxiwayPaint->IsObject() &&
-			customTaxiwayPaint->HasMember("palette-overrides") &&
-			(*customTaxiwayPaint)["palette-overrides"].IsObject() &&
-			(*customTaxiwayPaint)["palette-overrides"].HasMember("day") &&
-			(*customTaxiwayPaint)["palette-overrides"]["day"].IsObject() &&
-			std::string((*customTaxiwayPaint)["palette-overrides"]["day"]["fill"].GetString()) == "#868686",
-			"LFPG Light uses the LFPG Custom Day surface palette");
+		Expect(!std::filesystem::exists(avisoRoot / "LFPG_Custom.geojson"),
+			"LFPG no longer depends on a separate Custom package asset");
 		std::string deeplyNestedAviso(65U, '[');
 		deeplyNestedAviso += '0';
 		deeplyNestedAviso.append(65U, ']');

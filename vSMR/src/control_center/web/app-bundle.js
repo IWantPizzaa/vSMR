@@ -1506,6 +1506,11 @@
     return state.aviso.vsmr_groups;
   }
 
+  function avisoItemSupportsPalette(item, palette = normalizeAvisoColorPalette(state.settings.avisoColorPalette)) {
+    if (!Array.isArray(item?.color_palettes) || !item.color_palettes.length) return true;
+    return item.color_palettes.map(normalizeAvisoColorPalette).includes(palette);
+  }
+
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
     let ids = [];
@@ -3414,6 +3419,7 @@
 
     features.forEach((feature, index) => {
       const properties = feature?.properties || {};
+      if (!avisoItemSupportsPalette(properties)) return;
       const objectType = inferAvisoObjectType(feature);
       const fallbackPrefix = objectType === "Label" ? "label" : objectType === "Line" ? "line" : "area";
       const id = properties.style_id || `${fallbackPrefix}.${avisoStyleSlug(properties.category || properties.name || index)}`;
@@ -3424,6 +3430,7 @@
     });
 
     Object.entries(catalog).forEach(([id, style]) => {
+      if (!avisoItemSupportsPalette(style)) return;
       if (!byId.has(id)) byId.set(id, { id, indices: [], firstFeature: null });
       byId.get(id).style = style;
     });
@@ -5977,16 +5984,10 @@
     else if (action === "set-aviso-palette") {
       const palette = normalizeAvisoColorPalette(button.dataset.avisoColorPalette);
       if (state.settings.avisoColorPalette !== palette) {
-		if (HOST_MODE && (state.dirty || hasUnappliedEditorInputs() || pending.save)) {
-		  showToast("Wait for current edits to save before changing the AVISO palette", "warning");
-		  return;
-		}
-		const rollback = HOST_MODE ? captureRuntimeCommandRollback() : null;
         state.settings.avisoColorPalette = palette;
         renderSettings();
         renderAviso();
-		if (HOST_MODE) postRuntimeCommand("settings.update", { avisoColorPalette: palette }, rollback);
-		else markDirty(`AVISO ${palette} palette selected`, ["settings"]);
+		markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {

@@ -16,7 +16,7 @@
 - Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
 - Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
 - Replaced the AVISO Night/Day selector with Dark, Light, and Real palettes. Dark retains the former Night colors, Light uses the LFPG Custom Day visual language, and Real preserves the former Day palettes for LFPG, LFMN, LFPO, and LFML.
-- Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options, airport changes automatically select a valid fallback, and LFPG now uses the complete LFPG_Custom geometry, text, groups, and colors for Dark/Light while retaining its existing map for Real.
+- Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. LFPG now embeds its complete Custom geometry, text, groups, and colors for Dark/Light alongside the existing Real map in the single canonical `LFPG.geojson` asset.
 
 ### Fixed
 

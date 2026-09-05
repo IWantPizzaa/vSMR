@@ -406,7 +406,7 @@ bool VsmrControlCenterBridgeImpl::HandleAvisoGroups(
 	}
 
 	const std::string avisoPath =
-		Owner->ResolveAvisoGeoJsonRenderPathForAirport(Owner->getActiveAirport());
+		Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
 	if (!avisoPath.empty())
 		Owner->EnsureAvisoGeoJsonLoaded(avisoPath);
 

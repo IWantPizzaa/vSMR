@@ -372,7 +372,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 
 	// ----- Loading the AVISO data -----
 	const std::string airport = radar_screen->getActiveAirport();
-	const std::string path = radar_screen->ResolveAvisoGeoJsonRenderPathForAirport(airport);
+	const std::string path = radar_screen->ResolveAvisoGeoJsonPathForAirport(airport);
 	if (path.empty() ||
 		!radar_screen->EnsureAvisoGeoJsonLoaded(path) ||
 		(radar_screen->AvisoGeoJsonFeatures.empty() && radar_screen->AvisoGeoJsonLabels.empty()))

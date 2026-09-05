@@ -10,6 +10,11 @@
     return state.aviso.vsmr_groups;
   }
 
+  function avisoItemSupportsPalette(item, palette = normalizeAvisoColorPalette(state.settings.avisoColorPalette)) {
+    if (!Array.isArray(item?.color_palettes) || !item.color_palettes.length) return true;
+    return item.color_palettes.map(normalizeAvisoColorPalette).includes(palette);
+  }
+
   function featureGroupIds(feature) {
     const properties = feature?.properties || {};
     let ids = [];

@@ -513,7 +513,6 @@ public:
 	void SaveRuntimeMenuPositionToAsr();
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
-	std::string ResolveAvisoGeoJsonRenderPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
 	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
 	bool EnsureAvisoGeoJsonLoaded(
