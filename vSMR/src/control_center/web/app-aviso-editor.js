@@ -624,7 +624,19 @@
     geometrySelectionIds(geometryEntries);
     textStyleSelectionIds(textEntries);
 
-    const avisoColorPalette = activeAvisoColorPalette();
+    const availablePalettes = new Set(avisoColorPalettes(state.aviso, state.settings.avisoColorPalettes));
+    let avisoColorPalette = activeAvisoColorPalette();
+    if (availablePalettes.size && !availablePalettes.has(avisoColorPalette)) {
+      avisoColorPalette = [...availablePalettes][0];
+      state.settings.avisoColorPalette = avisoColorPalette;
+    }
+    $$('[data-aviso-color-palette]').forEach(button => {
+      const available = availablePalettes.has(button.dataset.avisoColorPalette);
+      button.disabled = !available;
+      button.title = available
+        ? `Use the ${button.textContent.trim()} AVISO palette`
+        : `${button.textContent.trim()} is not available for this airport`;
+    });
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     syncTabButtons('[data-aviso-view]', state.ui.avisoView, "avisoView");
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));

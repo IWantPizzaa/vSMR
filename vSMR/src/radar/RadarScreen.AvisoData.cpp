@@ -682,6 +682,22 @@ std::string CSMRRadar::ResolveAvisoGeoJsonPathForAirport(const std::string& airp
 	return rememberResolvedPath("");
 }
 
+std::string CSMRRadar::ResolveAvisoGeoJsonRenderPathForAirport(const std::string& airport) const
+{
+	const std::string airportUpper = ToUpperAscii(TrimAirportCode(airport));
+	const std::string canonicalPath = ResolveAvisoGeoJsonPathForAirport(airportUpper);
+	if (canonicalPath.empty() || airportUpper != "LFPG" || AvisoColorPalette == "real" ||
+		AvisoGeoJsonOverridePaths.find(airportUpper) != AvisoGeoJsonOverridePaths.end())
+	{
+		return canonicalPath;
+	}
+
+	// LFPG retains its canonical map for Real. Dark and Light use every feature,
+	// label, style, and group from the bundled Custom map instead.
+	const fs::path customPath = fs::u8path(canonicalPath).parent_path() / "LFPG_Custom.geojson";
+	return IsRegularFileNoThrow(customPath) ? customPath.u8string() : std::string();
+}
+
 bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const std::string& path,
 	bool retainPreviousOnFailure) try
@@ -1258,6 +1274,6 @@ bool CSMRRadar::PrewarmAvisoForActiveAirport()
 {
 	if (IsShutdownRequested())
 		return false;
-	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
+	const std::string path = ResolveAvisoGeoJsonRenderPathForAirport(getActiveAirport());
 	return !path.empty() && EnsureAvisoGeoJsonLoaded(path, true);
 }

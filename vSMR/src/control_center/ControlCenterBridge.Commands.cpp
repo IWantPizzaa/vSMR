@@ -347,6 +347,17 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 			error = "AVISO color palette must be dark, light, or real.";
 			return false;
 		}
+		for (CSMRRadar* radar : RadarScreensOpened)
+		{
+			if (radar == nullptr || radar == Owner || radar->CurrentConfig == nullptr ||
+				Owner->CurrentConfig == nullptr ||
+				!radar->CurrentConfig->sharesConfigFileWith(*Owner->CurrentConfig))
+			{
+				continue;
+			}
+			if (!radar->SetAvisoColorPalette((*payload)["avisoColorPalette"].GetString(), false))
+				radar->EnsureAvisoColorPaletteAvailable(false);
+		}
 	}
 
 	if (payload->HasMember("uiColorTheme"))
@@ -395,7 +406,7 @@ bool VsmrControlCenterBridgeImpl::HandleAvisoGroups(
 	}
 
 	const std::string avisoPath =
-		Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
+		Owner->ResolveAvisoGeoJsonRenderPathForAirport(Owner->getActiveAirport());
 	if (!avisoPath.empty())
 		Owner->EnsureAvisoGeoJsonLoaded(avisoPath);
 
