@@ -88,9 +88,9 @@
   height: 14px;
   display: grid;
   place-items: center;
-  border: 1px solid #0a0e0f;
+  border: 1px solid var(--ui-control-border);
   border-radius: var(--ui-control-radius);
-  background: #1d282b;
+  background: var(--ui-field-bg);
   color: transparent;
   font: 9px/1 var(--mono);
 }

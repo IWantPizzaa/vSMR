@@ -17,8 +17,8 @@
   display: grid;
   grid-template-columns: 1fr 108px 1fr 20px;
   gap: 3px;
-  border-color: #111719;
-  background: #273538;
+  border-color: var(--ui-inner-border);
+  background: var(--ui-card-bg);
 }
 
 .mode-detail { grid-template-rows: 23px auto minmax(0, 1fr) 29px; }
@@ -49,7 +49,7 @@
 
 .mode-active-mark {
   font-weight: 700;
-  color: #7fc5e3;
+  color: var(--ui-accent);
 }
 
 .profile-main-fields {
@@ -64,7 +64,7 @@
 
 .profile-active-mark {
   font-weight: 700;
-  color: #7fc5e3;
+  color: var(--ui-accent);
 }
 
 .ui-list__row.is-selected .mode-active-mark,

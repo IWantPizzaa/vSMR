@@ -8,7 +8,7 @@
   justify-self: center;
   width: 12px;
   height: 12px;
-  border: 1px solid #050708;
+  border: 1px solid var(--ui-outer-border);
   border-radius: 1px;
   background: var(--aviso-swatch, #6d7a7f);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
@@ -35,7 +35,7 @@
 
 .aviso-color-pair input[type="color"]::-webkit-color-swatch,
 .aviso-color-pair input[type="color"]::-moz-color-swatch {
-  border: 1px solid #050708;
+  border: 1px solid var(--ui-outer-border);
   border-radius: 1px;
 }
 
@@ -50,7 +50,7 @@
 .aviso-range-field output { text-align: right; }
 
 .aviso-color-pair.mixed input[type="text"] {
-  color: #9eacb0;
+  color: var(--ui-muted-text);
   font-style: italic;
 }
 
@@ -73,9 +73,9 @@
   width: 28px;
   min-width: 28px;
   padding: 1px;
-  border: 1px solid #080b0c;
+  border: 1px solid var(--ui-outer-border);
   border-radius: 3px;
-  background: #202a2d;
+  background: var(--ui-field-bg);
   height: var(--ui-control-height);
 }
 
@@ -147,13 +147,13 @@
   min-width: 0;
   margin-top: 7px;
   padding-top: 7px;
-  border-top: 1px solid #3b494d;
+  border-top: 1px solid var(--ui-divider);
 }
 
 .aviso-color-editor-heading {
   min-width: 0;
   overflow: hidden;
-  color: #b7c5c9;
+  color: var(--ui-text);
   font-size: 9px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -225,13 +225,13 @@
   border: 0;
   border-radius: 2px;
   background: transparent;
-  color: #a9bdc3;
+  color: var(--ui-muted-text);
   cursor: pointer;
 }
 
 .aviso-style-eye:hover {
-  background: rgba(255, 255, 255, .11);
-  color: #f0f7f9;
+  background: var(--ui-list-hover);
+  color: var(--ui-text);
 }
 
 .aviso-style-eye svg {
@@ -249,7 +249,7 @@
   stroke-linejoin: round;
 }
 
-.aviso-style-eye.is-off { color: #65767b; }
+.aviso-style-eye.is-off { color: var(--ui-disabled-text); }
 
 .aviso-style-eye.is-mixed { color: #d4b66d; }
 

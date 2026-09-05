@@ -150,23 +150,23 @@
   height: 9px;
 }
 
-*::-webkit-scrollbar-track { background: #293235; }
+*::-webkit-scrollbar-track { background: var(--ui-scrollbar-track); }
 
 *::-webkit-scrollbar-thumb {
-  border: 2px solid #293235;
+  border: 2px solid var(--ui-scrollbar-track);
   border-radius: 7px;
-  background: #929292;
+  background: var(--ui-scrollbar-thumb);
 }
 
-*::-webkit-scrollbar-corner { background: #293235; }
+*::-webkit-scrollbar-corner { background: var(--ui-scrollbar-track); }
 
 .menu-options-glyph {
   justify-self: center;
   width: 11px;
   height: 11px;
-  border: 1px solid #050708;
+  border: 1px solid var(--ui-outer-border);
   position: relative;
-  background: #334347;
+  background: var(--ui-button-hover);
 }
 
 .menu-options-glyph::before {
@@ -175,7 +175,7 @@
   left: 2px;
   right: 2px;
   height: 1px;
-  background: #a7b7bc;
+  background: var(--ui-muted-text);
   top: 2px;
 }
 
@@ -185,7 +185,7 @@
   left: 2px;
   right: 2px;
   height: 1px;
-  background: #a7b7bc;
+  background: var(--ui-muted-text);
   top: 8px;
 }
 
@@ -195,7 +195,7 @@
   left: 2px;
   right: 2px;
   height: 1px;
-  background: #a7b7bc;
+  background: var(--ui-muted-text);
   top: 5px;
 }
 
@@ -216,7 +216,7 @@
 .group-advanced-compact { margin: 0; }
 
 .panel-title small {
-  color: #8fa0a5;
+  color: var(--ui-muted-text);
   font-weight: 400;
 }
 
@@ -246,7 +246,7 @@
   z-index: 1000;
   display: grid;
   place-items: center;
-  background: rgba(20, 28, 30, 0.96);
+  background: var(--ui-overlay-bg);
   color: var(--ui-text, #c8d4d7);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -260,7 +260,7 @@
   z-index: 999;
   display: grid;
   place-items: center;
-  background: rgba(20, 28, 30, 0.82);
+  background: var(--ui-overlay-bg);
   color: var(--ui-text, #c8d4d7);
   font-weight: 700;
   letter-spacing: 0.02em;

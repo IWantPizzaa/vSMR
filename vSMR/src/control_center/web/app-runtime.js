@@ -165,6 +165,7 @@
   }
 
   function renderRuntimeMenu() {
+    const theme = applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
     const groups = avisoGroups();
@@ -178,6 +179,7 @@
     const groupsButton = $("#runtimeGroupsButton");
     const profileButton = $("#runtimeProfileButton");
     const insetButton = $("#runtimeInsetButton");
+    const themeButton = $("#runtimeThemeButton");
     modeButton.title = `Mode · ${mode}`;
     modeButton.setAttribute("aria-label", `Mode: ${mode}`);
     groupsButton.title = `Groups · ${visibleGroups}/${groups.length || 0} visible`;
@@ -186,6 +188,13 @@
     profileButton.setAttribute("aria-label", `Profile: ${profile?.name || "Profile"}`);
     insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}, Timer ${insetState("timer") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
     insetButton.setAttribute("aria-label", insetButton.title);
+    if (themeButton) {
+      const nextTheme = theme === "day" ? "night" : "day";
+      themeButton.dataset.avisoColorPalette = nextTheme;
+      themeButton.title = `Theme · ${theme === "day" ? "Day" : "Night"} (switch to ${nextTheme})`;
+      themeButton.setAttribute("aria-label", themeButton.title);
+      themeButton.setAttribute("aria-pressed", String(theme === "day"));
+    }
     insetButton.classList.toggle("active", anyInset);
     ["aviso", "srw1", "weather", "timer"].forEach(kind => {
       const dot = $(`[data-inset-indicator="${kind}"]`, insetButton);

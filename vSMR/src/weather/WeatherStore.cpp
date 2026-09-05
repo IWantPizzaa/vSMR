@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
@@ -265,6 +266,62 @@ namespace
 
 		return false;
 	}
+
+	bool TryParseVisibilityToken(const std::string& token, int& meters, bool& cavok)
+	{
+		if (token == "CAVOK")
+		{
+			meters = 10000;
+			cavok = true;
+			return true;
+		}
+
+		int parsed = 0;
+		if (token.size() != 4 || !TryParseDigits(token, 0, 4, parsed))
+			return false;
+		meters = parsed;
+		cavok = false;
+		return true;
+	}
+
+	bool TryParseSignedTemperature(const std::string& value, int& temperature)
+	{
+		if (value.empty() || value == "//")
+			return false;
+		const bool negative = value.front() == 'M';
+		const size_t offset = negative ? 1U : 0U;
+		int magnitude = 0;
+		if (value.size() - offset != 2U || !TryParseDigits(value, offset, 2, magnitude))
+			return false;
+		temperature = negative ? -magnitude : magnitude;
+		return true;
+	}
+
+	bool TryParseTemperatureToken(
+		const std::string& token,
+		int& temperature,
+		bool& hasDewPoint,
+		int& dewPoint)
+	{
+		const size_t separator = token.find('/');
+		if (separator == std::string::npos || token.find('/', separator + 1U) != std::string::npos)
+			return false;
+		if (!TryParseSignedTemperature(token.substr(0, separator), temperature))
+			return false;
+		hasDewPoint = TryParseSignedTemperature(token.substr(separator + 1U), dewPoint);
+		return true;
+	}
+
+	bool IsCloudToken(const std::string& token)
+	{
+		for (const char* prefix : { "FEW", "SCT", "BKN", "OVC", "VV" })
+		{
+			const size_t prefixLength = std::strlen(prefix);
+			if (token.size() >= prefixLength + 3U && token.compare(0, prefixLength, prefix) == 0)
+				return true;
+		}
+		return token == "NSC" || token == "NCD" || token == "SKC";
+	}
 }
 
 namespace VsmrWeather
@@ -342,6 +399,43 @@ namespace VsmrWeather
 				{
 					parsed.hasQnh = true;
 					parsed.qnhHpa = qnh;
+				}
+			}
+
+			if (!parsed.hasVisibility)
+			{
+				int visibilityMeters = 0;
+				bool cavok = false;
+				if (TryParseVisibilityToken(token, visibilityMeters, cavok))
+				{
+					parsed.hasVisibility = true;
+					parsed.visibilityMeters = visibilityMeters;
+					parsed.visibilityCavok = cavok;
+				}
+			}
+
+			if (!parsed.hasTemperature)
+			{
+				int temperature = 0;
+				int dewPoint = 0;
+				bool hasDewPoint = false;
+				if (TryParseTemperatureToken(token, temperature, hasDewPoint, dewPoint))
+				{
+					parsed.hasTemperature = true;
+					parsed.temperatureCelsius = temperature;
+					parsed.hasDewPoint = hasDewPoint;
+					parsed.dewPointCelsius = hasDewPoint ? dewPoint : 0;
+				}
+			}
+
+			if (IsCloudToken(token))
+			{
+				const size_t separatorLength = parsed.cloudSummary.empty() ? 0U : 1U;
+				if (parsed.cloudSummary.size() + separatorLength + token.size() <= 24U)
+				{
+					if (separatorLength != 0U)
+						parsed.cloudSummary.push_back(' ');
+					parsed.cloudSummary += token;
 				}
 			}
 		}

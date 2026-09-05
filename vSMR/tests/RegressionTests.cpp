@@ -22,6 +22,7 @@
 #include "TagColorRuleTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
+#include "weather/WeatherStore.hpp"
 
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
@@ -661,6 +662,39 @@ namespace
 		}
 	}
 
+	void TestWeatherParsing()
+	{
+		VsmrWeather::Snapshot weather;
+		Expect(
+			VsmrWeather::ParseReport(
+				"lfpg",
+				"METAR LFPG 051200Z 22012G20KT 180V260 4000 -RA BKN012 OVC030 18/12 Q1009=",
+				weather,
+				1777982400),
+			"METAR parser accepts a complete operational report");
+		Expect(
+			weather.icao == "LFPG" && weather.hasVisibility &&
+			weather.visibilityMeters == 4000 && !weather.visibilityCavok,
+			"METAR parser exposes structured visibility");
+		Expect(
+			weather.hasTemperature && weather.temperatureCelsius == 18 &&
+			weather.hasDewPoint && weather.dewPointCelsius == 12,
+			"METAR parser exposes temperature and dew point");
+		Expect(
+			weather.cloudSummary == "BKN012 OVC030",
+			"METAR parser exposes a bounded compact cloud summary");
+
+		Expect(
+			VsmrWeather::ParseReport(
+				"LFMN",
+				"LFMN 051230Z VRB03KT CAVOK M02/M05 Q1021",
+				weather,
+				1777984200) &&
+			weather.visibilityCavok && weather.visibilityMeters == 10000 &&
+			weather.temperatureCelsius == -2 && weather.dewPointCelsius == -5,
+			"METAR parser handles CAVOK and negative temperatures");
+	}
+
 	void TestCdmReminderSafety()
 	{
 		using VsmrCdmReminderSafety::EligibilitySnapshot;
@@ -829,6 +863,7 @@ int wmain(int argc, wchar_t** argv)
 	TestTagTokens();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
+	TestWeatherParsing();
 	TestCdmReminderSafety();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())

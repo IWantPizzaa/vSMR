@@ -157,43 +157,53 @@ namespace VsmrInsetWindowInternal
 			buttonIndexFromRight * (kInsetToolbarButtonSize + kInsetToolbarButtonGap);
 	}
 
-	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation)
+	CRect DrawInsetButton(CDC& dc, const char* label, CRect rect, POINT mouseLocation, bool dayTheme)
 	{
 		rect.NormalizeRect();
-		CBrush buttonBrush(mouseWithin(mouseLocation, rect) ? RGB(53, 71, 75) : RGB(41, 57, 59));
+		const COLORREF button = dayTheme
+			? (mouseWithin(mouseLocation, rect) ? RGB(210, 224, 228) : RGB(229, 234, 235))
+			: (mouseWithin(mouseLocation, rect) ? RGB(53, 71, 75) : RGB(41, 57, 59));
+		CBrush buttonBrush(button);
 		dc.FillRect(rect, &buttonBrush);
 
-		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
+		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(30, 41, 45) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.DrawTextA(label, -1, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 		dc.SetBkMode(oldBkMode);
 		dc.SetTextColor(oldTextColor);
 
-		dc.Draw3dRect(rect, RGB(82, 96, 101), RGB(5, 7, 8));
+		dc.Draw3dRect(rect, dayTheme ? RGB(174, 186, 189) : RGB(82, 96, 101),
+			dayTheme ? RGB(82, 94, 98) : RGB(5, 7, 8));
 
 		return rect;
 	}
 
-	CRect DrawInsetToolbarButton(CDC& dc, const char* label, const CRect& topBar, int rightOffset, POINT mouseLocation)
+	CRect DrawInsetToolbarButton(
+		CDC& dc,
+		const char* label,
+		const CRect& topBar,
+		int rightOffset,
+		POINT mouseLocation,
+		bool dayTheme)
 	{
 		CRect rect(
 			topBar.right - rightOffset - kInsetToolbarButtonSize,
 			topBar.top + 1,
 			topBar.right - rightOffset,
 			topBar.bottom - 1);
-		return DrawInsetButton(dc, label, rect, mouseLocation);
+		return DrawInsetButton(dc, label, rect, mouseLocation, dayTheme);
 	}
 
-	void DrawStripedInsetTitleBar(CDC& dc, CRect rect)
+	void DrawStripedInsetTitleBar(CDC& dc, CRect rect, bool dayTheme)
 	{
 		rect.NormalizeRect();
-		dc.FillSolidRect(rect, RGB(16, 20, 22));
+		dc.FillSolidRect(rect, dayTheme ? RGB(207, 214, 216) : RGB(16, 20, 22));
 		const int savedDc = ::SaveDC(dc.GetSafeHdc());
 		if (savedDc != 0)
 		{
 			::IntersectClipRect(dc.GetSafeHdc(), rect.left, rect.top, rect.right, rect.bottom);
 			::SelectObject(dc.GetSafeHdc(), ::GetStockObject(DC_PEN));
-			::SetDCPenColor(dc.GetSafeHdc(), RGB(46, 57, 60));
+			::SetDCPenColor(dc.GetSafeHdc(), dayTheme ? RGB(180, 190, 192) : RGB(46, 57, 60));
 			for (int x = rect.left - rect.Height(); x < rect.right; x += 5)
 			{
 				::MoveToEx(dc.GetSafeHdc(), x, rect.bottom, nullptr);
@@ -201,15 +211,16 @@ namespace VsmrInsetWindowInternal
 			}
 			::RestoreDC(dc.GetSafeHdc(), savedDc);
 		}
-		dc.Draw3dRect(rect, RGB(5, 7, 8), RGB(5, 7, 8));
+		const COLORREF border = dayTheme ? RGB(82, 94, 98) : RGB(5, 7, 8);
+		dc.Draw3dRect(rect, border, border);
 	}
 
-	void DrawInsetTitle(CDC& dc, const CRect& topBar, const std::string& title)
+	void DrawInsetTitle(CDC& dc, const CRect& topBar, const std::string& title, bool dayTheme)
 	{
 		const CSize titleSize = dc.GetTextExtent(title.c_str());
 		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
 		const int titleY = topBar.top + max(0, (topBar.Height() - titleSize.cy) / 2);
-		const COLORREF oldTextColor = dc.SetTextColor(RGB(208, 217, 220));
+		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(30, 41, 45) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.TextOutA(titleX, titleY, title.c_str());
 		dc.SetBkMode(oldBkMode);
@@ -697,6 +708,7 @@ namespace VsmrInsetWindowInternal
 		bool showFilter,
 		POINT mouseLocation,
 		bool allowResize,
+		bool dayTheme,
 		double* elapsedMilliseconds)
 	{
 		const auto chromeStarted = std::chrono::steady_clock::now();
@@ -723,17 +735,17 @@ namespace VsmrInsetWindowInternal
 
 		CRect titleBar = InsetTitleBarRect(mode, areaValue);
 		titleBar.NormalizeRect();
-		DrawStripedInsetTitleBar(dc, titleBar);
+		DrawStripedInsetTitleBar(dc, titleBar, dayTheme);
 		CRect titleBarMoveRect = InsetTitleBarMoveRect(mode, areaValue, showFilter, allowResize);
 		if (!titleBarMoveRect.IsRectEmpty())
 			radarScreen->AddScreenObject(objectType, "topbar", titleBarMoveRect, true, "");
-		DrawInsetTitle(dc, titleBar, title);
+		DrawInsetTitle(dc, titleBar, title, dayTheme);
 		if (allowResize)
 			RegisterInsetResizeObjects(radarScreen, objectType, mode, areaValue);
 
 		if (showFilter && mode == AvisoLayoutMode::Floating)
 		{
-			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation);
+			const CRect filterRect = DrawInsetToolbarButton(dc, "F", titleBar, InsetToolbarRightOffset(1), mouseLocation, dayTheme);
 			radarScreen->AddScreenObject(objectType, "filter", filterRect, false, "");
 		}
 		const CRect closeRect = DrawInsetToolbarButton(
@@ -741,8 +753,35 @@ namespace VsmrInsetWindowInternal
 			"X",
 			titleBar,
 			InsetToolbarRightOffset(0),
-			mouseLocation);
+			mouseLocation,
+			dayTheme);
 		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
+	}
+
+	void DrawInsetWindowChrome(
+		CDC& dc,
+		CSMRRadar* radarScreen,
+		int objectType,
+		AvisoLayoutMode mode,
+		const RECT& areaValue,
+		const std::string& title,
+		bool showFilter,
+		POINT mouseLocation,
+		bool allowResize,
+		double* elapsedMilliseconds)
+	{
+		DrawInsetWindowChrome(
+			dc,
+			radarScreen,
+			objectType,
+			mode,
+			areaValue,
+			title,
+			showFilter,
+			mouseLocation,
+			allowResize,
+			false,
+			elapsedMilliseconds);
 	}
 
 	bool AvisoRectIntersects(const CRect& one, const CRect& two)
@@ -762,7 +801,8 @@ void CInsetWindow::DrawWindowChrome(
 	const std::string& title,
 	bool showFilter,
 	POINT mouseLocation,
-	bool allowResize)
+	bool allowResize,
+	bool dayTheme)
 {
 	VsmrInsetWindowInternal::DrawInsetWindowChrome(
 		dc,
@@ -774,5 +814,6 @@ void CInsetWindow::DrawWindowChrome(
 		showFilter,
 		mouseLocation,
 		allowResize,
+		dayTheme,
 		&m_LastChromeRenderMilliseconds);
 }
