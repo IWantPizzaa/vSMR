@@ -160,7 +160,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 		renderWindow = ::GetActiveWindow();
 	UpdateAvisoScreenArea(renderWindow);
 
-	const bool dayTheme = radarScreen->GetAvisoColorPalette() == "day";
+	const bool dayTheme = radarScreen->GetUiColorTheme() == "day";
 	const WeatherPalette palette = ResolveWeatherPalette(dayTheme);
 	dc.FillSolidRect(content, palette.background);
 	radarScreen->AddScreenObject(m_Id, "window", content, false, "");
