@@ -202,14 +202,23 @@
 <section class="panel detail-panel">
 <div class="panel-title"><span id="ruleFormCaption">Rule</span></div>
 <div class="detail-scroll rule-detail-scroll">
+<div class="rule-editor-empty" id="ruleEditorEmpty">
+<div class="rule-editor-empty-content">
+<strong>No rule selected</strong>
+<span>Create a rule before editing its match conditions and colors.</span>
+<button class="ui-button ui-button--primary" data-action="new-rule" type="button">Create rule</button>
+</div>
+</div>
+<div class="rule-editor-form" hidden id="ruleEditorForm">
 <fieldset class="compact-group editor-section-card">
 <legend>Rule</legend>
 <label class="field"><span>Name</span><input id="ruleName" placeholder="Optional" type="text"/></label>
 </fieldset>
 <fieldset class="compact-group conditions-group">
-<legend>Match</legend>
+<legend>Match all conditions</legend>
+<div aria-hidden="true" class="criteria-header"><span>Source</span><span>Field</span><span>Match</span><span>Values</span><span></span></div>
 <div class="criteria-list" id="criteriaList"></div>
-<button class="ui-button inline-add" data-action="add-condition" type="button">+ condition</button>
+<button class="ui-button inline-add" data-action="add-condition" type="button">Add condition</button>
 </fieldset>
 <fieldset class="compact-group">
 <legend>Applies to</legend>
@@ -233,6 +242,7 @@
 <label class="check-field"><input id="ruleUseTextColor" type="checkbox"/><span>Text</span></label><input id="ruleTextColor" type="text"/><label class="mini-color-swatch"><input id="ruleTextPicker" type="color"/></label>
 </div>
 </fieldset>
+</div>
 </div>
 </section>
 </div>

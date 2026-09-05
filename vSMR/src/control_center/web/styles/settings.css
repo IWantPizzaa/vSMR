@@ -252,7 +252,7 @@
 
 .settings-page .settings-layout {
   gap: 3px;
-  padding: 3px;
+  padding: var(--ui-page-padding);
   overflow: hidden;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);

@@ -132,7 +132,10 @@
     };
     const hostileProfileName = 'Profile <img id="vsmr-profile-injection" src=x>';
     const hostileGroupName = 'Group <img id="vsmr-group-injection" src=x>';
-    if (authoritative.profiles[0]) authoritative.profiles[0].name = hostileProfileName;
+    if (authoritative.profiles[0]) {
+      authoritative.profiles[0].name = hostileProfileName;
+      authoritative.profiles[0].rules = { version: 1, items: [] };
+    }
     authoritative.activeProfile = hostileProfileName;
     authoritative.aviso.vsmr_groups = [{
       id: "browser-hostile-group",
@@ -162,6 +165,42 @@
 
     const outbound = [];
     window.addEventListener("vsmr-control-center", event => outbound.push(event.detail));
+
+    const rulesTab = document.querySelector('[data-profile-tab="rules"]');
+    rulesTab?.click();
+    const emptyRuleEditor = document.querySelector("#ruleEditorEmpty");
+    const ruleEditorForm = document.querySelector("#ruleEditorForm");
+    const ruleNameWithoutSelection = document.querySelector("#ruleName");
+    expect(Boolean(emptyRuleEditor) && !emptyRuleEditor.hidden && Boolean(ruleEditorForm?.hidden),
+      "an empty rules list shows a dedicated non-editable state");
+    expect(Array.from(ruleEditorForm?.querySelectorAll("input, select, button") || [])
+      .every(control => control.disabled),
+      "rule controls stay disabled until a rule exists");
+    if (ruleNameWithoutSelection) {
+      ruleNameWithoutSelection.value = "must not stage";
+      ruleNameWithoutSelection.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const colorsAfterEmptyEdit = document.querySelector('[data-profile-tab="colors"]');
+    colorsAfterEmptyEdit?.click();
+    expect(colorsAfterEmptyEdit?.getAttribute("aria-selected") === "true",
+      "editing cannot trap navigation when no rule exists");
+    rulesTab?.click();
+    document.querySelector('#ruleEditorEmpty [data-action="new-rule"]')?.click();
+    const createdRuleName = document.querySelector("#ruleName");
+    expect(Boolean(createdRuleName) && !createdRuleName.disabled && !ruleEditorForm?.hidden &&
+      document.querySelectorAll("#criteriaList .criterion-row").length === 1,
+      "creating a rule enables a complete editor with one condition");
+    if (createdRuleName) {
+      createdRuleName.value = "Browser rule";
+      createdRuleName.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    await waitFor(
+      () => outbound.some(message => message.type === "state.save" &&
+        JSON.stringify(message.payload?.profiles || []).includes("Browser rule")),
+      "a newly created rule can be edited and saved"
+    );
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
     expect(!document.querySelector("#vsmr-profile-injection"),
       "profile names are rendered as text rather than markup");
@@ -329,6 +368,18 @@
     expect(document.documentElement.dataset.uiTheme === originalUiTheme,
       "switching back restores the original UI theme");
 
+    const settingsLeft = document.querySelector(".settings-page .display-group")
+      ?.getBoundingClientRect().left;
+    groupsButton?.click();
+    const groupsLeft = document.querySelector(".groups-page .master-panel")
+      ?.getBoundingClientRect().left;
+    document.querySelector('.rail-button[data-page="profiles"]')?.click();
+    const profilesLeft = document.querySelector(".profiles-page .master-panel")
+      ?.getBoundingClientRect().left;
+    expect([settingsLeft, groupsLeft, profilesLeft].every(Number.isFinite) &&
+      Math.max(settingsLeft, groupsLeft, profilesLeft) -
+        Math.min(settingsLeft, groupsLeft, profilesLeft) < .5,
+      "Groups and Settings share the standard page-left offset");
     groupsButton?.click();
     sampleSharedList("#avisoGroupList", "Groups");
     sampleVisiblePrimitives();

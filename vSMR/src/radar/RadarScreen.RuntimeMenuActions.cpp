@@ -231,7 +231,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	{
 		std::string error;
 		if (datalinkPlugin == nullptr)
-			error = "The PDC reminder service is unavailable.";
+			error = "The CDM reminder service is unavailable.";
 		else
 		{
 			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
@@ -258,7 +258,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	{
 		std::string error;
 		if (datalinkPlugin == nullptr)
-			error = "The PDC reminder service is unavailable.";
+			error = "The CDM reminder service is unavailable.";
 		else
 		{
 			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
@@ -282,7 +282,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		std::string result;
 		std::string error;
 		if (datalinkPlugin == nullptr || !datalinkPlugin->RunCdmReminderScan(result, error))
-			showDatalinkMessage(error.empty() ? "The PDC reminder service is unavailable." : error, true);
+			showDatalinkMessage(error.empty() ? "The CDM reminder service is unavailable." : error, true);
 		else
 			showDatalinkMessage(result, false);
 		RequestRefresh();

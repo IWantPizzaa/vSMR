@@ -440,7 +440,7 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		}
 	}
 
-	// ----- Processing PDC reminders -----
+	// ----- Processing CDM reminders -----
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
 	{
 		ProcessCdmAutoMode(this);
