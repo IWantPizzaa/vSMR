@@ -2,6 +2,8 @@
 
 .settings-group > .check-field { margin-top: 4px; }
 
+.settings-theme-control { width: 150px; }
+
 .profile-settings-scroll {
   min-height: 0;
   overflow: auto;

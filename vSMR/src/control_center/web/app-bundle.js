@@ -663,6 +663,7 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
+        uiColorTheme: "night",
         avisoColorPalette: "night",
         dataHealth: {
           profilesHealthy: true,
@@ -717,7 +718,7 @@
   let state = createState();
 
   function activeUiTheme() {
-    return state.settings?.avisoColorPalette === "day" ? "day" : "night";
+    return state.settings?.uiColorTheme === "day" ? "day" : "night";
   }
 
   function applyUiTheme() {
@@ -1636,7 +1637,7 @@
   }
 
   function renderRuntimeMenu() {
-    const theme = applyUiTheme();
+    applyUiTheme();
     const menu = $("#runtimeMenu");
     if (!menu || HOST_MODE) return;
     const groups = avisoGroups();
@@ -1650,7 +1651,6 @@
     const groupsButton = $("#runtimeGroupsButton");
     const profileButton = $("#runtimeProfileButton");
     const insetButton = $("#runtimeInsetButton");
-    const themeButton = $("#runtimeThemeButton");
     modeButton.title = `Mode · ${mode}`;
     modeButton.setAttribute("aria-label", `Mode: ${mode}`);
     groupsButton.title = `Groups · ${visibleGroups}/${groups.length || 0} visible`;
@@ -1659,13 +1659,6 @@
     profileButton.setAttribute("aria-label", `Profile: ${profile?.name || "Profile"}`);
     insetButton.title = `Insets · AVISO ${insetState("aviso") ? "on" : "off"}, SRW1 ${insetState("srw1") ? "on" : "off"}, Weather ${insetState("weather") ? "on" : "off"}, Timer ${insetState("timer") ? "on" : "off"}${preset ? ` · ${preset.name}` : ""}`;
     insetButton.setAttribute("aria-label", insetButton.title);
-    if (themeButton) {
-      const nextTheme = theme === "day" ? "night" : "day";
-      themeButton.dataset.avisoColorPalette = nextTheme;
-      themeButton.title = `Theme · ${theme === "day" ? "Day" : "Night"} (switch to ${nextTheme})`;
-      themeButton.setAttribute("aria-label", themeButton.title);
-      themeButton.setAttribute("aria-pressed", String(theme === "day"));
-    }
     insetButton.classList.toggle("active", anyInset);
     ["aviso", "srw1", "weather", "timer"].forEach(kind => {
       const dot = $(`[data-inset-indicator="${kind}"]`, insetButton);
@@ -4506,6 +4499,8 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
+    syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     const restoreBackup = $("#restoreProfilesBackupButton");
@@ -4814,6 +4809,7 @@
     const avisoView = params.get("aviso") || params.get("view");
     if (["geometry", "text"].includes(avisoView)) state.ui.avisoView = avisoView;
     if (["day", "night"].includes(params.get("palette"))) state.settings.avisoColorPalette = params.get("palette");
+    if (["day", "night"].includes(params.get("theme"))) state.settings.uiColorTheme = params.get("theme");
     const ui = params.get("ui");
     if (ui === "control" || params.get("control") === "1" || PAGE_TITLES[page]) state.ui.controlCenterOpen = true;
     if (ui === "runtime") state.ui.controlCenterOpen = false;
@@ -5573,15 +5569,22 @@
   function handleAction(action, button) {
     if (action === "open-control-center") openControlCenter();
     else if (action === "open-settings") { openControlCenter(); setPage("settings"); }
+    else if (action === "set-ui-theme") {
+      const theme = button.dataset.uiColorTheme === "day" ? "day" : "night";
+      if (state.settings.uiColorTheme !== theme) {
+        state.settings.uiColorTheme = theme;
+        applyUiTheme();
+        renderSettings();
+        markDirty(`${theme === "day" ? "Day" : "Night"} UI theme selected`, ["settings"]);
+      }
+    }
     else if (action === "set-aviso-palette") {
       const palette = button.dataset.avisoColorPalette === "day" ? "day" : "night";
       if (state.settings.avisoColorPalette !== palette) {
         state.settings.avisoColorPalette = palette;
-        applyUiTheme();
-        renderRuntimeMenu();
         renderSettings();
         renderAviso();
-        markDirty(`${palette === "day" ? "Day" : "Night"} theme selected`, ["settings"]);
+        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {

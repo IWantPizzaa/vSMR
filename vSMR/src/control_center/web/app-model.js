@@ -658,6 +658,7 @@
         aliasFile: "C:\\EuroScope\\Alias\\alias.txt",
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
+        uiColorTheme: "night",
         avisoColorPalette: "night",
         dataHealth: {
           profilesHealthy: true,
@@ -712,7 +713,7 @@
   let state = createState();
 
   function activeUiTheme() {
-    return state.settings?.avisoColorPalette === "day" ? "day" : "night";
+    return state.settings?.uiColorTheme === "day" ? "day" : "night";
   }
 
   function applyUiTheme() {
