@@ -87,7 +87,80 @@
   --ui-danger-text: #e5a7a7;
   --ui-error: #c97878;
   --ui-placeholder-text: #718086;
+  --ui-window-shadow: rgba(0, 0, 0, .36);
+  --ui-overlay-bg: rgba(20, 28, 30, .90);
+  --ui-scrollbar-track: #293235;
+  --ui-scrollbar-thumb: #929292;
+  --ui-checkbox-bg: #20292c;
+  --ui-checkbox-mark: #65c7f2;
+  --ui-title-text: #d3dde0;
+  --ui-title-shadow: #000;
+  --ui-title-stripe-dark: #090c0d;
+  --ui-title-stripe-light: #171d1f;
 
+}
+
+/* The saved AVISO palette is also the application theme. Night remains the
+   default so older native hosts keep their established appearance. */
+:root[data-ui-theme="day"] {
+  color-scheme: light;
+  --bg-deep: #cbd2d4;
+  --panel-alt: #e3e7e8;
+  --panel-soft: #dbe1e2;
+  --border: #596467;
+  --line: #a5b0b3;
+  --line-soft: #c2cacc;
+  --text: #1e292d;
+  --muted: #5c6a6f;
+  --faint: #718086;
+  --accent-soft: #3d819e;
+  --danger: #9b3f45;
+  --good: #3f7650;
+  --warning: #866a28;
+
+  --ui-outer-border: #596467;
+  --ui-inner-border: #aeb8bb;
+  --ui-divider: #b6c0c2;
+  --ui-control-border-hover: #71878e;
+  --ui-control-border-focus: #397b98;
+  --ui-focus-ring: 0 0 0 1px rgba(57, 123, 152, .20);
+  --ui-page-bg: #d9dfe0;
+  --ui-panel-bg: #edf0f1;
+  --ui-panel-title-bg: #d3dadd;
+  --ui-card-bg: #e7ebec;
+  --ui-card-title-bg: #d8dfe1;
+  --ui-field-bg: #f7f8f8;
+  --ui-list-shell-bg: #d8dfe1;
+  --ui-list-bg: #f0f3f3;
+  --ui-list-fade-solid: rgba(240, 243, 243, .96);
+  --ui-list-fade-clear: rgba(240, 243, 243, 0);
+  --ui-list-hover: #d7e4e8;
+  --ui-button-bg: #e4e9ea;
+  --ui-button-hover: #d2e0e4;
+  --ui-toolbar-bg: #cbd3d5;
+  --ui-popup-bg: #edf0f1;
+  --ui-rail-bg: #c9d1d3;
+  --ui-text: #1e292d;
+  --ui-muted-text: #5c6a6f;
+  --ui-accent: #4c91ae;
+  --ui-accent-hover: #397f9d;
+  --ui-accent-text: #f7fbfc;
+  --ui-disabled-bg: #d8ddde;
+  --ui-disabled-text: #79868a;
+  --ui-danger-hover: #c96f74;
+  --ui-danger-text: #8d343a;
+  --ui-error: #a23e45;
+  --ui-placeholder-text: #748287;
+  --ui-window-shadow: rgba(29, 39, 42, .24);
+  --ui-overlay-bg: rgba(225, 231, 232, .92);
+  --ui-scrollbar-track: #d4dbdd;
+  --ui-scrollbar-thumb: #7e8b8f;
+  --ui-checkbox-bg: #f7f8f8;
+  --ui-checkbox-mark: #287596;
+  --ui-title-text: #1e292d;
+  --ui-title-shadow: rgba(255, 255, 255, .75);
+  --ui-title-stripe-dark: #b7c0c2;
+  --ui-title-stripe-light: #d8ddde;
 }
 
 html {
@@ -102,7 +175,7 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #3e3e3e;
+  background: var(--ui-page-bg);
   color: var(--text);
   font: var(--ui-font-size)/1.25 var(--font);
   user-select: none;
@@ -142,6 +215,10 @@ select {
   background-size: 10px 7px;
 }
 
+:root[data-ui-theme="day"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M2 2l4 4 4-4' fill='none' stroke='%234b5b60' stroke-width='1.5' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+
 textarea {
   resize: none;
   line-height: 1.35;
@@ -164,8 +241,8 @@ input[type="checkbox"] {
   min-height: 10px;
   padding: 0;
   margin: 0;
-  border: 1px solid #0a0d0e;
-  background: #20292c;
+  border: 1px solid var(--ui-control-border);
+  background: var(--ui-checkbox-bg);
   position: relative;
 }
 
@@ -174,7 +251,7 @@ input[type="checkbox"]:checked::after {
   position: absolute;
   left: 0;
   top: -4px;
-  color: #65c7f2;
+  color: var(--ui-checkbox-mark);
   font-size: 13px;
   font-weight: 700;
 }
@@ -182,7 +259,7 @@ input[type="checkbox"]:checked::after {
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: #929292 #293235;
+  scrollbar-color: var(--ui-scrollbar-thumb) var(--ui-scrollbar-track);
 }
 
 [hidden] { display: none !important; }

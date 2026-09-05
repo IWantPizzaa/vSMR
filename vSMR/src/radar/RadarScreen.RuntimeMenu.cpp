@@ -4,6 +4,7 @@
 #include "shared/TextUtils.hpp"
 
 extern CPoint mouseLocation;
+using VsmrRadarUiSupport::DegToRad;
 
 namespace
 {
@@ -17,8 +18,8 @@ namespace
 		kDragHeight +
 		(kRailPadding * 2) +
 		kAirportRowHeight +
-		(kButtonSize * 6) +
-		(kButtonGap * 6);
+		(kButtonSize * 7) +
+		(kButtonGap * 7);
 	constexpr int kPopupGap = 4;
 	constexpr int kPopupHeaderHeight = 23;
 	constexpr int kPopupRowHeight = 28;
@@ -33,26 +34,55 @@ namespace
 	constexpr int kDatalinkPopupHeight = 230;
 	constexpr int kStandardPopupWidth = 170;
 
-	const COLORREF kOuterBorder = RGB(5, 7, 8);
-	const COLORREF kRailBackground = RGB(30, 40, 43);
-	const COLORREF kPopupBackground = RGB(32, 42, 45);
-	const COLORREF kTitleBackground = RGB(9, 12, 13);
-	const COLORREF kTitleStripe = RGB(23, 29, 31);
-	const COLORREF kPanelTitleBackground = RGB(34, 45, 48);
-	const COLORREF kButtonBackground = RGB(41, 57, 59);
-	const COLORREF kListBackground = RGB(41, 56, 59);
-	const COLORREF kCardBackground = RGB(39, 52, 56);
-	const COLORREF kButtonHover = RGB(53, 71, 75);
-	const COLORREF kAccent = RGB(80, 150, 180);
-	const COLORREF kAccentHover = RGB(98, 165, 193);
-	const COLORREF kText = RGB(208, 217, 220);
-	const COLORREF kMutedText = RGB(143, 161, 166);
-	const COLORREF kAccentText = RGB(244, 248, 249);
-	const COLORREF kDivider = RGB(17, 23, 25);
-	const COLORREF kDisabledBackground = RGB(31, 42, 45);
-	const COLORREF kDisabledText = RGB(91, 107, 112);
-	const COLORREF kDangerText = RGB(229, 167, 167);
-	const COLORREF kDangerHover = RGB(112, 51, 55);
+	struct RuntimeMenuPalette
+	{
+		COLORREF outerBorder;
+		COLORREF railBackground;
+		COLORREF popupBackground;
+		COLORREF titleBackground;
+		COLORREF titleStripe;
+		COLORREF panelTitleBackground;
+		COLORREF buttonBackground;
+		COLORREF listBackground;
+		COLORREF cardBackground;
+		COLORREF buttonHover;
+		COLORREF accent;
+		COLORREF accentHover;
+		COLORREF text;
+		COLORREF mutedText;
+		COLORREF accentText;
+		COLORREF divider;
+		COLORREF disabledBackground;
+		COLORREF disabledText;
+		COLORREF dangerText;
+		COLORREF dangerHover;
+	};
+
+	RuntimeMenuPalette ResolveRuntimeMenuPalette(bool dayTheme)
+	{
+		if (dayTheme)
+		{
+			return {
+				RGB(82, 94, 98), RGB(201, 209, 211), RGB(237, 240, 241),
+				RGB(183, 192, 194), RGB(216, 221, 222), RGB(211, 218, 220),
+				RGB(228, 233, 234), RGB(240, 243, 243), RGB(231, 235, 236),
+				RGB(210, 224, 228), RGB(76, 145, 174), RGB(57, 127, 157),
+				RGB(30, 41, 45), RGB(88, 104, 109), RGB(247, 251, 252),
+				RGB(174, 184, 187), RGB(216, 221, 222), RGB(121, 134, 138),
+				RGB(141, 52, 58), RGB(201, 111, 116)
+			};
+		}
+
+		return {
+			RGB(5, 7, 8), RGB(30, 40, 43), RGB(32, 42, 45),
+			RGB(9, 12, 13), RGB(23, 29, 31), RGB(34, 45, 48),
+			RGB(41, 57, 59), RGB(41, 56, 59), RGB(39, 52, 56),
+			RGB(53, 71, 75), RGB(80, 150, 180), RGB(98, 165, 193),
+			RGB(208, 217, 220), RGB(143, 161, 166), RGB(244, 248, 249),
+			RGB(17, 23, 25), RGB(31, 42, 45), RGB(91, 107, 112),
+			RGB(229, 167, 167), RGB(112, 51, 55)
+		};
+	}
 
 	enum class RuntimeIndicator
 	{
@@ -189,6 +219,34 @@ namespace
 			return;
 		}
 
+		if (kind == "theme-day" || kind == "theme-night")
+		{
+			if (kind == "theme-day")
+			{
+				graphics.DrawEllipse(&pen, centerX - 3.5f, centerY - 3.5f, 7.0f, 7.0f);
+				for (int angle = 0; angle < 360; angle += 45)
+				{
+					const double radians = DegToRad(static_cast<double>(angle));
+					const float dx = static_cast<float>(std::cos(radians));
+					const float dy = static_cast<float>(std::sin(radians));
+					graphics.DrawLine(&pen,
+						centerX + dx * 6.0f, centerY + dy * 6.0f,
+						centerX + dx * 9.0f, centerY + dy * 9.0f);
+				}
+			}
+			else
+			{
+				Gdiplus::GraphicsPath moon;
+				moon.AddArc(centerX - 7.0f, centerY - 8.0f, 15.0f, 16.0f, 75.0f, 220.0f);
+				moon.AddBezier(centerX - 2.0f, centerY - 7.0f,
+					centerX + 4.0f, centerY - 3.0f,
+					centerX + 4.0f, centerY + 4.0f,
+					centerX - 2.0f, centerY + 7.0f);
+				graphics.DrawPath(&pen, &moon);
+			}
+			return;
+		}
+
 		if (kind == "datalink")
 		{
 			graphics.DrawRectangle(&pen, centerX - 9.0f, centerY - 6.5f, 18.0f, 13.0f);
@@ -260,6 +318,29 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 {
 	if (hdc == nullptr)
 		return;
+
+	const bool dayTheme = GetAvisoColorPalette() == "day";
+	const RuntimeMenuPalette palette = ResolveRuntimeMenuPalette(dayTheme);
+	const COLORREF kOuterBorder = palette.outerBorder;
+	const COLORREF kRailBackground = palette.railBackground;
+	const COLORREF kPopupBackground = palette.popupBackground;
+	const COLORREF kTitleBackground = palette.titleBackground;
+	const COLORREF kTitleStripe = palette.titleStripe;
+	const COLORREF kPanelTitleBackground = palette.panelTitleBackground;
+	const COLORREF kButtonBackground = palette.buttonBackground;
+	const COLORREF kListBackground = palette.listBackground;
+	const COLORREF kCardBackground = palette.cardBackground;
+	const COLORREF kButtonHover = palette.buttonHover;
+	const COLORREF kAccent = palette.accent;
+	const COLORREF kAccentHover = palette.accentHover;
+	const COLORREF kText = palette.text;
+	const COLORREF kMutedText = palette.mutedText;
+	const COLORREF kAccentText = palette.accentText;
+	const COLORREF kDivider = palette.divider;
+	const COLORREF kDisabledBackground = palette.disabledBackground;
+	const COLORREF kDisabledText = palette.disabledText;
+	const COLORREF kDangerText = palette.dangerText;
+	const COLORREF kDangerHover = palette.dangerHover;
 
 	CRect bounds(GetRadarArea());
 	CRect chatArea(GetChatArea());
@@ -401,6 +482,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
 		{ "runtime.button.datalink", "datalink", "CPDLC / PDC", RuntimeMenuPopup::Datalink },
+		{ "runtime.button.theme", dayTheme ? "theme-night" : "theme-day",
+			dayTheme ? "Switch to Night theme" : "Switch to Day theme", RuntimeMenuPopup::None },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 
@@ -428,7 +511,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				{ buttonArea.right - 10, buttonArea.bottom - 2 },
 				{ buttonArea.right - 2, buttonArea.bottom - 10 }
 			};
-			::SetDCBrushColor(hdc, open ? kAccentText : RGB(129, 147, 153));
+			::SetDCBrushColor(hdc, open ? kAccentText : kMutedText);
 			::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
 			::SelectObject(hdc, ::GetStockObject(NULL_PEN));
 			::Polygon(hdc, triangle, _countof(triangle));
@@ -449,8 +532,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				const auto display = appWindowDisplays.find(appWindowIds[dot]);
 				const bool visible = display != appWindowDisplays.end() && display->second;
 				const int dotX = buttonArea.left + 11 + (dot * 5);
-				::SetDCBrushColor(hdc, visible ? RGB(237, 248, 251) : RGB(88, 102, 106));
-				::SetDCPenColor(hdc, RGB(9, 16, 18));
+				::SetDCBrushColor(hdc, visible ? kAccentText : kDisabledText);
+				::SetDCPenColor(hdc, kOuterBorder);
 				::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
 				::SelectObject(hdc, ::GetStockObject(DC_PEN));
 				::Ellipse(hdc, dotX, dotY, dotX + 4, dotY + 4);
@@ -657,7 +740,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		RuntimeMenuPopupArea.top + kPopupHeaderHeight);
 	FillRectColor(hdc, titleArea, kPanelTitleBackground);
 	CRect titleDivider(titleArea.left, titleArea.bottom - 1, titleArea.right, titleArea.bottom);
-	FillRectColor(hdc, titleDivider, RGB(17, 23, 25));
+	FillRectColor(hdc, titleDivider, kDivider);
 
 	HFONT headerFont = static_cast<HFONT>(RuntimeOverlayFont.GetSafeHandle());
 	HFONT rowFont = headerFont;
@@ -678,7 +761,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		::Ellipse(hdc, titleArea.left + 7, dotTop, titleArea.left + 15, dotTop + 8);
 		titleText.left += 13;
 	}
-	DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, RGB(217, 226, 228));
+	DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, kText);
 	CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
 	DrawRoundedRect(
 		hdc,
@@ -687,7 +770,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		kOuterBorder,
 		kControlCornerDiameter);
 	::SelectObject(hdc, actionFont);
-	DrawTextEllipsis(hdc, closeArea, "x", RGB(188, 200, 204), DT_CENTER);
+	DrawTextEllipsis(hdc, closeArea, "x", kMutedText, DT_CENTER);
 	addPopupScreenObject("runtime.close", closeArea, "Close");
 
 	auto drawChoiceRow = [&](const RuntimePopupEntry& entry, const CRect& rowArea)
@@ -763,7 +846,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				contentTop,
 				RuntimeMenuPopupArea.right - 6,
 				contentTop + 18);
-			DrawTextEllipsis(hdc, sectionArea, label, RGB(159, 176, 181));
+			DrawTextEllipsis(hdc, sectionArea, label, kMutedText);
 			contentTop += 18;
 		};
 		auto twoColumnAreas = [&](int height, CRect& left, CRect& right)
@@ -1058,7 +1141,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			contentTop,
 			RuntimeMenuPopupArea.right - 5,
 			contentTop + 19);
-		DrawTextEllipsis(hdc, sectionArea, "PRESET", RGB(159, 176, 181));
+		DrawTextEllipsis(hdc, sectionArea, "PRESET", kMutedText);
 		contentTop += 19;
 
 		const std::vector<AvisoPreset>& presets = insetPresets;

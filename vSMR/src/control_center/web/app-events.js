@@ -775,9 +775,11 @@
       const palette = button.dataset.avisoColorPalette === "day" ? "day" : "night";
       if (state.settings.avisoColorPalette !== palette) {
         state.settings.avisoColorPalette = palette;
+        applyUiTheme();
+        renderRuntimeMenu();
         renderSettings();
         renderAviso();
-        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
+        markDirty(`${palette === "day" ? "Day" : "Night"} theme selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {
