@@ -93,6 +93,7 @@
   --ui-scrollbar-thumb: #929292;
   --ui-checkbox-bg: #20292c;
   --ui-checkbox-mark: #65c7f2;
+  --ui-radar-preview-bg: #1f292c;
   --ui-title-text: #d3dde0;
   --ui-title-shadow: #000;
   --ui-title-stripe-dark: #090c0d;
@@ -157,6 +158,7 @@
   --ui-scrollbar-thumb: #596468;
   --ui-checkbox-bg: #c4c9ca;
   --ui-checkbox-mark: #287596;
+  --ui-radar-preview-bg: #60696d;
   --ui-title-text: #172126;
   --ui-title-shadow: rgba(255, 255, 255, .35);
   --ui-title-stripe-dark: #737d80;

@@ -142,6 +142,78 @@ namespace
 				std::string("AVISO passes pre-DOM input limits: ") + airport);
 			Expect(model.LoadFromFile(path.u8string(), error), std::string("AVISO validates: ") + airport + (error.empty() ? "" : " (" + error + ")"));
 			Expect(model.FeatureCount() > 0, std::string("AVISO has features: ") + airport);
+			if (std::string(airport) == "LFPG.geojson")
+			{
+				const rapidjson::Document& document = model.GetDocument();
+				Expect(document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray() &&
+					document["vsmr_groups"].Size() == 2U,
+					"LFPG exposes the East and West arrow groups");
+				bool hasEastArrowGroup = false;
+				bool hasWestArrowGroup = false;
+				if (document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray())
+				{
+					const rapidjson::Value& groups = document["vsmr_groups"];
+					for (rapidjson::SizeType groupIndex = 0; groupIndex < groups.Size(); ++groupIndex)
+					{
+						if (!groups[groupIndex].IsObject() || !groups[groupIndex].HasMember("id") ||
+							!groups[groupIndex]["id"].IsString())
+						{
+							continue;
+						}
+						const std::string groupId = groups[groupIndex]["id"].GetString();
+						hasEastArrowGroup = hasEastArrowGroup || groupId == "ground-layout-east";
+						hasWestArrowGroup = hasWestArrowGroup || groupId == "ground-layout-west";
+					}
+				}
+				Expect(hasEastArrowGroup && hasWestArrowGroup,
+					"LFPG arrow groups retain their stable East and West identifiers");
+				int directionalArrowFeatures = 0;
+				if (document.HasMember("features") && document["features"].IsArray())
+				{
+					const rapidjson::Value& features = document["features"];
+					for (rapidjson::SizeType featureIndex = 0; featureIndex < features.Size(); ++featureIndex)
+					{
+						const rapidjson::Value& feature = features[featureIndex];
+						if (!feature.IsObject() || !feature.HasMember("properties") ||
+							!feature["properties"].IsObject())
+						{
+							continue;
+						}
+						const rapidjson::Value& properties = feature["properties"];
+						if (properties.HasMember("geometry_role") &&
+							properties["geometry_role"].IsString() &&
+							std::string(properties["geometry_role"].GetString()) == "directional_arrows")
+						{
+							++directionalArrowFeatures;
+						}
+					}
+				}
+				Expect(directionalArrowFeatures == 6, "LFPG contains both directional-arrow groups");
+
+				bool everyTextHaloIsOne = true;
+				int textHaloStyleCount = 0;
+				if (document.HasMember("styles") && document["styles"].IsObject())
+				{
+					const rapidjson::Value& styles = document["styles"];
+					for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
+					{
+						if (!style->value.IsObject() || !style->value.HasMember("paint") ||
+							!style->value["paint"].IsObject())
+						{
+							continue;
+						}
+						const rapidjson::Value& paint = style->value["paint"];
+						if (!paint.HasMember("text-halo-width"))
+							continue;
+						++textHaloStyleCount;
+						everyTextHaloIsOne = everyTextHaloIsOne &&
+							paint["text-halo-width"].IsNumber() &&
+							paint["text-halo-width"].GetDouble() == 1.0;
+					}
+				}
+				Expect(textHaloStyleCount == 6 && everyTextHaloIsOne,
+					"LFPG text styles use a one-pixel halo");
+			}
 		}
 		std::string deeplyNestedAviso(65U, '[');
 		deeplyNestedAviso += '0';
