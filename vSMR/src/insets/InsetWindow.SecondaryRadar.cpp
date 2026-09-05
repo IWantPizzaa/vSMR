@@ -553,6 +553,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		true,
 		mouseLocation,
 		true,
+		radar_screen->GetUiColorTheme() == "day",
 		&m_LastChromeRenderMilliseconds);
 	DrawRadarInsetBorder(dc, m_AvisoLayoutMode, m_Area);
 

@@ -100,7 +100,6 @@ namespace VsmrTagRendering
 		bool extendScratchpadHit = false;
 		bool symmetricBounds = false;
 		int scratchpadAction = 0;
-		int contentHeightTrim = 0;
 		unsigned int backgroundAlphaNumerator = 255;
 		const TopBand* topBand = nullptr;
 		TopBandHitMode topBandHitMode = TopBandHitMode::None;
