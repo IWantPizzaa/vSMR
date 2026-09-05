@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO Night/Day palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
+- Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
 - Added validated Copy/Paste actions for Rules and AVISO geometry/text styles. AVISO paste and profile-color editing support the existing Ctrl/Shift multi-selection workflow.
 - Added delayed, theme-aware interaction explanations for buttons and editable controls throughout the Control Center.
 
@@ -15,6 +15,7 @@
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
 - Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
 - Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
+- Replaced the AVISO Night/Day selector with Dark, Light, and Real palettes. Dark retains the former Night colors, Light uses the LFPG Custom Day visual language, and Real preserves the former Day palettes for LFPG, LFMN, LFPO, and LFML.
 
 ### Fixed
 

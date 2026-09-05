@@ -165,7 +165,7 @@ private:
 	std::unique_ptr<VsmrAviso::AvisoRasterBlitter> AvisoRasterBlitterInstance;
 	std::string AvisoGeoJsonRasterCachePath;
 	unsigned long long AvisoGeoJsonRasterGroupGeneration = 0;
-	bool AvisoGeoJsonRasterUseDayPalette = false;
+	std::string AvisoGeoJsonRasterColorPalette = "dark";
 	double AvisoGeoJsonRasterMinLongitude = 0.0;
 	double AvisoGeoJsonRasterMinLatitude = 0.0;
 	double AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -270,9 +270,10 @@ private:
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
 	bool UiUseDayColorTheme = false;
-	bool AvisoUseDayColorPalette = false;
-	COLORREF AvisoNightBackgroundColor = RGB(67, 74, 79);
-	COLORREF AvisoDayBackgroundColor = RGB(67, 74, 79);
+	std::string AvisoColorPalette = "dark";
+	COLORREF AvisoDarkBackgroundColor = RGB(67, 74, 79);
+	COLORREF AvisoLightBackgroundColor = RGB(67, 74, 79);
+	COLORREF AvisoRealBackgroundColor = RGB(67, 74, 79);
 	CFont RuntimeOverlayFont;
 	CFont RuntimeMenuActionFont;
 	bool AirportPositionsCacheValid = false;
