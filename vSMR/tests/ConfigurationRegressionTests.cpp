@@ -131,7 +131,7 @@ namespace
 	void TestAviso(const std::filesystem::path& repositoryRoot)
 	{
 		const std::filesystem::path avisoRoot = repositoryRoot / "vSMR" / "data" / "AVISO";
-		for (const char* airport : { "LFPG.geojson", "LFML.geojson", "LFMN.geojson", "LFBO.geojson" })
+		for (const char* airport : { "LFPG.geojson", "LFML.geojson", "LFMN.geojson", "LFPO.geojson", "LFBO.geojson" })
 		{
 			AvisoDocumentModel model;
 			std::string error;
@@ -142,6 +142,73 @@ namespace
 				std::string("AVISO passes pre-DOM input limits: ") + airport);
 			Expect(model.LoadFromFile(path.u8string(), error), std::string("AVISO validates: ") + airport + (error.empty() ? "" : " (" + error + ")"));
 			Expect(model.FeatureCount() > 0, std::string("AVISO has features: ") + airport);
+			if (std::string(airport) != "LFBO.geojson")
+			{
+				const rapidjson::Document& document = model.GetDocument();
+				const rapidjson::Value* metadata = document.HasMember("metadata") && document["metadata"].IsObject()
+					? &document["metadata"]
+					: nullptr;
+				Expect(metadata != nullptr && metadata->HasMember("color_palettes") &&
+					(*metadata)["color_palettes"].IsArray() &&
+					(*metadata)["color_palettes"].Size() == 3U &&
+					std::string((*metadata)["color_palettes"][rapidjson::SizeType(0)].GetString()) == "dark" &&
+					std::string((*metadata)["color_palettes"][1].GetString()) == "light" &&
+					std::string((*metadata)["color_palettes"][2].GetString()) == "real",
+					std::string("AVISO publishes canonical Dark, Light, and Real palettes: ") + airport);
+				Expect(metadata != nullptr && metadata->HasMember("background_colors") &&
+					(*metadata)["background_colors"].IsObject() &&
+					(*metadata)["background_colors"].HasMember("dark") &&
+					(*metadata)["background_colors"].HasMember("light") &&
+					(*metadata)["background_colors"].HasMember("real"),
+					std::string("AVISO defines all canonical background colors: ") + airport);
+
+				const char* styleId = nullptr;
+				const char* colorKey = "fill";
+				const char* expectedLight = nullptr;
+				const char* expectedReal = nullptr;
+				if (std::string(airport) == "LFPG.geojson")
+				{
+					styleId = "polygon.lfpg.aviso.hardsurface2";
+					expectedLight = "#868686";
+					expectedReal = "#4A484B";
+				}
+				else if (std::string(airport) == "LFML.geojson")
+				{
+					styleId = "structure.building";
+					expectedLight = "#3C4446";
+					expectedReal = "#A84B24";
+				}
+				else if (std::string(airport) == "LFMN.geojson")
+				{
+					styleId = "surface.runway";
+					expectedLight = "#424242";
+					expectedReal = "#5E5E5E";
+				}
+				else if (std::string(airport) == "LFPO.geojson")
+				{
+					styleId = "terrain.grass";
+					expectedLight = "#3A4F3E";
+					expectedReal = "#00512F";
+				}
+				const rapidjson::Value* paint = nullptr;
+				if (styleId != nullptr && document.HasMember("styles") && document["styles"].IsObject() &&
+					document["styles"].HasMember(styleId) && document["styles"][styleId].IsObject() &&
+					document["styles"][styleId].HasMember("paint") && document["styles"][styleId]["paint"].IsObject())
+				{
+					paint = &document["styles"][styleId]["paint"];
+				}
+				const rapidjson::Value* overrides = paint != nullptr && paint->HasMember("palette-overrides") &&
+					(*paint)["palette-overrides"].IsObject()
+					? &(*paint)["palette-overrides"]
+					: nullptr;
+				Expect(overrides != nullptr && overrides->HasMember("light") &&
+					(*overrides)["light"].IsObject() && (*overrides)["light"].HasMember(colorKey) &&
+					std::string((*overrides)["light"][colorKey].GetString()) == expectedLight &&
+					overrides->HasMember("real") && (*overrides)["real"].IsObject() &&
+					(*overrides)["real"].HasMember(colorKey) &&
+					std::string((*overrides)["real"][colorKey].GetString()) == expectedReal,
+					std::string("AVISO separates LFPG Custom Light colors from preserved Real colors: ") + airport);
+			}
 			if (std::string(airport) == "LFPG.geojson")
 			{
 				const rapidjson::Document& document = model.GetDocument();

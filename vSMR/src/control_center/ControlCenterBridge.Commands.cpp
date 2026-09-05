@@ -344,7 +344,7 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 		if (!(*payload)["avisoColorPalette"].IsString() ||
 			!Owner->SetAvisoColorPalette((*payload)["avisoColorPalette"].GetString(), true))
 		{
-			error = "AVISO color palette must be day or night.";
+			error = "AVISO color palette must be dark, light, or real.";
 			return false;
 		}
 	}

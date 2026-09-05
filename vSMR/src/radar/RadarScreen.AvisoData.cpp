@@ -301,9 +301,20 @@ namespace
 		}
 
 		const Value& palettes = (*paint)["palette-overrides"];
-		if (!palettes.HasMember(palette) || !palettes[palette].IsObject())
-			return nullptr;
-		return &palettes[palette];
+		if (palettes.HasMember(palette) && palettes[palette].IsObject())
+			return &palettes[palette];
+
+		// Schema-2 files used "day" before Light and Real became separate
+		// palettes. Light inherits that value, while Real prefers Light and then
+		// the legacy Day value when an airport has not yet been migrated.
+		if (std::strcmp(palette, "real") == 0 && palettes.HasMember("light") && palettes["light"].IsObject())
+			return &palettes["light"];
+		if ((std::strcmp(palette, "light") == 0 || std::strcmp(palette, "real") == 0) &&
+			palettes.HasMember("day") && palettes["day"].IsObject())
+		{
+			return &palettes["day"];
+		}
+		return nullptr;
 	}
 
 	Gdiplus::Color ParseAvisoPaletteColorResolved(
@@ -315,8 +326,8 @@ namespace
 	{
 		// Palette-specific feature overrides win over palette-specific catalog
 		// defaults. An intentional feature-level base color remains authoritative
-		// in both modes unless that feature also supplies a Day override. All other
-		// missing overrides inherit the effective base (night) color, keeping older
+		// in every palette unless that feature supplies its own override. All other
+		// missing overrides inherit the effective base (Dark) color, keeping older
 		// and custom schema-2 AVISO documents compatible.
 		const Value* inlinePalette = GetAvisoPalettePaint(inlineProperties, palette);
 		const Value* sharedPalette = GetAvisoPalettePaint(sharedPaint, palette);
@@ -852,20 +863,31 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const double convertCommitStartMilliseconds = RefreshPerfNowMs();
 
 	const Value& features = document["features"];
-	COLORREF parsedNightBackgroundColor = RGB(67, 74, 79);
-	COLORREF parsedDayBackgroundColor = RGB(67, 74, 79);
+	COLORREF parsedDarkBackgroundColor = RGB(67, 74, 79);
+	COLORREF parsedLightBackgroundColor = RGB(67, 74, 79);
+	COLORREF parsedRealBackgroundColor = RGB(67, 74, 79);
 	if (document.HasMember("metadata") && document["metadata"].IsObject())
 	{
 		const Value& metadata = document["metadata"];
 		if (metadata.HasMember("background_colors") && metadata["background_colors"].IsObject())
 		{
 			const Value& backgroundColors = metadata["background_colors"];
-			if (backgroundColors.HasMember("night"))
-				parsedNightBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["night"], parsedNightBackgroundColor);
-			if (backgroundColors.HasMember("day"))
-				parsedDayBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["day"], parsedNightBackgroundColor);
+			if (backgroundColors.HasMember("dark"))
+				parsedDarkBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["dark"], parsedDarkBackgroundColor);
+			else if (backgroundColors.HasMember("night"))
+				parsedDarkBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["night"], parsedDarkBackgroundColor);
+
+			if (backgroundColors.HasMember("light"))
+				parsedLightBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["light"], parsedDarkBackgroundColor);
+			else if (backgroundColors.HasMember("day"))
+				parsedLightBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["day"], parsedDarkBackgroundColor);
 			else
-				parsedDayBackgroundColor = parsedNightBackgroundColor;
+				parsedLightBackgroundColor = parsedDarkBackgroundColor;
+
+			if (backgroundColors.HasMember("real"))
+				parsedRealBackgroundColor = ParseAvisoOpaqueColor(&backgroundColors["real"], parsedLightBackgroundColor);
+			else
+				parsedRealBackgroundColor = parsedLightBackgroundColor;
 		}
 	}
 	std::vector<AvisoFeature> parsedFeatures;
@@ -1025,8 +1047,10 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 
 			parsedLabel.textColor = ParseAvisoColorResolved(sharedPaint, properties, "text-color", nullptr, Gdiplus::Color(255, 128, 128, 128));
 			parsedLabel.haloColor = ParseAvisoColorResolved(sharedPaint, properties, "text-halo-color", nullptr, Gdiplus::Color(255, 0, 0, 0));
-			parsedLabel.dayTextColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "text-color", parsedLabel.textColor);
-			parsedLabel.dayHaloColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "text-halo-color", parsedLabel.haloColor);
+			parsedLabel.lightTextColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "text-color", parsedLabel.textColor);
+			parsedLabel.lightHaloColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "text-halo-color", parsedLabel.haloColor);
+			parsedLabel.realTextColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "text-color", parsedLabel.textColor);
+			parsedLabel.realHaloColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "text-halo-color", parsedLabel.haloColor);
 			parsedLabel.textSize = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-size", 12.0f, 6.0f, 32.0f);
 			parsedLabel.haloWidth = ParseAvisoFloatPropertyResolved(sharedPaint, properties, "text-halo-width", 1.0f, 0.0f, 6.0f);
 			parsedLabel.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
@@ -1041,8 +1065,10 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.groupIds = groupIds;
 		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
 		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
-		parsedFeature.dayFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "fill", parsedFeature.fillColor);
-		parsedFeature.dayStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "day", "stroke", parsedFeature.strokeColor);
+		parsedFeature.lightFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "fill", parsedFeature.fillColor);
+		parsedFeature.lightStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "stroke", parsedFeature.strokeColor);
+		parsedFeature.realFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "fill", parsedFeature.fillColor);
+		parsedFeature.realStrokeColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "real", "stroke", parsedFeature.strokeColor);
 		parsedFeature.strokeWidth = ParseAvisoStrokeWidthResolved(sharedPaint, properties, 1.0f);
 		parsedFeature.minimumZoomLevel = ParseAvisoMinimumZoomLevel(sharedPaint, properties);
 		parsedFeature.minLongitude = (std::numeric_limits<double>::max)();
@@ -1162,8 +1188,9 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	AvisoGeoJsonMinLatitude = parsedMinLatitude;
 	AvisoGeoJsonMaxLongitude = parsedMaxLongitude;
 	AvisoGeoJsonMaxLatitude = parsedMaxLatitude;
-	AvisoNightBackgroundColor = parsedNightBackgroundColor;
-	AvisoDayBackgroundColor = parsedDayBackgroundColor;
+	AvisoDarkBackgroundColor = parsedDarkBackgroundColor;
+	AvisoLightBackgroundColor = parsedLightBackgroundColor;
+	AvisoRealBackgroundColor = parsedRealBackgroundColor;
 	if (AvisoGeoJsonRenderPipeline != nullptr)
 		AvisoGeoJsonRenderPipeline->InvalidateRequests();
 	if (loadedPathChanged)

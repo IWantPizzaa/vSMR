@@ -850,7 +850,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.features = featureSnapshot;
 			request.labels = labelSnapshot;
 			request.groupVisibility = groupVisibility;
-			request.useDayPalette = radar_screen->AvisoUseDayColorPalette;
+			request.colorPalette = radar_screen->AvisoColorPalette;
 			request.rasterWidth = max(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
 			request.rasterHeight = max(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;

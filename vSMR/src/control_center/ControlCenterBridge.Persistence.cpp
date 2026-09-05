@@ -64,14 +64,17 @@ bool VsmrControlCenterBridgeImpl::SaveAll(
 		{
 			if (!settings["avisoColorPalette"].IsString())
 			{
-				error = "AVISO color palette must be day or night.";
+				error = "AVISO color palette must be dark, light, or real.";
 				return false;
 			}
 			stagedAvisoColorPalette = TrimAscii(settings["avisoColorPalette"].GetString());
-			if (!EqualsNoCase(stagedAvisoColorPalette, "day") &&
+			if (!EqualsNoCase(stagedAvisoColorPalette, "dark") &&
+				!EqualsNoCase(stagedAvisoColorPalette, "light") &&
+				!EqualsNoCase(stagedAvisoColorPalette, "real") &&
+				!EqualsNoCase(stagedAvisoColorPalette, "day") &&
 				!EqualsNoCase(stagedAvisoColorPalette, "night"))
 			{
-				error = "AVISO color palette must be day or night.";
+				error = "AVISO color palette must be dark, light, or real.";
 				return false;
 			}
 			hasStagedAvisoColorPalette = true;

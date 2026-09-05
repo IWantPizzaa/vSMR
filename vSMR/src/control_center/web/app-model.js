@@ -477,6 +477,13 @@
     return normalized || fallback;
   }
 
+  function normalizeAvisoColorPalette(value) {
+    const palette = String(value || "").trim().toLowerCase();
+    if (palette === "day") return "light";
+    if (palette === "light" || palette === "real") return palette;
+    return "dark";
+  }
+
   function normalizeAvisoData(sourceAviso, createDefaults = true) {
     const hasExplicitGroups = Array.isArray(sourceAviso?.vsmr_groups);
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
@@ -484,11 +491,15 @@
     if (!aviso.styles || typeof aviso.styles !== "object" || Array.isArray(aviso.styles)) aviso.styles = {};
     if (!aviso.metadata || typeof aviso.metadata !== "object" || Array.isArray(aviso.metadata)) aviso.metadata = {};
     const sourceBackgroundColors = aviso.metadata.background_colors;
-    const nightBackground = normalizeHex(sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    const darkBackground = normalizeHex(sourceBackgroundColors?.dark ?? sourceBackgroundColors?.night, "#434A4F").toUpperCase();
+    const lightBackground = normalizeHex(sourceBackgroundColors?.light ?? sourceBackgroundColors?.day, darkBackground).toUpperCase();
     aviso.metadata.background_colors = {
-      night: nightBackground,
-      day: normalizeHex(sourceBackgroundColors?.day, nightBackground).toUpperCase()
+      dark: darkBackground,
+      light: lightBackground,
+      real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
+    aviso.metadata.default_color_palette = "dark";
+    aviso.metadata.color_palettes = ["dark", "light", "real"];
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
     const seen = new Set();
@@ -659,7 +670,7 @@
         resolutionPreset: preferred?.data?.targets?.small_icon_boost_resolution_preset || "1080p",
         showFps: true,
         uiColorTheme: "night",
-        avisoColorPalette: "night",
+        avisoColorPalette: "dark",
         dataHealth: {
           profilesHealthy: true,
           profilesMessage: "",

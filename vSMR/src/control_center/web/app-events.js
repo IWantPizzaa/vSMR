@@ -11,7 +11,7 @@
     if (PROFILE_TITLES[tab]) state.ui.profileTab = tab;
     const avisoView = params.get("aviso") || params.get("view");
     if (["geometry", "text"].includes(avisoView)) state.ui.avisoView = avisoView;
-    if (["day", "night"].includes(params.get("palette"))) state.settings.avisoColorPalette = params.get("palette");
+    if (params.has("palette")) state.settings.avisoColorPalette = normalizeAvisoColorPalette(params.get("palette"));
     if (["day", "night"].includes(params.get("theme"))) state.settings.uiColorTheme = params.get("theme");
     const ui = params.get("ui");
     if (ui === "control" || params.get("control") === "1" || PAGE_TITLES[page]) state.ui.controlCenterOpen = true;
@@ -801,7 +801,7 @@
       }
     }
     else if (action === "set-aviso-palette") {
-      const palette = button.dataset.avisoColorPalette === "day" ? "day" : "night";
+      const palette = normalizeAvisoColorPalette(button.dataset.avisoColorPalette);
       if (state.settings.avisoColorPalette !== palette) {
         state.settings.avisoColorPalette = palette;
         renderSettings();

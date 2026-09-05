@@ -271,7 +271,7 @@ void CSMRRadar::ClearAvisoGeoJsonRasterCache()
 
 	AvisoGeoJsonRasterCachePath.clear();
 	AvisoGeoJsonRasterGroupGeneration = 0;
-	AvisoGeoJsonRasterUseDayPalette = false;
+	AvisoGeoJsonRasterColorPalette = "dark";
 	AvisoGeoJsonRasterMinLongitude = 0.0;
 	AvisoGeoJsonRasterMinLatitude = 0.0;
 	AvisoGeoJsonRasterMaxLongitude = 0.0;
@@ -312,7 +312,7 @@ void CSMRRadar::ApplyCompletedAvisoGeoJsonRaster()
 			result->bitmap = nullptr;
 			AvisoGeoJsonRasterCachePath = result->path;
 			AvisoGeoJsonRasterGroupGeneration = result->groupGeneration;
-			AvisoGeoJsonRasterUseDayPalette = result->useDayPalette;
+			AvisoGeoJsonRasterColorPalette = result->colorPalette;
 			AvisoGeoJsonRasterMinLongitude = result->displayMinLongitude;
 			AvisoGeoJsonRasterMinLatitude = result->displayMinLatitude;
 			AvisoGeoJsonRasterMaxLongitude = result->displayMaxLongitude;
@@ -523,8 +523,12 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 		if (feature.minimumZoomLevel > 0 && request.viewportZoomLevel < feature.minimumZoomLevel)
 			continue;
 
-		Color featureFillColor = request.useDayPalette ? feature.dayFillColor : feature.fillColor;
-		Color featureStrokeColor = request.useDayPalette ? feature.dayStrokeColor : feature.strokeColor;
+		Color featureFillColor = request.colorPalette == "real"
+			? feature.realFillColor
+			: request.colorPalette == "light" ? feature.lightFillColor : feature.fillColor;
+		Color featureStrokeColor = request.colorPalette == "real"
+			? feature.realStrokeColor
+			: request.colorPalette == "light" ? feature.lightStrokeColor : feature.strokeColor;
 
 		if (feature.maxLatitude < request.renderMinLatitude ||
 			feature.minLatitude > request.renderMaxLatitude ||
@@ -688,8 +692,12 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			if (textPath.GetPointCount() <= 0)
 				continue;
 
-			const Color labelHaloColor = request.useDayPalette ? label.dayHaloColor : label.haloColor;
-			const Color labelTextColor = request.useDayPalette ? label.dayTextColor : label.textColor;
+			const Color labelHaloColor = request.colorPalette == "real"
+				? label.realHaloColor
+				: request.colorPalette == "light" ? label.lightHaloColor : label.haloColor;
+			const Color labelTextColor = request.colorPalette == "real"
+				? label.realTextColor
+				: request.colorPalette == "light" ? label.lightTextColor : label.textColor;
 			if (label.haloWidth > 0.0f && labelHaloColor.GetAlpha() > 0)
 			{
 				Pen haloPen(labelHaloColor, static_cast<REAL>(AvisoMax(static_cast<double>(label.haloWidth * request.rasterScale * 2.0f), 1.0)));
@@ -711,7 +719,7 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 	auto result = std::make_unique<AvisoRasterRenderResult>();
 	result->requestId = request.requestId;
 	result->groupGeneration = request.groupGeneration;
-	result->useDayPalette = request.useDayPalette;
+	result->colorPalette = request.colorPalette;
 	result->bitmap = dibBitmap.Release();
 	result->path = request.path;
 	result->rasterWidth = request.rasterWidth;
@@ -785,9 +793,11 @@ CRect CSMRRadar::ResolveMainAvisoRenderArea()
 
 COLORREF CSMRRadar::GetAvisoBackgroundColor() const noexcept
 {
-	return AvisoUseDayColorPalette
-		? AvisoDayBackgroundColor
-		: AvisoNightBackgroundColor;
+	if (AvisoColorPalette == "real")
+		return AvisoRealBackgroundColor;
+	if (AvisoColorPalette == "light")
+		return AvisoLightBackgroundColor;
+	return AvisoDarkBackgroundColor;
 }
 
 void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
@@ -1186,7 +1196,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	{
 		if (AvisoGeoJsonRasterCache == nullptr ||
 			AvisoGeoJsonRasterCachePath != path ||
-			AvisoGeoJsonRasterUseDayPalette != AvisoUseDayColorPalette ||
+			AvisoGeoJsonRasterColorPalette != AvisoColorPalette ||
 			AvisoGeoJsonRasterWidth <= 0 ||
 			AvisoGeoJsonRasterHeight <= 0 ||
 			!AvisoGeoJsonRasterAnchorValid)
@@ -1421,7 +1431,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	request.features = featureSnapshot;
 	request.labels = labelSnapshot;
 	request.groupVisibility = groupVisibility;
-	request.useDayPalette = AvisoUseDayColorPalette;
+	request.colorPalette = AvisoColorPalette;
 	request.rasterWidth = rasterWidth;
 	request.rasterHeight = rasterHeight;
 	request.rasterScale = rasterScale;

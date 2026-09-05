@@ -62,7 +62,7 @@ Detailed procedures are maintained in the Wiki:
 2. Select a profile and display mode.
 3. Open the Control Center with the Runtime Menu or `.smr`.
 4. Verify the Profiles and AVISO paths in Settings.
-5. Select the AVISO Night or Day palette and review group visibility.
+5. Select the AVISO Dark, Light, or Real palette and review group visibility.
 6. Configure RIMCAS runways and alert behavior.
 7. Arrange the required insets and save an airport preset if needed.
 8. Run `.smr diagnostics` and confirm the expected version and data sources.

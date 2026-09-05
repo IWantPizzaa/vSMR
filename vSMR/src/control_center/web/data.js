@@ -169,7 +169,7 @@ window.VSMR_DATA = {
   aviso: {
     type: "FeatureCollection",
     name: "LFPG AVISO preview",
-    metadata: { airport: "LFPG", bundled_preview: true, default_color_palette: "night", color_palettes: ["night", "day"], background_colors: { night: "#434A4F", day: "#434A4F" } },
+    metadata: { airport: "LFPG", bundled_preview: true, default_color_palette: "dark", color_palettes: ["dark", "light", "real"], background_colors: { dark: "#434A4F", light: "#434A4F", real: "#434A4F" } },
     styles: {
       "surface.taxiway": {
         name: "Taxiways",
@@ -178,7 +178,7 @@ window.VSMR_DATA = {
         paint: {
           fill: "#273438", "fill-opacity": 1,
           stroke: "#526065", "stroke-width": 1, "stroke-opacity": 1,
-          "palette-overrides": { day: { fill: "#8A807F", stroke: "#595E5B" } },
+          "palette-overrides": { light: { fill: "#8A807F", stroke: "#595E5B" }, real: { fill: "#8A807F", stroke: "#595E5B" } },
           visible: true
         }
       },
@@ -198,7 +198,7 @@ window.VSMR_DATA = {
         paint: {
           "text-font": "Tahoma", "text-size": 12,
           "text-color": "#84b7d5", "text-halo-color": "#101719",
-          "palette-overrides": { day: { "text-color": "#203033", "text-halo-color": "#DDE5E5" } },
+          "palette-overrides": { light: { "text-color": "#203033", "text-halo-color": "#DDE5E5" }, real: { "text-color": "#203033", "text-halo-color": "#DDE5E5" } },
           "text-halo-width": 1, zoomLevel: 6, visible: true
         }
       }
