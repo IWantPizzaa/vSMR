@@ -55,7 +55,7 @@ std::string CSMRRadar::GetAvisoGeoJsonEditorPathForAirport(const std::string& ai
 	if (!IsAirportCode(airportUpper))
 		return "";
 
-	const std::string existingPath = ResolveAvisoGeoJsonRenderPathForAirport(airportUpper);
+	const std::string existingPath = ResolveAvisoGeoJsonPathForAirport(airportUpper);
 	if (!existingPath.empty())
 		return existingPath;
 
@@ -125,7 +125,7 @@ bool CSMRRadar::ForceReloadAvisoGeoJson()
 		return false;
 
 	const std::string airport = getActiveAirport();
-	const std::string path = ResolveAvisoGeoJsonRenderPathForAirport(airport);
+	const std::string path = ResolveAvisoGeoJsonPathForAirport(airport);
 	if (path.empty() || !IsRegularFileNoThrow(path))
 		return false;
 
