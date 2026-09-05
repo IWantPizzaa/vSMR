@@ -273,28 +273,7 @@ namespace
 				{},
 				unicodeConfig.getPersistedConfigRevision(),
 				&error),
-			"Profiles save atomically without a backup rotation");
-		std::filesystem::path legacyProfilesBackup = selectedFile;
-		legacyProfilesBackup += L".bak";
-		Expect(
-			!std::filesystem::exists(legacyProfilesBackup),
-			"Profiles save does not create a .bak file");
-		const std::string legacyProfilesContents = ReadTextFile(selectedFile);
-		{
-			std::ofstream backupOutput(legacyProfilesBackup, std::ios::binary | std::ios::trunc);
-			backupOutput << legacyProfilesContents;
-		}
-		Expect(
-			unicodeConfig.saveConfig(
-				{},
-				unicodeConfig.getPersistedConfigRevision(),
-				&error) &&
-				ReadTextFile(legacyProfilesBackup) == legacyProfilesContents,
-			"Profiles save leaves an existing .bak file untouched");
-		Expect(
-			unicodeConfig.isBackupAvailable() &&
-				unicodeConfig.getBackupModifiedUnixSeconds() > 0,
-			"Validated legacy profiles backup exposes its modification date");
+			"Profiles save atomically");
 
 		const std::filesystem::path unicodeAvisoPath =
 			testRoot / L"a\u00E9roport_\u6D4B\u8BD5.geojson";
@@ -313,20 +292,7 @@ namespace
 			"AVISO loads from a Unicode installation path");
 		Expect(
 			unicodeAviso.SaveAtomically(unicodeAvisoPath.u8string(), avisoError),
-			"AVISO saves atomically without a backup rotation");
-		std::filesystem::path legacyAvisoBackup = unicodeAvisoPath;
-		legacyAvisoBackup += L".bak";
-		Expect(
-			!std::filesystem::exists(legacyAvisoBackup),
-			"AVISO save does not create a .bak file");
-		{
-			std::ofstream backupOutput(legacyAvisoBackup, std::ios::binary | std::ios::trunc);
-			backupOutput << "legacy AVISO backup";
-		}
-		Expect(
-			unicodeAviso.SaveAtomically(unicodeAvisoPath.u8string(), avisoError) &&
-				ReadTextFile(legacyAvisoBackup) == "legacy AVISO backup",
-			"AVISO save leaves an existing .bak file untouched");
+			"AVISO saves atomically");
 
 		std::string storedPath;
 		error.clear();

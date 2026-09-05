@@ -84,9 +84,39 @@
 .icon-settings-grid {
   display: grid;
   align-content: start;
-  grid-template-columns: minmax(0, .9fr) minmax(0, 1.45fr);
-  padding: 4px;
-  gap: 4px;
+  grid-template-columns: minmax(150px, .72fr) minmax(240px, 1.28fr);
+  padding: var(--ui-page-padding);
+  gap: var(--ui-gap);
+}
+
+.icon-settings-stack {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--ui-gap);
+}
+
+.icon-preview-column {
+	min-width: 0;
+	display: grid;
+	align-content: start;
+	gap: var(--ui-gap);
+  overflow: hidden;
+  border: 1px solid var(--ui-outer-border);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-card-bg);
+}
+
+.icon-section-heading {
+  min-height: var(--ui-card-title-height);
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--ui-inner-border);
+  background: var(--ui-card-title-bg);
+  color: var(--ui-text);
+  font-size: var(--ui-font-size-small);
+  font-weight: 700;
 }
 
 .group-settings-card { margin-bottom: 0; }
@@ -151,7 +181,7 @@
 
 .settings-recovery-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   padding-top: 2px;
 }

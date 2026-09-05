@@ -223,17 +223,6 @@
     return startConfigurationSave();
   }
 
-  function restoreProfilesBackup() {
-	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext || !state.settings?.dataHealth?.profilesBackupAvailable) return;
-    const backupDescription = describeLegacyProfilesBackup(state.settings.dataHealth);
-    if (!window.confirm(`${backupDescription}. Current vSMR saves do not update this legacy copy, so it may be older than expected. Restore it and discard all unsaved edits?`)) return;
-    pending.reload = postBridge("state.restore.backup", {});
-    if (!pending.reload) return;
-    armPendingTimeout("reload", pending.reload);
-    setStatus("Restoring profiles backup...", "info");
-    updateCommandState();
-  }
-
   function restoreBundledDefaults() {
 	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
     if (!window.confirm("Load the bundled profiles and, when available, the AVISO default for the active airport? Valid changes will be saved automatically.")) return;

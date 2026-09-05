@@ -537,15 +537,17 @@ namespace
 	{
 		const std::filesystem::path webRoot =
 			repositoryRoot / "vSMR" / "src" / "control_center" / "web";
-		const std::array<const char*, 11> sources = {
+		const std::array<const char*, 13> sources = {
 			"app-model.js",
 			"app-workflow.js",
 			"app-runtime.js",
 			"app-profile-colors.js",
 			"app-profile-editor.js",
 			"app-aviso-editor.js",
+			"app-aviso-clipboard.js",
 			"app-settings.js",
 			"app-persistence.js",
+			"app-interaction-help.js",
 			"app-events.js",
 			"app-actions.js",
 			"app.js"

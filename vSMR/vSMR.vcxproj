@@ -431,8 +431,8 @@
       <_VsmrWebUiAsset Include="$(MSBuildProjectDirectory)\src\control_center\web\app-bundle.js" />
       <_VsmrDefaultProfile Include="$(MSBuildProjectDirectory)\data\vSMR_Profiles.json" />
       <_VsmrRuntimeData Include="$(MSBuildProjectDirectory)\data\**\*.*"
-        Exclude="$(MSBuildProjectDirectory)\data\AVISO\*.bak;$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
-      <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson;$(VsmrDistributionDirectory)AVISO_*.geojson.bak" />
+        Exclude="$(MSBuildProjectDirectory)\data\AVISO\ALL_FR_*.geojson;$(MSBuildProjectDirectory)\data\AVISO\_LFXX.geojson;$(MSBuildProjectDirectory)\data\AVISO\version.txt" />
+	  <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson" />
       <_VsmrProjectLicense Include="$(MSBuildProjectDirectory)\..\LICENSE" />
       <_VsmrRapidJsonLicense Include="$(MSBuildProjectDirectory)\..\lib\include\rapidjson\license.txt" />
       <_VsmrWebView2License Include="$(PkgMicrosoft_Web_WebView2)\LICENSE.txt" />
@@ -461,7 +461,7 @@
   </Target>
   <Target Name="CleanVsmrRuntimeAssets" BeforeTargets="Clean">
     <ItemGroup>
-      <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson;$(VsmrDistributionDirectory)AVISO_*.geojson.bak" />
+	  <_VsmrLegacyFlatAviso Include="$(VsmrDistributionDirectory)AVISO_*.geojson" />
     </ItemGroup>
     <RemoveDir Directories="$(VsmrDistributionDirectory)vSMR_webUI;$(VsmrDistributionDirectory)vSMR_Data;$(VsmrDistributionDirectory)THIRD_PARTY_LICENSES" />
     <Delete Files="$(VsmrDistributionDirectory)LICENSE" />
