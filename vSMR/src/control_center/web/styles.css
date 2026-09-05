@@ -2843,6 +2843,13 @@ html.host-mode .control-window.hidden {
   width: 170px;
 }
 
+.aviso-palette-control .ui-button:disabled {
+  border-color: var(--ui-control-border);
+  background: var(--ui-disabled-bg);
+  color: var(--ui-disabled-text);
+  opacity: 1;
+}
+
 /* source: aviso-geometry.css */
 /* AVISO geometry category and geometry-style editors. */
 

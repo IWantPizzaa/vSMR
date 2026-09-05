@@ -185,7 +185,7 @@ void CSMRRadar::RefreshSectorMap(
 	double radarCrossDistance = Haversine(radarDownLeft, radarUpRight);
 	int NewRadarViewZoomLevel = getZoomLevelFromCrossDistance(radarCrossDistance);
 	const std::string currentMapAirport = getActiveAirport();
-	const bool useAvisoGroundRenderer = !ResolveAvisoGeoJsonPathForAirport(currentMapAirport).empty();
+	const bool useAvisoGroundRenderer = !ResolveAvisoGeoJsonRenderPathForAirport(currentMapAirport).empty();
 	const auto& currentRunwayStatuses = RimcasInstance->GetRunwayStatuses();
 	const bool needsMapRefresh =
 		(NewRadarViewZoomLevel != RadarViewZoomLevel) ||
@@ -356,7 +356,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRefreshSceneAndRend
 	{
 		std::string disabledPath = AvisoGeoJsonLoadedPath;
 		if (disabledPath.empty())
-			disabledPath = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
+			disabledPath = ResolveAvisoGeoJsonRenderPathForAirport(getActiveAirport());
 
 		AvisoGeoJsonRenderDisabled = true;
 		AvisoGeoJsonRenderDisabledPath = disabledPath;

@@ -347,6 +347,14 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 	settings.AddMember("showFps", Owner->ShowFps, allocator);
 	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
+	rapidjson::Value avisoColorPalettes(rapidjson::kArrayType);
+	for (const std::string& palette : Owner->GetAvailableAvisoColorPalettes(Owner->getActiveAirport()))
+	{
+		rapidjson::Value value;
+		value.SetString(palette.c_str(), static_cast<rapidjson::SizeType>(palette.size()), allocator);
+		avisoColorPalettes.PushBack(value, allocator);
+	}
+	settings.AddMember("avisoColorPalettes", avisoColorPalettes, allocator);
 
 	rapidjson::Value dataHealth(rapidjson::kObjectType);
 	const bool configHealthy =
@@ -542,7 +550,7 @@ void VsmrControlCenterBridgeImpl::SendAuthoritativeState(
 	if (includeAviso)
 	{
 		const std::string avisoPath =
-			Owner->ResolveAvisoGeoJsonPathForAirport(Owner->getActiveAirport());
+			Owner->ResolveAvisoGeoJsonRenderPathForAirport(Owner->getActiveAirport());
 		if (!avisoPath.empty())
 			Owner->EnsureAvisoGeoJsonLoaded(avisoPath);
 	}

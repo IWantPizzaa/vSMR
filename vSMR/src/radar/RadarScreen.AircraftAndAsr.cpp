@@ -1108,6 +1108,7 @@ string CSMRRadar::setActiveAirport(
 	}
 
 	ActiveAirport = airport;
+	EnsureAvisoColorPaletteAvailable(switchInsetContext);
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::AirportUpdate);
 	PublishCrashRadarState("main");
@@ -1220,6 +1221,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	AvisoColorPalette = "dark";
 	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
+	EnsureAvisoColorPaletteAvailable(false);
 
 	UiUseDayColorTheme = false;
 	if ((p_value = GetDataFromAsr("UiColorTheme")) != NULL)
