@@ -124,7 +124,7 @@ namespace
 		auto result = std::make_unique<Pipeline::Result>();
 		result->requestId = request.requestId;
 		result->groupGeneration = request.groupGeneration;
-		result->useDayPalette = request.useDayPalette;
+		result->colorPalette = request.colorPalette;
 		result->path = request.path;
 		result->rasterWidth = request.rasterWidth;
 		result->rasterHeight = request.rasterHeight;
@@ -186,6 +186,22 @@ namespace
 			renderCalls.load(std::memory_order_relaxed) == 1 &&
 				coalescedCalls.load(std::memory_order_relaxed) == 1,
 			"AVISO coalescing avoids a duplicate render and records diagnostics",
+			failures);
+
+		Pipeline::Request realPaletteRequest = request;
+		realPaletteRequest.colorPalette = "real";
+		Check(
+			pipeline.Queue(realPaletteRequest, false) == Pipeline::QueueStatus::Queued,
+			"AVISO palette changes cannot reuse a raster from another palette",
+			failures);
+		Check(
+			completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 2; }),
+			"AVISO palette-specific raster completes within the timeout",
+			failures);
+		const auto realResult = pipeline.TakeCompleted();
+		Check(
+			realResult != nullptr && realResult->colorPalette == "real",
+			"AVISO raster results retain their canonical palette",
 			failures);
 		pipeline.Stop();
 	}

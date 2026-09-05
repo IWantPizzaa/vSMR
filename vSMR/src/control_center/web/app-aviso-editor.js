@@ -32,40 +32,43 @@
   }
 
   function activeAvisoColorPalette() {
-    return state.settings.avisoColorPalette === "day" ? "day" : "night";
+    return normalizeAvisoColorPalette(state.settings.avisoColorPalette);
   }
 
   function avisoPaletteOverride(paint, palette = activeAvisoColorPalette()) {
-    if (palette !== "day" || !paint || typeof paint !== "object") return null;
+    if (palette === "dark" || !paint || typeof paint !== "object") return null;
     const overrides = paint["palette-overrides"];
-    const selected = overrides && typeof overrides === "object" ? overrides.day : null;
-    return selected && typeof selected === "object" ? selected : null;
+    if (!overrides || typeof overrides !== "object") return null;
+    const candidates = palette === "real" ? ["real", "light", "day"] : ["light", "day"];
+    return candidates.map(name => overrides[name]).find(value => value && typeof value === "object") || null;
   }
 
   function effectiveAvisoPaintValue(sharedPaint, inlinePaint, key, fallback = undefined) {
-    if (activeAvisoColorPalette() === "day" && AVISO_PALETTE_COLOR_KEYS.has(key)) {
-      const inlineDay = avisoPaletteOverride(inlinePaint, "day");
-      if (inlineDay?.[key] != null) return inlineDay[key];
-      // Match the native renderer: an intentional feature-level Night color
-      // remains authoritative until that feature receives its own Day value.
+    const palette = activeAvisoColorPalette();
+    if (palette !== "dark" && AVISO_PALETTE_COLOR_KEYS.has(key)) {
+      const inlineOverride = avisoPaletteOverride(inlinePaint, palette);
+      if (inlineOverride?.[key] != null) return inlineOverride[key];
+      // Match the native renderer: an intentional feature-level Dark color
+      // remains authoritative until that feature receives its own override.
       if (inlinePaint?.[key] != null) return inlinePaint[key];
-      const sharedDay = avisoPaletteOverride(sharedPaint, "day");
-      if (sharedDay?.[key] != null) return sharedDay[key];
+      const sharedOverride = avisoPaletteOverride(sharedPaint, palette);
+      if (sharedOverride?.[key] != null) return sharedOverride[key];
     }
     return inlinePaint?.[key] ?? sharedPaint?.[key] ?? fallback;
   }
 
   function applyAvisoPaintChanges(target, changes) {
     if (!target || typeof target !== "object") return;
-    const dayColors = {};
+    const paletteColors = {};
+    const palette = activeAvisoColorPalette();
     Object.entries(changes).forEach(([key, value]) => {
-      if (activeAvisoColorPalette() === "day" && AVISO_PALETTE_COLOR_KEYS.has(key)) dayColors[key] = value;
+      if (palette !== "dark" && AVISO_PALETTE_COLOR_KEYS.has(key)) paletteColors[key] = value;
       else target[key] = value;
     });
-    if (!Object.keys(dayColors).length) return;
+    if (!Object.keys(paletteColors).length) return;
     if (!target["palette-overrides"] || typeof target["palette-overrides"] !== "object") target["palette-overrides"] = {};
-    if (!target["palette-overrides"].day || typeof target["palette-overrides"].day !== "object") target["palette-overrides"].day = {};
-    Object.assign(target["palette-overrides"].day, dayColors);
+    if (!target["palette-overrides"][palette] || typeof target["palette-overrides"][palette] !== "object") target["palette-overrides"][palette] = {};
+    Object.assign(target["palette-overrides"][palette], paletteColors);
   }
 
   function collectAvisoStyleEntries() {
@@ -116,7 +119,8 @@
     const entries = collectAvisoStyleEntries().filter(entry => kind === "text" ? entry.isText : !entry.isText);
     if (kind !== "geometry") return entries;
     const palette = activeAvisoColorPalette();
-    const color = normalizeHex(state.aviso?.metadata?.background_colors?.[palette], "#434A4F");
+    const colors = state.aviso?.metadata?.background_colors || {};
+    const color = normalizeHex(colors[palette] ?? colors.light ?? colors.day ?? colors.dark ?? colors.night, "#434A4F");
     return [{
       id: AVISO_BACKGROUND_STYLE_ID,
       name: "Background",
@@ -672,7 +676,7 @@
     const types = uniqueValues(entries.map(entry => entry.objectType));
     const backgroundOnly = entries.every(entry => entry.isBackground);
     $("#avisoGeometryCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} geometry styles`;
-    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    const paletteLabel = `${activeAvisoColorPalette()[0].toUpperCase()}${activeAvisoColorPalette().slice(1)}`;
     const colorKind = backgroundOnly ? "Background" : types.length > 1 ? "Primary" : types[0] === "Line" ? "Line" : "Fill";
     $("#avisoGeometryColorLabel").textContent = `${colorKind} color · ${paletteLabel}`;
     $("#avisoGeometryColorOpacity")?.closest(".opacity-channel")?.toggleAttribute("hidden", backgroundOnly);
@@ -809,7 +813,7 @@
     const values = key => items.map(item => effectiveAvisoTextValue(item.index, item.entry, key));
 
     $("#avisoTextCaption").textContent = entries.length === 1 ? entries[0].name : `${entries.length} text styles`;
-    const paletteLabel = activeAvisoColorPalette() === "day" ? "Day" : "Night";
+    const paletteLabel = `${activeAvisoColorPalette()[0].toUpperCase()}${activeAvisoColorPalette().slice(1)}`;
     const colorTarget = state.ui.avisoTextColorTarget === "halo" ? "halo" : "text";
     const colorKey = colorTarget === "halo" ? "text-halo-color" : "text-color";
     const colorFallback = colorTarget === "halo" ? "#000000" : "#808080";

@@ -209,7 +209,7 @@ void CSMRRadar::InvalidateAvisoGroupRendering()
 
 std::string CSMRRadar::GetAvisoColorPalette() const
 {
-	return AvisoUseDayColorPalette ? "day" : "night";
+	return AvisoColorPalette;
 }
 
 bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persistToAsr)
@@ -232,13 +232,17 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 		palette.end(),
 		palette.begin(),
 		[](unsigned char value) { return static_cast<char>(std::tolower(value)); });
-	if (palette != "day" && palette != "night")
+	// Preserve existing ASR settings while exposing only the canonical names.
+	if (palette == "night")
+		palette = "dark";
+	else if (palette == "day")
+		palette = "light";
+	if (palette != "dark" && palette != "light" && palette != "real")
 		return false;
 
-	const bool useDayPalette = palette == "day";
-	if (AvisoUseDayColorPalette != useDayPalette)
+	if (AvisoColorPalette != palette)
 	{
-		AvisoUseDayColorPalette = useDayPalette;
+		AvisoColorPalette = palette;
 		AvisoGroupGeneration.fetch_add(1, std::memory_order_relaxed);
 		InvalidateAvisoGroupRendering();
 	}
@@ -247,7 +251,7 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 	{
 		SaveDataToAsr(
 			"AvisoColorPalette",
-			"AVISO day/night color palette",
+			"AVISO dark/light/real color palette",
 			GetAvisoColorPalette().c_str());
 	}
 	return true;
