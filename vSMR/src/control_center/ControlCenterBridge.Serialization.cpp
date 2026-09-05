@@ -345,6 +345,7 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		Owner->GetSmallTargetIconBoostResolutionPreset(),
 		allocator);
 	settings.AddMember("showFps", Owner->ShowFps, allocator);
+	AddString(settings, "uiColorTheme", Owner->GetUiColorTheme(), allocator);
 	AddString(settings, "avisoColorPalette", Owner->GetAvisoColorPalette(), allocator);
 
 	rapidjson::Value dataHealth(rapidjson::kObjectType);

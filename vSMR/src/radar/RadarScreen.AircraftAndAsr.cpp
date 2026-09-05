@@ -1221,6 +1221,10 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	if ((p_value = GetDataFromAsr("AvisoColorPalette")) != NULL)
 		SetAvisoColorPalette(p_value, false);
 
+	UiUseDayColorTheme = false;
+	if ((p_value = GetDataFromAsr("UiColorTheme")) != NULL)
+		SetUiColorTheme(p_value, false);
+
 	LoadRuntimeMenuPositionFromAsr();
 
 	ResetAllInsetWindowStates(false);
@@ -1278,6 +1282,10 @@ void CSMRRadar::OnAsrContentToBeSaved()
 		"AvisoColorPalette",
 		"AVISO day/night color palette",
 		GetAvisoColorPalette().c_str());
+	SaveDataToAsr(
+		"UiColorTheme",
+		"Control Center and inset UI theme",
+		GetUiColorTheme().c_str());
 
 	SaveRuntimeMenuPositionToAsr();
 	if (!InitialInsetStateRestorePending)

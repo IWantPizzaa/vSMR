@@ -404,6 +404,8 @@
     $("#settingsAliasFile").title = aliasFile || "No alias file found";
     ensureSelectValue($("#settingsResolutionPreset"), settings.resolutionPreset || "1080p");
     $("#settingsShowFps").checked = settings.showFps !== false;
+    const uiColorTheme = settings.uiColorTheme === "day" ? "day" : "night";
+    syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     const restoreBackup = $("#restoreProfilesBackupButton");

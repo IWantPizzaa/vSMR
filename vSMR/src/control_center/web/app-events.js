@@ -12,6 +12,7 @@
     const avisoView = params.get("aviso") || params.get("view");
     if (["geometry", "text"].includes(avisoView)) state.ui.avisoView = avisoView;
     if (["day", "night"].includes(params.get("palette"))) state.settings.avisoColorPalette = params.get("palette");
+    if (["day", "night"].includes(params.get("theme"))) state.settings.uiColorTheme = params.get("theme");
     const ui = params.get("ui");
     if (ui === "control" || params.get("control") === "1" || PAGE_TITLES[page]) state.ui.controlCenterOpen = true;
     if (ui === "runtime") state.ui.controlCenterOpen = false;
@@ -771,15 +772,22 @@
   function handleAction(action, button) {
     if (action === "open-control-center") openControlCenter();
     else if (action === "open-settings") { openControlCenter(); setPage("settings"); }
+    else if (action === "set-ui-theme") {
+      const theme = button.dataset.uiColorTheme === "day" ? "day" : "night";
+      if (state.settings.uiColorTheme !== theme) {
+        state.settings.uiColorTheme = theme;
+        applyUiTheme();
+        renderSettings();
+        markDirty(`${theme === "day" ? "Day" : "Night"} UI theme selected`, ["settings"]);
+      }
+    }
     else if (action === "set-aviso-palette") {
       const palette = button.dataset.avisoColorPalette === "day" ? "day" : "night";
       if (state.settings.avisoColorPalette !== palette) {
         state.settings.avisoColorPalette = palette;
-        applyUiTheme();
-        renderRuntimeMenu();
         renderSettings();
         renderAviso();
-        markDirty(`${palette === "day" ? "Day" : "Night"} theme selected`, ["settings"]);
+        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {

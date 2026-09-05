@@ -103,7 +103,7 @@
 
 }
 
-/* The saved AVISO palette is also the application theme. Night remains the
+/* The interface theme is independent from AVISO colors. Night remains the
    default so older native hosts keep their established appearance. */
 :root[data-ui-theme="day"] {
   color-scheme: light;
@@ -2933,6 +2933,8 @@ html.host-mode .control-window.hidden {
 
 .settings-group > .check-field { margin-top: 4px; }
 
+.settings-theme-control { width: 150px; }
+
 .profile-settings-scroll {
   min-height: 0;
   overflow: auto;
@@ -3562,12 +3564,6 @@ html.host-mode .runtime-menu { display: none !important; }
   padding: 7px;
   text-align: center;
 }
-
-.runtime-theme-button .runtime-theme-moon { display: none; }
-
-:root[data-ui-theme="day"] .runtime-theme-button .runtime-theme-sun { display: none; }
-
-:root[data-ui-theme="day"] .runtime-theme-button .runtime-theme-moon { display: initial; }
 
 .runtime-icon-rail .runtime-menu-button.open,
 .runtime-icon-rail .runtime-menu-button.active {

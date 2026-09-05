@@ -127,13 +127,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			togglePopup(RuntimeMenuPopup::Profile);
 		else if (std::strcmp(id, "runtime.button.datalink") == 0)
 			togglePopup(RuntimeMenuPopup::Datalink);
-		else if (std::strcmp(id, "runtime.button.theme") == 0)
-		{
-			CloseRuntimeMenuPopup();
-			SetAvisoColorPalette(GetAvisoColorPalette() == "day" ? "night" : "day");
-			syncControlCenter("theme");
-			RequestRefresh();
-		}
 		else if (std::strcmp(id, "runtime.button.control-center") == 0)
 		{
 			CloseRuntimeMenuPopup();

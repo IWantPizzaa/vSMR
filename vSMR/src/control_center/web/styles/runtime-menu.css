@@ -303,12 +303,6 @@ html.host-mode .runtime-menu { display: none !important; }
   text-align: center;
 }
 
-.runtime-theme-button .runtime-theme-moon { display: none; }
-
-:root[data-ui-theme="day"] .runtime-theme-button .runtime-theme-sun { display: none; }
-
-:root[data-ui-theme="day"] .runtime-theme-button .runtime-theme-moon { display: initial; }
-
 .runtime-icon-rail .runtime-menu-button.open,
 .runtime-icon-rail .runtime-menu-button.active {
   background: var(--ui-accent);

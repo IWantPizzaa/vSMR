@@ -269,6 +269,7 @@ private:
 	int FpsFrameCount = 0;
 	int FpsDisplayValue = 0;
 	bool ShowFps = true;
+	bool UiUseDayColorTheme = false;
 	bool AvisoUseDayColorPalette = false;
 	COLORREF AvisoNightBackgroundColor = RGB(67, 74, 79);
 	COLORREF AvisoDayBackgroundColor = RGB(67, 74, 79);
@@ -534,6 +535,8 @@ public:
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
 	std::string GetAvisoColorPalette() const;
 	bool SetAvisoColorPalette(const std::string& palette, bool persistToAsr = true);
+	std::string GetUiColorTheme() const;
+	bool SetUiColorTheme(const std::string& theme, bool persistToAsr = true);
 	void InvalidateAvisoGroupRendering();
 	void ClearAvisoGeoJsonRasterCache();
 	CRect ResolveMainAvisoRenderArea();

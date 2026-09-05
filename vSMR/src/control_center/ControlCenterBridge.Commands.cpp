@@ -349,6 +349,16 @@ bool VsmrControlCenterBridgeImpl::HandleSettings(
 		}
 	}
 
+	if (payload->HasMember("uiColorTheme"))
+	{
+		if (!(*payload)["uiColorTheme"].IsString() ||
+			!Owner->SetUiColorTheme((*payload)["uiColorTheme"].GetString(), true))
+		{
+			error = "UI theme must be day or night.";
+			return false;
+		}
+	}
+
 	if (Owner->CurrentConfig != nullptr &&
 		payload->HasMember("rimcas") &&
 		(*payload)["rimcas"].IsBool())
