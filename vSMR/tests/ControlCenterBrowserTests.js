@@ -288,6 +288,9 @@
     const originalPaletteButton = paletteButtons.find(
       button => button.getAttribute("aria-pressed") === "true");
     const alternatePaletteButton = paletteButtons.find(button => button !== originalPaletteButton);
+    const originalTheme = originalPaletteButton?.dataset.avisoColorPalette;
+    const originalPageBackground = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ui-page-bg").trim();
     expect(Boolean(originalPaletteButton) && paletteButtons.filter(
       button => button.getAttribute("aria-pressed") === "true").length === 1,
       "Day/Night exposes exactly one active option");
@@ -296,7 +299,21 @@
       originalPaletteButton?.getAttribute("aria-pressed") === "false" &&
       api.getState().settings?.avisoColorPalette === alternatePaletteButton?.dataset.avisoColorPalette,
       "Day/Night updates visual, accessible, and application state together");
+    const runtimeThemeButton = document.querySelector("#runtimeThemeButton");
+    expect(document.documentElement.dataset.uiTheme === alternatePaletteButton?.dataset.avisoColorPalette &&
+      getComputedStyle(document.documentElement).colorScheme ===
+        (alternatePaletteButton?.dataset.avisoColorPalette === "day" ? "light" : "dark"),
+      "Day/Night applies the saved theme to the complete document");
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() !==
+      originalPageBackground,
+      "Day and Night resolve different shared design-system colors");
+    expect(runtimeThemeButton?.dataset.avisoColorPalette === originalTheme &&
+      runtimeThemeButton?.getAttribute("aria-label")?.includes(
+        alternatePaletteButton?.dataset.avisoColorPalette === "day" ? "Day" : "Night"),
+      "Runtime Menu reflects the active theme and offers the opposite theme");
     originalPaletteButton?.click();
+    expect(document.documentElement.dataset.uiTheme === originalTheme,
+      "switching back restores the original document theme");
 
     groupsButton?.click();
     sampleSharedList("#avisoGroupList", "Groups");
