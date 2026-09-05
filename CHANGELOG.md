@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0-beta.6] - 2026-09-05
+
+### Added
+
+- Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO Night/Day palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
+
+### Changed
+
+- Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
+- Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
+
+### Fixed
+
+- Prevented the Control Center from becoming stuck when rule settings were edited before a rule had been created. Rule fields and unavailable actions now remain disabled until a valid rule exists, and condition actions safely reject a missing draft.
+- Aligned the Groups and Settings pages with the standard Control Center left-page offset.
+
 ## [2.0.0-beta.5] - 2026-09-01
 
 ### Added
