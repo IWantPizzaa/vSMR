@@ -365,6 +365,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			false,
 			mouseLocation,
 			true,
+			radar_screen->GetUiColorTheme() == "day",
 			&m_LastChromeRenderMilliseconds);
 		DrawRadarInsetBorder(dc, m_AvisoLayoutMode, m_Area);
 	};
@@ -1063,7 +1064,6 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			options.leaderColor = Gdiplus::Color(255, 255, 255, 255);
 			options.roundedCorners = roundedTagCornersEnabled;
 			options.centerLines = true;
-			options.contentHeightTrim = 2;
 			options.symmetricBounds = true;
 			const CRect expectedBounds =
 				VsmrTagRendering::CalculateBounds(tagFonts, layout, options);

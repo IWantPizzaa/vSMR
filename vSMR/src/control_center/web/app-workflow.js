@@ -424,13 +424,10 @@
   function renderDataHealthStatus() {
     const health = state.settings?.dataHealth || {};
     if (health.profilesHealthy === false) {
-      const actions = [];
-      if (health.profilesBackupAvailable) actions.push({ label: "Restore legacy .bak", action: "restore-profiles-backup" });
-      actions.push({ label: "Defaults", action: "restore-bundled-defaults" });
       setPersistentStatus(
         health.profilesMessage || "The profiles source is unavailable or invalid.",
         "error",
-        actions,
+		[{ label: "Defaults", action: "restore-bundled-defaults" }],
         "health"
       );
       return;
@@ -547,6 +544,8 @@
     const profile = activeProfile();
     const colors = collectProfileColors(profile);
     if (!colors.some(entry => entry.id === state.ui.selectedColorPath)) state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.ui.selectedRuleIndex = 0;
     const modes = profile.filters?.display_modes?.items || [];
     state.ui.selectedModeIndex = Math.max(0, modes.findIndex(mode => mode.name === profile.filters?.display_modes?.active));

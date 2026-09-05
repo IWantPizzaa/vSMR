@@ -328,17 +328,17 @@ namespace VsmrTagRendering
 		const int contentWidth = (std::max)(layout.width, topBandSize.Width);
 		const int padding = options.roundedCorners ? 1 : 0;
 		const int totalWidth = contentWidth + padding * 2;
-		const int bodyHeight = (std::max)(
-			1,
-			layout.height - (std::max)(0, options.contentHeightTrim));
+		const int bodyHeight = (std::max)(1, layout.height);
 		const int totalHeight = bodyHeight + topBandHeight + padding * 2;
 		if (options.symmetricBounds)
 		{
+			const int left = options.tagCenter.x - totalWidth / 2;
+			const int top = options.tagCenter.y - totalHeight / 2;
 			return CRect(
-				options.tagCenter.x - totalWidth / 2,
-				options.tagCenter.y - totalHeight / 2,
-				options.tagCenter.x + totalWidth / 2,
-				options.tagCenter.y + totalHeight / 2);
+				left,
+				top,
+				left + totalWidth,
+				top + totalHeight);
 		}
 
 		return CRect(

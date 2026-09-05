@@ -30,7 +30,6 @@ VsmrBridgeAction VsmrControlCenterProtocol::ActionFromType(
 	if (type == "state.save" || type == "save.all") return VsmrBridgeAction::StateSave;
 	if (type == "state.reload" || type == "reload.all") return VsmrBridgeAction::StateReload;
 	if (type == "state.reset") return VsmrBridgeAction::StateReset;
-	if (type == "state.restore.backup") return VsmrBridgeAction::StateRestoreBackup;
 	if (type == "runtime.profile.change") return VsmrBridgeAction::RuntimeProfileChange;
 	if (type == "runtime.mode.change") return VsmrBridgeAction::RuntimeModeChange;
 	if (type == "aviso.group.visibility") return VsmrBridgeAction::RuntimeGroupVisibility;

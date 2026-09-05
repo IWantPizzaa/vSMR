@@ -1,5 +1,4 @@
 #pragma once
-#include <cstdint>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -82,10 +81,6 @@ public:
 	string getPersistedConfigRevision() const;
 	string getLastLoadMessage() const;
 	bool isConfigHealthy() const;
-	bool isUsingBackup() const;
-	bool isBackupAvailable() const;
-	std::int64_t getBackupModifiedUnixSeconds() const;
-	bool restoreBackup(string& error);
 	static bool validateAndMigrateProfilesDocument(
 		rapidjson::Document& profilesDocument,
 		string& error,
@@ -187,7 +182,6 @@ protected:
 	string config_revision;
 	string last_load_message;
 	bool config_healthy = false;
-	bool using_backup = false;
 
 	bool loadConfig();
 	bool loadMap();

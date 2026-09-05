@@ -162,6 +162,14 @@
     const displayButton = document.querySelector('.rail-button[data-page="display"]');
     displayButton?.click();
     expect(displayButton?.classList.contains("active"), "page navigation event is bound");
+    displayButton?.blur();
+    displayButton?.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await waitFor(() => {
+      const tooltip = document.querySelector("#interactionTooltip.visible");
+      return tooltip && /display page/i.test(tooltip.textContent);
+    }, "interactive controls expose a delayed explanatory tooltip", 1200);
+    expect(Boolean(displayButton?.querySelector("svg rect")),
+      "Display navigation uses a recognizable monitor icon");
 
     const outbound = [];
     window.addEventListener("vsmr-control-center", event => outbound.push(event.detail));
@@ -190,6 +198,9 @@
     expect(Boolean(createdRuleName) && !createdRuleName.disabled && !ruleEditorForm?.hidden &&
       document.querySelectorAll("#criteriaList .criterion-row").length === 1,
       "creating a rule enables a complete editor with one condition");
+    expect(Boolean(document.querySelector('[data-action="copy-rule"]')) &&
+      Boolean(document.querySelector('[data-action="paste-rule"]')),
+      "Rules expose shared copy and paste actions");
     if (createdRuleName) {
       createdRuleName.value = "Browser rule";
       createdRuleName.dispatchEvent(new Event("input", { bubbles: true }));
@@ -199,6 +210,16 @@
         JSON.stringify(message.payload?.profiles || []).includes("Browser rule")),
       "a newly created rule can be edited and saved"
     );
+    document.querySelector('[data-action="copy-rule"]')?.click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const changedRuleName = document.querySelector("#ruleName");
+    if (changedRuleName) {
+	  changedRuleName.value = "Temporary rule name";
+	  changedRuleName.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+    document.querySelector('[data-action="paste-rule"]')?.click();
+    await waitFor(() => document.querySelector("#ruleName")?.value === "Browser rule",
+	  "Rule Copy/Paste round-trips validated rule data");
     await new Promise(resolve => setTimeout(resolve, 100));
 
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
@@ -267,14 +288,36 @@
         "the lower list fade includes a small direction arrow");
       colorScrollShell.style.height = "";
     }
-    const colorKeyboardList = Array.from(document.querySelectorAll('#colorTree [role="listbox"]'))
-      .find(list => list.querySelectorAll('.ui-list__row[role="option"]').length > 1);
-    const colorKeyboardRows = Array.from(colorKeyboardList?.querySelectorAll(
-      '.ui-list__row[role="option"]') || []).filter(row => row.getBoundingClientRect().height > 0);
+    const liveColorRows = () => {
+	  const list = Array.from(document.querySelectorAll('#colorTree [role="listbox"]'))
+		.find(candidate => candidate.querySelectorAll('.ui-list__row[role="option"]').length > 1);
+	  return Array.from(list?.querySelectorAll('.ui-list__row[role="option"]') || [])
+		.filter(row => row.getBoundingClientRect().height > 0);
+	};
+    const colorKeyboardRows = liveColorRows();
     if (colorKeyboardRows.length > 1) {
-      colorKeyboardRows[0].focus();
-      pressKey(colorKeyboardRows[0], "ArrowDown");
-      expect(document.activeElement === colorKeyboardRows[1],
+	  colorKeyboardRows[0].click();
+	  const rowsAfterFirstSelection = liveColorRows();
+	  rowsAfterFirstSelection[1]?.dispatchEvent(new MouseEvent("click", {
+		bubbles: true,
+		cancelable: true,
+		ctrlKey: true
+	  }));
+	  expect(document.querySelectorAll('#colorTree .ui-list__row[aria-selected="true"]').length === 2 &&
+		document.querySelector("#selectedColorPath")?.textContent === "2 colors",
+		"Profile colors support additive multi-selection");
+	  const multiColorHex = document.querySelector("#colorHex");
+	  if (multiColorHex) {
+		multiColorHex.value = "#123456";
+		multiColorHex.dispatchEvent(new Event("input", { bubbles: true }));
+	  }
+	  const rowsAfterMultiSelection = liveColorRows();
+	  expect(rowsAfterMultiSelection.slice(0, 2).every(row =>
+		row.style.getPropertyValue("--node-color") === "#123456"),
+		"a profile-color edit applies to every selected color");
+      rowsAfterMultiSelection[0].focus();
+      pressKey(rowsAfterMultiSelection[0], "ArrowDown");
+      expect(document.activeElement === rowsAfterMultiSelection[1],
         "shared list keyboard navigation moves focus to the next row");
     } else {
       expect(false, "Profile colors provide two rows for keyboard navigation coverage");
@@ -287,6 +330,14 @@
       "shared tabs move focus and selection with ArrowRight");
     expect(colorsTab?.getAttribute("aria-selected") === "false",
       "shared tabs clear the previous ARIA selection");
+    expect(Boolean(document.querySelector(".icon-preview-column")) &&
+      Boolean(document.querySelector(".icon-settings-stack")),
+      "Icons use a dedicated preview column and shared settings cards");
+    const visibleIconRanges = Array.from(document.querySelectorAll(
+      '#profilePanelIcons input[type="range"]')).filter(isVisible);
+    expect(visibleIconRanges.length === 3 && visibleIconRanges.every(range =>
+      range.getBoundingClientRect().height === visibleIconRanges[0].getBoundingClientRect().height),
+      "Icon sliders use one shared range-control geometry");
 
     document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
@@ -299,9 +350,37 @@
     document.querySelector('.rail-button[data-page="aviso"]')?.click();
     document.querySelector('[data-aviso-view="geometry"]')?.click();
     sampleSharedList("#avisoGeometryStyleList", "Geometry");
+    expect(Boolean(document.querySelector('[data-action="copy-aviso-geometry"]')) &&
+      Boolean(document.querySelector('[data-action="paste-aviso-geometry"]')),
+      "AVISO geometry exposes shared copy and paste actions");
+    const originalGeometryColor = document.querySelector("#avisoGeometryColorHex")?.value;
+    document.querySelector('[data-action="copy-aviso-geometry"]')?.click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const changedGeometryColor = document.querySelector("#avisoGeometryColorHex");
+    if (changedGeometryColor) {
+	  changedGeometryColor.value = "#123456";
+	  changedGeometryColor.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+    document.querySelector('[data-action="paste-aviso-geometry"]')?.click();
+    await waitFor(() => document.querySelector("#avisoGeometryColorHex")?.value === originalGeometryColor,
+	  "AVISO geometry Copy/Paste round-trips validated paint data");
     sampleVisiblePrimitives();
     document.querySelector('[data-aviso-view="text"]')?.click();
     sampleSharedList("#avisoTextStyleList", "Text");
+    expect(Boolean(document.querySelector('[data-action="copy-aviso-text"]')) &&
+      Boolean(document.querySelector('[data-action="paste-aviso-text"]')),
+      "AVISO text exposes shared copy and paste actions");
+    const originalTextFont = document.querySelector("#avisoTextFont")?.value;
+    document.querySelector('[data-action="copy-aviso-text"]')?.click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const changedTextFont = document.querySelector("#avisoTextFont");
+    if (changedTextFont) {
+	  changedTextFont.value = "Courier New";
+	  changedTextFont.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+    document.querySelector('[data-action="paste-aviso-text"]')?.click();
+    await waitFor(() => document.querySelector("#avisoTextFont")?.value === originalTextFont,
+	  "AVISO text Copy/Paste round-trips validated paint data");
     sampleVisiblePrimitives();
 
     const palette = document.querySelector(".aviso-palette-control.ui-toggle-group");
@@ -345,6 +424,8 @@
     originalPaletteButton?.click();
 
     document.querySelector('.rail-button[data-page="settings"]')?.click();
+    expect(!document.querySelector('[data-action="restore-profiles-backup"]'),
+      "legacy profiles backup recovery is absent from the UI");
     const uiThemeButtons = Array.from(document.querySelectorAll(
       '.settings-theme-control .ui-button--toggle[data-ui-color-theme]'));
     const originalUiThemeButton = uiThemeButtons.find(

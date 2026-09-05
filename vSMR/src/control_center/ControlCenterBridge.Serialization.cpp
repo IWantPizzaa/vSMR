@@ -352,23 +352,6 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 	const bool configHealthy =
 		Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isConfigHealthy();
 	dataHealth.AddMember("profilesHealthy", configHealthy, allocator);
-	dataHealth.AddMember(
-		"profilesUsingBackup",
-		Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isUsingBackup(),
-		allocator);
-	const bool profilesBackupAvailable =
-		Owner->CurrentConfig != nullptr && Owner->CurrentConfig->isBackupAvailable();
-	dataHealth.AddMember(
-		"profilesBackupAvailable",
-		profilesBackupAvailable,
-		allocator);
-	AddInt64(
-		dataHealth,
-		"profilesBackupModifiedUnixSeconds",
-		profilesBackupAvailable
-			? Owner->CurrentConfig->getBackupModifiedUnixSeconds()
-			: 0,
-		allocator);
 	AddString(
 		dataHealth,
 		"profilesMessage",

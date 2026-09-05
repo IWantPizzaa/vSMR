@@ -146,7 +146,7 @@ private:
 		bool showFilter,
 		POINT mouseLocation,
 		bool allowResize,
-		bool dayTheme = false);
+		bool dayTheme);
 	string icao;
 	CPosition m_AirportPosition;
 	bool m_AirportPositionValid = false;

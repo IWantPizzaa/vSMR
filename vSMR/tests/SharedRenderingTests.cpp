@@ -396,6 +396,10 @@ namespace
 		options.extendScratchpadHit = true;
 		options.scratchpadAction = 20;
 		const CRect arranged = VsmrTagRendering::CalculateBounds(fonts, layout, options);
+		Check(
+			arranged.Height() == layout.height + 2,
+			"tag bounds preserve the complete centered line box",
+			failures);
 		const VsmrTagRendering::PaintResult painted =
 			VsmrTagRendering::Paint(graphics, fonts, layout, options);
 		Check(

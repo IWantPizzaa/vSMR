@@ -509,6 +509,7 @@
     const hasSelection = items.length > 0;
     $('[data-action="duplicate-rule"]').disabled = !hasSelection;
     $('[data-action="delete-rule"]').disabled = !hasSelection;
+	$('[data-action="copy-rule"]').disabled = !hasSelection;
     syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
@@ -612,6 +613,86 @@
     markDirty("Rule updated", ["profiles"]);
     if (render) renderRules();
     return true;
+  }
+
+  function normalizeClipboardRule(value) {
+    const sourceRule = value?.rule ?? value;
+    if (!sourceRule || typeof sourceRule !== "object" || Array.isArray(sourceRule)) return null;
+    const rawCriteria = Array.isArray(sourceRule.criteria) && sourceRule.criteria.length
+      ? sourceRule.criteria
+      : [{ source: sourceRule.source, token: sourceRule.token, condition: sourceRule.condition }];
+    const criteria = rawCriteria.filter(item => item && typeof item === "object").map(item => {
+      const source = normalizeRuleSourceUi(item.source);
+      const tokens = ruleTokensForSource(source);
+      const requestedToken = String(item.token || "").trim().toLowerCase();
+      const token = tokens.includes(requestedToken) ? requestedToken : tokens[0];
+      const parsed = parseRuleCondition(source, item.condition);
+      const operators = ruleConditionsFor(source, token);
+      const operator = operators.includes(parsed.operator) ? parsed.operator : "any";
+      return { source, token, condition: composeRuleCondition(source, operator, parsed.values) };
+    });
+    if (!criteria.length) return null;
+
+    const tagTypes = ["any", "departure", "arrival", "airborne", "uncorrelated"];
+    const details = ["any", "normal", "detailed"];
+    const normalized = {
+      criteria,
+      source: criteria[0].source,
+      token: criteria[0].token,
+      condition: criteria[0].condition,
+      tag_type: tagTypes.includes(sourceRule.tag_type) ? sourceRule.tag_type : "any",
+      detail: details.includes(sourceRule.detail) ? sourceRule.detail : "any"
+    };
+    const name = String(sourceRule.name || "").trim();
+    if (name) normalized.name = name;
+    normalized.statuses = selectedRuleStatuses(sourceRule);
+    normalized.status = normalized.statuses.length === 1 ? normalized.statuses[0] : "any";
+    ["target_color", "tag_color", "text_color"].forEach(key => {
+      if (!isColorObject(sourceRule[key])) return;
+      normalized[key] = {
+        r: Math.round(clamp(sourceRule[key].r, 0, 255)),
+        g: Math.round(clamp(sourceRule[key].g, 0, 255)),
+        b: Math.round(clamp(sourceRule[key].b, 0, 255)),
+        a: Math.round(clamp(sourceRule[key].a ?? 255, 0, 255))
+      };
+    });
+    return normalized;
+  }
+
+  async function copyRule() {
+    const item = rules()[state.ui.selectedRuleIndex];
+    if (!item) return;
+    captureRuleDraft();
+    const rule = drafts.rule?.data || item;
+    await writeEditorClipboard(JSON.stringify({ vsmr: "rule", version: 1, rule }, null, 2), "rule");
+    showToast("Rule copied", "success");
+  }
+
+  async function pasteRule() {
+    const raw = String(await readEditorClipboard("rule", "Paste a vSMR rule") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain a vSMR rule", "error");
+      return;
+    }
+    const rule = normalizeClipboardRule(parsed);
+    if (!rule) {
+      showToast("Clipboard does not contain a valid vSMR rule", "error");
+      return;
+    }
+    const items = rules();
+    if (items.length) items[state.ui.selectedRuleIndex] = rule;
+    else {
+      items.push(rule);
+      state.ui.selectedRuleIndex = 0;
+    }
+    drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
+    markDirty("Rule pasted", ["profiles"]);
+    renderRules();
+    showToast("Rule pasted", "success");
   }
 
   function modes() {

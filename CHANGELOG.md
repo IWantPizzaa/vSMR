@@ -5,16 +5,21 @@
 ### Added
 
 - Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO Night/Day palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
+- Added validated Copy/Paste actions for Rules and AVISO geometry/text styles. AVISO paste and profile-color editing support the existing Ctrl/Shift multi-selection workflow.
+- Added delayed, theme-aware interaction explanations for buttons and editable controls throughout the Control Center.
 
 ### Changed
 
 - Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
+- Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
+- Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
 
 ### Fixed
 
 - Prevented the Control Center from becoming stuck when rule settings were edited before a rule had been created. Rule fields and unavailable actions now remain disabled until a valid rule exists, and condition actions safely reject a missing draft.
 - Aligned the Groups and Settings pages with the standard Control Center left-page offset.
+- Applied the active interface theme to AVISO, SRW, and Timer inset title bars, and corrected AVISO inset tag text so its bounds and line layout remain vertically centered.
 
 ## [2.0.0-beta.5] - 2026-09-01
 

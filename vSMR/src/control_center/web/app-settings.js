@@ -161,25 +161,6 @@
     });
   }
 
-  function describeLegacyProfilesBackup(health) {
-    const unixSeconds = Number(health?.profilesBackupModifiedUnixSeconds);
-    if (!Number.isFinite(unixSeconds) || unixSeconds <= 0)
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const modified = new Date(unixSeconds * 1000);
-    if (Number.isNaN(modified.getTime()))
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const ageMinutes = Math.floor(Math.max(0, Date.now() - modified.getTime()) / 60000);
-    const ageValue = ageMinutes >= 1440
-      ? Math.floor(ageMinutes / 1440)
-      : ageMinutes >= 60
-        ? Math.floor(ageMinutes / 60)
-        : ageMinutes;
-    const ageUnit = ageMinutes >= 1440 ? "day" : ageMinutes >= 60 ? "hour" : "minute";
-    return `Validated legacy profiles .bak from ${modified.toLocaleString()} (${ageValue} ${ageUnit}${ageValue === 1 ? "" : "s"} old)`;
-  }
-
   function expireUpdateRequest(slot, now = Date.now()) {
     const request = updateCenter.pending[slot];
     if (!request || now - request.startedAt < REQUEST_TIMEOUT_MS) return false;
@@ -408,13 +389,6 @@
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
-    const restoreBackup = $("#restoreProfilesBackupButton");
-    if (restoreBackup) {
-      restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
-      restoreBackup.title = restoreBackup.disabled
-        ? "No validated profiles backup is available"
-        : describeLegacyProfilesBackup(settings.dataHealth);
-    }
     if (HOST_MODE) {
       ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {
         const control = $(selector);

@@ -78,8 +78,8 @@ bool VsmrControlCenterBridgeImpl::Dispatch(
 		const bool avisoReloaded = Owner->ForceReloadAvisoGeoJson();
 		if (!configReloaded || !avisoReloaded)
 		{
-			// ReloadConfig may intentionally activate a validated backup or a
-			// read-only migrated document while returning false. Publish that exact
+			// ReloadConfig may intentionally retain the last usable state or activate
+			// a read-only migrated document while returning false. Publish that exact
 			// recovery state before reporting the warning so the Web UI and native
 			// revision/health state cannot diverge. Keep the last rendered AVISO in
 			// the UI when its replacement failed validation.
@@ -106,40 +106,6 @@ bool VsmrControlCenterBridgeImpl::Dispatch(
 		}
 		Callbacks.requestResetDefaults(envelope.id);
 		return true;
-	case VsmrBridgeAction::StateRestoreBackup:
-	{
-		if (Owner == nullptr || Owner->CurrentConfig == nullptr)
-		{
-			error = "vSMR configuration is not available.";
-			return false;
-		}
-		if (Callbacks.cancelPendingResources)
-			Callbacks.cancelPendingResources();
-		if (!Owner->CurrentConfig->restoreBackup(error))
-			return false;
-
-		bool reloadFailed = false;
-		for (CSMRRadar* radar : RadarScreensOpened)
-		{
-			if (radar == nullptr || radar->CurrentConfig == nullptr ||
-				!radar->CurrentConfig->sharesConfigFileWith(*Owner->CurrentConfig))
-				continue;
-			if (!radar->ReloadConfig())
-				reloadFailed = true;
-			radar->RequestRefresh();
-			if (radar != Owner && radar->VsmrControlCenterDialog != nullptr)
-				radar->VsmrControlCenterDialog->SyncFromRadar("backup-restored");
-		}
-		if (reloadFailed)
-		{
-			SendAuthoritativeState("backup-restored", envelope.id);
-			error = "The profiles backup was restored, but one or more radar windows could not reload it. Reload vSMR.";
-			return false;
-		}
-		SendAuthoritativeState("backup-restored", envelope.id);
-		SendAck(envelope.id, envelope.type, "Profiles backup restored");
-		return true;
-	}
 	case VsmrBridgeAction::RuntimeProfileChange:
 		if (!HandleProfileChange(envelope.payload, error))
 			return false;

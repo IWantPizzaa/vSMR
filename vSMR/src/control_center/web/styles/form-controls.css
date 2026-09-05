@@ -204,6 +204,69 @@
   text-align: right;
 }
 
+/* All range controls share one compact track and thumb contract. Color editors
+   only replace their fills through the variables below. */
+input[type="range"] {
+  --ui-range-track: var(--ui-field-bg);
+  --ui-range-thumb: var(--ui-accent);
+  width: 100%;
+  min-width: 0;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  accent-color: var(--ui-accent);
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 2px;
+  background: var(--ui-range-track);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 5px;
+  border: 1px solid var(--ui-control-border);
+  border-radius: 2px;
+  background: var(--ui-range-track);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  width: 11px;
+  height: 15px;
+  margin-top: -6px;
+  border: 1px solid var(--ui-control-border-focus);
+  border-radius: 2px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--ui-range-thumb);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 9px;
+  height: 13px;
+  border: 1px solid var(--ui-control-border-focus);
+  border-radius: 2px;
+  background: var(--ui-range-thumb);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+}
+
+input[type="range"]:focus-visible { outline: none; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--ui-focus-ring); }
+input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: var(--ui-focus-ring); }
+
+input[type="range"]:disabled {
+  cursor: default;
+  opacity: var(--ui-disabled-opacity);
+}
+
 .check-field {
   min-height: var(--ui-control-height);
   display: flex;

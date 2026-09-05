@@ -80,13 +80,13 @@
 
   const deferredDerivedRefreshes = new WeakMap();
 
-  function refreshSelectedColorRow() {
-    const entry = selectedColorEntry();
-    const row = entry && $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
-    if (!entry || !row) return;
-    const hex = colorToHex(entry.color).toUpperCase();
-    row.style.setProperty("--node-color", hex);
-    row.title = entry.name;
+  function refreshSelectedColorRows() {
+    selectedColorEntries().forEach(entry => {
+      const row = $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
+      if (!row) return;
+      row.style.setProperty("--node-color", colorToHex(entry.color).toUpperCase());
+      row.title = entry.name;
+    });
   }
 
   function performDeferredDerivedRefresh(scope) {
@@ -114,7 +114,7 @@
   }
 
   function refreshEditorDerivedVisuals(scope, control = null) {
-    if (scope === "colors") refreshSelectedColorRow();
+    if (scope === "colors") refreshSelectedColorRows();
     else if (scope === "rules") {
       const item = rules()[state.ui.selectedRuleIndex];
       if (item) {
@@ -379,7 +379,7 @@
         return;
       }
       const colorRow = event.target.closest("[data-color-path]");
-      if (colorRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
+      if (colorRow) { if (!stageFocusedEditorValue()) return; selectProfileColor(colorRow.dataset.colorPath, event); return; }
       const tagRow = event.target.closest("[data-tag-id]");
       if (tagRow) { if (!stageFocusedEditorValue()) return; selectTagDefinition(tagRow.dataset.tagId, event); return; }
       const ruleRow = event.target.closest("[data-rule-index]");
@@ -745,6 +745,26 @@
         renderTags();
       }
     });
+    $("#colorTree").addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const ids = collectProfileColors(activeProfile()).map(entry => entry.id);
+        if (ids.length) {
+          state.ui.selectedColorPaths = ids;
+          state.ui.selectedColorPath = ids[ids.length - 1];
+          state.ui.colorSelectionAnchorPath = ids[0];
+          drafts.color = null;
+          clearUnappliedEditorSection($("#colorHex"));
+          renderColors();
+        }
+      } else if (event.key === "Escape") {
+        const id = state.ui.selectedColorPath;
+        state.ui.selectedColorPaths = id ? [id] : [];
+        drafts.color = null;
+        clearUnappliedEditorSection($("#colorHex"));
+        renderColors();
+      }
+    });
 
     $("#updateChannel").addEventListener("change", event => {
       submitUpdateSettings({ channel: event.target.value === "stable" ? "stable" : "beta" }, "Update channel saved");
@@ -795,7 +815,6 @@
         dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;
       renderPersistentStatus();
     }
-    else if (action === "restore-profiles-backup") restoreProfilesBackup();
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-reload-aviso") {
@@ -831,6 +850,12 @@
     else if (action === "paste-profile-color") pasteProfileColor();
     else if (action === "copy-tag-definition") copyTagDefinition();
     else if (action === "paste-tag-definition") pasteTagDefinition();
+    else if (action === "copy-rule") copyRule();
+    else if (action === "paste-rule") pasteRule();
+    else if (action === "copy-aviso-geometry") copyAvisoGeometry();
+    else if (action === "paste-aviso-geometry") pasteAvisoGeometry();
+    else if (action === "copy-aviso-text") copyAvisoText();
+    else if (action === "paste-aviso-text") pasteAvisoText();
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();

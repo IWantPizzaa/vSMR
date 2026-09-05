@@ -81,15 +81,51 @@
     return { family, section: "", group: family };
   }
 
-  function selectedColorEntry() {
+  function colorSelectionIds(entries = collectProfileColors(activeProfile())) {
+    const valid = new Set(entries.map(entry => entry.id));
+    let ids = Array.isArray(state.ui.selectedColorPaths)
+      ? state.ui.selectedColorPaths.filter(id => valid.has(id))
+      : [];
+    if (!ids.length && valid.has(state.ui.selectedColorPath)) ids = [state.ui.selectedColorPath];
+    if (!ids.length && entries[0]) ids = [entries[0].id];
+    ids = uniqueValues(ids);
+    state.ui.selectedColorPaths = ids;
+    if (!ids.includes(state.ui.selectedColorPath)) state.ui.selectedColorPath = ids[ids.length - 1] || "";
+    if (!valid.has(state.ui.colorSelectionAnchorPath)) state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
+    return ids;
+  }
+
+  function selectedColorEntries(entries = collectProfileColors(activeProfile())) {
+    const selected = new Set(colorSelectionIds(entries));
+    return entries.filter(entry => selected.has(entry.id));
+  }
+
+  function selectedColorEntry(entries = collectProfileColors(activeProfile())) {
+    colorSelectionIds(entries);
+    return entries.find(entry => entry.id === state.ui.selectedColorPath)
+      || entries.find(entry => state.ui.selectedColorPaths.includes(entry.id));
+  }
+
+  function selectProfileColor(colorPath, event) {
     const entries = collectProfileColors(activeProfile());
-    const selected = entries.find(entry => entry.id === state.ui.selectedColorPath) || entries[0];
-    if (selected && state.ui.selectedColorPath !== selected.id) state.ui.selectedColorPath = selected.id;
-    return selected;
+    const ordered = entries.map(entry => entry.id);
+    const next = updateMultiSelection(
+      colorSelectionIds(entries),
+      colorPath,
+      ordered,
+      event,
+      state.ui.colorSelectionAnchorPath);
+    state.ui.selectedColorPaths = next;
+    state.ui.selectedColorPath = next.includes(colorPath) ? colorPath : next[next.length - 1];
+    if (!event.shiftKey) state.ui.colorSelectionAnchorPath = colorPath;
+    drafts.color = null;
+    clearUnappliedEditorSection($("#colorHex"));
+    renderColors();
   }
 
   function renderColors() {
     const entries = collectProfileColors(activeProfile());
+    const selectedIds = new Set(colorSelectionIds(entries));
 
     const groups = new Map();
     entries.forEach(entry => {
@@ -107,8 +143,9 @@
       const accent = colorToHex(group.items[0]?.color, "#5096b4");
       const rows = group.items.map(entry => {
         const hex = colorToHex(entry.color).toUpperCase();
-        const selected = entry.id === state.ui.selectedColorPath;
-        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, false, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
+        const selected = selectedIds.has(entry.id);
+        const current = entry.id === state.ui.selectedColorPath;
+        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, current, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
           <span class="ui-list__leading menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
           <span class="ui-list__label menu-row-title">${escapeHtml(entry.name)}</span>
         </button>`;
@@ -118,7 +155,7 @@
           <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
           <span class="ui-list__heading-label">${escapeHtml(group.caption)}</span>
         </button>
-        <div aria-label="${escapeHtml(group.caption)} colors" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group.caption)} colors" aria-multiselectable="true" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
     }).join("") || `<div class="ui-list__empty">No colors found</div>`;
     syncUiListFocus($("#colorTree"));
@@ -385,14 +422,17 @@
   }
 
   function renderColorEditor() {
-    const entry = selectedColorEntry();
+    const entries = collectProfileColors(activeProfile());
+    const selectedEntries = selectedColorEntries(entries);
+    const entry = selectedColorEntry(entries);
     if (!entry) return;
-    if (!drafts.color || drafts.color.path !== entry.id) {
+    const signature = selectedEntries.map(item => item.id).join("|");
+    if (!drafts.color || drafts.color.signature !== signature) {
       const hex = colorToHex(entry.color);
       const rgb = hexToColor(hex);
       const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
       drafts.color = {
-        path: entry.id,
+        signature,
         hex,
         opacity: Math.round((entry.color.a ?? 255) / 255 * 100),
         h: hsv.h,
@@ -400,18 +440,22 @@
         v: hsv.v
       };
     }
-    $("#selectedColorPath").textContent = entry.name;
+    $("#selectedColorPath").textContent = selectedEntries.length === 1
+      ? entry.name
+      : `${selectedEntries.length} colors`;
     syncColorEditorControls();
   }
   function applyColorDraft({ render = true } = {}) {
-    const entry = selectedColorEntry();
-    if (!entry || !drafts.color) return;
-    const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
-    const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
-    if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
-    setAtPath(activeProfile(), entry.path, next);
+    const entries = selectedColorEntries();
+    if (!entries.length || !drafts.color) return;
+    entries.forEach(entry => {
+      const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
+      const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
+      if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
+      setAtPath(activeProfile(), entry.path, next);
+    });
     clearUnappliedEditorSection($("#colorHex"));
-    markDirty(`${entry.name} updated`, ["profiles"]);
+    markDirty(entries.length === 1 ? `${entries[0].name} updated` : `${entries.length} colors updated`, ["profiles"]);
     if (render) renderColors();
   }
 
@@ -434,7 +478,8 @@
     }
     const entry = selectedColorEntry();
     if (!entry) return;
-    if (!drafts.color || drafts.color.path !== entry.id) renderColorEditor();
+    const signature = selectedColorEntries().map(item => item.id).join("|");
+    if (!drafts.color || drafts.color.signature !== signature) renderColorEditor();
     setColorDraftFromHex(`#${match[1]}`);
     drafts.color.opacity = match[2]
       ? Math.round(parseInt(match[2], 16) / 255 * 100)

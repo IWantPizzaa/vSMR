@@ -224,15 +224,6 @@ textarea {
   line-height: 1.35;
 }
 
-input[type="range"] {
-  height: 18px;
-  min-height: 18px;
-  padding: 0;
-  accent-color: var(--accent);
-  background: transparent;
-  border: 0;
-}
-
 input[type="checkbox"] {
   appearance: none;
   width: 10px;

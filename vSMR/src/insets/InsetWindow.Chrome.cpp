@@ -758,32 +758,6 @@ namespace VsmrInsetWindowInternal
 		radarScreen->AddScreenObject(objectType, "close", closeRect, false, "");
 	}
 
-	void DrawInsetWindowChrome(
-		CDC& dc,
-		CSMRRadar* radarScreen,
-		int objectType,
-		AvisoLayoutMode mode,
-		const RECT& areaValue,
-		const std::string& title,
-		bool showFilter,
-		POINT mouseLocation,
-		bool allowResize,
-		double* elapsedMilliseconds)
-	{
-		DrawInsetWindowChrome(
-			dc,
-			radarScreen,
-			objectType,
-			mode,
-			areaValue,
-			title,
-			showFilter,
-			mouseLocation,
-			allowResize,
-			false,
-			elapsedMilliseconds);
-	}
-
 	bool AvisoRectIntersects(const CRect& one, const CRect& two)
 	{
 		CRect a(one);
