@@ -6,7 +6,6 @@
 #include "radar/RadarScreen.hpp"
 
 #include <cctype>
-#include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -34,7 +33,16 @@ namespace
 std::vector<CSMRRadar::AvisoGroup> CSMRRadar::GetAvisoGroups() const
 {
 	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-	return AvisoRuntimeGroups;
+	std::vector<AvisoGroup> groups;
+	for (const AvisoGroup& group : AvisoRuntimeGroups)
+	{
+		if (group.colorPalettes.empty() ||
+			std::find(group.colorPalettes.begin(), group.colorPalettes.end(), AvisoColorPalette) != group.colorPalettes.end())
+		{
+			groups.push_back(group);
+		}
+	}
+	return groups;
 }
 
 std::shared_ptr<const std::unordered_map<std::string, bool>> CSMRRadar::GetAvisoGroupVisibilitySnapshot(
@@ -269,34 +277,6 @@ std::vector<std::string> CSMRRadar::GetAvailableAvisoColorPalettes(const std::st
 	if (palettes.empty() && !palettesDeclared)
 		palettes.push_back("dark");
 
-	std::string airportUpper = TrimAirportCode(airport);
-	std::transform(
-		airportUpper.begin(),
-		airportUpper.end(),
-		airportUpper.begin(),
-		[](unsigned char value) { return static_cast<char>(std::toupper(value)); });
-	if (airportUpper == "LFPG" && AvisoGeoJsonOverridePaths.find(airportUpper) == AvisoGeoJsonOverridePaths.end())
-	{
-		bool customSourceAvailable = false;
-		try
-		{
-			const std::filesystem::path customPath =
-				std::filesystem::u8path(path).parent_path() / "LFPG_Custom.geojson";
-			customSourceAvailable = std::filesystem::is_regular_file(customPath);
-		}
-		catch (...)
-		{
-		}
-		if (!customSourceAvailable)
-		{
-			palettes.erase(
-				std::remove_if(
-					palettes.begin(),
-					palettes.end(),
-					[](const std::string& palette) { return palette == "dark" || palette == "light"; }),
-				palettes.end());
-		}
-	}
 	return palettes;
 }
 
