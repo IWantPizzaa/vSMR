@@ -118,7 +118,8 @@
   position: absolute;
   right: 3px;
   top: 2px;
-  --ui-button-height: 14px;
+  --ui-button-height: 13px;
+  border-radius: 0;
   line-height: 11px;
 }
 

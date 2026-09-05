@@ -59,12 +59,22 @@
 
 .rule-color-grid {
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr) 22px;
   gap: 4px;
-  align-items: center;
 }
 
-.rule-color-grid > input[type="text"] {
+.rule-color-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) 22px;
+  gap: 5px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--ui-inner-border);
+  border-radius: var(--ui-control-radius);
+  background: var(--ui-card-bg);
+}
+
+.rule-color-row > input[type="text"] {
   font-family: var(--mono);
   text-transform: uppercase;
 }
@@ -254,24 +264,29 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #1f292c;
+  background: var(--ui-radar-preview-bg);
+}
+
+.icon-preview-flight {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
 }
 
 .icon-preview-symbol {
   display: grid;
   place-items: center;
-  transform: scale(var(--icon-preview-scale, 1));
+  transform: rotate(90deg) scale(var(--icon-preview-scale, 1));
   transform-origin: center;
 }
 
 .icon-preview-trail {
-  position: absolute;
-  left: 50%;
-  bottom: 5px;
   display: flex;
   align-items: center;
   gap: 5px;
-  transform: translateX(-50%);
+  flex-direction: row-reverse;
   pointer-events: none;
 }
 

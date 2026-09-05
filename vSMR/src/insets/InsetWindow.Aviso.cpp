@@ -1000,7 +1000,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
 		VsmrTargetRendering::DrawOptions targetDrawOptions;
 		const double avisoSymbolScale = std::isfinite(targetPresentation.symbolScale)
-			? std::clamp(targetPresentation.symbolScale, 0.5, 1.5)
+			? std::clamp(targetPresentation.symbolScale, 0.25, 5.0)
 			: 1.0;
 		targetDrawOptions.minimumHitSize = static_cast<int>(
 			std::ceil(18.0 * avisoSymbolScale));
@@ -1013,99 +1013,13 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		VsmrTagRendering::FontContext tagFonts(*gdi, tagRegularFont, 2);
 		const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 
-		auto drawTag = [&](const VsmrScene::Target& sceneTarget, const POINT& targetPoint)
-		{
-			if (!tagFonts.IsValid())
-				return;
-
-			const std::string& callsign = sceneTarget.callsign;
-			const std::string& bottomLine = sceneTarget.bottomLine;
-			POINT tagCenter = {};
-			m_TargetPoints[callsign] = targetPoint;
-			const auto customOffset = m_TagOffsets.find(callsign);
-			if (customOffset != m_TagOffsets.end())
-			{
-				tagCenter.x = targetPoint.x + customOffset->second.x;
-				tagCenter.y = targetPoint.y + customOffset->second.y;
-			}
-			else
-			{
-				if (m_TagAngles.find(callsign) == m_TagAngles.end())
-					m_TagAngles[callsign] = 45.0;
-				constexpr int leaderLength = 50;
-				tagCenter.x = long(targetPoint.x + float(leaderLength * cos(DegToRad(m_TagAngles[callsign]))));
-				tagCenter.y = long(targetPoint.y + float(leaderLength * sin(DegToRad(m_TagAngles[callsign]))));
-			}
-
-			VsmrTagRendering::Layout layout;
-			if (!VsmrTagRendering::MeasureLayout(tagFonts, sceneTarget.tag.normal, layout))
-			{
-				VsmrScene::TagVariant fallback;
-				VsmrScene::TagLine line;
-				VsmrScene::TagElement element;
-				const auto token = sceneTarget.tag.tokens.find("callsign");
-				element.text = token != sceneTarget.tag.tokens.end() && !token->second.empty()
-					? token->second
-					: callsign;
-				element.action = TAG_CITEM_NO;
-				element.effectiveColor = sceneTarget.tag.normalPalette.text;
-				line.elements.push_back(std::move(element));
-				fallback.lines.push_back(std::move(line));
-				if (!VsmrTagRendering::MeasureLayout(tagFonts, fallback, layout))
-					return;
-			}
-
-			const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
-			VsmrTagRendering::PaintOptions options;
-			options.targetPoint = targetPoint;
-			options.tagCenter = tagCenter;
-			options.background = SceneColorToGdi(
-				sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
-			options.leaderColor = Gdiplus::Color(255, 255, 255, 255);
-			options.roundedCorners = roundedTagCornersEnabled;
-			options.centerLines = true;
-			options.symmetricBounds = true;
-			const CRect expectedBounds =
-				VsmrTagRendering::CalculateBounds(tagFonts, layout, options);
-			if (!rectIntersectsViewport(expectedBounds) && !pointInViewport(targetPoint, 20))
-				return;
-
-			const VsmrTagRendering::PaintResult painted =
-				VsmrTagRendering::Paint(*gdi, tagFonts, layout, options);
-			if (painted.bounds.IsRectEmpty())
-				return;
-
-			m_TagAreas[callsign] = painted.bounds;
-			const CRect clippedTag = clipToViewport(painted.bounds);
-			if (!clippedTag.IsRectEmpty())
-				radar_screen->AddScreenObject(m_Id, callsign.c_str(), clippedTag, true, bottomLine.c_str());
-			for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
-			{
-				const CRect clippedHit = clipToViewport(hit.area);
-				if (!clippedHit.IsRectEmpty())
-					radar_screen->AddScreenObject(hit.action, callsign.c_str(), clippedHit, true, bottomLine.c_str());
-			}
-
-			const CRimcas::RimcasAlertTypes stage =
-				static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
-			if (stage != CRimcas::StageOne && stage != CRimcas::StageTwo)
-				return;
-
-			VsmrTagRendering::DetachedTopBand alertBand;
-			alertBand.text = "ALERT";
-			alertBand.background =
-				stage == CRimcas::StageOne ? rimcasStageOneColor : rimcasStageTwoColor;
-			alertBand.textColor = stage == CRimcas::StageTwo
-				? Gdiplus::Color(255, 255, 255, 255)
-				: Gdiplus::Color(255, 30, 30, 30);
-			VsmrTagRendering::PaintDetachedTopBand(
-				*gdi,
-				tagFonts,
-				painted.bounds,
-				alertBand);
-		};
-
 		const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
+		struct VisibleTagTarget
+		{
+			const VsmrScene::Target* target = nullptr;
+			POINT point = {};
+		};
+		std::vector<VisibleTagTarget> visibleTagTargets;
 		if (radarScene != nullptr)
 		for (const VsmrScene::Target& sceneTarget : radarScene->targets)
 		{
@@ -1162,8 +1076,195 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 					sceneTarget.bottomLine.c_str());
 			}
 
-			if (sceneTarget.tagVisible)
-				drawTag(sceneTarget, targetPoint);
+			m_TargetPoints[rtCallsign] = targetPoint;
+			if (sceneTarget.tagVisible && tagFonts.IsValid())
+				visibleTagTargets.push_back({ &sceneTarget, targetPoint });
+		}
+
+		// Symbols are complete before tag layout begins. This makes tag z-order
+		// independent of the scene target order and keeps every tag above aircraft.
+		std::sort(
+			visibleTagTargets.begin(),
+			visibleTagTargets.end(),
+			[](const VisibleTagTarget& left, const VisibleTagTarget& right)
+			{
+				return left.target->callsign < right.target->callsign;
+			});
+
+		bool autoDeconflictionEnabled = true;
+		const Value* labelsSection = getProfileObjectSection("labels");
+		if (labelsSection != nullptr &&
+			labelsSection->HasMember("auto_deconfliction") &&
+			(*labelsSection)["auto_deconfliction"].IsBool())
+		{
+			autoDeconflictionEnabled = (*labelsSection)["auto_deconfliction"].GetBool();
+		}
+
+		struct PreparedTag
+		{
+			const VsmrScene::Target* target = nullptr;
+			VsmrTagRendering::Layout layout;
+			VsmrTagRendering::PaintOptions options;
+		};
+		std::vector<PreparedTag> preparedTags;
+		std::vector<CRect> occupiedTagBounds;
+		constexpr int leaderLength = 50;
+		constexpr double angleStep = 22.5;
+		for (const VisibleTagTarget& visible : visibleTagTargets)
+		{
+			const VsmrScene::Target& sceneTarget = *visible.target;
+			const std::string& callsign = sceneTarget.callsign;
+			VsmrTagRendering::Layout layout;
+			if (!VsmrTagRendering::MeasureLayout(tagFonts, sceneTarget.tag.normal, layout))
+			{
+				VsmrScene::TagVariant fallback;
+				VsmrScene::TagLine line;
+				VsmrScene::TagElement element;
+				const auto token = sceneTarget.tag.tokens.find("callsign");
+				element.text = token != sceneTarget.tag.tokens.end() && !token->second.empty()
+					? token->second
+					: callsign;
+				element.action = TAG_CITEM_NO;
+				element.effectiveColor = sceneTarget.tag.normalPalette.text;
+				line.elements.push_back(std::move(element));
+				fallback.lines.push_back(std::move(line));
+				if (!VsmrTagRendering::MeasureLayout(tagFonts, fallback, layout))
+					continue;
+			}
+
+			VsmrTagRendering::PaintOptions options;
+			options.targetPoint = visible.point;
+			const VsmrScene::TagPalette& palette = sceneTarget.tag.normalPalette;
+			options.background = SceneColorToGdi(
+				sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
+			options.leaderColor = Gdiplus::Color(255, 255, 255, 255);
+			options.roundedCorners = roundedTagCornersEnabled;
+			options.centerLines = true;
+			options.symmetricBounds = true;
+
+			const auto customOffset = m_TagOffsets.find(callsign);
+			const bool hasCustomOffset = customOffset != m_TagOffsets.end();
+			double baseAngle = m_TagAngles.emplace(callsign, 45.0).first->second;
+			int placementLeaderLength = leaderLength;
+			if (hasCustomOffset)
+			{
+				placementLeaderLength = max(
+					1,
+					static_cast<int>(std::lround(std::hypot(
+						static_cast<double>(customOffset->second.x),
+						static_cast<double>(customOffset->second.y)))));
+				baseAngle = VsmrRadarUiSupport::RadToDeg(std::atan2(
+					static_cast<double>(customOffset->second.y),
+					static_cast<double>(customOffset->second.x)));
+				options.tagCenter = {
+					visible.point.x + customOffset->second.x,
+					visible.point.y + customOffset->second.y };
+			}
+			auto centerAtAngle = [&](double angle) -> POINT
+			{
+				return {
+					static_cast<LONG>(visible.point.x + placementLeaderLength * cos(DegToRad(angle))),
+					static_cast<LONG>(visible.point.y + placementLeaderLength * sin(DegToRad(angle))) };
+			};
+			if (!hasCustomOffset)
+				options.tagCenter = centerAtAngle(baseAngle);
+			auto collides = [&](const CRect& candidate) -> bool
+			{
+				CRect paddedCandidate(candidate);
+				paddedCandidate.InflateRect(2, 2);
+				for (const CRect& occupied : occupiedTagBounds)
+				{
+					CRect overlap;
+					if (overlap.IntersectRect(paddedCandidate, occupied))
+						return true;
+				}
+				return false;
+			};
+
+			if (autoDeconflictionEnabled)
+			{
+				double selectedAngle = baseAngle;
+				for (int candidateIndex = 0; candidateIndex < 32; ++candidateIndex)
+				{
+					const int step = candidateIndex == 0
+						? 0
+						: ((candidateIndex + 1) / 2) * (candidateIndex % 2 == 1 ? 1 : -1);
+					const double candidateAngle = baseAngle + step * angleStep;
+					options.tagCenter = centerAtAngle(candidateAngle);
+					const CRect candidateBounds =
+						VsmrTagRendering::CalculateBounds(tagFonts, layout, options);
+					if (!collides(candidateBounds))
+					{
+						selectedAngle = candidateAngle;
+						break;
+					}
+				}
+				selectedAngle = std::fmod(selectedAngle + 360.0, 360.0);
+				if (!hasCustomOffset)
+					m_TagAngles[callsign] = selectedAngle;
+				options.tagCenter = centerAtAngle(selectedAngle);
+			}
+
+			const CRect expectedBounds =
+				VsmrTagRendering::CalculateBounds(tagFonts, layout, options);
+			if (!rectIntersectsViewport(expectedBounds) && !pointInViewport(visible.point, 20))
+				continue;
+			CRect occupiedBounds(expectedBounds);
+			occupiedBounds.InflateRect(2, 2);
+			occupiedTagBounds.push_back(occupiedBounds);
+			preparedTags.push_back({ &sceneTarget, std::move(layout), options });
+		}
+
+		for (const PreparedTag& prepared : preparedTags)
+		{
+			const VsmrScene::Target& sceneTarget = *prepared.target;
+			const VsmrTagRendering::PaintResult painted =
+				VsmrTagRendering::Paint(*gdi, tagFonts, prepared.layout, prepared.options);
+			if (painted.bounds.IsRectEmpty())
+				continue;
+
+			m_TagAreas[sceneTarget.callsign] = painted.bounds;
+			const CRect clippedTag = clipToViewport(painted.bounds);
+			if (!clippedTag.IsRectEmpty())
+			{
+				radar_screen->AddScreenObject(
+					m_Id,
+					sceneTarget.callsign.c_str(),
+					clippedTag,
+					true,
+					sceneTarget.bottomLine.c_str());
+			}
+			for (const VsmrTagRendering::HitRegion& hit : painted.hitRegions)
+			{
+				const CRect clippedHit = clipToViewport(hit.area);
+				if (!clippedHit.IsRectEmpty())
+				{
+					radar_screen->AddScreenObject(
+						hit.action,
+						sceneTarget.callsign.c_str(),
+						clippedHit,
+						true,
+						sceneTarget.bottomLine.c_str());
+				}
+			}
+
+			const CRimcas::RimcasAlertTypes stage =
+				static_cast<CRimcas::RimcasAlertTypes>(sceneTarget.rimcas.alertStage);
+			if (stage == CRimcas::StageOne || stage == CRimcas::StageTwo)
+			{
+				VsmrTagRendering::DetachedTopBand alertBand;
+				alertBand.text = "ALERT";
+				alertBand.background =
+					stage == CRimcas::StageOne ? rimcasStageOneColor : rimcasStageTwoColor;
+				alertBand.textColor = stage == CRimcas::StageTwo
+					? Gdiplus::Color(255, 255, 255, 255)
+					: Gdiplus::Color(255, 30, 30, 30);
+				VsmrTagRendering::PaintDetachedTopBand(
+					*gdi,
+					tagFonts,
+					painted.bounds,
+					alertBand);
+			}
 		}
 
 		gdi->Restore(graphicsState);
