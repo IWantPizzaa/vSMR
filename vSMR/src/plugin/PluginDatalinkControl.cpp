@@ -133,24 +133,24 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 		}
 		if (ResolveActiveAirportFilterUpper().empty())
 		{
-			error = "Select an active airport before starting PDC reminders.";
+			error = "Select an active airport before starting CDM reminders.";
 			return false;
 		}
 		if (!VacdmPollingEnabled.load(std::memory_order_acquire))
 		{
-			error = "Configure a vACDM server for the active profile before starting PDC reminders.";
+			error = "Configure a vACDM server for the active profile before starting CDM reminders.";
 			return false;
 		}
 		if (!IsVacdmSnapshotReadyForCdm())
 		{
-			error = "Wait for a current vACDM snapshot before starting PDC reminders.";
+			error = "Wait for a current vACDM snapshot before starting CDM reminders.";
 			return false;
 		}
 		std::string reminderMessage;
 		std::string aliasPath;
 		if (!TryReadCdmReminderMessageFromAlias(this, reminderMessage, aliasPath))
 		{
-			error = "Add a valid .cdm alias before starting PDC reminders.";
+			error = "Add a valid .cdm alias before starting CDM reminders.";
 			return false;
 		}
 	}
@@ -336,17 +336,17 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 	const std::string activeAirport = ResolveActiveAirportFilterUpper();
 	if (activeAirport.empty())
 	{
-		error = "Select an active airport before checking PDC reminders.";
+		error = "Select an active airport before checking CDM reminders.";
 		return false;
 	}
 	if (!VacdmPollingEnabled.load(std::memory_order_acquire))
 	{
-		error = "Configure a vACDM server for the active profile before checking PDC reminders.";
+		error = "Configure a vACDM server for the active profile before checking CDM reminders.";
 		return false;
 	}
 	if (!IsVacdmSnapshotReadyForCdm())
 	{
-		error = "Wait for a current vACDM snapshot before checking PDC reminders.";
+		error = "Wait for a current vACDM snapshot before checking CDM reminders.";
 		return false;
 	}
 

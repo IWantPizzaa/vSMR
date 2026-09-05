@@ -223,13 +223,13 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(GetPlugIn());
 		if (plugin == nullptr)
 		{
-			showConfigError("The PDC reminder service is unavailable.");
+			showConfigError("The CDM reminder service is unavailable.");
 			return;
 		}
 		const DatalinkControlState state = plugin->GetDatalinkControlState();
 		if (state.cdmAutoEnabled)
 		{
-			showConfigError("Stop automatic PDC reminders before changing their timing.");
+			showConfigError("Stop automatic CDM reminders before changing their timing.");
 			return;
 		}
 		const int delayMinutes = FunctionId == RUNTIME_DATALINK_DELAY_EDIT

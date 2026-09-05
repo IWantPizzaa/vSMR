@@ -835,7 +835,13 @@
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
     else if (action === "delete-rule") deleteRule();
-    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); renderRuleEditor(); applyRule({ render: false }); }
+    else if (action === "add-condition") {
+      const draft = captureRuleDraft();
+      if (!drafts.rule || !draft) return;
+      drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+      renderRuleEditor();
+      applyRule({ render: false });
+    }
     else if (action === "delete-condition") deleteRuleCondition(Number(button.dataset.index));
     else if (action === "new-mode") createMode();
     else if (action === "duplicate-mode") duplicateMode();
