@@ -161,19 +161,19 @@ namespace VsmrInsetWindowInternal
 	{
 		rect.NormalizeRect();
 		const COLORREF button = dayTheme
-			? (mouseWithin(mouseLocation, rect) ? RGB(210, 224, 228) : RGB(229, 234, 235))
+			? (mouseWithin(mouseLocation, rect) ? RGB(190, 201, 204) : RGB(173, 181, 183))
 			: (mouseWithin(mouseLocation, rect) ? RGB(53, 71, 75) : RGB(41, 57, 59));
 		CBrush buttonBrush(button);
 		dc.FillRect(rect, &buttonBrush);
 
-		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(30, 41, 45) : RGB(208, 217, 220));
+		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(23, 33, 38) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.DrawTextA(label, -1, rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 		dc.SetBkMode(oldBkMode);
 		dc.SetTextColor(oldTextColor);
 
-		dc.Draw3dRect(rect, dayTheme ? RGB(174, 186, 189) : RGB(82, 96, 101),
-			dayTheme ? RGB(82, 94, 98) : RGB(5, 7, 8));
+		dc.Draw3dRect(rect, dayTheme ? RGB(125, 135, 138) : RGB(82, 96, 101),
+			dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8));
 
 		return rect;
 	}
@@ -197,13 +197,13 @@ namespace VsmrInsetWindowInternal
 	void DrawStripedInsetTitleBar(CDC& dc, CRect rect, bool dayTheme)
 	{
 		rect.NormalizeRect();
-		dc.FillSolidRect(rect, dayTheme ? RGB(207, 214, 216) : RGB(16, 20, 22));
+		dc.FillSolidRect(rect, dayTheme ? RGB(115, 125, 128) : RGB(16, 20, 22));
 		const int savedDc = ::SaveDC(dc.GetSafeHdc());
 		if (savedDc != 0)
 		{
 			::IntersectClipRect(dc.GetSafeHdc(), rect.left, rect.top, rect.right, rect.bottom);
 			::SelectObject(dc.GetSafeHdc(), ::GetStockObject(DC_PEN));
-			::SetDCPenColor(dc.GetSafeHdc(), dayTheme ? RGB(180, 190, 192) : RGB(46, 57, 60));
+			::SetDCPenColor(dc.GetSafeHdc(), dayTheme ? RGB(146, 155, 158) : RGB(46, 57, 60));
 			for (int x = rect.left - rect.Height(); x < rect.right; x += 5)
 			{
 				::MoveToEx(dc.GetSafeHdc(), x, rect.bottom, nullptr);
@@ -211,7 +211,7 @@ namespace VsmrInsetWindowInternal
 			}
 			::RestoreDC(dc.GetSafeHdc(), savedDc);
 		}
-		const COLORREF border = dayTheme ? RGB(82, 94, 98) : RGB(5, 7, 8);
+		const COLORREF border = dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8);
 		dc.Draw3dRect(rect, border, border);
 	}
 
@@ -220,7 +220,7 @@ namespace VsmrInsetWindowInternal
 		const CSize titleSize = dc.GetTextExtent(title.c_str());
 		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
 		const int titleY = topBar.top + max(0, (topBar.Height() - titleSize.cy) / 2);
-		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(30, 41, 45) : RGB(208, 217, 220));
+		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(23, 33, 38) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.TextOutA(titleX, titleY, title.c_str());
 		dc.SetBkMode(oldBkMode);
