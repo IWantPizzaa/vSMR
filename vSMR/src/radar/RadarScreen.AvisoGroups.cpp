@@ -1,16 +1,35 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/AvisoDocumentModel.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "insets/InsetWindow.hpp"
 #include "radar/RadarScreen.hpp"
 
 #include <cctype>
+#include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
 
 using VsmrAvisoFeatureMetadata::ReadFeatureIdentity;
 using VsmrAvisoFeatureMetadata::TrimAirportCode;
 using VsmrAvisoFeatureMetadata::TryReadGroupIds;
+
+namespace
+{
+	std::string CanonicalAvisoPalette(std::string palette)
+	{
+		std::transform(
+			palette.begin(),
+			palette.end(),
+			palette.begin(),
+			[](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+		if (palette == "night")
+			return "dark";
+		if (palette == "day")
+			return "light";
+		return palette;
+	}
+}
 
 std::vector<CSMRRadar::AvisoGroup> CSMRRadar::GetAvisoGroups() const
 {
@@ -212,6 +231,85 @@ std::string CSMRRadar::GetAvisoColorPalette() const
 	return AvisoColorPalette;
 }
 
+std::vector<std::string> CSMRRadar::GetAvailableAvisoColorPalettes(const std::string& airport) const
+{
+	std::vector<std::string> palettes;
+	const std::string path = ResolveAvisoGeoJsonPathForAirport(airport);
+	AvisoDocumentModel model;
+	std::string error;
+	if (path.empty() || !model.LoadFromFile(path, error))
+		return palettes;
+
+	const rapidjson::Document& document = model.GetDocument();
+	bool palettesDeclared = false;
+	if (document.HasMember("metadata") && document["metadata"].IsObject())
+	{
+		const rapidjson::Value& metadata = document["metadata"];
+		if (metadata.HasMember("color_palettes") && metadata["color_palettes"].IsArray())
+		{
+			palettesDeclared = true;
+			const rapidjson::Value& declaredPalettes = metadata["color_palettes"];
+			for (rapidjson::SizeType index = 0; index < declaredPalettes.Size(); ++index)
+			{
+				const rapidjson::Value& value = declaredPalettes[index];
+				if (!value.IsString())
+					continue;
+				const std::string palette = CanonicalAvisoPalette(value.GetString());
+				if ((palette == "dark" || palette == "light" || palette == "real") &&
+					std::find(palettes.begin(), palettes.end(), palette) == palettes.end())
+				{
+					palettes.push_back(palette);
+				}
+			}
+		}
+	}
+
+	// Base paint is a valid Dark palette for older documents which predate the
+	// explicit palette list.
+	if (palettes.empty() && !palettesDeclared)
+		palettes.push_back("dark");
+
+	std::string airportUpper = TrimAirportCode(airport);
+	std::transform(
+		airportUpper.begin(),
+		airportUpper.end(),
+		airportUpper.begin(),
+		[](unsigned char value) { return static_cast<char>(std::toupper(value)); });
+	if (airportUpper == "LFPG" && AvisoGeoJsonOverridePaths.find(airportUpper) == AvisoGeoJsonOverridePaths.end())
+	{
+		bool customSourceAvailable = false;
+		try
+		{
+			const std::filesystem::path customPath =
+				std::filesystem::u8path(path).parent_path() / "LFPG_Custom.geojson";
+			customSourceAvailable = std::filesystem::is_regular_file(customPath);
+		}
+		catch (...)
+		{
+		}
+		if (!customSourceAvailable)
+		{
+			palettes.erase(
+				std::remove_if(
+					palettes.begin(),
+					palettes.end(),
+					[](const std::string& palette) { return palette == "dark" || palette == "light"; }),
+				palettes.end());
+		}
+	}
+	return palettes;
+}
+
+bool CSMRRadar::EnsureAvisoColorPaletteAvailable(bool persistToAsr)
+{
+	const std::vector<std::string> palettes = GetAvailableAvisoColorPalettes(getActiveAirport());
+	if (palettes.empty())
+		return false;
+	if (std::find(palettes.begin(), palettes.end(), AvisoColorPalette) != palettes.end())
+		return true;
+	return SetAvisoColorPalette(palettes.front(), persistToAsr);
+}
+
 bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persistToAsr)
 {
 	std::string palette = rawPalette;
@@ -227,17 +325,12 @@ bool CSMRRadar::SetAvisoColorPalette(const std::string& rawPalette, bool persist
 			palette.rend(),
 			[](unsigned char value) { return !std::isspace(value); }).base(),
 		palette.end());
-	std::transform(
-		palette.begin(),
-		palette.end(),
-		palette.begin(),
-		[](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+	palette = CanonicalAvisoPalette(palette);
 	// Preserve existing ASR settings while exposing only the canonical names.
-	if (palette == "night")
-		palette = "dark";
-	else if (palette == "day")
-		palette = "light";
 	if (palette != "dark" && palette != "light" && palette != "real")
+		return false;
+	const std::vector<std::string> available = GetAvailableAvisoColorPalettes(getActiveAirport());
+	if (std::find(available.begin(), available.end(), palette) == available.end())
 		return false;
 
 	if (AvisoColorPalette != palette)

@@ -154,8 +154,6 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 			if (airport.empty())
 				return;
 			setActiveAirport(airport);
-			if (VsmrControlCenterDialog != nullptr)
-				VsmrControlCenterDialog->SyncFromRadar();
 			RequestRefresh();
 		}
 		return;
