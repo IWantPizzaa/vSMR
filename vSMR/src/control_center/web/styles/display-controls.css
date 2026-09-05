@@ -278,7 +278,7 @@
 .icon-preview-symbol {
   display: grid;
   place-items: center;
-  transform: rotate(90deg) scale(var(--icon-preview-scale, 1));
+  transform: rotate(90deg);
   transform-origin: center;
 }
 

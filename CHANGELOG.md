@@ -11,7 +11,7 @@
 ### Changed
 
 - Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
-- Refined the Rules editor into distinct identity, scope, condition, and color-override sections; expanded target symbol scaling to 0.25×–5.00× and made its theme-aware preview show a horizontal movement trail behind the aircraft.
+- Refined the Rules editor into distinct identity, scope, condition, and color-override sections; expanded target symbol scaling to 0.25×–5.00× and made its fixed-size, theme-aware preview show a horizontal movement trail behind the aircraft.
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
 - Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
 - Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
