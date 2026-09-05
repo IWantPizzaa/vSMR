@@ -75,7 +75,7 @@
 
 .ui-button--tab {
   --ui-button-padding: 0 9px;
-  color: #c4d0d4;
+  color: var(--ui-text);
 }
 
 .ui-button--tab.active,
@@ -183,11 +183,11 @@
 
 .field.full { grid-column: 1 / -1; }
 
-.field > span:first-child { color: #a8b7bc; }
+.field > span:first-child { color: var(--ui-muted-text); }
 
 .field.mixed :is(input, select),
 .range-control.mixed output {
-  color: #9eacb0;
+  color: var(--ui-muted-text);
   font-style: italic;
 }
 
@@ -200,7 +200,7 @@
 
 .range-control output {
   min-width: 35px;
-  color: #9bacb1;
+  color: var(--ui-muted-text);
   text-align: right;
 }
 

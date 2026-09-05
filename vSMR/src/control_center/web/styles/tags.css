@@ -3,7 +3,7 @@
 .token-chip {
   width: 11px;
   height: 11px;
-  border: 1px solid #080b0c;
+  border: 1px solid var(--ui-outer-border);
   background: var(--chip-color, #7caece);
 }
 
@@ -63,7 +63,7 @@
   width: 14px;
   height: 14px;
   display: block;
-  border: 1px solid #070a0b;
+  border: 1px solid var(--ui-outer-border);
   background: var(--node-color, #6d7a7f);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
 }
@@ -77,12 +77,12 @@
 .tag-font-options {
   margin-top: 7px;
   padding-top: 7px;
-  border-top: 1px solid #3c4a4e;
+  border-top: 1px solid var(--ui-divider);
 }
 
 .tag-options-subtitle {
   margin-bottom: 5px;
-  color: #9fb0b5;
+  color: var(--ui-muted-text);
   font-size: 8px;
   font-weight: 700;
   letter-spacing: .04em;

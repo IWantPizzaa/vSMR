@@ -16,7 +16,7 @@
 
 .rail-settings {
   margin-top: 0;
-  border-top-color: #050708;
+  border-top-color: var(--ui-outer-border);
 }
 
 .settings-column {
@@ -36,14 +36,14 @@
 }
 
 .settings-file-heading strong {
-  color: #d4dfe1;
+  color: var(--ui-text);
   font-size: 9px;
 }
 
 .settings-file-heading small {
   min-width: 0;
   overflow: hidden;
-  color: #829399;
+  color: var(--ui-muted-text);
   text-overflow: ellipsis;
   white-space: nowrap;
   font: 7.5px/1 var(--mono);
@@ -107,7 +107,7 @@
   box-shadow: none;
   padding: 4px 0 7px;
   border: 0;
-  border-bottom: 1px solid #3b494d;
+  border-bottom: 1px solid var(--ui-divider);
   border-radius: 0;
   background: transparent;
 }

@@ -78,6 +78,7 @@
     <ClCompile Include="..\src\tags\TagColorRules.cpp" />
     <ClCompile Include="..\src\updater\UpdaterReleaseModel.cpp" />
     <ClCompile Include="..\src\updater\UpdaterUrlPolicy.cpp" />
+    <ClCompile Include="..\src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AvisoRasterPipelineTests.hpp" />
@@ -111,6 +112,7 @@
     <ClInclude Include="..\src\tags\TagDefinitionUtils.hpp" />
     <ClInclude Include="..\src\updater\UpdaterReleaseModel.hpp" />
     <ClInclude Include="..\src\updater\UpdaterUrlPolicy.hpp" />
+    <ClInclude Include="..\src\weather\WeatherStore.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

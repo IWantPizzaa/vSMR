@@ -710,6 +710,17 @@
   }
 
   let state = createState();
+
+  function activeUiTheme() {
+    return state.settings?.avisoColorPalette === "day" ? "day" : "night";
+  }
+
+  function applyUiTheme() {
+    const theme = activeUiTheme();
+    document.documentElement.dataset.uiTheme = theme;
+    document.documentElement.style.colorScheme = theme === "day" ? "light" : "dark";
+    return theme;
+  }
   const treeState = { colors: new Set(), tags: new Set() };
   const drafts = { color: null, tag: null, rule: null, mode: null, profile: null, avisoGeometry: null, avisoTextStyle: null, avisoGroup: null, alerts: null };
   let activeTagInput = null;

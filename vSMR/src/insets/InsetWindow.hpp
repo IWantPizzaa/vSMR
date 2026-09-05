@@ -145,7 +145,8 @@ private:
 		const std::string& title,
 		bool showFilter,
 		POINT mouseLocation,
-		bool allowResize);
+		bool allowResize,
+		bool dayTheme = false);
 	string icao;
 	CPosition m_AirportPosition;
 	bool m_AirportPositionValid = false;
