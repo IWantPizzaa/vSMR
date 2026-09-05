@@ -2922,9 +2922,13 @@
     state.ui.selectedRuleIndex = items.length ? Math.min(items.length - 1, Math.max(0, state.ui.selectedRuleIndex)) : 0;
     const rows = items.map((rule, index) => {
       const selected = index === state.ui.selectedRuleIndex;
-      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("manager", selected)}" data-rule-index="${index}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span></button>`;
+      const criteriaCount = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria.length : 1;
+      return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("status", selected)}" data-rule-index="${index}" title="${escapeHtml(ruleLabel(rule, index))}"><span class="ui-list__label">${escapeHtml(ruleLabel(rule, index))}</span><span class="ui-list__trailing rule-criteria-count" aria-label="${criteriaCount} ${criteriaCount === 1 ? "condition" : "conditions"}">${criteriaCount}</span></button>`;
     }).join("");
     $("#ruleList").innerHTML = rows ? `<div class="ui-list__items" role="presentation">${rows}</div>` : `<div class="ui-list__empty">No rules</div>`;
+    const hasSelection = items.length > 0;
+    $('[data-action="duplicate-rule"]').disabled = !hasSelection;
+    $('[data-action="delete-rule"]').disabled = !hasSelection;
     syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
@@ -2932,12 +2936,18 @@
     const item = rules()[state.ui.selectedRuleIndex];
     const disabled = !item;
     $("#ruleFormCaption").textContent = item ? ruleLabel(item, state.ui.selectedRuleIndex) : "Rule";
+    $("#ruleEditorEmpty").hidden = !disabled;
+    $("#ruleEditorForm").hidden = disabled;
     if (!item) {
+      drafts.rule = null;
       $("#ruleName").value = "";
       $("#criteriaList").innerHTML = "";
       renderRuleStatusSelector({ status: "any" }, true);
+      $$("#ruleEditorForm input, #ruleEditorForm select, #ruleEditorForm button").forEach(control => { control.disabled = true; });
+      clearUnappliedEditorSection($("#ruleName"));
       return;
     }
+    $$("#ruleEditorForm input, #ruleEditorForm select, #ruleEditorForm button").forEach(control => { control.disabled = false; });
     if (!drafts.rule || drafts.rule.index !== state.ui.selectedRuleIndex) drafts.rule = { index: state.ui.selectedRuleIndex, data: clone(item) };
     const rule = drafts.rule.data;
     $("#ruleName").value = rule.name || "";
@@ -2950,7 +2960,7 @@
         <select aria-label="Rule token" data-field="token">${ruleSelectOptions(ruleTokensForSource(criterion.source), criterion.token)}</select>
         <select aria-label="Rule condition" data-field="condition">${ruleSelectOptions(ruleConditionsFor(criterion.source, criterion.token, parsedCondition.operator), parsedCondition.operator, { not_in: "not in" })}</select>
         <input aria-label="Rule match values" data-field="condition-values" spellcheck="false" type="text" value="${escapeHtml(parsedCondition.values)}"/>
-        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive" data-action="delete-condition" data-index="${index}" title="Delete condition">×</button>
+        <button type="button" aria-label="Delete condition" class="ui-button ui-button--compact ui-button--icon ui-button--destructive criterion-delete" data-action="delete-condition" data-index="${index}" title="Delete condition"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
       </div>`;
     }).join("");
     $$("#criteriaList .criterion-row").forEach(updateRuleConditionValueControl);
@@ -3012,12 +3022,16 @@
   }
   function applyRule({ render = true } = {}) {
     const item = rules()[state.ui.selectedRuleIndex];
-    if (!item || !drafts.rule) return;
+    if (!item || !drafts.rule) {
+      clearUnappliedEditorSection($("#ruleName"));
+      return true;
+    }
     const rule = captureRuleDraft();
     rules()[state.ui.selectedRuleIndex] = clone(rule);
     clearUnappliedEditorSection($("#ruleName"));
     markDirty("Rule updated", ["profiles"]);
     if (render) renderRules();
+    return true;
   }
 
   function modes() {
@@ -5632,7 +5646,13 @@
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
     else if (action === "delete-rule") deleteRule();
-    else if (action === "add-condition") { captureRuleDraft(); drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" }); renderRuleEditor(); applyRule({ render: false }); }
+    else if (action === "add-condition") {
+      const draft = captureRuleDraft();
+      if (!drafts.rule || !draft) return;
+      drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+      renderRuleEditor();
+      applyRule({ render: false });
+    }
     else if (action === "delete-condition") deleteRuleCondition(Number(button.dataset.index));
     else if (action === "new-mode") createMode();
     else if (action === "duplicate-mode") duplicateMode();

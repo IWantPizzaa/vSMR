@@ -254,7 +254,7 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 			plugIn->DisplayUserMessage(
 				"vSMR",
 				"CDM",
-				("Could not confirm the PDC reminder for " + submittedCallsign +
+				("Could not confirm the CDM reminder for " + submittedCallsign +
 					". It was not retried to avoid a duplicate.").c_str(),
 				true, true, false, true, false);
 		}
@@ -363,7 +363,7 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 		plugIn->DisplayUserMessage(
 			"vSMR",
 			"CDM",
-			("The PDC reminder for " + callsign +
+			("The CDM reminder for " + callsign +
 				" was not submitted because EuroScope's command line was unavailable.").c_str(),
 			true, true, false, true, false);
 		return;
