@@ -140,6 +140,12 @@
 
 .tag-global-options-body .dense-form { padding: 0; }
 
+.tag-behaviour-grid {
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+}
+
+.tag-behaviour-grid .check-field { min-width: 0; }
+
 .tag-shared-actions { grid-template-columns: 1fr 1fr; }
 
 .tag-layout { grid-template-columns: var(--ui-master-width) minmax(0, 1fr); }
