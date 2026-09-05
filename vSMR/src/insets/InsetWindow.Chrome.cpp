@@ -172,8 +172,8 @@ namespace VsmrInsetWindowInternal
 		dc.SetBkMode(oldBkMode);
 		dc.SetTextColor(oldTextColor);
 
-		dc.Draw3dRect(rect, dayTheme ? RGB(125, 135, 138) : RGB(82, 96, 101),
-			dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8));
+		const COLORREF border = dayTheme ? RGB(63, 72, 76) : RGB(5, 7, 8);
+		dc.Draw3dRect(rect, border, border);
 
 		return rect;
 	}

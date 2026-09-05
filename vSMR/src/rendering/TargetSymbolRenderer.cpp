@@ -343,8 +343,8 @@ namespace VsmrTargetRendering
 		m_Settings.presentation.symbolScale = ClampFinite(
 			m_Settings.presentation.symbolScale,
 			1.0,
-			0.5,
-			1.5);
+			0.25,
+			5.0);
 		m_Settings.pixelsPerMeter = ClampFinite(
 			m_Settings.pixelsPerMeter,
 			0.0,

@@ -4,7 +4,7 @@
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
     const style = String($("#targetIconStyle")?.value || activeProfile().targets?.icon_style || "realistic").toLowerCase();
-    const symbolScale = clamp($("#targetSymbolScale")?.value ?? activeProfile().targets?.symbol_scale ?? 1, 0.5, 1.5);
+    const symbolScale = clamp($("#targetSymbolScale")?.value ?? activeProfile().targets?.symbol_scale ?? 1, 0.25, 5);
     const trailEnabled = $("#targetTrailEnabled")?.checked ?? activeProfile().targets?.trail_enabled !== false;
 
     let symbol = "";
@@ -13,7 +13,7 @@
     if (style === "nova") {
       const shape = "M0-38-8-35-10-18-38 6-36 17-11 8-7 32 0 39 7 32 11 8 36 17 38 6 10-18 8-35Z";
       const afterglow = trailEnabled
-        ? `<path class="nova-afterglow oldest" transform="translate(-15 8)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(-10 5)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(-5 2)" d="${shape}"/>`
+        ? `<path class="nova-afterglow oldest" transform="translate(0 15)" d="${shape}"/><path class="nova-afterglow middle" transform="translate(0 10)" d="${shape}"/><path class="nova-afterglow newest" transform="translate(0 5)" d="${shape}"/>`
         : "";
       symbol = `<svg class="icon-preview-vector nova" viewBox="-62 -52 124 108" aria-hidden="true">${afterglow}<path class="nova-primary-return" d="${shape}"/><path class="nova-secondary-return" d="M0-7 7 0 0 7-7 0Z"/></svg>`;
       caption = "NOVA";
@@ -35,7 +35,7 @@
     const trail = trailEnabled
       ? `<span class="icon-preview-trail ${trailClass}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
       : "";
-    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-symbol" style="--icon-preview-scale:${symbolScale}">${symbol}</span>${trail}</div><span>${escapeHtml(caption)}</span>`;
+    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-flight">${trail}<span class="icon-preview-symbol" style="--icon-preview-scale:${symbolScale}">${symbol}</span></span></div><span>${escapeHtml(caption)}</span>`;
 
     if (usesAircraftImage) {
       const aircraftImage = preview.querySelector("[data-aircraft-icon]");
@@ -56,7 +56,7 @@
     const profile = activeProfile();
     const targets = profile.targets ||= {};
     ensureSelectValue($("#targetIconStyle"), targets.icon_style || "realistic");
-    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.5, 1.5);
+    const symbolScale = clamp(targets.symbol_scale ?? 1, 0.25, 5);
     $("#targetSymbolScale").value = symbolScale;
     $("#targetSymbolScaleOutput").value = `${symbolScale.toFixed(2)}×`;
     targets.small_icon_boost_resolution_preset ||= state.settings.resolutionPreset || "1080p";
@@ -78,7 +78,7 @@
   function applyIcons({ render = true } = {}) {
     const targets = activeProfile().targets ||= {};
     targets.icon_style = $("#targetIconStyle").value;
-    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.5, 1.5);
+    targets.symbol_scale = clamp($("#targetSymbolScale").value, 0.25, 5);
     targets.small_icon_boost_resolution_preset = state.settings.resolutionPreset || targets.small_icon_boost_resolution_preset || "1080p";
     targets.trail_enabled = $("#targetTrailEnabled").checked;
     targets.trail_ground_points = Math.round(clamp($("#targetTrailGroundPoints").value, 0, 16));

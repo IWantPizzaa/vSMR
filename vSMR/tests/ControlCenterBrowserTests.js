@@ -162,6 +162,8 @@
     const displayButton = document.querySelector('.rail-button[data-page="display"]');
     displayButton?.click();
     expect(displayButton?.classList.contains("active"), "page navigation event is bound");
+    expect(document.querySelector("#closeButton")?.textContent.trim() === "X",
+      "Control Center and native inset close buttons use the same X glyph");
     displayButton?.blur();
     displayButton?.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
     await waitFor(() => {
@@ -198,6 +200,9 @@
     expect(Boolean(createdRuleName) && !createdRuleName.disabled && !ruleEditorForm?.hidden &&
       document.querySelectorAll("#criteriaList .criterion-row").length === 1,
       "creating a rule enables a complete editor with one condition");
+    expect(document.querySelectorAll(".rule-editor-summary-grid > fieldset").length === 2 &&
+      document.querySelectorAll(".rule-color-grid > .rule-color-row").length === 3,
+      "Rules use dedicated identity, scope, condition, and color-override sections");
     expect(Boolean(document.querySelector('[data-action="copy-rule"]')) &&
       Boolean(document.querySelector('[data-action="paste-rule"]')),
       "Rules expose shared copy and paste actions");
@@ -333,6 +338,24 @@
     expect(Boolean(document.querySelector(".icon-preview-column")) &&
       Boolean(document.querySelector(".icon-settings-stack")),
       "Icons use a dedicated preview column and shared settings cards");
+    const symbolScaleRange = document.querySelector("#targetSymbolScale");
+    expect(symbolScaleRange?.min === "0.25" && symbolScaleRange?.max === "5",
+      "target symbol scaling exposes the complete 0.25× to 5.00× range");
+    const iconPreviewStage = document.querySelector(".icon-preview-stage");
+    const initialIconPreviewBackground = iconPreviewStage
+      ? getComputedStyle(iconPreviewStage).backgroundColor
+      : "";
+    const previewFlight = document.querySelector(".icon-preview-flight");
+    const previewTrail = previewFlight?.querySelector(".icon-preview-trail");
+    const previewSymbol = previewFlight?.querySelector(".icon-preview-symbol");
+    const previewTrailRect = previewTrail?.getBoundingClientRect();
+    const previewSymbolRect = previewSymbol?.getBoundingClientRect();
+    expect(Boolean(previewFlight) && getComputedStyle(previewFlight).display === "flex" &&
+      Boolean(previewTrailRect) && Boolean(previewSymbolRect) &&
+      previewTrailRect.right <= previewSymbolRect.left + .5 &&
+      Math.abs((previewTrailRect.top + previewTrailRect.bottom) / 2 -
+        (previewSymbolRect.top + previewSymbolRect.bottom) / 2) < 1,
+      "target preview places the horizontal trail directly behind the aircraft");
     const visibleIconRanges = Array.from(document.querySelectorAll(
       '#profilePanelIcons input[type="range"]')).filter(isVisible);
     expect(visibleIconRanges.length === 3 && visibleIconRanges.every(range =>
@@ -342,6 +365,11 @@
     document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
     sampleVisiblePrimitives();
+    const tagBehaviour = document.querySelector(".tag-behaviour-grid");
+    const tagBehaviourControls = Array.from(tagBehaviour?.querySelectorAll(".check-field") || []);
+    expect(Boolean(tagBehaviour) && tagBehaviour.scrollWidth <= tagBehaviour.clientWidth &&
+      tagBehaviourControls.every(control => control.scrollWidth <= control.clientWidth),
+      "Tag Options behaviour controls remain contained without text collisions");
 
     document.querySelector('.rail-button[data-page="profiles"]')?.click();
     sampleSharedList("#profileList", "Profiles");
@@ -445,6 +473,9 @@
       originalPageBackground &&
       api.getState().settings?.avisoColorPalette === originalPaletteButton?.dataset.avisoColorPalette,
       "UI theme changes shared design colors without changing the AVISO palette");
+    expect(Boolean(iconPreviewStage) &&
+      getComputedStyle(iconPreviewStage).backgroundColor !== initialIconPreviewBackground,
+      "target icon preview follows the selected Day/Night UI background");
     originalUiThemeButton?.click();
     expect(document.documentElement.dataset.uiTheme === originalUiTheme,
       "switching back restores the original UI theme");

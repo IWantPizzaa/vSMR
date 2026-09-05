@@ -704,7 +704,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 	ensureBoolMember(targets, "trail_enabled", true);
 	ensureIntMember(targets, "trail_ground_points", 4, 0, 16);
 	ensureIntMember(targets, "trail_airborne_points", 8, 0, 16);
-	ensureDoubleMember(targets, "symbol_scale", 1.0, 0.5, 1.5);
+	ensureDoubleMember(targets, "symbol_scale", 1.0, 0.25, 5.0);
 	changed = targets.RemoveMember("small_icon_boost") || changed;
 	changed = targets.RemoveMember("small_icon_boost_factor") || changed;
 	changed = targets.RemoveMember("fixed_pixel_icon_size") || changed;

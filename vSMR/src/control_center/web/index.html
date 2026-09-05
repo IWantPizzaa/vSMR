@@ -45,7 +45,7 @@
 <section aria-label="vSMR" class="control-window hidden" id="controlWindow">
 <header class="titlebar" id="dragHandle">
 <span>vSMR</span>
-<button class="ui-button ui-button--compact ui-button--icon title-close" id="closeButton" title="Close" type="button">×</button>
+<button class="ui-button ui-button--compact ui-button--icon title-close" id="closeButton" title="Close" type="button">X</button>
 </header>
 <div class="window-shell">
 <div aria-live="polite" class="host-loading-overlay" hidden id="hostLoadingOverlay" role="status">Loading vSMR data...</div>
@@ -132,7 +132,7 @@
 <legend>Appearance</legend>
 <div class="icon-symbol-controls">
 <label class="field"><span>Icon style</span><select id="targetIconStyle"><option value="nova">NOVA</option><option value="realistic">Icon</option><option value="triangle">Triangle</option></select></label>
-<label class="field"><span>Symbol size</span><span class="range-control"><input id="targetSymbolScale" max="1.5" min="0.5" step="0.05" type="range"/><output id="targetSymbolScaleOutput">1.00×</output></span></label>
+<label class="field"><span>Symbol size</span><span class="range-control"><input id="targetSymbolScale" max="5" min="0.25" step="0.05" type="range"/><output id="targetSymbolScaleOutput">1.00×</output></span></label>
 </div>
 </fieldset>
 <fieldset class="compact-group icon-trail-group">
@@ -173,7 +173,7 @@
 <div class="tag-global-options-body" id="tagOptionsEditor">
 <div class="tag-options-block">
 <div class="tag-options-subtitle">Behaviour</div>
-<div class="dense-form two-cols">
+<div class="dense-form tag-behaviour-grid">
 <label class="check-field check-in-form"><input id="tagRoundedCorners" type="checkbox"/><span>Rounded corners</span></label>
 <label class="check-field check-in-form"><input id="tagAutoDeconfliction" type="checkbox"/><span>Auto deconfliction</span></label>
 </div>
@@ -213,17 +213,12 @@
 </div>
 </div>
 <div class="rule-editor-form" hidden id="ruleEditorForm">
-<fieldset class="compact-group editor-section-card">
-<legend>Rule</legend>
+<div class="rule-editor-summary-grid">
+<fieldset class="compact-group editor-section-card rule-identity-group">
+<legend>Identity</legend>
 <label class="field"><span>Name</span><input id="ruleName" placeholder="Optional" type="text"/></label>
 </fieldset>
-<fieldset class="compact-group conditions-group">
-<legend>Match all conditions</legend>
-<div aria-hidden="true" class="criteria-header"><span>Source</span><span>Field</span><span>Match</span><span>Values</span><span></span></div>
-<div class="criteria-list" id="criteriaList"></div>
-<button class="ui-button inline-add" data-action="add-condition" type="button">Add condition</button>
-</fieldset>
-<fieldset class="compact-group">
+<fieldset class="compact-group rule-scope-group">
 <legend>Applies to</legend>
 <div class="dense-form three-cols compact-rule-scope">
 <label class="field"><span>Tag</span><select id="ruleTagType"><option>any</option><option>departure</option><option>arrival</option><option>airborne</option><option>uncorrelated</option></select></label>
@@ -237,12 +232,19 @@
 <label class="field"><span>Detail</span><select id="ruleDetail"><option>any</option><option>normal</option><option>detailed</option></select></label>
 </div>
 </fieldset>
+</div>
+<fieldset class="compact-group conditions-group">
+<legend>Match all conditions</legend>
+<div aria-hidden="true" class="criteria-header"><span>Source</span><span>Field</span><span>Match</span><span>Values</span><span></span></div>
+<div class="criteria-list" id="criteriaList"></div>
+<button class="ui-button inline-add" data-action="add-condition" type="button">Add condition</button>
+</fieldset>
 <fieldset class="compact-group output-group">
-<legend>Colors</legend>
+<legend>Color overrides</legend>
 <div class="rule-color-grid">
-<label class="check-field"><input id="ruleUseTargetColor" type="checkbox"/><span>Target</span></label><input id="ruleTargetColor" type="text"/><label class="mini-color-swatch"><input id="ruleTargetPicker" type="color"/></label>
-<label class="check-field"><input id="ruleUseTagColor" type="checkbox"/><span>Tag</span></label><input id="ruleTagColor" type="text"/><label class="mini-color-swatch"><input id="ruleTagPicker" type="color"/></label>
-<label class="check-field"><input id="ruleUseTextColor" type="checkbox"/><span>Text</span></label><input id="ruleTextColor" type="text"/><label class="mini-color-swatch"><input id="ruleTextPicker" type="color"/></label>
+<div class="rule-color-row"><label class="check-field"><input id="ruleUseTargetColor" type="checkbox"/><span>Target</span></label><input id="ruleTargetColor" type="text"/><label class="mini-color-swatch"><input id="ruleTargetPicker" type="color"/></label></div>
+<div class="rule-color-row"><label class="check-field"><input id="ruleUseTagColor" type="checkbox"/><span>Tag</span></label><input id="ruleTagColor" type="text"/><label class="mini-color-swatch"><input id="ruleTagPicker" type="color"/></label></div>
+<div class="rule-color-row"><label class="check-field"><input id="ruleUseTextColor" type="checkbox"/><span>Text</span></label><input id="ruleTextColor" type="text"/><label class="mini-color-swatch"><input id="ruleTextPicker" type="color"/></label></div>
 </div>
 </fieldset>
 </div>

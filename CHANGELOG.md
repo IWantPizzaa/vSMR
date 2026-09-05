@@ -11,6 +11,7 @@
 ### Changed
 
 - Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
+- Refined the Rules editor into distinct identity, scope, condition, and color-override sections; expanded target symbol scaling to 0.25×–5.00× and made its theme-aware preview show a horizontal movement trail behind the aircraft.
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
 - Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
 - Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
@@ -20,6 +21,9 @@
 - Prevented the Control Center from becoming stuck when rule settings were edited before a rule had been created. Rule fields and unavailable actions now remain disabled until a valid rule exists, and condition actions safely reject a missing draft.
 - Aligned the Groups and Settings pages with the standard Control Center left-page offset.
 - Applied the active interface theme to AVISO, SRW, and Timer inset title bars, and corrected AVISO inset tag text so its bounds and line layout remain vertically centered.
+- Added automatic tag deconfliction to the AVISO inset and made its two-pass target rendering keep every aircraft symbol beneath every tag.
+- Prevented the Tag Options behaviour controls from colliding at narrow widths and standardized the Control Center close glyph with native inset windows.
+- Restored LFPG's East/West directional-arrow groups from `LFPG_Custom` and standardized all LFPG text halo widths at one pixel.
 
 ## [2.0.0-beta.5] - 2026-09-01
 
