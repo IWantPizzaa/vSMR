@@ -3,8 +3,6 @@
 #include "config/RuntimeConfig.Internal.hpp"
 #include "shared/JsonInputLimits.hpp"
 #include <algorithm>
-#include <chrono>
-#include <cstdint>
 #include <filesystem>
 #include <iomanip>
 #include <mutex>
@@ -449,7 +447,6 @@ bool CConfig::loadConfig() {
 	const bool hadUsableConfiguration = !profiles.empty() && document.IsArray();
 	config_revision = FileRevision(config_path);
 	config_healthy = false;
-	using_backup = false;
 	last_load_message.clear();
 
 	auto parseSizeBoundedCandidate = [&](
@@ -504,7 +501,6 @@ bool CConfig::loadConfig() {
 			active_profile = profiles.begin()->second;
 			config_revision = ContentRevision(mainJson);
 			config_healthy = false;
-			using_backup = false;
 			last_load_message =
 				"The profiles file is valid but its schema migration could not be saved. "
 				"The migrated profiles are active read-only. Check folder permissions, then reload.";
@@ -519,7 +515,6 @@ bool CConfig::loadConfig() {
 			? FileRevision(config_path)
 			: ContentRevision(mainJson);
 		config_healthy = true;
-		using_backup = false;
 		if (mainMigrated)
 			last_load_message = "Profiles were migrated transactionally to schema version 2.";
 		return true;
@@ -531,32 +526,7 @@ bool CConfig::loadConfig() {
 			? "The configured profiles file is missing or cannot be read."
 			: mainReadError);
 
-	// Falling back to the last validated backup without replacing the primary
-	std::string backupJson;
-	std::string backupError;
-	Document backupCandidate(&document.GetAllocator());
-	map<string, rapidjson::SizeType> backupProfiles;
-	bool backupMigrated = false;
-	if (ReadFileContents(config_path + kBackupSuffix, backupJson) &&
-		parseSizeBoundedCandidate(
-			backupJson,
-			backupCandidate,
-			backupProfiles,
-			backupMigrated,
-			backupError))
-	{
-		AdoptDocument(document, backupCandidate);
-		profiles.swap(backupProfiles);
-		active_profile = profiles.begin()->second;
-		using_backup = true;
-		last_load_message = failure +
-			" A validated .bak copy is active in memory. Restore that backup or bundled defaults from Settings before saving other changes.";
-		ReportLoadFailure("configuration (recovered from backup)");
-		return false;
-	}
-
-	last_load_message = failure +
-		" No validated backup is available. Restore bundled defaults from Settings.";
+	last_load_message = failure + " Restore bundled defaults from Settings.";
 	if (!hadUsableConfiguration)
 	{
 		document.SetArray();
@@ -815,109 +785,6 @@ bool CConfig::isConfigHealthy() const
 	return config_healthy && !profiles.empty();
 }
 
-bool CConfig::isUsingBackup() const
-{
-	return using_backup;
-}
-
-bool CConfig::isBackupAvailable() const
-{
-	std::string backupJson;
-	if (!ReadFileContents(config_path + kBackupSuffix, backupJson))
-		return false;
-	Document candidate;
-	if (!ParseSizeBoundedArray(backupJson, candidate))
-		return false;
-	std::string error;
-	bool migrated = false;
-	return validateAndMigratePrevalidatedProfilesDocument(candidate, error, migrated);
-}
-
-std::int64_t CConfig::getBackupModifiedUnixSeconds() const
-{
-	std::error_code error;
-	const std::filesystem::file_time_type modified =
-		std::filesystem::last_write_time(
-			std::filesystem::u8path(config_path + kBackupSuffix),
-			error);
-	if (error)
-		return 0;
-
-	const std::chrono::system_clock::time_point systemModified =
-		std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-			modified - std::filesystem::file_time_type::clock::now() +
-			std::chrono::system_clock::now());
-	const std::int64_t seconds =
-		std::chrono::duration_cast<std::chrono::seconds>(
-			systemModified.time_since_epoch()).count();
-	return seconds > 0 ? seconds : 0;
-}
-
-bool CConfig::restoreBackup(string& error)
-{
-	error.clear();
-	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
-	const std::string activeBefore = getActiveProfileName();
-	const std::string backupPath = config_path + kBackupSuffix;
-	std::string backupJson;
-	if (!ReadFileContents(backupPath, backupJson))
-	{
-		error = "No readable profiles backup is available.";
-		return false;
-	}
-
-	Document candidate;
-	bool migrated = false;
-	if (!ParseSizeBoundedArray(backupJson, candidate, &error) ||
-		!validateAndMigratePrevalidatedProfilesDocument(candidate, error, migrated))
-	{
-		if (error.empty())
-			error = "The profiles backup contains invalid JSON.";
-		return false;
-	}
-
-	rapidjson::StringBuffer buffer;
-	rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
-	candidate.Accept(writer);
-	const std::string restoredJson(buffer.GetString(), buffer.Size());
-	std::string temporaryPath;
-	if (!WriteTemporaryFile(config_path, restoredJson, temporaryPath) ||
-		!::MoveFileExW(
-			std::filesystem::u8path(temporaryPath).c_str(),
-			std::filesystem::u8path(config_path).c_str(),
-			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-	{
-		if (!temporaryPath.empty())
-			::DeleteFileW(std::filesystem::u8path(temporaryPath).c_str());
-		error = "Unable to restore the profiles backup. Check folder permissions.";
-		return false;
-	}
-
-	map<string, rapidjson::SizeType> restoredProfiles;
-	for (rapidjson::SizeType index = 0; index < candidate.Size(); ++index)
-	{
-		if (IsProfileEntry(candidate[index]))
-			restoredProfiles[trimProfileName(candidate[index]["name"].GetString())] = index;
-	}
-	Document replacement(&document.GetAllocator());
-	replacement.Parse<0>(restoredJson.c_str());
-	if (replacement.HasParseError() || restoredProfiles.empty())
-	{
-		error = "The profiles backup was restored but could not be activated. Reload vSMR.";
-		return false;
-	}
-	AdoptDocument(document, replacement);
-	profiles.swap(restoredProfiles);
-	active_profile = profiles.begin()->second;
-	if (!activeBefore.empty())
-		setActiveProfile(activeBefore);
-	config_revision = ContentRevision(restoredJson);
-	config_healthy = true;
-	using_backup = false;
-	last_load_message = "Profiles backup restored.";
-	return true;
-}
-
 const Value* CConfig::findMetadata() const
 {
 	if (!document.IsArray())
@@ -1029,9 +896,7 @@ bool CConfig::saveConfig(
 	if (!config_healthy && !allowRecoveryReplacement)
 	{
 		if (error != nullptr)
-			*error = using_backup
-				? "A backup is active in memory. Restore it from Settings before saving other changes."
-				: "The profiles source is invalid. Restore a backup or bundled defaults from Settings before saving.";
+			*error = "The profiles source is invalid. Restore bundled defaults from Settings before saving.";
 		return false;
 	}
 
@@ -1084,7 +949,7 @@ bool CConfig::saveConfig(
 			if (config_healthy)
 			{
 				if (error != nullptr)
-					*error = "The profiles file became invalid on disk. Reload or restore a backup before saving.";
+					*error = "The profiles file became invalid on disk. Reload or restore bundled defaults before saving.";
 				return false;
 			}
 		}
@@ -1107,7 +972,6 @@ bool CConfig::saveConfig(
 	}
 	config_revision = FileRevision(config_path);
 	config_healthy = true;
-	using_backup = false;
 	last_load_message.clear();
 	return true;
 }

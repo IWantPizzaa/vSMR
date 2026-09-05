@@ -667,9 +667,6 @@
         avisoColorPalette: "night",
         dataHealth: {
           profilesHealthy: true,
-          profilesUsingBackup: false,
-          profilesBackupAvailable: false,
-          profilesBackupModifiedUnixSeconds: 0,
           profilesMessage: "",
           avisoHealthy: true,
           avisoMessage: ""
@@ -680,6 +677,8 @@
         profileTab: "colors",
         avisoView: "text",
         selectedColorPath: "labels.departure.background_taxi_color",
+        selectedColorPaths: ["labels.departure.background_taxi_color"],
+        colorSelectionAnchorPath: "labels.departure.background_taxi_color",
         selectedTagId: "departure:taxi",
         selectedTagIds: ["departure:taxi"],
         tagSelectionAnchorId: "departure:taxi",
@@ -1215,13 +1214,10 @@
   function renderDataHealthStatus() {
     const health = state.settings?.dataHealth || {};
     if (health.profilesHealthy === false) {
-      const actions = [];
-      if (health.profilesBackupAvailable) actions.push({ label: "Restore legacy .bak", action: "restore-profiles-backup" });
-      actions.push({ label: "Defaults", action: "restore-bundled-defaults" });
       setPersistentStatus(
         health.profilesMessage || "The profiles source is unavailable or invalid.",
         "error",
-        actions,
+		[{ label: "Defaults", action: "restore-bundled-defaults" }],
         "health"
       );
       return;
@@ -1338,6 +1334,8 @@
     const profile = activeProfile();
     const colors = collectProfileColors(profile);
     if (!colors.some(entry => entry.id === state.ui.selectedColorPath)) state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.ui.selectedRuleIndex = 0;
     const modes = profile.filters?.display_modes?.items || [];
     state.ui.selectedModeIndex = Math.max(0, modes.findIndex(mode => mode.name === profile.filters?.display_modes?.active));
@@ -2053,15 +2051,51 @@
     return { family, section: "", group: family };
   }
 
-  function selectedColorEntry() {
+  function colorSelectionIds(entries = collectProfileColors(activeProfile())) {
+    const valid = new Set(entries.map(entry => entry.id));
+    let ids = Array.isArray(state.ui.selectedColorPaths)
+      ? state.ui.selectedColorPaths.filter(id => valid.has(id))
+      : [];
+    if (!ids.length && valid.has(state.ui.selectedColorPath)) ids = [state.ui.selectedColorPath];
+    if (!ids.length && entries[0]) ids = [entries[0].id];
+    ids = uniqueValues(ids);
+    state.ui.selectedColorPaths = ids;
+    if (!ids.includes(state.ui.selectedColorPath)) state.ui.selectedColorPath = ids[ids.length - 1] || "";
+    if (!valid.has(state.ui.colorSelectionAnchorPath)) state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
+    return ids;
+  }
+
+  function selectedColorEntries(entries = collectProfileColors(activeProfile())) {
+    const selected = new Set(colorSelectionIds(entries));
+    return entries.filter(entry => selected.has(entry.id));
+  }
+
+  function selectedColorEntry(entries = collectProfileColors(activeProfile())) {
+    colorSelectionIds(entries);
+    return entries.find(entry => entry.id === state.ui.selectedColorPath)
+      || entries.find(entry => state.ui.selectedColorPaths.includes(entry.id));
+  }
+
+  function selectProfileColor(colorPath, event) {
     const entries = collectProfileColors(activeProfile());
-    const selected = entries.find(entry => entry.id === state.ui.selectedColorPath) || entries[0];
-    if (selected && state.ui.selectedColorPath !== selected.id) state.ui.selectedColorPath = selected.id;
-    return selected;
+    const ordered = entries.map(entry => entry.id);
+    const next = updateMultiSelection(
+      colorSelectionIds(entries),
+      colorPath,
+      ordered,
+      event,
+      state.ui.colorSelectionAnchorPath);
+    state.ui.selectedColorPaths = next;
+    state.ui.selectedColorPath = next.includes(colorPath) ? colorPath : next[next.length - 1];
+    if (!event.shiftKey) state.ui.colorSelectionAnchorPath = colorPath;
+    drafts.color = null;
+    clearUnappliedEditorSection($("#colorHex"));
+    renderColors();
   }
 
   function renderColors() {
     const entries = collectProfileColors(activeProfile());
+    const selectedIds = new Set(colorSelectionIds(entries));
 
     const groups = new Map();
     entries.forEach(entry => {
@@ -2079,8 +2113,9 @@
       const accent = colorToHex(group.items[0]?.color, "#5096b4");
       const rows = group.items.map(entry => {
         const hex = colorToHex(entry.color).toUpperCase();
-        const selected = entry.id === state.ui.selectedColorPath;
-        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, false, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
+        const selected = selectedIds.has(entry.id);
+        const current = entry.id === state.ui.selectedColorPath;
+        return `<button type="button" role="option" aria-selected="${selected}" class="${uiListRowClass("color", selected, current, "color-menu-row")}" data-color-path="${escapeHtml(entry.id)}" style="--node-color:${hex}" title="${escapeHtml(entry.name)}">
           <span class="ui-list__leading menu-row-swatch tree-color-swatch" aria-hidden="true"></span>
           <span class="ui-list__label menu-row-title">${escapeHtml(entry.name)}</span>
         </button>`;
@@ -2090,7 +2125,7 @@
           <span class="ui-list__caret" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
           <span class="ui-list__heading-label">${escapeHtml(group.caption)}</span>
         </button>
-        <div aria-label="${escapeHtml(group.caption)} colors" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
+        <div aria-label="${escapeHtml(group.caption)} colors" aria-multiselectable="true" class="ui-list__items" role="listbox" ${collapsed ? "hidden" : ""}>${rows}</div>
       </section>`;
     }).join("") || `<div class="ui-list__empty">No colors found</div>`;
     syncUiListFocus($("#colorTree"));
@@ -2357,14 +2392,17 @@
   }
 
   function renderColorEditor() {
-    const entry = selectedColorEntry();
+    const entries = collectProfileColors(activeProfile());
+    const selectedEntries = selectedColorEntries(entries);
+    const entry = selectedColorEntry(entries);
     if (!entry) return;
-    if (!drafts.color || drafts.color.path !== entry.id) {
+    const signature = selectedEntries.map(item => item.id).join("|");
+    if (!drafts.color || drafts.color.signature !== signature) {
       const hex = colorToHex(entry.color);
       const rgb = hexToColor(hex);
       const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
       drafts.color = {
-        path: entry.id,
+        signature,
         hex,
         opacity: Math.round((entry.color.a ?? 255) / 255 * 100),
         h: hsv.h,
@@ -2372,18 +2410,22 @@
         v: hsv.v
       };
     }
-    $("#selectedColorPath").textContent = entry.name;
+    $("#selectedColorPath").textContent = selectedEntries.length === 1
+      ? entry.name
+      : `${selectedEntries.length} colors`;
     syncColorEditorControls();
   }
   function applyColorDraft({ render = true } = {}) {
-    const entry = selectedColorEntry();
-    if (!entry || !drafts.color) return;
-    const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
-    const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
-    if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
-    setAtPath(activeProfile(), entry.path, next);
+    const entries = selectedColorEntries();
+    if (!entries.length || !drafts.color) return;
+    entries.forEach(entry => {
+      const hadAlpha = Object.prototype.hasOwnProperty.call(entry.color, "a");
+      const next = hexToColor(drafts.color.hex, drafts.color.opacity / 100 * 255);
+      if (!hadAlpha && Number(drafts.color.opacity) === 100) delete next.a;
+      setAtPath(activeProfile(), entry.path, next);
+    });
     clearUnappliedEditorSection($("#colorHex"));
-    markDirty(`${entry.name} updated`, ["profiles"]);
+    markDirty(entries.length === 1 ? `${entries[0].name} updated` : `${entries.length} colors updated`, ["profiles"]);
     if (render) renderColors();
   }
 
@@ -2406,7 +2448,8 @@
     }
     const entry = selectedColorEntry();
     if (!entry) return;
-    if (!drafts.color || drafts.color.path !== entry.id) renderColorEditor();
+    const signature = selectedColorEntries().map(item => item.id).join("|");
+    if (!drafts.color || drafts.color.signature !== signature) renderColorEditor();
     setColorDraftFromHex(`#${match[1]}`);
     drafts.color.opacity = match[2]
       ? Math.round(parseInt(match[2], 16) / 255 * 100)
@@ -2929,6 +2972,7 @@
     const hasSelection = items.length > 0;
     $('[data-action="duplicate-rule"]').disabled = !hasSelection;
     $('[data-action="delete-rule"]').disabled = !hasSelection;
+	$('[data-action="copy-rule"]').disabled = !hasSelection;
     syncUiListFocus($("#ruleList"));
     renderRuleEditor();
   }
@@ -3032,6 +3076,86 @@
     markDirty("Rule updated", ["profiles"]);
     if (render) renderRules();
     return true;
+  }
+
+  function normalizeClipboardRule(value) {
+    const sourceRule = value?.rule ?? value;
+    if (!sourceRule || typeof sourceRule !== "object" || Array.isArray(sourceRule)) return null;
+    const rawCriteria = Array.isArray(sourceRule.criteria) && sourceRule.criteria.length
+      ? sourceRule.criteria
+      : [{ source: sourceRule.source, token: sourceRule.token, condition: sourceRule.condition }];
+    const criteria = rawCriteria.filter(item => item && typeof item === "object").map(item => {
+      const source = normalizeRuleSourceUi(item.source);
+      const tokens = ruleTokensForSource(source);
+      const requestedToken = String(item.token || "").trim().toLowerCase();
+      const token = tokens.includes(requestedToken) ? requestedToken : tokens[0];
+      const parsed = parseRuleCondition(source, item.condition);
+      const operators = ruleConditionsFor(source, token);
+      const operator = operators.includes(parsed.operator) ? parsed.operator : "any";
+      return { source, token, condition: composeRuleCondition(source, operator, parsed.values) };
+    });
+    if (!criteria.length) return null;
+
+    const tagTypes = ["any", "departure", "arrival", "airborne", "uncorrelated"];
+    const details = ["any", "normal", "detailed"];
+    const normalized = {
+      criteria,
+      source: criteria[0].source,
+      token: criteria[0].token,
+      condition: criteria[0].condition,
+      tag_type: tagTypes.includes(sourceRule.tag_type) ? sourceRule.tag_type : "any",
+      detail: details.includes(sourceRule.detail) ? sourceRule.detail : "any"
+    };
+    const name = String(sourceRule.name || "").trim();
+    if (name) normalized.name = name;
+    normalized.statuses = selectedRuleStatuses(sourceRule);
+    normalized.status = normalized.statuses.length === 1 ? normalized.statuses[0] : "any";
+    ["target_color", "tag_color", "text_color"].forEach(key => {
+      if (!isColorObject(sourceRule[key])) return;
+      normalized[key] = {
+        r: Math.round(clamp(sourceRule[key].r, 0, 255)),
+        g: Math.round(clamp(sourceRule[key].g, 0, 255)),
+        b: Math.round(clamp(sourceRule[key].b, 0, 255)),
+        a: Math.round(clamp(sourceRule[key].a ?? 255, 0, 255))
+      };
+    });
+    return normalized;
+  }
+
+  async function copyRule() {
+    const item = rules()[state.ui.selectedRuleIndex];
+    if (!item) return;
+    captureRuleDraft();
+    const rule = drafts.rule?.data || item;
+    await writeEditorClipboard(JSON.stringify({ vsmr: "rule", version: 1, rule }, null, 2), "rule");
+    showToast("Rule copied", "success");
+  }
+
+  async function pasteRule() {
+    const raw = String(await readEditorClipboard("rule", "Paste a vSMR rule") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain a vSMR rule", "error");
+      return;
+    }
+    const rule = normalizeClipboardRule(parsed);
+    if (!rule) {
+      showToast("Clipboard does not contain a valid vSMR rule", "error");
+      return;
+    }
+    const items = rules();
+    if (items.length) items[state.ui.selectedRuleIndex] = rule;
+    else {
+      items.push(rule);
+      state.ui.selectedRuleIndex = 0;
+    }
+    drafts.rule = null;
+    clearUnappliedEditorSection($("#ruleName"));
+    markDirty("Rule pasted", ["profiles"]);
+    renderRules();
+    showToast("Rule pasted", "success");
   }
 
   function modes() {
@@ -4106,6 +4230,124 @@
     clearUnappliedEditorSection(state.ui.avisoView === "geometry" ? $("#avisoGeometryColorHex") : $("#avisoTextFont"));
   }
 
+// source: app-aviso-clipboard.js
+"use strict";
+
+  async function copyAvisoGeometry() {
+    stageEditorControl(document.activeElement);
+    const entries = selectedAvisoGeometryEntries();
+    const entry = entries.find(item => item.id === state.ui.selectedAvisoGeometryStyleId) || entries[0];
+    if (!entry) return;
+    const colorKey = entry.objectType === "Line" ? "stroke" : "fill";
+    const opacityKey = entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity";
+    const style = {
+      color: normalizeHex(entry.paint[colorKey], "#000000").toUpperCase(),
+      opacity: clamp(Number(entry.paint[opacityKey] ?? 1), 0, 1)
+    };
+    await writeEditorClipboard(JSON.stringify({ vsmr: "aviso-geometry-style", version: 1, style }, null, 2), "AVISO geometry style");
+    showToast("AVISO geometry style copied", "success");
+  }
+
+  async function pasteAvisoGeometry() {
+    const raw = String(await readEditorClipboard("AVISO geometry style", "Paste a vSMR AVISO geometry style") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain an AVISO geometry style", "error");
+      return;
+    }
+    const style = parsed?.style ?? parsed;
+    const color = String(style?.color || "").trim();
+    const opacity = Number(style?.opacity);
+    if (!/^#[0-9a-f]{6}$/i.test(color) || !Number.isFinite(opacity)) {
+      showToast("Clipboard does not contain a valid AVISO geometry style", "error");
+      return;
+    }
+    const entries = selectedAvisoGeometryEntries();
+    if (!entries.length) return;
+    entries.forEach(entry => {
+      if (entry.isBackground) {
+        state.aviso.metadata.background_colors[activeAvisoColorPalette()] = color.toUpperCase();
+        return;
+      }
+      const colorKey = entry.objectType === "Line" ? "stroke" : "fill";
+      const opacityKey = entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity";
+      const changes = { [colorKey]: color.toUpperCase(), [opacityKey]: clamp(opacity, 0, 1) };
+      applyAvisoPaintChanges(ensureAvisoCatalogStyle(entry).paint, changes);
+      entry.indices.forEach(index => {
+        const properties = avisoFeatures()[index]?.properties;
+        if (!properties) return;
+        properties.style_id ||= entry.id;
+        applyAvisoPaintChanges(properties, changes);
+      });
+    });
+    drafts.avisoGeometry = null;
+    clearUnappliedEditorSection($("#avisoGeometryColorHex"));
+    markDirty(`${entries.length} geometry style${entries.length === 1 ? "" : "s"} pasted`, ["aviso"]);
+    renderAvisoGeometry();
+    showToast(`Geometry style pasted to ${entries.length} selection${entries.length === 1 ? "" : "s"}`, "success");
+  }
+
+  async function copyAvisoText() {
+    stageEditorControl(document.activeElement);
+    const entries = selectedAvisoTextEntries();
+    const entry = entries.find(item => item.id === state.ui.selectedAvisoTextStyleId) || entries[0];
+    if (!entry) return;
+    const index = entry.indices[0];
+    const read = key => index == null ? (entry.paint[key] ?? AVISO_TEXT_DEFAULTS[key]) : effectiveAvisoTextValue(index, entry, key);
+    const style = Object.fromEntries(AVISO_TEXT_PAINT_KEYS.map(key => [key, clone(read(key))]));
+    await writeEditorClipboard(JSON.stringify({ vsmr: "aviso-text-style", version: 1, style }, null, 2), "AVISO text style");
+    showToast("AVISO text style copied", "success");
+  }
+
+  async function pasteAvisoText() {
+    const raw = String(await readEditorClipboard("AVISO text style", "Paste a vSMR AVISO text style") || "").trim();
+    if (!raw) return;
+    let parsed;
+    try { parsed = JSON.parse(raw); }
+    catch (error) {
+      showToast("Clipboard does not contain an AVISO text style", "error");
+      return;
+    }
+    const source = parsed?.style ?? parsed;
+    const textSize = Number(source?.["text-size"]);
+    const haloWidth = Number(source?.["text-halo-width"]);
+    const zoomLevel = Number(source?.zoomLevel);
+    if (!source || typeof source !== "object" ||
+        !/^#[0-9a-f]{6}$/i.test(String(source["text-color"] || "")) ||
+        !/^#[0-9a-f]{6}$/i.test(String(source["text-halo-color"] || "")) ||
+        ![textSize, haloWidth, zoomLevel].every(Number.isFinite)) {
+      showToast("Clipboard does not contain a valid AVISO text style", "error");
+      return;
+    }
+    const style = {
+      "text-font": String(source["text-font"] || "Arial").trim().slice(0, 100) || "Arial",
+      "text-size": clamp(textSize, 6, 32),
+      "text-color": normalizeHex(source["text-color"], "#808080").toUpperCase(),
+      "text-anchor": ["start", "center", "end"].includes(source["text-anchor"]) ? source["text-anchor"] : "center",
+      "text-halo-color": normalizeHex(source["text-halo-color"], "#000000").toUpperCase(),
+      "text-halo-width": clamp(haloWidth, 0, 6),
+      zoomLevel: Math.round(clamp(zoomLevel, 0, 14))
+    };
+    const entries = selectedAvisoTextEntries();
+    if (!entries.length) return;
+    entries.forEach(entry => {
+      applyAvisoPaintChanges(ensureAvisoCatalogStyle(entry).paint, style);
+      entry.indices.forEach(index => {
+        const properties = avisoFeatures()[index]?.properties;
+        if (!properties) return;
+        properties.style_id ||= entry.id;
+        applyAvisoPaintChanges(properties, style);
+      });
+    });
+    drafts.avisoTextStyle = null;
+    clearUnappliedEditorSection($("#avisoTextFont"));
+    markDirty(`${entries.length} text style${entries.length === 1 ? "" : "s"} pasted`, ["aviso"]);
+    renderAvisoText();
+    showToast(`Text style pasted to ${entries.length} selection${entries.length === 1 ? "" : "s"}`, "success");
+  }
+
 // source: app-settings.js
 "use strict";
 
@@ -4268,25 +4510,6 @@
     return timestamp.toLocaleString([], {
       year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit"
     });
-  }
-
-  function describeLegacyProfilesBackup(health) {
-    const unixSeconds = Number(health?.profilesBackupModifiedUnixSeconds);
-    if (!Number.isFinite(unixSeconds) || unixSeconds <= 0)
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const modified = new Date(unixSeconds * 1000);
-    if (Number.isNaN(modified.getTime()))
-      return "Validated legacy profiles .bak (modification date unavailable)";
-
-    const ageMinutes = Math.floor(Math.max(0, Date.now() - modified.getTime()) / 60000);
-    const ageValue = ageMinutes >= 1440
-      ? Math.floor(ageMinutes / 1440)
-      : ageMinutes >= 60
-        ? Math.floor(ageMinutes / 60)
-        : ageMinutes;
-    const ageUnit = ageMinutes >= 1440 ? "day" : ageMinutes >= 60 ? "hour" : "minute";
-    return `Validated legacy profiles .bak from ${modified.toLocaleString()} (${ageValue} ${ageUnit}${ageValue === 1 ? "" : "s"} old)`;
   }
 
   function expireUpdateRequest(slot, now = Date.now()) {
@@ -4517,13 +4740,6 @@
     syncToggleButtons('[data-ui-color-theme]', uiColorTheme, "uiColorTheme");
     const avisoColorPalette = settings.avisoColorPalette === "day" ? "day" : "night";
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
-    const restoreBackup = $("#restoreProfilesBackupButton");
-    if (restoreBackup) {
-      restoreBackup.disabled = !settings.dataHealth?.profilesBackupAvailable || Boolean(pending.reload || pending.save || pending.resource);
-      restoreBackup.title = restoreBackup.disabled
-        ? "No validated profiles backup is available"
-        : describeLegacyProfilesBackup(settings.dataHealth);
-    }
     if (HOST_MODE) {
       ["#settingsProfileFile", "#settingsAvisoFile", "#settingsAliasFile"].forEach(selector => {
         const control = $(selector);
@@ -4775,17 +4991,6 @@
     return startConfigurationSave();
   }
 
-  function restoreProfilesBackup() {
-	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext || !state.settings?.dataHealth?.profilesBackupAvailable) return;
-    const backupDescription = describeLegacyProfilesBackup(state.settings.dataHealth);
-    if (!window.confirm(`${backupDescription}. Current vSMR saves do not update this legacy copy, so it may be older than expected. Restore it and discard all unsaved edits?`)) return;
-    pending.reload = postBridge("state.restore.backup", {});
-    if (!pending.reload) return;
-    armPendingTimeout("reload", pending.reload);
-    setStatus("Restoring profiles backup...", "info");
-    updateCommandState();
-  }
-
   function restoreBundledDefaults() {
 	if (pending.reload || pending.save || pending.resource || runtimeCommandPending.size || splitAvisoContext) return;
     if (!window.confirm("Load the bundled profiles and, when available, the AVISO default for the active airport? Valid changes will be saved automatically.")) return;
@@ -4806,6 +5011,123 @@
     setPage(state.ui.page);
     renderRuntimeMenu();
     syncSurfaceVisibility();
+  }
+
+// source: app-interaction-help.js
+"use strict";
+
+  const INTERACTION_SELECTOR = [
+    "button", "[role='button']", "input:not([type='hidden'])", "select", "textarea", "[role='slider']"
+  ].join(",");
+
+  function interactionLabel(element) {
+    const label = element.closest("label")?.querySelector(":scope > span:first-child")?.textContent?.trim();
+    return label || element.getAttribute("aria-label") || element.dataset.tooltipText ||
+      element.getAttribute("title") || element.textContent?.trim().replace(/\s+/g, " ") || "control";
+  }
+
+  function interactionHelpText(element) {
+    const label = interactionLabel(element);
+    if (element.dataset.page) return `Open the ${humanize(element.dataset.page)} page`;
+    if (element.dataset.profileTab) return `Open the ${humanize(element.dataset.profileTab)} editor`;
+    if (element.dataset.avisoView) return `Show AVISO ${humanize(element.dataset.avisoView)} styles`;
+    if (element.dataset.treeToggle) return `Expand or collapse ${label}`;
+    if (element.matches("[data-color-path], [data-tag-id], [data-aviso-geometry-style], [data-aviso-text-style]"))
+      return `Select ${label}. Hold Ctrl to toggle items or Shift to select a range`;
+
+    const action = String(element.dataset.action || "");
+    if (action) {
+      const subject = humanize(action.replace(/^(copy|paste|new|delete|duplicate|rename|move-up|move-down|open|close|add|remove|restore|reset|save|select|update|dismiss|activate)-?/, "")) || "item";
+      if (action.startsWith("copy-")) return `Copy ${subject} to the clipboard`;
+      if (action.startsWith("paste-")) return `Paste ${subject} from the clipboard`;
+      if (action.startsWith("new-") || action.startsWith("add-")) return `Add ${subject}`;
+      if (action.startsWith("delete-") || action.startsWith("remove-")) return `Delete ${subject}`;
+      if (action.startsWith("duplicate-")) return `Duplicate ${subject}`;
+      if (action.startsWith("move-up-")) return `Move ${subject} up`;
+      if (action.startsWith("move-down-")) return `Move ${subject} down`;
+      if (action.startsWith("open-")) return `Open ${subject}`;
+      if (action.startsWith("close-")) return `Close ${subject}`;
+      if (action.startsWith("restore-") || action.startsWith("reset-")) return `Restore ${subject}`;
+      if (action.startsWith("save-")) return `Save ${subject}`;
+      if (action.startsWith("select-") || action.startsWith("set-")) return `Select ${subject}`;
+      if (element.dataset.tooltipText || element.title) return label;
+      return humanize(action);
+    }
+
+    if (element instanceof HTMLInputElement) {
+      if (element.type === "checkbox") return `Toggle ${label}`;
+      if (element.type === "range") return `Adjust ${label}`;
+      if (element.type === "color") return `Choose ${label}`;
+      if (element.type === "file") return `Choose a file for ${label}`;
+      return `Edit ${label}`;
+    }
+    if (element instanceof HTMLSelectElement) return `Choose ${label}`;
+    if (element instanceof HTMLTextAreaElement) return `Edit ${label}`;
+    return label;
+  }
+
+  function initializeInteractionHelp() {
+    const tooltip = document.createElement("div");
+    tooltip.id = "interactionTooltip";
+    tooltip.className = "ui-interaction-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+    let timer = 0;
+    let current = null;
+
+    const hide = () => {
+      window.clearTimeout(timer);
+      timer = 0;
+      current?.removeAttribute("aria-describedby");
+      current = null;
+      tooltip.classList.remove("visible");
+      tooltip.hidden = true;
+    };
+    const show = element => {
+      if (!element || !document.body.contains(element)) return;
+      const text = interactionHelpText(element);
+      if (!text) return;
+      current = element;
+      if (element.title) {
+        element.dataset.tooltipText = element.title;
+        element.removeAttribute("title");
+      }
+      tooltip.textContent = text;
+      tooltip.hidden = false;
+      tooltip.classList.add("visible");
+      element.setAttribute("aria-describedby", tooltip.id);
+      const target = element.getBoundingClientRect();
+      const box = tooltip.getBoundingClientRect();
+      const left = Math.max(6, Math.min(window.innerWidth - box.width - 6, target.left + (target.width - box.width) / 2));
+      const below = target.bottom + 7;
+      const top = below + box.height <= window.innerHeight - 6 ? below : Math.max(6, target.top - box.height - 7);
+      tooltip.style.left = `${Math.round(left)}px`;
+      tooltip.style.top = `${Math.round(top)}px`;
+    };
+    const schedule = (element, delay) => {
+      hide();
+      timer = window.setTimeout(() => show(element), delay);
+    };
+
+    document.addEventListener("pointerover", event => {
+      if (event.pointerType === "touch") return;
+      const element = event.target.closest?.(INTERACTION_SELECTOR);
+      if (!element || element.contains(event.relatedTarget)) return;
+      schedule(element, 550);
+    });
+    document.addEventListener("pointerout", event => {
+      if (!current && !timer) return;
+      const element = event.target.closest?.(INTERACTION_SELECTOR);
+      if (element && !element.contains(event.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", event => {
+      const element = event.target.closest?.(INTERACTION_SELECTOR);
+      if (element) schedule(element, 350);
+    });
+    document.addEventListener("focusout", hide);
+    document.addEventListener("keydown", event => { if (event.key === "Escape") hide(); });
+    window.addEventListener("resize", hide);
   }
 
 // source: app-events.js
@@ -4891,13 +5213,13 @@
 
   const deferredDerivedRefreshes = new WeakMap();
 
-  function refreshSelectedColorRow() {
-    const entry = selectedColorEntry();
-    const row = entry && $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
-    if (!entry || !row) return;
-    const hex = colorToHex(entry.color).toUpperCase();
-    row.style.setProperty("--node-color", hex);
-    row.title = entry.name;
+  function refreshSelectedColorRows() {
+    selectedColorEntries().forEach(entry => {
+      const row = $$("#colorTree [data-color-path]").find(item => item.dataset.colorPath === entry.id);
+      if (!row) return;
+      row.style.setProperty("--node-color", colorToHex(entry.color).toUpperCase());
+      row.title = entry.name;
+    });
   }
 
   function performDeferredDerivedRefresh(scope) {
@@ -4925,7 +5247,7 @@
   }
 
   function refreshEditorDerivedVisuals(scope, control = null) {
-    if (scope === "colors") refreshSelectedColorRow();
+    if (scope === "colors") refreshSelectedColorRows();
     else if (scope === "rules") {
       const item = rules()[state.ui.selectedRuleIndex];
       if (item) {
@@ -5190,7 +5512,7 @@
         return;
       }
       const colorRow = event.target.closest("[data-color-path]");
-      if (colorRow) { if (!stageFocusedEditorValue()) return; state.ui.selectedColorPath = colorRow.dataset.colorPath; drafts.color = null; clearUnappliedEditorSection($("#colorHex")); renderColors(); return; }
+      if (colorRow) { if (!stageFocusedEditorValue()) return; selectProfileColor(colorRow.dataset.colorPath, event); return; }
       const tagRow = event.target.closest("[data-tag-id]");
       if (tagRow) { if (!stageFocusedEditorValue()) return; selectTagDefinition(tagRow.dataset.tagId, event); return; }
       const ruleRow = event.target.closest("[data-rule-index]");
@@ -5556,6 +5878,26 @@
         renderTags();
       }
     });
+    $("#colorTree").addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        const ids = collectProfileColors(activeProfile()).map(entry => entry.id);
+        if (ids.length) {
+          state.ui.selectedColorPaths = ids;
+          state.ui.selectedColorPath = ids[ids.length - 1];
+          state.ui.colorSelectionAnchorPath = ids[0];
+          drafts.color = null;
+          clearUnappliedEditorSection($("#colorHex"));
+          renderColors();
+        }
+      } else if (event.key === "Escape") {
+        const id = state.ui.selectedColorPath;
+        state.ui.selectedColorPaths = id ? [id] : [];
+        drafts.color = null;
+        clearUnappliedEditorSection($("#colorHex"));
+        renderColors();
+      }
+    });
 
     $("#updateChannel").addEventListener("change", event => {
       submitUpdateSettings({ channel: event.target.value === "stable" ? "stable" : "beta" }, "Update channel saved");
@@ -5606,7 +5948,6 @@
         dismissedPersistentStatusKey = `${persistentStatusState.type}|${persistentStatusState.message}`;
       renderPersistentStatus();
     }
-    else if (action === "restore-profiles-backup") restoreProfilesBackup();
     else if (action === "restore-bundled-defaults") restoreBundledDefaults();
     else if (action === "update-retry") requestUpdateAction("retry_update");
     else if (action === "update-reload-aviso") {
@@ -5642,6 +5983,12 @@
     else if (action === "paste-profile-color") pasteProfileColor();
     else if (action === "copy-tag-definition") copyTagDefinition();
     else if (action === "paste-tag-definition") pasteTagDefinition();
+    else if (action === "copy-rule") copyRule();
+    else if (action === "paste-rule") pasteRule();
+    else if (action === "copy-aviso-geometry") copyAvisoGeometry();
+    else if (action === "paste-aviso-geometry") pasteAvisoGeometry();
+    else if (action === "copy-aviso-text") copyAvisoText();
+    else if (action === "paste-aviso-text") pasteAvisoText();
     else if (action === "insert-tag-token") insertTagToken();
     else if (action === "new-rule") createRule();
     else if (action === "duplicate-rule") duplicateRule();
@@ -5908,6 +6255,8 @@
     state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
     const colors = collectProfileColors(preferred.data);
     state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
     Object.keys(drafts).forEach(key => drafts[key] = null);
     clearAllUnappliedEditorSections();
@@ -6118,7 +6467,7 @@
       ["update", "preset"].includes(reason);
     const externallyChangedDirtyEditors =
 	  (state.dirty || hasUnappliedEditorWork) &&
-	  ["resource-source", "external-save", "backup-restored", "profile", "mode"].includes(reason);
+	  ["resource-source", "external-save", "profile", "mode"].includes(reason);
     const incomingAirport = normalizeAirportCode(
       typeof incoming.airport === "string" ? incoming.airport : state.hostAirport
     );
@@ -6129,7 +6478,7 @@
     const profileModeReplacement = !preservesStagedEditors &&
       ["profile", "mode"].includes(reason) && Array.isArray(incoming.profiles);
     const resetsSavedBaseline = !preservesStagedEditors && (
-      ["external-save", "backup-restored"].includes(reason) ||
+	  reason === "external-save" ||
       profileModeReplacement || hostAirportChanged
     );
     let avisoChanged = false;
@@ -6142,15 +6491,15 @@
       state.configRevision = incoming.configRevision;
     if (!preservesStagedEditors && typeof incoming.avisoRevision === "string")
       state.avisoRevision = incoming.avisoRevision;
-    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
+    if (["initial", "reload", "resource-source"].includes(reason))
       state.recoveryConfirmed = false;
-    if (["initial", "reload", "backup-restored", "resource-source"].includes(reason))
+    if (["initial", "reload", "resource-source"].includes(reason))
       state.avisoRecoveryConfirmed = false;
     if (!preservesStagedEditors)
       state.externalEditConflict = false;
     else if (externallyChangedDirtyEditors)
       state.externalEditConflict = true;
-    if (["initial", "reload", "backup-restored"].includes(reason) &&
+    if (["initial", "reload"].includes(reason) &&
       persistentStatusState?.origin === "native")
       setPersistentStatus("", "", [], "native");
 
@@ -6522,6 +6871,7 @@
 
   applyQueryState();
   initializeScrollCues();
+  initializeInteractionHelp();
   bindEvents();
   renderAll();
   resetSavedSnapshot();

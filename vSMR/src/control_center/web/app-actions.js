@@ -196,6 +196,8 @@
     state.ui.tagSelectionAnchorId = state.ui.selectedTagId;
     const colors = collectProfileColors(preferred.data);
     state.ui.selectedColorPath = colors[0]?.id || "";
+    state.ui.selectedColorPaths = state.ui.selectedColorPath ? [state.ui.selectedColorPath] : [];
+    state.ui.colorSelectionAnchorPath = state.ui.selectedColorPath;
     state.settings.resolutionPreset = preferred.data.targets?.small_icon_boost_resolution_preset || state.settings.resolutionPreset || "1080p";
     Object.keys(drafts).forEach(key => drafts[key] = null);
     clearAllUnappliedEditorSections();

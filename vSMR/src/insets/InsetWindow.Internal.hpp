@@ -121,17 +121,6 @@ namespace VsmrInsetWindowInternal
 		bool showFilter,
 		POINT mouseLocation,
 		bool allowResize,
-		double* elapsedMilliseconds);
-	void DrawInsetWindowChrome(
-		CDC& dc,
-		CSMRRadar* radarScreen,
-		int objectType,
-		AvisoLayoutMode mode,
-		const RECT& areaValue,
-		const std::string& title,
-		bool showFilter,
-		POINT mouseLocation,
-		bool allowResize,
 		bool dayTheme,
 		double* elapsedMilliseconds);
 	bool AvisoRectIntersects(const CRect& one, const CRect& two);

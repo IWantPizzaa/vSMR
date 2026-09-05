@@ -33,7 +33,6 @@
 
   .color-preview-swatch { min-height: 70px; }
   .icon-settings-grid { grid-template-columns: 1fr; }
-  .icon-symbol-layout { grid-template-columns: 104px minmax(0, 1fr); }
   .icon-symbol-preview { min-height: 112px; }
   .color-picker-workbench { grid-template-columns: minmax(0, 1fr) 76px; }
   .color-picker-workbench .color-sv-palette,

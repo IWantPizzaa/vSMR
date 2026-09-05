@@ -662,9 +662,6 @@
         avisoColorPalette: "night",
         dataHealth: {
           profilesHealthy: true,
-          profilesUsingBackup: false,
-          profilesBackupAvailable: false,
-          profilesBackupModifiedUnixSeconds: 0,
           profilesMessage: "",
           avisoHealthy: true,
           avisoMessage: ""
@@ -675,6 +672,8 @@
         profileTab: "colors",
         avisoView: "text",
         selectedColorPath: "labels.departure.background_taxi_color",
+        selectedColorPaths: ["labels.departure.background_taxi_color"],
+        colorSelectionAnchorPath: "labels.departure.background_taxi_color",
         selectedTagId: "departure:taxi",
         selectedTagIds: ["departure:taxi"],
         tagSelectionAnchorId: "departure:taxi",
