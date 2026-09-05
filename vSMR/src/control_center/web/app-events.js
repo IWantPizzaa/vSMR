@@ -130,7 +130,7 @@
         const label = row && $(".ui-list__label", row);
         if (label) label.textContent = group.name;
       }
-    } else if (scope === "icons") renderIconSymbolPreview();
+    } else if (scope === "icons" && control?.id !== "targetSymbolScale") renderIconSymbolPreview();
     else if (scope === "settings") renderIconSymbolPreview();
     else if (["aviso-geometry", "aviso-text", "alerts"].includes(scope))
       deferDerivedRefreshUntilFocusout(scope, control);
@@ -482,9 +482,8 @@
     });
 
     $("#targetSymbolScale").addEventListener("input", event => {
-      const scale = clamp(event.target.value, 0.5, 1.5);
+      const scale = clamp(event.target.value, 0.25, 5);
       $("#targetSymbolScaleOutput").value = `${scale.toFixed(2)}×`;
-      renderIconSymbolPreview();
     });
     ["targetTrailGroundPoints", "targetTrailAirbornePoints"].forEach(id => $("#" + id).addEventListener("input", event => {
       $("#" + id + "Output").value = String(Math.round(Number(event.target.value)));

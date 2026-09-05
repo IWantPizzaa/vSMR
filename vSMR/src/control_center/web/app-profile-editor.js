@@ -4,7 +4,6 @@
     const preview = $("#iconSymbolPreview");
     if (!preview) return;
     const style = String($("#targetIconStyle")?.value || activeProfile().targets?.icon_style || "realistic").toLowerCase();
-    const symbolScale = clamp($("#targetSymbolScale")?.value ?? activeProfile().targets?.symbol_scale ?? 1, 0.25, 5);
     const trailEnabled = $("#targetTrailEnabled")?.checked ?? activeProfile().targets?.trail_enabled !== false;
 
     let symbol = "";
@@ -35,7 +34,7 @@
     const trail = trailEnabled
       ? `<span class="icon-preview-trail ${trailClass}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>`
       : "";
-    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-flight">${trail}<span class="icon-preview-symbol" style="--icon-preview-scale:${symbolScale}">${symbol}</span></span></div><span>${escapeHtml(caption)}</span>`;
+    preview.innerHTML = `<div class="icon-preview-stage"><span class="icon-preview-flight">${trail}<span class="icon-preview-symbol">${symbol}</span></span></div><span>${escapeHtml(caption)}</span>`;
 
     if (usesAircraftImage) {
       const aircraftImage = preview.querySelector("[data-aircraft-icon]");
