@@ -288,7 +288,7 @@
     const originalPaletteButton = paletteButtons.find(
       button => button.getAttribute("aria-pressed") === "true");
     const alternatePaletteButton = paletteButtons.find(button => button !== originalPaletteButton);
-    const originalTheme = originalPaletteButton?.dataset.avisoColorPalette;
+    const originalUiTheme = document.documentElement.dataset.uiTheme;
     const originalPageBackground = getComputedStyle(document.documentElement)
       .getPropertyValue("--ui-page-bg").trim();
     expect(Boolean(originalPaletteButton) && paletteButtons.filter(
@@ -299,21 +299,35 @@
       originalPaletteButton?.getAttribute("aria-pressed") === "false" &&
       api.getState().settings?.avisoColorPalette === alternatePaletteButton?.dataset.avisoColorPalette,
       "Day/Night updates visual, accessible, and application state together");
-    const runtimeThemeButton = document.querySelector("#runtimeThemeButton");
-    expect(document.documentElement.dataset.uiTheme === alternatePaletteButton?.dataset.avisoColorPalette &&
-      getComputedStyle(document.documentElement).colorScheme ===
-        (alternatePaletteButton?.dataset.avisoColorPalette === "day" ? "light" : "dark"),
-      "Day/Night applies the saved theme to the complete document");
-    expect(getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() !==
-      originalPageBackground,
-      "Day and Night resolve different shared design-system colors");
-    expect(runtimeThemeButton?.dataset.avisoColorPalette === originalTheme &&
-      runtimeThemeButton?.getAttribute("aria-label")?.includes(
-        alternatePaletteButton?.dataset.avisoColorPalette === "day" ? "Day" : "Night"),
-      "Runtime Menu reflects the active theme and offers the opposite theme");
+    expect(document.documentElement.dataset.uiTheme === originalUiTheme &&
+      getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() ===
+        originalPageBackground,
+      "AVISO palette changes do not alter the application UI theme");
     originalPaletteButton?.click();
-    expect(document.documentElement.dataset.uiTheme === originalTheme,
-      "switching back restores the original document theme");
+
+    document.querySelector('.rail-button[data-page="settings"]')?.click();
+    const uiThemeButtons = Array.from(document.querySelectorAll(
+      '.settings-theme-control .ui-button--toggle[data-ui-color-theme]'));
+    const originalUiThemeButton = uiThemeButtons.find(
+      button => button.getAttribute("aria-pressed") === "true");
+    const alternateUiThemeButton = uiThemeButtons.find(button => button !== originalUiThemeButton);
+    expect(uiThemeButtons.length === 2 && Boolean(originalUiThemeButton),
+      "Settings provides one accessible Day/Night UI theme control");
+    expect(document.querySelector("#runtimeThemeButton") === null,
+      "Runtime Menu does not duplicate the UI theme control");
+    alternateUiThemeButton?.click();
+    expect(document.documentElement.dataset.uiTheme === alternateUiThemeButton?.dataset.uiColorTheme &&
+      getComputedStyle(document.documentElement).colorScheme ===
+        (alternateUiThemeButton?.dataset.uiColorTheme === "day" ? "light" : "dark") &&
+      api.getState().settings?.uiColorTheme === alternateUiThemeButton?.dataset.uiColorTheme,
+      "Settings Day/Night applies visual, accessible, and application UI theme state together");
+    expect(getComputedStyle(document.documentElement).getPropertyValue("--ui-page-bg").trim() !==
+      originalPageBackground &&
+      api.getState().settings?.avisoColorPalette === originalPaletteButton?.dataset.avisoColorPalette,
+      "UI theme changes shared design colors without changing the AVISO palette");
+    originalUiThemeButton?.click();
+    expect(document.documentElement.dataset.uiTheme === originalUiTheme,
+      "switching back restores the original UI theme");
 
     groupsButton?.click();
     sampleSharedList("#avisoGroupList", "Groups");

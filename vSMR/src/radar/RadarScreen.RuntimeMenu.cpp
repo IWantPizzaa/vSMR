@@ -4,7 +4,6 @@
 #include "shared/TextUtils.hpp"
 
 extern CPoint mouseLocation;
-using VsmrRadarUiSupport::DegToRad;
 
 namespace
 {
@@ -18,8 +17,8 @@ namespace
 		kDragHeight +
 		(kRailPadding * 2) +
 		kAirportRowHeight +
-		(kButtonSize * 7) +
-		(kButtonGap * 7);
+		(kButtonSize * 6) +
+		(kButtonGap * 6);
 	constexpr int kPopupGap = 4;
 	constexpr int kPopupHeaderHeight = 23;
 	constexpr int kPopupRowHeight = 28;
@@ -219,34 +218,6 @@ namespace
 			return;
 		}
 
-		if (kind == "theme-day" || kind == "theme-night")
-		{
-			if (kind == "theme-day")
-			{
-				graphics.DrawEllipse(&pen, centerX - 3.5f, centerY - 3.5f, 7.0f, 7.0f);
-				for (int angle = 0; angle < 360; angle += 45)
-				{
-					const double radians = DegToRad(static_cast<double>(angle));
-					const float dx = static_cast<float>(std::cos(radians));
-					const float dy = static_cast<float>(std::sin(radians));
-					graphics.DrawLine(&pen,
-						centerX + dx * 6.0f, centerY + dy * 6.0f,
-						centerX + dx * 9.0f, centerY + dy * 9.0f);
-				}
-			}
-			else
-			{
-				Gdiplus::GraphicsPath moon;
-				moon.AddArc(centerX - 7.0f, centerY - 8.0f, 15.0f, 16.0f, 75.0f, 220.0f);
-				moon.AddBezier(centerX - 2.0f, centerY - 7.0f,
-					centerX + 4.0f, centerY - 3.0f,
-					centerX + 4.0f, centerY + 4.0f,
-					centerX - 2.0f, centerY + 7.0f);
-				graphics.DrawPath(&pen, &moon);
-			}
-			return;
-		}
-
 		if (kind == "datalink")
 		{
 			graphics.DrawRectangle(&pen, centerX - 9.0f, centerY - 6.5f, 18.0f, 13.0f);
@@ -319,7 +290,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	if (hdc == nullptr)
 		return;
 
-	const bool dayTheme = GetAvisoColorPalette() == "day";
+	const bool dayTheme = GetUiColorTheme() == "day";
 	const RuntimeMenuPalette palette = ResolveRuntimeMenuPalette(dayTheme);
 	const COLORREF kOuterBorder = palette.outerBorder;
 	const COLORREF kRailBackground = palette.railBackground;
@@ -482,8 +453,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
 		{ "runtime.button.datalink", "datalink", "CPDLC / PDC", RuntimeMenuPopup::Datalink },
-		{ "runtime.button.theme", dayTheme ? "theme-night" : "theme-day",
-			dayTheme ? "Switch to Night theme" : "Switch to Day theme", RuntimeMenuPopup::None },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 

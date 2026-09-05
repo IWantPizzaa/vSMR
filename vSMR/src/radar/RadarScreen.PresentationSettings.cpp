@@ -1,6 +1,38 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
 
+std::string CSMRRadar::GetUiColorTheme() const
+{
+	return UiUseDayColorTheme ? "day" : "night";
+}
+
+bool CSMRRadar::SetUiColorTheme(const std::string& rawTheme, bool persistToAsr)
+{
+	std::string theme = rawTheme;
+	theme.erase(
+		theme.begin(),
+		std::find_if(theme.begin(), theme.end(), [](unsigned char value)
+			{ return !std::isspace(value); }));
+	theme.erase(
+		std::find_if(theme.rbegin(), theme.rend(), [](unsigned char value)
+			{ return !std::isspace(value); }).base(),
+		theme.end());
+	std::transform(theme.begin(), theme.end(), theme.begin(), [](unsigned char value)
+		{ return static_cast<char>(std::tolower(value)); });
+	if (theme != "day" && theme != "night")
+		return false;
+
+	UiUseDayColorTheme = theme == "day";
+	if (persistToAsr)
+	{
+		SaveDataToAsr(
+			"UiColorTheme",
+			"Control Center and inset UI theme",
+			GetUiColorTheme().c_str());
+	}
+	return true;
+}
+
 std::string CSMRRadar::NormalizeTargetIconStyle(const std::string& style) const
 {
 	std::string lowered = style;

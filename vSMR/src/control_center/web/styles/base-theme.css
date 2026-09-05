@@ -100,7 +100,7 @@
 
 }
 
-/* The saved AVISO palette is also the application theme. Night remains the
+/* The interface theme is independent from AVISO colors. Night remains the
    default so older native hosts keep their established appearance. */
 :root[data-ui-theme="day"] {
   color-scheme: light;
