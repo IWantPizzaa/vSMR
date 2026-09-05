@@ -356,6 +356,26 @@
       Math.abs((previewTrailRect.top + previewTrailRect.bottom) / 2 -
         (previewSymbolRect.top + previewSymbolRect.bottom) / 2) < 1,
       "target preview places the horizontal trail directly behind the aircraft");
+    const originalSymbolScale = symbolScaleRange?.value || "1";
+    const stablePreviewWidth = previewSymbolRect?.width;
+    if (symbolScaleRange) {
+      symbolScaleRange.value = "5";
+      symbolScaleRange.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    expect(document.querySelector("#targetSymbolScaleOutput")?.value === "5.00×" &&
+      Math.abs((previewSymbol?.getBoundingClientRect().width || 0) - stablePreviewWidth) < .5,
+      "maximum symbol scale updates its value without resizing the reference preview");
+    if (symbolScaleRange) {
+      symbolScaleRange.value = "0.25";
+      symbolScaleRange.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    expect(document.querySelector("#targetSymbolScaleOutput")?.value === "0.25×" &&
+      Math.abs((previewSymbol?.getBoundingClientRect().width || 0) - stablePreviewWidth) < .5,
+      "minimum symbol scale updates its value without resizing the reference preview");
+    if (symbolScaleRange) {
+      symbolScaleRange.value = originalSymbolScale;
+      symbolScaleRange.dispatchEvent(new Event("input", { bubbles: true }));
+    }
     const visibleIconRanges = Array.from(document.querySelectorAll(
       '#profilePanelIcons input[type="range"]')).filter(isVisible);
     expect(visibleIconRanges.length === 3 && visibleIconRanges.every(range =>
