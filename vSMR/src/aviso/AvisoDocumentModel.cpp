@@ -409,6 +409,37 @@ bool AvisoDocumentModel::ValidateFeatureCollectionSchema(
 				return false;
 			}
 		}
+		if (metadata.HasMember("color_palettes"))
+		{
+			const rapidjson::Value& palettes = metadata["color_palettes"];
+			if (!palettes.IsArray())
+			{
+				errorText = "AVISO metadata.color_palettes must be an array.";
+				return false;
+			}
+			std::vector<std::string> seenPalettes;
+			for (rapidjson::SizeType index = 0; index < palettes.Size(); ++index)
+			{
+				if (!palettes[index].IsString())
+				{
+					errorText = "Every AVISO color palette must be a string.";
+					return false;
+				}
+				const std::string palette = palettes[index].GetString();
+				if (palette != "dark" && palette != "light" && palette != "real" &&
+					palette != "night" && palette != "day")
+				{
+					errorText = "AVISO metadata.color_palettes contains unsupported palette '" + palette + "'.";
+					return false;
+				}
+				if (std::find(seenPalettes.begin(), seenPalettes.end(), palette) != seenPalettes.end())
+				{
+					errorText = "AVISO metadata.color_palettes contains duplicate palette '" + palette + "'.";
+					return false;
+				}
+				seenPalettes.push_back(palette);
+			}
+		}
 		if (metadata.HasMember("background_colors"))
 		{
 			const rapidjson::Value& colors = metadata["background_colors"];

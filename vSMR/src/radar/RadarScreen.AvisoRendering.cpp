@@ -805,7 +805,7 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 	if (IsShutdownRequested())
 		return;
 
-	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
+	const std::string path = ResolveAvisoGeoJsonRenderPathForAirport(getActiveAirport());
 	if (path.empty())
 		return;
 

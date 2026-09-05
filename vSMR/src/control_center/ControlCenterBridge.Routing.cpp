@@ -152,6 +152,12 @@ bool VsmrControlCenterBridgeImpl::Dispatch(
 	case VsmrBridgeAction::SettingsUpdate:
 		if (!HandleSettings(envelope.payload, error))
 			return false;
+		if (envelope.payload != nullptr && envelope.payload->IsObject() &&
+			envelope.payload->HasMember("avisoColorPalette"))
+		{
+			SendAuthoritativeState("palette", envelope.id);
+			return true;
+		}
 		SendAck(envelope.id, envelope.type, "Settings applied");
 		return true;
 	case VsmrBridgeAction::PerformanceStateRequest:

@@ -474,6 +474,50 @@
       "AVISO palette changes do not alter the application UI theme");
     originalPaletteButton?.click();
 
+    const completePaletteState = api.getState();
+    api.receive({
+      type: "state.authoritative",
+      payload: {
+        settings: { ...completePaletteState.settings, avisoColorPalette: "dark", avisoColorPalettes: ["dark", "light"] },
+        aviso: completePaletteState.aviso,
+        airport: completePaletteState.airport,
+        avisoFollows: false,
+        reason: "reload"
+      }
+    });
+    const unavailableRealButton = document.querySelector('[data-aviso-color-palette="real"]');
+    const paletteBeforeDisabledClick = api.getState().settings.avisoColorPalette;
+    unavailableRealButton?.click();
+    expect(unavailableRealButton?.disabled &&
+      getComputedStyle(unavailableRealButton).opacity === "1" &&
+      api.getState().settings.avisoColorPalette === paletteBeforeDisabledClick,
+      "Unavailable AVISO palettes are gray, disabled, and cannot change state");
+    api.receive({
+      type: "state.authoritative",
+      payload: {
+        settings: { ...completePaletteState.settings, avisoColorPalette: "dark", avisoColorPalettes: ["real"] },
+        aviso: completePaletteState.aviso,
+        airport: "TEST",
+        avisoFollows: false,
+        reason: "reload"
+      }
+    });
+    expect(api.getState().settings.avisoColorPalette === "real" &&
+      document.querySelector('[data-aviso-color-palette="dark"]')?.disabled &&
+      document.querySelector('[data-aviso-color-palette="light"]')?.disabled &&
+      !document.querySelector('[data-aviso-color-palette="real"]')?.disabled,
+      "An airport palette change selects its first valid state and disables missing alternatives");
+    api.receive({
+      type: "state.authoritative",
+      payload: {
+        settings: { ...completePaletteState.settings, avisoColorPalette: originalPaletteButton?.dataset.avisoColorPalette, avisoColorPalettes: ["dark", "light", "real"] },
+        aviso: completePaletteState.aviso,
+        airport: completePaletteState.airport,
+        avisoFollows: false,
+        reason: "reload"
+      }
+    });
+
     document.querySelector('.rail-button[data-page="settings"]')?.click();
     expect(!document.querySelector('[data-action="restore-profiles-backup"]'),
       "legacy profiles backup recovery is absent from the UI");

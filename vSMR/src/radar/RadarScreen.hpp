@@ -513,6 +513,7 @@ public:
 	void SaveRuntimeMenuPositionToAsr();
 	std::string DetectDefaultAirportFromAviso() const;
 	std::string ResolveAvisoGeoJsonPathForAirport(const std::string& airport) const;
+	std::string ResolveAvisoGeoJsonRenderPathForAirport(const std::string& airport) const;
 	std::string GetAvisoGeoJsonEditorPathForAirport(const std::string& airport) const;
 	void SetAvisoGeoJsonOverrideForAirport(const std::string& airport, const std::string& path);
 	bool EnsureAvisoGeoJsonLoaded(
@@ -535,6 +536,8 @@ public:
 	bool SetAvisoGroupVisibilities(const std::vector<std::pair<std::string, bool>>& visibility);
 	bool UpdateAvisoGroups(const std::vector<AvisoGroup>& groups);
 	std::string GetAvisoColorPalette() const;
+	std::vector<std::string> GetAvailableAvisoColorPalettes(const std::string& airport) const;
+	bool EnsureAvisoColorPaletteAvailable(bool persistToAsr = true);
 	bool SetAvisoColorPalette(const std::string& palette, bool persistToAsr = true);
 	std::string GetUiColorTheme() const;
 	bool SetUiColorTheme(const std::string& theme, bool persistToAsr = true);

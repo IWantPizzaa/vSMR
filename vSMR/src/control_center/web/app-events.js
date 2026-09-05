@@ -803,10 +803,16 @@
     else if (action === "set-aviso-palette") {
       const palette = normalizeAvisoColorPalette(button.dataset.avisoColorPalette);
       if (state.settings.avisoColorPalette !== palette) {
+		if (HOST_MODE && (state.dirty || hasUnappliedEditorInputs() || pending.save)) {
+		  showToast("Wait for current edits to save before changing the AVISO palette", "warning");
+		  return;
+		}
+		const rollback = HOST_MODE ? captureRuntimeCommandRollback() : null;
         state.settings.avisoColorPalette = palette;
         renderSettings();
         renderAviso();
-        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
+		if (HOST_MODE) postRuntimeCommand("settings.update", { avisoColorPalette: palette }, rollback);
+		else markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {

@@ -489,6 +489,20 @@
     return "dark";
   }
 
+  function avisoColorPalettes(aviso = state?.aviso, configured = null) {
+    const hasConfiguredPalettes = Array.isArray(configured);
+    const source = hasConfiguredPalettes
+      ? configured
+      : Array.isArray(aviso?.metadata?.color_palettes) ? aviso.metadata.color_palettes : [];
+    const palettes = [];
+    source.forEach(value => {
+      const rawPalette = String(value || "").trim().toLowerCase();
+      const palette = rawPalette === "night" ? "dark" : rawPalette === "day" ? "light" : rawPalette;
+      if (["dark", "light", "real"].includes(palette) && !palettes.includes(palette)) palettes.push(palette);
+    });
+    return palettes.length ? palettes : hasConfiguredPalettes ? [] : ["dark"];
+  }
+
   function normalizeAvisoData(sourceAviso, createDefaults = true) {
     const hasExplicitGroups = Array.isArray(sourceAviso?.vsmr_groups);
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
@@ -503,8 +517,8 @@
       light: lightBackground,
       real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
-    aviso.metadata.default_color_palette = "dark";
-    aviso.metadata.color_palettes = ["dark", "light", "real"];
+    aviso.metadata.default_color_palette = normalizeAvisoColorPalette(aviso.metadata.default_color_palette);
+    aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
     const seen = new Set();
@@ -676,6 +690,7 @@
         showFps: true,
         uiColorTheme: "night",
         avisoColorPalette: "dark",
+        avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {
           profilesHealthy: true,
           profilesMessage: "",
@@ -3945,7 +3960,19 @@
     geometrySelectionIds(geometryEntries);
     textStyleSelectionIds(textEntries);
 
-    const avisoColorPalette = activeAvisoColorPalette();
+    const availablePalettes = new Set(avisoColorPalettes(state.aviso, state.settings.avisoColorPalettes));
+    let avisoColorPalette = activeAvisoColorPalette();
+    if (availablePalettes.size && !availablePalettes.has(avisoColorPalette)) {
+      avisoColorPalette = [...availablePalettes][0];
+      state.settings.avisoColorPalette = avisoColorPalette;
+    }
+    $$('[data-aviso-color-palette]').forEach(button => {
+      const available = availablePalettes.has(button.dataset.avisoColorPalette);
+      button.disabled = !available;
+      button.title = available
+        ? `Use the ${button.textContent.trim()} AVISO palette`
+        : `${button.textContent.trim()} is not available for this airport`;
+    });
     syncToggleButtons('[data-aviso-color-palette]', avisoColorPalette, "avisoColorPalette");
     syncTabButtons('[data-aviso-view]', state.ui.avisoView, "avisoView");
     $$('[data-aviso-view-panel]').forEach(panel => panel.classList.toggle("active", panel.dataset.avisoViewPanel === state.ui.avisoView));
@@ -5950,10 +5977,16 @@
     else if (action === "set-aviso-palette") {
       const palette = normalizeAvisoColorPalette(button.dataset.avisoColorPalette);
       if (state.settings.avisoColorPalette !== palette) {
+		if (HOST_MODE && (state.dirty || hasUnappliedEditorInputs() || pending.save)) {
+		  showToast("Wait for current edits to save before changing the AVISO palette", "warning");
+		  return;
+		}
+		const rollback = HOST_MODE ? captureRuntimeCommandRollback() : null;
         state.settings.avisoColorPalette = palette;
         renderSettings();
         renderAviso();
-        markDirty(`AVISO ${palette} palette selected`, ["settings"]);
+		if (HOST_MODE) postRuntimeCommand("settings.update", { avisoColorPalette: palette }, rollback);
+		else markDirty(`AVISO ${palette} palette selected`, ["settings"]);
       }
     }
     else if (action === "dismiss-persistent-status") {

@@ -484,6 +484,20 @@
     return "dark";
   }
 
+  function avisoColorPalettes(aviso = state?.aviso, configured = null) {
+    const hasConfiguredPalettes = Array.isArray(configured);
+    const source = hasConfiguredPalettes
+      ? configured
+      : Array.isArray(aviso?.metadata?.color_palettes) ? aviso.metadata.color_palettes : [];
+    const palettes = [];
+    source.forEach(value => {
+      const rawPalette = String(value || "").trim().toLowerCase();
+      const palette = rawPalette === "night" ? "dark" : rawPalette === "day" ? "light" : rawPalette;
+      if (["dark", "light", "real"].includes(palette) && !palettes.includes(palette)) palettes.push(palette);
+    });
+    return palettes.length ? palettes : hasConfiguredPalettes ? [] : ["dark"];
+  }
+
   function normalizeAvisoData(sourceAviso, createDefaults = true) {
     const hasExplicitGroups = Array.isArray(sourceAviso?.vsmr_groups);
     const aviso = clone(sourceAviso || { type: "FeatureCollection", features: [], styles: {} });
@@ -498,8 +512,8 @@
       light: lightBackground,
       real: normalizeHex(sourceBackgroundColors?.real, lightBackground).toUpperCase()
     };
-    aviso.metadata.default_color_palette = "dark";
-    aviso.metadata.color_palettes = ["dark", "light", "real"];
+    aviso.metadata.default_color_palette = normalizeAvisoColorPalette(aviso.metadata.default_color_palette);
+    aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
     const seen = new Set();
@@ -671,6 +685,7 @@
         showFps: true,
         uiColorTheme: "night",
         avisoColorPalette: "dark",
+        avisoColorPalettes: ["dark", "light", "real"],
         dataHealth: {
           profilesHealthy: true,
           profilesMessage: "",

@@ -282,6 +282,32 @@ namespace
 					"LFPG text styles use a one-pixel halo");
 			}
 		}
+
+		AvisoDocumentModel lfpgCustom;
+		std::string lfpgCustomError;
+		const std::filesystem::path lfpgCustomPath = avisoRoot / "LFPG_Custom.geojson";
+		Expect(
+			lfpgCustom.LoadFromFile(lfpgCustomPath.u8string(), lfpgCustomError),
+			"LFPG Custom Dark/Light source validates");
+		Expect(
+			lfpgCustom.FeatureCount() > 4200U,
+			"LFPG Custom source retains its complete geometry and text feature set");
+		const rapidjson::Document& lfpgCustomDocument = lfpgCustom.GetDocument();
+		const rapidjson::Value* customTaxiwayPaint =
+			lfpgCustomDocument.HasMember("styles") && lfpgCustomDocument["styles"].IsObject() &&
+			lfpgCustomDocument["styles"].HasMember("surface.taxiway") &&
+			lfpgCustomDocument["styles"]["surface.taxiway"].IsObject() &&
+			lfpgCustomDocument["styles"]["surface.taxiway"].HasMember("paint")
+			? &lfpgCustomDocument["styles"]["surface.taxiway"]["paint"]
+			: nullptr;
+		Expect(
+			customTaxiwayPaint != nullptr && customTaxiwayPaint->IsObject() &&
+			customTaxiwayPaint->HasMember("palette-overrides") &&
+			(*customTaxiwayPaint)["palette-overrides"].IsObject() &&
+			(*customTaxiwayPaint)["palette-overrides"].HasMember("day") &&
+			(*customTaxiwayPaint)["palette-overrides"]["day"].IsObject() &&
+			std::string((*customTaxiwayPaint)["palette-overrides"]["day"]["fill"].GetString()) == "#868686",
+			"LFPG Light uses the LFPG Custom Day surface palette");
 		std::string deeplyNestedAviso(65U, '[');
 		deeplyNestedAviso += '0';
 		deeplyNestedAviso.append(65U, ']');
