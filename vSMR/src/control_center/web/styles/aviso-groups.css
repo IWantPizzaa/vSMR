@@ -2,7 +2,7 @@
 
 .aviso-groups-layout {
   grid-template-columns: var(--ui-master-width) minmax(0, 1fr);
-  padding: 3px;
+  padding: var(--ui-page-padding);
 }
 
 .aviso-group-editor-scroll,

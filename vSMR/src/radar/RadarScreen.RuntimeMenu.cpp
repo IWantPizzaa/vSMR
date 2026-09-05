@@ -890,7 +890,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
 		contentTop += 30;
 
-		drawSectionLabel("PDC REMINDERS");
+		drawSectionLabel("CDM REMINDER");
 		const bool canEditTiming = plugin != nullptr && !state.cdmAutoEnabled;
 		auto drawTimingRow = [&](const char* name, const char* idPrefix, int value)
 		{
@@ -951,7 +951,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			plugin != nullptr && (state.cdmAutoEnabled || reminderReady),
 			!state.cdmAutoEnabled,
 			state.cdmAutoEnabled,
-			state.cdmAutoEnabled ? "Stop automatic PDC reminders" : "Start automatic PDC reminders");
+			state.cdmAutoEnabled ? "Stop automatic CDM reminders" : "Start automatic CDM reminders");
 	}
 	else if (!insetPopup)
 	{

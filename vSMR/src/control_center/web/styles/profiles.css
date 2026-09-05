@@ -7,6 +7,35 @@
   margin-top: 5px;
 }
 
+.rule-editor-form {
+  display: grid;
+  align-content: start;
+}
+
+.rule-editor-empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--ui-space-5);
+  color: var(--ui-muted-text);
+  text-align: center;
+}
+
+.rule-editor-empty-content {
+  width: min(260px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: var(--ui-space-3);
+  line-height: 1.35;
+}
+
+.rule-editor-empty-content strong {
+  color: var(--ui-text);
+  font-size: var(--ui-font-size);
+}
+
+.rule-editor-empty-content .ui-button { margin-top: var(--ui-space-1); }
+
 .criteria-list {
   display: grid;
   gap: 3px;
@@ -25,7 +54,38 @@
 
 .rule-detail-scroll > .field { margin: 0 7px 4px; }
 
-.criteria-list .criterion-row { grid-template-columns: 72px minmax(0, .9fr) 78px minmax(0, 1.15fr) 19px; }
+.criteria-list .criterion-row {
+  grid-template-columns: 72px minmax(82px, .9fr) 78px minmax(92px, 1.15fr) 22px;
+}
+
+.criteria-header {
+  display: grid;
+  grid-template-columns: 72px minmax(82px, .9fr) 78px minmax(92px, 1.15fr) 22px;
+  gap: 3px;
+  padding: 0 1px 3px;
+  color: var(--ui-muted-text);
+  font-size: var(--ui-font-size-compact);
+  line-height: 1;
+}
+
+.criterion-row > :is(input, select) { min-width: 0; }
+
+.criterion-delete svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.rule-criteria-count {
+  min-width: 14px;
+  height: 14px;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  font: 8px/12px var(--mono);
+}
 
 .criteria-list .criterion-row input {
   padding-left: 3px;
