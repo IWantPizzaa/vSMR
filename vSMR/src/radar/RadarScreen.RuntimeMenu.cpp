@@ -32,7 +32,7 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 252;
+	constexpr int kVsidPopupHeight = 226;
 	constexpr int kDatalinkPopupWidth = 220;
 	constexpr int kDatalinkPopupHeight = 230;
 	constexpr int kStandardPopupWidth = 170;
@@ -810,7 +810,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		bool enabled,
 		bool primary,
 		bool danger,
-		const std::string& tooltip)
+		const std::string& tooltip,
+		bool interactive = true)
 	{
 		const bool hover = enabled && PointInside(buttonArea, mouseLocation);
 		COLORREF fill = enabled ? kButtonBackground : kDisabledBackground;
@@ -832,7 +833,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		DrawRoundedRect(hdc, buttonArea, fill, kOuterBorder, kControlCornerDiameter);
 		::SelectObject(hdc, actionFont);
 		DrawTextEllipsis(hdc, buttonArea, label, foreground, DT_CENTER);
-		if (enabled)
+		if (enabled && interactive)
 			addPopupScreenObject(id, buttonArea, tooltip.c_str());
 	};
 	auto drawSectionLabel = [&](const std::string& label)
@@ -869,7 +870,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		if (vsidState.commandLineBusy)
 			statusText = "EuroScope command line busy";
 		else if (vsidState.providerReady)
-			statusText = "Connected - " + std::to_string(vsidState.aircraftCount) + " aircraft";
+			statusText = "Connected - " + std::to_string(vsidState.aircraftCount) + " active aircraft";
 		else if (!vsidState.bridgeLoaded)
 			statusText = "Plugin Bridge not loaded";
 		else if (!vsidState.bridgeCompatible)
@@ -915,7 +916,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 		auto drawVsidActions = [&](const auto& definitions, bool enabled)
 		{
-			for (std::size_t index = 0U; index < definitions.size(); index += 2U)
+			std::size_t index = 0U;
+			for (; index + 1U < definitions.size(); index += 2U)
 			{
 				const VsmrVsid::RuntimeActionDefinition& left = definitions[index];
 				const VsmrVsid::RuntimeActionDefinition& right = definitions[index + 1U];
@@ -923,8 +925,40 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 					left.objectId, left.label, left.tooltip, enabled,
 					right.objectId, right.label, right.tooltip, enabled);
 			}
+			if (index < definitions.size())
+			{
+				const VsmrVsid::RuntimeActionDefinition& action = definitions[index];
+				CRect area(
+					RuntimeMenuPopupArea.left + kPopupPadding,
+					contentTop,
+					RuntimeMenuPopupArea.right - kPopupPadding,
+					contentTop + 24);
+				drawRuntimeButton(
+					action.objectId, area, action.label, enabled,
+					false, false, action.tooltip);
+				contentTop += 28;
+			}
 		};
 		drawVsidActions(VsmrVsid::AirportRuntimeActions, canSubmitAirport);
+
+		if (normalizedAirport == "LFPG")
+		{
+			drawSectionLabel("LFPG MODE");
+			CRect leftArea;
+			CRect rightArea;
+			twoColumnAreas(24, leftArea, rightArea);
+			const auto& minimum = VsmrVsid::LfpgModeActions[0];
+			const auto& crossing = VsmrVsid::LfpgModeActions[1];
+			const bool minimumActive =
+				vsidState.lfpgMode == VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
+			drawRuntimeButton(
+				minimum.objectId, leftArea, minimum.label, canSubmitAirport,
+				minimumActive, false, minimum.tooltip, !minimumActive);
+			drawRuntimeButton(
+				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
+				!minimumActive, false, crossing.tooltip, minimumActive);
+			contentTop += 28;
+		}
 
 		drawSectionLabel("GENERAL");
 		drawVsidActions(VsmrVsid::GeneralRuntimeActions, canSubmit);
