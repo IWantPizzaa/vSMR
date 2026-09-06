@@ -30,6 +30,12 @@ namespace VsmrVsid
 		GroundCrossing
 	};
 
+	enum class LfpgLinkMode
+	{
+		Linked,
+		Unlinked
+	};
+
 	struct AircraftData
 	{
 		std::string sid;
