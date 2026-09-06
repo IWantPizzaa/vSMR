@@ -210,8 +210,8 @@
       vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
     }
     expect(Array.from(firstCriterion?.querySelectorAll('[data-field="token"] option') || [])
-      .map(option => option.value).join(",") === "tobt,tsat,ttot,ctot,tsac,asrt,asat,deice,tobt_set_by,flow_restriction,ecfmp_restriction,manual_ctot",
-      "Rules expose every CDM bridge field through one dedicated source");
+      .map(option => option.value).join(",") === "tobt,tsat,ttot,ctot,tsac,asrt,asat",
+      "Rules expose the selected CDM bridge fields through one dedicated source");
     if (vSidSource) {
       vSidSource.value = "vsid";
       vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
@@ -404,11 +404,13 @@
     expect(["vsid_sid", "vsid_rwy", "vsid_cfl"].every(token =>
       Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
       "Tags expose every vSID bridge field");
-		expect(["cdm_ready_startup", "cdm_tobt", "cdm_tsat", "cdm_ttot", "cdm_ctot", "cdm_tsac", "cdm_asrt",
-      "cdm_asat", "cdm_deice", "cdm_tobt_set_by", "cdm_flow_restriction",
-      "cdm_ecfmp_restriction", "cdm_manual_ctot"].every(token =>
-      Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
-      "Tags expose every CDM bridge field");
+		expect(["ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].every(token =>
+			Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
+			"Tags expose the selected CDM bridge fields without prefixes");
+		expect(["cdm_deice", "cdm_tobt_set_by", "cdm_flow_restriction",
+			"cdm_ecfmp_restriction", "cdm_manual_ctot"].every(token =>
+			!document.querySelector(`#tagTokenSelect option[value="${token}"]`)),
+			"Tags omit unused CDM metadata fields");
     const tagBehaviour = document.querySelector(".tag-behaviour-grid");
     const tagBehaviourControls = Array.from(tagBehaviour?.querySelectorAll(".check-field") || []);
     expect(Boolean(tagBehaviour) && tagBehaviour.scrollWidth <= tagBehaviour.clientWidth &&
