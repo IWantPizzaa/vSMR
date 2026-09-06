@@ -22,6 +22,29 @@ namespace
 
 	PendingSubmission ActiveSubmission;
 	bool SubmissionActive = false;
+	constexpr UINT_PTR QuietVsidEnterSubclassId = 0x56534944U;
+
+	LRESULT CALLBACK QuietVsidEnterSubclass(
+		HWND window,
+		UINT message,
+		WPARAM wParam,
+		LPARAM lParam,
+		UINT_PTR subclassId,
+		DWORD_PTR referenceData)
+	{
+		(void)referenceData;
+		if (message == WM_CHAR && wParam == VK_RETURN &&
+			SubmissionActive && ActiveSubmission.owner == Owner::Vsid &&
+			ActiveSubmission.editControl == window)
+		{
+			// EuroScope consumes the posted key-down. Do not pass the translated
+			// Enter character to its single-line edit, which emits a system beep.
+			return 0;
+		}
+		if (message == WM_NCDESTROY)
+			::RemoveWindowSubclass(window, QuietVsidEnterSubclass, subclassId);
+		return ::DefSubclassProc(window, message, wParam, lParam);
+	}
 
 	bool IsLikelyCommandEditControl(HWND window)
 	{
@@ -155,6 +178,15 @@ namespace
 
 	void ClearActiveSubmission(bool removeInsertedText) noexcept
 	{
+		if (SubmissionActive && ActiveSubmission.owner == Owner::Vsid &&
+			ActiveSubmission.editControl != nullptr &&
+			::IsWindow(ActiveSubmission.editControl))
+		{
+			::RemoveWindowSubclass(
+				ActiveSubmission.editControl,
+				QuietVsidEnterSubclass,
+				QuietVsidEnterSubclassId);
+		}
 		if (removeInsertedText && SubmissionActive &&
 			ActiveSubmission.editControl != nullptr && ::IsWindow(ActiveSubmission.editControl))
 		{
@@ -200,6 +232,21 @@ bool VsmrEuroScopeCommandLine::Begin(
 		return fail("Clear EuroScope's command line before using this button.");
 	if (!::SetWindowTextA(editControl, command.c_str()))
 		return fail("EuroScope's command line could not be updated.");
+	if (owner == Owner::Vsid && !::SetWindowSubclass(
+		editControl,
+		QuietVsidEnterSubclass,
+		QuietVsidEnterSubclassId,
+		0U))
+	{
+		::SetWindowTextA(editControl, "");
+		return fail("EuroScope's command line could not be prepared.");
+	}
+
+	ActiveSubmission.owner = owner;
+	ActiveSubmission.editControl = editControl;
+	ActiveSubmission.command = command;
+	ActiveSubmission.startedAt = std::chrono::steady_clock::now();
+	SubmissionActive = true;
 
 	const bool keyDownPosted =
 		::PostMessageA(editControl, WM_KEYDOWN, VK_RETURN, 0) != FALSE;
@@ -207,18 +254,10 @@ bool VsmrEuroScopeCommandLine::Begin(
 		::PostMessageA(editControl, WM_KEYUP, VK_RETURN, 0) != FALSE;
 	if (!keyDownPosted)
 	{
-		std::string currentText;
-		if (ReadWindowText(editControl, currentText) && currentText == command)
-			::SetWindowTextA(editControl, "");
+		ClearActiveSubmission(true);
 		return fail("EuroScope did not accept the command.");
 	}
 	(void)keyUpPosted;
-
-	ActiveSubmission.owner = owner;
-	ActiveSubmission.editControl = editControl;
-	ActiveSubmission.command = command;
-	ActiveSubmission.startedAt = std::chrono::steady_clock::now();
-	SubmissionActive = true;
 	return true;
 }
 
