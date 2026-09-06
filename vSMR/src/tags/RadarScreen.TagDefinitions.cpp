@@ -50,6 +50,9 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"ssr",
 		"asid",
 		"ssid",
+		"vsid_sid",
+		"vsid_rwy",
+		"vsid_cfl",
 		"origin",
 		"dest",
 		"groundstatus",
@@ -864,6 +867,9 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["ssr"] = "1234";
 	previewMap["asid"] = "LAM1X";
 	previewMap["ssid"] = "LAM1";
+	previewMap["vsid_sid"] = "LAM1X";
+	previewMap["vsid_rwy"] = "26R";
+	previewMap["vsid_cfl"] = "A50";
 	previewMap["origin"] = "LFPG";
 	previewMap["dest"] = "EGKK";
 	previewMap["groundstatus"] = "TAXI";
@@ -1086,6 +1092,8 @@ std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) 
 {
 	std::string lowered = TrimAsciiWhitespace(source);
 	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (lowered == "vsid" || lowered == "v_sid")
+		return "vsid";
 	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist" || lowered == "sid")
 		return "custom";
 	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
@@ -1118,6 +1126,18 @@ std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, c
 		}
 		return "";
 	}
+	if (normalizedSource == "vsid")
+	{
+		if (normalizedToken == "sid")
+			return "vsid_sid";
+		if (normalizedToken == "rwy" || normalizedToken == "runway")
+			return "vsid_rwy";
+		if (normalizedToken == "cfl")
+			return "vsid_cfl";
+		if (normalizedToken == "vsid_sid" || normalizedToken == "vsid_rwy" || normalizedToken == "vsid_cfl")
+			return normalizedToken;
+		return "";
+	}
 
 	if (normalizedToken == "tobt" || normalizedToken == "tsat" || normalizedToken == "ttot" ||
 		normalizedToken == "asat" || normalizedToken == "aobt" || normalizedToken == "atot" ||
@@ -1136,7 +1156,7 @@ std::string CSMRRadar::NormalizeStructuredRuleCondition(const std::string& sourc
 	if (text.empty())
 		return "any";
 
-	if (normalizedSource == "runway" || normalizedSource == "custom")
+	if (normalizedSource == "runway" || normalizedSource == "custom" || normalizedSource == "vsid")
 		return text;
 
 	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

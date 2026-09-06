@@ -11,6 +11,7 @@
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
 #include "datalink/CdmReminderSafety.hpp"
+#include "integrations/VsidBridgeData.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
@@ -290,6 +291,88 @@ namespace
 		Expect(TryParseClearanceTokenDisplay("clearance(HOLD,CLEARED)", pending, cleared), "clearance display token parses");
 		Expect(pending == "HOLD" && cleared == "CLEARED", "clearance display states are preserved");
 		Expect(TryParseClearanceTokenDisplay("clearance()", pending, cleared) && pending.empty() && cleared.empty(), "empty clearance display hides both states");
+	}
+
+	void TestVsidBridgeData()
+	{
+		Expect(
+			VsmrVsid::NormalizeFieldValue("  LAM1X \t") == "LAM1X",
+			"vSID bridge values trim protocol whitespace");
+		Expect(
+			VsmrVsid::NormalizeFieldValue(std::string(VsmrVsid::MaximumFieldBytes + 1U, 'A')).empty(),
+			"vSID bridge values enforce the provider field limit");
+		const char embeddedNull[] = { 'A', '5', '0', '\0', 'X' };
+		Expect(
+			VsmrVsid::NormalizeFieldValue(
+				std::string_view(embeddedNull, sizeof(embeddedNull))).empty(),
+			"vSID bridge values reject embedded nulls");
+
+		VsmrVsid::AircraftData data;
+		data.sid = "LAM1X";
+		data.runway = "26R";
+		data.clearedFlightLevel = "A50";
+		std::map<std::string, std::string> tokens;
+		VsmrVsid::AddTagTokens(tokens, &data);
+		Expect(
+			tokens["vsid_sid"] == "LAM1X" &&
+			tokens["vsid_rwy"] == "26R" &&
+			tokens["vsid_cfl"] == "A50",
+			"vSID bridge data populates the three public tag tokens");
+		VsmrVsid::AddTagTokens(tokens, nullptr);
+		Expect(
+			tokens["vsid_sid"].empty() &&
+			tokens["vsid_rwy"].empty() &&
+			tokens["vsid_cfl"].empty(),
+			"missing vSID bridge data leaves stable empty tag tokens");
+
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::AutomaticModeToggle,
+				" lfpg ") == ".vsid auto LFPG",
+			"vSID airport actions normalize a valid ICAO");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LowVisibilityToggle,
+				"LF PG").empty(),
+			"vSID airport actions reject embedded whitespace");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ListRules,
+				"LFPG&reload").empty(),
+			"vSID airport actions reject command metacharacters");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::Synchronize,
+				"") == ".vsid sync",
+			"vSID global actions do not require an airport");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ListAreas,
+				"LFPG") == ".vsid area LFPG" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ListRules,
+				"LFPG") == ".vsid rule LFPG" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ListRequests,
+				"LFPG") == ".vsid req LFPG",
+			"vSID diagnostic buttons build the documented airport commands");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ReloadConfiguration,
+				"") == ".vsid reload" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ReloadEse,
+				"") == ".vsid reload ese",
+			"vSID reload buttons build only the documented fixed commands");
+
+		VsmrVsid::CommandAction action{};
+		Expect(
+			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.reload-ese", action) &&
+			action == VsmrVsid::CommandAction::ReloadEse,
+			"vSID Runtime Menu actions map to a fixed allowlist");
+		Expect(
+			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.raw-command", action),
+			"vSID Runtime Menu rejects unknown action identifiers");
 	}
 
 	void TestRimcasRules()
@@ -863,6 +946,7 @@ int wmain(int argc, wchar_t** argv)
 	TestJsonInputLimitBoundaries();
 	TestHoldingPointRemarks();
 	TestTagTokens();
+	TestVsidBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
 	TestWeatherParsing();

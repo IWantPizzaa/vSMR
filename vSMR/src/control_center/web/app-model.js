@@ -58,13 +58,14 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["vacdm", "runway", "custom"];
-  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom" };
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const RULE_SOURCES = ["vacdm", "runway", "custom", "vsid"];
+  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
   const RULE_SOURCE_TOKENS = {
     vacdm: ["tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot"],
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
-    custom: ["asid", "ssid"]
+    custom: ["asid", "ssid"],
+    vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
   };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];

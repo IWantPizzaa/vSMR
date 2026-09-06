@@ -203,6 +203,15 @@
     expect(document.querySelectorAll(".rule-editor-summary-grid > fieldset").length === 2 &&
       document.querySelectorAll(".rule-color-grid > .rule-color-row").length === 3,
       "Rules use dedicated identity, scope, condition, and color-override sections");
+    const firstCriterion = document.querySelector("#criteriaList .criterion-row");
+    const vSidSource = firstCriterion?.querySelector('[data-field="source"]');
+    if (vSidSource) {
+      vSidSource.value = "vsid";
+      vSidSource.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    expect(Array.from(firstCriterion?.querySelectorAll('[data-field="token"] option') || [])
+      .map(option => option.value).join(",") === "vsid_sid,vsid_rwy,vsid_cfl",
+      "Rules expose the vSID bridge fields through one dedicated source");
     expect(Boolean(document.querySelector('[data-action="copy-rule"]')) &&
       Boolean(document.querySelector('[data-action="paste-rule"]')),
       "Rules expose shared copy and paste actions");
@@ -385,6 +394,9 @@
     document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
     sampleVisiblePrimitives();
+    expect(["vsid_sid", "vsid_rwy", "vsid_cfl"].every(token =>
+      Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
+      "Tags expose every vSID bridge field");
     const tagBehaviour = document.querySelector(".tag-behaviour-grid");
     const tagBehaviourControls = Array.from(tagBehaviour?.querySelectorAll(".check-field") || []);
     expect(Boolean(tagBehaviour) && tagBehaviour.scrollWidth <= tagBehaviour.clientWidth &&

@@ -63,13 +63,14 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["vacdm", "runway", "custom"];
-  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom" };
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const RULE_SOURCES = ["vacdm", "runway", "custom", "vsid"];
+  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
   const RULE_SOURCE_TOKENS = {
     vacdm: ["tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot"],
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
-    custom: ["asid", "ssid"]
+    custom: ["asid", "ssid"],
+    vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
   };
   const AVISO_BACKGROUND_STYLE_ID = "__aviso_background__";
   const ALERT_TYPES = ["NO PUSH", "NO TAXI", "NO TKOF", "STAT RPA", "RWY INC", "RWY TYPE", "RWY CLSD", "HIGH SPD", "EMERG"];
@@ -2863,6 +2864,7 @@
   }
   function normalizeRuleSourceUi(source) {
     const normalized = String(source || "").trim().toLowerCase();
+    if (normalized === "vsid" || normalized === "v_sid") return "vsid";
     if (normalized === "runway" || normalized === "rwy") return "runway";
     if (["custom", "sid", "list", "sidlist"].includes(normalized)) return "custom";
     return "vacdm";
@@ -2874,7 +2876,7 @@
     const normalizedSource = normalizeRuleSourceUi(source);
     const normalizedToken = String(token || "").trim().toLowerCase();
     let values;
-    if (normalizedSource === "runway" || normalizedSource === "custom")
+    if (["runway", "custom", "vsid"].includes(normalizedSource))
       values = ["any", "set", "missing", "in", "not_in"];
     else if (normalizedToken === "tobt")
       values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
@@ -2913,9 +2915,12 @@
     if (!input) return;
     const acceptsValues = normalizeRuleSourceUi(source) !== "vacdm" && ["in", "not_in"].includes(operator);
     input.disabled = !acceptsValues;
-    input.placeholder = acceptsValues
-      ? (normalizeRuleSourceUi(source) === "runway" ? "09L, 27R" : "SID1X, SID2A")
-      : "";
+    const normalizedSource = normalizeRuleSourceUi(source);
+    const token = $("[data-field='token']", row)?.value || "";
+    let placeholder = "SID1X, SID2A";
+    if (normalizedSource === "runway" || token === "vsid_rwy") placeholder = "09L, 27R";
+    else if (token === "vsid_cfl") placeholder = "A50, 100";
+    input.placeholder = acceptsValues ? placeholder : "";
   }
   function ruleSelectOptions(values, selected, labels = null) {
     const desired = String(selected || "").toLowerCase();

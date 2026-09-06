@@ -97,6 +97,7 @@
     <ClInclude Include="..\src\control_center\ControlCenterMessageProtocol.hpp" />
     <ClInclude Include="..\src\control_center\WebMessageValidation.hpp" />
 	<ClInclude Include="..\src\datalink\CdmReminderSafety.hpp" />
+    <ClInclude Include="..\src\integrations\VsidBridgeData.hpp" />
     <ClInclude Include="..\src\radar\RadarGeometry.hpp" />
     <ClInclude Include="..\src\rendering\TagRenderer.hpp" />
     <ClInclude Include="..\src\rendering\TargetSymbolRenderer.hpp" />

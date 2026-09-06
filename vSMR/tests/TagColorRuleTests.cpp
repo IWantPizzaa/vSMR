@@ -119,6 +119,39 @@ std::vector<std::string> RunTagColorRuleTests()
 		"tag color evaluator rejects a structured rule outside its status context",
 		failures);
 
+	StructuredTagColorRule vsidRule;
+	vsidRule.source = "vsid";
+	vsidRule.token = "vsid_sid";
+	vsidRule.condition = "in:LAM,OKIPA";
+	vsidRule.applyText = true;
+	vsidRule.textR = 31;
+	vsidRule.textG = 32;
+	vsidRule.textB = 33;
+	const VacdmColorRuleOverrides vsidOverrides = EvaluateStructuredTagColorRules(
+		{ vsidRule },
+		"departure",
+		"taxi",
+		false,
+		{ { "vsid_sid", "LAM1X" } },
+		nullptr);
+	Check(
+		vsidOverrides.hasTextColor && vsidOverrides.textR == 31 &&
+			vsidOverrides.textG == 32 && vsidOverrides.textB == 33,
+		"tag color evaluator applies matching vSID bridge criteria",
+		failures);
+	vsidRule.token = "vsid_cfl";
+	vsidRule.condition = "in:A5";
+	Check(
+		!EvaluateStructuredTagColorRules(
+			{ vsidRule },
+			"departure",
+			"taxi",
+			false,
+			{ { "vsid_cfl", "A50" } },
+			nullptr).hasTextColor,
+		"vSID cleared-level criteria require an exact list value",
+		failures);
+
 	rapidjson::Document definition;
 	definition.Parse<0>("[\"callsign\",[\"deprwy\",\"scratchpad\"],42]");
 	const std::vector<std::string> lines = ConvertDefinitionValueToLineTexts(definition);

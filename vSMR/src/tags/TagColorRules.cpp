@@ -498,7 +498,10 @@ namespace VsmrTagColorRules
 			matchesField(rule.detail, detailKey);
 	}
 
-	static bool CustomRuleConditionMatches(const std::string& expectedConditionRaw, const std::string& actualValueRaw)
+	static bool CustomRuleConditionMatches(
+		const std::string& expectedConditionRaw,
+		const std::string& actualValueRaw,
+		bool allowPrefixMatch = true)
 	{
 		const std::string actualNormalized = NormalizeSidMatchText(actualValueRaw);
 		const std::string expectedTrimmed = TrimAsciiWhitespaceCopy(expectedConditionRaw);
@@ -548,7 +551,8 @@ namespace VsmrTagColorRules
 				return false;
 			if (actualNormalized == pattern)
 				return true;
-			if (actualNormalized.size() >= pattern.size() && actualNormalized.compare(0, pattern.size(), pattern) == 0)
+			if (allowPrefixMatch && actualNormalized.size() >= pattern.size() &&
+				actualNormalized.compare(0, pattern.size(), pattern) == 0)
 				return true;
 			return false;
 		};
@@ -603,13 +607,18 @@ namespace VsmrTagColorRules
 				actualRunway = it->second;
 			return RunwayRuleConditionMatches(condition, actualRunway);
 		}
-		if (source == "custom")
+		if (source == "custom" || source == "vsid")
 		{
 			std::string actualValue;
 			auto it = replacingMap.find(token);
 			if (it != replacingMap.end())
 				actualValue = it->second;
-			return CustomRuleConditionMatches(condition, actualValue);
+			if (source == "vsid" && token == "vsid_rwy")
+				return RunwayRuleConditionMatches(condition, actualValue);
+			return CustomRuleConditionMatches(
+				condition,
+				actualValue,
+				source == "custom" || token == "vsid_sid");
 		}
 
 		const std::string actualState = ResolveVacdmRuleStateName(token, pilotData);

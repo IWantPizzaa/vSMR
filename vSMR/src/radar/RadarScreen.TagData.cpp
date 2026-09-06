@@ -2,6 +2,7 @@
 #include "radar/RadarScreen.hpp"
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "integrations/VsidBridgeClient.hpp"
 #include "tags/VacdmTagHelpers.hpp"
 
 map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign, const VacdmPilotData* capturedVacdmData, const int* capturedPreviousFlightLevel)
@@ -48,6 +49,9 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// ssr: the current squawk of the ac
 	// asid: the assigned SID
 	// ssid: a short version of the SID
+	// vsid_sid: SID assigned by vSID
+	// vsid_rwy: Runway assigned by vSID
+	// vsid_cfl: Cleared flight level assigned by vSID
 	// origin: origin aerodrome
 	// dest: destination aerodrome
 	// clearance: departure/startup clearance flag ([ ] / [x]), clickable toggle
@@ -432,6 +436,12 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	TagReplacingMap["remark"] = remark;
 	TagReplacingMap["scratchpad"] = scratchpad;
 	TagReplacingMap["holdingpoint"] = holdingpoint;
+	VsmrVsid::AircraftData vsidData;
+	const std::string vsidCallsign = !stableCallsign.empty()
+		? stableCallsign
+		: (hasFlightPlan ? safeString(fp.GetCallsign()) : "");
+	const bool hasVsidData = VsmrVsid::TryGetAircraftData(vsidCallsign, vsidData);
+	VsmrVsid::AddTagTokens(TagReplacingMap, hasVsidData ? &vsidData : nullptr);
 	verboseStep(
 		"done callsign=" + TagReplacingMap["callsign"] +
 		" actype=" + TagReplacingMap["actype"] +

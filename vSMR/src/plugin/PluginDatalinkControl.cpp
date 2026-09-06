@@ -3,6 +3,7 @@
 #include "plugin/PluginHttpSupport.hpp"
 #include "plugin/Plugin.RuntimeState.hpp"
 #include "plugin/PluginDatalink.Internal.hpp"
+#include "platform/windows/EuroScopeCommandLine.hpp"
 
 #include "bootstrap/RuntimeContext.hpp"
 #include "control_center/ControlCenterDialog.hpp"
@@ -482,6 +483,8 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 
 void CSMRPlugin::ResetDatalinkRuntime()
 {
+	VsmrEuroScopeCommandLine::Cancel(
+		VsmrEuroScopeCommandLine::Owner::CdmReminder);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);

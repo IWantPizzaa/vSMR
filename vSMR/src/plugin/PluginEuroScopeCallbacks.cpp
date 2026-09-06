@@ -6,6 +6,7 @@
 #include "aircraft/HoldingPoint.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
+#include "integrations/VsidBridgeClient.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
@@ -62,6 +63,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		return;
 	VsmrGroundState::ClearLineupOverride(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
+	VsmrVsid::ForgetAircraft(normalizedCallsign);
 
 	ForgetDatalinkFlightPlan(normalizedCallsign);
 }

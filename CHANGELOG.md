@@ -7,6 +7,7 @@
 - Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
 - Added validated Copy/Paste actions for Rules and AVISO geometry/text styles. AVISO paste and profile-color editing support the existing Ctrl/Shift multi-selection workflow.
 - Added delayed, theme-aware interaction explanations for buttons and editable controls throughout the Control Center.
+- Added an optional vSID 0.15.0.2 interface through EuroScope Plugin Bridge. A dedicated Runtime Menu panel replaces manual vSID command entry with validated buttons for airport modes, diagnostics, synchronization, and reloads. Live vSID SID, runway, and cleared-flight-level values are available as `vsid_sid`, `vsid_rwy`, and `vsid_cfl` tag tokens and as a dedicated Rules source.
 
 ### Changed
 

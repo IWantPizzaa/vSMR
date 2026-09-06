@@ -73,6 +73,7 @@
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\VsidBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Chrome.cpp"><Filter>Source</Filter></ClCompile>
@@ -80,6 +81,7 @@
     <ClCompile Include="src\insets\InsetWindow.SecondaryRadar.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Timer.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Weather.cpp"><Filter>Source</Filter></ClCompile>
+	<ClCompile Include="src\platform\windows\EuroScopeCommandLine.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\plugin\Plugin.cpp"><Filter>Source</Filter></ClCompile>
@@ -158,8 +160,12 @@
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\PluginBridgeApi.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\VsidBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\VsidBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp"><Filter>Headers</Filter></ClInclude>
+	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp"><Filter>Headers</Filter></ClInclude>

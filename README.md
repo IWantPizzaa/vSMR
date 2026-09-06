@@ -16,6 +16,7 @@ Current version: **2.0.0-beta.5**
 - RIMCAS runway monitoring and configurable warning presentation
 - AVISO, SRW 1, METAR, and Timer inset windows
 - VACDM integration and Hoppie CPDLC/PDC support
+- Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Airport-scoped layouts, display modes, profiles, and settings
 - Transactional configuration, diagnostics, rollback, and signed-update support
 
@@ -27,6 +28,8 @@ See the [GitHub Wiki](https://github.com/IWantPizzaa/vSMR/wiki) for complete fea
 - [Microsoft Visual C++ 2015-2022 Redistributable (x86)](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)
 - [Microsoft Edge WebView2 Evergreen Runtime (x86)](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - The complete matching release package: `vSMR.dll` and `vSMR_Data\`
+
+The optional vSID interface requires [vSID 0.15.0.2 or later](https://github.com/AlexisBalzano/vSID) and [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge). Load both separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load the bridge DLL.
 
 vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the local Control Center; internet access is needed only for enabled online integrations and updates.
 
