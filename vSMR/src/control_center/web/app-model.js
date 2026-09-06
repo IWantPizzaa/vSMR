@@ -58,11 +58,11 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "cdm_ready_startup", "cdm_tobt", "cdm_tsat", "cdm_ttot", "cdm_ctot", "cdm_tsac", "cdm_asrt", "cdm_asat", "cdm_deice", "cdm_tobt_set_by", "cdm_flow_restriction", "cdm_ecfmp_restriction", "cdm_manual_ctot", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "ready_startup", "tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "uk_stand", "sqerror", "groundstatus", "systemid"];
   const RULE_SOURCES = ["cdm", "runway", "custom", "vsid"];
   const RULE_SOURCE_LABELS = { cdm: "CDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
   const RULE_SOURCE_TOKENS = {
-    cdm: ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "deice", "tobt_set_by", "flow_restriction", "ecfmp_restriction", "manual_ctot"],
+    cdm: ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"],
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
     custom: ["asid", "ssid"],
     vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
