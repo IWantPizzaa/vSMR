@@ -9,6 +9,7 @@
 - Added delayed, theme-aware interaction explanations for buttons and editable controls throughout the Control Center.
 - Added an optional vSID 0.15.0.2 interface through EuroScope Plugin Bridge. A dedicated Runtime Menu panel replaces manual vSID command entry with validated buttons for airport modes, diagnostics, synchronization, and reloads. Live vSID SID, runway, and cleared-flight-level values are available as `vsid_sid`, `vsid_rwy`, and `vsid_cfl` tag tokens and as a dedicated Rules source.
 - Replaced the retired vACDM HTTP integration with the bridge-enabled CDM plug-in. All published CDM fields are available to tags and the dedicated CDM Rules source: TOBT, TSAT, TTOT, CTOT, TSAC, ASRT, ASAT, de-icing, TOBT source, flow restriction, ECFMP restriction, and manual-CTOT state.
+- Added a `cdm_ready_startup` tag token that displays `RDY` in red until CDM publishes ASRT, then changes it to green.
 
 ### Changed
 

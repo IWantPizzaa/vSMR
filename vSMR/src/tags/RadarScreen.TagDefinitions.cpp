@@ -53,6 +53,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"vsid_sid",
 		"vsid_rwy",
 		"vsid_cfl",
+		"cdm_ready_startup",
 		"cdm_tobt",
 		"cdm_tsat",
 		"cdm_ttot",
@@ -882,6 +883,7 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["vsid_sid"] = "LAM1X";
 	previewMap["vsid_rwy"] = "26R";
 	previewMap["vsid_cfl"] = "A50";
+	previewMap["cdm_ready_startup"] = "RDY";
 	previewMap["cdm_tobt"] = "1210";
 	previewMap["cdm_tsat"] = "1215";
 	previewMap["cdm_ttot"] = "1220";
