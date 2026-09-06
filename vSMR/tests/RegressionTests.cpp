@@ -429,10 +429,14 @@ namespace
 		Expect(
 			VsmrCdm::HasPublishedAircraftData(data),
 			"published CDM fields identify an active bridge aircraft");
+		Expect(
+			VsmrCdm::IsReadyStartup(&data) && !VsmrCdm::IsReadyStartup(nullptr),
+			"CDM Ready Start-up follows the published ASRT state");
 
 		std::map<std::string, std::string> tokens;
 		VsmrCdm::AddTagTokens(tokens, &data);
 		Expect(
+			tokens["cdm_ready_startup"] == "RDY" &&
 			tokens["cdm_tobt"] == "0705" &&
 			tokens["cdm_tsat"] == "0710" &&
 			tokens["cdm_ttot"] == "0720" &&
@@ -448,10 +452,11 @@ namespace
 			"every published CDM bridge field has a public tag token");
 		VsmrCdm::AddTagTokens(tokens, nullptr);
 		Expect(
+			tokens["cdm_ready_startup"] == "RDY" &&
 			tokens["cdm_tobt"].empty() &&
 			tokens["cdm_deice"].empty() &&
 			tokens["cdm_manual_ctot"].empty(),
-			"missing CDM bridge data leaves stable empty tag tokens");
+			"missing CDM bridge data keeps the red Ready Start-up indicator visible");
 	}
 
 	void TestRimcasRules()
