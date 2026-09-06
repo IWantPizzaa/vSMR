@@ -154,8 +154,8 @@ std::vector<std::string> RunTagColorRuleTests()
 
 	StructuredTagColorRule cdmRule;
 	cdmRule.source = "cdm";
-	cdmRule.token = "deice";
-	cdmRule.condition = "in:REMOTE,STAND";
+	cdmRule.token = "asrt";
+	cdmRule.condition = "in:0702";
 	cdmRule.applyText = true;
 	cdmRule.textR = 41;
 	cdmRule.textG = 42;
@@ -165,24 +165,12 @@ std::vector<std::string> RunTagColorRuleTests()
 		"departure",
 		"taxi",
 		false,
-		{ { "cdm_deice", "REMOTE" } },
+		{ { "asrt", "0702" } },
 		nullptr);
 	Check(
 		cdmOverrides.hasTextColor && cdmOverrides.textR == 41 &&
 			cdmOverrides.textG == 42 && cdmOverrides.textB == 43,
-		"tag color evaluator exposes CDM bridge strings to structured rules",
-		failures);
-	cdmRule.token = "manual_ctot";
-	cdmRule.condition = "in:true";
-	Check(
-		EvaluateStructuredTagColorRules(
-			{ cdmRule },
-			"departure",
-			"taxi",
-			false,
-			{ { "cdm_manual_ctot", "true" } },
-			nullptr).hasTextColor,
-		"tag color evaluator exposes CDM bridge booleans to structured rules",
+		"tag color evaluator reads unprefixed CDM values in structured rules",
 		failures);
 
 	rapidjson::Document definition;

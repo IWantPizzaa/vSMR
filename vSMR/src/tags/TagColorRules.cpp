@@ -634,7 +634,7 @@ namespace VsmrTagColorRules
 			}
 
 			std::string actualValue;
-			const std::string mapToken = source == "cdm" ? "cdm_" + token : token;
+			const std::string& mapToken = token;
 			auto it = replacingMap.find(mapToken);
 			if (it != replacingMap.end())
 				actualValue = it->second;

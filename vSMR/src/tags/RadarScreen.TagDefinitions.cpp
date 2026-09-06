@@ -38,6 +38,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"tobt",
 		"tsat",
 		"ttot",
+		"tsac",
 		"asat",
 		"aobt",
 		"atot",
@@ -53,19 +54,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"vsid_sid",
 		"vsid_rwy",
 		"vsid_cfl",
-		"cdm_ready_startup",
-		"cdm_tobt",
-		"cdm_tsat",
-		"cdm_ttot",
-		"cdm_ctot",
-		"cdm_tsac",
-		"cdm_asrt",
-		"cdm_asat",
-		"cdm_deice",
-		"cdm_tobt_set_by",
-		"cdm_flow_restriction",
-		"cdm_ecfmp_restriction",
-		"cdm_manual_ctot",
+		"ready_startup",
 		"origin",
 		"dest",
 		"groundstatus",
@@ -868,6 +857,7 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["tobt"] = "1210";
 	previewMap["tsat"] = "1215";
 	previewMap["ttot"] = "1220";
+	previewMap["tsac"] = "1215";
 	previewMap["asat"] = "";
 	previewMap["aobt"] = "";
 	previewMap["atot"] = "";
@@ -883,19 +873,7 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["vsid_sid"] = "LAM1X";
 	previewMap["vsid_rwy"] = "26R";
 	previewMap["vsid_cfl"] = "A50";
-	previewMap["cdm_ready_startup"] = "RDY";
-	previewMap["cdm_tobt"] = "1210";
-	previewMap["cdm_tsat"] = "1215";
-	previewMap["cdm_ttot"] = "1220";
-	previewMap["cdm_ctot"] = "1225";
-	previewMap["cdm_tsac"] = "1215";
-	previewMap["cdm_asrt"] = "1208";
-	previewMap["cdm_asat"] = "1214";
-	previewMap["cdm_deice"] = "REMOTE";
-	previewMap["cdm_tobt_set_by"] = "PILOT";
-	previewMap["cdm_flow_restriction"] = "ATFCM";
-	previewMap["cdm_ecfmp_restriction"] = "EDYY01";
-	previewMap["cdm_manual_ctot"] = "false";
+	previewMap["ready_startup"] = "RDY";
 	previewMap["origin"] = "LFPG";
 	previewMap["dest"] = "EGKK";
 	previewMap["groundstatus"] = "TAXI";

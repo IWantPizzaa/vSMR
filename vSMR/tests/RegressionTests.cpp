@@ -436,26 +436,22 @@ namespace
 		std::map<std::string, std::string> tokens;
 		VsmrCdm::AddTagTokens(tokens, &data);
 		Expect(
-			tokens["cdm_ready_startup"] == "RDY" &&
-			tokens["cdm_tobt"] == "0705" &&
-			tokens["cdm_tsat"] == "0710" &&
-			tokens["cdm_ttot"] == "0720" &&
-			tokens["cdm_ctot"] == "0725" &&
-			tokens["cdm_tsac"] == "0710" &&
-			tokens["cdm_asrt"] == "0702" &&
-			tokens["cdm_asat"] == "0711" &&
-			tokens["cdm_deice"] == "REMOTE" &&
-			tokens["cdm_tobt_set_by"] == "PILOT" &&
-			tokens["cdm_flow_restriction"] == "ATFCM" &&
-			tokens["cdm_ecfmp_restriction"] == "EDYY01" &&
-			tokens["cdm_manual_ctot"] == "true",
-			"every published CDM bridge field has a public tag token");
+			tokens["ready_startup"] == "RDY" &&
+			tokens["tobt"] == "0705" &&
+			tokens["tsat"] == "0710" &&
+			tokens["ttot"] == "0720" &&
+			tokens["ctot"] == "0725" &&
+			tokens["tsac"] == "0710" &&
+			tokens["asrt"] == "0702" &&
+			tokens["asat"] == "0711" &&
+			tokens.find("cdm_deice") == tokens.end() &&
+			tokens.find("cdm_manual_ctot") == tokens.end(),
+			"selected CDM bridge fields use concise public tag tokens");
 		VsmrCdm::AddTagTokens(tokens, nullptr);
 		Expect(
-			tokens["cdm_ready_startup"] == "RDY" &&
-			tokens["cdm_tobt"].empty() &&
-			tokens["cdm_deice"].empty() &&
-			tokens["cdm_manual_ctot"].empty(),
+			tokens["ready_startup"] == "RDY" &&
+			tokens["tobt"].empty() &&
+			tokens.find("cdm_deice") == tokens.end(),
 			"missing CDM bridge data keeps the red Ready Start-up indicator visible");
 	}
 
