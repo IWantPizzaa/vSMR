@@ -404,7 +404,7 @@
     expect(["vsid_sid", "vsid_rwy", "vsid_cfl"].every(token =>
       Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
       "Tags expose every vSID bridge field");
-    expect(["cdm_tobt", "cdm_tsat", "cdm_ttot", "cdm_ctot", "cdm_tsac", "cdm_asrt",
+		expect(["cdm_ready_startup", "cdm_tobt", "cdm_tsat", "cdm_ttot", "cdm_ctot", "cdm_tsac", "cdm_asrt",
       "cdm_asat", "cdm_deice", "cdm_tobt_set_by", "cdm_flow_restriction",
       "cdm_ecfmp_restriction", "cdm_manual_ctot"].every(token =>
       Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),
