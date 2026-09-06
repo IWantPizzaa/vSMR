@@ -72,9 +72,9 @@ namespace
 		if (key == "callsign") return TAG_CITEM_CALLSIGN;
 		if (key == "systemid") return TAG_CITEM_MANUALCORRELATE;
 		if (key == "actype" || key == "sctype" || key == "sqerror" || key == "wake" || key == "origin" || key == "dest") return TAG_CITEM_FPBOX;
-		if (key == "deprwy" || key == "seprwy" || key == "arvrwy" || key == "srvrwy") return TAG_CITEM_RWY;
+		if (key == "deprwy" || key == "seprwy" || key == "arvrwy" || key == "srvrwy" || key == "vsid_rwy") return TAG_CITEM_RWY;
 		if (key == "gate" || key == "sate") return TAG_CITEM_GATE;
-		if (key == "asid" || key == "ssid" || key == "sid" || key == "shid") return TAG_CITEM_SID;
+		if (key == "asid" || key == "ssid" || key == "sid" || key == "shid" || key == "vsid_sid") return TAG_CITEM_SID;
 		if (key == "groundstatus" || key == "gstatus") return TAG_CITEM_GROUNDSTATUS;
 		if (key == "clearance" || key == "cleared") return TAG_CITEM_CLEARANCE;
 		if (key == "uk_stand") return TAG_CITEM_UKSTAND;

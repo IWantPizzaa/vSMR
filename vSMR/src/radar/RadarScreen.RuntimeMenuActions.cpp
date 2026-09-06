@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "integrations/VsidBridgeClient.hpp"
 #include "insets/InsetWindow.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
@@ -125,6 +126,8 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			togglePopup(RuntimeMenuPopup::Insets);
 		else if (std::strcmp(id, "runtime.button.profile") == 0)
 			togglePopup(RuntimeMenuPopup::Profile);
+		else if (std::strcmp(id, "runtime.button.vsid") == 0)
+			togglePopup(RuntimeMenuPopup::Vsid);
 		else if (std::strcmp(id, "runtime.button.datalink") == 0)
 			togglePopup(RuntimeMenuPopup::Datalink);
 		else if (std::strcmp(id, "runtime.button.control-center") == 0)
@@ -142,6 +145,44 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	}
 	if (std::strcmp(id, "runtime.popup") == 0)
 		return true;
+
+	// ----- Handling the fixed vSID interface actions -----
+	VsmrVsid::CommandAction vsidAction{};
+	if (VsmrVsid::TryParseRuntimeActionId(id, vsidAction))
+	{
+		std::string error;
+		if (!VsmrVsid::SubmitCommand(vsidAction, getActiveAirport(), error))
+		{
+			const std::string message = error.empty()
+				? "The vSID action could not be submitted."
+				: error;
+			GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"vSID",
+				message.c_str(),
+				true,
+				true,
+				false,
+				true,
+				false);
+		}
+		else
+		{
+			const std::string message =
+				"Requested vSID " + std::string(VsmrVsid::ActionDescription(vsidAction)) + ".";
+			GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"vSID",
+				message.c_str(),
+				true,
+				true,
+				false,
+				false,
+				false);
+		}
+		RequestRefresh();
+		return true;
+	}
 
 	// ----- Handling CPDLC and PDC actions -----
 	CSMRPlugin* datalinkPlugin = static_cast<CSMRPlugin*>(GetPlugIn());
