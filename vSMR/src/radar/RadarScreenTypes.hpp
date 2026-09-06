@@ -279,6 +279,7 @@ namespace VsmrRadarTypes
 		bool requireClearance = false;
 		bool requireValidTsat = false;
 		bool requireActiveTobt = false;
+		bool requireReady = false;
 		bool towerFilter = false;
 		bool structuredRulesEnabled = true;
 		int maximumAirborneAltitudeFt = 5500;

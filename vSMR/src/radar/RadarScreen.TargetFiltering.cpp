@@ -77,6 +77,11 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 	if (settings.requireClearance && (!fp.IsValid() || !fp.GetClearenceFlag()))
 		return false;
+	if (settings.requireReady &&
+		(capturedCdmData == nullptr || !capturedCdmData->hasAsrt))
+	{
+		return false;
+	}
 
 	if (settings.requireValidTsat || settings.requireActiveTobt)
 	{

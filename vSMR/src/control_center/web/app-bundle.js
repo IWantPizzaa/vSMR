@@ -3226,8 +3226,9 @@
     $("#reqSquawk").checked = Boolean(data.require_assigned_squawk);
     $("#modeAcceptPilotSquawk").checked = data.accept_pilot_squawk !== false;
     $("#reqClearance").checked = Boolean(data.require_clearance);
-    $("#reqTsat").checked = Boolean(data.require_valid_tsat);
-    $("#reqTobt").checked = Boolean(data.require_active_tobt);
+	$("#reqTsat").checked = Boolean(data.require_valid_tsat);
+	$("#reqTobt").checked = Boolean(data.require_active_tobt);
+	$("#reqReady").checked = Boolean(data.require_ready);
     $("#modeTowerFilter").checked = Boolean(data.tower_filter ?? data.tower_mode);
     $("#modeStructuredRules").checked = data.structured_rules !== false && data.structured_rules_enabled !== false;
     $("#modeMaxAirborneAltitude").value = String(Math.round(clamp(data.max_airborne_altitude_ft ?? 5500, 0, 60000)));
@@ -3248,8 +3249,9 @@
     mode.require_assigned_squawk = $("#reqSquawk").checked;
     mode.accept_pilot_squawk = $("#modeAcceptPilotSquawk").checked;
     mode.require_clearance = $("#reqClearance").checked;
-    mode.require_valid_tsat = $("#reqTsat").checked;
-    mode.require_active_tobt = $("#reqTobt").checked;
+	mode.require_valid_tsat = $("#reqTsat").checked;
+	mode.require_active_tobt = $("#reqTobt").checked;
+	mode.require_ready = $("#reqReady").checked;
     mode.tower_filter = $("#modeTowerFilter").checked;
     mode.structured_rules = $("#modeStructuredRules").checked;
     mode.max_airborne_altitude_ft = Math.round(clamp(Number($("#modeMaxAirborneAltitude").value), 0, 60000));

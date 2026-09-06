@@ -260,6 +260,20 @@
       "profile edit emits a state.save request"
     );
 
+	const modeSaveStart = outbound.length;
+	document.querySelector('.rail-button[data-page="modes"]')?.click();
+	const readyRequirement = document.querySelector("#reqReady");
+	expect(Boolean(readyRequirement), "Modes expose the Ready requirement");
+	if (readyRequirement) {
+		readyRequirement.checked = true;
+		readyRequirement.dispatchEvent(new Event("change", { bubbles: true }));
+	}
+	await waitFor(
+		() => outbound.slice(modeSaveStart).some(message => message.type === "state.save" &&
+			JSON.stringify(message.payload?.profiles || []).includes('"require_ready":true')),
+		"Modes persist the Ready requirement"
+	);
+
     await new Promise(resolve => setTimeout(resolve, 100));
     const groupsButton = document.querySelector('.rail-button[data-page="groups"]');
     groupsButton?.click();
@@ -398,7 +412,7 @@
       range.getBoundingClientRect().height === visibleIconRanges[0].getBoundingClientRect().height),
       "Icon sliders use one shared range-control geometry");
 
-    document.querySelector('[data-profile-tab="tags"]')?.click();
+	document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
     sampleVisiblePrimitives();
     expect(["vsid_sid", "vsid_rwy", "vsid_cfl"].every(token =>

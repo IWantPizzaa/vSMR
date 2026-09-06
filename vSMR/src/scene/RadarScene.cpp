@@ -81,6 +81,7 @@ namespace
 		if (key == "remark") return TAG_CITEM_REMARK;
 		if (key == "scratchpad") return TAG_CITEM_SCRATCHPAD;
 		if (key == "holdingpoint") return TAG_CITEM_HOLDINGPOINT;
+		if (key == "ready_startup") return TAG_CITEM_READY_STARTUP;
 		return TAG_CITEM_NO;
 	}
 

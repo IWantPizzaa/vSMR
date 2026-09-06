@@ -171,6 +171,7 @@ namespace
 		VsmrRapidJson::SetBoolMember(modeValue, "require_clearance", settings.requireClearance, allocator);
 		VsmrRapidJson::SetBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat, allocator);
 		VsmrRapidJson::SetBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt, allocator);
+		VsmrRapidJson::SetBoolMember(modeValue, "require_ready", settings.requireReady, allocator);
 		VsmrRapidJson::SetBoolMember(modeValue, "tower_filter", settings.towerFilter, allocator);
 		VsmrRapidJson::SetBoolMember(modeValue, "structured_rules", settings.structuredRulesEnabled, allocator);
 		WriteIntMember(modeValue, "max_airborne_altitude_ft", std::clamp(settings.maximumAirborneAltitudeFt, 0, 60000), allocator);
@@ -194,6 +195,7 @@ namespace
 		settings.requireClearance = ReadBoolMember(modeValue, "require_clearance", settings.requireClearance);
 		settings.requireValidTsat = ReadBoolMember(modeValue, "require_valid_tsat", settings.requireValidTsat);
 		settings.requireActiveTobt = ReadBoolMember(modeValue, "require_active_tobt", settings.requireActiveTobt);
+		settings.requireReady = ReadBoolMember(modeValue, "require_ready", settings.requireReady);
 		settings.acceptPilotSquawk = ReadBoolMember(modeValue, "accept_pilot_squawk", settings.acceptPilotSquawk);
 		settings.towerFilter = ReadBoolMember(modeValue, "tower_filter", ReadBoolMember(modeValue, "tower_mode", settings.towerFilter));
 		settings.structuredRulesEnabled = ReadBoolMember(modeValue, "structured_rules", ReadBoolMember(modeValue, "structured_rules_enabled", settings.structuredRulesEnabled));
