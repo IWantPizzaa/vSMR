@@ -311,6 +311,12 @@ namespace
 		data.sid = "LAM1X";
 		data.runway = "26R";
 		data.clearedFlightLevel = "A50";
+		Expect(
+			VsmrVsid::HasPublishedAircraftData(data),
+			"published vSID fields identify an active aircraft");
+		Expect(
+			!VsmrVsid::HasPublishedAircraftData(VsmrVsid::AircraftData()),
+			"empty bridge records do not inflate the active aircraft count");
 		std::map<std::string, std::string> tokens;
 		VsmrVsid::AddTagTokens(tokens, &data);
 		Expect(
@@ -332,12 +338,12 @@ namespace
 			"vSID airport actions normalize a valid ICAO");
 		Expect(
 			VsmrVsid::BuildCommand(
-				VsmrVsid::CommandAction::LowVisibilityToggle,
+				VsmrVsid::CommandAction::AutomaticModeToggle,
 				"LF PG").empty(),
 			"vSID airport actions reject embedded whitespace");
 		Expect(
 			VsmrVsid::BuildCommand(
-				VsmrVsid::CommandAction::ListRules,
+				VsmrVsid::CommandAction::LfpgGroundCrossing,
 				"LFPG&reload").empty(),
 			"vSID airport actions reject command metacharacters");
 		Expect(
@@ -347,32 +353,31 @@ namespace
 			"vSID global actions do not require an airport");
 		Expect(
 			VsmrVsid::BuildCommand(
-				VsmrVsid::CommandAction::ListAreas,
-				"LFPG") == ".vsid area LFPG" &&
+				VsmrVsid::CommandAction::LfpgMinimumTaxiing,
+				"LFPG") == ".vsid rule LFPG opposing" &&
 			VsmrVsid::BuildCommand(
-				VsmrVsid::CommandAction::ListRules,
-				"LFPG") == ".vsid rule LFPG" &&
+				VsmrVsid::CommandAction::LfpgGroundCrossing,
+				"LFPG") == ".vsid rule LFPG opposing" &&
 			VsmrVsid::BuildCommand(
-				VsmrVsid::CommandAction::ListRequests,
-				"LFPG") == ".vsid req LFPG",
-			"vSID diagnostic buttons build the documented airport commands");
+				VsmrVsid::CommandAction::LfpgGroundCrossing,
+				"LFPO").empty(),
+			"LFPG modes only toggle the configured opposing rule at LFPG");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::ReloadConfiguration,
-				"") == ".vsid reload" &&
-			VsmrVsid::BuildCommand(
-				VsmrVsid::CommandAction::ReloadEse,
-				"") == ".vsid reload ese",
-			"vSID reload buttons build only the documented fixed commands");
+				"") == ".vsid reload",
+			"vSID config reload builds only the documented fixed command");
 
 		VsmrVsid::CommandAction action{};
 		Expect(
-			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.reload-ese", action) &&
-			action == VsmrVsid::CommandAction::ReloadEse,
+			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lfpg-ground-crossing", action) &&
+			action == VsmrVsid::CommandAction::LfpgGroundCrossing,
 			"vSID Runtime Menu actions map to a fixed allowlist");
 		Expect(
+			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.reload-ese", action) &&
+			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lvp", action) &&
 			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.raw-command", action),
-			"vSID Runtime Menu rejects unknown action identifiers");
+			"removed and unknown vSID actions are not exposed");
 	}
 
 	void TestRimcasRules()

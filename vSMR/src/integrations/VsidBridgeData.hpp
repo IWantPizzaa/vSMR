@@ -16,14 +16,16 @@ namespace VsmrVsid
 	{
 		AutomaticModeStatus,
 		AutomaticModeToggle,
-		LowVisibilityToggle,
-		NightModeToggle,
-		ListAreas,
-		ListRules,
-		ListRequests,
+		LfpgMinimumTaxiing,
+		LfpgGroundCrossing,
 		Synchronize,
-		ReloadConfiguration,
-		ReloadEse
+		ReloadConfiguration
+	};
+
+	enum class LfpgOperatingMode
+	{
+		MinimumTaxiing,
+		GroundCrossing
 	};
 
 	struct AircraftData
@@ -81,11 +83,8 @@ namespace VsmrVsid
 	inline bool CommandRequiresAirport(CommandAction action) noexcept
 	{
 		return action == CommandAction::AutomaticModeToggle ||
-			action == CommandAction::LowVisibilityToggle ||
-			action == CommandAction::NightModeToggle ||
-			action == CommandAction::ListAreas ||
-			action == CommandAction::ListRules ||
-			action == CommandAction::ListRequests;
+			action == CommandAction::LfpgMinimumTaxiing ||
+			action == CommandAction::LfpgGroundCrossing;
 	}
 
 	inline std::string NormalizeAirport(std::string_view airport)
@@ -131,22 +130,15 @@ namespace VsmrVsid
 			return ".vsid auto status";
 		case CommandAction::AutomaticModeToggle:
 			return ".vsid auto " + normalizedAirport;
-		case CommandAction::LowVisibilityToggle:
-			return ".vsid lvp " + normalizedAirport;
-		case CommandAction::NightModeToggle:
-			return ".vsid night " + normalizedAirport;
-		case CommandAction::ListAreas:
-			return ".vsid area " + normalizedAirport;
-		case CommandAction::ListRules:
-			return ".vsid rule " + normalizedAirport;
-		case CommandAction::ListRequests:
-			return ".vsid req " + normalizedAirport;
+		case CommandAction::LfpgMinimumTaxiing:
+		case CommandAction::LfpgGroundCrossing:
+			return normalizedAirport == "LFPG"
+				? ".vsid rule LFPG opposing"
+				: std::string();
 		case CommandAction::Synchronize:
 			return ".vsid sync";
 		case CommandAction::ReloadConfiguration:
 			return ".vsid reload";
-		case CommandAction::ReloadEse:
-			return ".vsid reload ese";
 		default:
 			return {};
 		}
@@ -160,28 +152,29 @@ namespace VsmrVsid
 		const char* tooltip;
 	};
 
-	inline constexpr std::array<RuntimeActionDefinition, 6> AirportRuntimeActions = { {
+	inline bool HasPublishedAircraftData(const AircraftData& data) noexcept
+	{
+		return !data.sid.empty() ||
+			!data.runway.empty() ||
+			!data.clearedFlightLevel.empty();
+	}
+
+	inline constexpr std::array<RuntimeActionDefinition, 1> AirportRuntimeActions = { {
 		{ CommandAction::AutomaticModeToggle,
 			"runtime.vsid.auto", "Toggle auto",
-			"Toggle vSID automatic mode for the active airport" },
-		{ CommandAction::LowVisibilityToggle,
-			"runtime.vsid.lvp", "Toggle LVP",
-			"Toggle vSID low-visibility mode for the active airport" },
-		{ CommandAction::NightModeToggle,
-			"runtime.vsid.night", "Toggle night",
-			"Toggle vSID night mode for the active airport" },
-		{ CommandAction::ListAreas,
-			"runtime.vsid.areas", "List areas",
-			"Show vSID areas for the active airport" },
-		{ CommandAction::ListRules,
-			"runtime.vsid.rules", "List rules",
-			"Show vSID rules for the active airport" },
-		{ CommandAction::ListRequests,
-			"runtime.vsid.requests", "List requests",
-			"Show vSID requests for the active airport" }
+			"Toggle vSID automatic mode for the active airport" }
 	} };
 
-	inline constexpr std::array<RuntimeActionDefinition, 4> GeneralRuntimeActions = { {
+	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgModeActions = { {
+		{ CommandAction::LfpgMinimumTaxiing,
+			"runtime.vsid.lfpg-minimum-taxiing", "Minimum Taxiing",
+			"LFPG Minimum Taxiing mode (Roulage Mini)" },
+		{ CommandAction::LfpgGroundCrossing,
+			"runtime.vsid.lfpg-ground-crossing", "Ground Crossing",
+			"LFPG Ground Crossing mode (Croisement au sol)" }
+	} };
+
+	inline constexpr std::array<RuntimeActionDefinition, 3> GeneralRuntimeActions = { {
 		{ CommandAction::AutomaticModeStatus,
 			"runtime.vsid.auto-status", "Auto status",
 			"Show vSID automatic-mode status" },
@@ -190,13 +183,8 @@ namespace VsmrVsid
 			"Synchronize vSID with the network" },
 		{ CommandAction::ReloadConfiguration,
 			"runtime.vsid.reload", "Reload config",
-			"Reload vSID configuration files" },
-		{ CommandAction::ReloadEse,
-			"runtime.vsid.reload-ese", "Reload ESE",
-			"Reload vSID sector-file data" }
+			"Reload vSID configuration files" }
 	} };
-	static_assert(AirportRuntimeActions.size() % 2U == 0U);
-	static_assert(GeneralRuntimeActions.size() % 2U == 0U);
 
 	inline bool TryParseRuntimeActionId(
 		std::string_view objectId,
@@ -215,6 +203,7 @@ namespace VsmrVsid
 			return false;
 		};
 		return findAction(AirportRuntimeActions) ||
+			findAction(LfpgModeActions) ||
 			findAction(GeneralRuntimeActions);
 	}
 
@@ -226,22 +215,14 @@ namespace VsmrVsid
 			return "automatic-mode status";
 		case CommandAction::AutomaticModeToggle:
 			return "automatic mode toggle";
-		case CommandAction::LowVisibilityToggle:
-			return "low-visibility mode toggle";
-		case CommandAction::NightModeToggle:
-			return "night mode toggle";
-		case CommandAction::ListAreas:
-			return "area list";
-		case CommandAction::ListRules:
-			return "rule list";
-		case CommandAction::ListRequests:
-			return "request list";
+		case CommandAction::LfpgMinimumTaxiing:
+			return "LFPG Minimum Taxiing mode";
+		case CommandAction::LfpgGroundCrossing:
+			return "LFPG Ground Crossing mode";
 		case CommandAction::Synchronize:
 			return "synchronization";
 		case CommandAction::ReloadConfiguration:
 			return "configuration reload";
-		case CommandAction::ReloadEse:
-			return "ESE reload";
 		default:
 			return "action";
 		}

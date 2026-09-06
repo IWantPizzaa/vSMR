@@ -93,6 +93,7 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 	if (FlightPlan.IsValid())
 	{
 		const char* callsign = FlightPlan.GetCallsign();
+		VsmrVsid::ObserveAircraft(callsign != nullptr ? callsign : "");
 		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
 		(void)VsmrHoldingPoint::Resolve(
 			callsign != nullptr ? callsign : "",
