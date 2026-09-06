@@ -271,16 +271,6 @@ bool CConfig::validateAndMigratePrevalidatedProfilesDocument(
 		error = "_vsmr.last_active_profile must be a string.";
 		return false;
 	}
-	if (metadata->HasMember(kVacdmKey))
-	{
-		if (!(*metadata)[kVacdmKey].IsObject() ||
-			((*metadata)[kVacdmKey].HasMember(kVacdmServerUrlKey) &&
-				!(*metadata)[kVacdmKey][kVacdmServerUrlKey].IsString()))
-		{
-			error = "_vsmr.vacdm.server_url must be a string.";
-			return false;
-		}
-	}
 	if (metadata->HasMember(kAvisoPresetsKey))
 	{
 		const rapidjson::Value& presetRoot = (*metadata)[kAvisoPresetsKey];
@@ -839,26 +829,6 @@ bool CConfig::setLastActiveProfileName(const string& profileName)
 
 	Value& metadata = ensureMetadata();
 	SetStringMember(metadata, kLastActiveProfileKey, trimmedProfile, document.GetAllocator());
-	return true;
-}
-
-string CConfig::getVacdmServerUrl() const
-{
-	const Value* metadata = findMetadata();
-	if (metadata == nullptr)
-		return "";
-
-	const Value* vacdm = GetObjectMemberIfPresent(*metadata, kVacdmKey);
-	if (vacdm == nullptr)
-		return "";
-	return ReadStringMember(*vacdm, kVacdmServerUrlKey);
-}
-
-bool CConfig::setVacdmServerUrl(const string& serverUrl)
-{
-	Value& metadata = ensureMetadata();
-	Value& vacdm = EnsureObjectMember(metadata, kVacdmKey, document.GetAllocator());
-	SetStringMember(vacdm, kVacdmServerUrlKey, serverUrl, document.GetAllocator());
 	return true;
 }
 

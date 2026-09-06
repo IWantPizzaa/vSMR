@@ -1180,7 +1180,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 			continue;
 
 		const Value& item = structuredRuleItems[i];
-		std::string source = "vacdm";
+		std::string source = "cdm";
 		if (item.HasMember("source") && item["source"].IsString())
 			source = item["source"].GetString();
 		else if (item.HasMember("kind") && item["kind"].IsString())
@@ -1370,13 +1370,13 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 				DefinitionTokenStyleData styledToken = ParseDefinitionTokenStyle(rawToken);
 				const std::string baseToken = styledToken.token.empty() ? rawToken : styledToken.token;
 
-				TagColorRules::VacdmColorRuleDefinition vacdmRuleToken;
-				if (TagColorRules::TryParseVacdmColorRuleToken(baseToken, vacdmRuleToken))
+				TagColorRules::CdmColorRuleDefinition cdmRuleToken;
+				if (TagColorRules::TryParseCdmColorRuleToken(baseToken, cdmRuleToken))
 				{
-					appendStructuredRule("vacdm", vacdmRuleToken.token, vacdmRuleToken.expectedState, tagType, status, detail,
-						vacdmRuleToken.hasTargetColor, vacdmRuleToken.targetR, vacdmRuleToken.targetG, vacdmRuleToken.targetB,
-						vacdmRuleToken.hasTagColor, vacdmRuleToken.tagR, vacdmRuleToken.tagG, vacdmRuleToken.tagB,
-						vacdmRuleToken.hasTextColor, vacdmRuleToken.textR, vacdmRuleToken.textG, vacdmRuleToken.textB);
+					appendStructuredRule("cdm", cdmRuleToken.token, cdmRuleToken.expectedState, tagType, status, detail,
+						cdmRuleToken.hasTargetColor, cdmRuleToken.targetR, cdmRuleToken.targetG, cdmRuleToken.targetB,
+						cdmRuleToken.hasTagColor, cdmRuleToken.tagR, cdmRuleToken.tagG, cdmRuleToken.tagB,
+						cdmRuleToken.hasTextColor, cdmRuleToken.textR, cdmRuleToken.textG, cdmRuleToken.textB);
 					removedRuleToken = true;
 					continue;
 				}

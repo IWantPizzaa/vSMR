@@ -862,7 +862,7 @@
     else if (action === "add-condition") {
       const draft = captureRuleDraft();
       if (!drafts.rule || !draft) return;
-      drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+      drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
       renderRuleEditor();
       applyRule({ render: false });
     }
