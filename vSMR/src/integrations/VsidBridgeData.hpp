@@ -18,6 +18,8 @@ namespace VsmrVsid
 		AutomaticModeToggle,
 		LfpgMinimumTaxiing,
 		LfpgGroundCrossing,
+		LfpgLinked,
+		LfpgUnlinked,
 		Synchronize,
 		ReloadConfiguration
 	};
@@ -26,6 +28,12 @@ namespace VsmrVsid
 	{
 		MinimumTaxiing,
 		GroundCrossing
+	};
+
+	enum class LfpgLinkMode
+	{
+		Linked,
+		Unlinked
 	};
 
 	struct AircraftData
@@ -84,7 +92,9 @@ namespace VsmrVsid
 	{
 		return action == CommandAction::AutomaticModeToggle ||
 			action == CommandAction::LfpgMinimumTaxiing ||
-			action == CommandAction::LfpgGroundCrossing;
+			action == CommandAction::LfpgGroundCrossing ||
+			action == CommandAction::LfpgLinked ||
+			action == CommandAction::LfpgUnlinked;
 	}
 
 	inline std::string NormalizeAirport(std::string_view airport)
@@ -135,6 +145,11 @@ namespace VsmrVsid
 			return normalizedAirport == "LFPG"
 				? ".vsid rule LFPG opposing"
 				: std::string();
+		case CommandAction::LfpgLinked:
+		case CommandAction::LfpgUnlinked:
+			return normalizedAirport == "LFPG"
+				? ".vsid rule LFPG linked"
+				: std::string();
 		case CommandAction::Synchronize:
 			return ".vsid sync";
 		case CommandAction::ReloadConfiguration:
@@ -174,6 +189,15 @@ namespace VsmrVsid
 			"LFPG Ground Crossing mode (Croisement au sol)" }
 	} };
 
+	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgLinkActions = { {
+		{ CommandAction::LfpgLinked,
+			"runtime.vsid.lfpg-linked", "Linked",
+			"LFPG Linked mode (Lie)" },
+		{ CommandAction::LfpgUnlinked,
+			"runtime.vsid.lfpg-unlinked", "Unlinked",
+			"LFPG Unlinked mode (Non lie)" }
+	} };
+
 	inline constexpr std::array<RuntimeActionDefinition, 3> GeneralRuntimeActions = { {
 		{ CommandAction::AutomaticModeStatus,
 			"runtime.vsid.auto-status", "Auto status",
@@ -204,27 +228,8 @@ namespace VsmrVsid
 		};
 		return findAction(AirportRuntimeActions) ||
 			findAction(LfpgModeActions) ||
+			findAction(LfpgLinkActions) ||
 			findAction(GeneralRuntimeActions);
 	}
 
-	inline const char* ActionDescription(CommandAction action) noexcept
-	{
-		switch (action)
-		{
-		case CommandAction::AutomaticModeStatus:
-			return "automatic-mode status";
-		case CommandAction::AutomaticModeToggle:
-			return "automatic mode toggle";
-		case CommandAction::LfpgMinimumTaxiing:
-			return "LFPG Minimum Taxiing mode";
-		case CommandAction::LfpgGroundCrossing:
-			return "LFPG Ground Crossing mode";
-		case CommandAction::Synchronize:
-			return "synchronization";
-		case CommandAction::ReloadConfiguration:
-			return "configuration reload";
-		default:
-			return "action";
-		}
-	}
 }
