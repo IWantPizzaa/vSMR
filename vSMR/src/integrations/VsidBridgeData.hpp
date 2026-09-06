@@ -30,12 +30,6 @@ namespace VsmrVsid
 		GroundCrossing
 	};
 
-	enum class LfpgLinkMode
-	{
-		Linked,
-		Unlinked
-	};
-
 	struct AircraftData
 	{
 		std::string sid;
@@ -148,7 +142,7 @@ namespace VsmrVsid
 		case CommandAction::LfpgLinked:
 		case CommandAction::LfpgUnlinked:
 			return normalizedAirport == "LFPG"
-				? ".vsid rule LFPG linked"
+				? ".vsid rule LFPG opposing"
 				: std::string();
 		case CommandAction::Synchronize:
 			return ".vsid sync";
@@ -192,10 +186,10 @@ namespace VsmrVsid
 	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgLinkActions = { {
 		{ CommandAction::LfpgLinked,
 			"runtime.vsid.lfpg-linked", "Linked",
-			"LFPG Linked mode (Lie)" },
+			"LFPG Linked mode (Lie; opposing off)" },
 		{ CommandAction::LfpgUnlinked,
 			"runtime.vsid.lfpg-unlinked", "Unlinked",
-			"LFPG Unlinked mode (Non lie)" }
+			"LFPG Unlinked mode (Non lie; opposing on)" }
 	} };
 
 	inline constexpr std::array<RuntimeActionDefinition, 3> GeneralRuntimeActions = { {
