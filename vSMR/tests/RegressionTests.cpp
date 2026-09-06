@@ -365,14 +365,14 @@ namespace
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
-				"LFPG") == ".vsid rule LFPG linked" &&
+				"LFPG") == ".vsid rule LFPG opposing" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgUnlinked,
-				"LFPG") == ".vsid rule LFPG linked" &&
+				"LFPG") == ".vsid rule LFPG opposing" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
 				"LFPO").empty(),
-			"LFPG link modes only toggle the linked rule at LFPG");
+			"LFPG link labels toggle the configured opposing rule at LFPG");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::ReloadConfiguration,

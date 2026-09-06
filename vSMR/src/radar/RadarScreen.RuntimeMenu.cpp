@@ -964,7 +964,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			const auto& linked = VsmrVsid::LfpgLinkActions[0];
 			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
 			const bool linkedActive =
-				vsidState.lfpgLinkMode == VsmrVsid::LfpgLinkMode::Linked;
+				vsidState.lfpgMode == VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
 			drawRuntimeButton(
 				linked.objectId, leftArea, linked.label, canSubmitAirport,
 				linkedActive, false, linked.tooltip, !linkedActive);
