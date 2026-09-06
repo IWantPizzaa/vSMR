@@ -214,6 +214,7 @@ const int TAG_CITEM_REMARK = 1991;
 const int TAG_CITEM_SCRATCHPAD = 1992;
 const int TAG_CITEM_CLEARANCE = 1993;
 const int TAG_CITEM_HOLDINGPOINT = 1994;
+const int TAG_CITEM_READY_STARTUP = 1995;
 // RIMCAS menu and runtime callbacks
 const int RIMCAS_CLOSE = EuroScopePlugIn::TAG_ITEM_FUNCTION_NO;
 const int RIMCAS_ACTIVE_AIRPORT_FUNC = 8008;

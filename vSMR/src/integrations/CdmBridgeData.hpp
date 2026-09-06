@@ -12,6 +12,9 @@
 namespace VsmrCdm
 {
 	inline constexpr std::size_t MaximumStringFieldBytes = 512U;
+	inline constexpr const char* PluginName = "CDM Plugin";
+	inline constexpr int ReadyStartupTagItemCode = 12;
+	inline constexpr int ToggleReadyStartupFunctionId = 106;
 
 	inline std::string NormalizeStringField(std::string_view value)
 	{

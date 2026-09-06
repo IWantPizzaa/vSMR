@@ -1166,6 +1166,29 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 		RequestRefresh();
 		return;
 	}
+	if (Button == BUTTON_LEFT && ObjectType == TAG_CITEM_READY_STARTUP)
+	{
+		CRadarTarget target = selectAseAndGetTarget();
+		CFlightPlan flightPlan = target.IsValid()
+			? target.GetCorrelatedFlightPlan()
+			: CFlightPlan();
+		const char* callsign = flightPlan.IsValid() ? flightPlan.GetCallsign() : nullptr;
+		if (callsign != nullptr && callsign[0] != '\0')
+		{
+			// Dispatch CDM's own toggle so its controller permissions and state updates remain authoritative.
+			StartTagFunction(
+				callsign,
+				VsmrCdm::PluginName,
+				VsmrCdm::ReadyStartupTagItemCode,
+				"RDY",
+				VsmrCdm::PluginName,
+				VsmrCdm::ToggleReadyStartupFunctionId,
+				Pt,
+				Area);
+		}
+		RequestRefresh();
+		return;
+	}
 	if (Button == BUTTON_LEFT || Button == BUTTON_RIGHT)
 		SelectAvisoScrollTargetAtPoint(this, Pt);
 	if (Button == BUTTON_RIGHT &&
