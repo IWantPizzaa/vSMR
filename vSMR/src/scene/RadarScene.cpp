@@ -1220,6 +1220,14 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				{
 					element.effectiveColor = capturedSquawkErrorColor;
 				}
+				else if (token == "cdm_ready_startup")
+				{
+					// Ready Start-up follows CDM's ASRT state while keeping RDY visible in both states.
+					element.effectiveColor = target.hasCdmData &&
+						VsmrCdm::IsReadyStartup(&target.cdmData.bridgeData)
+						? VsmrScene::Color{ 255, 0, 181, 27 }
+						: VsmrScene::Color{ 255, 255, 0, 0 };
+				}
 				else if (!palette.textRuleApplied && target.hasCdmData && (token == "tobt" || token == "tsat"))
 				{
 					int red = 255;

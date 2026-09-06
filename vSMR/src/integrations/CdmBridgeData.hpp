@@ -98,12 +98,18 @@ namespace VsmrCdm
 			!data.ecfmpRestriction.empty() || data.manualCtot.has_value();
 	}
 
+	inline bool IsReadyStartup(const AircraftData* data) noexcept
+	{
+		return data != nullptr && data->asrt.has_value();
+	}
+
 	inline void AddTagTokens(
 		std::map<std::string, std::string>& tokens,
 		const AircraftData* data)
 	{
 		const AircraftData empty;
 		const AircraftData& value = data != nullptr ? *data : empty;
+		tokens["cdm_ready_startup"] = "RDY";
 		tokens["cdm_tobt"] = FormatTimeToken(value.tobt);
 		tokens["cdm_tsat"] = FormatTimeToken(value.tsat);
 		tokens["cdm_ttot"] = FormatTimeToken(value.ttot);
