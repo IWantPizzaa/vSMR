@@ -109,20 +109,13 @@ namespace VsmrCdm
 	{
 		const AircraftData empty;
 		const AircraftData& value = data != nullptr ? *data : empty;
-		tokens["cdm_ready_startup"] = "RDY";
-		tokens["cdm_tobt"] = FormatTimeToken(value.tobt);
-		tokens["cdm_tsat"] = FormatTimeToken(value.tsat);
-		tokens["cdm_ttot"] = FormatTimeToken(value.ttot);
-		tokens["cdm_ctot"] = FormatTimeToken(value.ctot);
-		tokens["cdm_tsac"] = FormatTimeToken(value.tsac);
-		tokens["cdm_asrt"] = FormatTimeToken(value.asrt);
-		tokens["cdm_asat"] = FormatTimeToken(value.asat);
-		tokens["cdm_deice"] = value.deice;
-		tokens["cdm_tobt_set_by"] = value.tobtSetBy;
-		tokens["cdm_flow_restriction"] = value.flowRestriction;
-		tokens["cdm_ecfmp_restriction"] = value.ecfmpRestriction;
-		tokens["cdm_manual_ctot"] = value.manualCtot.has_value()
-			? (*value.manualCtot ? "true" : "false")
-			: std::string();
+		tokens["ready_startup"] = "RDY";
+		tokens["tobt"] = FormatTimeToken(value.tobt);
+		tokens["tsat"] = FormatTimeToken(value.tsat);
+		tokens["ttot"] = FormatTimeToken(value.ttot);
+		tokens["ctot"] = FormatTimeToken(value.ctot);
+		tokens["tsac"] = FormatTimeToken(value.tsac);
+		tokens["asrt"] = FormatTimeToken(value.asrt);
+		tokens["asat"] = FormatTimeToken(value.asat);
 	}
 }
