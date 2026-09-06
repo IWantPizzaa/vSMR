@@ -9,6 +9,7 @@
 #include "crash/CrashReporter.hpp"
 #include "datalink/CdmReminderSafety.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "platform/windows/EuroScopeCommandLine.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
@@ -1048,207 +1049,25 @@ bool HasSteadyIntervalElapsed(
 		return true;
 	}
 
-	bool IsLikelyCommandEditControl(HWND hwnd)
-	{
-		if (hwnd == nullptr || !::IsWindow(hwnd) || !::IsWindowVisible(hwnd) || !::IsWindowEnabled(hwnd))
-			return false;
-
-		char className[64] = {};
-		if (::GetClassNameA(hwnd, className, static_cast<int>(sizeof(className))) <= 0)
-			return false;
-		const std::string classUpper = ToUpperAsciiCopy(className);
-		if (!(classUpper == "EDIT" || classUpper.find("RICHEDIT") != std::string::npos))
-			return false;
-
-		const LONG style = ::GetWindowLong(hwnd, GWL_STYLE);
-		if ((style & ES_READONLY) != 0 || (style & ES_MULTILINE) != 0)
-			return false;
-
-		RECT rect = {};
-		if (!::GetWindowRect(hwnd, &rect))
-			return false;
-		const int width = rect.right - rect.left;
-		const int height = rect.bottom - rect.top;
-		if (width < 120 || height < 12)
-			return false;
-
-		return true;
-	}
-
-	struct MainWindowSearchContext
-	{
-		DWORD processId = 0;
-		HWND bestWindow = nullptr;
-		LONG bestArea = 0;
-	};
-
-	BOOL CALLBACK EnumMainWindowsForCurrentProcess(HWND hwnd, LPARAM lParam)
-	{
-		MainWindowSearchContext* context = reinterpret_cast<MainWindowSearchContext*>(lParam);
-		if (context == nullptr)
-			return TRUE;
-
-		DWORD windowProcessId = 0;
-		::GetWindowThreadProcessId(hwnd, &windowProcessId);
-		if (windowProcessId != context->processId)
-			return TRUE;
-		if (!::IsWindowVisible(hwnd))
-			return TRUE;
-		if (::GetWindow(hwnd, GW_OWNER) != nullptr)
-			return TRUE;
-
-		RECT rect = {};
-		if (!::GetWindowRect(hwnd, &rect))
-			return TRUE;
-		LONG width = rect.right - rect.left;
-		LONG height = rect.bottom - rect.top;
-		if (width < 0)
-			width = 0;
-		if (height < 0)
-			height = 0;
-		const LONG area = width * height;
-		if (area > context->bestArea)
-		{
-			context->bestArea = area;
-			context->bestWindow = hwnd;
-		}
-
-		return TRUE;
-	}
-
-	struct CommandEditSearchContext
-	{
-		RECT mainRect = {};
-		HWND bestEdit = nullptr;
-		LONG bestScore = LONG_MIN;
-	};
-
-	BOOL CALLBACK EnumCommandEditControls(HWND hwnd, LPARAM lParam)
-	{
-		CommandEditSearchContext* context = reinterpret_cast<CommandEditSearchContext*>(lParam);
-		if (context == nullptr)
-			return TRUE;
-		if (!IsLikelyCommandEditControl(hwnd))
-			return TRUE;
-
-		RECT rect = {};
-		if (!::GetWindowRect(hwnd, &rect))
-			return TRUE;
-		// Fail closed if the control is not in EuroScope's bottom command strip.
-		// Dialog and plug-in edit controls must never receive an automatic .msg.
-		if (rect.left < context->mainRect.left ||
-			rect.right > context->mainRect.right ||
-			rect.bottom < context->mainRect.bottom - 120 ||
-			rect.bottom > context->mainRect.bottom)
-		{
-			return TRUE;
-		}
-		const LONG style = ::GetWindowLong(hwnd, GWL_STYLE);
-		const int width = rect.right - rect.left;
-
-		LONG score = rect.top;
-		score += width / 4;
-		if ((style & WS_TABSTOP) != 0)
-			score += 1000;
-		if ((style & ES_AUTOHSCROLL) != 0)
-			score += 500;
-		if (rect.bottom >= context->mainRect.bottom - 80)
-			score += 2000;
-
-		if (score > context->bestScore)
-		{
-			context->bestScore = score;
-			context->bestEdit = hwnd;
-		}
-
-		return TRUE;
-	}
-
-	HWND FindEuroScopeCommandEditControl()
-	{
-		MainWindowSearchContext mainContext;
-		mainContext.processId = ::GetCurrentProcessId();
-		::EnumWindows(EnumMainWindowsForCurrentProcess, reinterpret_cast<LPARAM>(&mainContext));
-		if (mainContext.bestWindow == nullptr)
-			return nullptr;
-
-		CommandEditSearchContext editContext;
-		::GetWindowRect(mainContext.bestWindow, &editContext.mainRect);
-		::EnumChildWindows(mainContext.bestWindow, EnumCommandEditControls, reinterpret_cast<LPARAM>(&editContext));
-		return editContext.bestEdit;
-	}
-
-	struct PendingCdmChatCommand
-	{
-		HWND editControl = nullptr;
-		std::string command;
-		std::chrono::steady_clock::time_point startedAt;
-	};
-
-	PendingCdmChatCommand PendingCdmChatSubmission;
-
-	bool TryReadWindowText(HWND window, std::string& outText)
-	{
-		outText.clear();
-		if (window == nullptr || !::IsWindow(window))
-			return false;
-
-		constexpr int kMaximumPreservedCommandCharacters = 64 * 1024;
-		const int textLength = ::GetWindowTextLengthA(window);
-		if (textLength < 0 || textLength > kMaximumPreservedCommandCharacters)
-			return false;
-		std::vector<char> textBuffer(static_cast<size_t>(textLength) + 1U, '\0');
-		if (textLength > 0 &&
-			::GetWindowTextA(
-				window,
-				textBuffer.data(),
-				static_cast<int>(textBuffer.size())) != textLength)
-		{
-			return false;
-		}
-		outText.assign(textBuffer.data(), static_cast<size_t>(textLength));
-		return true;
-	}
-
 	CdmChatSubmissionStatus PollPrivateChatMessageSubmission()
 	{
-		if (PendingCdmChatSubmission.editControl == nullptr)
-			return CdmChatSubmissionStatus::Idle;
-
-		std::string currentText;
-		if (!TryReadWindowText(PendingCdmChatSubmission.editControl, currentText))
+		switch (VsmrEuroScopeCommandLine::Poll(
+			VsmrEuroScopeCommandLine::Owner::CdmReminder))
 		{
-			PendingCdmChatSubmission = {};
-			return CdmChatSubmissionStatus::Ambiguous;
-		}
-
-		// EuroScope clears its command field only after it has consumed the
-		// posted Enter key. Do not report success merely because Windows queued
-		// the key message.
-		if (currentText != PendingCdmChatSubmission.command)
-		{
-			PendingCdmChatSubmission = {};
-			return CdmChatSubmissionStatus::Confirmed;
-		}
-
-		constexpr auto kSubmissionTimeout = std::chrono::seconds(4);
-		if (std::chrono::steady_clock::now() -
-			PendingCdmChatSubmission.startedAt < kSubmissionTimeout)
-		{
+		case VsmrEuroScopeCommandLine::SubmissionStatus::Pending:
 			return CdmChatSubmissionStatus::Pending;
+		case VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed:
+			return CdmChatSubmissionStatus::Confirmed;
+		case VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous:
+			return CdmChatSubmissionStatus::Ambiguous;
+		default:
+			return CdmChatSubmissionStatus::Idle;
 		}
-
-		// The Enter key was already posted, so a timeout is ambiguous. Remove
-		// only the exact command inserted by vSMR and never retry it automatically.
-		::SetWindowTextA(PendingCdmChatSubmission.editControl, "");
-		PendingCdmChatSubmission = {};
-		return CdmChatSubmissionStatus::Ambiguous;
 	}
 
 	bool BeginPrivateChatMessageLikeDotMsg(EuroScopePlugIn::CPlugIn* plugIn, const std::string& callsign, const std::string& message)
 	{
-		if (plugIn == nullptr ||
-			PendingCdmChatSubmission.editControl != nullptr)
+		if (plugIn == nullptr)
 			return false;
 
 		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
@@ -1256,38 +1075,11 @@ bool HasSteadyIntervalElapsed(
 		if (normalizedCallsign.empty() || normalizedMessage.empty())
 			return false;
 
-		HWND editControl = FindEuroScopeCommandEditControl();
-		std::string existingText;
-		if (editControl == nullptr ||
-			!TryReadWindowText(editControl, existingText) ||
-			!existingText.empty())
-		{
-			return false;
-		}
-
 		const std::string command =
 			".msg " + normalizedCallsign + " " + normalizedMessage;
-		if (!::SetWindowTextA(editControl, command.c_str()))
-			return false;
-
-		const bool keyDownPosted =
-			::PostMessageA(editControl, WM_KEYDOWN, VK_RETURN, 0) != FALSE;
-		const bool keyUpPosted =
-			::PostMessageA(editControl, WM_KEYUP, VK_RETURN, 0) != FALSE;
-		if (!keyDownPosted)
-		{
-			std::string currentText;
-			if (TryReadWindowText(editControl, currentText) && currentText == command)
-				::SetWindowTextA(editControl, "");
-			return false;
-		}
-		if (!keyUpPosted)
-			Logger::info("CDM command key-up could not be posted after key-down");
-
-		PendingCdmChatSubmission.editControl = editControl;
-		PendingCdmChatSubmission.command = command;
-		PendingCdmChatSubmission.startedAt = std::chrono::steady_clock::now();
-		return true;
+		return VsmrEuroScopeCommandLine::Begin(
+			VsmrEuroScopeCommandLine::Owner::CdmReminder,
+			command);
 	}
 
 	bool SendDatalinkPacketMessage(const DatalinkMessageRequest& request)

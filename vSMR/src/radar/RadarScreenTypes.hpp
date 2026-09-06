@@ -233,6 +233,7 @@ namespace VsmrRadarTypes
 		Groups,
 		Insets,
 		Profile,
+		Vsid,
 		Datalink
 	};
 

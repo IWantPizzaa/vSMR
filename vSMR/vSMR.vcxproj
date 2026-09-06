@@ -192,6 +192,7 @@
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp" />
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
+    <ClCompile Include="src\integrations\VsidBridgeClient.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Chrome.cpp" />
@@ -199,6 +200,7 @@
     <ClCompile Include="src\insets\InsetWindow.SecondaryRadar.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Timer.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Weather.cpp" />
+	<ClCompile Include="src\platform\windows\EuroScopeCommandLine.cpp" />
     <ClCompile Include="src\platform\windows\network\HttpHelper.cpp" />
     <ClCompile Include="src\platform\windows\PrecompiledHeader.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -287,8 +289,12 @@
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
+    <ClInclude Include="src\integrations\PluginBridgeApi.hpp" />
+    <ClInclude Include="src\integrations\VsidBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\VsidBridgeData.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp" />
+	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp" />
     <ClInclude Include="src\platform\windows\GdiColorUtils.hpp" />
     <ClInclude Include="src\platform\windows\network\HttpHelper.hpp" />
     <ClInclude Include="src\platform\windows\PrecompiledHeader.hpp" />
