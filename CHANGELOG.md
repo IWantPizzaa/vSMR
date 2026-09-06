@@ -10,6 +10,7 @@
 - Added an optional vSID 0.15.0.2 interface through EuroScope Plugin Bridge. A dedicated Runtime Menu panel replaces manual vSID command entry with validated buttons for airport modes, diagnostics, synchronization, and reloads. Live vSID SID, runway, and cleared-flight-level values are available as `vsid_sid`, `vsid_rwy`, and `vsid_cfl` tag tokens and as a dedicated Rules source.
 - Replaced the retired vACDM HTTP integration with the bridge-enabled CDM plug-in. Its operational time fields are available to tags and the dedicated CDM Rules source as TOBT, TSAT, TTOT, CTOT, TSAC, ASRT, and ASAT.
 - Added a `ready_startup` tag token that displays `RDY` in red until CDM publishes ASRT, then changes it to green.
+- Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
 
 ### Changed
 

@@ -432,6 +432,11 @@ namespace
 		Expect(
 			VsmrCdm::IsReadyStartup(&data) && !VsmrCdm::IsReadyStartup(nullptr),
 			"CDM Ready Start-up follows the published ASRT state");
+		Expect(
+			std::string(VsmrCdm::PluginName) == "CDM Plugin" &&
+			VsmrCdm::ReadyStartupTagItemCode == 12 &&
+			VsmrCdm::ToggleReadyStartupFunctionId == 106,
+			"Ready Start-up dispatch matches CDM's registered tag function contract");
 
 		std::map<std::string, std::string> tokens;
 		VsmrCdm::AddTagTokens(tokens, &data);

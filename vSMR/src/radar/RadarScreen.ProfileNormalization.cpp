@@ -464,6 +464,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		mode.AddMember("require_clearance", false, allocator);
 		mode.AddMember("require_valid_tsat", false, allocator);
 		mode.AddMember("require_active_tobt", false, allocator);
+		mode.AddMember("require_ready", false, allocator);
 		mode.AddMember("max_airborne_altitude_ft", legacyMaximumAirborneAltitudeFt, allocator);
 		mode.AddMember("max_airborne_speed_kt", legacyMaximumAirborneSpeedKt, allocator);
 		Value statuses(kObjectType);
@@ -503,6 +504,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 				continue;
 			changed = items[i].RemoveMember("do_not_autocorrelate_squawks") || changed;
 			changed = items[i].RemoveMember("blocked_auto_correlate_squawks") || changed;
+			ensureBoolMember(items[i], "require_ready", false);
 			ensureIntMember(items[i], "max_airborne_altitude_ft", legacyMaximumAirborneAltitudeFt, 0, 60000);
 			ensureIntMember(items[i], "max_airborne_speed_kt", legacyMaximumAirborneSpeedKt, 0, 1000);
 			Value& statuses = ensureObjectMember(items[i], "statuses");
