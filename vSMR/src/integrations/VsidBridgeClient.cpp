@@ -13,6 +13,7 @@
 #include <exception>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -31,7 +32,11 @@ namespace
 
 	std::mutex StateMutex;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
+	std::unordered_set<std::string> DisconnectedCallsigns;
 	std::unordered_set<std::string> LastScannedCallsigns;
+	VsmrVsid::LfpgOperatingMode CurrentLfpgMode =
+		VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
+	std::optional<VsmrVsid::CommandAction> PendingCommandAction;
 	HMODULE BridgeModule = nullptr;
 	const ApiV1* BridgeApi = nullptr;
 	FieldId SidField = 0U;
@@ -219,10 +224,27 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 		VsmrEuroScopeCommandLine::Owner::Vsid))
 	{
 	case VsmrEuroScopeCommandLine::SubmissionStatus::Confirmed:
+		{
+			std::lock_guard<std::mutex> guard(StateMutex);
+			if (PendingCommandAction == CommandAction::LfpgMinimumTaxiing)
+				CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
+			else if (PendingCommandAction == CommandAction::LfpgGroundCrossing)
+				CurrentLfpgMode = LfpgOperatingMode::GroundCrossing;
+			else if (PendingCommandAction == CommandAction::ReloadConfiguration)
+			{
+				// The supplied LFPG configuration defines opposing=false by default.
+				CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
+			}
+			PendingCommandAction.reset();
+		}
 		Logger::info("vSID command consumed by EuroScope");
 		commandStateChanged = true;
 		break;
 	case VsmrEuroScopeCommandLine::SubmissionStatus::Ambiguous:
+		{
+			std::lock_guard<std::mutex> guard(StateMutex);
+			PendingCommandAction.reset();
+		}
 		Logger::info("vSID command submission could not be confirmed");
 		commandStateChanged = true;
 		break;
@@ -241,15 +263,25 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 			return finish(ClearCachedAircraft());
 
 		std::unordered_set<std::string> currentCallsigns;
+		std::unordered_set<std::string> disconnectedCallsigns;
+		{
+			std::lock_guard<std::mutex> guard(StateMutex);
+			disconnectedCallsigns = DisconnectedCallsigns;
+		}
 		std::size_t flightPlanCount = 0U;
 		for (CFlightPlan flightPlan = plugin.FlightPlanSelectFirst();
 			flightPlan.IsValid() && flightPlanCount < MaximumFlightPlans;
 			flightPlan = plugin.FlightPlanSelectNext(flightPlan), ++flightPlanCount)
 		{
+			if (flightPlan.GetFPState() == FLIGHT_PLAN_STATE_TERMINATED ||
+				flightPlan.GetSimulated())
+			{
+				continue;
+			}
 			const char* rawCallsign = flightPlan.GetCallsign();
 			const std::string callsign = NormalizeCallsign(
 				rawCallsign != nullptr ? rawCallsign : "");
-			if (!callsign.empty())
+			if (!callsign.empty() && disconnectedCallsigns.count(callsign) == 0U)
 				currentCallsigns.insert(callsign);
 		}
 
@@ -284,6 +316,10 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 			}
 			if (sidStatus != Ok || runwayStatus != Ok || cflStatus != Ok)
 				continue;
+			// A bridge aircraft handle can exist without vSID publishing data for it.
+			// Such handles are not connected vSID aircraft and must not inflate status.
+			if (!HasPublishedAircraftData(data))
+				continue;
 			next.emplace(callsign, std::move(data));
 		}
 
@@ -314,6 +350,7 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState()
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		state.aircraftCount = AircraftByCallsign.size();
+		state.lfpgMode = CurrentLfpgMode;
 	}
 	return state;
 }
@@ -347,10 +384,18 @@ bool VsmrVsid::SubmitCommand(
 		error = "Select a valid four-character airport before using this vSID action.";
 		return false;
 	}
-	return VsmrEuroScopeCommandLine::Begin(
+	if (!VsmrEuroScopeCommandLine::Begin(
 		VsmrEuroScopeCommandLine::Owner::Vsid,
 		command,
-		&error);
+		&error))
+	{
+		return false;
+	}
+	{
+		std::lock_guard<std::mutex> guard(StateMutex);
+		PendingCommandAction = action;
+	}
+	return true;
 }
 
 bool VsmrVsid::TryGetAircraftData(
@@ -375,7 +420,18 @@ void VsmrVsid::ForgetAircraft(const std::string& callsign)
 		return;
 	LastScannedCallsigns.erase(normalizedCallsign);
 	std::lock_guard<std::mutex> guard(StateMutex);
+	DisconnectedCallsigns.insert(normalizedCallsign);
 	AircraftByCallsign.erase(normalizedCallsign);
+}
+
+void VsmrVsid::ObserveAircraft(const std::string& callsign)
+{
+	const std::string normalizedCallsign = NormalizeCallsign(callsign);
+	if (normalizedCallsign.empty())
+		return;
+	LastScannedCallsigns.erase(normalizedCallsign);
+	std::lock_guard<std::mutex> guard(StateMutex);
+	DisconnectedCallsigns.erase(normalizedCallsign);
 }
 
 void VsmrVsid::Shutdown() noexcept
@@ -385,6 +441,9 @@ void VsmrVsid::Shutdown() noexcept
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		AircraftByCallsign.clear();
+		DisconnectedCallsigns.clear();
+		PendingCommandAction.reset();
+		CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
 	}
 	BridgeModule = nullptr;
 	BridgeApi = nullptr;
