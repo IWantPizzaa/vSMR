@@ -1,6 +1,6 @@
 # vSMR 2.0 for EuroScope
 
-vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, VACDM data, and Hoppie CPDLC/PDC workflows.
+vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie CPDLC/PDC workflows.
 
 Current version: **2.0.0-beta.5**
 
@@ -15,7 +15,7 @@ Current version: **2.0.0-beta.5**
 - Night/Day AVISO maps with shared editing, groups, labels, and airport presets
 - RIMCAS runway monitoring and configurable warning presentation
 - AVISO, SRW 1, METAR, and Timer inset windows
-- VACDM integration and Hoppie CPDLC/PDC support
+- CDM bridge integration and Hoppie CPDLC/PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
 - Airport-scoped layouts, display modes, profiles, and settings
 - Transactional configuration, diagnostics, rollback, and signed-update support
@@ -29,7 +29,7 @@ See the [GitHub Wiki](https://github.com/IWantPizzaa/vSMR/wiki) for complete fea
 - [Microsoft Edge WebView2 Evergreen Runtime (x86)](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - The complete matching release package: `vSMR.dll` and `vSMR_Data\`
 
-The optional vSID interface requires [vSID 0.15.0.2 or later](https://github.com/AlexisBalzano/vSID) and [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge). Load both separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load the bridge DLL.
+The optional vSID and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID) or [CDM](https://github.com/IWantPizzaa/CDM) build. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs.
 
 vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the local Control Center; internet access is needed only for enabled online integrations and updates.
 
@@ -81,7 +81,7 @@ Bundled operational data is a starting point and must be checked for the local a
 | AVISO maps, palettes, groups, and editing | [AVISO](https://github.com/IWantPizzaa/vSMR/wiki/AVISO) |
 | RIMCAS alerts | [RIMCAS](https://github.com/IWantPizzaa/vSMR/wiki/RIMCAS) |
 | Native inset windows | [Insets](https://github.com/IWantPizzaa/vSMR/wiki/Insets) |
-| VACDM, CPDLC, PDC, and reminders | [Datalink](https://github.com/IWantPizzaa/vSMR/wiki/Datalink) |
+| CDM, CPDLC, PDC, and reminders | [Datalink](https://github.com/IWantPizzaa/vSMR/wiki/Datalink) |
 | Commands, logs, and problem reports | [Troubleshooting](https://github.com/IWantPizzaa/vSMR/wiki/Troubleshooting-and-Diagnostics) |
 | Source builds and release packaging | [Development](https://github.com/IWantPizzaa/vSMR/wiki/Development-and-Releases) |
 

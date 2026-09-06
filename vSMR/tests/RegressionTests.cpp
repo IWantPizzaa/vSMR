@@ -11,6 +11,7 @@
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
 #include "datalink/CdmReminderSafety.hpp"
+#include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
@@ -393,6 +394,64 @@ namespace
 			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lvp", action) &&
 			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.raw-command", action),
 			"removed and unknown vSID actions are not exposed");
+	}
+
+	void TestCdmBridgeData()
+	{
+		Expect(
+			VsmrCdm::FormatTimeToken(0) == "0000" &&
+			VsmrCdm::FormatTimeToken(23 * 60 + 59) == "2359" &&
+			VsmrCdm::FormatTimeToken(-1).empty() &&
+			VsmrCdm::FormatTimeToken(24 * 60).empty(),
+			"CDM bridge times use validated four-digit UTC text");
+		Expect(
+			VsmrCdm::NormalizeStringField("  REMOTE  ") == "REMOTE",
+			"CDM bridge strings trim protocol whitespace");
+		const char invalidText[] = { 'A', '\0', 'B' };
+		Expect(
+			VsmrCdm::NormalizeStringField(
+				std::string_view(invalidText, sizeof(invalidText))).empty(),
+			"CDM bridge strings reject embedded nulls");
+
+		VsmrCdm::AircraftData data;
+		data.tobt = 7 * 60 + 5;
+		data.tsat = 7 * 60 + 10;
+		data.ttot = 7 * 60 + 20;
+		data.ctot = 7 * 60 + 25;
+		data.tsac = 7 * 60 + 10;
+		data.asrt = 7 * 60 + 2;
+		data.asat = 7 * 60 + 11;
+		data.deice = "REMOTE";
+		data.tobtSetBy = "PILOT";
+		data.flowRestriction = "ATFCM";
+		data.ecfmpRestriction = "EDYY01";
+		data.manualCtot = true;
+		Expect(
+			VsmrCdm::HasPublishedAircraftData(data),
+			"published CDM fields identify an active bridge aircraft");
+
+		std::map<std::string, std::string> tokens;
+		VsmrCdm::AddTagTokens(tokens, &data);
+		Expect(
+			tokens["cdm_tobt"] == "0705" &&
+			tokens["cdm_tsat"] == "0710" &&
+			tokens["cdm_ttot"] == "0720" &&
+			tokens["cdm_ctot"] == "0725" &&
+			tokens["cdm_tsac"] == "0710" &&
+			tokens["cdm_asrt"] == "0702" &&
+			tokens["cdm_asat"] == "0711" &&
+			tokens["cdm_deice"] == "REMOTE" &&
+			tokens["cdm_tobt_set_by"] == "PILOT" &&
+			tokens["cdm_flow_restriction"] == "ATFCM" &&
+			tokens["cdm_ecfmp_restriction"] == "EDYY01" &&
+			tokens["cdm_manual_ctot"] == "true",
+			"every published CDM bridge field has a public tag token");
+		VsmrCdm::AddTagTokens(tokens, nullptr);
+		Expect(
+			tokens["cdm_tobt"].empty() &&
+			tokens["cdm_deice"].empty() &&
+			tokens["cdm_manual_ctot"].empty(),
+			"missing CDM bridge data leaves stable empty tag tokens");
 	}
 
 	void TestRimcasRules()
@@ -967,6 +1026,7 @@ int wmain(int argc, wchar_t** argv)
 	TestHoldingPointRemarks();
 	TestTagTokens();
 	TestVsidBridgeData();
+	TestCdmBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
 	TestWeatherParsing();

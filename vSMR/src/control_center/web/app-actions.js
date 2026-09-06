@@ -13,7 +13,7 @@
   }
 
   function createRule() {
-    rules().push({ source: "vacdm", token: "tsat", condition: "valid", criteria: [{ source: "vacdm", token: "tsat", condition: "valid" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
+    rules().push({ source: "cdm", token: "tsat", condition: "set", criteria: [{ source: "cdm", token: "tsat", condition: "set" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
@@ -45,7 +45,7 @@
     captureRuleDraft();
     if (!drafts.rule) return;
     drafts.rule.data.criteria.splice(index, 1);
-    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
     renderRuleEditor();
     applyRule({ render: false });
   }

@@ -378,7 +378,7 @@ public:
 
 	//---GenerateTagData--------------------------------------------
 
-	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign = "", const VacdmPilotData* capturedVacdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
+	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign = "", const CdmPilotData* capturedCdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
 	using TagReplacingMap = std::map<std::string, std::string>;
 
 	//---IsCorrelatedFuncs---------------------------------------------
@@ -388,7 +388,7 @@ public:
 	virtual bool IsCorrelated(CFlightPlan fp, CRadarTarget rt);
 	DisplayModeSettings GetActiveDisplayModeSettings() const;
 	bool IsWithinAirborneDisplayLimits(int reportedGs, int pressureAltitudeFt, const DisplayModeSettings& settings) const;
-	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const;
+	bool ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const CdmPilotData* capturedCdmData) const;
 
 	//---LoadCustomFont--------------------------------------------
 
