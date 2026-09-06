@@ -32,7 +32,8 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 272;
+	constexpr int kVsidPopupHeight = 180;
+	constexpr int kVsidLfpgPopupHeight = 254;
 	constexpr int kDatalinkPopupWidth = 220;
 	constexpr int kDatalinkPopupHeight = 230;
 	constexpr int kStandardPopupWidth = 170;
@@ -229,16 +230,6 @@ namespace
 			graphics.DrawLine(&pen, centerX + 9.0f, centerY - 6.5f, centerX, centerY + 0.5f);
 			graphics.DrawLine(&pen, centerX - 9.0f, centerY + 6.5f, centerX - 2.0f, centerY + 0.5f);
 			graphics.DrawLine(&pen, centerX + 9.0f, centerY + 6.5f, centerX + 2.0f, centerY + 0.5f);
-			return;
-		}
-
-		if (kind == "vsid")
-		{
-			graphics.DrawLine(&pen, centerX - 8.0f, centerY + 7.0f, centerX + 8.0f, centerY + 7.0f);
-			graphics.DrawLine(&pen, centerX - 5.0f, centerY + 4.0f, centerX - 1.0f, centerY);
-			graphics.DrawLine(&pen, centerX - 1.0f, centerY, centerX + 6.0f, centerY - 7.0f);
-			graphics.DrawLine(&pen, centerX + 6.0f, centerY - 7.0f, centerX + 1.0f, centerY - 6.0f);
-			graphics.DrawLine(&pen, centerX + 6.0f, centerY - 7.0f, centerX + 5.0f, centerY - 2.0f);
 			return;
 		}
 
@@ -486,7 +477,18 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		const COLORREF fill = open ? kAccent : (hover ? kButtonHover : kButtonBackground);
 		const COLORREF foreground = open ? kAccentText : kText;
 		DrawRoundedRect(hdc, buttonArea, fill, kOuterBorder, kControlCornerDiameter);
-		DrawRuntimeIcon(graphics, button.icon, buttonArea, foreground);
+		if (std::strcmp(button.icon, "vsid") == 0)
+		{
+			HFONT previousFont = static_cast<HFONT>(
+				::SelectObject(hdc, RuntimeMenuActionFont.GetSafeHandle()));
+			DrawTextEllipsis(hdc, buttonArea, "vSID", foreground, DT_CENTER);
+			if (previousFont != nullptr)
+				::SelectObject(hdc, previousFont);
+		}
+		else
+		{
+			DrawRuntimeIcon(graphics, button.icon, buttonArea, foreground);
+		}
 
 		if (popupButton)
 		{
@@ -602,6 +604,9 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const VsmrVsid::InterfaceState vsidState = vsidPopup
 		? VsmrVsid::GetInterfaceState()
 		: VsmrVsid::InterfaceState();
+	const std::string vsidAirport = vsidPopup
+		? VsmrVsid::NormalizeAirport(getActiveAirport())
+		: std::string();
 	CSMRPlugin* datalinkPlugin = datalinkPopup
 		? static_cast<CSMRPlugin*>(GetPlugIn())
 		: nullptr;
@@ -629,7 +634,9 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	bool insetPopupTooShort = false;
 	if (vsidPopup)
 	{
-		popupHeight = kVsidPopupHeight;
+		popupHeight = vsidAirport == "LFPG"
+			? kVsidLfpgPopupHeight
+			: kVsidPopupHeight;
 	}
 	else if (datalinkPopup)
 	{
@@ -889,7 +896,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		DrawTextEllipsis(hdc, statusTextArea, statusText, kText);
 		contentTop += 29;
 
-		const std::string normalizedAirport = VsmrVsid::NormalizeAirport(getActiveAirport());
+		const std::string& normalizedAirport = vsidAirport;
 		const bool canSubmit = vsidState.providerReady && !vsidState.commandLineBusy;
 		const bool canSubmitAirport = canSubmit && !normalizedAirport.empty();
 		drawSectionLabel(normalizedAirport.empty()
@@ -943,7 +950,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 		if (normalizedAirport == "LFPG")
 		{
-			drawSectionLabel("LFPG MODE");
+			drawSectionLabel("LFPG MODES");
 			CRect leftArea;
 			CRect rightArea;
 			twoColumnAreas(24, leftArea, rightArea);
@@ -959,7 +966,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 				!minimumActive, false, crossing.tooltip, minimumActive);
 			contentTop += 28;
 
-			drawSectionLabel("LFPG LINK");
 			twoColumnAreas(24, leftArea, rightArea);
 			const auto& linked = VsmrVsid::LfpgLinkActions[0];
 			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
