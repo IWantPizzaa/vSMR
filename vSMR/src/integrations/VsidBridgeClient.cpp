@@ -36,6 +36,8 @@ namespace
 	std::unordered_set<std::string> LastScannedCallsigns;
 	VsmrVsid::LfpgOperatingMode CurrentLfpgMode =
 		VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
+	VsmrVsid::LfpgLinkMode CurrentLfpgLinkMode =
+		VsmrVsid::LfpgLinkMode::Linked;
 	std::optional<VsmrVsid::CommandAction> PendingCommandAction;
 	HMODULE BridgeModule = nullptr;
 	const ApiV1* BridgeApi = nullptr;
@@ -231,13 +233,14 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 			else if (PendingCommandAction == CommandAction::LfpgGroundCrossing)
 				CurrentLfpgMode = LfpgOperatingMode::GroundCrossing;
 			else if (PendingCommandAction == CommandAction::LfpgLinked)
-				CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
+				CurrentLfpgLinkMode = LfpgLinkMode::Linked;
 			else if (PendingCommandAction == CommandAction::LfpgUnlinked)
-				CurrentLfpgMode = LfpgOperatingMode::GroundCrossing;
+				CurrentLfpgLinkMode = LfpgLinkMode::Unlinked;
 			else if (PendingCommandAction == CommandAction::ReloadConfiguration)
 			{
 				// LFPG custom rules use false for their default, non-opposing states.
 				CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
+				CurrentLfpgLinkMode = LfpgLinkMode::Linked;
 			}
 			PendingCommandAction.reset();
 		}
@@ -355,6 +358,7 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState()
 		std::lock_guard<std::mutex> guard(StateMutex);
 		state.aircraftCount = AircraftByCallsign.size();
 		state.lfpgMode = CurrentLfpgMode;
+		state.lfpgLinkMode = CurrentLfpgLinkMode;
 	}
 	return state;
 }
@@ -448,6 +452,7 @@ void VsmrVsid::Shutdown() noexcept
 		DisconnectedCallsigns.clear();
 		PendingCommandAction.reset();
 		CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
+		CurrentLfpgLinkMode = LfpgLinkMode::Linked;
 	}
 	BridgeModule = nullptr;
 	BridgeApi = nullptr;
