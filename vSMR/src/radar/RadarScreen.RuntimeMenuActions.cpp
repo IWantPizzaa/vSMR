@@ -161,21 +161,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 				"vSID",
 				message.c_str(),
 				true,
-				true,
 				false,
-				true,
-				false);
-		}
-		else
-		{
-			const std::string message =
-				"Requested vSID " + std::string(VsmrVsid::ActionDescription(vsidAction)) + ".";
-			GetPlugIn()->DisplayUserMessage(
-				"vSMR",
-				"vSID",
-				message.c_str(),
-				true,
-				true,
 				false,
 				false,
 				false);

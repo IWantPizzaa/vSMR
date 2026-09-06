@@ -32,7 +32,7 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 226;
+	constexpr int kVsidPopupHeight = 272;
 	constexpr int kDatalinkPopupWidth = 220;
 	constexpr int kDatalinkPopupHeight = 230;
 	constexpr int kStandardPopupWidth = 170;
@@ -957,6 +957,20 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			drawRuntimeButton(
 				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
 				!minimumActive, false, crossing.tooltip, minimumActive);
+			contentTop += 28;
+
+			drawSectionLabel("LFPG LINK");
+			twoColumnAreas(24, leftArea, rightArea);
+			const auto& linked = VsmrVsid::LfpgLinkActions[0];
+			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
+			const bool linkedActive =
+				vsidState.lfpgLinkMode == VsmrVsid::LfpgLinkMode::Linked;
+			drawRuntimeButton(
+				linked.objectId, leftArea, linked.label, canSubmitAirport,
+				linkedActive, false, linked.tooltip, !linkedActive);
+			drawRuntimeButton(
+				unlinked.objectId, rightArea, unlinked.label, canSubmitAirport,
+				!linkedActive, false, unlinked.tooltip, linkedActive);
 			contentTop += 28;
 		}
 

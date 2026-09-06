@@ -364,6 +364,17 @@ namespace
 			"LFPG modes only toggle the configured opposing rule at LFPG");
 		Expect(
 			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgLinked,
+				"LFPG") == ".vsid rule LFPG linked" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgUnlinked,
+				"LFPG") == ".vsid rule LFPG linked" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgLinked,
+				"LFPO").empty(),
+			"LFPG link modes only toggle the linked rule at LFPG");
+		Expect(
+			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::ReloadConfiguration,
 				"") == ".vsid reload",
 			"vSID config reload builds only the documented fixed command");
@@ -373,6 +384,10 @@ namespace
 			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lfpg-ground-crossing", action) &&
 			action == VsmrVsid::CommandAction::LfpgGroundCrossing,
 			"vSID Runtime Menu actions map to a fixed allowlist");
+		Expect(
+			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lfpg-unlinked", action) &&
+			action == VsmrVsid::CommandAction::LfpgUnlinked,
+			"vSID Runtime Menu maps the LFPG link-state actions");
 		Expect(
 			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.reload-ese", action) &&
 			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lvp", action) &&
