@@ -24,6 +24,8 @@ namespace VsmrPluginBridgeAbi
 	inline constexpr Status Shutdown = -15;
 
 	using Type = std::uint32_t;
+	inline constexpr Type Integer = 1U;
+	inline constexpr Type Boolean = 3U;
 	inline constexpr Type String = 4U;
 
 	using Aircraft = std::uint64_t;

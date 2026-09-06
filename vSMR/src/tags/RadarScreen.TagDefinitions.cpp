@@ -53,6 +53,18 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"vsid_sid",
 		"vsid_rwy",
 		"vsid_cfl",
+		"cdm_tobt",
+		"cdm_tsat",
+		"cdm_ttot",
+		"cdm_ctot",
+		"cdm_tsac",
+		"cdm_asrt",
+		"cdm_asat",
+		"cdm_deice",
+		"cdm_tobt_set_by",
+		"cdm_flow_restriction",
+		"cdm_ecfmp_restriction",
+		"cdm_manual_ctot",
 		"origin",
 		"dest",
 		"groundstatus",
@@ -870,6 +882,18 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["vsid_sid"] = "LAM1X";
 	previewMap["vsid_rwy"] = "26R";
 	previewMap["vsid_cfl"] = "A50";
+	previewMap["cdm_tobt"] = "1210";
+	previewMap["cdm_tsat"] = "1215";
+	previewMap["cdm_ttot"] = "1220";
+	previewMap["cdm_ctot"] = "1225";
+	previewMap["cdm_tsac"] = "1215";
+	previewMap["cdm_asrt"] = "1208";
+	previewMap["cdm_asat"] = "1214";
+	previewMap["cdm_deice"] = "REMOTE";
+	previewMap["cdm_tobt_set_by"] = "PILOT";
+	previewMap["cdm_flow_restriction"] = "ATFCM";
+	previewMap["cdm_ecfmp_restriction"] = "EDYY01";
+	previewMap["cdm_manual_ctot"] = "false";
 	previewMap["origin"] = "LFPG";
 	previewMap["dest"] = "EGKK";
 	previewMap["groundstatus"] = "TAXI";
@@ -1094,11 +1118,14 @@ std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) 
 	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 	if (lowered == "vsid" || lowered == "v_sid")
 		return "vsid";
+	// Older profiles used "vacdm" for the same rule source.
+	if (lowered == "cdm" || lowered == "vacdm")
+		return "cdm";
 	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist" || lowered == "sid")
 		return "custom";
 	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
 		return "runway";
-	return "vacdm";
+	return "cdm";
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, const std::string& token) const
@@ -1138,12 +1165,22 @@ std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, c
 			return normalizedToken;
 		return "";
 	}
-
-	if (normalizedToken == "tobt" || normalizedToken == "tsat" || normalizedToken == "ttot" ||
-		normalizedToken == "asat" || normalizedToken == "aobt" || normalizedToken == "atot" ||
-		normalizedToken == "asrt" || normalizedToken == "aort" || normalizedToken == "ctot")
+	if (normalizedSource == "cdm")
 	{
-		return normalizedToken;
+		if (normalizedToken.rfind("cdm_", 0) == 0)
+			normalizedToken = normalizedToken.substr(4);
+		if (normalizedToken == "tobt" || normalizedToken == "tsat" ||
+			normalizedToken == "ttot" || normalizedToken == "ctot" ||
+			normalizedToken == "tsac" || normalizedToken == "asrt" ||
+			normalizedToken == "asat" || normalizedToken == "deice" ||
+			normalizedToken == "tobt_set_by" ||
+			normalizedToken == "flow_restriction" ||
+			normalizedToken == "ecfmp_restriction" ||
+			normalizedToken == "manual_ctot")
+		{
+			return normalizedToken;
+		}
+		return "";
 	}
 
 	return "";
@@ -1156,7 +1193,8 @@ std::string CSMRRadar::NormalizeStructuredRuleCondition(const std::string& sourc
 	if (text.empty())
 		return "any";
 
-	if (normalizedSource == "runway" || normalizedSource == "custom" || normalizedSource == "vsid")
+	if (normalizedSource == "runway" || normalizedSource == "custom" ||
+		normalizedSource == "vsid" || normalizedSource == "cdm")
 		return text;
 
 	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -1308,7 +1346,7 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 					continue;
 
 				const rapidjson::Value& criterionObject = criteria[c];
-				std::string source = "vacdm";
+				std::string source = "cdm";
 				if (criterionObject.HasMember("source") && criterionObject["source"].IsString())
 					source = criterionObject["source"].GetString();
 				else if (criterionObject.HasMember("kind") && criterionObject["kind"].IsString())
@@ -1333,7 +1371,7 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 		if (rule.criteria.empty())
 		{
 			// Migrating legacy single-criterion fields into the current list
-			std::string source = "vacdm";
+			std::string source = "cdm";
 			if (item.HasMember("source") && item["source"].IsString())
 				source = item["source"].GetString();
 			else if (item.HasMember("kind") && item["kind"].IsString())

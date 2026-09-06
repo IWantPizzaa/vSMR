@@ -29,13 +29,13 @@ namespace VsmrTagColorRules
 		int textA = 255;
 	};
 
-	struct VacdmColorRuleDefinition : ColorRuleChannels
+	struct CdmColorRuleDefinition : ColorRuleChannels
 	{
 		std::string token;
 		std::string expectedState;
 	};
 
-	struct VacdmColorRuleOverrides : ColorRuleChannels
+	struct TagColorRuleOverrides : ColorRuleChannels
 	{
 	};
 
@@ -46,39 +46,39 @@ namespace VsmrTagColorRules
 	};
 
 	void MergeColorRuleOverrides(
-		VacdmColorRuleOverrides& target,
-		const VacdmColorRuleOverrides& source);
+		TagColorRuleOverrides& target,
+		const TagColorRuleOverrides& source);
 	void MergeMissingColorRuleOverrides(
-		VacdmColorRuleOverrides& target,
-		const VacdmColorRuleOverrides& fallback);
-	bool TryParseVacdmColorRuleToken(
+		TagColorRuleOverrides& target,
+		const TagColorRuleOverrides& fallback);
+	bool TryParseCdmColorRuleToken(
 		const std::string& rawToken,
-		VacdmColorRuleDefinition& outRule);
+		CdmColorRuleDefinition& outRule);
 	bool TryParseRunwayColorRuleToken(
 		const std::string& rawToken,
 		RunwayColorRuleDefinition& outRule);
-	std::string ResolveVacdmRuleStateName(
+	std::string ResolveCdmRuleStateName(
 		const std::string& token,
-		const VacdmPilotData* pilotData);
-	void CollectVacdmColorRulesFromLineTexts(
+		const CdmPilotData* pilotData);
+	void CollectCdmColorRulesFromLineTexts(
 		const std::vector<std::string>& lineTexts,
-		std::vector<VacdmColorRuleDefinition>& outRules);
+		std::vector<CdmColorRuleDefinition>& outRules);
 	void CollectRunwayColorRulesFromLineTexts(
 		const std::vector<std::string>& lineTexts,
 		std::vector<RunwayColorRuleDefinition>& outRules);
 	std::vector<std::string> ConvertDefinitionValueToLineTexts(
 		const rapidjson::Value& labelLines);
-	VacdmColorRuleOverrides EvaluateVacdmColorRules(
-		const std::vector<VacdmColorRuleDefinition>& rules,
-		const VacdmPilotData* pilotData);
-	VacdmColorRuleOverrides EvaluateRunwayColorRules(
+	TagColorRuleOverrides EvaluateCdmColorRules(
+		const std::vector<CdmColorRuleDefinition>& rules,
+		const CdmPilotData* pilotData);
+	TagColorRuleOverrides EvaluateRunwayColorRules(
 		const std::vector<RunwayColorRuleDefinition>& rules,
 		const std::map<std::string, std::string>& replacingMap);
-	VacdmColorRuleOverrides EvaluateStructuredTagColorRules(
+	TagColorRuleOverrides EvaluateStructuredTagColorRules(
 		const std::vector<StructuredTagColorRule>& rules,
 		const std::string& tagTypeKey,
 		const char* statusDefinitionKey,
 		bool isTagDetailed,
 		const std::map<std::string, std::string>& replacingMap,
-		const VacdmPilotData* pilotData);
+		const CdmPilotData* pilotData);
 }

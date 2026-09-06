@@ -1087,8 +1087,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		const bool reminderReady =
 			state.controllerConnected &&
 			!state.activeAirport.empty() &&
-			state.vacdmConfigured &&
-			state.vacdmReady &&
+			state.cdmBridgeLoaded &&
+			state.cdmBridgeReady &&
 			state.cdmAliasReady;
 		drawRuntimeButton(
 			"runtime.datalink.scan",

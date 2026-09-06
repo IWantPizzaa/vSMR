@@ -369,24 +369,25 @@
   }
   function normalizeRuleSourceUi(source) {
     const normalized = String(source || "").trim().toLowerCase();
+    // Keep older profiles editable while saving new rules under the CDM source.
+    if (normalized === "cdm" || normalized === "vacdm") return "cdm";
     if (normalized === "vsid" || normalized === "v_sid") return "vsid";
     if (normalized === "runway" || normalized === "rwy") return "runway";
     if (["custom", "sid", "list", "sidlist"].includes(normalized)) return "custom";
-    return "vacdm";
+    return "cdm";
   }
   function ruleTokensForSource(source) {
-    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.vacdm;
+    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.cdm;
   }
   function ruleConditionsFor(source, token, selected = "") {
     const normalizedSource = normalizeRuleSourceUi(source);
     const normalizedToken = String(token || "").trim().toLowerCase();
     let values;
-    if (["runway", "custom", "vsid"].includes(normalizedSource))
+    const cdmTime = normalizedSource === "cdm" && ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].includes(normalizedToken);
+    if (normalizedSource === "cdm" && cdmTime)
+      values = ["any", "set", "missing", "future", "past"];
+    else if (["runway", "custom", "vsid", "cdm"].includes(normalizedSource))
       values = ["any", "set", "missing", "in", "not_in"];
-    else if (normalizedToken === "tobt")
-      values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
-    else if (normalizedToken === "tsat")
-      values = ["any", "set", "missing", "inactive", "future", "valid", "expired", "future_ctot", "valid_ctot", "expired_ctot"];
     else
       values = ["any", "set", "missing", "future", "past"];
 
@@ -396,9 +397,8 @@
   function parseRuleCondition(source, condition) {
     const normalizedSource = normalizeRuleSourceUi(source);
     const raw = String(condition || "").trim();
-    if (normalizedSource === "vacdm") return { operator: raw || "any", values: "" };
     const simple = raw.toLowerCase();
-    if (["any", "set", "missing"].includes(simple)) return { operator: simple, values: "" };
+    if (["any", "set", "missing", "future", "past"].includes(simple)) return { operator: simple, values: "" };
     const list = raw.match(/^(not_in|notin|not|in|list|sid)\s*:\s*(.*)$/i);
     if (list) {
       const operator = ["not_in", "notin", "not"].includes(list[1].toLowerCase()) ? "not_in" : "in";
@@ -407,18 +407,17 @@
     return { operator: "in", values: raw };
   }
   function composeRuleCondition(source, operator, values) {
-    if (normalizeRuleSourceUi(source) === "vacdm") return String(operator || "any").trim();
     const normalizedOperator = String(operator || "any").trim().toLowerCase();
     if (!["in", "not_in"].includes(normalizedOperator)) return normalizedOperator || "any";
     const list = String(values || "").trim();
     return list ? `${normalizedOperator}: ${list}` : normalizedOperator;
   }
   function updateRuleConditionValueControl(row) {
-    const source = $("[data-field='source']", row)?.value || "vacdm";
+    const source = $("[data-field='source']", row)?.value || "cdm";
     const operator = $("[data-field='condition']", row)?.value || "any";
     const input = $("[data-field='condition-values']", row);
     if (!input) return;
-    const acceptsValues = normalizeRuleSourceUi(source) !== "vacdm" && ["in", "not_in"].includes(operator);
+    const acceptsValues = ["in", "not_in"].includes(operator);
     input.disabled = !acceptsValues;
     const normalizedSource = normalizeRuleSourceUi(source);
     const token = $("[data-field='token']", row)?.value || "";
@@ -535,7 +534,7 @@
     if (!drafts.rule || drafts.rule.index !== state.ui.selectedRuleIndex) drafts.rule = { index: state.ui.selectedRuleIndex, data: clone(item) };
     const rule = drafts.rule.data;
     $("#ruleName").value = rule.name || "";
-    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "vacdm", token: rule.token || "", condition: rule.condition || "" }];
+    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "cdm", token: rule.token || "", condition: rule.condition || "" }];
     $("#criteriaList").innerHTML = criteria.map((criterion, index) => {
       const parsedCondition = parseRuleCondition(criterion.source, criterion.condition);
       return `
@@ -585,7 +584,7 @@
         )
       };
     }).filter(criterion => criterion.source || criterion.token || criterion.condition);
-    rule.criteria = criteria.length ? criteria : [{ source: "vacdm", token: "", condition: "" }];
+    rule.criteria = criteria.length ? criteria : [{ source: "cdm", token: "", condition: "" }];
     const first = rule.criteria[0];
     rule.source = first.source;
     rule.token = first.token;
