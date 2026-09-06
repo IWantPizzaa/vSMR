@@ -73,6 +73,7 @@
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\CdmBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\VsidBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp"><Filter>Source</Filter></ClCompile>
@@ -160,6 +161,8 @@
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\datalink\DataLinkDialog.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\CdmBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\PluginBridgeApi.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
@@ -203,7 +206,7 @@
     <ClInclude Include="src\tags\TagColorRules.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDataTypes.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\tags\VacdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\CdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\weather\WeatherStore.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\document.h">
       <Filter>Third Party Headers</Filter>

@@ -104,8 +104,6 @@ public:
 	bool setInactiveAlert(const unordered_set<string>& inactiveAlerts);
 	string getLastActiveProfileName() const;
 	bool setLastActiveProfileName(const string& profileName);
-	string getVacdmServerUrl() const;
-	bool setVacdmServerUrl(const string& serverUrl);
 
 	inline int isItActiveProfile(string toTest) {
 		auto it = profiles.find(toTest);

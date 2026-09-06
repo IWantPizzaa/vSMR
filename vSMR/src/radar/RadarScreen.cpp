@@ -14,7 +14,7 @@
 #include "rapidjson/document.h"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagDefinitionUtils.hpp"
-#include "tags/VacdmTagHelpers.hpp"
+#include "tags/CdmTagHelpers.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"

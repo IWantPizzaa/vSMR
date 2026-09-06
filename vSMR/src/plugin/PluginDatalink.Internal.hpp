@@ -5,7 +5,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <cstdint>
 #include <ctime>
 #include <deque>
 #include <filesystem>
@@ -15,7 +14,7 @@
 #include <string>
 #include <vector>
 
-// Internal CPDLC/vACDM contract shared only by the focused implementation
+// Internal CPDLC/CDM contract shared only by the focused implementation
 // units. Keeping this out of Plugin.hpp prevents transport and reminder state
 // from becoming part of the plug-in's public API.
 
@@ -123,7 +122,6 @@ struct DatalinkClearanceRequest
 };
 
 using PluginSteadyClock = std::chrono::steady_clock;
-using PluginSteadyTick = std::int64_t;
 
 extern std::atomic<bool> HoppieConnected;
 extern std::atomic<bool> HoppieConnecting;
@@ -149,42 +147,21 @@ extern std::atomic<int> CdmReminderCooldownMinutes;
 extern std::atomic<int> messageId;
 extern PluginSteadyClock::time_point DatalinkLastPollAt;
 
-extern std::mutex VacdmPilotsMutex;
-extern std::map<std::string, VacdmPilotData> VacdmPilots;
-extern std::atomic<bool> VacdmFetchInProgress;
-extern std::atomic<PluginSteadyTick> VacdmLastFetchTick;
-extern const int VacdmFetchIntervalSeconds;
 extern std::mutex ProfilesSourceMutex;
 extern std::string ActiveProfilesConfigPath;
 extern bool ActiveProfilesConfigPathClaimed;
-extern unsigned long long ProfilesSourceGeneration;
-extern std::string VacdmConfiguredServerUrl;
-extern std::atomic<bool> VacdmPollingEnabled;
-extern std::atomic<unsigned long> VacdmLastSehCode;
-extern std::atomic<unsigned long> VacdmFetchCounter;
-extern std::mutex VacdmDebugStateMutex;
-extern std::string VacdmDebugAselCallsign;
-extern unsigned long long VacdmSuccessfulSnapshotSourceGeneration;
-extern std::chrono::steady_clock::time_point VacdmSuccessfulSnapshotAt;
 
 extern const int CdmMaximumMinutes;
 extern const int CdmReminderQueueMaxSendAttempts;
 extern const int CdmReminderRetryDelaySeconds;
 extern const std::size_t HoppieResponseLimitBytes;
-extern const std::size_t VacdmResponseLimitBytes;
 
-PluginSteadyTick CurrentSteadyTick() noexcept;
-bool HasSteadyIntervalElapsed(
-	PluginSteadyTick now,
-	PluginSteadyTick previous,
-	std::chrono::seconds interval) noexcept;
 DatalinkCredentialsSnapshot SnapshotDatalinkCredentials();
 void SetDatalinkStatusMessage(const std::string& message);
 std::string GetDatalinkStatusMessageCopy();
 bool TryParseNonNegativeInt(const std::string& text, int& outValue);
-std::vector<std::string> BuildVacdmLookupCandidates(const std::string& callsign);
 std::string ResolveActiveAirportFilterUpper();
-bool IsVacdmSnapshotReadyForCdm();
+bool IsCdmBridgeReady();
 std::vector<std::string> CollectFlightPlanCandidateCallsignsForActiveAirport(
 	EuroScopePlugIn::CPlugIn* plugIn,
 	const std::string& activeAirportFilter);
@@ -202,8 +179,8 @@ CdmQueueReminderOutcome TryQueueCdmReminderForCallsign(
 	const std::string& callsign,
 	const std::string& reminderMessage,
 	std::chrono::steady_clock::time_point now,
-	bool* outVacdmEvaluated = nullptr,
-	bool* outHasVacdmData = nullptr,
+	bool* outCdmEvaluated = nullptr,
+	bool* outHasCdmData = nullptr,
 	bool automatic = false);
 void ClearCdmAutoTrackingState(bool clearQueuedAutomaticReminders = false);
 void ResetCdmReminderSessionState();
@@ -227,16 +204,8 @@ void ClearDatalinkClearanceInFlightUnlocked(const std::string& callsign);
 void MarkDatalinkClearanceSentUnlocked(const std::string& callsign);
 void ClearDatalinkClearanceSentUnlocked(const std::string& callsign);
 std::filesystem::path ResolveDefaultProfilesConfigPath();
-bool TryReadVacdmServerUrl(
-	const std::filesystem::path& configPath,
-	std::string& outServerUrl);
-std::string ResolveVacdmPilotsUrl(
-	unsigned long long* sourceGeneration = nullptr);
-bool TryParseIsoUtcTimestamp(const std::string& iso, std::time_t& outUtc);
 std::string FormatUtcHhmm(std::time_t utcTime);
-std::string FormatSehCode(unsigned long code);
-int CaptureVacdmSehCode(unsigned long sehCode);
-bool HasSubmittedTobtState(const VacdmPilotData& pilotData);
+bool HasSubmittedTobtState(const CdmPilotData& pilotData);
 bool TryReadCdmReminderMessageFromAlias(
 	EuroScopePlugIn::CPlugIn* plugIn,
 	std::string& outMessage,
@@ -261,7 +230,6 @@ bool QueueDatalinkMessage(
 bool StartDatalinkPoll(bool reportStatus, std::string& error);
 void ProcessCdmAutoMode(CSMRPlugin* plugIn);
 void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn);
-void refreshVacdmData();
 void datalinkLogin(DatalinkLoginRequest request);
 void pollMessages(DatalinkPollRequest request);
 void sendDatalinkClearance(DatalinkClearanceRequest request);

@@ -9,7 +9,7 @@ namespace VsmrTagColorRules
 {
 	namespace
 	{
-		bool IsVacdmRuleTokenName(const std::string& tokenName)
+		bool IsCdmRuleTokenName(const std::string& tokenName)
 		{
 			const std::string lowered = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(tokenName));
 			return lowered == "tobt" ||
@@ -279,16 +279,16 @@ namespace VsmrTagColorRules
 
 	// Parse color-rule token syntax:
 	// token(state_<name>=[target|tag|text, color=(r,g,b), color_target=(r,g,b), ...]).
-	bool TryParseVacdmColorRuleToken(const std::string& rawToken, VacdmColorRuleDefinition& outRule)
+	bool TryParseCdmColorRuleToken(const std::string& rawToken, CdmColorRuleDefinition& outRule)
 	{
-		outRule = VacdmColorRuleDefinition();
+		outRule = CdmColorRuleDefinition();
 
 		std::string baseToken;
 		std::string condition;
 		std::string payload;
 		if (!TrySplitColorRuleToken(rawToken, baseToken, condition, payload))
 			return false;
-		if (!IsVacdmRuleTokenName(baseToken))
+		if (!IsCdmRuleTokenName(baseToken))
 			return false;
 
 		std::string stateName = ToLowerAsciiCopy(TrimAsciiWhitespaceCopy(condition));
@@ -331,11 +331,11 @@ namespace VsmrTagColorRules
 		return true;
 	}
 
-	void CollectVacdmColorRulesFromLineTexts(
+	void CollectCdmColorRulesFromLineTexts(
 		const std::vector<std::string>& lineTexts,
-		std::vector<VacdmColorRuleDefinition>& outRules)
+		std::vector<CdmColorRuleDefinition>& outRules)
 	{
-		CollectColorRulesFromLineTexts(lineTexts, outRules, TryParseVacdmColorRuleToken);
+		CollectColorRulesFromLineTexts(lineTexts, outRules, TryParseCdmColorRuleToken);
 	}
 
 	void CollectRunwayColorRulesFromLineTexts(

@@ -9,6 +9,7 @@
 #include "crash/CrashReporter.hpp"
 #include "datalink/CdmReminderSafety.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "platform/windows/EuroScopeCommandLine.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -32,9 +33,6 @@
 #include <mutex>
 #include <new>
 #include <set>
-#include <sstream>
-
-#include "rapidjson/document.h"
 
 using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
@@ -91,50 +89,16 @@ std::atomic<int> messageId(0);
 PluginSteadyClock::time_point DatalinkLastPollAt;
 
 
-// Snapshot cache of the latest vACDM pilot data keyed by normalized callsign.
-std::mutex VacdmPilotsMutex;
-std::map<std::string, VacdmPilotData> VacdmPilots;
-std::atomic<bool> VacdmFetchInProgress(false);
-std::atomic<PluginSteadyTick> VacdmLastFetchTick(0);
-const int VacdmFetchIntervalSeconds = 15;
-const std::string VacdmPilotsUrlDefault = "https://app.vacdm.net/api/v1/pilots";
 std::mutex ProfilesSourceMutex;
 std::string ActiveProfilesConfigPath;
 bool ActiveProfilesConfigPathClaimed = false;
-unsigned long long ProfilesSourceGeneration = 0;
-// Guarded by ProfilesSourceMutex. Workers consume only a copied snapshot.
-std::string VacdmConfiguredServerUrl;
-std::atomic<bool> VacdmPollingEnabled(false);
-std::atomic<unsigned long> VacdmFetchCounter(0);
-std::atomic<unsigned long> VacdmLastSehCode(0);
-std::mutex VacdmDebugStateMutex;
-std::string VacdmDebugAselCallsign;
-unsigned long long VacdmSuccessfulSnapshotSourceGeneration = 0;
-std::chrono::steady_clock::time_point VacdmSuccessfulSnapshotAt;
 
 	const std::time_t CdmWarningCooldownSeconds = 60;
 	const int CdmReminderQueueMaxSendAttempts = 20;
 	const int CdmReminderRetryDelaySeconds = 5;
 	const int CdmMaximumMinutes = 24 * 60;
-	const int VacdmSnapshotMaximumAgeSeconds = VacdmFetchIntervalSeconds * 4;
 	const size_t HoppieResponseLimitBytes = 1024U * 1024U;
-	const size_t VacdmResponseLimitBytes = 16U * 1024U * 1024U;
 
-PluginSteadyTick CurrentSteadyTick() noexcept
-{
-	return std::chrono::duration_cast<std::chrono::milliseconds>(
-		PluginSteadyClock::now().time_since_epoch()).count();
-}
-
-bool HasSteadyIntervalElapsed(
-	PluginSteadyTick now,
-	PluginSteadyTick previous,
-	std::chrono::seconds interval) noexcept
-{
-	return previous == 0 ||
-		now - previous >=
-			std::chrono::duration_cast<std::chrono::milliseconds>(interval).count();
-}
 	DatalinkCredentialsSnapshot SnapshotDatalinkCredentials()
 	{
 		std::lock_guard<std::mutex> guard(DatalinkControlMutex);
@@ -158,51 +122,7 @@ bool HasSteadyIntervalElapsed(
 
 	bool StartDatalinkPoll(bool reportStatus, std::string& error);
 
-	bool HasSubmittedTobtState(const VacdmPilotData& pilotData);
-
-	std::string KeepAsciiAlnumCopy(const std::string& text)
-	{
-		std::string normalized;
-		normalized.reserve(text.size());
-		for (char c : text)
-		{
-			if (std::isalnum(static_cast<unsigned char>(c)) != 0)
-				normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-		}
-		return normalized;
-	}
-
-	std::string StripAtFirstCallsignDelimiter(const std::string& text)
-	{
-		const size_t pos = text.find_first_of("/\\ _.-");
-		if (pos == std::string::npos)
-			return text;
-		return text.substr(0, pos);
-	}
-
-	std::vector<std::string> BuildVacdmLookupCandidates(const std::string& callsign)
-	{
-		std::vector<std::string> candidates;
-		auto pushUnique = [&](const std::string& value) {
-			const std::string candidate = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(value));
-			if (candidate.empty())
-				return;
-			if (std::find(candidates.begin(), candidates.end(), candidate) != candidates.end())
-				return;
-			candidates.push_back(candidate);
-			};
-
-		const std::string trimmed = TrimAsciiWhitespaceCopy(callsign);
-		pushUnique(trimmed);
-		pushUnique(StripAtFirstCallsignDelimiter(trimmed));
-		pushUnique(KeepAsciiAlnumCopy(trimmed));
-
-		const size_t slashPos = trimmed.find('/');
-		if (slashPos != std::string::npos)
-			pushUnique(trimmed.substr(0, slashPos));
-
-		return candidates;
-	}
+	bool HasSubmittedTobtState(const CdmPilotData& pilotData);
 
 	bool TryParseNonNegativeInt(const std::string& text, int& outValue)
 	{
@@ -291,18 +211,9 @@ bool HasSteadyIntervalElapsed(
 		return false;
 	}
 
-	bool IsVacdmSnapshotReadyForCdm()
+	bool IsCdmBridgeReady()
 	{
-		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-		if (!VacdmPollingEnabled.load(std::memory_order_acquire) ||
-			VacdmSuccessfulSnapshotSourceGeneration != ProfilesSourceGeneration ||
-			VacdmSuccessfulSnapshotAt == std::chrono::steady_clock::time_point())
-		{
-			return false;
-		}
-
-		return std::chrono::steady_clock::now() - VacdmSuccessfulSnapshotAt <=
-			std::chrono::seconds(VacdmSnapshotMaximumAgeSeconds);
+		return VsmrCdm::GetInterfaceState().providerReady;
 	}
 
 	std::vector<std::string> CollectFlightPlanCandidateCallsignsForActiveAirport(
@@ -546,14 +457,14 @@ bool HasSteadyIntervalElapsed(
 		const std::string& callsign,
 		const std::string& reminderMessage,
 		std::chrono::steady_clock::time_point now,
-		bool* outVacdmEvaluated,
-		bool* outHasVacdmData,
+		bool* outCdmEvaluated,
+		bool* outHasCdmData,
 		bool automatic)
 	{
-		if (outVacdmEvaluated != nullptr)
-			*outVacdmEvaluated = false;
-		if (outHasVacdmData != nullptr)
-			*outHasVacdmData = false;
+		if (outCdmEvaluated != nullptr)
+			*outCdmEvaluated = false;
+		if (outHasCdmData != nullptr)
+			*outHasCdmData = false;
 
 		const std::string normalizedCallsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
 		const std::string activeAirport = ResolveActiveAirportFilterUpper();
@@ -576,17 +487,17 @@ bool HasSteadyIntervalElapsed(
 				return CdmQueueReminderOutcome::AlreadyCleared;
 		}
 
-		VacdmPilotData pilotData;
-		const bool hasVacdmData = TryGetVacdmPilotData(normalizedCallsign, pilotData);
-		if (outVacdmEvaluated != nullptr)
-			*outVacdmEvaluated = true;
-		if (outHasVacdmData != nullptr)
-			*outHasVacdmData = hasVacdmData;
+		CdmPilotData pilotData;
+		const bool hasCdmData = TryGetCdmPilotData(normalizedCallsign, pilotData);
+		if (outCdmEvaluated != nullptr)
+			*outCdmEvaluated = true;
+		if (outHasCdmData != nullptr)
+			*outHasCdmData = hasCdmData;
 
-		if (hasVacdmData && HasSubmittedTobtState(pilotData))
+		if (hasCdmData && HasSubmittedTobtState(pilotData))
 			return CdmQueueReminderOutcome::HasSubmittedTobt;
 
-		// Rechecking after the unlocked vACDM lookup before committing to the queue
+		// Recheck after the unlocked CDM bridge lookup before committing to the queue.
 		if (ResolveActiveAirportFilterUpper() != activeAirport ||
 			!IsCallsignEligibleForCdmReminderNow(plugIn, normalizedCallsign))
 		{
@@ -674,29 +585,6 @@ bool HasSteadyIntervalElapsed(
 		collection.erase(std::remove(collection.begin(), collection.end(), callsign), collection.end());
 	}
 
-	std::string NormalizeVacdmServerUrl(std::string value)
-	{
-		value = TrimAsciiWhitespaceCopy(value);
-		while (!value.empty() && value.back() == '/')
-			value.pop_back();
-		std::string host;
-		if (value.find('?') != std::string::npos ||
-			!HttpHelper::IsValidHttpsUrl(value, &host))
-		{
-			return "";
-		}
-		const bool numericHost = !host.empty() &&
-			std::all_of(host.begin(), host.end(), [](unsigned char character) {
-				return std::isdigit(character) != 0 || character == '.';
-			});
-		const bool localHost = host == "localhost" ||
-			(host.size() > 10 && host.compare(host.size() - 10, 10, ".localhost") == 0) ||
-			(host.size() > 6 && host.compare(host.size() - 6, 6, ".local") == 0);
-		if (numericHost || localHost || host.find('.') == std::string::npos)
-			return "";
-		return value;
-	}
-
 	std::filesystem::path ResolveDefaultProfilesConfigPath()
 	{
 		const std::filesystem::path pluginDirectory =
@@ -707,107 +595,6 @@ bool HasSteadyIntervalElapsed(
 		if (std::filesystem::exists(dataConfigPath, ec))
 			return dataConfigPath;
 		return pluginDirectory / "vSMR_Profiles.json";
-	}
-
-	bool TryReadVacdmServerUrl(
-		const std::filesystem::path& configPath,
-		std::string& outServerUrl)
-	{
-		outServerUrl.clear();
-		if (configPath.empty())
-			return false;
-		std::ifstream input(configPath, std::ios::binary);
-
-		if (!input.is_open())
-			return false;
-
-		std::stringstream buffer;
-		buffer << input.rdbuf();
-		std::string json = buffer.str();
-		if (json.size() >= 3 &&
-			static_cast<unsigned char>(json[0]) == 0xEF &&
-			static_cast<unsigned char>(json[1]) == 0xBB &&
-			static_cast<unsigned char>(json[2]) == 0xBF)
-		{
-			json = json.substr(3);
-		}
-
-		rapidjson::Document document;
-		if (document.Parse<0>(json.c_str()).HasParseError() || !document.IsArray())
-			return false;
-
-		for (rapidjson::SizeType i = 0; i < document.Size(); ++i)
-		{
-			const rapidjson::Value& entry = document[i];
-			if (!entry.IsObject() ||
-				!entry.HasMember("_vsmr") ||
-				!entry["_vsmr"].IsObject())
-			{
-				continue;
-			}
-
-			const rapidjson::Value& metadata = entry["_vsmr"];
-			if (!metadata.HasMember("vacdm") || !metadata["vacdm"].IsObject())
-				continue;
-
-			const rapidjson::Value& vacdm = metadata["vacdm"];
-			if (!vacdm.HasMember("server_url") || !vacdm["server_url"].IsString())
-				continue;
-
-			const std::string value = NormalizeVacdmServerUrl(vacdm["server_url"].GetString());
-			if (value.empty())
-				continue;
-
-			outServerUrl = value;
-			return true;
-		}
-
-		return false;
-	}
-
-	std::string ResolveVacdmPilotsUrl(unsigned long long* sourceGeneration)
-	{
-		std::string serverUrl;
-		{
-			std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-			serverUrl = VacdmConfiguredServerUrl;
-			if (sourceGeneration != nullptr)
-				*sourceGeneration = ProfilesSourceGeneration;
-		}
-		if (!serverUrl.empty())
-			return serverUrl + "/api/v1/pilots";
-		return VacdmPilotsUrlDefault;
-	}
-
-	bool TryParseIsoUtcTimestamp(const std::string& iso, std::time_t& outUtc)
-	{
-		outUtc = 0;
-		if (iso.size() < 19)
-			return false;
-
-		int year = 0;
-		int month = 0;
-		int day = 0;
-		int hour = 0;
-		int minute = 0;
-		int second = 0;
-		if (::sscanf_s(iso.c_str(), "%d-%d-%dT%d:%d:%d", &year, &month, &day, &hour, &minute, &second) != 6)
-			return false;
-
-		std::tm tmUtc = {};
-		tmUtc.tm_year = year - 1900;
-		tmUtc.tm_mon = month - 1;
-		tmUtc.tm_mday = day;
-		tmUtc.tm_hour = hour;
-		tmUtc.tm_min = minute;
-		tmUtc.tm_sec = second;
-		tmUtc.tm_isdst = 0;
-		std::time_t parsed = _mkgmtime(&tmUtc);
-		if (parsed <= 0)
-			return false;
-
-		outUtc = parsed;
-		return true;
 	}
 
 	std::string FormatUtcHhmm(std::time_t utcTime)
@@ -823,20 +610,7 @@ bool HasSteadyIntervalElapsed(
 		return value;
 	}
 
-	std::string FormatSehCode(unsigned long code)
-	{
-		char buffer[16] = {};
-		sprintf_s(buffer, "0x%08lX", code);
-		return std::string(buffer);
-	}
-
-	int CaptureVacdmSehCode(unsigned long sehCode)
-	{
-		VacdmLastSehCode.store(sehCode, std::memory_order_relaxed);
-		return EXCEPTION_EXECUTE_HANDLER;
-	}
-
-	bool HasSubmittedTobtState(const VacdmPilotData& pilotData)
+	bool HasSubmittedTobtState(const CdmPilotData& pilotData)
 	{
 		if (!pilotData.hasTobt)
 			return false;
@@ -1026,7 +800,7 @@ bool HasSteadyIntervalElapsed(
 	{
 		if (plugIn == nullptr || callsign.empty() ||
 			!plugIn->ControllerMyself().IsController() ||
-			!IsVacdmSnapshotReadyForCdm())
+			!IsCdmBridgeReady())
 			return false;
 
 		{
@@ -1042,8 +816,8 @@ bool HasSteadyIntervalElapsed(
 		if (std::find(eligibleCallsigns.begin(), eligibleCallsigns.end(), callsign) == eligibleCallsigns.end())
 			return false;
 
-		VacdmPilotData pilotData;
-		if (TryGetVacdmPilotData(callsign, pilotData) && HasSubmittedTobtState(pilotData))
+		CdmPilotData pilotData;
+		if (TryGetCdmPilotData(callsign, pilotData) && HasSubmittedTobtState(pilotData))
 			return false;
 
 		return true;

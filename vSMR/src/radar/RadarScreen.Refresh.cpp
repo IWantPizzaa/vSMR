@@ -1105,7 +1105,7 @@ void CSMRRadar::RecordRefreshPerformance(
 				  " scene_es_targets=" + std::to_string(frameScene->stats.sdkTargetEnumerations) +
 				  " scene_es_fp=" + std::to_string(frameScene->stats.sdkFlightPlanLookups) +
 				  " scene_es_correlated_fp=" + std::to_string(frameScene->stats.sdkCorrelatedFlightPlanLookups) +
-				  " scene_vacdm=" + std::to_string(frameScene->stats.vacdmLookups)
+				  " scene_cdm=" + std::to_string(frameScene->stats.cdmLookups)
 				: " scene_unavailable=1"));
 	}
 }

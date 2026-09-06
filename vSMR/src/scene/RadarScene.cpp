@@ -7,7 +7,7 @@
 #include "shared/TextUtils.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagDefinitionUtils.hpp"
-#include "tags/VacdmTagHelpers.hpp"
+#include "tags/CdmTagHelpers.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -204,9 +204,9 @@ namespace
 			for (const std::string& rawToken : rawTokens)
 			{
 				DefinitionTokenStyleData styled = ParseDefinitionTokenStyle(rawToken);
-				TagColorRules::VacdmColorRuleDefinition vacdmRule;
+				TagColorRules::CdmColorRuleDefinition cdmRule;
 				TagColorRules::RunwayColorRuleDefinition runwayRule;
-				if (TagColorRules::TryParseVacdmColorRuleToken(styled.token, vacdmRule) ||
+				if (TagColorRules::TryParseCdmColorRuleToken(styled.token, cdmRule) ||
 					TagColorRules::TryParseRunwayColorRuleToken(styled.token, runwayRule))
 				{
 					continue;
@@ -422,11 +422,16 @@ namespace
 		HashSceneValue(result, static_cast<int>(target.groundState));
 		HashSceneValue(result, static_cast<int>(target.role));
 		HashSceneValue(result, target.tag.clearanceReceived);
-		HashSceneValue(result, target.hasVacdmData);
-		HashSceneValue(result, target.vacdmData.tobtState);
-		HashSceneValue(result, target.vacdmData.tobtUtc);
-		HashSceneValue(result, target.vacdmData.tsatUtc);
-		HashSceneValue(result, target.vacdmData.ttotUtc);
+		HashSceneValue(result, target.hasCdmData);
+		HashSceneValue(result, target.cdmData.tobtState);
+		HashSceneValue(result, target.cdmData.tobtUtc);
+		HashSceneValue(result, target.cdmData.tsatUtc);
+		HashSceneValue(result, target.cdmData.ttotUtc);
+		for (const auto& [token, value] : target.tag.tokens)
+		{
+			HashSceneValue(result, token);
+			HashSceneValue(result, value);
+		}
 		return result;
 	}
 
@@ -802,9 +807,9 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		else
 			target.role = target.arrival ? TargetRole::Arrival : TargetRole::Departure;
 
-		++scene->stats.vacdmLookups;
-		target.hasVacdmData = TryGetVacdmPilotDataForTarget(radarTarget, flightPlan, target.vacdmData);
-		const VacdmPilotData* capturedVacdmData = target.hasVacdmData ? &target.vacdmData : nullptr;
+		++scene->stats.cdmLookups;
+		target.hasCdmData = TryGetCdmPilotDataForTarget(radarTarget, flightPlan, target.cdmData);
+		const CdmPilotData* capturedCdmData = target.hasCdmData ? &target.cdmData : nullptr;
 		target.passesDisplayMode = ShouldDisplayTargetForDisplayMode(
 			flightPlan,
 			target.correlated,
@@ -812,7 +817,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.pressureAltitude,
 			target.rimcas.onRunway,
 			displaySettings,
-			capturedVacdmData);
+			capturedCdmData);
 		bool tagVisible = target.passesDisplayMode;
 		if (proModeEnabled && (!hasAssignedSquawk || wrongSquawk))
 			tagVisible = false;
@@ -840,7 +845,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			scene->airport.transitionAltitude,
 			scene->airport.icao,
 			callsign,
-			capturedVacdmData,
+			capturedCdmData,
 			capturedPreviousFlightLevel);
 		switch (target.role)
 		{
@@ -932,7 +937,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		: emptyStructuredRules;
 	struct TagDefinitionColorRules
 	{
-		std::vector<TagColorRules::VacdmColorRuleDefinition> vacdm;
+		std::vector<TagColorRules::CdmColorRuleDefinition> cdm;
 		std::vector<TagColorRules::RunwayColorRuleDefinition> runway;
 	};
 	std::unordered_map<std::string, TagDefinitionColorRules> tagDefinitionColorRuleCache;
@@ -949,7 +954,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				if (definition != nullptr)
 				{
 					const std::vector<std::string> lines = TagColorRules::ConvertDefinitionValueToLineTexts(*definition);
-					TagColorRules::CollectVacdmColorRulesFromLineTexts(lines, rules.vacdm);
+					TagColorRules::CollectCdmColorRulesFromLineTexts(lines, rules.cdm);
 					TagColorRules::CollectRunwayColorRulesFromLineTexts(lines, rules.runway);
 				}
 			}
@@ -996,19 +1001,19 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			readColor((*targetsConfig)["ground_icons"], key, resolved)) return resolved;
 		return fallback;
 	};
-	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> TagColorRules::VacdmColorRuleOverrides
+	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> TagColorRules::TagColorRuleOverrides
 	{
 		const TagDefinitionColorRules& definitionRules = resolveTagDefinitionColorRules(
 			target.tag.definitionType,
 			target.tag.status,
 			detailed);
-		const VacdmPilotData* pilotData = target.hasVacdmData ? &target.vacdmData : nullptr;
-		TagColorRules::VacdmColorRuleOverrides overrides = TagColorRules::EvaluateVacdmColorRules(definitionRules.vacdm, pilotData);
+		const CdmPilotData* pilotData = target.hasCdmData ? &target.cdmData : nullptr;
+		TagColorRules::TagColorRuleOverrides overrides = TagColorRules::EvaluateCdmColorRules(definitionRules.cdm, pilotData);
 		TagColorRules::MergeColorRuleOverrides(
 			overrides,
 			TagColorRules::EvaluateRunwayColorRules(definitionRules.runway, target.tag.tokens));
 
-		TagColorRules::VacdmColorRuleOverrides structuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
+		TagColorRules::TagColorRuleOverrides structuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
 			structuredRules,
 			target.tag.definitionType,
 			target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
@@ -1017,7 +1022,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			pilotData);
 		if (detailed)
 		{
-			const TagColorRules::VacdmColorRuleOverrides normalStructuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
+			const TagColorRules::TagColorRuleOverrides normalStructuredOverrides = TagColorRules::EvaluateStructuredTagColorRules(
 				structuredRules,
 				target.tag.definitionType,
 				target.tag.status == "default" ? nullptr : target.tag.status.c_str(),
@@ -1176,7 +1181,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		palette.text = CopyColor(text);
 		return palette;
 	};
-	auto applyTagColorRules = [](TagPalette& palette, const TagColorRules::VacdmColorRuleOverrides& overrides)
+	auto applyTagColorRules = [](TagPalette& palette, const TagColorRules::TagColorRuleOverrides& overrides)
 	{
 		auto channel = [](int value) -> std::uint8_t
 		{
@@ -1215,14 +1220,14 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 				{
 					element.effectiveColor = capturedSquawkErrorColor;
 				}
-				else if (!palette.textRuleApplied && target.hasVacdmData && (token == "tobt" || token == "tsat"))
+				else if (!palette.textRuleApplied && target.hasCdmData && (token == "tobt" || token == "tsat"))
 				{
 					int red = 255;
 					int green = 255;
 					int blue = 255;
 					const bool resolved = token == "tobt"
-						? TryResolveVacdmTobtTextColor(target.vacdmData, red, green, blue)
-						: (token == "tsat" && TryResolveVacdmTsatTextColor(target.vacdmData, red, green, blue));
+						? TryResolveCdmTobtTextColor(target.cdmData, red, green, blue)
+						: (token == "tsat" && TryResolveCdmTsatTextColor(target.cdmData, red, green, blue));
 					if (resolved)
 					{
 						element.effectiveColor = VsmrScene::Color{
@@ -1262,8 +1267,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.tag.normal = BuildTagVariant(*labels, target, false);
 			target.tag.detailed = BuildTagVariant(*labels, target, true);
 		}
-		const TagColorRules::VacdmColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
-		const TagColorRules::VacdmColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
+		const TagColorRules::TagColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
+		const TagColorRules::TagColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
 		target.tag.normalPalette = resolveBaseTagPalette(target);
 		target.tag.detailedPalette = target.tag.normalPalette;
 		applyTagColorRules(target.tag.normalPalette, normalTagColorOverrides);
@@ -1355,8 +1360,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			&target.style.assetKey,
 			&target.tag.definitionType,
 			&target.tag.status,
-			&target.vacdmData.callsign,
-			&target.vacdmData.tobtState
+			&target.cdmData.callsign,
+			&target.cdmData.tobtState
 		};
 		for (const std::string* value : targetStrings)
 			estimatedBytes += EstimateStringHeapBytes(*value);

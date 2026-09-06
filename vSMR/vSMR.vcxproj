@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -192,6 +192,7 @@
     <ClCompile Include="src\datalink\DatalinkProtocolSupport.cpp" />
     <ClCompile Include="src\datalink\DataLinkDialog.cpp" />
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp" />
+    <ClCompile Include="src\integrations\CdmBridgeClient.cpp" />
     <ClCompile Include="src\integrations\VsidBridgeClient.cpp" />
     <ClCompile Include="src\insets\InsetWindow.cpp" />
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp" />
@@ -289,6 +290,8 @@
     <ClInclude Include="src\datalink\DatalinkProtocolSupport.hpp" />
     <ClInclude Include="src\datalink\DataLinkDialog.hpp" />
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp" />
+    <ClInclude Include="src\integrations\CdmBridgeClient.hpp" />
+    <ClInclude Include="src\integrations\CdmBridgeData.hpp" />
     <ClInclude Include="src\integrations\PluginBridgeApi.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeData.hpp" />
@@ -332,7 +335,7 @@
     <ClInclude Include="src\tags\TagColorRules.Internal.hpp" />
     <ClInclude Include="src\tags\TagDataTypes.hpp" />
     <ClInclude Include="src\tags\TagDefinitionUtils.hpp" />
-    <ClInclude Include="src\tags\VacdmTagHelpers.hpp" />
+    <ClInclude Include="src\tags\CdmTagHelpers.hpp" />
     <ClInclude Include="src\weather\WeatherStore.hpp" />
   </ItemGroup>
   <ItemGroup>

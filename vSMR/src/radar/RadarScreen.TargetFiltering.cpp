@@ -3,7 +3,7 @@
 #include "aircraft/GroundState.hpp"
 #include "scene/TargetRoleLogic.hpp"
 #include "tags/TagColorRules.hpp"
-#include "tags/VacdmTagHelpers.hpp"
+#include "tags/CdmTagHelpers.hpp"
 #include "crash/CrashRuntime.hpp"
 
 namespace TagColorRules = VsmrTagColorRules;
@@ -69,7 +69,7 @@ bool CSMRRadar::IsWithinAirborneDisplayLimits(
 		reportedGs <= settings.maximumAirborneSpeedKt;
 }
 
-bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const VacdmPilotData* capturedVacdmData) const
+bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorrelated, int reportedGs, int pressureAltitudeFt, bool targetOnRunway, const DisplayModeSettings& settings, const CdmPilotData* capturedCdmData) const
 {
 	// Applying filters which do not depend on the airport role
 	if (!IsWithinAirborneDisplayLimits(reportedGs, pressureAltitudeFt, settings))
@@ -80,19 +80,19 @@ bool CSMRRadar::ShouldDisplayTargetForDisplayMode(CFlightPlan fp, bool acIsCorre
 
 	if (settings.requireValidTsat || settings.requireActiveTobt)
 	{
-		if (capturedVacdmData == nullptr)
+		if (capturedCdmData == nullptr)
 			return false;
 
 		if (settings.requireValidTsat)
 		{
-			const std::string tsatState = TagColorRules::ResolveVacdmRuleStateName("tsat", capturedVacdmData);
+			const std::string tsatState = TagColorRules::ResolveCdmRuleStateName("tsat", capturedCdmData);
 			if (tsatState != "valid" && tsatState != "valid_ctot")
 				return false;
 		}
 
 		if (settings.requireActiveTobt)
 		{
-			const std::string tobtState = TagColorRules::ResolveVacdmRuleStateName("tobt", capturedVacdmData);
+			const std::string tobtState = TagColorRules::ResolveCdmRuleStateName("tobt", capturedCdmData);
 			if (tobtState != "confirmed" &&
 				tobtState != "unconfirmed" &&
 				tobtState != "confirmed_delay" &&

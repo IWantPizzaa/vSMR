@@ -168,8 +168,8 @@ namespace VsmrScene
 		TargetStyle style;
 		TagContent tag;
 		RimcasState rimcas;
-		bool hasVacdmData = false;
-		VacdmPilotData vacdmData;
+		bool hasCdmData = false;
+		CdmPilotData cdmData;
 	};
 
 	struct ControllerState
@@ -199,7 +199,7 @@ namespace VsmrScene
 		std::size_t sdkFlightPlanLookups = 0;
 		std::size_t sdkCorrelatedFlightPlanLookups = 0;
 		std::size_t sdkPreviousPositionLookups = 0;
-		std::size_t vacdmLookups = 0;
+		std::size_t cdmLookups = 0;
 		std::size_t radarFilteredTargetCount = 0;
 		std::size_t iconTargetCount = 0;
 		std::size_t tagTargetCount = 0;

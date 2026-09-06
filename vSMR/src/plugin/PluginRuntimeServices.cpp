@@ -344,7 +344,8 @@ bool CSMRPlugin::WriteDiagnosticsReport(
 		report << "cpdlc_polling=" << yesNo(datalink.pollInProgress) << "\n";
 		report << "cpdlc_has_protected_code=" << yesNo(datalink.hasPassword) << "\n";
 		report << "cpdlc_status=" << singleLine(datalink.statusMessage) << "\n";
-		report << "vacdm_configured=" << yesNo(datalink.vacdmConfigured) << "\n";
+		report << "cdm_bridge_loaded=" << yesNo(datalink.cdmBridgeLoaded) << "\n";
+		report << "cdm_bridge_ready=" << yesNo(datalink.cdmBridgeReady) << "\n";
 		report << "cdm_auto_enabled=" << yesNo(datalink.cdmAutoEnabled) << "\n";
 		report << "network_workers=" << workerQueues.networkWorkers << "\n";
 		report << "network_jobs_queued=" << workerQueues.networkQueued << "\n";

@@ -10,8 +10,6 @@ namespace VsmrRuntimeConfigInternal
 	inline constexpr const char* kMetadataWrapperKey = "_vsmr";
 	inline constexpr const char* kMetadataSchemaVersionKey = "schema_version";
 	inline constexpr const char* kLastActiveProfileKey = "last_active_profile";
-	inline constexpr const char* kVacdmKey = "vacdm";
-	inline constexpr const char* kVacdmServerUrlKey = "server_url";
 	inline constexpr const char* kAvisoPresetsKey = "aviso_presets";
 	inline constexpr const char* kAirportPresetStoresKey = "airports";
 	inline constexpr const char* kPresetItemsKey = "items";

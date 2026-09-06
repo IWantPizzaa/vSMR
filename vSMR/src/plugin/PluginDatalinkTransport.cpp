@@ -8,6 +8,7 @@
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashReporter.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 #include "weather/WeatherStore.hpp"
@@ -30,8 +31,6 @@
 #include <new>
 #include <set>
 #include <sstream>
-
-#include "rapidjson/document.h"
 
 using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
@@ -57,21 +56,51 @@ HttpHelper& VsmrPluginRuntime::GetHttpHelper()
 	return helper;
 }
 
-bool TryGetVacdmPilotData(const std::string& callsign, VacdmPilotData& outData)
+bool TryGetCdmPilotData(const std::string& callsign, CdmPilotData& outData)
 {
-	std::lock_guard<std::mutex> guard(VacdmPilotsMutex);
-	// Match with the same normalization strategy used during ingest.
-	const std::vector<std::string> candidates = BuildVacdmLookupCandidates(callsign);
-	for (const auto& candidate : candidates)
+	VsmrCdm::AircraftData bridgeData;
+	if (!VsmrCdm::TryGetAircraftData(callsign, bridgeData))
+		return false;
+
+	auto toUtcTime = [](const std::optional<std::int64_t>& minutes)
 	{
-		auto it = VacdmPilots.find(candidate);
-		if (it != VacdmPilots.end())
-		{
-			outData = it->second;
-			return true;
-		}
-	}
-	return false;
+		if (!minutes.has_value() || *minutes < 0 || *minutes >= 24 * 60)
+			return static_cast<std::time_t>(0);
+		const std::time_t now = std::time(nullptr);
+		std::tm utc = {};
+		if (::gmtime_s(&utc, &now) != 0)
+			return static_cast<std::time_t>(0);
+		utc.tm_hour = static_cast<int>(*minutes / 60);
+		utc.tm_min = static_cast<int>(*minutes % 60);
+		utc.tm_sec = 0;
+		std::time_t candidate = _mkgmtime(&utc);
+		if (candidate - now > 12 * 60 * 60)
+			candidate -= 24 * 60 * 60;
+		else if (now - candidate > 12 * 60 * 60)
+			candidate += 24 * 60 * 60;
+		return candidate;
+	};
+
+	outData = CdmPilotData();
+	outData.callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
+	outData.bridgeData = bridgeData;
+	outData.tobtUtc = toUtcTime(bridgeData.tobt);
+	outData.tsatUtc = toUtcTime(bridgeData.tsat);
+	outData.ttotUtc = toUtcTime(bridgeData.ttot);
+	outData.ctotUtc = toUtcTime(bridgeData.ctot);
+	outData.tsacUtc = toUtcTime(bridgeData.tsac);
+	outData.asrtUtc = toUtcTime(bridgeData.asrt);
+	outData.asatUtc = toUtcTime(bridgeData.asat);
+	outData.hasTobt = outData.tobtUtc != 0;
+	outData.hasTsat = outData.tsatUtc != 0;
+	outData.hasTtot = outData.ttotUtc != 0;
+	outData.hasCtot = outData.ctotUtc != 0;
+	outData.hasTsac = outData.tsacUtc != 0;
+	outData.hasAsrt = outData.asrtUtc != 0;
+	outData.hasAsat = outData.asatUtc != 0;
+	// The CDM provider only publishes a TOBT after CDM has accepted it.
+	outData.tobtState = outData.hasTobt ? "CONFIRMED" : "";
+	return true;
 }
 
 void ProcessCdmAutoMode(CSMRPlugin* plugIn)
@@ -81,7 +110,7 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 
 	const std::string activeAirport = ResolveActiveAirportFilterUpper();
 	if (!plugIn->ControllerMyself().IsController() || activeAirport.empty() ||
-		!IsVacdmSnapshotReadyForCdm())
+		!IsCdmBridgeReady())
 	{
 		ClearCdmAutoTrackingState(true);
 		return;
@@ -105,8 +134,8 @@ void ProcessCdmAutoMode(CSMRPlugin* plugIn)
 	candidates.reserve(connectedCallsigns.size());
 	for (const std::string& callsign : connectedCallsigns)
 	{
-		VacdmPilotData pilotData;
-		const bool hasPilotData = TryGetVacdmPilotData(callsign, pilotData);
+		CdmPilotData pilotData;
+		const bool hasPilotData = TryGetCdmPilotData(callsign, pilotData);
 		candidates.push_back({
 			callsign,
 			hasPilotData && HasSubmittedTobtState(pilotData)
@@ -380,164 +409,6 @@ void ProcessQueuedCdmReminderMessages(CSMRPlugin* plugIn)
 			!IsCdmReminderQueuedUnlocked(callsign))
 			CdmReminderMessageQueue.push_back(queuedReminder);
 	}
-}
-
-void refreshVacdmDataImpl()
-{
-	unsigned long long sourceGeneration = 0;
-	const std::string pilotsUrl = ResolveVacdmPilotsUrl(&sourceGeneration);
-
-	struct ResetFetchFlag
-	{
-		unsigned long long sourceGeneration = 0;
-		explicit ResetFetchFlag(unsigned long long generation)
-			: sourceGeneration(generation) {}
-
-		~ResetFetchFlag()
-		{
-			bool sourceStillCurrent = false;
-			{
-				std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-				sourceStillCurrent =
-					ProfilesSourceGeneration == sourceGeneration;
-			}
-			if (sourceStillCurrent)
-				VacdmLastFetchTick = CurrentSteadyTick();
-			VacdmFetchInProgress.store(false);
-		}
-	} reset{ sourceGeneration };
-
-	if (PluginShutdownRequested.load(std::memory_order_relaxed) ||
-		!VacdmPollingEnabled.load(std::memory_order_acquire))
-		return;
-
-	try
-	{
-		std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
-			pilotsUrl,
-			6000,
-			&PluginShutdownRequested,
-			VacdmResponseLimitBytes);
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
-			return;
-
-		if (raw.empty())
-		{
-			Logger::info("VACDM refresh failed: empty response url=" + pilotsUrl);
-			return;
-		}
-
-		rapidjson::Document doc;
-		if (doc.Parse<0>(raw.c_str()).HasParseError() || !doc.IsArray())
-		{
-			Logger::info("VACDM refresh failed: invalid JSON array url=" + pilotsUrl);
-			return;
-		}
-
-		// Parse into a temporary map so readers never observe a partially refreshed cache.
-		std::map<std::string, VacdmPilotData> parsedData;
-
-		for (rapidjson::SizeType i = 0; i < doc.Size(); ++i)
-		{
-			const rapidjson::Value& pilot = doc[i];
-			if (!pilot.IsObject() || !pilot.HasMember("callsign") || !pilot["callsign"].IsString())
-				continue;
-
-			VacdmPilotData data;
-			data.callsign = ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(pilot["callsign"].GetString()));
-
-			const rapidjson::Value* vacdm = nullptr;
-			if (pilot.HasMember("vacdm") && pilot["vacdm"].IsObject())
-				vacdm = &pilot["vacdm"];
-
-			auto readTime = [&](const char* key, std::time_t& outTime, bool& outHas) {
-				outTime = 0;
-				outHas = false;
-				if (vacdm == nullptr || !vacdm->HasMember(key) || !(*vacdm)[key].IsString())
-					return;
-				std::time_t parsed = 0;
-				if (TryParseIsoUtcTimestamp((*vacdm)[key].GetString(), parsed))
-				{
-					outTime = parsed;
-					outHas = true;
-				}
-				};
-
-			readTime("tobt", data.tobtUtc, data.hasTobt);
-			readTime("tsat", data.tsatUtc, data.hasTsat);
-			readTime("ttot", data.ttotUtc, data.hasTtot);
-			readTime("asat", data.asatUtc, data.hasAsat);
-			readTime("aobt", data.aobtUtc, data.hasAobt);
-			readTime("atot", data.atotUtc, data.hasAtot);
-			readTime("asrt", data.asrtUtc, data.hasAsrt);
-			readTime("aort", data.aortUtc, data.hasAort);
-			readTime("ctot", data.ctotUtc, data.hasCtot);
-
-			if (vacdm != nullptr && vacdm->HasMember("tobt_state") && (*vacdm)["tobt_state"].IsString())
-				data.tobtState = (*vacdm)["tobt_state"].GetString();
-
-			if (pilot.HasMember("hasBooking") && pilot["hasBooking"].IsBool())
-				data.hasBooking = pilot["hasBooking"].GetBool();
-
-			parsedData[data.callsign] = data;
-		}
-
-		if (PluginShutdownRequested.load(std::memory_order_relaxed))
-			return;
-
-		std::string aselCallsign;
-		{
-			std::lock_guard<std::mutex> stateGuard(VacdmDebugStateMutex);
-			aselCallsign = VacdmDebugAselCallsign;
-		}
-		const size_t parsedPilotCount = parsedData.size();
-		const bool aselFound = !aselCallsign.empty() && parsedData.find(aselCallsign) != parsedData.end();
-
-		// Publishing only if the profile source is still current
-		{
-			std::lock_guard<std::mutex> sourceGuard(ProfilesSourceMutex);
-			if (ProfilesSourceGeneration != sourceGeneration)
-				return;
-			std::lock_guard<std::mutex> pilotsGuard(VacdmPilotsMutex);
-			VacdmPilots.swap(parsedData);
-			VacdmSuccessfulSnapshotSourceGeneration = sourceGeneration;
-			VacdmSuccessfulSnapshotAt = std::chrono::steady_clock::now();
-		}
-
-		const unsigned long fetchIndex = ++VacdmFetchCounter;
-		Logger::info(
-			"VACDM refresh #" + std::to_string(fetchIndex) +
-			" pilots=" + std::to_string(parsedPilotCount) +
-			" asel=" + (aselCallsign.empty() ? std::string("<none>") : aselCallsign) +
-			" asel_present=" + std::string(aselFound ? "1" : "0") +
-			" url=" + pilotsUrl
-		);
-	}
-	catch (const std::exception& ex)
-	{
-		Logger::info("VACDM refresh exception: " + std::string(ex.what()));
-	}
-	catch (...)
-	{
-		Logger::info("VACDM refresh exception: unknown");
-	}
-}
-
-void refreshVacdmData()
-{
-#if defined(_MSC_VER)
-	__try
-	{
-		refreshVacdmDataImpl();
-	}
-	__except (CaptureVacdmSehCode(static_cast<unsigned long>(GetExceptionCode())))
-	{
-		VacdmLastFetchTick = CurrentSteadyTick();
-		VacdmFetchInProgress.store(false);
-	}
-#else
-	refreshVacdmDataImpl();
-#endif
 }
 
 void datalinkLogin(DatalinkLoginRequest request) {
@@ -919,39 +790,7 @@ void CSMRPlugin::PublishActiveProfilesConfigPath(
 	const std::string& path,
 	bool claimSelection)
 {
-	std::string configuredVacdmServerUrl;
-	const bool vacdmConfigured = TryReadVacdmServerUrl(
-		std::filesystem::u8path(path),
-		configuredVacdmServerUrl);
-	{
-		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
-		ActiveProfilesConfigPath = path;
-		ActiveProfilesConfigPathClaimed = claimSelection;
-		VacdmConfiguredServerUrl = vacdmConfigured
-			? configuredVacdmServerUrl
-			: std::string();
-		++ProfilesSourceGeneration;
-		VacdmSuccessfulSnapshotSourceGeneration = 0;
-		VacdmSuccessfulSnapshotAt = std::chrono::steady_clock::time_point();
-		// Publish the enable state before workers can observe the new source
-		// generation. This prevents an old `true` value from starting a fetch
-		// against the fallback URL after switching to a profile without VACDM.
-		VacdmPollingEnabled.store(vacdmConfigured, std::memory_order_release);
-		std::lock_guard<std::mutex> pilotsGuard(VacdmPilotsMutex);
-		VacdmPilots.clear();
-	}
-
-	VacdmLastFetchTick.store(0, std::memory_order_relaxed);
-	if (vacdmConfigured)
-	{
-		Logger::info(
-			"VACDM polling enabled profiles=" + path +
-			" server_url=" + configuredVacdmServerUrl);
-	}
-	else
-	{
-		Logger::info(
-			"VACDM polling disabled profiles=" + path +
-			" (no _vsmr.vacdm.server_url)");
-	}
+	std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
+	ActiveProfilesConfigPath = path;
+	ActiveProfilesConfigPathClaimed = claimSelection;
 }

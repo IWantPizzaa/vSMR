@@ -63,11 +63,11 @@
     },
     uncorrelated: { default: "background_on_ground_color" }
   };
-  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "uk_stand", "sqerror", "groundstatus", "systemid"];
-  const RULE_SOURCES = ["vacdm", "runway", "custom", "vsid"];
-  const RULE_SOURCE_LABELS = { vacdm: "VACDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
+  const TAG_TOKENS = ["callsign", "actype", "sctype", "wake", "deprwy", "gs", "flightlevel", "tendency", "scratchpad", "holdingpoint", "remark", "asid", "vsid_sid", "vsid_rwy", "vsid_cfl", "cdm_tobt", "cdm_tsat", "cdm_ttot", "cdm_ctot", "cdm_tsac", "cdm_asrt", "cdm_asat", "cdm_deice", "cdm_tobt_set_by", "cdm_flow_restriction", "cdm_ecfmp_restriction", "cdm_manual_ctot", "uk_stand", "sqerror", "groundstatus", "systemid"];
+  const RULE_SOURCES = ["cdm", "runway", "custom", "vsid"];
+  const RULE_SOURCE_LABELS = { cdm: "CDM", runway: "Runway", custom: "SID / custom", vsid: "vSID" };
   const RULE_SOURCE_TOKENS = {
-    vacdm: ["tobt", "tsat", "ttot", "asat", "aobt", "atot", "asrt", "aort", "ctot"],
+    cdm: ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat", "deice", "tobt_set_by", "flow_restriction", "ecfmp_restriction", "manual_ctot"],
     runway: ["deprwy", "seprwy", "arvrwy", "srvrwy"],
     custom: ["asid", "ssid"],
     vsid: ["vsid_sid", "vsid_rwy", "vsid_cfl"]
@@ -627,7 +627,7 @@
   function getProfileRecords(sourceProfiles = DATA.profiles) {
     const records = [];
     const extras = [];
-    let metadata = { schema_version: 1, last_active_profile: "", vacdm: { server_url: "https://cdm.vatsim.fr" } };
+    let metadata = { schema_version: 1, last_active_profile: "" };
     (Array.isArray(sourceProfiles) ? sourceProfiles : []).forEach((entry, index) => {
       if (entry && typeof entry === "object" && entry.name) {
         const data = stripObsoleteProfileSettings(clone(entry));
@@ -2864,24 +2864,25 @@
   }
   function normalizeRuleSourceUi(source) {
     const normalized = String(source || "").trim().toLowerCase();
+    // Keep older profiles editable while saving new rules under the CDM source.
+    if (normalized === "cdm" || normalized === "vacdm") return "cdm";
     if (normalized === "vsid" || normalized === "v_sid") return "vsid";
     if (normalized === "runway" || normalized === "rwy") return "runway";
     if (["custom", "sid", "list", "sidlist"].includes(normalized)) return "custom";
-    return "vacdm";
+    return "cdm";
   }
   function ruleTokensForSource(source) {
-    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.vacdm;
+    return RULE_SOURCE_TOKENS[normalizeRuleSourceUi(source)] || RULE_SOURCE_TOKENS.cdm;
   }
   function ruleConditionsFor(source, token, selected = "") {
     const normalizedSource = normalizeRuleSourceUi(source);
     const normalizedToken = String(token || "").trim().toLowerCase();
     let values;
-    if (["runway", "custom", "vsid"].includes(normalizedSource))
+    const cdmTime = normalizedSource === "cdm" && ["tobt", "tsat", "ttot", "ctot", "tsac", "asrt", "asat"].includes(normalizedToken);
+    if (normalizedSource === "cdm" && cdmTime)
+      values = ["any", "set", "missing", "future", "past"];
+    else if (["runway", "custom", "vsid", "cdm"].includes(normalizedSource))
       values = ["any", "set", "missing", "in", "not_in"];
-    else if (normalizedToken === "tobt")
-      values = ["any", "set", "missing", "inactive", "unconfirmed", "confirmed", "unconfirmed_delay", "confirmed_delay", "expired"];
-    else if (normalizedToken === "tsat")
-      values = ["any", "set", "missing", "inactive", "future", "valid", "expired", "future_ctot", "valid_ctot", "expired_ctot"];
     else
       values = ["any", "set", "missing", "future", "past"];
 
@@ -2891,9 +2892,8 @@
   function parseRuleCondition(source, condition) {
     const normalizedSource = normalizeRuleSourceUi(source);
     const raw = String(condition || "").trim();
-    if (normalizedSource === "vacdm") return { operator: raw || "any", values: "" };
     const simple = raw.toLowerCase();
-    if (["any", "set", "missing"].includes(simple)) return { operator: simple, values: "" };
+    if (["any", "set", "missing", "future", "past"].includes(simple)) return { operator: simple, values: "" };
     const list = raw.match(/^(not_in|notin|not|in|list|sid)\s*:\s*(.*)$/i);
     if (list) {
       const operator = ["not_in", "notin", "not"].includes(list[1].toLowerCase()) ? "not_in" : "in";
@@ -2902,18 +2902,17 @@
     return { operator: "in", values: raw };
   }
   function composeRuleCondition(source, operator, values) {
-    if (normalizeRuleSourceUi(source) === "vacdm") return String(operator || "any").trim();
     const normalizedOperator = String(operator || "any").trim().toLowerCase();
     if (!["in", "not_in"].includes(normalizedOperator)) return normalizedOperator || "any";
     const list = String(values || "").trim();
     return list ? `${normalizedOperator}: ${list}` : normalizedOperator;
   }
   function updateRuleConditionValueControl(row) {
-    const source = $("[data-field='source']", row)?.value || "vacdm";
+    const source = $("[data-field='source']", row)?.value || "cdm";
     const operator = $("[data-field='condition']", row)?.value || "any";
     const input = $("[data-field='condition-values']", row);
     if (!input) return;
-    const acceptsValues = normalizeRuleSourceUi(source) !== "vacdm" && ["in", "not_in"].includes(operator);
+    const acceptsValues = ["in", "not_in"].includes(operator);
     input.disabled = !acceptsValues;
     const normalizedSource = normalizeRuleSourceUi(source);
     const token = $("[data-field='token']", row)?.value || "";
@@ -3030,7 +3029,7 @@
     if (!drafts.rule || drafts.rule.index !== state.ui.selectedRuleIndex) drafts.rule = { index: state.ui.selectedRuleIndex, data: clone(item) };
     const rule = drafts.rule.data;
     $("#ruleName").value = rule.name || "";
-    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "vacdm", token: rule.token || "", condition: rule.condition || "" }];
+    const criteria = Array.isArray(rule.criteria) && rule.criteria.length ? rule.criteria : [{ source: rule.source || "cdm", token: rule.token || "", condition: rule.condition || "" }];
     $("#criteriaList").innerHTML = criteria.map((criterion, index) => {
       const parsedCondition = parseRuleCondition(criterion.source, criterion.condition);
       return `
@@ -3080,7 +3079,7 @@
         )
       };
     }).filter(criterion => criterion.source || criterion.token || criterion.condition);
-    rule.criteria = criteria.length ? criteria : [{ source: "vacdm", token: "", condition: "" }];
+    rule.criteria = criteria.length ? criteria : [{ source: "cdm", token: "", condition: "" }];
     const first = rule.criteria[0];
     rule.source = first.source;
     rule.token = first.token;
@@ -6048,7 +6047,7 @@
     else if (action === "add-condition") {
       const draft = captureRuleDraft();
       if (!drafts.rule || !draft) return;
-      drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+      drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
       renderRuleEditor();
       applyRule({ render: false });
     }
@@ -6124,7 +6123,7 @@
   }
 
   function createRule() {
-    rules().push({ source: "vacdm", token: "tsat", condition: "valid", criteria: [{ source: "vacdm", token: "tsat", condition: "valid" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
+    rules().push({ source: "cdm", token: "tsat", condition: "set", criteria: [{ source: "cdm", token: "tsat", condition: "set" }], tag_type: "departure", status: "any", statuses: RULE_STATUSES.slice(), detail: "normal", text_color: hexToColor("#ffffff") });
     state.ui.selectedRuleIndex = rules().length - 1;
     drafts.rule = null;
     clearUnappliedEditorSection($("#ruleName"));
@@ -6156,7 +6155,7 @@
     captureRuleDraft();
     if (!drafts.rule) return;
     drafts.rule.data.criteria.splice(index, 1);
-    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "vacdm", token: "", condition: "" });
+    if (!drafts.rule.data.criteria.length) drafts.rule.data.criteria.push({ source: "cdm", token: "", condition: "" });
     renderRuleEditor();
     applyRule({ render: false });
   }

@@ -146,7 +146,6 @@ window.VSMR_DATA = {
       _vsmr: {
         schema_version: 1,
         last_active_profile: "Custom LFPG",
-        vacdm: { server_url: "https://cdm.vatsim.fr" },
         aviso_presets: {
           airports: {
             LFPG: {

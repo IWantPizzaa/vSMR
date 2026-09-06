@@ -3,9 +3,9 @@
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "integrations/VsidBridgeClient.hpp"
-#include "tags/VacdmTagHelpers.hpp"
+#include "tags/CdmTagHelpers.hpp"
 
-map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign, const VacdmPilotData* capturedVacdmData, const int* capturedPreviousFlightLevel)
+map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign, const CdmPilotData* capturedCdmData, const int* capturedPreviousFlightLevel)
 {
 	(void)isASEL;
 	(void)ActiveAirport;
@@ -33,16 +33,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	// sate: Gate, from speed or scratchpad that changes to speed if speed > 25kts *
 	// flightlevel: Flightlevel/Pressure altitude of the ac *
 	// gs: Ground speed of the ac *
-	// tobt: VACDM TOBT (HHMM)
-	// tsat: VACDM TSAT (HHMM)
-	// ttot: VACDM TTOT (HHMM)
-	// asat: VACDM ASAT (HHMM)
-	// aobt: VACDM AOBT (HHMM)
-	// atot: VACDM ATOT (HHMM)
-	// asrt: VACDM ASRT (HHMM)
-	// aort: VACDM AORT (HHMM)
-	// ctot: VACDM CTOT (HHMM)
-	// event_booking: VACDM event booking flag ("B")
+	// TOBT, TSAT, TTOT, ASRT, ASAT and CTOT are supplied by the CDM bridge.
 	// tendency: Climbing or descending symbol *
 	// wake: Wake turbulance cat *
 	// groundstatus: Current status *
@@ -317,7 +308,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		: std::string();
 	string holdingpoint = VsmrHoldingPoint::Resolve(holdingPointCallsign, flightPlanRemarks);
 
-	// ----- VACDM fields -------
+	// ----- Backward-compatible CDM time fields -------
 	string tobt = "";
 	string tsat = "";
 	string ttot = "";
@@ -328,33 +319,22 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	string aort = "";
 	string ctot = "";
 	string eventBooking = "";
-	if (capturedVacdmData != nullptr)
+	if (capturedCdmData != nullptr)
 	{
-		const VacdmPilotData& vacdmPilot = *capturedVacdmData;
-		if (vacdmPilot.hasTobt)
-			tobt = FormatVacdmTimeToken(vacdmPilot.tobtUtc);
-		if (vacdmPilot.hasTsat)
-			tsat = FormatVacdmTimeToken(vacdmPilot.tsatUtc);
-		if (vacdmPilot.hasTtot)
-			ttot = FormatVacdmTimeToken(vacdmPilot.ttotUtc);
-		if (vacdmPilot.hasAsat)
-			asat = FormatVacdmTimeToken(vacdmPilot.asatUtc);
-		if (vacdmPilot.hasAobt)
-			aobt = FormatVacdmTimeToken(vacdmPilot.aobtUtc);
-		if (vacdmPilot.hasAtot)
-			atot = FormatVacdmTimeToken(vacdmPilot.atotUtc);
-		if (vacdmPilot.hasAsrt)
-			asrt = FormatVacdmTimeToken(vacdmPilot.asrtUtc);
-		if (vacdmPilot.hasAort)
-			aort = FormatVacdmTimeToken(vacdmPilot.aortUtc);
-		if (vacdmPilot.hasCtot)
-			ctot = FormatVacdmTimeToken(vacdmPilot.ctotUtc);
-		eventBooking = vacdmPilot.hasBooking ? "B" : "";
+		const CdmPilotData& cdmPilot = *capturedCdmData;
+		if (cdmPilot.hasTobt)
+			tobt = FormatCdmTimeToken(cdmPilot.tobtUtc);
+		if (cdmPilot.hasTsat)
+			tsat = FormatCdmTimeToken(cdmPilot.tsatUtc);
+		if (cdmPilot.hasTtot)
+			ttot = FormatCdmTimeToken(cdmPilot.ttotUtc);
+		if (cdmPilot.hasAsat)
+			asat = FormatCdmTimeToken(cdmPilot.asatUtc);
+		if (cdmPilot.hasAsrt)
+			asrt = FormatCdmTimeToken(cdmPilot.asrtUtc);
+		if (cdmPilot.hasCtot)
+			ctot = FormatCdmTimeToken(cdmPilot.ctotUtc);
 	}
-
-	// VACDM fallback: when backend has no entry, use FPL EOBT as TOBT baseline (matches VACDM plugin bootstrap behavior).
-	if (tobt.empty() && hasReceivedFlightPlanData && isAcCorrelated)
-		tobt = NormalizeHhmmToken(safeCString(fp.GetFlightPlanData().GetEstimatedDepartureTime()));
 
 
 	// ----- Generating the replacing map -----
@@ -442,6 +422,9 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		: (hasFlightPlan ? safeString(fp.GetCallsign()) : "");
 	const bool hasVsidData = VsmrVsid::TryGetAircraftData(vsidCallsign, vsidData);
 	VsmrVsid::AddTagTokens(TagReplacingMap, hasVsidData ? &vsidData : nullptr);
+	VsmrCdm::AddTagTokens(
+		TagReplacingMap,
+		capturedCdmData != nullptr ? &capturedCdmData->bridgeData : nullptr);
 	verboseStep(
 		"done callsign=" + TagReplacingMap["callsign"] +
 		" actype=" + TagReplacingMap["actype"] +

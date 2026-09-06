@@ -9,6 +9,7 @@
 #include "control_center/ControlCenterDialog.hpp"
 #include "crash/CrashReporter.hpp"
 #include "datalink/DatalinkProtocolSupport.hpp"
+#include "integrations/CdmBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
 #include "weather/WeatherStore.hpp"
@@ -31,8 +32,6 @@
 #include <new>
 #include <set>
 #include <sstream>
-
-#include "rapidjson/document.h"
 
 using VsmrDatalinkProtocol::BuildHoppieLoginFailureMessage;
 using VsmrDatalinkProtocol::EncodeUrlQueryComponent;
@@ -60,8 +59,9 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 	state.cdmAutoEnabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
 	state.cdmDelayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
 	state.cdmCooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
-	state.vacdmConfigured = VacdmPollingEnabled.load(std::memory_order_relaxed);
-	state.vacdmReady = IsVacdmSnapshotReadyForCdm();
+	const VsmrCdm::InterfaceState cdmState = VsmrCdm::GetInterfaceState();
+	state.cdmBridgeLoaded = cdmState.bridgeLoaded;
+	state.cdmBridgeReady = cdmState.providerReady;
 	state.activeAirport = ResolveActiveAirportFilterUpper();
 
 	std::string aliasMessage;
@@ -137,14 +137,14 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 			error = "Select an active airport before starting CDM reminders.";
 			return false;
 		}
-		if (!VacdmPollingEnabled.load(std::memory_order_acquire))
+		if (!VsmrCdm::GetInterfaceState().bridgeLoaded)
 		{
-			error = "Configure a vACDM server for the active profile before starting CDM reminders.";
+			error = "Load EuroScopeBridge.dll before starting CDM reminders.";
 			return false;
 		}
-		if (!IsVacdmSnapshotReadyForCdm())
+		if (!IsCdmBridgeReady())
 		{
-			error = "Wait for a current vACDM snapshot before starting CDM reminders.";
+			error = "Load the bridge-enabled CDM plugin before starting CDM reminders.";
 			return false;
 		}
 		std::string reminderMessage;
@@ -340,14 +340,14 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 		error = "Select an active airport before checking CDM reminders.";
 		return false;
 	}
-	if (!VacdmPollingEnabled.load(std::memory_order_acquire))
+	if (!VsmrCdm::GetInterfaceState().bridgeLoaded)
 	{
-		error = "Configure a vACDM server for the active profile before checking CDM reminders.";
+		error = "Load EuroScopeBridge.dll before checking CDM reminders.";
 		return false;
 	}
-	if (!IsVacdmSnapshotReadyForCdm())
+	if (!IsCdmBridgeReady())
 	{
-		error = "Wait for a current vACDM snapshot before checking CDM reminders.";
+		error = "Load the bridge-enabled CDM plugin before checking CDM reminders.";
 		return false;
 	}
 
@@ -371,7 +371,7 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 	int hasTobtCount = 0;
 	int queuedCount = 0;
 	int failedCount = 0;
-	int missingVacdmCount = 0;
+	int missingCdmCount = 0;
 
 	{
 		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
@@ -380,18 +380,18 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 
 	for (const std::string& callsign : candidateCallsigns)
 	{
-		bool vacdmEvaluated = false;
-		bool hasVacdmData = false;
+		bool cdmEvaluated = false;
+		bool hasCdmData = false;
 		const CdmQueueReminderOutcome outcome =
 			TryQueueCdmReminderForCallsign(
 				this,
 				callsign,
 				reminderMessage,
 				now,
-				&vacdmEvaluated,
-				&hasVacdmData);
-		if (vacdmEvaluated && !hasVacdmData)
-			++missingVacdmCount;
+				&cdmEvaluated,
+				&hasCdmData);
+		if (cdmEvaluated && !hasCdmData)
+			++missingCdmCount;
 
 		switch (outcome)
 		{
@@ -425,7 +425,7 @@ bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
 	result += std::to_string(alreadyNotifiedCount) + " already notified, ";
 	result += std::to_string(alreadyQueuedCount) + " already queued, ";
 	result += std::to_string(alreadyClearedCount) + " already cleared, ";
-	result += std::to_string(missingVacdmCount) + " missing VACDM, ";
+	result += std::to_string(missingCdmCount) + " missing CDM data, ";
 	result += std::to_string(failedCount) + " failed.";
 	return true;
 }
@@ -509,8 +509,6 @@ void CSMRPlugin::LoadDatalinkSettings()
 	messageId.store(rand() % 10000 + 1789);
 
 	DatalinkLastPollAt = PluginSteadyClock::now();
-	VacdmLastFetchTick = 0;
-
 	// Loading and migrating persisted CPDLC settings
 	const char * p_value;
 	bool migratePlaintextCredential = false;
@@ -583,8 +581,6 @@ void CSMRPlugin::ResetDatalinkProfileSource()
 		std::lock_guard<std::mutex> guard(ProfilesSourceMutex);
 		ActiveProfilesConfigPath.clear();
 		ActiveProfilesConfigPathClaimed = false;
-		ProfilesSourceGeneration = 0;
-		VacdmConfiguredServerUrl.clear();
 	}
 	PublishActiveProfilesConfigPath(
 		ResolveDefaultProfilesConfigPath().u8string(),
@@ -604,7 +600,6 @@ void CSMRPlugin::PrepareDatalinkRuntimeForExit()
 	HoppieConnected.store(false, std::memory_order_relaxed);
 	HoppieConnecting.store(false, std::memory_order_relaxed);
 	HoppiePollInProgress.store(false, std::memory_order_relaxed);
-	VacdmPollingEnabled.store(false, std::memory_order_relaxed);
 }
 
 void CSMRPlugin::PersistDatalinkSettings()

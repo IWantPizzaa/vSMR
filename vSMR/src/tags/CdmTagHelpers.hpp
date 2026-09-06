@@ -8,7 +8,7 @@
 #include <ctime>
 #include <string>
 
-inline static std::string NormalizeVacdmLookupCallsign(const char* rawCallsign)
+inline static std::string NormalizeCdmLookupCallsign(const char* rawCallsign)
 {
 	if (rawCallsign == NULL)
 		return "";
@@ -26,24 +26,24 @@ inline static std::string NormalizeVacdmLookupCallsign(const char* rawCallsign)
 
 // Resolve pilot data by trying both correlated flight plan and radar target callsigns.
 // This keeps tag rendering resilient when one side has not correlated yet.
-inline static bool TryGetVacdmPilotDataForTarget(
+inline static bool TryGetCdmPilotDataForTarget(
 	const EuroScopePlugIn::CRadarTarget& rt,
 	const EuroScopePlugIn::CFlightPlan& fp,
-	VacdmPilotData& outData)
+	CdmPilotData& outData)
 {
-	const std::string fpCallsign = NormalizeVacdmLookupCallsign(fp.IsValid() ? fp.GetCallsign() : NULL);
-	if (!fpCallsign.empty() && TryGetVacdmPilotData(fpCallsign, outData))
+	const std::string fpCallsign = NormalizeCdmLookupCallsign(fp.IsValid() ? fp.GetCallsign() : NULL);
+	if (!fpCallsign.empty() && TryGetCdmPilotData(fpCallsign, outData))
 		return true;
 
-	const std::string radarCallsign = NormalizeVacdmLookupCallsign(rt.GetCallsign());
-	if (!radarCallsign.empty() && radarCallsign != fpCallsign && TryGetVacdmPilotData(radarCallsign, outData))
+	const std::string radarCallsign = NormalizeCdmLookupCallsign(rt.GetCallsign());
+	if (!radarCallsign.empty() && radarCallsign != fpCallsign && TryGetCdmPilotData(radarCallsign, outData))
 		return true;
 
 	return false;
 }
 
 // Render UTC timestamps in HHMM format for tag tokens.
-inline static std::string FormatVacdmTimeToken(std::time_t utcTime)
+inline static std::string FormatCdmTimeToken(std::time_t utcTime)
 {
 	if (utcTime <= 0)
 		return "";
@@ -75,7 +75,7 @@ inline static std::string NormalizeHhmmToken(const std::string& text)
 	return digits;
 }
 
-inline static bool TryResolveVacdmTobtTextColor(const VacdmPilotData& pilot, int& outR, int& outG, int& outB)
+inline static bool TryResolveCdmTobtTextColor(const CdmPilotData& pilot, int& outR, int& outG, int& outB)
 {
 	if (!pilot.hasTobt)
 		return false;
@@ -141,7 +141,7 @@ inline static bool TryResolveVacdmTobtTextColor(const VacdmPilotData& pilot, int
 	return true;
 }
 
-inline static bool TryResolveVacdmTsatTextColor(const VacdmPilotData& pilot, int& outR, int& outG, int& outB)
+inline static bool TryResolveCdmTsatTextColor(const CdmPilotData& pilot, int& outR, int& outG, int& outB)
 {
 	if (!pilot.hasTsat)
 		return false;
