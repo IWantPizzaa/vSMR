@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Made RIMCAS runway-pair and ARR/DEP assignments follow the active airport's selected EuroScope runway ends automatically; manual closed-runway state remains independent.
 - Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
 - Refined the Rules editor into distinct identity, scope, condition, and color-override sections; expanded target symbol scaling to 0.25×–5.00× and made its fixed-size, theme-aware preview show a horizontal movement trail behind the aircraft.
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
@@ -24,6 +25,7 @@
 
 ### Fixed
 
+- Prevented another airport's selected runways from replacing the ASR/runtime airport and causing the active AVISO map to disappear.
 - Prevented the Control Center from becoming stuck when rule settings were edited before a rule had been created. Rule fields and unavailable actions now remain disabled until a valid rule exists, and condition actions safely reject a missing draft.
 - Aligned the Groups and Settings pages with the standard Control Center left-page offset.
 - Applied the active interface theme to AVISO, SRW, and Timer inset title bars, and corrected AVISO inset tag text so its bounds and line layout remain vertically centered.

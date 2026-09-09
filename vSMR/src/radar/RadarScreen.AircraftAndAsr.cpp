@@ -1118,7 +1118,7 @@ string CSMRRadar::setActiveAirport(
 	RunwayStatusLastAirport.clear();
 	ClearAvisoGeoJsonRasterCache();
 	AvisoGeoJsonLastViewValid = false;
-	RefreshLegacyRimcasRunwayMonitoring();
+	RefreshRimcasRunwayMonitoring();
 
 	if (switchInsetContext)
 	{
@@ -1248,8 +1248,8 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		insetWindow->ResetAvisoInteractionState();
 	}
 
-	// Auto-detect active sector runways when no runway rows are configured.
-	RefreshLegacyRimcasRunwayMonitoring();
+	// RIMCAS assignments always follow the runway ends selected in EuroScope.
+	RefreshRimcasRunwayMonitoring();
 	PrewarmAvisoForActiveAirport();
 	PublishCrashRadarState("main");
 

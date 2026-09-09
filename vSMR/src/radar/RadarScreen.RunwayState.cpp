@@ -2,6 +2,7 @@
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "safety/RimcasLogic.hpp"
 
 void CSMRRadar::InvalidateAirportPositionCache()
 {
@@ -270,9 +271,9 @@ void CSMRRadar::RefreshRunwayStatuses(bool force)
 		RimcasInstance->RunwayStatuses = std::move(runwayStatuses);
 }
 
-void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
+void CSMRRadar::RefreshRimcasRunwayMonitoring()
 {
-	if (RimcasInstance == nullptr || RimcasRunwaysExplicitlyConfigured)
+	if (RimcasInstance == nullptr)
 		return;
 	// The constructor loads a profile before EuroScope has accepted this radar
 	// screen. Defer sector-file access until OnRadarScreenCreated has returned.
@@ -282,9 +283,8 @@ void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
 		return;
 	}
 
-	// Profiles without configured runway rows follow EuroScope's current runway
-	// activity. Older editor versions commonly persisted an empty array, so it
-	// must retain the same inherited behavior as a missing member.
+	// ARR/DEP monitoring follows EuroScope. Keep the independent manual closed
+	// state when the same runway pair remains available.
 	CPlugIn* plugin = GetPlugIn();
 	struct ActiveSectorSelectionGuard
 	{
@@ -296,9 +296,9 @@ void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
 		}
 	} selectionGuard{ plugin };
 	plugin->SelectScreenSectorfile(this);
-	RimcasInstance->MonitoredRunwayArr.clear();
-	RimcasInstance->MonitoredRunwayDep.clear();
-	RimcasInstance->ClosedRunway.clear();
+	std::map<std::string, bool> monitoredArrivals;
+	std::map<std::string, bool> monitoredDepartures;
+	std::map<std::string, bool> closedRunways;
 
 	const std::string activeAirport = getActiveAirport();
 	CSectorElement runway;
@@ -317,28 +317,37 @@ void CSMRRadar::RefreshLegacyRimcasRunwayMonitoring()
 		}
 
 		const std::string name = std::string(runwayNameA) + " / " + runwayNameB;
-		RimcasInstance->MonitoredRunwayDep[name] =
-			runway.IsElementActive(true, 0) || runway.IsElementActive(true, 1);
-		RimcasInstance->MonitoredRunwayArr[name] =
-			runway.IsElementActive(false, 0) || runway.IsElementActive(false, 1);
-		RimcasInstance->ClosedRunway[name] = false;
+		const VsmrRimcasLogic::RunwayMonitoring monitoring =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(
+				runway.IsElementActive(false, 0),
+				runway.IsElementActive(true, 0),
+				runway.IsElementActive(false, 1),
+				runway.IsElementActive(true, 1));
+		monitoredArrivals[name] = monitoring.arrivals;
+		monitoredDepartures[name] = monitoring.departures;
+		const auto closed = RimcasInstance->ClosedRunway.find(name);
+		closedRunways[name] =
+			closed != RimcasInstance->ClosedRunway.end() && closed->second;
 	}
+
+	RimcasInstance->MonitoredRunwayArr = std::move(monitoredArrivals);
+	RimcasInstance->MonitoredRunwayDep = std::move(monitoredDepartures);
+	RimcasInstance->ClosedRunway = std::move(closedRunways);
 }
 
-void CSMRRadar::RefreshAfterAirportRunwayActivityChange(bool activeAirportChanged)
+void CSMRRadar::RefreshAfterAirportRunwayActivityChange()
 {
 	RunwayStatusLastRefreshTick = 0;
 	RunwayStatusLastAirport.clear();
 	RefreshRunwayStatuses(true);
-	RefreshLegacyRimcasRunwayMonitoring();
+	RefreshRimcasRunwayMonitoring();
 	LastMapRunwayStatuses.clear();
 	LastMapActiveAirport.clear();
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::AirportUpdate);
 	RequestRefresh();
 
-	if ((activeAirportChanged || !RimcasRunwaysExplicitlyConfigured) &&
-		VsmrControlCenterDialog != nullptr)
+	if (VsmrControlCenterDialog != nullptr)
 	{
 		VsmrControlCenterDialog->SyncFromRadar("runtime");
 	}
