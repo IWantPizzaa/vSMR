@@ -913,11 +913,7 @@
     else if (action === "clear-filtered-group-content") setFilteredAvisoGroupContent(false);
     else if (action === "toggle-aviso-group-visibility") toggleRuntimeGroup(button.dataset.groupId);
     else if (action === "remove-aviso-group-member") removeAvisoGroupMember(button);
-    else if (action === "alert-runways-all-arr") setAllAlertRunwayField("arrival", true);
-    else if (action === "alert-runways-all-dep") setAllAlertRunwayField("departure", true);
-    else if (action === "alert-runways-open-all") setAllAlertRunwayField("closed", false);
-    else if (action === "new-alert-runway") addAlertRunway();
-    else if (action === "remove-alert-runway") removeAlertRunway(Number(button.dataset.index));
+    else if (action === "alert-runways-open-all") openAllAlertRunways();
     else if (action.startsWith("browse-")) { postBridge(action.replaceAll("-", ".")); showToast("Native file picker requested"); }
 
   }

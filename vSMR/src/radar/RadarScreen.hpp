@@ -99,7 +99,7 @@ public:
 		const std::string& path,
 		std::string* errorText = nullptr,
 		bool persistToAsr = true);
-	void RefreshAfterAirportRunwayActivityChange(bool activeAirportChanged);
+	void RefreshAfterAirportRunwayActivityChange();
 	bool IsAppWindowDisplayed(int appWindowId) const;
 	bool UpdateTimerInsetCountdowns();
 
@@ -248,7 +248,6 @@ private:
 	static const int TagDefinitionEditorMaxLines = 4;
 
 	bool isLVP = false;
-	bool RimcasRunwaysExplicitlyConfigured = false;
 
 	map<string, RECT> TimePopupAreas;
 
@@ -316,7 +315,7 @@ private:
 	void EnsureAirportPositionCache();
 	void EnsureRunwayGeometryCache();
 	void RefreshRunwayStatuses(bool force);
-	void RefreshLegacyRimcasRunwayMonitoring();
+	void RefreshRimcasRunwayMonitoring();
 	VsmrTargetRendering::IconCacheCallbacks CreateTargetIconCacheCallbacks();
 	struct RefreshPerformance;
 	using RefreshStageCallback = std::function<void(const char*)>;

@@ -2,7 +2,7 @@
 
 vSMR is a configurable surface-movement radar plug-in for 32-bit EuroScope. It provides airport surface displays, aircraft tags and symbols, AVISO maps, RIMCAS alerts, native inset windows, CDM data, and Hoppie CPDLC/PDC workflows.
 
-Current version: **2.0.0-beta.5**
+Current version: **2.0.0-beta.6**
 
 > Beta software should be validated in a safe environment before operational use. Keep a known-good backup and verify the active airport, profile, AVISO map, runway configuration, and alerts before controlling.
 
@@ -12,8 +12,8 @@ Current version: **2.0.0-beta.5**
 
 - Configurable surface radar with NOVA, aircraft-icon, and triangle targets
 - Normal and detailed tags with status-specific layouts and structured color rules
-- Night/Day AVISO maps with shared editing, groups, labels, and airport presets
-- RIMCAS runway monitoring and configurable warning presentation
+- Dark, Light, and Real AVISO palettes with shared editing, groups, labels, and airport presets
+- Automatic RIMCAS runway assignment from EuroScope's active-airport runway selection
 - AVISO, SRW 1, METAR, and Timer inset windows
 - CDM bridge integration and Hoppie CPDLC/PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
@@ -35,7 +35,7 @@ vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the lo
 
 ## Install or upgrade
 
-1. Download the complete `vSMR-2.0.0-beta.5.zip` from [GitHub Releases](https://github.com/IWantPizzaa/vSMR/releases).
+1. Download the complete `vSMR-2.0.0-beta.6.zip` from [GitHub Releases](https://github.com/IWantPizzaa/vSMR/releases).
 2. Close EuroScope.
 3. Extract the archive to a temporary directory.
 4. Run the packaged installer:
@@ -48,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vs
 5. Start EuroScope, open `Other Settings -> Plug-ins`, and load `vSMR.dll`.
 6. Create or open a vSMR radar screen and verify the active airport and configuration.
 
-Install beta.5 manually when upgrading from beta.3 or the unsigned beta.4 package. Use the complete package and do not preserve the older loader. Later compatible, signed releases can use the automatic updater.
+Use the complete beta.6 package when upgrading manually. Compatible signed beta.5 installations can also use the automatic updater.
 
 The installer validates package hashes and creates a rollback backup before replacing files. Do not copy only the DLL or mix binaries and data from different versions.
 
@@ -66,7 +66,7 @@ Detailed procedures are maintained in the Wiki:
 3. Open the Control Center with the Runtime Menu or `.smr`.
 4. Verify the Profiles and AVISO paths in Settings.
 5. Select the AVISO Dark, Light, or Real palette and review group visibility.
-6. Configure RIMCAS runways and alert behavior.
+6. Verify that RIMCAS reflects the active airport's selected EuroScope runways, then configure alert behavior and any closed-runway state.
 7. Arrange the required insets and save an airport preset if needed.
 8. Run `.smr diagnostics` and confirm the expected version and data sources.
 
