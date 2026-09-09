@@ -37,20 +37,8 @@ vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the lo
 
 1. Download the complete `vSMR-2.0.0-beta.6.zip` from [GitHub Releases](https://github.com/IWantPizzaa/vSMR/releases).
 2. Close EuroScope.
-3. Extract the archive to a temporary directory.
-4. Run the packaged installer:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\vSMR_Data\Tools\install_vsmr.ps1 `
-  -DestinationDirectory "C:\path\to\EuroScope\Plugins"
-```
-
-5. Start EuroScope, open `Other Settings -> Plug-ins`, and load `vSMR.dll`.
-6. Create or open a vSMR radar screen and verify the active airport and configuration.
-
-Use the complete beta.6 package when upgrading manually. Compatible signed beta.5 installations can also use the automatic updater.
-
-The installer validates package hashes and creates a rollback backup before replacing files. Do not copy only the DLL or mix binaries and data from different versions.
+3. Extract the archive to your Euroscope plugin's folder
+4. Load vSMR in the Euroscope Plugins Menu
 
 Detailed procedures are maintained in the Wiki:
 
