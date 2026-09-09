@@ -284,29 +284,8 @@ bool VsmrControlCenterBridgeImpl::HandleAlerts(
 	const std::string visibility = LowerAscii(ReadString(*payload, "visibility"));
 	Owner->isLVP = visibility == "lvp" || visibility == "low";
 
-	if (payload->HasMember("runways") && (*payload)["runways"].IsArray())
-	{
-		Owner->RimcasInstance->MonitoredRunwayArr.clear();
-		Owner->RimcasInstance->MonitoredRunwayDep.clear();
-		Owner->RimcasInstance->ClosedRunway.clear();
-		const rapidjson::Value& runways = (*payload)["runways"];
-		for (rapidjson::SizeType index = 0; index < runways.Size(); ++index)
-		{
-			const rapidjson::Value& runway = runways[index];
-			if (!runway.IsObject())
-				continue;
-			const std::string name = ReadString(runway, "id");
-			if (name.empty())
-				continue;
-			Owner->RimcasInstance->MonitoredRunwayArr[name] =
-				ReadBool(runway, "arrival", false);
-			Owner->RimcasInstance->MonitoredRunwayDep[name] =
-				ReadBool(runway, "departure", false);
-			Owner->RimcasInstance->ClosedRunway[name] =
-				ReadBool(runway, "closed", false);
-		}
-	}
-
+	// LoadProfile restores the editable closed flags, then derives ARR/DEP from
+	// EuroScope. Browser payloads must never become a second runway authority.
 	Owner->LoadProfile(Owner->GetActiveProfileNameForEditor());
 	Owner->RequestRefresh();
 	return true;

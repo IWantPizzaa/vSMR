@@ -603,6 +603,21 @@
     sampleSharedList("#avisoGroupList", "Groups");
     sampleVisiblePrimitives();
 
+    document.querySelector('.rail-button[data-page="alerts"]')?.click();
+    const alertRunwayRows = Array.from(document.querySelectorAll(
+      "#alertRunwayTable [data-alert-runway-index]"));
+    expect(alertRunwayRows.length > 0 && alertRunwayRows.every(row =>
+      row.querySelector("[data-alert-runway-name]")?.readOnly &&
+      row.querySelector("[data-alert-runway-arr]")?.disabled &&
+      row.querySelector("[data-alert-runway-dep]")?.disabled &&
+      !row.querySelector("[data-alert-runway-closed]")?.disabled),
+      "RIMCAS runway pairs and ARR/DEP assignments are read-only while Closed remains editable");
+    expect(!document.querySelector('[data-action="alert-runways-all-arr"]') &&
+      !document.querySelector('[data-action="alert-runways-all-dep"]') &&
+      !document.querySelector('[data-action="new-alert-runway"]') &&
+      !document.querySelector('[data-action="remove-alert-runway"]'),
+      "RIMCAS does not expose manual controls for EuroScope-owned runway assignments");
+
     const referenceListSample = sharedListSamples[0];
     const rowHeightToken = Number.parseFloat(getComputedStyle(document.documentElement)
       .getPropertyValue("--ui-list-row-height"));

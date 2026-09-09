@@ -462,6 +462,18 @@ namespace
 
 	void TestRimcasRules()
 	{
+		const VsmrRimcasLogic::RunwayMonitoring departureOnly =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(false, true, false, false);
+		Expect(!departureOnly.arrivals && departureOnly.departures,
+			"RIMCAS derives departure monitoring from either selected runway end");
+		const VsmrRimcasLogic::RunwayMonitoring mixedUse =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(true, false, false, true);
+		Expect(mixedUse.arrivals && mixedUse.departures,
+			"RIMCAS combines selected arrival and departure runway ends");
+		const VsmrRimcasLogic::RunwayMonitoring inactive =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(false, false, false, false);
+		Expect(!inactive.arrivals && !inactive.departures,
+			"RIMCAS leaves an unselected runway pair inactive");
 		Expect(VsmrRimcasLogic::IsRunwayOccupancyMonitored(true, false), "RIMCAS monitors arrival-only runway");
 		Expect(VsmrRimcasLogic::IsRunwayOccupancyMonitored(false, true), "RIMCAS monitors departure-only runway");
 		Expect(!VsmrRimcasLogic::IsRunwayOccupancyMonitored(false, false), "RIMCAS ignores disabled runway");

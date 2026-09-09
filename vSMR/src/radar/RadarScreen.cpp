@@ -774,7 +774,9 @@ void CSMRRadar::LoadProfile(
 	if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
 		rimcasConfig = &activeProfile["rimcas"];
 
-	RimcasRunwaysExplicitlyConfigured = false;
+	RimcasInstance->MonitoredRunwayArr.clear();
+	RimcasInstance->MonitoredRunwayDep.clear();
+	RimcasInstance->ClosedRunway.clear();
 	if (rimcasConfig != nullptr)
 	{
 		if (rimcasConfig->HasMember("visibility") && (*rimcasConfig)["visibility"].IsString())
@@ -792,14 +794,8 @@ void CSMRRadar::LoadProfile(
 		}
 
 		if (rimcasConfig->HasMember("runways") &&
-			(*rimcasConfig)["runways"].IsArray() &&
-			!(*rimcasConfig)["runways"].Empty())
+			(*rimcasConfig)["runways"].IsArray())
 		{
-			RimcasRunwaysExplicitlyConfigured = true;
-			RimcasInstance->MonitoredRunwayArr.clear();
-			RimcasInstance->MonitoredRunwayDep.clear();
-			RimcasInstance->ClosedRunway.clear();
-
 			auto trimRunwayPart = [](const std::string& value) -> std::string
 			{
 				size_t first = 0;
@@ -849,14 +845,6 @@ void CSMRRadar::LoadProfile(
 				const std::string runwayId = normalizeRunwayPair(runway["id"].GetString());
 				if (runwayId.empty())
 					continue;
-				RimcasInstance->MonitoredRunwayArr[runwayId] =
-					runway.HasMember("arrival") &&
-					runway["arrival"].IsBool() &&
-					runway["arrival"].GetBool();
-				RimcasInstance->MonitoredRunwayDep[runwayId] =
-					runway.HasMember("departure") &&
-					runway["departure"].IsBool() &&
-					runway["departure"].GetBool();
 				RimcasInstance->ClosedRunway[runwayId] =
 					runway.HasMember("closed") &&
 					runway["closed"].IsBool() &&
@@ -902,8 +890,7 @@ void CSMRRadar::LoadProfile(
 	TagDefinitionEditorDetailed = !GetTagDefinitionDetailedSameAsDefinition();
 	TagDefinitionEditorDepartureStatus = "default";
 	TagDefinitionEditorSelectedLine = 0;
-	if (!RimcasRunwaysExplicitlyConfigured)
-		RefreshLegacyRimcasRunwayMonitoring();
+	RefreshRimcasRunwayMonitoring();
 
 }
 
