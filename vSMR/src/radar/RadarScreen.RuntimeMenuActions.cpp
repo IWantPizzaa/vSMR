@@ -78,12 +78,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (objectType != RUNTIME_MENU_RAIL && objectType != RUNTIME_MENU_POPUP)
 		return false;
 
-	auto syncControlCenter = [&](const std::string& reason = "runtime")
-	{
-		if (VsmrControlCenterDialog != nullptr)
-			VsmrControlCenterDialog->SyncFromRadar(reason);
-	};
-
 	const char* id = objectId != nullptr ? objectId : "";
 	if (button == BUTTON_RIGHT &&
 		objectType == RUNTIME_MENU_RAIL &&
@@ -144,6 +138,42 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (std::strcmp(id, "runtime.popup") == 0)
 		return true;
 
+	if (std::strcmp(id, "runtime.page.previous") == 0)
+	{
+		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 5);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.page.next") == 0)
+	{
+		RuntimeMenuPopupScrollOffset += 5;
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.preset.page.previous") == 0)
+	{
+		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 4);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.preset.page.next") == 0)
+	{
+		RuntimeMenuPopupScrollOffset += 4;
+		RequestRefresh();
+		return true;
+	}
+
+	if (HandleRuntimeDatalinkClick(id, area) || HandleRuntimeListClick(id) || HandleRuntimeInsetClick(id)) return true;
+	return HandleRuntimePresetClick(id, area);
+}
+
+void CSMRRadar::SyncRuntimeMenuControlCenter(const std::string& reason)
+{
+	if (VsmrControlCenterDialog != nullptr) VsmrControlCenterDialog->SyncFromRadar(reason);
+}
+
+bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
+{
 	// ----- Handling the fixed vSID interface actions -----
 	VsmrVsid::CommandAction vsidAction{};
 	if (VsmrVsid::TryParseRuntimeActionId(id, vsidAction))
@@ -233,31 +263,12 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		RequestRefresh();
 		return true;
 	}
-	if (std::strcmp(id, "runtime.page.previous") == 0)
-	{
-		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 5);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.page.next") == 0)
-	{
-		RuntimeMenuPopupScrollOffset += 5;
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.preset.page.previous") == 0)
-	{
-		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 4);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.preset.page.next") == 0)
-	{
-		RuntimeMenuPopupScrollOffset += 4;
-		RequestRefresh();
-		return true;
-	}
 
+	return false;
+}
+
+bool CSMRRadar::HandleRuntimeListClick(const char* id)
+{
 	// ----- Applying list selections -----
 	size_t index = 0;
 	if (ParseIndexedObjectId(id, "runtime.mode.", index))
@@ -268,7 +279,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		{
 			if (SetProfileDisplayModeActiveForEditor(activeProfile, modes[index].name))
 			{
-				syncControlCenter("mode");
+				SyncRuntimeMenuControlCenter("mode");
 			}
 			else
 			{
@@ -288,7 +299,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		{
 			if (SetActiveProfileForEditor(profiles[index], false))
 			{
-				syncControlCenter("profile");
+				SyncRuntimeMenuControlCenter("profile");
 			}
 			else
 			{
@@ -307,7 +318,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (index < groups.size())
 		{
 			ToggleAvisoGroupVisibility(groups[index].id);
-			syncControlCenter();
+			SyncRuntimeMenuControlCenter();
 		}
 		RequestRefresh();
 		return true;
@@ -318,12 +329,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (index < presets.size())
 		{
 			LoadAvisoPreset(presets[index].name);
-			syncControlCenter("preset");
+			SyncRuntimeMenuControlCenter("preset");
 		}
 		RequestRefresh();
 		return true;
 	}
 
+	return false;
+}
+
+bool CSMRRadar::HandleRuntimeInsetClick(const char* id)
+{
 	// ----- Handling inset actions -----
 	auto toggleAppWindow = [&](int appWindowId)
 	{
@@ -340,14 +356,14 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			}
 			SaveInsetStateToAsrForAirport(getActiveAirport());
 		}
-		syncControlCenter();
+		SyncRuntimeMenuControlCenter();
 		RequestRefresh();
 	};
 	auto resetInsetWindow = [&](int appWindowId)
 	{
 		ResetInsetWindowState(appWindowId, true);
 		SaveInsetStateToAsrForAirport(getActiveAirport());
-		syncControlCenter();
+		SyncRuntimeMenuControlCenter();
 		RequestRefresh();
 	};
 	if (std::strcmp(id, "runtime.inset.aviso") == 0)
@@ -391,6 +407,11 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
+	return false;
+}
+
+bool CSMRRadar::HandleRuntimePresetClick(const char* id, RECT area)
+{
 	// ----- Handling preset actions -----
 	const std::vector<AvisoPreset> presets = GetAvisoPresets();
 	std::string activePreset = GetActiveAvisoPresetName();
@@ -444,10 +465,9 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	else
 		return true;
 
-	syncControlCenter("preset");
+	SyncRuntimeMenuControlCenter("preset");
 	RequestRefresh();
-	return true;
-}
+	return true;}
 
 bool CSMRRadar::HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released)
 {
