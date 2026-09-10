@@ -232,18 +232,18 @@ namespace
 		{
 			return { 32, 32 };
 		};
-		settings.projectPoint = settingsProjectPoint;
+
 		const auto settingsPointVisible = [](const POINT&, int)
 		{
 			return true;
 		};
-		settings.pointVisible = settingsPointVisible;
+
 
 		const VsmrScene::Target target = MakeTarget(VsmrScene::IconStyle::Triangle);
 		VsmrTargetRendering::DrawResult result;
 		{
 			VsmrTargetRendering::Frame frame(graphics, std::move(settings));
-			result = frame.DrawTarget(target);
+			result = frame.DrawTarget(target, settingsProjectPoint, settingsPointVisible);
 		}
 		Check(result.drawn, "shared target renderer draws a valid target", failures);
 		Check(
@@ -261,12 +261,12 @@ namespace
 		{
 			return { 32, 32 };
 		};
-		insetSettings.projectPoint = insetSettingsProjectPoint;
+
 		VsmrTargetRendering::DrawOptions insetOptions;
 		insetOptions.minimumHitSize = 18;
 		VsmrTargetRendering::Frame insetFrame(graphics, std::move(insetSettings));
 		const VsmrTargetRendering::DrawResult insetResult =
-			insetFrame.DrawTarget(target, insetOptions);
+			insetFrame.DrawTarget(target, insetSettingsProjectPoint, VsmrTargetRendering::AlwaysVisible{}, insetOptions);
 		Check(
 			Width(insetResult.hitBounds) >= 18 && Height(insetResult.hitBounds) >= 18,
 			"viewport-specific target hit areas are preserved",
@@ -288,7 +288,7 @@ namespace
 		{
 			return { 24, 24 };
 		};
-		settings.projectPoint = settingsProjectPoint;
+
 		settings.iconCache.beginFrame = [&]() -> std::uint64_t
 		{
 			return static_cast<std::uint64_t>(++frameCount);
@@ -305,7 +305,7 @@ namespace
 				graphics.GetCompositingQuality() == Gdiplus::CompositingQualityHighSpeed,
 				"realistic target pass enables its fast bitmap mode",
 				failures);
-			frame.DrawTarget(MakeTarget(VsmrScene::IconStyle::Realistic));
+			frame.DrawTarget(MakeTarget(VsmrScene::IconStyle::Realistic), settingsProjectPoint);
 		}
 		Check(frameCount == 1, "realistic target pass advances the cache frame once", failures);
 		Check(

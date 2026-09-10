@@ -166,6 +166,7 @@
     <ClCompile Include="src\aviso\RadarScreen.AvisoEditor.cpp" />
     <ClCompile Include="src\aviso\RadarScreen.AvisoPresets.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.cpp" />
+    <ClCompile Include="src\config\ProfileNormalization.cpp" />
     <ClCompile Include="src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.cpp" />
     <ClCompile Include="src\control_center\ControlCenterBridge.Commands.cpp" />
@@ -251,9 +252,14 @@
     <ClCompile Include="src\tags\TagColorRuleParser.cpp" />
     <ClCompile Include="src\tags\TagColorRules.cpp" />
     <ClCompile Include="src\tags\CompiledTagDefinition.cpp" />
+    <ClCompile Include="src\tags\TagDataFormatting.cpp" />
     <ClCompile Include="src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\config\ProfileNormalization.hpp" />
+    <ClInclude Include="src\rendering\TargetProjection.hpp" />
+    <ClInclude Include="src\safety\RunwayTraffic.hpp" />
+    <ClInclude Include="src\tags\TagDataFormatting.hpp" />
     <ClInclude Include="..\lib\include\rapidjson\document.h" />
     <ClInclude Include="..\lib\include\rapidjson\prettywriter.h" />
     <ClInclude Include="..\lib\include\rapidjson\rapidjson.h" />

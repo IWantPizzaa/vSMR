@@ -149,84 +149,28 @@ namespace
 		return normalized < 0.0 ? normalized + 360.0 : normalized;
 	}
 
-	void ProjectPolygon(
-		const std::vector<VsmrScene::GeoPoint>& source,
-		const Vsmr::FunctionRef<POINT(const VsmrScene::GeoPoint&)>& projectPoint,
-		double symbolScale,
-		std::vector<Gdiplus::PointF>& polygon)
+	bool DrawPrimaryPolygon(Gdiplus::Graphics& graphics,
+		const std::vector<Gdiplus::PointF>& polygon, const Gdiplus::Color& color,
+		BoundsBuilder& bounds, VsmrRendering::BrushCache& brushes)
 	{
-		polygon.clear();
-		polygon.reserve(source.size());
-		for (const VsmrScene::GeoPoint& sourcePoint : source)
-		{
-			if (!sourcePoint.valid)
-				continue;
-			const POINT point = projectPoint(sourcePoint);
-			polygon.emplace_back(
-				static_cast<Gdiplus::REAL>(point.x),
-				static_cast<Gdiplus::REAL>(point.y));
-		}
-
-		if (polygon.size() < 3 || std::abs(symbolScale - 1.0) <= 0.0001)
-			return;
-
-		Gdiplus::REAL centerX = 0.0f;
-		Gdiplus::REAL centerY = 0.0f;
-		for (const Gdiplus::PointF& point : polygon)
-		{
-			centerX += point.X;
-			centerY += point.Y;
-		}
-		centerX /= static_cast<Gdiplus::REAL>(polygon.size());
-		centerY /= static_cast<Gdiplus::REAL>(polygon.size());
-		for (Gdiplus::PointF& point : polygon)
-		{
-			point.X = centerX + static_cast<Gdiplus::REAL>((point.X - centerX) * symbolScale);
-			point.Y = centerY + static_cast<Gdiplus::REAL>((point.Y - centerY) * symbolScale);
-		}
-	}
-
-	bool DrawPrimaryPolygon(
-		Gdiplus::Graphics& graphics,
-		const std::vector<VsmrScene::GeoPoint>& source,
-		const Vsmr::FunctionRef<POINT(const VsmrScene::GeoPoint&)>& projectPoint,
-		double symbolScale,
-		const Gdiplus::Color& color,
-		BoundsBuilder& bounds,
-		std::vector<Gdiplus::PointF>& polygon, VsmrRendering::BrushCache& brushes)
-	{
-		ProjectPolygon(source, projectPoint, symbolScale, polygon);
-		if (polygon.size() < 3)
-			return false;
-
+		if (polygon.size() < 3) return false;
 		Gdiplus::SolidBrush& brush = brushes.Get(color);
 		graphics.FillPolygon(&brush, polygon.data(), static_cast<INT>(polygon.size()));
 		bounds.AddPoints(polygon);
 		return true;
 	}
 
-	bool DrawTrails(
-		Gdiplus::Graphics& graphics,
-		const VsmrScene::Target& target,
-		const VsmrScene::TargetPresentation& presentation,
-		const Vsmr::FunctionRef<POINT(const VsmrScene::GeoPoint&)>& projectPoint,
-		const Vsmr::FunctionRef<bool(const POINT&, int)>& pointVisible,
-		double symbolScale,
-		BoundsBuilder& bounds,
-		std::vector<Gdiplus::PointF>& polygon, VsmrRendering::BrushCache& brushes)
+	bool DrawTrails(Gdiplus::Graphics& graphics, const VsmrScene::Target& target,
+		const VsmrTargetRendering::ProjectedTarget& projected,
+		BoundsBuilder& bounds, VsmrRendering::BrushCache& brushes)
 	{
-		if (!presentation.trailEnabled)
-			return false;
-
 		bool drawn = false;
 		if (target.style.icon == VsmrScene::IconStyle::Nova)
 		{
 			constexpr BYTE afterglowChannels[] = { 255, 219, 183 };
 			for (int historyIndex = 2; historyIndex >= 0; --historyIndex)
 			{
-				const std::vector<VsmrScene::GeoPoint>& source =
-					target.primaryReturnAfterglow[static_cast<std::size_t>(historyIndex)];
-				ProjectPolygon(source, projectPoint, symbolScale, polygon);
+				const auto& polygon = projected.afterglow[static_cast<std::size_t>(historyIndex)];
 				if (polygon.size() < 3)
 					continue;
 
@@ -240,14 +184,10 @@ namespace
 
 		const std::size_t pointCount = target.trailPositions.size();
 		const VsmrScene::Color& sourceColor = target.style.color;
-		for (std::size_t index = 0; index < pointCount; ++index)
+		for (const auto& history : projected.trail)
 		{
-			const VsmrScene::GeoPoint& history = target.trailPositions[index];
-			if (!history.valid)
-				continue;
-			const POINT point = projectPoint(history);
-			if (pointVisible && !pointVisible(point, 7))
-				continue;
+			const POINT point = history.point;
+			const std::size_t index = history.index;
 
 			const double age = pointCount > 1
 				? static_cast<double>(index) / static_cast<double>(pointCount - 1)
@@ -301,18 +241,8 @@ namespace
 		return drawn;
 	}
 
-	double ScreenRotationDegrees(
-		const VsmrScene::Target& target,
-		const POINT& center,
-		const Vsmr::FunctionRef<POINT(const VsmrScene::GeoPoint&)>& projectPoint)
+	double ScreenRotationDegrees(const POINT& center, const POINT& headingPoint)
 	{
-		VsmrScene::GeoPoint headingProbe = target.headingProbe;
-		if (!headingProbe.valid && target.position.valid)
-			headingProbe = DestinationPoint(target.position, NormalizeHeading(target.headingTrueDegrees), 50.0);
-		if (!headingProbe.valid)
-			return 0.0;
-
-		const POINT headingPoint = projectPoint(headingProbe);
 		const double forwardX = static_cast<double>(headingPoint.x - center.x);
 		const double forwardY = static_cast<double>(headingPoint.y - center.y);
 		if (!std::isfinite(forwardX) || !std::isfinite(forwardY) ||
@@ -333,6 +263,35 @@ namespace
 
 namespace VsmrTargetRendering
 {
+	VsmrScene::GeoPoint detail::HeadingProbe(const VsmrScene::Target& target)
+	{
+		if (target.headingProbe.valid) return target.headingProbe;
+		return target.position.valid
+			? DestinationPoint(target.position, NormalizeHeading(target.headingTrueDegrees), 50.0)
+			: VsmrScene::GeoPoint{};
+	}
+
+	void detail::ScalePolygon(std::vector<Gdiplus::PointF>& polygon, double symbolScale)
+	{
+		if (polygon.size() < 3 || std::abs(symbolScale - 1.0) <= 0.0001)
+			return;
+
+		Gdiplus::REAL centerX = 0.0f;
+		Gdiplus::REAL centerY = 0.0f;
+		for (const Gdiplus::PointF& point : polygon)
+		{
+			centerX += point.X;
+			centerY += point.Y;
+		}
+		centerX /= static_cast<Gdiplus::REAL>(polygon.size());
+		centerY /= static_cast<Gdiplus::REAL>(polygon.size());
+		for (Gdiplus::PointF& point : polygon)
+		{
+			point.X = centerX + static_cast<Gdiplus::REAL>((point.X - centerX) * symbolScale);
+			point.Y = centerY + static_cast<Gdiplus::REAL>((point.Y - centerY) * symbolScale);
+		}
+	}
+
 	Frame::Frame(Gdiplus::Graphics& graphics, FrameSettings settings)
 		: m_Graphics(graphics),
 		  m_Settings(std::move(settings)),
@@ -374,13 +333,11 @@ namespace VsmrTargetRendering
 		m_Graphics.SetCompositingQuality(m_SavedCompositingQuality);
 	}
 
-	DrawResult Frame::DrawTarget(
+	DrawResult Frame::DrawProjectedTarget(
 		const VsmrScene::Target& target,
 		const DrawOptions& options)
 	{
 		DrawResult result;
-		if (!target.position.valid || !m_Settings.projectPoint)
-			return result;
 
 		auto trace = [&](const char* step)
 		{
@@ -389,34 +346,20 @@ namespace VsmrTargetRendering
 		};
 		trace("begin");
 
-		result.center = m_Settings.projectPoint(target.position);
+		result.center = m_Projected.center;
 		const double symbolScale = m_Settings.presentation.symbolScale;
 		BoundsBuilder visualBounds;
 		if (options.drawTrail)
 		{
-			result.trailDrawn = DrawTrails(
-				m_Graphics,
-				target,
-				m_Settings.presentation,
-				m_Settings.projectPoint,
-				m_Settings.pointVisible,
-				symbolScale,
-				visualBounds,
-				m_PolygonScratch, m_Brushes);
+			result.trailDrawn = DrawTrails(m_Graphics, target, m_Projected, visualBounds, m_Brushes);
 		}
 
 		if (options.drawPrimaryReturn &&
 			target.style.icon == VsmrScene::IconStyle::Nova &&
 			target.style.showPrimaryReturn)
 		{
-			result.primaryReturnDrawn = DrawPrimaryPolygon(
-				m_Graphics,
-				target.primaryReturnPolygon,
-				m_Settings.projectPoint,
-				symbolScale,
-				ToGdiColor(target.style.primaryReturnColor),
-				visualBounds,
-				m_PolygonScratch, m_Brushes);
+			result.primaryReturnDrawn = DrawPrimaryPolygon(m_Graphics, m_Projected.primary,
+				ToGdiColor(target.style.primaryReturnColor), visualBounds, m_Brushes);
 		}
 
 		const Gdiplus::Color targetColor = ToGdiColor(target.style.color);
@@ -500,10 +443,7 @@ namespace VsmrTargetRendering
 				pixelWidth = std::clamp(pixelWidth, 1, 2048);
 				pixelHeight = std::clamp(pixelHeight, 1, 2048);
 
-				const double rotationDegrees = ScreenRotationDegrees(
-					target,
-					result.center,
-					m_Settings.projectPoint);
+				const double rotationDegrees = ScreenRotationDegrees(result.center, m_Projected.heading);
 				CachedBitmap rotatedBitmap;
 				if (scaledBitmap != nullptr &&
 					!scaledCacheKey.empty() &&
@@ -634,10 +574,7 @@ namespace VsmrTargetRendering
 					path.AddArc(left, top + side - diameter, diameter, diameter, 90.0f, 90.0f);
 					path.CloseFigure();
 
-					const double rotationDegrees = ScreenRotationDegrees(
-						target,
-						result.center,
-						m_Settings.projectPoint) - 45.0;
+					const double rotationDegrees = ScreenRotationDegrees(result.center, m_Projected.heading) - 45.0;
 					Gdiplus::GraphicsState state = m_Graphics.Save();
 					Gdiplus::Matrix transform;
 					transform.RotateAt(
@@ -656,10 +593,7 @@ namespace VsmrTargetRendering
 				else
 				{
 					trace("arrow");
-					const double rotationDegrees = ScreenRotationDegrees(
-						target,
-						result.center,
-						m_Settings.projectPoint);
+					const double rotationDegrees = ScreenRotationDegrees(result.center, m_Projected.heading);
 					const double forwardRadians = (rotationDegrees - 90.0) * kPi / 180.0;
 					const double forwardX = std::cos(forwardRadians);
 					const double forwardY = std::sin(forwardRadians);
