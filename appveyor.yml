@@ -73,11 +73,17 @@ build_script:
       /p:Platform=Win32
       /p:PlatformToolset=v143
       /p:ContinuousIntegrationBuild=true
+      /p:RunCodeAnalysis=true
       /p:VsmrUpdateSignerCertSha256=%VSMR_UPDATE_SIGNER_CERT_SHA256%
       /nodeReuse:false
       /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 test_script:
+  - cmd: >-
+      msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR\tests\vSMR.JsonFuzz.vcxproj"
+      /t:Build /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143
+      /nodeReuse:false /verbosity:minimal
+  - cmd: '"%APPVEYOR_BUILD_FOLDER%\vSMR\tests\bin\JsonFuzz\vSMR.JsonFuzz.exe" "%APPVEYOR_BUILD_FOLDER%\vSMR\data"'
   - ps: >-
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tests\run_tests.ps1" -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER;
       if ($LASTEXITCODE -ne 0) { throw "vSMR regression tests failed with exit code $LASTEXITCODE." };

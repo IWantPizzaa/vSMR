@@ -1,6 +1,8 @@
 #pragma once
 
 #include "scene/RadarScene.hpp"
+#include "shared/FunctionRef.hpp"
+#include "rendering/BrushCache.hpp"
 
 #include <Windows.h>
 #include <GdiPlus.h>
@@ -49,8 +51,8 @@ namespace VsmrTargetRendering
 		VsmrScene::TargetPresentation presentation;
 		double pixelsPerMeter = 0.0;
 		bool optimizeRealisticBitmapQuality = true;
-		std::function<POINT(const VsmrScene::GeoPoint&)> projectPoint;
-		std::function<bool(const POINT&, int)> pointVisible;
+		Vsmr::FunctionRef<POINT(const VsmrScene::GeoPoint&)> projectPoint;
+		Vsmr::FunctionRef<bool(const POINT&, int)> pointVisible;
 		IconCacheCallbacks iconCache;
 		std::function<void(const VsmrScene::Target&, const char*)> trace;
 	};
@@ -94,6 +96,7 @@ namespace VsmrTargetRendering
 			const DrawOptions& options = DrawOptions{});
 
 	private:
+		VsmrRendering::BrushCache m_Brushes;
 		Gdiplus::Graphics& m_Graphics;
 		FrameSettings m_Settings;
 		std::uint64_t m_CacheFrame = 0;

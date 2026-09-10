@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "shared/JsonInputLimits.hpp"
 #include "rapidjson/stringbuffer.h"
@@ -214,7 +215,7 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 
 		if (!ReadBoundedSourceFile(sourcePath, sourceJson, errorText))
 			return false;
-		Document.Parse<0>(sourceJson.c_str());
+		VsmrJson::ParseDocument(Document, sourceJson);
 		if (Document.HasParseError())
 		{
 			errorText = "AVISO GeoJSON parse failed at offset " + std::to_string(Document.GetErrorOffset()) + ".";
@@ -541,7 +542,7 @@ bool AvisoDocumentModel::SaveAtomically(
 	rapidjson::StringBuffer buffer;
 	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
 	Document.Accept(writer);
-	std::string serializedJson(buffer.GetString(), buffer.Size());
+	std::string serializedJson(buffer.GetString(), buffer.GetSize());
 	PatchSerializedCoordinates(serializedJson);
 	if (serializedJson.size() > kMaximumAvisoFileBytes)
 	{
@@ -552,7 +553,7 @@ bool AvisoDocumentModel::SaveAtomically(
 		return false;
 
 	rapidjson::Document validation;
-	if (validation.Parse<0>(serializedJson.c_str()).HasParseError() ||
+	if (VsmrJson::ParseDocument(validation, serializedJson).HasParseError() ||
 		!ValidateFeatureCollectionSchema(validation, errorText))
 	{
 		if (errorText.empty())

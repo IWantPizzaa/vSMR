@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "aviso/AvisoFeatureMetadata.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
 #include "radar/RadarScreen.hpp"
@@ -854,7 +855,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	const double parseStartMilliseconds = RefreshPerfNowMs();
 	AvisoDocumentModel validationModel;
 	Document& parsedDocument = validationModel.MutableDocument();
-	if (parsedDocument.Parse<0>(json.c_str()).HasParseError())
+	if (VsmrJson::ParseDocument(parsedDocument, json).HasParseError())
 	{
 		loadPerformance.parseMilliseconds = AvisoMax(
 			0.0,
@@ -862,7 +863,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		Logger::info(
 			"AVISO GeoJSON parse failed path=" + path +
 			" offset=" + std::to_string(parsedDocument.GetErrorOffset()) +
-			" error=" + std::string(parsedDocument.GetParseError()));
+			" error=" + std::string(rapidjson::GetParseError_En(parsedDocument.GetParseError())));
 		return rememberFailedAttempt(&writeTime);
 	}
 	loadPerformance.parseMilliseconds = AvisoMax(

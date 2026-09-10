@@ -127,6 +127,7 @@
     <ClCompile Include="src\tags\RadarScreen.TagDefinitions.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\TagColorRuleParser.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\tags\CompiledTagDefinition.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\tags\TagColorRules.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\weather\WeatherStore.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
@@ -202,6 +203,14 @@
     <ClInclude Include="src\shared\RapidJsonUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\TextUtils.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\shared\WindowsPathEncoding.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\platform\windows\network\WinHttpSupport.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\rendering\BrushCache.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\FunctionRef.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\JsonDocument.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\Random.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\shared\RefreshLog.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\CompiledTagDefinition.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\tags\TagTokenValues.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagColorRules.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\tags\TagDataTypes.hpp"><Filter>Headers</Filter></ClInclude>
@@ -209,9 +218,6 @@
     <ClInclude Include="src\tags\CdmTagHelpers.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\weather\WeatherStore.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\document.h">
-      <Filter>Third Party Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="..\lib\include\rapidjson\filestream.h">
       <Filter>Third Party Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\lib\include\rapidjson\prettywriter.h">

@@ -1,4 +1,5 @@
 #pragma once
+#include "tags/TagTokenValues.hpp"
 
 #include "aircraft/GroundState.hpp"
 #include "tags/TagDataTypes.hpp"
@@ -78,7 +79,7 @@ namespace VsmrScene
 
 	struct TagContent
 	{
-		std::map<std::string, std::string> tokens;
+		VsmrTags::TokenValues tokens;
 		TagVariant normal;
 		TagVariant detailed;
 		TagPalette normalPalette;

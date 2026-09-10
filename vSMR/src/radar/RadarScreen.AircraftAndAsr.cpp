@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
@@ -543,7 +544,7 @@ void CSMRRadar::LoadAircraftSpecs() {
 		std::string sanitized = sanitizeJson(rawJson);
 
 		rapidjson::Document doc;
-		if (doc.Parse<0>(sanitized.c_str()).HasParseError()) {
+		if (VsmrJson::ParseDocument(doc, sanitized).HasParseError()) {
 			Logger::info("Parse error in ICAO_Aircraft.json at: " + p.u8string());
 			continue;
 		}
@@ -1093,8 +1094,8 @@ bool CSMRRadar::LoadInsetStateFromAsrForAirport(const std::string& airport, bool
 	return true;
 }
 
-string CSMRRadar::setActiveAirport(
-	string value,
+std::string CSMRRadar::setActiveAirport(
+	std::string value,
 	bool switchInsetContext,
 	bool syncControlCenter)
 {
@@ -1144,7 +1145,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 		"CSMRRadar::OnAsrContentLoaded",
 		reinterpret_cast<std::uintptr_t>(this));
 	(void)Loaded;
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	const char * p_value;
 
 	// ReSharper disable CppZeroConstantCanBeReplacedWithNullptr
@@ -1196,7 +1197,7 @@ void CSMRRadar::OnAsrContentLoaded(bool Loaded)
 	}
 	else if ((p_value = GetDataFromAsr("ActiveProfile")) != NULL)
 	{
-		this->LoadProfile(string(p_value));
+		this->LoadProfile(std::string(p_value));
 		loadedProfileName = CurrentConfig != nullptr ? CurrentConfig->getActiveProfileName() : std::string(p_value);
 	}
 	else if (CurrentConfig != nullptr)
@@ -1267,7 +1268,7 @@ void CSMRRadar::OnAsrContentToBeSaved()
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnAsrContentToBeSaved",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 
 	SaveDataToAsr("Airport", "Active airport for RIMCAS", getActiveAirport().c_str());
 

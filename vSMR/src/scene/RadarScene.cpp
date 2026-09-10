@@ -66,215 +66,6 @@ namespace
 		return bytes;
 	}
 
-	int ActionForTagToken(const std::string& token)
-	{
-		const std::string key = ToLowerAsciiCopy(token);
-		if (key == "callsign") return TAG_CITEM_CALLSIGN;
-		if (key == "systemid") return TAG_CITEM_MANUALCORRELATE;
-		if (key == "actype" || key == "sctype" || key == "sqerror" || key == "wake" || key == "origin" || key == "dest") return TAG_CITEM_FPBOX;
-		if (key == "deprwy" || key == "seprwy" || key == "arvrwy" || key == "srvrwy" || key == "vsid_rwy") return TAG_CITEM_RWY;
-		if (key == "gate" || key == "sate") return TAG_CITEM_GATE;
-		if (key == "asid" || key == "ssid" || key == "sid" || key == "shid" || key == "vsid_sid") return TAG_CITEM_SID;
-		if (key == "groundstatus" || key == "gstatus") return TAG_CITEM_GROUNDSTATUS;
-		if (key == "clearance" || key == "cleared") return TAG_CITEM_CLEARANCE;
-		if (key == "uk_stand") return TAG_CITEM_UKSTAND;
-		if (key == "remark") return TAG_CITEM_REMARK;
-		if (key == "scratchpad") return TAG_CITEM_SCRATCHPAD;
-		if (key == "holdingpoint") return TAG_CITEM_HOLDINGPOINT;
-		if (key == "ready_startup") return TAG_CITEM_READY_STARTUP;
-		return TAG_CITEM_NO;
-	}
-
-	const rapidjson::Value* ResolveTagDefinition(
-		const rapidjson::Value& labels,
-		const std::string& type,
-		const std::string& status,
-		bool detailed)
-	{
-		if (!labels.IsObject() || !labels.HasMember(type.c_str()) || !labels[type.c_str()].IsObject())
-			return nullptr;
-
-		const rapidjson::Value& section = labels[type.c_str()];
-		bool inheritDetailed = false;
-		auto readInheritance = [&](const rapidjson::Value& object, bool& value) -> bool
-		{
-			if (object.HasMember("definition_detailed_inherits_normal") && object["definition_detailed_inherits_normal"].IsBool())
-			{
-				value = object["definition_detailed_inherits_normal"].GetBool();
-				return true;
-			}
-			if (object.HasMember("definition_detailed_same_as_definition") && object["definition_detailed_same_as_definition"].IsBool())
-			{
-				value = object["definition_detailed_same_as_definition"].GetBool();
-				return true;
-			}
-			return false;
-		};
-
-		readInheritance(labels, inheritDetailed);
-		readInheritance(section, inheritDetailed);
-		const rapidjson::Value* statusSection = nullptr;
-		if (!status.empty() && status != "default" &&
-			section.HasMember("status_definitions") && section["status_definitions"].IsObject())
-		{
-			const rapidjson::Value& statuses = section["status_definitions"];
-			auto findStatus = [&](const std::string& key) -> const rapidjson::Value*
-			{
-				if (statuses.HasMember(key.c_str()) && statuses[key.c_str()].IsObject())
-					return &statuses[key.c_str()];
-				return nullptr;
-			};
-			statusSection = findStatus(status);
-			if (statusSection == nullptr && status == "airdep_onrunway")
-				statusSection = findStatus("airdep");
-			else if (statusSection == nullptr && status == "airarr_onrunway")
-				statusSection = findStatus("airarr");
-			if (statusSection != nullptr)
-				readInheritance(*statusSection, inheritDetailed);
-		}
-
-		const char* key = (detailed && !inheritDetailed) ? "definition_detailed" : "definition";
-		const char* legacyKey = (detailed && !inheritDetailed) ? "definitionDetailled" : nullptr;
-		auto fromObject = [&](const rapidjson::Value& object) -> const rapidjson::Value*
-		{
-			if (object.HasMember(key) && object[key].IsArray())
-				return &object[key];
-			if (legacyKey != nullptr && object.HasMember(legacyKey) && object[legacyKey].IsArray())
-				return &object[legacyKey];
-			return nullptr;
-		};
-
-		if (statusSection != nullptr)
-		{
-			if (const rapidjson::Value* definition = fromObject(*statusSection))
-				return definition;
-		}
-		if (const rapidjson::Value* definition = fromObject(section))
-			return definition;
-
-		if (detailed && !inheritDetailed)
-		{
-			if (statusSection != nullptr && statusSection->HasMember("definition") && (*statusSection)["definition"].IsArray())
-				return &(*statusSection)["definition"];
-			if (section.HasMember("definition") && section["definition"].IsArray())
-				return &section["definition"];
-		}
-		return nullptr;
-	}
-
-	TagVariant BuildTagVariant(
-		const rapidjson::Value& labels,
-		const Target& target,
-		bool detailed)
-	{
-		TagVariant result;
-		const rapidjson::Value* definition = ResolveTagDefinition(
-			labels,
-			target.tag.definitionType,
-			target.tag.status,
-			detailed);
-		if (definition == nullptr)
-			return result;
-
-		result.lines.reserve(definition->Size());
-		for (rapidjson::SizeType lineIndex = 0; lineIndex < definition->Size(); ++lineIndex)
-		{
-			const rapidjson::Value& definitionLine = (*definition)[lineIndex];
-			std::vector<std::string> rawTokens;
-			if (definitionLine.IsArray())
-			{
-				rawTokens.reserve(definitionLine.Size());
-				for (rapidjson::SizeType tokenIndex = 0; tokenIndex < definitionLine.Size(); ++tokenIndex)
-				{
-					if (definitionLine[tokenIndex].IsString())
-						rawTokens.emplace_back(definitionLine[tokenIndex].GetString());
-				}
-			}
-			else if (definitionLine.IsString())
-			{
-				rawTokens.emplace_back(definitionLine.GetString());
-			}
-			else
-			{
-				continue;
-			}
-
-			TagLine line;
-			bool hasVisibleElement = false;
-			line.elements.reserve(rawTokens.size());
-			for (const std::string& rawToken : rawTokens)
-			{
-				DefinitionTokenStyleData styled = ParseDefinitionTokenStyle(rawToken);
-				TagColorRules::CdmColorRuleDefinition cdmRule;
-				TagColorRules::RunwayColorRuleDefinition runwayRule;
-				if (TagColorRules::TryParseCdmColorRuleToken(styled.token, cdmRule) ||
-					TagColorRules::TryParseRunwayColorRuleToken(styled.token, runwayRule))
-				{
-					continue;
-				}
-
-				TagElement element;
-				element.token = styled.token;
-				element.bold = styled.bold;
-				element.hasCustomColor = styled.hasCustomColor;
-				element.customColor = VsmrScene::Color{
-					255,
-					static_cast<std::uint8_t>(std::clamp(styled.colorR, 0, 255)),
-					static_cast<std::uint8_t>(std::clamp(styled.colorG, 0, 255)),
-					static_cast<std::uint8_t>(std::clamp(styled.colorB, 0, 255)) };
-				element.clearanceToken = IsClearanceDefinitionToken(styled.token);
-				element.action = ActionForTagToken(styled.token);
-				if (element.clearanceToken)
-					element.action = TAG_CITEM_CLEARANCE;
-
-				if (element.clearanceToken)
-				{
-					std::string notClearedText;
-					std::string clearedText;
-					TryParseClearanceTokenDisplay(styled.token, notClearedText, clearedText);
-					if (target.hasFlightPlan && target.correlated)
-						element.text = target.tag.clearanceReceived ? clearedText : notClearedText;
-				}
-				else
-				{
-					auto exact = target.tag.tokens.find(styled.token);
-					if (exact != target.tag.tokens.end())
-					{
-						element.text = exact->second;
-					}
-					else
-					{
-						element.text = styled.token;
-						for (const auto& replacement : target.tag.tokens)
-						{
-							if (replacement.first.empty())
-								continue;
-							size_t offset = 0;
-							while ((offset = element.text.find(replacement.first, offset)) != std::string::npos)
-							{
-								element.text.replace(offset, replacement.first.size(), replacement.second);
-								offset += replacement.second.size();
-							}
-						}
-					}
-				}
-				if (!detailed && ToLowerAsciiCopy(element.token) == "scratchpad" && element.text == "...")
-					element.text.clear();
-				if (detailed &&
-					element.action == TAG_CITEM_HOLDINGPOINT &&
-					element.text.empty())
-				{
-					element.text = "HP";
-				}
-
-				hasVisibleElement = hasVisibleElement || !element.text.empty();
-				line.elements.push_back(std::move(element));
-			}
-			if (hasVisibleElement)
-				result.lines.push_back(std::move(line));
-		}
-		return result;
-	}
 
 	std::string BuildBottomLine(
 		CSMRRadar& radar,
@@ -510,7 +301,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->airport = AirportState{};
 	scene->targetPresentation = TargetPresentation{};
 	scene->controllers.clear();
-	scene->targets.clear();
+	std::size_t capturedTargetCount = 0;
 	scene->targetIndex.clear();
 	scene->avisoGeneration = 0;
 	scene->controllerFingerprint = 0;
@@ -520,6 +311,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	scene->captureTick = ::GetTickCount();
 	auto measureSdkLookup = [&](auto&& callback)
 	{
+		if (!Logger::is_verbose_mode())
+			return callback();
 		const auto lookupStart = Clock::now();
 		auto result = callback();
 		scene->stats.sdkLookupMilliseconds += std::chrono::duration<double, std::milli>(
@@ -555,6 +348,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 
 	if (plugin == nullptr)
 	{
+		scene->targets.clear();
 		std::lock_guard<std::mutex> guard(AvisoGroupMutex);
 		scene->avisoGeneration = AvisoGroupGeneration.load(std::memory_order_relaxed);
 		scene->controllerFingerprint = FingerprintControllers(scene->controllers);
@@ -677,6 +471,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			continue;
 
 		Target target;
+		if (capturedTargetCount < scene->targets.size())
+			std::swap(target.tag.tokens, scene->targets[capturedTargetCount].tag.tokens);
 		target.callsign = callsign;
 		target.normalizedCallsign = ToUpperAsciiCopy(callsign);
 		target.systemId = CopyText(radarTarget.GetSystemID());
@@ -837,7 +633,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 		const int* capturedPreviousFlightLevel = target.previousPosition.valid
 			? &target.previousFlightLevel
 			: nullptr;
-		target.tag.tokens = GenerateTagData(
+		GenerateTagData(
+			target.tag.tokens,
 			radarTarget,
 			flightPlan,
 			target.selected,
@@ -914,9 +711,14 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			}
 		}
 
-		scene->targetIndex.emplace(target.normalizedCallsign, scene->targets.size());
-		scene->targets.push_back(std::move(target));
+		scene->targetIndex.emplace(target.normalizedCallsign, capturedTargetCount);
+		if (capturedTargetCount < scene->targets.size())
+			scene->targets[capturedTargetCount] = std::move(target);
+		else
+			scene->targets.push_back(std::move(target));
+		++capturedTargetCount;
 	}
+	scene->targets.resize(capturedTargetCount);
 	scene->stats.targetCaptureMilliseconds = std::chrono::duration<double, std::milli>(
 		Clock::now() - targetCaptureStart).count();
 
@@ -936,33 +738,12 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	const std::vector<StructuredTagColorRule>& structuredRules = displaySettings.structuredRulesEnabled
 		? GetStructuredTagColorRules()
 		: emptyStructuredRules;
-	struct TagDefinitionColorRules
+	const VsmrTags::CompiledDefinition emptyDefinition;
+	auto resolveTagDefinitionColorRules = [&](const std::string& type, const std::string& status, bool detailed) -> const VsmrTags::CompiledDefinition&
 	{
-		std::vector<TagColorRules::CdmColorRuleDefinition> cdm;
-		std::vector<TagColorRules::RunwayColorRuleDefinition> runway;
+		return labels != nullptr ? CompiledTagDefinitions.Get(*labels, type, status, detailed) : emptyDefinition;
 	};
-	std::unordered_map<std::string, TagDefinitionColorRules> tagDefinitionColorRuleCache;
-	auto resolveTagDefinitionColorRules = [&](const std::string& type, const std::string& status, bool detailed) -> const TagDefinitionColorRules&
-	{
-		const std::string key = type + "|" + status + (detailed ? "|d" : "|n");
-		auto found = tagDefinitionColorRuleCache.find(key);
-		if (found == tagDefinitionColorRuleCache.end())
-		{
-			TagDefinitionColorRules rules;
-			if (labels != nullptr)
-			{
-				const rapidjson::Value* definition = ResolveTagDefinition(*labels, type, status, detailed);
-				if (definition != nullptr)
-				{
-					const std::vector<std::string> lines = TagColorRules::ConvertDefinitionValueToLineTexts(*definition);
-					TagColorRules::CollectCdmColorRulesFromLineTexts(lines, rules.cdm);
-					TagColorRules::CollectRunwayColorRulesFromLineTexts(lines, rules.runway);
-				}
-			}
-			found = tagDefinitionColorRuleCache.emplace(key, std::move(rules)).first;
-		}
-		return found->second;
-	};
+
 	auto isColorObject = [](const rapidjson::Value& value) -> bool
 	{
 		return value.IsObject() && value.HasMember("r") && value["r"].IsInt() &&
@@ -1004,7 +785,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 	};
 	auto evaluateTagColorRules = [&](const Target& target, bool detailed) -> TagColorRules::TagColorRuleOverrides
 	{
-		const TagDefinitionColorRules& definitionRules = resolveTagDefinitionColorRules(
+		const VsmrTags::CompiledDefinition& definitionRules = resolveTagDefinitionColorRules(
 			target.tag.definitionType,
 			target.tag.status,
 			detailed);
@@ -1273,8 +1054,8 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.tag.status = ResolveConfiguredTagStatus(*labels, target.tag.definitionType, target.tag.status);
 		if (labels != nullptr)
 		{
-			target.tag.normal = BuildTagVariant(*labels, target, false);
-			target.tag.detailed = BuildTagVariant(*labels, target, true);
+			target.tag.normal = VsmrTags::BuildTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, false), target, false);
+			target.tag.detailed = VsmrTags::BuildTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, true), target, true);
 		}
 		const TagColorRules::TagColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
 		const TagColorRules::TagColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);
@@ -1378,6 +1159,7 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			(target.trailPositions.capacity() + target.primaryReturnPolygon.capacity()) * sizeof(GeoPoint);
 		for (const std::vector<GeoPoint>& afterglow : target.primaryReturnAfterglow)
 			estimatedBytes += afterglow.capacity() * sizeof(GeoPoint);
+		estimatedBytes += target.tag.tokens.capacity() * sizeof(VsmrTags::TokenValues::value_type);
 		for (const auto& token : target.tag.tokens)
 			estimatedBytes += EstimateStringHeapBytes(token.first) + EstimateStringHeapBytes(token.second);
 		estimatedBytes += EstimateTagVariantHeapBytes(target.tag.normal);

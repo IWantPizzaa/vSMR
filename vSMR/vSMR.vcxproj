@@ -250,11 +250,11 @@
     <ClCompile Include="src\tags\RadarScreen.TagRendering.cpp" />
     <ClCompile Include="src\tags\TagColorRuleParser.cpp" />
     <ClCompile Include="src\tags\TagColorRules.cpp" />
+    <ClCompile Include="src\tags\CompiledTagDefinition.cpp" />
     <ClCompile Include="src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\lib\include\rapidjson\document.h" />
-    <ClInclude Include="..\lib\include\rapidjson\filestream.h" />
     <ClInclude Include="..\lib\include\rapidjson\prettywriter.h" />
     <ClInclude Include="..\lib\include\rapidjson\rapidjson.h" />
     <ClInclude Include="..\lib\include\rapidjson\reader.h" />
@@ -331,6 +331,14 @@
     <ClInclude Include="src\shared\RapidJsonUtils.hpp" />
     <ClInclude Include="src\shared\TextUtils.hpp" />
     <ClInclude Include="src\shared\WindowsPathEncoding.hpp" />
+    <ClInclude Include="src\platform\windows\network\WinHttpSupport.hpp" />
+    <ClInclude Include="src\rendering\BrushCache.hpp" />
+    <ClInclude Include="src\shared\FunctionRef.hpp" />
+    <ClInclude Include="src\shared\JsonDocument.hpp" />
+    <ClInclude Include="src\shared\Random.hpp" />
+    <ClInclude Include="src\shared\RefreshLog.hpp" />
+    <ClInclude Include="src\tags\CompiledTagDefinition.hpp" />
+    <ClInclude Include="src\tags\TagTokenValues.hpp" />
     <ClInclude Include="src\tags\TagColorRules.hpp" />
     <ClInclude Include="src\tags\TagColorRules.Internal.hpp" />
     <ClInclude Include="src\tags\TagDataTypes.hpp" />
@@ -476,6 +484,7 @@
     <Delete Files="$(VsmrDistributionDirectory)LICENSE" />
     <Delete Files="@(_VsmrLegacyFlatAviso)" />
   </Target>
+  <Import Project="BuildHardening.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!-- VS 2022 restores native PackageReference items but can select the managed buildTransitive entry point. -->
   <Import Project="$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets" Condition="Exists('$(PkgMicrosoft_Web_WebView2)\build\native\Microsoft.Web.WebView2.targets')" />

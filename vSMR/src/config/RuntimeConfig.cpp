@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "config/RuntimeConfig.hpp"
 #include "config/RuntimeConfig.Internal.hpp"
 #include "shared/JsonInputLimits.hpp"
@@ -10,8 +11,8 @@
 using namespace VsmrRuntimeConfigInternal;
 
 bool CConfig::validateSerializedInputLimits(
-	const string& serializedJson,
-	string& error)
+	const std::string& serializedJson,
+	std::string& error)
 {
 	error.clear();
 	return ValidateJsonInputLimits(serializedJson, &error);
@@ -19,7 +20,7 @@ bool CConfig::validateSerializedInputLimits(
 
 bool CConfig::validateAndMigrateProfilesDocument(
 	rapidjson::Document& profilesDocument,
-	string& error,
+	std::string& error,
 	bool& migrated)
 {
 	error.clear();
@@ -35,7 +36,7 @@ bool CConfig::validateAndMigrateProfilesDocument(
 
 bool CConfig::validateAndMigratePrevalidatedProfilesDocument(
 	rapidjson::Document& profilesDocument,
-	string& error,
+	std::string& error,
 	bool& migrated)
 {
 	error.clear();
@@ -230,7 +231,7 @@ bool CConfig::validateAndMigratePrevalidatedProfilesDocument(
 	{
 		rapidjson::Value wrapper(rapidjson::kObjectType);
 		rapidjson::Value metadataValue(rapidjson::kObjectType);
-		metadataValue.AddMember(kMetadataSchemaVersionKey, kCurrentMetadataSchemaVersion, allocator);
+		metadataValue.AddMember(rapidjson::Value(kMetadataSchemaVersionKey, allocator).Move(), kCurrentMetadataSchemaVersion, allocator);
 		rapidjson::Value wrapperKey;
 		wrapperKey.SetString(kMetadataWrapperKey, allocator);
 		wrapper.AddMember(wrapperKey, metadataValue, allocator);
@@ -317,7 +318,7 @@ bool CConfig::validateAndMigratePrevalidatedProfilesDocument(
 	return true;
 }
 
-CConfig::CConfig(string configPath, string mapPath)
+CConfig::CConfig(std::string configPath, std::string mapPath)
 {
 	config_path = configPath;
 	map_path = mapPath;
@@ -333,7 +334,7 @@ CConfig::CConfig(string configPath, string mapPath)
 
 bool CConfig::reload()
 {
-	string activeName = getActiveProfileName();
+	std::string activeName = getActiveProfileName();
 	const bool configLoaded = loadConfig();
 	// Legacy map data is optional and independent from the profiles source.
 	// A bad obsolete map file must not turn a successful profile reload or
@@ -346,8 +347,8 @@ bool CConfig::reload()
 
 bool CConfig::replaceInMemoryConfig(
 	const Value& replacementDocument,
-	const string& requestedActiveProfile,
-	string& error)
+	const std::string& requestedActiveProfile,
+	std::string& error)
 {
 	error.clear();
 	if (!replacementDocument.IsArray())
@@ -361,7 +362,7 @@ bool CConfig::replaceInMemoryConfig(
 	replacementDocument.Accept(writer);
 
 	Document parsed(&document.GetAllocator());
-	const std::string serializedJson(buffer.GetString(), buffer.Size());
+	const std::string serializedJson(buffer.GetString(), buffer.GetSize());
 	if (!ParseValidatedArray(serializedJson, parsed, &error))
 	{
 		if (error.empty())
@@ -372,22 +373,22 @@ bool CConfig::replaceInMemoryConfig(
 	if (!validateAndMigratePrevalidatedProfilesDocument(parsed, error, migrated))
 		return false;
 
-	map<string, rapidjson::SizeType> replacementProfiles;
-	std::vector<string> normalizedNames;
+	std::map<std::string, rapidjson::SizeType> replacementProfiles;
+	std::vector<std::string> normalizedNames;
 	for (SizeType index = 0; index < parsed.Size(); ++index)
 	{
 		const Value& profile = parsed[index];
 		if (!IsProfileEntry(profile))
 			continue;
 
-		const string name = trimProfileName(profile["name"].GetString());
+		const std::string name = trimProfileName(profile["name"].GetString());
 		if (name.empty())
 		{
 			error = "Profile names cannot be empty.";
 			return false;
 		}
 
-		string normalized = name;
+		std::string normalized = name;
 		std::transform(
 			normalized.begin(),
 			normalized.end(),
@@ -420,9 +421,9 @@ bool CConfig::replaceInMemoryConfig(
 	return true;
 }
 
-vector<CConfig::mapData> CConfig::getMapElementsForZoomLevel(int zoomLevel)
+std::vector<CConfig::mapData> CConfig::getMapElementsForZoomLevel(int zoomLevel)
 {
-	vector<CConfig::mapData> out;
+	std::vector<CConfig::mapData> out;
 	for (auto it = maps.begin(); it != maps.end(); ++it)
 	{
 		if (it->first <= zoomLevel)
@@ -442,7 +443,7 @@ bool CConfig::loadConfig() {
 	auto parseSizeBoundedCandidate = [&](
 		const std::string& serializedJson,
 		Document& candidate,
-		map<string, rapidjson::SizeType>& candidateProfiles,
+		std::map<std::string, rapidjson::SizeType>& candidateProfiles,
 		bool& migrated,
 		std::string& error) -> bool
 	{
@@ -468,7 +469,7 @@ bool CConfig::loadConfig() {
 	std::string mainError;
 	std::string mainReadError;
 	Document mainCandidate(&document.GetAllocator());
-	map<string, rapidjson::SizeType> mainProfiles;
+	std::map<std::string, rapidjson::SizeType> mainProfiles;
 	bool mainMigrated = false;
 	const bool mainRead = ReadFileContents(config_path, mainJson, &mainReadError);
 	const bool mainValid = mainRead && parseSizeBoundedCandidate(
@@ -551,7 +552,7 @@ bool CConfig::loadMap()
 	}
 
 	Document replacement(&mapDocument.GetAllocator());
-	replacement.Parse<0>(serializedJson.c_str());
+	VsmrJson::ParseDocument(replacement, serializedJson);
 	if (replacement.HasParseError() || !replacement.IsArray())
 	{
 		ReportLoadFailure("maps");
@@ -603,7 +604,7 @@ Value& CConfig::getMutableActiveProfile() {
 	return invalid_profile;
 }
 
-const Value* CConfig::findSidDefinition(const string& sid, const string& airport)
+const Value* CConfig::findSidDefinition(const std::string& sid, const std::string& airport)
 {
 	const Value& activeProfile = getActiveProfile();
 	const Value* mapsObject = GetObjectMemberIfPresent(activeProfile, "maps");
@@ -626,7 +627,7 @@ const Value* CConfig::findSidDefinition(const string& sid, const string& airport
 			if (!sidNames[s].IsString())
 				continue;
 
-			string currentSid = sidNames[s].GetString();
+			std::string currentSid = sidNames[s].GetString();
 			std::transform(currentSid.begin(), currentSid.end(), currentSid.begin(), [](unsigned char c) {
 				return static_cast<char>(std::toupper(c));
 			});
@@ -638,11 +639,11 @@ const Value* CConfig::findSidDefinition(const string& sid, const string& airport
 	return nullptr;
 }
 
-bool CConfig::isSidColorAvail(string sid, string airport) {
+bool CConfig::isSidColorAvail(std::string sid, std::string airport) {
 	return findSidDefinition(sid, airport) != nullptr;
 }
 
-Gdiplus::Color CConfig::getSidColor(string sid, string airport)
+Gdiplus::Color CConfig::getSidColor(std::string sid, std::string airport)
 {
 	const Value* sidDefinition = findSidDefinition(sid, airport);
 	if (sidDefinition != nullptr && sidDefinition->HasMember("color") && (*sidDefinition)["color"].IsObject())
@@ -679,7 +680,7 @@ COLORREF CConfig::getConfigColorRef(const Value& colorConfig) {
 	return Color;
 }
 
-const Value& CConfig::getAirportMapIfAny(string airport) {
+const Value& CConfig::getAirportMapIfAny(std::string airport) {
 	const Value& activeProfile = getActiveProfile();
 	const Value* mapData = GetObjectMemberIfPresent(activeProfile, "maps");
 	if (mapData == nullptr)
@@ -692,7 +693,7 @@ const Value& CConfig::getAirportMapIfAny(string airport) {
 	return activeProfile;
 }
 
-bool CConfig::isAirportMapAvail(string airport) {
+bool CConfig::isAirportMapAvail(std::string airport) {
 	const Value& activeProfile = getActiveProfile();
 	const Value* mapData = GetObjectMemberIfPresent(activeProfile, "maps");
 	return mapData != nullptr && GetObjectMemberIfPresent(*mapData, airport.c_str()) != nullptr;
@@ -706,7 +707,7 @@ bool CConfig::isCustomCursorUsed() {
 	return true;
 }
 
-bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
+bool CConfig::isCustomRunwayAvail(std::string airport, std::string name1, std::string name2) {
 	const Value& activeProfile = getActiveProfile();
 	const Value* mapDefinitions = GetObjectMemberIfPresent(activeProfile, "maps");
 	if (mapDefinitions == nullptr)
@@ -728,8 +729,8 @@ bool CConfig::isCustomRunwayAvail(string airport, string name1, string name2) {
 	return false;
 }
 
-vector<string> CConfig::getAllProfiles() const {
-	vector<string> toR;
+std::vector<std::string> CConfig::getAllProfiles() const {
+	std::vector<std::string> toR;
 
 	if (document.IsArray()) {
 		for (SizeType i = 0; i < document.Size(); i++) {
@@ -741,7 +742,7 @@ vector<string> CConfig::getAllProfiles() const {
 	}
 
 	if (toR.empty()) {
-		for (std::map<string, rapidjson::SizeType>::const_iterator it = profiles.begin(); it != profiles.end(); ++it)
+		for (std::map<std::string, rapidjson::SizeType>::const_iterator it = profiles.begin(); it != profiles.end(); ++it)
 		{
 			toR.push_back(it->first);
 		}
@@ -755,17 +756,17 @@ size_t CConfig::getProfileCount() const
 	return profiles.size();
 }
 
-string CConfig::getConfigRevision() const
+std::string CConfig::getConfigRevision() const
 {
 	return config_revision;
 }
 
-string CConfig::getPersistedConfigRevision() const
+std::string CConfig::getPersistedConfigRevision() const
 {
 	return FileRevision(config_path);
 }
 
-string CConfig::getLastLoadMessage() const
+std::string CConfig::getLastLoadMessage() const
 {
 	return last_load_message;
 }
@@ -804,7 +805,7 @@ Value& CConfig::ensureMetadata()
 
 	Value wrapper(kObjectType);
 	Value metadata(kObjectType);
-	metadata.AddMember(kMetadataSchemaVersionKey, 1, document.GetAllocator());
+	metadata.AddMember(rapidjson::Value(kMetadataSchemaVersionKey, document.GetAllocator()).Move(), 1, document.GetAllocator());
 
 	Value wrapperKey;
 	wrapperKey.SetString(kMetadataWrapperKey, document.GetAllocator());
@@ -813,7 +814,7 @@ Value& CConfig::ensureMetadata()
 	return document[document.Size() - 1][kMetadataWrapperKey];
 }
 
-string CConfig::getLastActiveProfileName() const
+std::string CConfig::getLastActiveProfileName() const
 {
 	const Value* metadata = findMetadata();
 	if (metadata == nullptr)
@@ -821,9 +822,9 @@ string CConfig::getLastActiveProfileName() const
 	return trimProfileName(ReadStringMember(*metadata, kLastActiveProfileKey));
 }
 
-bool CConfig::setLastActiveProfileName(const string& profileName)
+bool CConfig::setLastActiveProfileName(const std::string& profileName)
 {
-	const string trimmedProfile = trimProfileName(profileName);
+	const std::string trimmedProfile = trimProfileName(profileName);
 	if (trimmedProfile.empty())
 		return false;
 
@@ -833,9 +834,9 @@ bool CConfig::setLastActiveProfileName(const string& profileName)
 }
 
 bool CConfig::saveConfig(
-	const vector<ProfileSaveIdentity>& profileIdentities,
-	const string& expectedRevision,
-	string* error,
+	const std::vector<ProfileSaveIdentity>& profileIdentities,
+	const std::string& expectedRevision,
+	std::string* error,
 	bool allowRecoveryReplacement)
 {
 	std::lock_guard<std::mutex> writeGuard(ConfigSaveMutex());
@@ -874,7 +875,7 @@ bool CConfig::saveConfig(
 	rapidjson::StringBuffer candidateBuffer;
 	rapidjson::Writer<rapidjson::StringBuffer> candidateWriter(candidateBuffer);
 	document.Accept(candidateWriter);
-	const std::string candidateJson(candidateBuffer.GetString(), candidateBuffer.Size());
+	const std::string candidateJson(candidateBuffer.GetString(), candidateBuffer.GetSize());
 	bool migrated = false;
 	std::string validationError;
 	if (!ParseValidatedArray(candidateJson, validated, &validationError) ||
@@ -892,7 +893,7 @@ bool CConfig::saveConfig(
 		rapidjson::StringBuffer migratedBuffer;
 		rapidjson::Writer<rapidjson::StringBuffer> migratedWriter(migratedBuffer);
 		validated.Accept(migratedWriter);
-		replacement.Parse<0>(migratedBuffer.GetString());
+		VsmrJson::ParseDocument(replacement, std::string_view(migratedBuffer.GetString(), migratedBuffer.GetSize()));
 		if (replacement.HasParseError())
 		{
 			if (error != nullptr)
@@ -957,8 +958,8 @@ const Value* CConfig::getSharedAvisoPresetContainer() const
 }
 
 bool CConfig::transactAvisoPresetStore(
-	const string& preferredProfileName,
-	const string& activeAirport,
+	const std::string& preferredProfileName,
+	const std::string& activeAirport,
 	const AvisoPresetTransaction& transaction)
 {
 	if (NormalizeAirportKey(activeAirport).empty() || !transaction)
@@ -1031,10 +1032,10 @@ bool CConfig::transactAvisoPresetStore(
 }
 
 bool CConfig::assignUnscopedAvisoPresetsToAirport(
-	const string& preferredProfileName,
-	const string& airport,
+	const std::string& preferredProfileName,
+	const std::string& airport,
 	size_t& assignedPresetCount,
-	string& error)
+	std::string& error)
 {
 	assignedPresetCount = 0;
 	error.clear();
@@ -1171,15 +1172,15 @@ bool CConfig::assignUnscopedAvisoPresetsToAirport(
 	return true;
 }
 
-unordered_set<string> CConfig::getInactiveAlert()
+std::unordered_set<std::string> CConfig::getInactiveAlert()
 {
 	const Value& activeProfile = getActiveProfile();
 	if (!activeProfile.IsObject() || !activeProfile.HasMember("rimcas") || !activeProfile["rimcas"].IsObject())
-		return unordered_set<string>();
+		return std::unordered_set<std::string>();
 
 	const Value& rimcas = activeProfile["rimcas"];
 	if (rimcas.HasMember("inactive_alerts") && rimcas["inactive_alerts"].IsArray()) {
-		unordered_set<string> toR;
+		std::unordered_set<std::string> toR;
 		const Value& inactiveAlerts = rimcas["inactive_alerts"];
 		for (SizeType i = 0; i < inactiveAlerts.Size(); i++) {
 			if (inactiveAlerts[i].IsString())
@@ -1187,10 +1188,10 @@ unordered_set<string> CConfig::getInactiveAlert()
 		}
 		return toR;
 	}
-	return unordered_set<string>();
+	return std::unordered_set<std::string>();
 }
 
-bool CConfig::setInactiveAlert(const unordered_set<string>& inactiveAlerts)
+bool CConfig::setInactiveAlert(const std::unordered_set<std::string>& inactiveAlerts)
 {
 	if (!document.IsArray() || document.Empty() || active_profile >= document.Size() || !document[active_profile].IsObject())
 		return false;
@@ -1207,7 +1208,7 @@ bool CConfig::setInactiveAlert(const unordered_set<string>& inactiveAlerts)
 
 	Value& rimcas = activeProfile["rimcas"];
 	Value inactiveAlertArray(rapidjson::kArrayType);
-	for (const string& alert : inactiveAlerts) {
+	for (const std::string& alert : inactiveAlerts) {
 		Value alertValue;
 		alertValue.SetString(alert.c_str(), static_cast<SizeType>(alert.length()), document.GetAllocator());
 		inactiveAlertArray.PushBack(alertValue, document.GetAllocator());
