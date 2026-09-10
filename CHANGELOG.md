@@ -32,6 +32,8 @@
 
 ### Fixed
 
+- Suppressed RDF indications for ground aircraft in SRW insets, using the scene's airborne classification.
+
 - Fixed tags remaining detailed after the pointer leaves or a drag release is missed. Hover uses current tag bounds and the rendering window's cursor coordinates, with drag state isolated per radar view. Added detailed hover tags and their interactive fields to SRW and AVISO insets.
 
 - Replaced the legacy RapidJSON snapshot with pinned upstream headers and applied bounded, iterative, UTF-8-validated parsing to every production JSON entry point. Excessive nesting, malformed encoding, and embedded NUL bytes now fail validation instead of overflowing the stack or silently parsing a prefix.
