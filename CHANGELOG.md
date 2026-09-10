@@ -1,27 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.0-beta.6] - Unreleased
 
 ### Added
 
 - Added regression coverage for JSON limits, updater URL and hashing checks, compiled tag definitions, and persistent text caches. CI now runs MSVC static analysis and a JSON fuzz smoke test under AddressSanitizer.
-
-### Changed
-
-- Cached parsed tag definitions and font measurements across frames, with invalidation when settings change and bounded text-cache growth. Reused contiguous tag-token storage and drawing brushes, reduced hot-path copies and callback overhead, and gated detailed SDK timing behind verbose diagnostics.
-- Applied consistent compiler warnings and binary hardening to local and CI builds, including Control Flow Guard and Spectre mitigations. Removed application-wide standard-library namespace pollution and marked security predicates `[[nodiscard]]`.
-
-### Fixed
-
-- Replaced the legacy RapidJSON snapshot with pinned upstream headers and applied bounded, iterative, UTF-8-validated parsing to every production JSON entry point. Excessive nesting, malformed encoding, and embedded NUL bytes now fail validation instead of overflowing the stack or silently parsing a prefix.
-- Restricted updater downloads to exact approved hosts, required TLS 1.2 or newer and HTTPS port 443 in both HTTP clients, and enabled certificate revocation checking when discovering the updater signer.
-- Made HTTP and hashing cleanup automatic, checked hash initialization failures, cleared stale hash results, and rejected missing rendering contexts before inset drawing.
-- Prevented tag substitution from interpreting replacement values as further token names, and removed redundant CDM time formatting and per-target hover-text copies.
-
-## [2.0.0-beta.6] - 2026-09-05
-
-### Added
-
 - Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
 - Added validated Copy/Paste actions for Rules and AVISO geometry/text styles. AVISO paste and profile-color editing support the existing Ctrl/Shift multi-selection workflow.
 - Added delayed, theme-aware interaction explanations for buttons and editable controls throughout the Control Center.
@@ -32,6 +15,8 @@
 
 ### Changed
 
+- Cached parsed tag definitions and font measurements across frames, with invalidation when settings change and bounded text-cache growth. Reused contiguous tag-token storage and drawing brushes, reduced hot-path copies and callback overhead, and gated detailed SDK timing behind verbose diagnostics.
+- Applied consistent compiler warnings and binary hardening to local and CI builds, including Control Flow Guard and Spectre mitigations. Removed application-wide standard-library namespace pollution and marked security predicates `[[nodiscard]]`.
 - Made RIMCAS runway-pair and ARR/DEP assignments follow the active airport's selected EuroScope runway ends automatically; manual closed-runway state remains independent.
 - Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
 - Refined the Rules editor into distinct identity, scope, condition, and color-override sections; expanded target symbol scaling to 0.25×–5.00× and made its fixed-size, theme-aware preview show a horizontal movement trail behind the aircraft.
@@ -43,6 +28,10 @@
 
 ### Fixed
 
+- Replaced the legacy RapidJSON snapshot with pinned upstream headers and applied bounded, iterative, UTF-8-validated parsing to every production JSON entry point. Excessive nesting, malformed encoding, and embedded NUL bytes now fail validation instead of overflowing the stack or silently parsing a prefix.
+- Restricted updater downloads to exact approved hosts, required TLS 1.2 or newer and HTTPS port 443 in both HTTP clients, and enabled certificate revocation checking when discovering the updater signer.
+- Made HTTP and hashing cleanup automatic, checked hash initialization failures, cleared stale hash results, and rejected missing rendering contexts before inset drawing.
+- Prevented tag substitution from interpreting replacement values as further token names, and removed redundant CDM time formatting and per-target hover-text copies.
 - Prevented another airport's selected runways from replacing the ASR/runtime airport and causing the active AVISO map to disappear.
 - Prevented the Control Center from becoming stuck when rule settings were edited before a rule had been created. Rule fields and unavailable actions now remain disabled until a valid rule exists, and condition actions safely reject a missing draft.
 - Aligned the Groups and Settings pages with the standard Control Center left-page offset.
