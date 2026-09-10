@@ -6,7 +6,6 @@ namespace VsmrEuroScopeCommandLine
 {
 	enum class Owner
 	{
-		CdmReminder,
 		Vsid
 	};
 

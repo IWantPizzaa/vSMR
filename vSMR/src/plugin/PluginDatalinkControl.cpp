@@ -57,19 +57,12 @@ DatalinkControlState CSMRPlugin::GetDatalinkControlState() const
 		state.hasPassword = !TrimAsciiWhitespaceCopy(logonCode).empty();
 		state.statusMessage = DatalinkStatusMessage;
 	}
-	state.cdmAutoEnabled = CdmAutoModeEnabled.load(std::memory_order_relaxed);
-	state.cdmDelayMinutes = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-	state.cdmCooldownMinutes = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
 	const VsmrCdm::InterfaceState cdmState = VsmrCdm::GetInterfaceState();
 	state.cdmBridgeLoaded = cdmState.bridgeLoaded;
 	state.cdmBridgeReady = cdmState.providerReady;
 	state.activeAirport = ResolveActiveAirportFilterUpper();
 
-	std::string aliasMessage;
-	state.cdmAliasReady = TryReadCdmReminderMessageFromAlias(
-		const_cast<CSMRPlugin*>(this),
-		aliasMessage,
-		state.cdmAliasPath);
+	state.aliasPath = ResolveAliasFilePath(const_cast<CSMRPlugin*>(this)).u8string();
 	return state;
 }
 
@@ -77,30 +70,10 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 	const std::string& callsign,
 	const std::string& password,
 	bool replacePassword,
-	bool cdmAutoEnabled,
-	int delayMinutes,
-	int cooldownMinutes,
 	std::string& error,
 	bool updateConnectionSettings)
 {
 	error.clear();
-	const bool previousAutoEnabled =
-		CdmAutoModeEnabled.load(std::memory_order_relaxed);
-	const int previousDelayMinutes =
-		CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-	const bool stoppedAutomaticallyBeforeValidation =
-		previousAutoEnabled && !cdmAutoEnabled;
-	if (stoppedAutomaticallyBeforeValidation)
-	{
-		// Stop is fail-safe: malformed or unavailable CPDLC credentials must never
-		// keep an already-running automatic reminder session alive.
-		CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
-		ClearCdmAutoTrackingState(true);
-		SaveDataToSettings(
-			"cdm_auto_enabled",
-			"Enable automatic CDM reminder messaging for this session",
-			"0");
-	}
 	const std::string normalizedCallsign =
 		ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
 	const std::string normalizedPassword =
@@ -114,47 +87,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 	{
 		error = "Enter a Hoppie code before replacing the saved code.";
 		return false;
-	}
-	if (delayMinutes < 0 || delayMinutes > CdmMaximumMinutes)
-	{
-		error = "The CDM auto delay must be between 0 and 1440 minutes.";
-		return false;
-	}
-	if (cooldownMinutes < 0 || cooldownMinutes > CdmMaximumMinutes)
-	{
-		error = "The CDM reminder cooldown must be between 0 and 1440 minutes.";
-		return false;
-	}
-
-	if (cdmAutoEnabled && !previousAutoEnabled)
-	{
-		if (!ControllerMyself().IsController())
-		{
-			error = "EuroScope is not connected as a controller.";
-			return false;
-		}
-		if (ResolveActiveAirportFilterUpper().empty())
-		{
-			error = "Select an active airport before starting CDM reminders.";
-			return false;
-		}
-		if (!VsmrCdm::GetInterfaceState().bridgeLoaded)
-		{
-			error = "Load EuroScopeBridge.dll before starting CDM reminders.";
-			return false;
-		}
-		if (!IsCdmBridgeReady())
-		{
-			error = "Load the bridge-enabled CDM plugin before starting CDM reminders.";
-			return false;
-		}
-		std::string reminderMessage;
-		std::string aliasPath;
-		if (!TryReadCdmReminderMessageFromAlias(this, reminderMessage, aliasPath))
-		{
-			error = "Add a valid .cdm alias before starting CDM reminders.";
-			return false;
-		}
 	}
 	std::string protectedPasswordToPersist;
 	if (updateConnectionSettings)
@@ -202,17 +134,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 	{
 		SetDatalinkStatusMessage("Credentials updated. Ready to connect.");
 	}
-	CdmAutoModeEnabled.store(cdmAutoEnabled, std::memory_order_relaxed);
-	CdmAutoDelayMinutes.store(delayMinutes, std::memory_order_relaxed);
-	CdmReminderCooldownMinutes.store(cooldownMinutes, std::memory_order_relaxed);
-
-	if (!stoppedAutomaticallyBeforeValidation &&
-		(previousAutoEnabled != cdmAutoEnabled ||
-			previousDelayMinutes != delayMinutes))
-	{
-		ClearCdmAutoTrackingState(true);
-	}
-
 	if (updateConnectionSettings)
 	{
 		SaveDataToSettings(
@@ -224,18 +145,6 @@ bool CSMRPlugin::UpdateDatalinkControlSettings(
 			"The protected CPDLC Hoppie code",
 			protectedPasswordToPersist.c_str());
 	}
-	SaveDataToSettings(
-		"cdm_auto_enabled",
-		"Enable automatic CDM reminder messaging for this session",
-		"0");
-	SaveDataToSettings(
-		"cdm_auto_delay_min",
-		"CDM auto reminder delay in minutes",
-		std::to_string(delayMinutes).c_str());
-	SaveDataToSettings(
-		"cdm_cooldown_min",
-		"CDM reminder resend cooldown in minutes",
-		std::to_string(cooldownMinutes).c_str());
 	return true;
 }
 
@@ -321,116 +230,6 @@ bool CSMRPlugin::PollDatalink(std::string& error)
 	return StartDatalinkPoll(true, error);
 }
 
-bool CSMRPlugin::RunCdmReminderScan(std::string& result, std::string& error)
-{
-	result.clear();
-	error.clear();
-	if (PluginShutdownRequested.load(std::memory_order_relaxed))
-	{
-		error = "The CDM reminder service is shutting down.";
-		return false;
-	}
-	if (!ControllerMyself().IsController())
-	{
-		error = "EuroScope is not connected as a controller.";
-		return false;
-	}
-	const std::string activeAirport = ResolveActiveAirportFilterUpper();
-	if (activeAirport.empty())
-	{
-		error = "Select an active airport before checking CDM reminders.";
-		return false;
-	}
-	if (!VsmrCdm::GetInterfaceState().bridgeLoaded)
-	{
-		error = "Load EuroScopeBridge.dll before checking CDM reminders.";
-		return false;
-	}
-	if (!IsCdmBridgeReady())
-	{
-		error = "Load the bridge-enabled CDM plugin before checking CDM reminders.";
-		return false;
-	}
-
-	const std::vector<std::string> candidateCallsigns =
-		CollectFlightPlanCandidateCallsignsForActiveAirport(this, activeAirport);
-	const auto now = std::chrono::steady_clock::now();
-	std::string reminderMessage;
-	std::string aliasPath;
-	if (!TryReadCdmReminderMessageFromAlias(this, reminderMessage, aliasPath))
-	{
-		error = "Missing or invalid .cdm alias";
-		if (!aliasPath.empty())
-			error += " in " + aliasPath;
-		error += ".";
-		return false;
-	}
-
-	int alreadyNotifiedCount = 0;
-	int alreadyQueuedCount = 0;
-	int alreadyClearedCount = 0;
-	int hasTobtCount = 0;
-	int queuedCount = 0;
-	int failedCount = 0;
-	int missingCdmCount = 0;
-
-	{
-		std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-		PruneCdmReminderHistoryUnlocked(now);
-	}
-
-	for (const std::string& callsign : candidateCallsigns)
-	{
-		bool cdmEvaluated = false;
-		bool hasCdmData = false;
-		const CdmQueueReminderOutcome outcome =
-			TryQueueCdmReminderForCallsign(
-				this,
-				callsign,
-				reminderMessage,
-				now,
-				&cdmEvaluated,
-				&hasCdmData);
-		if (cdmEvaluated && !hasCdmData)
-			++missingCdmCount;
-
-		switch (outcome)
-		{
-		case CdmQueueReminderOutcome::Queued:
-			++queuedCount;
-			break;
-		case CdmQueueReminderOutcome::AlreadyNotified:
-			++alreadyNotifiedCount;
-			break;
-		case CdmQueueReminderOutcome::AlreadyQueued:
-			++alreadyQueuedCount;
-			break;
-		case CdmQueueReminderOutcome::AlreadyCleared:
-			++alreadyClearedCount;
-			break;
-		case CdmQueueReminderOutcome::HasSubmittedTobt:
-			++hasTobtCount;
-			break;
-		case CdmQueueReminderOutcome::Failed:
-		default:
-			++failedCount;
-			break;
-		}
-	}
-
-	const int checkedCount = static_cast<int>(candidateCallsigns.size());
-	result = "CDM check: ";
-	result += std::to_string(checkedCount) + " checked, ";
-	result += std::to_string(queuedCount) + " queued, ";
-	result += std::to_string(hasTobtCount) + " already has TOBT, ";
-	result += std::to_string(alreadyNotifiedCount) + " already notified, ";
-	result += std::to_string(alreadyQueuedCount) + " already queued, ";
-	result += std::to_string(alreadyClearedCount) + " already cleared, ";
-	result += std::to_string(missingCdmCount) + " missing CDM data, ";
-	result += std::to_string(failedCount) + " failed.";
-	return true;
-}
-
 bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 {
 	AFX_MANAGE_STATE(AfxGetStaticModuleState());
@@ -443,9 +242,6 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 			state.logonCallsign,
 			static_cast<const char*>(CStringA(dialog.m_Password)),
 			true,
-			state.cdmAutoEnabled,
-			state.cdmDelayMinutes,
-			state.cdmCooldownMinutes,
 			error);
 	};
 
@@ -481,11 +277,8 @@ bool CSMRPlugin::EditDatalinkCredentials(std::string& error)
 	return true;
 }
 
-
 void CSMRPlugin::ResetDatalinkRuntime()
 {
-	VsmrEuroScopeCommandLine::Cancel(
-		VsmrEuroScopeCommandLine::Owner::CdmReminder);
 	HoppieConnectionGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppiePollGeneration.fetch_add(1, std::memory_order_acq_rel);
 	HoppieConnected.store(false, std::memory_order_relaxed);
@@ -499,10 +292,7 @@ void CSMRPlugin::ResetDatalinkRuntime()
 		logonCode.clear();
 		DatalinkStatusMessage = "Disconnected.";
 	}
-	CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
-	CdmAutoDelayMinutes.store(5, std::memory_order_relaxed);
-	CdmReminderCooldownMinutes.store(60, std::memory_order_relaxed);
-	ResetCdmReminderSessionState();
+	ResetDatalinkClearanceState();
 }
 
 void CSMRPlugin::LoadDatalinkSettings()
@@ -562,18 +352,7 @@ void CSMRPlugin::LoadDatalinkSettings()
 			Logger::info("CPDLC plaintext credential migration failed; persistent copy removed");
 		}
 	}
-	if ((p_value = GetDataFromSettings("cdm_auto_delay_min")) != NULL)
-	{
-		int parsedDelayMinutes = 0;
-		if (TryParseNonNegativeInt(p_value, parsedDelayMinutes))
-			CdmAutoDelayMinutes.store(parsedDelayMinutes, std::memory_order_relaxed);
-	}
-	if ((p_value = GetDataFromSettings("cdm_cooldown_min")) != NULL)
-	{
-		int parsedCooldownMinutes = 0;
-		if (TryParseNonNegativeInt(p_value, parsedCooldownMinutes))
-			CdmReminderCooldownMinutes.store(parsedCooldownMinutes, std::memory_order_relaxed);
-	}
+
 }
 
 void CSMRPlugin::ResetDatalinkProfileSource()
@@ -586,12 +365,6 @@ void CSMRPlugin::ResetDatalinkProfileSource()
 	PublishActiveProfilesConfigPath(
 		ResolveDefaultProfilesConfigPath().u8string(),
 		false);
-}
-
-void CSMRPlugin::BeginDatalinkShutdown()
-{
-	CdmAutoModeEnabled.store(false, std::memory_order_relaxed);
-	ClearCdmAutoTrackingState(true);
 }
 
 void CSMRPlugin::PrepareDatalinkRuntimeForExit()
@@ -620,14 +393,5 @@ void CSMRPlugin::PersistDatalinkSettings()
 	{
 		Logger::info("CPDLC credential was not persisted because DPAPI protection failed");
 	}
-	// Run/Stop is deliberately session-only. Persist a safe value for older builds.
-	SaveDataToSettings("cdm_auto_enabled", "Enable automatic CDM reminder messaging", "0");
-	int cdmAutoDelayToPersist = CdmAutoDelayMinutes.load(std::memory_order_relaxed);
-	if (cdmAutoDelayToPersist < 0)
-		cdmAutoDelayToPersist = 0;
-	SaveDataToSettings("cdm_auto_delay_min", "CDM auto reminder delay in minutes", std::to_string(cdmAutoDelayToPersist).c_str());
-	int cdmCooldownToPersist = CdmReminderCooldownMinutes.load(std::memory_order_relaxed);
-	if (cdmCooldownToPersist < 0)
-		cdmCooldownToPersist = 0;
-	SaveDataToSettings("cdm_cooldown_min", "CDM reminder resend cooldown in minutes", std::to_string(cdmCooldownToPersist).c_str());
+
 }

@@ -517,6 +517,24 @@
     aviso.metadata.color_palettes = avisoColorPalettes(aviso);
     if (!Array.isArray(aviso.vsmr_groups)) aviso.vsmr_groups = [];
 
+    // Import legacy palette-specific maps using Light geometry and labels once.
+    const supportsLight = item => !Array.isArray(item?.color_palettes) ||
+      !item.color_palettes.length || item.color_palettes.some(value =>
+        ["light", "day"].includes(String(value).trim().toLowerCase()));
+    aviso.features = aviso.features.filter(feature => supportsLight(feature?.properties));
+    const usedStyles = new Set(aviso.features.map(feature => feature?.properties?.style_id));
+    aviso.features.forEach(feature => {
+      if (feature?.properties) delete feature.properties.color_palettes;
+    });
+    Object.entries(aviso.styles).forEach(([id, style]) => {
+      if (!supportsLight(style) && !usedStyles.has(id)) delete aviso.styles[id];
+      else if (style && typeof style === "object") delete style.color_palettes;
+    });
+    aviso.vsmr_groups.forEach(group => {
+      if (group && typeof group === "object") delete group.color_palettes;
+    });
+    aviso.metadata.geometry_mode = "shared";
+
     const seen = new Set();
     const groupIdAliases = new Map();
     aviso.vsmr_groups = aviso.vsmr_groups.map((group, index) => {
