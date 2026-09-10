@@ -8,7 +8,6 @@
 #include "crash/CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
-extern std::string TagBeingDragged;
 extern int LeaderLineDefaultlenght;
 extern bool initCursor;
 extern HCURSOR smrCursor;
@@ -80,11 +79,6 @@ namespace
         CDC& Dc;
         COLORREF PreviousColor = CLR_INVALID;
     };
-
-    bool IsTagBeingDragged(const std::string& callsign)
-    {
-        return TagBeingDragged == callsign;
-    }
 
     bool MouseWithin(const CRect& rect)
     {
@@ -746,7 +740,7 @@ void CSMRRadar::DeconflictRefreshTags(
 		{
 			if (callsign == otherArea.first)
 				continue;
-			if (IsTagBeingDragged(otherArea.first))
+			if (TagBeingDragged == otherArea.first)
 				continue;
 
 			CRect intersection;
@@ -767,7 +761,7 @@ void CSMRRadar::DeconflictRefreshTags(
 			const std::string& callsign = areaEntry.first;
 			const CRect& currentRect = areaEntry.second;
 
-			if (IsTagBeingDragged(callsign))
+			if (TagBeingDragged == callsign)
 				continue;
 			if (isTagCoolingDown(callsign))
 				continue;
@@ -849,7 +843,7 @@ void CSMRRadar::DeconflictRefreshTags(
 			TagLeaderLineLength.erase(callsign);
 			tagAreas.erase(callsign);
 			tagCollisionAreas.erase(callsign);
-			previousTagSize.erase(callsign);
+			DetailedTagCallsigns.erase(callsign);
 			TagDragOffsetFromCenter.erase(callsign);
 			RecentlyAutoMovedTags.erase(callsign);
 			Patatoides.erase(callsign);
@@ -1147,6 +1141,8 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 	}
 	HWND insetHostWindow = ::WindowFromDC(hDC);
 	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
+		insetHostWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
 		insetHostWindow = ::GetActiveWindow();
 	EnsureInsetWindowProcHook(insetHostWindow, this);
 	AvisoRefreshHostWindow.store(insetHostWindow, std::memory_order_release);
@@ -1268,13 +1264,23 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		RefreshSectorMap(performance, setRefreshStage);
 
-		POINT p;
-		if (GetCursorPos(&p))
+		// Map to the rendering window, never to an unrelated active dialog.
+		// An unavailable or covered cursor must not leave the last hover latched.
+		mouseLocation = CPoint(-1000000, -1000000);
+		POINT p = {};
+		const HWND renderWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+		if (renderWindow != nullptr && ::IsWindow(renderWindow) && ::GetCursorPos(&p))
 		{
-			HWND activeWindow = GetActiveWindow();
-			if (activeWindow != nullptr && ScreenToClient(activeWindow, &p))
+			const HWND underCursor = ::WindowFromPoint(p);
+			const HWND foreground = ::GetForegroundWindow();
+			if ((underCursor == renderWindow || ::IsChild(renderWindow, underCursor)) &&
+				foreground != nullptr && ::GetAncestor(foreground, GA_ROOT) == ::GetAncestor(renderWindow, GA_ROOT) &&
+				::ScreenToClient(renderWindow, &p))
 				mouseLocation = p;
 		}
+		// EuroScope may miss the release callback when capture or the target is lost.
+		if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0)
+			CancelTagDrag();
 
 		VsmrRefreshLog("Graphics set up");
 		setRefreshStage("graphics setup");

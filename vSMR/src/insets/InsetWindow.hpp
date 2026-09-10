@@ -5,6 +5,7 @@
 #include <array>
 #include <string>
 #include <map>
+#include <set>
 #include <memory>
 #include <GdiPlus.h>
 
@@ -80,6 +81,7 @@ public:
 	std::map<std::string, POINT> m_TargetPoints;
 	std::map<std::string, CRect> m_TagAreas;
 	std::string m_TagBeingDragged;
+	std::set<std::string> m_DetailedTagCallsigns;
 
 	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	virtual void setAirport(std::string icao);
