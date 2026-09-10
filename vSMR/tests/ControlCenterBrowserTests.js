@@ -503,7 +503,12 @@
     expect(Boolean(originalPaletteButton) && paletteButtons.filter(
       button => button.getAttribute("aria-pressed") === "true").length === 1,
       "Dark/Light/Real exposes exactly one active option");
+    const sharedFeaturesBeforePalette = JSON.stringify(api.getState().aviso.features);
+    const sharedGroupsBeforePalette = JSON.stringify(api.getState().aviso.vsmr_groups);
     alternatePaletteButton?.click();
+    expect(JSON.stringify(api.getState().aviso.features) === sharedFeaturesBeforePalette &&
+      JSON.stringify(api.getState().aviso.vsmr_groups) === sharedGroupsBeforePalette,
+      "Palette switching preserves all shared geometry, text, and groups");
     expect(alternatePaletteButton?.getAttribute("aria-pressed") === "true" &&
       originalPaletteButton?.getAttribute("aria-pressed") === "false" &&
       api.getState().settings?.avisoColorPalette === alternatePaletteButton?.dataset.avisoColorPalette,
@@ -515,6 +520,20 @@
     originalPaletteButton?.click();
 
     const completePaletteState = api.getState();
+    const legacyAviso = JSON.parse(JSON.stringify(completePaletteState.aviso));
+    const sharedFeature = legacyAviso.features[0];
+    legacyAviso.features = ["dark", "day", "real"].map((palette, index) => ({
+      ...JSON.parse(JSON.stringify(sharedFeature)), id: `legacy-${index}`,
+      properties: { ...sharedFeature.properties, color_palettes: [palette], text: `label-${index}` }
+    }));
+    api.receive({ type: "state.authoritative", payload: {
+      settings: completePaletteState.settings, aviso: legacyAviso,
+      airport: completePaletteState.airport, avisoFollows: false, reason: "reload"
+    } });
+    expect(api.getState().aviso.features.length === 1 &&
+      api.getState().aviso.features[0].properties.text === "label-1" &&
+      !Object.hasOwn(api.getState().aviso.features[0].properties, "color_palettes"),
+      "Legacy import keeps Light geometry and text as the shared map");
     api.receive({
       type: "state.authoritative",
       payload: {

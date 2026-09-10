@@ -420,38 +420,6 @@ namespace
 		return true;
 	}
 
-	std::vector<std::string> ReadAvisoColorPalettes(const Value* value)
-	{
-		// An absent list keeps legacy documents visible in every palette. A
-		// declared list scopes merged-map content without another source file.
-		std::vector<std::string> palettes;
-		if (value == nullptr || !value->IsObject() || !value->HasMember("color_palettes") ||
-			!(*value)["color_palettes"].IsArray())
-		{
-			return palettes;
-		}
-
-		const Value& declaredPalettes = (*value)["color_palettes"];
-		for (SizeType index = 0; index < declaredPalettes.Size(); ++index)
-		{
-			const Value& entry = declaredPalettes[index];
-			if (!entry.IsString())
-				continue;
-			std::string palette = ToUpperAscii(TrimAirportCode(entry.GetString()));
-			if (palette == "NIGHT") palette = "DARK";
-			if (palette == "DAY") palette = "LIGHT";
-			std::transform(palette.begin(), palette.end(), palette.begin(),
-				[](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-			if ((palette == "dark" || palette == "light" || palette == "real") &&
-				std::find(palettes.begin(), palettes.end(), palette) == palettes.end())
-			{
-				palettes.push_back(std::move(palette));
-			}
-		}
-		return palettes;
-	}
-
-
 	std::wstring AvisoUtf8ToWide(const char* text)
 	{
 		if (text == nullptr || text[0] == '\0')
@@ -943,8 +911,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 	}
 	std::vector<AvisoGroup> parsedGroups;
 	std::unordered_set<std::string> parsedGroupIds;
-	auto addParsedGroup = [&](const std::string& rawId, const std::string& rawName, bool visible,
-		const std::vector<std::string>& colorPalettes)
+	auto addParsedGroup = [&](const std::string& rawId, const std::string& rawName, bool visible)
 	{
 		const std::string& id = rawId;
 		if (id.empty() || !parsedGroupIds.insert(id).second)
@@ -955,7 +922,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		group.name = TrimAirportCode(rawName);
 		if (group.name.empty())
 			group.name = id;
-		group.colorPalettes = colorPalettes;
 		group.visible = visible;
 		parsedGroups.push_back(std::move(group));
 	};
@@ -971,8 +937,7 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			if (id == nullptr)
 				continue;
 			const char* name = GetAvisoStringProperty(&groupValue, { "name", "label" });
-			addParsedGroup(id, name != nullptr ? name : id, IsAvisoFeatureVisible(&groupValue),
-				ReadAvisoColorPalettes(&groupValue));
+			addParsedGroup(id, name != nullptr ? name : id, IsAvisoFeatureVisible(&groupValue));
 		}
 	}
 	size_t polygonCount = 0;
@@ -1024,9 +989,8 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			properties = &featureValue["properties"];
 		const std::string sourceFeatureId = ReadFeatureIdentity(featureValue);
 		const std::vector<std::string> groupIds = ReadGroupIds(properties);
-		const std::vector<std::string> colorPalettes = ReadAvisoColorPalettes(properties);
 		for (const std::string& groupId : groupIds)
-			addParsedGroup(groupId, groupId, true, {});
+			addParsedGroup(groupId, groupId, true);
 		if (!IsAvisoFeatureVisible(properties))
 			continue;
 		const Value* sharedPaint = ResolveAvisoStylePaint(properties, stylePaintById);
@@ -1067,7 +1031,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 			parsedLabel.sourceFeatureIndex = static_cast<int>(i);
 			parsedLabel.sourceFeatureId = sourceFeatureId;
 			parsedLabel.groupIds = groupIds;
-			parsedLabel.colorPalettes = colorPalettes;
 			parsedLabel.text = AvisoUtf8ToWide(rawText);
 			if (parsedLabel.text.empty())
 				continue;
@@ -1100,7 +1063,6 @@ bool CSMRRadar::EnsureAvisoGeoJsonLoaded(
 		parsedFeature.sourceFeatureIndex = static_cast<int>(i);
 		parsedFeature.sourceFeatureId = sourceFeatureId;
 		parsedFeature.groupIds = groupIds;
-		parsedFeature.colorPalettes = colorPalettes;
 		parsedFeature.fillColor = ParseAvisoColorResolved(sharedPaint, properties, "fill", "fill-opacity", Gdiplus::Color(217, 53, 66, 82));
 		parsedFeature.strokeColor = ParseAvisoColorResolved(sharedPaint, properties, "stroke", "stroke-opacity", Gdiplus::Color(191, 140, 152, 170));
 		parsedFeature.lightFillColor = ParseAvisoPaletteColorResolved(sharedPaint, properties, "light", "fill", parsedFeature.fillColor);

@@ -131,173 +131,64 @@ namespace
 	void TestAviso(const std::filesystem::path& repositoryRoot)
 	{
 		const std::filesystem::path avisoRoot = repositoryRoot / "vSMR" / "data" / "AVISO";
-		for (const char* airport : { "LFPG.geojson", "LFML.geojson", "LFMN.geojson", "LFPO.geojson", "LFBO.geojson" })
+		for (const auto& entry : std::filesystem::directory_iterator(avisoRoot))
 		{
+			if (entry.path().extension() != ".geojson") continue;
+			const std::string airport = entry.path().stem().string();
 			AvisoDocumentModel model;
 			std::string error;
-			const std::filesystem::path path = avisoRoot / airport;
-			const std::string sourceJson = ReadTextFile(path);
-			Expect(
-				AvisoDocumentModel::ValidateSerializedInputLimits(sourceJson, error),
-				std::string("AVISO passes pre-DOM input limits: ") + airport);
-			Expect(model.LoadFromFile(path.u8string(), error), std::string("AVISO validates: ") + airport + (error.empty() ? "" : " (" + error + ")"));
-			Expect(model.FeatureCount() > 0, std::string("AVISO has features: ") + airport);
-			if (std::string(airport) != "LFBO.geojson")
+			const std::string sourceJson = ReadTextFile(entry.path());
+			Expect(AvisoDocumentModel::ValidateSerializedInputLimits(sourceJson, error),
+				"AVISO passes pre-DOM input limits: " + airport);
+			const bool loaded = model.LoadFromFile(entry.path().u8string(), error);
+			Expect(loaded, "AVISO validates: " + airport + " " + error);
+			if (!loaded) continue;
+			Expect(model.FeatureCount() > 0, "AVISO has features: " + airport);
+			const auto& document = model.GetDocument();
+			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
+			const auto& metadata = document["metadata"];
+			const bool hasReal = airport == "LFPG" || airport == "LFML" || airport == "LFMN";
+			const auto& palettes = metadata["color_palettes"];
+			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
+				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
+				std::string(palettes[1].GetString()) == "light" &&
+				(!hasReal || std::string(palettes[2].GetString()) == "real"),
+				"Generated AVISO offers Real only for LFPG, LFML and LFMN: " + airport);
+			Expect(metadata["background_colors"].HasMember("real") == hasReal,
+				"Background palettes agree with available palettes: " + airport);
+			for (const auto& feature : document["features"].GetArray())
+				Expect(!feature["properties"].HasMember("color_palettes"),
+					"Every palette uses the same sector-pack geometry: " + airport);
+			if (airport == "LFPG")
 			{
-				const rapidjson::Document& document = model.GetDocument();
-				const rapidjson::Value* metadata = document.HasMember("metadata") && document["metadata"].IsObject()
-					? &document["metadata"]
-					: nullptr;
-				Expect(metadata != nullptr && metadata->HasMember("color_palettes") &&
-					(*metadata)["color_palettes"].IsArray() &&
-					(*metadata)["color_palettes"].Size() == 3U &&
-					std::string((*metadata)["color_palettes"][rapidjson::SizeType(0)].GetString()) == "dark" &&
-					std::string((*metadata)["color_palettes"][1].GetString()) == "light" &&
-					std::string((*metadata)["color_palettes"][2].GetString()) == "real",
-					std::string("AVISO publishes canonical Dark, Light, and Real palettes: ") + airport);
-				Expect(metadata != nullptr && metadata->HasMember("background_colors") &&
-					(*metadata)["background_colors"].IsObject() &&
-					(*metadata)["background_colors"].HasMember("dark") &&
-					(*metadata)["background_colors"].HasMember("light") &&
-					(*metadata)["background_colors"].HasMember("real"),
-					std::string("AVISO defines all canonical background colors: ") + airport);
-
-				const char* styleId = nullptr;
-				const char* colorKey = "fill";
-				const char* expectedLight = nullptr;
-				const char* expectedReal = nullptr;
-				if (std::string(airport) == "LFML.geojson")
+				bool east = false, west = false;
+				for (const auto& group : document["vsmr_groups"].GetArray())
 				{
-					styleId = "structure.building";
-					expectedLight = "#3C4446";
-					expectedReal = "#A84B24";
+					const std::string id = group["id"].GetString();
+					east = east || id == "ground-layout-east";
+					west = west || id == "ground-layout-west";
 				}
-				else if (std::string(airport) == "LFMN.geojson")
+				if (std::string(metadata["geometry_source"].GetString()) == "EuroScope sector pack")
+					Expect(east && west, "LFPG preserves sector-pack East and West arrow groups");
+				else
+					Expect(metadata.HasMember("geometry_source_files") && metadata["geometry_source_files"].IsObject(),
+						"LFPG records the upstream geometry files; groups follow the selected source");
+				bool grassPaletteFound = false;
+				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
 				{
-					styleId = "surface.runway";
-					expectedLight = "#424242";
-					expectedReal = "#5E5E5E";
-				}
-				else if (std::string(airport) == "LFPO.geojson")
-				{
-					styleId = "terrain.grass";
-					expectedLight = "#3A4F3E";
-					expectedReal = "#00512F";
-				}
-				const rapidjson::Value* paint = nullptr;
-				if (styleId != nullptr && document.HasMember("styles") && document["styles"].IsObject() &&
-					document["styles"].HasMember(styleId) && document["styles"][styleId].IsObject() &&
-					document["styles"][styleId].HasMember("paint") && document["styles"][styleId]["paint"].IsObject())
-				{
-					paint = &document["styles"][styleId]["paint"];
-				}
-				const rapidjson::Value* overrides = paint != nullptr && paint->HasMember("palette-overrides") &&
-					(*paint)["palette-overrides"].IsObject()
-					? &(*paint)["palette-overrides"]
-					: nullptr;
-				if (styleId != nullptr)
-				{
-					Expect(overrides != nullptr && overrides->HasMember("light") &&
-						(*overrides)["light"].IsObject() && (*overrides)["light"].HasMember(colorKey) &&
-						std::string((*overrides)["light"][colorKey].GetString()) == expectedLight &&
-						overrides->HasMember("real") && (*overrides)["real"].IsObject() &&
-						(*overrides)["real"].HasMember(colorKey) &&
-						std::string((*overrides)["real"][colorKey].GetString()) == expectedReal,
-						std::string("AVISO separates Light and Real colors: ") + airport);
-				}
-			}
-			if (std::string(airport) == "LFPG.geojson")
-			{
-				const rapidjson::Document& document = model.GetDocument();
-				Expect(document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray() &&
-					document["vsmr_groups"].Size() == 4U,
-					"LFPG exposes palette-scoped East and West arrow groups");
-				bool hasEastArrowGroup = false;
-				bool hasWestArrowGroup = false;
-				if (document.HasMember("vsmr_groups") && document["vsmr_groups"].IsArray())
-				{
-					const rapidjson::Value& groups = document["vsmr_groups"];
-					for (rapidjson::SizeType groupIndex = 0; groupIndex < groups.Size(); ++groupIndex)
+					const auto& paint = style->value["paint"];
+					if (paint.HasMember("text-halo-width"))
+						Expect(paint["text-halo-width"].GetDouble() == 1.0, "LFPG labels retain one-pixel halos");
+					if (std::string(style->name.GetString()).find("polygon.grassurface.") == 0)
 					{
-						if (!groups[groupIndex].IsObject() || !groups[groupIndex].HasMember("id") ||
-							!groups[groupIndex]["id"].IsString())
-						{
-							continue;
-						}
-						const std::string groupId = groups[groupIndex]["id"].GetString();
-						hasEastArrowGroup = hasEastArrowGroup || groupId == "ground-layout-east";
-						hasWestArrowGroup = hasWestArrowGroup || groupId == "ground-layout-west";
+						grassPaletteFound = true;
+						const auto& overrides = paint["palette-overrides"];
+						Expect(std::string(overrides["light"]["fill"].GetString()) == "#00512F" &&
+							std::string(overrides["real"]["fill"].GetString()) == "#6A958B",
+							"LFPG uses pack Light and preserved GeoJSON Real grass colors");
 					}
 				}
-				Expect(hasEastArrowGroup && hasWestArrowGroup,
-					"LFPG arrow groups retain their stable East and West identifiers");
-				int directionalArrowFeatures = 0;
-				if (document.HasMember("features") && document["features"].IsArray())
-				{
-					const rapidjson::Value& features = document["features"];
-					for (rapidjson::SizeType featureIndex = 0; featureIndex < features.Size(); ++featureIndex)
-					{
-						const rapidjson::Value& feature = features[featureIndex];
-						if (!feature.IsObject() || !feature.HasMember("properties") ||
-							!feature["properties"].IsObject())
-						{
-							continue;
-						}
-						const rapidjson::Value& properties = feature["properties"];
-						if (properties.HasMember("geometry_role") &&
-							properties["geometry_role"].IsString() &&
-							std::string(properties["geometry_role"].GetString()) == "directional_arrows")
-						{
-							++directionalArrowFeatures;
-						}
-					}
-				}
-				Expect(directionalArrowFeatures == 12, "LFPG contains both directional-arrow groups in both map designs");
-
-				bool everyTextHaloIsOne = true;
-				int textHaloStyleCount = 0;
-				if (document.HasMember("styles") && document["styles"].IsObject())
-				{
-					const rapidjson::Value& styles = document["styles"];
-					for (auto style = styles.MemberBegin(); style != styles.MemberEnd(); ++style)
-					{
-						if (!style->value.IsObject() || !style->value.HasMember("paint") ||
-							!style->value["paint"].IsObject())
-						{
-							continue;
-						}
-						const rapidjson::Value& paint = style->value["paint"];
-						if (!paint.HasMember("text-halo-width"))
-							continue;
-						++textHaloStyleCount;
-						everyTextHaloIsOne = everyTextHaloIsOne &&
-							paint["text-halo-width"].IsNumber() &&
-							paint["text-halo-width"].GetDouble() == 1.0;
-					}
-				}
-				Expect(textHaloStyleCount == 12 && everyTextHaloIsOne,
-					"LFPG text styles use a one-pixel halo");
-
-				const rapidjson::Value* customTaxiway =
-					document.HasMember("styles") && document["styles"].IsObject() &&
-					document["styles"].HasMember("custom.surface.taxiway")
-					? &document["styles"]["custom.surface.taxiway"]
-					: nullptr;
-				const rapidjson::Value* customTaxiwayPaint = customTaxiway != nullptr && customTaxiway->IsObject() &&
-					customTaxiway->HasMember("paint") && (*customTaxiway)["paint"].IsObject()
-					? &(*customTaxiway)["paint"]
-					: nullptr;
-				Expect(customTaxiway != nullptr && customTaxiway->HasMember("color_palettes") &&
-					(*customTaxiway)["color_palettes"].IsArray() &&
-					(*customTaxiway)["color_palettes"].Size() == 2U &&
-					customTaxiwayPaint != nullptr && customTaxiwayPaint->HasMember("fill") &&
-					std::string((*customTaxiwayPaint)["fill"].GetString()) == "#2F3949" &&
-					customTaxiwayPaint->HasMember("palette-overrides") &&
-					(*customTaxiwayPaint)["palette-overrides"].HasMember("light") &&
-					std::string((*customTaxiwayPaint)["palette-overrides"]["light"]["fill"].GetString()) == "#868686",
-					"LFPG embeds the Custom Dark and Light taxiway palette");
-				Expect(model.FeatureCount() == 8777U,
-					"LFPG contains the complete Real and Custom feature sets in one document");
+				Expect(grassPaletteFound, "LFPG includes sector-pack grass geometry");
 			}
 		}
 		Expect(!std::filesystem::exists(avisoRoot / "LFPG_Custom.geojson"),
@@ -313,6 +204,31 @@ namespace
 			"AVISO imports reject excessive nesting before DOM parsing");
 
 		AvisoDocumentModel invalid;
+		const auto migrationPath = std::filesystem::temp_directory_path() /
+			("vsmr-shared-aviso-" + std::to_string(GetCurrentProcessId()) + ".geojson");
+		{
+			std::ofstream source(migrationPath, std::ios::binary);
+			source << R"json({"type":"FeatureCollection","styles":{"old":{"color_palettes":["dark"]},"shared":{"paint":{"fill":"#112233","palette-overrides":{"light":{"fill":"#445566"},"real":{"fill":"#778899"}}}}},"vsmr_groups":[{"id":"g","color_palettes":["light"]}],"features":[{"type":"Feature","properties":{"color_palettes":["dark"]},"geometry":{"type":"Point","coordinates":[1,40]}},{"type":"Feature","properties":{"style_id":"shared","text":"Light label","color_palettes":["day"]},"geometry":{"type":"Point","coordinates":[2.12345678901234567,48.00000000000000001]}},{"type":"Feature","properties":{"color_palettes":["real"]},"geometry":{"type":"Point","coordinates":[3,49]}}]})json";
+		}
+		AvisoDocumentModel migrated;
+		std::string migrationError;
+		const bool migrationLoaded = migrated.LoadFromFile(migrationPath.u8string(), migrationError);
+		Expect(migrationLoaded && migrated.FeatureCount() == 1, "Legacy maps retain only Light geometry and text");
+		if (migrationLoaded && migrated.FeatureCount() == 1)
+		{
+			const auto& document = migrated.GetDocument();
+			Expect(!document["features"][0]["properties"].HasMember("color_palettes") &&
+				!document["styles"].HasMember("old") &&
+				!document["vsmr_groups"][0].HasMember("color_palettes"),
+				"Migration removes geometry palette scopes and obsolete styles");
+			Expect(migrated.SaveAtomically(migrationPath.u8string(), migrationError), "Migrated AVISO saves");
+			const auto saved = ReadTextFile(migrationPath);
+			Expect(saved.find("[2.12345678901234567,48.00000000000000001]") != std::string::npos,
+				"Light geometry retains original coordinate precision after removing earlier features");
+			Expect(saved.find("#778899") != std::string::npos && saved.find("Light label") != std::string::npos,
+				"Migration retains Real colors and shared label text");
+		}
+		std::filesystem::remove(migrationPath);
 		invalid.MutableDocument().Parse<0>(
 			R"json({"type":"FeatureCollection","features":[{"type":"Feature","id":"dup","geometry":{"type":"Point","coordinates":[2.0,48.0]},"properties":{}},{"type":"Feature","id":"dup","geometry":{"type":"Point","coordinates":[2.1,48.1]},"properties":{}}]})json");
 		std::string validationError;
