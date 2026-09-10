@@ -23,7 +23,6 @@
 
 class VsmrPluginCommandHandler;
 
-using namespace std;
 using namespace EuroScopePlugIn;
 
 struct DatalinkControlState

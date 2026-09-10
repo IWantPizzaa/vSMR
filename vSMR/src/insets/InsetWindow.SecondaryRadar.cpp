@@ -55,7 +55,7 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 {
 	m_LastRdfRenderMilliseconds = 0.0;
 	m_LastChromeRenderMilliseconds = 0.0;
-	if (this->m_Id == -1)
+	if (this->m_Id == -1 || radar_screen == nullptr || radar_screen->CurrentConfig == nullptr || gdi == nullptr)
 		return;
 
 	const char* insetName = "SRW1";
@@ -149,8 +149,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 	const COLORREF srwRunwayColor = getSectionColorRef(srwInsetSection, "runway_color", RGB(255, 255, 255));
 	const COLORREF srwExtendedLineColor = getSectionColorRef(srwInsetSection, "extended_lines_color", RGB(180, 180, 180));
-	const double srwExtendedLineLengthNm = max(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
-	const int srwExtendedLineTickSpacingNm = max(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
+	const double srwExtendedLineLengthNm = (std::max)(0.1, getSectionDouble(srwInsetSection, "extended_lines_length", 15.0));
+	const int srwExtendedLineTickSpacingNm = (std::max)(1, getSectionInt(srwInsetSection, "extended_lines_ticks_spacing", 1));
 	const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 	const Color rimcasStageOneColor = getSectionColor(rimcasSection, "background_color_stage_one", Color(255, 160, 90, 30));
 	const Color rimcasStageTwoColor = getSectionColor(rimcasSection, "background_color_stage_two", Color(255, 150, 0, 0));
@@ -177,8 +177,6 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		clipped.IntersectRect(rect, windowAreaCRect);
 		return clipped;
 	};
-
-	auto scale = m_Scale;
 
 	POINT refPt = windowAreaCRect.CenterPoint();
 	refPt.x += m_Offset.x;
@@ -320,7 +318,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		tagRegularFont,
 		tagBoldFont,
 		m_SrwBlankWidth,
-		m_SrwLineHeight);
+		m_SrwLineHeight,
+		&m_TagTextCache);
 	const Color whiteColor(255, 255, 255, 255);
 	const auto getRimcasEditorColor = [&](const char* key, const Color& fallback) -> Color
 	{
@@ -348,23 +347,25 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 
 	VsmrTargetRendering::FrameSettings targetSettings;
 	targetSettings.presentation = targetPresentation;
-	targetSettings.pixelsPerMeter = max(0.0, m_Scale / kAvisoMetersPerNm);
+	targetSettings.pixelsPerMeter = (std::max)(0.0, m_Scale / kAvisoMetersPerNm);
 	// SRW paints tags in the same pass, so retain its caller-selected GDI+ modes.
 	targetSettings.optimizeRealisticBitmapQuality = false;
-	targetSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
+	const auto targetSettingsProjectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
 	{
 		CPosition position;
 		position.m_Latitude = point.latitude;
 		position.m_Longitude = point.longitude;
 		return projectPoint(position);
 	};
-	targetSettings.pointVisible = [&](const POINT& point, int margin) -> bool
+	targetSettings.projectPoint = targetSettingsProjectPoint;
+	const auto targetSettingsPointVisible = [&](const POINT& point, int margin) -> bool
 	{
 		return point.x >= windowAreaCRect.left - margin &&
 			point.x <= windowAreaCRect.right + margin &&
 			point.y >= windowAreaCRect.top - margin &&
 			point.y <= windowAreaCRect.bottom + margin;
 	};
+	targetSettings.pointVisible = targetSettingsPointVisible;
 	targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
 	VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
 
@@ -401,9 +402,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 				targetRenderer.DrawTarget(sceneTarget);
 			if (!renderedTarget.drawn)
 				continue;
-			renderedIconSize = max(
+			renderedIconSize = (std::max<LONG>)(
 				12,
-				max(
+				(std::max)(
 					renderedTarget.hitBounds.right - renderedTarget.hitBounds.left,
 					renderedTarget.hitBounds.bottom - renderedTarget.hitBounds.top));
 			CRect TargetArea(renderedTarget.hitBounds);

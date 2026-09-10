@@ -91,7 +91,7 @@ void CSMRRadar::EnsureTargetGroundStatusColorEntries(bool persistChanges)
 		auto readColorComponent = [&](const char* component, int fallback) -> int
 		{
 			if (sourceColor.HasMember(component) && sourceColor[component].IsInt())
-				return min(255, max(0, sourceColor[component].GetInt()));
+				return (std::min)(255, (std::max)(0, sourceColor[component].GetInt()));
 			return fallback;
 		};
 

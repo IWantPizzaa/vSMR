@@ -29,7 +29,7 @@ void CSMRRadar::OnFunctionCall(int FunctionId, const char * sItemString, POINT P
 		"CSMRRadar::OnFunctionCall",
 		reinterpret_cast<std::uintptr_t>(this));
 	(void)Area;
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	mouseLocation = Pt;
 	const bool hasItemString = (sItemString != nullptr && sItemString[0] != '\0');
 	const char* itemString = hasItemString ? sItemString : "";

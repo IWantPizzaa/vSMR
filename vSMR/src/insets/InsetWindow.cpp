@@ -71,7 +71,7 @@ double CInsetWindow::GetLastChromeRenderMilliseconds() const noexcept
 	return m_LastChromeRenderMilliseconds;
 }
 
-void CInsetWindow::setAirport(string airportIcao)
+void CInsetWindow::setAirport(std::string airportIcao)
 {
 	icao = airportIcao;
 }

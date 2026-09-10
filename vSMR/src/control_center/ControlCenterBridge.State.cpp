@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
@@ -241,7 +242,7 @@ namespace VsmrControlCenterBridgeInternal
 		rapidjson::StringBuffer buffer;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
 		value.Accept(writer);
-		return std::string(buffer.GetString(), buffer.Size());
+		return std::string(buffer.GetString(), buffer.GetSize());
 	}
 
 
@@ -264,7 +265,7 @@ namespace VsmrControlCenterBridgeInternal
 	bool ValidateProfileArray(const rapidjson::Value& profiles, std::string& error)
 	{
 		rapidjson::Document candidate;
-		candidate.Parse<0>(SerializeCompact(profiles).c_str());
+		VsmrJson::ParseDocument(candidate, SerializeCompact(profiles));
 		if (candidate.HasParseError())
 		{
 			error = "Profiles state could not be parsed.";

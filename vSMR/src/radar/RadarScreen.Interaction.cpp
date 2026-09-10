@@ -8,7 +8,7 @@
 #include "crash/CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
-extern string TagBeingDragged;
+extern std::string TagBeingDragged;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
@@ -386,7 +386,7 @@ void CSMRRadar::OnButtonDownScreenObject(int ObjectType, const char * sObjectId,
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnButtonDownScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
 	mouseLocation = Pt;
@@ -430,7 +430,7 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnButtonUpScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(ObjectType);
 	UNREFERENCED_PARAMETER(sObjectId);
 	UNREFERENCED_PARAMETER(Area);
@@ -452,7 +452,7 @@ void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT
 		"CSMRRadar::OnMoveScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (HandleRuntimeMenuMove(ObjectType, sObjectId, Pt, Area, Released))
 	{
 		mouseLocation = Pt;
@@ -700,7 +700,7 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 		"CSMRRadar::OnOverScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	UNREFERENCED_PARAMETER(Area);
 	UNREFERENCED_PARAMETER(sObjectId);
 	mouseLocation = Pt;
@@ -1007,7 +1007,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnClickScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	mouseLocation = Pt;
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::UserActionExternal);
@@ -1265,7 +1265,7 @@ void CSMRRadar::OnClickScreenObject(int ObjectType, const char * sObjectId, POIN
 				GetPlugIn()->AddPopupListElement("2500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 2500));
 				GetPlugIn()->AddPopupListElement("1500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 1500));
 				GetPlugIn()->AddPopupListElement("500", "", RIMCAS_UPDATEFILTER + appWindowId, false, int(appWindow->m_Filter == 500));
-				string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
+				std::string tmp = std::to_string(GetPlugIn()->GetTransitionAltitude());
 				GetPlugIn()->AddPopupListElement(tmp.c_str(), "", RIMCAS_UPDATEFILTER + appWindowId, false, 2, false, true);
 			});
 		}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "scene/RadarScene.hpp"
+#include "rendering/BrushCache.hpp"
 
 #include <afxwin.h>
 #include <GdiPlus.h>
@@ -11,6 +12,23 @@
 
 namespace VsmrTagRendering
 {
+	class TextCache
+	{
+	public:
+		static constexpr std::size_t MaximumEntries = 2048;
+		void Clear();
+		std::size_t MeasurementCount() const noexcept { return measurementCount_; }
+		std::size_t CachedTextCount() const noexcept { return decodedText_.size(); }
+	private:
+		friend class FontContext;
+		void Bind(Gdiplus::Graphics& graphics, Gdiplus::Font* regular, Gdiplus::Font* bold);
+		std::string signature_;
+		std::unordered_map<std::string, std::wstring> decodedText_;
+		std::unordered_map<std::string, Gdiplus::Size> regularMeasurements_;
+		std::unordered_map<std::string, Gdiplus::Size> boldMeasurements_;
+		std::size_t measurementCount_ = 0;
+	};
+
 	struct ElementLayout
 	{
 		std::string text;
@@ -42,13 +60,15 @@ namespace VsmrTagRendering
 		FontContext(
 			Gdiplus::Graphics& graphics,
 			Gdiplus::Font* regularFont,
-			int minimumBlankWidth = 1);
+			int minimumBlankWidth = 1,
+			TextCache* cache = nullptr);
 		FontContext(
 			Gdiplus::Graphics& graphics,
 			Gdiplus::Font* regularFont,
 			Gdiplus::Font* boldFont,
 			int blankWidth,
-			int lineHeight);
+			int lineHeight,
+			TextCache* cache = nullptr);
 
 		bool IsValid() const noexcept;
 		Gdiplus::Font* RegularFont() const noexcept;
@@ -58,6 +78,7 @@ namespace VsmrTagRendering
 		int LineHeight() const noexcept;
 		const std::wstring& Utf16Text(const std::string& text) const;
 		Gdiplus::Size Measure(const std::string& text, bool bold = false) const;
+		Gdiplus::SolidBrush& Brush(const Gdiplus::Color& color) const { return brushes_.Get(color); }
 
 	private:
 		Gdiplus::Graphics* graphics_ = nullptr;
@@ -67,9 +88,10 @@ namespace VsmrTagRendering
 		Gdiplus::StringFormat format_;
 		int blankWidth_ = 2;
 		int lineHeight_ = 12;
-		mutable std::unordered_map<std::string, std::wstring> decodedText_;
-		mutable std::unordered_map<std::string, Gdiplus::Size> regularMeasurements_;
-		mutable std::unordered_map<std::string, Gdiplus::Size> boldMeasurements_;
+		TextCache ownedCache_;
+		TextCache* cache_ = nullptr;
+		mutable std::wstring uncachedText_;
+		mutable VsmrRendering::BrushCache brushes_;
 	};
 
 	struct TopBand

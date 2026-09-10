@@ -228,14 +228,16 @@ namespace
 		VsmrTargetRendering::FrameSettings settings;
 		settings.presentation.icon = VsmrScene::IconStyle::Triangle;
 		settings.pixelsPerMeter = 0.0;
-		settings.projectPoint = [](const VsmrScene::GeoPoint&) -> POINT
+		const auto settingsProjectPoint = [](const VsmrScene::GeoPoint&) -> POINT
 		{
 			return { 32, 32 };
 		};
-		settings.pointVisible = [](const POINT&, int)
+		settings.projectPoint = settingsProjectPoint;
+		const auto settingsPointVisible = [](const POINT&, int)
 		{
 			return true;
 		};
+		settings.pointVisible = settingsPointVisible;
 
 		const VsmrScene::Target target = MakeTarget(VsmrScene::IconStyle::Triangle);
 		VsmrTargetRendering::DrawResult result;
@@ -255,10 +257,11 @@ namespace
 
 		VsmrTargetRendering::FrameSettings insetSettings;
 		insetSettings.presentation.icon = VsmrScene::IconStyle::Triangle;
-		insetSettings.projectPoint = [](const VsmrScene::GeoPoint&) -> POINT
+		const auto insetSettingsProjectPoint = [](const VsmrScene::GeoPoint&) -> POINT
 		{
 			return { 32, 32 };
 		};
+		insetSettings.projectPoint = insetSettingsProjectPoint;
 		VsmrTargetRendering::DrawOptions insetOptions;
 		insetOptions.minimumHitSize = 18;
 		VsmrTargetRendering::Frame insetFrame(graphics, std::move(insetSettings));
@@ -281,10 +284,11 @@ namespace
 
 		VsmrTargetRendering::FrameSettings settings;
 		settings.presentation.icon = VsmrScene::IconStyle::Realistic;
-		settings.projectPoint = [](const VsmrScene::GeoPoint&) -> POINT
+		const auto settingsProjectPoint = [](const VsmrScene::GeoPoint&) -> POINT
 		{
 			return { 24, 24 };
 		};
+		settings.projectPoint = settingsProjectPoint;
 		settings.iconCache.beginFrame = [&]() -> std::uint64_t
 		{
 			return static_cast<std::uint64_t>(++frameCount);

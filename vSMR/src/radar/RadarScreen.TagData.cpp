@@ -1,16 +1,17 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "tags/TagTokenValues.hpp"
 #include "radar/RadarScreen.hpp"
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "tags/CdmTagHelpers.hpp"
 
-map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign, const CdmPilotData* capturedCdmData, const int* capturedPreviousFlightLevel)
+void CSMRRadar::GenerateTagData(VsmrTags::TokenValues& TagReplacingMap, const CRadarTarget& rt, const CFlightPlan& fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, const std::string& ActiveAirport, const std::string& stableCallsign, const CdmPilotData* capturedCdmData, const int* capturedPreviousFlightLevel)
 {
 	(void)isASEL;
 	(void)ActiveAirport;
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	auto verboseStep = [&](const std::string& step)
 	{
 		if (!Logger::is_verbose_mode())
@@ -18,7 +19,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 		Logger::info("GenerateTagData: " + step);
 	};
-	verboseStep("begin stable_callsign=" + (stableCallsign.empty() ? std::string("<empty>") : stableCallsign));
+	if (Logger::is_verbose_mode()) verboseStep("begin stable_callsign=" + (stableCallsign.empty() ? std::string("<empty>") : stableCallsign));
 	// ----
 	// Tag items available
 	// callsign: Callsign with freq state and comm *
@@ -82,7 +83,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		" corr=" + std::string(isAcCorrelated ? "1" : "0"));
 
 	// ----- Callsign -------
-	string callsign = stableCallsign;
+	std::string callsign = stableCallsign;
 	if (callsign.empty())
 		callsign = safeString(radarTargetValid ? rt.GetCallsign() : nullptr);
 	if (callsign.empty())
@@ -128,7 +129,7 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	}
 
 	// ----- Squawk error -------
-	string sqerror = "";
+	std::string sqerror = "";
 	const char* assr = hasFlightPlan ? safeCString(fp.GetControllerAssignedData().GetSquawk()) : "";
 	const char* ssr = hasRadarTarget ? safeCString(rtPos.GetSquawk()) : "";
 	bool has_squawk_error = false;
@@ -142,42 +143,42 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 
 	// ----- Aircraft type -------
 
-	string actype = "NoFPL";
+	std::string actype = "NoFPL";
 	if (hasReceivedFlightPlanData)
 		actype = safeString(fp.GetFlightPlanData().GetAircraftFPType());
 	if (actype.size() > 4 && actype != "NoFPL")
 		actype = actype.substr(0, 4);
 
 	// ----- Aircraft type that changes to squawk error -------
-	string sctype = actype;
+	std::string sctype = actype;
 	if (has_squawk_error)
 		sctype = sqerror;
 
 	// ----- Groundspeed -------
-	string speed = std::to_string(reportedGs);
+	std::string speed = std::to_string(reportedGs);
 
 	// ----- Departure runway -------
-	string deprwy = hasReceivedFlightPlanData ? safeString(fp.GetFlightPlanData().GetDepartureRwy()) : "";
+	std::string deprwy = hasReceivedFlightPlanData ? safeString(fp.GetFlightPlanData().GetDepartureRwy()) : "";
 	if (deprwy.length() == 0)
 		deprwy = "RWY";
 
 	// ----- Departure runway that changes for overspeed -------
-	string seprwy = deprwy;
+	std::string seprwy = deprwy;
 	if (hasRadarTarget && reportedGs > 25)
 		seprwy = std::to_string(reportedGs);
 
 	// ----- Arrival runway -------
-	string arvrwy = hasReceivedFlightPlanData ? safeString(fp.GetFlightPlanData().GetArrivalRwy()) : "";
+	std::string arvrwy = hasReceivedFlightPlanData ? safeString(fp.GetFlightPlanData().GetArrivalRwy()) : "";
 	if (arvrwy.length() == 0)
 		arvrwy = "RWY";
 
 	// ----- Speed that changes to arrival runway -----
-	string srvrwy = speed;
+	std::string srvrwy = speed;
 	if (hasRadarTarget && reportedGs < 25)
 		srvrwy = arvrwy;
 
 	// ----- Gate -------
-	string gate;
+	std::string gate;
 	if (hasFlightPlan)
 		gate = userScratchpad;
 
@@ -189,23 +190,23 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 		gate = "NoGate";
 
 	// ----- Gate that changes to speed -------
-	string sate = gate;
+	std::string sate = gate;
 	if (hasRadarTarget && reportedGs > 25)
 		sate = speed;
 
 	// ----- Flightlevel -------
 	int fl = hasRadarTarget ? rtPos.GetFlightLevel() : 0;
 	int padding = 5;
-	string pfls = "";
+	std::string pfls = "";
 	if (fl <= TransitionAltitude) {
 		fl = hasRadarTarget ? rtPos.GetPressureAltitude() : 0;
 		pfls = "A";
 		padding = 4;
 	}
-	string flightlevel = (pfls + VsmrRadarUiSupport::padWithZeros(padding, fl)).substr(0, 3);
+	std::string flightlevel = (pfls + VsmrRadarUiSupport::padWithZeros(padding, fl)).substr(0, 3);
 
 	// ----- Tendency -------
-	string tendency = "-";
+	std::string tendency = "-";
 	int delta_fl = 0;
 	if (hasRadarTarget && capturedPreviousFlightLevel != nullptr)
 		delta_fl = rtPos.GetFlightLevel() - *capturedPreviousFlightLevel;
@@ -219,24 +220,24 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	}
 
 	// ----- Wake cat -------
-	string wake = "?";
+	std::string wake = "?";
 	if (hasReceivedFlightPlanData && isAcCorrelated) {
 		wake = "";
 		wake += fp.GetFlightPlanData().GetAircraftWtc();
 	}
 
 	// ----- SSR -------
-	string tssr = hasRadarTarget ? safeCString(rtPos.GetSquawk()) : "";
+	std::string tssr = hasRadarTarget ? safeCString(rtPos.GetSquawk()) : "";
 
 	// ----- SID -------
-	string dep = "SID";
+	std::string dep = "SID";
 	if (hasReceivedFlightPlanData && isAcCorrelated)
 	{
 		dep = safeString(fp.GetFlightPlanData().GetSidName());
 	}
 
 	// ----- Short SID -------
-	string ssid = dep;
+	std::string ssid = dep;
 	if (hasFlightPlan && ssid.size() > 5 && isAcCorrelated)
 	{
 		ssid = dep.substr(0, 3);
@@ -244,21 +245,21 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	}
 
 	// ------- Origin aerodrome -------
-	string origin = "????";
+	std::string origin = "????";
 	if (hasReceivedFlightPlanData && isAcCorrelated)
 	{
 		origin = safeString(fp.GetFlightPlanData().GetOrigin());
 	}
 
 	// ------- Destination aerodrome -------
-	string dest = "????";
+	std::string dest = "????";
 	if (hasReceivedFlightPlanData && isAcCorrelated)
 	{
 		dest = safeString(fp.GetFlightPlanData().GetDestination());
 	}
 
 	// ----- GSTAT -------
-	string gstat = "STS";
+	std::string gstat = "STS";
 	if (hasReceivedFlightPlanData && isAcCorrelated) {
 		const char* groundState = safeCString(fp.GetGroundState());
 		std::string stateCallsign = stableCallsign;
@@ -274,26 +275,26 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	}
 
 	// ----- Clearance flag -------
-	string clearance = "";
+	std::string clearance = "";
 	if (hasFlightPlan && isAcCorrelated)
 		clearance = fp.GetClearenceFlag() ? "[x]" : "[ ]";
 
 	// ----- UK Controller Plugin / Assigned Stand -------
-	string uk_stand;
+	std::string uk_stand;
 	if (hasFlightPlan)
 		uk_stand = safeString(fp.GetControllerAssignedData().GetFlightStripAnnotation(3));
 	if (uk_stand.length() == 0)
 		uk_stand = "";
 
 	// ----- Ramp Agent Remark -------
-	string remark;
+	std::string remark;
 	if (hasFlightPlan)
 		remark = safeString(fp.GetControllerAssignedData().GetFlightStripAnnotation(4));
 	if (remark.length() == 0)
 		remark = "";
 
 	// ----- Scratchpad -------
-	string scratchpad;
+	std::string scratchpad;
 	if (hasFlightPlan)
 		scratchpad = userScratchpad;
 	if (scratchpad.length() == 0)
@@ -306,49 +307,20 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	const std::string flightPlanRemarks = hasFlightPlan
 		? safeString(fp.GetFlightPlanData().GetRemarks())
 		: std::string();
-	string holdingpoint = VsmrHoldingPoint::Resolve(holdingPointCallsign, flightPlanRemarks);
-
-	// ----- Backward-compatible CDM time fields -------
-	string tobt = "";
-	string tsat = "";
-	string ttot = "";
-	string asat = "";
-	string aobt = "";
-	string atot = "";
-	string asrt = "";
-	string aort = "";
-	string ctot = "";
-	string eventBooking = "";
-	if (capturedCdmData != nullptr)
-	{
-		const CdmPilotData& cdmPilot = *capturedCdmData;
-		if (cdmPilot.hasTobt)
-			tobt = FormatCdmTimeToken(cdmPilot.tobtUtc);
-		if (cdmPilot.hasTsat)
-			tsat = FormatCdmTimeToken(cdmPilot.tsatUtc);
-		if (cdmPilot.hasTtot)
-			ttot = FormatCdmTimeToken(cdmPilot.ttotUtc);
-		if (cdmPilot.hasAsat)
-			asat = FormatCdmTimeToken(cdmPilot.asatUtc);
-		if (cdmPilot.hasAsrt)
-			asrt = FormatCdmTimeToken(cdmPilot.asrtUtc);
-		if (cdmPilot.hasCtot)
-			ctot = FormatCdmTimeToken(cdmPilot.ctotUtc);
-	}
-
+	std::string holdingpoint = VsmrHoldingPoint::Resolve(holdingPointCallsign, flightPlanRemarks);
 
 	// ----- Generating the replacing map -----
-	map<string, string> TagReplacingMap;
+	TagReplacingMap.ResetValues();
 
 	// System ID for uncorrelated
 	TagReplacingMap["systemid"] = "T:";
-	string tpss = callsign;
+	std::string tpss = callsign;
 	if (tpss.empty())
 		tpss = "000000";
 	if (tpss.size() > 1)
-		TagReplacingMap["systemid"].append(tpss.substr(1, min<size_t>(6, tpss.size() - 1)));
+		TagReplacingMap["systemid"].append(tpss.substr(1, std::min<size_t>(6, tpss.size() - 1)));
 	else if (!tpss.empty())
-		TagReplacingMap["systemid"].append(tpss.substr(0, min<size_t>(6, tpss.size())));
+		TagReplacingMap["systemid"].append(tpss.substr(0, std::min<size_t>(6, tpss.size())));
 	else
 		TagReplacingMap["systemid"].append("000000");
 
@@ -393,16 +365,10 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	TagReplacingMap["sate"] = sate;
 	TagReplacingMap["flightlevel"] = flightlevel;
 	TagReplacingMap["gs"] = speed;
-	TagReplacingMap["tobt"] = tobt;
-	TagReplacingMap["tsat"] = tsat;
-	TagReplacingMap["ttot"] = ttot;
-	TagReplacingMap["asat"] = asat;
-	TagReplacingMap["aobt"] = aobt;
-	TagReplacingMap["atot"] = atot;
-	TagReplacingMap["asrt"] = asrt;
-	TagReplacingMap["aort"] = aort;
-	TagReplacingMap["ctot"] = ctot;
-	TagReplacingMap["event_booking"] = eventBooking;
+	TagReplacingMap["aobt"] = "";
+	TagReplacingMap["atot"] = "";
+	TagReplacingMap["aort"] = "";
+	TagReplacingMap["event_booking"] = "";
 	TagReplacingMap["tendency"] = tendency;
 	TagReplacingMap["wake"] = wake;
 	TagReplacingMap["ssr"] = tssr;
@@ -425,12 +391,11 @@ map<string, string> CSMRRadar::GenerateTagData(CRadarTarget rt, CFlightPlan fp, 
 	VsmrCdm::AddTagTokens(
 		TagReplacingMap,
 		capturedCdmData != nullptr ? &capturedCdmData->bridgeData : nullptr);
-	verboseStep(
+	if (Logger::is_verbose_mode()) verboseStep(
 		"done callsign=" + TagReplacingMap["callsign"] +
 		" actype=" + TagReplacingMap["actype"] +
 		" gs=" + TagReplacingMap["gs"] +
 		" sid=" + TagReplacingMap["asid"] +
 		" corr=" + std::string(isAcCorrelated ? "1" : "0"));
 
-	return TagReplacingMap;
 }

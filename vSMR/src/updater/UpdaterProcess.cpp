@@ -1,4 +1,5 @@
 #include "updater/UpdaterCore.hpp"
+#include "shared/JsonDocument.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterReleaseModel.hpp"
 
@@ -369,7 +370,7 @@ finally { $zip.Dispose() }
 		if (!ReadText(dataRoot / L"INSTALLATION.json", json, 128 * 1024))
 			return false;
 		rapidjson::Document document;
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject())
 			return false;
 		installedVersion = JsonString(document, "installed_version");
@@ -395,7 +396,7 @@ finally { $zip.Dispose() }
 			if (!ReadText(iterator->path() / L"BACKUP-METADATA.json", json, 128 * 1024))
 				continue;
 			rapidjson::Document document;
-			document.Parse<0>(json.c_str());
+			VsmrJson::ParseDocument(document, json);
 			if (document.HasParseError() || !document.IsObject() ||
 				JsonString(document, "kind") != "vSMR complete pre-install backup" ||
 				JsonString(document, "installing_version") != installingVersion)
@@ -419,7 +420,7 @@ finally { $zip.Dispose() }
 		if (!ReadText(dataRoot / L"RELEASE-METADATA.json", json, 128 * 1024))
 			return false;
 		rapidjson::Document document;
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject())
 			return false;
 		version = JsonString(document, "version");

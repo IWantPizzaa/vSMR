@@ -1,4 +1,5 @@
 #pragma once
+#include "tags/TagTokenValues.hpp"
 #include <EuroScopePlugIn.h>
 #include <string>
 #include <vector>
@@ -20,6 +21,8 @@
 #include "safety/Rimcas.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "scene/RadarScene.hpp"
+#include "rendering/TagRenderer.hpp"
+#include "tags/CompiledTagDefinition.hpp"
 #include <memory>
 #include <mutex>
 #include <atomic>
@@ -30,7 +33,6 @@
 #include <iostream>
 #include <optional>
 
-using namespace std;
 using namespace Gdiplus;
 using namespace EuroScopePlugIn;
 namespace fs = std::filesystem;
@@ -115,26 +117,28 @@ private:
 	friend struct VsmrRadarPresetAccess;
 	friend void ClearAvisoWheelRoutingState(bool cancelWindowInteractions);
 
-	static map<string, string> vStripsStands;
+	static std::map<std::string, std::string> vStripsStands;
 
-	map<string, POINT> TagsOffsets;
+	std::map<std::string, POINT> TagsOffsets;
 
-	map<string, Patatoide_Points> Patatoides;
+	std::map<std::string, Patatoide_Points> Patatoides;
 
 	int RadarViewZoomLevel = 0;
 	std::map<std::string, CRimcas::RunwayStatus> LastMapRunwayStatuses;
 	std::string LastMapActiveAirport;
 
-	string DllPath;
-	string DataPath;
-	string ConfigPath;
-	string mapsPath;
+	std::string DllPath;
+	std::string DataPath;
+	std::string ConfigPath;
+	std::string mapsPath;
 	std::unique_ptr<CCallsignLookup> Callsigns;
 	std::map<std::string, std::unique_ptr<Gdiplus::Bitmap>> AircraftIcons;
 	std::string IconsPath;
 	std::map<std::string, AircraftSpec> AircraftSpecs;
 	std::map<std::string, RealisticIconCacheEntry> RealisticIconBitmapCache;
 	unsigned long long RealisticIconCacheFrame = 0;
+	VsmrTags::DefinitionCache CompiledTagDefinitions;
+	VsmrTagRendering::TextCache TagTextCache;
 	mutable bool StructuredTagRulesCacheValid = false;
 	mutable std::vector<StructuredTagColorRule> StructuredTagRulesCache;
 	std::vector<AvisoFeature> AvisoGeoJsonFeatures;
@@ -230,15 +234,15 @@ private:
 	double PerformanceLastMainViewMaxLongitude = 0.0;
 	double PerformanceLastMainViewMaxLatitude = 0.0;
 
-	map<int, bool> appWindowDisplays;
+	std::map<int, bool> appWindowDisplays;
 
-	map<string, CRect> tagAreas;
-	map<string, CRect> tagCollisionAreas;
-	map<string, CRect> targetAreas;
-	map<string, double> TagAngles;
-	map<string, int> TagLeaderLineLength;
-	map<string, CRect> previousTagSize;
-	map<std::string, POINT> TagDragOffsetFromCenter;
+	std::map<std::string, CRect> tagAreas;
+	std::map<std::string, CRect> tagCollisionAreas;
+	std::unordered_map<std::string, CRect> targetAreas;
+	std::map<std::string, double> TagAngles;
+	std::map<std::string, int> TagLeaderLineLength;
+	std::map<std::string, CRect> previousTagSize;
+	std::map<std::string, POINT> TagDragOffsetFromCenter;
 
 	std::unique_ptr<CVsmrControlCenterDialog> VsmrControlCenterDialog;
 	std::string TagDefinitionEditorType = "departure";
@@ -249,9 +253,9 @@ private:
 
 	bool isLVP = false;
 
-	map<string, RECT> TimePopupAreas;
+	std::map<std::string, RECT> TimePopupAreas;
 
-	map<string, RECT> MenuPositions;
+	std::map<std::string, RECT> MenuPositions;
 	RuntimeMenuPopup ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 	std::string PendingGroundStatusCallsign;
 	POINT RuntimeMenuPosition = { 14, 100 };
@@ -284,7 +288,7 @@ private:
 	unsigned long RunwayStatusLastRefreshTick = 0;
 	std::string RunwayStatusLastAirport;
 
-	map<string, std::chrono::steady_clock::time_point> RecentlyAutoMovedTags;
+	std::map<std::string, std::chrono::steady_clock::time_point> RecentlyAutoMovedTags;
 
 	std::unique_ptr<CRimcas> RimcasInstance;
 	std::unique_ptr<CConfig> CurrentConfig;
@@ -294,7 +298,7 @@ private:
 	ULONG_PTR m_gdiplusToken = 0;
 	int currentFontSize = 1;
 
-	map<string, CPosition> AirportPositions;
+	std::map<std::string, CPosition> AirportPositions;
 
 	//----
 	// Tag types
@@ -303,7 +307,7 @@ private:
 	enum TagTypes { Departure, Arrival, Airborne, Uncorrelated };
 
 
-	string ActiveAirport = "EGKK";
+	std::string ActiveAirport = "EGKK";
 	char CrashActiveProfile[96] = "unavailable";
 	mutable char CrashLastAirport[16]{};
 	mutable char CrashLastProfile[96]{};
@@ -350,7 +354,7 @@ private:
 
 
 public:
-	inline string getActiveAirport() const {
+	inline std::string getActiveAirport() const {
 		return ActiveAirport;
 	}
 	const std::string& GetDllPath() const noexcept { return DllPath; }
@@ -361,8 +365,8 @@ public:
 		return Callsigns != nullptr ? Callsigns->getCallsign(code) : std::string();
 	}
 
-	string setActiveAirport(
-		string value,
+	std::string setActiveAirport(
+		std::string value,
 		bool switchInsetContext = true,
 		bool syncControlCenter = true);
 
@@ -377,8 +381,8 @@ public:
 
 	//---GenerateTagData--------------------------------------------
 
-	static map<string, string> GenerateTagData(CRadarTarget Rt, CFlightPlan fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, string ActiveAirport, const std::string& stableCallsign = "", const CdmPilotData* capturedCdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
-	using TagReplacingMap = std::map<std::string, std::string>;
+	static void GenerateTagData(VsmrTags::TokenValues& TagReplacingMap, const CRadarTarget& Rt, const CFlightPlan& fp, bool isASEL, bool isAcCorrelated, bool isProMode, int TransitionAltitude, const std::string& ActiveAirport, const std::string& stableCallsign = "", const CdmPilotData* capturedCdmData = nullptr, const int* capturedPreviousFlightLevel = nullptr);
+	using TagReplacingMap = VsmrTags::TokenValues;
 
 	//---IsCorrelatedFuncs---------------------------------------------
 
@@ -396,7 +400,7 @@ public:
 	//---LoadProfile--------------------------------------------
 
 	virtual void LoadProfile(
-		string profileName,
+		std::string profileName,
 		bool saveOutgoingState = true,
 		bool persistNormalization = true);
 	void EnsureTargetGroundStatusColorEntries(bool persistChanges = true);
@@ -436,7 +440,7 @@ public:
 	std::vector<std::string> GetTagDefinitionLineStrings(std::string type, bool detailed, int maxLines, bool createIfMissing, const std::string& departureStatus = "default");
 	void SetTagDefinitionLineString(std::string type, bool detailed, int lineIndex, const std::string& lineText, const std::string& departureStatus = "default");
 	void InsertTagDefinitionTokenIntoLine(const std::string& token, bool makeBold = false);
-	std::map<std::string, std::string> BuildTagDefinitionPreviewMap(const std::string& type);
+	VsmrTags::TokenValues BuildTagDefinitionPreviewMap(const std::string& type);
 	std::vector<std::string> BuildTagDefinitionPreviewLines();
 	std::vector<std::string> BuildTagDefinitionPreviewLinesForContext(const std::string& type, bool detailed, const std::string& departureStatus);
 	void SaveTagDefinitionConfig();
@@ -630,11 +634,11 @@ public:
 	virtual int getZoomLevelFromCrossDistance(double crossDistance);
 
 	//---getIntFromCategory-------------------------------------------
-	virtual int getIntFromCategory(string category);
+	virtual int getIntFromCategory(std::string category);
 
 	//---GetBottomLine---------------------------------------------
 
-	virtual string GetBottomLine(const char * Callsign);
+	virtual std::string GetBottomLine(const char * Callsign);
 
 	//---OnFunctionCall-------------------------------------------------
 

@@ -1,4 +1,5 @@
 #include "updater/UpdaterCore.hpp"
+#include "shared/JsonDocument.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 
 #ifndef NOMINMAX
@@ -453,7 +454,7 @@ namespace vsmr::updater::internal
 		rapidjson::StringBuffer buffer;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
 		document.Accept(writer);
-		std::string result(buffer.GetString(), buffer.Size());
+		std::string result(buffer.GetString(), buffer.GetSize());
 		result.push_back('\n');
 		return result;
 	}
@@ -500,7 +501,7 @@ namespace vsmr::updater::internal
 		if (!ReadText(path, json, 64 * 1024))
 			return config;
 		rapidjson::Document document;
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject())
 			return config;
 		config.autoCheck = JsonBool(document, "auto_check", true);
@@ -528,7 +529,7 @@ namespace vsmr::updater::internal
 		if (ReadText(processingPath, json, 64 * 1024))
 		{
 			rapidjson::Document document;
-			document.Parse<0>(json.c_str());
+			VsmrJson::ParseDocument(document, json);
 			if (!document.HasParseError() && document.IsObject())
 			{
 				result.requestId = JsonString(document, "request_id");
@@ -583,7 +584,7 @@ namespace vsmr::updater::internal
 		if (!ReadText(path, json, 128 * 1024))
 			return state;
 		rapidjson::Document document;
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject())
 			return state;
 		state.lastCheckedUtc = JsonString(document, "last_checked_utc");

@@ -12,7 +12,6 @@
 #include <vector>
 #include <atomic>
 
-using namespace std;
 
 class Logger {
 public:
@@ -23,7 +22,7 @@ public:
 	};
 
 	static std::atomic<bool> ENABLED;
-	static string DLL_PATH;
+	static std::string DLL_PATH;
 	static std::atomic<Mode> CURRENT_MODE;
 
 	static void set_mode(Mode mode)
@@ -79,13 +78,13 @@ public:
 			Logger::recent_log_messages().end());
 	}
 
-	static bool is_compiler_signature_trace(const string& message) {
-		return message.find("__cdecl") != string::npos ||
-			message.find("__thiscall") != string::npos ||
-			message.find("__stdcall") != string::npos;
+	static bool is_compiler_signature_trace(const std::string& message) {
+		return message.find("__cdecl") != std::string::npos ||
+			message.find("__thiscall") != std::string::npos ||
+			message.find("__stdcall") != std::string::npos;
 	}
 
-	static bool is_high_volume_trace_message(const string& message) {
+	static bool is_high_volume_trace_message(const std::string& message) {
 		static const char* hotTraceMarkers[] = {
 			"CRimcas::OnRefreshBegin(",
 			"CRimcas::OnRefreshEnd(",
@@ -111,14 +110,14 @@ public:
 
 		for (const char* marker : hotTraceMarkers)
 		{
-			if (message.find(marker) != string::npos)
+			if (message.find(marker) != std::string::npos)
 				return true;
 		}
 
 		return false;
 	}
 
-	static bool should_skip_info_message(const string& message) {
+	static bool should_skip_info_message(const std::string& message) {
 		if (message.empty())
 			return true;
 
@@ -138,7 +137,7 @@ public:
 		return false;
 	}
 
-	static void info(string message) {
+	static void info(std::string message) {
 		if (Logger::should_skip_info_message(message))
 			return;
 		VsmrCrashReporter::RecordLog(message.c_str());
@@ -187,6 +186,6 @@ public:
 		if (!file.is_open())
 			return;
 
-		file << formatted << endl;
+		file << formatted << std::endl;
 	}
 };

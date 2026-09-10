@@ -133,7 +133,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			}
 			dia.m_Req = msg.message.c_str();
 
-			string toReturn = "";
+			std::string toReturn = "";
 
 			if (dia.DoModal() != IDOK)
 				return;
@@ -221,7 +221,7 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			dia.m_Rwy = FlightPlan.GetFlightPlanData().GetDepartureRwy();
 			dia.m_SSR = FlightPlan.GetControllerAssignedData().GetSquawk();
 			const PdcFrequencySelection frequencySelection = ResolvePdcNextFrequency(this, FlightPlan);
-			string freq = FormatPdcFrequency(frequencySelection.frequency);
+			std::string freq = FormatPdcFrequency(frequencySelection.frequency);
 			if (freq.empty())
 				freq = FormatPdcFrequency(ControllerMyself().GetPrimaryFrequency());
 			Logger::info(
@@ -248,14 +248,14 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 					dia.m_CTOT = FormatUtcHhmm(cdmPilot.ctotUtc).c_str();
 			}
 
-			string toReturn = "";
+			std::string toReturn = "";
 
 			int ClearedAltitude = FlightPlan.GetControllerAssignedData().GetClearedAltitude();
 			int Ta = GetTransitionAltitude();
 
 			if (ClearedAltitude != 0) {
 				if (ClearedAltitude > Ta && ClearedAltitude > 2) {
-					string str = std::to_string(ClearedAltitude);
+					std::string str = std::to_string(ClearedAltitude);
 					for (size_t i = 0; i < 5 - str.length(); i++)
 						str = "0" + str;
 					if (str.size() > 3)

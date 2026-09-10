@@ -93,15 +93,15 @@ namespace VsmrJsonInputLimits
 				Frames.reserve(limits.maximumDepth);
 			}
 
-			void Null() { AcceptScalar(false); }
-			void Bool(bool) { AcceptScalar(false); }
-			void Int(int) { AcceptScalar(true); }
-			void Uint(unsigned int) { AcceptScalar(true); }
-			void Int64(std::int64_t) { AcceptScalar(true); }
-			void Uint64(std::uint64_t) { AcceptScalar(true); }
-			void Double(double) { AcceptScalar(true); }
+			bool Null() { AcceptScalar(false); return !Invalid; }
+			bool Bool(bool) { AcceptScalar(false); return !Invalid; }
+			bool Int(int) { AcceptScalar(true); return !Invalid; }
+			bool Uint(unsigned int) { AcceptScalar(true); return !Invalid; }
+			bool Int64(std::int64_t) { AcceptScalar(true); return !Invalid; }
+			bool Uint64(std::uint64_t) { AcceptScalar(true); return !Invalid; }
+			bool Double(double) { AcceptScalar(true); return !Invalid; }
 
-			void String(
+			bool String(
 				const char* value,
 				rapidjson::SizeType length,
 				bool)
@@ -118,36 +118,38 @@ namespace VsmrJsonInputLimits
 					Frame& frame = Frames.back();
 					frame.pendingKey = ClassifyKey(value, length);
 					frame.expectingKey = false;
-					return;
+					return !Invalid;
 				}
 
 				AcceptScalar(false);
+				return !Invalid;
 			}
 
-			void StartObject() { StartContainer(ContainerKind::Object); }
+			bool StartObject() { StartContainer(ContainerKind::Object); return !Invalid; }
 
-			void EndObject(rapidjson::SizeType memberCount)
+			bool EndObject(rapidjson::SizeType memberCount)
 			{
 				if (Frames.empty() || Frames.back().kind != ContainerKind::Object)
 				{
 					Fail("JSON container structure is invalid.");
-					return;
+					return !Invalid;
 				}
 				if (!Frames.back().expectingKey)
 					Fail("JSON object has a property without a value.");
 				CheckContainerSize(memberCount, "JSON contains an object with too many members.");
 				Frames.pop_back();
 				CompleteContainerValue();
+				return !Invalid;
 			}
 
-			void StartArray() { StartContainer(ContainerKind::Array); }
+			bool StartArray() { StartContainer(ContainerKind::Array); return !Invalid; }
 
-			void EndArray(rapidjson::SizeType elementCount)
+			bool EndArray(rapidjson::SizeType elementCount)
 			{
 				if (Frames.empty() || Frames.back().kind != ContainerKind::Array)
 				{
 					Fail("JSON container structure is invalid.");
-					return;
+					return !Invalid;
 				}
 
 				const Frame frame = Frames.back();
@@ -168,6 +170,12 @@ namespace VsmrJsonInputLimits
 				}
 				Frames.pop_back();
 				CompleteContainerValue();
+				return !Invalid;
+			}
+
+			bool Key(const char* value, rapidjson::SizeType length, bool copy)
+			{
+				return String(value, length, copy);
 			}
 
 			bool IsValid() const noexcept
@@ -368,9 +376,11 @@ namespace VsmrJsonInputLimits
 		rapidjson::Reader reader;
 		VsmrJson::StringViewStream stream(json);
 		Detail::LimitHandler handler(limits);
-		if (!reader.Parse<rapidjson::kParseDefaultFlags>(stream, handler))
+		if (!reader.Parse<rapidjson::kParseIterativeFlag | rapidjson::kParseValidateEncodingFlag>(stream, handler))
 		{
-			error = "JSON syntax validation failed before DOM construction.";
+			error = handler.Error().empty()
+				? "JSON syntax validation failed before DOM construction."
+				: handler.Error();
 			return false;
 		}
 		if (!handler.IsValid())

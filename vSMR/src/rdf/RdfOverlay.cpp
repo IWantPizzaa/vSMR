@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 
 #include "rdf/RdfOverlay.hpp"
 
@@ -464,7 +465,7 @@ namespace
 		void ProcessMessage(const std::string& text)
 		{
 			rapidjson::Document document;
-			document.Parse<0>(text.c_str());
+			VsmrJson::ParseDocument(document, text);
 			if (document.HasParseError() || !document.IsObject() ||
 				!document.HasMember("type") || !document["type"].IsString() ||
 				!document.HasMember("value") || !document["value"].IsObject())

@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterBridge.Internal.hpp"
 
 #include "aviso/AvisoDocumentModel.hpp"
@@ -256,7 +257,7 @@ void VsmrControlCenterBridgeImpl::EvaluateAvisoHealth(
 			AvisoDocumentModel::ValidateSerializedInputLimits(
 				avisoJson,
 				inputError) &&
-			!parsed.Parse<0>(avisoJson.c_str()).HasParseError() &&
+			!VsmrJson::ParseDocument(parsed, avisoJson).HasParseError() &&
 			parsed.IsObject() &&
 			parsed.HasMember("type") &&
 			parsed["type"].IsString() &&
@@ -475,7 +476,7 @@ void VsmrControlCenterBridgeImpl::SendAvisoState(const std::string& requestId)
 	EvaluateAvisoHealth(path, healthy, validationError);
 	const bool valid = healthy &&
 		!AvisoHealthCacheDocumentJson.empty() &&
-		!aviso.Parse<0>(AvisoHealthCacheDocumentJson.c_str()).HasParseError() &&
+		!VsmrJson::ParseDocument(aviso, AvisoHealthCacheDocumentJson).HasParseError() &&
 		aviso.IsObject();
 	if (!valid)
 	{

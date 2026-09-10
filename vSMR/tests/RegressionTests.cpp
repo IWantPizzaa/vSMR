@@ -21,6 +21,7 @@
 #include "AvisoRasterPipelineTests.hpp"
 #include "ConfigurationRegressionTests.hpp"
 #include "SharedRenderingTests.hpp"
+#include "AuditRegressionTests.hpp"
 #include "TagColorRuleTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -1057,6 +1058,8 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunTagColorRuleTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunUpdaterUrlPolicyTests())
+		Expect(false, failure);
+	for (const auto& failure : RunAuditRegressionTests())
 		Expect(false, failure);
 	TestGeometry();
 	TestWebMessageValidation();

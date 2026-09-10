@@ -53,22 +53,22 @@ std::atomic<unsigned long long> HoppiePollGeneration(0);
 std::atomic<bool> ConnectionMessage(false);
 std::atomic<bool> FailedToConnectMessage(false);
 
-string logonCode = "";
-string logonCallsign = "EGKK";
+std::string logonCode = "";
+std::string logonCallsign = "EGKK";
 
 std::string DatalinkStatusMessage = "Disconnected.";
 std::mutex DatalinkControlMutex;
 
-const string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
+const std::string baseUrlDatalink = "https://www.hoppie.nl/acars/system/connect.html";
 
-vector<string> AircraftDemandingClearance;
-vector<string> AircraftMessageSent;
-vector<string> AircraftMessage;
-vector<string> AircraftWilco;
-vector<string> AircraftStandby;
+std::vector<std::string> AircraftDemandingClearance;
+std::vector<std::string> AircraftMessageSent;
+std::vector<std::string> AircraftMessage;
+std::vector<std::string> AircraftWilco;
+std::vector<std::string> AircraftStandby;
 std::set<std::string> AircraftDatalinkClearedCallsigns;
 std::set<std::string> AircraftDatalinkClearanceInFlightCallsigns;
-map<string, std::chrono::steady_clock::time_point> AircraftCdmTobtReminderSentAt;
+std::map<std::string, std::chrono::steady_clock::time_point> AircraftCdmTobtReminderSentAt;
 std::set<std::string> AircraftCdmReminderSubmittedCallsigns;
 
 std::deque<QueuedCdmReminderMessage> CdmReminderMessageQueue;
@@ -76,10 +76,10 @@ std::deque<QueuedCdmReminderMessage> CdmReminderMessageQueue;
 std::atomic<bool> CdmAutoModeEnabled(false);
 std::atomic<int> CdmAutoDelayMinutes(5);
 
-map<string, CdmAutoTrackedAircraftState> AircraftCdmAutoTracked;
+std::map<std::string, CdmAutoTrackedAircraftState> AircraftCdmAutoTracked;
 std::string CdmAutoTrackedAirport;
 unsigned long long CdmAutoSessionGeneration = 1;
-map<string, AcarsMessage> PendingMessages;
+std::map<std::string, AcarsMessage> PendingMessages;
 // Guards all mutable CPDLC message state used by worker threads.
 std::mutex DatalinkStateMutex;
 std::atomic<int> CdmReminderCooldownMinutes(60);
@@ -863,8 +863,8 @@ bool ActiveProfilesConfigPathClaimed = false;
 				std::memory_order_acquire))
 			return false;
 
-		string raw;
-		string url = baseUrlDatalink;
+		std::string raw;
+		std::string url = baseUrlDatalink;
 		url += "?logon=";
 		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";

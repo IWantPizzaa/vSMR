@@ -36,7 +36,7 @@ CRimcas::~CRimcas()
 }
 
 void CRimcas::Reset() {
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	RunwayAreas.clear();
 	RunwayStatuses.clear();
 	InvalidateRunwayAreaScreenCache();
@@ -54,7 +54,7 @@ void CRimcas::Reset() {
 
 void CRimcas::OnRefreshBegin(bool isLVP, int transitionAltitude) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
 	AcOnRunway.clear();
@@ -78,7 +78,7 @@ void CRimcas::OnRefreshBegin(bool isLVP, int transitionAltitude) {
 
 void CRimcas::OnRefresh(const VsmrScene::Target& Rt, CRadarScreen* instance) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (Rt.callsign.empty())
 		return;
 	GetAcInRunwayArea(Rt, instance);
@@ -86,10 +86,10 @@ void CRimcas::OnRefresh(const VsmrScene::Target& Rt, CRadarScreen* instance) {
 	CheckForMovementAlert(Rt, instance);
 }
 
-void CRimcas::AddRunwayArea(CRadarScreen* instance, string runway_name1, string runway_name2, vector<CPosition> Definition) {
+void CRimcas::AddRunwayArea(CRadarScreen* instance, std::string runway_name1, std::string runway_name2, std::vector<CPosition> Definition) {
 	(void)instance;
-	Logger::info(string(__FUNCSIG__));
-	string Name = runway_name1 + " / " + runway_name2;
+	Logger::info(std::string(__FUNCSIG__));
+	std::string Name = runway_name1 + " / " + runway_name2;
 
 	RunwayAreaType Runway;
 	Runway.Name = Name;
@@ -106,7 +106,7 @@ void CRimcas::InvalidateRunwayAreaScreenCache()
 	RunwayAreasScreenCacheInstance = nullptr;
 }
 
-const vector<POINT>* CRimcas::GetRunwayAreaScreenPoints(const string& runway, CRadarScreen* instance)
+const std::vector<POINT>* CRimcas::GetRunwayAreaScreenPoints(const std::string& runway, CRadarScreen* instance)
 {
 	if (instance == nullptr)
 		return nullptr;
@@ -116,7 +116,7 @@ const vector<POINT>* CRimcas::GetRunwayAreaScreenPoints(const string& runway, CR
 		RunwayAreasScreenCache.clear();
 		for (const auto& runwayArea : RunwayAreas)
 		{
-			vector<POINT> runwayOnScreen;
+			std::vector<POINT> runwayOnScreen;
 			runwayOnScreen.reserve(runwayArea.second.Definition.size());
 			for (const auto& point : runwayArea.second.Definition)
 				runwayOnScreen.push_back(instance->ConvertCoordFromPositionToPixel(point));
@@ -135,9 +135,9 @@ const vector<POINT>* CRimcas::GetRunwayAreaScreenPoints(const string& runway, CR
 	return &cacheIt->second;
 }
 
-string CRimcas::GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen* instance) {
+std::string CRimcas::GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen* instance) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (instance == nullptr || Ac.callsign.empty() || !Ac.position.valid)
 		return string_false;
 
@@ -150,7 +150,7 @@ string CRimcas::GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen* ins
 
 	POINT AcPosPix = instance->ConvertCoordFromPositionToPixel(ToEuroScopePosition(Ac.position));
 
-	for (std::map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
+	for (std::map<std::string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
 		const auto monitoredArrIt = MonitoredRunwayArr.find(it->first);
 		const bool monitoredArr = monitoredArrIt != MonitoredRunwayArr.end() && monitoredArrIt->second;
@@ -161,23 +161,23 @@ string CRimcas::GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen* ins
 		if (!IsRunwayOccupancyMonitored(monitoredArr, monitoredDep))
 			continue;
 
-		const vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
+		const std::vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
 		if (RunwayOnScreen == nullptr)
 			continue;
 
 		if (Is_Inside(AcPosPix, *RunwayOnScreen)) {
-			AcOnRunway.insert(std::pair<string, string>(it->first, Ac.callsign));
+			AcOnRunway.insert(std::pair<std::string, std::string>(it->first, Ac.callsign));
 			AircraftOnRunway.insert(Ac.callsign);
-			return string(it->first);
+			return std::string(it->first);
 		}
 	}
 
 	return string_false;
 }
 
-string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen* instance) {
+std::string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen* instance) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (instance == nullptr || Ac.callsign.empty() || !Ac.position.valid)
 		return string_false;
 
@@ -196,7 +196,7 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 	if (isAcOnRunway(Ac.callsign))
 		return string_false;
 
-	for (std::map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
+	for (std::map<std::string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
 		const auto monitoredArrIt = MonitoredRunwayArr.find(it->first);
 		if (monitoredArrIt == MonitoredRunwayArr.end() || !monitoredArrIt->second)
@@ -204,7 +204,7 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 
 		// We need to know whether the AC will enter the runway within 5 minutes, in 5-second steps
 
-		const vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
+		const std::vector<POINT>* RunwayOnScreen = GetRunwayAreaScreenPoints(it->first, instance);
 		if (RunwayOnScreen == nullptr)
 			continue;
 
@@ -238,7 +238,7 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 			{
 				// The aircraft is going to be on the runway, we need to decide where it needs to be shown on the AIW
 				bool first = true;
-				const vector<int>& Definiton = IsLVP
+				const std::vector<int>& Definiton = IsLVP
 					? CountdownDefinitionLVP
 					: CountdownDefinition;
 				for (size_t k = 0; k < Definiton.size(); k++)
@@ -270,14 +270,14 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 
 				if (t <= StageTwoTrigger)
 				{
-					AcOnRunway.insert(std::pair<string, string>(it->first, Ac.callsign));
+					AcOnRunway.insert(std::pair<std::string, std::string>(it->first, Ac.callsign));
 					AircraftOnRunway.insert(Ac.callsign);
 				}
 
 				// If the AC is 45 seconds away from the runway, we consider him approaching
 
 				if (t > StageTwoTrigger && t <= 45)
-					ApproachingAircrafts.insert(std::pair<string, string>(it->first, Ac.callsign));
+					ApproachingAircrafts.insert(std::pair<std::string, std::string>(it->first, Ac.callsign));
 
 				return Ac.callsign;
 			}
@@ -287,9 +287,9 @@ string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen*
 	return CRimcas::string_false;
 }
 
-vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float hwidth) {
-	Logger::info(string(__FUNCSIG__));
-	vector<CPosition> out;
+std::vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float hwidth) {
+	Logger::info(std::string(__FUNCSIG__));
+	std::vector<CPosition> out;
 
 	double RunwayBearing = VsmrRadarUiSupport::RadToDeg(
 		VsmrRadarUiSupport::TrueBearing(Left, Right));
@@ -306,9 +306,9 @@ vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, float 
 
 void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 
-	for (map<string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
+	for (std::map<std::string, RunwayAreaType>::iterator it = RunwayAreas.begin(); it != RunwayAreas.end(); ++it)
 	{
 		const auto monitoredArrIt = MonitoredRunwayArr.find(it->first);
 		const bool monitoredArr = (monitoredArrIt != MonitoredRunwayArr.end()) && monitoredArrIt->second;
@@ -332,7 +332,7 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 
 			auto AcOnRunwayRange = AcOnRunway.equal_range(it->first);
 
-			for (map<string, string>::iterator it2 = AcOnRunwayRange.first; it2 != AcOnRunwayRange.second; ++it2)
+			for (auto it2 = AcOnRunwayRange.first; it2 != AcOnRunwayRange.second; ++it2)
 			{
 				if (it2->second.empty())
 					continue;
@@ -352,7 +352,7 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 						// the aircraft is going towards any aircraft thats on the runway
 						// if not, we don't display the warning
 						bool triggerStageTwo = false;
-						for (map<string, string>::iterator it3 = AcOnRunwayRange.first; it3 != AcOnRunwayRange.second; ++it3)
+						for (auto it3 = AcOnRunwayRange.first; it3 != AcOnRunwayRange.second; ++it3)
 						{
 							if (it3->second.empty() || it3->second == it2->second)
 								continue;
@@ -407,26 +407,26 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 
 }
 
-bool CRimcas::isAcOnRunway(const string& callsign) {
+bool CRimcas::isAcOnRunway(const std::string& callsign) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	return AircraftOnRunway.find(callsign) != AircraftOnRunway.end();
 }
 
-string CRimcas::AcOnRunwayFunc(const VsmrScene::Target& Rt, CRadarScreen* instance)
+std::string CRimcas::AcOnRunwayFunc(const VsmrScene::Target& Rt, CRadarScreen* instance)
 {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (instance == nullptr || !Rt.position.valid)
-		return string();
+		return std::string();
 	POINT acPosPix = instance->ConvertCoordFromPositionToPixel(ToEuroScopePosition(Rt.position));
 	for (const auto& rwy : RunwayAreas) {
-		const vector<POINT>* runwayOnScreen = GetRunwayAreaScreenPoints(rwy.first, instance);
+		const std::vector<POINT>* runwayOnScreen = GetRunwayAreaScreenPoints(rwy.first, instance);
 		if (runwayOnScreen != nullptr && Is_Inside(acPosPix, *runwayOnScreen)) {
 			return rwy.first;
 		}
 	}
-	return string();
+	return std::string();
 }
 
 void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* instance)
@@ -438,7 +438,7 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 		movementAlerts[Rt.callsign] = CRimcas::RimcasAlerts::NONE;
 		return;
 	}
-	string rwyOn = AcOnRunwayFunc(Rt, instance);
+	std::string rwyOn = AcOnRunwayFunc(Rt, instance);
 	int groundspeed = Rt.reportedGroundSpeed;
 	const GroundStateCategory groundStateCategory = classifyGroundStateForCallsign(
 		Rt.callsign.c_str(), Rt.towerModeGroundStateText.c_str(), groundspeed, !rwyOn.empty());
@@ -466,8 +466,8 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 	// RWY CLSD
 	if (inactiveAlerts.find("RWY CLSD") == inactiveAlerts.end()) {
 		if (rwyOn != "") {
-			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
-			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
+			std::string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
+			std::string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
 			const auto rwy1StatusIt = RunwayStatuses.find(rwy1);
 			const auto rwy2StatusIt = RunwayStatuses.find(rwy2);
 			if (rwy1StatusIt != RunwayStatuses.end() &&
@@ -484,8 +484,8 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 	// RWY TYPE
 	if (inactiveAlerts.find("RWY TYPE") == inactiveAlerts.end()) {
 		if (rwyOn != "") {
-			string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
-			string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
+			std::string rwy1 = rwyOn.substr(0, rwyOn.find(" / "));
+			std::string rwy2 = rwyOn.substr(rwyOn.find(" / ") + 4);
 			const auto rwy1StatusIt = RunwayStatuses.find(rwy1);
 			const auto rwy2StatusIt = RunwayStatuses.find(rwy2);
 			const bool rwyOneIsArrival = (rwy1StatusIt != RunwayStatuses.end() && rwy1StatusIt->second == ARR);
@@ -572,10 +572,10 @@ void CRimcas::CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* i
 	movementAlerts[Rt.callsign] = CRimcas::RimcasAlerts::NONE;
 }
 
-CRimcas::RimcasAlertTypes CRimcas::getAlert(const string& callsign)
+CRimcas::RimcasAlertTypes CRimcas::getAlert(const std::string& callsign)
 {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	const auto alertIt = AcColor.find(callsign);
 	if (alertIt == AcColor.end())
 		return NoAlert;
@@ -583,10 +583,10 @@ CRimcas::RimcasAlertTypes CRimcas::getAlert(const string& callsign)
 	return alertIt->second;
 }
 
-CRimcas::RimcasAlerts CRimcas::getMovementAlert(const string& callsign)
+CRimcas::RimcasAlerts CRimcas::getMovementAlert(const std::string& callsign)
 {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	const auto alertIt = movementAlerts.find(callsign);
 	if (alertIt == movementAlerts.end())
 		return CRimcas::RimcasAlerts::NONE;
@@ -634,9 +634,9 @@ CRimcas::RimcasAlertSeverity CRimcas::getAlertSeverity(RimcasAlerts alert)
 	}
 }
 
-Color CRimcas::GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo) {
+Color CRimcas::GetAircraftColor(const std::string& AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	const auto colorIt = AcColor.find(AcCallsign);
 	if (colorIt == AcColor.end()) {
 		if (isAcOnRunway(AcCallsign)) {
@@ -656,9 +656,9 @@ Color CRimcas::GetAircraftColor(const string& AcCallsign, Color StandardColor, C
 	}
 }
 
-Color CRimcas::GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor) {
+Color CRimcas::GetAircraftColor(const std::string& AcCallsign, Color StandardColor, Color OnRunwayColor) {
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (isAcOnRunway(AcCallsign)) {
 		return OnRunwayColor;
 	}

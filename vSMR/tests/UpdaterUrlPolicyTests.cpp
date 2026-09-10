@@ -25,13 +25,12 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 	using vsmr::updater::url_policy::TryResolveAllowedRedirect;
 
 	std::vector<std::string> failures;
-	const std::array<std::wstring, 7> allowedUrls = {
+	const std::array<std::wstring, 6> allowedUrls = {
 		L"https://api.github.com/repos/IWantPizzaa/vSMR/releases?per_page=30",
 		L"https://github.com/IWantPizzaa/vSMR/releases/download/v1/package.zip",
 		L"https://release-assets.githubusercontent.com/github-production-release-asset/file",
 		L"https://objects.githubusercontent.com/github-production-release-asset/file",
 		L"https://github-releases.githubusercontent.com/file",
-		L"https://raw.githubusercontent.com/IWantPizzaa/vSMR/dev/file",
 		L"https://API.GITHUB.COM:443/" };
 	for (const std::wstring& url : allowedUrls)
 	{
@@ -55,7 +54,7 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 		"updater URL policy supplies the root resource for a host-only URL",
 		failures);
 
-	const std::array<std::wstring, 10> rejectedUrls = {
+	const std::array<std::wstring, 13> rejectedUrls = {
 		L"",
 		L"http://github.com/file",
 		L"https://github.com:444/file",
@@ -65,7 +64,10 @@ std::vector<std::string> RunUpdaterUrlPolicyTests()
 		L"https://githubusercontent.com/file",
 		L"https://notgithubusercontent.com/file",
 		L"https://github.com.example.invalid/file",
-		L"https://example.invalid/file" };
+		L"https://example.invalid/file",
+		L"https://raw.githubusercontent.com/file",
+		L"https://arbitrary.githubusercontent.com/file",
+		std::wstring(L"https://github.com/file\0suffix", 30) };
 	for (const std::wstring& url : rejectedUrls)
 	{
 		ParsedHttpsUrl rejected;

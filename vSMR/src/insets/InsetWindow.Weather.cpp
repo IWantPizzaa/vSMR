@@ -174,13 +174,13 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 	gdi->SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
 
 	const double scale = std::clamp(
-		min(static_cast<double>(content.Width()) / 306.0,
+		(std::min)(static_cast<double>(content.Width()) / 306.0,
 			static_cast<double>(content.Height()) / 175.0),
 		0.72,
 		3.0);
 	const auto fontHeight = [scale](int pixels)
 	{
-		return -max(1, static_cast<int>(std::lround(static_cast<double>(pixels) * scale)));
+		return -(std::max)(1, static_cast<int>(std::lround(static_cast<double>(pixels) * scale)));
 	};
 	HFONT smallFont = GetWeatherFont(0, fontHeight(8), FW_NORMAL, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
 	HFONT labelFont = GetWeatherFont(1, fontHeight(8), FW_BOLD, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
@@ -264,7 +264,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 	}
 
 	const int peakWind = weather.hasWindGust
-		? max(weather.windSpeedKnots, weather.windGustKnots)
+		? (std::max)(weather.windSpeedKnots, weather.windGustKnots)
 		: weather.windSpeedKnots;
 	const COLORREF windColor = peakWind < 10
 		? RGB(55, 151, 96)
@@ -307,14 +307,14 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 		const int leftWidth = std::clamp(
 			static_cast<int>(std::lround(static_cast<double>(inner.Width()) * 0.58)),
 			112,
-			max(112, inner.Width() - 96));
+			(std::max)(112, inner.Width() - 96));
 		CRect windArea(inner.left + 1, inner.top + 1, inner.left + leftWidth, inner.bottom - 1);
 		CRect dataArea(windArea.right, inner.top + 1, inner.right - 1, inner.bottom - 1);
 		dc.FillSolidRect(CRect(dataArea.left, dataArea.top, dataArea.left + 1, dataArea.bottom), palette.divider);
 
-		const int footerHeight = max(16, static_cast<int>(std::lround(19.0 * scale)));
+		const int footerHeight = (std::max)(16, static_cast<int>(std::lround(19.0 * scale)));
 		CRect compassArea(windArea.left + 3, windArea.top + 3, windArea.right - 3, windArea.bottom - footerHeight);
-		const int diameter = max(24, min(compassArea.Width(), compassArea.Height()) - 2);
+		const int diameter = (std::max)(24, (std::min)(compassArea.Width(), compassArea.Height()) - 2);
 		const float radius = static_cast<float>(diameter) * 0.5f;
 		const float centerX = static_cast<float>(compassArea.left + compassArea.Width() / 2);
 		const float centerY = static_cast<float>(compassArea.top + compassArea.Height() / 2);
@@ -405,8 +405,8 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			gdi->FillPolygon(&arrowBrush, arrow, static_cast<INT>(_countof(arrow)));
 		}
 
-		const float plateHalfWidth = min(radius * 0.48f, static_cast<float>(42.0 * scale));
-		const float plateHalfHeight = min(radius * 0.35f, static_cast<float>(24.0 * scale));
+		const float plateHalfWidth = (std::min)(radius * 0.48f, static_cast<float>(42.0 * scale));
+		const float plateHalfHeight = (std::min)(radius * 0.35f, static_cast<float>(24.0 * scale));
 		Gdiplus::SolidBrush centerPlate(ToGdiColor(palette.compass));
 		gdi->FillRectangle(&centerPlate, centerX - plateHalfWidth, centerY - plateHalfHeight,
 			plateHalfWidth * 2.0f, plateHalfHeight * 2.0f);
@@ -429,7 +429,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 		drawText(CRect(footerMid, footer.top, footer.right, footer.bottom), component,
 			smallFont, palette.text, DT_RIGHT);
 
-		const int headerHeight = max(18, static_cast<int>(std::lround(21.0 * scale)));
+		const int headerHeight = (std::max)(18, static_cast<int>(std::lround(21.0 * scale)));
 		CRect header(dataArea.left + 1, dataArea.top, dataArea.right, dataArea.top + headerHeight);
 		dc.FillSolidRect(header, palette.header);
 		drawText(CRect(header.left + 5, header.top, header.right - 42, header.bottom),
@@ -454,7 +454,7 @@ void CInsetWindow::renderWeather(HDC hDC, CSMRRadar* radarScreen, Gdiplus::Graph
 			{ "QNH", weather.hasQnh ? std::to_string(weather.qnhHpa) + " HPA" : "---- HPA" }
 		};
 		const int rowsTop = header.bottom;
-		const int rowsHeight = max(1, dataArea.bottom - rowsTop);
+		const int rowsHeight = (std::max<LONG>)(1, dataArea.bottom - rowsTop);
 		for (int index = 0; index < static_cast<int>(_countof(rows)); ++index)
 		{
 			const int top = rowsTop + rowsHeight * index / static_cast<int>(_countof(rows));

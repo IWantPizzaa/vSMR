@@ -27,6 +27,8 @@ if ($LASTEXITCODE -ne 0) {
 $styleOwnershipScript = Join-Path $PSScriptRoot "verify_control_center_style_ownership.ps1"
 & $styleOwnershipScript -RepositoryRoot $RepositoryRoot
 
+& (Join-Path $PSScriptRoot "verify_json_entry_points.ps1") -RepositoryRoot $RepositoryRoot
+
 $nativeTests = Join-Path $RepositoryRoot "vSMR\tests\bin\Release\vSMR.Tests.exe"
 if (-not (Test-Path -LiteralPath $nativeTests -PathType Leaf)) {
     throw "Native regression test executable was not found: $nativeTests"

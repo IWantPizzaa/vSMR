@@ -65,7 +65,7 @@ namespace
 }
 
 CPoint mouseLocation(0, 0);
-string TagBeingDragged;
+std::string TagBeingDragged;
 int LeaderLineDefaultlenght = 50;
 
 // Cursor state shared by radar screen instances (managed on the UI thread).
@@ -102,7 +102,7 @@ LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 void UnhookAvisoThreadHooks();
 bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
 
-map<string, string> CSMRRadar::vStripsStands;
+std::map<std::string, std::string> CSMRRadar::vStripsStands;
 
 // ReSharper disable CppMsExtAddressOfClassRValue
 
@@ -124,7 +124,6 @@ CSMRRadar::CSMRRadar()
 	RuntimeMenuActionFont.CreateFontIndirect(&runtimeMenuActionFont);
 
 	// Initializing randomizer
-	srand(static_cast<unsigned>(time(nullptr)));
 
 	// Initialize GDI+
 	GdiplusStartupInput gdiplusStartupInput;
@@ -265,7 +264,7 @@ CPosition CSMRRadar::ConvertCoordFromPixelToPosition(POINT point)
 CSMRRadar::~CSMRRadar()
 {
 	PublishCrashRadarState("closing", "none");
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	BeginShutdown();
 	CloseVsmrControlCenterWindow();
 	DestroyVsmrControlCenterWindow();
@@ -473,7 +472,7 @@ void CSMRRadar::PublishCrashRadarState(
 }
 
 void CSMRRadar::LoadCustomFont() {
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	// Loading the custom font if there is one in use
 	customFonts.clear();
 
@@ -744,10 +743,10 @@ bool CSMRRadar::ReloadConfig() {
 }
 
 void CSMRRadar::LoadProfile(
-	string profileName,
+	std::string profileName,
 	bool saveOutgoingState,
 	bool persistNormalization) {
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	// Record runtime changes only when switching within the same source. A new
 	// source must never inherit state from the file it is replacing.
 	if (saveOutgoingState)
@@ -854,7 +853,7 @@ void CSMRRadar::LoadProfile(
 	}
 
 	// Inactive alerts
-	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
+	std::unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
 	RimcasInstance->setInactiveAlerts(inactiveAlerts);
 	auto readCountdownDefinition = [&](const Value* arrayValue, const std::vector<int>& fallback) -> std::vector<int>
 	{
@@ -911,6 +910,8 @@ bool CSMRRadar::UpdateTimerInsetCountdowns()
 
 void CSMRRadar::InvalidateStructuredTagRuleCache()
 {
+	CompiledTagDefinitions.Clear();
+	TagTextCache.Clear();
 	StructuredTagRulesCache.clear();
 	StructuredTagRulesCacheValid = false;
 }

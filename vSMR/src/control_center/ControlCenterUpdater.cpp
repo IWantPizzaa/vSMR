@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "control_center/ControlCenterUpdater.hpp"
 
 #include "crash/CrashReportSupport.hpp"
@@ -64,7 +65,7 @@ namespace
 		rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
 		writer.SetIndent('\t', 1);
 		value.Accept(writer);
-		return std::string(buffer.GetString(), buffer.Size());
+		return std::string(buffer.GetString(), buffer.GetSize());
 	}
 
 	std::filesystem::path EnvironmentDirectory(const wchar_t* variable)
@@ -174,7 +175,7 @@ namespace
 		std::string json(
 			(std::istreambuf_iterator<char>(input)),
 			std::istreambuf_iterator<char>());
-		document.Parse<0>(json.c_str());
+		VsmrJson::ParseDocument(document, json);
 		if (document.HasParseError() || !document.IsObject())
 		{
 			error = "The updater state file contains invalid JSON.";

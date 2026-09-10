@@ -79,8 +79,9 @@ namespace VsmrVsid
 		return std::string(value.substr(first, last - first));
 	}
 
+	template<class TokenMap>
 	inline void AddTagTokens(
-		std::map<std::string, std::string>& tokens,
+		TokenMap& tokens,
 		const AircraftData* data)
 	{
 		tokens["vsid_sid"] = data != nullptr ? data->sid : "";

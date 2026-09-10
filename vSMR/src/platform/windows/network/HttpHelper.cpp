@@ -1,6 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "platform/windows/network/HttpHelper.hpp"
-#include <winhttp.h>
+#include "platform/windows/network/WinHttpSupport.hpp"
 #include <algorithm>
 #include <cwctype>
 #include <vector>
@@ -59,7 +59,8 @@ namespace
 			components.nScheme != INTERNET_SCHEME_HTTPS ||
 			components.dwHostNameLength == 0 ||
 			components.dwUserNameLength != 0 ||
-			components.dwPasswordLength != 0)
+			components.dwPasswordLength != 0 ||
+			components.nPort != INTERNET_DEFAULT_HTTPS_PORT)
 		{
 			return false;
 		}
@@ -119,7 +120,9 @@ namespace
 		if (!WinHttpCrackUrl(wideUrl.c_str(), 0, 0, &components))
 			return "";
 
-		if (components.dwHostNameLength == 0)
+		if (components.lpszHostName == nullptr || components.dwHostNameLength == 0 ||
+			(components.dwUrlPathLength > 0 && components.lpszUrlPath == nullptr) ||
+			(components.dwExtraInfoLength > 0 && components.lpszExtraInfo == nullptr))
 			return "";
 
 		std::wstring host(components.lpszHostName, components.dwHostNameLength);
@@ -135,72 +138,59 @@ namespace
 			return "";
 		const DWORD requestFlags = WINHTTP_FLAG_SECURE;
 
-		HINTERNET session = WinHttpOpen(L"vSMR/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-		if (session == NULL)
+		VsmrHttp::InternetHandle session(WinHttpOpen(L"vSMR/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+		if (!session)
 			return "";
 
-		if (!WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs))
+		if (!VsmrHttp::RequireModernTls(session.get()))
+			return "";
+
+		if (!WinHttpSetTimeouts(session.get(), timeoutMs, timeoutMs, timeoutMs, timeoutMs))
 		{
-			WinHttpCloseHandle(session);
 			return "";
 		}
 		if (isCancelled() || remainingTimeoutMs() == 0)
 		{
-			WinHttpCloseHandle(session);
 			return "";
 		}
 
-		HINTERNET connect = WinHttpConnect(session, host.c_str(), components.nPort, 0);
-		if (connect == NULL)
+		VsmrHttp::InternetHandle connect(WinHttpConnect(session.get(), host.c_str(), components.nPort, 0));
+		if (!connect)
 		{
-			WinHttpCloseHandle(session);
 			return "";
 		}
 		if (isCancelled() || remainingTimeoutMs() == 0)
 		{
-			WinHttpCloseHandle(connect);
-			WinHttpCloseHandle(session);
 			return "";
 		}
 
-		HINTERNET request = WinHttpOpenRequest(connect, L"GET", resource.c_str(), NULL,
-			WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, requestFlags);
-		if (request == NULL)
+		VsmrHttp::InternetHandle request(WinHttpOpenRequest(connect.get(), L"GET", resource.c_str(), NULL,
+			WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, requestFlags));
+		if (!request)
 		{
-			WinHttpCloseHandle(connect);
-			WinHttpCloseHandle(session);
 			return "";
 		}
 		DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
 		if (!::WinHttpSetOption(
-			request,
+			request.get(),
 			WINHTTP_OPTION_REDIRECT_POLICY,
 			&redirectPolicy,
 			sizeof(redirectPolicy)))
 		{
-			WinHttpCloseHandle(request);
-			WinHttpCloseHandle(connect);
-			WinHttpCloseHandle(session);
 			return "";
 		}
 
 		int remaining = remainingTimeoutMs();
 		if (isCancelled() || remaining == 0)
 		{
-			WinHttpCloseHandle(request);
-			WinHttpCloseHandle(connect);
-			WinHttpCloseHandle(session);
 			return "";
 		}
-		if (!WinHttpSetTimeouts(request, remaining, remaining, remaining, remaining))
+		if (!WinHttpSetTimeouts(request.get(), remaining, remaining, remaining, remaining))
 		{
-			WinHttpCloseHandle(request);
-			WinHttpCloseHandle(connect);
-			WinHttpCloseHandle(session);
 			return "";
 		}
-		BOOL ok = WinHttpSendRequest(request,
+		BOOL ok = WinHttpSendRequest(request.get(),
 			L"Accept: application/json\r\n",
 			(DWORD)-1L,
 			WINHTTP_NO_REQUEST_DATA,
@@ -211,13 +201,13 @@ namespace
 		if (ok == TRUE && !isCancelled() && remaining > 0)
 		{
 			ok = WinHttpSetTimeouts(
-				request,
+				request.get(),
 				remaining,
 				remaining,
 				remaining,
 				remaining);
 			if (ok == TRUE)
-				ok = WinHttpReceiveResponse(request, NULL);
+				ok = WinHttpReceiveResponse(request.get(), NULL);
 		}
 		else
 		{
@@ -233,7 +223,7 @@ namespace
 			DWORD statusCode = 0;
 			DWORD statusCodeSize = sizeof(statusCode);
 			if (!::WinHttpQueryHeaders(
-				request,
+				request.get(),
 				WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
 				WINHTTP_HEADER_NAME_BY_INDEX,
 				&statusCode,
@@ -247,7 +237,7 @@ namespace
 			DWORD contentLength = 0;
 			DWORD contentLengthSize = sizeof(contentLength);
 			if (ok == TRUE && ::WinHttpQueryHeaders(
-				request,
+				request.get(),
 				WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
 				WINHTTP_HEADER_NAME_BY_INDEX,
 				&contentLength,
@@ -270,7 +260,7 @@ namespace
 					break;
 				}
 				if (!WinHttpSetTimeouts(
-						request,
+						request.get(),
 						remaining,
 						remaining,
 						remaining,
@@ -280,7 +270,7 @@ namespace
 					break;
 				}
 				DWORD available = 0;
-				if (!WinHttpQueryDataAvailable(request, &available))
+				if (!WinHttpQueryDataAvailable(request.get(), &available))
 				{
 					readFailed = true;
 					break;
@@ -306,7 +296,7 @@ namespace
 					boundedReadCapacity));
 				std::vector<char> buffer(readCapacity);
 				DWORD downloaded = 0;
-				if (!WinHttpReadData(request, buffer.data(), readCapacity, &downloaded))
+				if (!WinHttpReadData(request.get(), buffer.data(), readCapacity, &downloaded))
 				{
 					readFailed = true;
 					break;
@@ -326,10 +316,6 @@ namespace
 				response.append(buffer.data(), downloaded);
 			}
 		}
-
-		WinHttpCloseHandle(request);
-		WinHttpCloseHandle(connect);
-		WinHttpCloseHandle(session);
 
 		return isCancelled() || responseTooLarge || readFailed ||
 			!responseComplete ? "" : response;

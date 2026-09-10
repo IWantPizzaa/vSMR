@@ -184,7 +184,7 @@ int CSMRRadar::getZoomLevelFromCrossDistance(double crossDistance)
 	return SMRGeometry::ZoomLevelFromCrossDistance(crossDistance);
 }
 
-int CSMRRadar::getIntFromCategory(string category)
+int CSMRRadar::getIntFromCategory(std::string category)
 {
 	return SMRGeometry::SectorElementCategoryFromName(category);
 }

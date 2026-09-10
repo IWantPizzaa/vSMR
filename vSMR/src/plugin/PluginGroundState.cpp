@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "plugin/Plugin.hpp"
 #include "plugin/Plugin.RuntimeState.hpp"
 
@@ -67,7 +68,7 @@ namespace
 		buffer << input.rdbuf();
 		const std::string json = buffer.str();
 		rapidjson::Document document;
-		if (document.Parse<0>(json.c_str()).HasParseError() || !document.IsObject())
+		if (VsmrJson::ParseDocument(document, json).HasParseError() || !document.IsObject())
 		{
 			Logger::info("Holding-point catalog is invalid: " + path.u8string());
 			return;

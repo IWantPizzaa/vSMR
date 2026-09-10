@@ -8,7 +8,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <winhttp.h>
+#include "platform/windows/network/WinHttpSupport.hpp"
 
 #include <algorithm>
 #include <array>
@@ -52,29 +52,7 @@ namespace vsmr::updater::transport
 			HANDLE value_ = nullptr;
 		};
 
-		class InternetHandle
-		{
-		public:
-			explicit InternetHandle(HINTERNET value = nullptr) noexcept : value_(value) {}
-			~InternetHandle()
-			{
-				if (value_ != nullptr)
-					::WinHttpCloseHandle(value_);
-			}
-			InternetHandle(const InternetHandle&) = delete;
-			InternetHandle& operator=(const InternetHandle&) = delete;
-			HINTERNET get() const noexcept
-			{
-				return value_;
-			}
-			explicit operator bool() const noexcept
-			{
-				return value_ != nullptr;
-			}
-
-		private:
-			HINTERNET value_ = nullptr;
-		};
+		using VsmrHttp::InternetHandle;
 
 		std::string WideToUtf8(const std::wstring& value)
 		{
@@ -184,6 +162,11 @@ namespace vsmr::updater::transport
 		if (!session)
 		{
 			response.error = "winhttp_session";
+			return response;
+		}
+		if (!VsmrHttp::RequireModernTls(session.get()))
+		{
+			response.error = "tls_policy";
 			return response;
 		}
 		const DWORD sessionTimeout = remaining();

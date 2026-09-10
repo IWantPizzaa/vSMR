@@ -21,25 +21,25 @@ namespace
 		: public rapidjson::BaseReaderHandler<rapidjson::UTF8<>>
 	{
 	public:
-		void Null() { AcceptScalar(); }
-		void Bool(bool) { AcceptScalar(); }
-		void Int(int value) { AcceptInteger(value == 1); }
-		void Uint(unsigned int value) { AcceptInteger(value == 1); }
-		void Int64(std::int64_t value) { AcceptInteger(value == 1); }
-		void Uint64(std::uint64_t value) { AcceptInteger(value == 1); }
-		void Double(double) { AcceptScalar(); }
+		bool Null() { AcceptScalar(); return !Invalid; }
+		bool Bool(bool) { AcceptScalar(); return !Invalid; }
+		bool Int(int value) { AcceptInteger(value == 1); return !Invalid; }
+		bool Uint(unsigned int value) { AcceptInteger(value == 1); return !Invalid; }
+		bool Int64(std::int64_t value) { AcceptInteger(value == 1); return !Invalid; }
+		bool Uint64(std::uint64_t value) { AcceptInteger(value == 1); return !Invalid; }
+		bool Double(double) { AcceptScalar(); return !Invalid; }
 
-		void String(
+		bool String(
 			const char* value,
 			rapidjson::SizeType length,
 			bool)
 		{
 			if (Depth != 1 || !RootIsObject)
-				return;
+				return !Invalid;
 			if (ExpectingRootKey)
 			{
 				AcceptRootKey(value, length);
-				return;
+				return !Invalid;
 			}
 
 			bool accepted = true;
@@ -68,9 +68,10 @@ namespace
 			FinishRootValue();
 			if (!accepted)
 				Invalid = true;
+			return !Invalid;
 		}
 
-		void StartObject()
+		bool StartObject()
 		{
 			if (Depth == 0)
 			{
@@ -80,21 +81,22 @@ namespace
 				RootIsObject = true;
 				Depth = 1;
 				ExpectingRootKey = true;
-				return;
+				return !Invalid;
 			}
 			if (Depth == 1)
 				AcceptRootContainer();
 			++Depth;
 			if (Depth > MaximumJsonDepth)
 				Invalid = true;
+			return !Invalid;
 		}
 
-		void EndObject(rapidjson::SizeType)
+		bool EndObject(rapidjson::SizeType)
 		{
 			if (Depth == 0)
 			{
 				Invalid = true;
-				return;
+				return !Invalid;
 			}
 			if (Depth == 1)
 			{
@@ -103,9 +105,10 @@ namespace
 				RootCompleted = true;
 			}
 			--Depth;
+			return !Invalid;
 		}
 
-		void StartArray()
+		bool StartArray()
 		{
 			if (Depth == 0)
 			{
@@ -120,18 +123,25 @@ namespace
 			++Depth;
 			if (Depth > MaximumJsonDepth)
 				Invalid = true;
+			return !Invalid;
 		}
 
-		void EndArray(rapidjson::SizeType)
+		bool EndArray(rapidjson::SizeType)
 		{
 			if (Depth == 0)
 			{
 				Invalid = true;
-				return;
+				return !Invalid;
 			}
 			if (Depth == 1)
 				RootCompleted = true;
 			--Depth;
+			return !Invalid;
+		}
+
+		bool Key(const char* value, rapidjson::SizeType length, bool copy)
+		{
+			return String(value, length, copy);
 		}
 
 		bool IsValid() const noexcept
@@ -306,7 +316,7 @@ bool VsmrWebMessageValidation::TryGetInboundWebMessageSelector(
 	rapidjson::Reader reader;
 	VsmrJson::StringViewStream stream(json);
 	InboundEnvelopeHandler handler;
-	if (!reader.Parse<rapidjson::kParseDefaultFlags>(stream, handler) ||
+	if (!reader.Parse<rapidjson::kParseIterativeFlag | rapidjson::kParseValidateEncodingFlag>(stream, handler) ||
 		!handler.IsValid())
 	{
 		return false;

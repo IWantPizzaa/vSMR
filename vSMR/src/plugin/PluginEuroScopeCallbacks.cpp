@@ -36,7 +36,7 @@ void CSMRPlugin::OnFunctionCall(
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFunctionCall");
 	(void)Pt;
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
@@ -48,7 +48,7 @@ void CSMRPlugin::OnFunctionCall(
 void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 {
 	VsmrCrashRuntime::RecordEuroScopeCallback("CSMRPlugin::OnFlightPlanDisconnect");
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return;
 
@@ -113,7 +113,7 @@ CRadarScreen * CSMRPlugin::OnRadarScreenCreated(const char * sDisplayName, bool 
 	(void)GeoReferenced;
 	(void)CanBeSaved;
 	(void)CanBeCreated;
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	if (PluginShutdownRequested.load(std::memory_order_relaxed))
 		return NULL;
 

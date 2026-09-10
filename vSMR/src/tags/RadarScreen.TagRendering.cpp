@@ -5,14 +5,10 @@
 
 #include <algorithm>
 
-#if defined(_DEBUG)
-#define VSMR_REFRESH_LOG(message) Logger::info(message)
-#else
-#define VSMR_REFRESH_LOG(message) do { } while (0)
-#endif
+#include "shared/RefreshLog.hpp"
 
 extern CPoint mouseLocation;
-extern string TagBeingDragged;
+extern std::string TagBeingDragged;
 extern int LeaderLineDefaultlenght;
 
 namespace
@@ -70,7 +66,7 @@ namespace
 void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 {
 	(void)dc;
-	VSMR_REFRESH_LOG("Tags loop");
+	VsmrRefreshLog("Tags loop");
 	if (CurrentConfig == nullptr || RimcasInstance == nullptr)
 	{
 		if (Logger::is_verbose_mode())
@@ -95,7 +91,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 
 	auto font = customFonts.find(currentFontSize);
 	Gdiplus::Font* regularFont = font != customFonts.end() ? font->second.get() : nullptr;
-	VsmrTagRendering::FontContext fonts(graphics, regularFont);
+	VsmrTagRendering::FontContext fonts(graphics, regularFont, 1, &TagTextCache);
 	if (!fonts.IsValid())
 	{
 		if (Logger::is_verbose_mode())

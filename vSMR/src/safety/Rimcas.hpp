@@ -20,7 +20,6 @@ namespace VsmrScene {
 	struct RadarScene;
 	struct Target;
 }
-using namespace std;
 using namespace Gdiplus;
 using namespace EuroScopePlugIn;
 
@@ -29,11 +28,11 @@ public:
 	CRimcas();
 	virtual ~CRimcas();
 
-	const string string_false = "!NO";
+	const std::string string_false = "!NO";
 
 	struct RunwayAreaType {
-		string Name = "";
-		vector<CPosition> Definition;
+		std::string Name = "";
+		std::vector<CPosition> Definition;
 		bool set = false;
 	};
 
@@ -45,28 +44,28 @@ public:
 	enum RimcasAlertSeverity { WARNING, CAUTION };
 	enum RunwayStatus { DEP, ARR, BOTH, CLSD};
 
-	map<string, RunwayAreaType> RunwayAreas;
-	map<string, RunwayStatus> RunwayStatuses;
-	map<string, vector<POINT>> RunwayAreasScreenCache;
+	std::map<std::string, RunwayAreaType> RunwayAreas;
+	std::map<std::string, RunwayStatus> RunwayStatuses;
+	std::map<std::string, std::vector<POINT>> RunwayAreasScreenCache;
 	bool RunwayAreasScreenCacheValid = false;
 	CRadarScreen* RunwayAreasScreenCacheInstance = nullptr;
-	multimap<string, string> AcOnRunway;
-	unordered_set<string> AircraftOnRunway;
-	vector<int> CountdownDefinition;
-	vector<int> CountdownDefinitionLVP;
-	multimap<string, string> ApproachingAircrafts;
-	map<string, map<int, string>> TimeTable;
-	unordered_set<string> inactiveAlerts;
-	map<string, RimcasAlerts> movementAlerts;
-	map<string, bool> MonitoredRunwayDep;
-	map<string, bool> MonitoredRunwayArr;
-	map<string, RimcasAlertTypes> AcColor;
+	std::multimap<std::string, std::string> AcOnRunway;
+	std::unordered_set<std::string> AircraftOnRunway;
+	std::vector<int> CountdownDefinition;
+	std::vector<int> CountdownDefinitionLVP;
+	std::multimap<std::string, std::string> ApproachingAircrafts;
+	std::map<std::string, std::map<int, std::string>> TimeTable;
+	std::unordered_set<std::string> inactiveAlerts;
+	std::unordered_map<std::string, RimcasAlerts> movementAlerts;
+	std::map<std::string, bool> MonitoredRunwayDep;
+	std::map<std::string, bool> MonitoredRunwayArr;
+	std::unordered_map<std::string, RimcasAlertTypes> AcColor;
 
 	struct DepartureStatusObservation {
 		std::chrono::steady_clock::time_point enteredAt;
 		std::uint64_t lastSeenRefresh = 0;
 	};
-	std::unordered_map<string, DepartureStatusObservation> DepartureStatusObservations;
+	std::unordered_map<std::string, DepartureStatusObservation> DepartureStatusObservations;
 	std::uint64_t RefreshSequence = 0;
 
 	bool IsLVP = false;
@@ -128,37 +127,37 @@ public:
 		return (winding_number != 0);
 	}
 
-	string GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen *instance);
-	string GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen *instance);
-	void AddRunwayArea(CRadarScreen *instance, string runway_name1, string runway_name2, vector<CPosition> Definition);
-	void SetRunwayStatus(string runway, RunwayStatus status) { RunwayStatuses[runway] = status; }
-	const map<string, RunwayStatus>& GetRunwayStatuses() const { return RunwayStatuses; }
+	std::string GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen *instance);
+	std::string GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarScreen *instance);
+	void AddRunwayArea(CRadarScreen *instance, std::string runway_name1, std::string runway_name2, std::vector<CPosition> Definition);
+	void SetRunwayStatus(std::string runway, RunwayStatus status) { RunwayStatuses[runway] = status; }
+	const std::map<std::string, RunwayStatus>& GetRunwayStatuses() const { return RunwayStatuses; }
 	void InvalidateRunwayAreaScreenCache();
-	const vector<POINT>* GetRunwayAreaScreenPoints(const string& runway, CRadarScreen* instance);
-	Color GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
-	Color GetAircraftColor(const string& AcCallsign, Color StandardColor, Color OnRunwayColor);
-	const unordered_set<string>& GetInactiveAlerts() const { return inactiveAlerts; }
+	const std::vector<POINT>* GetRunwayAreaScreenPoints(const std::string& runway, CRadarScreen* instance);
+	Color GetAircraftColor(const std::string& AcCallsign, Color StandardColor, Color OnRunwayColor, Color RimcasStageOne, Color RimcasStageTwo);
+	Color GetAircraftColor(const std::string& AcCallsign, Color StandardColor, Color OnRunwayColor);
+	const std::unordered_set<std::string>& GetInactiveAlerts() const { return inactiveAlerts; }
 
-	bool isAcOnRunway(const string& callsign);
-	string AcOnRunwayFunc(const VsmrScene::Target& Rt, CRadarScreen* instance);
+	bool isAcOnRunway(const std::string& callsign);
+	std::string AcOnRunwayFunc(const VsmrScene::Target& Rt, CRadarScreen* instance);
 	void CheckForMovementAlert(const VsmrScene::Target& Rt, CRadarScreen* instance);
 
-	vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
+	std::vector<CPosition> GetRunwayArea(CPosition Left, CPosition Right, float hwidth = 92.5f);
 
 	void OnRefreshBegin(bool isLVP, int transitionAltitude = 0);
 	void OnRefresh(const VsmrScene::Target& Rt, CRadarScreen *instance);
 	void OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold);
 	void Reset();
 
-	RimcasAlertTypes getAlert(const string& callsign);
-	RimcasAlerts getMovementAlert(const string& callsign);
+	RimcasAlertTypes getAlert(const std::string& callsign);
+	RimcasAlerts getMovementAlert(const std::string& callsign);
 	RimcasAlertSeverity getAlertSeverity(RimcasAlerts alert);
 
-	void setInactiveAlerts(const unordered_set<string>& alerts) {
+	void setInactiveAlerts(const std::unordered_set<std::string>& alerts) {
 		inactiveAlerts = alerts;
 	}
 
-	void setCountdownDefinition(vector<int> data, vector<int> dataLVP)
+	void setCountdownDefinition(std::vector<int> data, std::vector<int> dataLVP)
 	{
 		CountdownDefinition = std::move(data);
 		std::sort(CountdownDefinition.begin(), CountdownDefinition.end(), std::greater<int>());
@@ -167,35 +166,35 @@ public:
 		std::sort(CountdownDefinitionLVP.begin(), CountdownDefinitionLVP.end(), std::greater<int>());
 	}
 
-	void toggleClosedRunway(string runway) {
+	void toggleClosedRunway(std::string runway) {
 		if (ClosedRunway.find(runway) == ClosedRunway.end())
 			ClosedRunway[runway] = true;
 		else
 			ClosedRunway[runway] = !ClosedRunway[runway];
 	}
 
-	void toggleActiveAlert(string alert) {
+	void toggleActiveAlert(std::string alert) {
 		if (inactiveAlerts.find(alert) == inactiveAlerts.end())
 			inactiveAlerts.insert(alert);
 		else
 			inactiveAlerts.erase(alert);
 	}
 
-	void toggleMonitoredRunwayDep(string runway) {
+	void toggleMonitoredRunwayDep(std::string runway) {
 		if (MonitoredRunwayDep.find(runway) == MonitoredRunwayDep.end())
 			MonitoredRunwayDep[runway] = true;
 		else
 			MonitoredRunwayDep[runway] = !MonitoredRunwayDep[runway];
 	}
 
-	void toggleMonitoredRunwayArr(string runway) {
+	void toggleMonitoredRunwayArr(std::string runway) {
 		if (MonitoredRunwayArr.find(runway) == MonitoredRunwayArr.end())
 			MonitoredRunwayArr[runway] = true;
 		else
 			MonitoredRunwayArr[runway] = !MonitoredRunwayArr[runway];
 	}
 
-	map<string, bool> ClosedRunway;
+	std::map<std::string, bool> ClosedRunway;
 
 private:
 	int TransitionAltitude = 0;
