@@ -57,6 +57,8 @@ namespace
 	std::size_t EstimateTagVariantHeapBytes(const TagVariant& variant)
 	{
 		std::size_t bytes = variant.lines.capacity() * sizeof(TagLine);
+		bytes += variant.evaluatedInputs.capacity() * sizeof(std::string);
+		for (const auto& input : variant.evaluatedInputs) bytes += EstimateStringHeapBytes(input);
 		for (const TagLine& line : variant.lines)
 		{
 			bytes += line.elements.capacity() * sizeof(TagElement);
@@ -472,7 +474,11 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 
 		Target target;
 		if (capturedTargetCount < scene->targets.size())
+		{
 			std::swap(target.tag.tokens, scene->targets[capturedTargetCount].tag.tokens);
+			std::swap(target.tag.normal, scene->targets[capturedTargetCount].tag.normal);
+			std::swap(target.tag.detailed, scene->targets[capturedTargetCount].tag.detailed);
+		}
 		target.callsign = callsign;
 		target.normalizedCallsign = ToUpperAsciiCopy(callsign);
 		target.systemId = CopyText(radarTarget.GetSystemID());
@@ -1054,8 +1060,13 @@ std::shared_ptr<const VsmrScene::RadarScene> CSMRRadar::BuildRadarScene(
 			target.tag.status = ResolveConfiguredTagStatus(*labels, target.tag.definitionType, target.tag.status);
 		if (labels != nullptr)
 		{
-			target.tag.normal = VsmrTags::BuildTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, false), target, false);
-			target.tag.detailed = VsmrTags::BuildTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, true), target, true);
+			VsmrTags::UpdateTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, false), target, false, target.tag.normal);
+			VsmrTags::UpdateTagVariant(CompiledTagDefinitions.Get(*labels, target.tag.definitionType, target.tag.status, true), target, true, target.tag.detailed);
+		}
+		else
+		{
+			target.tag.normal = {};
+			target.tag.detailed = {};
 		}
 		const TagColorRules::TagColorRuleOverrides normalTagColorOverrides = evaluateTagColorRules(target, false);
 		const TagColorRules::TagColorRuleOverrides detailedTagColorOverrides = evaluateTagColorRules(target, true);

@@ -334,7 +334,7 @@ namespace VsmrTagRendering
 
 		for (const VsmrScene::TagLine& sourceLine : variant.lines)
 		{
-			if (sourceLine.elements.empty())
+			if (!sourceLine.visible || sourceLine.elements.empty())
 				continue;
 
 			LineLayout line;
