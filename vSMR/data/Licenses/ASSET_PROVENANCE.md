@@ -18,7 +18,7 @@ stop publishable packaging.
 | Aircraft silhouettes | `aircraft_icons/*.png` | Imported from the historical vSMR data set; individual creator and redistribution terms are not recorded in this repository | Verification required |
 | Timer alarm | `Audio/Alarm.wav` | Restored from the historical ESTimers installation; creator and redistribution terms are not recorded in this repository | Verification required |
 | CPDLC notification | `Audio/Ding.wav` | Added from the historical/project working data; creator and redistribution terms are not recorded in this repository | Verification required |
-| AVISO airport geometry | `AVISO/<ICAO>.geojson` | Derived from project-maintained airport display data; source and contributor attribution are not recorded per airport | Verification required |
+| AVISO airport geometry | `AVISO/<ICAO>.geojson` | 53 airports use vaccfr/France-Ground-Layouts at `da539a889b213e66eb254f893fa087c263f65332`, retrieved 2026-09-10, with upstream GPL-3.0 license included as `France-Ground-Layouts.txt` and per-file source hashes. Remaining geometry and supplementary runway data come from the local sector pack or historical assets; their redistribution terms still require review | Verification required |
 | Aircraft dimensions | `ICAO_Aircraft.json` | Normalized from the project aircraft database; upstream data source and terms are not recorded | Verification required |
 | Control Center UI | `src/control_center/web/*` (packaged as `vSMR_webUI/*`) | Maintained as part of this repository | Project license |
 

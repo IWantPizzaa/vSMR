@@ -14,7 +14,7 @@ namespace
 
 	struct PendingSubmission
 	{
-		Owner owner = Owner::CdmReminder;
+		Owner owner = Owner::Vsid;
 		HWND editControl = nullptr;
 		std::string command;
 		std::chrono::steady_clock::time_point startedAt;

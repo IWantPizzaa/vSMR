@@ -14,7 +14,7 @@ namespace
 	constexpr int kButtonSize = 40;
 	constexpr int kButtonGap = 3;
 	constexpr int kAirportRowHeight = 22;
-	constexpr int kRailButtonCount = 7;
+	constexpr int kRailButtonCount = 6;
 	constexpr int kRailHeight =
 		kDragHeight +
 		(kRailPadding * 2) +
@@ -32,10 +32,8 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 180;
-	constexpr int kVsidLfpgPopupHeight = 254;
-	constexpr int kDatalinkPopupWidth = 220;
-	constexpr int kDatalinkPopupHeight = 230;
+	constexpr int kVsidPopupHeight = 290;
+	constexpr int kVsidLfpgPopupHeight = 364;
 	constexpr int kStandardPopupWidth = 170;
 
 	struct RuntimeMenuPalette
@@ -457,8 +455,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{ "runtime.button.groups", "groups", "Groups", RuntimeMenuPopup::Groups },
 		{ "runtime.button.insets", "insets", "Insets", RuntimeMenuPopup::Insets },
 		{ "runtime.button.profile", "profile", "Profile", RuntimeMenuPopup::Profile },
-		{ "runtime.button.vsid", "vsid", "vSID", RuntimeMenuPopup::Vsid },
-		{ "runtime.button.datalink", "datalink", "CPDLC / PDC", RuntimeMenuPopup::Datalink },
+		{ "runtime.button.datalink", "vsid", "vSID / CPDLC", RuntimeMenuPopup::Datalink },
 		{ "runtime.button.control-center", "settings", "Open Control Center", RuntimeMenuPopup::None }
 	};
 
@@ -481,7 +478,12 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		{
 			HFONT previousFont = static_cast<HFONT>(
 				::SelectObject(hdc, RuntimeMenuActionFont.GetSafeHandle()));
-			DrawTextEllipsis(hdc, buttonArea, "vSID", foreground, DT_CENTER);
+			CRect vsidLabel = buttonArea;
+			vsidLabel.bottom = buttonArea.CenterPoint().y;
+			CRect cpdlcLabel = buttonArea;
+			cpdlcLabel.top = vsidLabel.bottom;
+			DrawTextEllipsis(hdc, vsidLabel, "vSID", foreground, DT_CENTER);
+			DrawTextEllipsis(hdc, cpdlcLabel, "CPDLC", foreground, DT_CENTER);
 			if (previousFont != nullptr)
 				::SelectObject(hdc, previousFont);
 		}
@@ -591,15 +593,11 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 	else if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink)
 	{
-		title = "CPDLC / PDC";
-	}
-	else if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Vsid)
-	{
-		title = "vSID";
+		title = "vSID / CPDLC";
 	}
 
 	const bool insetPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
-	const bool vsidPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Vsid;
+	const bool vsidPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
 	const bool datalinkPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
 	const VsmrVsid::InterfaceState vsidState = vsidPopup
 		? VsmrVsid::GetInterfaceState()
@@ -616,11 +614,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const std::vector<AvisoPreset> insetPresets = insetPopup
 		? GetAvisoPresets()
 		: std::vector<AvisoPreset>();
-	const int popupWidth = vsidPopup
-		? kVsidPopupWidth
-		: (datalinkPopup
-			? kDatalinkPopupWidth
-			: (insetPopup ? kInsetPopupWidth : kStandardPopupWidth));
+	const int popupWidth = vsidPopup ? kVsidPopupWidth
+		: (insetPopup ? kInsetPopupWidth : kStandardPopupWidth);
 	if (bounds.Width() < popupWidth + 8)
 	{
 		RuntimeMenuPopupArea.SetRectEmpty();
@@ -637,10 +632,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		popupHeight = vsidAirport == "LFPG"
 			? kVsidLfpgPopupHeight
 			: kVsidPopupHeight;
-	}
-	else if (datalinkPopup)
-	{
-		popupHeight = kDatalinkPopupHeight;
 	}
 	else if (!insetPopup)
 	{
@@ -753,23 +744,6 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 
 	HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
 	CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
-	if (datalinkPopup || vsidPopup)
-	{
-		const COLORREF statusColor = datalinkPopup
-			? (datalinkState.connected ? RGB(103, 190, 143) : RGB(172, 102, 102))
-			: (vsidState.providerReady
-				? RGB(103, 190, 143)
-				: (vsidState.bridgeLoaded && vsidState.bridgeCompatible
-					? RGB(201, 159, 83)
-					: RGB(172, 102, 102)));
-		::SetDCBrushColor(hdc, statusColor);
-		::SetDCPenColor(hdc, kOuterBorder);
-		::SelectObject(hdc, ::GetStockObject(DC_BRUSH));
-		::SelectObject(hdc, ::GetStockObject(DC_PEN));
-		const int dotTop = titleArea.top + ((titleArea.Height() - 8) / 2);
-		::Ellipse(hdc, titleArea.left + 7, dotTop, titleArea.left + 15, dotTop + 8);
-		titleText.left += 13;
-	}
 	DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, kText);
 	CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
 	DrawRoundedRect(
@@ -983,11 +957,14 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		drawSectionLabel("GENERAL");
 		drawVsidActions(VsmrVsid::GeneralRuntimeActions, canSubmit);
 	}
-	else if (datalinkPopup)
+	if (datalinkPopup)
 	{
 		// Drawing CPDLC and PDC controls
 		CSMRPlugin* plugin = datalinkPlugin;
 		const DatalinkControlState& state = datalinkState;
+		contentTop += 4;
+		drawSectionLabel(state.connected ? "CPDLC / PDC - CONNECTED" :
+			(state.connecting ? "CPDLC / PDC - CONNECTING" : "CPDLC / PDC - OFFLINE"));
 
 		auto drawCredentialRow = [&](
 			const std::string& label,
@@ -1044,68 +1021,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
 		contentTop += 30;
 
-		drawSectionLabel("CDM REMINDER");
-		const bool canEditTiming = plugin != nullptr && !state.cdmAutoEnabled;
-		auto drawTimingRow = [&](const char* name, const char* idPrefix, int value)
-		{
-			const int left = RuntimeMenuPopupArea.left + kPopupPadding;
-			const int right = RuntimeMenuPopupArea.right - kPopupPadding;
-			CRect nameArea(left + 4, contentTop, left + 65, contentTop + 30);
-			::SelectObject(hdc, rowFont);
-			DrawTextEllipsis(hdc, nameArea, name, kText);
 
-			CRect minusArea(left + 66, contentTop + 2, left + 90, contentTop + 28);
-			CRect valueArea(left + 93, contentTop + 2, left + 143, contentTop + 28);
-			CRect plusArea(left + 146, contentTop + 2, left + 170, contentTop + 28);
-			CRect unitArea(left + 174, contentTop, right, contentTop + 30);
-			const std::string prefix(idPrefix);
-			const std::string decrementId = prefix + ".decrement";
-			const std::string incrementId = prefix + ".increment";
-			drawRuntimeButton(
-				decrementId.c_str(), minusArea, "-",
-				canEditTiming && value > 0, false, false,
-				std::string("Decrease ") + name);
-			drawRuntimeButton(
-				idPrefix, valueArea, std::to_string(value),
-				canEditTiming, false, false,
-				std::string("Edit ") + name);
-			drawRuntimeButton(
-				incrementId.c_str(), plusArea, "+",
-				canEditTiming && value < 1440, false, false,
-				std::string("Increase ") + name);
-			::SelectObject(hdc, rowFont);
-			DrawTextEllipsis(hdc, unitArea, "min", kMutedText, DT_CENTER);
-			contentTop += 33;
-		};
-		drawTimingRow("Delay", "runtime.datalink.delay", state.cdmDelayMinutes);
-		drawTimingRow("Cooldown", "runtime.datalink.cooldown", state.cdmCooldownMinutes);
-		contentTop += 3;
-
-		CRect scanArea;
-		CRect reminderArea;
-		twoColumnAreas(24, scanArea, reminderArea);
-		const bool reminderReady =
-			state.controllerConnected &&
-			!state.activeAirport.empty() &&
-			state.cdmBridgeLoaded &&
-			state.cdmBridgeReady &&
-			state.cdmAliasReady;
-		drawRuntimeButton(
-			"runtime.datalink.scan",
-			scanArea,
-			"Check now",
-			plugin != nullptr && reminderReady,
-			false,
-			false,
-			"Check eligible departures now");
-		drawRuntimeButton(
-			"runtime.datalink.reminders",
-			reminderArea,
-			state.cdmAutoEnabled ? "Stop" : "Run",
-			plugin != nullptr && (state.cdmAutoEnabled || reminderReady),
-			!state.cdmAutoEnabled,
-			state.cdmAutoEnabled,
-			state.cdmAutoEnabled ? "Stop automatic CDM reminders" : "Start automatic CDM reminders");
 	}
 	else if (!insetPopup)
 	{

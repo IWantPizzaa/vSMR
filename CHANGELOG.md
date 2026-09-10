@@ -15,6 +15,10 @@
 
 ### Changed
 
+- Combined vSID and CPDLC/PDC controls into one Runtime Menu panel. Removed CDM Auto, its timer and message queue, bulk scans, timing controls, and saved settings.
+
+- Made AVISO geometry, text, and groups shared across Dark, Light, and Real. Palette changes now affect colors only; older maps migrate using Light geometry when loaded or imported. Updated all 395 bundled AVISOs to the shared format.
+
 - Cached parsed tag definitions and font measurements across frames, with invalidation when settings change and bounded text-cache growth. Reused contiguous tag-token storage and drawing brushes, reduced hot-path copies and callback overhead, and gated detailed SDK timing behind verbose diagnostics.
 - Applied consistent compiler warnings and binary hardening to local and CI builds, including Control Flow Guard and Spectre mitigations. Removed application-wide standard-library namespace pollution and marked security predicates `[[nodiscard]]`.
 - Made RIMCAS runway-pair and ARR/DEP assignments follow the active airport's selected EuroScope runway ends automatically; manual closed-runway state remains independent.
@@ -23,8 +27,8 @@
 - Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
 - Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
 - Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
-- Replaced the AVISO Night/Day selector with Dark, Light, and Real palettes. Dark retains the former Night colors, Light uses the LFPG Custom Day visual language, and Real preserves the former Day palettes for LFPG, LFMN, LFPO, and LFML.
-- Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. LFPG now embeds its complete Custom geometry, text, groups, and colors for Dark/Light alongside the existing Real map in the single canonical `LFPG.geojson` asset.
+- Rebuilt 388 AVISO airport maps, using France-Ground-Layouts geometry and ground labels for its 53 airports and sector-pack fallbacks elsewhere. Existing Dark/Light colors are preserved; Real remains available only for LFML, LFMN, and LFPG. All palettes share the selected source geometry, and LFPG retains its previous Real colors.
+- Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. Added geometry repairs and reported exclusions for misplaced source records during map conversion.
 
 ### Fixed
 

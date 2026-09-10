@@ -33,16 +33,7 @@ namespace
 std::vector<CSMRRadar::AvisoGroup> CSMRRadar::GetAvisoGroups() const
 {
 	std::lock_guard<std::mutex> guard(AvisoGroupMutex);
-	std::vector<AvisoGroup> groups;
-	for (const AvisoGroup& group : AvisoRuntimeGroups)
-	{
-		if (group.colorPalettes.empty() ||
-			std::find(group.colorPalettes.begin(), group.colorPalettes.end(), AvisoColorPalette) != group.colorPalettes.end())
-		{
-			groups.push_back(group);
-		}
-	}
-	return groups;
+	return AvisoRuntimeGroups;
 }
 
 std::shared_ptr<const std::unordered_map<std::string, bool>> CSMRRadar::GetAvisoGroupVisibilitySnapshot(

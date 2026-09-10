@@ -94,7 +94,6 @@ CSMRPlugin::~CSMRPlugin()
 {
 	// Stopping callbacks and workers before releasing shared state
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
-	BeginDatalinkShutdown();
 	VsmrGroundState::ClearAllLineupOverrides();
 	VsmrCdm::Shutdown();
 	VsmrVsid::Shutdown();

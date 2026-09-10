@@ -10,7 +10,6 @@
 #include "control_center/ControlCenterMessageProtocol.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
-#include "datalink/CdmReminderSafety.hpp"
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
 #include "radar/RadarGeometry.hpp"
@@ -878,64 +877,7 @@ namespace
 			"METAR parser handles CAVOK and negative temperatures");
 	}
 
-	void TestCdmReminderSafety()
-	{
-		using VsmrCdmReminderSafety::EligibilitySnapshot;
-		EligibilitySnapshot eligible;
-		eligible.activeAirportResolved = true;
-		eligible.originMatchesActiveAirport = true;
-		eligible.flightPlanNotStarted = true;
-		eligible.simulatedFlightPlan = false;
-		eligible.radarTargetValid = true;
-		eligible.radarPositionValid = true;
-		eligible.noGroundStatus = true;
-		eligible.positionAgeSeconds = 1;
-		eligible.groundSpeedKnots = 2;
-		eligible.verticalSpeedFeetPerMinute = 0;
-		eligible.airportDistanceNauticalMiles = 1.5;
-		Expect(
-			VsmrCdmReminderSafety::IsEligible(eligible),
-			"CDM reminder accepts a fresh stationary departure at the active airport");
 
-		auto expectRejected = [&](const EligibilitySnapshot& snapshot, const std::string& reason)
-		{
-			Expect(
-				!VsmrCdmReminderSafety::IsEligible(snapshot),
-				"CDM reminder rejects " + reason);
-		};
-
-		EligibilitySnapshot changed = eligible;
-		changed.originMatchesActiveAirport = false;
-		expectRejected(changed, "a departure from another airport");
-		changed = eligible;
-		changed.flightPlanNotStarted = false;
-		expectRejected(changed, "an already-started flight plan");
-		changed = eligible;
-		changed.simulatedFlightPlan = true;
-		expectRejected(changed, "a simulated or out-of-range flight plan");
-		changed = eligible;
-		changed.radarPositionValid = false;
-		expectRejected(changed, "an aircraft without a correlated live position");
-		changed = eligible;
-		changed.positionAgeSeconds =
-			VsmrCdmReminderSafety::MaximumPositionAgeSeconds + 1;
-		expectRejected(changed, "a stale radar position");
-		changed = eligible;
-		changed.groundSpeedKnots =
-			VsmrCdmReminderSafety::MaximumGroundSpeedKnots + 1;
-		expectRejected(changed, "an aircraft moving too fast for safe ground classification");
-		changed = eligible;
-		changed.verticalSpeedFeetPerMinute =
-			VsmrCdmReminderSafety::MaximumAbsoluteVerticalSpeedFeetPerMinute + 1;
-		expectRejected(changed, "an aircraft with an airborne vertical trend");
-		changed = eligible;
-		changed.airportDistanceNauticalMiles =
-			VsmrCdmReminderSafety::MaximumAirportDistanceNauticalMiles + 0.1;
-		expectRejected(changed, "an aircraft outside the active-airport geofence");
-		changed = eligible;
-		changed.noGroundStatus = false;
-		expectRejected(changed, "an aircraft whose operational status no longer needs a reminder");
-	}
 
 	void TestSharedRenderingProjectIntegration(const std::filesystem::path& repositoryRoot)
 	{
@@ -1049,7 +991,6 @@ int wmain(int argc, wchar_t** argv)
 	TestRimcasRules();
 	TestTargetRoleThresholds();
 	TestWeatherParsing();
-	TestCdmReminderSafety();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
 		Expect(false, failure);

@@ -78,7 +78,6 @@
 
     features.forEach((feature, index) => {
       const properties = feature?.properties || {};
-      if (!avisoItemSupportsPalette(properties)) return;
       const objectType = inferAvisoObjectType(feature);
       const fallbackPrefix = objectType === "Label" ? "label" : objectType === "Line" ? "line" : "area";
       const id = properties.style_id || `${fallbackPrefix}.${avisoStyleSlug(properties.category || properties.name || index)}`;
@@ -89,7 +88,6 @@
     });
 
     Object.entries(catalog).forEach(([id, style]) => {
-      if (!avisoItemSupportsPalette(style)) return;
       if (!byId.has(id)) byId.set(id, { id, indices: [], firstFeature: null });
       byId.get(id).style = style;
     });

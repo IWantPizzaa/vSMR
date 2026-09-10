@@ -26,12 +26,8 @@ using VsmrDatalinkProtocol::ResolvePdcNextFrequency;
 void CSMRPlugin::ForgetDatalinkFlightPlan(const std::string& normalizedCallsign)
 {
 	std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-	AircraftCdmAutoTracked.erase(normalizedCallsign);
-	RemoveQueuedCdmReminderUnlocked(normalizedCallsign);
 	ClearDatalinkClearanceSentUnlocked(normalizedCallsign);
 	ClearDatalinkClearanceInFlightUnlocked(normalizedCallsign);
-	if (CdmReminderCooldownMinutes.load(std::memory_order_relaxed) == 0)
-		AircraftCdmTobtReminderSentAt.erase(normalizedCallsign);
 }
 
 void CSMRPlugin::HandleDatalinkFunctionCall(
@@ -265,7 +261,6 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 				}
 				else if (ClearedAltitude <= Ta && ClearedAltitude > 2) {
 
-
 					toReturn = std::to_string(ClearedAltitude);
 					toReturn += "ft";
 				}
@@ -296,7 +291,6 @@ void CSMRPlugin::HandleDatalinkFunctionCall(
 			request.messageSequence = messageId.fetch_add(1) + 1;
 			{
 				std::lock_guard<std::mutex> guard(DatalinkStateMutex);
-				AircraftCdmAutoTracked.erase(NormalizeCallsignForState(fpCallsign));
 			}
 			if (!QueueNetworkJob([request]() { sendDatalinkClearance(request); }))
 			{
@@ -381,13 +375,6 @@ void CSMRPlugin::RunDatalinkTimerCycle()
 		std::string pollError;
 		StartDatalinkPoll(false, pollError);
 		DatalinkLastPollAt = timerNow;
-	}
-
-	// ----- Processing CDM reminders -----
-	if (!PluginShutdownRequested.load(std::memory_order_relaxed))
-	{
-		ProcessCdmAutoMode(this);
-		ProcessQueuedCdmReminderMessages(this);
 	}
 
 	if (!PluginShutdownRequested.load(std::memory_order_relaxed))

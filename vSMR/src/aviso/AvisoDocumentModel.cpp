@@ -244,6 +244,8 @@ bool AvisoDocumentModel::LoadFromFile(const std::string& path, std::string& erro
 	AssignRuntimeFeatureIdsForCurrentDocument();
 	BuildIndexes();
 	CaptureOriginalCoordinatesJson(sourceJson);
+	NormalizeSharedGeometry();
+	BuildIndexes();
 	return true;
 }
 
@@ -937,6 +939,7 @@ AvisoValidationResult AvisoDocumentModel::ValidateAndRecalculate()
 		result.ok = false;
 		return result;
 	}
+	NormalizeSharedGeometry();
 	const int featureCount = FeatureCount();
 	const rapidjson::Value* features = GetFeatureArray();
 
@@ -1546,6 +1549,67 @@ void AvisoDocumentModel::AssignRuntimeFeatureIdsForCurrentDocument()
 	RuntimeFeatureIds.reserve(featureCount);
 	for (size_t i = 0; i < featureCount; ++i)
 		RuntimeFeatureIds.push_back(GenerateRuntimeFeatureId());
+}
+
+void AvisoDocumentModel::NormalizeSharedGeometry()
+{
+	// Legacy maps may contain separate geometry for each palette. Select Light
+	// once, retaining runtime identities so saving preserves exact coordinates.
+	auto supportsLight = [](const rapidjson::Value& item) {
+		if (!item.IsObject() || !item.HasMember("color_palettes") ||
+			!item["color_palettes"].IsArray() || item["color_palettes"].Empty()) return true;
+		for (const auto& entry : item["color_palettes"].GetArray())
+		{
+			if (!entry.IsString()) continue;
+			const std::string palette = ToLowerAscii(TrimAsciiWhitespaceCopy(entry.GetString()));
+			if (palette == "light" || palette == "day") return true;
+		}
+		return false;
+	};
+	auto* features = GetFeatureArray();
+	if (features == nullptr) return;
+	EnsureRuntimeFeatureIds();
+	std::set<std::string> usedStyles;
+	for (size_t i = features->Size(); i > 0; --i)
+	{
+		auto& feature = (*features)[static_cast<rapidjson::SizeType>(i - 1)];
+		if (!feature.HasMember("properties") || !feature["properties"].IsObject()) continue;
+		auto& properties = feature["properties"];
+		if (!supportsLight(properties))
+		{
+			features->Erase(features->Begin() + (i - 1));
+			RuntimeFeatureIds.erase(RuntimeFeatureIds.begin() + (i - 1));
+			continue;
+		}
+		properties.RemoveMember("color_palettes");
+		usedStyles.insert(ReadStringProperty(&properties, "style_id"));
+	}
+	if (Document.HasMember("styles") && Document["styles"].IsObject())
+	{
+		auto& styles = Document["styles"];
+		for (auto it = styles.MemberBegin(); it != styles.MemberEnd();)
+		{
+			if (!supportsLight(it->value) && usedStyles.count(it->name.GetString()) == 0)
+				it = styles.EraseMember(it);
+			else
+			{
+				if (it->value.IsObject()) it->value.RemoveMember("color_palettes");
+				++it;
+			}
+		}
+	}
+	if (Document.HasMember("vsmr_groups") && Document["vsmr_groups"].IsArray())
+		for (auto& group : Document["vsmr_groups"].GetArray())
+			if (group.IsObject()) group.RemoveMember("color_palettes");
+	if (!Document.HasMember("metadata"))
+		Document.AddMember("metadata", rapidjson::Value(rapidjson::kObjectType), Document.GetAllocator());
+	auto& metadata = Document["metadata"];
+	if (metadata.IsObject())
+	{
+		metadata.RemoveMember("geometry_mode");
+		metadata.AddMember("geometry_mode", "shared", Document.GetAllocator());
+	}
+	MarkIndexesDirty();
 }
 
 void AvisoDocumentModel::CaptureOriginalCoordinatesJson(const std::string& sourceJson)
