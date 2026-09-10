@@ -400,6 +400,41 @@ namespace
 		options.extendScratchpadHit = true;
 		options.scratchpadAction = 20;
 		const CRect arranged = VsmrTagRendering::CalculateBounds(fonts, layout, options);
+		VsmrScene::TagContent hoverTag;
+		hoverTag.normal = variant;
+		hoverTag.detailed = variant;
+		hoverTag.detailed.lines.push_back(line);
+		hoverTag.detailed.lines.back().elements[0].text = "DETAILED ACTION";
+		VsmrTagRendering::Layout selectedLayout;
+		bool expanded = VsmrTagRendering::SelectHoveredLayout(
+			fonts, hoverTag, options, arranged.CenterPoint(), true, false, false, layout, selectedLayout);
+		Check(expanded && selectedLayout.lines.size() == 2,
+			"hover expands a tag immediately using current normal bounds", failures);
+		const CRect expandedBounds = VsmrTagRendering::CalculateBounds(fonts, selectedLayout, options);
+		const POINT detailOnly = { expandedBounds.left + 1, expandedBounds.top + 1 };
+		Check(!arranged.PtInRect(detailOnly), "hover test reaches the expanded-only area", failures);
+		Check(VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, detailOnly,
+			true, false, expanded, layout, selectedLayout),
+			"expanded fields remain reachable while the pointer stays over the detailed tag", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options,
+			{ expandedBounds.right + 10, expandedBounds.bottom + 10 }, true, false, true, layout, selectedLayout) &&
+			selectedLayout.lines.size() == 1,
+			"leaving the detailed bounds restores the normal layout", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, detailOnly,
+			true, false, false, layout, selectedLayout),
+			"an invisible detailed-only area cannot activate hover", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, arranged.CenterPoint(),
+			false, false, true, layout, selectedLayout),
+			"a covered or inactive viewport collapses its detailed tag", failures);
+		Check(VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, { -100, -100 },
+			false, true, false, layout, selectedLayout), "dragging keeps detailed fields available", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, { -100, -100 },
+			true, false, true, layout, selectedLayout), "release outside the tag clears detailed mode", failures);
+		auto movedOptions = options;
+		movedOptions.tagCenter.x += 500;
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, movedOptions, arranged.CenterPoint(),
+			true, false, true, layout, selectedLayout),
+			"moving the tag invalidates hover at its old location", failures);
 		Check(
 			arranged.Height() == layout.height + 2,
 			"tag bounds preserve the complete centered line box",

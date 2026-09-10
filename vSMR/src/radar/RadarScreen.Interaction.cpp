@@ -8,7 +8,6 @@
 #include "crash/CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
-extern std::string TagBeingDragged;
 extern HCURSOR smrCursor;
 extern bool standardCursor;
 extern bool customCursor;
@@ -448,6 +447,8 @@ void CSMRRadar::OnButtonUpScreenObject(int ObjectType, const char * sObjectId, P
 }
 
 void CSMRRadar::OnMoveScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area, bool Released) {
+	// Release must end dragging even when the target disappeared or routing changed.
+	if (Released) TagBeingDragged.clear();
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnMoveScreenObject",
 		reinterpret_cast<std::uintptr_t>(this));
@@ -759,6 +760,36 @@ void CSMRRadar::OnOverScreenObject(int ObjectType, const char * sObjectId, POINT
 		return;
 	}
 	RequestRefresh();
+}
+
+bool CSMRRadar::CanHoverTags(POINT point, const CInsetWindow* inset)
+{
+	if (!CRect(GetRadarArea()).PtInRect(point) || IsPointInRuntimeMenuOverlay(this, point))
+		return false;
+	const CInsetWindow* topmost = TopmostVisibleInsetFrameAtPoint(this, point);
+	return topmost == inset && (inset == nullptr || CRect(inset->m_Area).PtInRect(point));
+}
+
+bool CSMRRadar::HasDetailedTags() const
+{
+	if (!DetailedTagCallsigns.empty() || !TagBeingDragged.empty()) return true;
+	for (const auto& entry : appWindows)
+		if (entry.second && IsAppWindowDisplayed(entry.first) &&
+			(!entry.second->m_DetailedTagCallsigns.empty() || !entry.second->m_TagBeingDragged.empty()))
+			return true;
+	return false;
+}
+
+void CSMRRadar::CancelTagDrag()
+{
+	TagBeingDragged.clear();
+	TagDragOffsetFromCenter.clear();
+	for (const auto& entry : appWindows)
+		if (entry.second)
+		{
+			entry.second->m_TagBeingDragged.clear();
+			entry.second->m_TagDragOffsetFromCenter.clear();
+		}
 }
 
 bool CSMRRadar::HandleInsetSetCursor(HWND hwnd)

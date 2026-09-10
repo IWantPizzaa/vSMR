@@ -241,7 +241,8 @@ private:
 	std::unordered_map<std::string, CRect> targetAreas;
 	std::map<std::string, double> TagAngles;
 	std::map<std::string, int> TagLeaderLineLength;
-	std::map<std::string, CRect> previousTagSize;
+	std::set<std::string> DetailedTagCallsigns;
+	std::string TagBeingDragged;
 	std::map<std::string, POINT> TagDragOffsetFromCenter;
 
 	std::unique_ptr<CVsmrControlCenterDialog> VsmrControlCenterDialog;
@@ -606,6 +607,9 @@ public:
 
 	virtual void OnOverScreenObject(int ObjectType, const char * sObjectId, POINT Pt, RECT Area);
 	bool HandleInsetSetCursor(HWND hwnd);
+	bool CanHoverTags(POINT point, const CInsetWindow* inset = nullptr);
+	bool HasDetailedTags() const;
+	void CancelTagDrag();
 	bool HandleAvisoMouseWheel(HWND hwnd, WPARAM wParam, LPARAM lParam);
 	bool HandleAvisoMouseWheelAtScreenPoint(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
 	void CancelInsetWindowInteractions();

@@ -111,6 +111,9 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 	m_AirportPositionValid = radar_screen->TryGetActiveAirportPosition(m_AirportPosition);
 	m_TargetPoints.clear();
 	m_TagAreas.clear();
+	const auto previouslyDetailed = std::move(m_DetailedTagCallsigns);
+	m_DetailedTagCallsigns.clear();
+	const bool hoverAllowed = radar_screen->CanHoverTags(mouseLocation, this);
 
 	const Value& activeProfile = radar_screen->CurrentConfig->getActiveProfile();
 	const auto getProfileObjectSection = [&](const char* key) -> const Value*
@@ -475,6 +478,16 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 		options.symmetricBounds = true;
 		options.backgroundAlphaNumerator =
 			rimcasStage == CRimcas::NoAlert ? 160U : 255U;
+		const VsmrTagRendering::Layout normalLayout = layout;
+		const bool dragged = m_TagBeingDragged == rtCallsign;
+		const bool detailed = VsmrTagRendering::SelectHoveredLayout(
+			srwTagFonts, sceneTarget.tag, options, mouseLocation, hoverAllowed, dragged,
+			previouslyDetailed.count(rtCallsign) != 0, normalLayout, layout);
+		if (detailed) m_DetailedTagCallsigns.insert(rtCallsign);
+		const auto& selectedPalette = detailed ? sceneTarget.tag.detailedPalette : sceneTarget.tag.normalPalette;
+		options.background = SceneColorToGdi(sceneTarget.rimcas.onRunway ? selectedPalette.backgroundOnRunway : selectedPalette.background);
+		options.highlighted = dragged || (hoverAllowed &&
+			VsmrTagRendering::CalculateBounds(srwTagFonts, layout, options).PtInRect(mouseLocation));
 		const CRect expectedBounds =
 			VsmrTagRendering::CalculateBounds(srwTagFonts, layout, options);
 		CRect visibleTag;
