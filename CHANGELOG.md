@@ -32,6 +32,8 @@
 
 ### Fixed
 
+- Fixed tags remaining detailed after the pointer leaves or a drag release is missed. Hover uses current tag bounds and the rendering window's cursor coordinates, with drag state isolated per radar view. Added detailed hover tags and their interactive fields to SRW and AVISO insets.
+
 - Replaced the legacy RapidJSON snapshot with pinned upstream headers and applied bounded, iterative, UTF-8-validated parsing to every production JSON entry point. Excessive nesting, malformed encoding, and embedded NUL bytes now fail validation instead of overflowing the stack or silently parsing a prefix.
 - Restricted updater downloads to exact approved hosts, required TLS 1.2 or newer and HTTPS port 443 in both HTTP clients, and enabled certificate revocation checking when discovering the updater signer.
 - Made HTTP and hashing cleanup automatic, checked hash initialization failures, cleared stale hash results, and rejected missing rendering contexts before inset drawing.
