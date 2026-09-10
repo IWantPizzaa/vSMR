@@ -800,432 +800,146 @@ COLORREF CSMRRadar::GetAvisoBackgroundColor() const noexcept
 	return AvisoDarkBackgroundColor;
 }
 
-void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
+struct CSMRRadar::AvisoMainRenderer
 {
-	if (IsShutdownRequested())
-		return;
-
-	const std::string path = ResolveAvisoGeoJsonPathForAirport(getActiveAirport());
-	if (path.empty())
-		return;
-
-	if (AvisoGeoJsonRenderDisabled)
-	{
-		bool sameFile = AvisoGeoJsonRenderDisabledPath.empty() || AvisoGeoJsonRenderDisabledPath == path;
-		try
-		{
-			sameFile = sameFile && AvisoGeoJsonLoadedPath == path && AvisoGeoJsonLoadedWriteTime == fs::last_write_time(fs::u8path(path));
-		}
-		catch (...)
-		{
-			sameFile = true;
-		}
-
-		if (sameFile)
-			return;
-
-		AvisoGeoJsonRenderDisabled = false;
-		AvisoGeoJsonRenderDisabledPath.clear();
-	}
-
-	if (!EnsureAvisoGeoJsonLoaded(path))
-	{
-		return;
-	}
-	CRect backgroundArea = ResolveMainAvisoRenderArea();
-	backgroundArea.NormalizeRect();
-	if (!backgroundArea.IsRectEmpty())
-		CDC::FromHandle(hDC)->FillSolidRect(backgroundArea, GetAvisoBackgroundColor());
-	if (AvisoGeoJsonFeatures.empty() && AvisoGeoJsonLabels.empty())
-		return;
+	CSMRRadar& radar;
+	HDC hDC;
+	Gdiplus::Graphics& graphics;
+	std::string path;
 	std::shared_ptr<const std::vector<AvisoFeature>> featureSnapshot;
 	std::shared_ptr<const std::vector<AvisoLabel>> labelSnapshot;
 	std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
 	unsigned long long groupGeneration = 0;
-	if (!GetAvisoRenderSnapshots(
-		featureSnapshot,
-		labelSnapshot,
-		groupVisibility,
-		groupGeneration))
+	CPosition displayA{};
+	CPosition displayB{};
+	double fullDisplayMinLat{};
+	double fullDisplayMaxLat{};
+	double fullDisplayMinLon{};
+	double fullDisplayMaxLon{};
+	double fullDisplayLatSpan{};
+	double fullDisplayLonSpan{};
+	POINT fullProjectedTopLeft{};
+	POINT fullProjectedTopRight{};
+	POINT fullProjectedBottomLeft{};
+	POINT fullProjectedBottomRight{};
+	double displayMinLat{};
+	double displayMaxLat{};
+	double displayMinLon{};
+	double displayMaxLon{};
+	CRect fullRadarArea{};
+	CRect chatArea{};
+	CRect radarArea{};
+	double latSpan{};
+	double lonSpan{};
+	double width{};
+	double height{};
+	double fallbackScaleX{};
+	double fallbackScaleY{};
+	PointF projectedTopLeft{};
+	PointF projectedTopRight{};
+	PointF projectedBottomLeft{};
+	PointF projectedBottomRight{};
+	double projectedWidthTop{};
+	double projectedWidthBottom{};
+	double projectedHeightLeft{};
+	double projectedHeightRight{};
+	double projectedWidth{};
+	double projectedHeight{};
+	double scaleX{};
+	double scaleY{};
+	double viewPixelTolerance{};
+	double lonPixelTolerance{};
+	double latPixelTolerance{};
+	double transformPixelTolerance{};
+	AvisoMainRenderer(CSMRRadar& owner, HDC dc, Gdiplus::Graphics& canvas)
+		: radar(owner), hDC(dc), graphics(canvas) {}
+	void Render()
 	{
-		return;
+		if (!Load()) return;
+		InitializeView();
+		if (PrepareProjection()) Draw();
 	}
 
-	if (AvisoGeoJsonHasBounds && AvisoGeoJsonViewInitializedPath != path)
+	bool avisoRasterUpdatePending()
 	{
-		CPosition currentDisplayA;
-		CPosition currentDisplayB;
-		GetDisplayArea(&currentDisplayA, &currentDisplayB);
-
-		const double displayMinLat = AvisoMin(currentDisplayA.m_Latitude, currentDisplayB.m_Latitude);
-		const double displayMaxLat = AvisoMax(currentDisplayA.m_Latitude, currentDisplayB.m_Latitude);
-		const double displayMinLon = AvisoMin(currentDisplayA.m_Longitude, currentDisplayB.m_Longitude);
-		const double displayMaxLon = AvisoMax(currentDisplayA.m_Longitude, currentDisplayB.m_Longitude);
-		const bool displayOverlapsAviso =
-			AvisoGeoJsonMaxLatitude >= displayMinLat &&
-			AvisoGeoJsonMinLatitude <= displayMaxLat &&
-			AvisoGeoJsonMaxLongitude >= displayMinLon &&
-			AvisoGeoJsonMinLongitude <= displayMaxLon;
-
-		if (!displayOverlapsAviso)
-		{
-			const double latSpan = AvisoGeoJsonMaxLatitude - AvisoGeoJsonMinLatitude;
-			const double lonSpan = AvisoGeoJsonMaxLongitude - AvisoGeoJsonMinLongitude;
-			const double latPadding = AvisoMax(latSpan * 0.08, 0.001);
-			const double lonPadding = AvisoMax(lonSpan * 0.08, 0.001);
-
-			CPosition leftDown;
-			leftDown.m_Latitude = AvisoGeoJsonMinLatitude - latPadding;
-			leftDown.m_Longitude = AvisoGeoJsonMinLongitude - lonPadding;
-
-			CPosition rightUp;
-			rightUp.m_Latitude = AvisoGeoJsonMaxLatitude + latPadding;
-			rightUp.m_Longitude = AvisoGeoJsonMaxLongitude + lonPadding;
-
-			SetDisplayArea(leftDown, rightUp);
-			Logger::info("AVISO GeoJSON fitted display path=" + path);
-		}
-
-		AvisoGeoJsonViewInitializedPath = path;
+		return radar.AvisoGeoJsonRenderPipeline != nullptr &&
+			radar.AvisoGeoJsonRenderPipeline->HasPendingWork();
 	}
 
-	CPosition displayA;
-	CPosition displayB;
-	GetDisplayArea(&displayA, &displayB);
-
-	const double fullDisplayMinLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
-	const double fullDisplayMaxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
-	const double fullDisplayMinLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
-	const double fullDisplayMaxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
-	const double fullDisplayLatSpan = fullDisplayMaxLat - fullDisplayMinLat;
-	const double fullDisplayLonSpan = fullDisplayMaxLon - fullDisplayMinLon;
-	if (fullDisplayLatSpan <= 0.0 || fullDisplayLonSpan <= 0.0)
-		return;
-
-	auto makeDisplayPosition = [](double latitude, double longitude) -> CPosition
+	bool rasterCacheHasWorkingMargin()
 	{
-		CPosition position;
-		position.m_Latitude = latitude;
-		position.m_Longitude = longitude;
-		return position;
-	};
-
-	// Keep one projection basis for the complete EuroScope view. The visible
-	// main area may be cropped by a snapped inset, but rebuilding the basis from
-	// pixel-to-coordinate-to-integer-pixel round trips makes the map twitch by a
-	// pixel as the divider moves.
-	const POINT fullProjectedTopLeft = ConvertCoordFromPositionToPixel(
-		makeDisplayPosition(fullDisplayMaxLat, fullDisplayMinLon));
-	const POINT fullProjectedTopRight = ConvertCoordFromPositionToPixel(
-		makeDisplayPosition(fullDisplayMaxLat, fullDisplayMaxLon));
-	const POINT fullProjectedBottomLeft = ConvertCoordFromPositionToPixel(
-		makeDisplayPosition(fullDisplayMinLat, fullDisplayMinLon));
-	const POINT fullProjectedBottomRight = ConvertCoordFromPositionToPixel(
-		makeDisplayPosition(fullDisplayMinLat, fullDisplayMaxLon));
-	auto projectFullDisplayPoint = [&](double longitude, double latitude) -> PointF
-	{
-		const double u = (longitude - fullDisplayMinLon) / fullDisplayLonSpan;
-		const double v = (fullDisplayMaxLat - latitude) / fullDisplayLatSpan;
-		const double topX = static_cast<double>(fullProjectedTopLeft.x) +
-			static_cast<double>(fullProjectedTopRight.x - fullProjectedTopLeft.x) * u;
-		const double bottomX = static_cast<double>(fullProjectedBottomLeft.x) +
-			static_cast<double>(fullProjectedBottomRight.x - fullProjectedBottomLeft.x) * u;
-		const double topY = static_cast<double>(fullProjectedTopLeft.y) +
-			static_cast<double>(fullProjectedTopRight.y - fullProjectedTopLeft.y) * u;
-		const double bottomY = static_cast<double>(fullProjectedBottomLeft.y) +
-			static_cast<double>(fullProjectedBottomRight.y - fullProjectedBottomLeft.y) * u;
-		return PointF(
-			static_cast<REAL>(topX + (bottomX - topX) * v),
-			static_cast<REAL>(topY + (bottomY - topY) * v));
-	};
-	double displayMinLat = fullDisplayMinLat;
-	double displayMaxLat = fullDisplayMaxLat;
-	double displayMinLon = fullDisplayMinLon;
-	double displayMaxLon = fullDisplayMaxLon;
-
-	CRect fullRadarArea(GetRadarArea());
-	CRect chatArea(GetChatArea());
-	fullRadarArea.NormalizeRect();
-	chatArea.NormalizeRect();
-	if (!chatArea.IsRectEmpty())
-		fullRadarArea.bottom = chatArea.top;
-	fullRadarArea.NormalizeRect();
-	CRect radarArea = ResolveMainAvisoRenderArea();
-	if (radarArea.IsRectEmpty())
-		return;
-
-	if (radarArea != fullRadarArea)
-	{
-		const POINT visibleCorners[] = {
-			{ radarArea.left, radarArea.top },
-			{ radarArea.right, radarArea.top },
-			{ radarArea.left, radarArea.bottom },
-			{ radarArea.right, radarArea.bottom }
-		};
-		double visibleMinLat = DBL_MAX;
-		double visibleMaxLat = -DBL_MAX;
-		double visibleMinLon = DBL_MAX;
-		double visibleMaxLon = -DBL_MAX;
-		bool visibleBoundsValid = true;
-		for (const POINT& corner : visibleCorners)
-		{
-			const CPosition position = ConvertCoordFromPixelToPosition(corner);
-			if (!std::isfinite(position.m_Latitude) || !std::isfinite(position.m_Longitude))
-			{
-				visibleBoundsValid = false;
-				break;
-			}
-			visibleMinLat = AvisoMin(visibleMinLat, position.m_Latitude);
-			visibleMaxLat = AvisoMax(visibleMaxLat, position.m_Latitude);
-			visibleMinLon = AvisoMin(visibleMinLon, position.m_Longitude);
-			visibleMaxLon = AvisoMax(visibleMaxLon, position.m_Longitude);
-		}
-		if (visibleBoundsValid)
-		{
-			displayMinLat = AvisoMax(fullDisplayMinLat, visibleMinLat);
-			displayMaxLat = AvisoMin(fullDisplayMaxLat, visibleMaxLat);
-			displayMinLon = AvisoMax(fullDisplayMinLon, visibleMinLon);
-			displayMaxLon = AvisoMin(fullDisplayMaxLon, visibleMaxLon);
-		}
-	}
-	const double latSpan = displayMaxLat - displayMinLat;
-	const double lonSpan = displayMaxLon - displayMinLon;
-	if (latSpan <= 0.0 || lonSpan <= 0.0)
-		return;
-
-	const double width = static_cast<double>(radarArea.right - radarArea.left);
-	const double height = static_cast<double>(radarArea.bottom - radarArea.top);
-	if (width <= 0.0 || height <= 0.0)
-		return;
-
-	const double fallbackScaleX = width / lonSpan;
-	const double fallbackScaleY = height / latSpan;
-
-	const PointF projectedTopLeft = projectFullDisplayPoint(displayMinLon, displayMaxLat);
-	const PointF projectedTopRight = projectFullDisplayPoint(displayMaxLon, displayMaxLat);
-	const PointF projectedBottomLeft = projectFullDisplayPoint(displayMinLon, displayMinLat);
-	const PointF projectedBottomRight = projectFullDisplayPoint(displayMaxLon, displayMinLat);
-
-	const double projectedWidthTop = std::abs(static_cast<double>(projectedTopRight.X - projectedTopLeft.X));
-	const double projectedWidthBottom = std::abs(static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X));
-	const double projectedHeightLeft = std::abs(static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y));
-	const double projectedHeightRight = std::abs(static_cast<double>(projectedBottomRight.Y - projectedTopRight.Y));
-	const double projectedWidth = AvisoMax(AvisoMax(projectedWidthTop, projectedWidthBottom), 1.0);
-	const double projectedHeight = AvisoMax(AvisoMax(projectedHeightLeft, projectedHeightRight), 1.0);
-	const double scaleX = projectedWidth > 1.0 ? projectedWidth / lonSpan : fallbackScaleX;
-	const double scaleY = projectedHeight > 1.0 ? projectedHeight / latSpan : fallbackScaleY;
-
-	auto projectScreenPoint = [&](double longitude, double latitude) -> PointF
-	{
-		const double u = (longitude - displayMinLon) / lonSpan;
-		const double v = (displayMaxLat - latitude) / latSpan;
-		const double topX = static_cast<double>(projectedTopLeft.X) + static_cast<double>(projectedTopRight.X - projectedTopLeft.X) * u;
-		const double bottomX = static_cast<double>(projectedBottomLeft.X) + static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X) * u;
-		const double topY = static_cast<double>(projectedTopLeft.Y) + static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y) * u;
-		const double bottomY = static_cast<double>(projectedBottomLeft.Y) + static_cast<double>(projectedBottomRight.Y - projectedBottomLeft.Y) * u;
-		return PointF(
-			static_cast<REAL>(topX + (bottomX - topX) * v),
-			static_cast<REAL>(topY + (bottomY - topY) * v));
-	};
-
-	const double viewPixelTolerance = 1.15;
-	const double lonPixelTolerance = (1.0 / scaleX) * viewPixelTolerance;
-	const double latPixelTolerance = (1.0 / scaleY) * viewPixelTolerance;
-	const double transformPixelTolerance = 4.0;
-
-	auto rasterCacheTransformMatchesCurrentView = [&]() -> bool
-	{
-		if (AvisoGeoJsonRasterCache == nullptr || !AvisoGeoJsonRasterAnchorValid)
-			return false;
-		const double cachedLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
-		const double cachedLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
-		if (cachedLonSpan <= 0.0 || cachedLatSpan <= 0.0 || lonSpan <= 0.0 || latSpan <= 0.0)
+		if (!rasterCacheHasCompatibleZoom())
 			return false;
 
-		const double cachedHorizontalX = AvisoGeoJsonRasterProjectedTopRight.X - AvisoGeoJsonRasterProjectedTopLeft.X;
-		const double cachedHorizontalY = AvisoGeoJsonRasterProjectedTopRight.Y - AvisoGeoJsonRasterProjectedTopLeft.Y;
-		const double cachedVerticalX = AvisoGeoJsonRasterProjectedBottomLeft.X - AvisoGeoJsonRasterProjectedTopLeft.X;
-		const double cachedVerticalY = AvisoGeoJsonRasterProjectedBottomLeft.Y - AvisoGeoJsonRasterProjectedTopLeft.Y;
-		const double currentHorizontalX = static_cast<double>(projectedTopRight.X - projectedTopLeft.X);
-		const double currentHorizontalY = static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y);
-		const double currentVerticalX = static_cast<double>(projectedBottomLeft.X - projectedTopLeft.X);
-		const double currentVerticalY = static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y);
-
-		// Zooming changes the geographic span, not the viewport's projection
-		// basis. The cached raster can therefore remain geo-anchored while the
-		// worker produces the definitive bitmap for the new scale.
-		const bool sameViewportBasis =
-			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX, transformPixelTolerance) &&
-			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY, transformPixelTolerance) &&
-			AvisoWithinTolerance(cachedVerticalX, currentVerticalX, transformPixelTolerance) &&
-			AvisoWithinTolerance(cachedVerticalY, currentVerticalY, transformPixelTolerance);
-		if (sameViewportBasis)
-			return true;
-
-		// A snapped-divider resize keeps the geographic pixel scale while changing
-		// the visible span, so retain the existing span-normalized compatibility.
-		const double horizontalSpanRatio = cachedLonSpan / lonSpan;
-		const double verticalSpanRatio = cachedLatSpan / latSpan;
+		const double cachedRenderMinLon = AvisoMin(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterBottomRightLongitude);
+		const double cachedRenderMaxLon = AvisoMax(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterBottomRightLongitude);
+		const double cachedRenderMinLat = AvisoMin(radar.AvisoGeoJsonRasterAnchorLatitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
+		const double cachedRenderMaxLat = AvisoMax(radar.AvisoGeoJsonRasterAnchorLatitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
+		const double requiredLonMargin = lonSpan * 0.25;
+		const double requiredLatMargin = latSpan * 0.25;
 		return
-			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX * horizontalSpanRatio, transformPixelTolerance) &&
-			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY * horizontalSpanRatio, transformPixelTolerance) &&
-			AvisoWithinTolerance(cachedVerticalX, currentVerticalX * verticalSpanRatio, transformPixelTolerance) &&
-			AvisoWithinTolerance(cachedVerticalY, currentVerticalY * verticalSpanRatio, transformPixelTolerance);
-	};
+			cachedRenderMinLon <= displayMinLon - requiredLonMargin &&
+			cachedRenderMaxLon >= displayMaxLon + requiredLonMargin &&
+			cachedRenderMinLat <= displayMinLat - requiredLatMargin &&
+			cachedRenderMaxLat >= displayMaxLat + requiredLatMargin;
+	}
 
-	auto cacheMatchesCurrentView = [&]() -> bool
+	bool rasterCacheHasCompatibleZoom()
 	{
-		return AvisoGeoJsonRasterCache != nullptr &&
-			AvisoGeoJsonRasterCachePath == path &&
-			AvisoGeoJsonRasterGroupGeneration == groupGeneration &&
-			AvisoWithinTolerance(AvisoGeoJsonRasterMinLongitude, displayMinLon, lonPixelTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRasterMinLatitude, displayMinLat, latPixelTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLongitude, displayMaxLon, lonPixelTolerance) &&
-			AvisoWithinTolerance(AvisoGeoJsonRasterMaxLatitude, displayMaxLat, latPixelTolerance) &&
-			rasterCacheTransformMatchesCurrentView();
-	};
-
-	auto drawRasterCacheTransformed = [&]() -> bool
-	{
-		if (AvisoGeoJsonRasterCache == nullptr || AvisoGeoJsonRasterWidth <= 0 || AvisoGeoJsonRasterHeight <= 0)
-			return false;
-		if (AvisoGeoJsonRasterCachePath != path)
-			return false;
-		if (AvisoGeoJsonRasterGroupGeneration != groupGeneration)
-			return false;
-		if (!AvisoGeoJsonRasterAnchorValid)
-			return false;
-		if (!rasterCacheTransformMatchesCurrentView())
-			return false;
-
-		const double cachedViewportLonSpan = std::abs(AvisoGeoJsonRasterBottomRightLongitude - AvisoGeoJsonRasterAnchorLongitude);
-		const double cachedViewportLatSpan = std::abs(AvisoGeoJsonRasterAnchorLatitude - AvisoGeoJsonRasterBottomRightLatitude);
-		if (cachedViewportLonSpan <= 0.0 || cachedViewportLatSpan <= 0.0)
-			return false;
-
-		const PointF destTopLeft = projectScreenPoint(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterAnchorLatitude);
-		const PointF destTopRight = projectScreenPoint(AvisoGeoJsonRasterBottomRightLongitude, AvisoGeoJsonRasterAnchorLatitude);
-		const PointF destBottomLeft = projectScreenPoint(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLatitude);
-		const PointF destBottomRight = projectScreenPoint(AvisoGeoJsonRasterBottomRightLongitude, AvisoGeoJsonRasterBottomRightLatitude);
-		const double destX = AvisoMin(AvisoMin(destTopLeft.X, destTopRight.X), AvisoMin(destBottomLeft.X, destBottomRight.X));
-		const double destY = AvisoMin(AvisoMin(destTopLeft.Y, destTopRight.Y), AvisoMin(destBottomLeft.Y, destBottomRight.Y));
-		const double destRight = AvisoMax(AvisoMax(destTopLeft.X, destTopRight.X), AvisoMax(destBottomLeft.X, destBottomRight.X));
-		const double destBottom = AvisoMax(AvisoMax(destTopLeft.Y, destTopRight.Y), AvisoMax(destBottomLeft.Y, destBottomRight.Y));
-		const double destWidth = destRight - destX;
-		const double destHeight = destBottom - destY;
-		if (destWidth < 1.0 || destHeight < 1.0)
-			return false;
-
-		if (destRight < static_cast<double>(radarArea.left) ||
-			destX > static_cast<double>(radarArea.right) ||
-			destBottom < static_cast<double>(radarArea.top) ||
-			destY > static_cast<double>(radarArea.bottom))
+		if (radar.AvisoGeoJsonRasterCache == nullptr ||
+			radar.AvisoGeoJsonRasterCachePath != path ||
+			radar.AvisoGeoJsonRasterGroupGeneration != groupGeneration ||
+			!radar.AvisoGeoJsonRasterAnchorValid)
 		{
 			return false;
 		}
 
-		const double visibleLeft = AvisoMax(destX, static_cast<double>(radarArea.left));
-		const double visibleTop = AvisoMax(destY, static_cast<double>(radarArea.top));
-		const double visibleRight = AvisoMin(destRight, static_cast<double>(radarArea.right));
-		const double visibleBottom = AvisoMin(destBottom, static_cast<double>(radarArea.bottom));
-		const double visibleWidth = visibleRight - visibleLeft;
-		const double visibleHeight = visibleBottom - visibleTop;
-		if (visibleWidth < 1.0 || visibleHeight < 1.0)
+		const double cachedDisplayLonSpan = radar.AvisoGeoJsonRasterMaxLongitude - radar.AvisoGeoJsonRasterMinLongitude;
+		const double cachedDisplayLatSpan = radar.AvisoGeoJsonRasterMaxLatitude - radar.AvisoGeoJsonRasterMinLatitude;
+		if (cachedDisplayLonSpan <= 0.0 || cachedDisplayLatSpan <= 0.0)
 			return false;
 
-		const double sourceScaleX = static_cast<double>(AvisoGeoJsonRasterWidth) / destWidth;
-		const double sourceScaleY = static_cast<double>(AvisoGeoJsonRasterHeight) / destHeight;
-		const double sourceX = (visibleLeft - destX) * sourceScaleX;
-		const double sourceY = (visibleTop - destY) * sourceScaleY;
-		const double sourceWidth = visibleWidth * sourceScaleX;
-		const double sourceHeight = visibleHeight * sourceScaleY;
+		const double lonScaleRatio = lonSpan / cachedDisplayLonSpan;
+		const double latScaleRatio = latSpan / cachedDisplayLatSpan;
+		return
+			lonScaleRatio >= 0.985 && lonScaleRatio <= 1.015 &&
+			latScaleRatio >= 0.985 && latScaleRatio <= 1.015;
+	}
 
-		int sourceXInt = static_cast<int>(std::floor(sourceX));
-		int sourceYInt = static_cast<int>(std::floor(sourceY));
-		int sourceRightInt = static_cast<int>(std::ceil(sourceX + sourceWidth));
-		int sourceBottomInt = static_cast<int>(std::ceil(sourceY + sourceHeight));
-		sourceXInt = std::clamp(sourceXInt, 0, AvisoGeoJsonRasterWidth);
-		sourceYInt = std::clamp(sourceYInt, 0, AvisoGeoJsonRasterHeight);
-		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, AvisoGeoJsonRasterWidth);
-		sourceBottomInt = std::clamp(sourceBottomInt, sourceYInt, AvisoGeoJsonRasterHeight);
-		const int sourceWidthInt = sourceRightInt - sourceXInt;
-		const int sourceHeightInt = sourceBottomInt - sourceYInt;
-		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
-			return false;
-
-		// Keep the expanded integer source crop on the same transform as the
-		// floating-point destination. Mapping independently rounded rectangles
-		// shifts the cached preview by one or more scaled source pixels.
-		const double alignedDestLeft = destX + (static_cast<double>(sourceXInt) / sourceScaleX);
-		const double alignedDestTop = destY + (static_cast<double>(sourceYInt) / sourceScaleY);
-		const double alignedDestRight = destX + (static_cast<double>(sourceRightInt) / sourceScaleX);
-		const double alignedDestBottom = destY + (static_cast<double>(sourceBottomInt) / sourceScaleY);
-		const int destLeft = static_cast<int>(std::lround(alignedDestLeft));
-		const int destTop = static_cast<int>(std::lround(alignedDestTop));
-		const int destRightInt = static_cast<int>(std::lround(alignedDestRight));
-		const int destBottomInt = static_cast<int>(std::lround(alignedDestBottom));
-		const int destWidthInt = destRightInt - destLeft;
-		const int destHeightInt = destBottomInt - destTop;
-		if (destWidthInt <= 0 || destHeightInt <= 0)
-			return false;
-
-		const RECT sourceRect = {
-			sourceXInt,
-			sourceYInt,
-			sourceRightInt,
-			sourceBottomInt
-		};
-		const RECT destinationRect = {
-			destLeft,
-			destTop,
-			destRightInt,
-			destBottomInt
-		};
-		if (AvisoRasterBlitterInstance == nullptr)
-			AvisoRasterBlitterInstance = std::make_unique<VsmrAviso::AvisoRasterBlitter>();
-		return AvisoRasterBlitterInstance->Blend(
-			graphics,
-			hDC,
-			AvisoGeoJsonRasterCache,
-			sourceRect,
-			destinationRect,
-			radarArea);
-	};
-
-	auto drawRasterCacheViewportAligned = [&]() -> bool
+	bool drawRasterCacheViewportAligned()
 	{
-		if (AvisoGeoJsonRasterCache == nullptr ||
-			AvisoGeoJsonRasterCachePath != path ||
-			AvisoGeoJsonRasterColorPalette != AvisoColorPalette ||
-			AvisoGeoJsonRasterWidth <= 0 ||
-			AvisoGeoJsonRasterHeight <= 0 ||
-			!AvisoGeoJsonRasterAnchorValid)
+		if (radar.AvisoGeoJsonRasterCache == nullptr ||
+			radar.AvisoGeoJsonRasterCachePath != path ||
+			radar.AvisoGeoJsonRasterColorPalette != radar.AvisoColorPalette ||
+			radar.AvisoGeoJsonRasterWidth <= 0 ||
+			radar.AvisoGeoJsonRasterHeight <= 0 ||
+			!radar.AvisoGeoJsonRasterAnchorValid)
 		{
 			return false;
 		}
 
-		const double cachedDisplayLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
-		const double cachedDisplayLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
+		const double cachedDisplayLonSpan = radar.AvisoGeoJsonRasterMaxLongitude - radar.AvisoGeoJsonRasterMinLongitude;
+		const double cachedDisplayLatSpan = radar.AvisoGeoJsonRasterMaxLatitude - radar.AvisoGeoJsonRasterMinLatitude;
 		if (cachedDisplayLonSpan <= 0.0 || cachedDisplayLatSpan <= 0.0)
 			return false;
 
 		auto projectCachedPoint = [&](double longitude, double latitude) -> PointF
 		{
-			const double u = (longitude - AvisoGeoJsonRasterMinLongitude) / cachedDisplayLonSpan;
-			const double v = (AvisoGeoJsonRasterMaxLatitude - latitude) / cachedDisplayLatSpan;
-			const double topX = static_cast<double>(AvisoGeoJsonRasterProjectedTopLeft.X) + static_cast<double>(AvisoGeoJsonRasterProjectedTopRight.X - AvisoGeoJsonRasterProjectedTopLeft.X) * u;
-			const double bottomX = static_cast<double>(AvisoGeoJsonRasterProjectedBottomLeft.X) + static_cast<double>(AvisoGeoJsonRasterProjectedBottomRight.X - AvisoGeoJsonRasterProjectedBottomLeft.X) * u;
-			const double topY = static_cast<double>(AvisoGeoJsonRasterProjectedTopLeft.Y) + static_cast<double>(AvisoGeoJsonRasterProjectedTopRight.Y - AvisoGeoJsonRasterProjectedTopLeft.Y) * u;
-			const double bottomY = static_cast<double>(AvisoGeoJsonRasterProjectedBottomLeft.Y) + static_cast<double>(AvisoGeoJsonRasterProjectedBottomRight.Y - AvisoGeoJsonRasterProjectedBottomLeft.Y) * u;
+			const double u = (longitude - radar.AvisoGeoJsonRasterMinLongitude) / cachedDisplayLonSpan;
+			const double v = (radar.AvisoGeoJsonRasterMaxLatitude - latitude) / cachedDisplayLatSpan;
+			const double topX = static_cast<double>(radar.AvisoGeoJsonRasterProjectedTopLeft.X) + static_cast<double>(radar.AvisoGeoJsonRasterProjectedTopRight.X - radar.AvisoGeoJsonRasterProjectedTopLeft.X) * u;
+			const double bottomX = static_cast<double>(radar.AvisoGeoJsonRasterProjectedBottomLeft.X) + static_cast<double>(radar.AvisoGeoJsonRasterProjectedBottomRight.X - radar.AvisoGeoJsonRasterProjectedBottomLeft.X) * u;
+			const double topY = static_cast<double>(radar.AvisoGeoJsonRasterProjectedTopLeft.Y) + static_cast<double>(radar.AvisoGeoJsonRasterProjectedTopRight.Y - radar.AvisoGeoJsonRasterProjectedTopLeft.Y) * u;
+			const double bottomY = static_cast<double>(radar.AvisoGeoJsonRasterProjectedBottomLeft.Y) + static_cast<double>(radar.AvisoGeoJsonRasterProjectedBottomRight.Y - radar.AvisoGeoJsonRasterProjectedBottomLeft.Y) * u;
 			return PointF(
 				static_cast<REAL>(topX + (bottomX - topX) * v),
 				static_cast<REAL>(topY + (bottomY - topY) * v));
 		};
 
-		const PointF cachedRenderTopLeft = projectCachedPoint(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterAnchorLatitude);
-		const PointF cachedRenderTopRight = projectCachedPoint(AvisoGeoJsonRasterBottomRightLongitude, AvisoGeoJsonRasterAnchorLatitude);
-		const PointF cachedRenderBottomLeft = projectCachedPoint(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLatitude);
-		const PointF cachedRenderBottomRight = projectCachedPoint(AvisoGeoJsonRasterBottomRightLongitude, AvisoGeoJsonRasterBottomRightLatitude);
+		const PointF cachedRenderTopLeft = projectCachedPoint(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterAnchorLatitude);
+		const PointF cachedRenderTopRight = projectCachedPoint(radar.AvisoGeoJsonRasterBottomRightLongitude, radar.AvisoGeoJsonRasterAnchorLatitude);
+		const PointF cachedRenderBottomLeft = projectCachedPoint(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
+		const PointF cachedRenderBottomRight = projectCachedPoint(radar.AvisoGeoJsonRasterBottomRightLongitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
 		const double cachedRenderLeft = AvisoMin(AvisoMin(cachedRenderTopLeft.X, cachedRenderTopRight.X), AvisoMin(cachedRenderBottomLeft.X, cachedRenderBottomRight.X));
 		const double cachedRenderTop = AvisoMin(AvisoMin(cachedRenderTopLeft.Y, cachedRenderTopRight.Y), AvisoMin(cachedRenderBottomLeft.Y, cachedRenderBottomRight.Y));
 		const double cachedRenderRight = AvisoMax(AvisoMax(cachedRenderTopLeft.X, cachedRenderTopRight.X), AvisoMax(cachedRenderBottomLeft.X, cachedRenderBottomRight.X));
@@ -1244,8 +958,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		const double sourceScreenRight = AvisoMax(AvisoMax(sourceTopLeft.X, sourceTopRight.X), AvisoMax(sourceBottomLeft.X, sourceBottomRight.X));
 		const double sourceScreenBottom = AvisoMax(AvisoMax(sourceTopLeft.Y, sourceTopRight.Y), AvisoMax(sourceBottomLeft.Y, sourceBottomRight.Y));
 
-		const double sourceScaleX = static_cast<double>(AvisoGeoJsonRasterWidth) / cachedRenderWidth;
-		const double sourceScaleY = static_cast<double>(AvisoGeoJsonRasterHeight) / cachedRenderHeight;
+		const double sourceScaleX = static_cast<double>(radar.AvisoGeoJsonRasterWidth) / cachedRenderWidth;
+		const double sourceScaleY = static_cast<double>(radar.AvisoGeoJsonRasterHeight) / cachedRenderHeight;
 		const double sourceX = (sourceScreenLeft - cachedRenderLeft) * sourceScaleX;
 		const double sourceY = (sourceScreenTop - cachedRenderTop) * sourceScaleY;
 		const double sourceRight = (sourceScreenRight - cachedRenderLeft) * sourceScaleX;
@@ -1260,8 +974,8 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		const double coverageTolerance = 1e-6;
 		if (sourceX < -coverageTolerance ||
 			sourceY < -coverageTolerance ||
-			sourceRight > static_cast<double>(AvisoGeoJsonRasterWidth) + coverageTolerance ||
-			sourceBottom > static_cast<double>(AvisoGeoJsonRasterHeight) + coverageTolerance)
+			sourceRight > static_cast<double>(radar.AvisoGeoJsonRasterWidth) + coverageTolerance ||
+			sourceBottom > static_cast<double>(radar.AvisoGeoJsonRasterHeight) + coverageTolerance)
 		{
 			return false;
 		}
@@ -1270,10 +984,10 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		int sourceYInt = static_cast<int>(std::floor(sourceY));
 		int sourceRightInt = static_cast<int>(std::ceil(sourceRight));
 		int sourceBottomInt = static_cast<int>(std::ceil(sourceBottom));
-		sourceXInt = std::clamp(sourceXInt, 0, AvisoGeoJsonRasterWidth);
-		sourceYInt = std::clamp(sourceYInt, 0, AvisoGeoJsonRasterHeight);
-		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, AvisoGeoJsonRasterWidth);
-		sourceBottomInt = std::clamp(sourceBottomInt, sourceYInt, AvisoGeoJsonRasterHeight);
+		sourceXInt = std::clamp(sourceXInt, 0, radar.AvisoGeoJsonRasterWidth);
+		sourceYInt = std::clamp(sourceYInt, 0, radar.AvisoGeoJsonRasterHeight);
+		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, radar.AvisoGeoJsonRasterWidth);
+		sourceBottomInt = std::clamp(sourceBottomInt, sourceYInt, radar.AvisoGeoJsonRasterHeight);
 		const int sourceWidthInt = sourceRightInt - sourceXInt;
 		const int sourceHeightInt = sourceBottomInt - sourceYInt;
 		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
@@ -1317,177 +1031,539 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 			destRightInt,
 			destBottomInt
 		};
-		if (AvisoRasterBlitterInstance == nullptr)
-			AvisoRasterBlitterInstance = std::make_unique<VsmrAviso::AvisoRasterBlitter>();
-		return AvisoRasterBlitterInstance->Blend(
+		if (radar.AvisoRasterBlitterInstance == nullptr)
+			radar.AvisoRasterBlitterInstance = std::make_unique<VsmrAviso::AvisoRasterBlitter>();
+		return radar.AvisoRasterBlitterInstance->Blend(
 			graphics,
 			hDC,
-			AvisoGeoJsonRasterCache,
+			radar.AvisoGeoJsonRasterCache,
 			sourceRect,
 			destinationRect,
 			radarArea);
-	};
-
-	auto rasterCacheHasCompatibleZoom = [&]() -> bool
-	{
-		if (AvisoGeoJsonRasterCache == nullptr ||
-			AvisoGeoJsonRasterCachePath != path ||
-			AvisoGeoJsonRasterGroupGeneration != groupGeneration ||
-			!AvisoGeoJsonRasterAnchorValid)
-		{
-			return false;
-		}
-
-		const double cachedDisplayLonSpan = AvisoGeoJsonRasterMaxLongitude - AvisoGeoJsonRasterMinLongitude;
-		const double cachedDisplayLatSpan = AvisoGeoJsonRasterMaxLatitude - AvisoGeoJsonRasterMinLatitude;
-		if (cachedDisplayLonSpan <= 0.0 || cachedDisplayLatSpan <= 0.0)
-			return false;
-
-		const double lonScaleRatio = lonSpan / cachedDisplayLonSpan;
-		const double latScaleRatio = latSpan / cachedDisplayLatSpan;
-		return
-			lonScaleRatio >= 0.985 && lonScaleRatio <= 1.015 &&
-			latScaleRatio >= 0.985 && latScaleRatio <= 1.015;
-	};
-
-	auto rasterCacheHasWorkingMargin = [&]() -> bool
-	{
-		if (!rasterCacheHasCompatibleZoom())
-			return false;
-
-		const double cachedRenderMinLon = AvisoMin(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLongitude);
-		const double cachedRenderMaxLon = AvisoMax(AvisoGeoJsonRasterAnchorLongitude, AvisoGeoJsonRasterBottomRightLongitude);
-		const double cachedRenderMinLat = AvisoMin(AvisoGeoJsonRasterAnchorLatitude, AvisoGeoJsonRasterBottomRightLatitude);
-		const double cachedRenderMaxLat = AvisoMax(AvisoGeoJsonRasterAnchorLatitude, AvisoGeoJsonRasterBottomRightLatitude);
-		const double requiredLonMargin = lonSpan * 0.25;
-		const double requiredLatMargin = latSpan * 0.25;
-		return
-			cachedRenderMinLon <= displayMinLon - requiredLonMargin &&
-			cachedRenderMaxLon >= displayMaxLon + requiredLonMargin &&
-			cachedRenderMinLat <= displayMinLat - requiredLatMargin &&
-			cachedRenderMaxLat >= displayMaxLat + requiredLatMargin;
-	};
-
-	ApplyCompletedAvisoGeoJsonRaster();
-	if (cacheMatchesCurrentView() && drawRasterCacheTransformed())
-	{
-		PerformanceDiagnostics.RecordAvisoCacheOutcome(
-			VsmrPerformance::AvisoViewport::Main,
-			VsmrPerformance::AvisoCacheOutcome::Exact,
-			false,
-			false);
-		return;
 	}
-	auto avisoRasterUpdatePending = [&]() -> bool
+
+	bool drawRasterCacheTransformed()
 	{
-		return AvisoGeoJsonRenderPipeline != nullptr &&
-			AvisoGeoJsonRenderPipeline->HasPendingWork();
-	};
+		if (radar.AvisoGeoJsonRasterCache == nullptr || radar.AvisoGeoJsonRasterWidth <= 0 || radar.AvisoGeoJsonRasterHeight <= 0)
+			return false;
+		if (radar.AvisoGeoJsonRasterCachePath != path)
+			return false;
+		if (radar.AvisoGeoJsonRasterGroupGeneration != groupGeneration)
+			return false;
+		if (!radar.AvisoGeoJsonRasterAnchorValid)
+			return false;
+		if (!rasterCacheTransformMatchesCurrentView())
+			return false;
 
-	// Half a viewport of overscan still doubles each raster dimension and
-	// comfortably exceeds the 25% refresh margin, while bounding allocation.
-	const double overscanRatio = 0.50;
-	const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
-	const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
-	const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
-	const double renderMaxLat = displayMaxLat + (latSpan * overscanRatio);
-	const PointF renderTopLeft = projectScreenPoint(renderMinLon, renderMaxLat);
-	const PointF renderTopRight = projectScreenPoint(renderMaxLon, renderMaxLat);
-	const PointF renderBottomLeft = projectScreenPoint(renderMinLon, renderMinLat);
-	const PointF renderBottomRight = projectScreenPoint(renderMaxLon, renderMinLat);
-	const double renderScreenLeft = AvisoMin(AvisoMin(renderTopLeft.X, renderTopRight.X), AvisoMin(renderBottomLeft.X, renderBottomRight.X));
-	const double renderScreenTop = AvisoMin(AvisoMin(renderTopLeft.Y, renderTopRight.Y), AvisoMin(renderBottomLeft.Y, renderBottomRight.Y));
-	const double renderScreenRight = AvisoMax(AvisoMax(renderTopLeft.X, renderTopRight.X), AvisoMax(renderBottomLeft.X, renderBottomRight.X));
-	const double renderScreenBottom = AvisoMax(AvisoMax(renderTopLeft.Y, renderTopRight.Y), AvisoMax(renderBottomLeft.Y, renderBottomRight.Y));
-	const double renderPixelWidth = renderScreenRight - renderScreenLeft;
-	const double renderPixelHeight = renderScreenBottom - renderScreenTop;
-	if (renderPixelWidth <= 0.0 || renderPixelHeight <= 0.0)
-		return;
+		const double cachedViewportLonSpan = std::abs(radar.AvisoGeoJsonRasterBottomRightLongitude - radar.AvisoGeoJsonRasterAnchorLongitude);
+		const double cachedViewportLatSpan = std::abs(radar.AvisoGeoJsonRasterAnchorLatitude - radar.AvisoGeoJsonRasterBottomRightLatitude);
+		if (cachedViewportLonSpan <= 0.0 || cachedViewportLatSpan <= 0.0)
+			return false;
 
-	const double maxDimension = renderPixelWidth > renderPixelHeight ? renderPixelWidth : renderPixelHeight;
-	const double targetRasterScale = 1.0;
-	const double maxRasterSide = 6400.0;
-	const double maxRasterPixels = 32000000.0;
-	double rasterScale = targetRasterScale;
-	const double sideLimitedScale = maxRasterSide / maxDimension;
-	if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
-		rasterScale = sideLimitedScale;
-	const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
-	if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
-		rasterScale = pixelLimitedScale;
-	// The side/pixel caps are hard bounds. Only very large viewports fall below
-	// half resolution; allowing that is safer than defeating the allocation cap.
-	rasterScale = AvisoMin(rasterScale, targetRasterScale);
-	int rasterWidth = static_cast<int>(std::floor(renderPixelWidth * rasterScale));
-	int rasterHeight = static_cast<int>(std::floor(renderPixelHeight * rasterScale));
-	if (rasterWidth < 1)
-		rasterWidth = 1;
-	if (rasterHeight < 1)
-		rasterHeight = 1;
+		const PointF destTopLeft = projectScreenPoint(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterAnchorLatitude);
+		const PointF destTopRight = projectScreenPoint(radar.AvisoGeoJsonRasterBottomRightLongitude, radar.AvisoGeoJsonRasterAnchorLatitude);
+		const PointF destBottomLeft = projectScreenPoint(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
+		const PointF destBottomRight = projectScreenPoint(radar.AvisoGeoJsonRasterBottomRightLongitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
+		const double destX = AvisoMin(AvisoMin(destTopLeft.X, destTopRight.X), AvisoMin(destBottomLeft.X, destBottomRight.X));
+		const double destY = AvisoMin(AvisoMin(destTopLeft.Y, destTopRight.Y), AvisoMin(destBottomLeft.Y, destBottomRight.Y));
+		const double destRight = AvisoMax(AvisoMax(destTopLeft.X, destTopRight.X), AvisoMax(destBottomLeft.X, destBottomRight.X));
+		const double destBottom = AvisoMax(AvisoMax(destTopLeft.Y, destTopRight.Y), AvisoMax(destBottomLeft.Y, destBottomRight.Y));
+		const double destWidth = destRight - destX;
+		const double destHeight = destBottom - destY;
+		if (destWidth < 1.0 || destHeight < 1.0)
+			return false;
 
-	AvisoRasterRenderRequest request;
-	request.groupGeneration = groupGeneration;
-	request.path = path;
-	request.features = featureSnapshot;
-	request.labels = labelSnapshot;
-	request.groupVisibility = groupVisibility;
-	request.colorPalette = AvisoColorPalette;
-	request.rasterWidth = rasterWidth;
-	request.rasterHeight = rasterHeight;
-	request.rasterScale = rasterScale;
-	request.displayMinLongitude = displayMinLon;
-	request.displayMinLatitude = displayMinLat;
-	request.displayMaxLongitude = displayMaxLon;
-	request.displayMaxLatitude = displayMaxLat;
-	request.renderMinLongitude = renderMinLon;
-	request.renderMinLatitude = renderMinLat;
-	request.renderMaxLongitude = renderMaxLon;
-	request.renderMaxLatitude = renderMaxLat;
-	request.renderScreenLeft = renderScreenLeft;
-	request.renderScreenTop = renderScreenTop;
-	request.scaleX = scaleX;
-	request.scaleY = scaleY;
-	request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
-		SMRGeometry::DistanceMeters(
-			makeDisplayPosition(fullDisplayMinLat, fullDisplayMinLon),
-			makeDisplayPosition(fullDisplayMaxLat, fullDisplayMaxLon)));
-	request.projectedTopLeft = projectedTopLeft;
-	request.projectedTopRight = projectedTopRight;
-	request.projectedBottomLeft = projectedBottomLeft;
-	request.projectedBottomRight = projectedBottomRight;
-
-	// A divider resize changes the visible geographic span, but not the map's
-	// pixel scale. Prefer the geo-anchored cache whenever its transform matches;
-	// the compatibility/margin check still decides whether to refresh it.
-	if (drawRasterCacheTransformed())
-	{
-		bool updateRequested = false;
-		if (!rasterCacheHasWorkingMargin())
+		if (destRight < static_cast<double>(radarArea.left) ||
+			destX > static_cast<double>(radarArea.right) ||
+			destBottom < static_cast<double>(radarArea.top) ||
+			destY > static_cast<double>(radarArea.bottom))
 		{
-			updateRequested = true;
-			QueueAvisoGeoJsonRasterRender(std::move(request));
+			return false;
 		}
-		const bool delayedByAvisoUpdate = updateRequested && avisoRasterUpdatePending();
-		PerformanceDiagnostics.RecordAvisoCacheOutcome(
+
+		const double visibleLeft = AvisoMax(destX, static_cast<double>(radarArea.left));
+		const double visibleTop = AvisoMax(destY, static_cast<double>(radarArea.top));
+		const double visibleRight = AvisoMin(destRight, static_cast<double>(radarArea.right));
+		const double visibleBottom = AvisoMin(destBottom, static_cast<double>(radarArea.bottom));
+		const double visibleWidth = visibleRight - visibleLeft;
+		const double visibleHeight = visibleBottom - visibleTop;
+		if (visibleWidth < 1.0 || visibleHeight < 1.0)
+			return false;
+
+		const double sourceScaleX = static_cast<double>(radar.AvisoGeoJsonRasterWidth) / destWidth;
+		const double sourceScaleY = static_cast<double>(radar.AvisoGeoJsonRasterHeight) / destHeight;
+		const double sourceX = (visibleLeft - destX) * sourceScaleX;
+		const double sourceY = (visibleTop - destY) * sourceScaleY;
+		const double sourceWidth = visibleWidth * sourceScaleX;
+		const double sourceHeight = visibleHeight * sourceScaleY;
+
+		int sourceXInt = static_cast<int>(std::floor(sourceX));
+		int sourceYInt = static_cast<int>(std::floor(sourceY));
+		int sourceRightInt = static_cast<int>(std::ceil(sourceX + sourceWidth));
+		int sourceBottomInt = static_cast<int>(std::ceil(sourceY + sourceHeight));
+		sourceXInt = std::clamp(sourceXInt, 0, radar.AvisoGeoJsonRasterWidth);
+		sourceYInt = std::clamp(sourceYInt, 0, radar.AvisoGeoJsonRasterHeight);
+		sourceRightInt = std::clamp(sourceRightInt, sourceXInt, radar.AvisoGeoJsonRasterWidth);
+		sourceBottomInt = std::clamp(sourceBottomInt, sourceYInt, radar.AvisoGeoJsonRasterHeight);
+		const int sourceWidthInt = sourceRightInt - sourceXInt;
+		const int sourceHeightInt = sourceBottomInt - sourceYInt;
+		if (sourceWidthInt <= 0 || sourceHeightInt <= 0)
+			return false;
+
+		// Keep the expanded integer source crop on the same transform as the
+		// floating-point destination. Mapping independently rounded rectangles
+		// shifts the cached preview by one or more scaled source pixels.
+		const double alignedDestLeft = destX + (static_cast<double>(sourceXInt) / sourceScaleX);
+		const double alignedDestTop = destY + (static_cast<double>(sourceYInt) / sourceScaleY);
+		const double alignedDestRight = destX + (static_cast<double>(sourceRightInt) / sourceScaleX);
+		const double alignedDestBottom = destY + (static_cast<double>(sourceBottomInt) / sourceScaleY);
+		const int destLeft = static_cast<int>(std::lround(alignedDestLeft));
+		const int destTop = static_cast<int>(std::lround(alignedDestTop));
+		const int destRightInt = static_cast<int>(std::lround(alignedDestRight));
+		const int destBottomInt = static_cast<int>(std::lround(alignedDestBottom));
+		const int destWidthInt = destRightInt - destLeft;
+		const int destHeightInt = destBottomInt - destTop;
+		if (destWidthInt <= 0 || destHeightInt <= 0)
+			return false;
+
+		const RECT sourceRect = {
+			sourceXInt,
+			sourceYInt,
+			sourceRightInt,
+			sourceBottomInt
+		};
+		const RECT destinationRect = {
+			destLeft,
+			destTop,
+			destRightInt,
+			destBottomInt
+		};
+		if (radar.AvisoRasterBlitterInstance == nullptr)
+			radar.AvisoRasterBlitterInstance = std::make_unique<VsmrAviso::AvisoRasterBlitter>();
+		return radar.AvisoRasterBlitterInstance->Blend(
+			graphics,
+			hDC,
+			radar.AvisoGeoJsonRasterCache,
+			sourceRect,
+			destinationRect,
+			radarArea);
+	}
+
+	bool cacheMatchesCurrentView()
+	{
+		return radar.AvisoGeoJsonRasterCache != nullptr &&
+			radar.AvisoGeoJsonRasterCachePath == path &&
+			radar.AvisoGeoJsonRasterGroupGeneration == groupGeneration &&
+			AvisoWithinTolerance(radar.AvisoGeoJsonRasterMinLongitude, displayMinLon, lonPixelTolerance) &&
+			AvisoWithinTolerance(radar.AvisoGeoJsonRasterMinLatitude, displayMinLat, latPixelTolerance) &&
+			AvisoWithinTolerance(radar.AvisoGeoJsonRasterMaxLongitude, displayMaxLon, lonPixelTolerance) &&
+			AvisoWithinTolerance(radar.AvisoGeoJsonRasterMaxLatitude, displayMaxLat, latPixelTolerance) &&
+			rasterCacheTransformMatchesCurrentView();
+	}
+
+	bool rasterCacheTransformMatchesCurrentView()
+	{
+		if (radar.AvisoGeoJsonRasterCache == nullptr || !radar.AvisoGeoJsonRasterAnchorValid)
+			return false;
+		const double cachedLonSpan = radar.AvisoGeoJsonRasterMaxLongitude - radar.AvisoGeoJsonRasterMinLongitude;
+		const double cachedLatSpan = radar.AvisoGeoJsonRasterMaxLatitude - radar.AvisoGeoJsonRasterMinLatitude;
+		if (cachedLonSpan <= 0.0 || cachedLatSpan <= 0.0 || lonSpan <= 0.0 || latSpan <= 0.0)
+			return false;
+
+		const double cachedHorizontalX = radar.AvisoGeoJsonRasterProjectedTopRight.X - radar.AvisoGeoJsonRasterProjectedTopLeft.X;
+		const double cachedHorizontalY = radar.AvisoGeoJsonRasterProjectedTopRight.Y - radar.AvisoGeoJsonRasterProjectedTopLeft.Y;
+		const double cachedVerticalX = radar.AvisoGeoJsonRasterProjectedBottomLeft.X - radar.AvisoGeoJsonRasterProjectedTopLeft.X;
+		const double cachedVerticalY = radar.AvisoGeoJsonRasterProjectedBottomLeft.Y - radar.AvisoGeoJsonRasterProjectedTopLeft.Y;
+		const double currentHorizontalX = static_cast<double>(projectedTopRight.X - projectedTopLeft.X);
+		const double currentHorizontalY = static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y);
+		const double currentVerticalX = static_cast<double>(projectedBottomLeft.X - projectedTopLeft.X);
+		const double currentVerticalY = static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y);
+
+		// Zooming changes the geographic span, not the viewport's projection
+		// basis. The cached raster can therefore remain geo-anchored while the
+		// worker produces the definitive bitmap for the new scale.
+		const bool sameViewportBasis =
+			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalX, currentVerticalX, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalY, currentVerticalY, transformPixelTolerance);
+		if (sameViewportBasis)
+			return true;
+
+		// A snapped-divider resize keeps the geographic pixel scale while changing
+		// the visible span, so retain the existing span-normalized compatibility.
+		const double horizontalSpanRatio = cachedLonSpan / lonSpan;
+		const double verticalSpanRatio = cachedLatSpan / latSpan;
+		return
+			AvisoWithinTolerance(cachedHorizontalX, currentHorizontalX * horizontalSpanRatio, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedHorizontalY, currentHorizontalY * horizontalSpanRatio, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalX, currentVerticalX * verticalSpanRatio, transformPixelTolerance) &&
+			AvisoWithinTolerance(cachedVerticalY, currentVerticalY * verticalSpanRatio, transformPixelTolerance);
+	}
+
+	PointF projectScreenPoint(double longitude, double latitude)
+	{
+		const double u = (longitude - displayMinLon) / lonSpan;
+		const double v = (displayMaxLat - latitude) / latSpan;
+		const double topX = static_cast<double>(projectedTopLeft.X) + static_cast<double>(projectedTopRight.X - projectedTopLeft.X) * u;
+		const double bottomX = static_cast<double>(projectedBottomLeft.X) + static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X) * u;
+		const double topY = static_cast<double>(projectedTopLeft.Y) + static_cast<double>(projectedTopRight.Y - projectedTopLeft.Y) * u;
+		const double bottomY = static_cast<double>(projectedBottomLeft.Y) + static_cast<double>(projectedBottomRight.Y - projectedBottomLeft.Y) * u;
+		return PointF(
+			static_cast<REAL>(topX + (bottomX - topX) * v),
+			static_cast<REAL>(topY + (bottomY - topY) * v));
+	}
+
+	PointF projectFullDisplayPoint(double longitude, double latitude)
+	{
+		const double u = (longitude - fullDisplayMinLon) / fullDisplayLonSpan;
+		const double v = (fullDisplayMaxLat - latitude) / fullDisplayLatSpan;
+		const double topX = static_cast<double>(fullProjectedTopLeft.x) +
+			static_cast<double>(fullProjectedTopRight.x - fullProjectedTopLeft.x) * u;
+		const double bottomX = static_cast<double>(fullProjectedBottomLeft.x) +
+			static_cast<double>(fullProjectedBottomRight.x - fullProjectedBottomLeft.x) * u;
+		const double topY = static_cast<double>(fullProjectedTopLeft.y) +
+			static_cast<double>(fullProjectedTopRight.y - fullProjectedTopLeft.y) * u;
+		const double bottomY = static_cast<double>(fullProjectedBottomLeft.y) +
+			static_cast<double>(fullProjectedBottomRight.y - fullProjectedBottomLeft.y) * u;
+		return PointF(
+			static_cast<REAL>(topX + (bottomX - topX) * v),
+			static_cast<REAL>(topY + (bottomY - topY) * v));
+	}
+
+	CPosition makeDisplayPosition(double latitude, double longitude)
+	{
+		CPosition position;
+		position.m_Latitude = latitude;
+		position.m_Longitude = longitude;
+		return position;
+	}
+
+	bool Load()
+	{
+		if (radar.IsShutdownRequested())
+			return false;
+
+		path = radar.ResolveAvisoGeoJsonPathForAirport(radar.getActiveAirport());
+		if (path.empty())
+			return false;
+
+		if (radar.AvisoGeoJsonRenderDisabled)
+		{
+			bool sameFile = radar.AvisoGeoJsonRenderDisabledPath.empty() || radar.AvisoGeoJsonRenderDisabledPath == path;
+			try
+			{
+				sameFile = sameFile && radar.AvisoGeoJsonLoadedPath == path && radar.AvisoGeoJsonLoadedWriteTime == fs::last_write_time(fs::u8path(path));
+			}
+			catch (...)
+			{
+				sameFile = true;
+			}
+
+			if (sameFile)
+				return false;
+
+			radar.AvisoGeoJsonRenderDisabled = false;
+			radar.AvisoGeoJsonRenderDisabledPath.clear();
+		}
+
+		if (!radar.EnsureAvisoGeoJsonLoaded(path))
+		{
+			return false;
+		}
+		CRect backgroundArea = radar.ResolveMainAvisoRenderArea();
+		backgroundArea.NormalizeRect();
+		if (!backgroundArea.IsRectEmpty())
+			CDC::FromHandle(hDC)->FillSolidRect(backgroundArea, radar.GetAvisoBackgroundColor());
+		if (radar.AvisoGeoJsonFeatures.empty() && radar.AvisoGeoJsonLabels.empty())
+			return false;
+		if (!radar.GetAvisoRenderSnapshots(
+			featureSnapshot,
+			labelSnapshot,
+			groupVisibility,
+			groupGeneration))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	void InitializeView()
+	{
+		if (radar.AvisoGeoJsonHasBounds && radar.AvisoGeoJsonViewInitializedPath != path)
+		{
+			CPosition currentDisplayA;
+			CPosition currentDisplayB;
+			radar.GetDisplayArea(&currentDisplayA, &currentDisplayB);
+
+			const double initialDisplayMinLat = AvisoMin(currentDisplayA.m_Latitude, currentDisplayB.m_Latitude);
+			const double initialDisplayMaxLat = AvisoMax(currentDisplayA.m_Latitude, currentDisplayB.m_Latitude);
+			const double initialDisplayMinLon = AvisoMin(currentDisplayA.m_Longitude, currentDisplayB.m_Longitude);
+			const double initialDisplayMaxLon = AvisoMax(currentDisplayA.m_Longitude, currentDisplayB.m_Longitude);
+			const bool displayOverlapsAviso =
+				radar.AvisoGeoJsonMaxLatitude >= initialDisplayMinLat &&
+				radar.AvisoGeoJsonMinLatitude <= initialDisplayMaxLat &&
+				radar.AvisoGeoJsonMaxLongitude >= initialDisplayMinLon &&
+				radar.AvisoGeoJsonMinLongitude <= initialDisplayMaxLon;
+
+			if (!displayOverlapsAviso)
+			{
+				const double initialLatSpan = radar.AvisoGeoJsonMaxLatitude - radar.AvisoGeoJsonMinLatitude;
+				const double initialLonSpan = radar.AvisoGeoJsonMaxLongitude - radar.AvisoGeoJsonMinLongitude;
+				const double latPadding = AvisoMax(initialLatSpan * 0.08, 0.001);
+				const double lonPadding = AvisoMax(initialLonSpan * 0.08, 0.001);
+
+				CPosition leftDown;
+				leftDown.m_Latitude = radar.AvisoGeoJsonMinLatitude - latPadding;
+				leftDown.m_Longitude = radar.AvisoGeoJsonMinLongitude - lonPadding;
+
+				CPosition rightUp;
+				rightUp.m_Latitude = radar.AvisoGeoJsonMaxLatitude + latPadding;
+				rightUp.m_Longitude = radar.AvisoGeoJsonMaxLongitude + lonPadding;
+
+				radar.SetDisplayArea(leftDown, rightUp);
+				Logger::info("AVISO GeoJSON fitted display path=" + path);
+			}
+
+			radar.AvisoGeoJsonViewInitializedPath = path;
+		}
+	}
+
+	bool PrepareProjection()
+	{
+		radar.GetDisplayArea(&displayA, &displayB);
+
+		fullDisplayMinLat = AvisoMin(displayA.m_Latitude, displayB.m_Latitude);
+		fullDisplayMaxLat = AvisoMax(displayA.m_Latitude, displayB.m_Latitude);
+		fullDisplayMinLon = AvisoMin(displayA.m_Longitude, displayB.m_Longitude);
+		fullDisplayMaxLon = AvisoMax(displayA.m_Longitude, displayB.m_Longitude);
+		fullDisplayLatSpan = fullDisplayMaxLat - fullDisplayMinLat;
+		fullDisplayLonSpan = fullDisplayMaxLon - fullDisplayMinLon;
+		if (fullDisplayLatSpan <= 0.0 || fullDisplayLonSpan <= 0.0)
+			return false;
+
+		// Keep one projection basis for the complete EuroScope view. The visible
+		// main area may be cropped by a snapped inset, but rebuilding the basis from
+		// pixel-to-coordinate-to-integer-pixel round trips makes the map twitch by a
+		// pixel as the divider moves.
+		fullProjectedTopLeft = radar.ConvertCoordFromPositionToPixel(
+			makeDisplayPosition(fullDisplayMaxLat, fullDisplayMinLon));
+		fullProjectedTopRight = radar.ConvertCoordFromPositionToPixel(
+			makeDisplayPosition(fullDisplayMaxLat, fullDisplayMaxLon));
+		fullProjectedBottomLeft = radar.ConvertCoordFromPositionToPixel(
+			makeDisplayPosition(fullDisplayMinLat, fullDisplayMinLon));
+		fullProjectedBottomRight = radar.ConvertCoordFromPositionToPixel(
+			makeDisplayPosition(fullDisplayMinLat, fullDisplayMaxLon));
+
+		displayMinLat = fullDisplayMinLat;
+		displayMaxLat = fullDisplayMaxLat;
+		displayMinLon = fullDisplayMinLon;
+		displayMaxLon = fullDisplayMaxLon;
+
+		fullRadarArea = CRect(radar.GetRadarArea());
+		chatArea = CRect(radar.GetChatArea());
+		fullRadarArea.NormalizeRect();
+		chatArea.NormalizeRect();
+		if (!chatArea.IsRectEmpty())
+			fullRadarArea.bottom = chatArea.top;
+		fullRadarArea.NormalizeRect();
+		radarArea = radar.ResolveMainAvisoRenderArea();
+		if (radarArea.IsRectEmpty())
+			return false;
+
+		if (radarArea != fullRadarArea)
+		{
+			const POINT visibleCorners[] = {
+				{ radarArea.left, radarArea.top },
+				{ radarArea.right, radarArea.top },
+				{ radarArea.left, radarArea.bottom },
+				{ radarArea.right, radarArea.bottom }
+			};
+			double visibleMinLat = DBL_MAX;
+			double visibleMaxLat = -DBL_MAX;
+			double visibleMinLon = DBL_MAX;
+			double visibleMaxLon = -DBL_MAX;
+			bool visibleBoundsValid = true;
+			for (const POINT& corner : visibleCorners)
+			{
+				const CPosition position = radar.ConvertCoordFromPixelToPosition(corner);
+				if (!std::isfinite(position.m_Latitude) || !std::isfinite(position.m_Longitude))
+				{
+					visibleBoundsValid = false;
+					break;
+				}
+				visibleMinLat = AvisoMin(visibleMinLat, position.m_Latitude);
+				visibleMaxLat = AvisoMax(visibleMaxLat, position.m_Latitude);
+				visibleMinLon = AvisoMin(visibleMinLon, position.m_Longitude);
+				visibleMaxLon = AvisoMax(visibleMaxLon, position.m_Longitude);
+			}
+			if (visibleBoundsValid)
+			{
+				displayMinLat = AvisoMax(fullDisplayMinLat, visibleMinLat);
+				displayMaxLat = AvisoMin(fullDisplayMaxLat, visibleMaxLat);
+				displayMinLon = AvisoMax(fullDisplayMinLon, visibleMinLon);
+				displayMaxLon = AvisoMin(fullDisplayMaxLon, visibleMaxLon);
+			}
+		}
+		latSpan = displayMaxLat - displayMinLat;
+		lonSpan = displayMaxLon - displayMinLon;
+		if (latSpan <= 0.0 || lonSpan <= 0.0)
+			return false;
+
+		width = static_cast<double>(radarArea.right - radarArea.left);
+		height = static_cast<double>(radarArea.bottom - radarArea.top);
+		if (width <= 0.0 || height <= 0.0)
+			return false;
+
+		fallbackScaleX = width / lonSpan;
+		fallbackScaleY = height / latSpan;
+
+		projectedTopLeft = projectFullDisplayPoint(displayMinLon, displayMaxLat);
+		projectedTopRight = projectFullDisplayPoint(displayMaxLon, displayMaxLat);
+		projectedBottomLeft = projectFullDisplayPoint(displayMinLon, displayMinLat);
+		projectedBottomRight = projectFullDisplayPoint(displayMaxLon, displayMinLat);
+
+		projectedWidthTop = std::abs(static_cast<double>(projectedTopRight.X - projectedTopLeft.X));
+		projectedWidthBottom = std::abs(static_cast<double>(projectedBottomRight.X - projectedBottomLeft.X));
+		projectedHeightLeft = std::abs(static_cast<double>(projectedBottomLeft.Y - projectedTopLeft.Y));
+		projectedHeightRight = std::abs(static_cast<double>(projectedBottomRight.Y - projectedTopRight.Y));
+		projectedWidth = AvisoMax(AvisoMax(projectedWidthTop, projectedWidthBottom), 1.0);
+		projectedHeight = AvisoMax(AvisoMax(projectedHeightLeft, projectedHeightRight), 1.0);
+		scaleX = projectedWidth > 1.0 ? projectedWidth / lonSpan : fallbackScaleX;
+		scaleY = projectedHeight > 1.0 ? projectedHeight / latSpan : fallbackScaleY;
+
+		viewPixelTolerance = 1.15;
+		lonPixelTolerance = (1.0 / scaleX) * viewPixelTolerance;
+		latPixelTolerance = (1.0 / scaleY) * viewPixelTolerance;
+		transformPixelTolerance = 4.0;
+
+		return true;
+	}
+
+	void Draw()
+	{
+		radar.ApplyCompletedAvisoGeoJsonRaster();
+		if (cacheMatchesCurrentView() && drawRasterCacheTransformed())
+		{
+			radar.PerformanceDiagnostics.RecordAvisoCacheOutcome(
+				VsmrPerformance::AvisoViewport::Main,
+				VsmrPerformance::AvisoCacheOutcome::Exact,
+				false,
+				false);
+			return;
+		}
+
+		// Half a viewport of overscan still doubles each raster dimension and
+		// comfortably exceeds the 25% refresh margin, while bounding allocation.
+		const double overscanRatio = 0.50;
+		const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
+		const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
+		const double renderMinLat = displayMinLat - (latSpan * overscanRatio);
+		const double renderMaxLat = displayMaxLat + (latSpan * overscanRatio);
+		const PointF renderTopLeft = projectScreenPoint(renderMinLon, renderMaxLat);
+		const PointF renderTopRight = projectScreenPoint(renderMaxLon, renderMaxLat);
+		const PointF renderBottomLeft = projectScreenPoint(renderMinLon, renderMinLat);
+		const PointF renderBottomRight = projectScreenPoint(renderMaxLon, renderMinLat);
+		const double renderScreenLeft = AvisoMin(AvisoMin(renderTopLeft.X, renderTopRight.X), AvisoMin(renderBottomLeft.X, renderBottomRight.X));
+		const double renderScreenTop = AvisoMin(AvisoMin(renderTopLeft.Y, renderTopRight.Y), AvisoMin(renderBottomLeft.Y, renderBottomRight.Y));
+		const double renderScreenRight = AvisoMax(AvisoMax(renderTopLeft.X, renderTopRight.X), AvisoMax(renderBottomLeft.X, renderBottomRight.X));
+		const double renderScreenBottom = AvisoMax(AvisoMax(renderTopLeft.Y, renderTopRight.Y), AvisoMax(renderBottomLeft.Y, renderBottomRight.Y));
+		const double renderPixelWidth = renderScreenRight - renderScreenLeft;
+		const double renderPixelHeight = renderScreenBottom - renderScreenTop;
+		if (renderPixelWidth <= 0.0 || renderPixelHeight <= 0.0)
+			return;
+
+		const double maxDimension = renderPixelWidth > renderPixelHeight ? renderPixelWidth : renderPixelHeight;
+		const double targetRasterScale = 1.0;
+		const double maxRasterSide = 6400.0;
+		const double maxRasterPixels = 32000000.0;
+		double rasterScale = targetRasterScale;
+		const double sideLimitedScale = maxRasterSide / maxDimension;
+		if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
+			rasterScale = sideLimitedScale;
+		const double pixelLimitedScale = std::sqrt(maxRasterPixels / (renderPixelWidth * renderPixelHeight));
+		if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
+			rasterScale = pixelLimitedScale;
+		// The side/pixel caps are hard bounds. Only very large viewports fall below
+		// half resolution; allowing that is safer than defeating the allocation cap.
+		rasterScale = AvisoMin(rasterScale, targetRasterScale);
+		int rasterWidth = static_cast<int>(std::floor(renderPixelWidth * rasterScale));
+		int rasterHeight = static_cast<int>(std::floor(renderPixelHeight * rasterScale));
+		if (rasterWidth < 1)
+			rasterWidth = 1;
+		if (rasterHeight < 1)
+			rasterHeight = 1;
+
+		AvisoRasterRenderRequest request;
+		request.groupGeneration = groupGeneration;
+		request.path = path;
+		request.features = featureSnapshot;
+		request.labels = labelSnapshot;
+		request.groupVisibility = groupVisibility;
+		request.colorPalette = radar.AvisoColorPalette;
+		request.rasterWidth = rasterWidth;
+		request.rasterHeight = rasterHeight;
+		request.rasterScale = rasterScale;
+		request.displayMinLongitude = displayMinLon;
+		request.displayMinLatitude = displayMinLat;
+		request.displayMaxLongitude = displayMaxLon;
+		request.displayMaxLatitude = displayMaxLat;
+		request.renderMinLongitude = renderMinLon;
+		request.renderMinLatitude = renderMinLat;
+		request.renderMaxLongitude = renderMaxLon;
+		request.renderMaxLatitude = renderMaxLat;
+		request.renderScreenLeft = renderScreenLeft;
+		request.renderScreenTop = renderScreenTop;
+		request.scaleX = scaleX;
+		request.scaleY = scaleY;
+		request.viewportZoomLevel = SMRGeometry::ZoomLevelFromCrossDistance(
+			SMRGeometry::DistanceMeters(
+				makeDisplayPosition(fullDisplayMinLat, fullDisplayMinLon),
+				makeDisplayPosition(fullDisplayMaxLat, fullDisplayMaxLon)));
+		request.projectedTopLeft = projectedTopLeft;
+		request.projectedTopRight = projectedTopRight;
+		request.projectedBottomLeft = projectedBottomLeft;
+		request.projectedBottomRight = projectedBottomRight;
+
+		// A divider resize changes the visible geographic span, but not the map's
+		// pixel scale. Prefer the geo-anchored cache whenever its transform matches;
+		// the compatibility/margin check still decides whether to refresh it.
+		if (drawRasterCacheTransformed())
+		{
+			bool updateRequested = false;
+			if (!rasterCacheHasWorkingMargin())
+			{
+				updateRequested = true;
+				radar.QueueAvisoGeoJsonRasterRender(std::move(request));
+			}
+			const bool delayedByAvisoUpdate = updateRequested && avisoRasterUpdatePending();
+			radar.PerformanceDiagnostics.RecordAvisoCacheOutcome(
+				VsmrPerformance::AvisoViewport::Main,
+				delayedByAvisoUpdate
+					? VsmrPerformance::AvisoCacheOutcome::Preview
+					: VsmrPerformance::AvisoCacheOutcome::Exact,
+				delayedByAvisoUpdate,
+				false);
+			return;
+		}
+
+		radar.QueueAvisoGeoJsonRasterRender(std::move(request));
+		const bool fallbackCacheDrawn = drawRasterCacheViewportAligned();
+		const bool delayedByAvisoUpdate = avisoRasterUpdatePending();
+		radar.PerformanceDiagnostics.RecordAvisoCacheOutcome(
 			VsmrPerformance::AvisoViewport::Main,
-			delayedByAvisoUpdate
+			fallbackCacheDrawn
 				? VsmrPerformance::AvisoCacheOutcome::Preview
-				: VsmrPerformance::AvisoCacheOutcome::Exact,
+				: VsmrPerformance::AvisoCacheOutcome::Miss,
 			delayedByAvisoUpdate,
-			false);
-		return;
+			!fallbackCacheDrawn);
+		if (fallbackCacheDrawn)
+			return;
 	}
+};
 
-	QueueAvisoGeoJsonRasterRender(std::move(request));
-	const bool fallbackCacheDrawn = drawRasterCacheViewportAligned();
-	const bool delayedByAvisoUpdate = avisoRasterUpdatePending();
-	PerformanceDiagnostics.RecordAvisoCacheOutcome(
-		VsmrPerformance::AvisoViewport::Main,
-		fallbackCacheDrawn
-			? VsmrPerformance::AvisoCacheOutcome::Preview
-			: VsmrPerformance::AvisoCacheOutcome::Miss,
-		delayedByAvisoUpdate,
-		!fallbackCacheDrawn);
-	if (fallbackCacheDrawn)
-		return;
+void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
+{
+	AvisoMainRenderer(*this, hDC, graphics).Render();
 }

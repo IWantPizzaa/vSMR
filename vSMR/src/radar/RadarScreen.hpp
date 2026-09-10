@@ -509,6 +509,13 @@ public:
 		bool lowVisibilityProcedures,
 		double* outRimcasMilliseconds = nullptr);
 	const VsmrScene::RadarScene* GetCurrentRadarScene() const noexcept;
+	void SyncRuntimeMenuControlCenter(const std::string& reason = "runtime");
+	bool HandleRuntimeDatalinkClick(const char* id, RECT area);
+	bool HandleRuntimeListClick(const char* id);
+	bool HandleRuntimeInsetClick(const char* id);
+	bool HandleRuntimePresetClick(const char* id, RECT area);
+	struct AvisoMainRenderer;
+	struct RuntimeMenuRenderer;
 	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
 	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
