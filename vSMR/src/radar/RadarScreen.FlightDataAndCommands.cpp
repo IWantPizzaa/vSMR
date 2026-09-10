@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/Random.hpp"
 #include "radar/RadarScreen.hpp"
 #include "crash/CrashRuntime.hpp"
 
@@ -8,7 +9,7 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 		"CSMRRadar::OnRadarTargetPositionUpdate",
 		reinterpret_cast<std::uintptr_t>(this));
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	if (!RadarTarget.IsValid() || !RadarTarget.GetPosition().IsValid())
 		return;
 	MarkPerformanceRefreshReason(
@@ -66,9 +67,9 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 	}
 
 
-	width = width + float((rand() % 5) - 2);
-	cabin_width = cabin_width + float((rand() % 3) - 1);
-	lenght = lenght + float((rand() % 5) - 2);
+	width = width + float(VsmrRandom::UniformInt(-2, 2));
+	cabin_width = cabin_width + float(VsmrRandom::UniformInt(-1, 1));
+	lenght = lenght + float(VsmrRandom::UniformInt(-2, 2));
 
 
 	float trackHead = float(RadarTarget.GetPosition().GetReportedHeadingTrueNorth());
@@ -137,7 +138,7 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 
 		for (int k = 1; k < 7; k++){
 
-			rndHeading = float(fmod(lastPoint.DirectionTo(endPoint) + (-25.0 + (rand() % 50 + 1)), 360));
+			rndHeading = float(fmod(lastPoint.DirectionTo(endPoint) + (-25.0 + (VsmrRandom::UniformInt(1, 50))), 360));
 			newPoint = Haversine(lastPoint, rndHeading, dist * 200);
 			primaryReturn.points[(i * 7) + k] = { newPoint.m_Latitude, newPoint.m_Longitude };
 			lastPoint = newPoint;
@@ -145,19 +146,19 @@ void CSMRRadar::OnRadarTargetPositionUpdate(CRadarTarget RadarTarget)
 	}
 }
 
-string CSMRRadar::GetBottomLine(const char * Callsign) {
-	Logger::info(string(__FUNCSIG__));
+std::string CSMRRadar::GetBottomLine(const char * Callsign) {
+	Logger::info(std::string(__FUNCSIG__));
 	auto safeCString = [](const char* text) -> const char*
 	{
 		return text != nullptr ? text : "";
 	};
 
 	CFlightPlan fp = GetPlugIn()->FlightPlanSelect(Callsign);
-	string to_render = "";
+	std::string to_render = "";
 	if (fp.IsValid()) {
 		to_render += safeCString(fp.GetCallsign());
 
-		string callsign_code = safeCString(fp.GetCallsign());
+		std::string callsign_code = safeCString(fp.GetCallsign());
 		callsign_code = callsign_code.substr(0, 3);
 		to_render += " (" + Callsigns->getCallsign(callsign_code) + ")";
 
@@ -193,7 +194,7 @@ string CSMRRadar::GetBottomLine(const char * Callsign) {
 
 			to_render += " at ";
 			int rfl = fp.GetControllerAssignedData().GetFinalAltitude();
-			string rfl_s;
+			std::string rfl_s;
 			if (rfl == 0)
 				rfl = fp.GetFlightPlanData().GetFinalAltitude();
 			if (rfl > GetPlugIn()->GetTransitionAltitude())
@@ -215,7 +216,7 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnCompileCommand",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	if (sCommandLine == nullptr)
 		return false;
 
@@ -236,13 +237,13 @@ void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 	VsmrCrashRuntime::RecordEuroScopeCallback(
 		"CSMRRadar::OnFlightPlanDisconnect",
 		reinterpret_cast<std::uintptr_t>(this));
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	if (!FlightPlan.IsValid() || FlightPlan.GetCallsign() == nullptr || FlightPlan.GetCallsign()[0] == '\0')
 		return;
 	MarkPerformanceRefreshReason(
 		VsmrPerformance::FrameRefreshReason::TargetOrFlightPlanUpdate);
 
-	const string callsign = FlightPlan.GetCallsign();
+	const std::string callsign = FlightPlan.GetCallsign();
 	Patatoides.erase(callsign);
 	TagsOffsets.erase(callsign);
 	TagAngles.erase(callsign);

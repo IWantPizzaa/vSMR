@@ -45,7 +45,7 @@ void CSMRRadar::EnsureAirportPositionCache()
 
 		CPosition position;
 		apt.GetPosition(&position, 0);
-		AirportPositions[string(airportName)] = position;
+		AirportPositions[std::string(airportName)] = position;
 	}
 
 	AirportPositionsCacheValid = true;

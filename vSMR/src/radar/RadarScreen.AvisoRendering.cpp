@@ -777,16 +777,16 @@ CRect CSMRRadar::ResolveMainAvisoRenderArea()
 		switch (inset->m_AvisoLayoutMode)
 		{
 		case CInsetWindow::AvisoLayoutMode::SplitLeft:
-			availableLeft = max(availableLeft, insetArea.right);
+			availableLeft = (std::max)(availableLeft, insetArea.right);
 			break;
 		case CInsetWindow::AvisoLayoutMode::SplitRight:
-			availableRight = min(availableRight, insetArea.left);
+			availableRight = (std::min)(availableRight, insetArea.left);
 			break;
 		case CInsetWindow::AvisoLayoutMode::SplitTop:
-			availableTop = max(availableTop, insetArea.bottom);
+			availableTop = (std::max)(availableTop, insetArea.bottom);
 			break;
 		case CInsetWindow::AvisoLayoutMode::SplitBottom:
-			availableBottom = min(availableBottom, insetArea.top);
+			availableBottom = (std::min)(availableBottom, insetArea.top);
 			break;
 		default:
 			continue;

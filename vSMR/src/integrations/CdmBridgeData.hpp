@@ -106,8 +106,9 @@ namespace VsmrCdm
 		return data != nullptr && data->asrt.has_value();
 	}
 
+	template<class TokenMap>
 	inline void AddTagTokens(
-		std::map<std::string, std::string>& tokens,
+		TokenMap& tokens,
 		const AircraftData* data)
 	{
 		const AircraftData empty;

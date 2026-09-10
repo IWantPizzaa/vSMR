@@ -428,13 +428,13 @@ void datalinkLogin(DatalinkLoginRequest request) {
 	std::string failureMessage;
 	try
 	{
-		string url = baseUrlDatalink;
+		std::string url = baseUrlDatalink;
 		url += "?logon=";
 		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
 		url += EncodeUrlQueryComponent(request.credentials.callsign);
 		url += "&to=SERVER&type=PING";
-		const string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
+		const std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 			url,
 			6000,
 			&PluginShutdownRequested,
@@ -521,10 +521,10 @@ void pollMessages(DatalinkPollRequest request) {
 		return;
 	}
 
-	string raw;
+	std::string raw;
 	try
 	{
-		string url = baseUrlDatalink;
+		std::string url = baseUrlDatalink;
 		url += "?logon=";
 		url += EncodeUrlQueryComponent(request.credentials.password);
 		url += "&from=";
@@ -563,7 +563,7 @@ void pollMessages(DatalinkPollRequest request) {
 	raw = raw + " ";
 	raw = raw.substr(3, raw.size() - 3);
 
-	string delimiter = "}} ";
+	std::string delimiter = "}} ";
 	size_t pos = 0;
 	std::string token;
 	while ((pos = raw.find(delimiter)) != std::string::npos) {
@@ -576,8 +576,8 @@ void pollMessages(DatalinkPollRequest request) {
 
 		token = raw.substr(1, pos);
 
-		string parsed;
-		stringstream input_stringstream(token);
+		std::string parsed;
+		std::stringstream input_stringstream(token);
 		struct AcarsMessage message;
 		int i = 1;
 		while (getline(input_stringstream, parsed, ' '))
@@ -709,7 +709,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 		return;
 	const DatalinkPacket& packet = request.packet;
 
-	string payload = "/data2/";
+	std::string payload = "/data2/";
 	payload += std::to_string(request.messageSequence);
 	payload += "//R/";
 	payload += "CLR TO @";
@@ -747,7 +747,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	if (packet.message != "no" && packet.message.size() > 1)
 		payload += packet.message;
 
-	string url = baseUrlDatalink;
+	std::string url = baseUrlDatalink;
 	url += "?logon=";
 	url += EncodeUrlQueryComponent(request.credentials.password);
 	url += "&from=";
@@ -757,7 +757,7 @@ void sendDatalinkClearance(DatalinkClearanceRequest request) {
 	url += "&type=CPDLC&packet=";
 	url += EncodeUrlQueryComponent(payload);
 
-	const string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
+	const std::string raw = VsmrPluginRuntime::GetHttpHelper().downloadStringFromURL(
 		url,
 		6000,
 		&PluginShutdownRequested,

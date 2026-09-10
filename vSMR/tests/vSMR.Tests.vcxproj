@@ -60,6 +60,9 @@
     <ClCompile Include="AvisoRasterPipelineTests.cpp" />
     <ClCompile Include="ConfigurationRegressionTests.cpp" />
     <ClCompile Include="RegressionTests.cpp" />
+    <ClCompile Include="AuditRegressionTests.cpp" />
+    <ClCompile Include="..\src\platform\windows\network\HttpHelper.cpp" />
+    <ClCompile Include="..\src\updater\UpdaterVerification.cpp" />
     <ClCompile Include="SharedRenderingTests.cpp" />
     <ClCompile Include="TagColorRuleTests.cpp" />
     <ClCompile Include="UpdaterUrlPolicyTests.cpp" />
@@ -76,6 +79,7 @@
     <ClCompile Include="..\src\rendering\TargetSymbolRenderer.cpp" />
     <ClCompile Include="..\src\tags\TagColorRuleParser.cpp" />
     <ClCompile Include="..\src\tags\TagColorRules.cpp" />
+    <ClCompile Include="..\src\tags\CompiledTagDefinition.cpp" />
     <ClCompile Include="..\src\updater\UpdaterReleaseModel.cpp" />
     <ClCompile Include="..\src\updater\UpdaterUrlPolicy.cpp" />
     <ClCompile Include="..\src\weather\WeatherStore.cpp" />
@@ -116,6 +120,7 @@
     <ClInclude Include="..\src\updater\UpdaterUrlPolicy.hpp" />
     <ClInclude Include="..\src\weather\WeatherStore.hpp" />
   </ItemGroup>
+  <Import Project="..\BuildHardening.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

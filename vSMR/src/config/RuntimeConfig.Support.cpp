@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 #include "config/RuntimeConfig.Internal.hpp"
 #include "shared/JsonInputLimits.hpp"
 
@@ -132,7 +133,7 @@ namespace VsmrRuntimeConfigInternal
 
 		rapidjson::Value wrapper(rapidjson::kObjectType);
 		rapidjson::Value metadata(rapidjson::kObjectType);
-		metadata.AddMember(kMetadataSchemaVersionKey, 1, profilesDocument.GetAllocator());
+		metadata.AddMember(rapidjson::Value(kMetadataSchemaVersionKey, profilesDocument.GetAllocator()).Move(), 1, profilesDocument.GetAllocator());
 		rapidjson::Value wrapperKey;
 		wrapperKey.SetString(kMetadataWrapperKey, profilesDocument.GetAllocator());
 		wrapper.AddMember(wrapperKey, metadata, profilesDocument.GetAllocator());
@@ -313,7 +314,7 @@ namespace VsmrRuntimeConfigInternal
 	{
 		if (!ValidateJsonStructureLimits(serializedJson, error))
 			return false;
-		validationDocument.Parse<0>(serializedJson.c_str());
+		VsmrJson::ParseDocument(validationDocument, serializedJson);
 		if (validationDocument.HasParseError() || !validationDocument.IsArray())
 		{
 			if (error != nullptr)
@@ -1218,7 +1219,7 @@ namespace VsmrRuntimeConfigInternal
 		source.Accept(writer);
 
 		// Writing and verifying the replacement before touching the current file
-		const std::string serializedJson(buffer.GetString(), buffer.Size());
+		const std::string serializedJson(buffer.GetString(), buffer.GetSize());
 		rapidjson::Document validationDocument;
 		if (!ParseValidatedArray(serializedJson, validationDocument))
 			return false;

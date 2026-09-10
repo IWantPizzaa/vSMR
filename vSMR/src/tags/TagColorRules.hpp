@@ -1,4 +1,5 @@
 #pragma once
+#include "tags/TagTokenValues.hpp"
 
 #include "tags/TagDataTypes.hpp"
 
@@ -73,12 +74,12 @@ namespace VsmrTagColorRules
 		const CdmPilotData* pilotData);
 	TagColorRuleOverrides EvaluateRunwayColorRules(
 		const std::vector<RunwayColorRuleDefinition>& rules,
-		const std::map<std::string, std::string>& replacingMap);
+		const VsmrTags::TokenValues& replacingMap);
 	TagColorRuleOverrides EvaluateStructuredTagColorRules(
 		const std::vector<StructuredTagColorRule>& rules,
 		const std::string& tagTypeKey,
 		const char* statusDefinitionKey,
 		bool isTagDetailed,
-		const std::map<std::string, std::string>& replacingMap,
+		const VsmrTags::TokenValues& replacingMap,
 		const CdmPilotData* pilotData);
 }

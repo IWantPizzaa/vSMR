@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added regression coverage for JSON limits, updater URL and hashing checks, compiled tag definitions, and persistent text caches. CI now runs MSVC static analysis and a JSON fuzz smoke test under AddressSanitizer.
+
+### Changed
+
+- Cached parsed tag definitions and font measurements across frames, with invalidation when settings change and bounded text-cache growth. Reused contiguous tag-token storage and drawing brushes, reduced hot-path copies and callback overhead, and gated detailed SDK timing behind verbose diagnostics.
+- Applied consistent compiler warnings and binary hardening to local and CI builds, including Control Flow Guard and Spectre mitigations. Removed application-wide standard-library namespace pollution and marked security predicates `[[nodiscard]]`.
+
+### Fixed
+
+- Replaced the legacy RapidJSON snapshot with pinned upstream headers and applied bounded, iterative, UTF-8-validated parsing to every production JSON entry point. Excessive nesting, malformed encoding, and embedded NUL bytes now fail validation instead of overflowing the stack or silently parsing a prefix.
+- Restricted updater downloads to exact approved hosts, required TLS 1.2 or newer and HTTPS port 443 in both HTTP clients, and enabled certificate revocation checking when discovering the updater signer.
+- Made HTTP and hashing cleanup automatic, checked hash initialization failures, cleared stale hash results, and rejected missing rendering contexts before inset drawing.
+- Prevented tag substitution from interpreting replacement values as further token names, and removed redundant CDM time formatting and per-target hover-text copies.
+
 ## [2.0.0-beta.6] - 2026-09-05
 
 ### Added

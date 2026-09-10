@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "tags/TagTokenValues.hpp"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagColorRules.Internal.hpp"
 
@@ -601,7 +602,7 @@ namespace VsmrTagColorRules
 		const std::string& sourceText,
 		const std::string& token,
 		const std::string& condition,
-		const std::map<std::string, std::string>& replacingMap,
+		const VsmrTags::TokenValues& replacingMap,
 		const CdmPilotData* pilotData)
 	{
 		const std::string source = ToLowerAsciiCopy(sourceText);
@@ -655,7 +656,7 @@ namespace VsmrTagColorRules
 		const std::string& tagTypeKey,
 		const std::string& statusKey,
 		const std::string& detailKey,
-		const std::map<std::string, std::string>& replacingMap,
+		const VsmrTags::TokenValues& replacingMap,
 		const CdmPilotData* pilotData)
 	{
 		TagColorRuleOverrides overrides;
@@ -694,7 +695,7 @@ namespace VsmrTagColorRules
 		const std::string& tagTypeKey,
 		const char* statusDefinitionKey,
 		bool isTagDetailed,
-		const std::map<std::string, std::string>& replacingMap,
+		const VsmrTags::TokenValues& replacingMap,
 		const CdmPilotData* pilotData)
 	{
 		const std::string statusKey = statusDefinitionKey != nullptr ? statusDefinitionKey : "default";
@@ -702,7 +703,7 @@ namespace VsmrTagColorRules
 		return EvaluateStructuredTagColorRules(rules, tagTypeKey, statusKey, detailKey, replacingMap, pilotData);
 	}
 
-	TagColorRuleOverrides EvaluateRunwayColorRules(const std::vector<RunwayColorRuleDefinition>& rules, const std::map<std::string, std::string>& replacingMap)
+	TagColorRuleOverrides EvaluateRunwayColorRules(const std::vector<RunwayColorRuleDefinition>& rules, const VsmrTags::TokenValues& replacingMap)
 	{
 		return EvaluateColorRules(rules, [&](const RunwayColorRuleDefinition& rule) {
 			std::string actualRunway;

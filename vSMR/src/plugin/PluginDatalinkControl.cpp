@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/Random.hpp"
 #include "plugin/Plugin.hpp"
 #include "plugin/PluginHttpSupport.hpp"
 #include "plugin/Plugin.RuntimeState.hpp"
@@ -506,7 +507,7 @@ void CSMRPlugin::ResetDatalinkRuntime()
 
 void CSMRPlugin::LoadDatalinkSettings()
 {
-	messageId.store(rand() % 10000 + 1789);
+	messageId.store(VsmrRandom::UniformInt(1789, 11788));
 
 	DatalinkLastPollAt = PluginSteadyClock::now();
 	// Loading and migrating persisted CPDLC settings

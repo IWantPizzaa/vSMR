@@ -21,7 +21,7 @@ namespace VsmrInsetWindowInternal
 
 	double AvisoCosLatitude(double latitude)
 	{
-		return max(0.05, std::abs(std::cos(DegToRad(latitude))));
+		return (std::max)(0.05, std::abs(std::cos(DegToRad(latitude))));
 	}
 
 	bool AvisoWithinTolerance(double left, double right, double tolerance)
@@ -218,8 +218,8 @@ namespace VsmrInsetWindowInternal
 	void DrawInsetTitle(CDC& dc, const CRect& topBar, const std::string& title, bool dayTheme)
 	{
 		const CSize titleSize = dc.GetTextExtent(title.c_str());
-		const int titleX = topBar.left + max(0, (topBar.Width() - titleSize.cx) / 2);
-		const int titleY = topBar.top + max(0, (topBar.Height() - titleSize.cy) / 2);
+		const int titleX = topBar.left + (std::max<LONG>)(0, (topBar.Width() - titleSize.cx) / 2);
+		const int titleY = topBar.top + (std::max<LONG>)(0, (topBar.Height() - titleSize.cy) / 2);
 		const COLORREF oldTextColor = dc.SetTextColor(dayTheme ? RGB(23, 33, 38) : RGB(208, 217, 220));
 		const int oldBkMode = dc.SetBkMode(TRANSPARENT);
 		dc.TextOutA(titleX, titleY, title.c_str());
@@ -329,8 +329,8 @@ namespace VsmrInsetWindowInternal
 		const int minimumFrameHeight = kAvisoMinLayoutHeight + kAvisoViewportTopBarHeight;
 		const int boundsWidth = static_cast<int>(bounds.Width());
 		const int boundsHeight = static_cast<int>(bounds.Height());
-		const int minimumWidth = min(kAvisoMinLayoutWidth, boundsWidth);
-		const int minimumHeight = min(minimumFrameHeight, boundsHeight);
+		const int minimumWidth = (std::min)(kAvisoMinLayoutWidth, boundsWidth);
+		const int minimumHeight = (std::min)(minimumFrameHeight, boundsHeight);
 		const int width = std::clamp(static_cast<int>(requestedSize.cx), minimumWidth, boundsWidth);
 		const int height = std::clamp(static_cast<int>(requestedSize.cy), minimumHeight, boundsHeight);
 		const int left = IsAvisoCornerRightAnchored(mode) ? bounds.right - width : bounds.left;
@@ -407,7 +407,7 @@ namespace VsmrInsetWindowInternal
 		CRect content(areaValue);
 		content.NormalizeRect();
 		if (mode != AvisoLayoutMode::Floating)
-			content.top = min(content.bottom, content.top + kAvisoViewportTopBarHeight);
+			content.top = (std::min)(content.bottom, content.top + kAvisoViewportTopBarHeight);
 		return content;
 	}
 
@@ -417,7 +417,7 @@ namespace VsmrInsetWindowInternal
 		area.NormalizeRect();
 		if (mode == AvisoLayoutMode::Floating)
 			return CRect(area.left, area.top - kAvisoViewportTopBarHeight, area.right, area.top);
-		return CRect(area.left, area.top, area.right, min(area.bottom, area.top + kAvisoViewportTopBarHeight));
+		return CRect(area.left, area.top, area.right, (std::min)(area.bottom, area.top + kAvisoViewportTopBarHeight));
 	}
 
 	CRect InsetCloseButtonRect(AvisoLayoutMode mode, const RECT& areaValue)
@@ -450,19 +450,19 @@ namespace VsmrInsetWindowInternal
 		moveRect.NormalizeRect();
 		if (allowResize)
 		{
-			moveRect.left = min(moveRect.right, moveRect.left + kInsetResizeCornerPx);
-			moveRect.right = max(moveRect.left, moveRect.right - kInsetResizeCornerPx);
-			moveRect.top = min(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
+			moveRect.left = (std::min)(moveRect.right, moveRect.left + kInsetResizeCornerPx);
+			moveRect.right = (std::max)(moveRect.left, moveRect.right - kInsetResizeCornerPx);
+			moveRect.top = (std::min)(moveRect.bottom, moveRect.top + kInsetResizeInsidePx + 1);
 		}
 
 		CRect closeButton = InsetCloseButtonRect(mode, areaValue);
 		closeButton.NormalizeRect();
-		moveRect.right = min(moveRect.right, closeButton.left);
+		moveRect.right = (std::min)(moveRect.right, closeButton.left);
 		if (showFilter && mode == AvisoLayoutMode::Floating)
 		{
 			CRect filterButton = InsetFilterButtonRect(mode, areaValue);
 			filterButton.NormalizeRect();
-			moveRect.right = min(moveRect.right, filterButton.left);
+			moveRect.right = (std::min)(moveRect.right, filterButton.left);
 		}
 		if (moveRect.right <= moveRect.left || moveRect.bottom <= moveRect.top)
 			return CRect(0, 0, 0, 0);
@@ -666,8 +666,8 @@ namespace VsmrInsetWindowInternal
 				mode,
 				bounds,
 				CSize(
-					max(kAvisoMinLayoutWidth, static_cast<int>(current.Width())),
-					max(minimumFrameHeight, static_cast<int>(current.Height()))));
+					(std::max)(kAvisoMinLayoutWidth, static_cast<int>(current.Width())),
+					(std::max)(minimumFrameHeight, static_cast<int>(current.Height()))));
 		}
 
 		const bool rightAnchored = IsAvisoCornerRightAnchored(mode);

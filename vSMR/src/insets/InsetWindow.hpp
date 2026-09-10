@@ -1,13 +1,13 @@
 #pragma once
 #include "EuroScopePlugIn.h"
 #include "diagnostics/PerformanceDiagnostics.hpp"
+#include "rendering/TagRenderer.hpp"
 #include <array>
 #include <string>
 #include <map>
 #include <memory>
 #include <GdiPlus.h>
 
-using namespace std;
 using namespace EuroScopePlugIn;
 
 class CSMRRadar;
@@ -15,6 +15,7 @@ struct AvisoViewportState;
 
 class CInsetWindow
 {
+	VsmrTagRendering::TextCache m_TagTextCache;
 public:
 	enum class Mode
 	{
@@ -73,15 +74,15 @@ public:
 	HWND m_AvisoRenderWindow = nullptr;
 	AvisoLayoutMode m_AvisoLayoutMode = AvisoLayoutMode::Floating;
 
-	map<string, double> m_TagAngles;
-	map<string, POINT> m_TagOffsets;
-	map<string, POINT> m_TagDragOffsetFromCenter;
-	map<string, POINT> m_TargetPoints;
-	map<string, CRect> m_TagAreas;
-	string m_TagBeingDragged;
+	std::map<std::string, double> m_TagAngles;
+	std::map<std::string, POINT> m_TagOffsets;
+	std::map<std::string, POINT> m_TagDragOffsetFromCenter;
+	std::map<std::string, POINT> m_TargetPoints;
+	std::map<std::string, CRect> m_TagAreas;
+	std::string m_TagBeingDragged;
 
 	virtual void render(HDC Hdc, CSMRRadar * radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
-	virtual void setAirport(string icao);
+	virtual void setAirport(std::string icao);
 	virtual POINT projectPoint(CPosition pos);
 	virtual void OnClickScreenObject(const char * sItemString, POINT Pt, int Button);
 	virtual bool OnMoveScreenObject(const char * sObjectId, POINT Pt, RECT Area, bool released, const RECT* layoutBounds = nullptr);
@@ -147,7 +148,7 @@ private:
 		POINT mouseLocation,
 		bool allowResize,
 		bool dayTheme);
-	string icao;
+	std::string icao;
 	CPosition m_AirportPosition;
 	bool m_AirportPositionValid = false;
 	std::array<unsigned long long, 4> m_TimerDeadlineTicks = { 0, 0, 0, 0 };

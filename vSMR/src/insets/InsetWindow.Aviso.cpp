@@ -218,7 +218,7 @@ struct AvisoViewportState
 	}
 
 	HBITMAP cacheBitmap = nullptr;
-	string cachePath;
+	std::string cachePath;
 	unsigned long long cacheGroupGeneration = 0;
 	int cacheWidth = 0;
 	int cacheHeight = 0;
@@ -419,7 +419,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	// ----- Resolving the cached raster -----
 	std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> completedRenderResult = m_AvisoState->TakeCompletedRender();
 
-	const int scale = max(1, m_AvisoScale);
+	const int scale = (std::max)(1, m_AvisoScale);
 	const double metersPerPixel = kAvisoMetersPerNm / static_cast<double>(scale);
 	const double lonDegreesPerPixel = metersPerPixel / (kAvisoLonMetersPerDegree * AvisoCosLatitude(m_AvisoCenterLatitude));
 	const double latDegreesPerPixel = metersPerPixel / kAvisoLatMetersPerDegree;
@@ -590,19 +590,19 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Gdiplus::PointF destTopRight = projectPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMaxLatitude);
 		const Gdiplus::PointF destBottomLeft = projectPoint(m_AvisoState->renderMinLongitude, m_AvisoState->renderMinLatitude);
 		const Gdiplus::PointF destBottomRight = projectPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMinLatitude);
-		const double destX = min(min(static_cast<double>(destTopLeft.X), static_cast<double>(destTopRight.X)), min(static_cast<double>(destBottomLeft.X), static_cast<double>(destBottomRight.X)));
-		const double destY = min(min(static_cast<double>(destTopLeft.Y), static_cast<double>(destTopRight.Y)), min(static_cast<double>(destBottomLeft.Y), static_cast<double>(destBottomRight.Y)));
-		const double destRight = max(max(static_cast<double>(destTopLeft.X), static_cast<double>(destTopRight.X)), max(static_cast<double>(destBottomLeft.X), static_cast<double>(destBottomRight.X)));
-		const double destBottom = max(max(static_cast<double>(destTopLeft.Y), static_cast<double>(destTopRight.Y)), max(static_cast<double>(destBottomLeft.Y), static_cast<double>(destBottomRight.Y)));
+		const double destX = (std::min)((std::min)(static_cast<double>(destTopLeft.X), static_cast<double>(destTopRight.X)), (std::min)(static_cast<double>(destBottomLeft.X), static_cast<double>(destBottomRight.X)));
+		const double destY = (std::min)((std::min)(static_cast<double>(destTopLeft.Y), static_cast<double>(destTopRight.Y)), (std::min)(static_cast<double>(destBottomLeft.Y), static_cast<double>(destBottomRight.Y)));
+		const double destRight = (std::max)((std::max)(static_cast<double>(destTopLeft.X), static_cast<double>(destTopRight.X)), (std::max)(static_cast<double>(destBottomLeft.X), static_cast<double>(destBottomRight.X)));
+		const double destBottom = (std::max)((std::max)(static_cast<double>(destTopLeft.Y), static_cast<double>(destTopRight.Y)), (std::max)(static_cast<double>(destBottomLeft.Y), static_cast<double>(destBottomRight.Y)));
 		const double destWidth = destRight - destX;
 		const double destHeight = destBottom - destY;
 		if (destWidth < 1.0 || destHeight < 1.0)
 			return false;
 
-		const double visibleLeft = max(destX, static_cast<double>(viewportRect.left));
-		const double visibleTop = max(destY, static_cast<double>(viewportRect.top));
-		const double visibleRight = min(destRight, static_cast<double>(viewportRect.right));
-		const double visibleBottom = min(destBottom, static_cast<double>(viewportRect.bottom));
+		const double visibleLeft = (std::max)(destX, static_cast<double>(viewportRect.left));
+		const double visibleTop = (std::max)(destY, static_cast<double>(viewportRect.top));
+		const double visibleRight = (std::min)(destRight, static_cast<double>(viewportRect.right));
+		const double visibleBottom = (std::min)(destBottom, static_cast<double>(viewportRect.bottom));
 		const double visibleWidth = visibleRight - visibleLeft;
 		const double visibleHeight = visibleBottom - visibleTop;
 		if (visibleWidth < 1.0 || visibleHeight < 1.0)
@@ -702,10 +702,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Gdiplus::PointF renderTopRight = projectCachedPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMaxLatitude);
 		const Gdiplus::PointF renderBottomLeft = projectCachedPoint(m_AvisoState->renderMinLongitude, m_AvisoState->renderMinLatitude);
 		const Gdiplus::PointF renderBottomRight = projectCachedPoint(m_AvisoState->renderMaxLongitude, m_AvisoState->renderMinLatitude);
-		const double cachedRenderLeft = min(min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), min(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
-		const double cachedRenderTop = min(min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), min(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
-		const double cachedRenderRight = max(max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), max(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
-		const double cachedRenderBottom = max(max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), max(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+		const double cachedRenderLeft = (std::min)((std::min)(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), (std::min)(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+		const double cachedRenderTop = (std::min)((std::min)(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), (std::min)(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+		const double cachedRenderRight = (std::max)((std::max)(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), (std::max)(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+		const double cachedRenderBottom = (std::max)((std::max)(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), (std::max)(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
 		const double cachedRenderWidth = cachedRenderRight - cachedRenderLeft;
 		const double cachedRenderHeight = cachedRenderBottom - cachedRenderTop;
 		if (cachedRenderWidth < 1.0 || cachedRenderHeight < 1.0)
@@ -715,10 +715,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Gdiplus::PointF sourceTopRight = projectCachedPoint(displayMaxLon, displayMaxLat);
 		const Gdiplus::PointF sourceBottomLeft = projectCachedPoint(displayMinLon, displayMinLat);
 		const Gdiplus::PointF sourceBottomRight = projectCachedPoint(displayMaxLon, displayMinLat);
-		const double sourceLeft = min(min(static_cast<double>(sourceTopLeft.X), static_cast<double>(sourceTopRight.X)), min(static_cast<double>(sourceBottomLeft.X), static_cast<double>(sourceBottomRight.X)));
-		const double sourceTop = min(min(static_cast<double>(sourceTopLeft.Y), static_cast<double>(sourceTopRight.Y)), min(static_cast<double>(sourceBottomLeft.Y), static_cast<double>(sourceBottomRight.Y)));
-		const double sourceRight = max(max(static_cast<double>(sourceTopLeft.X), static_cast<double>(sourceTopRight.X)), max(static_cast<double>(sourceBottomLeft.X), static_cast<double>(sourceBottomRight.X)));
-		const double sourceBottom = max(max(static_cast<double>(sourceTopLeft.Y), static_cast<double>(sourceTopRight.Y)), max(static_cast<double>(sourceBottomLeft.Y), static_cast<double>(sourceBottomRight.Y)));
+		const double sourceLeft = (std::min)((std::min)(static_cast<double>(sourceTopLeft.X), static_cast<double>(sourceTopRight.X)), (std::min)(static_cast<double>(sourceBottomLeft.X), static_cast<double>(sourceBottomRight.X)));
+		const double sourceTop = (std::min)((std::min)(static_cast<double>(sourceTopLeft.Y), static_cast<double>(sourceTopRight.Y)), (std::min)(static_cast<double>(sourceBottomLeft.Y), static_cast<double>(sourceBottomRight.Y)));
+		const double sourceRight = (std::max)((std::max)(static_cast<double>(sourceTopLeft.X), static_cast<double>(sourceTopRight.X)), (std::max)(static_cast<double>(sourceBottomLeft.X), static_cast<double>(sourceBottomRight.X)));
+		const double sourceBottom = (std::max)((std::max)(static_cast<double>(sourceTopLeft.Y), static_cast<double>(sourceTopRight.Y)), (std::max)(static_cast<double>(sourceBottomLeft.Y), static_cast<double>(sourceBottomRight.Y)));
 
 		const double sourceScaleX = static_cast<double>(m_AvisoState->cacheWidth) / cachedRenderWidth;
 		const double sourceScaleY = static_cast<double>(m_AvisoState->cacheHeight) / cachedRenderHeight;
@@ -822,10 +822,10 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const Gdiplus::PointF renderTopRight = projectPoint(renderMaxLon, renderMaxLat);
 		const Gdiplus::PointF renderBottomLeft = projectPoint(renderMinLon, renderMinLat);
 		const Gdiplus::PointF renderBottomRight = projectPoint(renderMaxLon, renderMinLat);
-		const double renderScreenLeft = min(min(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), min(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
-		const double renderScreenTop = min(min(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), min(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
-		const double renderScreenRight = max(max(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), max(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
-		const double renderScreenBottom = max(max(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), max(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+		const double renderScreenLeft = (std::min)((std::min)(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), (std::min)(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+		const double renderScreenTop = (std::min)((std::min)(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), (std::min)(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
+		const double renderScreenRight = (std::max)((std::max)(static_cast<double>(renderTopLeft.X), static_cast<double>(renderTopRight.X)), (std::max)(static_cast<double>(renderBottomLeft.X), static_cast<double>(renderBottomRight.X)));
+		const double renderScreenBottom = (std::max)((std::max)(static_cast<double>(renderTopLeft.Y), static_cast<double>(renderTopRight.Y)), (std::max)(static_cast<double>(renderBottomLeft.Y), static_cast<double>(renderBottomRight.Y)));
 		const double renderPixelWidth = renderScreenRight - renderScreenLeft;
 		const double renderPixelHeight = renderScreenBottom - renderScreenTop;
 		if (renderPixelWidth > 0.0 && renderPixelHeight > 0.0)
@@ -834,7 +834,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			const double maxRasterSide = 6400.0;
 			const double maxRasterPixels = 18000000.0;
 			double rasterScale = targetRasterScale;
-			const double maxDimension = max(renderPixelWidth, renderPixelHeight);
+			const double maxDimension = (std::max)(renderPixelWidth, renderPixelHeight);
 			const double sideLimitedScale = maxRasterSide / maxDimension;
 			if (sideLimitedScale > 0.0 && sideLimitedScale < rasterScale)
 				rasterScale = sideLimitedScale;
@@ -842,7 +842,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			if (pixelLimitedScale > 0.0 && pixelLimitedScale < rasterScale)
 				rasterScale = pixelLimitedScale;
 			// Keep the allocation caps hard even on unusually large desktops.
-			rasterScale = min(rasterScale, targetRasterScale);
+			rasterScale = (std::min)(rasterScale, targetRasterScale);
 
 			CSMRRadar::AvisoRasterRenderRequest request;
 			request.groupGeneration = groupGeneration;
@@ -851,8 +851,8 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			request.labels = labelSnapshot;
 			request.groupVisibility = groupVisibility;
 			request.colorPalette = radar_screen->AvisoColorPalette;
-			request.rasterWidth = max(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
-			request.rasterHeight = max(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
+			request.rasterWidth = (std::max)(1, static_cast<int>(std::floor(renderPixelWidth * rasterScale)));
+			request.rasterHeight = (std::max)(1, static_cast<int>(std::floor(renderPixelHeight * rasterScale)));
 			request.rasterScale = rasterScale;
 			request.displayMinLongitude = displayMinLon;
 			request.displayMinLatitude = displayMinLat;
@@ -978,24 +978,26 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		const VsmrScene::TargetPresentation& targetPresentation = targetScene != nullptr
 			? targetScene->targetPresentation
 			: defaultTargetPresentation;
-		const double pixPerMeter = max(
+		const double pixPerMeter = (std::max)(
 			0.0,
-			static_cast<double>(max(1, m_AvisoScale)) / kAvisoMetersPerNm);
+			static_cast<double>((std::max)(1, m_AvisoScale)) / kAvisoMetersPerNm);
 
 		VsmrTargetRendering::FrameSettings targetSettings;
 		targetSettings.presentation = targetPresentation;
 		targetSettings.pixelsPerMeter = pixPerMeter;
-		targetSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
+		const auto targetSettingsProjectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
 		{
 			CPosition position;
 			position.m_Latitude = point.latitude;
 			position.m_Longitude = point.longitude;
 			return projectTargetPosition(position);
 		};
-		targetSettings.pointVisible = [&](const POINT& point, int margin) -> bool
+		targetSettings.projectPoint = targetSettingsProjectPoint;
+		const auto targetSettingsPointVisible = [&](const POINT& point, int margin) -> bool
 		{
 			return pointInViewport(point, margin);
 		};
+		targetSettings.pointVisible = targetSettingsPointVisible;
 		targetSettings.iconCache = radar_screen->CreateTargetIconCacheCallbacks();
 		VsmrTargetRendering::Frame targetRenderer(*gdi, std::move(targetSettings));
 		VsmrTargetRendering::DrawOptions targetDrawOptions;
@@ -1010,7 +1012,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		auto tagFontIt = radar_screen->customFonts.find(radar_screen->currentFontSize);
 		Gdiplus::Font* tagRegularFont =
 			tagFontIt != radar_screen->customFonts.end() ? tagFontIt->second.get() : nullptr;
-		VsmrTagRendering::FontContext tagFonts(*gdi, tagRegularFont, 2);
+		VsmrTagRendering::FontContext tagFonts(*gdi, tagRegularFont, 2, &m_TagTextCache);
 		const bool roundedTagCornersEnabled = radar_screen->GetTagRoundedCornersEnabledForEditor();
 
 		const VsmrScene::RadarScene* radarScene = radar_screen->GetCurrentRadarScene();
@@ -1148,7 +1150,7 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			int placementLeaderLength = leaderLength;
 			if (hasCustomOffset)
 			{
-				placementLeaderLength = max(
+				placementLeaderLength = (std::max)(
 					1,
 					static_cast<int>(std::lround(std::hypot(
 						static_cast<double>(customOffset->second.x),
