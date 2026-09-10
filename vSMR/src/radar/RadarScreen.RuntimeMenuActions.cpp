@@ -126,8 +126,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			togglePopup(RuntimeMenuPopup::Insets);
 		else if (std::strcmp(id, "runtime.button.profile") == 0)
 			togglePopup(RuntimeMenuPopup::Profile);
-		else if (std::strcmp(id, "runtime.button.vsid") == 0)
-			togglePopup(RuntimeMenuPopup::Vsid);
 		else if (std::strcmp(id, "runtime.button.datalink") == 0)
 			togglePopup(RuntimeMenuPopup::Datalink);
 		else if (std::strcmp(id, "runtime.button.control-center") == 0)
@@ -232,86 +230,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		std::string error;
 		if (datalinkPlugin == nullptr || !datalinkPlugin->PollDatalink(error))
 			showDatalinkMessage(error.empty() ? "The CPDLC service is unavailable." : error, true);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.datalink.delay") == 0 ||
-		std::strcmp(id, "runtime.datalink.cooldown") == 0)
-	{
-		if (datalinkPlugin != nullptr)
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			const bool editDelay = std::strcmp(id, "runtime.datalink.delay") == 0;
-			const int currentValue = editDelay ? state.cdmDelayMinutes : state.cdmCooldownMinutes;
-			GetPlugIn()->OpenPopupEdit(
-				area,
-				editDelay ? RUNTIME_DATALINK_DELAY_EDIT : RUNTIME_DATALINK_COOLDOWN_EDIT,
-				std::to_string(currentValue).c_str());
-		}
-		return true;
-	}
-	const bool decrementDelay = std::strcmp(id, "runtime.datalink.delay.decrement") == 0;
-	const bool incrementDelay = std::strcmp(id, "runtime.datalink.delay.increment") == 0;
-	const bool decrementCooldown = std::strcmp(id, "runtime.datalink.cooldown.decrement") == 0;
-	const bool incrementCooldown = std::strcmp(id, "runtime.datalink.cooldown.increment") == 0;
-	if (decrementDelay || incrementDelay || decrementCooldown || incrementCooldown)
-	{
-		std::string error;
-		if (datalinkPlugin == nullptr)
-			error = "The CDM reminder service is unavailable.";
-		else
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			const int delayDelta = incrementDelay ? 1 : (decrementDelay ? -1 : 0);
-			const int cooldownDelta = incrementCooldown ? 1 : (decrementCooldown ? -1 : 0);
-			const int delay = std::clamp(state.cdmDelayMinutes + delayDelta, 0, 1440);
-			const int cooldown = std::clamp(state.cdmCooldownMinutes + cooldownDelta, 0, 1440);
-			datalinkPlugin->UpdateDatalinkControlSettings(
-				state.logonCallsign,
-				"",
-				false,
-				state.cdmAutoEnabled,
-				delay,
-				cooldown,
-				error,
-				false);
-		}
-		if (!error.empty())
-			showDatalinkMessage(error, true);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.datalink.reminders") == 0)
-	{
-		std::string error;
-		if (datalinkPlugin == nullptr)
-			error = "The CDM reminder service is unavailable.";
-		else
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			datalinkPlugin->UpdateDatalinkControlSettings(
-				state.logonCallsign,
-				"",
-				false,
-				!state.cdmAutoEnabled,
-				state.cdmDelayMinutes,
-				state.cdmCooldownMinutes,
-				error,
-				false);
-		}
-		if (!error.empty())
-			showDatalinkMessage(error, true);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.datalink.scan") == 0)
-	{
-		std::string result;
-		std::string error;
-		if (datalinkPlugin == nullptr || !datalinkPlugin->RunCdmReminderScan(result, error))
-			showDatalinkMessage(error.empty() ? "The CDM reminder service is unavailable." : error, true);
-		else
-			showDatalinkMessage(result, false);
 		RequestRefresh();
 		return true;
 	}

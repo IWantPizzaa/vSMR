@@ -520,9 +520,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			return nullptr;
 		if (!IsAvisoGroupedItemVisible(feature.groupIds, request.groupVisibility.get()))
 			continue;
-		if (!feature.colorPalettes.empty() &&
-			std::find(feature.colorPalettes.begin(), feature.colorPalettes.end(), request.colorPalette) == feature.colorPalettes.end())
-			continue;
 		if (feature.minimumZoomLevel > 0 && request.viewportZoomLevel < feature.minimumZoomLevel)
 			continue;
 
@@ -657,9 +654,6 @@ std::unique_ptr<CSMRRadar::AvisoRasterRenderResult> CSMRRadar::RenderAvisoGeoJso
 			if (renderCancelled())
 				return nullptr;
 			if (!IsAvisoGroupedItemVisible(label.groupIds, request.groupVisibility.get()))
-				continue;
-			if (!label.colorPalettes.empty() &&
-				std::find(label.colorPalettes.begin(), label.colorPalettes.end(), request.colorPalette) == label.colorPalettes.end())
 				continue;
 
 			const std::wstring* renderedText = &label.text;

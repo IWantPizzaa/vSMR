@@ -11,6 +11,7 @@ release can be reviewed without inspecting the Visual Studio project.
 | RapidJSON | 1.1.0 API, upstream commit `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` | JSON parsing and writing | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `RapidJSON.txt` (MIT) |
 | Microsoft Visual C++ and MFC runtimes | MSVC v145 by default; v143 in compatibility CI | Native runtime | Not bundled; matching x86 redistributable required | Microsoft redistributable terms |
 | EuroScope Plug-in SDK | repository-provided header/import library | Plug-in ABI | Not separately bundled | Consult the EuroScope SDK distribution terms |
+| France-Ground-Layouts | commit `da539a889b213e66eb254f893fa087c263f65332` | Geometry and ground labels for 53 airports, converted to GeoJSON with vSMR palettes | `vSMR_Data/AVISO/*.geojson`; affected files carry source metadata | `France-Ground-Layouts.txt` (GPL-3.0); source: https://github.com/vaccfr/France-Ground-Layouts |
 | Windows system libraries | Windows 10 SDK | GDI/GDI+, WinHTTP, multimedia, COM and windowing | Provided by Windows | Microsoft Windows terms |
 
 The Microsoft WebView2 Evergreen Runtime itself is not included. Users install

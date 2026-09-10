@@ -33,14 +33,10 @@ struct DatalinkControlState
 	bool controllerConnected = false;
 	std::string logonCallsign;
 	bool hasPassword = false;
-	bool cdmAutoEnabled = false;
-	int cdmDelayMinutes = 5;
-	int cdmCooldownMinutes = 60;
 	bool cdmBridgeLoaded = false;
 	bool cdmBridgeReady = false;
 	std::string activeAirport;
-	std::string cdmAliasPath;
-	bool cdmAliasReady = false;
+	std::string aliasPath;
 	std::string statusMessage;
 };
 
@@ -66,15 +62,11 @@ public:
 		const std::string& callsign,
 		const std::string& password,
 		bool replacePassword,
-		bool cdmAutoEnabled,
-		int delayMinutes,
-		int cooldownMinutes,
 		std::string& error,
 		bool updateConnectionSettings = true);
 	bool ConnectDatalink(std::string& error);
 	bool DisconnectDatalink(std::string& error);
 	bool PollDatalink(std::string& error);
-	bool RunCdmReminderScan(std::string& result, std::string& error);
 	bool EditDatalinkCredentials(std::string& error);
 	static std::string GetActiveProfilesConfigPath(
 		bool* selectionClaimed = nullptr);
@@ -138,7 +130,6 @@ private:
 	void ResetDatalinkRuntime();
 	void LoadDatalinkSettings();
 	void ResetDatalinkProfileSource();
-	void BeginDatalinkShutdown();
 	void PersistDatalinkSettings();
 	static void PrepareDatalinkRuntimeForExit();
 	bool HandleHoldingPointFunctionCall(

@@ -337,7 +337,7 @@ void VsmrControlCenterBridgeImpl::BuildSettings(
 		allocator);
 	CSMRPlugin* plugin = OwnerPlugin();
 	const std::string aliasPath = plugin != nullptr
-		? plugin->GetDatalinkControlState().cdmAliasPath
+		? plugin->GetDatalinkControlState().aliasPath
 		: std::string();
 	AddString(settings, "aliasFile", aliasPath, allocator);
 	AddString(

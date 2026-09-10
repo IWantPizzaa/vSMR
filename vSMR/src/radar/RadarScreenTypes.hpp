@@ -54,7 +54,6 @@ namespace VsmrRadarTypes
 	{
 		std::string id;
 		std::string name;
-		std::vector<std::string> colorPalettes;
 		bool visible = true;
 	};
 
@@ -64,7 +63,6 @@ namespace VsmrRadarTypes
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;
-		std::vector<std::string> colorPalettes;
 		std::vector<std::vector<AvisoPoint>> paths;
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
@@ -86,7 +84,6 @@ namespace VsmrRadarTypes
 		int sourceFeatureIndex = -1;
 		std::string sourceFeatureId;
 		std::vector<std::string> groupIds;
-		std::vector<std::string> colorPalettes;
 		std::wstring text;
 		std::wstring fontFamily = L"Arial";
 		std::string labelClass;
@@ -233,7 +230,6 @@ namespace VsmrRadarTypes
 		Groups,
 		Insets,
 		Profile,
-		Vsid,
 		Datalink
 	};
 
