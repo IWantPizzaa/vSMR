@@ -34,5 +34,6 @@ namespace VsmrRdf
 		HDC dc,
 		CSMRRadar* radar,
 		const RECT& viewport,
-		const Projector& projector);
+		const Projector& projector,
+		bool airborneOnly = false);
 }

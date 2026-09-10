@@ -682,7 +682,8 @@ namespace VsmrRdf
 		HDC dc,
 		CSMRRadar* radar,
 		const RECT& viewport,
-		const Projector& projector)
+		const Projector& projector,
+		bool airborneOnly)
 	{
 		if (dc == nullptr || radar == nullptr || !projector ||
 			viewport.right <= viewport.left || viewport.bottom <= viewport.top)
@@ -716,7 +717,7 @@ namespace VsmrRdf
 						target = scene->FindTarget(callsign.substr(0, callsign.size() - 1));
 				}
 
-				if (target == nullptr || !target->position.valid)
+				if (target == nullptr || !target->position.valid || (airborneOnly && !target->airborne))
 					continue;
 				EuroScopePlugIn::CPosition position;
 				position.m_Latitude = target->position.latitude;

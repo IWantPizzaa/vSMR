@@ -545,7 +545,8 @@ void CInsetWindow::render(HDC hDC, CSMRRadar * radar_screen, Gdiplus::Graphics* 
 			[this](const CPosition& position) -> POINT
 			{
 				return projectPoint(position);
-			});
+			},
+			true);
 		m_LastRdfRenderMilliseconds += std::chrono::duration<double, std::milli>(
 			std::chrono::steady_clock::now() - rdfStarted).count();
 	}
