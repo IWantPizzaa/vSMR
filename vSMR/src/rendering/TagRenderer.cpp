@@ -398,6 +398,22 @@ namespace VsmrTagRendering
 			options.tagCenter.y - totalHeight / 2 + totalHeight);
 	}
 
+	bool SelectHoveredLayout(
+		const FontContext& fonts, const VsmrScene::TagContent& tag,
+		const PaintOptions& options, POINT pointer, bool hoverAllowed,
+		bool dragged, bool wasDetailed, const Layout& normalLayout, Layout& layout)
+	{
+		layout = normalLayout;
+		const bool overNormal = hoverAllowed && CalculateBounds(fonts, normalLayout, options).PtInRect(pointer);
+		if (!dragged && !overNormal && !(hoverAllowed && wasDetailed)) return false;
+		Layout detailedLayout;
+		if (!MeasureLayout(fonts, tag.detailed, detailedLayout)) return false;
+		if (!dragged && !overNormal && !CalculateBounds(fonts, detailedLayout, options).PtInRect(pointer))
+			return false;
+		layout = std::move(detailedLayout);
+		return true;
+	}
+
 	PaintResult Paint(
 		Gdiplus::Graphics& graphics,
 		const FontContext& fonts,

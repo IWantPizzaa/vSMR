@@ -65,7 +65,6 @@ namespace
 }
 
 CPoint mouseLocation(0, 0);
-std::string TagBeingDragged;
 int LeaderLineDefaultlenght = 50;
 
 // Cursor state shared by radar screen instances (managed on the UI thread).
@@ -1049,6 +1048,29 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 
 	switch (uMsg)
 	{
+	case WM_MOUSEMOVE:
+	case WM_MOUSELEAVE:
+	case WM_LBUTTONUP:
+	case WM_CAPTURECHANGED:
+	case WM_KILLFOCUS:
+	{
+		if (uMsg == WM_MOUSEMOVE)
+		{
+			TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
+			::TrackMouseEvent(&tracking);
+		}
+		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
+		if (radarIt != gInsetWindowRadarScreens.end())
+			for (CSMRRadar* radar : radarIt->second)
+				if (radar != nullptr && !radar->IsShutdownRequested() && radar->HasDetailedTags())
+				{
+					if (uMsg == WM_CAPTURECHANGED || uMsg == WM_KILLFOCUS)
+						radar->CancelTagDrag();
+					radar->MarkPerformanceRefreshReason(VsmrPerformance::FrameRefreshReason::Hover);
+					radar->RequestRefresh();
+				}
+		break;
+	}
 	case WM_MOUSEWHEEL:
 	{
 		const int wheelDelta = static_cast<short>(HIWORD(wParam));

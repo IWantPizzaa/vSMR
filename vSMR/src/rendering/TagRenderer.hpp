@@ -156,6 +156,13 @@ namespace VsmrTagRendering
 		const Layout& layout,
 		const PaintOptions& options);
 
+	// Normal bounds activate hover; an already expanded tag stays interactive
+	// only within its current detailed bounds. Neither uses last frame's size.
+	bool SelectHoveredLayout(
+		const FontContext& fonts, const VsmrScene::TagContent& tag,
+		const PaintOptions& options, POINT pointer, bool hoverAllowed,
+		bool dragged, bool wasDetailed, const Layout& normalLayout, Layout& layout);
+
 	PaintResult Paint(
 		Gdiplus::Graphics& graphics,
 		const FontContext& fonts,

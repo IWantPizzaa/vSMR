@@ -910,6 +910,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 		gdi->SetClip(CopyRect(viewportRect), Gdiplus::CombineModeIntersect);
 		m_TargetPoints.clear();
 		m_TagAreas.clear();
+		const auto previouslyDetailed = std::move(m_DetailedTagCallsigns);
+		m_DetailedTagCallsigns.clear();
+		const bool hoverAllowed = radar_screen->CanHoverTags(mouseLocation, this);
 
 		auto pointInViewport = [&](const POINT& point, int margin = 0) -> bool
 		{
@@ -1214,6 +1217,17 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 			CRect occupiedBounds(expectedBounds);
 			occupiedBounds.InflateRect(2, 2);
 			occupiedTagBounds.push_back(occupiedBounds);
+			// Use the normal footprint for placement so expansion cannot move the tag.
+			const VsmrTagRendering::Layout normalLayout = layout;
+			const bool dragged = m_TagBeingDragged == callsign;
+			const bool detailed = VsmrTagRendering::SelectHoveredLayout(
+				tagFonts, sceneTarget.tag, options, mouseLocation, hoverAllowed, dragged,
+				previouslyDetailed.count(callsign) != 0, normalLayout, layout);
+			if (detailed) m_DetailedTagCallsigns.insert(callsign);
+			const auto& selectedPalette = detailed ? sceneTarget.tag.detailedPalette : sceneTarget.tag.normalPalette;
+			options.background = SceneColorToGdi(sceneTarget.rimcas.onRunway ? selectedPalette.backgroundOnRunway : selectedPalette.background);
+			options.highlighted = dragged || (hoverAllowed &&
+				VsmrTagRendering::CalculateBounds(tagFonts, layout, options).PtInRect(mouseLocation));
 			preparedTags.push_back({ &sceneTarget, std::move(layout), options });
 		}
 
