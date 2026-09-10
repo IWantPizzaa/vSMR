@@ -47,7 +47,7 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 
 	LoadDatalinkSettings();
 
-	string DllPath;
+	std::string DllPath;
 
 	// Resolving runtime data sources
 	if (VsmrRuntimeContext::IsConfigured())

@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "tags/TagTokenValues.hpp"
 #include "radar/RadarScreen.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 
@@ -276,7 +277,8 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, 
 
 	if (changed)
 	{
-		RequestRefresh();
+		CompiledTagDefinitions.Clear();
+	RequestRefresh();
 		if (persistToDisk && !CurrentConfig->saveConfig())
 		{
 			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save detailed-definition mode to vSMR_Profiles.json", true, true, false, false, false);
@@ -400,7 +402,8 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(
 
 	if (changed)
 	{
-		RequestRefresh();
+		CompiledTagDefinitions.Clear();
+	RequestRefresh();
 		if (persistToDisk && !CurrentConfig->saveConfig())
 		{
 			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save detailed-definition mode to vSMR_Profiles.json", true, true, false, false, false);
@@ -690,7 +693,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionLineStrings(std::string type
 	if (!GetTagDefinitionArray(type, detailed, definitionArray, createIfMissing, departureStatus) || !definitionArray)
 		return lines;
 
-	const rapidjson::SizeType limit = min(definitionArray->Size(), static_cast<rapidjson::SizeType>(maxLines));
+	const rapidjson::SizeType limit = (std::min)(definitionArray->Size(), static_cast<rapidjson::SizeType>(maxLines));
 	for (rapidjson::SizeType i = 0; i < limit; ++i)
 	{
 		rapidjson::Value& lineValue = (*definitionArray)[i];
@@ -715,6 +718,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionLineStrings(std::string type
 
 void CSMRRadar::SaveTagDefinitionConfig()
 {
+	CompiledTagDefinitions.Clear();
 	if (!CurrentConfig)
 		return;
 
@@ -818,12 +822,13 @@ void CSMRRadar::SetTagDefinitionLineString(std::string type, bool detailed, int 
 	}
 
 	SaveTagDefinitionConfig();
+	CompiledTagDefinitions.Clear();
 	RequestRefresh();
 }
 
 void CSMRRadar::InsertTagDefinitionTokenIntoLine(const std::string& token, bool makeBold)
 {
-	int lineIndex = max(0, min(TagDefinitionEditorSelectedLine, TagDefinitionEditorMaxLines - 1));
+	int lineIndex = (std::max)(0, (std::min)(TagDefinitionEditorSelectedLine, TagDefinitionEditorMaxLines - 1));
 	std::vector<std::string> lines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
 	std::string currentLine = lines[lineIndex];
 	const std::string styledToken = ApplyDefinitionTokenStyle(token, makeBold);
@@ -836,9 +841,9 @@ void CSMRRadar::InsertTagDefinitionTokenIntoLine(const std::string& token, bool 
 	SetTagDefinitionLineString(TagDefinitionEditorType, TagDefinitionEditorDetailed, lineIndex, currentLine, TagDefinitionEditorDepartureStatus);
 }
 
-std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const std::string& type)
+VsmrTags::TokenValues CSMRRadar::BuildTagDefinitionPreviewMap(const std::string& type)
 {
-	std::map<std::string, std::string> previewMap;
+	VsmrTags::TokenValues previewMap;
 	for (const std::string& token : GetTagDefinitionTokens())
 		previewMap[token] = token;
 
@@ -939,7 +944,7 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 std::vector<std::string> CSMRRadar::BuildTagDefinitionPreviewLines()
 {
 	std::vector<std::string> sourceLines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
-	std::map<std::string, std::string> previewMap = BuildTagDefinitionPreviewMap(TagDefinitionEditorType);
+	VsmrTags::TokenValues previewMap = BuildTagDefinitionPreviewMap(TagDefinitionEditorType);
 	std::vector<std::string> previewLines;
 
 	for (const std::string& line : sourceLines)

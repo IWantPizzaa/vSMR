@@ -22,7 +22,7 @@ void CSMRPlugin::OnTimer(int Counter)
 		return;
 
 	if (Logger::is_verbose_mode())
-		Logger::info(string(__FUNCSIG__));
+		Logger::info(std::string(__FUNCSIG__));
 	BLINK = !BLINK;
 	VsmrRdf::OnTimer();
 

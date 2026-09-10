@@ -1,4 +1,5 @@
 #include "TagColorRuleTests.hpp"
+#include "tags/TagTokenValues.hpp"
 
 #include "tags/TagColorRules.hpp"
 
@@ -59,7 +60,7 @@ std::vector<std::string> RunTagColorRuleTests()
 		"tag color parser normalizes runway tokens and channel colors",
 		failures);
 
-	const std::map<std::string, std::string> matchingRunway = { { "deprwy", "RWY 08L" } };
+	const VsmrTags::TokenValues matchingRunway = { { "deprwy", "RWY 08L" } };
 	const TagColorRuleOverrides runwayOverrides = EvaluateRunwayColorRules({ runwayRule }, matchingRunway);
 	Check(
 		runwayOverrides.hasTextColor && runwayOverrides.textR == 20 &&

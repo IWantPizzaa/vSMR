@@ -1,4 +1,5 @@
 #include "updater/UpdaterCore.hpp"
+#include "shared/JsonDocument.hpp"
 #include "updater/UpdaterCore.Internal.hpp"
 #include "updater/UpdaterReleaseModel.hpp"
 #include "updater/UpdaterVerification.hpp"
@@ -167,7 +168,7 @@ namespace vsmr::updater::internal
 				return false;
 			}
 			rapidjson::Document metadata;
-			metadata.Parse<0>(metadataJson.c_str());
+			VsmrJson::ParseDocument(metadata, metadataJson);
 			if (metadata.HasParseError() || !metadata.IsObject() ||
 				!JsonBool(metadata, "publishable", false) ||
 				JsonString(metadata, "version") != manifest.version.normalized ||
