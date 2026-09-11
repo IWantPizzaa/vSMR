@@ -201,7 +201,8 @@ void CSMRRadar::OnAsrContentToBeClosed(void)
 
 	const std::string fallbackProfile = (CurrentConfig != nullptr) ? CurrentConfig->getActiveProfileName() : "Default";
 	const std::string profileToPersist = GetSessionActiveProfile(fallbackProfile);
-	SaveDataToAsr("ActiveProfile", "vSMR active profile", profileToPersist.c_str());
+	// EuroScope has already completed its save decision. The SDK forbids ASR
+	// writes in this callback; ActiveProfile is stored in OnAsrContentToBeSaved.
 
 	if (CurrentConfig != nullptr)
 	{

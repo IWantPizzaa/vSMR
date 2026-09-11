@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Harmonized the vSID / CPDLC panel with the other Runtime Menu popups: compact 220-pixel width, standard title, spacing and buttons, with connection indicators and grouped controls.
+
 - Updated Default-profile tags with bold callsigns, Ready Startup on detailed no-status/startup tags, CTOT on detailed taxi/line-up tags, and the revised arrival layouts.
 
 - Set LFPG taxiway, engine-test-area, terminal and TORA labels to zoom 7 and gates to 10; set LFMN gates to 9, taxiways to 6 and TORA labels to 7.
@@ -43,6 +45,8 @@
 - Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. Added geometry repairs and reported exclusions for misplaced source records during map conversion.
 
 ### Fixed
+
+- Removed an ASR write from the radar close callback that could register changes after EuroScope had already asked whether to save. Active-profile persistence remains in the normal save callback.
 
 - Made browser regression checks wait for real rendering and the page's completion result, preventing virtual-time timeouts from racing scroll-indicator updates.
 - Preserved legacy colors and no-status tag definitions when profile migration replaces JSON fields, and made repeated normalization avoid rewriting unchanged definitions.

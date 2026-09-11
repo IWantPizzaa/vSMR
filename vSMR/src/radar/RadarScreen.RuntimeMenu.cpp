@@ -32,8 +32,8 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 270;
-	constexpr int kVsidLfpgPopupHeight = 336;
+	constexpr int kVsidPopupHeight = 214;
+	constexpr int kVsidLfpgPopupHeight = 286;
 	constexpr int kStandardPopupWidth = 170;
 
 	struct RuntimeMenuPalette
@@ -540,120 +540,91 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	void twoColumnAreas(int height, CRect& left, CRect& right)
 	{
 		const int gap = 3;
-		const int availableWidth = radar.RuntimeMenuPopupArea.Width() - (kPopupPadding * 2) - gap;
+		const int padding = kPopupPadding;
+		const int availableWidth = radar.RuntimeMenuPopupArea.Width() - (padding * 2) - gap;
 		const int leftWidth = availableWidth / 2;
 		left = CRect(
-			radar.RuntimeMenuPopupArea.left + kPopupPadding,
+			radar.RuntimeMenuPopupArea.left + padding,
 			contentTop,
-			radar.RuntimeMenuPopupArea.left + kPopupPadding + leftWidth,
+			radar.RuntimeMenuPopupArea.left + padding + leftWidth,
 			contentTop + height);
 		right = CRect(
 			left.right + gap,
 			contentTop,
-			radar.RuntimeMenuPopupArea.right - kPopupPadding,
+			radar.RuntimeMenuPopupArea.right - padding,
 			contentTop + height);
+	}
+
+	void drawStatusLamp(const CRect& area, std::optional<bool> active)
+	{
+		const COLORREF color = !active.has_value() ? RGB(204, 162, 65) :
+			(*active ? RGB(74, 213, 93) : RGB(230, 67, 59));
+		const Gdiplus::Color ink(255, GetRValue(color), GetGValue(color), GetBValue(color));
+		Gdiplus::Pen ring(ink, 1.0f);
+		Gdiplus::SolidBrush fill(ink);
+		const int diameter = 12;
+		const int x = area.left + (area.Width() - diameter) / 2;
+		const int y = area.top + (area.Height() - diameter) / 2;
+		graphics.DrawEllipse(&ring, x, y, diameter, diameter);
+		if (active.has_value()) graphics.FillEllipse(&fill, x + 3, y + 3, diameter - 6, diameter - 6);
+		else
+		{
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, area, "?", color, DT_CENTER);
+		}
 	}
 
 	void DrawDatalink()
 	{
-		// Drawing the fixed vSID actions published by its supported command surface
-		std::string statusText;
-		if (vsidState.commandLineBusy)
-			statusText = "EuroScope command line busy";
-		else if (vsidState.providerReady)
-			statusText = "Connected - " + std::to_string(vsidState.aircraftCount) + " active aircraft";
-		else if (!vsidState.bridgeLoaded)
-			statusText = "vSID - bridge not loaded";
-		else if (!vsidState.bridgeCompatible)
-			statusText = "vSID - incompatible bridge";
-		else
-			statusText = "vSID provider unavailable";
-
-		CRect statusArea(
-			radar.RuntimeMenuPopupArea.left + kPopupPadding,
-			contentTop,
-			radar.RuntimeMenuPopupArea.right - kPopupPadding,
-			contentTop + 22);
-		DrawRoundedRect(hdc, statusArea, palette.cardBackground, palette.outerBorder, kControlCornerDiameter);
-		::SelectObject(hdc, actionFont);
-		DrawRuntimeSelectionIndicator(graphics, CRect(statusArea.left + 4, statusArea.top, statusArea.left + 22, statusArea.bottom),
-			vsidState.providerReady, vsidState.providerReady ? palette.accent : palette.mutedText);
-		CRect statusTextArea(statusArea.left + 25, statusArea.top, statusArea.right - 6, statusArea.bottom);
-		DrawTextEllipsis(hdc, statusTextArea, statusText, palette.text);
-		contentTop += 25;
-
 		const std::string& normalizedAirport = vsidAirport;
 		const bool canSubmit = vsidState.providerReady && !vsidState.commandLineBusy;
 		const bool canSubmitAirport = canSubmit && !normalizedAirport.empty();
-		drawSectionLabel(normalizedAirport.empty()
-			? "AIRPORT REQUIRED"
-			: "AIRPORT " + normalizedAirport);
-
-		auto drawVsidRow = [&](
-			const char* leftId,
-			const char* leftLabel,
-			const char* leftTooltip,
-			bool leftEnabled,
-			const char* rightId,
-			const char* rightLabel,
-			const char* rightTooltip,
-			bool rightEnabled)
+		// Keep the standard popup title uncluttered at the compact width.
+		CRect vsidStatus, cpdlcStatus;
+		twoColumnAreas(18, vsidStatus, cpdlcStatus);
+		auto drawConnection = [&](const CRect& area, const char* label, std::optional<bool> online)
 		{
-			CRect leftArea;
-			CRect rightArea;
-			twoColumnAreas(22, leftArea, rightArea);
-			drawRuntimeButton(leftId, leftArea, leftLabel, leftEnabled, false, false, leftTooltip);
-			drawRuntimeButton(rightId, rightArea, rightLabel, rightEnabled, false, false, rightTooltip);
-			contentTop += 25;
+			drawStatusLamp(CRect(area.left, area.top, area.left + 16, area.bottom), online);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, CRect(area.left + 19, area.top, area.right, area.bottom), label, palette.mutedText);
 		};
-
-		auto drawVsidActions = [&](const auto& definitions, bool enabled)
-		{
-			std::size_t index = 0U;
-			for (; index + 1U < definitions.size(); index += 2U)
-			{
-				const VsmrVsid::RuntimeActionDefinition& left = definitions[index];
-				const VsmrVsid::RuntimeActionDefinition& right = definitions[index + 1U];
-				drawVsidRow(
-					left.objectId, left.label, left.tooltip, enabled,
-					right.objectId, right.label, right.tooltip, enabled);
-			}
-			if (index < definitions.size())
-			{
-				const VsmrVsid::RuntimeActionDefinition& action = definitions[index];
-				CRect area(
-					radar.RuntimeMenuPopupArea.left + kPopupPadding,
-					contentTop,
-					radar.RuntimeMenuPopupArea.right - kPopupPadding,
-					contentTop + 22);
-				drawRuntimeButton(
-					action.objectId, area, action.label, enabled,
-					false, false, action.tooltip);
-				contentTop += 25;
-			}
-		};
+		drawConnection(vsidStatus, vsidState.providerReady ? "vSID Online" : "vSID Offline", vsidState.providerReady);
+		drawConnection(cpdlcStatus, datalinkState.connected ? "CPDLC Online" :
+			(datalinkState.connecting ? "Connecting" : "CPDLC Offline"),
+			datalinkState.connecting ? std::optional<bool>{} : std::optional<bool>{datalinkState.connected});
+		contentTop += 20;
+		drawSectionLabel("vSID ACTIONS");
 		const auto& automatic = VsmrVsid::AirportRuntimeActions.front();
 		CRect automaticArea(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
-			radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + 22);
+			radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + kPopupActionHeight);
+		const std::string autoState = vsidState.automaticMode.has_value()
+			? (*vsidState.automaticMode ? "On" : "Off") : "Unknown - requires vSID automatic-mode status support";
 		drawRuntimeButton(automatic.objectId, automaticArea, "", canSubmitAirport,
-			false, false, "Toggle vSID automatic mode for " + normalizedAirport);
-		CRect automaticLabel(automaticArea.left + 9, automaticArea.top, automaticArea.right - 95, automaticArea.bottom);
-		DrawTextEllipsis(hdc, automaticLabel, "Automatic mode", canSubmitAirport ? palette.text : palette.disabledText);
-		CRect automaticStatus(automaticArea.right - 77, automaticArea.top, automaticArea.right - 8, automaticArea.bottom);
-		DrawRuntimeSelectionIndicator(graphics,
-			CRect(automaticStatus.left - 19, automaticStatus.top, automaticStatus.left - 1, automaticStatus.bottom),
-			vsidState.automaticMode.value_or(false), vsidState.automaticMode.value_or(false) ? palette.accent : palette.mutedText);
-		DrawTextEllipsis(hdc, automaticStatus,
-			vsidState.automaticMode.has_value() ? (*vsidState.automaticMode ? "On" : "Off") : "Unknown",
-			palette.mutedText, DT_RIGHT);
-		contentTop += 25;
-
+			false, false, "Toggle automatic mode for " + normalizedAirport + ". " + autoState);
+		::SelectObject(hdc, actionFont);
+		DrawTextEllipsis(hdc, CRect(automaticArea.left + 10, automaticArea.top,
+			automaticArea.right - 35, automaticArea.bottom), "Automatic mode",
+			canSubmitAirport ? palette.text : palette.disabledText);
+		drawStatusLamp(CRect(automaticArea.right - 30, automaticArea.top,
+			automaticArea.right - 8, automaticArea.bottom), vsidState.automaticMode);
+		contentTop += kPopupActionHeight + 3;
+		CRect reloadArea, syncArea;
+		twoColumnAreas(kPopupActionHeight, reloadArea, syncArea);
+		const auto& reload = VsmrVsid::GeneralRuntimeActions[2];
+		const auto& sync = VsmrVsid::GeneralRuntimeActions[1];
+		drawRuntimeButton(reload.objectId, reloadArea, reload.label, canSubmit, false, false, reload.tooltip);
+		drawRuntimeButton(sync.objectId, syncArea, sync.label, canSubmit, false, false, sync.tooltip);
+		contentTop += kPopupActionHeight + 3;
 		if (normalizedAirport == "LFPG")
 		{
-			drawSectionLabel("LFPG MODES");
+			contentTop += 3;
+			FillRectColor(hdc, CRect(radar.RuntimeMenuPopupArea.left + 10, contentTop,
+				radar.RuntimeMenuPopupArea.right - 10, contentTop + 1), palette.divider);
+			contentTop += 3;
+			drawSectionLabel("vSID SETTINGS");
 			CRect leftArea;
 			CRect rightArea;
-			twoColumnAreas(22, leftArea, rightArea);
+			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
 			const auto& minimum = VsmrVsid::LfpgModeActions[0];
 			const auto& crossing = VsmrVsid::LfpgModeActions[1];
 			const bool minimumActive =
@@ -664,9 +635,9 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			drawRuntimeButton(
 				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
 				!minimumActive, false, crossing.tooltip, minimumActive);
-			contentTop += 25;
+			contentTop += kPopupActionHeight + 3;
 
-			twoColumnAreas(22, leftArea, rightArea);
+			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
 			const auto& linked = VsmrVsid::LfpgLinkActions[0];
 			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
 			const bool linkedActive =
@@ -677,11 +648,10 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			drawRuntimeButton(
 				unlinked.objectId, rightArea, unlinked.label, canSubmitAirport,
 				!linkedActive, false, unlinked.tooltip, linkedActive);
-			contentTop += 25;
+			contentTop += kPopupActionHeight + 3;
 		}
 
-		drawSectionLabel("vSID ACTIONS");
-		drawVsidActions(VsmrVsid::GeneralRuntimeActions, canSubmit);
+		contentTop += 6;
 		DrawCpdlc();
 	}
 
@@ -690,22 +660,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		// Drawing CPDLC and PDC controls
 		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(radar.GetPlugIn());
 		const DatalinkControlState& state = datalinkState;
-		contentTop += 3;
-		FillRectColor(hdc, CRect(radar.RuntimeMenuPopupArea.left + 6, contentTop,
-			radar.RuntimeMenuPopupArea.right - 6, contentTop + 1), palette.divider);
-		contentTop += 3;
-		CRect heading(radar.RuntimeMenuPopupArea.left + 7, contentTop,
-			radar.RuntimeMenuPopupArea.right - 7, contentTop + 22);
-		::SelectObject(hdc, actionFont);
-		DrawTextEllipsis(hdc, heading, "CPDLC / PDC", palette.text);
-		CRect connectionStatus(heading.right - 80, heading.top, heading.right, heading.bottom);
-		DrawRuntimeSelectionIndicator(graphics,
-			CRect(connectionStatus.left - 19, heading.top, connectionStatus.left - 1, heading.bottom),
-			state.connected, state.connected ? palette.accent : palette.mutedText);
-		DrawTextEllipsis(hdc, connectionStatus,
-			state.connected ? "Connected" : (state.connecting ? "Connecting" : "Offline"),
-			palette.mutedText, DT_RIGHT);
-		contentTop += 22;
+		drawSectionLabel("CPDLC / PDC");
 
 		auto drawCredentialRow = [&](
 			const std::string& label,
@@ -715,9 +670,9 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		{
 			CRect labelArea;
 			CRect valueArea;
-			twoColumnAreas(22, labelArea, valueArea);
+			twoColumnAreas(kPopupActionHeight, labelArea, valueArea);
 			labelArea.left += 4;
-			::SelectObject(hdc, rowFont);
+			::SelectObject(hdc, actionFont);
 			DrawTextEllipsis(hdc, labelArea, label, palette.text);
 			drawRuntimeButton(
 				id,
@@ -727,7 +682,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				false,
 				false,
 				tooltip);
-			contentTop += 25;
+			contentTop += kPopupActionHeight + 3;
 		};
 		drawCredentialRow(
 			"Login",
@@ -742,7 +697,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 
 		CRect pollArea;
 		CRect connectionArea;
-		twoColumnAreas(22, pollArea, connectionArea);
+		twoColumnAreas(kPopupActionHeight, pollArea, connectionArea);
 		drawRuntimeButton(
 			"runtime.datalink.poll",
 			pollArea,
@@ -760,7 +715,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			!state.connected && !state.connecting,
 			state.connected,
 			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
-		contentTop += 25;
+		contentTop += kPopupActionHeight + 3;
 	}
 
 	void DrawChoices()
