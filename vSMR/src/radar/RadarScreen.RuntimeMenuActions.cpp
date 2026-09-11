@@ -155,11 +155,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
-	if (std::strcmp(id, "runtime.close") == 0 || std::strcmp(id, "runtime.close.cpdlc") == 0)
-	{
-		CloseRuntimeMenuPopup();
-		return true;
-	}
 	if (std::strcmp(id, "runtime.popup") == 0 || std::strcmp(id, "runtime.popup.cpdlc") == 0)
 		return true;
 
