@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added a right-click airport history to the Runtime Menu ICAO field, listing the five most recently opened airports in the current radar-screen session for quick switching.
+
 - Added regression coverage for JSON limits, updater URL and hashing checks, compiled tag definitions, and persistent text caches. CI now runs MSVC static analysis and a JSON fuzz smoke test under AddressSanitizer.
 - Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
 - Added validated Copy/Paste actions for Rules and AVISO geometry/text styles. AVISO paste and profile-color editing support the existing Ctrl/Shift multi-selection workflow.
@@ -14,6 +16,8 @@
 - Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
 
 ### Changed
+
+- Set LFPG taxiway, engine-test-area, terminal and TORA labels to zoom 7 and gates to 10; set LFMN gates to 9, taxiways to 6 and TORA labels to 7.
 
 - Restored LFPG East and West arrow groups from the original AVISO geometry. Removed the Runway details group while retaining its geometry and all existing airport palettes.
 - Redesigned the combined vSID / CPDLC Runtime Menu with a compact layout and consistent state indicators. Automatic mode reads the optional `vsid/automode` bridge snapshot; older providers show Unknown. Included a companion vSID patch for publishing the actual airport states.

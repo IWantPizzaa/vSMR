@@ -230,7 +230,8 @@ namespace VsmrRadarTypes
 		Groups,
 		Insets,
 		Profile,
-		Datalink
+		Datalink,
+		RecentAirports
 	};
 
 	struct CachedRunwayGeometry

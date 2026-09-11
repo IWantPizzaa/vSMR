@@ -258,6 +258,7 @@ private:
 
 	std::map<std::string, RECT> MenuPositions;
 	RuntimeMenuPopup ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
+	std::vector<std::string> RecentAirports;
 	std::string PendingGroundStatusCallsign;
 	POINT RuntimeMenuPosition = { 14, 100 };
 	bool RuntimeMenuPositionInitialized = false;
