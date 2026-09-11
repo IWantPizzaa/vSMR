@@ -15,8 +15,6 @@
 
 ### Changed
 
-- Reused complete tag models across scene refreshes, rebuilding text only when referenced values or definitions change. Replaced per-point projection callbacks with concrete viewport projection and moved temporary runway occupancy/countdown data to reusable contiguous storage.
-- Split profile migration, tag formatting, Runtime Menu panels/actions, and main/AVISO/SRW rendering into focused components. Extended native regression coverage and added a separate AddressSanitizer run of the native suite in CI.
 - Combined vSID and CPDLC/PDC controls into one Runtime Menu panel. Removed CDM Auto, its timer and message queue, bulk scans, timing controls, and saved settings.
 
 - Made AVISO geometry, text, and groups shared across Dark, Light, and Real. Palette changes now affect colors only; older maps migrate using Light geometry when loaded or imported. Updated all 395 bundled AVISOs to the shared format.
@@ -34,7 +32,6 @@
 
 ### Fixed
 
-- Preserved legacy colors and no-status tag definitions while profile migration adds or replaces JSON fields. Repeated normalization now avoids rewriting unchanged airborne tag definitions.
 - Suppressed RDF indications for ground aircraft in SRW insets, using the scene's airborne classification.
 
 - Fixed tags remaining detailed after the pointer leaves or a drag release is missed. Hover uses current tag bounds and the rendering window's cursor coordinates, with drag state isolated per radar view. Added detailed hover tags and their interactive fields to SRW and AVISO insets.

@@ -1,7 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "tags/TagTokenValues.hpp"
 #include "radar/RadarScreen.hpp"
-#include "config/ProfileNormalization.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 
 namespace
@@ -100,7 +99,42 @@ std::string CSMRRadar::TagDefinitionTypeLabel(const std::string& type) const
 
 std::string CSMRRadar::NormalizeTagDefinitionDepartureStatus(const std::string& status) const
 {
-	return VsmrProfile::NormalizeTagDefinitionDepartureStatus(status);
+	std::string lowered = status;
+	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	std::string compact;
+	compact.reserve(lowered.size());
+	for (char c : lowered)
+	{
+		if (c == ' ' || c == '_' || c == '-')
+			continue;
+		compact.push_back(c);
+	}
+
+	if (lowered == "depa")
+		return "depa";
+	if (lowered == "arr" || lowered == "arrival")
+		return "arr";
+	if (compact == "airdep" || compact == "airbornedep" || compact == "airbornedeparture")
+		return "airdep";
+	if (compact == "airarr" || compact == "airbornearr" || compact == "airbornearrival")
+		return "airarr";
+	if (compact == "airdeponrunway" || compact == "airbornedeponrunway" || compact == "airbornedepartureonrunway")
+		return "airdep_onrunway";
+	if (compact == "airarronrunway" || compact == "airbornearronrunway" || compact == "airbornearrivalonrunway")
+		return "airarr_onrunway";
+	if (lowered == "taxi")
+		return "taxi";
+	if (compact == "lnup" || compact == "lineup" || compact == "l/up")
+		return "lnup";
+	if (lowered == "push")
+		return "push";
+	if (lowered == "stup" || lowered == "startup")
+		return "stup";
+	if (lowered == "nsts")
+		return "nsts";
+	if (compact == "nofpl" || compact == "noflightplan")
+		return "nofpl";
+	return "default";
 }
 
 std::string CSMRRadar::TagDefinitionDepartureStatusLabel(const std::string& status) const
@@ -1065,32 +1099,163 @@ namespace
 
 std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) const
 {
-	return VsmrProfile::NormalizeStructuredRuleSource(source);
+	std::string lowered = TrimAsciiWhitespace(source);
+	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (lowered == "vsid" || lowered == "v_sid")
+		return "vsid";
+	// Older profiles used "vacdm" for the same rule source.
+	if (lowered == "cdm" || lowered == "vacdm")
+		return "cdm";
+	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist" || lowered == "sid")
+		return "custom";
+	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
+		return "runway";
+	return "cdm";
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, const std::string& token) const
 {
-	return VsmrProfile::NormalizeStructuredRuleToken(source, token);
+	std::string normalizedToken = TrimAsciiWhitespace(token);
+	std::transform(normalizedToken.begin(), normalizedToken.end(), normalizedToken.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalizedToken.empty())
+		return "";
+
+	const std::string normalizedSource = NormalizeStructuredRuleSource(source);
+	if (normalizedSource == "runway")
+	{
+		if (normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
+			return normalizedToken;
+		return "";
+	}
+	if (normalizedSource == "custom")
+	{
+		if (normalizedToken == "sid")
+			return "asid";
+		if (normalizedToken == "asid" || normalizedToken == "ssid" ||
+			normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
+		{
+			return normalizedToken;
+		}
+		return "";
+	}
+	if (normalizedSource == "vsid")
+	{
+		if (normalizedToken == "sid")
+			return "vsid_sid";
+		if (normalizedToken == "rwy" || normalizedToken == "runway")
+			return "vsid_rwy";
+		if (normalizedToken == "cfl")
+			return "vsid_cfl";
+		if (normalizedToken == "vsid_sid" || normalizedToken == "vsid_rwy" || normalizedToken == "vsid_cfl")
+			return normalizedToken;
+		return "";
+	}
+	if (normalizedSource == "cdm")
+	{
+		if (normalizedToken.rfind("cdm_", 0) == 0)
+			normalizedToken = normalizedToken.substr(4);
+		if (normalizedToken == "tobt" || normalizedToken == "tsat" ||
+			normalizedToken == "ttot" || normalizedToken == "ctot" ||
+			normalizedToken == "tsac" || normalizedToken == "asrt" ||
+			normalizedToken == "asat" || normalizedToken == "deice" ||
+			normalizedToken == "tobt_set_by" ||
+			normalizedToken == "flow_restriction" ||
+			normalizedToken == "ecfmp_restriction" ||
+			normalizedToken == "manual_ctot")
+		{
+			return normalizedToken;
+		}
+		return "";
+	}
+
+	return "";
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleCondition(const std::string& source, const std::string& condition) const
 {
-	return VsmrProfile::NormalizeStructuredRuleCondition(source, condition);
+	const std::string normalizedSource = NormalizeStructuredRuleSource(source);
+	std::string text = TrimAsciiWhitespace(condition);
+	if (text.empty())
+		return "any";
+
+	if (normalizedSource == "runway" || normalizedSource == "custom" ||
+		normalizedSource == "vsid" || normalizedSource == "cdm")
+		return text;
+
+	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	for (char& c : text)
+	{
+		if (c == ' ' || c == '-')
+			c = '_';
+	}
+	if (text.rfind("state_", 0) == 0)
+		text = text.substr(6);
+	if (text.empty())
+		return "any";
+	return text;
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleTagType(const std::string& tagType) const
 {
-	return VsmrProfile::NormalizeStructuredRuleTagType(tagType);
+	std::string normalized = TrimAsciiWhitespace(tagType);
+	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalized.empty() || normalized == "all" || normalized == "*")
+		return "any";
+	if (normalized == "dep")
+		return "departure";
+	if (normalized == "arr")
+		return "arrival";
+	if (normalized == "air")
+		return "airborne";
+	if (normalized == "uncorr" || normalized == "uncor")
+		return "uncorrelated";
+	if (normalized == "departure" || normalized == "arrival" || normalized == "airborne" || normalized == "uncorrelated")
+		return normalized;
+	return "any";
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleStatus(const std::string& status) const
 {
-	return VsmrProfile::NormalizeStructuredRuleStatus(status);
+	std::string normalized = TrimAsciiWhitespace(status);
+	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	std::string compact;
+	compact.reserve(normalized.size());
+	for (char c : normalized)
+	{
+		if (c == ' ' || c == '_' || c == '-')
+			continue;
+		compact.push_back(c);
+	}
+
+	if (normalized.empty() || normalized == "all" || normalized == "*")
+		return "any";
+	if (normalized == "any")
+		return "any";
+	if (normalized == "def" || compact == "default" || compact == "nostatus" || compact == "onground")
+		return "default";
+
+	if (compact == "departure")
+		return "depa";
+	if (compact == "startup")
+		return "stup";
+
+	const std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(normalized);
+	if (normalizedStatus == "nsts" || normalizedStatus == "arr")
+		return "default";
+	return normalizedStatus;
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleDetail(const std::string& detail) const
 {
-	return VsmrProfile::NormalizeStructuredRuleDetail(detail);
+	std::string normalized = TrimAsciiWhitespace(detail);
+	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+	if (normalized.empty() || normalized == "all" || normalized == "*")
+		return "any";
+	if (normalized == "normal" || normalized == "basic" || normalized == "simple")
+		return "normal";
+	if (normalized == "detailed" || normalized == "detail" || normalized == "expanded")
+		return "detailed";
+	return "any";
 }
 
 const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules() const

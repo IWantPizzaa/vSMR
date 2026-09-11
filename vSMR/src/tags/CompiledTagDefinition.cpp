@@ -158,12 +158,7 @@ const VsmrTags::CompiledDefinition& VsmrTags::DefinitionCache::Get(
 				element.style.clearanceToken = TryParseClearanceTokenDisplay(styled.token,
 					element.notClearedText, element.clearedText);
 				element.style.action = element.style.clearanceToken ? TAG_CITEM_CLEARANCE : ActionForTagToken(styled.token);
-				if (!element.style.clearanceToken)
-				{
-					element.text = CompileText(styled.token);
-					for (const auto& part : element.text)
-						if (part.token) result.dependencies.push_back(part.text);
-				}
+				if (!element.style.clearanceToken) element.text = CompileText(styled.token);
 				line.push_back(std::move(element));
 			};
 			if (sourceLine.IsArray()) for (const auto& token : sourceLine.GetArray()) add(token);
@@ -171,46 +166,22 @@ const VsmrTags::CompiledDefinition& VsmrTags::DefinitionCache::Get(
 			if (!line.empty()) result.lines.push_back(std::move(line));
 		}
 	}
-	std::sort(result.dependencies.begin(), result.dependencies.end());
-	result.dependencies.erase(std::unique(result.dependencies.begin(), result.dependencies.end()), result.dependencies.end());
 	return definitions_.emplace(key, std::move(result)).first->second;
 }
 
-bool VsmrTags::UpdateTagVariant(const CompiledDefinition& definition,
-	const VsmrScene::Target& target, bool detailed, VsmrScene::TagVariant& result)
+VsmrScene::TagVariant VsmrTags::BuildTagVariant(const CompiledDefinition& definition,
+	const VsmrScene::Target& target, bool detailed)
 {
-	const unsigned flags = (detailed ? 1U : 0U) | (target.hasFlightPlan ? 2U : 0U) |
-		(target.correlated ? 4U : 0U) | (target.tag.clearanceReceived ? 8U : 0U);
-	const bool definitionChanged = result.definitionIdentity != definition.identity;
-	bool changed = definitionChanged || flags != result.evaluationFlags;
-	result.evaluatedInputs.resize(definition.dependencies.size());
-	for (std::size_t i = 0; i < definition.dependencies.size(); ++i)
+	VsmrScene::TagVariant result;
+	result.lines.reserve(definition.lines.size());
+	for (const auto& sourceLine : definition.lines)
 	{
-		const auto& key = definition.dependencies[i];
-		const auto value = target.tag.tokens.find(key);
-		const auto& text = value == target.tag.tokens.end() ? key : value->second;
-		if (result.evaluatedInputs[i] != text)
+		VsmrScene::TagLine line;
+		line.elements.reserve(sourceLine.size());
+		bool visible = false;
+		for (const auto& source : sourceLine)
 		{
-			result.evaluatedInputs[i] = text;
-			changed = true;
-		}
-	}
-	if (!changed) return false;
-	result.definitionIdentity = definition.identity;
-	result.evaluationFlags = flags;
-	result.lines.resize(definition.lines.size());
-	for (std::size_t i = 0; i < definition.lines.size(); ++i)
-	{
-		const auto& sourceLine = definition.lines[i];
-		auto& line = result.lines[i];
-		line.elements.resize(sourceLine.size());
-		line.visible = false;
-		for (std::size_t j = 0; j < sourceLine.size(); ++j)
-		{
-			const auto& source = sourceLine[j];
-			auto& element = line.elements[j];
-			if (definitionChanged) element = source.style;
-			element.text.clear();
+			auto element = source.style;
 			if (element.clearanceToken)
 			{
 				if (target.hasFlightPlan && target.correlated)
@@ -223,16 +194,10 @@ bool VsmrTags::UpdateTagVariant(const CompiledDefinition& definition,
 			}
 			if (!detailed && ToLowerAsciiCopy(element.token) == "scratchpad" && element.text == "...") element.text.clear();
 			if (detailed && element.action == TAG_CITEM_HOLDINGPOINT && element.text.empty()) element.text = "HP";
-			line.visible = line.visible || !element.text.empty();
+			visible = visible || !element.text.empty();
+			line.elements.push_back(std::move(element));
 		}
+		if (visible) result.lines.push_back(std::move(line));
 	}
-	return true;
-}
-
-VsmrScene::TagVariant VsmrTags::BuildTagVariant(const CompiledDefinition& definition,
-	const VsmrScene::Target& target, bool detailed)
-{
-	VsmrScene::TagVariant result;
-	UpdateTagVariant(definition, target, detailed, result);
 	return result;
 }
