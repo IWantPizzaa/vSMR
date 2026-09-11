@@ -4,6 +4,7 @@
 #include "ConfigurationRegressionTests.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "config/RuntimeConfig.hpp"
+#include "config/ProfileNormalization.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 
 #include "rapidjson/document.h"
@@ -55,6 +56,17 @@ namespace
 		Expect(!profiles.HasParseError(), "default profiles JSON parses");
 		if (profiles.HasParseError())
 			return;
+
+		if (profiles.IsArray()) for (const auto& original : profiles.GetArray())
+		{
+			rapidjson::Document normalized;
+			normalized.CopyFrom(original, normalized.GetAllocator());
+			VsmrProfile::Normalize(normalized, normalized.GetAllocator());
+			rapidjson::Document snapshot;
+			snapshot.CopyFrom(normalized, snapshot.GetAllocator());
+			Expect(!VsmrProfile::Normalize(normalized, normalized.GetAllocator()) && normalized == snapshot,
+				"bundled profile normalization is idempotent");
+		}
 
 		bool migrated = false;
 		std::string error;

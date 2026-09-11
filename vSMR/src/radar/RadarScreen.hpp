@@ -509,6 +509,12 @@ public:
 		bool lowVisibilityProcedures,
 		double* outRimcasMilliseconds = nullptr);
 	const VsmrScene::RadarScene* GetCurrentRadarScene() const noexcept;
+	void SyncRuntimeMenuControlCenter(const std::string& reason = "runtime");
+	bool HandleRuntimeDatalinkClick(const char* id, RECT area);
+	bool HandleRuntimeListClick(const char* id);
+	bool HandleRuntimeInsetClick(const char* id);
+	bool HandleRuntimePresetClick(const char* id, RECT area);
+	struct RuntimeMenuPopupRenderer;
 	void RenderRuntimeMenu(HDC hDC, Gdiplus::Graphics& graphics);
 	bool HandleRuntimeMenuClick(int objectType, const char* objectId, POINT point, RECT area, int button);
 	bool HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released);
@@ -548,6 +554,7 @@ public:
 	void ClearAvisoGeoJsonRasterCache();
 	CRect ResolveMainAvisoRenderArea();
 	COLORREF GetAvisoBackgroundColor() const noexcept;
+	struct MainAvisoCacheView;
 	void RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics);
 	void BeginShutdown();
 	bool IsShutdownRequested() const;

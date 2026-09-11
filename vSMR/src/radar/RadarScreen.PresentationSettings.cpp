@@ -1,5 +1,6 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "radar/RadarScreen.hpp"
+#include "config/ProfileNormalization.hpp"
 
 std::string CSMRRadar::GetUiColorTheme() const
 {
@@ -35,24 +36,7 @@ bool CSMRRadar::SetUiColorTheme(const std::string& rawTheme, bool persistToAsr)
 
 std::string CSMRRadar::NormalizeTargetIconStyle(const std::string& style) const
 {
-	std::string lowered = style;
-	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-
-	if (lowered.find("nova") != std::string::npos)
-		return "nova";
-
-	if (lowered.find("diamond") != std::string::npos ||
-		lowered.find("square") != std::string::npos ||
-		lowered.find("rhomb") != std::string::npos)
-		return "diamond";
-
-	if (lowered.find("triang") != std::string::npos ||
-		lowered.find("arrow") != std::string::npos ||
-		lowered.find("draw") != std::string::npos ||
-		lowered.find("legacy") != std::string::npos)
-		return "triangle";
-
-	return "realistic";
+	return VsmrProfile::NormalizeTargetIconStyle(style);
 }
 
 std::string CSMRRadar::GetActiveTargetIconStyle() const
