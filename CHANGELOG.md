@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Updated Default-profile tags with bold callsigns, Ready Startup on detailed no-status/startup tags, CTOT on detailed taxi/line-up tags, and the revised arrival layouts.
+
 - Set LFPG taxiway, engine-test-area, terminal and TORA labels to zoom 7 and gates to 10; set LFMN gates to 9, taxiways to 6 and TORA labels to 7.
 
 - Restored LFPG East and West arrow groups from the original AVISO geometry. Removed the Runway details group while retaining its geometry and all existing airport palettes.
