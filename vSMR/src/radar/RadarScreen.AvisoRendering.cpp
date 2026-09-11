@@ -1,6 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "aviso/AvisoRasterBlitter.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
+#include "aviso/AvisoRasterSizing.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.AvisoRuntimeState.hpp"
 #include "radar/RadarScreen.AvisoSupport.hpp"
@@ -1162,8 +1163,12 @@ struct CSMRRadar::MainAvisoCacheView
 		const double cachedRenderMaxLon = AvisoMax(radar.AvisoGeoJsonRasterAnchorLongitude, radar.AvisoGeoJsonRasterBottomRightLongitude);
 		const double cachedRenderMinLat = AvisoMin(radar.AvisoGeoJsonRasterAnchorLatitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
 		const double cachedRenderMaxLat = AvisoMax(radar.AvisoGeoJsonRasterAnchorLatitude, radar.AvisoGeoJsonRasterBottomRightLatitude);
-		const double requiredLonMargin = lonSpan * 0.25;
-		const double requiredLatMargin = latSpan * 0.25;
+		const double requiredLonMargin = VsmrAviso::RasterWorkingMargin(lonSpan,
+			radar.AvisoGeoJsonRasterMaxLongitude - radar.AvisoGeoJsonRasterMinLongitude,
+			cachedRenderMaxLon - cachedRenderMinLon);
+		const double requiredLatMargin = VsmrAviso::RasterWorkingMargin(latSpan,
+			radar.AvisoGeoJsonRasterMaxLatitude - radar.AvisoGeoJsonRasterMinLatitude,
+			cachedRenderMaxLat - cachedRenderMinLat);
 		return
 			cachedRenderMinLon <= displayMinLon - requiredLonMargin &&
 			cachedRenderMaxLon >= displayMaxLon + requiredLonMargin &&
@@ -1411,9 +1416,9 @@ void CSMRRadar::RenderAvisoGeoJson(HDC hDC, Gdiplus::Graphics& graphics)
 		return;
 	}
 
-	// Half a viewport of overscan still doubles each raster dimension and
-	// comfortably exceeds the 25% refresh margin, while bounding allocation.
-	const double overscanRatio = 0.50;
+	// Reduce off-screen overscan before reducing visible 2K/4K resolution.
+	const double overscanRatio = VsmrAviso::NativeResolutionOverscan(
+		projectedTopLeft, projectedTopRight, projectedBottomLeft, projectedBottomRight, 32000000.0);
 	const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
 	const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
 	const double renderMinLat = displayMinLat - (latSpan * overscanRatio);

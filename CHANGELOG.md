@@ -15,6 +15,10 @@
 
 ### Changed
 
+- Restored LFPG East and West arrow groups from the original AVISO geometry. Removed the Runway details group while retaining its geometry and all existing airport palettes.
+- Redesigned the combined vSID / CPDLC Runtime Menu with more spacing and consistent state indicators. Automatic mode reads the optional `vsid/automode` bridge snapshot; older providers show Unknown. Included a companion vSID patch for publishing the actual airport states.
+- Preserved native AVISO raster resolution at 2K and 4K by adapting off-screen cache margins to the existing memory budget, for both the main view and insets.
+
 - Retained normal/detailed tag models between scene refreshes, updating text only when referenced inputs change. Removed indirect per-point target projection calls and replaced refresh-local RIMCAS maps with reusable records that preserve runway insertion order and countdown selection.
 - Split profile normalization, tag formatting, Runtime Menu panels/actions, and AVISO/SRW rendering into focused helpers. Expanded regression coverage and added an isolated AddressSanitizer run of the native suite.
 - Combined vSID and CPDLC/PDC controls into one Runtime Menu panel. Removed CDM Auto, its timer and message queue, bulk scans, timing controls, and saved settings.

@@ -148,6 +148,7 @@
     <ClInclude Include="src\aviso\AvisoFeatureMetadata.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterBlitter.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aviso\AvisoRasterPipeline.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\aviso\AvisoRasterSizing.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\config\RuntimeConfig.Internal.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\control_center\ControlCenterBridge.hpp"><Filter>Headers</Filter></ClInclude>

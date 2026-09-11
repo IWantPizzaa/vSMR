@@ -179,12 +179,22 @@ namespace
 					const std::string id = group["id"].GetString();
 					east = east || id == "ground-layout-east";
 					west = west || id == "ground-layout-west";
+					Expect(id != "runway-details", "LFPG runway details are not a toggleable group");
 				}
-				if (std::string(metadata["geometry_source"].GetString()) == "EuroScope sector pack")
-					Expect(east && west, "LFPG preserves sector-pack East and West arrow groups");
-				else
-					Expect(metadata.HasMember("geometry_source_files") && metadata["geometry_source_files"].IsObject(),
-						"LFPG records the upstream geometry files; groups follow the selected source");
+				Expect(east && west, "LFPG includes independent East and West arrow controls");
+				int eastArrows = 0, westArrows = 0;
+				for (const auto& feature : document["features"].GetArray())
+				{
+					const auto& properties = feature["properties"];
+					for (const auto& group : properties["vsmr_group_ids"].GetArray())
+					{
+						const std::string id = group.GetString();
+						Expect(id != "runway-details", "LFPG runway details retain visible geometry without group references");
+						if (id == "ground-layout-east") ++eastArrows;
+						if (id == "ground-layout-west") ++westArrows;
+					}
+				}
+				Expect(eastArrows == 3 && westArrows == 3, "LFPG preserves three original arrow colors for each direction");
 				bool grassPaletteFound = false;
 				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
 				{

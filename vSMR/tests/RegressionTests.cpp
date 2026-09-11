@@ -296,6 +296,13 @@ namespace
 
 	void TestVsidBridgeData()
 	{
+		const auto modes = VsmrVsid::ParseAutomaticModes("LFPG=1;LFPO=0;");
+		Expect(modes.size() == 2 && modes.at("LFPG") && !modes.at("LFPO"),
+			"vSID automatic mode preserves independent authoritative airport states");
+		for (const auto invalid : { "LFPG=1", "LFPG=2;", "lfpg=1;", "LFPG=1;LFPG=0;", "LFPG=1;garbage" })
+			Expect(VsmrVsid::ParseAutomaticModes(invalid).empty(), "Invalid vSID automatic snapshots become unknown");
+		Expect(VsmrVsid::ParseAutomaticModes(std::string(4102, 'A')).empty(),
+			"vSID automatic snapshots enforce a fixed size limit");
 		Expect(
 			VsmrVsid::NormalizeFieldValue("  LAM1X \t") == "LAM1X",
 			"vSID bridge values trim protocol whitespace");
