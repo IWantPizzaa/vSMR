@@ -580,14 +580,14 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	void drawIntegrationTitle(const char* sectionTitle, const char* state, std::optional<bool> online)
 	{
 		CRect area(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
-			radar.RuntimeMenuPopupArea.right - 27, contentTop + kPopupHeaderHeight - 1);
+			radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + kPopupHeaderHeight - 1);
 		FillRectColor(hdc, area, palette.panelTitleBackground);
 		FillRectColor(hdc, CRect(area.left, area.bottom - 1, area.right, area.bottom), palette.divider);
 		::SelectObject(hdc, rowFont);
 		DrawTextEllipsis(hdc, CRect(area.left + 5, area.top, area.right - 92, area.bottom), sectionTitle, palette.text);
-		drawStatusLamp(CRect(area.right - 87, area.top, area.right - 69, area.bottom), online);
 		::SelectObject(hdc, actionFont);
-		DrawTextEllipsis(hdc, CRect(area.right - 65, area.top, area.right - 5, area.bottom), state, palette.mutedText, DT_RIGHT);
+		DrawTextEllipsis(hdc, CRect(area.right - 87, area.top, area.right - 25, area.bottom), state, palette.mutedText, DT_RIGHT);
+		drawStatusLamp(CRect(area.right - 21, area.top, area.right - 3, area.bottom), online);
 		contentTop += kPopupHeaderHeight + 3;
 	}
 
@@ -1117,7 +1117,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		actionFont = static_cast<HFONT>(radar.RuntimeMenuActionFont.GetSafeHandle());
 
 		HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
-		CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
+		CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 7, titleArea.bottom);
 		if (vsidPopup)
 		{
 			contentTop = titleArea.top;
@@ -1128,16 +1128,6 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				drawIntegrationTitle("vSID", vsidState.providerReady ? "Online" : "Offline", vsidState.providerReady);
 		}
 		else DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, palette.text);
-		CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
-		DrawRoundedRect(
-			hdc,
-			closeArea,
-			PointInside(closeArea, mouseLocation) ? palette.buttonHover : palette.buttonBackground,
-			palette.outerBorder,
-			kControlCornerDiameter);
-		::SelectObject(hdc, actionFont);
-		DrawTextEllipsis(hdc, closeArea, "x", palette.mutedText, DT_CENTER);
-		addPopupScreenObject(cpdlcPanel ? "runtime.close.cpdlc" : "runtime.close", closeArea, vsidPopup ? "Close vSID and CPDLC popups" : "Close");
 
 		contentTop = titleArea.bottom + kPopupPadding;
 		if (vsidPopup && cpdlcPanel) DrawCpdlc();
