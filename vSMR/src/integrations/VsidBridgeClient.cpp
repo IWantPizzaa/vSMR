@@ -31,6 +31,7 @@ namespace
 		offsetof(ApiV1, providerRevision) + sizeof(decltype(ApiV1::providerRevision));
 
 	std::mutex StateMutex;
+	std::map<std::string, bool> AutomaticModes;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
 	std::unordered_set<std::string> DisconnectedCallsigns;
 	std::unordered_set<std::string> LastScannedCallsigns;
@@ -60,9 +61,10 @@ namespace
 	bool ClearCachedAircraft()
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign.empty())
+		if (AircraftByCallsign.empty() && AutomaticModes.empty())
 			return false;
 		AircraftByCallsign.clear();
+		AutomaticModes.clear();
 		return true;
 	}
 
@@ -74,6 +76,30 @@ namespace
 		LastProviderRevision = (std::numeric_limits<std::uint64_t>::max)();
 		LastScannedCallsigns.clear();
 		ProviderReadyLogged = false;
+	}
+
+	bool PollAutomaticModes()
+	{
+		std::map<std::string, bool> next;
+		FieldId field = 0U;
+		if (BridgeApi->getGlobal != nullptr &&
+			BridgeApi->resolve("vsid/automode", String, &field) == Ok)
+		{
+			std::array<char, VsmrVsid::MaximumAutomaticModeBytes + 1U> buffer{};
+			std::uint32_t bytes = static_cast<std::uint32_t>(buffer.size());
+			Value value{};
+			if (BridgeApi->getGlobal(field, &value, buffer.data(), &bytes) == Ok &&
+				value.type == String && bytes <= buffer.size() && value.bytes <= VsmrVsid::MaximumAutomaticModeBytes &&
+				value.bytes == bytes)
+			{
+				next = VsmrVsid::ParseAutomaticModes(std::string_view(buffer.data(), value.bytes));
+			}
+		}
+		std::lock_guard<std::mutex> guard(StateMutex);
+		if (next == AutomaticModes)
+			return false;
+		AutomaticModes = std::move(next);
+		return true;
 	}
 
 	bool UpdateInterfaceState()
@@ -269,6 +295,8 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 		if (!AttachBridge() || !ResolveVsidFields())
 			return finish(ClearCachedAircraft());
 
+		commandStateChanged = PollAutomaticModes() || commandStateChanged;
+
 		std::unordered_set<std::string> currentCallsigns;
 		std::unordered_set<std::string> disconnectedCallsigns;
 		{
@@ -346,7 +374,7 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 	return finish(ClearCachedAircraft());
 }
 
-VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState()
+VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 {
 	InterfaceState state;
 	state.bridgeLoaded = BridgeModule != nullptr;
@@ -357,6 +385,9 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState()
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		state.aircraftCount = AircraftByCallsign.size();
+		const auto automatic = AutomaticModes.find(NormalizeAirport(airport));
+		if (state.providerReady && automatic != AutomaticModes.end())
+			state.automaticMode = automatic->second;
 		state.lfpgMode = CurrentLfpgMode;
 		state.lfpgLinkMode = CurrentLfpgLinkMode;
 	}
@@ -450,6 +481,7 @@ void VsmrVsid::Shutdown() noexcept
 		std::lock_guard<std::mutex> guard(StateMutex);
 		AircraftByCallsign.clear();
 		DisconnectedCallsigns.clear();
+		AutomaticModes.clear();
 		PendingCommandAction.reset();
 		CurrentLfpgMode = LfpgOperatingMode::MinimumTaxiing;
 		CurrentLfpgLinkMode = LfpgLinkMode::Linked;

@@ -3,6 +3,7 @@
 #include "integrations/VsidBridgeData.hpp"
 
 #include <string>
+#include <optional>
 
 namespace EuroScopePlugIn
 {
@@ -18,6 +19,7 @@ namespace VsmrVsid
 		bool providerReady = false;
 		bool commandLineBusy = false;
 		std::size_t aircraftCount = 0U;
+		std::optional<bool> automaticMode;
 		LfpgOperatingMode lfpgMode = LfpgOperatingMode::MinimumTaxiing;
 		LfpgLinkMode lfpgLinkMode = LfpgLinkMode::Linked;
 	};
@@ -25,7 +27,7 @@ namespace VsmrVsid
 	// Polling happens only from EuroScope's timer callback. Rendering reads the
 	// resulting snapshot and never calls across the plug-in bridge from a worker.
 	bool Poll(EuroScopePlugIn::CPlugIn& plugin);
-	InterfaceState GetInterfaceState();
+	InterfaceState GetInterfaceState(const std::string& airport = {});
 	bool SubmitCommand(
 		CommandAction action,
 		const std::string& activeAirport,

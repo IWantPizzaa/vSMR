@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "aviso/AvisoRasterSizing.hpp"
 #include "insets/InsetWindow.hpp"
 #include "insets/InsetWindow.Internal.hpp"
 #include "aviso/AvisoRasterBlitter.hpp"
@@ -625,8 +626,10 @@ struct CInsetWindow::InsetAvisoCacheView
 			return false;
 		}
 
-		const double requiredLonMargin = lonSpan * 0.25;
-		const double requiredLatMargin = latSpan * 0.25;
+		const double requiredLonMargin = VsmrAviso::RasterWorkingMargin(lonSpan, cachedDisplayLonSpan,
+			inset.m_AvisoState->renderMaxLongitude - inset.m_AvisoState->renderMinLongitude);
+		const double requiredLatMargin = VsmrAviso::RasterWorkingMargin(latSpan, cachedDisplayLatSpan,
+			inset.m_AvisoState->renderMaxLatitude - inset.m_AvisoState->renderMinLatitude);
 		return
 			inset.m_AvisoState->renderMinLongitude <= displayMinLon - requiredLonMargin &&
 			inset.m_AvisoState->renderMaxLongitude >= displayMaxLon + requiredLonMargin &&
@@ -1286,10 +1289,9 @@ void CInsetWindow::renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus
 	bool updateRequested = false;
 	if (!cacheDrawn || !cacheView.cacheHasWorkingMargin())
 	{
-		// Half a viewport of overscan still doubles each raster dimension and
-		// comfortably exceeds the 25% refresh margin, while avoiding the 56%
-		// extra bitmap area produced by the previous 75% margin.
-		const double overscanRatio = 0.50;
+		// Keep the visible viewport at native resolution within the inset budget.
+		const double overscanRatio = VsmrAviso::NativeResolutionOverscan(
+			projectedTopLeft, projectedTopRight, projectedBottomLeft, projectedBottomRight, 18000000.0);
 		const double renderMinLon = displayMinLon - (lonSpan * overscanRatio);
 		const double renderMaxLon = displayMaxLon + (lonSpan * overscanRatio);
 		const double renderMinLat = displayMinLat - (latSpan * overscanRatio);

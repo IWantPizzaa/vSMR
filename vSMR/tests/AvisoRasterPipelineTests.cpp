@@ -4,6 +4,7 @@
 
 #include "AvisoRasterPipelineTests.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
+#include "aviso/AvisoRasterSizing.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -485,6 +486,25 @@ namespace
 std::vector<std::string> RunAvisoRasterPipelineTests()
 {
 	Failures failures;
+	for (const double budget : { 18000000.0, 32000000.0 })
+	{
+		for (const auto size : { std::pair<double, double>{1920, 1080}, {2560, 1440}, {3840, 2160}, {2160, 3840} })
+		{
+			const double overscan = VsmrAviso::NativeResolutionOverscan(size.first, size.second, budget);
+			const double expansion = 1.0 + 2.0 * overscan;
+			Check(overscan >= 0.0 && overscan <= 0.5 &&
+				size.first * expansion <= 6400 && size.second * expansion <= 6400 &&
+				size.first * size.second * expansion * expansion <= budget,
+				"1080p, 2K and 4K AVISO retain native resolution within main/inset budgets", failures);
+			const double margin = VsmrAviso::RasterWorkingMargin(1.0, 1.0, expansion);
+			Check(margin > 0.0 && margin < overscan,
+				"Adaptive overscan leaves a pan margin without repeated cache rebuilds", failures);
+		}
+	}
+	Check(VsmrAviso::NativeResolutionOverscan(16000, 9000, 18000000) == 0.0,
+		"Oversized desktops reserve no extra pixels before hard raster scaling", failures);
+	Check(VsmrAviso::NativeResolutionOverscan(0, 2160, 18000000) == 0.0,
+		"Empty viewports cannot produce invalid overscan", failures);
 	TestCompletionAndCoalescing(failures);
 	TestSupersession(failures);
 	TestInvalidation(failures);

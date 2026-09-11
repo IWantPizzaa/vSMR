@@ -12,6 +12,27 @@ namespace VsmrVsid
 {
 	inline constexpr std::size_t MaximumFieldBytes = 32U;
 
+	inline constexpr std::size_t MaximumAutomaticModeBytes = 4096U;
+	// Optional vSID schema 1.1 global: repeated ICAO=0; / ICAO=1; records.
+	// Missing/malformed snapshots mean unknown, never an inferred Off state.
+	inline std::map<std::string, bool> ParseAutomaticModes(std::string_view value)
+	{
+		std::map<std::string, bool> result;
+		if (value.size() > MaximumAutomaticModeBytes || value.size() % 7U != 0U)
+			return {};
+		for (std::size_t offset = 0; offset < value.size(); offset += 7U)
+		{
+			const auto record = value.substr(offset, 7U);
+			if (!std::all_of(record.begin(), record.begin() + 4, [](char c) {
+				return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+			}) || record[4] != '=' || (record[5] != '0' && record[5] != '1') || record[6] != ';')
+				return {};
+			if (!result.emplace(std::string(record.substr(0, 4)), record[5] == '1').second)
+				return {};
+		}
+		return result;
+	}
+
 	enum class CommandAction
 	{
 		AutomaticModeStatus,
