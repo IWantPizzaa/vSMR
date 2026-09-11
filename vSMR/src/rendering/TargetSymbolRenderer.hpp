@@ -1,7 +1,7 @@
 #pragma once
 
 #include "scene/RadarScene.hpp"
-#include "shared/FunctionRef.hpp"
+#include "rendering/TargetProjection.hpp"
 #include "rendering/BrushCache.hpp"
 
 #include <Windows.h>
@@ -51,17 +51,8 @@ namespace VsmrTargetRendering
 		VsmrScene::TargetPresentation presentation;
 		double pixelsPerMeter = 0.0;
 		bool optimizeRealisticBitmapQuality = true;
-		Vsmr::FunctionRef<POINT(const VsmrScene::GeoPoint&)> projectPoint;
-		Vsmr::FunctionRef<bool(const POINT&, int)> pointVisible;
 		IconCacheCallbacks iconCache;
 		std::function<void(const VsmrScene::Target&, const char*)> trace;
-	};
-
-	struct DrawOptions
-	{
-		bool drawTrail = true;
-		bool drawPrimaryReturn = true;
-		int minimumHitSize = 12;
 	};
 
 	struct DrawResult
@@ -91,11 +82,17 @@ namespace VsmrTargetRendering
 		Frame(Frame&&) = delete;
 		Frame& operator=(Frame&&) = delete;
 
-		DrawResult DrawTarget(
-			const VsmrScene::Target& target,
-			const DrawOptions& options = DrawOptions{});
+		template<class Project, class Visible = AlwaysVisible>
+		DrawResult DrawTarget(const VsmrScene::Target& target, const Project& project,
+			const Visible& visible = AlwaysVisible{}, const DrawOptions& options = DrawOptions{})
+		{
+			if (!target.position.valid) return {};
+			m_Projected.Update(target, m_Settings.presentation, options, project, visible);
+			return DrawProjectedTarget(target, options);
+		}
 
 	private:
+		DrawResult DrawProjectedTarget(const VsmrScene::Target& target, const DrawOptions& options);
 		VsmrRendering::BrushCache m_Brushes;
 		Gdiplus::Graphics& m_Graphics;
 		FrameSettings m_Settings;
@@ -104,6 +101,6 @@ namespace VsmrTargetRendering
 		Gdiplus::PixelOffsetMode m_SavedPixelOffsetMode;
 		Gdiplus::CompositingQuality m_SavedCompositingQuality;
 		bool m_FastBitmapMode = false;
-		std::vector<Gdiplus::PointF> m_PolygonScratch;
+		ProjectedTarget m_Projected;
 	};
 }

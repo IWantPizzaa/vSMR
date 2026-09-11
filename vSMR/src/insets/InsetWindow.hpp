@@ -132,6 +132,12 @@ public:
 	
 private:
 	double GetAvisoViewportScreenRotationDeg() const noexcept;
+	void renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, const CRect& windowAreaCRect);
+	struct AvisoTagTarget;
+	struct AvisoTagPass;
+	void renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTargets, const AvisoTagPass& pass);
+	struct InsetAvisoCacheView;
+	void renderAvisoAircraft(HDC hDC, CDC& dc, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation, const InsetAvisoCacheView& cacheView);
 	void renderAvisoViewport(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderWeather(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);
 	void renderTimer(HDC hDC, CSMRRadar* radar_screen, Gdiplus::Graphics* gdi, POINT mouseLocation);

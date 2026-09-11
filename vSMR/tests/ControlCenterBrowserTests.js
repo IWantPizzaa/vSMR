@@ -310,6 +310,9 @@
       colorScrollShell.style.height = "56px";
       const lowerCue = colorScrollShell.querySelector(".scroll-edge-cue-bottom");
       if (lowerCue) lowerCue.style.transition = "none";
+      // ResizeObserver schedules the cue update on the following animation
+      // frame. Let that pipeline run before starting the virtual-time timeout.
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       await waitFor(() => colorScrollShell.classList.contains("can-scroll-down"),
         "overflowing lists expose the lower scroll cue");
       await waitFor(() => Boolean(lowerCue) && Number.parseFloat(getComputedStyle(lowerCue).opacity) > 0,

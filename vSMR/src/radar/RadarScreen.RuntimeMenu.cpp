@@ -288,6 +288,844 @@ namespace
 
 }
 
+struct CSMRRadar::RuntimeMenuPopupRenderer
+{
+	CSMRRadar& radar;
+	HDC hdc;
+	Gdiplus::Graphics& graphics;
+	const RuntimeMenuPalette& palette;
+	const CRect& bounds;
+	const std::string& activeProfile;
+	const std::string& activeMode;
+	const std::vector<AvisoGroup>& groups;
+	std::string title, vsidAirport;
+	std::vector<RuntimePopupEntry> entries;
+	std::vector<AvisoPreset> insetPresets;
+	VsmrVsid::InterfaceState vsidState;
+	DatalinkControlState datalinkState;
+	bool insetPopup = false, vsidPopup = false, showPager = false, insetPopupTooShort = false;
+	int popupWidth = 0, popupHeight = 0, visibleRows = 0, contentTop = 0;
+	HFONT rowFont = nullptr, actionFont = nullptr;
+	bool BuildPopup()
+	{
+		// ----- Building the popup -----
+		if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Mode)
+		{
+			title = "Mode";
+			const std::vector<DisplayModeSettings> modes = radar.GetProfileDisplayModesForEditor(activeProfile);
+			for (size_t index = 0; index < modes.size(); ++index)
+			{
+				RuntimePopupEntry entry;
+				entry.id = "runtime.mode." + std::to_string(index);
+				entry.label = modes[index].name;
+				entry.indicator = RuntimeIndicator::Selection;
+				entry.active = AsciiCaseInsensitiveEquals(modes[index].name, activeMode);
+				entries.push_back(entry);
+			}
+		}
+		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups)
+		{
+			title = "Groups";
+			for (size_t index = 0; index < groups.size(); ++index)
+			{
+				RuntimePopupEntry entry;
+				entry.id = "runtime.group." + std::to_string(index);
+				entry.label = groups[index].name;
+				entry.indicator = RuntimeIndicator::Visibility;
+				entry.active = groups[index].visible;
+				entries.push_back(entry);
+			}
+		}
+		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Profile)
+		{
+			title = "Profile";
+			const std::vector<std::string> profiles = radar.GetOrderedProfileNamesForUi();
+			for (size_t index = 0; index < profiles.size(); ++index)
+			{
+				RuntimePopupEntry entry;
+				entry.id = "runtime.profile." + std::to_string(index);
+				entry.label = profiles[index];
+				entry.indicator = RuntimeIndicator::Selection;
+				entry.active = AsciiCaseInsensitiveEquals(profiles[index], activeProfile);
+				entries.push_back(entry);
+			}
+		}
+		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink)
+		{
+			title = "vSID / CPDLC";
+		}
+
+		insetPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
+		vsidPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
+		const bool datalinkPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
+		vsidState = vsidPopup
+			? VsmrVsid::GetInterfaceState()
+			: VsmrVsid::InterfaceState();
+		vsidAirport = vsidPopup
+			? VsmrVsid::NormalizeAirport(radar.getActiveAirport())
+			: std::string();
+		CSMRPlugin* datalinkPlugin = datalinkPopup
+			? static_cast<CSMRPlugin*>(radar.GetPlugIn())
+			: nullptr;
+		datalinkState = datalinkPlugin != nullptr
+			? datalinkPlugin->GetDatalinkControlState()
+			: DatalinkControlState();
+		insetPresets = insetPopup
+			? radar.GetAvisoPresets()
+			: std::vector<AvisoPreset>();
+		popupWidth = vsidPopup ? kVsidPopupWidth
+			: (insetPopup ? kInsetPopupWidth : kStandardPopupWidth);
+		if (bounds.Width() < popupWidth + 8)
+		{
+			radar.RuntimeMenuPopupArea.SetRectEmpty();
+			return false;
+		}
+		popupHeight = 0;
+		visibleRows = 0;
+		showPager = false;
+		insetPopupTooShort = false;
+		if (vsidPopup)
+		{
+			popupHeight = vsidAirport == "LFPG"
+				? kVsidLfpgPopupHeight
+				: kVsidPopupHeight;
+		}
+		else if (!insetPopup)
+		{
+			const int maximumHeight = (std::max)(80, bounds.Height() - 8);
+			int rowCapacity = (maximumHeight - kPopupHeaderHeight - (kPopupPadding * 2)) / kPopupRowHeight;
+			rowCapacity = (std::max)(1, rowCapacity);
+			showPager = static_cast<int>(entries.size()) > rowCapacity;
+			if (showPager)
+				rowCapacity = (std::max)(1, (maximumHeight - kPopupHeaderHeight - (kPopupPadding * 2) - kPopupPagerHeight) / kPopupRowHeight);
+			visibleRows = (std::min)(rowCapacity, static_cast<int>(entries.size()));
+			if (entries.empty())
+				popupHeight = kPopupHeaderHeight + 42;
+			else
+				popupHeight = kPopupHeaderHeight + (kPopupPadding * 2) + (visibleRows * kPopupRowHeight) + (showPager ? kPopupPagerHeight : 0);
+		}
+		else
+		{
+			const int presetRows = (std::min)(4, static_cast<int>(insetPresets.size()));
+			const bool presetPager = insetPresets.size() > 4;
+			popupHeight =
+				kPopupHeaderHeight +
+				kPopupPadding +
+				(4 * kPopupRowHeight) +
+				19 +
+				(presetRows > 0 ? presetRows * kPopupRowHeight : 32) +
+				(presetPager ? kPopupPagerHeight : 0) +
+				(4 * kPopupActionHeight) +
+				(3 * 3) +
+				kPopupPadding;
+			insetPopupTooShort = popupHeight > bounds.Height() - 8;
+			if (insetPopupTooShort)
+				popupHeight = kPopupHeaderHeight + 42;
+		}
+
+		return true;
+	}
+
+	void addPopupScreenObject(const char* id, const CRect& area, const char* tooltip)
+	{
+		CRect clippedArea;
+		if (::IntersectRect(&clippedArea, &area, &radar.RuntimeMenuPopupArea) && !clippedArea.IsRectEmpty())
+			radar.AddScreenObject(RUNTIME_MENU_POPUP, id, clippedArea, false, tooltip);
+	}
+
+	int beginRoundedClip(const CRect& area)
+	{
+		const int clipState = ::SaveDC(hdc);
+		HRGN clipRegion = ::CreateRoundRectRgn(
+			area.left,
+			area.top,
+			area.right + 1,
+			area.bottom + 1,
+			kPanelCornerDiameter,
+			kPanelCornerDiameter);
+		if (clipRegion != nullptr)
+		{
+			::ExtSelectClipRgn(hdc, clipRegion, RGN_AND);
+			::DeleteObject(clipRegion);
+		}
+		return clipState;
+	}
+
+	void drawChoiceRow(const RuntimePopupEntry& entry, const CRect& rowArea)
+	{
+		const bool hover = entry.enabled && PointInside(rowArea, mouseLocation);
+		COLORREF fill = entry.enabled ? palette.listBackground : palette.disabledBackground;
+		if (entry.active && entry.indicator == RuntimeIndicator::Selection)
+			fill = palette.accent;
+		else if (hover)
+			fill = palette.buttonHover;
+		FillRectColor(hdc, rowArea, fill);
+		CRect divider(rowArea.left, rowArea.bottom - 1, rowArea.right, rowArea.bottom);
+		FillRectColor(hdc, divider, palette.divider);
+
+		const COLORREF foreground =
+			!entry.enabled ? palette.disabledText :
+			(entry.active && entry.indicator == RuntimeIndicator::Selection ? palette.accentText : palette.text);
+		CRect indicatorArea(rowArea.left + 3, rowArea.top, rowArea.left + 20, rowArea.bottom);
+		if (entry.indicator == RuntimeIndicator::Selection)
+			DrawRuntimeSelectionIndicator(graphics, indicatorArea, entry.active, foreground);
+		else if (entry.indicator == RuntimeIndicator::Visibility)
+			DrawRuntimeVisibilityIndicator(graphics, indicatorArea, entry.active, entry.active ? foreground : palette.mutedText);
+
+		::SelectObject(hdc, rowFont);
+		CRect labelArea(rowArea.left + 24, rowArea.top, rowArea.right - 5, rowArea.bottom);
+		DrawTextEllipsis(hdc, labelArea, entry.label, foreground);
+		addPopupScreenObject(entry.id.c_str(), rowArea, entry.label.c_str());
+	}
+
+	void drawRuntimeButton(
+		const char* id,
+		const CRect& buttonArea,
+		const std::string& label,
+		bool enabled,
+		bool primary,
+		bool danger,
+		const std::string& tooltip,
+		bool interactive = true)
+	{
+		const bool hover = enabled && PointInside(buttonArea, mouseLocation);
+		COLORREF fill = enabled ? palette.buttonBackground : palette.disabledBackground;
+		COLORREF foreground = enabled ? palette.text : palette.disabledText;
+		if (enabled && primary)
+		{
+			fill = hover ? palette.accentHover : palette.accent;
+			foreground = palette.accentText;
+		}
+		else if (enabled && danger)
+		{
+			fill = hover ? palette.dangerHover : palette.buttonBackground;
+			foreground = hover ? RGB(255, 240, 240) : palette.dangerText;
+		}
+		else if (hover)
+		{
+			fill = palette.buttonHover;
+		}
+		DrawRoundedRect(hdc, buttonArea, fill, palette.outerBorder, kControlCornerDiameter);
+		::SelectObject(hdc, actionFont);
+		DrawTextEllipsis(hdc, buttonArea, label, foreground, DT_CENTER);
+		if (enabled && interactive)
+			addPopupScreenObject(id, buttonArea, tooltip.c_str());
+	}
+
+	void drawSectionLabel(const std::string& label)
+	{
+		::SelectObject(hdc, actionFont);
+		CRect sectionArea(
+			radar.RuntimeMenuPopupArea.left + 6,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - 6,
+			contentTop + 18);
+		DrawTextEllipsis(hdc, sectionArea, label, palette.mutedText);
+		contentTop += 18;
+	}
+
+	void twoColumnAreas(int height, CRect& left, CRect& right)
+	{
+		const int gap = 3;
+		const int availableWidth = radar.RuntimeMenuPopupArea.Width() - (kPopupPadding * 2) - gap;
+		const int leftWidth = availableWidth / 2;
+		left = CRect(
+			radar.RuntimeMenuPopupArea.left + kPopupPadding,
+			contentTop,
+			radar.RuntimeMenuPopupArea.left + kPopupPadding + leftWidth,
+			contentTop + height);
+		right = CRect(
+			left.right + gap,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - kPopupPadding,
+			contentTop + height);
+	}
+
+	void DrawDatalink()
+	{
+		// Drawing the fixed vSID actions published by its supported command surface
+		std::string statusText;
+		if (vsidState.commandLineBusy)
+			statusText = "EuroScope command line busy";
+		else if (vsidState.providerReady)
+			statusText = "Connected - " + std::to_string(vsidState.aircraftCount) + " active aircraft";
+		else if (!vsidState.bridgeLoaded)
+			statusText = "Plugin Bridge not loaded";
+		else if (!vsidState.bridgeCompatible)
+			statusText = "Plugin Bridge incompatible";
+		else
+			statusText = "vSID provider unavailable";
+
+		CRect statusArea(
+			radar.RuntimeMenuPopupArea.left + kPopupPadding,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - kPopupPadding,
+			contentTop + 25);
+		DrawRoundedRect(hdc, statusArea, palette.cardBackground, palette.outerBorder, kControlCornerDiameter);
+		::SelectObject(hdc, actionFont);
+		CRect statusTextArea(statusArea.left + 6, statusArea.top, statusArea.right - 6, statusArea.bottom);
+		DrawTextEllipsis(hdc, statusTextArea, statusText, palette.text);
+		contentTop += 29;
+
+		const std::string& normalizedAirport = vsidAirport;
+		const bool canSubmit = vsidState.providerReady && !vsidState.commandLineBusy;
+		const bool canSubmitAirport = canSubmit && !normalizedAirport.empty();
+		drawSectionLabel(normalizedAirport.empty()
+			? "AIRPORT REQUIRED"
+			: "AIRPORT " + normalizedAirport);
+
+		auto drawVsidRow = [&](
+			const char* leftId,
+			const char* leftLabel,
+			const char* leftTooltip,
+			bool leftEnabled,
+			const char* rightId,
+			const char* rightLabel,
+			const char* rightTooltip,
+			bool rightEnabled)
+		{
+			CRect leftArea;
+			CRect rightArea;
+			twoColumnAreas(24, leftArea, rightArea);
+			drawRuntimeButton(leftId, leftArea, leftLabel, leftEnabled, false, false, leftTooltip);
+			drawRuntimeButton(rightId, rightArea, rightLabel, rightEnabled, false, false, rightTooltip);
+			contentTop += 28;
+		};
+
+		auto drawVsidActions = [&](const auto& definitions, bool enabled)
+		{
+			std::size_t index = 0U;
+			for (; index + 1U < definitions.size(); index += 2U)
+			{
+				const VsmrVsid::RuntimeActionDefinition& left = definitions[index];
+				const VsmrVsid::RuntimeActionDefinition& right = definitions[index + 1U];
+				drawVsidRow(
+					left.objectId, left.label, left.tooltip, enabled,
+					right.objectId, right.label, right.tooltip, enabled);
+			}
+			if (index < definitions.size())
+			{
+				const VsmrVsid::RuntimeActionDefinition& action = definitions[index];
+				CRect area(
+					radar.RuntimeMenuPopupArea.left + kPopupPadding,
+					contentTop,
+					radar.RuntimeMenuPopupArea.right - kPopupPadding,
+					contentTop + 24);
+				drawRuntimeButton(
+					action.objectId, area, action.label, enabled,
+					false, false, action.tooltip);
+				contentTop += 28;
+			}
+		};
+		drawVsidActions(VsmrVsid::AirportRuntimeActions, canSubmitAirport);
+
+		if (normalizedAirport == "LFPG")
+		{
+			drawSectionLabel("LFPG MODES");
+			CRect leftArea;
+			CRect rightArea;
+			twoColumnAreas(24, leftArea, rightArea);
+			const auto& minimum = VsmrVsid::LfpgModeActions[0];
+			const auto& crossing = VsmrVsid::LfpgModeActions[1];
+			const bool minimumActive =
+				vsidState.lfpgMode == VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
+			drawRuntimeButton(
+				minimum.objectId, leftArea, minimum.label, canSubmitAirport,
+				minimumActive, false, minimum.tooltip, !minimumActive);
+			drawRuntimeButton(
+				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
+				!minimumActive, false, crossing.tooltip, minimumActive);
+			contentTop += 28;
+
+			twoColumnAreas(24, leftArea, rightArea);
+			const auto& linked = VsmrVsid::LfpgLinkActions[0];
+			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
+			const bool linkedActive =
+				vsidState.lfpgLinkMode == VsmrVsid::LfpgLinkMode::Linked;
+			drawRuntimeButton(
+				linked.objectId, leftArea, linked.label, canSubmitAirport,
+				linkedActive, false, linked.tooltip, !linkedActive);
+			drawRuntimeButton(
+				unlinked.objectId, rightArea, unlinked.label, canSubmitAirport,
+				!linkedActive, false, unlinked.tooltip, linkedActive);
+			contentTop += 28;
+		}
+
+		drawSectionLabel("GENERAL");
+		drawVsidActions(VsmrVsid::GeneralRuntimeActions, canSubmit);
+		DrawCpdlc();
+	}
+
+	void DrawCpdlc()
+	{
+		// Drawing CPDLC and PDC controls
+		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(radar.GetPlugIn());
+		const DatalinkControlState& state = datalinkState;
+		contentTop += 4;
+		drawSectionLabel(state.connected ? "CPDLC / PDC - CONNECTED" :
+			(state.connecting ? "CPDLC / PDC - CONNECTING" : "CPDLC / PDC - OFFLINE"));
+
+		auto drawCredentialRow = [&](
+			const std::string& label,
+			const char* id,
+			const std::string& value,
+			const std::string& tooltip)
+		{
+			CRect labelArea;
+			CRect valueArea;
+			twoColumnAreas(24, labelArea, valueArea);
+			labelArea.left += 4;
+			::SelectObject(hdc, rowFont);
+			DrawTextEllipsis(hdc, labelArea, label, palette.text);
+			drawRuntimeButton(
+				id,
+				valueArea,
+				value,
+				plugin != nullptr && !state.connected && !state.connecting,
+				false,
+				false,
+				tooltip);
+			contentTop += 28;
+		};
+		drawCredentialRow(
+			"Login",
+			"runtime.datalink.callsign",
+			state.logonCallsign.empty() ? "Set..." : state.logonCallsign,
+			"Edit the CPDLC login callsign");
+		drawCredentialRow(
+			"Password",
+			"runtime.datalink.credentials",
+			state.hasPassword ? "Change..." : "Set...",
+			"Edit the Hoppie logon password");
+
+		CRect pollArea;
+		CRect connectionArea;
+		twoColumnAreas(24, pollArea, connectionArea);
+		drawRuntimeButton(
+			"runtime.datalink.poll",
+			pollArea,
+			state.pollInProgress ? "Polling..." : "Poll",
+			plugin != nullptr && state.connected && !state.pollInProgress,
+			false,
+			false,
+			"Poll Hoppie messages now");
+		const bool canConnect = state.controllerConnected && !state.logonCallsign.empty() && state.hasPassword;
+		drawRuntimeButton(
+			"runtime.datalink.connection",
+			connectionArea,
+			state.connected ? "Disconnect" : (state.connecting ? "Cancel" : "Connect"),
+			plugin != nullptr && (state.connected || state.connecting || canConnect),
+			!state.connected && !state.connecting,
+			state.connected,
+			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
+		contentTop += 30;
+	}
+
+	void DrawChoices()
+	{
+		// Drawing mode, group, or profile choices
+		if (entries.empty())
+		{
+		::SelectObject(hdc, actionFont);
+		CRect emptyArea(
+			radar.RuntimeMenuPopupArea.left + 4,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - 4,
+			radar.RuntimeMenuPopupArea.bottom - 4);
+		const std::string emptyText =
+			radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups ? "No AVISO groups." :
+			radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Mode ? "No modes in this profile." :
+			"No profiles.";
+		DrawTextEllipsis(hdc, emptyArea, emptyText, palette.mutedText, DT_CENTER);
+		}
+		else
+		{
+		const int maximumOffset = (std::max)(0, static_cast<int>(entries.size()) - visibleRows);
+		radar.RuntimeMenuPopupScrollOffset = std::clamp(radar.RuntimeMenuPopupScrollOffset, 0, maximumOffset);
+		const int endIndex = (std::min)(
+			static_cast<int>(entries.size()),
+			radar.RuntimeMenuPopupScrollOffset + visibleRows);
+		const CRect listArea(
+			radar.RuntimeMenuPopupArea.left + kPopupPadding,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - kPopupPadding,
+			contentTop + (visibleRows * kPopupRowHeight));
+		DrawRoundedRect(
+			hdc,
+			listArea,
+			palette.listBackground,
+			palette.outerBorder,
+			kPanelCornerDiameter);
+		const int listClipState = beginRoundedClip(listArea);
+
+		for (int index = radar.RuntimeMenuPopupScrollOffset; index < endIndex; ++index)
+		{
+			CRect rowArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + kPopupRowHeight);
+			drawChoiceRow(entries[static_cast<size_t>(index)], rowArea);
+			contentTop += kPopupRowHeight;
+		}
+		::RestoreDC(hdc, listClipState);
+		DrawRoundedBorder(hdc, listArea, palette.outerBorder, kPanelCornerDiameter);
+
+		if (showPager)
+		{
+			CRect previousArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop + 1,
+				radar.RuntimeMenuPopupArea.CenterPoint().x - 1,
+				contentTop + 1 + kPopupControlHeight);
+			CRect nextArea(
+				radar.RuntimeMenuPopupArea.CenterPoint().x + 1,
+				contentTop + 1,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + 1 + kPopupControlHeight);
+			const bool canPrevious = radar.RuntimeMenuPopupScrollOffset > 0;
+			const bool canNext = radar.RuntimeMenuPopupScrollOffset < maximumOffset;
+			DrawRoundedRect(hdc, previousArea, canPrevious ? palette.buttonBackground : palette.disabledBackground, palette.outerBorder, kControlCornerDiameter);
+			DrawRoundedRect(hdc, nextArea, canNext ? palette.buttonBackground : palette.disabledBackground, palette.outerBorder, kControlCornerDiameter);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, previousArea, "Previous", canPrevious ? palette.text : palette.disabledText, DT_CENTER);
+			DrawTextEllipsis(hdc, nextArea, "Next", canNext ? palette.text : palette.disabledText, DT_CENTER);
+			if (canPrevious)
+				addPopupScreenObject("runtime.page.previous", previousArea, "Previous choices");
+			if (canNext)
+				addPopupScreenObject("runtime.page.next", nextArea, "Next choices");
+		}
+		}
+	}
+
+	void DrawInsetVisibility()
+	{
+		// Drawing inset visibility and preset controls
+		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
+		const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
+		const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
+		const struct
+		{
+			const char* id;
+			const char* resetId;
+			const char* label;
+			int appWindowId;
+		} insetRows[] = {
+			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
+			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
+			{ "runtime.inset.weather", "runtime.inset.reset.weather", "Weather", weatherWindowId },
+			{ "runtime.inset.timer", "runtime.inset.reset.timer", "Timer", timerWindowId }
+		};
+		const CRect insetListArea(
+			radar.RuntimeMenuPopupArea.left + kPopupPadding,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - kPopupPadding,
+			contentTop + (static_cast<int>(_countof(insetRows)) * kPopupRowHeight));
+		DrawRoundedRect(
+			hdc,
+			insetListArea,
+			palette.listBackground,
+			palette.outerBorder,
+			kPanelCornerDiameter);
+		const int insetListClipState = beginRoundedClip(insetListArea);
+		for (const auto& inset : insetRows)
+		{
+			const auto display = radar.appWindowDisplays.find(inset.appWindowId);
+			RuntimePopupEntry entry;
+			entry.id = inset.id;
+			entry.label = inset.label;
+			entry.indicator = RuntimeIndicator::Visibility;
+			entry.active = display != radar.appWindowDisplays.end() && display->second;
+			CRect rowArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + kPopupRowHeight);
+			CRect visibilityArea(rowArea);
+			visibilityArea.right -= 45;
+			drawChoiceRow(entry, visibilityArea);
+			CRect resetArea(
+				visibilityArea.right + 3,
+				rowArea.top + 3,
+				rowArea.right,
+				rowArea.bottom - 3);
+			DrawRoundedRect(
+				hdc,
+				resetArea,
+				PointInside(resetArea, mouseLocation) ? palette.buttonHover : palette.buttonBackground,
+				palette.outerBorder,
+				kControlCornerDiameter);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, resetArea, "Reset", palette.text, DT_CENTER);
+			addPopupScreenObject(inset.resetId, resetArea, "Reset this inset view");
+			contentTop += kPopupRowHeight;
+		}
+		::RestoreDC(hdc, insetListClipState);
+		DrawRoundedBorder(hdc, insetListArea, palette.outerBorder, kPanelCornerDiameter);
+	}
+
+	void DrawInsetPresets()
+	{
+		::SelectObject(hdc, actionFont);
+		CRect sectionArea(
+			radar.RuntimeMenuPopupArea.left + 5,
+			contentTop,
+			radar.RuntimeMenuPopupArea.right - 5,
+			contentTop + 19);
+		DrawTextEllipsis(hdc, sectionArea, "PRESET", palette.mutedText);
+		contentTop += 19;
+
+		const std::vector<AvisoPreset>& presets = insetPresets;
+		const std::string activePreset = radar.GetActiveAvisoPresetName();
+		const int presetRows = (std::min)(4, static_cast<int>(presets.size()));
+		const int maximumPresetOffset = (std::max)(0, static_cast<int>(presets.size()) - presetRows);
+		radar.RuntimeMenuPopupScrollOffset = std::clamp(radar.RuntimeMenuPopupScrollOffset, 0, maximumPresetOffset);
+		if (presets.empty())
+		{
+			CRect emptyArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + 32);
+			DrawTextEllipsis(hdc, emptyArea, "No inset presets.", palette.mutedText, DT_CENTER);
+			contentTop += 32;
+		}
+		else
+		{
+			const CRect presetListArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + (presetRows * kPopupRowHeight));
+			DrawRoundedRect(
+				hdc,
+				presetListArea,
+				palette.listBackground,
+				palette.outerBorder,
+				kPanelCornerDiameter);
+			const int presetListClipState = beginRoundedClip(presetListArea);
+			for (int row = 0; row < presetRows; ++row)
+			{
+				const int presetIndex = radar.RuntimeMenuPopupScrollOffset + row;
+				RuntimePopupEntry entry;
+				entry.id = "runtime.preset." + std::to_string(presetIndex);
+				entry.label = presets[static_cast<size_t>(presetIndex)].name;
+				entry.indicator = RuntimeIndicator::Selection;
+				entry.active = AsciiCaseInsensitiveEquals(entry.label, activePreset);
+				CRect rowArea(
+					radar.RuntimeMenuPopupArea.left + kPopupPadding,
+					contentTop,
+					radar.RuntimeMenuPopupArea.right - kPopupPadding,
+					contentTop + kPopupRowHeight);
+				drawChoiceRow(entry, rowArea);
+				contentTop += kPopupRowHeight;
+			}
+			::RestoreDC(hdc, presetListClipState);
+			DrawRoundedBorder(hdc, presetListArea, palette.outerBorder, kPanelCornerDiameter);
+		}
+
+		if (presets.size() > 4)
+		{
+			CRect previousArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding,
+				contentTop + 1,
+				radar.RuntimeMenuPopupArea.CenterPoint().x - 1,
+				contentTop + 1 + kPopupControlHeight);
+			CRect nextArea(
+				radar.RuntimeMenuPopupArea.CenterPoint().x + 1,
+				contentTop + 1,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding,
+				contentTop + 1 + kPopupControlHeight);
+			const bool canPrevious = radar.RuntimeMenuPopupScrollOffset > 0;
+			const bool canNext = radar.RuntimeMenuPopupScrollOffset < maximumPresetOffset;
+			DrawRoundedRect(hdc, previousArea, canPrevious ? palette.buttonBackground : palette.disabledBackground, palette.outerBorder, kControlCornerDiameter);
+			DrawRoundedRect(hdc, nextArea, canNext ? palette.buttonBackground : palette.disabledBackground, palette.outerBorder, kControlCornerDiameter);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, previousArea, "Previous", canPrevious ? palette.text : palette.disabledText, DT_CENTER);
+			DrawTextEllipsis(hdc, nextArea, "Next", canNext ? palette.text : palette.disabledText, DT_CENTER);
+			if (canPrevious)
+				addPopupScreenObject("runtime.preset.page.previous", previousArea, "Previous presets");
+			if (canNext)
+				addPopupScreenObject("runtime.preset.page.next", nextArea, "Next presets");
+			contentTop += kPopupPagerHeight;
+		}
+	}
+
+	void DrawPresetActions()
+	{
+		const auto& presets = insetPresets;
+		const std::string activePreset = radar.GetActiveAvisoPresetName();
+		const std::string defaultPreset = radar.GetDefaultAvisoPresetName();
+
+		const bool hasActivePreset =
+			!activePreset.empty() &&
+			std::any_of(presets.begin(), presets.end(), [&](const AvisoPreset& preset)
+			{
+				return AsciiCaseInsensitiveEquals(preset.name, activePreset);
+			});
+		const bool hasDefaultPreset = !defaultPreset.empty();
+		const bool clearDefaultAction =
+			hasDefaultPreset && (!hasActivePreset || AsciiCaseInsensitiveEquals(activePreset, defaultPreset));
+		const bool canChangeDefault = hasActivePreset || hasDefaultPreset;
+		enum class ActionTone
+		{
+			Normal,
+			Primary,
+			Danger
+		};
+
+		const struct
+		{
+			const char* id;
+			std::string label;
+			bool enabled;
+			ActionTone tone;
+		} actions[] = {
+			{ "runtime.preset.none", "No preset", true, ActionTone::Normal },
+			{ "runtime.preset.save", "Save current", true, ActionTone::Primary },
+			{ "runtime.preset.update", "Update", hasActivePreset, ActionTone::Normal },
+			{ "runtime.preset.rename", "Rename", hasActivePreset, ActionTone::Normal },
+			{ "runtime.preset.duplicate", "Duplicate", hasActivePreset, ActionTone::Normal },
+			{ "runtime.preset.default", clearDefaultAction ? "Clear default" : "Set default", canChangeDefault, ActionTone::Normal },
+			{ "runtime.preset.reset", "Reload", hasActivePreset, ActionTone::Normal },
+			{ "runtime.preset.delete", "Delete", hasActivePreset, ActionTone::Danger }
+		};
+
+		const int actionGap = 3;
+		const int actionWidth =
+			(radar.RuntimeMenuPopupArea.Width() - (kPopupPadding * 2) - actionGap) / 2;
+		for (size_t index = 0; index < _countof(actions); ++index)
+		{
+			const int column = static_cast<int>(index % 2);
+			const int row = static_cast<int>(index / 2);
+			CRect actionArea(
+				radar.RuntimeMenuPopupArea.left + kPopupPadding + (column * (actionWidth + actionGap)),
+				contentTop + (row * (kPopupActionHeight + actionGap)),
+				radar.RuntimeMenuPopupArea.left + kPopupPadding + (column * (actionWidth + actionGap)) + actionWidth,
+				contentTop + (row * (kPopupActionHeight + actionGap)) + kPopupActionHeight);
+			const bool enabled = actions[index].enabled;
+			const bool hover = enabled && PointInside(actionArea, mouseLocation);
+			COLORREF fill = palette.buttonBackground;
+			COLORREF foreground = palette.text;
+			if (!enabled)
+			{
+				fill = palette.disabledBackground;
+				foreground = palette.disabledText;
+			}
+			else if (actions[index].tone == ActionTone::Primary)
+			{
+				fill = hover ? palette.accentHover : palette.accent;
+				foreground = palette.accentText;
+			}
+			else if (actions[index].tone == ActionTone::Danger)
+			{
+				fill = hover ? palette.dangerHover : palette.buttonBackground;
+				foreground = hover ? RGB(255, 240, 240) : palette.dangerText;
+			}
+			else if (hover)
+			{
+				fill = palette.buttonHover;
+			}
+			DrawRoundedRect(hdc, actionArea, fill, palette.outerBorder, kControlCornerDiameter);
+			::SelectObject(hdc, actionFont);
+			DrawTextEllipsis(hdc, actionArea, actions[index].label, foreground, DT_CENTER);
+			if (enabled)
+				addPopupScreenObject(actions[index].id, actionArea, actions[index].label.c_str());
+		}
+	}
+
+	void DrawPopup()
+	{
+		// ----- Drawing the popup -----
+		const int popupRightCandidate = radar.RuntimeMenuArea.right + kPopupGap;
+		int popupLeft = popupRightCandidate;
+		if (popupRightCandidate + popupWidth > bounds.right - 4)
+			popupLeft = radar.RuntimeMenuArea.left - kPopupGap - popupWidth;
+		popupLeft = std::clamp(
+			popupLeft,
+			static_cast<int>(bounds.left + 4),
+			static_cast<int>(bounds.right - popupWidth - 4));
+
+		int popupTop = radar.RuntimeMenuArea.top + 8;
+		if (popupTop + popupHeight > bounds.bottom - 4)
+			popupTop = bounds.bottom - popupHeight - 4;
+		popupTop = (std::max)(static_cast<int>(bounds.top + 4), popupTop);
+		radar.RuntimeMenuPopupArea = CRect(popupLeft, popupTop, popupLeft + popupWidth, popupTop + popupHeight);
+
+		DrawRoundedRect(hdc, radar.RuntimeMenuPopupArea, palette.popupBackground, palette.outerBorder, kPanelCornerDiameter);
+		radar.AddScreenObject(RUNTIME_MENU_POPUP, "runtime.popup", radar.RuntimeMenuPopupArea, false, title.c_str());
+		const int popupClipDc = ::SaveDC(hdc);
+		HRGN popupClip = ::CreateRoundRectRgn(
+			radar.RuntimeMenuPopupArea.left,
+			radar.RuntimeMenuPopupArea.top,
+			radar.RuntimeMenuPopupArea.right + 1,
+			radar.RuntimeMenuPopupArea.bottom + 1,
+			kPanelCornerDiameter,
+			kPanelCornerDiameter);
+		if (popupClip != nullptr)
+		{
+			::ExtSelectClipRgn(hdc, popupClip, RGN_AND);
+			::DeleteObject(popupClip);
+		}
+		const Gdiplus::GraphicsState popupGraphicsState = graphics.Save();
+		graphics.SetClip(
+			Gdiplus::Rect(
+				radar.RuntimeMenuPopupArea.left,
+				radar.RuntimeMenuPopupArea.top,
+				radar.RuntimeMenuPopupArea.Width(),
+				radar.RuntimeMenuPopupArea.Height()),
+			Gdiplus::CombineModeIntersect);
+
+		CRect titleArea(
+			radar.RuntimeMenuPopupArea.left + 1,
+			radar.RuntimeMenuPopupArea.top + 1,
+			radar.RuntimeMenuPopupArea.right - 1,
+			radar.RuntimeMenuPopupArea.top + kPopupHeaderHeight);
+		FillRectColor(hdc, titleArea, palette.panelTitleBackground);
+		CRect titleDivider(titleArea.left, titleArea.bottom - 1, titleArea.right, titleArea.bottom);
+		FillRectColor(hdc, titleDivider, palette.divider);
+
+		HFONT headerFont = static_cast<HFONT>(radar.RuntimeOverlayFont.GetSafeHandle());
+		rowFont = headerFont;
+		actionFont = static_cast<HFONT>(radar.RuntimeMenuActionFont.GetSafeHandle());
+
+		HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
+		CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
+		DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, palette.text);
+		CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
+		DrawRoundedRect(
+			hdc,
+			closeArea,
+			PointInside(closeArea, mouseLocation) ? palette.buttonHover : palette.buttonBackground,
+			palette.outerBorder,
+			kControlCornerDiameter);
+		::SelectObject(hdc, actionFont);
+		DrawTextEllipsis(hdc, closeArea, "x", palette.mutedText, DT_CENTER);
+		addPopupScreenObject("runtime.close", closeArea, "Close");
+
+		contentTop = titleArea.bottom + kPopupPadding;
+		if (vsidPopup) DrawDatalink();
+		else if (!insetPopup) DrawChoices();
+		else if (insetPopupTooShort)
+		{
+			::SelectObject(hdc, actionFont);
+			CRect messageArea(radar.RuntimeMenuPopupArea.left + 5, contentTop,
+				radar.RuntimeMenuPopupArea.right - 5, radar.RuntimeMenuPopupArea.bottom - 4);
+			DrawTextEllipsis(hdc, messageArea, "Increase radar height.", palette.mutedText, DT_CENTER);
+		}
+		else
+		{
+			DrawInsetVisibility();
+			DrawInsetPresets();
+			DrawPresetActions();
+		}
+		graphics.Restore(popupGraphicsState);
+		::RestoreDC(hdc, popupClipDc);
+		DrawRoundedBorder(hdc, radar.RuntimeMenuPopupArea, palette.outerBorder, kPanelCornerDiameter);
+		::SelectObject(hdc, oldFont);
+	}
+};
+
 void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 {
 	if (hdc == nullptr)
@@ -297,24 +1135,15 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	const RuntimeMenuPalette palette = ResolveRuntimeMenuPalette(dayTheme);
 	const COLORREF kOuterBorder = palette.outerBorder;
 	const COLORREF kRailBackground = palette.railBackground;
-	const COLORREF kPopupBackground = palette.popupBackground;
 	const COLORREF kTitleBackground = palette.titleBackground;
 	const COLORREF kTitleStripe = palette.titleStripe;
-	const COLORREF kPanelTitleBackground = palette.panelTitleBackground;
 	const COLORREF kButtonBackground = palette.buttonBackground;
-	const COLORREF kListBackground = palette.listBackground;
-	const COLORREF kCardBackground = palette.cardBackground;
 	const COLORREF kButtonHover = palette.buttonHover;
 	const COLORREF kAccent = palette.accent;
-	const COLORREF kAccentHover = palette.accentHover;
 	const COLORREF kText = palette.text;
 	const COLORREF kMutedText = palette.mutedText;
 	const COLORREF kAccentText = palette.accentText;
-	const COLORREF kDivider = palette.divider;
-	const COLORREF kDisabledBackground = palette.disabledBackground;
 	const COLORREF kDisabledText = palette.disabledText;
-	const COLORREF kDangerText = palette.dangerText;
-	const COLORREF kDangerHover = palette.dangerHover;
 
 	CRect bounds(GetRadarArea());
 	CRect chatArea(GetChatArea());
@@ -547,799 +1376,8 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		return;
 	}
 
-	// ----- Building the popup -----
-	std::vector<RuntimePopupEntry> entries;
-	std::string title;
-	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Mode)
-	{
-		title = "Mode";
-		const std::vector<DisplayModeSettings> modes = GetProfileDisplayModesForEditor(activeProfile);
-		for (size_t index = 0; index < modes.size(); ++index)
-		{
-			RuntimePopupEntry entry;
-			entry.id = "runtime.mode." + std::to_string(index);
-			entry.label = modes[index].name;
-			entry.indicator = RuntimeIndicator::Selection;
-			entry.active = AsciiCaseInsensitiveEquals(modes[index].name, activeMode);
-			entries.push_back(entry);
-		}
-	}
-	else if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups)
-	{
-		title = "Groups";
-		for (size_t index = 0; index < groups.size(); ++index)
-		{
-			RuntimePopupEntry entry;
-			entry.id = "runtime.group." + std::to_string(index);
-			entry.label = groups[index].name;
-			entry.indicator = RuntimeIndicator::Visibility;
-			entry.active = groups[index].visible;
-			entries.push_back(entry);
-		}
-	}
-	else if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Profile)
-	{
-		title = "Profile";
-		const std::vector<std::string> profiles = GetOrderedProfileNamesForUi();
-		for (size_t index = 0; index < profiles.size(); ++index)
-		{
-			RuntimePopupEntry entry;
-			entry.id = "runtime.profile." + std::to_string(index);
-			entry.label = profiles[index];
-			entry.indicator = RuntimeIndicator::Selection;
-			entry.active = AsciiCaseInsensitiveEquals(profiles[index], activeProfile);
-			entries.push_back(entry);
-		}
-	}
-	else if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink)
-	{
-		title = "vSID / CPDLC";
-	}
-
-	const bool insetPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
-	const bool vsidPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
-	const bool datalinkPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink;
-	const VsmrVsid::InterfaceState vsidState = vsidPopup
-		? VsmrVsid::GetInterfaceState()
-		: VsmrVsid::InterfaceState();
-	const std::string vsidAirport = vsidPopup
-		? VsmrVsid::NormalizeAirport(getActiveAirport())
-		: std::string();
-	CSMRPlugin* datalinkPlugin = datalinkPopup
-		? static_cast<CSMRPlugin*>(GetPlugIn())
-		: nullptr;
-	const DatalinkControlState datalinkState = datalinkPlugin != nullptr
-		? datalinkPlugin->GetDatalinkControlState()
-		: DatalinkControlState();
-	const std::vector<AvisoPreset> insetPresets = insetPopup
-		? GetAvisoPresets()
-		: std::vector<AvisoPreset>();
-	const int popupWidth = vsidPopup ? kVsidPopupWidth
-		: (insetPopup ? kInsetPopupWidth : kStandardPopupWidth);
-	if (bounds.Width() < popupWidth + 8)
-	{
-		RuntimeMenuPopupArea.SetRectEmpty();
-		graphics.Restore(initialGraphicsState);
-		::RestoreDC(hdc, savedDc);
-		return;
-	}
-	int popupHeight = 0;
-	int visibleRows = 0;
-	bool showPager = false;
-	bool insetPopupTooShort = false;
-	if (vsidPopup)
-	{
-		popupHeight = vsidAirport == "LFPG"
-			? kVsidLfpgPopupHeight
-			: kVsidPopupHeight;
-	}
-	else if (!insetPopup)
-	{
-		const int maximumHeight = (std::max)(80, bounds.Height() - 8);
-		int rowCapacity = (maximumHeight - kPopupHeaderHeight - (kPopupPadding * 2)) / kPopupRowHeight;
-		rowCapacity = (std::max)(1, rowCapacity);
-		showPager = static_cast<int>(entries.size()) > rowCapacity;
-		if (showPager)
-			rowCapacity = (std::max)(1, (maximumHeight - kPopupHeaderHeight - (kPopupPadding * 2) - kPopupPagerHeight) / kPopupRowHeight);
-		visibleRows = (std::min)(rowCapacity, static_cast<int>(entries.size()));
-		if (entries.empty())
-			popupHeight = kPopupHeaderHeight + 42;
-		else
-			popupHeight = kPopupHeaderHeight + (kPopupPadding * 2) + (visibleRows * kPopupRowHeight) + (showPager ? kPopupPagerHeight : 0);
-	}
-	else
-	{
-		const int presetRows = (std::min)(4, static_cast<int>(insetPresets.size()));
-		const bool presetPager = insetPresets.size() > 4;
-		popupHeight =
-			kPopupHeaderHeight +
-			kPopupPadding +
-			(4 * kPopupRowHeight) +
-			19 +
-			(presetRows > 0 ? presetRows * kPopupRowHeight : 32) +
-			(presetPager ? kPopupPagerHeight : 0) +
-			(4 * kPopupActionHeight) +
-			(3 * 3) +
-			kPopupPadding;
-		insetPopupTooShort = popupHeight > bounds.Height() - 8;
-		if (insetPopupTooShort)
-			popupHeight = kPopupHeaderHeight + 42;
-	}
-
-	// ----- Drawing the popup -----
-	const int popupRightCandidate = RuntimeMenuArea.right + kPopupGap;
-	int popupLeft = popupRightCandidate;
-	if (popupRightCandidate + popupWidth > bounds.right - 4)
-		popupLeft = RuntimeMenuArea.left - kPopupGap - popupWidth;
-	popupLeft = std::clamp(
-		popupLeft,
-		static_cast<int>(bounds.left + 4),
-		static_cast<int>(bounds.right - popupWidth - 4));
-
-	int popupTop = RuntimeMenuArea.top + 8;
-	if (popupTop + popupHeight > bounds.bottom - 4)
-		popupTop = bounds.bottom - popupHeight - 4;
-	popupTop = (std::max)(static_cast<int>(bounds.top + 4), popupTop);
-	RuntimeMenuPopupArea = CRect(popupLeft, popupTop, popupLeft + popupWidth, popupTop + popupHeight);
-
-	DrawRoundedRect(hdc, RuntimeMenuPopupArea, kPopupBackground, kOuterBorder, kPanelCornerDiameter);
-	AddScreenObject(RUNTIME_MENU_POPUP, "runtime.popup", RuntimeMenuPopupArea, false, title.c_str());
-	const int popupClipDc = ::SaveDC(hdc);
-	HRGN popupClip = ::CreateRoundRectRgn(
-		RuntimeMenuPopupArea.left,
-		RuntimeMenuPopupArea.top,
-		RuntimeMenuPopupArea.right + 1,
-		RuntimeMenuPopupArea.bottom + 1,
-		kPanelCornerDiameter,
-		kPanelCornerDiameter);
-	if (popupClip != nullptr)
-	{
-		::ExtSelectClipRgn(hdc, popupClip, RGN_AND);
-		::DeleteObject(popupClip);
-	}
-	const Gdiplus::GraphicsState popupGraphicsState = graphics.Save();
-	graphics.SetClip(
-		Gdiplus::Rect(
-			RuntimeMenuPopupArea.left,
-			RuntimeMenuPopupArea.top,
-			RuntimeMenuPopupArea.Width(),
-			RuntimeMenuPopupArea.Height()),
-		Gdiplus::CombineModeIntersect);
-	auto addPopupScreenObject = [&](const char* id, const CRect& area, const char* tooltip)
-	{
-		CRect clippedArea;
-		if (::IntersectRect(&clippedArea, &area, &RuntimeMenuPopupArea) && !clippedArea.IsRectEmpty())
-			AddScreenObject(RUNTIME_MENU_POPUP, id, clippedArea, false, tooltip);
-	};
-	auto beginRoundedClip = [&](const CRect& area)
-	{
-		const int clipState = ::SaveDC(hdc);
-		HRGN clipRegion = ::CreateRoundRectRgn(
-			area.left,
-			area.top,
-			area.right + 1,
-			area.bottom + 1,
-			kPanelCornerDiameter,
-			kPanelCornerDiameter);
-		if (clipRegion != nullptr)
-		{
-			::ExtSelectClipRgn(hdc, clipRegion, RGN_AND);
-			::DeleteObject(clipRegion);
-		}
-		return clipState;
-	};
-
-	CRect titleArea(
-		RuntimeMenuPopupArea.left + 1,
-		RuntimeMenuPopupArea.top + 1,
-		RuntimeMenuPopupArea.right - 1,
-		RuntimeMenuPopupArea.top + kPopupHeaderHeight);
-	FillRectColor(hdc, titleArea, kPanelTitleBackground);
-	CRect titleDivider(titleArea.left, titleArea.bottom - 1, titleArea.right, titleArea.bottom);
-	FillRectColor(hdc, titleDivider, kDivider);
-
-	HFONT headerFont = static_cast<HFONT>(RuntimeOverlayFont.GetSafeHandle());
-	HFONT rowFont = headerFont;
-	HFONT actionFont = static_cast<HFONT>(RuntimeMenuActionFont.GetSafeHandle());
-
-	HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
-	CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
-	DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, kText);
-	CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
-	DrawRoundedRect(
-		hdc,
-		closeArea,
-		PointInside(closeArea, mouseLocation) ? kButtonHover : kButtonBackground,
-		kOuterBorder,
-		kControlCornerDiameter);
-	::SelectObject(hdc, actionFont);
-	DrawTextEllipsis(hdc, closeArea, "x", kMutedText, DT_CENTER);
-	addPopupScreenObject("runtime.close", closeArea, "Close");
-
-	auto drawChoiceRow = [&](const RuntimePopupEntry& entry, const CRect& rowArea)
-	{
-		const bool hover = entry.enabled && PointInside(rowArea, mouseLocation);
-		COLORREF fill = entry.enabled ? kListBackground : kDisabledBackground;
-		if (entry.active && entry.indicator == RuntimeIndicator::Selection)
-			fill = kAccent;
-		else if (hover)
-			fill = kButtonHover;
-		FillRectColor(hdc, rowArea, fill);
-		CRect divider(rowArea.left, rowArea.bottom - 1, rowArea.right, rowArea.bottom);
-		FillRectColor(hdc, divider, kDivider);
-
-		const COLORREF foreground =
-			!entry.enabled ? kDisabledText :
-			(entry.active && entry.indicator == RuntimeIndicator::Selection ? kAccentText : kText);
-		CRect indicatorArea(rowArea.left + 3, rowArea.top, rowArea.left + 20, rowArea.bottom);
-		if (entry.indicator == RuntimeIndicator::Selection)
-			DrawRuntimeSelectionIndicator(graphics, indicatorArea, entry.active, foreground);
-		else if (entry.indicator == RuntimeIndicator::Visibility)
-			DrawRuntimeVisibilityIndicator(graphics, indicatorArea, entry.active, entry.active ? foreground : kMutedText);
-
-		::SelectObject(hdc, rowFont);
-		CRect labelArea(rowArea.left + 24, rowArea.top, rowArea.right - 5, rowArea.bottom);
-		DrawTextEllipsis(hdc, labelArea, entry.label, foreground);
-		addPopupScreenObject(entry.id.c_str(), rowArea, entry.label.c_str());
-	};
-
-	int contentTop = titleArea.bottom + kPopupPadding;
-	auto drawRuntimeButton = [&](
-		const char* id,
-		const CRect& buttonArea,
-		const std::string& label,
-		bool enabled,
-		bool primary,
-		bool danger,
-		const std::string& tooltip,
-		bool interactive = true)
-	{
-		const bool hover = enabled && PointInside(buttonArea, mouseLocation);
-		COLORREF fill = enabled ? kButtonBackground : kDisabledBackground;
-		COLORREF foreground = enabled ? kText : kDisabledText;
-		if (enabled && primary)
-		{
-			fill = hover ? kAccentHover : kAccent;
-			foreground = kAccentText;
-		}
-		else if (enabled && danger)
-		{
-			fill = hover ? kDangerHover : kButtonBackground;
-			foreground = hover ? RGB(255, 240, 240) : kDangerText;
-		}
-		else if (hover)
-		{
-			fill = kButtonHover;
-		}
-		DrawRoundedRect(hdc, buttonArea, fill, kOuterBorder, kControlCornerDiameter);
-		::SelectObject(hdc, actionFont);
-		DrawTextEllipsis(hdc, buttonArea, label, foreground, DT_CENTER);
-		if (enabled && interactive)
-			addPopupScreenObject(id, buttonArea, tooltip.c_str());
-	};
-	auto drawSectionLabel = [&](const std::string& label)
-	{
-		::SelectObject(hdc, actionFont);
-		CRect sectionArea(
-			RuntimeMenuPopupArea.left + 6,
-			contentTop,
-			RuntimeMenuPopupArea.right - 6,
-			contentTop + 18);
-		DrawTextEllipsis(hdc, sectionArea, label, kMutedText);
-		contentTop += 18;
-	};
-	auto twoColumnAreas = [&](int height, CRect& left, CRect& right)
-	{
-		const int gap = 3;
-		const int availableWidth = RuntimeMenuPopupArea.Width() - (kPopupPadding * 2) - gap;
-		const int leftWidth = availableWidth / 2;
-		left = CRect(
-			RuntimeMenuPopupArea.left + kPopupPadding,
-			contentTop,
-			RuntimeMenuPopupArea.left + kPopupPadding + leftWidth,
-			contentTop + height);
-		right = CRect(
-			left.right + gap,
-			contentTop,
-			RuntimeMenuPopupArea.right - kPopupPadding,
-			contentTop + height);
-	};
-	if (vsidPopup)
-	{
-		// Drawing the fixed vSID actions published by its supported command surface
-		std::string statusText;
-		if (vsidState.commandLineBusy)
-			statusText = "EuroScope command line busy";
-		else if (vsidState.providerReady)
-			statusText = "Connected - " + std::to_string(vsidState.aircraftCount) + " active aircraft";
-		else if (!vsidState.bridgeLoaded)
-			statusText = "Plugin Bridge not loaded";
-		else if (!vsidState.bridgeCompatible)
-			statusText = "Plugin Bridge incompatible";
-		else
-			statusText = "vSID provider unavailable";
-
-		CRect statusArea(
-			RuntimeMenuPopupArea.left + kPopupPadding,
-			contentTop,
-			RuntimeMenuPopupArea.right - kPopupPadding,
-			contentTop + 25);
-		DrawRoundedRect(hdc, statusArea, kCardBackground, kOuterBorder, kControlCornerDiameter);
-		::SelectObject(hdc, actionFont);
-		CRect statusTextArea(statusArea.left + 6, statusArea.top, statusArea.right - 6, statusArea.bottom);
-		DrawTextEllipsis(hdc, statusTextArea, statusText, kText);
-		contentTop += 29;
-
-		const std::string& normalizedAirport = vsidAirport;
-		const bool canSubmit = vsidState.providerReady && !vsidState.commandLineBusy;
-		const bool canSubmitAirport = canSubmit && !normalizedAirport.empty();
-		drawSectionLabel(normalizedAirport.empty()
-			? "AIRPORT REQUIRED"
-			: "AIRPORT " + normalizedAirport);
-
-		auto drawVsidRow = [&](
-			const char* leftId,
-			const char* leftLabel,
-			const char* leftTooltip,
-			bool leftEnabled,
-			const char* rightId,
-			const char* rightLabel,
-			const char* rightTooltip,
-			bool rightEnabled)
-		{
-			CRect leftArea;
-			CRect rightArea;
-			twoColumnAreas(24, leftArea, rightArea);
-			drawRuntimeButton(leftId, leftArea, leftLabel, leftEnabled, false, false, leftTooltip);
-			drawRuntimeButton(rightId, rightArea, rightLabel, rightEnabled, false, false, rightTooltip);
-			contentTop += 28;
-		};
-
-		auto drawVsidActions = [&](const auto& definitions, bool enabled)
-		{
-			std::size_t index = 0U;
-			for (; index + 1U < definitions.size(); index += 2U)
-			{
-				const VsmrVsid::RuntimeActionDefinition& left = definitions[index];
-				const VsmrVsid::RuntimeActionDefinition& right = definitions[index + 1U];
-				drawVsidRow(
-					left.objectId, left.label, left.tooltip, enabled,
-					right.objectId, right.label, right.tooltip, enabled);
-			}
-			if (index < definitions.size())
-			{
-				const VsmrVsid::RuntimeActionDefinition& action = definitions[index];
-				CRect area(
-					RuntimeMenuPopupArea.left + kPopupPadding,
-					contentTop,
-					RuntimeMenuPopupArea.right - kPopupPadding,
-					contentTop + 24);
-				drawRuntimeButton(
-					action.objectId, area, action.label, enabled,
-					false, false, action.tooltip);
-				contentTop += 28;
-			}
-		};
-		drawVsidActions(VsmrVsid::AirportRuntimeActions, canSubmitAirport);
-
-		if (normalizedAirport == "LFPG")
-		{
-			drawSectionLabel("LFPG MODES");
-			CRect leftArea;
-			CRect rightArea;
-			twoColumnAreas(24, leftArea, rightArea);
-			const auto& minimum = VsmrVsid::LfpgModeActions[0];
-			const auto& crossing = VsmrVsid::LfpgModeActions[1];
-			const bool minimumActive =
-				vsidState.lfpgMode == VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
-			drawRuntimeButton(
-				minimum.objectId, leftArea, minimum.label, canSubmitAirport,
-				minimumActive, false, minimum.tooltip, !minimumActive);
-			drawRuntimeButton(
-				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
-				!minimumActive, false, crossing.tooltip, minimumActive);
-			contentTop += 28;
-
-			twoColumnAreas(24, leftArea, rightArea);
-			const auto& linked = VsmrVsid::LfpgLinkActions[0];
-			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
-			const bool linkedActive =
-				vsidState.lfpgLinkMode == VsmrVsid::LfpgLinkMode::Linked;
-			drawRuntimeButton(
-				linked.objectId, leftArea, linked.label, canSubmitAirport,
-				linkedActive, false, linked.tooltip, !linkedActive);
-			drawRuntimeButton(
-				unlinked.objectId, rightArea, unlinked.label, canSubmitAirport,
-				!linkedActive, false, unlinked.tooltip, linkedActive);
-			contentTop += 28;
-		}
-
-		drawSectionLabel("GENERAL");
-		drawVsidActions(VsmrVsid::GeneralRuntimeActions, canSubmit);
-	}
-	if (datalinkPopup)
-	{
-		// Drawing CPDLC and PDC controls
-		CSMRPlugin* plugin = datalinkPlugin;
-		const DatalinkControlState& state = datalinkState;
-		contentTop += 4;
-		drawSectionLabel(state.connected ? "CPDLC / PDC - CONNECTED" :
-			(state.connecting ? "CPDLC / PDC - CONNECTING" : "CPDLC / PDC - OFFLINE"));
-
-		auto drawCredentialRow = [&](
-			const std::string& label,
-			const char* id,
-			const std::string& value,
-			const std::string& tooltip)
-		{
-			CRect labelArea;
-			CRect valueArea;
-			twoColumnAreas(24, labelArea, valueArea);
-			labelArea.left += 4;
-			::SelectObject(hdc, rowFont);
-			DrawTextEllipsis(hdc, labelArea, label, kText);
-			drawRuntimeButton(
-				id,
-				valueArea,
-				value,
-				plugin != nullptr && !state.connected && !state.connecting,
-				false,
-				false,
-				tooltip);
-			contentTop += 28;
-		};
-		drawCredentialRow(
-			"Login",
-			"runtime.datalink.callsign",
-			state.logonCallsign.empty() ? "Set..." : state.logonCallsign,
-			"Edit the CPDLC login callsign");
-		drawCredentialRow(
-			"Password",
-			"runtime.datalink.credentials",
-			state.hasPassword ? "Change..." : "Set...",
-			"Edit the Hoppie logon password");
-
-		CRect pollArea;
-		CRect connectionArea;
-		twoColumnAreas(24, pollArea, connectionArea);
-		drawRuntimeButton(
-			"runtime.datalink.poll",
-			pollArea,
-			state.pollInProgress ? "Polling..." : "Poll",
-			plugin != nullptr && state.connected && !state.pollInProgress,
-			false,
-			false,
-			"Poll Hoppie messages now");
-		const bool canConnect = state.controllerConnected && !state.logonCallsign.empty() && state.hasPassword;
-		drawRuntimeButton(
-			"runtime.datalink.connection",
-			connectionArea,
-			state.connected ? "Disconnect" : (state.connecting ? "Cancel" : "Connect"),
-			plugin != nullptr && (state.connected || state.connecting || canConnect),
-			!state.connected && !state.connecting,
-			state.connected,
-			state.connected || state.connecting ? "Disconnect CPDLC" : "Connect CPDLC");
-		contentTop += 30;
-
-
-	}
-	else if (!insetPopup)
-	{
-		// Drawing mode, group, or profile choices
-		if (entries.empty())
-		{
-			::SelectObject(hdc, actionFont);
-			CRect emptyArea(
-				RuntimeMenuPopupArea.left + 4,
-				contentTop,
-				RuntimeMenuPopupArea.right - 4,
-				RuntimeMenuPopupArea.bottom - 4);
-			const std::string emptyText =
-				ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups ? "No AVISO groups." :
-				ActiveRuntimeMenuPopup == RuntimeMenuPopup::Mode ? "No modes in this profile." :
-				"No profiles.";
-			DrawTextEllipsis(hdc, emptyArea, emptyText, kMutedText, DT_CENTER);
-		}
-		else
-		{
-			const int maximumOffset = (std::max)(0, static_cast<int>(entries.size()) - visibleRows);
-			RuntimeMenuPopupScrollOffset = std::clamp(RuntimeMenuPopupScrollOffset, 0, maximumOffset);
-			const int endIndex = (std::min)(
-				static_cast<int>(entries.size()),
-				RuntimeMenuPopupScrollOffset + visibleRows);
-			const CRect listArea(
-				RuntimeMenuPopupArea.left + kPopupPadding,
-				contentTop,
-				RuntimeMenuPopupArea.right - kPopupPadding,
-				contentTop + (visibleRows * kPopupRowHeight));
-			DrawRoundedRect(
-				hdc,
-				listArea,
-				kListBackground,
-				kOuterBorder,
-				kPanelCornerDiameter);
-			const int listClipState = beginRoundedClip(listArea);
-
-			for (int index = RuntimeMenuPopupScrollOffset; index < endIndex; ++index)
-			{
-				CRect rowArea(
-					RuntimeMenuPopupArea.left + kPopupPadding,
-					contentTop,
-					RuntimeMenuPopupArea.right - kPopupPadding,
-					contentTop + kPopupRowHeight);
-				drawChoiceRow(entries[static_cast<size_t>(index)], rowArea);
-				contentTop += kPopupRowHeight;
-			}
-			::RestoreDC(hdc, listClipState);
-			DrawRoundedBorder(hdc, listArea, kOuterBorder, kPanelCornerDiameter);
-
-			if (showPager)
-			{
-				CRect previousArea(
-					RuntimeMenuPopupArea.left + kPopupPadding,
-					contentTop + 1,
-					RuntimeMenuPopupArea.CenterPoint().x - 1,
-					contentTop + 1 + kPopupControlHeight);
-				CRect nextArea(
-					RuntimeMenuPopupArea.CenterPoint().x + 1,
-					contentTop + 1,
-					RuntimeMenuPopupArea.right - kPopupPadding,
-					contentTop + 1 + kPopupControlHeight);
-				const bool canPrevious = RuntimeMenuPopupScrollOffset > 0;
-				const bool canNext = RuntimeMenuPopupScrollOffset < maximumOffset;
-				DrawRoundedRect(hdc, previousArea, canPrevious ? kButtonBackground : kDisabledBackground, kOuterBorder, kControlCornerDiameter);
-				DrawRoundedRect(hdc, nextArea, canNext ? kButtonBackground : kDisabledBackground, kOuterBorder, kControlCornerDiameter);
-				::SelectObject(hdc, actionFont);
-				DrawTextEllipsis(hdc, previousArea, "Previous", canPrevious ? kText : kDisabledText, DT_CENTER);
-				DrawTextEllipsis(hdc, nextArea, "Next", canNext ? kText : kDisabledText, DT_CENTER);
-				if (canPrevious)
-					addPopupScreenObject("runtime.page.previous", previousArea, "Previous choices");
-				if (canNext)
-					addPopupScreenObject("runtime.page.next", nextArea, "Next choices");
-			}
-		}
-	}
-	else if (insetPopupTooShort)
-	{
-		::SelectObject(hdc, actionFont);
-		CRect messageArea(
-			RuntimeMenuPopupArea.left + 5,
-			contentTop,
-			RuntimeMenuPopupArea.right - 5,
-			RuntimeMenuPopupArea.bottom - 4);
-		DrawTextEllipsis(hdc, messageArea, "Increase radar height.", kMutedText, DT_CENTER);
-	}
-	else
-	{
-		// Drawing inset visibility and preset controls
-		const int avisoWindowId = APPWINDOW_AVISO - APPWINDOW_BASE;
-		const int weatherWindowId = APPWINDOW_WEATHER - APPWINDOW_BASE;
-		const int timerWindowId = APPWINDOW_TIMER - APPWINDOW_BASE;
-		const struct
-		{
-			const char* id;
-			const char* resetId;
-			const char* label;
-			int appWindowId;
-		} insetRows[] = {
-			{ "runtime.inset.aviso", "runtime.inset.reset.aviso", "AVISO", avisoWindowId },
-			{ "runtime.inset.srw1", "runtime.inset.reset.srw1", "SRW 1", 1 },
-			{ "runtime.inset.weather", "runtime.inset.reset.weather", "Weather", weatherWindowId },
-			{ "runtime.inset.timer", "runtime.inset.reset.timer", "Timer", timerWindowId }
-		};
-		const CRect insetListArea(
-			RuntimeMenuPopupArea.left + kPopupPadding,
-			contentTop,
-			RuntimeMenuPopupArea.right - kPopupPadding,
-			contentTop + (static_cast<int>(_countof(insetRows)) * kPopupRowHeight));
-		DrawRoundedRect(
-			hdc,
-			insetListArea,
-			kListBackground,
-			kOuterBorder,
-			kPanelCornerDiameter);
-		const int insetListClipState = beginRoundedClip(insetListArea);
-		for (const auto& inset : insetRows)
-		{
-			const auto display = appWindowDisplays.find(inset.appWindowId);
-			RuntimePopupEntry entry;
-			entry.id = inset.id;
-			entry.label = inset.label;
-			entry.indicator = RuntimeIndicator::Visibility;
-			entry.active = display != appWindowDisplays.end() && display->second;
-			CRect rowArea(
-				RuntimeMenuPopupArea.left + kPopupPadding,
-				contentTop,
-				RuntimeMenuPopupArea.right - kPopupPadding,
-				contentTop + kPopupRowHeight);
-			CRect visibilityArea(rowArea);
-			visibilityArea.right -= 45;
-			drawChoiceRow(entry, visibilityArea);
-			CRect resetArea(
-				visibilityArea.right + 3,
-				rowArea.top + 3,
-				rowArea.right,
-				rowArea.bottom - 3);
-			DrawRoundedRect(
-				hdc,
-				resetArea,
-				PointInside(resetArea, mouseLocation) ? kButtonHover : kButtonBackground,
-				kOuterBorder,
-				kControlCornerDiameter);
-			::SelectObject(hdc, actionFont);
-			DrawTextEllipsis(hdc, resetArea, "Reset", kText, DT_CENTER);
-			addPopupScreenObject(inset.resetId, resetArea, "Reset this inset view");
-			contentTop += kPopupRowHeight;
-		}
-		::RestoreDC(hdc, insetListClipState);
-		DrawRoundedBorder(hdc, insetListArea, kOuterBorder, kPanelCornerDiameter);
-
-		::SelectObject(hdc, actionFont);
-		CRect sectionArea(
-			RuntimeMenuPopupArea.left + 5,
-			contentTop,
-			RuntimeMenuPopupArea.right - 5,
-			contentTop + 19);
-		DrawTextEllipsis(hdc, sectionArea, "PRESET", kMutedText);
-		contentTop += 19;
-
-		const std::vector<AvisoPreset>& presets = insetPresets;
-		const std::string activePreset = GetActiveAvisoPresetName();
-		const std::string defaultPreset = GetDefaultAvisoPresetName();
-		const int presetRows = (std::min)(4, static_cast<int>(presets.size()));
-		const int maximumPresetOffset = (std::max)(0, static_cast<int>(presets.size()) - presetRows);
-		RuntimeMenuPopupScrollOffset = std::clamp(RuntimeMenuPopupScrollOffset, 0, maximumPresetOffset);
-		if (presets.empty())
-		{
-			CRect emptyArea(
-				RuntimeMenuPopupArea.left + kPopupPadding,
-				contentTop,
-				RuntimeMenuPopupArea.right - kPopupPadding,
-				contentTop + 32);
-			DrawTextEllipsis(hdc, emptyArea, "No inset presets.", kMutedText, DT_CENTER);
-			contentTop += 32;
-		}
-		else
-		{
-			const CRect presetListArea(
-				RuntimeMenuPopupArea.left + kPopupPadding,
-				contentTop,
-				RuntimeMenuPopupArea.right - kPopupPadding,
-				contentTop + (presetRows * kPopupRowHeight));
-			DrawRoundedRect(
-				hdc,
-				presetListArea,
-				kListBackground,
-				kOuterBorder,
-				kPanelCornerDiameter);
-			const int presetListClipState = beginRoundedClip(presetListArea);
-			for (int row = 0; row < presetRows; ++row)
-			{
-				const int presetIndex = RuntimeMenuPopupScrollOffset + row;
-				RuntimePopupEntry entry;
-				entry.id = "runtime.preset." + std::to_string(presetIndex);
-				entry.label = presets[static_cast<size_t>(presetIndex)].name;
-				entry.indicator = RuntimeIndicator::Selection;
-				entry.active = AsciiCaseInsensitiveEquals(entry.label, activePreset);
-				CRect rowArea(
-					RuntimeMenuPopupArea.left + kPopupPadding,
-					contentTop,
-					RuntimeMenuPopupArea.right - kPopupPadding,
-					contentTop + kPopupRowHeight);
-				drawChoiceRow(entry, rowArea);
-				contentTop += kPopupRowHeight;
-			}
-			::RestoreDC(hdc, presetListClipState);
-			DrawRoundedBorder(hdc, presetListArea, kOuterBorder, kPanelCornerDiameter);
-		}
-
-		if (presets.size() > 4)
-		{
-			CRect previousArea(
-				RuntimeMenuPopupArea.left + kPopupPadding,
-				contentTop + 1,
-				RuntimeMenuPopupArea.CenterPoint().x - 1,
-				contentTop + 1 + kPopupControlHeight);
-			CRect nextArea(
-				RuntimeMenuPopupArea.CenterPoint().x + 1,
-				contentTop + 1,
-				RuntimeMenuPopupArea.right - kPopupPadding,
-				contentTop + 1 + kPopupControlHeight);
-			const bool canPrevious = RuntimeMenuPopupScrollOffset > 0;
-			const bool canNext = RuntimeMenuPopupScrollOffset < maximumPresetOffset;
-			DrawRoundedRect(hdc, previousArea, canPrevious ? kButtonBackground : kDisabledBackground, kOuterBorder, kControlCornerDiameter);
-			DrawRoundedRect(hdc, nextArea, canNext ? kButtonBackground : kDisabledBackground, kOuterBorder, kControlCornerDiameter);
-			::SelectObject(hdc, actionFont);
-			DrawTextEllipsis(hdc, previousArea, "Previous", canPrevious ? kText : kDisabledText, DT_CENTER);
-			DrawTextEllipsis(hdc, nextArea, "Next", canNext ? kText : kDisabledText, DT_CENTER);
-			if (canPrevious)
-				addPopupScreenObject("runtime.preset.page.previous", previousArea, "Previous presets");
-			if (canNext)
-				addPopupScreenObject("runtime.preset.page.next", nextArea, "Next presets");
-			contentTop += kPopupPagerHeight;
-		}
-
-		const bool hasActivePreset =
-			!activePreset.empty() &&
-			std::any_of(presets.begin(), presets.end(), [&](const AvisoPreset& preset)
-			{
-				return AsciiCaseInsensitiveEquals(preset.name, activePreset);
-			});
-		const bool hasDefaultPreset = !defaultPreset.empty();
-		const bool clearDefaultAction =
-			hasDefaultPreset && (!hasActivePreset || AsciiCaseInsensitiveEquals(activePreset, defaultPreset));
-		const bool canChangeDefault = hasActivePreset || hasDefaultPreset;
-		enum class ActionTone
-		{
-			Normal,
-			Primary,
-			Danger
-		};
-
-		const struct
-		{
-			const char* id;
-			std::string label;
-			bool enabled;
-			ActionTone tone;
-		} actions[] = {
-			{ "runtime.preset.none", "No preset", true, ActionTone::Normal },
-			{ "runtime.preset.save", "Save current", true, ActionTone::Primary },
-			{ "runtime.preset.update", "Update", hasActivePreset, ActionTone::Normal },
-			{ "runtime.preset.rename", "Rename", hasActivePreset, ActionTone::Normal },
-			{ "runtime.preset.duplicate", "Duplicate", hasActivePreset, ActionTone::Normal },
-			{ "runtime.preset.default", clearDefaultAction ? "Clear default" : "Set default", canChangeDefault, ActionTone::Normal },
-			{ "runtime.preset.reset", "Reload", hasActivePreset, ActionTone::Normal },
-			{ "runtime.preset.delete", "Delete", hasActivePreset, ActionTone::Danger }
-		};
-
-		const int actionGap = 3;
-		const int actionWidth =
-			(RuntimeMenuPopupArea.Width() - (kPopupPadding * 2) - actionGap) / 2;
-		for (size_t index = 0; index < _countof(actions); ++index)
-		{
-			const int column = static_cast<int>(index % 2);
-			const int row = static_cast<int>(index / 2);
-			CRect actionArea(
-				RuntimeMenuPopupArea.left + kPopupPadding + (column * (actionWidth + actionGap)),
-				contentTop + (row * (kPopupActionHeight + actionGap)),
-				RuntimeMenuPopupArea.left + kPopupPadding + (column * (actionWidth + actionGap)) + actionWidth,
-				contentTop + (row * (kPopupActionHeight + actionGap)) + kPopupActionHeight);
-			const bool enabled = actions[index].enabled;
-			const bool hover = enabled && PointInside(actionArea, mouseLocation);
-			COLORREF fill = kButtonBackground;
-			COLORREF foreground = kText;
-			if (!enabled)
-			{
-				fill = kDisabledBackground;
-				foreground = kDisabledText;
-			}
-			else if (actions[index].tone == ActionTone::Primary)
-			{
-				fill = hover ? kAccentHover : kAccent;
-				foreground = kAccentText;
-			}
-			else if (actions[index].tone == ActionTone::Danger)
-			{
-				fill = hover ? kDangerHover : kButtonBackground;
-				foreground = hover ? RGB(255, 240, 240) : kDangerText;
-			}
-			else if (hover)
-			{
-				fill = kButtonHover;
-			}
-			DrawRoundedRect(hdc, actionArea, fill, kOuterBorder, kControlCornerDiameter);
-			::SelectObject(hdc, actionFont);
-			DrawTextEllipsis(hdc, actionArea, actions[index].label, foreground, DT_CENTER);
-			if (enabled)
-				addPopupScreenObject(actions[index].id, actionArea, actions[index].label.c_str());
-		}
-	}
-
-	graphics.Restore(popupGraphicsState);
-	::RestoreDC(hdc, popupClipDc);
-	DrawRoundedBorder(hdc, RuntimeMenuPopupArea, kOuterBorder, kPanelCornerDiameter);
+	RuntimeMenuPopupRenderer popup{ *this, hdc, graphics, palette, bounds, activeProfile, activeMode, groups };
+	if (popup.BuildPopup()) popup.DrawPopup();
 	graphics.Restore(initialGraphicsState);
-	::SelectObject(hdc, oldFont);
 	::RestoreDC(hdc, savedDc);
 }
