@@ -269,6 +269,7 @@ private:
 	unsigned long InitialInsetStateRestoreBoundsChangedTick = 0;
 	CRect RuntimeMenuArea = { 0, 0, 0, 0 };
 	CRect RuntimeMenuPopupArea = { 0, 0, 0, 0 };
+	CRect RuntimeMenuSecondaryPopupArea = { 0, 0, 0, 0 };
 	int RuntimeMenuPopupScrollOffset = 0;
 	unsigned long FpsLastSampleTick = 0;
 	int FpsFrameCount = 0;

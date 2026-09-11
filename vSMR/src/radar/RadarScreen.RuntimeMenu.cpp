@@ -32,9 +32,11 @@ namespace
 	constexpr int kPanelCornerDiameter = 8;
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
-	constexpr int kVsidPopupHeight = 214;
-	constexpr int kVsidLfpgPopupHeight = 286;
+	constexpr int kVsidPopupHeight = 79;
+	constexpr int kVsidLfpgPopupHeight = 151;
 	constexpr int kStandardPopupWidth = 170;
+	constexpr int kCpdlcPopupHeight = 104;
+	constexpr int kIntegrationPopupGap = 6;
 
 	struct RuntimeMenuPalette
 	{
@@ -303,6 +305,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 	std::vector<AvisoPreset> insetPresets;
 	VsmrVsid::InterfaceState vsidState;
 	DatalinkControlState datalinkState;
+	bool cpdlcPanel = false;
 	bool insetPopup = false, vsidPopup = false, showPager = false, insetPopupTooShort = false;
 	int popupWidth = 0, popupHeight = 0, visibleRows = 0, contentTop = 0;
 	HFONT rowFont = nullptr, actionFont = nullptr;
@@ -365,7 +368,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		}
 		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Datalink)
 		{
-			title = "vSID / CPDLC";
+			title = "vSID";
 		}
 
 		insetPopup = radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Insets;
@@ -574,37 +577,39 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		}
 	}
 
+	void drawIntegrationTitle(const char* sectionTitle, const char* state, std::optional<bool> online)
+	{
+		CRect area(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
+			radar.RuntimeMenuPopupArea.right - 27, contentTop + kPopupHeaderHeight - 1);
+		FillRectColor(hdc, area, palette.panelTitleBackground);
+		FillRectColor(hdc, CRect(area.left, area.bottom - 1, area.right, area.bottom), palette.divider);
+		::SelectObject(hdc, rowFont);
+		DrawTextEllipsis(hdc, CRect(area.left + 5, area.top, area.right - 92, area.bottom), sectionTitle, palette.text);
+		drawStatusLamp(CRect(area.right - 87, area.top, area.right - 69, area.bottom), online);
+		::SelectObject(hdc, actionFont);
+		DrawTextEllipsis(hdc, CRect(area.right - 65, area.top, area.right - 5, area.bottom), state, palette.mutedText, DT_RIGHT);
+		contentTop += kPopupHeaderHeight + 3;
+	}
+
 	void DrawDatalink()
 	{
 		const std::string& normalizedAirport = vsidAirport;
 		const bool canSubmit = vsidState.providerReady && !vsidState.commandLineBusy;
 		const bool canSubmitAirport = canSubmit && !normalizedAirport.empty();
-		// Keep the standard popup title uncluttered at the compact width.
-		CRect vsidStatus, cpdlcStatus;
-		twoColumnAreas(18, vsidStatus, cpdlcStatus);
-		auto drawConnection = [&](const CRect& area, const char* label, std::optional<bool> online)
-		{
-			drawStatusLamp(CRect(area.left, area.top, area.left + 16, area.bottom), online);
-			::SelectObject(hdc, actionFont);
-			DrawTextEllipsis(hdc, CRect(area.left + 19, area.top, area.right, area.bottom), label, palette.mutedText);
-		};
-		drawConnection(vsidStatus, vsidState.providerReady ? "vSID Online" : "vSID Offline", vsidState.providerReady);
-		drawConnection(cpdlcStatus, datalinkState.connected ? "CPDLC Online" :
-			(datalinkState.connecting ? "Connecting" : "CPDLC Offline"),
-			datalinkState.connecting ? std::optional<bool>{} : std::optional<bool>{datalinkState.connected});
-		contentTop += 20;
-		drawSectionLabel("vSID ACTIONS");
 		const auto& automatic = VsmrVsid::AirportRuntimeActions.front();
 		CRect automaticArea(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
 			radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + kPopupActionHeight);
 		const std::string autoState = vsidState.automaticMode.has_value()
-			? (*vsidState.automaticMode ? "On" : "Off") : "Unknown - requires vSID automatic-mode status support";
+			? (*vsidState.automaticMode ? "Activated" : "Deactivated") : "Unknown - requires vSID automatic-mode status support";
 		drawRuntimeButton(automatic.objectId, automaticArea, "", canSubmitAirport,
-			false, false, "Toggle automatic mode for " + normalizedAirport + ". " + autoState);
+			false, false, "Toggle auto mode for " + normalizedAirport + ". " + autoState);
 		::SelectObject(hdc, actionFont);
 		DrawTextEllipsis(hdc, CRect(automaticArea.left + 10, automaticArea.top,
-			automaticArea.right - 35, automaticArea.bottom), "Automatic mode",
+			automaticArea.right - 108, automaticArea.bottom), "Auto mode",
 			canSubmitAirport ? palette.text : palette.disabledText);
+		DrawTextEllipsis(hdc, CRect(automaticArea.right - 104, automaticArea.top,
+			automaticArea.right - 30, automaticArea.bottom),
+			vsidState.automaticMode.has_value() ? autoState : "Unknown", palette.mutedText, DT_RIGHT);
 		drawStatusLamp(CRect(automaticArea.right - 30, automaticArea.top,
 			automaticArea.right - 8, automaticArea.bottom), vsidState.automaticMode);
 		contentTop += kPopupActionHeight + 3;
@@ -651,8 +656,6 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			contentTop += kPopupActionHeight + 3;
 		}
 
-		contentTop += 6;
-		DrawCpdlc();
 	}
 
 	void DrawCpdlc()
@@ -660,7 +663,6 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		// Drawing CPDLC and PDC controls
 		CSMRPlugin* plugin = static_cast<CSMRPlugin*>(radar.GetPlugIn());
 		const DatalinkControlState& state = datalinkState;
-		drawSectionLabel("CPDLC / PDC");
 
 		auto drawCredentialRow = [&](
 			const std::string& label,
@@ -1032,7 +1034,32 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		}
 	}
 
-	void DrawPopup()
+	void DrawIntegrationPopups()
+	{
+		const int firstHeight = popupHeight;
+		const int combinedHeight = firstHeight + kIntegrationPopupGap + kCpdlcPopupHeight;
+		const bool stacked = combinedHeight <= bounds.Height() - 8;
+		const int groupWidth = stacked ? popupWidth : popupWidth * 2 + kIntegrationPopupGap;
+		const int groupHeight = stacked ? combinedHeight : (std::max)(firstHeight, kCpdlcPopupHeight);
+		if (groupWidth > bounds.Width() - 8 || groupHeight > bounds.Height() - 8) return;
+		int left = radar.RuntimeMenuArea.right + kPopupGap;
+		if (left + groupWidth > bounds.right - 4)
+			left = radar.RuntimeMenuArea.left - kPopupGap - groupWidth;
+		left = std::clamp(left, static_cast<int>(bounds.left + 4), static_cast<int>(bounds.right - groupWidth - 4));
+		const int top = std::clamp(static_cast<int>(radar.RuntimeMenuArea.top + 8),
+			static_cast<int>(bounds.top + 4), static_cast<int>(bounds.bottom - groupHeight - 4));
+		DrawPopup(left, top);
+		const CRect vsidArea = radar.RuntimeMenuPopupArea;
+		cpdlcPanel = true;
+		title = "CPDLC";
+		popupHeight = kCpdlcPopupHeight;
+		DrawPopup(stacked ? left : left + popupWidth + kIntegrationPopupGap,
+			stacked ? top + firstHeight + kIntegrationPopupGap : top);
+		radar.RuntimeMenuSecondaryPopupArea = radar.RuntimeMenuPopupArea;
+		radar.RuntimeMenuPopupArea = vsidArea;
+	}
+
+	void DrawPopup(int forcedLeft = -1, int forcedTop = -1)
 	{
 		// ----- Drawing the popup -----
 		const int popupRightCandidate = radar.RuntimeMenuArea.right + kPopupGap;
@@ -1048,10 +1075,12 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		if (popupTop + popupHeight > bounds.bottom - 4)
 			popupTop = bounds.bottom - popupHeight - 4;
 		popupTop = (std::max)(static_cast<int>(bounds.top + 4), popupTop);
+		if (forcedLeft >= 0) popupLeft = forcedLeft;
+		if (forcedTop >= 0) popupTop = forcedTop;
 		radar.RuntimeMenuPopupArea = CRect(popupLeft, popupTop, popupLeft + popupWidth, popupTop + popupHeight);
 
 		DrawRoundedRect(hdc, radar.RuntimeMenuPopupArea, palette.popupBackground, palette.outerBorder, kPanelCornerDiameter);
-		radar.AddScreenObject(RUNTIME_MENU_POPUP, "runtime.popup", radar.RuntimeMenuPopupArea, false, title.c_str());
+		radar.AddScreenObject(RUNTIME_MENU_POPUP, cpdlcPanel ? "runtime.popup.cpdlc" : "runtime.popup", radar.RuntimeMenuPopupArea, false, title.c_str());
 		const int popupClipDc = ::SaveDC(hdc);
 		HRGN popupClip = ::CreateRoundRectRgn(
 			radar.RuntimeMenuPopupArea.left,
@@ -1089,7 +1118,16 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 
 		HFONT oldFont = static_cast<HFONT>(::SelectObject(hdc, headerFont));
 		CRect titleText(titleArea.left + 7, titleArea.top, titleArea.right - 27, titleArea.bottom);
-		DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, palette.text);
+		if (vsidPopup)
+		{
+			contentTop = titleArea.top;
+			if (cpdlcPanel)
+				drawIntegrationTitle("CPDLC", datalinkState.connected ? "Online" : (datalinkState.connecting ? "Connecting" : "Offline"),
+					datalinkState.connecting ? std::optional<bool>{} : std::optional<bool>{datalinkState.connected});
+			else
+				drawIntegrationTitle("vSID", vsidState.providerReady ? "Online" : "Offline", vsidState.providerReady);
+		}
+		else DrawTextEllipsis(hdc, titleText, insetPopup ? "Insets" : title, palette.text);
 		CRect closeArea(titleArea.right - 21, titleArea.top + 3, titleArea.right - 4, titleArea.bottom - 3);
 		DrawRoundedRect(
 			hdc,
@@ -1099,10 +1137,11 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			kControlCornerDiameter);
 		::SelectObject(hdc, actionFont);
 		DrawTextEllipsis(hdc, closeArea, "x", palette.mutedText, DT_CENTER);
-		addPopupScreenObject("runtime.close", closeArea, "Close");
+		addPopupScreenObject(cpdlcPanel ? "runtime.close.cpdlc" : "runtime.close", closeArea, vsidPopup ? "Close vSID and CPDLC popups" : "Close");
 
 		contentTop = titleArea.bottom + kPopupPadding;
-		if (vsidPopup) DrawDatalink();
+		if (vsidPopup && cpdlcPanel) DrawCpdlc();
+		else if (vsidPopup) DrawDatalink();
 		else if (!insetPopup) DrawChoices();
 		else if (insetPopupTooShort)
 		{
@@ -1235,6 +1274,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 		RuntimeMenuPopupScrollOffset = 0;
 		RuntimeMenuPopupArea.SetRectEmpty();
+	RuntimeMenuSecondaryPopupArea.SetRectEmpty();
 		graphics.Restore(initialGraphicsState);
 		::RestoreDC(hdc, savedDc);
 		return;
@@ -1367,6 +1407,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 
 	RuntimeMenuPopupArea.SetRectEmpty();
+	RuntimeMenuSecondaryPopupArea.SetRectEmpty();
 	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::None)
 	{
 		graphics.Restore(initialGraphicsState);
@@ -1375,7 +1416,11 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 	}
 
 	RuntimeMenuPopupRenderer popup{ *this, hdc, graphics, palette, bounds, activeProfile, activeMode, groups };
-	if (popup.BuildPopup()) popup.DrawPopup();
+	if (popup.BuildPopup())
+	{
+		if (popup.vsidPopup) popup.DrawIntegrationPopups();
+		else popup.DrawPopup();
+	}
 	graphics.Restore(initialGraphicsState);
 	::RestoreDC(hdc, savedDc);
 }

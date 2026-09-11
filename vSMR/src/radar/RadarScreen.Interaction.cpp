@@ -39,8 +39,8 @@ struct VsmrRadarInteractionAccess
 
 		return
 			radar.ActiveRuntimeMenuPopup != CSMRRadar::RuntimeMenuPopup::None &&
-			!radar.RuntimeMenuPopupArea.IsRectEmpty() &&
-			radar.RuntimeMenuPopupArea.PtInRect(point);
+			((!radar.RuntimeMenuPopupArea.IsRectEmpty() && radar.RuntimeMenuPopupArea.PtInRect(point)) ||
+			 (!radar.RuntimeMenuSecondaryPopupArea.IsRectEmpty() && radar.RuntimeMenuSecondaryPopupArea.PtInRect(point)));
 	}
 
 	static void SetMainAvisoSelected(CSMRRadar& radar, bool selected) noexcept
