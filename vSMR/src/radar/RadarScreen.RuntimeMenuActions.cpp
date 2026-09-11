@@ -4,6 +4,7 @@
 #include "insets/InsetWindow.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RecentAirports.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <cstdlib>
@@ -90,6 +91,16 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		RequestRefresh();
 		return true;
 	}
+	if (button == BUTTON_RIGHT && objectType == RUNTIME_MENU_RAIL &&
+		std::strcmp(id, "runtime.airport") == 0)
+	{
+		VsmrRadar::RememberAirport(RecentAirports, getActiveAirport());
+		ActiveRuntimeMenuPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::RecentAirports
+			? RuntimeMenuPopup::None : RuntimeMenuPopup::RecentAirports;
+		RuntimeMenuPopupScrollOffset = 0;
+		RequestRefresh();
+		return true;
+	}
 	if (button != BUTTON_LEFT)
 	{
 		if (objectType == RUNTIME_MENU_POPUP || std::strcmp(id, "runtime.drag") == 0)
@@ -126,6 +137,20 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		{
 			CloseRuntimeMenuPopup();
 			OpenVsmrControlCenterWindow();
+		}
+		return true;
+	}
+
+	constexpr char recentPrefix[] = "runtime.recent-airport.";
+	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::RecentAirports &&
+		std::strncmp(id, recentPrefix, sizeof(recentPrefix) - 1U) == 0)
+	{
+		const std::string airport(id + sizeof(recentPrefix) - 1U);
+		if (std::find(RecentAirports.begin(), RecentAirports.end(), airport) != RecentAirports.end())
+		{
+			CloseRuntimeMenuPopup();
+			setActiveAirport(airport);
+			RequestRefresh();
 		}
 		return true;
 	}

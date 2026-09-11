@@ -12,6 +12,7 @@
 #include "control_center/WebMessageValidation.hpp"
 #include "integrations/CdmBridgeData.hpp"
 #include "integrations/VsidBridgeData.hpp"
+#include "radar/RecentAirports.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
@@ -292,6 +293,22 @@ namespace
 		Expect(TryParseClearanceTokenDisplay("clearance(HOLD,CLEARED)", pending, cleared), "clearance display token parses");
 		Expect(pending == "HOLD" && cleared == "CLEARED", "clearance display states are preserved");
 		Expect(TryParseClearanceTokenDisplay("clearance()", pending, cleared) && pending.empty() && cleared.empty(), "empty clearance display hides both states");
+	}
+
+	void TestRecentAirports()
+	{
+		std::vector<std::string> history;
+		for (const char* airport : { "LFPG", "LFPO", "LFMN", "LFML", "LFBO", "LFLL" })
+			VsmrRadar::RememberAirport(history, airport);
+		Expect(history == std::vector<std::string>({ "LFLL", "LFBO", "LFML", "LFMN", "LFPO" }),
+			"Airport history keeps only the five most recently opened airports");
+		VsmrRadar::RememberAirport(history, "lfmn");
+		Expect(history == std::vector<std::string>({ "LFMN", "LFLL", "LFBO", "LFML", "LFPO" }),
+			"Reopening an airport moves it to the front without duplicates");
+		const auto before = history;
+		for (const char* airport : { "", "LF", "LF PG", "LF.P" })
+			VsmrRadar::RememberAirport(history, airport);
+		Expect(history == before, "Invalid airport input cannot displace recent airports");
 	}
 
 	void TestVsidBridgeData()
@@ -994,6 +1011,7 @@ int wmain(int argc, wchar_t** argv)
 	TestHoldingPointRemarks();
 	TestTagTokens();
 	TestVsidBridgeData();
+	TestRecentAirports();
 	TestCdmBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();

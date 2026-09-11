@@ -323,6 +323,19 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				entries.push_back(entry);
 			}
 		}
+		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::RecentAirports)
+		{
+			title = "Recent airports";
+			for (const std::string& airport : radar.RecentAirports)
+			{
+				RuntimePopupEntry entry;
+				entry.id = "runtime.recent-airport." + airport;
+				entry.label = airport;
+				entry.indicator = RuntimeIndicator::Selection;
+				entry.active = airport == radar.getActiveAirport();
+				entries.push_back(std::move(entry));
+			}
+		}
 		else if (radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups)
 		{
 			title = "Groups";
@@ -762,6 +775,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			radar.RuntimeMenuPopupArea.right - 4,
 			radar.RuntimeMenuPopupArea.bottom - 4);
 		const std::string emptyText =
+			radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::RecentAirports ? "No recent airports." :
 			radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Groups ? "No AVISO groups." :
 			radar.ActiveRuntimeMenuPopup == RuntimeMenuPopup::Mode ? "No modes in this profile." :
 			"No profiles.";
@@ -1289,7 +1303,7 @@ void CSMRRadar::RenderRuntimeMenu(HDC hdc, Gdiplus::Graphics& graphics)
 		"runtime.airport",
 		airportArea,
 		false,
-		"Edit active airport");
+		"Left-click: edit airport. Right-click: five recent airports.");
 
 	const std::string activeProfile = GetActiveProfileNameForEditor();
 	const std::string activeMode = activeProfile.empty() ? "" : GetActiveProfileDisplayModeForEditor(activeProfile);
