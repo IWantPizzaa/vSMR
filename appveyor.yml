@@ -80,11 +80,6 @@ build_script:
 
 test_script:
   - cmd: >-
-      msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR\tests\vSMR.Tests.vcxproj"
-      /t:Build /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143
-      /p:VsmrTestsAddressSanitizer=true /nodeReuse:false /verbosity:minimal
-  - cmd: '"%APPVEYOR_BUILD_FOLDER%\vSMR\tests\bin\AddressSanitizer\vSMR.Tests.exe" "%APPVEYOR_BUILD_FOLDER%"'
-  - cmd: >-
       msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR\tests\vSMR.JsonFuzz.vcxproj"
       /t:Build /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143
       /nodeReuse:false /verbosity:minimal

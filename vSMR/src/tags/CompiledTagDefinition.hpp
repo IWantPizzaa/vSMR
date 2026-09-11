@@ -25,9 +25,6 @@ namespace VsmrTags
 
 	struct CompiledDefinition
 	{
-		// An owning identity survives invalidation while old scene buffers exist.
-		std::shared_ptr<const int> identity = std::make_shared<const int>(0);
-		std::vector<std::string> dependencies;
 		std::vector<std::vector<CompiledElement>> lines;
 		std::vector<VsmrTagColorRules::CdmColorRuleDefinition> cdm;
 		std::vector<VsmrTagColorRules::RunwayColorRuleDefinition> runway;
@@ -45,8 +42,4 @@ namespace VsmrTags
 
 	VsmrScene::TagVariant BuildTagVariant(const CompiledDefinition& definition,
 		const VsmrScene::Target& target, bool detailed);
-	// Returns false when the existing text/model is still current. Colors are
-	// deliberately applied separately, since alert state can change without text.
-	bool UpdateTagVariant(const CompiledDefinition& definition,
-		const VsmrScene::Target& target, bool detailed, VsmrScene::TagVariant& result);
 }

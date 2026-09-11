@@ -15,7 +15,6 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <EnableASAN Condition="'$(VsmrTestsAddressSanitizer)'=='true'">true</EnableASAN>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
@@ -34,17 +33,12 @@
     <LinkIncremental>false</LinkIncremental>
     <ExternalIncludePath>$(ProjectDir)..\..\lib\include;$(ExternalIncludePath)</ExternalIncludePath>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(VsmrTestsAddressSanitizer)'=='true'">
-    <OutDir>$(ProjectDir)bin\AddressSanitizer\</OutDir>
-    <IntDir>$(ProjectDir)obj\AddressSanitizer\</IntDir>
-  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
       <Optimization>MaxSpeed</Optimization>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SDLCheck>true</SDLCheck>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -76,7 +70,6 @@
     <ClCompile Include="..\src\aviso\AvisoRasterBlitter.cpp" />
     <ClCompile Include="..\src\aviso\AvisoRasterPipeline.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.cpp" />
-    <ClCompile Include="..\src\config\ProfileNormalization.cpp" />
     <ClCompile Include="..\src\config\RuntimeConfig.Support.cpp" />
     <ClCompile Include="..\src\control_center\RuntimeResourceFiles.cpp" />
     <ClCompile Include="..\src\control_center\ControlCenterMessageProtocol.cpp" />
@@ -87,16 +80,11 @@
     <ClCompile Include="..\src\tags\TagColorRuleParser.cpp" />
     <ClCompile Include="..\src\tags\TagColorRules.cpp" />
     <ClCompile Include="..\src\tags\CompiledTagDefinition.cpp" />
-    <ClCompile Include="..\src\tags\TagDataFormatting.cpp" />
     <ClCompile Include="..\src\updater\UpdaterReleaseModel.cpp" />
     <ClCompile Include="..\src\updater\UpdaterUrlPolicy.cpp" />
     <ClCompile Include="..\src\weather\WeatherStore.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\config\ProfileNormalization.hpp" />
-    <ClInclude Include="..\src\rendering\TargetProjection.hpp" />
-    <ClInclude Include="..\src\safety\RunwayTraffic.hpp" />
-    <ClInclude Include="..\src\tags\TagDataFormatting.hpp" />
     <ClInclude Include="AvisoRasterPipelineTests.hpp" />
     <ClInclude Include="ConfigurationRegressionTests.hpp" />
     <ClInclude Include="SharedRenderingTests.hpp" />
@@ -133,8 +121,5 @@
   </ItemGroup>
   <Import Project="..\BuildHardening.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <Target Name="CopyAddressSanitizerRuntime" AfterTargets="Build" Condition="'$(VsmrTestsAddressSanitizer)'=='true'">
-    <Copy SourceFiles="$(VCToolsInstallDir)bin\Hostx64\x86\clang_rt.asan_dynamic-i386.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-  </Target>
   <ImportGroup Label="ExtensionTargets" />
 </Project>

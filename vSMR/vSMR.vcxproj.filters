@@ -39,8 +39,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\config\ProfileNormalization.cpp"><Filter>Source</Filter></ClCompile>
-    <ClCompile Include="src\tags\TagDataFormatting.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\aircraft\CallsignLookup.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\app\PluginEntry.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\bootstrap\RuntimeContext.cpp"><Filter>Bootstrap</Filter></ClCompile>
@@ -134,10 +132,6 @@
     <ClCompile Include="src\weather\WeatherStore.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\config\ProfileNormalization.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\rendering\TargetProjection.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\safety\RunwayTraffic.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\tags\TagDataFormatting.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\CallsignLookup.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\GroundState.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\aircraft\HoldingPoint.hpp"><Filter>Headers</Filter></ClInclude>

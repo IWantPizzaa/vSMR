@@ -41,13 +41,13 @@ void CRimcas::Reset() {
 	RunwayStatuses.clear();
 	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
-	AcOnRunway.Clear();
+	AcOnRunway.clear();
 	AircraftOnRunway.clear();
-	TimeTable.Clear();
+	TimeTable.clear();
 	inactiveAlerts.clear();
 	MonitoredRunwayArr.clear();
 	MonitoredRunwayDep.clear();
-	ApproachingAircrafts.Clear();
+	ApproachingAircrafts.clear();
 	DepartureStatusObservations.clear();
 	RefreshSequence = 0;
 }
@@ -57,10 +57,10 @@ void CRimcas::OnRefreshBegin(bool isLVP, int transitionAltitude) {
 		Logger::info(std::string(__FUNCSIG__));
 	InvalidateRunwayAreaScreenCache();
 	AcColor.clear();
-	AcOnRunway.Clear();
+	AcOnRunway.clear();
 	AircraftOnRunway.clear();
-	TimeTable.Clear();
-	ApproachingAircrafts.Clear();
+	TimeTable.clear();
+	ApproachingAircrafts.clear();
 	this->IsLVP = isLVP;
 	this->TransitionAltitude = transitionAltitude;
 	movementAlerts.clear();
@@ -166,7 +166,7 @@ std::string CRimcas::GetAcInRunwayArea(const VsmrScene::Target& Ac, CRadarScreen
 			continue;
 
 		if (Is_Inside(AcPosPix, *RunwayOnScreen)) {
-			AcOnRunway.Add(it->first, Ac.callsign);
+			AcOnRunway.insert(std::pair<std::string, std::string>(it->first, Ac.callsign));
 			AircraftOnRunway.insert(Ac.callsign);
 			return std::string(it->first);
 		}
@@ -257,7 +257,7 @@ std::string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarSc
 					}
 					if (t < PreviousTime && t >= Time)
 					{
-						TimeTable.Set(it->first, Time, Ac.callsign);
+						TimeTable[it->first][Time] = Ac.callsign;
 						break;
 					}
 				}
@@ -270,14 +270,14 @@ std::string CRimcas::GetAcInRunwayAreaSoon(const VsmrScene::Target& Ac, CRadarSc
 
 				if (t <= StageTwoTrigger)
 				{
-					AcOnRunway.Add(it->first, Ac.callsign);
+					AcOnRunway.insert(std::pair<std::string, std::string>(it->first, Ac.callsign));
 					AircraftOnRunway.insert(Ac.callsign);
 				}
 
 				// If the AC is 45 seconds away from the runway, we consider him approaching
 
 				if (t > StageTwoTrigger && t <= 45)
-					ApproachingAircrafts.Add(it->first, Ac.callsign);
+					ApproachingAircrafts.insert(std::pair<std::string, std::string>(it->first, Ac.callsign));
 
 				return Ac.callsign;
 			}
@@ -305,8 +305,6 @@ std::vector<CPosition> CRimcas::GetRunwayArea(CPosition Left, CPosition Right, f
 }
 
 void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
-	AcOnRunway.Sort();
-	ApproachingAircrafts.Sort();
 	if (Logger::is_verbose_mode())
 		Logger::info(std::string(__FUNCSIG__));
 
@@ -323,9 +321,8 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 		const bool isOnClosedRunway =
 			closedRunwayIt != ClosedRunway.end() && closedRunwayIt->second;
 
-		const auto occupants = AcOnRunway.EqualRange(it->first);
-		const size_t runwayOccupantCount = static_cast<size_t>(std::distance(occupants.first, occupants.second));
-		const auto approachingRange = ApproachingAircrafts.EqualRange(it->first);
+		const size_t runwayOccupantCount = AcOnRunway.count(it->first);
+		const auto approachingRange = ApproachingAircrafts.equal_range(it->first);
 		const bool isAnotherAcApproaching =
 			approachingRange.first != approachingRange.second;
 		const bool hasApproachingConflict =
@@ -333,7 +330,7 @@ void CRimcas::OnRefreshEnd(const VsmrScene::RadarScene& scene, int threshold) {
 
 		if (runwayOccupantCount > 1 || isOnClosedRunway || isAnotherAcApproaching) {
 
-			auto AcOnRunwayRange = AcOnRunway.EqualRange(it->first);
+			auto AcOnRunwayRange = AcOnRunway.equal_range(it->first);
 
 			for (auto it2 = AcOnRunwayRange.first; it2 != AcOnRunwayRange.second; ++it2)
 			{

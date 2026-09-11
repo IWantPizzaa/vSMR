@@ -507,7 +507,7 @@ void CSMRRadar::RenderRefreshTargets(
 		{
 			return ConvertCoordFromPositionToPixel(scenePosition(point));
 		};
-
+		targetRenderSettings.projectPoint = targetRenderSettingsProjectPoint;
 		const auto targetRenderSettingsPointVisible = [&](const POINT& point, int margin) -> bool
 		{
 			return point.x >= frameVisibleRadarArea.left - margin &&
@@ -515,7 +515,7 @@ void CSMRRadar::RenderRefreshTargets(
 				point.y >= frameVisibleRadarArea.top - margin &&
 				point.y <= frameVisibleRadarArea.bottom + margin;
 		};
-
+		targetRenderSettings.pointVisible = targetRenderSettingsPointVisible;
 		targetRenderSettings.iconCache = CreateTargetIconCacheCallbacks();
 
 		VsmrTargetRendering::Frame targetRenderer(graphics, std::move(targetRenderSettings));
@@ -544,7 +544,7 @@ void CSMRRadar::RenderRefreshTargets(
 
 			iconVerboseStep("after_scene_data");
 			const VsmrTargetRendering::DrawResult drawResult =
-				targetRenderer.DrawTarget(sceneTarget, targetRenderSettingsProjectPoint, targetRenderSettingsPointVisible);
+				targetRenderer.DrawTarget(sceneTarget);
 			acPosPix = drawResult.center;
 			if (Logger::is_verbose_mode())
 			{
@@ -637,8 +637,10 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 
 	for (std::map<std::string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
 	{
-		if (!it->second || !RimcasInstance->TimeTable.HasRunway(it->first))
+		const auto timeTableIt = RimcasInstance->TimeTable.find(it->first);
+		if (!it->second || timeTableIt == RimcasInstance->TimeTable.end() || timeTableIt->second.empty())
 			continue;
+		const auto& runwayTimeTable = timeTableIt->second;
 		resolveRimcasColors();
 
 		auto timePopupAreaIt = TimePopupAreas.find(it->first);
@@ -663,8 +665,8 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 		{
 			dc.SetTextColor(RGB(33, 33, 33));
 
-			const auto* timeEntry = RimcasInstance->TimeTable.Find(it->first, Time);
-			const std::string acCallsign = timeEntry != nullptr ? *timeEntry : "";
+			const auto timeEntryIt = runwayTimeTable.find(Time);
+			const std::string acCallsign = (timeEntryIt != runwayTimeTable.end()) ? timeEntryIt->second : "";
 			tempS = std::to_string(Time) + ": " + acCallsign;
 			const VsmrScene::Target* sceneTarget = frameScene != nullptr
 				? frameScene->FindTarget(acCallsign)

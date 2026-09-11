@@ -62,15 +62,11 @@ namespace VsmrScene
 	struct TagLine
 	{
 		std::vector<TagElement> elements;
-		bool visible = true;
 	};
 
 	struct TagVariant
 	{
 		std::vector<TagLine> lines;
-		std::shared_ptr<const int> definitionIdentity;
-		std::vector<std::string> evaluatedInputs;
-		unsigned evaluationFlags = 0;
 	};
 
 	struct TagPalette

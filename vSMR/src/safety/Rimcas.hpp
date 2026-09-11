@@ -1,6 +1,5 @@
 #pragma once
 #include <EuroScopePlugIn.h>
-#include "safety/RunwayTraffic.hpp"
 #include <iostream>
 #include <vector>
 #include <map>
@@ -50,12 +49,12 @@ public:
 	std::map<std::string, std::vector<POINT>> RunwayAreasScreenCache;
 	bool RunwayAreasScreenCacheValid = false;
 	CRadarScreen* RunwayAreasScreenCacheInstance = nullptr;
-	VsmrRimcasLogic::RunwayTraffic AcOnRunway;
+	std::multimap<std::string, std::string> AcOnRunway;
 	std::unordered_set<std::string> AircraftOnRunway;
 	std::vector<int> CountdownDefinition;
 	std::vector<int> CountdownDefinitionLVP;
-	VsmrRimcasLogic::RunwayTraffic ApproachingAircrafts;
-	VsmrRimcasLogic::RunwayCountdowns TimeTable;
+	std::multimap<std::string, std::string> ApproachingAircrafts;
+	std::map<std::string, std::map<int, std::string>> TimeTable;
 	std::unordered_set<std::string> inactiveAlerts;
 	std::unordered_map<std::string, RimcasAlerts> movementAlerts;
 	std::map<std::string, bool> MonitoredRunwayDep;
