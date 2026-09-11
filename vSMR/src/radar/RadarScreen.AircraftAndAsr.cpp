@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "radar/RecentAirports.hpp"
 #include "shared/JsonDocument.hpp"
 #include "radar/RadarScreen.hpp"
 #include "radar/RadarScreen.Registry.hpp"
@@ -1108,6 +1109,8 @@ std::string CSMRRadar::setActiveAirport(
 		SaveInsetStateToAsrForAirport(ActiveAirport);
 	}
 
+	VsmrRadar::RememberAirport(RecentAirports, ActiveAirport);
+	VsmrRadar::RememberAirport(RecentAirports, airport);
 	ActiveAirport = airport;
 	EnsureAvisoColorPaletteAvailable(switchInsetContext);
 	MarkPerformanceRefreshReason(
