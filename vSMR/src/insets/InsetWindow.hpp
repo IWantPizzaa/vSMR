@@ -16,8 +16,6 @@ struct AvisoViewportState;
 
 class CInsetWindow
 {
-	struct AvisoRenderer;
-	struct SecondaryRadarRenderer;
 	VsmrTagRendering::TextCache m_TagTextCache;
 public:
 	enum class Mode
