@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Split vSID and CPDLC into two separate Runtime Menu popups opened together by one button, each with its connection state in the title. Renamed Automatic mode to Auto mode, with explicit activated/deactivated text and matching green/red indicators when vSID reports its state.
+
 - Harmonized the vSID / CPDLC panel with the other Runtime Menu popups: compact 220-pixel width, standard title, spacing and buttons, with connection indicators and grouped controls.
 
 - Updated Default-profile tags with bold callsigns, Ready Startup on detailed no-status/startup tags, CTOT on detailed taxi/line-up tags, and the revised arrival layouts.
