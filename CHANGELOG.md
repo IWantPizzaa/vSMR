@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added a per-profile "Fit background to each text line" tag option for the main radar, AVISO insets, and SRW insets.
+
 - Added a right-click airport history to the Runtime Menu ICAO field, listing the five most recently opened airports in the current radar-screen session for quick switching.
 
 - Added regression coverage for JSON limits, updater URL and hashing checks, compiled tag definitions, and persistent text caches. CI now runs MSVC static analysis and a JSON fuzz smoke test under AddressSanitizer.
@@ -16,6 +18,8 @@
 - Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
 
 ### Changed
+
+- Imported the installed Custom LFPG and Custom LFMN profiles, retaining bold callsign fields for LFPG. Slightly thickened bold tag text in the shared renderer and expanded its measured width to preserve spacing and hit areas.
 
 - Placed vSID/CPDLC connection text before its colored indicator and removed close buttons from all Runtime Menu popups; clicking the same rail button again closes them.
 

@@ -238,6 +238,7 @@
 
     const labels = activeProfile().labels ||= {};
     $("#tagRoundedCorners").checked = Boolean(labels.rounded_corners);
+    $("#tagFitBackgroundToText").checked = Boolean(labels.fit_background_to_text);
     $("#tagAutoDeconfliction").checked = Boolean(labels.auto_deconfliction);
     const labelSize = Math.round(clamp(activeProfile().font?.label_font_size ?? 1, 1, 5));
     $("#tagLabelFontSize").value = labelSize;
@@ -282,6 +283,7 @@
 
     const labels = activeProfile().labels ||= {};
     labels.rounded_corners = $("#tagRoundedCorners").checked;
+    labels.fit_background_to_text = $("#tagFitBackgroundToText").checked;
     labels.auto_deconfliction = $("#tagAutoDeconfliction").checked;
     activeProfile().font ||= {};
     activeProfile().font.label_font_size = Math.round(clamp($("#tagLabelFontSize").value, 1, 5));
