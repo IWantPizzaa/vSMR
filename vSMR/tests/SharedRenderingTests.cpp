@@ -210,6 +210,42 @@ namespace
 			failures);
 	}
 
+	void TestTagBackgroundFitsLines(std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap canvas(100, 80, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&canvas);
+		Gdiplus::Font font(L"Arial", 12.0f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+		VsmrTagRendering::FontContext fonts(graphics, &font, &font, 3, 12);
+		VsmrTagRendering::Layout layout;
+		layout.width = 60; layout.height = 24;
+		layout.lines.resize(2);
+		layout.lines[0].width = 60; layout.lines[1].width = 20;
+		VsmrTagRendering::PaintOptions options;
+		options.tagCenter = { 50, 40 };
+		options.drawLeader = false;
+		options.roundedCorners = false;
+		options.background = Gdiplus::Color(128, 255, 0, 0);
+		auto pixel = [&](int x, int y) {
+			Gdiplus::Color color; canvas.GetPixel(x, y, &color); return color.GetValue();
+		};
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		VsmrTagRendering::Paint(graphics, fonts, layout, options);
+		const auto full = pixel(70, 46);
+		Check(full != Gdiplus::Color(255, 0, 0, 0).GetValue(), "Default tag background covers its rectangular bounds", failures);
+		options.fitBackgroundToText = true;
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		VsmrTagRendering::Paint(graphics, fonts, layout, options);
+		Check(pixel(70, 34) == full && pixel(25, 46) == full,
+			"Fitted line backgrounds preserve width and alpha without overlapping fills", failures);
+		Check(pixel(70, 46) == Gdiplus::Color(255, 0, 0, 0).GetValue(),
+			"Short tag lines leave the unused width transparent", failures);
+		options.centerLines = true;
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		VsmrTagRendering::Paint(graphics, fonts, layout, options);
+		Check(pixel(50, 46) == full && pixel(25, 46) == Gdiplus::Color(255, 0, 0, 0).GetValue(),
+			"Inset fitted backgrounds follow centered line placement", failures);
+	}
+
 	VsmrScene::Target MakeTarget(VsmrScene::IconStyle icon)
 	{
 		VsmrScene::Target target;
@@ -486,6 +522,7 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 
 	{
 		TestAvisoRasterBlending(failures);
+		TestTagBackgroundFitsLines(failures);
 		Gdiplus::Bitmap canvas(96, 72, PixelFormat32bppARGB);
 		Gdiplus::Graphics graphics(&canvas);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);

@@ -280,6 +280,7 @@ void CInsetWindow::renderSecondaryRadarTargets(CDC& dc, CSMRRadar* radar_screen,
 			sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
 		options.leaderColor = whiteColor;
 		options.roundedCorners = roundedTagCornersEnabled;
+		options.fitBackgroundToText = radar_screen->GetTagFitBackgroundToText();
 		options.symmetricBounds = true;
 		options.backgroundAlphaNumerator =
 			rimcasStage == CRimcas::NoAlert ? 160U : 255U;

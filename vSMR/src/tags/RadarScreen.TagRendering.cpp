@@ -173,6 +173,7 @@ void CSMRRadar::RenderTags(Graphics& graphics, CDC& dc)
 		options.targetPoint = targetPoint;
 		options.tagCenter = tagCenter;
 		options.roundedCorners = roundedCorners;
+		options.fitBackgroundToText = GetTagFitBackgroundToText();
 		options.extendScratchpadHit = true;
 		options.scratchpadAction = TAG_CITEM_SCRATCHPAD;
 		options.topBand = !alertText.empty() ? &alertBand : nullptr;

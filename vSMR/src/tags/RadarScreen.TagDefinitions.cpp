@@ -168,6 +168,16 @@ bool CSMRRadar::GetTagRoundedCornersEnabledForEditor() const
 	return true;
 }
 
+bool CSMRRadar::GetTagFitBackgroundToText() const
+{
+	if (!CurrentConfig) return false;
+	const auto& profile = CurrentConfig->getActiveProfile();
+	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject()) return false;
+	const auto& labels = profile["labels"];
+	return labels.HasMember("fit_background_to_text") && labels["fit_background_to_text"].IsBool() &&
+		labels["fit_background_to_text"].GetBool();
+}
+
 bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition() const
 {
 	if (!CurrentConfig)
