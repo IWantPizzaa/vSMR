@@ -116,6 +116,7 @@ namespace VsmrTagRendering
 		Gdiplus::Color background = Gdiplus::Color(255, 0, 0, 0);
 		Gdiplus::Color leaderColor = Gdiplus::Color(255, 255, 255, 255);
 		bool roundedCorners = true;
+		bool fitBackgroundToText = false;
 		bool highlighted = false;
 		bool centerLines = false;
 		bool drawLeader = true;

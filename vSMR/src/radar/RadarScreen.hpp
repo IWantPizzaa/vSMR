@@ -431,6 +431,7 @@ public:
 	std::vector<std::string> GetTagDefinitionStatusesForType(const std::string& type) const;
 	bool IsTagDefinitionStatusAllowedForType(const std::string& type, const std::string& status) const;
 	bool GetTagRoundedCornersEnabledForEditor() const;
+	bool GetTagFitBackgroundToText() const;
 	bool GetTagDefinitionDetailedSameAsDefinition() const;
 	bool SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, bool persistToDisk);
 	bool GetTagDefinitionDetailedSameAsDefinition(const std::string& type, const std::string& status) const;
