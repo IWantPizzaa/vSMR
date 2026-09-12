@@ -2,10 +2,13 @@
 #include "rendering/TagRenderer.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace
 {
+	constexpr Gdiplus::REAL BoldInkOffset = 0.5f;
+
 	Gdiplus::Rect ToGdiRect(const CRect& rect)
 	{
 		return Gdiplus::Rect(rect.left, rect.top, rect.Width(), rect.Height());
@@ -74,8 +77,7 @@ namespace
 
 	void BuildRoundedPath(const Gdiplus::Rect& rect, Gdiplus::GraphicsPath& path)
 	{
-		constexpr int radius = 4;
-		constexpr int diameter = radius * 2;
+		const int diameter = (std::max)(1, (std::min)({ 8, rect.Width, rect.Height }));
 		path.Reset();
 		path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
 		path.AddArc(rect.GetRight() - diameter, rect.Y, diameter, diameter, 270, 90);
@@ -313,7 +315,7 @@ namespace VsmrTagRendering
 			&format_,
 			&measured);
 		const Gdiplus::Size size(
-			static_cast<INT>(measured.GetRight()),
+			static_cast<INT>(bold ? std::ceil(measured.GetRight() + BoldInkOffset) : measured.GetRight()),
 			static_cast<INT>(measured.GetBottom()));
 		if (text.size() <= 1024)
 		{
@@ -434,7 +436,7 @@ namespace VsmrTagRendering
 			return result;
 
 		Gdiplus::GraphicsPath roundedPath;
-		FillBackground(
+		if (!options.fitBackgroundToText) FillBackground(
 			graphics,
 			result.bounds,
 			ScaleAlpha(options.background, options.backgroundAlphaNumerator),
@@ -473,7 +475,7 @@ namespace VsmrTagRendering
 				result.bounds.right,
 				result.bounds.top + padding + topBandHeight);
 			const Gdiplus::GraphicsState state = graphics.Save();
-			if (options.roundedCorners)
+			if (options.roundedCorners && !options.fitBackgroundToText)
 				graphics.SetClip(&roundedPath, Gdiplus::CombineModeIntersect);
 			Gdiplus::SolidBrush& bandBrush = fonts.Brush(options.topBand->background);
 			graphics.FillRectangle(&bandBrush, ToGdiRect(bandRect));
@@ -514,6 +516,16 @@ namespace VsmrTagRendering
 			int x = options.centerLines
 				? textLeft + (std::max)(0, textWidth - line.width) / 2
 				: textLeft;
+			if (options.fitBackgroundToText && line.width > 0)
+			{
+				const int topPadding = &line == &layout.lines.front() && options.topBand == nullptr ? padding : 0;
+				const int bottomPadding = &line == &layout.lines.back() ? padding : 0;
+				const CRect lineBounds(x - padding, textTop - topPadding,
+					x + line.width + padding, textTop + fonts.LineHeight() + bottomPadding);
+				Gdiplus::GraphicsPath linePath;
+				FillBackground(graphics, lineBounds, ScaleAlpha(options.background, options.backgroundAlphaNumerator),
+					options.roundedCorners, options.highlighted, &linePath, fonts);
+			}
 			for (const ElementLayout& element : line.elements)
 			{
 				if (!element.text.empty())
@@ -528,10 +540,19 @@ namespace VsmrTagRendering
 						Gdiplus::PointF(static_cast<Gdiplus::REAL>(x), static_cast<Gdiplus::REAL>(y)),
 						&fonts.Format(),
 						&textBrush);
+					if (element.bold)
+					{
+						// A small horizontal overdraw strengthens bold glyphs without
+						// changing their font size or baseline. Measurement reserves it.
+						graphics.DrawString(text.c_str(), static_cast<INT>(text.size()), fonts.BoldFont(),
+							Gdiplus::PointF(static_cast<Gdiplus::REAL>(x) + BoldInkOffset, static_cast<Gdiplus::REAL>(y)),
+							&fonts.Format(), &textBrush);
+					}
+
 				}
 
 				int hitWidth = element.width;
-				if (options.extendScratchpadHit && element.action == options.scratchpadAction)
+				if (options.extendScratchpadHit && !options.fitBackgroundToText && element.action == options.scratchpadAction)
 					hitWidth = (std::max)(
 						hitWidth,
 						static_cast<int>(result.bounds.right) - padding - x);

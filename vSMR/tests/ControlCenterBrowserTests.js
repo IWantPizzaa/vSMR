@@ -417,6 +417,20 @@
 
 	document.querySelector('[data-profile-tab="tags"]')?.click();
     sampleSharedList("#tagDefinitionList", "Tags");
+    const fitTagBackground = document.querySelector("#tagFitBackgroundToText");
+    expect(Boolean(fitTagBackground), "Tags expose the fit-background option");
+    const fitSaveStart = outbound.length;
+    if (fitTagBackground) {
+      fitTagBackground.checked = true;
+      fitTagBackground.dispatchEvent(new Event("change", { bubbles: true }));
+      await waitFor(() => outbound.slice(fitSaveStart).some(message => message.type === "state.save" &&
+        message.payload?.profiles?.some(profile => profile.labels?.fit_background_to_text === true)),
+        "Fit-background option persists in the profile");
+      document.querySelector('[data-profile-tab="colors"]')?.click();
+      document.querySelector('[data-profile-tab="tags"]')?.click();
+      expect(document.querySelector("#tagFitBackgroundToText")?.checked, "Fit-background option survives editor navigation");
+    }
+
     sampleVisiblePrimitives();
     expect(["vsid_sid", "vsid_rwy", "vsid_cfl"].every(token =>
       Boolean(document.querySelector(`#tagTokenSelect option[value="${token}"]`))),

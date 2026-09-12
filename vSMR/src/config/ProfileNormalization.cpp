@@ -1060,6 +1060,7 @@ namespace
 			renameMemberIfPresent(labels, "definition_detailed_same_as_definition", "definition_detailed_inherits_normal");
 			ensureBoolMember(labels, "auto_deconfliction", true);
 			ensureBoolMember(labels, "rounded_corners", true);
+			ensureBoolMember(labels, "fit_background_to_text", false);
 			ensureBoolMember(labels, "definition_detailed_inherits_normal", false);
 			if (labels.HasMember("sid_text_colors"))
 			{

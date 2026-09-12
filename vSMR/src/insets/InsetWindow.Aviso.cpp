@@ -748,6 +748,7 @@ void CInsetWindow::renderAvisoTags(std::vector<AvisoTagTarget>& visibleTagTarget
 			sceneTarget.rimcas.onRunway ? palette.backgroundOnRunway : palette.background);
 		options.leaderColor = Gdiplus::Color(255, 255, 255, 255);
 		options.roundedCorners = roundedTagCornersEnabled;
+		options.fitBackgroundToText = radar_screen->GetTagFitBackgroundToText();
 		options.centerLines = true;
 		options.symmetricBounds = true;
 

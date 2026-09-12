@@ -52,6 +52,7 @@ window.VSMR_DATA = {
         auto_deconfliction: true,
         definition_detailed_inherits_normal: false,
         rounded_corners: true,
+        fit_background_to_text: false,
         squawk_error_color: { r: 255, g: 70, b: 70, a: 255 },
         departure: {
           background_no_status_color: { r: 2, g: 124, b: 255, a: 100 },
