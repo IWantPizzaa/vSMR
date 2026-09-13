@@ -7,6 +7,8 @@
 #include "crash/CrashRuntime.hpp"
 #include "insets/InsetWindow.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/PluginBridgeClient.hpp"
+#include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rdf/RdfOverlay.hpp"
@@ -58,9 +60,12 @@ void CSMRPlugin::OnTimer(int Counter)
 			FlightDataRefreshPending.store(true, std::memory_order_release);
 		}
 	}
-	if (VsmrVsid::Poll(*this))
-		FlightDataRefreshPending.store(true, std::memory_order_release);
-	if (VsmrCdm::Poll(*this))
+	// One bridge attach and one flight-plan scan per tick, shared by every provider.
+	const VsmrPluginBridge::Tick bridgeTick = VsmrPluginBridge::BeginTick(*this);
+	const bool vsidChanged = VsmrVsid::Poll(bridgeTick);
+	const bool cdmChanged = VsmrCdm::Poll(bridgeTick);
+	const bool rampAgentChanged = VsmrRampAgent::Poll(bridgeTick);
+	if (vsidChanged || cdmChanged || rampAgentChanged)
 		FlightDataRefreshPending.store(true, std::memory_order_release);
 
 	// Refreshing screens after synchronized flight-plan changes

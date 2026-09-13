@@ -9,6 +9,7 @@ release can be reviewed without inspecting the Visual Studio project.
 | vSMR | 2.0.0-beta.5 | EuroScope plugin and bundled UI/data | `vSMR.dll`, `vSMR_Data` | `vSMR.txt` (GPL-3.0) |
 | Microsoft WebView2 SDK/Loader | 1.0.4078.44 | Hosts the local Control Center UI; loader is linked statically | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `Microsoft.WebView2-LICENSE.txt`, `Microsoft.WebView2-NOTICE.txt` |
 | RapidJSON | 1.1.0 API, upstream commit `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` | JSON parsing and writing | Code included in `vSMR_Data\Runtime\vSMR.Runtime.dll` | `RapidJSON.txt` (MIT) |
+| EuroScope Plugin Bridge client header | `esbridge.h` ABI v1, upstream commit `be6e0de6d3358e63c7cea0308ffcc16c87a61f8c` | Optional vSID, Ramp Agent and CDM data from a separately installed `EuroScopeBridge.dll` | Header code included in `vSMR_Data\Runtime\vSMR.Runtime.dll`; the bridge DLL is not bundled | None published upstream (the repository has no license file) |
 | Microsoft Visual C++ and MFC runtimes | MSVC v145 by default; v143 in compatibility CI | Native runtime | Not bundled; matching x86 redistributable required | Microsoft redistributable terms |
 | EuroScope Plug-in SDK | repository-provided header/import library | Plug-in ABI | Not separately bundled | Consult the EuroScope SDK distribution terms |
 | France-Ground-Layouts | commit `da539a889b213e66eb254f893fa087c263f65332` | Geometry and ground labels for 53 airports, converted to GeoJSON with vSMR palettes | `vSMR_Data/AVISO/*.geojson`; affected files carry source metadata | `France-Ground-Layouts.txt` (GPL-3.0); source: https://github.com/vaccfr/France-Ground-Layouts |
@@ -24,3 +25,9 @@ The downloaded source ZIP SHA-256 is
 `df07f5ddfebbc2940181039f6c939ec2764a7303ef79b17958d9792a364306bb`.
 All application DOM parsing goes through `shared/JsonDocument.hpp`, with
 iterative parsing, UTF-8 validation, resource limits and embedded-NUL rejection.
+
+`lib/include/esbridge.h` is an unmodified copy of `include/esbridge.h` from
+https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge/tree/be6e0de6d3358e63c7cea0308ffcc16c87a61f8c
+(Git blob `fc05366c0813c75132be56cc1b7bfa7a419f657e`). vSMR instantiates its
+client shim in exactly one translation unit and never ships or loads the bridge
+DLL; users install it from the bridge's own releases.
