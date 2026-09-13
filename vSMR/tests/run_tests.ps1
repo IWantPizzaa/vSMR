@@ -90,14 +90,14 @@ $process = $null
 $socket = $null
 $browserCancellation = [System.Threading.CancellationTokenSource]::new(30000)
 try {
-    foreach ($asset in @("index.html", "styles.css", "data.js", "app-bundle.js")) {
+    foreach ($asset in @("index.html", "styles.css", "data.js", "app-bundle.js", "app-aviso-editor.js")) {
         Copy-Item -LiteralPath (Join-Path $webRoot $asset) -Destination $testRoot
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ControlCenterBrowserTests.js") -Destination $testRoot
 
     $indexPath = Join-Path $testRoot "index.html"
     $index = [System.IO.File]::ReadAllText($indexPath)
-    $testScript = '<script src="ControlCenterBrowserTests.js"></script>'
+    $testScript = '<script src="app-aviso-editor.js"></script><script src="ControlCenterBrowserTests.js"></script>'
     $index = $index.Replace("</body>", "$testScript`n</body>")
     [System.IO.File]::WriteAllText($indexPath, $index, [System.Text.UTF8Encoding]::new($false))
 
