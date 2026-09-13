@@ -536,6 +536,45 @@
       "AVISO palette changes do not alter the application UI theme");
     originalPaletteButton?.click();
 
+    // Exercise inherited and explicit palettes for every editable color kind.
+    const paintState = window.state = { settings: { avisoColorPalette: "dark" } };
+    window.normalizeAvisoColorPalette = value => value;
+    const paintApi = { apply: applyAvisoPaintChanges, read: effectiveAvisoPaintValue };
+    for (const edited of ["dark", "light", "real"]) {
+      for (const key of ["fill", "stroke", "marker-color", "text-color", "text-halo-color"]) {
+        for (const scenario of [0, 1, 2, 3]) {
+          const shared = { [key]: "#112233" };
+          if (scenario > 0) shared["palette-overrides"] = { day: { [key]: "#445566" } };
+          if (scenario === 2) shared["palette-overrides"].real = { [key]: "#778899" };
+          const inline = scenario === 3 ? { [key]: "#334455" } : {};
+          const before = Object.fromEntries(["dark", "light", "real"].map(mode =>
+            [mode, paintApi.read(shared, inline, key, undefined, mode)]));
+          const previous = JSON.parse(JSON.stringify(shared));
+          paintState.settings.avisoColorPalette = edited;
+          paintApi.apply(shared, { [key]: "#ABCDEF" });
+          paintApi.apply(inline, { [key]: "#ABCDEF" }, previous);
+          const saved = JSON.parse(JSON.stringify({ shared, inline }));
+          for (const mode of ["dark", "light", "real"]) {
+            expect(paintApi.read(saved.shared, saved.inline, key, undefined, mode) ===
+              (mode === edited ? "#ABCDEF" : before[mode]),
+              `Editing ${edited} ${key} preserves ${mode} after save (${scenario})`);
+          }
+        }
+      }
+    }
+
+    for (const edited of ["dark", "light", "real"]) {
+      const paint = { fill: "#112233", stroke: "#223344",
+        "palette-overrides": { day: { fill: "#445566", stroke: "#556677" } } };
+      paintState.settings.avisoColorPalette = edited;
+      paintApi.apply(paint, { fill: "#ABCDEF" });
+      for (const mode of ["dark", "light", "real"]) {
+        expect(paintApi.read(null, paint, "stroke", undefined, mode) ===
+          (mode === "dark" ? "#223344" : "#556677"),
+          `Editing ${edited} fill preserves unedited ${mode} stroke fallback`);
+      }
+    }
+
     const completePaletteState = api.getState();
     const legacyAviso = JSON.parse(JSON.stringify(completePaletteState.aviso));
     const sharedFeature = legacyAviso.features[0];

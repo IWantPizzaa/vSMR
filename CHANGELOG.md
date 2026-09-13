@@ -54,6 +54,8 @@
 
 ### Fixed
 
+- Fixed AVISO color edits and pasted colors changing other themes through inherited palette colors.
+
 - Removed an ASR write from the radar close callback that could register changes after EuroScope had already asked whether to save. Active-profile persistence remains in the normal save callback.
 
 - Made browser regression checks wait for real rendering and the page's completion result, preventing virtual-time timeouts from racing scroll-indicator updates.
