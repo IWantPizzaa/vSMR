@@ -3,10 +3,13 @@
 #include "radar/RadarScreen.hpp"
 #include "aircraft/GroundState.hpp"
 #include "aircraft/HoldingPoint.hpp"
+#include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "tags/CdmTagHelpers.hpp"
 
 #include "tags/TagDataFormatting.hpp"
+
+#include <utility>
 
 namespace
 {
@@ -46,8 +49,6 @@ namespace
 			input.scratchpad = VsmrHoldingPoint::WithoutHoldingPoint(CopyTagText(assigned.GetScratchPadString()));
 			input.assignedSquawk = CopyTagText(assigned.GetSquawk());
 			input.clearance = fp.GetClearenceFlag();
-			input.stand = CopyTagText(assigned.GetFlightStripAnnotation(3));
-			input.remark = CopyTagText(assigned.GetFlightStripAnnotation(4));
 			if (input.receivedFlightPlan)
 			{
 				input.assignedCommunication = assigned.GetCommunicationType();
@@ -76,12 +77,19 @@ void CSMRRadar::GenerateTagData(VsmrTags::TokenValues& TagReplacingMap, const CR
 {
 	(void)isASEL;
 	(void)ActiveAirport;
-	const auto input = CaptureTagData(rt, fp, isAcCorrelated, isProMode, TransitionAltitude,
+	VsmrTags::TagDataInput input = CaptureTagData(rt, fp, isAcCorrelated, isProMode, TransitionAltitude,
 		stableCallsign, capturedPreviousFlightLevel);
+	const std::string bridgeCallsign = !stableCallsign.empty() ? stableCallsign : (fp.IsValid() ? CopyTagText(fp.GetCallsign()) : "");
+	// The stand and its remark come only from Ramp Agent through the plug-in bridge.
+	VsmrRampAgent::AircraftData rampAgentData;
+	if (VsmrRampAgent::TryGetAircraftData(bridgeCallsign, rampAgentData))
+	{
+		input.stand = std::move(rampAgentData.stand);
+		input.remark = std::move(rampAgentData.remark);
+	}
 	VsmrTags::FormatTagData(input, TagReplacingMap);
 	VsmrVsid::AircraftData vsidData;
-	const std::string vsidCallsign = !stableCallsign.empty() ? stableCallsign : (fp.IsValid() ? CopyTagText(fp.GetCallsign()) : "");
-	const bool hasVsidData = VsmrVsid::TryGetAircraftData(vsidCallsign, vsidData);
+	const bool hasVsidData = VsmrVsid::TryGetAircraftData(bridgeCallsign, vsidData);
 	VsmrVsid::AddTagTokens(TagReplacingMap, hasVsidData ? &vsidData : nullptr);
 	VsmrCdm::AddTagTokens(TagReplacingMap, capturedCdmData != nullptr ? &capturedCdmData->bridgeData : nullptr);
 	if (Logger::is_verbose_mode()) Logger::info("GenerateTagData: callsign=" + TagReplacingMap.at("callsign") +

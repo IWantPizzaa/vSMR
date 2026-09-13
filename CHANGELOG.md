@@ -16,8 +16,13 @@
 - Replaced the retired vACDM HTTP integration with the bridge-enabled CDM plug-in. Its operational time fields are available to tags and the dedicated CDM Rules source as TOBT, TSAT, TTOT, CTOT, TSAC, ASRT, and ASAT.
 - Added a `ready_startup` tag token that displays `RDY` in red until CDM publishes ASRT, then changes it to green.
 - Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
+- Added the Ramp Agent interface through EuroScope Plugin Bridge. The `uk_stand` and `remark` tag tokens now show Ramp Agent's `rampagent/stand` and `rampagent/remark` values.
 
 ### Changed
+
+- Reworked the EuroScope Plugin Bridge consumer to follow the bridge integration checklist: a single `esbridge.h` client shim attached from the timer, per-field resolution with type and schema checks, buffer resizing, stale-handle re-resolution, and one shared flight-plan scan per tick for vSID, Ramp Agent, and CDM. A missing plug-in or bridge now only disables the data it provides.
+- `uk_stand` and `remark` no longer read flight strip annotations 3 and 4.
+- The CDM bridge provider id and field names are marked placeholders until the CDM plug-in declares its bridge schema.
 
 - Imported the installed Custom LFPG and Custom LFMN profiles, retaining bold callsign fields for LFPG. Slightly thickened bold tag text in the shared renderer and expanded its measured width to preserve spacing and hit areas.
 

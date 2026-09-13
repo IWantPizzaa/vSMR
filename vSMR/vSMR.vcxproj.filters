@@ -76,6 +76,9 @@
     <ClCompile Include="src\datalink\DataLinkDialog.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\diagnostics\PerformanceDiagnostics.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\CdmBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\PluginBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\PluginBridgeReads.cpp"><Filter>Source</Filter></ClCompile>
+    <ClCompile Include="src\integrations\RampAgentBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\integrations\VsidBridgeClient.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.cpp"><Filter>Source</Filter></ClCompile>
     <ClCompile Include="src\insets\InsetWindow.Aviso.cpp"><Filter>Source</Filter></ClCompile>
@@ -171,7 +174,10 @@
     <ClInclude Include="src\diagnostics\PerformanceDiagnostics.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\CdmBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
-    <ClInclude Include="src\integrations\PluginBridgeApi.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\PluginBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\PluginBridgeReads.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\RampAgentBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
+    <ClInclude Include="src\integrations\RampAgentBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\integrations\VsidBridgeData.hpp"><Filter>Headers</Filter></ClInclude>
     <ClInclude Include="src\insets\InsetWindow.hpp"><Filter>Headers</Filter></ClInclude>
