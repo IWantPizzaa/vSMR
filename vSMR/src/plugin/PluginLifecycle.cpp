@@ -8,6 +8,8 @@
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
 #include "integrations/CdmBridgeClient.hpp"
+#include "integrations/PluginBridgeClient.hpp"
+#include "integrations/RampAgentBridgeClient.hpp"
 #include "integrations/VsidBridgeClient.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "rdf/RdfOverlay.hpp"
@@ -29,7 +31,9 @@ CSMRPlugin::CSMRPlugin(void) :CPlugIn(
 	FlightDataRefreshPending.store(false, std::memory_order_relaxed);
 	VsmrHoldingPoint::ClearPending();
 	VsmrCdm::Shutdown();
+	VsmrRampAgent::Shutdown();
 	VsmrVsid::Shutdown();
+	VsmrPluginBridge::Shutdown();
 	NetworkCancellationRequested.store(false, std::memory_order_relaxed);
 	ResetDatalinkRuntime();
 
@@ -96,7 +100,9 @@ CSMRPlugin::~CSMRPlugin()
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	VsmrGroundState::ClearAllLineupOverrides();
 	VsmrCdm::Shutdown();
+	VsmrRampAgent::Shutdown();
 	VsmrVsid::Shutdown();
+	VsmrPluginBridge::Shutdown();
 	VsmrRdf::Stop();
 	PrepareDatalinkRuntimeForExit();
 	StopWeatherFetchWorker();
@@ -119,7 +125,9 @@ bool VsmrShutdownPlugin()
 	PluginShutdownRequested.store(true, std::memory_order_relaxed);
 	VsmrGroundState::ClearAllLineupOverrides();
 	VsmrCdm::Shutdown();
+	VsmrRampAgent::Shutdown();
 	VsmrVsid::Shutdown();
+	VsmrPluginBridge::Shutdown();
 	CSMRPlugin::PrepareDatalinkRuntimeForExit();
 	VsmrRdf::Stop();
 	if (pluginInstance != nullptr)
