@@ -43,8 +43,7 @@
     return candidates.map(name => overrides[name]).find(value => value && typeof value === "object") || null;
   }
 
-  function effectiveAvisoPaintValue(sharedPaint, inlinePaint, key, fallback = undefined) {
-    const palette = activeAvisoColorPalette();
+  function effectiveAvisoPaintValue(sharedPaint, inlinePaint, key, fallback = undefined, palette = activeAvisoColorPalette()) {
     if (palette !== "dark" && AVISO_PALETTE_COLOR_KEYS.has(key)) {
       const inlineOverride = avisoPaletteOverride(inlinePaint, palette);
       if (inlineOverride?.[key] != null) return inlineOverride[key];
@@ -57,10 +56,28 @@
     return inlinePaint?.[key] ?? sharedPaint?.[key] ?? fallback;
   }
 
-  function applyAvisoPaintChanges(target, changes) {
+  function applyAvisoPaintChanges(target, changes, sharedPaint = null) {
     if (!target || typeof target !== "object") return;
     const paletteColors = {};
     const palette = activeAvisoColorPalette();
+    // Snapshot before mutation: Real can inherit Light and both can inherit Dark.
+    const preserved = {};
+    const changesColor = Object.keys(changes).some(key => AVISO_PALETTE_COLOR_KEYS.has(key));
+    for (const other of changesColor ? ["dark", "light", "real"] : []) {
+      // Creating an override object also changes fallback for its other keys.
+      for (const key of AVISO_PALETTE_COLOR_KEYS) {
+        const value = effectiveAvisoPaintValue(sharedPaint, target, key, undefined, other);
+        if (value != null) (preserved[other] ||= {})[key] = value;
+      }
+    }
+    for (const [other, colors] of Object.entries(preserved)) {
+      if (other === "dark") Object.assign(target, colors);
+      else {
+        target["palette-overrides"] ||= {};
+        target["palette-overrides"][other] ||= {};
+        Object.assign(target["palette-overrides"][other], colors);
+      }
+    }
     Object.entries(changes).forEach(([key, value]) => {
       if (palette !== "dark" && AVISO_PALETTE_COLOR_KEYS.has(key)) paletteColors[key] = value;
       else target[key] = value;
@@ -752,12 +769,13 @@
         return;
       }
       const style = ensureAvisoCatalogStyle(entry);
+      const previousPaint = clone(style.paint);
       applyAvisoPaintChanges(style.paint, changes);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, changes);
+        applyAvisoPaintChanges(properties, changes, previousPaint);
         updatedCount += 1;
       });
     });
@@ -903,12 +921,13 @@
     let updatedCount = 0;
     targets.forEach(entry => {
       const style = ensureAvisoCatalogStyle(entry);
+      const previousPaint = clone(style.paint);
       applyAvisoPaintChanges(style.paint, textPaint);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, textPaint);
+        applyAvisoPaintChanges(properties, textPaint, previousPaint);
         updatedCount += 1;
       });
     });
