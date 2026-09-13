@@ -41,12 +41,14 @@
       const colorKey = entry.objectType === "Line" ? "stroke" : "fill";
       const opacityKey = entry.objectType === "Line" ? "stroke-opacity" : "fill-opacity";
       const changes = { [colorKey]: color.toUpperCase(), [opacityKey]: clamp(opacity, 0, 1) };
-      applyAvisoPaintChanges(ensureAvisoCatalogStyle(entry).paint, changes);
+      const paint = ensureAvisoCatalogStyle(entry).paint;
+      const previousPaint = clone(paint);
+      applyAvisoPaintChanges(paint, changes);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, changes);
+        applyAvisoPaintChanges(properties, changes, previousPaint);
       });
     });
     drafts.avisoGeometry = null;
@@ -100,12 +102,14 @@
     const entries = selectedAvisoTextEntries();
     if (!entries.length) return;
     entries.forEach(entry => {
-      applyAvisoPaintChanges(ensureAvisoCatalogStyle(entry).paint, style);
+      const paint = ensureAvisoCatalogStyle(entry).paint;
+      const previousPaint = clone(paint);
+      applyAvisoPaintChanges(paint, style);
       entry.indices.forEach(index => {
         const properties = avisoFeatures()[index]?.properties;
         if (!properties) return;
         properties.style_id ||= entry.id;
-        applyAvisoPaintChanges(properties, style);
+        applyAvisoPaintChanges(properties, style, previousPaint);
       });
     });
     drafts.avisoTextStyle = null;
