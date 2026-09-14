@@ -313,6 +313,22 @@ namespace
 
 	void TestVsidBridgeData()
 	{
+		Expect(VsmrVsid::SupportsParisCommands(1U, 2U) && VsmrVsid::SupportsParisCommands(1U, 3U) &&
+			!VsmrVsid::SupportsParisCommands(1U, 1U) && !VsmrVsid::SupportsParisCommands(2U, 2U),
+			"Paris commands use compatible provider capability, not runway telemetry");
+		for (const auto airport : VsmrParis::Airports)
+		{
+			VsmrVsid::CommandAction action{};
+			Expect(VsmrVsid::CanSubmitParisCommand(true, false, true, airport) &&
+				VsmrVsid::TryParseRuntimeActionId("runtime.vsid.paris-auto", action) &&
+				!VsmrVsid::BuildCommand(action, airport).empty(),
+				"All Paris airports accept commands before a runway snapshot arrives");
+		}
+		Expect(!VsmrVsid::CanSubmitParisCommand(false, false, true, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, true, true, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, false, false, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, false, true, "LFLL"),
+			"Paris controls remain unavailable for missing providers, busy commands and unsupported airports");
 		using namespace VsmrParis;
 		for (Flow pg : { Flow::East, Flow::West })
 		{

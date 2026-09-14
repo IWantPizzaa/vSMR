@@ -624,7 +624,8 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		{
 			contentTop += 6;
 			drawSectionLabel("PARIS RUNWAY RULES");
-			const bool available = canSubmitAirport && vsidState.paris.has_value();
+			const bool available = VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
+				vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
 			const auto state = vsidState.paris.value_or(VsmrParis::State{});
 			CRect leftArea, rightArea;
 			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
@@ -641,16 +642,15 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			drawRuntimeButton(follow.objectId, followArea, follow.label, available,
 				vsidState.paris.has_value() && state.automatic, false, follow.tooltip);
 			contentTop += kPopupActionHeight + 3;
-			std::string detail = "Requires companion vSID + Paris config";
 			if (vsidState.paris.has_value())
 			{
-				detail = state.automatic ? "Auto | " : "Manual | ";
+				std::string detail = state.automatic ? "Auto | " : "Manual | ";
 				const auto rule = VsmrParis::RegionalRule(state);
 				detail += rule.empty() ? "Runway configuration unknown" : "PG: " + rule;
+				DrawTextEllipsis(hdc, CRect(followArea.left, contentTop, followArea.right,
+					contentTop + kPopupActionHeight), detail, palette.mutedText);
+				contentTop += kPopupActionHeight + 3;
 			}
-			DrawTextEllipsis(hdc, CRect(followArea.left, contentTop, followArea.right,
-				contentTop + kPopupActionHeight), detail, palette.mutedText);
-			contentTop += kPopupActionHeight + 3;
 		}
 
 	}

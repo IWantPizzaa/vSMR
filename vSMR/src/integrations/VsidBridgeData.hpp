@@ -6,6 +6,7 @@
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <string_view>
@@ -115,6 +116,19 @@ namespace VsmrVsid
 		return action == CommandAction::LfpgLinked || action == CommandAction::LfpgUnlinked ||
 			action == CommandAction::ParisAutomatic || action == CommandAction::LfpgMinimumTaxiing ||
 			action == CommandAction::LfpgGroundCrossing;
+	}
+
+	// Schema 1.2 introduced the Paris commands. Their availability does not
+	// depend on receiving an airport's first runway-state snapshot.
+	inline bool SupportsParisCommands(std::uint32_t major, std::uint32_t minor) noexcept
+	{
+		return major == 1U && minor >= 2U;
+	}
+
+	inline bool CanSubmitParisCommand(bool providerReady, bool commandLineBusy,
+		bool commandsAvailable, std::string_view airport) noexcept
+	{
+		return providerReady && !commandLineBusy && commandsAvailable && VsmrParis::Supports(airport);
 	}
 
 	inline std::string NormalizeAirport(std::string_view airport)
