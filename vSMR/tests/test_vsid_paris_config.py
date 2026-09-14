@@ -60,6 +60,33 @@ class ParisConfigurationTests(unittest.TestCase):
         config.configure(self.directory)
         self.assertEqual(json.loads(path.read_bytes()), data)
 
+    def test_corrects_main_config_folder_and_preserves_other_settings(self):
+        main = self.directory.parent / "vSIDConfig.json"
+        original = b'{\r\n  "airportConfigs": "vSID AirportConfigs/",\r\n  "setting": 42\r\n}\r\n'
+        main.write_bytes(original)
+        config.configure(self.directory)
+        self.assertEqual(main.read_bytes(), original.replace(b"vSID AirportConfigs/", b"AirportsConfig/"))
+        backup = next((self.directory.parent / "Backups").iterdir())
+        self.assertEqual((backup / main.name).read_bytes(), original)
+        selected = json.loads(main.read_bytes())["airportConfigs"]
+        self.assertEqual((main.parent / selected).resolve(), self.directory.resolve())
+        config.configure(self.directory)
+        self.assertEqual(len(list(backup.parent.iterdir())), 1)
+
+    def test_invalid_main_config_is_detected_before_any_changes(self):
+        (self.directory.parent / "vSIDConfig.json").write_text("invalid JSON")
+        with self.assertRaises(json.JSONDecodeError):
+            config.configure(self.directory)
+        for airport in config.AIRPORTS:
+            self.assertEqual((self.directory / f"{airport}.json").read_bytes(), self.original[airport])
+
+    def test_keeps_equivalent_existing_main_config_path(self):
+        main = self.directory.parent / "vSIDConfig.json"
+        original = json.dumps({"airportConfigs": str(self.directory.resolve()), "setting": 42}).encode()
+        main.write_bytes(original)
+        config.configure(self.directory)
+        self.assertEqual(main.read_bytes(), original)
+
 
 if __name__ == "__main__":
     unittest.main()

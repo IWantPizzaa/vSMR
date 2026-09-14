@@ -33,6 +33,28 @@ def configure(directory: Path) -> None:
             encoded = b"\xef\xbb\xbf" + encoded
         if encoded != original:
             pending.append((path, encoded))
+
+    # vSID loads airport files from this setting, not from a fixed folder name.
+    # Point the adjacent main config at the directory explicitly selected above.
+    main_path = directory.parent / "vSIDConfig.json"
+    if main_path.is_file():
+        original = main_path.read_bytes()
+        text = original.decode("utf-8-sig")
+        data = json.loads(text)
+        configured = data.get("airportConfigs")
+        if not isinstance(configured, str):
+            raise ValueError(f"Missing airportConfigs path in {main_path}")
+        if (main_path.parent / configured).resolve() != directory.resolve():
+            selected = directory.name + "/"
+            data["airportConfigs"] = selected
+            updated, count = re.subn(r'("airportConfigs"\s*:\s*)"(?:[^"\\]|\\.)*"',
+                                    lambda match: match[1] + json.dumps(selected), text, count=1)
+            if count != 1 or json.loads(updated) != data:
+                raise ValueError(f"Cannot safely replace airportConfigs in {main_path}")
+            encoded = updated.encode("utf-8")
+            if original.startswith(b"\xef\xbb\xbf"):
+                encoded = b"\xef\xbb\xbf" + encoded
+            pending.append((main_path, encoded))
     if not pending:
         print("Paris configuration already installed.")
         return

@@ -2,6 +2,8 @@
 
 The vSMR Runtime Menu provides **Linked**, **Unlinked**, and **Auto runways** for LFPG, LFPO, LFPN, LFPV, LFPT, and LFOB. These controls require the companion vSID build described below. The indicator reads actual vSID state through the bridge; older providers show the controls as unavailable.
 
+With a compatible provider (schema 1.2 or later within major version 1), buttons are clickable even before the first airport runway-state report arrives. An unknown runway state does not prevent manual commands. The small companion/config message is omitted when no status is available.
+
 **Auto runways** is separate from vSID's automatic SID assignment mode. It follows the active arrival and departure runways in EuroScope:
 
 | LFPG flow | LFPO flow | Link state | Regional rule (PG perspective) |
@@ -34,6 +36,8 @@ python vSMR/tools/configure_vsid_paris.py 'C:\Users\mathi\AppData\Roaming\EuroSc
 ```
 
 The migration adds `linked`, `unlinked`, and `paris_auto` boolean options to all six airports. Defaults are linked and automatic. Existing values are preserved. It ensures the four regional flags exist at PN/PV/PT/OB, and backs up every changed file under the sibling `Backups/paris-<timestamp>` directory before writing. All files are parsed before any airport is changed. Running the migration again is harmless.
+
+When the adjacent `vSIDConfig.json` exists, the migration also checks its `airportConfigs` setting and points it at the selected directory, backing up the main file before changing it. For this installation the correct value is `vSID AirportsConfig/`; `vSID AirportConfigs/` names a different, nonexistent folder. Restart EuroScope after changing this path, or run `.vsid reload` followed by `.vsid reload ese` to reload the main configuration and then rebuild the active airport data.
 
 The companion maps link state to the existing `opposing` SID rule at LFPG/LFPO. PN/PV/PT select exactly one of `wlpg`, `elpg`, `wipg`, `eipg`. The supplied LFOB procedures use `pgeast`; that compatibility flag is maintained from PG direction alongside the four regional flags. No SID route, runway, priority, equipment, or climb restriction is changed or invented. The three control flags are excluded from vSID's test for active SID rules so they cannot change procedure filtering on their own.
 
