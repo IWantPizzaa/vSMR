@@ -406,6 +406,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				? kVsidLfpgPopupHeight
 				: kVsidPopupHeight;
 			if (VsmrParis::IsRegional(vsidAirport)) popupHeight += kPopupActionHeight + 3;
+			if (vsidAirport == "LFPG") popupHeight += kPopupActionHeight + 3;
 		}
 		else if (!insetPopup)
 		{
@@ -656,6 +657,19 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 				drawRuntimeButton(unlinked.objectId, rightArea, unlinked.label, available,
 					state.linked == false, false, unlinked.tooltip);
 				contentTop += kPopupActionHeight + 3;
+				if (normalizedAirport == "LFPG")
+				{
+					twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+					for (const auto& mode : VsmrVsid::LfpgModeActions)
+					{
+						const bool minimumTaxiing = mode.action == VsmrVsid::CommandAction::LfpgMinimumTaxiing;
+						const bool selected = minimumTaxiing
+							? state.linked == true : state.linked == false;
+						drawRuntimeButton(mode.objectId, minimumTaxiing ? leftArea : rightArea, mode.label, available,
+							selected, false, mode.tooltip);
+					}
+					contentTop += kPopupActionHeight + 3;
+				}
 			}
 		}
 

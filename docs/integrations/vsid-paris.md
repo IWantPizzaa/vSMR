@@ -2,6 +2,8 @@
 
 The vSMR vSID popup provides **Linked** and **Unlinked** for LFPG and LFPO. LFPN, LFPV, LFPT and LFOB provide **WL**, **EL**, **IPGW** and **IPOW**, from LFPG's point of view.
 
+LFPG also provides **Minimum Taxiing** and **Ground Crossing** buttons in CONFIG. They use the existing LFPG actions: Minimum Taxiing selects linked rules, and Ground Crossing selects unlinked rules.
+
 All selections are manual. There is no Auto runways button, automatic runway comparison, or timer-driven rule assignment. EuroScope runway edits do not change these custom rules. This integration does not read, modify, or lock EuroScope's runway selections.
 
 vSID's separate **Auto mode** control still governs automatic SID assignment using the manually selected rules.

@@ -4,6 +4,8 @@
 
 ### Added
 
+- Restored LFPG's Minimum Taxiing and Ground Crossing buttons in the vSID CONFIG menu.
+
 - Added explicit WL/EL/IPGW/IPOW vSID popup selections for LFPN, LFPV, LFPT and LFOB, with manual selection only. LFPG/LFPO retain Linked/Unlinked controls. Removed Auto runways and automatic runway-driven rule changes; the companion only publishes manually selected rules.
 
 - Added a per-profile "Fit background to each text line" tag option for the main radar, AVISO insets, and SRW insets.
