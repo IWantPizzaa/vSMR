@@ -17,7 +17,10 @@ def configure(directory: Path) -> None:
         text = original.decode("utf-8-sig")
         data = json.loads(text)
         rules = data[airport.upper()]["customRules"]
-        for name, default in (("linked", True), ("unlinked", False), ("paris_auto", True)):
+        for name in list(rules):
+            if name.lower() in ("paris_auto", "paris_manual_config"):
+                del rules[name]
+        for name, default in (("linked", True), ("unlinked", False)):
             rules.setdefault(name, default)
         if airport in ("lfpn", "lfpv", "lfpt", "lfob"):
             for name in ("wlpg", "elpg", "wipg", "eipg"):
