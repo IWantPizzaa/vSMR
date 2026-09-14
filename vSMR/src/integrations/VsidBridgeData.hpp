@@ -1,5 +1,7 @@
 #pragma once
 
+#include "integrations/ParisRunwayRules.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -41,20 +43,9 @@ namespace VsmrVsid
 		LfpgGroundCrossing,
 		LfpgLinked,
 		LfpgUnlinked,
+		ParisAutomatic,
 		Synchronize,
 		ReloadConfiguration
-	};
-
-	enum class LfpgOperatingMode
-	{
-		MinimumTaxiing,
-		GroundCrossing
-	};
-
-	enum class LfpgLinkMode
-	{
-		Linked,
-		Unlinked
 	};
 
 	struct AircraftData
@@ -116,7 +107,14 @@ namespace VsmrVsid
 			action == CommandAction::LfpgMinimumTaxiing ||
 			action == CommandAction::LfpgGroundCrossing ||
 			action == CommandAction::LfpgLinked ||
-			action == CommandAction::LfpgUnlinked;
+			action == CommandAction::LfpgUnlinked || action == CommandAction::ParisAutomatic;
+	}
+
+	inline bool IsParisAction(CommandAction action) noexcept
+	{
+		return action == CommandAction::LfpgLinked || action == CommandAction::LfpgUnlinked ||
+			action == CommandAction::ParisAutomatic || action == CommandAction::LfpgMinimumTaxiing ||
+			action == CommandAction::LfpgGroundCrossing;
 	}
 
 	inline std::string NormalizeAirport(std::string_view airport)
@@ -165,12 +163,14 @@ namespace VsmrVsid
 		case CommandAction::LfpgMinimumTaxiing:
 		case CommandAction::LfpgGroundCrossing:
 			return normalizedAirport == "LFPG"
-				? ".vsid rule LFPG opposing"
+				? std::string(".vsid paris LFPG ") + (action == CommandAction::LfpgMinimumTaxiing ? "linked" : "unlinked")
 				: std::string();
 		case CommandAction::LfpgLinked:
 		case CommandAction::LfpgUnlinked:
-			return normalizedAirport == "LFPG"
-				? ".vsid rule LFPG opposing"
+		case CommandAction::ParisAutomatic:
+			return VsmrParis::Supports(normalizedAirport)
+				? ".vsid paris " + normalizedAirport + " " + (action == CommandAction::ParisAutomatic ? "auto" :
+					action == CommandAction::LfpgLinked ? "linked" : "unlinked")
 				: std::string();
 		case CommandAction::Synchronize:
 			return ".vsid sync";
@@ -211,13 +211,16 @@ namespace VsmrVsid
 			"LFPG Ground Crossing mode (Croisement au sol)" }
 	} };
 
-	inline constexpr std::array<RuntimeActionDefinition, 2> LfpgLinkActions = { {
+	inline constexpr std::array<RuntimeActionDefinition, 3> LfpgLinkActions = { {
 		{ CommandAction::LfpgLinked,
 			"runtime.vsid.lfpg-linked", "Linked",
-			"LFPG Linked mode (Lie; opposing off)" },
+			"Set linked rules for this airport; hold until Auto is selected" },
 		{ CommandAction::LfpgUnlinked,
 			"runtime.vsid.lfpg-unlinked", "Unlinked",
-			"LFPG Unlinked mode (Non lie; opposing on)" }
+			"Set unlinked rules for this airport; hold until Auto is selected" },
+		{ CommandAction::ParisAutomatic,
+			"runtime.vsid.paris-auto", "Auto runways",
+			"Follow LFPG and LFPO active runway directions automatically" }
 	} };
 
 	inline constexpr std::array<RuntimeActionDefinition, 3> GeneralRuntimeActions = { {

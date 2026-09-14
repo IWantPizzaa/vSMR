@@ -313,6 +313,71 @@ namespace
 
 	void TestVsidBridgeData()
 	{
+		using namespace VsmrParis;
+		for (Flow pg : { Flow::East, Flow::West })
+		{
+			for (Flow po : { Flow::East, Flow::West })
+			{
+				std::map<std::string, bool> rules = {
+					{ "paris_auto", true }, { "linked", false }, { "unlinked", false },
+					{ "wlpg", false }, { "wipg", true }, { "elpg", true }, { "eipg", true },
+					{ "opposing", false }, { "pgeast", false }, { "unrelated", true }
+				};
+				const auto state = Resolve(rules, pg, po);
+				Apply(rules, state);
+				Expect(state.linked == (pg == po) && rules["linked"] == (pg == po) &&
+					rules["unlinked"] == (pg != po) && rules["opposing"] == (pg != po),
+					"All four PG/PO runway combinations set linked and opposing rules consistently");
+				int active = 0;
+				for (const char* rule : { "wlpg", "wipg", "elpg", "eipg" }) active += rules[rule] ? 1 : 0;
+				Expect(active == 1 && rules[RegionalRule(state)] && rules["pgeast"] == (pg == Flow::East) && rules["unrelated"],
+					"Regional rules are exclusive and use PG direction, including Beauvais compatibility");
+				Expect(!Apply(rules, state), "Unchanged runway state does not reprocess flight plans");
+				for (const auto airport : Airports)
+				{
+					const auto snapshot = Parse(Serialize(airport, state));
+					Expect(snapshot.size() == 1 && snapshot.at(std::string(airport)) == state,
+						"Paris bridge roundtrips each airport and runway combination");
+				}
+				rules["paris_auto"] = false;
+				rules["linked"] = true;
+				rules["unlinked"] = false;
+				const auto manual = Resolve(rules, Flow::East, Flow::West);
+				Expect(manual.linked == true && !manual.automatic,
+					"Manual linked override survives opposing runway selections");
+				rules["linked"] = false;
+				rules["unlinked"] = true;
+				Expect(Resolve(rules, Flow::West, Flow::West).linked == false,
+					"Manual unlinked override survives matching runway selections");
+				rules["paris_auto"] = true;
+				Expect(Resolve(rules, Flow::West, Flow::West).linked == true,
+					"Returning to Auto discards the manual override");
+				const auto before = rules;
+				const auto unknown = Resolve(rules, Flow::West, Flow::Unknown);
+				Expect(!unknown.linked.has_value() && !Apply(rules, unknown) && rules == before,
+					"Missing runway information is unknown and preserves existing SID rules");
+			}
+		}
+		Expect(!Linked(Flow::Mixed, Flow::West).has_value() &&
+			MergeFlow(RunwayFlow("LFPG", "09R"), RunwayFlow("LFPG", "26L")) == Flow::Mixed &&
+			MergeFlow(RunwayFlow("LFPO", "25"), RunwayFlow("LFPO", "20")) == Flow::Mixed &&
+			MergeFlow(RunwayFlow("LFPG", "27R"), RunwayFlow("LFPG", "26L")) == Flow::West,
+			"Mixed directions and crosswind configurations cannot silently select a link state");
+		for (const auto invalid : { "LFPG=WLA", "LFPG=WXA;", "LFXX=WLA;", "LFPG=WLA;LFPG=EUM;", "LFPG=WLA;garbage" })
+			Expect(Parse(invalid).empty(), "Paris bridge rejects malformed or duplicate state records");
+		Expect(Parse(std::string(63, 'A')).empty(), "Paris bridge enforces its bounded snapshot size");
+		for (const auto airport : Airports)
+		{
+			Expect(VsmrVsid::BuildCommand(VsmrVsid::CommandAction::LfpgLinked, airport) ==
+				".vsid paris " + std::string(airport) + " linked" &&
+				VsmrVsid::BuildCommand(VsmrVsid::CommandAction::LfpgUnlinked, airport) ==
+				".vsid paris " + std::string(airport) + " unlinked" &&
+				VsmrVsid::BuildCommand(VsmrVsid::CommandAction::ParisAutomatic, airport) ==
+				".vsid paris " + std::string(airport) + " auto",
+				"Paris controls set explicit states for all six airports");
+		}
+		Expect(VsmrVsid::BuildCommand(VsmrVsid::CommandAction::LfpgLinked, "LFLL").empty(),
+			"Paris controls reject unrelated airports");
 		const auto modes = VsmrVsid::ParseAutomaticModes("LFPG=1;LFPO=0;");
 		Expect(modes.size() == 2 && modes.at("LFPG") && !modes.at("LFPO"),
 			"vSID automatic mode preserves independent authoritative airport states");
@@ -379,25 +444,25 @@ namespace
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgMinimumTaxiing,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG linked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgGroundCrossing,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG unlinked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgGroundCrossing,
 				"LFPO").empty(),
-			"LFPG modes only toggle the configured opposing rule at LFPG");
+			"Legacy LFPG actions set explicit states");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG linked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgUnlinked,
-				"LFPG") == ".vsid rule LFPG opposing" &&
+				"LFPG") == ".vsid paris LFPG unlinked" &&
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::LfpgLinked,
-				"LFPO").empty(),
-			"LFPG link labels toggle the configured opposing rule at LFPG");
+				"LFPO") == ".vsid paris LFPO linked",
+			"Link controls set explicit states at LFPG and LFPO");
 		Expect(
 			VsmrVsid::BuildCommand(
 				VsmrVsid::CommandAction::ReloadConfiguration,

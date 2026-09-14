@@ -302,6 +302,7 @@
     <ClInclude Include="src\integrations\PluginBridgeApi.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeClient.hpp" />
     <ClInclude Include="src\integrations\VsidBridgeData.hpp" />
+    <ClInclude Include="src\integrations\ParisRunwayRules.hpp" />
     <ClInclude Include="src\insets\InsetWindow.hpp" />
     <ClInclude Include="src\insets\InsetWindow.Internal.hpp" />
 	<ClInclude Include="src\platform\windows\EuroScopeCommandLine.hpp" />
