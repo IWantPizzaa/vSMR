@@ -41,6 +41,7 @@ namespace
 	FieldId SidField = 0U;
 	FieldId RunwayField = 0U;
 	FieldId ClearedFlightLevelField = 0U;
+	bool ParisCommandsAvailable = false;
 	std::uint64_t LastProviderRevision = (std::numeric_limits<std::uint64_t>::max)();
 	bool ProviderReadyLogged = false;
 	bool IncompatibleSchemaLogged = false;
@@ -67,6 +68,7 @@ namespace
 
 	void ResetProviderState()
 	{
+		ParisCommandsAvailable = false;
 		SidField = 0U;
 		RunwayField = 0U;
 		ClearedFlightLevelField = 0U;
@@ -177,7 +179,6 @@ namespace
 			ProviderId,
 			&major,
 			&minor);
-		(void)minor;
 		if (versionStatus != Ok)
 		{
 			ResetProviderState();
@@ -194,6 +195,7 @@ namespace
 			return false;
 		}
 		IncompatibleSchemaLogged = false;
+		ParisCommandsAvailable = VsmrVsid::SupportsParisCommands(major, minor);
 
 		if (SidField != 0U && RunwayField != 0U && ClearedFlightLevelField != 0U)
 			return true;
@@ -376,6 +378,7 @@ VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 	state.bridgeCompatible = BridgeApi != nullptr;
 	state.providerReady = BridgeApi != nullptr &&
 		SidField != 0U && RunwayField != 0U && ClearedFlightLevelField != 0U;
+	state.parisCommandsAvailable = state.providerReady && ParisCommandsAvailable;
 	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy();
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
@@ -418,7 +421,7 @@ bool VsmrVsid::SubmitCommand(
 		error = "Select a valid four-character airport before using this vSID action.";
 		return false;
 	}
-	if (IsParisAction(action) && !state.paris.has_value())
+	if (IsParisAction(action) && !state.parisCommandsAvailable)
 	{
 		error = "Paris runway controls require the companion vSID build and airport configuration.";
 		return false;

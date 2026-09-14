@@ -17,6 +17,7 @@ namespace VsmrVsid
 		bool bridgeLoaded = false;
 		bool bridgeCompatible = false;
 		bool providerReady = false;
+		bool parisCommandsAvailable = false;
 		bool commandLineBusy = false;
 		std::size_t aircraftCount = 0U;
 		std::optional<bool> automaticMode;
