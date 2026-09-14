@@ -33,9 +33,10 @@ class ParisConfigurationTests(unittest.TestCase):
             current = json.loads(path.read_bytes())[airport.upper()]
             expected = json.loads(original)[airport.upper()]
             self.assertEqual(current["sids"], expected["sids"])
-            self.assertTrue(current["customRules"]["paris_auto"])
+            self.assertNotIn("paris_auto", current["customRules"])
             self.assertTrue(current["customRules"]["linked"])
             self.assertFalse(current["customRules"]["unlinked"])
+            self.assertNotIn("paris_manual_config", current["customRules"])
             self.assertEqual((backup / path.name).read_bytes(), original)
             self.assertNotIn(b"\n", path.read_bytes().replace(b"\r\n", b""))
             if airport in ("lfpn", "lfpv", "lfpt", "lfob"):
@@ -55,10 +56,21 @@ class ParisConfigurationTests(unittest.TestCase):
     def test_keeps_existing_manual_configuration(self):
         path = self.directory / "lfpg.json"
         data = json.loads(path.read_bytes())
-        data["LFPG"]["customRules"].update(linked=False, unlinked=True, paris_auto=False)
+        data["LFPG"]["customRules"].update(linked=False, unlinked=True)
         path.write_text(json.dumps(data))
         config.configure(self.directory)
         self.assertEqual(json.loads(path.read_bytes()), data)
+
+    def test_removes_automatic_metadata_without_changing_selected_rules(self):
+        path = self.directory / "lfpn.json"
+        data = json.loads(path.read_bytes())
+        rules = data["LFPN"]["customRules"]
+        rules.update(linked=False, unlinked=True, wlpg=False, elpg=False, wipg=True, eipg=False)
+        expected = json.loads(json.dumps(data))
+        rules.update(paris_auto=True, paris_manual_config=False, PARIS_AUTO=True)
+        path.write_text(json.dumps(data))
+        config.configure(self.directory)
+        self.assertEqual(json.loads(path.read_bytes()), expected)
 
     def test_corrects_main_config_folder_and_preserves_other_settings(self):
         main = self.directory.parent / "vSIDConfig.json"

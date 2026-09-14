@@ -1,47 +1,48 @@
-# Paris airport runway rules
+# Paris airport manual configuration
 
-The vSMR Runtime Menu provides **Linked**, **Unlinked**, and **Auto runways** for LFPG, LFPO, LFPN, LFPV, LFPT, and LFOB. These controls require the companion vSID build described below. The indicator reads actual vSID state through the bridge; older providers show the controls as unavailable.
+The vSMR vSID popup provides **Linked** and **Unlinked** for LFPG and LFPO. LFPN, LFPV, LFPT and LFOB provide **WL**, **EL**, **IPGW** and **IPOW**, from LFPG's point of view.
 
-With a compatible provider (schema 1.2 or later within major version 1), buttons are clickable even before the first airport runway-state report arrives. An unknown runway state does not prevent manual commands. The small companion/config message is omitted when no status is available.
+All selections are manual. There is no Auto runways button, automatic runway comparison, or timer-driven rule assignment. EuroScope runway edits do not change these custom rules. This integration does not read, modify, or lock EuroScope's runway selections.
 
-**Auto runways** is separate from vSID's automatic SID assignment mode. It follows the active arrival and departure runways in EuroScope:
+vSID's separate **Auto mode** control still governs automatic SID assignment using the manually selected rules.
 
-| LFPG flow | LFPO flow | Link state | Regional rule (PG perspective) |
-| --- | --- | --- | --- |
-| West (26/27) | West (24/25) | Linked | `wlpg` |
-| East (08/09) | East (06/07) | Linked | `elpg` |
-| West (26/27) | East (06/07) | Unlinked | `wipg` |
-| East (08/09) | West (24/25) | Unlinked | `eipg` |
+| Regional selection | vSID rule | Meaning from LFPG's point of view |
+| --- | --- | --- |
+| WL | `wlpg` | West Lie |
+| EL | `elpg` | East Lie |
+| IPGW | `wipg` | West Inverse |
+| IPOW | `eipg` | East Inverse |
 
-Only recognized runway ends count. Missing selections, simultaneous opposite flows, and Orly's 02/20 crosswind runway make automatic link state **Unknown**. Existing SID rules remain unchanged until there is an unambiguous configuration. PG and PO do not need to be active vSID airports; their runway selections are read directly from EuroScope's sector data.
+A selection remains active until changed manually. It survives vSID's normal airport reloads; restarting EuroScope restores defaults from the airport JSON configuration. The CONFIG section highlights the active choice from the actual custom rules published by vSID. It has no separate Selected status line. Missing or conflicting regional flags leave all choices unhighlighted and are left unchanged.
 
-Selecting **Linked** or **Unlinked** sets a manual override for the selected airport. It persists across runway changes and vSID's normal airport reloads until **Auto runways** is selected. The regional east/west component continues to follow PG. Runtime selections are not written back to JSON; the configuration supplies defaults after restarting EuroScope.
-
-Equivalent commands, replacing `LFPN` with any supported airport:
+Equivalent commands:
 
 ```text
-.vsid paris LFPN linked
-.vsid paris LFPN unlinked
-.vsid paris LFPN auto
+.vsid paris LFPG linked
+.vsid paris LFPO unlinked
+.vsid paris LFPN wlpg
+.vsid paris LFPV elpg
+.vsid paris LFPT wipg
+.vsid paris LFOB eipg
 ```
 
-The old LFPG menu had two pairs of buttons that all toggled the same `opposing` rule. The new menu uses one explicit link selection and a separate automatic runway control. Historical LFPG action IDs remain accepted as aliases.
+Link commands are limited to LFPG/LFPO; the four regional commands apply to LFPN/LFPV/LFPT/LFOB. The former `.vsid paris ICAO auto` command is rejected without changing rules. Historical LFPG action IDs remain aliases for manual link selections.
 
 ## Airport configuration
 
-Run this once against an existing airport configuration directory:
+Run the migration against the airport configuration directory:
 
 ```powershell
 python vSMR/tools/configure_vsid_paris.py 'C:\Users\mathi\AppData\Roaming\EuroScope\LFXX\Plugins\vSID\vSID AirportsConfig'
 ```
 
-The migration adds `linked`, `unlinked`, and `paris_auto` boolean options to all six airports. Defaults are linked and automatic. Existing values are preserved. It ensures the four regional flags exist at PN/PV/PT/OB, and backs up every changed file under the sibling `Backups/paris-<timestamp>` directory before writing. All files are parsed before any airport is changed. Running the migration again is harmless.
+It removes obsolete `paris_auto` and `paris_manual_config` metadata, preserves existing procedure flags, and ensures the manual link and regional options exist. Every modified file is backed up under the sibling `Backups/paris-<timestamp>` folder. All files are parsed before any changes are made; repeated runs are harmless.
 
-When the adjacent `vSIDConfig.json` exists, the migration also checks its `airportConfigs` setting and points it at the selected directory, backing up the main file before changing it. For this installation the correct value is `vSID AirportsConfig/`; `vSID AirportConfigs/` names a different, nonexistent folder. Restart EuroScope after changing this path, or run `.vsid reload` followed by `.vsid reload ese` to reload the main configuration and then rebuild the active airport data.
+When the adjacent `vSIDConfig.json` exists, the migration also checks its `airportConfigs` path and backs up the file before correcting it to the selected directory. For this installation the folder is `vSID AirportsConfig/`.
 
-The companion maps link state to the existing `opposing` SID rule at LFPG/LFPO. PN/PV/PT select exactly one of `wlpg`, `elpg`, `wipg`, `eipg`. The supplied LFOB procedures use `pgeast`; that compatibility flag is maintained from PG direction alongside the four regional flags. No SID route, runway, priority, equipment, or climb restriction is changed or invented. The three control flags are excluded from vSID's test for active SID rules so they cannot change procedure filtering on their own.
+LFPG/LFPO selections update `linked`, `unlinked`, and the existing `opposing` procedure flag. Regional selections enable exactly one of the four configuration flags. LFOB's existing `pgeast` flag follows the chosen east/west component; its existing procedures therefore remain identical for linked/inverse choices within the same direction. SID routes, runway data, priorities, equipment and climb restrictions are preserved.
 
-For a manual startup default, set `paris_auto` to false and choose exactly one of `linked` and `unlinked` as true. Prefer the menu or `.vsid paris` commands for runtime overrides; toggling individual derived flags with `.vsid rule` while automatic control is active will be superseded by the next runway update.
+For startup defaults, set `opposing` at LFPG/LFPO and keep `linked`/`unlinked` consistent with it. At regional airports, enable exactly one of the four configuration flags (and keep LFOB's `pgeast` consistent). Obsolete automatic metadata in older, unmigrated files is ignored and excluded from SID filtering.
 
 ## Companion build
 
@@ -53,18 +54,20 @@ The companion targets [AlexisBalzano/vSID at fce87a0](https://github.com/AlexisB
 4. Configure with CMake for Win32 and build Release using MSVC with C++20 support.
 5. Close EuroScope, back up the installed vSID DLL, and replace it with the resulting `vSID.dll`. Install the matching vSMR release as well, preserving existing configuration files.
 
-The vSID source remains under its upstream GPL license. The companion is built separately from vSMR and still requires EuroScope Plugin Bridge. The patch reuses vSID's existing rule-change flight-plan reprocessing path, only when derived rule values change.
+The vSID source remains under its upstream GPL license. The companion is built separately from vSMR and still requires EuroScope Plugin Bridge. The patch reuses vSID's existing flight-plan reprocessing path only after a manual selection changes custom rules. Timer callbacks publish state without changing rules.
 
-The added schema 1.2 global field `vsid/paris` contains at most six nine-byte records, for example `LFPN=WLA;`: airport, PG flow (`W`, `E`, `?`), link state (`L`, `U`, `?`), and mode (`A`, `M`). Missing or malformed data clears vSMR's displayed state; command consumption never establishes state.
+The schema 1.3 companion retains the schema 1.2 global field `vsid/paris`: at most six nine-byte records, for example `LFPN=WLA;`. Each record contains the airport, PG configuration component (`W`, `E`, `?`), link state (`L`, `U`, `?`), and mode (`A`, `M`). The direction reports the manually selected regional rule; the companion always publishes mode M. Missing or malformed data clears vSMR's displayed state; command consumption never establishes state.
 
 ## Validation
 
-The native regression suite covers all four flow combinations, exclusive regional selection, manual overrides, returning to Auto, ambiguous runway data, stable updates, airport restrictions, and snapshot parsing. Configuration migration tests run with:
+Release builds and native regressions cover explicit selections, mutually exclusive regional flags, LFOB compatibility, read-only status resolution, unchanged selections, unsupported commands, legacy metadata and bridge snapshot parsing. Migration tests run with:
 
 ```powershell
-python vSMR/tests/test_vsid_paris_config.py
+python -B vSMR/tests/test_vsid_paris_config.py
 ```
 
-After loading the rebuilt plugins in EuroScope, verify the four PG/PO combinations above, manual overrides, and returning to Auto. This live check also confirms sector selections and SID data in the controller's setup.
+After restarting EuroScope with the updated plugins, select each manual option, edit EuroScope runway selections, and confirm the selected custom rule remains unchanged. Confirm Auto runways is absent and vSID's separate Auto mode still works.
 
 For RDF, `.smr rdf off` now immediately hides the overlay without waiting for network shutdown; `.smr rdf on` restores it, including an ongoing transmission. The TrackAudio receiver stays available while display is disabled. The change avoids joining a worker from the command callback while it may be blocked in a [synchronous WebSocket receive](https://learn.microsoft.com/en-us/windows/win32/api/winhttp/nf-winhttp-winhttpwebsocketreceive). Verify off/on during an active transmission and while TrackAudio is idle.
+
+If the separate RDFPlugin is also loaded, its independent overlay can remain visible after `.smr rdf off`. Apply [RDF-vSMR-ground-view.patch](../../vSMR/data/Tools/RDF-vSMR-ground-view.patch) when building RDFPlugin to exclude `SMR radar display`, leaving vSMR responsible for RDF there. Other radar displays and the separate plugin's audio bridge retain their existing behavior. See [RDF companion build instructions](rdf-smr.md).

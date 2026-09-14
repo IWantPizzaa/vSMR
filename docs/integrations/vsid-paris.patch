@@ -5,7 +5,7 @@
  		ESB_FieldId bridgeCflField_ = ESB_FIELD_NONE;
  		ESB_FieldId bridgeAutomaticModeField_ = ESB_FIELD_NONE;
 +		ESB_FieldId bridgeParisField_ = ESB_FIELD_NONE;
-+		bool UpdateParisRules();
++		void PublishParisRules();
 +		bool HandleParisCommand(const vsid::Command& cmd);
 +		void ReprocessCustomRules();
  		int bridgeMissingTicks_ = 0;
@@ -85,7 +85,7 @@
  		}
  	}
  
-+	if (UpdateParisRules()) ReprocessCustomRules();
++	PublishParisRules();
 +
  	// Publish actual airport settings each timer tick, including changes made by
  	// commands, reloads and controller coordination. Command receipt is not state.
@@ -104,7 +104,7 @@
  	decl.provider_id = BRIDGE_PROVIDER_ID;
  	decl.schema_major = 1;
 -	decl.schema_minor = 1;
-+	decl.schema_minor = 2;
++	decl.schema_minor = 3;
  	decl.display_name = "vSID";
  	decl.contact = "https://github.com/AlexisBalzano/vSID";
  	decl.fields = fields;
