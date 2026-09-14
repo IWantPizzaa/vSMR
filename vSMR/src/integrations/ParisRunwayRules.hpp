@@ -21,50 +21,45 @@ namespace VsmrParis
 
 	inline bool IsControlRule(std::string_view rule)
 	{
-		return rule == "linked" || rule == "unlinked" || rule == "paris_auto";
-	}
-
-	enum class Flow { Unknown, East, West, Mixed };
-
-	// Only known east/west runway families count. Crosswind/unknown runways
-	// make a configuration ambiguous rather than guessing from its heading.
-	inline Flow RunwayFlow(std::string_view airport, std::string_view runway)
-	{
-		if (airport == "LFPG")
+		// vSID stores configuration keys in uppercase in a case-insensitive map.
+		for (const auto candidate : { "linked", "unlinked", "paris_auto", "paris_manual_config" })
 		{
-			if (runway == "08L" || runway == "08R" || runway == "09L" || runway == "09R") return Flow::East;
-			if (runway == "26L" || runway == "26R" || runway == "27L" || runway == "27R") return Flow::West;
+			const std::string_view expected(candidate);
+			if (rule.size() != expected.size()) continue;
+			bool matches = true;
+			for (std::size_t i = 0; i < rule.size(); ++i)
+			{
+				const char c = rule[i] >= 'A' && rule[i] <= 'Z' ? static_cast<char>(rule[i] - 'A' + 'a') : rule[i];
+				if (c != expected[i]) { matches = false; break; }
+			}
+			if (matches) return true;
 		}
-		if (airport == "LFPO")
-		{
-			if (runway == "06" || runway == "07") return Flow::East;
-			if (runway == "24" || runway == "25") return Flow::West;
-		}
-		return Flow::Mixed;
+		return false;
 	}
 
-	inline Flow MergeFlow(Flow current, Flow next)
+	inline bool IsRegional(std::string_view airport)
 	{
-		if (current == Flow::Unknown) return next;
-		if (next == Flow::Unknown || current == next) return current;
-		return Flow::Mixed;
+		return airport == "LFPN" || airport == "LFPV" || airport == "LFPT" || airport == "LFOB";
 	}
 
-	inline std::optional<bool> Linked(Flow pg, Flow po)
+	inline constexpr std::array<std::string_view, 4> RegionalRules = { "wlpg", "elpg", "wipg", "eipg" };
+
+	inline bool IsRegionalRule(std::string_view rule)
 	{
-		if ((pg != Flow::East && pg != Flow::West) ||
-			(po != Flow::East && po != Flow::West)) return std::nullopt;
-		return pg == po;
+		for (const auto candidate : RegionalRules)
+			if (candidate == rule) return true;
+		return false;
 	}
+
+	enum class Flow { Unknown, East, West };
 
 	struct State
 	{
 		Flow pg = Flow::Unknown;
 		std::optional<bool> linked;
-		bool automatic = true;
 		bool operator==(const State& other) const
 		{
-			return pg == other.pg && linked == other.linked && automatic == other.automatic;
+			return pg == other.pg && linked == other.linked;
 		}
 	};
 
@@ -75,59 +70,69 @@ namespace VsmrParis
 	}
 
 	template<class Rules>
-	State Resolve(const Rules& rules, Flow pg, Flow po)
+	State Resolve(const Rules& rules, std::string_view airport)
 	{
 		State state;
-		state.pg = pg;
-		const auto automatic = rules.find("paris_auto");
-		state.automatic = automatic != rules.end() && automatic->second;
-		if (state.automatic) state.linked = Linked(pg, po);
-		else
+		if (IsRegional(airport))
 		{
-			const auto linked = rules.find("linked");
-			const auto unlinked = rules.find("unlinked");
-			if (linked != rules.end() && unlinked != rules.end() && linked->second != unlinked->second)
-				state.linked = linked->second;
+			std::string_view selected;
+			for (const auto rule : RegionalRules)
+			{
+				const auto found = rules.find(std::string(rule));
+				if (found == rules.end() || !found->second) continue;
+				if (!selected.empty()) return state;
+				selected = rule;
+			}
+			if (!selected.empty())
+			{
+				state.pg = selected.front() == 'w' ? Flow::West : Flow::East;
+				state.linked = selected[1] == 'l';
+			}
+		}
+		else if (Supports(airport))
+		{
+			const auto opposing = rules.find("opposing");
+			if (opposing != rules.end()) state.linked = !opposing->second;
+			else
+			{
+				const auto linked = rules.find("linked");
+				const auto unlinked = rules.find("unlinked");
+				if (linked != rules.end() && unlinked != rules.end() && linked->second != unlinked->second)
+					state.linked = linked->second;
+			}
 		}
 		return state;
 	}
 
+	// Only an explicit controller selection changes vSID rules. There are no
+	// runway inputs or timer-driven rule updates.
 	template<class Rules>
-	bool Apply(Rules& rules, const State& state)
+	bool Select(Rules& rules, std::string_view airport, std::string_view selection)
 	{
-		// An ambiguous automatic configuration preserves the controller's last
-		// usable rules, while the published state explicitly reports Unknown.
-		if (!state.linked.has_value()) return false;
-		bool changed = false;
-		auto set = [&](const char* name, bool value) {
-			const auto found = rules.find(name);
-			if (found != rules.end() && found->second != value)
-			{
-				found->second = value;
-				changed = true;
-			}
-		};
-		set("linked", *state.linked);
-		set("unlinked", !*state.linked);
-		set("opposing", !*state.linked);
-		const auto regional = RegionalRule(state);
-		if (!regional.empty())
+		const bool regional = IsRegionalRule(selection);
+		if (!Supports(airport) || regional != IsRegional(airport) ||
+			(!regional && selection != "linked" && selection != "unlinked")) return false;
+		const bool linked = regional ? selection[1] == 'l' : selection == "linked";
+		rules["linked"] = linked;
+		rules["unlinked"] = !linked;
+		if (regional)
 		{
-			for (const char* rule : { "wlpg", "elpg", "wipg", "eipg" }) set(rule, regional == rule);
-			// Beauvais' existing SID alternatives depend on PG direction only.
-			set("pgeast", state.pg == Flow::East);
+			for (const auto rule : RegionalRules) rules[std::string(rule)] = rule == selection;
+			const auto east = rules.find("pgeast");
+			if (east != rules.end()) east->second = selection.front() == 'e';
 		}
-		return changed;
+		else rules["opposing"] = !linked;
+		return true;
 	}
 
 	// Schema 1.2 global: nine-byte ICAO=WLA; records. W/E/? = PG flow,
-	// L/U/? = linked state, A/M = automatic/manual. No optimistic UI state.
+	// L/U/? = linked state. Publish M (manual); accept legacy A snapshots for compatibility.
 	inline std::string Serialize(std::string_view airport, const State& state)
 	{
 		return std::string(airport) + "=" +
 			(state.pg == Flow::West ? "W" : state.pg == Flow::East ? "E" : "?") +
 			(!state.linked.has_value() ? "?" : *state.linked ? "L" : "U") +
-			(state.automatic ? "A;" : "M;");
+			"M;";
 	}
 
 	inline std::map<std::string, State> Parse(std::string_view value)
@@ -145,7 +150,6 @@ namespace VsmrParis
 			State state;
 			state.pg = record[5] == 'W' ? Flow::West : record[5] == 'E' ? Flow::East : Flow::Unknown;
 			if (record[6] != '?') state.linked = record[6] == 'L';
-			state.automatic = record[7] == 'A';
 			if (!result.emplace(std::string(airport), state).second) return {};
 		}
 		return result;

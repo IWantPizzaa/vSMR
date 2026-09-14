@@ -33,7 +33,7 @@ namespace
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
 	constexpr int kVsidPopupHeight = 79;
-	constexpr int kVsidLfpgPopupHeight = 174;
+	constexpr int kVsidLfpgPopupHeight = 124;
 	constexpr int kStandardPopupWidth = 170;
 	constexpr int kCpdlcPopupHeight = 104;
 	constexpr int kIntegrationPopupGap = 6;
@@ -405,6 +405,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 			popupHeight = VsmrParis::Supports(vsidAirport)
 				? kVsidLfpgPopupHeight
 				: kVsidPopupHeight;
+			if (VsmrParis::IsRegional(vsidAirport)) popupHeight += kPopupActionHeight + 3;
 		}
 		else if (!insetPopup)
 		{
@@ -623,32 +624,37 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		if (VsmrParis::Supports(normalizedAirport))
 		{
 			contentTop += 6;
-			drawSectionLabel("PARIS RUNWAY RULES");
+			drawSectionLabel("CONFIG");
 			const bool available = VsmrVsid::CanSubmitParisCommand(vsidState.providerReady,
 				vsidState.commandLineBusy, vsidState.parisCommandsAvailable, normalizedAirport);
 			const auto state = vsidState.paris.value_or(VsmrParis::State{});
+			const auto selectedRule = VsmrParis::RegionalRule(state);
 			CRect leftArea, rightArea;
-			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
-			const auto& linked = VsmrVsid::LfpgLinkActions[0];
-			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
-			drawRuntimeButton(linked.objectId, leftArea, linked.label, available,
-				state.linked == true, false, linked.tooltip);
-			drawRuntimeButton(unlinked.objectId, rightArea, unlinked.label, available,
-				state.linked == false, false, unlinked.tooltip);
-			contentTop += kPopupActionHeight + 3;
-			const auto& follow = VsmrVsid::LfpgLinkActions[2];
-			CRect followArea(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
-				radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + kPopupActionHeight);
-			drawRuntimeButton(follow.objectId, followArea, follow.label, available,
-				vsidState.paris.has_value() && state.automatic, false, follow.tooltip);
-			contentTop += kPopupActionHeight + 3;
-			if (vsidState.paris.has_value())
+			if (VsmrParis::IsRegional(normalizedAirport))
 			{
-				std::string detail = state.automatic ? "Auto | " : "Manual | ";
-				const auto rule = VsmrParis::RegionalRule(state);
-				detail += rule.empty() ? "Runway configuration unknown" : "PG: " + rule;
-				DrawTextEllipsis(hdc, CRect(followArea.left, contentTop, followArea.right,
-					contentTop + kPopupActionHeight), detail, palette.mutedText);
+				for (std::size_t row = 0; row < 2; ++row)
+				{
+					twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+					for (std::size_t column = 0; column < 2; ++column)
+					{
+						const auto index = row * 2 + column;
+						const auto& choice = VsmrVsid::RegionalActions[index];
+						drawRuntimeButton(choice.objectId, column == 0 ? leftArea : rightArea,
+							choice.label, available && vsidState.regionalCommandsAvailable,
+							selectedRule == VsmrParis::RegionalRules[index], false, choice.tooltip);
+					}
+					contentTop += kPopupActionHeight + 3;
+				}
+			}
+			else
+			{
+				twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
+				const auto& linked = VsmrVsid::LfpgLinkActions[0];
+				const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
+				drawRuntimeButton(linked.objectId, leftArea, linked.label, available,
+					state.linked == true, false, linked.tooltip);
+				drawRuntimeButton(unlinked.objectId, rightArea, unlinked.label, available,
+					state.linked == false, false, unlinked.tooltip);
 				contentTop += kPopupActionHeight + 3;
 			}
 		}
