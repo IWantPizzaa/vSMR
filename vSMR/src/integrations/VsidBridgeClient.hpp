@@ -20,8 +20,7 @@ namespace VsmrVsid
 		bool commandLineBusy = false;
 		std::size_t aircraftCount = 0U;
 		std::optional<bool> automaticMode;
-		LfpgOperatingMode lfpgMode = LfpgOperatingMode::MinimumTaxiing;
-		LfpgLinkMode lfpgLinkMode = LfpgLinkMode::Linked;
+		std::optional<VsmrParis::State> paris;
 	};
 
 	// Polling happens only from EuroScope's timer callback. Rendering reads the

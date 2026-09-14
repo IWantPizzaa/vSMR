@@ -229,7 +229,8 @@ bool CSMRRadar::OnCompileCommand(const char * sCommandLine)
 		return true;
 	}
 
-	return false;
+	// Also handle plugin commands when EuroScope dispatches to this display.
+	return GetPlugIn() != nullptr && GetPlugIn()->OnCompileCommand(sCommandLine);
 }
 
 void CSMRRadar::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
