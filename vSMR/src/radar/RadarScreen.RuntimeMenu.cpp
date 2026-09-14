@@ -33,7 +33,7 @@ namespace
 	constexpr int kInsetPopupWidth = 196;
 	constexpr int kVsidPopupWidth = 220;
 	constexpr int kVsidPopupHeight = 79;
-	constexpr int kVsidLfpgPopupHeight = 151;
+	constexpr int kVsidLfpgPopupHeight = 174;
 	constexpr int kStandardPopupWidth = 170;
 	constexpr int kCpdlcPopupHeight = 104;
 	constexpr int kIntegrationPopupGap = 6;
@@ -402,7 +402,7 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		insetPopupTooShort = false;
 		if (vsidPopup)
 		{
-			popupHeight = vsidAirport == "LFPG"
+			popupHeight = VsmrParis::Supports(vsidAirport)
 				? kVsidLfpgPopupHeight
 				: kVsidPopupHeight;
 		}
@@ -620,39 +620,36 @@ struct CSMRRadar::RuntimeMenuPopupRenderer
 		drawRuntimeButton(reload.objectId, reloadArea, reload.label, canSubmit, false, false, reload.tooltip);
 		drawRuntimeButton(sync.objectId, syncArea, sync.label, canSubmit, false, false, sync.tooltip);
 		contentTop += kPopupActionHeight + 3;
-		if (normalizedAirport == "LFPG")
+		if (VsmrParis::Supports(normalizedAirport))
 		{
-			contentTop += 3;
-			FillRectColor(hdc, CRect(radar.RuntimeMenuPopupArea.left + 10, contentTop,
-				radar.RuntimeMenuPopupArea.right - 10, contentTop + 1), palette.divider);
-			contentTop += 3;
-			drawSectionLabel("vSID SETTINGS");
-			CRect leftArea;
-			CRect rightArea;
-			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
-			const auto& minimum = VsmrVsid::LfpgModeActions[0];
-			const auto& crossing = VsmrVsid::LfpgModeActions[1];
-			const bool minimumActive =
-				vsidState.lfpgMode == VsmrVsid::LfpgOperatingMode::MinimumTaxiing;
-			drawRuntimeButton(
-				minimum.objectId, leftArea, minimum.label, canSubmitAirport,
-				minimumActive, false, minimum.tooltip, !minimumActive);
-			drawRuntimeButton(
-				crossing.objectId, rightArea, crossing.label, canSubmitAirport,
-				!minimumActive, false, crossing.tooltip, minimumActive);
-			contentTop += kPopupActionHeight + 3;
-
+			contentTop += 6;
+			drawSectionLabel("PARIS RUNWAY RULES");
+			const bool available = canSubmitAirport && vsidState.paris.has_value();
+			const auto state = vsidState.paris.value_or(VsmrParis::State{});
+			CRect leftArea, rightArea;
 			twoColumnAreas(kPopupActionHeight, leftArea, rightArea);
 			const auto& linked = VsmrVsid::LfpgLinkActions[0];
 			const auto& unlinked = VsmrVsid::LfpgLinkActions[1];
-			const bool linkedActive =
-				vsidState.lfpgLinkMode == VsmrVsid::LfpgLinkMode::Linked;
-			drawRuntimeButton(
-				linked.objectId, leftArea, linked.label, canSubmitAirport,
-				linkedActive, false, linked.tooltip, !linkedActive);
-			drawRuntimeButton(
-				unlinked.objectId, rightArea, unlinked.label, canSubmitAirport,
-				!linkedActive, false, unlinked.tooltip, linkedActive);
+			drawRuntimeButton(linked.objectId, leftArea, linked.label, available,
+				state.linked == true, false, linked.tooltip);
+			drawRuntimeButton(unlinked.objectId, rightArea, unlinked.label, available,
+				state.linked == false, false, unlinked.tooltip);
+			contentTop += kPopupActionHeight + 3;
+			const auto& follow = VsmrVsid::LfpgLinkActions[2];
+			CRect followArea(radar.RuntimeMenuPopupArea.left + kPopupPadding, contentTop,
+				radar.RuntimeMenuPopupArea.right - kPopupPadding, contentTop + kPopupActionHeight);
+			drawRuntimeButton(follow.objectId, followArea, follow.label, available,
+				vsidState.paris.has_value() && state.automatic, false, follow.tooltip);
+			contentTop += kPopupActionHeight + 3;
+			std::string detail = "Requires companion vSID + Paris config";
+			if (vsidState.paris.has_value())
+			{
+				detail = state.automatic ? "Auto | " : "Manual | ";
+				const auto rule = VsmrParis::RegionalRule(state);
+				detail += rule.empty() ? "Runway configuration unknown" : "PG: " + rule;
+			}
+			DrawTextEllipsis(hdc, CRect(followArea.left, contentTop, followArea.right,
+				contentTop + kPopupActionHeight), detail, palette.mutedText);
 			contentTop += kPopupActionHeight + 3;
 		}
 

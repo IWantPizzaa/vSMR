@@ -31,6 +31,8 @@ See the [GitHub Wiki](https://github.com/IWantPizzaa/vSMR/wiki) for complete fea
 
 The optional vSID and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID) or [CDM](https://github.com/IWantPizzaa/CDM) build. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs.
 
+[Paris runway rules](docs/integrations/vsid-paris.md) add Linked, Unlinked, and Auto runways controls for LFPG, LFPO, LFPN, LFPV, LFPT, and LFOB, using a companion vSID build and the supplied configuration migration.
+
 vSMR is a EuroScope plug-in, not a standalone application. WebView2 hosts the local Control Center; internet access is needed only for enabled online integrations and updates.
 
 ## Install or upgrade
