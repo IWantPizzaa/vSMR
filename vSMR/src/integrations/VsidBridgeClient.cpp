@@ -1,63 +1,91 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 
 #include "integrations/VsidBridgeClient.hpp"
-#include "integrations/PluginBridgeApi.hpp"
+#include "integrations/PluginBridgeClient.hpp"
+#include "integrations/PluginBridgeReads.hpp"
 #include "platform/windows/EuroScopeCommandLine.hpp"
 
-#include "EuroScopePlugIn.h"
-#include "shared/TextUtils.hpp"
 #include "shared/logging/Logger.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-#include <vector>
 
 namespace
 {
-	using namespace EuroScopePlugIn;
-	using namespace VsmrPluginBridgeAbi;
+	using VsmrPluginBridge::AttachState;
+	using VsmrPluginBridge::FieldSpec;
+	using VsmrPluginBridge::ProviderState;
+	using VsmrPluginBridge::ReadStatus;
 
+	// vSID's provider declaration (vSIDPlugin.h): schema 1.0 publishes sid, rwy and
+	// cfl as aircraft STR fields of at most 32 bytes. automode is the optional
+	// schema 1.1 global described in docs/integrations/vsid-automode.md. The
+	// companion schema 1.2/1.3 also publishes the manual Paris rules snapshot.
 	constexpr char ProviderId[] = "vsid";
 	constexpr std::uint32_t SupportedSchemaMajor = 1U;
-	constexpr std::size_t MaximumFlightPlans = 4096U;
-	constexpr std::size_t MinimumApiSize =
-		offsetof(ApiV1, providerRevision) + sizeof(decltype(ApiV1::providerRevision));
 
+	enum Field : std::size_t
+	{
+		SidField,
+		RunwayField,
+		ClearedFlightLevelField,
+		AutomaticModeField,
+		ParisStateField,
+		FieldCount
+	};
+
+	constexpr std::array<FieldSpec, FieldCount> Fields = { {
+		{ "sid", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
+		{ "rwy", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
+		{ "cfl", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumFieldBytes) },
+		{ "automode", ESB_T_STR, static_cast<std::uint32_t>(VsmrVsid::MaximumAutomaticModeBytes) },
+		{ "paris", ESB_T_STR, static_cast<std::uint32_t>(VsmrParis::Airports.size() * 9U) }
+	} };
+
+	constexpr std::uint64_t NoRevision = (std::numeric_limits<std::uint64_t>::max)();
+
+	VsmrPluginBridge::ProviderBinding Provider(
+		ProviderId,
+		SupportedSchemaMajor,
+		Fields.data(),
+		Fields.size());
+	VsmrPluginBridge::ProviderDiagnostics Diagnostics("vSID");
+
+	// Snapshot shared with rendering, the Runtime Menu and command submission.
 	std::mutex StateMutex;
 	std::map<std::string, bool> AutomaticModes;
 	std::map<std::string, VsmrParis::State> ParisStates;
 	std::unordered_map<std::string, VsmrVsid::AircraftData> AircraftByCallsign;
-	std::unordered_set<std::string> DisconnectedCallsigns;
+	std::atomic<bool> ParisCommandsAvailable{ false };
+	std::atomic<bool> RegionalCommandsAvailable{ false };
+	std::atomic<bool> ProviderReady{ false };
+
+	// Timer-only polling state.
+	std::uint64_t LastProviderRevision = NoRevision;
 	std::unordered_set<std::string> LastScannedCallsigns;
-	HMODULE BridgeModule = nullptr;
-	const ApiV1* BridgeApi = nullptr;
-	FieldId SidField = 0U;
-	FieldId RunwayField = 0U;
-	FieldId ClearedFlightLevelField = 0U;
-	bool ParisCommandsAvailable = false;
-	bool RegionalCommandsAvailable = false;
-	std::uint64_t LastProviderRevision = (std::numeric_limits<std::uint64_t>::max)();
-	bool ProviderReadyLogged = false;
-	bool IncompatibleSchemaLogged = false;
 	bool InterfaceStateInitialized = false;
-	bool LastBridgeLoaded = false;
-	bool LastBridgeCompatible = false;
+	AttachState LastAttachState = AttachState::NotLoaded;
 	bool LastProviderReady = false;
 
-	std::string NormalizeCallsign(const std::string& callsign)
+	bool DisconnectProvider()
 	{
-		return ToUpperAsciiCopy(TrimAsciiWhitespaceCopy(callsign));
-	}
-
-	bool ClearCachedAircraft()
-	{
+		Provider.Reset();
+		ProviderReady.store(false, std::memory_order_relaxed);
+		ParisCommandsAvailable.store(false, std::memory_order_relaxed);
+		RegionalCommandsAvailable.store(false, std::memory_order_relaxed);
+		LastProviderRevision = NoRevision;
+		LastScannedCallsigns.clear();
 		std::lock_guard<std::mutex> guard(StateMutex);
 		if (AircraftByCallsign.empty() && AutomaticModes.empty() && ParisStates.empty())
 			return false;
@@ -67,206 +95,35 @@ namespace
 		return true;
 	}
 
-	void ResetProviderState()
-	{
-		ParisCommandsAvailable = false;
-		RegionalCommandsAvailable = false;
-		SidField = 0U;
-		RunwayField = 0U;
-		ClearedFlightLevelField = 0U;
-		LastProviderRevision = (std::numeric_limits<std::uint64_t>::max)();
-		LastScannedCallsigns.clear();
-		ProviderReadyLogged = false;
-	}
-
-	bool PollAutomaticModes()
-	{
-		std::map<std::string, bool> next;
-		FieldId field = 0U;
-		if (BridgeApi->getGlobal != nullptr &&
-			BridgeApi->resolve("vsid/automode", String, &field) == Ok)
-		{
-			std::array<char, VsmrVsid::MaximumAutomaticModeBytes + 1U> buffer{};
-			std::uint32_t bytes = static_cast<std::uint32_t>(buffer.size());
-			Value value{};
-			if (BridgeApi->getGlobal(field, &value, buffer.data(), &bytes) == Ok &&
-				value.type == String && bytes <= buffer.size() && value.bytes <= VsmrVsid::MaximumAutomaticModeBytes &&
-				value.bytes == bytes)
-			{
-				next = VsmrVsid::ParseAutomaticModes(std::string_view(buffer.data(), value.bytes));
-			}
-		}
-		std::lock_guard<std::mutex> guard(StateMutex);
-		if (next == AutomaticModes)
-			return false;
-		AutomaticModes = std::move(next);
-		return true;
-	}
-
-	bool PollParisStates()
-	{
-		std::map<std::string, VsmrParis::State> next;
-		FieldId field = 0U;
-		if (BridgeApi->getGlobal != nullptr && BridgeApi->resolve("vsid/paris", String, &field) == Ok)
-		{
-			std::array<char, 55> buffer{};
-			std::uint32_t bytes = static_cast<std::uint32_t>(buffer.size());
-			Value value{};
-			if (BridgeApi->getGlobal(field, &value, buffer.data(), &bytes) == Ok &&
-				value.type == String && bytes <= buffer.size() && value.bytes == bytes)
-				next = VsmrParis::Parse(std::string_view(buffer.data(), bytes));
-		}
-		std::lock_guard<std::mutex> guard(StateMutex);
-		if (next == ParisStates) return false;
-		ParisStates = std::move(next);
-		return true;
-	}
-
 	bool UpdateInterfaceState()
 	{
-		const bool bridgeLoaded = BridgeModule != nullptr;
-		const bool bridgeCompatible = BridgeApi != nullptr;
-		const bool providerReady = bridgeCompatible &&
-			SidField != 0U && RunwayField != 0U &&
-			ClearedFlightLevelField != 0U;
+		const AttachState attachState = VsmrPluginBridge::GetAttachState();
+		const bool providerReady = ProviderReady.load(std::memory_order_relaxed);
 		const bool changed = !InterfaceStateInitialized ||
-			bridgeLoaded != LastBridgeLoaded ||
-			bridgeCompatible != LastBridgeCompatible ||
+			attachState != LastAttachState ||
 			providerReady != LastProviderReady;
 		InterfaceStateInitialized = true;
-		LastBridgeLoaded = bridgeLoaded;
-		LastBridgeCompatible = bridgeCompatible;
+		LastAttachState = attachState;
 		LastProviderReady = providerReady;
 		return changed;
 	}
 
-	bool AttachBridge()
-	{
-		HMODULE module = ::GetModuleHandleW(ModuleName);
-		if (module == nullptr)
-		{
-			BridgeModule = nullptr;
-			BridgeApi = nullptr;
-			ResetProviderState();
-			return false;
-		}
-		if (BridgeApi != nullptr && BridgeModule == module)
-			return true;
-
-		BridgeModule = module;
-		BridgeApi = nullptr;
-		ResetProviderState();
-		const auto getApi = reinterpret_cast<GetApiFunction>(
-			::GetProcAddress(module, EntrySymbol));
-		if (getApi == nullptr)
-			return false;
-
-		const ApiV1* api = getApi(AbiVersion);
-		if (api == nullptr || api->abiVersion != AbiVersion ||
-			api->structureSize < MinimumApiSize || api->resolve == nullptr ||
-			api->providerVersion == nullptr || api->aircraft == nullptr ||
-			api->getAircraft == nullptr || api->providerRevision == nullptr)
-		{
-			return false;
-		}
-		BridgeApi = api;
-		return true;
-	}
-
-	bool ResolveVsidFields()
-	{
-		std::uint32_t major = 0U;
-		std::uint32_t minor = 0U;
-		const Status versionStatus = BridgeApi->providerVersion(
-			ProviderId,
-			&major,
-			&minor);
-		if (versionStatus != Ok)
-		{
-			ResetProviderState();
-			return false;
-		}
-		if (major != SupportedSchemaMajor)
-		{
-			ResetProviderState();
-			if (!IncompatibleSchemaLogged)
-			{
-				Logger::info("vSID bridge provider uses an unsupported schema major version");
-				IncompatibleSchemaLogged = true;
-			}
-			return false;
-		}
-		IncompatibleSchemaLogged = false;
-		ParisCommandsAvailable = VsmrVsid::SupportsParisCommands(major, minor);
-		RegionalCommandsAvailable = VsmrVsid::SupportsRegionalCommands(major, minor);
-
-		if (SidField != 0U && RunwayField != 0U && ClearedFlightLevelField != 0U)
-			return true;
-
-		FieldId sid = 0U;
-		FieldId runway = 0U;
-		FieldId clearedFlightLevel = 0U;
-		if (BridgeApi->resolve("vsid/sid", String, &sid) != Ok ||
-			BridgeApi->resolve("vsid/rwy", String, &runway) != Ok ||
-			BridgeApi->resolve("vsid/cfl", String, &clearedFlightLevel) != Ok)
-		{
-			ResetProviderState();
-			return false;
-		}
-
-		SidField = sid;
-		RunwayField = runway;
-		ClearedFlightLevelField = clearedFlightLevel;
-		LastProviderRevision = (std::numeric_limits<std::uint64_t>::max)();
-		if (!ProviderReadyLogged)
-		{
-			Logger::info("vSID interface connected through EuroScope Plugin Bridge");
-			ProviderReadyLogged = true;
-		}
-		return true;
-	}
-
-	Status ReadString(Aircraft aircraft, FieldId field, std::string& value)
-	{
-		std::array<char, VsmrVsid::MaximumFieldBytes> buffer{};
-		std::uint32_t bytes = static_cast<std::uint32_t>(buffer.size());
-		Value bridgeValue{};
-		const Status status = BridgeApi->getAircraft(
-			aircraft,
-			field,
-			&bridgeValue,
-			buffer.data(),
-			&bytes);
-		if (status == Unset)
-		{
-			value.clear();
-			return Ok;
-		}
-		if (status != Ok)
-			return status;
-		if (bridgeValue.type != String || bridgeValue.bytes > buffer.size() ||
-			bridgeValue.bytes != bytes)
-		{
-			return TypeMismatch;
-		}
-
-		value = VsmrVsid::NormalizeFieldValue(
-			std::string_view(buffer.data(), bridgeValue.bytes));
-		return Ok;
-	}
-
 	bool ReplaceSnapshot(
-		std::unordered_map<std::string, VsmrVsid::AircraftData> next)
+		std::unordered_map<std::string, VsmrVsid::AircraftData> aircraft,
+		std::map<std::string, bool> automaticModes,
+		std::map<std::string, VsmrParis::State> parisStates)
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
-		if (AircraftByCallsign == next)
+		if (AircraftByCallsign == aircraft && AutomaticModes == automaticModes && ParisStates == parisStates)
 			return false;
-		AircraftByCallsign = std::move(next);
+		AircraftByCallsign = std::move(aircraft);
+		AutomaticModes = std::move(automaticModes);
+		ParisStates = std::move(parisStates);
 		return true;
 	}
 }
 
-bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
+bool VsmrVsid::Poll(const VsmrPluginBridge::Tick& tick)
 {
 	bool commandStateChanged = false;
 	switch (VsmrEuroScopeCommandLine::Poll(
@@ -291,76 +148,117 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 
 	try
 	{
-		if (!AttachBridge() || !ResolveVsidFields())
-			return finish(ClearCachedAircraft());
+		if (tick.api == nullptr)
+			return finish(DisconnectProvider());
+		const ESB_Api_v1& api = *tick.api;
 
-		commandStateChanged = PollAutomaticModes() || commandStateChanged;
-		commandStateChanged = PollParisStates() || commandStateChanged;
+		// vSID is optional: an absent provider is a normal configuration (B2.2).
+		const ProviderState state = Provider.Refresh(api);
+		Diagnostics.Report(Provider);
+		if (state != ProviderState::Ready)
+			return finish(DisconnectProvider());
+		ProviderReady.store(true, std::memory_order_relaxed);
+		const bool parisCommands = SupportsParisCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
+		const bool regionalCommands = SupportsRegionalCommands(Provider.SchemaMajor(), Provider.SchemaMinor());
+		commandStateChanged = (ParisCommandsAvailable.exchange(parisCommands, std::memory_order_relaxed) != parisCommands) || commandStateChanged;
+		commandStateChanged = (RegionalCommandsAvailable.exchange(regionalCommands, std::memory_order_relaxed) != regionalCommands) || commandStateChanged;
 
-		std::unordered_set<std::string> currentCallsigns;
-		std::unordered_set<std::string> disconnectedCallsigns;
-		{
-			std::lock_guard<std::mutex> guard(StateMutex);
-			disconnectedCallsigns = DisconnectedCallsigns;
-		}
-		std::size_t flightPlanCount = 0U;
-		for (CFlightPlan flightPlan = plugin.FlightPlanSelectFirst();
-			flightPlan.IsValid() && flightPlanCount < MaximumFlightPlans;
-			flightPlan = plugin.FlightPlanSelectNext(flightPlan), ++flightPlanCount)
-		{
-			if (flightPlan.GetFPState() == FLIGHT_PLAN_STATE_TERMINATED ||
-				flightPlan.GetSimulated())
-			{
-				continue;
-			}
-			const char* rawCallsign = flightPlan.GetCallsign();
-			const std::string callsign = NormalizeCallsign(
-				rawCallsign != nullptr ? rawCallsign : "");
-			if (!callsign.empty() && disconnectedCallsigns.count(callsign) == 0U)
-				currentCallsigns.insert(callsign);
-		}
-
-		const std::uint64_t providerRevision = BridgeApi->providerRevision(ProviderId);
+		// Coarse gate (B2.5): every vSID write or clear, global or per aircraft,
+		// advances the provider revision.
+		const std::uint64_t providerRevision = api.provider_revision(ProviderId);
 		if (providerRevision == LastProviderRevision &&
-			currentCallsigns == LastScannedCallsigns)
+			tick.callsigns == LastScannedCallsigns)
 		{
 			return finish(false);
 		}
 
-		std::unordered_map<std::string, AircraftData> next;
-		for (const std::string& callsign : currentCallsigns)
+		bool snapshotComplete = true;
+		std::map<std::string, bool> automaticModes;
+		if (Provider.Field(AutomaticModeField) != ESB_FIELD_NONE)
 		{
-			Aircraft aircraft = 0U;
-			if (BridgeApi->aircraft(callsign.c_str(), &aircraft) != Ok)
+			std::string snapshot;
+			const ReadStatus automaticStatus = VsmrPluginBridge::ReadGlobalString(
+				api,
+				Provider.Field(AutomaticModeField),
+				Fields[AutomaticModeField].expectedBytes,
+				snapshot);
+			if (automaticStatus == ReadStatus::ProviderLost)
+				return finish(DisconnectProvider());
+			if (automaticStatus == ReadStatus::Failed)
+				snapshotComplete = false;
+			// Unset or malformed snapshots stay Unknown, never an inferred Off state.
+			if (automaticStatus == ReadStatus::Value)
+				automaticModes = ParseAutomaticModes(snapshot);
+		}
+
+		std::map<std::string, VsmrParis::State> parisStates;
+		if (Provider.Field(ParisStateField) != ESB_FIELD_NONE)
+		{
+			std::string snapshot;
+			const ReadStatus parisStatus = VsmrPluginBridge::ReadGlobalString(
+				api, Provider.Field(ParisStateField), Fields[ParisStateField].expectedBytes, snapshot);
+			if (parisStatus == ReadStatus::ProviderLost)
+				return finish(DisconnectProvider());
+			if (parisStatus == ReadStatus::Failed)
+				snapshotComplete = false;
+			// Only vSID's published manual rules establish the selected button state.
+			if (parisStatus == ReadStatus::Value)
+				parisStates = VsmrParis::Parse(snapshot);
+		}
+
+		std::unordered_map<std::string, AircraftData> next;
+		for (const std::string& callsign : tick.callsigns)
+		{
+			ESB_Aircraft aircraft = ESB_AIRCRAFT_NONE;
+			// An aircraft the bridge has not seen cannot carry published values yet.
+			if (VsmrPluginBridge::ResolveAircraft(api, callsign, aircraft) != ReadStatus::Value)
 				continue;
 
 			AircraftData data;
-			const Status sidStatus = ReadString(aircraft, SidField, data.sid);
-			const Status runwayStatus = ReadString(aircraft, RunwayField, data.runway);
-			const Status cflStatus = ReadString(
-				aircraft,
-				ClearedFlightLevelField,
-				data.clearedFlightLevel);
-			if (sidStatus == NoProvider || runwayStatus == NoProvider || cflStatus == NoProvider ||
-				sidStatus == VsmrPluginBridgeAbi::Shutdown ||
-				runwayStatus == VsmrPluginBridgeAbi::Shutdown ||
-				cflStatus == VsmrPluginBridgeAbi::Shutdown)
+			bool providerLost = false;
+			const auto readField = [&](Field field, std::string& value)
 			{
-				ResetProviderState();
-				return finish(ClearCachedAircraft());
-			}
-			if (sidStatus != Ok || runwayStatus != Ok || cflStatus != Ok)
-				continue;
+				// B2.3: a field that did not resolve with its expected type is never read.
+				if (providerLost || Provider.Field(field) == ESB_FIELD_NONE)
+					return;
+				std::string raw;
+				switch (VsmrPluginBridge::ReadAircraftString(
+					api,
+					callsign,
+					aircraft,
+					Provider.Field(field),
+					Fields[field].expectedBytes,
+					raw))
+				{
+				case ReadStatus::Value:
+					value = NormalizeFieldValue(raw);
+					break;
+				case ReadStatus::ProviderLost:
+					providerLost = true;
+					break;
+				case ReadStatus::Failed:
+					snapshotComplete = false;
+					break;
+				default:
+					// B2.8: unset means vSID holds no value for this aircraft.
+					break;
+				}
+			};
+			readField(SidField, data.sid);
+			readField(RunwayField, data.runway);
+			readField(ClearedFlightLevelField, data.clearedFlightLevel);
+			if (providerLost)
+				return finish(DisconnectProvider());
 			// A bridge aircraft handle can exist without vSID publishing data for it.
 			// Such handles are not connected vSID aircraft and must not inflate status.
-			if (!HasPublishedAircraftData(data))
-				continue;
-			next.emplace(callsign, std::move(data));
+			if (HasPublishedAircraftData(data))
+				next.emplace(callsign, std::move(data));
 		}
 
-		LastProviderRevision = providerRevision;
-		LastScannedCallsigns = std::move(currentCallsigns);
-		return finish(ReplaceSnapshot(std::move(next)));
+		// Retry incomplete reads even when the provider revision did not advance.
+		LastProviderRevision = snapshotComplete ? providerRevision : NoRevision;
+		LastScannedCallsigns = tick.callsigns;
+		return finish(ReplaceSnapshot(std::move(next), std::move(automaticModes), std::move(parisStates)));
 	}
 	catch (const std::exception& exception)
 	{
@@ -370,19 +268,19 @@ bool VsmrVsid::Poll(EuroScopePlugIn::CPlugIn& plugin)
 	{
 		Logger::info("vSID bridge poll failed: unknown exception");
 	}
-	ResetProviderState();
-	return finish(ClearCachedAircraft());
+	return finish(DisconnectProvider());
 }
 
 VsmrVsid::InterfaceState VsmrVsid::GetInterfaceState(const std::string& airport)
 {
 	InterfaceState state;
-	state.bridgeLoaded = BridgeModule != nullptr;
-	state.bridgeCompatible = BridgeApi != nullptr;
-	state.providerReady = BridgeApi != nullptr &&
-		SidField != 0U && RunwayField != 0U && ClearedFlightLevelField != 0U;
-	state.parisCommandsAvailable = state.providerReady && ParisCommandsAvailable;
-	state.regionalCommandsAvailable = state.providerReady && RegionalCommandsAvailable;
+	const AttachState attachState = VsmrPluginBridge::GetAttachState();
+	state.bridgeLoaded = attachState != AttachState::NotLoaded;
+	state.bridgeCompatible = attachState == AttachState::Attached;
+	state.providerReady = state.bridgeCompatible &&
+		ProviderReady.load(std::memory_order_relaxed);
+	state.parisCommandsAvailable = state.providerReady && ParisCommandsAvailable.load(std::memory_order_relaxed);
+	state.regionalCommandsAvailable = state.providerReady && RegionalCommandsAvailable.load(std::memory_order_relaxed);
 	state.commandLineBusy = VsmrEuroScopeCommandLine::IsBusy();
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
@@ -405,7 +303,7 @@ bool VsmrVsid::SubmitCommand(
 	const InterfaceState state = GetInterfaceState(activeAirport);
 	if (!state.bridgeLoaded)
 	{
-		error = "Load EuroScopeBridge.dll before using the vSID interface.";
+		error = VsmrPluginBridge::MissingBridgeMessage();
 		return false;
 	}
 	if (!state.bridgeCompatible)
@@ -449,7 +347,7 @@ bool VsmrVsid::TryGetAircraftData(
 	const std::string& callsign,
 	AircraftData& outData)
 {
-	const std::string normalizedCallsign = NormalizeCallsign(callsign);
+	const std::string normalizedCallsign = VsmrPluginBridge::NormalizeCallsign(callsign);
 	if (normalizedCallsign.empty())
 		return false;
 	std::lock_guard<std::mutex> guard(StateMutex);
@@ -460,27 +358,6 @@ bool VsmrVsid::TryGetAircraftData(
 	return true;
 }
 
-void VsmrVsid::ForgetAircraft(const std::string& callsign)
-{
-	const std::string normalizedCallsign = NormalizeCallsign(callsign);
-	if (normalizedCallsign.empty())
-		return;
-	LastScannedCallsigns.erase(normalizedCallsign);
-	std::lock_guard<std::mutex> guard(StateMutex);
-	DisconnectedCallsigns.insert(normalizedCallsign);
-	AircraftByCallsign.erase(normalizedCallsign);
-}
-
-void VsmrVsid::ObserveAircraft(const std::string& callsign)
-{
-	const std::string normalizedCallsign = NormalizeCallsign(callsign);
-	if (normalizedCallsign.empty())
-		return;
-	LastScannedCallsigns.erase(normalizedCallsign);
-	std::lock_guard<std::mutex> guard(StateMutex);
-	DisconnectedCallsigns.erase(normalizedCallsign);
-}
-
 void VsmrVsid::Shutdown() noexcept
 {
 	VsmrEuroScopeCommandLine::Cancel(
@@ -488,16 +365,17 @@ void VsmrVsid::Shutdown() noexcept
 	{
 		std::lock_guard<std::mutex> guard(StateMutex);
 		AircraftByCallsign.clear();
-		DisconnectedCallsigns.clear();
 		AutomaticModes.clear();
 		ParisStates.clear();
 	}
-	BridgeModule = nullptr;
-	BridgeApi = nullptr;
-	ResetProviderState();
-	IncompatibleSchemaLogged = false;
+	Provider.Reset();
+	Diagnostics.Reset();
+	ProviderReady.store(false, std::memory_order_relaxed);
+	ParisCommandsAvailable.store(false, std::memory_order_relaxed);
+	RegionalCommandsAvailable.store(false, std::memory_order_relaxed);
+	LastProviderRevision = NoRevision;
+	LastScannedCallsigns.clear();
 	InterfaceStateInitialized = false;
-	LastBridgeLoaded = false;
-	LastBridgeCompatible = false;
+	LastAttachState = AttachState::NotLoaded;
 	LastProviderReady = false;
 }

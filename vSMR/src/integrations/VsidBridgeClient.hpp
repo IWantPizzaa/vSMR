@@ -2,12 +2,13 @@
 
 #include "integrations/VsidBridgeData.hpp"
 
-#include <string>
+#include <cstddef>
 #include <optional>
+#include <string>
 
-namespace EuroScopePlugIn
+namespace VsmrPluginBridge
 {
-	class CPlugIn;
+	struct Tick;
 }
 
 namespace VsmrVsid
@@ -27,14 +28,12 @@ namespace VsmrVsid
 
 	// Polling happens only from EuroScope's timer callback. Rendering reads the
 	// resulting snapshot and never calls across the plug-in bridge from a worker.
-	bool Poll(EuroScopePlugIn::CPlugIn& plugin);
+	bool Poll(const VsmrPluginBridge::Tick& tick);
 	InterfaceState GetInterfaceState(const std::string& airport = {});
 	bool SubmitCommand(
 		CommandAction action,
 		const std::string& activeAirport,
 		std::string& error);
 	bool TryGetAircraftData(const std::string& callsign, AircraftData& outData);
-	void ObserveAircraft(const std::string& callsign);
-	void ForgetAircraft(const std::string& callsign);
 	void Shutdown() noexcept;
 }
