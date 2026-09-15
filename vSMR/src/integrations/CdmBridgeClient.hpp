@@ -2,11 +2,12 @@
 
 #include "integrations/CdmBridgeData.hpp"
 
+#include <cstddef>
 #include <string>
 
-namespace EuroScopePlugIn
+namespace VsmrPluginBridge
 {
-	class CPlugIn;
+	struct Tick;
 }
 
 namespace VsmrCdm
@@ -19,7 +20,7 @@ namespace VsmrCdm
 		std::size_t aircraftCount = 0U;
 	};
 
-	bool Poll(EuroScopePlugIn::CPlugIn& plugin);
+	bool Poll(const VsmrPluginBridge::Tick& tick);
 	InterfaceState GetInterfaceState();
 	bool TryGetAircraftData(const std::string& callsign, AircraftData& outData);
 	void Shutdown() noexcept;
