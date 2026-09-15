@@ -416,10 +416,8 @@ public:
 	std::vector<std::string> GetOrderedProfileNamesForUi() const;
 	std::string GetActiveProfileNameForEditor() const;
 	bool SetActiveProfileForEditor(const std::string& name, bool persistToDisk);
-	std::string ReadLastActiveProfileFromConfig() const;
-	void WriteLastActiveProfileToConfig(const std::string& profileName) const;
-	static void RememberSessionActiveProfile(const std::string& profileName);
-	static std::string GetSessionActiveProfile(const std::string& fallbackProfile);
+	void RestoreActiveProfileFromAsr();
+	void SaveActiveProfileToAsr();
 	std::vector<DisplayModeSettings> GetProfileDisplayModesForEditor(const std::string& profileName) const;
 	std::string GetActiveProfileDisplayModeForEditor(const std::string& profileName) const;
 	bool SetProfileDisplayModeActiveForEditor(const std::string& profileName, const std::string& modeName);
