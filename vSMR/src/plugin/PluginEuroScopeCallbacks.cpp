@@ -6,7 +6,7 @@
 #include "aircraft/HoldingPoint.hpp"
 #include "crash/CrashReporter.hpp"
 #include "crash/CrashRuntime.hpp"
-#include "integrations/VsidBridgeClient.hpp"
+#include "integrations/PluginBridgeClient.hpp"
 #include "plugin/PluginCommandHandler.hpp"
 #include "radar/RadarScreen.Registry.hpp"
 #include "shared/TextUtils.hpp"
@@ -63,7 +63,7 @@ void CSMRPlugin::OnFlightPlanDisconnect(CFlightPlan FlightPlan)
 		return;
 	VsmrGroundState::ClearLineupOverride(normalizedCallsign.c_str());
 	VsmrHoldingPoint::ForgetPending(normalizedCallsign);
-	VsmrVsid::ForgetAircraft(normalizedCallsign);
+	VsmrPluginBridge::ForgetAircraft(normalizedCallsign);
 
 	ForgetDatalinkFlightPlan(normalizedCallsign);
 }
@@ -93,7 +93,7 @@ void CSMRPlugin::OnFlightPlanFlightPlanDataUpdate(CFlightPlan FlightPlan)
 	if (FlightPlan.IsValid())
 	{
 		const char* callsign = FlightPlan.GetCallsign();
-		VsmrVsid::ObserveAircraft(callsign != nullptr ? callsign : "");
+		VsmrPluginBridge::ObserveAircraft(callsign != nullptr ? callsign : "");
 		const char* remarks = FlightPlan.GetFlightPlanData().GetRemarks();
 		(void)VsmrHoldingPoint::Resolve(
 			callsign != nullptr ? callsign : "",

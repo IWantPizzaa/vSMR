@@ -22,6 +22,7 @@
 #include "ConfigurationRegressionTests.hpp"
 #include "SharedRenderingTests.hpp"
 #include "AuditRegressionTests.hpp"
+#include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
@@ -1103,6 +1104,8 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunUpdaterUrlPolicyTests())
 		Expect(false, failure);
 	for (const auto& failure : RunAuditRegressionTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunPluginBridgeTests())
 		Expect(false, failure);
 	TestGeometry();
 	TestWebMessageValidation();

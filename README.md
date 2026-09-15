@@ -17,6 +17,7 @@ Current version: **2.0.0-beta.6**
 - AVISO, SRW 1, METAR, and Timer inset windows
 - CDM bridge integration and Hoppie CPDLC/PDC support
 - Optional vSID bridge data, tag tokens, rules, and Runtime Menu controls
+- Optional Ramp Agent stand and stand remark tag values through the plug-in bridge
 - Airport-scoped layouts, display modes, profiles, and settings
 - Transactional configuration, diagnostics, rollback, and signed-update support
 
@@ -29,7 +30,7 @@ See the [GitHub Wiki](https://github.com/IWantPizzaa/vSMR/wiki) for complete fea
 - [Microsoft Edge WebView2 Evergreen Runtime (x86)](https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section)
 - The complete matching release package: `vSMR.dll` and `vSMR_Data\`
 
-The optional vSID and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID) or [CDM](https://github.com/IWantPizzaa/CDM) build. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs.
+The optional vSID, Ramp Agent, and CDM interfaces require [EuroScope Plugin Bridge](https://github.com/AlexisBalzano/Euroscope-Plugin-Bridge), plus a bridge-enabled [vSID](https://github.com/AlexisBalzano/vSID), [Ramp Agent](https://github.com/AlexisBalzano/EuroscopeRampAgent), or [CDM](https://github.com/IWantPizzaa/CDM) build. Stand and stand remark tag values come only from Ramp Agent through the bridge. Load them separately through EuroScope's plug-in settings; vSMR deliberately does not bundle or load their DLLs. The consumed fields are listed in [EuroScope Plugin Bridge data](docs/integrations/plugin-bridge.md).
 
 [Paris runway rules](docs/integrations/vsid-paris.md) add Linked, Unlinked, and Auto runways controls for LFPG, LFPO, LFPN, LFPV, LFPT, and LFOB, using a companion vSID build and the supplied configuration migration.
 
