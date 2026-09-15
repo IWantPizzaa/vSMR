@@ -23,6 +23,8 @@
 
 ### Changed
 
+- Replaced the bundled AVISO set with the supplied converter's 192 airport maps, including LFPO Real colors and detailed LFPG configuration groups. Removed maps absent from the replacement set and one invalid single-point taxiway line at LFLG.
+
 - Imported the installed Custom LFPG and Custom LFMN profiles, retaining bold callsign fields for LFPG. Slightly thickened bold tag text in the shared renderer and expanded its measured width to preserve spacing and hit areas.
 
 - Placed vSID/CPDLC connection text before its colored indicator and removed close buttons from all Runtime Menu popups; clicking the same rail button again closes them.
@@ -57,6 +59,8 @@
 - Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. Added geometry repairs and reported exclusions for misplaced source records during map conversion.
 
 ### Fixed
+
+- Made active profile selection independent for each ASR. Opening, selecting, saving or closing one ASR no longer applies its profile to other screens; shared configuration reloads preserve each screen's selection.
 
 - Fixed AVISO color edits and pasted colors changing other themes through inherited palette colors.
 

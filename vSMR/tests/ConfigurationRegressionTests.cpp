@@ -140,6 +140,55 @@ namespace
 		Expect(liveConfig.getActiveProfileName() == activeBefore && liveConfig.getProfileCount() == countBefore, "failed profile replacement preserves live state");
 	}
 
+	void TestIndependentProfileSelections()
+	{
+		const auto testRoot = std::filesystem::temp_directory_path() /
+			("vsmr-asr-profiles-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64()));
+		std::filesystem::create_directories(testRoot);
+		const auto path = testRoot / "profiles.json";
+		{
+			std::ofstream output(path);
+			output << R"json([{"name":"Custom LFPG"},{"name":"Default"},{"name":"Local"},{"_vsmr":{"schema_version":1,"last_active_profile":"Custom LFPG"}}])json";
+		}
+		{
+			CConfig pg(path.u8string(), "");
+			CConfig po(path.u8string(), "");
+			const auto before = ReadTextFile(path);
+			pg.setActiveProfile("Custom LFPG");
+			po.setActiveProfile("Default");
+			Expect(pg.getActiveProfileName() == "Custom LFPG" && po.getActiveProfileName() == "Default",
+				"Two ASRs sharing one profiles file keep different selections");
+			Expect(ReadTextFile(path) == before, "Selecting profiles does not write shared configuration metadata");
+			const std::string pgAsrSelection = pg.getActiveProfileName();
+			const std::string poAsrSelection = po.getActiveProfileName();
+			po.setActiveProfile("Local");
+			Expect(pg.getActiveProfileName() == pgAsrSelection, "A second ASR cannot change the first selection");
+			Expect(po.saveConfig() && pg.reload(), "Shared definition edits can be saved and reloaded");
+			Expect(pg.getActiveProfileName() == pgAsrSelection && po.getActiveProfileName() == "Local",
+				"Reloading shared definitions preserves each ASR selection");
+			CConfig reopenedPg(path.u8string(), "");
+			CConfig reopenedPo(path.u8string(), "");
+			reopenedPo.setActiveProfile(poAsrSelection);
+			reopenedPg.setActiveProfile(pgAsrSelection);
+			Expect(reopenedPg.getActiveProfileName() == pgAsrSelection && reopenedPo.getActiveProfileName() == poAsrSelection,
+				"ASRs reopen independently of load order and legacy last-active metadata");
+			for (const char* missing : { "", "Deleted profile" })
+			{
+				reopenedPo.setActiveProfile(missing);
+				Expect(reopenedPo.getActiveProfileName() == "Default", "Missing ASR profiles fall back to Default before Custom LFPG");
+			}
+			rapidjson::Document replacement;
+			replacement.Parse<0>(R"json([{"name":"Default"},{"name":"Custom LFPG"}])json");
+			std::string error;
+			Expect(pg.replaceInMemoryConfig(replacement, pg.getActiveProfileName(), error) &&
+				po.replaceInMemoryConfig(replacement, po.getActiveProfileName(), error),
+				"A shared source replacement accepts each screen's requested profile");
+			Expect(pg.getActiveProfileName() == "Custom LFPG" && po.getActiveProfileName() == "Default",
+				"Source replacement preserves existing selections and falls back only for removed profiles");
+		}
+		std::filesystem::remove_all(testRoot);
+	}
+
 	void TestAviso(const std::filesystem::path& repositoryRoot)
 	{
 		const std::filesystem::path avisoRoot = repositoryRoot / "vSMR" / "data" / "AVISO";
@@ -159,13 +208,14 @@ namespace
 			const auto& document = model.GetDocument();
 			if (!document.HasMember("metadata") || !document["metadata"].HasMember("geometry_source")) continue;
 			const auto& metadata = document["metadata"];
-			const bool hasReal = airport == "LFPG" || airport == "LFML" || airport == "LFMN";
+			const bool hasReal = airport == "LFPG" || airport == "LFPO" || airport == "LFML" || airport == "LFMN";
 			const auto& palettes = metadata["color_palettes"];
+			const bool legacyNames = airport == "LFJD" || airport == "LFJE" || airport == "LFQI";
 			Expect(palettes.Size() == (hasReal ? 3U : 2U) &&
-				std::string(palettes[rapidjson::SizeType(0)].GetString()) == "dark" &&
-				std::string(palettes[1].GetString()) == "light" &&
+				std::string(palettes[rapidjson::SizeType(0)].GetString()) == (legacyNames ? "night" : "dark") &&
+				std::string(palettes[1].GetString()) == (legacyNames ? "day" : "light") &&
 				(!hasReal || std::string(palettes[2].GetString()) == "real"),
-				"Generated AVISO offers Real only for LFPG, LFML and LFMN: " + airport);
+				"Imported AVISO preserves supplied palettes, including Orly Real and legacy aliases: " + airport);
 			Expect(metadata["background_colors"].HasMember("real") == hasReal,
 				"Background palettes agree with available palettes: " + airport);
 			for (const auto& feature : document["features"].GetArray())
@@ -194,7 +244,7 @@ namespace
 						if (id == "ground-layout-west") ++westArrows;
 					}
 				}
-				Expect(eastArrows == 3 && westArrows == 3, "LFPG preserves three original arrow colors for each direction");
+				Expect(eastArrows == 89 && westArrows == 97, "LFPG preserves the supplied detailed East and West configuration groups");
 				bool grassPaletteFound = false;
 				for (auto style = document["styles"].MemberBegin(); style != document["styles"].MemberEnd(); ++style)
 				{
@@ -419,6 +469,7 @@ std::vector<std::string> RunConfigurationRegressionTests(
 {
 	Failures.clear();
 	TestProfiles(repositoryRoot);
+	TestIndependentProfileSelections();
 	TestAviso(repositoryRoot);
 	TestUnicodeResourcePaths(repositoryRoot);
 	return Failures;
