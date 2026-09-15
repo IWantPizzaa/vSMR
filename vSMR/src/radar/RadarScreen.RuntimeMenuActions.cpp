@@ -325,7 +325,7 @@ bool CSMRRadar::HandleRuntimeListClick(const char* id)
 			{
 				GetPlugIn()->DisplayUserMessage(
 					"vSMR", "Profile",
-					"The profile could not be saved. vSMR reloaded the current file.",
+					"The profile could not be selected. Check the profiles configuration.",
 					true, true, false, false, false);
 			}
 		}

@@ -640,42 +640,16 @@ bool CSMRRadar::SetProfilesConfigPath(
 		return false;
 	}
 
-	CConfig* primaryConfig = nullptr;
-	for (const Replacement& replacement : replacements)
-	{
-		if (replacement.radar == this)
-		{
-			primaryConfig = replacement.config.get();
-			break;
-		}
-	}
-	if (primaryConfig == nullptr)
-		return false;
-
-	const std::vector<std::string> profileNames = primaryConfig->getAllProfiles();
-	std::string activeProfile = primaryConfig->getLastActiveProfileName();
-	if (activeProfile.empty() ||
-		std::find_if(profileNames.begin(), profileNames.end(), [&](const std::string& candidate) {
-			return _stricmp(candidate.c_str(), activeProfile.c_str()) == 0;
-		}) == profileNames.end())
-	{
-		const std::string currentProfile = CurrentConfig != nullptr
-			? CurrentConfig->getActiveProfileName()
-			: std::string();
-		const auto currentMatch = std::find_if(profileNames.begin(), profileNames.end(), [&](const std::string& candidate) {
-			return _stricmp(candidate.c_str(), currentProfile.c_str()) == 0;
-		});
-		activeProfile = currentMatch != profileNames.end()
-			? *currentMatch
-			: profileNames.front();
-	}
-
 	for (Replacement& replacement : replacements)
 	{
 		CSMRRadar* radar = replacement.radar;
+		const std::string activeProfile = radar->GetActiveProfileNameForEditor();
 		radar->ConfigPath = normalizedPath;
 		radar->CurrentConfig = std::move(replacement.config);
 		radar->LoadProfile(activeProfile, false);
+		// During ASR load its saved choice has not been restored yet.
+		if (explicitSelection || radar != this)
+			radar->SaveActiveProfileToAsr();
 		radar->InvalidateAirportPositionCache();
 		radar->InvalidateRunwayGeometryCache();
 		radar->RadarViewZoomLevel = -1;
@@ -701,7 +675,6 @@ bool CSMRRadar::SetProfilesConfigPath(
 				publishSessionSelection ? "resource-source" : "runtime");
 		}
 	}
-	RememberSessionActiveProfile(activeProfile);
 	return true;
 }
 
@@ -719,9 +692,6 @@ bool CSMRRadar::ReloadConfig() {
 	}
 	if (activeProfile.empty())
 		activeProfile = "Default";
-	if (CurrentConfig->isItActiveProfile(activeProfile) == 0 && !CurrentConfig->getAllProfiles().empty()) {
-		activeProfile = CurrentConfig->getAllProfiles().front();
-	}
 	// A reload adopts disk as the authority. Recording the outgoing runtime
 	// alerts into the freshly loaded document would give each radar a divergent
 	// in-memory copy carrying the new revision token, allowing a later unrelated

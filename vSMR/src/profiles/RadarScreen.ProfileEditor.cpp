@@ -430,73 +430,19 @@ bool CSMRRadar::SetActiveProfileForEditor(const std::string& name, bool persistT
 		return false;
 	UNREFERENCED_PARAMETER(persistToDisk);
 
-	// Immediate profile changes are shared by every radar using this file. Start
-	// from the latest on-disk revision so a stale screen cannot mutate its local
-	// document and then report a profile that was never persisted.
+	// Read current definitions without publishing a selection to other ASRs.
 	if (!ReloadConfig())
 		return false;
-
 	const std::string canonicalName =
 		FindCanonicalProfileNameNoCase(CurrentConfig->getAllProfiles(), name);
 	if (canonicalName.empty())
 		return false;
-
-	// The active profile is session-global for radar screens sharing this source.
-	// Persist it once, then reload every live CConfig from that one authoritative
-	// write.  Saving independently from every screen races their revision tokens.
-	if (RimcasInstance != nullptr)
-		CurrentConfig->setInactiveAlert(RimcasInstance->GetInactiveAlerts());
-	if (!CurrentConfig->setLastActiveProfileName(canonicalName) ||
-		!CurrentConfig->saveConfig())
-	{
-		// saveConfig is fail-closed on revision conflicts. Discard the staged
-		// metadata as well, otherwise this radar would display an unsaved profile.
-		ReloadConfig();
-		return false;
-	}
-
-	bool appliedToAnyRadar = false;
-	for (CSMRRadar* radar : RadarScreensOpened)
-	{
-		if (radar == nullptr || radar->CurrentConfig == nullptr ||
-			!radar->CurrentConfig->sharesConfigFileWith(*CurrentConfig))
-		{
-			continue;
-		}
-
-		if (!radar->ReloadConfig())
-			continue;
-		const std::string radarCanonicalName = FindCanonicalProfileNameNoCase(
-			radar->CurrentConfig->getAllProfiles(),
-			canonicalName);
-		if (radarCanonicalName.empty())
-			continue;
-
-		radar->LoadProfile(radarCanonicalName, false);
-		radar->LoadCustomFont();
-		const std::string activeProfile = radar->CurrentConfig->getActiveProfileName();
-		RememberSessionActiveProfile(activeProfile);
-		radar->SaveDataToAsr("ActiveProfile", "vSMR active profile", activeProfile.c_str());
-		radar->RequestRefresh();
-		if (radar->VsmrControlCenterDialog != nullptr)
-			radar->VsmrControlCenterDialog->SyncFromRadar("profile");
-		appliedToAnyRadar = true;
-	}
-
-	if (!appliedToAnyRadar && CurrentConfig != nullptr)
-	{
-		LoadProfile(canonicalName, false);
-		LoadCustomFont();
-		RememberSessionActiveProfile(CurrentConfig->getActiveProfileName());
-		SaveDataToAsr("ActiveProfile", "vSMR active profile", canonicalName.c_str());
-		RequestRefresh();
-		if (VsmrControlCenterDialog != nullptr)
-			VsmrControlCenterDialog->SyncFromRadar("profile");
-		appliedToAnyRadar = true;
-	}
-
-	if (!appliedToAnyRadar)
-		return false;
+	LoadProfile(canonicalName);
+	LoadCustomFont();
+	SaveActiveProfileToAsr();
+	RequestRefresh();
+	if (VsmrControlCenterDialog != nullptr)
+		VsmrControlCenterDialog->SyncFromRadar("profile");
 	return true;
 }
 

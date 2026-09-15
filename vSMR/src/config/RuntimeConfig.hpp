@@ -136,6 +136,15 @@ public:
 			}
 		}
 
+		// Missing ASR selections fall back to Default, not an unrelated custom profile.
+		for (const auto& profileEntry : profiles)
+		{
+			if (profileNamesEqualNoCase(profileEntry.first, "Default"))
+			{
+				active_profile = profileEntry.second;
+				return;
+			}
+		}
 		if (!profiles.empty())
 			active_profile = profiles.begin()->second;
 	};
