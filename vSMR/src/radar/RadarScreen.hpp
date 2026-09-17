@@ -453,6 +453,9 @@ public:
 	std::string GetSmallTargetIconBoostResolutionPreset() const;
 	bool SetSmallTargetIconBoostResolutionPreset(const std::string& preset, bool persistToDisk);
 	double GetSmallTargetIconBoostResolutionScale() const;
+	double GetDisplayScale() const;
+	void RefreshDisplayScale();
+	double AppliedDisplayScale = 0.0;
 	std::vector<std::string> GetAvailableTagFonts() const;
 	int GetActiveLabelFontSize() const;
 	bool SetActiveLabelFontSize(int size, bool persistToDisk);

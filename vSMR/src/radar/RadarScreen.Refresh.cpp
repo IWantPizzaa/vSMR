@@ -1113,6 +1113,7 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 		return false;
 	}
 
+	RefreshDisplayScale();
 	EnsureAvisoWheelHooks(this);
 	// Refresh pipeline is phase-driven by EuroScope. Cursor setup stays on the UI thread.
 	if (initCursor)

@@ -164,6 +164,7 @@ namespace VsmrRadarTypes
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
+		double displayScale = 1.0;
 		double displayMinLongitude = 0.0;
 		double displayMinLatitude = 0.0;
 		double displayMaxLongitude = 0.0;

@@ -162,7 +162,7 @@ namespace
 
 	bool DrawTrails(Gdiplus::Graphics& graphics, const VsmrScene::Target& target,
 		const VsmrTargetRendering::ProjectedTarget& projected,
-		BoundsBuilder& bounds, VsmrRendering::BrushCache& brushes)
+		BoundsBuilder& bounds, VsmrRendering::BrushCache& brushes, double symbolScale)
 	{
 		bool drawn = false;
 		if (target.style.icon == VsmrScene::IconStyle::Nova)
@@ -195,8 +195,9 @@ namespace
 			if (target.style.icon == VsmrScene::IconStyle::Nova)
 			{
 				Gdiplus::SolidBrush& brush = brushes.Get(Gdiplus::Color(255, 255, 255, 255));
-				graphics.FillRectangle(&brush, point.x - 1, point.y - 1, 2, 2);
-				bounds.Add(RECT{ point.x - 1, point.y - 1, point.x + 1, point.y + 1 });
+				const int radius = (std::max)(1, static_cast<int>(std::lround(symbolScale)));
+				graphics.FillRectangle(&brush, point.x - radius, point.y - radius, radius * 2, radius * 2);
+				bounds.Add(RECT{ point.x - radius, point.y - radius, point.x + radius, point.y + radius });
 				drawn = true;
 				continue;
 			}
@@ -208,10 +209,10 @@ namespace
 			const BYTE alpha = BlendChannel(newestAlpha, 38, age);
 			if (target.style.icon == VsmrScene::IconStyle::Realistic)
 			{
-				const int diameter = std::clamp(
+				const int diameter = (std::max)(1, static_cast<int>(std::lround(symbolScale * std::clamp(
 					static_cast<int>(std::lround(5.0 - age * 2.0)),
 					2,
-					5);
+					5))));
 				const int radius = diameter / 2;
 				Gdiplus::SolidBrush& brush = brushes.Get(Gdiplus::Color(alpha, red, green, blue));
 				graphics.FillEllipse(&brush, point.x - radius, point.y - radius, diameter, diameter);
@@ -224,12 +225,12 @@ namespace
 				continue;
 			}
 
-			const int diameter = std::clamp(
+			const int diameter = (std::max)(1, static_cast<int>(std::lround(symbolScale * std::clamp(
 				static_cast<int>(std::lround(9.0 - age * 4.0)),
 				4,
-				9);
+				9))));
 			const int radius = diameter / 2;
-			Gdiplus::Pen pen(Gdiplus::Color(alpha, red, green, blue), 1.5f);
+			Gdiplus::Pen pen(Gdiplus::Color(alpha, red, green, blue), static_cast<Gdiplus::REAL>(1.5 * symbolScale));
 			graphics.DrawEllipse(&pen, point.x - radius, point.y - radius, diameter, diameter);
 			bounds.Add(RECT{
 				point.x - radius - 1,
@@ -303,7 +304,7 @@ namespace VsmrTargetRendering
 			m_Settings.presentation.symbolScale,
 			1.0,
 			0.25,
-			5.0);
+			10.0);
 		m_Settings.pixelsPerMeter = ClampFinite(
 			m_Settings.pixelsPerMeter,
 			0.0,
@@ -351,7 +352,7 @@ namespace VsmrTargetRendering
 		BoundsBuilder visualBounds;
 		if (options.drawTrail)
 		{
-			result.trailDrawn = DrawTrails(m_Graphics, target, m_Projected, visualBounds, m_Brushes);
+			result.trailDrawn = DrawTrails(m_Graphics, target, m_Projected, visualBounds, m_Brushes, symbolScale);
 		}
 
 		if (options.drawPrimaryReturn &&
@@ -367,7 +368,7 @@ namespace VsmrTargetRendering
 		if (target.style.icon == VsmrScene::IconStyle::Nova)
 		{
 			trace("nova");
-			Gdiplus::Pen symbolPen(Gdiplus::Color(255, 255, 255, 255), 1.0f);
+			Gdiplus::Pen symbolPen(Gdiplus::Color(255, 255, 255, 255), static_cast<Gdiplus::REAL>((std::max)(1.0, symbolScale)));
 			const Gdiplus::REAL scale = static_cast<Gdiplus::REAL>(symbolScale);
 			if (target.transponderModeC)
 			{
@@ -411,8 +412,8 @@ namespace VsmrTargetRendering
 			if (sourceBitmapValid)
 			{
 				trace("realistic");
-				double drawWidth = 40.0;
-				double drawHeight = 40.0;
+				double drawWidth = 40.0 * symbolScale;
+				double drawHeight = 40.0 * symbolScale;
 				if (m_Settings.pixelsPerMeter > 0.0)
 				{
 					drawWidth = target.style.wingspanMeters * m_Settings.pixelsPerMeter * symbolScale;
@@ -543,19 +544,19 @@ namespace VsmrTargetRendering
 			{
 				const double lengthPixels = ClampFinite(
 					m_Settings.pixelsPerMeter * 20.0 * symbolScale,
-					1.0,
-					0.5,
-					220.0);
+					1.0 * symbolScale,
+					0.5 * symbolScale,
+					220.0 * symbolScale);
 				const double halfWidthPixels = ClampFinite(
 					m_Settings.pixelsPerMeter * 12.0 * symbolScale,
-					0.5,
-					0.35,
-					110.0);
+					0.5 * symbolScale,
+					0.35 * symbolScale,
+					110.0 * symbolScale);
 
 				if (target.style.icon == VsmrScene::IconStyle::Diamond)
 				{
 					trace("diamond");
-					const double diagonalPixels = std::clamp(lengthPixels + halfWidthPixels, 10.0, 220.0);
+					const double diagonalPixels = std::clamp(lengthPixels + halfWidthPixels, 10.0 * symbolScale, 220.0 * symbolScale);
 					const double sidePixels = diagonalPixels / std::sqrt(2.0);
 					const double halfSide = sidePixels / 2.0;
 					const Gdiplus::REAL left = static_cast<Gdiplus::REAL>(result.center.x - halfSide);
@@ -563,7 +564,7 @@ namespace VsmrTargetRendering
 					const Gdiplus::REAL side = static_cast<Gdiplus::REAL>(sidePixels);
 					const Gdiplus::REAL radius = std::clamp(
 						static_cast<Gdiplus::REAL>(sidePixels * 0.22),
-						2.0f,
+						static_cast<Gdiplus::REAL>(2.0 * symbolScale),
 						static_cast<Gdiplus::REAL>(sidePixels / 2.0));
 					const Gdiplus::REAL diameter = radius * 2.0f;
 
@@ -619,7 +620,7 @@ namespace VsmrTargetRendering
 
 		visualBounds.Add(result.symbolBounds);
 		result.visualBounds = visualBounds.Valid() ? visualBounds.Get() : result.symbolBounds;
-		const int hitSize = (std::max)((std::max)(1, options.minimumHitSize), nominalIconSize);
+		const int hitSize = (std::max)((std::max)(1, static_cast<int>(std::lround(options.minimumHitSize * symbolScale))), nominalIconSize);
 		result.hitBounds = CenteredRect(result.center, hitSize, hitSize);
 		result.drawn = true;
 		trace("end");

@@ -111,6 +111,7 @@ namespace VsmrTagRendering
 
 	struct PaintOptions
 	{
+		double displayScale = 1.0;
 		POINT targetPoint = {};
 		POINT tagCenter = {};
 		Gdiplus::Color background = Gdiplus::Color(255, 0, 0, 0);
