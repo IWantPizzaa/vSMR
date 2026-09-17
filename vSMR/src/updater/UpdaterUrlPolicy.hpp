@@ -18,6 +18,10 @@ namespace vsmr::updater::url_policy
 		const std::wstring& url,
 		ParsedHttpsUrl& result);
 
+	// Initial release assets must belong to this project and the selected tag.
+	[[nodiscard]] bool IsProjectReleaseAssetUrl(const std::wstring& url,
+		const std::wstring& version, const std::wstring& assetName);
+
 	// Resolves the absolute and root-relative redirect forms accepted by the
 	// updater, then applies the same host and transport policy as initial URLs.
 	[[nodiscard]] bool TryResolveAllowedRedirect(
