@@ -10,7 +10,9 @@
 #include "control_center/ControlCenterMessageProtocol.hpp"
 #include "control_center/RuntimeResourceFiles.hpp"
 #include "control_center/WebMessageValidation.hpp"
-#include "datalink/CdmReminderSafety.hpp"
+#include "integrations/CdmBridgeData.hpp"
+#include "integrations/VsidBridgeData.hpp"
+#include "radar/RecentAirports.hpp"
 #include "radar/RadarGeometry.hpp"
 #include "safety/RimcasLogic.hpp"
 #include "scene/TargetRoleLogic.hpp"
@@ -19,9 +21,12 @@
 #include "AvisoRasterPipelineTests.hpp"
 #include "ConfigurationRegressionTests.hpp"
 #include "SharedRenderingTests.hpp"
+#include "AuditRegressionTests.hpp"
+#include "PluginBridgeTests.hpp"
 #include "TagColorRuleTests.hpp"
 #include "UpdaterUrlPolicyTests.hpp"
 #include "tags/TagDefinitionUtils.hpp"
+#include "weather/WeatherStore.hpp"
 
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
@@ -291,8 +296,286 @@ namespace
 		Expect(TryParseClearanceTokenDisplay("clearance()", pending, cleared) && pending.empty() && cleared.empty(), "empty clearance display hides both states");
 	}
 
+	void TestRecentAirports()
+	{
+		std::vector<std::string> history;
+		for (const char* airport : { "LFPG", "LFPO", "LFMN", "LFML", "LFBO", "LFLL" })
+			VsmrRadar::RememberAirport(history, airport);
+		Expect(history == std::vector<std::string>({ "LFLL", "LFBO", "LFML", "LFMN", "LFPO" }),
+			"Airport history keeps only the five most recently opened airports");
+		VsmrRadar::RememberAirport(history, "lfmn");
+		Expect(history == std::vector<std::string>({ "LFMN", "LFLL", "LFBO", "LFML", "LFPO" }),
+			"Reopening an airport moves it to the front without duplicates");
+		const auto before = history;
+		for (const char* airport : { "", "LF", "LF PG", "LF.P" })
+			VsmrRadar::RememberAirport(history, airport);
+		Expect(history == before, "Invalid airport input cannot displace recent airports");
+	}
+
+	void TestVsidBridgeData()
+	{
+		using namespace VsmrParis;
+		Expect(VsmrVsid::SupportsRegionalCommands(1U, 3U) &&
+			!VsmrVsid::SupportsRegionalCommands(1U, 2U), "Regional commands require compatible providers");
+		VsmrVsid::CommandAction removed{};
+		Expect(!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.paris-auto", removed),
+			"Automatic runway control is no longer exposed");
+		for (const auto airport : Airports)
+		{
+			std::map<std::string, bool> rules = {
+				{ "paris_auto", true }, { "paris_manual_config", false },
+				{ "pgeast", false }, { "opposing", false }, { "unrelated", true }
+			};
+			Expect(VsmrVsid::CanSubmitParisCommand(true, false, true, airport),
+				"Manual controls do not require runway telemetry");
+			if (IsRegional(airport))
+			{
+				for (std::size_t index = 0; index < RegionalRules.size(); ++index)
+				{
+					const auto rule = RegionalRules[index];
+					const auto& action = VsmrVsid::RegionalActions[index];
+					VsmrVsid::CommandAction parsed{};
+					Expect(VsmrVsid::TryParseRuntimeActionId(action.objectId, parsed) &&
+						VsmrVsid::BuildCommand(parsed, airport) == ".vsid paris " + std::string(airport) + " " + std::string(rule),
+						"Regional popup builds the selected command");
+					Expect(Select(rules, airport, rule), "Manual regional choice is accepted");
+					const auto before = rules;
+					const auto state = Resolve(rules, airport);
+					Expect(RegionalRule(state) == rule && rules == before && rules["unrelated"] &&
+						rules["pgeast"] == (rule.front() == 'e'),
+						"Manual state is read without mutation, even with obsolete automatic flags enabled");
+					for (const auto candidate : RegionalRules)
+						Expect(rules[std::string(candidate)] == (candidate == rule), "Regional choices remain exclusive");
+					Expect(Parse(Serialize(airport, state)).at(std::string(airport)) == state,
+						"Published regional state roundtrips through the bridge");
+					Select(rules, airport, rule);
+					Expect(rules == before, "Repeating a manual selection does not reprocess unchanged rules");
+				}
+				const auto before = rules;
+				Expect(!Select(rules, airport, "linked") && rules == before,
+					"Regional link-only commands cannot infer a runway direction");
+				rules["wlpg"] = true;
+				rules["eipg"] = true;
+				const auto ambiguous = rules;
+				Expect(RegionalRule(Resolve(rules, airport)).empty() && rules == ambiguous,
+					"Conflicting regional flags are reported unknown without correcting them automatically");
+			}
+			else
+			{
+				for (const auto linked : { true, false })
+				{
+					const auto choice = linked ? "linked" : "unlinked";
+					Expect(Select(rules, airport, choice) && rules["linked"] == linked &&
+						rules["unlinked"] != linked && rules["opposing"] != linked,
+						"PG and PO manual choices update their SID rule explicitly");
+					const auto before = rules;
+					const auto state = Resolve(rules, airport);
+					Expect(state.linked == linked && rules == before &&
+						Parse(Serialize(airport, state)).at(std::string(airport)) == state,
+						"Link state is published without automatic changes");
+				}
+				const auto before = rules;
+				Expect(!Select(rules, airport, "wlpg") && rules == before, "Regional rules cannot change PG or PO");
+			}
+			const auto before = rules;
+			Expect(!Select(rules, airport, "auto") && rules == before, "Removed automatic command has no effect");
+		}
+		Expect(IsControlRule("PARIS_AUTO") && IsControlRule("PARIS_MANUAL_CONFIG") &&
+			IsControlRule("LINKED") && IsControlRule("UNLINKED") && !IsControlRule("WLPG"),
+			"Obsolete mode metadata remains excluded from SID filtering for old configuration files");
+		Expect(!VsmrVsid::CanSubmitParisCommand(false, false, true, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, true, true, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, false, false, "LFPG") &&
+			!VsmrVsid::CanSubmitParisCommand(true, false, true, "LFLL"),
+			"Manual controls require an available provider and supported airport");
+		for (const auto invalid : { "LFPG=WLA", "LFPG=WXA;", "LFXX=WLA;", "LFPG=WLA;LFPG=EUM;", "LFPG=WLA;garbage" })
+			Expect(Parse(invalid).empty(), "Paris bridge rejects malformed or duplicate state records");
+		Expect(Parse(std::string(63, 'A')).empty(), "Paris bridge enforces its bounded snapshot size");
+		const auto modes = VsmrVsid::ParseAutomaticModes("LFPG=1;LFPO=0;");
+		Expect(modes.size() == 2 && modes.at("LFPG") && !modes.at("LFPO"),
+			"vSID automatic mode preserves independent authoritative airport states");
+		for (const auto invalid : { "LFPG=1", "LFPG=2;", "lfpg=1;", "LFPG=1;LFPG=0;", "LFPG=1;garbage" })
+			Expect(VsmrVsid::ParseAutomaticModes(invalid).empty(), "Invalid vSID automatic snapshots become unknown");
+		Expect(VsmrVsid::ParseAutomaticModes(std::string(4102, 'A')).empty(),
+			"vSID automatic snapshots enforce a fixed size limit");
+		Expect(
+			VsmrVsid::NormalizeFieldValue("  LAM1X \t") == "LAM1X",
+			"vSID bridge values trim protocol whitespace");
+		Expect(
+			VsmrVsid::NormalizeFieldValue(std::string(VsmrVsid::MaximumFieldBytes + 1U, 'A')).empty(),
+			"vSID bridge values enforce the provider field limit");
+		const char embeddedNull[] = { 'A', '5', '0', '\0', 'X' };
+		Expect(
+			VsmrVsid::NormalizeFieldValue(
+				std::string_view(embeddedNull, sizeof(embeddedNull))).empty(),
+			"vSID bridge values reject embedded nulls");
+
+		VsmrVsid::AircraftData data;
+		data.sid = "LAM1X";
+		data.runway = "26R";
+		data.clearedFlightLevel = "A50";
+		Expect(
+			VsmrVsid::HasPublishedAircraftData(data),
+			"published vSID fields identify an active aircraft");
+		Expect(
+			!VsmrVsid::HasPublishedAircraftData(VsmrVsid::AircraftData()),
+			"empty bridge records do not inflate the active aircraft count");
+		std::map<std::string, std::string> tokens;
+		VsmrVsid::AddTagTokens(tokens, &data);
+		Expect(
+			tokens["vsid_sid"] == "LAM1X" &&
+			tokens["vsid_rwy"] == "26R" &&
+			tokens["vsid_cfl"] == "A50",
+			"vSID bridge data populates the three public tag tokens");
+		VsmrVsid::AddTagTokens(tokens, nullptr);
+		Expect(
+			tokens["vsid_sid"].empty() &&
+			tokens["vsid_rwy"].empty() &&
+			tokens["vsid_cfl"].empty(),
+			"missing vSID bridge data leaves stable empty tag tokens");
+
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::AutomaticModeToggle,
+				" lfpg ") == ".vsid auto LFPG",
+			"vSID airport actions normalize a valid ICAO");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::AutomaticModeToggle,
+				"LF PG").empty(),
+			"vSID airport actions reject embedded whitespace");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgGroundCrossing,
+				"LFPG&reload").empty(),
+			"vSID airport actions reject command metacharacters");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::Synchronize,
+				"") == ".vsid sync",
+			"vSID global actions do not require an airport");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgMinimumTaxiing,
+				"LFPG") == ".vsid paris LFPG linked" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgGroundCrossing,
+				"LFPG") == ".vsid paris LFPG unlinked" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgGroundCrossing,
+				"LFPO").empty(),
+			"Legacy LFPG actions set explicit states");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgLinked,
+				"LFPG") == ".vsid paris LFPG linked" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgUnlinked,
+				"LFPG") == ".vsid paris LFPG unlinked" &&
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::LfpgLinked,
+				"LFPO") == ".vsid paris LFPO linked",
+			"Link controls set explicit states at LFPG and LFPO");
+		Expect(
+			VsmrVsid::BuildCommand(
+				VsmrVsid::CommandAction::ReloadConfiguration,
+				"") == ".vsid reload",
+			"vSID config reload builds only the documented fixed command");
+
+		VsmrVsid::CommandAction action{};
+		Expect(
+			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lfpg-ground-crossing", action) &&
+			action == VsmrVsid::CommandAction::LfpgGroundCrossing,
+			"vSID Runtime Menu actions map to a fixed allowlist");
+		Expect(
+			VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lfpg-unlinked", action) &&
+			action == VsmrVsid::CommandAction::LfpgUnlinked,
+			"vSID Runtime Menu maps the LFPG link-state actions");
+		Expect(
+			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.reload-ese", action) &&
+			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.lvp", action) &&
+			!VsmrVsid::TryParseRuntimeActionId("runtime.vsid.raw-command", action),
+			"removed and unknown vSID actions are not exposed");
+	}
+
+	void TestCdmBridgeData()
+	{
+		Expect(
+			VsmrCdm::FormatTimeToken(0) == "0000" &&
+			VsmrCdm::FormatTimeToken(23 * 60 + 59) == "2359" &&
+			VsmrCdm::FormatTimeToken(-1).empty() &&
+			VsmrCdm::FormatTimeToken(24 * 60).empty(),
+			"CDM bridge times use validated four-digit UTC text");
+		Expect(
+			VsmrCdm::NormalizeStringField("  REMOTE  ") == "REMOTE",
+			"CDM bridge strings trim protocol whitespace");
+		const char invalidText[] = { 'A', '\0', 'B' };
+		Expect(
+			VsmrCdm::NormalizeStringField(
+				std::string_view(invalidText, sizeof(invalidText))).empty(),
+			"CDM bridge strings reject embedded nulls");
+
+		VsmrCdm::AircraftData data;
+		data.tobt = 7 * 60 + 5;
+		data.tsat = 7 * 60 + 10;
+		data.ttot = 7 * 60 + 20;
+		data.ctot = 7 * 60 + 25;
+		data.tsac = 7 * 60 + 10;
+		data.asrt = 7 * 60 + 2;
+		data.asat = 7 * 60 + 11;
+		data.deice = "REMOTE";
+		data.tobtSetBy = "PILOT";
+		data.flowRestriction = "ATFCM";
+		data.ecfmpRestriction = "EDYY01";
+		data.manualCtot = true;
+		Expect(
+			VsmrCdm::HasPublishedAircraftData(data),
+			"published CDM fields identify an active bridge aircraft");
+		Expect(
+			VsmrCdm::IsReadyStartup(&data) && !VsmrCdm::IsReadyStartup(nullptr),
+			"CDM Ready Start-up follows the published ASRT state");
+		Expect(
+			std::string(VsmrCdm::PluginName) == "CDM Plugin" &&
+			VsmrCdm::ReadyStartupTagItemCode == 12 &&
+			VsmrCdm::ToggleReadyStartupFunctionId == 106,
+			"Ready Start-up dispatch matches CDM's registered tag function contract");
+
+		std::map<std::string, std::string> tokens;
+		VsmrCdm::AddTagTokens(tokens, &data);
+		Expect(
+			tokens["ready_startup"] == "RDY" &&
+			tokens["tobt"] == "0705" &&
+			tokens["tsat"] == "0710" &&
+			tokens["ttot"] == "0720" &&
+			tokens["ctot"] == "0725" &&
+			tokens["tsac"] == "0710" &&
+			tokens["asrt"] == "0702" &&
+			tokens["asat"] == "0711" &&
+			tokens.find("cdm_deice") == tokens.end() &&
+			tokens.find("cdm_manual_ctot") == tokens.end(),
+			"selected CDM bridge fields use concise public tag tokens");
+		VsmrCdm::AddTagTokens(tokens, nullptr);
+		Expect(
+			tokens["ready_startup"] == "RDY" &&
+			tokens["tobt"].empty() &&
+			tokens.find("cdm_deice") == tokens.end(),
+			"missing CDM bridge data keeps the red Ready Start-up indicator visible");
+	}
+
 	void TestRimcasRules()
 	{
+		const VsmrRimcasLogic::RunwayMonitoring departureOnly =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(false, true, false, false);
+		Expect(!departureOnly.arrivals && departureOnly.departures,
+			"RIMCAS derives departure monitoring from either selected runway end");
+		const VsmrRimcasLogic::RunwayMonitoring mixedUse =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(true, false, false, true);
+		Expect(mixedUse.arrivals && mixedUse.departures,
+			"RIMCAS combines selected arrival and departure runway ends");
+		const VsmrRimcasLogic::RunwayMonitoring inactive =
+			VsmrRimcasLogic::ResolveSelectedRunwayMonitoring(false, false, false, false);
+		Expect(!inactive.arrivals && !inactive.departures,
+			"RIMCAS leaves an unselected runway pair inactive");
 		Expect(VsmrRimcasLogic::IsRunwayOccupancyMonitored(true, false), "RIMCAS monitors arrival-only runway");
 		Expect(VsmrRimcasLogic::IsRunwayOccupancyMonitored(false, true), "RIMCAS monitors departure-only runway");
 		Expect(!VsmrRimcasLogic::IsRunwayOccupancyMonitored(false, false), "RIMCAS ignores disabled runway");
@@ -536,15 +819,17 @@ namespace
 	{
 		const std::filesystem::path webRoot =
 			repositoryRoot / "vSMR" / "src" / "control_center" / "web";
-		const std::array<const char*, 11> sources = {
+		const std::array<const char*, 13> sources = {
 			"app-model.js",
 			"app-workflow.js",
 			"app-runtime.js",
 			"app-profile-colors.js",
 			"app-profile-editor.js",
 			"app-aviso-editor.js",
+			"app-aviso-clipboard.js",
 			"app-settings.js",
 			"app-persistence.js",
+			"app-interaction-help.js",
 			"app-events.js",
 			"app-actions.js",
 			"app.js"
@@ -661,64 +946,40 @@ namespace
 		}
 	}
 
-	void TestCdmReminderSafety()
+	void TestWeatherParsing()
 	{
-		using VsmrCdmReminderSafety::EligibilitySnapshot;
-		EligibilitySnapshot eligible;
-		eligible.activeAirportResolved = true;
-		eligible.originMatchesActiveAirport = true;
-		eligible.flightPlanNotStarted = true;
-		eligible.simulatedFlightPlan = false;
-		eligible.radarTargetValid = true;
-		eligible.radarPositionValid = true;
-		eligible.noGroundStatus = true;
-		eligible.positionAgeSeconds = 1;
-		eligible.groundSpeedKnots = 2;
-		eligible.verticalSpeedFeetPerMinute = 0;
-		eligible.airportDistanceNauticalMiles = 1.5;
+		VsmrWeather::Snapshot weather;
 		Expect(
-			VsmrCdmReminderSafety::IsEligible(eligible),
-			"CDM reminder accepts a fresh stationary departure at the active airport");
+			VsmrWeather::ParseReport(
+				"lfpg",
+				"METAR LFPG 051200Z 22012G20KT 180V260 4000 -RA BKN012 OVC030 18/12 Q1009=",
+				weather,
+				1777982400),
+			"METAR parser accepts a complete operational report");
+		Expect(
+			weather.icao == "LFPG" && weather.hasVisibility &&
+			weather.visibilityMeters == 4000 && !weather.visibilityCavok,
+			"METAR parser exposes structured visibility");
+		Expect(
+			weather.hasTemperature && weather.temperatureCelsius == 18 &&
+			weather.hasDewPoint && weather.dewPointCelsius == 12,
+			"METAR parser exposes temperature and dew point");
+		Expect(
+			weather.cloudSummary == "BKN012 OVC030",
+			"METAR parser exposes a bounded compact cloud summary");
 
-		auto expectRejected = [&](const EligibilitySnapshot& snapshot, const std::string& reason)
-		{
-			Expect(
-				!VsmrCdmReminderSafety::IsEligible(snapshot),
-				"CDM reminder rejects " + reason);
-		};
-
-		EligibilitySnapshot changed = eligible;
-		changed.originMatchesActiveAirport = false;
-		expectRejected(changed, "a departure from another airport");
-		changed = eligible;
-		changed.flightPlanNotStarted = false;
-		expectRejected(changed, "an already-started flight plan");
-		changed = eligible;
-		changed.simulatedFlightPlan = true;
-		expectRejected(changed, "a simulated or out-of-range flight plan");
-		changed = eligible;
-		changed.radarPositionValid = false;
-		expectRejected(changed, "an aircraft without a correlated live position");
-		changed = eligible;
-		changed.positionAgeSeconds =
-			VsmrCdmReminderSafety::MaximumPositionAgeSeconds + 1;
-		expectRejected(changed, "a stale radar position");
-		changed = eligible;
-		changed.groundSpeedKnots =
-			VsmrCdmReminderSafety::MaximumGroundSpeedKnots + 1;
-		expectRejected(changed, "an aircraft moving too fast for safe ground classification");
-		changed = eligible;
-		changed.verticalSpeedFeetPerMinute =
-			VsmrCdmReminderSafety::MaximumAbsoluteVerticalSpeedFeetPerMinute + 1;
-		expectRejected(changed, "an aircraft with an airborne vertical trend");
-		changed = eligible;
-		changed.airportDistanceNauticalMiles =
-			VsmrCdmReminderSafety::MaximumAirportDistanceNauticalMiles + 0.1;
-		expectRejected(changed, "an aircraft outside the active-airport geofence");
-		changed = eligible;
-		changed.noGroundStatus = false;
-		expectRejected(changed, "an aircraft whose operational status no longer needs a reminder");
+		Expect(
+			VsmrWeather::ParseReport(
+				"LFMN",
+				"LFMN 051230Z VRB03KT CAVOK M02/M05 Q1021",
+				weather,
+				1777984200) &&
+			weather.visibilityCavok && weather.visibilityMeters == 10000 &&
+			weather.temperatureCelsius == -2 && weather.dewPointCelsius == -5,
+			"METAR parser handles CAVOK and negative temperatures");
 	}
+
+
 
 	void TestSharedRenderingProjectIntegration(const std::filesystem::path& repositoryRoot)
 	{
@@ -827,9 +1088,12 @@ int wmain(int argc, wchar_t** argv)
 	TestJsonInputLimitBoundaries();
 	TestHoldingPointRemarks();
 	TestTagTokens();
+	TestVsidBridgeData();
+	TestRecentAirports();
+	TestCdmBridgeData();
 	TestRimcasRules();
 	TestTargetRoleThresholds();
-	TestCdmReminderSafety();
+	TestWeatherParsing();
 	TestRuntimeReleaseLifecycle();
 	for (const std::string& failure : RunAvisoRasterPipelineTests())
 		Expect(false, failure);
@@ -838,6 +1102,10 @@ int wmain(int argc, wchar_t** argv)
 	for (const std::string& failure : RunTagColorRuleTests())
 		Expect(false, failure);
 	for (const std::string& failure : RunUpdaterUrlPolicyTests())
+		Expect(false, failure);
+	for (const auto& failure : RunAuditRegressionTests())
+		Expect(false, failure);
+	for (const std::string& failure : RunPluginBridgeTests())
 		Expect(false, failure);
 	TestGeometry();
 	TestWebMessageValidation();

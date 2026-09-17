@@ -6,6 +6,7 @@
 #include "aviso/AvisoRasterBlitter.hpp"
 #include "rendering/TagRenderer.hpp"
 #include "rendering/TargetSymbolRenderer.hpp"
+#include "rendering/DisplayScale.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -73,6 +74,33 @@ namespace
 		HBITMAP bitmap_ = nullptr;
 		std::uint32_t* pixels_ = nullptr;
 	};
+
+	void TestResolutionScaling(std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap bitmap(160, 100, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&bitmap);
+		for (const char* preset : { "1080p", "2k", "4k" })
+		{
+			const double scale = VsmrRendering::ResolutionScale(preset);
+			Gdiplus::Font font(L"Arial", static_cast<Gdiplus::REAL>(10 * scale), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+			VsmrTagRendering::FontContext fonts(graphics, &font);
+			// Tag text and its mouse bounds scale without transforming the UI canvas.
+			VsmrTagRendering::Layout layout;
+			layout.width = fonts.Measure("AFR123").Width;
+			layout.height = fonts.LineHeight();
+			layout.lines.emplace_back();
+			layout.lines.back().width = layout.width;
+			VsmrTagRendering::PaintOptions options;
+			options.displayScale = scale;
+			options.tagCenter = {80, 50};
+			const CRect bounds = VsmrTagRendering::CalculateBounds(fonts, layout, options);
+			Check(bounds.Width() == layout.width + 2 * VsmrRendering::ScalePixels(1, scale),
+				"tag bounds include scaled padding around scaled text", failures);
+			Gdiplus::Matrix transform;
+			graphics.GetTransform(&transform);
+			Check(transform.IsIdentity(), "aircraft text scaling leaves the UI canvas unchanged", failures);
+		}
+	}
 
 	void TestAvisoRasterBlending(std::vector<std::string>& failures)
 	{
@@ -210,6 +238,42 @@ namespace
 			failures);
 	}
 
+	void TestTagBackgroundFitsLines(std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap canvas(100, 80, PixelFormat32bppARGB);
+		Gdiplus::Graphics graphics(&canvas);
+		Gdiplus::Font font(L"Arial", 12.0f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+		VsmrTagRendering::FontContext fonts(graphics, &font, &font, 3, 12);
+		VsmrTagRendering::Layout layout;
+		layout.width = 60; layout.height = 24;
+		layout.lines.resize(2);
+		layout.lines[0].width = 60; layout.lines[1].width = 20;
+		VsmrTagRendering::PaintOptions options;
+		options.tagCenter = { 50, 40 };
+		options.drawLeader = false;
+		options.roundedCorners = false;
+		options.background = Gdiplus::Color(128, 255, 0, 0);
+		auto pixel = [&](int x, int y) {
+			Gdiplus::Color color; canvas.GetPixel(x, y, &color); return color.GetValue();
+		};
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		VsmrTagRendering::Paint(graphics, fonts, layout, options);
+		const auto full = pixel(70, 46);
+		Check(full != Gdiplus::Color(255, 0, 0, 0).GetValue(), "Default tag background covers its rectangular bounds", failures);
+		options.fitBackgroundToText = true;
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		VsmrTagRendering::Paint(graphics, fonts, layout, options);
+		Check(pixel(70, 34) == full && pixel(25, 46) == full,
+			"Fitted line backgrounds preserve width and alpha without overlapping fills", failures);
+		Check(pixel(70, 46) == Gdiplus::Color(255, 0, 0, 0).GetValue(),
+			"Short tag lines leave the unused width transparent", failures);
+		options.centerLines = true;
+		graphics.Clear(Gdiplus::Color(255, 0, 0, 0));
+		VsmrTagRendering::Paint(graphics, fonts, layout, options);
+		Check(pixel(50, 46) == full && pixel(25, 46) == Gdiplus::Color(255, 0, 0, 0).GetValue(),
+			"Inset fitted backgrounds follow centered line placement", failures);
+	}
+
 	VsmrScene::Target MakeTarget(VsmrScene::IconStyle icon)
 	{
 		VsmrScene::Target target;
@@ -221,6 +285,39 @@ namespace
 		return target;
 	}
 
+	void TestTargetResolutionScaling(Gdiplus::Graphics& graphics, std::vector<std::string>& failures)
+	{
+		Gdiplus::Bitmap source(8, 8, PixelFormat32bppARGB);
+		for (const auto icon : { VsmrScene::IconStyle::Nova, VsmrScene::IconStyle::Diamond,
+			VsmrScene::IconStyle::Triangle, VsmrScene::IconStyle::Realistic })
+		{
+			auto target = MakeTarget(icon);
+			target.transponderModeC = true;
+			target.style.lengthMeters = 40.0;
+			target.style.wingspanMeters = 36.0;
+			auto draw = [&](double scale)
+			{
+				VsmrTargetRendering::FrameSettings settings;
+				settings.presentation.icon = icon;
+				settings.presentation.symbolScale = scale;
+				settings.pixelsPerMeter = 1.0;
+				settings.iconCache.getSourceBitmap = [&](const std::string&) { return &source; };
+				VsmrTargetRendering::Frame frame(graphics, std::move(settings));
+				return frame.DrawTarget(target, [](const VsmrScene::GeoPoint& point) -> POINT {
+					return {48, point.latitude > 48.0 ? 20 : 36};
+				});
+			};
+			const auto baseline = draw(1.0);
+			const auto scaled = draw(2.0);
+			Check(scaled.drawn && scaled.center.x == baseline.center.x && scaled.center.y == baseline.center.y,
+				"resolution scaling preserves the geographic aircraft anchor for every icon style", failures);
+			Check(Width(scaled.symbolBounds) > Width(baseline.symbolBounds) &&
+				Height(scaled.symbolBounds) > Height(baseline.symbolBounds) &&
+				Width(scaled.hitBounds) >= Width(baseline.hitBounds),
+				"every aircraft icon style and its hit bounds grow with resolution", failures);
+		}
+	}
+
 	void TestCollapsedProjectionArrow(
 		Gdiplus::Graphics& graphics,
 		std::vector<std::string>& failures)
@@ -228,20 +325,22 @@ namespace
 		VsmrTargetRendering::FrameSettings settings;
 		settings.presentation.icon = VsmrScene::IconStyle::Triangle;
 		settings.pixelsPerMeter = 0.0;
-		settings.projectPoint = [](const VsmrScene::GeoPoint&) -> POINT
+		const auto settingsProjectPoint = [](const VsmrScene::GeoPoint&) -> POINT
 		{
 			return { 32, 32 };
 		};
-		settings.pointVisible = [](const POINT&, int)
+
+		const auto settingsPointVisible = [](const POINT&, int)
 		{
 			return true;
 		};
+
 
 		const VsmrScene::Target target = MakeTarget(VsmrScene::IconStyle::Triangle);
 		VsmrTargetRendering::DrawResult result;
 		{
 			VsmrTargetRendering::Frame frame(graphics, std::move(settings));
-			result = frame.DrawTarget(target);
+			result = frame.DrawTarget(target, settingsProjectPoint, settingsPointVisible);
 		}
 		Check(result.drawn, "shared target renderer draws a valid target", failures);
 		Check(
@@ -255,15 +354,16 @@ namespace
 
 		VsmrTargetRendering::FrameSettings insetSettings;
 		insetSettings.presentation.icon = VsmrScene::IconStyle::Triangle;
-		insetSettings.projectPoint = [](const VsmrScene::GeoPoint&) -> POINT
+		const auto insetSettingsProjectPoint = [](const VsmrScene::GeoPoint&) -> POINT
 		{
 			return { 32, 32 };
 		};
+
 		VsmrTargetRendering::DrawOptions insetOptions;
 		insetOptions.minimumHitSize = 18;
 		VsmrTargetRendering::Frame insetFrame(graphics, std::move(insetSettings));
 		const VsmrTargetRendering::DrawResult insetResult =
-			insetFrame.DrawTarget(target, insetOptions);
+			insetFrame.DrawTarget(target, insetSettingsProjectPoint, VsmrTargetRendering::AlwaysVisible{}, insetOptions);
 		Check(
 			Width(insetResult.hitBounds) >= 18 && Height(insetResult.hitBounds) >= 18,
 			"viewport-specific target hit areas are preserved",
@@ -281,10 +381,11 @@ namespace
 
 		VsmrTargetRendering::FrameSettings settings;
 		settings.presentation.icon = VsmrScene::IconStyle::Realistic;
-		settings.projectPoint = [](const VsmrScene::GeoPoint&) -> POINT
+		const auto settingsProjectPoint = [](const VsmrScene::GeoPoint&) -> POINT
 		{
 			return { 24, 24 };
 		};
+
 		settings.iconCache.beginFrame = [&]() -> std::uint64_t
 		{
 			return static_cast<std::uint64_t>(++frameCount);
@@ -301,7 +402,7 @@ namespace
 				graphics.GetCompositingQuality() == Gdiplus::CompositingQualityHighSpeed,
 				"realistic target pass enables its fast bitmap mode",
 				failures);
-			frame.DrawTarget(MakeTarget(VsmrScene::IconStyle::Realistic));
+			frame.DrawTarget(MakeTarget(VsmrScene::IconStyle::Realistic), settingsProjectPoint);
 		}
 		Check(frameCount == 1, "realistic target pass advances the cache frame once", failures);
 		Check(
@@ -396,6 +497,45 @@ namespace
 		options.extendScratchpadHit = true;
 		options.scratchpadAction = 20;
 		const CRect arranged = VsmrTagRendering::CalculateBounds(fonts, layout, options);
+		VsmrScene::TagContent hoverTag;
+		hoverTag.normal = variant;
+		hoverTag.detailed = variant;
+		hoverTag.detailed.lines.push_back(line);
+		hoverTag.detailed.lines.back().elements[0].text = "DETAILED ACTION";
+		VsmrTagRendering::Layout selectedLayout;
+		bool expanded = VsmrTagRendering::SelectHoveredLayout(
+			fonts, hoverTag, options, arranged.CenterPoint(), true, false, false, layout, selectedLayout);
+		Check(expanded && selectedLayout.lines.size() == 2,
+			"hover expands a tag immediately using current normal bounds", failures);
+		const CRect expandedBounds = VsmrTagRendering::CalculateBounds(fonts, selectedLayout, options);
+		const POINT detailOnly = { expandedBounds.left + 1, expandedBounds.top + 1 };
+		Check(!arranged.PtInRect(detailOnly), "hover test reaches the expanded-only area", failures);
+		Check(VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, detailOnly,
+			true, false, expanded, layout, selectedLayout),
+			"expanded fields remain reachable while the pointer stays over the detailed tag", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options,
+			{ expandedBounds.right + 10, expandedBounds.bottom + 10 }, true, false, true, layout, selectedLayout) &&
+			selectedLayout.lines.size() == 1,
+			"leaving the detailed bounds restores the normal layout", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, detailOnly,
+			true, false, false, layout, selectedLayout),
+			"an invisible detailed-only area cannot activate hover", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, arranged.CenterPoint(),
+			false, false, true, layout, selectedLayout),
+			"a covered or inactive viewport collapses its detailed tag", failures);
+		Check(VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, { -100, -100 },
+			false, true, false, layout, selectedLayout), "dragging keeps detailed fields available", failures);
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, options, { -100, -100 },
+			true, false, true, layout, selectedLayout), "release outside the tag clears detailed mode", failures);
+		auto movedOptions = options;
+		movedOptions.tagCenter.x += 500;
+		Check(!VsmrTagRendering::SelectHoveredLayout(fonts, hoverTag, movedOptions, arranged.CenterPoint(),
+			true, false, true, layout, selectedLayout),
+			"moving the tag invalidates hover at its old location", failures);
+		Check(
+			arranged.Height() == layout.height + 2,
+			"tag bounds preserve the complete centered line box",
+			failures);
 		const VsmrTagRendering::PaintResult painted =
 			VsmrTagRendering::Paint(graphics, fonts, layout, options);
 		Check(
@@ -443,10 +583,13 @@ std::vector<std::string> RunSharedRenderingBehaviorTests()
 
 	{
 		TestAvisoRasterBlending(failures);
+		TestResolutionScaling(failures);
+		TestTagBackgroundFitsLines(failures);
 		Gdiplus::Bitmap canvas(96, 72, PixelFormat32bppARGB);
 		Gdiplus::Graphics graphics(&canvas);
 		graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 		TestCollapsedProjectionArrow(graphics, failures);
+		TestTargetResolutionScaling(graphics, failures);
 		TestGraphicsStateRestoration(graphics, failures);
 		TestSharedTagGeometry(graphics, failures);
 	}

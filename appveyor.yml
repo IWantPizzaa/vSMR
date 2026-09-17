@@ -1,11 +1,11 @@
-version: 2.0.0-beta.5.{build}
+version: 2.0.0-beta.6.{build}
 
 branches:
   only:
     - main
     - master
     - dev
-    - /^v?2[.]0[.]0-beta[.]5$/
+    - /^v?2[.]0[.]0-beta[.]6$/
   except:
     - gh-pages
 
@@ -14,7 +14,7 @@ clone_depth: 20
 image: Visual Studio 2022
 
 environment:
-  VSMR_RELEASE_VERSION: 2.0.0-beta.5
+  VSMR_RELEASE_VERSION: 2.0.0-beta.6
 
 configuration: Release
 platform: Win32
@@ -73,11 +73,22 @@ build_script:
       /p:Platform=Win32
       /p:PlatformToolset=v143
       /p:ContinuousIntegrationBuild=true
+      /p:RunCodeAnalysis=true
       /p:VsmrUpdateSignerCertSha256=%VSMR_UPDATE_SIGNER_CERT_SHA256%
       /nodeReuse:false
       /logger:"C:\Program Files\AppVeyor\BuildAgent\Appveyor.MSBuildLogger.dll"
 
 test_script:
+  - cmd: >-
+      msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR\tests\vSMR.Tests.vcxproj"
+      /t:Build /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143
+      /p:VsmrTestsAddressSanitizer=true /nodeReuse:false /verbosity:minimal
+  - cmd: '"%APPVEYOR_BUILD_FOLDER%\vSMR\tests\bin\AddressSanitizer\vSMR.Tests.exe" "%APPVEYOR_BUILD_FOLDER%"'
+  - cmd: >-
+      msbuild "%APPVEYOR_BUILD_FOLDER%\vSMR\tests\vSMR.JsonFuzz.vcxproj"
+      /t:Build /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v143
+      /nodeReuse:false /verbosity:minimal
+  - cmd: '"%APPVEYOR_BUILD_FOLDER%\vSMR\tests\bin\JsonFuzz\vSMR.JsonFuzz.exe" "%APPVEYOR_BUILD_FOLDER%\vSMR\data"'
   - ps: >-
       & "$env:APPVEYOR_BUILD_FOLDER\vSMR\tests\run_tests.ps1" -RepositoryRoot $env:APPVEYOR_BUILD_FOLDER;
       if ($LASTEXITCODE -ne 0) { throw "vSMR regression tests failed with exit code $LASTEXITCODE." };
@@ -124,13 +135,13 @@ after_test:
       }
 
 artifacts:
-  - path: artifacts\vSMR-2.0.0-beta.5.zip
-    name: vSMR-2.0.0-beta.5
-  - path: artifacts\vSMR-2.0.0-beta.5.update.json
-    name: vSMR-2.0.0-beta.5-update-manifest
-  - path: artifacts\vSMR-2.0.0-beta.5-symbols.zip
-    name: vSMR-2.0.0-beta.5-symbols
-  - path: artifacts\vSMR-2.0.0-beta.5-*-validation-only.zip
+  - path: artifacts\vSMR-2.0.0-beta.6.zip
+    name: vSMR-2.0.0-beta.6
+  - path: artifacts\vSMR-2.0.0-beta.6.update.json
+    name: vSMR-2.0.0-beta.6-update-manifest
+  - path: artifacts\vSMR-2.0.0-beta.6-symbols.zip
+    name: vSMR-2.0.0-beta.6-symbols
+  - path: artifacts\vSMR-2.0.0-beta.6-*-validation-only.zip
     name: vSMR-validation-only
-  - path: artifacts\vSMR-2.0.0-beta.5-*-validation-only-symbols.zip
+  - path: artifacts\vSMR-2.0.0-beta.6-*-validation-only-symbols.zip
     name: vSMR-validation-only-symbols

@@ -4,6 +4,7 @@
 
 #include "AvisoRasterPipelineTests.hpp"
 #include "aviso/AvisoRasterPipeline.hpp"
+#include "aviso/AvisoRasterSizing.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -124,7 +125,7 @@ namespace
 		auto result = std::make_unique<Pipeline::Result>();
 		result->requestId = request.requestId;
 		result->groupGeneration = request.groupGeneration;
-		result->useDayPalette = request.useDayPalette;
+		result->colorPalette = request.colorPalette;
 		result->path = request.path;
 		result->rasterWidth = request.rasterWidth;
 		result->rasterHeight = request.rasterHeight;
@@ -187,6 +188,31 @@ namespace
 				coalescedCalls.load(std::memory_order_relaxed) == 1,
 			"AVISO coalescing avoids a duplicate render and records diagnostics",
 			failures);
+
+		Pipeline::Request realPaletteRequest = request;
+		realPaletteRequest.colorPalette = "real";
+		Check(
+			pipeline.Queue(realPaletteRequest, false) == Pipeline::QueueStatus::Queued,
+			"AVISO palette changes cannot reuse a raster from another palette",
+			failures);
+		Check(
+			completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 2; }),
+			"AVISO palette-specific raster completes within the timeout",
+			failures);
+		const auto realResult = pipeline.TakeCompleted();
+		Check(
+			realResult != nullptr && realResult->colorPalette == "real",
+			"AVISO raster results retain their canonical palette",
+			failures);
+		Pipeline::Request scaledRequest = realPaletteRequest;
+		scaledRequest.displayScale = 2.0;
+		Check(pipeline.Queue(scaledRequest, false) == Pipeline::QueueStatus::Queued,
+			"resolution changes rebuild AVISO even when viewport and palette are unchanged", failures);
+		Check(completed.Wait([&]() { return refreshCalls.load(std::memory_order_relaxed) == 3; }),
+			"resolution-specific AVISO raster completes", failures);
+		pipeline.TakeCompleted();
+		Check(pipeline.Queue(scaledRequest, false) == Pipeline::QueueStatus::Coalesced,
+			"unchanged resolution still coalesces duplicate AVISO requests", failures);
 		pipeline.Stop();
 	}
 
@@ -469,6 +495,25 @@ namespace
 std::vector<std::string> RunAvisoRasterPipelineTests()
 {
 	Failures failures;
+	for (const double budget : { 18000000.0, 32000000.0 })
+	{
+		for (const auto size : { std::pair<double, double>{1920, 1080}, {2560, 1440}, {3840, 2160}, {2160, 3840} })
+		{
+			const double overscan = VsmrAviso::NativeResolutionOverscan(size.first, size.second, budget);
+			const double expansion = 1.0 + 2.0 * overscan;
+			Check(overscan >= 0.0 && overscan <= 0.5 &&
+				size.first * expansion <= 6400 && size.second * expansion <= 6400 &&
+				size.first * size.second * expansion * expansion <= budget,
+				"1080p, 2K and 4K AVISO retain native resolution within main/inset budgets", failures);
+			const double margin = VsmrAviso::RasterWorkingMargin(1.0, 1.0, expansion);
+			Check(margin > 0.0 && margin < overscan,
+				"Adaptive overscan leaves a pan margin without repeated cache rebuilds", failures);
+		}
+	}
+	Check(VsmrAviso::NativeResolutionOverscan(16000, 9000, 18000000) == 0.0,
+		"Oversized desktops reserve no extra pixels before hard raster scaling", failures);
+	Check(VsmrAviso::NativeResolutionOverscan(0, 2160, 18000000) == 0.0,
+		"Empty viewports cannot produce invalid overscan", failures);
 	TestCompletionAndCoalescing(failures);
 	TestSupersession(failures);
 	TestInvalidation(failures);

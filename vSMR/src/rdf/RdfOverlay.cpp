@@ -1,4 +1,5 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "shared/JsonDocument.hpp"
 
 #include "rdf/RdfOverlay.hpp"
 
@@ -142,8 +143,9 @@ namespace
 				MarkChanged();
 			if (enabled)
 				EnsureWorkerLocked();
-			else
-				StopWorkerLocked();
+			// This is a display switch. Keep the connection and transmission state
+			// alive so a pending synchronous receive cannot block EuroScope here,
+			// and re-enabling during a transmission restores its indication.
 		}
 
 		VsmrRdf::Status GetStatus() const
@@ -159,6 +161,8 @@ namespace
 		std::vector<std::string> TransmissionSnapshot() const
 		{
 			std::vector<std::string> result;
+			if (!Enabled.load(std::memory_order_acquire))
+				return result;
 			std::lock_guard<std::mutex> transmissionGuard(TransmissionMutex);
 			result.reserve(Transmissions.size());
 			for (const auto& entry : Transmissions)
@@ -315,8 +319,7 @@ namespace
 
 		bool ShouldStop() const
 		{
-			return StopRequested.load(std::memory_order_acquire) ||
-				!Enabled.load(std::memory_order_acquire);
+			return StopRequested.load(std::memory_order_acquire);
 		}
 
 		bool RunConnection()
@@ -464,7 +467,7 @@ namespace
 		void ProcessMessage(const std::string& text)
 		{
 			rapidjson::Document document;
-			document.Parse<0>(text.c_str());
+			VsmrJson::ParseDocument(document, text);
 			if (document.HasParseError() || !document.IsObject() ||
 				!document.HasMember("type") || !document["type"].IsString() ||
 				!document.HasMember("value") || !document["value"].IsObject())
@@ -681,7 +684,8 @@ namespace VsmrRdf
 		HDC dc,
 		CSMRRadar* radar,
 		const RECT& viewport,
-		const Projector& projector)
+		const Projector& projector,
+		bool airborneOnly)
 	{
 		if (dc == nullptr || radar == nullptr || !projector ||
 			viewport.right <= viewport.left || viewport.bottom <= viewport.top)
@@ -715,7 +719,7 @@ namespace VsmrRdf
 						target = scene->FindTarget(callsign.substr(0, callsign.size() - 1));
 				}
 
-				if (target == nullptr || !target->position.valid)
+				if (target == nullptr || !target->position.valid || (airborneOnly && !target->airborne))
 					continue;
 				EuroScopePlugIn::CPosition position;
 				position.m_Latitude = target->position.latitude;

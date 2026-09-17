@@ -1,5 +1,91 @@
 # Changelog
 
+## [2.0.0-beta.6] - Unreleased
+
+### Added
+
+- Restored LFPG's Minimum Taxiing and Ground Crossing buttons in the vSID CONFIG menu.
+
+- Added explicit WL/EL/IPGW/IPOW vSID popup selections for LFPN, LFPV, LFPT and LFOB, with manual selection only. LFPG/LFPO retain Linked/Unlinked controls. Removed Auto runways and automatic runway-driven rule changes; the companion only publishes manually selected rules.
+
+- Added a per-profile "Fit background to each text line" tag option for the main radar, AVISO insets, and SRW insets.
+
+- Added a right-click airport history to the Runtime Menu ICAO field, listing the five most recently opened airports in the current radar-screen session for quick switching.
+
+- Added regression coverage for JSON limits, updater URL and hashing checks, compiled tag definitions, and persistent text caches. CI now runs MSVC static analysis and a JSON fuzz smoke test under AddressSanitizer.
+- Added an independent Night/Day interface theme in Settings for the Control Center, native Runtime Menu, and METAR display. It remains separate from the AVISO palette; Night retains the existing appearance, while Day uses a lighter slate-grey palette coordinated with the `#434A4F` AVISO background.
+- Added validated Copy/Paste actions for Rules and AVISO geometry/text styles. AVISO paste and profile-color editing support the existing Ctrl/Shift multi-selection workflow.
+- Added delayed, theme-aware interaction explanations for buttons and editable controls throughout the Control Center.
+- Added an optional vSID 0.15.0.2 interface through EuroScope Plugin Bridge. A dedicated Runtime Menu panel replaces manual vSID command entry with validated buttons for airport modes, diagnostics, synchronization, and reloads. Live vSID SID, runway, and cleared-flight-level values are available as `vsid_sid`, `vsid_rwy`, and `vsid_cfl` tag tokens and as a dedicated Rules source.
+- Replaced the retired vACDM HTTP integration with the bridge-enabled CDM plug-in. Its operational time fields are available to tags and the dedicated CDM Rules source as TOBT, TSAT, TTOT, CTOT, TSAC, ASRT, and ASAT.
+- Added a `ready_startup` tag token that displays `RDY` in red until CDM publishes ASRT, then changes it to green.
+- Made `ready_startup` invoke CDM's authoritative Ready Start-up toggle when clicked, and added a Ready aircraft requirement to display modes.
+- Added the Ramp Agent interface through EuroScope Plugin Bridge. The `uk_stand` and `remark` tag tokens now show Ramp Agent's `rampagent/stand` and `rampagent/remark` values.
+
+### Changed
+
+- Replaced the bundled AVISO set with exactly 160 converter-supplied airport maps, byte-for-byte. Added LFRJ and removed 33 maps from the previous import. Dark/Light are available everywhere; Real is available at LFML, LFMN, LFPG, and LFPO. The final LFPG map has no East/West arrow groups.
+- Applied the Settings resolution scale to AVISO geometry/text and aircraft icons/tags in the radar views, without resizing menus, Control Center, or inset controls.
+- Aligned package defaults, binary product versions, and AppVeyor configuration for beta 6. Added release-input validation of versions, map hashes, and update-policy consistency.
+- Reworked the EuroScope Plugin Bridge consumer to follow the bridge integration checklist: a single `esbridge.h` client shim attached from the timer, per-field resolution with type and schema checks, buffer resizing, stale-handle re-resolution, and one shared flight-plan scan per tick for vSID, Ramp Agent, and CDM. A missing plug-in or bridge now only disables the data it provides.
+- `uk_stand` and `remark` no longer read flight strip annotations 3 and 4.
+- Kept the declared CDM schema and manual Paris vSID controls when integrating the shared bridge client, with regression coverage for provider polling and Paris snapshots.
+
+- Imported the installed Custom LFPG and Custom LFMN profiles, retaining bold callsign fields for LFPG. Slightly thickened bold tag text in the shared renderer and expanded its measured width to preserve spacing and hit areas.
+
+- Placed vSID/CPDLC connection text before its colored indicator and removed close buttons from all Runtime Menu popups; clicking the same rail button again closes them.
+
+- Split vSID and CPDLC into two separate Runtime Menu popups opened together by one button, each with its connection state in the title. Renamed Automatic mode to Auto mode, with explicit activated/deactivated text and matching green/red indicators when vSID reports its state.
+
+- Harmonized the vSID / CPDLC panel with the other Runtime Menu popups: compact 220-pixel width, standard title, spacing and buttons, with connection indicators and grouped controls.
+
+- Updated Default-profile tags with bold callsigns, Ready Startup on detailed no-status/startup tags, CTOT on detailed taxi/line-up tags, and the revised arrival layouts.
+
+- Redesigned the combined vSID / CPDLC Runtime Menu with a compact layout and consistent state indicators. Automatic mode reads the optional `vsid/automode` bridge snapshot; older providers show Unknown. Included a companion vSID patch for publishing the actual airport states.
+- Preserved native AVISO raster resolution at 2K and 4K by adapting off-screen cache margins to the existing memory budget, for both the main view and insets.
+
+- Retained normal/detailed tag models between scene refreshes, updating text only when referenced inputs change. Removed indirect per-point target projection calls and replaced refresh-local RIMCAS maps with reusable records that preserve runway insertion order and countdown selection.
+- Split profile normalization, tag formatting, Runtime Menu panels/actions, and AVISO/SRW rendering into focused helpers. Expanded regression coverage and added an isolated AddressSanitizer run of the native suite.
+- Combined vSID and CPDLC/PDC controls into one Runtime Menu panel. Removed CDM Auto, its timer and message queue, bulk scans, timing controls, and saved settings.
+
+- Made AVISO geometry, text, and groups shared across Dark, Light, and Real. Palette changes now affect colors only; older maps migrate using Light geometry when loaded or imported.
+
+- Cached parsed tag definitions and font measurements across frames, with invalidation when settings change and bounded text-cache growth. Reused contiguous tag-token storage and drawing brushes, reduced hot-path copies and callback overhead, and gated detailed SDK timing behind verbose diagnostics.
+- Applied consistent compiler warnings and binary hardening to local and CI builds, including Control Flow Guard and Spectre mitigations. Removed application-wide standard-library namespace pollution and marked security predicates `[[nodiscard]]`.
+- Made RIMCAS runway-pair and ARR/DEP assignments follow the active airport's selected EuroScope runway ends automatically; manual closed-runway state remains independent.
+- Reworked the Rules editor with a dedicated empty state, clearer condition columns, condition counts, and consistent shared controls.
+- Refined the Rules editor into distinct identity, scope, condition, and color-override sections; expanded target symbol scaling to 0.25×–5.00× and made its fixed-size, theme-aware preview show a horizontal movement trail behind the aircraft.
+- Renamed user-facing PDC reminder labels and messages to **CDM Reminder**.
+- Reworked the Icons page around a dedicated preview and consistent settings cards, replaced the ambiguous Display navigation glyph, and moved every slider to one shared compact control style.
+- Removed the legacy profile `.bak` fallback, restoration protocol, health state, UI action, and regression fixtures. Atomic writes, optimistic concurrency, Revert, and bundled-default recovery remain available.
+- Made AVISO palette availability airport-specific: missing palettes are shown as disabled grey options and airport changes automatically select a valid fallback. Added geometry repairs and reported exclusions for misplaced source records during map conversion.
+
+### Fixed
+
+- Made active profile selection independent for each ASR. Opening, selecting, saving or closing one ASR no longer applies its profile to other screens; shared configuration reloads preserve each screen's selection.
+
+- Fixed AVISO color edits and pasted colors changing other themes through inherited palette colors.
+
+- Removed an ASR write from the radar close callback that could register changes after EuroScope had already asked whether to save. Active-profile persistence remains in the normal save callback.
+
+- Made browser regression checks wait for real rendering and the page's completion result, preventing virtual-time timeouts from racing scroll-indicator updates.
+- Preserved legacy colors and no-status tag definitions when profile migration replaces JSON fields, and made repeated normalization avoid rewriting unchanged definitions.
+- Suppressed RDF indications for ground aircraft in SRW insets, using the scene's airborne classification.
+
+- Fixed tags remaining detailed after the pointer leaves or a drag release is missed. Hover uses current tag bounds and the rendering window's cursor coordinates, with drag state isolated per radar view. Added detailed hover tags and their interactive fields to SRW and AVISO insets.
+
+- Replaced the legacy RapidJSON snapshot with pinned upstream headers and applied bounded, iterative, UTF-8-validated parsing to every production JSON entry point. Excessive nesting, malformed encoding, and embedded NUL bytes now fail validation instead of overflowing the stack or silently parsing a prefix.
+- Restricted updater downloads to exact approved hosts, required TLS 1.2 or newer and HTTPS port 443 in both HTTP clients, and enabled certificate revocation checking when discovering the updater signer.
+- Made HTTP and hashing cleanup automatic, checked hash initialization failures, cleared stale hash results, and rejected missing rendering contexts before inset drawing.
+- Prevented tag substitution from interpreting replacement values as further token names, and removed redundant CDM time formatting and per-target hover-text copies.
+- Prevented another airport's selected runways from replacing the ASR/runtime airport and causing the active AVISO map to disappear.
+- Prevented the Control Center from becoming stuck when rule settings were edited before a rule had been created. Rule fields and unavailable actions now remain disabled until a valid rule exists, and condition actions safely reject a missing draft.
+- Aligned the Groups and Settings pages with the standard Control Center left-page offset.
+- Applied the active interface theme to AVISO, SRW, and Timer inset title bars, and corrected AVISO inset tag text so its bounds and line layout remain vertically centered.
+- Added automatic tag deconfliction to the AVISO inset and made its two-pass target rendering keep every aircraft symbol beneath every tag.
+- Prevented the Tag Options behaviour controls from colliding at narrow widths and standardized the Control Center close glyph with native inset windows.
+- Corrected the AVISO update policy to preserve bundled LFRJ and remove superseded maps, while retaining modified-map protection. LFPG labels retain one-pixel halos.
+
 ## [2.0.0-beta.5] - 2026-09-01
 
 ### Added

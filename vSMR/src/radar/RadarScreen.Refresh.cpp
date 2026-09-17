@@ -8,7 +8,6 @@
 #include "crash/CrashRuntime.hpp"
 
 extern CPoint mouseLocation;
-extern std::string TagBeingDragged;
 extern int LeaderLineDefaultlenght;
 extern bool initCursor;
 extern HCURSOR smrCursor;
@@ -81,11 +80,6 @@ namespace
         COLORREF PreviousColor = CLR_INVALID;
     };
 
-    bool IsTagBeingDragged(const std::string& callsign)
-    {
-        return TagBeingDragged == callsign;
-    }
-
     bool MouseWithin(const CRect& rect)
     {
         return VsmrRadarUiSupport::mouseWithin(mouseLocation, rect);
@@ -107,11 +101,7 @@ namespace
 	}
 }
 
-#if defined(_DEBUG)
-#define VSMR_REFRESH_LOG(message) Logger::info(message)
-#else
-#define VSMR_REFRESH_LOG(message) do { } while (0)
-#endif
+#include "shared/RefreshLog.hpp"
 
 // Per-frame timings stay together so render stages can report their work
 // without growing the EuroScope callback's local-variable surface.
@@ -198,14 +188,14 @@ void CSMRRadar::RefreshSectorMap(
 		if (!useAvisoGroundRenderer)
 		{
 			// Draw items based on asr config & zoom level
-			vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
-			vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
-			map<string, bool> drawItemMap;
+			std::vector<CConfig::mapData> allItems = CurrentConfig->getMapElementsForZoomLevel(maxZoomLevel);
+			std::vector<CConfig::mapData> itemsToDraw = CurrentConfig->getMapElementsForZoomLevel(RadarViewZoomLevel);
+			std::map<std::string, bool> drawItemMap;
 
-			auto tokenDataStart = [](const string& s, const string& token) -> size_t {
+			auto tokenDataStart = [](const std::string& s, const std::string& token) -> size_t {
 				// Find token like "DEP" or "ARR" and return the index right after the token and the following separator (eg. "DEP:")
 				size_t pos = s.find(token);
-				if (pos == string::npos) return string::npos;
+				if (pos == std::string::npos) return std::string::npos;
 				// token length +1 for separator (':') -> matches previous code's +4 for "DEP" (3) + ':'
 				return pos + token.length() + 1;
 				};
@@ -229,10 +219,10 @@ void CSMRRadar::RefreshSectorMap(
 						size_t depPos = tokenDataStart(item.active, "DEP");
 						size_t arrPos = tokenDataStart(item.active, "ARR");
 						// If DEP present, extract substring between DEP: and ARR: (or end) and check runways
-						if (depPos != string::npos) {
-							size_t depEnd = (arrPos != string::npos) ? arrPos - 5 : item.active.size();
-							string depList = item.active.substr(depPos, depEnd - depPos);
-							vector<string> depRunways = SplitCommaList(depList);
+						if (depPos != std::string::npos) {
+							size_t depEnd = (arrPos != std::string::npos) ? arrPos - 5 : item.active.size();
+							std::string depList = item.active.substr(depPos, depEnd - depPos);
+							std::vector<std::string> depRunways = SplitCommaList(depList);
 							for (const auto& rwy : depRunways) {
 								auto it = currentRunwayStatuses.find(rwy);
 								if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::DEP && it->second != CRimcas::RunwayStatus::BOTH)) {
@@ -243,9 +233,9 @@ void CSMRRadar::RefreshSectorMap(
 						}
 
 						// If ARR present, extract substring after ARR: and check runways
-						if (arrPos != string::npos && shouldDraw) {
-							string arrList = item.active.substr(arrPos);
-							vector<string> arrRunways = SplitCommaList(arrList);
+						if (arrPos != std::string::npos && shouldDraw) {
+							std::string arrList = item.active.substr(arrPos);
+							std::vector<std::string> arrRunways = SplitCommaList(arrList);
 							for (const auto& rwy : arrRunways) {
 								auto it = currentRunwayStatuses.find(rwy);
 								if (it == currentRunwayStatuses.end() || (it->second != CRimcas::RunwayStatus::ARR && it->second != CRimcas::RunwayStatus::BOTH)) {
@@ -265,9 +255,9 @@ void CSMRRadar::RefreshSectorMap(
 			setRefreshStage("sector element visibility");
 			for (const auto& [elementName, toDraw] : drawItemMap) {
 				size_t slashPos = elementName.find("/");
-				if (slashPos == string::npos) continue;
-				string category = elementName.substr(0, slashPos);
-				string name = elementName.substr(slashPos + 1);
+				if (slashPos == std::string::npos) continue;
+				std::string category = elementName.substr(0, slashPos);
+				std::string name = elementName.substr(slashPos + 1);
 
 				int elementCategory = getIntFromCategory(category);
 				if (elementCategory == -1) continue;
@@ -413,7 +403,7 @@ void CSMRRadar::RenderClosedRunwayOverlays(
 	Gdiplus::Graphics& graphics,
 	const std::function<void(const char*)>& setRefreshStage)
 {
-	VSMR_REFRESH_LOG("Runway overlay loop");
+	VsmrRefreshLog("Runway overlay loop");
 	setRefreshStage("runway overlay draw");
 	for (const auto& runway : CachedRunwayGeometries)
 	{
@@ -448,7 +438,7 @@ void CSMRRadar::RenderRefreshTargets(
 	const std::function<void(const char*)>& setRefreshStage)
 {
 	// Drawing the symbols
-	VSMR_REFRESH_LOG("Symbols loop");
+	VsmrRefreshLog("Symbols loop");
 	setRefreshStage("target symbol rendering");
 
 	// Cache current view scaling once per frame for configured icon sizing.
@@ -513,17 +503,19 @@ void CSMRRadar::RenderRefreshTargets(
 		VsmrTargetRendering::FrameSettings targetRenderSettings;
 		targetRenderSettings.presentation = frameTargetPresentation;
 		targetRenderSettings.pixelsPerMeter = framePixPerMeter;
-		targetRenderSettings.projectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
+		const auto targetRenderSettingsProjectPoint = [&](const VsmrScene::GeoPoint& point) -> POINT
 		{
 			return ConvertCoordFromPositionToPixel(scenePosition(point));
 		};
-		targetRenderSettings.pointVisible = [&](const POINT& point, int margin) -> bool
+
+		const auto targetRenderSettingsPointVisible = [&](const POINT& point, int margin) -> bool
 		{
 			return point.x >= frameVisibleRadarArea.left - margin &&
 				point.x <= frameVisibleRadarArea.right + margin &&
 				point.y >= frameVisibleRadarArea.top - margin &&
 				point.y <= frameVisibleRadarArea.bottom + margin;
 		};
+
 		targetRenderSettings.iconCache = CreateTargetIconCacheCallbacks();
 
 		VsmrTargetRendering::Frame targetRenderer(graphics, std::move(targetRenderSettings));
@@ -532,7 +524,7 @@ void CSMRRadar::RenderRefreshTargets(
 			if (!sceneTarget.iconVisible || !sceneTarget.position.valid)
 				continue;
 			const std::string& rtCallsign = sceneTarget.callsign;
-			auto iconVerboseStep = [&](const std::string& step)
+			auto iconVerboseStep = [&](const char* step)
 			{
 				if (!Logger::is_verbose_mode())
 					return;
@@ -552,7 +544,7 @@ void CSMRRadar::RenderRefreshTargets(
 
 			iconVerboseStep("after_scene_data");
 			const VsmrTargetRendering::DrawResult drawResult =
-				targetRenderer.DrawTarget(sceneTarget);
+				targetRenderer.DrawTarget(sceneTarget, targetRenderSettingsProjectPoint, targetRenderSettingsPointVisible);
 			acPosPix = drawResult.center;
 			if (Logger::is_verbose_mode())
 			{
@@ -587,17 +579,8 @@ void CSMRRadar::RenderRefreshTargets(
 				dc.LineTo(acPosPix.x + 12, acPosPix.y + 6);
 			}
 
-			std::string hoverTextStorage;
-			const char* hoverText = "";
-			if (AcisCorrelated)
-			{
-				hoverTextStorage = sceneTarget.bottomLine;
-				hoverText = hoverTextStorage.c_str();
-			}
-			else
-			{
-				hoverText = sceneTarget.systemId.c_str();
-			}
+			const char* hoverText = AcisCorrelated
+				? sceneTarget.bottomLine.c_str() : sceneTarget.systemId.c_str();
 			iconVerboseStep("before_add_screen_object");
 			const CRect targetArea(
 				drawResult.hitBounds.left,
@@ -627,10 +610,10 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 	ScopedCdcTextColor textColorGuard(dc, RGB(33, 33, 33));
 
 	int TextHeight = dc.GetTextExtent("60").cy;
-	VSMR_REFRESH_LOG("RIMCAS Loop");
+	VsmrRefreshLog("RIMCAS Loop");
 	setRefreshStage("RIMCAS list rendering");
 	const double perfRimcasListStartMs = RefreshPerfNowMs();
-	const vector<int>& TimeDefinition = isLVP
+	const std::vector<int>& TimeDefinition = isLVP
 		? RimcasInstance->CountdownDefinitionLVP
 		: RimcasInstance->CountdownDefinition;
 	Color rimcasStageOneColor(255, 160, 90, 30);
@@ -652,12 +635,10 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 			rimcasStageTwoColor = CurrentConfig->getConfigColor(rimcasConfig["background_color_stage_two"]);
 	};
 
-	for (std::map<string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
+	for (std::map<std::string, bool>::iterator it = RimcasInstance->MonitoredRunwayArr.begin(); it != RimcasInstance->MonitoredRunwayArr.end(); ++it)
 	{
-		const auto timeTableIt = RimcasInstance->TimeTable.find(it->first);
-		if (!it->second || timeTableIt == RimcasInstance->TimeTable.end() || timeTableIt->second.empty())
+		if (!it->second || !RimcasInstance->TimeTable.HasRunway(it->first))
 			continue;
-		const auto& runwayTimeTable = timeTableIt->second;
 		resolveRimcasColors();
 
 		auto timePopupAreaIt = TimePopupAreas.find(it->first);
@@ -673,7 +654,7 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 		dc.FillRect(CRectTime, &BrushGrey);
 
 		// Drawing the runway name
-		string tempS = it->first;
+		std::string tempS = it->first;
 		dc.TextOutA(CRectTime.left + CRectTime.Width() / 2 - dc.GetTextExtent(tempS.c_str()).cx / 2, CRectTime.top, tempS.c_str());
 
 		int TopOffset = TextHeight;
@@ -682,8 +663,8 @@ void CSMRRadar::RenderRefreshRimcasPanels(
 		{
 			dc.SetTextColor(RGB(33, 33, 33));
 
-			const auto timeEntryIt = runwayTimeTable.find(Time);
-			const std::string acCallsign = (timeEntryIt != runwayTimeTable.end()) ? timeEntryIt->second : "";
+			const auto* timeEntry = RimcasInstance->TimeTable.Find(it->first, Time);
+			const std::string acCallsign = timeEntry != nullptr ? *timeEntry : "";
 			tempS = std::to_string(Time) + ": " + acCallsign;
 			const VsmrScene::Target* sceneTarget = frameScene != nullptr
 				? frameScene->FindTarget(acCallsign)
@@ -719,7 +700,7 @@ void CSMRRadar::DeconflictRefreshTags(
 	RefreshPerformance& performance,
 	const std::function<void(const char*)>& setRefreshStage)
 {
-	VSMR_REFRESH_LOG("Tag deconfliction loop");
+	VsmrRefreshLog("Tag deconfliction loop");
 	setRefreshStage("tag deconfliction");
 	const double perfTagDeconflictStartMs = RefreshPerfNowMs();
 	bool autoDeconflictionEnabled = true;
@@ -757,7 +738,7 @@ void CSMRRadar::DeconflictRefreshTags(
 		{
 			if (callsign == otherArea.first)
 				continue;
-			if (IsTagBeingDragged(otherArea.first))
+			if (TagBeingDragged == otherArea.first)
 				continue;
 
 			CRect intersection;
@@ -778,7 +759,7 @@ void CSMRRadar::DeconflictRefreshTags(
 			const std::string& callsign = areaEntry.first;
 			const CRect& currentRect = areaEntry.second;
 
-			if (IsTagBeingDragged(callsign))
+			if (TagBeingDragged == callsign)
 				continue;
 			if (isTagCoolingDown(callsign))
 				continue;
@@ -860,7 +841,7 @@ void CSMRRadar::DeconflictRefreshTags(
 			TagLeaderLineLength.erase(callsign);
 			tagAreas.erase(callsign);
 			tagCollisionAreas.erase(callsign);
-			previousTagSize.erase(callsign);
+			DetailedTagCallsigns.erase(callsign);
 			TagDragOffsetFromCenter.erase(callsign);
 			RecentlyAutoMovedTags.erase(callsign);
 			Patatoides.erase(callsign);
@@ -882,7 +863,7 @@ void CSMRRadar::RenderRefreshInsets(
 	RefreshPerformance& performance,
 	const std::function<void(const char*)>& setRefreshStage)
 {
-	VSMR_REFRESH_LOG("App window rendering");
+	VsmrRefreshLog("App window rendering");
 	setRefreshStage("app window rendering");
 
 	SyncLinkedAvisoSecondaryToMainView();
@@ -982,14 +963,14 @@ void CSMRRadar::RenderRefreshFpsOverlay(
 				if (overlap.IntersectRect(candidate, frame) && !overlap.IsRectEmpty())
 				{
 					overlaps = true;
-					nextY = max(nextY, frame.bottom + 4);
+					nextY = (std::max<LONG>)(nextY, frame.bottom + 4);
 				}
 				CRect preview;
 				if (windowIt->second->GetSnapPreviewRect(preview) &&
 					overlap.IntersectRect(candidate, preview) && !overlap.IsRectEmpty())
 				{
 					overlaps = true;
-					nextY = max(nextY, preview.bottom + 4);
+					nextY = (std::max<LONG>)(nextY, preview.bottom + 4);
 				}
 			}
 			return overlaps;
@@ -1000,7 +981,7 @@ void CSMRRadar::RenderRefreshFpsOverlay(
 			for (size_t attempt = 0; attempt <= appWindows.size(); ++attempt)
 			{
 				const int x = alignRight
-					? max(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6)
+					? (std::max)(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6)
 					: fpsArea.left + 6;
 				CRect candidate(x, y, x + fpsSize.cx, y + fpsSize.cy);
 				if (candidate.right > fpsArea.right || candidate.bottom > fpsArea.bottom)
@@ -1018,7 +999,7 @@ void CSMRRadar::RenderRefreshFpsOverlay(
 			return false;
 		};
 		POINT fpsPosition = {
-			max(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6),
+			(std::max)(fpsArea.left + 4, fpsArea.right - fpsSize.cx - 6),
 			fpsArea.top + 4
 		};
 		bool fpsPositionFound = findFpsPosition(true, fpsPosition);
@@ -1105,7 +1086,7 @@ void CSMRRadar::RecordRefreshPerformance(
 				  " scene_es_targets=" + std::to_string(frameScene->stats.sdkTargetEnumerations) +
 				  " scene_es_fp=" + std::to_string(frameScene->stats.sdkFlightPlanLookups) +
 				  " scene_es_correlated_fp=" + std::to_string(frameScene->stats.sdkCorrelatedFlightPlanLookups) +
-				  " scene_vacdm=" + std::to_string(frameScene->stats.vacdmLookups)
+				  " scene_cdm=" + std::to_string(frameScene->stats.cdmLookups)
 				: " scene_unavailable=1"));
 	}
 }
@@ -1132,6 +1113,7 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 		return false;
 	}
 
+	RefreshDisplayScale();
 	EnsureAvisoWheelHooks(this);
 	// Refresh pipeline is phase-driven by EuroScope. Cursor setup stays on the UI thread.
 	if (initCursor)
@@ -1158,20 +1140,22 @@ bool CSMRRadar::PrepareRefreshPhase(HDC hDC, int phase)
 	}
 	HWND insetHostWindow = ::WindowFromDC(hDC);
 	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
+		insetHostWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+	if (insetHostWindow == nullptr || !::IsWindow(insetHostWindow))
 		insetHostWindow = ::GetActiveWindow();
 	EnsureInsetWindowProcHook(insetHostWindow, this);
 	AvisoRefreshHostWindow.store(insetHostWindow, std::memory_order_release);
 
 	if (phase == REFRESH_PHASE_AFTER_LISTS) {
-		VSMR_REFRESH_LOG("phase == REFRESH_PHASE_AFTER_LISTS");
-		VSMR_REFRESH_LOG("break phase == REFRESH_PHASE_AFTER_LISTS");
+		VsmrRefreshLog("phase == REFRESH_PHASE_AFTER_LISTS");
+		VsmrRefreshLog("break phase == REFRESH_PHASE_AFTER_LISTS");
 		return false;
 	}
 
 	if (phase != REFRESH_PHASE_BEFORE_TAGS)
 		return false;
 
-	VSMR_REFRESH_LOG("phase != REFRESH_PHASE_BEFORE_TAGS");
+	VsmrRefreshLog("phase != REFRESH_PHASE_BEFORE_TAGS");
 	const unsigned long fpsNowTick = ::GetTickCount();
 	if (FpsLastSampleTick == 0)
 		FpsLastSampleTick = fpsNowTick;
@@ -1245,7 +1229,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 		return;
 	PublishCrashRadarState("main");
 
-	VSMR_REFRESH_LOG(string(__FUNCSIG__));
+	VsmrRefreshLog(std::string(__FUNCSIG__));
 	const char* refreshStage = "entry";
 	auto setRefreshStage = [&](const char* stage)
 	{
@@ -1279,15 +1263,25 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		RefreshSectorMap(performance, setRefreshStage);
 
-		POINT p;
-		if (GetCursorPos(&p))
+		// Map to the rendering window, never to an unrelated active dialog.
+		// An unavailable or covered cursor must not leave the last hover latched.
+		mouseLocation = CPoint(-1000000, -1000000);
+		POINT p = {};
+		const HWND renderWindow = AvisoRefreshHostWindow.load(std::memory_order_acquire);
+		if (renderWindow != nullptr && ::IsWindow(renderWindow) && ::GetCursorPos(&p))
 		{
-			HWND activeWindow = GetActiveWindow();
-			if (activeWindow != nullptr && ScreenToClient(activeWindow, &p))
+			const HWND underCursor = ::WindowFromPoint(p);
+			const HWND foreground = ::GetForegroundWindow();
+			if ((underCursor == renderWindow || ::IsChild(renderWindow, underCursor)) &&
+				foreground != nullptr && ::GetAncestor(foreground, GA_ROOT) == ::GetAncestor(renderWindow, GA_ROOT) &&
+				::ScreenToClient(renderWindow, &p))
 				mouseLocation = p;
 		}
+		// EuroScope may miss the release callback when capture or the target is lost.
+		if ((::GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0)
+			CancelTagDrag();
 
-		VSMR_REFRESH_LOG("Graphics set up");
+		VsmrRefreshLog("Graphics set up");
 		setRefreshStage("graphics setup");
 		CDC dc;
 		dc.Attach(hDC);
@@ -1344,7 +1338,7 @@ void CSMRRadar::OnRefresh(HDC hDC, int Phase)
 
 		dcDetach.Detach();
 		setRefreshStage("complete");
-		VSMR_REFRESH_LOG("END " + string(__FUNCSIG__));
+		VsmrRefreshLog("END " + std::string(__FUNCSIG__));
 	}
 	catch (COleException* ex)
 	{

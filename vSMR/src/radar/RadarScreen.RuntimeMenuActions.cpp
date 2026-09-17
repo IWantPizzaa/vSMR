@@ -1,8 +1,10 @@
 #include "platform/windows/PrecompiledHeader.hpp"
 #include "control_center/ControlCenterDialog.hpp"
+#include "integrations/VsidBridgeClient.hpp"
 #include "insets/InsetWindow.hpp"
 #include "plugin/Plugin.hpp"
 #include "radar/RadarScreen.hpp"
+#include "radar/RecentAirports.hpp"
 #include "shared/TextUtils.hpp"
 
 #include <cstdlib>
@@ -77,12 +79,6 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	if (objectType != RUNTIME_MENU_RAIL && objectType != RUNTIME_MENU_POPUP)
 		return false;
 
-	auto syncControlCenter = [&](const std::string& reason = "runtime")
-	{
-		if (VsmrControlCenterDialog != nullptr)
-			VsmrControlCenterDialog->SyncFromRadar(reason);
-	};
-
 	const char* id = objectId != nullptr ? objectId : "";
 	if (button == BUTTON_RIGHT &&
 		objectType == RUNTIME_MENU_RAIL &&
@@ -92,6 +88,16 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		ActiveRuntimeMenuPopup = RuntimeMenuPopup::None;
 		RuntimeMenuPopupScrollOffset = 0;
 		SaveRuntimeMenuPositionToAsr();
+		RequestRefresh();
+		return true;
+	}
+	if (button == BUTTON_RIGHT && objectType == RUNTIME_MENU_RAIL &&
+		std::strcmp(id, "runtime.airport") == 0)
+	{
+		VsmrRadar::RememberAirport(RecentAirports, getActiveAirport());
+		ActiveRuntimeMenuPopup = ActiveRuntimeMenuPopup == RuntimeMenuPopup::RecentAirports
+			? RuntimeMenuPopup::None : RuntimeMenuPopup::RecentAirports;
+		RuntimeMenuPopupScrollOffset = 0;
 		RequestRefresh();
 		return true;
 	}
@@ -135,13 +141,82 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
-	if (std::strcmp(id, "runtime.close") == 0)
+	constexpr char recentPrefix[] = "runtime.recent-airport.";
+	if (ActiveRuntimeMenuPopup == RuntimeMenuPopup::RecentAirports &&
+		std::strncmp(id, recentPrefix, sizeof(recentPrefix) - 1U) == 0)
 	{
-		CloseRuntimeMenuPopup();
+		const std::string airport(id + sizeof(recentPrefix) - 1U);
+		if (std::find(RecentAirports.begin(), RecentAirports.end(), airport) != RecentAirports.end())
+		{
+			CloseRuntimeMenuPopup();
+			setActiveAirport(airport);
+			RequestRefresh();
+		}
 		return true;
 	}
-	if (std::strcmp(id, "runtime.popup") == 0)
+
+	if (std::strcmp(id, "runtime.popup") == 0 || std::strcmp(id, "runtime.popup.cpdlc") == 0)
 		return true;
+
+	if (std::strcmp(id, "runtime.page.previous") == 0)
+	{
+		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 5);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.page.next") == 0)
+	{
+		RuntimeMenuPopupScrollOffset += 5;
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.preset.page.previous") == 0)
+	{
+		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 4);
+		RequestRefresh();
+		return true;
+	}
+	if (std::strcmp(id, "runtime.preset.page.next") == 0)
+	{
+		RuntimeMenuPopupScrollOffset += 4;
+		RequestRefresh();
+		return true;
+	}
+
+	if (HandleRuntimeDatalinkClick(id, area) || HandleRuntimeListClick(id) || HandleRuntimeInsetClick(id)) return true;
+	return HandleRuntimePresetClick(id, area);
+}
+
+void CSMRRadar::SyncRuntimeMenuControlCenter(const std::string& reason)
+{
+	if (VsmrControlCenterDialog != nullptr) VsmrControlCenterDialog->SyncFromRadar(reason);
+}
+
+bool CSMRRadar::HandleRuntimeDatalinkClick(const char* id, RECT area)
+{
+	// ----- Handling the fixed vSID interface actions -----
+	VsmrVsid::CommandAction vsidAction{};
+	if (VsmrVsid::TryParseRuntimeActionId(id, vsidAction))
+	{
+		std::string error;
+		if (!VsmrVsid::SubmitCommand(vsidAction, getActiveAirport(), error))
+		{
+			const std::string message = error.empty()
+				? "The vSID action could not be submitted."
+				: error;
+			GetPlugIn()->DisplayUserMessage(
+				"vSMR",
+				"vSID",
+				message.c_str(),
+				true,
+				false,
+				false,
+				false,
+				false);
+		}
+		RequestRefresh();
+		return true;
+	}
 
 	// ----- Handling CPDLC and PDC actions -----
 	CSMRPlugin* datalinkPlugin = static_cast<CSMRPlugin*>(GetPlugIn());
@@ -208,111 +283,12 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		RequestRefresh();
 		return true;
 	}
-	if (std::strcmp(id, "runtime.datalink.delay") == 0 ||
-		std::strcmp(id, "runtime.datalink.cooldown") == 0)
-	{
-		if (datalinkPlugin != nullptr)
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			const bool editDelay = std::strcmp(id, "runtime.datalink.delay") == 0;
-			const int currentValue = editDelay ? state.cdmDelayMinutes : state.cdmCooldownMinutes;
-			GetPlugIn()->OpenPopupEdit(
-				area,
-				editDelay ? RUNTIME_DATALINK_DELAY_EDIT : RUNTIME_DATALINK_COOLDOWN_EDIT,
-				std::to_string(currentValue).c_str());
-		}
-		return true;
-	}
-	const bool decrementDelay = std::strcmp(id, "runtime.datalink.delay.decrement") == 0;
-	const bool incrementDelay = std::strcmp(id, "runtime.datalink.delay.increment") == 0;
-	const bool decrementCooldown = std::strcmp(id, "runtime.datalink.cooldown.decrement") == 0;
-	const bool incrementCooldown = std::strcmp(id, "runtime.datalink.cooldown.increment") == 0;
-	if (decrementDelay || incrementDelay || decrementCooldown || incrementCooldown)
-	{
-		std::string error;
-		if (datalinkPlugin == nullptr)
-			error = "The PDC reminder service is unavailable.";
-		else
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			const int delayDelta = incrementDelay ? 1 : (decrementDelay ? -1 : 0);
-			const int cooldownDelta = incrementCooldown ? 1 : (decrementCooldown ? -1 : 0);
-			const int delay = std::clamp(state.cdmDelayMinutes + delayDelta, 0, 1440);
-			const int cooldown = std::clamp(state.cdmCooldownMinutes + cooldownDelta, 0, 1440);
-			datalinkPlugin->UpdateDatalinkControlSettings(
-				state.logonCallsign,
-				"",
-				false,
-				state.cdmAutoEnabled,
-				delay,
-				cooldown,
-				error,
-				false);
-		}
-		if (!error.empty())
-			showDatalinkMessage(error, true);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.datalink.reminders") == 0)
-	{
-		std::string error;
-		if (datalinkPlugin == nullptr)
-			error = "The PDC reminder service is unavailable.";
-		else
-		{
-			const DatalinkControlState state = datalinkPlugin->GetDatalinkControlState();
-			datalinkPlugin->UpdateDatalinkControlSettings(
-				state.logonCallsign,
-				"",
-				false,
-				!state.cdmAutoEnabled,
-				state.cdmDelayMinutes,
-				state.cdmCooldownMinutes,
-				error,
-				false);
-		}
-		if (!error.empty())
-			showDatalinkMessage(error, true);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.datalink.scan") == 0)
-	{
-		std::string result;
-		std::string error;
-		if (datalinkPlugin == nullptr || !datalinkPlugin->RunCdmReminderScan(result, error))
-			showDatalinkMessage(error.empty() ? "The PDC reminder service is unavailable." : error, true);
-		else
-			showDatalinkMessage(result, false);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.page.previous") == 0)
-	{
-		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 5);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.page.next") == 0)
-	{
-		RuntimeMenuPopupScrollOffset += 5;
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.preset.page.previous") == 0)
-	{
-		RuntimeMenuPopupScrollOffset = (std::max)(0, RuntimeMenuPopupScrollOffset - 4);
-		RequestRefresh();
-		return true;
-	}
-	if (std::strcmp(id, "runtime.preset.page.next") == 0)
-	{
-		RuntimeMenuPopupScrollOffset += 4;
-		RequestRefresh();
-		return true;
-	}
 
+	return false;
+}
+
+bool CSMRRadar::HandleRuntimeListClick(const char* id)
+{
 	// ----- Applying list selections -----
 	size_t index = 0;
 	if (ParseIndexedObjectId(id, "runtime.mode.", index))
@@ -323,7 +299,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		{
 			if (SetProfileDisplayModeActiveForEditor(activeProfile, modes[index].name))
 			{
-				syncControlCenter("mode");
+				SyncRuntimeMenuControlCenter("mode");
 			}
 			else
 			{
@@ -343,13 +319,13 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		{
 			if (SetActiveProfileForEditor(profiles[index], false))
 			{
-				syncControlCenter("profile");
+				SyncRuntimeMenuControlCenter("profile");
 			}
 			else
 			{
 				GetPlugIn()->DisplayUserMessage(
 					"vSMR", "Profile",
-					"The profile could not be saved. vSMR reloaded the current file.",
+					"The profile could not be selected. Check the profiles configuration.",
 					true, true, false, false, false);
 			}
 		}
@@ -362,7 +338,7 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (index < groups.size())
 		{
 			ToggleAvisoGroupVisibility(groups[index].id);
-			syncControlCenter();
+			SyncRuntimeMenuControlCenter();
 		}
 		RequestRefresh();
 		return true;
@@ -373,12 +349,17 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		if (index < presets.size())
 		{
 			LoadAvisoPreset(presets[index].name);
-			syncControlCenter("preset");
+			SyncRuntimeMenuControlCenter("preset");
 		}
 		RequestRefresh();
 		return true;
 	}
 
+	return false;
+}
+
+bool CSMRRadar::HandleRuntimeInsetClick(const char* id)
+{
 	// ----- Handling inset actions -----
 	auto toggleAppWindow = [&](int appWindowId)
 	{
@@ -395,14 +376,14 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 			}
 			SaveInsetStateToAsrForAirport(getActiveAirport());
 		}
-		syncControlCenter();
+		SyncRuntimeMenuControlCenter();
 		RequestRefresh();
 	};
 	auto resetInsetWindow = [&](int appWindowId)
 	{
 		ResetInsetWindowState(appWindowId, true);
 		SaveInsetStateToAsrForAirport(getActiveAirport());
-		syncControlCenter();
+		SyncRuntimeMenuControlCenter();
 		RequestRefresh();
 	};
 	if (std::strcmp(id, "runtime.inset.aviso") == 0)
@@ -446,6 +427,11 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 		return true;
 	}
 
+	return false;
+}
+
+bool CSMRRadar::HandleRuntimePresetClick(const char* id, RECT area)
+{
 	// ----- Handling preset actions -----
 	const std::vector<AvisoPreset> presets = GetAvisoPresets();
 	std::string activePreset = GetActiveAvisoPresetName();
@@ -499,10 +485,9 @@ bool CSMRRadar::HandleRuntimeMenuClick(int objectType, const char* objectId, POI
 	else
 		return true;
 
-	syncControlCenter("preset");
+	SyncRuntimeMenuControlCenter("preset");
 	RequestRefresh();
-	return true;
-}
+	return true;}
 
 bool CSMRRadar::HandleRuntimeMenuMove(int objectType, const char* objectId, POINT point, RECT area, bool released)
 {

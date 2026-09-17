@@ -1,4 +1,5 @@
 #pragma once
+#include "tags/TagTokenValues.hpp"
 
 #include "aircraft/GroundState.hpp"
 #include "tags/TagDataTypes.hpp"
@@ -61,11 +62,15 @@ namespace VsmrScene
 	struct TagLine
 	{
 		std::vector<TagElement> elements;
+		bool visible = true;
 	};
 
 	struct TagVariant
 	{
 		std::vector<TagLine> lines;
+		std::shared_ptr<const int> definitionIdentity;
+		std::vector<std::string> evaluatedInputs;
+		unsigned evaluationFlags = 0;
 	};
 
 	struct TagPalette
@@ -78,7 +83,7 @@ namespace VsmrScene
 
 	struct TagContent
 	{
-		std::map<std::string, std::string> tokens;
+		VsmrTags::TokenValues tokens;
 		TagVariant normal;
 		TagVariant detailed;
 		TagPalette normalPalette;
@@ -168,8 +173,8 @@ namespace VsmrScene
 		TargetStyle style;
 		TagContent tag;
 		RimcasState rimcas;
-		bool hasVacdmData = false;
-		VacdmPilotData vacdmData;
+		bool hasCdmData = false;
+		CdmPilotData cdmData;
 	};
 
 	struct ControllerState
@@ -199,7 +204,7 @@ namespace VsmrScene
 		std::size_t sdkFlightPlanLookups = 0;
 		std::size_t sdkCorrelatedFlightPlanLookups = 0;
 		std::size_t sdkPreviousPositionLookups = 0;
-		std::size_t vacdmLookups = 0;
+		std::size_t cdmLookups = 0;
 		std::size_t radarFilteredTargetCount = 0;
 		std::size_t iconTargetCount = 0;
 		std::size_t tagTargetCount = 0;

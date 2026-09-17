@@ -14,7 +14,7 @@
 #include "rapidjson/document.h"
 #include "tags/TagColorRules.hpp"
 #include "tags/TagDefinitionUtils.hpp"
-#include "tags/VacdmTagHelpers.hpp"
+#include "tags/CdmTagHelpers.hpp"
 #include "aviso/AvisoDocumentModel.hpp"
 #include "plugin/Plugin.hpp"
 #include "control_center/ControlCenterDialog.hpp"
@@ -65,7 +65,6 @@ namespace
 }
 
 CPoint mouseLocation(0, 0);
-string TagBeingDragged;
 int LeaderLineDefaultlenght = 50;
 
 // Cursor state shared by radar screen instances (managed on the UI thread).
@@ -102,7 +101,7 @@ LRESULT CALLBACK KeyboardMessageHookProc(int code, WPARAM wParam, LPARAM lParam)
 void UnhookAvisoThreadHooks();
 bool TryHandleAvisoWheel(POINT screenPoint, int wheelDelta, HWND sourceHwnd);
 
-map<string, string> CSMRRadar::vStripsStands;
+std::map<std::string, std::string> CSMRRadar::vStripsStands;
 
 // ReSharper disable CppMsExtAddressOfClassRValue
 
@@ -124,7 +123,6 @@ CSMRRadar::CSMRRadar()
 	RuntimeMenuActionFont.CreateFontIndirect(&runtimeMenuActionFont);
 
 	// Initializing randomizer
-	srand(static_cast<unsigned>(time(nullptr)));
 
 	// Initialize GDI+
 	GdiplusStartupInput gdiplusStartupInput;
@@ -265,7 +263,7 @@ CPosition CSMRRadar::ConvertCoordFromPixelToPosition(POINT point)
 CSMRRadar::~CSMRRadar()
 {
 	PublishCrashRadarState("closing", "none");
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	BeginShutdown();
 	CloseVsmrControlCenterWindow();
 	DestroyVsmrControlCenterWindow();
@@ -473,7 +471,7 @@ void CSMRRadar::PublishCrashRadarState(
 }
 
 void CSMRRadar::LoadCustomFont() {
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	// Loading the custom font if there is one in use
 	customFonts.clear();
 
@@ -518,10 +516,11 @@ void CSMRRadar::LoadCustomFont() {
 
 	auto createFont = [&](int size) -> std::unique_ptr<Gdiplus::Font>
 	{
-		std::unique_ptr<Gdiplus::Font> font = std::make_unique<Gdiplus::Font>(buffer.c_str(), Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+		const Gdiplus::REAL pixelSize = static_cast<Gdiplus::REAL>(size * GetDisplayScale());
+		std::unique_ptr<Gdiplus::Font> font = std::make_unique<Gdiplus::Font>(buffer.c_str(), pixelSize, fontStyle, Gdiplus::UnitPixel);
 		if (font->GetLastStatus() != Gdiplus::Ok)
 		{
-			font = std::make_unique<Gdiplus::Font>(L"Arial", Gdiplus::REAL(size), fontStyle, Gdiplus::UnitPixel);
+			font = std::make_unique<Gdiplus::Font>(L"Arial", pixelSize, fontStyle, Gdiplus::UnitPixel);
 		}
 		return font;
 	};
@@ -642,42 +641,16 @@ bool CSMRRadar::SetProfilesConfigPath(
 		return false;
 	}
 
-	CConfig* primaryConfig = nullptr;
-	for (const Replacement& replacement : replacements)
-	{
-		if (replacement.radar == this)
-		{
-			primaryConfig = replacement.config.get();
-			break;
-		}
-	}
-	if (primaryConfig == nullptr)
-		return false;
-
-	const std::vector<std::string> profileNames = primaryConfig->getAllProfiles();
-	std::string activeProfile = primaryConfig->getLastActiveProfileName();
-	if (activeProfile.empty() ||
-		std::find_if(profileNames.begin(), profileNames.end(), [&](const std::string& candidate) {
-			return _stricmp(candidate.c_str(), activeProfile.c_str()) == 0;
-		}) == profileNames.end())
-	{
-		const std::string currentProfile = CurrentConfig != nullptr
-			? CurrentConfig->getActiveProfileName()
-			: std::string();
-		const auto currentMatch = std::find_if(profileNames.begin(), profileNames.end(), [&](const std::string& candidate) {
-			return _stricmp(candidate.c_str(), currentProfile.c_str()) == 0;
-		});
-		activeProfile = currentMatch != profileNames.end()
-			? *currentMatch
-			: profileNames.front();
-	}
-
 	for (Replacement& replacement : replacements)
 	{
 		CSMRRadar* radar = replacement.radar;
+		const std::string activeProfile = radar->GetActiveProfileNameForEditor();
 		radar->ConfigPath = normalizedPath;
 		radar->CurrentConfig = std::move(replacement.config);
 		radar->LoadProfile(activeProfile, false);
+		// During ASR load its saved choice has not been restored yet.
+		if (explicitSelection || radar != this)
+			radar->SaveActiveProfileToAsr();
 		radar->InvalidateAirportPositionCache();
 		radar->InvalidateRunwayGeometryCache();
 		radar->RadarViewZoomLevel = -1;
@@ -703,7 +676,6 @@ bool CSMRRadar::SetProfilesConfigPath(
 				publishSessionSelection ? "resource-source" : "runtime");
 		}
 	}
-	RememberSessionActiveProfile(activeProfile);
 	return true;
 }
 
@@ -721,9 +693,6 @@ bool CSMRRadar::ReloadConfig() {
 	}
 	if (activeProfile.empty())
 		activeProfile = "Default";
-	if (CurrentConfig->isItActiveProfile(activeProfile) == 0 && !CurrentConfig->getAllProfiles().empty()) {
-		activeProfile = CurrentConfig->getAllProfiles().front();
-	}
 	// A reload adopts disk as the authority. Recording the outgoing runtime
 	// alerts into the freshly loaded document would give each radar a divergent
 	// in-memory copy carrying the new revision token, allowing a later unrelated
@@ -744,10 +713,10 @@ bool CSMRRadar::ReloadConfig() {
 }
 
 void CSMRRadar::LoadProfile(
-	string profileName,
+	std::string profileName,
 	bool saveOutgoingState,
 	bool persistNormalization) {
-	Logger::info(string(__FUNCSIG__));
+	Logger::info(std::string(__FUNCSIG__));
 	// Record runtime changes only when switching within the same source. A new
 	// source must never inherit state from the file it is replacing.
 	if (saveOutgoingState)
@@ -774,7 +743,9 @@ void CSMRRadar::LoadProfile(
 	if (activeProfile.IsObject() && activeProfile.HasMember("rimcas") && activeProfile["rimcas"].IsObject())
 		rimcasConfig = &activeProfile["rimcas"];
 
-	RimcasRunwaysExplicitlyConfigured = false;
+	RimcasInstance->MonitoredRunwayArr.clear();
+	RimcasInstance->MonitoredRunwayDep.clear();
+	RimcasInstance->ClosedRunway.clear();
 	if (rimcasConfig != nullptr)
 	{
 		if (rimcasConfig->HasMember("visibility") && (*rimcasConfig)["visibility"].IsString())
@@ -792,14 +763,8 @@ void CSMRRadar::LoadProfile(
 		}
 
 		if (rimcasConfig->HasMember("runways") &&
-			(*rimcasConfig)["runways"].IsArray() &&
-			!(*rimcasConfig)["runways"].Empty())
+			(*rimcasConfig)["runways"].IsArray())
 		{
-			RimcasRunwaysExplicitlyConfigured = true;
-			RimcasInstance->MonitoredRunwayArr.clear();
-			RimcasInstance->MonitoredRunwayDep.clear();
-			RimcasInstance->ClosedRunway.clear();
-
 			auto trimRunwayPart = [](const std::string& value) -> std::string
 			{
 				size_t first = 0;
@@ -849,14 +814,6 @@ void CSMRRadar::LoadProfile(
 				const std::string runwayId = normalizeRunwayPair(runway["id"].GetString());
 				if (runwayId.empty())
 					continue;
-				RimcasInstance->MonitoredRunwayArr[runwayId] =
-					runway.HasMember("arrival") &&
-					runway["arrival"].IsBool() &&
-					runway["arrival"].GetBool();
-				RimcasInstance->MonitoredRunwayDep[runwayId] =
-					runway.HasMember("departure") &&
-					runway["departure"].IsBool() &&
-					runway["departure"].GetBool();
 				RimcasInstance->ClosedRunway[runwayId] =
 					runway.HasMember("closed") &&
 					runway["closed"].IsBool() &&
@@ -866,7 +823,7 @@ void CSMRRadar::LoadProfile(
 	}
 
 	// Inactive alerts
-	unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
+	std::unordered_set inactiveAlerts = CurrentConfig->getInactiveAlert();
 	RimcasInstance->setInactiveAlerts(inactiveAlerts);
 	auto readCountdownDefinition = [&](const Value* arrayValue, const std::vector<int>& fallback) -> std::vector<int>
 	{
@@ -902,8 +859,7 @@ void CSMRRadar::LoadProfile(
 	TagDefinitionEditorDetailed = !GetTagDefinitionDetailedSameAsDefinition();
 	TagDefinitionEditorDepartureStatus = "default";
 	TagDefinitionEditorSelectedLine = 0;
-	if (!RimcasRunwaysExplicitlyConfigured)
-		RefreshLegacyRimcasRunwayMonitoring();
+	RefreshRimcasRunwayMonitoring();
 
 }
 
@@ -924,6 +880,8 @@ bool CSMRRadar::UpdateTimerInsetCountdowns()
 
 void CSMRRadar::InvalidateStructuredTagRuleCache()
 {
+	CompiledTagDefinitions.Clear();
+	TagTextCache.Clear();
 	StructuredTagRulesCache.clear();
 	StructuredTagRulesCacheValid = false;
 }
@@ -1061,6 +1019,29 @@ LRESULT CALLBACK InsetWindowSubclassProc(
 
 	switch (uMsg)
 	{
+	case WM_MOUSEMOVE:
+	case WM_MOUSELEAVE:
+	case WM_LBUTTONUP:
+	case WM_CAPTURECHANGED:
+	case WM_KILLFOCUS:
+	{
+		if (uMsg == WM_MOUSEMOVE)
+		{
+			TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
+			::TrackMouseEvent(&tracking);
+		}
+		const auto radarIt = gInsetWindowRadarScreens.find(hwnd);
+		if (radarIt != gInsetWindowRadarScreens.end())
+			for (CSMRRadar* radar : radarIt->second)
+				if (radar != nullptr && !radar->IsShutdownRequested() && radar->HasDetailedTags())
+				{
+					if (uMsg == WM_CAPTURECHANGED || uMsg == WM_KILLFOCUS)
+						radar->CancelTagDrag();
+					radar->MarkPerformanceRefreshReason(VsmrPerformance::FrameRefreshReason::Hover);
+					radar->RequestRefresh();
+				}
+		break;
+	}
 	case WM_MOUSEWHEEL:
 	{
 		const int wheelDelta = static_cast<short>(HIWORD(wParam));

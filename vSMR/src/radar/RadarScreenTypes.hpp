@@ -66,8 +66,10 @@ namespace VsmrRadarTypes
 		std::vector<std::vector<AvisoPoint>> paths;
 		Gdiplus::Color fillColor = Gdiplus::Color(217, 53, 66, 82);
 		Gdiplus::Color strokeColor = Gdiplus::Color(191, 140, 152, 170);
-		Gdiplus::Color dayFillColor = Gdiplus::Color(217, 53, 66, 82);
-		Gdiplus::Color dayStrokeColor = Gdiplus::Color(191, 140, 152, 170);
+		Gdiplus::Color lightFillColor = Gdiplus::Color(217, 53, 66, 82);
+		Gdiplus::Color lightStrokeColor = Gdiplus::Color(191, 140, 152, 170);
+		Gdiplus::Color realFillColor = Gdiplus::Color(217, 53, 66, 82);
+		Gdiplus::Color realStrokeColor = Gdiplus::Color(191, 140, 152, 170);
 		float strokeWidth = 1.0f;
 		int minimumZoomLevel = 0;
 		double minLongitude = 0.0;
@@ -88,8 +90,10 @@ namespace VsmrRadarTypes
 		std::string textAnchor = "center";
 		Gdiplus::Color textColor = Gdiplus::Color(255, 128, 128, 128);
 		Gdiplus::Color haloColor = Gdiplus::Color(255, 0, 0, 0);
-		Gdiplus::Color dayTextColor = Gdiplus::Color(255, 128, 128, 128);
-		Gdiplus::Color dayHaloColor = Gdiplus::Color(255, 0, 0, 0);
+		Gdiplus::Color lightTextColor = Gdiplus::Color(255, 128, 128, 128);
+		Gdiplus::Color lightHaloColor = Gdiplus::Color(255, 0, 0, 0);
+		Gdiplus::Color realTextColor = Gdiplus::Color(255, 128, 128, 128);
+		Gdiplus::Color realHaloColor = Gdiplus::Color(255, 0, 0, 0);
 		float textSize = 12.0f;
 		float haloWidth = 1.0f;
 		double maxMetersPerPixel = 0.0;
@@ -156,10 +160,11 @@ namespace VsmrRadarTypes
 		std::shared_ptr<const std::vector<AvisoFeature>> features;
 		std::shared_ptr<const std::vector<AvisoLabel>> labels;
 		std::shared_ptr<const std::unordered_map<std::string, bool>> groupVisibility;
-		bool useDayPalette = false;
+		std::string colorPalette = "dark";
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 		double rasterScale = 1.0;
+		double displayScale = 1.0;
 		double displayMinLongitude = 0.0;
 		double displayMinLatitude = 0.0;
 		double displayMaxLongitude = 0.0;
@@ -189,7 +194,7 @@ namespace VsmrRadarTypes
 
 		unsigned long long requestId = 0;
 		unsigned long long groupGeneration = 0;
-		bool useDayPalette = false;
+		std::string colorPalette = "dark";
 		HBITMAP bitmap = nullptr;
 		std::string path;
 		int rasterWidth = 0;
@@ -226,7 +231,8 @@ namespace VsmrRadarTypes
 		Groups,
 		Insets,
 		Profile,
-		Datalink
+		Datalink,
+		RecentAirports
 	};
 
 	struct CachedRunwayGeometry
@@ -271,6 +277,7 @@ namespace VsmrRadarTypes
 		bool requireClearance = false;
 		bool requireValidTsat = false;
 		bool requireActiveTobt = false;
+		bool requireReady = false;
 		bool towerFilter = false;
 		bool structuredRulesEnabled = true;
 		int maximumAirborneAltitudeFt = 5500;

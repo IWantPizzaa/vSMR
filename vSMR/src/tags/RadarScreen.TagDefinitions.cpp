@@ -1,5 +1,7 @@
 #include "platform/windows/PrecompiledHeader.hpp"
+#include "tags/TagTokenValues.hpp"
 #include "radar/RadarScreen.hpp"
+#include "config/ProfileNormalization.hpp"
 #include "tags/TagDefinitionUtils.hpp"
 
 namespace
@@ -38,6 +40,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"tobt",
 		"tsat",
 		"ttot",
+		"tsac",
 		"asat",
 		"aobt",
 		"atot",
@@ -50,6 +53,10 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionTokens() const
 		"ssr",
 		"asid",
 		"ssid",
+		"vsid_sid",
+		"vsid_rwy",
+		"vsid_cfl",
+		"ready_startup",
 		"origin",
 		"dest",
 		"groundstatus",
@@ -93,42 +100,7 @@ std::string CSMRRadar::TagDefinitionTypeLabel(const std::string& type) const
 
 std::string CSMRRadar::NormalizeTagDefinitionDepartureStatus(const std::string& status) const
 {
-	std::string lowered = status;
-	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	std::string compact;
-	compact.reserve(lowered.size());
-	for (char c : lowered)
-	{
-		if (c == ' ' || c == '_' || c == '-')
-			continue;
-		compact.push_back(c);
-	}
-
-	if (lowered == "depa")
-		return "depa";
-	if (lowered == "arr" || lowered == "arrival")
-		return "arr";
-	if (compact == "airdep" || compact == "airbornedep" || compact == "airbornedeparture")
-		return "airdep";
-	if (compact == "airarr" || compact == "airbornearr" || compact == "airbornearrival")
-		return "airarr";
-	if (compact == "airdeponrunway" || compact == "airbornedeponrunway" || compact == "airbornedepartureonrunway")
-		return "airdep_onrunway";
-	if (compact == "airarronrunway" || compact == "airbornearronrunway" || compact == "airbornearrivalonrunway")
-		return "airarr_onrunway";
-	if (lowered == "taxi")
-		return "taxi";
-	if (compact == "lnup" || compact == "lineup" || compact == "l/up")
-		return "lnup";
-	if (lowered == "push")
-		return "push";
-	if (lowered == "stup" || lowered == "startup")
-		return "stup";
-	if (lowered == "nsts")
-		return "nsts";
-	if (compact == "nofpl" || compact == "noflightplan")
-		return "nofpl";
-	return "default";
+	return VsmrProfile::NormalizeTagDefinitionDepartureStatus(status);
 }
 
 std::string CSMRRadar::TagDefinitionDepartureStatusLabel(const std::string& status) const
@@ -194,6 +166,16 @@ bool CSMRRadar::GetTagRoundedCornersEnabledForEditor() const
 		return labels["rounded_corners"].GetBool();
 
 	return true;
+}
+
+bool CSMRRadar::GetTagFitBackgroundToText() const
+{
+	if (!CurrentConfig) return false;
+	const auto& profile = CurrentConfig->getActiveProfile();
+	if (!profile.IsObject() || !profile.HasMember("labels") || !profile["labels"].IsObject()) return false;
+	const auto& labels = profile["labels"];
+	return labels.HasMember("fit_background_to_text") && labels["fit_background_to_text"].IsBool() &&
+		labels["fit_background_to_text"].GetBool();
 }
 
 bool CSMRRadar::GetTagDefinitionDetailedSameAsDefinition() const
@@ -271,7 +253,8 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(bool sameAsDefinition, 
 
 	if (changed)
 	{
-		RequestRefresh();
+		CompiledTagDefinitions.Clear();
+	RequestRefresh();
 		if (persistToDisk && !CurrentConfig->saveConfig())
 		{
 			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save detailed-definition mode to vSMR_Profiles.json", true, true, false, false, false);
@@ -395,7 +378,8 @@ bool CSMRRadar::SetTagDefinitionDetailedSameAsDefinition(
 
 	if (changed)
 	{
-		RequestRefresh();
+		CompiledTagDefinitions.Clear();
+	RequestRefresh();
 		if (persistToDisk && !CurrentConfig->saveConfig())
 		{
 			GetPlugIn()->DisplayUserMessage("vSMR", "Config", "Failed to save detailed-definition mode to vSMR_Profiles.json", true, true, false, false, false);
@@ -685,7 +669,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionLineStrings(std::string type
 	if (!GetTagDefinitionArray(type, detailed, definitionArray, createIfMissing, departureStatus) || !definitionArray)
 		return lines;
 
-	const rapidjson::SizeType limit = min(definitionArray->Size(), static_cast<rapidjson::SizeType>(maxLines));
+	const rapidjson::SizeType limit = (std::min)(definitionArray->Size(), static_cast<rapidjson::SizeType>(maxLines));
 	for (rapidjson::SizeType i = 0; i < limit; ++i)
 	{
 		rapidjson::Value& lineValue = (*definitionArray)[i];
@@ -710,6 +694,7 @@ std::vector<std::string> CSMRRadar::GetTagDefinitionLineStrings(std::string type
 
 void CSMRRadar::SaveTagDefinitionConfig()
 {
+	CompiledTagDefinitions.Clear();
 	if (!CurrentConfig)
 		return;
 
@@ -813,12 +798,13 @@ void CSMRRadar::SetTagDefinitionLineString(std::string type, bool detailed, int 
 	}
 
 	SaveTagDefinitionConfig();
+	CompiledTagDefinitions.Clear();
 	RequestRefresh();
 }
 
 void CSMRRadar::InsertTagDefinitionTokenIntoLine(const std::string& token, bool makeBold)
 {
-	int lineIndex = max(0, min(TagDefinitionEditorSelectedLine, TagDefinitionEditorMaxLines - 1));
+	int lineIndex = (std::max)(0, (std::min)(TagDefinitionEditorSelectedLine, TagDefinitionEditorMaxLines - 1));
 	std::vector<std::string> lines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
 	std::string currentLine = lines[lineIndex];
 	const std::string styledToken = ApplyDefinitionTokenStyle(token, makeBold);
@@ -831,9 +817,9 @@ void CSMRRadar::InsertTagDefinitionTokenIntoLine(const std::string& token, bool 
 	SetTagDefinitionLineString(TagDefinitionEditorType, TagDefinitionEditorDetailed, lineIndex, currentLine, TagDefinitionEditorDepartureStatus);
 }
 
-std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const std::string& type)
+VsmrTags::TokenValues CSMRRadar::BuildTagDefinitionPreviewMap(const std::string& type)
 {
-	std::map<std::string, std::string> previewMap;
+	VsmrTags::TokenValues previewMap;
 	for (const std::string& token : GetTagDefinitionTokens())
 		previewMap[token] = token;
 
@@ -852,6 +838,7 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["tobt"] = "1210";
 	previewMap["tsat"] = "1215";
 	previewMap["ttot"] = "1220";
+	previewMap["tsac"] = "1215";
 	previewMap["asat"] = "";
 	previewMap["aobt"] = "";
 	previewMap["atot"] = "";
@@ -864,6 +851,10 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 	previewMap["ssr"] = "1234";
 	previewMap["asid"] = "LAM1X";
 	previewMap["ssid"] = "LAM1";
+	previewMap["vsid_sid"] = "LAM1X";
+	previewMap["vsid_rwy"] = "26R";
+	previewMap["vsid_cfl"] = "A50";
+	previewMap["ready_startup"] = "RDY";
 	previewMap["origin"] = "LFPG";
 	previewMap["dest"] = "EGKK";
 	previewMap["groundstatus"] = "TAXI";
@@ -929,7 +920,7 @@ std::map<std::string, std::string> CSMRRadar::BuildTagDefinitionPreviewMap(const
 std::vector<std::string> CSMRRadar::BuildTagDefinitionPreviewLines()
 {
 	std::vector<std::string> sourceLines = GetTagDefinitionLineStrings(TagDefinitionEditorType, TagDefinitionEditorDetailed, TagDefinitionEditorMaxLines, true, TagDefinitionEditorDepartureStatus);
-	std::map<std::string, std::string> previewMap = BuildTagDefinitionPreviewMap(TagDefinitionEditorType);
+	VsmrTags::TokenValues previewMap = BuildTagDefinitionPreviewMap(TagDefinitionEditorType);
 	std::vector<std::string> previewLines;
 
 	for (const std::string& line : sourceLines)
@@ -1084,135 +1075,32 @@ namespace
 
 std::string CSMRRadar::NormalizeStructuredRuleSource(const std::string& source) const
 {
-	std::string lowered = TrimAsciiWhitespace(source);
-	std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	if (lowered.find("custom") != std::string::npos || lowered == "list" || lowered == "sidlist" || lowered == "sid")
-		return "custom";
-	if (lowered.find("runway") != std::string::npos || lowered == "rwy")
-		return "runway";
-	return "vacdm";
+	return VsmrProfile::NormalizeStructuredRuleSource(source);
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleToken(const std::string& source, const std::string& token) const
 {
-	std::string normalizedToken = TrimAsciiWhitespace(token);
-	std::transform(normalizedToken.begin(), normalizedToken.end(), normalizedToken.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	if (normalizedToken.empty())
-		return "";
-
-	const std::string normalizedSource = NormalizeStructuredRuleSource(source);
-	if (normalizedSource == "runway")
-	{
-		if (normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
-			return normalizedToken;
-		return "";
-	}
-	if (normalizedSource == "custom")
-	{
-		if (normalizedToken == "sid")
-			return "asid";
-		if (normalizedToken == "asid" || normalizedToken == "ssid" ||
-			normalizedToken == "deprwy" || normalizedToken == "seprwy" || normalizedToken == "arvrwy" || normalizedToken == "srvrwy")
-		{
-			return normalizedToken;
-		}
-		return "";
-	}
-
-	if (normalizedToken == "tobt" || normalizedToken == "tsat" || normalizedToken == "ttot" ||
-		normalizedToken == "asat" || normalizedToken == "aobt" || normalizedToken == "atot" ||
-		normalizedToken == "asrt" || normalizedToken == "aort" || normalizedToken == "ctot")
-	{
-		return normalizedToken;
-	}
-
-	return "";
+	return VsmrProfile::NormalizeStructuredRuleToken(source, token);
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleCondition(const std::string& source, const std::string& condition) const
 {
-	const std::string normalizedSource = NormalizeStructuredRuleSource(source);
-	std::string text = TrimAsciiWhitespace(condition);
-	if (text.empty())
-		return "any";
-
-	if (normalizedSource == "runway" || normalizedSource == "custom")
-		return text;
-
-	std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	for (char& c : text)
-	{
-		if (c == ' ' || c == '-')
-			c = '_';
-	}
-	if (text.rfind("state_", 0) == 0)
-		text = text.substr(6);
-	if (text.empty())
-		return "any";
-	return text;
+	return VsmrProfile::NormalizeStructuredRuleCondition(source, condition);
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleTagType(const std::string& tagType) const
 {
-	std::string normalized = TrimAsciiWhitespace(tagType);
-	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	if (normalized.empty() || normalized == "all" || normalized == "*")
-		return "any";
-	if (normalized == "dep")
-		return "departure";
-	if (normalized == "arr")
-		return "arrival";
-	if (normalized == "air")
-		return "airborne";
-	if (normalized == "uncorr" || normalized == "uncor")
-		return "uncorrelated";
-	if (normalized == "departure" || normalized == "arrival" || normalized == "airborne" || normalized == "uncorrelated")
-		return normalized;
-	return "any";
+	return VsmrProfile::NormalizeStructuredRuleTagType(tagType);
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleStatus(const std::string& status) const
 {
-	std::string normalized = TrimAsciiWhitespace(status);
-	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	std::string compact;
-	compact.reserve(normalized.size());
-	for (char c : normalized)
-	{
-		if (c == ' ' || c == '_' || c == '-')
-			continue;
-		compact.push_back(c);
-	}
-
-	if (normalized.empty() || normalized == "all" || normalized == "*")
-		return "any";
-	if (normalized == "any")
-		return "any";
-	if (normalized == "def" || compact == "default" || compact == "nostatus" || compact == "onground")
-		return "default";
-
-	if (compact == "departure")
-		return "depa";
-	if (compact == "startup")
-		return "stup";
-
-	const std::string normalizedStatus = NormalizeTagDefinitionDepartureStatus(normalized);
-	if (normalizedStatus == "nsts" || normalizedStatus == "arr")
-		return "default";
-	return normalizedStatus;
+	return VsmrProfile::NormalizeStructuredRuleStatus(status);
 }
 
 std::string CSMRRadar::NormalizeStructuredRuleDetail(const std::string& detail) const
 {
-	std::string normalized = TrimAsciiWhitespace(detail);
-	std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	if (normalized.empty() || normalized == "all" || normalized == "*")
-		return "any";
-	if (normalized == "normal" || normalized == "basic" || normalized == "simple")
-		return "normal";
-	if (normalized == "detailed" || normalized == "detail" || normalized == "expanded")
-		return "detailed";
-	return "any";
+	return VsmrProfile::NormalizeStructuredRuleDetail(detail);
 }
 
 const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules() const
@@ -1288,7 +1176,7 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 					continue;
 
 				const rapidjson::Value& criterionObject = criteria[c];
-				std::string source = "vacdm";
+				std::string source = "cdm";
 				if (criterionObject.HasMember("source") && criterionObject["source"].IsString())
 					source = criterionObject["source"].GetString();
 				else if (criterionObject.HasMember("kind") && criterionObject["kind"].IsString())
@@ -1313,7 +1201,7 @@ const std::vector<StructuredTagColorRule>& CSMRRadar::GetStructuredTagColorRules
 		if (rule.criteria.empty())
 		{
 			// Migrating legacy single-criterion fields into the current list
-			std::string source = "vacdm";
+			std::string source = "cdm";
 			if (item.HasMember("source") && item["source"].IsString())
 				source = item["source"].GetString();
 			else if (item.HasMember("kind") && item["kind"].IsString())
