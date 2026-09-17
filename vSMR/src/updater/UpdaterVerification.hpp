@@ -9,6 +9,10 @@
 
 namespace vsmr::updater::verification
 {
+	constexpr bool RequiresManifestSignature(bool manifestRequiresSignature, bool installationHasTrustedSigner)
+	{
+		return manifestRequiresSignature || installationHasTrustedSigner;
+	}
 	[[nodiscard]] bool Sha256File(const std::filesystem::path& path, std::string& digest);
 	std::string ResolveTrustedSignerHash(const StartupOptions& options);
 	[[nodiscard]] bool VerifyDetachedCms(
